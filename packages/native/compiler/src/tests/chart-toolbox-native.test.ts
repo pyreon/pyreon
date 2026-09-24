@@ -41,7 +41,8 @@ export function App() {
     ['SankeyChart', `<SankeyChart nodes={[{ name: 'a' }, { name: 'b' }]} links={[{ source: 'a', target: 'b', value: 1 }]} height={200} toolbox={{ saveAsImage: true }} />`],
   ])('a family host (%s) draws the save button and shares or reports the image', (_tag, jsx) => {
     const r = transform(`
-import { PieChart, HeatmapChart, SankeyChart } from '@pyreon/charts'
+import { SankeyChart } from '@pyreon/charts'
+import { PieChart, HeatmapChart } from '@pyreon/charts/engine'
 export function App() {
   return ${jsx}
 }`, { target })
@@ -87,7 +88,7 @@ export function App() {
 
   it('the family save button sits in a .contain host', () => {
     const r = transform(`
-import { PieChart } from '@pyreon/charts'
+import { PieChart } from '@pyreon/charts/engine'
 export function App() {
   return <PieChart data={[{ n: 'a', v: 1 }]} value={(d) => d.v} label={(d) => d.n} height={200} toolbox={{ saveAsImage: true }} />
 }`, { target: 'swift' })

@@ -262,7 +262,7 @@ describe('accessor-prop hosts — <FunnelChart>', () => {
     sw(
       `import { signal } from '@pyreon/reactivity'
 import { Stack } from '@pyreon/primitives'
-import { FunnelChart } from '@pyreon/charts'
+import { FunnelChart } from '@pyreon/charts/engine'
 export function C() {
   const rows = signal<{ v: number; n: string }[]>([])
   return (<Stack><FunnelChart ${attrs} /></Stack>)

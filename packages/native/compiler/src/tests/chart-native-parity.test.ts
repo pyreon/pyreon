@@ -72,7 +72,8 @@ export function Rich() {
 }`
 
 const THEMED = `import { Stack } from '@pyreon/primitives'
-import { PieChart, ChartThemeProvider, chartThemes } from '@pyreon/charts'
+import { ChartThemeProvider, chartThemes } from '@pyreon/charts'
+import { PieChart } from '@pyreon/charts/engine'
 interface S { n: string; v: number }
 const SLICES: S[] = [{ n: 'a', v: 1 }, { n: 'b', v: 2 }]
 export function Themed() {
@@ -87,7 +88,7 @@ export function Themed() {
 }`
 
 const HEAT_KEYED = `import { Stack } from '@pyreon/primitives'
-import { HeatmapChart } from '@pyreon/charts'
+import { HeatmapChart } from '@pyreon/charts/engine'
 interface Cell { d: string; hour: string; n: number }
 const CELLS: Cell[] = [{ d: 'Mon', hour: '09', n: 3 }]
 export function Heat() {

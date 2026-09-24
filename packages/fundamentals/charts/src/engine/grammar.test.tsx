@@ -1,5 +1,5 @@
 import { h } from '@pyreon/core'
-import { Arc, Area, Axis, Bar, Candle, Cell, Dot, Label, Legend, Line, Rule, Stage, Tip, Zoom, channel, resolveGrammar } from './grammar'
+import { Arc, Area, Axis, Bar, Candle, Cell, Dot, Label, Legend, Line, Rule, Stage, Tooltip, Zoom, channel, resolveGrammar } from './grammar'
 import { area, bars, bubble, groupedBars, line, stackedBars, resolveMarks } from './marks'
 import { compact } from './format'
 
@@ -37,7 +37,7 @@ describe('resolveGrammar — wide form (no color channel)', () => {
     const g = resolveGrammar<Row>(ROWS, { data: ROWS }, [null, 'text', h('div', null), () => h(Bar<Row>, { y: 'revenue' })])
     expect(g.marks).toHaveLength(1)
   })
-  it('Rule → annotations, Axis → axis props, Tip/Legend/Zoom → their PlotChart switches', () => {
+  it('Rule → annotations, Axis → axis props, Tooltip/Legend/Zoom → their PlotChart switches', () => {
     const onBrush = () => {}
     const g = resolveGrammar<Row>(ROWS, { data: ROWS }, [
       h(Bar<Row>, { y: 'revenue' }),
@@ -46,7 +46,7 @@ describe('resolveGrammar — wide form (no color channel)', () => {
       h(Axis, { y: true, format: compact, domain: { min: 0, max: 50 } }),
       h(Axis, { x: true, time: true, hidden: true }),
       h(Axis, { y2: true, domain: { min: 0, max: 1 } }),
-      h(Tip, { crosshair: true }),
+      h(Tooltip, { crosshair: true }),
       h(Legend, { toggle: false, maxRows: 2, position: 'bottom' }),
       h(Zoom, { navigator: true, presets: [{ label: '1M', count: 30 }], brush: onBrush }),
     ])
@@ -93,7 +93,7 @@ describe('resolveGrammar — the family marks name the host', () => {
   interface Slice { name: string; pct: number; tint: string }
   const SLICES: Slice[] = [{ name: 'a', pct: 60, tint: '#111' }, { name: 'b', pct: 40, tint: '#222' }]
   it('<Arc> resolves to the pie host with its channels as accessors and its options on the host', () => {
-    const g = resolveGrammar<Slice>(SLICES, { data: SLICES }, [h(Arc<Slice>, { value: 'pct', label: 'name', color: (d: Slice) => d.tint, innerRadius: 0.5 }), h(Tip, {}), h(Legend, {})])
+    const g = resolveGrammar<Slice>(SLICES, { data: SLICES }, [h(Arc<Slice>, { value: 'pct', label: 'name', color: (d: Slice) => d.tint, innerRadius: 0.5 }), h(Tooltip, {}), h(Legend, {})])
     expect(g.family?.host).toBe('pie')
     expect(g.marks).toEqual([])
     const p = g.family!.props as { value: (d: Slice, i: number) => number; label: (d: Slice, i: number) => string; color: (d: Slice, i: number) => string; innerRadius: number }

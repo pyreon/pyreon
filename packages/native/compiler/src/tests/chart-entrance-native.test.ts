@@ -29,7 +29,7 @@ import type { TreeNode } from '@pyreon/charts'
 const DATA: TreeNode[] = [{ name: 'docs', value: 30 }]
 export function Files() { return <TreemapChart data={DATA} height={200} /> }`
 
-const FUNNEL = `import { FunnelChart } from '@pyreon/charts'
+const FUNNEL = `import { FunnelChart } from '@pyreon/charts/engine'
 interface S { label: string; v: number }
 const SL: S[] = [{ label: 'a', v: 3 }, { label: 'b', v: 1 }]
 export function Steps() {
@@ -43,7 +43,7 @@ export function Sales() {
   return <PlotChart data={ROWS} x={(d: M) => d.name} marks={[bars((d: M) => d.v)]} height={200} />
 }`
 
-const HEAT = `import { HeatmapChart } from '@pyreon/charts'
+const HEAT = `import { HeatmapChart } from '@pyreon/charts/engine'
 interface C { hour: string; d: string; n: number }
 const CELLS: C[] = [{ hour: '1', d: 'Mon', n: 2 }]
 export function Heat() {
@@ -57,7 +57,7 @@ export function T() {
   return <TreeChart data={DATA} tree={{ symbolSize: 8 }} tooltip height={200} />
 }`
 
-const PIE = `import { PieChart } from '@pyreon/charts'
+const PIE = `import { PieChart } from '@pyreon/charts/engine'
 interface S { label: string; v: number }
 const SL: S[] = [{ label: 'a', v: 3 }]
 export function Share() {

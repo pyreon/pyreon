@@ -23,7 +23,7 @@ const read = (p: string) => readFileSync(join(REPO, p), 'utf8')
 const CANVAS_SWIFT = 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonChartCanvas.swift'
 const ENGINE_SWIFT = 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonChartEngine.swift'
 
-const src = (attr: string): string => `import { PieChart } from '@pyreon/charts'
+const src = (attr: string): string => `import { PieChart } from '@pyreon/charts/engine'
 interface Row { n: string; v: number }
 const ROWS: Row[] = [{ n: 'a', v: 1 }, { n: 'b', v: 2 }]
 export function Share() {

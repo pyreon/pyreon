@@ -15,7 +15,8 @@ function chart(el: string): { code: string; warnings: string[] } {
   return transform(
     `import { signal } from '@pyreon/reactivity'
 import { Stack } from '@pyreon/primitives'
-import { RadarChart, HeatmapChart, CandlestickChart, BoxplotChart, GaugeChart } from '@pyreon/charts'
+import { RadarChart, BoxplotChart, GaugeChart } from '@pyreon/charts'
+import { HeatmapChart, CandlestickChart } from '@pyreon/charts/engine'
 import { PlotChart, bars, line } from '@pyreon/charts/engine'
 export function C() {
   const rows = signal<{ x: string; y: number; lo: number; hi: number; vals: number[] }[]>([])

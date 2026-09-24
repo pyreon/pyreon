@@ -35,7 +35,7 @@ The package has five entries:
 
 ```tsx
 // @check
-import { Axis, Bar, Legend, Line, Chart, Tip, currency } from '@pyreon/charts'
+import { Axis, Bar, Legend, Line, Chart, Tooltip, currency } from '@pyreon/charts'
 
 type Row = { month: string; revenue: number; target: number }
 const rows: Row[] = [
@@ -49,7 +49,7 @@ export const Revenue = () => (
     <Bar y="revenue" label="Revenue" />
     <Line y="target" label="Target" />
     <Axis y format={currency('$')} />
-    <Tip />
+    <Tooltip />
     <Legend />
   </Chart>
 )
@@ -68,7 +68,7 @@ around a mark adds and removes its series like any other Pyreon child.
 | `<Rule y label? />` `<Rule from to />` `<Rule x />` | A reference line (horizontal, or vertical at a continuous x) or band. |
 | `<Label text at? series? />` | A datum-anchored label: at the series' `max` / `min`, or at an index. |
 | `<Axis y format domain />` `<Axis x time hidden />` `<Axis y2 … />` | Axis formatting and domains. |
-| `<Tip crosshair? format? />` | The pointer tooltip. |
+| `<Tooltip crosshair? format? />` | The pointer tooltip. |
 | `<Legend toggle? maxRows? />` | The legend (click toggles series). |
 | `<Zoom inside? navigator? presets? link? brush? />` | Pinch/wheel zoom and drag pan, the slider strip, preset buttons, cross-chart linking, the range brush. |
 
@@ -89,7 +89,7 @@ cartesian plot:
 
 ```tsx
 // @check
-import { Arc, Legend, Chart, Tip } from '@pyreon/charts'
+import { Arc, Legend, Chart, Tooltip } from '@pyreon/charts'
 
 type Share = { browser: string; pct: number }
 const share: Share[] = [
@@ -101,13 +101,13 @@ const share: Share[] = [
 export const BrowserShare = () => (
   <Chart<Share> data={share} title="Browser share" showTitle>
     <Arc value="pct" label="browser" innerRadius={0.6} />
-    <Tip />
+    <Tooltip />
     <Legend />
   </Chart>
 )
 ```
 
-`<Tip>`, `<Legend>` and `<Axis y format>` apply to a family host too; a
+`<Tooltip>`, `<Legend>` and `<Axis y format>` apply to a family host too; a
 cartesian mark or `<Zoom>` beside a family mark is reported and ignored.
 
 <Example file="./examples/charts/plot-grammar" title="The grammar — marks as children, a Show around one" />
@@ -313,77 +313,63 @@ export const Ages = () => (
   channels and switches apply to every panel; a new value adds a panel, and a
   value that persists keeps its panel across data changes.
 
-## Radial charts
+## Pies, funnels, heatmaps and candlesticks
+
+These are marks in the same `<Chart>`: `<Arc>` is a pie or donut, `<Stage>` a
+funnel, `<Cell>` a heatmap and `<Candle>` a candlestick. One family mark per
+chart; `<Tooltip>`, `<Legend>` and `<Axis y format>` apply to it as they do to
+a line.
 
 ```tsx
 // @check
-import { PieChart, GaugeChart } from '@pyreon/charts'
+import { Arc, Candle, Cell, Chart, GaugeChart, Legend, Stage, Tooltip } from '@pyreon/charts'
 
 const share = [
   { browser: 'Chrome', pct: 65 },
   { browser: 'Safari', pct: 19 },
   { browser: 'Firefox', pct: 8 },
 ]
-
-export const Radials = () => (
-  <>
-    <PieChart
-      data={share}
-      value={(d) => d.pct}
-      label={(d) => d.browser}
-      innerRadius={0.6}
-      showLegend
-      title="Browser share"
-    />
-    <GaugeChart value={0.72} max={1} showValue title="Capacity" />
-  </>
-)
-```
-
-`innerRadius={0}` is a pie; anything up to 1 is a donut. In the grammar the
-same chart is `<Chart data={share}><Arc value="pct" label="browser" innerRadius={0.6} /></Chart>`.
-
-## Finance and matrix charts
-
-```tsx
-// @check
-import { CandlestickChart, HeatmapChart } from '@pyreon/charts'
-
+const steps = [
+  { step: 'Visit', users: 1200 },
+  { step: 'Sign up', users: 420 },
+  { step: 'Buy', users: 96 },
+]
 const ohlc = [
   { day: 'Mon', o: 102, h: 108, l: 99, c: 106 },
   { day: 'Tue', o: 106, h: 111, l: 104, c: 105 },
 ]
-
 const commits = [
   { dow: 'Mon', hour: '09', n: 4 },
   { dow: 'Mon', hour: '10', n: 7 },
   { dow: 'Tue', hour: '09', n: 2 },
 ]
 
-export const Finance = () => (
+export const Families = () => (
   <>
-    <CandlestickChart
-      data={ohlc}
-      x={(d) => d.day}
-      open={(d) => d.o}
-      high={(d) => d.h}
-      low={(d) => d.l}
-      close={(d) => d.c}
-      title="Weekly OHLC"
-    />
-    <HeatmapChart
-      data={commits}
-      x={(d) => d.hour}
-      y={(d) => d.dow}
-      value={(d) => d.n}
-      title="Commits by hour"
-    />
+    <Chart data={share} title="Browser share" showTitle height={240}>
+      <Arc value="pct" label="browser" innerRadius={0.6} />
+      <Legend />
+    </Chart>
+    <Chart data={steps} height={220}>
+      <Stage value="users" label="step" />
+      <Tooltip />
+    </Chart>
+    <Chart data={ohlc} x="day" height={240}>
+      <Candle open="o" high="h" low="l" close="c" />
+    </Chart>
+    <Chart data={commits} height={200}>
+      <Cell x="hour" y="dow" value="n" />
+      <Tooltip />
+    </Chart>
+    <GaugeChart value={0.72} max={1} showValue title="Capacity" />
   </>
 )
 ```
 
-Duplicate `(x, y)` heatmap observations **sum** — feed raw event rows straight
-in without pre-aggregating.
+`innerRadius={0}` is a pie; anything up to 1 is a donut. Duplicate `(x, y)`
+heatmap observations **sum**, so raw event rows go straight in without
+pre-aggregating. A gauge is one value against a range, not a row per datum, so
+it is its own component, like the relation and hierarchy charts below.
 
 ## Annotations and animation
 
@@ -468,7 +454,7 @@ const repo: TreeNode[] = [
 <TreeChart data={repo} tree={{ orient: 'LR' }} height={260} />
 ```
 
-Relations use node/link lists: `<SankeyChart nodes links>` lays flows out by longest path with relaxed bands and stacked ribbons, and `<GraphChart nodes links graph={{ layout: 'force' }}>` runs a **seeded, deterministic** force layout (or `circular` / `none` for given coordinates). Every family ships `layoutX` / `renderX` / `hitX` as pure functions and an `xToSvg` for the server, plus `<FunnelChart>` and `<BoxplotChart>` (five-number summaries from raw samples via `fiveNumber`).
+Relations use node/link lists: `<SankeyChart nodes links>` lays flows out by longest path with relaxed bands and stacked ribbons, and `<GraphChart nodes links graph={{ layout: 'force' }}>` runs a **seeded, deterministic** force layout (or `circular` / `none` for given coordinates). Every family ships `layoutX` / `renderX` / `hitX` as pure functions and an `xToSvg` for the server, plus `<BoxplotChart>` (five-number summaries from raw samples via `fiveNumber`).
 
 ## Coordinates
 
@@ -509,7 +495,7 @@ has to change with the ground. `positive` and `negative` are semantic — an up
 or down candle, today's rule on a gantt, a highlighted parallel line — and are
 never palette entries. `muted` fills a cell or region with **no data**; its job
 is to recede into `background`, so it cannot be one value for both modes.
-`ramp` is the low-to-high value ramp behind `<HeatmapChart>`, `<CalendarChart>`
+`ramp` is the low-to-high value ramp behind `<Cell>`, `<CalendarChart>`
 and `<MapChart>`, and it must gain contrast against its own `background` as the
 value rises — a ramp that runs light-to-dark reads correctly on a white page
 and backwards on a dark one, where the highest value becomes the faintest mark.
@@ -551,12 +537,12 @@ light theme applies and the compiler says so by name.
 
 ## Every host, one surface
 
-All the family hosts — `<PieChart>` / `<GaugeChart>`, `<FunnelChart>`,
-`<RadarChart>`, `<CandlestickChart>`, `<HeatmapChart>`, `<BoxplotChart>`,
+All the family components — `<GaugeChart>`, `<RadarChart>`, `<BoxplotChart>`,
 `<TreemapChart>`, `<SunburstChart>`, `<TreeChart>`, `<SankeyChart>`,
 `<GraphChart>`, `<RiverChart>`, `<PolarChart>`, `<GanttChart>`,
-`<CalendarChart>`, `<ParallelChart>`, `<MapChart>` — share one canvas host, so
-they share one prop vocabulary:
+`<CalendarChart>`, `<ParallelChart>`, `<MapChart>`, and the four hosts behind
+`<Arc>`, `<Stage>`, `<Candle>` and `<Cell>` — share one canvas host, so they
+share one prop vocabulary:
 
 | Prop | Does |
 | --- | --- |
@@ -566,8 +552,8 @@ they share one prop vocabulary:
 | `animate` / `updateAnimation` / `updateDuration` | The entrance tween on first paint (`theme.enterMs`) and the update tween on a same-shape data change (`theme.updateMs`); both off under `prefers-reduced-motion`. |
 | `keyboard` | On by default: the canvas is focusable, Arrow / Home / End walk the items the accessible table lists, each is announced in a live region and ringed where the family can place a ring, Enter / Space select through the family's callbacks, Escape clears. |
 | `toolbox` / `onSaveImage` | `{ saveAsImage: true }` draws a download button; the family hosts save the canvas as a PNG (the vector form is the family's `*ToSvg`), `<PlotChart>` saves an SVG or, with `'png'`, the canvas. |
-| `onSelect` | The family's rich hit (a cell, an arc, a node, a Sankey node-or-link) or `null`; the row-array hosts (Pie, Funnel, Candlestick, Boxplot, PlotChart) report the row index. |
-| `onSelectIndex` | The engine's INDEX hit, on **every** host — what the native tap gesture reports, so a handler written once works on all three targets. |
+| `onSelect` | On a family component, the family's rich hit (a cell, an arc, a node, a Sankey node-or-link) or `null`, web only. On `<Chart>` it is always the drawn item's INDEX, on every target. |
+| `onSelectIndex` | On a family component, the engine's INDEX hit — what the native tap gesture reports, so a handler written once works on all three targets. `<Chart>` has no `onSelectIndex`: its `onSelect` already is one. |
 | `theme` / `width` / `height` / `class` / `accessibleTable` | As on `<PlotChart>`. The canvas is `aria-describedby` its table; the table stops at 1,000 rows and says so in its caption. |
 
 The same vocabulary crosses: on iOS and Android every host — `<PlotChart>`
@@ -740,7 +726,7 @@ The engine's geometry is **generated into Swift and Kotlin twins**
 TypeScript sources, drift-locked byte-for-byte in CI and compile-proven with
 the real toolchains. The flat draw-list design is what makes this possible:
 a native canvas executes the same commands the web canvas does. JSX-level
-lowering (writing `<PieChart>` in shared source and getting SwiftUI/Compose)
+lowering (writing `<Chart><Arc /></Chart>` in shared source and getting SwiftUI/Compose)
 is landing chart-by-chart — see the
 [multiplatform capability matrix](/docs/multiplatform) for current status.
 

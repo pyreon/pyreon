@@ -884,7 +884,7 @@ export const UNLOWERED_CHART_HOSTS: Readonly<Record<string, string>> = {}
 /** The grammar host and its mark/config children — `<Chart>` desugars to `<PlotChart marks>` before the plot emit runs. */
 export const GRAMMAR_CHART_HOST = 'Chart'
 export const GRAMMAR_MARK_TAGS: Readonly<Record<string, string>> = { Bar: 'bars', Line: 'line', Area: 'area', Dot: 'points', StackedArea: 'stackedArea', Band: 'band' }
-export const GRAMMAR_CONFIG_TAGS: readonly string[] = ['Rule', 'Axis', 'Tip', 'Legend', 'Zoom', 'Label', 'Scale', 'Histogram']
+export const GRAMMAR_CONFIG_TAGS: readonly string[] = ['Rule', 'Axis', 'Tooltip', 'Legend', 'Zoom', 'Label', 'Scale', 'Histogram']
 /** The FAMILY marks: `<Chart>` with one of these desugars to the row-array host it names, channels as accessors. */
 export const GRAMMAR_FAMILY_TAGS: Readonly<Record<string, string>> = { Arc: 'PieChart', Stage: 'FunnelChart', Cell: 'HeatmapChart', Candle: 'CandlestickChart' }
 /** The channels of each family mark (the host's accessor props); every other attr is an option. */
@@ -2952,7 +2952,7 @@ const flagOn = (e: Extract<ExprIR, { kind: 'jsx-element' }>, name: string): bool
  * `<Chart data x>` with mark children → the `<PlotChart data x marks={[…]}>`
  * element the plot emit already lowers, so the grammar is the SAME spec on
  * native as on the web. Field-name channels become accessors; mark children
- * become mark calls with their options; Rule/Axis/Tip/Legend/Zoom become the
+ * become mark calls with their options; Rule/Axis/Tooltip/Legend/Zoom become the
  * plot props they set on the web. A long-format `color` channel (a pivot the
  * web resolves at runtime) is not lowered — it warns by name and the chart
  * renders as wide-format.
@@ -3089,7 +3089,7 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
         histogram = { x: channelArrow(hx), bins: attrOf(child, 'bins') ?? lit(10) }
         break
       }
-      case 'Tip':
+      case 'Tooltip':
         attrs.push({ kind: 'attr', name: 'tooltip', value: lit(true) })
         if (flagOn(child, 'crosshair')) attrs.push({ kind: 'attr', name: 'crosshair', value: lit(true) })
         break
@@ -3181,7 +3181,7 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
  * (and Stage → Funnel, Cell → Heatmap, Candle → Candlestick): the plot's shared
  * props carry over, the mark's channels become the host's accessors, its
  * option attrs go where the host keeps them (`funnel={{…}}` / `candle={{…}}`
- * or straight on), `<Tip>` / `<Legend>` / `<Axis y format>` set the host's
+ * or straight on), `<Tooltip>` / `<Legend>` / `<Axis y format>` set the host's
  * switches. Everything cartesian — the other marks, `<Zoom>`, `<Rule>`,
  * `<Label>`, the `x` channel except on a candlestick — is reported and ignored,
  * exactly as the web host does.
@@ -3200,6 +3200,12 @@ function desugarFamilyGrammar(
       else warn(`<Chart x>: a ${host.replace('Chart', '').toLowerCase()} has no x channel; it is ignored.`)
     } else if (a.kind === 'attr' && (a.name === 'xValue' || a.name === 'color' || a.name === 'horizontal' || a.name === 'showGrid')) {
       warn(`<Chart ${a.name}>: not a ${host.replace('Chart', '').toLowerCase()} prop; it is ignored.`)
+    } else if (a.kind === 'event' && a.name === 'select') {
+      // `<Chart onSelect>` reports the drawn item's INDEX on every target. A
+      // family host's own `onSelect` is shaped per family (a heatmap reports
+      // its cell, which native cannot build); its `onSelectIndex` is the
+      // index — the same routing the web grammar does.
+      attrs.push({ kind: 'event', name: 'selectindex', handler: a.handler })
     } else attrs.push(a)
   }
   const channels = FAMILY_CHANNELS[mark.tag]!
@@ -3218,7 +3224,7 @@ function desugarFamilyGrammar(
       warn(`<Chart>: one family per plot — <${child.tag}> is ignored beside <${mark.tag}>.`)
       continue
     }
-    if (child.tag === 'Tip') attrs.push({ kind: 'attr', name: 'tooltip', value: lit(true) })
+    if (child.tag === 'Tooltip') attrs.push({ kind: 'attr', name: 'tooltip', value: lit(true) })
     else if (child.tag === 'Legend') attrs.push({ kind: 'attr', name: 'showLegend', value: lit(true) })
     else if (child.tag === 'Axis' && !flagOn(child, 'x') && !flagOn(child, 'y2') && attrOf(child, 'format') !== undefined) attrs.push({ kind: 'attr', name: 'format', value: attrOf(child, 'format')! })
     else warn(`<Chart>: <${child.tag}> does not apply to a ${host.replace('Chart', '').toLowerCase()}; it is ignored.`)

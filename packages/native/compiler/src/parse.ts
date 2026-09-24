@@ -2728,7 +2728,7 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
         'Dot',
         'Rule',
         'Axis',
-        'Tip',
+        'Tooltip',
         'Legend',
         'Zoom',
         'Label',

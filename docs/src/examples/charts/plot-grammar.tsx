@@ -1,4 +1,4 @@
-import { Area, Axis, Bar, Legend, Line, Chart, Rule, Tip, Zoom, compact } from '@pyreon/charts'
+import { Area, Axis, Bar, Legend, Line, Chart, Rule, Tooltip, Zoom, compact } from '@pyreon/charts'
 import { signal, type Signal } from '@pyreon/reactivity'
 
 /**
@@ -46,7 +46,7 @@ export default function PlotGrammar(props: { shared?: Signal<number> }) {
         {() => showTarget() && <Line y="target" label="Target" width={2} />}
         <Rule y={60} label="goal" />
         <Axis y format={compact} />
-        <Tip crosshair />
+        <Tooltip crosshair />
         <Legend />
         <Zoom />
       </Chart>

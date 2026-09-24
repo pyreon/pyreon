@@ -67,7 +67,7 @@ import { defineStore } from '@pyreon/store'
 import { For, Show, onMount } from '@pyreon/core'
 import { Stack, Inline, Field, Button, Text, Scroll } from '@pyreon/primitives'
 import { createRouter, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
-import { PieChart } from '@pyreon/charts'
+import { PieChart } from '@pyreon/charts/engine'
 
 type User = { id: string; name: string }
 type Transaction = { id: number; description: string; amount: number }

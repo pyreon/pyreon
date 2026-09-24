@@ -40,7 +40,7 @@ type ECHandler = (...args: unknown[]) => void
  * />
  *
  * // Strict — only specific chart types
- * import type { ComposeOption, BarSeriesOption } from '@pyreon/charts'
+ * import type { ComposeOption, BarSeriesOption } from '@pyreon/charts/echarts'
  * <EChart<ComposeOption<BarSeriesOption>>
  *   options={() => ({
  *     series: [{ type: 'bar', data: revenue() }],

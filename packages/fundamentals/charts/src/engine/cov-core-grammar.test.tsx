@@ -23,7 +23,7 @@ import {
   Scale,
   Stage,
   StackedArea,
-  Tip,
+  Tooltip,
   Zoom,
   resolveGrammar,
 } from './grammar'
@@ -151,9 +151,9 @@ describe('mark children → PlotChart props', () => {
     expect(t.props.yScale).toBeUndefined()
   })
 
-  it('<Tip format> installs the formatter; <Zoom inside={false}> withholds the in-plot zoom', () => {
+  it('<Tooltip format> installs the formatter; <Zoom inside={false}> withholds the in-plot zoom', () => {
     const fmt = () => 'x'
-    const g = resolve([h(Bar<Row>, { y: 'revenue' }), h(Tip, { format: fmt as never })])
+    const g = resolve([h(Bar<Row>, { y: 'revenue' }), h(Tooltip, { format: fmt as never })])
     expect(g.props.tooltip).toBe(true)
     expect(g.props.tooltipFormatter).toBe(fmt)
     const off = resolve([h(Bar<Row>, { y: 'revenue' }), h(Zoom, { inside: false })])
@@ -309,19 +309,12 @@ describe('<Chart> — the accessors it hands its host', () => {
     expect(readProps(without)['xValue']).toBeUndefined()
   })
 
-  it('onSelect and onSelectIndex compose into ONE host callback, and either alone passes through', () => {
+  it('onSelect reaches the plot host as its index callback, and is absent when unset', () => {
+    // <Chart> has ONE selection callback: `onSelect` with the drawn item's
+    // index, on every target. There is no `onSelectIndex` to merge.
     const a = vi.fn()
-    const b = vi.fn()
-    const both = (Chart<Row>({ data: ROWS, onSelect: a, onSelectIndex: b, children: h(Bar<Row>, { y: 'revenue' }) } as never) as () => VNode)()
-    const combined = readProps(both)['onSelect'] as (i: number) => void
-    combined(2)
-    expect(a).toHaveBeenCalledWith(2)
-    expect(b).toHaveBeenCalledWith(2)
-
-    const onlyA = (Chart<Row>({ data: ROWS, onSelect: a, children: h(Bar<Row>, { y: 'revenue' }) } as never) as () => VNode)()
-    expect(readProps(onlyA)['onSelect']).toBe(a)
-    const onlyB = (Chart<Row>({ data: ROWS, onSelectIndex: b, children: h(Bar<Row>, { y: 'revenue' }) } as never) as () => VNode)()
-    expect(readProps(onlyB)['onSelect']).toBe(b)
+    const withA = (Chart<Row>({ data: ROWS, onSelect: a, children: h(Bar<Row>, { y: 'revenue' }) } as never) as () => VNode)()
+    expect(readProps(withA)['onSelect']).toBe(a)
     const neither = (Chart<Row>({ data: ROWS, children: h(Bar<Row>, { y: 'revenue' }) } as never) as () => VNode)()
     expect(readProps(neither)['onSelect']).toBeUndefined()
   })

@@ -17,7 +17,8 @@ const DATA: TreeNode[] = [{ name: 'src', children: [{ name: 'core', value: 50 }]
 interface S { label: string; v: number }
 const SL: S[] = [{ label: 'a', v: 3 }, { label: 'b', v: 1 }]
 `
-const PROVIDED = `import { ChartThemeProvider, TreemapChart, PieChart } from '@pyreon/charts'
+const PROVIDED = `import { ChartThemeProvider, TreemapChart } from '@pyreon/charts'
+import { PieChart } from '@pyreon/charts/engine'
 ${HEAD}export function Dash() {
   return (
     <Stack>
@@ -29,7 +30,8 @@ ${HEAD}export function Dash() {
     </Stack>
   )
 }`
-const OWN = `import { chartThemes, TreemapChart, PieChart } from '@pyreon/charts'
+const OWN = `import { chartThemes, TreemapChart } from '@pyreon/charts'
+import { PieChart } from '@pyreon/charts/engine'
 ${HEAD}export function Dash() {
   return (
     <Stack>

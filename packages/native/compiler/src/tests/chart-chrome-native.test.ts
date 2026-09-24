@@ -20,7 +20,7 @@ export function Files() {
   return <TreemapChart data={DATA} height={200} title="Files" subtitle="by size" showTitle showLegend tooltip onSelectIndex={(i: number) => console.log(i)} />
 }`
 
-const PIE = `import { PieChart } from '@pyreon/charts'
+const PIE = `import { PieChart } from '@pyreon/charts/engine'
 interface S { label: string; v: number }
 const SL: S[] = [{ label: 'a', v: 3 }, { label: 'b', v: 1 }]
 export function Share() {

@@ -56,7 +56,7 @@ describe('list-valued theme fields lower per FIELD, not as the palette', () => {
 // this branch fixes on the web was still live on device: a dark heatmap drew
 // its highest-value cells faintest.
 describe('a frame host reads the ramp from the resolved theme', () => {
-  const HEAT = `import { HeatmapChart } from '@pyreon/charts'
+  const HEAT = `import { HeatmapChart } from '@pyreon/charts/engine'
 const CELLS = [{ hour: 'a', d: 'b', n: 1.0 }]
 export function H() { return <HeatmapChart animate={false} data={CELLS} x={(d) => d.hour} y={(d) => d.d} value={(d) => d.n} /> }`
   const call = (target: 'swift' | 'kotlin'): string =>

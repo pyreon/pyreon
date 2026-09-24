@@ -17,7 +17,7 @@ describe('gen-docs — charts snapshot', () => {
       \`<Chart>\` takes your rows and marks as children — \`<Bar y="revenue">\`, \`<Line>\`, \`<Area>\`, \`<Dot>\`, \`<Arc>\` for a pie, \`<Stage>\` for a funnel. Channels are field names typed against the row, so a typo is a compile error; axes, palette, tooltip, an accessible data table and a spoken description come for free. The geometry is pure TypeScript over a flat draw list, which is what makes the same source render on canvas, as an SVG string on a server, and natively on iOS and Android (the draw list is generated into the Swift and Kotlin runtimes). Every mark and chart family is an imported binding, so a bundle carries only what it draws. Entries: \`@pyreon/charts\` (the stable surface), \`/svg\` (SSR and export), \`/option\` (\`<OptionChart>\`: an ECharts option object on this engine), \`/echarts\` (\`<EChart>\`, a wrapper around the real ECharts library, lazy-loaded) and \`/engine\` (every layout, hit test and draw-list builder; not covered by the stability promise).
 
       \`\`\`typescript
-      import { Arc, Axis, Bar, Chart, Legend, Line, Rule, Tip, currency } from '@pyreon/charts'
+      import { Arc, Axis, Bar, Chart, Legend, Line, Rule, Tooltip, currency } from '@pyreon/charts'
       import { signal } from '@pyreon/reactivity'
 
       interface Row { month: string; revenue: number; target: number }
@@ -33,7 +33,7 @@ describe('gen-docs — charts snapshot', () => {
         <Line y="target" label="Target" />
         <Rule y={130} label="Break-even" />
         <Axis y format={currency('EUR')} />
-        <Tip />
+        <Tooltip />
         <Legend position="bottom" />
       </Chart>
 

@@ -191,7 +191,7 @@ export function C() { const w = signal(300); return <Stack>${jsx}</Stack> }`
 describe('the accessor hosts share the same shadow decline', () => {
   it('<PieChart value> naming its own parameter twice is refused rather than mis-substituted', () => {
     const r = kotlin(`import { Stack } from '@pyreon/primitives'
-import { PieChart } from '@pyreon/charts'
+import { PieChart } from '@pyreon/charts/engine'
 interface Row { m: string; vs: number[] }
 const ROWS: Row[] = [{ m: 'Jan', vs: [1, 2] }]
 export function C() { return <Stack><PieChart data={ROWS} value={(d) => d.vs.map((d) => d).length} label={(d) => d.m} /></Stack> }`)
@@ -310,7 +310,7 @@ export function C() { return (<Stack>${jsx}</Stack>) }`
 describe('chrome, options and accessor edge shapes', () => {
   const src = (jsx: string) => `import { signal } from '@pyreon/reactivity'
 import { Stack, Text, Scroll, For } from '@pyreon/primitives'
-import { PieChart } from '@pyreon/charts'
+import { PieChart } from '@pyreon/charts/engine'
 import { PlotChart, bars, bubble } from '@pyreon/charts/engine'
 interface Row { m: string; v: number; r: number }
 const ROWS: Row[] = [{ m: 'Jan', v: 1, r: 2 }]

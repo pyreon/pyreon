@@ -22,7 +22,7 @@ ${HEAD}export function Files() {
   return <TreemapChart data={DATA} theme={chartThemes.dark} title="Files" showTitle showLegend tooltip height={200} />
 }`
 const DARK_OPTS = DARK.replace('theme={chartThemes.dark}', "theme={chartThemes.dark} treemap={{ padding: 2 }}")
-const LITERAL = `import { PieChart } from '@pyreon/charts'
+const LITERAL = `import { PieChart } from '@pyreon/charts/engine'
 interface S { label: string; v: number }
 const SL: S[] = [{ label: 'a', v: 3 }, { label: 'b', v: 1 }]
 export function Share() {

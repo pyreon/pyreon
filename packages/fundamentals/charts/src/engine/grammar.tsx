@@ -7,7 +7,7 @@
 //     <Bar y="revenue" label="Revenue" />
 //     <Line y="target" label="Target" />
 //     <Axis y format={currency('$')} />
-//     <Tip /> <Legend />
+//     <Tooltip /> <Legend />
 //   </Chart>
 //
 // Channels are FIELD NAMES (`y="revenue"`, typed `keyof T`) or accessors;
@@ -148,7 +148,7 @@ export interface HistogramProps<T> {
   /** Formats the bin edges in the category labels. */
   format?: Formatter
 }
-export interface TipProps {
+export interface TooltipProps {
   /** Custom lines; default is the engine's category + one line per series. */
   format?: PlotChartProps<never>['tooltipFormatter']
   crosshair?: boolean
@@ -275,7 +275,7 @@ export const Rule = /* @__PURE__ */ brand<RuleProps>('Rule')
 /** Axis configuration. */
 export const Axis = /* @__PURE__ */ brand<AxisProps>('Axis')
 /** The pointer tooltip (+ crosshair). */
-export const Tip = /* @__PURE__ */ brand<TipProps>('Tip')
+export const Tooltip = /* @__PURE__ */ brand<TooltipProps>('Tooltip')
 /** The legend. */
 export const Legend = /* @__PURE__ */ brand<LegendProps>('Legend')
 /** Zoom, navigator, presets, brush, linking. */
@@ -372,9 +372,13 @@ export interface ChartProps<T> {
   universalTransition?: boolean
   showGrid?: boolean
   maxPoints?: number
+  /**
+   * A click or tap on a datum, with the index of the drawn item: the row for
+   * the cartesian marks, `<Arc>`, `<Stage>` and `<Candle>`, the cell for
+   * `<Cell>` (duplicate observations sum into one cell). The same callback,
+   * with the same argument, on the web, iOS and Android.
+   */
   onSelect?: (index: number) => void
-  /** The engine's INDEX hit — the multiplatform-safe twin of `onSelect` (identical here). */
-  onSelectIndex?: (index: number) => void
   keyboard?: boolean
   accessibleTable?: boolean
   class?: string
@@ -525,8 +529,8 @@ export function resolveGrammar<T>(rows: T[], chart: ChartProps<T>, children: VNo
       case 'Histogram':
         rawMarks.push({ vnode: v, name })
         break
-      case 'Tip': {
-        const t = p as TipProps
+      case 'Tooltip': {
+        const t = p as TooltipProps
         props.tooltip = true
         if (t.crosshair === true) props.crosshair = true
         if (t.format !== undefined) props.tooltipFormatter = t.format as NonNullable<PlotChartProps<T>['tooltipFormatter']>
@@ -666,7 +670,11 @@ export function Chart<T>(props: ChartProps<T>): VNodeChild {
   const familyNode = (kind: FamilyHost): VNode => {
     const p: Record<string, unknown> = { data: reactiveProp(readRows) }
     // The canvas host's shared props, then the child-declared switches, then the mark's own channels.
-    for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'animate', 'updateAnimation', 'updateDuration', 'universalTransition', 'keyboard', 'onSelect', 'onSelectIndex', 'accessibleTable', 'class', 'onSaveImage'] as const) p[key] = reactiveProp(() => read(key))
+    for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'animate', 'updateAnimation', 'updateDuration', 'universalTransition', 'keyboard', 'accessibleTable', 'class', 'onSaveImage'] as const) p[key] = reactiveProp(() => read(key))
+    // A family host's `onSelect` is shaped per family (a heatmap reports its
+    // cell); its `onSelectIndex` is the index every host reports on every
+    // target, which is what `<Chart onSelect>` promises.
+    p.onSelectIndex = reactiveProp(() => props.onSelect)
     for (const key of ['tooltip', 'showLegend', 'legendPosition', 'format'] as const) p[key] = reactiveProp(() => read(key) ?? (resolved().props as Record<string, unknown>)[key])
     // The family hosts take a PNG-only toolbox; the plot's `'svg'` form maps to it.
     p.toolbox = reactiveProp(() => {
@@ -698,17 +706,7 @@ export function Chart<T>(props: ChartProps<T>): VNodeChild {
   for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'showGrid', 'horizontal', 'animate', 'updateAnimation', 'updateDuration', 'universalTransition', 'maxPoints', 'keyboard', 'accessibleTable', 'class', 'handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'onZoom', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'seriesLabels', 'toolbox', 'onSaveImage', 'locale'] as const) {
     plotProps[key] = reactiveProp(() => (props as unknown as Record<string, unknown>)[key])
   }
-  // `onSelect` and `onSelectIndex` are one callback on the plot host.
-  plotProps.onSelect = reactiveProp(() => {
-    const a = props.onSelect
-    const b = props.onSelectIndex
-    if (a === undefined) return b
-    if (b === undefined) return a
-    return (i: number): void => {
-      a(i)
-      b(i)
-    }
-  })
+  plotProps.onSelect = reactiveProp(() => props.onSelect)
   if (props.facet !== undefined) return facetGrid(props, readRows, plotProps)
   return () => {
     const kind = hostKind()

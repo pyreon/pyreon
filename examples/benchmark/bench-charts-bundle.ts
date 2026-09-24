@@ -124,7 +124,7 @@ ${LINE_DATA}
   {
     name: 'Pyreon PieChart',
     group: 'pie chart',
-    source: `${MOUNT}import { PieChart } from '@pyreon/charts'
+    source: `${MOUNT}import { PieChart } from '@pyreon/charts/engine'
 ;(globalThis as Record<string, unknown>).__benchKeep = () => mount(h(PieChart, { data: [{ label: 'A', value: 3 }, { label: 'B', value: 5 }], label: (d: { label: string }) => d.label, value: (d: { value: number }) => d.value }), document.body)
 `,
   },

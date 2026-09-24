@@ -76,15 +76,11 @@ import { signal, computed } from '@pyreon/reactivity'
 import {
   BoxplotChart,
   CalendarChart,
-  CandlestickChart,
-  FunnelChart,
   GanttChart,
   GaugeChart,
   GraphChart,
-  HeatmapChart,
   MapChart,
   ParallelChart,
-  PieChart,
   PolarChart,
   RadarChart,
   RiverChart,
@@ -95,7 +91,7 @@ import {
   createChartHandle,
 } from '@pyreon/charts'
 import { OptionChart } from '@pyreon/charts/option'
-import { PlotChart, bars, bollinger, line, sma } from '@pyreon/charts/engine'
+import { CandlestickChart, FunnelChart, HeatmapChart, PieChart, PlotChart, bars, bollinger, line, sma } from '@pyreon/charts/engine'
 import type {
   BrushRange,
   GeoHeatPoint,

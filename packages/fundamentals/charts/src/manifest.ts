@@ -13,7 +13,7 @@ export default defineManifest({
     rationale:
       'the engine is generated into the native runtimes and every chart component lowers to a native PyreonChartCanvas over the same draw list: `<Chart>` with its marks (desugared to `<PlotChart marks>`), the family components (Pie / Gauge / Funnel / Radar / Candlestick / Heatmap / Boxplot / Treemap / Sunburst / Tree / Sankey / Graph / Chord / River / Polar / SingleAxis / Gantt / Calendar / Parallel, and `<MapChart>` from a precomputed `GeoShape[]` — the map registry, raw GeoJSON and `geoShapes()` stay web and warn by name). Theme tokens (`chartThemes`, `palettes`) resolve at compile time and `<ChartThemeProvider mode>` is a compile-time scope. A literal `<OptionChart>` option (`/option`) lowers for the common families; a dynamic one warns. `<EChart>` (`/echarts`) wraps the ECharts library and stays web — keep it in a `<Web>` branch or host it through `/webview`',
   },
-  longExample: `import { Arc, Axis, Bar, Chart, Legend, Line, Rule, Tip, currency } from '@pyreon/charts'
+  longExample: `import { Arc, Axis, Bar, Chart, Legend, Line, Rule, Tooltip, currency } from '@pyreon/charts'
 import { signal } from '@pyreon/reactivity'
 
 interface Row { month: string; revenue: number; target: number }
@@ -29,7 +29,7 @@ const rows = signal<Row[]>([
   <Line y="target" label="Target" />
   <Rule y={130} label="Break-even" />
   <Axis y format={currency('EUR')} />
-  <Tip />
+  <Tooltip />
   <Legend position="bottom" />
 </Chart>
 
@@ -43,7 +43,7 @@ rows.set([...rows(), { month: 'Apr', revenue: 190, target: 180 }])`,
   features: [
     '`<Chart>` with marks as JSX children — `<Bar>`, `<Line>`, `<Area>`, `<Dot>`, `<Band>`, `<Rule>`, `<Label>`, `<Histogram>`, and family marks `<Arc>`, `<Stage>`, `<Cell>`, `<Candle>`',
     'Channels are field names typed against the row; `color="region"` pivots long-format data into one series per value',
-    'Chrome as children: `<Axis>`, `<Scale>`, `<Tip>`, `<Legend>`, `<Zoom>`',
+    'Chrome as children: `<Axis>`, `<Scale>`, `<Tooltip>`, `<Legend>`, `<Zoom>`',
     'Twenty chart families: pie, gauge, funnel, radar, candlestick, heatmap, boxplot, treemap, sunburst, tree, sankey, graph, chord, river, polar, single-axis, gantt, calendar, parallel, map',
     'Accessible by default: a hidden data table, a spoken description, keyboard focus',
     'Canvas in the browser, SVG strings on a server (`@pyreon/charts/svg`), and native canvases on iOS and Android from the same source',
@@ -57,8 +57,8 @@ rows.set([...rows(), { month: 'Apr', revenue: 190, target: 180 }])`,
       kind: 'component',
       signature: '<T>(props: ChartProps<T>) => VNode',
       summary:
-        "The chart — `<Chart data x>` with MARK CHILDREN, from `@pyreon/charts`. Channels are FIELD NAMES typed against the row (`y=\"revenue\"`) or accessors; marks are JSX children (`<Bar y stack? group? waterfall?>`, `<Line y>`, `<Area y>`, `<Dot y r?>` — `r` makes area-mapped bubbles; every cartesian mark takes `errorLow` / `errorHigh` channels for error bars) and draw in order; `<Rule y | from to>`, `<Axis x|y|y2 format domain time hidden title labels scale>`, `<Scale y=\"log\"|\"time\" x=\"time\" normalize>` (the log view, calendar labels, the 100% stack), `<Histogram x bins>` (bins the rows and draws one bar per bin — the whole plot, like the pivot), `<Tip crosshair format>`, `<Legend toggle maxRows position>`, `<Zoom inside navigator presets link brush>` and `<Label text at series>` (a datum-anchored point marker) declare annotations, axes, scales, the tooltip, the legend, every zoom surface and markers as data beside the marks. `facet=\"region\"` renders small multiples — one titled panel per value in a `facetColumns` grid, every panel sharing the y domain; `locale=\"de-DE\"` formats every number surface through Intl. The FAMILY marks cover the row-array hosts with the same grammar — `<Arc value label color? innerRadius?>` (pie / donut), `<Stage value label color? sort? gap?>` (funnel), `<Cell x y value colors? gap?>` (heatmap), `<Candle open high low close upColor? downColor?>` (candlestick, the plot's `x` labels the period) — one family per chart, and `<Chart>` renders that host instead of the cartesian plot (`<Tip>` / `<Legend>` / `<Axis y format>` still apply; a cartesian mark or `<Zoom>` beside one is reported and ignored). A `<Show>` around a mark adds/removes its series, and a `<For each>` (or a plain `.map()`) generates one per item — its render callback is resolved here, inside the resolving computed, so an accessor `each` tracks. A child that is not a mark renders nothing and says so in dev. `color=\"region\"` switches to LONG format: one series per distinct value, categories from `x`, gaps where a (category, series) pair is absent, bars grouped unless `stack`. Marks are branded components `<Chart>` scans structurally (never invoked); it resolves them into the `marks={[bars(…)]}` props `<PlotChart>` takes, so the array form is the same spec — `resolveGrammar` is exported for that equivalence. Native: the compiler desugars `<Chart>` to `<PlotChart marks>` (byte-identical emit); the runtime `color` pivot warns by name and renders wide-format.",
-      example: `import { Axis, Bar, Chart, Legend, Line, Tip, currency } from '@pyreon/charts'
+        "The chart — `<Chart data x>` with MARK CHILDREN, from `@pyreon/charts`. Channels are FIELD NAMES typed against the row (`y=\"revenue\"`) or accessors; marks are JSX children (`<Bar y stack? group? waterfall?>`, `<Line y>`, `<Area y>`, `<Dot y r?>` — `r` makes area-mapped bubbles; every cartesian mark takes `errorLow` / `errorHigh` channels for error bars) and draw in order; `<Rule y | from to>`, `<Axis x|y|y2 format domain time hidden title labels scale>`, `<Scale y=\"log\"|\"time\" x=\"time\" normalize>` (the log view, calendar labels, the 100% stack), `<Histogram x bins>` (bins the rows and draws one bar per bin — the whole plot, like the pivot), `<Tooltip crosshair format>`, `<Legend toggle maxRows position>`, `<Zoom inside navigator presets link brush>` and `<Label text at series>` (a datum-anchored point marker) declare annotations, axes, scales, the tooltip, the legend, every zoom surface and markers as data beside the marks. `facet=\"region\"` renders small multiples — one titled panel per value in a `facetColumns` grid, every panel sharing the y domain; `locale=\"de-DE\"` formats every number surface through Intl. The FAMILY marks cover the row-array hosts with the same grammar — `<Arc value label color? innerRadius?>` (pie / donut), `<Stage value label color? sort? gap?>` (funnel), `<Cell x y value colors? gap?>` (heatmap), `<Candle open high low close upColor? downColor?>` (candlestick, the plot's `x` labels the period) — one family per chart, and `<Chart>` renders that host instead of the cartesian plot (`<Tooltip>` / `<Legend>` / `<Axis y format>` still apply; a cartesian mark or `<Zoom>` beside one is reported and ignored). A `<Show>` around a mark adds/removes its series, and a `<For each>` (or a plain `.map()`) generates one per item — its render callback is resolved here, inside the resolving computed, so an accessor `each` tracks. A child that is not a mark renders nothing and says so in dev. `color=\"region\"` switches to LONG format: one series per distinct value, categories from `x`, gaps where a (category, series) pair is absent, bars grouped unless `stack`. Marks are branded components `<Chart>` scans structurally (never invoked); it resolves them into the `marks={[bars(…)]}` props `<PlotChart>` takes, so the array form is the same spec — `resolveGrammar` is exported for that equivalence. Native: the compiler desugars `<Chart>` to `<PlotChart marks>` (byte-identical emit); the runtime `color` pivot warns by name and renders wide-format.",
+      example: `import { Axis, Bar, Chart, Legend, Line, Tooltip, currency } from '@pyreon/charts'
 
 interface Row { month: string; revenue: number; target: number }
 const rows: Row[] = [{ month: 'Jan', revenue: 3200, target: 3000 }, { month: 'Feb', revenue: 4100, target: 3400 }]
@@ -67,7 +67,7 @@ const rows: Row[] = [{ month: 'Jan', revenue: 3200, target: 3000 }, { month: 'Fe
   <Bar y="revenue" label="Revenue" />
   <Line y="target" label="Target" />
   <Axis y format={currency('$')} />
-  <Tip />
+  <Tooltip />
   <Legend />
 </Chart>`,
       mistakes: [
@@ -118,7 +118,7 @@ const sales = signal<Row[]>([{ month: 'Jan', revenue: 120, target: 100 }])
         'Painting a 100k-point series without `maxPoints` — every point becomes a command on every repaint; `maxPoints={1000}` thins the visible slice with LTTB (marks stay aligned, hits report the GLOBAL row index) and the picture is the same to the eye. It draws exactly `maxPoints` DISTINCT rows as of 0.52; before that the last bucket collided with the pinned final row and one slot was wasted on a duplicate.',
         'Reading rounded bars as a style bug — `theme.radius` (3) rounds the corners away from the baseline by default; `theme={{ radius: 0 }}` is square, and a mark\'s own `borderRadius` always wins',
       ],
-      seeAlso: ['chartToSvg', 'PieChart'],
+      seeAlso: ['chartToSvg', 'Arc'],
     },
     {
       name: 'ChartThemeProvider',
@@ -145,7 +145,7 @@ const mode = signal<'light' | 'dark'>('dark') // or PyreonUI's useMode
         'Reading `useChartTheme()` once at setup — it returns an ACCESSOR; call it inside the effect that draws so a mode flip repaints',
         'Building a full `ChartTheme` by hand from four fields — the type has thirteen required tokens now; start from `chartThemes.light` / `.dark` and spread overrides, or pass a `Partial` to `theme`',
       ],
-      seeAlso: ['PlotChart', 'PieChart'],
+      seeAlso: ['PlotChart', 'Arc'],
     },
     {
       name: 'BoxplotChart',
@@ -184,7 +184,7 @@ const candles: Candle[] = [{ t: 1704067200000, close: 101 }, { t: 1704153600000,
         'Destructuring `bollinger`\'s result as three lines — it is TWO marks now, a filled `band` and its middle line; index it, or spread it, but do not assume the arity',
         'Passing a computed window or width to an indicator in a NATIVE app — the emit needs numeric literals to lower them and names the limit rather than guessing; a runtime window keeps the mark web-only',
       ],
-      seeAlso: ['PlotChart', 'CandlestickChart'],
+      seeAlso: ['PlotChart', 'Candle'],
     },
     {
       name: 'chartToSvg',
@@ -215,64 +215,75 @@ const svg = chartToSvg({
       seeAlso: ['PlotChart'],
     },
     {
-      name: 'PieChart',
+      name: 'Arc',
       kind: 'component',
-      signature: '(props: PieChartProps) => VNodeChild',
+      signature: '<T>(props: ArcProps<T>) => VNode | null',
       summary:
-        'Pie and donut from the same engine (`@pyreon/charts/plot`); `innerRadius` is what makes it a donut. `GaugeChart` is its sibling for a single value against a range. Both carry the same accessibility contract as `PlotChart` — a `role="img"` graphic with a derived description, `aria-describedby` its hidden data table, keyboard-walkable — because both are built on the shared canvas host every family is (`canvasHost`, exported: layout / render / hit / a11y in, chrome + pointer + keyboard + animation + table out).',
-      example: `import { PieChart, GaugeChart } from '@pyreon/charts'
+        'The pie and donut mark: `<Chart data><Arc value label /></Chart>`. `innerRadius` (0 to 1) makes it a donut; `color` is an optional per-slice channel, the theme palette otherwise. A family mark renders the pie host instead of the cartesian plot, so `<Tooltip>`, `<Legend>` and `<Axis y format>` apply and cartesian marks beside it are reported and ignored. `<Chart onSelect>` receives the slice index. The accessibility contract is the same as every chart: a `role="img"` graphic with a derived description, `aria-describedby` its hidden data table, keyboard-walkable. `<GaugeChart>` is the sibling for a single value against a range.',
+      example: `import { Arc, Chart, GaugeChart, Legend, Tooltip } from '@pyreon/charts'
 import { signal } from '@pyreon/reactivity'
 
-interface Slice { name: string; amount: number }
-const slices = signal<Slice[]>([{ name: 'Direct', amount: 40 }])
+interface Share { name: string; amount: number }
+const shares = signal<Share[]>([{ name: 'Direct', amount: 40 }, { name: 'Search', amount: 35 }])
 const cpu = signal(42)
 
-<PieChart data={() => slices()} label={(d: Slice) => d.name} value={(d: Slice) => d.amount} innerRadius={0.6} />
+<Chart data={shares} height={240}>
+  <Arc value="amount" label="name" innerRadius={0.6} />
+  <Tooltip />
+  <Legend />
+</Chart>
 <GaugeChart value={() => cpu()} min={0} max={100} title="CPU" />`,
       mistakes: [
         'Using a pie for more than a handful of slices — angular area is hard to compare; the engine will draw it, which is not the same as it reading well',
-        'Omitting `label` and expecting a legend — the slice labels are what name the data',
+        'Putting `<Bar>` beside `<Arc>` — one family per chart; the cartesian mark is reported and ignored',
+        'Two family marks in one `<Chart>` (`<Arc>` beside `<Stage>`) — the first wins and the rest is reported, never merged',
       ],
-      seeAlso: ['PlotChart'],
+      seeAlso: ['Chart', 'Stage'],
     },
     {
-      name: 'CandlestickChart',
+      name: 'Candle',
       kind: 'component',
-      signature: '<T>(props: CandlestickChartProps<T>) => VNodeChild',
+      signature: '<T>(props: CandleProps<T>) => VNode | null',
       summary:
-        'Candlestick chart from `@pyreon/charts` — open/high/low/close accessors per datum, direction encoded by color (close vs open; up green, down red by default, both overridable). `onSelect` fires with the candle index (the full COLUMN is the hit target — a wick is one pixel wide) and `tooltip` shows the hovered period OHLC. A doji (open == close) keeps a 1px body — flat trading is a fact, and a missing candle reads as missing data. The wick draws first so the body sits over it; the price domain is niced so the axis lands on readable ticks. Geometry (`renderCandles`, `ohlcExtent`) exported standalone.',
-      example: `import { CandlestickChart } from '@pyreon/charts'
+        'The candlestick mark: `<Chart data x><Candle open high low close /></Chart>`, one period per row, the chart\'s `x` labelling it. Direction is encoded by colour (close against open; up green, down red by default, `upColor` / `downColor` override). `<Chart onSelect>` receives the candle index; the whole COLUMN is the hit target, since a wick is one pixel wide. A doji (open equal to close) keeps a 1px body, because flat trading is a fact and a missing candle reads as missing data. The price domain is niced so the axis lands on readable ticks.',
+      example: `import { Candle, Chart, Tooltip } from '@pyreon/charts'
 
-interface Bar { day: string; o: number; h: number; l: number; c: number }
-const bars: Bar[] = [{ day: 'Mon', o: 10, h: 20, l: 5, c: 15 }]
+interface Day { day: string; o: number; h: number; l: number; c: number }
+const days: Day[] = [{ day: 'Mon', o: 10, h: 20, l: 5, c: 15 }, { day: 'Tue', o: 15, h: 18, l: 9, c: 11 }]
 
-<CandlestickChart data={bars} open={(d: Bar) => d.o} high={(d: Bar) => d.h} low={(d: Bar) => d.l} close={(d: Bar) => d.c} x={(d: Bar) => d.day} />`,
+<Chart data={days} x="day" height={260}>
+  <Candle open="o" high="h" low="l" close="c" />
+  <Tooltip />
+</Chart>`,
       mistakes: [
-        'Feeding pre-sorted-descending periods and reading the chart right-to-left — periods render in DATA order, oldest first by convention; sort ascending',
-        'Expecting volume bars — volume is a second chart sharing the x axis, not a candle option; compose a `PlotChart` with `bars` below it',
+        'Feeding periods newest first and reading the chart right to left — periods render in DATA order, oldest first by convention; sort ascending',
+        'Expecting volume bars — volume is a second chart sharing the x axis, not a candle option',
         'Aiming a click at the candle body — the hit target is the whole COLUMN, deliberately: a doji body is one pixel tall and selection must not be a game of skill',
       ],
-      seeAlso: ['PlotChart', 'HeatmapChart'],
+      seeAlso: ['Chart', 'Cell'],
     },
     {
-      name: 'HeatmapChart',
+      name: 'Cell',
       kind: 'component',
-      signature: '<T>(props: HeatmapChartProps<T>) => VNodeChild',
+      signature: '<T>(props: CellProps<T>) => VNode | null',
       summary:
-        'Heatmap from `@pyreon/charts`: two categorical axes, a value per cell, color as the third channel. Category order is FIRST-SEEN (weekday names and funnel stages carry an order alphabetical sorting destroys); duplicate (x, y) observations SUM; absent cells are NOT drawn — absence and zero are different facts. The ramp is plain `#rrggbb` stops interpolated by hand-rolled math, so the same code lowers to native. The row gutter sizes itself from the widest row label, the same rule horizontal bars use. `onSelect` fires with the tapped CELL (its categories and aggregated value; null for a miss) and `tooltip` shows row \u00b7 column: value — both speak in cells because duplicate observations SUM into one cell, so the cell is the unit on screen.',
-      example: `import { HeatmapChart } from '@pyreon/charts'
+        'The heatmap mark: `<Chart data><Cell x y value /></Chart>` — two categorical axes, a value per cell, colour as the third channel. Category order is FIRST-SEEN (weekday names carry an order alphabetical sorting destroys); duplicate (x, y) observations SUM; absent cells are NOT drawn, because absence and zero are different facts. `colors` is the ramp as `#rrggbb` stops, interpolated by hand-rolled math so the same code lowers to native. `<Chart onSelect>` receives the index of the tapped CELL, not of a row: duplicate observations sum into one cell, so the cell is the unit on screen.',
+      example: `import { Cell, Chart, Tooltip } from '@pyreon/charts'
 
 interface Ev { day: string; hour: string; count: number }
-const events: Ev[] = [{ day: 'Mon', hour: '09', count: 12 }]
+const events: Ev[] = [{ day: 'Mon', hour: '09', count: 12 }, { day: 'Tue', hour: '09', count: 4 }]
 
-<HeatmapChart data={events} x={(d: Ev) => d.day} y={(d: Ev) => d.hour} value={(d: Ev) => d.count} />`,
+<Chart data={events} height={220}>
+  <Cell x="hour" y="day" value="count" />
+  <Tooltip />
+</Chart>`,
       mistakes: [
         'Expecting alphabetically sorted axes — category order is first-seen from the data, which is what keeps Mon..Sun in week order; sort the DATA to sort the axes',
         'Reading an undrawn cell as zero — absent cells are skipped, not painted cold; emit explicit zero observations when zero is a fact worth showing',
-        'Passing a color ramp as anything but `#rrggbb` stops — named colors and rgb() strings are not parsed; the hex restriction is what lets the ramp math lower to native',
-        'Expecting `onSelect` to fire a datum index — duplicate (x, y) observations SUM into one cell, so the callback speaks in cells: categories plus the aggregated value, or null for a miss (an undrawn cell is a miss too: absence is not selectable)',
+        'Passing a colour ramp as anything but `#rrggbb` stops — named colours and rgb() strings are not parsed; the hex restriction is what lets the ramp math lower to native',
+        'Using the `onSelect` index as a ROW index — it indexes cells, and duplicate (x, y) observations sum into one cell',
       ],
-      seeAlso: ['PlotChart', 'PieChart'],
+      seeAlso: ['Chart', 'Arc'],
     },
     {
       name: 'RadarChart',
@@ -297,7 +308,7 @@ const players: Player[] = [{ name: 'Ana', speed: 90, power: 40, skill: 80 }]
         'Passing `values` in a different order than `axes` — the two are index-aligned, and a swapped pair silently plots speed on the power spoke',
         'More than a handful of polygons — overlapping fills become unreadable past 3-4 series; filter the data or facet into several charts',
       ],
-      seeAlso: ['PlotChart', 'PieChart'],
+      seeAlso: ['PlotChart', 'Arc'],
     },
     {
       name: 'TreemapChart',
@@ -348,7 +359,7 @@ const euShapes: GeoShape[] = geoShapes(euGeoJson)
         'Using a hand-picked colour per region instead of `values` — the fill is a value → colour mapping through the ramp so the accessible table and any visualMap strip stay truthful',
         'Reaching for `registerMap` in SHARED multiplatform source — the registry is a module map no native target has, and neither raw GeoJSON nor `geoShapes()` crosses; pass a PRECOMPUTED `GeoShape[]` const (projected on the web or in a build step) and the warnings go away',
       ],
-      seeAlso: ['TreemapChart', 'HeatmapChart'],
+      seeAlso: ['TreemapChart', 'Cell'],
     },
     {
       name: 'optionToSvg',

@@ -48,7 +48,7 @@ describe('auditNative', () => {
     // manifests, so declaring nativeFrontend removed charts with no edit here.
     write(
       'src/Radial.tsx',
-      `import { Stack } from '@pyreon/primitives'\nimport { PieChart } from '@pyreon/charts'\nexport function R() { return (<Stack />) }`,
+      `import { Stack } from '@pyreon/primitives'\nimport { PieChart } from '@pyreon/charts/engine'\nexport function R() { return (<Stack />) }`,
     )
     const r = auditNative(dir)
     expect(r.findings.filter((f) => f.code === 'web-only-package-import')).toHaveLength(0)

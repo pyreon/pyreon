@@ -161,7 +161,7 @@ const plot = (children: string, plotAttrs = `data={ROWS} x="name"`) =>
   app(
     `<Chart ${plotAttrs}>${children}</Chart>`,
     ROWS,
-    `import { Chart, Bar, Line, Area, Dot, Band, Rule, Axis, Scale, Tip, Label, Legend, Zoom, Histogram, Arc } from '@pyreon/charts'`,
+    `import { Chart, Bar, Line, Area, Dot, Band, Rule, Axis, Scale, Tooltip, Label, Legend, Zoom, Histogram, Arc } from '@pyreon/charts'`,
   )
 
 describe('chart-hosts — <Chart> marks', () => {
@@ -229,9 +229,9 @@ describe('chart-hosts — <Chart> settings children', () => {
     expect(swift(plot(`<Bar y="v" /><Scale y="log" />`)).code).toContain('yScale')
   })
 
-  it('lowers <Tip>, and NAMES the crosshair a touch target cannot give', () => {
-    expect(swift(plot(`<Bar y="v" /><Tip />`)).code).toContain('pyreonTip')
-    expect(swift(plot(`<Bar y="v" /><Tip crosshair />`)).warnings.join('\n')).toContain(
+  it('lowers <Tooltip>, and NAMES the crosshair a touch target cannot give', () => {
+    expect(swift(plot(`<Bar y="v" /><Tooltip />`)).code).toContain('pyreonTip')
+    expect(swift(plot(`<Bar y="v" /><Tooltip crosshair />`)).warnings.join('\n')).toContain(
       '`crosshair` (it is a HOVER readout',
     )
   })
@@ -304,7 +304,7 @@ describe('chart-hosts — the family grammar (<Chart><Arc/></Chart>)', () => {
     app(
       `<Chart ${plotAttrs}>${mark}${extra}</Chart>`,
       ROWS,
-      `import { Chart, Arc, Bar, Tip, Legend, Axis, Zoom, Stage } from '@pyreon/charts'`,
+      `import { Chart, Arc, Bar, Tooltip, Legend, Axis, Zoom, Stage } from '@pyreon/charts'`,
     )
 
   it('routes a family mark to its host and moves the mark channels onto it', () => {
@@ -325,9 +325,9 @@ describe('chart-hosts — the family grammar (<Chart><Arc/></Chart>)', () => {
     }
   })
 
-  it('accepts <Tip> / <Legend> / <Axis format> beside the mark and names anything else', () => {
+  it('accepts <Tooltip> / <Legend> / <Axis format> beside the mark and names anything else', () => {
     const w = swift(
-      fam(`<Arc value="v" label="name" />`, `data={ROWS}`, `<Tip /><Legend /><Axis y format={fmt} /><Zoom />`),
+      fam(`<Arc value="v" label="name" />`, `data={ROWS}`, `<Tooltip /><Legend /><Axis y format={fmt} /><Zoom />`),
     )
     expect(w.code).toContain('PyreonChartCanvas')
     expect(w.warnings.join('\n')).toContain('<Zoom> does not apply to a pie')
@@ -367,7 +367,8 @@ describe('chart-hosts — chart theme literals', () => {
     app(
       `<PieChart data={ROWS} value={(d: Row) => d.v} theme={${theme}} />`,
       ROWS,
-      `import { PieChart, chartThemes, palettes } from '@pyreon/charts'`,
+      `import { chartThemes, palettes } from '@pyreon/charts'
+import { PieChart } from '@pyreon/charts/engine'`,
     )
 
   it('accepts a named theme reference and an object literal', () => {
@@ -415,7 +416,8 @@ describe('chart-hosts — <ChartThemeProvider> scope', () => {
     app(
       `<ChartThemeProvider ${attrs}><PieChart data={ROWS} value={(d: Row) => d.v} /></ChartThemeProvider>`,
       ROWS,
-      `import { PieChart, ChartThemeProvider, chartThemes } from '@pyreon/charts'`,
+      `import { ChartThemeProvider, chartThemes } from '@pyreon/charts'
+import { PieChart } from '@pyreon/charts/engine'`,
     )
 
   it('accepts a literal mode and names a missing or non-literal one', () => {
@@ -517,7 +519,7 @@ function sink(i: number) { return i }`,
         `<PieChart data={ROWS} value={(d: Row) => d.v} theme={{ ...base, fontSize: 13 }} />`,
         `${ROWS}
 const base = {}`,
-        `import { PieChart } from '@pyreon/charts'`,
+        `import { PieChart } from '@pyreon/charts/engine'`,
       ),
     )
     expect(chart.warnings.join('\n')).toContain('only an object literal with literal fields lowers')
@@ -526,7 +528,8 @@ const base = {}`,
         `<ChartThemeProvider mode="dark" theme={{ ...base, fontSize: 13 }}><PieChart data={ROWS} value={(d: Row) => d.v} /></ChartThemeProvider>`,
         `${ROWS}
 const base = {}`,
-        `import { PieChart, ChartThemeProvider } from '@pyreon/charts'`,
+        `import { ChartThemeProvider } from '@pyreon/charts'
+import { PieChart } from '@pyreon/charts/engine'`,
       ),
     )
     expect(provider.warnings.join('\n')).toContain("the mode's theme applies")

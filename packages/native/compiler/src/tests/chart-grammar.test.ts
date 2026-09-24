@@ -15,7 +15,7 @@ const BRUSH_FN = `function onBrush(r: BrushRange | null) {
   if (r == null) return
 }
 `
-const GRAMMAR = `${HEAD}import { Chart, Bar, Line, Dot, Rule, Axis, Tip, Legend, Zoom, compact } from '@pyreon/charts'
+const GRAMMAR = `${HEAD}import { Chart, Bar, Line, Dot, Rule, Axis, Tooltip, Legend, Zoom, compact } from '@pyreon/charts'
 import type { BrushRange } from '@pyreon/charts'
 ${DATA}export function Revenue() {
   const picked = signal(-1)
@@ -68,8 +68,8 @@ describe('chart grammar — <Chart> children desugar to <PlotChart marks>', () =
     const stray = transform(`${HEAD}import { Bar } from '@pyreon/charts'\nexport function A() { return (<Stack><Bar y="x" /></Stack>) }`, { target: 'kotlin' })
     expect(stray.warnings).toEqual(['<Bar> only means something as a child of <Chart>; on its own it renders nothing.'])
   })
-  it('<Tip> lowers to the tooltip flag (the plot host draws it on tap); <Axis x time hidden> and a brush on <Zoom> map to their plot props', () => {
-    const src = GRAMMAR.replace(DATA, DATA + BRUSH_FN).replace('<Legend />', '<Legend /><Tip crosshair /><Axis x time hidden /><Zoom brush={onBrush} inside={false} />').replace('<Zoom navigator presets={[{ label: \'1M\', count: 30 }]} />', '')
+  it('<Tooltip> lowers to the tooltip flag (the plot host draws it on tap); <Axis x time hidden> and a brush on <Zoom> map to their plot props', () => {
+    const src = GRAMMAR.replace(DATA, DATA + BRUSH_FN).replace('<Legend />', '<Legend /><Tooltip crosshair /><Axis x time hidden /><Zoom brush={onBrush} inside={false} />').replace('<Zoom navigator presets={[{ label: \'1M\', count: 30 }]} />', '')
     const r = transform(src, { target: 'kotlin' })
     expect(r.warnings).not.toContain('<PlotChart>: `tooltip` is not lowered on native; the chart renders without it.')
     expect(r.code).toContain('renderTooltip(pyreonTip, pyreonTipAt,')
@@ -103,12 +103,12 @@ describe('chart grammar — the toolchains accept the desugared emit', () => {
 const SLICES = `interface S { name: string; pct: number; tint: string }
 const SL: S[] = [{ name: 'a', pct: 60, tint: '#111111' }, { name: 'b', pct: 40, tint: '#222222' }]
 `
-const ARC = `${HEAD}import { Chart, Arc, Tip, Legend } from '@pyreon/charts'
+const ARC = `${HEAD}import { Chart, Arc, Tooltip, Legend } from '@pyreon/charts'
 ${SLICES}export function Share() {
-  return (<Stack><Chart data={SL} title="Share" showTitle width={240} height={200}><Arc value="pct" label="name" color={(d: S) => d.tint} innerRadius={0.5} /><Tip /><Legend /></Chart></Stack>)
+  return (<Stack><Chart data={SL} title="Share" showTitle width={240} height={200}><Arc value="pct" label="name" color={(d: S) => d.tint} innerRadius={0.5} /><Tooltip /><Legend /></Chart></Stack>)
 }
 `
-const PIE = `${HEAD}import { PieChart } from '@pyreon/charts'
+const PIE = `${HEAD}import { PieChart } from '@pyreon/charts/engine'
 ${SLICES}export function Share() {
   return (<Stack><PieChart data={SL} title="Share" showTitle width={240} height={200} value={(d) => d.pct} label={(d) => d.name} color={(d: S) => d.tint} innerRadius={0.5} tooltip showLegend /></Stack>)
 }
@@ -118,7 +118,7 @@ ${SLICES}export function Steps() {
   return (<Stack><Chart data={SL} height={200}><Stage value="pct" label="name" sort="none" gap={4} /></Chart></Stack>)
 }
 `
-const FUNNEL = `${HEAD}import { FunnelChart } from '@pyreon/charts'
+const FUNNEL = `${HEAD}import { FunnelChart } from '@pyreon/charts/engine'
 ${SLICES}export function Steps() {
   return (<Stack><FunnelChart data={SL} height={200} value={(d) => d.pct} label={(d) => d.name} funnel={{ sort: 'none', gap: 4 }} /></Stack>)
 }
@@ -131,7 +131,8 @@ ${OBS}export function Heat() {
   return (<Stack><Chart data={CELLS} width={240} height={160}><Cell x="hour" y="day" value="n" gap={2} /><Axis y format={compact} /></Chart></Stack>)
 }
 `
-const HEAT = `${HEAD}import { HeatmapChart, compact } from '@pyreon/charts'
+const HEAT = `${HEAD}import { compact } from '@pyreon/charts'
+import { HeatmapChart } from '@pyreon/charts/engine'
 ${OBS}export function Heat() {
   return (<Stack><HeatmapChart data={CELLS} width={240} height={160} x={(d) => d.hour} y={(d) => d.day} value={(d) => d.n} gap={2} format={compact} /></Stack>)
 }
@@ -144,7 +145,7 @@ ${BARS}export function Periods() {
   return (<Stack><Chart data={BARS} x="day" height={180}><Candle open="o" high="h" low="l" close="c" upColor="#00ff00" /></Chart></Stack>)
 }
 `
-const CANDLESTICK = `${HEAD}import { CandlestickChart } from '@pyreon/charts'
+const CANDLESTICK = `${HEAD}import { CandlestickChart } from '@pyreon/charts/engine'
 ${BARS}export function Periods() {
   return (<Stack><CandlestickChart data={BARS} x={(d) => d.day} height={180} open={(d) => d.o} high={(d) => d.h} low={(d) => d.l} close={(d) => d.c} candle={{ upColor: '#00ff00' }} /></Stack>)
 }

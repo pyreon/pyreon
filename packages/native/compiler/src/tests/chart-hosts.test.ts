@@ -238,7 +238,8 @@ export function Plan() {
 
 const ACCESSOR = `import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
-import { FunnelChart, GaugeChart, PieChart } from '@pyreon/charts'
+import { GaugeChart } from '@pyreon/charts'
+import { FunnelChart, PieChart } from '@pyreon/charts/engine'
 interface Stage { name: string; total: number; tint: string }
 const STAGES: Stage[] = [{ name: 'Visit', total: 120, tint: '#111111' }, { name: 'Sign up', total: 48, tint: '#222222' }]
 export function Sales() {
@@ -285,7 +286,7 @@ describe('chart hosts — accessor-prop hosts (Funnel / Pie) and Gauge', () => {
   })
   it('a block-bodied accessor is reported by name; a pie legend now lowers', () => {
     const r = transform(
-      `import { FunnelChart, PieChart } from '@pyreon/charts'
+      `import { FunnelChart, PieChart } from '@pyreon/charts/engine'
 interface Row { n: string; v: number }
 const ROWS: Row[] = [{ n: 'a', v: 1 }]
 export function C() { return (<><FunnelChart animate={false} data={ROWS} value={(d) => { const twice = d.v * 2; return twice }} label={(d) => d.n} /><PieChart data={ROWS} value={(d) => d.v} label={(d) => d.n} showLegend={true} /></>) }`,
@@ -309,7 +310,8 @@ export function C() { return (<><FunnelChart animate={false} data={ROWS} value={
 })
 
 const FRAMES = `import { Stack } from '@pyreon/primitives'
-import { CandlestickChart, HeatmapChart, RadarChart } from '@pyreon/charts'
+import { RadarChart } from '@pyreon/charts'
+import { CandlestickChart, HeatmapChart } from '@pyreon/charts/engine'
 import type { RadarAxis } from '@pyreon/charts'
 interface Bar { day: string; o: number; h: number; l: number; c: number }
 interface Cell { d: string; hour: string; n: number }
@@ -364,7 +366,8 @@ describe('chart hosts — cartesian-frame hosts (Candlestick / Heatmap) and Rada
   })
   it('a cell-shaped heatmap onSelect is reported by name; a literal theme and a radar legend lower', () => {
     const r = transform(
-      `import { CandlestickChart, HeatmapChart, RadarChart } from '@pyreon/charts'
+      `import { RadarChart } from '@pyreon/charts'
+import { CandlestickChart, HeatmapChart } from '@pyreon/charts/engine'
 import type { RadarAxis } from '@pyreon/charts'
 interface Bar { o: number; h: number; l: number; c: number }
 interface Cell { d: string; hour: string; n: number }
@@ -514,7 +517,8 @@ export function C() { return (<><PlotChart animate={false} data={ROWS} marks={[b
 
 
 const CHROME = `import { Stack } from '@pyreon/primitives'
-import { PieChart, RadarChart } from '@pyreon/charts'
+import { RadarChart } from '@pyreon/charts'
+import { PieChart } from '@pyreon/charts/engine'
 import { PlotChart, bars, line } from '@pyreon/charts/engine'
 import type { RadarAxis } from '@pyreon/charts'
 interface Month { name: string; revenue: number; cost: number }
@@ -586,7 +590,8 @@ describe('chart hosts — legend + title chrome (Plot / Pie / Radar)', () => {
 
 
 const PROPS = `import { Stack } from '@pyreon/primitives'
-import { CandlestickChart, compact, fixed, plain } from '@pyreon/charts'
+import { compact, fixed, plain } from '@pyreon/charts'
+import { CandlestickChart } from '@pyreon/charts/engine'
 import { PlotChart, bubble, bars } from '@pyreon/charts/engine'
 interface City { name: string; pop: number; area: number; growth: number }
 interface Bar { day: string; o: number; h: number; l: number; c: number }
@@ -674,7 +679,8 @@ describe('chart hosts — theme overrides, formatters and bubble marks', () => {
     }
   })
   it('chrome props a target does not draw warn BY NAME; `animate` on an engine with no entrance is named as inert everywhere', () => {
-    const src = `import { TreemapChart, PieChart } from '@pyreon/charts'
+    const src = `import { TreemapChart } from '@pyreon/charts'
+import { PieChart } from '@pyreon/charts/engine'
 type N = { name: string; value: number }
 const NODES: N[] = [{ name: 'a', value: 1 }]
 type S = { label: string; v: number }

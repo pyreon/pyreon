@@ -22,20 +22,20 @@ Only `@pyreon/charts/echarts` loads ECharts.
 ## `<Chart>`
 
 ```tsx
-import { Axis, Bar, Legend, Line, Chart, Tip, currency } from '@pyreon/charts'
+import { Axis, Bar, Legend, Line, Chart, Tooltip, currency } from '@pyreon/charts'
 
 <Chart<Row> data={rows} x="month">
   <Bar y="revenue" label="Revenue" />
   <Line y="target" label="Target" />
   <Axis y format={currency('$')} />
-  <Tip /> <Legend />
+  <Tooltip /> <Legend />
 </Chart>
 ```
 
 The same grammar covers the row-array families: `<Chart data={share}><Arc value="pct" label="browser" /></Chart>` is a pie or donut, `<Stage>` a funnel, `<Cell x y value>` a heatmap, `<Candle open high low close>` a candlestick — one family per plot, and `<Chart>` renders that host. `<Label text at="max" />` marks a datum, `<Rule x>` draws a vertical reference.
 
 Channels are field names (typed `keyof Row`) or accessors; marks are children
-and draw in order; `<Rule>` / `<Axis>` / `<Tip>` / `<Legend>` / `<Zoom>` declare
+and draw in order; `<Rule>` / `<Axis>` / `<Tooltip>` / `<Legend>` / `<Zoom>` declare
 the rest as data. `color="region"` pivots long-format rows into one series per
 value. The `<PlotChart marks={[bars(…)]}>` array form is the same spec and stays
 supported; on native the compiler desugars one to the other.
@@ -145,7 +145,7 @@ misleadingly.
 ### Heatmap
 
 ```tsx
-import { HeatmapChart } from '@pyreon/charts'
+import { HeatmapChart } from '@pyreon/charts/engine'
 
 <HeatmapChart
   data={events}

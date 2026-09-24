@@ -65,7 +65,7 @@ export function _throttle(fn: () => void, ms: number): { run: () => void; cancel
  * const chart = useChart(optionsFn, { theme: () => (dark() ? 'dark' : null) })
  *
  * // Strict — only bar + line allowed, full autocomplete
- * import type { ComposeOption, BarSeriesOption, LineSeriesOption } from '@pyreon/charts'
+ * import type { ComposeOption, BarSeriesOption, LineSeriesOption } from '@pyreon/charts/echarts'
  * type MyChartOption = ComposeOption<BarSeriesOption | LineSeriesOption>
  *
  * const chart = useChart<MyChartOption>(() => ({

@@ -7,13 +7,13 @@
  *
  * @example
  * ```tsx
- * import { Chart, Bar, Line, Legend, Tip, currency } from '@pyreon/charts'
+ * import { Chart, Bar, Line, Legend, Tooltip, currency } from '@pyreon/charts'
  *
  * <Chart data={sales} x="month">
  *   <Bar y="revenue" label="Revenue" />
  *   <Line y="target" label="Target" />
  *   <Axis y format={currency('EUR')} />
- *   <Tip /> <Legend />
+ *   <Tooltip /> <Legend />
  * </Chart>
  * ```
  *
@@ -32,24 +32,16 @@ import { registerSingleton } from '@pyreon/reactivity'
 registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
 // The chart and its marks.
-export { Arc, Area, Axis, Band, Bar, Candle, Cell, Chart, Dot, Histogram, Label, Legend, Line, Rule, Scale, StackedArea, Stage, Tip, Zoom } from './engine/grammar'
-export type { ArcProps, AxisProps, BandProps, BarProps, CandleProps, CellProps, Channel, ChartProps, DotProps, HistogramProps, LabelProps, LegendProps, MarkProps, RuleProps, ScaleProps, StageProps, TipProps, ZoomProps } from './engine/grammar'
+export { Arc, Area, Axis, Band, Bar, Candle, Cell, Chart, Dot, Histogram, Label, Legend, Line, Rule, Scale, StackedArea, Stage, Tooltip, Zoom } from './engine/grammar'
+export type { ArcProps, AxisProps, BandProps, BarProps, CandleProps, CellProps, Channel, ChartProps, DotProps, HistogramProps, LabelProps, LegendProps, MarkProps, RuleProps, ScaleProps, StageProps, TooltipProps, ZoomProps } from './engine/grammar'
 
-// Chart families that do not have a mark yet, each its own component. The
-// four with a mark (<Arc>, <Stage>, <Cell>, <Candle>) keep their component
-// here too until the marks cover every prop they take.
-export { CandlestickChart } from './engine/CandlestickChart'
-export type { CandlestickChartProps } from './engine/CandlestickChart'
-export type { CandleOptions, Ohlc } from './engine/candlestick'
-export { FunnelChart } from './engine/FunnelChart'
-export type { FunnelChartProps } from './engine/FunnelChart'
-export type { FunnelOptions, FunnelStage } from './engine/funnel'
-export { HeatmapChart } from './engine/HeatmapChart'
-export type { HeatmapChartProps } from './engine/HeatmapChart'
-export type { HeatmapOptions } from './engine/heat'
-export { PieChart } from './engine/PieChart'
-export type { PieChartProps } from './engine/PieChart'
-export type { GaugeOptions, PieOptions, Slice } from './engine/arc'
+// A pie, a funnel, a heatmap and a candlestick are MARKS (<Arc>, <Stage>,
+// <Cell>, <Candle>). The families below have no row-per-datum shape to be a
+// mark of (a tree, a graph, flows between nodes, a single dial), so each is
+// its own component.
+export type { CandleOptions } from './engine/candlestick'
+export type { FunnelOptions } from './engine/funnel'
+export type { GaugeOptions } from './engine/arc'
 export { BoxplotChart } from './engine/BoxplotChart'
 export type { BoxplotChartProps } from './engine/BoxplotChart'
 export { CalendarChart } from './engine/CalendarChart'
