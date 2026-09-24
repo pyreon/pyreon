@@ -5554,6 +5554,24 @@ const rows: Row[] = [{ month: 'Jan', revenue: 3200, target: 3000 }, { month: 'Fe
 - Looking for a \`series\` array — layering IS the children; a combo chart is a \`<Bar>\` beside a \`<Line>\`, a second axis is \`<Line axis="right">\` + \`<Axis y2>\``,
   },
 
+  'charts/Sma': {
+    signature: '<T>(props: AverageProps<T>) => VNode | null  // also Ema; Trend (no window); Bollinger (window, k?)',
+    example: `import { Bollinger, Chart, Line, Sma } from '@pyreon/charts'
+
+interface Candle { day: string; close: number }
+const candles: Candle[] = [{ day: 'Mon', close: 101 }, { day: 'Tue', close: 104 }, { day: 'Wed', close: 102 }]
+
+<Chart<Candle> data={candles} x="day">
+  <Line y="close" label="Close" />
+  <Sma y="close" window={20} label="SMA 20" />
+  <Bollinger y="close" window={20} k={2} />
+</Chart>`,
+    notes: `The INDICATOR marks, from \`@pyreon/charts\`: \`<Sma y window>\` (simple moving average), \`<Ema y window>\` (exponential), \`<Trend y>\` (least-squares line) and \`<Bollinger y window k>\` (a filled envelope \`k\` standard deviations wide — 2 by default — plus its middle line). Each is DERIVED from its \`y\` series rather than read off each datum, so it layers beside the series it smooths like any other mark and takes the same \`label\` / \`color\` / \`width\` options; the leading \`window - 1\` points are gaps, not zeros. \`<Bollinger>\` resolves to TWO marks, a band and a line, labelled \`"<label> band"\` / \`"<label> middle"\`. Under a \`color\` pivot each series gets its own indicator over its own column. They are the array form's \`sma\` / \`ema\` / \`trend\` / \`...bollinger\` factories spelled as children, and lower to iOS and Android when \`window\` and \`k\` are numeric literals. See also: Chart, sma.`,
+    mistakes: `- Leaving out \`window\` on \`<Sma>\` / \`<Ema>\` / \`<Bollinger>\` — there is no default window; the mark is skipped with a dev warning
+- Expecting \`<Bollinger>\` to be one series — it is a filled band plus its middle line, two legend entries and two accessible-table columns
+- Passing a computed \`window\` in a native app — the window must be a numeric literal for the iOS and Android lowering, which bakes it into the emitted call`,
+  },
+
   'charts/PlotChart': {
     signature: '<T>(props: PlotChartProps<T>) => VNodeChild',
     example: `import { PlotChart, bars, line } from '@pyreon/charts/engine'

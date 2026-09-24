@@ -49,7 +49,8 @@ import type { CandleOptions } from './candlestick'
 import type { FunnelOptions } from './funnel'
 import type { Formatter } from './format'
 import { area, band, bars, bubble, groupedBars, histogram, line, points, resolveMarks, stackedArea, stackedBars, waterfall } from './marks'
-import type { ErrorOptions, Mark, MarkOptions } from './marks'
+import type { Accessor, ErrorOptions, Mark, MarkOptions } from './marks'
+import { bollinger, ema, sma, trend } from './indicators'
 import { defaultTheme, logBounds, resolveYDomain } from './render'
 import type { Annotation, ChartSpec, ChartTheme, PointMarker } from './render'
 import type { LegendPosition } from './canvas-host'
@@ -86,6 +87,18 @@ export interface BarProps<T> extends MarkProps<T> {
   group?: boolean
   /** Floating bars from running total to running total — the waterfall; `negativeColor` fills the falls. */
   waterfall?: boolean
+}
+/** `<Sma>` / `<Ema>` — a moving average of `y` over `window` points. */
+export interface AverageProps<T> extends Omit<MarkProps<T>, 'errorLow' | 'errorHigh'> {
+  /** Points in the window; rounded down. */
+  window: number
+}
+/** `<Trend>` — the least-squares line through `y`. */
+export type TrendProps<T> = Omit<MarkProps<T>, 'errorLow' | 'errorHigh'>
+/** `<Bollinger>` — a filled envelope `k` standard deviations wide, plus its middle line. */
+export interface BollingerProps<T> extends AverageProps<T> {
+  /** Width in standard deviations; 2 by default. */
+  k?: Double
 }
 /** `<Band low high>` — the region's two bounds. */
 export interface BandProps<T> extends Omit<MarkProps<T>, 'y'> {
@@ -269,6 +282,22 @@ function plotMark<P>(name: string, host: PlotHost): (props: P) => VNode | null {
 }
 
 /**
+ * An indicator's factory, carried ON its component for the same reason a
+ * family mark carries its host: the resolver reaches `sma` / `bollinger` only
+ * through a component the app imported, so an unused indicator leaves its
+ * arithmetic unreferenced and a `<Chart>` without one does not bundle it.
+ */
+const INDICATOR = Symbol.for('pyreon.charts.indicator')
+
+type IndicatorBuild = (y: Accessor<unknown>, window: number, k: Double, options: MarkOptions) => Mark<unknown>[]
+
+function indicatorMark<P>(name: string, host: PlotHost, build: IndicatorBuild): (props: P) => VNode | null {
+  const fn = plotMark<P>(name, host)
+  Object.defineProperty(fn, INDICATOR, { value: build, configurable: true })
+  return fn
+}
+
+/**
  * The host component a family mark renders through, carried ON the mark.
  *
  * Load-bearing for tree-shaking: `<Plot>` looks the host up on the child's
@@ -312,6 +341,20 @@ export const StackedArea = /* @__PURE__ */ plotMark<MarkProps<any>>('StackedArea
  * every other mark's single `y` would have nothing to be.
  */
 export const Band = /* @__PURE__ */ plotMark<BandProps<any>>('Band', plotCore) as <T>(props: BandProps<T>) => VNode | null
+/**
+ * Indicators — each is a line derived from its `y` series rather than read
+ * off each datum, so the whole series is in view when it is computed. The
+ * arithmetic is the engine's (`indicator-values.ts`), which also crosses to
+ * native, so `<Chart>` on iOS and Android draws the same values.
+ */
+/** A simple moving average of `y` over `window` points. */
+export const Sma = /* @__PURE__ */ indicatorMark<AverageProps<any>>('Sma', plotCore, (y, w, _k, o) => [sma(y, w, o)]) as <T>(props: AverageProps<T>) => VNode | null
+/** An exponential moving average of `y` over `window` points. */
+export const Ema = /* @__PURE__ */ indicatorMark<AverageProps<any>>('Ema', plotCore, (y, w, _k, o) => [ema(y, w, o)]) as <T>(props: AverageProps<T>) => VNode | null
+/** The least-squares trend line through `y`. */
+export const Trend = /* @__PURE__ */ indicatorMark<TrendProps<any>>('Trend', plotCore, (y, _w, _k, o) => [trend(y, o)]) as <T>(props: TrendProps<T>) => VNode | null
+/** Bollinger bands: a filled envelope `k` standard deviations wide, plus its middle line. */
+export const Bollinger = /* @__PURE__ */ indicatorMark<BollingerProps<any>>('Bollinger', plotCore, (y, w, k, o) => bollinger(y, w, k, o)) as <T>(props: BollingerProps<T>) => VNode | null
 /** A reference line or band. */
 export const Rule = /* @__PURE__ */ brand<RuleProps>('Rule')
 /** Axis configuration. */
@@ -525,6 +568,10 @@ export function resolveGrammar<T>(rows: T[], chart: ChartProps<T>, children: VNo
       case 'Dot':
       case 'StackedArea':
       case 'Band':
+      case 'Sma':
+      case 'Ema':
+      case 'Trend':
+      case 'Bollinger':
         rawMarks.push({ vnode: v, name })
         break
       case 'Rule': {
@@ -639,7 +686,7 @@ export function resolveGrammar<T>(rows: T[], chart: ChartProps<T>, children: VNo
 
   const colorOf = chart.color === undefined ? null : channel<T, string>(chart.color)
   if (colorOf === null) {
-    return { marks: rawMarks.map(({ vnode, name }) => toMark<T>(name, vnode.props as Record<string, unknown>, undefined)), props, pivot: null, family: null, features, plotHost }
+    return { marks: rawMarks.flatMap(({ vnode, name }) => toMarks<T>(vnode, name, vnode.props as Record<string, unknown>, undefined)), props, pivot: null, family: null, features, plotHost }
   }
   // Long format: pivot rows into (category × series) per `y` mark.
   const xOf = chart.x === undefined ? (_d: T, i: number) => String(i) : channel<T, string>(chart.x)
@@ -675,12 +722,30 @@ export function resolveGrammar<T>(rows: T[], chart: ChartProps<T>, children: VNo
       // The placeholder accessor is replaced wholesale by the pivoted column
       // through `transform`, whose NaNs the engine keeps as GAPS (a raw
       // accessor's NaN is zeroed — the transform hook is the gap channel).
-      const m = toMark<T>(name, { ...p, label: p.label ?? seriesNames[si], ...(many && name === 'Bar' && p.stack !== true ? { group: true } : {}) }, () => 0)
-      m.transform = () => values
-      marks.push(m)
+      for (const m of toMarks<T>(vnode, name, { ...p, label: p.label ?? seriesNames[si], ...(many && name === 'Bar' && p.stack !== true ? { group: true } : {}) }, () => 0)) {
+        // An indicator already derives its values from the series; feed it the
+        // pivoted column instead of the placeholder accessor's zeros.
+        const derive = m.transform
+        const derive2 = m.transform2
+        m.transform = derive === undefined ? () => values : () => derive(values)
+        if (derive2 !== undefined) m.transform2 = () => derive2(values)
+        marks.push(m)
+      }
     }
   }
   return { marks, props, pivot: { rows: categories, x: (d) => d as string }, family: null, features, plotHost }
+}
+
+function toMarks<T>(vnode: VNode, name: string, p: Record<string, unknown>, yOverride: ((d: T, i: number) => Double) | undefined): Mark<T>[] {
+  const build = (vnode.type as unknown as Record<symbol, IndicatorBuild | undefined>)[INDICATOR]
+  if (build === undefined) return [toMark<T>(name, p, yOverride)]
+  const y = yOverride ?? channel<T, Double>(p.y as Channel<T>)
+  const { y: _y, window: span, k, ...options } = p as Record<string, unknown> & Partial<BollingerProps<T>>
+  if (name !== 'Trend' && (typeof span !== 'number' || !(span >= 1))) {
+    warnGrammar(`<${name}> needs a \`window\` of at least 1 point; the mark is skipped.`)
+    return []
+  }
+  return build(y as Accessor<unknown>, span ?? 0, k ?? 2.0, options as MarkOptions) as Mark<T>[]
 }
 
 function toMark<T>(name: string, p: Record<string, unknown>, yOverride: ((d: T, i: number) => Double) | undefined): Mark<T> {

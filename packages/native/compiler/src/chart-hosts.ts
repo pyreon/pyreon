@@ -884,6 +884,16 @@ export const UNLOWERED_CHART_HOSTS: Readonly<Record<string, string>> = {}
 /** The grammar host and its mark/config children — `<Chart>` desugars to `<PlotChart marks>` before the plot emit runs. */
 export const GRAMMAR_CHART_HOST = 'Chart'
 export const GRAMMAR_MARK_TAGS: Readonly<Record<string, string>> = { Bar: 'bars', Line: 'line', Area: 'area', Dot: 'points', StackedArea: 'stackedArea', Band: 'band' }
+/**
+ * The indicator marks — `<Sma>` etc. — and the array-form factory each
+ * desugars to. They are DERIVED marks with their own arguments (a window, a
+ * width), so they are not in `GRAMMAR_MARK_TAGS`, whose entries all take the
+ * shared `y` + options shape. `bollinger` expands to two marks, so it
+ * desugars to a SPREAD (`...bollinger(…)`), exactly as the array form writes
+ * it. Mirrors `GRAMMAR_INDICATOR_TAGS` in the charts package's
+ * `grammar-indicators.test.tsx`.
+ */
+export const GRAMMAR_INDICATOR_TAGS: Readonly<Record<string, string>> = { Sma: 'sma', Ema: 'ema', Trend: 'trend', Bollinger: 'bollinger' }
 export const GRAMMAR_CONFIG_TAGS: readonly string[] = ['Rule', 'Axis', 'Tooltip', 'Legend', 'Zoom', 'Toolbox', 'Label', 'Scale', 'Histogram']
 /** The FAMILY marks: `<Chart>` with one of these desugars to the row-array host it names, channels as accessors. */
 export const GRAMMAR_FAMILY_TAGS: Readonly<Record<string, string>> = { Arc: 'PieChart', Stage: 'FunnelChart', Cell: 'HeatmapChart', Candle: 'CandlestickChart' }
@@ -902,6 +912,7 @@ export function isChartHostTag(tag: string): boolean {
     tag === 'OptionChart' ||
     tag === GRAMMAR_CHART_HOST ||
     Object.hasOwn(GRAMMAR_MARK_TAGS, tag) ||
+    Object.hasOwn(GRAMMAR_INDICATOR_TAGS, tag) ||
     Object.hasOwn(GRAMMAR_FAMILY_TAGS, tag) ||
     GRAMMAR_CONFIG_TAGS.includes(tag)
   )
@@ -2976,6 +2987,37 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
     if (c.kind !== 'expr' || c.expr.kind !== 'jsx-element') continue
     const child = c.expr
     const tag = child.tag
+    const indicator = GRAMMAR_INDICATOR_TAGS[tag]
+    if (indicator !== undefined) {
+      // `<Sma y window>` → `sma(y, window, { …rest })`, the array form's own
+      // call, so the indicator lowering the emitters already have runs
+      // unchanged. `<Bollinger>` becomes `...bollinger(y, window, k, { … })`.
+      const y = attrOf(child, 'y')
+      const window = attrOf(child, 'window')
+      if (y === undefined) {
+        warn(`<${tag}>: needs a \`y\` channel; the mark is skipped on native.`)
+        continue
+      }
+      if (indicator !== 'trend' && window === undefined) {
+        warn(`<${tag}>: needs a \`window\`; the mark is skipped on native.`)
+        continue
+      }
+      const k = attrOf(child, 'k')
+      const fields: { name: string; value: ExprIR }[] = []
+      for (const a of child.attrs) {
+        if (a.kind !== 'attr' || ['y', 'window', 'k'].includes(a.name)) continue
+        fields.push({ name: a.name, value: a.value })
+      }
+      const args: ExprIR[] = [channelArrow(y)]
+      if (window !== undefined && indicator !== 'trend') args.push(window)
+      // bollinger's options are its FOURTH argument, so an absent `k` still
+      // needs its default in place when options follow.
+      if (indicator === 'bollinger' && (k !== undefined || fields.length > 0)) args.push(k ?? optionDoubleLiteral(2))
+      if (fields.length > 0) args.push({ kind: 'object', fields })
+      const call: ExprIR = { kind: 'call', callee: ident(indicator), args }
+      marks.push(indicator === 'bollinger' ? { kind: 'spread', argument: call } : call)
+      continue
+    }
     const markKind = GRAMMAR_MARK_TAGS[tag]
     if (markKind !== undefined) {
       // `<Band>` is the one mark with no `y`: a region has two bounds and no

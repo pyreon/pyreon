@@ -88,4 +88,16 @@ describe.skipIf(!hasBuiltLib(MAIN, "the main entry's feature tree-shaking"))('<C
     const code = await bundle(['Chart', 'Line', 'Toolbox'], MAIN)
     expect(code.includes(SVG_NS), 'the SVG namespace marker is not load-bearing').toBe(true)
   })
+
+  // `bollinger` names its middle line `<label> middle`; the literal lives only
+  // in the indicator module, so it shows whether the arithmetic was bundled.
+  const hasIndicator = (code: string): boolean => code.includes('" middle"') || code.includes("' middle'")
+
+  it('<Chart> + <Line> bundles no indicator arithmetic', async () => {
+    expect(hasIndicator(await bundle(['Chart', 'Line'], MAIN)), 'the indicators reached a chart with none').toBe(false)
+  })
+
+  it('and the marker is real — adding <Bollinger> brings it in', async () => {
+    expect(hasIndicator(await bundle(['Chart', 'Line', 'Bollinger'], MAIN)), 'the indicator marker is not load-bearing').toBe(true)
+  })
 })

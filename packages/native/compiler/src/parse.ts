@@ -2743,6 +2743,12 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
         // reshape is web-side) — neither is a missing symbol.
         'Scale',
         'Histogram',
+        // The indicator marks desugar to the array form's `sma` / `ema` /
+        // `trend` / `...bollinger` calls, which the emitters lower.
+        'Sma',
+        'Ema',
+        'Trend',
+        'Bollinger',
         'channel',
         // Mark + curve constructors consumed INLINE inside a `marks={[...]}`
         // array literal — the structural marks-array pass (chart-hosts.ts /

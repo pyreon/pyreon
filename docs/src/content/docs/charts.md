@@ -76,9 +76,10 @@ around a mark adds and removes its series like any other Pyreon child.
 
 The interaction children carry their own code: a chart without `<Zoom>` does
 not bundle the navigator, the presets or the range brush, and one without
-`<Toolbox>` does not bundle the tool strip or the SVG serializer. `<Chart>`
-with one `<Line>` is about 43.7 KB gzipped; a pie through `<Arc>` about
-24.5 KB. CI import budgets lock both.
+`<Toolbox>` does not bundle the tool strip or the SVG serializer, and one
+without an indicator mark does not bundle the indicator arithmetic. `<Chart>`
+with one `<Line>` is about 44.1 KB gzipped; a pie through `<Arc>` about
+24.7 KB. CI import budgets lock both.
 
 `<Chart color="region">` switches to **long format**: every `y` mark becomes
 one series per distinct `region`, categories come from `x`, a missing
@@ -125,14 +126,6 @@ children into the `marks={[bars(…)]}` props `<PlotChart>` takes (`resolveGramm
 is exported and tested to produce identical series), and on native the
 compiler desugars `<Chart>` to that element before lowering — the two emit
 byte-identical Swift and Kotlin.
-
-One exception, and it is an omission rather than a design decision: the
-INDICATOR marks (`sma`, `ema`, `trend`, `bollinger`) have no grammar tag, so a
-`<Chart>` that needs a moving average has to be written in the array form. They
-lower to native either way; there is simply no `<SMA>` component yet. A
-`<Chart>` carrying one would also need the long-format pivot to COMPOSE with a
-mark's own `transform` instead of replacing it, which is what makes this its
-own change rather than four more branded components.
 
 ## The array form
 
@@ -196,10 +189,28 @@ row) or an accessor.
 | `<Histogram x bins />` | Bins the `x` channel (nice-step edges) and draws one bar per bin. It replaces the rows with bins, so it is the whole chart. |
 | `<Rule y />` / `<Label text at />` | A reference line or band, and a datum-anchored label. |
 
-The technical indicators — `sma(y, window)`, `ema(y, window)`, `trend(y)` and
-`bollinger(y, window, k?)` — are mark factories for the array form
-(`<PlotChart marks>` in `@pyreon/charts/engine`); they have no child mark yet.
-They lower to iOS and Android as long as the window is a numeric literal.
+The technical indicators are marks too, derived from their `y` series rather
+than read off each datum:
+
+| Mark | Draws |
+| --- | --- |
+| `<Sma y window />` | A simple moving average over `window` points. The first `window - 1` points are gaps, not zeros. |
+| `<Ema y window />` | An exponential moving average. |
+| `<Trend y />` | The least-squares line through the series. |
+| `<Bollinger y window k />` | A filled envelope `k` standard deviations wide (2 by default) plus its middle line: two marks, a band and a line. |
+
+```tsx
+<Chart data={candles} x="day">
+  <Line y="close" label="Close" />
+  <Sma y="close" window={20} label="SMA 20" />
+  <Bollinger y="close" window={20} />
+</Chart>
+```
+
+Under a `color` pivot each series gets its own indicator over its own column.
+They lower to iOS and Android as long as `window` and `k` are numeric literals;
+the array-form factories (`sma`, `ema`, `trend`, `bollinger` in
+`@pyreon/charts/engine`) are the same marks.
 
 <Example file="./examples/charts/plot-marks-intervals" title="The marks that are not one value per category" />
 

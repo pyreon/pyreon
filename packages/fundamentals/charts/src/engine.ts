@@ -12,8 +12,8 @@
 // radial trigonometry, the decimation, or the time scales.
 
 export { PlotChart } from './engine/Chart'
-export { Arc, Area, Axis, Band, Bar, Candle, Cell, Dot, Histogram, Label, Legend, Line, Chart, Rule, Scale, StackedArea, Stage, Toolbox, Tooltip, Zoom, channel, resolveGrammar } from './engine/grammar'
-export type { ArcProps, AxisProps, BandProps, BarProps, CandleProps, CellProps, Channel, DotProps, FamilyHost, HistogramProps as HistogramMarkProps, LabelProps, LegendProps, MarkProps, ChartProps, ResolvedGrammar, RuleProps, ScaleProps, StageProps, ToolboxProps, TooltipProps, ZoomProps } from './engine/grammar'
+export { Arc, Area, Axis, Band, Bar, Bollinger, Candle, Cell, Dot, Ema, Histogram, Label, Legend, Line, Chart, Rule, Scale, Sma, StackedArea, Stage, Toolbox, Tooltip, Trend, Zoom, channel, resolveGrammar } from './engine/grammar'
+export type { ArcProps, AverageProps, AxisProps, BandProps, BollingerProps, BarProps, CandleProps, CellProps, Channel, DotProps, FamilyHost, HistogramProps as HistogramMarkProps, LabelProps, LegendProps, MarkProps, ChartProps, ResolvedGrammar, RuleProps, ScaleProps, StageProps, ToolboxProps, TooltipProps, TrendProps, ZoomProps } from './engine/grammar'
 export type { AxisLabelMode, PlotChartProps } from './engine/Chart'
 export { GaugeChart, PieChart } from './engine/PieChart'
 export { CandlestickChart } from './engine/CandlestickChart'

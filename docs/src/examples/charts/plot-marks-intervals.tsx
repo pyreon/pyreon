@@ -1,7 +1,4 @@
-import { Band, Bar, Chart, Histogram, StackedArea, Tooltip } from '@pyreon/charts'
-// Technical indicators (`sma`, `ema`, `bollinger`, `trend`) have no mark yet;
-// they are mark factories for `<PlotChart marks>` in `/engine`.
-import { bollinger, PlotChart } from '@pyreon/charts/engine'
+import { Band, Bar, Bollinger, Chart, Histogram, StackedArea, Tooltip } from '@pyreon/charts'
 import { signal, type Signal } from '@pyreon/reactivity'
 
 /**
@@ -11,7 +8,7 @@ import { signal, type Signal } from '@pyreon/reactivity'
  * Each is here because it says something the single-channel marks cannot:
  * `band` is an interval (two bounds, no centre), `stackedArea` is shares over
  * time, `waterfall` is a running total, and `histogram` bins a raw sample
- * instead of plotting it. `bollinger` is the interval mark doing real work —
+ * instead of plotting it. `<Bollinger>` is the interval mark doing real work —
  * a rolling envelope whose bounds are computed from the series.
  *
  * `showValues` is on the band deliberately: it labels the HIGH edge, which is
@@ -92,14 +89,10 @@ export default function PlotIntervals(props: { shared?: Signal<number> }) {
       </figure>
 
       <figure style={{ margin: 0 }}>
-        <figcaption>A rolling envelope: `bollinger` is a filled band plus its middle line.</figcaption>
-        <PlotChart<Day>
-          data={() => days()}
-          x={(d) => d.d}
-          height={200}
-          title="Actual against its envelope"
-          marks={[...bollinger<Day>((d) => d.actual, 3, 1.5, { label: 'σ' })]}
-        />
+        <figcaption>A rolling envelope: Bollinger bands are a filled band plus its middle line.</figcaption>
+        <Chart<Day> data={() => days()} x="d" height={200} title="Actual against its envelope">
+          <Bollinger<Day> y="actual" window={3} k={1.5} label="σ" />
+        </Chart>
       </figure>
 
       <figure style={{ margin: 0 }}>
