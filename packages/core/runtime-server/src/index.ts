@@ -319,17 +319,17 @@ const _stylerSSRAls = new AsyncLocalStorage<Record<string, unknown>>()
  * per-boundary flush advancing past request B's rules, which OMITS CSS and
  * shows as FOUC. `flushSSRPending` exists only on the streaming path.
  *
- * String-mode SSR must NOT be scoped: it reads the buffer AFTER the render
- * returns (`renderToString(...)` then `getStyleTag()` / `getStyleRules()`), which
- * is the documented pattern the SSG pipeline, the server handler and the
- * rocketstyle-collapse resolver all use. Scoping it puts every rule in a bag
- * that is gone by the time anyone reads, so the page renders with NO styles —
- * caught by 4 collapse-resolver specs and the ssg-i18n-prefix + ui-regression
- * e2e suites, all reporting an empty rule set.
+ * A bare `renderToString` is NOT scoped: its callers read the buffer AFTER
+ * it returns (`renderToString(...)` then `getStyleTag()` / `getStyleRules()`
+ * — the rocketstyle-collapse resolver and direct users), and a scope would
+ * put every rule in a bag that is gone by the time they read.
  *
- * Two concurrent string renders still share the instance buffer. That is
- * pre-existing and strictly milder: the reader takes the whole buffer, so the
- * failure mode is over-inclusion, never the omission the watermark causes.
+ * `runWithRequestContext` IS scoped, because its callers (`renderPage`, the
+ * streaming handler) render and read inside the same call. Inside a scope the
+ * request's buffer holds only the rules its render touched — the styler marks
+ * cached classes used on every render (`sheet.markUsed`) and emits
+ * module-level keyframes / static globals as ambient rules — so a page's CSS
+ * no longer depends on which pages rendered before it.
  */
 function withStylerSSRScope<T>(fn: () => T): T {
   if (_stylerSSRAls.getStore() !== undefined) return fn()
@@ -452,7 +452,12 @@ export async function renderToString(root: VNode | null): Promise<string> {
  * outside of renderToString but still want per-request isolation.
  */
 export function runWithRequestContext<T>(fn: () => Promise<T>): Promise<T> {
-  return withIsolatedRegistries(() => _contextAls.run([], fn))
+  // A request context is also a styler SSR scope: every string-mode consumer
+  // (`renderPage` — createHandler, zero dev SSR, SSG) renders AND reads its
+  // styles inside this call, so the rules one request inserts can no longer
+  // leak into the next request's `<style>` (the shared instance buffer was
+  // never reset — a page's CSS grew with every other page rendered before it).
+  return withStylerSSRScope(() => withIsolatedRegistries(() => _contextAls.run([], fn)))
 }
 
 /**

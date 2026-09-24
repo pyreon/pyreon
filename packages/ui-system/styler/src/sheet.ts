@@ -262,6 +262,8 @@ interface StylerSSRState {
   buffer: string[]
   /** Index of the first rule not yet emitted by `flushSSRPending()` (streaming). */
   flushedIdx: number
+  /** Index into the sheet's ambient keys already flushed (scoped streams only). */
+  ambientIdx: number
   /** Whether the streaming `@layer` ordering statement was emitted this request. */
   layerDeclEmitted: boolean
   /**
@@ -286,6 +288,7 @@ interface StylerSSRState {
 const freshSSRState = (): StylerSSRState => ({
   buffer: [],
   flushedIdx: 0,
+  ambientIdx: 0,
   layerDeclEmitted: false,
   seen: new Set(),
 })
@@ -320,6 +323,7 @@ export class StyleSheet {
   private readonly _instanceSSR: StylerSSRState = {
     buffer: [],
     flushedIdx: 0,
+    ambientIdx: 0,
     layerDeclEmitted: false,
     seen: new Set(),
   }
@@ -328,6 +332,19 @@ export class StyleSheet {
   // that class's rules into ITS OWN buffer (see `StylerSSRState.seen`).
   // Evicted in lockstep with `cache` (`evictKeys`) and cleared with it.
   private ssrRules = new Map<string, string[]>()
+
+  // SSR only: cache keys whose rules belong to EVERY request rather than to the
+  // render that happened to insert them — `@keyframes` and static
+  // `createGlobalStyle` CSS. Both are inserted ONCE, at module evaluation
+  // (`keyframes\`…\`` / `createGlobalStyle\`…\`` at a module's top level),
+  // and nothing re-inserts them per render, so a request-scoped buffer (see
+  // `_ssr`) would carry them only for the request that happened to evaluate
+  // the module first. A scoped read (`getStyleTag` / `getStyleRules` /
+  // `getStyles` / `flushSSRPending`) therefore emits these AHEAD of the
+  // request's own rules. Insertion-ordered, deduped; bounded by the number of
+  // distinct keyframes/global bodies the app declares; cleared with `cache`.
+  private ambientKeys: string[] = []
+  private ambientSet = new Set<string>()
 
   /**
    * The active SSR state — request-scoped when a streaming render is in flight,
@@ -355,6 +372,54 @@ export class StyleSheet {
       return s
     }
     return this._instanceSSR
+  }
+
+  /** Record a key as ambient (see `ambientKeys`). SSR only. */
+  private addAmbient(key: string): void {
+    if (this.ambientSet.has(key)) return
+    this.ambientSet.add(key)
+    this.ambientKeys.push(key)
+  }
+
+  /** Ambient rules from `from` onward, in declaration order. */
+  private ambientRules(from = 0): string[] {
+    const out: string[] = []
+    for (let i = from; i < this.ambientKeys.length; i++) {
+      const rules = this.ssrRules.get(this.ambientKeys[i] as string)
+      if (rules) for (const r of rules) out.push(r)
+    }
+    return out
+  }
+
+  /**
+   * The rule list a READ of the active SSR state emits. Unscoped (instance
+   * state — SSG legacy callers, the collapse resolver, direct `renderToString`
+   * users): the buffer exactly as before. Request-scoped: ambient rules first,
+   * then the rules THIS request's render touched.
+   */
+  private collectedRules(): string[] {
+    const st = this._ssr
+    if (st === this._instanceSSR) return st.buffer
+    const amb = this.ambientRules()
+    return amb.length === 0 ? st.buffer : amb.concat(st.buffer)
+  }
+
+  /**
+   * Mark a cache key (className, keyframe name, global key) as USED by the
+   * render in progress, so its rules land in the active request's SSR buffer.
+   *
+   * The styler's own caches above the sheet — the static-component class
+   * computed once at `styled()` time, `styled`'s rocketstyle/`$element` class
+   * caches, CPSE's shape cache — return a className WITHOUT calling
+   * `insert()`, which is what used to push rules into the buffer. Under a
+   * per-request scope that meant a request rendering an already-cached class
+   * shipped the class name with no CSS; unscoped, it meant every page carried
+   * every rule any earlier page had inserted (the cross-request CSS leak).
+   * Every render site that hands out a cached className calls this instead.
+   * A no-op on the client.
+   */
+  markUsed(key: string): void {
+    if (this.isSSR && key) this.pushSSR(key)
   }
 
   private isSSR: boolean
@@ -748,7 +813,7 @@ export class StyleSheet {
     )
   }
 
-  insert(cssText: string, _unused = false, insertLayer?: string): string {
+  insert(cssText: string, _unused = false, insertLayer?: string, use = true): string {
     if (process.env.NODE_ENV !== 'production') {
       _countSink.__pyreon_count__?.('styler.sheet.insert')
       this.validateDevCss(cssText)
@@ -759,7 +824,7 @@ export class StyleSheet {
     if (icHit) {
       if (process.env.NODE_ENV !== 'production')
         _countSink.__pyreon_count__?.('styler.sheet.insert.hit')
-      if (this.isSSR) this.pushSSR(icHit)
+      if (this.isSSR && use) this.pushSSR(icHit)
       return icHit
     }
 
@@ -769,7 +834,7 @@ export class StyleSheet {
     if (this.cache.has(className)) {
       this.insertCache.set(icKey, className)
       this.trackIcKey(className, icKey)
-      if (this.isSSR) this.pushSSR(className)
+      if (this.isSSR && use) this.pushSSR(className)
       return className
     }
 
@@ -793,7 +858,7 @@ export class StyleSheet {
 
     if (this.isSSR) {
       this.ssrRules.set(className, finalRules)
-      this.pushSSR(className)
+      if (use) this.pushSSR(className)
     } else if (this.sheet) {
       for (const rule of finalRules) {
         try {
@@ -822,6 +887,9 @@ export class StyleSheet {
   private pushSSR(key: string): void {
     const st = this._ssr
     if (st.seen.has(key)) return
+    // Ambient keys are emitted by every scoped read already (see
+    // `collectedRules`) — pushing them into the request buffer would emit twice.
+    if (st !== this._instanceSSR && this.ambientSet.has(key)) return
     const rules = this.ssrRules.get(key)
     if (!rules) return
     st.seen.add(key)
@@ -842,6 +910,7 @@ export class StyleSheet {
 
     if (this.isSSR) {
       this.ssrRules.set(name, [rule])
+      this.addAmbient(name)
       this.pushSSR(name)
     } else if (this.sheet) {
       try {
@@ -857,12 +926,15 @@ export class StyleSheet {
   }
 
   /** Insert global CSS rules (no wrapper selector). Deduplicates by hash. */
-  insertGlobal(cssText: string): void {
+  insertGlobal(cssText: string, ambient = false): void {
     const h = hash(cssText)
     const key = `global-${h}`
 
     if (this.cache.has(key)) {
-      if (this.isSSR) this.pushSSR(key)
+      if (this.isSSR) {
+        if (ambient) this.addAmbient(key)
+        this.pushSSR(key)
+      }
       return
     }
 
@@ -871,6 +943,7 @@ export class StyleSheet {
 
     if (this.isSSR) {
       this.ssrRules.set(key, [cssText])
+      if (ambient) this.addAmbient(key)
       this.pushSSR(key)
     } else if (this.sheet) {
       // When @layer isn't supported (e.g. happy-dom in tests, pre-2022
@@ -922,16 +995,17 @@ export class StyleSheet {
   getStyleTag(nonce?: string): string {
     const n = nonce ?? this.nonce
     const nonceAttr = n ? ` nonce="${n.replace(/["'<>]/g, '')}"` : ''
-    if (this._ssr.buffer.length === 0) return `<style ${ATTR}=""${nonceAttr}></style>`
+    const rules = this.collectedRules()
+    if (rules.length === 0) return `<style ${ATTR}=""${nonceAttr}></style>`
     // Emit the layer ordering declaration for SSR output so the cascade
     // is correct when the browser parses the SSR HTML. On the client side
     // this ordering is injected via insertRule in mount().
-    const layerDecl = this.hasLayeredRules()
+    const layerDecl = rules.some((r) => r.startsWith('@layer '))
       ? '@layer elements, rocketstyle;'
       : this.layer
         ? `@layer ${this.layer};`
         : ''
-    const css = (layerDecl + this._ssr.buffer.join('')).replace(/<\/style/gi, '<\\/style')
+    const css = (layerDecl + rules.join('')).replace(/<\/style/gi, '<\\/style')
     return `<style ${ATTR}=""${nonceAttr}>${css}</style>`
   }
 
@@ -946,7 +1020,7 @@ export class StyleSheet {
    * internal buffer.
    */
   getStyleRules(): readonly string[] {
-    return this._ssr.buffer.slice()
+    return this.collectedRules().slice()
   }
 
   // Idempotency guard for injectRules — keyed by the FNV hash the
@@ -964,7 +1038,7 @@ export class StyleSheet {
    * re-hashing would produce a different class and break the contract.
    * Idempotent by `key` (the resolver's FNV hash of the bundle).
    */
-  injectRules(rules: readonly string[], key: string): void {
+  injectRules(rules: readonly string[], key: string, ambient = false): void {
     // SSR keys the buffer push on a NAMESPACED key, because `injectedBundles`
     // is per-INSTANCE (process-lifetime) exactly like `cache` — so a second
     // request rendering a collapsed component the first one already injected
@@ -975,12 +1049,16 @@ export class StyleSheet {
     // a user-chosen keyframe name in the shared `ssrRules` map.
     const ssrKey = `bundle-${key}`
     if (this.injectedBundles.has(key)) {
-      if (this.isSSR) this.pushSSR(ssrKey)
+      if (this.isSSR) {
+        if (ambient) this.addAmbient(ssrKey)
+        this.pushSSR(ssrKey)
+      }
       return
     }
     this.injectedBundles.add(key)
     if (this.isSSR) {
       this.ssrRules.set(ssrKey, [...rules])
+      if (ambient) this.addAmbient(ssrKey)
       this.pushSSR(ssrKey)
       return
     }
@@ -1041,6 +1119,7 @@ export class StyleSheet {
   resetSSRBuffer(): void {
     this._ssr.buffer = []
     this._ssr.flushedIdx = 0
+    this._ssr.ambientIdx = 0
     this._ssr.layerDeclEmitted = false
     this._ssr.seen.clear()
   }
@@ -1076,7 +1155,16 @@ export class StyleSheet {
    * `flushSSRPending()`.
    */
   flushSSRPending(): string {
-    if (this._ssr.buffer.length === this._ssr.flushedIdx) return ''
+    const st = this._ssr
+    // Scoped streams also emit ambient rules (keyframes / static globals)
+    // declared since the last flush — AHEAD of the request's own rules, the
+    // same order a scoped `getStyleTag()` uses. Unscoped: unchanged.
+    let ambient = ''
+    if (st !== this._instanceSSR && st.ambientIdx < this.ambientKeys.length) {
+      ambient = this.ambientRules(st.ambientIdx).join('')
+      st.ambientIdx = this.ambientKeys.length
+    }
+    if (st.buffer.length === st.flushedIdx) return ambient
     // Emit the `@layer` ordering declaration ONCE per stream, as soon as it can
     // be decided — then never again (a second declaration is redundant).
     //
@@ -1105,34 +1193,33 @@ export class StyleSheet {
     }
     const slice = this._ssr.buffer.slice(this._ssr.flushedIdx).join('')
     this._ssr.flushedIdx = this._ssr.buffer.length
-    return prefix + slice
+    return prefix + ambient + slice
   }
 
   /** Returns collected CSS rules as a raw string (useful for streaming SSR). */
   getStyles(): string {
-    if (this._ssr.buffer.length === 0) return ''
-    const layerDecl = this.hasLayeredRules()
+    const rules = this.collectedRules()
+    if (rules.length === 0) return ''
+    const layerDecl = rules.some((r) => r.startsWith('@layer '))
       ? '@layer elements, rocketstyle;'
       : this.layer
         ? `@layer ${this.layer};`
         : ''
-    return layerDecl + this._ssr.buffer.join('')
-  }
-
-  /** Check if any buffered SSR rules use @layer wrapping. */
-  private hasLayeredRules(): boolean {
-    return this._ssr.buffer.some((r) => r.startsWith('@layer '))
+    return layerDecl + rules.join('')
   }
 
   /** Reset SSR buffer and cache (call between server requests). */
   reset(): void {
     this._ssr.buffer = []
     this._ssr.flushedIdx = 0
+    this._ssr.ambientIdx = 0
     this._ssr.layerDeclEmitted = false
     this._ssr.seen.clear()
     this.ssrRules.clear()
     this.cache.clear()
     this.insertCache.clear()
+    this.ambientKeys = []
+    this.ambientSet.clear()
     this.icKeysByClass.clear()
     this.domRules.clear()
   }
@@ -1141,6 +1228,8 @@ export class StyleSheet {
   clearCache(): void {
     this.cache.clear()
     this.ssrRules.clear()
+    this.ambientKeys = []
+    this.ambientSet.clear()
     this.insertCache.clear()
     this.icKeysByClass.clear()
     this.domRules.clear()
@@ -1160,12 +1249,15 @@ export class StyleSheet {
   clearAll(): void {
     this.cache.clear()
     this.ssrRules.clear()
+    this.ambientKeys = []
+    this.ambientSet.clear()
     this.insertCache.clear()
     this.icKeysByClass.clear()
     this.domRules.clear()
     clearNormCache()
     this._ssr.buffer = []
     this._ssr.flushedIdx = 0
+    this._ssr.ambientIdx = 0
     this._ssr.layerDeclEmitted = false
     this._ssr.seen.clear()
     if (this.sheet) {

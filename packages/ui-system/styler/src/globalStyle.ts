@@ -30,7 +30,10 @@ export const createGlobalStyle = (
     // leading/trailing whitespace, so a length check is equivalent to the
     // prior `.trim()` (no O(n) whitespace scan, no string allocation).
     // Ported from vitus-labs `be471b19`.
-    if (cssText.length > 0) sheet.insertGlobal(cssText)
+    // `ambient`: a static global is inserted ONCE, here, at creation — so on
+    // the server it must reach every request's `<style>`, not only the one
+    // that evaluated this module (see `StyleSheet#ambientKeys`).
+    if (cssText.length > 0) sheet.insertGlobal(cssText, true)
 
     const StaticGlobal: ComponentFn = () => null
     return StaticGlobal

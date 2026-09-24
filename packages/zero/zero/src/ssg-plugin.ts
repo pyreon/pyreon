@@ -109,9 +109,9 @@ const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number)
 // on every element but had ZERO `<style>` tags in the head — meaning every
 // SSG page rendered un-styled until the client JS ran and re-emitted the
 // CSS. The fix lazy-imports `@pyreon/styler` so projects that don't use it
-// pay nothing, calls `sheet.reset()` per request to start clean (singleton
-// state would leak across paths in the same SSG sub-build), and injects
-// the resulting `<style>` tag into the head ahead of @pyreon/head's tags.
+// pay nothing, and injects the resulting `<style>` tag into the head ahead
+// of @pyreon/head's tags. Per-page isolation comes from `renderPage`'s
+// `runWithRequestContext`, which is a styler request scope (see below).
 //
 // `@pyreon/server`'s `createHandler` exposes the same hook via a
 // `collectStyles` option (handler.ts:84-91); the SSG path used to bypass
@@ -160,16 +160,16 @@ export function __resolveRenderMode(path) {
 // helper stays a no-op). Hot path: an awaited dynamic import resolved
 // once at entry-module evaluation, then sync calls per request.
 //
-// **No reset between paths.** @pyreon/styler's styled() inserts CSS
-// rules into sheet.ssrBuffer at MODULE-EVAL TIME (top-level of styled.ts:95),
-// not per-render. After that initial insert, each render of a styled
-// component just attaches the cached class name to props — no new buffer
-// push. Calling sheet.reset() between SSG paths would WIPE all rules and
-// leave subsequent pages style-less. For SSG this is acceptable: the
-// generated CSS is identical across all pages (same module-eval cache),
-// and shipping the full rule set in every page's <style> tag matches
-// how static SSG sites handle CSS — every page is self-contained,
-// cacheable by the browser, no per-route CSS code splitting needed.
+// **Per-page CSS.** Every page renders inside runWithRequestContext, which
+// is also a styler SSR scope, so getStyleTag() returns exactly the rules
+// THAT page's render used, plus the ambient rules (module-level keyframes
+// and static createGlobalStyle) every page carries. A page's CSS is
+// therefore independent of which pages were prerendered before it. (This
+// comment used to claim styled() inserts at module-eval and render never
+// pushes — true of the static path, which is why render now calls
+// sheet.markUsed; without a scope the unreset singleton buffer made every
+// page carry every earlier page's rules, in an order that depended on the
+// prerender order.)
 // NOTE: this is TEMPLATE TEXT emitted verbatim into the generated
 // __pyreon-zero-ssg-entry.js — it must be plain JS (no TS type annotations,
 // or the generated .js fails to parse). The nonce param is forwarded for CSP
@@ -1598,26 +1598,35 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // Returns the path on settle so the worker can fire onProgress with
       // it. Throws are NOT propagated — they're caught here and recorded
       // in `errors[]`, so a single failed path can't take down the worker.
-      // Phase 6 — cssMode 'asset': a once-per-build memoized writer for the
-      // shared styler CSS file. The sheet content is identical across pages
-      // (module-eval cache — see the no-reset rationale above), so ONE
-      // content-hashed asset serves every page; pages link it instead of
-      // inlining the full rule set per page.
+      // Phase 6 — cssMode 'asset': a content-addressed writer for the styler
+      // CSS. Each page's CSS is exactly the rules ITS render used (plus the
+      // ambient keyframes / globals — see the styler-scope note above), so
+      // pages differ; one file is written per DISTINCT rule set and every
+      // page with that set links it. (This used to write ONE file from
+      // whichever page rendered first and link every page to it, so a page
+      // whose rules the first page did not use shipped with missing CSS.)
       const cssAsset =
         config.ssg?.cssMode === 'asset'
           ? (() => {
-              let written: Promise<string> | null = null
+              const written = new Map<string, Promise<string>>()
               return {
-                write: (css: string): Promise<string> =>
-                  (written ??= (async () => {
-                    const name = `pyreon-ssg.${hashCss(css)}.css`
+                write: (css: string): Promise<string> => {
+                  const h = hashCss(css)
+                  let p = written.get(h)
+                  if (!p) {
+                    p = (async () => {
+                    const name = `pyreon-ssg.${h}.css`
                     const dir = assetsDir ?? 'assets'
                     const assetFile = join(distDir, dir, name)
                     await mkdirOnce(dirname(assetFile))
                     await writeFileAtomic(assetFile, css)
                     const baseUrl = (config.base ?? '/').replace(/\/$/, '')
                     return `${baseUrl}/${dir}/${name}`
-                  })()),
+                    })()
+                    written.set(h, p)
+                  }
+                  return p
+                },
               }
             })()
           : null
