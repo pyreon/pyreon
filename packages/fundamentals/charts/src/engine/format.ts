@@ -21,7 +21,11 @@ export function plain(v: Double): string {
  * rather than a regex, so it lowers through PMTC.
  */
 export function groupThousands(v: Double): string {
-  const s = plain(v)
+  return groupDigits(plain(v))
+}
+
+/** Group the integer part of an already-formatted number by thousands. */
+function groupDigits(s: string): string {
   const neg = s.length > 0 && s.charAt(0) === '-'
   const body = neg ? s.slice(1) : s
   const dot = body.indexOf('.')
@@ -75,10 +79,10 @@ export function fixed(places: number): Formatter {
   }
 }
 
-/** Currency, symbol first. */
+/** Currency, symbol first, thousands grouped: `currency('$')(60000)` is "$60,000". */
 export function currency(symbol: string, places: number = 0): Formatter {
   const f = fixed(places)
-  return (v: Double): string => (v < 0.0 ? `-${symbol}${f(-v)}` : `${symbol}${f(v)}`)
+  return (v: Double): string => (v < 0.0 ? `-${symbol}${groupDigits(f(-v))}` : `${symbol}${groupDigits(f(v))}`)
 }
 
 /** A ratio as a percentage — `percent()(0.42)` is "42%". */

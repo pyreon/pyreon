@@ -4068,8 +4068,9 @@ public func plain(_ v: Double) -> String {
     return "\(((Double(v * 1000.0)) + 0.5).rounded(.down) / 1000.0)"
   }
 
-public func groupThousands(_ v: Double) -> String {
-    let s = plain(v)
+public func groupThousands(_ v: Double) -> String { groupDigits(plain(v)) }
+
+public func groupDigits(_ s: String) -> String {
     let neg = s.utf16.count > 0 && String(Array(s)[0]) == "-"
     let body = neg ? String(s.dropFirst(1)) : s
     let dot = (body.range(of: ".").map { body.distance(from: body.startIndex, to: $0.lowerBound) } ?? -1)
@@ -4126,7 +4127,7 @@ public func fixed(_ places: Int) -> (Double) -> String {
 
 public func currency(_ symbol: String, _ places: Int = 0) -> (Double) -> String {
     let f = fixed(places)
-    return { v in (v < 0.0 ? "-\(symbol)\(f(-v))" : "\(symbol)\(f(v))") }
+    return { v in (v < 0.0 ? "-\(symbol)\(groupDigits(f(-v)))" : "\(symbol)\(groupDigits(f(v)))") }
   }
 
 public func percent(_ places: Int = 0) -> (Double) -> String {
@@ -4253,7 +4254,7 @@ public func echartsNiceDomain(_ d: Domain, _ splitNumber: Double, _ fixMin: Bool
 public func isFiniteNumber(_ v: Double) -> Bool { v == v && v - v == 0.0 }
 
 public func makeTicks(_ d: Domain, _ r0: Double, _ r1: Double, _ count: Double, _ format: ((Double) -> String)? = nil) -> [Tick] {
-    let fmt = (format ?? formatTick)
+    let fmt = (format ?? groupThousands)
     var out: [Tick] = []
     if count <= 0.0 {
       return out
@@ -4347,7 +4348,7 @@ public func logTicks(_ d: Domain, _ r0: Double, _ r1: Double) -> [Tick] {
     while e <= to && count < limit {
       let v = pow(Double(10.0), Double(e))
       if v >= min && v <= max {
-        out.append(Tick(value: v, pos: scaleLog(d, r0, r1, v), label: plain(v)))
+        out.append(Tick(value: v, pos: scaleLog(d, r0, r1, v), label: groupThousands(v)))
         count = count + 1
       }
       e = e + 1.0
@@ -4419,7 +4420,7 @@ public func formatTime(_ ms: Double, _ step: Double) -> String {
   }
 
 public func logViewTicks(_ lo: Double, _ hi: Double, _ r0: Double, _ r1: Double, _ format: ((Double) -> String)? = nil) -> [Tick] {
-    let fmt = (format ?? plain)
+    let fmt = (format ?? groupThousands)
     var out: [Tick] = []
     if !(lo > 0.0) || !(hi > lo) {
       return out
@@ -8591,8 +8592,10 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
                 for i in stride(from: lower.count - 1, through: 0, by: -1) {
                   poly.append(lower[i])
                 }
+                let bandAlpha = stateAreaOpacity(spec, s)
+                let bandFill = withAlpha(s.color, bandAlpha < 0.0 ? (s.areaOpacity ?? AREA_MARK_OPACITY) : bandAlpha)
                 if poly.count > 2 {
-                  out.append(polygonCmd(poly, s.color, sGrad, s.pattern))
+                  out.append(polygonCmd(poly, bandFill, sGrad, s.pattern))
                 }
               }
             } else {
@@ -14574,7 +14577,7 @@ public func tooltipAt(_ index: Int, _ categories: [String], _ series: [TooltipSe
   }
 
 public func tooltipLines(_ c: TooltipContent, _ format: ((Double) -> String)? = nil) -> [String] {
-    let fmt = (format ?? plain)
+    let fmt = (format ?? groupThousands)
     var out = [c.title]
     for r in c.rows {
       let lo = (r.value2 ?? (0.0 / 0.0))
@@ -16063,7 +16066,7 @@ public func applyChartAction(_ s: ChartActionState, _ a: ChartActionInput) -> Ch
   }
 
 public func describeChart(_ input: A11yInput) -> String {
-    let fmt = (input.format ?? plain)
+    let fmt = (input.format ?? groupThousands)
     var parts: [String] = []
     let title = (input.title ?? "Chart")
     if input.series.count == 0 {
@@ -16207,7 +16210,7 @@ public func chartRowCount(_ input: A11yInput) -> Int {
   }
 
 public func chartTableRow(_ input: A11yInput, _ i: Int) -> [String] {
-    let fmt = (input.format ?? plain)
+    let fmt = (input.format ?? groupThousands)
     var row = [i < input.categories.count ? input.categories[i] : "\(i + 1)"]
     for s in input.series {
       let other = (s.values2 ?? [])

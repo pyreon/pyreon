@@ -851,8 +851,9 @@ fun plain(v: Double): String {
     return "${(Math.round(v * 1000.0)).toDouble() / (1000.0).toDouble()}"
   }
 
-fun groupThousands(v: Double): String {
-    val s = plain(v)
+fun groupThousands(v: Double): String = groupDigits(plain(v))
+
+fun groupDigits(s: String): String {
     val neg = s.length > 0 && s[0].toString() == "-"
     val body = if (neg) s.drop(1) else s
     val dot = body.indexOf(".")
@@ -909,7 +910,7 @@ fun fixed(places: Int): (Double) -> String {
 
 fun currency(symbol: String, places: Int = 0): (Double) -> String {
     val f = fixed(places)
-    return { v -> (if (v < 0.0) "-${symbol}${f(-v)}" else "${symbol}${f(v)}") }
+    return { v -> (if (v < 0.0) "-${symbol}${groupDigits(f(-v))}" else "${symbol}${groupDigits(f(v))}") }
   }
 
 fun percent(places: Int = 0): (Double) -> String {
@@ -1036,7 +1037,7 @@ fun echartsNiceDomain(d: Domain, splitNumber: Double, fixMin: Boolean, fixMax: B
 fun isFiniteNumber(v: Double): Boolean = v == v && v - v == 0.0
 
 fun makeTicks(d: Domain, r0: Double, r1: Double, count: Double, format: ((Double) -> String)? = null): List<Tick> {
-    val fmt = (format ?: ::formatTick)
+    val fmt = (format ?: ::groupThousands)
     val out: MutableList<Tick> = mutableListOf()
     if (count <= 0.0) {
       return out
@@ -1130,7 +1131,7 @@ fun logTicks(d: Domain, r0: Double, r1: Double): List<Tick> {
     while (e <= to && count < limit) {
       val v = Math.pow((10.0).toDouble(), (e).toDouble())
       if (v >= min && v <= max) {
-        out.add(Tick(value = v, pos = scaleLog(d, r0, r1, v), label = plain(v)))
+        out.add(Tick(value = v, pos = scaleLog(d, r0, r1, v), label = groupThousands(v)))
         count = count + 1
       }
       e = e + 1.0
@@ -1202,7 +1203,7 @@ fun formatTime(ms: Double, step: Double): String {
   }
 
 fun logViewTicks(lo: Double, hi: Double, r0: Double, r1: Double, format: ((Double) -> String)? = null): List<Tick> {
-    val fmt = (format ?: ::plain)
+    val fmt = (format ?: ::groupThousands)
     val out: MutableList<Tick> = mutableListOf()
     if (!(lo > 0.0) || !(hi > lo)) {
       return out
@@ -5374,8 +5375,10 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
                 for (i in lower.length - 1 downTo 0) {
                   poly.add(lower[i])
                 }
+                val bandAlpha = stateAreaOpacity(spec, s)
+                val bandFill = withAlpha(s.color, if (bandAlpha < 0.0) (s.areaOpacity ?: AREA_MARK_OPACITY) else bandAlpha)
                 if (poly.length > 2) {
-                  out.add(polygonCmd(poly, s.color, sGrad, s.pattern))
+                  out.add(polygonCmd(poly, bandFill, sGrad, s.pattern))
                 }
               }
             } else {
@@ -11357,7 +11360,7 @@ fun tooltipAt(index: Int, categories: List<String>, series: List<TooltipSeries>)
   }
 
 fun tooltipLines(c: TooltipContent, format: ((Double) -> String)? = null): List<String> {
-    val fmt = (format ?: ::plain)
+    val fmt = (format ?: ::groupThousands)
     val out = mutableListOf(c.title)
     for (r in c.rows) {
       val lo = (r.value2 ?: ((0.0).toDouble() / (0.0).toDouble()))
@@ -12846,7 +12849,7 @@ fun applyChartAction(s: ChartActionState, a: ChartActionInput): ChartActionState
   }
 
 fun describeChart(input: A11yInput): String {
-    val fmt = (input.format ?: ::plain)
+    val fmt = (input.format ?: ::groupThousands)
     val parts: MutableList<String> = mutableListOf()
     val title = (input.title ?: "Chart")
     if (input.series.length == 0) {
@@ -12990,7 +12993,7 @@ fun chartRowCount(input: A11yInput): Int {
   }
 
 fun chartTableRow(input: A11yInput, i: Int): List<String> {
-    val fmt = (input.format ?: ::plain)
+    val fmt = (input.format ?: ::groupThousands)
     val row = mutableListOf(if (i < input.categories.length) input.categories[i] else "${i + 1}")
     for (s in input.series) {
       val other = (s.values2 ?: listOf())
