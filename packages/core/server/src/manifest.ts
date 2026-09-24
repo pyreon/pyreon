@@ -174,6 +174,25 @@ const CartBadge = serverIsland(() => import('../islands/CartBadge'), {
 
 // page stays SSG/ISR/CDN-cacheable; the badge renders per request
 ;<CartBadge label="Cart" />`,
+      seeAlso: ['activateServerIslands'],
+    },
+    {
+      name: 'activateServerIslands',
+      kind: 'function',
+      signature: '(base?: string) => () => void',
+      summary:
+        'The MANUAL document-scan activator for `<pyreon-server-island>` markers, for static / no-full-hydrate hosts that are NOT a `@pyreon/zero` app. Each marker normally SELF-ACTIVATES on mount (a `ref` fires `activateServerIslandElement`) — that is what wins the lazy-route timing race in a zero app, and `zero`\'s `startClient` does NOT call this function. Call `activateServerIslands()` yourself only when server islands are embedded in a page with no client-side mount/hydrate cycle to trigger the per-marker self-activation (a plain static HTML page, a non-Pyreon host rendering Pyreon-produced markup). `base` prefixes the fragment-fetch URL when the app is deployed under a subpath. Returns a disposer that stops the scan\'s observer.',
+      example: `// A static HTML page embedding server-island markup with no
+// Pyreon client mount cycle of its own:
+import { activateServerIslands } from '@pyreon/server/client'
+
+const stop = activateServerIslands('/my-app') // subpath deploy
+// stop() to tear down if the page unmounts / navigates away in an SPA shell`,
+      mistakes: [
+        'Calling this in a `@pyreon/zero` app — `startClient` never calls it because each marker already self-activates on mount; calling it there is redundant (though harmless) work',
+        'Importing from `@pyreon/server` instead of `@pyreon/server/client` — like `island`, this is client-code and lives on the client-safe subpath',
+      ],
+      seeAlso: ['serverIsland', 'island'],
     },
     {
       name: 'useRequestLocals',
