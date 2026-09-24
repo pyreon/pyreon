@@ -30,16 +30,19 @@ test('dep chips navigate the selection', async ({ page }) => {
   await expect(page.getByTestId('panel-name')).toHaveText('@pyreon/reactivity')
 })
 
-test('search filters the sidebar; escape clears', async ({ page }) => {
-  // Search moved into the ⌘K dialog — the header keeps the trigger. The query
-  // still drives the sidebar filter, so typing in the dialog narrows both.
+test('⌘K search is a lookup, not a filter: the sidebar behind it keeps every row', async ({ page }) => {
+  // The palette owns its own query. It used to write the shared filter, so
+  // every keystroke re-filtered (and emptied) the sidebar + graph behind it.
+  const rows = await page.locator('[data-testid^="pkg-"]').count()
   await page.getByTestId('search-trigger').click()
   await page.getByTestId('loom-search').fill('rocketstyle')
-  await expect(page.getByTestId('pkg-@pyreon/rocketstyle')).toBeVisible()
-  expect(await page.locator('[data-testid^="pkg-"]').count()).toBeLessThan(6)
+  await expect(page.getByTestId('search-dialog').getByText('rocketstyle').first()).toBeVisible()
+  expect(await page.locator('[data-testid^="pkg-"]').count()).toBe(rows)
   await page.keyboard.press('Escape')
   await expect(page.getByTestId('search-dialog')).toHaveCount(0)
-  expect(await page.locator('[data-testid^="pkg-"]').count()).toBeGreaterThan(100)
+  // Re-opening starts from an empty query.
+  await page.getByTestId('search-trigger').click()
+  await expect(page.getByTestId('loom-search')).toHaveValue('')
 })
 
 test('fulltext: a finding code surfaces flagged packages with the reason chip', async ({ page }) => {
@@ -114,4 +117,99 @@ test('health pill reflects the fabric state', async ({ page }) => {
   // The repo currently carries real drift errors — the pill must say SOMETHING
   // truthful (error count or cycle count or clean), never render empty.
   await expect(page.getByTestId('loom-health')).not.toHaveText('')
+})
+
+// ── interaction performance: selection/hover must not rebuild the views ──
+
+test('matrix: a selection change keeps every cell element (no rebuild) and moves the crosshair', async ({ page }) => {
+  await page.getByTestId('view-matrix').click()
+  const grid = page.getByTestId('matrix-grid')
+  await expect(grid).toBeVisible()
+  // Only edge cells render — never the n² blank grid.
+  const cells = await grid.locator('button[aria-label]').count()
+  expect(cells).toBeGreaterThan(100)
+  expect(cells).toBeLessThan(5000)
+  await page.evaluate(() => {
+    ;(window as unknown as { __cells: Element[] }).__cells = [...document.querySelectorAll('[data-testid="matrix-grid"] button')]
+  })
+  await page.getByTestId('pkg-@pyreon/core').click()
+  await page.getByTestId('pkg-@pyreon/router').click()
+  await page.getByTestId('cycles-toggle').click()
+  const same = await page.evaluate(() => {
+    const before = (window as unknown as { __cells: Element[] }).__cells
+    const now = [...document.querySelectorAll('[data-testid="matrix-grid"] button')]
+    return now.length === before.length && now.every((el, i) => el === before[i])
+  })
+  expect(same).toBe(true)
+  // The crosshair band is placed on the selected row.
+  const band = await page.locator('.lm-mx-bandr').evaluate((el) => getComputedStyle(el).display)
+  expect(band).toBe('block')
+})
+
+test('graph: hover and selection keep the node elements (no SVG rebuild)', async ({ page }) => {
+  const node = page.getByTestId('gnode-@pyreon/core')
+  const handle = await node.elementHandle()
+  await page.getByTestId('pkg-@pyreon/router').click()
+  await page.evaluate(() => {
+    const m = (window as unknown as { __LOOM_MODEL__: { hoverId: { set(v: string | null): void } } }).__LOOM_MODEL__
+    m.hoverId.set('@pyreon/core')
+    m.hoverId.set(null)
+  })
+  expect(await page.evaluate((el) => el?.isConnected, handle)).toBe(true)
+  expect(await node.evaluate((el, prev) => el === prev, handle)).toBe(true)
+})
+
+test('keyboard selection keeps the sidebar row on screen', async ({ page }) => {
+  await page.getByTestId('pkg-@pyreon/docs').click()
+  for (let i = 0; i < 40; i++) await page.keyboard.press('ArrowDown')
+  const id = await page.getByTestId('panel-name').textContent()
+  await expect(page.getByTestId(`pkg-${id}`)).toBeInViewport()
+})
+
+test('manifest table: header columns line up with the row cells', async ({ page }) => {
+  await page.getByTestId('view-table').click()
+  const head = await page.locator('.lm-tbl th').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().left)))
+  const cells = await page
+    .locator('[data-testid="row-@pyreon/core"] td')
+    .evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().left)))
+  expect(head.length).toBe(5)
+  expect(cells).toEqual(head)
+})
+
+test('theme follows the OS, and a toggled choice survives a reload', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' })
+  await page.evaluate(() => localStorage.removeItem('loom:theme'))
+  await page.reload()
+  const shell = page.getByTestId('loom-shell')
+  await expect(shell).toHaveAttribute('data-lm-theme', 'light')
+  await page.getByTestId('dark-toggle').click()
+  await expect(shell).toHaveAttribute('data-lm-theme', 'dark')
+  await page.reload()
+  await expect(page.getByTestId('loom-shell')).toHaveAttribute('data-lm-theme', 'dark')
+  expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe('rgb(15, 15, 20)')
+})
+
+test('the selection is carried in the URL hash and restored on load', async ({ page }) => {
+  await page.getByTestId('pkg-@pyreon/router').click()
+  await expect(page).toHaveURL(/#pkg=@pyreon\/router$/)
+  await page.reload()
+  await expect(page.getByTestId('panel-name')).toHaveText('@pyreon/router')
+})
+
+test.describe('mobile', () => {
+  test.use({ viewport: { width: 390, height: 844 } })
+
+  test('the graph gets the screen; sidebar + panel are drawers', async ({ page }) => {
+    await expect(page.getByTestId('graph-view')).toBeInViewport()
+    await expect(page.getByTestId('loom-sidebar')).toHaveCount(0)
+    await expect(page.getByTestId('loom-panel')).toHaveCount(0)
+    await page.getByTestId('nav-toggle').click()
+    await expect(page.getByTestId('loom-sidebar')).toBeVisible()
+    await page.getByTestId('pkg-@pyreon/router').click()
+    // Picking a package closes the drawer again.
+    await expect(page.getByTestId('loom-sidebar')).toHaveCount(0)
+    await page.getByTestId('view-table').click()
+    await expect(page.getByTestId('table-view')).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  })
 })
