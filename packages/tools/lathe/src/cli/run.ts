@@ -16,6 +16,7 @@ import {
 } from '../core/config'
 import { generate } from '../core/generate'
 import { noteSeverity } from '../core/ir'
+import { OUTPUT_MANIFEST, orphanedPaths } from '../core/output-manifest'
 import { diffSurface, type ApiSurface, type SurfaceChange } from '../core/surface'
 import { resolveTransform, verifyNative, worstVerdict } from '../verify/lower'
 import { renderReport } from './report'
@@ -94,6 +95,8 @@ export interface Fs {
   write(path: string, contents: string): void
   exists(path: string): boolean
   mkdirp(path: string): void
+  /** Delete one file. Only ever called for a path a previous run generated. */
+  remove(path: string): void
   join(...parts: string[]): string
 }
 
@@ -185,6 +188,14 @@ export async function run(
     // changed" into "your spec removed a field the app reads".
     const changes = compareSurface(fs, config.output, result.surface)
 
+    // Read the previous manifest BEFORE the loop rewrites it, for the same
+    // reason as the surface: afterwards only the new version exists.
+    const manifestPath = fs.join(config.output, OUTPUT_MANIFEST)
+    const orphans = orphanedPaths(
+      fs.exists(manifestPath) ? fs.read(manifestPath) : undefined,
+      result.files.map((f) => f.path),
+    ).filter((p) => fs.exists(fs.join(config.output, p)))
+
     let wrote = 0
     const stale: string[] = []
     // WHICH paths changed, not just how many. The report used to mark every
@@ -208,7 +219,20 @@ export async function run(
       fs.write(full, file.contents)
       wrote++
     }
-    runs.push({ config, result, verify, wrote, stale, changed, created, changes })
+    // Files the previous run generated and this one does not -- a tag the spec
+    // dropped, a plugin that was turned off. `check` reports them as stale;
+    // `generate` removes them. Only paths the manifest lists are candidates,
+    // so a hand-written file in the output directory is never touched.
+    const removed: string[] = []
+    for (const orphan of orphans) {
+      if (argv.command === 'check') {
+        stale.push(`${orphan} (orphaned: no longer generated)`)
+        continue
+      }
+      fs.remove(fs.join(config.output, orphan))
+      removed.push(orphan)
+    }
+    runs.push({ config, result, verify, wrote, stale, changed, created, changes, removed })
   }
 
   return report(runs, argv, projects.length > 1)
@@ -226,12 +250,14 @@ interface RunOutcome {
   created: Set<string>
   /** Contract changes vs the committed surface. Empty on a first run. */
   changes: SurfaceChange[]
+  /** Previously-generated files this run removed because it no longer emits them. */
+  removed: string[]
 }
 
 function report(runs: RunOutcome[], argv: Argv, multi: boolean): RunResult {
   const worst = (a: number, b: number): number => Math.max(a, b)
   if (argv.json) {
-    const payload = runs.map(({ config, result, verify, wrote, stale, changes }) => ({
+    const payload = runs.map(({ config, result, verify, wrote, stale, changes, removed }) => ({
       name: config.name,
       title: result.doc.title,
       version: result.doc.version,
@@ -241,6 +267,7 @@ function report(runs: RunOutcome[], argv: Argv, multi: boolean): RunResult {
       output: config.output,
       files: result.files.map((f) => f.path),
       wrote,
+      removed,
       stale,
       reach: Object.fromEntries(result.reach),
       // `severity` is derived from the code, and attached here so a JSON
@@ -263,7 +290,7 @@ function report(runs: RunOutcome[], argv: Argv, multi: boolean): RunResult {
 
   let stdout = ''
   let code = 0
-  for (const { config, result, verify, wrote, stale, changed, created, changes } of runs) {
+  for (const { config, result, verify, wrote, stale, changed, created, changes, removed } of runs) {
     stdout += renderReport(result, verify, {
       target: config.target,
       output: config.output,
@@ -271,6 +298,7 @@ function report(runs: RunOutcome[], argv: Argv, multi: boolean): RunResult {
       changed,
       created,
       changes,
+      removed,
       name: config.name,
       plugins: config.plugins,
       requestedPlugins: config.requestedPlugins,

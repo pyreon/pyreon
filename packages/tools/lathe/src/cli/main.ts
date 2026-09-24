@@ -6,7 +6,7 @@
  */
 
 import { CONFIG_FILENAMES, sectionFrom } from '@pyreon/config'
-import { existsSync, mkdirSync, readFileSync, watch, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, watch, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { LatheSection } from '../core/config'
@@ -18,6 +18,7 @@ const realFs: Fs = {
   write: (p, c) => writeFileSync(p, c, 'utf8'),
   exists: (p) => existsSync(p),
   mkdirp: (p) => mkdirSync(p, { recursive: true }),
+  remove: (p) => rmSync(p, { force: true }),
   join: (...parts) => join(...parts),
 }
 
@@ -74,6 +75,7 @@ export async function main(argvRaw: readonly string[], cwd: string): Promise<num
     write: (p, c) => realFs.write(abs(p), c),
     exists: (p) => realFs.exists(abs(p)),
     mkdirp: (p) => realFs.mkdirp(abs(p)),
+    remove: (p) => realFs.remove(abs(p)),
   }
   const once = async (): Promise<number> => {
     const { code, stdout } = await run(argv, section, scoped)

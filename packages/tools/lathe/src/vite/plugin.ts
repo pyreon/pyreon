@@ -13,11 +13,12 @@
  * the one artifact people need to inspect the one they cannot open.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import type { LatheSection } from '../core/config'
 import { resolveProjects } from '../core/config'
-import { generate } from '../core/generate'
+import { generate, type GenerateResult } from '../core/generate'
+import { OUTPUT_MANIFEST, orphanedPaths } from '../core/output-manifest'
 
 /** The subset of Vite's plugin surface this needs, so vite is not a dependency. */
 export interface LathePluginHost {
@@ -53,6 +54,12 @@ export interface LathePassResult {
   written: string[]
   stale: string[]
   specs: string[]
+  /** Previously-generated files removed because this pass no longer emits them. */
+  removed: string[]
+  /** Configured specs that do not exist on disk. */
+  missing: string[]
+  /** Each generated project's result, for the notes/contract summary. */
+  results: GenerateResult[]
 }
 
 /**
@@ -83,7 +90,13 @@ export function runPass(
   const written: string[] = []
   const stale: string[] = []
   const specs: string[] = []
+  const removed: string[] = []
+  const missing: string[] = []
+  const results: GenerateResult[] = []
 
+  // Generate every project before writing any, as the CLI does: a refused
+  // spec must leave every output tree untouched, not half of them.
+  const generated: Array<{ out: string; result: ReturnType<typeof generate> }> = []
   for (const project of resolveProjects(options)) {
     const input = abs(project.input)
     specs.push(input)
@@ -94,10 +107,19 @@ export function runPass(
     // `js/file-system-race` (high). Same fix zero's route-types generator took;
     // see .agents/rules/anti-patterns.md, the write-if-changed guard entry.
     const source = readFileOrUndefined(input)
-    if (source === undefined) continue
-    const result = generate(source, project)
+    if (source === undefined) {
+      missing.push(input)
+      continue
+    }
+    generated.push({ out: abs(project.output), result: generate(source, project) })
+  }
+  for (const { out, result } of generated) {
+    const orphans = orphanedPaths(
+      readFileOrUndefined(join(out, OUTPUT_MANIFEST)),
+      result.files.map((f) => f.path),
+    )
     for (const file of result.files) {
-      const full = join(abs(project.output), file.path)
+      const full = join(out, file.path)
       const current = readFileOrUndefined(full)
       if (current === file.contents) continue
       if (mode === 'check') {
@@ -108,8 +130,22 @@ export function runPass(
       writeFileSync(full, file.contents, 'utf8')
       written.push(full)
     }
+    // A file the previous pass generated and this one does not (a tag the
+    // spec dropped). Only manifest-listed paths are candidates, so nothing
+    // hand-written is ever removed.
+    for (const orphan of orphans) {
+      const full = join(out, orphan)
+      if (readFileOrUndefined(full) === undefined) continue
+      if (mode === 'check') {
+        stale.push(full)
+        continue
+      }
+      rmSync(full, { force: true })
+      removed.push(full)
+    }
+    results.push(result)
   }
-  return { written, stale, specs }
+  return { written, stale, specs, removed, missing, results }
 }
 
 /**

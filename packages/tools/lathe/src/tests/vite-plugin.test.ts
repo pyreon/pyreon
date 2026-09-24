@@ -5,7 +5,7 @@
  * behaviour is assertable without a dev server -- the real server is exercised
  * by the bookshelf e2e, which is the layer that can actually prove it.
  */
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { lathe, runPass } from '../vite/plugin'
@@ -94,6 +94,20 @@ describe('lathe vite plugin', () => {
     expect(res.specs).toHaveLength(2)
     expect(readFileSync(join(root, 'src/a/schemas.ts'), 'utf8')).toContain('export const Book')
     expect(readFileSync(join(root, 'src/b/schemas.ts'), 'utf8')).toContain('export const Book')
+  })
+
+  it('removes a file the previous pass generated and this one does not', () => {
+    // The dev server regenerates on every spec save; an orphan left by a
+    // dropped tag would keep compiling against endpoints that no longer exist.
+    const { root, spec } = project()
+    const withClient = { ...opts, plugins: ['schemas', 'client'] as const }
+    runPass({ ...withClient, plugins: [...withClient.plugins] }, root, 'write')
+    expect(existsSync(join(root, 'src/gen/endpoints/books.ts'))).toBe(true)
+    writeFileSync(spec, SPEC.replace('tags: [books]', 'tags: [library]'))
+    const res = runPass({ ...withClient, plugins: [...withClient.plugins] }, root, 'write')
+    expect(existsSync(join(root, 'src/gen/endpoints/books.ts'))).toBe(false)
+    expect(existsSync(join(root, 'src/gen/endpoints/library.ts'))).toBe(true)
+    expect(res.removed).toEqual([join(root, 'src/gen/endpoints/books.ts')])
   })
 
   it('THROWS on a stale build when checkOnBuild is set', () => {

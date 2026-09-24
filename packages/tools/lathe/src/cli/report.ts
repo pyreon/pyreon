@@ -46,6 +46,8 @@ export function renderReport(
     created?: ReadonlySet<string> | undefined
     /** Contract changes vs the committed surface. */
     changes?: readonly SurfaceChange[] | undefined
+    /** Previously-generated files removed because this run no longer emits them. */
+    removed?: readonly string[] | undefined
     name?: string | undefined
     plugins: readonly string[]
     requestedPlugins: readonly string[]
@@ -89,12 +91,17 @@ export function renderReport(
       lines.push(`  ${C.dim(`· ${path}`)}`)
     }
   }
+  // A removed file is part of what the run did to the tree, so it is listed
+  // with the rest -- a deletion that only shows up in `git status` is the kind
+  // of surprise that makes people distrust a generator.
+  for (const r of opts.removed ?? []) lines.push(`  ${C.red('-')} ${opts.output}/${r}`)
   lines.push('')
   lines.push(
     changed === undefined
       ? `  ${opts.wrote} file(s) written`
       : `  ${opts.wrote} of ${result.files.length} file(s) written` +
-        (changed.size === 0 ? C.dim('  (everything already current)') : ''),
+        (opts.removed && opts.removed.length > 0 ? `, ${opts.removed.length} removed` : '') +
+        (changed.size === 0 && (opts.removed?.length ?? 0) === 0 ? C.dim('  (everything already current)') : ''),
   )
 
   // The contract section. Placed BEFORE the native report because a breaking

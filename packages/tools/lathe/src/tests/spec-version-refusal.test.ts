@@ -35,6 +35,9 @@ function memFs(files: Record<string, string>): Fs & { files: Record<string, stri
     },
     exists: (p) => p in files,
     mkdirp: () => {},
+    remove: (p) => {
+      delete files[p]
+    },
     join: (...parts) => parts.join('/').replace(/\/+/g, '/'),
   }
 }
