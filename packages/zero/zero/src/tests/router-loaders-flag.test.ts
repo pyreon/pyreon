@@ -167,8 +167,9 @@ describe('createApp — loaders compiled out but a route has one', () => {
 })
 
 describe('real Vite build — the engine leaves the bundle', () => {
-  // `?path=` is the single-fetch endpoint query, which exists only inside the
-  // loader engine — a marker minification cannot rename.
+  // Markers minification cannot rename: `?path=` is the single-fetch query,
+  // which exists only in the router's loader engine; `pendingMinMs` is read
+  // only by PendingLoader, on the component side's loader render path.
   async function bundle(value: string | undefined): Promise<string> {
     const { build } = await import('vite')
     const dir = mkdtempSync(join(PKG, '.loaders-flag-'))
@@ -176,7 +177,7 @@ describe('real Vite build — the engine leaves the bundle', () => {
     const entry = join(dir, 'entry.ts')
     writeFileSync(
       entry,
-      `import { createRouter } from '@pyreon/router'\nexport const r = createRouter\n`,
+      `import { createRouter, RouterLink, RouterView } from '@pyreon/router'\nexport const r = [createRouter, RouterLink, RouterView]\n`,
     )
     const out = (await build({
       configFile: false,
@@ -204,8 +205,10 @@ describe('real Vite build — the engine leaves the bundle', () => {
   }
 
   it('keeps the engine when the flag is unset or true', async () => {
-    expect(await bundle(undefined)).toContain('?path=')
-    expect(await bundle('true')).toContain('?path=')
+    for (const code of [await bundle(undefined), await bundle('true')]) {
+      expect(code).toContain('?path=')
+      expect(code).toContain('pendingMinMs')
+    }
   }, 60_000)
 
   it('drops the engine when the flag is false', async () => {
@@ -213,5 +216,6 @@ describe('real Vite build — the engine leaves the bundle', () => {
     // createRouter itself survived (its default trailingSlash literal) — only the engine went.
     expect(code).toContain('strip')
     expect(code).not.toContain('?path=')
+    expect(code).not.toContain('pendingMinMs')
   }, 60_000)
 })

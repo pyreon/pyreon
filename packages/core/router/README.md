@@ -162,7 +162,7 @@ const data = useLoaderData<{ name: string }>()
 
 ### Compiling loaders out
 
-Define `globalThis.__PYREON_ROUTER_LOADERS__` as `false` at build time to drop the loader engine from the bundle (~0.7 KB gz) in an app with no loaders. Undefined means on. `@pyreon/zero` sets it for you in production builds, based on its route scan.
+Define `globalThis.__PYREON_ROUTER_LOADERS__` as `false` at build time to drop the loader engine and loader rendering from the bundle (~0.9–1 KB gz) in an app with no loaders. Undefined means on. `@pyreon/zero` sets it for you in production builds, based on its route scan.
 
 ## Guards + middleware
 

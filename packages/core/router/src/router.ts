@@ -501,7 +501,8 @@ export function useMiddlewareData(): () => Record<string, unknown> {
 
 // Compile-time feature flag `globalThis.__PYREON_ROUTER_LOADERS__`: defining
 // it `false` compiles the loader engine (cache, in-flight dedup, SWR, the
-// server-loader single-fetch) OUT of the bundle — ~0.7 KB gz. Unset means ON,
+// server-loader single-fetch) OUT of the bundle, and components.tsx drops the loader
+// render path (PendingLoader, the data provider, link prefetch) — ~0.9–1 KB gz. Unset means ON,
 // so an app that never defines it behaves exactly as before. @pyreon/zero
 // defines it in production builds from its route scan (true or false — either
 // value folds the guards away).

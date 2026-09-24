@@ -1581,7 +1581,7 @@ A record can carry a `serverLoader` instead of a `loader` — a data loader that
 
 ### Compiling loaders out
 
-Defining `globalThis.__PYREON_ROUTER_LOADERS__` as `false` at build time removes the loader engine (cache, in-flight dedup, stale-while-revalidate, server-loader single-fetch) from the bundle, about 0.7 KB gz. Leave it undefined and nothing changes. [@pyreon/zero](/docs/zero#router-loaders-are-compiled-out-when-unused) sets it automatically in production builds; any other Vite app can set it in `define` when none of its routes has a loader. With the flag `false`, loaders are skipped — define it only when you have none.
+Defining `globalThis.__PYREON_ROUTER_LOADERS__` as `false` at build time removes the loader engine (cache, in-flight dedup, stale-while-revalidate, server-loader single-fetch) and the loader render path (pending components, link prefetch) from the bundle, about 0.9–1 KB gz. Leave it undefined and nothing changes. [@pyreon/zero](/docs/zero#router-loaders-are-compiled-out-when-unused) sets it automatically in production builds; any other Vite app can set it in `define` when none of its routes has a loader. With the flag `false`, loaders are skipped — define it only when you have none.
 
 ### redirect() — control-flow from inside a loader
 

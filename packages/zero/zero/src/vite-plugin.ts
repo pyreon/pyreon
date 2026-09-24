@@ -740,7 +740,7 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 			const publicEnvVars = loadPublicEnvVars(configEnv?.mode ?? 'production', cwd)
 
 			// Router loader flag (production builds only). `false` compiles the
-			// router's loader engine out of the bundle (~0.7 KB gz); `true` folds
+			// router's loader engine out of the bundle (~0.9–1 KB gz); `true` folds
 			// the router's own guard away. Defining it EITHER way is the point:
 			// left undefined, the guard stays as a runtime check. Dev never sets
 			// it, so adding a loader mid-session needs no restart. A value the
