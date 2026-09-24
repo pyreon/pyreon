@@ -50,6 +50,7 @@ import type { ComponentRef, VerifyCheck, VerifyFinding } from '../core'
 import { finding, materializeContent } from '../core'
 import { ensureDom } from '../verify/dom'
 import type { MountRuntime } from '../verify/harness'
+import { frameworkWarningFinding, withFrameworkWarnings } from './framework-warnings'
 import { SKIP_REASON, skipped, unmountableSkip } from './registry'
 import type { AtlasPlugin } from './types'
 
@@ -349,15 +350,21 @@ export function ssrParityPlugin(options: SsrParityOptions = {}): AtlasPlugin {
       const container = dom.env.document.createElement('div')
       const clientContainer = dom.env.document.createElement('div')
 
+      // Render + hydrate + client mount run framework code the plain mount
+      // never reaches (the hydrate walker's prop path, above all), so their
+      // `[Pyreon]` warnings are this check's to report — not the terminal's.
+      const { result: parity, warnings } = await withFrameworkWarnings(() =>
+        checkSsrParity(runtime, component, ctx.scenario.args ?? {}, container, clientContainer, options.wrapper),
+      )
+      if (warnings.length === 0) return { ssrParity: parity }
       return {
-        ssrParity: await checkSsrParity(
-          runtime,
-          component,
-          ctx.scenario.args ?? {},
-          container,
-          clientContainer,
-          options.wrapper,
-        ),
+        ssrParity: {
+          ...parity,
+          findings: [
+            ...(parity.findings ?? []),
+            ...warnings.map((w) => frameworkWarningFinding(w, 'rendered to a string and hydrated')),
+          ],
+        },
       }
     },
   }

@@ -161,6 +161,12 @@ export type FindingCode =
    * renders nothing standalone by design — the parent's scenarios verify it.
    */
   | 'part-of'
+  /**
+   * The framework emitted a `[Pyreon]` dev warning while the scenario was
+   * mounted or driven — a defect no exception surfaces (a boolean `tabIndex`,
+   * a `<For>` without `by`). Attached to the scenario that produced it.
+   */
+  | 'framework-warning'
   // ── ssrParity ────────────────────────────────────────────────────────────
   | 'ssr-render-threw'
   | 'hydrate-threw'

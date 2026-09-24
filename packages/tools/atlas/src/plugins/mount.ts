@@ -29,6 +29,7 @@
  */
 import type { ComponentIntelligence, ComponentRef, PlayFn, VerifyCheck, VerifyFinding } from '../core'
 import { finding } from '../core'
+import { frameworkWarningFinding, syncFrameworkWarnings, withFrameworkWarnings } from './framework-warnings'
 import { skipped, unmountableSkip } from './registry'
 import { defineAtlasPlugin } from './define'
 import { installRouteFor } from './router'
@@ -170,6 +171,23 @@ interface Exercised {
   /** The scenario's provenance — an `auto-edge` scenario is ALLOWED to render nothing. */
   source: string | undefined
   playFailure?: string
+  /** `[Pyreon] …` dev warnings the framework emitted while this scenario ran. */
+  warnings: string[]
+}
+
+/**
+ * Fold the warm-up mount's warnings into the first scenario's.
+ *
+ * The warm-up mounts the component with its FIRST scenario's args before any
+ * scenario is exercised, and many framework warnings fire once per process —
+ * so a defect the first scenario hits is often reported during the warm-up
+ * and then never again. Dropping those would hide exactly the warnings that
+ * matter most: the ones every mount of the component triggers.
+ */
+function withWarmup(ex: Exercised, warm: readonly string[] | undefined): Exercised {
+  if (!warm || warm.length === 0) return ex
+  const merged = [...warm.filter((w) => !ex.warnings.includes(w)), ...ex.warnings]
+  return { ...ex, warnings: merged }
 }
 
 /**
@@ -189,6 +207,19 @@ async function exercise(
   scenario: { id: string; args?: Record<string, unknown>; play?: PlayFn; route?: string; source?: string },
   wrapper: ComponentRef | undefined,
 ): Promise<Exercised> {
+  const { result, warnings } = await withFrameworkWarnings(() =>
+    exerciseOnce(dom, runtime, component, scenario, wrapper),
+  )
+  return { ...result, warnings }
+}
+
+async function exerciseOnce(
+  dom: DomEnv,
+  runtime: MountRuntime,
+  component: ComponentRef,
+  scenario: { id: string; args?: Record<string, unknown>; play?: PlayFn; route?: string; source?: string },
+  wrapper: ComponentRef | undefined,
+): Promise<Omit<Exercised, 'warnings'>> {
   const args = scenario.args ?? {}
   // A scenario carrying a `route` must MOUNT under it. The route axis used to
   // add the scenarios and nothing installed the router, so two different URLs
@@ -279,9 +310,13 @@ function probeMount(
   args: Record<string, unknown>,
   wrapper: ComponentRef | undefined,
 ): void {
-  let mounted: MountedScenario | undefined = mountScenario(dom, runtime, component, args, wrapper)
-  mounted.dispose()
-  mounted = undefined
+  // Re-mounts of scenarios already exercised: any warning here was reported
+  // (or suppressed as a repeat) on the scenario itself, so it is dropped.
+  syncFrameworkWarnings(() => {
+    let mounted: MountedScenario | undefined = mountScenario(dom, runtime, component, args, wrapper)
+    mounted.dispose()
+    mounted = undefined
+  })
 }
 
 /** The interaction verdict for one exercised scenario. */
@@ -290,6 +325,14 @@ function probeMount(
  * PARENT's name (declared a part of it).
  */
 function interactionVerdict(ex: Exercised, hasWrapper: boolean, gated: boolean | string = false): VerifyCheck {
+  const base = baseInteractionVerdict(ex, hasWrapper, gated)
+  if (ex.warnings.length === 0) return base
+  // Appended to whatever the verdict already is: a warning does not decide
+  // pass/fail on its own (some are advisory), but it must never be dropped.
+  return { ...base, findings: [...(base.findings ?? []), ...ex.warnings.map((w) => frameworkWarningFinding(w))] }
+}
+
+function baseInteractionVerdict(ex: Exercised, hasWrapper: boolean, gated: boolean | string): VerifyCheck {
   if (ex.errors.length === 0 && !ex.playFailure) {
     if (!ex.rendered) {
       if (typeof gated === 'string') {
@@ -559,8 +602,14 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
     // Warm every component up FIRST. A component's first mount may create
     // module-level singletons it retains by design, and those have to be inside
     // the baseline rather than showing up as group-wide retention.
+    const warmWarnings = new Map<object, string[]>()
     for (const ci of mountable) {
-      mountScenario(dom, rt, ci.component as ComponentRef, ci.scenarios[0]!.args ?? {}, options.wrapper).dispose()
+      warmWarnings.set(
+        ci,
+        syncFrameworkWarnings(() =>
+          mountScenario(dom, rt, ci.component as ComponentRef, ci.scenarios[0]!.args ?? {}, options.wrapper).dispose(),
+        ),
+      )
     }
     const baseline = await settleGraph(graphSize, gc, restingGraph ?? 0)
 
@@ -570,8 +619,9 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
     const pending = new Map<object, Map<string, ScenarioVerdict>>()
     for (const ci of mountable) {
       const byId = new Map<string, ScenarioVerdict>()
-      for (const scenario of ci.scenarios) {
-        const ex = await exercise(dom, rt, ci.component as ComponentRef, scenario, options.wrapper)
+      for (const [index, scenario] of ci.scenarios.entries()) {
+        const ran = await exercise(dom, rt, ci.component as ComponentRef, scenario, options.wrapper)
+        const ex = index === 0 ? withWarmup(ran, warmWarnings.get(ci)) : ran
         byId.set(ex.id, { interaction: interactionVerdict(ex, hasWrapper, gated(ci.name)), leak: { status: 'pass' } })
       }
       pending.set(ci, byId)
@@ -677,7 +727,10 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
     // attributes only per-instance retention to the scenario — the thing that
     // actually leaks per mount.
     const tWarm = PROFILE ? performance.now() : 0
-    mountScenario(dom.env, runtime, component, scenarios[0]!.args ?? {}, options.wrapper).dispose()
+    const warmRuntime = runtime
+    const warmWarnings = syncFrameworkWarnings(() =>
+      mountScenario(dom.env, warmRuntime, component, scenarios[0]!.args ?? {}, options.wrapper).dispose(),
+    )
     step('warmup mount+dispose', tWarm)
     // The warm-up's OWN garbage is deliberately left for the first batch's
     // sweep. Settling here as well would collect it a few milliseconds earlier
@@ -689,7 +742,8 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
       const batch = scenarios.slice(i, i + LEAK_BATCH)
       const exercised: Exercised[] = []
       for (const s of batch) {
-        exercised.push(await exercise(dom.env, runtime, component, s, options.wrapper))
+        const ran = await exercise(dom.env, runtime, component, s, options.wrapper)
+        exercised.push(s === scenarios[0] ? withWarmup(ran, warmWarnings) : ran)
       }
 
       const tA = PROFILE ? performance.now() : 0
