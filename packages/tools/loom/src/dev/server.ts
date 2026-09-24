@@ -61,10 +61,28 @@ function uiModulePath(): string {
     if (existsSync(source)) return source
     dir = dirname(dir)
   }
-  throw new Error('[Pyreon] loom dev: could not locate the observatory UI module next to the loom install')
+  throw new Error(
+    '[Pyreon] loom dev: could not locate the observatory UI module next to the loom install',
+  )
 }
 const REPORT_PATH = '/@loom/report.json'
 const resolved = (id: string) => `\0${id}`
+
+/** The observatory's three families — shared with the static app template
+ * (`app/index.html`), which must carry the same link. */
+export const FONTS_HREF =
+  'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap'
+
+/**
+ * Applies a REMEMBERED theme choice to `<html>` before first paint, so a
+ * visitor who picked light on a dark OS (or vice versa) does not see the page
+ * flash the other theme while the bundle loads. The OS default needs no
+ * script — the stylesheet's `prefers-color-scheme` block covers it. Mirrored
+ * verbatim in `app/index.html`; storage access is guarded (it throws when
+ * site data is blocked).
+ */
+export const THEME_BOOT =
+  "try{var t=localStorage.getItem('loom:theme');if(t==='dark'||t==='light')document.documentElement.setAttribute('data-lm-theme',t)}catch(e){}"
 
 function devHtml(title: string): string {
   return [
@@ -75,7 +93,8 @@ function devHtml(title: string): string {
     `<title>${title}</title>`,
     '<link rel="preconnect" href="https://fonts.googleapis.com" />',
     '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />',
-    '<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />',
+    `<link href="${FONTS_HREF}" rel="stylesheet" />`,
+    `<script>${THEME_BOOT}</script>`,
     '</head><body>',
     '<div id="loom-root"></div>',
     // `src="/@id/…"`, never an inline `import 'virtual:…'` — Vite does not
@@ -109,7 +128,12 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
   try {
     pluginMod = (await import('@pyreon/vite-plugin')) as unknown as typeof pluginMod
   } catch {
-    throw new Error(NO_VITE.replace('loom dev needs Vite, which is not installed', '@pyreon/vite-plugin is not installed'))
+    throw new Error(
+      NO_VITE.replace(
+        'loom dev needs Vite, which is not installed',
+        '@pyreon/vite-plugin is not installed',
+      ),
+    )
   }
   const factory = pluginMod.default ?? pluginMod.pyreon
   if (typeof factory !== 'function') {
@@ -124,6 +148,13 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
     configFile: false,
     server: { port, strictPort: true },
     optimizeDeps: { entries: [] },
+    // The observatory is a finished TOOL, not code the user is developing:
+    // Pyreon's dev-mode instrumentation (reactive devtools stack capture, dev
+    // warnings) is aimed at an app's author and was ~330 ms of the ~390 ms
+    // first-mount long task here — one `new Error()` per signal/computed the
+    // styled chrome creates. Serving it with the production gate folded makes
+    // the first paint as fast as the built site.
+    define: { 'process.env.NODE_ENV': JSON.stringify('production') },
     plugins: [
       factory({ devErrorPrinter: false }),
       {
