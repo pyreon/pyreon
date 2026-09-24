@@ -256,10 +256,10 @@ function createUrlSignal<T>(
     // `replaceState` calls, which fire no event, so without this the signal
     // stayed stale until the next popstate. Tracks the router REGISTRATION too,
     // so a signal created before `setUrlRouter()` picks the router up.
-    // pyreon-lint-disable-next-line pyreon/no-imperative-effect-on-create
     // The router this effect last subscribed to. Kept (not the route object —
     // retaining a snapshot for the effect's lifetime is leak class H).
     let subscribedTo: UrlRouter | null = null
+    // pyreon-lint-disable-next-line pyreon/no-imperative-effect-on-create
     effect(() => {
       const router = trackUrlRouter()
       if (typeof router?.currentRoute !== 'function') return
