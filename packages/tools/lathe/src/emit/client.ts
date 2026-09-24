@@ -280,8 +280,9 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
     // consumer's repo and a confusing one, since nobody wrote the file.
     const typeImports = new Set<string>()
     for (const op of ops) {
+      // A query's data type is read off its ENDPOINT (below), so its response
+      // models are not named here -- only a mutation's body is.
       if (isMutation(op)) collectRefs(op.body, typeImports)
-      else collectRefs(op.response, typeImports)
       // A PARAMETER's schema can be a `$ref` too - GitHub's spec does this
       // heavily (`AlertNumber`, `CodeScanningRef`). Collecting only the
       // response and body left those names used in the args type and never
@@ -294,7 +295,13 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
     for (const op of ops) {
       const args = argsType(op)
       const hook = `use${typeIdent(op.id)}`
-      const ret = op.response ? tsType(op.response) : 'void'
+      // The data type is the ENDPOINT's response type, not a second rendering
+      // of the IR. A separately rendered `tsType(response)` disagreed with the
+      // schema wherever the two spell a type differently -- `@pyreon/validate`
+      // infers an enum as `string` where the rendering said `'list'`, and an
+      // operation with no response is `unknown` on the endpoint and was `void`
+      // here. Stripe's generated queries carried 201 errors from it, GitHub's 38.
+      const ret = `Awaited<ReturnType<typeof ${op.id}>>`
       f.line()
       if (isMutation(op)) {
         // The variables type is the endpoint's own call args, so a caller

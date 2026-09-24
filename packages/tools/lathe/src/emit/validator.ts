@@ -54,7 +54,11 @@ export interface ValidatorDialect {
   binding: string
   /** Module the binding is imported from. */
   module: string
-  /** Module the inferred-type helper comes from, when there is one. */
+  /**
+   * Module the inferred-type helper comes from, when there is one. Used only
+   * by `emitSchemaAgreement`, the test-side proof that each written-out
+   * interface matches what its schema infers.
+   */
   typeHelper: { module: string; name: string } | undefined
   /**
    * Wraps a native-path schema so PMTC recognises it.
@@ -66,20 +70,21 @@ export interface ValidatorDialect {
    */
   nativeWrap: { module: string; fn: string } | undefined
   /**
-   * How to ANNOTATE a schema whose own expression refers back to it.
+   * The schema TYPE a model's const is cast to -- `Schema<Book>` /
+   * `z.ZodType<Book>`.
    *
-   * A `$ref` cycle emits `lazy(() => X)` inside `const X = …`, so inferring
-   * `X`'s type from its own initializer is circular and TypeScript gives up
-   * with TS7022/TS7024 — the generated module does not compile. Naming the
-   * structural type first and annotating the const breaks the cycle, which is
-   * the pattern both libraries document for recursive schemas.
+   * Every generated schema const is typed as the schema of its written-out
+   * interface rather than inferred from its builder chain; see `emitSchemas`
+   * for the measured reason. Also what makes a `$ref` cycle compile: nothing
+   * is inferred through the cycle, so `lazy(() => X)` inside `const X = …` is
+   * never asked to type itself.
    */
   schemaTypeRef: (type: string) => string
   /** Type-only import the annotation needs, if any. */
   schemaTypeImport: { module: string; name: string } | undefined
   /**
    * Does this library's `enum` widen its members to `string` in the inferred
-   * type?
+   * type? The written-out interface must say what the schema infers.
    *
    * `@pyreon/validate`'s does — `s.enum(['a','b'])` infers `string`, not
    * `'a' | 'b'`. zod's preserves the literals. It matters only where the

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { stripTs } from './helpers/strip-ts'
 import type { IrDocument, IrType } from '../core/ir'
 import { emitSchemas, refName, responseTypeName } from '../emit/schema'
 
@@ -58,10 +59,7 @@ const PS = String.fromCharCode(0x2029)
  * gone, not one constraint. So the assertion has to be "does this parse".
  */
 const compiles = (contents: string): void => {
-  const body = contents
-    .replace(/^import\s+.*$/gm, '')
-    .replace(/^export type .*$/gm, '')
-    .replace(/^export const /gm, 'const ')
+  const body = stripTs(contents)
   // eslint-disable-next-line no-new-func
   new Function('s', body)
 }

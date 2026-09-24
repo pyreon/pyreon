@@ -15,6 +15,7 @@
  * the one nobody wrote a sanitizer for.
  */
 import { s } from '@pyreon/validate'
+import { stripTs } from './helpers/strip-ts'
 import { parseSync } from 'oxc-parser'
 import { resolveConfig } from '../core/config'
 import { generate } from '../core/generate'
@@ -69,10 +70,7 @@ const PAYLOADS = ['__TITLE_PWNED', '__SUMMARY_PWNED', '__DESC_PWNED', '__ENUM_PW
 
 /** Evaluate an emitted schema module; returns any global the payloads set. */
 function executeAndCatchInjection(source: string): string[] {
-  const body = source
-    .replace(/^import\s+.*$/gm, '')
-    .replace(/^export type .*$/gm, '')
-    .replace(/^export const /gm, 'const ')
+  const body = stripTs(source)
   const names = [...source.matchAll(/^export const (\w+)/gm)].map((m) => m[1] as string)
   for (const p of PAYLOADS) delete (globalThis as Record<string, unknown>)[p]
   // eslint-disable-next-line no-new-func

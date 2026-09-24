@@ -77,7 +77,7 @@ describe('generate', () => {
     // The INVARIANT is where the generic sits, not the surrounding shape — the
     // options spread was added later and must not weaken this.
     const src = file(generate(SPEC, web), 'queries/books.ts')
-    expect(src).toContain('useQuery<Book[]>(')
+    expect(src).toContain('useQuery<Awaited<ReturnType<typeof listBooks>>>(')
     expect(src).not.toContain('.query<')
   })
 
@@ -194,7 +194,7 @@ describe('generate', () => {
   it('leaves a parameterless hook alone — nothing to be not-ready about', () => {
     const src = file(generate(SPEC, web), 'queries/books.ts')
     expect(src).toContain('export function useListBooks(options?: () => Record<string, unknown>) {')
-    expect(src).toContain('return useQuery<Book[]>(() => ({ ...listBooks.query(), ...options?.() }))')
+    expect(src).toContain('return useQuery<Awaited<ReturnType<typeof listBooks>>>(() => ({ ...listBooks.query(), ...options?.() }))')
   })
 
   it('reports per-operation reach with a reason', () => {

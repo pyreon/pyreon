@@ -19,11 +19,14 @@ import ts from 'typescript'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { resolveConfig, type ClientName, type ValidatorName } from '../core/config'
+import { ALL_PLUGINS, resolveConfig, type ClientName, type PluginName, type ValidatorName } from '../core/config'
 import { generate } from '../core/generate'
+import { emitSchemaAgreement } from '../emit/schema'
+import { banner } from '../emit/writer'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const TC_ROOT = join(HERE, '.generated', 'typecheck')
+const CORE = join(HERE, '..', '..', '..', '..', 'core', 'core', 'src', 'index.ts')
 
 /**
  * A spec carrying the shapes most likely to produce un-typecheckable output.
@@ -90,7 +93,13 @@ components:
  * is most of what is being tested. A virtual host would need its own resolver,
  * and a bug in that resolver is indistinguishable from a bug in the output.
  */
-function diagnose(client: ClientName, validator: ValidatorName): string[] {
+function diagnose(
+  client: ClientName,
+  validator: ValidatorName,
+  spec = SPEC,
+  plugins: PluginName[] = ['schemas', 'client', 'queries', 'mocks', 'faker'],
+  label = `${client}-${validator}`,
+): string[] {
   const cfg = resolveConfig({
     input: 'x',
     client,
@@ -99,10 +108,17 @@ function diagnose(client: ClientName, validator: ValidatorName): string[] {
     // whose output is typed against ANOTHER emitter's output -- the model types
     // from `schemas.ts` -- so a mismatch between the two shows up here and
     // nowhere else.
-    plugins: ['schemas', 'client', 'queries', 'mocks', 'faker'],
+    plugins,
   })
-  const files = generate(SPEC, cfg).files.filter((f) => f.path.endsWith('.ts'))
-  const root = join(TC_ROOT, `${client}-${validator}`)
+  const result = generate(spec, cfg)
+  const files = result.files.filter((f) => /\.tsx?$/.test(f.path))
+  // The interfaces in `schemas.ts` are written out, and the schema consts are
+  // cast to them -- so nothing in the OUTPUT relates the two. This file does,
+  // in both directions, for every model.
+  if (plugins.includes('schemas')) {
+    files.push(emitSchemaAgreement(result.doc, validator).build(banner(result.doc.title, result.doc.version)))
+  }
+  const root = join(TC_ROOT, label)
   rmSync(root, { recursive: true, force: true })
   for (const f of files) {
     const abs = join(root, f.path)
@@ -122,6 +138,11 @@ function diagnose(client: ClientName, validator: ValidatorName): string[] {
     // `bun` first: the workspace packages expose their source under that
     // condition, which is how everything else in this repo resolves them.
     customConditions: ['bun'],
+    jsx: ts.JsxEmit.Preserve,
+    jsxImportSource: '@pyreon/core',
+    // `components.tsx` and the Atlas wrapper import `@pyreon/core`, which lathe
+    // does not depend on -- mapped to the workspace source.
+    paths: { '@pyreon/core': [CORE], '@pyreon/core/*': [join(dirname(CORE), '*')] },
   }
   const entries = files.map((f) => join(root, f.path))
   const program = ts.createProgram(entries, options)
@@ -145,6 +166,95 @@ describe('generated output typechecks under strict TypeScript', () => {
         expect(errors, errors.join('\n')).toEqual([])
       })
     }
+  }
+})
+
+/**
+ * Shapes real specs are full of that lathe's own fixtures were not -- each one
+ * produced output that did not compile, found by running every plugin over
+ * GitHub's and Stripe's specs (`scripts/typecheck-real-specs.ts`):
+ *
+ * - `Shape`: a union whose first member is an inline object. `types.ts` emitted
+ *   `export interface Shape { … } | { … }`.
+ * - `Pet.labels` / `Pet.shape`: an inline object as an array item and as a
+ *   union branch. The faker arrow returned a block, not an object.
+ * - `Pets` / `Mark` / `Either`: models that are not objects. The faker factory
+ *   declared `overrides: Partial<Pets> = {}`.
+ * - `Customer` <-> `Source` <-> `Card`: a cycle closed THROUGH a nullable union
+ *   (Stripe's expandable fields). Inferring through it ended in
+ *   `Property 'nullable' does not exist on type 'UnionSchema<…>'`.
+ * - `ListEnvelope`: an inline response carrying a string enum. The hook's
+ *   declared data type said `'list'` where `@pyreon/validate` infers `string`.
+ */
+const SHAPES = `
+openapi: 3.0.3
+info: { title: Shapes, version: '1' }
+servers: [{ url: 'https://api.test/v1' }]
+paths:
+  /pets:
+    get:
+      operationId: listPets
+      tags: [p]
+      responses: { '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Pets' } } } } }
+  /customers:
+    get:
+      operationId: listCustomers
+      tags: [c]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [object, data]
+                properties:
+                  object: { type: string, enum: [list] }
+                  data: { type: array, items: { $ref: '#/components/schemas/Customer' } }
+  /shapes:
+    get:
+      operationId: getShape
+      tags: [s]
+      responses: { '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Shape' } } } } }
+components:
+  schemas:
+    Shape:
+      oneOf:
+        - { type: object, required: [r], properties: { r: { type: number } } }
+        - { type: object, required: [w], properties: { w: { type: number } } }
+    Pet:
+      type: object
+      required: [id, labels, shape]
+      properties:
+        id: { type: integer }
+        labels: { type: array, items: { type: object, required: [key], properties: { key: { type: string } } } }
+        shape:
+          oneOf:
+            - { type: object, required: [r], properties: { r: { type: number } } }
+            - { type: object, required: [w], properties: { w: { type: number } } }
+    Pets: { type: array, items: { $ref: '#/components/schemas/Pet' } }
+    Mark: { type: string, enum: [X, O] }
+    Either: { oneOf: [ { type: string }, { $ref: '#/components/schemas/Pet' } ] }
+    Customer:
+      type: object
+      properties:
+        default_source: { nullable: true, anyOf: [ { type: string }, { $ref: '#/components/schemas/Source' } ] }
+        sources: { type: array, items: { anyOf: [ { $ref: '#/components/schemas/Source' }, { $ref: '#/components/schemas/Card' } ] } }
+    Source:
+      type: object
+      properties:
+        customer: { anyOf: [ { type: string }, { $ref: '#/components/schemas/Customer' } ] }
+    Card:
+      type: object
+      properties:
+        customer: { anyOf: [ { type: string }, { $ref: '#/components/schemas/Customer' } ] }
+`
+
+describe('every plugin typechecks over the shapes that broke on real specs', () => {
+  for (const validator of VALIDATORS) {
+    it(`validator=${validator}`, () => {
+      const errors = diagnose('pyreon', validator, SHAPES, [...ALL_PLUGINS], `shapes-${validator}`)
+      expect(errors, errors.join('\n')).toEqual([])
+    })
   }
 })
 

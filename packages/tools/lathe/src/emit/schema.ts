@@ -257,7 +257,49 @@ function portableRegex(pattern: string): boolean {
   }
 }
 
-/** Emit `schemas.ts` — one schema + one type per model. */
+/**
+ * Emit `schemas.ts` — one type and one schema per model.
+ *
+ * The TYPE is written out as a plain interface (or alias), and the schema const
+ * is typed AS that interface's schema rather than inferred from its own
+ * initializer:
+ *
+ * ```ts
+ * export interface Book { id: string; title: string }
+ * export const Book = s.object({ id: s.string(), title: s.string() }) as unknown as Schema<Book>
+ * ```
+ *
+ * The inferred form (`export type Book = Infer<typeof Book>`) made every
+ * consumer's TypeScript re-derive every model from the builder types of a
+ * thousand nested schemas. Measured on the generated schemas + client + queries
+ * (tsc 6.0.3, instantiations, deterministic):
+ *
+ * | spec | inferred | interface + cast |
+ * | --- | ---: | ---: |
+ * | Stripe (`@pyreon/validate`) | 1,372,857 | 531,466 |
+ * | Stripe (zod) | 1,043,674 | 300,727 |
+ * | GitHub (`@pyreon/validate`) | 1,947,953 | 1,409,214 |
+ *
+ * ANNOTATING instead (`const Book: Schema<Book> = …`) was measured too and is
+ * WORSE than inferring (Stripe 1.17M -> 1.49M on schemas alone, GitHub 1.60M ->
+ * 2.61M): an annotation keeps the initializer's type AND adds an assignability
+ * check against it. A plain `as Schema<Book>` pays a comparability check that
+ * costs about as much. `as unknown as` is the form that stops the checker from
+ * relating the two -- which is exactly why agreement between the interface and
+ * the schema is NOT checked here, by construction. It is checked by lathe's own
+ * test suite instead (`emitSchemaAgreement`), because both halves come from the
+ * one IR walk below and a disagreement is a generator bug, not a consumer one.
+ *
+ * The cast also removes a class of errors: a model inside a `$ref` cycle used
+ * to have its type inferred THROUGH the cycle, and TypeScript answered with
+ * `Property 'nullable' does not exist on type 'UnionSchema<…>'` on Stripe's
+ * expandable fields. Nothing is inferred through anything now.
+ *
+ * What a consumer gives up is the schema's precise builder type: `Book` is a
+ * `Schema<Book>`, so `.parse`, `.optional()`, `.nullable()`, `.array()` and
+ * Standard Schema all work, but object-only builders (`.extend`, `.pick`) do
+ * not type-check on a generated schema. Compose a new schema around it instead.
+ */
 export function emitSchemas(
   doc: IrDocument,
   opts: { native: boolean; validator?: ValidatorName | undefined },
@@ -266,7 +308,9 @@ export function emitSchemas(
   if (doc.models.length === 0) return f
   const dialect = dialectOf(opts.validator ?? 'pyreon')
   f.import(dialect.module, dialect.binding)
-  if (dialect.typeHelper) f.importType(dialect.typeHelper.module, dialect.typeHelper.name)
+  if (dialect.schemaTypeImport) {
+    f.importType(dialect.schemaTypeImport.module, dialect.schemaTypeImport.name)
+  }
 
   // DEPENDENCY ORDER, not alphabetical. These are `const` declarations and
   // `const` is not hoisted, so a model emitted before one it references throws
@@ -274,49 +318,58 @@ export function emitSchemas(
   // Alphabetical order satisfies that only by coincidence.
   const { order, backEdges } = topoSortModels(doc)
   const byName = new Map(doc.models.map((m) => [m.name, m]))
-  // Imported only when a cycle actually needs the annotation — an unused
-  // import is a lint error in the consumer's repo, and a confusing one since
-  // nobody wrote the file.
-  if (backEdges.size > 0 && dialect.schemaTypeImport) {
-    f.importType(dialect.schemaTypeImport.module, dialect.schemaTypeImport.name)
-  }
 
   for (const name of order) {
     const model = byName.get(name)
     if (!model) continue
-    // Only the edges that actually close a cycle are deferred; every other ref
-    // is emitted by name, which keeps the common output unchanged.
+    // Only the edges that actually close a cycle are deferred (`lazy`); every
+    // other ref is emitted by name.
     const defer = deferredTargets(backEdges, name)
     f.line()
     f.doc(model.doc)
-    const expr = schemaExpr(model.type, { ...opts, defer })
-    if (defer.size > 0) {
-      // A CYCLE. `lazy(() => X)` inside `const X = …` makes inferring X's type
-      // from its own initializer circular, and TypeScript answers TS7022 —
-      // the generated module does not compile. So the structural type is
-      // named FIRST (type aliases are hoisted, so a forward reference to the
-      // cycle partner is fine) and the const is annotated with it, which is
-      // the pattern both libraries document for recursive schemas.
-      //
-      // Only the models that actually close a cycle take this shape; every
-      // other one keeps the inferred form, which reads better and stays tied
-      // to the schema rather than to a second rendering of the same IR.
-      f.line(`export type ${model.name} = ${tsType(model.type, 0, dialect.enumWidensToString)}`)
-      f.line(`export const ${model.name}: ${dialect.schemaTypeRef(model.name)} = ${expr}`)
-      continue
-    }
-    // The schema is a top-level `const` bound to a plain `s.object({ … })`
-    // literal, which is exactly the shape PMTC's recognizer requires. Wrapping
-    // it in anything — a helper call, a `satisfies`, a spread — silently drops
-    // it off the native path.
-    f.line(`export const ${model.name} = ${expr}`)
-    // zod infers with `z.infer<typeof X>`, which needs no separate import;
-    // `@pyreon/validate` exposes the same thing as a named `Infer` helper.
+    f.line(typeDeclaration(model.name, model.type, dialect.enumWidensToString))
     f.line(
-      dialect.typeHelper
-        ? `export type ${model.name} = ${dialect.typeHelper.name}<typeof ${model.name}>`
-        : `export type ${model.name} = ${dialect.binding}.infer<typeof ${model.name}>`,
+      `export const ${model.name} = ${schemaExpr(model.type, { ...opts, defer })} as unknown as ${dialect.schemaTypeRef(model.name)}`,
     )
+  }
+  return f
+}
+
+/**
+ * A module that PROVES the interfaces in `schemas.ts` agree with their schemas.
+ *
+ * Not part of the generated output -- lathe's tests and the heavy typecheck
+ * script compile it next to the output. Each model's schema expression is
+ * re-emitted WITHOUT the cast and its inferred output compared, in both
+ * directions, with the interface the output declares:
+ *
+ * ```ts
+ * const Book$ = s.object({ … })
+ * export const Book$agrees: Same<Infer<typeof Book$>, Book> = true
+ * ```
+ *
+ * Mutual assignability, not one direction: a declared type WIDER than the
+ * schema (an optional field the schema requires) is as much a lie as a
+ * narrower one.
+ */
+export function emitSchemaAgreement(doc: IrDocument, validator: ValidatorName = 'pyreon'): SourceFile {
+  const f = new SourceFile('schemas.agreement.ts')
+  const dialect = dialectOf(validator)
+  f.import(dialect.module, dialect.binding)
+  if (dialect.typeHelper) f.importType(dialect.typeHelper.module, dialect.typeHelper.name)
+  const { order, backEdges } = topoSortModels(doc)
+  const byName = new Map(doc.models.map((m) => [m.name, m]))
+  if (order.length > 0) f.import(relativeSpecifier(f.path, SCHEMA_FILE), ...order)
+  f.line()
+  f.line('type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false')
+  const infer = (x: string): string =>
+    dialect.typeHelper ? `${dialect.typeHelper.name}<typeof ${x}>` : `${dialect.binding}.infer<typeof ${x}>`
+  for (const name of order) {
+    const model = byName.get(name)
+    if (!model) continue
+    const expr = schemaExpr(model.type, { native: false, validator, defer: deferredTargets(backEdges, name) })
+    f.line(`const ${name}$ = ${expr}`)
+    f.line(`export const ${name}$agrees: Same<${infer(`${name}$`)}, ${name}> = true`)
   }
   return f
 }
