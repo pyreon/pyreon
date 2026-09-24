@@ -15,7 +15,7 @@ const read = (p: string) => readFileSync(join(REPO, p), 'utf8')
 const CANVAS_SWIFT = 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonChartCanvas.swift'
 const ENGINE_SWIFT = 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonChartEngine.swift'
 
-const SPEC = `import { PlotChart, bars, line, waterfall } from '@pyreon/charts/plot'
+const SPEC = `import { PlotChart, bars, line, waterfall } from '@pyreon/charts/engine'
 import { Stack } from '@pyreon/primitives'
 interface Row { m: string; v: number; d: number }
 const ROWS: Row[] = [{ m: 'Jan', v: 10, d: 4 }, { m: 'Feb', v: 100, d: -2 }, { m: 'Mar', v: 1000, d: 7 }]
@@ -29,24 +29,24 @@ export function App() {
 }
 `
 
-const GRAMMAR = `import { Axis, Bar, Plot, Scale } from '@pyreon/charts/plot'
+const GRAMMAR = `import { Axis, Bar, Chart, Scale } from '@pyreon/charts'
 import { Stack } from '@pyreon/primitives'
 interface Row { m: string; a: number; b: number }
 const ROWS: Row[] = [{ m: 'Jan', a: 3, b: 5 }, { m: 'Feb', a: 4, b: 1 }]
 export function App() {
   return (
     <Stack>
-      <Plot data={ROWS} x="m" height={200}>
+      <Chart data={ROWS} x="m" height={200}>
         <Scale y="log" normalize />
         <Axis x title="Month" labels="thin" />
         <Axis y title="Share" />
         <Bar y="a" stack />
         <Bar y="b" stack />
-      </Plot>
-      <Plot data={ROWS} x="m" height={160}>
+      </Chart>
+      <Chart data={ROWS} x="m" height={160}>
         <Scale y="time" x="time" />
         <Bar y="a" waterfall negativeColor="#f00" />
-      </Plot>
+      </Chart>
     </Stack>
   )
 }
@@ -92,11 +92,11 @@ describe('batch-2 spec switches lower as literals', () => {
 })
 
 describe('<Histogram> crosses — the row basis becomes bins', () => {
-  const HIST = `import { Plot, Histogram } from '@pyreon/charts/plot'
+  const HIST = `import { Chart, Histogram } from '@pyreon/charts'
 interface Row { age: number }
 const ROWS: Row[] = [{ age: 21 }, { age: 34 }, { age: 29 }]
 export function App() {
-  return <Plot data={ROWS} height={220}><Histogram x="age" bins={5} /></Plot>
+  return <Chart data={ROWS} height={220}><Histogram x="age" bins={5} /></Chart>
 }
 `
 
@@ -126,7 +126,7 @@ export function App() {
     // Those marks read the ORIGINAL rows, and after the substitution there
     // are none left to read — so dropping them is right, and saying so is
     // the difference between a limitation and a bug.
-    const withMark = HIST.replace('<Histogram x="age" bins={5} />', '<Histogram x="age" bins={5} /><Bar y="age" />').replace('Plot, Histogram', 'Plot, Histogram, Bar')
+    const withMark = HIST.replace('<Histogram x="age" bins={5} />', '<Histogram x="age" bins={5} /><Bar y="age" />').replace('Chart, Histogram', 'Chart, Histogram, Bar')
     const r = transform(withMark, { target: 'swift' })
     expect(r.warnings.some((w) => w.includes('reads the ORIGINAL rows'))).toBe(true)
   })
@@ -162,7 +162,7 @@ describe('<Scale> and the widened <Axis> desugar; <Bar waterfall> picks the wate
     expect(r.code).toContain('kind: "waterfall"')
     expect(r.code).toContain('negativeColor: "#f00"')
     // Byte-identical to the props form for the same chart.
-    const props = `import { PlotChart, stackedBars } from '@pyreon/charts/plot'
+    const props = `import { PlotChart, stackedBars } from '@pyreon/charts/engine'
 import { Stack } from '@pyreon/primitives'
 interface Row { m: string; a: number; b: number }
 const ROWS: Row[] = [{ m: 'Jan', a: 3, b: 5 }, { m: 'Feb', a: 4, b: 1 }]
@@ -174,7 +174,7 @@ export function App() {
   )
 }
 `
-    const one = transform(GRAMMAR.replace(/<Plot data=\{ROWS\} x="m" height=\{160\}>[\s\S]*?<\/Plot>\n/, ''), { target: 'swift' }).code
+    const one = transform(GRAMMAR.replace(/<Chart data=\{ROWS\} x="m" height=\{160\}>[\s\S]*?<\/Chart>\n/, ''), { target: 'swift' }).code
     expect(one).toBe(transform(props, { target: 'swift' }).code)
   })
   it('Kotlin: the same desugar', () => {
@@ -196,7 +196,8 @@ export function App() {
 
 describe('the web-only pieces are named, never dropped silently', () => {
   it('error accessors on a mark, <Histogram> and facet are never dropped silently', () => {
-    const src = `import { Bar, Histogram, Plot, PlotChart, bars } from '@pyreon/charts/plot'
+    const src = `import { Bar, Histogram, Chart } from '@pyreon/charts'
+import { PlotChart, bars } from '@pyreon/charts/engine'
 import { Stack } from '@pyreon/primitives'
 interface Row { m: string; v: number; lo: number; hi: number; r: string }
 const ROWS: Row[] = [{ m: 'Jan', v: 10, lo: 8, hi: 12, r: 'eu' }]
@@ -204,10 +205,10 @@ export function App() {
   return (
     <Stack>
       <PlotChart data={ROWS} x={(d) => d.m} marks={[bars((d) => d.v, { errorLow: (d) => d.lo, errorHigh: (d) => d.hi })]} locale="de-DE" />
-      <Plot data={ROWS} facet="r" facetColumns={2}>
+      <Chart data={ROWS} facet="r" facetColumns={2}>
         <Histogram x="v" bins={5} />
         <Bar y="v" />
-      </Plot>
+      </Chart>
     </Stack>
   )
 }
@@ -232,7 +233,7 @@ export function App() {
 })
 
 describe('error bars cross — the bounds ride the same row map the values do', () => {
-  const ERR = `import { PlotChart, bars, points } from '@pyreon/charts/plot'
+  const ERR = `import { PlotChart, bars, points } from '@pyreon/charts/engine'
 import { Stack } from '@pyreon/primitives'
 interface Row { m: string; v: number; lo: number; hi: number }
 const ROWS: Row[] = [{ m: 'Jan', v: 10, lo: 8, hi: 12 }, { m: 'Feb', v: 30, lo: 25, hi: 34 }]
@@ -261,7 +262,7 @@ export function App() {
     expect(r.code).toContain('errLow = pyreonErrLow0, errHigh = pyreonErrHigh0)')
   })
   it('ONE bound alone is named and dropped — a whisker has no extent without both (as on the web)', () => {
-    const half = `import { PlotChart, bars } from '@pyreon/charts/plot'
+    const half = `import { PlotChart, bars } from '@pyreon/charts/engine'
 import { Stack } from '@pyreon/primitives'
 interface Row { m: string; v: number; lo: number }
 const ROWS: Row[] = [{ m: 'Jan', v: 10, lo: 8 }]

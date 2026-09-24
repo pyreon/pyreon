@@ -4,7 +4,7 @@
 // a DOM overlay on web and a native popover want different surfaces. Keeping
 // placement here means the flip-at-the-edge logic is written once.
 
-import { groupThousands, plain } from './format'
+import { groupThousands } from './format'
 import type { Formatter } from './format'
 import { isFiniteNumber } from './scale'
 import type { Double, Pt, Rect } from './types'
@@ -114,7 +114,7 @@ export function tooltipAt(index: number, categories: string[], series: TooltipSe
 
 /** Formatted lines, ready to render. */
 export function tooltipLines(c: TooltipContent, format?: Formatter): string[] {
-  const fmt = format ?? plain
+  const fmt = format ?? groupThousands
   const out = [c.title]
   for (const r of c.rows) {
     // NaN as "absent" rather than an optional narrowing: PMTC does not carry

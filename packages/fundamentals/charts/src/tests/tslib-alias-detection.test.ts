@@ -22,7 +22,7 @@ describe('charts loader — tslib alias detection (W12 follow-up)', () => {
     expect(wrapped.message).toContain('tslib alias is missing')
     expect(wrapped.message).toContain('chartsViteAlias')
     expect(wrapped.message).toContain(
-      "import { chartsViteAlias } from '@pyreon/charts/vite'",
+      "import { chartsViteAlias } from '@pyreon/charts/echarts/vite'",
     )
     // Original error message preserved at the bottom for debugging.
     expect(wrapped.message).toContain('__extends')
