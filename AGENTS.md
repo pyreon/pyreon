@@ -147,6 +147,11 @@ Before adding any module-level cache, stack or registry, answer: what evicts ent
 ### Git
 
 - Never push to `main`. Work on a branch in a worktree created from `origin/main` (`git worktree add /tmp/wt-<name> origin/main -b <branch>`); do not check out or pull in the primary checkout.
+- **Leave the machine as you found it.** Sessions share one Mac's CPU, RAM and disk. A `/tmp/wt-<name>` worktree is about 1.7–2.3 GB (it has its own `node_modules`), and a device left running costs more than a build: one idle Android emulator holds about 3.5 GB.
+  - `simctl terminate` any app you launch. Shut down any simulator or emulator **you** booted: `simctl shutdown <udid>` / `adb -s <serial> emu kill`. Never `shutdown all`, because another session may be mid-test.
+  - Keep Xcode and Gradle build output inside your worktree, never in a new top-level `/tmp` directory.
+  - Once your PR merges, remove the worktree and the branch: `git worktree remove --force /tmp/wt-<name> && git branch -D <branch>`. Skip a worktree that a running process still uses (`lsof -d cwd | grep /tmp/wt-<name>`).
+  - A launchd job, `~/.local/bin/dev-janitor`, runs every 30 minutes and stops devices older than 6 hours and idle Gradle/Kotlin daemons. It is a backstop, not permission to leave them running.
 - Every PR targets `main`. Never base a PR on another feature branch: it merges without the required checks.
 - Stage specific files, never `git add .`. After a `package.json` change run `bun install` and commit `bun.lock`.
 - **Never merge a PR.** Open it, report the URL and stop. Merge only when the maintainer says "merge it" for that PR.
