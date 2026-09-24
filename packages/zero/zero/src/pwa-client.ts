@@ -46,11 +46,21 @@ function appBase(): string {
  * })
  * ```
  */
-export async function registerServiceWorker(
+// Idempotency (leak class D): the update listeners below live as long as the
+// page, so a second call must NOT attach a second set — it returns the first
+// call's registration. One registration per page is the whole contract.
+let registered: Promise<ServiceWorkerRegistration | null> | null = null
+
+export function registerServiceWorker(
   options: RegisterServiceWorkerOptions = {},
 ): Promise<ServiceWorkerRegistration | null> {
-  if (process.env.NODE_ENV !== 'production') return null
-  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return null
+  if (process.env.NODE_ENV !== 'production') return Promise.resolve(null)
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return Promise.resolve(null)
+  registered ??= doRegister(options)
+  return registered
+}
+
+async function doRegister(options: RegisterServiceWorkerOptions): Promise<ServiceWorkerRegistration | null> {
 
   const base = appBase()
   const container = navigator.serviceWorker

@@ -132,5 +132,9 @@ describe('registerServiceWorker', () => {
     vi.stubEnv('NODE_ENV', 'production')
     expect(await registerServiceWorker()).toBe(reg)
     expect(register).toHaveBeenCalledWith('/sw.js', { scope: '/', updateViaCache: 'none' })
+    // Idempotent: a second call reuses the registration, attaching nothing new.
+    expect(await registerServiceWorker({ onUpdate: () => {} })).toBe(reg)
+    expect(register).toHaveBeenCalledTimes(1)
+    expect(reg.addEventListener).not.toHaveBeenCalled()
   })
 })
