@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import { describeLockedValue, isTextEditable } from '../views/panels/ControlsPanel'
 import { labTiles } from '../views/lab/LabView'
+import { h } from '@pyreon/core'
 
 describe('isTextEditable', () => {
   it('edits scalars and blanks', () => {
@@ -12,7 +13,7 @@ describe('isTextEditable', () => {
   })
 
   it('refuses structure a keystroke would destroy (a render function, options, a vnode)', () => {
-    for (const v of [() => null, [1, 2], { a: 1 }, { type: 'div', props: {} }])
+    for (const v of [() => null, [1, 2], { a: 1 }, h('div', null)])
       expect(isTextEditable(v)).toBe(false)
   })
 })
@@ -22,7 +23,7 @@ describe('describeLockedValue', () => {
     expect(describeLockedValue(() => 1)).toBe('ƒ render function')
     expect(describeLockedValue([1])).toBe('[1 item]')
     expect(describeLockedValue([1, 2, 3, 4])).toBe('[4 items]')
-    expect(describeLockedValue({ type: 'div', props: {}, children: [] })).toBe('<element>')
+    expect(describeLockedValue(h('div', null))).toBe('<element>')
     expect(describeLockedValue({ a: 1 })).toBe('{"a":1}')
     expect(describeLockedValue({ long: 'x'.repeat(80) })).toMatch(/…$/)
     const cyclic: Record<string, unknown> = {}
