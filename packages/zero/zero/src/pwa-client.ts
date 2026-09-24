@@ -3,6 +3,8 @@
  * Client-safe: no Node imports, no-op on the server and in development.
  */
 
+import { isServer } from '@pyreon/reactivity'
+
 declare const __ZERO_BASE__: string
 
 /** Options for {@link registerServiceWorker}. */
@@ -55,12 +57,14 @@ export function registerServiceWorker(
   options: RegisterServiceWorkerOptions = {},
 ): Promise<ServiceWorkerRegistration | null> {
   if (process.env.NODE_ENV !== 'production') return Promise.resolve(null)
-  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return Promise.resolve(null)
+  if (isServer || !('serviceWorker' in navigator)) return Promise.resolve(null)
   registered ??= doRegister(options)
   return registered
 }
 
 async function doRegister(options: RegisterServiceWorkerOptions): Promise<ServiceWorkerRegistration | null> {
+  // Browser-only body (the caller also checks support).
+  if (isServer) return null
 
   const base = appBase()
   const container = navigator.serviceWorker

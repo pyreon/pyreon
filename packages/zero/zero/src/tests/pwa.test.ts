@@ -1,7 +1,6 @@
 import { runInNewContext } from 'node:vm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { buildServiceWorker, buildWebManifest } from '../pwa'
-import { registerServiceWorker } from '../pwa-client'
 
 type Listener = (e: unknown) => void
 
@@ -113,6 +112,13 @@ describe('buildWebManifest', () => {
   })
 })
 
+async function loadClient(): Promise<typeof import('../pwa-client')> {
+  // `isServer` is fixed at module load — give the module a DOM, fresh.
+  vi.stubGlobal('document', {})
+  vi.resetModules()
+  return import('../pwa-client')
+}
+
 describe('registerServiceWorker', () => {
   afterEach(() => {
     vi.unstubAllEnvs()
@@ -122,6 +128,7 @@ describe('registerServiceWorker', () => {
     const register = vi.fn()
     vi.stubGlobal('navigator', { serviceWorker: { register } })
     vi.stubEnv('NODE_ENV', 'development')
+    const { registerServiceWorker } = await loadClient()
     expect(await registerServiceWorker()).toBeNull()
     expect(register).not.toHaveBeenCalled()
   })
@@ -130,6 +137,7 @@ describe('registerServiceWorker', () => {
     const register = vi.fn(async () => reg)
     vi.stubGlobal('navigator', { serviceWorker: { register, controller: null } })
     vi.stubEnv('NODE_ENV', 'production')
+    const { registerServiceWorker } = await loadClient()
     expect(await registerServiceWorker()).toBe(reg)
     expect(register).toHaveBeenCalledWith('/sw.js', { scope: '/', updateViaCache: 'none' })
     // Idempotent: a second call reuses the registration, attaching nothing new.
