@@ -10,7 +10,7 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
  * size, the draw list is shifted into it and the tap out of it.
  */
 const chart = (series: string): string => `
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart option={{ series: [${series}] }} onSelectIndex={(i: number) => {}} tooltip />
 }`

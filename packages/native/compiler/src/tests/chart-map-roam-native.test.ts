@@ -8,8 +8,8 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
  * pans and a pinch zooms through the engine's own `geoRoamPan` / `geoRoamZoom`.
  */
 const app = (roam: string): string => `
-import { MapChart } from '@pyreon/charts/plot'
-import type { GeoShape } from '@pyreon/charts/plot'
+import { MapChart } from '@pyreon/charts'
+import type { GeoShape } from '@pyreon/charts'
 const SHAPES: GeoShape[] = [
   { name: 'A', rings: [[{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }]] },
   { name: 'B', rings: [[{ x: 12, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 8 }]] },
@@ -49,8 +49,8 @@ describe.each(['swift', 'kotlin'] as const)('MapChart roam on %s', (target) => {
 describe.each(['swift', 'kotlin'] as const)('MapChart heat and pies on %s', (target) => {
   it('draws the heat layer through the theme ramp and the pies, and compiles', () => {
     const r = transform(`
-import { MapChart } from '@pyreon/charts/plot'
-import type { GeoHeatPoint, GeoPie, GeoShape } from '@pyreon/charts/plot'
+import { MapChart } from '@pyreon/charts'
+import type { GeoHeatPoint, GeoPie, GeoShape } from '@pyreon/charts'
 const SHAPES: GeoShape[] = [{ name: 'A', rings: [[{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }]] }]
 const HEAT: GeoHeatPoint[] = [{ lon: 3, lat: 3, value: 5 }]
 const PIES: GeoPie[] = [{ lon: 5, lat: 5, radius: 20, innerRadius: 0, slices: [{ value: 1, label: 'a', color: '#00ff00' }] }]
@@ -70,8 +70,8 @@ export function App() {
 describe.each(['swift', 'kotlin'] as const)('MapChart trail on %s', (target) => {
   it('a trail wraps the host in the effect clock and draws it at the clock time, and compiles', () => {
     const r = transform(`
-import { MapChart } from '@pyreon/charts/plot'
-import type { GeoOverlayPath, GeoShape, GeoTrail } from '@pyreon/charts/plot'
+import { MapChart } from '@pyreon/charts'
+import type { GeoOverlayPath, GeoShape, GeoTrail } from '@pyreon/charts'
 const SHAPES: GeoShape[] = [{ name: 'A', rings: [[{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }]] }]
 const ROUTES: GeoOverlayPath[] = [{ coords: [{ lon: 0, lat: 0 }, { lon: 10, lat: 10 }] }]
 const TRAIL: GeoTrail = { period: 2, trailLength: 0.3, color: '#ff0000', symbolSize: 6 }
@@ -87,8 +87,8 @@ export function App() {
 
   it('no trail, no clock', () => {
     const r = transform(`
-import { MapChart } from '@pyreon/charts/plot'
-import type { GeoShape } from '@pyreon/charts/plot'
+import { MapChart } from '@pyreon/charts'
+import type { GeoShape } from '@pyreon/charts'
 const SHAPES: GeoShape[] = [{ name: 'A', rings: [[{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }]] }]
 export function App() {
   return <MapChart map={SHAPES} values={{ A: 1 }} height={200} />

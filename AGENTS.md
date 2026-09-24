@@ -78,7 +78,7 @@ Each package's `src/manifest.ts` feeds `llms.txt`, `llms-full.txt`, the MCP API 
 
 - Coverage: 57 of 76 published packages have a manifest. The remaining 19 are EXPLICITLY EXEMPT build tooling or scaffolding with no consumable runtime API; the list is `NO_MANIFEST_EXEMPT` in `scripts/check-multiplatform-tier.ts`. Do not give them filler manifests.
 - Every manifest declares `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }` (rationale required for `web-only`).
-- MCP `validate` runs `detectReactPatterns` plus `detectPyreonPatterns`, which catches "using Pyreon wrong" mistakes — 18 detector codes today.
+- MCP `validate` runs `detectReactPatterns` plus `detectPyreonPatterns`, which catches "using Pyreon wrong" mistakes — 19 detector codes today.
 
 ## Core rules of the framework
 

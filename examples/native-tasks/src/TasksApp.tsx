@@ -74,19 +74,15 @@ import { announce } from '@pyreon/a11y'
 import { useUrlState } from '@pyreon/url-state'
 import { signal, computed } from '@pyreon/reactivity'
 import {
+  Arc,
+  Bar,
   BoxplotChart,
   CalendarChart,
-  CandlestickChart,
-  FunnelChart,
   GanttChart,
   GaugeChart,
   GraphChart,
-  HeatmapChart,
   MapChart,
   ParallelChart,
-  PieChart,
-  OptionChart,
-  PlotChart,
   PolarChart,
   RadarChart,
   RiverChart,
@@ -94,12 +90,12 @@ import {
   SunburstChart,
   TreeChart,
   TreemapChart,
-  bars,
-  bollinger,
+  Chart,
+  Tooltip,
   createChartHandle,
-  line,
-  sma,
-} from '@pyreon/charts/plot'
+} from '@pyreon/charts'
+import { OptionChart } from '@pyreon/charts/option'
+import { CandlestickChart, FunnelChart, HeatmapChart, PieChart, PlotChart, bars, bollinger, line, sma } from '@pyreon/charts/engine'
 import type {
   BrushRange,
   GeoHeatPoint,
@@ -113,11 +109,11 @@ import type {
   SankeyNode,
   TreeNode,
   ZoomWindow,
-} from '@pyreon/charts/plot'
+} from '@pyreon/charts'
 import { useForm } from '@pyreon/form'
 import { useFetch, useCrashReporter } from '@pyreon/hooks'
 import { defineStore } from '@pyreon/store'
-import { For, Show, Suspense, ErrorBoundary, onMount } from '@pyreon/core'
+import { ColorModeProvider, For, Show, Suspense, ErrorBoundary, onMount, useColorMode } from '@pyreon/core'
 import {
   Stack,
   Inline,
@@ -366,6 +362,15 @@ function QuotesPage() {
 // path helper). The native runtimes parse the string themselves, so this is a
 // native view on iOS and Android, not a WebView. Pure green (#16a34a) is a
 // colour nothing else on the screen paints: the device suites count it.
+// The framework-wide colour mode, read by a component. Under a literal
+// <ColorModeProvider mode="dark"> it must read "dark" on every target, whatever
+// the device's own setting — on iOS the provider pins SwiftUI's colorScheme,
+// on Android the configuration's night bit.
+function ModeProbe() {
+  const mode = useColorMode()
+  return <Text data-testid="gal-color-mode">{mode()}</Text>
+}
+
 function WireEdge(props: EdgeComponentProps) {
   return <path d={`M ${props.sourceX()} ${props.sourceY() + 12} L ${props.targetX()} ${props.targetY() + 12}`} style="fill: none; stroke: #16a34a; stroke-width: 4" />
 }
@@ -1021,6 +1026,7 @@ const SUNBURST: TreeNode[] = [
 ]
 
 function GalleryPage() {
+  const grammarPick = signal(-1)
   const navigate = useNavigate()
   // The toolbox's box zoom reports its window here; the save button its PNG's prefix.
   const tbZoom = signal('0-100')
@@ -1103,6 +1109,20 @@ function GalleryPage() {
         <RiverChart series={RIVER_SERIES} height={180} data-testid="gal-river" />
         <SunburstChart data={SUNBURST} height={200} data-testid="gal-sunburst" />
         <TreeChart data={SUNBURST} height={200} data-testid="gal-tree" />
+        {/* The stable API: <Chart> with mark children. Desugared at compile
+            time to the same hosts the components above lower to; asserted on
+            both device lanes so the grammar itself is device-proven. */}
+        <Chart data={SCORE_ROWS} x="subject" height={200} data-testid="gal-grammar-bars" onSelect={(i: number) => grammarPick.set(i)}>
+          <Bar y="score" label="Points" />
+          <Tooltip />
+        </Chart>
+        <Text data-testid="gal-grammar-pick">{String(grammarPick())}</Text>
+        <Chart data={SCORE_ROWS} height={200} data-testid="gal-grammar-pie">
+          <Arc value="score" label="subject" innerRadius={0.5} />
+        </Chart>
+        <ColorModeProvider mode="dark">
+          <ModeProbe />
+        </ColorModeProvider>
         {/* An ECharts lines series with its animated trail — the device tests
             capture this canvas twice and assert the frames differ. */}
         <OptionChart
