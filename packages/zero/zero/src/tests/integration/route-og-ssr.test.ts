@@ -8,6 +8,7 @@
  *     from the per-request loader data, with CDN-revalidatable caching,
  *   - a route without `og` gets no meta and its endpoint 404s.
  */
+import { cpSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -16,7 +17,11 @@ import { build } from 'vite'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { zeroPlugin } from '../../vite-plugin'
 
-const FIXTURE = resolve(import.meta.dirname, 'fixture-og')
+// Each suite builds a PRIVATE copy of fixture-og: the three og/pwa suites
+// run in parallel, and zero materializes its SSR/SSG entry inside the root,
+// so a shared root lets one suite's cleanup delete another's entry.
+const FIXTURE = resolve(import.meta.dirname, '.tmp-fixture-ogssr')
+cpSync(resolve(import.meta.dirname, 'fixture-og'), FIXTURE, { recursive: true })
 const DIST = join(FIXTURE, 'dist-ssr')
 let handler: (req: Request) => Promise<Response>
 
@@ -41,9 +46,7 @@ beforeAll(async () => {
 }, 180_000)
 
 afterAll(async () => {
-  await rm(DIST, { recursive: true, force: true })
-  await rm(join(FIXTURE, '__pyreon-zero-ssr-entry.js'), { force: true })
-  await rm(join(FIXTURE, '__pyreon-zero-ssg-entry.js'), { force: true })
+  await rm(FIXTURE, { recursive: true, force: true })
 })
 
 describe('route og export — SSR runtime', () => {

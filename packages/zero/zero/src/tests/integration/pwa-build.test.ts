@@ -6,6 +6,7 @@
  * not exist on disk, and no internal artifacts.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { cpSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { join, relative, resolve, sep } from 'node:path'
 import { build } from 'vite'
@@ -13,7 +14,11 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { zeroPlugin } from '../../vite-plugin'
 import type { ZeroConfig } from '../../types'
 
-const FIXTURE = resolve(import.meta.dirname, 'fixture-og')
+// Each suite builds a PRIVATE copy of fixture-og: the three og/pwa suites
+// run in parallel, and zero materializes its SSR/SSG entry inside the root,
+// so a shared root lets one suite's cleanup delete another's entry.
+const FIXTURE = resolve(import.meta.dirname, '.tmp-fixture-pwa')
+cpSync(resolve(import.meta.dirname, 'fixture-og'), FIXTURE, { recursive: true })
 const OUT = 'dist-pwa'
 const DIST = join(FIXTURE, OUT)
 
@@ -46,9 +51,7 @@ function readCfg(swPath: string): { precache: string[]; skipWaiting: boolean; ve
 }
 
 afterAll(async () => {
-  await rm(DIST, { recursive: true, force: true })
-  await rm(join(FIXTURE, '__pyreon-zero-ssg-entry.js'), { force: true })
-  await rm(join(FIXTURE, '__pyreon-zero-ssr-entry.js'), { force: true })
+  await rm(FIXTURE, { recursive: true, force: true })
 })
 
 describe('zero({ pwa }) — real builds', () => {
