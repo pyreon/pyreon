@@ -63,6 +63,7 @@ import {
 	scanRouteFilesWithExports,
 	invalidateRouteScanCache,
 } from "./fs-router";
+import { validateZeroConfig } from "./config-validation";
 import { expandRoutesForLocales } from "./i18n-routing";
 import { writeRouteTypes } from "./route-types-gen";
 import { render404Page } from "./not-found";
@@ -262,6 +263,7 @@ export type ZeroUserConfig = Omit<ZeroConfig, 'mode'> & {
 };
 
 export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
+	validateZeroConfig(userInput);
 	// ── mode: 'auto' (EXPERIMENTAL) — resolve inference ONCE, up front ──
 	// Per-route inference happens at route-module generation (inference-as-
 	// declaration: inferred modes become renderMode literals, so runtime
