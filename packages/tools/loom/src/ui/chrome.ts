@@ -23,13 +23,16 @@ export const Shell = el
   // block — the root must FILL the viewport; Element defaults to inline-flex.
   .attrs({ tag: 'div', block: true, contentDirection: 'rows', contentAlignX: 'block' })
   .theme((t: T) => ({
-    height: '100vh', overflow: 'hidden', fontSize: '14px',
+    // 100dvh where supported: on mobile 100vh includes the collapsing URL
+    // bar, which pushed the footer off-screen.
+    height: '100vh', overflow: 'hidden', fontSize: '14px', extendCss: 'height:100dvh;',
     fontFamily: "'Public Sans',system-ui,sans-serif",
     background: t.bg, color: t.text,
   }))
 export const Body = el
   .attrs({ tag: 'div', contentDirection: 'inline', contentAlignY: 'block' })
-  .theme(() => ({ flex: '1', minHeight: '0' }))
+  // relative: the positioning context for the mobile drawers + scrim.
+  .theme(() => ({ flex: '1', minHeight: '0', position: 'relative' }))
 export const Main = el
   .attrs({ tag: 'main', contentDirection: 'rows', contentAlignX: 'block' })
   .theme(() => ({ flex: '1', minWidth: '0', minHeight: '0' }))
@@ -46,6 +49,9 @@ export const Header = el
     height: '56px', flex: 'none', padding: '0 16px',
     borderWidthBottom: '1px', borderStyleBottom: 'solid', borderColorBottom: t.border,
     background: t.surface,
+    // Mobile: two rows — brand + actions, then the view tabs full width.
+    flexWrap: 'wrap',
+    extendCss: '@media (max-width: 760px){height:auto;padding:8px 12px;row-gap:8px;column-gap:8px;}',
   }))
 export const BrandBlock = el
   .attrs({ tag: 'div', contentDirection: 'inline', contentAlignY: 'center', gap: 12 })
@@ -64,11 +70,20 @@ export const BrandName = txt
   .theme(() => ({ fontFamily: DISPLAY, fontWeight: '700', fontSize: '16px', extendCss: 'letter-spacing:-.01em;' }))
 export const BrandSub = txt
   .attrs({ tag: 'span' })
-  .theme((t: T) => ({ fontFamily: MONO, fontSize: '9.5px', color: t.faint, extendCss: 'letter-spacing:.08em;' }))
+  .theme((t: T) => ({
+    fontFamily: MONO, fontSize: '9.5px', color: t.faint,
+    extendCss: 'letter-spacing:.08em;@media (max-width: 760px){display:none;}',
+  }))
 
 export const NavTabs = el
   .attrs({ tag: 'nav', contentDirection: 'inline', gap: 4 })
-  .theme((t: T) => ({ background: t.surface2, padding: '4px', borderRadius: '12px', flex: 'none' }))
+  .theme((t: T) => ({
+    background: t.surface2, padding: '4px', borderRadius: '12px', flex: 'none',
+    // Mobile: its own full-width row, scrolling sideways rather than clipping.
+    extendCss:
+      '@media (max-width: 760px){order:10;width:100%;overflow-x:auto;scrollbar-width:none;}' +
+      '&::-webkit-scrollbar{display:none;}',
+  }))
 export const NavTab = el
   .attrs({ tag: 'button' })
   .states(dim((t) => ({
@@ -82,27 +97,19 @@ export const NavTab = el
 
 export const SearchWrap = el
   .attrs({ tag: 'div' })
-  .theme(() => ({ position: 'relative', width: '100%', maxWidth: '400px', extendCss: 'margin:0 auto;' }))
+  .theme(() => ({
+    position: 'relative', width: '100%', maxWidth: '400px',
+    extendCss: 'margin:0 auto;@media (max-width: 760px){width:auto;flex:none;margin:0;}',
+  }))
 export const SearchGlyph = txt
   .attrs({ tag: 'span' })
-  .theme((t: T) => ({
-    position: 'absolute', color: t.faint, fontSize: '13px',
-    extendCss: 'left:12px;top:50%;transform:translateY(-50%);',
-  }))
-export const SearchInput = el
-  .attrs({ tag: 'input' })
-  .theme((t: T) => ({
-    fontSize: '13px', width: '100%', padding: '8px 48px 8px 32px', borderRadius: '8px',
-    borderWidth: '1px', borderStyle: 'solid', borderColor: t.border,
-    background: t.bg, color: t.text,
-    extendCss: `outline:none;font-family:inherit;transition:border-color .12s,box-shadow .12s;&:focus{border-color:${t.accent};box-shadow:0 0 0 3px ${t.accentSoft};}`,
-  })) as unknown as InputEl
+  .theme((t: T) => ({ color: t.faint, fontSize: '16px', flex: 'none', lineHeight: '1' }))
 export const SearchKbd = txt
   .attrs({ tag: 'span' })
   .theme((t: T) => ({
-    position: 'absolute', fontFamily: MONO, fontSize: '10px', color: t.faint,
+    fontFamily: MONO, fontSize: '10px', color: t.faint, flex: 'none',
     borderWidth: '1px', borderStyle: 'solid', borderColor: t.border, borderRadius: '4px',
-    padding: '2px 8px', extendCss: 'right:12px;top:50%;transform:translateY(-50%);',
+    padding: '2px 8px',
   }))
 
 export const HealthPill = el
@@ -121,7 +128,7 @@ export const HealthDot = el
 export const HealthText = txt
   .attrs({ tag: 'span' })
   .states(dim((t) => ({ ok: { color: t.ok }, bad: { color: t.danger } })))
-  .theme(() => ({ fontFamily: MONO, fontSize: '10.5px' }))
+  .theme(() => ({ fontFamily: MONO, fontSize: '10.5px', extendCss: 'white-space:nowrap;@media (max-width: 760px){display:none;}' }))
 
 export const IconBtn = el
   .attrs({ tag: 'button', contentDirection: 'inline', contentAlignX: 'center', contentAlignY: 'center' })
@@ -133,11 +140,25 @@ export const IconBtn = el
   }))
 
 // ── sidebar ────────────────────────────────────────────────────────────────
+const DRAWER = (side: 'left' | 'right') =>
+  `@media (max-width: 760px){position:absolute;top:0;bottom:0;${side}:0;z-index:30;` +
+  'width:min(88vw,340px);box-shadow:0 16px 48px -8px rgba(0,0,0,.45);animation:lm-in .16s ease-out;}'
+
 export const Sidebar = el
-  .attrs({ tag: 'aside', contentDirection: 'rows' })
+  // contentAlignX block: the column children STRETCH — without it the kind
+  // row's divider stopped at its buttons instead of spanning the sidebar.
+  .attrs({ tag: 'aside', contentDirection: 'rows', contentAlignX: 'block' })
   .theme((t: T) => ({
     width: 'clamp(200px,20vw,268px)', flex: 'none', minHeight: '0',
     borderWidthRight: '1px', borderStyleRight: 'solid', borderColorRight: t.border, background: t.surface,
+    extendCss: DRAWER('left'),
+  }))
+/** Mobile-only tap-to-close layer behind an open drawer. */
+export const DrawerScrim = el
+  .attrs({ tag: 'button' })
+  .theme(() => ({
+    position: 'absolute', top: '0', left: '0', right: '0', bottom: '0', zIndex: '20', border: 'none', padding: '0',
+    extendCss: 'background:rgba(8,10,16,.45);cursor:pointer;',
   }))
 export const KindRow = el
   .attrs({ tag: 'div', contentDirection: 'inline', gap: 4 })
@@ -146,7 +167,7 @@ export const KindRow = el
     borderWidthBottom: '1px', borderStyleBottom: 'solid', borderColorBottom: t.border,
   }))
 export const KindBtn = el
-  .attrs({ tag: 'button' })
+  .attrs({ tag: 'button', contentAlignX: 'center' })
   .states(dim((t) => ({
     idle: { borderColor: t.border, color: t.muted, background: 'transparent' },
     active: { borderColor: t.accent, color: '#0f0f14', background: t.accent },
@@ -186,7 +207,8 @@ export const PkgBar = el
 export const PkgName = txt
   .attrs({ tag: 'span' })
   .theme(() => ({
-    flex: '1', minWidth: '0', fontSize: '12.5px', fontFamily: MONO,
+    // display:block — a flex container never ellipsizes (documented case).
+    display: 'block', flex: '1', minWidth: '0', fontSize: '12.5px', fontFamily: MONO,
     extendCss: 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
   }))
 export const PkgFlag = el
@@ -227,12 +249,15 @@ export const ViewEyebrow = txt
   .attrs({ tag: 'span' })
   .theme((t: T) => ({
     fontFamily: MONO, fontSize: '10px', color: t.faint,
-    extendCss: 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.06em;',
+    extendCss:
+      'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.06em;' +
+      '@media (max-width: 760px){display:none;}',
   }))
 export const CyclesBtn = el
   .attrs({ tag: 'button', contentDirection: 'inline', contentAlignY: 'center', gap: 8 })
   .states(dim((t) => ({
     on: { borderColor: t.dangerRing, background: t.dangerSoft, color: t.danger },
+    clean: { borderColor: t.okRing, background: t.okSoft, color: t.ok },
     off: { borderColor: t.border, background: 'transparent', color: t.muted },
   })))
   .theme(() => ({
@@ -240,9 +265,14 @@ export const CyclesBtn = el
     borderWidth: '1px', borderStyle: 'solid',
     extendCss: 'cursor:pointer;white-space:nowrap;transition:all .12s;font-family:inherit;',
   }))
+/** The cycles toggle's text — the dot alone carries it on narrow screens. */
+export const CyclesLabel = txt
+  .attrs({ tag: 'span' })
+  .theme(() => ({ extendCss: '@media (max-width: 760px){display:none;}' }))
 export const CyclesDot = el
   .attrs({ tag: 'span' })
-  .theme((t: T) => ({ width: '8px', height: '8px', borderRadius: '50%', flex: 'none', background: t.danger }))
+  .variants(dim((t) => ({ danger: { background: t.danger }, ok: { background: t.ok } })))
+  .theme(() => ({ width: '8px', height: '8px', borderRadius: '50%', flex: 'none' }))
 export const SmallBtn = el
   .attrs({ tag: 'button', contentDirection: 'inline', contentAlignX: 'center', contentAlignY: 'center' })
   .theme((t: T) => ({
@@ -259,9 +289,12 @@ export const Canvas = el
   }))
 
 // ── article views (cycles / impact / table) ────────────────────────────────
-export const Article = el.attrs({ tag: 'div' }).theme(() => ({ padding: '32px', maxWidth: '920px' }))
+const NARROW_PAD = '@media (max-width: 760px){padding:20px 16px;}'
+export const Article = el
+  .attrs({ tag: 'div' })
+  .theme(() => ({ padding: '32px', maxWidth: '920px', extendCss: NARROW_PAD }))
 /** Article without the reading-width cap — the manifest table wants the room. */
-export const ArticleWide = el.attrs({ tag: 'div' }).theme(() => ({ padding: '32px' }))
+export const ArticleWide = el.attrs({ tag: 'div' }).theme(() => ({ padding: '32px', extendCss: NARROW_PAD }))
 export const Eyebrow = txt
   .attrs({ tag: 'div' })
   .theme((t: T) => ({ fontFamily: MONO, fontSize: '11px', color: t.faint, marginBottom: '16px' }))
@@ -269,7 +302,7 @@ export const H1 = txt
   .attrs({ tag: 'h1' })
   .theme(() => ({
     fontFamily: DISPLAY, fontSize: '30px', fontWeight: '700', margin: '0 0 8px',
-    extendCss: 'letter-spacing:-.025em;text-wrap:pretty;',
+    extendCss: 'letter-spacing:-.025em;text-wrap:pretty;@media (max-width: 760px){font-size:24px;}',
   }))
 export const Lead = txt
   .attrs({ tag: 'p' })
@@ -278,7 +311,7 @@ export const Lead = txt
     extendCss: 'line-height:1.6;text-wrap:pretty;',
   }))
 export const EmptyCard = el
-  .attrs({ tag: 'div' })
+  .attrs({ tag: 'div', block: true, contentDirection: 'rows', contentAlignX: 'center', gap: 8 })
   .theme((t: T) => ({
     padding: '44px', textAlign: 'center', borderRadius: '12px', color: t.muted,
     extendCss: `border:1px dashed ${t.border};`,
@@ -382,46 +415,8 @@ export const ImpactCount = txt
   .theme((t: T) => ({ fontFamily: MONO, fontSize: '11.5px', width: '112px', flex: 'none', textAlign: 'right', color: t.muted }))
 
 // ── manifest table ─────────────────────────────────────────────────────────
-// CSS grid components: grid is outside Element's flex model, so the whole
-// layout stays in the theme — the documented special case.
-export const TableWrap = el
-  .attrs({ tag: 'div' })
-  .theme((t: T) => ({
-    borderWidth: '1px', borderStyle: 'solid', borderColor: t.border, borderRadius: '12px',
-    overflow: 'hidden', background: t.surface,
-  }))
-export const TableHead = el
-  .attrs({ tag: 'div' })
-  .theme((t: T) => ({
-    display: 'grid', padding: '12px 16px', background: t.surface2,
-    fontFamily: MONO, fontSize: '9.5px', fontWeight: '500', color: t.faint,
-    extendCss: 'grid-template-columns:1.9fr .9fr .9fr .7fr 1fr;letter-spacing:.1em;',
-  }))
-export const TableRow = el
-  .attrs({ tag: 'button' })
-  .states(dim((t) => ({
-    idle: { background: 'transparent', hover: { background: t.surface2 } },
-    active: { background: t.surface2, hover: { background: t.surface2 } },
-  })))
-  .theme((t: T) => ({
-    display: 'grid', width: '100%', textAlign: 'left', border: 'none', padding: '12px 16px', alignItems: 'center',
-    borderWidthTop: '1px', borderStyleTop: 'solid', borderColorTop: t.border,
-    extendCss: 'grid-template-columns:1.9fr .9fr .9fr .7fr 1fr;cursor:pointer;transition:background .1s;font-family:inherit;',
-  }))
-export const CellName = el
-  .attrs({ tag: 'span', contentDirection: 'inline', contentAlignY: 'center', gap: 8 })
-  .theme(() => ({ minWidth: '0' }))
-export const KindDot = el
-  .attrs({ tag: 'span' })
-  .variants(dim((t) => ({ internal: { background: t.accent }, external: { background: t.ext } })))
-  .theme(() => ({ width: '6px', height: '6px', borderRadius: '2px', flex: 'none' }))
-export const CellText = txt
-  .attrs({ tag: 'span' })
-  .variants(dim((t) => ({
-    plain: { color: t.text }, muted: { color: t.muted }, faint: { color: t.faint },
-    accent: { color: t.accent }, warn: { color: t.warn },
-  })))
-  .theme(() => ({ fontFamily: MONO, fontSize: '12px', extendCss: 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' }))
+// The table itself is a plain <table> with global classes (global-css.ts) —
+// see TableView for why. StatusBadge stays: the detail panel uses it.
 export const StatusBadge = txt
   .attrs({ tag: 'span' })
   .variants(dim((t) => ({
@@ -431,15 +426,18 @@ export const StatusBadge = txt
   })))
   .theme(() => ({
     fontFamily: MONO, fontSize: '10.5px', padding: '2px 8px', borderRadius: '4px',
-    borderWidth: '1px', borderStyle: 'solid', extendCss: 'justify-self:start;',
+    borderWidth: '1px', borderStyle: 'solid',
   }))
 
 // ── detail panel ───────────────────────────────────────────────────────────
 export const Panel = el
-  .attrs({ tag: 'section', contentDirection: 'rows' })
+  // contentAlignX block: PanelHead's divider spans the panel (it stopped at
+  // the chips before).
+  .attrs({ tag: 'section', contentDirection: 'rows', contentAlignX: 'block' })
   .theme((t: T) => ({
     width: 'clamp(280px,27vw,356px)', flex: 'none', minHeight: '0',
     borderWidthLeft: '1px', borderStyleLeft: 'solid', borderColorLeft: t.border, background: t.surface,
+    extendCss: DRAWER('right'),
   }))
 export const PanelHead = el
   .attrs({ tag: 'div' })
@@ -544,75 +542,13 @@ export const Footer = el
     height: '32px', flex: 'none', padding: '0 16px',
     borderWidthTop: '1px', borderStyleTop: 'solid', borderColorTop: t.border,
     background: t.surface, fontFamily: MONO, fontSize: '10.5px', color: t.faint,
+    extendCss: 'white-space:nowrap;overflow-x:auto;scrollbar-width:none;&::-webkit-scrollbar{display:none;}',
   }))
 export const FootSep = txt.attrs({ tag: 'span' }).theme((t: T) => ({ color: t.border }))
 export const FootDanger = txt
   .attrs({ tag: 'span' })
   .variants(dim((t) => ({ danger: { color: t.danger }, ok: { color: t.ok }, warn: { color: t.warn } })))
   .theme(() => ({}))
-
-// ── graph ──────────────────────────────────────────────────────────────────
-/** The graph canvas padding frame (the SVG itself keeps its measured sizes). */
-export const GraphPad = el.attrs({ tag: 'div' }).theme(() => ({ padding: '16px' }))
-
-// ── matrix ─────────────────────────────────────────────────────────────────
-// Cell geometry: 16px cells, 96px rotated-label band, 112px row labels — the
-// components own the sizes; the view only maps data.
-export const MatrixNote = txt
-  .attrs({ tag: 'div' })
-  .theme((t: T) => ({ fontFamily: MONO, fontSize: '10.5px', color: t.faint, marginBottom: '8px' }))
-export const MatrixPad = el.attrs({ tag: 'div' }).theme(() => ({ padding: '16px', display: 'inline-block' }))
-export const MatrixHeadRow = el
-  .attrs({ tag: 'div', contentDirection: 'inline' })
-  .theme(() => ({}))
-export const MatrixRow = el
-  .attrs({ tag: 'div', contentDirection: 'inline', contentAlignY: 'center' })
-  .theme(() => ({}))
-/** Top-left spacer aligning the column-label band with the row labels. */
-export const MatrixCorner = el.attrs({ tag: 'div' }).theme(() => ({ width: '112px', flex: 'none' }))
-export const MatrixColHead = el
-  .attrs({ tag: 'div', contentDirection: 'inline', contentAlignX: 'center', contentAlignY: 'bottom' })
-  .theme(() => ({ width: '16px', height: '96px', flex: 'none', overflow: 'hidden' }))
-export const MatrixColLabel = txt
-  .attrs({ tag: 'span' })
-  .states(dim((t) => ({ idle: { color: t.faint }, active: { color: t.accent } })))
-  .theme(() => ({
-    fontFamily: MONO, fontSize: '9px',
-    extendCss: 'writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;',
-  }))
-export const MatrixRowLabel = el
-  .attrs({ tag: 'button' })
-  .states(dim((t) => ({ idle: { color: t.muted }, active: { color: t.accent } })))
-  .theme(() => ({
-    // display:block — text truncation territory: a flex container never
-    // ellipsizes its text (documented special case).
-    display: 'block',
-    width: '112px', flex: 'none', textAlign: 'right', padding: '0 8px 0 0',
-    fontFamily: MONO, fontSize: '10px', border: 'none', background: 'transparent',
-    extendCss: 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;',
-  }))
-/** An inert non-edge cell; carries the diagonal marker when row === column. */
-export const MatrixBlank = el
-  .attrs({ tag: 'div', contentDirection: 'inline', contentAlignX: 'center', contentAlignY: 'center' })
-  .theme(() => ({ width: '16px', height: '16px', flex: 'none' }))
-export const MatrixDiag = el
-  .attrs({ tag: 'span' })
-  .theme((t: T) => ({ width: '4px', height: '4px', borderRadius: '50%', background: t.border, extendCss: 'opacity:.6;' }))
-/** A real <button> per edge cell: keyboard-reachable, not just clickable. */
-export const MatrixCellBtn = el
-  .attrs({ tag: 'button', contentDirection: 'inline', contentAlignX: 'center', contentAlignY: 'center' })
-  .theme(() => ({
-    width: '16px', height: '16px', flex: 'none', padding: '0', border: 'none', background: 'transparent',
-    extendCss: 'cursor:pointer;',
-  }))
-export const MatrixCellDot = el
-  .attrs({ tag: 'span' })
-  .variants(dim((t) => ({ dep: { background: t.accent }, back: { background: t.danger } })))
-  .states(dim(() => ({
-    lit: { extendCss: 'opacity:1;' },
-    dim: { extendCss: 'opacity:.55;' },
-  })))
-  .theme(() => ({ width: '12px', height: '12px', borderRadius: '4px', extendCss: 'transition:opacity .15s;' }))
 
 // ── ⌘K search dialog (docs-site style; shared shape with atlas) ────────────
 export const SearchBackdrop = el
@@ -633,8 +569,11 @@ export const SearchDialogCard = el
 export const SearchDialogHead = el
   .attrs({ tag: 'div', contentDirection: 'inline', contentAlignY: 'center', gap: 8 })
   .theme((t: T) => ({
-    padding: '4px 16px', flex: 'none',
+    padding: '4px 16px', flex: 'none', position: 'relative',
     borderWidthBottom: '1px', borderStyleBottom: 'solid', borderColorBottom: t.border,
+    // The focus cue lives on the head row (an accent underline), not as a
+    // square outline on the borderless field that overlapped the esc hint.
+    extendCss: `transition:box-shadow .12s;&:focus-within{box-shadow:inset 0 -2px 0 ${t.accent};}`,
   }))
 export const SearchDialogField = el
   .attrs({ tag: 'input' })
@@ -652,13 +591,18 @@ export const SearchRow = el
     active: { background: t.accentSoft },
     idle: { background: 'transparent', hover: { background: t.surface2 } },
   })))
-  .theme(() => ({
-    font: 'inherit', cursor: 'pointer', textAlign: 'left', border: 'none',
+  .theme((t: T) => ({
+    // color: a <button> does not inherit text colour — without it every hit
+    // name rendered in the UA's near-black, invisible on the dark card.
+    font: 'inherit', cursor: 'pointer', textAlign: 'left', border: 'none', color: t.text,
     padding: '8px 12px', borderRadius: '8px',
   }))
 export const SearchRowName = txt
   .attrs({ tag: 'span' })
-  .theme(() => ({ fontFamily: MONO, fontSize: '12.5px', fontWeight: '600', flex: 'none' }))
+  .theme((t: T) => ({
+    fontFamily: MONO, fontSize: '12.5px', fontWeight: '600', color: t.text, minWidth: '0',
+    extendCss: 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%;',
+  }))
 export const SearchRowKind = txt
   .attrs({ tag: 'span' })
   .variants(dim((t) => ({ internal: { color: t.accent }, external: { color: t.ext } })))
@@ -690,10 +634,24 @@ export const SearchFoot = el
 export const SearchTrigger = el
   .attrs({ tag: 'button', contentDirection: 'inline', contentAlignY: 'center', gap: 8, block: true })
   .theme((t: T) => ({
-    font: 'inherit', cursor: 'pointer', textAlign: 'left',
+    font: 'inherit', cursor: 'pointer', textAlign: 'left', position: 'relative',
     maxWidth: '400px', padding: '8px 12px', borderRadius: '8px',
     borderWidth: '1px', borderStyle: 'solid', borderColor: t.border,
     background: t.bg, color: t.faint, fontSize: '13px',
     extendCss: `margin:0 auto;&:hover{border-color:${t.accent};}`,
   }))
-export const SearchTriggerText = txt.attrs({ tag: 'span' }).theme(() => ({ flex: '1' }))
+export const SearchTriggerText = txt
+  .attrs({ tag: 'span' })
+  .theme(() => ({ flex: '1', extendCss: 'white-space:nowrap;@media (max-width: 760px){display:none;}' }))
+/** The ⌘K hint inside the header trigger (hidden on touch-sized screens). */
+export const SearchTriggerKbd = txt
+  .attrs({ tag: 'span' })
+  .theme((t: T) => ({
+    fontFamily: MONO, fontSize: '10px', color: t.faint, flex: 'none',
+    borderWidth: '1px', borderStyle: 'solid', borderColor: t.border, borderRadius: '4px',
+    padding: '2px 8px', extendCss: '@media (max-width: 760px){display:none;}',
+  }))
+/** Overflow note under the ⌘K results when the list is capped. */
+export const SearchMore = txt
+  .attrs({ tag: 'div' })
+  .theme((t: T) => ({ fontFamily: MONO, fontSize: '10.5px', color: t.faint, padding: '8px 12px' }))

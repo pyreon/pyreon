@@ -2,6 +2,8 @@ import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { afterEach, describe, expect, it } from 'vitest'
+import type { HeadContextValue, HeadTag } from '../context'
+import { syncDom } from '../dom'
 import { HeadProvider } from '../provider'
 import { useHead } from '../use-head'
 
@@ -26,6 +28,33 @@ describe('head in real browser', () => {
       el.remove()
     }
     document.title = ''
+  })
+
+  // The client guard asks the ELEMENT which names are handlers
+  // (`isElementEventHandlerAttr`). happy-dom's <meta>/<link> do not define
+  // `onload`; Chromium's do, and a `<link onload>` really runs — so the refusal
+  // is asserted here, where both the premise and the danger are real.
+  it('syncDom refuses onload/onerror on head tags (engine-defined handlers)', () => {
+    const tags = [
+      { tag: 'meta', props: { name: 'guard-probe', onload: 'window.__headPwn = 1' }, key: 'meta:g' },
+      { tag: 'link', props: { rel: 'preload', href: '/x.css', onerror: 'window.__headPwn = 1' }, key: 'link:g' },
+    ] as unknown as HeadTag[]
+    const ctx = {
+      resolve: () => tags,
+      resolveTitleTemplate: () => undefined,
+      resolveHtmlAttrs: () => ({}),
+      resolveBodyAttrs: () => ({}),
+    } as unknown as HeadContextValue
+    const meta = document.createElement('meta')
+    expect('onload' in meta, 'premise: Chromium defines onload on <meta>').toBe(true)
+    syncDom(ctx)
+    const m = document.head.querySelector('meta[name="guard-probe"]')!
+    const l = document.head.querySelector('link[href="/x.css"]')!
+    expect(m.hasAttribute('onload')).toBe(false)
+    expect(l.hasAttribute('onerror')).toBe(false)
+    expect(l.getAttribute('rel')).toBe('preload')
+    m.remove()
+    l.remove()
   })
 
   it('useHead({ title }) writes document.title', () => {
