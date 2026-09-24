@@ -65,3 +65,28 @@ describe('a project without the framework installed', () => {
     }
   }, 120_000)
 })
+
+describe('frameworkWarningsOf, the shapes a verdict can take', () => {
+  it('skips unverified scenarios, non-object entries and checks without findings', () => {
+    const unverified = { id: 'u', component: 'X', name: 'u', args: {}, source: 'auto-default' } as unknown as Scenario
+    const sparse = {
+      id: 's',
+      component: 'X',
+      name: 's',
+      args: {},
+      source: 'auto-default',
+      verify: { ok: true, checked: 2, note: null, a11y: { status: 'pass' } },
+    } as unknown as Scenario
+    expect(frameworkWarningsOf([unverified, sparse, scenario('w', ['W'])])).toEqual({
+      frameworkWarnings: [{ message: 'W', scenarios: ['w'] }],
+    })
+  })
+
+  it('prints every scenario when there are three or fewer', () => {
+    expect(formatFrameworkWarnings([{ message: 'W', scenarios: ['a', 'b'] }])).toEqual([
+      'atlas: 1 framework warning(s) during mount — they point at real defects:',
+      '  ▲ W',
+      '    in a, b',
+    ])
+  })
+})
