@@ -187,6 +187,11 @@
       "bun": "./src/session.ts",
       "import": "./lib/session.js",
       "types": "./lib/types/session.d.ts"
+    },
+    "./preview": {
+      "bun": "./src/preview.ts",
+      "import": "./lib/preview.js",
+      "types": "./lib/types/preview.d.ts"
     }
   },
   "files": [

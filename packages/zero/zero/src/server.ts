@@ -133,3 +133,8 @@ export {
 
 export type { RequireUserOptions, Session, SessionOptions } from './session'
 export { getSession, requireUser, sessionMiddleware, useSession } from './session'
+
+// ─── Preview / draft mode ───────────────────────────────────────────────────
+
+export type { PreviewHandlerOptions, PreviewOptions } from './preview'
+export { PREVIEW_COOKIE, createPreviewHandler, isPreview, previewMiddleware } from './preview'
