@@ -89,6 +89,57 @@ describe('event-handler attributes never reach the DOM (real Chromium)', () => {
     }
   })
 
+  it('vendor-legacy onmousewheel (Chromium compiles it) is refused on both client paths', () => {
+    const btn = document.createElement('button')
+    document.body.append(btn)
+    expect('onmousewheel' in btn, 'premise: Chromium defines the handler').toBe(true)
+    applyProps(btn, { onmousewheel: 'window.__pwnG = 1' } as never)
+    expect(btn.getAttribute('onmousewheel')).toBeNull()
+    _setAttr(btn, 'onmousewheel', 'window.__pwnG = 1')
+    expect(btn.getAttribute('onmousewheel')).toBeNull()
+  })
+
+  it('MathML elements are guarded too (their interface defines the global handlers)', () => {
+    const mi = document.createElementNS('http://www.w3.org/1998/Math/MathML', 'mi')
+    document.body.append(mi)
+    W.__pwnH = 0
+    _setAttr(mi, 'onclick', 'window.__pwnH = 1')
+    mi.dispatchEvent(new Event('click', { bubbles: true }))
+    expect(mi.getAttribute('onclick')).toBeNull()
+    expect(W.__pwnH).toBe(0)
+  })
+
+  // The client decides "is this a handler?" by asking the ELEMENT (`key in el`)
+  // instead of shipping `EVENT_HANDLER_ATTRS`. This is the load-bearing proof
+  // that the two agree where it matters: EVERY `on*` handler the engine defines
+  // on each element family is refused by both client sinks.
+  it('every on* handler the element defines is refused (h() and compiled)', () => {
+    const els: Element[] = [
+      ...['div', 'body', 'video', 'input', 'dialog', 'button', 'form', 'img'].map((t) =>
+        document.createElement(t),
+      ),
+      ...['svg', 'animate', 'rect'].map((t) => document.createElementNS(SVG_NS, t)),
+      document.createElementNS('http://www.w3.org/1998/Math/MathML', 'mi'),
+    ]
+    let checked = 0
+    for (const el of els) {
+      const names = new Set<string>()
+      for (let o: object | null = el; o; o = Object.getPrototypeOf(o)) {
+        for (const n of Object.getOwnPropertyNames(o)) {
+          if (n.length > 2 && n.startsWith('on') && n.charCodeAt(2) >= 97 && n.charCodeAt(2) <= 122)
+            names.add(n)
+        }
+      }
+      for (const n of names) {
+        applyProps(el, { [n]: 'x' } as never)
+        _setAttr(el, n, 'x')
+        expect(el.getAttribute(n), `${el.localName}.${n}`).toBeNull()
+        checked++
+      }
+    }
+    expect(checked, 'the enumeration must not silently collapse').toBeGreaterThan(500)
+  })
+
   it('ordinary attributes and the camelCase PROP still work (controls)', () => {
     const rect = svgRect()
     applyProps(rect, { width: '10', height: '5' } as never)

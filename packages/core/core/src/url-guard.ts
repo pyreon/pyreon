@@ -165,6 +165,31 @@ export function isEventHandlerAttr(key: string): boolean {
 }
 
 /**
+ * The CLIENT form of `isEventHandlerAttr`: asks the ELEMENT which lowercase
+ * names are handlers instead of consulting `EVENT_HANDLER_ATTRS`.
+ *
+ * A content attribute `onfoo` is only compiled into a handler when the
+ * element's own interface defines the `onfoo` event-handler IDL attribute, so
+ * `key in el` is the engine's exact answer for that element — every namespace
+ * (HTML, SVG, MathML), vendor-legacy names, and names no hand-kept list has
+ * caught up with. camelCase (`onClick`) is refused exactly as
+ * `isEventHandlerAttr` refuses it: `setAttribute` lowercases a qualified name on
+ * an HTML element, so writing one would produce a live handler.
+ *
+ * Why a second predicate rather than the list everywhere: the ~160-name list is
+ * the single largest item a client bundle pays for (~0.8 KB gzipped), and the
+ * browser already holds the authoritative answer. SSR has no element to ask, so
+ * it keeps the list, which `event-handler-vocabulary.browser.test.tsx` ratchets
+ * as a superset of Chromium's names — so SSR only ever refuses MORE.
+ */
+export function isElementEventHandlerAttr(el: Element, key: string): boolean {
+  if (key.length <= 2 || key.charCodeAt(0) !== 111 /* o */ || key.charCodeAt(1) !== 110 /* n */)
+    return false
+  const c = key.charCodeAt(2)
+  return (c >= 65 && c <= 90) || (c >= 97 && c <= 122 && key in el)
+}
+
+/**
  * Characters that cannot appear in an attribute NAME without breaking out of
  * the attribute list — whitespace, `/`, `>`, `=`, quotes, `<`, and the C0/DEL
  * controls. A name containing one of these lets a spread of a user-keyed object
