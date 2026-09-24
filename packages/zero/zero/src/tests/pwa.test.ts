@@ -145,4 +145,62 @@ describe('registerServiceWorker', () => {
     expect(register).toHaveBeenCalledTimes(1)
     expect(reg.addEventListener).not.toHaveBeenCalled()
   })
+
+  it('registers under the configured base, adding the trailing slash', async () => {
+    const register = vi.fn(async () => ({ addEventListener: vi.fn(), waiting: null }))
+    vi.stubGlobal('navigator', { serviceWorker: { register, controller: null } })
+    vi.stubGlobal('__ZERO_BASE__', '/docs')
+    vi.stubEnv('NODE_ENV', 'production')
+    const { registerServiceWorker } = await loadClient()
+    await registerServiceWorker()
+    expect(register).toHaveBeenCalledWith('/docs/sw.js', { scope: '/docs/', updateViaCache: 'none' })
+  })
+
+  it('resolves null where service workers are unsupported', async () => {
+    vi.stubGlobal('navigator', {})
+    vi.stubEnv('NODE_ENV', 'production')
+    const { registerServiceWorker } = await loadClient()
+    expect(await registerServiceWorker()).toBeNull()
+  })
+
+  it('offers an update to onUpdate, and activate() hands control to the waiting worker', async () => {
+    const container = { register: vi.fn(), controller: {}, addEventListener: vi.fn() }
+    const waiting = { postMessage: vi.fn() }
+    const listeners: Record<string, () => void> = {}
+    const reg = {
+      waiting,
+      installing: null as null | { state: string; addEventListener: (t: string, f: () => void) => void },
+      addEventListener: (type: string, fn: () => void) => {
+        listeners[type] = fn
+      },
+    }
+    container.register.mockResolvedValue(reg)
+    vi.stubGlobal('navigator', { serviceWorker: container })
+    vi.stubEnv('NODE_ENV', 'production')
+    const offers: Array<() => void> = []
+    const { registerServiceWorker } = await loadClient()
+    await registerServiceWorker({ url: '/custom-sw.js', scope: '/app/', onUpdate: (activate) => offers.push(activate) })
+    expect(container.register).toHaveBeenCalledWith('/custom-sw.js', { scope: '/app/', updateViaCache: 'none' })
+    // Already-waiting worker with an existing controller → offered at once.
+    expect(offers).toHaveLength(1)
+    offers[0]!()
+    expect(waiting.postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' })
+    expect(container.addEventListener).toHaveBeenCalledWith('controllerchange', expect.any(Function), { once: true })
+
+    // A later update: offered only once the new worker reaches `installed`.
+    let onState: () => void = () => {}
+    const installing = { state: 'installing', postMessage: vi.fn(), addEventListener: (_t: string, f: () => void) => (onState = f) }
+    reg.installing = installing
+    listeners.updatefound!()
+    onState()
+    expect(offers).toHaveLength(1)
+    installing.state = 'installed'
+    onState()
+    expect(offers).toHaveLength(2)
+
+    // updatefound with no installing worker is ignored.
+    reg.installing = null
+    listeners.updatefound!()
+    expect(offers).toHaveLength(2)
+  })
 })

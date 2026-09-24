@@ -1,5 +1,5 @@
 /**
- * `<Chart>` and `useChart` on the config the other suites leave unset: every
+ * `<EChart>` and `useChart` on the config the other suites leave unset: every
  * pass-through init/setOption option, the event-shorthand merge, the loading
  * overlay, and the error paths (a throwing options fn, a throwing init, a
  * rejected module load, a throwing setOption, a non-Error throw).
@@ -81,7 +81,7 @@ vi.mock('echarts/core', () => {
 vi.mock('echarts/charts', () => ({ BarChart: { __echartsStub: 'BarChart' }, LineChart: { __echartsStub: 'LineChart' } }))
 vi.mock('echarts/renderers', () => ({ CanvasRenderer: { __echartsStub: 'CanvasRenderer' }, SVGRenderer: { __echartsStub: 'SVGRenderer' } }))
 
-import { Chart } from '../chart-component'
+import { EChart } from '../chart-component'
 import { _resetLoader } from '../loader'
 import { _throttle, useChart } from '../use-chart'
 import type { ChartEventParams } from '../types'
@@ -466,7 +466,7 @@ describe('useChart — a NON-Error at every failing site still reaches the consu
   })
 })
 
-// NOTE: `<Chart>`'s `err instanceof Error ? err.message : String(err)` cannot
+// NOTE: `<EChart>`'s `err instanceof Error ? err.message : String(err)` cannot
 // take its else arm — `useChart` already wraps every non-Error failure in an
 // `Error` before publishing it, so `chart.error()` is never anything else.
 
@@ -536,11 +536,11 @@ describe('useChart — the SYNC fast path and the module-load failure', () => {
   })
 })
 
-describe('<Chart> — the props it forwards and the DOM it renders', () => {
+describe('<EChart> — the props it forwards and the DOM it renders', () => {
   const mountChart = (props: Record<string, unknown>) => {
     const host = document.createElement('div')
     document.body.appendChild(host)
-    const unmount = mount(h(Chart as never, props), host)
+    const unmount = mount(h(EChart as never, props), host)
     return { host, unmount: () => { unmount(); host.remove() } }
   }
 
