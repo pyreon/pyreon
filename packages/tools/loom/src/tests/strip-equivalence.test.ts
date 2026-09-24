@@ -20,16 +20,98 @@ import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { stripWithMask } from '../core/imports'
 
-/** The original implementation, character at a time. Reference only. */
+/**
+ * The character-at-a-time reference. Written independently of the fast
+ * scanner's helpers — the regex rule and the nested-template walk are
+ * restated here, so a bug in one implementation shows up as a divergence
+ * rather than being shared by both.
+ */
 function stripReference(text: string): { stripped: string; codeAt: boolean[] } {
   let out = ''
   const codeAt: boolean[] = []
   let i = 0
   const n = text.length
   let mode: 'code' | 'line' | 'block' | 'single' | 'double' | 'template' = 'code'
+  let prev = -1
   const push = (chunk: string, inCode: boolean): void => {
     out += chunk
     for (let k = 0; k < chunk.length; k += 1) codeAt.push(inCode)
+  }
+  const keywords = ['return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void', 'throw', 'case', 'do', 'else', 'yield', 'await']
+  const regexAllowed = (): boolean => {
+    if (prev < 0) return true
+    const c = text[prev]!
+    if ('(,=:[!&|?{;~^+-*%'.includes(c)) return true
+    if (!/[A-Za-z_$]/.test(c)) return false
+    let k = prev
+    while (k > 0 && /[\w$]/.test(text[k - 1]!)) k -= 1
+    return text[k - 1] !== '.' && keywords.includes(text.slice(k, prev + 1))
+  }
+  const regexEnd = (start: number): number => {
+    let inClass = false
+    for (let j = start + 1; j < n; j += 1) {
+      const c = text[j]!
+      if (c === '\n') return -1
+      if (c === '\\') { j += 1; continue }
+      if (c === '[') inClass = true
+      else if (c === ']') inClass = false
+      else if (c === '/' && !inClass) {
+        let e = j + 1
+        while (e < n && /[a-z]/.test(text[e]!)) e += 1
+        return e
+      }
+    }
+    return -1
+  }
+  // A template is a stack of contexts: 'tpl' (literal text) and 'expr'
+  // (an interpolation, counting its own braces).
+  const templateEnd = (start: number): number => {
+    const stack: Array<{ kind: 'tpl' } | { kind: 'expr'; depth: number; prev: number }> = [{ kind: 'tpl' }]
+    let j = start
+    while (j < n) {
+      const top = stack[stack.length - 1]!
+      const c = text[j]!
+      if (top.kind === 'tpl') {
+        if (c === '\\') { j += 2; continue }
+        if (c === '`') {
+          stack.pop()
+          j += 1
+          if (stack.length === 0) return j
+          const outer = stack[stack.length - 1]!
+          if (outer.kind === 'expr') outer.prev = j - 1
+          continue
+        }
+        if (c === '$' && text[j + 1] === '{') { stack.push({ kind: 'expr', depth: 1, prev: j + 1 }); j += 2; continue }
+        j += 1
+        continue
+      }
+      if (c === '{') top.depth += 1
+      else if (c === '}') { top.depth -= 1; if (top.depth === 0) stack.pop() }
+      else if (c === '`') { stack.push({ kind: 'tpl' }); j += 1; continue }
+      else if (c === "'" || c === '"') {
+        j += 1
+        while (j < n && text[j] !== c && text[j] !== '\n') j += text[j] === '\\' ? 2 : 1
+        top.prev = j
+        j += 1
+        continue
+      } else if (c === '/' && text[j + 1] !== '/' && text[j + 1] !== '*') {
+        const saved = prev
+        prev = top.prev
+        const e = regexAllowed() ? regexEnd(j) : -1
+        prev = saved
+        if (e !== -1) { top.prev = e - 1; j = e; continue }
+      } else if (c === '/' && text[j + 1] === '/') {
+        while (j < n && text[j] !== '\n') j += 1
+        continue
+      } else if (c === '/' && text[j + 1] === '*') {
+        const e = text.indexOf('*/', j + 2)
+        j = e === -1 ? n : e + 2
+        continue
+      }
+      if (!' \t\n\r'.includes(c)) top.prev = j
+      j += 1
+    }
+    return n
   }
   while (i < n) {
     const c = text[i]!
@@ -37,27 +119,26 @@ function stripReference(text: string): { stripped: string; codeAt: boolean[] } {
     if (mode === 'code') {
       if (c === '/' && next === '/') { mode = 'line'; i += 2; continue }
       if (c === '/' && next === '*') { mode = 'block'; i += 2; continue }
-      if (c === '`') { mode = 'template'; i += 1; continue }
+      if (c === '/') {
+        const e = regexAllowed() ? regexEnd(i) : -1
+        const to = e === -1 ? i + 1 : e
+        push(text.slice(i, to), true)
+        prev = to - 1
+        i = to
+        continue
+      }
+      if (c === '`') { i = templateEnd(i + 1); prev = i - 1; continue }
       if (c === "'") { mode = 'single'; push(c, true); i += 1; continue }
       if (c === '"') { mode = 'double'; push(c, true); i += 1; continue }
+      if (!' \t\n\r'.includes(c)) prev = i
       push(c, true); i += 1; continue
     }
     if (mode === 'line') { if (c === '\n') { mode = 'code'; push(c, true) } i += 1; continue }
     if (mode === 'block') { if (c === '*' && next === '/') { mode = 'code'; i += 2 } else i += 1; continue }
-    if (mode === 'single') {
-      if (c === '\\') { push(text.slice(i, i + 2), false); i += 2; continue }
-      push(c, false); i += 1
-      if (c === "'" || c === '\n') mode = 'code'
-      continue
-    }
-    if (mode === 'double') {
-      if (c === '\\') { push(text.slice(i, i + 2), false); i += 2; continue }
-      push(c, false); i += 1
-      if (c === '"' || c === '\n') mode = 'code'
-      continue
-    }
-    if (c === '\\') { i += 2; continue }
-    if (c === '`') { mode = 'code'; i += 1; continue }
+    const quote = mode === 'single' ? "'" : '"'
+    if (c === '\\') { push(text.slice(i, i + 2), false); i += 2; continue }
+    push(c, false)
+    if (c === quote || c === '\n') { mode = 'code'; prev = i }
     i += 1
   }
   return { stripped: out, codeAt }

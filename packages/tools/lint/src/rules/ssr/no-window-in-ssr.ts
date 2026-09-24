@@ -630,6 +630,22 @@ export const noWindowInSsr: Rule = {
       'TSInterfaceDeclaration:exit'(_n: any) { inTsTypePos-- },
       TSTypeParameter(_n: any) { inTsTypePos++ },
       'TSTypeParameter:exit'(_n: any) { inTsTypePos-- },
+      // A type in an `as` / `satisfies` / `<T>x` expression reaches the
+      // visitor with no TSTypeAnnotation around it, so each type-only node
+      // that can hold an identifier opens the zone itself: a type literal's
+      // members (`as { window?: number }`), a function type's parameters
+      // (`as (window: number) => void`) and a `typeof` query (`as typeof
+      // window`, which names the global but is erased like any other type).
+      TSTypeLiteral(_n: any) { inTsTypePos++ },
+      'TSTypeLiteral:exit'(_n: any) { inTsTypePos-- },
+      TSFunctionType(_n: any) { inTsTypePos++ },
+      'TSFunctionType:exit'(_n: any) { inTsTypePos-- },
+      TSConstructorType(_n: any) { inTsTypePos++ },
+      'TSConstructorType:exit'(_n: any) { inTsTypePos-- },
+      TSTypeQuery(_n: any) { inTsTypePos++ },
+      'TSTypeQuery:exit'(_n: any) { inTsTypePos-- },
+      TSMappedType(_n: any) { inTsTypePos++ },
+      'TSMappedType:exit'(_n: any) { inTsTypePos-- },
       MemberExpression(node: any) {
         // `x.addEventListener` — `addEventListener` is the property name, not
         // a global. Pre-mark so the Identifier visitor skips it.
