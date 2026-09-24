@@ -1,10 +1,10 @@
 // Real Chromium: the theme actually reaches the pixels. A dark provider must
 // recolour the bars and the ground; a `theme` prop must win over the provider;
 // and a mode flip must repaint IN PLACE (same canvas element).
-import { h } from '@pyreon/core'
+import { ColorModeProvider, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
-import { ChartThemeProvider, PlotChart, bars, chartThemes, palettes } from '../engine'
+import { PlotChart, bars, chartThemes, palettes } from '../engine'
 
 const rows = [{ q: 'a', v: 5 }, { q: 'b', v: 9 }]
 
@@ -24,7 +24,7 @@ describe('chart theme in the browser', () => {
   it('bars take the first palette colour; a dark provider swaps the palette and paints the ground', async () => {
     const mode = signal<'light' | 'dark'>('light')
     const { container, unmount } = mountInBrowser(
-      h(ChartThemeProvider, { mode: () => mode() }, h(PlotChart, { data: rows, x: (d: (typeof rows)[number]) => d.q, marks: [bars((d: (typeof rows)[number]) => d.v)], width: 240, height: 160, animate: false, showGrid: false })),
+      h(ColorModeProvider, { mode: () => mode() }, h(PlotChart, { data: rows, x: (d: (typeof rows)[number]) => d.q, marks: [bars((d: (typeof rows)[number]) => d.v)], width: 240, height: 160, animate: false, showGrid: false })),
     )
     await flush()
     const canvas = container.querySelector('canvas')!
@@ -39,7 +39,7 @@ describe('chart theme in the browser', () => {
   })
   it('a `theme` prop wins over the provider', async () => {
     const { container, unmount } = mountInBrowser(
-      h(ChartThemeProvider, { mode: 'dark' }, h(PlotChart, { data: rows, x: (d: (typeof rows)[number]) => d.q, marks: [bars((d: (typeof rows)[number]) => d.v)], theme: { palette: palettes.okabeIto, background: '#ffffff' }, width: 240, height: 160, animate: false, showGrid: false })),
+      h(ColorModeProvider, { mode: 'dark' }, h(PlotChart, { data: rows, x: (d: (typeof rows)[number]) => d.q, marks: [bars((d: (typeof rows)[number]) => d.v)], theme: { palette: palettes.okabeIto, background: '#ffffff' }, width: 240, height: 160, animate: false, showGrid: false })),
     )
     await flush()
     const canvas = container.querySelector('canvas')!

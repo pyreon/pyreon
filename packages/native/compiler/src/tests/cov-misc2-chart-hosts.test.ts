@@ -412,33 +412,32 @@ import { PieChart } from '@pyreon/charts/engine'`,
 })
 
 describe('chart-hosts — <ChartThemeProvider> scope', () => {
-  const provider = (attrs: string) =>
+  // `mode` is the framework-wide colour mode: a literal one pins the scope.
+  const provider = (attrs: string, mode?: string) =>
     app(
-      `<ChartThemeProvider ${attrs}><PieChart data={ROWS} value={(d: Row) => d.v} /></ChartThemeProvider>`,
+      mode === undefined
+        ? `<ChartThemeProvider ${attrs}><PieChart data={ROWS} value={(d: Row) => d.v} /></ChartThemeProvider>`
+        : `<ColorModeProvider mode=${mode}><ChartThemeProvider ${attrs}><PieChart data={ROWS} value={(d: Row) => d.v} /></ChartThemeProvider></ColorModeProvider>`,
       ROWS,
-      `import { ChartThemeProvider, chartThemes } from '@pyreon/charts'
+      `import { ColorModeProvider } from '@pyreon/core'
+import { ChartThemeProvider, chartThemes } from '@pyreon/charts'
 import { PieChart } from '@pyreon/charts/engine'`,
     )
 
-  it('accepts a literal mode and names a missing or non-literal one', () => {
-    expect(swift(provider(`mode="dark"`)).warnings.join('\n')).not.toContain('<ChartThemeProvider')
-    expect(swift(provider(``)).warnings.join('\n')).toContain('without a literal `mode`')
-    expect(swift(provider(`mode={m}`)).warnings.join('\n')).toContain(
-      'only the literal "light" / "dark" lowers',
-    )
+  it('takes a literal colour mode from above and names a missing or non-literal one', () => {
+    expect(swift(provider(``, `"dark"`)).warnings.join('\n')).not.toContain('<ChartThemeProvider')
+    expect(swift(provider(``)).warnings.join('\n')).toContain('with no literal colour mode above it')
+    expect(swift(provider(``, `{m}`)).warnings.join('\n')).toContain('only a literal "light" / "dark" / "system" lowers')
+    expect(swift(provider(`mode="dark"`)).warnings.join('\n')).toContain('the mode is not a provider prop any more')
   })
 
   it('lays a literal `theme` over the mode, names a non-literal one, and takes a named theme whole', () => {
-    expect(swift(provider(`mode="dark" theme={{ fontSize: 13 }}`)).warnings.join('\n')).not.toContain(
-      'must be a',
-    )
-    expect(swift(provider(`mode="dark" theme={computeTheme()}`)).warnings.join('\n')).toContain(
+    expect(swift(provider(`theme={{ fontSize: 13 }}`, `"dark"`)).warnings.join('\n')).not.toContain('must be a')
+    expect(swift(provider(`theme={computeTheme()}`, `"dark"`)).warnings.join('\n')).toContain(
       "only an object literal with literal fields lowers on native; it is ignored",
     )
-    expect(swift(provider(`mode="dark" theme={chartThemes.light}`)).warnings.join('\n')).not.toContain(
-      '<ChartThemeProvider theme>',
-    )
-    expect(swift(provider(`mode="dark" theme={{ fontSize: 'big' }}`)).warnings.join('\n')).toContain(
+    expect(swift(provider(`theme={chartThemes.light}`, `"dark"`)).warnings.join('\n')).not.toContain('<ChartThemeProvider theme>')
+    expect(swift(provider(`theme={{ fontSize: 'big' }}`, `"dark"`)).warnings.join('\n')).toContain(
       "`fontSize` must be a number literal on native; the mode's value applies",
     )
   })
@@ -525,10 +524,11 @@ const base = {}`,
     expect(chart.warnings.join('\n')).toContain('only an object literal with literal fields lowers')
     const provider = swift(
       app(
-        `<ChartThemeProvider mode="dark" theme={{ ...base, fontSize: 13 }}><PieChart data={ROWS} value={(d: Row) => d.v} /></ChartThemeProvider>`,
+        `<ColorModeProvider mode="dark"><ChartThemeProvider theme={{ ...base, fontSize: 13 }}><PieChart data={ROWS} value={(d: Row) => d.v} /></ChartThemeProvider></ColorModeProvider>`,
         `${ROWS}
 const base = {}`,
-        `import { ChartThemeProvider } from '@pyreon/charts'
+        `import { ColorModeProvider } from '@pyreon/core'
+import { ChartThemeProvider } from '@pyreon/charts'
 import { PieChart } from '@pyreon/charts/engine'`,
       ),
     )

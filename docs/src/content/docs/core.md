@@ -874,6 +874,39 @@ function Greeting() {
 
 For server-side rendering with concurrent requests, `@pyreon/runtime-server` replaces the default context stack with an `AsyncLocalStorage`-backed provider via `setContextStackProvider()`. This ensures each SSR request has its own isolated context stack. You do not need to call this yourself -- it is handled automatically by the SSR runtime.
 
+### Color Mode
+
+`useColorMode()` is the framework-wide light/dark mode, as an accessor. It is
+the one mode every package reads, so `<PyreonUI>`, `@pyreon/charts` and any
+component of your own agree on it without wiring:
+
+```tsx
+import { ColorModeProvider, useColorMode } from '@pyreon/core'
+
+function Badge() {
+  const mode = useColorMode()
+  return <span class={() => (mode() === 'dark' ? 'badge-dark' : 'badge-light')}>new</span>
+}
+
+<ColorModeProvider mode="dark">
+  <Badge />
+</ColorModeProvider>
+```
+
+The mode resolves nearest first:
+
+1. A `<ColorModeProvider mode>` or `provideColorMode(mode)` above the
+   component. `<PyreonUI mode>` provides it, so an app on the UI system needs
+   neither.
+2. The page's scheme: the CSS `color-scheme` `<html>` declares, when it names
+   exactly one. A site with its own theme toggle states it there.
+3. `prefers-color-scheme`, live. On the server, light.
+
+`mode` takes `'light'`, `'dark'` or `'system'`, or an accessor over one.
+`systemColorMode()` returns the page-and-OS half on its own. On iOS and Android
+a literal `mode` is a compile-time scope; a reactive one follows the platform's
+scheme.
+
 ## Refs
 
 Refs provide mutable containers for DOM element references. The runtime sets `ref.current` after the element is inserted into the DOM and clears it to `null` when the element is removed.

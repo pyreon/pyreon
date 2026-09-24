@@ -61,6 +61,26 @@ import { EChart } from '@pyreon/charts/echarts'`,
     }),
   },
   {
+    // The light/dark mode moved out of `@pyreon/charts` into ONE framework-wide
+    // source (`useColorMode` / `<ColorModeProvider>` in @pyreon/core, which
+    // `<PyreonUI mode>` provides). An app on the old API hits one of two
+    // errors: `systemChartMode` is gone, or `mode` is no longer a
+    // `<ChartThemeProvider>` prop. Quotes as \x27 escapes (see above).
+    pattern:
+      /(?:has no exported member(?: named)? \x27systemChartMode\x27|does not provide an export named \x27systemChartMode\x27|Property \x27mode\x27 does not exist on type \x27IntrinsicAttributes & ChartThemeProviderProps\x27)/,
+    diagnose: () => ({
+      cause:
+        "The chart colour mode is now the framework-wide one: `useColorMode()` / `<ColorModeProvider mode>` from `@pyreon/core`, which `<PyreonUI mode>` provides. `systemChartMode()` moved there as `systemColorMode()`, and `<ChartThemeProvider>` no longer takes `mode` — charts, the UI system and every other component read the same mode.",
+      fix: 'Drop `mode` from `<ChartThemeProvider>`. In a UI-system app `<PyreonUI mode>` already sets it; otherwise wrap the charts in `<ColorModeProvider mode="dark">` (or an accessor). Replace `systemChartMode()` with `systemColorMode()` from `@pyreon/core`.',
+      fixCode: `import { ColorModeProvider } from '@pyreon/core'
+import { ChartThemeProvider } from '@pyreon/charts'
+
+<ColorModeProvider mode="dark">
+  <ChartThemeProvider theme={{ radius: 4 }}>{/* charts */}</ChartThemeProvider>
+</ColorModeProvider>`,
+    }),
+  },
+  {
     // The signal auto-call pass recognised three binding forms as shadows
     // (a plain param, a one-level destructured param, a top-level `const`),
     // so a `catch (error)` / `for (const item of …)` / nested-pattern binding

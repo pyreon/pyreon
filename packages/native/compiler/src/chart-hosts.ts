@@ -3641,11 +3641,22 @@ export type RawChartTheme = Readonly<Record<keyof typeof CHART_THEME_DEFAULT, st
  * applies), and a non-literal `theme`.
  */
 /**
- * The mode each resolved provider scope is in, keyed by the scope's theme
- * object, so a nested provider with no `mode` inherits it — which is what
- * lets its `light` / `dark` overrides pick the right one, as on the web.
+ * How each compile-time theme scope was built: the colour mode pinned above it
+ * (null when none is — the platform scheme decides) and the
+ * `<ChartThemeProvider>` elements in force, outermost first. Keyed by the
+ * scope's resolved theme so the emitters keep passing one object around.
+ *
+ * The chain, not just the resolved theme, is kept because on the web a
+ * provider hands down a theme PER MODE and the mode is applied where the chart
+ * sits — so a `<ColorModeProvider mode="dark">` BELOW a provider must re-resolve
+ * that provider's `light` / `dark` overrides, not inherit a theme resolved for
+ * the outer mode.
  */
-const SCOPE_MODE = new WeakMap<RawChartTheme, 'light' | 'dark'>()
+interface ThemeChain {
+  mode: 'light' | 'dark' | null
+  providers: readonly (ExprIR & { kind: 'jsx-element' })[]
+}
+const SCOPE_CHAIN = new WeakMap<RawChartTheme, ThemeChain>()
 
 /** Merge one theme-object literal's fields over `raw`, warning by name on what cannot lower. */
 function applyThemeLiteral(raw: Record<string, string | readonly string[]>, v: ExprIR, attr: string, warn: (m: string) => void): void {
@@ -3665,33 +3676,53 @@ function applyThemeLiteral(raw: Record<string, string | readonly string[]>, v: E
   }
 }
 
-export function chartThemeScope(e: ExprIR & { kind: 'jsx-element' }, warn: (m: string) => void, outer?: RawChartTheme): RawChartTheme {
-  const modeAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'mode')
-  const modeV = modeAttr?.kind === 'attr' ? modeAttr.value : undefined
-  let base: RawChartTheme = outer ?? CHART_THEME_DEFAULT
-  let mode: 'light' | 'dark' = outer === undefined ? 'light' : (SCOPE_MODE.get(outer) ?? 'light')
-  if (modeV === undefined) {
-    if (outer === undefined) warn('<ChartThemeProvider>: without a literal `mode` the web follows the system scheme; natively the light theme applies — pin `mode="dark"` (or give each chart its own `theme`).')
-  } else if (modeV.kind === 'literal' && (modeV.value === 'light' || modeV.value === 'dark')) {
-    base = CHART_THEMES[modeV.value]
-    mode = modeV.value
-  } else {
-    warn('<ChartThemeProvider mode>: only the literal "light" / "dark" lowers on native (a reactive mode cannot be read at compile time); the light theme applies.')
+function scopeAttr(e: ExprIR & { kind: 'jsx-element' }, name: string): ExprIR | undefined {
+  const a = e.attrs.find((x) => x.kind === 'attr' && x.name === name)
+  return a?.kind === 'attr' ? a.value : undefined
+}
+
+/** Resolve a chain as the web does: the mode's built-in theme, then each provider's `theme`, then its override for the mode. */
+function resolveThemeChain(chain: ThemeChain, warn: (m: string) => void): RawChartTheme {
+  const mode = chain.mode ?? 'light'
+  let raw: Record<string, string | readonly string[]> = { ...CHART_THEMES[mode] }
+  for (const el of chain.providers) {
+    const themeV = scopeAttr(el, 'theme')
+    const named = themeV === undefined ? undefined : namedChartTheme(themeV)
+    if (named !== undefined) raw = { ...named }
+    else if (themeV !== undefined) applyThemeLiteral(raw, themeV, 'theme', warn)
+    const perMode = scopeAttr(el, mode)
+    if (perMode !== undefined) applyThemeLiteral(raw, perMode, mode, warn)
   }
-  const attrOfScope = (name: string): ExprIR | undefined => {
-    const a = e.attrs.find((x) => x.kind === 'attr' && x.name === name)
-    return a?.kind === 'attr' ? a.value : undefined
-  }
-  const themeV = attrOfScope('theme')
-  const perMode = attrOfScope(mode)
-  const named = themeV === undefined ? undefined : namedChartTheme(themeV)
-  const raw: Record<string, string | readonly string[]> = { ...(named ?? base) }
-  if (themeV !== undefined && named === undefined) applyThemeLiteral(raw, themeV, 'theme', warn)
-  // The layers apply as on the web: the mode's theme, then `theme`, then the mode's own override.
-  if (perMode !== undefined) applyThemeLiteral(raw, perMode, mode, warn)
   const out = raw as RawChartTheme
-  SCOPE_MODE.set(out, mode)
+  SCOPE_CHAIN.set(out, chain)
   return out
+}
+
+/** A `<ChartThemeProvider>`: push its layers onto the chain in force. */
+export function chartThemeScope(e: ExprIR & { kind: 'jsx-element' }, warn: (m: string) => void, outer?: RawChartTheme): RawChartTheme {
+  const prev: ThemeChain = (outer === undefined ? undefined : SCOPE_CHAIN.get(outer)) ?? { mode: null, providers: [] }
+  if (scopeAttr(e, 'mode') !== undefined) warn('<ChartThemeProvider mode>: the mode is not a provider prop any more — wrap it in `<ColorModeProvider mode>` (@pyreon/core) or set `<PyreonUI mode>`; it is ignored.')
+  if (prev.mode === null && prev.providers.length === 0) warn('<ChartThemeProvider>: with no literal colour mode above it, the web follows the system scheme; natively the light theme applies — wrap it in `<ColorModeProvider mode="dark">` (or give each chart its own `theme`).')
+  return resolveThemeChain({ mode: prev.mode, providers: [...prev.providers, e] }, warn)
+}
+
+/**
+ * A `<ColorModeProvider mode>` or `<PyreonUI mode>`: pin the mode for the
+ * charts below. Only a literal `"light"` / `"dark"` can be read at compile
+ * time; `"system"` keeps the platform scheme (the scope in force is returned
+ * unchanged), and a reactive mode warns and does the same.
+ */
+export function colorModeScope(e: ExprIR & { kind: 'jsx-element' }, warn: (m: string) => void, outer?: RawChartTheme, warnReactive: boolean = true): RawChartTheme | undefined {
+  const modeV = scopeAttr(e, 'mode')
+  if (modeV === undefined) return outer
+  if (modeV.kind === 'literal' && (modeV.value === 'light' || modeV.value === 'dark')) {
+    const prev: ThemeChain = (outer === undefined ? undefined : SCOPE_CHAIN.get(outer)) ?? { mode: null, providers: [] }
+    return resolveThemeChain({ mode: modeV.value, providers: prev.providers }, warn)
+  }
+  if (warnReactive && !(modeV.kind === 'literal' && modeV.value === 'system')) {
+    warn(`<${e.tag} mode>: only a literal "light" / "dark" / "system" lowers on native (a reactive mode cannot be read at compile time); charts below follow the platform scheme.`)
+  }
+  return outer
 }
 
 /** The palette the web Funnel / Pie hosts colour unaccessored rows with — the theme's. */

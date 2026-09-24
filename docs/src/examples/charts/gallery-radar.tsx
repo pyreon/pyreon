@@ -1,16 +1,16 @@
-import { ChartThemeProvider, systemChartMode } from '@pyreon/charts'
+import { ChartThemeProvider } from '@pyreon/charts'
 import { OptionChart } from '@pyreon/charts/option'
 import type { Signal } from '@pyreon/reactivity'
 
 /**
  * Gallery — a radar comparison from an ECharts option: two filled series over
  * six named indicators, each with its own maximum.
- * The provider hands it the PAGE's scheme (`systemChartMode` reads the
- * root's `color-scheme`); a bare option chart keeps ECharts' own light look.
+ * The provider opts it into the colour mode in scope — the page's scheme
+ * here (the root's `color-scheme`); a bare option chart keeps ECharts' own light look.
  */
 export default function GalleryRadar(_props: { shared?: Signal<number> }) {
   return (
-    <ChartThemeProvider mode={systemChartMode()}>
+    <ChartThemeProvider>
       <OptionChart
         height={320}
         option={{

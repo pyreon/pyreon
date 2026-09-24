@@ -115,7 +115,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { plotMarkColorSlots, ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTipHeader, chartTooltipCells, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, optionSpecArgs, chartPieArgs, chartDialCmds, chartFrameLiteral, chartSpecFieldIndex, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig, chartActionFields } from './chart-hosts'
+import { plotMarkColorSlots, ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTipHeader, chartTooltipCells, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, colorModeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, optionSpecArgs, chartPieArgs, chartDialCmds, chartFrameLiteral, chartSpecFieldIndex, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig, chartActionFields } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -8644,8 +8644,17 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // @Environment(\.colorScheme)) — so the provider carries no runtime context.
   // Render its children directly (mirror the jsx-fragment `Group {…}`).
   if ((tag === 'PyreonUI' || tag === 'PyreonUIProvider') && canAliasIntercept(tag, '@pyreon/ui-core')) {
-    const p = ' '.repeat(indent + 2)
-    return `Group {\n${e.children.map((c) => p + emitSwiftChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
+    // A literal `mode` pins the framework-wide colour mode for the charts below
+    // (web: PyreonUI provides `useColorMode`); a reactive one keeps the
+    // platform scheme, silently, as it always has here.
+    const prevScope = _chartThemeScope
+    _chartThemeScope = colorModeScope(e, (w) => _emitWarnings.push(w), prevScope ?? undefined, false) ?? null
+    try {
+      const p = ' '.repeat(indent + 2)
+      return `Group {\n${e.children.map((c) => p + emitSwiftChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
+    } finally {
+      _chartThemeScope = prevScope
+    }
   }
 
   // @pyreon/toast `<Toaster />` → a native overlay over the reactive PyreonToast
@@ -8804,6 +8813,19 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // reads it (chart-hosts.ts chartThemeScope / chartThemeFields). Saved and
   // restored around the children — providers nest, and a sibling must not
   // inherit.
+  // `<ColorModeProvider mode>` (@pyreon/core) pins the framework-wide colour
+  // mode; natively a compile-time scope the chart hosts below read. Children
+  // render as they are.
+  if (tag === 'ColorModeProvider' && canAliasIntercept(tag, '@pyreon/core')) {
+    const prevScope = _chartThemeScope
+    _chartThemeScope = colorModeScope(e, (w) => _emitWarnings.push(w), prevScope ?? undefined) ?? null
+    try {
+      const inner = ' '.repeat(indent + 2)
+      return `Group {\n${e.children.map((c) => inner + emitSwiftChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
+    } finally {
+      _chartThemeScope = prevScope
+    }
+  }
   if (tag === 'ChartThemeProvider') {
     const prev = _chartThemeScope
     _chartThemeScope = chartThemeScope(e, (w) => _emitWarnings.push(w), prev ?? undefined)

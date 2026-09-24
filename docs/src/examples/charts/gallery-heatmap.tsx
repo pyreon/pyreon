@@ -1,12 +1,12 @@
-import { ChartThemeProvider, systemChartMode } from '@pyreon/charts'
+import { ChartThemeProvider } from '@pyreon/charts'
 import { OptionChart } from '@pyreon/charts/option'
 import type { Signal } from '@pyreon/reactivity'
 
 /**
  * Gallery — a heatmap from an ECharts option: activity by weekday and hour,
  * coloured through a continuous `visualMap` strip.
- * The provider hands it the PAGE's scheme (`systemChartMode` reads the
- * root's `color-scheme`); a bare option chart keeps ECharts' own light look.
+ * The provider opts it into the colour mode in scope — the page's scheme
+ * here (the root's `color-scheme`); a bare option chart keeps ECharts' own light look.
  */
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const HOURS = Array.from({ length: 24 }, (_, h) => `${h}h`)
@@ -20,7 +20,7 @@ for (let d = 0; d < DAYS.length; d++) {
 
 export default function GalleryHeatmap(_props: { shared?: Signal<number> }) {
   return (
-    <ChartThemeProvider mode={systemChartMode()}>
+    <ChartThemeProvider>
       <OptionChart
         height={300}
         option={{

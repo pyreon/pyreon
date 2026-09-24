@@ -49,8 +49,8 @@ export type { SeriesGradient } from './engine/gradient'
 export { barsFor, barsForIn, defaultTheme, emphasisLevel, emphasisOutline, geometrySpec, layoutChart, logBounds, renderChart, renderChartIn, resolveY2Domain, resolveYDomain, seriesMaxLength, seriesOnRightAxis, stackedHitAt, stackedHitIn, themeCorners } from './engine/render'
 export { DARK_PALETTE, DEFAULT_PALETTE, paletteAt } from './engine/palette'
 export { palettes } from './engine/palettes'
-export { ChartThemeContext, ChartThemeProvider, chartThemes, resolveChartTheme, systemChartMode, tooltipStyle, useChartTheme } from './engine/theme'
-export type { ChartThemeMode, ChartThemeProviderProps } from './engine/theme'
+export { ChartThemeContext, ChartThemeProvider, chartThemes, resolveChartTheme, tooltipStyle, useChartTheme } from './engine/theme'
+export type { ChartThemeLayer, ChartThemeMode, ChartThemeProviderProps } from './engine/theme'
 export type { Annotation, ChartSpec, ChartTheme, Emphasis, PointMarker, Series } from './engine/render'
 export {
   bandTicks,

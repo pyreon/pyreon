@@ -3,12 +3,12 @@
 // #141821 ground), the SVG family path ignored `theme` entirely, and
 // `<OptionChart>` ignored an explicit `<ChartThemeProvider>` — while a bare
 // option chart keeps ECharts' own light look, exactly as ECharts does.
-import { h } from '@pyreon/core'
+import { ColorModeProvider, h, systemColorMode } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { describe, expect, it } from 'vitest'
 import { optionToSvg } from './option'
 import { OptionChart } from './OptionChart'
-import { ChartThemeProvider, chartThemes, systemChartMode } from './theme'
+import { ChartThemeProvider, chartThemes } from './theme'
 
 const GAUGE = { series: [{ type: 'gauge', detail: { formatter: '{value}%' }, data: [{ value: 64, name: 'CPU' }] }] }
 const fillOf = (svg: string, text: string): string | undefined => svg.match(new RegExp(`fill="([^"]+)"[^>]*>${text}</text>`))?.[1]
@@ -67,19 +67,19 @@ describe('<OptionChart> honours an explicit <ChartThemeProvider>', () => {
   const TITLED = { title: { text: 'Heading' }, animation: false, xAxis: { type: 'category', data: ['a', 'b'] }, yAxis: {}, series: [{ type: 'bar', data: [1, 2] }] }
 
   it('a cartesian option under a dark provider draws its title in the dark text colour', () => {
-    const t = paints(h(ChartThemeProvider, { mode: 'dark' }, h(OptionChart, { option: TITLED as never, width: 400, height: 240 })))
+    const t = paints(h(ColorModeProvider, { mode: 'dark' }, h(ChartThemeProvider, {}, h(OptionChart, { option: TITLED as never, width: 400, height: 240 }))))
     expect(t.find((p) => p.text === 'Heading')?.fill).toBe(chartThemes.dark.text)
   })
 
   it('a gauge option under a dark provider draws its value in the dark text colour', () => {
-    const t = paints(h(ChartThemeProvider, { mode: 'dark' }, h(OptionChart, { option: { animation: false, ...GAUGE } as never, width: 400, height: 300 })))
+    const t = paints(h(ColorModeProvider, { mode: 'dark' }, h(ChartThemeProvider, {}, h(OptionChart, { option: { animation: false, ...GAUGE } as never, width: 400, height: 300 }))))
     expect(t.find((p) => p.text === '64%')?.fill).toBe(chartThemes.dark.text)
   })
 
   it('with no provider, a family option keeps the light look even on a dark OS', () => {
     // ECharts ignores the OS scheme; so does a bare option chart — its cartesian
     // half always did, and the family half must agree with it.
-    const mode = systemChartMode() as unknown as { set: (m: 'light' | 'dark') => void }
+    const mode = systemColorMode() as unknown as { set: (m: 'light' | 'dark') => void }
     mode.set('dark')
     try {
       const t = paints(h(OptionChart, { option: { animation: false, ...GAUGE } as never, width: 400, height: 300 }))

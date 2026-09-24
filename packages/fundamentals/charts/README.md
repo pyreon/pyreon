@@ -180,10 +180,12 @@ standalone.
 
 One `ChartTheme` token map — `palette`, `background`, `surface`, `text`,
 `label`, `axis`, `grid`, `fontFamily`, `fontSize`, `titleSize`, `radius`,
-`enterMs`, `updateMs` — feeds every host. With no provider a chart follows
-`prefers-color-scheme`; `<ChartThemeProvider mode={useMode} theme={{ palette:
-palettes.okabeIto }}>` pins or tracks a mode for everything below it; the
-`theme` prop merges over that. `chartThemes.light` / `.dark` and the named
+`enterMs`, `updateMs` — feeds every host. The mode is the framework-wide
+colour mode (`<PyreonUI mode>`, or `<ColorModeProvider mode>` from
+`@pyreon/core`; with neither, the page's `color-scheme`, then the OS), so a
+chart under a dark `<PyreonUI>` is dark with no wiring. `<ChartThemeProvider
+theme={{ palette: palettes.okabeIto }} dark={{ … }}>` styles everything below
+it; the `theme` prop merges over that. `chartThemes.light` / `.dark` and the named
 `palettes` (`pyreon`, `pyreonDark`, `echarts6`, `echarts5`, `echartsDark`,
 `observable10`, `tableau10`, `okabeIto`, `tailwind`) are exported as data.
 

@@ -942,6 +942,25 @@ cx(["a", ["b", { c: true }]])            // nested arrays
 - Assuming \`defaultValue\` still applies once \`value\` is supplied — controlled wins for the whole lifetime of the component`,
   },
 
+  'core/useColorMode': {
+    signature: `useColorMode(): () => 'light' | 'dark'  // + provideColorMode(mode), <ColorModeProvider mode>, systemColorMode()`,
+    example: `import { ColorModeProvider, useColorMode } from '@pyreon/core'
+
+const Badge = () => {
+  const mode = useColorMode()
+  return <span class={() => (mode() === 'dark' ? 'badge-dark' : 'badge-light')}>new</span>
+}
+
+<ColorModeProvider mode="dark">
+  <Badge />
+</ColorModeProvider>`,
+    notes: `The framework-wide light/dark mode, as an accessor — the ONE source every package reads, so \`<PyreonUI>\`, charts, flow and the code editor agree. Resolution, nearest first: a \`<ColorModeProvider mode>\` / \`provideColorMode(mode)\` above the component (\`<PyreonUI mode>\` calls it), else the page's scheme (the CSS \`color-scheme\` \`<html>\` declares, when it names exactly one — a site's own theme toggle), else \`prefers-color-scheme\`; light on the server. \`mode\` is \`'light'\`, \`'dark'\` or \`'system'\`, or an accessor over one. \`systemColorMode()\` is the page/OS half alone, a document-lifetime singleton. On native a literal \`mode\` is a compile-time scope; a reactive one follows the platform scheme. See also: createReactiveContext, provide.`,
+    mistakes: `- Calling \`useColorMode()()\` once at setup — it returns an ACCESSOR; read it inside JSX, an effect or a computed so a flip re-renders
+- Adding a separate mode prop to each library component — \`<PyreonUI mode>\` or \`<ColorModeProvider mode>\` sets it for everything below; a component that takes its own mode prop should treat it as an override of \`useColorMode()\`, not the source
+- Reading \`matchMedia('(prefers-color-scheme: dark)')\` directly — it ignores both an app's pinned mode and the page's declared \`color-scheme\`
+- Calling it outside component setup — it reads context, so outside a component it returns the system mode, not a provider's`,
+  },
+
   'core/splitProps': {
     signature: 'splitProps<T, K extends keyof T>(props: T, keys: K[]): [Pick<T, K>, Omit<T, K>]',
     example: `const Button = (props: { class?: string; onClick: () => void; children: VNodeChild }) => {
@@ -5606,24 +5625,28 @@ const sales = signal<Row[]>([{ month: 'Jan', revenue: 120, target: 100 }])
   },
 
   'charts/ChartThemeProvider': {
-    signature: '(props: { mode?: ChartThemeMode | (() => ChartThemeMode); theme?: Partial<ChartTheme> | (() => Partial<ChartTheme> | undefined); light?: Partial<ChartTheme>; dark?: Partial<ChartTheme>; children? }) => VNodeChild',
-    example: `import { Bar, Chart, ChartThemeProvider, palettes } from '@pyreon/charts'
+    signature: '(props: { theme?: Partial<ChartTheme> | (() => Partial<ChartTheme> | undefined); light?: Partial<ChartTheme>; dark?: Partial<ChartTheme>; children? }) => VNodeChild',
+    example: `import { ColorModeProvider } from '@pyreon/core'
+import { Bar, Chart, ChartThemeProvider, palettes } from '@pyreon/charts'
 import { signal } from '@pyreon/reactivity'
 
 interface Row { q: string; v: number }
 const rows: Row[] = [{ q: 'Q1', v: 3 }, { q: 'Q2', v: 5 }]
-const mode = signal<'light' | 'dark'>('dark') // or PyreonUI's useMode
+const dark = signal(true) // <PyreonUI mode> sets the mode in a UI-system app
 
-<ChartThemeProvider mode={() => mode()} theme={{ palette: palettes.okabeIto, radius: 4 }} dark={{ background: '#0b1020' }}>
-  <Chart data={rows} x="q">
-    <Bar y="v" />
-  </Chart>
-</ChartThemeProvider>`,
-    notes: `Provides ONE theme to every chart below it, in layers: the mode's built-in theme, then \`theme\` (both modes), then \`light\` or \`dark\` (only in that mode — a brand whose ground or palette differs by mode). A provider without \`mode\` inherits the mode above it. \`ChartTheme\` is a token map — \`palette\` (series colours in draw order), \`background\`, \`surface\` (tooltip / pager cards), \`text\`, \`label\` (ticks, legend entries), \`axis\`, \`grid\`, \`fontFamily\`, \`fontSize\`, \`titleSize\`, \`radius\` (the bar corner marks fall back to), \`enterMs\` / \`updateMs\` — and every host, family, legend, title, tooltip and accessible description reads from it. With NO provider a chart follows the system colour scheme (\`chartThemes.light\` / \`chartThemes.dark\` by \`prefers-color-scheme\`, live); \`mode\` pins one or tracks the app's (\`mode={useMode}\` hands PyreonUI's reactive mode through); \`theme\` merges token overrides over the mode's theme; a host's own \`theme\` prop merges over all of it. \`palettes\` exports the named sets as data (\`pyreon\` — the default —, \`pyreonDark\`, \`echarts6\`, \`echarts5\`, \`echartsDark\`, \`observable10\`, \`tableau10\`, \`okabeIto\`, \`tailwind\`). On native the provider is transparent: theme each chart there (\`theme={chartThemes.dark}\` and \`palette: palettes.okabeIto\` resolve at compile time). See also: PlotChart, Arc.`,
+<ColorModeProvider mode={() => (dark() ? 'dark' : 'light')}>
+  <ChartThemeProvider theme={{ palette: palettes.okabeIto, radius: 4 }} dark={{ background: '#0b1020' }}>
+    <Chart data={rows} x="q">
+      <Bar y="v" />
+    </Chart>
+  </ChartThemeProvider>
+</ColorModeProvider>`,
+    notes: `Provides ONE theme to every chart below it, in layers: the mode's built-in theme (or an outer provider's), then \`theme\` (both modes), then \`light\` or \`dark\` (only in that mode — a brand whose ground or palette differs by mode). The MODE is not a prop: it is the framework-wide colour mode (\`useColorMode\` from @pyreon/core), set by \`<PyreonUI mode>\` or \`<ColorModeProvider mode>\`, else the page's declared \`color-scheme\`, else \`prefers-color-scheme\`, live — so a chart below a dark \`<PyreonUI>\` is dark with no wiring, and the mode is applied where each chart sits (a mode set below a provider still picks its override). \`ChartTheme\` is a token map — \`palette\` (series colours in draw order), \`background\`, \`surface\` (tooltip / pager cards), \`text\`, \`label\` (ticks, legend entries), \`axis\`, \`grid\`, \`fontFamily\`, \`fontSize\`, \`titleSize\`, \`radius\` (the bar corner marks fall back to), \`enterMs\` / \`updateMs\` — and every host, family, legend, title, tooltip and accessible description reads from it. A host's own \`theme\` prop merges over all of it. \`palettes\` exports the named sets as data (\`pyreon\` — the default —, \`pyreonDark\`, \`echarts6\`, \`echarts5\`, \`echartsDark\`, \`observable10\`, \`tableau10\`, \`okabeIto\`, \`tailwind\`). On native a literal mode and the provider are compile-time scopes (\`theme={chartThemes.dark}\` and \`palette: palettes.okabeIto\` resolve at compile time). See also: PlotChart, Arc.`,
     mistakes: `- Hard-coding \`color\` on every mark to "theme" a dashboard — a mark with its own \`color\` keeps it forever; leave \`color\` off and set \`theme.palette\` once (the provider, or the \`theme\` prop)
 - Passing a hex list you maintain when a named set exists — \`palette: palettes.observable10\` is a reference the compiler also resolves on native; a copied list is a second copy to keep in sync
 - Expecting \`registerTheme\` themes to reach \`<PlotChart>\` — the registry feeds \`compileOption\` / \`<OptionChart>\`; the components resolve \`<ChartThemeProvider>\` → system scheme → \`theme\` prop
-- Pinning a reactive \`mode\` in shared multiplatform source and expecting the native build to follow it — the provider is a compile-time scope on native, so only a literal \`mode="dark"\` lowers; a reactive one warns and the light theme (plus its \`light\` overrides) applies
+- Passing \`mode\` to \`<ChartThemeProvider>\` — the mode is the framework-wide colour mode now: set it with \`<PyreonUI mode>\` or \`<ColorModeProvider mode>\` from @pyreon/core, so charts, the UI system and every other component agree
+- Pinning a reactive colour mode in shared multiplatform source and expecting the native build to follow it — only a literal \`mode="light"\` / \`"dark"\` is a compile-time scope on native; a reactive one warns and the charts below follow the platform scheme
 - Branching on the mode inside \`theme={() => …}\` to vary one token by mode — use \`light={{ … }}\` / \`dark={{ … }}\`: they are plain data, so they lower on native, where an accessor cannot
 - Reading \`useChartTheme()\` once at setup — it returns an ACCESSOR; call it inside the effect that draws so a mode flip repaints
 - Building a full \`ChartTheme\` by hand from four fields — the type has thirteen required tokens now; start from \`chartThemes.light\` / \`.dark\` and spread overrides, or pass a \`Partial\` to \`theme\``,

@@ -665,8 +665,8 @@ describe('chart hosts — theme overrides, formatters and bubble marks', () => {
     const unknown = transform(named.replace('palettes.okabeIto', 'palettes.nope'), { target: 'swift' })
     expect(unknown.warnings).toEqual(['<PlotChart theme>: `palettes.nope` is not a named palette (pyreon, pyreonDark, echarts6, echarts5, echartsDark, observable10, tableau10, okabeIto, tailwind); the default palette applies.'])
   })
-  it('<ChartThemeProvider mode="dark"> is a compile-time scope on both targets: its chart children inherit the theme, byte-identical to their own theme={chartThemes.dark}', () => {
-    const src = PLOT.replace("import { PlotChart, area, bars, line } from '@pyreon/charts/engine'", "import { ChartThemeProvider } from '@pyreon/charts'\nimport { PlotChart, area, bars, line } from '@pyreon/charts/engine'").replace('<Stack>', '<Stack><ChartThemeProvider mode="dark">').replace('</Stack>', '</ChartThemeProvider></Stack>')
+  it('<ColorModeProvider mode="dark"> + <ChartThemeProvider> is a compile-time scope on both targets: its chart children inherit the theme, byte-identical to their own theme={chartThemes.dark}', () => {
+    const src = PLOT.replace("import { PlotChart, area, bars, line } from '@pyreon/charts/engine'", "import { ColorModeProvider } from '@pyreon/core'\nimport { ChartThemeProvider } from '@pyreon/charts'\nimport { PlotChart, area, bars, line } from '@pyreon/charts/engine'").replace('<Stack>', '<Stack><ColorModeProvider mode="dark"><ChartThemeProvider>').replace('</Stack>', '</ChartThemeProvider></ColorModeProvider></Stack>')
     const own = PLOT.replace("import { PlotChart, area, bars, line } from '@pyreon/charts/engine'", "import { chartThemes } from '@pyreon/charts'\nimport { PlotChart, area, bars, line } from '@pyreon/charts/engine'").replace('<PlotChart animate={false}', '<PlotChart animate={false} theme={chartThemes.dark}')
     for (const target of ['swift', 'kotlin'] as const) {
       const r = transform(src, { target })

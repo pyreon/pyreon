@@ -113,7 +113,7 @@ export { registerLocale } from './engine/locale'
 export type { LocalePack } from './engine/locale'
 
 // Theme.
-export { ChartThemeProvider, chartThemes, systemChartMode, useChartTheme } from './engine/theme'
+export { ChartThemeProvider, chartThemes, useChartTheme } from './engine/theme'
 export type { ChartThemeMode, ChartThemeProviderProps } from './engine/theme'
 export { palettes } from './engine/palettes'
 export type { ChartTheme } from './engine/render'

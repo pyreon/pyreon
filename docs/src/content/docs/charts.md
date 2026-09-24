@@ -515,14 +515,17 @@ lengths `enterMs` / `updateMs`. Every host, family, legend, title, tooltip and
 accessible description reads from it, so a chart with no props already looks
 right on both grounds:
 
-- **With no provider**, a chart follows the system colour scheme —
-  `chartThemes.light` or `chartThemes.dark` by `prefers-color-scheme`, live.
-- **`<ChartThemeProvider>`** pins a mode or tracks your app's:
-  `mode={useMode}` hands PyreonUI's reactive mode straight through,
-  `theme={{ … }}` merges token overrides for every chart below it, and
-  `light={{ … }}` / `dark={{ … }}` override only in that mode (a brand whose
-  ground or palette differs by mode). A provider without `mode` inherits the
-  mode above it, so its `light` / `dark` still pick the right one.
+- **The mode is the app's.** A chart draws `chartThemes.light` or
+  `chartThemes.dark` for the framework-wide colour mode in scope — the one
+  `<PyreonUI mode>` sets, or `<ColorModeProvider mode>` from `@pyreon/core`
+  outside the UI system. With neither, it follows the page's declared
+  `color-scheme`, else `prefers-color-scheme`, live. There is nothing to wire:
+  a chart below `<PyreonUI mode="dark">` is dark.
+- **`<ChartThemeProvider>`** styles every chart below it: `theme={{ … }}`
+  merges token overrides, and `light={{ … }}` / `dark={{ … }}` override only in
+  that mode (a brand whose ground or palette differs by mode). The mode is
+  applied where each chart sits, so a mode set below a provider still picks its
+  override.
 - **The `theme` prop** on any host merges over whatever is in scope.
 
 The last four tokens exist because a colour that is not a series colour still
@@ -539,18 +542,21 @@ token.
 
 ```tsx
 // @check
-import { useMode } from '@pyreon/ui-core'
+import { ColorModeProvider } from '@pyreon/core'
 import { Bar, Chart, ChartThemeProvider, palettes } from '@pyreon/charts'
 
 interface Row { q: string; v: number }
 const rows: Row[] = [{ q: 'Q1', v: 3 }, { q: 'Q2', v: 5 }]
 
+// In an app on the UI system, <PyreonUI mode> already provides the mode.
 export const Themed = () => (
-  <ChartThemeProvider mode={useMode} theme={{ palette: palettes.okabeIto, radius: 4 }} dark={{ background: '#0b1020' }}>
-    <Chart<Row> data={rows} x="q">
-      <Bar y="v" />
-    </Chart>
-  </ChartThemeProvider>
+  <ColorModeProvider mode="system">
+    <ChartThemeProvider theme={{ palette: palettes.okabeIto, radius: 4 }} dark={{ background: '#0b1020' }}>
+      <Chart<Row> data={rows} x="q">
+        <Bar y="v" />
+      </Chart>
+    </ChartThemeProvider>
+  </ColorModeProvider>
 )
 ```
 
@@ -564,13 +570,14 @@ the rest cycle through `theme.palette`.
 
 On native the theme is a struct: `theme={chartThemes.dark}` and
 `theme={{ palette: palettes.okabeIto }}` resolve at compile time, a literal
-merges over the defaults, and `<ChartThemeProvider mode theme light dark>` is
-a compile-time scope its chart children inherit — mode, then the provider's
+merges over the defaults, and a literal `<ColorModeProvider mode>` or
+`<PyreonUI mode>` plus `<ChartThemeProvider theme light dark>` are
+compile-time scopes the chart children inherit — mode, then each provider's
 `theme`, then its `light` or `dark`, then the chart's own `theme`, the web's
-layers in the web's order. A nested provider without `mode` inherits the
-outer one's there too. A reactive `mode` (an app's own signal) or an absent one
-(the web follows the system scheme) cannot be read at compile time; the
-light theme applies and the compiler says so by name.
+layers in the web's order. With no mode pinned, a bare chart follows the
+platform's scheme at runtime. A reactive mode (an app's own signal) cannot be
+read at compile time: the charts below follow the platform scheme, and the
+compiler says so by name.
 
 ## Every host, one surface
 

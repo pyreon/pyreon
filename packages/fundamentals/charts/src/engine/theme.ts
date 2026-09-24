@@ -1,18 +1,21 @@
 // Chart themes — the light/dark token maps and how a host finds its theme
-// (the named palettes live in palettes.ts so a host never bundles them): an explicit `theme` prop, else `<ChartThemeProvider>`, else
-// the system colour scheme. Web-only (it reads `matchMedia` and provides
-// context); the token SHAPE it fills is `ChartTheme` in render.ts, which is the
-// part that crosses to native.
+// (the named palettes live in palettes.ts so a host never bundles them): an
+// explicit `theme` prop, else `<ChartThemeProvider>`, else the built-in theme
+// for the framework-wide colour mode (`useColorMode` from @pyreon/core, which
+// `<PyreonUI>` and `<ColorModeProvider>` set). Web-only (it provides context);
+// the token SHAPE it fills is `ChartTheme` in render.ts, which is the part that
+// crosses to native.
 
-import { createContext, nativeCompat, provide, useContext } from '@pyreon/core'
-import type { VNodeChild } from '@pyreon/core'
-import { computed, isClient, isServer, signal } from '@pyreon/reactivity'
+import { createContext, nativeCompat, provide, useColorMode, useContext } from '@pyreon/core'
+import type { ColorMode, VNodeChild } from '@pyreon/core'
+import { computed } from '@pyreon/reactivity'
 import { DARK_PALETTE } from './palette'
 import { defaultTheme } from './render'
 import type { ChartTheme } from './render'
 
 
-export type ChartThemeMode = 'light' | 'dark'
+/** The framework-wide colour mode (`ColorMode` from @pyreon/core). */
+export type ChartThemeMode = ColorMode
 
 /**
  * The two built-in themes. `light` IS `defaultTheme`; `dark` lifts the palette,
@@ -79,96 +82,45 @@ export function resolveChartTheme(base: ChartTheme, override?: Partial<ChartThem
 // per-instance registration to pile up; this is one registration, ever).
 // ---------------------------------------------------------------------------
 
-let _systemMode: ReturnType<typeof signal<ChartThemeMode>> | null = null
-
 /**
- * The scheme the PAGE declares on `<html>` through CSS `color-scheme`, when it
- * names exactly one ('dark' / 'light', optionally 'only …'); null otherwise.
- * A site with its own theme toggle states its scheme there (it is also what
- * makes native form controls and scrollbars match), and a chart should agree
- * with the page it sits on rather than with an OS setting the page overrode.
+ * What an explicit `<ChartThemeProvider>` hands down: the theme FOR a mode, not
+ * a resolved theme. The mode is applied where the chart sits, so a
+ * `<ColorModeProvider mode="dark">` below a provider still reaches the charts
+ * under it. Null when there is no provider.
  */
-function pageScheme(): ChartThemeMode | null {
-  if (isServer) return null
-  const cs = getComputedStyle(document.documentElement).colorScheme.trim()
-  if (cs === 'dark' || cs === 'only dark') return 'dark'
-  if (cs === 'light' || cs === 'only light') return 'light'
-  return null
-}
+export type ChartThemeLayer = (mode: ColorMode) => ChartTheme
 
-/**
- * The page's colour mode as a signal: the scheme `<html>` declares through CSS
- * `color-scheme` when it declares exactly one, else the OS preference
- * (`prefers-color-scheme`); light on the server.
- */
-export function systemChartMode(): () => ChartThemeMode {
-  if (_systemMode === null) {
-    const s = signal<ChartThemeMode>('light')
-    _systemMode = s
-    if (isClient && typeof window.matchMedia === 'function') {
-      const mq = window.matchMedia('(prefers-color-scheme: dark)')
-      // The OS answer the last media event (or the initial query) gave.
-      let osDark = mq.matches
-      const update = (): void => s.set(pageScheme() ?? (osDark ? 'dark' : 'light'))
-      update()
-      // A document-lifetime listener and observer on a module singleton, not a
-      // per-mount registration: useEventListener is for a component's own
-      // lifecycle. A theme toggle flips an attribute (class / data-theme /
-      // style) on <html>; the observer re-reads the declared scheme then.
-      // pyreon-lint-ignore pyreon/no-raw-addeventlistener
-      mq.addEventListener('change', (e) => {
-        osDark = e.matches
-        update()
-      })
-      if (typeof MutationObserver === 'function') new MutationObserver(update).observe(document.documentElement, { attributes: true })
-    }
-  }
-  return _systemMode
-}
-
-const systemTheme = (): ChartTheme => chartThemes[systemChartMode()()]
-
-/**
- * The provided theme, as an accessor. The default is the SYSTEM theme, so a
- * chart with no provider and no `theme` prop already follows dark mode.
- * (A plain context holding an accessor, not a reactive context: the default
- * must itself be live — the system scheme can flip — and a reactive context's
- * default is a constant.)
- */
-export const ChartThemeContext = createContext<() => ChartTheme>(systemTheme)
-
-/**
- * The colour mode in scope — the system scheme by default, pinned by a
- * provider's `mode`. A provider without `mode` inherits it, which is how its
- * `light` / `dark` overrides know which one applies.
- */
-const ChartModeContext = createContext<() => ChartThemeMode>(() => systemChartMode()())
+export const ChartThemeContext = createContext<ChartThemeLayer | null>(null)
 
 /**
  * The theme an EXPLICIT `<ChartThemeProvider>` above this component provides,
- * or `null` when none does (the context still holds its system-scheme default).
+ * as an accessor, or `null` when none does.
  *
  * `<OptionChart>` needs the difference: a bare option chart keeps ECharts'
  * default (light) look, as ECharts itself ignores the OS scheme, while a
- * provider the app put there must win — it used to be ignored entirely.
+ * provider the app put there must win.
  */
 export function useProvidedChartTheme(): (() => ChartTheme) | null {
-  const ctx = useContext(ChartThemeContext)
-  return ctx === systemTheme ? null : ctx
+  const layer = useContext(ChartThemeContext)
+  if (layer === null) return null
+  const mode = useColorMode()
+  return () => layer(mode())
 }
 
-/** The theme in scope, as an accessor — read it inside an effect to track a mode flip. */
+/**
+ * The theme in scope, as an accessor — read it inside an effect to track a
+ * mode flip. With no provider it is the built-in theme for the colour mode in
+ * scope, so a chart below `<PyreonUI mode="dark">` is dark with no wiring.
+ */
 export function useChartTheme(): () => ChartTheme {
-  return useContext(ChartThemeContext)
+  const layer = useContext(ChartThemeContext) ?? builtIn
+  const mode = useColorMode()
+  return () => layer(mode())
 }
+
+const builtIn: ChartThemeLayer = (mode) => chartThemes[mode]
 
 export interface ChartThemeProviderProps {
-  /**
-   * Pin the mode, or track an app's own: `<ChartThemeProvider mode={useMode}>`
-   * hands PyreonUI's reactive mode straight through. Absent, the system
-   * scheme decides.
-   */
-  mode?: ChartThemeMode | (() => ChartThemeMode) | undefined
   /** Overrides merged over the mode's theme in BOTH modes — a palette, a font, a radius. A value or an accessor. */
   theme?: Partial<ChartTheme> | (() => Partial<ChartTheme> | undefined) | undefined
   /** Overrides for light mode only, applied over `theme` — a brand's ground or palette that differs by mode. */
@@ -182,33 +134,32 @@ export interface ChartThemeProviderProps {
  * Provides a chart theme to every chart below it.
  *
  * ```tsx
- * <ChartThemeProvider mode={useMode} theme={{ palette: palettes.okabeIto, radius: 6 }} dark={{ background: '#0b1020' }}>
+ * <ChartThemeProvider theme={{ palette: palettes.okabeIto, radius: 6 }} dark={{ background: '#0b1020' }}>
  *   <Chart … />
  * </ChartThemeProvider>
  * ```
  *
- * The layers apply in order: the mode's built-in theme, then `theme` (both
- * modes), then `light` or `dark` (the mode in effect). Every layer is plain
- * data, so the same provider lowers on iOS and Android.
+ * The MODE is not a prop: it is the framework-wide colour mode, set by
+ * `<PyreonUI mode>` or `<ColorModeProvider mode>` from @pyreon/core, so charts,
+ * the UI system and every other component agree on it. The layers apply in
+ * order: the mode's built-in theme (or an outer provider's), then `theme`
+ * (both modes), then `light` or `dark` (the mode in effect where the chart
+ * sits). Every layer is plain data, so the same provider lowers on iOS and
+ * Android.
  */
 function ChartThemeProviderImpl(props: ChartThemeProviderProps): VNodeChild {
-  const parent = useContext(ChartThemeContext)
-  const parentMode = useContext(ChartModeContext)
-  const mode = (): ChartThemeMode => {
-    const m = props.mode
-    const own = typeof m === 'function' ? m() : m
-    return own ?? parentMode()
-  }
-  const resolved = computed<ChartTheme>(() => {
-    const m = props.mode
-    const pinned = typeof m === 'function' ? m() : m
-    const base = pinned === undefined ? parent() : chartThemes[pinned]
-    const t = props.theme
-    const shared = resolveChartTheme(base, typeof t === 'function' ? t() : t)
-    return resolveChartTheme(shared, mode() === 'dark' ? props.dark : props.light)
-  })
-  provide(ChartThemeContext, () => resolved())
-  provide(ChartModeContext, mode)
+  const parent = useContext(ChartThemeContext) ?? builtIn
+  // One cached theme per mode: a chart reads its layer on every paint, and
+  // rebuilding the merged token map each time would allocate per frame.
+  const forMode = (m: ColorMode) =>
+    computed<ChartTheme>(() => {
+      const t = props.theme
+      const shared = resolveChartTheme(parent(m), typeof t === 'function' ? t() : t)
+      return resolveChartTheme(shared, m === 'dark' ? props.dark : props.light)
+    })
+  const light = forMode('light')
+  const dark = forMode('dark')
+  provide(ChartThemeContext, (m: ColorMode) => (m === 'dark' ? dark() : light()))
   return props.children
 }
 

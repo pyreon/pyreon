@@ -72,6 +72,7 @@ export function Rich() {
 }`
 
 const THEMED = `import { Stack } from '@pyreon/primitives'
+import { ColorModeProvider } from '@pyreon/core'
 import { ChartThemeProvider, chartThemes } from '@pyreon/charts'
 import { PieChart } from '@pyreon/charts/engine'
 interface S { n: string; v: number }
@@ -80,9 +81,11 @@ export function Themed() {
   return (
     <Stack>
       <PieChart data={SLICES} value={(d) => d.v} label={(d) => d.n} theme={chartThemes.dark} height={200} />
-      <ChartThemeProvider mode="light">
-        <PieChart data={SLICES} value={(d) => d.v} label={(d) => d.n} height={200} />
-      </ChartThemeProvider>
+      <ColorModeProvider mode="light">
+        <ChartThemeProvider>
+          <PieChart data={SLICES} value={(d) => d.v} label={(d) => d.n} height={200} />
+        </ChartThemeProvider>
+      </ColorModeProvider>
     </Stack>
   )
 }`

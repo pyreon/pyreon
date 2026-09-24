@@ -1,4 +1,4 @@
-import { ChartThemeProvider, systemChartMode } from '@pyreon/charts'
+import { ChartThemeProvider } from '@pyreon/charts'
 import { OptionChart } from '@pyreon/charts/option'
 import { signal, type Signal } from '@pyreon/reactivity'
 
@@ -8,8 +8,8 @@ import { signal, type Signal } from '@pyreon/reactivity'
  * engine — no ECharts in the bundle — with ECharts' own geometry: rows run
  * bottom-up, as ECharts' category y axis does. "Re-rank" sorts ascending or
  * descending; the `shared` signal counts re-ranks.
- * The provider hands it the PAGE's scheme (`systemChartMode` reads the
- * root's `color-scheme`); a bare option chart keeps ECharts' own light look.
+ * The provider opts it into the colour mode in scope — the page's scheme
+ * here (the root's `color-scheme`); a bare option chart keeps ECharts' own light look.
  */
 const LANGS = [
   { name: 'TypeScript', value: 38.5 },
@@ -38,7 +38,7 @@ export default function GalleryHorizontal(props: { shared?: Signal<number> }) {
         </button>
         <span>re-ranks: {() => reranks()}</span>
       </div>
-      <ChartThemeProvider mode={systemChartMode()}>
+      <ChartThemeProvider>
         <OptionChart
           height={280}
           option={() => ({
