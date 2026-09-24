@@ -63,6 +63,7 @@ import {
   renderModulePreloadLinks,
 } from './ssg-modulepreload'
 import { ensureNoindexMeta } from './not-found'
+import { createSsgWorkerPool, type SsgWorkerPool } from './ssg-worker-pool'
 import type { ZeroConfig } from './types'
 
 // M2.3 — Server-side perf-harness counter sink (same shape as
@@ -1476,7 +1477,13 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       const handlerMod = (await withSilent(
         () => import(/* @vite-ignore */ pathToFileURL(handlerPath).href),
       )) as HandlerMod
-      const renderPath = handlerMod.default
+      // `ssg.workers` — render on worker threads over the same built entry
+      // (see `ssg-worker-pool.ts`). Started right before the render loop and
+      // closed in its `finally`, so nothing in between can leak live threads.
+      const workerCount = Math.floor(config.ssg?.workers ?? 1)
+      let pool = null as SsgWorkerPool | null
+      const renderPath = (path: string): ReturnType<typeof handlerMod.default> =>
+        pool ? (pool.render(path) as ReturnType<typeof handlerMod.default>) : handlerMod.default(path)
       const registry = handlerMod.__getStaticPathsRegistry
 
       // Read the user's built index.html template. Vite has just produced it
@@ -1779,21 +1786,26 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       const concurrency = Math.max(1, config.ssg?.concurrency ?? 4)
       let completed = 0
 
-      await runWithConcurrency(renderablePaths, concurrency, renderOne, async (p) => {
-        completed++
-        if (config.ssg?.onProgress) {
-          try {
-            await config.ssg.onProgress({
-              completed,
-              total: renderablePaths.length,
-              currentPath: p,
-              elapsed: Date.now() - start,
-            })
-          } catch (callbackError) {
-            errors.push({ path: `${p} (onProgress)`, error: callbackError })
+try {
+        await runWithConcurrency(renderablePaths, concurrency, renderOne, async (p) => {
+          completed++
+          if (config.ssg?.onProgress) {
+            try {
+              await config.ssg.onProgress({
+                completed,
+                total: renderablePaths.length,
+                currentPath: p,
+                elapsed: Date.now() - start,
+              })
+            } catch (callbackError) {
+              errors.push({ path: `${p} (onProgress)`, error: callbackError })
+            }
           }
-        }
-      })
+        })
+      } finally {
+        // Workers are threads: terminate them, or the build process never exits.
+        await pool?.close()
+      }
 
       // Phase 6 — `ssg.earlyHints`: per-path `Link: <chunk>; rel=modulepreload`
       // entries appended to `_headers`. CF Pages / Netlify convert Link

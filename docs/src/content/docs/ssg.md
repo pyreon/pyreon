@@ -273,6 +273,7 @@ defineConfig({
 ```
 
 - `concurrency` is clamped to `>= 1`; the real worker count is `min(concurrency, paths.length)`. Set to `1` for the fully-sequential shape (useful when loaders share a non-pooled resource like a single DB connection or a strict serial rate-limit). The practical ceiling is your data layer's concurrent-connection tolerance.
+- `workers` (default `1`) renders paths on that many worker THREADS. Rendering is CPU-bound, which `concurrency` (in-flight renders on one thread) cannot parallelize; on the Pyreon docs site `workers: 4` prerendered 2.9× faster and `workers: 8` 4.1×. Output is byte-identical to the single-thread build. Opt-in because each worker has its own module instances — module-level loader state (an in-memory cache, a DB client) exists once per worker. `concurrency` still bounds total in-flight paths.
 - `onProgress` fires once per path **after** it settles (success, redirect, or failure) — never mid-render. `completed` is 1-indexed, `total` is the full resolved-path count, `elapsed` is wall-clock ms since the loop started. The callback is awaited per-path before that path's progress is considered done, but it does **not** gate the worker pool — callbacks across workers may run in parallel. A throw is captured as a `(onProgress)`-suffixed error so a buggy callback can't take down the build.
 
 Per-path settle outcomes also emit dev-mode perf counters (`ssg.pathRender`, `ssg.pathWrite`, `ssg.pathRedirect`, `ssg.pathError`, `ssg.404Emit`) when a `@pyreon/perf-harness` sink is installed — zero cost otherwise.
@@ -653,6 +654,7 @@ See **[Zero → ZeroConfig Options](/docs/zero#zeroconfig-options)** for the ful
 | `onPathError`     | `(path, error) => string \| null \| Promise<…>`             | —        | Per-path fallback HTML hook                              |
 | `errorArtifact`   | `'json' \| 'none'`                                           | `'json'` | Write `_pyreon-ssg-errors.json` on errors                |
 | `concurrency`     | `number`                                                    | `4`      | Parallel render workers (clamped to `>= 1`)              |
+| `workers`         | `number`                                                    | `1`      | Worker threads rendering paths in parallel               |
 | `onProgress`      | `({ completed, total, currentPath, elapsed }) => void \| …`  | —        | Per-path settle callback                                 |
 | `splitChunks`     | `boolean`                                                   | `true`   | Route-level code splitting                               |
 | `modulePreload`   | `boolean`                                                   | `true`   | Per-route `<link rel="modulepreload">` delta (islands-safe) |

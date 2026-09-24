@@ -1984,6 +1984,27 @@ for (const m of code.matchAll(/^import\\s*\\{([^}]*)\\}/gm))
   }`,
     }),
   },
+  {
+    // `ssg: { workers }` — a worker thread died (an uncaught error at module
+    // evaluation of the SSG entry, `process.exit` in app code, an OOM).
+    pattern: /\[Pyreon\] SSG worker exited \(code (-?\d+)\)/,
+    diagnose: (m) => ({
+      cause: `A prerender worker thread exited with code ${m[1]} while it had pages in flight. Each worker imports the built SSG entry on its own, so something that only fails in a fresh module instance — a top-level side effect, a \`process.exit()\` in app or loader code, an out-of-memory — takes the worker down; its pages are recorded as failed and the remaining workers continue.`,
+      fix: 'Look at the first per-path error for the original stack. Remove `process.exit()` from code that runs during render, make module top-level code safe to evaluate once per worker, or build without `ssg.workers` to confirm the page renders on the main thread.',
+      fixCode: `// vite.config.ts — rule out the worker model first
+zero({ mode: 'ssg', ssg: { workers: 1 } })`,
+    }),
+  },
+  {
+    // A streamed page whose shell never arrives before its Suspense content —
+    // the symptom of an SSR stream that buffers until the slowest boundary.
+    pattern: /Suspense boundary timed out after (\d+)ms/,
+    diagnose: (m) => ({
+      cause: `A streamed Suspense boundary did not resolve within ${m[1]}ms, so its fallback stays on the page. The shell and fallback were already delivered; only the swap is missing.`,
+      fix: 'Make the slow child resolve faster (cache its data, move it to a loader) or raise `suspenseTimeoutMs` / pass `Infinity` to wait indefinitely.',
+      fixCode: `createHandler({ App, routes, mode: 'stream', suspenseTimeoutMs: 60_000 })`,
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */

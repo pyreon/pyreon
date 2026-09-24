@@ -125,7 +125,7 @@ export default {
 | ------------ | ----------------------------------------------------------------------------- | ------- | ------------------------------------------------------------ |
 | `mode`       | `"ssr" \| "ssg" \| "spa" \| "isr"`                                            | `"ssr"` | Global rendering mode                                        |
 | `ssr.mode`   | `"stream" \| "string"`                                                        | `"string"` | SSR output mode. `"stream"` flushes the shell first and streams Suspense boundaries — opt in with `ssr: { mode: 'stream' }` |
-| `ssg`        | `{ paths?, emit404?, emitRedirects?, redirectsAsHtml?, onPathError?, errorArtifact?, concurrency?, onProgress?, splitChunks?, speculationRules?, viewTransitions?, cssMode?, earlyHints?, modulePreload? }` | `{}` | SSG options — see **[SSG](/docs/ssg)** |
+| `ssg`        | `{ paths?, emit404?, emitRedirects?, redirectsAsHtml?, onPathError?, errorArtifact?, concurrency?, workers?, onProgress?, splitChunks?, speculationRules?, viewTransitions?, cssMode?, earlyHints?, modulePreload? }` | `{}` | SSG options — see **[SSG](/docs/ssg)** |
 | `isr`        | `ISRConfig` (`{ revalidate, maxEntries?, cacheKey?, store?, tagsForRequest? }`) | —       | Runtime ISR config (only used when `mode: "isr"`)            |
 | `adapter`    | `"node" \| "bun" \| "static" \| "vercel" \| "cloudflare" \| "netlify" \| Adapter` | auto     | Deployment adapter (name or constructed instance). When unset, the build platform is auto-detected from its env (`VERCEL` / `NETLIFY` / `CF_PAGES`) and that adapter is used — local builds default to `"node"` |
 | `base`       | `string`                                                                      | `"/"`   | Base URL path — single source of truth (see [Base Path](#base-path)) |
@@ -562,7 +562,7 @@ zero({
   ssg: {
     speculationRules: 'prefetch', // or 'prerender' — Chrome Speculation Rules; near-instant MPA navs
     viewTransitions: true,        // cross-document View Transitions (@view-transition CSS, zero JS)
-    cssMode: 'asset',             // styler CSS as ONE hashed shared file instead of inlined per page
+    cssMode: 'asset',             // styler CSS as content-hashed shared files instead of inlined per page
     earlyHints: true,             // per-path Link: modulepreload entries in _headers → HTTP 103 on CF/Netlify
   },
 })
@@ -570,7 +570,7 @@ zero({
 
 - `speculationRules` injects a document-rules block (`href_matches: "/*"`, moderate eagerness) into every prerendered page; unsupported browsers ignore it.
 - `viewTransitions` opts prerendered pages into cross-document View Transitions — MPA navigations animate with zero JS in supporting browsers.
-- `cssMode: 'asset'` extracts the styler's per-page inline `<style>` (identical across pages by construction) into one content-hashed `assets/pyreon-ssg.<hash>.css` that every page links — pages share the browser-cached file instead of re-downloading the full sheet inside each HTML. No-op for projects without `@pyreon/styler`.
+- `cssMode: 'asset'` extracts the styler's per-page inline `<style>` into a content-hashed `assets/pyreon-ssg.<hash>.css` that the page links — one file per distinct rule set, so pages whose render used the same styles share one browser-cached file. (Each page's CSS is exactly the rules its own render used plus module-level `keyframes`/`createGlobalStyle`; it no longer depends on which pages were prerendered first.) No-op for projects without `@pyreon/styler`.
 - `earlyHints` appends per-path `Link: <chunk>; rel=modulepreload` entries to `_headers` (existing user `_headers` content is preserved); Cloudflare Pages and Netlify turn those into HTTP 103 Early Hints.
 
 ### ISR: tag-based invalidation + filesystem store
