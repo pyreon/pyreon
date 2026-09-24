@@ -106,6 +106,112 @@ export function stripNonCode(text: string): string {
  */
 const CODE = 0, LINE = 1, BLOCK = 2, SINGLE = 3, DOUBLE = 4, TEMPLATE = 5
 
+/** Keywords after which a `/` opens a regex rather than dividing. */
+const REGEX_KEYWORDS = new Set([
+  'return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void', 'throw',
+  'case', 'do', 'else', 'yield', 'await',
+])
+/** Punctuation after which a `/` opens a regex. `)`, `]`, `}`, identifiers and
+ * literals end an operand, so a `/` there divides. `<` and `>` are left out on
+ * purpose: `</div>` in JSX would otherwise read as a regex. */
+const REGEX_AFTER = new Set(['(', ',', '=', ':', '[', '!', '&', '|', '?', '{', ';', '~', '^', '+', '-', '*', '%'])
+
+/**
+ * Can a `/` open a regex, given the index of the last SIGNIFICANT character
+ * before it (a non-whitespace code character or a closing quote/backtick;
+ * -1 at the start of the file)? The lexical rule every JS highlighter uses —
+ * not a parser, so `a++ / b` and similar oddities can misread, but a misread
+ * only means the regex body stays ordinary code, which is what every `/` was
+ * before this existed.
+ */
+export function regexCanStart(text: string, prev: number): boolean {
+  if (prev < 0) return true
+  const c = text[prev]!
+  if (REGEX_AFTER.has(c)) return true
+  if (!/[A-Za-z_$]/.test(c)) return false
+  let k = prev
+  while (k > 0 && /[A-Za-z0-9_$]/.test(text[k - 1]!)) k -= 1
+  if (k > 0 && text[k - 1] === '.') return false // `x.return / 2` is a property
+  return REGEX_KEYWORDS.has(text.slice(k, prev + 1))
+}
+
+/**
+ * The end (exclusive) of a regex literal whose opening `/` is at `start`, or
+ * -1 when none closes on this line — then the `/` was division after all.
+ * Honors escapes and character classes, where an unescaped `/` is literal.
+ */
+export function scanRegex(text: string, start: number): number {
+  let j = start + 1
+  let inClass = false
+  while (j < text.length) {
+    const c = text[j]!
+    if (c === '\n') return -1
+    if (c === '\\') { j += 2; continue }
+    if (c === '[') inClass = true
+    else if (c === ']') inClass = false
+    else if (c === '/' && !inClass) {
+      j += 1
+      while (j < text.length && /[a-z]/.test(text[j]!)) j += 1 // flags
+      return j
+    }
+    j += 1
+  }
+  return -1
+}
+
+/**
+ * The end (exclusive) of a template literal whose opening backtick sits just
+ * before `start`. An interpolation is CODE and may hold strings, comments,
+ * braces and whole nested templates, so a backtick inside `${…}` does not end
+ * the outer template.
+ */
+export function skipTemplate(text: string, start: number): number {
+  const n = text.length
+  let j = start
+  while (j < n) {
+    const c = text.charCodeAt(j)
+    if (c === 92) { j += 2; continue } // `\`
+    if (c === 96) return j + 1 // backtick
+    if (c === 36 && text.charCodeAt(j + 1) === 123) { j = skipInterpolation(text, j + 2); continue } // `${`
+    j += 1
+  }
+  return n
+}
+
+function skipInterpolation(text: string, start: number): number {
+  const n = text.length
+  let depth = 1
+  let j = start
+  // An interpolation is code, so it needs the same regex rule as top-level
+  // code: `${s.match(/"(\w+)"/)}` must not read the regex's quote as a string.
+  let prev = start - 1
+  while (j < n) {
+    const c = text[j]!
+    if (c === '{') depth += 1
+    else if (c === '}') { depth -= 1; if (depth === 0) return j + 1 }
+    else if (c === '`') { j = skipTemplate(text, j + 1); prev = j - 1; continue }
+    else if (c === "'" || c === '"') {
+      j += 1
+      while (j < n && text[j] !== c && text[j] !== '\n') j += text[j] === '\\' ? 2 : 1
+      prev = j
+    } else if (c === '/' && text[j + 1] === '/') {
+      const nl = text.indexOf('\n', j)
+      j = nl === -1 ? n : nl
+      continue
+    } else if (c === '/' && text[j + 1] === '*') {
+      const end = text.indexOf('*/', j + 2)
+      j = end === -1 ? n : end + 2
+      continue
+    } else if (c === '/') {
+      const end = regexCanStart(text, prev) ? scanRegex(text, j) : -1
+      if (end !== -1) { prev = end - 1; j = end; continue }
+    }
+    if (c !== ' ' && c !== '\t' && c !== '\n' && c !== '\r') prev = j
+    j += 1
+  }
+  return n
+}
+
 export function stripWithMask(text: string): { stripped: string; codeAt: Uint8Array } {
   const n = text.length
   const mask = new Uint8Array(n)
@@ -113,6 +219,8 @@ export function stripWithMask(text: string): { stripped: string; codeAt: Uint8Ar
   let outLen = 0
   let i = 0
   let mode = CODE
+  /** The last significant character: see {@link regexCanStart}. */
+  let prev = -1
 
   /** Move `[from, to)` of the input to the output with one mask fill. */
   const emit = (from: number, to: number, inCode: boolean): void => {
@@ -136,14 +244,27 @@ export function stripWithMask(text: string): { stripped: string; codeAt: Uint8Ar
         j += 1
       }
       emit(i, j, true)
+      for (let k = j - 1; k >= i; k -= 1) {
+        const w = text.charCodeAt(k)
+        if (w !== 32 && w !== 9 && w !== 10 && w !== 13) { prev = k; break }
+      }
       i = j
       if (i >= n) break
       const c = text[i]!
       const next = text[i + 1]
       if (c === '/' && next === '/') { mode = LINE; i += 2; continue }
       if (c === '/' && next === '*') { mode = BLOCK; i += 2; continue }
-      // A lone `/` is division or a regex delimiter — ordinary code.
-      if (c === '/') { emit(i, i + 1, true); i += 1; continue }
+      // A lone `/` is division or a regex. Either way it stays CODE; what a
+      // regex changes is that its body cannot open a string or a template, so
+      // `/'/` no longer swallows the rest of the line as a string.
+      if (c === '/') {
+        const end = regexCanStart(text, prev) ? scanRegex(text, i) : -1
+        const to = end === -1 ? i + 1 : end
+        emit(i, to, true)
+        prev = to - 1
+        i = to
+        continue
+      }
       if (c === '`') { mode = TEMPLATE; i += 1; continue }
       // The OPENING quote stays CODE. That is precisely what lets the scanner
       // tell a real `from '…'` from one living inside another string.
@@ -185,6 +306,7 @@ export function stripWithMask(text: string): { stripped: string; codeAt: Uint8Ar
       // The CLOSING quote (or the newline that ends an unterminated string) is
       // emitted as non-code, matching the original.
       emit(i, i + 1, false)
+      prev = i
       i += 1
       mode = CODE
       continue
@@ -193,14 +315,8 @@ export function stripWithMask(text: string): { stripped: string; codeAt: Uint8Ar
     // TEMPLATE: contents dropped entirely (interpolations included — an import
     // inside a template is data, and a dynamic import() built from template
     // pieces is unresolvable statically anyway).
-    let j = i
-    while (j < n) {
-      const c = text.charCodeAt(j)
-      if (c === 92) { j += 2; continue }
-      if (c === 96) break
-      j += 1
-    }
-    i = j < n ? j + 1 : n
+    i = skipTemplate(text, i)
+    prev = i - 1
     mode = CODE
   }
 
