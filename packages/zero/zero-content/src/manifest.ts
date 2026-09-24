@@ -156,6 +156,34 @@ for (const post of posts) {
         'Calling `getCollection` in a component body without `await`. It returns a Promise. Wrap in an async setup function, use a loader, or await it during SSG render.',
         "Passing a string that isn't a defined collection. TypeScript catches this once `.pyreon/content-types.d.ts` is generated; without it, you'd get a runtime error.",
       ],
+      seeAlso: ['getEntry', 'getEntries'],
+    },
+    {
+      name: 'getEntry',
+      kind: 'function',
+      signature: 'getEntry<K>(name: K, slug: string): Promise<CollectionEntry<CollectionSchemas[K]> | undefined>',
+      summary:
+        "Sibling of `getCollection` for a SINGLE known slug instead of the whole collection — returns `undefined` (never throws) when the collection name or the slug is not found. Slug match is EXACT (case-sensitive, no trailing-slash normalization).",
+      example: `const post = await getEntry('blog', 'my-first-post')
+if (post) console.log(post.data.title)`,
+      mistakes: [
+        'Assuming a trailing-slash or case-insensitive match — the slug lookup is exact; normalize your slug before calling if the source can vary',
+        'Not handling `undefined` — the function never throws on a miss, it resolves `undefined`',
+      ],
+      seeAlso: ['getCollection', 'getEntries'],
+    },
+    {
+      name: 'getEntries',
+      kind: 'function',
+      signature: 'getEntries<K>(name: K, slugs: string[]): Promise<CollectionEntry<CollectionSchemas[K]>[]>',
+      summary:
+        'Batch sibling of `getEntry` — resolves multiple entries by slug in parallel. Missing slugs are SILENTLY FILTERED from the result (never throw, never produce a hole) — useful for "related content" widgets where a stale/renamed slug in the data should degrade gracefully rather than break the page.',
+      example: `const related = await getEntries('blog', ['post-a', 'post-b', 'post-c'])
+// Length may be < 3 if any slug is missing — no error, no gap markers.`,
+      mistakes: [
+        'Assuming the result array preserves a 1:1 index correspondence with the input `slugs` — a missing slug is DROPPED, not represented as `null`, so the output can be shorter than the input',
+      ],
+      seeAlso: ['getEntry', 'getCollection'],
     },
     {
       name: 'Callout',
@@ -284,6 +312,251 @@ console.log(a()) // 5`,
         'Disagreeing on `T` across two callers with the same key — both get the same runtime signal but mismatched compile-time types (author error, no runtime safeguard).',
         'Calling `clearAllSharedSignals()` in production (default-page-nav handler etc.) — signals are normally session-scoped; clearing wipes intentional app-wide state (theme/locale/...).',
         'Re-implementing the registry per-feature instead of reusing this — the registry is the canonical home for module-level shared signals across mount boundaries.',
+      ],
+    },
+    {
+      name: 'Details',
+      kind: 'component',
+      signature: '<Details summary?="…" open? class? children>',
+      summary:
+        'Thin wrapper around native `<details>`/`<summary>` for a collapsible disclosure section. `summary` renders the always-visible label; children render inside the collapsible body. Authored via the `:::details Label` block directive in markdown, or used directly in JSX.',
+      example: `// In markdown:
+:::details Why?
+The full explanation goes here.
+:::
+
+// In JSX:
+<Details summary="Why?">The full explanation goes here.</Details>`,
+      mistakes: [
+        'Expecting JS-driven animation — it is the native `<details>` toggle, no transition by default',
+      ],
+      seeAlso: ['Callout'],
+    },
+    {
+      name: 'Tabs',
+      kind: 'component',
+      signature: '<Tabs labels={string[]} children? | items={{ label, content }[]} initial?=0 class?>',
+      summary:
+        'A generic tab strip with one active panel at a time — distinct from `<CodeGroup>` in that labels can be any string and panel content is arbitrary children, not just code. Used for "Install / Use / Configure"-style flows. Two mutually-exclusive shapes: the CHILDREN API (`labels` + parallel `children` array — simple to author from MDX) or the PROPS API (`items: Array<{ label, content }>` — for programmatic tabs from a config/data source).',
+      example: `<Tabs labels={['npm', 'bun']}>
+  <CodeBlock lang="bash">npm install @pyreon/zero</CodeBlock>
+  <CodeBlock lang="bash">bun add @pyreon/zero</CodeBlock>
+</Tabs>
+
+// Programmatic:
+<Tabs items={[{ label: 'A', content: <div>a</div> }, { label: 'B', content: <div>b</div> }]} />`,
+      mistakes: [
+        'Passing BOTH `items` AND `labels`/`children` — they are mutually exclusive; `items` (when present) is authoritative',
+        'A `labels` array longer than `children` — the extra labels render with `null` panel content rather than erroring',
+      ],
+      seeAlso: ['CodeGroup'],
+    },
+    {
+      name: 'PropTable',
+      kind: 'component',
+      signature: '<PropTable rows={PropRow[]} class?> — PropRow: { name, type, default?, required?, description? }',
+      summary:
+        'Renders a Markdown-style props reference table from a STATIC, author-supplied row list — no runtime introspection, so the table renders identically regardless of environment. Used in API documentation pages, typically paired with `<APICard>`.',
+      example: `<PropTable rows={[
+  { name: 'children', type: 'VNodeChild', required: true, description: 'The button content.' },
+  { name: 'onClick', type: '(e: MouseEvent) => void', description: 'Click handler.' },
+  { name: 'disabled', type: 'boolean', default: 'false', description: 'Non-interactive when true.' },
+]} />`,
+      mistakes: [
+        'Expecting it to introspect a real component\'s types — rows are hand-authored; keep them in sync with the actual prop interface manually',
+      ],
+      seeAlso: ['APICard'],
+    },
+    {
+      name: 'APICard',
+      kind: 'component',
+      signature: '<APICard name="…" signature?="…" summary?="…" stability?="stable"|"experimental"|"deprecated" since?="…" id?="…" children?>',
+      summary:
+        'Renders a heading + signature + short description block for ONE API surface entry — the inline structural block authors drop alongside a `<PropTable>` to lock a public API in docs. `id` derives from `name` by default (lowercase, non-alphanumeric → hyphen) for deep-linking; `stability` renders as a badge next to the name.',
+      example: `<APICard
+  name="getCollection"
+  signature="getCollection<K>(name: K, options?: GetCollectionOptions): Promise<Entry[]>"
+  summary="Read all entries from a content collection."
+>
+  <PropTable rows={[/* … */]} />
+</APICard>`,
+      mistakes: [
+        'Omitting `id` on two API cards that derive the SAME anchor slug from similarly-named `name`s — deep links collide; pass an explicit `id` to disambiguate',
+      ],
+      seeAlso: ['PropTable'],
+    },
+    {
+      name: 'CompatMatrix',
+      kind: 'component',
+      signature: '<CompatMatrix features={string[]} platforms={string[]} cells={Record<feature, Record<platform, CompatCellValue>>}>',
+      summary:
+        "Renders a feature × platform compatibility table — one status cell per intersection: ✓ supported, ✗ unsupported, 🚧 partial, ⏳ planned. `CompatCellValue` accepts `true`/`false`/`'partial'`/`'planned'`/any custom string (normalized for display); a missing key at `[feature][platform]` renders an empty cell. Used on adapter/runtime pages to surface what works where.",
+      example: `<CompatMatrix
+  features={['SSR', 'SSG', 'ISR']}
+  platforms={['Node', 'Bun', 'Cloudflare', 'Vercel']}
+  cells={{
+    SSR: { Node: true, Bun: true, Cloudflare: 'partial', Vercel: true },
+    SSG: { Node: true, Bun: true, Cloudflare: true, Vercel: true },
+    ISR: { Node: true, Bun: true, Cloudflare: 'planned', Vercel: true },
+  }}
+/>`,
+      mistakes: [
+        'Keying `cells` by `[platform][feature]` (swapped) — the lookup is `cells[feature][platform]`, matching the `features`/`platforms` argument order',
+      ],
+    },
+    {
+      name: 'PackageBadge',
+      kind: 'component',
+      signature:
+        '<PackageBadge name="…" version?="…" description?="…" managers?={Partial<Record<"bun"|"npm"|"pnpm"|"yarn"|"deno", string>>} hideInstall?>',
+      summary:
+        'A static panel showing a package name, optional version, and one or more per-package-manager install commands. No network calls, no runtime resolution — authors typically place it at the top of an integration/migration page. Omit a manager key to hide its row; defaults cover bun/npm/pnpm/yarn/deno with their conventional verbs (`add`/`install`).',
+      example: `<PackageBadge
+  name="@pyreon/zero-content"
+  version="0.2.0"
+  managers={{ bun: 'add', npm: 'install' }}
+/>`,
+      mistakes: [
+        'Expecting `version` to be resolved automatically from a registry — it is a plain string prop the author supplies',
+      ],
+    },
+    {
+      name: 'Mermaid',
+      kind: 'component',
+      signature: '<Mermaid class? id?>{diagramSource}</Mermaid>',
+      summary:
+        'Renders a mermaid diagram source string as an SVG. `mermaid` is an OPTIONAL peer dependency — when it is absent (or on the server, before the client-side render completes) the component falls back to a `<pre>` block showing the raw source, so SSR / no-mermaid builds still surface the diagram content instead of a blank area. Authored via the `:::mermaid` block directive in markdown.',
+      example: `// In markdown:
+:::mermaid
+graph TD
+  A --> B
+:::
+
+// In JSX:
+<Mermaid>{\`graph TD\\n  A --> B\`}</Mermaid>`,
+      mistakes: [
+        'Not installing the `mermaid` peer dependency and expecting a rendered diagram — without it, every `<Mermaid>` falls back to plain source text (by design, not a bug)',
+      ],
+      seeAlso: ['Math'],
+    },
+    {
+      name: 'Math',
+      kind: 'component',
+      signature: '<Math inline? class?>{latexSource}</Math>',
+      summary:
+        'Renders a LaTeX expression via KaTeX. `katex` is an OPTIONAL peer dependency — when absent, falls back to a `<code>` element with the raw source so SSR / no-KaTeX builds still surface the formula text. `inline={true}` renders in `display: inline` mode (KaTeX `displayMode: false`); default is block/display mode. Authored via the `:::math` block directive in markdown.',
+      example: `// In markdown:
+:::math
+E = mc^2
+:::
+
+// In JSX, inline:
+<Math inline>x^2 + y^2 = r^2</Math>`,
+      mistakes: [
+        'Not installing the `katex` peer dependency and expecting a rendered formula — without it, every `<Math>` falls back to a plain `<code>` element',
+      ],
+      seeAlso: ['Mermaid'],
+    },
+    {
+      name: 'Sidebar',
+      kind: 'component',
+      signature:
+        '<Sidebar entries?={SidebarEntry[]} config?={SidebarConfig} currentPath={() => string}> — SidebarEntry: { title, url, group?, order?, badge? }',
+      summary:
+        "Collection-driven navigation. In the default (auto-grouping) mode, reads each entry's `group`/`order` (typically sourced from frontmatter `sidebar.group`/`sidebar.order`) to build a grouped tree — entries with no `group` fall under an empty-string bucket rendered before the named groups. In CONFIG-DRIVEN mode (`config` prop, takes precedence over `entries`), pinned groups with explicit order skip the auto-grouping pass entirely — useful when navigation structure should be decoupled from per-file frontmatter. Active-link highlighting is automatic and REACTIVE: pass `currentPath` as an accessor so router navigation flips the active item.",
+      example: `<Sidebar
+  entries={[
+    { title: 'Getting Started', url: '/docs/start', group: 'Guides', order: 0 },
+    { title: 'API', url: '/docs/api', group: 'Reference', order: 0 },
+  ]}
+  currentPath={() => router.currentRoute().path}
+/>`,
+      mistakes: [
+        'Passing `currentPath` as a called value (`currentPath={router.currentRoute().path}`) instead of an accessor — active-link highlighting then freezes at the value captured on first render',
+        'Mixing `entries` and `config` expecting them to merge — `config` takes precedence outright and skips the frontmatter-derived auto-grouping entirely',
+      ],
+      seeAlso: ['Breadcrumbs', 'PrevNext'],
+    },
+    {
+      name: 'Breadcrumbs',
+      kind: 'component',
+      signature: '<Breadcrumbs currentPath={() => string} homeLabel?="Home" homeUrl?="/" entries?={SidebarEntry[]}>',
+      summary:
+        "Renders a `Home › Section › Page` crumb trail derived from the current URL. Two modes: AUTO (default, no `entries`) derives each segment's label by title-casing the URL path segment (`/docs/getting-started` → `Home › Docs › Getting Started`); LOOKUP (pass `entries` — typically the SAME array given to `<Sidebar>`) resolves each parent segment's title from the matching entry, falling back to auto title-casing for segments with no match. The final segment always renders as plain text (current page, not a link).",
+      example: `<Breadcrumbs currentPath={() => router.currentRoute().path} entries={sidebarEntries} />`,
+      mistakes: [
+        'Expecting every crumb to be clickable — the LAST segment (current page) is deliberately plain text, not a link',
+      ],
+      seeAlso: ['Sidebar', 'PrevNext'],
+    },
+    {
+      name: 'PrevNext',
+      kind: 'component',
+      signature: '<PrevNext entries={SidebarEntry[]} currentPath={() => string} labels?={{ previous?, next? }}>',
+      summary:
+        'Renders "← Previous" / "Next →" links derived from a flattened entry list and the current path — `entries` is typically the SAME array supplied to `<Sidebar>`, so prev/next order matches the sidebar\'s rendered order. Renders empty when the current page is not found in the list. The pure resolution logic is exported separately as `resolvePrevNext(entries, currentPath)` for testing or building a custom prev/next UI.',
+      example: `<PrevNext entries={sidebarEntries} currentPath={() => router.currentRoute().path} />`,
+      mistakes: [
+        'Passing an entries array in a DIFFERENT order than `<Sidebar>` — prev/next then disagrees with the sidebar\'s visual order, confusing readers',
+      ],
+      seeAlso: ['Sidebar', 'Breadcrumbs'],
+    },
+    {
+      name: 'Toc',
+      kind: 'component',
+      signature:
+        '<Toc headings={Heading[]} class? minLevel?=2 maxLevel?=3 activeSlug?={() => string | null} smoothScroll?=true scrollOffset?=0>',
+      summary:
+        "Page table-of-contents with scroll-spy: renders a flat list of headings (level 2–3 by default) and tracks which is currently in view via `IntersectionObserver`, flipping `aria-current` + a `.pyreon-toc__link--active` class on the active link. SSR-safe — when `IntersectionObserver` is undefined (no window), the heading list still renders, just without active-tracking (the reactive active-id signal is client-only). `smoothScroll` (default true) makes a click smooth-scroll to the section and update the URL hash instead of a full jump, falling back to native jump when `scrollIntoView` isn't supported; `scrollOffset` compensates for a sticky header.",
+      example: `<Toc headings={page.headings} scrollOffset={64} />`,
+      mistakes: [
+        'Passing a hand-built headings array instead of the one the compiled markdown module exports — the compiler already extracts `headings` with the right slugs; a hand-rolled list can drift from the actual `id` attributes in the rendered page',
+      ],
+    },
+    {
+      name: 'Playground',
+      kind: 'component',
+      signature: '<Playground title? html? css? js? tabs?=false height?=240 class?>',
+      summary:
+        'DEPRECATED in favor of `<Example>` — flagged by the `pyreon/no-playground-in-docs` lint rule. A minimal sandboxed code playground: renders a `<textarea>` next to a sandboxed `<iframe srcdoc>` that re-renders its body on input. Deliberately narrow scope — no CodeMirror, no Babel/esbuild runtime, just literal HTML/JS/CSS in a sandbox. `<Example>` (type-checked, refactor-safe, cross-mount signal sharing via `share`) structurally supersedes the value this component offered; for richer interactivity (syntax highlighting, autocomplete, multi-file demos) reach for `@pyreon/code` directly instead of either.',
+      example: `// Legacy usage — prefer <Example> for new docs:
+<Playground title="Hello world" html={'<button id="b">Click</button>'} js={'b.onclick = () => alert("hi")'} />`,
+      mistakes: [
+        'Authoring NEW docs pages with `<Playground>` — use `<Example file="./examples/…">` instead; `no-playground-in-docs` lints against new usage',
+        'Expecting type-checking or a shared signal store — those are `<Example>`-only capabilities this component never had',
+      ],
+      seeAlso: ['Example'],
+    },
+    {
+      name: 'Search / useSearch',
+      kind: 'hook',
+      signature:
+        "useSearch(options?: UseSearchOptions) => UseSearchResult · <Search catalogUrl? debounceMs?=150 maxResults?=8 minQueryLength?=2> — UseSearchResult: { open, query, results, status: 'idle'|'searching'|'ready', toggle, close }",
+      summary:
+        "`useSearch` is the headless search state — build a custom search UI on top of it. `<Search />` wraps it with default styling + keyboard shortcuts (⌘K-style open). Both load a MiniSearch index lazily via `loadSearchIndex` (a module-level cache, reference-counted across mounts so it is not re-fetched per component instance) and debounce the query (`debounceMs`, default 150ms) before searching. `status` exists specifically to avoid a \"No results\" flash: `'idle'` (query empty or below `minQueryLength`), `'searching'` (in flight), `'ready'` (a search COMPLETED for the current query — only then is an empty `results` a genuine \"no matches\"). `minQueryLength` defaults to 2 (single letters hit too broad a result set on docs-sized corpora).",
+      example: `const search = useSearch({ maxResults: 5 })
+search.query.set('signal')
+<Show when={() => search.status() === 'ready' && search.results().length === 0}>
+  <p>No results.</p>
+</Show>
+
+// Or the ready-made overlay:
+<Search />`,
+      mistakes: [
+        'Gating the empty state on `results().length === 0` alone — during the debounce/index-load window results are momentarily empty for a query that WILL match; gate on `status() === \'ready\'` too, as shown above',
+        'Building a search index yourself instead of calling `loadSearchIndex` — the module-level cache is what keeps the ~200 KB index from being fetched/parsed once per mounted search UI',
+      ],
+    },
+    {
+      name: 'generateSitemap / generateRssFeed / generateLlmsTxt',
+      kind: 'function',
+      signature: 'generateSitemap(args): string · generateRssFeed(args): string · generateLlmsTxt(args): string',
+      summary:
+        "DEPRECATED — all three are thin build-script helpers kept for back-compat and superseded by richer `@pyreon/zero` equivalents that run as Vite plugins instead of a hand-written build script: `generateSitemap` → `@pyreon/zero`'s `generateSitemap` + `seoPlugin` (adds hreflang/i18n, trailing-slash policy, SSG path-manifest integration); `generateRssFeed`/`toRfc822` → import them directly from `@pyreon/zero` (same function, re-exported, no `zero-content` wrapper needed); `generateLlmsTxt` → `@pyreon/zero`'s `aiPlugin`. These `zero-content` versions will be removed in a future major version — do not build new tooling on them.",
+      example: `// Prefer, from @pyreon/zero:
+import { seoPlugin, generateRssFeed, aiPlugin } from '@pyreon/zero'`,
+      mistakes: [
+        "Building new SEO tooling on these zero-content functions — they are deprecated aliases; use @pyreon/zero's seoPlugin/aiPlugin/generateRssFeed instead, which cover strictly more (hreflang, SSG integration, no hand-written build script)",
       ],
     },
   ],
