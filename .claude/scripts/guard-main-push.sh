@@ -1,33 +1,60 @@
 #!/bin/bash
-# Guard against direct pushes to main/master.
+# Guard against pushes to main/master.
 # Used as a Claude Code PreToolUse hook on Bash.
 #
-# Worktree-aware: the hook runs with cwd = the project root (the MAIN repo,
-# usually on `main`), but the command it inspects may target a different repo
-# via `git -C <dir>` or a leading `cd <dir>` (e.g. a git worktree on a feature
-# branch). Checking the hook's cwd branch produced false positives — it blocked
-# legitimate feature-branch pushes made from a worktree. This guard resolves the
-# repo the command ACTUALLY targets and checks THAT branch.
+# A push is judged by WHERE IT WRITES, not by what is checked out:
+#   - an explicit refspec whose destination is main/master blocks
+#     (`git push origin main`, `HEAD:main`, `x:refs/heads/main`, `+main`,
+#     `--delete main`), whatever branch the repo is on;
+#   - `--all` / `--mirror` block, since they can write main;
+#   - with no refspec, git pushes the current branch, so the current branch of
+#     the repo the command targets decides.
+# Checking only the current branch blocked feature-branch pushes made from a
+# checkout that sits on main (including the bare primary tree) and let
+# `git push origin HEAD:main` from a feature branch through.
 
+set -f  # tokens like `*` must not glob-expand
 cmd=$(jq -r '.tool_input.command // ""')
 
-# Only act on commands that run `git push` — anywhere in the command (after a
-# shell separator), and including the `git -C <dir> push` form. The old
-# `^git push` anchor missed `cd … && git push` and `git -C … push` entirely.
 if ! printf '%s' "$cmd" | grep -qE '(^|[;&| ])git( +-C +[^ ]+)? +push'; then
   echo '{}'
   exit 0
 fi
 
-# Resolve the target repo dir: an explicit `git -C <dir>` wins; else a leading
-# `cd <dir>`; else the hook's cwd (".").
+block() {
+  echo '{"decision":"block","reason":"[Pyreon] Direct push to main is not allowed. Use a feature branch + PR."}'
+  exit 0
+}
+
+# Target repo: an explicit `git -C <dir>` wins; else a leading `cd <dir>`; else ".".
 dir=$(printf '%s' "$cmd" | grep -oE 'git +-C +[^ ]+' | head -1 | sed -E 's/git +-C +//')
 [ -z "$dir" ] && dir=$(printf '%s' "$cmd" | grep -oE '(^|&&|;)[[:space:]]*cd +[^ &;|]+' | head -1 | sed -E 's/.*cd +//')
 [ -z "$dir" ] && dir="."
 
-branch=$(git -C "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null)
-if [ "$branch" = "main" ] || [ "$branch" = "master" ]; then
-  echo '{"decision":"block","reason":"[Pyreon] Direct push to main is not allowed. Use a feature branch + PR."}'
+# The arguments after `push`, up to the next shell separator.
+args=$(printf '%s' "$cmd" | sed -E 's/.*git( +-C +[^ ]+)? +push//' | sed -E 's/(&&|\|\||;|\|).*//')
+
+remote=""
+refspecs=()
+for tok in $args; do
+  case "$tok" in
+    --all|--mirror) block ;;
+    -*) continue ;;
+  esac
+  if [ -z "$remote" ]; then remote=$tok; else refspecs+=("$tok"); fi
+done
+
+if [ ${#refspecs[@]} -eq 0 ]; then
+  branch=$(git -C "$dir" symbolic-ref --short -q HEAD 2>/dev/null)
+  if [ "$branch" = "main" ] || [ "$branch" = "master" ]; then block; fi
+  echo '{}'
   exit 0
 fi
+
+for spec in "${refspecs[@]}"; do
+  spec=${spec#+}
+  dst=${spec##*:}
+  dst=${dst#refs/heads/}
+  if [ "$dst" = "main" ] || [ "$dst" = "master" ]; then block; fi
+done
 echo '{}'
