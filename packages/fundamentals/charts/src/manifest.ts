@@ -72,6 +72,7 @@ const rows: Row[] = [{ month: 'Jan', revenue: 3200, target: 3000 }, { month: 'Fe
 </Chart>`,
       mistakes: [
         'Passing `marks={[…]}` to `<Chart>` — the grammar takes marks as CHILDREN; the array form belongs to `<PlotChart>` (same spec, other spelling)',
+        'Passing `title` and expecting it drawn — `title` names the chart for screen readers and the accessible table (like the HTML `title` attribute, it is not visible); add `showTitle` to draw it above the chart',
         'Expecting `<Bar y="revenu">` to fail the build — a mark infers its row type from its own props, and JSX cannot pass `<Chart<Row>>`\'s type argument down to it, so a field-name typo on a bare mark is not checked; write `<Bar<Row> y="revenue">` (or an accessor, `y={(d: Row) => d.revenue}`) where you want the check',
         'Writing `y={d.revenue}` — a channel is a field NAME (`y="revenue"`) or an accessor (`y={(d) => d.revenue}`); a value is one number for every row',
         'Expecting `color="region"` to colour bars by a per-row value — it is the long-format SPLIT (one series per distinct region); for a per-mark colour use `color="#hex"` on the mark',
