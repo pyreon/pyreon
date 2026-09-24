@@ -1,3 +1,5 @@
+import type { VNodeChild } from '@pyreon/core'
+
 // ─── Node Types ─────────────────────────────────────────────────────────────
 
 export type NodeType =
@@ -35,6 +37,32 @@ export interface DocNode {
 }
 
 export type DocChild = DocNode | string
+
+/**
+ * A document primitive (`Document`, `Page`, `Text`, …). It has two uses:
+ *
+ * - **Called directly** — `Text({ children: 'hi' })` — it returns a `DocNode`.
+ * - **As a JSX tag / `h()` type** — `<Text>hi</Text>` — it is never called by
+ *   you; the JSX runtime builds a Pyreon VNode, and `render()` resolves that
+ *   VNode tree to `DocNode`s.
+ *
+ * The second call signature exists only so a primitive is a valid JSX
+ * component type (`JSX.ElementType` requires a VNodeChild-returning
+ * function). Direct calls resolve to the first signature, so they are typed
+ * `DocNode` — which is what they return at runtime.
+ */
+export interface DocPrimitive<P, T extends NodeType> {
+  (props: P): DocNode
+  (props: P): VNodeChild
+  readonly _documentType: T
+}
+
+/** A primitive whose props are optional (`Divider`, `PageBreak`). */
+export interface OptionalPropsDocPrimitive<P, T extends NodeType> {
+  (props?: P): DocNode
+  (props?: P): VNodeChild
+  readonly _documentType: T
+}
 
 // ─── Style Types ────────────────────────────────────────────────────────────
 

@@ -76,7 +76,26 @@ Builder methods mirror every renderer: `toHtml` / `toPdf` / `toDocx` / `toPptx` 
 | Lists | `List`, `ListItem` |
 | Tables | `Table` |
 
-Every primitive is a pure factory returning a `DocNode` — no runtime, no JSX runtime needed if you build the tree imperatively. `isDocNode(value)` narrows at boundaries.
+Every primitive is a pure factory returning a `DocNode` — no runtime, no JSX runtime needed if you build the tree imperatively. `isDocNode(value)` narrows at boundaries (a Pyreon VNode is **not** a `DocNode`).
+
+### JSX, `h()` and direct calls produce the same output
+
+The three forms below render byte-identically in every format:
+
+```tsx
+import { h } from '@pyreon/core'
+
+// 1. JSX (jsxImportSource: '@pyreon/core')
+render(<Document title="T"><Page><Text>hello</Text></Page></Document>, 'html')
+
+// 2. h()
+render(h(Document, { title: 'T' }, h(Page, null, h(Text, null, 'hello'))), 'html')
+
+// 3. direct calls
+render(Document({ title: 'T', children: Page({ children: Text({ children: 'hello' }) }) }), 'html')
+```
+
+JSX and `h()` do not call the primitives — they build a VNode tree. `render()` (and any primitive receiving VNode children) resolves it: component types are invoked with their children merged into `props.children`, so your own components that return primitives work too; fragments are flattened; an accessor child (`{() => total()}`) is read once, because a render is a snapshot. A DOM element (`<div>`) inside a document tree throws a `[@pyreon/document]` error naming the tag — document trees only hold document primitives, components that return them, strings and numbers.
 
 ## Output formats (20)
 
