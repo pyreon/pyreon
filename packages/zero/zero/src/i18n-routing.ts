@@ -1,5 +1,6 @@
 import { createContext } from '@pyreon/core'
 import { isClient, signal } from '@pyreon/reactivity'
+import { getActiveRouter } from '@pyreon/router'
 import type { FileRoute } from './types'
 
 // PR-S7: per-request locale store. Pattern A (module-global state in server
@@ -117,23 +118,38 @@ export function detectLocaleFromHeader(
 ): string {
   if (!acceptLanguage) return defaultLocale
 
-  // Parse Accept-Language: en-US,en;q=0.9,de;q=0.8
   const preferred = acceptLanguage
     .split(',')
     .map((part) => {
-      const [lang, q] = part.trim().split(';q=')
-      return {
-        lang: lang?.split('-')[0]?.toLowerCase() ?? '',
-        quality: q ? Number.parseFloat(q) : 1,
-      }
+      const [tag, q] = part.trim().split(';q=')
+      return { tag: tag?.trim() ?? '', quality: q ? Number.parseFloat(q) : 1 }
     })
+    .filter((p) => p.tag !== '' && p.tag !== '*')
     .sort((a, b) => b.quality - a.quality)
 
-  for (const { lang } of preferred) {
-    if (locales.includes(lang)) return lang
+  for (const { tag } of preferred) {
+    // Exact tag first (`en-US` → `en-US`), then the base language against a
+    // configured locale's base (`en-US` → `en`, `en` → `en-US`). Comparison is
+    // case-insensitive (BCP 47 tags are), the RETURN is the configured casing.
+    const exact = matchLocale(tag, locales)
+    if (exact) return exact
+    const base = tag.split('-')[0]!.toLowerCase()
+    const byBase = locales.find((l) => l.split('-')[0]!.toLowerCase() === base)
+    if (byBase) return byBase
   }
 
   return defaultLocale
+}
+
+/**
+ * Case-insensitive locale lookup returning the CONFIGURED spelling, so a
+ * region locale (`en-US`) round-trips through a lowercased URL segment.
+ * @internal
+ */
+export function matchLocale(candidate: string | undefined, locales: string[]): string | undefined {
+  if (!candidate) return undefined
+  const lower = candidate.toLowerCase()
+  return locales.find((l) => l.toLowerCase() === lower)
 }
 
 /**
@@ -146,11 +162,11 @@ export function extractLocaleFromPath(
   defaultLocale: string,
 ): { locale: string; pathWithoutLocale: string } {
   const segments = path.split('/').filter(Boolean)
-  const firstSegment = segments[0]?.toLowerCase()
+  const hit = matchLocale(segments[0], locales)
 
-  if (firstSegment && locales.includes(firstSegment)) {
+  if (hit) {
     return {
-      locale: firstSegment,
+      locale: hit,
       pathWithoutLocale: '/' + segments.slice(1).join('/') || '/',
     }
   }
@@ -478,10 +494,11 @@ export const localeSignal = signal('en')
 /**
  * Read the current locale.
  *
- * Returns the per-request locale on the server (via `AsyncLocalStorage` —
- * see PR-S7 in `_localeAls` above) or the module signal in the browser /
- * non-ALS contexts. Reactive on the client; snapshot on the server (render
- * is one-shot — there's no re-rendering on locale changes mid-request).
+ * Resolution order: the dev middleware's per-request store (`AsyncLocalStorage`);
+ * then — when `zero({ i18n })` is configured — the locale prefix of the
+ * CURRENT URL (the router's current route, else `location.pathname`), which
+ * gives production SSR, SSG and the hydrating client the same answer; then the
+ * module signal (no i18n config registered). Reactive on the client.
  *
  * @example
  * ```tsx
@@ -489,53 +506,88 @@ export const localeSignal = signal('en')
  * ```
  */
 export function useLocale(): string {
-  // PR-S7: server context — per-request ALS store wins over module signal.
-  // Falls back to module signal when no ALS context (client, plain test
-  // harness without middleware, etc.).
   const perRequest = _currentLocaleStore()
   if (perRequest) return perRequest.get()
+  // The URL is the source of truth once the i18n config is known (registered
+  // by the generated routes module on BOTH server and client). Reading the
+  // router's current route is tracked, so a reactive caller re-runs on a
+  // locale navigation — and SSR, SSG and the hydrating client all compute the
+  // same value from the same path (no hydration mismatch).
+  const config = _i18nConfig
+  if (config) {
+    const router = getActiveRouter()
+    if (router) {
+      return extractLocaleFromPath(router.currentRoute().path, config.locales, config.defaultLocale)
+        .locale
+    }
+    if (isClient) {
+      return extractLocaleFromPath(stripBase(window.location.pathname), config.locales, config.defaultLocale)
+        .locale
+    }
+  }
   return localeSignal()
 }
 
+declare const __ZERO_BASE__: string
+
+let _i18nConfig: I18nRoutingConfig | undefined
+
 /**
- * Set the locale client-side and update the URL.
- *
- * @example
- * ```tsx
- * <button onClick={() => setLocale('de')}>Deutsch</button>
- * ```
+ * @internal — called by the generated `virtual:zero/routes` module when
+ * `zero({ i18n })` is set, so `useLocale()` can derive the locale from the URL
+ * in every environment (production SSR, SSG, client), not only under the dev
+ * middleware.
+ */
+export function _registerI18nConfig(config: I18nRoutingConfig | undefined): void {
+  _i18nConfig = config
+  if (config) localeSignal.set(config.defaultLocale)
+}
+
+function currentBase(): string {
+  const base = typeof __ZERO_BASE__ !== 'undefined' ? __ZERO_BASE__ : '/'
+  let end = base.length
+  while (end > 0 && base.charCodeAt(end - 1) === 47) end--
+  return base.slice(0, end)
+}
+
+function stripBase(pathname: string): string {
+  const base = currentBase()
+  if (!base) return pathname
+  if (pathname === base) return '/'
+  return pathname.startsWith(`${base}/`) ? pathname.slice(base.length) : pathname
+}
+
+/**
+ * Switch the active locale. Navigates to the same page under the new locale,
+ * preserving the deploy `base`, the query string and the hash.
  */
 export function setLocale(
   locale: string,
   config: I18nRoutingConfig,
 ): void {
-  // PR-S7: in server context with an active ALS store, update the
-  // per-request store so subsequent `useLocale()` calls in this request
-  // see the new value. Falls through to the module signal write below
-  // for client-side updates AND as a best-effort fallback when no ALS
-  // is active.
+  const resolved = matchLocale(locale, config.locales) ?? locale
   const perRequest = _currentLocaleStore()
   if (perRequest) {
-    perRequest.set(locale)
+    perRequest.set(resolved)
   }
-  localeSignal.set(locale)
+  localeSignal.set(resolved)
 
-  // Persist to cookie
-  if (isClient) {
-    document.cookie = `${config.cookieName ?? 'locale'}=${locale}; path=/; max-age=31536000`
-  }
+  if (!isClient) return
 
-  // Navigate to localized URL — use pushState to avoid full page reload
-  if (isClient) {
-    const strategy = config.strategy ?? 'prefix-except-default'
-    const { pathWithoutLocale } = extractLocaleFromPath(
-      window.location.pathname,
-      config.locales,
-      config.defaultLocale,
-    )
-    const newPath = buildLocalePath(pathWithoutLocale, locale, config.defaultLocale, strategy)
-    window.history.pushState(null, '', newPath)
-    // Dispatch popstate so @pyreon/router picks up the URL change
-    window.dispatchEvent(new PopStateEvent('popstate'))
+  document.cookie = `${config.cookieName ?? 'locale'}=${encodeURIComponent(resolved)}; path=/; max-age=31536000`
+
+  const strategy = config.strategy ?? 'prefix-except-default'
+  const router = getActiveRouter()
+  // Router paths never carry the base; window.location.pathname does.
+  const current = router ? router.currentRoute().path : stripBase(window.location.pathname)
+  const { pathWithoutLocale } = extractLocaleFromPath(current, config.locales, config.defaultLocale)
+  const newPath = buildLocalePath(pathWithoutLocale, resolved, config.defaultLocale, strategy)
+  const suffix = window.location.search + window.location.hash
+  if (router) {
+    void router.push(newPath + suffix)
+    return
   }
+  const base = currentBase()
+  window.history.pushState(null, '', `${base}${newPath}${suffix}`)
+  window.dispatchEvent(new PopStateEvent('popstate'))
 }

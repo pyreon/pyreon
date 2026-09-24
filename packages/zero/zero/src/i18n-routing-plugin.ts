@@ -5,6 +5,7 @@ import {
   extractLocaleFromPath,
   type I18nRoutingConfig,
   type LocaleStore,
+  matchLocale,
 } from './i18n-routing'
 
 // ─── i18nRouting — SERVER-ONLY Vite plugin ──────────────────────────────────
@@ -94,9 +95,7 @@ export function i18nRouting(config: I18nRoutingConfig): Plugin {
             config.locales,
             config.defaultLocale,
           )
-          const preferred = preferredFromCookie && config.locales.includes(preferredFromCookie)
-            ? preferredFromCookie
-            : preferredFromHeader
+          const preferred = matchLocale(preferredFromCookie, config.locales) ?? preferredFromHeader
 
           if (strategy === 'prefix' || preferred !== config.defaultLocale) {
             res.writeHead(302, { Location: `/${preferred}/` })

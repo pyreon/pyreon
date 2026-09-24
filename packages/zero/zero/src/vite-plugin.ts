@@ -431,7 +431,7 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 					// point rationale.
 					const ssgSplitDisabled =
 						config.mode === "ssg" && config.ssg?.splitChunks === false;
-					return generateRouteModuleFromRoutes(routes, routesDir, {
+					const routeModule = generateRouteModuleFromRoutes(routes, routesDir, {
 						staticImports: ssgSplitDisabled,
 						// Phase 5 — the SSR module graph gets the real serverLoader
 						// function imports; the client graph gets only the
@@ -439,6 +439,12 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 						// structurally unreachable from the client bundle).
 						serverLoaders: loadOptions?.ssr === true,
 					});
+					// Register the i18n config in BOTH graphs so `useLocale()` can
+					// derive the locale from the URL in production SSR, SSG and on
+					// the client — not only under the dev middleware's ALS store.
+					return config.i18n
+						? `${routeModule}\nimport { _registerI18nConfig as __zeroRegisterI18n } from "@pyreon/zero";\n__zeroRegisterI18n(${JSON.stringify(config.i18n)});\n`
+						: routeModule;
 				} catch (_err) {
 					return `export const routes = []`;
 				}
