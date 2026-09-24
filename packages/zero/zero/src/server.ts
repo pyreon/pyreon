@@ -94,6 +94,7 @@ export type { OgImagePluginConfig, OgImageTemplate, OgImageLayer } from "./og-im
 export { ogImagePlugin, ogImagePath } from "./og-image";
 // Route-level OG images from JSX (`export const og` in a route file).
 export type { OgContext, OgImage, RouteOgConfig } from "./og-route";
+export type { PwaConfig, PwaManifest, PwaManifestIcon } from "./pwa";
 export {
 	createOgImageMiddleware,
 	ogEndpointPath,

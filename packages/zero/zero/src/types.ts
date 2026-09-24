@@ -787,6 +787,15 @@ export interface ZeroConfig {
   routeOg?: import('./og-route-shared').RouteOgConfig
 
   /**
+   * Progressive Web App: emits `manifest.webmanifest` (linked into every
+   * page) and a generated `sw.js` that precaches exactly the emitted
+   * hashed assets (+ prerendered pages under `mode: 'ssg'`), serves
+   * navigations network-first and hashed assets cache-first. Register it
+   * from the client with `registerServiceWorker()` (no-op in dev).
+   */
+  pwa?: import('./pwa').PwaConfig
+
+  /**
    * AI discoverability — auto-wires `aiPlugin` when a config is supplied
    * (llms.txt, llms-full.txt, /.well-known/ai-plugin.json, OpenAPI spec).
    * Same shape as `aiPlugin(config)`.

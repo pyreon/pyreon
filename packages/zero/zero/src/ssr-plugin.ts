@@ -74,6 +74,7 @@ import {
 import { resolveConfig } from './config'
 import { collectFileRouteModes } from './fs-router'
 import { formatRouteModeTable } from './route-modes'
+import { writeServiceWorker } from './pwa'
 import { buildSsrBundle, materializeEntry, renderSsrEntrySource } from './ssr-build-shared'
 import { serializeServerConfig } from './server-config'
 import type { ZeroConfig } from './types'
@@ -339,6 +340,17 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       // `adapters/validate.ts`. Adapter throws are caught + reported
       // so a buggy adapter can't hide the successful SSR bundle from
       // CI; the bundle is still on disk at `serverEntry`.
+      // PWA — the client output is final; write the worker BEFORE the
+      // adapter stages it. SSR/ISR HTML is per-request, so only the hashed
+      // assets are precached (navigations are network-first at runtime).
+      if (config.pwa) {
+        await writeServiceWorker(clientOutDir, config.pwa, {
+          base: config.base ?? '/',
+          assetsDir: assetsDir ?? 'assets',
+          includeHtml: false,
+        })
+      }
+
       const adapter = resolveAdapter(config)
       try {
         await adapter.build({

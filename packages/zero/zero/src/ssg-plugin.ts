@@ -72,6 +72,7 @@ import {
   rasterizeOgSvg,
 } from './og-route-shared'
 import { createHash } from 'node:crypto'
+import { writeServiceWorker } from './pwa'
 import type { ZeroConfig } from './types'
 
 // M2.3 — Server-side perf-harness counter sink (same shape as
@@ -2173,6 +2174,17 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // into `.vercel/output/static/`) copies only publishable output — never
       // the internal `.zero-ssg-server` bundle. Other adapters ignore this dir.
       await rm(ssrOutDir, { recursive: true, force: true })
+
+      // PWA — the output is final (every page prerendered, internal SSR
+      // bundle removed), so the precache list is exactly what ships. Written
+      // BEFORE adapter.build so staging adapters copy the worker along.
+      if (config.pwa && config.mode === 'ssg') {
+        await writeServiceWorker(distDir, config.pwa, {
+          base: config.base ?? '/',
+          assetsDir: assetsDir ?? 'assets',
+          includeHtml: true,
+        })
+      }
 
       const adapter = resolveAdapter(config)
       let adapterFailed = false

@@ -137,6 +137,7 @@ export default {
 | `favicon`    | `FaviconPluginConfig \| false`                                                | auto    | Explicit config wires `faviconPlugin`; **omitted → file-convention auto-detect** (`src/favicon.svg` → full set, zero config); `false` disables — see **[Favicons](#favicons)** |
 | `theme`      | `boolean`                                                                     | `false` | `true` auto-injects the pre-paint `themeScript` into every page `<head>` (no manual script tag) — see **[Theme System](#theme-system)** |
 | `og`         | `OgImagePluginConfig`                                                         | —       | Auto-wires `ogImagePlugin` (templates + text layers → per-locale social-share images) |
+| `pwa`        | `PwaConfig`                                                                   | —       | Web app manifest + generated precaching service worker (network-first HTML, cache-first hashed assets) |
 | `routeOg`    | `RouteOgConfig`                                                               | —       | Per-route `export const og` images: size (default 1200×630) + `siteUrl` for absolute build-time `og:image` |
 | `ai`         | `AiPluginConfig`                                                              | —       | Auto-wires `aiPlugin` (llms.txt, llms-full.txt, /.well-known/ai-plugin.json, OpenAPI spec) |
 
@@ -1266,6 +1267,45 @@ export const og: OgImage<{ title: string }, { slug: string }> = ({ data, params 
 Tune with `zero({ routeOg: { width, height, siteUrl } })` (defaults 1200×630). Set `siteUrl` for SSG builds: most crawlers (Facebook, LinkedIn, Slack) require an **absolute** `og:image` URL, and without it the build-time tag is root-relative.
 
 Constraints, stated plainly: the rasterizer is **sharp** (optional peer — a route with `og` fails the build with a `[Pyreon]` install hint when it is missing). sharp renders SVG through librsvg, so the card must have an `<svg>` root; HTML elements and `<foreignObject>` are not laid out, and text wrapping is manual (`<tspan>`). Fonts resolve on the build/server machine, as above. Not served by `vite dev` — preview it with a build.
+
+## Progressive Web App
+
+`zero({ pwa })` makes the build installable and offline-capable:
+
+```ts
+// vite.config.ts
+zero({
+  mode: 'ssg',
+  pwa: {
+    manifest: {
+      name: 'My App',
+      short_name: 'App',
+      theme_color: '#0b1020',
+      background_color: '#ffffff',
+      icons: [{ src: '/icon-512.png', sizes: '512x512', type: 'image/png' }],
+    },
+    // skipWaiting: true, // opt-in: activate new versions immediately
+  },
+})
+```
+
+```ts
+// src/entry-client.ts
+import { registerServiceWorker } from '@pyreon/zero'
+
+registerServiceWorker({
+  onUpdate: (activate) => {
+    if (confirm('A new version is available. Reload?')) activate()
+  },
+})
+```
+
+- **Manifest** — `manifest.webmanifest` is emitted (defaults: `start_url`/`scope` = the app `base`, `display: 'standalone'`) and linked, with `theme-color`, into every page.
+- **Precache** — `sw.js` is generated **after** the output is final and before the deploy adapter stages it, listing exactly what shipped: every content-hashed file under `<base><assetsDir>/` (minus source maps and route OG images) plus, under `mode: 'ssg'`, every prerendered page. Any change to those files changes the worker bytes, which is what triggers an update.
+- **Runtime strategy** — navigations are **network-first** (fresh HTML online; the last-seen or precached page offline); same-origin requests under the hashed-asset prefix are **cache-first**; everything else is left to the browser.
+- **Updates** — safe by default: a new worker **waits** until the old version's tabs close, so a running page never has its asset set swapped underneath it. `onUpdate(activate)` lets you ask the user; `activate()` activates the waiting worker and reloads once it takes control. `pwa.skipWaiting: true` opts into immediate activation.
+- **Caching of the worker itself** — never immutable: the node/bun adapters serve `sw.js` and `*.webmanifest` with `max-age=0, must-revalidate`, the platform adapters only mark `<base><assetsDir>/*` immutable, and registration uses `updateViaCache: 'none'`.
+- `registerServiceWorker()` resolves `null` and registers nothing during SSR, outside production builds (a caching worker in dev fights HMR), and where service workers are unsupported.
 
 ## Environment Variables
 
