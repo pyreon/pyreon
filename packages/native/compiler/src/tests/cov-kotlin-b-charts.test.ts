@@ -1,4 +1,4 @@
-// Kotlin emit — the `@pyreon/charts/plot` hosts.
+// Kotlin emit — the `@pyreon/charts` hosts.
 //
 // These emit into a Canvas driven by the GENERATED engine, so a shape the
 // emitter cannot lower has nothing to fall back on: the contract is an empty
@@ -20,7 +20,7 @@ interface Row { n: string; v: number; o: number; h: number; l: number; c: number
 const ROWS: Row[] = [{ n: 'a', v: 1, o: 1, h: 2, l: 0, c: 1, vals: [1, 2, 3] }]
 `
 const app = (imports: string, jsx: string, extra = '') =>
-  `${HEAD}import { ${imports} } from '@pyreon/charts/plot'\n${extra}export function C() { return <Stack>${jsx}</Stack> }`
+  `${HEAD}import { ${imports} } from '@pyreon/charts'\n${extra}export function C() { return <Stack>${jsx}</Stack> }`
 
 describe('the accessor hosts — <PieChart> / <FunnelChart>', () => {
   it('a missing `data` and a missing required accessor are each named', () => {
@@ -93,9 +93,9 @@ describe('the frame hosts decline by name', () => {
     expect(r.warnings.some((w) => w.startsWith('<OptionChart> has no native lowering yet'))).toBe(false)
   })
 
-  it('a grammar mark tag used OUTSIDE <Plot> renders nothing and says so', () => {
+  it('a grammar mark tag used OUTSIDE <Chart> renders nothing and says so', () => {
     const r = kotlin(app('Bar', `<Bar y="v" />`))
-    expect(r.warnings).toContain('<Bar> only means something as a child of <Plot>; on its own it renders nothing.')
+    expect(r.warnings).toContain('<Bar> only means something as a child of <Chart>; on its own it renders nothing.')
     expect(r.code).toContain('Box {}')
   })
 })
@@ -142,7 +142,7 @@ describe('frame hosts with an explicit width skip the BoxWithConstraints wrapper
 })
 
 describe('the `...bollinger(…)` mark spread on Kotlin', () => {
-  const BB = `import { PlotChart, bollinger } from '@pyreon/charts/plot'
+  const BB = `import { PlotChart, bollinger } from '@pyreon/charts/engine'
 interface Row { m: string; v: number }
 const ROWS: Row[] = [{ m: 'Jan', v: 10 }, { m: 'Feb', v: 14 }, { m: 'Mar', v: 9 }]
 export function C() {

@@ -1,4 +1,4 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const Sidebar = el
   .attrs({
@@ -6,7 +6,7 @@ export const Sidebar = el
     contentDirection: 'rows',
     contentAlignX: 'block',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     width: '264px',
     flex: 'none',
     minHeight: '0',

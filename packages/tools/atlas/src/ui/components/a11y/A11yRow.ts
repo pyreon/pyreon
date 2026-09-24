@@ -1,4 +1,4 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const A11yRow = el
   .attrs({
@@ -7,7 +7,7 @@ export const A11yRow = el
     contentAlignY: 'top',
     gap: 12,
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     padding: '12px 12px',
     borderRadius: t.radius.panel,
     marginBottom: '8px',

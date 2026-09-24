@@ -5,6 +5,7 @@ import {
   h,
   nativeCompat,
   provide,
+  provideColorMode,
   useContext,
 } from '@pyreon/core'
 import { computed, effect, isClient, signal } from '@pyreon/reactivity'
@@ -311,6 +312,10 @@ function PyreonUI(props: PyreonUIProps): VNodeChild {
 
   // 3. Mode context — getter function for useMode()
   provide(ModeContext, () => modeComputed())
+  // …and the framework-wide mode every other package reads (`useColorMode`
+  // from @pyreon/core): charts, flow and the code editor below a PyreonUI
+  // follow its mode with no wiring of their own.
+  provideColorMode(() => modeComputed())
 
   if (!cssVars.enabled) return props.children ?? null
 

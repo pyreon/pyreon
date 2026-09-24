@@ -152,7 +152,7 @@ describe('grammar — <For> children and unrecognized children (finding 7)', () 
     expect(nested.marks).toHaveLength(2)
     // The shape JSX actually emits: the render callback is a REST child, not a
     // `children` prop — it lands in `vnode.children[0]`, which is a different
-    // read from the props form above and the one a real `<Plot>` hits.
+    // read from the props form above and the one a real `<Chart>` hits.
     const asJsx = resolveGrammar<Row>(
       ROWS,
       { data: ROWS, x: 'm' },
