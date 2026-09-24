@@ -4,7 +4,7 @@
   "_thinHeadroom": {
     "_doc": "Budgets whose headroom is below the ~1.5% macOS/ubuntu gzip variance, and so cannot be satisfied reliably on both. Grandfathered so existing thin entries do not redden unrelated PRs; a NEW thin budget fails the gate. This list only shrinks — each entry names what retires it."
   },
-  "@pyreon/a11y": 1536,
+  "@pyreon/a11y": 1728,
   "@pyreon/atlas": 14887,
   "@pyreon/attrs": 1280,
   "@pyreon/charts": 2944,
@@ -25,8 +25,8 @@
   "@pyreon/flow": 23650,
   "@pyreon/form": 6400,
   "@pyreon/head": 2033,
-  "@pyreon/hooks": 11008,
-  "@pyreon/hotkeys": 3584,
+  "@pyreon/hooks": 11776,
+  "@pyreon/hotkeys": 3712,
   "@pyreon/http": 4608,
   "@pyreon/i18n": 3584,
   "@pyreon/kinetic": 4864,

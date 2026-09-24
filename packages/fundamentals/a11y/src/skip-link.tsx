@@ -1,4 +1,4 @@
-import { h } from '@pyreon/core'
+import { h, mergeProps, splitProps } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 import { isServer, signal } from '@pyreon/reactivity'
 
@@ -8,7 +8,7 @@ export interface SkipLinkProps {
    * landmark, e.g. `<main id="main">`. Activating the link moves both scroll
    * AND keyboard focus there.
    */
-  href?: string
+  href?: string | (() => string)
   /** Link text (default `'Skip to content'`). */
   children?: VNodeChild
   /**
@@ -54,20 +54,25 @@ const REVEALED: Record<string, string> = {
   textDecoration: 'underline',
 }
 
-/** Move keyboard focus (not just scroll) to the skip target. */
-function moveFocusToTarget(href: string): void {
+/**
+ * Move keyboard focus (not just scroll) to the skip target. Returns whether the
+ * href was an in-page fragment the link handled itself.
+ */
+function moveFocusToTarget(href: string): boolean {
   // Only ever called from the click handler (browser-only), but guard for SSR
   // safety so a server bundle never touches `document`.
-  if (isServer) return
-  if (!href.startsWith('#')) return
+  if (isServer) return false
+  if (!href.startsWith('#')) return false
   const target = document.getElementById(href.slice(1))
-  if (!target) return
-  // The default hash navigation scrolls the target into view; we ALSO move
-  // focus there so the next Tab continues from the main content — the whole
-  // point of a skip link. A non-interactive landmark (e.g. <main>) isn't
-  // natively focusable, so give it a programmatic-focus tabindex first.
+  if (!target) return true
+  // A non-interactive landmark (e.g. <main>) isn't natively focusable, so give
+  // it a programmatic-focus tabindex first. Focus WITHOUT scrolling, then
+  // scroll explicitly — we no longer rely on the default hash navigation to
+  // bring it into view (see the click handler).
   if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1')
-  target.focus()
+  target.focus({ preventScroll: true })
+  target.scrollIntoView?.()
+  return true
 }
 
 /**
@@ -89,44 +94,52 @@ function moveFocusToTarget(href: string): void {
  * ```
  */
 export function SkipLink(props: SkipLinkProps): VNodeChild {
-  const {
-    href = '#main',
-    children = 'Skip to content',
-    style: userStyle,
-    onFocus,
-    onBlur,
-    onClick,
-    ...rest
-  } = props as SkipLinkProps & {
-    style?: Record<string, string>
-    onFocus?: (e: FocusEvent) => void
-    onBlur?: (e: FocusEvent) => void
-    onClick?: (e: MouseEvent) => void
-  }
+  // splitProps rather than a destructure, so a signal-driven `href` / `class` /
+  // `style` is not frozen at its first value (a destructure fires every
+  // compiler-emitted getter once, at setup).
+  const [own, rest] = splitProps(
+    props as SkipLinkProps & {
+      style?: Record<string, string> | (() => Record<string, string>)
+      onFocus?: (e: FocusEvent) => void
+      onBlur?: (e: FocusEvent) => void
+      onClick?: (e: MouseEvent) => void
+    },
+    ['href', 'children', 'style', 'onFocus', 'onBlur', 'onClick'],
+  )
 
   const focused = signal(false)
-  const override = userStyle && typeof userStyle === 'object' ? userStyle : undefined
+  const href = (): string => {
+    const value = own.href
+    return (typeof value === 'function' ? value() : value) ?? '#main'
+  }
 
   return h(
     'a',
-    {
-      ...rest,
+    mergeProps(rest, {
       href,
       // Reactive: clipped until focused, revealed on focus. Caller style wins.
-      style: () => ({ ...(focused() ? REVEALED : CLIPPED), ...override }),
+      style: () => {
+        const raw = own.style
+        const user = typeof raw === 'function' ? raw() : raw
+        return { ...(focused() ? REVEALED : CLIPPED), ...(user && typeof user === 'object' ? user : undefined) }
+      },
       onFocus: (e: FocusEvent) => {
         focused.set(true)
-        onFocus?.(e)
+        own.onFocus?.(e)
       },
       onBlur: (e: FocusEvent) => {
         focused.set(false)
-        onBlur?.(e)
+        own.onBlur?.(e)
       },
       onClick: (e: MouseEvent) => {
-        moveFocusToTarget(href)
-        onClick?.(e)
+        // Handle the fragment ourselves and CANCEL the default navigation.
+        // Letting the browser follow `#main` breaks under a hash-mode router,
+        // which reads the new hash as the route "main" and navigates away
+        // from the page the user was trying to skip INTO.
+        if (moveFocusToTarget(href())) e.preventDefault()
+        own.onClick?.(e)
       },
-    },
-    children,
+    }),
+    own.children ?? 'Skip to content',
   )
 }
