@@ -189,14 +189,22 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
           message: `operation has no operationId — derived \`${id}\` from method + path. Add one to the spec to make the generated name stable against path edits.`,
         })
       }
-      const params = [...shared, ...arr(op.parameters)]
+      // OpenAPI: an operation-level parameter OVERRIDES a path-level one with
+      // the same `name` + `in` (audit A9). Concatenating both emitted
+      // `query: { limit: number; limit?: string }` - a duplicate identifier.
+      // Keyed on the pair, operation last so it wins; a Map keeps the
+      // path-level POSITION, which keeps regeneration stable.
+      const byKey = new Map<string, Json>()
+      for (const p of [...shared, ...arr(op.parameters)]) {
+        const po = obj(deref(p, at, ctx))
+        const name = str(po?.name)
+        if (!po || !name) continue
+        byKey.set(`${String(po.in)}:${name}`, po)
+      }
       const pathParams: IrParam[] = []
       const queryParams: IrParam[] = []
-      for (const p of params) {
-        const po = obj(deref(p, at, ctx))
-        if (!po) continue
-        const name = str(po.name)
-        if (!name) continue
+      for (const po of byKey.values()) {
+        const name = str(po.name) as string
         const target = po.in === 'path' ? pathParams : po.in === 'query' ? queryParams : null
         if (!target) continue
         target.push({
