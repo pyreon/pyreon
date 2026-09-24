@@ -5,7 +5,6 @@
 // Re-run `lathe generate` to update. Edits here are lost on the next run;
 // to change the output, change the spec or the emitter.
 
-import type { Author } from '../schemas'
 import { listAuthors } from '../endpoints/authors'
 import { useQuery } from '@pyreon/query'
 
@@ -18,7 +17,7 @@ import { useQuery } from '@pyreon/query'
  * Result fields are SIGNALS: `q.data()`, `q.isPending()` — call them.
  */
 export function useListAuthors(args: () => { query?: { limit?: number } } | undefined, options?: () => Record<string, unknown>) {
-  return useQuery<Author[]>(() => {
+  return useQuery<Awaited<ReturnType<typeof listAuthors>>>(() => {
     const a = args()
     const extra = options?.() ?? {}
     if (a === undefined) {

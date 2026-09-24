@@ -5,7 +5,7 @@
 // Re-run `lathe generate` to update. Edits here are lost on the next run;
 // to change the output, change the spec or the emitter.
 
-import type { Book, NewBook } from '../schemas'
+import type { NewBook } from '../schemas'
 import { createBook, getBook, listBooks } from '../endpoints/books'
 import { useMutation, useQuery } from '@pyreon/query'
 
@@ -27,7 +27,7 @@ export function useCreateBook() {
  * Result fields are SIGNALS: `q.data()`, `q.isPending()` — call them.
  */
 export function useGetBook(args: () => { params: { bookId: string } } | undefined, options?: () => Record<string, unknown>) {
-  return useQuery<Book>(() => {
+  return useQuery<Awaited<ReturnType<typeof getBook>>>(() => {
     const a = args()
     const extra = options?.() ?? {}
     if (a === undefined) {
@@ -44,5 +44,5 @@ export function useGetBook(args: () => { params: { bookId: string } } | undefine
  * Result fields are SIGNALS: `q.data()`, `q.isPending()` — call them.
  */
 export function useListBooks(options?: () => Record<string, unknown>) {
-  return useQuery<Book[]>(() => ({ ...listBooks.query(), ...options?.() }))
+  return useQuery<Awaited<ReturnType<typeof listBooks>>>(() => ({ ...listBooks.query(), ...options?.() }))
 }

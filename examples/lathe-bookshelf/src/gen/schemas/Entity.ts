@@ -5,12 +5,12 @@
 // Re-run `lathe generate` to update. Edits here are lost on the next run;
 // to change the output, change the spec or the emitter.
 
-import { api } from '../client'
-import { Author } from '../schemas/Author'
+import type { Schema } from '@pyreon/validate'
 import { s } from '@pyreon/validate'
 
-/**
- * Every author.
- * `GET /authors`
- */
-export const listAuthors = /* @__PURE__ */ api.endpoint('GET /authors', { response: /* @__PURE__ */ s.array(Author) })
+export interface Entity {
+  id: string
+}
+export const Entity = /* @__PURE__ */ s.object({
+  id: /* @__PURE__ */ s.string().uuid(),
+}) as unknown as Schema<Entity>
