@@ -74,7 +74,7 @@ vi.mock('echarts/renderers', () => ({
   SVGRenderer: makeStub('SVGRenderer'),
 }))
 
-import { Chart } from '../chart-component'
+import { EChart } from '../chart-component'
 import { _resetLoader, ensureModules, getCore, getCoreSync, manualUse } from '../loader'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -277,7 +277,7 @@ describe('Chart component', () => {
     document.body.appendChild(container)
 
     const unmount = mount(
-      <Chart
+      <EChart
         options={() => ({
           series: [{ type: 'bar', data: [1, 2, 3] }],
         })}
@@ -298,7 +298,7 @@ describe('Chart component', () => {
     document.body.appendChild(container)
 
     const unmount = mount(
-      <Chart
+      <EChart
         options={() => ({
           series: [{ type: 'bar', data: [1] }],
         })}
@@ -603,7 +603,7 @@ describe('theme config', () => {
     document.body.appendChild(container)
 
     const unmount = mount(
-      <Chart
+      <EChart
         options={() => ({
           series: [{ type: 'bar', data: [1] }],
         })}
@@ -710,7 +710,7 @@ describe('Chart component events', () => {
     const onMouseover = vi.fn()
 
     const unmount = mount(
-      <Chart
+      <EChart
         options={() => ({
           series: [{ type: 'bar', data: [1] }],
         })}

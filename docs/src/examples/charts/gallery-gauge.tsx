@@ -1,11 +1,12 @@
-import { ChartThemeProvider, OptionChart, systemChartMode } from '@pyreon/charts/plot'
+import { ChartThemeProvider } from '@pyreon/charts'
+import { OptionChart } from '@pyreon/charts/option'
 import { signal, type Signal } from '@pyreon/reactivity'
 
 /**
  * Gallery — a gauge whose value is a signal: the option is an accessor, so a
  * write repaints the dial. The `shared` signal counts nudges.
- * The provider hands it the PAGE's scheme (`systemChartMode` reads the
- * root's `color-scheme`); a bare option chart keeps ECharts' own light look.
+ * The provider opts it into the colour mode in scope — the page's scheme
+ * here (the root's `color-scheme`); a bare option chart keeps ECharts' own light look.
  */
 export default function GalleryGauge(props: { shared?: Signal<number> }) {
   const nudges = props.shared ?? signal(0)
@@ -25,7 +26,7 @@ export default function GalleryGauge(props: { shared?: Signal<number> }) {
         </button>
         <span>nudges: {() => nudges()}</span>
       </div>
-      <ChartThemeProvider mode={systemChartMode()}>
+      <ChartThemeProvider>
         <OptionChart
           height={300}
           option={() => ({
