@@ -2,6 +2,7 @@ import { Fragment, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import {
   _resetRenderers,
+  createDocument,
   Document,
   Heading,
   isDocNode,
@@ -178,5 +179,23 @@ describe('VNode (h / JSX) document trees', () => {
     // Direct calls get the same normalization.
     const direct = Text({ children: ['x', true, 'y'] as never })
     expect(direct.children).toEqual(['x', 'y'])
+  })
+
+  it('createDocument().add() accepts a JSX component tree', async () => {
+    function Notes(props: { lines: string[] }) {
+      return (
+        <Section>
+          {props.lines.map((l) => (
+            <Text>{l}</Text>
+          ))}
+        </Section>
+      )
+    }
+    const html = await createDocument()
+      .heading('Report')
+      .add(<Notes lines={['one', 'two']} />)
+      .toHtml()
+    expect(html).toContain('<p>one</p>')
+    expect(html).toContain('<p>two</p>')
   })
 })
