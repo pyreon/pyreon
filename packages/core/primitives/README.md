@@ -128,7 +128,6 @@ bun run test:browser    # real-Chromium browser smoke (6 primitives end-to-end)
 
 ## Related
 
-- **Full architectural plan**: [`.claude/plans/multiplatform-architecture.md`](../../../.claude/plans/multiplatform-architecture.md)
 - **End-user docs**: [`docs/src/content/docs/multiplatform.md`](../../../docs/src/content/docs/multiplatform.md)
 - **CLAUDE.md** "PMTC Multi-Target Architecture" section
 - **Phase B PRs** (PMTC emit) — extend `packages/native/compiler/src/canonical-primitives.ts` mapping table

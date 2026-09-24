@@ -5088,7 +5088,7 @@ export function transformJSX_JS(
       // INTO the template HTML and grab it via `.firstChild` — saves a
       // `document.createTextNode("") + appendChild` pair per template
       // instantiation (per ROW under <For>; measured in the create-path
-      // perf audit, .claude/audits/create-path-perf-2026-06-11.md).
+      // perf audit).
       // Correct by construction: (a) a whitespace-only text node survives
       // innerHTML parsing in EVERY element context — including table
       // foster-parenting, which exempts whitespace-only runs — so the

@@ -3,7 +3,7 @@
  *
  * Run: `bun run bench:xstate` (sets NODE_ENV=production).
  *
- * Objectivity contract (see .claude/plans/fundamentals-benchmarks.md):
+ * Objectivity contract:
  *  - NODE_ENV=production (shell-set) before either library loads.
  *  - Idiomatic per library — Pyreon `createMachine({initial, states})` (the
  *    reactive instance IS the machine); XState `createMachine(config)` once +

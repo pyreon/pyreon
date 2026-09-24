@@ -1,6 +1,6 @@
 # @pyreon/native-compiler
 
-> **PRIVATE / EXPERIMENTAL.** This package is not published. It is part of the **Pyreon Multi-Target Compiler (PMTC)** exploration — see [`.claude/plans/native-platforms.md`](../../../.claude/plans/native-platforms.md) for the strategic direction.
+> **PRIVATE / EXPERIMENTAL.** This package is not published. It is part of the **Pyreon Multi-Target Compiler (PMTC)** exploration.
 
 Compiles Pyreon JSX source to native Swift (SwiftUI) and Kotlin (Jetpack Compose) source. The output is idiomatic per-platform code that uses platform-native reactive primitives (`@State` / `MutableState`) — no JS runtime, no bridge.
 

@@ -8,8 +8,7 @@ import { cpseStyled } from '../cpse-styled'
 
 /**
  * Real-Chromium proof for `cpseStyled` — the complete CPSE mechanism on a
- * REAL rendered component. See
- * `.claude/audits/custom-property-style-extraction-2026-06-22.md`.
+ * REAL rendered component.
  *
  *   1. O(N)→O(1) — N instances with N DISTINCT values share ONE className +
  *      ONE CSS rule and pay ONE `styler.resolve` (cached by property-set),

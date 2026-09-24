@@ -18,8 +18,6 @@ description: |
   keys / paths / action SHAs in lockstep; a single edit here propagates
   to all consumers.
 
-  P2b of the CI speedup plan (.claude/plans/keen-imagining-cherny.md).
-
   ## Caller pattern
 
   ```yaml
