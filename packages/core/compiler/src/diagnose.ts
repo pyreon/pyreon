@@ -1910,11 +1910,16 @@ const geometry = () => props.shape
     // closure into the attribute. Fixed by resolving the accessor inside the
     // tracked frame; the residual is an app on an older runtime, or a custom
     // prop pipeline that stores accessors behind getters of its own.
+    //
+    // The same warning had a second source: `applyProp`'s plain-function
+    // branch, reached by the compiler inlining a function-valued const into
+    // `prop={() => (() => …)}` on a spread element. Also resolved now; one
+    // entry covers both because the message is identical.
     pattern: /applyStaticProp received a function for "([^"]+)"/,
     diagnose: (m) => ({
       cause:
-        `A prop reached the DOM sink as a FUNCTION. \`${m[1] ?? 'the prop'}\` was an accessor (\`() => value\`) stored behind a getter — the shape a primitive's helper object (\`getItemProps()\`) takes after a descriptor-copying spread — and the getter branch of \`applyProps\` passed the closure through unresolved, so the element got the function's SOURCE TEXT as its value.`,
-      fix: 'Upgrade: `applyProps` now resolves an accessor a getter returns, inside the same tracked frame, so the value stays live. On an older runtime, call the accessor at the spread site (`tabIndex={props.tabIndex()}`) or pass the helper object through `mergeProps` / `splitProps` from `@pyreon/core` instead of a hand-rolled descriptor copy.',
+        `A prop reached the DOM sink as a FUNCTION. \`${m[1] ?? 'the prop'}\` was an accessor whose value was itself an accessor: either stored behind a getter (a primitive's helper object such as \`getItemProps()\` after a descriptor-copying spread), or a function-valued \`const\` passed as the prop on a spread element (\`const tabIndexFor = () => …; <div {...rest} tabIndex={tabIndexFor} />\`), which the compiler inlines as \`() => (() => …)\`. The inner closure was passed through unresolved, so the element got the function instead of its value — for \`tabIndex\` that is 0 on every item, which breaks roving focus.`,
+      fix: 'Upgrade: `applyProps` and `applyProp` now resolve an accessor that returns an accessor, inside the same tracked frame, so the value stays live. On an older runtime, pass the value (`tabIndex={tabIndexFor()}`) rather than the function; for a helper object, call the accessor at the spread site (`tabIndex={props.tabIndex()}`) or pass the helper object through `mergeProps` / `splitProps` from `@pyreon/core` instead of a hand-rolled descriptor copy.',
       fixCode:
         '// stringified on older runtimes: a getter whose value is an accessor\n// <Star {...state.getItemProps(i)} />  // { tabIndex: () => 0 | -1 }\n\n// resolve at the site if you cannot upgrade\nconst item = state.getItemProps(i)\n<Star {...item} tabIndex={item.tabIndex()} />',
     }),
