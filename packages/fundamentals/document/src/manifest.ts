@@ -265,10 +265,10 @@ await download(doc, 'tree.json')    // renders 'json', downloads`,
       name: 'Page / Section / Row / Column / Divider / Spacer / Quote / PageBreak',
       kind: 'component',
       signature:
-        "Page({ size?: PageSize; orientation?: 'portrait' | 'landscape'; margin?: number | number[]; header?: DocNode; footer?: DocNode; children? }) · Section({ direction?: 'column' | 'row'; gap?; padding?; background?; borderRadius?; border?; children? }) · Row({ gap?: number; align?; children? }) · Column({ width?: number | string; align?; children? }) · Divider({ color?; thickness? }) · Spacer({ height: number }) · Quote({ borderColor?; children? }) · PageBreak()",
+        "Page({ size?: PageSize; orientation?: 'portrait' | 'landscape'; margin?: number | number[]; header?: DocNode | VNode; footer?: DocNode | VNode; children? }) · Section({ direction?: 'column' | 'row'; gap?; padding?; background?; borderRadius?; border?; children? }) · Row({ gap?: number; align?; children? }) · Column({ width?: number | string; align?; children? }) · Divider({ color?; thickness? }) · Spacer({ height: number }) · Quote({ borderColor?; children? }) · PageBreak()",
       summary:
-        "The structural / layout primitives. `Page` is a page boundary (`size` 'A4'|'A3'|'A5'|'letter'|'legal'|'tabloid', orientation, margins, optional `header`/`footer` DocNodes). `Section`/`Row`/`Column` are layout boxes (gap, align, padding, background). `Divider` is a horizontal rule (no children, all props optional — `Divider()` works bare). `Spacer` adds vertical space (`height: number` is REQUIRED). `Quote` is a blockquote (children). `PageBreak()` takes NO arguments — a hard break in PDF/DOCX, a visual rule in md/text/html, a no-op in per-slide PPTX.",
-      example: `<Page size="A4" orientation="portrait">
+        "The structural / layout primitives. `Page` is a page boundary (`size` 'A4'|'A3'|'A5'|'letter'|'legal'|'tabloid', orientation, margins, optional `header`/`footer` — a primitive given as JSX (`header={<Text>…</Text>}`) or a direct call, resolved when the Page is built; honoured by PDF/DOCX only). `Section`/`Row`/`Column` are layout boxes (gap, align, padding, background). `Divider` is a horizontal rule (no children, all props optional — `Divider()` works bare). `Spacer` adds vertical space (`height: number` is REQUIRED). `Quote` is a blockquote (children). `PageBreak()` takes NO arguments — a hard break in PDF/DOCX, a visual rule in md/text/html, a no-op in per-slide PPTX.",
+      example: `<Page size="A4" orientation="portrait" header={<Text size={9}>Acme — Confidential</Text>}>
   <Section gap={16}>
     <Heading>Title</Heading>
     <Spacer height={12} />

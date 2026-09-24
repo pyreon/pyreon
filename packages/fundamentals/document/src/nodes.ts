@@ -301,8 +301,16 @@ export const Document = /* @__PURE__ */ Object.assign(
  */
 export const Page = /* @__PURE__ */ Object.assign(
   function Page(props: PageProps): DocNode {
-    const { children, ...rest } = props
-    return createNode('page', rest, children)
+    const { children, header, footer, ...rest } = props
+    // `header` / `footer` are PROPS, not children, so child normalization
+    // never reaches them. A JSX value there (`header={<Text>…</Text>}`) is a
+    // VNode the PDF/DOCX renderers would read as a DocNode — with the
+    // automatic JSX runtime its text lives in `props.children`, so the
+    // header was silently dropped. Resolve them here, like children.
+    const pageProps: Record<string, unknown> = rest
+    if (header != null) pageProps.header = resolveDocNode(header)
+    if (footer != null) pageProps.footer = resolveDocNode(footer)
+    return createNode('page', pageProps, children)
   },
   { _documentType: 'page' as const },
 ) as DocPrimitive<PageProps, 'page'>

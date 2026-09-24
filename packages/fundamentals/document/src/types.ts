@@ -108,10 +108,10 @@ export interface PageProps {
   orientation?: PageOrientation
   margin?: number | [number, number] | [number, number, number, number]
   children?: unknown
-  /** Header content for this page (PDF/DOCX). */
-  header?: DocNode
-  /** Footer content for this page (PDF/DOCX). */
-  footer?: DocNode
+  /** Header content for this page (PDF/DOCX) — a primitive, as JSX or a direct call. */
+  header?: DocNode | VNode
+  /** Footer content for this page (PDF/DOCX) — a primitive, as JSX or a direct call. */
+  footer?: DocNode | VNode
 }
 
 export interface SectionProps {

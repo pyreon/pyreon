@@ -5222,8 +5222,8 @@ await download(doc, 'tree.json')    // renders 'json', downloads`,
   },
 
   'document/Page / Section / Row / Column / Divider / Spacer / Quote / PageBreak': {
-    signature: `Page({ size?: PageSize; orientation?: 'portrait' | 'landscape'; margin?: number | number[]; header?: DocNode; footer?: DocNode; children? }) · Section({ direction?: 'column' | 'row'; gap?; padding?; background?; borderRadius?; border?; children? }) · Row({ gap?: number; align?; children? }) · Column({ width?: number | string; align?; children? }) · Divider({ color?; thickness? }) · Spacer({ height: number }) · Quote({ borderColor?; children? }) · PageBreak()`,
-    example: `<Page size="A4" orientation="portrait">
+    signature: `Page({ size?: PageSize; orientation?: 'portrait' | 'landscape'; margin?: number | number[]; header?: DocNode | VNode; footer?: DocNode | VNode; children? }) · Section({ direction?: 'column' | 'row'; gap?; padding?; background?; borderRadius?; border?; children? }) · Row({ gap?: number; align?; children? }) · Column({ width?: number | string; align?; children? }) · Divider({ color?; thickness? }) · Spacer({ height: number }) · Quote({ borderColor?; children? }) · PageBreak()`,
+    example: `<Page size="A4" orientation="portrait" header={<Text size={9}>Acme — Confidential</Text>}>
   <Section gap={16}>
     <Heading>Title</Heading>
     <Spacer height={12} />
@@ -5232,7 +5232,7 @@ await download(doc, 'tree.json')    // renders 'json', downloads`,
   </Section>
   <PageBreak />
 </Page>`,
-    notes: `The structural / layout primitives. \`Page\` is a page boundary (\`size\` 'A4'|'A3'|'A5'|'letter'|'legal'|'tabloid', orientation, margins, optional \`header\`/\`footer\` DocNodes). \`Section\`/\`Row\`/\`Column\` are layout boxes (gap, align, padding, background). \`Divider\` is a horizontal rule (no children, all props optional — \`Divider()\` works bare). \`Spacer\` adds vertical space (\`height: number\` is REQUIRED). \`Quote\` is a blockquote (children). \`PageBreak()\` takes NO arguments — a hard break in PDF/DOCX, a visual rule in md/text/html, a no-op in per-slide PPTX. See also: Document, render.`,
+    notes: `The structural / layout primitives. \`Page\` is a page boundary (\`size\` 'A4'|'A3'|'A5'|'letter'|'legal'|'tabloid', orientation, margins, optional \`header\`/\`footer\` — a primitive given as JSX (\`header={<Text>…</Text>}\`) or a direct call, resolved when the Page is built; honoured by PDF/DOCX only). \`Section\`/\`Row\`/\`Column\` are layout boxes (gap, align, padding, background). \`Divider\` is a horizontal rule (no children, all props optional — \`Divider()\` works bare). \`Spacer\` adds vertical space (\`height: number\` is REQUIRED). \`Quote\` is a blockquote (children). \`PageBreak()\` takes NO arguments — a hard break in PDF/DOCX, a visual rule in md/text/html, a no-op in per-slide PPTX. See also: Document, render.`,
     mistakes: `- \`Spacer\` without \`height\` — it is the only required field on these primitives; omitting it is a type error.
 - Calling \`PageBreak({ ... })\` with props — it takes NO arguments and always emits empty props/children.
 - Expecting \`Column\` to enforce a parent \`Row\` (or \`Row\` to require \`Column\` children) — neither is enforced at runtime; children are typed \`unknown\` and just normalized.`,

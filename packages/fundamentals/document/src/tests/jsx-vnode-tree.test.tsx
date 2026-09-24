@@ -198,4 +198,18 @@ describe('VNode (h / JSX) document trees', () => {
     expect(html).toContain('<p>one</p>')
     expect(html).toContain('<p>two</p>')
   })
+
+  it('a JSX <Page header/footer> is resolved to a DocNode (props, not children)', async () => {
+    const doc = (
+      <Document>
+        <Page header={<Text>Head</Text>} footer={<Text>Foot</Text>}>
+          <Text>Body</Text>
+        </Page>
+      </Document>
+    )
+    const tree = JSON.parse((await render(doc, 'json')) as string) as DocNode
+    const page = tree.children[0] as DocNode
+    expect(page.props.header).toEqual({ type: 'text', props: {}, children: ['Head'] })
+    expect(page.props.footer).toEqual({ type: 'text', props: {}, children: ['Foot'] })
+  })
 })
