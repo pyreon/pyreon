@@ -280,6 +280,6 @@ describe('the surface renders types as stable, readable strings', () => {
   it('stamps a version, so a stale baseline is reported as stale', () => {
     // Without it, a change to the RENDERING diffs as a thousand
     // unrelated changes and the reader learns to ignore the gate.
-    expect(surface().version).toBe(1)
+    expect(surface().version).toBe(2)
   })
 })

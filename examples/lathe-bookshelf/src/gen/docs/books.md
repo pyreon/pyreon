@@ -18,7 +18,7 @@ Add a book.
 - **Reach** — web only
   - `POST` lowers through mutations, which PMTC does not yet recognise; GET operations on this client DO reach native.
 - **Response** — `Book`
-- **Request body** — `NewBook`
+- **Request body** — `NewBook` as `application/json`
 
 ```ts
 import { useCreateBook } from './gen/queries/books'
