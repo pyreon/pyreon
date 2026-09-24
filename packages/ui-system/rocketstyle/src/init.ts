@@ -4,7 +4,7 @@ import defaultDimensions from './constants/defaultDimensions'
 import rocketComponent from './rocketstyle'
 import type { DefaultDimensions, Dimensions } from './types/dimensions'
 import type { RocketComponent } from './types/rocketComponent'
-import type { ElementType } from './types/utils'
+import type { ElementType, TObj } from './types/utils'
 import {
   getDimensionsValues,
   getKeys,
@@ -28,10 +28,42 @@ export type Rocketstyle = <
     dimensions?: D
     useBooleans?: UB
   },
-) => <C extends ElementType>(config: {
+) => RocketstyleFactory<D, UB, {}>
+
+/**
+ * Normalize a theme shape to an anonymous object type. An `interface` carries no
+ * implicit index signature, so `interface Tokens { accent: string }` does not
+ * satisfy the `Record<string, unknown>` bound every rocketstyle theme generic
+ * uses; the homomorphic mapped copy is structurally identical and does.
+ */
+export type ThemeShape<T extends object> = { [K in keyof T]: T[K] }
+
+/**
+ * The component factory `rocketstyle(config)` returns.
+ *
+ * `withTheme<Tokens>()` binds the theme type every `.theme()` and dimension
+ * callback built from this factory receives — so `t` is typed LOCALLY, with no
+ * global `declare module '@pyreon/rocketstyle'` augmentation (which merges into
+ * every other consumer's `ThemeDefault` and makes their tokens claim properties
+ * that are `undefined` at runtime). Type-only: it returns the same factory.
+ *
+ * @example
+ * interface Tokens { accent: string; surface: string }
+ * const rs = rocketstyle({ useBooleans: false }).withTheme<Tokens>()
+ * const Box = rs({ name: 'Box', component: Element }).theme((t) => ({
+ *   backgroundColor: t.surface, // typed: Tokens
+ * }))
+ */
+export type RocketstyleFactory<
+  D extends Dimensions = DefaultDimensions,
+  UB extends boolean = false,
+  T extends TObj = {},
+> = (<C extends ElementType>(config: {
   name: string
   component: C
-}) => ReturnType<RocketComponent<C, {}, {}, D, UB>>
+}) => ReturnType<RocketComponent<C, T, {}, D, UB>>) & {
+  withTheme: <NT extends object>() => RocketstyleFactory<D, UB, ThemeShape<NT>>
+}
 
 /**
  * Factory initializer for rocketstyle components. Validates dimension
@@ -82,8 +114,8 @@ const validateInit = (name: string, component: unknown, dimensions: Dimensions) 
 // Rocketstyle`) is the authoritative type; the impl just has to be runtime-
 // correct. Previously this used `any` here, which silently exempted these
 // call sites from `noImplicitAny` audits — `unknown` is more honest.
-const rocketstyle = (({ dimensions = defaultDimensions, useBooleans = false } = {}) =>
-  ({ name, component }: { name: string; component: unknown }) => {
+const rocketstyle = (({ dimensions = defaultDimensions, useBooleans = false } = {}) => {
+  const factory = ({ name, component }: { name: string; component: unknown }) => {
     if (process.env.NODE_ENV !== 'production') {
       validateInit(name, component, dimensions)
     }
@@ -99,6 +131,10 @@ const rocketstyle = (({ dimensions = defaultDimensions, useBooleans = false } = 
       transformKeys: getTransformDimensions(dimensions),
       styled: true,
     })
-  }) as unknown as Rocketstyle
+  }
+  // Type-only channel (see `RocketstyleFactory`): the theme type changes, the
+  // factory does not.
+  return Object.assign(factory, { withTheme: () => factory })
+}) as unknown as Rocketstyle
 
 export default rocketstyle

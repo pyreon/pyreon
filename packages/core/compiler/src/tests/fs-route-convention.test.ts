@@ -131,3 +131,21 @@ describe('island-naming — deriveIslandName (vite-plugin-exact semantics)', () 
     expect(islandRelPath('/app', '/app/src/islands.ts')).toBe('src/islands.ts')
   })
 })
+
+describe('fs-route-convention — hyphenated param names', () => {
+  // `[post-id]` used to fail the `\w+` match and fall through as a STATIC
+  // segment, so `/posts/[post-id]` became the literal URL `/posts/[post-id]`.
+  test('page routes', () => {
+    expect(filePathToUrlPath('posts/[post-id]')).toBe('/posts/:post-id')
+    expect(filePathToUrlPath('docs/[...doc-path]')).toBe('/docs/:doc-path*')
+  })
+
+  test('api routes', () => {
+    expect(apiFilePathToPattern('api/users/[user-id].ts')).toBe('/api/users/:user-id')
+    expect(apiFilePathToPattern('api/[...rest-path].ts')).toBe('/api/:rest-path*')
+  })
+
+  test('a bare or leading hyphen is still not a param name', () => {
+    expect(filePathToUrlPath('x/[-]')).toBe('/x/[-]')
+  })
+})

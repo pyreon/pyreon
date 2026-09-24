@@ -52,6 +52,13 @@
  * `undefined` even when present in `globalThis`.
  */
 
+import { scrubGitEnv } from './packages/internals/vitest-config/src/git-env'
+
+// No test may inherit a git hook's repository. See `git-env.ts`: with
+// `GIT_DIR` set, a test's `git -C <tmp> config` writes the REAL repo's config.
+// `process` is absent in real-browser runs, which spawn no git anyway.
+if (typeof process !== 'undefined' && process.env) scrubGitEnv(process.env)
+
 class InMemoryStorage implements Storage {
   private _data = new Map<string, string>()
   get length(): number {

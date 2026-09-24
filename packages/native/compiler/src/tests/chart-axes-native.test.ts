@@ -8,7 +8,7 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
  * it, and `show` / `splitLine.show` / `type: 'log'` reach the spec.
  */
 const app = (axes: string, series2 = `{ type: 'bar', yAxisIndex: 1, data: [100, 200] }`): string => `
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart option={{ xAxis: { type: 'category', data: ['a', 'b'], name: 'Day' }, ${axes}, series: [{ type: 'line', data: [1, 2] }, ${series2}] }} />
 }`
@@ -85,7 +85,7 @@ describe.each(['swift', 'kotlin'] as const)('option axes on %s', (target) => {
 
   it('carries a second x axis as labels on the same bands, and compiles', () => {
     const r = transform(`
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart option={{ xAxis: [{ type: 'category', data: ['Mon', 'Tue'] }, { type: 'category', data: ['W1', 'W2'], name: 'Week' }], yAxis: {}, series: [{ type: 'bar', data: [1, 2] }, { type: 'line', xAxisIndex: 1, data: [2, 1] }] }} />
 }`, { target })
@@ -98,7 +98,7 @@ export function App() {
 
   it('lowers a value x axis and a second value x axis, and compiles', () => {
     const r = transform(`
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart option={{ xAxis: [{ type: 'value' }, { type: 'value', min: 0, max: 1000, name: 'Metres' }], yAxis: {}, series: [{ type: 'scatter', data: [[0, 1], [10, 2]] }, { type: 'scatter', xAxisIndex: 1, data: [[250, 1], [1000, 2]] }] }} />
 }`, { target })

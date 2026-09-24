@@ -1,4 +1,4 @@
-import { Chart } from '@pyreon/charts'
+import { EChart } from '@pyreon/charts/echarts'
 import { useQuery } from '@pyreon/query'
 import { css, useCSS, useTheme } from '@pyreon/styler'
 import type { Theme } from '@pyreon/ui-theme'
@@ -34,7 +34,7 @@ export function CategoryChart() {
         const data = query.data()
         if (!data) return <ChartFallback>Loading chart…</ChartFallback>
         return (
-          <Chart
+          <EChart
             class={canvasClass}
             options={() => ({
               tooltip: { trigger: 'axis' },
