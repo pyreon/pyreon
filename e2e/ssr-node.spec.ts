@@ -300,3 +300,88 @@ test.describe('zero <Link> prefetch — no modulepreload MIME error', () => {
   })
 
 })
+
+/**
+ * Server functions — `examples/ssr-showcase/src/routes/form-actions.tsx`: a
+ * route `action` export submitted through `<Form>`. The same form must work
+ * with JavaScript DISABLED (real POST → server runs the action → re-render or
+ * 303) and enhanced WITH JavaScript (fetch, no navigation, loaders revalidate).
+ * Names are unique per spec: the guestbook lives in the server process.
+ */
+test.describe('server functions (<Form> + route action)', () => {
+  test.describe('without JavaScript', () => {
+    test.use({ javaScriptEnabled: false })
+
+    test('a form post runs the action and re-renders with the result', async ({ page }) => {
+      await page.goto('/form-actions')
+      await page.getByTestId('name-input').fill('nojs-ann')
+      await page.getByTestId('submit').click()
+      await expect(page.getByTestId('result')).toHaveText('added: nojs-ann')
+      await expect(page.getByTestId('entries')).toContainText('nojs-ann')
+      // A plain document POST landed on the page itself.
+      expect(new URL(page.url()).pathname).toBe('/form-actions')
+    })
+
+    test('a fail() re-renders with the error and its status', async ({ page }) => {
+      await page.goto('/form-actions')
+      const [resp] = await Promise.all([
+        page.waitForResponse((r) => r.request().method() === 'POST'),
+        page.getByTestId('submit').click(),
+      ])
+      expect(resp.status()).toBe(422)
+      await expect(page.getByTestId('result')).toHaveText('error: Name is required')
+    })
+
+    test('a redirect() is POST/Redirect/GET (303)', async ({ page }) => {
+      await page.goto('/form-actions')
+      await page.getByTestId('name-input').fill('nojs-leaver')
+      await page.getByTestId('submit-redirect').click()
+      await expect(page).toHaveURL(/\/about$/)
+      const list = await page.request.get('/form-actions')
+      expect(await list.text()).toContain('nojs-leaver')
+    })
+  })
+
+  test('a cross-origin form post is rejected before the handler runs', async ({ request }) => {
+    const resp = await request.post('/form-actions', {
+      form: { name: 'forged-entry' },
+      headers: { origin: 'https://evil.example' },
+    })
+    expect(resp.status()).toBe(403)
+    expect(await (await request.get('/form-actions')).text()).not.toContain('forged-entry')
+  })
+
+  test('with JavaScript: submits via fetch, no navigation, loaders revalidate', async ({ page }) => {
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(e.message))
+    await page.goto('/form-actions')
+    await page.waitForLoadState('networkidle')
+    // A full document navigation would wipe this marker.
+    await page.evaluate(() => {
+      ;(window as unknown as { __noReload: boolean }).__noReload = true
+    })
+    const documentPosts: string[] = []
+    page.on('request', (r) => {
+      if (r.method() === 'POST' && r.resourceType() === 'document') documentPosts.push(r.url())
+    })
+    await page.getByTestId('name-input').fill('js-bea')
+    await page.getByTestId('submit').click()
+    await expect(page.getByTestId('result')).toHaveText('added: js-bea')
+    // router.revalidate() re-fetched the server loader.
+    await expect(page.getByTestId('entries')).toContainText('js-bea')
+    expect(await page.evaluate(() => (window as unknown as { __noReload?: boolean }).__noReload)).toBe(true)
+    expect(documentPosts).toEqual([])
+    // resetOnSuccess cleared the field.
+    await expect(page.getByTestId('name-input')).toHaveValue('')
+    expect(errors).toEqual([])
+  })
+
+  test('with JavaScript: a redirect() navigates client-side', async ({ page }) => {
+    await page.goto('/form-actions')
+    await page.waitForLoadState('networkidle')
+    await page.getByTestId('name-input').fill('js-leaver')
+    await page.getByTestId('submit-redirect').click()
+    await expect(page).toHaveURL(/\/about$/)
+    await expect(page.getByTestId('about-page')).toBeVisible()
+  })
+})
