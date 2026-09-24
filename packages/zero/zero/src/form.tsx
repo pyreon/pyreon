@@ -122,12 +122,18 @@ interface SubmissionCell {
  */
 const clientCells = new Map<string, SubmissionCell>()
 
+/** Drop every client submission state. Test isolation. @internal */
+export function _resetSubmissions(): void {
+  clientCells.clear()
+}
+
 function readHydratedSnapshot(id: string): ActionSnapshot | undefined {
   if (typeof document === 'undefined') return undefined
-  const el = document.querySelector(`script[data-zero-action-result="${CSS.escape(id)}"]`)
-  if (!el?.textContent) return undefined
+  const el = document.querySelector(`template[data-zero-action-result="${CSS.escape(id)}"]`)
+  const raw = el?.getAttribute('data-value')
+  if (!raw) return undefined
   try {
-    return JSON.parse(el.textContent) as ActionSnapshot
+    return JSON.parse(raw) as ActionSnapshot
   } catch {
     return undefined
   }
@@ -302,14 +308,6 @@ export interface FormProps<T> extends SubmitOptions {
   [attr: string]: unknown
 }
 
-/** `JSON.stringify` safe to place in an inline `<script>` body. */
-function scriptSafeJson(value: unknown): string {
-  return JSON.stringify(value)
-    .replace(/</g, '\\u003C')
-    .replace(/\u2028/g, '\\u2028')
-    .replace(/\u2029/g, '\\u2029')
-}
-
 /**
  * A `<form method="post">` bound to a server action that works WITHOUT
  * JavaScript and is enhanced to `fetch` when JavaScript runs. See the
@@ -360,12 +358,11 @@ export function Form<T>(props: FormProps<T>): VNodeChild {
   }
   return (
     <form {...formProps}>
+      {/* The server's result, for hydration. An ATTRIBUTE, not an inline
+          script: attribute escaping is the renderer's job, so no raw-HTML
+          sink; and a <template> is inert and never submitted. */}
       {hydrated ? (
-        <script
-          type="application/json"
-          data-zero-action-result={id}
-          dangerouslySetInnerHTML={{ __html: scriptSafeJson(hydrated) }}
-        />
+        <template data-zero-action-result={id} data-value={JSON.stringify(hydrated)} />
       ) : null}
       {own.children}
     </form>

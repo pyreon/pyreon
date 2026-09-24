@@ -1,5 +1,6 @@
 import { getRedirectInfo, safeRedirectLocation } from '@pyreon/router'
 import type { MiddlewareContext } from '@pyreon/server'
+import { _resetSubmissions } from './form'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -166,6 +167,7 @@ export function getRegisteredActions(): Map<string, RegisteredAction> {
  */
 export function _resetActions(): void {
   actionRegistry.clear()
+  _resetSubmissions()
   warnedPluginless = false
 }
 

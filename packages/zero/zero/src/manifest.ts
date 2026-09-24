@@ -487,6 +487,72 @@ const user = useRequestLocals().user as User | null`,
       seeAlso: ['cspMiddleware'],
     },
 
+    {
+      name: 'defineAction',
+      kind: 'function',
+      signature: 'function defineAction<T>(handler: (ctx: ActionContext) => T | Promise<T>): Action<T>',
+      summary:
+        'Define a server action (import from `@pyreon/zero/actions`). Export it from a route as `action` and submit it with `<Form action={action}>` — it then works as a plain HTML form post WITHOUT JavaScript (the server runs it, then answers 303 for a `redirect()` or re-renders the page with the result) and is enhanced to `fetch` when JavaScript runs. The result is also a callable that POSTs JSON to `/_zero/actions/<id>`. zero\'s Vite plugin derives a stable id and strips the handler (and imports only it used) from the client bundle. Same-origin check + 1 MiB body limit (`createServer({ actions: { corsOrigins, bodyLimit } })`); runs after app and route middleware.',
+      mistakes: [
+        'Exporting a plain `async function action()` from a route — it is not a defineAction() result, so it is refused with a 500 AND its body would ship to the client; wrap it: `export const action = defineAction(async (ctx) => …)`',
+        'Returning an error object with status 200 for a validation failure — return `fail(422, data)` so the response carries the status and `useSubmission().result()` gets the data',
+        'Throwing an Error for a user-facing message — its message is replaced by "Internal server error" in production; use `fail()`',
+        'Using `redirect()` with a 307 expecting a re-POST — page form posts always answer 303 so the browser follows with a GET',
+        'Expecting actions in `vite dev` — build and run the server; the dev middleware does not run the action endpoints yet',
+      ],
+      example: `import { redirect } from '@pyreon/router'
+import { defineAction, fail, Form } from '@pyreon/zero/actions'
+
+export const action = defineAction(async ({ formData }) => {
+  const title = String(formData?.get('title') ?? '')
+  if (!title) return fail(422, { error: 'Title is required' })
+  throw redirect('/posts')
+})
+
+export default function NewPost() {
+  return (
+    <Form action={action}>
+      <input name="title" />
+      <button>Create</button>
+    </Form>
+  )
+}`,
+      seeAlso: ['useSubmission', 'Form'],
+    },
+    {
+      name: 'Form',
+      kind: 'component',
+      signature:
+        'function Form<T>(props: { action: Action<T>; revalidate?: boolean | readonly string[]; resetOnSuccess?: boolean; onSuccess?: (data: ActionData<T>) => void; children?: VNodeChild; [attr: string]: unknown }): VNodeChild',
+      summary:
+        'A `<form method="post">` bound to a server action (`@pyreon/zero/actions`). Renders `action="?_action=<id>"` — a query-only URL, so the POST targets the current page with base path and locale prefix intact, identically on server and client. With JavaScript it intercepts submit, sends the same request via `fetch`, updates `useSubmission(action)`, then on success re-runs the current route\'s loaders (`revalidate`, default `true`; `false` opts out; an array of loaderKey values invalidates only those) and resets its fields (`resetOnSuccess`). A `redirect()` navigates client-side.',
+      mistakes: [
+        'Relying on the page query string inside the action or its re-render — the query-only action URL replaces it',
+        'Forgetting `enctype="multipart/form-data"` for file inputs — attributes pass through to the <form>',
+      ],
+      example: `<Form action={action} revalidate={false} class="new-post">
+  <input name="title" required />
+  <button type="submit">Create</button>
+</Form>`,
+      seeAlso: ['defineAction', 'useSubmission'],
+    },
+    {
+      name: 'useSubmission',
+      kind: 'hook',
+      signature: 'function useSubmission<T>(action: Action<T>): Submission<T>',
+      summary:
+        'Reactive state of an action\'s submissions (`@pyreon/zero/actions`): `pending()`, `input()` (the FormData in flight — render it optimistically), `result()` (return value or `fail()` data), `status()`, `error()`, plus `submit(data, { revalidate })` and `reset()`. Every call for the same action shares one state on the client. After a no-JS form post the server-rendered result is hydrated, so the page shows it with and without JavaScript. On the server the state is per request.',
+      mistakes: [
+        'Reading `sub.result()` outside a reactive scope and expecting updates — read it in JSX `{() => …}` or an effect',
+        'Calling `submit()` during render — it throws on the server; call it from an event handler',
+      ],
+      example: `const sub = useSubmission(action)
+<button disabled={sub.pending()}>Save</button>
+<p>{() => sub.pending() ? \`Saving \${sub.input()?.get('title')}\` : ''}</p>
+<p>{() => sub.result()?.error ?? ''}</p>`,
+      seeAlso: ['Form', 'defineAction'],
+    },
+
     // ─── Three-layer extensibility: Link / Image / Script ──────────────
     // Each component ships THREE layers: a `useX(props)` hook for full
     // control, a `createX(Component)` HOC for wrapping any component

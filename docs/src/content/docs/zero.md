@@ -999,32 +999,68 @@ When a proxy is configured, the dev server logs `[Pyreon] zero dev: honoring vit
 
 ## Server Actions
 
-Server-side mutations callable from the client, mounted at `/_zero/actions/*`.
+A server action is a function that runs on the server and is called from the page. Put it next to the page that uses it, as the route's `action` export, and submit it with `<Form>`:
 
-```ts title="src/features/posts.ts"
-import { defineAction } from '@pyreon/zero/actions'
+```tsx title="src/routes/posts/new.tsx"
+import { redirect } from '@pyreon/router'
+import { defineAction, fail, Form, useSubmission } from '@pyreon/zero/actions'
+import { db } from '../../server/db'
 
-export const createPost = defineAction(async (ctx) => {
-  const { title, body } = ctx.json as { title: string; body: string }
-  return { success: true, id: await db.posts.create({ title, body }) }
+export const action = defineAction(async ({ formData }) => {
+  const title = String(formData?.get('title') ?? '').trim()
+  if (!title) return fail(422, { error: 'Title is required', title })
+  const id = await db.posts.create({ title })
+  throw redirect(`/posts/${id}`)
 })
+
+export default function NewPost() {
+  const submission = useSubmission(action)
+  return (
+    <Form action={action}>
+      <input name="title" />
+      <button disabled={submission.pending()}>Create</button>
+      <p>{() => submission.result()?.error ?? ''}</p>
+    </Form>
+  )
+}
 ```
 
-```ts title="src/entry-server.ts"
-import { createActionMiddleware } from '@pyreon/zero/actions'
-import { createServer } from '@pyreon/zero/server'
+This form works **without JavaScript**. `<Form>` renders a real `<form method="post" action="?_action=…">`, and a query-only action URL posts to the page itself, base path and locale prefix included. The server runs the action, then:
 
-export default createServer({
-  routes,
-  middleware: [createActionMiddleware()],
-})
-```
+- a `redirect()` (thrown or returned) answers `303 See Other`, so the browser follows with a GET (POST/Redirect/GET, and a refresh does not resubmit);
+- anything else re-renders the page with the result available to `useSubmission(action).result()`, under the result's status: `200` for plain data, the given status for `fail(status, data)`, `500` for an unexpected error (whose message is shown only outside production).
 
-Call them from components as plain async functions: `const r = await createPost({ title, body })`.
+When JavaScript runs, `<Form>` intercepts the submit and sends the same request with `fetch`; the server answers JSON instead of HTML. Nothing navigates: `useSubmission` shows `pending()` and the optimistic `input()` (the `FormData` being sent) while it runs, then `result()`, `status()` and `error()`. On success the current route's loaders re-run in place (`router.revalidate()`) and the form's fields reset; a `redirect()` navigates client-side.
 
-The `ActionContext` exposes `request`, `json` (parsed JSON body), `formData` (for `multipart/form-data`), and `headers`.
+A plain `<form method="post">` without `<Form>` also reaches the route's `action` export, since a POST to a page that exports `action` runs it.
 
-Each action's id is derived at build time by zero's Vite plugin from the defining module's path and the name the action is assigned to, so the client bundle and the server bundle agree on it and it stays the same across rebuilds and HMR. The plugin also removes the handler from the client bundle, along with imports that only the handler used, so server-only code such as a database client does not ship to the browser. `defineAction` therefore requires `zero()` in your Vite config: without it, a call in the browser throws in production and warns in development.
+### Submissions
+
+`useSubmission(action)` returns the same state wherever it is called for the same action, so a spinner in the header and the form agree. Its `submit(data, options?)` sends a submission programmatically. Refreshing after success is controlled by `revalidate`, on `<Form>` or in `submit`'s options:
+
+| `revalidate` | After a successful submission |
+| --- | --- |
+| `true` (default) | the current route's loaders re-run in place |
+| `false` | nothing is refreshed |
+| `['posts', 'stats']` | only those loader cache keys (`loaderKey` values) are invalidated; they re-run on the next navigation that needs them |
+
+`<Form>` also takes `resetOnSuccess` (default `true`) and `onSuccess(data)`. Other attributes pass through to the `<form>` element; add `enctype="multipart/form-data"` for file inputs.
+
+### Calling an action directly
+
+A `defineAction` result is also a plain async function: `await createPost({ title })` POSTs JSON to `/_zero/actions/<id>` and resolves with the handler's return value. On the server it calls the handler directly. The `ActionContext` exposes `request`, `json` (for JSON bodies), `formData` (for form and multipart bodies) and `headers`.
+
+### Security
+
+`createServer` mounts actions for you, after your app middleware and the page's own route middleware, so an auth gate on the page also gates its action.
+
+- **Origin check.** A cross-origin POST is rejected with `403` on both `/_zero/actions/*` and page form posts. Allow specific origins with `createServer({ actions: { corsOrigins: ['https://admin.example.com'] } })`. Still set `SameSite=Lax` (or `Strict`) on auth cookies.
+- **Body limit.** Action requests over 1 MiB are rejected with `413` before the handler runs, checked on `Content-Length` and again while reading, so a missing header does not bypass it. Raise it for uploads with `actions: { bodyLimit: 10 * 1024 * 1024 }`.
+- **Handlers stay on the server.** Each action's id is derived at build time by zero's Vite plugin from the defining module's path and the name the action is assigned to, so the client and server bundles agree on it. The plugin removes the handler from the client bundle, along with imports that only the handler used. `defineAction` therefore requires `zero()` in your Vite config: without it, a call in the browser throws in production and warns in development.
+
+A route whose `action` export is not a `defineAction()` result answers `500` and logs how to fix it, since only `defineAction` keeps the handler out of the client bundle.
+
+**Limitations.** The query-only action URL replaces the page's own query string for the POST and its re-render, so loaders reading the query do not see it. `vite dev` does not run actions yet (neither the JSON endpoint nor page form posts); build and run the server to try them.
 
 ## SEO
 
@@ -1640,7 +1676,7 @@ const res = await server.request('/api/posts')
 | `@pyreon/zero/image-plugin`| `imagePlugin`                                                                        |
 | `@pyreon/zero/cache`       | `cacheMiddleware`, `securityHeaders`, `varyEncoding`                                  |
 | `@pyreon/zero/seo`         | `seoPlugin`, `seoMiddleware`, `generateSitemap`, `generateRobots`, `jsonLd`           |
-| `@pyreon/zero/actions`     | `defineAction`, `createActionMiddleware`                                              |
+| `@pyreon/zero/actions`     | `defineAction`, `fail`, `Form`, `useSubmission`, `createActionMiddleware`             |
 | `@pyreon/zero/api-routes`  | API route utilities, `createApiMiddleware`                                            |
 | `@pyreon/zero/cors`        | `corsMiddleware`                                                                     |
 | `@pyreon/zero/rate-limit`  | `rateLimitMiddleware`                                                                 |
