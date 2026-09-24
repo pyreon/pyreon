@@ -1084,7 +1084,7 @@ A route whose `action` export is not a `defineAction()` result answers `500` and
 
 The form's action keeps the page's own query (`?page=2&_action=…`), so loaders see it on the POST and its re-render. App and route middleware run once per submission: the re-render reuses their `locals` and response headers instead of running them again.
 
-**Limitations.** `vite dev` does not run actions yet (neither the JSON endpoint nor page form posts); build and run the server to try them.
+Actions run the same way under `vite dev`: form posts, enhanced submissions and `/_zero/actions/*` all go through the same request pipeline as production, and a no-JS re-render reuses the POST's middleware results there too.
 
 ## SEO
 

@@ -498,7 +498,6 @@ const user = useRequestLocals().user as User | null`,
         'Returning an error object with status 200 for a validation failure — return `fail(422, data)` so the response carries the status and `useSubmission().result()` gets the data',
         'Throwing an Error for a user-facing message — its message is replaced by "Internal server error" in production; use `fail()`',
         'Using `redirect()` with a 307 expecting a re-POST — page form posts always answer 303 so the browser follows with a GET',
-        'Expecting actions in `vite dev` — build and run the server; the dev middleware does not run the action endpoints yet',
       ],
       example: `import { redirect } from '@pyreon/router'
 import { defineAction, fail, Form } from '@pyreon/zero/actions'

@@ -1331,9 +1331,16 @@ async function dispatchDevPipeline(
 		ssrLoadModuleQuiet(server, "@pyreon/zero/pipeline"),
 		loadEntryPipelineOptions(server, root),
 	]);
-	const { createRequestPipeline, runRequestPipeline } =
+	const { createRequestPipeline, runRequestPipeline, readCarriedActionState } =
 		pipelineMod as unknown as typeof import("./pipeline");
 	const pipeline = createRequestPipeline({
+		// A no-JS action post re-renders its page through the dev renderer
+		// directly — never back through this pipeline, whose middleware
+		// already ran for the POST. The POST's locals + response headers are
+		// restored from the pipeline module's own carried state (same module
+		// instance the form-action middleware wrote to).
+		renderActionPage: (getReq) =>
+			renderDevActionPage(server, root, getReq, readCarriedActionState(getReq)),
 		routes: (routesMod.routes ?? []) as import("@pyreon/router").RouteRecord[],
 		// Production's config is the SERIALIZED one (code-valued options like
 		// `zero({ middleware })` are dropped with a build warning) — dev uses
@@ -1372,6 +1379,36 @@ async function dispatchDevPipeline(
 	});
 	if (cookies.length > 0) res.setHeader("set-cookie", cookies);
 	return false;
+}
+
+/**
+ * Dev page render for a no-JS action post's re-render — the dev twin of
+ * production's re-render handler: renderSsr with the POST's restored
+ * locals, answering with the headers its middleware set.
+ */
+async function renderDevActionPage(
+	server: ViteDevServer,
+	root: string,
+	getReq: Request,
+	state: { locals: Record<string, unknown>; headers: Headers } | undefined,
+): Promise<Response> {
+	const url = new URL(getReq.url);
+	const result = await renderSsr(
+		server,
+		root,
+		url.pathname + url.search,
+		url.pathname,
+		getReq,
+		state?.locals,
+	);
+	const headers = new Headers(state?.headers);
+	if (result === null) return new Response("Not Found", { status: 404, headers });
+	if (result.kind === "redirect") {
+		headers.set("Location", result.to);
+		return new Response(null, { status: result.status, headers });
+	}
+	headers.set("Content-Type", "text/html; charset=utf-8");
+	return new Response(result.html, { status: result.status, headers });
 }
 
 /**
@@ -1546,10 +1583,15 @@ async function renderSsr(
 		server,
 		"@pyreon/zero/app",
 	)) as unknown as typeof import("./app");
+	// The router's URL carries the QUERY, exactly as the production handler's
+	// (`url.pathname + url.search`): loaders, `useSearchParams` and a <Form>'s
+	// query-preserving action all read it. Pathname-only here made dev render
+	// every page as if its query were empty — an SSR/hydration mismatch.
+	const routerPath = pathname + (req ? new URL(req.url).search : "");
 	const { App, router: routerInst } = appMod.createApp({
 		routes: routes as import("@pyreon/router").RouteRecord[],
 		routerMode: "history",
-		url: pathname,
+		url: routerPath,
 	});
 
 	// M1.2 — Unmatched URLs no longer bail to a static 404 page here; the
@@ -1561,7 +1603,7 @@ async function renderSsr(
 	const result = await serverPkg.renderPage(
 		App as Parameters<typeof serverPkg.renderPage>[0],
 		routerInst as Parameters<typeof serverPkg.renderPage>[1],
-		pathname,
+		routerPath,
 		{
 			...(req ? { request: req } : {}),
 			...(locals ? { locals } : {}),
