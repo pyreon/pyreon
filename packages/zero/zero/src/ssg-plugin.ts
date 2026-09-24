@@ -1187,8 +1187,8 @@ function compileUrlPatternMatcher(urlPath: string): (concrete: string) => boolea
   // Order matters — `:name*` MUST be replaced before `:name`.
   const regex = urlPath
     .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-    .replace(/:([A-Za-z_$][\w$]*)\*/g, '.*')
-    .replace(/:([A-Za-z_$][\w$]*)/g, '[^/]+')
+    .replace(/:([A-Za-z_$][\w$-]*)\*/g, '.*')
+    .replace(/:([A-Za-z_$][\w$-]*)/g, '[^/]+')
   const re = new RegExp(`^${regex}$`)
   return (concrete) => re.test(concrete)
 }
