@@ -2278,6 +2278,29 @@ describe('no-window-in-ssr: precision (oxc no-parent fixes)', () => {
     expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
   })
 
+  // A type in an `as` / `satisfies` expression has no TSTypeAnnotation
+  // wrapper, so a type LITERAL's member, a function type's parameter and a
+  // `typeof` query there were visited as value identifiers.
+  it('silent for a type-literal member named like a global (`as { window?: number }`)', () => {
+    const source = `declare const p: unknown\nconst o = p as Record<string, unknown> & { window?: number; document: string }`
+    expect(findByRule(lintSource(source), 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent for a function-type parameter named like a global', () => {
+    const source = `declare const g: unknown\nconst f = g as (window: number) => void`
+    expect(findByRule(lintSource(source), 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent for a `typeof` type query in an `as` expression', () => {
+    const source = `declare const g: unknown\nconst f = g as typeof window`
+    expect(findByRule(lintSource(source), 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('still fires on the VALUE half of an `as` expression', () => {
+    const source = `const w = (window as unknown as { x: number }).x`
+    expect(findByRule(lintSource(source), 'pyreon/no-window-in-ssr').length).toBe(1)
+  })
+
   it('silent under early-return-on-typeof guard', () => {
     const source = `
       function load() {
