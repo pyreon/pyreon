@@ -24,8 +24,8 @@
  * - **SSR / ISR** routes: served at request time from
  *   `/_zero/og/<path>.png` and the matching meta tag is injected into the
  *   rendered page. The endpoint answers with `s-maxage` +
- *   `stale-while-revalidate` (driven by the route's `revalidate` export,
- *   default 3600s) so a CDN caches and revalidates it — ISR at the edge.
+ *   `stale-while-revalidate` (3600s) so a CDN caches and revalidates it —
+ *   ISR at the edge.
  *
  * The rasterizer is **sharp** (the same optional peer the image, favicon
  * and template-OG plugins use). SVG only: sharp renders SVG through librsvg,
