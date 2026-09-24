@@ -13,5 +13,6 @@
   "@pyreon/charts::plot-minimal": 46300,
   "@pyreon/charts::plot-svg": 28000,
   "@pyreon/flow::core": 19250,
-  "@pyreon/charts::plot-pie": 19700
+  "@pyreon/charts::plot-pie": 19700,
+  "@pyreon/charts::plot-grammar": 50300
 }

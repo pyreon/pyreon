@@ -225,6 +225,25 @@ function brand<P>(name: string): (props: P) => VNode | null {
   return fn
 }
 
+/**
+ * The host component a family mark renders through, carried ON the mark.
+ *
+ * Load-bearing for tree-shaking: `<Plot>` looks the host up on the child's
+ * component instead of importing all four hosts itself, so a plot that never
+ * uses `<Arc>` never pulls the pie renderer in. Each family mark is created
+ * by a `@__PURE__` call whose argument is its host — unused mark, dropped
+ * call, unreferenced host, shaken out.
+ */
+const FAMILY_HOST = Symbol.for('pyreon.charts.familyHost')
+
+type HostComponent = (props: Record<string, unknown>) => VNode | null
+
+function familyMark<P>(name: string, host: unknown): (props: P) => VNode | null {
+  const fn = brand<P>(name)
+  Object.defineProperty(fn, FAMILY_HOST, { value: host, configurable: true })
+  return fn
+}
+
 /** Vertical bars; `stack` / `group` combine several. */
 export const Bar = /* @__PURE__ */ brand<BarProps<any>>('Bar') as <T>(props: BarProps<T>) => VNode | null
 /** A polyline through the values. */
@@ -267,13 +286,13 @@ export const Scale = /* @__PURE__ */ brand<ScaleProps>('Scale')
 /** A binned value channel drawn as bars — see {@link HistogramProps}. */
 export const Histogram = /* @__PURE__ */ brand<HistogramProps<any>>('Histogram') as <T>(props: HistogramProps<T>) => VNode | null
 /** A pie or donut — the family mark for `<PieChart>`. */
-export const Arc = /* @__PURE__ */ brand<ArcProps<any>>('Arc') as <T>(props: ArcProps<T>) => VNode | null
+export const Arc = /* @__PURE__ */ familyMark<ArcProps<any>>('Arc', PieChart) as <T>(props: ArcProps<T>) => VNode | null
 /** A funnel — the family mark for `<FunnelChart>`. */
-export const Stage = /* @__PURE__ */ brand<StageProps<any>>('Stage') as <T>(props: StageProps<T>) => VNode | null
+export const Stage = /* @__PURE__ */ familyMark<StageProps<any>>('Stage', FunnelChart) as <T>(props: StageProps<T>) => VNode | null
 /** A heatmap — the family mark for `<HeatmapChart>`. */
-export const Cell = /* @__PURE__ */ brand<CellProps<any>>('Cell') as <T>(props: CellProps<T>) => VNode | null
+export const Cell = /* @__PURE__ */ familyMark<CellProps<any>>('Cell', HeatmapChart) as <T>(props: CellProps<T>) => VNode | null
 /** A candlestick — the family mark for `<CandlestickChart>`. */
-export const Candle = /* @__PURE__ */ brand<CandleProps<any>>('Candle') as <T>(props: CandleProps<T>) => VNode | null
+export const Candle = /* @__PURE__ */ familyMark<CandleProps<any>>('Candle', CandlestickChart) as <T>(props: CandleProps<T>) => VNode | null
 
 /** The family a mark belongs to, and the host `<Plot>` renders for it. */
 export type FamilyHost = 'pie' | 'funnel' | 'heatmap' | 'candlestick'
@@ -391,7 +410,7 @@ export interface ResolvedGrammar<T> {
   /** Long-format pivot (or a histogram's bins): the synthesized rows replace `data`, and `x` labels them. */
   pivot: { rows: unknown[]; x: (d: unknown, index: number) => string } | null
   /** A family mark was given: the host to render and the props (channels as accessors) it takes instead of `<PlotChart>`. */
-  family: { host: FamilyHost; props: Record<string, unknown> } | null
+  family: { host: FamilyHost; component: HostComponent; props: Record<string, unknown> } | null
 }
 
 const describeChild = (v: VNode): string => {
@@ -440,7 +459,7 @@ export function resolveGrammar<T>(rows: T[], chart: PlotProps<T>, children: VNod
     const p = v.props as Record<string, unknown>
     const familyHost = FAMILY_OF[name]
     if (familyHost !== undefined) {
-      if (family === null) family = { host: familyHost, props: familyProps<T>(name, p) }
+      if (family === null) family = { host: familyHost, component: (v.type as unknown as Record<symbol, HostComponent>)[FAMILY_HOST]!, props: familyProps<T>(name, p) }
       else warnGrammar(`one family per plot — <${name}> is ignored beside the ${family.host} mark.`)
       continue
     }
@@ -656,8 +675,7 @@ export function Plot<T>(props: PlotProps<T>): VNodeChild {
     if (kind === 'candlestick') p.x = reactiveProp(() => (props.x === undefined ? undefined : channel<T, string>(props.x)))
     const own = resolved().family!.props
     for (const key of Object.keys(own)) p[key] = reactiveProp(() => resolved().family?.props[key])
-    const host = kind === 'pie' ? PieChart : kind === 'funnel' ? FunnelChart : kind === 'heatmap' ? HeatmapChart : CandlestickChart
-    return h(host as unknown as (p: Record<string, unknown>) => VNode, p)
+    return h(resolved().family!.component as unknown as (p: Record<string, unknown>) => VNode, p)
   }
   const plotProps: Record<string, unknown> = {
     data: reactiveProp(() => {
