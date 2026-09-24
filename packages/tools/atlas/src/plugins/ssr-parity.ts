@@ -51,7 +51,7 @@ import { finding, materializeContent } from '../core'
 import { ensureDom } from '../verify/dom'
 import type { MountRuntime } from '../verify/harness'
 import { frameworkWarningFinding, withFrameworkWarnings } from './framework-warnings'
-import { SKIP_REASON, skipped, unmountableSkip } from './registry'
+import { skipped, unmountableSkip } from './registry'
 import type { AtlasPlugin } from './types'
 
 /** Why a parity check could not run. Stated, never silently passed. */
