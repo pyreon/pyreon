@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { isAbsolute, join, relative, sep } from 'node:path'
 import { transformServerActions } from './actions-transform'
-import { innerBuildFlagSet } from './build-flags'
+import { innerBuildActiveInProcess, innerBuildFlagSet } from './build-flags'
 import { collectBuildStats, detectColorLevel, formatBuildSummary } from './build-summary'
 import { Readable } from 'node:stream'
 import type { ConfigEnv, Plugin, ViteDevServer } from 'vite'
@@ -61,6 +61,7 @@ import {
 	resolveAutoModeSync,
 	scanRouteFiles,
 	scanRouteFilesWithExports,
+	invalidateRouteScanCache,
 } from "./fs-router";
 import { expandRoutesForLocales } from "./i18n-routing";
 import { writeRouteTypes } from "./route-types-gen";
@@ -333,6 +334,11 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 		},
 
 		async buildStart() {
+			// A fresh OUTER build (or dev boot) re-scans the routes tree once;
+			// nested SSR/SSG sub-builds share the outer build's memoized scan.
+			if (!innerBuildFlagSet() && !innerBuildActiveInProcess()) {
+				invalidateRouteScanCache(routesDir);
+			}
 			// Typed routes (opt-in): generate src/pyreon-routes.d.ts once at
 			// build/dev start so `<Link href>` autocomplete is available.
 			if (config.typedRoutes) {
@@ -729,6 +735,9 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 
 			// Invalidate virtual modules when route files change
 			server.watcher.on("all", (event, path) => {
+				// Any change under the routes dir (content edits change the
+				// detected exports too) drops the memoized scan.
+				if (path.startsWith(routesDir)) invalidateRouteScanCache(routesDir);
 				if (
 					path.startsWith(routesDir) &&
 					(event === "add" || event === "unlink")

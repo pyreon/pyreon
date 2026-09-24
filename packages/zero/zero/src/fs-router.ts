@@ -1072,15 +1072,72 @@ export function generateMiddlewareModule(files: string[], routesDir: string): st
   ].join('\n')
 }
 
+interface RouteScan {
+  files: string[]
+  /** `.server.*` siblings (posix, relative) — never routes themselves. */
+  serverFiles: Set<string>
+}
+
+// Route-scan memoization. One build calls the scan 5–7 times (routes /
+// middleware / api virtual modules, SSG path resolution, sitemap, typed
+// routes, …) over a tree that does not change during the build. Keyed by the
+// routes dir; BOUNDED (leak class C) because a long-lived process (tests, a
+// programmatic build loop) can scan many dirs. Eviction/invalidation:
+// `invalidateRouteScanCache()` — called by the zero plugin at the start of
+// every outer build and on every dev watcher event under the routes dir.
+const SCAN_CACHE_MAX = 16
+const _walkCache = new Map<string, Promise<RouteScan>>()
+const _exportsCache = new Map<string, Promise<FileRoute[]>>()
+
+function remember<T>(cache: Map<string, Promise<T>>, key: string, make: () => Promise<T>): Promise<T> {
+  const hit = cache.get(key)
+  if (hit) return hit
+  const p = make()
+  // A failed scan must not be served forever.
+  p.catch(() => {
+    if (cache.get(key) === p) cache.delete(key)
+  })
+  cache.set(key, p)
+  if (cache.size > SCAN_CACHE_MAX) cache.delete(cache.keys().next().value as string)
+  return p
+}
+
+/**
+ * Drop memoized route scans — for one routes dir, or all of them.
+ * @internal
+ */
+export function invalidateRouteScanCache(routesDir?: string): void {
+  if (routesDir === undefined) {
+    _walkCache.clear()
+    _exportsCache.clear()
+    return
+  }
+  const dir = toPosixPath(routesDir)
+  _walkCache.delete(dir)
+  for (const key of [..._exportsCache.keys()]) {
+    if (key.startsWith(`${dir}\0`)) _exportsCache.delete(key)
+  }
+}
+
+function scanRoutesDirCached(routesDir: string): Promise<RouteScan> {
+  return remember(_walkCache, toPosixPath(routesDir), () => walkRoutesDir(routesDir))
+}
+
 /**
  * Scan a directory for route files.
- * Returns paths relative to the routes directory.
+ * Returns paths relative to the routes directory (posix separators).
+ * Memoized per build — see `invalidateRouteScanCache`.
  */
 export async function scanRouteFiles(routesDir: string): Promise<string[]> {
+  return [...(await scanRoutesDirCached(routesDir)).files]
+}
+
+async function walkRoutesDir(routesDir: string): Promise<RouteScan> {
   const { readdir } = await import('node:fs/promises')
   const { relative } = await import('node:path')
 
   const files: string[] = []
+  const serverFiles = new Set<string>()
 
   async function walk(dir: string) {
     const entries = await readdir(dir, { withFileTypes: true })
@@ -1102,12 +1159,16 @@ export async function scanRouteFiles(routesDir: string): Promise<string[]> {
         && !/\.server\.[jt]sx?$/.test(entry.name)
       ) {
         files.push(toPosixPath(relative(routesDir, fullPath)))
+      } else if (/\.server\.[jt]sx?$/.test(entry.name)) {
+        // Collected by the SAME walk so the server-loader sibling probe needs
+        // no per-route `existsSync` round trips.
+        serverFiles.add(toPosixPath(relative(routesDir, fullPath)))
       }
     }
   }
 
   await walk(routesDir)
-  return files
+  return { files, serverFiles }
 }
 
 /**
@@ -1426,6 +1487,17 @@ export async function scanRouteFilesWithExports(
   routesDir: string,
   defaultMode: RenderMode = 'ssr',
 ): Promise<FileRoute[]> {
+  const routes = await remember(_exportsCache, `${toPosixPath(routesDir)}\0${defaultMode}`, () =>
+    scanRouteFilesWithExportsUncached(routesDir, defaultMode),
+  )
+  // Callers may decorate the records; hand each a private shallow copy.
+  return routes.map((r) => ({ ...r }))
+}
+
+async function scanRouteFilesWithExportsUncached(
+  routesDir: string,
+  defaultMode: RenderMode,
+): Promise<FileRoute[]> {
   const { readFile } = await import('node:fs/promises')
   const { isApiRoute } = await import('./api-routes')
 
@@ -1437,9 +1509,9 @@ export async function scanRouteFilesWithExports(
   // missing-export check at build time. The bug only surfaced under SSG
   // because the regular lazy()-mode `import()` doesn't fail on missing
   // default exports.
-  const files = (await scanRouteFiles(routesDir)).filter((f) => !isApiRoute(f))
+  const scan = await scanRoutesDirCached(routesDir)
+  const files = scan.files.filter((f) => !isApiRoute(f))
   const exportsMap = new Map<string, RouteFileExports>()
-  const { existsSync } = await import('node:fs')
 
   await Promise.all(
     files.map(async (filePath) => {
@@ -1463,7 +1535,7 @@ export async function scanRouteFilesWithExports(
         const base = filePath.replace(/\.[jt]sx?$/, '')
         const serverLoaderFile = ['.server.ts', '.server.tsx', '.server.js', '.server.jsx']
           .map((ext) => `${base}${ext}`)
-          .find((candidate) => existsSync(join(routesDir, candidate)))
+          .find((candidate) => scan.serverFiles.has(candidate))
         if (serverLoaderFile && detected.hasLoader) {
           throw new Error(
             `[Pyreon] Route "${filePath}" exports a \`loader\` AND has a server-loader sibling ("${serverLoaderFile}"). ` +
