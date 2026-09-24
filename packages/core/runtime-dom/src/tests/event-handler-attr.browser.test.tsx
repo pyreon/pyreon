@@ -140,6 +140,24 @@ describe('event-handler attributes never reach the DOM (real Chromium)', () => {
     expect(checked, 'the enumeration must not silently collapse').toBeGreaterThan(500)
   })
 
+  it('a custom element property that merely starts with "on" keeps its attribute', () => {
+    class OnProbe extends HTMLElement {
+      online = false
+      onboarding = 'step-1'
+    }
+    if (!customElements.get('on-probe')) customElements.define('on-probe', OnProbe)
+    const el = document.createElement('on-probe')
+    document.body.append(el)
+    _setAttr(el, 'online', 'yes')
+    applyProps(el, { onboarding: 'step-2' } as never)
+    expect(el.getAttribute('online')).toBe('yes')
+    // (h() path sets a custom element's known property rather than the attribute)
+    expect((el as unknown as { onboarding: string }).onboarding).toBe('step-2')
+    // …while a real handler on the same element is still refused
+    _setAttr(el, 'onclick', 'window.__pwnI = 1')
+    expect(el.getAttribute('onclick')).toBeNull()
+  })
+
   it('ordinary attributes and the camelCase PROP still work (controls)', () => {
     const rect = svgRect()
     applyProps(rect, { width: '10', height: '5' } as never)

@@ -186,7 +186,14 @@ export function isElementEventHandlerAttr(el: Element, key: string): boolean {
   if (key.length <= 2 || key.charCodeAt(0) !== 111 /* o */ || key.charCodeAt(1) !== 110 /* n */)
     return false
   const c = key.charCodeAt(2)
-  return (c >= 65 && c <= 90) || (c >= 97 && c <= 122 && key in el)
+  if (c >= 65 && c <= 90) return true
+  if (c < 97 || c > 122 || !(key in el)) return false
+  // `in` alone is not enough: a custom element may define an ordinary property
+  // that merely STARTS with "on" (`online`, `onboarding`), and refusing its
+  // attribute would silently drop user data. An event-handler IDL attribute
+  // holds `null` until set and a function after, so require that shape.
+  const v = (el as unknown as Record<string, unknown>)[key]
+  return v === null || typeof v === 'function'
 }
 
 /**
