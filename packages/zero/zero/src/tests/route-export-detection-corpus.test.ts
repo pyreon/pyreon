@@ -10,8 +10,7 @@
  * AND, where a literal is captured, that the literal is valid JavaScript
  * that evaluates to the intended value.
  */
-import { detectRouteExports, generateRouteModuleFromRoutes } from '../fs-router'
-import { parseFileRoutes } from '../fs-router'
+import { detectRouteExports, generateRouteModuleFromRoutes, parseFileRoutes } from '../fs-router'
 
 /** Evaluate a captured literal as plain JavaScript (what the generator inlines). */
 function evalLiteral(text: string | undefined): unknown {
