@@ -191,6 +191,12 @@ describe('slugify', () => {
     ['multi--hyphens', 'multi-hyphens'],
     ['a (b) c', 'a-b-c'],
     ['', ''],
+    // Non-Latin scripts keep their letters (was: CJK emptied, `Úvod` → `vod`).
+    ['Úvod', 'úvod'],
+    ['Příliš žluťoučký kůň', 'příliš-žluťoučký-kůň'],
+    ['入门指南', '入门指南'],
+    ['Привет, мир', 'привет-мир'],
+    ['snake_case', 'snake_case'],
   ])('slugify(%j) === %j', (input, expected) => {
     expect(slugify(input)).toBe(expected)
   })

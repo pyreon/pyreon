@@ -1,4 +1,4 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const BrandMark = el
   .attrs({
@@ -6,7 +6,7 @@ export const BrandMark = el
     contentAlignX: 'center',
     contentAlignY: 'center',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     width: '32px',
     height: '32px',
     borderRadius: t.radius.field,

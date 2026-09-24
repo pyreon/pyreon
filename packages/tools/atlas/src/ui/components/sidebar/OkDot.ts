@@ -1,10 +1,10 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const OkDot = el
   .attrs({
     tag: 'span',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     width: '8px',
     height: '8px',
     borderRadius: t.radius.round,
