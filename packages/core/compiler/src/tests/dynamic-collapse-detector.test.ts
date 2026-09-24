@@ -1,5 +1,5 @@
 /**
- * PR 2 of the dynamic-prop partial-collapse build (`CLAUDE.md` ("Compile-time rocketstyle collapse")
+ * PR 2 of the dynamic-prop partial-collapse build (`.agents/guides/internals/README.md` "Rocketstyle collapse"
  * → #1 dynamic-prop bucket = 15.3% of all real-corpus sites; the
  * next-bigger bite after the just-shipped `on*`-handler partial-collapse
  * via `detectPartialCollapsibleShape` + `_rsCollapseH` + emit).

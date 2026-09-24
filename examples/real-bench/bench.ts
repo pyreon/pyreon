@@ -4,7 +4,7 @@
  * OWN fresh browser context (`?framework=<name>` isolation — the page loads only
  * that framework's chunk) under a Chromium launched with `--js-flags=--expose-gc`
  * so the in-page runner can force GC between iterations. Framework order is
- * reshuffled every pass; samples are pooled across passes. Prints median +
+ * rotated every pass (each arm leads equally often); samples are pooled. Prints median +
  * 95% bootstrap CI + a tie verdict when the CIs overlap.
  *
  * Same objectivity contract as `examples/benchmark/bench-fair.ts`: the page
@@ -14,7 +14,7 @@
  *
  * Run: `bun bench.ts` (from examples/real-bench).
  *   --runs N          timed runs per scenario per pass (default 20)
- *   --repeat N        passes, order reshuffled each (default 1)
+ *   --repeat N        passes, order rotated each (default 1)
  *   --wait-quiet [L]  wait for load1 ≤ L before measuring
  *   --json out.json   write the pooled results + timer + load stamps
  */
@@ -49,13 +49,14 @@ function fmtMs(ms: number): string {
   return ms < 1 ? `${(ms * 1000).toFixed(0)}µs` : `${ms.toFixed(2)}ms`
 }
 
-function shuffled<T>(xs: readonly T[]): T[] {
-  const out = [...xs]
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[out[i], out[j]] = [out[j]!, out[i]!]
-  }
-  return out
+// Rotate, don't shuffle: with two arms a shuffle lands the same order in every
+// pass one time in four (observed 2026-09-24: React first in all 3 passes), so
+// the arm that always runs second inherits whatever the first left behind.
+// Rotation gives each arm the first slot in exactly 1/N of the passes, so use a
+// --repeat that is a multiple of the arm count.
+function rotated<T>(xs: readonly T[], pass: number): T[] {
+  const k = pass % xs.length
+  return [...xs.slice(k), ...xs.slice(0, k)]
 }
 
 async function measureClockQuantum(
@@ -138,7 +139,7 @@ async function main(): Promise<void> {
     const pooled = new Map<string, Map<string, number[]>>()
     const names = new Map<string, string>()
     for (let pass = 0; pass < repeat; pass++) {
-      const order = shuffled(FRAMEWORKS)
+      const order = rotated(FRAMEWORKS, pass)
       console.log(`[real-bench] pass ${pass + 1}/${repeat} — order: ${order.join(', ')}`)
       for (const framework of order) {
         const ctx = await browser.newContext()

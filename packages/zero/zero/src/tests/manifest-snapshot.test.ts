@@ -91,7 +91,7 @@ describe('gen-docs — zero snapshot', () => {
 
     // Flagship APIs MUST carry MCP-density mistakes lists — drop one
     // and the snapshot fails loudly. The 6+ mistakes convention is
-    // documented in CLAUDE.md (manifest-driven docs pipeline).
+    // documented in `.agents/rules/workflow.md` (manifest-driven docs pipeline).
     const flagship = [
       'zero/zero',
       'zero/I18nRoutingConfig',

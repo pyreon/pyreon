@@ -70,8 +70,7 @@ type AnyNode = any
  * downstream test body had `if (X) ...` null guards — that intent
  * isn't recoverable from the cast alone.
  *
- * **Reference**: PR #956 (helper), #963 (sweep), #965 (globals.d.ts);
- * audit at `.claude/plans/test-any-reduction-audit.md`.
+ * **Reference**: PR #956 (helper), #963 (sweep), #965 (globals.d.ts).
  */
 export const noQuerySelectorCastInTest: Rule = {
   meta: {

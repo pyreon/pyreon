@@ -7,7 +7,7 @@ interface MessageListProps {
   /**
    * The visible message array. Pyreon's compiler wraps reactive prop
    * expressions as getter-backed accessors via `_rp` + `makeReactiveProps`
-   * (CLAUDE.md "Reactive vs Static"). Inside this component, reading
+   * (AGENTS.md "Components run once"). Inside this component, reading
    * `props.messages` returns the LIVE value on each access — putting
    * the read inside a tracking scope (effect / computed / accessor)
    * subscribes to the upstream computed.

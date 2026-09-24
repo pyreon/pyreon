@@ -59,7 +59,7 @@ export function Workbench(props: WorkbenchProps) {
   // dead UI, as did `@pyreon/zero-content`'s `useSearch` (the pyreon.dev search
   // overlay). The inliner now skips a `useX`/`createX` initializer outright, so
   // this reads normally AND the atlas-workshop e2e is a live regression test of
-  // that compiler fix. See .claude/rules/anti-patterns.md "reactive-props
+  // that compiler fix. See .agents/rules/anti-patterns.md "reactive-props
   // inlining of a stateful factory".
   const m = createModel(props.catalog, { title: props.title, subtitle: props.subtitle })
   // The workbench IS a dev tool — its model is its public runtime surface. The

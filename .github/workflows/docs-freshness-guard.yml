@@ -4,7 +4,7 @@
 # validate a PR's committed GENERATED docs against its merge ref AT CI TIME.
 # Branch protection runs with `strict: false` (PRs don't have to be up to
 # date with main), so when two in-flight PRs both touch generator INPUTS
-# (`.claude/rules/anti-patterns.md`, package `manifest.ts` files, docs
+# (`.agents/rules/anti-patterns.md`, package `manifest.ts` files, docs
 # examples), whichever merges LAST lands generated output computed from a
 # stale snapshot — main's committed generated docs silently drift from what
 # the generators produce. This has happened repeatedly (see c9f71685d, a

@@ -3,7 +3,7 @@
  *
  * Run: `bun run bench:i18next` (sets NODE_ENV=production).
  *
- * Objectivity contract (see .claude/plans/fundamentals-benchmarks.md):
+ * Objectivity contract:
  *  - NODE_ENV=production (shell-set) before either library loads.
  *  - Idiomatic per library — i18next is the REFERENCE Pyreon mirrors, so the
  *    key conventions are identical by design: `{{name}}` interpolation,

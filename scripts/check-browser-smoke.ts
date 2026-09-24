@@ -45,7 +45,7 @@ const repoRoot = path.resolve(here, '..')
 const BROWSER_PACKAGES: string[] = (() => {
   try {
     const raw = JSON.parse(
-      readFileSync(path.join(repoRoot, '.claude/rules/browser-packages.json'), 'utf-8'),
+      readFileSync(path.join(repoRoot, '.agents/rules/browser-packages.json'), 'utf-8'),
     ) as { packages?: string[] }
     return raw.packages ?? []
   } catch {
@@ -224,7 +224,7 @@ const unlisted: string[] = []
 if (unlisted.length > 0) {
   // eslint-disable-next-line no-console
   console.error(
-    `\n✗ ${unlisted.length} package(s) ship a *.browser.test.* file but are NOT in .claude/rules/browser-packages.json, so nothing requires them to keep it:\n`,
+    `\n✗ ${unlisted.length} package(s) ship a *.browser.test.* file but are NOT in .agents/rules/browser-packages.json, so nothing requires them to keep it:\n`,
   )
   for (const p of unlisted) {
     // eslint-disable-next-line no-console

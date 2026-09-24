@@ -10,8 +10,7 @@ import type { InnerTheme } from './styles/styles/types'
 /**
  * `cpseStyled` — a styled primitive that applies Custom-Property Style
  * Extraction (CPSE). The complete, opt-in vehicle for the engine in `cpse.ts`
- * / `styles()`'s `extractVars` mode. See
- * `.claude/audits/custom-property-style-extraction-2026-06-22.md`.
+ * / `styles()`'s `extractVars` mode.
  *
  * For a real rendered component, this makes styling cost **flat in style-value
  * cardinality**:

@@ -7942,7 +7942,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         // `.count` is already correct. A diagnostic that cannot tell the two
         // apart is not worth its false-positive rate; the answer is more type
         // information, which is what the inference fixes in this change
-        // actually deliver. See `.claude/rules/anti-patterns.md`.
+        // actually deliver. See `.agents/rules/anti-patterns.md`.
         return `${emitSwiftExpr(e.object, indent)}${dot}${suffix}`
       }
       return `${emitSwiftExpr(e.object, indent)}${dot}${swiftIdent(e.property)}`

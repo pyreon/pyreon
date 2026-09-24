@@ -32,7 +32,7 @@
  *    stops, so no variant is charged for another's teardown or layout.
  * 5. Adaptive warmup per variant until per-op time stops improving.
  * 6. No forced GC inside the timed region (it jettisons compiled code → fake
- *    re-tier costs — see CLAUDE.md's bench-harness lesson).
+ *    re-tier costs — see `.agents/guides/benchmarks/references/core-micro-benchmarks.md`).
  *
  * HONEST LIMIT: this measures a single operation in isolation. It proves a
  * primitive got cheaper; it does NOT prove an app got faster. Pair every win

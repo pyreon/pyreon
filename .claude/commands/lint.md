@@ -1,9 +1,10 @@
-Run linting and type checking.
+Run linting, formatting and type checking.
 
 Steps:
 
-1. Run `oxlint .` to lint
-2. Run `oxfmt --check .` to check formatting
-3. Run `bun run typecheck` for type checking
-4. Report any remaining errors clearly
-5. If $ARGUMENTS contains `--fix`, run `oxlint --fix .` and `oxfmt --write .`
+1. `bun run lint` (oxlint)
+2. `bun run format:check` (oxfmt)
+3. `bun run lint:pyreon` (Pyreon's own rules — the `Pyreon Lint Gate` CI check)
+4. `bun run typecheck`
+5. If $ARGUMENTS contains `--fix`, run `bunx oxlint --fix .` and `bunx oxfmt --write .` first.
+6. Report remaining errors with `file:line`.

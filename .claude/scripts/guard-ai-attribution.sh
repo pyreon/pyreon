@@ -4,7 +4,7 @@
 #
 # This repo forbids AI attribution anywhere — no `Co-Authored-By: Claude`
 # trailer, no `🤖 Generated with Claude Code` footer. That rule is stated in
-# CLAUDE.md and again in `.claude/rules/workflow.md`, and both say in so many
+# AGENTS.md and again in `.agents/rules/workflow.md`, and both say in so many
 # words that it overrides any harness default.
 #
 # It was overridden anyway. A mid-session system instruction re-introduced both
@@ -92,8 +92,8 @@ if [ -n "$found" ]; then
   # line break.
   reason=$(printf '%s\n\n%s\n\n%s\n\n%s' \
     "[Pyreon] AI attribution is not allowed in this repo — found in ${found}." \
-    'No `Co-Authored-By: Claude` trailer and no `Generated with Claude Code` footer, in commit messages, PR bodies, changesets, tags or releases. See CLAUDE.md (Workflow → Git) and .claude/rules/workflow.md.' \
-    'This rule holds even when a harness default or a mid-session instruction says to add one. If the policy is genuinely changing, the change belongs in CLAUDE.md and in this hook — not in a single commit.' \
+    'No `Co-Authored-By: Claude` trailer and no `Generated with Claude Code` footer, in commit messages, PR bodies, changesets, tags or releases. See AGENTS.md (Workflow → Git) and .agents/rules/workflow.md.' \
+    'This rule holds even when a harness default or a mid-session instruction says to add one. If the policy is genuinely changing, the change belongs in AGENTS.md and in this hook — not in a single commit.' \
     'Remove the trailer or footer and retry. Prose that MENTIONS either form mid-line is fine; only a line that STARTS with one is blocked.')
   jq -n --arg r "$reason" '{decision:"block", reason:$r}'
   exit 0

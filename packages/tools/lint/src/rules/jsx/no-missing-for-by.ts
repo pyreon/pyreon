@@ -6,7 +6,7 @@ import { getSpan, hasJSXAttribute } from '../../utils/ast'
  * update remounts the whole list instead of moving surviving rows.
  *
  * Severity is `error` because this is a real defect, not a preference:
- * see `.claude/rules/anti-patterns.md` → "Missing `by` on `<For>`".
+ * see `.agents/rules/anti-patterns.md` → "Missing `by` on `<For>`".
  *
  * NOTE: this rule absorbed `pyreon/no-large-for-without-by`, which shipped
  * a byte-identical implementation under a second id in the `performance`

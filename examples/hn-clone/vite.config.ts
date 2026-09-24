@@ -5,8 +5,8 @@ import { seoPlugin } from '@pyreon/zero/seo'
 import { chartsViteAlias } from '@pyreon/charts/echarts/vite'
 
 export default {
-  // @pyreon/charts requires tslib aliased to its ESM build (CLAUDE.md
-  // documents this — ECharts' tslib import destructures named helpers
+  // @pyreon/charts requires tslib aliased to its ESM build (the
+  // `@pyreon/charts` README documents this — ECharts' tslib import destructures named helpers
   // from a CJS factory whose top-level vars aren't on the default
   // export, so without the alias `__extends` resolves to `undefined`
   // and the page throws on first chart mount).

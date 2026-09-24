@@ -55,8 +55,7 @@ export type ErrorHandler = (ctx: ErrorContext) => void
 // Plain module-scope state. The duplicate-instance bug class is now
 // prevented at the bundler layer (`@pyreon/vite-plugin` injects
 // `resolve.dedupe`) and detected at the runtime layer (every package
-// calls `registerSingleton` at module load) — see
-// `.claude/plans/jaunty-herding-kazoo.md`.
+// calls `registerSingleton` at module load).
 let _errorHandlers: ErrorHandler[] = []
 
 /**

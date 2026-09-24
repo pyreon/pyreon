@@ -135,7 +135,7 @@ if (__DEV__) console.warn('hello')`,
       signature:
         'rule: pyreon/require-browser-smoke-test (architecture, error in recommended/strict/lib, off in app)',
       summary:
-        "Locks in the durability of the T1.1 browser smoke harness (PRs #224, #227, #229, #231). Every browser-categorized package MUST ship at least one `*.browser.test.{ts,tsx}` file under `src/`. Without this rule, new browser packages can quietly ship without smoke coverage and we drift back to the world before T1.1 — happy-dom silently masks environment-divergence bugs (PR #197 mock-vnode metadata drop, PR #200 `typeof process` dead code, multi-word event delegation bug). Default browser-package list mirrors `.claude/rules/test-environment-parity.md`. The rule fires once per package on its `src/index.ts`, walks the package directory looking for `*.browser.test.*`, and reports if none are found. Off in `app` preset because apps don't ship as packages with smoke obligations.",
+        "Locks in the durability of the T1.1 browser smoke harness (PRs #224, #227, #229, #231). Every browser-categorized package MUST ship at least one `*.browser.test.{ts,tsx}` file under `src/`. Without this rule, new browser packages can quietly ship without smoke coverage and we drift back to the world before T1.1 — happy-dom silently masks environment-divergence bugs (PR #197 mock-vnode metadata drop, PR #200 `typeof process` dead code, multi-word event delegation bug). Default browser-package list mirrors `.agents/rules/test-environment-parity.md`. The rule fires once per package on its `src/index.ts`, walks the package directory looking for `*.browser.test.*`, and reports if none are found. Off in `app` preset because apps don't ship as packages with smoke obligations.",
       example: `// Per-package config (optional — defaults cover all known browser packages)
 {
   "rules": {
@@ -150,7 +150,7 @@ if (__DEV__) console.warn('hello')`,
 }`,
       mistakes: [
         'Adding a new browser-running package without a browser test — the rule will fail your PR',
-        'Hardcoding the browser-package list in the rule — the list lives in `.claude/rules/browser-packages.json` (single source of truth), not in the rule source',
+        'Hardcoding the browser-package list in the rule — the list lives in `.agents/rules/browser-packages.json` (single source of truth), not in the rule source',
         'Disabling the rule globally — use `exemptPaths` to exempt specific packages still under construction',
         'Shipping a `sanity.browser.test.ts` with `expect(1).toBe(1)` just to satisfy the rule — it passes but provides zero signal. The rule is a GATE, not a quality check; review actual contents on PR',
       ],
