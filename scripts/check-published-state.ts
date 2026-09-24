@@ -325,7 +325,7 @@ if (import.meta.main) {
         `  A "chore: version packages" commit merged but the publish step did not complete.\n` +
           `  Users on npm are missing released fixes. Re-run the release workflow\n` +
           `  (scripts/publish.ts is idempotent — already-published versions are skipped),\n` +
-          `  or cut the next release. See CLAUDE.md "Release Readiness".`,
+          `  or cut the next release. See .agents/guides/ci/README.md "Release".`,
       )
       process.exit(1)
     }

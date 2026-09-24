@@ -92,7 +92,7 @@ describe('RouteAnnouncer / useRouteAnnouncer', () => {
     // idle local machine. This spec forces the interleaving: queue the echo,
     // mount the announcer BEFORE it dispatches, then let real timers fire —
     // the structural-argument-as-bisect-proof pattern from
-    // .claude/rules/testing.md (cross-tab Playwright specs).
+    // .agents/rules/testing.md (cross-tab Playwright specs).
     //
     // Without the setup.ts guard (`installHappyDomHashchangeEchoGuard`), the
     // echo reaches the fresh router's `hashchange` listener, runs the full

@@ -92,8 +92,8 @@ virtualizer's `props.messages.length` access). The child component
 was typed `messages: () => Message[]` expecting an accessor.
 
 **Cause.** Pyreon's compiler signal-auto-call rewrites bare
-`computed`-variable references inside JSX (per CLAUDE.md "Auto Signal
-Naming"): `<Comp prop={visible}>` becomes `<Comp prop={visible()}>`.
+`computed`-variable references inside JSX (per
+`.agents/guides/internals/README.md` "Auto-call"): `<Comp prop={visible}>` becomes `<Comp prop={visible()}>`.
 The compiler then wraps the resulting value-expression as
 `_rp(() => visible())`. `makeReactiveProps` exposes it as a property
 getter — `props.prop` returns the LIVE VALUE on each access, not an
@@ -156,7 +156,7 @@ to-end.
 ## Recommended next steps
 
 1. ~~Fix W24~~ ✅ in this PR (Zero plugin path-skip on `/api/*`).
-2. ~~Document W25~~ ✅ in CLAUDE.md "Common Issues & Fixes".
+2. ~~Document W25~~ ✅ (the original CLAUDE.md entry was later removed).
 3. Add a lint rule for "passing `computed<T>()` to a JSX prop without
    explicit call" — would catch W25 at edit time. Deferred — needs
    compiler-aware AST analysis of declarations.

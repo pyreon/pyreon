@@ -4,7 +4,7 @@
  * Catches "using Pyreon wrong" mistakes — 12 detector codes today
  * (for-missing-by, props-destructured, signal-write-as-call, etc.).
  * The detector matches the anti-patterns catalogue in
- * `.claude/rules/anti-patterns.md` (entries tagged `[detector: ...]`)
+ * `.agents/rules/anti-patterns.md` (entries tagged `[detector: ...]`)
  * 1:1 — so the user reading the doctor output gets the same advice
  * as someone running `validate` via MCP.
  */

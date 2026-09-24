@@ -1,5 +1,5 @@
 {
-  "description": "audit-leak-classes ratchet — per `detector::file` counts may only DECREASE. A change pushing any key above its baseline fails `bun scripts/check-leak-ratchet.ts`. The audit is PERMISSIVE (heuristic, false positives expected): a new entry is a prompt to TRIAGE, not proof of a leak — if it is genuinely not one, tighten with `--update` once you have read it. Never raise a count to absorb an untriaged finding. See .claude/rules/anti-patterns.md \"Memory Leak Classes\".",
+  "description": "audit-leak-classes ratchet — per `detector::file` counts may only DECREASE. A change pushing any key above its baseline fails `bun scripts/check-leak-ratchet.ts`. The audit is PERMISSIVE (heuristic, false positives expected): a new entry is a prompt to TRIAGE, not proof of a leak — if it is genuinely not one, tighten with `--update` once you have read it. Never raise a count to absorb an untriaged finding. See .agents/rules/anti-patterns.md \"Memory Leak Classes\".",
   "total": 40,
   "rules": {
     "position-based-pop::packages/core/core/src/component.ts": 1,

@@ -5,7 +5,7 @@
  * runs under happy-dom, where focus / `document.activeElement` / real Tab
  * movement / `Element.checkVisibility` / the actual focusability of a
  * `contenteditable` region or a `<video controls>` are all unreliable (per
- * `.claude/rules/test-environment-parity.md`). This suite mounts a REAL trap
+ * `.agents/rules/test-environment-parity.md`). This suite mounts a REAL trap
  * in real Chromium, drives real Tab / Shift+Tab keydown, and asserts the REAL
  * `document.activeElement` + real visibility filtering.
  *

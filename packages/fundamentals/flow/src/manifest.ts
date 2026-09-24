@@ -2,7 +2,7 @@ import { defineManifest } from '@pyreon/manifest'
 
 /**
  * First real manifest — validates the shape end-to-end.
- * Scoped to the API surface documented in today's llms.txt + CLAUDE.md
+ * Scoped to the API surface documented in today's llms.txt
  * to keep the first-generator diff minimal. Additional entries (edge
  * path helpers, layout options types) come in a follow-up.
  */

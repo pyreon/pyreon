@@ -531,7 +531,7 @@ expect(extractDocumentTree(vnode).props).toEqual({})
 // GOOD — the real \`h()\` shape, which is what ships
 import { h } from '@pyreon/core'
 expect(extractDocumentTree(h(DocDocument, { title: 'Test' })).props.title).toBe('Test')`,
-      docs: '.claude/rules/test-environment-parity.md',
+      docs: '.agents/rules/test-environment-parity.md',
     }),
   },
   {

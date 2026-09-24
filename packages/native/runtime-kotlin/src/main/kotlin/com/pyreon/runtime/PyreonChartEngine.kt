@@ -150,6 +150,10 @@ data class FunnelOptions(var gap: Double? = null, var minWidthRatio: Double? = n
 
 data class FunnelStageGeometry(var index: Int, var top: Double, var bottom: Double, var topWidth: Double, var bottomWidth: Double, var centerX: Double)
 
+data class FunnelEcConfig(var orient: String, var sort: String, var min: Double, var max: Double, var minSize: Double, var minSizePct: Boolean, var maxSize: Double, var maxSizePct: Boolean, var gap: Double, var align: String, var itemSizes: List<Double>, var itemSizesPct: List<Boolean>, var labelShow: Boolean, var labelPosition: String, var labelLineShow: Boolean, var labelLineLength: Double, var labelColor: String, var labelFontSize: Double, var labelTexts: List<String>, var borderColor: String, var borderWidth: Double)
+
+data class FunnelEcPiece(var index: Int, var points: List<PyreonChartPt>, var labelAt: PyreonChartPt, var labelAlign: String, var inside: Boolean, var line: List<PyreonChartPt>)
+
 data class TreeNode(var name: String, var value: Double? = null, var children: List<TreeNode>? = null, var color: String? = null)
 
 data class TreemapCell(var name: String, var value: Double, var rect: PyreonChartRect, var depth: Int, var path: List<Int>, var color: String, var leaf: Boolean)
@@ -6703,6 +6707,384 @@ fun hitFunnel(stages: List<FunnelStage>, plot: PyreonChartRect, px: Double, py: 
       val w = g.topWidth + (g.bottomWidth - g.topWidth) * t
       if (px >= g.centerX - (w).toDouble() / (2.0).toDouble() && px <= g.centerX + (w).toDouble() / (2.0).toDouble()) {
         return g.index
+      }
+    }
+    return -1
+  }
+
+fun funnelMap(`val`: Double, d0: Double, d1: Double, r0: Double, r1: Double): Double {
+    val subDomain = d1 - d0
+    val subRange = r1 - r0
+    if (subDomain == 0.0) {
+      return if (subRange == 0.0) r0 else ((r0 + r1)).toDouble() / (2.0).toDouble()
+    }
+    if (subDomain > 0.0) {
+      if (`val` <= d0) {
+        return r0
+      }
+      if (`val` >= d1) {
+        return r1
+      }
+    } else {
+      if (`val` >= d0) {
+        return r0
+      }
+      if (`val` <= d1) {
+        return r1
+      }
+    }
+    return (((`val` - d0)).toDouble() / (subDomain).toDouble()) * subRange + r0
+  }
+
+fun funnelEdge(values: List<Double>, idx: Int, offset: Double, box: PyreonChartRect, cfg: FunnelEcConfig, lo: Double, hi: Double, sizeLo: Double, sizeHi: Double): List<PyreonChartPt> {
+    val raw = if (idx >= 0 && idx < values.length) values[idx] else 0.0
+    val `val` = if (isFiniteNumber(raw)) raw else 0.0
+    val size = funnelMap(`val`, lo, hi, sizeLo, sizeHi)
+    if (cfg.orient == "horizontal") {
+      val y0 = if (cfg.align == "top") box.y else if (cfg.align == "bottom") box.y + box.h - size else box.y + ((box.h - size)).toDouble() / (2.0).toDouble()
+      return listOf(PyreonChartPt(x = offset, y = y0), PyreonChartPt(x = offset, y = y0 + size))
+    }
+    val x0 = if (cfg.align == "left") box.x else if (cfg.align == "right") box.x + box.w - size else box.x + ((box.w - size)).toDouble() / (2.0).toDouble()
+    return listOf(PyreonChartPt(x = x0, y = offset), PyreonChartPt(x = x0 + size, y = offset))
+  }
+
+fun funnelLabelPiece(index: Int, pts: List<PyreonChartPt>, cfg: FunnelEcConfig): FunnelEcPiece {
+    val horizontal = cfg.orient == "horizontal"
+    var pos = cfg.labelPosition
+    val p0 = pts[0]
+    val p1 = pts[1]
+    val p2 = pts[2]
+    val p3 = pts[3]
+    val inside = pos == "inner" || pos == "inside" || pos == "center" || pos == "insideLeft" || pos == "insideRight"
+    if (inside) {
+      if (pos == "insideLeft") {
+        val at = PyreonChartPt(x = ((p0.x + p3.x)).toDouble() / (2.0).toDouble() + 5.0, y = ((p0.y + p3.y)).toDouble() / (2.0).toDouble())
+        return FunnelEcPiece(index = index, points = pts, labelAt = at, labelAlign = "start", inside = true, line = listOf(at, at))
+      }
+      if (pos == "insideRight") {
+        val at = PyreonChartPt(x = ((p1.x + p2.x)).toDouble() / (2.0).toDouble() - 5.0, y = ((p1.y + p2.y)).toDouble() / (2.0).toDouble())
+        return FunnelEcPiece(index = index, points = pts, labelAt = at, labelAlign = "end", inside = true, line = listOf(at, at))
+      }
+      val at = PyreonChartPt(x = ((p0.x + p1.x + p2.x + p3.x)).toDouble() / (4.0).toDouble(), y = ((p0.y + p1.y + p2.y + p3.y)).toDouble() / (4.0).toDouble())
+      return FunnelEcPiece(index = index, points = pts, labelAt = at, labelAlign = "middle", inside = true, line = listOf(at, at))
+    }
+    if (!horizontal && (pos == "top" || pos == "bottom")) {
+      pos = "left"
+    }
+    if (horizontal && (pos == "left" || pos == "right")) {
+      pos = "bottom"
+    }
+    val len = cfg.labelLineLength
+    var x1 = 0.0
+    var y1 = 0.0
+    var x2 = 0.0
+    var y2 = 0.0
+    var tx = 0.0
+    var ty = 0.0
+    var align = "start"
+    if (pos == "left") {
+      x1 = ((p3.x + p0.x)).toDouble() / (2.0).toDouble()
+      y1 = ((p3.y + p0.y)).toDouble() / (2.0).toDouble()
+      x2 = x1 - len
+      tx = x2 - 5.0
+      align = "end"
+    } else {
+      if (pos == "right") {
+        x1 = ((p1.x + p2.x)).toDouble() / (2.0).toDouble()
+        y1 = ((p1.y + p2.y)).toDouble() / (2.0).toDouble()
+        x2 = x1 + len
+        tx = x2 + 5.0
+        align = "start"
+      } else {
+        if (pos == "top") {
+          x1 = ((p3.x + p0.x)).toDouble() / (2.0).toDouble()
+          y1 = ((p3.y + p0.y)).toDouble() / (2.0).toDouble()
+          y2 = y1 - len
+          ty = y2 - 5.0
+          align = "middle"
+        } else {
+          if (pos == "bottom") {
+            x1 = ((p1.x + p2.x)).toDouble() / (2.0).toDouble()
+            y1 = ((p1.y + p2.y)).toDouble() / (2.0).toDouble()
+            y2 = y1 + len
+            ty = y2 + 5.0
+            align = "middle"
+          } else {
+            if (pos == "rightTop") {
+              x1 = if (horizontal) p3.x else p1.x
+              y1 = if (horizontal) p3.y else p1.y
+              if (horizontal) {
+                y2 = y1 - len
+                ty = y2 - 5.0
+                align = "middle"
+              } else {
+                x2 = x1 + len
+                tx = x2 + 5.0
+                align = "start"
+              }
+            } else {
+              if (pos == "rightBottom") {
+                x1 = p2.x
+                y1 = p2.y
+                if (horizontal) {
+                  y2 = y1 + len
+                  ty = y2 + 5.0
+                  align = "middle"
+                } else {
+                  x2 = x1 + len
+                  tx = x2 + 5.0
+                  align = "start"
+                }
+              } else {
+                if (pos == "leftTop") {
+                  x1 = p0.x
+                  y1 = if (horizontal) p0.y else p1.y
+                  if (horizontal) {
+                    y2 = y1 - len
+                    ty = y2 - 5.0
+                    align = "middle"
+                  } else {
+                    x2 = x1 - len
+                    tx = x2 - 5.0
+                    align = "end"
+                  }
+                } else {
+                  if (pos == "leftBottom") {
+                    x1 = if (horizontal) p1.x else p3.x
+                    y1 = if (horizontal) p1.y else p2.y
+                    if (horizontal) {
+                      y2 = y1 + len
+                      ty = y2 + 5.0
+                      align = "middle"
+                    } else {
+                      x2 = x1 - len
+                      tx = x2 - 5.0
+                      align = "end"
+                    }
+                  } else {
+                    x1 = ((p1.x + p2.x)).toDouble() / (2.0).toDouble()
+                    y1 = ((p1.y + p2.y)).toDouble() / (2.0).toDouble()
+                    if (horizontal) {
+                      y2 = y1 + len
+                      ty = y2 + 5.0
+                      align = "middle"
+                    } else {
+                      x2 = x1 + len
+                      tx = x2 + 5.0
+                      align = "start"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    if (horizontal) {
+      x2 = x1
+      tx = x2
+    } else {
+      y2 = y1
+      ty = y2
+    }
+    return FunnelEcPiece(index = index, points = pts, labelAt = PyreonChartPt(x = tx, y = ty), labelAlign = align, inside = false, line = listOf(PyreonChartPt(x = x1, y = y1), PyreonChartPt(x = x2, y = y2)))
+  }
+
+fun layoutFunnelEc(values: List<Double>, box: PyreonChartRect, cfg: FunnelEcConfig): List<FunnelEcPiece> {
+    val out: MutableList<FunnelEcPiece> = mutableListOf()
+    val n = values.length
+    if (n == 0) {
+      return out
+    }
+    val horizontal = cfg.orient == "horizontal"
+    val order: MutableList<Int> = mutableListOf()
+    var nf = 0.0
+    for (i in 0 until n) {
+      order.add(i)
+      nf = nf + 1.0
+    }
+    if (cfg.sort == "descending" || cfg.sort == "ascending") {
+      for (i in 1 until n) {
+        val cur = order[i]
+        var j = i - 1
+        while (j >= 0) {
+          val a = values[order[j]]
+          val b = values[cur]
+          val swap = if (cfg.sort == "ascending") a > b else a < b
+          if (!swap) {
+            break
+          }
+          order[j + 1] = order[j]
+          j = j - 1
+        }
+        order[j + 1] = cur
+      }
+    }
+    var dataLo = 0.0
+    var dataHi = 0.0
+    var seen = false
+    for (v in values) {
+      if (!isFiniteNumber(v)) {
+        continue
+      }
+      if (!seen || v < dataLo) {
+        dataLo = v
+      }
+      if (!seen || v > dataHi) {
+        dataHi = v
+      }
+      seen = true
+    }
+    val lo = if (isFiniteNumber(cfg.min)) cfg.min else if (dataLo < 0.0) dataLo else 0.0
+    val hi = if (isFiniteNumber(cfg.max)) cfg.max else dataHi
+    val across = if (horizontal) box.h else box.w
+    val sizeLo = if (cfg.minSizePct) cfg.minSize * across else cfg.minSize
+    val sizeHi = if (cfg.maxSizePct) cfg.maxSize * across else cfg.maxSize
+    val along = if (horizontal) box.w else box.h
+    val ascending = cfg.sort == "ascending"
+    var gap = cfg.gap
+    var itemSize = ((along - gap * (nf - 1.0))).toDouble() / (nf).toDouble()
+    var x = box.x
+    var y = box.y
+    val seq: MutableList<Int> = mutableListOf()
+    if (ascending) {
+      itemSize = -itemSize
+      gap = -gap
+      if (horizontal) {
+        x = x + box.w
+      } else {
+        y = y + box.h
+      }
+      for (i in n - 1 downTo 0) {
+        seq.add(order[i])
+      }
+    } else {
+      for (i in 0 until n) {
+        seq.add(order[i])
+      }
+    }
+    for (i in 0 until n) {
+      val idx = seq[i]
+      val next = if (i + 1 < n) seq[i + 1] else -1
+      var size = itemSize
+      if (idx < cfg.itemSizes.length && isFiniteNumber(cfg.itemSizes[idx])) {
+        val pct = if (idx < cfg.itemSizesPct.length) cfg.itemSizesPct[idx] else false
+        val own = if (pct) cfg.itemSizes[idx] * along else cfg.itemSizes[idx]
+        size = if (ascending) -own else own
+      }
+      val offset = if (horizontal) x else y
+      val start = funnelEdge(values, idx, offset, box, cfg, lo, hi, sizeLo, sizeHi)
+      val end = funnelEdge(values, next, offset + size, box, cfg, lo, hi, sizeLo, sizeHi)
+      val pts = listOf(start[0], start[1], end[1], end[0])
+      out.add(funnelLabelPiece(idx, pts, cfg))
+      if (horizontal) {
+        x = x + size + gap
+      } else {
+        y = y + size + gap
+      }
+    }
+    return out
+  }
+
+fun funnelContains(pts: List<PyreonChartPt>, px: Double, py: Double): Boolean {
+    val n = pts.length
+    if (n < 3) {
+      return false
+    }
+    var inside = false
+    var j = n - 1
+    for (i in 0 until n) {
+      val a = pts[i]
+      val b = pts[j]
+      if ((a.y > py) != (b.y > py) && px < (((b.x - a.x) * (py - a.y))).toDouble() / ((b.y - a.y)).toDouble() + a.x) {
+        inside = !inside
+      }
+      j = i
+    }
+    return inside
+  }
+
+fun renderFunnelEc(stages: List<FunnelStage>, box: PyreonChartRect, cfg: FunnelEcConfig, progress: Double, background: String): List<PyreonDrawCmd> {
+    val out: MutableList<PyreonDrawCmd> = mutableListOf()
+    val values: MutableList<Double> = mutableListOf()
+    for (st in stages) {
+      values.add(st.value)
+    }
+    val pieces = layoutFunnelEc(values, box, cfg)
+    val p = if (progress < 0.0) 0.0 else if (progress > 1.0) 1.0 else progress
+    val labelsOn = cfg.labelShow && p >= 1.0
+    if (labelsOn && cfg.labelLineShow) {
+      for (pc in pieces) {
+        if (pc.inside) {
+          continue
+        }
+        out.add(PyreonDrawCmd(kind = "polyline", stroke = stages[pc.index].color, width = 1.0, points = pc.line))
+      }
+    }
+    val border = if (cfg.borderColor != "") cfg.borderColor else if (background != "") background else "#ffffff"
+    for (pc in pieces) {
+      var cx = 0.0
+      var cy = 0.0
+      for (q in pc.points) {
+        cx = cx + (q.x).toDouble() / (4.0).toDouble()
+        cy = cy + (q.y).toDouble() / (4.0).toDouble()
+      }
+      val pts: MutableList<PyreonChartPt> = mutableListOf()
+      for (q in pc.points) {
+        pts.add(PyreonChartPt(x = cx + (q.x - cx) * p, y = cy + (q.y - cy) * p))
+      }
+      out.add(PyreonDrawCmd(kind = "polygon", fill = stages[pc.index].color, points = pts))
+      if (cfg.borderWidth > 0.0) {
+        val ring: MutableList<PyreonChartPt> = mutableListOf()
+        for (q in pts) {
+          ring.add(q)
+        }
+        ring.add(pts[0])
+        out.add(PyreonDrawCmd(kind = "polyline", stroke = border, width = cfg.borderWidth, points = ring))
+      }
+    }
+    if (!labelsOn) {
+      return out
+    }
+    for (pc in pieces) {
+      val color = stages[pc.index].color
+      val auto = autoLabelStyle(pc.inside, color, background)
+      var fill = auto.textFill
+      var halo = auto.halo
+      if (cfg.labelColor == "inherit") {
+        if (pc.inside) {
+          halo = color
+        } else {
+          fill = color
+        }
+      } else {
+        if (cfg.labelColor != "") {
+          fill = cfg.labelColor
+          if (pc.inside) {
+            halo = ""
+          }
+        }
+      }
+      val text = if (pc.index < cfg.labelTexts.length) cfg.labelTexts[pc.index] else stages[pc.index].label
+      val align = if (pc.labelAlign == "end") "end" else if (pc.labelAlign == "middle") "middle" else "start"
+      if (halo != "") {
+        out.add(PyreonDrawCmd(kind = "text", fill = fill, stroke = halo, text = text, at = pc.labelAt, size = cfg.labelFontSize, align = align, baseline = "middle", strokeWidth = 2.0))
+      } else {
+        out.add(PyreonDrawCmd(kind = "text", fill = fill, text = text, at = pc.labelAt, size = cfg.labelFontSize, align = align, baseline = "middle"))
+      }
+    }
+    return out
+  }
+
+fun hitFunnelEc(stages: List<FunnelStage>, box: PyreonChartRect, cfg: FunnelEcConfig, px: Double, py: Double): Int {
+    val values: MutableList<Double> = mutableListOf()
+    for (st in stages) {
+      values.add(st.value)
+    }
+    for (pc in layoutFunnelEc(values, box, cfg)) {
+      if (funnelContains(pc.points, px, py)) {
+        return pc.index
       }
     }
     return -1

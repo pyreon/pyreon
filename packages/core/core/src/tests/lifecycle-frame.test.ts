@@ -11,7 +11,7 @@
  * afterwards was silently dropped.
  *
  * Third instance of the reset-vs-restore class catalogued in
- * `.claude/rules/anti-patterns.md`.
+ * `.agents/rules/anti-patterns.md`.
  *
  * These are the unit-level specs. The real-compiler twin — which proves the
  * shape is reachable from ordinary JSX rather than only from a hand-nested

@@ -308,7 +308,7 @@ const node: DocNode = {
     },
     {
       label: 'Test with real primitives',
-      note: 'Mock vnodes that pre-attach `_documentProps` bypass the rocketstyle `__rs_attrs` fast path — the PR #197 silent-metadata-drop hid exactly there. Pair every mock-vnode test with a real-`h()` primitive test (see `.claude/rules/test-environment-parity.md`).',
+      note: 'Mock vnodes that pre-attach `_documentProps` bypass the rocketstyle `__rs_attrs` fast path — the PR #197 silent-metadata-drop hid exactly there. Pair every mock-vnode test with a real-`h()` primitive test (see `.agents/rules/test-environment-parity.md`).',
     },
     {
       label: 'cssVariables mode',

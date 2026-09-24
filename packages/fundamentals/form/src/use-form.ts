@@ -21,7 +21,7 @@ import type {
 
 // Dev-time counter sink — see packages/internals/perf-harness/COUNTERS.md.
 // The bare `process.env.NODE_ENV !== 'production'` gate is the bundler-
-// agnostic library standard (per .claude/rules/anti-patterns.md). Vite,
+// agnostic library standard (per .agents/rules/anti-patterns.md). Vite,
 // Webpack, esbuild, Rollup, Parcel, and Bun all replace this at consumer
 // build time and tree-shake the counter call to zero in prod bundles.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
