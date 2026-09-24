@@ -1084,6 +1084,15 @@ final class PyreonTasksUITests: XCTestCase {
         // the grammar desugars to at compile time.
         let grammarBars = app.descendants(matching: .any).matching(identifier: "gal-grammar-bars").firstMatch
         scrollIntoView(grammarBars, in: app)
+        // (Checked before the chart tap below: it needs no gesture, so a flaky
+        // tap cannot hide it.)
+        // The framework-wide colour mode: under <ColorModeProvider mode="dark"> a
+        // component's own useColorMode() reads "dark" whatever the Simulator's
+        // appearance (it runs light), because the provider pins SwiftUI's
+        // colorScheme for its subtree.
+        let colorMode = app.staticTexts["gal-color-mode"].firstMatch
+        XCTAssertTrue(colorMode.waitForExistence(timeout: 10), "gal-color-mode missing on the gallery")
+        XCTAssertEqual(colorMode.label, "dark", "useColorMode() under a pinned provider")
         let grammarPick = app.staticTexts["gal-grammar-pick"].firstMatch
         XCTAssertTrue(
             tapUntilLabel(grammarBars.coordinate(withNormalizedOffset: CGVector(dx: 0.26, dy: 0.6)), grammarPick, "0"),
