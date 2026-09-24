@@ -261,3 +261,11 @@ describe('pathBase + componentUrl — the writing half', () => {
     expect(componentUrl('/atlas/', '', '')).toBe('/atlas/')
   })
 })
+
+describe('dark against a project default of light', () => {
+  it('writes dark=1 when the project opens light, and nothing when it matches', () => {
+    expect(serializeUrlState({ dark: true }, { dark: false })).toBe('dark=1')
+    expect(serializeUrlState({ dark: false }, { dark: false })).toBe('')
+    expect(parseUrlState('dark=1').dark).toBe(true)
+  })
+})
