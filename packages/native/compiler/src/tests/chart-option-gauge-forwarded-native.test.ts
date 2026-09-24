@@ -10,7 +10,7 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
  * lowering drew.
  */
 const OPTION = `
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return (
     <OptionChart option={{

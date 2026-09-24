@@ -58,7 +58,7 @@ import { defaultTheme } from './render'
 import type { ChartTheme } from './render'
 import { renderLegend } from './legend'
 import { describeChart } from './a11y'
-import { plain } from './format'
+import { groupThousands } from './format'
 import type { Formatter } from './format'
 import { measureApprox, renderSvg } from './svg'
 import type { SvgOptions } from './svg'
@@ -234,7 +234,7 @@ export function gaugeToSvg(options: GaugeToSvgOptions): string {
   const height = options.height ?? 140
   const min = options.min ?? 0
   const max = options.max ?? 100
-  const fmt = options.format ?? plain
+  const fmt = options.format ?? groupThousands
   const t = themeOf(options.theme)
   const opts: GaugeOptions = {
     min,
@@ -429,7 +429,7 @@ export function candlestickToSvg<T>(options: CandlestickToSvgOptions<T>): string
   }
   for (const c of renderCandles(candles, l.plot, domain, { upColor: t.positive, downColor: t.negative, ...options.candle })) cmds.push(c)
 
-  const fmt = options.format ?? plain
+  const fmt = options.format ?? groupThousands
   return renderSvg(cmds, width, height, svgTail(options.svg, options.title, options.description, () => {
     /* v8 ignore next 2 — the `?? '<name>'` fallbacks here are unreachable:
        `svgTail` only calls this deriver when `title` is defined. Kept as a

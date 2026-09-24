@@ -1,4 +1,4 @@
-import { dim, el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const PreviewSurface = el
   .attrs({
@@ -6,7 +6,7 @@ export const PreviewSurface = el
     contentAlignX: 'center',
     contentAlignY: 'center',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     padding: '56px 40px',
     minHeight: '220px',
     transition: `transform ${t.motion.base} ease`,
@@ -25,7 +25,7 @@ export const PreviewSurface = el
   // force a fixed surface so you can check contrast against the opposite mode
   // without switching the whole workbench, and `bgChecker` is the transparency
   // grid for translucent surfaces and shadows.
-  .variants(dim((t) => ({
+  .variants((t) => ({
     bgTheme: { backgroundColor: t.surface },
     bgLight: { backgroundColor: '#ffffff' },
     bgDark: { backgroundColor: '#0f0f14' },
@@ -35,7 +35,7 @@ export const PreviewSurface = el
         'repeating-conic-gradient(rgba(128,128,128,.18) 0% 25%, transparent 0% 50%)',
       backgroundSize: '16px 16px',
     },
-  })))
+  }))
   // Outline addon — a `state` dimension scoped to the preview subtree, so the
   // workbench chrome stays readable while every box in the component under
   // test is outlined (a stray wrapper / collapsed flex child / misplaced

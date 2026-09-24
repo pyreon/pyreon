@@ -38,7 +38,7 @@
  *                                         # (use AFTER intentional growth)
  */
 
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { gzipSync } from 'node:zlib'
@@ -102,6 +102,9 @@ const BUDGETS_PATH = getBudgetsPath()
  * 0700, so neither can be pre-empted. (CodeQL `js/insecure-temporary-file`.)
  */
 const SCRATCH_ROOT = mkdtempSync(join(tmpdir(), 'pyreon-bundle-budgets-'))
+// Removed on exit, including the `process.exit(1)` failure paths. Without this
+// every run left its measured bundles behind in the OS temp dir.
+process.on('exit', () => rmSync(SCRATCH_ROOT, { recursive: true, force: true }))
 
 /**
  * Override `<REPO_ROOT>/packages` discovery with a custom directory.

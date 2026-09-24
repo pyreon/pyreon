@@ -38,10 +38,10 @@
  * so — a created baseline is not a verified one), and fails on a real visual
  * diff, writing the actual next to the baseline for eyeballing.
  */
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { CheckStatus, VerifyCheck, VerifyVerdict } from '../core'
-import { finding } from '../core'
+import { CHECK_KEYS, finding } from '../core'
 import { skipped } from '../plugins/registry'
 
 export interface BrowserVerifyOptions {
@@ -106,8 +106,10 @@ export function mergeBrowserVerdict(
     ssrParity: verify?.ssrParity ?? SKIP,
     snapshot: result.snapshot,
   }
-  const keys = ['a11y', 'interaction', 'reactivityCoverage', 'leak', 'snapshot'] as const
-  const statuses: CheckStatus[] = keys.map((k) => next[k].status)
+  // The canonical key list, never a local copy: a hand-written list here
+  // omitted `ssrParity`, so a parity FAILURE carried through above was then
+  // ignored when recomputing `ok` — a scan-time failure became `ok: true`.
+  const statuses: CheckStatus[] = CHECK_KEYS.map((k) => next[k].status)
   next.checked = statuses.filter((s) => s !== 'skip').length
   next.ok = next.checked > 0 && !statuses.includes('fail')
   return next
@@ -177,8 +179,7 @@ export async function runBrowserVerify(
 
   const results: ScenarioBrowserResult[] = []
   const notDriven: string[] = []
-  let snapshotsCreated = 0
-  let snapshotsFailed = 0
+  const snapshotOutcomes: SnapshotOutcome[] = []
   let coverageMeasured = 0
 
   const browser = await chromium.launch()
@@ -254,76 +255,16 @@ export async function runBrowserVerify(
           }
         }
 
-        // Snapshot the preview surface.
-        let snapshot: VerifyCheck
-        try {
-          const shot = await page.locator('[data-testid="canvas-preview"]').screenshot({
-            animations: 'disabled',
-          })
-          const baselinePath = join(snapshotDir, `${scenario.id}.png`)
-          // Read the baseline directly — a missing file is just a read miss
-          // (ENOENT), not a state to pre-check. An exists-then-use pair is the
-          // TOCTOU shape CodeQL rightly flags (js/file-system-race).
-          let baseline: Buffer | null = null
-          if (!options.updateSnapshots) {
-            try {
-              baseline = readFileSync(baselinePath)
-            } catch {
-              baseline = null
-            }
-          }
-          if (options.updateSnapshots) {
-            writeFileSync(baselinePath, shot)
-            snapshotsCreated += 1
-            snapshot = {
-              status: 'pass',
-              findings: [
-                finding('baseline-updated', 'baseline UPDATED this run (re-baselined on request)'),
-              ],
-            }
-          } else if (baseline === null) {
-            writeFileSync(baselinePath, shot)
-            snapshotsCreated += 1
-            snapshot = {
-              status: 'pass',
-              findings: [
-                finding(
-                  'baseline-created',
-                  'baseline created this run — a created baseline is recorded, not yet compared',
-                ),
-              ],
-            }
-          } else {
-            const ratio = diffPngs(baseline, shot, { PNG, pixelmatch })
-            if (ratio <= maxRatio) {
-              snapshot = { status: 'pass' }
-            } else {
-              const actualPath = join(snapshotDir, `${scenario.id}.actual.png`)
-              writeFileSync(actualPath, shot)
-              snapshotsFailed += 1
-              snapshot = {
-                status: 'fail',
-                findings: [
-                  finding(
-                    'snapshot-differs',
-                    `visual diff ${(ratio * 100).toFixed(2)}% of pixels (limit ${(maxRatio * 100).toFixed(2)}%) — actual written to ${actualPath}`,
-                    `Compare ${actualPath} against the baseline. If the change is intended, re-run with --update-snapshots.`,
-                  ),
-                ],
-              }
-            }
-          }
-        } catch (err) {
-          snapshot = {
-            status: 'fail',
-            findings: [
-              finding(
-                'snapshot-failed',
-                `screenshot failed: ${err instanceof Error ? err.message : String(err)}`,
-              ),
-            ],
-          }
-        }
+        // Snapshot the preview surface. Counting is derived from the verdict,
+        // so every failing path — a thrown screenshot included — reaches the
+        // tally the CLI exits on.
+        const { snapshot, created } = await snapshotScenario(page, scenario.id, {
+          snapshotDir,
+          maxRatio,
+          updateSnapshots: options.updateSnapshots === true,
+          deps: { PNG, pixelmatch },
+        })
+        snapshotOutcomes.push({ snapshot, created })
 
         results.push({ id: scenario.id, reactivityCoverage, snapshot })
       }
@@ -356,10 +297,11 @@ export async function runBrowserVerify(
         else notDriven.push(scenario.id)
       }
     }
-    writeFileSync(catalogPath, JSON.stringify(data, null, 2))
+    writeAtomic(catalogPath, JSON.stringify(data, null, 2))
     wrote = catalogPath
   }
 
+  const { created: snapshotsCreated, failed: snapshotsFailed } = countSnapshots(snapshotOutcomes)
   return {
     scenarios: results.length,
     snapshotsCreated,
@@ -367,6 +309,141 @@ export async function runBrowserVerify(
     coverageMeasured,
     notDriven,
     ...(wrote ? { catalogPath: wrote } : {}),
+  }
+}
+
+/** One scenario's snapshot verdict plus whether it wrote a baseline. */
+export interface SnapshotOutcome {
+  snapshot: VerifyCheck
+  created: boolean
+}
+
+/**
+ * Tally snapshot outcomes for the summary. `failed` is derived from the
+ * VERDICT, not incremented per branch — the per-branch form missed the
+ * thrown-screenshot path, so a run whose screenshots all threw reported
+ * "0 visual diff(s)" and the CLI exited 0.
+ */
+export function countSnapshots(outcomes: readonly SnapshotOutcome[]): {
+  created: number
+  failed: number
+} {
+  let created = 0
+  let failed = 0
+  for (const o of outcomes) {
+    if (o.created) created += 1
+    if (o.snapshot.status === 'fail') failed += 1
+  }
+  return { created, failed }
+}
+
+/**
+ * Screenshot one scenario's preview and judge it against its baseline.
+ *
+ * Exported so the verdict/count contract is testable without a browser: a
+ * screenshot that THROWS is a failure the summary must count — it used to set
+ * `snapshot: fail` while `snapshotsFailed` stayed 0, so the CLI printed
+ * "0 visual diff(s)" and exited 0 over a scenario it never compared.
+ */
+export async function snapshotScenario(
+  page: Pick<PageLike, 'locator'>,
+  scenarioId: string,
+  opts: {
+    snapshotDir: string
+    maxRatio: number
+    updateSnapshots: boolean
+    deps: Parameters<typeof diffPngs>[2]
+  },
+): Promise<SnapshotOutcome> {
+  const { snapshotDir, maxRatio } = opts
+  try {
+    const shot = await page.locator('[data-testid="canvas-preview"]').screenshot({
+      animations: 'disabled',
+    })
+    const baselinePath = join(snapshotDir, `${scenarioId}.png`)
+    // Read the baseline directly — a missing file is just a read miss
+    // (ENOENT), not a state to pre-check. An exists-then-use pair is the
+    // TOCTOU shape CodeQL rightly flags (js/file-system-race).
+    let baseline: Buffer | null = null
+    if (!opts.updateSnapshots) {
+      try {
+        baseline = readFileSync(baselinePath)
+      } catch {
+        baseline = null
+      }
+    }
+    if (opts.updateSnapshots) {
+      writeFileSync(baselinePath, shot)
+      return {
+        created: true,
+        snapshot: {
+          status: 'pass',
+          findings: [finding('baseline-updated', 'baseline UPDATED this run (re-baselined on request)')],
+        },
+      }
+    }
+    if (baseline === null) {
+      writeFileSync(baselinePath, shot)
+      return {
+        created: true,
+        snapshot: {
+          status: 'pass',
+          findings: [
+            finding(
+              'baseline-created',
+              'baseline created this run — a created baseline is recorded, not yet compared',
+            ),
+          ],
+        },
+      }
+    }
+    const ratio = diffPngs(baseline, shot, opts.deps)
+    if (ratio <= maxRatio) return { created: false, snapshot: { status: 'pass' } }
+    const actualPath = join(snapshotDir, `${scenarioId}.actual.png`)
+    writeFileSync(actualPath, shot)
+    return {
+      created: false,
+      snapshot: {
+        status: 'fail',
+        findings: [
+          finding(
+            'snapshot-differs',
+            `visual diff ${(ratio * 100).toFixed(2)}% of pixels (limit ${(maxRatio * 100).toFixed(2)}%) — actual written to ${actualPath}`,
+            `Compare ${actualPath} against the baseline. If the change is intended, re-run with --update-snapshots.`,
+          ),
+        ],
+      },
+    }
+  } catch (err) {
+    return {
+      created: false,
+      snapshot: {
+        status: 'fail',
+        findings: [
+          finding('snapshot-failed', `screenshot failed: ${err instanceof Error ? err.message : String(err)}`),
+        ],
+      },
+    }
+  }
+}
+
+/**
+ * Write via tmp-then-rename — a reader (or a crash mid-write) sees the old
+ * catalog or the whole new one, never a truncated file. Same contract as the
+ * scan's catalog write.
+ */
+export function writeAtomic(path: string, content: string): void {
+  const tmp = `${path}.tmp.${process.pid}`
+  writeFileSync(tmp, content)
+  try {
+    renameSync(tmp, path)
+  } catch (error) {
+    try {
+      unlinkSync(tmp)
+    } catch {
+      // best-effort cleanup; the rename error is the one worth reporting
+    }
+    throw error
   }
 }
 

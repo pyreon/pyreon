@@ -34,26 +34,31 @@ export interface Action<T = unknown> {
 // ─── Registry ────────────────────────────────────────────────────────────────
 
 /**
- * Module-level registry of every `defineAction()` call. Lookup is by the
- * `action_<uuid>` string the client sends in `POST /_zero/actions/<id>`.
+ * Module-level registry of every server action, keyed by the id the client
+ * sends in `POST /_zero/actions/<id>`.
  *
- * **HMR caveat (dev-only):** the registry uses fresh `crypto.randomUUID()`
- * per `defineAction()` invocation. When Vite hot-replaces a module that
- * calls `defineAction()`, the module re-runs and a NEW entry is inserted
- * — the OLD entry stays in the Map until the dev process exits. Each
- * entry holds `{ id, handler }` (~80 bytes). Bounded by the count of
- * distinct UUIDs minted in the session; a realistic dev session sees
- * <50 entries, so total dev-memory cost stays under ~5KB. Production
- * registers each module exactly once at startup — no leak. A
- * FinalizationRegistry-based purge is tracked as a follow-up; the
- * current cost is too small to justify the WeakRef/finalizer complexity.
+ * Ids are DETERMINISTIC: zero's Vite plugin derives each one at build time
+ * from the defining module's path + binding name (see
+ * `actions-transform.ts`), so the client bundle and the server bundle agree
+ * on it, and an HMR re-run of the same module overwrites its own entry
+ * instead of adding a new one. Bounded by the number of `defineAction()`
+ * call sites in the app.
  */
 const actionRegistry = new Map<string, RegisteredAction>()
+
+let warnedPluginless = false
 
 /**
  * Define a server action. Returns a callable function that:
  * - On the **client**: sends a POST request to `/_zero/actions/<id>`
  * - On the **server** (SSR): executes the handler directly (no fetch)
+ *
+ * Requires zero's Vite plugin (`zero()` in `vite.config.ts`), which gives
+ * each action an id that is identical in the client and server bundles and
+ * removes the handler body from the client bundle. Without the plugin the
+ * id is random per bundle, so a client call can never reach the server's
+ * handler: in a browser that is an error in production and a warning in
+ * development. Server-only use (tests, scripts) works without the plugin.
  *
  * @example
  * // In a route file or module:
@@ -67,15 +72,31 @@ const actionRegistry = new Map<string, RegisteredAction>()
  * const result = await createPost({ title: 'Hello', body: '...' })
  */
 export function defineAction<T = unknown>(handler: ActionHandler<T>): Action<T> {
-  // Full 128-bit UUID — was previously sliced to 32 bits (`.slice(0, 8)`),
-  // which gave birthday-collision probability at ~65k actions. Action IDs
-  // are bundled into client JS (the `callable` closure captures `id` as a
-  // string literal), so any collision causes one action to be silently
-  // routed to another's handler at the `/_zero/actions/<id>` endpoint.
-  // 128 bits matches the same UUID space the registry already used —
-  // just no longer truncated.
-  const id = `action_${crypto.randomUUID()}`
+  // Reaching this function means the plugin did NOT rewrite the call.
+  if (typeof globalThis.window !== 'undefined') {
+    const message =
+      '[Pyreon] defineAction() ran in the browser without zero\'s Vite plugin, so its action id ' +
+      'is random and cannot match the server bundle — every call would 404. Add `zero()` to ' +
+      'the `plugins` of your vite.config.ts, and import defineAction from "@pyreon/zero/actions".'
+    if (process.env.NODE_ENV === 'production') throw new Error(message)
+    if (!warnedPluginless) {
+      warnedPluginless = true
+      console.warn(message)
+    }
+  }
+  return _defineActionWithId(`action_${crypto.randomUUID()}`, handler)
+}
 
+/**
+ * `defineAction` with the id supplied — the SERVER-side form zero's Vite
+ * plugin rewrites `defineAction(handler)` into.
+ *
+ * @internal
+ */
+export function _defineActionWithId<T = unknown>(
+  id: string,
+  handler: ActionHandler<T>,
+): Action<T> {
   actionRegistry.set(id, { id, handler: handler as ActionHandler })
 
   const callable = async (data?: unknown): Promise<T> => {
@@ -92,22 +113,37 @@ export function defineAction<T = unknown>(handler: ActionHandler<T>): Action<T> 
         headers: new Headers({ 'Content-Type': 'application/json' }),
       })
     }
-
-    // Client-side: POST to the action endpoint
-    const response = await fetch(`/_zero/actions/${id}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data ?? null),
-    })
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}))
-      throw new Error((body as { error?: string }).error ?? `Action failed: ${response.statusText}`)
-    }
-    return response.json()
+    return postAction<T>(id, data)
   }
 
   callable.actionId = id
   return callable as Action<T>
+}
+
+/**
+ * The CLIENT-side form zero's Vite plugin rewrites `defineAction(handler)`
+ * into: only the id survives, so the handler body (and whatever it
+ * closes over) never ships to the browser.
+ *
+ * @internal
+ */
+export function _actionStub<T = unknown>(id: string): Action<T> {
+  const callable = (data?: unknown): Promise<T> => postAction<T>(id, data)
+  callable.actionId = id
+  return callable as Action<T>
+}
+
+async function postAction<T>(id: string, data: unknown): Promise<T> {
+  const response = await fetch(`/_zero/actions/${id}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data ?? null),
+  })
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}))
+    throw new Error((body as { error?: string }).error ?? `Action failed: ${response.statusText}`)
+  }
+  return response.json()
 }
 
 /** Get all registered actions. Useful for testing. */
@@ -121,6 +157,7 @@ export function getRegisteredActions(): Map<string, RegisteredAction> {
  */
 export function _resetActions(): void {
   actionRegistry.clear()
+  warnedPluginless = false
 }
 
 // ─── Server handler ──────────────────────────────────────────────────────────

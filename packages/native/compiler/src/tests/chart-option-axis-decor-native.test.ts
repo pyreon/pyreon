@@ -11,7 +11,7 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
  * emit compiles.
  */
 const OPTION = `
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return (
     <OptionChart option={{
