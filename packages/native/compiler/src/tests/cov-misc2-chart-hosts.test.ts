@@ -433,7 +433,7 @@ import { PieChart } from '@pyreon/charts/engine'`,
       'must be a',
     )
     expect(swift(provider(`mode="dark" theme={computeTheme()}`)).warnings.join('\n')).toContain(
-      "only an object literal with literal fields lowers on native; the mode's theme applies",
+      "only an object literal with literal fields lowers on native; it is ignored",
     )
     expect(swift(provider(`mode="dark" theme={chartThemes.light}`)).warnings.join('\n')).not.toContain(
       '<ChartThemeProvider theme>',
@@ -532,7 +532,7 @@ const base = {}`,
 import { PieChart } from '@pyreon/charts/engine'`,
       ),
     )
-    expect(provider.warnings.join('\n')).toContain("the mode's theme applies")
+    expect(provider.warnings.join('\n')).toContain('<ChartThemeProvider theme>: only an object literal with literal fields lowers on native; it is ignored')
   })
 })
 
