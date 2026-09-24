@@ -131,7 +131,10 @@ describe('the prerender timer is cleared on every exit path', () => {
     const before = liveTimers()
     await prerender({ handler, paths: ['/a', '/b', '/c'], outDir: dir })
 
-    expect(liveTimers(), 'three renders must not leave three live timers').toBe(before)
+    // `<=`, not `===`: a timer that was already live (another test's, vitest's
+    // own) can legitimately expire while the prerender runs, which read as
+    // `expected +0 to be 1` under load. A leak only ever ADDS timers.
+    expect(liveTimers(), 'three renders must not leave three live timers').toBeLessThanOrEqual(before)
   })
 
   test('a REJECTING handler clears its timer too', async () => {
@@ -147,6 +150,6 @@ describe('the prerender timer is cleared on every exit path', () => {
     const result = await prerender({ handler, paths: ['/a', '/b'], outDir: dir })
 
     expect(result.errors).toHaveLength(2)
-    expect(liveTimers(), 'a failed render must not leak its timeout').toBe(before)
+    expect(liveTimers(), 'a failed render must not leak its timeout').toBeLessThanOrEqual(before)
   })
 })
