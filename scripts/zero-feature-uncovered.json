@@ -23,6 +23,7 @@
     "Fail the build on a missing public var — `zero({ env })`": "no cell asserts a failing build",
     "Other Build-Time Plugins": "no cell exercises these plugins",
     "Request Locals": "useRequestLocals has no built-server test",
-    "Testing Utilities": "a test-helper API; exercised by unit tests, which is its real-world use"
+    "Testing Utilities": "a test-helper API; exercised by unit tests, which is its real-world use",
+    "Router loaders are compiled out when unused": "covered by a real Vite build inside vitest (packages/zero/zero/src/tests/router-loaders-flag.test.ts), not by an e2e spec or verify-modes cell"
   }
 }
