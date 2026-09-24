@@ -2,33 +2,11 @@
 '@pyreon/zero': patch
 ---
 
-fix(zero): four SSG output surfaces interpolated data into a format with its own grammar
+fix(zero): escape data written into SSG output files
 
-Each was the only unguarded field among guarded siblings — the shape worth
-naming, because an escaper applied to a value's neighbours reads as covering it.
+Four build outputs interpolated route or CMS data without escaping it for their format:
 
-**`_redirects` and `_headers` are line-oriented**, so a line terminator in a
-value is not cosmetic, it is a new rule. `to` comes from the argument to a
-`redirect()` thrown by a route loader at build time, and the idiomatic CMS
-shape is `if (post.redirectTo) throw redirect(post.redirectTo, 301)`:
-
-```
-/a /b
-/* https://evil.com/:splat 302
-# 301
-```
-
-a complete, valid Netlify / Cloudflare Pages rule, with the orphaned status
-neutralised by the trailing `#`. Stripped rather than escaped — these formats
-have no escape syntax, and a path containing a raw line terminator is already
-malformed. `_headers` takes the same guard: a terminator there can SET or
-REMOVE per-path response headers (CSP, CORS, framing).
-
-**RSS dates skipped the escaper on the fall-through.** `toRfc822` returns its
-INPUT VERBATIM when `new Date()` yields NaN, and that result was the one field
-in the feed that was not escaped — so a malformed date, which is ordinary in a
-CMS, could close `</item></channel></rss>` and forge entries.
-
-**Sitemap `<lastmod>` was unescaped** where `<loc>` and the hreflang hrefs in
-the same function are escaped, so a data-derived `additionalPaths[].lastmod`
-could forge a whole `<url>` entry.
+- **`_redirects`** (Netlify / Cloudflare Pages) is one rule per line. A line break in a `redirect()` target or source, for example `if (post.redirectTo) throw redirect(post.redirectTo, 301)`, added a new rule, which could send every path to another site. Line terminators are now stripped: the format has no escape syntax.
+- **`_headers`** (`ssg.earlyHints`) has the same line-oriented format. A line break in a path could add a block that sets or removes response headers such as CSP. Stripped the same way.
+- **RSS `pubDate` / `lastBuildDate`**: an unparseable date is written as its raw input, and that value was not XML-escaped, so it could close the feed and add entries. It is now escaped like every other RSS field.
+- **Sitemap `<lastmod>`** was not escaped, while `<loc>` and the hreflang links beside it were. A data-derived `additionalPaths[].lastmod` could add `<url>` entries. It is now escaped.

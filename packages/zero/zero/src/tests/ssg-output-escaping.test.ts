@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest'
 
 import { generateRssFeed } from '../seo-rss'
 import { generateSitemap } from '../seo'
-import { renderNetlifyRedirects } from '../ssg-plugin'
+import { renderEarlyHintHeaders, renderNetlifyRedirects } from '../ssg-plugin'
 
 const LF = String.fromCharCode(10)
 
 /**
- * Four output surfaces that interpolate data into a format with its own
+ * Five output surfaces that interpolate data into a format with its own
  * grammar. Each was the only unguarded field among guarded siblings, which is
  * the shape worth naming: an escaper applied to a value's neighbours and not
  * to the value itself reads as covered.
@@ -89,5 +89,23 @@ describe('sitemap escapes lastmod, not just loc', () => {
       additionalPaths: [{ path: '/a', lastmod: '2026-01-01' }],
     } as never)
     expect(xml).toContain('<lastmod>2026-01-01</lastmod>')
+  })
+})
+
+describe('_headers is line-oriented too', () => {
+  it('a path cannot start a second headers block', () => {
+    const out = renderEarlyHintHeaders(
+      new Map([[`/a${LF}/*${LF}  Content-Security-Policy: default-src *`, ['/assets/a.js']]]),
+    )
+    // The only unindented lines are the comment and the one path.
+    const pathLines = out.split(LF).filter((l) => l !== '' && !l.startsWith(' ') && !l.startsWith('#'))
+    expect(pathLines).toHaveLength(1)
+    expect(out).not.toContain(`${LF}  Content-Security-Policy`)
+  })
+
+  it('an ordinary path renders unchanged', () => {
+    expect(renderEarlyHintHeaders(new Map([['/blog', ['/assets/a.js', '/assets/b.js']]]))).toBe(
+      `# pyreon: early hints (modulepreload)${LF}/blog${LF}  Link: </assets/a.js>; rel=modulepreload${LF}  Link: </assets/b.js>; rel=modulepreload${LF}`,
+    )
   })
 })

@@ -889,6 +889,23 @@ export function renderNetlifyRedirects(entries: RedirectEntry[]): string {
 }
 
 /**
+ * Render the `_headers` section for `ssg.earlyHints`: one block per path, each
+ * listing its `Link: <chunk>; rel=modulepreload` entries.
+ *
+ * Same line-oriented hazard as `_redirects` (see `oneLine`): a terminator in
+ * the path would start a new `_headers` block, which can set or remove
+ * per-path response headers (CSP, CORS, framing).
+ */
+export function renderEarlyHintHeaders(hrefsByPath: ReadonlyMap<string, readonly string[]>): string {
+  const blocks: string[] = []
+  for (const [p, hrefs] of hrefsByPath) {
+    const lines = hrefs.map((h) => `  Link: <${h}>; rel=modulepreload`)
+    blocks.push(`${oneLine(p)}\n${lines.join('\n')}`)
+  }
+  return `# pyreon: early hints (modulepreload)\n${blocks.join('\n')}\n`
+}
+
+/**
  * Render Vercel `_redirects.json` content. Vercel reads this from the
  * `vercel.json` `redirects` array shape — but the bare `_redirects.json`
  * file ships alongside as documentation / fallback for adapters that
@@ -1752,14 +1769,6 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // existing user `_headers` (append, never clobber) — same contract
       // as the adapters' writeAssetCacheHeaders.
       if (config.ssg?.earlyHints === true && earlyHintHrefs.size > 0) {
-        const blocks: string[] = []
-        for (const [p, hrefs] of earlyHintHrefs) {
-          const lines = hrefs.map((h) => `  Link: <${h}>; rel=modulepreload`)
-          // Same line-oriented hazard as `_redirects` (see `oneLine`): a
-          // terminator in the path injects arbitrary `_headers` blocks, which
-          // can SET or REMOVE per-path response headers (CSP, CORS, framing).
-          blocks.push(`${oneLine(p)}\n${lines.join('\n')}`)
-        }
         const headersPath = join(distDir, '_headers')
         let existing = ''
         try {
@@ -1767,7 +1776,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         } catch {
           // no existing _headers — start fresh
         }
-        const section = `# pyreon: early hints (modulepreload)\n${blocks.join('\n')}\n`
+        const section = renderEarlyHintHeaders(earlyHintHrefs)
         await writeFileAtomic(headersPath, existing ? `${existing}\n${section}` : section)
       }
 
