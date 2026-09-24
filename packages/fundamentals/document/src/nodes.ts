@@ -103,7 +103,11 @@ function resolveVNode(vnode: VNodeLike): DocChild[] {
 }
 
 function normalizeChildren(children: unknown): DocChild[] {
-  if (children == null || children === false) return []
+  // JSX semantics: `true` / `false` / `null` / `undefined` render NOTHING
+  // (`{cond && <X/>}` yields `true`/`false`). Without the `true` arm a
+  // truthy boolean fell through to `String(children)` and every renderer
+  // emitted the literal text "true".
+  if (children == null || typeof children === 'boolean') return []
   if (typeof children === 'string') return [children]
   if (typeof children === 'number') return [String(children)]
   if (Array.isArray(children)) return children.flatMap(normalizeChildren)

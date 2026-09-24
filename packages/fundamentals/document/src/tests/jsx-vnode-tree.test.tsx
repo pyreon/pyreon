@@ -149,4 +149,34 @@ describe('VNode (h / JSX) document trees', () => {
     const vnode = { type: Page, props: null, children: [], key: null }
     expect((await render(h(Document, null, vnode as never), 'json')) as string).toContain('"page"')
   })
+
+  it('boolean / nullish children render nothing (JSX semantics), in every format', async () => {
+    const show = true
+    const hide = false
+    const doc = (
+      <Document>
+        <Page>
+          {show && <Text>shown</Text>}
+          {hide && <Text>hidden</Text>}
+          {true}
+          {null}
+          {undefined}
+          <Text>
+            a{true}b{false}c
+          </Text>
+        </Page>
+      </Document>
+    )
+    for (const format of ['html', 'md', 'text'] as const) {
+      const out = (await render(doc, format)) as string
+      expect(out, format).toContain('shown')
+      expect(out, format).not.toContain('true')
+      expect(out, format).not.toContain('false')
+      expect(out, format).not.toContain('hidden')
+      expect(out, format).toContain('abc')
+    }
+    // Direct calls get the same normalization.
+    const direct = Text({ children: ['x', true, 'y'] as never })
+    expect(direct.children).toEqual(['x', 'y'])
+  })
 })
