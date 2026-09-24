@@ -374,6 +374,12 @@ export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<vo
       // a prerendered route, thread it the way `base` / `assetsInlineLimit` /
       // `assetsDir` are threaded above, each with the bug that motivated it.
       resolve: { conditions: ['bun'] },
+      // Vite leaves `process.env.NODE_ENV` as a RUNTIME read in SSR builds,
+      // and the scaffolded Dockerfiles / wrangler config never set it — so
+      // the deployed server ran in development mode: dev-only diagnostics
+      // on, server-action errors returning raw `err.message`. This bundle is
+      // a production artifact by definition.
+      define: { 'process.env.NODE_ENV': JSON.stringify('production') },
       build: buildInnerBuildOptions(options),
     })
   } finally {

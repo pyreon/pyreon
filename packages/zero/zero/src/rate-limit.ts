@@ -121,8 +121,11 @@ export function rateLimitMiddleware(config: RateLimitConfig = {}): Middleware {
 
   return (ctx: MiddlewareContext) => {
     // Check include/exclude patterns
-    if (include && !include.some((p) => matchSimpleGlob(p, ctx.path))) return
-    if (exclude?.some((p) => matchSimpleGlob(p, ctx.path))) return
+    // Pathname only: `ctx.path` carries the query string, so an exact rule
+    // like `include: ['/login']` was dodged by requesting `/login?a=1`.
+    const pathname = ctx.url.pathname
+    if (include && !include.some((p) => matchSimpleGlob(p, pathname))) return
+    if (exclude?.some((p) => matchSimpleGlob(p, pathname))) return
 
     const key = keyFn(ctx)
     const now = Date.now()

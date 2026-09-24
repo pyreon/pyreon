@@ -1620,6 +1620,62 @@ describe('node adapter — runtime contract', () => {
     20000,
   )
 
+  // The generated runner used to build `new Request(url, { method, headers })`
+  // — no body — against a hardcoded "http://localhost" origin, with no
+  // try/catch around the handler. So every POST reached API routes empty,
+  // every browser server action failed the same-origin check with 403, and
+  // one throwing handler exited the whole process (an unhandled rejection).
+  it.skipIf(!hasNode)(
+    'forwards the body, the real origin and the client address, and survives a throwing handler',
+    async () => {
+      await setupMockBuild()
+      const { writeFile } = await import('node:fs/promises')
+      await writeFile(
+        join(MOCK_SERVER, 'entry-server.js'),
+        `export default async (req) => {
+  const url = new URL(req.url)
+  if (url.pathname === '/boom') throw new Error('handler exploded')
+  return Response.json({
+    body: await req.text(),
+    origin: url.origin,
+    remote: req[Symbol.for('pyreon.remoteAddress')] ?? null,
+  })
+}`,
+      )
+      const outDir = join(TMP, 'node-runtime-body')
+      const port = await pickFreePort()
+      await nodeAdapter().build({
+        kind: 'ssr',
+        serverEntry: join(MOCK_SERVER, 'entry-server.js'),
+        clientOutDir: MOCK_CLIENT,
+        outDir,
+        config: { port },
+      })
+      const stop = await startNodeServer(join(outDir, 'index.js'), port)
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/api/echo`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: '{"a":1}',
+        })
+        const json = (await res.json()) as { body: string; origin: string; remote: string | null }
+        expect(json.body).toBe('{"a":1}')
+        expect(json.origin).toBe(`http://127.0.0.1:${port}`)
+        expect(typeof json.remote === 'string' && json.remote.length > 0).toBe(true)
+
+        const boom = await fetch(`http://127.0.0.1:${port}/boom`)
+        expect(boom.status).toBe(500)
+        // Still serving after the throw.
+        const after = await fetch(`http://127.0.0.1:${port}/api/echo`, { method: 'POST', body: 'x' })
+        expect(after.status).toBe(200)
+      } finally {
+        await stop()
+        await cleanup()
+      }
+    },
+    20000,
+  )
+
   it.skipIf(!hasNode)(
     'emitted entry honors $PORT at runtime (overrides the build-time port)',
     async () => {
