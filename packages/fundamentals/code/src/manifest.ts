@@ -219,6 +219,24 @@ tabbed.activeTab()   // Computed<Tab | null>
       seeAlso: ['createEditor', 'getAvailableLanguages'],
     },
     {
+      name: 'registerLanguage',
+      kind: 'function',
+      signature: '(id: string, loader: () => Promise<Extension>) => void',
+      summary:
+        "Register (or replace) a language loader in the grammar registry `loadLanguage` reads from. This is how `@pyreon/code/languages-all` installs the 13 built-in grammars NOT registered by default (the core registers only javascript/typescript/jsx/tsx/json/plain — the JS-framework default — because a single static map naming all 19 `@codemirror/lang-*` packages made a bundler's dependency scanner pull the whole language ecosystem into every consumer's pre-bundle step, even one that only ever shows TSX). It is also how you add a grammar this package does not ship at all (a community `@codemirror/lang-*` or `@replit/codemirror-lang-*` package). Re-registering an existing id replaces its loader AND evicts any already-cached extension for it, so a subsequent `loadLanguage` call re-resolves from the new loader.",
+      example: `import { registerLanguage } from '@pyreon/code'
+
+registerLanguage('svelte', () =>
+  import('@replit/codemirror-lang-svelte').then((m) => m.svelte()),
+)
+const editor = createEditor({ value: svelteSource, language: 'svelte' })`,
+      mistakes: [
+        'Importing `@pyreon/code/languages-all` AND hand-registering the same id — the bulk import already covers all 19 built-in grammars; only register manually for a grammar the package does not ship',
+        'Registering after the editor has already loaded that language — the extension is cached per language name; `registerLanguage` evicts the cache entry so a NEW `createEditor`/`loadLanguage` call picks up the replacement, but an already-mounted editor keeps its currently-loaded extension until it reloads',
+      ],
+      seeAlso: ['loadLanguage', 'getAvailableLanguages'],
+    },
+    {
       name: 'minimapExtension',
       kind: 'function',
       signature: '() => Extension',
