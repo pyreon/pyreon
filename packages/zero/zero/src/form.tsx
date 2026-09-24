@@ -163,10 +163,35 @@ function cellFor(id: string): SubmissionCell {
   return cell
 }
 
+/**
+ * The query-only form `action` for `id`, KEEPING the page's own query:
+ * `search` `?page=2` → `?page=2&_action=<id>`. Works on the RAW search
+ * string (no decode/re-encode), dropping only a previous `_action` pair, so
+ * the server and the client — each passing its router's current path —
+ * produce the identical attribute string, and loaders on the POST and its
+ * re-render see the original query.
+ *
+ * @internal
+ */
+export function formActionSearch(id: string, pathOrSearch: string): string {
+  const hashAt = pathOrSearch.indexOf('#')
+  const noHash = hashAt === -1 ? pathOrSearch : pathOrSearch.slice(0, hashAt)
+  const q = noHash.indexOf('?')
+  const own =
+    q === -1
+      ? []
+      : noHash
+          .slice(q + 1)
+          .split('&')
+          .filter((pair) => pair !== '' && pair.split('=')[0] !== ACTION_QUERY_PARAM)
+  own.push(`${ACTION_QUERY_PARAM}=${encodeURIComponent(id)}`)
+  return `?${own.join('&')}`
+}
+
 function actionUrl(id: string, explicit: string | undefined): string {
   if (explicit) return explicit
   const url = new URL(globalThis.location.href)
-  url.search = `?${ACTION_QUERY_PARAM}=${encodeURIComponent(id)}`
+  url.search = formActionSearch(id, url.search)
   url.hash = ''
   return url.href
 }
@@ -291,6 +316,12 @@ export function useSubmission<T>(action: Action<T>): Submission<T> {
   }
 }
 
+/** The router's current `pathname + search` (internal signal), or `''` without a router. */
+function currentPathOf(router: ReturnType<typeof useRouter> | undefined): string {
+  const path = (router as { _currentPath?: () => string } | undefined)?._currentPath
+  return typeof path === 'function' ? path() : ''
+}
+
 // ─── <Form> ─────────────────────────────────────────────────────────────────
 
 /** Props for {@link Form}. */
@@ -330,6 +361,12 @@ export function Form<T>(props: FormProps<T>): VNodeChild {
   ])
   const id = own.action.actionId
   const sub = useSubmission(own.action)
+  let router: ReturnType<typeof useRouter> | undefined
+  try {
+    router = useRouter()
+  } catch {
+    router = undefined
+  }
   const snapshot = isServer ? serverSnapshotReader?.() : readHydratedSnapshot(id)
   const hydrated = snapshot && snapshot.id === id ? snapshot : undefined
 
@@ -353,7 +390,10 @@ export function Form<T>(props: FormProps<T>): VNodeChild {
   const formProps: Props = {
     ...(rest as Props),
     method: 'post',
-    action: `?${ACTION_QUERY_PARAM}=${encodeURIComponent(id)}`,
+    // Reactive: a client-side query change updates the attribute. The
+    // router's current path is `pathname + search` on both server (the
+    // request URL) and client, so SSR and hydration agree.
+    action: () => formActionSearch(id, currentPathOf(router)),
     onSubmit,
   }
   return (

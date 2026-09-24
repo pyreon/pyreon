@@ -5,7 +5,7 @@ import type { Middleware, MiddlewareContext } from "@pyreon/server";
 import { createHandler } from "@pyreon/server";
 import type { CreateActionMiddlewareOptions } from "./actions";
 import { createActionMiddleware, resolveActionOptions } from "./actions";
-import { createActionSnapshotMiddleware, createFormActionMiddleware } from "./form-actions-server";
+import { createActionRerenderMiddleware, createFormActionMiddleware } from "./form-actions-server";
 import type { ApiRouteEntry } from "./api-routes";
 import { createApiMiddleware, matchApiRoute } from "./api-routes";
 import { createApp } from "./app";
@@ -264,10 +264,7 @@ export function createServer(options: CreateServerOptions) {
 	// without any of it — the documented `rateLimitMiddleware({ include:
 	// ['/api/*'] })` never applied to /api, and route auth never protected
 	// loader data.
-	// The action-snapshot hand-off runs first: it only copies a page
-	// re-render's action result (see form-actions-server.ts) into locals.
 	const allMiddleware: Middleware[] = [
-		createActionSnapshotMiddleware(),
 		...(config.middleware ?? []),
 		...(options.middleware ?? []),
 	];
@@ -387,7 +384,21 @@ export function createServer(options: CreateServerOptions) {
 		...(resolvedClientEntry !== undefined ? { clientEntry: resolvedClientEntry } : {}),
 	});
 
-	renderForAction = baseHandler;
+	// A no-JS action post re-renders its page through a handler whose ONLY
+	// middleware restores the POST's own middleware results (locals,
+	// response headers) — the app and route middleware already ran for this
+	// request and must not run again (rate limiters would count it twice).
+	// Never an ISR-cached handler: a result page is per submission.
+	let actionRenderHandler: ((req: Request) => Promise<Response>) | null = null;
+	renderForAction = (req) =>
+		(actionRenderHandler ??= createHandler({
+			App,
+			routes: options.routes,
+			middleware: [createActionRerenderMiddleware()],
+			mode: config.ssr?.mode ?? (config.mode === "ssr" ? "stream" : "string"),
+			...(resolvedTemplate ? { template: resolvedTemplate } : {}),
+			...(resolvedClientEntry !== undefined ? { clientEntry: resolvedClientEntry } : {}),
+		}))(req);
 
 	// PR-S5: wire the render mode. `mode: 'isr'` was a typed-but-not-
 	// wired surface from inception — apps that set it got SSR behavior

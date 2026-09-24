@@ -300,3 +300,72 @@ describe('generated route-middleware module', () => {
     expect(code).not.toContain('plain.tsx')
   })
 })
+
+describe('the page query survives the form post', () => {
+  it('formActionSearch keeps the raw query, replaces a previous _action, drops the hash', async () => {
+    const { formActionSearch } = await import('../form')
+    expect(formActionSearch('a1', '')).toBe('?_action=a1')
+    expect(formActionSearch('a1', '/new')).toBe('?_action=a1')
+    expect(formActionSearch('a1', '/new?page=2&q=a%20b')).toBe('?page=2&q=a%20b&_action=a1')
+    expect(formActionSearch('a1', '/new?_action=old&page=2#top')).toBe('?page=2&_action=a1')
+  })
+
+  it('SSR renders the query into the action; POST and re-render loaders see it', async () => {
+    const action = makeAction()
+    const seen: string[] = []
+    const routes = routesFor(action).map((r) =>
+      r.path === '/new'
+        ? {
+            ...r,
+            loader: (ctx: { query: Record<string, string> }) => {
+              seen.push(ctx.query.page ?? 'none')
+              return { page: ctx.query.page ?? 'none' }
+            },
+          }
+        : r,
+    ) as RouteRecord[]
+    const server = createServer({ routes })
+    const html = await (await server(new Request('http://localhost/new?page=2'))).text()
+    expect(html).toContain('action="?page=2&amp;_action=action_test_create"')
+    seen.length = 0
+    const res = await server(post('/new?page=2&_action=action_test_create', form({ title: 'q' }), {
+      'content-type': 'application/x-www-form-urlencoded',
+    }))
+    expect(res.status).toBe(200)
+    expect(seen).toEqual(['2'])
+    // The re-rendered form keeps the query too.
+    expect(await res.text()).toContain('action="?page=2&amp;_action=action_test_create"')
+  })
+})
+
+describe('middleware runs once per no-JS post', () => {
+  it('app + route middleware are not re-run by the re-render; their locals and headers carry over', async () => {
+    const action = makeAction()
+    let appRuns = 0
+    let routeRuns = 0
+    const counting: Middleware = (ctx) => {
+      appRuns++
+      ctx.locals.user = 'ada'
+      ctx.headers.set('x-frame-options', 'DENY')
+    }
+    const { useRequestLocals } = await import('@pyreon/server')
+    const routes = routesFor(action).map((r) =>
+      r.path === '/new'
+        ? { ...r, component: () => h('p', { id: 'user' }, String(useRequestLocals().user ?? 'anon')) }
+        : r,
+    ) as RouteRecord[]
+    const server = createServer({
+      routes,
+      middleware: [counting],
+      routeMiddleware: [{ pattern: '/new', middleware: () => void routeRuns++ }],
+    })
+    const res = await server(post('/new?_action=action_test_create', form({ title: 'once' }), {
+      'content-type': 'application/x-www-form-urlencoded',
+    }))
+    expect(res.status).toBe(200)
+    expect(appRuns).toBe(1)
+    expect(routeRuns).toBe(1)
+    expect(res.headers.get('x-frame-options')).toBe('DENY')
+    expect(await res.text()).toContain('<p id="user">ada</p>')
+  })
+})

@@ -30,28 +30,44 @@ import { warmRouteModules } from './server-islands-middleware'
 export const ROUTE_ACTION_LOCAL = 'zero:routeAction'
 const SNAPSHOT_LOCAL = 'zero:actionSnapshot'
 
+/** What a re-render carries over from the POST it answers. */
+interface CarriedRequestState {
+  snapshot: ActionSnapshot
+  /** The POST's `ctx.locals` after every middleware ran (auth user, CSP nonce, …). */
+  locals: Record<string, unknown>
+  /** Response headers the POST's middleware set (security headers, cookies). */
+  headers: Headers
+}
+
 /**
- * Snapshot for a re-render request, keyed by the synthetic GET `Request`
- * this module builds. Weak: the entry dies with the request.
+ * State for a re-render request, keyed by the synthetic GET `Request` this
+ * module builds. Weak: the entry dies with the request.
  */
-const pendingSnapshots = new WeakMap<Request, ActionSnapshot>()
+const carried = new WeakMap<Request, CarriedRequestState>()
 
 _setActionSnapshotReader(() => useRequestLocals()[SNAPSHOT_LOCAL] as ActionSnapshot | undefined)
 
 /**
- * First in the chain: hand a re-render's action snapshot to the page via
- * `ctx.locals`, which the SSR handler provides to components.
+ * The ONLY middleware of the re-render handler: it restores what the app
+ * and route middleware already produced for this request instead of running
+ * them a second time, then hands the action snapshot to the page.
  */
-export function createActionSnapshotMiddleware(): Middleware {
+export function createActionRerenderMiddleware(): Middleware {
   return (ctx) => {
-    const snapshot = pendingSnapshots.get(ctx.req)
-    if (snapshot) ctx.locals[SNAPSHOT_LOCAL] = snapshot
+    const state = carried.get(ctx.req)
+    if (!state) return
+    Object.assign(ctx.locals, state.locals)
+    state.headers.forEach((value, key) => ctx.headers.set(key, value))
+    ctx.locals[SNAPSHOT_LOCAL] = state.snapshot
   }
 }
 
 export interface FormActionMiddlewareOptions {
   routes: RouteRecord[]
-  /** Renders a page — the SSR handler WITHOUT any response cache in front. */
+  /**
+   * Renders a page for the re-render. Must NOT run the app/route middleware
+   * again (they already ran for this POST) — see createActionRerenderMiddleware.
+   */
   render: (req: Request) => Promise<Response>
   options: ResolvedActionOptions
   /** zero's `base` without a trailing slash (`''` for `/`). */
@@ -153,7 +169,7 @@ export function createFormActionMiddleware(opts: FormActionMiddlewareOptions): M
     headers.delete('content-type')
     headers.delete('content-length')
     const getReq = new Request(getUrl, { method: 'GET', headers })
-    pendingSnapshots.set(getReq, snapshot)
+    carried.set(getReq, { snapshot, locals: { ...ctx.locals }, headers: new Headers(ctx.headers) })
 
     const page = await opts.render(getReq)
     const outHeaders = new Headers(page.headers)
