@@ -1,5 +1,6 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
 import { BUN_ADAPTER_OUTPUT } from './contract'
+import { SCHEDULER_RUNTIME, serializeJobs } from './cron'
 import { stageClientThenServer } from './stage'
 import { validateBuildInputs } from './validate'
 
@@ -11,9 +12,21 @@ import { validateBuildInputs } from './validate'
  * any static-file server (`bun preview` / `bunx serve` / nginx / Caddy).
  * Use `staticAdapter()` if you want explicit SSG semantics.
  */
-export function bunAdapter(): Adapter {
+export interface BunAdapterOptions {
+  /**
+   * Run `export const schedule` API routes on an in-process cron inside the
+   * emitted runner (UTC, minute resolution). Opt-in: a self-hosted server
+   * scaled to N instances would run every job N times, so enabling it is a
+   * statement that exactly one instance runs the schedule. Without it, a
+   * `schedule` export fails the build rather than being silently ignored.
+   */
+  scheduler?: boolean
+}
+
+export function bunAdapter(adapterOptions: BunAdapterOptions = {}): Adapter {
   return {
     name: 'bun',
+    capabilities: { schedules: adapterOptions.scheduler === true },
     async build(options: AdapterBuildOptions) {
       if (options.kind === 'ssg') {
         // Bun runner has nothing to add for prerendered SSG dist.
@@ -36,6 +49,12 @@ export function bunAdapter(): Adapter {
       })
 
       const port = options.config.port ?? 3000
+      // Opt-in in-process cron for `export const schedule` API routes: each
+      // job calls the SSR handler IN-PROCESS with a GET for its path.
+      const jobs = adapterOptions.scheduler ? (options.deploy?.schedules ?? []) : []
+      const schedulerBlock = jobs.length === 0
+        ? ''
+        : `\n${SCHEDULER_RUNTIME}\n__pyreonStartScheduler(${serializeJobs(jobs)}, (path) => handler(new Request(new URL(path, \`http://localhost:\${PORT}\`))))\n`
       // The hashed-asset URL prefix (`/<assetsDir>/`, default `/assets/`) baked
       // into the emitted handler so a custom `build.assetsDir` still gets
       // immutable cache. NOTE: `base` is deliberately NOT included — this
@@ -168,7 +187,7 @@ Bun.serve({
 })
 
 console.log(\`\\n  ⚡ Zero production server running on http://localhost:\${PORT}\\n\`)
-`.trimStart()
+${schedulerBlock}`.trimStart()
 
       await writeFile(join(outDir, BUN_ADAPTER_OUTPUT.runnerEntry), serverEntry)
     },

@@ -28,6 +28,11 @@
       "import": "./lib/server.js",
       "types": "./lib/types/server.d.ts"
     },
+    "./edge": {
+      "bun": "./src/edge.ts",
+      "import": "./lib/edge.js",
+      "types": "./lib/types/edge.d.ts"
+    },
     "./app": {
       "bun": "./src/app.ts",
       "import": "./lib/app.js",

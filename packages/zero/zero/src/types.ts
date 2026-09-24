@@ -675,7 +675,7 @@ export interface ZeroConfig {
    * strings go through a switch lookup, instances pass through
    * unchanged.
    */
-  adapter?: 'node' | 'bun' | 'static' | 'vercel' | 'cloudflare' | 'netlify' | Adapter
+  adapter?: 'node' | 'bun' | 'static' | 'vercel' | 'cloudflare' | 'netlify' | 'deno' | Adapter
 
   /** Base URL path. Default: "/" */
   base?: string
@@ -954,6 +954,15 @@ export interface Adapter {
   /** Build the production server/output for this adapter. */
   build(options: AdapterBuildOptions): Promise<void>
   /**
+   * What this adapter can deploy beyond a single Node.js SSR function. The
+   * SSR plugin reads it BEFORE building so an app that declares something
+   * the target cannot honour (`export const runtime = 'edge'` on a node
+   * deploy, `export const schedule` on Cloudflare Pages) fails the build
+   * with a named error instead of deploying and silently ignoring it.
+   * Omitted fields mean "not supported".
+   */
+  capabilities?: AdapterCapabilities
+  /**
    * Revalidate a prerendered path on the deploy platform's ISR layer
    * (PR I — build-time ISR). Called by user code (webhook handlers,
    * cron jobs, CMS triggers, etc.) to trigger a rebuild-on-stale for
@@ -974,6 +983,27 @@ export interface Adapter {
    * Cache API rules, Netlify revalidation headers).
    */
   revalidate?(path: string): Promise<AdapterRevalidateResult>
+}
+
+/** See `Adapter.capabilities`. */
+export interface AdapterCapabilities {
+  /**
+   * Routes declaring `export const runtime = 'edge'` can be served from an
+   * edge function. When true and any route declares it, the SSR plugin builds
+   * a second, web-worker-targeted server bundle (`edgeServerEntry`).
+   * `'native'` — the whole deploy already runs on an edge runtime (Cloudflare
+   * workerd), so the declaration is honoured with no second bundle.
+   */
+  edgeRoutes?: boolean | 'native'
+  /** Every route runs on the edge by default — the edge bundle is always built. */
+  edgeOnly?: boolean
+  /**
+   * With `edgeOnly`, routes declaring `runtime = 'nodejs'` can still be split
+   * out to a Node function. Without it such a declaration fails the build.
+   */
+  nodeRoutes?: boolean
+  /** `export const schedule` on API routes maps to a cron this target runs. */
+  schedules?: boolean
 }
 
 /**
@@ -1039,6 +1069,15 @@ export type AdapterBuildOptions =
        * long-cache treatment. Falls back to `'assets'` when absent.
        */
       assetsDir?: string | undefined
+      /**
+       * Path to the EDGE server bundle — the same app built for a web-worker
+       * runtime (`ssr.target: 'webworker'`, every dependency bundled, and
+       * every `node:*` import replaced by a stub that throws when used).
+       * Present only when the adapter's `capabilities` ask for one.
+       */
+      edgeServerEntry?: string | undefined
+      /** Per-route `runtime` / `schedule` declarations read from the routes dir. */
+      deploy?: import('./adapters/deploy-targets').DeployTargets | undefined
     }
   | {
       kind: 'ssg'

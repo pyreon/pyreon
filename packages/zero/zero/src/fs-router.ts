@@ -1455,3 +1455,48 @@ export async function scanRouteFilesWithExports(
 
   return parseFileRoutes(files, defaultMode, exportsMap)
 }
+
+/**
+ * Read the PURE-literal initializers of arbitrary `export const NAME = …`
+ * declarations in a route file — the same parser + literal rules
+ * `detectRouteExports` uses for `meta` / `renderMode` / `revalidate`, but
+ * for deploy-time metadata (`runtime`, `schedule`) that never reaches the
+ * generated routes module.
+ *
+ * Each result distinguishes three states, because a build that silently
+ * ignores a declaration it could not read is the bug class the deploy
+ * manifest exists to prevent:
+ *   - absent from the map        → the file does not export NAME at all
+ *   - `{ literal: '"edge"' }`    → exported, pure literal (JS source text)
+ *   - `{ literal: undefined }`   → exported, but NOT a pure `const` literal
+ *
+ * @internal
+ */
+export function readLiteralExports(
+  source: string,
+  filename: string,
+  names: readonly string[],
+): Map<string, { literal: string | undefined }> {
+  const lang = routeLang(filename)
+  const out = new Map<string, { literal: string | undefined }>()
+  let staticExports: ReturnType<typeof parseSync>['module']['staticExports']
+  try {
+    staticExports = parseSync(filename, source, { sourceType: 'module', lang }).module.staticExports
+  } catch {
+    return out
+  }
+  for (const stmt of staticExports) {
+    for (const entry of stmt.entries) {
+      if (entry.isType || entry.exportName.kind !== 'Name') continue
+      const name = entry.exportName.name
+      if (name === null || !names.includes(name)) continue
+      const local = entry.moduleRequest === null && entry.localName.name === name
+      out.set(name, {
+        literal: local
+          ? constInitializerLiteral(source.slice(stmt.start, stmt.end), name, lang)
+          : undefined,
+      })
+    }
+  }
+  return out
+}
