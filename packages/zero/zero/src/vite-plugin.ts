@@ -359,9 +359,11 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 				if (html.includes(`src="${entry}"`)) return html;
 				if (html.includes(`src='${entry}'`)) return html;
 				const tag = `<script type="module" src="${entry}"></script>`;
+				// Replacer function: `entry` is user config and must not be
+				// read as a `$`-replacement pattern.
 				return html.replace(
 					'<!--pyreon-scripts-->',
-					`${tag}\n    <!--pyreon-scripts-->`,
+					() => `${tag}\n    <!--pyreon-scripts-->`,
 				);
 			},
 		},
@@ -1377,11 +1379,29 @@ async function renderSsr(
 		return { kind: "redirect", to: result.to, status: result.status };
 	}
 
-	const html = template
-		.replace("<!--pyreon-head-->", result.head)
-		.replace("<!--pyreon-app-->", result.appHtml)
-		.replace("<!--pyreon-scripts-->", result.loaderScript);
+	// FUNCTION replacements — a string replacement interprets `$$` / `$&` /
+	// `$'` / `` $` `` inside the rendered page (see `fillDevTemplate`).
+	const html = fillDevTemplate(template, result);
 	return { kind: "html", html, status: result.status };
+}
+
+/**
+ * Fill the dev SSR template's three Pyreon placeholders with a rendered
+ * page. Uses replacer FUNCTIONS, never string replacements: with a string
+ * replacement `String.prototype.replace` interprets `$$`, `$&`, `` $` ``,
+ * `$'` and `$n` even for a literal search, so a page containing
+ * `cost $$5 and $' tail` rendered `$5` plus a copy of the template tail.
+ *
+ * @internal exported for tests
+ */
+export function fillDevTemplate(
+	template: string,
+	result: { head: string; appHtml: string; loaderScript: string },
+): string {
+	return template
+		.replace("<!--pyreon-head-->", () => result.head)
+		.replace("<!--pyreon-app-->", () => result.appHtml)
+		.replace("<!--pyreon-scripts-->", () => result.loaderScript);
 }
 
 /**
