@@ -495,7 +495,11 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 				if (pathname.startsWith("/@") || pathname.startsWith("/__"))
 					return next();
 				// Skip files (extension-bearing) — let Vite's static pipeline serve.
-				if (/\.\w+$/.test(pathname)) return next();
+				// NOT under `/api`: API routes live only there (top-level `api/`
+				// dir), and a dotted path is a legitimate API URL
+				// (`/api/users/jane.doe`, `/api/export.csv`, `/api/v1.2/x`) that
+				// production dispatches — skipping it in dev returned Vite's 404.
+				if (!isApiPathname(pathname) && /\.\w+$/.test(pathname)) return next();
 
 				dispatchApiRoute(server, req, res).then(
 					(handled) => {
@@ -1105,6 +1109,11 @@ function themeScriptInjectPlugin(): Plugin {
 			},
 		},
 	};
+}
+
+/** `/api` or anything under it — the only place fs API routes can match. */
+export function isApiPathname(pathname: string): boolean {
+	return pathname === "/api" || pathname.startsWith("/api/");
 }
 
 /**

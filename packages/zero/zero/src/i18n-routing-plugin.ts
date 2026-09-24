@@ -76,7 +76,11 @@ export function i18nRouting(config: I18nRoutingConfig): Plugin {
         const url = req.url ?? '/'
 
         // Skip static assets
-        if (url.startsWith('/@') || url.startsWith('/__') || url.includes('.')) {
+        // Skip Vite internals and FILE requests — judged on the pathname's
+        // last segment, not "any dot anywhere": `/de/v1.2/notes` and
+        // `/de/search?q=1.5` are page URLs and must get their locale.
+        const pathname = url.split('?')[0]!.split('#')[0]!
+        if (url.startsWith('/@') || url.startsWith('/__') || /\.\w+$/.test(pathname)) {
           return next()
         }
 

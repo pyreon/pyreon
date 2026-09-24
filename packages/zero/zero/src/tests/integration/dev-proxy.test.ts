@@ -113,6 +113,12 @@ afterAll(async () => {
 });
 
 describe("PZ-11 — zero dev honors vite server.proxy", { timeout: DEV_SERVER_TEST_TIMEOUT_MS }, () => {
+	it("dispatches a DOTTED fs api path (/api/files/report.csv) instead of skipping it as a file", async () => {
+		const res = await devFetch(`${baseUrl}/api/files/report.csv`, "dotted api path", { observe: state });
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ name: "report.csv" });
+	});
+
 	it("proxies /api/<context> with Accept: */* (fetch default) to the backend", async () => {
 		// Pre-fix: the SSR catch-all swallowed this with 404 _404.tsx HTML.
 		const res = await devFetch(
