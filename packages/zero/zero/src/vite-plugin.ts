@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { isAbsolute, join, relative, sep } from 'node:path'
-import { generateActionManifestCode } from './action-manifest'
+import { generateActionManifest, isActionSourceFile, mayDefineActions } from './action-manifest'
 import { transformServerActions } from './actions-transform'
 import { innerBuildActiveInProcess, innerBuildFlagSet } from './build-flags'
 import { collectBuildStats, detectColorLevel, formatBuildSummary } from './build-summary'
@@ -288,6 +288,9 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 	}
 	const config = resolveConfig(userConfig);
 	let routesDir: string;
+	// Files the current action manifest maps (see action-manifest.ts). The
+	// dev watcher regenerates the manifest when a file joins or leaves it.
+	let actionManifestFiles = new Set<string>();
 	let root: string;
 	// PZ-11 — `server.proxy` context keys, captured in configResolved. The
 	// dev middlewares below register during `configureServer` (which runs
@@ -473,7 +476,9 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 				// Plus the build-time action manifest (action-manifest.ts): this
 				// module is what every server entry and the dev pipeline import,
 				// so a fresh server knows every action id up front.
-				const manifest = generateActionManifestCode(root);
+				const generated = generateActionManifest(root);
+				actionManifestFiles = generated.files;
+				const manifest = generated.code;
 				try {
 					const files = await scanRouteFiles(routesDir);
 					return `${manifest}\n${generateMiddlewareModule(files, routesDir)}`;
@@ -781,6 +786,29 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 				// Any change under the routes dir (content edits change the
 				// detected exports too) drops the memoized scan.
 				if (path.startsWith(routesDir)) invalidateRouteScanCache(routesDir);
+				// The action manifest lives in the route-middleware module: drop it
+				// when a source file under src/ joins, leaves or changes inside the
+				// manifest — not only on route add/remove. Cheap gate: a file outside
+				// the manifest is read only for the marker substring.
+				if (
+					(event === "add" || event === "change" || event === "unlink") &&
+					path.startsWith(join(root, "src")) &&
+					isActionSourceFile(path)
+				) {
+					const inManifest = actionManifestFiles.has(path);
+					let defines = false;
+					if (event !== "unlink") {
+						try {
+							defines = mayDefineActions(readFileSync(path, "utf-8"));
+						} catch {
+							defines = false;
+						}
+					}
+					if (inManifest || defines) {
+						const mod = server.moduleGraph.getModuleById(RESOLVED_VIRTUAL_MIDDLEWARE_ID);
+						if (mod) server.moduleGraph.invalidateModule(mod);
+					}
+				}
 				if (
 					path.startsWith(routesDir) &&
 					(event === "add" || event === "unlink")

@@ -2,7 +2,8 @@
 // production runs: a no-JS form post re-renders the page (with the POST's
 // middleware locals/headers, middleware run ONCE), an enhanced (fetch)
 // submission answers JSON, and the route's middleware gates the action.
-import { resolve } from "node:path";
+import { rmSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import pyreon from "@pyreon/vite-plugin";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -135,5 +136,34 @@ describe("zero dev runs route form actions", { timeout: DEV_SERVER_TEST_TIMEOUT_
 			body: "name=zed",
 		});
 		expect(without.status).toBe(405);
+	});
+
+	it("an action added mid-session in a NEW non-route module joins the manifest", async () => {
+		const file = join(FIXTURE_DIR, "src", "late-actions.ts");
+		const id = actionId("src/late-actions.ts", "late");
+		const call = () =>
+			devFetch(`${baseUrl}/_zero/actions/${id}`, "late action", {
+				observe: state,
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: "null",
+			});
+		try {
+			// The manifest was generated before the file existed.
+			expect((await call()).status).toBe(404);
+			writeFileSync(
+				file,
+				"import { defineAction } from '@pyreon/zero/actions'\nexport const late = defineAction(async () => ({ late: true }))\n",
+			);
+			// Drive the watcher's real entrypoint (OS file events are unreliable
+			// in CI — see the zero-hmr harness).
+			server.watcher.emit("all", "add", file);
+			const res = await call();
+			expect(res.status).toBe(200);
+			expect(await res.json()).toEqual({ late: true });
+		} finally {
+			rmSync(file, { force: true });
+			server.watcher.emit("all", "unlink", file);
+		}
 	});
 });

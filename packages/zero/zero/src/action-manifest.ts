@@ -56,20 +56,38 @@ export function scanActionModules(root: string): Map<string, string> {
 }
 
 /**
+ * Does a source text possibly define server actions? The cheap gate the dev
+ * watcher applies before re-scanning a changed file — the same substring the
+ * transform checks before parsing.
+ */
+export function mayDefineActions(code: string): boolean {
+  return code.includes('@pyreon/zero/actions') && code.includes('defineAction')
+}
+
+/** Source extensions the manifest scans (and the dev watcher reacts to). */
+export function isActionSourceFile(file: string): boolean {
+  return SOURCE_RE.test(file) && !SKIP_FILE_RE.test(file)
+}
+
+/**
  * Module source that registers the manifest — appended to the generated
  * `virtual:zero/route-middleware`, which every zero server entry and the
- * dev pipeline import. Empty string when the app defines no actions.
+ * dev pipeline import — plus the set of files it maps (the dev watcher's
+ * "is this file in the manifest?" answer). Empty `code` when the app
+ * defines no actions.
  */
-export function generateActionManifestCode(root: string): string {
+export function generateActionManifest(root: string): { code: string; files: Set<string> } {
   const modules = scanActionModules(root)
-  if (modules.size === 0) return ''
+  const files = new Set(modules.values())
+  if (modules.size === 0) return { code: '', files }
   const entries = [...modules]
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([id, file]) => `  ${JSON.stringify(id)}: () => import(${JSON.stringify(file)})`)
-  return [
+  const code = [
     `import { _registerActionModules } from "@pyreon/zero/actions"`,
     `_registerActionModules({`,
     entries.join(',\n'),
     `})`,
   ].join('\n')
+  return { code, files }
 }
