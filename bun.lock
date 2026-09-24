@@ -1435,9 +1435,6 @@
     "packages/core/runtime-dom": {
       "name": "@pyreon/runtime-dom",
       "version": "0.51.0",
-      "dependencies": {
-        "@pyreon/sized-map": "workspace:*",
-      },
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.11.6",
         "@pyreon/compiler": "workspace:^",

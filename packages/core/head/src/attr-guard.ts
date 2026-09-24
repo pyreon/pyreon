@@ -1,10 +1,4 @@
-import {
-  UNSAFE_ATTR_NAME_RE,
-  isEventHandlerAttr,
-  isSafeImageDataUri,
-  isUnsafeUrl,
-  isUrlAttr,
-} from '@pyreon/core'
+import { UNSAFE_ATTR_NAME_RE, isSafeImageDataUri, isUnsafeUrl, isUrlAttr } from '@pyreon/core'
 
 /**
  * The attribute guard for BOTH of `@pyreon/head`'s renderers — the SSR
@@ -19,8 +13,20 @@ import {
  * The predicates themselves come from `@pyreon/core`, so head reaches the SAME
  * verdict as the element renderer on the same markup rather than a second
  * opinion about it.
+ *
+ * `isHandler` is injected rather than imported: the SSR serializer passes
+ * `isEventHandlerAttr` (the name list — it has no element to ask), the client
+ * syncer passes `isElementEventHandlerAttr` bound to the real element (the
+ * engine's own answer). Importing the list here would put it in every client
+ * bundle that uses `useHead`, ~0.8 KB gzipped for a question the browser
+ * already answers exactly.
  */
-export function isHeadAttrSafe(name: string, value: string, tagName: string): boolean {
+export function isHeadAttrSafe(
+  name: string,
+  value: string,
+  tagName: string,
+  isHandler: (name: string) => boolean,
+): boolean {
   // STRUCTURE. A name carrying whitespace / quotes / `=` / `<` / `>` breaks out
   // of the attribute list, so a spread of a user-keyed object injects siblings:
   // `useHead({ meta: [{ 'name x="y" onload': 'z' }] })` serialized as
@@ -33,7 +39,7 @@ export function isHeadAttrSafe(name: string, value: string, tagName: string): bo
   }
   // HANDLERS. `onload` on a `<link>` or `<script>` is executable markup, and a
   // preload / stylesheet is exactly where one fires.
-  if (isEventHandlerAttr(name)) {
+  if (isHandler(name)) {
     warnDroppedHeadAttr(name, tagName, 'is an event-handler attribute')
     return false
   }

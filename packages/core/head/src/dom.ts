@@ -1,4 +1,5 @@
 import type { HeadContextValue } from './context'
+import { isElementEventHandlerAttr } from '@pyreon/core'
 import { isHeadAttrSafe } from './attr-guard'
 
 const ATTR = 'data-pyreon-head'
@@ -47,7 +48,7 @@ function createNewTag(tag: {
     // handler name is not a byte divergence but a live listener, while a
     // structurally-invalid name makes `setAttribute` THROW and takes the whole
     // head sync down.
-    if (!isHeadAttrSafe(k, v, tag.tag)) continue
+    if (!isHeadAttrSafe(k, v, tag.tag, (n) => isElementEventHandlerAttr(el, n))) continue
     el.setAttribute(k, v)
   }
   if (tag.children) el.textContent = tag.children
@@ -123,7 +124,7 @@ function patchAttrs(el: Element, props: Record<string, string>): void {
     if (!(attr.name in props)) el.removeAttribute(attr.name)
   }
   for (const [k, v] of Object.entries(props)) {
-    if (!isHeadAttrSafe(k, v, el.tagName.toLowerCase())) continue
+    if (!isHeadAttrSafe(k, v, el.tagName.toLowerCase(), (n) => isElementEventHandlerAttr(el, n))) continue
     if (el.getAttribute(k) !== v) el.setAttribute(k, v)
   }
 }
@@ -148,7 +149,7 @@ function syncElementAttrs(el: Element, attrs: Record<string, string>): void {
   }
   const keys: string[] = []
   for (const [k, v] of Object.entries(attrs)) {
-    if (!isHeadAttrSafe(k, v, el.tagName.toLowerCase())) continue
+    if (!isHeadAttrSafe(k, v, el.tagName.toLowerCase(), (n) => isElementEventHandlerAttr(el, n))) continue
     keys.push(k)
     if (el.getAttribute(k) !== v) el.setAttribute(k, v)
   }

@@ -114,7 +114,9 @@ describe('the CLIENT renderer reaches the same verdict', () => {
   // page writing what the server refused — and on the client a handler name is
   // not a byte divergence, it is a live listener.
   it('`isHeadAttrSafe` is the single predicate both call', async () => {
-    const { isHeadAttrSafe } = await import('../attr-guard')
+    const { isHeadAttrSafe: guard } = await import('../attr-guard')
+    const { isEventHandlerAttr } = await import('@pyreon/core')
+    const isHeadAttrSafe = (n: string, v: string, t: string) => guard(n, v, t, isEventHandlerAttr)
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     // Refused
     expect(isHeadAttrSafe('name x="y" onload', 'z', 'meta')).toBe(false)
