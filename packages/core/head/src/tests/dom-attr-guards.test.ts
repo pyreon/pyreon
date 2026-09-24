@@ -32,10 +32,14 @@ describe('syncDom attribute guard', () => {
 
   it('refuses an unsafe attribute on a NEWLY created tag', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    expect(() => syncDom(ctx([tag('meta', { name: 'ok', onload: 'alert(1)' })]))).not.toThrow()
+    // `onclick`, not `onload`: the client asks the element which names are
+    // handlers (`isElementEventHandlerAttr`), and happy-dom's <meta> does not
+    // define `onload` — Chromium's does. The `onload` case is asserted in real
+    // Chromium in head.browser.test.tsx.
+    expect(() => syncDom(ctx([tag('meta', { name: 'ok', onclick: 'alert(1)' })]))).not.toThrow()
     const el = document.head.querySelector('meta')
     expect(el?.getAttribute('name')).toBe('ok')
-    expect(el?.hasAttribute('onload')).toBe(false)
+    expect(el?.hasAttribute('onclick')).toBe(false)
     warn.mockRestore()
   })
 
