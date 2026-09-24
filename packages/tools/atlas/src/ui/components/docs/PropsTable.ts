@@ -1,10 +1,10 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const PropsTable = el
   .attrs({
     tag: 'div',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     border: t.hairline,
     borderRadius: t.radius.card,
     overflow: 'hidden',

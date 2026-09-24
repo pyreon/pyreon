@@ -66,11 +66,24 @@ export function toggleTheme() {
   setTheme(current === 'dark' ? 'light' : 'dark')
 }
 
+/**
+ * Put a resolved theme on `<html>`: the `data-theme` attribute apps style
+ * against, and the CSS `color-scheme` — the web-standard declaration native
+ * form controls and scrollbars follow, and the one Pyreon's framework-wide
+ * colour mode (`useColorMode` in @pyreon/core) reads as the page's scheme. So
+ * a zero theme toggle reaches charts, flow and the code editor with no wiring.
+ */
+function applyThemeToDocument(mode: 'light' | 'dark'): void {
+  if (!isClient) return
+  document.documentElement.dataset.theme = mode
+  document.documentElement.style.colorScheme = mode
+}
+
 /** Set theme explicitly. */
 export function setTheme(t: Theme) {
   theme.set(t)
   if (isClient) {
-    document.documentElement.dataset.theme = resolvedTheme()
+    applyThemeToDocument(resolvedTheme())
     try {
       localStorage.setItem(STORAGE_KEY, t)
     } catch {
@@ -110,7 +123,7 @@ function _setupShared(): () => void {
   }
 
   // Apply to document
-  document.documentElement.dataset.theme = resolvedTheme()
+  applyThemeToDocument(resolvedTheme())
 
   // Watch for system preference changes. Seed the signal from the
   // current media-query state, then update reactively on each OS
@@ -127,7 +140,7 @@ function _setupShared(): () => void {
   // Re-apply when theme signal changes — updates data-theme + favicons
   const dispose = effect(() => {
     const mode = resolvedTheme()
-    document.documentElement.dataset.theme = mode
+    applyThemeToDocument(mode)
 
     // Swap favicon variants (if dual-variant favicons are present)
     const faviconLinks = document.querySelectorAll<HTMLLinkElement>('[data-favicon-theme]')
@@ -259,7 +272,7 @@ export function ThemeToggle(props: { class?: string; style?: string }): VNodeChi
  *   ...
  * </head>
  */
-export const themeScript = `(function(){try{var t=localStorage.getItem("${STORAGE_KEY}");var r=t==="light"?"light":t==="dark"?"dark":window.matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light";document.documentElement.dataset.theme=r;document.querySelectorAll("[data-favicon-theme]").forEach(function(l){l.media=l.dataset.faviconTheme===r?"":"not all"})}catch(e){}})()`
+export const themeScript = `(function(){try{var t=localStorage.getItem("${STORAGE_KEY}");var r=t==="light"?"light":t==="dark"?"dark":window.matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light";document.documentElement.dataset.theme=r;document.documentElement.style.colorScheme=r;document.querySelectorAll("[data-favicon-theme]").forEach(function(l){l.media=l.dataset.faviconTheme===r?"":"not all"})}catch(e){}})()`
 
 /**
  * CSP `script-src` source expression for {@link themeScript} — lets the
@@ -277,4 +290,4 @@ export const themeScript = `(function(){try{var t=localStorage.getItem("${STORAG
  * sha256(themeScript) and fails if this constant goes stale after a script
  * edit.
  */
-export const themeScriptCspHash = "'sha256-Ap7M0nE22mu+9jah54cqkMHrYAa1HnD4k2I486YGnqo='"
+export const themeScriptCspHash = "'sha256-vTmFs4mipg0+eZlcNjmmhe4O/naCfnF0kTpVpixVa34='"

@@ -1,4 +1,4 @@
-import { h } from '@pyreon/core'
+import { h, mergeProps, splitProps } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 import { isServer, signal } from '@pyreon/reactivity'
 
@@ -89,44 +89,44 @@ function moveFocusToTarget(href: string): void {
  * ```
  */
 export function SkipLink(props: SkipLinkProps): VNodeChild {
-  const {
-    href = '#main',
-    children = 'Skip to content',
-    style: userStyle,
-    onFocus,
-    onBlur,
-    onClick,
-    ...rest
-  } = props as SkipLinkProps & {
-    style?: Record<string, string>
-    onFocus?: (e: FocusEvent) => void
-    onBlur?: (e: FocusEvent) => void
-    onClick?: (e: MouseEvent) => void
-  }
+  // splitProps, not a destructure: signal-driven props arrive as getters and a
+  // destructure read each once, so a reactive `href` (or any forwarded
+  // attribute) froze. `href` is an accessor, read again by the click handler.
+  const [own, rest] = splitProps(
+    props as SkipLinkProps & {
+      style?: Record<string, string>
+      onFocus?: (e: FocusEvent) => void
+      onBlur?: (e: FocusEvent) => void
+      onClick?: (e: MouseEvent) => void
+    },
+    ['href', 'children', 'style', 'onFocus', 'onBlur', 'onClick'],
+  )
 
   const focused = signal(false)
-  const override = userStyle && typeof userStyle === 'object' ? userStyle : undefined
+  const href = () => own.href ?? '#main'
 
   return h(
     'a',
-    {
-      ...rest,
+    mergeProps(rest as Record<string, unknown>, {
       href,
       // Reactive: clipped until focused, revealed on focus. Caller style wins.
-      style: () => ({ ...(focused() ? REVEALED : CLIPPED), ...override }),
+      style: () => {
+        const override = own.style && typeof own.style === 'object' ? own.style : undefined
+        return { ...(focused() ? REVEALED : CLIPPED), ...override }
+      },
       onFocus: (e: FocusEvent) => {
         focused.set(true)
-        onFocus?.(e)
+        own.onFocus?.(e)
       },
       onBlur: (e: FocusEvent) => {
         focused.set(false)
-        onBlur?.(e)
+        own.onBlur?.(e)
       },
       onClick: (e: MouseEvent) => {
-        moveFocusToTarget(href)
-        onClick?.(e)
+        moveFocusToTarget(href())
+        own.onClick?.(e)
       },
-    },
-    children,
+    }),
+    own.children ?? 'Skip to content',
   )
 }

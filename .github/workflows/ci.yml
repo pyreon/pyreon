@@ -417,10 +417,14 @@ jobs:
           # positives are fine; false negatives would skip a real bug.
           TRIGGERS=$(cat <<'EOF'
           packages/zero/zero/
-          packages/zero/zero-cli/
+          packages/zero/cli/
           packages/zero/create-zero/
+          packages/zero/zero-content/
           packages/zero/meta/
           packages/core/
+          packages/tools/vite-plugin/
+          packages/fundamentals/
+          packages/ui-system/
           scripts/scaffold-smoke.ts
           scripts/affected.ts
           .github/workflows/ci.yml

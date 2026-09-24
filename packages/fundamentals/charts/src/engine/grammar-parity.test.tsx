@@ -1,6 +1,6 @@
 // The grammar and the array form must offer the same marks.
 //
-// They are two spellings of one spec — `<Plot><Bar y/></Plot>` resolves to
+// They are two spellings of one spec — `<Chart><Bar y/></Chart>` resolves to
 // the `marks={[bars(...)]}` props `<PlotChart>` takes — so a mark reachable
 // through one and not the other is a hole.
 //
@@ -14,7 +14,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
-import * as plot from '../plot'
+import * as plot from '../engine'
 import { resolveGrammar } from './grammar'
 
 interface Row { m: string; a: number; b: number; lo: number; hi: number }

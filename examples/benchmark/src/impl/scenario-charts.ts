@@ -1,5 +1,5 @@
 /**
- * Scenario: **charts — `@pyreon/charts/plot` vs ECharts 6**.
+ * Scenario: **charts — `@pyreon/charts` vs ECharts 6**.
  *
  * The first cross-library TIMING measurement for the charts engine (the
  * package's own `plot-engine.bench.ts` compares spec → SVG string in bun; this
@@ -49,7 +49,8 @@
  * switches above, each of which REMOVES work from ECharts, not from Pyreon.
  */
 import { h as ph } from '@pyreon/core'
-import { line, OptionChart, PlotChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
+import { line, PlotChart } from '@pyreon/charts/engine'
 import { signal } from '@pyreon/reactivity'
 import { mount as pyreonMount } from '@pyreon/runtime-dom'
 import { LineChart } from 'echarts/charts'

@@ -215,6 +215,8 @@ Export `doThing(cwd): StructuredResult` from the script (no `process.cwd()` insi
 
   Fix: the script's git helper (`runGit` in `scripts/install-git-hooks.ts`) clears every `GIT_*` env var and also uses `-C`; test fixtures pass a cleaned env to their own git calls (`cleanGitEnv` in `install-git-hooks.test.ts`). Keep one smoke test that spawns the binary and asserts only the exit status.
 
+  Reason 2 is now closed for every test, not per call site: the root `vitest.setup.ts` scrubs every `GIT_*` in each worker (`scrubGitEnv` in `@pyreon/vitest-config`), and `.githooks/pre-push` unsets the repository-locating variables before running gates. Per-test guards were not enough: a CLI test written without one (#3456) re-initialised this repo with `git -C <tmp> init` and wrote `T <t@t.local>` into `.git/config`, so every session committed under that identity for two weeks. Locked by `vitest-config/src/tests/git-env.test.ts`, which spawns vitest with a hook-like `GIT_DIR`.
+
 ---
 
 ### `CODE_SIGNING_ALLOWED=NO` breaks Keychain on simulator apps

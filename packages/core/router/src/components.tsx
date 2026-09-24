@@ -4,10 +4,12 @@ import {
   cx,
   ErrorBoundary,
   h,
+  mergeProps,
   nativeCompat,
   onMount,
   onUnmount,
   provide,
+  splitProps,
   useContext,
 } from '@pyreon/core'
 import { computed, isClient, signal } from '@pyreon/reactivity'
@@ -499,58 +501,52 @@ const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
   // `class` is pulled out separately so it can be MERGED with the internal
   // active-class accessor — overriding the user's class silently dropped any
   // conditional class the consumer wanted (e.g. `class={() => cond ? 'on' : ''}`).
-  const {
-    to: _to,
-    replace: _replace,
-    activeClass: _ac,
-    exactActiveClass: _eac,
-    exact: _exact,
-    prefetch: _prefetch,
-    external: _external,
-    target: _target,
-    rel: _rel,
-    class: userClass,
-    children,
-    onClick: userClick,
-    onMouseEnter: userMouseEnter,
-    onFocus: userFocus,
-    ...rest
-  } = props as RouterLinkProps & {
-    class?: ClassValue | (() => ClassValue)
-    onClick?: (e: MouseEvent) => void
-    onMouseEnter?: (e: MouseEvent) => void
-    onFocus?: (e: FocusEvent) => void
-  }
+  // splitProps, not a destructure: a destructure (`const { class, ...rest } =
+  // props`) READS every getter-backed prop once at setup, so a signal-driven
+  // `aria-label` / `title` / `class` on a RouterLink froze at its first value.
+  // splitProps copies DESCRIPTORS, and mergeProps below keeps them, so each
+  // forwarded attribute stays a live binding on the <a>. Every own key is read
+  // lazily through `own.*` for the same reason.
+  const [own, rest] = splitProps(
+    props as RouterLinkProps & {
+      class?: ClassValue | (() => ClassValue)
+      onClick?: (e: MouseEvent) => void
+      onMouseEnter?: (e: MouseEvent) => void
+      onFocus?: (e: FocusEvent) => void
+    },
+    [
+      'to',
+      'replace',
+      'activeClass',
+      'exactActiveClass',
+      'exact',
+      'prefetch',
+      'external',
+      'target',
+      'rel',
+      'class',
+      'children',
+      'onClick',
+      'onMouseEnter',
+      'onFocus',
+    ],
+  )
 
-  // Compose the user-provided `class` (string / array / object / function) with
-  // the internal `activeClass` accessor. Returning a function lets `applyProp`
-  // wrap it in `renderEffect` once — so navigation re-evaluates BOTH sides on
-  // every route change without rebuilding the link.
-  // Compose the user's event handlers with the internal ones rather than
-  // letting `onClick: handleClick` (spread LAST) silently overwrite them.
-  // `class` was fixed for exactly this reason and the events were left behind
-  // — folklore, not a fix, so the class stayed open: `<RouterLink onClick>`
-  // dropped the handler on every consumer. The docs search overlay is the
-  // shipped instance — it closes itself in `onClick`, so a result click
-  // navigated and left the modal covering the destination page.
-  //
-  // The USER runs first, so `e.preventDefault()` in their handler suppresses
-  // navigation — `handleClick` already bails on `defaultPrevented`, which is
-  // what makes "user first" the composable order rather than a race.
   const composedClick = (e: MouseEvent): void => {
-    userClick?.(e)
+    own.onClick?.(e)
     handleClick(e)
   }
   const composedMouseEnter = (e: MouseEvent): void => {
-    userMouseEnter?.(e)
+    own.onMouseEnter?.(e)
     handleMouseEnter()
   }
   const composedFocus = (e: FocusEvent): void => {
-    userFocus?.(e)
+    own.onFocus?.(e)
     handleFocus()
   }
 
   const mergedClass = (): string => {
+    const userClass = own.class
     const userResolved =
       typeof userClass === 'function' ? (userClass as () => ClassValue)() : userClass
     return cx([userResolved, activeClass()] as ClassValue)
@@ -558,8 +554,7 @@ const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
 
   return h(
     'a',
-    {
-      ...rest,
+    mergeProps(rest as Record<string, unknown>, {
       ref,
       href,
       target: linkTarget,
@@ -569,8 +564,8 @@ const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
       onClick: composedClick,
       onMouseEnter: composedMouseEnter,
       onFocus: composedFocus,
-    },
-    children ?? props.to,
+    }),
+    own.children ?? props.to,
   )
 }
 
@@ -589,6 +584,10 @@ export const RouterLink = /* @__PURE__ */ nativeCompat(RouterLinkImpl) as {
 const MAX_PREFETCH_CACHE = 50
 
 function prefetchRoute(router: RouterInstance, path: string): void {
+  // Prefetch only warms loader data. With loaders compiled out (see the
+  // flag note above createRouter) there is nothing to warm, and this return
+  // lets the bundler drop the prefetch cache and prefetchLoaderData too.
+  if ((globalThis as { __PYREON_ROUTER_LOADERS__?: boolean }).__PYREON_ROUTER_LOADERS__ === false) return
   let set = _prefetched.get(router)
   if (!set) {
     set = new Set()
@@ -666,8 +665,11 @@ function renderWithLoader(
   // predicate for both branches so they can't drift again (the
   // errorComponent branch is the one EVERY zero route takes — fs-router
   // attaches a default errorComponent — and it was missed first).
+  // With loaders compiled out this folds to false, which drops the whole
+  // loader render path (renderLoaderContent, PendingLoader, the provider).
   const carriesLoaderData =
-    Boolean(record.loader) || Boolean(record.serverLoader) || record.hasServerLoader === true
+    (globalThis as { __PYREON_ROUTER_LOADERS__?: boolean }).__PYREON_ROUTER_LOADERS__ !== false &&
+    (Boolean(record.loader) || Boolean(record.serverLoader) || record.hasServerLoader === true)
 
   // If route has an error component, wrap rendering in error boundary
   if (record.errorComponent) {

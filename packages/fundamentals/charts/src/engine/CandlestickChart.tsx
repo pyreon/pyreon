@@ -7,7 +7,7 @@ import type { CanvasHostProps } from './canvas-host'
 import { hitCandle, ohlcExtent } from './candlestick'
 import type { CandleOptions, Ohlc } from './candlestick'
 import { candlestickFrame, renderCandlestickChart } from './candlestick-chart'
-import { plain } from './format'
+import { groupThousands } from './format'
 import type { Formatter } from './format'
 import { navigatorDrag, navigatorHit } from './navigator'
 import type { OptionZoom } from './option-zoom'
@@ -168,7 +168,7 @@ export function CandlestickChart<T>(props: CandlestickChartProps<T>): VNode {
       const idx = hitAt(g, px, py)
       const c = g.candles[idx]
       if (c === undefined) return null
-      const fmt = props.format ?? plain
+      const fmt = props.format ?? groupThousands
       const label = g.categories[idx] ?? `#${idx + 1}`
       return [label, `O ${fmt(c.open)}`, `H ${fmt(c.high)}`, `L ${fmt(c.low)}`, `C ${fmt(c.close)}`]
     },

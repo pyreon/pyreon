@@ -1,4 +1,4 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const DocsWrap = el
   .attrs({
@@ -6,7 +6,7 @@ export const DocsWrap = el
     contentDirection: 'rows',
     contentAlignX: 'block',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     flex: '1',
     overflowY: 'auto',
     padding: '36px 32px',

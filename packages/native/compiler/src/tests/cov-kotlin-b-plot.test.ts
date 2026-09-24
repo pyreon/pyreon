@@ -19,7 +19,7 @@ const mk = () => (d: Row) => d.v
 const plot = (imports: string, jsx: string, extra = '') =>
   `import { signal } from '@pyreon/reactivity'
 import { Stack } from '@pyreon/primitives'
-import { ${imports} } from '@pyreon/charts/plot'
+import { ${imports} } from '@pyreon/charts'
 ${ROWS}${extra}export function C() { const w = signal(1); return <Stack>${jsx}</Stack> }`
 const P = (marks: string, extra = '') =>
   `<PlotChart data={ROWS} x={(d) => d.m} marks={${marks}} ${extra} height={200} />`
@@ -139,7 +139,7 @@ describe('<PlotChart> mark declines', () => {
 describe('<RadarChart> on Kotlin', () => {
   const radar = (jsx: string) => `import { signal } from '@pyreon/reactivity'
 import { Stack } from '@pyreon/primitives'
-import { RadarChart } from '@pyreon/charts/plot'
+import { RadarChart } from '@pyreon/charts'
 interface S { name: string; vals: number[]; tint: string }
 const SS: S[] = [{ name: 'a', vals: [1, 2, 3], tint: '#f00' }]
 const AX: string[] = ['x', 'y', 'z']
@@ -191,7 +191,7 @@ export function C() { const w = signal(300); return <Stack>${jsx}</Stack> }`
 describe('the accessor hosts share the same shadow decline', () => {
   it('<PieChart value> naming its own parameter twice is refused rather than mis-substituted', () => {
     const r = kotlin(`import { Stack } from '@pyreon/primitives'
-import { PieChart } from '@pyreon/charts/plot'
+import { PieChart } from '@pyreon/charts/engine'
 interface Row { m: string; vs: number[] }
 const ROWS: Row[] = [{ m: 'Jan', vs: [1, 2] }]
 export function C() { return <Stack><PieChart data={ROWS} value={(d) => d.vs.map((d) => d).length} label={(d) => d.m} /></Stack> }`)
@@ -203,7 +203,7 @@ export function C() { return <Stack><PieChart data={ROWS} value={(d) => d.vs.map
 describe('the remaining frame-host declines and defaults on Kotlin', () => {
   const host = (imports: string, jsx: string) => `import { signal } from '@pyreon/reactivity'
 import { Stack } from '@pyreon/primitives'
-import { ${imports} } from '@pyreon/charts/plot'
+import { ${imports} } from '@pyreon/charts'
 interface Row { m: string; v: number; lo: number; hi: number; o: number; h: number; l: number; c: number; vals: number[] }
 const ROWS: Row[] = [{ m: 'Jan', v: 10, lo: 5, hi: 15, o: 1, h: 2, l: 0, c: 1, vals: [1, 2, 3] }]
 const mk = () => (d: Row) => d.v
@@ -249,8 +249,8 @@ export function C() { return <Stack>${jsx}</Stack> }`
 
   it('a table-driven host (the CHART_HOSTS family) lowers through the generic path', () => {
     const r = kotlin(`import { Stack } from '@pyreon/primitives'
-import { SankeyChart } from '@pyreon/charts/plot'
-import type { SankeyNode, SankeyLink } from '@pyreon/charts/plot'
+import { SankeyChart } from '@pyreon/charts'
+import type { SankeyNode, SankeyLink } from '@pyreon/charts'
 const N: SankeyNode[] = []
 const L: SankeyLink[] = []
 export function C() { return <Stack><SankeyChart nodes={N} links={L} width={300} height={200} /></Stack> }`)
@@ -263,7 +263,7 @@ export function C() { return <Stack><SankeyChart nodes={N} links={L} width={300}
     // subtracted before it reaches the engine — an un-shifted hit selects the
     // wrong spoke, silently.
     const r = kotlin(`import { Stack } from '@pyreon/primitives'
-import { RadarChart } from '@pyreon/charts/plot'
+import { RadarChart } from '@pyreon/charts'
 interface S { name: string; vals: number[] }
 const SS: S[] = [{ name: 'a', vals: [1, 2, 3] }]
 const AX: string[] = ['x', 'y', 'z']
@@ -276,7 +276,7 @@ export function C() { return <Stack><RadarChart data={SS} axes={AX} values={(d) 
 describe('mark grammar — the last shapes', () => {
   const src = (jsx: string) => `import { signal } from '@pyreon/reactivity'
 import { Stack } from '@pyreon/primitives'
-import { PlotChart, bars } from '@pyreon/charts/plot'
+import { PlotChart, bars } from '@pyreon/charts/engine'
 interface Row { m: string; v: number }
 const ROWS: Row[] = [{ m: 'Jan', v: 1 }]
 const OPTS = { label: 'Base' }
@@ -310,7 +310,8 @@ export function C() { return (<Stack>${jsx}</Stack>) }`
 describe('chrome, options and accessor edge shapes', () => {
   const src = (jsx: string) => `import { signal } from '@pyreon/reactivity'
 import { Stack, Text, Scroll, For } from '@pyreon/primitives'
-import { PlotChart, bars, bubble, PieChart } from '@pyreon/charts/plot'
+import { PieChart } from '@pyreon/charts/engine'
+import { PlotChart, bars, bubble } from '@pyreon/charts/engine'
 interface Row { m: string; v: number; r: number }
 const ROWS: Row[] = [{ m: 'Jan', v: 1, r: 2 }]
 export function C() { return (<Stack>${jsx}</Stack>) }`
