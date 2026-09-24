@@ -41,6 +41,7 @@
  * weight, which is the same as reporting none.
  */
 import type { IrDocument, IrField, IrOperation, IrType } from './ir'
+import { byCodeUnit } from './order'
 
 /** One operation's observable contract. */
 export interface SurfaceOperation {
@@ -97,7 +98,7 @@ export function renderType(type: IrType | undefined, depth = 0): string {
       return [...type.options.map((o) => renderType(o, depth + 1))].sort().join(' | ')
     case 'object': {
       const fields = [...type.fields]
-        .sort((a, b) => a.name.localeCompare(b.name))
+        .sort((a, b) => byCodeUnit(a.name, b.name))
         .map((f) => `${f.name}${f.required ? '' : '?'}: ${renderType(f.type, depth + 1)}`)
       return `{ ${fields.join('; ')} }`
     }
@@ -111,13 +112,13 @@ function fieldsOf(type: IrType | undefined): readonly IrField[] {
 /** Extract the comparable surface from a parsed document. */
 export function extractSurface(doc: IrDocument): ApiSurface {
   const operations: Record<string, SurfaceOperation> = {}
-  for (const op of [...doc.operations].sort((a, b) => a.id.localeCompare(b.id))) {
+  for (const op of [...doc.operations].sort((a, b) => byCodeUnit(a.id, b.id))) {
     operations[op.id] = surfaceOf(op)
   }
   const models: Record<string, Record<string, string>> = {}
-  for (const m of [...doc.models].sort((a, b) => a.name.localeCompare(b.name))) {
+  for (const m of [...doc.models].sort((a, b) => byCodeUnit(a.name, b.name))) {
     const fields: Record<string, string> = {}
-    for (const f of [...fieldsOf(m.type)].sort((a, b) => a.name.localeCompare(b.name))) {
+    for (const f of [...fieldsOf(m.type)].sort((a, b) => byCodeUnit(a.name, b.name))) {
       fields[f.name] = `${renderType(f.type)}${f.required ? '' : ' (optional)'}`
     }
     models[m.name] = fields
@@ -128,7 +129,7 @@ export function extractSurface(doc: IrDocument): ApiSurface {
 function surfaceOf(op: IrOperation): SurfaceOperation {
   const params: Record<string, string> = {}
   const requiredParams: string[] = []
-  for (const p of [...op.pathParams, ...op.queryParams].sort((a, b) => a.name.localeCompare(b.name))) {
+  for (const p of [...op.pathParams, ...op.queryParams].sort((a, b) => byCodeUnit(a.name, b.name))) {
     params[p.name] = renderType(p.type)
     // A PATH param is required by construction — a URL cannot omit a segment —
     // whatever the spec marked it.
@@ -264,6 +265,6 @@ export function diffSurface(before: ApiSurface, after: ApiSurface): SurfaceChang
 
   // Breaking first, then by subject — the order someone reads it in.
   return changes.sort((a, b) =>
-    a.severity === b.severity ? a.subject.localeCompare(b.subject) : a.severity === 'breaking' ? -1 : 1,
+    a.severity === b.severity ? byCodeUnit(a.subject, b.subject) : a.severity === 'breaking' ? -1 : 1,
   )
 }

@@ -20,6 +20,7 @@
 import { reachableModels, topoSortModels } from '../core/graph'
 import type { IrDocument, IrOperation, IrType } from '../core/ir'
 import { propKey, typeIdent } from '../core/naming'
+import { byCodeUnit } from '../core/order'
 import {
   CLIENT_PACKAGE,
   runtimeEndpoint,
@@ -168,12 +169,12 @@ export function endpointSpec(op: IrOperation): string {
  */
 export function byTag(doc: IrDocument): Map<string, IrOperation[]> {
   const out = new Map<string, IrOperation[]>()
-  for (const op of [...doc.operations].sort((a, b) => a.id.localeCompare(b.id))) {
+  for (const op of [...doc.operations].sort((a, b) => byCodeUnit(a.id, b.id))) {
     const list = out.get(op.tag)
     if (list) list.push(op)
     else out.set(op.tag, [op])
   }
-  return new Map([...out.entries()].sort(([a], [b]) => a.localeCompare(b)))
+  return new Map([...out.entries()].sort(([a], [b]) => byCodeUnit(a, b)))
 }
 
 /** The argument type for one operation's call site. */
