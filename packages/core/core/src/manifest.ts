@@ -662,6 +662,80 @@ return wrapCompatComponent(type)(props)`,
       seeAlso: ['nativeCompat', 'isNativeCompat'],
     },
     {
+      name: 'Defer',
+      kind: 'component',
+      signature:
+        "<Defer chunk={() => import('./X')} when={() => boolean} | on='visible'|'idle' fallback? rootMargin?>{(Component) => VNodeChild}</Defer>",
+      summary:
+        "Client-side lazy-load a chunk on ONE of three triggers (exactly one is provided): `when={accessor}` loads once the accessor becomes truthy (the modal-open pattern); `on=\"visible\"` loads when the wrapper scrolls into the viewport (`IntersectionObserver`, `rootMargin` default `'200px'` so it's typically ready before the user scrolls to it); `on=\"idle\"` loads during browser idle time (`requestIdleCallback`, falling back to `setTimeout(1)`). The chunk fetch fires EXACTLY ONCE per `Defer` instance — a `when` accessor oscillating true/false/true does not re-fetch. Two authoring forms: the EXPLICIT render-prop form shown above (works everywhere), and an INLINE JSX form (`<Defer when={x}><Modal/></Defer>`) that `@pyreon/compiler`'s `transformDeferInline` rewrites into the explicit form at BUILD time — the inline form requires `@pyreon/vite-plugin`; without it, `Defer` throws a clear dev-mode error naming the fix. `fallback` renders while the chunk loads (default `null`); a chunk-load failure is caught, dev-warned, and re-thrown into the nearest `ErrorBoundary` on render.",
+      example: `// Signal-driven (modal) — explicit form:
+<Defer chunk={() => import('./ConfirmDeleteModal')} when={open} fallback={<Spinner/>}>
+  {Modal => <Modal onClose={() => setOpen(false)} />}
+</Defer>
+
+// Viewport-driven (below-fold), with @pyreon/vite-plugin — inline form:
+<Defer on="visible">
+  <Comments postId={id} />
+</Defer>`,
+      mistakes: [
+        'Using the inline JSX form WITHOUT `@pyreon/vite-plugin` enabled — the compiler pass that rewrites `<Defer on="visible"><Comments/></Defer>` into the chunk-prop form never runs, so `Defer` throws a clear "`<Defer>` has no `chunk` prop" error the moment the trigger fires; use the explicit render-prop form instead in a non-Vite build',
+        'Expecting the chunk to re-fetch when a `when` accessor flips false then true again — it loads exactly once per mounted `Defer`; unmount and remount the `<Defer>` itself if you need a fresh fetch',
+        'Forgetting the module needs a `default` export — `Defer` accepts either `{ default: Component }` or a bare `ComponentFn`, matching `lazy()`\'s contract; a module with neither dev-warns and renders nothing',
+      ],
+      seeAlso: ['lazy', 'Suspense', 'ErrorBoundary'],
+    },
+    {
+      name: 'registerErrorHandler / reportError',
+      kind: 'function',
+      signature:
+        'registerErrorHandler(handler: (ctx: ErrorContext) => void) => () => void · reportError(ctx: ErrorContext) => void',
+      summary:
+        "`registerErrorHandler` is the telemetry hook for Sentry/Datadog/custom error reporting — called whenever a component throws in ANY lifecycle phase (setup/render/mount/unmount) OR an `effect()` in `@pyreon/reactivity` throws (bridged via a `globalThis.__pyreon_report_error__` sink, since reactivity can't depend on core). Returns an unregister function; multiple handlers can be registered simultaneously (all fire). The `ErrorContext` passed to your handler carries `component`/`phase`/`error`/`timestamp`/`props`, plus (dev-only, tree-shaken in production) `reactiveTrace` — the last ~50 signal writes leading up to the error, answering \"what reactive state changed in the run-up?\" for free. `reportError` is the lower-level function the RUNTIME calls to dispatch a caught error through the registered handlers — call it directly only from custom framework-adjacent code (a hand-rolled error boundary, a compat-layer bridge) that catches an error the normal mount pipeline won't see.",
+      example: `import { registerErrorHandler } from '@pyreon/core'
+import * as Sentry from '@sentry/browser'
+
+registerErrorHandler((ctx) => {
+  Sentry.captureException(ctx.error, {
+    extra: { component: ctx.component, phase: ctx.phase, reactiveTrace: ctx.reactiveTrace },
+  })
+})`,
+      mistakes: [
+        'Registering more than one handler and expecting only the LAST one to run — every registered handler fires for every error; deduplicate reporting inside your own handler if you register from multiple places',
+        'Expecting `ctx.reactiveTrace` to be populated in production — it is dev-only by design (the recorder tree-shakes out of prod bundles for zero cost); do not branch production telemetry logic on its presence',
+        'Calling `reportError` from ordinary application code instead of just throwing — a thrown error inside a component/effect ALREADY reaches every registered handler via the normal mount/effect error paths; `reportError` is for framework-adjacent code catching an error OUTSIDE those paths',
+      ],
+      seeAlso: ['ErrorBoundary', 'onErrorCaptured'],
+    },
+    {
+      name: 'isClient / isServer',
+      kind: 'constant',
+      signature: "isClient: boolean · isServer: boolean",
+      summary:
+        "Re-exported from `@pyreon/reactivity` for convenience — `isServer = typeof document === 'undefined'`, `isClient` its inverse. Plain runtime constants evaluated ONCE at module load (not an export-condition fold), so they work correctly in any bundler regardless of whether it sets a `browser` condition. Use for small environment guards (module-level singletons, lazy globals, render output that differs server vs client); for DOM access INSIDE a component prefer `onMount`/`effect` (which never run during SSR at all) over branching on `isClient` yourself, and for large server-only code prefer a `/server` subpath export over a runtime branch.",
+      example: `import { isClient } from '@pyreon/core'
+
+if (isClient) {
+  // module-level singleton setup safe here — never runs during SSR
+}`,
+      mistakes: [
+        'Hand-rolling `const isBrowser = typeof window !== "undefined"` instead of importing `isClient`/`isServer` — `typeof document` (what this uses) is the more reliable discriminator than `typeof window`, and a hand-rolled local const is NOT recognized by the `no-window-in-ssr` lint rule\'s SSR-guard detection the way `isClient`/`isServer` imported from `@pyreon/core`/`@pyreon/reactivity` are',
+        'Using `isClient` to gate DOM access inside a component body when `onMount`/`effect` would do — those never run during SSR at all, which is simpler and doesn\'t need the guard',
+      ],
+      seeAlso: ['onMount'],
+    },
+    {
+      name: 'defineComponent',
+      kind: 'function',
+      signature: '<P>(fn: ComponentFn<P>) => ComponentFn<P>',
+      summary:
+        'An identity wrapper — returns `fn` unchanged. Purely a TYPE-LEVEL / tooling annotation: marks a function as a Pyreon component for IDE tooling and potential future compiler optimizations. Has ZERO runtime effect today (no wrapping, no registration, no different behavior from an unwrapped component function).',
+      example: `const Button = defineComponent((props: { label: string }) => <button>{props.label}</button>)
+// Identical behavior to: const Button = (props: { label: string }) => <button>{props.label}</button>`,
+      mistakes: [
+        'Expecting `defineComponent` to do anything at runtime (memoization, registration, special reactivity handling) — it is a no-op identity function; components work identically with or without it',
+      ],
+    },
+    {
       name: 'ExtractProps',
       kind: 'type',
       signature:

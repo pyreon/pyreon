@@ -1012,6 +1012,23 @@ registerSingleton(__pkgName, __pkgVersion, import.meta.url)
       seeAlso: ['withSilent'],
     },
     {
+      name: 'defineCrossModuleState',
+      kind: 'function',
+      signature: '<T extends object>(key: string, init: () => T) => T',
+      summary:
+        'A globalThis-keyed singleton, for state that must be shared even across a genuine dual-instance situation (as opposed to `registerSingleton`, which DETECTS and warns about dual instances). `key` is looked up via `Symbol.for(key)` (a GLOBAL symbol registry entry — the same string always resolves to the same symbol, even across separately-loaded module instances). The FIRST call with a given key runs `init()` and stores the result on `globalThis`; every subsequent call with the same key — from ANY module instance — returns the IDENTICAL object reference. Re-exported from `@pyreon/core` for convenience.',
+      example: `import { defineCrossModuleState } from '@pyreon/reactivity'
+
+const registry = defineCrossModuleState('my-lib:widget-registry', () => new Map<string, unknown>())
+// Every module instance of "my-lib" that calls this with the SAME key shares the SAME Map.`,
+      mistakes: [
+        'Returning a primitive from `init()` — the constraint is `T extends object`; primitives cannot be mutated in place, so cross-instance updates would not propagate. Return a mutable object/Map/Set',
+        'Using a non-globally-unique `key` — `Symbol.for` is a GLOBAL registry, so a generic key like `\'state\'` can collide with an unrelated package doing the same thing; namespace your key (`\'my-lib:feature-name\'`)',
+        'Reaching for this as a substitute for `registerSingleton` — that function DETECTS and warns/throws on accidental dual-instancing (the bug you usually want surfaced); this one SILENTLY shares state across instances, which is only correct when dual-instancing is expected and harmless for this particular piece of state',
+      ],
+      seeAlso: ['registerSingleton'],
+    },
+    {
       name: 'getContextOwner',
       kind: 'function',
       signature: '() => EffectScope | null',
