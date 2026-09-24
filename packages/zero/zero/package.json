@@ -182,6 +182,11 @@
       "bun": "./src/logger.ts",
       "import": "./lib/logger.js",
       "types": "./lib/types/logger.d.ts"
+    },
+    "./session": {
+      "bun": "./src/session.ts",
+      "import": "./lib/session.js",
+      "types": "./lib/types/session.d.ts"
     }
   },
   "files": [

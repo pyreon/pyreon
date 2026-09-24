@@ -128,3 +128,8 @@ export {
   lanAddresses,
   needsHostsFileEntry,
 } from "./https";
+
+// ─── Sessions (signed cookies) ──────────────────────────────────────────────
+
+export type { RequireUserOptions, Session, SessionOptions } from './session'
+export { getSession, requireUser, sessionMiddleware, useSession } from './session'
