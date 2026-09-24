@@ -1490,6 +1490,13 @@ jobs:
       - name: Check Distribution
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: bun run check-distribution
+      # Published declarations are consumable strictly: every package a `.d.ts`
+      # imports is declared, and every `types` entry compiles with
+      # skipLibCheck: false. Both failures are SILENT for a consumer on the
+      # default skipLibCheck: true — the type just becomes `any`.
+      - name: Check Declarations
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run check-declarations
       # Spawn every published bin under REAL node and assert it does
       # something — the published-dead-bin class (pyreon-lint's no-op bin).
       - name: Check Bin Liveness

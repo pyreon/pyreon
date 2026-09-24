@@ -48,7 +48,8 @@
     "@pyreon/query": "workspace:^",
     "@pyreon/store": "workspace:^",
     "@pyreon/table": "workspace:^",
-    "@pyreon/validation": "workspace:^"
+    "@pyreon/validation": "workspace:^",
+    "@tanstack/table-core": "^9.1.2"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.11.6",

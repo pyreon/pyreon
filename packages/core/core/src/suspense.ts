@@ -4,7 +4,7 @@ import type { Props, VNode, VNodeChild } from './types'
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
 /** Internal marker attached to lazy()-wrapped components */
-export type LazyComponent<P extends Props = Props> = ((props: P) => VNodeChild) & {
+export type LazyComponent<P extends object = Props> = ((props: P) => VNodeChild) & {
   __loading: () => boolean
 }
 
