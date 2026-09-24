@@ -20,7 +20,7 @@ import type {
   IrType,
   StringFormat,
 } from '../core/ir'
-import { ident, operationIdFrom, typeIdent, uniquifier } from '../core/naming'
+import { assignNames, ident, operationIdFrom, tagFile, typeIdent } from '../core/naming'
 import { parseSpecText } from './yaml'
 
 type Json = Record<string, unknown>
@@ -73,9 +73,10 @@ function convert(spec: Json): IrDocument {
   // Models first: operations reference them by name, and naming must be
   // assigned in a stable order so regeneration is byte-identical.
   const schemas = obj(obj(spec.components)?.schemas) ?? {}
-  const uniq = uniquifier()
-  for (const key of Object.keys(schemas).sort()) {
-    const name = uniq(typeIdent(key))
+  const keys = Object.keys(schemas).sort()
+  const assigned = assignNames(keys, typeIdent)
+  for (const [i, key] of keys.entries()) {
+    const name = assigned[i] as string
     ctx.modelNames.set(key, name)
     ctx.modelKeys.set(name, key)
     ctx.taken.add(name)
@@ -289,19 +290,42 @@ function claimName(base: string, ctx: Ctx): string {
 function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
   const paths = obj(spec.paths) ?? {}
   const ops: IrOperation[] = []
-  const uniq = uniquifier()
+  // Raw operation ids, collected FIRST so identifiers are assigned over the
+  // whole document at once -- see `assignNames` for why a running counter
+  // produced duplicate ids.
+  const rawIds: string[] = []
+  const tags = new Set<string>()
+  for (const rawPath of Object.keys(paths).sort()) {
+    const item = obj(paths[rawPath])
+    if (!item) continue
+    for (const method of METHODS) {
+      const op = obj(item[method.toLowerCase()])
+      if (!op) continue
+      rawIds.push(str(op.operationId) ?? operationIdFrom(method, rawPath))
+      tags.add(str(arr(op.tags)[0]) ?? 'default')
+    }
+  }
+  const ids = assignNames(rawIds, ident)
+  const tagNames = tagFileNames([...tags])
+  let next = 0
+
   for (const rawPath of Object.keys(paths).sort()) {
     const item = obj(paths[rawPath])
     if (!item) continue
     // Path-level parameters apply to every operation under the path.
     const shared = arr(item.parameters)
+    // One identifier per `{placeholder}`, unique WITHIN the path: `{a-b}` and
+    // `{a_b}` both normalize to `aB`, and two `:aB` segments bind one value
+    // to both.
+    const placeholders = [...rawPath.matchAll(/\{([^}]+)\}/g)].map((m) => m[1] as string)
+    const placeholderIds = new Map<string, string>()
+    assignNames(placeholders, ident).forEach((id, i) => placeholderIds.set(placeholders[i] as string, id))
     for (const method of METHODS) {
       const op = obj(item[method.toLowerCase()])
       if (!op) continue
       const at = `#/paths/${rawPath}/${method.toLowerCase()}`
-      let id = str(op.operationId)
-      if (!id) {
-        id = operationIdFrom(method, rawPath)
+      const id = ids[next++] as string
+      if (!str(op.operationId)) {
         ctx.notes.push({
           code: 'missing-operation-id',
           at,
@@ -320,12 +344,12 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
         if (!target) continue
         target.push({
           // A PATH parameter's name must match the `:placeholder` the path was
-          // rewritten to, so it takes the same `ident()` normalization -- they
+          // rewritten to, so it takes the same per-path identifier -- they
           // disagreed for any name that was not already an identifier, and the
           // raw form reached a TYPE position where a `}` breaks out of the
           // generated signature. A QUERY parameter's name is a WIRE name
           // (`?page=2`), so it stays verbatim and is quoted at emit instead.
-          name: po.in === 'path' ? ident(name) : name,
+          name: po.in === 'path' ? (placeholderIds.get(name) ?? ident(name)) : name,
           type: toType(obj(po.schema) ?? { type: 'string' }, `${at}/parameters/${name}`, ctx),
           // A path parameter is always required, whatever the spec claims.
           required: po.in === 'path' ? true : po.required === true,
@@ -333,10 +357,10 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
         })
       }
       ops.push({
-        id: uniq(ident(id)),
+        id,
         method,
-        path: toPyreonPath(rawPath),
-        tag: str(arr(op.tags)[0]) ?? 'default',
+        path: toPyreonPath(rawPath, placeholderIds),
+        tag: tagNames.get(str(arr(op.tags)[0]) ?? 'default') as string,
         summary: str(op.summary) ?? str(op.description),
         pathParams,
         queryParams,
@@ -348,9 +372,30 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
   return ops
 }
 
+/**
+ * Tags whose FILE names are unique.
+ *
+ * Every per-tag output is a file named by `tagFile(tag)`, which lowercases --
+ * so `Users` and `users` wrote `endpoints/users.ts` twice and one silently
+ * replaced the other (on a case-insensitive filesystem even two DIFFERENT
+ * spellings do). A tag keeps its spelling when its file name is free, and is
+ * suffixed deterministically when it is not.
+ */
+function tagFileNames(raw: readonly string[]): Map<string, string> {
+  const taken = new Set<string>()
+  const out = new Map<string, string>()
+  for (const tag of [...raw].sort()) {
+    let t = tag
+    for (let n = 2; taken.has(tagFile(t)); n++) t = `${tag} ${n}`
+    taken.add(tagFile(t))
+    out.set(tag, t)
+  }
+  return out
+}
+
 /** `/users/{id}` -> `/users/:id`, the shape `@pyreon/http` declares. */
-function toPyreonPath(path: string): string {
-  return path.replace(/\{([^}]+)\}/g, (_m, name: string) => `:${ident(name)}`)
+function toPyreonPath(path: string, ids: ReadonlyMap<string, string>): string {
+  return path.replace(/\{([^}]+)\}/g, (_m, name: string) => `:${ids.get(name) ?? ident(name)}`)
 }
 
 function bodyType(op: Json, at: string, ctx: Ctx): IrType | undefined {

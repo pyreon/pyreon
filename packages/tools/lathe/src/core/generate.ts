@@ -133,6 +133,8 @@ export function generate(specText: string, config: ResolvedConfig): GenerateResu
   // consuming app's own package.json is configured.
   files.push(emitPackageMarker(config.plugins))
 
+  assertUniquePaths(files)
+
   const surface = extractSurface(doc)
   // Emitted LAST and unconditionally: it is not a plugin's output but the
   // record of what this run promised, and a run that emitted only schemas
@@ -146,6 +148,27 @@ export function generate(specText: string, config: ResolvedConfig): GenerateResu
     contents: `${jsonLiteral(surface, 2)}\n`,
   })
   return { doc, files, reach, surface }
+}
+
+/**
+ * Two generated files with one path means one silently overwrites the other
+ * on disk -- a whole tag's endpoints gone, with no error anywhere. Compared
+ * case-INSENSITIVELY, because macOS and Windows filesystems are: `users.ts`
+ * and `Users.ts` are one file there. The input layer is responsible for names
+ * that never collide; this is the guard that makes a regression loud.
+ */
+function assertUniquePaths(files: readonly GeneratedFile[]): void {
+  const seen = new Map<string, string>()
+  for (const f of files) {
+    const key = f.path.toLowerCase()
+    const prev = seen.get(key)
+    if (prev !== undefined) {
+      throw new Error(
+        `[Pyreon] lathe: two generated files map to the same path (\`${prev}\` and \`${f.path}\`) — one would overwrite the other. This is a lathe naming bug; please report it with the spec's tag and operation names.`,
+      )
+    }
+    seen.set(key, f.path)
+  }
 }
 
 /**

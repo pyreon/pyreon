@@ -20,7 +20,7 @@
 import { reachableModels, topoSortModels } from '../core/graph'
 import { collectRefNames } from '../core/walk'
 import type { IrDocument, IrOperation, IrType } from '../core/ir'
-import { propKey, typeIdent } from '../core/naming'
+import { propKey, tagFile, typeIdent } from '../core/naming'
 import {
   CLIENT_PACKAGE,
   runtimeEndpoint,
@@ -547,7 +547,4 @@ function collectRefs(type: IrType | undefined, into: Set<string>): void {
   collectRefNames(type, into)
 }
 
-/** Filename-safe tag. */
-export function tagFile(tag: string): string {
-  return tag.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'default'
-}
+export { tagFile }
