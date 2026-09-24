@@ -13,7 +13,7 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
 
 const chart = (attrs: string): string => `import { signal } from '@pyreon/reactivity'
 import { Stack } from '@pyreon/primitives'
-import { PlotChart, bars } from '@pyreon/charts/plot'
+import { PlotChart, bars } from '@pyreon/charts/engine'
 type Row = { label: string; v: number }
 export function P() {
   const rows = signal<Row[]>([{ label: 'a', v: 1.5 }, { label: 'b', v: 2.5 }])

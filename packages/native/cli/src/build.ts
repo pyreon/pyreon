@@ -478,6 +478,12 @@ export function conditionalKotlinImports(emitted: string): string {
   if (emitted.includes('LocalConfiguration.current')) {
     imports.push('import androidx.compose.ui.platform.LocalConfiguration')
   }
+  // `<ColorModeProvider mode="dark">` provides a copy of the configuration
+  // with its night bit set — android.content.res.Configuration, which no
+  // star import covers.
+  if (emitted.includes('Configuration.UI_MODE_NIGHT')) {
+    imports.push('import android.content.res.Configuration')
+  }
   // Text typography (rocketstyle/styled/inline-style on a Text → fontSize/
   // fontWeight/fontStyle/textAlign args). Each type lives in its own sub-package
   // (NOT star-imported ui.*), keyed on the emitted symbol.

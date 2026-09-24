@@ -21,7 +21,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { chartsViteAlias, resolveTslibEs6 } from '../vite'
+import { chartsViteAlias, resolveTslibEs6 } from '../echarts/vite'
 
 describe('resolveTslibEs6 — not-found path', () => {
   it('returns null when no tslib.es6.js exists on any candidate path', () => {

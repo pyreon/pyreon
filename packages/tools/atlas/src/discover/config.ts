@@ -223,6 +223,15 @@ const CANDIDATES = ['atlas.config.tsx', 'atlas.config.ts', 'atlas.config.mjs', '
  */
 const SHARED_CANDIDATES = CONFIG_FILENAMES
 
+/**
+ * Every path a config could be loaded from under `root`, in lookup order —
+ * what `atlas dev` watches so an edit (or a config created mid-session)
+ * re-derives the catalog.
+ */
+export function configCandidatePaths(root: string): string[] {
+  return [...CANDIDATES, ...SHARED_CANDIDATES].map((name) => resolve(root, name))
+}
+
 export interface LoadedConfig {
   config: AtlasConfig
   /** The file it came from, or undefined when there is none. */

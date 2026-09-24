@@ -21,7 +21,9 @@ const read = (p: string) => readFileSync(join(REPO, p), 'utf8')
 const CANVAS_SWIFT = 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonChartCanvas.swift'
 const ENGINE_SWIFT = 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonChartEngine.swift'
 
-const APP = `import { PieChart, PlotChart, TreemapChart, bars, compact, line } from '@pyreon/charts/plot'
+const APP = `import { TreemapChart, compact } from '@pyreon/charts'
+import { PieChart } from '@pyreon/charts/engine'
+import { PlotChart, bars, line } from '@pyreon/charts/engine'
 import { Stack } from '@pyreon/primitives'
 interface Row { m: string; v: number }
 const ROWS: Row[] = [{ m: 'Jan', v: 10 }, { m: 'Feb', v: 30 }, { m: 'Mar', v: 20 }]

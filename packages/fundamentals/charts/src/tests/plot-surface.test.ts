@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import * as plot from '../plot'
+import * as plot from '../engine'
 
 // Every family, coordinate and facade entry point is reachable from the public
 // subpath — a module that exists but is not exported is not shipped.
@@ -20,7 +20,7 @@ const EXPECTED = [
   'OptionChart', 'GanttChart', 'createChartLink', 'sonifyValues', 'compiledCommands', 'valueToHz', 'resolveTimeline', 'splitGrids',
 ] as const
 
-describe('@pyreon/charts/plot public surface', () => {
+describe('@pyreon/charts public surface', () => {
   it('exports every family, coordinate, facade layer and registry', () => {
     const missing = EXPECTED.filter((name) => typeof (plot as Record<string, unknown>)[name] !== 'function')
     expect(missing).toEqual([])

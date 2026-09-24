@@ -573,6 +573,9 @@ extension View {
   public func buttonStyle(_ style: PrimitiveButtonStyleStub) -> some View { self }
   public func tint(_ color: Color?) -> some View { self }
   public func accessibilityIdentifier(_ id: String) -> some View { self }
+  // The real SwiftUI signature (WritableKeyPath), so a key path the real SDK
+  // rejects fails here too — <ColorModeProvider mode> pins the colorScheme key.
+  public func environment<V>(_ keyPath: WritableKeyPath<EnvironmentValues, V>, _ value: V) -> some View { self }
   public func accessibilityLabel(_ label: String) -> some View { self }
   public func accessibilityValue(_ value: String) -> some View { self }
   public func accessibilityElement(children: AccessibilityChildBehavior) -> some View { self }
@@ -2020,14 +2023,14 @@ public struct AsyncImage: View {
 `
 
 /**
- * The two views a `@pyreon/charts/plot` host emit needs that the generated
+ * The two views a `@pyreon/charts` host emit needs that the generated
  * engine never declares. validate.ts appends the REAL engine + canvas types
  * next to this when a chart host is present; the view stubs live here so the
  * stub-coverage ratchet counts `PyreonChartCanvas` as covered. The init
  * mirrors runtime-swift `PyreonChartCanvas.swift` exactly.
  */
 export const SWIFT_CHART_VIEW_STUBS = `
-// ---- @pyreon/charts/plot hosts (chart-hosts.ts emit) ----
+// ---- @pyreon/charts hosts (chart-hosts.ts emit) ----
 public struct GeometryProxy { public var size: CGSize = CGSize() }
 public func pyreonChartDataUrl(_ cmds: [PyreonDrawCmd], _ width: Double, _ height: Double) -> String { "" }
 public func pyreonShareChartImage(_ cmds: [PyreonDrawCmd], _ width: Double, _ height: Double, _ name: String) {}
@@ -2069,5 +2072,13 @@ public struct PyreonChartEntrance<Content: View>: View {
 public struct PyreonChartClock<Content: View>: View {
   public init(@ViewBuilder content: @escaping (Double) -> Content) {}
   public typealias Body = Never
+}
+// Mirrors runtime-swift PyreonChartDescriptor.swift: VoiceOver's chart data.
+public struct PyreonChartDescriptor {
+  public let input: A11yInput
+  public init(_ input: A11yInput) { self.input = input }
+}
+extension View {
+  public func accessibilityChartDescriptor(_ descriptor: PyreonChartDescriptor) -> some View { self }
 }
 `
