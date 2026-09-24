@@ -11,12 +11,16 @@ function fakeServer() {
   const listeners = new Map<string, ((file: string) => void)[]>()
   const invalidated: unknown[] = []
   const sent: unknown[] = []
+  const added: string[] = []
   return {
     server: {
       middlewares: { use: () => {} },
       watcher: {
         on: (event: string, listener: (file: string) => void) => {
           listeners.set(event, [...(listeners.get(event) ?? []), listener])
+        },
+        add: (paths: string | readonly string[]) => {
+          added.push(...(typeof paths === 'string' ? [paths] : paths))
         },
       },
       moduleGraph: {
@@ -32,6 +36,7 @@ function fakeServer() {
     },
     invalidated,
     sent,
+    added,
   }
 }
 
@@ -94,5 +99,56 @@ describe('atlas dev — live rescan', () => {
   it('does nothing without a rescan hook or without a watcher — the static-build shape', () => {
     const plugin = atlasDevPlugin({ root: '/p', scanRoot: '/p/src', entries: [entry('Button')] })
     expect(() => plugin.configureServer({ middlewares: { use: () => {} } })).not.toThrow()
+  })
+
+  it('rescans on a save in ANY project directory and on a config edit (monorepo / config)', async () => {
+    // Regression: only `<root>/src` was watched, so with `projects` no save
+    // rescanned, and editing atlas.config.ts never did.
+    const rescan = vi.fn(async () => [entry('Button')])
+    const plugin = atlasDevPlugin({
+      root: '/p',
+      scanRoot: '/p/src',
+      entries: [entry('Button')],
+      rescan,
+      watch: { dirs: ['/p/src', '/p/packages/core', '/p/packages/admin'], files: ['/p/atlas.config.ts'] },
+    })
+    const fake = fakeServer()
+    plugin.configureServer(fake.server)
+    // Every target is registered, so a directory outside the Vite root is watched at all.
+    expect(fake.added).toEqual(['/p/src', '/p/packages/core', '/p/packages/admin', '/p/atlas.config.ts'])
+
+    fake.fire('change', '/p/packages/admin/src/Card.tsx')
+    await settle()
+    expect(rescan).toHaveBeenCalledTimes(1)
+
+    fake.fire('change', '/p/atlas.config.ts')
+    await settle()
+    expect(rescan).toHaveBeenCalledTimes(2)
+
+    // A sibling whose name merely STARTS with a watched dir is not inside it.
+    fake.fire('change', '/p/packages/core-legacy/Card.tsx')
+    await settle()
+    expect(rescan).toHaveBeenCalledTimes(2)
+  })
+
+  it('a rescan result replaces the config-derived options and the watch targets', async () => {
+    const rescan = vi.fn(async () => ({
+      entries: [entry('Button')],
+      pages: { Button: { title: 'Fresh Title' } },
+      watch: { dirs: ['/p/src', '/p/packages/new'], files: ['/p/atlas.config.ts'] },
+    }))
+    const plugin = atlasDevPlugin({ root: '/p', scanRoot: '/p/src', entries: [entry('Button')], rescan })
+    const fake = fakeServer()
+    plugin.configureServer(fake.server)
+    expect(plugin.load('\0virtual:atlas/catalog')).not.toContain('Fresh Title')
+
+    fake.fire('change', '/p/src/Button.tsx')
+    await settle()
+    expect(plugin.load('\0virtual:atlas/catalog')).toContain('Fresh Title')
+
+    // The new project dir now triggers a rescan too.
+    fake.fire('change', '/p/packages/new/X.tsx')
+    await settle()
+    expect(rescan).toHaveBeenCalledTimes(2)
   })
 })

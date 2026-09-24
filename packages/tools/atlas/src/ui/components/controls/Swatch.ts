@@ -1,10 +1,10 @@
-import { dim, el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const Swatch = el
   .attrs({
     tag: 'button',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     cursor: 'pointer',
     width: '24px',
     height: '24px',
@@ -13,8 +13,8 @@ export const Swatch = el
     border: `2px solid ${t.border}`,
   }))
   .states(
-    dim((t) => ({
+    (t) => ({
       active: { borderColor: t.accent },
       idle: {},
-    })),
+    }),
   )

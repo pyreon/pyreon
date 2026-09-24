@@ -9824,6 +9824,26 @@ const rsCustom = rocketstyle({
 - Expecting the chain to mutate — every chain method returns a NEW component; \`Button.states({...})\` without assigning the return value does nothing to \`Button\``,
   },
 
+  'rocketstyle/.withTheme()': {
+    signature: '<Tokens extends object>() => RocketstyleFactory<D, UB, ThemeShape<Tokens>>',
+    example: `import rocketstyle from '@pyreon/rocketstyle'
+import { Element } from '@pyreon/elements'
+
+interface Tokens { accent: string; surface: string }
+
+const rs = rocketstyle({ useBooleans: false }).withTheme<Tokens>()
+
+const Card = rs({ name: 'Card', component: Element })
+  .theme((t) => ({ backgroundColor: t.surface }))   // t: Tokens
+  .states((t) => ({ active: { color: t.accent } }))  // t: Tokens
+
+// .theme((t) => ({ color: t.nope }))  ❌ Property 'nope' does not exist`,
+    notes: 'Bind a theme TYPE to the factory `rocketstyle(config)` returns, so every `.theme()` and dimension callback built from it receives a typed, checked `t` — with no global `declare module "@pyreon/rocketstyle"` augmentation. Type-only: it returns the same factory at runtime. The provider still supplies the actual theme object; this states its shape. An `interface` works directly (it is normalized through `ThemeShape`, since an interface carries no implicit index signature). See also: rocketstyle, .theme(), .states() / .sizes() / .variants().',
+    mistakes: `- Augmenting \`ThemeDefault\` globally from a LIBRARY to type \`t\` — the augmentation declaration-merges with every other package's (e.g. \`@pyreon/ui-theme\`), so each \`t\` claims both shapes and reads that are \`undefined\` at runtime typecheck; bind the type on your own factory with \`.withTheme<Tokens>()\` instead (an APP may still augment \`ThemeDefault\` once, as \`@pyreon/ui-theme\` does)
+- Annotating the callback parameter (\`.theme((t: Tokens) => …)\`) instead of binding the factory — the annotation is now CHECKED against the bound theme, so on an unbound factory (\`t\` is \`{}\`) it is a type error; declare the shape once with \`.withTheme<Tokens>()\` and let \`t\` infer
+- Expecting \`.withTheme()\` to supply or validate the theme VALUE — it is compile-time only; the object comes from \`<PyreonUI theme>\` / rocketstyle \`Provider\`, and nothing checks at runtime that it matches \`Tokens\``,
+  },
+
   'rocketstyle/.config()': {
     signature: '(opts: { name?; component?; provider?: boolean; consumer?: ConsumerCb; inversed?: boolean; passProps?: string[]; DEBUG?: boolean; styled?: boolean }) => RocketStyleComponent',
     example: `// Parent provides its pseudo-state; child derives its own state from it
@@ -9885,6 +9905,7 @@ const Anchor = Button.config({ component: 'a', name: 'Anchor' }).attrs({ href: '
 - Treating the second callback argument as a string — in \`.theme()\` and dimension callbacks \`mode\` is the \`mode(light, dark)\` HELPER function (\`backgroundColor: mode("#fff", "#333")\`), not \`"light" | "dark"\`; the resolved string form lives on \`.attrs()\` callbacks' \`helpers.mode\`
 - Using CSS-spec property order — rocketstyle themes use the unistyle convention (\`borderWidthTop\`, \`borderColorLeft\`), NOT \`borderTopWidth\` / \`borderLeftColor\`
 - Expecting \`:hover\` styles to apply only to interactive components — \`hover\` theme compiles to an UNCONDITIONAL \`:hover\` rule on every component that defines it; only \`cursor: pointer\` is gated on \`onClick\` / \`href\`
+- Annotating the callback parameter with a shape the theme does not have — every \`.theme()\` callback used to silently match the OBJECT arm (\`Partial<Record<string, unknown>>\` accepts any function), so \`(t: Anything) =>\` compiled unchecked; callbacks are now checked against the bound theme — bind it with \`.withTheme<Tokens>()\`
 - Passing unitless numbers to \`mode()\` under \`init({ cssVariables: true })\` — \`mode(8, 12)\` is emitted verbatim into the CSS var with no unit applied (dev warns); pass unit-complete values (\`mode("8px", "12px")\`)`,
   },
 
