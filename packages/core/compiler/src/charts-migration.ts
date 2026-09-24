@@ -109,7 +109,7 @@ export function planChartsImports(sf: ts.SourceFile): ChartsImportPlan[] {
     for (const el of named.elements) {
       const imported = (el.propertyName ?? el.name).text
       const local = el.name.text
-      let newName = imported
+      let newName: string
       let target: string
       if (moved !== undefined) {
         newName = OLD_ROOT_ECHARTS_RENAMES[imported] ?? imported
