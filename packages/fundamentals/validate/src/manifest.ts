@@ -241,6 +241,26 @@ const messages = formatErrors(result.issues ?? [], t)`,
       seeAlso: ['formatErrors'],
     },
     {
+      name: 'toFormValidator',
+      kind: 'function',
+      signature: '<TValues>(schema: Schema<TValues>, t?: TFn) => (values: TValues) => Record<string, string>',
+      summary:
+        "Adapt an `s.*` schema directly into `@pyreon/form`'s `schema` validator shape — a `(values) => Record<field, errorMessage>` function. Runs `schema.safeParse(values)` and, on failure, maps every issue's path through `formatErrorsByPath` (so `key`/`params` resolve through `t` exactly like any other issue); valid input returns `{}`. Designed for a FLAT object schema (`s.object({ email, age })`) whose top-level keys match the form's field names — each issue's path is expected to be a single segment.",
+      example: `const schema = s.object({ email: s.string().email(), age: s.number().int().min(18) })
+const { t } = useI18n()
+const form = useForm({
+  fields: [emailField, ageField],
+  schema: toFormValidator(schema, t),
+  onSubmit,
+})`,
+      mistakes: [
+        'Using a NESTED schema (`s.object({ user: s.object({ email }) })`) — its issues produce dotted paths (`user.email`), which will not match a flat form field named `email`; flatten the schema or use `@pyreon/form` field arrays for nested shapes',
+        'Omitting `t` when the schema uses `key`/`params` issues — without it, i18n keys never resolve and every message falls back to `fallback`/`message`',
+        'Expecting the returned function to THROW — it never does; `schema.safeParse` failures become the returned error record, `{}` on success',
+      ],
+      seeAlso: ['formatErrorsByPath', 'formatErrors'],
+    },
+    {
       name: 'toJsonSchema',
       kind: 'function',
       signature:

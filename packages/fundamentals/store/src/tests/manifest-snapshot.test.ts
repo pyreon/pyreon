@@ -91,8 +91,10 @@ describe('gen-docs — store snapshot', () => {
     // defineStore + defineStore (schema mode) + SchemaStoreApi +
     // SchemaStoreConfig + SchemaStoreContext + DeepPartial +
     // StoreApi + addStorePlugin + setStoreRegistryProvider +
-    // resetStore + resetAllStores + dehydrateStores + hydrateStores = 13.
-    expect(Object.keys(record).length).toBe(15)
+    // resetStore + resetAllStores + dehydrateStores + hydrateStores = 13,
+    // plus StoreState + StoreActions = 15, plus the `signal` re-export
+    // entry (documents signal/computed/effect/batch re-exports) = 16.
+    expect(Object.keys(record).length).toBe(16)
     expect(record['store/defineStore']!.notes).toContain('singleton')
     expect(record['store/defineStore']!.mistakes?.split('\n').length).toBe(9)
     // The previously-missing StoreApi entry now resolves (no 404).
