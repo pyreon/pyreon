@@ -161,6 +161,11 @@ export async function run(
 
   const projects = resolveProjects(merged)
   const runs: RunOutcome[] = []
+  // The project's native compiler, resolved at most ONCE and only when a run
+  // actually produced a native module. A `web` target has nothing for it to
+  // verify, and importing it anyway cost every web run the module load of the
+  // whole compiler (measured 0.25-0.5 s wall in isolation when installed).
+  let transform: Promise<Awaited<ReturnType<typeof resolveTransform>>> | undefined
   for (const config of projects) {
     if (!fs.exists(config.input)) {
       return {
@@ -169,7 +174,9 @@ export async function run(
       }
     }
     const result = generate(fs.read(config.input), config)
-    const verify = verifyNative(result.files, await resolveTransform())
+    const needsNative = result.files.some((f) => f.path.endsWith('.native.tsx'))
+    if (needsNative) transform ??= resolveTransform()
+    const verify = verifyNative(result.files, needsNative ? await transform : undefined)
 
     // Read the PREVIOUS surface before the write loop overwrites it. This is
     // the only moment both versions exist, and it is what turns "your spec
