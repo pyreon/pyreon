@@ -9,7 +9,7 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
  * scatter points exactly where a line would and draws circles only.
  */
 const OPTION = `
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return (
     <OptionChart option={{
@@ -28,7 +28,7 @@ export function App() {
 describe.each(['swift', 'kotlin'] as const)('polar scatter on %s', (target) => {
   it('a polar option with no value extent still types its axes (a categories-only literal used to emit an untyped object)', () => {
     const r = transform(`
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart option={{ polar: {}, angleAxis: { type: 'category', data: ['a'] }, radiusAxis: {}, series: [{ type: 'scatter', coordinateSystem: 'polar', data: [1] }] }} />
 }`, { target })

@@ -1,6 +1,6 @@
 import { autoPanVelocity } from '../auto-pan'
 import { flowNodeZ, orderEdges } from '../z-order'
-import { For, createUniqueId, isClient, onUnmount, provide, type VNodeChild, cx } from '@pyreon/core'
+import { For, createUniqueId, isClient, onUnmount, provide, useProvidedColorMode, type VNodeChild, cx } from '@pyreon/core'
 import { batch, computed, effect, signal } from '@pyreon/reactivity'
 import {
   getEdgePath,
@@ -1130,10 +1130,12 @@ export interface FlowComponentProps {
    */
   ariaLabel?: string
   /**
-   * Color scheme — `'light'` (default), `'dark'`, or `'system'` (follows
-   * `prefers-color-scheme`). Rendered as `data-color-mode` on the container;
-   * `flowStyles` carries the dark values for every `--pyreon-flow-*` variable,
-   * and your own overrides still win.
+   * Color scheme — `'light'`, `'dark'`, or `'system'` (follows
+   * `prefers-color-scheme`). Absent, the flow takes the app's colour mode
+   * (`<PyreonUI mode>` / `<ColorModeProvider mode>` from @pyreon/core) and is
+   * light when the app set none. Rendered as `data-color-mode` on the
+   * container; `flowStyles` carries the dark values for every
+   * `--pyreon-flow-*` variable, and your own overrides still win.
    */
   colorMode?: 'light' | 'dark' | 'system'
   children?: VNodeChild
@@ -1160,6 +1162,8 @@ export interface FlowComponentProps {
  * ```
  */
 export function Flow(props: FlowComponentProps): VNodeChild {
+  // The app's explicit colour mode, when it set one; see `colorMode`.
+  const appMode = useProvidedColorMode()
   const { instance, children, edgeTypes, connectionLine } = props
 
   // Make the instance available to child components (MiniMap / Controls)
@@ -2123,7 +2127,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
     <div
       ref={containerRef}
       class={cx(['pyreon-flow', props.class])}
-      data-color-mode={props.colorMode ?? 'light'}
+      data-color-mode={() => props.colorMode ?? appMode?.() ?? 'light'}
       style={containerStyle}
       tabIndex={0}
       role="group"

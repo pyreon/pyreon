@@ -71,6 +71,7 @@ export {
 	staticAdapter,
 	vercelAdapter,
 } from "./adapters";
+export type { VercelAdapterOptions } from "./adapters";
 
 // ─── 404 ────────────────────────────────────────────────────────────────────
 

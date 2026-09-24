@@ -23,30 +23,19 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = resolve(HERE, '../../../../../')
 const ANTI_PATTERNS_PATH = resolve(REPO_ROOT, '.agents/rules/anti-patterns.md')
 
-// Kept in sync with the `PyreonDiagnosticCode` union in
-// `pyreon-intercept.ts`. When adding a new code, ALSO add a bullet
-// (with the `[detector: <code>]` tag) to `anti-patterns.md`.
-const COMPILER_CODES = [
-  'for-missing-by',
-  'for-with-key',
-  'props-destructured',
-  'props-destructured-body',
-  'process-dev-gate',
-  'empty-theme',
-  'raw-add-event-listener',
-  'raw-remove-event-listener',
-  'date-math-random-id',
-  'on-click-undefined',
-  'signal-write-as-call',
-  'static-return-null-conditional',
-  'static-early-return-conditional',
-  'as-unknown-as-vnodechild',
-  'island-never-with-registry-entry',
-  'query-options-as-function',
-  'accessor-uncalled-in-template',
-  'accessor-uncalled-in-condition',
-] as const
-type CompilerCode = (typeof COMPILER_CODES)[number]
+// DERIVED from the `PyreonDiagnosticCode` union in `pyreon-intercept.ts`,
+// not re-typed: a hand-kept copy let a new code (`charts-legacy-import`) pass
+// this suite with no anti-patterns entry at all, because the copy did not
+// know it existed. When adding a code, add a bullet with its
+// `[detector: <code>]` tag to `anti-patterns.md`.
+function codesFromUnion(): string[] {
+  const src = readFileSync(resolve(HERE, '../pyreon-intercept.ts'), 'utf8')
+  const start = src.indexOf('export type PyreonDiagnosticCode =')
+  const end = src.indexOf('\n\n', start)
+  return [...src.slice(start, end).matchAll(/\|\s*'([a-z0-9-]+)'/g)].map((m) => m[1]!)
+}
+const COMPILER_CODES = codesFromUnion()
+type CompilerCode = string
 
 // `@pyreon/lint` rule IDs that may appear as `[detector:]` tags. Listed
 // WITHOUT the `pyreon/` prefix (the tag convention strips it for
@@ -83,6 +72,12 @@ describe('anti-patterns.md detector tags vs static detectors', () => {
     const validCodes = new Set<string>([...COMPILER_CODES, ...LINT_RULE_DETECTORS])
     const unknown = tags.filter((t) => !validCodes.has(t) && t !== 'N/A')
     expect(unknown).toEqual([])
+  })
+
+  it('the union parse finds the codes (a broken parse must not pass vacuously)', () => {
+    expect(COMPILER_CODES.length).toBeGreaterThanOrEqual(19)
+    expect(COMPILER_CODES).toContain('for-missing-by')
+    expect(COMPILER_CODES).toContain('charts-legacy-import')
   })
 
   it('every PyreonDiagnosticCode appears at least once as a [detector:] tag', () => {

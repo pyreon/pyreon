@@ -10,12 +10,12 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
  * says so instead of silently drawing a different legend.
  */
 const src = (legend: string, series = "[{ type: 'bar', name: 'A', data: [1, 2] }, { type: 'bar', name: 'B', data: [2, 1] }]"): string => `
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart option={{ legend: ${legend}, xAxis: { type: 'category', data: ['a', 'b'] }, yAxis: {}, series: ${series} }} />
 }`
 const pie = (legend: string): string => `
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart option={{ legend: ${legend}, series: [{ type: 'pie', data: [{ name: 'A', value: 1 }, { name: 'B', value: 2 }] }] }} />
 }`

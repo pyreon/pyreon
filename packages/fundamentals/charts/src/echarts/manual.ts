@@ -1,5 +1,5 @@
 /**
- * @pyreon/charts/manual — Manual registration entry point.
+ * @pyreon/charts/echarts/manual — Manual registration entry point.
  *
  * Use this instead of the default entry when you want full tree-shaking
  * control. You explicitly import and register the ECharts modules your
@@ -7,7 +7,7 @@
  *
  * @example
  * ```tsx
- * import { useChart, Chart, use } from '@pyreon/charts/manual'
+ * import { useChart, EChart, use } from '@pyreon/charts/echarts/manual'
  * import { BarChart, LineChart } from 'echarts/charts'
  * import { GridComponent, TooltipComponent } from 'echarts/components'
  * import { CanvasRenderer } from 'echarts/renderers'
@@ -16,7 +16,7 @@
  * use(BarChart, LineChart, GridComponent, TooltipComponent, CanvasRenderer)
  *
  * // Same API as default entry
- * <Chart
+ * <EChart
  *   options={() => ({
  *     series: [{ type: 'bar', data: values() }],
  *   })}
@@ -25,7 +25,7 @@
  * ```
  */
 
-export { Chart } from './chart-component'
-export { manualUse as use } from './loader'
-export type { ChartProps, EChartsOption, UseChartConfig, UseChartResult } from './types'
-export { useChart } from './use-chart'
+export { EChart } from '../chart-component'
+export { manualUse as use } from '../loader'
+export type { EChartProps, EChartsOption, UseChartConfig, UseChartResult } from '../types'
+export { useChart } from '../use-chart'
