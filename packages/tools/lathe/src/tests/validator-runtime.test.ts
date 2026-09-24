@@ -49,6 +49,7 @@ components:
         status: { type: string, enum: [available, borrowed] }
         author: { $ref: '#/components/schemas/Author' }
         tags: { type: array, items: { type: string } }
+        repo: { type: string, format: uri }
 `
 
 interface Schemas {
@@ -136,6 +137,18 @@ for (const validator of ['pyreon', 'zod'] as const) {
       // The `$ref` is emitted as the model's own binding, so a nested value
       // that violates the referenced schema has to fail here too.
       expect(validate(validator, { ...VALID, author: { name: 'F' } }).length).toBeGreaterThan(0)
+    })
+
+    it('accepts a `uri` of ANY scheme and rejects a non-URI', () => {
+      // OpenAPI `format: uri` is RFC 3986. GitHub's own spec carries
+      // `git:git.example.com/octocat/Hello-World.git`; an http-only check
+      // failed every real response containing one.
+      for (const repo of ['git:git.example.com/octocat/Hello-World.git', 'mailto:a@b.co', 'urn:isbn:0451', 'https://x.test/a']) {
+        expect(validate(validator, { ...VALID, repo }), repo).toEqual([])
+      }
+      for (const repo of ['not a uri', '/relative/path', '']) {
+        expect(validate(validator, { ...VALID, repo }).length, repo).toBeGreaterThan(0)
+      }
     })
 
     it('enforces the element type of an array', () => {

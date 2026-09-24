@@ -91,6 +91,11 @@ export interface ValidatorDialect {
   /** Type-only import `objectSchemaRef` needs, if any. */
   objectSchemaImport: { module: string; name: string } | undefined
   /**
+   * The check an OpenAPI `format: uri` string gets on the web: an absolute URI
+   * of ANY scheme (RFC 3986), which is also what the native lowering checks.
+   */
+  uriCheck: string
+  /**
    * Does this library's `enum` widen its members to `string` in the inferred
    * type? The written-out interface must say what the schema infers.
    *
@@ -123,6 +128,8 @@ export const DIALECTS: Readonly<Record<ValidatorName, ValidatorDialect>> = {
     schemaTypeImport: { module: '@pyreon/validate', name: 'Schema' },
     objectSchemaRef: 'ObjectSchema<Record<string, Schema<unknown>>>',
     objectSchemaImport: { module: '@pyreon/validate', name: 'ObjectSchema' },
+    // `s.string().url()` is http(s)-only, so a scheme check spelled out.
+    uriCheck: String.raw`.regex(/^[A-Za-z][A-Za-z0-9+.-]*:\S*$/)`,
     enumWidensToString: true,
     inlineRefsOnNative: false,
   },
@@ -139,6 +146,8 @@ export const DIALECTS: Readonly<Record<ValidatorName, ValidatorDialect>> = {
     schemaTypeImport: undefined,
     objectSchemaRef: 'z.ZodObject',
     objectSchemaImport: undefined,
+    // zod's `.url()` already accepts any scheme (`mailto:`, `git:`).
+    uriCheck: '.url()',
     enumWidensToString: false,
     inlineRefsOnNative: true,
   },

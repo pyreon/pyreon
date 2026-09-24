@@ -145,7 +145,12 @@ export function schemaExpr(type: IrType, opts: SchemaExprOptions, depth = 0): st
         case 'email':
           return `${c('string')}().email()`
         case 'uri':
-          return `${c('string')}().url()`
+          // OpenAPI's `uri` is RFC 3986: any scheme. `@pyreon/validate`'s
+          // `.url()` accepts only http(s), so it rejected real values like
+          // GitHub's `git:git.example.com/octocat/Hello-World.git` and failed
+          // the response. zod's `.url()` and the native lowering both accept
+          // any scheme, so the dialect says what `uri` means in each.
+          return opts.native ? `${c('string')}().url()` : `${c('string')}()${dialect.uriCheck}`
         case 'uuid':
           return `${c('string')}().uuid()`
         // `date` / `date-time` stay strings deliberately: a date schema does
