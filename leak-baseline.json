@@ -1,6 +1,6 @@
 {
   "description": "audit-leak-classes ratchet — per `detector::file` counts may only DECREASE. A change pushing any key above its baseline fails `bun scripts/check-leak-ratchet.ts`. The audit is PERMISSIVE (heuristic, false positives expected): a new entry is a prompt to TRIAGE, not proof of a leak — if it is genuinely not one, tighten with `--update` once you have read it. Never raise a count to absorb an untriaged finding. See .agents/rules/anti-patterns.md \"Memory Leak Classes\".",
-  "total": 40,
+  "total": 41,
   "rules": {
     "position-based-pop::packages/core/core/src/component.ts": 1,
     "position-based-pop::packages/core/reactivity/src/batch.ts": 1,
@@ -37,6 +37,6 @@
     "unbounded-cache::packages/tools/lint/src/utils/unknown-config.ts": 1,
     "unbounded-cache::packages/tools/vue-compat/src/index.ts": 1,
     "unbounded-cache::packages/ui-system/styler/src/styled.tsx": 1,
-    "unbounded-cache::packages/zero/zero/src/fs-router.ts": 2
+    "unbounded-cache::packages/zero/zero/src/fs-router.ts": 3
   }
 }

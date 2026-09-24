@@ -48,17 +48,31 @@ const carried = new WeakMap<Request, CarriedRequestState>()
 _setActionSnapshotReader(() => useRequestLocals()[SNAPSHOT_LOCAL] as ActionSnapshot | undefined)
 
 /**
- * The ONLY middleware of the re-render handler: it restores what the app
- * and route middleware already produced for this request instead of running
- * them a second time, then hands the action snapshot to the page.
+ * What a page re-render must restore for `req` (a synthetic re-render GET
+ * built by the form-action middleware): the POST's `locals` — with the
+ * action snapshot added — and the response headers its middleware set.
+ * `undefined` for any other request. Used by every page renderer that
+ * answers a re-render, so dev and production restore the same state.
+ */
+export function readCarriedActionState(
+  req: Request,
+): { locals: Record<string, unknown>; headers: Headers } | undefined {
+  const state = carried.get(req)
+  if (!state) return undefined
+  return { locals: { ...state.locals, [SNAPSHOT_LOCAL]: state.snapshot }, headers: state.headers }
+}
+
+/**
+ * The ONLY middleware of the production re-render handler: it restores
+ * what the app and route middleware already produced for this request
+ * instead of running them a second time.
  */
 export function createActionRerenderMiddleware(): Middleware {
   return (ctx) => {
-    const state = carried.get(ctx.req)
+    const state = readCarriedActionState(ctx.req)
     if (!state) return
     Object.assign(ctx.locals, state.locals)
     state.headers.forEach((value, key) => ctx.headers.set(key, value))
-    ctx.locals[SNAPSHOT_LOCAL] = state.snapshot
   }
 }
 
@@ -68,7 +82,7 @@ export interface FormActionMiddlewareOptions {
    * Renders a page for the re-render. Must NOT run the app/route middleware
    * again (they already ran for this POST) — see createActionRerenderMiddleware.
    */
-  render: (req: Request) => Promise<Response>
+  render?: (req: Request) => Promise<Response>
   options: ResolvedActionOptions
   /** zero's `base` without a trailing slash (`''` for `/`). */
   base: string
@@ -162,6 +176,14 @@ export function createFormActionMiddleware(opts: FormActionMiddlewareOptions): M
       outcome.kind === 'error'
         ? { id, status: 500, error: outcome.message }
         : { id, status: outcome.status, data: outcome.data }
+
+    if (!opts.render) {
+      // No page renderer wired (a custom embedding): the action ran, so fall
+      // back to POST/Redirect/GET to the page itself. The result is lost.
+      const back = new URL(ctx.req.url)
+      back.searchParams.delete(ACTION_QUERY_PARAM)
+      return new Response(null, { status: 303, headers: { Location: back.pathname + back.search } })
+    }
 
     const getUrl = new URL(ctx.req.url)
     getUrl.searchParams.delete(ACTION_QUERY_PARAM)

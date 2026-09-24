@@ -194,9 +194,14 @@ export default async function vercelHandler(req) {
         )
       }
       const protocol = deploymentUrl.startsWith('http') ? '' : 'https://'
-      const url = `${protocol}${deploymentUrl}/api/_pyreon-revalidate?path=${encodeURIComponent(path)}&secret=${encodeURIComponent(token)}`
+      // The secret travels in a HEADER, never the URL: a query string is
+      // written to access logs, proxies and the Vercel request log.
+      const url = `${protocol}${deploymentUrl}/api/_pyreon-revalidate?path=${encodeURIComponent(path)}`
       try {
-        const res = await fetch(url, { method: 'POST' })
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${token}` },
+        })
         return { regenerated: res.ok }
       } catch (err) {
         if (process.env.NODE_ENV !== 'production') {

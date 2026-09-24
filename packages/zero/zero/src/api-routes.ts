@@ -156,7 +156,9 @@ export { apiFilePathToPattern, isApiRoute }
  * Each entry maps a URL pattern to a module with HTTP method handlers.
  */
 export function generateApiRouteModule(files: string[], routesDir: string): string {
-  const apiFiles = files.filter(isApiRoute)
+  // Windows: normalize at the boundary (see fs-router `toPosixPath`).
+  routesDir = routesDir.replace(/\\/g, '/')
+  const apiFiles = files.map((f) => f.replace(/\\/g, '/')).filter(isApiRoute)
 
   if (apiFiles.length === 0) {
     return 'export const apiRoutes = []\n'

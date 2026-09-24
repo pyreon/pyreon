@@ -114,3 +114,14 @@ Read before touching `packages/zero/**`, a build adapter, SSG/SSR/ISR output, or
 - SSG emits per-route `<link rel=modulepreload>` from static imports only. `ssg.format: 'file' | 'directory' | 'both'` (default `'directory'`). `zero({ perfAdvisor: true })` gives advisory `route-js-budget` and `cls-footgun` findings.
 - Typed routes: `zero({ typedRoutes: true })` writes `src/pyreon-routes.d.ts` (page routes only, rewritten on route add/remove, only when content changes) augmenting `RegisteredRoutes`. `RouteHref = RoutePath | (string & {})`. Code: `src/route-types.ts` + `src/route-types-gen.ts`. Gitignore the generated file.
 - `@pyreon/zero-content`: compile-time `.md` → Pyreon JSX, typed collections, MDX components from `src/mdx/`.
+
+## Request pipeline, dev parity, route checks
+
+- `createRequestPipeline` (`src/pipeline.ts`, subpath `@pyreon/zero/pipeline`) is the ONE middleware chain in front of the page render: entry middleware → route middleware → API routes → server islands → `/_pyreon/data` → `/_zero/actions/*`. `createServer` and the dev middleware (`dispatchDevPipeline`) both call it. `createServer` tags its handler with `Symbol.for('pyreon.zero.pipelineOptions')` so dev can load `src/entry-server.*` and apply its `middleware`/`actions`. Add a new framework endpoint to the pipeline, never to only one of them.
+- Dev uses `serializeServerConfig(config).value`, like production — code-valued `zero({ middleware })` runs in neither.
+- `assertRouteFileShapes` runs in the routes virtual-module load: default-only `_layout` and literal `loader` → a `[Pyreon] Invalid route file(s)` error; no default export → a warning (apps colocate helpers under routes, e.g. app-showcase). The routes module rethrows `[Pyreon]` errors instead of degrading to `routes = []`.
+- Route scans are memoized per routes dir (`invalidateRouteScanCache`): dropped at every outer `buildStart` and every dev watcher event under the routes dir. Paths are posix-normalized at the scan boundary (Windows).
+- i18n: the routes module calls `_registerI18nConfig`, so `useLocale()` derives the locale from the router path everywhere. Locale matching is case-insensitive and returns the configured spelling (`en-US`).
+- `zero({...})` is validated (`config-validation.ts`, key table `satisfies`-total over `ZeroConfig`); a missing `pyreon()` plugin is one error when the routes tree has JSX.
+- SSG redirect targets must be relative or `http(s):` (`assertSafeRedirectTarget`). The Vercel revalidate secret travels in `Authorization: Bearer`; `?secret=` still works with a one-time deprecation warning.
+

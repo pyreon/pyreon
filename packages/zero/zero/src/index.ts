@@ -96,6 +96,7 @@ export type { I18nRoutingConfig, LocaleContext } from "./i18n-routing";
 export {
 	buildLocalePath,
 	extractLocaleFromPath,
+	_registerI18nConfig,
 	setLocale,
 	useLocale,
 } from "./i18n-routing";

@@ -66,7 +66,7 @@ export async function dev(root: string | undefined, options: DevOptions) {
     console.log(formatReadyLine(readyMs, color))
     console.log('')
   } catch (error) {
-    console.error('Failed to start dev server:', (error as Error).message)
+    console.error('[Pyreon] Failed to start dev server:', error)
     process.exit(1)
   }
 }

@@ -33,6 +33,11 @@
       "import": "./lib/app.js",
       "types": "./lib/types/app.d.ts"
     },
+    "./pipeline": {
+      "bun": "./src/pipeline.ts",
+      "import": "./lib/pipeline.js",
+      "types": "./lib/types/pipeline.d.ts"
+    },
     "./client": {
       "bun": "./src/client.ts",
       "import": "./lib/client.js",
