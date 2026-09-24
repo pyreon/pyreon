@@ -238,12 +238,38 @@ describe('operations group by tag in a stable order', () => {
       .toBe(JSON.stringify([...b].map(([k, v]) => [k, v.map((o) => o.id)])))
   })
 
-  it('does not special-case the default tag to the front', () => {
-    // Sorting it first would move every untagged operation whenever a
-    // tag is added elsewhere.
-    const m = byTag(doc([op('a', 'default'), op('b', 'admin')]))
-    expect([...m.keys()]).toContain('default')
-    expect([...m.keys()]).toContain('admin')
+  it('groups an UNTAGGED operation by its path, in name order with the tags', () => {
+    // Sorting a catch-all first would move every untagged operation whenever
+    // a tag is added elsewhere; grouping by path removes the catch-all.
+    const m = byTag(doc([op('zeta', 'default'), op('b', 'admin')]))
+    expect([...m.keys()]).toEqual(['admin', 'zeta'])
+  })
+
+
+  const at = (id: string, path: string, tag = 'default'): IrOperation => ({ ...op(id, tag), path }) as IrOperation
+
+  it('splits a spec with NO tags by resource, past the prefix every path shares', () => {
+    // Stripe: every path is `/v1/...` and nothing is tagged. One `default`
+    // group put 612 endpoints in one module; one `v1` group would do the same.
+    const m = byTag(doc([
+      at('getCustomer', '/v1/customers/{customer}'),
+      at('listCustomers', '/v1/customers'),
+      at('getCharge', '/v1/charges/{charge}'),
+      at('createCharge', '/v1/charges'),
+    ]))
+    expect([...m.keys()]).toEqual(['charges', 'customers'])
+    expect(m.get('customers')?.map((o) => o.id)).toEqual(['getCustomer', 'listCustomers'])
+  })
+
+  it('JOINS a real tag whose file name a path group would collide with', () => {
+    // `Pets` (tag) and `pets` (path) are one file on disk.
+    const m = byTag(doc([at('listPets', '/pets', 'Pets'), at('getPet', '/pets/{id}')]))
+    expect([...m.keys()]).toEqual(['Pets'])
+    expect(m.get('Pets')?.map((o) => o.id)).toEqual(['getPet', 'listPets'])
+  })
+
+  it('keeps a path with no static segment in `default`', () => {
+    expect([...byTag(doc([at('root', '/'), at('byId', '/{id}')])).keys()]).toEqual(['default'])
   })
 
   it('returns an empty map for a document with no operations', () => {

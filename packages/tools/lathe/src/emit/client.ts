@@ -165,15 +165,77 @@ export function endpointSpec(op: IrOperation): string {
  *
  * Sorted so regeneration is byte-identical; `default` (untagged) sorts with
  * everything else rather than being special-cased to the front.
+ *
+ * An UNTAGGED operation is grouped by its path instead (see
+ * {@link pathGroup}). A spec with no tags at all -- Stripe's -- used to produce
+ * one `endpoints/default.ts` of 612 endpoints, so importing one hook reached
+ * an endpoint module of all of them. A path group whose file name matches a
+ * real tag's joins that tag rather than colliding with it on disk.
  */
 export function byTag(doc: IrDocument): Map<string, IrOperation[]> {
+  const cached = groupMemo.get(doc)
+  if (cached && cached.ops === doc.operations && cached.count === doc.operations.length) return cached.groups
+  const untagged = doc.operations.filter((op) => op.tag === UNTAGGED)
+  const common = commonStaticPrefix(untagged.map((op) => op.path))
+  const byFile = new Map<string, string>()
+  for (const op of doc.operations) if (op.tag !== UNTAGGED) byFile.set(tagFile(op.tag), op.tag)
+  const keyOf = (op: IrOperation): string => {
+    if (op.tag !== UNTAGGED) return op.tag
+    const group = pathGroup(op.path, common)
+    return byFile.get(tagFile(group)) ?? group
+  }
   const out = new Map<string, IrOperation[]>()
   for (const op of [...doc.operations].sort((a, b) => a.id.localeCompare(b.id))) {
-    const list = out.get(op.tag)
+    const key = keyOf(op)
+    const list = out.get(key)
     if (list) list.push(op)
-    else out.set(op.tag, [op])
+    else out.set(key, [op])
   }
-  return new Map([...out.entries()].sort(([a], [b]) => a.localeCompare(b)))
+  const groups = new Map([...out.entries()].sort(([a], [b]) => a.localeCompare(b)))
+  groupMemo.set(doc, { ops: doc.operations, count: doc.operations.length, groups })
+  return groups
+}
+
+/** The IR's tag for an operation the spec did not tag. */
+const UNTAGGED = 'default'
+
+const groupMemo = new WeakMap<IrDocument, { ops: IrDocument['operations']; count: number; groups: Map<string, IrOperation[]> }>()
+
+/** Static path segments: no `{param}` / `:param`, nothing empty. */
+function staticSegments(path: string): string[] {
+  return path.split('/').filter((s) => s.length > 0 && !s.startsWith('{') && !s.startsWith(':'))
+}
+
+/**
+ * The leading static segments EVERY untagged path shares -- `/v1` on Stripe,
+ * `/api/v2` elsewhere. Stripped before grouping, or every operation would land
+ * in one `v1` group, which is the problem being solved.
+ */
+function commonStaticPrefix(paths: readonly string[]): string[] {
+  if (paths.length === 0) return []
+  let prefix = staticSegments(paths[0] as string)
+  for (const p of paths.slice(1)) {
+    const segs = staticSegments(p)
+    let i = 0
+    while (i < prefix.length && i < segs.length && prefix[i] === segs[i]) i++
+    prefix = prefix.slice(0, i)
+  }
+  return prefix
+}
+
+/**
+ * The group of an untagged operation: its first static path segment after the
+ * shared prefix -- `/v1/customers/{id}/balance` -> `customers`. A path with no
+ * static segment left (`/`, `/{id}`) stays `default`.
+ *
+ * The prefix is not stripped from a path that IS the prefix (a spec whose only
+ * untagged path is `/v1/status`); that path is grouped by its own last segment
+ * rather than falling back to `default` for no reason.
+ */
+export function pathGroup(path: string, common: readonly string[]): string {
+  const segs = staticSegments(path)
+  const rest = segs.slice(common.length)
+  return rest[0] ?? segs[segs.length - 1] ?? UNTAGGED
 }
 
 /** The argument type for one operation's call site. */
