@@ -12,4 +12,6 @@ export const DocsPreview = el
     background: t.surface,
     padding: '48px',
     marginBottom: '24px',
+    // Containing block for adopted overlays — see PreviewSurface.
+    contain: 'layout',
   }))

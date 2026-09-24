@@ -8,9 +8,17 @@ export const PreviewSurface = el
   })
   .theme((t: T) => ({
     padding: '56px 40px',
-    minHeight: '220px',
-    transition: `transform ${t.motion.base} ease`,
+    // No `minHeight` here: the canvas sets it through the per-instance `css`
+    // prop (220px closed, taller while an adopted overlay is open), and a theme
+    // value would outrank that prop.
     transformOrigin: 'center',
+    // The CONTAINING BLOCK for the overlays the canvas adopts (see
+    // ../../portal-adopt): a component's `position: fixed` modal backdrop is
+    // confined to this surface instead of covering the workbench. The zoom
+    // `transform` below already establishes one; `contain: layout` states it
+    // independently of the zoom level and of any future transform change.
+    contain: 'layout',
+    transition: `transform ${t.motion.base} ease, min-height ${t.motion.base} ease`,
   }))
   .sizes(() => ({
     z50: { transform: 'scale(.5)' },

@@ -25,7 +25,10 @@ import { type ModuleLoader, runtimeLoader } from './load'
 export interface AtlasConfig {
   /**
    * Wraps every mounted scenario — theme, router, i18n, a query client.
-   * Receives the scenario as `children`.
+   * Receives the scenario as `children`, and — in the workbench — the
+   * appearance to render it in (`mode`, `dark`, `brand` accessors; see
+   * `AtlasWrapperProps`). Forward `mode` to your theme provider or the dark
+   * workbench shows your components in their light mode.
    */
   wrapper?: ComponentRef
   /**

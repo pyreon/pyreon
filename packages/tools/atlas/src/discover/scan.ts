@@ -9,7 +9,7 @@
  * `unknown`); the fs wrapper lives in `./discover`.
  */
 import ts from 'typescript'
-import { collectImportedTypes } from './resolve-types'
+import { collectImportedTypes, findTypeDeclaration } from './resolve-types'
 import type { ComponentIntelligence, PropShape, PropType, VariantAxis } from '../core'
 import { inferControls } from '../core'
 
@@ -149,17 +149,67 @@ function resolvePropsType(
   return undefined
 }
 
+/**
+ * A props type's members INCLUDING what it inherits.
+ *
+ * `interface ComboboxProps extends ComboboxBaseProps { children?: … }` is how a
+ * styled component extends its headless base — and reading only the
+ * interface's own body reported ONE prop (`children`, a render prop, which is
+ * not a control), so `Combobox` showed an empty Controls panel while its base
+ * declares `options`, `value`, `placeholder`, `disabled`, `multiple`.
+ *
+ * Each `extends` clause naming a plain type is resolved the same way a props
+ * type is (same file, then imported), recursively and cycle-guarded. The
+ * interface's OWN member wins over an inherited one of the same name — that is
+ * TypeScript's rule, and a redeclaration is usually a narrowing. A heritage
+ * clause with type arguments (`Omit<Base, 'x'>`) is not followed: evaluating it
+ * needs a type checker, and a half-evaluated `Omit` would report a prop the
+ * component explicitly removed.
+ */
+export type BaseLookup = (node: PropsTypeNode, name: string) => PropsTypeNode | undefined
+
+/** A member's name when it is a plain one — an index signature has none. */
+function memberKey(member: ts.TypeElement): string | undefined {
+  const name = member.name
+  return name && (ts.isIdentifier(name) || ts.isStringLiteral(name)) ? name.text : undefined
+}
+
+function membersOf(
+  node: PropsTypeNode,
+  lookupBase: BaseLookup | undefined,
+  seen: Set<PropsTypeNode> = new Set(),
+): ts.TypeElement[] {
+  if (seen.has(node)) return []
+  seen.add(node)
+  const own = [...node.members]
+  if (!ts.isInterfaceDeclaration(node) || !node.heritageClauses || !lookupBase) return own
+  const names = new Set(own.map(memberKey))
+  const inherited: ts.TypeElement[] = []
+  // An interface's only heritage clause is `extends` (`implements` is a class's).
+  for (const type of node.heritageClauses.flatMap((clause) => clause.types)) {
+    if (type.typeArguments || !ts.isIdentifier(type.expression)) continue
+    const base = lookupBase(node, type.expression.text)
+    if (!base) continue
+    for (const member of membersOf(base, lookupBase, seen)) {
+      const key = memberKey(member)
+      if (names.has(key)) continue
+      names.add(key)
+      inherited.push(member)
+    }
+  }
+  return [...own, ...inherited]
+}
+
 /** Build a `ComponentIntelligence` from a name + its props type node. */
 function toComponent(
   name: string,
   propsType: PropsTypeNode | undefined,
   source: string,
   fn?: ComponentFnNode,
+  lookupBase?: BaseLookup,
 ): ComponentIntelligence {
   const members = propsType
-    ? ts.isInterfaceDeclaration(propsType)
-      ? propsType.members
-      : propsType.members
+    ? ts.factory.createNodeArray(membersOf(propsType, lookupBase))
     : ts.factory.createNodeArray<ts.TypeElement>([])
   const shapes = membersToShapes(members)
   if (fn) readBodyDefaults(fn, shapes)
@@ -269,7 +319,12 @@ function propsFromTypeAnnotation(
 }
 
 /** Extract a component from a top-level statement, if it is one. */
-function extractComponent(node: ts.Node, lookup: TypeLookup, source: string): ComponentIntelligence | undefined {
+function extractComponent(
+  node: ts.Node,
+  lookup: TypeLookup,
+  source: string,
+  lookupBase?: BaseLookup,
+): ComponentIntelligence | undefined {
   const isExported = (n: ts.Node): boolean =>
     ts.canHaveModifiers(n) && (ts.getModifiers(n) ?? []).some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
   const isDefault = (n: ts.Node): boolean =>
@@ -282,7 +337,7 @@ function extractComponent(node: ts.Node, lookup: TypeLookup, source: string): Co
     // call it anyway.
     const name = node.name?.text ?? (isDefault(node) ? fileBaseName(source) : undefined)
     if (name && isPascal(name)) {
-      return toComponent(name, resolvePropsType(node.parameters[0], lookup), source, node)
+      return toComponent(name, resolvePropsType(node.parameters[0], lookup), source, node, lookupBase)
     }
   }
 
@@ -300,7 +355,7 @@ function extractComponent(node: ts.Node, lookup: TypeLookup, source: string): Co
       // fallback, because a component that has both means the parameter.
       const props =
         resolvePropsType(fn.parameters[0], lookup) ?? propsFromTypeAnnotation(decl.type, lookup)
-      return toComponent(decl.name.text, props, source, fn)
+      return toComponent(decl.name.text, props, source, fn, lookupBase)
     }
   }
 
@@ -379,10 +434,19 @@ export function scanSource(
     return resolve(name, imported, fileName)
   }
 
+  // A base type is looked up from the file its DERIVED type lives in — which,
+  // once a hop has crossed into an imported file, is not this one.
+  const lookupBase: BaseLookup = (from, name) => {
+    const home = from.getSourceFile()
+    if (home === sf) return lookup(name)
+    // Reaching another file at all means a resolver took us there.
+    return findTypeDeclaration(home, name) ?? resolve!(name, collectImportedTypes(home), home.fileName)
+  }
+
   // pass 2 — extract components
   const out: ComponentIntelligence[] = []
   sf.forEachChild((node) => {
-    const comp = extractComponent(node, lookup, fileName)
+    const comp = extractComponent(node, lookup, fileName, lookupBase)
     if (comp) out.push(comp)
   })
   return out

@@ -166,7 +166,11 @@ export function Canvas(props: { model: WorkbenchModel }) {
             {...({
               css: _rp(() => {
                 const color = m.backgroundPreset().color
-                return BACKGROUND_VARIANT[m.background()] || !color ? '' : `background:${color};`
+                const bg = BACKGROUND_VARIANT[m.background()] || !color ? '' : `background:${color};`
+                // An adopted overlay (a modal, a drawer) is confined to this
+                // surface — give it a viewport-sized box to open into rather
+                // than the 220px a closed component needs.
+                return `${bg}min-height:${m.overlayOpen() ? 520 : 220}px;`
               }),
             } as Record<string, unknown>)}
             state={() => (m.outline() ? 'outlined' : 'plain') as never}

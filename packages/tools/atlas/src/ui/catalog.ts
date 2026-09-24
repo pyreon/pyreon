@@ -84,6 +84,17 @@ export interface WorkbenchRenderCtx {
    * re-renders when the state changes.
    */
   readonly query: FakeQueryResult
+  /**
+   * The appearance to render in, shaped as the props a project `wrapper`
+   * receives (`AtlasWrapperProps`: `mode`, `dark`, `brand` accessors). The
+   * generated catalog hands it to every wrapper layer; a hand-written catalog
+   * that renders its own provider should read it too.
+   *
+   * Per RENDER, not per workbench: a Theme Lab tile passes its own mode and
+   * brand, so eight tiles are eight appearances rather than eight copies of
+   * the canvas.
+   */
+  readonly wrapperProps: import('../core/extension').AtlasWrapperProps
 }
 
 /** One catalog entry — a component the workbench can showcase. */
@@ -201,6 +212,13 @@ export interface WorkbenchCatalog {
   components: readonly WorkbenchComponent[]
   /** Per-project addon presets; omitted fields use the shipped defaults. */
   presets?: WorkbenchPresets
+  /**
+   * True when every render goes through a project `wrapper` / extension — the
+   * project's OWN provider, not the workbench's, then decides how a component
+   * looks. The Theme Lab uses it to tell whether its brand tiles can mean
+   * anything (see `WorkbenchRenderCtx.wrapperProps`).
+   */
+  wrapped?: boolean
 }
 
 /** A sidebar group derived from the catalog (preserves first-seen order). */
@@ -231,7 +249,10 @@ export function groupComponents(catalog: WorkbenchCatalog): CatalogGroup[] {
 /** The starting control values for a component (its declared defaults). */
 export function defaultValues(component: WorkbenchComponent): Record<string, unknown> {
   const out: Record<string, unknown> = {}
-  for (const ctrl of component.controls) out[ctrl.key] = ctrl.default
+  // A control with NO default contributes nothing: an explicit `undefined`
+  // key would override the component's content seed and the authored Default
+  // (both merged UNDER these values) with "absent".
+  for (const ctrl of component.controls) if (ctrl.default !== undefined) out[ctrl.key] = ctrl.default
   return out
 }
 

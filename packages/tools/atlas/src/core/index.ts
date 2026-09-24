@@ -36,7 +36,7 @@ export { catalogReplacer, looksLikeVNode } from './serialize'
 export type { ContentBlocks, ContentShape, ContentSeed } from './content'
 export { CONTENT_KEYS, deriveContent, isContainer, isContentBlocks, isContentKey, materializeContent, PLACEHOLDER_IMAGE, seedArgs } from './content'
 
-export type { AtlasExtension } from './extension'
+export type { AtlasExtension, AtlasWrapperProps } from './extension'
 export {
   defineExtension,
   resolveExtensions,
