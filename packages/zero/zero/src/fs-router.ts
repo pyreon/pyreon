@@ -180,11 +180,13 @@ export function detectRouteExports(source: string, filename = 'route.tsx'): Rout
   // / array) is not callable — the router would throw `loader is not a
   // function` per request. Recorded so the scan can fail naming the file.
   const loaderIsLiteral = found.has('loader') && literalOf('loader') !== undefined
+  const gcTimeLiteral = literalOf('gcTime')
 
   return {
     hasDefault,
     hasLayoutExport,
     ...(loaderIsLiteral ? { loaderIsLiteral: true } : {}),
+    ...(gcTimeLiteral !== undefined ? { gcTimeLiteral } : {}),
     hasLoader: found.has('loader'),
     hasGuard: found.has('guard'),
     hasMeta: found.has('meta'),
@@ -662,7 +664,12 @@ export function generateRouteModuleFromRoutes(
     return name
   }
 
-  function nextLazy(filePath: string, loadingName?: string, errorName?: string): string {
+  function nextLazy(
+    filePath: string,
+    loadingName?: string,
+    errorName?: string,
+    loaderExpr?: string,
+  ): string {
     const name = `_${importCounter++}`
     const fullPath = `${routesDir}/${filePath}`
     needsLazyImport = true
@@ -677,7 +684,9 @@ export function generateRouteModuleFromRoutes(
     opts.push(`hmrId: ${JSON.stringify(fullPath)}`)
     const optsStr = `, { ${opts.join(', ')} }`
     // JSON.stringify for safe-embed — matches the `hmrId` line above.
-    imports.push(`const ${name} = lazy(() => import(${JSON.stringify(fullPath)})${optsStr})`)
+    imports.push(
+      `const ${name} = lazy(${loaderExpr ?? `() => import(${JSON.stringify(fullPath)})`}${optsStr})`,
+    )
     return name
   }
 
@@ -810,30 +819,53 @@ export function generateRouteModuleFromRoutes(
         // them into one chunk. Inlining the literal metadata is what
         // makes this safe — without it, the meta access would force
         // a static import that would collide with the dynamic one.
-        const comp = nextLazy(page.filePath, loadingName, errorName)
         const fullPath = `${routesDir}/${page.filePath}`
+        // `loaderKey` is read SYNCHRONOUSLY by the router's cache check, so it
+        // cannot be a dynamic import — and a static `import * as` next to the
+        // lazy component pulls the whole route into the main chunk (lost code
+        // splitting + INEFFECTIVE_DYNAMIC_IMPORT). Instead every dynamic
+        // import of this route goes through ONE loader that records the
+        // module in a cell; `loaderKey` delegates to the cell once loaded.
+        // Before the first load (a first client-side navigation — SSR and
+        // `startClient` preload the component first) it returns a key that
+        // never matches, so that one load is simply not cached. It can never
+        // serve data under a wrong key.
+        let modLoader: string | undefined
+        let modCell: string | undefined
+        if (exp.hasLoaderKey) {
+          const n = importCounter++
+          modCell = `_mc${n}`
+          modLoader = `_ml${n}`
+          imports.push(`let ${modCell}, ${modCell}_pending = 0`)
+          imports.push(
+            `const ${modLoader} = () => import(${JSON.stringify(fullPath)}).then((m) => (${modCell} = m))`,
+          )
+        }
+        const dyn = modLoader ? `${modLoader}()` : `import("${fullPath}")`
+        const comp = nextLazy(page.filePath, loadingName, errorName, modLoader)
         props.push(`${indent}  component: ${comp}`)
         if (exp.hasLoader) {
           props.push(
-            `${indent}  loader: (ctx) => import("${fullPath}").then((m) => m.loader(ctx))`,
+            `${indent}  loader: (ctx) => ${dyn}.then((m) => m.loader(ctx))`,
           )
         }
         if (exp.hasGuard) {
           props.push(
-            `${indent}  beforeEnter: (to, from) => import("${fullPath}").then((m) => m.guard(to, from))`,
+            `${indent}  beforeEnter: (to, from) => ${dyn}.then((m) => m.guard(to, from))`,
           )
         }
-        if (exp.hasLoaderKey) {
-          // loaderKey runs SYNCHRONOUSLY during the cache-key check; can't be
-          // routed through a dynamic import. Inline a `mod.loaderKey` lookup
-          // via the same namespace-import pattern as the metadata path. Rolldown
-          // will share the chunk with the lazy() component thunk.
-          const mod = nextModuleImport(page.filePath)
-          props.push(`${indent}  loaderKey: ${mod}.loaderKey`)
+        if (modCell) {
+          props.push(
+            `${indent}  loaderKey: (ctx) => ${modCell} ? ${modCell}.loaderKey(ctx) : "\\0pyreon:loader-key-pending:" + (++${modCell}_pending)`,
+          )
         }
         if (exp.hasGcTime) {
-          const mod = nextModuleImport(page.filePath)
-          props.push(`${indent}  gcTime: ${mod}.gcTime`)
+          if (exp.gcTimeLiteral !== undefined) {
+            props.push(`${indent}  gcTime: ${exp.gcTimeLiteral}`)
+          } else {
+            const mod = nextModuleImport(page.filePath)
+            props.push(`${indent}  gcTime: ${mod}.gcTime`)
+          }
         }
         if (exp.hasGetStaticPaths) {
           // getStaticPaths runs at SSG build time and is AWAITED there, so a
