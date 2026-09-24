@@ -15,6 +15,7 @@ import {
   type ValidatorName,
 } from '../core/config'
 import { generate } from '../core/generate'
+import { noteSeverity } from '../core/ir'
 import { diffSurface, type ApiSurface, type SurfaceChange } from '../core/surface'
 import { resolveTransform, verifyNative, worstVerdict } from '../verify/lower'
 import { renderReport } from './report'
@@ -242,7 +243,9 @@ function report(runs: RunOutcome[], argv: Argv, multi: boolean): RunResult {
       wrote,
       stale,
       reach: Object.fromEntries(result.reach),
-      notes: result.doc.notes,
+      // `severity` is derived from the code, and attached here so a JSON
+      // consumer need not carry the code->severity table itself.
+      notes: result.doc.notes.map((n) => ({ ...n, severity: noteSeverity(n) })),
       verify,
       changes,
     }))

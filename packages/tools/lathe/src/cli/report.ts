@@ -9,7 +9,7 @@
 
 import type { GenerateResult } from '../core/generate'
 import type { SurfaceChange } from '../core/surface'
-import type { IrNote } from '../core/ir'
+import { noteSeverity, type IrNote } from '../core/ir'
 import type { VerifyReport } from '../verify/lower'
 
 // Built rather than written literally: a raw ESC byte in source is invisible
@@ -30,6 +30,8 @@ const C = {
 
 /** How many contract changes to print before summarising the rest. */
 const MAX_CHANGES = 20
+/** How many distinct loss notes to print before summarising the rest. */
+const MAX_NOTES = 10
 
 export function renderReport(
   result: GenerateResult,
@@ -159,29 +161,69 @@ export function renderReport(
           `      ${C.red('leaked')} ${l} ${C.dim('emitted verbatim; the native build will not link')}`,
         )
       }
-      for (const w of f.warnings.slice(0, 2)) lines.push(`      ${C.dim(truncate(w, 120))}`)
+      // A BROKEN verdict's warnings are the diagnosis, so they are printed in
+      // full: truncating one at 120 characters cut the actionable half
+      // ("Give it the shape you expect: …") off every one of them. A file that
+      // lowers or is web-only keeps the short form -- those are advisory.
+      if (f.verdict === 'broken') {
+        for (const w of f.warnings) lines.push(`      ${w}`)
+      } else {
+        for (const w of f.warnings.slice(0, 2)) lines.push(`      ${C.dim(truncate(w, 120))}`)
+        if (f.warnings.length > 2) {
+          lines.push(`      ${C.dim(`… and ${f.warnings.length - 2} more warning(s) (use --json for all)`)}`)
+        }
+      }
     }
   }
 
   if (doc.notes.length > 0) {
+    // LOSSES lead, CHOICES are summarised. Petstore 3 produced 17 notes and 16
+    // were "used JSON over XML" -- listed under one heading at one weight, the
+    // single real loss was the note nobody reached.
+    const losses = doc.notes.filter((n) => noteSeverity(n) === 'loss')
+    const choices = doc.notes.filter((n) => noteSeverity(n) === 'choice')
     lines.push('')
-    lines.push(`  ${C.bold('spec notes')} ${C.dim(`(${doc.notes.length})`)}`)
-    for (const n of dedupeNotes(doc.notes).slice(0, 10)) {
-      lines.push(`    ${C.cyan(n.code)} ${C.dim(n.at)}`)
-      lines.push(`      ${truncate(n.message, 140)}`)
+    lines.push(
+      `  ${C.bold('spec notes')} ${C.dim(`(${doc.notes.length})`)}  ` +
+        `${losses.length > 0 ? C.yellow(`${losses.length} lost`) : C.green('nothing lost')}` +
+        `${C.dim(`  ${choices.length} choice(s)`)}`,
+    )
+    // The cap counts DISTINCT entries, because that is what is printed: the
+    // "and N more" line used to subtract 10 from the RAW count after
+    // de-duplicating, so it claimed notes were withheld that had been shown.
+    const distinct = dedupeNotes(losses)
+    for (const { note: n, count } of distinct.slice(0, MAX_NOTES)) {
+      lines.push(`    ${C.cyan(n.code)} ${C.dim(n.at)}${count > 1 ? C.dim(`  (+${count - 1} more like it)`) : ''}`)
+      lines.push(`      ${n.message}`)
     }
-    if (doc.notes.length > 10) lines.push(`    ${C.dim(`and ${doc.notes.length - 10} more`)}`)
+    if (distinct.length > MAX_NOTES) {
+      lines.push(
+        `    ${C.dim(`… and ${distinct.length - MAX_NOTES} more distinct loss(es) (use --json for all ${losses.length})`)}`,
+      )
+    }
+    if (choices.length > 0) {
+      const byCode = new Map<string, number>()
+      for (const n of choices) byCode.set(n.code, (byCode.get(n.code) ?? 0) + 1)
+      lines.push(
+        `    ${C.dim(`choices: ${[...byCode].map(([code, n]) => `${code} x${n}`).join(', ')} (use --json for detail)`)}`,
+      )
+    }
   }
   lines.push('')
   return lines.join('\n')
 }
 
-/** Collapse repeats of the same code+message; keep the first location. */
-function dedupeNotes(notes: readonly IrNote[]): IrNote[] {
-  const seen = new Map<string, IrNote>()
+/**
+ * Collapse repeats of the same code+message; keep the first location and how
+ * many were folded into it, so a collapsed entry still reports its weight.
+ */
+function dedupeNotes(notes: readonly IrNote[]): Array<{ note: IrNote; count: number }> {
+  const seen = new Map<string, { note: IrNote; count: number }>()
   for (const n of notes) {
     const key = `${n.code}|${n.message}`
-    if (!seen.has(key)) seen.set(key, n)
+    const hit = seen.get(key)
+    if (hit) hit.count++
+    else seen.set(key, { note: n, count: 1 })
   }
   return [...seen.values()]
 }
