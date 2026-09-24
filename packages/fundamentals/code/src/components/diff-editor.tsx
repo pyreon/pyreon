@@ -168,6 +168,9 @@ export function DiffEditor(props: DiffEditorProps): VNodeChild {
         languageVersion++
       })
       cleanups.push(
+        // This runs inside the async `containerRef` callback (post-mount), not
+        // at component setup; the `.then` is the stale-guarded grammar load.
+        // pyreon-lint-disable-next-line pyreon/no-imperative-effect-on-create
         effect(() => {
           const lang = props.language ?? 'plain'
           if (lang === initialLanguage && languageVersion === 0) return

@@ -1,4 +1,5 @@
 import { h } from '@pyreon/core'
+import { query } from '@pyreon/test-utils'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { afterEach, describe, expect, it } from 'vitest'
 import { RichText } from '../components/rich-text'
@@ -73,10 +74,10 @@ describe('@pyreon/rich-text hardening', () => {
     const { container, unmount } = mountInBrowser(h(RichText, { instance: editor }))
     await waitForView(editor)
     await flush()
-    const ce = container.querySelector('[contenteditable]') as HTMLElement
+    const ce = query(container, '[contenteditable]')
     expect(ce.getAttribute('aria-placeholder')).toBe('Write something…')
-    const empty = container.querySelector('.is-editor-empty') as HTMLElement
-    expect(empty?.getAttribute('data-placeholder')).toBe('Write something…')
+    const empty = query(container, '.is-editor-empty')
+    expect(empty.getAttribute('data-placeholder')).toBe('Write something…')
     expect(getComputedStyle(empty, '::before').content).toContain('Write something')
     editor.json.set(doc('text'))
     await flush()

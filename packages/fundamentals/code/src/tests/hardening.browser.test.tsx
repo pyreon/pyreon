@@ -1,5 +1,6 @@
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
+import { query } from '@pyreon/test-utils'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CodeEditor } from '../components/code-editor'
@@ -96,8 +97,11 @@ describe('@pyreon/code hardening', () => {
       hits.push('a')
       return true
     })
-    editor.addKeybinding('Mod-y', () => {
-      hits.push('y')
+    // Mod-j is unbound on every platform. (Mod-y is redo on Linux/Windows with
+    // `preventDefault: true`, so the scope handler reported "handled" there
+    // no matter what our handler returned — a platform-dependent assertion.)
+    editor.addKeybinding('Mod-j', () => {
+      hits.push('j')
       return false
     })
     await mounted(editor)
@@ -109,8 +113,8 @@ describe('@pyreon/code hardening', () => {
     expect(fire('a')).toBe(true)
     expect(hits).toEqual(['a'])
     expect(v.state.selection.main.empty).toBe(true)
-    expect(fire('y')).toBe(false)
-    expect(hits).toEqual(['a', 'y'])
+    expect(fire('j')).toBe(false)
+    expect(hits).toEqual(['a', 'j'])
     editor.dispose()
   })
 
@@ -161,7 +165,7 @@ describe('@pyreon/code hardening', () => {
   it('indent guides follow the dark theme', async () => {
     const editor = createEditor({ value: '    x', theme: 'dark' })
     const el = await mounted(editor)
-    const line = el.querySelector('.cm-line') as HTMLElement
+    const line = query(el, '.cm-line')
     expect(getComputedStyle(line).backgroundImage).not.toContain('229, 231, 235')
     editor.dispose()
   })

@@ -493,6 +493,8 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
         const version = ++languageVersion
         loadLanguage(lang).then((ext) => {
           // A newer language change, a dispose, or a re-created view since.
+          // (An async callback — nothing tracks here; peek states the intent.)
+          // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
           if (version !== languageVersion || view.peek() !== v) return
           v.dispatch({ effects: languageCompartment.reconfigure(ext) })
         })
