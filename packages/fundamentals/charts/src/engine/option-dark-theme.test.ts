@@ -89,6 +89,13 @@ describe('<OptionChart> honours an explicit <ChartThemeProvider>', () => {
     }
   })
 
+  it('with no chart provider, an option chart follows a mode the APP set', () => {
+    const t = paints(h(ColorModeProvider, { mode: 'dark' }, h(OptionChart, { option: TITLED as never, width: 400, height: 240 })))
+    expect(t.find((p) => p.text === 'Heading')?.fill).toBe(chartThemes.dark.text)
+    const g = paints(h(ColorModeProvider, { mode: 'dark' }, h(OptionChart, { option: { animation: false, ...GAUGE } as never, width: 400, height: 300 })))
+    expect(g.find((p) => p.text === '64%')?.fill).toBe(chartThemes.dark.text)
+  })
+
   it('with no provider, a bare option chart keeps the light look', () => {
     const t = paints(h(OptionChart, { option: TITLED as never, width: 400, height: 240 }))
     expect(t.find((p) => p.text === 'Heading')?.fill).not.toBe(chartThemes.dark.text)

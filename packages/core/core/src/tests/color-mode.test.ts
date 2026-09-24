@@ -1,5 +1,5 @@
 import { effectScope, setContextOwner, signal } from '@pyreon/reactivity'
-import { ColorModeProvider, provideColorMode, systemColorMode, useColorMode } from '../color-mode'
+import { ColorModeProvider, provideColorMode, systemColorMode, useColorMode, useProvidedColorMode } from '../color-mode'
 
 // The shared light/dark mode. Context resolution is driven through
 // `setContextOwner` as in the other context specs; the DOM half (page
@@ -63,6 +63,18 @@ describe('color mode', () => {
       expect(mode()).toBe('dark')
       m.set('system')
       expect(mode()).toBe(systemColorMode()())
+    })
+  })
+
+  test('useProvidedColorMode tells an explicit choice from the system default', () => {
+    expect(useProvidedColorMode()).toBeUndefined()
+    within(() => {
+      provideColorMode('dark')
+      expect(useProvidedColorMode()?.()).toBe('dark')
+    })
+    within(() => {
+      provideColorMode('system')
+      expect(useProvidedColorMode()?.(), "'system' is still an explicit choice").toBe(systemColorMode()())
     })
   })
 

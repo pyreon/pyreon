@@ -74,7 +74,8 @@ export function systemColorMode(): () => ColorMode {
  * must itself be live (the system scheme can flip), and a reactive context's
  * default is a constant.
  */
-const ColorModeContext = createContext<() => ColorMode>(() => systemColorMode()())
+const systemDefault = (): ColorMode => systemColorMode()()
+const ColorModeContext = createContext<() => ColorMode>(systemDefault)
 
 /**
  * The mode in scope, as an accessor. Call it inside an effect, a computed or
@@ -86,6 +87,24 @@ const ColorModeContext = createContext<() => ColorMode>(() => systemColorMode()(
  */
 export function useColorMode(): () => ColorMode {
   return useContext(ColorModeContext)
+}
+
+/**
+ * The mode an app EXPLICITLY set above this component — a `<ColorModeProvider>`,
+ * `provideColorMode()` or `<PyreonUI mode>` — or `undefined` when none did.
+ *
+ * For a component whose own default is not "follow the system": it takes the
+ * app's choice when there is one and keeps its default otherwise, so adopting
+ * the shared mode never flips it on a page that never asked (a dark OS under a
+ * light page with no declared `color-scheme`).
+ *
+ * @example
+ * const provided = useProvidedColorMode()
+ * const mode = () => props.colorMode ?? provided?.() ?? 'light'
+ */
+export function useProvidedColorMode(): (() => ColorMode) | undefined {
+  const mode = useContext(ColorModeContext)
+  return mode === systemDefault ? undefined : mode
 }
 
 /**

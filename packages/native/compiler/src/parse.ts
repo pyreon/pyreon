@@ -2458,7 +2458,7 @@ function collectToastNames(body: AnyNode[], ctx: ParseCtx): void {
  * every entry is genuinely handled, so this cannot rot into a lie.
  */
 export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
-  'useAppState', 'useAuth', 'useBiometrics', 'useClipboard', 'useColorScheme',
+  'useAppState', 'useAuth', 'useBiometrics', 'useClipboard', 'useColorMode', 'useColorScheme',
   'useCrashReporter',
   'useDatabase', 'useFetch', 'useFieldArray', 'useFilePicker', 'useForm', 'useGeolocation',
   'useHaptics', 'useHotkey', 'useImagePicker', 'useLinking', 'useLoaderData', 'useMap',
@@ -6943,6 +6943,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     'useAppState',
     'useCrashReporter',
     'useColorScheme',
+    'useColorMode',
     'useSizeClass',
     'useNetworkStatus',
     'useGeolocation',
@@ -8309,7 +8310,11 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // needed — both SwiftUI (@Environment(\.colorScheme)) and Compose
   // (isSystemInDarkTheme()) ship the primitive. Emit returns the
   // same `"light" | "dark"` string shape the web hook uses.
-  if (calleeName === 'useColorScheme') {
+  // `useColorMode()` from @pyreon/core is the framework-wide mode; on native
+  // it reads the platform scheme exactly as `useColorScheme` does (a literal
+  // `<ColorModeProvider mode>` pins the CHART scope at compile time, but a
+  // component's own read is the platform's).
+  if (calleeName === 'useColorScheme' || calleeName === 'useColorMode') {
     return { kind: 'color-scheme', name }
   }
   // M2.2 — `const sizeClass = useSizeClass()` from `@pyreon/hooks`
@@ -12494,6 +12499,7 @@ function warnIfHookInsideRenderCallback(
     'useImagePicker',
     'useFilePicker',
     'useColorScheme',
+    'useColorMode',
     'useSizeClass',
     'usePermissions',
     'useOnline',
