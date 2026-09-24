@@ -22,6 +22,7 @@ import type {
   Feature,
   FeatureConfig,
   FeatureFormOptions,
+  FeatureFormState,
   FeatureStore,
   FeatureTableOptions,
   ListOptions,
@@ -95,22 +96,23 @@ function createFetcher(baseFetcher?: typeof fetch) {
   return {
     list<T>(
       url: string,
-      params?: Record<string, string | number | boolean>,
-      abortSignal?: AbortSignal,
+      params: Record<string, string | number | boolean> | undefined,
+      // Required: every caller is a TanStack queryFn, which always has one.
+      abortSignal: AbortSignal,
     ): Promise<T[]> {
       const query = params
         ? `?${new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString()}`
         : ''
       return request<T[]>('GET', url, {
         ...(params ? { query: params } : {}),
-        ...(abortSignal ? { signal: abortSignal } : {}),
+        signal: abortSignal,
         displayUrl: `${url}${query}`,
       })
     },
-    getById<T>(url: string, id: string | number, abortSignal?: AbortSignal): Promise<T> {
+    getById<T>(url: string, id: string | number, abortSignal: AbortSignal): Promise<T> {
       return request<T>('GET', `${url}/:id`, {
         params: { id },
-        ...(abortSignal ? { signal: abortSignal } : {}),
+        signal: abortSignal,
         displayUrl: `${url}/${id}`,
       })
     },
@@ -217,11 +219,12 @@ export function defineFeature<TValues extends Record<string, unknown>>(
     : autoInitialValues
 
   const validate = createValidator<TValues>(schema, config.validate)
+  const dateFields = new Set(fields.filter((f) => f.type === 'date').map((f) => f.name))
 
   // Field introspection (`extractFields`) only understands Zod's shape. A real
   // NON-Zod Standard Schema validator (Valibot, ArkType, …) yields ZERO fields,
   // so the auto-derived form registers no fields and the first `setFieldValue`
-  // throws a confusing "[@pyreon/form] Field … does not exist". Validation and
+  // throws a confusing "[Pyreon] Field … does not exist". Validation and
   // the query hooks are schema-agnostic and still work — but the user must
   // supply `initialValues` (for useForm) + `columns` (for useTable) explicitly.
   // Warn ONCE (per defineFeature call) with the actionable fix instead of
@@ -324,12 +327,20 @@ export function defineFeature<TValues extends Record<string, unknown>>(
       })
     },
 
-    useById(id: string | number) {
-      return _useQuery(() => ({
-        queryKey: [name, id],
-        queryFn: ({ signal: abortSignal }) => http.getById<TValues>(api, id, abortSignal),
-        enabled: id !== undefined && id !== null,
-      }))
+    useById(id) {
+      // The id is read INSIDE the options function, so an accessor id
+      // (`() => props.id`) re-keys the query when it changes. A static id was
+      // the only form before: the options closure captured it once, and a
+      // route param change kept showing the first record.
+      return _useQuery(() => {
+        const current = typeof id === 'function' ? id() : id
+        return {
+          queryKey: [name, current],
+          queryFn: ({ signal: abortSignal }) =>
+            http.getById<TValues>(api, current as string | number, abortSignal),
+          enabled: current !== undefined && current !== null,
+        }
+      })
     },
 
     useSearch(searchTerm, options?: ListOptions) {
@@ -373,8 +384,17 @@ export function defineFeature<TValues extends Record<string, unknown>>(
           return { previous }
         },
         onError: (_err, variables, context) => {
-          if (context?.previous) {
+          /* v8 ignore next — context is undefined only when onMutate itself threw,
+             i.e. before the optimistic write; there is nothing to undo then. */
+          if (!context) return
+          if (context.previous !== undefined) {
             client.setQueryData([name, variables.id], context.previous)
+          } else {
+            // Nothing was cached before the optimistic write, so there is no
+            // snapshot to restore — the optimistic PARTIAL object (just the
+            // changed fields) must go, or every `useById(id)` reader sees a
+            // half-record that the server rejected.
+            client.removeQueries({ queryKey: [name, variables.id], exact: true })
           }
         },
         onSuccess: (_data, variables) => {
@@ -411,12 +431,31 @@ export function defineFeature<TValues extends Record<string, unknown>>(
         ...options?.initialValues,
       } as TValues
       const client = useQueryClient()
+      const isEdit = mode === 'edit' && options?.id !== undefined
+      const isLoading = signal(isEdit)
+      const loadError = signal<unknown>(undefined)
 
       const form = _useForm<TValues>({
         initialValues: mergedInitial,
         ...(validate != null ? { schema: validate } : {}),
         validateOn: options?.validateOn ?? 'blur',
         onSubmit: async (values) => {
+          // Never write a form that does not hold the record. Pre-fix a failed
+          // edit-mode load left the form enabled with its BLANK defaults, and
+          // submitting PUT those blanks over the real record (data loss). The
+          // same holds while the load is still in flight.
+          if (isLoading.peek()) {
+            throw new Error(
+              `[Pyreon] ${name}.useForm: the record is still loading — submit refused so the ` +
+                `defaults are not written over it.`,
+            )
+          }
+          if (loadError.peek() !== undefined) {
+            throw new Error(
+              `[Pyreon] ${name}.useForm: the record could not be loaded — submit refused so ` +
+                `blank values are not written over it. See form.loadError().`,
+            )
+          }
           try {
             let result: unknown
             if (mode === 'edit' && options?.id !== undefined) {
@@ -456,41 +495,70 @@ export function defineFeature<TValues extends Record<string, unknown>>(
       // the storage/charts/createResource precedents). onUnmount fires
       // on the owning component's disposal; the cancelled flag skips
       // both settle branches after unmount.
-      if (mode === 'edit' && options?.id !== undefined) {
+      if (isEdit) {
+        const id = options.id as string | number
         let cancelled = false
         onUnmount(() => {
           cancelled = true
         })
+        // `isSubmitting` keeps `<Submit>` disabled during the load (the
+        // pre-existing contract); `isLoading` names what is actually happening.
         form.isSubmitting.set(true)
-        http.getById<TValues>(api, options.id).then(
-          (data) => {
-            if (cancelled) return
-            batch(() => {
-              for (const key of Object.keys(data)) {
-                // Only populate REGISTERED form fields. A real backend returns
-                // server-only keys (`id`, `createdAt`, `updatedAt`, relations)
-                // that aren't schema fields — and `form.setFieldValue` THROWS on
-                // an unknown field. Inside this batch that throw would abort
-                // before `isSubmitting.set(false)`, leaving the form stuck
-                // submitting (button disabled, fields unpopulated) with an
-                // unhandled rejection. Skip anything not in the field set.
+        // Through the query cache under the SAME key `useById(id)` uses, so a
+        // detail view and its edit form share one fetch (in-flight dedup) and
+        // one cache entry. `fetchQuery` does not retry by default, so a failed
+        // load surfaces promptly instead of after three silent retries.
+        client
+          .fetchQuery({
+            queryKey: [name, id],
+            queryFn: ({ signal: abortSignal }) => http.getById<TValues>(api, id, abortSignal),
+          })
+          .then(
+            (data) => {
+              if (cancelled) return
+              // Only REGISTERED form fields: a real backend returns server-only
+              // keys (`id`, `createdAt`, relations) that are not schema fields.
+              const loaded: Record<string, unknown> = {}
+              // (`fetchQuery` rejects an undefined result, so `data` is set.)
+              for (const key of Object.keys(data as object)) {
                 if (!(key in mergedInitial)) continue
-                form.setFieldValue(
-                  key as keyof TValues & string,
-                  (data as Record<string, unknown>)[key] as TValues[keyof TValues],
-                )
+                let value = (data as Record<string, unknown>)[key]
+                // JSON has no Date: a `z.date()` field arrives as an ISO string
+                // the schema would reject on the first submit.
+                if (typeof value === 'string' && dateFields.has(key)) {
+                  const d = new Date(value)
+                  if (!Number.isNaN(d.getTime())) value = d
+                }
+                loaded[key] = value
               }
-              form.isSubmitting.set(false)
-            })
-          },
-          () => {
-            if (cancelled) return
-            form.isSubmitting.set(false)
-          },
-        )
+              batch(() => {
+                // RE-BASE, not setFieldValue: the loaded record is the new
+                // baseline. setFieldValue marked every field DIRTY (so "unsaved
+                // changes" fired on an untouched form) and, in change mode,
+                // validated every field before the user did anything.
+                form.setInitialValues(loaded as Partial<TValues>)
+                isLoading.set(false)
+                form.isSubmitting.set(false)
+              })
+            },
+            (err: unknown) => {
+              if (cancelled) return
+              batch(() => {
+                isLoading.set(false)
+                loadError.set(err)
+                form.submitError.set(err)
+                // Keep the form disabled: it holds blank defaults, not the
+                // record. The submit guard above is the hard stop; this is the
+                // visible one (a `<Form disabled>` prop still takes over).
+                form.disabled.set(true)
+                form.isSubmitting.set(false)
+              })
+              options?.onError?.(err)
+            },
+          )
       }
 
-      return form
+      return Object.assign(form, { isLoading, loadError }) as FeatureFormState<TValues>
     },
 
     // ─── Table ──────────────────────────────────────────────────────
