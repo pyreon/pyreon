@@ -29,7 +29,7 @@ import {
   highlightSelectionMatches,
   searchKeymap,
 } from '@codemirror/search'
-import { Compartment, EditorState, type Extension } from '@codemirror/state'
+import { Compartment, EditorState, type Extension, Prec, StateEffect } from '@codemirror/state'
 import {
   GutterMarker as CMGutterMarker,
   crosshairCursor,
@@ -48,11 +48,29 @@ import {
   ViewPlugin,
   type ViewUpdate,
 } from '@codemirror/view'
-import { computed, effect, signal } from '@pyreon/reactivity'
+import { computed, type Effect, effect, signal } from '@pyreon/reactivity'
 import { loadLanguage } from './languages'
 import { minimapExtension } from './minimap'
 import { resolveTheme } from './themes'
-import type { EditorConfig, EditorInstance, EditorLanguage, EditorTheme } from './types'
+import type {
+  Diagnostic,
+  EditorConfig,
+  EditorInstance,
+  EditorLanguage,
+  EditorTheme,
+} from './types'
+
+/**
+ * Dispatched when an imperative decoration store (line highlights, gutter
+ * markers) changes. An empty `dispatch({ effects: [] })` is NOT enough: it is
+ * neither a doc nor a viewport change, so a ViewPlugin that rebuilds only on
+ * those (and a gutter with no `lineMarkerChange`) never re-reads the store —
+ * post-mount `highlightLine()` / `setGutterMarker()` calls silently did nothing.
+ */
+const refreshDecorations = StateEffect.define<null>()
+
+const hasRefresh = (upd: ViewUpdate): boolean =>
+  upd.transactions.some((tr) => tr.effects.some((e) => e.is(refreshDecorations)))
 
 /**
  * Create a reactive code editor instance.
@@ -187,7 +205,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
       }
 
       update(upd: ViewUpdate) {
-        if (upd.docChanged || upd.viewportChanged) {
+        if (upd.docChanged || upd.viewportChanged || hasRefresh(upd)) {
           this.decorations = this.buildDecos(upd.view)
         }
       }
@@ -234,6 +252,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
       return new CustomGutterMarker(marker)
     },
     initialSpacer: () => new CustomGutterMarker({ text: ' ' }),
+    lineMarkerChange: hasRefresh,
   })
 
   // ── Build extensions ─────────────────────────────────────────────────
@@ -274,20 +293,30 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
 
       // Dynamic compartments
       languageCompartment.of(langExt),
-      themeCompartment.of(resolveTheme(initialTheme)),
-      readOnlyCompartment.of(EditorState.readOnly.of(initialReadOnly)),
-      editableCompartment.of(EditorView.editable.of(initialEditable)),
-      extraKeymapCompartment.of([]),
+      // Seeded from the CURRENT signal values, not the config — a state built
+      // after mount (a re-mount, a tabbed-editor tab's first visit) must carry
+      // the live theme/readOnly/editable and any keybindings added so far.
+      themeCompartment.of(resolveTheme(theme.peek())),
+      readOnlyCompartment.of(EditorState.readOnly.of(readOnly.peek())),
+      editableCompartment.of(EditorView.editable.of(editable.peek())),
+      extraKeymapCompartment.of(customKeymap()),
       keyModeCompartment.of([]),
 
       // Update listener — sync CM changes to signal
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
-          const newValue = update.state.doc.toString()
-          // Avoid infinite loop: only set if different
-          if (newValue !== value.peek()) {
-            value.set(newValue)
-            onChange?.(newValue)
+          // The value→view effect already knows the text it just applied —
+          // don't serialise the whole document again to rediscover it.
+          if (applyingExternal === null) {
+            const newValue = update.state.doc.toString()
+            docText = newValue
+            // Avoid infinite loop: only set if different
+            if (newValue !== value.peek()) {
+              value.set(newValue)
+              onChange?.(newValue)
+            }
+          } else {
+            docText = applyingExternal
           }
           docVersion.update((v) => v + 1)
         }
@@ -313,14 +342,19 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     // affordance + the lint navigation keymap (gated above).
     if (enableLint) exts.push(lintGutter())
     // Indent guides via theme (CM6 doesn't have a built-in extension for this)
+    // `&light` / `&dark` follow the active theme's dark flag, so the guides
+    // stay visible (and not glaring) under a dark or custom dark theme.
+    // `baseTheme` (not `theme`): only base themes understand `&light`/`&dark`.
     if (enableIndentGuides) {
+      const guide = (color: string) => ({
+        backgroundImage: `linear-gradient(to right, ${color} 1px, transparent 1px)`,
+        backgroundSize: `${configTabSize}ch 100%`,
+        backgroundPosition: '0 0',
+      })
       exts.push(
-        EditorView.theme({
-          '.cm-line': {
-            backgroundImage: 'linear-gradient(to right, #e5e7eb 1px, transparent 1px)',
-            backgroundSize: `${configTabSize}ch 100%`,
-            backgroundPosition: '0 0',
-          },
+        EditorView.baseTheme({
+          '&light .cm-line': guide('#e5e7eb'),
+          '&dark .cm-line': guide('#313244'),
         }),
       )
     }
@@ -348,21 +382,48 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
   // (without creating a leaked EditorView) if it changed. Closes the
   // dispose-during-pending-mount leak (orphaned CodeMirror view + DOM).
   let mountToken = 0
+  // The signal→view sync effects created by a mount. They run outside any
+  // component owner (mount resolves after an async grammar load), so nothing
+  // disposes them automatically — `dispose()` must, or every mount/dispose
+  // cycle leaves one more set dispatching into a destroyed view and retaining
+  // the whole editor.
+  let syncEffects: Effect[] = []
+  // Last text known to be in the view. Lets the value→view effect recognise
+  // the echo of a keystroke without serialising the whole document again.
+  let docText = ''
+  // Non-null while the value→view effect dispatches `value` into the view —
+  // the update listener then takes the text from here instead of re-reading it.
+  let applyingExternal: string | null = null
+  // Generation of language changes — a slow grammar import that resolves after
+  // a newer language was selected must not win.
+  let languageVersion = 0
 
   async function mount(parent: HTMLElement): Promise<void> {
-    if (mounted) return
+    if (mounted) {
+      // Re-mount of a live instance into a new container (the `<CodeEditor>`
+      // that owned the old one unmounted). The view is user-owned and survives
+      // that, so MOVE it rather than leaving the new container empty.
+      const v = view.peek()
+      if (v && v.dom.parentElement !== parent) {
+        parent.appendChild(v.dom)
+        v.requestMeasure()
+      }
+      return
+    }
 
     const token = ++mountToken
 
+    const mountedLanguage = language.peek()
     try {
-      const langExt = await loadLanguage(language.peek())
+      const langExt = await loadLanguage(mountedLanguage)
       // Superseded while loading (disposed / re-mounted) — abort cleanly.
       if (token !== mountToken) return
 
       const extensions = buildExtensions(langExt)
 
+      docText = value.peek()
       const state = EditorState.create({
-        doc: value.peek(),
+        doc: docText,
         extensions,
       })
 
@@ -380,6 +441,8 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
 
       view.set(editorView)
       mounted = true
+      // Diagnostics set before the view existed were stored, not dropped.
+      if (pendingDiagnostics.length > 0) applyDiagnostics(editorView, pendingDiagnostics)
     } catch (err) {
       // Mount failed (throwing extension, failed grammar import). Surface it
       // instead of leaving an unhandled promise rejection: route to the user
@@ -395,64 +458,115 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     }
 
     // Sync signal → editor for value changes from outside
-    effect(() => {
-      const val = value()
-      // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
-    const v = view.peek()
-      if (!v) return
-      const current = v.state.doc.toString()
-      if (val !== current) {
-        v.dispatch({
-          changes: { from: 0, to: current.length, insert: val },
-        })
-      }
-    })
+    syncEffects.push(
+      effect(() => {
+        const val = value()
+        // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
+        const v = view.peek()
+        if (!v || val === docText) return
+        applyingExternal = val
+        try {
+          v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: val } })
+        } finally {
+          applyingExternal = null
+        }
+        docText = val
+      }),
+    )
 
     // Sync language changes — async language loading is the framework's
     // documented pattern for code editors; the .then() dispatches to a
     // CodeMirror view captured per-editor, not per-component-instance.
-    // pyreon-lint-disable-next-line pyreon/no-imperative-effect-on-create
-    effect(() => {
-      const lang = language()
-      // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
-    const v = view.peek()
-      if (!v) return
-      loadLanguage(lang).then((ext) => {
-        v.dispatch({ effects: languageCompartment.reconfigure(ext) })
-      })
-    })
+    let firstLanguageRun = true
+    syncEffects.push(
+      // pyreon-lint-disable-next-line pyreon/no-imperative-effect-on-create
+      effect(() => {
+        const lang = language()
+        // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
+        const v = view.peek()
+        if (!v) return
+        // The mount already loaded this language — unless it changed while
+        // the mount's grammar import was in flight.
+        const first = firstLanguageRun
+        firstLanguageRun = false
+        if (first && lang === mountedLanguage) return
+        const version = ++languageVersion
+        loadLanguage(lang).then((ext) => {
+          // A newer language change, a dispose, or a re-created view since.
+          if (version !== languageVersion || view.peek() !== v) return
+          v.dispatch({ effects: languageCompartment.reconfigure(ext) })
+        })
+      }),
+    )
 
     // Sync theme changes
-    effect(() => {
-      const t = theme()
-      // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
-    const v = view.peek()
-      if (!v) return
-      v.dispatch({ effects: themeCompartment.reconfigure(resolveTheme(t)) })
-    })
+    syncEffects.push(
+      effect(() => {
+        const t = theme()
+        // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
+        const v = view.peek()
+        if (!v) return
+        v.dispatch({ effects: themeCompartment.reconfigure(resolveTheme(t)) })
+      }),
+    )
 
     // Sync readOnly changes
-    effect(() => {
-      const ro = readOnly()
-      // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
-    const v = view.peek()
-      if (!v) return
-      v.dispatch({
-        effects: readOnlyCompartment.reconfigure(EditorState.readOnly.of(ro)),
-      })
-    })
+    syncEffects.push(
+      effect(() => {
+        const ro = readOnly()
+        // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
+        const v = view.peek()
+        if (!v) return
+        v.dispatch({
+          effects: readOnlyCompartment.reconfigure(EditorState.readOnly.of(ro)),
+        })
+      }),
+    )
 
     // Sync editable changes (EditorView.editable — contenteditable on/off,
     // distinct from readOnly's transaction-blocking; see EditorConfig.editable)
-    effect(() => {
-      const ed = editable()
-      // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
-      const v = view.peek()
-      if (!v) return
+    syncEffects.push(
+      effect(() => {
+        const ed = editable()
+        // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
+        const v = view.peek()
+        if (!v) return
+        v.dispatch({
+          effects: editableCompartment.reconfigure(EditorView.editable.of(ed)),
+        })
+      }),
+    )
+  }
+
+  /**
+   * Swap the view's whole EditorState — the tabbed editor keeps one state per
+   * tab so each tab owns its undo history. `null` builds a FRESH state for
+   * `doc` (a tab's first visit). Returns the outgoing state so the caller can
+   * keep it. The live theme/readOnly/editable/keymap config is re-applied to
+   * a restored state, since it was captured when that tab was last active.
+   * Internal — not part of the public EditorInstance surface.
+   */
+  function swapState(next: EditorState | null, doc: string): EditorState | null {
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
+    const v = view.peek()
+    if (!v) return null
+    const prev = v.state
+    const langExt = languageCompartment.get(prev) ?? []
+    const target = next ?? EditorState.create({ doc, extensions: buildExtensions(langExt) })
+    v.setState(target)
+    if (next) {
       v.dispatch({
-        effects: editableCompartment.reconfigure(EditorView.editable.of(ed)),
+        effects: [
+          themeCompartment.reconfigure(resolveTheme(theme.peek())),
+          readOnlyCompartment.reconfigure(EditorState.readOnly.of(readOnly.peek())),
+          editableCompartment.reconfigure(EditorView.editable.of(editable.peek())),
+          extraKeymapCompartment.reconfigure(customKeymap()),
+        ],
       })
-    })
+    }
+    docText = target.doc.toString()
+    docVersion.update((n) => n + 1)
+    return prev
   }
 
   // ── Actions ──────────────────────────────────────────────────────────
@@ -561,10 +675,11 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
 
   // ── Diagnostics ────────────────────────────────────────────────────
 
-  function setDiagnostics(diagnostics: import('./types').Diagnostic[]): void {
-    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
-    const v = view.peek()
-    if (!v) return
+  // Stored, not dropped, when no view exists yet — applied on mount, the same
+  // way line highlights and gutter markers already were.
+  let pendingDiagnostics: Diagnostic[] = []
+
+  function applyDiagnostics(v: EditorView, diagnostics: Diagnostic[]): void {
     v.dispatch(
       cmSetDiagnostics(
         v.state,
@@ -579,64 +694,70 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     )
   }
 
+  function setDiagnostics(diagnostics: Diagnostic[]): void {
+    pendingDiagnostics = diagnostics
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
+    const v = view.peek()
+    if (v) applyDiagnostics(v, diagnostics)
+  }
+
   function clearDiagnostics(): void {
+    pendingDiagnostics = []
     // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (!v) return
     v.dispatch(cmSetDiagnostics(v.state, []))
   }
 
-  // ── Line highlights ────────────────────────────────────────────────
+  // ── Line highlights / gutter markers ───────────────────────────────
+
+  function refresh(): void {
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
+    const v = view.peek()
+    if (v) v.dispatch({ effects: refreshDecorations.of(null) })
+  }
 
   function highlightLine(line: number, className: string): void {
     lineHighlights.set(line, className)
-    // Force re-render of decorations
-    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
-    const v = view.peek()
-    if (v) v.dispatch({ effects: [] })
+    refresh()
   }
 
   function clearLineHighlights(): void {
     lineHighlights.clear()
-    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
-    const v = view.peek()
-    if (v) v.dispatch({ effects: [] })
+    refresh()
   }
-
-  // ── Gutter markers ────────────────────────────────────────────────
 
   function setGutterMarker(line: number, marker: import('./types').GutterMarker): void {
     gutterMarkers.set(line, marker)
-    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
-    const v = view.peek()
-    if (v) v.dispatch({ effects: [] })
+    refresh()
   }
 
   function clearGutterMarkers(): void {
     gutterMarkers.clear()
-    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
-    const v = view.peek()
-    if (v) v.dispatch({ effects: [] })
+    refresh()
   }
 
   // ── Custom keybindings ─────────────────────────────────────────────
 
   const customKeybindings: Array<{ key: string; run: () => boolean }> = []
 
+  // `Prec.high` so a custom binding beats the default keymap for the same key
+  // (Mod-a would otherwise stay selectAll).
+  function customKeymap(): Extension {
+    return customKeybindings.length > 0 ? Prec.high(keymap.of([...customKeybindings])) : []
+  }
+
   function addKeybinding(key: string, handler: () => boolean | undefined): void {
     customKeybindings.push({
       key,
-      run: () => {
-        handler()
-        return true
-      },
+      // `false` means "not handled" — let the next binding (or the browser)
+      // have the key. `undefined` keeps the historical handled semantics.
+      run: () => handler() !== false,
     })
     // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (!v) return
-    v.dispatch({
-      effects: extraKeymapCompartment.reconfigure(keymap.of(customKeybindings)),
-    })
+    v.dispatch({ effects: extraKeymapCompartment.reconfigure(customKeymap()) })
   }
 
   // ── Text queries ───────────────────────────────────────────────────
@@ -682,30 +803,31 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (!v) return
+    if (!enableVim && !enableEmacs) return
 
-    // Use string concat to prevent Vite from statically analyzing these optional imports
-    const vimPkg = '@replit/codemirror-' + 'vim'
-    const emacsPkg = '@replit/codemirror-' + 'emacs'
-
-    if (enableVim) {
-      try {
-        const mod = await import(/* @vite-ignore */ vimPkg)
-        v.dispatch({
-          effects: keyModeCompartment.reconfigure(mod.vim()),
-        })
-      } catch {
-        /* @replit/codemirror-vim not installed */
-      }
+    if (enableVim && enableEmacs && process.env.NODE_ENV !== 'production') {
+      console.warn(
+        '[Pyreon] @pyreon/code: both `vim` and `emacs` are enabled — they bind the same keys, so only one ' +
+          'can be active. Using vim; set one of them to false.',
+      )
     }
 
-    if (enableEmacs) {
-      try {
-        const mod = await import(/* @vite-ignore */ emacsPkg)
-        v.dispatch({
-          effects: keyModeCompartment.reconfigure(mod.emacs()),
-        })
-      } catch {
-        /* @replit/codemirror-emacs not installed */
+    // Use string concat to prevent Vite from statically analyzing these optional imports
+    const pkg = enableVim ? '@replit/codemirror-' + 'vim' : '@replit/codemirror-' + 'emacs'
+    try {
+      const mod = await import(/* @vite-ignore */ pkg)
+      // Disposed or re-created while the mode package loaded.
+      if (view.peek() !== v) return
+      v.dispatch({
+        effects: keyModeCompartment.reconfigure(enableVim ? mod.vim() : mod.emacs()),
+      })
+    } catch (err) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn(
+          `[Pyreon] @pyreon/code: \`${enableVim ? 'vim' : 'emacs'}: true\` needs the optional peer ` +
+            `\`${pkg}\` — install it. The editor keeps the default keymap.`,
+          err,
+        )
       }
     }
   }
@@ -714,6 +836,9 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     // Invalidate any in-flight `mount()` so a mount whose grammar import is
     // still loading won't create a live editor AFTER we've torn down.
     mountToken++
+    languageVersion++
+    for (const e of syncEffects) e.dispose()
+    syncEffects = []
     // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (v) {
@@ -725,7 +850,10 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
 
   // ── Expose mount for component ─────────────────────────────────────
 
-  const instance: EditorInstance & { _mount: typeof mount } = {
+  const instance: EditorInstance & {
+    _mount: typeof mount
+    _swapState: typeof swapState
+  } = {
     value,
     language,
     theme,
@@ -758,6 +886,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     scrollTo,
     config,
     dispose,
+    _swapState: swapState,
     _mount: async (parent: HTMLElement) => {
       await mount(parent)
       await loadKeyMode()
