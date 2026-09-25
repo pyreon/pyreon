@@ -1,6 +1,14 @@
 import type { VNode } from '@pyreon/core'
 import { resolveDocNode } from './nodes'
-import type { DocNode, DocumentRenderer, OutputFormat, RenderOptions, RenderResult } from './types'
+import type {
+  BinaryOutputFormat,
+  DocNode,
+  DocumentRenderer,
+  OutputFormat,
+  RenderOptions,
+  RenderResult,
+  TextOutputFormat,
+} from './types'
 
 // ─── Renderer Registry ──────────────────────────────────────────────────────
 
@@ -173,6 +181,21 @@ function applyBaseUrl(node: DocNode, baseUrl: string): DocNode {
  * `{ baseUrl: 'https://cdn.example.com/assets/' }` emits the absolute URL in
  * every output format.
  */
+export function render(
+  node: DocNode | VNode,
+  format: BinaryOutputFormat,
+  options?: RenderOptions,
+): Promise<Uint8Array>
+export function render(
+  node: DocNode | VNode,
+  format: TextOutputFormat,
+  options?: RenderOptions,
+): Promise<string>
+export function render(
+  node: DocNode | VNode,
+  format: OutputFormat | (string & {}),
+  options?: RenderOptions,
+): Promise<RenderResult>
 export async function render(
   node: DocNode | VNode,
   format: OutputFormat | string,
