@@ -165,11 +165,13 @@ export function emitDevEntry(doc: IrDocument, opts: EntryOptions): SourceFile | 
     'imports `./components` directly.',
   )
   if (mocks) {
-    f.line(`export { installMocks, routes as mockRouteTable } from './mocks'`)
+    f.line(
+      `export { installMocks, mockOperation, resetMocks, routes as mockRouteTable, type MockedOperation } from './mocks'`,
+    )
     // `mockRoutes` is a `@pyreon/http` MIDDLEWARE and has no equivalent on the
     // generated adapters, which answer through their own transport seam.
     if ((opts.client ?? 'pyreon') === 'pyreon') {
-      f.line(`export { mockRoutes } from './mocks'`)
+      f.line(`export { mockCalls, mockRoutes } from './mocks'`)
     }
   }
   if (faker) f.line(`export * from './faker'`)

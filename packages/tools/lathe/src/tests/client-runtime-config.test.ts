@@ -40,7 +40,7 @@ const SPEC = JSON.stringify({
 
 interface Client {
   api: { endpoint: unknown }
-  configureApi(c: Record<string, unknown>): void
+  configureApi(c: { baseUrl?: string | undefined; headers?: unknown; use?: HttpMiddleware[] | undefined; validate?: string | undefined }): void
   setDevTransport(m: HttpMiddleware | null): void
   auth: Record<string, (...a: unknown[]) => HttpMiddleware>
 }

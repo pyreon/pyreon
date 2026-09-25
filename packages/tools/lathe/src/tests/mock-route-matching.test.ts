@@ -1,126 +1,117 @@
 /**
- * Generated mock routes must actually INTERCEPT the request they describe.
+ * Generated mock routes must INTERCEPT exactly the request they describe.
  *
- * The route table used to emit the DECLARED path as a plain string
- * (`'/books/:id'`). `@pyreon/http`'s `MockRoute` matches a string as a SUFFIX
- * of the request's path+query, and `/books/:id` is not a suffix of
- * `/v1/books/b1` — so every generated mock for a parameterised operation
- * matched nothing and fell through to the real network. Nothing caught it: the
- * route table looked right, the file typechecked, and the only symptom was a
- * test or a workbench card making a real request it was supposed to be
- * insulated from.
+ * Run through the generated `installMocks()` and the generated endpoints —
+ * never by asserting on the emitted text, which can only tell you the emitter
+ * wrote what it meant to. Three shipped holes are locked here:
  *
- * The lesson is why this file runs the routes through the REAL middleware
- * rather than asserting on the emitted text. A `toContain("/books/:id")`
- * assertion passes against the broken version — it can only tell you the
- * emitter wrote what it meant to.
+ *  - a parameterised route emitted as a plain string never matched (history);
+ *  - a PARAMETERLESS route matched only as a URL suffix, so `GET /pets?limit=5`
+ *    missed it and went to the network (audit D1);
+ *  - routes were unanchored and id-ordered, so `/pets/:id` answered
+ *    `/owners/1/pets/2` and `/users/:id` answered `/users/me` (audit D2).
  */
-import { createHttp } from '@pyreon/http'
-import { mock, type MockRoute } from '@pyreon/http/mock'
-import { resolveConfig } from '../core/config'
-import { generate } from '../core/generate'
+import type { HttpMiddleware } from '@pyreon/http'
+import { cleanEmitted, emitToDisk } from './helpers/emit-to-disk'
 
-const SPEC = `
-openapi: 3.0.3
-info: { title: T, version: '1' }
-servers: [{ url: 'https://api.test/v1' }]
-paths:
-  /books:
-    get: { operationId: listBooks, tags: [b], responses: { '200': { content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Book' } } } } } } }
-  /books/{id}:
-    get:
-      operationId: getBook
-      tags: [b]
-      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
-      responses: { '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Book' } } } } }
-    delete:
-      operationId: deleteBook
-      tags: [b]
-      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
-      responses: { '204': { description: gone } }
-  /books/{id}/reviews:
-    get:
-      operationId: listReviews
-      tags: [b]
-      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
-      responses: { '200': { content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Book' } } } } } }
-components:
-  schemas:
-    Book:
-      type: object
-      required: [id, title]
-      properties:
-        id: { type: string }
-        title: { type: string }
-`
+const item = (schema: string) => ({ '200': { description: 'x', content: { 'application/json': { schema: { $ref: `#/components/schemas/${schema}` } } } } })
+const list = (schema: string) => ({ '200': { description: 'x', content: { 'application/json': { schema: { type: 'array', items: { $ref: `#/components/schemas/${schema}` } } } } } })
+const id = [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }]
+const SPEC = JSON.stringify({
+  openapi: '3.0.3',
+  info: { title: 'T', version: '1' },
+  servers: [{ url: 'https://api.test/v1' }],
+  paths: {
+    '/pets': { get: { operationId: 'listPets', parameters: [{ name: 'limit', in: 'query', schema: { type: 'integer' } }], responses: list('Pet') } },
+    '/pets/{id}': {
+      get: { operationId: 'aGetPet', parameters: id, responses: item('Pet') },
+      delete: { operationId: 'deletePet', parameters: id, responses: { '204': { description: 'gone' } } },
+    },
+    '/users/{id}': { get: { operationId: 'aUser', parameters: id, responses: item('User') } },
+    '/users/me': { get: { operationId: 'me', responses: item('Me') } },
+    '/owners/{id}/pets/{petId}': {
+      get: { operationId: 'ownerPet', parameters: [...id, { name: 'petId', in: 'path', required: true, schema: { type: 'string' } }], responses: item('OwnerPet') },
+    },
+  },
+  components: {
+    schemas: {
+      Pet: { type: 'object', required: ['name'], properties: { name: { type: 'string' } } },
+      User: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } },
+      Me: { type: 'object', required: ['me'], properties: { me: { type: 'boolean' } } },
+      OwnerPet: { type: 'object', required: ['owner'], properties: { owner: { type: 'string' } } },
+    },
+  },
+})
 
-const mocksText = (): string => {
-  const cfg = resolveConfig({ input: 'x', plugins: ['schemas', 'client', 'mocks'] })
-  const f = generate(SPEC, cfg).files.find((x) => x.path === 'mocks.ts')
-  if (!f) throw new Error('no mocks.ts')
-  return f.contents
+type Ep = (a?: unknown) => Promise<unknown>
+interface Loaded {
+  eps: Record<string, Ep>
+  client: { setDevTransport(m: HttpMiddleware | null): void; configureApi(c: { baseUrl?: string | undefined }): void }
+  mocks: {
+    installMocks(): void
+    mockOperation(id: string, o: Record<string, unknown>): () => void
+    resetMocks(): void
+    mockCalls: { url: string }[]
+  }
 }
 
-/**
- * Evaluate the emitted route table.
- *
- * The generated module imports `@pyreon/http/mock`, which a plain `eval` cannot
- * resolve — so only the `routes` array literal is taken and evaluated. It is
- * the value under test; `mock()` is applied here from the real package.
- */
-function emittedRoutes(): MockRoute[] {
-  const text = mocksText()
-  const start = text.indexOf('export const routes')
-  const open = text.indexOf('[', start)
-  const close = text.indexOf('\n]', open)
-  const literal = text.slice(open, close + 2)
-  // eslint-disable-next-line no-new-func
-  return new Function(`return ${literal}`)() as MockRoute[]
+async function load(): Promise<Loaded> {
+  const e = emitToDisk('mocks', SPEC, { plugins: ['schemas', 'client', 'mocks'] })
+  const client = await e.load<Loaded['client']>('client.ts')
+  // No mock may fall through: the network is a failure here.
+  const mocks = await e.load<Loaded['mocks']>('mocks.ts')
+  return { eps: await e.load<Loaded['eps']>('endpoints/default.ts'), client, mocks }
 }
 
-describe('generated mock routes intercept the requests they describe', () => {
-  it('a path-parameter route matches the RESOLVED url', async () => {
-    const api = createHttp({ baseUrl: 'https://api.test/v1', use: [mock(emittedRoutes())] })
-    const getBook = api.endpoint('GET /books/:id')
-    // Reaching the network here would throw; a match returns the fixture.
-    const book = (await getBook({ params: { id: 'b1' } })) as { id: string }
-    expect(book).toHaveProperty('title')
+afterAll(() => cleanEmitted('mocks'))
+
+describe('generated mock routes', () => {
+  let l: Loaded
+  beforeAll(async () => {
+    l = await load()
+  })
+  beforeEach(() => l.mocks.installMocks())
+  afterEach(() => {
+    l.mocks.resetMocks()
+    l.client.setDevTransport(null)
+    l.client.configureApi({ baseUrl: undefined })
   })
 
-  it('a path-parameter route does NOT swallow a deeper path', async () => {
-    // `/books/:id` must not match `/books/b1/reviews` — the route ends at a
-    // query string or the end of the URL. Without that bound the detail
-    // fixture answers the reviews request with a single object where the
-    // caller expects a list.
-    const api = createHttp({ baseUrl: 'https://api.test/v1', use: [mock(emittedRoutes())] })
-    const reviews = (await api.endpoint('GET /books/:id/reviews')({
-      params: { id: 'b1' },
-    })) as unknown[]
-    expect(Array.isArray(reviews)).toBe(true)
+  it('a parameterless route still matches with a query string (D1)', async () => {
+    await expect(l.eps.listPets?.({ query: { limit: 5 } })).resolves.toEqual([{ name: expect.any(String) }, { name: expect.any(String) }])
   })
 
-  it('a query string does not stop a path-parameter route matching', async () => {
-    const api = createHttp({ baseUrl: 'https://api.test/v1', use: [mock(emittedRoutes())] })
-    const book = (await api.endpoint('GET /books/:id')({
-      params: { id: 'b1' },
-      query: { expand: 'author' },
-    })) as { id: string }
-    expect(book).toHaveProperty('title')
+  it('a parameterised route matches the resolved URL', async () => {
+    await expect(l.eps.aGetPet?.({ params: { id: 'b1' } })).resolves.toHaveProperty('name')
   })
 
-  it('a no-content operation emits NO json, so the mock answers like the server', () => {
-    // `json: null` made the mock reply 200 with the body `null` while the real
-    // server replies 204 with nothing — so an app tested against fixtures saw
-    // `null` where production gives `undefined`.
-    const del = emittedRoutes().find((r) => r.method === 'DELETE')
-    expect(del, 'the DELETE route should exist').toBeDefined()
-    expect(Object.hasOwn(del as object, 'json')).toBe(false)
+  it('a literal segment beats a parameter in the same position (D2)', async () => {
+    await expect(l.eps.me?.()).resolves.toEqual({ me: true })
+    await expect(l.eps.aUser?.({ params: { id: 'u1' } })).resolves.toHaveProperty('id')
   })
 
-  it('a route with no path parameter stays a plain string', () => {
-    // A RegExp everywhere would work, and would make every generated table
-    // harder to read for no gain.
-    const list = emittedRoutes().find((r) => typeof r.path === 'string')
-    expect(list?.path).toBe('/books')
+  it('routes are anchored at the base URL (D2)', async () => {
+    await expect(l.eps.ownerPet?.({ params: { id: 'o1', petId: 'p1' } })).resolves.toHaveProperty('owner')
+  })
+
+  it('anchoring follows a runtime base-URL switch', async () => {
+    l.client.configureApi({ baseUrl: 'https://staging.test/api/v2' })
+    await expect(l.eps.aGetPet?.({ params: { id: 'b1' } })).resolves.toHaveProperty('name')
+    expect(l.mocks.mockCalls.at(-1)?.url).toBe('/pets/b1')
+  })
+
+  it('a no-content operation answers like the server — no body', async () => {
+    await expect(l.eps.deletePet?.({ params: { id: 'b1' } })).resolves.toBeUndefined()
+  })
+
+  it('mockOperation overrides one route; the restore and resetMocks undo it', async () => {
+    const restore = l.mocks.mockOperation('listPets', { json: [] })
+    await expect(l.eps.listPets?.()).resolves.toEqual([])
+    restore()
+    await expect(l.eps.listPets?.()).resolves.toHaveLength(2)
+    l.mocks.mockOperation('aGetPet', { status: 500, json: { message: 'down' } })
+    await expect(l.eps.aGetPet?.({ params: { id: 'x' } })).rejects.toThrow()
+    l.mocks.resetMocks()
+    await expect(l.eps.aGetPet?.({ params: { id: 'x' } })).resolves.toHaveProperty('name')
   })
 })

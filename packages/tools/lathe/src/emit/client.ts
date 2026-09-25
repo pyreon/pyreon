@@ -132,6 +132,11 @@ export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
   f.line('export function setDevTransport(middleware: HttpMiddleware | null): void {')
   f.line('  devTransport = middleware')
   f.line('}')
+  f.line()
+  f.doc('The base URL requests currently go to — the generated default, or what `configureApi` set.')
+  f.line('export function apiBaseUrl(): string {')
+  f.line('  return settings.baseUrl')
+  f.line('}')
   emitAuthHelpers(f, doc)
   f.line()
   f.doc(

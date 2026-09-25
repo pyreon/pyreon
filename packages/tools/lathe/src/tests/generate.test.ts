@@ -245,7 +245,7 @@ describe('generate', () => {
 
   it('emits deterministic mock fixtures with no randomness', () => {
     const src = file(generate(SPEC, web), 'mocks.ts')
-    expect(src).toContain('export const mockRoutes = mock(routes)')
+    expect(src).toContain('export const mockRoutes: HttpMiddleware = (req, next) =>')
     expect(src).toContain('"available"')
     expect(file(generate(SPEC, web), 'mocks.ts')).toBe(src)
   })

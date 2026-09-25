@@ -406,9 +406,12 @@ describe('a regex literal cannot be broken from either site that emits one', () 
     const routes = new Function(`return ${literal}`)() as Array<{ path: string | RegExp }>
     const re = routes.map((r) => r.path).find((x): x is RegExp => x instanceof RegExp)
     expect(re).toBeDefined()
-    expect((re as RegExp).test('https://e.test/x/b1/detail')).toBe(true)
-    expect((re as RegExp).test('https://e.test/x/b1/detail?q=1')).toBe(true)
-    expect((re as RegExp).test('https://e.test/x/b1/detail/more')).toBe(false)
+    // Routes are anchored at the BASE-RELATIVE path (the generated middleware
+    // strips the client's base URL before matching).
+    expect((re as RegExp).test('/x/b1/detail')).toBe(true)
+    expect((re as RegExp).test('/x/b1/detail?q=1')).toBe(true)
+    expect((re as RegExp).test('/x/b1/detail/more')).toBe(false)
+    expect((re as RegExp).test('/other/x/b1/detail')).toBe(false)
   })
 
   describe('regexLiteral itself', () => {

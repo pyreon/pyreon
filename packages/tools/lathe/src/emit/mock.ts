@@ -13,7 +13,10 @@
  */
 
 import type { IrDocument, IrField, IrOperation, IrType } from '../core/ir'
-import { byTag, CLIENT_FILE, endpointSpec, tagFile } from './client'
+import { responseKindOf } from '../core/media'
+import { byCodeUnit } from '../core/order'
+import { conforms, sampleNumber, sampleString } from '../core/sample'
+import { CLIENT_FILE, endpointSpec, tagFile } from './client'
 import type { ClientName } from './client-runtime'
 import { jsonLiteral, q, regexLiteral, relativeSpecifier, SourceFile } from './writer'
 
@@ -34,11 +37,12 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
   const f = new SourceFile('mocks.ts')
   const pyreon = client === 'pyreon'
   if (pyreon) {
-    f.import('@pyreon/http/mock', 'mock')
+    f.import('@pyreon/http/mock', 'createMock')
     f.importType('@pyreon/http/mock', 'MockRoute')
-  }
-  f.import(relativeSpecifier('mocks.ts', CLIENT_FILE), 'setDevTransport')
-  if (!pyreon) {
+    f.importType('@pyreon/http', 'HttpMiddleware')
+    f.import(relativeSpecifier('mocks.ts', CLIENT_FILE), 'apiBaseUrl', 'setDevTransport')
+  } else {
+    f.import(relativeSpecifier('mocks.ts', CLIENT_FILE), 'setDevTransport')
     f.line()
     f.doc('One fixture route. Matched on method plus the DECLARED path.')
     f.line('export interface MockRoute {')
@@ -47,71 +51,168 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
     f.line('  path: string')
     f.line('  /** Absent for a no-content operation, matching a real 204. */')
     f.line('  json?: unknown')
+    f.line('  /** Simulated latency, in ms. */')
+    f.line('  delay?: number | undefined')
+    f.line('  /** Reject with this instead of answering. */')
+    f.line('  error?: unknown')
     f.line('}')
   }
+
+  // Most SPECIFIC first (audit D2): the table is searched in order, and a
+  // literal segment must win over a parameter in the same position, or
+  // `GET /users/me` is answered by the `/users/{id}` fixture.
+  const ops = [...doc.operations].sort(bySpecificity)
 
   f.line()
   f.doc(
     `Deterministic fixtures for ${doc.title}.`,
     '',
-    'Install with `api.use(mockRoutes)` (or pass `mock(routes)` as middleware)',
-    'to run the generated client with no server. Values are derived from the',
-    'spec — same input, same bytes, every run — so snapshots stay stable.',
+    'Install with `installMocks()` to run the generated client with no server.',
+    'Values are derived from the spec — constraints first, so every fixture is',
+    'one its own schema accepts — and are the same bytes every run, so',
+    'snapshots stay stable. Ordered most-specific first.',
   )
   f.line('export const routes: MockRoute[] = [')
-  for (const [, ops] of byTag(doc)) {
-    for (const op of ops) {
-      f.line(`  {`)
-      f.line(`    method: ${q(op.method)},`)
-      f.line(`    path: ${mockPath(op, pyreon)},`)
-      // `json` is OMITTED for an operation with no response body.
-      //
-      // Emitting `json: null` made the mock answer 200 with the body `null`
-      // while the real server answers 204 with nothing, so an app tested
-      // against the fixtures saw `null` where production gives `undefined`.
-      // `MockRoute` documents the absent-body case as a real 204, and the
-      // adapter installer answers `{ json: undefined }` — both now agree with
-      // the server.
-      if (op.response) {
+  for (const op of ops) {
+    f.line(`  {`)
+    f.line(`    method: ${q(op.method)},`)
+    f.line(`    path: ${mockPath(op, pyreon)},`)
+    // `json` is OMITTED for an operation with no response body.
+    //
+    // Emitting `json: null` made the mock answer 200 with the body `null`
+    // while the real server answers 204 with nothing, so an app tested
+    // against the fixtures saw `null` where production gives `undefined`.
+    if (op.response) {
+      const kind = responseKindOf(op)
+      if (kind === 'json') {
         f.line(`    json: ${indentAfterFirst(fixture(op.response, doc, 0), 4)},`)
+      } else if (pyreon) {
+        // A non-JSON response answers with a BODY in its own media type, so
+        // the client decodes it exactly as it will decode the server's.
+        f.line(`    body: ${q(`sample ${op.id}`)},`)
+        f.line(`    headers: { 'content-type': ${q(op.responseMedia ?? 'text/plain')} },`)
+      } else {
+        f.line(`    json: ${q(`sample ${op.id}`)},`)
       }
-      f.line(`  },`)
     }
+    f.line(`  },`)
   }
   f.line(']')
 
+  f.line()
+  f.doc('Operation ids that have a mock route — what {@link mockOperation} accepts.')
+  f.line(
+    `export type MockedOperation = ${ops.length > 0 ? [...ops].sort((a, b) => byCodeUnit(a.id, b.id)).map((o) => q(o.id)).join(' | ') : 'never'}`,
+  )
+  f.line()
+  f.line('const index: Record<MockedOperation, number> = {')
+  for (const [i, op] of ops.entries()) f.line(`  ${op.id}: ${i},`)
+  f.line('}')
+  f.line()
+  f.doc(
+    'The routes CURRENTLY answering — `routes` with any {@link mockOperation}',
+    'overrides applied. The middleware reads this array on every request.',
+  )
+  f.line('const active: MockRoute[] = [...routes]')
+  f.line()
+  f.doc(
+    "Override one operation's mock — for a test that needs an empty list, an",
+    'error, a slow response. Returns a function restoring the generated route;',
+    '{@link resetMocks} restores them all.',
+    '',
+    '```ts',
+    ops[0]
+      ? `const restore = mockOperation(${q(ops[0].id)}, ${pyreon ? '{ status: 500, json: { message: \'down\' } }' : '{ error: new Error(\'down\') }'})`
+      : "const restore = mockOperation('someOperation', { delay: 200 })",
+    'afterEach(resetMocks)',
+    '```',
+  )
+  f.line(
+    `export function mockOperation(id: MockedOperation, override: Partial<Omit<MockRoute, 'method' | 'path'>>): () => void {`,
+  )
+  f.line('  const i = index[id]')
+  f.line('  const generated = routes[i] as MockRoute')
+  f.line('  active[i] = { ...generated, ...override }')
+  f.line('  return () => {')
+  f.line('    active[i] = generated')
+  f.line('  }')
+  f.line('}')
+  f.line()
+  f.doc('Undo every {@link mockOperation} override.')
+  f.line('export function resetMocks(): void {')
+  f.line('  active.splice(0, active.length, ...routes)')
+  f.line('}')
+
   if (pyreon) {
     f.line()
-    f.doc('Ready-made middleware over the routes above.')
-    f.line('export const mockRoutes = mock(routes)')
+    f.doc(
+      'The mock middleware.',
+      '',
+      "Routes are anchored at the client's base URL (audit D2): the request URL",
+      'is made relative to `apiBaseUrl()` — read per request, so a',
+      '`configureApi({ baseUrl })` switch keeps matching — before the anchored',
+      'patterns are tested. An unanchored `/pets/:id` also matched',
+      '`/owners/1/pets/2`.',
+    )
+    f.line('const handle = createMock(active)')
+    f.line()
+    f.line('function baseRelative(url: string): string {')
+    f.line("  const strip = (u: string): string => u.replace(/^[a-z][a-z\\d+\\-.]*:\\/\\/[^/?#]*/i, '')")
+    f.line('  const path = strip(url)')
+    f.line("  const base = strip(apiBaseUrl()).replace(/\\/+$/, '')")
+    f.line('  return base !== \'\' && path.startsWith(base) ? path.slice(base.length) : path')
+    f.line('}')
+    f.line()
+    f.line('export const mockRoutes: HttpMiddleware = (req, next) =>')
+    f.line('  handle.middleware({ ...req, url: baseRelative(req.url) }, () => next(req))')
+    f.line()
+    f.doc('Every request a mock answered, in order (URLs base-relative) — for assertions.')
+    f.line('export const mockCalls = handle.calls')
   }
 
   f.line()
   f.doc(
     'Serve every request from the fixtures above, with no server.',
     '',
-    'Endpoints bind to the client at declaration time, so middleware cannot be',
-    'added to `createHttp` after the fact -- this goes through the transport',
-    'seam the client reserves. Call it from a test setup or a workbench',
-    'wrapper; pass nothing to `setDevTransport` to go back to the network.',
+    'Goes through the transport slot the client reserves for this, which is',
+    'separate from `configureApi({ use })` — installing mocks keeps any auth or',
+    'logging middleware. Call it from a test setup or a workbench wrapper; pass',
+    '`null` to `setDevTransport` to go back to the network.',
   )
   f.line('export function installMocks(): void {')
   if (pyreon) {
     f.line('  setDevTransport(mockRoutes)')
   } else {
-    f.line('  setDevTransport((req) => {')
-    f.line('    for (const route of routes) {')
-    f.line('      if (route.method === req.method && route.path === req.path) return { json: route.json }')
-    f.line('    }')
+    f.line('  setDevTransport(async (req) => {')
+    f.line('    const route = active.find((r) => r.method === req.method && r.path === req.path)')
     // `null` means NOT HANDLED. A matched route answers with an envelope, so
     // a fixture that is itself `null` (a no-content response) stays
-    // distinguishable from no route at all — without the envelope the two
-    // collapse and a 204 fixture silently issues a real request.
-    f.line('    return null')
+    // distinguishable from no route at all.
+    f.line('    if (!route) return null')
+    f.line('    if (route.delay) await new Promise((resolve) => setTimeout(resolve, route.delay))')
+    f.line('    if (route.error !== undefined) throw route.error')
+    f.line('    return { json: route.json }')
     f.line('  })')
   }
   f.line('}')
   return f
+}
+
+/**
+ * Most specific first: segment by segment, a literal beats a parameter; a
+ * longer path beats its own prefix; ties fall back to the method and the id,
+ * so the order is total and regeneration byte-identical.
+ */
+function bySpecificity(a: IrOperation, b: IrOperation): number {
+  const sa = a.path.split('/')
+  const sb = b.path.split('/')
+  for (let i = 0; i < Math.min(sa.length, sb.length); i++) {
+    const pa = (sa[i] as string).startsWith(':') ? 1 : 0
+    const pb = (sb[i] as string).startsWith(':') ? 1 : 0
+    if (pa !== pb) return pa - pb
+  }
+  if (sa.length !== sb.length) return sb.length - sa.length
+  return byCodeUnit(`${a.path} ${a.method} ${a.id}`, `${b.path} ${b.method} ${b.id}`)
 }
 
 /**
@@ -142,8 +243,13 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
  * lexical half.
  */
 function mockPath(op: IrOperation, pyreon: boolean): string {
-  if (!pyreon || !op.path.includes(':')) return q(op.path)
-  return regexLiteral(`${pathPattern(op.path)}(?:\\?|$)`)
+  if (!pyreon) return q(op.path)
+  // EVERY route is a pattern (audit D1): a plain string matched as a SUFFIX,
+  // so `GET /pets?limit=5` missed the `/pets` route and went to the network —
+  // any list endpoint with paging arguments escaped the mocks. Anchored at the
+  // BASE-RELATIVE path (see `mockRoutes`), ending at a query, a fragment or
+  // the end.
+  return regexLiteral(`^${pathPattern(op.path)}(?:[?#]|$)`)
 }
 
 /**
@@ -176,28 +282,17 @@ function fixture(
   field?: IrField,
   index = 0,
 ): unknown {
-  if (field?.example !== undefined) return field.example
+  // A spec `example` is used only when it satisfies the schema it sits in —
+  // real specs carry examples that contradict their own types (audit C7).
+  if (field?.example !== undefined && conforms(field.example, type, (n) => modelType(doc, n), field)) {
+    return field.example
+  }
   if (depth > 6) return null
   switch (type.kind) {
-    case 'string': {
-      if (type.enum && type.enum.length > 0) return type.enum[0]
-      switch (type.format) {
-        case 'email':
-          return 'user@example.com'
-        case 'uri':
-          return 'https://example.com'
-        case 'uuid':
-          return `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`
-        case 'date':
-          return '2026-01-01'
-        case 'date-time':
-          return '2026-01-01T00:00:00Z'
-        default:
-          return field ? `sample ${field.name}${index > 0 ? ` ${index}` : ''}` : 'sample'
-      }
-    }
+    case 'string':
+      return sampleString(type, field, index)
     case 'number':
-      return type.integer ? Math.max(1, index) : 1.5
+      return sampleNumber(type, field, index)
     case 'boolean':
       return true
     case 'null':
@@ -234,6 +329,10 @@ function fixture(
       return out
     }
   }
+}
+
+function modelType(doc: IrDocument, name: string): IrType | undefined {
+  return doc.models.find((m) => m.name === name)?.type
 }
 
 /** JSON literal, with every line after the first indented to `pad`. */

@@ -146,7 +146,7 @@ const EMITTER_VALUES = new Set([
   'api', 's', 'z', 'standardSchema', 'createHttp',
   // exports of the generated entries
   'keys', 'configureApi', 'auth', 'optimisticUpdate', 'setDevTransport', 'installMocks', 'mockRoutes', 'mockRouteTable',
-  'routes', 'mock', 'faker',
+  'routes', 'mock', 'faker', 'mockOperation', 'resetMocks', 'mockCalls', 'apiBaseUrl', 'createMock',
   // `use<Id>` must never equal an imported hook
   'query', 'mutation', 'queryClient', 'infiniteQuery', 'queries', 'isFetching', 'isMutating',
 ])
@@ -155,7 +155,7 @@ const EMITTER_TYPES = new Set([
   'Infer', 'Schema', 'MockRoute', 'HttpMiddleware', 'Endpoint', 'EndpointKey', 'EndpointArgs',
   'QueryValue', 'QueryOptionsLike', 'MutationOptionsLike', 'DevRequest', 'DevAnswer',
   'DevTransport', 'LatheHttpError', 'StandardSchema', 'StandardResult', 'AxiosInstance',
-  'KyInstance', 'ApiConfig', 'ValidateMode',
+  'KyInstance', 'ApiConfig', 'ValidateMode', 'MockedOperation', 'Credential',
   // globals the emitted TYPES spell
   'Record', 'Partial', 'Array', 'ReadonlyArray', 'Promise', 'Readonly', 'Omit', 'Pick',
   'Required', 'NonNullable', 'ReturnType', 'Awaited', 'Parameters', 'Exclude', 'Extract',
