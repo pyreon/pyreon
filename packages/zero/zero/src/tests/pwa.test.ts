@@ -110,6 +110,20 @@ describe('buildWebManifest', () => {
       display: 'standalone',
     })
   })
+
+  it('writes every declared manifest field verbatim (orientation, colors, icons)', () => {
+    const manifest = {
+      name: 'X',
+      short_name: 'x',
+      orientation: 'portrait' as const,
+      theme_color: '#111',
+      background_color: '#fff',
+      lang: 'en',
+      display: 'minimal-ui' as const,
+      icons: [{ src: '/i.png', sizes: '192x192', purpose: 'maskable' as const }],
+    }
+    expect(JSON.parse(buildWebManifest(manifest, '/'))).toEqual({ start_url: '/', scope: '/', ...manifest })
+  })
 })
 
 async function loadClient(): Promise<typeof import('../pwa-client')> {
