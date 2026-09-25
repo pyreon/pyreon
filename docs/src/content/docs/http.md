@@ -40,6 +40,31 @@ const user = await api.get('/users/1').json() // decoded body
 
 `.text()`, `.blob()`, `.arrayBuffer()`, `.formData()` and `.void()` work the same way. The request fires eagerly, so `.json()` never re-issues it.
 
+## Request bodies
+
+One option per encoding; they are mutually exclusive, and passing two throws.
+
+```ts
+api.post('/users', { json: { name: 'Ada' } })               // application/json
+api.post('/v1/customers', {                                  // x-www-form-urlencoded
+  form: { email: 'a@b.c', metadata: { plan: 'pro' } },
+  formEncoding: { metadata: { style: 'deepObject', explode: true } },
+})                                                           // email=a%40b.c&metadata%5Bplan%5D=pro
+api.post('/files', { multipart: { file, purpose: 'x' } })   // FormData; Blob/File = file part
+api.post('/raw', { body: bytes, headers: { 'content-type': 'application/octet-stream' } })
+```
+
+`form` follows OpenAPI's Encoding Object per field: the default `form` + `explode` repeats an array's key, `deepObject` writes brackets (`items[0][price]=…`, what Stripe declares), `spaceDelimited` / `pipeDelimited` join arrays. `null` / `undefined` fields are dropped, never sent as text. `encodeForm`, `encodeMultipart` and `encodeCookies` are exported for transports that need the same bytes.
+
+A header record may carry numbers, booleans and `undefined` — an `undefined` header is omitted rather than sent as `"undefined"`. `cookies: { session }` writes a `Cookie` header; a browser drops that header silently (it is forbidden from script), so there use `credentials: 'include'`. On an endpoint, declared `headers` and per-call `headers` MERGE, and `formEncoding` is declared once:
+
+```ts
+const createCustomer = api.endpoint('POST /v1/customers', {
+  formEncoding: { metadata: { style: 'deepObject', explode: true } },
+})
+await createCustomer({ form: { metadata: { plan: 'pro' } }, headers: { 'idempotency-key': key } })
+```
+
 ## Everything is optional
 
 The core has **zero dependencies**. Each capability is a separate entry, so an unused one costs nothing.
@@ -108,6 +133,75 @@ useMutation(createUser.mutation({ invalidates: [listUsers] }))
 `params` is **required by the type system exactly when the path declares `:placeholders`**, and its keys come from the path literal — so `{ params: { userId } }` against `/users/:id` is a compile error.
 
 `invalidates` takes **endpoints**, not stringly-typed keys.
+
+## Streaming — Server-Sent Events and NDJSON
+
+`@pyreon/http/stream` reads the wire format from any `ReadableStream<Uint8Array>`
+— an endpoint declared with `responseType: 'stream'`, a raw `fetch`, a
+generated axios or ky client — so a stream can be a POST, carry auth headers,
+and go through your middleware and mock transport. `EventSource` can do none
+of that.
+
+```ts
+import { openEventStream, openNdjsonStream } from '@pyreon/http/stream'
+
+const tail = api.endpoint('GET /logs/tail', { responseType: 'stream' })
+
+const stream = openEventStream((ctx) => tail({ signal: ctx.signal, headers: ctx.headers }), {
+  parse: (v) => LogLine.parse(v),      // validate each event's JSON `data`
+  events: ['line'],                    // only these `event:` types
+})
+for await (const ev of stream) {
+  console.log(ev.type, ev.data, ev.id)
+  if (ev.data.done) break              // closes the connection
+}
+stream.lastEventId()                   // persist it to resume later
+```
+
+- **`connect(ctx)`** is called for every (re)connection with an `AbortSignal`,
+  the headers the stream needs (`accept`, and `last-event-id` when resuming)
+  and the attempt number. Merge `ctx.headers` into the request —
+  `streamHeaders(callHeaders, ctx.headers)` does that for any header shape.
+- **Reconnection (SSE)**: a dropped connection, a 408 / 429 or a 5xx is retried
+  with exponential backoff (`reconnect: { attempts: 5, delay: 1000, maxDelay: 30000 }`),
+  resuming with `Last-Event-ID`; a server `retry:` sets the delay, any other
+  4xx is final, and the attempt budget resets once an event arrives. A clean
+  end finishes the stream unless `reconnect: { onEnd: true }` (what
+  `EventSource` does — wrong for a request/response stream like an LLM
+  completion). `reconnect: false` turns it off.
+- **NDJSON** yields one parsed value per line; blank lines are skipped, a final
+  line without a newline still counts, and a bad line throws a
+  `StreamParseError` naming its line number. It never reconnects — there is no
+  resume id, so a retry would replay.
+- **Cancellation**: `break`, `stream.close()` or `options.signal` abort the
+  request and cancel the body, so the server sees the socket close.
+- **`data: 'text'`** keeps each SSE event's `data` as a string instead of JSON.
+- `readEventStream(body)` / `readNdjson(body)` are the bare parsers, for a
+  stream you manage yourself. They follow the WHATWG grammar: CR / LF / CRLF
+  split anywhere across chunks, multi-byte characters split across chunks,
+  multi-line `data`, comments, a leading BOM, and an unterminated final event
+  discarded.
+
+To mock a stream, `@pyreon/http/mock` routes take `accept` (match only a
+request whose `Accept` names that media type — one URL answering JSON to a
+plain call and a stream to a streaming one) and a computed `body`:
+
+```ts
+createMock([
+  {
+    path: '/chat',
+    accept: 'text/event-stream',
+    headers: { 'content-type': 'text/event-stream' },
+    // resume after the id the client sends, like a real server
+    body: (call) => events.slice(Number(call.headers['last-event-id'] ?? 0)).join(''),
+  },
+  { path: '/chat', json: { text: 'whole' } },   // the non-stream call
+])
+```
+
+For a component, `useStream` from `@pyreon/query` turns any of these into
+signals, and a [Lathe](/docs/lathe) client generates typed `<op>Stream` /
+`use<Op>Stream` pairs for every streaming operation in a spec.
 
 ## Middleware
 

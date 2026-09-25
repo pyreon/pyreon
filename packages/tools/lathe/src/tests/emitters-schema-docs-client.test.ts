@@ -25,12 +25,12 @@ import type { IrDocument, IrOperation, IrType } from '../core/ir'
 
 const num = (integer = false): IrType => ({ kind: 'number', integer })
 const field = (name: string, type: IrType, required = true) =>
-  ({ name, type, required, nullable: false })
+  ({ name, type, required })
 const obj = (fields: ReturnType<typeof field>[]): IrType =>
   ({ kind: 'object', fields }) as IrType
 
 const op = (id: string, tag: string): IrOperation =>
-  ({ id, tag, method: 'GET', path: `/${id}`, pathParams: [], queryParams: [] }) as IrOperation
+  ({ id, tag, method: 'GET', path: `/${id}`, pathParams: [], queryParams: [], headerParams: [], cookieParams: [] }) as IrOperation
 const doc = (operations: IrOperation[]): IrDocument =>
   ({ title: 'T', version: '1', baseUrl: '', models: [], operations, notes: [] }) as IrDocument
 
@@ -54,8 +54,8 @@ describe('tsType renders the spec as widely as the spec allows, and no wider', (
   it('renders an enum as a literal union, and widens it on request', () => {
     // The literal union is the point of generating types at all. The
     // widened form exists for positions where a literal cannot be used.
-    expect(tsType({ kind: 'string', enum: ['a', 'b'] })).toBe("'a' | 'b'")
-    expect(tsType({ kind: 'string', enum: ['a', 'b'] }, 0, true)).toBe('string')
+    expect(tsType({ kind: 'enum', values: ['a', 'b'] })).toBe("'a' | 'b'")
+    expect(tsType({ kind: 'enum', values: ['a', 'b'] }, 0, true)).toBe('string')
   })
 
   it('PARENTHESISES a union inside an array', () => {
@@ -106,7 +106,7 @@ describe('schemaExpr emits a validator, in the dialect asked for', () => {
       ['array', { kind: 'array', items: { kind: 'string' } }],
       ['object', obj([field('a', { kind: 'string' })])],
       ['ref', { kind: 'ref', name: 'User' }],
-      ['enum', { kind: 'string', enum: ['a', 'b'] }],
+      ['enum', { kind: 'enum', values: ['a', 'b'] }],
       ['union', { kind: 'union', options: [{ kind: 'string' }, num()] }],
     ] as Array<[string, IrType]>) {
       const out = expr(type)
@@ -118,7 +118,7 @@ describe('schemaExpr emits a validator, in the dialect asked for', () => {
   it('carries enum members into the validator', () => {
     // A validator that accepts any string for an enum field lets bad
     // data through at runtime, which is the one job it has.
-    const out = expr({ kind: 'string', enum: ['active', 'banned'] })
+    const out = expr({ kind: 'enum', values: ['active', 'banned'] })
     expect(out).toContain('active')
     expect(out).toContain('banned')
   })
@@ -179,7 +179,7 @@ describe('a model is emitted as an interface when it can be', () => {
       name: 'User',
       type: {
         kind: 'object',
-        fields: [{ name: 'id', type: { kind: 'string' }, required: true, nullable: false }],
+        fields: [{ name: 'id', type: { kind: 'string' }, required: true }],
       },
     } as never])
     expect(out).toContain('export interface User')
@@ -188,10 +188,27 @@ describe('a model is emitted as an interface when it can be', () => {
   it('uses `type` for a model that is NOT an object', () => {
     // `export interface X = string` is not valid TypeScript.
     const out = emitModels([
-      { name: 'Status', type: { kind: 'string', enum: ['a', 'b'] } } as never,
+      { name: 'Status', type: { kind: 'enum', values: ['a', 'b'] } } as never,
     ])
     expect(out).toContain('export type Status')
     expect(out).not.toContain('export interface Status')
+  })
+
+  it('uses `type` for a UNION whose first member is an inline object', () => {
+    // Rendered, this starts with `{` -- the old keyword test, which produced
+    // `export interface Shape { … } | { … }`, a parse error.
+    const out = emitModels([{
+      name: 'Shape',
+      type: {
+        kind: 'union',
+        options: [
+          { kind: 'object', fields: [{ name: 'r', type: { kind: 'number' }, required: true, nullable: false }] },
+          { kind: 'object', fields: [{ name: 'w', type: { kind: 'number' }, required: true, nullable: false }] },
+        ],
+      },
+    } as never])
+    expect(out).toContain('export type Shape = {')
+    expect(out).not.toContain('export interface Shape')
   })
 
   it('renders a dictionary model as a Record alias', () => {
@@ -221,12 +238,38 @@ describe('operations group by tag in a stable order', () => {
       .toBe(JSON.stringify([...b].map(([k, v]) => [k, v.map((o) => o.id)])))
   })
 
-  it('does not special-case the default tag to the front', () => {
-    // Sorting it first would move every untagged operation whenever a
-    // tag is added elsewhere.
-    const m = byTag(doc([op('a', 'default'), op('b', 'admin')]))
-    expect([...m.keys()]).toContain('default')
-    expect([...m.keys()]).toContain('admin')
+  it('groups an UNTAGGED operation by its path, in name order with the tags', () => {
+    // Sorting a catch-all first would move every untagged operation whenever
+    // a tag is added elsewhere; grouping by path removes the catch-all.
+    const m = byTag(doc([op('zeta', 'default'), op('b', 'admin')]))
+    expect([...m.keys()]).toEqual(['admin', 'zeta'])
+  })
+
+
+  const at = (id: string, path: string, tag = 'default'): IrOperation => ({ ...op(id, tag), path }) as IrOperation
+
+  it('splits a spec with NO tags by resource, past the prefix every path shares', () => {
+    // Stripe: every path is `/v1/...` and nothing is tagged. One `default`
+    // group put 612 endpoints in one module; one `v1` group would do the same.
+    const m = byTag(doc([
+      at('getCustomer', '/v1/customers/{customer}'),
+      at('listCustomers', '/v1/customers'),
+      at('getCharge', '/v1/charges/{charge}'),
+      at('createCharge', '/v1/charges'),
+    ]))
+    expect([...m.keys()]).toEqual(['charges', 'customers'])
+    expect(m.get('customers')?.map((o) => o.id)).toEqual(['getCustomer', 'listCustomers'])
+  })
+
+  it('JOINS a real tag whose file name a path group would collide with', () => {
+    // `Pets` (tag) and `pets` (path) are one file on disk.
+    const m = byTag(doc([at('listPets', '/pets', 'Pets'), at('getPet', '/pets/{id}')]))
+    expect([...m.keys()]).toEqual(['Pets'])
+    expect(m.get('Pets')?.map((o) => o.id)).toEqual(['getPet', 'listPets'])
+  })
+
+  it('keeps a path with no static segment in `default`', () => {
+    expect([...byTag(doc([at('root', '/'), at('byId', '/{id}')])).keys()]).toEqual(['default'])
   })
 
   it('returns an empty map for a document with no operations', () => {

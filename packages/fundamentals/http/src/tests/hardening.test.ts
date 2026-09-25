@@ -407,6 +407,21 @@ describe('bearer — the token stays on the baseUrl origin', () => {
     await expect(api.get('https://other.test/x').text()).resolves.toBe('Bearer t')
   })
 
+  it('an ACCESSOR baseUrl is the boundary too, read per request', async () => {
+    let base = 'https://api.test/v1'
+    const api = createHttp({
+      baseUrl: () => base,
+      transport: echo,
+      use: [bearer(() => 't')],
+    })
+    await expect(api.get('users').text()).resolves.toBe('Bearer t')
+    await expect(api.get('https://evil.test/steal').text()).resolves.toBe('none')
+    // The boundary follows the accessor: after a switch the OLD origin is foreign.
+    base = 'https://other.test'
+    await expect(api.get('https://api.test/x').text()).resolves.toBe('none')
+    await expect(api.get('users').text()).resolves.toBe('Bearer t')
+  })
+
   it('without a baseUrl there is no boundary to enforce', async () => {
     const api = createHttp({ transport: echo, use: [bearer(() => 't')] })
     await expect(api.get('https://api.test/x').text()).resolves.toBe('Bearer t')

@@ -1427,6 +1427,56 @@ useSubscription({
 })
 ```
 
+## Streams — `useStream()`
+
+`useSSE` wraps the browser's `EventSource`, which is GET-only and cannot send
+headers. `useStream` consumes **any** async iterable instead — typically
+`openEventStream` / `openNdjsonStream` from `@pyreon/http/stream` — so the
+stream can be a POST with auth, validated per event, and mocked in tests.
+
+```tsx
+import { openEventStream } from '@pyreon/http/stream'
+import { useStream } from '@pyreon/query'
+
+function Feed(props: { room: () => string }) {
+  const feed = useStream(
+    (ctx) =>
+      openEventStream((c) => roomEvents({ params: { room: props.room() }, signal: c.signal, headers: c.headers }), {
+        signal: ctx.signal,
+        onStatus: ctx.onStatus,
+      }),
+    { maxEvents: 200 },
+  )
+  return (
+    <p>
+      {() => feed.status()}: {() => feed.latest()?.data.text ?? '…'} ({() => feed.events().length} so far)
+    </p>
+  )
+}
+```
+
+| Returns | |
+| --- | --- |
+| `events()` | events since the stream (re)started, oldest first — at most `maxEvents` (default 1000) |
+| `latest()` | the most recent event |
+| `status()` | `'idle' \| 'connecting' \| 'open' \| 'reconnecting' \| 'closed' \| 'error'` |
+| `error()` | what ended the stream, or `undefined` |
+| `abort()` / `restart()` | stop it (an input change does not revive it) / open a fresh one |
+
+- The source runs in a **tracking scope**: a signal it reads (`props.room()`
+  above) re-opens the stream when it changes — the previous request is aborted
+  and its late events are dropped.
+- Return **`undefined`** from the source while the inputs are not ready; the
+  hook stays `idle`.
+- **Unmount aborts** the request.
+- `events()` is **bounded** (`maxEvents`) because a stream can run for hours;
+  pass `Infinity` only for a stream you know ends.
+- `onEvent(event, queryClient)` runs per event — write into the query cache
+  from a live feed.
+
+A [Lathe](/docs/lathe)-generated client emits a typed `use<Op>Stream` for every
+streaming operation, built on this hook.
+
 ## Type Exports
 
 | Type                             | Description                                                |

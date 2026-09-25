@@ -5,6 +5,7 @@
 // Re-run `lathe generate` to update. Edits here are lost on the next run;
 // to change the output, change the spec or the emitter.
 
+import type { QueryClient, QueryKey } from '@pyreon/query'
 import { listAuthors } from './endpoints/authors'
 import { getBook, listBooks } from './endpoints/books'
 
@@ -35,3 +36,34 @@ export const keys = {
     },
   },
 } as const
+
+/**
+ * Optimistically rewrite cached query data, returning a ROLLBACK (audit E2).
+ * Cancels in-flight fetches for `queryKey` (so a late response cannot
+ * overwrite the optimistic value), applies `update` to every cached entry
+ * under it, and returns a function restoring exactly what was there. The
+ * data type is the endpoint's own response type — pass the endpoint.
+ * ```ts
+ * const rename = useRenamePet({
+ *   onMutate: async (vars) => {
+ *     const rollback = await optimisticUpdate(client, getPet, getPet.key(vars), (pet) =>
+ *       pet && { ...pet, name: vars.json.name })
+ *     return { rollback }
+ *   },
+ *   onError: (_e, _v, ctx) => ctx?.rollback(),
+ * })
+ * ```
+ */
+export async function optimisticUpdate<E extends (...args: never[]) => Promise<unknown>>(
+  client: QueryClient,
+  _endpoint: E,
+  queryKey: QueryKey,
+  update: (current: Awaited<ReturnType<E>> | undefined) => Awaited<ReturnType<E>> | undefined,
+): Promise<() => void> {
+  await client.cancelQueries({ queryKey })
+  const previous = client.getQueriesData<Awaited<ReturnType<E>>>({ queryKey })
+  client.setQueriesData<Awaited<ReturnType<E>>>({ queryKey }, update)
+  return () => {
+    for (const [key, data] of previous) client.setQueryData(key, data)
+  }
+}

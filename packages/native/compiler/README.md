@@ -63,6 +63,10 @@ Each fixture exercises one structural mapping from the chosen-direction plan's m
 
 Together they cover the **minimum sufficient surface** to claim "the structural mapping works." Subsequent PRs grow the surface (props, styling, more widgets).
 
+## Render props and view slots
+
+A prop typed as a view (`children: VNodeChild`) or as a function returning one (`render: (item: Item) => VNodeChild`, or `=> unknown` when the body renders it) lowers to a generic `@ViewBuilder let render: (Item) -> RenderContent` on SwiftUI and `render: @Composable (Item) -> Unit` on Compose. Call sites pass inline arrows, a JSX-returning function declared in the file (emitted as `@ViewBuilder func` / `@Composable fun`), or a forwarded render prop; a component from another file is lowered from the callback's own shape. Unsupported variants warn by name. See `docs/src/content/docs/multiplatform.md` → "Render props, function-as-children and view slots" and `src/tests/native-render-props.test.ts`.
+
 ## Privacy
 
 This package is marked `"private": true` in `package.json` and is excluded from npm publishing, the `llms.txt` / `llms-full.txt` AI-facing surfaces, the `docs/` site, and MCP `get_api`. Internal-only until the PMTC direction reaches a state worth publishing.

@@ -219,6 +219,28 @@ const sse = useSSE({
 
 `initialLastEventId` is read **once at mount** — subsequent changes are ignored. Use the reactive `url` (or `sse.reconnect()`) for runtime overrides.
 
+## `useStream(source, options?)`
+
+Any async-iterable stream as signals — `openEventStream` / `openNdjsonStream`
+from `@pyreon/http/stream`, so unlike `useSSE` the stream can POST, send auth
+headers and validate each event.
+
+```ts
+const feed = useStream((ctx) =>
+  openEventStream((c) => roomEvents({ params: { room: room() }, signal: c.signal, headers: c.headers }), {
+    signal: ctx.signal,
+    onStatus: ctx.onStatus,
+  }),
+)
+feed.events() // bounded by maxEvents (default 1000)
+feed.latest()
+feed.status() // 'idle' | 'connecting' | 'open' | 'reconnecting' | 'closed' | 'error'
+```
+
+The source runs tracked: a signal it reads re-opens the stream (the old
+request is aborted, its late events dropped). Return `undefined` to stay idle;
+unmount aborts; `abort()` sticks until `restart()`.
+
 ## `useIsFetching(filters?)` / `useIsMutating(filters?)`
 
 Global counters as reactive signals — useful for top-of-page spinners.

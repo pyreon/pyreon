@@ -169,9 +169,9 @@ const feed = useInfiniteQuery(() => ({
       name: 'useQuery',
       kind: 'hook',
       signature:
-        '<TQueryFnData, TError, TData = TQueryFnData, TKey>(options: () => QueryObserverOptions<...>) => UseQueryResult<TData, TError>',
+        '<TQueryFnData, TError, TData = TQueryFnData, TKey>(options: () => UseQueryOptions<TQueryFnData, TError, TData, TKey>) => UseQueryResult<TData, TError>',
       summary:
-        'Subscribe to a query with fine-grained reactive signals. `options` is a FUNCTION (not an object) so it can read Pyreon signals — when a tracked signal inside changes (e.g. a reactive queryKey), the observer re-evaluates options and refetches automatically. Returns one independent `Signal<T>` per observer field (`data`, `error`, `status`, `isPending`, `isLoading`, `isFetching`, `isError`, `isSuccess`) so templates only re-run for the exact fields they read. Internally wraps TanStack\'s `QueryObserver` and subscribes via `onUnmount`-guarded effect — the observer unsubscribes when the component unmounts.',
+        'Subscribe to a query with fine-grained reactive signals. Generic order matches TanStack (`TQueryFnData` is what `queryFn` resolves to, `TData` what `select` produces), so `select: (posts) => posts.length` types `data()` as `number` with no cast. `options` is a FUNCTION (not an object) so it can read Pyreon signals — when a tracked signal inside changes (e.g. a reactive queryKey), the observer re-evaluates options and refetches automatically. Returns one independent `Signal<T>` per observer field (`data`, `error`, `status`, `isPending`, `isLoading`, `isFetching`, `isError`, `isSuccess`) so templates only re-run for the exact fields they read. Internally wraps TanStack\'s `QueryObserver` and subscribes via `onUnmount`-guarded effect — the observer unsubscribes when the component unmounts.',
       example: `const userId = signal(1)
 const user = useQuery(() => ({
   queryKey: ['user', userId()],
@@ -334,7 +334,29 @@ usePrefetchQuery(() => ({ queryKey: ['user', id], queryFn: fetchUser }))
 // sse.data() — last parsed message
 // sse.status() — 'connecting' | 'connected' | 'disconnected' | 'error' | 'failed'
 // sse.lastEventId(), sse.readyState(), sse.close(), sse.reconnect()`,
-      seeAlso: ['useSubscription'],
+      seeAlso: ['useSubscription', 'useStream'],
+    },
+    {
+      name: 'useStream',
+      kind: 'hook',
+      signature: '<T>(source: (ctx: StreamSourceContext) => AsyncIterable<T> | undefined, options?: UseStreamOptions<T>) => UseStreamResult<T>',
+      summary:
+        'Any async-iterable stream as signals — typically `openEventStream` / `openNdjsonStream` from `@pyreon/http/stream`, so unlike `useSSE` (which wraps `EventSource`) the stream can be a POST with auth headers, validated per event, and mocked. `events()` (bounded by `maxEvents`, default 1000), `latest()`, `status()` (`idle` / `connecting` / `open` / `reconnecting` / `closed` / `error`), `error()`, `abort()`, `restart()`. The source runs TRACKED: a signal it reads re-opens the stream when it changes — the previous request is aborted and a generation guard drops its late events. Return `undefined` to hold it idle; unmount aborts. Pass `ctx.onStatus` through for the finer states.',
+      example: `import { openEventStream } from '@pyreon/http/stream'
+
+const feed = useStream((ctx) =>
+  openEventStream((c) => roomEvents({ params: { room: room() }, signal: c.signal, headers: c.headers }), {
+    signal: ctx.signal,
+    onStatus: ctx.onStatus,
+  }),
+)
+// feed.events() / feed.latest() / feed.status() / feed.error()`,
+      mistakes: [
+        'Ignoring `ctx.signal` — without it an input change or unmount cannot cancel the old request, which keeps streaming into a dropped consumer.',
+        'Setting `maxEvents: Infinity` on a long-lived feed — `events()` then grows for as long as the page is open; read `latest()` or fold events into your own state instead.',
+        'Expecting an input change to revive a stream after `abort()` — an explicit abort sticks until `restart()`.',
+      ],
+      seeAlso: ['useSSE', 'useSubscription'],
     },
     {
       name: 'useSuspenseQuery',

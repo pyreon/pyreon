@@ -127,6 +127,48 @@ export function validateEmail(value: string, precision: EmailPrecision = 'standa
 // through. The host needs at least ONE non-separator character (`https://a` is
 // a valid URL — the previous `[^…].` form demanded two).
 export const URL_RE = /^https?:\/\/[^\s/$.?#][^\s]*$/i
+/**
+ * An RFC 3986 ABSOLUTE URI: `scheme ":" rest`, the scheme a letter followed by
+ * letters, digits, `+`, `-` or `.`, and no whitespace anywhere. Deliberately a
+ * SHAPE check, like `URL_RE`: `mailto:a@b.co`, `urn:isbn:0451`,
+ * `git:git.example.com/o/r.git` pass; `/relative`, `not a uri` and `` fail.
+ * The scheme is captured so `.url({ protocol })` can test it.
+ */
+export const URI_RE = /^([A-Za-z][A-Za-z0-9+.-]*):\S*$/
+
+/**
+ * The `.url({ protocol })` predicate: an absolute URI whose scheme (without the
+ * colon, as zod's `protocol` option reads it) matches `protocol`.
+ */
+export function uriWithProtocol(protocol: RegExp): (value: string) => boolean {
+  return (value: string): boolean => {
+    const m = URI_RE.exec(value)
+    if (m === null) return false
+    // A global/sticky regex carries `lastIndex` between calls; reset so the
+    // verdict never depends on the previous value tested.
+    protocol.lastIndex = 0
+    return protocol.test(m[1] as string)
+  }
+}
+
+/** Options for `.url()` — {@link CheckOpts} plus the scheme filter. */
+export interface UrlOpts extends CheckOpts {
+  /**
+   * Accept any absolute URI whose SCHEME (no colon) matches this — the same
+   * option, with the same meaning, as zod 4's `z.url({ protocol })`.
+   *
+   * Omitted, `.url()` accepts `http`/`https` only, as it always has: a URL
+   * field is most often a link that gets rendered, and accepting every scheme
+   * by default would admit `javascript:` and `data:` into code that relied on
+   * this check to keep them out.
+   *
+   * @example
+   * s.string().url({ protocol: /^https?$/ })          // today's default, spelled out
+   * s.string().url({ protocol: /^[a-z][a-z0-9+.-]*$/i }) // any RFC 3986 scheme
+   * s.string().url({ protocol: /^(https|mailto)$/ })  // links and mail
+   */
+  readonly protocol?: RegExp | undefined
+}
 // RFC 9562: versions 1–8 (v6/v7/v8 are current practice — v7 is the sortable
 // database-key default) with the RFC variant, plus the special nil and max
 // UUIDs. Mirrored verbatim in `@pyreon/compiler`'s `validate-emit.ts`.
@@ -374,6 +416,34 @@ export class StringSchema extends SchemaBase<string> {
     return this._cloneWith(op)
   }
 
+  /**
+   * `.url({ protocol })`: the URI shape resolves through the `uri` registry
+   * name (a server may install a stricter parser), and the scheme filter is
+   * applied on top, so an installed validator can never widen the schemes the
+   * schema author allowed.
+   */
+  private _formatWithProtocol(protocol: RegExp, opts: UrlOpts | undefined): this {
+    const shape = makeFormatResolver('uri', (v: string): boolean => URI_RE.test(v))
+    const scheme = uriWithProtocol(protocol)
+    const light = (v: string): boolean => shape(v) && scheme(v)
+    const op = attachCheck({ kind: 'check:string:url', protocol, opts } as Op, (value, ctx) => {
+      if (typeof value !== 'string' || light(value)) return
+      ctx.issues.push(
+        makeCheckIssue(
+          'invalid_format',
+          'Invalid URL',
+          'validate.string.url',
+          { protocol: protocol.source },
+          'Invalid URL',
+          ctx,
+          opts,
+        ),
+      )
+    })
+    ;(op as { _pred?: FormatValidator })._pred = light
+    return this._cloneWith(op)
+  }
+
   regex(re: RegExp, opts?: CheckOpts): this {
     const op = attachCheck({ kind: 'check:string:regex', re, opts }, (value, ctx) => {
       if (typeof value !== 'string' || re.test(value)) return
@@ -477,7 +547,23 @@ export class StringSchema extends SchemaBase<string> {
     )
   }
 
-  url(opts?: CheckOpts): this {
+  /**
+   * Validate a URL. By default an `http:` / `https:` URL with a host; pass
+   * `protocol` to accept any RFC 3986 absolute URI whose scheme matches it
+   * (see {@link UrlOpts}).
+   *
+   * The two forms route through different format-registry names (`url` and
+   * `uri`), so a validator installed for one never silently changes the other.
+   *
+   * @example
+   * s.string().url()                                   // 'https://x.io'
+   * s.string().url({ protocol: /^[a-z][a-z0-9+.-]*$/i }) // 'mailto:a@b.co', 'urn:isbn:0451'
+   */
+  url(opts?: UrlOpts): this {
+    const protocol = opts?.protocol
+    if (protocol !== undefined) {
+      return this._formatWithProtocol(protocol, opts)
+    }
     return this._format(
       'check:string:url',
       'url',

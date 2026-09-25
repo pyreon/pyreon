@@ -1814,18 +1814,35 @@ export interface FeatureDefnIR {
  *   - min: minimum length
  *   - max: maximum length
  *   - email: rough RFC-5322 email regex check
- *   - url: rough URL regex check
+ *   - url: the authoring library's URL rule (see `UrlRule`)
  *   - uuid: UUID-format check
  *
  * For number fields:
  *   - min: numeric minimum (inclusive)
  *   - max: numeric maximum (inclusive)
  */
+/**
+ * Which URL rule a `.url()` lowers to. The libraries DISAGREE, so the rule is
+ * read off the one that authored the schema rather than assumed:
+ *
+ * - `scheme`: zod's `.url()` -- an absolute URL of any scheme (`mailto:` and
+ *   `ftp://` pass).
+ * - `http`: `@pyreon/validate`'s default `.url()` -- `http:` / `https:` with a
+ *   host, exactly its `URL_RE`. Lowering this as `scheme` made a device ACCEPT
+ *   `javascript:alert(1)` where the web rejects it.
+ * - `protocol`: `@pyreon/validate`'s `.url({ protocol: /re/ })` -- any
+ *   RFC 3986 absolute URI whose scheme (no colon) matches `source`.
+ */
+export type UrlRule =
+  | { kind: 'scheme' }
+  | { kind: 'http' }
+  | { kind: 'protocol'; source: string; ignoreCase: boolean }
+
 export interface ZodFieldConstraints {
   min?: number
   max?: number
   email?: boolean
-  url?: boolean
+  url?: UrlRule
   uuid?: boolean
   /**
    * `.regex(/…/)` — the literal's source, plus whether it carried the `i`

@@ -60,7 +60,7 @@ export type { HydrationBoundaryProps } from './hydration-boundary'
 export { HydrationBoundary } from './hydration-boundary'
 export type { IsRestoringProviderProps } from './is-restoring'
 export { IsRestoringProvider, useIsRestoring } from './is-restoring'
-export type { UseInfiniteQueryResult } from './use-infinite-query'
+export type { UseInfiniteQueryOptions, UseInfiniteQueryResult } from './use-infinite-query'
 export { useInfiniteQuery } from './use-infinite-query'
 export { useIsFetching, useIsMutating } from './use-is-fetching'
 export { defineQueries } from './define-queries'
@@ -76,7 +76,7 @@ export type {
 } from './use-queries'
 export { useQueries } from './use-queries'
 export { usePrefetchInfiniteQuery, usePrefetchQuery } from './use-prefetch'
-export type { UseQueryResult } from './use-query'
+export type { UseQueryOptions, UseQueryResult } from './use-query'
 export { useQuery } from './use-query'
 export type { QueryData, QueryError } from './type-helpers'
 export type { QueryErrorResetBoundaryProps } from './use-query-error-reset-boundary'
@@ -86,6 +86,14 @@ export {
 } from './use-query-error-reset-boundary'
 export type { SSEStatus, UseSSEOptions, UseSSEResult } from './use-sse'
 export { useSSE } from './use-sse'
+export type {
+  StreamSource,
+  StreamSourceContext,
+  StreamState,
+  UseStreamOptions,
+  UseStreamResult,
+} from './use-stream'
+export { useStream } from './use-stream'
 export type {
   SubscriptionStatus,
   UseSubscriptionOptions,

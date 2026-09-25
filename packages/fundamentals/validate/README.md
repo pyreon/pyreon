@@ -115,6 +115,8 @@ Notes:
 
 `email` (3 precision tiers) · `url` · `uuid` · `ip` · `cidr` · `phone` · `e164` · `creditCard` · `cuid` · `cuid2` · `ulid` · `nanoid` · `emoji` · `base64` · `base64url` · `jwt` · `duration` · `.iso.date()` / `.iso.dateTime()` / `.iso.time()` — plus `regex` / `startsWith` / `endsWith` / `includes`.
 
+`url()` accepts `http:` / `https:` URLs with a host, and that default is deliberate: a URL field is usually a link that gets rendered, and accepting every scheme would let `javascript:` and `data:` through code that relied on the check. Pass `protocol` — the same option, with the same meaning, as zod 4's `z.url({ protocol })` — to accept any RFC 3986 absolute URI whose scheme matches: `s.string().url({ protocol: /^[a-z][a-z0-9+.-]*$/i })` accepts `mailto:a@b.co` and `urn:isbn:0451`. The two forms route through different registry names (`url`, `uri`), and an installed `uri` validator is applied under the scheme filter, never instead of it.
+
 The hot `email()` 'standard' tier runs a table-driven charcode scanner (~1.6× the Zod-parity regex, byte-identical verdict — locked by an exhaustive + fuzz differential against the published `EMAIL_RE`).
 
 Every format routes through the client/server registry seam — a server can swap in a stricter validator for any of them in place via `installFormatValidator(name, fn)` (the same mechanism `@pyreon/validate/server` uses to upgrade `email`/`phone`), without touching the shared schema.

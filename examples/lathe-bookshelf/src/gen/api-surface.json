@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "title": "Bookshelf",
   "operations": {
     "createBook": {
@@ -8,8 +8,14 @@
       "path": "/books",
       "params": {},
       "requiredParams": [],
-      "body": "NewBook",
-      "response": "Book"
+      "body": "json NewBook",
+      "response": "Book",
+      "summary": "Add a book.",
+      "module": "books",
+      "symbols": [
+        "createBook",
+        "useCreateBook"
+      ]
     },
     "getBook": {
       "id": "getBook",
@@ -21,7 +27,13 @@
       "requiredParams": [
         "bookId"
       ],
-      "response": "Book"
+      "response": "Book",
+      "summary": "One book by id.",
+      "module": "books",
+      "symbols": [
+        "getBook",
+        "useGetBook"
+      ]
     },
     "listAuthors": {
       "id": "listAuthors",
@@ -31,7 +43,13 @@
         "limit": "integer"
       },
       "requiredParams": [],
-      "response": "Author[]"
+      "response": "Author[]",
+      "summary": "Every author.",
+      "module": "authors",
+      "symbols": [
+        "listAuthors",
+        "useListAuthors"
+      ]
     },
     "listBooks": {
       "id": "listBooks",
@@ -39,7 +57,13 @@
       "path": "/books",
       "params": {},
       "requiredParams": [],
-      "response": "Book[]"
+      "response": "Book[]",
+      "summary": "Every book in the catalogue.",
+      "module": "books",
+      "symbols": [
+        "listBooks",
+        "useListBooks"
+      ]
     }
   },
   "models": {
@@ -51,8 +75,8 @@
     "Book": {
       "id": "uuid",
       "pages": "integer (optional)",
-      "status": "enum(available|borrowed|lost)",
-      "subtitle": "string (optional)",
+      "status": "enum(\"available\"|\"borrowed\"|\"lost\")",
+      "subtitle": "string | null (optional)",
       "tags": "string[] (optional)",
       "title": "string"
     },
@@ -63,5 +87,12 @@
       "pages": "integer (optional)",
       "title": "string"
     }
+  },
+  "aliases": {},
+  "usage": {
+    "Author": "response",
+    "Book": "response",
+    "Entity": "unused",
+    "NewBook": "request"
   }
 }

@@ -54,7 +54,11 @@ export interface ValidatorDialect {
   binding: string
   /** Module the binding is imported from. */
   module: string
-  /** Module the inferred-type helper comes from, when there is one. */
+  /**
+   * Module the inferred-type helper comes from, when there is one. Used only
+   * by `emitSchemaAgreement`, the test-side proof that each written-out
+   * interface matches what its schema infers.
+   */
   typeHelper: { module: string; name: string } | undefined
   /**
    * Wraps a native-path schema so PMTC recognises it.
@@ -66,20 +70,36 @@ export interface ValidatorDialect {
    */
   nativeWrap: { module: string; fn: string } | undefined
   /**
-   * How to ANNOTATE a schema whose own expression refers back to it.
+   * The schema TYPE a model's const is cast to -- `Schema<Book>` /
+   * `z.ZodType<Book>`.
    *
-   * A `$ref` cycle emits `lazy(() => X)` inside `const X = …`, so inferring
-   * `X`'s type from its own initializer is circular and TypeScript gives up
-   * with TS7022/TS7024 — the generated module does not compile. Naming the
-   * structural type first and annotating the const breaks the cycle, which is
-   * the pattern both libraries document for recursive schemas.
+   * Every generated schema const is typed as the schema of its written-out
+   * interface rather than inferred from its builder chain; see `emitSchemas`
+   * for the measured reason. Also what makes a `$ref` cycle compile: nothing
+   * is inferred through the cycle, so `lazy(() => X)` inside `const X = …` is
+   * never asked to type itself.
    */
   schemaTypeRef: (type: string) => string
   /** Type-only import the annotation needs, if any. */
   schemaTypeImport: { module: string; name: string } | undefined
   /**
+   * The type of ANY object schema -- what a discriminated union's members are
+   * cast back to when they name a model (a model const is typed as its
+   * `Schema<X>`, which the discriminated-union signature does not accept).
+   */
+  objectSchemaRef: string
+  /** Type-only import `objectSchemaRef` needs, if any. */
+  objectSchemaImport: { module: string; name: string } | undefined
+  /**
+   * The check an OpenAPI `format: uri` string gets on the web: an absolute URI
+   * of ANY scheme (RFC 3986), which is also what the native lowering checks.
+   */
+  uriCheck: string
+  /** What the library infers for an object schema with no fields. */
+  emptyObjectType: string
+  /**
    * Does this library's `enum` widen its members to `string` in the inferred
-   * type?
+   * type? The written-out interface must say what the schema infers.
    *
    * `@pyreon/validate`'s does — `s.enum(['a','b'])` infers `string`, not
    * `'a' | 'b'`. zod's preserves the literals. It matters only where the
@@ -108,6 +128,12 @@ export const DIALECTS: Readonly<Record<ValidatorName, ValidatorDialect>> = {
     nativeWrap: undefined,
     schemaTypeRef: (t) => `Schema<${t}>`,
     schemaTypeImport: { module: '@pyreon/validate', name: 'Schema' },
+    objectSchemaRef: 'ObjectSchema<Record<string, Schema<unknown>>>',
+    objectSchemaImport: { module: '@pyreon/validate', name: 'ObjectSchema' },
+    emptyObjectType: 'Record<string, unknown>',
+    // `s.string().url()` is http(s)-only by default; `protocol` opens it to
+    // any RFC 3986 scheme, which is what OpenAPI's `uri` means.
+    uriCheck: '.url({ protocol: /^[A-Za-z][A-Za-z0-9+.-]*$/ })',
     enumWidensToString: true,
     inlineRefsOnNative: false,
   },
@@ -122,6 +148,12 @@ export const DIALECTS: Readonly<Record<ValidatorName, ValidatorDialect>> = {
     // the annotation costs no extra import.
     schemaTypeRef: (t) => `z.ZodType<${t}>`,
     schemaTypeImport: undefined,
+    objectSchemaRef: 'z.ZodObject',
+    objectSchemaImport: undefined,
+    // zod's `.url()` already accepts any scheme (`mailto:`, `git:`).
+    // `z.object({})` strips unknown keys and infers `Record<string, never>`.
+    emptyObjectType: 'Record<string, never>',
+    uriCheck: '.url()',
     enumWidensToString: false,
     inlineRefsOnNative: true,
   },

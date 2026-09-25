@@ -41,6 +41,7 @@ import { isCanonicalPrimitive } from './canonical-primitives'
 import { parseRocketstyleDefn } from './rocketstyle-native'
 import { parseAttrsDefn } from './attrs-native'
 import { collectDeclaredTypeNames, liftInlineObjectStructs } from './inline-object-structs'
+import { liftSlotParamStructs } from './render-slots'
 import {
   DEFAULT_THEME,
   mergeTheme,
@@ -731,6 +732,19 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     const mds = tryModuleDeclsFromTopLevel(node, ctx)
     if (mds) moduleDecls.push(...mds)
   }
+
+  // A render prop's inline object PARAMETER type (`render: (item: { title:
+  // string }) => VNodeChild`) is lifted to a declared struct, so the prop's
+  // declaration and the object literal its body passes agree on one type —
+  // see render-slots.ts. Before the float refinements, which read structs.
+  structs.push(
+    ...liftSlotParamStructs(
+      components,
+      new Set([...declaredTypeNames, ...structs.map((st) => st.name)]),
+      structs,
+      ctx.warnings,
+    ),
+  )
 
   // Double-type follow-up: a `type X = { rate: number }` annotation can't
   // express whether a field is fractional, so the struct field defaults
@@ -1650,10 +1664,15 @@ const encodePathParam = (value: string): string => encodeURIComponent(value)
  * a declaration's `paramNames`, and substituting at a call site), so it lives
  * once rather than being re-typed at each.
  *
+ * `\\:` is the web's escape for a LITERAL colon (`/v1/:name\\:cancel`, a
+ * Google-style custom verb). It matches with no capture group, and both sites
+ * treat that match as the text `:` — reading it as a second parameter would
+ * make the native URL demand a value the web never asks for.
+ *
  * A fresh RegExp per use: `g`-flagged instances carry `lastIndex`, so a shared
  * one would resume mid-string on its second caller and silently skip params.
  */
-const pathParamPattern = (): RegExp => /:([A-Za-z_][A-Za-z0-9_]*)/g
+const pathParamPattern = (): RegExp => /\\:|:([A-Za-z_][A-Za-z0-9_]*)/g
 
 /**
  * Serialize literal query entries EXACTLY as the web's `buildQuery` does — by
@@ -1826,6 +1845,10 @@ const ENDPOINT_UNLOWERABLE_ARGS: ReadonlyMap<string, string> = new Map([
   ['signal', 'an AbortSignal has no analogue in the emitted fetch harness, which runs to completion'],
   ['timeout', 'PyreonHttpRequest carries no timeout field'],
   ['meta', 'per-call metadata is read by client middleware, which does not lower'],
+  ['form', 'the emitted fetch harness sends a JSON body only; an encoded form body is not built'],
+  ['multipart', 'the emitted fetch harness sends a JSON body only; a multipart body (a file upload) is not built'],
+  ['body', 'the emitted fetch harness sends a JSON body only; a raw Blob / ArrayBuffer / string body is not sent'],
+  ['cookies', 'the platform HTTP stacks own the Cookie header; a per-call cookie record is not sent'],
 ])
 
 /**
@@ -2062,11 +2085,17 @@ function resolveEndpointParts(
   const PARAM_RE = pathParamPattern()
   let cursor = 0
   for (let m = PARAM_RE.exec(def.pathTemplate); m; m = PARAM_RE.exec(def.pathTemplate)) {
-    const name = m[1] as string
     const before = def.pathTemplate.slice(cursor, m.index)
     cursor = m.index + m[0].length
     literalPath += before
     quasis[quasis.length - 1] += before
+    const name = m[1]
+    if (name === undefined) {
+      // `\:` — a literal colon, exactly as the web's `applyPathParams` writes it.
+      literalPath += ':'
+      quasis[quasis.length - 1] += ':'
+      continue
+    }
     const literal = literalParams[name]
     if (literal !== undefined) {
       const encoded = encodePathParam(literal)
@@ -3488,6 +3517,50 @@ function tryPortableRegexLiteral(
   return { source: re.pattern, ignoreCase: flags.includes('i') }
 }
 
+/**
+ * The URL rule a `.url(...)` call lowers to -- or null, with a warning, when it
+ * cannot lower faithfully (see `UrlRule` for why the library matters).
+ *
+ * Only `@pyreon/validate` has a `protocol` option. It lowers when it is an
+ * inline regular-expression literal that ports (the same test `.regex()`
+ * applies); anything else DECLINES by name rather than falling back to the
+ * default rule, which would reject on device the schemes the web accepts.
+ * zod's `.url(...)` options (`hostname`, its own `protocol`) are not read, as
+ * before -- its rule was, and stays, "any scheme".
+ */
+function urlRule(
+  arg: AnyNode | undefined,
+  pyreonValidate: boolean,
+  label: string,
+  ctx: ParseCtx,
+): ZodFieldConstraints['url'] | null {
+  if (!pyreonValidate) return { kind: 'scheme' }
+  if (!arg) return { kind: 'http' }
+  const opts = unwrapTypeLayers(arg) as AnyNode | undefined
+  if (opts?.type !== 'ObjectExpression') {
+    ctx.warnings.push(
+      `${label}: the options argument is not an inline object, so whether it sets \`protocol\` cannot be read — the field is NOT URL-validated on device. Write the options inline: \`.url({ protocol: /^https?$/ })\`.`,
+    )
+    return null
+  }
+  let protocol: AnyNode | undefined
+  for (const p of (opts.properties as AnyNode[] | undefined) ?? []) {
+    if (p?.type !== 'Property' && p?.type !== 'ObjectProperty') {
+      ctx.warnings.push(
+        `${label}: a spread in the options cannot be read, so whether it sets \`protocol\` is unknown — the field is NOT URL-validated on device. Write \`protocol\` inline.`,
+      )
+      return null
+    }
+    const key = p.key as AnyNode | undefined
+    const name = key?.type === 'Identifier' ? key.name : key?.type === 'Literal' ? String(key.value) : undefined
+    if (name === 'protocol') protocol = p.value as AnyNode | undefined
+  }
+  if (protocol === undefined) return { kind: 'http' }
+  const re = tryPortableRegexLiteral(protocol, `${label} protocol`, ctx)
+  if (!re) return null
+  return { kind: 'protocol', source: re.source, ignoreCase: re.ignoreCase }
+}
+
 function tryModelDefnFromTopLevel(
   node: AnyNode,
   ctx: ParseCtx,
@@ -4250,6 +4323,8 @@ function extractTypeAndConstraints(
   expr: AnyNode,
   prefix: string,
   ctx: ParseCtx,
+  /** `@pyreon/validate`'s `s` DSL, whose `.url()` differs from zod's. */
+  pyreonValidate: boolean,
 ): { method: string; constraints: ZodFieldConstraints } | null {
   const constraints: ZodFieldConstraints = {}
   let cursor: AnyNode | undefined = expr
@@ -4282,7 +4357,8 @@ function extractTypeAndConstraints(
       } else if (modName === 'email') {
         constraints.email = true
       } else if (modName === 'url') {
-        constraints.url = true
+        const rule = urlRule(firstArg, pyreonValidate, 'schema element .url()', ctx)
+        if (rule) constraints.url = rule
       } else if (modName === 'uuid') {
         constraints.uuid = true
       } else if (modName === 'regex') {
@@ -4425,7 +4501,7 @@ function parseDiscriminatedUnion(
     typeof discrArg.value !== 'string'
   ) {
     ctx.warnings.push(
-      `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() first arg must be a string literal field name — dropping.`,
+      `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() first arg must be a string literal field name — dropping.`,
     )
     return null
   }
@@ -4437,14 +4513,14 @@ function parseDiscriminatedUnion(
     variantsArg.type !== 'ArrayExpression'
   ) {
     ctx.warnings.push(
-      `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() second arg must be a literal array of ${prefix}.object() variants — dropping.`,
+      `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() second arg must be a literal array of ${prefix}.object() variants — dropping.`,
     )
     return null
   }
   const variantNodes = (variantsArg.elements as AnyNode[] | undefined) ?? []
   if (variantNodes.length === 0) {
     ctx.warnings.push(
-      `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() needs at least one variant — dropping.`,
+      `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() needs at least one variant — dropping.`,
     )
     return null
   }
@@ -4454,7 +4530,7 @@ function parseDiscriminatedUnion(
     const variantNode = variantNodes[i]!
     if (variantNode.type !== 'CallExpression') {
       ctx.warnings.push(
-        `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() variant ${i} is not a ${prefix}.object() call — dropping.`,
+        `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() variant ${i} is not a ${prefix}.object() call — dropping.`,
       )
       return null
     }
@@ -4463,7 +4539,7 @@ function parseDiscriminatedUnion(
     const literal = extractDiscriminatorLiteral(variantNode, discrField, prefix)
     if (literal === null) {
       ctx.warnings.push(
-        `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() variant ${i} doesn't expose ${prefix}.literal() at "${discrField}" — dropping.`,
+        `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() variant ${i} doesn't expose ${prefix}.literal() at "${discrField}" — dropping.`,
       )
       return null
     }
@@ -4478,7 +4554,7 @@ function parseDiscriminatedUnion(
     )
     if (!variantSchema) {
       ctx.warnings.push(
-        `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() variant ${i} has an unparseable ${prefix}.object() shape — dropping.`,
+        `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() variant ${i} has an unparseable ${prefix}.object() shape — dropping.`,
       )
       return null
     }
@@ -4679,7 +4755,8 @@ function tryNamespacedSchemaDefnFromTopLevel(
         } else if (modName === 'email') {
           constraints.email = true
         } else if (modName === 'url') {
-          constraints.url = true
+          const rule = urlRule(firstArg, schemaFn === null, `schema field \`${fieldName}\` .url()`, ctx)
+          if (rule) constraints.url = rule
         } else if (modName === 'uuid') {
           constraints.uuid = true
         } else if (modName === 'regex') {
@@ -4700,7 +4777,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
     // value should now be a CallExpression whose callee is `<prefix>.X`.
     if (!value || value.type !== 'CallExpression') {
       ctx.warnings.push(
-        `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` is not a ${prefix}.X() call — dropping.`,
+        `${schemaFn ?? prefix} declaration \`${bindingName}\`: field \`${fieldName}\` is not a ${prefix}.X() call — dropping.`,
       )
       continue
     }
@@ -4712,7 +4789,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
       baseCallee.property?.type !== 'Identifier'
     ) {
       ctx.warnings.push(
-        `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` has unsupported shape (expected ${prefix}.string/${prefix}.number/${prefix}.boolean) — dropping.`,
+        `${schemaFn ?? prefix} declaration \`${bindingName}\`: field \`${fieldName}\` has unsupported shape (expected ${prefix}.string/${prefix}.number/${prefix}.boolean) — dropping.`,
       )
       continue
     }
@@ -4765,7 +4842,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
       )
       if (!nested) {
         ctx.warnings.push(
-          `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` is a nested ${prefix}.object() but its shape isn't a literal — dropping field.`,
+          `${schemaFn ?? prefix} declaration \`${bindingName}\`: field \`${fieldName}\` is a nested ${prefix}.object() but its shape isn't a literal — dropping field.`,
         )
         continue
       }
@@ -4813,7 +4890,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
       }
       // Otherwise: primitive element (with possible per-element constraints)
       const inner = innerArg
-        ? extractTypeAndConstraints(innerArg, prefix, ctx)
+        ? extractTypeAndConstraints(innerArg, prefix, ctx, schemaFn === null)
         : null
       let innerType: 'string' | 'number' | 'boolean' | undefined
       if (inner) {
@@ -4823,7 +4900,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
       }
       if (!innerType) {
         ctx.warnings.push(
-          `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` is z.array() with an unsupported inner type — supported: z.array(z.string/z.number/z.boolean) and z.array(z.object(...)). Dropping field.`,
+          `${schemaFn ?? prefix} declaration \`${bindingName}\`: field \`${fieldName}\` is ${prefix}.array() with an unsupported inner type — supported: ${prefix}.array(${prefix}.string/${prefix}.number/${prefix}.boolean) and ${prefix}.array(${prefix}.object(...)). Dropping field.`,
         )
         continue
       }
@@ -4842,7 +4919,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
       fields.push(entry)
     } else {
       ctx.warnings.push(
-        `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` uses unsupported ${prefix}.${method}() — supported: ${prefix}.string / ${prefix}.number / ${prefix}.boolean / ${prefix}.array / ${prefix}.object. Dropping field.`,
+        `${schemaFn ?? prefix} declaration \`${bindingName}\`: field \`${fieldName}\` uses unsupported ${prefix}.${method}() — supported: ${prefix}.string / ${prefix}.number / ${prefix}.boolean / ${prefix}.array / ${prefix}.object. Dropping field.`,
       )
     }
     void libraryDisplay
@@ -4850,7 +4927,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
 
   if (fields.length === 0) {
     ctx.warnings.push(
-      `${schemaFn} declaration \`${bindingName}\`: no recognized fields. Falling back to silent-drop.`,
+      `${schemaFn ?? prefix} declaration \`${bindingName}\`: no recognized fields. Falling back to silent-drop.`,
     )
     return null
   }
@@ -5954,6 +6031,35 @@ function liftedAliasType(
   return { kind: 'object', fields: struct.fields }
 }
 
+/**
+ * `return () => <…/>` — the reactive-accessor return, the documented web
+ * idiom for a component whose output depends on a signal (a component body
+ * runs ONCE on the web, so a signal read directly in the return is frozen at
+ * its first value). Native has no such split: SwiftUI's `body` and a Compose
+ * function re-run on every state change, so the accessor's BODY is the view.
+ *
+ * Unwrapping was missing, and the accessor reached both targets as a closure
+ * literal inside `var body` / the composable — `{ Text(…) }`, which does not
+ * compile. The render-prop data component makes it load-bearing: the only
+ * shape that stays live on the web is `return () => props.children(q.data())`.
+ *
+ * A BLOCK-bodied accessor (several statements) has no single view to unwrap
+ * and is named rather than emitted broken.
+ */
+function unwrapAccessorReturn(e: ExprIR, component: string, ctx: ParseCtx): ExprIR {
+  const x = e.kind === 'paren' ? e.inner : e
+  if (x.kind !== 'arrow' || x.params.length > 0 || x.async === true) return e
+  if (x.stmts !== undefined && x.stmts.length > 0) {
+    ctx.warnings.push(
+      `Component ${component}: it returns a reactive accessor with a BLOCK body (\`return () => { …; return <…/> }\`), which has no native lowering — native views re-render on state change without an accessor, but only a single expression can become the view. Return the expression directly (\`return () => cond ? <A/> : <B/>\`), or compute the intermediate values with \`computed\`.`,
+    )
+    return { kind: 'literal', value: null }
+  }
+  let body = x.body
+  while (body.kind === 'paren') body = body.inner
+  return body
+}
+
 /** Declare a struct's lifted inline object types ahead of it, and report collisions. */
 function liftInlineObjects(
   st: StructIR,
@@ -6193,7 +6299,7 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
     } else if (stmt.type === 'ReturnStatement' && stmt.argument) {
       // Fold any early-return conditionals collected before this final return
       // into a nested ternary the emitter lowers to a result-builder view.
-      returnExpr = foldPending(parseExpr(stmt.argument, ctx))
+      returnExpr = foldPending(unwrapAccessorReturn(parseExpr(stmt.argument, ctx), name, ctx))
     } else if (stmt.type === 'ExpressionStatement') {
       // A bare component-body statement. `onMount(fn)` — the documented
       // lifecycle escape hatch — LOWERS to a mount-time harness decl.

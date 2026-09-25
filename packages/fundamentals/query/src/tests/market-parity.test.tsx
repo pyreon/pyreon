@@ -146,3 +146,30 @@ describe('optimistic update — onMutate writes the cache, error rolls back', ()
     el.remove()
   })
 })
+
+describe('select — typed end to end (TQueryFnData → TData)', () => {
+  it('the result carries the SELECTED type, from a typed queryFn, with no cast', async () => {
+    const client = makeClient()
+    let query: ReturnType<typeof useQuery<{ id: number; name: string }, Error, number>> | undefined
+    const el = document.createElement('div')
+    document.body.appendChild(el)
+    const unmount = mount(
+      <QueryClientProvider client={client}>
+        {() => {
+          query = useQuery(() => ({
+            queryKey: ['sel-typed'],
+            queryFn: async () => ({ id: 7, name: 'Ada' }),
+            select: (raw: { id: number; name: string }) => raw.id * 2,
+          }))
+          return null
+        }}
+      </QueryClientProvider>,
+      el,
+    )
+    await tick()
+    const data: number | undefined = query!.data()
+    expect(data).toBe(14)
+    unmount?.()
+    el.remove()
+  })
+})

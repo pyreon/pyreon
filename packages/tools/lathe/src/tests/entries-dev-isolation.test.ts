@@ -25,7 +25,7 @@ import { emitBarrel, emitDevEntry } from '../emit/entries'
 import type { IrDocument, IrOperation } from '../core/ir'
 
 const op = (id: string, tag = 'users'): IrOperation =>
-  ({ id, tag, method: 'GET', path: `/${id}`, pathParams: [], queryParams: [] }) as IrOperation
+  ({ id, tag, method: 'GET', path: `/${id}`, pathParams: [], queryParams: [], headerParams: [], cookieParams: [] }) as IrOperation
 
 const doc = (operations: IrOperation[] = [op('getUser')]): IrDocument =>
   ({ title: 'T', version: '1', baseUrl: '', models: [], operations, notes: [] }) as IrDocument

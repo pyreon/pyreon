@@ -98,6 +98,55 @@ useMutation(createUser.mutation({ invalidates: [listUsers] }))
 `:placeholders`**, and its keys come from the path literal — so
 `{ params: { userId } }` against `/users/:id` is a compile error.
 
+## Request bodies
+
+One option per encoding; they are mutually exclusive, and passing two throws.
+
+```ts
+api.post('/users', { json: { name: 'Ada' } })               // application/json
+api.post('/v1/customers', {                                  // x-www-form-urlencoded
+  form: { email: 'a@b.c', metadata: { plan: 'pro' } },
+  formEncoding: { metadata: { style: 'deepObject', explode: true } },
+})                                                           // email=a%40b.c&metadata%5Bplan%5D=pro
+api.post('/files', { multipart: { file, purpose: 'x' } })   // FormData; Blob/File = file part
+api.post('/raw', { body: bytes, headers: { 'content-type': 'application/octet-stream' } })
+```
+
+`form` follows OpenAPI's Encoding Object per field: the default `form` + `explode` repeats an array's key, `deepObject` writes brackets (`items[0][price]=…`, what Stripe declares), `spaceDelimited` / `pipeDelimited` join arrays. `null` / `undefined` fields are dropped, never sent as text. `encodeForm`, `encodeMultipart` and `encodeCookies` are exported for transports that need the same bytes.
+
+A header record may carry numbers, booleans and `undefined` — an `undefined` header is omitted rather than sent as `"undefined"`. `cookies: { session }` writes a `Cookie` header; a browser drops that header silently (it is forbidden from script), so there use `credentials: 'include'`. On an endpoint, declared `headers` and per-call `headers` MERGE, and `formEncoding` is declared once:
+
+```ts
+const createCustomer = api.endpoint('POST /v1/customers', {
+  formEncoding: { metadata: { style: 'deepObject', explode: true } },
+})
+await createCustomer({ form: { metadata: { plan: 'pro' } }, headers: { 'idempotency-key': key } })
+```
+
+## Streaming (SSE, NDJSON)
+
+`@pyreon/http/stream` parses Server-Sent Events and NDJSON from any
+`ReadableStream`, so a stream can be a POST with auth headers and go through
+your middleware — `EventSource` can do neither.
+
+```ts
+import { openEventStream } from '@pyreon/http/stream'
+
+const tail = api.endpoint('GET /logs/tail', { responseType: 'stream' })
+
+for await (const ev of openEventStream((ctx) => tail({ signal: ctx.signal, headers: ctx.headers }), {
+  parse: (v) => LogLine.parse(v),
+})) {
+  if (ev.data.level === 'fatal') break // closes the connection
+}
+```
+
+A dropped connection, 408, 429 or 5xx reconnects with backoff, resuming with
+`Last-Event-ID` (a server `retry:` sets the delay; other 4xx are final).
+`openNdjsonStream` yields one value per line and never reconnects.
+`readEventStream` / `readNdjson` are the bare parsers (WHATWG grammar: line
+ends split across chunks, multi-line `data`, comments, BOM). Zero dependencies.
+
 ## Middleware
 
 ```ts

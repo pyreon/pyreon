@@ -337,6 +337,58 @@ get_dependency_fabric({ package: '@pyreon/router' })
       seeAlso: ['get_atlas_catalog', 'validate'],
     },
     {
+      name: 'get_api_client',
+      kind: 'constant',
+      signature: 'tool: get_api_client({ search?: string, path?: string }) → string',
+      summary:
+        "Serve the generated API client `lathe generate` wrote — every operation with its method, path, summary and the exact symbols it exports (endpoint, `use<Op>` hook, `<op>Stream` / `use<Op>Stream` for streaming operations), grouped by the module they live in, plus every model. Read from the `api-surface.json` beside the generated code, so it describes the client the agent will actually import rather than a re-reading of the spec. Filter with `search`; point `path` at a generated directory when a project has several.",
+      example: `get_api_client({})
+// → # Shop — 3 operation(s), 2 model(s)
+//   ## orders
+//   - \`getOrder\` GET /orders/:id — One order → \`getOrder\`, \`useGetOrder\`
+get_api_client({ search: 'order' })`,
+      mistakes: [
+        'Guessing a hook name from the spec\'s operationId — the generated name is normalized (and a stream-only operation has no `use<Op>` at all). The symbols listed here are the real exports.',
+        'Calling it before `lathe generate` has run — the surface is a generation artifact, so the tool returns setup instructions rather than a guessed client.',
+        'Expecting parameter detail from the index — it is deliberately compact. Use `get_api_operation` for one operation\'s typed signature and a call.',
+      ],
+      seeAlso: ['get_api_operation', 'explain_api_diff'],
+    },
+    {
+      name: 'get_api_operation',
+      kind: 'constant',
+      signature: 'tool: get_api_operation({ operation: string, path?: string }) → string',
+      summary:
+        "One generated operation's TYPED signature: each parameter with its location (path/query) and whether it is required, the request body, the response and stream event types, the fields of every model they name, and example calls shaped by those types — the direct endpoint call, the query or mutation hook, and a `for await` over the stream when there is one. Imports are written relative to the working directory. Unknown names get near-match suggestions.",
+      example: `get_api_operation({ operation: 'getOrder' })
+// → - \`id\` (path, required): string
+//   - response: Order
+//   const q = useGetOrder(() => ({ params: { id: '…' } }))`,
+      mistakes: [
+        'Passing a path parameter under `query` (or the reverse) — the location is printed per parameter; path params go in `params`.',
+        'Calling a `use<Op>` hook with a value instead of an accessor — generated hooks take `() => args` so signal reads stay reactive; return `undefined` to hold the query disabled.',
+        'Awaiting a stream function — `<op>Stream(...)` returns an async iterable; iterate it with `for await`, and `break` closes the connection.',
+      ],
+      seeAlso: ['get_api_client', 'explain_api_diff'],
+    },
+    {
+      name: 'explain_api_diff',
+      kind: 'constant',
+      signature: 'tool: explain_api_diff({ before: string, after?: string }) → string',
+      summary:
+        "The client-contract diff between two versions of an API — each side a spec (JSON/YAML), an `api-surface.json`, or `<git-rev>:<path>` (`main:openapi.yaml`); `after` defaults to the generated client in the project. Uses `@pyreon/lathe`'s own classifier (the same one `lathe diff` and `lathe check` run), so severities are from the CLIENT's point of view: a response field turning optional is breaking, a request field doing so is not. Breaking first, each change naming the generated symbols it reaches (model changes are traced transitively to operations), followed by what to check in the code for every breaking change.",
+      example: `explain_api_diff({ before: 'main:openapi.yaml', after: 'openapi.yaml' })
+// → ### API contract: 1 breaking, 0 additive
+//   | \`field-now-optional\` | \`Customer.email\` | required → optional | \`getOrder\`, \`useGetOrder\` (orders) |
+//   - \`Customer.email\` (\`field-now-optional\`): guard every read.`,
+      mistakes: [
+        'Trusting a green typecheck after regenerating — breaking changes here are exactly the ones that still COMPILE (a field that is now sometimes absent) and fail at runtime.',
+        'Diffing generated TypeScript instead of the contract — formatting and ordering move for non-contract reasons; this compares only what a caller can observe.',
+        'Reading `member-added` as harmless — a `switch` over that value can now receive a member it does not handle.',
+      ],
+      seeAlso: ['get_api_client', 'get_api_operation'],
+    },
+    {
       name: 'get_pattern',
       kind: 'constant',
       signature: 'tool: get_pattern({ name?: string }) → PatternBody | string[]',

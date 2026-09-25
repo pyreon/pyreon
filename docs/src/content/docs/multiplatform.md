@@ -1228,6 +1228,51 @@ stable in the targeted Compose 1.7 BOM, vs the experimental
 headers). Component children must be JSX or value
 expressions (auto-wrapped in `Text`).
 
+**Render props, function-as-children and view slots** lower on both
+targets. A prop typed as a view (`children: VNodeChild`) or as a function
+returning one (`render: (item: Item) => VNodeChild`) — or returning
+`unknown` when the body renders its result, the shape `@pyreon/lathe`'s
+generated `<Op>Data` components use — becomes the platform's own container
+idiom:
+
+| Source | SwiftUI | Compose |
+|---|---|---|
+| `render: (item: Item) => VNodeChild` | `@ViewBuilder let render: (Item) -> RenderContent` on `struct X<RenderContent: View>` | `render: @Composable (Item) -> Unit` |
+| `children: VNodeChild` | `@ViewBuilder let children: () -> ChildrenContent`; `{props.children}` → `children()` | `children: @Composable () -> Unit` |
+| `<Data>{(u) => <Text>{u.name}</Text>}</Data>` | `Data(children: { u in Text(…) })` | `Data(children = { u -> Text(…) })` |
+| `render={renderRow}` (a JSX function in the file) | `{ a0 in renderRow(a0) }` | `{ a0 -> renderRow(a0) }` |
+| `render={props.render}` (forwarded) | passed through | passed through |
+
+A JSX-returning function with annotated parameters — at file or component
+scope — is emitted as a view function (`@ViewBuilder func` /
+`@Composable fun`), so it can be handed to a render prop by name and
+called in view position (`{renderRow(r)}`). An inline object parameter
+type (`(item: { title: string }) => …`) is lifted to a declared struct
+(`PickerRenderItem`), shared by every component that declares the same
+shape. The call site is decided from the callback's own shape, so a
+component declared in ANOTHER file — a generated client — receives it
+correctly. A component body's `return () => …` (the web idiom for a live
+render-prop call, `return () => props.children(q.data())`) unwraps to its
+view on native, where the body re-runs on state change anyway.
+
+Web parity: the same source runs unchanged on the web, where the receiving
+component calls the callback itself. One difference is WEB-side and worth
+knowing: a component body runs ONCE there, so `return props.children(q.data())`
+reads the signal once and never re-renders (measured: stays at its first
+value after the signal changes), while the native targets re-run the body
+and update. Write `return () => props.children(q.data())` — live on the web,
+identical emit on native.
+
+Named, never emitted broken: a block-bodied render callback
+(`(x) => { …; return <…/> }`), a render-prop value PMTC cannot see into
+(`render={pick()}`), a block-bodied accessor return, and — Swift only — an
+OPTIONAL render prop (a caller that omits it leaves the generic view type
+uninferable; Android keeps it optional). Verification: R2 — `swiftc` and
+`kotlinc` against the stubs, plus a real-iOS-SDK typecheck with the real
+runtime linked in (`native-render-props.test.ts`, including the lathe
+bookshelf data components consumed from another module); no device
+assertion yet.
+
 **Module scope**: `let`/`const` primitives (non-reactive on native),
 type aliases, the recognized factory calls. Module-scope `signal()` is
 NOT lowered — declare signals inside components or stores.

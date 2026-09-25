@@ -232,4 +232,4 @@ export {
   uninstallServerCheck,
 } from './core/registry'
 // Lightweight (client) format validators — exported for standalone use.
-export { type EmailPrecision, isIPv6, validateCreditCard, validateIp, validatePhone } from './primitives/string'
+export { type EmailPrecision, isIPv6, type UrlOpts, validateCreditCard, validateIp, validatePhone } from './primitives/string'
