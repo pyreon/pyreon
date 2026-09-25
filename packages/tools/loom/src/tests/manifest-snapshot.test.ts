@@ -13,10 +13,11 @@ describe('gen-docs — loom snapshot', () => {
     )
   })
 
-  it('names the two CLI commands + the programmatic entry', () => {
+  it('names the three CLI commands + the programmatic entry', () => {
     const names = manifest.api?.map((a) => a.name) ?? []
     expect(names).toContain('loom scan')
     expect(names).toContain('loom dev')
+    expect(names).toContain('loom build')
     expect(names).toContain('buildReport')
   })
 })

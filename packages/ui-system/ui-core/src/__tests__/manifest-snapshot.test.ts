@@ -20,11 +20,23 @@ describe('gen-docs — ui-core snapshot', () => {
   it('renders MCP api-reference entries for every api[] item', () => {
     const record = renderApiReferenceEntries(manifest)
     expect(Object.keys(record).sort()).toEqual([
+      'ui-core/HTML_TAGS / HTML_TEXT_TAGS',
       'ui-core/PyreonUI',
+      'ui-core/compose',
       'ui-core/cssVariablesPrePaintScript',
+      'ui-core/get / set / merge / pick / omit / isEmpty / isEqual',
+      'ui-core/getThemeEngine / setThemeEngine',
+      'ui-core/hoistNonReactStatics',
+      'ui-core/init',
+      'ui-core/isPyreonComponent',
+      'ui-core/render',
+      'ui-core/resolveCssVariables',
+      'ui-core/resolveSlot',
+      'ui-core/throttle',
       'ui-core/useMode',
       'ui-core/useRootSize',
       'ui-core/useSpacing',
+      'ui-core/useStableValue',
       'ui-core/useThemeValue',
     ])
   })
