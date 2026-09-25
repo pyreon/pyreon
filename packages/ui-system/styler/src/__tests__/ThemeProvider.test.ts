@@ -1,6 +1,7 @@
 import { popContext } from '@pyreon/core'
 import { afterEach, describe, expect, it } from 'vitest'
-import { ThemeContext, ThemeProvider, useTheme } from '../ThemeProvider'
+import { signal } from '@pyreon/reactivity'
+import { ThemeContext, ThemeProvider, useTheme, useThemeAccessor } from '../ThemeProvider'
 
 describe('ThemeContext', () => {
   it('is a Context object with an id', () => {
@@ -43,6 +44,23 @@ describe('ThemeProvider', () => {
     ThemeProvider({ theme, children: 'child' })
     const result = useTheme()
     expect(result).toEqual(theme)
+  })
+
+  it('reads a getter-backed theme prop LAZILY (follows later changes)', () => {
+    // The mount pipeline hands a component `theme={sig()}` as a GETTER. The
+    // provided accessor must re-read it, not capture the setup-time value.
+    const theme = signal<Record<string, unknown>>({ color: 'red' })
+    const props = {
+      get theme() {
+        return theme()
+      },
+      children: 'child',
+    }
+    ThemeProvider(props)
+    const accessor = useThemeAccessor<{ color: string }>()
+    expect(accessor().color).toBe('red')
+    theme.set({ color: 'blue' })
+    expect(accessor().color).toBe('blue')
   })
 })
 

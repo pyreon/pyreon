@@ -41,32 +41,61 @@ type ProviderType = Partial<
 >
 
 /**
- * @internal Low-level provider — use `PyreonUI` from `@pyreon/ui-core` instead.
+ * Low-level provider that feeds the internal Pyreon core context with the
+ * theme + mode. When no theme is supplied, renders children directly.
  *
- * Provider that feeds the internal Pyreon context with the theme.
- * When no theme is supplied, renders children directly.
+ * App code should use `<PyreonUI theme={theme}>`, which handles all context
+ * layers. This provider is what `@pyreon/rocketstyle`'s public `Provider`
+ * delegates to, so it is a SUPPORTED path, not an internal-only one — it
+ * therefore does not warn (it used to log "CoreProvider is internal" on every
+ * mount, including every `<Provider>` from rocketstyle, where the user did
+ * nothing wrong).
  *
- * @deprecated Prefer `<PyreonUI theme={theme}>` which handles all context layers.
+ * Props are read LAZILY: the provided value exposes getters over `props`, so a
+ * getter-backed prop (a compiler `theme={sig()}` / `mode={sig()}`, or
+ * rocketstyle's parent-following `inversed` mode) stays reactive for any
+ * consumer that reads it inside a tracking scope. Reading only `.theme` never
+ * subscribes to `.mode` (the same lazy-getter contract `PyreonUI` provides).
  */
-function Provider({ theme, children, ...props }: ProviderType): VNodeChild {
-  /* v8 ignore next 5 — dev-only warning gate; production NODE_ENV branch not exercised in tests */
-  if (process.env.NODE_ENV !== 'production') {
-    // oxlint-disable-next-line no-console
-    console.warn(
-      '[Pyreon] CoreProvider is internal. Use <PyreonUI theme={theme}> instead — it handles all context layers (styler, core, mode) in one component.',
-    )
-  }
-  if (isEmpty(theme) || !theme) return children ?? null
+function Provider(props: ProviderType): VNodeChild {
+  // Whether this provider provides at all is decided once, at mount — the
+  // same structural decision as before (an empty theme means "pass through").
+  if (isEmpty(props.theme) || !props.theme) return props.children ?? null
 
-  provide(context, () => ({
-    theme: theme as Record<string, unknown>,
-    mode: (props.mode as 'light' | 'dark') ?? 'light',
-    isDark: props.isDark as boolean ?? false,
-    isLight: props.isLight as boolean ?? true,
-    ...props,
-  }))
+  // Extra keys passed alongside theme/mode flow into the context value too
+  // (previously via an object spread). Enumerated at setup; each is a getter.
+  const extraKeys = Object.keys(props).filter(
+    (k) =>
+      k !== 'theme' &&
+      k !== 'children' &&
+      k !== 'mode' &&
+      k !== 'isDark' &&
+      k !== 'isLight' &&
+      k !== 'provider',
+  )
 
-  return children ?? null
+  provide(context, () => {
+    const value = {
+      get theme() {
+        return props.theme as Record<string, unknown>
+      },
+      get mode() {
+        return (props.mode as 'light' | 'dark' | undefined) ?? 'light'
+      },
+      get isDark() {
+        return (props.isDark as boolean | undefined) ?? false
+      },
+      get isLight() {
+        return (props.isLight as boolean | undefined) ?? true
+      },
+    } as CoreContextValue & Record<string, unknown>
+    for (const k of extraKeys) {
+      Object.defineProperty(value, k, { get: () => props[k], enumerable: true, configurable: true })
+    }
+    return value
+  })
+
+  return props.children ?? null
 }
 
 // Mark as native — even though @internal, PyreonUI invokes this internally

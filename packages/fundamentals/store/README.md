@@ -147,7 +147,7 @@ addStorePlugin((api) => {
 })
 ```
 
-Plugins are global — registered once at app startup, run for every defined store. A plugin may return a **cleanup function** — it runs when that store's `dispose()` is called (for external resources: sync loops, timers, connections). `effect()`/`computed()` created inside a plugin body need NO cleanup — they run in the store's effect scope and are disposed automatically. Plugin throws are caught and silenced (with a dev-mode `console.warn`) so one bad plugin can't take the whole app down. Plugins added AFTER a store has been created do NOT retroactively run on it.
+Plugins are global — registered once at app startup, run for every defined store. `addStorePlugin` returns an unregister function (for test teardown / HMR); stores already created keep what the plugin attached. A plugin may return a **cleanup function** — it runs when that store's `dispose()` is called (for external resources: sync loops, timers, connections). `effect()`/`computed()` created inside a plugin body need NO cleanup — they run in the store's effect scope and are disposed automatically. Plugin throws are caught and silenced (with a dev-mode `console.warn`) so one bad plugin can't take the whole app down. Plugins added AFTER a store has been created do NOT retroactively run on it.
 
 ## Persistence — return `useStorage()` from setup
 
@@ -225,6 +225,19 @@ import { setStoreRegistryProvider } from '@pyreon/store'
 
 configureStoreIsolation(setStoreRegistryProvider)
 ```
+
+### Keeping a store out of the page
+
+After an SSR render every store in the request registry is serialized into the
+page (`window.__PYREON_STORE_STATE__`) for client hydration. A store that must
+never reach the HTML — a session, an auth token — opts out:
+
+```ts
+const useSession = defineStore('session', () => ({ token: signal('') }), { ssr: false })
+// schema stores: defineStore('secrets', { schema, initial, ssr: false })
+```
+
+It is never serialized, and on the client it ignores any server snapshot.
 
 ## Testing pattern
 
