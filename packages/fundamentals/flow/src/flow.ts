@@ -1288,10 +1288,13 @@ export function createFlow<TData = Record<string, unknown>>(
   const redoStack: Array<{ nodes: FlowNode<TData>[]; edges: FlowEdge[] }> = []
   // Bounded undo depth — `historyLimit` (default 50). Each entry is a shallow
   // (N+E)-reference snapshot; a non-positive / non-finite value falls back.
-  const maxHistory =
-    typeof config.historyLimit === 'number' && config.historyLimit > 0 && Number.isFinite(config.historyLimit)
-      ? Math.floor(config.historyLimit)
-      : 50
+  // Read at push time, like `autoHistory`, so a write to `flow.config` takes
+  // effect — the native `PyreonFlowState` engines expose it as a mutable
+  // property and apply the same clamp (`historyLimitOf` there).
+  const maxHistory = (): number => {
+    const limit = config.historyLimit
+    return typeof limit === 'number' && limit > 0 && Number.isFinite(limit) ? Math.floor(limit) : 50
+  }
 
   // History snapshots are SHALLOW array copies, not `structuredClone`. Every
   // write path in this package is immutable by discipline — drag / updateNode /
@@ -1317,7 +1320,9 @@ export function createFlow<TData = Record<string, unknown>>(
     if (mutationVersion === checkpointVersion) return
     checkpointVersion = mutationVersion
     undoStack.push(historySnapshot())
-    if (undoStack.length > maxHistory) undoStack.shift()
+    // Trim to the limit, not by one: a limit lowered at runtime drops the excess at once.
+    const limit = maxHistory()
+    if (undoStack.length > limit) undoStack.splice(0, undoStack.length - limit)
     redoStack.length = 0
   }
 
