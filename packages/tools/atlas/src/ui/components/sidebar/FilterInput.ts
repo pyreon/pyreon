@@ -9,10 +9,9 @@ export const FilterInput = el
   .attrs({ tag: 'input' })
   .theme((t) => ({
     font: 'inherit',
-    fontSize: t.size.label,
+    fontSize: t.size.text,
     width: '100%',
-    padding: '6px 10px',
-    margin: '0 0 6px',
+    padding: '8px 12px',
     borderRadius: t.radius.field,
     outline: 'none',
     border: t.hairline,
@@ -23,4 +22,7 @@ export const FilterInput = el
       borderColor: t.accent,
       boxShadow: `0 0 0 3px ${t.accentSoft}`,
     },
+    // Its own ring above — the global focus-visible OUTLINE on top of it drew
+    // a second, square ring outside the rounded field.
+    extendCss: `&:focus-visible{outline:none;}&::placeholder{color:${t.faint};}`,
   })) as unknown as InputEl

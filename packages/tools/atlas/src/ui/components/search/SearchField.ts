@@ -5,5 +5,7 @@ export const SearchField = el
   .theme((t) => ({
     flex: '1', border: 'none', background: 'transparent', color: t.text,
     fontSize: '15px', padding: '12px 0',
-    extendCss: `outline:none;font-family:inherit;&::placeholder{color:${t.faint};}`,
+    // The HEAD shows focus (`:focus-within`) — a square outline on the bare
+    // field crossed the rounded card and the esc badge.
+    extendCss: `outline:none;font-family:inherit;&:focus-visible{outline:none;}&::placeholder{color:${t.faint};}`,
   })) as unknown as InputEl
