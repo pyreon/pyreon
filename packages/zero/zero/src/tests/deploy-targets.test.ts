@@ -116,6 +116,10 @@ describe('collectDeployTargets', () => {
   it.each([
     [{ 'a.tsx': "export const runtime = 'worker'\nexport default () => null" }, /a\.tsx: `export const runtime` must be the literal 'edge' or 'nodejs'/],
     [{ 'a.tsx': "const r = 'edge'\nexport const runtime = r\nexport default () => null" }, /a non-literal value/],
+    // A literal the build can read but that is not a string: named with its source text.
+    [{ 'a.tsx': "export const runtime = 1\nexport default () => null" }, /must be the literal 'edge' or 'nodejs' \(got 1\)/],
+    [{ 'api/x.ts': "const s = '0 * * * *'\nexport const schedule = s\nexport function GET() {}" }, /api\/x\.ts: `export const schedule` must be a plain string literal cron expression \(got a non-literal value\)/],
+    [{ 'api/x.ts': "export const schedule = 5\nexport function GET() {}" }, /plain string literal cron expression \(got 5\)/],
     [{ 'a.tsx': "export const schedule = '0 * * * *'\nexport default () => null" }, /only supported on API routes/],
     [{ 'api/[id].ts': "export const schedule = '0 * * * *'\nexport function GET() {}" }, /cannot be dynamic \(\/api\/:id\)/],
     [{ 'api/x.ts': "export const schedule = '0 * * * *'\nexport function POST() {}" }, /exports no GET handler/],

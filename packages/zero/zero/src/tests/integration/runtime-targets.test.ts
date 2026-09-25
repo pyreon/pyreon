@@ -14,7 +14,7 @@
  *     machine this was written on — the spec says so rather than passing).
  */
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { cpSync, existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -32,7 +32,12 @@ import type { ZeroConfig } from '../../types'
 import { zeroPlugin } from '../../vite-plugin'
 
 const FIXTURE = resolve(import.meta.dirname, 'fixture-runtime')
-const PLAIN_FIXTURE = resolve(import.meta.dirname, 'fixture-build')
+// A PRIVATE copy of fixture-build: build-post-step and build-summary build
+// the same app in parallel, and zero materializes its SSR entry inside the
+// root, so a shared root lets one suite's cleanup delete another's entry
+// (UNRESOLVED_ENTRY __pyreon-zero-ssr-entry.js in the full package run).
+const PLAIN_FIXTURE = resolve(import.meta.dirname, '.tmp-fixture-runtime-plain')
+cpSync(resolve(import.meta.dirname, 'fixture-build'), PLAIN_FIXTURE, { recursive: true })
 const DIST = join(FIXTURE, 'dist')
 const VERCEL = join(FIXTURE, ...VERCEL_ADAPTER_OUTPUT.outputDir.split('/'))
 
@@ -92,11 +97,10 @@ beforeEach(async () => {
 })
 
 afterAll(async () => {
-  for (const root of [FIXTURE, PLAIN_FIXTURE]) {
-    await rm(join(root, 'dist'), { recursive: true, force: true })
-    await rm(join(root, '.vercel'), { recursive: true, force: true })
-    await rm(join(root, '__pyreon-zero-ssr-entry.js'), { force: true })
-  }
+  await rm(join(FIXTURE, 'dist'), { recursive: true, force: true })
+  await rm(join(FIXTURE, '.vercel'), { recursive: true, force: true })
+  await rm(join(FIXTURE, '__pyreon-zero-ssr-entry.js'), { force: true })
+  await rm(PLAIN_FIXTURE, { recursive: true, force: true })
 })
 
 const T = 180_000
