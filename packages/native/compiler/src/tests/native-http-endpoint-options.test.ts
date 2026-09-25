@@ -246,8 +246,17 @@ describe('endpoint DSL — the option set is CLOSED, not a list of instances', (
       join(import.meta.dirname, '../../../../fundamentals/http/src/endpoint.ts'),
       'utf8',
     )
-    const block = /export type EndpointArgs<[^>]*> =([\s\S]*?)\n\n/.exec(endpointTs)?.[1]
-    expect(block, 'could not locate EndpointArgs in @pyreon/http').toBeTruthy()
+    // `EndpointArgs` is `EndpointInput<P> & EndpointCallOptions` -- what a
+    // call SENDS and how it is sent are declared apart -- so its fields are
+    // the union of both declarations.
+    const alias = /export type EndpointArgs<[^>]*> = (\w+)<\w+> & (\w+)\n/.exec(endpointTs)
+    expect(alias, 'could not locate EndpointArgs in @pyreon/http').toBeTruthy()
+    const [, inputName, optionsName] = alias as RegExpExecArray
+    const input = new RegExp(`export type ${inputName}<[^>]*> =([\\s\\S]*?)\\n\\n`).exec(endpointTs)?.[1]
+    const options = new RegExp(`export interface ${optionsName} \\{([\\s\\S]*?)\\n\\}`).exec(endpointTs)?.[1]
+    expect(input, `could not locate ${inputName}`).toBeTruthy()
+    expect(options, `could not locate ${optionsName}`).toBeTruthy()
+    const block = `${input}\n${options}`
     // `params` is declared in the conditional PREFIX (`… extends [never] ? {
     // params?: undefined } : { params: … }`), not the trailing `& { … }` block,
     // so an indentation-anchored scrape silently misses the one required field
