@@ -74,6 +74,21 @@ export interface ListOptions {
 }
 
 /**
+ * The form `feature.useForm()` returns — a `FormState` plus the edit-mode
+ * record-load state.
+ */
+export type FeatureFormState<TValues extends Record<string, unknown>> = FormState<TValues> & {
+  /** `true` while edit mode is fetching the record to edit. */
+  isLoading: Signal<boolean>
+  /**
+   * The error from a failed edit-mode record load (else `undefined`). While
+   * set, the form stays disabled and submitting is refused — so a blank form
+   * can never be PUT over the real record.
+   */
+  loadError: Signal<unknown>
+}
+
+/**
  * Form options for useForm.
  */
 export interface FeatureFormOptions<TValues extends Record<string, unknown>> {
@@ -174,8 +189,14 @@ export interface Feature<TValues extends Record<string, unknown>> {
   /** Fetch a paginated/filtered list. */
   useList: (options?: ListOptions) => UseQueryResult<TValues[], unknown>
 
-  /** Fetch a single item by ID. */
-  useById: (id: string | number) => UseQueryResult<TValues, unknown>
+  /**
+   * Fetch a single item by ID. Accepts a static id OR an accessor
+   * (`() => props.id` / a signal) — the query re-keys and refetches when it
+   * changes, and stays idle while it is `undefined` / `null`.
+   */
+  useById: (
+    id: string | number | (() => string | number | undefined | null),
+  ) => UseQueryResult<TValues, unknown>
 
   /** Search with a reactive signal term. */
   useSearch: (
@@ -197,7 +218,7 @@ export interface Feature<TValues extends Record<string, unknown>> {
   useDelete: () => UseMutationResult<void, unknown, string | number>
 
   /** Create a form pre-wired with schema validation and API submit. In edit mode with an ID, auto-fetches data. */
-  useForm: (options?: FeatureFormOptions<TValues>) => FormState<TValues>
+  useForm: (options?: FeatureFormOptions<TValues>) => FeatureFormState<TValues>
 
   /** Create a reactive table with columns inferred from schema. */
   useTable: (
