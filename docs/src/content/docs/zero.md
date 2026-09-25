@@ -137,6 +137,8 @@ export default {
 | `favicon`    | `FaviconPluginConfig \| false`                                                | auto    | Explicit config wires `faviconPlugin`; **omitted → file-convention auto-detect** (`src/favicon.svg` → full set, zero config); `false` disables — see **[Favicons](#favicons)** |
 | `theme`      | `boolean`                                                                     | `false` | `true` auto-injects the pre-paint `themeScript` into every page `<head>` (no manual script tag) — see **[Theme System](#theme-system)** |
 | `og`         | `OgImagePluginConfig`                                                         | —       | Auto-wires `ogImagePlugin` (templates + text layers → per-locale social-share images) |
+| `pwa`        | `PwaConfig`                                                                   | —       | Web app manifest + generated precaching service worker (network-first HTML, cache-first hashed assets) |
+| `routeOg`    | `RouteOgConfig`                                                               | —       | Per-route `export const og` images: size (default 1200×630) + `siteUrl` for absolute build-time `og:image` |
 | `ai`         | `AiPluginConfig`                                                              | —       | Auto-wires `aiPlugin` (llms.txt, llms-full.txt, /.well-known/ai-plugin.json, OpenAPI spec) |
 
 `resolveConfig(userConfig?)` merges user config with the defaults above (`mode: 'ssr'`, `base: '/'`, `port: 3000`, `adapter: 'node'`). `ssr.mode` defaults to `'string'` (buffered). Streaming is opt-in: `ssr: { mode: 'stream' }`. ISR routes always render buffered, because the cache stores complete responses.
@@ -171,6 +173,10 @@ Opt out for minimal logs (log scrapers, size-diff tooling):
 ```ts
 zero({ buildSummary: false })
 ```
+
+### SPA apps ship without hydration code
+
+When every page is client-rendered (`mode: 'spa'`, no `routeRules` or route file declaring another `renderMode`), a production build compiles hydration out of the client bundle: no page ever arrives with server HTML to adopt. On `examples/kanban` that is 6.6 KB gzipped (10.6%) of the initial JavaScript. Any route that can be server-rendered keeps hydration, and dev is unchanged.
 
 ### Router loaders are compiled out when unused
 
@@ -1247,6 +1253,73 @@ import { Meta } from '@pyreon/zero'
 ```
 
 **Font note:** text layers render via SVG → sharp, which resolves `fontFamily` against fonts installed on the **build machine** (no webfont loading). Stick to widely-available families or install your brand font into the CI image.
+
+### Per-route OG images from JSX
+
+A page route can render its **own** card from its params and loader data by exporting `og` — a component returning **SVG JSX**:
+
+```tsx
+// src/routes/posts/[slug].tsx
+import type { OgImage } from '@pyreon/zero/server' // type-only — erased from the client
+
+export const getStaticPaths = () => [{ params: { slug: 'hello' } }]
+export const loader = async ({ params }) => getPost(params.slug)
+
+export const og: OgImage<{ title: string }, { slug: string }> = ({ data, params }) => (
+  <svg width="1200" height="630" viewBox="0 0 1200 630">
+    <rect width="1200" height="630" fill="#0b1020" />
+    <text x="80" y="330" font-size="72" fill="#fff">{data?.title ?? params.slug}</text>
+  </svg>
+)
+```
+
+- **SSG paths** — rendered at **build** time to a content-hashed PNG (`dist/assets/og/<path>.<hash>.png`), and that page's `<head>` gets `og:image` + `og:image:width/height` + `twitter:card`. The loader data is the value the page itself rendered with (loaders run once per path).
+- **SSR / ISR routes** — served at request time from `/_zero/og/<path>.png` (auto-mounted by `createServer`), and the rendered page carries the matching **absolute** `og:image` (request origin). The endpoint answers `Cache-Control: public, max-age=0, s-maxage=3600, stale-while-revalidate=3600`, so a CDN caches and revalidates it (ISR at the edge; the in-process ISR cache deliberately never stores `/_zero/*` endpoints).
+- An explicit `og:image` (from `useHead`/`<Meta>`) always wins — nothing is injected over it.
+- The `og` export is referenced **only** from the server graph (the SSG sub-build and the SSR bundle), via a lazy import — it never reaches the client bundle.
+
+Tune with `zero({ routeOg: { width, height, siteUrl } })` (defaults 1200×630). Set `siteUrl` for SSG builds: most crawlers (Facebook, LinkedIn, Slack) require an **absolute** `og:image` URL, and without it the build-time tag is root-relative.
+
+Constraints, stated plainly: the rasterizer is **sharp** (optional peer — a route with `og` fails the build with a `[Pyreon]` install hint when it is missing). sharp renders SVG through librsvg, so the card must have an `<svg>` root; HTML elements and `<foreignObject>` are not laid out, and text wrapping is manual (`<tspan>`). Fonts resolve on the build/server machine, as above. Not served by `vite dev` — preview it with a build.
+
+## Progressive Web App
+
+`zero({ pwa })` makes the build installable and offline-capable:
+
+```ts
+// vite.config.ts
+zero({
+  mode: 'ssg',
+  pwa: {
+    manifest: {
+      name: 'My App',
+      short_name: 'App',
+      theme_color: '#0b1020',
+      background_color: '#ffffff',
+      icons: [{ src: '/icon-512.png', sizes: '512x512', type: 'image/png' }],
+    },
+    // skipWaiting: true, // opt-in: activate new versions immediately
+  },
+})
+```
+
+```ts
+// src/entry-client.ts
+import { registerServiceWorker } from '@pyreon/zero'
+
+registerServiceWorker({
+  onUpdate: (activate) => {
+    if (confirm('A new version is available. Reload?')) activate()
+  },
+})
+```
+
+- **Manifest** — `manifest.webmanifest` is emitted (defaults: `start_url`/`scope` = the app `base`, `display: 'standalone'`) and linked, with `theme-color`, into every page.
+- **Precache** — `sw.js` is generated **after** the output is final and before the deploy adapter stages it, listing exactly what shipped: every content-hashed file under `<base><assetsDir>/` (minus source maps and route OG images) plus, under `mode: 'ssg'`, every prerendered page. Any change to those files changes the worker bytes, which is what triggers an update.
+- **Runtime strategy** — navigations are **network-first** (fresh HTML online; the last-seen or precached page offline); same-origin requests under the hashed-asset prefix are **cache-first**; everything else is left to the browser.
+- **Updates** — safe by default: a new worker **waits** until the old version's tabs close, so a running page never has its asset set swapped underneath it. `onUpdate(activate)` lets you ask the user; `activate()` activates the waiting worker and reloads once it takes control. `pwa.skipWaiting: true` opts into immediate activation.
+- **Caching of the worker itself** — never immutable: the node/bun adapters serve `sw.js` and `*.webmanifest` with `max-age=0, must-revalidate`, the platform adapters only mark `<base><assetsDir>/*` immutable, and registration uses `updateViaCache: 'none'`.
+- `registerServiceWorker()` resolves `null` and registers nothing during SSR, outside production builds (a caching worker in dev fights HMR), and where service workers are unsupported.
 
 ## Environment Variables
 
