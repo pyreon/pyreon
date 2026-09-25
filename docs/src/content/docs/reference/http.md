@@ -68,6 +68,12 @@ console.log(user.name)
 | [`retry`](#retry) | function | Replay a failed request. |
 | [`standardSchema`](#standardschema) | constant | The resolver that enables schema objects in `.json(schema)` and `endpoint({ response })`. |
 | [`runWithRequest`](#runwithrequest) | function | Establish the per-request SSR context, from `@pyreon/http/server`. |
+| [`RequestError`](#requesterror) | class | The common base of every error this package throws — `catch (e) { if (e instanceof RequestError) … }` covers the whole f |
+| [`buildUrl`](#buildurl) | function | The full URL-resolution pipeline `createHttp`/`endpoint` build every request URL through: `applyPathParams` (substitutes |
+| [`compose`](#compose) | function | Fold a middleware array (outermost first) over a transport into one callable — what `createHttp({ use })` does internall |
+| [`createFetchTransport`](#createfetchtransport) | function | Build a `fetch`-backed `Transport`. |
+| [`getAmbientRequest`](#getambientrequest) | function | Read the inbound request currently in scope — `undefined` in the browser, and `undefined` on any server that has not opt |
+| [`defineEndpoint`](#defineendpoint) | function | The standalone form of `client.endpoint(spec, options)` — the method is a thin wrapper (`(spec, opts) =&gt; defineEndpoint( |
 | [`createMock`](#createmock) | function | Stub responses as middleware, from `@pyreon/http/mock`. |
 
 ## API
@@ -244,6 +250,165 @@ export const middleware = (ctx: { req: Request }) =>
 - Importing it from `@pyreon/http` instead of `@pyreon/http/server` — the split is what keeps node&#58;async_hooks out of the client bundle.
 - Expecting relative URLs to resolve on the server WITHOUT it. There is no ambient origin until you wire it.
 - Assuming headers forward automatically. `forwardHeaders` requires an explicit allowlist and stops at the origin boundary by default.
+
+---
+
+### RequestError `class`
+
+```ts
+class RequestError extends Error { readonly request: HttpRequest | undefined }  — subclasses: HttpError (+ ClientError/ServerError), TimeoutError, AbortError, NetworkError, ParseError, ResponseValidationError
+```
+
+The common base of every error this package throws — `catch (e) { if (e instanceof RequestError) … }` covers the whole family in one check, without listing members. Every message is `[Pyreon]`-prefixed. The subclasses each name a distinct failure MODE, not just a status code: `HttpError` (and its `ClientError`/`ServerError` refinements for 4xx/5xx) is a non-2xx response — thrown by default because `@pyreon/query` needs a rejected promise to enter its error state; `TimeoutError` is the request exceeding its `timeout`; `NetworkError` is the transport failing before any response arrived (DNS, offline, CORS); `ParseError` is a body that did not decode as the requested type; `ResponseValidationError` is a body that decoded but failed schema validation (its `.value` carries the raw, unvalidated body for reporting). `AbortError` is the odd one out — see its own mistake below.
+
+**Example**
+
+```tsx
+try {
+  await getUser({ params: { id } })
+} catch (e) {
+  if (e instanceof AbortError) return          // cancellation — not a failure
+  if (e instanceof RequestError) reportError(e) // every other failure mode
+  throw e
+}
+```
+
+**Common mistakes**
+
+- Reporting `AbortError` as a failure — it is the EXPECTED outcome of navigating away mid-request or a newer call superseding an older one; check for it FIRST and return, never log it to an error tracker
+- Checking `e instanceof AbortError` alone to detect cancellation — `fetch` itself can reject with a plain `DOMException{name:"AbortError"}` (not this package's class); use the standalone `isAbortError(e)` function, which recognizes both
+- Assuming every non-2xx throws — a client created with `throwHttpErrors: false` returns the response instead; check `response.ok` in that mode
+- Reading `ResponseValidationError.request` for the parsed value — that field is the outgoing request; the raw (unvalidated) body is on `.value`
+
+**See also:** `createHttp` · `standardSchema`
+
+---
+
+### buildUrl `function`
+
+```ts
+(baseUrl: string | undefined, path: string, params: PathParams | undefined, query: QueryParams | undefined) => string
+```
+
+The full URL-resolution pipeline `createHttp`/`endpoint` build every request URL through: `applyPathParams` (substitutes `:name` placeholders, `encodeURIComponent`-encoded so an id containing `/` cannot escape its segment — throws on a missing param rather than leaving a literal `:id` in the URL) → `joinUrl` (base + path with exactly one slash between them; a PREFIX join, not `new URL(path, base)` — see the "baseUrl is a PREFIX" gotcha) → `buildQuery` (serializes a query object, DROPPING `undefined`/`null` entries so they never land in the URL as the literal text `"undefined"`, and repeating the key for array values). Each step is also individually exported (`applyPathParams`, `joinUrl`, `buildQuery`, `isAbsoluteUrl`) for anything building URLs outside the client — a custom transport, a test assertion, a devtools panel.
+
+**Example**
+
+```tsx
+buildUrl('/api', '/users/:id', { id: '1' }, { includeDeleted: true })
+// -> '/api/users/1?includeDeleted=true'
+```
+
+**Common mistakes**
+
+- Interpolating a param into the path string yourself (`` `/users/${id}` ``) instead of `:id` + `params` — that skips encoding, so an id containing `/` or `?` escapes its segment
+- Expecting `joinUrl` to follow WHATWG `new URL(path, base)` semantics — a leading slash does NOT discard the base path here; `joinUrl('/api/v1', '/users')` is `/api/v1/users`, never `/users`
+- Passing `undefined` in a query object and expecting it omitted only sometimes — it is ALWAYS dropped, on every value including array entries
+
+**See also:** `createHttp`
+
+---
+
+### compose `function`
+
+```ts
+(middleware: readonly HttpMiddleware[], transport: Transport) => Transport
+```
+
+Fold a middleware array (outermost first) over a transport into one callable — what `createHttp({ use })` does internally to build the client's dispatch chain. Exposed standalone for testing a middleware pipeline directly (no need to build a full client), or for composing a custom `Transport` outside the normal client shape. Deliberately has NO "next() called multiple times" guard (unlike Koa) — retry middleware legitimately re-enters the downstream chain in a loop, and a guard would forbid exactly that.
+
+**Example**
+
+```tsx
+import { compose } from '@pyreon/http'
+import { retry } from '@pyreon/http/middleware'
+import { fetchTransport } from '@pyreon/http'
+
+const dispatch = compose([retry({ limit: 2 })], fetchTransport)
+const response = await dispatch(request)
+```
+
+**Common mistakes**
+
+- Assuming a middleware may only call `next()` once — repeated calls are exactly what makes retry possible; do not add a re-entrancy guard on top
+- Forgetting a middleware must RETURN the response from `next()` — the chain resolves to whatever each middleware returns, so swallowing it silently drops the response
+
+**See also:** `HttpMiddleware` · `retry`
+
+---
+
+### createFetchTransport `function`
+
+```ts
+(fetchImpl?: typeof fetch) => Transport
+```
+
+Build a `fetch`-backed `Transport`. `fetchTransport` (a constant) is the default instance — `createHttp()` uses it when no custom transport is configured. `createFetchTransport(fetchImpl)` lets you inject a substitute `fetch` (tests, SSR, a future in-process dispatcher) — the same injectable-implementation seam `@pyreon/zero-content`'s search runtime uses. Its whole job beyond calling `fetch` is normalising the rejection channel: a network failure rejects with a bare `TypeError` and cancellation rejects with `DOMException{name:"AbortError"}`, and this transport turns those into `NetworkError`/`AbortError` respectively so they never get conflated downstream.
+
+**Example**
+
+```tsx
+import { createFetchTransport } from '@pyreon/http'
+
+const api = createHttp({ transport: createFetchTransport(myFetchImpl) })
+```
+
+**Common mistakes**
+
+- Expecting a raw `TypeError`/`DOMException` from a client built on this transport — both are already normalized to `NetworkError`/`AbortError`
+- Building this for every request instead of once at client-construction time — it is a factory, meant to be called once and reused
+
+**See also:** `createHttp` · `RequestError`
+
+---
+
+### getAmbientRequest `function`
+
+```ts
+() => AmbientRequest | undefined
+```
+
+Read the inbound request currently in scope — `undefined` in the browser, and `undefined` on any server that has not opted in via `runWithRequest` (from `@pyreon/http/server`). `resolveAgainstAmbientOrigin(url)` is the companion that USES it: a root-relative URL (`/api/users`) has no origin on the server, so it resolves against the ambient request's origin; an already-absolute URL, or one with no ambient request, is returned unchanged (never throwing — a malformed inbound URL degrades gracefully instead of failing the render). Both are client-safe (no `node:async_hooks` import) — the AsyncLocalStorage wiring itself lives in `@pyreon/http/server`'s `runWithRequest`, kept in a separate entry so importing this one never drags a Node-only module into a browser bundle.
+
+**Example**
+
+```tsx
+import { getAmbientRequest, resolveAgainstAmbientOrigin } from '@pyreon/http'
+
+const req = getAmbientRequest()          // undefined in the browser
+const url = resolveAgainstAmbientOrigin('/api/users')  // absolute on the server, unchanged in the browser
+```
+
+**Common mistakes**
+
+- Reading this without ever calling `runWithRequest` (from `@pyreon/http/server`) somewhere upstream — it always returns `undefined` until something establishes the context, so relative URLs on the server never resolve on their own
+- Importing `runWithRequest` from `@pyreon/http` — it lives in `@pyreon/http/server` specifically so `node:async_hooks` stays out of the client bundle; this read-side pair is the client-safe half
+
+**See also:** `runWithRequest` · `createHttp`
+
+---
+
+### defineEndpoint `function`
+
+```ts
+(client: HttpClient, spec: `${HttpMethod} ${string}`, options?: { response?: Validator }) => Endpoint
+```
+
+The standalone form of `client.endpoint(spec, options)` — the method is a thin wrapper (`(spec, opts) => defineEndpoint(client, spec, opts)`). Reach for this directly when defining endpoints in a module that should not import a specific client instance (a shared endpoints file consumed against different clients per environment), or when building tooling that generates endpoint declarations. Same key/params/response semantics as `endpoint`.
+
+**Example**
+
+```tsx
+import { defineEndpoint } from '@pyreon/http'
+
+const getUser = defineEndpoint(api, 'GET /users/:id', { response: UserSchema })
+```
+
+**Common mistakes**
+
+- Using this when `api.endpoint(...)` reads more naturally — for the common case of one client per module, prefer the method form; reach for the standalone function only when the client is not fixed at declaration time
+
+**See also:** `endpoint` · `createHttp`
 
 ---
 

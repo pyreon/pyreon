@@ -102,6 +102,7 @@ const errors = validate({ email: 'x', age: 5 })  // sync schema → plain record
 | [`extractParseFn`](#extractparsefn) | function | The primary schema-driven entry point for `@pyreon/store` + `@pyreon/state-tree`: accept EITHER a Pyreon TypedSchemaAdap |
 | [`formatIssues`](#formatissues) | function | Format normalized schema issues into a readable multi-line `[Pyreon] Schema validation failed (<op>): ...` message. |
 | [`issuesToRecord`](#issuestorecord) | function | Collapse an array of normalized `ValidationIssue` (`{ path, message }`) into a flat field→error record — the shape `@pyr |
+| [`flattenIssuePath`](#flattenissuepath) | function | Normalize a Standard-Schema-style issue path (an array of `PropertyKey`s, or of `{ key }` wrappers — libraries emit eith |
 | [`TypedSchemaAdapter`](#typedschemaadapter) | type | The object every `zodSchema()` / `valibotSchema()` / `arktypeSchema()` returns. |
 | [`InferSchema`](#inferschema) | type | Extract the inferred output type from EITHER a Pyreon TypedSchemaAdapter (reads `_infer`, Tier A.1) OR a raw Standard Sc |
 | [`SchemaValidateFn`](#schemavalidatefn) | type | The whole-object validator contract — maps a values object to a per-key error record (sync or async). |
@@ -441,9 +442,33 @@ issuesToRecord([
 **Common mistakes**
 
 - Expecting the LAST message to win for a repeated path — the FIRST wins; order your issues most-important-first
-- Feeding native library paths (arrays / objects) directly — normalize to a dot-string path in the ValidationIssue first
+- Feeding native library paths (arrays / objects) directly — normalize to a dot-string path with `flattenIssuePath` first
 
-**See also:** `formatIssues` · `zodSchema`
+**See also:** `formatIssues` · `zodSchema` · `flattenIssuePath`
+
+---
+
+### flattenIssuePath `function`
+
+```ts
+(path: ReadonlyArray<PropertyKey | { key: PropertyKey }> | undefined) => string
+```
+
+Normalize a Standard-Schema-style issue path (an array of `PropertyKey`s, or of `{ key }` wrappers — libraries emit either shape) into the single dot-joined string every consumer of a `ValidationIssue.path` keys on: `@pyreon/form`'s schema-error routing, `@pyreon/store`/`@pyreon/state-tree`'s parse errors, and `issuesToRecord` here. This is the ONE canonical join implementation — every custom adapter should call it rather than hand-rolling `path.map(String).join('.')`, which drifts from libraries that use the `{ key }` wrapper form and silently mis-routes errors. An empty/undefined path returns `''` (a whole-form-level issue).
+
+**Example**
+
+```tsx
+flattenIssuePath(['address', 'city'])        // 'address.city'
+flattenIssuePath([{ key: 'address' }, 'city'])  // 'address.city' — mixed shapes work
+flattenIssuePath(undefined)                     // '' — form-level issue
+```
+
+**Common mistakes**
+
+- Hand-rolling `path.map(String).join('.')` in a custom adapter instead of calling this — it silently disagrees with `flattenIssuePath` the moment a library emits the `{ key }` wrapper shape instead of a bare `PropertyKey`
+
+**See also:** `issuesToRecord`
 
 ---
 

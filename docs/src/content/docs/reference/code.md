@@ -101,6 +101,7 @@ tabbed.openTab({ id: 'readme', name: 'README.md', language: 'markdown', value: '
 | [`TabbedEditor`](#tabbededitor) | component | Mount component for a `createTabbedEditor` instance. |
 | [`openSearchPanel`](#opensearchpanel) | function | Open the find/replace panel on a mounted editor programmatically. |
 | [`loadLanguage`](#loadlanguage) | function | Lazy-load a language grammar and return its CodeMirror `Extension`. |
+| [`registerLanguage`](#registerlanguage) | function | Register (or replace) a language loader in the grammar registry `loadLanguage` reads from. |
 | [`minimapExtension`](#minimapextension) | function | CodeMirror extension that renders a canvas-based code overview minimap. |
 | [`useEditorSignal`](#useeditorsignal) | function | Component hook that two-way-binds an editor to a signal WITH automatic cleanup. |
 | [`getAvailableLanguages`](#getavailablelanguages) | function | Return every supported language identifier (the keys of the internal grammar-loader registry) — for building a language  |
@@ -322,6 +323,38 @@ const ext = await loadLanguage('python') // the CodeMirror Extension
 ```
 
 **See also:** `createEditor` · `getAvailableLanguages`
+
+---
+
+### registerLanguage `function`
+
+```ts
+(id: string, loader: () => Promise<Extension>) => void
+```
+
+Register (or replace) a language loader in the grammar registry `loadLanguage` reads from. This is how `@pyreon/code/languages-all` installs the 13 built-in grammars NOT registered by default (the core registers only javascript/typescript/jsx/tsx/json/plain — the JS-framework default — because a single static map naming all 19 `@codemirror/lang-*` packages made a bundler's dependency scanner pull the whole language ecosystem into every consumer's pre-bundle step, even one that only ever shows TSX). It is also how you add a grammar this package does not ship at all (a community `@codemirror/lang-*` or `@replit/codemirror-lang-*` package). Re-registering an existing id replaces its loader AND evicts any already-cached extension for it, so a subsequent `loadLanguage` call re-resolves from the new loader.
+
+**Example**
+
+```tsx
+import { registerLanguage } from '@pyreon/code'
+import type { EditorLanguage } from '@pyreon/code'
+
+registerLanguage('svelte', () =>
+  import('@replit/codemirror-lang-svelte').then((m) => m.svelte()),
+)
+// createEditor({ language }) is typed EditorLanguage (a closed union of the
+// 19 built-ins) — a custom id needs a cast to pass the type checker:
+const editor = createEditor({ value: svelteSource, language: 'svelte' as EditorLanguage })
+```
+
+**Common mistakes**
+
+- Importing `@pyreon/code/languages-all` AND hand-registering the same id — the bulk import already covers all 19 built-in grammars; only register manually for a grammar the package does not ship
+- Registering after the editor has already loaded that language — the extension is cached per language name; `registerLanguage` evicts the cache entry so a NEW `createEditor`/`loadLanguage` call picks up the replacement, but an already-mounted editor keeps its currently-loaded extension until it reloads
+- Passing a custom-registered id straight to `createEditor({ language })` and expecting it to typecheck without a cast — `EditorLanguage` is a CLOSED union of the 19 built-in ids; a runtime-only id (like `'svelte'` here) needs `as EditorLanguage` to satisfy the type checker, even though the RUNTIME registry accepts any string
+
+**See also:** `loadLanguage` · `getAvailableLanguages`
 
 ---
 

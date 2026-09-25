@@ -217,12 +217,12 @@ if (isKeyPressed('shift')) extendSelection()`,
       seeAlso: ['trigger', 'useHotkey'],
     },
     {
-      name: 'parseShortcut / matchesCombo / formatCombo',
+      name: 'parseShortcut / matchesCombo / formatCombo / splitShortcutList',
       kind: 'function',
       signature:
-        'parseShortcut(shortcut: string) => KeyCombo · matchesCombo(event: KeyboardEvent, combo: KeyCombo) => boolean · formatCombo(combo: KeyCombo) => string',
+        'parseShortcut(shortcut: string) => KeyCombo · matchesCombo(event: KeyboardEvent, combo: KeyCombo) => boolean · formatCombo(combo: KeyCombo) => string · splitShortcutList(list: string) => string[]',
       summary:
-        "The combo utilities. `parseShortcut` turns a string (`'mod+shift+k'`) into a `KeyCombo` — lower-cased, `+`-split, with aliases (`esc`->`escape`, `del`->`delete`, `space`->space, `up`->`arrowup`, …) and `mod` resolving to META on Mac / CTRL elsewhere. `matchesCombo` tests a `KeyboardEvent` against a parsed combo. `formatCombo` renders a combo back to a display string (`Ctrl+Shift+K`; META shows as the `⌘` glyph on Mac).",
+        "The combo utilities. `parseShortcut` turns a string (`'mod+shift+k'`) into a `KeyCombo` — lower-cased, `+`-split, with aliases (`esc`->`escape`, `del`->`delete`, `space`->space, `up`->`arrowup`, …) and `mod` resolving to META on Mac / CTRL elsewhere. `matchesCombo` tests a `KeyboardEvent` against a parsed combo. `formatCombo` renders a combo back to a display string (`Ctrl+Shift+K`; META shows as the `⌘` glyph on Mac). `splitShortcutList` splits a COMMA-separated list of shortcuts (`useHotkey`'s `'mod+s, mod+shift+s'`-style multi-binding syntax) into individual shortcut strings — correctly handling the comma KEY itself (`','`, `'ctrl+,'`, `'mod+comma'` all parse as one binding on the comma key, not a two-item split).",
       example: `const combo = parseShortcut('mod+k')
 document.addEventListener('keydown', (e) => {
   if (matchesCombo(e, combo)) openPalette()
