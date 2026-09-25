@@ -901,12 +901,20 @@ jobs:
             --format markdown --fail-on-breaking > contract.md
           echo "code=$?" >> "$GITHUB_OUTPUT"
       - name: Comment
+        if: steps.diff.outputs.code != '2'   # 2 = an input could not be read; there is no report
         env: { GH_TOKEN: '${{ github.token }}' }
         run: gh pr comment ${{ github.event.pull_request.number }} --body-file contract.md --edit-last --create-if-none
       - name: Fail on a breaking change
         if: steps.diff.outputs.code != '0'
         run: exit ${{ steps.diff.outputs.code }}
 ```
+
+`--edit-last --create-if-none` (checked against gh 2.96; older gh lacks `--create-if-none`) keeps ONE contract comment per PR,
+updated on each push — note it edits the workflow token's last comment, so give
+this job its own token if other jobs comment as `github-actions` too. The
+workflow's shell logic (the step script, the exit-code routing and the comment
+body) is executed against a real git repository by `docs-action.test.ts` in
+`@pyreon/lathe`, with `gh` stubbed.
 
 `--format github` in a plain `run:` step is the no-comment alternative: the
 annotations land on the PR's checks and the table in the job summary.
