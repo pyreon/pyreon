@@ -7434,7 +7434,7 @@ function Badge() {
   return <span style={{ color: t.colors.primary }}>{/* … */}</span>
 }`,
     notes: 'Returns the current theme as a SNAPSHOT at call time. `ThemeContext` is a REACTIVE context — `useTheme()` reads it once, so the returned object is static unless the read happens inside a reactive scope. For values that must track whole-theme swaps inside an `effect` / `computed`, use `useThemeAccessor()` instead. See also: useThemeAccessor, ThemeProvider, styled.',
-    mistakes: `- Destructuring \`const { colors } = useTheme()\` and expecting it to update on a user-preference theme swap — the snapshot is captured once. Use \`useThemeAccessor()\` and read inside the reactive scope, or rely on \`styled\` templates (their resolver tracks the theme)
+    mistakes: `- Destructuring \`const { colors } = useTheme()\` and expecting it to update on a user-preference theme swap — the snapshot is captured once. Use \`useThemeAccessor()\` and read inside the reactive scope, or rely on rocketstyle-backed components (their reactive resolver tracks the theme — a plain \`styled()\` with no reactive axis resolves once at mount)
 - Calling \`useTheme()\` at module scope — it must run during component setup where the context is available`,
   },
 
@@ -7451,14 +7451,15 @@ effect(() => applyChartPalette(theme().colors)) // re-runs on theme swap`,
   },
 
   'styler/ThemeProvider': {
-    signature: 'ThemeProvider(props: { theme: Theme | ((parent: Theme) => Theme); children?: VNodeChild }): VNodeChild',
+    signature: 'ThemeProvider(props: { theme: Theme; children?: VNodeChild }): VNode | null',
     example: `import { ThemeProvider } from "@pyreon/styler"
 
 <ThemeProvider theme={{ colors: { primary: "#06f" } }}>
   <App />
 </ThemeProvider>`,
-    notes: 'Provides a theme to the reactive `ThemeContext`. Nested providers compose — a function `theme` receives the parent theme so subtrees can extend rather than replace. Because the context is reactive, swapping the `theme` prop re-resolves every `styled` / `useCSS` consumer below without remounting the tree. Marked `nativeCompat` so it works inside `@pyreon/{react,preact,vue,solid}-compat` apps. See also: useTheme, useThemeAccessor, ThemeContext.',
-    mistakes: `- Replacing the whole theme in a nested provider when you meant to extend — pass \`theme={(parent) => ({ ...parent, colors: { ...parent.colors, accent: "#0a0" } })}\`
+    notes: 'Provides a theme to the reactive `ThemeContext`. The provided accessor reads `props.theme` LAZILY, so a signal-driven `theme={current()}` stays live: consumers that read the theme inside a tracking scope — `useThemeAccessor()` in an `effect` / `computed` / JSX thunk, and rocketstyle-backed components (whose reactive `$rocketstyle` axis tracks the theme) — follow a later `theme` change without a remount. A plain `styled()` component with no reactive axis resolves its class ONCE at mount (the static fast path), so it does not re-resolve on a swap. A nested provider REPLACES the theme for its subtree — there is no merge and no `(parent) => theme` function form. Marked `nativeCompat` so it works inside `@pyreon/{react,preact,vue,solid}-compat` apps. See also: useTheme, useThemeAccessor, ThemeContext.',
+    mistakes: `- Expecting a nested provider to MERGE with its parent — it replaces the theme for its subtree. To extend, read the parent with \`useTheme()\` and spread it yourself: \`theme={{ ...parent, colors: { ...parent.colors, accent: "#0a0" } }}\` (there is no function \`theme\` form)
+- Expecting a plain \`styled()\` component (no rocketstyle, no reactive axis) to re-resolve when the \`theme\` prop changes — it resolves once at mount; read the theme through \`useThemeAccessor()\` inside a reactive scope, or use \`<PyreonUI>\` + rocketstyle components for live whole-theme swaps
 - Expecting most apps to mount this directly — \`<PyreonUI>\` wraps it; use \`ThemeProvider\` standalone only outside the \`@pyreon/ui-core\` provider`,
   },
 
@@ -7641,7 +7642,7 @@ init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the ho
     </ul>
   )}
 </Overlay>`,
-    notes: 'A positioned layer (dropdown / modal / tooltip / popover) with an optional backdrop, driven internally by `useOverlay`. It handles viewport flipping, ESC-to-close, click-outside, scroll tracking, and hover delay — do NOT reimplement any of that in a primitive; compose `Overlay` (or `useOverlay`) instead. Takes a `trigger` render prop (receives `{ ref, active, showContent, hideContent }` — attach `ref` to the anchor) and a content render prop as `children` (receives `{ ref, active, align, alignX, alignY, … }` — attach `ref` to the floating node); the content renders through `Portal` so the layer escapes overflow/stacking contexts. `align`/`alignX`/`alignY` reach the content as LIVE reactive props, so a viewport-edge flip re-styles the content in place without remounting it. See also: useOverlay, OverlayProvider, Portal.',
+    notes: 'A positioned layer (dropdown / modal / tooltip / popover) with an optional backdrop, driven internally by `useOverlay`. It handles viewport flipping, ESC-to-close, click-outside, scroll tracking, and hover delay — do NOT reimplement any of that in a primitive; compose `Overlay` (or `useOverlay`) instead. Takes a `trigger` render prop (receives `{ ref, active, showContent, hideContent }` — attach `ref` to the anchor) and a content render prop as `children` (receives `{ ref, active, align, alignX, alignY, … }` — attach `ref` to the floating node); the content renders through `Portal` so the layer escapes overflow/stacking contexts. `align`/`alignX`/`alignY` reach the content as LIVE reactive props, so a viewport-edge flip re-styles the content in place without remounting it. Both render-prop parameters are contextually typed, so inline `(t) => …` / `(c) => …` callbacks typecheck under strict TS with no annotation. See also: useOverlay, OverlayProvider, Portal.',
     mistakes: `- Hand-rolling positioning / flip / click-outside / ESC logic in a tooltip or dropdown primitive — \`useOverlay\` already owns all of it; reimplementing drifts from the shared behavior
 - Forgetting to attach the \`ref\` the trigger / content render props receive — without it the hook cannot measure, position, wire click-outside, or restore focus (the layer renders at the document origin)
 - Reading the rendered overlay as \`document.body.firstChild\` — it renders through \`Portal\` into a per-instance wrapper; traverse the wrapper, not body’s direct child`,
@@ -10086,7 +10087,7 @@ const Button = rs({ name: 'Button', component: 'button' })
 const rsCustom = rocketstyle({
   dimensions: { tones: 'tone', decorations: { propName: 'decoration', multi: true } },
 })`,
-    notes: 'Factory initializer (default + named export). `rocketstyle(config?)` returns a component factory; call THAT with `{ name, component }` to get the chainable builder. `config.dimensions` overrides the dimension map (default: `states: "state"`, `sizes: "size"`, `variants: "variant"`, `multiple: { propName: "multiple", multi: true }`, `modifiers: { propName: "modifier", multi: true, transform: true }`) — each key becomes a chain method, each propName a consumer prop. `config.useBooleans` (default `false`) switches dimension props from strings (`state="primary"`) to boolean shorthands (`<Button primary />`). Dev mode throws on missing `name`/`component`/`dimensions` and on dimension names colliding with reserved keys. See also: Provider, isRocketComponent, @pyreon/attrs, @pyreon/styler.',
+    notes: 'Factory initializer (default + named export). `rocketstyle(config?)` returns a component factory; call THAT with `{ name, component }` to get the chainable builder. `config.dimensions` overrides the dimension map (default: `states: "state"`, `sizes: "size"`, `variants: "variant"`, `multiple: { propName: "multiple", multi: true }`, `modifiers: { propName: "modifier", multi: true, transform: true }`) — each key becomes a chain method, each propName a consumer prop. `config.useBooleans` (default `false`) switches dimension props from strings (`state="primary"`) to boolean shorthands (`<Button primary />`). Dev mode throws on missing `name`/`component`/`dimensions` and on dimension names colliding with reserved keys (the error names the clashing key(s) and lists the reserved set). See also: Provider, isRocketComponent, @pyreon/attrs, @pyreon/styler.',
     mistakes: `- Calling the factory with a tag string — \`rs('button')\` is not a valid form. The factory takes \`{ name, component }\` and BOTH are required (dev mode throws on a missing one)
 - Passing boolean shorthand props under the default \`useBooleans: false\` — \`<Button primary />\` is an UNKNOWN prop that silently does nothing; write \`<Button state="primary" />\` or opt into \`rocketstyle({ useBooleans: true })\`
 - Passing a function accessor to a dimension prop — \`state={() => expr}\` is the wrong shape; dimension props take plain string values (\`state={expr}\`) and the compiler handles reactivity via \`_rp()\` wrapping
@@ -10285,9 +10286,10 @@ Button.meta.category   // 'action'
 <Provider inversed>
   <Card>Resolves mode() as the opposite mode</Card>
 </Provider>`,
-    notes: `Tree-level theme + mode provider. Props are \`{ children, theme?, mode?, inversed?, provider? }\` — \`mode\` is \`"light" | "dark"\`, \`inversed: true\` flips the resolved mode for the subtree, and values merge over any parent rocketstyle context. Most apps use the higher-level \`<PyreonUI>\` from \`@pyreon/ui-core\` (theme + mode + config in one) and reach for rocketstyle's \`Provider\` only for fine-grained subtree overrides. The raw context object backing it is exported as \`context\`. See also: rocketstyle, .config(), @pyreon/ui-core.`,
+    notes: `Tree-level theme + mode provider. Props are \`{ children, theme?, mode?, inversed?, provider? }\` — \`mode\` is \`"light" | "dark"\`, \`inversed: true\` flips the resolved mode for the subtree, and values merge over any parent rocketstyle context. It is REACTIVE: the parent context and its own props are read LAZILY (the provided value is getter-based), so \`<Provider inversed>\` follows a later parent mode flip and a signal-driven \`theme={t()}\` / \`mode={m()}\` stays live — no remount. Most apps use the higher-level \`<PyreonUI>\` from \`@pyreon/ui-core\` (theme + mode + config in one) and reach for rocketstyle's \`Provider\` only for fine-grained subtree overrides. The raw context object backing it is exported as \`context\`. See also: rocketstyle, .config(), @pyreon/ui-core.`,
     mistakes: `- Passing a \`value\` prop (React-context muscle memory) — there is no \`value\`; \`Provider\` takes \`theme\` / \`mode\` / \`inversed\` directly
 - Mounting a fresh \`Provider\`/\`PyreonUI\` per view — the \`_rsMemo\` cache keys on theme identity, so per-view providers defeat cross-instance memoization; share ONE app-level provider
+- Expecting \`inversed\` to FORCE dark — it inverts whatever mode the parent resolves (light↔dark), and tracks that parent as it changes
 - Confusing this theme/mode provider with \`.config({ provider: true })\` — the latter is the component-to-component PSEUDO-STATE channel, unrelated to theming`,
   },
 
