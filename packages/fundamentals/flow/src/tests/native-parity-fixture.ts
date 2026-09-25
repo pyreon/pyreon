@@ -133,6 +133,8 @@ export interface ParityConfig {
   nodesDeletable?: boolean
   edgesDeletable?: boolean
   autoHistory?: boolean
+  /** Undo depth. An INTEGER on both native engines, so it is written without a fraction. */
+  historyLimit?: number
   /** Node type -> the node types it may connect to. Web spells it `{ outputs }`. */
   connectionRules?: Record<string, string[]>
   defaultEdgeType?: string
@@ -177,6 +179,8 @@ function configEntries(c: ParityConfig | undefined, lang: 'swift' | 'kotlin'): s
     } else if (k === 'connectionValidator') {
       const t = (v as { rejectTarget: string }).rejectTarget
       out.push(lang === 'swift' ? `f.${k} = { $0.target != ${str(t)} }` : `f.${k} = { it.target != ${str(t)} }`)
+    } else if (k === 'historyLimit') {
+      out.push(`f.${k} = ${Math.floor(v as number)}`)
     } else if (typeof v === 'string') out.push(`f.${k} = ${str(v)}`)
     else out.push(`f.${k} = ${typeof v === 'number' ? d(v) : String(v)}`)
   }
@@ -643,6 +647,16 @@ export const PARITY_SCENARIOS: readonly ParityScenario[] = [
     nodes: grid(3),
     edges: chain(3),
     ops: [{ op: 'removeNode', id: '2' }, { op: 'undo' }],
+    queries: [],
+  },
+  {
+    // Two checkpoints under a limit of one: the first is dropped, so only the
+    // second removal can be undone and the second undo is a no-op.
+    name: 'config: historyLimit drops the oldest checkpoint past the limit',
+    nodes: grid(3),
+    edges: chain(3),
+    config: { historyLimit: 1 },
+    ops: [{ op: 'removeNode', id: '2' }, { op: 'removeNode', id: '3' }, { op: 'undo' }, { op: 'undo' }],
     queries: [],
   },
   {

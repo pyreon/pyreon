@@ -976,6 +976,8 @@ export type DeclIR =
       edgesReconnectable?: boolean
       edgeInteractionWidth?: number
       connectionRadius?: number
+      /** `historyLimit` — undo depth (default 50), normalized by the runtime like the web engine. */
+      historyLimit?: number
       pannable?: boolean
       panOnDrag?: boolean
       zoomable?: boolean

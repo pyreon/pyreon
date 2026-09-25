@@ -9605,6 +9605,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const reducedMotionAuto = literalString(reducedMotionNode) === 'auto'
   const edgeInteractionWidth = literalNumber(objProp(configArg, 'edgeInteractionWidth'))
   const connectionRadius = literalNumber(objProp(configArg, 'connectionRadius'))
+  const historyLimit = literalNumber(objProp(configArg, 'historyLimit'))
   const panOnScrollSpeed = literalNumber(objProp(configArg, 'panOnScrollSpeed'))
   const nullableString = (key: string): string | null | undefined => {
     const configValue = objProp(configArg, key)
@@ -9709,7 +9710,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (droppedEdgeFields.size > 0) {
     ctx.warnings.push(droppedFlowFieldsWarning(`${factory} declaration \`${name}\``, 'edge', [...droppedEdgeFields]))
   }
-  const HANDLED_FLOW_CONFIG_KEYS = new Set(['nodes', 'edges', 'minZoom', 'maxZoom', 'snapToGrid', 'snapGrid', 'nodeExtent', 'defaultMarkerEnd', 'connectionRules', 'isValidConnection', ...interactionBoolKeys, 'edgeInteractionWidth', 'connectionRadius', 'panOnScrollSpeed', 'deleteKeys', ...modifierKeys, 'defaultEdgeType', 'connectionLineType', 'selectionMode', 'connectionMode', 'autoPanSpeed', 'defaultEdgeOptions', 'fitView', 'fitViewPadding'])
+  const HANDLED_FLOW_CONFIG_KEYS = new Set(['nodes', 'edges', 'minZoom', 'maxZoom', 'snapToGrid', 'snapGrid', 'nodeExtent', 'defaultMarkerEnd', 'connectionRules', 'isValidConnection', ...interactionBoolKeys, 'edgeInteractionWidth', 'connectionRadius', 'historyLimit', 'panOnScrollSpeed', 'deleteKeys', ...modifierKeys, 'defaultEdgeType', 'connectionLineType', 'selectionMode', 'connectionMode', 'autoPanSpeed', 'defaultEdgeOptions', 'fitView', 'fitViewPadding'])
   const droppedKeys: string[] = []
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
@@ -9744,6 +9745,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   }
   if (objProp(configArg, 'edgeInteractionWidth') && edgeInteractionWidth === undefined) droppedKeys.push('edgeInteractionWidth (not a numeric literal)')
   if (objProp(configArg, 'connectionRadius') && connectionRadius === undefined) droppedKeys.push('connectionRadius (not a numeric literal)')
+  if (objProp(configArg, 'historyLimit') && historyLimit === undefined) droppedKeys.push('historyLimit (not a numeric literal)')
   if (objProp(configArg, 'panOnScrollSpeed') && panOnScrollSpeed === undefined) droppedKeys.push('panOnScrollSpeed (not a numeric literal)')
   if (deleteKeysNode !== undefined && deleteKeys === undefined) droppedKeys.push('deleteKeys (expected a string[] literal or null)')
   for (const key of modifierKeys) {
@@ -9784,6 +9786,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     ...interactionBools,
     ...(edgeInteractionWidth !== undefined ? { edgeInteractionWidth } : {}),
     ...(connectionRadius !== undefined ? { connectionRadius } : {}),
+    ...(historyLimit !== undefined ? { historyLimit } : {}),
     ...(panOnScrollSpeed !== undefined ? { panOnScrollSpeed } : {}),
     ...(deleteKeys !== undefined ? { deleteKeys } : {}),
     ...modifiers,

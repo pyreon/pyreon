@@ -624,6 +624,19 @@ private fun runParityChecks() {
         check(f.selectedEdges().sorted() == listOf<String>(), "parity: with autoHistory on, the same removal is undoable — selected edges")
         check(abs(f.viewport.x - 0.0) < 1e-6 && abs(f.viewport.y - 0.0) < 1e-6 && abs(f.viewport.zoom - 1.0) < 1e-6, "parity: with autoHistory on, the same removal is undoable — viewport")
     }
+    run { // config: historyLimit drops the oldest checkpoint past the limit
+        val f = PyreonFlowState<NodeData>(nodes = listOf<PyreonFlowNode<NodeData>>(PyreonFlowNode("1", position = PyreonXYPosition(0.0, 0.0), data = NodeData("1")), PyreonFlowNode("2", position = PyreonXYPosition(200.0, 120.0), data = NodeData("2")), PyreonFlowNode("3", position = PyreonXYPosition(400.0, 0.0), data = NodeData("3"))), edges = listOf<PyreonFlowEdge>(PyreonFlowEdge("e1", source = "1", target = "2"), PyreonFlowEdge("e2", source = "2", target = "3")), searchText = { it.label })
+        f.historyLimit = 1
+        f.removeNode("2")
+        f.removeNode("3")
+        f.undo()
+        f.undo()
+        check(parityNodes(f, listOf<Triple<String, Double, Double>>(Triple("1", 0.0, 0.0), Triple("3", 400.0, 0.0))), "parity: config: historyLimit drops the oldest checkpoint past the limit — nodes")
+        check(parityEdges(f, listOf<Triple<String, String, String>>()), "parity: config: historyLimit drops the oldest checkpoint past the limit — edges")
+        check(f.selectedNodes().sorted() == listOf<String>(), "parity: config: historyLimit drops the oldest checkpoint past the limit — selected nodes")
+        check(f.selectedEdges().sorted() == listOf<String>(), "parity: config: historyLimit drops the oldest checkpoint past the limit — selected edges")
+        check(abs(f.viewport.x - 0.0) < 1e-6 && abs(f.viewport.y - 0.0) < 1e-6 && abs(f.viewport.zoom - 1.0) < 1e-6, "parity: config: historyLimit drops the oldest checkpoint past the limit — viewport")
+    }
     run { // config: connectionRules gate a connection by the source and target node types
         val f = PyreonFlowState<NodeData>(nodes = listOf<PyreonFlowNode<NodeData>>(PyreonFlowNode("in", type = "input", position = PyreonXYPosition(0.0, 0.0), data = NodeData("in")), PyreonFlowNode("proc", type = "process", position = PyreonXYPosition(200.0, 0.0), data = NodeData("proc")), PyreonFlowNode("out", type = "output", position = PyreonXYPosition(400.0, 0.0), data = NodeData("out")), PyreonFlowNode("plain", position = PyreonXYPosition(600.0, 0.0), data = NodeData("plain"))), edges = listOf<PyreonFlowEdge>(), searchText = { it.label })
         f.connectionRules = mapOf("input" to listOf<String>("process"), "process" to listOf<String>("output"), "default" to listOf<String>("output"))
@@ -848,6 +861,14 @@ fun main() {
     manualHistory.removeNode("5")
     manualHistory.undo()
     check(manualHistory.getNode("5") != null, "manual history remains available when automatic checkpoints are disabled")
+    // historyLimit bounds the undo depth (FlowConfig.historyLimit, default 50).
+    val limited = PyreonFlowState(nodes = history.nodes, edges = history.edges, historyLimit = 2.0)
+    check(limited.historyLimit == 2, "historyLimit is retained")
+    for (id in listOf("h1", "h2", "h3")) limited.addNode(PyreonFlowNode(id, position = PyreonXYPosition(0.0, 0.0), data = NodeData(id)))
+    limited.undo(); limited.undo(); limited.undo()
+    check(limited.getNode("h1") != null && limited.getNode("h2") == null, "historyLimit keeps only the newest checkpoints")
+    check(PyreonFlowState(nodes = history.nodes, edges = history.edges).historyLimit == 50, "historyLimit defaults to 50")
+    check(PyreonFlowState(nodes = history.nodes, edges = history.edges, historyLimit = 0.0).historyLimit == 50 && PyreonFlowState(nodes = history.nodes, edges = history.edges, historyLimit = 2.9).historyLimit == 2, "historyLimit falls back to 50 and floors a fraction, like the web")
     val clipboard = seedFlow()
     clipboard.selectNodes(listOf("1", "2"))
     clipboard.copySelected()

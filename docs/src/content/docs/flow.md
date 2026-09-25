@@ -753,7 +753,7 @@ flow.redo()        // re-apply an undone snapshot
 ```
 
 :::note
-The undo/redo history is **manual** — call `flow.pushHistory()` before a mutation you want to be undoable. The history is capped at 50 snapshots; a fresh `pushHistory` clears the redo stack. `undo`/`redo` clear the current selection.
+The undo/redo history is **manual** — call `flow.pushHistory()` before a mutation you want to be undoable. The history keeps `historyLimit` snapshots (default 50; the oldest is dropped past it, and the same limit applies on iOS and Android); a fresh `pushHistory` clears the redo stack. `undo`/`redo` clear the current selection.
 :::
 
 ### Automatic checkpoints

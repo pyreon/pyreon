@@ -24,6 +24,7 @@ import {
   flowRectLiteralFields,
   NODE_RESIZER_FOREIGN_NODE_WARNING,
   nodeResizerTargetsAnotherNode,
+  SWIFT_FLOW_STATE_INIT_LABELS,
 } from './flow-lowering'
 import { planFlowSvg, type FlowSvgNumber } from './flow-svg'
 import { lowerFlowPlainElement } from './flow-dom'
@@ -2365,6 +2366,12 @@ function emitSwiftStruct(s: StructIR): string {
  * privacy. Type annotation is inferred from the initial when source
  * omits it (TypeIR `unknown` → Swift type inferred from `= value`).
  */
+/** Position of a `label: value` argument in `PyreonFlowState`'s initializer (unknown labels last, stable). */
+function swiftFlowInitRank(arg: string): number {
+  const i = SWIFT_FLOW_STATE_INIT_LABELS.indexOf(arg.slice(0, arg.indexOf(':')).trim())
+  return i < 0 ? SWIFT_FLOW_STATE_INIT_LABELS.length : i
+}
+
 function emitSwiftModuleDecl(md: ModuleDeclIR): string {
   const kw = md.mutable ? 'var' : 'let'
   const initial = withExpectedType(md.type, () => emitSwiftExpr(md.initial, 0))
@@ -4346,6 +4353,7 @@ function emitSwiftDecl(
       ...(['multiSelect', 'onlyRenderVisibleElements', 'snapToObjects', 'autoHistory'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key}: ${d[key]}`]),
       ...(d.edgeInteractionWidth !== undefined ? [`edgeInteractionWidth: ${d.edgeInteractionWidth}`] : []),
       ...(d.connectionRadius !== undefined ? [`connectionRadius: ${d.connectionRadius}`] : []),
+      ...(d.historyLimit !== undefined ? [`historyLimit: ${d.historyLimit}`] : []),
       ...(d.defaultEdgeType !== undefined ? [`defaultEdgeType: ${swiftStr(d.defaultEdgeType)}`] : []),
       ...(d.connectionLineType !== undefined ? [`connectionLineType: ${swiftStr(d.connectionLineType)}`] : []),
       ...(d.defaultEdgeOptions !== undefined ? [`defaultEdgeOptions: PyreonFlowDefaultEdgeOptions(${[
@@ -4373,7 +4381,15 @@ function emitSwiftDecl(
       ...(d.deleteKeys !== undefined ? [`deleteKeys: ${d.deleteKeys === null ? 'nil' : `[${d.deleteKeys.map((key) => JSON.stringify(key)).join(', ')}]`}`] : []),
       ...(['multiSelectionKey', 'selectionKey', 'zoomActivationKey'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key}: ${d[key] === null ? 'nil' : JSON.stringify(d[key])}`]),
       ...(d.preventScrolling !== undefined ? [`preventScrolling: ${d.preventScrolling}`] : []),
-    ].join(', ')
+    ]
+      // Swift binds labeled arguments in DECLARATION order ("argument 'x'
+      // must precede argument 'y'"), so the config args are sorted by the
+      // runtime initializer's own order rather than by where each is emitted
+      // above — the latter drifted (`autoHistory` + `connectionRadius`
+      // together did not compile). The order is drift-locked against the real
+      // runtime and the stub in native-flow-state.test.ts.
+      .sort((a, b) => swiftFlowInitRank(a) - swiftFlowInitRank(b))
+      .join(', ')
     return `@State private var ${swiftIdent(d.name)} = PyreonFlowState<${rowType}>(nodes: [${nodeLits}], edges: [${edgeLits}]${zoomArgs === '' ? '' : `, ${zoomArgs}`})`
   }
   // computed — infer the return type from the expression body so we

@@ -136,6 +136,24 @@ export const WEB_ONLY_FLOW_RUNTIME_EXPORTS: ReadonlySet<string> = new Set([
  * skipped; a subset of `WEB_ONLY_FLOW_RUNTIME_EXPORTS`. */
 export const DROPPED_FLOW_COMPONENTS: ReadonlySet<string> = new Set(['ViewportPortal'])
 
+/**
+ * The labels of the Swift `PyreonFlowState` initializer, in declaration order.
+ * Swift requires labeled arguments in this order, so the emitter sorts the
+ * config arguments by it. Drift-locked against BOTH the real runtime
+ * (`flow/native/swift/PyreonFlowState.swift`) and the stub.
+ */
+export const SWIFT_FLOW_STATE_INIT_LABELS: readonly string[] = [
+  'nodes', 'edges', 'viewport', 'minZoom', 'maxZoom', 'snapToGrid', 'snapGrid', 'nodeExtent', 'connectionRules',
+  'defaultMarkerEnd', 'nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable',
+  'disableKeyboardA11y', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'edgeInteractionWidth',
+  'connectionRadius', 'pannable', 'panOnDrag', 'panOnScroll', 'panOnScrollSpeed', 'zoomable', 'zoomOnScroll',
+  'zoomOnPinch', 'zoomOnDoubleClick', 'selectionOnDrag', 'selectionMode', 'connectionMode', 'elevateNodesOnSelect',
+  'elevateEdgesOnSelect', 'autoPanOnNodeDrag', 'autoPanOnConnect', 'autoPanSpeed', 'multiSelect',
+  'onlyRenderVisibleElements', 'snapToObjects', 'defaultEdgeType', 'connectionLineType', 'defaultEdgeOptions',
+  'fitView', 'fitViewPadding', 'autoHistory', 'historyLimit', 'isValidConnection', 'searchText', 'reducedMotion',
+  'deleteKeys', 'multiSelectionKey', 'selectionKey', 'zoomActivationKey', 'preventScrolling',
+]
+
 /** Mutable `FlowConfig` fields retained by both native state engines. */
 export const LOWERED_FLOW_CONFIG_PROPERTIES: ReadonlyMap<string, string> = new Map([
   ['defaultEdgeType', 'defaultEdgeType'], ['defaultEdgeOptions', 'defaultEdgeOptions'],
@@ -147,7 +165,7 @@ export const LOWERED_FLOW_CONFIG_PROPERTIES: ReadonlyMap<string, string> = new M
   ['disableKeyboardA11y', 'disableKeyboardA11y'], ['reducedMotion', 'reducedMotion'],
   ['nodesDeletable', 'nodesDeletable'], ['edgesDeletable', 'edgesDeletable'],
   ['isValidConnection', 'connectionValidator'], ['connectionRadius', 'connectionRadius'],
-  ['autoHistory', 'autoHistory'], ['multiSelect', 'multiSelect'], ['nodeExtent', 'nodeExtent'],
+  ['autoHistory', 'autoHistory'], ['historyLimit', 'historyLimit'], ['multiSelect', 'multiSelect'], ['nodeExtent', 'nodeExtent'],
   ['pannable', 'pannable'], ['zoomable', 'zoomable'], ['panOnDrag', 'panOnDrag'],
   ['panOnScroll', 'panOnScroll'], ['panOnScrollSpeed', 'panOnScrollSpeed'],
   ['zoomOnScroll', 'zoomOnScroll'], ['zoomOnPinch', 'zoomOnPinch'],

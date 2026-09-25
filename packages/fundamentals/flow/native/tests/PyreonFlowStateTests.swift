@@ -176,6 +176,15 @@ struct PyreonFlowStateTests {
         manualHistory.removeNode("5")
         manualHistory.undo()
         check(manualHistory.getNode("5") != nil, "manual history remains available when automatic checkpoints are disabled")
+        // historyLimit bounds the undo depth (FlowConfig.historyLimit, default 50) —
+        // the oldest checkpoint is dropped past it, exactly like the web engine.
+        let limited = PyreonFlowState(nodes: history.nodes, edges: history.edges, historyLimit: 2)
+        check(limited.historyLimit == 2, "historyLimit is retained")
+        for id in ["h1", "h2", "h3"] { limited.addNode(PyreonFlowNode(id: id, position: PyreonXYPosition(x: 0, y: 0), data: NodeData(label: id))) }
+        limited.undo(); limited.undo(); limited.undo()
+        check(limited.getNode("h1") != nil && limited.getNode("h2") == nil, "historyLimit keeps only the newest checkpoints")
+        check(PyreonFlowState(nodes: history.nodes, edges: history.edges).historyLimit == 50, "historyLimit defaults to 50")
+        check(PyreonFlowState(nodes: history.nodes, edges: history.edges, historyLimit: 0).historyLimit == 50 && PyreonFlowState(nodes: history.nodes, edges: history.edges, historyLimit: 2.9).historyLimit == 2, "historyLimit falls back to 50 and floors a fraction, like the web")
         let clipboard = seedFlow()
         clipboard.selectNodes(["1", "2"])
         clipboard.copySelected()
@@ -1440,6 +1449,19 @@ struct PyreonFlowStateTests {
             check(f.selectedNodes().sorted() == [], "parity: with autoHistory on, the same removal is undoable — selected nodes")
             check(f.selectedEdges().sorted() == [], "parity: with autoHistory on, the same removal is undoable — selected edges")
             check(abs(f.viewport.x - 0.0) < 1e-6 && abs(f.viewport.y - 0.0) < 1e-6 && abs(f.viewport.zoom - 1.0) < 1e-6, "parity: with autoHistory on, the same removal is undoable — viewport")
+        }
+        do { // config: historyLimit drops the oldest checkpoint past the limit
+            let f = PyreonFlowState<NodeData>(nodes: [PyreonFlowNode(id: "1", position: PyreonXYPosition(x: 0.0, y: 0.0), data: NodeData(label: "1")), PyreonFlowNode(id: "2", position: PyreonXYPosition(x: 200.0, y: 120.0), data: NodeData(label: "2")), PyreonFlowNode(id: "3", position: PyreonXYPosition(x: 400.0, y: 0.0), data: NodeData(label: "3"))], edges: [PyreonFlowEdge(id: "e1", source: "1", target: "2"), PyreonFlowEdge(id: "e2", source: "2", target: "3")], searchText: { $0.label })
+            f.historyLimit = 1
+            f.removeNode("2")
+            f.removeNode("3")
+            f.undo()
+            f.undo()
+            check(parityNodes(f, [("1", 0.0, 0.0), ("3", 400.0, 0.0)]), "parity: config: historyLimit drops the oldest checkpoint past the limit — nodes")
+            check(parityEdges(f, []), "parity: config: historyLimit drops the oldest checkpoint past the limit — edges")
+            check(f.selectedNodes().sorted() == [], "parity: config: historyLimit drops the oldest checkpoint past the limit — selected nodes")
+            check(f.selectedEdges().sorted() == [], "parity: config: historyLimit drops the oldest checkpoint past the limit — selected edges")
+            check(abs(f.viewport.x - 0.0) < 1e-6 && abs(f.viewport.y - 0.0) < 1e-6 && abs(f.viewport.zoom - 1.0) < 1e-6, "parity: config: historyLimit drops the oldest checkpoint past the limit — viewport")
         }
         do { // config: connectionRules gate a connection by the source and target node types
             let f = PyreonFlowState<NodeData>(nodes: [PyreonFlowNode(id: "in", type: "input", position: PyreonXYPosition(x: 0.0, y: 0.0), data: NodeData(label: "in")), PyreonFlowNode(id: "proc", type: "process", position: PyreonXYPosition(x: 200.0, y: 0.0), data: NodeData(label: "proc")), PyreonFlowNode(id: "out", type: "output", position: PyreonXYPosition(x: 400.0, y: 0.0), data: NodeData(label: "out")), PyreonFlowNode(id: "plain", position: PyreonXYPosition(x: 600.0, y: 0.0), data: NodeData(label: "plain"))], edges: [], searchText: { $0.label })

@@ -3489,6 +3489,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       ...(d.connectionMode !== undefined ? [`connectionMode = ${kotlinStr(d.connectionMode)}`] : []),
       ...(d.edgeInteractionWidth !== undefined ? [`edgeInteractionWidth = ${ktDouble(d.edgeInteractionWidth)}`] : []),
       ...(d.connectionRadius !== undefined ? [`connectionRadius = ${ktDouble(d.connectionRadius)}`] : []),
+      ...(d.historyLimit !== undefined ? [`historyLimit = ${ktDouble(d.historyLimit)}`] : []),
       ...(d.defaultEdgeType !== undefined ? [`defaultEdgeType = ${kotlinStr(d.defaultEdgeType)}`] : []),
       ...(d.connectionLineType !== undefined ? [`connectionLineType = ${kotlinStr(d.connectionLineType)}`] : []),
       ...(d.defaultEdgeOptions !== undefined ? [`defaultEdgeOptions = PyreonFlowDefaultEdgeOptions(${[

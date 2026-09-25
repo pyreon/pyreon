@@ -1494,7 +1494,7 @@ export function C() {
     defaultMarkerEnd: null,
     nodesDraggable: false, nodesConnectable: false, nodesSelectable: false, nodesFocusable: false,
     edgesFocusable: false, nodesDeletable: false, edgesDeletable: false, edgesReconnectable: false,
-    edgeInteractionWidth: 32, connectionRadius: 9, pannable: false, zoomable: false, multiSelect: false, onlyRenderVisibleElements: false,
+    edgeInteractionWidth: 32, connectionRadius: 9, historyLimit: 20, pannable: false, zoomable: false, multiSelect: false, onlyRenderVisibleElements: false,
     defaultEdgeType: 'step', fitView: true, fitViewPadding: 0.2,
     defaultEdgeOptions: { type: 'smoothstep', label: 'Default', animated: true, interactionWidth: 30, pathOptions: { borderRadius: 8, offset: 12 }, markerEnd: null },
   })
@@ -1539,6 +1539,8 @@ export function C() {
       }
       expect(result.code).toContain(`edgeInteractionWidth${assignment} ${target === 'swift' ? '32' : '32.0'}`)
       expect(result.code).toContain(`connectionRadius${assignment} ${target === 'swift' ? '9' : '9.0'}`)
+      expect(result.code).toContain(`historyLimit${assignment} ${target === 'swift' ? '20' : '20.0'}`)
+      expect(w).not.toContain('historyLimit')
       expect(result.code).toContain(`defaultEdgeType${assignment} "step"`)
       expect(result.code).toContain(`${target === 'swift' ? 'fitView' : 'fitViewOnLoad'}${assignment} true`)
       expect(result.code).toContain(`fitViewPadding${assignment} 0.2`)

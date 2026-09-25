@@ -754,6 +754,7 @@ class PyreonFlowState<T>(
     var fitViewOnLoad: Boolean = false,
     fitViewPadding: Double = 0.1,
     var autoHistory: Boolean = true,
+    historyLimit: Double = 50.0,
     var deleteKeys: List<String>? = listOf("Delete", "Backspace"),
     var multiSelectionKey: String? = "shift",
     var selectionKey: String? = "shift",
@@ -804,6 +805,13 @@ class PyreonFlowState<T>(
     private fun scheduleFrame(frame: () -> Unit) = PyreonFlowFrames.scheduler.schedule(16L, frame)
     @Volatile private var viewportAnimationGeneration = 0
     @Volatile private var layoutAnimationGeneration = 0
+    /**
+     * Maximum undo checkpoints kept (`FlowConfig.historyLimit`, default 50),
+     * normalized like the web engine: a non-positive value falls back to 50, a
+     * fractional one is floored. Read on every checkpoint.
+     */
+    var historyLimit: Int = pyreonFlowHistoryLimit(historyLimit)
+        set(value) { field = pyreonFlowHistoryLimit(value.toDouble()) }
     private val undoStack = ArrayList<PyreonFlowHistorySnapshot<T>>()
     private val redoStack = ArrayList<PyreonFlowHistorySnapshot<T>>()
     private var mutationVersion = 0
@@ -1012,7 +1020,7 @@ class PyreonFlowState<T>(
         if (mutationVersion == checkpointVersion) return
         checkpointVersion = mutationVersion
         undoStack.add(PyreonFlowHistorySnapshot(nodes.toList(), _edges.toList()))
-        if (undoStack.size > 50) undoStack.removeAt(0)
+        while (undoStack.size > historyLimit) undoStack.removeAt(0)
         redoStack.clear()
     }
     private fun restore(snapshot: PyreonFlowHistorySnapshot<T>) {
@@ -1868,3 +1876,7 @@ object PyreonFlowFrames {
     }
     @Volatile var scheduler: PyreonFlowFrameScheduler = timerScheduler
 }
+
+/** `FlowConfig.historyLimit` → the bound both engines apply (see the Swift twin). */
+internal fun pyreonFlowHistoryLimit(raw: Double): Int =
+    if (!raw.isFinite() || raw <= 0.0) 50 else maxOf(1, kotlin.math.floor(raw).toInt())

@@ -1768,6 +1768,7 @@ class PyreonFlowState<T>(
   var fitViewOnLoad: Boolean = false,
   fitViewPadding: Double = 0.1,
   var autoHistory: Boolean = true,
+  historyLimit: Double = 50.0,
   var deleteKeys: List<String>? = listOf("Delete", "Backspace"),
   var multiSelectionKey: String? = "shift",
   var selectionKey: String? = "shift",
@@ -1788,6 +1789,7 @@ class PyreonFlowState<T>(
   var containerSize: PyreonFlowContainerSize = PyreonFlowContainerSize()
   val zoom: Double get() = viewport.zoom
   var connectionRadius: Double = connectionRadius
+  var historyLimit: Int = historyLimit.toInt()
   var fitViewPadding: Double = fitViewPadding
   var selectionMode: String = selectionMode
   var connectionMode: String = connectionMode

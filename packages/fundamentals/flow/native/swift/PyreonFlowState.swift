@@ -1069,6 +1069,11 @@ public final class PyreonFlowState<T> {
     public var edgeInteractionWidth: Double; public var connectionRadius: Double; public var pannable: Bool; public var panOnDrag: Bool; public var panOnScroll: Bool; public var panOnScrollSpeed: Double; public var zoomable: Bool; public var zoomOnScroll: Bool; public var zoomOnPinch: Bool; public var zoomOnDoubleClick: Bool; public var selectionOnDrag: Bool; public var selectionMode: String; public var connectionMode: String; public var elevateNodesOnSelect: Bool; public var elevateEdgesOnSelect: Bool; public var autoPanOnNodeDrag: Bool; public var autoPanOnConnect: Bool; public var autoPanSpeed: Double; public var multiSelect: Bool; public var onlyRenderVisibleElements: Bool; public var snapToObjects: Bool
     public var defaultEdgeType: String; public var connectionLineType: String; public var defaultEdgeOptions: PyreonFlowDefaultEdgeOptions; public var fitViewOnLoad: Bool; public var fitViewPadding: Double
     public var autoHistory: Bool
+    /// Maximum undo checkpoints kept (`FlowConfig.historyLimit`, default 50).
+    /// Normalized like the web engine — a non-positive value falls back to 50 —
+    /// at construction and again at every checkpoint, so a later assignment
+    /// takes effect on the next push.
+    public var historyLimit: Int
     public var deleteKeys: [String]?; public var multiSelectionKey: String?; public var selectionKey: String?; public var zoomActivationKey: String?; public var preventScrolling: Bool
     @ObservationIgnored private var undoStack: [HistorySnapshot] = []
     @ObservationIgnored private var redoStack: [HistorySnapshot] = []
@@ -1129,7 +1134,7 @@ public final class PyreonFlowState<T> {
         nodesDraggable: Bool = true, nodesConnectable: Bool = true, nodesSelectable: Bool = true, nodesFocusable: Bool = true,
         edgesFocusable: Bool = true, disableKeyboardA11y: Bool = false, nodesDeletable: Bool = true, edgesDeletable: Bool = true, edgesReconnectable: Bool = true,
         edgeInteractionWidth: Double = 20, connectionRadius: Double = 0, pannable: Bool = true, panOnDrag: Bool = true, panOnScroll: Bool = false, panOnScrollSpeed: Double = 0.5, zoomable: Bool = true, zoomOnScroll: Bool = true, zoomOnPinch: Bool = true, zoomOnDoubleClick: Bool = false, selectionOnDrag: Bool = false, selectionMode: String = "partial", connectionMode: String = "strict", elevateNodesOnSelect: Bool = true, elevateEdgesOnSelect: Bool = false, autoPanOnNodeDrag: Bool = true, autoPanOnConnect: Bool = true, autoPanSpeed: Double = 15, multiSelect: Bool = true, onlyRenderVisibleElements: Bool = false, snapToObjects: Bool = true,
-        defaultEdgeType: String = "bezier", connectionLineType: String = "bezier", defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(), fitView: Bool = false, fitViewPadding: Double = 0.1, autoHistory: Bool = true,
+        defaultEdgeType: String = "bezier", connectionLineType: String = "bezier", defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(), fitView: Bool = false, fitViewPadding: Double = 0.1, autoHistory: Bool = true, historyLimit: Double = 50,
         isValidConnection: ((PyreonFlowConnection) -> Bool)? = nil,
         searchText: ((T) -> String?)? = nil,
         reducedMotion: Bool? = nil,
@@ -1148,6 +1153,7 @@ public final class PyreonFlowState<T> {
         self.edgeInteractionWidth = edgeInteractionWidth; self.connectionRadius = max(0, connectionRadius); self.pannable = pannable; self.panOnDrag = panOnDrag; self.panOnScroll = panOnScroll; self.panOnScrollSpeed = panOnScrollSpeed; self.zoomable = zoomable; self.zoomOnScroll = zoomOnScroll; self.zoomOnPinch = zoomOnPinch; self.zoomOnDoubleClick = zoomOnDoubleClick; self.selectionOnDrag = selectionOnDrag; self.selectionMode = selectionMode == "full" ? "full" : "partial"; self.connectionMode = connectionMode == "loose" ? "loose" : "strict"; self.elevateNodesOnSelect = elevateNodesOnSelect; self.elevateEdgesOnSelect = elevateEdgesOnSelect; self.autoPanOnNodeDrag = autoPanOnNodeDrag; self.autoPanOnConnect = autoPanOnConnect; self.autoPanSpeed = max(0, autoPanSpeed); self.multiSelect = multiSelect; self.onlyRenderVisibleElements = onlyRenderVisibleElements; self.snapToObjects = snapToObjects
         self.defaultEdgeType = defaultEdgeType; self.connectionLineType = connectionLineType; self.defaultEdgeOptions = defaultEdgeOptions; self.fitViewOnLoad = fitView; self.fitViewPadding = max(0, fitViewPadding)
         self.autoHistory = autoHistory
+        self.historyLimit = pyreonFlowHistoryLimit(historyLimit)
         self.connectionValidator = isValidConnection
         self.searchText = searchText
         self.reducedMotion = reducedMotion
@@ -1350,7 +1356,8 @@ public final class PyreonFlowState<T> {
         guard mutationVersion != checkpointVersion else { return }
         checkpointVersion = mutationVersion
         undoStack.append(HistorySnapshot(nodes: nodes, edges: edges))
-        if undoStack.count > 50 { undoStack.removeFirst() }
+        let limit = pyreonFlowHistoryLimit(Double(historyLimit))
+        if undoStack.count > limit { undoStack.removeFirst(undoStack.count - limit) }
         redoStack.removeAll(keepingCapacity: true)
     }
     private func restore(_ snapshot: HistorySnapshot) {
@@ -2211,4 +2218,11 @@ public final class PyreonFlowState<T> {
         emitViewportChange()
         selectNode(nodeId)
     }
+}
+
+/// `FlowConfig.historyLimit` → the bound both engines apply: a positive finite
+/// value is floored, anything else is the default 50 (the web engine's rule).
+func pyreonFlowHistoryLimit(_ raw: Double) -> Int {
+    guard raw.isFinite, raw > 0 else { return 50 }
+    return max(1, Int(raw.rounded(.down)))
 }
