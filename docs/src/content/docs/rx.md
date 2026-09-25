@@ -36,6 +36,7 @@ Peer dependency: `@pyreon/reactivity`.
 ## Quick Start
 
 ```tsx
+// @check
 import { rx } from '@pyreon/rx'
 import { signal } from '@pyreon/reactivity'
 
