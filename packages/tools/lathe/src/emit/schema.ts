@@ -257,16 +257,10 @@ function numberExpr(type: IrNumberType, b: string, native: boolean): string {
   if (native) return expr
   if (type.exclusiveMinimum !== undefined) expr += `.gt(${type.exclusiveMinimum})`
   if (type.exclusiveMaximum !== undefined) expr += `.lt(${type.exclusiveMaximum})`
-  if (type.multipleOf !== undefined) {
-    // An INTEGER step is exact under `%`, so the library check is used. A
-    // FRACTIONAL one is not: `@pyreon/validate` tests `v % n === 0`, and
-    // `19.99 % 0.01` is not 0 in binary floating point -- `.multipleOf(0.01)`
-    // would reject every valid price. The refine compares the nearest multiple
-    // with a relative tolerance instead.
-    expr += Number.isInteger(type.multipleOf)
-      ? `.multipleOf(${type.multipleOf})`
-      : `.refine((v) => Math.abs(Math.round(v / ${type.multipleOf}) * ${type.multipleOf} - v) <= 1e-9 * Math.max(1, Math.abs(v)), { message: 'must be a multiple of ${type.multipleOf}' })`
-  }
+  // Both libraries decide a FRACTIONAL step float-safely (`@pyreon/validate`
+  // since its `multipleOf` stopped using a bare `%`), so `19.99` passes
+  // `.multipleOf(0.01)` on both.
+  if (type.multipleOf !== undefined) expr += `.multipleOf(${type.multipleOf})`
   return expr
 }
 
