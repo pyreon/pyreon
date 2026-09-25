@@ -63,9 +63,10 @@ Vite + `@pyreon/vite-plugin` are **optional peers**: `loom scan` runs without th
 
 ```bash
 pyreon loom build . --out=loom-dist --base=/deps/
+# loom: 142 package(s) → loom-dist
 ```
 
-Prerenders the same five views to plain files — one page per view at its own URL (`/`, `/matrix`, `/cycles`, `/impact`, `/manifests`), so you can link someone straight to the cycles view. The scan is baked in once, so the output works from any static host or opened from disk. `--out` defaults to `loom-dist`; `--base` sets the public path for a subdirectory deploy; `--no-imports` behaves as it does for `scan`.
+Prerenders the same five views to plain files — one page per view at its own URL (`/`, `/matrix`, `/cycles`, `/impact`, `/manifests`), so you can link someone straight to the cycles view. The scan is baked in once, so the output works from any static host or opened straight from `file://`. `--out` defaults to `loom-dist`; `--base` sets the public path for a subdirectory deploy; `--no-imports` behaves as it does for `scan`. The build is a snapshot — re-run it after dependency changes to refresh.
 
 `loom build` needs `vite`, `@pyreon/vite-plugin` **and** `@pyreon/zero` as dev dependencies (the site is a zero SSG app); when they are missing it names the exact install command. `loom scan` needs none of them.
 
