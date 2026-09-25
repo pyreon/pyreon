@@ -1,110 +1,126 @@
 # @pyreon/native-router-kotlin
 
-> **PRIVATE / EXPERIMENTAL.** Kotlin runtime implementing [`@pyreon/router`](../../core/router/)'s API surface on top of Compose state primitives. Phase C2 of the PMTC multiplatform router story. Parallel to [`@pyreon/native-router-swift`](../router-swift/).
+> **EXPERIMENTAL.** Kotlin runtime implementing [`@pyreon/router`](../../core/router/)'s API surface on top of Compose state primitives. Published to npm — see [Native Packages](https://pyreon.dev/docs/native-packages) for why Kotlin source ships through npm and how a Gradle build resolves it. The Android twin of [`@pyreon/native-router-swift`](../router-swift/).
 
-## What lives here
+## Installation
 
-5 Kotlin sources under `src/main/kotlin/com/pyreon/router/`:
+You don't install this directly. `@pyreon/create-multiplatform` (`pyreon new --native`) scaffolds a `package.json` dependency on it, and `pyreon-native wire --android-out` writes it into the resolved `srcDir` list `android/app/build.gradle.kts` reads. `import com.pyreon.router.*` in emitted (or hand-written) Kotlin then resolves against it. See [Native Packages](https://pyreon.dev/docs/native-packages#android--a-generated-srcdir-list) for the full wiring mechanism.
 
-| File | Purpose | Status |
-|---|---|---|
-| `PyreonRouter.kt` | Router model — `MutableState<List<String>>` path stack + push/replace/back/reset/params reactivity. | **Real** |
-| `RouterProvider.kt` | `@Composable` container — exposes router via `LocalPyreonRouter` `CompositionLocal`. | **Real** |
-| `RouterView.kt` | `@Composable` placeholder — host wires per-path content via `when(router.currentPath)` for now. | Scaffold |
-| `Link.kt` | `PyreonLink(to) { navigate -> ... }` — exposes navigate action to caller-supplied clickable wrapper. | **Real** |
-| `Hooks.kt` | `useNavigate()` / `useParams()` — `@Composable` programmatic navigation + param reading. | **Real** |
+## What's here
 
-The compiler-emitted Kotlin (post-Phase-C3 follow-up) references these symbols 1:1 from a JSX source. Today, hand-written Compose code can already use them — same API the web side ships, different runtime under it.
+Seven Kotlin sources under `src/main/kotlin/com/pyreon/router/`:
+
+| File | What it is |
+|---|---|
+| `PyreonRouter.kt` | The router model — a `MutableState<List<String>>` path stack, `push`/`replace`/`back`/`forward`/`reset`, `redirect`, `params`/`query`, a `routes: MutableState<List<RouteRecord>>` table, `beforeEachGuards`/`afterEachHooks`, `loaderData`, and `resolveCurrentChain()`. |
+| `RouteRecord` (in `PyreonRouter.kt`) | One route definition: `path`, `children` (nested layouts — declared BEFORE `component` in the constructor specifically so Kotlin's trailing-lambda syntax keeps binding to `component`), `beforeEnter` (a per-route guard), then `component` last. |
+| `RouterProvider.kt` | `@Composable` container — exposes the router via the `LocalPyreonRouter` `CompositionLocal`. |
+| `RouterView.kt` | Renders the matched route at the current nesting depth (`LocalRouterDepth`), with a `notFoundComponent` wildcard fallback and a manual-`when`-dispatch fallback for apps that don't configure `routes`. |
+| `Link.kt` | `PyreonLink(to) { navigate -> ... }` — exposes the navigate action to a caller-supplied clickable wrapper, deliberately keeping this package free of `androidx.compose.material*` (see "Why caller-wraps-clickable" below). |
+| `Hooks.kt` | `useNavigate()`, `useParams()`, `useLoaderData<T>()` — `@Composable` functions reading from `LocalPyreonRouter`. |
+| `RouteLoader.kt` | `PyreonRouteLoader` — wraps a route's Composable, running its `loader` once on first composition and storing the result via `router.setLoaderData`. |
+| `PyreonDeepLink.kt` | A process-wide inbound deep-link channel. `PyreonDeepLink.receive(uri: Uri?)` (call from the launch `Intent` and `onNewIntent`) delivers a URI's path to the currently-live router, or holds it as pending for the next router constructed (a cold launch). |
 
 ## API parity with `@pyreon/router`
 
-Same surface the web router exposes, mapped to Compose state + CompositionLocal:
-
 | Web (`@pyreon/router`) | Android (this package) |
 |---|---|
-| `createRouter({ routes })` | `PyreonRouter()` |
+| `createRouter({ routes })` | `PyreonRouter(routes = routes)` |
 | `<RouterProvider router={router}>` | `RouterProvider(router) { ... }` |
 | `<RouterView />` | `RouterView()` |
 | `<Link to="/users/123">Profile</Link>` | `PyreonLink("/users/123") { navigate -> ... }` |
 | `useNavigate()` | `useNavigate()` |
 | `useParams()` | `useParams()` |
+| `useLoaderData<T>()` | `useLoaderData()` |
 | `router.push(path)` | `router.push(path)` |
 | `router.replace(path)` | `router.replace(path)` |
-| `router.back()` | `router.back()` |
+| `router.back()` / `.forward()` | `router.back()` / `.forward()` |
 | `router.currentRoute().path` | `router.currentPath` |
+| a `loader:` on a route | `PyreonRouteLoader` wrapping the route's Composable |
+| inbound app/universal links | `PyreonDeepLink.receive(_:)` |
+
+## Usage
+
+```kotlin
+import com.pyreon.router.*
+
+val routes = listOf(
+    RouteRecord(
+        path = "/app",
+        children = listOf(
+            RouteRecord(path = "/app/dashboard") { Dashboard() },
+            RouteRecord(path = "/app/profile/:id") { Profile() },
+        ),
+    ) { AppLayout() },
+)
+
+@Composable
+fun RootView() {
+    val router = remember { PyreonRouter(routes = routes) }
+    RouterProvider(router) {
+        RouterView()   // renders the matched leaf; a nested RouterView() inside
+    }                  // AppLayout() picks up the matched child automatically
+}
+
+@Composable
+fun AppLayout() {
+    Column {
+        Text("App shell")
+        RouterView()
+    }
+}
+```
+
+## Why caller-wraps-clickable for `PyreonLink`?
+
+Compose's foundation-vs-material split makes the cross-platform-parity choice harder than on web (`<a>`) or iOS (`Button`) — Compose has *several* clickable wrappers depending on which Material flavour a host app uses. Pulling `androidx.compose.material:material` into this package would force every consumer onto Material 2 and prevent typechecking against the minimal kotlinc stubs (no Android SDK install required). `PyreonLink(to) { navigate -> content() }` keeps the package free of `material*` deps — the host wraps `navigate` in whatever clickable surface it already uses:
+
+```kotlin
+// Foundation
+PyreonLink("/users/123") { navigate ->
+    Box(Modifier.clickable { navigate() }) { Text("View Profile") }
+}
+
+// Material
+PyreonLink("/users/123") { navigate ->
+    Button(onClick = navigate) { Text("View Profile") }
+}
+```
+
+## Implementation note: no AndroidX Navigation dependency
+
+`PyreonRouter` keeps its own `MutableState<List<String>>` stack rather than wrapping AndroidX Navigation's `NavController`, for two reasons: it keeps the model symmetric with the web router's reactive path array and the Swift router's `@Observable` one, and it means this package typechecks without an Android SDK install (`kotlinc` against minimal Compose stubs is enough). An app that wants full `NavHost` integration (predictive back, shared-element transitions, type-safe routes) wraps `RouterProvider`'s content with its own `NavHost` reading from `router.path.value`.
 
 ## Cross-platform source
 
-Same `.tsx` source, three targets. The PMTC compiler emits matching Swift / Kotlin from a JSX source:
+The PMTC compiler's canonical-primitive emit table targets this package's symbols — the intent is that the same `.tsx` compiles to this runtime on Android and to [`@pyreon/native-router-swift`](../router-swift/) on iOS:
 
 ```tsx
 import { createRouter, RouterProvider, RouterView, RouterLink, useNavigate } from '@pyreon/router'
-import { Stack, Button, Text } from '@pyreon/primitives'
 
 function App() {
   const router = createRouter()
   return (
     <RouterProvider router={router}>
-      <Stack>
-        <RouterLink to="/users/123"><Text>View Profile</Text></RouterLink>
-        <RouterView />
-      </Stack>
+      <RouterLink to="/users/123">View Profile</RouterLink>
+      <RouterView />
     </RouterProvider>
   )
 }
 ```
 
-- **Web** target → real `@pyreon/router` runtime (History API)
-- **iOS** target → `@pyreon/native-router-swift` wrapping `NavigationStack`
-- **Android** target → this package, host wraps content in their preferred clickable (foundation `Modifier.clickable`, Material `Surface`, Material3 `Button`)
-
-## Why caller-wraps-clickable for `PyreonLink`?
-
-Compose's foundation-vs-material split makes the cross-platform-parity choice harder than on web/iOS. HTML has `<a>`; SwiftUI has `Button`; Compose has *several* clickable wrappers depending on the Material flavour — pulling `androidx.compose.material:material` into this package would force every consumer onto Material 2, AND would prevent typechecking against the minimal kotlinc stubs (no Android-SDK install required).
-
-The current shape — `PyreonLink(to) { navigate -> content() }` — keeps the package free of `material*` deps. The Material-wrapped ergonomic surface (`PyreonLink(to) { content() }` that auto-wraps in a Material `Surface`) lives in a follow-up `@pyreon/native-router-kotlin-material` extension module when real apps need it.
-
-## Implementation note: no AndroidX Navigation dependency
-
-PyreonRouter keeps its own `MutableState<List<String>>` stack rather than wrapping AndroidX Navigation's `NavController`. Two reasons:
-
-1. **PARITY** — the web router carries a plain reactive path-array; the Swift router carries an `@Observable` path-array. Keeping the Kotlin side symmetric makes the cross-platform reasoning trivial.
-2. **NO ANDROID-SDK DEPENDENCY** — the package intentionally doesn't depend on AndroidX so it typechecks without an Android SDK install (`kotlinc` against minimal Compose stubs is enough).
-
-Apps that want full `NavHost` integration (back-handler, animations, type-safe routes) wrap `RouterProvider`'s content with their own `NavHost` reading from `router.path.value`. Phase C3+ may add a Compose-Navigation adapter when real apps need it.
-
-## Smoke tests
-
-`src/test/kotlin/com/pyreon/router/PyreonRouterTest.kt` exercises every imperative method on the model — push / replace / back / reset / params reactivity. Composable-level rendering tests defer to per-feature PRs once route handling lands.
-
 ## Build / test locally
 
-Requires Kotlin compiler (`kotlinc`) and optionally Java JRE for the smoke runner. The verification harness uses `kotlinc` against minimal Compose stubs — no Android SDK install needed.
+Requires `kotlinc` on `PATH` (Kotlin 2.0+). Optionally a JRE for the smoke runner. Typechecks against minimal Compose stubs — no Android SDK install needed.
 
 ```bash
 cd packages/native/router-kotlin
-bun scripts/verify-kotlin.ts
-# → [verify-kotlin] ✓ PyreonRouter + test smoke typecheck against stubs
-# → [verify-kotlin] smoke output: ✓ fresh router starts with empty stack
-#                                 ✓ push appends to stack
-#                                 ... (9 tests)
+bun run test
 ```
 
-The npm scripts gracefully skip when `kotlinc` isn't on PATH (CI runners without the Kotlin toolchain, etc.), so `bun run --filter='*' test` from repo root doesn't break on cross-platform setups. Same pattern as `@pyreon/native-runtime-kotlin`.
+The npm scripts gracefully skip when `kotlinc` isn't on `PATH`, so `bun run --filter='*' test` from the repo root doesn't break on cross-platform setups. Same pattern as `@pyreon/native-runtime-kotlin`.
 
-## What's NOT in Phase C2
+## What to read next
 
-- **Route definitions** — the `routes: [...]` array the web side passes to `createRouter()`. Phase C3 follow-up.
-- **Loaders / guards / view-transition opt-in / active-link styling / prefetch hints** — staged for when TodoMVC + counter examples surface concrete needs.
-- **`<RouterView />` REAL per-path rendering** — Phase C2 ships as placeholder; host wires per-path content via `when(router.currentPath)` until Phase C3 adds the route-definition table.
-- **AndroidX Navigation adapter** — see "No AndroidX Navigation dependency" above.
-- **Material-wrapped `PyreonLink`** — see "Why caller-wraps-clickable" above.
-- **PMTC compiler-emit integration** — symbols exist + are reachable, but the canonical-primitive emit table extension to recognise `<RouterProvider>` etc. lives in a separate follow-up PR.
-
-## Why so small (~200 LOC of Kotlin)
-
-Same reasoning as `@pyreon/native-router-swift`: Compose's state primitives + CompositionLocal ARE the routing primitives. This package is the small adapter layer that matches @pyreon/router's component vocabulary — not a reimplementation. Past ~500 LOC the design is wrong.
-
-## Privacy
-
-Marked `"private": true`; not published to npm. Internal-only until PMTC reaches a state worth publishing.
+- [Native Packages](https://pyreon.dev/docs/native-packages) — this package's place among the other five, plus a router usage example next to the Swift twin.
+- [Multi-Platform (PMTC)](https://pyreon.dev/docs/multiplatform) — the compiler that emits code against this runtime.

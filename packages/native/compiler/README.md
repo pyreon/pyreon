@@ -1,68 +1,44 @@
 # @pyreon/native-compiler
 
-> **PRIVATE / EXPERIMENTAL.** This package is not published. It is part of the **Pyreon Multi-Target Compiler (PMTC)** exploration.
+> **EXPERIMENTAL.** The Pyreon Multi-Target Compiler (PMTC) itself. Compiles Pyreon JSX/TSX source to native Swift (SwiftUI) and Kotlin (Jetpack Compose) source — no JS runtime, no bridge, no WebView by default. The output is idiomatic per-platform code driving each platform's own reactive primitives (`@State` / `mutableStateOf`) directly. Published to npm — see [Native Packages](https://pyreon.dev/docs/native-packages) for where this fits among the other five packages behind PMTC.
 
-Compiles Pyreon JSX source to native Swift (SwiftUI) and Kotlin (Jetpack Compose) source. The output is idiomatic per-platform code that uses platform-native reactive primitives (`@State` / `MutableState`) — no JS runtime, no bridge.
+This package is TypeScript-in, TypeScript-out plumbing: given a source string, it returns a source string. It doesn't walk a directory, write files, or know about Xcode/Gradle — that's [`@pyreon/native-cli`](../cli/), which wraps this package.
 
-## Status
-
-- **Phase 0 (foundation)**: This PR — Pyreon JSX → string-in, string-out compilation with snapshot tests for 7 fixtures.
-- **Not yet**: iOS simulator / Android emulator integration, full Pyreon framework component compilation, styler/rocketstyle emitters, type mapper for generics/async/error types.
-
-## Usage (internal)
+## Usage
 
 ```ts
 import { transform } from '@pyreon/native-compiler'
 
-const swiftSource = transform(pyreonJsxSource, { target: 'swift' })
-const kotlinSource = transform(pyreonJsxSource, { target: 'kotlin' })
+const { code: swiftSource, warnings } = transform(pyreonSource, { target: 'swift' })
+const { code: kotlinSource } = transform(pyreonSource, { target: 'kotlin', filename: 'Counter.tsx' })
 ```
 
-## Compile-validation harness
+`transform(source, options)` returns `{ code: string, warnings: string[] }`. `options.target` is `'swift' | 'kotlin'`; `options.filename` (optional) improves parse-error diagnostics; `options.fonts` (optional, `Record<canonicalName, iOSPostScriptName>`) resolves `<Text font="Brand">` to `.font(.custom(…))` on iOS.
 
-Snapshot tests prove "the emit equals what it equalled last time." They do NOT prove "the emit is valid Swift / Kotlin." A compile-validation harness in [`src/validate.ts`](src/validate.ts) closes that gap by piping emitted source through the actual language compilers.
+## Compile-validation
 
-| Target | Tool | Mode |
+Snapshot tests prove "the emit equals what it equalled last time," not "the emit is valid Swift/Kotlin." [`src/validate.ts`](src/validate.ts) closes that gap by piping emitted source through the real language toolchains, at increasing cost/fidelity:
+
+| Function | What it checks | Requires |
 |---|---|---|
-| Swift | `swiftc -parse` | Parse-only, no semantic analysis. Catches syntax errors. Accepts unresolved type references (the SwiftUI stdlib isn't available at parse time — semantic analysis is the *compile* step's job). |
-| Kotlin | `kotlinc` + Compose stubs | `kotlinc` has no parse-only flag, so this path uses a tiny Compose stubs file ([`src/kotlin-stubs.ts`](src/kotlin-stubs.ts)) to satisfy semantic analysis without depending on real Jetpack Compose (which would require Gradle + Android SDK). Stubs cover only the API surface our emitter touches (`@Composable`, `mutableStateOf`, `derivedStateOf`, `remember`, `Text`, `Button`, `LazyColumn`, `Column`, `items`). Real apps compile against actual Compose, not stubs. |
+| `validateSwift(source)` | `swiftc -parse` — syntax only. Accepts unresolved type references (no SwiftUI stdlib at parse time). | `swiftc` on `PATH` |
+| `validateSwiftWithStubs(source)` | Real typecheck against hand-written stubs mirroring the SwiftUI/PyreonRuntime surface — the Linux-viable path, since a consumer that generates Pyreon source (the scaffolder, most of all) needs proof the output COMPILES without needing a real Apple SDK. | `swiftc` on `PATH` |
+| `validateSwiftTypecheck(source)` | Full typecheck against the real Apple SDK. | macOS + Xcode |
+| `validateKotlin(source)` | `kotlinc` against a small hand-written Compose/kotlinx-serialization stub set (no real Jetpack Compose, no Gradle, no Android SDK). | `kotlinc` on `PATH` |
 
-**Auto-enabled** when the tool is on PATH. Tests skip with an informative message when the tool is absent — typical local dev on macOS has `swiftc`; Linux dev machines and CI runners typically don't.
+Also exported: `isSwiftcAvailable()`, `isSwiftUIAvailable()`, `isKotlincAvailable()` — toolchain-presence checks the CLI's `check --typecheck` and the test suite use to skip gracefully rather than fail when a toolchain isn't installed.
 
-Env vars:
-- `PYREON_SKIP_NATIVE_VALIDATE=1` — force-skip even when tools are available (e.g., to bypass during a quick test run).
-- `PYREON_REQUIRE_NATIVE_VALIDATE=1` — fail (instead of skip) when tools are absent. Set in CI environments where the toolchain SHOULD be installed.
+## Scope
 
-## Coverage (this PR)
+The subset of TypeScript/JSX this compiler lowers — components, `signal`/`computed`/`effect`, `<For>`/`<Show>`, hooks, `@pyreon/store`/`form`/`query`/`table`/`flow`/…, HTTP + fetch, WebView bridging, and what it explicitly refuses — is documented in full at [PMTC Supported TypeScript](https://pyreon.dev/docs/pmtc-supported-typescript), not duplicated here. [Multi-Platform (PMTC)](https://pyreon.dev/docs/multiplatform) covers the architecture and the primitive vocabulary end to end.
 
-7 fixtures, each compiling to both Swift + Kotlin:
+## Build / test locally
 
-1. Stateless component
-2. Single signal (`signal<T>(initial)`)
-3. Computed value (`computed(() => …)`)
-4. Event handler (`onClick`)
-5. Two signals + dependent computed
-6. `<For>` keyed list
-7. `<Show>` conditional render
+Pure TypeScript — `bun run test` runs the compiler's own suite (parse/emit fixtures, native-equivalence checks, the differential fuzzer). The `validate.ts` tests additionally spawn `swiftc`/`kotlinc` when present and skip gracefully otherwise (`PYREON_REQUIRE_NATIVE_VALIDATE=1` turns an absent toolchain into a hard failure instead, for CI environments where it's expected to exist).
 
-Snapshot-tested via vitest. The fixtures live in [`src/fixtures/`](src/fixtures/); expected outputs are inline snapshots in [`src/tests/`](src/tests/).
+## What to read next
 
-## Why these 7
-
-Each fixture exercises one structural mapping from the chosen-direction plan's mapping table:
-
-| Fixture | Pyreon construct | SwiftUI / Compose primitive |
-|---|---|---|
-| 1 | static component body | `View` / `@Composable fun` |
-| 2 | `signal<T>(initial)` | `@State` / `mutableStateOf` |
-| 3 | `computed(() => …)` | computed property / `derivedStateOf` |
-| 4 | `onClick` event handler | `Button(action:)` / `Button(onClick:)` |
-| 5 | multi-signal dependency | shows the dep graph translates |
-| 6 | `<For each={…} by={…}>` | `ForEach` / `LazyColumn { items() }` |
-| 7 | `<Show when={…}>` | `if …` view builder / composable |
-
-Together they cover the **minimum sufficient surface** to claim "the structural mapping works." Subsequent PRs grow the surface (props, styling, more widgets).
-
-## Privacy
-
-This package is marked `"private": true` in `package.json` and is excluded from npm publishing, the `llms.txt` / `llms-full.txt` AI-facing surfaces, the `docs/` site, and MCP `get_api`. Internal-only until the PMTC direction reaches a state worth publishing.
+- [Multi-Platform (PMTC)](https://pyreon.dev/docs/multiplatform) — the architecture, the primitive vocabulary, the capability matrix.
+- [PMTC Supported TypeScript](https://pyreon.dev/docs/pmtc-supported-typescript) — the subset this package lowers, and what it refuses.
+- [Native Packages](https://pyreon.dev/docs/native-packages) — this package's place among the other five.
+- [`@pyreon/native-cli`](../cli/) — the CLI that walks a source tree and drives this package.
