@@ -24,6 +24,7 @@ import type {
   IrParam,
   IrSecurityScheme,
   IrType,
+  IrWebhook,
   StringFormat,
 } from '../core/ir'
 import { assignNames, ident, modelIdent, operationIdent, operationIdFrom, tagFile } from '../core/naming'
@@ -219,6 +220,7 @@ function convert(spec: Json, options: LoadOptions = {}, preNotes: readonly IrNot
     sourceUrl: undefined,
     opAt: new Map(),
     int64At: new Set(),
+    callbacks: [],
   }
 
   const info = obj(spec.info) ?? {}
@@ -262,6 +264,7 @@ function convert(spec: Json, options: LoadOptions = {}, preNotes: readonly IrNot
   ctx.appliedSecurity = new Set(securitySchemes.map((sc) => sc.name))
   noteSecurity(spec, securitySchemes, ctx)
   const operations = collectOperations(spec, ctx)
+  const webhooks = [...collectWebhooks(spec, ctx), ...ctx.callbacks]
   // Schemas reached through a non-component pointer that turned out to be
   // RECURSIVE were hoisted into named models while converting; they join the
   // document here, after every conversion that could add one.
@@ -269,13 +272,20 @@ function convert(spec: Json, options: LoadOptions = {}, preNotes: readonly IrNot
 
   // readOnly / writeOnly: request and response shapes of one model. Before the
   // union pass, so a discriminator is validated against the final shapes.
-  splitByDirection(models, operations, (base) => claimName(base, ctx))
+  splitByDirection(models, operations, (base) => claimName(base, ctx), webhooks)
 
   // Post-pass: two union shapes a real spec produces that the emitted schema
   // DSL cannot express. Runs here, after models exist, because deciding either
   // one needs to resolve `$ref`s.
-  normalizeUnions(models, operations, ctx)
+  normalizeUnions(models, operations, ctx, webhooks)
   noteInt64(ctx)
+  if (webhooks.length > 0) {
+    notes.push({
+      code: 'webhooks',
+      at: spec.webhooks !== undefined ? '#/webhooks' : '#/paths',
+      message: `${webhooks.length} webhook/callback request(s) the API SENDS — typed as payload schemas and handler types in \`webhooks.ts\` (with the \`schemas\` plugin). The client never makes these calls; the server that receives them uses the types.`,
+    })
+  }
 
   return {
     title: str(info.title) ?? 'API',
@@ -284,8 +294,51 @@ function convert(spec: Json, options: LoadOptions = {}, preNotes: readonly IrNot
     ...(securitySchemes.length > 0 ? { securitySchemes } : {}),
     models,
     operations,
+    ...(webhooks.length > 0 ? { webhooks } : {}),
     notes,
   }
+}
+
+/**
+ * 3.1 `webhooks`: requests the API sends to a URL the user registered. Each
+ * path item method becomes one {@link IrWebhook} carrying its payload -- the
+ * same `requestBody` reading an operation gets, so a form or text payload is
+ * typed the same way.
+ */
+function collectWebhooks(spec: Json, ctx: Ctx): IrWebhook[] {
+  const out: IrWebhook[] = []
+  const hooks = obj(spec.webhooks) ?? {}
+  for (const name of Object.keys(hooks).sort()) {
+    const at = ptr('webhooks', name)
+    const item = obj(deref(hooks[name], at, ctx))
+    if (item) out.push(...webhookEntries('webhook', name, item, at, undefined, ctx))
+  }
+  return out
+}
+
+/** The requests one webhook / callback path item declares. */
+function webhookEntries(
+  kind: IrWebhook['kind'],
+  name: string,
+  item: Json,
+  at: string,
+  expression: string | undefined,
+  ctx: Ctx,
+): IrWebhook[] {
+  const methods = METHODS.filter((m) => obj(item[m.toLowerCase()]) !== undefined)
+  return methods.map((method) => {
+    const op = obj(item[method.toLowerCase()]) as Json
+    const mAt = sub(at, method.toLowerCase())
+    const body = bodyOf(method, op, mAt, ctx)
+    return {
+      kind,
+      name: methods.length > 1 ? `${name}.${method.toLowerCase()}` : name,
+      method,
+      ...(expression !== undefined ? { expression } : {}),
+      summary: str(op.summary) ?? str(op.description),
+      ...(body ? { payload: body.type, mediaType: body.mediaType } : {}),
+    }
+  })
 }
 
 /**
@@ -306,7 +359,7 @@ function convert(spec: Json, options: LoadOptions = {}, preNotes: readonly IrNot
  *    a plain union (which still validates every member correctly) with a note
  *    naming the reason, instead of shipping a module that throws on import.
  */
-function normalizeUnions(models: IrModel[], operations: IrOperation[], ctx: Ctx): void {
+function normalizeUnions(models: IrModel[], operations: IrOperation[], ctx: Ctx, webhooks: IrWebhook[] = []): void {
   const byName = new Map(models.map((m) => [m.name, m]))
   /** The object a union member resolves to, following refs; cycle-safe. */
   const objectOf = (t: IrType): Extract<IrType, { kind: 'object' }> | undefined => {
@@ -410,6 +463,7 @@ function normalizeUnions(models: IrModel[], operations: IrOperation[], ctx: Ctx)
     op.pathParams = op.pathParams.map((p) => ({ ...p, type: walk(p.type, at) as IrType }))
     op.queryParams = op.queryParams.map((p) => ({ ...p, type: walk(p.type, at) as IrType }))
   }
+  for (const w of webhooks) if (w.payload) w.payload = walk(w.payload, '#/webhooks') as IrType
 }
 
 interface Ctx {
@@ -447,6 +501,8 @@ interface Ctx {
   opAt: Map<IrOperation, string>
   /** Pointers of every `format: int64` number, for one aggregated note. */
   int64At: Set<string>
+  /** Callbacks met while collecting operations, in document order. */
+  callbacks: IrWebhook[]
 }
 
 /**
@@ -615,6 +671,17 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
       }
       ctx.opAt.set(irOp, at)
       ops.push(irOp)
+      // `callbacks`: requests the API sends back while (or after) handling
+      // this one, to a URL the call supplied.
+      const callbacks = obj(op.callbacks) ?? {}
+      for (const cbName of Object.keys(callbacks).sort()) {
+        const cAt = sub(at, 'callbacks', cbName)
+        const cb = obj(deref(callbacks[cbName], cAt, ctx)) ?? {}
+        for (const expression of Object.keys(cb)) {
+          const item = obj(deref(cb[expression], sub(cAt, expression), ctx))
+          if (item) ctx.callbacks.push(...webhookEntries('callback', `${id}.${cbName}`, item, sub(cAt, expression), expression, ctx))
+        }
+      }
     }
   }
   return ops

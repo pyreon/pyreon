@@ -104,6 +104,9 @@ export function emitBarrel(doc: IrDocument, opts: EntryOptions): SourceFile {
 
   if (has('schemas')) {
     if (exists(opts, 'schemas.ts')) lines.push(`export * from './schemas'`)
+    // Webhook / callback payloads: production code, used by the server that
+    // receives them.
+    if (exists(opts, 'webhooks.ts')) lines.push(`export * from './webhooks'`)
   } else if (has('types') && exists(opts, 'types.ts')) lines.push(`export * from './types'`)
   if (has('client')) {
     if (exists(opts, 'client.ts')) {

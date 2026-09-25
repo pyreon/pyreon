@@ -784,6 +784,7 @@ a stable `code`, an RFC 6901 pointer into the spec, and a severity:
 | `missing-operation-id` | choice | a name derived from method + path |
 | `numeric-version` | choice | `info.version` was a YAML number |
 | `swagger2-converted` | choice | the input was Swagger 2.0 and was up-converted to OpenAPI 3.0; other notes point into the converted document |
+| `webhooks` | choice | the spec declares webhooks / callbacks — requests the API sends; typed as payload schemas and `WebhookHandler` types in `webhooks.ts`, never as client calls |
 | `swagger2-lossy` | loss | a Swagger 2 construct 3.0 cannot spell (`collectionFormat: tsv`, per-operation `schemes`, an unknown security type), or a missing `schemes` assumed `https` |
 
 The terminal report lists the losses and summarises the choices; the generated

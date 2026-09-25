@@ -115,6 +115,10 @@ const CASES: Record<IrNoteCode, [Record<string, unknown>, Record<string, unknown
   // A Swagger 2 document is up-converted; the `openapi` key the helper adds is
   // not read once `swagger` identifies the document.
   'swagger2-converted': [{ swagger: '2.0', host: 't.test', schemes: ['https'] }, {}],
+  webhooks: [
+    { webhooks: { ping: { post: { requestBody: { content: { 'application/json': { schema: { type: 'string' } } } } } } } },
+    {},
+  ],
   'swagger2-lossy': [
     { swagger: '2.0', host: 't.test', schemes: ['https'], paths: swaggerArrayQuery('tsv') },
     { swagger: '2.0', host: 't.test', schemes: ['https'], paths: swaggerArrayQuery('csv') },

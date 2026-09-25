@@ -27,6 +27,7 @@ import { emitFaker } from '../emit/faker'
 import { emitMocks } from '../emit/mock'
 import { emitPackageMarker } from '../emit/package-marker'
 import { emitSchemas, emitTypes } from '../emit/schema'
+import { emitWebhooks } from '../emit/webhooks'
 import { banner, jsonLiteral, type GeneratedFile } from '../emit/writer'
 import type { ResolvedConfig } from './config'
 import type { IrDocument, IrNote, IrOperation, Reach } from './ir'
@@ -83,7 +84,10 @@ export function generate(
   const has = (p: string): boolean => config.plugins.includes(p as never)
 
   if (has('types')) push(emitTypes(doc))
-  if (has('schemas')) for (const f of emitSchemas(doc, { native: false, validator: config.validator })) push(f)
+  if (has('schemas')) {
+    for (const f of emitSchemas(doc, { native: false, validator: config.validator })) push(f)
+    pushMaybe(emitWebhooks(doc, config.validator))
+  }
   if (has('client')) {
     push(
       emitClient(doc, {

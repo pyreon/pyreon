@@ -18,7 +18,7 @@
  *
  * Done once, on the IR, so no emitter needs to know the markers exist.
  */
-import type { IrField, IrModel, IrOperation, IrType } from '../core/ir'
+import type { IrField, IrModel, IrOperation, IrType, IrWebhook } from '../core/ir'
 import { childTypes, collectRefNames } from '../core/walk'
 
 type Direction = 'request' | 'response'
@@ -106,13 +106,14 @@ export function splitByDirection(
   models: IrModel[],
   operations: IrOperation[],
   claimName: (base: string) => string,
+  webhooks: IrWebhook[] = [],
 ): void {
   // A model needs an Input variant when its REQUEST shape is not its
   // RESPONSE shape: it (transitively) hides a field in either direction.
   const differ = differingModels(models)
   const inputName = new Map<string, string>()
   for (const m of models) if (differ.has(m.name)) inputName.set(m.name, claimName(`${m.name}Input`))
-  if (inputName.size === 0 && !operations.some((op) => hasMarkers(op))) return
+  if (inputName.size === 0 && !operations.some((op) => hasMarkers(op)) && webhooks.length === 0) return
 
   const toInput = (name: string): string => inputName.get(name) ?? name
   const same = (name: string): string => name
@@ -140,6 +141,9 @@ export function splitByDirection(
     op.headerParams = op.headerParams.map((p) => ({ ...p, type: project(p.type, 'request', toInput) }))
     op.cookieParams = op.cookieParams.map((p) => ({ ...p, type: project(p.type, 'request', toInput) }))
   }
+  // A webhook payload is SENT BY the API, like a response: server-assigned
+  // fields are in it, client-only ones are not.
+  for (const w of webhooks) if (w.payload) w.payload = project(w.payload, 'response', same)
 }
 
 /** Inline (non-model) readOnly / writeOnly fields in an operation. */

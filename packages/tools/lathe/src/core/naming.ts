@@ -201,6 +201,7 @@ const EMITTER_VALUES = new Set([
   // exports of the generated entries
   'keys', 'configureApi', 'auth', 'optimisticUpdate', 'setDevTransport', 'installMocks', 'mockRoutes', 'mockRouteTable',
   'routes', 'mock', 'faker', 'mockOperation', 'resetMocks', 'mockCalls', 'apiBaseUrl', 'createMock',
+  'webhookSchemas',
   // `use<Id>` must never equal an imported hook
   'query', 'mutation', 'queryClient', 'infiniteQuery', 'queries', 'isFetching', 'isMutating',
 ])
@@ -210,6 +211,8 @@ const EMITTER_TYPES = new Set([
   'QueryValue', 'QueryOptionsLike', 'MutationOptionsLike', 'DevRequest', 'DevAnswer',
   'DevTransport', 'LatheHttpError', 'StandardSchema', 'StandardResult', 'AxiosInstance',
   'KyInstance', 'ApiConfig', 'ValidateMode', 'MockedOperation', 'Credential',
+  // typed errors (client.ts) and webhook payloads (webhooks.ts)
+  'EndpointError', 'HttpErrorOf', 'RequestFailure', 'WebhookPayloads', 'WebhookHandler',
   // globals the emitted TYPES spell
   'Record', 'Partial', 'Array', 'ReadonlyArray', 'Promise', 'Readonly', 'Omit', 'Pick',
   'Required', 'NonNullable', 'ReturnType', 'Awaited', 'Parameters', 'Exclude', 'Extract',

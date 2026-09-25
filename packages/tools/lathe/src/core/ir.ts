@@ -257,6 +257,29 @@ export type IrSecurityScheme =
       doc?: string | undefined
     }
 
+/**
+ * A request the API SENDS rather than receives: a 3.1 `webhooks` entry, or an
+ * operation's `callbacks` entry. A client never makes these calls -- a server
+ * the user runs receives them -- so they are not operations; what a
+ * generator can usefully give is the PAYLOAD's type and schema.
+ */
+export interface IrWebhook {
+  kind: 'webhook' | 'callback'
+  /**
+   * Unique key: the webhook's name, or `<operationId>.<callbackName>`; a
+   * method is appended (`.post`) only when one entry declares several.
+   */
+  name: string
+  method: HttpMethod
+  /** A callback's URL expression, verbatim (`{$request.body#/callbackUrl}`). */
+  expression?: string | undefined
+  summary?: string | undefined
+  /** The body the API sends. Absent when the request carries none. */
+  payload?: IrType | undefined
+  /** The payload's media type, when there is one. */
+  mediaType?: string | undefined
+}
+
 export interface IrDocument {
   title: string
   version: string
@@ -266,6 +289,8 @@ export interface IrDocument {
   securitySchemes?: readonly IrSecurityScheme[] | undefined
   models: readonly IrModel[]
   operations: readonly IrOperation[]
+  /** Webhooks and callbacks, in document order. Absent when there are none. */
+  webhooks?: readonly IrWebhook[] | undefined
   /**
    * Everything the input layer dropped, with a reason. Surfaced by the CLI and
    * counted by the gate — a spec feature Lathe cannot represent is a REPORTED
@@ -298,6 +323,7 @@ export type IrNoteCode =
   | 'numeric-version'
   | 'swagger2-converted'
   | 'swagger2-lossy'
+  | 'webhooks'
 
 /**
  * What a note means for the generated client.
@@ -343,6 +369,8 @@ export const NOTE_SEVERITY: Readonly<Record<IrNoteCode, IrNoteSeverity>> = {
   // The conversion itself loses nothing; `swagger2-lossy` names what it did.
   'swagger2-converted': 'choice',
   'swagger2-lossy': 'loss',
+  // Typed (payload schemas + handler types); not a call the CLIENT makes.
+  webhooks: 'choice',
 }
 
 /** The severity of a note, from its code. */
