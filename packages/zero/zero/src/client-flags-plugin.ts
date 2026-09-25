@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import type { Plugin } from 'vite'
 import type { ZeroConfig } from './types'
@@ -43,10 +43,11 @@ export function isSpaEverywhere(userConfig: ZeroConfig, appMode: string, routesD
   try {
     while (stack.length > 0) {
       const dir = stack.pop()!
-      for (const entry of readdirSync(dir)) {
-        const full = join(dir, entry)
-        if (statSync(full).isDirectory()) stack.push(full)
-        else if (/\.[mc]?[jt]sx?$/.test(entry) && readFileSync(full, 'utf-8').includes('renderMode')) {
+      // Dirents carry the type, so there is no stat-then-read window.
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name)
+        if (entry.isDirectory()) stack.push(full)
+        else if (/\.[mc]?[jt]sx?$/.test(entry.name) && readFileSync(full, 'utf-8').includes('renderMode')) {
           return false
         }
       }
