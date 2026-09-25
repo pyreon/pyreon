@@ -72,7 +72,7 @@ export const listBooks = api.endpoint('GET /books', { response: s.array(book_sch
  */
 export function GetBookData(props: { bookId: string; children: (data: Book | undefined) => unknown }) {
   const q = useQuery<Book>(() => getBook.query({ params: { bookId: props.bookId } }))
-  return props.children(q.data())
+  return () => props.children(q.data())
 }
 
 /**
@@ -83,5 +83,5 @@ export function GetBookData(props: { bookId: string; children: (data: Book | und
  */
 export function ListBooksData(props: { children: (data: Book[] | undefined) => unknown }) {
   const q = useQuery<Book[]>(() => listBooks.query())
-  return props.children(q.data())
+  return () => props.children(q.data())
 }

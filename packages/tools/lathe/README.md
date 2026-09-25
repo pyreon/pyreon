@@ -594,7 +594,7 @@ Real, current, and reported per-operation rather than papered over:
 | Schemas: string/number/boolean, nested objects, arrays, optional/nullable, min/max/email/url/uuid/regex | lowers |
 | `GET` with a typed JSON response, with or without path parameters | lowers — a path parameter becomes a prop of the data component |
 | `GET` with no content, or a non-JSON response | **web-only** — the web hook resolves to `unknown`, and there is no declared type for a native query to decode into, so no data component is emitted |
-| the generated data components (`<Op>Data`, a render prop) | **compile on Kotlin, not on Swift** — PMTC has no render-prop component support yet (`children` lowers to `-> Void`, which is not a `View`). With `swiftc` installed the verifier reports this module `BROKEN`, which is the honest answer |
+| the generated data components (`<Op>Data`, a render prop returning an accessor, so it re-renders on the web) | lowers **only with a `@pyreon/native-compiler` that supports render props**. Against an older compiler, with `swiftc`/`kotlinc` installed, the verifier reports the module `BROKEN`, which is the honest answer |
 | an array / scalar / union MODEL | lowers — inlined at its use sites; PMTC synthesizes structs from object literals only |
 | `POST`/`PUT`/`PATCH`/`DELETE` | **web-only** — mutations are not recognised yet |
 | `enum` / `const` | narrowed to its base scalar (`string` / `number` / `boolean`) on the native path; the constraint is genuinely lost there |

@@ -808,10 +808,13 @@ never touched. Commit the manifest with the rest of the output.
   mutations, so a `POST` operation is reported `web-only` with that reason.
 - **A relative `baseUrl` makes every operation web-only** — PMTC bakes the
   request URL at compile time.
-- **The generated data components compile on Kotlin but not on Swift.** They
-  are render-prop components and PMTC does not support render props yet. The
-  verifier compiles each module when `swiftc` / `kotlinc` are installed and
-  reports this `BROKEN` rather than claiming it lowers.
+- **The generated data components need PMTC render-prop support.** Each one
+  returns an accessor, `() => props.children(q.data())`, so it re-renders on
+  the web when the query settles. A body that ran once would stay at its
+  loading state. Only a `@pyreon/native-compiler` with render-prop support
+  lowers that shape. The verifier compiles each module when `swiftc` /
+  `kotlinc` are installed, and against an older compiler it reports these
+  modules `BROKEN` rather than claiming they lower.
 - A verdict of **`partial`** means the module lowers but PMTC dropped part of
   a model (a field it cannot represent); the report names the declaration.
 - **No multi-project composition.** `projects: [...]` writes N independent
