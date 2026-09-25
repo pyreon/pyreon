@@ -733,9 +733,9 @@ Relative paths resolve against the directory of the **config file**, not the
 shell's working directory, so `lathe` behaves the same from any subdirectory.
 Paths passed on the command line are relative to the working directory.
 
-<!-- gen:lathe-config:start -->
-<!-- Generated from `LatheSection` in packages/tools/lathe/src/core/config.ts by
-     docs/scripts/gen-lathe-config.ts. Edit the type and its JSDoc, not this table. -->
+{/* gen:lathe-config:start */}
+{/* Generated from `LatheSection` in packages/tools/lathe/src/core/config.ts by
+    docs/scripts/gen-lathe-config.ts. Edit the type and its JSDoc, not this table. */}
 
 | key | type | default | meaning |
 | --- | --- | --- | --- |
@@ -751,7 +751,7 @@ Paths passed on the command line are relative to the working directory.
 | `pagination` | `Record<string, PaginationConfig>` | — | How to page through operations, keyed by the GENERATED operation name (the `endpoints` export). Declared, never guessed — each entry emits a `use<Op>Infinite` hook and a `<op>InfiniteOptions` factory. Same shape as the `x-pyreon-pagination` spec extension, which a config entry overrides. |
 | `strictNative` | `boolean` | `false` | Fail the run when a generated native module does not lower. |
 | `projects` | `{ name, input, …any key above }[]` | — | Several specs in one run, each with its own output and target. |
-<!-- gen:lathe-config:end -->
+{/* gen:lathe-config:end */}
 
 An unknown `plugins`, `client`, `validator` or `target` value is refused by
 name, with the known values listed.

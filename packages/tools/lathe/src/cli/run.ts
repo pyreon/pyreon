@@ -23,7 +23,7 @@ import { OUTPUT_MANIFEST, orphanedPaths } from '../core/output-manifest'
 import { diffCommittedSurface, type ApiSurface, type SurfaceChange } from '../core/surface'
 import { resolveNativeCompiler, verifyNative, worstVerdict } from '../verify/lower'
 import { closest } from '../core/suggest'
-import { SOURCE_TOOLS } from './init'
+import { SOURCE_TOOLS } from './init/init'
 import type { SourceTool } from './init/migrate'
 import { renderReport } from './report'
 

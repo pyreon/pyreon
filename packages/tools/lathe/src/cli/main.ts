@@ -11,7 +11,7 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { version as LATHE_VERSION } from '../../package.json' with { type: 'json' }
 import type { LatheSection } from '../core/config'
 import { findConfigFile, loadConfig, type LoadedConfig } from './config-file'
-import { renderInitReport, runInit, type InitFs } from './init'
+import { renderInitReport, runInit, type InitFs } from './init/init'
 import { pullSpec } from './pull'
 import { shouldColor } from './report'
 import { parseArgv, run, type Argv, type Fs } from './run'

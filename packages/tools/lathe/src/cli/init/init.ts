@@ -230,10 +230,16 @@ export async function runInit(options: InitOptions, deps: InitDeps): Promise<Ini
 
 /** Drop a bare-spec candidate that a detected config already points at. */
 function dedupe(found: Detected[]): Detected[] {
+  // Only a GENERATOR's input can shadow a spec file — a spec candidate's own
+  // input is itself.
   const inputs = new Set(
-    found.flatMap((d) => d.migrations.map((m) => m.section.input)).filter((p): p is string => !!p).map(norm),
+    found
+      .filter((d) => d.tool !== 'spec')
+      .flatMap((d) => d.migrations.map((m) => m.section.input))
+      .filter((p): p is string => !!p)
+      .map(norm),
   )
-  return found.filter((d) => d.tool !== 'spec' || !inputs.has(norm(d.file)) || found[0] === d)
+  return found.filter((d) => d.tool !== 'spec' || !inputs.has(norm(d.file)))
 }
 
 const norm = (p: string): string => p.replace(/^\.\//, '')

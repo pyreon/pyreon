@@ -212,6 +212,14 @@ class Reader {
 
   private word(): string {
     const m = /^[A-Za-z_$][\w$]*/.exec(this.src.slice(this.i))
+    if (!m && this.src[this.i] === '[') {
+      // A computed key `[expr]` — kept as text, its value still read.
+      const start = this.i
+      this.i++
+      this.skipExpression()
+      this.i++ // ]
+      return this.src.slice(start, this.i)
+    }
     if (!m) {
       // Not a key this reader understands (a computed `[key]`): skip it whole.
       const start = this.i
@@ -232,7 +240,8 @@ class Reader {
       if (name === 'true' || name === 'false') return { kind: 'boolean', value: name === 'true' }
       if (name === 'null') return { kind: 'null' }
       if (name === 'undefined') return { kind: 'expr', text: 'undefined' }
-      if (this.src[this.i] === '(' && !name.startsWith('new ')) {
+      // `async (x) => …` is a function, not a call to something named `async`.
+      if (this.src[this.i] === '(' && !name.startsWith('new ') && name !== 'async') {
         this.i++
         const args: Lit[] = []
         for (;;) {
@@ -245,8 +254,9 @@ class Reader {
           this.ws()
           if (this.src[this.i] === ',') this.i++
         }
-        // A call whose RESULT is used further (`fn().x`) is not a plain call.
-        if (/^[.[]/.test(this.src.slice(this.i).trimStart())) {
+        // A call whose RESULT is used further (`fn().x`), or an arrow's
+        // parameter list, is not a plain call.
+        if (/^(?:[.[]|=>)/.test(this.src.slice(this.i).trimStart())) {
           this.skipExpression()
           return { kind: 'expr', text: this.src.slice(start, this.i).trim() }
         }

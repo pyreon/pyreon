@@ -235,7 +235,7 @@ export function fromOrval(config: Lit, file: string): Migration[] {
         ? 'Lathe has no lifecycle hooks; chain the command after `lathe generate` in the package.json script.'
         : 'no Lathe equivalent.')
     }
-    out.push({ ...finish('orval', file, d), ...(entries.length > 1 ? { name } : {}) })
+    out.push({ ...finish('orval', file, d), name })
   }
   return out
 }

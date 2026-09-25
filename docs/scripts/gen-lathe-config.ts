@@ -10,7 +10,8 @@
  * from the `@default` tag. `check-generated-fresh` fails when the committed
  * table and the type disagree.
  *
- * Writes between `<!-- gen:lathe-config:start -->` and `<!-- gen:lathe-config:end -->`
+ * Writes between the `gen:lathe-config:start` / `gen:lathe-config:end` MDX
+ * comment markers (MDX has no HTML comments, so they are `{/* … *\/}` blocks)
  * in `docs/src/content/docs/lathe.md`. Run `bun docs/scripts/gen-lathe-config.ts`.
  */
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -21,8 +22,8 @@ import ts from 'typescript'
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const SOURCE = join(REPO_ROOT, 'packages', 'tools', 'lathe', 'src', 'core', 'config.ts')
 const PAGE = join(REPO_ROOT, 'docs', 'src', 'content', 'docs', 'lathe.md')
-const START = '<!-- gen:lathe-config:start -->'
-const END = '<!-- gen:lathe-config:end -->'
+const START = '{/* gen:lathe-config:start */}'
+const END = '{/* gen:lathe-config:end */}'
 
 const program = ts.createProgram([SOURCE], {
   strict: true,
@@ -90,8 +91,8 @@ for (const m of members) {
 
 const table = [
   START,
-  '<!-- Generated from `LatheSection` in packages/tools/lathe/src/core/config.ts by',
-  '     docs/scripts/gen-lathe-config.ts. Edit the type and its JSDoc, not this table. -->',
+  '{/* Generated from `LatheSection` in packages/tools/lathe/src/core/config.ts by',
+  '    docs/scripts/gen-lathe-config.ts. Edit the type and its JSDoc, not this table. */}',
   '',
   '| key | type | default | meaning |',
   '| --- | --- | --- | --- |',
