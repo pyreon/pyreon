@@ -14,7 +14,7 @@ export interface Book {
    */
   title: string
   /** Circulation state. */
-  status: string
+  status: 'available' | 'borrowed' | 'lost'
   pages?: number | undefined
   subtitle?: string | null | undefined
   tags?: string[] | undefined
@@ -22,7 +22,7 @@ export interface Book {
 export const Book = /* @__PURE__ */ s.object({
   id: /* @__PURE__ */ s.string().uuid(),
   title: /* @__PURE__ */ s.string().min(1),
-  status: /* @__PURE__ */ s.enum(['available', 'borrowed', 'lost']),
+  status: /* @__PURE__ */ s.enum(['available', 'borrowed', 'lost'] as const),
   pages: /* @__PURE__ */ s.number().int().min(1).optional(),
   subtitle: /* @__PURE__ */ s.string().nullable().optional(),
   tags: /* @__PURE__ */ s.array(/* @__PURE__ */ s.string()).optional(),
