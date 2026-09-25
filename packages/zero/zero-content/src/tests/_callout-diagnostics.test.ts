@@ -217,4 +217,39 @@ describe('raw-leak diagnostic — bare text after a callout name', () => {
     expect(w).toContain(':::tip[Title]')
     expect(w).toContain('{title="Title"}')
   })
+
+  // An UNKNOWN name with bare text never becomes a directive, so the
+  // `Unknown callout directive` check cannot see it — `docs/table.md`
+  // shipped five literal `:::caution …` lines through a green gate.
+  it('fires for an UNKNOWN name followed by bare text, suggesting the closest type', async () => {
+    const ws = await warns(':::caution Some title\nbody\n:::')
+    const w = ws.find((x) => x.includes('did not parse'))
+    expect(w).toBeDefined()
+    expect(w).toContain('`:::caution`')
+    expect(w).toContain('not a callout type')
+  })
+
+  it('fires for `:::details Label` and `:::math inline`, naming the real syntax', async () => {
+    const d = (await warns(':::details Click\nbody\n:::')).find((x) => x.includes('did not parse'))
+    expect(d).toContain(':::details[Summary]')
+    const m = (await warns(':::math inline\na^2\n:::')).find((x) => x.includes('did not parse'))
+    expect(m).toContain(':::math{inline}')
+  })
+})
+
+it('does NOT fire on prose that OPENS with the syntax in inline code', async () => {
+  const result = await compileMarkdown('`:::math{inline}` renders inline.\n', '/abs/x.md', { highlight: false })
+  expect(result.warnings.some((w) => w.includes('did not parse'))).toBe(false)
+})
+
+describe('directives owned by other plugins are not "unknown callouts"', () => {
+  it.each([
+    [':::math\nE = mc^2\n:::\n'],
+    [':::math{inline}\na^2\n:::\n'],
+    [':::mermaid\ngraph TD\n  A --> B\n:::\n'],
+    [':::details[Click to expand]\nHidden body.\n:::\n'],
+  ])('%s compiles with no warnings', async (md) => {
+    const result = await compileMarkdown(md, '/abs/x.md', { highlight: false })
+    expect(result.warnings).toEqual([])
+  })
 })

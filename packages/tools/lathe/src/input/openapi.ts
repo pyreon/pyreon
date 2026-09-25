@@ -769,9 +769,12 @@ function tagFileNames(raw: readonly string[]): Map<string, string> {
  * parameter `cancel` the caller could never supply, and the request threw.
  */
 function toPyreonPath(path: string, ids: ReadonlyMap<string, string>): string {
-  return path
-    .replace(/:/g, '\\:')
-    .replace(/\{([^}]+)\}/g, (_m, name: string) => `:${ids.get(name) ?? ident(name)}`)
+  // ONE pass over both tokens: a literal colon becomes the `\\:` escape and a
+  // `{name}` becomes `:name`. `@pyreon/http` has no other escape (a backslash
+  // is an ordinary path character there), so no other character needs one.
+  return path.replace(/\{([^{}]+)\}|:/g, (_m, name: string | undefined) =>
+    name === undefined ? '\\:' : `:${ids.get(name) ?? ident(name)}`,
+  )
 }
 
 /**
