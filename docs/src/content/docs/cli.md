@@ -1,9 +1,9 @@
 ---
 title: '@pyreon/cli'
-description: Command-line tools for Pyreon — the doctor health audit (15 gates, 0-100 score) and the context generator for AI tools.
+description: Command-line tools for Pyreon — the doctor health audit (15 gates, 0-100 score), Plain Mode readiness/codemod, anti-pattern scanning, package install recipes, project scaffolding, and the context generator for AI tools.
 ---
 
-`@pyreon/cli` is the command-line companion for Pyreon projects. It ships five commands: **`pyreon doctor`** — a project-wide health audit that runs a battery of independent **gates** in parallel, aggregates every finding into a unified report, and computes a **0-100 health score** with a letter grade and a per-category bar chart; **`pyreon context`** — a project-structure scanner that writes a machine-readable summary for AI coding assistants; **`pyreon info`** — an environment report that lists every installed `@pyreon/*` version and flags version skew before it trips the duplicate-instance guard; **`pyreon upgrade`** — the fix for that skew, aligning every `@pyreon/*` dependency to one version; and **`pyreon lint`** — a thin front door to `@pyreon/lint` that forwards every `pyreon-lint` flag.
+`@pyreon/cli` is the command-line companion for Pyreon projects. It ships the `pyreon` binary with these commands: **`pyreon check`** — a fast, file-scoped anti-pattern scan with inline fixes; **`pyreon plain`** — a Plain-Mode readiness report and classic→plain codemod; **`pyreon add`** — installs `@pyreon/*` packages and prints a tailored setup recipe; **`pyreon new`** — scaffolds a new project; **`pyreon mcp`** / **`pyreon atlas`** / **`pyreon loom`** / **`pyreon lathe`** — thin front doors to the MCP server, the Atlas component workbench, the Loom dependency observatory, and the Lathe spec-to-client generator; **`pyreon doctor`** — a project-wide health audit that runs a battery of independent **gates** in parallel, aggregates every finding into a unified report, and computes a **0-100 health score** with a letter grade and a per-category bar chart; **`pyreon context`** — a project-structure scanner that writes a machine-readable summary for AI coding assistants; **`pyreon info`** — an environment report that lists every installed `@pyreon/*` version and flags version skew before it trips the duplicate-instance guard; **`pyreon upgrade`** — the fix for that skew, aligning every `@pyreon/*` dependency to one version; and **`pyreon lint`** — a thin front door to `@pyreon/lint` that forwards every `pyreon-lint` flag.
 
 <PackageBadge name="@pyreon/cli" href="/docs/cli" />
 
@@ -142,7 +142,7 @@ It **auto-detects your package manager** from the lockfile (`bun.lock` → bun, 
   Docs: https://pyreon.dev/docs/query
 ```
 
-Curated recipes exist for the flagship packages (query, toast, i18n, permissions, form, store, router, head); any other `@pyreon/*` package still installs, with a generic docs pointer. The recipes live in the CLI itself (hand-authored + verified against each package's real API) rather than being generated from manifests — published packages don't ship their manifests, and reaching across packages for them would bloat the CLI's install.
+Curated recipes exist for the flagship packages (query, toast, i18n, permissions, form, store, router, head) plus the three dev-tool packages that have a command, not a root provider, to reach for (loom, atlas, config — `usage` is the command you run, not JSX to wrap); any other `@pyreon/*` package still installs, with a generic docs pointer. The recipes live in the CLI itself (hand-authored + verified against each package's real API) rather than being generated from manifests — published packages don't ship their manifests, and reaching across packages for them would bloat the CLI's install.
 
 ## `pyreon new`
 
@@ -174,13 +174,77 @@ Point your assistant's MCP config at `pyreon mcp` (e.g. as the `command`) to get
 ## `pyreon atlas`
 
 ```bash
+pyreon atlas init .              # detect this workspace's packages and write pyreon.config.ts
 pyreon atlas scan .              # derive + verify the component catalog (exits non-zero on failing scenarios)
 pyreon atlas dev .               # serve the Atlas workbench for this project
+pyreon atlas verify <Component>  # re-check ONE component; reports WHICH check failed
 pyreon atlas verify-browser .    # browser-half verification: reactive coverage + visual snapshots
+pyreon atlas build .             # compile the workbench into a static, deployable site
 pyreon atlas --dry-run <args>    # print the npx command without launching
 ```
 
-The [Atlas component workbench](/docs/atlas) from the CLI front door. A thin, dependency-free delegator to `@pyreon/atlas` — every arg after `atlas` passes straight through. Like `pyreon mcp` it is deliberately **not** pinned to `@latest`: the project-local `@pyreon/atlas` wins when installed, so the derived catalog matches *your* installed Pyreon version.
+The [Atlas component workbench](/docs/atlas) from the CLI front door. A thin, dependency-free delegator to `@pyreon/atlas` — every arg after `atlas` passes straight through, so `pyreon atlas --help` prints Atlas's own (much larger) flag reference for every subcommand. Like `pyreon mcp` it is deliberately **not** pinned to `@latest`: the project-local `@pyreon/atlas` wins when installed, so the derived catalog matches *your* installed Pyreon version.
+
+## `pyreon loom`
+
+```bash
+pyreon loom scan .                # analyze the dependency fabric; red exit on error-severity findings
+pyreon loom scan . --strict       # also exit non-zero on warnings
+pyreon loom scan . --json         # the full report as JSON on stdout (valid to redirect to a file)
+pyreon loom dev .                 # serve the observatory UI (graph / matrix / cycles / impact / manifests)
+pyreon loom build .               # prerender the observatory to a standalone static site
+pyreon loom --dry-run <args>      # print the npx command without launching
+```
+
+The [Loom dependency observatory](/docs/loom) from the CLI front door. A thin, dependency-free delegator to `@pyreon/loom` — every arg after `loom` passes straight through. `scan` needs no extra dependencies; `dev`/`build` need `vite` + `@pyreon/vite-plugin` (and `build` additionally `@pyreon/zero`) as optional peers. Not pinned to `@latest` — the project-local `@pyreon/loom` wins when installed.
+
+## `pyreon lathe`
+
+```bash
+pyreon lathe generate ./openapi.yaml    # read a spec, write the @pyreon/http + @pyreon/query client
+pyreon lathe check ./openapi.yaml       # regenerate in memory; fail (exit 1) if the committed output is stale
+pyreon lathe pull <url>                 # fetch a remote spec to the configured input path
+pyreon lathe generate --target multiplatform   # also emit + verify native (Swift/Kotlin) modules
+pyreon lathe --dry-run <args>           # print the npx command without launching
+```
+
+The [Lathe spec-to-client generator](/docs/lathe) from the CLI front door. A thin, dependency-free delegator to `@pyreon/lathe` — every arg after `lathe` passes straight through. Deliberately **not** pinned to `@latest` (same reasoning as `pyreon mcp`/`pyreon atlas`/`pyreon loom`): the generator that runs is the one pinned alongside the app it generates for, so a newer generator never silently emits against an older runtime.
+
+## `pyreon plain`
+
+A **readiness report** for [Plain Mode](/docs/plain-mode) — Pyreon's compile-time dialect that lets reactive code read as plain JavaScript (`let count = state(0)` instead of `const count = signal(0)`). Dry-run (the default) is per-file: does it already compile clean under plain, convert fully, convert partially with every declined shape named, or have nothing to convert? `--write` applies the classic → plain codemod in place.
+
+```bash
+pyreon plain                     # scan the whole tree under cwd (a readiness question is project-level)
+pyreon plain src/                # scope to a directory
+pyreon plain src/Counter.tsx     # scope to one file
+pyreon plain --json              # machine-readable report
+pyreon plain --write             # apply the codemod to every fully-convertible binding
+```
+
+Example output:
+
+```text
+  Plain Mode readiness
+
+  src/Counter.tsx ✓ converts fully (2 bindings)
+  src/Editor.tsx ◐ partial (1 convert, 1 declined)
+      12:9 [deep-mutation-on-shallow] .push on a state.raw()/non-literal binding needs a manual rewrite
+
+  2 file(s) scanned · 1 already plain · 2 convertible · 0 declined · 0 nothing to convert
+
+  Declined shapes (build-next histogram):
+    deep-mutation-on-shallow  1
+
+  Run `pyreon plain --write` to apply.
+```
+
+Conversion is per-**binding**: a `let`/`const` converts only when **every** reference to it has a plain form (calls, `.set`, a simple `.update`, `.peek` → `untrack`); anything else stays byte-untouched with a named reason, and an object/array-literal signal becomes `state.raw(...)` rather than changing semantics. With no path arguments it scans the whole project (unlike `pyreon check`, whose no-arg default is git-changed files — a readiness report is a project-wide question, not a per-diff one). The **declined-shape histogram** at the bottom tells you which rewrite is worth building next if a lot of your codebase declines for the same reason.
+
+| Flag | Effect |
+| --- | --- |
+| `--write` | Apply the codemod to every fully-convertible binding, in place. |
+| `--json` | Machine-readable report (`files`, `summary`, `declinedHistogram`). |
 
 ## `pyreon doctor`
 
@@ -266,7 +330,7 @@ Letter grades:
 | `--help`, `-h` | Print usage. |
 | `--version`, `-v` | Print the CLI version. |
 
-Valid gate names for `--only` / `--skip`: `react-patterns`, `pyreon-patterns`, `lint`, `distribution`, `doc-claims`, `islands-audit`, `ssg-audit`, `content-audit`, `native-audit`, `audit-tests`, `check-dedup`, `audit-leak-classes`, `audit-types`, `bundle-budgets`. An unknown gate name is rejected with an error listing the valid set.
+Valid gate names for `--only` / `--skip`: `react-patterns`, `pyreon-patterns`, `lint`, `distribution`, `doc-claims`, `islands-audit`, `dependency-fabric`, `ssg-audit`, `content-audit`, `native-audit`, `audit-tests`, `check-dedup`, `audit-leak-classes`, `audit-types`, `bundle-budgets`. An unknown gate name is rejected with an error listing the valid set.
 
 ```bash
 pyreon doctor                                  # 13 fast gates + score
@@ -574,11 +638,18 @@ console.log(context.components.length, 'components')
 | Command | Description |
 | --- | --- |
 | `pyreon check [paths] [--fix] [--json]` | Fast, file-scoped Pyreon/React anti-pattern scan (compiler detectors) with inline fixes. No paths → git-changed files. Exits non-zero on findings. |
+| `pyreon plain [paths] [--write] [--json]` | Plain-Mode readiness report + classic→plain codemod. No paths → the whole tree under cwd. |
 | `pyreon add <pkg...> [--dry-run] [--json]` | Install `@pyreon/*` packages (PM auto-detected) and print a tailored setup recipe for each. |
 | `pyreon new [name] [--native]` | Scaffold a new Pyreon project (delegates to `@pyreon/create-zero`, or `-multiplatform` with `--native`). |
 | `pyreon mcp [args]` | Launch the Pyreon MCP server (delegates to `@pyreon/mcp`; prefers the project-local install). |
+| `pyreon atlas [args]` | Component workbench (delegates to `@pyreon/atlas`: `init`/`scan`/`dev`/`verify`/`verify-browser`/`build`). |
+| `pyreon loom [args]` | Dependency observatory (delegates to `@pyreon/loom`: `scan`/`dev`/`build`). |
+| `pyreon lathe [args]` | Spec-to-client generator (delegates to `@pyreon/lathe`: `generate`/`check`/`pull`). |
 | `pyreon doctor [options]` | Project-wide health audit with a 0-100 score. Runs 13 fast gates by default; `--full` enables 2 slow gates. |
 | `pyreon context [--out <path>]` | Generate `.pyreon/context.json` for AI tools. |
+| `pyreon info [--json]` | Environment + installed `@pyreon/*` versions + version-skew check. |
+| `pyreon upgrade [--to <v>] [--write] [--exact]` | Align every `@pyreon/*` dependency to one version. Dry-run by default. |
+| `pyreon lint [paths] [--fix] [--watch] […]` | Run `@pyreon/lint` (forwards every `pyreon-lint` flag). |
 | `pyreon --help` / `-h` | Show usage. |
 | `pyreon --version` / `-v` | Show the CLI version. |
 
@@ -595,6 +666,7 @@ console.log(context.components.length, 'components')
 | `--gha` | boolean | off | Shortcut for `--format=gha`. |
 | `--ci` | boolean | off | Exit non-zero on non-advisory error findings. |
 | `--audit-min-risk <r>` | `high\|medium\|low` | `medium` | Minimum risk for the `audit-tests` gate. |
+| `--roots <globs>` | comma list | workspace-discovered | Override scan-root discovery for the file-scanning gates (relative to cwd). |
 | `--audit-tests` | boolean | off | Legacy → `--only audit-tests`. |
 | `--check-islands` | boolean | off | Legacy → `--only islands-audit`. |
 | `--check-ssg` | boolean | off | Legacy → `--only ssg-audit`. |
@@ -611,6 +683,7 @@ console.log(context.components.length, 'components')
 | `distribution` | fast | `architecture` | error |
 | `doc-claims` | fast | `documentation` | error |
 | `islands-audit` | fast | `architecture` | error / warning |
+| `dependency-fabric` | fast | `architecture` | error / warning / info |
 | `ssg-audit` | fast | `architecture` | error / warning |
 | `content-audit` | fast | `architecture` | error / warning |
 | `native-audit` | fast | `architecture` | warning |
@@ -640,6 +713,6 @@ console.log(context.components.length, 'components')
 | `generateContext(options)` | function | Scan the project and write `.pyreon/context.json`. |
 | `DoctorOptions` | type | Options for `doctor()`. |
 | `DoctorReport` | type | The aggregated report shape (`--json` output). |
-| `GateName` | type | Union of all 14 gate names. |
+| `GateName` | type | Union of all 15 gate names. |
 | `ContextOptions` | type | Options for `generateContext()`. |
 | `ProjectContext` | type | The scanned project shape. |
