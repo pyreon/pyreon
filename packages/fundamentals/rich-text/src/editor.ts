@@ -1,5 +1,6 @@
 import { computed, signal, wrapSignal } from '@pyreon/reactivity'
 import type { AnyExtension, Editor, JSONContent } from '@tiptap/core'
+import { htmlToJson, jsonToHtml } from './html'
 import type { RichTextConfig, RichTextEditor } from './types'
 
 const EMPTY_DOC: JSONContent = { type: 'doc', content: [] }
@@ -83,6 +84,65 @@ function extractText(node: JSONContent): string {
   return blocks.join('\n\n')
 }
 
+type PluginProps = NonNullable<
+  ConstructorParameters<typeof import('@tiptap/pm/state').Plugin>[0]['props']
+>
+
+/**
+ * The `placeholder` option — a decoration on the empty document's first
+ * block carrying `data-placeholder` + `is-editor-empty` (TipTap's convention,
+ * so existing Placeholder CSS applies), plus a default style so it is visible
+ * without any CSS. Built on `@tiptap/pm` (already a dependency) rather than
+ * pulling in `@tiptap/extensions`.
+ */
+async function placeholderExtension(
+  Extension: typeof import('@tiptap/core').Extension,
+  text: string,
+): Promise<AnyExtension> {
+  const [{ Plugin }, { Decoration, DecorationSet }] = await Promise.all([
+    import('@tiptap/pm/state'),
+    import('@tiptap/pm/view'),
+  ])
+  return Extension.create({
+    name: 'pyreonPlaceholder',
+    addProseMirrorPlugins() {
+      return [
+        new Plugin({
+          // `@tiptap/pm/state`'s typings can reference a different patch of
+          // prosemirror-view than `@tiptap/pm/view` — the runtime classes are
+          // the one copy the engine uses, so only the declared type is bridged.
+          props: {
+            decorations(state: import('@tiptap/pm/state').EditorState) {
+              const doc = state.doc
+              const first = doc.firstChild
+              const empty =
+                doc.childCount <= 1 && (!first || (first.isTextblock && first.content.size === 0))
+              if (!empty || !first) return null
+              return DecorationSet.create(doc, [
+                Decoration.node(0, first.nodeSize, {
+                  class: 'is-editor-empty',
+                  'data-placeholder': text,
+                }),
+              ])
+            },
+          } as unknown as PluginProps,
+          view(editorView) {
+            const d = editorView.dom.ownerDocument
+            if (!d.querySelector('style[data-pyreon-rich-text-placeholder]')) {
+              const style = d.createElement('style')
+              style.setAttribute('data-pyreon-rich-text-placeholder', '')
+              style.textContent =
+                '.ProseMirror .is-editor-empty:first-child::before{content:attr(data-placeholder);float:left;height:0;pointer-events:none;color:#9ca3af}'
+              d.head.appendChild(style)
+            }
+            return {}
+          },
+        }),
+      ]
+    },
+  })
+}
+
 /**
  * Create a reactive WYSIWYG rich-text editor instance.
  *
@@ -107,7 +167,8 @@ function extractText(node: JSONContent): string {
 export function createRichTextEditor(config: RichTextConfig = {}): RichTextEditor {
   const {
     content = '',
-    editable: initialEditable = true,
+    readOnly,
+    placeholder,
     ariaLabel = 'Rich text editor',
     starterKit = true,
     extensions: userExtensions = [],
@@ -115,11 +176,21 @@ export function createRichTextEditor(config: RichTextConfig = {}): RichTextEdito
     onChange,
     onError,
   } = config
+  // `readOnly` is an alias for `editable: false`; an explicit `editable` wins.
+  const initialEditable = config.editable ?? (readOnly === undefined ? true : !readOnly)
 
   // ── Reactive state ───────────────────────────────────────────────────
-  const baseJson = signal<JSONContent>(
-    typeof content === 'object' && content ? content : EMPTY_DOC,
-  )
+  // An HTML string is parsed engine-free for the pre-mount window, so
+  // `text()` / counts / `isEmpty()` / `json()` describe the real draft before
+  // the (lazy) engine loads — they used to report an empty document. The
+  // schema's own parse replaces this on mount.
+  const initialJson: JSONContent =
+    typeof content === 'object' && content
+      ? content
+      : typeof content === 'string' && content !== ''
+        ? htmlToJson(content)
+        : EMPTY_DOC
+  const baseJson = signal<JSONContent>(initialJson)
   const focused = signal(false)
   const view = signal<Editor | null>(null)
   const baseEditable = signal(initialEditable)
@@ -146,37 +217,58 @@ export function createRichTextEditor(config: RichTextConfig = {}): RichTextEdito
   // editor's `onUpdate` fires — skip writing back to `baseJson` (we set it
   // explicitly), exactly like `@pyreon/code`'s CM↔signal compare guard.
   let applyingExternal = false
-  // The content the editor is created with at mount (covers a string OR a
-  // pre-mount `json.set`).
-  let pendingContent: string | JSONContent = content
+  // The content the NEXT mount is created with: the config content, then any
+  // content set while no editor was live (a string keeps the real HTML so the
+  // schema parses it exactly). `null` = seed from the live document
+  // (`baseJson`), i.e. a re-mount after dispose preserves the user's edits.
+  let pendingContent: string | JSONContent | null = content
   // Mount-attempt generation. `_mount` lazy-imports `@tiptap/*` (async), so a
   // `dispose()` or a newer `_mount` can land WHILE an import is in flight.
   // `dispose()` bumps this; `_mount` captures it before its awaits and bails
   // (without creating a leaked editor) if it changed — closes the
   // dispose-during-pending-mount leak (orphaned ProseMirror view + DOM).
   let mountToken = 0
-  // True once a mount has successfully created the editor. After that, the
-  // live document lives in `baseJson` (kept current by `onUpdate` / `json.set`),
-  // so a re-mount (dispose → mount the SAME instance, the documented
-  // user-owned lifecycle) seeds from the CURRENT doc — not the stale
-  // config-time `pendingContent`, which would silently revert edits.
-  let hasMountedOnce = false
+  /**
+   * Replace the live editor's content WITHOUT an undo step: loading a draft is
+   * not an edit the user should be able to undo back to an empty editor.
+   * `applyingExternal` is reset in `finally` — a `setContent` that throws
+   * (invalid content) must not leave every later user edit un-synced.
+   */
+  const pushContent = (e: Editor, next: string | JSONContent): void => {
+    applyingExternal = true
+    try {
+      e.chain().setMeta('addToHistory', false).setContent(next).run()
+    } finally {
+      applyingExternal = false
+    }
+  }
 
   // `json` is a writable facade: reads/peek/subscribe delegate to baseJson;
   // `.set` pushes into the live editor (when mounted) then commits to base.
   const json = wrapSignal(baseJson, {
     set: (next) => {
       const e = view.peek()
-      if (e) {
-        applyingExternal = true
-        e.commands.setContent(next)
-        applyingExternal = false
-      } else {
-        pendingContent = next
-      }
+      if (e) pushContent(e, next)
+      else pendingContent = next
       baseJson.set(next)
     },
   })
+
+  /** Replace the document from an HTML string (or JSON). */
+  const setContent = (next: string | JSONContent): void => {
+    if (typeof next !== 'string') {
+      json.set(next)
+      return
+    }
+    const e = view.peek()
+    if (e) {
+      pushContent(e, next)
+      baseJson.set(e.getJSON())
+    } else {
+      pendingContent = next
+      baseJson.set(htmlToJson(next))
+    }
+  }
 
   const readEditor = (): Editor | null => {
     docVersion() // subscribe — re-derive on each CONTENT change (not selection)
@@ -186,7 +278,16 @@ export function createRichTextEditor(config: RichTextConfig = {}): RichTextEdito
 
   // Engine-derived, CONTENT-reactive (read the live editor once mounted; skip
   // selection-only churn by subscribing to `docVersion`, not selection).
-  const html = computed(() => readEditor()?.getHTML() ?? (typeof content === 'string' ? content : ''))
+  // Pre-mount: the config string verbatim while the document is still the
+  // config one, else serialized from the document — a pre-mount `json.set`
+  // used to leave `html()` reporting the ORIGINAL config string.
+  const html = computed(() => {
+    const e = readEditor()
+    if (e) return e.getHTML()
+    const doc = baseJson()
+    if (doc === initialJson && typeof content === 'string') return content
+    return jsonToHtml(doc)
+  })
   const canUndo = computed(() => readEditor()?.can().undo() ?? false)
   const canRedo = computed(() => readEditor()?.can().redo() ?? false)
 
@@ -247,7 +348,16 @@ export function createRichTextEditor(config: RichTextConfig = {}): RichTextEdito
   }
 
   const _mount = async (parent: HTMLElement): Promise<void> => {
-    if (view.peek()) return // already mounted
+    const live = view.peek()
+    if (live) {
+      // Re-mount of a live instance into a new container (the `<RichText>`
+      // that owned the old one unmounted; the instance is user-owned and
+      // survives that). MOVE the editor DOM rather than leaving the new
+      // container blank — state, selection and undo history move with it.
+      const dom = live.view.dom
+      if (dom.parentElement !== parent) parent.appendChild(dom)
+      return
+    }
 
     // Claim this mount attempt. If `dispose()` (or a newer `_mount`) bumps the
     // token while the dynamic imports below are in flight, we bail before
@@ -255,12 +365,13 @@ export function createRichTextEditor(config: RichTextConfig = {}): RichTextEdito
     const token = ++mountToken
 
     try {
-      const { Editor } = await import('@tiptap/core')
+      const { Editor, Extension } = await import('@tiptap/core')
       const exts: AnyExtension[] = []
       if (starterKit) {
         const { StarterKit } = await import('@tiptap/starter-kit')
         exts.push(StarterKit)
       }
+      if (placeholder) exts.push(await placeholderExtension(Extension, placeholder))
       exts.push(...userExtensions)
 
       // Superseded while loading (disposed / re-mounted) — abort cleanly.
@@ -269,9 +380,8 @@ export function createRichTextEditor(config: RichTextConfig = {}): RichTextEdito
       const editor = new Editor({
         element: parent,
         extensions: exts,
-        // First mount: the config content (a string lives only in
-        // `pendingContent`). Re-mount: the live document from `baseJson`.
-        content: hasMountedOnce ? baseJson.peek() : pendingContent,
+        // The content set while no editor was live, else the live document.
+        content: pendingContent ?? baseJson.peek(),
         // honor a pre-mount `editable.set(false)` (config default otherwise).
         editable: baseEditable.peek(),
         autofocus,
@@ -281,6 +391,7 @@ export function createRichTextEditor(config: RichTextConfig = {}): RichTextEdito
             role: 'textbox',
             'aria-multiline': 'true',
             'aria-label': ariaLabel,
+            ...(placeholder ? { 'aria-placeholder': placeholder } : {}),
           },
         },
         onUpdate: ({ editor: e }) => {
@@ -304,7 +415,7 @@ export function createRichTextEditor(config: RichTextConfig = {}): RichTextEdito
       }
 
       view.set(editor)
-      hasMountedOnce = true
+      pendingContent = null
       // Normalize the signal to the editor's parsed doc (covers string content).
       baseJson.set(editor.getJSON())
       docVersion.update((v) => v + 1)
@@ -334,6 +445,7 @@ export function createRichTextEditor(config: RichTextConfig = {}): RichTextEdito
     focused,
     editable,
     view,
+    setContent,
     isActive,
     chain,
     focus,
