@@ -169,12 +169,16 @@ export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
   f.line('    (req, next) => (devTransport ? devTransport(req, next) : next(req)),')
   f.line('  ],')
   f.line('})')
-  f.line()
-  f.doc(
-    'What a generated call rejects with, typed by the status codes the spec',
-    'declares: `err.matched && err.status === 404` narrows `err.body`.',
-  )
-  f.line("export type { EndpointError, HttpErrorOf, RequestFailure } from '@pyreon/http'")
+  // Re-exported only when an operation declares typed error bodies: the
+  // hooks import `EndpointError` from here, whichever client was generated.
+  if (doc.operations.some((o) => (o.errors?.length ?? 0) > 0)) {
+    f.line()
+    f.doc(
+      'What a generated call rejects with, typed by the status codes the spec',
+      "declares: `err.matched === '404'` narrows `err.body` to that schema.",
+    )
+    f.line("export type { EndpointError, HttpErrorOf, RequestFailure } from '@pyreon/http'")
+  }
   return f
 }
 
