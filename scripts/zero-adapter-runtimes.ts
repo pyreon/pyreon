@@ -27,6 +27,12 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+// Minimal ambient declaration for `Bun.TOML`: `@pyreon/test-utils` typechecks
+// root scripts without `@types/bun` (same pattern as `serve-ssg.ts`).
+declare const Bun: {
+  TOML: { parse(input: string): unknown }
+}
+
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 /** The same render assertions `_invoke-ssr-function.mjs` applies. */
