@@ -119,6 +119,17 @@ import { plotMarkColorSlots, ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALET
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
+  binderName,
+  narrowExpr,
+  narrowingFor,
+  narrowStmts,
+  planGuard,
+  readsSubject,
+  stmtExprs,
+  unnarrowableWarning,
+  type Narrowing,
+} from './optional-narrowing'
+import {
   blockBodiedRenderCallbackWarning,
   isRenderArrow,
   isViewShaped,
@@ -4874,6 +4885,107 @@ function withSwiftLocals<T>(bindings: readonly (readonly [string, TypeIR | undef
   }
 }
 
+// ---------------------------------------------------------------------------
+// Optional narrowing — see optional-narrowing.ts. Swift never narrows through
+// a nil test, so every branch that TypeScript narrowed reads an unwrapped
+// BINDING here instead.
+
+/** The binding clause of an `if let` / `guard let`: `let x` / `let x = a.b`, plus the JS-truthiness check a string / number / boolean needs. */
+function swiftBindClause(n: Narrowing, binder: string, indent: number): string {
+  const subj = emitSwiftExpr(n.subject, indent)
+  const b = swiftIdent(binder)
+  const head = subj === b ? `let ${b}` : `let ${b} = ${subj}`
+  const extra =
+    n.truth === 'string' ? `, !${b}.isEmpty` : n.truth === 'number' ? `, ${b} != 0` : n.truth === 'boolean' ? `, ${b}` : ''
+  return head + extra
+}
+
+function warnUnnarrowable(n: Narrowing, indent: number): void {
+  const w = unnarrowableWarning(emitSwiftExpr(n.subject, indent), 'swift')
+  if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+}
+
+/**
+ * A VALUE ternary that narrows: `books === undefined ? 0 : books.length` →
+ * `(books.map { books in books.count } ?? 0)`. The payload filter carries JS
+ * truthiness for a string / number / boolean subject. Null when the condition
+ * narrows nothing the surviving branch reads.
+ */
+function emitSwiftNarrowedTernary(e: Extract<ExprIR, { kind: 'ternary' }>, indent: number): string | null {
+  const n = narrowingFor(e.cond, _exprInferCtx, _activePropsParamName)
+  if (n === null) return null
+  const narrowed = n.presentWhenTrue ? e.then : e.otherwise
+  const other = n.presentWhenTrue ? e.otherwise : e.then
+  if (!readsSubject(narrowed, n.subject)) return null
+  const binder = binderName(n.subject, [narrowed])
+  const rewritten = narrowExpr(narrowed, n.subject, binder)
+  if (rewritten === null) {
+    warnUnnarrowable(n, indent)
+    return null
+  }
+  const filter =
+    n.truth === 'string' ? '.flatMap { $0.isEmpty ? nil : $0 }' : n.truth === 'number' ? '.flatMap { $0 == 0 ? nil : $0 }' : n.truth === 'boolean' ? '.flatMap { $0 ? true : nil }' : ''
+  const b = swiftIdent(binder)
+  const { inner, innerOptional } = withSwiftLocals([[binder, n.unwrapped]], () => ({
+    inner: emitSwiftExpr(rewritten, indent),
+    innerOptional: typeIsOptional(inferType(rewritten, _exprInferCtx)),
+  }))
+  return `(${emitSwiftExpr(n.subject, indent)}${filter}.${innerOptional ? 'flatMap' : 'map'} { ${b} in ${inner} } ?? ${emitSwiftExpr(other, indent)})`
+}
+
+/**
+ * A VIEW conditional that narrows — `x == nil ? <A/> : <B x/>`, `{x && <B x/>}`
+ * — lowered to `if let x { B } else { A }`. `whenFalse` is undefined for the
+ * `&&` form. Null when there is nothing to narrow.
+ */
+function emitSwiftNarrowedView(
+  cond: ExprIR,
+  whenTrue: ExprIR,
+  whenFalse: ExprIR | undefined,
+  indent: number,
+): string | null {
+  const n = narrowingFor(cond, _exprInferCtx, _activePropsParamName)
+  if (n === null) return null
+  const narrowed = n.presentWhenTrue ? whenTrue : whenFalse
+  const other = n.presentWhenTrue ? whenFalse : whenTrue
+  if (narrowed === undefined || !readsSubject(narrowed, n.subject)) return null
+  const binder = binderName(n.subject, [narrowed])
+  const rewritten = narrowExpr(narrowed, n.subject, binder)
+  if (rewritten === null) {
+    warnUnnarrowable(n, indent)
+    return null
+  }
+  const pad = ' '.repeat(indent + 2)
+  const base = ' '.repeat(indent)
+  const head = `if ${swiftBindClause(n, binder, indent)} {\n${pad}${withSwiftLocals([[binder, n.unwrapped]], () =>
+    emitSwiftChild({ kind: 'expr', expr: rewritten }, indent + 2),
+  )}\n${base}}`
+  if (other === undefined) return head
+  return `${head} else {\n${pad}${emitSwiftChild({ kind: 'expr', expr: other }, indent + 2)}\n${base}}`
+}
+
+/**
+ * A statement list, with the early-return guard lowered:
+ * `if (b.tags === undefined) return 0` followed by reads of `b.tags` →
+ * `guard let tags = b.tags else { return 0 }` and the rest reading `tags`.
+ */
+function emitSwiftStmtLines(stmts: readonly StatementIR[], indent: number): string[] {
+  const pad = ' '.repeat(indent)
+  const out: string[] = []
+  for (let i = 0; i < stmts.length; i++) {
+    const s = stmts[i]!
+    const g = planGuard(s, stmts.slice(i + 1), _exprInferCtx, _activePropsParamName)
+    if (g !== null) {
+      const exitLines = g.exitBody.map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`).join('\n')
+      out.push(`${pad}guard ${swiftBindClause(g.narrowing, g.binder, indent)} else {\n${exitLines}\n${pad}}`)
+      out.push(...withSwiftLocals([[g.binder, g.narrowing.unwrapped]], () => emitSwiftStmtLines(g.rest, indent)))
+      return out
+    }
+    out.push(`${pad}${emitSwiftStatement(s, indent)}`)
+  }
+  return out
+}
+
 /**
  * `const renderRow = (r: Row) => <Text>{r.name}</Text>` →
  * `@ViewBuilder private func renderRow(_ r: Row) -> some View { Text(…) }`.
@@ -5090,7 +5202,7 @@ function emitSwiftFunction(
     // alias only inside emitSwiftComponent) — seeding one left `r` unknown
     // to the other, so isInteger warned raw despite a resolvable type.
     const savedActive = seedHandlerLocals(inlinedBody, _activeInferCtx)
-    const bodyLines = inlinedBody.map((s) => `    ${emitSwiftStatement(s, 4)}`).join('\n')
+    const bodyLines = emitSwiftStmtLines(inlinedBody, 4).join('\n')
     _exprInferCtx.locals = savedLocals
     _activeInferCtx.locals = savedActive
     const vis2 = visibility === 'private' ? 'private ' : ''
@@ -5246,50 +5358,32 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       // downstream type-dependent emits see the non-optional. Kotlin needs no
       // twin: `if (token != null)` smart-casts a val local by language rule.
       // Non-identifier optional conditions keep the `!= nil` lowering below.
-      const optC = classifyOptionalCondition(s.cond, _exprInferCtx)
-      // The comparison forms (`x !== null` / `x === null`) name the operand as
-      // the classifier's argument; `=== null` binds with the BODIES SWAPPED
-      // (the else-body is the narrowed one) and only when there is an else —
-      // a lone absent-check keeps the `== nil` test below.
-      const optName =
-        optC?.form === 'present'
-          ? s.cond.kind === 'identifier'
-            ? s.cond.name
-            : optC.argument?.kind === 'identifier'
-              ? optC.argument.name
-              : undefined
-          : optC?.form === 'absent' && optC.argument.kind === 'identifier' && s.elseBody
-            ? optC.argument.name
-            : undefined
-      if (optName !== undefined) {
-        const name = optName
-        const swapped = optC?.form === 'absent'
-        const narrowed = swapped ? s.elseBody! : s.then
-        const other = swapped ? s.then : s.elseBody
-        const prev = _exprInferCtx.locals.get(name)
-        if (prev !== undefined) _exprInferCtx.locals.set(name, unwrapOptionalType(prev))
-        let thenLines: string
-        try {
-          thenLines = narrowed
-            .map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`)
-            .join('\n')
-        } finally {
-          if (prev !== undefined) _exprInferCtx.locals.set(name, prev)
+      // Generalised in optional-narrowing.ts: the subject may be a signal
+      // read or a member chain (`if (b.tags) { b.tags.length }`), not just an
+      // identifier, and the `=== undefined` form binds with the bodies swapped.
+      const optN = narrowingFor(s.cond, _exprInferCtx, _activePropsParamName)
+      if (optN !== null) {
+        const narrowedBody = optN.presentWhenTrue ? s.then : s.elseBody
+        const otherBody = optN.presentWhenTrue ? s.elseBody : s.then
+        if (narrowedBody !== undefined && stmtExprs(narrowedBody).some((x) => readsSubject(x, optN.subject))) {
+          const binder = binderName(optN.subject, stmtExprs(narrowedBody))
+          const rewritten = narrowStmts(narrowedBody, optN.subject, binder)
+          if (rewritten !== null) {
+            const thenLines = withSwiftLocals([[binder, optN.unwrapped]], () =>
+              emitSwiftStmtLines(rewritten, indent + 2).join('\n'),
+            )
+            const head = `if ${swiftBindClause(optN, binder, indent)} {\n${thenLines}\n${pad}}`
+            if (!otherBody) return head
+            return `${head} else {\n${emitSwiftStmtLines(otherBody, indent + 2).join('\n')}\n${pad}}`
+          }
+          warnUnnarrowable(optN, indent)
         }
-        const head = `if let ${swiftIdent(name)} {\n${thenLines}\n${pad}}`
-        if (!other) return head
-        const elseLines = other
-          .map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`)
-          .join('\n')
-        return `${head} else {\n${elseLines}\n${pad}}`
       }
       const cond = swiftCondition(s.cond, (x) => emitSwiftExpr(x, indent))
-      const thenLines = s.then.map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`).join('\n')
+      const thenLines = emitSwiftStmtLines(s.then, indent + 2).join('\n')
       const head = `if ${cond} {\n${thenLines}\n${pad}}`
       if (!s.elseBody) return head
-      const elseLines = s.elseBody
-        .map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`)
-        .join('\n')
+      const elseLines = emitSwiftStmtLines(s.elseBody, indent + 2).join('\n')
       return `${head} else {\n${elseLines}\n${pad}}`
     }
     case 'while': {
@@ -8409,40 +8503,18 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       if (nc) {
         return `(${emitSwiftExpr(nc.opt, indent)} ?? ${emitSwiftExpr(nc.fallback, indent)})`
       }
+      // A ternary whose surviving branch READS the optional it tested
+      // (`books === undefined ? 0 : books.length`, `sel() ? sel().title : …`,
+      // `b.tags ? b.tags.length : 0`): Swift has no ternary narrowing, so the
+      // narrowed branch runs inside `.map { x in … }` on an unwrapped binding
+      // and the other branch is the `??` fallback. See optional-narrowing.ts.
+      {
+        const narrowed = emitSwiftNarrowedTernary(e, indent)
+        if (narrowed !== null) return narrowed
+      }
       const omt = optionalMemberTernary(e, _exprInferCtx)
       if (omt) {
         return `(${emitSwiftExpr(omt.opt, indent)}?.${swiftIdent(omt.property)} ?? ${emitSwiftExpr(e.otherwise, indent)})`
-      }
-      // A narrowing ternary on an optional IDENTIFIER whose branch READS it
-      // (`r === null ? '' : String(r.start)`): Swift has no ternary narrowing,
-      // so the narrowed branch runs inside `r.map { r in … }` (the closure
-      // param shadows the optional with its payload) and the other branch is
-      // the `??` fallback. Kotlin smart-casts and needs nothing.
-      const oc = classifyOptionalCondition(e.cond, _exprInferCtx)
-      const ocName =
-        oc?.form === 'present'
-          ? e.cond.kind === 'identifier'
-            ? e.cond.name
-            : oc.argument?.kind === 'identifier'
-              ? oc.argument.name
-              : undefined
-          : oc?.form === 'absent' && oc.argument.kind === 'identifier'
-            ? oc.argument.name
-            : undefined
-      if (ocName !== undefined) {
-        const narrowedBranch = oc?.form === 'absent' ? e.otherwise : e.then
-        const otherBranch = oc?.form === 'absent' ? e.then : e.otherwise
-        if (exprReferencesIdent(narrowedBranch, ocName)) {
-          const prev = _exprInferCtx.locals.get(ocName)
-          if (prev !== undefined) _exprInferCtx.locals.set(ocName, unwrapOptionalType(prev))
-          let inner: string
-          try {
-            inner = emitSwiftExpr(narrowedBranch, indent)
-          } finally {
-            if (prev !== undefined) _exprInferCtx.locals.set(ocName, prev)
-          }
-          return `(${swiftIdent(ocName)}.map { ${swiftIdent(ocName)} in ${inner} } ?? ${emitSwiftExpr(otherBranch, indent)})`
-        }
       }
       const condStr = swiftCondition(e.cond, (x) => emitSwiftExpr(x, indent))
       let thenStr = emitSwiftExpr(e.then, indent)
@@ -9946,10 +10018,7 @@ function emitSwiftAction(handler: ExprIR, indent: number): string {
       // launch async work. The `await` sub-expressions emit inside it.
       const isAsync = handler.async === true
       const bodyIndent = isAsync ? indent + 4 : indent + 2
-      const bodyPad = ' '.repeat(bodyIndent)
-      const lines = inlinedStmts
-        .map((s) => bodyPad + emitSwiftStatement(s, bodyIndent))
-        .join('\n')
+      const lines = emitSwiftStmtLines(inlinedStmts, bodyIndent).join('\n')
       _exprInferCtx.locals = savedLocals
       _activeInferCtx.locals = savedLocalsAct6
       if (isAsync) {
@@ -13279,6 +13348,8 @@ function emitSwiftViewTernary(
   t: { cond: ExprIR; then: ExprIR; otherwise: ExprIR },
   indent: number,
 ): string {
+  const narrowed = emitSwiftNarrowedView(t.cond, t.then, t.otherwise, indent)
+  if (narrowed !== null) return narrowed
   const cond = swiftCondition(t.cond, (x) => emitSwiftExpr(x, indent))
   const pad = ' '.repeat(indent + 2)
   const base = ' '.repeat(indent)
@@ -13376,6 +13447,8 @@ function emitSwiftChild(c: ChildIR, indent: number): string {
     // `t` is OPTIONAL (e.g. a `.find` result) → `if t != nil { … }` (and `{!t
     // && <X/>}` → `if t == nil { … }`), not the bare `if t { … }` swiftc
     // rejects as a non-Bool condition.
+    const narrowed = emitSwiftNarrowedView(c.expr.left, c.expr.right, undefined, indent)
+    if (narrowed !== null) return narrowed
     const cond = swiftCondition(c.expr.left, (x) => emitSwiftExpr(x, indent))
     const pad = ' '.repeat(indent + 2)
     const inner = emitSwiftChild({ kind: 'expr', expr: c.expr.right }, indent + 2)

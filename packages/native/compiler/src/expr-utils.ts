@@ -680,20 +680,47 @@ export function substituteIdentifier(
   name: string,
   replacement: ExprIR,
 ): ExprIR | null {
+  return substituteMatching(expr, {
+    matches: (e) => e.kind === 'identifier' && e.name === name,
+    replacement,
+    shadow: name,
+  })
+}
+
+/**
+ * What {@link substituteMatching} replaces. `matches` decides a node; `shadow`
+ * is the root name a nested arrow parameter would rebind (a bail, as in
+ * `substituteIdentifier`). `narrowing` is the optional-narrowing use: `x?.y`
+ * with `x` replaced by its unwrapped binding becomes `x.y`, and an arrow with
+ * a statement body — which the identifier walker passes through untouched —
+ * is a bail rather than a silent miss.
+ */
+export interface Substitution {
+  matches: (e: ExprIR) => boolean
+  replacement: ExprIR
+  shadow: string
+  narrowing?: boolean
+}
+
+/** Total structural replace — the engine behind `substituteIdentifier`. */
+export function substituteMatching(expr: ExprIR, subst: Substitution): ExprIR | null {
+  const { replacement } = subst
+  const name = subst.shadow
+  if (subst.matches(expr)) return replacement
   switch (expr.kind) {
     case 'new-sized-map':
       return expr
     case 'new-collection': {
       if (expr.seed !== undefined) {
-        const seed = substituteIdentifier(expr.seed, name, replacement)
+        const seed = substituteMatching(expr.seed, subst)
         if (seed === null) return null // bail-propagation, like every other case
         return { ...expr, seed }
       }
       if (expr.entries !== undefined) {
         const entries: [ExprIR, ExprIR][] = []
         for (const [k, v] of expr.entries) {
-          const nk = substituteIdentifier(k, name, replacement)
-          const nv = substituteIdentifier(v, name, replacement)
+          const nk = substituteMatching(k, subst)
+          const nv = substituteMatching(v, subst)
           if (nk === null || nv === null) return null
           entries.push([nk, nv])
         }
@@ -704,51 +731,52 @@ export function substituteIdentifier(
     case 'literal':
       return expr
     case 'identifier':
-      return expr.name === name ? replacement : expr
+      return expr
     case 'call': {
-      const callee = substituteIdentifier(expr.callee, name, replacement)
+      const callee = substituteMatching(expr.callee, subst)
       if (callee === null) return null
       const args: ExprIR[] = []
       for (const a of expr.args) {
-        const sub = substituteIdentifier(a, name, replacement)
+        const sub = substituteMatching(a, subst)
         if (sub === null) return null
         args.push(sub)
       }
       return { ...expr, callee, args }
     }
     case 'member': {
-      const object = substituteIdentifier(expr.object, name, replacement)
+      const hit = subst.narrowing === true && expr.optional === true && subst.matches(expr.object)
+      const object = substituteMatching(expr.object, subst)
       if (object === null) return null
-      return { ...expr, object }
+      return hit ? { ...expr, object, optional: false } : { ...expr, object }
     }
     case 'index': {
-      const object = substituteIdentifier(expr.object, name, replacement)
+      const object = substituteMatching(expr.object, subst)
       if (object === null) return null
-      const index = substituteIdentifier(expr.index, name, replacement)
+      const index = substituteMatching(expr.index, subst)
       if (index === null) return null
       return { ...expr, object, index }
     }
     case 'binary':
     case 'comparison':
     case 'logical': {
-      const left = substituteIdentifier(expr.left, name, replacement)
+      const left = substituteMatching(expr.left, subst)
       if (left === null) return null
-      const right = substituteIdentifier(expr.right, name, replacement)
+      const right = substituteMatching(expr.right, subst)
       if (right === null) return null
       return { ...expr, left, right }
     }
     case 'unary':
     case 'update': {
-      const argument = substituteIdentifier(expr.argument, name, replacement)
+      const argument = substituteMatching(expr.argument, subst)
       if (argument === null) return null
       return { ...expr, argument }
     }
     case 'ternary': {
-      const cond = substituteIdentifier(expr.cond, name, replacement)
+      const cond = substituteMatching(expr.cond, subst)
       if (cond === null) return null
-      const then = substituteIdentifier(expr.then, name, replacement)
+      const then = substituteMatching(expr.then, subst)
       if (then === null) return null
-      const otherwise = substituteIdentifier(expr.otherwise, name, replacement)
+      const otherwise = substituteMatching(expr.otherwise, subst)
       if (otherwise === null) return null
       return { ...expr, cond, then, otherwise }
     }
@@ -756,16 +784,17 @@ export function substituteIdentifier(
       // Shadow boundary — a nested arrow re-binding `name` makes the
       // inner occurrences BOUND, not free. Conservative bail (see doc).
       if (expr.params.includes(name)) return null
-      const body = substituteIdentifier(expr.body, name, replacement)
+      if (subst.narrowing === true && expr.stmts !== undefined && expr.stmts.length > 0) return null
+      const body = substituteMatching(expr.body, subst)
       if (body === null) return null
       return { ...expr, body }
     }
     case 'rx-call': {
-      const source = substituteIdentifier(expr.source, name, replacement)
+      const source = substituteMatching(expr.source, subst)
       if (source === null) return null
       const args: ExprIR[] = []
       for (const a of expr.args) {
-        const sub = substituteIdentifier(a, name, replacement)
+        const sub = substituteMatching(a, subst)
         if (sub === null) return null
         args.push(sub)
       }
@@ -774,7 +803,7 @@ export function substituteIdentifier(
     case 'array': {
       const elements: ExprIR[] = []
       for (const el of expr.elements) {
-        const sub = substituteIdentifier(el, name, replacement)
+        const sub = substituteMatching(el, subst)
         if (sub === null) return null
         elements.push(sub)
       }
@@ -785,7 +814,7 @@ export function substituteIdentifier(
       // the literal quasi segments carry no identifiers.
       const exprs: ExprIR[] = []
       for (const ex of expr.exprs) {
-        const sub = substituteIdentifier(ex, name, replacement)
+        const sub = substituteMatching(ex, subst)
         if (sub === null) return null
         exprs.push(sub)
       }
@@ -794,7 +823,7 @@ export function substituteIdentifier(
     case 'object': {
       const fields: { name: string; value: ExprIR }[] = []
       for (const f of expr.fields) {
-        const value = substituteIdentifier(f.value, name, replacement)
+        const value = substituteMatching(f.value, subst)
         if (value === null) return null
         fields.push({ name: f.name, value })
       }
@@ -802,7 +831,7 @@ export function substituteIdentifier(
       if (expr.spreads !== undefined) {
         spreads = []
         for (const sp of expr.spreads) {
-          const sub = substituteIdentifier(sp, name, replacement)
+          const sub = substituteMatching(sp, subst)
           if (sub === null) return null
           spreads.push(sub)
         }
@@ -812,37 +841,37 @@ export function substituteIdentifier(
         : { ...expr, fields }
     }
     case 'paren': {
-      const inner = substituteIdentifier(expr.inner, name, replacement)
+      const inner = substituteMatching(expr.inner, subst)
       if (inner === null) return null
       return { ...expr, inner }
     }
     case 'json-stringify': {
-      const arg = substituteIdentifier(expr.arg, name, replacement)
+      const arg = substituteMatching(expr.arg, subst)
       if (arg === null) return null
       return { ...expr, arg }
     }
     case 'toast-call':
     case 'announce-call': {
-      const message = substituteIdentifier(expr.message, name, replacement)
+      const message = substituteMatching(expr.message, subst)
       if (message === null) return null
       return { ...expr, message }
     }
     case 'await': {
       // M4.5: `await X` — substitute inside the awaited expr (single-wrapper,
       // like `paren`, but the child slot is `.expr`).
-      const inner = substituteIdentifier(expr.expr, name, replacement)
+      const inner = substituteMatching(expr.expr, subst)
       if (inner === null) return null
       return { ...expr, expr: inner }
     }
     case 'schema-validate': {
       // Only the validated ARG has a substitutable child; the schema is a
       // synthesized compile-time constant.
-      const arg = substituteIdentifier(expr.arg, name, replacement)
+      const arg = substituteMatching(expr.arg, subst)
       if (arg === null) return null
       return { ...expr, arg }
     }
     case 'spread': {
-      const argument = substituteIdentifier(expr.argument, name, replacement)
+      const argument = substituteMatching(expr.argument, subst)
       if (argument === null) return null
       return { ...expr, argument }
     }
@@ -850,23 +879,23 @@ export function substituteIdentifier(
       const attrs: AttrIR[] = []
       for (const a of expr.attrs) {
         if (a.kind === 'attr') {
-          const value = substituteIdentifier(a.value, name, replacement)
+          const value = substituteMatching(a.value, subst)
           if (value === null) return null
           attrs.push({ ...a, value })
         } else if (a.kind === 'event') {
-          const handler = substituteIdentifier(a.handler, name, replacement)
+          const handler = substituteMatching(a.handler, subst)
           if (handler === null) return null
           attrs.push({ ...a, handler })
         } else {
           attrs.push(a)
         }
       }
-      const children = substituteInChildren(expr.children, name, replacement)
+      const children = substituteInChildren(expr.children, subst)
       if (children === null) return null
       return { ...expr, attrs, children }
     }
     case 'jsx-fragment': {
-      const children = substituteInChildren(expr.children, name, replacement)
+      const children = substituteInChildren(expr.children, subst)
       if (children === null) return null
       return { ...expr, children }
     }
@@ -1005,20 +1034,16 @@ function walkLowerParams(
   }
 }
 
-function substituteInChildren(
-  children: ChildIR[],
-  name: string,
-  replacement: ExprIR,
-): ChildIR[] | null {
+function substituteInChildren(children: ChildIR[], subst: Substitution): ChildIR[] | null {
   const out: ChildIR[] = []
   for (const c of children) {
     if (c.kind === 'text') {
       out.push(c)
       continue
     }
-    const sub = substituteIdentifier(c.expr, name, replacement)
-    if (sub === null) return null
-    out.push({ ...c, expr: sub })
+    const next = substituteMatching(c.expr, subst)
+    if (next === null) return null
+    out.push({ ...c, expr: next })
   }
   return out
 }
