@@ -83,15 +83,25 @@ describe('P1 — handler-LOCAL optional in a statement condition lowers (complet
   // shape) failed swiftc even with the condition lowered. `if let` does
   // both, matching JS narrowing. The negated form keeps `== nil` (nothing
   // to unwrap on the absent branch).
-  it('Swift: named-handler `if (localOpt)` lowers to the `if let` binding', () => {
-    expect(sw(named(findIf))).toContain('if let t {')
-    expect(sw(named(findIf))).not.toContain('t != nil')
+  // `findIf`'s body never reads `t`, so the lowering is a nil test — a
+  // binding nothing reads is swiftc's unused-value warning. The contract this
+  // file exists for is that the condition is LOWERED (never a bare `if t {`);
+  // the binding form, for a body that reads the value, is locked in
+  // native-auth-rehydrate and native-optional-narrowing.
+  it('Swift: named-handler `if (localOpt)` lowers to a nil test (the body does not read it)', () => {
+    expect(sw(named(findIf))).toContain('if t != nil {')
+    expect(sw(named(findIf))).not.toMatch(/if t \{/)
+  })
+  it('Swift: a handler body that READS the local binds it', () => {
+    const reads = `const t = td().find(x => x.id === 1); if (t) { td.set([{ id: t.id, done: true }]) }`
+    expect(sw(named(reads))).toContain('if let t {')
+    expect(sw(inline(reads))).toContain('if let t {')
   })
   it('Swift: named-handler `if (!localOpt)` lowers to `== nil`', () => {
     expect(sw(named(findIfNot))).toContain('== nil')
   })
-  it('Swift: inline-handler `if (localOpt)` lowers to the `if let` binding', () => {
-    expect(sw(inline(findIf))).toContain('if let t {')
+  it('Swift: inline-handler `if (localOpt)` lowers to a nil test', () => {
+    expect(sw(inline(findIf))).toContain('if t != nil {')
   })
   it('Kotlin: named + inline handler-local conditions lower to `!= null` / `== null`', () => {
     expect(kt(named(findIf))).toContain('!= null')

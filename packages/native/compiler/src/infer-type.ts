@@ -325,6 +325,16 @@ export function widenFloatSignals(
  * `fetch.data` is deliberately absent — the member case below already types it
  * from the call's generic.
  */
+/**
+ * A service container's `error` is an error OBJECT on both runtimes (`Error?`
+ * on Swift, `Throwable?` on Kotlin) and on the web — never a string. It was
+ * typed `string` here, which was harmless while conditions only nil-tested
+ * it, and wrong the moment a condition needs JS truthiness: `if (q.error())`
+ * would have tested `isEmpty` on an `Error`. An error object is truthy
+ * whenever it is present, so the nil test is the faithful lowering.
+ */
+const ERROR_OBJECT: TypeIR = { kind: 'typeRef', name: 'Error', args: [] }
+
 const SERVICE_OPTIONAL_FIELDS: ReadonlyMap<string, ReadonlyMap<string, TypeIR>> = new Map([
   [
     'geolocation',
@@ -332,21 +342,21 @@ const SERVICE_OPTIONAL_FIELDS: ReadonlyMap<string, ReadonlyMap<string, TypeIR>> 
       ['latitude', { kind: 'number' }],
       ['longitude', { kind: 'number' }],
       ['accuracy', { kind: 'number' }],
-      ['error', { kind: 'string' }],
+      ['error', ERROR_OBJECT],
     ]),
   ],
   [
     'websocket',
     new Map<string, TypeIR>([
       ['lastMessage', { kind: 'string' }],
-      ['error', { kind: 'string' }],
+      ['error', ERROR_OBJECT],
     ]),
   ],
   [
     'payments',
     new Map<string, TypeIR>([
       ['purchasing', { kind: 'string' }],
-      ['error', { kind: 'string' }],
+      ['error', ERROR_OBJECT],
     ]),
   ],
   [
@@ -360,7 +370,7 @@ const SERVICE_OPTIONAL_FIELDS: ReadonlyMap<string, ReadonlyMap<string, TypeIR>> 
     // workaround an author would reach for, `{auth.error ?? ''}`, does NOT
     // compile: `Error?` cannot be coalesced with a String.
     'auth',
-    new Map<string, TypeIR>([['error', { kind: 'string' }]]),
+    new Map<string, TypeIR>([['error', ERROR_OBJECT]]),
   ],
   [
     'map',
@@ -379,11 +389,11 @@ const SERVICE_OPTIONAL_FIELDS: ReadonlyMap<string, ReadonlyMap<string, TypeIR>> 
   ],
   [
     'push',
-    new Map<string, TypeIR>([['error', { kind: 'string' }]]),
+    new Map<string, TypeIR>([['error', ERROR_OBJECT]]),
   ],
   [
     'fetch',
-    new Map<string, TypeIR>([['error', { kind: 'string' }]]),
+    new Map<string, TypeIR>([['error', ERROR_OBJECT]]),
   ],
 ])
 
@@ -1613,7 +1623,7 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         // session-rehydrate `if (token)` shape SERVICE_METHOD_RETURNS exists
         // for; the fetch container's call form was simply never listed.
         if (expr.callee.property === 'error') {
-          return { kind: 'union', branches: [{ kind: 'string' }, { kind: 'undefined' }] }
+          return { kind: 'union', branches: [ERROR_OBJECT, { kind: 'undefined' }] }
         }
       }
       // Store-read chain: `useApp().store.tasks()` — zero-arg call on a

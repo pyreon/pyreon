@@ -112,6 +112,35 @@ import { plotMarkColorSlots, ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALET
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
+  binderName,
+  narrowExpr,
+  narrowingFor,
+  narrowStmts,
+  planGuard,
+  readsSubject,
+  stmtExprs,
+  isNarrowablePath,
+  truthinessFor,
+  nonPathSubjectWarning,
+  unnarrowableSubject,
+  unnarrowableWarning,
+  type Narrowing,
+} from './optional-narrowing'
+import {
+  blockBodiedRenderCallbackWarning,
+  isRenderArrow,
+  isViewShaped,
+  moduleViewHelpers,
+  propRefName,
+  slotPropsOf,
+  unlowerableRenderValueWarning,
+  viewHelperFromDecl,
+  viewHelperFromModuleDecl,
+  type SlotProp,
+  type ViewHelper,
+  unparenExpr,
+} from './render-slots'
+import {
   stretchAlignWarning,
   bakedPropDynamicWarning,
   nonBooleanLogicalWarning,
@@ -247,6 +276,11 @@ function canAliasIntercept(tag: string, expectedPkg: string, expectedImport = ta
 /** Component name → declared props, for `<Comp {...src} />` spread expansion.
  * Mirror of emit-swift's `_componentPropsMap`. */
 let _componentPropsMapKotlin: Map<string, { name: string; type: TypeIR }[]> = new Map()
+/** Kotlin twin of emit-swift's `_componentSlotsMap` — see its doc comment. */
+let _componentSlotsMapKotlin: Map<string, SlotProp[]> = new Map()
+let _activeSlotsKotlin: Map<string, SlotProp> = new Map()
+let _moduleViewHelpersKotlin: Map<string, ViewHelper> = new Map()
+let _viewHelpersKotlin: Map<string, ViewHelper> = new Map()
 type StaticFlowHandle = { id?: string; type: string; position: string; offset?: number }
 let _flowComponentHandlesKotlin: Map<string, StaticFlowHandle[]> = new Map()
 let _flowComponentsWithInvalidHandlesKotlin: Set<string> = new Set()
@@ -771,6 +805,9 @@ export function emitKotlin(
   _componentNames = new Set(components.map((c) => c.name))
   _jsxFnNames = collectJsxFnNames(components, [], moduleDecls)
   _componentPropsMapKotlin = new Map(components.map((c) => [c.name, c.props]))
+  _componentSlotsMapKotlin = new Map(components.map((c) => [c.name, slotPropsOf(c)]))
+  _moduleViewHelpersKotlin = moduleViewHelpers(moduleDecls)
+  _viewHelpersKotlin = new Map(_moduleViewHelpersKotlin)
   _flowComponentHandlesKotlin = new Map()
   _flowComponentsWithInvalidHandlesKotlin = new Set()
   _flowComponentResizersKotlin = new Map()
@@ -1004,6 +1041,10 @@ export function emitKotlin(
   _synthExprStructs = []
   _synthExprStructKeys = new Map()
   _componentNames = new Set()
+  _componentSlotsMapKotlin = new Map()
+  _activeSlotsKotlin = new Map()
+  _moduleViewHelpersKotlin = new Map()
+  _viewHelpersKotlin = new Map()
   _jsxFnNames = new Set()
   _styledComponents = new Map()
   _rocketstyleComponents = new Map()
@@ -1956,6 +1997,11 @@ function emitKotlinStruct(s: StructIR): string {
  *   source: const APP = '1.0'  →  private val APP: String = "1.0"
  */
 function emitKotlinModuleDecl(md: ModuleDeclIR): string {
+  // A file-scope `const renderRow = (r: Row) => <…/>` is a composable, not a
+  // lambda value — a plain lambda cannot call `Text`, and a composable
+  // function REFERENCE is not supported by the Compose compiler.
+  const vh = viewHelperFromModuleDecl(md)
+  if (vh !== null) return emitKotlinViewHelper(vh, 'private ', 0)
   const kw = md.mutable ? 'var' : 'val'
   const initial = withExpectedTypeKotlin(md.type, () => emitKotlinExpr(md.initial, 0))
   if (md.type.kind === 'unknown') {
@@ -2097,7 +2143,8 @@ function emitKotlinComponent(c: ComponentIR): string {
   _signalNames = new Set()
   // Seed with file-scope helper names so a `dbl(21)` call in this component
   // resolves as a free function.
-  _functionNames = new Set(_helperFnNames)
+  // File-scope view helpers are CALLED (`row()`), never read like a signal.
+  _functionNames = new Set([..._helperFnNames, ..._moduleViewHelpersKotlin.keys()])
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
   _machineNames = new Set()
   _syncedSignalNames = new Set()
@@ -2126,6 +2173,15 @@ function emitKotlinComponent(c: ComponentIR): string {
   // calls them inside closures. Mirrors emit-swift.ts.
   for (const p of c.props) {
     if (p.type.kind === 'function') _functionNames.add(p.name)
+  }
+  // Render props / view slots + view helpers in scope — see emit-swift.
+  _activeSlotsKotlin = new Map(
+    (_componentSlotsMapKotlin.get(c.name) ?? slotPropsOf(c)).map((sl) => [sl.name, sl]),
+  )
+  _viewHelpersKotlin = new Map(_moduleViewHelpersKotlin)
+  for (const d of c.decls) {
+    const vh = viewHelperFromDecl(d)
+    if (vh !== null) _viewHelpersKotlin.set(vh.name, vh)
   }
   for (const d of c.decls) {
     if (d.kind === 'signal' && d.type.kind === 'typeRef' && _enumNames.has(d.type.name)) {
@@ -2262,11 +2318,23 @@ function emitKotlinComponent(c: ComponentIR): string {
   // Optional props (`label?: string` → union-with-undefined) get an
   // explicit `= null` default so call sites can omit them — mirrors the
   // Swift emit's `var label: String? = nil` memberwise default.
-  const propsParts = c.props.map((p) =>
-    typeIsOptional(p.type)
+  // A render prop / view slot is a COMPOSABLE lambda — a plain function
+  // type cannot call `Text`, and the caller's lambda literal is inferred
+  // composable from this parameter type. Optional stays optional here (a
+  // nullable lambda invoked with `?.invoke`), unlike Swift.
+  const propsParts = c.props.map((p) => {
+    const slot = _activeSlotsKotlin.get(p.name)
+    if (slot !== undefined) {
+      const params = slot.params.map((t, i) => kotlinType(t, ctx, `${p.name}${i}`)).join(', ')
+      const fnType = `@Composable (${params}) -> Unit`
+      return slot.optional
+        ? `${kotlinIdent(p.name)}: (${fnType})? = null`
+        : `${kotlinIdent(p.name)}: ${fnType}`
+    }
+    return typeIsOptional(p.type)
       ? `${kotlinIdent(p.name)}: ${kotlinType(p.type, ctx, p.name)} = null`
-      : `${kotlinIdent(p.name)}: ${kotlinType(p.type, ctx, p.name)}`,
-  )
+      : `${kotlinIdent(p.name)}: ${kotlinType(p.type, ctx, p.name)}`
+  })
   // Pass 3: emit ALL synthesized data classes (from BOTH decl pass +
   // prop pass) at the top of the output, ahead of the @Composable
   // function. Kotlin requires data class declarations before any
@@ -2517,7 +2585,7 @@ function emitKotlinComponent(c: ComponentIR): string {
       return false
     })
     if (usable.length === 0) {
-      lines.push(`  ${emitKotlinExpr(c.returnExpr, 2)}`)
+      lines.push(`  ${emitKotlinSlotUse(c.returnExpr, 2) ?? emitKotlinExpr(c.returnExpr, 2)}`)
     } else {
       const branches = usable
         .map((d) => {
@@ -2545,7 +2613,7 @@ function emitKotlinComponent(c: ComponentIR): string {
       lines.push(`        false`)
       lines.push(`      }`)
       lines.push(`  ) {`)
-      lines.push(`    ${emitKotlinExpr(c.returnExpr, 4)}`)
+      lines.push(`    ${emitKotlinSlotUse(c.returnExpr, 4) ?? emitKotlinExpr(c.returnExpr, 4)}`)
       lines.push(`  }`)
     }
   }
@@ -3956,10 +4024,254 @@ function kotlinExprIsAssignment(expr: string): boolean {
 }
 
 
+/**
+ * Run `fn` with the given names typed in the inference context, restoring
+ * them after — see emit-swift's `withSwiftLocals`.
+ */
+function withKotlinLocals<T>(bindings: readonly (readonly [string, TypeIR | undefined])[], fn: () => T): T {
+  const saved = bindings.map(([name]) => ({
+    name,
+    had: _kotlinExprInferCtx.locals.has(name),
+    prev: _kotlinExprInferCtx.locals.get(name),
+  }))
+  for (const [name, t] of bindings) if (t !== undefined) _kotlinExprInferCtx.locals.set(name, t)
+  try {
+    return fn()
+  } finally {
+    for (const sv of saved.reverse()) {
+      if (sv.had) _kotlinExprInferCtx.locals.set(sv.name, sv.prev!)
+      else _kotlinExprInferCtx.locals.delete(sv.name)
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Optional narrowing — see optional-narrowing.ts. Kotlin smart-casts only a
+// STABLE value: a parameter or local. A `by mutableStateOf` signal, a
+// `derivedStateOf` computed and a `var` field of a data class (every emitted
+// struct field) are not, so those subjects bind the value once instead.
+
+/** Does kotlinc smart-cast this narrowing on its own? */
+function kotlinSmartCasts(n: Narrowing): boolean {
+  const x = n.subject
+  // A stable identifier smart-casts even under a truthiness test, because
+  // `kotlinCondition` spells it `x != null && x.isNotEmpty()`.
+  if (x.kind === 'identifier') return !_signalNames.has(x.name)
+  if (n.truth !== null) return false
+  // `props.maybe` is the composable's own PARAMETER after the props rewrite.
+  return (
+    x.kind === 'member' &&
+    x.optional !== true &&
+    x.object.kind === 'identifier' &&
+    x.object.name === _activePropsParamName
+  )
+}
+
+/** The bound subject, carrying JS truthiness for a string / number / boolean. */
+function kotlinBoundSubject(n: Narrowing, indent: number): string {
+  const subj = emitKotlinExpr(n.subject, indent)
+  if (n.truth === 'string') return `${subj}?.takeIf { it.isNotEmpty() }`
+  if (n.truth === 'number') return `${subj}?.takeIf { it.toDouble() != 0.0 }`
+  if (n.truth === 'boolean') return `${subj}?.takeIf { it }`
+  return subj
+}
+
+function warnNonPathSubjectKotlin(cond: ExprIR, readers: readonly ExprIR[], indent: number): void {
+  const subj = unnarrowableSubject(cond, readers, _kotlinExprInferCtx, _activePropsParamName)
+  if (subj === null) return
+  const w = nonPathSubjectWarning(emitKotlinExpr(subj, indent))
+  if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+}
+
+function warnUnnarrowableKotlin(n: Narrowing, indent: number): void {
+  const w = unnarrowableWarning(emitKotlinExpr(n.subject, indent), 'kotlin')
+  if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+}
+
+interface KotlinNarrowPlan {
+  n: Narrowing
+  binder: string
+}
+
+/** Plan a narrowing for `cond` over the branch that will read the subject; null = nothing to do (or kotlinc smart-casts it). */
+function planKotlinNarrowing(cond: ExprIR, readers: readonly ExprIR[]): KotlinNarrowPlan | null {
+  const n = narrowingFor(cond, _kotlinExprInferCtx, _activePropsParamName)
+  if (n === null || kotlinSmartCasts(n)) return null
+  if (!readers.some((r) => readsSubject(r, n.subject))) return null
+  return { n, binder: binderName(n.subject, readers) }
+}
+
+/**
+ * A ternary that narrows (value or view position): `x == null ? a : f(x)` →
+ * `when (val x = x) { null -> a else -> f(x) }`. The `when` subject binding
+ * is stable, so the else branch smart-casts it.
+ */
+function emitKotlinNarrowedTernary(e: Extract<ExprIR, { kind: 'ternary' }>, indent: number): string | null {
+  const probe = narrowingFor(e.cond, _kotlinExprInferCtx, _activePropsParamName)
+  if (probe === null) {
+    warnNonPathSubjectKotlin(e.cond, [e.then, e.otherwise], indent)
+    return null
+  }
+  const narrowed = probe.presentWhenTrue ? e.then : e.otherwise
+  const other = probe.presentWhenTrue ? e.otherwise : e.then
+  const plan = planKotlinNarrowing(e.cond, [narrowed])
+  if (plan === null) return null
+  const rewritten = narrowExpr(narrowed, plan.n.subject, plan.binder)
+  if (rewritten === null) {
+    warnUnnarrowableKotlin(plan.n, indent)
+    return null
+  }
+  const b = kotlinIdent(plan.binder)
+  const inner = withKotlinLocals([[plan.binder, plan.n.unwrapped]], () => emitKotlinExpr(rewritten, indent))
+  return `when (val ${b} = ${kotlinBoundSubject(plan.n, indent)}) { null -> ${emitKotlinExpr(other, indent)} else -> ${inner} }`
+}
+
+/** `{x && <B x/>}` → `x?.let { x -> B(x) }`. */
+function emitKotlinNarrowedAnd(cond: ExprIR, view: ExprIR, indent: number): string | null {
+  const probe = narrowingFor(cond, _kotlinExprInferCtx, _activePropsParamName)
+  if (probe === null) warnNonPathSubjectKotlin(cond, [view], indent)
+  if (probe === null || !probe.presentWhenTrue) return null
+  const plan = planKotlinNarrowing(cond, [view])
+  if (plan === null) return null
+  const rewritten = narrowExpr(view, plan.n.subject, plan.binder)
+  if (rewritten === null) {
+    warnUnnarrowableKotlin(plan.n, indent)
+    return null
+  }
+  const pad = ' '.repeat(indent + 2)
+  const inner = withKotlinLocals([[plan.binder, plan.n.unwrapped]], () =>
+    emitKotlinChild({ kind: 'expr', expr: rewritten }, indent + 2),
+  )
+  return `${kotlinBoundSubject(plan.n, indent)}?.let { ${kotlinIdent(plan.binder)} ->\n${pad}${inner}\n${' '.repeat(indent)}}`
+}
+
+/** A statement list with the early-return guard lowered (`val x = a.b ?: run { return 0 }`). */
+function emitKotlinStmtLines(stmts: readonly StatementIR[], indent: number, ctx: KotlinCtx): string[] {
+  const pad = ' '.repeat(indent)
+  const out: string[] = []
+  for (let i = 0; i < stmts.length; i++) {
+    const s = stmts[i]!
+    const g = planGuard(s, stmts.slice(i + 1), _kotlinExprInferCtx, _activePropsParamName)
+    if (g !== null && !kotlinSmartCasts(g.narrowing)) {
+      const exitLines = g.exitBody.map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`).join('\n')
+      out.push(`${pad}val ${kotlinIdent(g.binder)} = ${kotlinBoundSubject(g.narrowing, indent)} ?: run {\n${exitLines}\n${pad}}`)
+      out.push(...withKotlinLocals([[g.binder, g.narrowing.unwrapped]], () => emitKotlinStmtLines(g.rest, indent, ctx)))
+      return out
+    }
+    out.push(`${pad}${emitKotlinStatement(s, indent, ctx)}`)
+  }
+  return out
+}
+
+
+/**
+ * `const renderRow = (r: Row) => <Text>{r.name}</Text>` →
+ * `@Composable fun renderRow(r: Row) { Text(…) }` — a local composable at
+ * component scope, a private top-level one at file scope. Twin of
+ * emit-swift's `emitSwiftViewHelper`.
+ */
+function emitKotlinViewHelper(h: ViewHelper, visibility: string, indent: number, ctx?: KotlinCtx): string {
+  const params = h.params.map((p) => `${kotlinIdent(p.name)}: ${kotlinType(p.type, ctx, p.name)}`).join(', ')
+  const body = withKotlinLocals(
+    h.params.map((p) => [p.name, p.type] as const),
+    () => emitKotlinChild({ kind: 'expr', expr: unparenExpr(h.body) }, indent + 2),
+  )
+  return `@Composable\n${' '.repeat(indent)}${visibility}fun ${kotlinIdent(h.name)}(${params}) {\n${' '.repeat(indent + 2)}${body}\n${' '.repeat(indent)}}`
+}
+
+function activeSlotRefKotlin(e: ExprIR): SlotProp | undefined {
+  const name = propRefName(e, _activePropsParamName)
+  return name === null ? undefined : _activeSlotsKotlin.get(name)
+}
+
+function kotlinCallRendersView(e: ExprIR): boolean {
+  const x = e.kind === 'paren' ? e.inner : e
+  if (x.kind !== 'call') return false
+  const slot = activeSlotRefKotlin(x.callee)
+  if (slot !== undefined && !slot.bare) return true
+  return x.callee.kind === 'identifier' && _viewHelpersKotlin.has(x.callee.name)
+}
+
+/**
+ * A use of one of this component's render props / view slots in view
+ * position — twin of emit-swift's `emitSwiftSlotUse`. An OPTIONAL slot is a
+ * nullable composable lambda here, so it is invoked with `?.invoke`.
+ */
+function emitKotlinSlotUse(e: ExprIR, indent: number): string | null {
+  const x = e.kind === 'paren' ? e.inner : e
+  const bare = activeSlotRefKotlin(x)
+  if (bare !== undefined) {
+    if (!bare.bare) return null
+    return bare.optional ? `${kotlinIdent(bare.name)}?.invoke()` : `${kotlinIdent(bare.name)}()`
+  }
+  if (x.kind !== 'call') return null
+  const slot = activeSlotRefKotlin(x.callee)
+  if (slot === undefined || slot.bare) return null
+  const args = x.args
+    .map((a, i) => withExpectedTypeKotlin(slot.params[i], () => emitKotlinExpr(a, indent)))
+    .join(', ')
+  return slot.optional ? `${kotlinIdent(slot.name)}?.invoke(${args})` : `${kotlinIdent(slot.name)}(${args})`
+}
+
+/** A render-prop VALUE at a call site — twin of emit-swift's `emitSwiftSlotArg`. */
+function emitKotlinSlotArg(
+  value: ExprIR,
+  slot: SlotProp | undefined,
+  where: string,
+  indent: number,
+): string {
+  const x = value.kind === 'paren' ? value.inner : value
+  const base = ' '.repeat(indent)
+  const pad = ' '.repeat(indent + 2)
+  if (x.kind === 'arrow') {
+    const arity = Math.max(slot?.params.length ?? 0, x.params.length)
+    const names = Array.from({ length: arity }, (_, i) => x.params[i] ?? '_')
+    const head = arity === 0 ? '{' : `{ ${names.map((n) => (n === '_' ? '_' : kotlinIdent(n))).join(', ')} ->`
+    if (x.stmts !== undefined && x.stmts.length > 0) {
+      const w = blockBodiedRenderCallbackWarning(where)
+      if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+      return `${head} }`
+    }
+    const types = names.map((_, i) => slot?.params[i] ?? x.paramTypes?.[i])
+    const body = withKotlinLocals(
+      names.map((n, i) => [n, types[i]] as const).filter(([n]) => n !== '_'),
+      () => emitKotlinChild({ kind: 'expr', expr: unparenExpr(x.body) }, indent + 2),
+    )
+    return `${head}\n${pad}${body}\n${base}}`
+  }
+  const forwarded = activeSlotRefKotlin(x)
+  if (forwarded !== undefined) return kotlinIdent(forwarded.name)
+  if (x.kind === 'identifier' && _viewHelpersKotlin.has(x.name)) {
+    // Wrapped, never `::renderRow` — the Compose compiler rejects a function
+    // reference to a @Composable.
+    const h = _viewHelpersKotlin.get(x.name)!
+    const args = h.params.map((_, i) => `a${i}`)
+    return args.length === 0
+      ? `{ ${kotlinIdent(h.name)}() }`
+      : `{ ${args.join(', ')} -> ${kotlinIdent(h.name)}(${args.join(', ')}) }`
+  }
+  if (isViewShaped(x) || kotlinCallRendersView(x)) {
+    return `{\n${pad}${emitKotlinChild({ kind: 'expr', expr: x }, indent + 2)}\n${base}}`
+  }
+  const w = unlowerableRenderValueWarning(where)
+  if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+  return emitKotlinExpr(x, indent)
+}
+
+function isKotlinSlotValue(value: ExprIR): boolean {
+  const x = value.kind === 'paren' ? value.inner : value
+  if (isRenderArrow(x) || isViewShaped(x)) return true
+  return x.kind === 'identifier' && _viewHelpersKotlin.has(x.name)
+}
+
 function emitKotlinFunction(
   d: Extract<DeclIR, { kind: 'function' }>,
   ctx: KotlinCtx,
 ): string {
+  // A function whose whole body returns a view is a composable — see
+  // render-slots.ts. As a plain `fun` it could not call `Text` at all.
+  const vh = viewHelperFromDecl(d)
+  if (vh !== null) return emitKotlinViewHelper(vh, '', 2, ctx)
   const params = d.params
     .map((p) => {
       const dflt = p.defaultValue !== undefined ? ` = ${emitKotlinExpr(p.defaultValue, 0)}` : ''
@@ -4042,9 +4354,7 @@ function emitKotlinFunction(
   // inline seeding in emitKotlinAction). Restored after. Mirror of the Swift
   // function-decl seeding.
   const savedLocals = seedHandlerLocals(d.body, _kotlinExprInferCtx)
-  const bodyLines = d.body
-    .map((s) => `    ${emitKotlinStatement(s, 4, ctx)}`)
-    .join('\n')
+  const bodyLines = emitKotlinStmtLines(d.body, 4, ctx).join('\n')
   _kotlinExprInferCtx.locals = savedLocals
   kParamRestore()
   return `fun ${kotlinIdent(d.name)}(${params})${blockRetType} {\n${bodyLines}\n  }`
@@ -4059,6 +4369,22 @@ function emitKotlinFunction(
  * aware `emitKotlinSignalRead` for `<Show when>`). Mirror of `swiftCondition`.
  */
 function kotlinCondition(e: ExprIR, emit: (x: ExprIR) => string): string {
+  // JS truthiness on an optional string / number / boolean — see the Swift
+  // twin. A stable identifier keeps the explicit `x != null && …` form so the
+  // branch still smart-casts it.
+  const t = truthinessFor(e, _kotlinExprInferCtx, _activePropsParamName)
+  if (t !== null && t.truth !== null) {
+    const raw = emit(t.subject)
+    const x = isNarrowablePath(t.subject, _activePropsParamName) ? raw : `(${raw})`
+    const stable = t.subject.kind === 'identifier' && !_signalNames.has(t.subject.name)
+    if (t.truth === 'boolean') return t.presentWhenTrue ? `${x} == true` : `${x} != true`
+    const test = t.truth === 'string' ? 'isNotEmpty()' : 'toDouble() != 0.0'
+    if (stable) {
+      const neg = t.truth === 'string' ? 'isEmpty()' : 'toDouble() == 0.0'
+      return t.presentWhenTrue ? `${x} != null && ${x}.${test}` : `${x} == null || ${x}.${neg}`
+    }
+    return t.presentWhenTrue ? `${x}?.${test} == true` : `${x}?.${test} != true`
+  }
   const c = classifyOptionalCondition(e, _kotlinExprInferCtx)
   if (c?.form === 'absent') return `${emit(c.argument)} == null`
   if (c?.form === 'present') return `${emit(c.argument ?? e)} != null`
@@ -4194,6 +4520,32 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       return emitKotlinExpr(s.expr, indent)
     case 'if': {
       const pad = ' '.repeat(indent)
+      // An optional kotlinc cannot smart-cast, read by the narrowed body:
+      // bind it once with `when (val x = …)` — see optional-narrowing.ts.
+      {
+        const probe = narrowingFor(s.cond, _kotlinExprInferCtx, _activePropsParamName)
+        if (probe === null) {
+          warnNonPathSubjectKotlin(s.cond, [...stmtExprs(s.then), ...stmtExprs(s.elseBody ?? [])], indent)
+        }
+        const narrowedBody = probe === null ? undefined : probe.presentWhenTrue ? s.then : s.elseBody
+        const otherBody = probe === null ? undefined : probe.presentWhenTrue ? s.elseBody : s.then
+        const plan = narrowedBody === undefined ? null : planKotlinNarrowing(s.cond, stmtExprs(narrowedBody))
+        if (plan !== null && narrowedBody !== undefined) {
+          const rewritten = narrowStmts(narrowedBody, plan.n.subject, plan.binder)
+          if (rewritten !== null) {
+            const inner = withKotlinLocals([[plan.binder, plan.n.unwrapped]], () =>
+              emitKotlinStmtLines(rewritten, indent + 4, ctx).join('\n'),
+            )
+            const otherLines = otherBody === undefined ? '' : emitKotlinStmtLines(otherBody, indent + 4, ctx).join('\n')
+            return (
+              `when (val ${kotlinIdent(plan.binder)} = ${kotlinBoundSubject(plan.n, indent)}) {\n` +
+              `${pad}  null -> {${otherLines === '' ? '}' : `\n${otherLines}\n${pad}  }`}\n` +
+              `${pad}  else -> {\n${inner}\n${pad}  }\n${pad}}`
+            )
+          }
+          warnUnnarrowableKotlin(plan.n, indent)
+        }
+      }
       const cond = kotlinCondition(s.cond, (x) => emitKotlinExpr(x, indent))
       // Mirror of the Swift if-let narrowing, for the EMITTER's own eyes:
       // kotlinc smart-casts a val local inside `if (token != null)` by
@@ -4217,9 +4569,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       }
       let thenLines: string
       try {
-        thenLines = s.then
-          .map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`)
-          .join('\n')
+        thenLines = emitKotlinStmtLines(s.then, indent + 2, ctx).join('\n')
       } finally {
         if (narrowName !== undefined && narrowPrev !== undefined) {
           _kotlinExprInferCtx.locals.set(narrowName, narrowPrev)
@@ -4227,9 +4577,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       }
       const head = `if (${cond}) {\n${thenLines}\n${pad}}`
       if (!s.elseBody) return head
-      const elseLines = s.elseBody
-        .map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`)
-        .join('\n')
+      const elseLines = emitKotlinStmtLines(s.elseBody, indent + 2, ctx).join('\n')
       return `${head} else {\n${elseLines}\n${pad}}`
     }
     case 'while': {
@@ -4450,6 +4798,10 @@ export function kotlinType(t: TypeIR, ctx?: KotlinCtx, signalName?: string): str
         // shape.
         return `Deferred<${kotlinType(t.args[0]!, ctx, signalName)}>`
       }
+      // A service `error` (see infer-type.ts `ERROR_OBJECT`) is `Throwable?`
+      // on Android — `kotlin.Error` is a narrower subclass the runtime never
+      // declares.
+      if (t.name === 'Error' && t.args.length === 0 && !_declaredStructs.some((st) => st.name === 'Error')) return 'Throwable'
       if (t.args.length === 0) return t.name
       return `${t.name}<${t.args.map((a) => kotlinType(a, ctx, signalName)).join(', ')}>`
     }
@@ -6752,9 +7104,22 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       if (nc) {
         return `(${emitKotlinExpr(nc.opt, indent)} ?: ${emitKotlinExpr(nc.fallback, indent)})`
       }
-      const omt = optionalMemberTernary(e, _kotlinExprInferCtx)
+      // `s ? s.length : -1` on an optional STRING is a truthiness test, not a
+      // nil test — `s?.length ?: -1` would answer 0 for '' where the web
+      // answers -1. The generic if-expression below carries the truthiness.
+      const omt =
+        narrowingFor(e.cond, _kotlinExprInferCtx, _activePropsParamName)?.truth != null
+          ? null
+          : optionalMemberTernary(e, _kotlinExprInferCtx)
       if (omt) {
         return `(${emitKotlinExpr(omt.opt, indent)}?.${kotlinIdent(omt.property)} ?: ${emitKotlinExpr(e.otherwise, indent)})`
+      }
+      // A ternary whose surviving branch reads an optional kotlinc cannot
+      // smart-cast (a signal, a computed, a data-class `var` field) binds it
+      // with `when (val x = …)` — see optional-narrowing.ts.
+      {
+        const narrowed = emitKotlinNarrowedTernary(e, indent)
+        if (narrowed !== null) return narrowed
       }
       const condStr = kotlinCondition(e.cond, (x) => emitKotlinExpr(x, indent))
       let thenStr = emitKotlinExpr(e.then, indent)
@@ -8118,10 +8483,7 @@ function emitKotlinAction(handler: ExprIR, indent: number): string {
       // so a synchronous `onClick: () -> Unit` slot can run suspend calls.
       const isAsync = handler.async === true
       const bodyIndent = isAsync ? indent + 4 : indent + 2
-      const bodyPad = ' '.repeat(bodyIndent)
-      const lines = handler.stmts
-        .map((s) => bodyPad + emitKotlinStatement(s, bodyIndent, stmtCtx))
-        .join('\n')
+      const lines = emitKotlinStmtLines(handler.stmts, bodyIndent, stmtCtx).join('\n')
       _kotlinExprInferCtx.locals = savedLocals
       const head =
         handler.params.length === 0 ? '{' : `{ ${handler.params.map(kotlinIdent).join(', ')} ->`
@@ -11005,7 +11367,18 @@ function emitKotlinGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     }
   }
   const argParts: string[] = []
+  // Render props — twin of emit-swift's `emitSwiftGeneric` block.
+  const calleeSlots = _componentSlotsMapKotlin.get(e.tag)
+  const slotFor = (name: string) => calleeSlots?.find((sl) => sl.name === name)
+  const isSlot = (name: string, v: ExprIR): boolean =>
+    calleeSlots !== undefined ? slotFor(name) !== undefined : isKotlinSlotValue(v)
   for (const a of e.attrs) {
+    if (a.kind === 'attr' && (isUserComponent || !isCanonicalPrimitive(e.tag)) && isSlot(a.name, a.value)) {
+      argParts.push(
+        `${kotlinIdent(safeIdent(a.name))} = ${emitKotlinSlotArg(a.value, slotFor(a.name), `<${e.tag} ${a.name}={…}>`, indent)}`,
+      )
+      continue
+    }
     if (a.kind === 'attr') {
       // `safeIdent` converts kebab-case HTML attrs (`data-test`,
       // `aria-label`) to camelCase. Kotlin rejects `-` in named
@@ -11024,6 +11397,24 @@ function emitKotlinGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     // A spread on a non-user-component tag is warned once at the top of
     // emitKotlinJsx — no warning needed here.
   }
+  // Function-as-children and a same-file `children` slot — passed NAMED, so
+  // it binds regardless of where `children` sits in the parameter list.
+  let children = e.children
+  const childrenSlot = slotFor('children')
+  const lone = children.length === 1 && children[0]!.kind === 'expr' ? children[0]!.expr : undefined
+  const loneIsCallback =
+    lone !== undefined &&
+    (isRenderArrow(lone) ||
+      activeSlotRefKotlin(lone) !== undefined ||
+      (lone.kind === 'identifier' && _viewHelpersKotlin.has(lone.name)))
+  if (loneIsCallback && (calleeSlots === undefined || childrenSlot !== undefined)) {
+    argParts.push(`children = ${emitKotlinSlotArg(lone!, childrenSlot, `<${e.tag}>{…}</${e.tag}>`, indent)}`)
+    children = []
+  } else if (childrenSlot !== undefined && childrenSlot.bare && children.length > 0) {
+    const inner = children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+    argParts.push(`children = {\n${inner}\n${' '.repeat(indent)}}`)
+    children = []
+  }
   const attrPairs = argParts.join(', ')
   // `kotlinIdent`-escape the tag too — covers user-defined components
   // whose name collides with a Kotlin keyword. K3: map SwiftUI-flavored
@@ -11031,10 +11422,10 @@ function emitKotlinGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   // (Column/Row/Box) first — user-defined components named the same
   // will collide (documented trade-off).
   const tag = kotlinIdent(mapJsxTagToCompose(e.tag))
-  if (e.children.length === 0) {
+  if (children.length === 0) {
     return attrPairs ? `${tag}(${attrPairs})` : `${tag}()`
   }
-  const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+  const contentLines = children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
   if (attrPairs) {
     return `${tag}(${attrPairs}) {\n${contentLines}\n${' '.repeat(indent)}}`
   }
@@ -11049,6 +11440,8 @@ function emitKotlinGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
  */
 function kotlinExprProducesView(e: ExprIR): boolean {
   if (e.kind === 'jsx-element') return true
+  if (kotlinCallRendersView(e)) return true
+  if (activeSlotRefKotlin(e)?.bare === true) return true
   if (e.kind === 'ternary') {
     return kotlinExprProducesView(e.then) || kotlinExprProducesView(e.otherwise)
   }
@@ -11062,6 +11455,8 @@ function kotlinExprProducesView(e: ExprIR): boolean {
 
 function emitKotlinChild(c: ChildIR, indent: number): string {
   if (c.kind === 'text') return `Text(text = ${kotlinStr(c.value)})`
+  const slotUse = emitKotlinSlotUse(c.expr, indent)
+  if (slotUse !== null) return slotUse
   if (!kotlinExprProducesView(c.expr)) {
     // Swift twin's rationale. Compose is the WORSE half of this bug: the
     // stringified list compiles and renders a debug description, where Swift
@@ -11102,6 +11497,8 @@ function emitKotlinChild(c: ChildIR, indent: number): string {
     // `t` is NULLABLE (e.g. a `.find` result) → `if (t != null) { … }` (and `{!t
     // && <X/>}` → `if (t == null) { … }`), not the bare `if (t) { … }` kotlinc
     // rejects as a non-Boolean condition.
+    const narrowedAnd = emitKotlinNarrowedAnd(c.expr.left, c.expr.right, indent)
+    if (narrowedAnd !== null) return narrowedAnd
     const cond = kotlinCondition(c.expr.left, (x) => emitKotlinExpr(x, indent))
     const pad = ' '.repeat(indent + 2)
     const inner = emitKotlinChild({ kind: 'expr', expr: c.expr.right }, indent + 2)

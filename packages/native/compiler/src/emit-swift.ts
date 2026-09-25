@@ -121,6 +121,36 @@ import { plotMarkColorSlots, ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALET
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
+  binderName,
+  narrowExpr,
+  narrowingFor,
+  narrowStmts,
+  planGuard,
+  readsSubject,
+  stmtExprs,
+  isNarrowablePath,
+  truthinessFor,
+  nonPathSubjectWarning,
+  unnarrowableSubject,
+  unnarrowableWarning,
+  type Narrowing,
+} from './optional-narrowing'
+import {
+  blockBodiedRenderCallbackWarning,
+  isRenderArrow,
+  isViewShaped,
+  moduleViewHelpers,
+  optionalSlotSwiftWarning,
+  propRefName,
+  slotPropsOf,
+  unlowerableRenderValueWarning,
+  viewHelperFromDecl,
+  viewHelperFromModuleDecl,
+  type SlotProp,
+  type ViewHelper,
+  unparenExpr,
+} from './render-slots'
+import {
   stretchAlignWarning,
   bakedPropDynamicWarning,
   nonBooleanLogicalWarning,
@@ -256,6 +286,22 @@ function canAliasIntercept(tag: string, expectedPkg: string, expectedImport = ta
 /** Component name → its declared props, for expanding `<Comp {...src} />`
  * spread attrs into per-prop constructor args. Built in the emitSwift pre-pass. */
 let _componentPropsMap: Map<string, { name: string; type: TypeIR }[]> = new Map()
+/**
+ * Render props / view slots per same-file component (see render-slots.ts),
+ * so a call site knows the receiving closure's arity and parameter types.
+ * A component from ANOTHER file is absent — its call sites still lower, from
+ * the shape of the value alone.
+ */
+let _componentSlotsMap: Map<string, SlotProp[]> = new Map()
+/** The slots of the component being emitted, by prop name. */
+let _activeSlots: Map<string, SlotProp> = new Map()
+/**
+ * View helpers in scope — file-scope ones plus the current component's —
+ * by name. Lowered to `@ViewBuilder func`, so a call is a VIEW and a
+ * reference can be handed to a render prop.
+ */
+let _moduleViewHelpersSwift: Map<string, ViewHelper> = new Map()
+let _viewHelpersSwift: Map<string, ViewHelper> = new Map()
 type StaticFlowHandle = { id?: string; type: string; position: string; offset?: number }
 let _flowComponentHandles: Map<string, StaticFlowHandle[]> = new Map()
 let _flowComponentsWithInvalidHandles: Set<string> = new Set()
@@ -1227,6 +1273,9 @@ export function emitSwift(
   _componentNames = new Set(components.map((c) => c.name))
   _jsxFnNames = collectJsxFnNames(components, [], moduleDecls)
   _componentPropsMap = new Map(components.map((c) => [c.name, c.props]))
+  _componentSlotsMap = new Map(components.map((c) => [c.name, slotPropsOf(c)]))
+  _moduleViewHelpersSwift = moduleViewHelpers(moduleDecls)
+  _viewHelpersSwift = new Map(_moduleViewHelpersSwift)
   _flowComponentHandles = new Map()
   _flowComponentsWithInvalidHandles = new Set()
   _flowComponentResizers = new Map()
@@ -1484,6 +1533,10 @@ export function emitSwift(
   _exprInferCtx = emptyInferenceCtx()
   _componentNames = new Set()
   _jsxFnNames = new Set()
+  _componentSlotsMap = new Map()
+  _activeSlots = new Map()
+  _moduleViewHelpersSwift = new Map()
+  _viewHelpersSwift = new Map()
   _styledComponents = new Map()
   _rocketstyleComponents = new Map()
   _attrsComponents = new Map()
@@ -2368,6 +2421,11 @@ function emitSwiftStruct(s: StructIR): string {
  * omits it (TypeIR `unknown` → Swift type inferred from `= value`).
  */
 function emitSwiftModuleDecl(md: ModuleDeclIR): string {
+  // A file-scope `const renderRow = (r: Row) => <…/>` is a VIEW function, not
+  // a closure value: a Swift closure `let` with an untyped parameter does not
+  // compile at all, and a view cannot be a stored value anyway.
+  const vh = viewHelperFromModuleDecl(md)
+  if (vh !== null) return emitSwiftViewHelper(vh, 'private', 0)
   const kw = md.mutable ? 'var' : 'let'
   const initial = withExpectedType(md.type, () => emitSwiftExpr(md.initial, 0))
   if (md.type.kind === 'unknown') {
@@ -2543,7 +2601,8 @@ function emitSwiftComponent(c: ComponentIR): string {
   // call-emit keeps parens for `addTodo()` (function call) and drops
   // them only for `count()` (signal read). Seed with the file-scope helper
   // names so a `dbl(21)` call in this component resolves as a free function.
-  _functionNames = new Set(_helperFnNames)
+  // File-scope view helpers are CALLED (`row()`), never read like a signal.
+  _functionNames = new Set([..._helperFnNames, ..._moduleViewHelpersSwift.keys()])
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
   // Gap 4 PR-2: track machine names so `m()` keeps parens (Swift
   // callAsFunction).
@@ -2583,6 +2642,16 @@ function emitSwiftComponent(c: ComponentIR): string {
   // typecheck-or-no-op trap.
   for (const p of c.props) {
     if (p.type.kind === 'function') _functionNames.add(p.name)
+  }
+  // Render props / view slots of THIS component, and the view helpers in
+  // scope (file-scope + this component's own). Both must be known before any
+  // of the body is emitted — a call to either is a view, not a value.
+  const slots = _componentSlotsMap.get(c.name) ?? slotPropsOf(c)
+  _activeSlots = new Map(slots.map((sl) => [sl.name, sl]))
+  _viewHelpersSwift = new Map(_moduleViewHelpersSwift)
+  for (const d of c.decls) {
+    const vh = viewHelperFromDecl(d)
+    if (vh !== null) _viewHelpersSwift.set(vh.name, vh)
   }
   for (const d of c.decls) {
     if (d.kind === 'signal' && d.type.kind === 'typeRef' && _enumNames.has(d.type.name)) {
@@ -2693,11 +2762,28 @@ function emitSwiftComponent(c: ComponentIR): string {
   // site that skips the prop (`Card(qty: 2)`) compiles. A defaultless
   // `let label: String?` would still REQUIRE the argument. Required
   // props stay `let` (immutable per instance).
-  const propLines = c.props.map((p) =>
-    typeIsOptional(p.type)
+  // A render prop / view slot is a generic `@ViewBuilder` closure whose view
+  // type is a type parameter of the struct, inferred from the caller's closure
+  // — the shape SwiftUI's own containers use. `@ViewBuilder` on the stored
+  // property carries over to the memberwise initializer's parameter, so a
+  // caller's closure body is a view builder (if/else, several views).
+  const slotGenerics: string[] = []
+  const propLines = c.props.map((p) => {
+    const slot = _activeSlots.get(p.name)
+    if (slot !== undefined) {
+      const generic = `${p.name.charAt(0).toUpperCase()}${p.name.slice(1)}Content`
+      slotGenerics.push(`${generic}: View`)
+      if (slot.optional) {
+        const w = optionalSlotSwiftWarning(c.name, p.name)
+        if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+      }
+      const params = slot.params.map((t, i) => swiftType(t, synth, `${p.name}${i}`)).join(', ')
+      return `  @ViewBuilder let ${swiftIdent(p.name)}: (${params}) -> ${generic}`
+    }
+    return typeIsOptional(p.type)
       ? `  var ${swiftIdent(p.name)}: ${swiftType(p.type, synth, p.name)} = nil`
-      : `  let ${swiftIdent(p.name)}: ${swiftType(p.type, synth, p.name)}`,
-  )
+      : `  let ${swiftIdent(p.name)}: ${swiftType(p.type, synth, p.name)}`
+  })
   // Pre-walk signal decl types through the synth ctx so INLINE anonymous
   // object types in signal generics (`signal<{ price: number }[]>`)
   // synthesize a struct — collected here so they emit BEFORE the View
@@ -2768,11 +2854,12 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.push(emitSwiftStruct(s))
     lines.push('')
   }
-  if (isLayout) {
-    lines.push(`struct ${swiftIdent(c.name)}<Content: View>: View {`)
-  } else {
-    lines.push(`struct ${swiftIdent(c.name)}: View {`)
-  }
+  const generics = [...slotGenerics, ...(isLayout ? ['Content: View'] : [])]
+  lines.push(
+    generics.length > 0
+      ? `struct ${swiftIdent(c.name)}<${generics.join(', ')}>: View {`
+      : `struct ${swiftIdent(c.name)}: View {`,
+  )
   lines.push(...propLines)
   if (isLayout) {
     lines.push(`  @ViewBuilder var content: () -> Content`)
@@ -4787,6 +4874,269 @@ function swiftFlowPositionLiteral(arg: ExprIR): string | null {
 }
 
 /**
+ * Run `fn` with the given names typed in BOTH inference contexts (they alias
+ * inside a component and differ at file scope), restoring them after. Every
+ * closure / function body that binds parameters needs this, or a type-gated
+ * lowering inside it (`.length`, an optional condition, Int×Double) sees the
+ * parameter as unknown.
+ */
+function withSwiftLocals<T>(bindings: readonly (readonly [string, TypeIR | undefined])[], fn: () => T): T {
+  const saved = bindings.map(([name]) => ({
+    name,
+    had: _activeInferCtx.locals.has(name),
+    prev: _activeInferCtx.locals.get(name),
+    hadExpr: _exprInferCtx.locals.has(name),
+    prevExpr: _exprInferCtx.locals.get(name),
+  }))
+  for (const [name, t] of bindings) {
+    if (t === undefined) continue
+    _activeInferCtx.locals.set(name, t)
+    _exprInferCtx.locals.set(name, t)
+  }
+  try {
+    return fn()
+  } finally {
+    for (const s of saved.reverse()) {
+      if (s.had) _activeInferCtx.locals.set(s.name, s.prev!)
+      else _activeInferCtx.locals.delete(s.name)
+      if (s.hadExpr) _exprInferCtx.locals.set(s.name, s.prevExpr!)
+      else _exprInferCtx.locals.delete(s.name)
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Optional narrowing — see optional-narrowing.ts. Swift never narrows through
+// a nil test, so every branch that TypeScript narrowed reads an unwrapped
+// BINDING here instead.
+
+/** The binding clause of an `if let` / `guard let`: `let x` / `let x = a.b`, plus the JS-truthiness check a string / number / boolean needs. */
+function swiftBindClause(n: Narrowing, binder: string, indent: number): string {
+  const subj = emitSwiftExpr(n.subject, indent)
+  const b = swiftIdent(binder)
+  const head = subj === b ? `let ${b}` : `let ${b} = ${subj}`
+  const extra =
+    n.truth === 'string' ? `, !${b}.isEmpty` : n.truth === 'number' ? `, ${b} != 0` : n.truth === 'boolean' ? `, ${b}` : ''
+  return head + extra
+}
+
+/** Name an optional that is re-read but is not a path (see `unnarrowableSubject`). */
+function warnNonPathSubject(cond: ExprIR, readers: readonly ExprIR[], indent: number): void {
+  const subj = unnarrowableSubject(cond, readers, _exprInferCtx, _activePropsParamName)
+  if (subj === null) return
+  const w = nonPathSubjectWarning(emitSwiftExpr(subj, indent))
+  if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+}
+
+function warnUnnarrowable(n: Narrowing, indent: number): void {
+  const w = unnarrowableWarning(emitSwiftExpr(n.subject, indent), 'swift')
+  if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+}
+
+/**
+ * A VALUE ternary that narrows: `books === undefined ? 0 : books.length` →
+ * `(books.map { books in books.count } ?? 0)`. The payload filter carries JS
+ * truthiness for a string / number / boolean subject. Null when the condition
+ * narrows nothing the surviving branch reads.
+ */
+function emitSwiftNarrowedTernary(e: Extract<ExprIR, { kind: 'ternary' }>, indent: number): string | null {
+  const n = narrowingFor(e.cond, _exprInferCtx, _activePropsParamName)
+  if (n === null) {
+    warnNonPathSubject(e.cond, [e.then, e.otherwise], indent)
+    return null
+  }
+  const narrowed = n.presentWhenTrue ? e.then : e.otherwise
+  const other = n.presentWhenTrue ? e.otherwise : e.then
+  if (!readsSubject(narrowed, n.subject)) return null
+  const binder = binderName(n.subject, [narrowed])
+  const rewritten = narrowExpr(narrowed, n.subject, binder)
+  if (rewritten === null) {
+    warnUnnarrowable(n, indent)
+    return null
+  }
+  const filter =
+    n.truth === 'string' ? '.flatMap { $0.isEmpty ? nil : $0 }' : n.truth === 'number' ? '.flatMap { $0 == 0 ? nil : $0 }' : n.truth === 'boolean' ? '.flatMap { $0 ? true : nil }' : ''
+  const b = swiftIdent(binder)
+  const { inner, innerOptional } = withSwiftLocals([[binder, n.unwrapped]], () => ({
+    inner: emitSwiftExpr(rewritten, indent),
+    innerOptional: typeIsOptional(inferType(rewritten, _exprInferCtx)),
+  }))
+  return `(${emitSwiftExpr(n.subject, indent)}${filter}.${innerOptional ? 'flatMap' : 'map'} { ${b} in ${inner} } ?? ${emitSwiftExpr(other, indent)})`
+}
+
+/**
+ * A VIEW conditional that narrows — `x == nil ? <A/> : <B x/>`, `{x && <B x/>}`
+ * — lowered to `if let x { B } else { A }`. `whenFalse` is undefined for the
+ * `&&` form. Null when there is nothing to narrow.
+ */
+function emitSwiftNarrowedView(
+  cond: ExprIR,
+  whenTrue: ExprIR,
+  whenFalse: ExprIR | undefined,
+  indent: number,
+): string | null {
+  const n = narrowingFor(cond, _exprInferCtx, _activePropsParamName)
+  if (n === null) {
+    warnNonPathSubject(cond, whenFalse === undefined ? [whenTrue] : [whenTrue, whenFalse], indent)
+    return null
+  }
+  const narrowed = n.presentWhenTrue ? whenTrue : whenFalse
+  const other = n.presentWhenTrue ? whenFalse : whenTrue
+  if (narrowed === undefined || !readsSubject(narrowed, n.subject)) return null
+  const binder = binderName(n.subject, [narrowed])
+  const rewritten = narrowExpr(narrowed, n.subject, binder)
+  if (rewritten === null) {
+    warnUnnarrowable(n, indent)
+    return null
+  }
+  const pad = ' '.repeat(indent + 2)
+  const base = ' '.repeat(indent)
+  const head = `if ${swiftBindClause(n, binder, indent)} {\n${pad}${withSwiftLocals([[binder, n.unwrapped]], () =>
+    emitSwiftChild({ kind: 'expr', expr: rewritten }, indent + 2),
+  )}\n${base}}`
+  if (other === undefined) return head
+  return `${head} else {\n${pad}${emitSwiftChild({ kind: 'expr', expr: other }, indent + 2)}\n${base}}`
+}
+
+/**
+ * A statement list, with the early-return guard lowered:
+ * `if (b.tags === undefined) return 0` followed by reads of `b.tags` →
+ * `guard let tags = b.tags else { return 0 }` and the rest reading `tags`.
+ */
+function emitSwiftStmtLines(stmts: readonly StatementIR[], indent: number): string[] {
+  const pad = ' '.repeat(indent)
+  const out: string[] = []
+  for (let i = 0; i < stmts.length; i++) {
+    const s = stmts[i]!
+    const g = planGuard(s, stmts.slice(i + 1), _exprInferCtx, _activePropsParamName)
+    if (g !== null) {
+      const exitLines = g.exitBody.map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`).join('\n')
+      out.push(`${pad}guard ${swiftBindClause(g.narrowing, g.binder, indent)} else {\n${exitLines}\n${pad}}`)
+      out.push(...withSwiftLocals([[g.binder, g.narrowing.unwrapped]], () => emitSwiftStmtLines(g.rest, indent)))
+      return out
+    }
+    out.push(`${pad}${emitSwiftStatement(s, indent)}`)
+  }
+  return out
+}
+
+/**
+ * `const renderRow = (r: Row) => <Text>{r.name}</Text>` →
+ * `@ViewBuilder private func renderRow(_ r: Row) -> some View { Text(…) }`.
+ *
+ * The unlabeled parameters match the JS call shape `renderRow(r)`, the same
+ * convention every other emitted function follows. `some View` is a concrete
+ * type to the caller, so a REFERENCE to the function satisfies a render prop's
+ * generic `(Row) -> Content` as well.
+ */
+function emitSwiftViewHelper(h: ViewHelper, visibility: 'private' | 'internal', indent: number): string {
+  const params = h.params.map((p) => `_ ${swiftIdent(p.name)}: ${swiftType(p.type)}`).join(', ')
+  const vis = visibility === 'private' ? 'private ' : ''
+  const body = withSwiftLocals(
+    h.params.map((p) => [p.name, p.type] as const),
+    () => emitSwiftChild({ kind: 'expr', expr: unparenExpr(inlineValueConsts(h.body)) }, indent + 2),
+  )
+  return `@ViewBuilder ${vis}func ${swiftIdent(h.name)}(${params}) -> some View {\n${' '.repeat(indent + 2)}${body}\n${' '.repeat(indent)}}`
+}
+
+/** The slot of the component being emitted that `e` references, if any. */
+function activeSlotRef(e: ExprIR): SlotProp | undefined {
+  const name = propRefName(e, _activePropsParamName)
+  return name === null ? undefined : _activeSlots.get(name)
+}
+
+/** Is `e` a call to something that renders — a render prop of this component, or a view helper? */
+function swiftCallRendersView(e: ExprIR): boolean {
+  const x = e.kind === 'paren' ? e.inner : e
+  if (x.kind !== 'call') return false
+  const slot = activeSlotRef(x.callee)
+  if (slot !== undefined && !slot.bare) return true
+  return x.callee.kind === 'identifier' && _viewHelpersSwift.has(x.callee.name)
+}
+
+/**
+ * Invoke a render prop from the component body: `props.render(item)` →
+ * `render(item)`, with each argument emitted against the declared parameter
+ * type so an object literal constructs the parameter's struct.
+ */
+function emitSwiftSlotInvocation(slot: SlotProp, args: readonly ExprIR[], indent: number): string {
+  const parts = args.map((a, i) => withExpectedType(slot.params[i], () => emitSwiftExpr(a, indent)))
+  return `${swiftIdent(slot.name)}(${parts.join(', ')})`
+}
+
+/**
+ * A render-prop VALUE at a call site — what the receiving component's
+ * `@ViewBuilder` closure parameter is handed.
+ *
+ *   (u) => <Text>{u.name}</Text>   →  { u in Text(…) }
+ *   renderRow                      →  { a0 in renderRow(a0) }   (a view helper)
+ *   props.render                   →  render                    (forwarded)
+ *   <Text>hi</Text>                →  { Text("hi") }            (a bare slot)
+ *
+ * `slot` is the receiving declaration when it is in this file; otherwise the
+ * value is lowered from its own shape, which is what lets a generated data
+ * component in another module receive it.
+ */
+function emitSwiftSlotArg(
+  value: ExprIR,
+  slot: SlotProp | undefined,
+  where: string,
+  indent: number,
+): string {
+  const x = value.kind === 'paren' ? value.inner : value
+  const base = ' '.repeat(indent)
+  const pad = ' '.repeat(indent + 2)
+  if (x.kind === 'arrow') {
+    if (x.stmts !== undefined && x.stmts.length > 0) {
+      const w = blockBodiedRenderCallbackWarning(where)
+      if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+      const arity = slot?.params.length ?? x.params.length
+      return arity === 0 ? '{ EmptyView() }' : `{ ${Array.from({ length: arity }, () => '_').join(', ')} in EmptyView() }`
+    }
+    // A callback may declare FEWER parameters than it is passed (JS ignores
+    // the rest); a Swift closure must name every one, so pad with `_`.
+    const arity = Math.max(slot?.params.length ?? 0, x.params.length)
+    const names = Array.from({ length: arity }, (_, i) => x.params[i] ?? '_')
+    const types = names.map((_, i) => slot?.params[i] ?? x.paramTypes?.[i])
+    const body = withSwiftLocals(
+      names.map((n, i) => [n, types[i]] as const).filter(([n]) => n !== '_'),
+      () => emitSwiftChild({ kind: 'expr', expr: unparenExpr(x.body) }, indent + 2),
+    )
+    const head = arity === 0 ? '{' : `{ ${names.map((n) => (n === '_' ? '_' : swiftIdent(n))).join(', ')} in`
+    return `${head}\n${pad}${body}\n${base}}`
+  }
+  // Forwarding the enclosing component's own render prop: same closure type.
+  const forwarded = activeSlotRef(x)
+  if (forwarded !== undefined) return swiftIdent(forwarded.name)
+  if (x.kind === 'identifier' && _viewHelpersSwift.has(x.name)) {
+    const h = _viewHelpersSwift.get(x.name)!
+    const arity = h.params.length
+    const args = Array.from({ length: arity }, (_, i) => `a${i}`)
+    return arity === 0
+      ? `{ ${swiftIdent(h.name)}() }`
+      : `{ ${args.join(', ')} in ${swiftIdent(h.name)}(${args.join(', ')}) }`
+  }
+  if (isViewShaped(x) || swiftCallRendersView(x)) {
+    return `{\n${pad}${emitSwiftChild({ kind: 'expr', expr: x }, indent + 2)}\n${base}}`
+  }
+  const w = unlowerableRenderValueWarning(where)
+  if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+  return emitSwiftExpr(x, indent)
+}
+
+/**
+ * Is `value` passed to a render prop? Yes when the receiving declaration (same
+ * file) says the prop is a slot, or when the value can only be a view — an
+ * arrow returning JSX, a view helper, or an element.
+ */
+function isSwiftSlotValue(value: ExprIR, slot: SlotProp | undefined): boolean {
+  if (slot !== undefined) return true
+  const x = value.kind === 'paren' ? value.inner : value
+  if (isRenderArrow(x) || isViewShaped(x)) return true
+  return x.kind === 'identifier' && _viewHelpersSwift.has(x.name)
+}
+
+/**
  * Emit `const fn = () => { ... }` as a Swift `private func` on the
  * SwiftUI View struct. Parser-A from the TodoMVC walkthrough.
  *
@@ -4802,6 +5152,11 @@ function emitSwiftFunction(
   visibility: 'private' | 'internal' = 'private',
   inferCtx?: ReturnType<typeof buildInferenceCtx>,
 ): string {
+  // A function whose whole body returns a view is a VIEW function — see
+  // render-slots.ts. Emitted as a plain `func` it returned Void, and every
+  // call to it interpolated a View into a string.
+  const vh = viewHelperFromDecl(d)
+  if (vh !== null) return emitSwiftViewHelper(vh, visibility, 2)
   // Use `_` (no external label) so call sites match the JS-style
   // unnamed-arg shape `toggle(t.id)` instead of requiring Swift's
   // labeled-call shape `toggle(id: t.id)`. The TS source doesn't
@@ -4881,7 +5236,7 @@ function emitSwiftFunction(
     // alias only inside emitSwiftComponent) — seeding one left `r` unknown
     // to the other, so isInteger warned raw despite a resolvable type.
     const savedActive = seedHandlerLocals(inlinedBody, _activeInferCtx)
-    const bodyLines = inlinedBody.map((s) => `    ${emitSwiftStatement(s, 4)}`).join('\n')
+    const bodyLines = emitSwiftStmtLines(inlinedBody, 4).join('\n')
     _exprInferCtx.locals = savedLocals
     _activeInferCtx.locals = savedActive
     const vis2 = visibility === 'private' ? 'private ' : ''
@@ -4907,6 +5262,21 @@ function emitSwiftFunction(
  * sites — see `classifyOptionalCondition` for the shared form definition.
  */
 function swiftCondition(e: ExprIR, emit: (x: ExprIR) => string): string {
+  // JS truthiness on an optional string / number / boolean is more than a nil
+  // test: '' / 0 / false are falsy too. Without this, `if (s)` took the branch
+  // on an empty string, which the web never does.
+  const t = truthinessFor(e, _exprInferCtx, _activePropsParamName)
+  if (t !== null && t.truth !== null) {
+    // A non-path subject (`items().find(…)?.note`) is parenthesized so the
+    // appended `?.isEmpty` / `??` binds to the whole expression.
+    const raw = emit(t.subject)
+    const x = isNarrowablePath(t.subject, _activePropsParamName) ? raw : `(${raw})`
+    const present =
+      t.truth === 'string' ? `${x}?.isEmpty == false` : t.truth === 'number' ? `(${x} ?? 0) != 0` : `${x} == true`
+    const absent =
+      t.truth === 'string' ? `${x}?.isEmpty != false` : t.truth === 'number' ? `(${x} ?? 0) == 0` : `${x} != true`
+    return t.presentWhenTrue ? present : absent
+  }
   const c = classifyOptionalCondition(e, _exprInferCtx)
   if (c?.form === 'absent') return `${emit(c.argument)} == nil`
   if (c?.form === 'present') return `${emit(c.argument ?? e)} != nil`
@@ -5047,50 +5417,37 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       // downstream type-dependent emits see the non-optional. Kotlin needs no
       // twin: `if (token != null)` smart-casts a val local by language rule.
       // Non-identifier optional conditions keep the `!= nil` lowering below.
-      const optC = classifyOptionalCondition(s.cond, _exprInferCtx)
-      // The comparison forms (`x !== null` / `x === null`) name the operand as
-      // the classifier's argument; `=== null` binds with the BODIES SWAPPED
-      // (the else-body is the narrowed one) and only when there is an else —
-      // a lone absent-check keeps the `== nil` test below.
-      const optName =
-        optC?.form === 'present'
-          ? s.cond.kind === 'identifier'
-            ? s.cond.name
-            : optC.argument?.kind === 'identifier'
-              ? optC.argument.name
-              : undefined
-          : optC?.form === 'absent' && optC.argument.kind === 'identifier' && s.elseBody
-            ? optC.argument.name
-            : undefined
-      if (optName !== undefined) {
-        const name = optName
-        const swapped = optC?.form === 'absent'
-        const narrowed = swapped ? s.elseBody! : s.then
-        const other = swapped ? s.then : s.elseBody
-        const prev = _exprInferCtx.locals.get(name)
-        if (prev !== undefined) _exprInferCtx.locals.set(name, unwrapOptionalType(prev))
-        let thenLines: string
-        try {
-          thenLines = narrowed
-            .map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`)
-            .join('\n')
-        } finally {
-          if (prev !== undefined) _exprInferCtx.locals.set(name, prev)
+      // Generalised in optional-narrowing.ts: the subject may be a signal
+      // read or a member chain (`if (b.tags) { b.tags.length }`), not just an
+      // identifier, and the `=== undefined` form binds with the bodies swapped.
+      const optN = narrowingFor(s.cond, _exprInferCtx, _activePropsParamName)
+      if (optN === null) warnNonPathSubject(s.cond, [...stmtExprs(s.then), ...stmtExprs(s.elseBody ?? [])], indent)
+      if (optN !== null) {
+        const narrowedBody = optN.presentWhenTrue ? s.then : s.elseBody
+        const otherBody = optN.presentWhenTrue ? s.elseBody : s.then
+        // Bind only when the narrowed body READS the value: a binding nothing
+        // reads is swiftc's "value 't' was defined but never used" warning,
+        // and the plain test (`t != nil`, or the truthiness form) says the
+        // same thing. A body that does read it gets `if let`.
+        if (narrowedBody !== undefined && stmtExprs(narrowedBody).some((x) => readsSubject(x, optN.subject))) {
+          const binder = binderName(optN.subject, stmtExprs(narrowedBody))
+          const rewritten = narrowStmts(narrowedBody, optN.subject, binder)
+          if (rewritten !== null) {
+            const thenLines = withSwiftLocals([[binder, optN.unwrapped]], () =>
+              emitSwiftStmtLines(rewritten, indent + 2).join('\n'),
+            )
+            const head = `if ${swiftBindClause(optN, binder, indent)} {\n${thenLines}\n${pad}}`
+            if (!otherBody) return head
+            return `${head} else {\n${emitSwiftStmtLines(otherBody, indent + 2).join('\n')}\n${pad}}`
+          }
+          warnUnnarrowable(optN, indent)
         }
-        const head = `if let ${swiftIdent(name)} {\n${thenLines}\n${pad}}`
-        if (!other) return head
-        const elseLines = other
-          .map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`)
-          .join('\n')
-        return `${head} else {\n${elseLines}\n${pad}}`
       }
       const cond = swiftCondition(s.cond, (x) => emitSwiftExpr(x, indent))
-      const thenLines = s.then.map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`).join('\n')
+      const thenLines = emitSwiftStmtLines(s.then, indent + 2).join('\n')
       const head = `if ${cond} {\n${thenLines}\n${pad}}`
       if (!s.elseBody) return head
-      const elseLines = s.elseBody
-        .map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`)
-        .join('\n')
+      const elseLines = emitSwiftStmtLines(s.elseBody, indent + 2).join('\n')
       return `${head} else {\n${elseLines}\n${pad}}`
     }
     case 'while': {
@@ -8210,40 +8567,28 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       if (nc) {
         return `(${emitSwiftExpr(nc.opt, indent)} ?? ${emitSwiftExpr(nc.fallback, indent)})`
       }
+      // A ternary whose surviving branch READS the optional it tested
+      // (`books === undefined ? 0 : books.length`, `sel() ? sel().title : …`,
+      // `b.tags ? b.tags.length : 0`): Swift has no ternary narrowing, so the
+      // narrowed branch runs inside `.map { x in … }` on an unwrapped binding
+      // and the other branch is the `??` fallback. See optional-narrowing.ts.
+      // `opt ? opt.title : fb` whose member emits VERBATIM keeps the plainer
+      // optional-chaining form below; a member that LOWERS (`s.length` →
+      // `s.utf16.count`) cannot be chained that way and narrows instead.
+      {
+        const omtProbe = optionalMemberTernary(e, _exprInferCtx)
+        const truthProbe = narrowingFor(e.cond, _exprInferCtx, _activePropsParamName)?.truth ?? null
+        const verbatim =
+          omtProbe !== null &&
+          truthProbe === null &&
+          emitSwiftExpr({ kind: 'member', object: omtProbe.opt, property: omtProbe.property }, indent) ===
+            `${emitSwiftExpr(omtProbe.opt, indent)}.${swiftIdent(omtProbe.property)}`
+        const narrowed = verbatim ? null : emitSwiftNarrowedTernary(e, indent)
+        if (narrowed !== null) return narrowed
+      }
       const omt = optionalMemberTernary(e, _exprInferCtx)
       if (omt) {
         return `(${emitSwiftExpr(omt.opt, indent)}?.${swiftIdent(omt.property)} ?? ${emitSwiftExpr(e.otherwise, indent)})`
-      }
-      // A narrowing ternary on an optional IDENTIFIER whose branch READS it
-      // (`r === null ? '' : String(r.start)`): Swift has no ternary narrowing,
-      // so the narrowed branch runs inside `r.map { r in … }` (the closure
-      // param shadows the optional with its payload) and the other branch is
-      // the `??` fallback. Kotlin smart-casts and needs nothing.
-      const oc = classifyOptionalCondition(e.cond, _exprInferCtx)
-      const ocName =
-        oc?.form === 'present'
-          ? e.cond.kind === 'identifier'
-            ? e.cond.name
-            : oc.argument?.kind === 'identifier'
-              ? oc.argument.name
-              : undefined
-          : oc?.form === 'absent' && oc.argument.kind === 'identifier'
-            ? oc.argument.name
-            : undefined
-      if (ocName !== undefined) {
-        const narrowedBranch = oc?.form === 'absent' ? e.otherwise : e.then
-        const otherBranch = oc?.form === 'absent' ? e.then : e.otherwise
-        if (exprReferencesIdent(narrowedBranch, ocName)) {
-          const prev = _exprInferCtx.locals.get(ocName)
-          if (prev !== undefined) _exprInferCtx.locals.set(ocName, unwrapOptionalType(prev))
-          let inner: string
-          try {
-            inner = emitSwiftExpr(narrowedBranch, indent)
-          } finally {
-            if (prev !== undefined) _exprInferCtx.locals.set(ocName, prev)
-          }
-          return `(${swiftIdent(ocName)}.map { ${swiftIdent(ocName)} in ${inner} } ?? ${emitSwiftExpr(otherBranch, indent)})`
-        }
       }
       const condStr = swiftCondition(e.cond, (x) => emitSwiftExpr(x, indent))
       let thenStr = emitSwiftExpr(e.then, indent)
@@ -9747,10 +10092,7 @@ function emitSwiftAction(handler: ExprIR, indent: number): string {
       // launch async work. The `await` sub-expressions emit inside it.
       const isAsync = handler.async === true
       const bodyIndent = isAsync ? indent + 4 : indent + 2
-      const bodyPad = ' '.repeat(bodyIndent)
-      const lines = inlinedStmts
-        .map((s) => bodyPad + emitSwiftStatement(s, bodyIndent))
-        .join('\n')
+      const lines = emitSwiftStmtLines(inlinedStmts, bodyIndent).join('\n')
       _exprInferCtx.locals = savedLocals
       _activeInferCtx.locals = savedLocalsAct6
       if (isAsync) {
@@ -12931,7 +13273,28 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
     }
   }
   const argEntries: { name: string; part: string }[] = []
+  // Render props. A same-file component DECLARES which props are slots; one
+  // from another file is judged by the value's own shape (see
+  // `isSwiftSlotValue`) — generated data components live in their own module.
+  const calleeSlots = _componentSlotsMap.get(e.tag)
+  const slotFor = (name: string): { slot: SlotProp | undefined; isSlot: (v: ExprIR) => boolean } => {
+    const slot = calleeSlots?.find((sl) => sl.name === name)
+    return {
+      slot,
+      isSlot: (v) => (calleeSlots !== undefined ? slot !== undefined : isSwiftSlotValue(v, undefined)),
+    }
+  }
   for (const a of e.attrs) {
+    if (a.kind === 'attr' && (isUserComponent || !isCanonicalPrimitive(e.tag))) {
+      const { slot, isSlot } = slotFor(a.name)
+      if (isSlot(a.value)) {
+        argEntries.push({
+          name: a.name,
+          part: `${swiftIdent(safeIdent(a.name))}: ${emitSwiftSlotArg(a.value, slot, `<${e.tag} ${a.name}={…}>`, indent)}`,
+        })
+        continue
+      }
+    }
     if (a.kind === 'attr') {
       // `safeIdent` converts kebab-case HTML attrs (`data-test`,
       // `aria-label`) to camelCase. Swift rejects `-` in argument
@@ -12970,6 +13333,29 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
   // components (SwiftUI primitives) keep author order — their inits are
   // hand-mapped, not memberwise.
   const targetPropsOrder = isUserComponent ? _componentPropsMap.get(e.tag) : undefined
+  // Function-as-children — `<UserData>{(u) => <Text/>}</UserData>` — and a
+  // same-file component's declared `children` slot. Passed as a LABELED
+  // argument rather than a trailing closure, so it binds by name and the
+  // memberwise-order sort below places it wherever `children` is declared.
+  let children = e.children
+  const { slot: childrenSlot } = slotFor('children')
+  const lone = children.length === 1 && children[0]!.kind === 'expr' ? children[0]!.expr : undefined
+  const loneIsCallback =
+    lone !== undefined &&
+    (isRenderArrow(lone) ||
+      activeSlotRef(lone) !== undefined ||
+      (lone.kind === 'identifier' && _viewHelpersSwift.has(lone.name)))
+  if (loneIsCallback && (calleeSlots === undefined || childrenSlot !== undefined)) {
+    argEntries.push({
+      name: 'children',
+      part: `children: ${emitSwiftSlotArg(lone!, childrenSlot, `<${e.tag}>{…}</${e.tag}>`, indent)}`,
+    })
+    children = []
+  } else if (childrenSlot !== undefined && childrenSlot.bare && children.length > 0) {
+    const inner = children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
+    argEntries.push({ name: 'children', part: `children: {\n${inner}\n${' '.repeat(indent)}}` })
+    children = []
+  }
   if (targetPropsOrder !== undefined && targetPropsOrder.length > 0) {
     const orderOf = new Map(targetPropsOrder.map((p, i) => [p.name, i]))
     argEntries.sort(
@@ -12982,10 +13368,10 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
   // `swiftIdent`-escape the tag name — covers user-defined components
   // whose name collides with a Swift keyword (e.g. `<class>...</class>`).
   const tag = swiftIdent(e.tag)
-  if (e.children.length === 0) {
+  if (children.length === 0) {
     return attrPairs ? `${tag}(${attrPairs})` : `${tag}()`
   }
-  const contentLines = e.children
+  const contentLines = children
     .map((c) => pad + emitSwiftChild(c, indent + 2))
     .join('\n')
   if (attrPairs) {
@@ -13005,6 +13391,10 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
  */
 function swiftExprProducesView(e: ExprIR): boolean {
   if (e.kind === 'jsx-element') return true
+  // A render prop invoked, a view slot read, or a view helper called — all
+  // views, though none is JSX at this position.
+  if (swiftCallRendersView(e)) return true
+  if (activeSlotRef(e)?.bare === true) return true
   if (e.kind === 'ternary') {
     return swiftExprProducesView(e.then) || swiftExprProducesView(e.otherwise)
   }
@@ -13032,6 +13422,8 @@ function emitSwiftViewTernary(
   t: { cond: ExprIR; then: ExprIR; otherwise: ExprIR },
   indent: number,
 ): string {
+  const narrowed = emitSwiftNarrowedView(t.cond, t.then, t.otherwise, indent)
+  if (narrowed !== null) return narrowed
   const cond = swiftCondition(t.cond, (x) => emitSwiftExpr(x, indent))
   const pad = ' '.repeat(indent + 2)
   const base = ' '.repeat(indent)
@@ -13055,6 +13447,8 @@ function emitSwiftReturnExpr(expr: ExprIR, indent: number): string {
   if (expr.kind === 'literal' && expr.value == null) {
     return 'EmptyView()'
   }
+  const slotUse = emitSwiftSlotUse(expr, indent)
+  if (slotUse !== null) return slotUse
   if (
     expr.kind === 'ternary' &&
     (swiftExprProducesView(expr.then) || swiftExprProducesView(expr.otherwise))
@@ -13064,8 +13458,25 @@ function emitSwiftReturnExpr(expr: ExprIR, indent: number): string {
   return emitSwiftExpr(expr, indent)
 }
 
+/**
+ * A use of one of this component's render props / view slots, in view
+ * position: `{props.children}` → `children()` (the slot is a closure),
+ * `props.render(item)` → `render(item)`. Null for anything else.
+ */
+function emitSwiftSlotUse(e: ExprIR, indent: number): string | null {
+  const x = e.kind === 'paren' ? e.inner : e
+  const bare = activeSlotRef(x)
+  if (bare !== undefined) return bare.bare ? `${swiftIdent(bare.name)}()` : null
+  if (x.kind !== 'call') return null
+  const slot = activeSlotRef(x.callee)
+  if (slot === undefined || slot.bare) return null
+  return emitSwiftSlotInvocation(slot, x.args, indent)
+}
+
 function emitSwiftChild(c: ChildIR, indent: number): string {
   if (c.kind === 'text') return `Text(${swiftStr(c.value)})`
+  const slotUse = emitSwiftSlotUse(c.expr, indent)
+  if (slotUse !== null) return slotUse
   if (!swiftExprProducesView(c.expr)) {
     // The expression is about to be STRINGIFIED. If it builds JSX anywhere
     // inside, the author wrote a list and is getting a debug description —
@@ -13110,6 +13521,8 @@ function emitSwiftChild(c: ChildIR, indent: number): string {
     // `t` is OPTIONAL (e.g. a `.find` result) → `if t != nil { … }` (and `{!t
     // && <X/>}` → `if t == nil { … }`), not the bare `if t { … }` swiftc
     // rejects as a non-Bool condition.
+    const narrowed = emitSwiftNarrowedView(c.expr.left, c.expr.right, undefined, indent)
+    if (narrowed !== null) return narrowed
     const cond = swiftCondition(c.expr.left, (x) => emitSwiftExpr(x, indent))
     const pad = ' '.repeat(indent + 2)
     const inner = emitSwiftChild({ kind: 'expr', expr: c.expr.right }, indent + 2)

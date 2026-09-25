@@ -56,7 +56,8 @@ export function App() {
 describe('session rehydrate — service method-return typing + optional-if lowering', () => {
   it('Swift: the token read lowers to an `if let` binding and the body uses the unwrapped value', () => {
     const out = transform(SRC, { target: 'swift' })
-    expect(out.code).toContain('if let token {')
+    // A truthiness test on a string also rejects '' — the web skips an empty token.
+    expect(out.code).toContain('if let token, !token.isEmpty {')
     expect(out.code).toContain('auth.signInSucceeded(User(name: token))')
     // The broken emit — a bare optional as the condition.
     expect(out.code).not.toContain('if token {')
@@ -65,7 +66,7 @@ describe('session rehydrate — service method-return typing + optional-if lower
 
   it('Kotlin: the token read lowers to a null-check (smart cast covers the body)', () => {
     const out = transform(SRC, { target: 'kotlin' })
-    expect(out.code).toContain('if (token != null) {')
+    expect(out.code).toContain('if (token != null && token.isNotEmpty()) {')
     expect(out.code).toContain('auth.signInSucceeded(User(name = token))')
     expect(out.code).not.toContain('if (token) {')
     expect(out.warnings).toEqual([])
