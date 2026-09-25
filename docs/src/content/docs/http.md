@@ -110,6 +110,13 @@ A mismatch throws `ResponseValidationError`. Two other modes:
 - `validate: 'warn'` — log and pass the raw body through. Useful when a backend drifts and you would rather degrade than white-screen. It fires in **production** too; that is the point.
 - `validate: 'off'` — skip validation. Safe only for **non-transforming** schemas: a coercing schema (`z.coerce.number()`, a `.transform()`) does real work, so skipping it changes the *value* and the declared type then lies.
 
+The mode is set on the client and can be overridden for one endpoint or one call — the more specific setting wins:
+
+```ts
+const events = api.endpoint('GET /events', { response: EventList, validate: 'off' }) // this endpoint only
+await api.get('/users/1', { validate: 'warn' }).json(User)                          // this request only
+```
+
 ## Endpoints
 
 The biggest real pain with `axios` + TanStack Query is that the `queryKey` and the URL drift apart, and the response type is a cast. An endpoint derives all three from one declaration:

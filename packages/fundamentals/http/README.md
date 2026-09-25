@@ -61,6 +61,8 @@ logs and passes the raw body through instead (useful when a backend drifts
 and you would rather degrade than white-screen); `validate: 'off'` skips
 validation — safe only for **non-transforming** schemas, since a coercing
 schema does real work and skipping it changes the value.
+The mode can also be set per endpoint (`api.endpoint(spec, { validate: 'off' })`)
+or per request (`api.get(path, { validate: 'warn' })`); the more specific wins.
 
 ## Quick start
 
