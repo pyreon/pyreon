@@ -11,7 +11,12 @@ seeAlso: [controllable-state]
 Define fields with `field()` (pure data — name + default + validator), compose them with `useForm({ fields: [...] })`, and read them from context with `useField('name')`:
 
 ```tsx
+// @check
 import { field, useForm, useField, Form, Submit } from '@pyreon/form'
+
+declare const api: { register(values: unknown): Promise<void> }
+declare function PasswordInput(): JSX.Element
+declare function ConfirmInput(): JSX.Element
 
 // 1. Field definitions — pure data, no rendering opinion.
 const email = field('email', '', (v) =>
@@ -35,7 +40,7 @@ const form = useForm({
 
 // 3. Components read the form from context — no prop drilling.
 function EmailInput() {
-  const f = useField('email')
+  const f = useField<string>('email')
   return (
     <div>
       <input {...f.register()} />
@@ -45,12 +50,14 @@ function EmailInput() {
 }
 
 // 4. Render. <Form> provides context + binds onSubmit. <Submit> auto-disables.
-<Form of={form}>
-  <EmailInput />
-  <PasswordInput />
-  <ConfirmInput />
-  <Submit>Register</Submit>
-</Form>
+const RegisterForm = () => (
+  <Form of={form}>
+    <EmailInput />
+    <PasswordInput />
+    <ConfirmInput />
+    <Submit>Register</Submit>
+  </Form>
+)
 ```
 
 Key rules:

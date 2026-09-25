@@ -181,6 +181,14 @@ export interface HttpRequest {
   method: HttpMethod
   /** Fully-resolved absolute-or-root-relative URL (base + path + query). */
   url: string
+  /**
+   * The client's configured `baseUrl`, as written (not ambient-resolved).
+   * `undefined` when the client has none. Credential-attaching middleware
+   * (`bearer`) uses it as the ORIGIN BOUNDARY: a path that is itself an
+   * absolute URL ignores `baseUrl` for routing, and must not silently take
+   * the user's token along to a foreign origin.
+   */
+  baseUrl?: string | undefined
   headers: Headers
   body: BodyInit | null
   signal: AbortSignal | undefined

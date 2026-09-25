@@ -78,6 +78,20 @@ loom dev: 142 package(s) → http://localhost:5230/`,
       seeAlso: ['loom scan'],
     },
     {
+      name: 'loom build',
+      kind: 'function',
+      signature: 'loom build [dir] [--out=<dir>] [--base=<path>]',
+      summary:
+        'Prerenders the observatory to a STANDALONE STATIC SITE — one prerendered page per view (graph / matrix / cycles / impact / manifest table), so a specific view has its own shareable URL instead of living behind a client-side signal. Output goes to `<dir>/loom-dist` by default (`--out=<dir>` to change it); `--base=<path>` sets the public base path for a subdirectory deploy. Needs `vite` + `@pyreon/vite-plugin` + `@pyreon/zero` as dev dependencies — `loom scan` needs NONE of them, so a CI gate that only runs `scan` is unaffected. The five views + the scan report are baked into the build so the output also works opened directly from `file://`, with no server.',
+      example: `$ loom build . --out=dist/observatory
+loom: 142 package(s) → dist/observatory`,
+      mistakes: [
+        'Running `loom build` in a project without Vite installed — it names the exact install (`vite @pyreon/vite-plugin @pyreon/zero`) rather than failing with a bare module-resolution error',
+        'Expecting the static build to re-scan on reload like `loom dev` does — it is a SNAPSHOT of the workspace at build time; re-run `loom build` after dependency changes to refresh it',
+      ],
+      seeAlso: ['loom dev', 'loom scan'],
+    },
+    {
       name: 'buildReport',
       kind: 'function',
       signature: '(rootDir: string, options?: { noImports?: boolean }) => LoomReport',
