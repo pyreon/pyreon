@@ -174,7 +174,13 @@ describe('runDocClaimsGate', () => {
     // charts package.json description) and +2 chart-family-host-count sites
     // (the charts README and charts-plot.md), which had drifted to
     // "seventeen" and "twenty" against a real 20 family hosts.
-    expect(result.meta.scanned).toBe(37)
+    //
+    // 44 as of the canonical-primitive-count check: 8 sites quoting how many
+    // canonical primitives exist (root README, primitives README ×2, manifest,
+    // four docs pages), which had rotted to 15 / 16 / 18 against a real 17.
+    // One of the 8 — the primitives-README "N … more when demanded" line —
+    // moved here from the web-implementation count, so the net change is +7.
+    expect(result.meta.scanned).toBe(44)
     // The real repo must be drift-free — this gate runs in CI; if a
     // count claim drifts, EVERY PR's doctor run fails until it's fixed.
     const errs = result.findings.filter((f) => f.severity === 'error')

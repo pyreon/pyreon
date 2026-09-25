@@ -18,6 +18,16 @@ export interface FieldInfo {
   referenceTo?: string
   /** Human-readable label derived from field name. */
   label: string
+  /**
+   * The schema's own default (`z.number().default(7)`), when it declares one.
+   * `defaultInitialValues` prefers it over the type-derived blank.
+   */
+  defaultValue?: unknown
+  /**
+   * A string format the schema pins (`z.string().email()` / `z.email()` →
+   * `'email'`, `.url()` → `'url'`). `<Field>` maps it to the input type.
+   */
+  format?: 'email' | 'url'
 }
 
 export type FieldType =
@@ -137,6 +147,9 @@ function detectFieldType(zodField: unknown): {
   optional: boolean
   enumValues?: (string | number)[]
   referenceTo?: string
+  defaultValue?: unknown
+  hasDefault?: boolean
+  format?: 'email' | 'url'
 } {
   // Check for reference fields first
   if (isReference(zodField)) {
@@ -175,19 +188,31 @@ function detectFieldType(zodField: unknown): {
 
   const typeName = getTypeName(inner)
 
-  // Unwrap optional/nullable
-  if (
-    typeName === 'ZodOptional' ||
-    typeName === 'ZodNullable' ||
-    typeName === 'optional' ||
-    typeName === 'nullable'
-  ) {
-    optional = true
-    const def = inner._def as Record<string, unknown> | undefined
-    const innerType = def?.innerType ?? (inner._zod as Record<string, unknown>)?.def
-    if (innerType && typeof innerType === 'object') {
-      inner = innerType as Record<string, unknown>
+  // Unwrap optional / nullable / default wrappers — in ANY order and depth
+  // (`.optional().default(x)`, `.default(x).nullable()`). Pre-fix only ONE
+  // optional/nullable layer was peeled and `ZodDefault` not at all, so a
+  // `.default(x)` field fell through to the `'string'` fallback (its enum /
+  // number type lost) and its declared default was ignored.
+  let hasDefault = false
+  let defaultValue: unknown
+  for (let i = 0; i < 8; i++) {
+    const t = getTypeName(inner)
+    const isOptional = t === 'ZodOptional' || t === 'ZodNullable' || t === 'optional' || t === 'nullable'
+    const isDefault = t === 'ZodDefault' || t === 'default' || t === 'prefault'
+    if (!isOptional && !isDefault) break
+    const def = (inner._def ?? (inner._zod as Record<string, unknown>)?.def) as
+      | Record<string, unknown>
+      | undefined
+    if (isOptional) optional = true
+    if (isDefault && !hasDefault) {
+      hasDefault = true
+      const raw = def?.defaultValue
+      // zod v3 stores a thunk; zod v4 stores the value (a getter on the def).
+      defaultValue = typeof raw === 'function' ? (raw as () => unknown)() : raw
     }
+    const innerType = def?.innerType
+    if (!innerType || typeof innerType !== 'object') break
+    inner = innerType as Record<string, unknown>
   }
 
   const innerTypeName = getTypeName(inner) ?? typeName
@@ -256,10 +281,31 @@ function detectFieldType(zodField: unknown): {
     }
   }
 
+  // String format (email / url) — drives the `<input type>` `<Field>` renders.
+  // zod v4: `z.email()` has def.format; `z.string().email()` pushes a check
+  // whose `_zod.def.format` names it. zod v3: `_def.checks[].kind`.
+  let format: 'email' | 'url' | undefined
+  if (type === 'string') {
+    const zodDef = (inner._zod as Record<string, unknown>)?.def as Record<string, unknown> | undefined
+    const def = inner._def as Record<string, unknown> | undefined
+    const formats: unknown[] = [zodDef?.format]
+    const checks = (zodDef?.checks ?? def?.checks) as unknown[] | undefined
+    if (Array.isArray(checks)) {
+      for (const c of checks) {
+        const cr = c as Record<string, unknown>
+        formats.push(cr.kind, cr.format, ((cr._zod as Record<string, unknown>)?.def as Record<string, unknown>)?.format)
+      }
+    }
+    if (formats.includes('email')) format = 'email'
+    else if (formats.includes('url')) format = 'url'
+  }
+
   return {
     type,
     optional,
     ...(enumValues != null ? { enumValues } : {}),
+    ...(hasDefault ? { hasDefault, defaultValue } : {}),
+    ...(format ? { format } : {}),
   }
 }
 
@@ -360,7 +406,8 @@ export function extractFields(schema: unknown): FieldInfo[] {
   if (!shape) return []
 
   return Object.entries(shape).map(([name, fieldSchema]) => {
-    const { type, optional, enumValues, referenceTo } = detectFieldType(fieldSchema)
+    const { type, optional, enumValues, referenceTo, hasDefault, defaultValue, format } =
+      detectFieldType(fieldSchema)
     const info: FieldInfo = {
       name,
       type,
@@ -369,6 +416,8 @@ export function extractFields(schema: unknown): FieldInfo[] {
     }
     if (enumValues) info.enumValues = enumValues
     if (referenceTo) info.referenceTo = referenceTo
+    if (hasDefault) info.defaultValue = defaultValue
+    if (format) info.format = format
     return info
   })
 }
@@ -379,6 +428,11 @@ export function extractFields(schema: unknown): FieldInfo[] {
 export function defaultInitialValues(fields: FieldInfo[]): Record<string, unknown> {
   const values: Record<string, unknown> = {}
   for (const field of fields) {
+    // The schema's own `.default(x)` wins over a type-derived blank.
+    if ('defaultValue' in field) {
+      values[field.name] = field.defaultValue
+      continue
+    }
     switch (field.type) {
       case 'string':
         values[field.name] = ''
@@ -393,7 +447,13 @@ export function defaultInitialValues(fields: FieldInfo[]): Record<string, unknow
         values[field.name] = field.enumValues?.[0] ?? ''
         break
       case 'date':
-        values[field.name] = ''
+        // `''` is not a Date — `z.date()` rejected the untouched default. An
+        // absent value is the honest "not chosen yet".
+        values[field.name] = undefined
+        break
+      case 'array':
+        // `''` is not an array — `z.array(...)` rejected the untouched default.
+        values[field.name] = []
         break
       default:
         values[field.name] = ''

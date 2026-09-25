@@ -59,13 +59,13 @@ describe('getInlineRuns', () => {
 
 describe('inline links survive per format', () => {
   it('pdf: the URI action carries the href (object layer, uncompressed)', async () => {
-    const out = (await render(doc(), 'pdf' as never)) as Uint8Array
+    const out = (await render(doc(), 'pdf')) as Uint8Array
     const s = new TextDecoder('latin1').decode(out)
     expect(s).toContain(URL)
   })
 
   it('docx: an ExternalHyperlink relationship carries the href', async () => {
-    const out = (await render(doc(), 'docx' as never)) as Uint8Array
+    const out = (await render(doc(), 'docx')) as Uint8Array
     const dump = unzipDump(out, 'links.docx')
     expect(dump).toContain('<w:hyperlink')
     expect(dump).toContain(URL)
@@ -73,23 +73,23 @@ describe('inline links survive per format', () => {
   })
 
   it('slack: mrkdwn <url|label> inside the paragraph', async () => {
-    const out = (await render(doc(), 'slack' as never)) as string
+    const out = (await render(doc(), 'slack')) as string
     expect(out).toContain(`<${URL}|full report>`)
     expect(out).toContain('Read the ')
   })
 
   it('telegram: <a href> inside the paragraph', async () => {
-    const out = (await render(doc(), 'telegram' as never)) as string
+    const out = (await render(doc(), 'telegram')) as string
     expect(out).toContain(`<a href="${URL}">full report</a>`)
   })
 
   it('whatsapp: degrades to "label (url)" — no link markup exists', async () => {
-    const out = (await render(doc(), 'whatsapp' as never)) as string
+    const out = (await render(doc(), 'whatsapp')) as string
     expect(out).toContain(`full report (${URL})`)
   })
 
   it('text: structural recursion already preserved "label (url)" (control)', async () => {
-    const out = (await render(doc(), 'text' as never)) as string
+    const out = (await render(doc(), 'text')) as string
     expect(out).toContain(`full report (${URL})`)
   })
 
@@ -99,7 +99,7 @@ describe('inline links survive per format', () => {
       children: [Page({ children: [Text({ children: ['just text'] })] })],
     })
     for (const f of ['slack', 'telegram', 'whatsapp'] as const) {
-      const out = (await render(plain, f as never)) as string
+      const out = (await render(plain, f)) as string
       expect(out).toContain('just text')
     }
   })

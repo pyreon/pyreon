@@ -45,9 +45,14 @@ describe('Schema.is() — attached compile-time verdict (fast path)', () => {
     const schema = s.string()
     schema._attachCompiledVerdict(() => false) // pretend "always invalid"
     expect(schema.is('ok')).toBe(false)
-    schema.min(2) // mutates _ops → _invalidateCompile → drops the stale verdict
-    expect(schema.is('ok')).toBe(true) // back to the real verdict (parse().ok)
-    expect(schema.is('x')).toBe(false) // and the new min(2) is in effect
+    // Chaining is copy-on-write: the derived schema never inherits a verdict
+    // attached to its receiver (the attach reflects the receiver's op list).
+    const derived = schema.min(2)
+    expect(derived.is('ok')).toBe(true) // the real verdict (parse().ok)
+    expect(derived.is('x')).toBe(false) // and the new min(2) is in effect
+    // A direct op-list change + invalidation drops the stale verdict too.
+    schema._invalidateCompile()
+    expect(schema.is('ok')).toBe(true)
   })
 
   it('_attachCompiledVerdict returns this for chaining', () => {

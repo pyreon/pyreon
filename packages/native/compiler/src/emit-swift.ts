@@ -10436,6 +10436,13 @@ function emitSwiftTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   // with `show`, and a device test would see it flicker rather than exist.
   const tTail = emitSwiftLayoutModifiers(e)
   if (asymmetric) {
+    // Both sides carry the PRESET, not a hard-coded fade. `swiftTransition`
+    // always starts with `.` (`.opacity`, `.scale.combined(with: .opacity)`,
+    // `.move(edge: …)…`), so prefixing `AnyTransition` gives the explicit
+    // receiver the per-side `.animation(_:)` needs. This used to emit
+    // `AnyTransition.opacity` unconditionally, so adding `enterDuration` to a
+    // `name="slideUp"` transition silently turned it into a fade on iOS while
+    // Android kept the slide.
     const insertion = swiftAnimationFor(enterDur ?? duration, enterEase ?? easing)
     const removal = swiftAnimationFor(leaveDur ?? duration, leaveEase ?? easing)
     return (
@@ -10443,8 +10450,8 @@ function emitSwiftTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
       `${p}  if ${cond} {\n` +
       `${p}    Group {\n${body}\n${p}    }\n` +
       `${p}      .transition(.asymmetric(\n` +
-      `${p}        insertion: AnyTransition.opacity.animation(${insertion}),\n` +
-      `${p}        removal: AnyTransition.opacity.animation(${removal})\n` +
+      `${p}        insertion: AnyTransition${swiftTransition}.animation(${insertion}),\n` +
+      `${p}        removal: AnyTransition${swiftTransition}.animation(${removal})\n` +
       `${p}      ))\n` +
       `${p}  }\n` +
       // NO container `.animation(_:value:)` here, unlike the symmetric branch

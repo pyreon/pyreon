@@ -55,7 +55,7 @@ describe('causeSteps — naming', () => {
     const steps = causeSteps(
       cause(link({ id: 9, kind: 'effect' }), [link({ id: 3, kind: 'signal' })]),
     )
-    expect(steps.map((s) => s.name)).toEqual(['#3', '#9'])
+    expect(steps.map((s) => s.name)).toEqual(['signal #3', 'effect #9'])
   })
 
   it('prefers a real name wherever there is one', () => {
@@ -83,19 +83,19 @@ describe('causeSteps — naming', () => {
 describe('causeSummary — naming and honesty', () => {
   it('names an anonymous ORIGIN by id', () => {
     expect(causeSummary(cause(link({ id: 9, name: 'render', kind: 'effect' }), [link({ id: 4 })]))).toBe(
-      'render updated because #4 changed, 1 hop away.',
+      'render updated because signal #4 changed, 1 hop away.',
     )
   })
 
   it('names an anonymous TARGET by id in the direct-set case', () => {
     expect(causeSummary(cause(link({ id: 7 }), []))).toBe(
-      '#7 IS the origin — it was set directly, not by another node.',
+      'signal #7 IS the origin — it was set directly, not by another node.',
     )
   })
 
   it('names an anonymous target by id in the chained case too', () => {
     expect(causeSummary(cause(link({ id: 7, kind: 'effect' }), [link({ id: 1, name: 'count' })]))).toBe(
-      '#7 updated because count changed, 1 hop away.',
+      'effect #7 updated because count changed, 1 hop away.',
     )
   })
 
