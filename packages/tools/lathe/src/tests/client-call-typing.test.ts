@@ -68,8 +68,8 @@ const SPEC = JSON.stringify({
 })
 
 const CONSUMER = `
-import { addPet, findPets, getPet, search, touchPet } from './endpoints/default'
-import { useAddPet, useFindPets, useGetPet, useTouchPet } from './queries/default'
+import { addPet, findPets, getPet, search, touchPet } from './endpoints'
+import { useAddPet, useFindPets, useGetPet, useTouchPet } from './queries'
 
 export async function direct(maybeLimit: number | undefined): Promise<void> {
   await getPet({ params: { petId: 1 } })

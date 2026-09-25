@@ -5,26 +5,24 @@
 // Re-run `lathe generate` to update. Edits here are lost on the next run;
 // to change the output, change the spec or the emitter.
 
-import type { NewBook } from '../schemas'
 import { api } from '../client'
-import { Book } from '../schemas'
+import { Book } from '../schemas/Book'
 import { s } from '@pyreon/validate'
 
 /**
  * Add a book.
  * `POST /books`
  */
-export const createBook = api.endpoint<'POST /books', typeof Book, { json: NewBook }>('POST /books', { response: Book })
+export const createBook = /* @__PURE__ */ api.endpoint('POST /books', { response: Book })
 
 /**
  * One book by id.
  * `GET /books/:bookId`
  */
-export const getBook = api.endpoint<'GET /books/:bookId', typeof Book, { params: { bookId: string } }>('GET /books/:bookId', { response: Book })
+export const getBook = /* @__PURE__ */ api.endpoint('GET /books/:bookId', { response: Book })
 
-const listBooks$response = s.array(Book)
 /**
  * Every book in the catalogue.
  * `GET /books`
  */
-export const listBooks = api.endpoint<'GET /books', typeof listBooks$response, {}>('GET /books', { response: listBooks$response })
+export const listBooks = /* @__PURE__ */ api.endpoint('GET /books', { response: /* @__PURE__ */ s.array(Book) })

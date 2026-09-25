@@ -171,10 +171,12 @@ function inlineCheckCond(op: CheckOpLike, ve: string): string | null {
     // (the value has already passed the numeric type-guard at the call site).
     case 'check:number:between':
       return `${ve} < ${numLit(op.lo)} || ${ve} > ${numLit(op.hi)}`
-    // multipleOf: pass = `v % n === 0` → fail = `v % n !== 0` (no epsilon in the
-    // check impl, so a direct `%` is byte-exact).
+    // multipleOf: an INTEGER step inlines `%`, byte-exact with `isMultipleOf`'s
+    // integer path. A FRACTIONAL step needs the float-safe quotient test, so it
+    // falls back to the check closure (which calls `isMultipleOf`) -- inlining
+    // `%` there is exactly the bug that rejected `19.99` for `0.01`.
     case 'check:number:multiple-of':
-      return `${ve} % ${numLit(op.n)} !== 0`
+      return Number.isInteger(op.n) ? `${ve} % ${numLit(op.n)} !== 0` : null
     // positional string checks: pass = `v.startsWith/endsWith/includes(s)` →
     // fail = `!v.<method>(s)`. The needle is baked as a string literal.
     case 'check:string:starts-with':

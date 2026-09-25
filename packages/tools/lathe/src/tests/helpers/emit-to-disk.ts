@@ -20,6 +20,12 @@ export interface Emitted {
   /** Import a generated module by its output-relative path (`endpoints/default.ts`). */
   load<T = Record<string, unknown>>(path: string): Promise<T>
   file(path: string): string
+  /**
+   * Every file of one layer (`endpoints`, `queries`), barrel excluded, joined.
+   * An untagged operation is grouped by its PATH, so a test that asserts on
+   * "the endpoints" must not name one group's file.
+   */
+  layer(dir: string): string
 }
 
 export function emitToDisk(
@@ -44,6 +50,11 @@ export function emitToDisk(
       if (!f) throw new Error(`no generated file ${path}`)
       return f.contents
     },
+    layer: (dir: string): string =>
+      result.files
+        .filter((x) => x.path.startsWith(`${dir}/`) && x.path !== `${dir}/index.ts`)
+        .map((x) => x.contents)
+        .join('\n'),
   }
 }
 

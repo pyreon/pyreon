@@ -9,27 +9,55 @@
 
 import type { GenerateResult } from '../core/generate'
 import type { SurfaceChange } from '../core/surface'
-import type { IrNote } from '../core/ir'
+import { noteSeverity, type IrNote } from '../core/ir'
 import type { VerifyReport } from '../verify/lower'
 
 // Built rather than written literally: a raw ESC byte in source is invisible
 // in diffs and review, and trivially lost to a well-meaning formatter.
 const ESC = String.fromCharCode(27)
-const paint =
-  (code: string) =>
-  (s: string): string =>
-    `${ESC}[${code}m${s}${ESC}[0m`
-const C = {
-  dim: paint('2'),
-  bold: paint('1'),
-  green: paint('32'),
-  yellow: paint('33'),
-  red: paint('31'),
-  cyan: paint('36'),
+
+/**
+ * The palette, or a no-op one.
+ *
+ * Colour is a decision about the DESTINATION, which the report cannot see: an
+ * escape code is noise in a CI log, a file, a pipe into `grep`, and for anyone
+ * who set `NO_COLOR`. It used to be unconditional. The bin decides (see
+ * {@link shouldColor}); a library caller gets plain text unless it asks.
+ */
+function palette(color: boolean) {
+  const paint =
+    (code: string) =>
+    (s: string): string =>
+      color ? `${ESC}[${code}m${s}${ESC}[0m` : s
+  return {
+    dim: paint('2'),
+    bold: paint('1'),
+    green: paint('32'),
+    yellow: paint('33'),
+    red: paint('31'),
+    cyan: paint('36'),
+  }
+}
+
+/**
+ * Whether output to `stream` should be coloured, by the de-facto conventions:
+ * `NO_COLOR` (any value) disables, `FORCE_COLOR` (other than `0`) enables, a
+ * `dumb` terminal disables, and otherwise only a TTY gets colour.
+ */
+export function shouldColor(
+  stream: { isTTY?: boolean | undefined },
+  env: Readonly<Record<string, string | undefined>>,
+): boolean {
+  if (env.NO_COLOR !== undefined && env.NO_COLOR !== '') return false
+  if (env.FORCE_COLOR !== undefined) return env.FORCE_COLOR !== '0'
+  if (env.TERM === 'dumb') return false
+  return stream.isTTY === true
 }
 
 /** How many contract changes to print before summarising the rest. */
 const MAX_CHANGES = 20
+/** How many distinct loss notes to print before summarising the rest. */
+const MAX_NOTES = 10
 
 export function renderReport(
   result: GenerateResult,
@@ -44,11 +72,16 @@ export function renderReport(
     created?: ReadonlySet<string> | undefined
     /** Contract changes vs the committed surface. */
     changes?: readonly SurfaceChange[] | undefined
+    /** Previously-generated files removed because this run no longer emits them. */
+    removed?: readonly string[] | undefined
     name?: string | undefined
     plugins: readonly string[]
     requestedPlugins: readonly string[]
+    /** Emit ANSI colour. Default `false`: the caller knows the destination. */
+    color?: boolean | undefined
   },
 ): string {
+  const C = palette(opts.color ?? false)
   const lines: string[] = []
   const { doc } = result
   lines.push('')
@@ -87,12 +120,17 @@ export function renderReport(
       lines.push(`  ${C.dim(`· ${path}`)}`)
     }
   }
+  // A removed file is part of what the run did to the tree, so it is listed
+  // with the rest -- a deletion that only shows up in `git status` is the kind
+  // of surprise that makes people distrust a generator.
+  for (const r of opts.removed ?? []) lines.push(`  ${C.red('-')} ${opts.output}/${r}`)
   lines.push('')
   lines.push(
     changed === undefined
       ? `  ${opts.wrote} file(s) written`
       : `  ${opts.wrote} of ${result.files.length} file(s) written` +
-        (changed.size === 0 ? C.dim('  (everything already current)') : ''),
+        (opts.removed && opts.removed.length > 0 ? `, ${opts.removed.length} removed` : '') +
+        (changed.size === 0 && (opts.removed?.length ?? 0) === 0 ? C.dim('  (everything already current)') : ''),
   )
 
   // The contract section. Placed BEFORE the native report because a breaking
@@ -172,35 +210,73 @@ export function renderReport(
       if (f.compiled && 'ok' in f.compiled) {
         for (const e of f.compiled.errors.slice(0, 2)) lines.push(`      ${C.red('error')} ${truncate(e, 120)}`)
       }
-      // Per DECLARATION (audit G2): which model lost what, not just "a warning".
-      for (const d of f.declarations.filter((x) => x.verdict !== 'lowers').slice(0, 5)) {
-        lines.push(`      ${C.yellow(d.verdict)} ${d.name}${C.dim(` — ${truncate(d.reasons[0] ?? '', 110)}`)}`)
-      }
-      if (f.declarations.length === 0) {
+      // A BROKEN verdict's warnings are the diagnosis, so they are printed in
+      // full: truncating one at 120 characters cut the actionable half
+      // ("Give it the shape you expect: …") off every one of them.
+      if (f.verdict === 'broken') {
+        for (const w of f.warnings) lines.push(`      ${w}`)
+      } else if (f.declarations.length > 0) {
+        // Per DECLARATION (audit G2): which model lost what, not just "a warning".
+        for (const d of f.declarations.filter((x) => x.verdict !== 'lowers').slice(0, 5)) {
+          lines.push(`      ${C.yellow(d.verdict)} ${d.name}${C.dim(` — ${truncate(d.reasons[0] ?? '', 110)}`)}`)
+        }
+      } else {
         for (const w of f.warnings.slice(0, 2)) lines.push(`      ${C.dim(truncate(w, 120))}`)
+        if (f.warnings.length > 2) {
+          lines.push(`      ${C.dim(`… and ${f.warnings.length - 2} more warning(s) (use --json for all)`)}`)
+        }
       }
     }
   }
 
   if (doc.notes.length > 0) {
+    // LOSSES lead, CHOICES are summarised. Petstore 3 produced 17 notes and 16
+    // were "used JSON over XML" -- listed under one heading at one weight, the
+    // single real loss was the note nobody reached.
+    const losses = doc.notes.filter((n) => noteSeverity(n) === 'loss')
+    const choices = doc.notes.filter((n) => noteSeverity(n) === 'choice')
     lines.push('')
-    lines.push(`  ${C.bold('spec notes')} ${C.dim(`(${doc.notes.length})`)}`)
-    for (const n of dedupeNotes(doc.notes).slice(0, 10)) {
-      lines.push(`    ${C.cyan(n.code)} ${C.dim(n.at)}`)
-      lines.push(`      ${truncate(n.message, 140)}`)
+    lines.push(
+      `  ${C.bold('spec notes')} ${C.dim(`(${doc.notes.length})`)}  ` +
+        `${losses.length > 0 ? C.yellow(`${losses.length} lost`) : C.green('nothing lost')}` +
+        `${C.dim(`  ${choices.length} choice(s)`)}`,
+    )
+    // The cap counts DISTINCT entries, because that is what is printed: the
+    // "and N more" line used to subtract 10 from the RAW count after
+    // de-duplicating, so it claimed notes were withheld that had been shown.
+    const distinct = dedupeNotes(losses)
+    for (const { note: n, count } of distinct.slice(0, MAX_NOTES)) {
+      lines.push(`    ${C.cyan(n.code)} ${C.dim(n.at)}${count > 1 ? C.dim(`  (+${count - 1} more like it)`) : ''}`)
+      lines.push(`      ${n.message}`)
     }
-    if (doc.notes.length > 10) lines.push(`    ${C.dim(`and ${doc.notes.length - 10} more`)}`)
+    if (distinct.length > MAX_NOTES) {
+      lines.push(
+        `    ${C.dim(`… and ${distinct.length - MAX_NOTES} more distinct loss(es) (use --json for all ${losses.length})`)}`,
+      )
+    }
+    if (choices.length > 0) {
+      const byCode = new Map<string, number>()
+      for (const n of choices) byCode.set(n.code, (byCode.get(n.code) ?? 0) + 1)
+      lines.push(
+        `    ${C.dim(`choices: ${[...byCode].map(([code, n]) => `${code} x${n}`).join(', ')} (use --json for detail)`)}`,
+      )
+    }
   }
   lines.push('')
   return lines.join('\n')
 }
 
-/** Collapse repeats of the same code+message; keep the first location. */
-function dedupeNotes(notes: readonly IrNote[]): IrNote[] {
-  const seen = new Map<string, IrNote>()
+/**
+ * Collapse repeats of the same code+message; keep the first location and how
+ * many were folded into it, so a collapsed entry still reports its weight.
+ */
+function dedupeNotes(notes: readonly IrNote[]): Array<{ note: IrNote; count: number }> {
+  const seen = new Map<string, { note: IrNote; count: number }>()
   for (const n of notes) {
     const key = `${n.code}|${n.message}`
-    if (!seen.has(key)) seen.set(key, n)
+    const hit = seen.get(key)
+    if (hit) hit.count++
+    else seen.set(key, { note: n, count: 1 })
   }
   return [...seen.values()]
 }

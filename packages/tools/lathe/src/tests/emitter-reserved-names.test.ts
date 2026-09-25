@@ -34,7 +34,8 @@ describe('emitter-reserved names', () => {
     expect(operationIdent('api')).toBe('apiOp')
     expect(operationIdent('query')).toBe('queryOp')
     expect(operationIdent('listPets')).toBe('listPets')
-    expect(modelIdent('Record')).toBe('RecordModel')
+    expect(modelIdent('Record')).toBe('Record_') // a language global: typeIdent's own suffix
+    expect(modelIdent('ApiConfig')).toBe('ApiConfigModel')
     expect(modelIdent('Pet')).toBe('Pet')
   })
 

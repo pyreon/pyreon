@@ -17,12 +17,29 @@ const RESERVED = new Set([
   'super', 'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void',
   'while', 'with', 'yield', 'let', 'static', 'await', 'implements', 'interface',
   'package', 'private', 'protected', 'public',
+  // Not keywords, but a SyntaxError as a binding name in strict (ESM) code.
+  'eval', 'arguments',
   // Swift
   'associatedtype', 'deinit', 'extension', 'fileprivate', 'func', 'guard',
   'inout', 'internal', 'operator', 'protocol', 'repeat', 'self', 'struct',
   'subscript', 'where', 'defer', 'init', 'is', 'rethrows', 'throws', 'Any',
   // Kotlin
   'as', 'fun', 'object', 'val', 'when', 'typealias', 'sealed', 'data',
+])
+
+/**
+ * Global names the GENERATED code itself references, which a model must not
+ * shadow. A spec model named `Record` emitted `export type Record = …` into a
+ * module whose free-form maps are typed `Record<string, …>` -- the reference
+ * then resolves to the model, and the file stops compiling. Suffixed like a
+ * keyword. Applies to TYPE identifiers only: an operation named `map` is
+ * harmless, a model named `Map` is not.
+ */
+const TYPE_RESERVED = new Set([
+  'Record', 'Partial', 'Required', 'Readonly', 'NonNullable', 'Array', 'ReadonlyArray',
+  'Promise', 'Map', 'Set', 'Date', 'Error', 'Object', 'String', 'Number', 'Boolean',
+  'Symbol', 'BigInt', 'JSON', 'Math', 'Function', 'Infer', 'Schema', 'Blob', 'File',
+  'FormData', 'URLSearchParams', 'Response', 'Request', 'Headers',
 ])
 
 /** Split an arbitrary string into lowercase word parts. */
@@ -78,7 +95,7 @@ export function ident(input: string): string {
 export function typeIdent(input: string): string {
   let out = pascal(input)
   if (/^[0-9]/.test(out)) out = `_${out}`
-  if (RESERVED.has(out)) out = `${out}_`
+  if (RESERVED.has(out) || TYPE_RESERVED.has(out)) out = `${out}_`
   return out
 }
 
@@ -112,19 +129,56 @@ export function operationIdFrom(method: string, path: string): string {
 }
 
 /**
- * Ensure uniqueness within a namespace, deterministically.
+ * Assign unique identifiers to a list of raw names, deterministically.
  *
- * Collisions get a numeric suffix in FIRST-SEEN order. Callers must therefore
- * feed names in a stable order (the inputs iterate sorted keys) or the suffix
- * assignment churns between runs.
+ * Two rules, and the second is the one a numeric-suffix counter got wrong:
+ *
+ *  1. A raw name that is ALREADY its own identifier keeps it. Those are
+ *     reserved first, so `User2` in the spec is `User2` in the output no matter
+ *     where it sorts.
+ *  2. Every other name takes the first FREE candidate -- `base`, `base2`,
+ *     `base3`, … -- checked against every name assigned so far.
+ *
+ * The previous counter tracked how often each BASE had been seen and never
+ * checked the suffixed result against names already taken, so `User`,
+ * `User2`, `user` became `User`, `User2`, `User2`: one `User2` overwrote the
+ * other, and a `$ref` to the integer `User2` silently bound to the boolean
+ * one. Collisions are never resolved by DROPPING an entry.
+ *
+ * `derive` must be deterministic; `raws` must arrive in a stable order.
+ * Returns one name per input, index-aligned (duplicate raws get distinct names).
  */
-export function uniquifier(): (name: string) => string {
-  const seen = new Map<string, number>()
-  return (name: string): string => {
-    const n = seen.get(name) ?? 0
-    seen.set(name, n + 1)
-    return n === 0 ? name : `${name}${n + 1}`
-  }
+export function assignNames(raws: readonly string[], derive: (raw: string) => string): string[] {
+  const out: (string | undefined)[] = raws.map(() => undefined)
+  const taken = new Set<string>()
+  // Pass 1: exact names reserve themselves (first occurrence only).
+  raws.forEach((raw, i) => {
+    const d = derive(raw)
+    if (d === raw && !taken.has(d)) {
+      taken.add(d)
+      out[i] = d
+    }
+  })
+  // Pass 2: everything else takes the first free candidate.
+  raws.forEach((raw, i) => {
+    if (out[i] !== undefined) return
+    const base = derive(raw)
+    let name = base
+    for (let n = 2; taken.has(name); n++) name = `${base}${n}`
+    taken.add(name)
+    out[i] = name
+  })
+  return out as string[]
+}
+
+/**
+ * The file-name stem for a tag: `Pet Store` -> `pet-store`.
+ *
+ * Lowercased, so two tags that differ only in case map to ONE file; the input
+ * layer makes tags unique under this function before any emitter sees them.
+ */
+export function tagFile(tag: string): string {
+  return tag.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'default'
 }
 
 /**

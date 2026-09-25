@@ -53,7 +53,7 @@ export function previewOperations(doc: IrDocument): IrOperation[] {
         !op.queryParams.some((p) => p.required) &&
         // So does a REQUIRED body (audit H2): Stripe's GETs declared one, and
         // their previews called the hook with no argument and did not compile.
-        !(op.body !== undefined && op.bodyRequired === true),
+        op.body?.required !== true,
     ),
   )
 }

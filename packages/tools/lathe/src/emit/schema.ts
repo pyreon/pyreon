@@ -7,9 +7,10 @@
  * declared type that the runtime schema does not actually enforce.
  */
 
-import { topoSortModels } from '../core/graph'
-import type { IrDocument, IrField, IrType } from '../core/ir'
+import { deferredTargets, modelDependencies, modelIndex, stronglyConnected, topoSortModels } from '../core/graph'
+import type { IrDocument, IrField, IrLiteral, IrNumberType, IrStringType, IrType } from '../core/ir'
 import { propKey, typeIdent } from '../core/naming'
+import { collectRefNames } from '../core/walk'
 import { dialectOf, type ValidatorName } from './validator'
 import { q, regexLiteral, relativeSpecifier, SourceFile } from './writer'
 
@@ -57,21 +58,39 @@ export interface SchemaExprOptions {
 /**
  * Render an IR type as a TypeScript type expression.
  *
- * `widenEnums` renders an enum as `string` rather than as its literal union.
- * Two callers need it, for the same underlying reason — the declared type must
- * match what the runtime schema actually produces: the native path narrows
- * enums to a plain string, and `@pyreon/validate`'s `s.enum` infers `string`
- * too. Declaring `'a' | 'b'` against either is a type the schema does not
- * enforce.
+ * `widenEnums` renders a STRING enum as `string` rather than as its literal
+ * union. Two callers need it, for the same underlying reason — the declared
+ * type must match what the runtime schema actually produces: the native path
+ * narrows enums to their base scalar, and `@pyreon/validate`'s `s.enum` infers
+ * `string` too. Declaring `'a' | 'b'` against either is a type the schema does
+ * not enforce. Non-string enums are emitted as a union of `literal`s, which
+ * both libraries infer exactly, so they only widen on the native path.
+ *
+ * `emptyObject` is how an object with no fields and no `additionalProperties`
+ * is spelled: what the schema library infers for `object({})`. zod strips
+ * unknown keys and infers `Record<string, never>`; `@pyreon/validate` infers
+ * a type `Record<string, unknown>` agrees with.
+ *
+ * `unknownType` is how a value of unknown shape is spelled -- `unknown`
+ * everywhere except a form / multipart body, where it is what the encoder
+ * accepts (`FormValue`): `unknown` is not assignable to it.
  */
-export function tsType(type: IrType, depth = 0, widenEnums = false): string {
-  const native = widenEnums
+export function tsType(
+  type: IrType,
+  depth = 0,
+  widenEnums = false,
+  native = false,
+  files = false,
+  emptyObject = 'Record<string, unknown>',
+  unknownType = 'unknown',
+): string {
   switch (type.kind) {
     case 'string':
-      // On the native path enums narrow to `s.string()`, so the TYPE must
-      // narrow with them — otherwise the declared union and the runtime schema
-      // disagree and the generated module does not compile.
-      return type.enum && !native ? type.enum.map((v) => q(v)).join(' | ') : 'string'
+      // In a REQUEST body a `binary` string is a file: what a caller hands the
+      // client is a `Blob` (a `File` is one), never text.
+      return files && type.format === 'binary' ? 'Blob' : 'string'
+    case 'enum':
+      return enumTs(type.values, widenEnums, native)
     case 'number':
       return 'number'
     case 'boolean':
@@ -79,83 +98,126 @@ export function tsType(type: IrType, depth = 0, widenEnums = false): string {
     case 'null':
       return 'null'
     case 'unknown':
-      return 'unknown'
+      return unknownType
     case 'ref':
       return type.name
+    case 'nullable': {
+      const inner = tsType(type.inner, depth, widenEnums, native, files, emptyObject, unknownType)
+      return `${inner} | null`
+    }
     case 'array': {
-      const inner = tsType(type.items, depth + 1, native)
+      const inner = tsType(type.items, depth + 1, widenEnums, native, files, emptyObject, unknownType)
       // `A | B[]` parses as `A | (B[])`, so a union element needs parens.
       return /[|&]/.test(inner) ? `(${inner})[]` : `${inner}[]`
     }
     case 'union':
-      return type.options.map((o) => tsType(o, depth + 1, native)).join(' | ')
+      return type.options.map((o) => tsType(o, depth + 1, widenEnums, native, files, emptyObject, unknownType)).join(' | ')
     case 'object': {
       if (type.fields.length === 0) {
-        return type.additional ? `Record<string, ${tsType(type.additional, depth + 1, native)}>` : 'Record<string, unknown>'
+        return type.additional
+          ? `Record<string, ${tsType(type.additional, depth + 1, widenEnums, native, files, emptyObject, unknownType)}>`
+          : emptyObject
       }
       const pad = '  '.repeat(depth + 1)
       const close = '  '.repeat(depth)
       const body = type.fields
-        .map((f) => `${pad}${propKey(f.name)}${f.required ? '' : '?'}: ${fieldTs(f, depth + 1, native)}`)
+        .map((f) => `${pad}${propKey(f.name)}${f.required ? '' : '?'}: ${fieldTs(f, depth + 1, widenEnums, native, files, emptyObject, unknownType)}`)
         .join('\n')
+      if (type.additional && !native) {
+        // An index signature must admit every declared property's type too.
+        const values = new Set([
+          tsType(type.additional, depth + 1, widenEnums, native, files, emptyObject, unknownType),
+          ...type.fields.map((f) => fieldTs(f, depth + 1, widenEnums, native, files, emptyObject, unknownType)),
+        ])
+        return `{\n${body}\n${close}} & Record<string, ${[...values].join(' | ')}>`
+      }
       return `{\n${body}\n${close}}`
     }
   }
 }
 
-function fieldTs(field: IrField, depth: number, native = false): string {
-  const base = tsType(field.type, depth, native)
-  const withNull = field.nullable ? `${base} | null` : base
+/** The TS rendering of an enum's values, matching what its schema infers. */
+function enumTs(values: readonly IrLiteral[], widen: boolean, native: boolean): string {
+  if (native) {
+    // The native path narrows to one scalar schema (see `schemaExpr`).
+    const kinds = new Set(values.map((v) => typeof v))
+    return kinds.size === 1 ? (kinds.has('number') ? 'number' : kinds.has('boolean') ? 'boolean' : 'string') : 'string'
+  }
+  if (widen && values.length > 1 && values.every((v) => typeof v === 'string')) return 'string'
+  return values.map((v) => (typeof v === 'string' ? q(v) : String(v))).join(' | ')
+}
+
+function fieldTs(
+  field: IrField,
+  depth: number,
+  widenEnums: boolean,
+  native: boolean,
+  files = false,
+  emptyObject = 'Record<string, unknown>',
+  unknownType = 'unknown',
+): string {
+  const base = tsType(field.type, depth, widenEnums, native, files, emptyObject, unknownType)
   // `exactOptionalPropertyTypes` is on across this repo and in the consumer
   // presets, where `x?: number` and `x?: number | undefined` are DIFFERENT
   // types. The schema infers the second, so the emitted type must say it — or
   // the generated module fails to typecheck against its own schema.
-  return field.required ? withNull : `${withNull} | undefined`
+  return field.required ? base : `${base} | undefined`
+}
+
+/**
+ * The pure-call annotation on every emitted builder call.
+ *
+ * `s.object({ … })` and `api.endpoint(…)` are module-level CALLS, and a
+ * bundler keeps a call it cannot prove side-effect-free, so every schema and
+ * every endpoint in a module a hook reaches was retained. The annotation has
+ * to be on EVERY call, arguments included: on the outer declaration alone the
+ * bundler still had to evaluate the argument calls (`s.string().uuid()`), which
+ * is why an earlier measurement of the outer-only form found it worth 2% and
+ * concluded the annotation was useless.
+ */
+export const PURE = '/* @__PURE__ */ '
+
+/**
+ * Annotate an expression pure unless it already starts with a pure call. A
+ * chain on a bare model NAME (`Author.optional()`) is a method call the bundler
+ * cannot prove pure, and it sits inside the enclosing `s.object({ … })`
+ * arguments -- without its own annotation it pinned the whole enclosing model
+ * into every bundle that reached its module.
+ */
+function purify(expr: string, native: boolean): string {
+  return native || expr.startsWith(PURE) ? expr : `${PURE}${expr}`
 }
 
 /**
  * Render an IR type as an `s.*` expression.
  *
  * `native` narrows the output to the subset PMTC lowers. The difference is not
- * cosmetic: on the native path an enum becomes `s.string()` and the constraint
- * is LOST there, so callers must report that rather than let a reader assume
- * the two targets validate identically.
+ * cosmetic: on the native path an enum becomes its base scalar and the
+ * constraint is LOST there, so callers must report that rather than let a
+ * reader assume the two targets validate identically.
  */
 export function schemaExpr(type: IrType, opts: SchemaExprOptions, depth = 0): string {
   const dialect = dialectOf(opts.validator ?? 'pyreon')
   const b = dialect.binding
+  // Every builder CALL is annotated pure (web only -- the native recognizers
+  // read these files, and they are not bundled). See `PURE` for why.
+  const p = opts.native ? '' : PURE
+  const c = (ctor: string): string => `${p}${b}.${ctor}`
   switch (type.kind) {
-    case 'string': {
-      if (type.enum && !opts.native) return `${b}.enum([${type.enum.map((v) => q(v)).join(', ')}])`
-      if (type.enum && opts.native) return `${b}.string()`
-      switch (type.format) {
-        // The `.email()` / `.url()` / `.uuid()` chain is DEPRECATED in zod 4 in
-        // favour of top-level `z.email()`, and emitted anyway: the chained form
-        // works in both zod 3 and zod 4 while the top-level form exists only in
-        // 4. Picking the newer spelling would silently narrow the zod versions
-        // this output compiles against, and the failure would land in the
-        // consumer's repo rather than here.
-        case 'email':
-          return `${b}.string().email()`
-        case 'uri':
-          return `${b}.string().url()`
-        case 'uuid':
-          return `${b}.string().uuid()`
-        // `date` / `date-time` stay strings deliberately: a date schema does
-        // not lower, and parsing to a Date on web and a String on native is a
-        // divergence no consumer can see coming.
-        default:
-          return `${b}.string()`
-      }
-    }
+    case 'string':
+      return stringExpr(type, b, p, dialect.uriCheck)
+    case 'enum':
+      return enumExpr(type.values, b, opts.native, p)
     case 'number':
-      return type.integer ? `${b}.number().int()` : `${b}.number()`
+      return numberExpr(type, b, opts.native, p)
     case 'boolean':
-      return `${b}.boolean()`
+      return `${c('boolean')}()`
     case 'null':
-      return opts.native ? `${b}.string()` : `${b}.null()`
+      return opts.native ? `${c('string')}()` : `${c('null')}()`
     case 'unknown':
-      return opts.native ? `${b}.string()` : `${b}.unknown()`
+      return opts.native ? `${c('string')}()` : `${c('unknown')}()`
+    case 'nullable':
+      return purify(`${schemaExpr(type.inner, opts, depth)}.nullable()`, opts.native)
     case 'ref': {
       // On the native path, INLINE the target where the dialect says nested
       // objects lower: PMTC drops a field that NAMES another schema, and an
@@ -181,45 +243,134 @@ export function schemaExpr(type: IrType, opts: SchemaExprOptions, depth = 0): st
       // the target directly here is a TDZ ReferenceError at import; `lazy`
       // defers the read to first use, which is exactly what a cycle needs.
       const binding = opts.refBinding ? opts.refBinding(type.name) : type.name
-      return opts.defer?.has(type.name) === true ? `${b}.lazy(() => ${binding})` : binding
+      return opts.defer?.has(type.name) === true ? `${c('lazy')}(() => ${binding})` : binding
     }
-    case 'array':
-      return `${b}.array(${schemaExpr(type.items, opts, depth + 1)})`
+    case 'array': {
+      let expr = `${c('array')}(${schemaExpr(type.items, opts, depth + 1)})`
+      if (opts.native) return expr
+      if (type.minItems !== undefined) expr += `.min(${type.minItems})`
+      if (type.maxItems !== undefined) expr += `.max(${type.maxItems})`
+      // Neither library has a built-in uniqueness check. Items are compared by
+      // their JSON text, which is exact for scalars (the dominant case) and
+      // for objects serialized in a consistent key order.
+      if (type.uniqueItems) {
+        expr += `.refine((a) => new Set(a.map((v) => JSON.stringify(v))).size === a.length, { message: 'items must be unique' })`
+      }
+      return expr
+    }
     case 'union': {
-      if (opts.native) return `${b}.string()`
-      const inner = type.options.map((o) => schemaExpr(o, opts, depth + 1)).join(', ')
-      return type.discriminator
-        ? `${b}.discriminatedUnion(${q(type.discriminator)}, [${inner}])`
-        : `${b}.union([${inner}])`
+      if (opts.native) return `${c('string')}()`
+      const members = type.options.map((o) => schemaExpr(o, opts, depth + 1))
+      const inner = members.join(', ')
+      // A member deferred through `lazy` has no `.shape` at construction, and
+      // `discriminatedUnion` reads every member's tag field right then -- it
+      // would throw at import. A plain union validates the same payloads.
+      const deferred = type.options.some((o) => o.kind === 'ref' && opts.defer?.has(o.name) === true)
+      if (!type.discriminator || deferred) return `${c('union')}([${inner}])`
+      // A member that NAMES a model is typed as that model's `Schema<X>` (see
+      // `emitSchemas`), which a discriminated union's signature rejects -- it
+      // needs the object-schema type to read the discriminant's values. At
+      // runtime the const IS an object schema, so the member is cast back to
+      // one and the call's result is cast to the union of the members' types,
+      // which is what it validates.
+      const named = type.options.map((o, i) => o.kind === 'ref' && members[i] === o.name)
+      if (!named.some(Boolean)) return `${c('discriminatedUnion')}(${q(type.discriminator)}, [${inner}])`
+      const cast = members.map((m, i) => (named[i] ? `(${m} as unknown as ${dialect.objectSchemaRef})` : m))
+      return `(${c('discriminatedUnion')}(${q(type.discriminator)}, [${cast.join(', ')}]) as unknown as ${dialect.schemaTypeRef(tsType(type, depth, dialect.enumWidensToString, false, false, dialect.emptyObjectType))})`
     }
     case 'object': {
       if (type.fields.length === 0) {
         return type.additional && !opts.native
-          ? `${b}.record(${b}.string(), ${schemaExpr(type.additional, opts, depth + 1)})`
-          : `${b}.object({})`
+          ? `${c('record')}(${c('string')}(), ${schemaExpr(type.additional, opts, depth + 1)})`
+          : `${c('object')}({})`
       }
       const pad = '  '.repeat(depth + 1)
       const close = '  '.repeat(depth)
       const body = type.fields.map((f) => `${pad}${propKey(f.name)}: ${fieldSchema(f, opts, depth + 1)},`).join('\n')
-      return `${b}.object({\n${body}\n${close}})`
+      // Declared properties AND an `additionalProperties` schema: the extra
+      // keys are typed too. Dropping the map part accepted any value there.
+      const rest = type.additional && !opts.native ? `.catchall(${schemaExpr(type.additional, opts, depth + 1)})` : ''
+      return `${c('object')}({\n${body}\n${close}})${rest}`
     }
   }
 }
 
-function fieldSchema(field: IrField, opts: SchemaExprOptions, depth: number): string {
-  let expr = schemaExpr(field.type, opts, depth)
-  // Constraints only attach to the kinds that carry them.
-  if (field.type.kind === 'string') {
-    if (typeof field.min === 'number') expr += `.min(${field.min})`
-    if (typeof field.max === 'number') expr += `.max(${field.max})`
-    if (field.pattern && portableRegex(field.pattern)) expr += `.regex(${regexLiteral(field.pattern)})`
-  } else if (field.type.kind === 'number') {
-    if (typeof field.min === 'number') expr += `.min(${field.min})`
-    if (typeof field.max === 'number') expr += `.max(${field.max})`
+function stringExpr(type: IrStringType, b: string, p: string, uriCheck: string): string {
+  let expr: string
+  switch (type.format) {
+    // The `.email()` / `.uuid()` chain is DEPRECATED in zod 4 in favour of
+    // top-level `z.email()`, and emitted anyway: the chained form works in
+    // both zod 3 and zod 4 while the top-level form exists only in 4. Picking
+    // the newer spelling would silently narrow the zod versions this output
+    // compiles against, and the failure would land in the consumer's repo.
+    case 'email':
+      expr = `${p}${b}.string().email()`
+      break
+    case 'uuid':
+      expr = `${p}${b}.string().uuid()`
+      break
+    // OpenAPI's `uri` is RFC 3986: any scheme. `@pyreon/validate`'s bare
+    // `.url()` accepts only http(s), so a valid URI such as
+    // `git:git.example.com/x` (GitHub's `mirror_url`) was rejected; the
+    // dialect spells the any-scheme form (`.url({ protocol })` there, plain
+    // `.url()` on zod, which already accepts any scheme). The SAME spelling on
+    // the native path: PMTC lowers each library's rule faithfully.
+    case 'uri':
+      expr = `${p}${b}.string()${uriCheck}`
+      break
+    // `date` / `date-time` stay strings deliberately: a date schema does not
+    // lower, and parsing to a Date on web and a String on native is a
+    // divergence no consumer can see coming.
+    default:
+      expr = `${p}${b}.string()`
   }
-  if (field.nullable) expr += '.nullable()'
-  if (!field.required) expr += '.optional()'
+  // Length and pattern checks LOWER natively (PMTC emits them into the schema
+  // struct's parse), so they are kept on both paths.
+  if (type.minLength !== undefined) expr += `.min(${type.minLength})`
+  if (type.maxLength !== undefined) expr += `.max(${type.maxLength})`
+  if (type.pattern && portableRegex(type.pattern)) expr += `.regex(${regexLiteral(type.pattern)})`
   return expr
+}
+
+function numberExpr(type: IrNumberType, b: string, native: boolean, p: string): string {
+  let expr = type.integer ? `${p}${b}.number().int()` : `${p}${b}.number()`
+  // Inclusive bounds lower natively; the strict / step checks below are not
+  // in PMTC's recognised chain, so the native path stops here.
+  if (type.minimum !== undefined) expr += `.min(${type.minimum})`
+  if (type.maximum !== undefined) expr += `.max(${type.maximum})`
+  if (native) return expr
+  if (type.exclusiveMinimum !== undefined) expr += `.gt(${type.exclusiveMinimum})`
+  if (type.exclusiveMaximum !== undefined) expr += `.lt(${type.exclusiveMaximum})`
+  // Both libraries decide a FRACTIONAL step float-safely (`@pyreon/validate`
+  // since its `multipleOf` stopped using a bare `%`), so `19.99` passes
+  // `.multipleOf(0.01)` on both.
+  if (type.multipleOf !== undefined) expr += `.multipleOf(${type.multipleOf})`
+  return expr
+}
+
+/**
+ * An enum / const.
+ *
+ * All-string -> `enum([...])`; one value -> `literal(v)`; anything else -> a
+ * union of literals. Never a `string()` with constraints chained on: that was
+ * `s.enum([...]).min(3)`, a TypeError at import time.
+ */
+function enumExpr(values: readonly IrLiteral[], b: string, native: boolean, p: string): string {
+  if (native) {
+    const kinds = new Set(values.map((v) => typeof v))
+    if (kinds.size === 1 && kinds.has('number')) return `${p}${b}.number()`
+    if (kinds.size === 1 && kinds.has('boolean')) return `${p}${b}.boolean()`
+    return `${p}${b}.string()`
+  }
+  const lit = (v: IrLiteral): string => (v === null ? `${p}${b}.null()` : `${p}${b}.literal(${typeof v === 'string' ? q(v) : String(v)})`)
+  if (values.length === 1) return lit(values[0] as IrLiteral)
+  if (values.every((v) => typeof v === 'string')) return `${p}${b}.enum([${values.map((v) => q(v as string)).join(', ')}])`
+  return `${p}${b}.union([${values.map(lit).join(', ')}])`
+}
+
+function fieldSchema(field: IrField, opts: SchemaExprOptions, depth: number): string {
+  const expr = schemaExpr(field.type, opts, depth)
+  return field.required ? expr : purify(`${expr}.optional()`, opts.native)
 }
 
 /**
@@ -273,68 +424,238 @@ function portableRegex(pattern: string): boolean {
   }
 }
 
-/** Emit `schemas.ts` — one schema + one type per model. */
+/**
+ * Emit `schemas.ts` — one type and one schema per model.
+ *
+ * The TYPE is written out as a plain interface (or alias), and the schema const
+ * is typed AS that interface's schema rather than inferred from its own
+ * initializer:
+ *
+ * ```ts
+ * export interface Book { id: string; title: string }
+ * export const Book = s.object({ id: s.string(), title: s.string() }) as unknown as Schema<Book>
+ * ```
+ *
+ * The inferred form (`export type Book = Infer<typeof Book>`) made every
+ * consumer's TypeScript re-derive every model from the builder types of a
+ * thousand nested schemas. Measured on the generated schemas + client + queries
+ * (tsc 6.0.3, instantiations, deterministic):
+ *
+ * | spec | inferred | interface + cast |
+ * | --- | ---: | ---: |
+ * | Stripe (`@pyreon/validate`) | 1,372,857 | 531,466 |
+ * | Stripe (zod) | 1,043,674 | 300,727 |
+ * | GitHub (`@pyreon/validate`) | 1,947,953 | 1,409,214 |
+ *
+ * ANNOTATING instead (`const Book: Schema<Book> = …`) was measured too and is
+ * WORSE than inferring (Stripe 1.17M -> 1.49M on schemas alone, GitHub 1.60M ->
+ * 2.61M): an annotation keeps the initializer's type AND adds an assignability
+ * check against it. A plain `as Schema<Book>` pays a comparability check that
+ * costs about as much. `as unknown as` is the form that stops the checker from
+ * relating the two -- which is exactly why agreement between the interface and
+ * the schema is NOT checked here, by construction. It is checked by lathe's own
+ * test suite instead (`emitSchemaAgreement`), because both halves come from the
+ * one IR walk below and a disagreement is a generator bug, not a consumer one.
+ *
+ * The cast also removes a class of errors: a model inside a `$ref` cycle used
+ * to have its type inferred THROUGH the cycle, and TypeScript answered with
+ * `Property 'nullable' does not exist on type 'UnionSchema<…>'` on Stripe's
+ * expandable fields. Nothing is inferred through anything now.
+ *
+ * What a consumer gives up is the schema's precise builder type: `Book` is a
+ * `Schema<Book>`, so `.parse`, `.optional()`, `.nullable()`, `.array()` and
+ * Standard Schema all work, but object-only builders (`.extend`, `.pick`) do
+ * not type-check on a generated schema. Compose a new schema around it instead.
+ */
 export function emitSchemas(
   doc: IrDocument,
   opts: { native: boolean; validator?: ValidatorName | undefined },
-): SourceFile {
-  const f = new SourceFile(SCHEMA_FILE)
-  if (doc.models.length === 0) return f
+): SourceFile[] {
+  if (doc.models.length === 0) return []
   const dialect = dialectOf(opts.validator ?? 'pyreon')
-  f.import(dialect.module, dialect.binding)
-  if (dialect.typeHelper) f.importType(dialect.typeHelper.module, dialect.typeHelper.name)
+  const { modules, moduleOf } = schemaModules(doc)
+  const { backEdges } = topoSortModels(doc)
+  const byName = modelIndex(doc)
+  const files: SourceFile[] = []
 
-  // DEPENDENCY ORDER, not alphabetical. These are `const` declarations and
-  // `const` is not hoisted, so a model emitted before one it references throws
-  // `Cannot access 'X' before initialization` when the module is imported.
-  // Alphabetical order satisfies that only by coincidence.
-  const { order, backEdges } = topoSortModels(doc)
-  const byName = new Map(doc.models.map((m) => [m.name, m]))
-  // Imported only when a cycle actually needs the annotation — an unused
-  // import is a lint error in the consumer's repo, and a confusing one since
-  // nobody wrote the file.
-  if (backEdges.size > 0 && dialect.schemaTypeImport) {
-    f.importType(dialect.schemaTypeImport.module, dialect.schemaTypeImport.name)
+  for (const mod of modules) {
+    const f = new SourceFile(mod.path)
+    f.import(dialect.module, dialect.binding)
+    if (dialect.schemaTypeImport) {
+      f.importType(dialect.schemaTypeImport.module, dialect.schemaTypeImport.name)
+    }
+    const needsObjectType = { value: false }
+    // A model named by this module but declared in ANOTHER one is imported
+    // from there -- and only from there, so importing one model reaches only
+    // the models it actually references.
+    for (const member of mod.members) {
+      const refs = new Set<string>()
+      const model = byName.get(member)
+      if (model) schemaRefs(model.type, refs)
+      for (const dep of refs) {
+        const home = moduleOf.get(dep)
+        if (home && home !== mod) f.import(relativeSpecifier(mod.path, home.path), dep)
+      }
+    }
+    // DEPENDENCY ORDER within the module. These are `const` declarations and
+    // `const` is not hoisted, so a model emitted before one it references
+    // throws `Cannot access 'X' before initialization` on import.
+    for (const name of mod.members) {
+      const model = byName.get(name)
+      if (!model) continue
+      // Only the edges that close a cycle are deferred (`lazy`); they are
+      // always inside one module, since a cycle is one component.
+      const defer = deferredTargets(backEdges, name)
+      f.line()
+      f.doc(model.doc)
+      f.line(typeDeclaration(model.name, model.type, dialect.enumWidensToString, dialect.emptyObjectType))
+      const expr = schemaExpr(model.type, { ...opts, defer })
+      if (dialect.objectSchemaImport && expr.includes(dialect.objectSchemaRef)) needsObjectType.value = true
+      f.line(`export const ${model.name} = ${expr} as unknown as ${dialect.schemaTypeRef(model.name)}`)
+    }
+    if (needsObjectType.value && dialect.objectSchemaImport) {
+      f.importType(dialect.objectSchemaImport.module, dialect.objectSchemaImport.name)
+    }
+    files.push(f)
   }
 
+  // The barrel keeps `import { Book } from './gen/schemas'` working. It is a
+  // re-export of every module, so importing ONE binding through it still
+  // reaches only that binding's module under the emitted `sideEffects` marker.
+  const barrel = new SourceFile(SCHEMA_FILE)
+  barrel.line()
+  barrel.doc(
+    `Every schema of ${doc.title} ${doc.version}.`,
+    '',
+    'One module per model (a `$ref` cycle shares one), so a hook reaches only',
+    'the schemas its response actually names -- see `./schemas/`.',
+  )
+  for (const mod of modules) barrel.line(`export * from '${relativeSpecifier(SCHEMA_FILE, mod.path)}'`)
+  files.push(barrel)
+  return files
+}
+
+/**
+ * The model names a web schema expression for `type` NAMES -- every ref at
+ * any depth, `additionalProperties` included (the web renders it: a record,
+ * or a `.catchall`).
+ */
+export function schemaRefs(type: IrType, into: Set<string>): void {
+  collectRefNames(type, into)
+}
+
+/** One generated schema module and the models it declares, in order. */
+export interface SchemaModule {
+  /** Output path, `schemas/<Name>.ts`. */
+  path: string
+  /** Models declared here, dependencies first. */
+  members: string[]
+}
+
+const moduleMemo = new WeakMap<IrDocument, { modules: SchemaModule[]; moduleOf: Map<string, SchemaModule> }>()
+
+/**
+ * How models are split into modules: one per strongly-connected component.
+ *
+ * One module per MODEL is what makes a hook's bundle proportional to what it
+ * uses -- but not literally per model. A `$ref` cycle split across two ES
+ * modules is an import cycle, and which side evaluates first depends on who
+ * imported whom first: import `Customer` before `Source` and `Source`'s module
+ * runs while `Customer` is still in its temporal dead zone. Keeping a cycle in
+ * ONE module makes every inter-module edge acyclic, so evaluation order is
+ * fixed by the graph rather than by the importer.
+ *
+ * Named after the model, or after the first member (by name) of a cycle. File
+ * names are compared CASE-INSENSITIVELY, since `Foo.ts` and `FOO.ts` are one
+ * file on macOS and Windows; a clash takes a numeric suffix, assigned in name
+ * order so it is stable across runs.
+ */
+export function schemaModules(doc: IrDocument): { modules: SchemaModule[]; moduleOf: Map<string, SchemaModule> } {
+  const hit = moduleMemo.get(doc)
+  if (hit && hit.moduleOf.size === doc.models.length) return hit
+  const deps = modelDependencies(doc)
+  const component = stronglyConnected(deps)
+  const { order } = topoSortModels(doc)
+  const byComponent = new Map<number, string[]>()
+  // Members in topological order, so declarations inside a module are safe.
+  for (const name of order) {
+    const c = component.get(name) as number
+    const list = byComponent.get(c)
+    if (list) list.push(name)
+    else byComponent.set(c, [name])
+  }
+  const groups = [...byComponent.values()].map((members) => ({
+    members,
+    base: [...members].sort()[0] as string,
+  }))
+  groups.sort((a, b) => (a.base < b.base ? -1 : a.base > b.base ? 1 : 0))
+  const used = new Set<string>()
+  const modules: SchemaModule[] = []
+  const moduleOf = new Map<string, SchemaModule>()
+  for (const g of groups) {
+    let base = g.base
+    // Windows reserves these device names regardless of extension.
+    if (/^(con|prn|aux|nul|com\d|lpt\d)$/i.test(base)) base = `${base}_`
+    let name = base
+    for (let i = 2; used.has(name.toLowerCase()); i++) name = `${base}_${i}`
+    used.add(name.toLowerCase())
+    const mod: SchemaModule = { path: `schemas/${name}.ts`, members: g.members }
+    modules.push(mod)
+    for (const m of g.members) moduleOf.set(m, mod)
+  }
+  // Modules in dependency order: the barrel re-exports them in that order,
+  // which makes its own evaluation order obvious to a reader.
+  const rank = new Map(order.map((n, i) => [n, i]))
+  modules.sort((a, b) => (rank.get(a.members[0] as string) as number) - (rank.get(b.members[0] as string) as number))
+  const out = { modules, moduleOf }
+  moduleMemo.set(doc, out)
+  return out
+}
+
+/** Where another generated file imports `model` from. */
+export function schemaSpecifierFor(fromPath: string, model: string, doc: IrDocument): string {
+  const home = schemaModules(doc).moduleOf.get(model)
+  return relativeSpecifier(fromPath, home ? home.path : SCHEMA_FILE)
+}
+
+/**
+ * A module that PROVES the interfaces in `schemas.ts` agree with their schemas.
+ *
+ * Not part of the generated output -- lathe's tests and the heavy typecheck
+ * script compile it next to the output. Each model's schema expression is
+ * re-emitted WITHOUT the cast and its inferred output compared, in both
+ * directions, with the interface the output declares:
+ *
+ * ```ts
+ * const Book$ = s.object({ … })
+ * export const Book$agrees: Same<Infer<typeof Book$>, Book> = true
+ * ```
+ *
+ * Mutual assignability, not one direction: a declared type WIDER than the
+ * schema (an optional field the schema requires) is as much a lie as a
+ * narrower one.
+ */
+export function emitSchemaAgreement(doc: IrDocument, validator: ValidatorName = 'pyreon'): SourceFile {
+  const f = new SourceFile('schemas.agreement.ts')
+  const dialect = dialectOf(validator)
+  f.import(dialect.module, dialect.binding)
+  if (dialect.typeHelper) f.importType(dialect.typeHelper.module, dialect.typeHelper.name)
+  // A discriminated union over named models casts through these types.
+  if (dialect.schemaTypeImport) f.importType(dialect.schemaTypeImport.module, dialect.schemaTypeImport.name)
+  if (dialect.objectSchemaImport) f.importType(dialect.objectSchemaImport.module, dialect.objectSchemaImport.name)
+  const { order, backEdges } = topoSortModels(doc)
+  const byName = new Map(doc.models.map((m) => [m.name, m]))
+  if (order.length > 0) f.import(relativeSpecifier(f.path, SCHEMA_FILE), ...order)
+  f.line()
+  f.line('type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false')
+  const infer = (x: string): string =>
+    dialect.typeHelper ? `${dialect.typeHelper.name}<typeof ${x}>` : `${dialect.binding}.infer<typeof ${x}>`
   for (const name of order) {
     const model = byName.get(name)
     if (!model) continue
-    // Only the edges that actually close a cycle are deferred; every other ref
-    // is emitted by name, which keeps the common output unchanged.
-    const defer = new Set(
-      [...backEdges].filter((e) => e.startsWith(`${name}|`)).map((e) => e.slice(name.length + 1)),
-    )
-    f.line()
-    f.doc(model.doc)
-    const expr = schemaExpr(model.type, { ...opts, defer })
-    if (defer.size > 0) {
-      // A CYCLE. `lazy(() => X)` inside `const X = …` makes inferring X's type
-      // from its own initializer circular, and TypeScript answers TS7022 —
-      // the generated module does not compile. So the structural type is
-      // named FIRST (type aliases are hoisted, so a forward reference to the
-      // cycle partner is fine) and the const is annotated with it, which is
-      // the pattern both libraries document for recursive schemas.
-      //
-      // Only the models that actually close a cycle take this shape; every
-      // other one keeps the inferred form, which reads better and stays tied
-      // to the schema rather than to a second rendering of the same IR.
-      f.line(`export type ${model.name} = ${tsType(model.type, 0, dialect.enumWidensToString)}`)
-      f.line(`export const ${model.name}: ${dialect.schemaTypeRef(model.name)} = ${expr}`)
-      continue
-    }
-    // The schema is a top-level `const` bound to a plain `s.object({ … })`
-    // literal, which is exactly the shape PMTC's recognizer requires. Wrapping
-    // it in anything — a helper call, a `satisfies`, a spread — silently drops
-    // it off the native path.
-    f.line(`export const ${model.name} = ${expr}`)
-    // zod infers with `z.infer<typeof X>`, which needs no separate import;
-    // `@pyreon/validate` exposes the same thing as a named `Infer` helper.
-    f.line(
-      dialect.typeHelper
-        ? `export type ${model.name} = ${dialect.typeHelper.name}<typeof ${model.name}>`
-        : `export type ${model.name} = ${dialect.binding}.infer<typeof ${model.name}>`,
-    )
+    const expr = schemaExpr(model.type, { native: false, validator, defer: deferredTargets(backEdges, name) })
+    f.line(`const ${name}$ = ${expr}`)
+    f.line(`export const ${name}$agrees: Same<${infer(`${name}$`)}, ${name}> = true`)
   }
   return f
 }
@@ -349,11 +670,31 @@ export function emitTypes(doc: IrDocument): SourceFile {
   for (const model of order.map((n) => byName.get(n)).filter((m) => m !== undefined)) {
     f.line()
     f.doc(model.doc)
-    const rendered = tsType(model.type)
-    const keyword = rendered.startsWith('{') ? 'interface' : 'type'
-    f.line(keyword === 'interface' ? `export interface ${model.name} ${rendered}` : `export type ${model.name} = ${rendered}`)
+    f.line(typeDeclaration(model.name, model.type))
   }
   return f
+}
+
+/**
+ * `export interface X {…}` or `export type X = …`, decided from the IR KIND.
+ *
+ * An interface is only valid for a single object type literal. Deciding from
+ * the RENDERED text (does it start with `{`?) also caught a union whose first
+ * member is an inline object -- `export interface X { … } | { … }`, a parse
+ * error; GitHub's `types.ts` carried 3,997 errors from it. An object with
+ * typed extra keys renders `{…} & Record<…>`, which is not an interface body
+ * either.
+ */
+export function typeDeclaration(
+  name: string,
+  type: IrType,
+  widenEnums = false,
+  emptyObject = 'Record<string, unknown>',
+): string {
+  const rendered = tsType(type, 0, widenEnums, false, false, emptyObject)
+  return type.kind === 'object' && type.fields.length > 0 && !type.additional
+    ? `export interface ${name} ${rendered}`
+    : `export type ${name} = ${rendered}`
 }
 
 /** Specifier another generated file uses to import the schema module. */
@@ -366,6 +707,7 @@ export function refName(type: IrType | undefined): string | undefined {
   if (!type) return undefined
   if (type.kind === 'ref') return type.name
   if (type.kind === 'array' && type.items.kind === 'ref') return type.items.name
+  if (type.kind === 'nullable') return refName(type.inner)
   return undefined
 }
 

@@ -12,6 +12,7 @@
  * runs turns every snapshot test into a flake.
  */
 
+import { modelIndex } from '../core/graph'
 import type { IrDocument, IrField, IrOperation, IrType } from '../core/ir'
 import { responseKindOf } from '../core/media'
 import { byCodeUnit } from '../core/order'
@@ -296,33 +297,42 @@ function fixture(
 ): unknown {
   // A spec `example` is used only when it satisfies the schema it sits in —
   // real specs carry examples that contradict their own types (audit C7).
-  if (field?.example !== undefined && conforms(field.example, type, (n) => modelType(doc, n), field)) {
+  if (field?.example !== undefined && conforms(field.example, type, (n) => modelType(doc, n))) {
     return field.example
   }
   if (depth > 6) return null
   switch (type.kind) {
+    case 'enum':
+      return type.values[0]
+    case 'nullable':
+      // The non-null shape: a fixture of `null` renders nothing, so it tests
+      // nothing. A nullable OPTIONAL field is omitted below instead.
+      return fixture(type.inner, doc, depth, field, index)
     case 'string':
       return sampleString(type, field, index)
     case 'number':
-      return sampleNumber(type, field, index)
+      return sampleNumber(type, index)
     case 'boolean':
       return true
     case 'null':
       return null
     case 'unknown':
       return null
-    case 'array':
+    case 'array': {
       // Two elements: one is indistinguishable from a scalar in a UI, three is
       // noise. Two proves the list renders. The INDEX is threaded so the
       // elements differ — identical elements share an id, which collapses a
       // keyed `<For>` to one row and trips the duplicate-key warning, so a
       // fixture that ships them tests the opposite of what it looks like.
-      return [
-        fixture(type.items, doc, depth + 1, undefined, 1),
-        fixture(type.items, doc, depth + 1, undefined, 2),
-      ]
+      //
+      // `minItems` / `maxItems` win over the two: a fixture the generated
+      // schema rejects fails every test that uses it, with a validation error
+      // about data the test never wrote.
+      const n = Math.min(Math.max(2, type.minItems ?? 0), type.maxItems ?? Number.POSITIVE_INFINITY)
+      return Array.from({ length: n }, (_, i) => fixture(type.items, doc, depth + 1, undefined, i + 1))
+    }
     case 'ref': {
-      const model = doc.models.find((m) => m.name === type.name)
+      const model = modelIndex(doc).get(type.name)
       return model ? fixture(model.type, doc, depth + 1, undefined, index) : null
     }
     case 'union':
@@ -334,9 +344,10 @@ function fixture(
         // they are an ENUM — an enum drives a visible variant (a status badge,
         // a filter), so a fixture that omits it renders the one state a UI
         // never has to handle. Other optionals stay out to keep fixtures small.
-        const isEnum = f.type.kind === 'string' && f.type.enum !== undefined
+        const base = f.type.kind === 'nullable' ? f.type.inner : f.type
+        const isEnum = base.kind === 'enum'
         if (!f.required && f.example === undefined && !isEnum) continue
-        out[f.name] = f.nullable && !f.required ? null : fixture(f.type, doc, depth + 1, f, index)
+        out[f.name] = fixture(f.type, doc, depth + 1, f, index)
       }
       return out
     }
@@ -344,7 +355,7 @@ function fixture(
 }
 
 function modelType(doc: IrDocument, name: string): IrType | undefined {
-  return doc.models.find((m) => m.name === name)?.type
+  return modelIndex(doc).get(name)?.type
 }
 
 /** JSON literal, with every line after the first indented to `pad`. */

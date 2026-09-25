@@ -10,10 +10,11 @@
  * (`'up' | 'down'`) while the endpoint inferred it from the schema (which a
  * validator may widen to `string`), and the two disagreed.
  */
-import type { IrOperation, IrParam, IrType } from '../core/ir'
+import type { IrBody, IrOperation, IrParam, IrType } from '../core/ir'
 import { responseKindOf } from '../core/media'
 import { propKey } from '../core/naming'
 import { tsType } from './schema'
+import { childTypes } from '../core/walk'
 
 export type ModelTypes = ReadonlyMap<string, IrType>
 
@@ -22,6 +23,8 @@ export function hasInput(op: IrOperation): boolean {
   return (
     op.pathParams.length > 0 ||
     op.queryParams.length > 0 ||
+    op.headerParams.length > 0 ||
+    op.cookieParams.length > 0 ||
     op.body !== undefined ||
     placeholders(op.path).length > 0
   )
@@ -53,20 +56,23 @@ export function inputType(op: IrOperation, models: ModelTypes): string {
     ...[...new Set(undeclared)].map((n) => `${n}: string | number`),
   ]
   if (params.length > 0) parts.push(`params: { ${params.join('; ')} }`)
-  if (op.queryParams.length > 0) {
-    const inner = op.queryParams
-      .map((p) =>
-        p.required
-          ? `${propKey(p.name)}: ${queryParamTs(p, models)}`
-          : `${propKey(p.name)}?: ${queryParamTs(p, models)} | undefined`,
-      )
+  const record = (name: string, list: readonly IrParam[], ts: (p: IrParam) => string, rest?: string): void => {
+    if (list.length === 0) return
+    const inner = list
+      .map((p) => (p.required ? `${propKey(p.name)}: ${ts(p)}` : `${propKey(p.name)}?: ${ts(p)} | undefined`))
       .join('; ')
-    const required = op.queryParams.some((p) => p.required)
-    parts.push(required ? `query: { ${inner} }` : `query?: { ${inner} } | undefined`)
+    // A header record may carry OTHER keys too (an idempotency key, a trace
+    // id); the declared ones are typed, the rest stay open.
+    const type = rest ? `{ ${inner} } & ${rest}` : `{ ${inner} }`
+    parts.push(list.some((p) => p.required) ? `${name}: ${type}` : `${name}?: (${type}) | undefined`)
   }
+  record('query', op.queryParams, (p) => queryParamTs(p, models))
+  record('headers', op.headerParams, (p) => headerParamTs(p, models), 'Record<string, string | number | boolean | null | undefined>')
+  record('cookies', op.cookieParams, (p) => headerParamTs(p, models))
   if (op.body) {
-    const t = tsType(op.body)
-    parts.push(op.bodyRequired ? `json: ${t}` : `json?: ${t} | undefined`)
+    const t = bodyTs(op.body, models)
+    const arg = bodyArg(op.body)
+    parts.push(op.body.required ? `${arg}: ${t}` : `${arg}?: ${t} | undefined`)
   }
   return parts.length > 0 ? `{ ${parts.join('; ')} }` : '{}'
 }
@@ -78,8 +84,12 @@ export function inputType(op: IrOperation, models: ModelTypes): string {
  * to it rather than emitting a type the endpoint rejects.
  */
 function pathParamTs(p: IrParam, models: ModelTypes): string {
-  const kind = resolve(p.type, models).kind
-  return kind === 'string' || kind === 'number' ? tsType(p.type) : 'string | number'
+  const t = resolve(p.type, models)
+  const ok =
+    t.kind === 'string' ||
+    t.kind === 'number' ||
+    (t.kind === 'enum' && t.values.every((v) => typeof v === 'string' || typeof v === 'number'))
+  return ok ? tsType(p.type) : 'string | number'
 }
 
 /**
@@ -89,7 +99,16 @@ function pathParamTs(p: IrParam, models: ModelTypes): string {
  * caller serializes it — instead of emitting a type the endpoint rejects.
  */
 function queryParamTs(p: IrParam, models: ModelTypes): string {
-  return sendable(p.type, models, 0) ? tsType(p.type) : 'string'
+  if (!sendable(p.type, models, 0)) return 'string'
+  // An object MODEL is an `interface`, which has no implicit index signature
+  // and so is not a query-object value; its shape is inlined instead.
+  const t = resolve(p.type, models)
+  return t.kind === 'object' && p.type.kind === 'ref' ? tsType(t) : tsType(p.type)
+}
+
+/** A header or cookie value: a scalar only — anything else widens to `string`. */
+function headerParamTs(p: IrParam, models: ModelTypes): string {
+  return scalar(p.type, models) ? tsType(p.type) : 'string'
 }
 
 function sendable(type: IrType, models: ModelTypes, depth: number): boolean {
@@ -99,7 +118,10 @@ function sendable(type: IrType, models: ModelTypes, depth: number): boolean {
     case 'number':
     case 'boolean':
     case 'null':
+    case 'enum':
       return true
+    case 'nullable':
+      return sendable(t.inner, models, depth)
     case 'array':
       return depth < 2 && scalar(t.items, models)
     case 'union':
@@ -116,8 +138,10 @@ function sendable(type: IrType, models: ModelTypes, depth: number): boolean {
 }
 
 function scalar(type: IrType, models: ModelTypes): boolean {
-  const k = resolve(type, models).kind
-  return k === 'string' || k === 'number' || k === 'boolean'
+  const t = resolve(type, models)
+  if (t.kind === 'nullable') return scalar(t.inner, models)
+  const k = t.kind
+  return k === 'string' || k === 'number' || k === 'boolean' || k === 'enum'
 }
 
 export function resolve(type: IrType, models: ModelTypes, depth = 0): IrType {
@@ -132,4 +156,122 @@ export function resolve(type: IrType, models: ModelTypes, depth = 0): IrType {
 export function responseTypeOf(op: IrOperation): 'text' | 'blob' | 'stream' | undefined {
   const kind = responseKindOf(op)
   return kind === 'json' ? undefined : kind
+}
+
+/**
+ * The call-argument NAME a body travels under -- one per wire encoding, the
+ * same names `@pyreon/http` and the generated adapter runtime accept.
+ */
+export function bodyArg(body: IrBody): 'json' | 'form' | 'multipart' | 'body' {
+  switch (body.encoding) {
+    case 'json':
+      return 'json'
+    case 'form':
+      return 'form'
+    case 'multipart':
+      return 'multipart'
+    case 'text':
+    case 'binary':
+      return 'body'
+  }
+}
+
+/** The TS type a caller passes for a body. */
+export function bodyTs(body: IrBody, models: ReadonlyMap<string, IrType>): string {
+  if (body.encoding === 'text') return 'string'
+  if (body.encoding === 'binary') return 'Blob | ArrayBuffer'
+  if (body.encoding === 'form' || body.encoding === 'multipart') {
+    // An ENCODED body is typed as what the encoder accepts. `@pyreon/http`
+    // (and the adapter runtime) take `Record<string, FormValue>` for `form`,
+    // whose object branch is an index signature -- and two things in a spec's
+    // body do not fit one: a model named by a ref (rendered as an `interface`,
+    // which has no implicit index signature) and a value of unknown shape
+    // (`unknown`). Stripe's form bodies carry both on almost every mutation,
+    // which was 250 type errors in its generated hooks. So refs are inlined
+    // and unknown becomes `FormValue` -- the precise shape, spelled so the
+    // encoder's type accepts it, with nothing loosened to `any`.
+    return tsType(
+      encodableBody(body.type, models, new Set()),
+      0,
+      false,
+      false,
+      body.encoding === 'multipart',
+      'Record<string, FormValue>',
+      'FormValue',
+    )
+  }
+  return tsType(expandFileRefs(body.type, models, new Set()), 0, false, false, false)
+}
+
+/**
+ * A form / multipart body with every model ref INLINED (see `bodyTs`).
+ *
+ * A ref that closes a cycle cannot be inlined -- there is no finite shape --
+ * and a form body cannot express recursion anyway, so it becomes an unknown
+ * value, i.e. any `FormValue`.
+ */
+function encodableBody(type: IrType, models: ReadonlyMap<string, IrType>, expanding: ReadonlySet<string>): IrType {
+  switch (type.kind) {
+    case 'ref': {
+      const target = models.get(type.name)
+      if (!target || expanding.has(type.name)) return { kind: 'unknown', reason: 'recursive form value' }
+      return encodableBody(target, models, new Set([...expanding, type.name]))
+    }
+    case 'array':
+      return { ...type, items: encodableBody(type.items, models, expanding) }
+    case 'nullable':
+      return { kind: 'nullable', inner: encodableBody(type.inner, models, expanding) }
+    case 'union':
+      return { ...type, options: type.options.map((o) => encodableBody(o, models, expanding)) }
+    case 'object':
+      return {
+        ...type,
+        fields: type.fields.map((f) => ({ ...f, type: encodableBody(f.type, models, expanding) })),
+        additional: type.additional ? encodableBody(type.additional, models, expanding) : undefined,
+      }
+    default:
+      return type
+  }
+}
+
+/** The body type whose model refs a generated file must import. */
+export function bodyRefType(body: IrBody, models: ReadonlyMap<string, IrType>): IrType {
+  return body.encoding === 'form' || body.encoding === 'multipart'
+    ? encodableBody(body.type, models, new Set())
+    : expandFileRefs(body.type, models, new Set())
+}
+
+function hasBinary(type: IrType, models: ReadonlyMap<string, IrType>, seen: Set<string>): boolean {
+  if (type.kind === 'string') return type.format === 'binary'
+  if (type.kind === 'ref') {
+    if (seen.has(type.name)) return false
+    seen.add(type.name)
+    const target = models.get(type.name)
+    return target ? hasBinary(target, models, seen) : false
+  }
+  return childTypes(type).some((c) => hasBinary(c, models, seen))
+}
+
+function expandFileRefs(type: IrType, models: ReadonlyMap<string, IrType>, expanding: Set<string>): IrType {
+  switch (type.kind) {
+    case 'ref': {
+      const target = models.get(type.name)
+      if (!target || expanding.has(type.name) || !hasBinary(target, models, new Set())) return type
+      return expandFileRefs(target, models, new Set([...expanding, type.name]))
+    }
+    case 'array':
+      return { ...type, items: expandFileRefs(type.items, models, expanding) }
+    case 'nullable':
+      return { kind: 'nullable', inner: expandFileRefs(type.inner, models, expanding) }
+    case 'union':
+      return { ...type, options: type.options.map((o) => expandFileRefs(o, models, expanding)) }
+    case 'object':
+      return {
+        ...type,
+        fields: type.fields.map((f) => ({ ...f, type: expandFileRefs(f.type, models, expanding) })),
+        additional: type.additional ? expandFileRefs(type.additional, models, expanding) : undefined,
+      }
+    default:
+      return type
+  }
 }

@@ -8,6 +8,7 @@
  * think to write the shapes that break you.
  */
 import { resolveConfig } from '../core/config'
+import { schemaSource } from './helpers/write-tree'
 import { generate } from '../core/generate'
 
 function spec(components: string, extra = ''): string {
@@ -50,7 +51,7 @@ describe('shapes only a real spec produces', () => {
       properties: { a: { type: string } }`)
     // `Target` collapses to the member itself, so the alias is `= Only` and
     // nothing emits a one-member union anywhere.
-    expect(file(src, 'schemas.ts')).toContain('export const Target = Only')
+    expect(schemaSource(generate(src, web).files)).toContain('export const Target = Only')
     for (const f of generate(src, web).files) expect(f.contents).not.toContain('s.union([Only])')
   })
 
@@ -71,15 +72,18 @@ describe('shapes only a real spec produces', () => {
       properties: { type: { type: string } }`)
     const r = generate(src, web)
     // The union is the MODEL's shape, so it lives in `schemas.ts`.
-    const out = r.files.find((f) => f.path === 'schemas.ts')?.contents ?? ''
+    const out = schemaSource(r.files)
     expect(out).not.toContain('s.discriminatedUnion')
     expect(out).toContain('s.union(')
     // Reported, not silently downgraded.
-    expect(r.doc.notes.some((n) => n.message.includes('non-object member'))).toBe(true)
+    expect(r.doc.notes.some((n) => n.message.includes('not an object'))).toBe(true)
   })
 
-  it('keeps a discriminated union when every member IS an object', () => {
-    // The degradation must not fire on the shape it exists to preserve.
+  it('keeps a discriminated union when every member IS an object with a provable tag', () => {
+    // The degradation must not fire on the shape it exists to preserve. The
+    // members' tags are ENUMS: a bare `type: string` tag (what this spec used to
+    // carry) cannot be registered, and both schema libraries THROW at import on
+    // it -- so this assertion used to lock in a module that could not load.
     const src = spec(`    Target:
       oneOf:
         - { $ref: '#/components/schemas/A_' }
@@ -88,12 +92,12 @@ describe('shapes only a real spec produces', () => {
     A_:
       type: object
       required: [kind]
-      properties: { kind: { type: string } }
+      properties: { kind: { type: string, enum: [a] } }
     B_:
       type: object
       required: [kind]
-      properties: { kind: { type: string } }`)
-    expect(file(src, 'schemas.ts')).toContain("s.discriminatedUnion('kind'")
+      properties: { kind: { type: string, enum: [b] } }`)
+    expect(schemaSource(generate(src, web).files)).toContain("s.discriminatedUnion('kind'")
   })
 
   it('imports a model a PARAMETER references', () => {
@@ -115,7 +119,7 @@ describe('shapes only a real spec produces', () => {
     // The input type — and so the import — is on the endpoint declaration.
     const out = file(src, 'endpoints/x.ts')
     expect(out).toContain('AlertNumber')
-    expect(out).toMatch(/import type \{[^}]*AlertNumber[^}]*\} from '\.\.\/schemas'/)
+    expect(out).toMatch(/import type \{[^}]*AlertNumber[^}]*\} from '\.\.\/schemas(\/AlertNumber)?'/)
   })
 
   it('types an empty oneOf as unknown and says so', () => {

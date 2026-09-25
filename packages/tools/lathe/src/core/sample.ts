@@ -10,7 +10,7 @@
  * length / range, then the readable guess — with no randomness, because a
  * fixture that changes between runs turns every snapshot into a flake.
  */
-import type { IrField, IrType } from './ir'
+import type { IrField, IrNumberType, IrStringType, IrType } from './ir'
 
 /**
  * A string matching `pattern`, or `undefined` when the pattern uses syntax
@@ -193,29 +193,32 @@ class PatternSampler {
 }
 
 /**
- * Does `value` satisfy `type` (and the field's constraints)? Used to decide
- * whether a spec `example` may be used verbatim: OpenAI's spec carries 40
- * examples that contradict their own schema, and each one produced a fixture
- * the generated client rejects.
+ * Does `value` satisfy `type`, constraints included? Used to decide whether a
+ * spec `example` may be used verbatim: OpenAI's spec carries 40 examples that
+ * contradict their own schema, and each one produced a fixture the generated
+ * client rejects.
  */
 export function conforms(
   value: unknown,
   type: IrType,
   resolveRef: (name: string) => IrType | undefined,
-  field?: IrField,
   depth = 0,
 ): boolean {
   if (depth > 8) return true
-  if (value === null) return field?.nullable === true || type.kind === 'null'
   switch (type.kind) {
+    case 'nullable':
+      return value === null || conforms(value, type.inner, resolveRef, depth + 1)
+    case 'null':
+      return value === null
+    case 'enum':
+      return type.values.some((v) => v === value)
     case 'string': {
       if (typeof value !== 'string') return false
-      if (type.enum && !type.enum.includes(value)) return false
-      if (field?.min !== undefined && value.length < field.min) return false
-      if (field?.max !== undefined && value.length > field.max) return false
-      if (field?.pattern) {
+      if (type.minLength !== undefined && value.length < type.minLength) return false
+      if (type.maxLength !== undefined && value.length > type.maxLength) return false
+      if (type.pattern) {
         try {
-          if (!new RegExp(field.pattern).test(value)) return false
+          if (!new RegExp(type.pattern).test(value)) return false
         } catch {
           return false
         }
@@ -225,25 +228,31 @@ export function conforms(
     case 'number':
       if (typeof value !== 'number' || !Number.isFinite(value)) return false
       if (type.integer && !Number.isInteger(value)) return false
-      if (field?.min !== undefined && value < field.min) return false
-      if (field?.max !== undefined && value > field.max) return false
+      if (type.minimum !== undefined && value < type.minimum) return false
+      if (type.maximum !== undefined && value > type.maximum) return false
+      if (type.exclusiveMinimum !== undefined && value <= type.exclusiveMinimum) return false
+      if (type.exclusiveMaximum !== undefined && value >= type.exclusiveMaximum) return false
+      if (type.multipleOf !== undefined && Math.abs(value / type.multipleOf - Math.round(value / type.multipleOf)) > 1e-9) {
+        return false
+      }
       return true
     case 'boolean':
       return typeof value === 'boolean'
-    case 'null':
-      return false
     case 'unknown':
       return true
     case 'array':
-      return Array.isArray(value) && value.every((v) => conforms(v, type.items, resolveRef, undefined, depth + 1))
+      if (!Array.isArray(value)) return false
+      if (type.minItems !== undefined && value.length < type.minItems) return false
+      if (type.maxItems !== undefined && value.length > type.maxItems) return false
+      return value.every((v) => conforms(v, type.items, resolveRef, depth + 1))
     case 'ref': {
       const target = resolveRef(type.name)
-      return target ? conforms(value, target, resolveRef, undefined, depth + 1) : true
+      return target ? conforms(value, target, resolveRef, depth + 1) : true
     }
     case 'union':
-      return type.options.some((o) => conforms(value, o, resolveRef, undefined, depth + 1))
+      return type.options.some((o) => conforms(value, o, resolveRef, depth + 1))
     case 'object': {
-      if (typeof value !== 'object' || Array.isArray(value)) return false
+      if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
       const rec = value as Record<string, unknown>
       for (const f of type.fields) {
         const v = rec[f.name]
@@ -251,22 +260,17 @@ export function conforms(
           if (f.required) return false
           continue
         }
-        if (!conforms(v, f.type, resolveRef, f, depth + 1)) return false
+        if (!conforms(v, f.type, resolveRef, depth + 1)) return false
       }
       return true
     }
   }
 }
 
-/** A deterministic string honouring enum, pattern and length, in that order. */
-export function sampleString(
-  type: Extract<IrType, { kind: 'string' }>,
-  field: IrField | undefined,
-  index: number,
-): string {
-  if (type.enum && type.enum.length > 0) return type.enum[0] as string
-  if (field?.pattern) {
-    const fromPattern = sampleFromPattern(field.pattern)
+/** A deterministic string honouring pattern and length, in that order. */
+export function sampleString(type: IrStringType, field: IrField | undefined, index: number): string {
+  if (type.pattern) {
+    const fromPattern = sampleFromPattern(type.pattern)
     if (fromPattern !== undefined) return fromPattern
   }
   let base: string
@@ -284,20 +288,25 @@ export function sampleString(
     default:
       base = field ? `sample ${field.name}${index > 0 ? ` ${index}` : ''}` : 'sample'
   }
-  const min = field?.min
-  const max = field?.max
-  if (max !== undefined && base.length > max) base = base.slice(0, Math.max(max, 0))
-  if (min !== undefined && base.length < min) base = base.padEnd(min, 'x')
+  if (type.maxLength !== undefined && base.length > type.maxLength) base = base.slice(0, Math.max(type.maxLength, 0))
+  if (type.minLength !== undefined && base.length < type.minLength) base = base.padEnd(type.minLength, 'x')
   return base
 }
 
-/** A deterministic number inside the field's range. */
-export function sampleNumber(type: Extract<IrType, { kind: 'number' }>, field: IrField | undefined, index: number): number {
-  const preferred = type.integer ? Math.max(1, index) : 1.5
-  const min = field?.min
-  const max = field?.max
-  let v = preferred
-  if (min !== undefined && v < min) v = type.integer ? Math.ceil(min) : min
-  if (max !== undefined && v > max) v = type.integer ? Math.floor(max) : max
-  return v
+/** A sample number inside the spec's bounds, distinct per index. */
+export function sampleNumber(type: IrNumberType, index: number): number {
+  const step = type.multipleOf ?? (type.integer ? 1 : 0.5)
+  const lo = type.minimum ?? (type.exclusiveMinimum !== undefined ? type.exclusiveMinimum + step : undefined)
+  const hi = type.maximum ?? (type.exclusiveMaximum !== undefined ? type.exclusiveMaximum - step : undefined)
+  const base = lo !== undefined ? Math.ceil(lo / step) * step : type.integer ? 1 : 1.5
+  const value = base + Math.max(0, index - 1) * step
+  const picked =
+    hi !== undefined && value > hi ? (lo !== undefined ? Math.ceil(lo / step) * step : Math.floor(hi / step) * step) : value
+  return type.integer ? Math.round(picked) : roundToStep(picked, step)
+}
+
+/** `3 * 0.1` is `0.30000000000000004`; a fixture should read `0.3`. */
+function roundToStep(value: number, step: number): number {
+  const decimals = (String(step).split('.')[1] ?? '').length
+  return Number(value.toFixed(Math.min(decimals + 2, 20)))
 }

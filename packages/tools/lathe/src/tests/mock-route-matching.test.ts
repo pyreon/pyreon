@@ -60,7 +60,7 @@ async function load(): Promise<Loaded> {
   const client = await e.load<Loaded['client']>('client.ts')
   // No mock may fall through: the network is a failure here.
   const mocks = await e.load<Loaded['mocks']>('mocks.ts')
-  return { eps: await e.load<Loaded['eps']>('endpoints/default.ts'), client, mocks }
+  return { eps: await e.load<Loaded['eps']>('endpoints/index.ts'), client, mocks }
 }
 
 afterAll(() => cleanEmitted('mocks'))

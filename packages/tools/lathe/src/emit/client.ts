@@ -17,9 +17,10 @@
  * endpoints and the calls all in a single top level.
  */
 
-import { reachableModels, topoSortModels } from '../core/graph'
+import { deferredTargets, reachableModels, topoSortModels } from '../core/graph'
+import { collectRefNames } from '../core/walk'
 import type { IrDocument, IrOperation, IrType } from '../core/ir'
-import { ident, propKey, typeIdent, uniquifier } from '../core/naming'
+import { assignNames, ident, propKey, tagFile, typeIdent } from '../core/naming'
 import { byCodeUnit } from '../core/order'
 import {
   CLIENT_PACKAGE,
@@ -29,10 +30,11 @@ import {
   runtimeTransport,
   runtimeValidate,
   type ClientName,
+  type ResponseValidation,
 } from './client-runtime'
-import { hasInput, inputType, type ModelTypes, responseTypeOf } from './operation-types'
+import { bodyRefType, hasInput, inputType, type ModelTypes, responseTypeOf } from './operation-types'
 import { emitInfinite } from './pagination'
-import { schemaExpr, schemaSpecifier, tsType } from './schema'
+import { PURE, schemaExpr, schemaRefs, schemaSpecifierFor, tsType } from './schema'
 import { dialectOf, type ValidatorName } from './validator'
 import { q, relativeSpecifier, SourceFile } from './writer'
 
@@ -49,8 +51,8 @@ export interface ClientOptions {
    * sharing one `QueryClient` otherwise share `GET /users`.
    */
   keyScope?: string | undefined
-  /** The client's default response validation (perf lever 7). */
-  validate?: 'strict' | 'warn' | 'off' | undefined
+  /** The client's DEFAULT response validation. Defaults to `strict`. */
+  responseValidation?: ResponseValidation | undefined
 }
 
 export const CLIENT_FILE = 'client.ts'
@@ -89,7 +91,7 @@ export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
   f.line('}')
   f.line()
   f.line(`const DEFAULT_BASE_URL = ${q(baseUrlOf(doc, opts))}`)
-  f.line(`const DEFAULT_VALIDATE: ValidateMode = ${q(opts.validate ?? 'strict')}`)
+  f.line(`const DEFAULT_VALIDATE: ValidateMode = ${q(opts.responseValidation ?? 'strict')}`)
   f.line()
   f.line('const settings: {')
   f.line('  baseUrl: string')
@@ -204,18 +206,18 @@ function emitAuthHelpers(f: SourceFile, doc: IrDocument, client: ClientName): vo
   f.line('}')
   f.line()
   for (const l of decoratingFn(client)) f.line(l)
+  const keys = assignNames(schemes.map((sc) => sc.name), ident)
   f.line()
   f.doc(
     'Auth for each security scheme the spec declares — pass to `configureApi({ use })`.',
     '',
     '```ts',
-    `configureApi({ use: [auth.${ident(schemes[0]?.name ?? 'x')}(${schemes[0]?.kind === 'basic' ? "'user', () => password()" : '() => session.token()'})] })`,
+    `configureApi({ use: [auth.${keys[0] ?? 'x'}(${schemes[0]?.kind === 'basic' ? "'user', () => password()" : '() => session.token()'})] })`,
     '```',
   )
   f.line('export const auth = {')
-  const unique = uniquifier()
-  for (const sc of schemes) {
-    const key = propKey(unique(ident(sc.name)))
+  for (const [i, sc] of schemes.entries()) {
+    const key = propKey(keys[i] as string)
     if (sc.kind === 'bearer') {
       f.doc(sc.doc, `\`${sc.name}\` — sends \`Authorization: Bearer <token>\`.`)
       f.line(`  ${key}: (token: Credential) =>`)
@@ -372,14 +374,21 @@ function emitAdapterClient(
   f.line()
   f.lines(...runtimeTransport())
   f.line()
-  f.lines(...runtimeEndpoint(client, baseUrlOf(doc, opts), opts.keyScope, opts.validate))
+  f.lines(...runtimeEndpoint(client, baseUrlOf(doc, opts), opts.keyScope, opts.responseValidation))
   emitAuthHelpers(f, doc, client)
   return f
 }
 
-/** The `'GET /users/:id'` literal an endpoint is declared with. */
+/**
+ * The `'GET /users/:id'` literal an endpoint is declared with.
+ *
+ * An operation with its OWN server carries it in the literal
+ * (`'POST https://upload.box.com/api/2.0/files'`): every client here treats an
+ * absolute path as overriding the base URL, so that one call goes to its own
+ * host while the rest keep the shared client.
+ */
 export function endpointSpec(op: IrOperation): string {
-  return `${op.method} ${op.path}`
+  return `${op.method} ${op.baseUrl ?? ''}${op.path}`
 }
 
 /**
@@ -387,15 +396,95 @@ export function endpointSpec(op: IrOperation): string {
  *
  * Sorted so regeneration is byte-identical; `default` (untagged) sorts with
  * everything else rather than being special-cased to the front.
+ *
+ * An UNTAGGED operation is grouped by its path instead (see
+ * {@link pathGroup}). A spec with no tags at all -- Stripe's -- used to produce
+ * one `endpoints/default.ts` of 612 endpoints, so importing one hook reached
+ * an endpoint module of all of them. A path group whose file name matches a
+ * real tag's joins that tag rather than colliding with it on disk.
  */
 export function byTag(doc: IrDocument): Map<string, IrOperation[]> {
+  const cached = groupMemo.get(doc)
+  if (cached && cached.ops === doc.operations && cached.count === doc.operations.length) return cached.groups
+  const untagged = doc.operations.filter((op) => op.tag === UNTAGGED)
+  const common = commonStaticPrefix(untagged.map((op) => op.path))
+  const byFile = new Map<string, string>()
+  for (const op of doc.operations) if (op.tag !== UNTAGGED) byFile.set(tagFile(op.tag), op.tag)
+  const keyOf = (op: IrOperation): string => {
+    if (op.tag !== UNTAGGED) return op.tag
+    const group = pathGroup(op.path, common)
+    return byFile.get(tagFile(group)) ?? group
+  }
   const out = new Map<string, IrOperation[]>()
   for (const op of [...doc.operations].sort((a, b) => byCodeUnit(a.id, b.id))) {
-    const list = out.get(op.tag)
+    const key = keyOf(op)
+    const list = out.get(key)
     if (list) list.push(op)
-    else out.set(op.tag, [op])
+    else out.set(key, [op])
   }
-  return new Map([...out.entries()].sort(([a], [b]) => byCodeUnit(a, b)))
+  const groups = new Map([...out.entries()].sort(([a], [b]) => byCodeUnit(a, b)))
+  groupMemo.set(doc, { ops: doc.operations, count: doc.operations.length, groups })
+  return groups
+}
+
+/** The IR's tag for an operation the spec did not tag. */
+const UNTAGGED = 'default'
+
+const groupMemo = new WeakMap<IrDocument, { ops: IrDocument['operations']; count: number; groups: Map<string, IrOperation[]> }>()
+
+/** Static path segments: no `{param}` / `:param`, nothing empty. */
+function staticSegments(path: string): string[] {
+  return path.split('/').filter((s) => s.length > 0 && !s.startsWith('{') && !s.startsWith(':'))
+}
+
+/**
+ * The leading static segments EVERY untagged path shares -- `/v1` on Stripe,
+ * `/api/v2` elsewhere. Stripped before grouping, or every operation would land
+ * in one `v1` group, which is the problem being solved.
+ */
+function commonStaticPrefix(paths: readonly string[]): string[] {
+  if (paths.length === 0) return []
+  let prefix = staticSegments(paths[0] as string)
+  for (const p of paths.slice(1)) {
+    const segs = staticSegments(p)
+    let i = 0
+    while (i < prefix.length && i < segs.length && prefix[i] === segs[i]) i++
+    prefix = prefix.slice(0, i)
+  }
+  return prefix
+}
+
+/**
+ * The group of an untagged operation: its first static path segment after the
+ * shared prefix -- `/v1/customers/{id}/balance` -> `customers`. A path with no
+ * static segment left (`/`, `/{id}`) stays `default`.
+ *
+ * The prefix is not stripped from a path that IS the prefix (a spec whose only
+ * untagged path is `/v1/status`); that path is grouped by its own last segment
+ * rather than falling back to `default` for no reason.
+ */
+export function pathGroup(path: string, common: readonly string[]): string {
+  const segs = staticSegments(path)
+  const rest = segs.slice(common.length)
+  return rest[0] ?? segs[segs.length - 1] ?? UNTAGGED
+}
+
+export { bodyArg } from './operation-types'
+
+/**
+ * Does this operation get a native DATA COMPONENT?
+ *
+ * A read with a TYPED response only. PMTC decodes a native query into a
+ * declared type, and there is no declared type to decode an untyped body into:
+ * `useQuery<unknown>` lowers to a decode of `Any`, which does not compile on
+ * Swift, so emitting the component anyway turned a content-less GET into a
+ * BROKEN native module (Petstore 3's `user.native.tsx`). The endpoint is still
+ * declared -- only the component that would render nothing is left out, and the
+ * reach analysis in `core/generate.ts` reports the operation as web-only by
+ * asking this same predicate.
+ */
+export function hasNativeDataComponent(op: IrOperation): boolean {
+  return !isMutation(op) && typedResponse(op) !== undefined
 }
 
 /** Does this operation mutate? Decides query vs mutation binding. */
@@ -411,6 +500,7 @@ export function isMutation(op: IrOperation): boolean {
 export function emitWebEndpoints(
   doc: IrDocument,
   validator: ValidatorName = 'pyreon',
+  client: ClientName = 'pyreon',
 ): SourceFile[] {
   const dialect = dialectOf(validator)
   const models: ModelTypes = new Map(doc.models.map((m) => [m.name, m.type]))
@@ -425,24 +515,43 @@ export function emitWebEndpoints(
     const schemaImports = new Set<string>()
     const typeImports = new Set<string>()
     for (const op of ops) {
-      collectRefs(op.response, schemaImports)
-      for (const p of op.pathParams) collectRefs(p.type, typeImports)
-      for (const p of op.queryParams) collectRefs(p.type, typeImports)
-      collectRefs(op.body, typeImports)
+      if (op.response && op.response.kind !== 'unknown') schemaRefs(op.response, schemaImports)
+      // A PARAMETER's schema can be a `$ref` too - GitHub's spec does this
+      // heavily (`AlertNumber`, `CodeScanningRef`) - and so can a body.
+      for (const p of [...op.pathParams, ...op.queryParams, ...op.headerParams, ...op.cookieParams]) {
+        collectRefNames(p.type, typeImports)
+      }
+      if (op.body) collectRefNames(bodyRefType(op.body, models), typeImports)
     }
-    if (schemaImports.size > 0) f.import(schemaSpecifier(path), ...schemaImports)
-    if (typeImports.size > 0) f.importType(schemaSpecifier(path), ...typeImports)
+    // Each from its OWN module, not the barrel: the barrel re-exports every
+    // model, and an edge to it is an edge to all of them for any bundler that
+    // does not honour the `sideEffects` marker.
+    for (const name of [...schemaImports].sort(byCodeUnit)) f.import(schemaSpecifierFor(path, name, doc), name)
+    for (const name of [...typeImports].sort(byCodeUnit)) {
+      if (!schemaImports.has(name)) f.importType(schemaSpecifierFor(path, name, doc), name)
+    }
 
     const decls = ops.map((op) => endpointDecl(op, validator, models))
+    // An encoded body is typed through the encoder's own value type.
+    if (decls.some((d) => d.generics.includes('FormValue'))) {
+      f.importType(client === 'pyreon' ? '@pyreon/http' : relativeSpecifier(path, CLIENT_FILE), 'FormValue')
+    }
     // A composite clause (`array(Book)`, a union) needs the binding itself.
     if (decls.some((d) => d.usesBinding(dialect.binding))) f.import(dialect.module, dialect.binding)
+    // A discriminated union over named models casts through the schema types.
+    if (decls.some((d) => d.text.includes(' as unknown as '))) {
+      if (dialect.schemaTypeImport) f.importType(dialect.schemaTypeImport.module, dialect.schemaTypeImport.name)
+      if (dialect.objectSchemaImport) f.importType(dialect.objectSchemaImport.module, dialect.objectSchemaImport.name)
+    }
 
     for (const [i, op] of ops.entries()) {
       const d = decls[i] as EndpointDecl
       f.line()
       if (d.responseConst) f.line(d.responseConst)
       f.doc(op.summary, `\`${endpointSpec(op)}\``)
-      f.line(`export const ${op.id} = api.endpoint${d.generics}(${q(endpointSpec(op))}${d.config})`)
+      // Pure, so an endpoint nothing imports is dropped from the bundle even
+      // though its tag module is reached (see `PURE`).
+      f.line(`export const ${op.id} = ${PURE}api.endpoint${d.generics}(${q(endpointSpec(op))}${d.config})`)
     }
     files.push(f)
   }
@@ -456,6 +565,8 @@ interface EndpointDecl {
   config: string
   /** A named response schema, when the generics must name its type. */
   responseConst: string | undefined
+  /** Everything emitted, for import detection. */
+  text: string
   usesBinding(binding: string): boolean
 }
 
@@ -497,6 +608,22 @@ function endpointDecl(op: IrOperation, validator: ValidatorName, models: ModelTy
     return style ? [`${propKey(p.name)}: ${style}`] : []
   })
   if (styles.length > 0) entries.push(`queryStyle: { ${styles.join(', ')} }`)
+  // Declared ON the endpoint because they are properties of the API, not of a
+  // call: a raw body's media type, and how each form field serializes.
+  if (op.body) {
+    if (op.body.encoding === 'text' || op.body.encoding === 'binary') {
+      entries.push(`headers: { 'content-type': ${q(op.body.mediaType)} }`)
+    }
+    if (op.body.encoding === 'form' && op.body.fieldEncoding) {
+      const fields = Object.entries(op.body.fieldEncoding).map(([k, e]) => {
+        const parts: string[] = []
+        if (e.style !== undefined) parts.push(`style: ${q(e.style)}`)
+        if (e.explode !== undefined) parts.push(`explode: ${String(e.explode)}`)
+        return `${propKey(k)}: { ${parts.join(', ')} }`
+      })
+      entries.push(`formEncoding: { ${fields.join(', ')} }`)
+    }
+  }
   // ALWAYS explicit, even for an operation that sends nothing: its input is
   // then `{}`, so a direct call cannot pass a query or a body the spec never
   // declared — the loose default would accept both.
@@ -506,6 +633,7 @@ function endpointDecl(op: IrOperation, validator: ValidatorName, models: ModelTy
     generics,
     config,
     responseConst,
+    text: `${config} ${responseConst ?? ''}`,
     usesBinding: (binding) => new RegExp(`\\b${binding}\\.`).test(`${config} ${responseConst ?? ''}`),
   }
 }
@@ -525,10 +653,25 @@ function responseCfg(
   validator: ValidatorName = 'pyreon',
   models?: ReadonlyMap<string, IrType>,
 ): string {
-  if (!op.response) return ''
-  if (op.response.kind === 'unknown') return ''
+  const response = typedResponse(op)
+  if (!response) return ''
   const refBinding = native ? nativeSchemaBinding : undefined
-  return `, { response: ${schemaExpr(op.response, { native, validator, models, refBinding })} }`
+  return `, { response: ${schemaExpr(response, { native, validator, models, refBinding })} }`
+}
+
+/**
+ * The response type an endpoint is DECLARED with, or `undefined` when it has
+ * none -- no content at all (a 204, a `200` with only a description), or a
+ * body Lathe could not type (`text/csv`, an SSE stream).
+ *
+ * This is the one place that decision is made. The hook's type argument and
+ * the endpoint's `{ response }` clause used to decide it separately, and they
+ * disagreed exactly here: a content-less GET emitted `useQuery<void>` over an
+ * endpoint whose `.query()` yields `QueryOptionsLike<unknown>`.
+ */
+export function typedResponse(op: IrOperation): IrType | undefined {
+  if (!op.response || op.response.kind === 'unknown') return undefined
+  return op.response
 }
 
 /**
@@ -596,6 +739,7 @@ function runtimeQueryStyle(
 }
 
 function resolvedKind(type: IrType, models: ReadonlyMap<string, IrType>, depth = 0): IrType['kind'] {
+  if (type.kind === 'nullable') return resolvedKind(type.inner, models, depth + 1)
   if (type.kind === 'ref' && depth < 16) {
     const target = models.get(type.name)
     return target ? resolvedKind(target, models, depth + 1) : 'unknown'
@@ -604,9 +748,13 @@ function resolvedKind(type: IrType, models: ReadonlyMap<string, IrType>, depth =
 }
 
 /** WEB layout: `queries.ts` — reactive hooks, one per operation. */
-export function emitWebQueries(doc: IrDocument): SourceFile[] {
+export function emitWebQueries(doc: IrDocument, client: ClientName = 'pyreon'): SourceFile[] {
   const files: SourceFile[] = []
   const queryOps = doc.operations.filter((o) => !isMutation(o))
+  // The FILE group each operation lives in — an untagged operation is grouped
+  // by its path, so `op.tag` is not the file.
+  const groupOf = new Map<string, string>()
+  for (const [group, list] of byTag(doc)) for (const o of list) groupOf.set(o.id, group)
   for (const [tag, ops] of byTag(doc)) {
     const path = `queries/${tagFile(tag)}.ts`
     const f = new SourceFile(path)
@@ -629,7 +777,8 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
     // Invalidation targets can live in another tag's endpoint module.
     for (const op of ops.filter(isMutation)) {
       for (const target of invalidationTargets(op, queryOps)) {
-        if (target.tag !== tag) f.import(relativeSpecifier(path, `endpoints/${tagFile(target.tag)}.ts`), target.id)
+        const group = groupOf.get(target.id) as string
+        if (group !== tag) f.import(relativeSpecifier(path, `endpoints/${tagFile(group)}.ts`), target.id)
       }
     }
 
@@ -768,11 +917,7 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
     // TDZ ReferenceError there exactly as it is on the web. `s.lazy` does not
     // lower, so this costs the model its native path -- which the verifier
     // reports. Correct-and-web-only beats lowering-and-broken.
-    const defer = new Set(
-      [...backEdges]
-        .filter((e) => e.startsWith(`${model.name}|`))
-        .map((e) => e.slice(model.name.length + 1)),
-    )
+    const defer = deferredTargets(backEdges, model.name)
     const expr = schemaExpr(model.type, {
       native: true,
       defer,
@@ -793,7 +938,7 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
     f.import('@pyreon/http/schema', 'standardSchema')
     f.import(dialect.module, dialect.binding)
     if (dialect.nativeWrap) f.import(dialect.nativeWrap.module, dialect.nativeWrap.fn)
-    if (ops.some((o) => !isMutation(o))) f.import('@pyreon/query', 'useQuery')
+    if (ops.some(hasNativeDataComponent)) f.import('@pyreon/query', 'useQuery')
 
     f.line()
     f.doc(
@@ -805,6 +950,16 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
       'because PMTC resolves nothing across file boundaries.',
     )
     f.line(`const api = createHttp({ baseUrl: ${q(baseUrlOf(doc, opts))}, schema: standardSchema })`)
+    // PMTC bakes `baseUrl + path` at compile time, so an operation with its
+    // own server cannot carry the host in the path the way the web layout
+    // does -- it gets its own literal-base client instead, which lowers.
+    const hosts = [...new Set(ops.map((o) => o.baseUrl).filter((b): b is string => b !== undefined))].sort()
+    const clientOf = new Map<string, string>()
+    hosts.forEach((h, i) => {
+      const name = `api${i + 2}`
+      clientOf.set(h, name)
+      f.line(`const ${name} = createHttp({ baseUrl: ${q(h)}, schema: standardSchema })`)
+    })
 
     // Schemas, inlined. The TRANSITIVE closure, not just the models an
     // operation names: a native module imports nothing, so inlining `Order`
@@ -814,7 +969,7 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
     const direct = new Set<string>()
     for (const op of ops) {
       collectRefs(op.response, direct)
-      collectRefs(op.body, direct)
+      collectRefs(op.body?.type, direct)
     }
     const needed = reachableModels(doc, direct)
     const byName = new Map(doc.models.map((m) => [m.name, m]))
@@ -835,14 +990,15 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
       // `import type` — erased by TypeScript, but PMTC's warn pass reads the
       // import statement itself and reports the module as un-lowerable. The
       // rendered type is identical; only the derivation differs.
-      f.line(`export type ${model.name} = ${tsType(model.type, 0, true)}`)
+      f.line(`export type ${model.name} = ${tsType(model.type, 0, true, true)}`)
     }
 
     for (const op of ops) {
       f.line()
       f.doc(op.summary, `\`${endpointSpec(op)}\``)
+      const client = op.baseUrl ? (clientOf.get(op.baseUrl) as string) : 'api'
       f.line(
-        `export const ${op.id} = api.endpoint(${q(endpointSpec(op))}${responseCfg(op, true, dialect.name, modelTypes)})`,
+        `export const ${op.id} = ${client}.endpoint(${q(`${op.method} ${op.path}`)}${responseCfg(op, true, dialect.name, modelTypes)})`,
       )
     }
 
@@ -850,8 +1006,9 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
     // a standalone hook function is read as a View and emitted verbatim, which
     // produces Swift that does not compile, with no warning at all.
     for (const op of ops) {
-      if (isMutation(op)) continue
-      const ret = op.response ? nativeTs(op.response, modelTypes) : 'unknown'
+      if (!hasNativeDataComponent(op)) continue
+      const response = typedResponse(op)
+      const ret = response ? nativeTs(response, modelTypes) : 'unknown'
       const name = `${typeIdent(op.id)}Data`
       // A path param becomes a PROP, and the `params` object is built from
       // those props. PMTC lowers this to native string interpolation and keys
@@ -915,26 +1072,7 @@ const DISABLED_FN =
   "() => Promise.reject(new Error('[Pyreon] lathe: query is disabled — its arguments are not ready'))"
 
 function collectRefs(type: IrType | undefined, into: Set<string>): void {
-  if (!type) return
-  switch (type.kind) {
-    case 'ref':
-      into.add(type.name)
-      return
-    case 'array':
-      collectRefs(type.items, into)
-      return
-    case 'union':
-      for (const o of type.options) collectRefs(o, into)
-      return
-    case 'object':
-      for (const f of type.fields) collectRefs(f.type, into)
-      if (type.additional) collectRefs(type.additional, into)
-      return
-    default:
-  }
+  collectRefNames(type, into)
 }
 
-/** Filename-safe tag. */
-export function tagFile(tag: string): string {
-  return tag.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'default'
-}
+export { tagFile }

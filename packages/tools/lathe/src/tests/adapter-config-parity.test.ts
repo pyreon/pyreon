@@ -89,7 +89,7 @@ describe('configureApi + auth are the same surface on every client', () => {
     for (const c of CLIENTS) {
       const e = emitToDisk(`parity-${c}`, spec('http://127.0.0.1:1/unused'), { client: c, plugins: ['schemas', 'client'] })
       const client = await e.load<Client>('client.ts')
-      const eps = await e.load<Record<string, (a?: unknown) => Promise<unknown>>>('endpoints/default.ts')
+      const eps = await e.load<Record<string, (a?: unknown) => Promise<unknown>>>('endpoints/index.ts')
       client.configureApi({
         baseUrl: `http://127.0.0.1:${port}/v1`,
         headers: () => ({ 'x-configured': 'yes' }),
@@ -121,7 +121,7 @@ describe('configureApi + auth are the same surface on every client', () => {
       const e = emitToDisk(`parity-mock-${c}`, spec("https://api.test/v1"), { client: c, plugins: ["schemas", "client", "mocks"] })
       const client = await e.load<Client & { setDevTransport(t: unknown): void }>('client.ts')
       const mocks = await e.load<{ installMocks(): void; mockCalls: { url: string; headers: Record<string, string> }[] }>('mocks.ts')
-      const eps = await e.load<Record<string, (a?: unknown) => Promise<unknown>>>('endpoints/default.ts')
+      const eps = await e.load<Record<string, (a?: unknown) => Promise<unknown>>>('endpoints/index.ts')
       let interceptorUrl = ''
       const seeUrl: Record<ClientName, unknown> = {
         pyreon: ((req, next) => ((interceptorUrl = req.url), next(req))) satisfies HttpMiddleware,

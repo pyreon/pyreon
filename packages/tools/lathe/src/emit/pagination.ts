@@ -15,9 +15,24 @@
 import type { IrOperation, IrPagination, IrType } from '../core/ir'
 import { propKey, typeIdent } from '../core/naming'
 import type { ModelTypes } from './operation-types'
-import { resolve } from './operation-types'
+import { resolve as resolveRef } from './operation-types'
 import { tsType } from './schema'
 import type { SourceFile } from './writer'
+
+/**
+ * A type with refs AND nullability peeled — a nullable cursor (`string | null`,
+ * the usual "no more pages" signal) is still a string cursor — and an enum
+ * reduced to the scalar kind of its values.
+ */
+function resolve(type: IrType, models: ModelTypes): IrType {
+  let t = resolveRef(type, models)
+  for (let i = 0; t.kind === 'nullable' && i < 16; i++) t = resolveRef(t.inner, models)
+  if (t.kind === 'enum') {
+    const v = t.values.find((x) => x !== null)
+    return typeof v === 'number' ? { kind: 'number', integer: false } : typeof v === 'boolean' ? { kind: 'boolean' } : { kind: 'string' }
+  }
+  return t
+}
 
 /** The page-param TYPE for a declaration, or why the declaration is wrong. */
 export function checkPagination(op: IrOperation, models: ModelTypes): string | undefined {

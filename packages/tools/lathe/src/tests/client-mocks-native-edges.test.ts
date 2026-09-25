@@ -18,9 +18,11 @@ const op = (over: Partial<IrOperation>): IrOperation => ({
   tag: 't',
   pathParams: [],
   queryParams: [],
+  headerParams: [],
+  cookieParams: [],
   ...over,
 })
-const field = (over: Partial<IrField>): IrField => ({ name: 'f', type: { kind: 'string' }, required: true, nullable: false, ...over })
+const field = (over: Partial<IrField>): IrField => ({ name: 'f', type: { kind: 'string' }, required: true, ...over })
 
 describe('response media kinds', () => {
   it('maps media types to a decode', () => {
@@ -59,44 +61,58 @@ describe('pattern sampler', () => {
 })
 
 describe('sample values', () => {
-  it('strings honour enum, pattern, format, length', () => {
-    expect(sampleString({ kind: 'string', enum: ['a'] }, undefined, 0)).toBe('a')
-    expect(sampleString({ kind: 'string' }, field({ pattern: '^Z{2}$' }), 0)).toBe('ZZ')
-    expect(sampleString({ kind: 'string' }, field({ pattern: '(?=x)' }), 0)).toBe('sample f')
+  it('strings honour pattern, format, length', () => {
+    expect(sampleString({ kind: 'string', pattern: '^Z{2}$' }, field({}), 0)).toBe('ZZ')
+    expect(sampleString({ kind: 'string', pattern: '(?=x)' }, field({}), 0)).toBe('sample f')
     for (const format of ['email', 'uri', 'uuid', 'date', 'date-time'] as const) {
       expect(sampleString({ kind: 'string', format }, undefined, 3).length).toBeGreaterThan(0)
     }
-    expect(sampleString({ kind: 'string' }, field({ max: 3 }), 2)).toBe('sam')
-    expect(sampleString({ kind: 'string' }, field({ min: 12 }), 0)).toHaveLength(12)
+    expect(sampleString({ kind: 'string', maxLength: 3 }, field({}), 2)).toBe('sam')
+    expect(sampleString({ kind: 'string', minLength: 12 }, field({}), 0)).toHaveLength(12)
     expect(sampleString({ kind: 'string' }, undefined, 0)).toBe('sample')
   })
   it('numbers stay in range', () => {
-    expect(sampleNumber({ kind: 'number', integer: true }, field({ min: 2.5 }), 0)).toBe(3)
-    expect(sampleNumber({ kind: 'number', integer: true }, field({ max: -1.5 }), 0)).toBe(-2)
-    expect(sampleNumber({ kind: 'number', integer: false }, field({ max: 0 }), 0)).toBe(0)
+    expect(sampleNumber({ kind: 'number', integer: true, minimum: 2.5 }, 0)).toBe(3)
+    expect(sampleNumber({ kind: 'number', integer: true, maximum: -1.5 }, 0)).toBe(-2)
+    expect(sampleNumber({ kind: 'number', integer: false, maximum: 0 }, 0)).toBe(0)
   })
   it('conforms covers every kind', () => {
     const none = (): undefined => undefined
     const s: IrType = { kind: 'string' }
     expect(conforms(1, s, none)).toBe(false)
-    expect(conforms('ab', s, none, field({ min: 3 }))).toBe(false)
-    expect(conforms('x', s, none, field({ pattern: '^y$' }))).toBe(false)
-    expect(conforms('x', s, none, field({ pattern: '(' }))).toBe(false)
+    expect(conforms('ab', { kind: 'string', minLength: 3 }, none)).toBe(false)
+    expect(conforms('abcd', { kind: 'string', maxLength: 3 }, none)).toBe(false)
+    expect(conforms('x', { kind: 'string', pattern: '^y$' }, none)).toBe(false)
+    expect(conforms('x', { kind: 'string', pattern: '(' }, none)).toBe(false)
     expect(conforms(Number.NaN, { kind: 'number', integer: false }, none)).toBe(false)
-    expect(conforms(1, { kind: 'number', integer: false }, none, field({ min: 2 }))).toBe(false)
-    expect(conforms(9, { kind: 'number', integer: false }, none, field({ max: 2 }))).toBe(false)
+    expect(conforms(1.5, { kind: 'number', integer: true }, none)).toBe(false)
+    expect(conforms(1, { kind: 'number', integer: false, minimum: 2 }, none)).toBe(false)
+    expect(conforms(9, { kind: 'number', integer: false, maximum: 2 }, none)).toBe(false)
+    expect(conforms(2, { kind: 'number', integer: false, exclusiveMinimum: 2 }, none)).toBe(false)
+    expect(conforms(2, { kind: 'number', integer: false, exclusiveMaximum: 2 }, none)).toBe(false)
+    expect(conforms(3, { kind: 'number', integer: true, multipleOf: 2 }, none)).toBe(false)
     expect(conforms(null, { kind: 'null' }, none)).toBe(true)
-    expect(conforms(null, s, none, field({ nullable: true }))).toBe(true)
+    expect(conforms(null, { kind: 'nullable', inner: s }, none)).toBe(true)
+    expect(conforms('x', { kind: 'nullable', inner: s }, none)).toBe(true)
+    expect(conforms(null, s, none)).toBe(false)
+    expect(conforms('b', { kind: 'enum', values: ['a'] }, none)).toBe(false)
     expect(conforms('x', { kind: 'null' }, none)).toBe(false)
+    expect(conforms(true, { kind: 'boolean' }, none)).toBe(true)
     expect(conforms({}, { kind: 'unknown', reason: '' }, none)).toBe(true)
     expect(conforms('x', { kind: 'ref', name: 'M' }, none)).toBe(true)
     expect(conforms('x', { kind: 'ref', name: 'M' }, () => ({ kind: 'number', integer: true }))).toBe(false)
+    expect(conforms([1], { kind: 'array', items: s }, none)).toBe(false)
+    expect(conforms([], { kind: 'array', items: s, minItems: 1 }, none)).toBe(false)
+    expect(conforms(['a', 'b'], { kind: 'array', items: s, maxItems: 1 }, none)).toBe(false)
+    expect(conforms('x', { kind: 'array', items: s }, none)).toBe(false)
+    expect(conforms('x', { kind: 'union', options: [{ kind: 'boolean' }, s] }, none)).toBe(true)
     expect(conforms([], { kind: 'object', fields: [] }, none)).toBe(false)
     const optional: IrType = { kind: 'object', fields: [field({ required: false, type: { kind: 'number', integer: true } })] }
     expect(conforms({}, optional, none)).toBe(true)
     expect(conforms({ f: 'x' }, optional, none)).toBe(false)
+    expect(conforms({}, { kind: 'object', fields: [field({})] }, none)).toBe(false)
     // Depth bound: a deeply nested value is accepted rather than walked forever.
-    expect(conforms(1, s, none, undefined, 9)).toBe(true)
+    expect(conforms(1, s, none, 9)).toBe(true)
   })
 })
 

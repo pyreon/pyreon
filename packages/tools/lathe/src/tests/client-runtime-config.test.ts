@@ -58,10 +58,10 @@ const answer = (body: BodyInit, type = 'application/json') => (req: HttpRequest)
 afterAll(() => cleanEmitted('d8'))
 
 async function load(): Promise<{ client: Client; eps: Eps; mocks: { installMocks(): void } }> {
-  const e = emitToDisk('d8', SPEC, { plugins: ['schemas', 'client', 'mocks'], validate: 'strict' })
+  const e = emitToDisk('d8', SPEC, { plugins: ['schemas', 'client', 'mocks'], responseValidation: 'strict' })
   return {
     client: await e.load<Client>('client.ts'),
-    eps: await e.load<Eps>('endpoints/default.ts'),
+    eps: await e.load<Eps>('endpoints/index.ts'),
     mocks: await e.load<{ installMocks(): void }>('mocks.ts'),
   }
 }

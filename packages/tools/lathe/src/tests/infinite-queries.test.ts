@@ -59,7 +59,7 @@ describe('pagination declarations are checked', () => {
   it('an invalid spec extension is noted and emits nothing', () => {
     const r = run({})
     expect(r.doc.notes.find((n) => n.code === 'invalid-pagination')?.message).toMatch(/`nope` is not a query parameter/)
-    expect(r.files.find((f) => f.path === 'queries/default.ts')?.contents).not.toContain('useListBadInfinite')
+    expect(r.files.filter((f) => f.path.startsWith('queries/')).map((f) => f.contents).join('\n')).not.toContain('useListBadInfinite')
   })
 
   it('an invalid CONFIG entry fails the run with the reason', () => {
@@ -75,7 +75,7 @@ describe('pagination declarations are checked', () => {
 describe('emitted infinite queries', () => {
   it('typecheck — typed pages and page params, for a consumer', () => {
     const consumer = `
-import { useListCustomersInfinite, useListEventsInfinite, useListRowsInfinite, listPagesInfiniteOptions } from './queries/default'
+import { useListCustomersInfinite, useListEventsInfinite, useListRowsInfinite, listPagesInfiniteOptions } from './queries'
 export function use() {
   const c = useListCustomersInfinite(() => ({ query: { limit: 10 } }))
   const firstId: string | undefined = c.data()?.pages[0]?.data[0]?.id
@@ -106,7 +106,7 @@ export function use() {
       mockCalls: { url: string }[]
     }>('mocks.ts')
     type Opts = ConstructorParameters<typeof InfiniteQueryObserver>[1]
-    const queries = await e.load<Record<string, (a: unknown) => Opts>>('queries/default.ts')
+    const queries = await e.load<Record<string, (a: unknown) => Opts>>('queries/index.ts')
     const options = (name: string, a: unknown): Opts => {
       const fn = queries[name]
       if (!fn) throw new Error(`no ${name}`)
@@ -157,7 +157,7 @@ export function use() {
 })
 
 describe('checkPagination edge cases', () => {
-  const base = { id: 'op', method: 'GET' as const, path: '/x', tag: 't', pathParams: [] }
+  const base = { id: 'op', method: 'GET' as const, path: '/x', tag: 't', pathParams: [], headerParams: [], cookieParams: [] }
   const qp = (name: string, kind: 'string' | 'boolean' | 'number') => ({
     name,
     required: false,

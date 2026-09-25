@@ -14,6 +14,8 @@ const op = (id: string, method: IrOperation['method'], path: string): IrOperatio
   tag: 't',
   pathParams: [],
   queryParams: [],
+  headerParams: [],
+  cookieParams: [],
 })
 
 const SPEC = JSON.stringify({

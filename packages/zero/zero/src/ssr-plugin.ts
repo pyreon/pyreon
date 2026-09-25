@@ -75,6 +75,7 @@ import { resolveConfig } from './config'
 import { collectFileRouteModes } from './fs-router'
 import { formatRouteModeTable } from './route-modes'
 import { buildSsrBundle, materializeEntry, renderSsrEntrySource } from './ssr-build-shared'
+import { serializeServerConfig } from './server-config'
 import type { ZeroConfig } from './types'
 
 /**
@@ -250,6 +251,16 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       // mode dispatch via `wireRenderMode` doesn't need it).
       if (!userEntryExists) {
         await materializeEntry(entryPath, renderSsrEntrySource({ kind: mode, locales: [] }))
+        // Code-valued options (`middleware`, a custom ISR store / cacheKey
+        // function, …) cannot be serialized into the generated entry. Say so,
+        // rather than ship a server that silently runs without them.
+        const { dropped } = serializeServerConfig(userConfig)
+        if (dropped.length > 0) {
+          console.warn(
+            `[Pyreon] zero({ ${dropped.join(', ')} }) is code, so it cannot reach the generated server entry and will NOT apply in production. ` +
+              'Create src/entry-server.ts and pass it to createServer({ config, middleware }) — see https://pyreon.dev/docs/zero#createserver.',
+          )
+        }
       }
 
       try {

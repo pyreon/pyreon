@@ -65,7 +65,7 @@ describe('mock fixtures satisfy their own schemas', () => {
       const e = emitToDisk(`c7-${validator}`, SPEC, { validator, plugins: ['schemas', 'client', 'mocks'] })
       const client = await e.load<{ setDevTransport(m: HttpMiddleware | null): void }>('client.ts')
       const mocks = await e.load<{ installMocks(): void }>('mocks.ts')
-      const eps = await e.load<Record<string, () => Promise<unknown>>>('endpoints/default.ts')
+      const eps = await e.load<Record<string, () => Promise<unknown>>>('endpoints/index.ts')
       mocks.installMocks()
       try {
         const pets = (await eps.listPets?.()) as { nick?: string; tag?: string }[]
@@ -92,7 +92,7 @@ describe('mock fixtures satisfy their own schemas', () => {
 
   it('conforms checks type, enum, range, length, pattern and required fields', () => {
     const resolve = (): undefined => undefined
-    const obj = { kind: 'object', fields: [{ name: 'a', type: { kind: 'string' }, required: true, nullable: false, max: 2 }] } as const
+    const obj = { kind: 'object', fields: [{ name: 'a', type: { kind: 'string', maxLength: 2 }, required: true }] } as const
     expect(conforms({ a: 'ok' }, obj, resolve)).toBe(true)
     expect(conforms({ a: 'long' }, obj, resolve)).toBe(false)
     expect(conforms({}, obj, resolve)).toBe(false)
@@ -101,6 +101,6 @@ describe('mock fixtures satisfy their own schemas', () => {
     expect(conforms('x', { kind: 'union', options: [{ kind: 'number', integer: false }, { kind: 'string' }] }, resolve)).toBe(true)
     expect(conforms(null, { kind: 'string' }, resolve)).toBe(false)
     expect(conforms(true, { kind: 'boolean' }, resolve)).toBe(true)
-    expect(conforms('c', { kind: 'string', enum: ['a', 'b'] }, resolve)).toBe(false)
+    expect(conforms('c', { kind: 'enum', values: ['a', 'b'] }, resolve)).toBe(false)
   })
 })

@@ -150,19 +150,23 @@ describe('the validator setting', () => {
   }
 
   it('emits zod schemas from the zod dialect', () => {
-    const schemas = filesForValidator('zod').get('schemas.ts') ?? ''
+    const schemas = filesForValidator('zod').get('schemas/Book.ts') ?? ''
     expect(schemas).toContain("import { z } from 'zod'")
     expect(schemas).toContain('z.object({')
     expect(schemas).not.toContain('@pyreon/validate')
-    // zod infers with `z.infer<typeof X>`; there is no separate helper to
-    // import, and importing a non-existent `Infer` from zod would not compile.
-    expect(schemas).toContain('z.infer<typeof')
+    // The declared type is written out and the const is typed as its
+    // schema; zod's schema type is reached through the `z` binding, so no
+    // separate import is needed (and importing a non-existent `Infer` from zod
+    // would not compile).
+    expect(schemas).toContain('as unknown as z.ZodType<')
+    expect(schemas).not.toContain('Infer')
   })
 
   it('keeps the default on @pyreon/validate', () => {
-    const schemas = filesForValidator('pyreon').get('schemas.ts') ?? ''
+    const schemas = filesForValidator('pyreon').get('schemas/Book.ts') ?? ''
     expect(schemas).toContain("import { s } from '@pyreon/validate'")
-    expect(schemas).toContain('Infer<typeof')
+    expect(schemas).toContain("import type { Schema } from '@pyreon/validate'")
+    expect(schemas).toContain('as unknown as Schema<')
     expect(resolveConfig({ input: 'x' }).validator).toBe('pyreon')
   })
 
@@ -200,10 +204,10 @@ describe('the validator setting', () => {
     const b = filesForValidator('zod')
     expect([...b.keys()].sort()).toEqual([...a.keys()].sort())
     const differing = [...a.keys()].filter((p) => a.get(p) !== b.get(p)).sort()
-    // Only `schemas.ts` here: this spec's responses are bare `$ref`s, which
+    // Only the schema module here: this spec's responses are bare `$ref`s, which
     // render as the model's own name and carry no binding prefix. The hooks,
     // keys and barrel never name the validator at all.
-    expect(differing).toEqual(['schemas.ts'])
+    expect(differing).toEqual(['schemas/Book.ts'])
   })
 
   it('a COMPOSITE response clause names the binding, so endpoints follow', () => {
@@ -233,9 +237,33 @@ describe('the validator setting', () => {
     })
     const files = new Map(generate(SPEC, cfg).files.map((f) => [f.path, f.contents]))
     expect(files.get('client.ts')).toMatch(/^import axios(, \{ [^}]+ \})? from 'axios'$/m)
-    expect(files.get('schemas.ts')).toContain("import { z } from 'zod'")
+    expect(files.get('schemas/Book.ts')).toContain("import { z } from 'zod'")
     // The adapter validates through Standard Schema, which zod satisfies — so
     // the two settings genuinely do not need to know about each other.
     expect(files.get('client.ts')).toContain('~standard')
+  })
+})
+
+describe('responseValidation', () => {
+  const clientFor = (responseValidation?: 'strict' | 'warn' | 'off'): string => {
+    const cfg = resolveConfig({ input: 'x', plugins: ['schemas', 'client'], ...(responseValidation ? { responseValidation } : {}) })
+    return generate(SPEC, cfg).files.find((f) => f.path === 'client.ts')?.contents ?? ''
+  }
+
+  it('bakes the mode as the client DEFAULT, switchable with configureApi', () => {
+    expect(clientFor('warn')).toContain("const DEFAULT_VALIDATE: ValidateMode = 'warn'")
+    expect(clientFor('off')).toContain("const DEFAULT_VALIDATE: ValidateMode = 'off'")
+    expect(clientFor()).toContain('validate: () => settings.validate,')
+  })
+
+  it('defaults to strict', () => {
+    expect(clientFor()).toContain("const DEFAULT_VALIDATE: ValidateMode = 'strict'")
+    expect(clientFor('strict')).toBe(clientFor())
+  })
+
+  it('rejects an unknown mode by name', () => {
+    expect(() => resolveConfig({ input: 'x', responseValidation: 'loose' as never })).toThrow(
+      /unknown responseValidation `loose`.*Known: strict, warn, off/s,
+    )
   })
 })

@@ -29,13 +29,13 @@ afterAll(() => cleanEmitted('a11'))
 describe('literal colons in spec paths', () => {
   it('escapes them in the declared path', () => {
     const e = emitToDisk('a11', SPEC, { plugins: ['schemas', 'client', 'mocks'] })
-    expect(e.file('endpoints/default.ts')).toContain(String.raw`'POST /v1/:name\\:cancel'`)
+    expect(e.layer('endpoints')).toContain(String.raw`'POST /v1/:name\\:cancel'`)
   })
 
   it('sends the literal colon and needs only the real parameter', async () => {
     const e = emitToDisk('a11', SPEC, { plugins: ['schemas', 'client', 'mocks'] })
     const client = await e.load<{ setDevTransport(m: HttpMiddleware | null): void }>('client.ts')
-    const eps = await e.load<Record<string, (a?: unknown) => Promise<unknown>>>('endpoints/default.ts')
+    const eps = await e.load<Record<string, (a?: unknown) => Promise<unknown>>>('endpoints/index.ts')
     const seen: string[] = []
     client.setDevTransport(async (req) => {
       seen.push(`${req.method} ${req.url}`)
@@ -60,7 +60,7 @@ describe('literal colons in spec paths', () => {
     const e = emitToDisk('a11', SPEC, { plugins: ['schemas', 'client', 'mocks'] })
     const mocks = await e.load<{ installMocks(): void }>('mocks.ts')
     const client = await e.load<{ setDevTransport(m: HttpMiddleware | null): void }>('client.ts')
-    const eps = await e.load<Record<string, (a?: unknown) => Promise<unknown>>>('endpoints/default.ts')
+    const eps = await e.load<Record<string, (a?: unknown) => Promise<unknown>>>('endpoints/index.ts')
     mocks.installMocks()
     try {
       await expect(eps.cancelOp?.({ params: { name: 'x' } })).resolves.toEqual({ done: true })

@@ -1,4 +1,5 @@
-import { batch, isClient, onCleanup, signal, type Signal } from '@pyreon/reactivity'
+import { batch, isClient, signal, type Signal } from '@pyreon/reactivity'
+import { onHookCleanup } from './lifecycle'
 
 /**
  * The request options `useFetch` accepts.
@@ -69,7 +70,12 @@ export function useFetch<T>(
 ): UseFetchResult<T> {
   const data = signal<T | undefined>(undefined)
   const error = signal<unknown>(undefined)
-  const isPending = signal(false)
+  // Starts TRUE on every target — including the server, where the request
+  // never fires. The client's first render is pending (it fires the request
+  // during setup), so the SSR HTML must be the pending branch too; starting
+  // false rendered "loaded, no data" on the server and "loading" on the
+  // client, a hydration mismatch on every page that used the hook.
+  const isPending = signal(true)
   let controller: AbortController | null = null
 
   // An `@pyreon/http` endpoint CALL is the shape `@pyreon/native-compiler`
@@ -81,9 +87,8 @@ export function useFetch<T>(
   // as an uncaught page error. Adopting the promise is what makes the
   // documented shape mean the same thing on all three targets.
   if (typeof source !== 'string') {
-    isPending.set(true)
     let disposed = false
-    onCleanup(() => {
+    onHookCleanup(() => {
       disposed = true
     })
     Promise.resolve(source).then(
@@ -155,7 +160,7 @@ export function useFetch<T>(
   }
 
   refetch()
-  onCleanup(() => controller?.abort())
+  onHookCleanup(() => controller?.abort())
 
   return { data, error, isPending, refetch }
 }

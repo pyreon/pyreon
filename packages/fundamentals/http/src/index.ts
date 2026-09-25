@@ -58,6 +58,17 @@
  * ```
  */
 
+export {
+  encodeCookies,
+  encodeForm,
+  encodeMultipart,
+  type FormFieldEncoding,
+  type FormFields,
+  type FormScalar,
+  type FormValue,
+  type MultipartFields,
+  type MultipartValue,
+} from './body'
 export { createHttp, type HttpClient } from './client'
 
 export {
@@ -103,6 +114,7 @@ export { type HttpResponsePromise } from './response'
 export { applyPathParams, buildQuery, buildUrl, isAbsoluteUrl, joinUrl } from './url'
 
 export type {
+  HeaderValues,
   HttpClientConfig,
   HttpMethod,
   HttpMiddleware,

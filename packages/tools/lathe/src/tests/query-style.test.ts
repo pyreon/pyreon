@@ -37,7 +37,7 @@ afterAll(() => cleanEmitted('b2'))
 describe('query serialization follows the spec', () => {
   it('declares only the styles that differ from the runtime default', () => {
     const e = emitToDisk('b2', SPEC, { plugins: ['schemas', 'client'] })
-    const ep = e.file('endpoints/default.ts')
+    const ep = e.layer('endpoints')
     expect(ep).toContain(`ids: { style: 'form', explode: false }`)
     expect(ep).toContain(`words: { style: 'spaceDelimited', explode: false }`)
     // OpenAPI's default for an OBJECT is form + exploded; the runtime's is brackets.
@@ -50,7 +50,7 @@ describe('query serialization follows the spec', () => {
   it('sends what the spec says', async () => {
     const e = emitToDisk('b2', SPEC, { plugins: ['schemas', 'client'] })
     const client = await e.load<{ setDevTransport(m: HttpMiddleware | null): void }>('client.ts')
-    const eps = await e.load<Record<string, (a?: unknown) => Promise<unknown>>>('endpoints/default.ts')
+    const eps = await e.load<Record<string, (a?: unknown) => Promise<unknown>>>('endpoints/index.ts')
     let url = ''
     client.setDevTransport(async (req) => {
       url = req.url
