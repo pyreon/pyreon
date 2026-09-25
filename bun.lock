@@ -1698,6 +1698,7 @@
         "@pyreon/store": "workspace:^",
         "@pyreon/table": "workspace:^",
         "@pyreon/validation": "workspace:^",
+        "@tanstack/table-core": "^9.1.2",
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.11.6",
@@ -2775,6 +2776,7 @@
         "@pyreon/document": "workspace:^",
         "@pyreon/elements": "workspace:^",
         "@pyreon/rocketstyle": "workspace:^",
+        "@pyreon/ui-core": "workspace:^",
         "@pyreon/unistyle": "workspace:^",
       },
       "devDependencies": {
