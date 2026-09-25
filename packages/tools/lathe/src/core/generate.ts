@@ -26,6 +26,7 @@ import { docsImportBase, emitDocs } from '../emit/docs'
 import { emitFaker } from '../emit/faker'
 import { emitMocks } from '../emit/mock'
 import { emitPackageMarker } from '../emit/package-marker'
+import { isStreamOnly } from '../emit/stream'
 import { emitSchemas, emitTypes } from '../emit/schema'
 import { banner, jsonLiteral, type GeneratedFile } from '../emit/writer'
 import type { ResolvedConfig } from './config'
@@ -33,6 +34,7 @@ import type { IrDocument, IrNote, IrOperation, Reach } from './ir'
 import { loadOpenApi, parsePagination, type LoadOptions } from '../input/openapi'
 import { checkPagination } from '../emit/pagination'
 import { emitOutputManifest } from './output-manifest'
+import { closest } from './suggest'
 import { extractSurface, type ApiSurface } from './surface'
 
 export interface GenerateResult {
@@ -60,6 +62,7 @@ export function generate(
 ): GenerateResult {
   const { doc } = loadOpenApi(specText, options)
   applyPagination(doc, config)
+  applyStreams(doc, config)
   const native = config.target === 'multiplatform'
   const files: GeneratedFile[] = []
   const reach = reachOf(doc, config)
@@ -221,6 +224,62 @@ function applyPagination(doc: IrDocument, config: ResolvedConfig): void {
 }
 
 /**
+ * Merge the `streams` config onto the operations.
+ *
+ * Like `pagination`, a config entry is an explicit instruction, so every
+ * mistake in one FAILS the run naming the fix: an unknown operation, a model
+ * that does not exist, a stream with no format, a name that would collide.
+ */
+function applyStreams(doc: IrDocument, config: ResolvedConfig): void {
+  const entries = Object.entries(config.streams ?? {})
+  if (entries.length === 0) return
+  const byId = new Map(doc.operations.map((o) => [o.id, o]))
+  const models = new Set(doc.models.map((m) => m.name))
+  const fail = (id: string, why: string): never => {
+    throw new Error(`[Pyreon] lathe: \`streams.${id}\`: ${why}`)
+  }
+  for (const [id, entry] of entries) {
+    const op = byId.get(id)
+    if (!op) {
+      const near = closest(id, [...byId.keys()])
+      fail(
+        id,
+        `names no operation.${near ? ` Did you mean \`${near}\`?` : ''} Keys are the GENERATED operation names (the \`endpoints\` exports).`,
+      )
+      return
+    }
+    const format = entry.format ?? op.stream?.format
+    if (!format) {
+      fail(id, `the spec declares no streaming response for \`${id}\`, so \`format: 'sse' | 'ndjson'\` is required.`)
+      return
+    }
+    if (format !== 'sse' && format !== 'ndjson') fail(id, `unknown format \`${String(format)}\` — use 'sse' or 'ndjson'.`)
+    if (entry.data !== undefined && format !== 'sse') fail(id, '`data` applies to SSE only; an NDJSON line is always JSON.')
+    if (entry.event !== undefined && !models.has(entry.event)) {
+      const near = closest(entry.event, [...models])
+      fail(id, `\`event: '${entry.event}'\` is not a model in this spec.${near ? ` Did you mean \`${near}\`?` : ''}`)
+    }
+    if (byId.has(`${id}Stream`)) fail(id, `its stream would be named \`${id}Stream\`, which is already an operation.`)
+    const keepsSpecType = entry.event === undefined && op.stream?.format === format
+    op.stream = {
+      format,
+      media:
+        op.stream?.format === format
+          ? op.stream.media
+          : format === 'sse'
+            ? 'text/event-stream'
+            : 'application/x-ndjson',
+      event: entry.event !== undefined
+        ? { kind: 'ref', name: entry.event }
+        : keepsSpecType && op.stream
+          ? op.stream.event
+          : { kind: 'unknown', reason: 'no event type declared' },
+      data: format === 'sse' ? (entry.data ?? (keepsSpecType && op.stream ? op.stream.data : 'json')) : 'json',
+    }
+  }
+}
+
+/**
  * Two generated files with one path means one silently overwrites the other
  * on disk -- a whole tag's endpoints gone, with no error anywhere. Compared
  * case-INSENSITIVELY, because macOS and Windows filesystems are: `users.ts`
@@ -280,6 +339,12 @@ function decide(op: IrOperation, baseUrl: string): { reach: Reach; reason?: stri
     return {
       reach: 'web-only',
       reason: `\`${op.method}\` lowers through mutations, which PMTC does not yet recognise; GET operations on this client DO reach native.`,
+    }
+  }
+  if (isStreamOnly(op)) {
+    return {
+      reach: 'web-only',
+      reason: 'a streaming response (SSE / NDJSON) -- PMTC has no streaming lowering, so streams are web-only.',
     }
   }
   // Asked of the emitter rather than re-derived: the reach report and the

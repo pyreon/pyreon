@@ -199,10 +199,34 @@ export interface IrOperation {
    */
   responseMedia?: string | undefined
   /**
+   * The operation also (or only) answers as a STREAM of events — Server-Sent
+   * Events or NDJSON. Read from a streaming media type in the 2xx response, or
+   * declared with the `streams` config. Emitted as `<op>Stream` (an async
+   * iterator of validated events) and `use<Op>Stream` (signals).
+   */
+  stream?: IrStream | undefined
+  /**
    * How to page through this operation — declared, never guessed. From the
    * `x-pyreon-pagination` spec extension or the `pagination` config entry.
    */
   pagination?: IrPagination | undefined
+}
+
+/**
+ * A streaming response, described by what ONE event carries.
+ *
+ * `event` is the type of an SSE event's `data` (JSON-decoded unless `data` is
+ * `text`) or of one NDJSON line. OpenAPI 3.2's `itemSchema` states it
+ * directly; before 3.2 the media type's `schema` is read as the event type,
+ * which is how streaming APIs have described themselves in practice.
+ */
+export interface IrStream {
+  format: 'sse' | 'ndjson'
+  /** The media type the stream is requested with (`Accept`). */
+  media: string
+  event: IrType
+  /** SSE only: `text` passes each event's `data` through as a string. */
+  data: 'json' | 'text'
 }
 
 /**
@@ -281,6 +305,8 @@ export type IrNoteCode =
   | 'extra-tags'
   | 'description-dropped'
   | 'numeric-version'
+  | 'stream-event'
+  | 'invalid-stream'
 
 /**
  * What a note means for the generated client.
@@ -323,6 +349,10 @@ export const NOTE_SEVERITY: Readonly<Record<IrNoteCode, IrNoteSeverity>> = {
   'extra-tags': 'choice',
   'description-dropped': 'choice',
   'numeric-version': 'choice',
+  // How a streaming response's event type was read — which schema, or that
+  // none was declared (events then arrive as `unknown`).
+  'stream-event': 'choice',
+  'invalid-stream': 'loss',
 }
 
 /** The severity of a note, from its code. */

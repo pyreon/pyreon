@@ -22,9 +22,11 @@ import type {
   IrPagination,
   IrParam,
   IrSecurityScheme,
+  IrStream,
   IrType,
   StringFormat,
 } from '../core/ir'
+import { streamFormatOf } from '../core/media'
 import { assignNames, ident, modelIdent, operationIdent, operationIdFrom, tagFile } from '../core/naming'
 import { splitByDirection } from './direction'
 import { parseSpecText } from './yaml'
@@ -203,6 +205,7 @@ function convert(spec: Json, options: LoadOptions = {}): IrDocument {
   ctx.appliedSecurity = new Set(securitySchemes.map((sc) => sc.name))
   noteSecurity(spec, securitySchemes, ctx)
   const operations = collectOperations(spec, ctx)
+  dropClashingStreams(operations, ctx)
   // Schemas reached through a non-component pointer that turned out to be
   // RECURSIVE were hoisted into named models while converting; they join the
   // document here, after every conversion that could add one.
@@ -897,7 +900,7 @@ function fieldEncodingOf(encoding: Json | undefined): Record<string, IrFieldEnco
   return Object.keys(out).length > 0 ? out : undefined
 }
 
-function responseOf(op: Json, at: string, ctx: Ctx): Pick<IrOperation, 'response' | 'responseMedia'> {
+function responseOf(op: Json, at: string, ctx: Ctx): Pick<IrOperation, 'response' | 'responseMedia' | 'stream'> {
   const responses = obj(op.responses)
   if (!responses) return {}
   const rAt = sub(at, 'responses')
@@ -957,13 +960,24 @@ function responseOf(op: Json, at: string, ctx: Ctx): Pick<IrOperation, 'response
  * client that silently decodes `text/csv` as JSON fails at runtime, far from
  * the spec line that caused it.
  */
-function pickResponseContent(content: Json, at: string, ctx: Ctx): Pick<IrOperation, 'response' | 'responseMedia'> {
+function pickResponseContent(
+  content: Json,
+  at: string,
+  ctx: Ctx,
+): Pick<IrOperation, 'response' | 'responseMedia' | 'stream'> {
   const keys = Object.keys(content)
-  const json = keys.find((k) => encodingOf(k) === 'json')
+  // A streaming media type is read ALONGSIDE the primary choice, not instead
+  // of it: an API offering `application/json` AND `text/event-stream` (the
+  // OpenAI shape) gets both a plain endpoint and a stream.
+  const streaming = keys.find((k) => streamFormatOf(k) !== undefined)
+  const stream = streaming ? streamOf(streaming, content[streaming], sub(at, 'content', streaming), ctx) : undefined
+  const withStream = <T extends object>(r: T): T & Pick<IrOperation, 'stream'> => (stream ? { ...r, stream } : r)
+  // A stream media type is never the JSON pick, even `application/stream+json`.
+  const json = keys.find((k) => encodingOf(k) === 'json' && streamFormatOf(k) === undefined)
   if (!json) {
     // A non-JSON response is not a LOSS (audit B4): the client decodes it as
     // text, a Blob or a stream by media type. Noted only when a choice was made.
-    const first = keys[0]
+    const first = streaming ?? keys[0]
     if (!first) return {}
     if (keys.length > 1) {
       ctx.notes.push({
@@ -972,19 +986,99 @@ function pickResponseContent(content: Json, at: string, ctx: Ctx): Pick<IrOperat
         message: `no JSON media type (found ${keys.join(', ')}) — the client decodes \`${first}\`.`,
       })
     }
-    return { response: { kind: 'unknown', reason: `media type ${first}` }, responseMedia: first }
+    return withStream({ response: { kind: 'unknown', reason: `media type ${first}` }, responseMedia: first })
   }
-  if (keys.length > 1) {
+  const others = keys.filter((k) => k !== streaming)
+  if (others.length > 1) {
     ctx.notes.push({
       code: 'multiple-content-types',
       at: sub(at, 'content'),
-      message: `${keys.length} media types (${keys.join(', ')}) — generated code uses ${json}.`,
+      message: `${others.length} media types (${others.join(', ')}) — generated code uses ${json}.`,
     })
   }
   const schema = obj(obj(content[json])?.schema)
-  return {
+  return withStream({
     response: schema ? toType(schema, sub(at, 'content', json, 'schema'), ctx) : { kind: 'unknown', reason: 'no schema' },
+  })
+}
+
+/**
+ * A stream's generated names (`<op>Stream`, `use<Op>Stream`) must not collide
+ * with another operation's (`getLogsStream`, `useGetLogsStream`). A clash
+ * would emit two declarations of one name — a module that does not load — so
+ * the stream is dropped and the loss NOTED; the plain endpoint still works.
+ */
+function dropClashingStreams(ops: IrOperation[], ctx: Ctx): void {
+  const ids = new Set(ops.map((o) => o.id))
+  for (const op of ops) {
+    if (!op.stream || !ids.has(`${op.id}Stream`)) continue
+    ctx.notes.push({
+      code: 'invalid-stream',
+      at: ctx.opAt.get(op) ?? '#/paths',
+      message: `the stream for \`${op.id}\` would be named \`${op.id}Stream\`, which is already an operation. The stream is not generated; rename one operationId.`,
+    })
+    op.stream = undefined
   }
+}
+
+/**
+ * What ONE event of a streaming response carries (see {@link IrStream}).
+ *
+ * OpenAPI 3.2 `itemSchema` is the authoritative source. For SSE it describes
+ * the whole event (`{ event, data, id, retry }`), so the payload type is its
+ * `data` property — through `contentSchema` when `data` is JSON-in-a-string.
+ * Before 3.2 the media type's `schema` is the event type by convention, and a
+ * bare `type: string` means the data is plain text. Every reading that had to
+ * be guessed is NOTED, so the report says why events are `unknown`.
+ */
+function streamOf(media: string, node: unknown, at: string, ctx: Ctx): IrStream {
+  const format = streamFormatOf(media) as 'sse' | 'ndjson'
+  const mo = obj(deref(node, at, ctx)) ?? {}
+  // RAW nodes are what `toType` converts — a `$ref` must reach it intact, or
+  // the event loses its model NAME and becomes an anonymous inline copy. The
+  // DEREFERENCED form is only for looking inside (`type`, `properties`).
+  const rawItem = obj(mo.itemSchema)
+  const rawSchema = obj(mo.schema)
+  const item = rawItem ? obj(deref(rawItem, sub(at, 'itemSchema'), ctx)) : undefined
+  const schema = rawSchema ? obj(deref(rawSchema, sub(at, 'schema'), ctx)) : undefined
+  const noteEvent = (message: string): void => {
+    ctx.notes.push({ code: 'stream-event', at, message })
+  }
+  if (format === 'sse') {
+    if (rawItem && item) {
+      const dataAt = sub(at, 'itemSchema', 'properties', 'data')
+      const rawData = obj(obj(item.properties)?.data)
+      const data = rawData ? obj(deref(rawData, dataAt, ctx)) : undefined
+      if (rawData && data) {
+        const inner = obj(data.contentSchema)
+        if (inner) return { format, media, data: 'json', event: toType(inner, sub(dataAt, 'contentSchema'), ctx) }
+        return data.type === 'string' || data.type === undefined
+          ? { format, media, data: 'text', event: { kind: 'string' } }
+          : { format, media, data: 'json', event: toType(rawData, dataAt, ctx) }
+      }
+      noteEvent('`itemSchema` has no `data` property — it is read as the type of each event\'s JSON `data`.')
+      return { format, media, data: 'json', event: toType(rawItem, sub(at, 'itemSchema'), ctx) }
+    }
+    if (!rawSchema || !schema) {
+      noteEvent('no event schema — each event\'s `data` arrives as the raw string. Declare `itemSchema`, or name a model in the `streams` config.')
+      return { format, media, data: 'text', event: { kind: 'string' } }
+    }
+    if (schema.type === 'string') return { format, media, data: 'text', event: { kind: 'string' } }
+    return { format, media, data: 'json', event: toType(rawSchema, sub(at, 'schema'), ctx) }
+  }
+  if (rawItem) return { format, media, data: 'json', event: toType(rawItem, sub(at, 'itemSchema'), ctx) }
+  if (!rawSchema || !schema) {
+    noteEvent('no line schema — each NDJSON value arrives as `unknown`. Declare `itemSchema`, or name a model in the `streams` config.')
+    return { format, media, data: 'json', event: { kind: 'unknown', reason: 'no schema' } }
+  }
+  const items = obj(schema.items)
+  if (schema.type === 'array' && items) {
+    // A common pre-3.2 spelling: "the body is a list of these". Each LINE is
+    // one item, so the item type is the event type.
+    noteEvent('an `array` schema on an NDJSON response is read as its `items` — one item per line.')
+    return { format, media, data: 'json', event: toType(items, sub(at, 'schema', 'items'), ctx) }
+  }
+  return { format, media, data: 'json', event: toType(rawSchema, sub(at, 'schema'), ctx) }
 }
 
 /** Resolve a local `$ref`. Remote refs are refused rather than fetched. */

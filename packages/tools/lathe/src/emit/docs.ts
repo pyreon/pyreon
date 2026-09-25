@@ -23,6 +23,7 @@ import { hasInput } from './operation-types'
 import { noteSeverity, type IrDocument, type IrOperation, type IrType, type Reach } from '../core/ir'
 import { propKey, typeIdent } from '../core/naming'
 import { bodyArg, byTag, endpointSpec, isMutation, tagFile } from './client'
+import { isStreamOnly, streamHookName, streamHookTakesArgs, streamName } from './stream'
 import { tsType } from './schema'
 import type { GeneratedFile } from './writer'
 import { CONTROL_CHARS, q, safeBlockComment } from './writer'
@@ -211,7 +212,14 @@ function tagPage(
 
     lines.push(`- **Reach** — ${reachLabel(info)}`)
     if (info?.reason) lines.push(`  - ${md(info.reason)}`)
-    lines.push(`- **Response** — ${typeCell(op.response)}`)
+    if (!isStreamOnly(op)) lines.push(`- **Response** — ${typeCell(op.response)}`)
+    if (op.stream) {
+      lines.push(
+        `- **Stream** — \`${md(op.stream.media)}\` ${op.stream.format === 'sse' ? 'events' : 'lines'} of ${
+          op.stream.format === 'sse' && op.stream.data === 'text' ? '`string`' : typeCell(op.stream.event)
+        }, via \`${streamName(op)}\`${opts.hasQueries ? ` / \`${streamHookName(op)}\`` : ''} (web only)`,
+      )
+    }
     if (op.body) lines.push(`- **Request body** — ${typeCell(op.body.type)} as \`${md(op.body.mediaType)}\``)
     lines.push('')
 
@@ -241,7 +249,8 @@ function tagPage(
       lines.push('')
     }
 
-    lines.push('```ts', ...usage(doc, op, tag, opts), '```', '')
+    if (!isStreamOnly(op)) lines.push('```ts', ...usage(doc, op, tag, opts), '```', '')
+    if (op.stream) lines.push('```ts', ...streamUsage(op, tag, opts), '```', '')
   }
   return { path: `${DOCS_DIR}/${tagFile(tag)}.md`, contents: `${lines.join('\n')}\n` }
 }
@@ -289,6 +298,31 @@ function usage(
     )
   }
   return lines
+}
+
+/** How to consume a streaming operation — the iterator, and the hook when queries exist. */
+function streamUsage(op: IrOperation, tag: string, opts: DocsOptions): string[] {
+  const file = tagFile(tag)
+  const base = opts.importBase ?? './gen'
+  const args = argsLiteral(op)
+  const fn = streamName(op)
+  const lines = [
+    `import { ${fn} } from '${base}/endpoints/${file}'`,
+    '',
+    `for await (const ${op.stream?.format === 'ndjson' ? 'row' : 'event'} of ${fn}(${args})) {`,
+    '  // `break` closes the connection',
+    '}',
+  ]
+  if (!opts.hasQueries) return lines
+  const hook = streamHookName(op)
+  return [
+    ...lines,
+    '',
+    `import { ${hook} } from '${base}/queries/${file}'`,
+    '',
+    streamHookTakesArgs(op) ? `const live = ${hook}(() => (${args || '{}'}))` : `const live = ${hook}()`,
+    '// live.events() / live.latest() / live.status() — signals; closed on unmount.',
+  ]
 }
 
 /** The generated hook's name, matching the client emitter's convention. */

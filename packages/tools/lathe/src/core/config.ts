@@ -202,6 +202,23 @@ export interface LatheSection {
    */
   pagination?: Readonly<Record<string, PaginationConfig>>
   /**
+   * Streaming responses, keyed by the GENERATED operation name. Each entry
+   * emits `<op>Stream` (an async iterator of validated events) and
+   * `use<Op>Stream` (signals). An operation whose 2xx response declares
+   * `text/event-stream` or an NDJSON media type gets both WITHOUT an entry;
+   * one here overrides what the spec says, or declares a stream the spec does
+   * not describe (an endpoint that streams when its body says `stream: true`).
+   *
+   * @example
+   * ```ts
+   * streams: {
+   *   createChatCompletion: { format: 'sse', event: 'ChatCompletionChunk' },
+   *   exportRows: { format: 'ndjson', event: 'Row' },
+   * }
+   * ```
+   */
+  streams?: Readonly<Record<string, StreamConfig>>
+  /**
    * Fail the run when a generated native module does not lower.
    *
    * Off by default: a spec is usually partly un-lowerable and that is fine and
@@ -209,6 +226,16 @@ export interface LatheSection {
    * where a silent regression to web-only is a real defect.
    */
   strictNative?: boolean
+}
+
+/** One operation's stream declaration — see `LatheSection.streams`. */
+export interface StreamConfig {
+  /** Required when the spec does not already declare a streaming response. */
+  format?: 'sse' | 'ndjson'
+  /** A model NAME from the spec — the type of one event's `data` / one line. */
+  event?: string
+  /** SSE only: `text` keeps each event's `data` as a string. Default `json`. */
+  data?: 'json' | 'text'
 }
 
 /** One operation's pagination declaration — see `LatheSection.pagination`. */
@@ -236,6 +263,7 @@ export interface ResolvedConfig {
   validator: ValidatorName
   baseUrl?: string | undefined
   pagination?: Readonly<Record<string, PaginationConfig>> | undefined
+  streams?: Readonly<Record<string, StreamConfig>> | undefined
   strictNative: boolean
   responseValidation: ResponseValidation
 }
@@ -339,6 +367,7 @@ export function resolveConfig(section: LatheSection | undefined): ResolvedConfig
     validator,
     baseUrl: section?.baseUrl,
     pagination: section?.pagination,
+    streams: section?.streams,
     strictNative: section?.strictNative ?? false,
     responseValidation,
   }

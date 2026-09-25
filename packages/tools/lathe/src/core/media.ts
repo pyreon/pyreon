@@ -10,20 +10,33 @@ import type { IrOperation } from './ir'
 
 export type ResponseKind = 'json' | 'text' | 'blob' | 'stream'
 
-const STREAMING = new Set([
-  'text/event-stream',
+const NDJSON = new Set([
   'application/x-ndjson',
   'application/ndjson',
   'application/jsonl',
   'application/jsonlines',
+  'application/x-jsonlines',
   'application/stream+json',
 ])
+
+/**
+ * The stream format a media type carries, or `undefined` for a non-stream.
+ *
+ * Checked BEFORE the JSON test anywhere a media type is classified:
+ * `application/stream+json` ends in `+json`, and read as JSON a whole stream
+ * is parsed as one document — which fails on the second line.
+ */
+export function streamFormatOf(mediaType: string): 'sse' | 'ndjson' | undefined {
+  const media = mediaType.split(';')[0]?.trim().toLowerCase() ?? ''
+  if (media === 'text/event-stream') return 'sse'
+  return NDJSON.has(media) ? 'ndjson' : undefined
+}
 
 /** The decode for one operation's success response. */
 export function responseKindOf(op: IrOperation): ResponseKind {
   const media = op.responseMedia?.split(';')[0]?.trim().toLowerCase()
   if (media === undefined) return 'json'
-  if (STREAMING.has(media)) return 'stream'
+  if (streamFormatOf(media) !== undefined) return 'stream'
   if (media.startsWith('text/')) return 'text'
   // XML, form data and the like are text a caller parses; everything else
   // (octet-stream, images, PDFs, archives, audio, video) is binary.

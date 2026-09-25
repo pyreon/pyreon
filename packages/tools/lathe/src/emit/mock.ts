@@ -91,7 +91,13 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
     // Emitting `json: null` made the mock answer 200 with the body `null`
     // while the real server answers 204 with nothing, so an app tested
     // against the fixtures saw `null` where production gives `undefined`.
-    if (op.response) {
+    if (op.stream && responseKindOf(op) === 'stream') {
+      // A streaming operation answers with a VALID stream of one event built
+      // from its event type, so `<op>Stream` and `use<Op>Stream` yield
+      // something under mocks instead of parsing an opaque sample string.
+      f.line(`    body: ${streamFixture(op.stream, doc)},`)
+      f.line(`    headers: { 'content-type': ${q(op.stream.media)} },`)
+    } else if (op.response) {
       const kind = responseKindOf(op)
       if (kind === 'json') {
         f.line(`    json: ${indentAfterFirst(fixture(op.response, doc, 0), 4)},`)
@@ -288,6 +294,19 @@ function escapeRegex(text: string): string {
 }
 
 /** A deterministic sample value for a type. */
+/**
+ * One event of a stream, as the wire body. The value is a fixture EXPRESSION
+ * (the same one a JSON route uses), serialised at import time so it stays in
+ * lockstep with the non-stream fixtures.
+ */
+function streamFixture(stream: NonNullable<IrOperation['stream']>, doc: IrDocument): string {
+  if (stream.format === 'sse' && stream.data === 'text') return q('id: 1\ndata: sample\n\n')
+  const value = stream.event.kind === 'unknown' ? '{}' : indentAfterFirst(fixture(stream.event, doc, 0), 4)
+  return stream.format === 'sse'
+    ? `\`id: 1\\ndata: \${JSON.stringify(${value})}\\n\\n\``
+    : `\`\${JSON.stringify(${value})}\\n\``
+}
+
 function fixture(
   type: IrType,
   doc: IrDocument,

@@ -111,6 +111,36 @@ const CASES: Record<IrNoteCode, [Record<string, unknown>, Record<string, unknown
     get({ description: 'only a description' }),
   ],
   'numeric-version': [{ info: { title: 'T', version: 2 } }, { info: { title: 'T', version: '2' } }],
+  // An SSE response with no schema: events arrive as raw strings, and the
+  // report says so. With `itemSchema` the event type is stated, not guessed.
+  'stream-event': [
+    get({ responses: { 200: { content: { 'text/event-stream': {} } } } }),
+    get({
+      responses: {
+        200: {
+          content: {
+            'text/event-stream': {
+              itemSchema: { type: 'object', properties: { data: { type: 'string', contentSchema: { type: 'object' } } } },
+            },
+          },
+        },
+      },
+    }),
+  ],
+  'invalid-stream': [
+    {
+      paths: {
+        '/x': { get: { operationId: 'x', responses: { 200: { content: { 'text/event-stream': { schema: { type: 'string' } } } } } } },
+        '/y': { get: { operationId: 'xStream', responses: {} } },
+      },
+    },
+    {
+      paths: {
+        '/x': { get: { operationId: 'x', responses: { 200: { content: { 'text/event-stream': { schema: { type: 'string' } } } } } } },
+        '/y': { get: { operationId: 'other', responses: {} } },
+      },
+    },
+  ],
 }
 
 describe('every note code fires on its defect and not on the corrected form', () => {

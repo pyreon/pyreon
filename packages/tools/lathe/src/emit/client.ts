@@ -35,6 +35,7 @@ import {
 import { bodyRefType, hasInput, inputType, type ModelTypes, responseTypeOf } from './operation-types'
 import { emitInfinite } from './pagination'
 import { PURE, schemaExpr, schemaRefs, schemaSpecifierFor, tsType } from './schema'
+import { emitStreamFunctions, emitStreamHook, hasStreams, isStreamOnly, streamEventHelper, streamName } from './stream'
 import { dialectOf, type ValidatorName } from './validator'
 import { q, relativeSpecifier, SourceFile } from './writer'
 
@@ -69,7 +70,7 @@ export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
   if (client !== 'pyreon') return emitAdapterClient(doc, opts, client)
   const f = new SourceFile(CLIENT_FILE)
   f.import('@pyreon/http', 'compose', 'createHttp')
-  f.importType('@pyreon/http', 'HttpMiddleware', 'ValidateMode')
+  f.importType('@pyreon/http', 'HttpMiddleware', 'ValidateMode', ...(hasStreams(doc) ? ['ResponseOf'] : []))
   f.import('@pyreon/http/schema', 'standardSchema')
   f.line()
   f.doc(
@@ -169,6 +170,10 @@ export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
   f.line('    (req, next) => (devTransport ? devTransport(req, next) : next(req)),')
   f.line('  ],')
   f.line('})')
+  if (hasStreams(doc)) {
+    f.line()
+    f.lines(...streamEventHelper('pyreon'))
+  }
   return f
 }
 
@@ -372,10 +377,14 @@ function emitAdapterClient(
   f.line()
   f.lines(...runtimeValidate())
   f.line()
-  f.lines(...runtimeTransport())
+  f.lines(...runtimeTransport(client))
   f.line()
   f.lines(...runtimeEndpoint(client, baseUrlOf(doc, opts), opts.keyScope, opts.responseValidation))
   emitAuthHelpers(f, doc, client)
+  if (hasStreams(doc)) {
+    f.line()
+    f.lines(...streamEventHelper(client))
+  }
   return f
 }
 
@@ -553,6 +562,12 @@ export function emitWebEndpoints(
       // though its tag module is reached (see `PURE`).
       f.line(`export const ${op.id} = ${PURE}api.endpoint${d.generics}(${q(endpointSpec(op))}${d.config})`)
     }
+    emitStreamFunctions(f, ops, {
+      path,
+      doc,
+      validator,
+      streamDecl: (op) => ({ spec: endpointSpec(op), ...endpointDecl(op, validator, models, true) }),
+    })
     files.push(f)
   }
   return files
@@ -583,12 +598,14 @@ interface EndpointDecl {
  * response schema's TYPE too, which is why a composite response gets a named
  * `const` here.
  */
-function endpointDecl(op: IrOperation, validator: ValidatorName, models: ModelTypes): EndpointDecl {
+function endpointDecl(op: IrOperation, validator: ValidatorName, models: ModelTypes, asStream = false): EndpointDecl {
   const entries: string[] = []
-  const kind = responseTypeOf(op)
+  // `asStream`: the raw-body twin of a JSON endpoint, which `<op>Stream`
+  // parses as SSE / NDJSON. It validates per EVENT, so it has no `response`.
+  const kind = asStream ? 'stream' : responseTypeOf(op)
   let responseConst: string | undefined
   let v = 'undefined'
-  if (op.response && op.response.kind !== 'unknown') {
+  if (!asStream && op.response && op.response.kind !== 'unknown') {
     const expr = schemaExpr(op.response, { native: false, validator })
     if (op.response.kind === 'ref') {
       entries.push(`response: ${op.response.name}`)
@@ -750,7 +767,8 @@ function resolvedKind(type: IrType, models: ReadonlyMap<string, IrType>, depth =
 /** WEB layout: `queries.ts` — reactive hooks, one per operation. */
 export function emitWebQueries(doc: IrDocument): SourceFile[] {
   const files: SourceFile[] = []
-  const queryOps = doc.operations.filter((o) => !isMutation(o))
+  // A stream is never cached, so it is never an invalidation target.
+  const queryOps = doc.operations.filter((o) => !isMutation(o) && !isStreamOnly(o))
   // The FILE group each operation lives in — an untagged operation is grouped
   // by its path, so `op.tag` is not the file.
   const groupOf = new Map<string, string>()
@@ -759,9 +777,19 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
     const path = `queries/${tagFile(tag)}.ts`
     const f = new SourceFile(path)
     const epPath = `endpoints/${tagFile(tag)}.ts`
-    f.import(relativeSpecifier(path, epPath), ...ops.map((o) => o.id))
-    const usesQuery = ops.some((o) => !isMutation(o))
-    const usesMutation = ops.some((o) => isMutation(o))
+    f.import(relativeSpecifier(path, epPath), ...ops.filter((o) => !isStreamOnly(o)).map((o) => o.id))
+    // A stream-only operation gets `use<Op>Stream` INSTEAD of a query or a
+    // mutation: a raw body in a query cache is a one-shot stream re-read on
+    // every refetch.
+    const usesQuery = ops.some((o) => !isMutation(o) && !isStreamOnly(o))
+    const usesMutation = ops.some((o) => isMutation(o) && !isStreamOnly(o))
+    const streaming = ops.filter((o) => o.stream !== undefined)
+    if (streaming.length > 0) {
+      f.import(relativeSpecifier(path, epPath), ...streaming.map(streamName))
+      f.import('@pyreon/query', 'useStream')
+      f.importType('@pyreon/query', 'UseStreamOptions')
+      f.importType('@pyreon/http/stream', 'StreamItem')
+    }
     if (usesQuery) {
       f.import('@pyreon/query', 'useQuery')
       f.importType('@pyreon/query', 'UseQueryOptions')
@@ -775,7 +803,7 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
       f.importType('@pyreon/query', 'UseInfiniteQueryOptions')
     }
     // Invalidation targets can live in another tag's endpoint module.
-    for (const op of ops.filter(isMutation)) {
+    for (const op of ops.filter((o) => isMutation(o) && !isStreamOnly(o))) {
       for (const target of invalidationTargets(op, queryOps)) {
         const group = groupOf.get(target.id) as string
         if (group !== tag) f.import(relativeSpecifier(path, `endpoints/${tagFile(group)}.ts`), target.id)
@@ -783,6 +811,8 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
     }
 
     for (const op of ops) {
+      if (op.stream) emitStreamHook(f, op)
+      if (isStreamOnly(op)) continue
       const hook = `use${typeIdent(op.id)}`
       // Every type below is DERIVED from the endpoint declaration, never
       // re-rendered from the spec — the declaration is the one source.

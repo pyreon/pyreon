@@ -16,6 +16,7 @@ export type {
   IrPagination,
   IrParam,
   IrSecurityScheme,
+  IrStream,
   IrType,
   Reach,
   StringFormat,
@@ -31,6 +32,7 @@ export {
   type PaginationConfig,
   type PluginName,
   type ResolvedConfig,
+  type StreamConfig,
 } from './core/config'
 export { generate, type GenerateResult, type GeneratedFile } from './core/generate'
 export { loadOpenApi, openApiVersionProblem, type LoadOptions } from './input/openapi'

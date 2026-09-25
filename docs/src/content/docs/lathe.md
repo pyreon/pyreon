@@ -772,6 +772,7 @@ a stable `code`, an RFC 6901 pointer into the spec, and a severity:
 | `parameter-serialization` | loss | a path `style` other than `simple`, or `allowReserved` — query `style` / `explode` are honoured |
 | `body-on-get` | loss | a `GET` / `HEAD` request body — `fetch` refuses to send it, so it is dropped |
 | `invalid-pagination` | loss | an `x-pyreon-pagination` that does not fit the operation — ignored |
+| `invalid-stream` | loss | a stream whose generated name (`<op>Stream`) is already an operation — not generated |
 | `deprecated` | loss | the generated code carries no `@deprecated` marker |
 | `unsupported-const` | loss | a `const` whose value is not a JSON scalar — not enforced (a scalar `const` is) |
 | `unsupported-schema` / `unsupported-ref` | loss | a schema or `$ref` that reduces to `unknown`, or a degradation (a discriminator that cannot be proven, a contradictory `allOf`) |
@@ -783,6 +784,7 @@ a stable `code`, an RFC 6901 pointer into the spec, and a severity:
 | `description-dropped` | choice | the JSDoc carries the summary, not the description |
 | `missing-operation-id` | choice | a name derived from method + path |
 | `numeric-version` | choice | `info.version` was a YAML number |
+| `stream-event` | choice | how a streaming response's event type was read — or that it declared none |
 
 The terminal report lists the losses and summarises the choices; the generated
 reference pages split them into "Not represented" and "Choices made".

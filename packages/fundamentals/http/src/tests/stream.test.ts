@@ -20,6 +20,7 @@ import {
   openNdjsonStream,
   readEventStream,
   readNdjson,
+  streamHeaders,
   StreamEventError,
   StreamParseError,
   type StreamStatus,
@@ -466,6 +467,23 @@ describe('openNdjsonStream over a real server', () => {
     const err = await collect(openNdjsonStream(via('/down'))).catch((e: unknown) => e)
     expect((err as { status: number }).status).toBe(503)
     expect(hits['/down']).toBe(1)
+  })
+})
+
+describe('streamHeaders', () => {
+  it('merges every header shape, drops nullish values, and lets the stream win', () => {
+    const extra = { accept: 'text/event-stream', 'last-event-id': '9' }
+    expect(streamHeaders(new Headers({ 'X-A': '1', Accept: 'x' }), extra)).toEqual({
+      'x-a': '1',
+      accept: 'text/event-stream',
+      'last-event-id': '9',
+    })
+    expect(streamHeaders([['X-B', '2']], extra)).toMatchObject({ 'x-b': '2' })
+    expect(streamHeaders({ 'X-C': 3, 'X-D': null, 'X-E': undefined, 'X-F': true }, {})).toEqual({
+      'x-c': '3',
+      'x-f': 'true',
+    })
+    expect(streamHeaders(undefined, { Accept: 'a' })).toEqual({ accept: 'a' })
   })
 })
 

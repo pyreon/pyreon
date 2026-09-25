@@ -140,6 +140,11 @@ export interface LatheSection {
       | { kind: 'offset' | 'page'; param: string; items?: string; hasMore?: string; initial?: number }
     >
   >
+  /**
+   * Streaming responses per generated operation name — emits `<op>Stream` and
+   * `use<Op>Stream`. See `@pyreon/lathe`'s `StreamConfig`.
+   */
+  streams?: Readonly<Record<string, { format?: 'sse' | 'ndjson'; event?: string; data?: 'json' | 'text' }>>
   /** Exit non-zero when a generated native module does not lower. */
   strictNative?: boolean
   /**

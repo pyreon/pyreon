@@ -219,6 +219,40 @@ export async function* readNdjson(stream: ReadableStream<Uint8Array>): AsyncGene
 
 // ─── Connections ─────────────────────────────────────────────────────────────
 
+/** The item type of a stream — `StreamItem<ReturnType<typeof chatStream>>`. */
+export type StreamItem<S> = S extends AsyncIterable<infer E> ? E : never
+
+/**
+ * Merge a call's own headers with the ones a stream needs (`accept`,
+ * `last-event-id`), in any of the shapes an HTTP client accepts — a `Headers`,
+ * an entry list, or a record whose `null` / `undefined` values mean "omit".
+ * The stream's headers win: resuming with the right id is not optional.
+ *
+ * @example
+ * ```ts
+ * openEventStream((ctx) => ep({ ...args, signal: ctx.signal, headers: streamHeaders(args.headers, ctx.headers) }))
+ * ```
+ */
+export function streamHeaders(
+  base: HeadersInit | Readonly<Record<string, string | number | boolean | null | undefined>> | undefined,
+  extra: Readonly<Record<string, string>>,
+): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (base instanceof Headers) {
+    base.forEach((v, k) => {
+      out[k] = v
+    })
+  } else if (Array.isArray(base)) {
+    for (const [k, v] of base) out[String(k).toLowerCase()] = String(v)
+  } else if (base) {
+    for (const [k, v] of Object.entries(base)) {
+      if (v !== null && v !== undefined) out[k.toLowerCase()] = String(v)
+    }
+  }
+  for (const [k, v] of Object.entries(extra)) out[k.toLowerCase()] = v
+  return out
+}
+
 /** Lifecycle of a streaming connection. */
 export type StreamStatus = 'connecting' | 'open' | 'reconnecting' | 'closed' | 'error'
 
