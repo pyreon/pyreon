@@ -1,0 +1,34 @@
+// A real-world orval 7 config: react-query hooks over fetch, MSW mocks, a
+// custom mutator for auth, and a formatter hook.
+import { defineConfig } from 'orval'
+
+export default defineConfig({
+  petstore: {
+    input: {
+      target: './petstore.json',
+    },
+    output: {
+      mode: 'tags-split',
+      target: 'src/api/petstore.ts',
+      schemas: 'src/api/model',
+      client: 'react-query',
+      httpClient: 'fetch',
+      mock: true,
+      baseUrl: 'https://petstore3.swagger.io/api/v3',
+      clean: true,
+      prettier: true,
+      override: {
+        mutator: {
+          path: './src/api/mutator/custom-fetch.ts',
+          name: 'customFetch',
+        },
+        query: {
+          useSuspenseQuery: true,
+        },
+      },
+    },
+    hooks: {
+      afterAllFilesWrite: 'prettier --write',
+    },
+  },
+})

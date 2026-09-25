@@ -5,11 +5,13 @@
  * is the only place that touches `node:fs`, `process` or the config loader.
  */
 
-import { existsSync, mkdirSync, readFileSync, rmSync, watch, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, watch, writeFileSync } from 'node:fs'
+import { createInterface } from 'node:readline/promises'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { version as LATHE_VERSION } from '../../package.json' with { type: 'json' }
 import type { LatheSection } from '../core/config'
-import { loadConfig, type LoadedConfig } from './config-file'
+import { findConfigFile, loadConfig, type LoadedConfig } from './config-file'
+import { renderInitReport, runInit, type InitFs } from './init'
 import { pullSpec } from './pull'
 import { shouldColor } from './report'
 import { parseArgv, run, type Argv, type Fs } from './run'
@@ -51,6 +53,7 @@ export async function main(argvRaw: readonly string[], cwd: string): Promise<num
   // Parse errors and help need no config, and a broken config must not stop
   // someone reading `--help`.
   if (argv.errors.length > 0 || argv.command === 'help') return emit(await run(argv, undefined, realFs))
+  if (argv.command === 'init') return init(argv, cwd, emit, failure)
 
   let loaded: LoadedConfig
   try {
@@ -232,3 +235,105 @@ function specPaths(section: LatheSection | undefined, argv: Argv, cwd: string): 
   else if (section?.input) paths.push(section.input)
   return paths.map((p) => (isAbsolute(p) ? p : resolve(cwd, p))).filter((p) => existsSync(p))
 }
+
+/**
+ * `lathe init [spec]`. Asks questions only on a terminal and never under
+ * `--yes` or `--json`; runs the first generate with the section it wrote,
+ * pulling a remote spec first when the config names a `source`.
+ */
+async function init(
+  argv: Argv,
+  cwd: string,
+  emit: (r: { code: number; stdout: string; stderr: string }) => number,
+  failure: (message: string, code?: number) => number,
+): Promise<number> {
+  const abs = (p: string): string => (isAbsolute(p) ? p : resolve(cwd, p))
+  let configFile: string | undefined
+  try {
+    configFile = findConfigFile(cwd, argv.config)
+  } catch (err) {
+    return failure((err as Error).message)
+  }
+  const fs: InitFs = {
+    read: (p) => readFileSync(abs(p), 'utf8'),
+    write: (p, c) => {
+      mkdirSync(dirname(abs(p)), { recursive: true })
+      writeFileSync(abs(p), c, 'utf8')
+    },
+    exists: (p) => existsSync(abs(p)),
+    list: (p) => {
+      try {
+        return readdirSync(abs(p))
+      } catch {
+        return []
+      }
+    },
+  }
+  const scoped: Fs = {
+    ...realFs,
+    read: (p) => realFs.read(abs(p)),
+    write: (p, c) => realFs.write(abs(p), c),
+    exists: (p) => realFs.exists(abs(p)),
+    mkdirp: (p) => realFs.mkdirp(abs(p)),
+    remove: (p) => realFs.remove(abs(p)),
+  }
+  const terminal = process.stdin.isTTY === true && process.stdout.isTTY === true && !argv.json
+  const ask = terminal
+    ? async (question: string): Promise<string> => {
+        const rl = createInterface({ input: process.stdin, output: process.stdout })
+        try {
+          return await rl.question(question)
+        } finally {
+          rl.close()
+        }
+      }
+    : undefined
+  const log = argv.json ? (t: string): void => void process.stderr.write(t) : undefined
+  const report = await runInit(
+    {
+      from: argv.from,
+      input: argv.input,
+      output: argv.output,
+      yes: argv.yes,
+      generate: !argv.noGenerate,
+      dryRun: argv.dryRun,
+    },
+    {
+      fs,
+      cwd,
+      configFile,
+      ask,
+      generate: async (section) => {
+        // A remote spec is fetched first: the config names where it lives.
+        for (const t of pullTargets(section)) {
+          if (t.source && !existsSync(abs(t.input))) {
+            const code = await pullSpec(t.source, abs(t.input), { color: argv.color ?? false, out: log })
+            if (code !== 0) return { code, stdout: '', stderr: '' }
+          }
+        }
+        const gen = parseArgv(['generate', ...(argv.color ? ['--color'] : ['--no-color']), ...(argv.json ? ['--json'] : [])])
+        return run(gen, section, scoped)
+      },
+    },
+  )
+  if (argv.json) {
+    const { generated, ...rest } = report
+    const doc = {
+      command: 'init',
+      ...rest,
+      generated: generated ? (tryJson(generated.stdout) ?? generated) : undefined,
+    }
+    return emit({ code: report.ok ? 0 : 1, stdout: `${JSON.stringify(doc, null, 2)}\n`, stderr: '' })
+  }
+  if (report.error) return emit({ code: 1, stdout: report.from ? renderInitReport(report) : '', stderr: `${report.error}\n` })
+  return emit({ code: report.ok ? 0 : 1, stdout: renderInitReport(report), stderr: '' })
+}
+
+function tryJson(text: string): unknown {
+  try {
+    return JSON.parse(text)
+  } catch {
+    return undefined
+  }
+}
+

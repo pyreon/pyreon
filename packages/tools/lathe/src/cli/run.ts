@@ -23,10 +23,12 @@ import { OUTPUT_MANIFEST, orphanedPaths } from '../core/output-manifest'
 import { diffCommittedSurface, type ApiSurface, type SurfaceChange } from '../core/surface'
 import { resolveNativeCompiler, verifyNative, worstVerdict } from '../verify/lower'
 import { closest } from '../core/suggest'
+import { SOURCE_TOOLS } from './init'
+import type { SourceTool } from './init/migrate'
 import { renderReport } from './report'
 
 export interface Argv {
-  command: 'generate' | 'check' | 'pull' | 'help' | 'version'
+  command: 'generate' | 'check' | 'pull' | 'init' | 'help' | 'version'
   /**
    * Positional spec path, overriding config. For `pull`, the URL.
    */
@@ -53,6 +55,12 @@ export interface Argv {
   watch: boolean
   /** Report what `generate` WOULD write and remove, and touch nothing. */
   dryRun: boolean
+  /** `init` only: the tool to migrate from, instead of detecting it. */
+  from?: SourceTool | undefined
+  /** `init` only: answer every question with its default. */
+  yes: boolean
+  /** `init` only: write the config but do not run the first generate. */
+  noGenerate: boolean
   /**
    * Colour the terminal report. `undefined` means "decide from the
    * environment", which only the bin can do; the pure run defaults to plain.
@@ -65,7 +73,7 @@ export interface Argv {
   errors: string[]
 }
 
-const COMMANDS = ['generate', 'check', 'pull', 'help', 'version'] as const
+const COMMANDS = ['generate', 'check', 'pull', 'init', 'help', 'version'] as const
 const TARGETS = ['web', 'multiplatform'] as const
 
 /**
@@ -99,6 +107,10 @@ const FLAGS: Readonly<Record<string, 'bool' | 'value'>> = {
   '--config': 'value',
   '--header': 'value',
   '--token': 'value',
+  '--from': 'value',
+  '--yes': 'bool',
+  '-y': 'bool',
+  '--no-generate': 'bool',
 }
 
 /** The flag names a user could have meant, for "did you mean" hints. */
@@ -113,6 +125,8 @@ export function parseArgv(args: readonly string[]): Argv {
     json: false,
     watch: false,
     dryRun: false,
+    yes: false,
+    noGenerate: false,
     errors: [],
   }
   const rest: string[] = []
@@ -229,6 +243,16 @@ export function parseArgv(args: readonly string[]): Argv {
       case '--token':
         out.token = value
         break
+      case '--from':
+        out.from = oneOf(name, value as string, SOURCE_TOOLS)
+        break
+      case '--yes':
+      case '-y':
+        out.yes = true
+        break
+      case '--no-generate':
+        out.noGenerate = true
+        break
     }
   }
 
@@ -236,7 +260,7 @@ export function parseArgv(args: readonly string[]): Argv {
   if (verb !== undefined && (COMMANDS as readonly string[]).includes(verb)) {
     out.command = verb as Argv['command']
     const positional = rest.slice(1)
-    const max = verb === 'pull' ? 2 : verb === 'generate' || verb === 'check' ? 1 : 0
+    const max = verb === 'pull' ? 2 : verb === 'generate' || verb === 'check' || verb === 'init' ? 1 : 0
     if (positional[0] !== undefined) out.input = positional[0]
     if (verb === 'pull' && positional[1] !== undefined) out.dest = positional[1]
     for (const extra of positional.slice(max)) out.errors.push(`unexpected argument \`${extra}\`.`)
@@ -264,6 +288,12 @@ export function parseArgv(args: readonly string[]): Argv {
   }
   if (out.command !== 'pull' && (out.headers.length > 0 || out.token !== undefined)) {
     out.errors.push('`--header` and `--token` only apply to `lathe pull`.')
+  }
+  if (out.command !== 'init' && (out.from !== undefined || out.yes || out.noGenerate)) {
+    out.errors.push('`--from`, `--yes` and `--no-generate` only apply to `lathe init`.')
+  }
+  if (out.command === 'init' && (out.watch || out.failOnBreaking || out.strictNative)) {
+    out.errors.push('`--watch`, `--fail-on-breaking` and `--strict-native` do not apply to `init`; run `lathe generate` with them afterwards.')
   }
   if (out.command === 'check' && out.dryRun) {
     out.errors.push('`--dry-run` is implied by `check`, which never writes.')
@@ -301,6 +331,8 @@ Usage
   lathe generate [spec]          read the spec, write the client
   lathe check    [spec]          generate in memory; exit 1 if anything is stale
   lathe pull     [url] [dest]    fetch a remote spec to the configured input path
+  lathe init     [spec]          set up pyreon.config.ts from an existing orval / hey-api /
+                                 kubb / openapi-typescript setup or an openapi.* file
   lathe [spec]                   same as \`lathe generate [spec]\`
 
 Options
@@ -322,6 +354,14 @@ Options
                                  when NO_COLOR is set)
   --version, -v                  print the version
   --help, -h                     print this help
+
+Init options
+  --from orval|hey-api|kubb|openapi-typescript|spec
+                                 migrate from this tool instead of detecting one
+  --yes, -y                      ask nothing; take every default (for CI)
+  --no-generate                  write the config, skip the first generate
+  --out <dir>                    output directory for the generated client
+  --dry-run                      report what would be written; write nothing
 
 Pull options
   --header "Name: value"         send a request header (repeatable)
@@ -395,6 +435,11 @@ export async function run(
     )
   }
   if (argv.command === 'help') return { code: 0, stdout: HELP, stderr: '' }
+  if (argv.command === 'init') {
+    // `init` reads and writes the project around the config (package.json, the
+    // old tool's files), so it runs through the bin, not this pure function.
+    return fail('[Pyreon] lathe: `init` runs through the `lathe` bin (`main`), not `run`.')
+  }
   try {
     return await runChecked(argv, section, fs, fail)
   } catch (err) {

@@ -8,7 +8,8 @@
  * `bun scripts/bootstrap.ts` rebuilds -- run it after a bootstrap.
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -32,6 +33,24 @@ describe('the shipped `lathe` bin', { timeout: 120_000 }, () => {
 
   it('an unknown flag exits 2 (it used to be ignored and exit 0)', () => {
     expect(node('generate', '--josn').status).toBe(2)
+  })
+
+  it('`init --yes` writes a config and generates, from a bare spec', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'lathe-bin-init-'))
+    mkdirSync(join(dir, '.git'))
+    writeFileSync(
+      join(dir, 'openapi.yaml'),
+      "openapi: 3.0.3\ninfo: { title: T, version: '1' }\nservers: [{ url: 'https://t.test' }]\npaths: {}\n",
+    )
+    writeFileSync(join(dir, 'package.json'), '{ "name": "x" }\n')
+    const r = spawnSync(process.execPath.includes('bun') ? 'node' : process.execPath, [BIN, 'init', '--yes'], {
+      cwd: dir,
+      env: { ...process.env, NO_COLOR: '1' },
+      timeout: 60_000,
+    })
+    expect(r.status).toBe(0)
+    expect(existsSync(join(dir, 'pyreon.config.ts'))).toBe(true)
+    expect(existsSync(join(dir, 'src', 'gen', 'lathe-manifest.json'))).toBe(true)
   })
 
   it('a document that is not OpenAPI exits 1', () => {
