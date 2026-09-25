@@ -15,7 +15,11 @@ export type ToastType = 'info' | 'success' | 'warning' | 'error'
 export interface ToastOptions {
   /** Toast variant — controls styling. */
   type?: ToastType
-  /** Auto-dismiss delay in ms. Default: the Toaster's `duration` (4000). Set 0 for persistent. */
+  /**
+   * Auto-dismiss delay in ms. Default: the Toaster's `duration` (4000). Set 0
+   * (or `Infinity`) for persistent. Values a timer cannot hold (non-finite,
+   * negative, or above 2^31-1 ms) are treated as persistent.
+   */
   duration?: number
   /** Optional secondary line rendered under the message. */
   description?: string | VNodeChild
@@ -24,9 +28,27 @@ export interface ToastOptions {
   /** Whether the toast shows a dismiss button. Default: true. */
   dismissible?: boolean
   /** Optional action button. */
-  action?: { label: string; onClick: () => void }
+  action?: ToastAction
   /** Called when the toast is dismissed (manually or by timeout). */
   onDismiss?: () => void
+}
+
+/** What an action button's `onClick` receives. */
+export interface ToastActionContext {
+  /** The id of the toast the action belongs to. */
+  id: string
+  /** Dismiss that toast (soft — plays the leave transition). */
+  dismiss: () => void
+}
+
+/** An action button rendered in a toast. */
+export interface ToastAction {
+  label: string
+  /**
+   * Called with the toast's id and a `dismiss()` bound to it, so an "Undo"
+   * can close its own toast without having kept the id `toast()` returned.
+   */
+  onClick: (ctx: ToastActionContext) => void
 }
 
 export interface ToasterProps {
@@ -60,7 +82,7 @@ export interface Toast {
   description: string | VNodeChild | undefined
   icon: VNodeChild | undefined
   dismissible: boolean
-  action: { label: string; onClick: () => void } | undefined
+  action: ToastAction | undefined
   onDismiss: (() => void) | undefined
   state: ToastState
   timer: ReturnType<typeof setTimeout> | undefined

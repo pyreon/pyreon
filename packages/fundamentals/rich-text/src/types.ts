@@ -14,6 +14,15 @@ export interface RichTextConfig {
   content?: string | JSONContent
   /** Whether the document is editable (default `true`). Read-only when `false`. */
   editable?: boolean
+  /** Alias for `editable: false` when `true`. An explicit `editable` wins. */
+  readOnly?: boolean
+  /**
+   * Text shown while the document is empty. Rendered as a CSS `::before` on
+   * the first empty block (`.is-editor-empty[data-placeholder]`, TipTap's
+   * convention — a default grey style is injected once) and exposed to
+   * assistive tech as `aria-placeholder` on the textbox.
+   */
+  placeholder?: string
   /**
    * Accessible name for the editor. The content area is a `role="textbox"`,
    * which has no name unless one is supplied — a screen reader otherwise
@@ -86,6 +95,12 @@ export interface RichTextEditor {
   editable: Signal<boolean>
   /** The underlying TipTap `Editor`, or `null` until mounted. */
   view: Signal<Editor | null>
+  /**
+   * Replace the document from an HTML string or ProseMirror JSON. Works before
+   * mount (the HTML is kept and parsed by the schema on mount). Like
+   * `json.set`, the replacement is not an undo step.
+   */
+  setContent: (content: string | JSONContent) => void
   /**
    * Whether a mark/node is active at the current selection — reactive (reads
    * the transaction counter, so it re-derives on edits + selection moves).
