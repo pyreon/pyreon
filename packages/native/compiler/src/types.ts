@@ -1004,6 +1004,7 @@ export type DeclIR =
       onlyRenderVisibleElements?: boolean
       snapToObjects?: boolean
       autoHistory?: boolean
+      historyLimit?: number
       reducedMotion?: boolean
       deleteKeys?: string[] | null
       multiSelectionKey?: string | null
