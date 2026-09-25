@@ -37,15 +37,22 @@ export type LatheSpecPatch =
       path: string
     }
 
-/** Split a pointer into unescaped segments. The root (`''`) has none. */
-export function parsePointer(pointer: string): string[] {
+/** Split a pointer into unescaped segments, or say why it is not one. The root (`''`) has none. */
+function pointerSegments(pointer: string): string[] | string {
   const p = pointer.startsWith('#') ? decodeURIComponent(pointer.slice(1)) : pointer
   if (p === '') return []
-  if (!p.startsWith('/')) throw new Error(`a JSON pointer starts with \`/\`; got \`${pointer}\``)
+  if (!p.startsWith('/')) return `a JSON pointer starts with \`/\`; got \`${pointer}\``
   return p
     .slice(1)
     .split('/')
     .map((seg) => seg.replace(/~1/g, '/').replace(/~0/g, '~'))
+}
+
+/** Split an RFC 6901 pointer (with or without a leading `#`) into unescaped segments. */
+export function parsePointer(pointer: string): string[] {
+  const segs = pointerSegments(pointer)
+  if (typeof segs === 'string') throw new Error(`[Pyreon] lathe: ${segs}`)
+  return segs
 }
 
 type Container = Record<string, unknown> | unknown[]
@@ -69,12 +76,9 @@ export function applyPatches(spec: Record<string, unknown>, patches: readonly La
       fail(`\`op\` must be add, replace or remove; got \`${String((patch as { op: unknown }).op)}\`.`)
     }
     if (typeof patch.path !== 'string') fail('`path` must be a JSON pointer string.')
-    let segs: string[]
-    try {
-      segs = parsePointer(patch.path)
-    } catch (err) {
-      return fail((err as Error).message)
-    }
+    const parsed = pointerSegments(patch.path)
+    if (typeof parsed === 'string') return fail(parsed)
+    const segs = parsed
     if (segs.length === 0) fail('the root cannot be patched; target a key inside the document.')
     if (patch.op !== 'remove' && (!('value' in patch) || patch.value === undefined)) {
       fail('needs a `value` (JSON — use `null` for null).')
