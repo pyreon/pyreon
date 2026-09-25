@@ -36,7 +36,7 @@ export type Props = Record<string, unknown>
  * A component is a plain function that runs ONCE.
  * It returns any renderable content and may call lifecycle hooks during setup.
  */
-export type ComponentFn<P extends Props = Props> = (props: P) => VNodeChild
+export type ComponentFn<P extends object = Props> = (props: P) => VNodeChild
 
 // ─── Utility types ───────────────────────────────────────────────────────────
 
@@ -85,7 +85,7 @@ export type ExtractProps<T> = T extends {
         : T
 
 /** A higher-order component that wraps a component, optionally transforming its props. */
-export type HigherOrderComponent<HOP extends Props, P extends Props | undefined = undefined> = (
+export type HigherOrderComponent<HOP extends object, P extends object | undefined = undefined> = (
   Component: ComponentFn<HOP>,
 ) => ComponentFn<P extends undefined ? HOP : P>
 

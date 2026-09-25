@@ -3,7 +3,7 @@ title: Document
 description: Universal document rendering for Pyreon — one template, 20 output formats from PDF to Slack.
 ---
 
-`@pyreon/document` renders **one document template to many output formats**. Compose a format-agnostic node tree once — with the primitive functions or the fluent builder — then render it to PDF, DOCX, XLSX, PPTX, email, HTML, Markdown, plain text, CSV, SVG, JSON / JSONL, or straight into Slack / Teams / Discord / Telegram / Notion / Confluence / WhatsApp / Google Chat payloads.
+`@pyreon/document` renders **one document template to many output formats**. Compose a format-agnostic node tree once — with JSX primitives or the fluent builder — then render it to PDF, DOCX, XLSX, PPTX, email, HTML, Markdown, plain text, CSV, SVG, JSON / JSONL, or straight into Slack / Teams / Discord / Telegram / Notion / Confluence / WhatsApp / Google Chat payloads.
 
 The heavy binary renderers (PDF, DOCX, XLSX, PPTX) are **lazy-loaded per format** — a document app that only ever emails never downloads the 3 MB PDF engine into its runtime path. Custom formats (receipt printers, internal schemas) are pluggable via `registerRenderer()`.
 
@@ -50,36 +50,31 @@ Most apps that produce documents end up with N hand-maintained codepaths: an HTM
 
 `@pyreon/document` collapses that into a single **format-agnostic node tree** — a `DocNode` — and a `render(node, format)` call. The node tree knows nothing about pdfmake, exceljs, or Slack's Block Kit; each renderer walks the same tree and emits its target format. Change the template once; every format updates.
 
-```ts
+```tsx
 // @check
 import { Document, Page, Heading, Text, Table, render } from '@pyreon/document'
 
 interface InvoiceData {
-  id: string
+  id: number
   date: string
-  lineItems: (string | number)[][]
+  lineItems: string[][]
 }
 
-// A "template" is just a function that returns a DocNode — call the
-// primitive functions directly (never compile them through literal JSX;
-// see the warning under "Primitive functions" below).
-function invoice(data: InvoiceData) {
-  return Document({
-    title: `Invoice #${data.id}`,
-    children: Page({
-      size: 'A4',
-      margin: 40,
-      children: [
-        Heading({ children: `Invoice #${data.id}` }),
-        Text({ color: '#666', children: data.date }),
-        Table({ columns: ['Item', 'Qty', 'Price'], rows: data.lineItems }),
-      ],
-    }),
-  })
+function Invoice(props: { data: InvoiceData }) {
+  const { data } = props // a document renders once — destructuring is fine here
+  return (
+    <Document title={`Invoice #${data.id}`}>
+      <Page size="A4" margin={40}>
+        <Heading>Invoice #{data.id}</Heading>
+        <Text color="#666">{data.date}</Text>
+        <Table columns={['Item', 'Qty', 'Price']} rows={data.lineItems} />
+      </Page>
+    </Document>
+  )
 }
 
-const invoiceData: InvoiceData = { id: '1001', date: '2026-09-25', lineItems: [['Widget', 5, '$50']] }
-const node = invoice(invoiceData)
+const invoiceData: InvoiceData = { id: 42, date: '2026-09-25', lineItems: [['Widget', '2', '$20']] }
+const node = <Invoice data={invoiceData} />
 
 await render(node, 'pdf') // → Uint8Array (download / attach)
 await render(node, 'email') // → Outlook-safe HTML string
@@ -91,68 +86,90 @@ await render(node, 'slack') // → Slack Block Kit JSON string
 
 ## Two Authoring APIs
 
-There are two ways to build the same `DocNode` tree. They produce identical output — pick by ergonomics.
+There are two ways to build the same document tree — JSX primitives and the fluent builder. They produce identical output — pick by ergonomics.
 
-### Primitive functions
+### JSX primitives
 
-Best for **static-shaped documents and conditional layouts** — anything you'd naturally write as nested markup.
+Best for **static-shaped documents and conditional layouts** — anything you'd naturally write as markup. This is the primary way to write a document.
 
-:::warning{title="Call these as functions, not as literal JSX tags"}
-`Document`, `Page`, `Heading`, `Table`, `List`, and every other primitive return a **`DocNode`** — a plain `{ type, props, children }` object, NOT a Pyreon `VNode`. Writing literal JSX (`<Document><Page>…</Page></Document>`) and compiling it through Pyreon's normal `h()`/JSX pipeline produces a **broken, unstructured render**: `h()` wraps each element in a `VNode` whose `type` field is the *function itself*, but every renderer switches on `node.type` expecting one of the fixed string tags (`'document'`, `'page'`, `'heading'`, …) that only the primitive *call* produces. The nested VNodes still pass the package's loose `isDocNode()` structural check (it only tests for `type`/`props`/`children` keys), so nothing throws — the tree silently renders as concatenated text with no markup at all.
-
-Call the primitives directly, nesting `children` explicitly:
-
-```ts
-Document({ title: 'x', children: Page({ children: [Heading({ level: 1, children: 'x' })] }) })
-```
-
-The name "primitive functions" (some Pyreon docs call these "JSX primitives") refers to the fact that each ALSO doubles as the return-type building block a real JSX transform would use for a genuine `@pyreon/core` component — it does not mean you can drop them into literal `<Tag>` markup here.
-:::
-
-```ts
+```tsx
 // @check
 import { Document, Page, Heading, Text, Table, Divider, List, ListItem, Code, render } from '@pyreon/document'
 
-const report = Document({
-  title: 'Q4 Sales Report',
-  author: 'Analytics Team',
-  children: Page({
-    children: [
-      Heading({ level: 1, children: 'Sales Report' }),
-      Text({ children: 'Q4 2026 performance summary.' }),
-      Table({
-        columns: ['Region', 'Revenue', 'Growth'],
-        rows: [
+const report = (
+  <Document title="Q4 Sales Report" author="Analytics Team">
+    <Page>
+      <Heading level={1}>Sales Report</Heading>
+      <Text>Q4 2026 performance summary.</Text>
+      <Table
+        columns={['Region', 'Revenue', 'Growth']}
+        rows={[
           ['US', '$1.2M', '+15%'],
           ['EU', '$800K', '+8%'],
           ['APAC', '$500K', '+22%'],
-        ],
-      }),
-      Divider({}),
-      Heading({ level: 2, children: 'Notes' }),
-      List({
-        children: [
-          ListItem({ children: 'Record quarter for APAC' }),
-          ListItem({ children: 'EU impacted by currency exchange' }),
-        ],
-      }),
-      Code({ language: 'sql', children: 'SELECT region, SUM(revenue) FROM sales GROUP BY region' }),
-    ],
-  }),
-})
+        ]}
+      />
+      <Divider />
+      <Heading level={2}>Notes</Heading>
+      <List>
+        <ListItem>Record quarter for APAC</ListItem>
+        <ListItem>EU impacted by currency exchange</ListItem>
+      </List>
+      <Code language="sql">SELECT region, SUM(revenue) FROM sales GROUP BY region</Code>
+    </Page>
+  </Document>
+)
 
 const pdf = await render(report, 'pdf')
 ```
+
+### JSX, `h()`, or direct calls — the same tree
+
+The primitives are plain functions, so the same document can be written three ways, and all three render **byte-identically**:
+
+```tsx
+// @check
+import { h } from '@pyreon/core'
+import { Document, Page, Heading, Text, render } from '@pyreon/document'
+
+// 1. JSX
+const viaJsx = (
+  <Document title="Hello">
+    <Page>
+      <Heading>Title</Heading>
+      <Text>Body</Text>
+    </Page>
+  </Document>
+)
+
+// 2. h() — no JSX transform needed
+const viaH = h(Document, { title: 'Hello' }, h(Page, null, h(Heading, null, 'Title'), h(Text, null, 'Body')))
+
+// 3. Direct calls — returns a plain DocNode value
+const direct = Document({
+  title: 'Hello',
+  children: Page({ children: [Heading({ children: 'Title' }), Text({ children: 'Body' })] }),
+})
+
+const html = await render(viaJsx, 'html')
+// render(viaH, 'html') and render(direct, 'html') produce the same string.
+```
+
+What `render()` does with a JSX / `h()` tree:
+
+- **Components are called** — your own components that return primitives work anywhere a primitive does.
+- **Fragments are flattened**, and **`true` / `false` / `null` / `undefined` children render nothing**, so `{showNotes && <Text>…</Text>}` behaves exactly as it does in UI code.
+- **It is a one-shot snapshot.** A signal read in the tree (`{() => total()}`) is read once, when `render()` runs. To reflect new values, render again.
+- **Only document primitives are allowed.** A DOM element (`<div>`, `<p>`) inside a document tree throws `<div> is a DOM element, not a document primitive` — use `<Section>` and `<Text>` instead.
+
+Direct calls return a `DocNode` immediately, which is what `isDocNode()` checks for. JSX and `h()` return a VNode, so `isDocNode(<Text>hi</Text>)` is `false` — pass the JSX straight to `render()` / `download()` / `builder.add()` instead.
 
 ### Fluent builder
 
 Best for **programmatic generation** — building a document by looping over data, where markup would be awkward.
 
 ```tsx
-// @check
 import { createDocument } from '@pyreon/document'
-
-const regions = [{ name: 'US', revenue: '$1.2M', growth: '+15%' }]
 
 const doc = createDocument({ title: 'Sales Report', author: 'Analytics Team' })
   .heading('Q4 Sales Report')
@@ -175,7 +192,7 @@ const slack = await doc.toSlack() // string
 The builder is **chainable** — every content method returns the builder. The terminal `.toX()` methods read the accumulated tree without consuming it, so you can render the same builder to several formats in a row. Use `.build()` to get the raw `DocNode` if you want to pass it to `render()` directly.
 :::
 
-Both APIs are equivalent — they build the same `DocNode` shape. The primitive-function form gives you conditional sections (`cond && Section({ children: […] })`) and reusable helper functions that return a `DocNode`; the builder gives you imperative, chainable control flow. Mix freely with `.add(node)`, as long as `node` is itself a resolved `DocNode` — the output of a primitive *call* (`Section({…})`) or `createDocument()...build()`, never a literal JSX element.
+Both APIs are equivalent. JSX gives you conditional sections (`{cond && <Section>…</Section>}`) and component composition; the builder gives you imperative control flow. Mix freely — `createDocument().add(<MyComponent />)` accepts JSX-produced nodes.
 
 ## Output Formats
 
@@ -218,8 +235,6 @@ Both APIs are equivalent — they build the same `DocNode` shape. The primitive-
 | Markdown   | `'md'`            | `.toMarkdown()` | GFM with pipe tables (cells escaped) |
 | Plain text | `'text'`          | `.toText()`     | Aligned ASCII tables                |
 | CSV        | `'csv'`           | `.toCsv()`      | Comma-separated rows                |
-| JSON       | `'json'`          | —               | The full `DocNode` tree, pretty-printed — round-trips back through `render()` |
-| JSONL      | `'jsonl'`         | —               | One JSON object per content block (containers flattened) — for RAG/chunking pipelines |
 | JSON       | `'json'`          | `.toJson()`     | Round-trippable `DocNode` tree      |
 | JSONL      | `'jsonl'`         | `.toJsonl()`    | One content block per line          |
 
@@ -302,7 +317,7 @@ The vendored architecture means `npm install @pyreon/document` pulls every rende
 
 ## Primitives
 
-18 primitive functions compose the document tree. Each is a plain function returning a `DocNode` — call it directly, e.g. `Heading({ level: 1, children: 'Title' })` (see the warning above: do **not** compile these through literal `<Tag>` JSX).
+18 JSX primitives compose the document tree. Each is also a plain function returning a `DocNode`, so they work outside JSX (`Heading({ level: 1, children: 'Title' })`).
 
 | Primitive               | Description                                                        |
 | ----------------------- | ------------------------------------------------------------------ |
@@ -327,42 +342,32 @@ The vendored architecture means `npm install @pyreon/document` pulls every rende
 
 ### Text formatting
 
-```ts
-// @check
-import { Text } from '@pyreon/document'
-
-Text({ bold: true, size: 14, color: '#333', children: 'Bold heading text' })
-Text({ italic: true, align: 'right', children: 'Subtotal: $100' })
-Text({ underline: true, children: 'Underlined' })
-Text({ strikethrough: true, children: 'Crossed out' })
-Text({ align: 'justify', lineHeight: 1.6, children: 'A justified paragraph with custom line height.' })
+```tsx
+<Text bold size={14} color="#333">Bold heading text</Text>
+<Text italic align="right">Subtotal: $100</Text>
+<Text underline>Underlined</Text>
+<Text strikethrough>Crossed out</Text>
+<Text align="justify" lineHeight={1.6}>A justified paragraph with custom line height.</Text>
 ```
 
 ### Headings
 
-```ts
-// @check
-import { Heading } from '@pyreon/document'
-
-Heading({ level: 1, children: 'Page Title' })
-Heading({ level: 2, color: '#666', align: 'center', children: 'Section' })
+```tsx
+<Heading level={1}>Page Title</Heading>
+<Heading level={2} color="#666" align="center">Section</Heading>
 ```
 
 `level` defaults to `1` if omitted.
 
 ### Lists
 
-`List` takes `ListItem` children in its `children` array — there is no `items` shorthand prop on the primitive itself (only the builder's `.list(items[])` offers that sugar).
+The `<List>` primitive takes `<ListItem>` children; the builder's `.list(items[])` is sugar over the same shape.
 
-```ts
-// @check
-import { List, ListItem } from '@pyreon/document'
-import { createDocument } from '@pyreon/document'
-
-List({
-  ordered: true,
-  children: [ListItem({ children: 'First step' }), ListItem({ children: 'Second step' })],
-})
+```tsx
+<List ordered>
+  <ListItem>First step</ListItem>
+  <ListItem>Second step</ListItem>
+</List>
 
 // Builder equivalent:
 createDocument().list(['First step', 'Second step'], { ordered: true })
@@ -370,49 +375,40 @@ createDocument().list(['First step', 'Second step'], { ordered: true })
 
 ### Code blocks
 
-```ts
-// @check
-import { Code } from '@pyreon/document'
-
-Code({ language: 'typescript', children: 'const total = items.reduce((s, i) => s + i.price, 0)' })
+```tsx
+<Code language="typescript">const total = items.reduce((s, i) => s + i.price, 0)</Code>
 ```
 
 ### Links, dividers, spacers, quotes
 
-```ts
-// @check
-import { Link, Divider, Spacer, Quote } from '@pyreon/document'
-
-Link({ href: 'https://example.com', children: 'Visit site' })
-Divider({ color: '#ddd', thickness: 2 })
-Spacer({ height: 24 })
-Quote({ borderColor: '#4f46e5', children: 'A pull quote with a colored left border.' })
+```tsx
+<Link href="https://example.com">Visit site</Link>
+<Divider color="#ddd" thickness={2} />
+<Spacer height={24} />
+<Quote borderColor="#4f46e5">A pull quote with a colored left border.</Quote>
 ```
 
 ## Tables
 
 The most-used primitive. Columns accept either bare strings or `TableColumn` objects with `header`, `width`, and `align`; rows are arrays of strings or numbers.
 
-```ts
-// @check
-import { Table } from '@pyreon/document'
-
-Table({
-  columns: [
+```tsx
+<Table
+  columns={[
     { header: 'Name', width: '50%' },
     { header: 'Price', align: 'right', width: '25%' },
     { header: 'Qty', align: 'center', width: '25%' },
-  ],
-  rows: [
+  ]}
+  rows={[
     ['Widget', '$10', 5],
     ['Gadget', '$20', 3],
-  ],
-  striped: true, // alternating row backgrounds
-  bordered: true, // cell borders
-  keepTogether: true, // avoid a mid-table page break (PDF)
-  headerStyle: { background: '#1a1a2e', color: '#fff', bold: true },
-  caption: 'Order Items',
-})
+  ]}
+  striped // alternating row backgrounds
+  bordered // cell borders
+  keepTogether // avoid a mid-table page break (PDF)
+  headerStyle={{ background: '#1a1a2e', color: '#fff', bold: true }}
+  caption="Order Items"
+/>
 ```
 
 :::note
@@ -421,40 +417,30 @@ Table({
 
 ## Pages, Layout & Metadata
 
-`Document` carries metadata used by the binary renderers (PDF/DOCX file properties). `Page` controls page geometry and per-page headers/footers.
+`<Document>` carries metadata used by the binary renderers (PDF/DOCX file properties). `<Page>` controls page geometry and per-page headers/footers.
 
-```ts
+```tsx
 // @check
-import { Document, Page, Section, Column, Text, PageBreak, Heading } from '@pyreon/document'
+import { Column, Document, Heading, Page, PageBreak, Section, Text } from '@pyreon/document'
 
-Document({
-  title: 'Annual Report',
-  author: 'Acme Corp',
-  subject: 'FY2026',
-  keywords: ['finance', 'annual'],
-  language: 'en',
-  children: Page({
-    size: 'A4', // 'A4' | 'A3' | 'A5' | 'letter' | 'legal' | 'tabloid'
-    orientation: 'portrait', // 'portrait' | 'landscape'
-    margin: [40, 60], // number | [v, h] | [top, right, bottom, left]
-    header: Text({ size: 9, color: '#999', children: 'Acme Corp — Confidential' }),
-    footer: Text({ size: 9, align: 'center', children: 'Page footer' }),
-    children: [
-      Section({
-        direction: 'row',
-        gap: 20,
-        padding: 16,
-        background: '#f5f5f5',
-        children: [
-          Column({ width: '60%', children: Text({ children: 'Main column' }) }),
-          Column({ width: '40%', children: Text({ children: 'Sidebar' }) }),
-        ],
-      }),
-      PageBreak(),
-      Heading({ children: 'Next page' }),
-    ],
-  }),
-})
+const annual = (
+<Document title="Annual Report" author="Acme Corp" subject="FY2026" keywords={['finance', 'annual']} language="en">
+  <Page
+    size="A4"          // 'A4' | 'A3' | 'A5' | 'letter' | 'legal' | 'tabloid'
+    orientation="portrait"  // 'portrait' | 'landscape'
+    margin={[40, 60]}  // number | [v, h] | [top, right, bottom, left]
+    header={<Text size={9} color="#999">Acme Corp — Confidential</Text>}
+    footer={<Text size={9} align="center">Page footer</Text>}
+  >
+    <Section direction="row" gap={20} padding={16} background="#f5f5f5">
+      <Column width="60%"><Text>Main column</Text></Column>
+      <Column width="40%"><Text>Sidebar</Text></Column>
+    </Section>
+    <PageBreak />
+    <Heading>Next page</Heading>
+  </Page>
+</Document>
+)
 ```
 
 :::note
@@ -463,29 +449,22 @@ Document({
 
 ## Email
 
-`render(doc, 'email')` emits **Outlook-safe, table-based HTML** — the conservative subset every email client (including Outlook's Word rendering engine) handles. `Button` becomes a bulletproof VML button so it renders correctly in Outlook as well as web/mobile clients.
+`render(doc, 'email')` emits **Outlook-safe, table-based HTML** — the conservative subset every email client (including Outlook's Word rendering engine) handles. `<Button>` becomes a bulletproof VML button so it renders correctly in Outlook as well as web/mobile clients.
 
-```ts
+```tsx
 // @check
-import { Document, Page, Heading, Text, Button, render } from '@pyreon/document'
+import { Button, Document, Heading, Page, Text, render } from '@pyreon/document'
 
 const html = await render(
-  Document({
-    title: 'Welcome',
-    children: Page({
-      children: [
-        Heading({ children: 'Welcome aboard 👋' }),
-        Text({ children: 'Thanks for signing up. Confirm your address to get started.' }),
-        Button({
-          href: 'https://acme.com/confirm',
-          background: '#4f46e5',
-          color: '#fff',
-          align: 'center',
-          children: 'Confirm Email',
-        }),
-      ],
-    }),
-  }),
+  <Document title="Welcome">
+    <Page>
+      <Heading>Welcome aboard 👋</Heading>
+      <Text>Thanks for signing up. Confirm your address to get started.</Text>
+      <Button href="https://acme.com/confirm" background="#4f46e5" color="#fff" align="center">
+        Confirm Email
+      </Button>
+    </Page>
+  </Document>,
   'email',
 )
 
@@ -695,7 +674,7 @@ Content methods return the builder (chainable). `build()` returns the `DocNode`.
 | `.button(text, props)`       | `DocumentBuilder`     | Add a CTA button                                     |
 | `.link(text, props)`         | `DocumentBuilder`     | Add a hyperlink                                      |
 | `.pageBreak()`               | `DocumentBuilder`     | Force a page break                                   |
-| `.add(node \| node[])`       | `DocumentBuilder`     | Add an already-resolved `DocNode` (e.g. the output of a primitive call) |
+| `.add(node \| node[])`       | `DocumentBuilder`     | Add an arbitrary `DocNode` (e.g. JSX output)         |
 | `.section(children)`         | `DocumentBuilder`     | Group nodes into a `Section`                         |
 | `.chart(instance, props?)`   | `DocumentBuilder`     | Snapshot a `@pyreon/charts` instance as an image     |
 | `.flow(instance, props?)`    | `DocumentBuilder`     | Snapshot a `@pyreon/flow` instance as an SVG image   |
@@ -728,7 +707,7 @@ type OutputFormat =
   | 'md' | 'text' | 'csv' | 'svg'
   | 'slack' | 'teams' | 'discord' | 'telegram'
   | 'notion' | 'confluence' | 'whatsapp' | 'google-chat'
-  | 'json' | 'jsonl' // all 20 are built in and lazily registered
+  | 'json' | 'jsonl' // typed but not built-in — register your own
 ```
 
 ### Exported types
