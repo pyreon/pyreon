@@ -337,7 +337,8 @@ function emitAdapterClient(
   const pkg = CLIENT_PACKAGE[client]
   if (client === 'axios') {
     f.importDefault('axios', 'axios')
-    f.importType('axios', 'AxiosInstance', 'InternalAxiosRequestConfig')
+    f.import('axios', 'AxiosError')
+    f.importType('axios', 'AxiosInstance', 'AxiosResponse', 'InternalAxiosRequestConfig')
   } else if (client === 'ky') {
     f.importDefault('ky', 'ky')
     f.importType('ky', 'BeforeRequestHook', 'BeforeRequestState', 'KyInstance')
@@ -356,11 +357,11 @@ function emitAdapterClient(
     'are added the way that library documents — nothing here wraps them.',
   )
   if (client === 'axios') {
-    f.line('export const instance: AxiosInstance = axios.create()')
+    f.line('export const instance: AxiosInstance = axios.create({ adapter: axiosTransport })')
   } else if (client === 'ky') {
     // One permanent hook that runs the `configureApi({ use })` slot, so the
     // slot can change at runtime without re-creating the instance.
-    f.line('export const instance: KyInstance = ky.create({ hooks: { beforeRequest: [runInterceptors] } })')
+    f.line('export const instance: KyInstance = ky.create({ fetch: kyTransport, hooks: { beforeRequest: [runInterceptors] } })')
   }
   if (client !== 'fetch') f.line()
   f.lines(...runtimeError())

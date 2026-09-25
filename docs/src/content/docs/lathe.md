@@ -493,8 +493,9 @@ The `fetch` / `axios` / `ky` clients export the SAME `configureApi` and `auth`.
 `(config) => config`, a ky `beforeRequest` hook — so an interceptor written for
 that library elsewhere drops straight in, and `auth.*` returns that shape. A
 differential test runs all four clients against one server and asserts they
-send byte-identical requests. (With an adapter, `installMocks()` answers before
-the library runs, so `use` does not see mocked requests.)
+send byte-identical requests. Mocks sit at the BOTTOM of every library — the
+fetch client's fetch, axios's `adapter`, ky's `fetch` option — so interceptors
+and auth run on a mocked request exactly as on a real one.
 
 ### Serialization the spec states
 

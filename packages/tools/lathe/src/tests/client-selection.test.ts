@@ -131,7 +131,7 @@ describe('emitted imports read like code a person would write', () => {
     // `import { default as axios }` is valid ESM and behaves identically, so
     // this is a readability contract rather than a correctness one — and
     // generated code is read precisely when something already looks wrong.
-    expect(filesFor('axios').get('client.ts')).toContain("import axios from 'axios'")
+    expect(filesFor('axios').get('client.ts')).toMatch(/^import axios(, \{ [^}]+ \})? from 'axios'$/m)
     expect(filesFor('ky').get('client.ts')).toContain("import ky from 'ky'")
     for (const client of ['axios', 'ky'] as const) {
       expect(filesFor(client).get('client.ts'), client).not.toContain('default as')
@@ -232,7 +232,7 @@ describe('the validator setting', () => {
       plugins: ['schemas', 'client'],
     })
     const files = new Map(generate(SPEC, cfg).files.map((f) => [f.path, f.contents]))
-    expect(files.get('client.ts')).toContain("import axios from 'axios'")
+    expect(files.get('client.ts')).toMatch(/^import axios(, \{ [^}]+ \})? from 'axios'$/m)
     expect(files.get('schemas.ts')).toContain("import { z } from 'zod'")
     // The adapter validates through Standard Schema, which zod satisfies — so
     // the two settings genuinely do not need to know about each other.

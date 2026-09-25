@@ -42,15 +42,23 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
     f.importType('@pyreon/http', 'HttpMiddleware')
     f.import(relativeSpecifier('mocks.ts', CLIENT_FILE), 'apiBaseUrl', 'setDevTransport')
   } else {
-    f.import(relativeSpecifier('mocks.ts', CLIENT_FILE), 'setDevTransport')
+    f.import(relativeSpecifier('mocks.ts', CLIENT_FILE), 'apiBaseUrl', 'setDevTransport')
     f.line()
-    f.doc('One fixture route. Matched on method plus the DECLARED path.')
+    f.doc(
+      'One fixture route — the same shape as `@pyreon/http/mock`\'s `MockRoute`, so',
+      'the table reads the same whichever client was generated.',
+    )
     f.line('export interface MockRoute {')
     f.line('  method: string')
-    f.line('  /** The DECLARED path, placeholders intact. Matched exactly. */')
-    f.line('  path: string')
+    f.line('  /** Tested against the BASE-RELATIVE request URL. */')
+    f.line('  path: RegExp')
+    f.line('  /** Defaults to 200, or 204 when there is no body. */')
+    f.line('  status?: number | undefined')
+    f.line('  headers?: Record<string, string> | undefined')
     f.line('  /** Absent for a no-content operation, matching a real 204. */')
     f.line('  json?: unknown')
+    f.line('  /** A raw body — for a non-JSON response. */')
+    f.line('  body?: string | undefined')
     f.line('  /** Simulated latency, in ms. */')
     f.line('  delay?: number | undefined')
     f.line('  /** Reject with this instead of answering. */')
@@ -76,7 +84,7 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
   for (const op of ops) {
     f.line(`  {`)
     f.line(`    method: ${q(op.method)},`)
-    f.line(`    path: ${mockPath(op, pyreon)},`)
+    f.line(`    path: ${mockPath(op)},`)
     // `json` is OMITTED for an operation with no response body.
     //
     // Emitting `json: null` made the mock answer 200 with the body `null`
@@ -86,13 +94,11 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
       const kind = responseKindOf(op)
       if (kind === 'json') {
         f.line(`    json: ${indentAfterFirst(fixture(op.response, doc, 0), 4)},`)
-      } else if (pyreon) {
+      } else {
         // A non-JSON response answers with a BODY in its own media type, so
         // the client decodes it exactly as it will decode the server's.
         f.line(`    body: ${q(`sample ${op.id}`)},`)
         f.line(`    headers: { 'content-type': ${q(op.responseMedia ?? 'text/plain')} },`)
-      } else {
-        f.line(`    json: ${q(`sample ${op.id}`)},`)
       }
     }
     f.line(`  },`)
@@ -143,6 +149,13 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
   f.line('  active.splice(0, active.length, ...routes)')
   f.line('}')
 
+  f.line()
+  f.line('function baseRelative(url: string): string {')
+  f.line("  const strip = (u: string): string => u.replace(/^[a-z][a-z\\d+\\-.]*:\\/\\/[^/?#]*/i, '')")
+  f.line('  const path = strip(url)')
+  f.line("  const base = strip(apiBaseUrl()).replace(/\\/+$/, '')")
+  f.line("  return base !== '' && path.startsWith(base) ? path.slice(base.length) : path")
+  f.line('}')
   if (pyreon) {
     f.line()
     f.doc(
@@ -156,18 +169,15 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
     )
     f.line('const handle = createMock(active)')
     f.line()
-    f.line('function baseRelative(url: string): string {')
-    f.line("  const strip = (u: string): string => u.replace(/^[a-z][a-z\\d+\\-.]*:\\/\\/[^/?#]*/i, '')")
-    f.line('  const path = strip(url)')
-    f.line("  const base = strip(apiBaseUrl()).replace(/\\/+$/, '')")
-    f.line('  return base !== \'\' && path.startsWith(base) ? path.slice(base.length) : path')
-    f.line('}')
-    f.line()
     f.line('export const mockRoutes: HttpMiddleware = (req, next) =>')
     f.line('  handle.middleware({ ...req, url: baseRelative(req.url) }, () => next(req))')
     f.line()
     f.doc('Every request a mock answered, in order (URLs base-relative) — for assertions.')
     f.line('export const mockCalls = handle.calls')
+  } else {
+    f.line()
+    f.doc('Every request a mock answered, in order (URLs base-relative) — for assertions.')
+    f.line('export const mockCalls: { method: string; url: string; headers: Record<string, string> }[] = []')
   }
 
   f.line()
@@ -183,15 +193,18 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
   if (pyreon) {
     f.line('  setDevTransport(mockRoutes)')
   } else {
+    // BELOW the library (its fetch / adapter), so the library's interceptors
+    // and hooks have run on the request this sees — as they have on a real one.
     f.line('  setDevTransport(async (req) => {')
-    f.line('    const route = active.find((r) => r.method === req.method && r.path === req.path)')
+    f.line('    const url = baseRelative(req.url)')
+    f.line('    const route = active.find((r) => r.method === req.method && r.path.test(url))')
     // `null` means NOT HANDLED. A matched route answers with an envelope, so
-    // a fixture that is itself `null` (a no-content response) stays
-    // distinguishable from no route at all.
+    // a no-content response stays distinguishable from no route at all.
     f.line('    if (!route) return null')
+    f.line('    mockCalls.push({ method: req.method, url, headers: req.headers })')
     f.line('    if (route.delay) await new Promise((resolve) => setTimeout(resolve, route.delay))')
     f.line('    if (route.error !== undefined) throw route.error')
-    f.line('    return { json: route.json }')
+    f.line('    return { status: route.status, json: route.json, body: route.body, headers: route.headers }')
     f.line('  })')
   }
   f.line('}')
@@ -242,8 +255,7 @@ function bySpecificity(a: IrOperation, b: IrOperation): number {
  * metacharacter escape is still needed and still here; it just is not the
  * lexical half.
  */
-function mockPath(op: IrOperation, pyreon: boolean): string {
-  if (!pyreon) return q(op.path)
+function mockPath(op: IrOperation): string {
   // EVERY route is a pattern (audit D1): a plain string matched as a SUFFIX,
   // so `GET /pets?limit=5` missed the `/pets` route and went to the network —
   // any list endpoint with paging arguments escaped the mocks. Anchored at the

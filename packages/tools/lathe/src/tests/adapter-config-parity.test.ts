@@ -40,7 +40,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await new Promise<void>((r) => server.close(() => r()))
-  for (const c of CLIENTS) cleanEmitted(`parity-${c}`)
+  for (const c of CLIENTS) {
+    cleanEmitted(`parity-${c}`)
+    cleanEmitted(`parity-mock-${c}`)
+  }
 })
 
 const spec = (base: string) =>
@@ -110,6 +113,44 @@ describe('configureApi + auth are the same surface on every client', () => {
     expect(first?.headers.authorization).toBe(`Basic ${btoa('u:')}`)
     expect(first?.url).toBe('/v1/ping?q=x&api_key=q%20k')
     expect(first?.headers).toMatchObject({ 'x-api-key': 'hk', cookie: 'sid=s1', 'x-configured': 'yes' })
+  })
+
+  it('mocks sit BELOW the library: its interceptors see mocked requests', async () => {
+    const observed: { client: string; interceptorUrl: string; mockUrl: string | undefined; header: string | undefined; auth: string | undefined }[] = []
+    for (const c of CLIENTS) {
+      const e = emitToDisk(`parity-mock-${c}`, spec("https://api.test/v1"), { client: c, plugins: ["schemas", "client", "mocks"] })
+      const client = await e.load<Client & { setDevTransport(t: unknown): void }>('client.ts')
+      const mocks = await e.load<{ installMocks(): void; mockCalls: { url: string; headers: Record<string, string> }[] }>('mocks.ts')
+      const eps = await e.load<Record<string, (a?: unknown) => Promise<unknown>>>('endpoints/default.ts')
+      let interceptorUrl = ''
+      const seeUrl: Record<ClientName, unknown> = {
+        pyreon: ((req, next) => ((interceptorUrl = req.url), next(req))) satisfies HttpMiddleware,
+        fetch: (request: Request, next: (r: Request) => Promise<Response>) => ((interceptorUrl = request.url), next(request)),
+        axios: (config: { url?: string }) => ((interceptorUrl = config.url ?? ''), config),
+        ky: ({ request }: { request: Request }) => {
+          interceptorUrl = request.url
+        },
+      }
+      client.configureApi({ baseUrl: undefined, headers: undefined, use: [native[c](c), client.auth.token?.('tok'), seeUrl[c]] })
+      mocks.installMocks()
+      try {
+        await expect(eps.ping?.({ query: { q: 'x' } })).resolves.toMatchObject({})
+      } finally {
+        client.setDevTransport(null)
+        client.configureApi({ use: undefined })
+      }
+      const call = mocks.mockCalls.at(-1)
+      observed.push({ client: c, interceptorUrl, mockUrl: call?.url, header: call?.headers['x-client'], auth: call?.headers.authorization })
+    }
+    for (const o of observed) {
+      expect(o, o.client).toEqual({
+        client: o.client,
+        interceptorUrl: 'https://api.test/v1/ping?q=x',
+        mockUrl: '/ping?q=x',
+        header: o.client,
+        auth: 'Bearer tok',
+      })
+    }
   })
 
   it('the production barrel is byte-identical across clients', () => {
