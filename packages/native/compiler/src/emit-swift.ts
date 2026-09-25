@@ -126,6 +126,8 @@ import {
   planGuard,
   readsSubject,
   stmtExprs,
+  nonPathSubjectWarning,
+  unnarrowableSubject,
   unnarrowableWarning,
   type Narrowing,
 } from './optional-narrowing'
@@ -4900,6 +4902,14 @@ function swiftBindClause(n: Narrowing, binder: string, indent: number): string {
   return head + extra
 }
 
+/** Name an optional that is re-read but is not a path (see `unnarrowableSubject`). */
+function warnNonPathSubject(cond: ExprIR, readers: readonly ExprIR[], indent: number): void {
+  const subj = unnarrowableSubject(cond, readers, _exprInferCtx, _activePropsParamName)
+  if (subj === null) return
+  const w = nonPathSubjectWarning(emitSwiftExpr(subj, indent))
+  if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+}
+
 function warnUnnarrowable(n: Narrowing, indent: number): void {
   const w = unnarrowableWarning(emitSwiftExpr(n.subject, indent), 'swift')
   if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
@@ -4913,7 +4923,10 @@ function warnUnnarrowable(n: Narrowing, indent: number): void {
  */
 function emitSwiftNarrowedTernary(e: Extract<ExprIR, { kind: 'ternary' }>, indent: number): string | null {
   const n = narrowingFor(e.cond, _exprInferCtx, _activePropsParamName)
-  if (n === null) return null
+  if (n === null) {
+    warnNonPathSubject(e.cond, [e.then, e.otherwise], indent)
+    return null
+  }
   const narrowed = n.presentWhenTrue ? e.then : e.otherwise
   const other = n.presentWhenTrue ? e.otherwise : e.then
   if (!readsSubject(narrowed, n.subject)) return null
@@ -4945,7 +4958,10 @@ function emitSwiftNarrowedView(
   indent: number,
 ): string | null {
   const n = narrowingFor(cond, _exprInferCtx, _activePropsParamName)
-  if (n === null) return null
+  if (n === null) {
+    warnNonPathSubject(cond, whenFalse === undefined ? [whenTrue] : [whenTrue, whenFalse], indent)
+    return null
+  }
   const narrowed = n.presentWhenTrue ? whenTrue : whenFalse
   const other = n.presentWhenTrue ? whenFalse : whenTrue
   if (narrowed === undefined || !readsSubject(narrowed, n.subject)) return null
@@ -5374,6 +5390,7 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       // read or a member chain (`if (b.tags) { b.tags.length }`), not just an
       // identifier, and the `=== undefined` form binds with the bodies swapped.
       const optN = narrowingFor(s.cond, _exprInferCtx, _activePropsParamName)
+      if (optN === null) warnNonPathSubject(s.cond, [...stmtExprs(s.then), ...stmtExprs(s.elseBody ?? [])], indent)
       if (optN !== null) {
         const narrowedBody = optN.presentWhenTrue ? s.then : s.elseBody
         const otherBody = optN.presentWhenTrue ? s.elseBody : s.then

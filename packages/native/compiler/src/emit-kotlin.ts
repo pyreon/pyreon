@@ -118,6 +118,8 @@ import {
   planGuard,
   readsSubject,
   stmtExprs,
+  nonPathSubjectWarning,
+  unnarrowableSubject,
   unnarrowableWarning,
   type Narrowing,
 } from './optional-narrowing'
@@ -4070,6 +4072,13 @@ function kotlinBoundSubject(n: Narrowing, indent: number): string {
   return subj
 }
 
+function warnNonPathSubjectKotlin(cond: ExprIR, readers: readonly ExprIR[], indent: number): void {
+  const subj = unnarrowableSubject(cond, readers, _kotlinExprInferCtx, _activePropsParamName)
+  if (subj === null) return
+  const w = nonPathSubjectWarning(emitKotlinExpr(subj, indent))
+  if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+}
+
 function warnUnnarrowableKotlin(n: Narrowing, indent: number): void {
   const w = unnarrowableWarning(emitKotlinExpr(n.subject, indent), 'kotlin')
   if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
@@ -4095,7 +4104,10 @@ function planKotlinNarrowing(cond: ExprIR, readers: readonly ExprIR[]): KotlinNa
  */
 function emitKotlinNarrowedTernary(e: Extract<ExprIR, { kind: 'ternary' }>, indent: number): string | null {
   const probe = narrowingFor(e.cond, _kotlinExprInferCtx, _activePropsParamName)
-  if (probe === null) return null
+  if (probe === null) {
+    warnNonPathSubjectKotlin(e.cond, [e.then, e.otherwise], indent)
+    return null
+  }
   const narrowed = probe.presentWhenTrue ? e.then : e.otherwise
   const other = probe.presentWhenTrue ? e.otherwise : e.then
   const plan = planKotlinNarrowing(e.cond, [narrowed])
@@ -4113,6 +4125,7 @@ function emitKotlinNarrowedTernary(e: Extract<ExprIR, { kind: 'ternary' }>, inde
 /** `{x && <B x/>}` → `x?.let { x -> B(x) }`. */
 function emitKotlinNarrowedAnd(cond: ExprIR, view: ExprIR, indent: number): string | null {
   const probe = narrowingFor(cond, _kotlinExprInferCtx, _activePropsParamName)
+  if (probe === null) warnNonPathSubjectKotlin(cond, [view], indent)
   if (probe === null || !probe.presentWhenTrue) return null
   const plan = planKotlinNarrowing(cond, [view])
   if (plan === null) return null
@@ -4492,6 +4505,9 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       // bind it once with `when (val x = …)` — see optional-narrowing.ts.
       {
         const probe = narrowingFor(s.cond, _kotlinExprInferCtx, _activePropsParamName)
+        if (probe === null) {
+          warnNonPathSubjectKotlin(s.cond, [...stmtExprs(s.then), ...stmtExprs(s.elseBody ?? [])], indent)
+        }
         const narrowedBody = probe === null ? undefined : probe.presentWhenTrue ? s.then : s.elseBody
         const otherBody = probe === null ? undefined : probe.presentWhenTrue ? s.elseBody : s.then
         const plan = narrowedBody === undefined ? null : planKotlinNarrowing(s.cond, stmtExprs(narrowedBody))

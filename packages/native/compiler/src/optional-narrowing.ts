@@ -86,10 +86,52 @@ export function narrowingFor(
   ctx: InferenceCtx,
   propsParamName: string | undefined,
 ): Narrowing | null {
+  return analyzeCond(cond, ctx, propsParamName, true)
+}
+
+/**
+ * The subject of a nil / truthiness test that is optional but NOT a
+ * narrowable path — `items().find((i) => i.id === id) ? items().find(…).title
+ * : ''` — when one of `readers` reads it again. Re-reading a call with
+ * arguments is not the same value, so it cannot be bound in place; the caller
+ * names it instead of emitting a member access on an optional.
+ */
+export function unnarrowableSubject(
+  cond: ExprIR,
+  readers: readonly ExprIR[],
+  ctx: InferenceCtx,
+  propsParamName: string | undefined,
+): ExprIR | null {
+  const n = analyzeCond(cond, ctx, propsParamName, false)
+  if (n === null || isNarrowablePath(n.subject, propsParamName)) return null
+  // Structural equality over the whole IR (a `.find` carries an arrow, which
+  // the path comparison does not descend into).
+  const key = JSON.stringify(n.subject)
+  let hit = false
+  for (const r of readers) {
+    substituteMatching(r, {
+      matches: (x) => {
+        if (JSON.stringify(unparen(x)) === key) hit = true
+        return false
+      },
+      replacement: r,
+      shadow: '\u0000',
+    })
+  }
+  return hit ? n.subject : null
+}
+
+function analyzeCond(
+  cond: ExprIR,
+  ctx: InferenceCtx,
+  propsParamName: string | undefined,
+  requirePath: boolean,
+): Narrowing | null {
   const c = unparen(cond)
   const make = (subject: ExprIR, presentWhenTrue: boolean, truthiness: boolean): Narrowing | null => {
     const s = unparen(subject)
-    if (!isNarrowablePath(s, propsParamName)) return null
+    if (requirePath && !isNarrowablePath(s, propsParamName)) return null
+    if (s.kind === 'literal') return null
     const t = inferType(s, ctx)
     if (!typeIsOptional(t)) return null
     const unwrapped = unwrapOptionalType(t)
@@ -390,6 +432,16 @@ function restExprs(stmts: readonly StatementIR[]): ExprIR[] {
 export const stmtExprs = restExprs
 
 /** The named warning for a narrowing PMTC recognised but could not lower. */
+/** The named warning for an optional subject that is not a re-readable path. */
+export function nonPathSubjectWarning(what: string): string {
+  return (
+    `\`${what}\` is tested for presence and then read again, but it is not a plain variable, signal read or ` +
+    `field chain — re-evaluating it is a new value, so PMTC cannot bind it once and narrow it. Swift never ` +
+    `narrows through a nil test and Kotlin cannot smart-cast a call, so the member access on it does not ` +
+    `compile. Read it into a local first (\`const found = items().find(…)\`) and test the local.`
+  )
+}
+
 export function unnarrowableWarning(what: string, target: 'swift' | 'kotlin'): string {
   const lang = target === 'swift' ? 'Swift never narrows an optional through a nil test' : 'Kotlin cannot smart-cast this value'
   return (

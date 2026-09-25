@@ -160,6 +160,26 @@ describe('JS truthiness is kept for strings', () => {
 })
 
 describe('shapes that cannot be narrowed are NAMED', () => {
+  it('an optional that is not a re-readable path (a `.find(…)` call)', () => {
+    const src = `export function App() {
+  const items = signal<Book[]>([])
+  return <Text>{items().find((b) => b.title === 'a') ? items().find((b) => b.title === 'a').title : 'none'}</Text>
+}`
+    for (const out of [swift(src), kotlin(src)]) {
+      expect(out.warnings.join('\n')).toContain('is tested for presence and then read again')
+    }
+  })
+
+  it('the remedy the warning names — read it into a local — compiles silently', () => {
+    const src = `export function App() {
+  const items = signal<Book[]>([])
+  const found = items().find((b) => b.title === 'a')
+  return <Text>{found ? found.title : 'none'}</Text>
+}`
+    expect(swift(src).warnings).toEqual([])
+    expect(kotlin(src).warnings).toEqual([])
+  })
+
   it('a branch that WRITES the narrowed field', () => {
     const src = `export function App() {
   const add = (b: Book): number => {
