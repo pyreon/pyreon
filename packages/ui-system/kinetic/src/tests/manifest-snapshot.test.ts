@@ -46,7 +46,7 @@ describe('gen-docs — kinetic snapshot', () => {
         const items = signal([{ id: 1, text: 'One' }, { id: 2, text: 'Two' }])
         return (
           <div>
-            {/* show is a REACTIVE ACCESSOR, not a boolean */}
+            {/* show takes an accessor, a value, or nothing (absent = shown) */}
             <FadeBox show={() => visible()} onAfterEnter={() => console.warn('entered')}>
               <p>Fading content</p>
             </FadeBox>
@@ -90,9 +90,9 @@ describe('gen-docs — kinetic snapshot', () => {
 
   it('renders to MCP api-reference entries', () => {
     const record = renderApiReferenceEntries(manifest)
-    expect(Object.keys(record).length).toBe(9)
+    expect(Object.keys(record).length).toBe(11)
     expect(record['kinetic/kinetic']!.notes).toContain('chainable')
-    expect(record['kinetic/kinetic']!.mistakes?.split('\n').length).toBe(12)
+    expect(record['kinetic/kinetic']!.mistakes?.split('\n').length).toBe(13)
     expect(record['kinetic/useTransitionState']!.notes).toContain('state machine')
     expect(record['kinetic/useAnimationEnd']!.notes).toContain('transitionend')
   })

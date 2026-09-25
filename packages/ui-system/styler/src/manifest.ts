@@ -19,7 +19,7 @@ export default defineManifest({
     'keyframes`...` — returns the generated @keyframes animation-name string',
     'createGlobalStyle`...` — returns a ComponentFn that injects global CSS when mounted',
     'useCSS(template, props?, boost?) — resolve a CSSResult to a class name inside a component',
-    'Reactive theming — useTheme() snapshot vs useThemeAccessor() accessor; ThemeProvider merges nested',
+    'Reactive theming — useTheme() snapshot vs useThemeAccessor() accessor; the theme is provided by <PyreonUI> (ThemeProvider is a low-level, non-merging fallback)',
     'Singleton StyleSheet (FNV-1a dedup, SSR) + createSheet() for isolated instances',
     'buildProps / filterProps — $-transient + shouldForwardProp DOM prop forwarding (descriptor-preserving)',
   ],
@@ -54,7 +54,7 @@ const Card = styled(Stack)\`
       signature:
         'styled: ((tag: Tag, options?: StyledOptions) => TagTemplateFn) & { div: TagTemplateFn; span: TagTemplateFn; /* …all HTML tags via Proxy */ }',
       summary:
-        "Component factory. `styled('div')`, `styled(MyComp)`, and `styled.div` (Proxy sugar) are all tagged templates returning a `ComponentFn` that injects a generated class. Tagged-template interpolations are called with the live `props` object (theme included), so a function interpolation reading `p.theme.color` / signal-driven values works and puts the component on the dynamic resolve path. Supports the polymorphic `as` prop and `$`-prefixed TRANSIENT props (consumed by styles, NOT forwarded to the DOM). Per-definition caching keys generated classes so repeat mounts skip re-resolution.",
+        "Component factory. `styled('div')`, `styled(MyComp)`, and `styled.div` (Proxy sugar) are all tagged templates returning a `ComponentFn` that injects a generated class. Tagged-template interpolations are called with the live `props` object (theme included), so a function interpolation reading `p.theme.color` / signal-driven values works and puts the component on the dynamic resolve path. Supports the polymorphic `as` prop and `$`-prefixed TRANSIENT props (consumed by styles, NOT forwarded to the DOM); `innerRef` is accepted as an alias for `ref`. `options` takes `shouldForwardProp(prop)` (per-component DOM prop filter — replaces the default allowlist) and `layer` (wrap the generated rules in `@layer <name>`). A template with NO function interpolation is resolved and injected ONCE, when the component is defined; per-definition caching keys generated classes so repeat mounts skip re-resolution.",
       example: `import { styled } from "@pyreon/styler"
 
 const Button = styled("button")\`
@@ -96,7 +96,7 @@ function Card(props) {
       signature:
         'keyframes(strings: TemplateStringsArray, ...values: Interpolation[]): KeyframesResult',
       summary:
-        'Tagged-template returning a `KeyframesResult` whose string form is the GENERATED, content-hashed `@keyframes` animation NAME. Reference it inside a `css` / `styled` template as the `animation-name` value; the `@keyframes` rule is injected (deduped via FNV-1a) on first use.',
+        'Tagged-template returning a `KeyframesResult` whose string form is the GENERATED, content-hashed `@keyframes` animation NAME (`pyr-kf-<hash>`). Reference it inside a `css` / `styled` template as the `animation-name` value. The `@keyframes` rule is injected (deduped via FNV-1a) IMMEDIATELY, when `keyframes` is called — not when a component first uses it — and any function interpolation inside it is resolved against an EMPTY props object (no theme, no component props).',
       example: `import { keyframes, styled } from "@pyreon/styler"
 
 const spin = keyframes\`from { transform: rotate(0) } to { transform: rotate(360deg) }\`
@@ -104,6 +104,7 @@ const Spinner = styled("div")\`animation: \${spin} 1s linear infinite;\``,
       mistakes: [
         'Expecting a CSS class — `keyframes` yields an animation-NAME token, used as the `animation` / `animation-name` value, not a class applied to an element',
         'Defining `keyframes` inside the render body per mount — define once at module scope so the hashed rule is injected once and reused',
+        'Reading the theme inside a `keyframes` interpolation (`${(p) => p.theme.x}`) — keyframes resolve at call time against `{}`, so there is no `theme`; put theme-dependent values in the `styled` / `css` template that references the animation',
       ],
       seeAlso: ['css', 'styled'],
     },
@@ -113,7 +114,7 @@ const Spinner = styled("div")\`animation: \${spin} 1s linear infinite;\``,
       signature:
         'createGlobalStyle(strings: TemplateStringsArray, ...values: Interpolation[]): ComponentFn',
       summary:
-        "Returns a `ComponentFn` that injects GLOBAL CSS (resets, `:root` tokens, body styles) when MOUNTED — it is not a side-effecting call. Render the returned component once near the app root. The injected rule PERSISTS for the document's lifetime, deduped by content hash — like emotion's `injectGlobal`, and UNLIKE styled-components' `createGlobalStyle`, it is NOT removed on unmount (a global reset shouldn't vanish when the mounting component re-renders away). Function interpolations make the global block dynamic (re-resolves on prop/theme change).",
+        "Returns a `ComponentFn` that injects GLOBAL CSS (resets, `:root` tokens, body styles) when MOUNTED — it is not a side-effecting call. Render the returned component once near the app root. The injected rule PERSISTS for the document's lifetime, deduped by content hash — like emotion's `injectGlobal`, and UNLIKE styled-components' `createGlobalStyle`, it is NOT removed on unmount (a global reset shouldn't vanish when the mounting component re-renders away). A template with NO function interpolation is injected immediately, when `createGlobalStyle` is called — rendering the component is then a no-op. A template WITH function interpolations resolves when the component mounts, ONCE per mount, against its props plus a snapshot of the theme; it does not re-resolve when a signal or the theme changes later, and each distinct resolution adds another persistent rule.",
       example: `import { createGlobalStyle } from "@pyreon/styler"
 
 const GlobalReset = createGlobalStyle\`
@@ -122,7 +123,8 @@ const GlobalReset = createGlobalStyle\`
 \`
 // render <GlobalReset /> once at the app root`,
       mistakes: [
-        'Calling `createGlobalStyle` (the tagged template) and expecting the CSS to inject — nothing happens until the returned component is RENDERED. Mount `<GlobalReset />` once near the root',
+        'Assuming nothing injects until render — a fully static template injects at call time (module evaluation); only a template with function interpolations waits for `<GlobalReset />` to mount. Mount it once near the root either way so the intent is visible',
+        'Expecting a dynamic global block to follow a theme or signal change — it resolves once per mount (theme snapshot); for live global values, set CSS custom properties on `:root` and reference them from a static global',
         'Expecting the global CSS to be removed when the component unmounts — it persists (deduped by hash), matching emotion `injectGlobal` not styled-components. Toggle globals with a class/attribute on `:root`, not by mounting/unmounting the component',
       ],
       seeAlso: ['styled', 'css'],
@@ -133,7 +135,7 @@ const GlobalReset = createGlobalStyle\`
       signature:
         'useCSS(template: CSSResult, props?: Record<string, any>, boost?: boolean): string',
       summary:
-        'Resolves a `CSSResult` (from the `css` tagged template) to an injected class-name string inside a component. Pass `props` so function interpolations in the template read live values; `boost` opts into a faster cache path for hot, stable templates. The returned class is deduped/hashed by the active `StyleSheet`.',
+        'Resolves a `CSSResult` (from the `css` tagged template) to an injected class-name string inside a component. Function interpolations receive `props` merged with a snapshot of the current theme. It resolves ONCE, when called — the returned string is a plain value, not a reactive binding, so later prop or theme changes do not re-resolve it. The third `boost` parameter is accepted for compatibility but currently has no effect. The returned class is deduped/hashed by the singleton `sheet`.',
       example: `import { css, useCSS } from "@pyreon/styler"
 
 const box = css\`color: \${(p) => p.danger ? "red" : "inherit"};\`
@@ -141,7 +143,9 @@ function Box(props) {
   return <div class={useCSS(box, props)}>{props.children}</div>
 }`,
       mistakes: [
-        'Forgetting to pass `props` when the template has function interpolations — they then resolve against an empty object and the dynamic values are lost',
+        'Forgetting to pass `props` when the template has function interpolations — they then resolve against the theme alone and the prop-driven values are lost',
+        'Expecting `useCSS(box, props)` to update when `props.danger` flips — it resolves once at setup; for signal-driven styles use a `styled()` component (its resolver tracks props and theme)',
+        'Passing `boost: true` expecting a faster path — the parameter is ignored by the current sheet',
         'Calling `useCSS` outside a component setup — it depends on the active sheet/theme context like any hook',
       ],
       seeAlso: ['css', 'styled'],
@@ -184,18 +188,19 @@ effect(() => applyChartPalette(theme().colors)) // re-runs on theme swap`,
     {
       name: 'ThemeProvider',
       kind: 'component',
-      signature:
-        'ThemeProvider(props: { theme: Theme | ((parent: Theme) => Theme); children?: VNodeChild }): VNodeChild',
+      signature: 'ThemeProvider(props: { theme: Theme; children?: VNodeChild }): VNode | null',
       summary:
-        'Provides a theme to the reactive `ThemeContext`. Nested providers compose — a function `theme` receives the parent theme so subtrees can extend rather than replace. Because the context is reactive, swapping the `theme` prop re-resolves every `styled` / `useCSS` consumer below without remounting the tree. Marked `nativeCompat` so it works inside `@pyreon/{react,preact,vue,solid}-compat` apps.',
+        'Low-level provider for the reactive `ThemeContext` — marked `@internal` / `@deprecated` in source in favour of `<PyreonUI theme={…}>` from `@pyreon/ui-core`. It provides exactly the object it receives: no merge with a parent theme, no enrichment (breakpoints, CSS variables), and no ui-core context for rocketstyle components. The `theme` prop is read once at setup, so passing a different theme later does not update consumers — swap themes through `<PyreonUI>`, whose provided theme is reactive. `<PyreonUI>` provides `ThemeContext` itself rather than wrapping this component. Marked `nativeCompat` so it works inside `@pyreon/{react,preact,vue,solid}-compat` apps.',
       example: `import { ThemeProvider } from "@pyreon/styler"
 
+// Standalone styler use, outside any <PyreonUI>:
 <ThemeProvider theme={{ colors: { primary: "#06f" } }}>
   <App />
 </ThemeProvider>`,
       mistakes: [
-        'Replacing the whole theme in a nested provider when you meant to extend — pass `theme={(parent) => ({ ...parent, colors: { ...parent.colors, accent: "#0a0" } })}`',
-        'Expecting most apps to mount this directly — `<PyreonUI>` wraps it; use `ThemeProvider` standalone only outside the `@pyreon/ui-core` provider',
+        'Passing a function to extend the parent theme (`theme={(parent) => …}`) — there is no function form; the object is provided as-is. Read the parent with `useTheme()` and spread it yourself, or nest `<PyreonUI>` (it inherits the parent theme)',
+        'Expecting a signal-driven `theme={t()}` to swap the theme — the prop is read once at setup; use `<PyreonUI theme={…}>` for reactive theme swaps',
+        'Using it in an app that renders `<PyreonUI>` — PyreonUI already provides `ThemeContext` (enriched); a nested `ThemeProvider` replaces it with the raw object for that subtree',
       ],
       seeAlso: ['useTheme', 'useThemeAccessor', 'ThemeContext'],
     },
@@ -248,7 +253,7 @@ const s = new StyleSheet({ /* options */ })`,
       kind: 'constant',
       signature: 'sheet: StyleSheet',
       summary:
-        'The process-wide singleton `StyleSheet` that `styled()` / `css` / `keyframes` / `createGlobalStyle` inject into by default. Read it for SSR critical-CSS extraction or debugging the rule registry; do not mutate it directly.',
+        'The process-wide singleton `StyleSheet` that `styled()` / `css` / `keyframes` / `createGlobalStyle` inject into by default. For SSR, render the app and then emit `sheet.getStyleTag(nonce?)` (a complete `<style>` tag) or `sheet.getStyles()` (the CSS text) into the document head; do not mutate it directly.',
       example: `import { sheet } from "@pyreon/styler"
 // SSR: render the app, then read the collected rules off \`sheet\` for the <head>`,
       seeAlso: ['StyleSheet', 'createSheet'],
@@ -312,6 +317,7 @@ const forwarded = buildProps(rawProps, "sc-abc123", true)`,
       mistakes: [
         'Re-implementing prop forwarding with `result[key] = source[key]` — that fires getters and freezes reactive props to a one-time value. styler uses descriptor copy specifically to preserve the `_rp` getter contract; any custom forwarder must do the same',
         'Passing `isDOM: true` for a component target — DOM-attr filtering will strip props the wrapped component legitimately needs',
+        'Assuming a `customFilter` still strips `$`-props — on a DOM target, a custom filter REPLACES the default allowlist entirely, `$`-transient handling included; return `false` for `$`-prefixed names yourself',
       ],
       seeAlso: ['filterProps', 'styled'],
     },
@@ -321,7 +327,7 @@ const forwarded = buildProps(rawProps, "sc-abc123", true)`,
       signature:
         'filterProps(props: Record<string, unknown>): Record<string, unknown>',
       summary:
-        'Returns a copy of `props` with `$`-transient and known non-DOM props removed — the DOM-safety filter `buildProps` applies for element targets. Exposed for consumers doing their own forwarding who still want the styler allowlist semantics. Descriptor-preserving, same reactive-prop rationale as `buildProps`.',
+        'Returns a copy of `props` keeping ONLY known HTML attributes plus `data-*` / `aria-*` (an allowlist, not a denylist); `$`-transient props and `as` are always dropped, and any unknown prop name is dropped too. It is the default DOM-safety filter `buildProps` applies for element targets, exposed for consumers doing their own forwarding. Own enumerable keys only; descriptor-preserving, same reactive-prop rationale as `buildProps`.',
       example: `import { filterProps } from "@pyreon/styler"
 
 const domSafe = filterProps(props)`,
@@ -374,7 +380,7 @@ init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the ho
   gotchas: [
     {
       label: 'css / keyframes return lazy values, not strings',
-      note: 'The `css` tagged template yields a `CSSResult` (resolved on use); `keyframes` stringifies to an animation NAME; `createGlobalStyle` returns a `ComponentFn` that must be MOUNTED. None of them inject CSS at call time — only on resolution/mount.',
+      note: 'The `css` tagged template yields a `CSSResult` (resolved on use, never injected by itself); `keyframes` stringifies to an animation NAME and injects its `@keyframes` rule at CALL time; `createGlobalStyle` returns a `ComponentFn` — a fully static template injects at call time, a dynamic one when the component mounts.',
     },
     {
       label: 'Theme context is reactive',

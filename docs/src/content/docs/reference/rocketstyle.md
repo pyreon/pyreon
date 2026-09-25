@@ -22,7 +22,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - Chainable immutable builder — every method returns a NEW component, bases fork cleanly into variants
 - Five built-in dimensions: states/sizes/variants (single-value), multiple (multi-value), modifiers (multi + transform)
 - Custom dimensions at factory init — each key becomes a chain method + a typed consumer prop
-- Dark/light via the mode(light, dark) helper in .theme() and dimension callbacks; .config(&#123; inversed &#125;) flips a subtree
+- Dark/light via the mode(light, dark) helper in .theme() and dimension callbacks; .config(&#123; inversed &#125;) inverts the mode for that component's OWN styles (use &lt;PyreonUI inversed&gt; for a whole subtree)
 - Nested pseudo-state objects (hover/focus/active/pressed/disabled/readOnly) compile to CSS pseudo-selectors
 - Parent-child pseudo-state propagation via .config(&#123; provider: true &#125;) + .config(&#123; consumer &#125;)
 - Per-definition WeakMap caches + _rsMemo LRU (128/theme) — identity-stable results let the styler classCache skip resolution
@@ -101,7 +101,7 @@ const Badge = rsBadge({ name: 'Badge', component: 'span' })
 | [`.styles()`](#styles) | function | Raw-CSS escape hatch for what the dimension model can't express. |
 | [`.compose()`](#compose) | function | Wrap the component in named higher-order components. |
 | [`.statics()`](#statics) | function | Attach arbitrary static metadata. |
-| [`Provider`](#provider) | component | Tree-level theme + mode provider. |
+| [`Provider`](#provider) | component | Low-level theme + mode provider for rocketstyle components. |
 | [`context`](#context) | constant | The raw reactive context object backing `Provider` — RE-EXPORTED from `@pyreon/ui-core`, so it is the SAME context `&lt;Pyr |
 | [`isRocketComponent`](#isrocketcomponent) | function | Runtime type guard — `true` when a value was created by `rocketstyle()` (checks the own `IS_ROCKETSTYLE` marker). |
 | [`resolveTheme`](#resolvetheme) | function | Resolve a `$rocketstyle` value inside `styled()` / `.styles()` interpolation functions — handles both the function-acces |
@@ -115,7 +115,7 @@ const Badge = rsBadge({ name: 'Badge', component: 'span' })
 (config?: { dimensions?: Dimensions; useBooleans?: boolean }) => <C>({ name, component }: { name: string; component: C }) => RocketStyleComponent
 ```
 
-Factory initializer (default + named export). `rocketstyle(config?)` returns a component factory; call THAT with `{ name, component }` to get the chainable builder. `config.dimensions` overrides the dimension map (default: `states: "state"`, `sizes: "size"`, `variants: "variant"`, `multiple: { propName: "multiple", multi: true }`, `modifiers: { propName: "modifier", multi: true, transform: true }`) — each key becomes a chain method, each propName a consumer prop. `config.useBooleans` (default `false`) switches dimension props from strings (`state="primary"`) to boolean shorthands (`<Button primary />`). Dev mode throws on missing `name`/`component`/`dimensions` and on dimension names colliding with reserved keys.
+Factory initializer (default + named export). `rocketstyle(config?)` returns a component factory; call THAT with `{ name, component }` to get the chainable builder. `config.dimensions` overrides the dimension map (default: `states: "state"`, `sizes: "size"`, `variants: "variant"`, `multiple: { propName: "multiple", multi: true }`, `modifiers: { propName: "modifier", multi: true, transform: true }`) — each key becomes a chain method, each propName a consumer prop. `config.useBooleans` (default `false`) switches dimension props from strings (`state="primary"`) to boolean shorthands (`<Button primary />`). In dev builds, CALLING the returned factory (`rs({ name, component })`) throws on a missing `name`/`component`/`dimensions` or on a dimension name that collides with a reserved key; production builds skip the validation.
 
 **Example**
 
@@ -140,7 +140,7 @@ const rsCustom = rocketstyle({
 - Calling the factory with a tag string — `rs('button')` is not a valid form. The factory takes `{ name, component }` and BOTH are required (dev mode throws on a missing one)
 - Passing boolean shorthand props under the default `useBooleans: false` — `<Button primary />` is an UNKNOWN prop that silently does nothing; write `<Button state="primary" />` or opt into `rocketstyle({ useBooleans: true })`
 - Passing a function accessor to a dimension prop — `state={() => expr}` is the wrong shape; dimension props take plain string values (`state={expr}`) and the compiler handles reactivity via `_rp()` wrapping
-- Using a reserved key as a custom dimension name — `light`, `dark`, `provider`, `consumer`, `DEBUG`, `name`, `component`, `inversed`, `passProps`, `styled`, `theme`, `styles`, `compose`, `attrs` all throw at factory init in dev mode
+- Using a reserved key as a custom dimension name — `light`, `dark`, `provider`, `consumer`, `DEBUG`, `name`, `component`, `inversed`, `passProps`, `styled`, `theme`, `styles`, `compose`, `attrs` all throw when the factory is called (`rs({ name, component })`) in dev mode
 - Calling a dimension method with the singular prop name — `.state({...})` is not a method; DEFINITION methods are plural (`.states()`), the consumer PROP is singular (`state="primary"`)
 - Mounting each rocketstyle-heavy view under its own theme provider — the `_rsMemo` dimension-prop memo is keyed by theme identity, so real apps need ONE shared `<PyreonUI>` provider for the memo to span component instances
 - Expecting the chain to mutate — every chain method returns a NEW component; `Button.states({...})` without assigning the return value does nothing to `Button`
@@ -190,7 +190,7 @@ const Card = rs({ name: 'Card', component: Element })
 (opts: { name?; component?; provider?: boolean; consumer?: ConsumerCb; inversed?: boolean; passProps?: string[]; DEBUG?: boolean; styled?: boolean }) => RocketStyleComponent
 ```
 
-Reconfigure the builder: rename (`name` → `displayName`), swap the base (`component`), wire parent-child pseudo-state context (`provider: true` exposes this component's hover/focus/pressed state to descendants; `consumer` reads a parent provider's state into this component's props), flip dark/light for the subtree (`inversed: true`), re-forward normally-consumed props to the base (`passProps`), and toggle dev-only debug logging (`DEBUG`). Accepted keys are exactly the CONFIG_KEYS set — anything else is ignored.
+Reconfigure the builder: rename (`name` → `displayName`), swap the base (`component`), wire parent-child pseudo-state context (`provider: true` exposes this component's hover/focus/pressed state to descendants; `consumer` reads a parent provider's state into this component's props), invert dark/light for THIS component's own theme resolution (`inversed: true` — descendants still read the surrounding mode), re-forward normally-consumed props to the base (`passProps`), toggle dev-only `console.debug` render logging (`DEBUG`), and control the styled wrapper (`styled` — the factory sets it to `true`, which wraps a non-rocketstyle base in `styled()` so `.theme()` / `.styles()` CSS is emitted; `styled: false` renders the base unwrapped, with no generated CSS). Accepted keys are exactly the CONFIG_KEYS set — anything else is ignored.
 
 **Example**
 
@@ -212,7 +212,8 @@ const Anchor = Button.config({ component: 'a', name: 'Anchor' }).attrs({ href: '
 **Common mistakes**
 
 - `.config({ component: NewBase })` with a DIFFERENT component RESETS the accumulated `attrs` / `priorityAttrs` / `filterAttrs` / `compose` chains — they were tailored to the previous component's prop shape and would leak invalid props to the DOM (e.g. `disabled` on an `<a>`). `theme` / `styles` / dimension chains ARE preserved. Re-chain shared attrs explicitly after the swap
-- Expecting `.config({ inversed: true })` to set a mode — it INVERTS whatever mode the surrounding provider resolves (light↔dark) for this subtree; it does not force dark
+- Expecting `.config({ inversed: true })` to set a mode — it INVERTS whatever mode the surrounding provider resolves (light↔dark); it does not force dark
+- Expecting `.config({ inversed: true })` to flip the component's CHILDREN — it only changes how THIS component resolves `mode()`; nested rocketstyle components still read the surrounding mode. For a dark island in a light page, wrap the subtree in `<PyreonUI inversed>`
 - `DEBUG: true` logging is dev-only (`process.env.NODE_ENV !== "production"`) — it is tree-shaken from production builds, so don't rely on it for runtime diagnostics
 - Using `provider`/`consumer` for theme data — they propagate live PSEUDO-STATE (hover/focus/pressed) between parent and child rocketstyle components; theme/mode flow through the theme provider (`PyreonUI` or rocketstyle `Provider`), not this channel
 
@@ -409,7 +410,7 @@ const Button = rs({ name: 'Button', component: 'button' })
 (hocs: Record<string, ((c: ComponentFn) => ComponentFn) | null | false>) => RocketStyleComponent
 ```
 
-Wrap the component in named higher-order components. The argument is a RECORD of `{ name: hoc }` (not an array) so later chain calls can remove a previously composed HOC by setting its name to a falsy value. The built-in rocketstyle attrs HOC is always the outermost wrapper, so default props are resolved before any user HOC runs.
+Wrap the component in named higher-order components. The argument is a RECORD of `{ name: hoc }` (not an array) so later chain calls can remove a previously composed HOC by setting its name to a falsy value. The built-in rocketstyle attrs HOC is always the outermost wrapper, so default props are resolved before any user HOC runs. User HOCs wrap in REVERSE record order: the LAST-defined HOC is the outer one (it runs first), the FIRST-defined sits closest to the component. Replacing an existing name keeps its original position.
 
 **Example**
 
@@ -464,33 +465,39 @@ Button.meta.category   // 'action'
 ### Provider `component`
 
 ```ts
-(props: TProvider) => VNodeChild
+(props: { children: VNodeChild; theme?: Theme; mode?: 'light' | 'dark'; inversed?: boolean; provider?: (props) => VNodeChild }) => VNodeChild
 ```
 
-Tree-level theme + mode provider. Props are `{ children, theme?, mode?, inversed?, provider? }` — `mode` is `"light" | "dark"`, `inversed: true` flips the resolved mode for the subtree, and values merge over any parent rocketstyle context. Most apps use the higher-level `<PyreonUI>` from `@pyreon/ui-core` (theme + mode + config in one) and reach for rocketstyle's `Provider` only for fine-grained subtree overrides. The raw context object backing it is exported as `context`.
+Low-level theme + mode provider for rocketstyle components. It reads the surrounding ui-core `context` ONCE at setup, shallow-merges its own props over it (`theme` and `mode` fall back to the parent's), resolves the mode (`inversed: true` flips it; with no mode anywhere it is `"light"`), and hands `{ theme, mode, isDark, isLight, children }` to the `provider` component — by default `@pyreon/ui-core`'s internal `Provider`, which writes the shared ui-core `context`. It writes ONLY that context: `styled()` components below it keep reading the outer styler `ThemeContext`. Prefer `<PyreonUI>` from `@pyreon/ui-core` for every case, including subtree overrides — it provides all three layers (styler, core, mode), accepts a reactive `mode`, and supports `inversed` for a nested section.
 
 **Example**
 
 ```tsx
 import { Provider } from '@pyreon/rocketstyle'
 
+// A fixed theme + mode for rocketstyle components below
 <Provider theme={myTheme} mode="dark">
   <Button state="primary">Dark mode button</Button>
 </Provider>
 
-// Invert a subtree (dark island in a light page)
-<Provider inversed>
+// Preferred — PyreonUI covers the same cases, reactively:
+import { PyreonUI } from '@pyreon/ui-core'
+<PyreonUI inversed>
   <Card>Resolves mode() as the opposite mode</Card>
-</Provider>
+</PyreonUI>
 ```
 
 **Common mistakes**
 
 - Passing a `value` prop (React-context muscle memory) — there is no `value`; `Provider` takes `theme` / `mode` / `inversed` directly
+- Expecting a nested `<Provider inversed>` to follow the parent when the parent's mode changes — the parent context is read ONCE at setup, so the inverted mode is frozen at mount; `<PyreonUI inversed>` stays reactive
+- Setting only `mode` with no theme in scope — the default delegate provides nothing when the resolved theme is empty, so `<Provider mode="dark">` outside any themed ancestor leaves descendants on `"light"`; pass a `theme` or use `<PyreonUI>`
+- Expecting `styled()` / `useTheme()` from `@pyreon/styler` to see the theme passed here — this Provider writes only the ui-core context that rocketstyle reads; `<PyreonUI>` writes both
+- Being surprised by the dev warning `[Pyreon] CoreProvider is internal` — mounting this Provider delegates to ui-core's internal provider, which logs it in development; switch to `<PyreonUI>`
 - Mounting a fresh `Provider`/`PyreonUI` per view — the `_rsMemo` cache keys on theme identity, so per-view providers defeat cross-instance memoization; share ONE app-level provider
 - Confusing this theme/mode provider with `.config({ provider: true })` — the latter is the component-to-component PSEUDO-STATE channel, unrelated to theming
 
-**See also:** `rocketstyle` · `.config()` · `@pyreon/ui-core`
+**See also:** `rocketstyle` · `context` · `@pyreon/ui-core`
 
 ---
 
