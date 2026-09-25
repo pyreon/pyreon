@@ -1115,10 +1115,14 @@ function mergeObjects(
   const values = parts.filter((p) => p.type.kind !== 'object' && p.type.kind !== 'unknown')
   if (objects.length === 0) {
     if (values.length === 0) return { kind: 'unknown', reason: 'allOf of unconstrained parts' }
-    if (values.length > 1 && !values.every((v) => v.type.kind === values[0]?.type.kind)) {
+    const first = (values[0] as { type: IrType }).type
+    if (!values.every((v) => v.type.kind === first.kind)) {
+      // `string ∧ integer` accepts nothing; keeping the first part keeps the
+      // generated schema usable, and the note says the spec is contradictory.
       ctx.notes.push({ code: 'unsupported-schema', at, message: 'allOf of incompatible non-object schemas — kept the first.' })
+      return first
     }
-    return values.slice(1).reduce((acc, v) => refineType(acc, v.type), (values[0] as { type: IrType }).type)
+    return values.slice(1).reduce((acc, v) => refineType(acc, v.type), first)
   }
   if (values.length > 0) {
     ctx.notes.push({

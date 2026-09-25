@@ -91,3 +91,18 @@ describe('the classification follows the direction the value travels', () => {
     expect(diffSurface(surface(E2, 'response'), surface(E2, 'response'))).toEqual([])
   })
 })
+
+describe('a model changing between object and non-object shapes', () => {
+  const OBJ = { X: { type: 'object', properties: { a: { type: 'string' } } } }
+  const ENUM = { X: { type: 'string', enum: ['a'] } }
+
+  it('object → enum and enum → object are breaking type changes', () => {
+    expect(codes(diffSurface(surface(OBJ), surface(ENUM)))).toEqual(['breaking:model-type-changed'])
+    expect(codes(diffSurface(surface(ENUM), surface(OBJ)))).toEqual(['breaking:model-type-changed'])
+  })
+
+  it('an alias model removed is breaking; one added is additive', () => {
+    expect(codes(diffSurface(surface(ENUM), surface({})))).toEqual(['breaking:model-removed'])
+    expect(codes(diffSurface(surface({}), surface(ENUM)))).toEqual(['additive:model-added'])
+  })
+})
