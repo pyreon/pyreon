@@ -34,6 +34,7 @@ Peer dependency: `@pyreon/reactivity`. Optional: `@pyreon/router` (for [router i
 ## Quick Start
 
 ```tsx
+// @check
 import { useUrlState } from '@pyreon/url-state'
 
 const page = useUrlState('page', 1)

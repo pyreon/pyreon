@@ -86,8 +86,14 @@ Every hook in this package follows three conventions:
 Make an element draggable and track its drag state as a signal.
 
 ```tsx
+// @check
 import { useDraggable } from '@pyreon/dnd'
-import type { DragData } from '@pyreon/dnd'
+
+interface Card {
+  id: string
+  title: string
+  locked: boolean
+}
 
 function DraggableCard(props: { card: Card }) {
   let el: HTMLElement | null = null
@@ -212,7 +218,8 @@ The `source` payload reaching `canDrop` / `onDragEnter` / `onDrop` is typed `Dra
 A full reorderable list — pointer dragging, auto-scroll, closest-edge detection, keyboard reordering, and ARIA wiring — driven from a single reactive `items()` signal.
 
 ```tsx
-import { signal, For } from '@pyreon/reactivity'
+import { signal } from '@pyreon/reactivity'
+import { For } from '@pyreon/core'
 import { useSortable } from '@pyreon/dnd'
 
 function TodoList() {
@@ -301,7 +308,8 @@ When an item crosses lists:
 - the **source** sortable's `onCrossListDrop(item)` fires — remove the item from that list.
 
 ```tsx
-import { signal, For } from '@pyreon/reactivity'
+import { signal } from '@pyreon/reactivity'
+import { For } from '@pyreon/core'
 import { useSortable } from '@pyreon/dnd'
 
 type Card = { id: string; title: string }

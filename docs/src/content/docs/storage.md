@@ -46,6 +46,7 @@ Peer dependency: `@pyreon/reactivity`.
 ## Quick Start
 
 ```tsx
+// @check
 import { useStorage } from '@pyreon/storage'
 
 const theme = useStorage('theme', 'light')
