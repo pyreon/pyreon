@@ -315,6 +315,12 @@ function decide(op: IrOperation, baseUrl: string): { reach: Reach; reason?: stri
       reason: `\`${op.method}\` lowers through mutations, which PMTC does not yet recognise; GET operations on this client DO reach native.`,
     }
   }
+  if (op.hook === false) {
+    return {
+      reach: 'web-only',
+      reason: 'its hook is turned off (`operations.<id>.hook: false`, `naming.hook` or a plugin), so no native data component is generated.',
+    }
+  }
   // Asked of the emitter rather than re-derived: the reach report and the
   // native layout must agree about which reads get a data component.
   if (!hasNativeDataComponent(op)) {

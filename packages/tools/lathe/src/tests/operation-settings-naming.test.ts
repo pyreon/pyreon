@@ -62,6 +62,11 @@ describe('operations.<id>.hook', () => {
     )
     expect(file(r, 'store.native.tsx')).not.toMatch(/function ListOrders/)
     expect(r.reach.get('listOrders')?.reach).toBe('web-only')
+    expect(r.reach.get('listOrders')?.reason).toMatch(/hook is turned off/)
+    // Control: the same spec without the setting does emit it and reach native.
+    const plain = generate(CUSTOMIZE_SPEC, resolveConfig({ input: 'x', target: 'multiplatform' }))
+    expect(file(plain, 'store.native.tsx')).toMatch(/function ListOrders/)
+    expect(plain.reach.get('listOrders')?.reach).toBe('web+native')
   })
 
   it('refuses a hook that is not a hook name, or collides with anything the hook modules bind', () => {
