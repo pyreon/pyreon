@@ -132,8 +132,13 @@ export function toWorkbenchControl(
   if (control.kind === 'color') {
     return { key: control.name, label, type: 'color', default: control.defaultValue ?? '#3b82f6', ...(control.required ? { required: true } : {}) }
   }
-  // Everything else edits as text.
-  const fallback = typeof seeded === 'string' ? seeded : ''
+  // Everything else edits as text. A STRING prop with no default starts empty;
+  // a prop whose type Atlas could not classify (an object, a VNode, a union
+  // of shapes) starts UNSET, for the same reason a number gets no fabricated
+  // `0`: `''` is a value the component never expected. A generated `@pyreon/lathe`
+  // preview took `data: ''` as "render this" and showed a record of dashes
+  // instead of requesting its data.
+  const fallback = typeof seeded === 'string' ? seeded : control.kind === 'unknown' ? undefined : ''
   return { key: control.name, label, type: 'text', default: control.defaultValue ?? fallback, ...(control.required ? { required: true } : {}) }
 }
 

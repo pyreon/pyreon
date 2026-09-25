@@ -9,9 +9,10 @@ import ts from 'typescript'
  * either way -- which is exactly how the bug shipped.
  */
 import { s } from '@pyreon/validate'
+import { schemaSource } from './helpers/write-tree'
 import { resolveConfig } from '../core/config'
 import { generate } from '../core/generate'
-import { topoSortModels, reachableModels, edgeKey } from '../core/graph'
+import { cyclicModels, deferredTargets, edgeKey, reachableModels, stronglyConnected, topoSortModels } from '../core/graph'
 import { loadOpenApi } from '../input/openapi'
 
 function spec(components: string, response = 'Alpha'): string {
@@ -100,15 +101,34 @@ describe('model dependency graph', () => {
   it('orders a forward reference so the module can be EVALUATED', () => {
     // Alphabetically `Alpha` comes first and references `Zulu` -- the exact
     // shape that threw at import time.
-    const src = file(generate(FORWARD_REF, web), 'schemas.ts')
+    const src = schemaSource(generate(FORWARD_REF, web).files)
     expect(src.indexOf('const Zulu')).toBeLessThan(src.indexOf('const Alpha'))
     expect(() => evaluate(src)).not.toThrow()
+  })
+
+  it('orders a dependency reached only through a NULLABLE / union / array wrapper', () => {
+    // The dependency walk once skipped the `nullable` kind, so a model named
+    // only through a nullable field was emitted before its dependency --
+    // Twilio, OpenAI and DigitalOcean all threw `Cannot access … before
+    // initialization` at import. Each wrapper kind is exercised here.
+    const src = spec(`    Alpha:
+      type: object
+      properties:
+        a: { $ref: '#/components/schemas/Zulu', nullable: true }
+        b: { type: array, items: { $ref: '#/components/schemas/Yankee' }, nullable: true }
+        c: { oneOf: [{ $ref: '#/components/schemas/Xray' }, { type: string }] }
+    Xray: { type: object, properties: { x: { type: string } } }
+    Yankee: { type: object, properties: { y: { type: string } } }
+    Zulu: { type: object, properties: { z: { type: string } } }`)
+    const out = generate(src, resolveConfig({ input: 'x', plugins: ['schemas'] }))
+    const file = schemaSource(out.files)
+    expect(() => evaluate(file)).not.toThrow()
   })
 
   it('breaks a `$ref` CYCLE with s.lazy rather than emitting an unorderable file', () => {
     // A self-referencing node cannot be ordered at all; `s.lazy` defers the
     // read to first use, which is what a cycle needs.
-    const src = file(generate(CYCLE, web), 'schemas.ts')
+    const src = schemaSource(generate(CYCLE, web).files)
     expect(src).toContain('s.lazy(() => Node)')
     const exports = evaluate(src) as {
       Node: { parse(v: unknown): { ok: boolean; value?: unknown } }
@@ -124,19 +144,21 @@ describe('model dependency graph', () => {
   it('does NOT defer a reference that is merely forward', () => {
     // `s.lazy` only where a cycle demands it -- otherwise the common output
     // changes shape for no reason and stops being the plain literal PMTC wants.
-    expect(file(generate(FORWARD_REF, web), 'schemas.ts')).not.toContain('s.lazy')
+    expect(schemaSource(generate(FORWARD_REF, web).files)).not.toContain('s.lazy')
   })
 
   it('inlines the TRANSITIVE closure into a native module', () => {
     // A native module imports nothing. Inlining `Order` while leaving out the
     // `Customer` it names emits a module that does not typecheck.
     const src = file(generate(CHAIN, native), 'a.native.tsx')
-    expect(src).toContain('export const Address')
-    expect(src).toContain('export const Customer')
-    expect(src).toContain('export const Order')
+    // Native schema bindings are `<model>_schema` (audit G6: Swift/Kotlin
+    // have one namespace, so the binding cannot share the type's name).
+    expect(src).toContain('export const address_schema')
+    expect(src).toContain('export const customer_schema')
+    expect(src).toContain('export const order_schema')
     // And in dependency order, for the same `const` reason.
-    expect(src.indexOf('const Address')).toBeLessThan(src.indexOf('const Customer'))
-    expect(src.indexOf('const Customer')).toBeLessThan(src.indexOf('const Order'))
+    expect(src.indexOf('const address_schema')).toBeLessThan(src.indexOf('const customer_schema'))
+    expect(src.indexOf('const customer_schema')).toBeLessThan(src.indexOf('const order_schema'))
   })
 
   it('topoSortModels reports back edges and stays deterministic', () => {
@@ -167,5 +189,66 @@ describe('model dependency graph', () => {
     expect(order).toHaveLength(2000)
     // Deepest dependency first.
     expect(order[0]).toBe('M1999')
+  })
+})
+
+describe('strongly-connected components', () => {
+  const g = (edges: Record<string, string[]>): Map<string, Set<string>> =>
+    new Map(Object.entries(edges).map(([k, v]) => [k, new Set(v)]))
+
+  it('groups a cycle and leaves its tail apart', () => {
+    const scc = stronglyConnected(g({ A: ['B'], B: ['C'], C: ['A'], D: ['A'], E: [] }))
+    expect(scc.get('A')).toBe(scc.get('B'))
+    expect(scc.get('B')).toBe(scc.get('C'))
+    expect(scc.get('D')).not.toBe(scc.get('A'))
+    expect(scc.get('E')).not.toBe(scc.get('D'))
+  })
+
+  it('names every member of a cycle as cyclic, and a self-loop, and nothing else', () => {
+    const cyclic = cyclicModels(g({ A: ['B'], B: ['C'], C: ['A'], D: ['A'], S: ['S'], E: ['X'] }))
+    expect([...cyclic].sort()).toEqual(['A', 'B', 'C', 'S'])
+  })
+
+  it('does not blow the stack on a long chain', () => {
+    const edges: Record<string, string[]> = {}
+    for (let i = 0; i < 50_000; i++) edges[`M${i}`] = [`M${i + 1}`]
+    edges.M50000 = ['M0']
+    expect(cyclicModels(g(edges)).size).toBe(50_001)
+  })
+})
+
+describe('deferredTargets', () => {
+  it('reads targets through the SAME key format topoSortModels writes', () => {
+    const edges = new Set([edgeKey('A', 'B'), edgeKey('A', 'C'), edgeKey('AB', 'X')])
+    expect([...deferredTargets(edges, 'A')].sort()).toEqual(['B', 'C'])
+    expect([...deferredTargets(edges, 'AB')]).toEqual(['X'])
+  })
+})
+
+describe('graph memo', () => {
+  const docOf = (): Parameters<typeof topoSortModels>[0] =>
+    ({
+      title: 'T',
+      version: '1',
+      baseUrl: '',
+      operations: [],
+      notes: [],
+      models: [
+        { name: 'A', type: { kind: 'ref', name: 'B' } },
+        { name: 'B', type: { kind: 'string' } },
+      ],
+    }) as never
+
+  it('computes the order once per document', () => {
+    const doc = docOf()
+    expect(topoSortModels(doc)).toBe(topoSortModels(doc))
+  })
+
+  it('recomputes when a model type is REPLACED, rather than serving a stale order', () => {
+    const doc = docOf()
+    expect(topoSortModels(doc).order).toEqual(['B', 'A'])
+    ;(doc.models[0] as { type: unknown }).type = { kind: 'string' }
+    ;(doc.models[1] as { type: unknown }).type = { kind: 'ref', name: 'A' }
+    expect(topoSortModels(doc).order).toEqual(['A', 'B'])
   })
 })

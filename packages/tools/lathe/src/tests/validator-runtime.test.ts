@@ -12,6 +12,7 @@
  * disk under `src/`.
  */
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { schemaSource, writeTree } from './helpers/write-tree'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveConfig, type ValidatorName } from '../core/config'
@@ -48,6 +49,7 @@ components:
         status: { type: string, enum: [available, borrowed] }
         author: { $ref: '#/components/schemas/Author' }
         tags: { type: array, items: { type: string } }
+        repo: { type: string, format: uri }
 `
 
 interface Schemas {
@@ -60,11 +62,10 @@ const modules = new Map<ValidatorName, Schemas>()
 beforeAll(async () => {
   for (const validator of ['pyreon', 'zod'] as const) {
     const cfg = resolveConfig({ input: 'x', validator, plugins: ['schemas'] })
-    const file = generate(SPEC, cfg).files.find((f) => f.path === 'schemas.ts')
-    if (!file) throw new Error('no schemas.ts')
+    const files = generate(SPEC, cfg).files.filter((f) => f.path === 'schemas.ts' || f.path.startsWith('schemas/'))
+    if (files.length === 0) throw new Error('no schemas.ts')
     const dir = join(ROOT, validator)
-    mkdirSync(dir, { recursive: true })
-    writeFileSync(join(dir, 'schemas.ts'), file.contents)
+    writeTree(dir, files)
     modules.set(validator, (await import(join(dir, 'schemas.ts'))) as Schemas)
   }
   // 60s, against vitest's 10s hook default, which this hook blew under load.
@@ -136,6 +137,18 @@ for (const validator of ['pyreon', 'zod'] as const) {
       // The `$ref` is emitted as the model's own binding, so a nested value
       // that violates the referenced schema has to fail here too.
       expect(validate(validator, { ...VALID, author: { name: 'F' } }).length).toBeGreaterThan(0)
+    })
+
+    it('accepts a `uri` of ANY scheme and rejects a non-URI', () => {
+      // OpenAPI `format: uri` is RFC 3986. GitHub's own spec carries
+      // `git:git.example.com/octocat/Hello-World.git`; an http-only check
+      // failed every real response containing one.
+      for (const repo of ['git:git.example.com/octocat/Hello-World.git', 'mailto:a@b.co', 'urn:isbn:0451', 'https://x.test/a']) {
+        expect(validate(validator, { ...VALID, repo }), repo).toEqual([])
+      }
+      for (const repo of ['not a uri', '/relative/path', '']) {
+        expect(validate(validator, { ...VALID, repo }).length, repo).toBeGreaterThan(0)
+      }
     })
 
     it('enforces the element type of an array', () => {

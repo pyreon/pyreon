@@ -94,6 +94,18 @@ describe('endpoint typing', () => {
     expectTypeOf<PathParamNames<'/users'>>().toEqualTypeOf<never>()
   })
 
+  it('agrees with the runtime matcher inside a segment', () => {
+    // `\\:` is a literal colon (Google custom verbs).
+    expectTypeOf<PathParamNames<'/v1/:name\\:cancel'>>().toEqualTypeOf<'name'>()
+    expectTypeOf<PathParamNames<'/v1/projects\\:list'>>().toEqualTypeOf<never>()
+    // The runtime reads identifier characters only.
+    expectTypeOf<PathParamNames<'/f/:name.json'>>().toEqualTypeOf<'name'>()
+    expectTypeOf<PathParamNames<'/f/:a-:b'>>().toEqualTypeOf<'a' | 'b'>()
+    // A parameter need not start its segment; `:8080` is not one.
+    expectTypeOf<PathParamNames<'/f/file:id'>>().toEqualTypeOf<'id'>()
+    expectTypeOf<PathParamNames<'/f/x:8080'>>().toEqualTypeOf<never>()
+  })
+
   it('narrows method and path to the literals from the spec', () => {
     const getUser = api.endpoint('GET /users/:id')
     expectTypeOf(getUser.method).toEqualTypeOf<'GET'>()
@@ -168,5 +180,35 @@ describe('client typing', () => {
 
   it('types extend() as returning a client', () => {
     expectTypeOf(api.extend({ baseUrl: '/v2' })).toEqualTypeOf<HttpClient>()
+  })
+})
+
+describe('typed endpoint input + response kinds', () => {
+  const Pet = z.object({ id: z.number() })
+  type AddPetInput = { query?: { dryRun?: boolean | undefined } | undefined; json: { name: string } }
+  const addPet = api.endpoint<'POST /pets', typeof Pet, AddPetInput>('POST /pets', { response: Pet })
+
+  it('a narrowed input is required exactly where it says', () => {
+    expectTypeOf(addPet).parameter(0).toEqualTypeOf<AddPetInput & import('../endpoint').EndpointCallOptions>()
+    // @ts-expect-error — `json` is required and typed
+    void addPet({ json: { wrong: true } })
+    // @ts-expect-error — the argument is required when `json` is
+    void addPet()
+    void addPet({ json: { name: 'x' }, signal: new AbortController().signal })
+  })
+
+  it('the default input still requires exactly the path params', () => {
+    const getPet = api.endpoint('GET /pets/:id')
+    // @ts-expect-error — `id` is missing
+    void getPet({ params: {} })
+    void getPet({ params: { id: 1 }, query: { a: 1 } })
+  })
+
+  it('responseType chooses the resolved body type', async () => {
+    expectTypeOf(await api.endpoint('GET /log', { responseType: 'text' })()).toEqualTypeOf<string>()
+    expectTypeOf(await api.endpoint('GET /img', { responseType: 'blob' })()).toEqualTypeOf<Blob>()
+    expectTypeOf(await api.endpoint('GET /b', { responseType: 'arrayBuffer' })()).toEqualTypeOf<ArrayBuffer>()
+    expectTypeOf(await api.endpoint('GET /s', { responseType: 'stream' })()).toEqualTypeOf<ReadableStream<Uint8Array> | null>()
+    expectTypeOf(await api.endpoint('GET /p', { response: Pet })()).toEqualTypeOf<{ id: number }>()
   })
 })

@@ -41,6 +41,30 @@ const InfiniteQueryResultProto = makeResultProto<
   hasPreviousPage: (c) => c.hasPreviousPage,
 })
 
+/**
+ * The options `useInfiniteQuery`'s accessor returns — TanStack's
+ * `InfiniteQueryObserverOptions` with the pages collected as `InfiniteData`.
+ * Exported so a wrapper (a generated hook, an options factory for a loader's
+ * `prefetchInfiniteQuery`) can be typed without importing query-core.
+ *
+ * @example
+ * ```ts
+ * const postsOptions = (): UseInfiniteQueryOptions<Page, Error, readonly unknown[], number> => ({
+ *   queryKey: ['posts'],
+ *   queryFn: ({ pageParam }) => fetchPage(pageParam),
+ *   initialPageParam: 0,
+ *   getNextPageParam: (last) => last.next ?? undefined,
+ * })
+ * const posts = useInfiniteQuery(postsOptions)
+ * ```
+ */
+export type UseInfiniteQueryOptions<
+  TQueryFnData = unknown,
+  TError = DefaultError,
+  TQueryKey extends QueryKey = QueryKey,
+  TPageParam = unknown,
+> = InfiniteQueryObserverOptions<TQueryFnData, TError, InfiniteData<TQueryFnData>, TQueryKey, TPageParam>
+
 export interface UseInfiniteQueryResult<TQueryFnData, TError = DefaultError> {
   /** Raw signal — full observer result. */
   result: Signal<InfiniteQueryObserverResult<InfiniteData<TQueryFnData>, TError>>

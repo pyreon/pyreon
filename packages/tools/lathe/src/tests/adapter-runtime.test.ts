@@ -97,8 +97,11 @@ beforeEach(() => {
   alwaysFailWith = null
 })
 
-async function load(client: (typeof ADAPTER_CLIENTS)[number]): Promise<Generated> {
-  const dir = writeGenerated(client, port)
+async function load(
+  client: (typeof ADAPTER_CLIENTS)[number],
+  responseValidation: 'strict' | 'warn' | 'off' = 'strict',
+): Promise<Generated> {
+  const dir = writeGenerated(client, port, responseValidation)
   const clientMod = (await import(join(dir, 'client.ts'))) as {
     setDevTransport: (t: unknown) => void
     LatheHttpError: new (...args: never[]) => Error
@@ -182,6 +185,26 @@ for (const client of ADAPTER_CLIENTS) {
         /did not match its schema/,
       )
       gen.setDevTransport(null)
+    })
+
+    it('`warn` passes the RAW body through a failed validation and says so', async () => {
+      const gen = await load(client, 'warn')
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      gen.setDevTransport(() => ({ json: { id: 'b1' } }))
+      await expect(gen.getBook({ params: { id: 'b1' } })).resolves.toEqual({ id: 'b1' })
+      expect(warn).toHaveBeenCalledWith(expect.stringMatching(/did not match its schema/))
+      gen.setDevTransport(null)
+      warn.mockRestore()
+    })
+
+    it('`off` skips validation entirely', async () => {
+      const gen = await load(client, 'off')
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      gen.setDevTransport(() => ({ json: { id: 'b1' } }))
+      await expect(gen.getBook({ params: { id: 'b1' } })).resolves.toEqual({ id: 'b1' })
+      expect(warn).not.toHaveBeenCalled()
+      gen.setDevTransport(null)
+      warn.mockRestore()
     })
 
     it('serves from the generated mocks with no server contacted', async () => {

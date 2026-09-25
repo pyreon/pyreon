@@ -14,9 +14,66 @@
  */
 
 import type { IrDocument, IrType } from './ir'
+import { collectRefNames } from './walk'
 
-/** Model names each model references, directly, in a deterministic order. */
+/**
+ * Per-document memo for the two whole-graph passes below.
+ *
+ * `topoSortModels` and `modelDependencies` were computed three to four times
+ * per generation -- once per emitter that needs an order (schemas, types,
+ * faker, native modules) and again per tag in `reachableModels`. Keyed WEAKLY
+ * on the document, so a cached graph dies with the document it describes.
+ *
+ * A cached entry is only served while the document still has the SAME model
+ * array and every model the SAME type object. The IR is built once and never
+ * mutated by the pipeline, but it is plain data and a caller (a test, a
+ * plugin) may reassign a model's type; comparing identities is O(models) and
+ * turns that into a recompute rather than a stale answer.
+ */
+interface GraphMemo {
+  models: IrDocument['models']
+  types: IrType[]
+  byName?: Map<string, IrDocument['models'][number]>
+  deps?: Map<string, Set<string>>
+  order?: ModelOrder
+}
+const memo = new WeakMap<IrDocument, GraphMemo>()
+
+function memoFor(doc: IrDocument): GraphMemo {
+  const hit = memo.get(doc)
+  if (
+    hit &&
+    hit.models === doc.models &&
+    hit.types.length === doc.models.length &&
+    doc.models.every((m, i) => m.type === hit.types[i])
+  ) {
+    return hit
+  }
+  const fresh: GraphMemo = { models: doc.models, types: doc.models.map((m) => m.type) }
+  memo.set(doc, fresh)
+  return fresh
+}
+
+/** Models by name -- the O(1) replacement for `doc.models.find(...)` in a walk. */
+export function modelIndex(doc: IrDocument): Map<string, IrDocument['models'][number]> {
+  const m = memoFor(doc)
+  m.byName ??= new Map(doc.models.map((model) => [model.name, model]))
+  return m.byName
+}
+
+/**
+ * Model names each model references, directly, in a deterministic order.
+ *
+ * Memoized per document (see {@link memoFor}); callers must treat the result
+ * as read-only.
+ */
 export function modelDependencies(doc: IrDocument): Map<string, Set<string>> {
+  const m = memoFor(doc)
+  m.deps ??= computeDependencies(doc)
+  return m.deps
+}
+
+function computeDependencies(doc: IrDocument): Map<string, Set<string>> {
   const out = new Map<string, Set<string>>()
   const known = new Set(doc.models.map((m) => m.name))
   for (const model of doc.models) {
@@ -33,23 +90,9 @@ export function modelDependencies(doc: IrDocument): Map<string, Set<string>> {
 }
 
 function collect(type: IrType | undefined, into: Set<string>, known: Set<string>): void {
-  if (!type) return
-  switch (type.kind) {
-    case 'ref':
-      if (known.has(type.name)) into.add(type.name)
-      return
-    case 'array':
-      collect(type.items, into, known)
-      return
-    case 'union':
-      for (const o of type.options) collect(o, into, known)
-      return
-    case 'object':
-      for (const f of type.fields) collect(f.type, into, known)
-      collect(type.additional, into, known)
-      return
-    default:
-  }
+  const found = new Set<string>()
+  collectRefNames(type, found)
+  for (const name of found) if (known.has(name)) into.add(name)
 }
 
 export interface ModelOrder {
@@ -81,7 +124,12 @@ export function edgeKey(from: string, to: string): string {
  * unreviewable diff.
  */
 export function topoSortModels(doc: IrDocument): ModelOrder {
-  const deps = modelDependencies(doc)
+  const m = memoFor(doc)
+  m.order ??= computeOrder(modelDependencies(doc))
+  return m.order
+}
+
+function computeOrder(deps: Map<string, Set<string>>): ModelOrder {
   const names = [...deps.keys()].sort()
   const order: string[] = []
   const backEdges = new Set<string>()
@@ -136,4 +184,99 @@ export function reachableModels(doc: IrDocument, roots: Iterable<string>): Set<s
     for (const d of deps.get(name) ?? []) if (!seen.has(d)) queue.push(d)
   }
   return seen
+}
+
+/**
+ * The refs a back edge set DEFERS for one model -- the targets it must render
+ * lazily. Keyed off {@link edgeKey}, so no caller re-derives the key format.
+ *
+ * Re-deriving it is how the faker plugin shipped a recursion notice that never
+ * fired: it split keys on `'->'` while {@link edgeKey} joined them with `'|'`,
+ * so every "back edge" parsed as one unknown name.
+ */
+export function deferredTargets(backEdges: ReadonlySet<string>, from: string): Set<string> {
+  const prefix = edgeKey(from, '')
+  const out = new Set<string>()
+  for (const e of backEdges) if (e.startsWith(prefix)) out.add(e.slice(prefix.length))
+  return out
+}
+
+/**
+ * Strongly-connected components of a dependency graph, as `name -> component`.
+ *
+ * Two models share a component exactly when each can reach the other, which is
+ * the question every "does expanding this recurse?" check is really asking: a
+ * field of `self` that references `R` recurses iff `R` is `self` or `R` can
+ * reach `self` -- and since `self -> R` is an edge, that is `R` sharing
+ * `self`'s component. One linear pass (Tarjan's algorithm) answers it for every
+ * field of every model, where a walk per field is quadratic-to-cubic on a
+ * spec with a large cycle (Stripe's `expandable` graph is one).
+ *
+ * Iterative for the same reason as {@link topoSortModels}: a spec is user
+ * input and a deep chain must not exhaust the JS stack. Edges to names absent
+ * from `deps` are ignored. Component ids are arbitrary; compare them, never
+ * persist or print them.
+ */
+export function stronglyConnected(deps: ReadonlyMap<string, ReadonlySet<string>>): Map<string, number> {
+  const index = new Map<string, number>()
+  const low = new Map<string, number>()
+  const onStack = new Set<string>()
+  const stack: string[] = []
+  const out = new Map<string, number>()
+  let next = 0
+  let component = 0
+  for (const root of deps.keys()) {
+    if (index.has(root)) continue
+    const work: { name: string; it: Iterator<string> }[] = []
+    const enter = (name: string): void => {
+      index.set(name, next)
+      low.set(name, next)
+      next++
+      stack.push(name)
+      onStack.add(name)
+      work.push({ name, it: (deps.get(name) ?? new Set<string>()).values() })
+    }
+    enter(root)
+    while (work.length > 0) {
+      const frame = work[work.length - 1] as { name: string; it: Iterator<string> }
+      const step = frame.it.next()
+      if (!step.done) {
+        const w = step.value
+        if (!deps.has(w)) continue
+        if (!index.has(w)) enter(w)
+        else if (onStack.has(w)) low.set(frame.name, Math.min(low.get(frame.name) as number, index.get(w) as number))
+        continue
+      }
+      work.pop()
+      const parent = work[work.length - 1]
+      if (parent) low.set(parent.name, Math.min(low.get(parent.name) as number, low.get(frame.name) as number))
+      if (low.get(frame.name) === index.get(frame.name)) {
+        let w: string
+        do {
+          w = stack.pop() as string
+          onStack.delete(w)
+          out.set(w, component)
+        } while (w !== frame.name)
+        component++
+      }
+    }
+  }
+  return out
+}
+
+/**
+ * Models that can reach THEMSELVES -- a member of a multi-model component, or a
+ * model with a self-edge. Exactly the set whose expansion recurses.
+ */
+export function cyclicModels(
+  deps: ReadonlyMap<string, ReadonlySet<string>>,
+  scc: ReadonlyMap<string, number> = stronglyConnected(deps),
+): Set<string> {
+  const size = new Map<number, number>()
+  for (const c of scc.values()) size.set(c, (size.get(c) ?? 0) + 1)
+  const out = new Set<string>()
+  for (const [name, c] of scc) {
+    if ((size.get(c) ?? 0) > 1 || deps.get(name)?.has(name) === true) out.add(name)
+  }
+  return out
 }

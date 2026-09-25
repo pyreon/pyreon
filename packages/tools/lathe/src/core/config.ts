@@ -5,10 +5,16 @@
  * configures every Pyreon tool in one `pyreon.config.ts`.
  */
 
-import { ALL_CLIENTS, reachesNative, type ClientName } from '../emit/client-runtime'
+import {
+  ALL_CLIENTS,
+  ALL_RESPONSE_VALIDATION,
+  reachesNative,
+  type ClientName,
+  type ResponseValidation,
+} from '../emit/client-runtime'
 import { ALL_VALIDATORS, type ValidatorName } from '../emit/validator'
 
-export type { ClientName, ValidatorName }
+export type { ClientName, ResponseValidation, ValidatorName }
 
 /** Which emitters run. Omitted means "the sensible default set". */
 export type PluginName =
@@ -113,20 +119,44 @@ export interface LatheSection {
    */
   projects?: readonly LatheProject[]
 
-  /** Path to the OpenAPI document (`.json`, `.yaml`, `.yml`). */
+  /**
+   * Path to the OpenAPI 3.x document (`.json`, `.yaml`, `.yml`).
+   *
+   * Relative to the config FILE when read from `pyreon.config.ts`; a path given
+   * on the command line is relative to the working directory, like any other
+   * CLI argument.
+   */
   input?: string
-  /** Output directory, relative to the config file. */
+  /**
+   * Output directory. Relative to the config file, like `input`.
+   *
+   * @default './src/gen'
+   */
   output?: string
   /**
-   * `web` emits the idiomatic multi-file layout.
+   * Where `lathe pull` fetches the spec from: an http(s) URL, written to
+   * `input`. With `projects`, `lathe pull` pulls every project that sets one.
+   */
+  source?: string
+
+  /**
+   * Which platforms the client is for: `web`, or `multiplatform`, which also
+   * emits native modules for iOS and Android and verifies they lower.
    *
-   * `multiplatform` ALSO emits one self-contained module per tag, shaped for
+   * `web` emits the idiomatic multi-file layout. `multiplatform` ALSO emits one self-contained module per tag, shaped for
    * PMTC, and verifies that those modules actually lower. It is additive: the
    * web output is unchanged, so turning it on can never make the web build
    * worse.
+   *
+   * @default 'web'
    */
   target?: 'web' | 'multiplatform'
-  /** Emitters to run. */
+  /**
+   * Emitters to run. A plugin brings along what its output imports
+   * (`components` needs `queries`), and the report says so.
+   *
+   * @default ['schemas', 'client', 'queries']
+   */
   plugins?: readonly PluginName[]
   /**
    * Which HTTP runtime the generated client is built on.
@@ -136,6 +166,8 @@ export interface LatheSection {
    * to a real `URLSession` / `OkHttp` call. The others emit a self-contained
    * endpoint factory over that library, satisfying the SAME seam — so every
    * other generated file is byte-identical whichever is chosen.
+   *
+   * @default 'pyreon'
    */
   client?: ClientName
   /**
@@ -150,19 +182,66 @@ export interface LatheSection {
    * `@pyreon/validation`'s `zodSchema(...)`. Measured against the real
    * compiler, the zod recogniser lowers strictly more — nested objects and
    * arrays of objects lower there and are dropped under `s.*`.
+   *
+   * @default 'pyreon'
    */
   validator?: ValidatorName
-  /** Overrides the spec's `servers[0].url` — must be a literal to reach native. */
+  /**
+   * Overrides the spec's `servers[0].url` — must be an absolute literal to
+   * reach native. `configureApi({ baseUrl })` switches it at runtime.
+   *
+   * @default the spec's `servers[0].url`
+   */
   baseUrl?: string
+  /**
+   * What the generated client does with a response that does not match its
+   * schema. `strict` (the default) rejects; `warn` logs and passes the raw body
+   * through, which is the usual choice in production when a backend may drift;
+   * `off` skips validation, which also skips its cost on large list responses.
+   * `configureApi({ validate })` switches it at runtime.
+   *
+   * Web client only. The native modules decode into typed structs, which is
+   * validation in itself and is not configurable.
+   *
+   * @example
+   * ```ts
+   * export default { lathe: { input: './openapi.yaml', responseValidation: 'warn' } }
+   * ```
+   *
+   * @default 'strict'
+   */
+  responseValidation?: ResponseValidation
+  /**
+   * How to page through operations, keyed by the GENERATED operation name
+   * (the `endpoints` export). Declared, never guessed — each entry emits a
+   * `use<Op>Infinite` hook and a `<op>InfiniteOptions` factory. Same shape as
+   * the `x-pyreon-pagination` spec extension, which a config entry overrides.
+   *
+   * ```ts
+   * pagination: {
+   *   listCustomers: { kind: 'lastItem', param: 'starting_after', items: 'data', field: 'id', hasMore: 'has_more' },
+   *   listEvents: { kind: 'cursor', param: 'cursor', next: 'meta.next_cursor' },
+   * }
+   * ```
+   */
+  pagination?: Readonly<Record<string, PaginationConfig>>
   /**
    * Fail the run when a generated native module does not lower.
    *
    * Off by default: a spec is usually partly un-lowerable and that is fine and
    * expected. Turn it on in CI for an app that means to ship on iOS/Android,
    * where a silent regression to web-only is a real defect.
+   *
+   * @default false
    */
   strictNative?: boolean
 }
+
+/** One operation's pagination declaration — see `LatheSection.pagination`. */
+export type PaginationConfig =
+  | { kind: 'cursor'; param: string; next: string; hasMore?: string }
+  | { kind: 'lastItem'; param: string; items?: string; field: string; hasMore?: string }
+  | { kind: 'offset' | 'page'; param: string; items?: string; hasMore?: string; initial?: number }
 
 export interface ResolvedConfig {
   /** Project name, or `''` for a single-project config. */
@@ -182,7 +261,9 @@ export interface ResolvedConfig {
   client: ClientName
   validator: ValidatorName
   baseUrl?: string | undefined
+  pagination?: Readonly<Record<string, PaginationConfig>> | undefined
   strictNative: boolean
+  responseValidation: ResponseValidation
 }
 
 /**
@@ -246,7 +327,21 @@ export function resolveConfig(section: LatheSection | undefined): ResolvedConfig
       `[Pyreon] lathe: unknown validator \`${validator}\`. Known: ${ALL_VALIDATORS.join(', ')}.`,
     )
   }
+  const responseValidation = section?.responseValidation ?? 'strict'
+  if (!ALL_RESPONSE_VALIDATION.includes(responseValidation)) {
+    throw new Error(
+      `[Pyreon] lathe: unknown responseValidation \`${String(responseValidation)}\`. Known: ${ALL_RESPONSE_VALIDATION.join(', ')}.`,
+    )
+  }
   const target = section?.target ?? 'web'
+  // Validated like the others: a config typo (`target: 'native'`) used to be
+  // treated as `web` by every `=== 'multiplatform'` check downstream, so the
+  // native modules the author asked for were silently never generated.
+  if (target !== 'web' && target !== 'multiplatform') {
+    throw new Error(
+      `[Pyreon] lathe: unknown target \`${String(target)}\`. Known: web, multiplatform.`,
+    )
+  }
   // REFUSED rather than silently downgraded. `multiplatform` exists to prove
   // the generated modules lower, and PMTC recognises `createHttp` by NAME — an
   // axios instance is an ordinary import it has never heard of. Emitting
@@ -269,6 +364,8 @@ export function resolveConfig(section: LatheSection | undefined): ResolvedConfig
     client,
     validator,
     baseUrl: section?.baseUrl,
+    pagination: section?.pagination,
     strictNative: section?.strictNative ?? false,
+    responseValidation,
   }
 }

@@ -32,6 +32,16 @@ const entry = (over: Record<string, unknown> = {}) =>
   ({ component: comp(over), file: '/p/src/Button.tsx' }) as never
 
 describe('mapping a discovered prop to a control', () => {
+  it('leaves a prop of an unclassifiable type UNSET, not an empty string', () => {
+    // A generated @pyreon/lathe preview has `data?: Pet` and `args?: {…}`.
+    // Seeded with `''`, the preview rendered `data` — a record of dashes —
+    // instead of requesting its own data. A STRING prop still starts empty.
+    expect(toWorkbenchControl({ name: 'data', kind: 'unknown', reactive: false, required: false }).default).toBeUndefined()
+    expect(toWorkbenchControl({ name: 'label', kind: 'text', reactive: false, required: false }).default).toBe('')
+    // A content seed still wins for either kind.
+    expect(toWorkbenchControl({ name: 'children', kind: 'unknown', reactive: false, required: false }, 'Button').default).toBe('Button')
+  })
+
   it('edits a number as a number, with NO fabricated default', () => {
     // `0` handed to RingProgress's `size` rendered a 0×0 ring on the deployed
     // workbench. A blank control leaves the prop absent, so the component's

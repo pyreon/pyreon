@@ -15,9 +15,44 @@ reference pages, and `@pyreon/atlas` scenarios.
 
 ```bash
 pyreon add @pyreon/lathe
+# or: bun add -d @pyreon/lathe
 ```
 
-## Quick start
+`@pyreon/native-compiler` is an optional peer: install it to have
+`target: 'multiplatform'` verify its own output. `@faker-js/faker` is needed
+only for the `faker` plugin, `zod` only for `validator: 'zod'`.
+
+## Getting started
+
+```bash
+npx lathe init
+```
+
+`lathe init` finds what the project generates from today — an orval,
+`@hey-api/openapi-ts` or kubb config, an `openapi-typescript` script, or a
+bare `openapi.yaml` / `openapi.json` — and:
+
+1. writes a `lathe` section into `pyreon.config.ts` (creating it, or adding one
+   entry to the one you have — a `lathe` section already there is never
+   replaced),
+2. maps every option it can and **lists every one it cannot**, with what to do
+   instead (an orval `mutator` becomes `configureApi({ use })`),
+3. adds `lathe:generate` and `lathe:check` scripts to `package.json`,
+4. prints the install command for what the generated code imports,
+5. runs the first `lathe generate`.
+
+It asks only on a terminal, and only when it has to (several candidates, or
+none). In CI or a scaffolder, `--yes` takes every default; `--from orval`
+skips detection; `--dry-run` writes nothing; `--json` prints one document. It
+never writes into a directory that holds another generator's files — the old
+client keeps working until your imports move.
+
+Coming from another generator? [orval](/docs/lathe-from-orval) ·
+[hey-api](/docs/lathe-from-hey-api) · [kubb](/docs/lathe-from-kubb) ·
+[openapi-fetch](/docs/lathe-from-openapi-fetch) map the client, hooks,
+mutations, mocks, auth and base URL one by one.
+
+By hand, the whole configuration is two keys:
 
 ```ts
 // pyreon.config.ts
@@ -77,15 +112,35 @@ absent compiler **skips loudly** instead of passing.
 ### Losses are reported once, at the boundary
 
 A spec can express a great deal no target here can represent. Every reduction
-becomes a `note` with a stable code and a JSON-pointer location, so a loss is
-reported once instead of rediscovered by six emitters — and it lands in the
-generated reference pages, not only in the terminal.
+becomes a `note` with a stable code, a JSON-pointer location and a severity, so
+a loss is reported once instead of rediscovered by six emitters — and it lands
+in the generated reference pages, not only in the terminal. See
+[Losses and choices](#losses-and-choices).
 
-### The spec parser is first-party
+### YAML is read strictly
 
-Including a YAML reader scoped to the OpenAPI subset, which **refuses** anchors,
-merge keys, explicit tags and tab indentation with a line number rather than
-mis-reading them. There is no third-party spec dependency to trust.
+YAML is parsed by the [`yaml`](https://eemeli.org/yaml/) package (ISC, zero
+dependencies) as YAML 1.2 core, so the multi-line scalars, `- >-` items and
+nested sequences every YAML dumper writes all read correctly. Anchors, aliases
+and merge keys are resolved. What the reader **refuses**, with a line number,
+is everything that would otherwise produce a document the author did not
+write: duplicate keys, a multi-document stream, custom tags (`!Ref`), a
+recursive alias, `.inf` / `.nan`, and tab indentation.
+
+### What the reader represents
+
+The input layer resolves a spec's semantics once, so no emitter rediscovers them:
+
+- **Nullability everywhere** — 3.0 `nullable`, 3.1 `type: [X, 'null']` and `anyOf: [X, {type: 'null'}]` on any node, component models included.
+- **`enum` / `const` of any JSON scalar** (numbers, booleans, `null`), and constraints on the type itself — `minLength`, `pattern`, 3.0 and 3.1 exclusive bounds, `multipleOf` (float-safe for fractional steps), `minItems` / `maxItems` / `uniqueItems` — so they apply to array items and alias models too.
+- **Composition** — `allOf` merges `required` across parts, lets a later part narrow a field, and DISTRIBUTES over a member that is a `oneOf` (`A ∧ (B ∨ C)` becomes `(A ∧ B) ∨ (A ∧ C)`, keeping the discriminator); properties next to a `oneOf` apply to every member; `oneOf` and `anyOf` together are both enforced. A discriminator the schema library cannot build (an implicit one, or over a non-object member) becomes a plain union with a note, never a module that throws at import.
+- **`readOnly` / `writeOnly`** — the model keeps its RESPONSE shape and gains a `<Name>Input` REQUEST shape, used for bodies and parameters.
+- **`$ref` siblings** — a constraint next to a `$ref` (`{ $ref: Code, maxLength: 3 }`, `{ $ref: Base, required: [id] }`) merges with the target; annotation-only siblings keep the named reference.
+- **Cycles** — a recursive schema anywhere (`#/$defs/Node`) is hoisted into a named model; a cycle made only of `$ref`s is `unknown` with a `cyclic-ref` note.
+- **Request media types** — `json`, `form` (with the spec's per-field `encoding`), `multipart` (binary fields typed `Blob`), `text` and raw binary bodies each travel as what the server accepts. `application/json; charset=…`, `*+json` and `*/*` count as JSON.
+- **Parameters** — header and cookie parameters are typed call arguments; an operation-level parameter overrides a path-level one; an undeclared path placeholder is synthesized.
+- **Servers** — variables take their `default`; an operation- or path-level server travels with its operation (on native, as its own literal-base client); a relative server is reported, and `lathe pull` prints the absolute URL it resolves to.
+- **Names** — models, operation ids, path placeholders and tag files that normalize to one identifier are disambiguated deterministically; nothing is dropped.
 
 ## Entry points mirror the dependency graph
 
@@ -98,8 +153,15 @@ gen/dev.ts              fixtures and faker factories (node-safe, no JSX)
 gen/endpoints/index.ts  every call, no hooks   (loaders, scripts, server code)
 gen/queries/index.ts    every hook, no previews
 gen/queries/books.ts    one tag — Vite emits one chunk per tag file
+gen/schemas.ts          re-exports every schema module
+gen/schemas/Book.ts     one module per model (a `$ref` cycle shares one)
 gen/package.json        the sideEffects marker
 ```
+
+An operation the spec does not tag is grouped by its first static path segment
+after the prefix all untagged paths share (`/v1/customers/{id}` → `customers`),
+not dumped in one `default` module — Stripe tags nothing, and that module was
+612 endpoints. A path group whose file name matches a real tag joins it.
 
 ### A page can never reach a dev surface
 
@@ -124,32 +186,46 @@ there is no edge for any bundler to follow. A 24-case matrix (every production
 entry × every dev surface, with **and without** the marker) asserts it by
 bundling for real.
 
-### Why the emitted `package.json` matters
+### A hook's bundle is what the hook uses
 
-A bundler keeps a module-level **call** unless it can prove the call is pure,
-and `api.endpoint('GET /books', …)` and `s.object({ … })` are both module-level
-calls. Measured with Vite 8 on a 30-tag / 120-operation spec, importing **one**
-hook:
+Two changes, both needed: **one schema module per model** (a `$ref` cycle shares
+one, since a cycle split across ES modules evaluates in whatever order the
+importer happened to pick), and **`/* @__PURE__ */` on every emitted call** —
+each `s.*` builder, arguments included, and each `api.endpoint(…)` — so an
+unused declaration inside a reached module is dropped as well.
 
-| | raw | gzip | endpoints kept | fixtures kept |
-| --- | ---: | ---: | ---: | ---: |
-| flat barrel, no marker | 30,710 B | 2,420 B | 120 | 120 |
-| layered entries, no marker | 10,400 B | 1,681 B | 116 | 0 |
-| layered entries + marker | **5,748 B** | **642 B** | **4** | 0 |
+Vite 8.2.2, one hook, gzipped (generated code only / with the runtime):
 
-Two honest notes. The **marker** is what closes the size gap — the layering
-removes the fixtures, not the endpoints. And an app whose own `package.json`
-already declares `sideEffects: false` was never affected, because its
-declaration covered the generated files too; emitting the marker means the
-outcome no longer depends on a field in a file the generator did not write.
+| | GitHub `useIssuesGet` | Stripe `useGetCustomersCustomer` |
+| --- | ---: | ---: |
+| before | 94.4 KB / 121.1 KB | 70.8 KB / 97.7 KB |
+| pure annotations only | 10.5 KB / 37.3 KB | 61.1 KB / 87.8 KB |
+| per-model modules only | 5.2 KB / 31.7 KB | 69.2 KB / 96.0 KB |
+| **both** | **2.8 KB / 29.2 KB** | **42.8 KB / 69.7 KB** |
 
-`/* @__PURE__ */` per declaration is the reflex and is nearly useless here —
-measured 2,041 B → 2,000 B, 2% — because the arguments are themselves calls
-(`s.string().uuid()`) the bundler must still evaluate.
+Stripe stays large because `Customer` really reaches 928 of 1,537 models
+through a 97-model cycle. Earlier docs called the pure annotation "2%": that
+measured it on the outer declaration only.
 
-The declaration is an **array** naming `atlas.wrapper.tsx` whenever `atlas` is
-selected, because that file really does call `installMocks()` at module scope.
-`false` would be a lie, and a bundler would act on it.
+The emitted `package.json` declares the output side-effect-free — an **array**
+naming `atlas.wrapper.tsx` when `atlas` is selected, because that file really
+does call `installMocks()` at module scope — so an unreached module is dropped
+whole, whatever the app's own `package.json` says.
+
+### Model types are written out, not inferred
+
+```ts
+export interface Book { id: string; title: string }
+export const Book = /* @__PURE__ */ s.object({ … }) as unknown as Schema<Book>
+```
+
+Inferring every model (`Infer<typeof Book>`) made each consumer's TypeScript
+re-derive the whole spec. tsc instantiations over schemas + client + queries:
+Stripe 1,372,857 → 580,009, Stripe under zod 1,043,674 → 364,887, GitHub
+1,947,953 → 1,483,741. Agreement between each interface and its schema is
+checked by lathe's tests, both ways, for every model. The trade: a generated
+schema is a `Schema<Book>`, so object-only builders (`.extend`, `.pick`) do not
+type-check on it.
 
 ## Plugins
 
@@ -225,6 +301,19 @@ That is the opposite of what you would assume from `@pyreon/validate` being
 first-party, and it is why `validator: 'zod'` is not merely an interoperability
 option. Under zod, refs are **inlined** on the native path — and an inlined ref
 is a nested object, which lowers.
+
+## Response validation is configurable
+
+```ts
+lathe: { input: './openapi.yaml', responseValidation: 'warn' }
+```
+
+`'strict'` (default) rejects a response that does not match its schema,
+`'warn'` logs and passes the raw body through, `'off'` skips validation — and
+its cost on large lists. The same meaning on every client: passed to
+`createHttp({ validate })` for `pyreon`, baked into the generated validation step
+for `fetch` / `axios` / `ky`. Native modules decode into typed structs and are
+not affected.
 
 ## Fake data that stays valid
 
@@ -335,14 +424,68 @@ changes and nothing catches it. `.all` matches every call of an endpoint;
 ## The workbench, generated
 
 `plugins: ['atlas']` emits three files that line up with each other:
-`components.tsx` (one browsable preview per read operation, whose variant axis
-is the data state — a real prop, so Atlas infers a control),
-`atlas.scenarios.ts` (keyed to those exact component names), and
-`atlas.wrapper.tsx` (a `QueryClientProvider` with the generated mocks
-installed, so every card renders with no server).
+`components.tsx` (one preview per safe read), `atlas.scenarios.ts` (keyed to
+those exact component names), and `atlas.wrapper.tsx` (a
+`QueryClientProvider` with the generated mocks installed, so every card
+renders with no server).
 
-Every preview gets the three states a live request will not produce on demand —
-loading, error, empty — which are the three a UI most often gets wrong.
+**Which operations get a preview.** Every `GET` with a JSON response —
+detail views with path parameters included (`getBook` requests with the spec's
+example values, and the mocks answer any id). Operations that handle a
+credential or a session (`login`, `logout`, `token`, `session`, a `password`
+parameter) are left out: a workbench calls its operations when it opens.
+
+**What a preview shows.** The response by its shape: a list of records is a
+table whose columns are the model's declared fields, one record a description
+list, anything else its value as text. Password, token and secret fields are
+never displayed.
+
+**Scenarios.** Each preview gets `Default` (the request, answered by the mocks),
+`Data` (fake data from the `faker` factories, seeded so a visual baseline does
+not flake — or the deterministic sample when `faker` is off), and the three
+states a live request will not produce on demand: `Loading`, `Error`, `Empty`.
+The props behind them — `args`, `data`, `force` — are real props, so Atlas
+builds controls for them.
+
+```ts
+// atlas.config.ts
+import { scenarios } from './src/gen/atlas.scenarios'
+import { wrapper } from './src/gen/atlas.wrapper'
+
+export default { scenarios, wrapper }
+```
+
+`atlas verify` and `atlas verify-browser` run against the generated previews
+like any other component.
+
+## Generated code documents itself
+
+Hovering a generated symbol shows the spec's own words: the operation's summary
+and description, one bullet per parameter (where it goes, whether it is
+optional, what it means), `@deprecated` when the spec says so, a `@see` link
+from `externalDocs`, and an `@example` you can paste — built from the spec's
+examples, or from the same deterministic sample the mocks return:
+
+```ts
+/**
+ * Find pet by ID.
+ *
+ * Returns a single pet.
+ *
+ * `GET /pet/:petId`
+ *
+ * Parameters:
+ * - `petId` (path) — ID of pet to return
+ *
+ * @example
+ * ```ts
+ * const result = await getPetById({ params: { petId: 1 } })
+ * ```
+ */
+```
+
+Model interfaces carry each field's description, example and `@deprecated`.
+Every generated file starts with the same two-line header and nothing else.
 
 ## Automation
 
@@ -352,19 +495,19 @@ loading, error, empty — which are the three a UI most often gets wrong.
 import lathe from '@pyreon/lathe/vite'
 
 export default defineConfig({
-  plugins: [lathe({ input: './openapi.yaml', checkOnBuild: true }), pyreon()],
+  plugins: [lathe({ checkOnBuild: true }), pyreon()],
 })
 ```
 
-Regenerates on dev-server start and whenever a spec changes. `checkOnBuild`
-turns a stale client into a **build error** rather than a warning.
+The plugin reads the `lathe` section of `pyreon.config.ts` itself — the same
+file, found the same way, as the CLI — so the call above is all a configured
+project needs. Options passed to `lathe()` win per key.
 
-:::tip
-Read the settings from `pyreon.config.ts` rather than repeating them here —
-`lathe({ ...config.lathe, checkOnBuild: true })`. Two copies drift the moment a
-plugin is added to one, and the build then fails its own freshness check against
-output the CLI has just declared current.
-:::
+It generates once on dev-server start and again whenever a spec or the config
+changes, and prints what moved: breaking contract changes by name, how many
+spec features are not represented, files written and removed. A spec path that
+does not exist is a warning with a suggestion, not silence. `checkOnBuild` turns
+a stale client into a **build error** rather than a warning.
 
 ### `lathe check` in CI
 
@@ -392,58 +535,452 @@ lathe: {
 `target` and `plugins` are written once and overridable per project. `lathe
 check` covers them all.
 
-### `lathe pull` — fetch a remote spec
+## Calling the API
+
+### Every call site is typed from the spec
+
+Each endpoint is declared with its input type, so a DIRECT call — a loader, a
+server route, a script — is as strict as a hook:
+
+```ts
+import { addPet, findPetsByStatus, getPetById } from './gen/endpoints/pet'
+
+await getPetById({ params: { petId: 1 } })
+await findPetsByStatus({ query: { status: 'sold', limit: maybeLimit } }) // limit?: number | undefined
+await addPet({ json: { name: 'Rex', photoUrls: [] } })
+
+getPetById({ params: { petId: 'x' } })          // ✗ petId is an integer
+findPetsByStatus({ query: { status: 'nope' } })  // ✗ not a value of the enum
+addPet()                                         // ✗ the body is required
+```
+
+Required exactly where the spec says (`requestBody.required` defaults to
+**false** in OpenAPI, so an unmarked body is optional), and
+`exactOptionalPropertyTypes`-correct, so a signal-derived value that might be
+`undefined` passes. An operation that sends nothing accepts no query or body at
+all. A body on `GET`/`HEAD` — which `fetch` refuses to send — is dropped with a
+`body-on-get` note.
+
+The hooks DERIVE their types from the endpoint (`Parameters<typeof op>[0]`,
+`Awaited<ReturnType<typeof op>>`) rather than re-rendering the spec, so a hook
+and a direct call can never disagree about a type.
+
+### Hook options are typed, and `select` changes the result
+
+```ts
+const pet = useGetPetById(() => ({ params: { petId: id() } }), () => ({ staleTime: 60_000 }))
+const count = useFindPetsByStatus(() => ({}), () => ({ select: (pets) => pets.length }))
+count.data() // number | undefined
+```
+
+A typo in an option is a compile error. Return `undefined` from the args
+accessor while the arguments are not ready — the query is disabled rather than
+fired with a placeholder.
+
+### Mutations invalidate what they change
+
+```ts
+const add = useAddPet({ onSuccess: (pet) => toast(`Added ${pet.name}`) })
+add.mutate({ json: { name: 'Rex', photoUrls: [] } })
+```
+
+By default a mutation invalidates every query at or below the collection it
+changes — `DELETE /pets/{id}` refetches `GET /pets`, `GET /pets/{id}` and
+`GET /pets/findByStatus`. Pass `invalidates` to replace the list, or `[]` to
+turn it off. For optimistic updates, `keys.ts` exports a helper typed from the
+endpoint that returns a rollback:
+
+```ts
+import { optimisticUpdate } from './gen'
+
+const rename = useUpdatePet({
+  onMutate: async (vars) => ({
+    rollback: await optimisticUpdate(client, getPetById, getPetById.key.prefix, (pet) =>
+      pet && { ...pet, name: vars.json.name }),
+  }),
+  onError: (_e, _v, ctx) => ctx?.rollback(),
+})
+```
+
+### Configure the client at runtime
+
+```ts
+import { auth, configureApi } from './gen'
+
+configureApi({
+  baseUrl: import.meta.env.VITE_API_URL,               // an environment switch
+  headers: () => ({ 'x-request-id': crypto.randomUUID() }),
+  use: [auth.petstoreAuth(() => session.token()), logger],
+  validate: import.meta.env.PROD ? 'warn' : 'strict',
+})
+```
+
+Every field is its own slot, read per request — endpoints bind to the client
+when they are declared, so nothing that varies is baked in. `installMocks()`
+answers through a SEPARATE slot, so it never removes your auth middleware. A
+key present with `undefined` resets that slot to its generated default.
+
+`auth` has one typed helper per `components.securitySchemes` entry: bearer
+(also OAuth2 / OpenID Connect, which reach the client as a bearer token), basic
+(UTF-8 safe), and API keys in a header, a query parameter or a cookie (the
+cookie form applies on the server — browsers forbid setting `Cookie`). A
+credential may be an accessor, re-read on every request.
+
+`validate` also has a config default — `lathe: { responseValidation: 'warn' }` — for a
+backend that drifts: `'warn'` logs a mismatch and passes the body through,
+`'off'` skips validation (safe only for non-transforming schemas).
+
+The `fetch` / `axios` / `ky` clients export the SAME `configureApi` and `auth`.
+`use` takes each library's own extension shape — a fetch middleware
+`(request, next) => Promise<Response>`, an axios request interceptor
+`(config) => config`, a ky `beforeRequest` hook — so an interceptor written for
+that library elsewhere drops straight in, and `auth.*` returns that shape. A
+differential test runs all four clients against one server and asserts they
+send byte-identical requests. Mocks sit at the BOTTOM of every library — the
+fetch client's fetch, axios's `adapter`, ky's `fetch` option — so interceptors
+and auth run on a mocked request exactly as on a real one.
+
+### Serialization the spec states
+
+- **Query `style` / `explode`** — CSV (`form`, `explode: false`), space- and
+  pipe-delimited arrays, `deepObject` and exploded `form` objects are declared
+  on the endpoint (`queryStyle`), so the wire matches the spec on every client.
+- **Non-JSON responses** decode by media type: `text/*` and XML as a string,
+  `text/event-stream` / NDJSON as a `ReadableStream`, everything else (PDFs,
+  images, octet-stream) as a `Blob` — typed accordingly.
+- **Custom verbs** — a literal `:` in a path (`/v1/{name}:cancel`) is escaped,
+  so it is not read as a second parameter.
+- **Cache keys** are namespaced per generated client (the project name, else
+  the API's base URL), so two generated clients can share one `QueryClient`.
+
+### Mocks for tests
+
+Every fixture satisfies its own generated schema — values are chosen
+constraints-first (enum, pattern, length, range) and a spec `example` is used
+only when it conforms. Routes are anchored at the client's base URL and matched
+most-specific first, so `GET /pets?limit=5` is intercepted and `GET /users/me`
+is not answered by `/users/{id}`.
+
+```ts
+import { installMocks, mockCalls, mockOperation, resetMocks } from './gen/dev'
+
+beforeEach(installMocks)
+afterEach(resetMocks)
+
+it('shows the empty state', async () => {
+  mockOperation('findPetsByStatus', { json: [] })
+  // …
+})
+it('shows the error state', async () => {
+  mockOperation('getPetById', { status: 500, json: { message: 'down' }, delay: 50 })
+})
+```
+
+### Infinite queries, declared
+
+Pagination is never guessed — a spec does not say, in any standard way, which
+parameter advances a page or where the next value is, and a wrong guess loops
+or stops silently. Declare it per operation, in config or in the spec, and each
+declaration emits a typed `use<Op>Infinite` hook plus a pure
+`<op>InfiniteOptions` factory (for a loader's `prefetchInfiniteQuery`):
+
+```ts
+// pyreon.config.ts — keys are the generated operation names
+lathe: {
+  pagination: {
+    listCustomers: { kind: 'lastItem', param: 'starting_after', items: 'data', field: 'id', hasMore: 'has_more' },
+    listEvents:    { kind: 'cursor', param: 'cursor', next: 'meta.next_cursor' },
+    listRows:      { kind: 'offset', param: 'offset' },            // items default: the response itself
+    listPages:     { kind: 'page', param: 'page', items: 'results', initial: 1 },
+  },
+}
+```
+
+```yaml
+# or on the operation itself — same shape
+get:
+  operationId: listEvents
+  x-pyreon-pagination: { kind: cursor, param: cursor, next: meta.next_cursor }
+```
+
+```ts
+const customers = useListCustomersInfinite(() => ({ query: { limit: 20 } }))
+customers.data()?.pages          // typed pages
+customers.fetchNextPage()        // starting_after = the last customer's id
+customers.hasNextPage()          // false once `has_more` is false
+```
+
+| `kind` | next value | ends when |
+| --- | --- | --- |
+| `cursor` | `next` path in the page | it is null/empty, or `hasMore` is false |
+| `lastItem` | the last item's `field` (Stripe `starting_after`) | the page is empty, or `hasMore` is false |
+| `offset` | current + page length | the page is empty, or `hasMore` is false |
+| `page` | current + 1 | the page is empty, or `hasMore` is false |
+
+Each declaration is checked against the spec's own types before anything is
+emitted: the parameter must exist, every path must exist, `hasMore` must be a
+boolean and the next value's type must be one the parameter takes. A wrong
+config entry fails the run with the reason; a wrong spec extension is noted and
+skipped.
+## Configuration reference
+
+Every key of the `lathe` section of `pyreon.config.ts`. `@pyreon/config`'s
+`defineConfig` types the same keys — the two types are held identical by a
+compile-time test in `@pyreon/lathe`, so a key that exists here is one the tool
+reads.
+
+Relative paths resolve against the directory of the **config file**, not the
+shell's working directory, so `lathe` behaves the same from any subdirectory.
+Paths passed on the command line are relative to the working directory.
+
+{/* gen:lathe-config:start */}
+{/* Generated from `LatheSection` in packages/tools/lathe/src/core/config.ts by
+    docs/scripts/gen-lathe-config.ts. Edit the type and its JSDoc, not this table. */}
+
+| key | type | default | meaning |
+| --- | --- | --- | --- |
+| `input` | `string` | — | Path to the OpenAPI 3.x document (`.json`, `.yaml`, `.yml`). |
+| `output` | `string` | `'./src/gen'` | Output directory. Relative to the config file, like `input`. |
+| `source` | `string` | — | Where `lathe pull` fetches the spec from: an http(s) URL, written to `input`. With `projects`, `lathe pull` pulls every project that sets one. |
+| `target` | `"web" \| "multiplatform"` | `'web'` | Which platforms the client is for: `web`, or `multiplatform`, which also emits native modules for iOS and Android and verifies they lower. |
+| `plugins` | `("types" \| "schemas" \| "client" \| "queries" \| "mocks" \| "faker" \| "components" \| "atlas" \| "docs")[]` | `['schemas', 'client', 'queries']` | Emitters to run. A plugin brings along what its output imports (`components` needs `queries`), and the report says so. |
+| `client` | `"pyreon" \| "fetch" \| "axios" \| "ky"` | `'pyreon'` | Which HTTP runtime the generated client is built on. |
+| `validator` | `"pyreon" \| "zod"` | `'pyreon'` | Which library the generated schemas are written in. |
+| `baseUrl` | `string` | the spec's `servers[0].url` | Overrides the spec's `servers[0].url` — must be an absolute literal to reach native. `configureApi({ baseUrl })` switches it at runtime. |
+| `responseValidation` | `"strict" \| "warn" \| "off"` | `'strict'` | What the generated client does with a response that does not match its schema. `strict` (the default) rejects; `warn` logs and passes the raw body through, which is the usual choice in production when a backend may drift; `off` skips validation, which also skips its cost on large list responses. `configureApi({ validate })` switches it at runtime. |
+| `pagination` | `Record<string, PaginationConfig>` | — | How to page through operations, keyed by the GENERATED operation name (the `endpoints` export). Declared, never guessed — each entry emits a `use<Op>Infinite` hook and a `<op>InfiniteOptions` factory. Same shape as the `x-pyreon-pagination` spec extension, which a config entry overrides. |
+| `strictNative` | `boolean` | `false` | Fail the run when a generated native module does not lower. |
+| `projects` | `{ name, input, …any key above }[]` | — | Several specs in one run, each with its own output and target. |
+{/* gen:lathe-config:end */}
+
+An unknown `plugins`, `client`, `validator` or `target` value is refused by
+name, with the known values listed.
+
+## Command line
 
 ```bash
-lathe pull https://api.example.com/openapi.json
-# fetches the URL and writes it to lathe.input (the configured input path)
+lathe init     [spec]          # set up pyreon.config.ts (see Getting started)
+lathe generate [spec]          # read the spec, write the client
+lathe check    [spec]          # generate in memory; exit 1 if anything is stale
+lathe pull     [url] [dest]    # fetch a remote spec (see below)
+lathe [spec]                   # same as lathe generate [spec]
 ```
 
-Fetches a remote OpenAPI document over HTTP(S) and writes it to the configured
-`input` path — the spec then lives in the repo as a normal file, reviewable in
-a diff, and `lathe generate` reads it exactly like a hand-authored one. Useful
-for a spec a backend team owns and publishes, where committing a fetch step is
-easier than hand-syncing the file on every API change.
+| flag | |
+| --- | --- |
+| `--target web\|multiplatform` | override `target` |
+| `--out <dir>` | override `output` |
+| `--plugins a,b` | override `plugins` |
+| `--client …` / `--validator …` | override `client` / `validator` |
+| `--base-url <url>` | override `baseUrl` |
+| `--config <file>` | use this config instead of the nearest `pyreon.config.*` |
+| `--dry-run` | report what `generate` would write and remove; touch nothing |
+| `--strict-native` | exit 1 when a native module fails to lower |
+| `--fail-on-breaking` | exit 1 when the spec breaks the client contract |
+| `--json` | machine-readable output (shape below) |
+| `--watch`, `-w` | regenerate when a spec **or the config** changes |
+| `--color`, `--no-color` | force colour; by default only a TTY gets it, and `NO_COLOR` turns it off |
+| `--from <tool>` | `init`: migrate from `orval`, `hey-api`, `kubb`, `openapi-typescript` or `spec` instead of detecting |
+| `--yes`, `-y` | `init`: ask nothing, take every default |
+| `--no-generate` | `init`: write the config, skip the first generate |
+| `--version`, `-v` / `--help`, `-h` | |
 
-## CLI reference
+The config is the nearest `pyreon.config.*` found walking **up** from the
+working directory, stopping at the repository root.
 
-Every flag `lathe generate` / `lathe check` accept, straight from the CLI's own
-`--help`:
+Flags are strict: an unknown flag, an unknown command, a missing value or an
+invalid one is an error with a suggestion (`unknown option --josn. Did you mean
+--json?`), and nothing runs. Exit codes: `0` success, `1` failure (a stale
+check, a refused spec, a failed gate), `2` a usage error. Errors go to stderr.
 
+`--help` wins over any command: `lathe generate --help` prints usage rather
+than running a generation, the convention `git commit --help` and
+`npm install --help` follow.
+
+`--strict-native` and `--fail-on-breaking` answer different questions and are
+commonly used together in CI: `--strict-native` fails when a
+`target: multiplatform` module does not lower to Swift/Kotlin;
+`--fail-on-breaking` fails when the new spec would change the generated
+client's public contract (a removed field, a narrowed type) in a way existing
+callers depend on.
+
+### `--json`
+
+One shape for every command and any number of projects:
+
+```ts
+interface JsonReport {
+  ok: boolean                       // the run exited 0
+  command: 'generate' | 'check' | 'pull' | 'help' | 'version'
+  projects: Array<{
+    name: string                    // '' for a single-project config
+    title: string; version: string
+    models: number; operations: number
+    target: 'web' | 'multiplatform'; output: string
+    files: string[]                 // every generated path
+    wrote: number                   // files written this run
+    removed: string[]               // orphans removed (see below)
+    stale: string[]                 // check / --dry-run: paths that would change
+    dryRun: boolean
+    reach: Record<string, { reach: 'web+native' | 'web-only'; reason?: string }>
+    notes: Array<{ code: string; at: string; message: string; severity: 'loss' | 'choice' }>
+    verify: { ran: boolean; reason?: string; files: unknown[] }
+    changes: Array<{ code: string; severity: 'breaking' | 'additive'; subject: string; detail: string }>
+  }>
+  error?: { message: string }       // a run that failed before producing a report
+}
 ```
-lathe generate [spec]     read the spec, write the client
-lathe check    [spec]     generate in memory; fail if anything is stale
-lathe pull     <url>      fetch a remote spec to the configured input path
 
-  --target web|multiplatform      emit native modules and verify them (default: web)
-  --out <dir>                     output directory (default: ./src/gen)
-  --base-url <url>                override servers[0].url; must be absolute to reach native
-  --plugins a,b                   types,schemas,client,queries,mocks,atlas
-  --client pyreon|fetch|axios|ky  HTTP runtime (default: pyreon; only pyreon reaches native)
-  --validator pyreon|zod          schema library (default: pyreon; both reach native)
-  --strict-native                 exit non-zero when a native module fails to lower
-  --fail-on-breaking               exit non-zero when the spec breaks the client
-                                   contract; pair with `generate`, whose run is
-                                   the one that causes the change
-  --json                          machine-readable output
-  --watch, -w                     regenerate whenever a spec changes
+An error under `--json` is still JSON (`ok: false`), never plain text on stdout.
+The types are exported from `@pyreon/lathe/cli` as `JsonReport` / `JsonProject`.
+
+## Pulling a remote spec
+
+`lathe pull` lands the spec on disk; `generate` never fetches. Output that
+depended on a server's mood would make `check` fail in CI for reasons nobody can
+reproduce.
+
+```bash
+lathe pull https://api.example.com/openapi.json            # to the configured input
+lathe pull https://api.example.com/openapi.json spec.json  # to a path, no config needed
+lathe pull                                                 # every project with a `source`
+lathe pull --token "$TOKEN"                                # Authorization: Bearer …
+lathe pull --header "X-Api-Key: $KEY"                      # any header, repeatable
 ```
 
-A bare path (`lathe ./openapi.yaml`) is treated as `lathe generate ./openapi.yaml`. `--help` wins over any command/verb — `lathe generate --help` prints usage rather than running a generation. Every option also has a `pyreon.config.ts` `lathe` key equivalent (`target`, `output`, `baseUrl`, `plugins`, `client`, `validator`, `strictNative`) — the CLI flags override the config file per run.
+`$LATHE_TOKEN` is used when `--token` is not given. Nothing is written unless
+the response is an OpenAPI 3.x document — an error page, a login redirect,
+Swagger 2 and oversized bodies are all refused. The response's `ETag` /
+`Last-Modified` is kept under `node_modules/.cache/lathe`, and the next pull is
+a conditional request — but only while the file on disk is still exactly what
+was fetched, so a local edit is always re-downloaded rather than "confirmed
+unchanged".
 
-`--strict-native` and `--fail-on-breaking` answer different questions and are commonly used together in CI: `--strict-native` fails when a `target: multiplatform` module does not lower to Swift/Kotlin; `--fail-on-breaking` fails when the NEW spec would change the generated client's public contract (a removed field, a narrowed type) in a way existing callers depend on.
+## Losses and choices
+
+Every spec feature the generated client does not honour becomes a **note**, with
+a stable `code`, an RFC 6901 pointer into the spec, and a severity:
+
+- **`loss`** — the spec says something the client does not do. These are the
+  ones to read.
+- **`choice`** — Lathe picked one of several equivalent readings; nothing the
+  spec requires is lost.
+
+| code | severity | what it means |
+| --- | --- | --- |
+| `unsupported-parameter` | loss | a parameter in a location 3.x does not define (`body`, `formData`) — not part of the generated call |
+| `unsupported-security` | loss | a security scheme with no generated `auth` helper (HTTP digest, mutual TLS…), or a requirement naming one |
+| `response-headers` | loss | response headers are not exposed; the call resolves to the body |
+| `error-responses` | loss | 4xx/5xx bodies are not typed; a failure rejects with an `unknown` body |
+| `other-success-responses` | loss | only the first 2xx is typed |
+| `parameter-serialization` | loss | a path `style` other than `simple`, or `allowReserved` — query `style` / `explode` are honoured |
+| `body-on-get` | loss | a `GET` / `HEAD` request body — `fetch` refuses to send it, so it is dropped |
+| `invalid-pagination` | loss | an `x-pyreon-pagination` that does not fit the operation — ignored |
+| `unsupported-const` | loss | a `const` whose value is not a JSON scalar — not enforced (a scalar `const` is) |
+| `unsupported-schema` / `unsupported-ref` | loss | a schema or `$ref` that reduces to `unknown`, or a degradation (a discriminator that cannot be proven, a contradictory `allOf`) |
+| `cyclic-ref` | loss | a `$ref` cycle through references alone, or the cyclic part of an `allOf` — contributes nothing |
+| `int64-precision` | loss | one note for every `format: int64` number — `JSON.parse` rounds past 2^53 − 1 before validation, so no generated type (bigint or string) can recover the value; typed as `number` |
+| `no-servers` | loss | no absolute base URL (none declared, relative, or a variable with no default), so nothing reaches native |
+| `multiple-content-types` | choice | JSON picked among several media types |
+| `extra-tags` | choice | grouped under the first tag only |
+| `missing-operation-id` | choice | a name derived from method + path |
+| `numeric-version` | choice | `info.version` was a YAML number |
+
+The terminal report lists the losses and summarises the choices; the generated
+reference pages split them into "Not represented" and "Choices made".
+
+## Generated files are pruned
+
+Each run writes `lathe-manifest.json` into the output directory, listing
+exactly the files it generated. The next `generate` removes the ones it no
+longer produces — a tag dropped from the spec takes its `endpoints/<tag>.ts`
+and `queries/<tag>.ts` with it — and `check` reports them as stale. Only paths
+on that list are ever removed, so a hand-written file in the output directory is
+never touched. Commit the manifest with the rest of the output.
 
 ## Honest limits
 
+- **OpenAPI 3.0 and 3.1 only.** Swagger 2 is refused with the conversion command.
+- **Response headers and error bodies are not typed**, and a security scheme
+  other than bearer / OAuth2 / OpenID Connect / basic / API key (HTTP digest,
+  mutual TLS) gets no `auth` helper — each is reported as a `loss` note. (Header
+  and cookie parameters ARE generated: they are typed `headers:` / `cookies:`
+  call arguments.)
+- **A read with no typed JSON response** gets a web hook typed `unknown` and no
+  native data component.
 - **Mutations are web-only on the native target.** PMTC recognises queries, not
   mutations, so a `POST` operation is reported `web-only` with that reason.
 - **A relative `baseUrl` makes every operation web-only** — PMTC bakes the
   request URL at compile time.
+- **The generated data components need PMTC render-prop support.** Each one
+  returns an accessor, `() => props.children(q.data())`, so it re-renders on
+  the web when the query settles. A body that ran once would stay at its
+  loading state. Only a `@pyreon/native-compiler` with render-prop support
+  lowers that shape. The verifier compiles each module when `swiftc` /
+  `kotlinc` are installed, and against an older compiler it reports these
+  modules `BROKEN` rather than claiming they lower.
+- A verdict of **`partial`** means the module lowers but PMTC dropped part of
+  a model (a field it cannot represent); the report names the declaration.
 - **No multi-project composition.** `projects: [...]` writes N independent
   output trees; there is no combined entry across them.
 - **`faker` does not reach native**, and neither do the preview components.
 - A `$ref` **cycle** has no finite nesting, so the native schema names the
   target and the compiler drops that one field with a warning.
+
+## Troubleshooting
+
+**`this is a Swagger 2.0 document, and Lathe reads OpenAPI 3.x`** — convert it
+first: `npx swagger2openapi swagger.json -o openapi.json`. Reading Swagger 2 as
+3.x would produce an empty client.
+
+**`this document has no openapi version key`** — `input` points at something
+that is not an API description. Nothing was written.
+
+**A GET is `web-only` with "no typed JSON response"** — the operation declares
+no content (or a non-JSON media type). The web hook resolves to `unknown`; no
+native data component is emitted, because there is no declared type to decode
+into.
+
+**`discriminator … cannot be proven from the members`** — a member's tag field
+is optional, not a string enum, or claims a value another member claims. The
+model is emitted as a plain union, which accepts the same data. Make each tag a
+required `enum: [value]` to get the tagged form.
+
+**Requests fail with 401 against a client that compiled** — the client sends
+no credential until you give it one. For each `securitySchemes` entry the
+client exports a helper: `configureApi({ use: [auth.<scheme>(() => token())] })`.
+Anything else goes in `headers` (an accessor, read per request) or in
+middleware via `use`. An `unsupported-security` note names a scheme with no
+helper (HTTP digest, mutual TLS).
+
+**`lathe init` says it could not read the config** — the old tool's config is
+read as text, never executed, so a config built by a function call it cannot
+see into (`export default build(process.env)`) is not readable. Point init at
+the spec instead: `lathe init ./openapi.yaml`, then copy any options across by
+hand.
+
+**`lathe init` wrote to `./src/gen`, not the old output directory** — that
+directory still holds the old generator's files, and writing into it would
+overwrite some of them (every generator writes an `index.ts`). Move your
+imports to the new client, delete the old directory, then set `output` back.
+
+**`lathe init` left `pyreon.config.ts` untouched** — it already has a `lathe`
+section, which init never replaces. It printed the section it would have
+written; merge it by hand.
+
+**A preview you expected is missing from Atlas** — previews are generated for
+`GET` operations with a JSON response. A `POST`, a read with no body, and any
+operation that handles a credential or session (`login`, `logout`, `token`,
+`session`, a `password` parameter) are skipped on purpose: the workbench calls
+every preview's operation as soon as it opens.
+
+**The config seems ignored** — run `lathe generate --dry-run`: the report names
+the output directory it resolved. The config is found upward from the working
+directory (stopping at the repository root), and its paths are relative to the
+config file. `--config <file>` names one explicitly.
+
+**`lathe check` fails on `lathe-manifest.json`** — the first run after upgrading
+writes the manifest; run `lathe generate` once and commit it.
 
 ## Example
 

@@ -1,0 +1,1 @@
+{ "name": "amend-app", "private": true, "scripts": { "lathe:generate": "lathe generate --target multiplatform" } }
