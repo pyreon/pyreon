@@ -1200,6 +1200,9 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
   let assetsInlineLimit: BuildOptions['assetsInlineLimit']
   let assetsDir: string | undefined
   let resolvedBase: string = '/'
+  // Replaced in configResolved with Vite's logger (honours `logLevel`).
+  // oxlint-disable-next-line no-console
+  let logInfo: (msg: string) => void = (msg) => console.log(msg)
   // USER plugins captured from the OUTER build's resolved plugin chain.
   // Forwarded into the inner SSR sub-build so non-zero plugins (e.g.
   // @pyreon/zero-content's content() plugin which transforms .md →
@@ -1270,6 +1273,10 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       assetsInlineLimit = resolved.build.assetsInlineLimit
       assetsDir = resolved.build.assetsDir
       resolvedBase = resolved.base
+      // Informational build output goes through Vite's logger so it honours
+      // `logLevel` — a caller running `vite build --logLevel warn`, or a tool
+      // driving zero programmatically, must not get the progress narration.
+      logInfo = (msg) => resolved.logger.info(msg)
       // Capture the resolved plugin chain — `buildSsrBundle` filters
       // out the zero + pyreon plugins (which the inner build adds back
       // itself) and forwards everything else.
@@ -2143,8 +2150,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // shape mismatches: `[en: 100, de: 90, cs: 100]` flags that de had
       // 10 paths skipped relative to the others.
       const localeSummary = config.i18n ? buildLocaleSummary(writtenPaths, config.i18n) : ''
-      // oxlint-disable-next-line no-console
-      console.log(
+      logInfo(
         `[zero:ssg] Prerendered ${pages} page(s)${
           emitted404Count > 0
             ? emitted404Count === 1
@@ -2192,10 +2198,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         try {
           const tableMode = config._autoMode ? ('auto' as const) : config.mode
           const modeEntries = await collectFileRouteModes(routesDir, tableMode, config.routeRules)
-          for (const line of formatRouteModeTable(modeEntries, tableMode)) {
-            // oxlint-disable-next-line no-console
-            console.log(line)
-          }
+          for (const line of formatRouteModeTable(modeEntries, tableMode)) logInfo(line)
         } catch {
           /* table is informational only */
         }

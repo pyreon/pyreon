@@ -1,6 +1,6 @@
 import { onUnmount } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
-import { batch, effect } from '@pyreon/reactivity'
+import { batch } from '@pyreon/reactivity'
 import type {
   DefaultError,
   QueryKey,
@@ -10,6 +10,7 @@ import type {
 import { QueryObserver } from '@tanstack/query-core'
 import { subscribeWhenRestored, useIsRestoring } from './is-restoring'
 import { useQueryClient } from './query-client'
+import { observeOptions } from './observe-options'
 import { makeResultProto } from './result-proto'
 
 // Shared result prototype — getters live here (one allocation, module init)
@@ -103,9 +104,10 @@ export function useQuery<
 
   const client = useQueryClient()
   const isRestoring = useIsRestoring()
-  const observer = new QueryObserver<TQueryFnData, TError, TData, TQueryFnData, TKey>(
-    client,
-    options(),
+  const observer = observeOptions(
+    options,
+    (o) => new QueryObserver<TQueryFnData, TError, TData, TQueryFnData, TKey>(client, o),
+    (obs, o) => obs.setOptions(o),
   )
 
   // Lazy-allocated fine-grained signals. Each field starts as `undefined`;
@@ -149,12 +151,6 @@ export function useQuery<
       if (slots.isError) slots.isError.set(r.isError)
       if (slots.isSuccess) slots.isSuccess.set(r.isSuccess)
     })
-  })
-
-  // Track reactive options: when signals inside options() change, update the observer.
-  effect(() => {
-    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.setOptions')
-    observer.setOptions(options())
   })
 
   // Unsubscribe the observer on unmount (effect disposal is handled by EffectScope).
