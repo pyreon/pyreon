@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/native-runtime-swift",
-  "version": "0.51.0",
+  "version": "0.52.0",
   "description": "Swift Package Manager runtime that compiler-emitted SwiftUI code links against on iOS.",
   "license": "MIT",
   "repository": {

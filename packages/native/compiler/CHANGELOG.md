@@ -1,5 +1,3614 @@
 # @pyreon/native-compiler
 
+## 0.52.0
+
+### Minor Changes
+
+- PMTC audit fixes: every emitted Swift/Kotlin string literal goes through one target-language quoter (`$` is escaped for Kotlin — a `'due: $total'` literal beside a signal read the signal on Android; control characters are legal on both targets; a literal `\(` in JSX text no longer becomes a live Swift interpolation). String-literal-union enum cases, quoted object keys and Kotlin named arguments are valid identifiers (`'top-left'` → `topLeft = "top-left"` / `` `top-left` ``, Swift structs gain `CodingKeys` so JSON keys round-trip). `parseInt(s, radix)` honours the radix, and a Double string-concat operand prints as JS does (`'pct=' + 250.0` → `pct=250`). (fdd4dc2)
+- A canonical primitive that falls through to the generic component emit now warns (4cae873)
+  by name, on both targets.
+
+  Generic emit writes `<Tag a={b}>` as a constructor call. That is right for a user
+  component and can never be right for a canonical primitive — `Field` and
+  `Toggle` are not SwiftUI types and `Field` is not a Compose composable — so the
+  build failed with `cannot find 'Field' in scope` / `unresolved reference
+'Field'`, naming a symbol the author never wrote.
+
+  Four such cases were already covered by a hand-maintained list of required props.
+  The list was missing `<Field>` without `onChangeText`, `<Toggle>` without
+  `onChange` and `<Modal>` without `open`: the same mistake, uncompilable in the
+  same way, with nothing said. The check now keys on the OUTCOME instead — arriving
+  at generic emit IS the failure — so there is no list to keep in sync and a
+  primitive added tomorrow is covered the day it is added. A user component that
+  shadows a primitive name is unaffected.
+
+- Warn when a user type shadows a generated chart-engine type (81e52fb)
+
+  PMTC merges the generated chart engine's 137 struct and enum declarations into
+  any file importing `@pyreon/charts/plot`, and the emit constructs them by BARE
+  name (`Slice(value:label:)`). A page declaring its own `interface Slice`
+  therefore shadowed the pie datum's — `invalid redeclaration of 'Slice'` in the
+  single-file compile gates, a type mismatch at every engine call in a real
+  two-module app — with no warning at all.
+
+  `gen-chart-engine.ts` now publishes `CHART_ENGINE_DECLARED_NAMES` beside the
+  struct list, from the same parse, and `transform()` names any collision with
+  the mechanism and the fix. Only TYPES are listed: engine functions can overload
+  on both targets, and the engine's module constants are emitted `private`, so
+  warning on either would ask a user to rename working code.
+
+- Option axes now draw ECharts' `splitArea`: bands between the ticks, the colours cycled from the axis start, one per category on a category axis. A value axis draws `minorTick` and `minorSplitLine`, each interval cut into `minorTick.splitNumber` pieces. Series labels read `label.rotate` (about the anchor, with `offset` turned with it, as zrender does), `offset`, `align` and `verticalAlign`. An ECharts differential holds all of it. All of it crosses to iOS and Android through the engine, and the three axis keys no longer warn there. (896d747)
+
+  The native chart spec printer wrote every array field as numbers, which turned a colour list into `[NaN, NaN]`. It now keeps strings.
+
+- Two marks the cartesian surface was missing, and two that were unreachable. (e83a9bf)
+
+  **`band(low, high)`** — a filled REGION between two value channels: a
+  confidence interval, a min/max range, a forecast cone. Distinct from `area`,
+  which closes to the axis floor; a band's two edges are both data. Distinct
+  from the `errorLow`/`errorHigh` whiskers too — those decorate a value per
+  datum, this is the mark. A datum joins the band only when BOTH bounds are
+  finite, because half a bound is not a region.
+
+  **`stackedArea(y)`** — `stackedBars`' continuous sibling. Each series fills
+  between the running total below it and its own top, so the outline of the
+  topmost series is the total. Only non-negative values stack, on the same
+  reasoning as the bars.
+
+  Both carry their own second-channel plumbing: `Series.values2` is the band's
+  lower bound, kept apart from `errLow`/`errHigh` deliberately so that "draw a
+  whisker" and "draw a region" are not the same request. Both lower to native,
+  and both real toolchains compile the emit.
+
+  **`waterfall` and `histogram` were documented as importable and were not
+  exported.** They existed, they lowered to native, the manifest named them as
+  importable bindings — and `import { waterfall } from '@pyreon/charts/plot'`
+  was `undefined`. Nothing caught it because the only code importing them was
+  the native compiler's own tests, and PMTC parses its input rather than
+  resolving it, so those imports never had to exist. Both are exported now, and
+  a TOTAL test over the marks module locks the surface: a mark added later has
+  to be reachable rather than silently joining them.
+
+  **`showValues` now works on every mark kind.** It was documented as "draw each
+  value above its bar" and honoured by bars and waterfall only; on line, area,
+  points, stacked, grouped and stackedArea it was a silent no-op — which reads
+  as "the option does not apply here" and was really "nobody wrote the branch".
+  Each kind labels where its geometry allows: outside the free edge for bars,
+  grouped and waterfall, above the point for line, area and points, and INSIDE
+  the segment for stacked and stackedArea, which have no free edge to hang a
+  label from. A stack prints the segment's OWN value, not the running total the
+  outline already shows. The lock is total over the mark kinds, so a kind added
+  later has to answer the question.
+
+  **`markers` now draw on the horizontal frame and on stacked / grouped
+  series.** They were skipped on all three — a silent no-op on shapes where
+  `annotations` drew perfectly well. The skip was not arbitrary: a stacked datum
+  is drawn at its RUNNING TOTAL in a band-centred segment, so pushing it through
+  the point-like placement would have put the marker where the data never
+  appears, and refusing beat lying. The invariant worth keeping is therefore "a
+  marker never lands somewhere the datum is not", not "these shapes have no
+  markers" — so the anchor is now read back from the same layout the paint used:
+  the top centre of a vertical segment, the right end of a horizontal one.
+
+  **The grammar got `<Layer>` and `<Band>` too — and that gap was self-inflicted.**
+  `stackedArea` was added to the native compiler's tag map first, which quietly
+  claimed a `<Layer>` the web grammar had never heard of: the same source would
+  have compiled natively and rendered nothing in a browser. Both tags now exist
+  as components, `<Band low high>` has its own desugar branch (a region has two
+  bounds and no single `y`, so the generic path rejected it), and the two copies
+  of the tag set — the grammar's and the compiler's — are asserted against each
+  other from both ends, since the compiler cannot import the package that really
+  owns them.
+
+- Adds `<ChordChart>` — flows between categories as ribbons across a circle — (7b1351b)
+  closing the last ECharts series with no Pyreon path on any tier.
+
+  It takes sankey's `{ nodes, links }` verbatim, and the ECharts-shaped `chord`
+  series compiles through `compileOption` too, so moving a spec between the two
+  is a one-word edit. The difference is what the layout encodes: a sankey lays
+  flows on an axis, so it reads a direction and wants an acyclic graph; a chord
+  closes the circle and drops both, which makes a flow that goes BOTH ways
+  (imports and exports, migration between regions, a confusion matrix) its
+  ordinary case rather than its awkward one.
+
+  Lowers to SwiftUI and Jetpack Compose like its neighbours, compile-proven on
+  both real toolchains.
+
+- Charts: a horizontal bar option (a category y axis over a value x axis) now lays out as ECharts does — it previously drew nothing, on web and native — including split areas and minor lines on the value axis. A scrolling legend clips the entry the window cuts instead of dropping it, pages vertically, and honours `pageButtonPosition: 'start'`; the draw list gains `clip` / `unclip` commands, executed by the canvas, SVG, SwiftUI and Compose painters. Rich and multi-line labels now rotate as one block, with ECharts' line height. (896d747)
+- Charts look right out of the box: (896d747)
+
+  - **Legend and colour by label** (web and native). Marks sharing a label share one legend entry, which toggles all of them, and one palette colour, as ECharts treats a series name. An area under a line, both labelled Revenue, no longer shows two Revenue swatches in two colours.
+  - **Area marks** fill translucent (0.3) by default instead of opaque; the new `areaOpacity` mark option sets it.
+  - **Charts follow the page's declared scheme.** They read the CSS `color-scheme` on `<html>` when it names one, else the OS preference, so a site with its own theme toggle gets matching charts.
+  - **`<OptionChart>` honours an explicit `<ChartThemeProvider>`**, for both cartesian and family options (it ignored one before). A bare option chart keeps ECharts' own light look, as ECharts does.
+  - **Dark gauges.** Under a non-default theme a gauge takes the theme's text and label colours instead of ECharts' light-theme greys.
+  - **SVG themes.** `optionToSvg`'s `theme` now reaches family charts too.
+  - **Candlesticks.** A candlestick's x labels thin and slant to what fits instead of overlapping, and its `dataZoom` opening window is applied.
+
+- An option chart's `legend.type: 'scroll'` now pages as ECharts' does. When the entries overflow, they stay on one line, clipped short of ECharts' page controller at the end: a prev arrow, `{current}/{total}` and a next arrow, each arrow dimmed when there is no page that way. The line starts at `scrollDataIndex`, and pages break where ECharts breaks them, so an entry the edge cuts opens the next page. Clicking an arrow pages it. `pageButtonGap`, `pageFormatter` and the page colours are read. A 9-case differential against ECharts holds the controller and the whole entries each page shows. (896d747)
+
+  Native draws such a legend unpaged, and now says so in a warning instead of silently.
+
+- An option chart's default tooltip (no `formatter`) now shows exactly what ECharts shows. It has a header and, per value, a round colour swatch, the name, and the value in bold at the right, comma-grouped (`2,500`) unless a `valueFormatter` shapes it. The box is edged in the series colour for an item tooltip. It is locked by a browser differential against real ECharts. A pie's family tooltip no longer appends a `(100%)` share. (896d747)
+
+  On native, an option pie's tooltip draws the same rows through the new engine `renderTooltipRows` / `pieTipRowsWith`, and a tooltip `valueFormatter` (a function) no longer costs a native option pie its arcs, labels and placement.
+
+- The events/actions model for `<PlotChart>` (ECharts' `on(...)` / `dispatchAction`, Pyreon-shaped). `selectedMode="single" | "multiple"` pins a picked datum (click or keyboard Enter) with a heavy outline that stays and reports the pinned set through `onSelectChange` (GLOBAL indices); `onHighlight` reports the hovered datum and -1 on leave, `onLegendChange` the hidden series, `onZoom` the window — each from one source of truth, so a dispatch fires them exactly as a gesture does. `createChartHandle()` is the imperative handle: a link (`zoom`, `hover`) plus `selected` and `hidden` signals that ARE the chart's state, and `dispatch` over `highlight` / `downplay` / `select` / `unselect` / `toggleSelect` / `legendSelect` / `legendUnselect` / `legendToggle` / `dataZoom` / `restore`; a handle passed as `link` to siblings connects them. The engine draws the emphasis itself — `ChartSpec.emphasis` puts a faint band under the highlighted column and outlines its bars and points, a heavier outline on a pin — so the SVG and the generated native engines carry it in the same draw list. On native the new props warn by name (event props included, which the old filter never matched) and the chart renders without them. (e6ef4e3)
+- The grammar covers the row-array families. `<Plot>` takes four family marks — `<Arc value label color? innerRadius?>` (pie / donut), `<Stage value label color? sort? gap? …>` (funnel), `<Cell x y value colors? gap?>` (heatmap) and `<Candle open high low close upColor? downColor? widthRatio?>` (candlestick, the plot's `x` channel labels each period) — and renders that family's host instead of the cartesian plot, channels as accessors, the mark's options where the host keeps them; `<Tip>`, `<Legend>` and `<Axis y format>` still apply. One family per plot: a second family mark, or a cartesian mark beside one, is reported and ignored. Two more cartesian children: `<Label text at series color radius>` declares the engine's datum-anchored point markers (`at="max"` / `"min"` / an index) and `<Rule x>` a vertical reference line. On native the compiler desugars a family plot to the host it names, byte-identical to writing that host directly, so the accessor inlining, the chrome, the tap and the entrance are inherited. `Label`, not `Text`: `<Text>` is the canonical primitive and the native compiler dispatches on the tag name. (50a5cea)
+- **The grammar: `<Plot>` with mark children.** `<Plot data={rows} x="month"><Bar y="revenue" /><Line y="target" /><Axis y format={currency('$')} /><Tip /><Legend /></Plot>` — channels are FIELD NAMES (typed `keyof T`) or accessors, marks are JSX children (so layering is composition and a `<Show>` around a mark is ordinary Pyreon), and `<Rule>` / `<Axis>` / `<Tip>` / `<Legend>` / `<Zoom>` declare annotations, axes, the tooltip, the legend and zoom/navigator/presets/brush/linking as data. Marks are branded components `<Plot>` scans structurally (the `Switch`/`Match` precedent) and resolves into the `marks={[bars(…)]}` props `<PlotChart>` already takes — the array form stays the config form and the two are one spec. A `color` channel on `<Plot>` pivots long-format rows into one series per distinct value (categories from `x`, gaps where a pair is absent, bars grouped unless `stack`). `resolveGrammar` and `channel` are exported. (50a5cea)
+
+  Native: the compiler desugars `<Plot>` to the `<PlotChart marks>` element the plot host lowers — the grammar form emits byte-identical Swift/Kotlin to the array form — while the runtime `color` pivot and a stray mark outside `<Plot>` warn by name.
+
+- The technical indicators are now `<Chart>` marks: `<Sma y window>`, `<Ema y window>`, `<Trend y>` and `<Bollinger y window k>` (a filled envelope `k` standard deviations wide, 2 by default, plus its middle line). They draw exactly what the array form's `sma`, `ema`, `trend` and `...bollinger` factories draw. Under a `color` pivot each series gets its own indicator over its own column. A mark with no `window` is skipped with a dev warning. (d5a7c06)
+
+  Each indicator component carries its own factory, so a `<Chart>` without one does not bundle the indicator arithmetic. The resolver code shared by all indicators adds about 0.2 KB gzipped to `<Chart>` + `<Line>` (43.9 KB to 44.1 KB).
+
+  On iOS and Android the compiler desugars the tags to the same `sma` / `ema` / `trend` / `...bollinger` calls, and the emit is byte-identical to the array form when `window` and `k` are numeric literals. The charts import migration lists the new names.
+
+- Legend PLACEMENT crosses to native — `legendPosition` lowers, and an 8px divergence closes (81e52fb)
+
+  `chrome.ts` already crossed what a legend LISTS and what a tap SAYS. Where the
+  legend GOES stayed in the web host as a four-branch block, so the native
+  emitters drew every legend at the top and warned that `legendPosition` does not
+  lower — and the one placement both targets did implement disagreed anyway: the
+  emit drew the legend at `x: 0` across the full width while the web host inset it
+  by 8 on each side and pushed the plot 8 further down.
+
+  `placeLegend(entries, area, position, opts, measure)` in the crossing
+  `legend.ts` is now the single implementation. The web host calls it, both
+  emitters call it, and `legendPosition` (`top` / `bottom` / `left` / `right`)
+  lowers on every host that draws its chrome through the shared seam — a side
+  legend narrows and indents the plot on a phone exactly as in a browser, with the
+  tap offset folded into the chrome's own `tapX` so no host can forget it.
+
+  The four hosts whose engines draw their own frame (Gauge, Candlestick, Heatmap,
+  Boxplot) do not read the prop and still say so. `legendColumnWidth` moved from
+  the web host into `legend.ts` with it, and the runtime gained
+  `pyreonShiftCmdsXY` for the two-axis offset a side legend needs.
+
+  Separately, every unlowered `<PlotChart>` prop now says WHY. Sixteen of the
+  nineteen warned with only their name — a status, not a reason — against this
+  repo's own standard, which `<MapChart>`'s decline had a spec for and nothing
+  held the rest to. The reasons divide deliberately into two kinds: a prop whose
+  MECHANISM is the web platform (a DOM element, a hover, a download) and one that
+  is EMIT WORK, so a reader can tell a wall from a backlog item.
+
+  `<PlotChart>` carried its OWN copy of the four branches — a THIRD
+  implementation — and the copies had already drifted: a top legend sat at
+  `x: 0` there and `x: 8` in the family hosts, and a bottom one reserved
+  `height + 4` against `height + 8`. Neither difference was reported by anything.
+  It now calls `placeLegend` too, so the plot host, the sixteen family hosts and
+  both native emitters share one placement.
+
+- Native charts now expose their data to screen readers, not just a one-sentence description. (d5a7c06)
+
+  - **iOS:** the plot host carries an `AXChartDescriptor` (`.accessibilityChartDescriptor(PyreonChartDescriptor(input))`), so VoiceOver offers the Audio Graph and its per-point data explorer.
+  - **Android:** `PyreonChartPoints` places one TalkBack node per visible category over its column, labelled with the web table's row ("art, Score 91"). The nodes take no pointer input, so taps still reach the canvas. A zoomed chart labels its visible rows from the full data. Decimated and continuous-x charts keep the description alone.
+
+  Both are built from the same `A11yInput` as the description and the web's hidden table.
+
+- Every native chart canvas is now NAMED, and the plot host is DESCRIBED from its own data. (9f271ae)
+
+  A canvas is one opaque node to a screen reader. The web hosts have always answered that with the engine's `describeChart` sentence as the `aria-label` plus an offscreen table; natively only a `title` was ever applied — so an untitled chart was a blank rectangle to VoiceOver and TalkBack, and a titled one said its title and nothing about its data.
+
+  - `a11y.ts` crosses with the engine (`ENGINE_FILES`), so `describeChart` / `chartTable` are generated into `PyreonChartEngine.swift` / `.kt` and both targets read the SAME sentence the web does. Its two subscript reads are bounds-checked for the native subset (a Swift subscript is never optional), which also fixes a real web edge: a series longer than the categories, or shorter than its siblings, now renders an empty cell instead of reading past the end.
+  - Both emitters apply the label in the web host's order of precedence: an explicit `accessibilityLabel`, else the data description (the plot host, built from the series and categories the canvas painted and through the chart's own `format`), else `title`, else the family word (`chartDefaultLabel`: `PieChart` → "Pie chart", `PlotChart` → "Chart"). The description is emitted INSIDE the scope holding the hoisted series, which is the only place those bindings exist.
+  - Device-asserted on both platforms: the tasks showcase's bar chart is queried for its label / content description and must carry the title, the series and the category count.
+
+- `<FunnelChart>`, `<PieChart>` and `<GaugeChart>` lower to native. The accessor-prop hosts map their rows through the accessor bodies INLINED into one closure (`rows.enumerated().map { (i, d) in FunnelStage(value: Double(d.total), label: d.name, color: …) }` / `mapIndexed`), with the shared palette for an absent `color`; a block-bodied accessor warns by name. `onSelect` (already an index on these hosts) and `onSelectIndex` lower to the tap over `hitFunnel` / `hitArc`. `<GaugeChart>` lowers with its fixed half-circle box and the value text; `<PieChart showLegend>` renders without the legend and says so. README: the native-geometry section lists them. (8d1ff30)
+- `<PlotChart brush onBrush>` lowers natively — the last gesture surface. `brush.ts` is now a crossing engine module (`brushRange`: a pixel span → a GLOBAL inclusive datum range under the window; `brushBand`: where a committed range sits on the plot through the window; `renderBrushBand`: the translucent band with dashed edges) that the web host consumes unchanged and that generates into `PyreonChartEngine.swift/.kt`. On iOS and Android a plain drag on the plot selects (the web's rule without `dataZoom`), the band is drawn inside the chrome wrap, a plain tap clears the selection, and a NAMED `onBrush` handler receives `BrushRange | null`. With `dataZoom` on, the web brushes on Shift+drag, which touch does not have, so that one combination stays web-only and warns by name; an inline `onBrush` arrow warns by name too (the brush still selects). `@pyreon/charts/plot` also exports `brushBand`, `renderBrushBand` and the `BrushRange` / `BrushBand` types. (e6ef4e3)
+- `<CalendarChart>` and `<ParallelChart>` lower natively. Their web props have no native form — a `values` record, rows mixing strings and nulls — so the host spec gained per-prop literal adapters: `values={{ '2026-01-05': 3 }}` becomes `[CalendarValue(date:value:)]`, `rows={[['4', 30], ['8', null]]}` becomes `[[Double]]` with a category resolved to its index through the `axes` literal and every gap a NaN — exactly what the web's `calendarValues` / `parallelRows` compute at runtime. A non-literal record, a category cell without an inline `axes` literal, or an unlowerable cell warns by name and emits nothing; `rowColor` warns by name and the chart renders without it. `UNLOWERED_CHART_HOSTS` is down to the ECharts option facade. (e6ef4e3)
+- **Native chrome parity for the family hosts.** `showTitle` / `subtitle`, `showLegend` and `tooltip` now lower on every generic and accessor host (treemap, sunburst, tree, river, sankey, graph, gantt, polar, calendar, funnel, pie) on both native targets — not only on the plot host. The legend's entries and the tooltip's lines come from ONE crossing module, `chrome.ts` (`treemapLegend`, `sankeyTip`, `pieTip`, … plus `renderTooltip`, which draws the box into the draw list), and the web canvas host now calls the same functions, so what a legend lists and what a tap says agree by construction. On native a tap shows the tooltip and a tap on nothing dismisses it; a host with a tap lays out ONCE (the paint and the hit used to compute the layout twice). `animate` is the one chrome prop still named as unlowered. (50a5cea)
+
+  PMTC: an annotated local (`const e: LegendEntry = { … }`) steers its object literal to the named struct — the field set alone picked a same-shaped sibling (`Slice` for a `TooltipRow`) or, with an optional field omitted, no struct at all (a tuple); `readonly T[]` / `ReadonlyArray<T>` lower like `T[]`; `keyof` / `unique` warn by name.
+
+- `<PlotChart dataZoom>` lowers to native: a pinch (SwiftUI `MagnificationGesture`, Compose `detectTransformGestures`) and a pan drive the engine's fraction window (`zoomWindow` / `panWindow`), the rows are sliced through `sliceRange`, accessors keep their GLOBAL index and `onSelect` reports global indices. `zoom.ts` is rewritten in the crossing subset (`sliceRange` returns a named `SliceRange` computed without `Math.floor` / `Math.ceil`) and crosses into the generated engine; `brushRange` moves to `./brush` (web). The Swift emitter gains a host-state splice: an expression host can register `@State` properties on its component. (8d1ff30)
+- Calendar geometry joins the generated native chart engine. `layoutCalendar` / `renderCalendar` / `calendarDomain` / `hitCalendarIndex` are rewritten Date-free (proleptic-Gregorian civil arithmetic in exact Doubles: `daysFromCivil`, `civilFromDays`, `weekdayOfDays`, `parseIsoDays`, `formatIsoDays` — all new exports) and bundled into `PyreonChartEngine.swift` / `.kt`. BREAKING for direct engine callers: `calendarDomain` and `renderCalendar` take a `CalendarValue[]` (`{ date, value }`) instead of a record — wrap a record with the new `calendarValues(record)`; `calendarDomain` returns a `Domain` (`{ min, max }`) and `CalendarOptions.domain` is a `Domain`, not a tuple; `CalendarLayout` gains `startDay` / `days`. `parseIsoDate` / `formatIsoDate` (epoch ms) and the nullable `hitCalendar` move to `engine/calendar-web.ts`, `calendarToSvg` to `family-svg.ts` — the `@pyreon/charts/plot` re-exports and `<CalendarChart values={record}>` are unchanged. (8d1ff30)
+- The funnel family's geometry (`layoutFunnel` / `renderFunnel` / `hitFunnel`) joins the generated native chart engine — one TypeScript source, compiled by PMTC into `PyreonChartEngine.swift` / `.kt`, so a funnel lays out identically on iOS and Android. `funnelToSvg` moved to `family-svg.ts` (still exported from `@pyreon/charts/plot`). (61fea37)
+- Gantt geometry joins the generated native chart engine, built on the calendar family's Date-free civil arithmetic. BREAKING (pre-1.0, clean API): time is DAYS since 1970-01-01 everywhere — `GanttTask.start` / `end` and `GanttOptions.today` are ISO `YYYY-MM-DD` strings only (epoch-ms values and the `Date.parse` fallback are gone; convert with `formatIsoDate`), `GanttOptions.domain` is a `GanttRange` (`{ start, end }`, ISO) instead of a tuple, `GanttLayout.domain` is a `Domain` (`{ min, max }` in days), `GanttRow.startMs` / `endMs` become `startDay` / `endDay`, `GanttRow.label` is the name string with `labelAt` beside it, and `GanttLayout.today` becomes `hasToday` + `todayX`. `ganttTicks` takes and returns days (`GanttTick[]`, `x` filled by the layout). The engine answers hits as an index (`hitGanttIndex`); the nullable `hitGantt` lives in `engine/gantt-web.ts` and `ganttToSvg` in `family-svg.ts` — the `@pyreon/charts/plot` re-exports and `<GanttChart>` are unchanged. (8d1ff30)
+- The chart engine crosses to native as GENERATED runtime source: `gen-chart-engine.ts` compiles the ten `@pyreon/charts` engine modules through the real PMTC transform (zero warnings is a hard precondition — a warning is a silently-gutted function) into committed `PyreonChartEngine.swift` / `PyreonChartEngine.kt`, with the draw-list types renamed to the canvas-owned `PyreonChartPt`/`PyreonChartRect`/`PyreonDrawCmd`. The Swift emit is publicized (explicit public memberwise inits — SPM module boundary), and `PyreonDrawCmd` gains a full defaulted-parameter init in the synthesized field order so the emitted named-subset constructions compile. Drift-locked: `native-chart-engine-generated.test.ts` regenerates, asserts byte-equality, and compiles both targets against the verbatim canvas types. (6c32d06)
+- Graph geometry joins the generated native chart engine. `layoutGraph` / `renderGraph` are rewritten in the PMTC subset and bundled into `PyreonChartEngine.swift` / `.kt`. The force layout's PRNG is now a Park–Miller LCG in exact Double arithmetic (`graphNextSeed`, exported) instead of mulberry32 — still deterministic per `seed`, but a given seed produces a DIFFERENT arrangement than before. The engine answers hits as an INDEX (`hitGraphIndex`, -1 for none); the web-facing nullable `hitGraph` lives in `graph-hit.ts` and `graphToSvg` moves to `family-svg.ts` (`@pyreon/charts/plot` re-exports are unchanged). `renderGraph` no longer takes a measurer. `GraphLayoutLink` gains `index` (position among the kept links) and `GraphLayout` gains `mode` (the layout that ran) — additive, and what keeps the crossed structs distinct from sankey's. (8d1ff30)
+- Heatmap and candlestick geometry join the generated native chart engine. `buildHeatGrid` / `renderHeat` / `hitHeatCell` and `ohlcExtent` / `renderCandles` / `hitCandle` are bundled into `PyreonChartEngine.swift` / `.kt`. The colour ramp is now a plain function, `rampColor(stops, t)` (new export); `HeatmapOptions.ramp` (a closure) is REPLACED by `stops?: string[]` (default `HEAT_RAMP`), and the closure factory `colorRamp(stops)` moves to `engine/heat-ramp.ts` (still exported from `@pyreon/charts/plot`, built on `rampColor`). `renderCandles`' options parameter is optional instead of defaulting to `{}`; `hitCandle` is now exported from `/plot`. (8d1ff30)
+- Parallel coordinates join the generated native chart engine — the last chart family to cross. BREAKING (pre-1.0, clean API): the engine takes NUMERIC rows (`Double[][]`; a category as its index in the axis's `categories`, a gap as `NaN`) — the web `ParallelRow` (`(number | string | null)[]`) is converted with the new `parallelRows(axes, rows)` (`<ParallelChart>`, `parallelToSvg` and the ECharts facade do this for you); `ParallelAxis.domain` and `ParallelLayoutAxis.domain` are `Domain` structs; the per-axis `place` closure is the function `parallelPlace(axis, value)` → `{ ok, y }`; `ParallelLine.points` is `Pt[]` with a parallel `present: boolean[]` (a gap is an absent point, not `null`) and `lineRuns(points, present)` matches; `ParallelOptions.lineColor` is a string only, with the per-row callback expressed as `lineColors: string[]` (`parallelLineColors(rows, fn)`, or `<ParallelChart rowColor={fn}>`). `hitParallelIndex` is the engine's hit; the nullable `hitParallel`, `parallelRows`, `parallelLineColors` and `lineRuns` live in `engine/parallel-web.ts`; `parallelToSvg` in `family-svg.ts`. The `@pyreon/charts/plot` re-exports are unchanged. (8d1ff30)
+- Polar geometry (`layoutPolar` / `renderPolar` / `hitPolarIndex` / `polarTicks`) joins the generated native chart engine. The engine's hit answers indices (`PolarHitIndex`); the web-facing `hitPolar` + `PolarHit` union live in `polar-hit.ts`; `PolarLayout.lines` / `categoryLabels` / `ticks` are the named `PolarLine` / `PolarCategoryLabel` / `PolarTick`; `renderPolar` drops its unused measurer; `polarToSvg` moved to `family-svg.ts` (all still exported from `@pyreon/charts/plot`). (61fea37)
+- Sankey geometry joins the generated native chart engine. `layoutSankey` / `renderSankey` / `ribbonPoints` are rewritten in the PMTC subset (name lookups are scans, the relaxation stack/resolve steps are inlined, comparator sorts are insertion sorts, no `Infinity`) and bundled into `PyreonChartEngine.swift` / `.kt`. The engine answers hits as INDICES (`hitSankeyIndex` → `{ node, link }`); the web-facing `hitSankey` union lives in `sankey-hit.ts` and `sankeyToSvg` moves to `family-svg.ts` (`@pyreon/charts/plot` re-exports are unchanged). `renderSankey` no longer takes a measurer (labels do not need one). (61fea37)
+- Tree and theme-river geometry (`layoutTree` / `renderTree` / `hitTree` / `linkPoints`, `layoutRiver` / `renderRiver` / `hitRiver` / `smoothPoints` / `layerPolygon`) join the generated native chart engine. `TreeLink` carries the entered node's `depth`; `RiverLayout.ticks` is a named `RiverTick`; `renderTree` drops its unused measurer parameter; `treeToSvg` / `riverToSvg` moved to `family-svg.ts` (still exported from `@pyreon/charts/plot`). (61fea37)
+- Treemap and sunburst geometry (`layoutTreemap` / `renderTreemap` / `hitTreemap`, `layoutSunburst` / `renderSunburst` / `hitSunburst`, `nodeValue`, `treeDepth`, `tintHex`) join the generated native chart engine — squarify and the radial partition run from one TypeScript source on iOS and Android. `treemapToSvg` / `sunburstToSvg` moved to `family-svg.ts` (still exported from `@pyreon/charts/plot`). (61fea37)
+- The entrance animation crosses. On the web, `animate` was wired on `<PlotChart>` only: the fourteen canvas-host families (treemap, sunburst, tree, river, sankey, graph, gantt, polar, calendar, parallel, funnel, map, boxplot, heatmap) took the prop and never passed the tween's progress to their engine, so they painted fully formed. Each now declares `animates` and hands `progress` to its render (`renderHeatChart` takes it as an optional trailing argument). Natively, both emitters render every host whose engine takes a `progress` — the same set — inside a new `PyreonChartEntrance` runtime view (SwiftUI `TimelineView`, paused once the tween ends; a Compose `Animatable`), which hands the cubic ease-out progress into `ChartSpec.progress`, into a copy of the host's `XOptions`, or as the heatmap wrapper's argument, over `theme.enterMs`; Reduce Motion on iOS and a zero animator scale on Android render at once, like `prefers-reduced-motion`. `animate={false}` emits the host exactly as before. An engine with no entrance (Pie, Radar, Candlestick, Gauge) now names `animate` as inert on every target instead of "not lowered on native". (50a5cea)
+
+  Two fixes the copy exposed: an inline options literal (`tree={{ symbolSize: 8 }}`) lowered to a synthesized `__Obj0` that swiftc rejected against `TreeOptions` — it is steered to the engine struct now — and a non-nil options value was read with optional chaining in the tooltip and hit paths, an error on a non-optional in Swift.
+
+- The candlestick and heatmap frames move into the engine — `candlestickFrame` / `renderCandlestickChart` / `hitCandlestickChart` and `heatGridFrom` / `heatPlotFor` / `renderHeatChart` / `hitHeatChart` (exported from `@pyreon/charts/plot`) — so the web hosts and the native canvas paint the SAME command list; both modules cross into the generated native engine. The native runtimes gain `pyreonChartMeasure` (UIKit / `Paint` text width in engine units), the measurer a laid-out frame needs. `<CandlestickChart>`, `<HeatmapChart>` and `<RadarChart>` lower to native (accessor bodies inlined; a `theme` override, a cell-shaped heatmap `onSelect` and `showLegend` warn by name). (8d1ff30)
+- Compile the public hosted-chart component to real iOS and Android webviews, preserve reactive options, commands and loading state, and route selection, event and failure messages with matching semantics on every target. Add vendor-neutral host bundle aliases while retaining existing compatibility props. (f2b1d43)
+- `onSelectIndex` — selection on the family hosts in the form that crosses to native. Every lowered host (`<SankeyChart>`, `<GraphChart>`, `<TreemapChart>`, `<SunburstChart>`, `<TreeChart>`, `<RiverChart>`, `<GanttChart>`, `<PolarChart>`) takes `onSelectIndex`, which receives the engine's INDEX hit (`SankeyHitIndex` `{ node, link }`, `PolarHitIndex`, or a plain index with -1 for a miss) beside the web-shaped `onSelect`. On the web it fires from the same click; on iOS/Android the compiler lowers it to a tap gesture (`DragGesture(minimumDistance: 0)` / `detectTapGestures`) that hit-tests the same layout the canvas painted — the tap position divided by the display density on Android, where the draw list is laid out in dp. New engine exports `hitTreemapIndex`, `hitSunburstIndex`, `hitTreeIndex`, `hitRiverIndex` (the existing object-returning hits now wrap them); `@pyreon/native-cli` adds the `detectTapGestures` / `LocalDensity` Kotlin imports when the emit uses them. (8d1ff30)
+- `@pyreon/charts/plot` family hosts lower to native. `<SankeyChart>`, `<GraphChart>`, `<TreemapChart>`, `<SunburstChart>`, `<TreeChart>`, `<RiverChart>`, `<GanttChart>` and `<PolarChart>` — the hosts whose props are plain data — now emit `PyreonChartCanvas` over the generated engine (`renderX(layoutX(...))` with the web host's own box arithmetic), sized by a `GeometryReader` / `BoxWithConstraints` or by `width` / `height`, with `title` as the accessibility label and `data-testid` as the identifier. The accessor-prop hosts (`PlotChart`, `PieChart`, `GaugeChart`, `RadarChart`, `FunnelChart`, `HeatmapChart`, `CandlestickChart`), `CalendarChart` (a record) and `ParallelChart` (mixed rows) warn BY NAME on native instead of naming a view that does not exist. Importing from `@pyreon/charts/plot` no longer raises the package's web-only warning (that rationale is about the ECharts bridge at the root). The Swift/Kotlin stub typecheck links the REAL generated engine when a chart host is present. `PyreonChartCanvas.kt` scales its draw list by the display density so the engine's units read as dp, matching CSS px on the web and points on iOS. README: the native-geometry section names the lowered hosts. (8d1ff30)
+- `sma`, `ema` and `trend` lower to iOS and Android (d4e3a2f)
+
+  The indicator arithmetic moves to `indicator-values.ts`, which joins
+  `ENGINE_FILES`, so `smaValues` / `emaValues` / `stdevValues` / `trendValues`
+  cross to Swift and Kotlin. The emitters then recognise the marks the way they
+  already recognise `bubble` → `bubbleRadii`: map the rows, hand them to the
+  named engine function.
+
+  The generic mark constructors stay web-only — PMTC cannot represent a type
+  parameter, and the generator refuses an emit with warnings, so one generic
+  function in the file would take the whole thing with it. That is why the split
+  exists, and it mirrors `boxplot.ts` / `boxplot-chart.ts`.
+
+  `bollinger` lowers too. It returns an ARRAY of marks, so it arrives as a
+  spread element rather than a call, and the emitters expand it into the two
+  Series it names — the envelope as a band (upper in `values`, lower in
+  `values2`) and its middle line. Its edge arithmetic moved into the crossing
+  module as `bollingerEdge`, which the web form now calls as well, so the two
+  cannot drift.
+
+  A non-literal window or width still warns by name rather than lowering
+  something the emit cannot type, as does a spread of anything other than
+  `bollinger`.
+
+- The legend and title blocks draw natively. `renderLegend` is rewritten in the crossing subset (`legendPlan` is a named top-level plan; `LegendPager.prev` / `next` are plain rects guarded by `hasPrev` / `hasNext` instead of `Rect | null`; the page label goes through `plain`), and it crosses into the generated engine together with `renderTitle`. The native runtimes gain `pyreonShiftCmds(cmds, dy)` — the web hosts' `shiftCmd`, which sits the plot below the chrome. `<PlotChart showLegend showTitle subtitle legendMaxRows>`, `<PieChart showLegend>` and `<RadarChart showLegend>` now emit the title block, the legend, and the plot translated down by both, with the tap offset to match; a host without the flags emits exactly what it did before. (8d1ff30)
+- `<PlotChart showLegend>`'s legend tap toggle and paging lower natively. The toggle rule is now an engine module (`legend-toggle.ts`: `legendToggle` / `hideHiddenSeries` / `legendHitIndex` / `pagerHit`) that the web host consumes — a hidden series keeps its slot, stacked/grouped series are zeroed rather than emptied, exactly as before — and that generates into `PyreonChartEngine.swift/.kt`. On native the hidden set and the legend page are host state; a tap on an entry toggles it, the entries render muted, `legendMaxRows` pages through the pager arrows, and a tap is resolved pager → entry → preset → selection, the web's order. `legendToggle={false}` keeps the legend inert on every target. (e6ef4e3)
+- `<PlotChart navigator>` — the slider dataZoom — lowers natively. The strip is now an engine module (`navigator.ts`: `renderNavigator` over the first series across every row, `navigatorHit` for what a press grabs — band, left or right handle — and `navigatorDrag` for the window a drag produces) that the web host consumes unchanged and that generates into `PyreonChartEngine.swift/.kt`. On iOS and Android the drag rides a dedicated overlay above the strip (a clear SwiftUI layer / a Compose Box with `detectDragGestures`), so it never competes with the plot's pinch and pan, and it writes the same host window the pinch, the presets and the row slice read. The Android build now imports `detectDragGestures` (and `detectTransformGestures` for the pinch) for the real Gradle build — both live outside the star-imported packages and the stub gate could not see them missing. (e6ef4e3)
+- `@pyreon/charts/plot` on iOS/Android — the native side of the host-parity audit. (0295aaa)
+
+  - **A bare host follows the runtime colour scheme.** With no `theme` and no `<ChartThemeProvider>`, a chart on the web follows `prefers-color-scheme`; on a phone it was hard-wired to the light theme, silently. Every field the two built-in themes disagree on now lowers to a runtime conditional over SwiftUI's `colorScheme` environment / Compose's `isSystemInDarkTheme()`; sizes and timings stay literals; a named theme or a provider scope pins it as before.
+  - **`<BoxplotChart>` crosses**: its `fiveNumber` reduction and the whole frame (`boxplot-chart.ts`) are generated into both engines; the host lowers with an entrance, a tap per band and the theme. `boxplotToSvg` moves to `boxplot-svg.ts` (same export from `/plot`); `boxplotFrame` / `renderBoxplotChart` / `hitBoxplotChart` are exported.
+  - **`<RadarChart>` gets a tap on both targets** (`onSelect` / `onSelectIndex` receive the engine's `{ series, axis }` hit) — it had none on either.
+  - **What does not cross says so**: a rich-hit `onSelect` on the eleven table-driven hosts warns and names `onSelectIndex` (it vanished); `<ParallelChart tooltip>` warns (the policy claimed it lowered); `<MapChart>` declines by name instead of falling into the generic component emit as a symbol no target has.
+  - The Kotlin frame hosts (Heatmap, Candlestick, Boxplot, Radar) key their tap on the vals it captures, so a tap after a data change resolves against the current geometry (`pointerInput(Unit)` kept the first composition's).
+  - Device assertions in the tasks showcase on both platforms: a tap on the radar's first vertex reports series 0 / axis 0, a tap per boxplot band reports its index.
+
+- `<PlotChart marks>` — the cartesian family — lowers to native. Each inline mark call (`bars` / `stackedBars` / `groupedBars` / `line` / `area` / `points`, literal options) becomes a `Series` over its inlined accessor, the `ChartSpec` is built inline and `renderChart` paints it; `onSelect` taps the new engine `plotHitBars`, which the web host's click now uses too (`plotHitIndex` for its tooltip), exported from `@pyreon/charts/plot` and crossing into the native engine. A `bubble` mark, a `curve` option, the legend / title / zoom / brush / navigator surfaces, formatters and a `theme` override warn by name. (8d1ff30)
+- The remaining `<PlotChart>` inputs lower to native: a literal `theme={{ … }}` merges over the default theme (Candlestick and Heatmap hosts too); `format` / `xFormat` / `y2Format` lower as the engine's formatter by name (`compact`), a factory call (`fixed(1)`, `currency`, `percent`) or a closure; a `bubble` mark carries area-mapped radii through the new engine `bubbleRadii` (which `resolveMarks` now uses on the web). What still warns by name on native: `dataZoom`, `brush`, `navigator`, `zoomPresets`. (8d1ff30)
+- Native option charts: a slider `dataZoom` under ECharts' grid now draws ECharts' own slider in the grid's bottom margin (the same ported strip the web draws, laid out from the option's box, with its drag overlay over it), instead of Pyreon's navigator band under a shrunk plot. A horizontal `legend.type: 'scroll'` on a cartesian chart now pages one row with the engine legend's pager instead of drawing every entry wrapped. (896d747)
+- `<ChartThemeProvider mode theme>` lowers on native as a compile-time theme scope. It was transparent: a dark-mode app rendered light charts on the phone, with a warning telling the author to theme every chart by hand. The emitter now resolves the provider — the literal mode's theme, the provider's literal `theme` fields over it, an outer provider's scope under both — while it emits the children, and every chart host without its own `theme` reads that scope; a chart's own `theme` still wins, the web's three layers in the web's order, byte-identical to giving each chart `theme={chartThemes.dark}` itself. What cannot be read at compile time is named: a reactive `mode` (an app's signal) or an absent one (the web follows the system scheme) — the light theme applies and the compiler says so once per provider. (8e098c3)
+- `theme` lowers on every `@pyreon/charts/plot` host natively. The plot and frame hosts resolved a named theme or a literal at compile time; the family hosts (treemap, sunburst, tree, river, sankey, graph, gantt, polar, calendar, parallel) and the accessor hosts (pie, funnel, radar) ignored it silently — the manifest claimed otherwise. Their chrome hardcoded the light theme's colours (and drew the title in the label grey, where the web draws it in the text colour), the tooltip box came from the default, the theme's palette never reached the options, and `theme.background` never painted. Now, on both targets, the title takes `text` / `titleSize`, the legend `label` / `fontSize`, the tooltip box `surface` / `grid` / `text`, an options struct with a `palette` gets the theme's as its default (an explicit palette in the options wins — the web host's merge), the pie's label size follows `fontSize`, and a non-empty `background` paints behind the chart (`.background(pyreonChartColor(…))` / a `Box` with the same modifier). A host without a theme emits as before except for the title colour, now the web's `#1f2937`. A non-literal theme is reported once per host and the default applies. (50a5cea)
+- Resolve static timeline steps for native `OptionChart` output and preserve nested configuration when timeline steps merge on every renderer, including indexed series merging and explicit diagnostics for invalid steps. (f2b1d43)
+- A series the option did not name no longer shows its generated "Series 1" in the default tooltip, on web and native. ECharts hides it: an item tooltip has no header, and an axis row has no name. A browser differential against real ECharts covers both cases, and the default trigger (item). (896d747)
+
+  On iOS and Android, an OptionChart bar, line or scatter chart and a funnel now show ECharts' default tooltip rows, as the pie already did. An item tooltip, the default trigger, shows the series under the tap. An axis tooltip shows a row per series. The new engine functions are `tooltipAxisCells`, `tooltipItemCells` and `funnelTipRowsWith`. A formatted tooltip keeps the plain lines, since native runs no formatter function.
+
+- `<PlotChart zoomPresets>` lowers natively. The preset strip is now an engine module (`presets.ts`: `renderPresets` / `presetHit` / `presetWindow` / `presetIsActive`) that the web host consumes — the strip it paints is byte-identical — and that generates into `PyreonChartEngine.swift/.kt`, so iOS and Android lay out and hit-test the same buttons. On native a tap on a preset writes the host's window (re-anchoring an active pinch when `dataZoom` is on too); presets bring the window state with them even without `dataZoom`. A non-literal `zoomPresets` value warns by name and renders the chart without the strip. (8d1ff30)
+- Lower static ECharts-shaped treemap, sunburst, tree, sankey, and graph `OptionChart` options through their native SwiftUI and Compose chart hosts. Native validation now uses an isolated Swift module cache and invalidates compiler verdicts when validator command flags change. (37e05d6)
+- Add backend-neutral repeating pattern fills for bar and area marks, rendered consistently by canvas, SVG, SwiftUI, and Compose. (f2b1d43)
+- `tooltip` on `<PlotChart>` (and `<Tip>` in the grammar) lowers on native — the last chrome prop that still warned "not lowered on native". It is a tap, as on the family hosts: the tap that selects binds the local hit once, reads the crossing `tooltipAt` / `tooltipLines` over the sliced series and categories (the chart's `format` applied), the box is drawn by the crossing `renderTooltip` over the theme, and a tap on nothing clears it. Under a window the select still maps the same local hit to the global index. A named `tooltipFormatter` lowers (its string split on newlines); an inline arrow is reported. `crosshair`, a hover concept, is now named as web-only instead of being dropped silently. (9a323c2)
+- `<PieChart>` and `<GaugeChart>` from `@pyreon/charts/plot` cross to native: PMTC lowers them to the new runtime `PyreonPieChart` / `PyreonGaugeChart` views (SwiftUI + Compose), drawn by the generated `PyreonChartEngine` — web and native render the same byte-locked geometry. Accessor props pass through as closures (the wrappers are generic over the row type, with `Number`/`Int` seams for integer columns), `data-testid` + a11y ride the special-emitter tail, and the decline paths warn by name (an `(d, index)` accessor, missing required props, the web-only legend/hit-testing surface). The charts manifest now declares `nativeFrontend`, so subpath imports of the web-only components (`PlotChart`, heatmap, candlestick) get the per-package advice instead of silence — the symbol-level warn table lookup is root-normalized (`@pyreon/charts/plot` matches the `@pyreon/charts` entry; the `/webview` bridge stays exempt). (f22774f)
+
+  The diagnose catalog teaches the unlowered-chart-tag error: `cannot find 'PieChart' in scope` / `Unresolved reference 'PlotChart'` now explains the radial decline paths and the web-only cartesian family, with the `<Web>`/webview remedies.
+
+- Right-to-left charts: `rtl` on `<PlotChart>` and every canvas host, and on the (7e489de)
+  static `chartToSvg` path.
+
+  RTL is implemented as a MIRROR of the finished draw list about the canvas's
+  vertical centreline rather than as a flag threaded through layout and every
+  mark. Mirroring about the CANVAS centreline (not the plot's) is what swaps the
+  gutters, so no layout code changes: a measured value-label gutter lands as a
+  right gutter of the same width. Bands run from the right, the legend's swatch
+  sits right of its label, and a line reads from the right — all of which are
+  the same fact, which is why one seam produces them together.
+
+  Text is repositioned, never reversed. What flips is the anchor, a rotated
+  label's angle, and a rect's corner radii.
+
+  Every pointer is mirrored back before it is hit tested, so a click, a hover,
+  the legend pager, the preset strip and a brush all still report the thing
+  under the finger. A chart that painted mirrored and reported unmirrored would
+  name the wrong bar in one locale only.
+
+  Native lowers through `pyreonMirrorCmds` in both runtimes, hand-written per
+  target for the same reason `pyreonShiftCmds` is (the draw command is a union
+  in TypeScript and a flat struct on native). All three implementations are
+  executed against the same commands and compared, so they cannot drift.
+
+  On native both halves live on the CHROME helper — `mirror` beside `tapX` —
+  so every host built through it (the plot, treemap, sankey, pie, polar, gantt,
+  radar, …) gets the paint and the pointer together rather than each emitter
+  remembering to take both. The three hosts whose emitters bypass the chrome
+  (gauge, candlestick, heatmap) name `rtl` as unlowered instead of dropping it,
+  and carry explicit prop lists so that adding a prop to the shared default can
+  never silently claim a host that does not read it.
+
+  Cost: the mirror is a static import of every canvas host, so a chart that
+  never sets `rtl` still carries it — measured +86 B gz on the pie import and
+  +31 B on the SVG one. That is the trade for `rtl` meaning the same thing on
+  every host: putting the mirror behind an opt-in import would make the prop
+  silently do nothing unless the consumer also imported the seam, which is the
+  typed-but-unimplemented shape this PR otherwise avoids.
+
+  Also closes two of the three limits this batch started with:
+
+  `<Histogram>` now crosses. It was named web-only because it is not a mark —
+  it REPLACES the plot's rows with bins — so the native form is that same
+  substitution expressed in the IR: the row basis becomes
+  `binValues(rows.map(x), bins)`, the category is the engine's own `binLabel`
+  (newly shared with the web `histogram()` helper, so the two cannot label a
+  bin differently), and the mark is an ordinary bar over `count`. Everything
+  downstream — tooltip, accessible table, selection — comes from paths that
+  already worked. Kotlin needed the channel widened through
+  `pyreonChartDouble`, which the Swift runtime already had and the Kotlin one
+  now does: PMTC types a bare `number` as Int, so an un-widened map is a
+  `List<Int>` that `binValues` refuses. kotlinc catches that; swiftc does not.
+
+  `locale` and `facet` stay web-only, and now say WHY rather than "not lowered
+  yet": `locale` formats through `Intl`, which the crossed engine cannot call,
+  and `facet` renders a grid of sub-plots rather than a chart setting. "Yet" is
+  the right word for work not done and the wrong word for a mechanism, because
+  a reader waits for a release that is never coming.
+
+- `@pyreon/charts/plot` grows the scale and mark vocabulary a production chart needs, in the engine so it crosses to iOS/Android: (74e9151)
+
+  - **Log y scale** (`yScale="log"` / `<Scale y="log">` / `<Axis y scale="log">`): every left-axis mark lays out in the log view, the axis draws real decades (with 2×/5× minors under two decades), non-positive values are gaps, bars grow from the axis floor; tooltip, table and value labels keep the real values.
+  - **Time y axis** (`yTime` / `<Scale y="time">`), the twin of `xTime`.
+  - **100% stacked bars** (`stackNormalize` / `<Scale normalize>`): each column drawn as shares over a `{0, 1}` domain labelled as percent; raw values stay on every read surface.
+  - **Waterfall** (`waterfall(y, { negativeColor })` / `<Bar waterfall>`): floating steps from running total to running total with dashed connectors, an entrance from each step's start level, hits by row.
+  - **Error bars** (`errorLow` / `errorHigh` accessors on `bars`, `line`, `area`, `points` and their grammar twins): capped whiskers through each datum, the bounds joining the domain.
+  - **Histogram** (`histogram(rows, x, { bins })` spread into `<PlotChart>`, or `<Histogram x bins>` in `<Plot>`) over the crossing `binValues` (nice-step edges, clamped extremes).
+  - **Axis titles** (`xTitle` / `yTitle` / `y2Title`, `<Axis title>`), each in its own gutter line, the y titles rotated along their axes.
+  - **Axis label thinning and rotation** (`xLabels`: `auto` slants overflowing category labels 45° and thins numeric ones; `rotate` / `thin` / `all` force one); the horizontal frame thins its category rows. The draw list's text command carries `rotate`, executed by the web canvas, the SVG serializer and both native canvases.
+  - **Locale** (`locale="de-DE"` on `<PlotChart>` / `<Plot>`): numbers and, under a time axis, dates format through `Intl` on every surface; an explicit `format` wins. Web only (Intl), named on native.
+  - **Facets** (`<Plot facet="region" facetColumns>`): small multiples in a grid, one titled panel per value, every panel sharing the y domain; a new value adds a panel, persisting values keep their panel.
+
+  Native: the spec switches (`yScale`, `yTime`, `stackNormalize`, the titles, `xLabels`) lower as literals on both targets through the generated engine, `<Scale>` / `<Axis title labels scale time>` desugar, the waterfall mark lowers, and error bars lower as a second per-row accessor pair (the bubble radius channel's shape); `<Histogram>`, `locale` and `facet` are named as web-only rather than dropped. The engine regenerates with `bin.ts` and compiles on the real toolchains.
+
+- **Every `@pyreon/charts/plot` host gets the interaction stack.** Seventeen hosts now share one canvas host (`canvas-host.tsx`): `showTitle` / `subtitle`, `showLegend`, `tooltip`, `animate` (an entrance tween honouring `prefers-reduced-motion`), the resize observer, the accessible table and the theme resolution are one implementation instead of seventeen copies — and Treemap, Sunburst, Tree, Sankey, Graph, River, Polar, Gantt, Calendar, Parallel, Map, Funnel, Pie, Radar, Boxplot, Heatmap and Candlestick all draw a title, a legend (where the family has named entries) and a pointer tooltip for the first time. Selection is uniform: every host carries `onSelectIndex` (the engine's index — what the native tap reports) beside its rich `onSelect`; `<RadarChart>` gains a hit test (`hitRadarIndex` → `{ series, axis }`) and so its first `onSelect`. (02255a2)
+
+  Bars are rounded by default: `theme.radius` (3) rounds the corners AWAY from the baseline on plain bars (top for positive, bottom for negative, right/left when horizontal); a mark's own `borderRadius` still wins; `radius: 0` restores square bars. Stacked and grouped segments keep only their mark radii.
+
+  `<PlotChart maxPoints>` thins the visible slice with LTTB on the first mark when it exceeds the cap (rows stay aligned across marks); hits, tooltips and selection report the GLOBAL index of the row actually drawn.
+
+  `bun run --filter=@pyreon/charts bench:engine` measures layout + render throughput of the engine itself (bars/line/area/points at 1k–100k, treemap, sankey, LTTB), with a command-count correctness gate.
+
+  Native: the compiler warns BY NAME for chrome props a target does not draw yet (`tooltip` / `animate` everywhere; `showTitle` / `showLegend` outside PlotChart / Pie / Radar) and for `maxPoints`, instead of dropping them silently; the rounded default crosses through the generated engine.
+
+- The static SVG helpers and the canvas hosts now read the same theme (c19fb0d)
+
+  `gaugeToSvg` drew its value arc `#0f766e`, its track `rgba(132,150,165,0.22)`
+  and its value text `#10161d`, while `<GaugeChart>` — same props, same default
+  theme — drew `theme.palette[0]` (`#4f7df3`), `theme.grid` and `theme.text`.
+  Three of three colours differed, so the SSR/static export of a chart did not
+  match the chart the browser drew. `radarToSvg` had the same shape on its rings.
+
+  Fifteen of the seventeen `*ToSvg` helpers also took no `theme` at all, and
+  eleven families defaulted their own label / grid / axis colours to fixed
+  light-mode literals on BOTH paths — `#334155` labels on a dark ground is
+  roughly 1.4:1 contrast, i.e. invisible.
+
+  Every helper now takes `theme`, and every family that draws chrome defaults
+  its colours from it on both the canvas host and the SVG twin; a per-family
+  option still wins. Labels drawn ON a coloured block (treemap, sunburst, river,
+  funnel, pie) keep their fixed white — that is a legibility choice, not a theme
+  value. Font sizes stay per-family: colour follows the theme, layout does not.
+
+  The native emitters get the same merge, generalised from `palette` alone to
+  the named theme fields, so a Compose/SwiftUI chart follows the system colour
+  scheme where it previously did not.
+
+  Graph and tree edges are themed too, and that one is a contrast bug rather than
+  a parity bug: `linkColor` defaulted to a hardcoded `#94a3b8` that no host ever
+  overrode, so both paths agreed and both were wrong on light. It reads 6.93:1 on
+  the dark ground and **2.56:1 on white** — under WCAG 1.4.11's 3:1 for non-text
+  contrast, on the DEFAULT theme. The value was clearly chosen for dark: it is
+  dark's own `label` (`#9aa5b5`) to within (6, 2, -3). So it now reads `label`,
+  dark is visually unchanged, and only light actually moves. A graph without
+  visible edges is a scatter plot, so this is the family's meaning, not its
+  chrome — which is also why it reads `label` (5.50:1 / 7.12:1) rather than
+  `axis`, whose 3.05:1 / 3.14:1 clears the bar only barely.
+
+- The chart theme swapped its palette and nothing else (52b0b60)
+
+  **The theme gains semantic and ramp slots, because `linkColor` was not the
+  whole class.** A sweep of every `options?.X ?? '<literal>'` colour default in
+  the engine, cross-checked against what the hosts actually feed, found seven
+  that no host feeds at all — so the constant always shipped:
+
+  |                                                               | on `#ffffff` | on `#141821` |
+  | ------------------------------------------------------------- | -----------: | -----------: |
+  | `calendar.emptyColor` / `geo.emptyColor` `#e2e8f0`            |       1.23:1 |  **14.41:1** |
+  | `candlestick.downColor` / `parallel.highlightColor` `#b42318` |       6.57:1 |   **2.70:1** |
+  | `candlestick.upColor` `#15803d`                               |       5.02:1 |       3.54:1 |
+  | `gantt.todayColor` `#dc2626`                                  |       4.83:1 |       3.68:1 |
+
+  Plus `HEAT_RAMP`, a module constant shared by heatmap, calendar and geo.
+
+  Measured on a real dark render, this is worse than low contrast — the chart
+  **inverts**. A dark calendar drew 40 empty cells at 14.41:1 and its
+  highest-value cell at 2.04:1, because a light→dark blue ramp loses contrast as
+  the value rises on a dark ground. Absence of data was the loudest mark on it.
+
+  So `ChartTheme` gains `positive`, `negative`, `muted` and `ramp`, both themes
+  get values, and the host sites feed them. `muted` cannot be one value for both
+  grounds: its job is to recede into `background`, which is definitionally
+  theme-relative.
+
+  Light is deliberately unchanged, with **one** exception worth naming rather
+  than burying. The new light values ARE the old constants, so no draw-list
+  golden moves — except gantt's today rule, which was `#dc2626` and is now
+  `negative` (`#b42318`, the down-candle red). Two near-identical reds collapsing
+  into one semantic token is the point of having the token, and the survivor is
+  the better of the two on white (6.57:1 vs 4.83:1); but it IS a visible change
+  on the light theme, and no golden renders a today rule, so nothing would have
+  told you.
+
+  Two native bugs fell out, both found by reading the emit rather than trusting a
+  green suite. `chartThemeFields`' list branch read `palette` unconditionally —
+  right while palette was the only list field, so a native calendar emitted the
+  ten-hue categorical palette as its four-stop value ramp. And its override loop
+  `continue`d on every list field, so `theme={{ ramp: [...] }}` was dropped in
+  silence; a literal now lowers and a non-literal warns by name.
+
+  The locks are invariants rather than values: a ramp must RISE in contrast
+  against its own ground (the shipped one fell, 16.32:1 → 2.04:1), `positive` and
+  `negative` must clear 3:1 there, and `muted` must stay under 1.5:1 while
+  remaining tellable from the ramp's floor. That last one failed on the first
+  draft of the dark values — `muted` and `ramp[0]` were 1.03:1 apart, so "no
+  data" and "zero" were indistinguishable — which is the test catching the
+  values, not the values passing the test.
+
+  The heatmap needed its own fix, because a FRAME host does not take its ramp
+  through `themeDefaults` — the emitters build that argument themselves, and both
+  hardwired `HEAT_RAMP_DEFAULT` there. So the inversion was still live on device
+  after the web half was fixed. Both now emit `pyreonTheme.ramp`, reading the
+  theme the emit already resolved one line above, which picks up a `theme` prop,
+  a `<ChartThemeProvider>` scope and the device's colour scheme at once. An
+  explicit `colors` prop still wins.
+
+- **`@pyreon/charts/plot` gets one theme.** `ChartTheme` is now a token map — `palette`, `background`, `surface`, `text`, `label`, `axis`, `grid`, `fontFamily`, `fontSize`, `titleSize`, `radius`, `enterMs`, `updateMs` — and every host, family, legend, title and tooltip reads from it. Series colours come from `theme.palette` (the nine private copies of one hex list are gone), so "change the series colours" is finally a theme. `chartThemes.light` / `chartThemes.dark` ship built in, `palettes` exports the named sets (`pyreon`, `pyreonDark`, `echarts6`, `echarts5`, `echartsDark`, `observable10`, `tableau10`, `okabeIto`, `tailwind`), and the new default palette is Pyreon's own. `<ChartThemeProvider mode theme>` provides a theme to every chart below it (`mode={useMode}` hands PyreonUI's mode through); with no provider a chart follows `prefers-color-scheme`. `registerTheme` accepts the same tokens (ECharts-shaped aliases still work). Breaking: `ChartTheme` gained required fields — a hand-built full `ChartTheme` needs them (a `Partial` on the `theme` prop is unchanged); the built-in `dark` registry theme is now Pyreon's dark theme, not ECharts'. (02255a2)
+
+  Also on `/plot`: `<BoxplotChart>` + `fiveNumber` and the `sma` / `ema` / `bollinger` / `trend` indicator marks were built and tested but never exported — they are now.
+
+  Native: the theme struct crosses with every field, `theme={{ palette: [...] }}` colours a plot's marks on iOS/Android, and `palette.ts` joins the generated engine.
+
+  PMTC lowers `readonly T[]` / `ReadonlyArray<T>` exactly like `T[]` (the theme palettes are `readonly string[]` end to end, so an `as const` palette typechecks as a theme override); `keyof` / `unique` types warn by name.
+
+- The framework-wide colour mode now reaches the rest of the framework. (d5a7c06)
+
+  - **`@pyreon/core`:** `useProvidedColorMode()` returns the mode an app explicitly set (`<PyreonUI mode>` / `<ColorModeProvider mode>`), or `undefined` when none did. It is for components whose own default is not "follow the system", so adopting the shared mode never flips them on a page that never asked.
+  - **`@pyreon/flow`:** with no `colorMode`, a flow takes the app's colour mode, and is still light when the app set none. An explicit `colorMode` still wins.
+  - **`@pyreon/code`:** an editor created without a `theme` follows the app's colour mode once mounted in `<CodeEditor>`, live. An explicit `theme` still wins, and with no app mode the default is still light.
+  - **`@pyreon/charts`:** `<OptionChart>` follows a mode the app set. With none, it keeps ECharts' own light look, and it still ignores the bare OS scheme, as ECharts does.
+  - **`@pyreon/zero`:** the theme now also declares the CSS `color-scheme` on `<html>`, beside `data-theme`, in `setTheme`, on setup and in the pre-paint script. Native form controls and scrollbars follow it, and so does the shared colour mode, so a zero theme toggle reaches charts, flow and the code editor with no wiring. **`themeScriptCspHash` changed with the script:** an app that pinned the old hash in its own `Content-Security-Policy` header must take the new value.
+  - **`@pyreon/native-compiler`:** `useColorMode()` lowers to the platform scheme read, exactly as `useColorScheme()` does.
+  - **`@pyreon/hooks`:** `useColorScheme()`'s docs point to `useColorMode()` for theming; it reads the OS only.
+
+- A literal `<ColorModeProvider mode="light" | "dark">` now pins the platform colour scheme for its subtree on iOS and Android. On iOS it adds SwiftUI's `.environment(\.colorScheme, …)`; on Android it provides a `LocalConfiguration` whose night bit is set. A component's own `useColorMode()` below it, and every system control, now agree with the pinned mode, as on the web; before, they read the device's setting. `'system'` and a reactive mode pin nothing. The Android build imports `android.content.res.Configuration` when the emit needs it. (d5a7c06)
+- Add `useCrashReporter()` — cross-platform crash capture, persistence, and rehydration. Captures uncaught errors (web `window.onerror`/`unhandledrejection`, iOS `NSSetUncaughtExceptionHandler`, Android `Thread.setDefaultUncaughtExceptionHandler` chaining to the previous handler), persists the report (localStorage / Application Support / app files dir), and rehydrates the previous session's report on the next launch — the credential-free half of crash reporting. The vendor transport (Sentry, a custom endpoint) is app-wired via `setCrashTransport` / `PyreonCrashTransportRegistry`, so the framework never fakes an upload. `useCrashReporter()` lowers to both native targets (SwiftUI + Compose); the Android factory self-installs a file-backed backend so the report survives the crash it reports. Signal crashes (iOS) and NDK crashes (Android) are disclosed out of v1 scope. (c4c2d52)
+- CRDT: a map handle on both native runtimes, so the ordinary `doc.getMap(name)` shape lowers (78b3423)
+
+  The web `CrdtDoc` hands you a `CrdtMap` you hold and call — `doc.getMap('room').set('title', v)`.
+  Both native runtimes only had the flat form, where the map name is a first argument
+  (`doc.set('room', 'title', v)`), and PMTC lowers these calls verbatim: shared source written
+  against the documented web API emitted a call to a `getMap` that did not exist, with **no
+  warning**, so the failure surfaced as a swiftc/kotlinc error inside a generated file rather
+  than as a diagnostic naming the call.
+
+  `PyreonCrdtMap` now exists on both runtimes with the full web surface — `get`, `set`, `has`,
+  `keys`, `observe` — plus `set` overloads for the scalar types, because `PyreonScalar` is a
+  sealed/enum type and requiring the wrapper at every call site would put platform constructors
+  into files that must also compile as TypeScript.
+
+  The validation stubs were a **subset** of the runtime they claim to mirror, which is the
+  inverse defect and just as costly: a narrower stub rejects correct emit. The Swift stub was
+  missing `has`/`keys`/`applyOps`/`encodeState`/`encodeMessage`/`applyMessage`/`onLocalOps`, and
+  the Kotlin stub was additionally missing `PyreonScalar.Null` — while its own comment already
+  claimed to mirror the surface. Both now do.
+
+  `CrdtDoc.transact` and `CrdtDoc.destroy` are still absent on native — but they no longer
+  fail silently. PMTC now WARNS by name when shared source calls a `CrdtDoc`/`CrdtMap` member
+  that has no native counterpart, saying what will happen (the call is reproduced verbatim, so
+  the native build fails on a method you never wrote in that language) and what to do instead.
+
+  The classification behind that warning is TOTAL over the web contract rather than a
+  hand-maintained list: a test parses `CrdtDoc`/`CrdtMap` out of `@pyreon/sync`'s own
+  `crdt/types.ts` and fails if any member is unclassified. A list checked in one direction rots
+  the moment the interface grows a member, and the rot is invisible — an unclassified member
+  simply never warns.
+
+  Also: `PyreonCrdtDoc.applyOps`'s `origin` parameter now defaults to `REMOTE_ORIGIN`, which its
+  own docblock has always claimed. It was required, so the documented call shape did not compile
+  — and that mattered beyond tidiness, because the native runtimes take `applyOps(ops)` with one
+  argument, so shared multiplatform source could not write a call valid on both platforms. Every
+  existing caller already passes the origin explicitly, so the default is purely additive.
+
+- PMTC: a `defineFeature` binding is now REACHABLE from the shared source that declares it (78b3423)
+
+  `const Todo = defineFeature({ name, schema })` lowered its DECLARATION on both
+  targets — a `Codable` struct plus `enum PyreonFeature_Todo` / `object
+PyreonFeature_Todo` carrying `name` and `initialValues` — and emitted nothing
+  called `Todo`. Since the only reason to declare a feature is to use it, every
+  real shared-source app failed to build on **both** platforms the moment it wrote
+  `Todo.name`: swiftc `cannot find 'Todo' in scope`, kotlinc `unresolved
+reference 'Todo'`, in a generated file the author never wrote.
+
+  The two sibling lowerings in the same emitter (`PyreonFieldMeta`,
+  `PyreonZodSchema`) have always emitted an alias under the source binding name.
+  The feature one did not. It now does: `let Todo = PyreonFeature_Todo.self`
+  (Swift) and `val Todo = PyreonFeature_Todo` (Kotlin).
+
+  It survived five green specs because every one of them asserts the emitted
+  DECLARATION and none ever writes the binding in a component body — and because
+  this test file made **zero** `swiftc`/`kotlinc` calls, so the whole
+  `@pyreon/feature` lowering had never been compiled by either toolchain. Both
+  halves are closed: the specs now reference the binding, and they compile the
+  result with the real compilers.
+
+  One limit is now DECLINED BY NAME rather than shipped broken. Swift and Kotlin
+  share a single namespace for types and values — unlike TypeScript, where
+  `interface Todo` and `const Todo` coexist — so a shared file declaring both a
+  feature binding and a TYPE of that name cannot emit both. Neither alias form
+  escapes it (a `typealias` and a value binding collide identically; both were
+  measured, which is why the value form is chosen for sibling symmetry and NOT
+  sold as collision-safe). The compiler now warns naming the binding and the
+  remedy instead of emitting a redeclaration error.
+
+- Flow: the edge geometry becomes crossable to Swift/Kotlin — markers split out, handle anchoring lifted into the PMTC subset, and two compiler misclassifications fixed (8637009)
+
+  Measured with the real PMTC transform, the geometry bundle went from **19
+  warnings on each target to 1** (the last is a dev-only diagnostic, which has no
+  native meaning). Three changes got it there:
+
+  - `edges.ts` was two things: pure geometry, and arrowhead resolution for the SVG
+    `<defs>` block. The second is web-only work and accounted for 8 of the 19
+    warnings on its own — it reaches for `typeof`, a regex, the `in` operator and
+    a `Map` with a non-scalar value. It now lives in `markers.ts`. No API change:
+    every symbol is still exported from the package root.
+
+  - `resolveHandleAnchor`'s two inner arrows are now top-level functions, and its
+    return type is the named `HandleAnchor` (newly exported). This is a bug fix,
+    not only a shape change: the native emit was **silently dropping** the spread
+    in `{ ...getHandlePosition(…), position }`, so the compiled geometry would
+    have returned an anchor with no coordinates, with no warning.
+
+  - Two PMTC classification fixes, each of which made a pure helper emit as a
+    view — whose top-level `if` statements are DROPPED, i.e. the logic gutted. A
+    parameter typed with a locally-declared string-literal union warned that its
+    props type was unresolvable (it lowers to a native enum, so it resolves
+    fine), and a helper whose last statement is `return null` was classified by
+    the value it returns when its return ANNOTATION had already stated its kind.
+
+- Expose Flow canvas labels to native accessibility APIs and add direct SwiftUI (cce5404)
+  and Compose device coverage for custom nodes, handles, resizing, edges,
+  backgrounds, and controls.
+
+  Measure intrinsic custom-node content in both native hosts so edge routing,
+  handles, hit targets, and node positioning use the rendered dimensions while
+  preserving explicit width and height precedence.
+
+  Match the web editor's hardware-keyboard model on SwiftUI and Compose: focused
+  nodes select with Enter/Space, move by 10 units with arrows (100 with Shift),
+  and the canvas handles configured deletion, Escape, select/copy/paste, and
+  undo/redo shortcuts.
+
+  Lower the reactive `nodeMap`, `edgeMap`, and `measurements` FlowInstance reads
+  to native lookup maps, including shared `size`, `get`, and `has` operations.
+
+- Carry Flow scroll, zoom, deletion-key, modifier-key, and scrolling-policy (cce5404)
+  configuration through shared-source compilation to both SwiftUI and Jetpack
+  Compose runtimes instead of silently replacing it with native defaults.
+- Lower Flow marker constants and the public marker resolution, ID, edge-pair, (cce5404)
+  and collection helpers to equivalent Swift and Kotlin implementations.
+- Close the remaining React Flow gaps on web, iOS and Android. (9e2d7e5)
+
+  - `getIntersectingNodes`, `isNodeIntersecting` and `getNodesBounds` on the flow instance.
+  - `connectionMode: 'strict' | 'loose'`. Under the default `'strict'`, a connection may start from either handle type and drops only on the opposite type; starting from a target handle builds the edge from source to target. Check any drop logic that assumed a drag always starts from a source handle. `'loose'` connects any handle to any other.
+  - `zIndex` on nodes and edges, plus `elevateNodesOnSelect` (default `true`) and `elevateEdgesOnSelect` (default `false`). **Behaviour change:** a selected node now draws above the nodes around it.
+  - The context-menu listeners (`onNodeContextMenu`, `onEdgeContextMenu`, `onPaneContextMenu`) and the hover listeners (`onNodeMouseEnter` / `Leave`, `onEdgeMouseEnter` / `Leave`). While a context-menu listener is registered, the browser's own menu is suppressed for that target. On iOS and Android the context menu opens on a long-press, and hover needs a pointer.
+  - Auto-pan while a node or a connection is dragged near the canvas edge: `autoPanOnNodeDrag`, `autoPanOnConnect` and `autoPanSpeed`. **Behaviour change:** it is on by default.
+  - The `<BaseEdge>`, `<EdgeText>` and `<ViewportPortal>` components, and the `EdgeComponentProps` type is now exported. `<BaseEdge>` and `<EdgeText>` lower natively. `<ViewportPortal>` is web-only; the compiler names it and drops it.
+
+- Lower `FlowWebView` to the native WebView bridge on iOS and Android, including the built-in host, live graph and command updates, reverse-channel callbacks, and static host styling. Add generated-host freshness and public-prop totality ratchets so the web and native contracts cannot silently drift. (8b8e2c3)
+- `useForm({ schema })` now wires the schema into the native form (a0c4cd7)
+
+  The schema DECLARATION always lowered — `zodSchema(z.object({…}))` emits a struct
+  / data class whose `parse()` enforces every captured constraint. Nothing
+  connected it to a form: `useForm({ schema })` dropped the option SILENTLY, so
+  `isValid` was true on native for input the web rejects.
+
+  Each schema now also emits a per-field `validateField`, reusing the same
+  constraint generator `parse()` uses, and a form naming that schema gets one
+  validator entry per string field. An explicit per-field `validators` entry still
+  wins. A `schema:` naming no visible declaration warns by name instead of
+  silently producing nothing.
+
+  Found by the iOS device gate — the first thing anywhere to run a schema-validated
+  form on a device.
+
+- The geo geometry crosses into the native engine (4e8a34d)
+
+  `geo.ts` is now the crossing half and `geo-web.ts` the web half, matching
+  `calendar.ts` / `calendar-web.ts` and for the same reasons. `geo-web.ts` keeps
+  exactly what cannot cross: GeoJSON's `Polygon | MultiPolygon` union (one field
+  at two array depths), the untyped `properties` bag, the runtime name registry,
+  and the record→list adapter.
+
+  Adding it to `ENGINE_FILES` was the verification, and it took eleven distinct
+  subset violations to get both toolchains compiling. They arrived in three
+  tiers, and no single gate found more than one tier:
+
+  **The generator** (it refuses any emit carrying warnings) caught a tuple return
+  (`geoDomain` → the `Domain` struct the engine already had), three ring walks
+  written `for (let i = 0, j = n - 1; i < n; j = i++)` — only the canonical count
+  loop lowers, so `ringArea`, `ringCentroid` and `pointInRing` would all have
+  generated as silently gutted functions — a spread inside a draw command
+  (`points: [...ring, ring[0]!]` reads as mixed element types and dropped the
+  whole polyline literal), and a `Record<string, Double>` parameter.
+
+  **swiftc / kotlinc** caught four the generator emitted CLEANLY: `NaN` and
+  `Infinity` are JS globals with no lowering that emit verbatim and produce
+  `cannot find 'NaN' in scope`; `colorRamp` is the web closure factory where the
+  crossing form is `rampColor(stops, t)`; `measureApprox()` likewise, where the
+  crossing default is `approxTextWidth`; two `T | null` locals have no contextual
+  type on either target; and a chained `a.y > py !== b.y > py` is a Swift parse
+  error, since `>` and `!==` share a non-associative precedence group.
+
+  **The native suite** caught the last, which compiled fine in isolation and only
+  broke OTHER families: `GeoValue { name, value }` is structurally a subset of
+  `TreeNode`, so a treemap literal started resolving to it. The field is `region`
+  now — distinct, and the better name.
+
+  Every fix came from a convention the engine already states: `heat.ts`'s header
+  names `rampColor` as the crossing form, `river.ts` and `treemap.ts` both say
+  "no Infinity sentinels", `gantt.ts` shows the measurer default, and
+  `indicator-values.ts` spells a gap `0.0 / 0.0`.
+
+  **Breaking**: `geoDomain` returns `Domain` rather than a tuple,
+  `GeoOptions.domain` takes one, and `renderGeo`/`geoDomain` take `GeoValue[]`
+  (`geoValues(record)` converts). Callers that lay out and render through
+  `layoutGeo` / `geoToSvg` / `<MapChart>` are unaffected; the surface exported
+  from `@pyreon/charts/plot` is the same symbols, now from two modules.
+
+  Engine: 296,834 → 308,306 bytes of generated Swift.
+
+- Add `useDeviceInfo` — describe the device from one call on web, iOS and Android. (1275e17)
+
+  `platform` needs no runtime on native: it lowers to a compile-time constant
+  per target. `model`, `osVersion`, `isTouch` and `screen` come from a
+  `PyreonDeviceInfo` runtime co-located in `@pyreon/hooks`, with the platform
+  queries behind an injected probe so the shape is testable with no UIKit, no
+  Android SDK and no device.
+
+  Two deliberate contracts:
+
+  **`model` and `osVersion` are empty strings on the web.** The browser cannot
+  answer them reliably — `navigator.platform` is deprecated, User-Agent Client
+  Hints are Chromium-only, and parsing the UA string is a well-known source of
+  answers that look right and rot as browsers change their strings. These are
+  the fields that end up in analytics and support tickets, where a plausible
+  wrong answer costs more than a missing one, so empty means "not knowable
+  here" rather than a guess. Branch on `platform()` before reading them.
+
+  **`screen` reads through on every access** instead of caching at
+  construction. A fold, a rotation or a Stage Manager resize moves it while the
+  app is live, and a value captured once would silently describe the old
+  geometry. Both native suites assert this by mutating the probe after
+  construction.
+
+- `<MapChart>` lowers to iOS and Android from a precomputed `GeoShape[]` (ae94355)
+
+  `<MapChart>` was the last `@pyreon/charts/plot` host with no native lowering,
+  and the recorded reason was a data shape rather than the geometry: GeoJSON's
+  `geometry` is a `Polygon | MultiPolygon` union whose `coordinates` are
+  `number[][][]` and `number[][][][]` — one field at two array depths, which the
+  native struct lowering correctly refuses to merge.
+
+  `map` now takes a third shape, `GeoShape[]`, which is that union already
+  normalised to rings — and that shape crosses. A `<MapChart map={SHAPES}
+values={{ A: 5 }}>` emits `layoutGeoShapes` / `renderGeo` / `hitGeoIndex` /
+  `geoTip` over the generated engine on both targets, with the tap, the tooltip
+  and the theme defaults every other family host already had. An inline `values`
+  record becomes the crossing `[GeoValue]` at compile time (the shape
+  `<CalendarChart values>` already used); a `GeoValue[]` passes through.
+
+  The two web-only `map` shapes — a `registerMap` name and a raw
+  FeatureCollection — now refuse BY NAME and say which shape does cross, instead
+  of the host declining wholesale. `geoShapes(json)` itself reads GeoJSON, so
+  shared multiplatform source passes a precomputed const and projects on the web
+  or in a build step.
+
+  Also fixed, and visible on the web too: a geo border defaults from the page
+  GROUND, and `background: ''` ("inherit the page") is the one theme field a
+  chart cannot paint with. The native emit resolved it to an empty colour;
+  `ChartThemeText` now carries a derived `pageGround` that resolves it to white,
+  so a native map's borders read `#ffffff` on light and `#141821` on dark —
+  the same values the web host computes.
+
+- Render native-safe geographic paths and point marks through `MapChart` on web, iOS, and Android. (f2b1d43)
+- Add cross-platform point-index selection for geographic overlays. (f2b1d43)
+- `@pyreon/a11y`'s `announce(...)` works on iOS + Android, and its native runtime is **co-located in the package** (`@pyreon/a11y/native/{swift,kotlin}/`) — the per-package architecture, not the monolithic `@pyreon/native-runtime-*`. (02c2bd9)
+
+  **Runtime (co-located) — `PyreonA11y`:**
+
+  - Swift: `announce(_:assertive:)` posts a VoiceOver announcement (`UIAccessibility.post(.announcement)`), raising the iOS 17+ speech priority when `assertive`.
+  - Kotlin: `announce(message, assertive)` routes to a registered announcer (`PyreonA11y.setAnnouncer { rootView.announceForAccessibility(it) }`), the "Android needs a host" seam — a safe no-op before wiring.
+
+  Ships in `@pyreon/a11y/native/`, declared via the `pyreon.native` field, so `pyreon-native wire` aggregates it from the installed package. The co-source verify gate (`scripts/check-native-cosource.ts`, wired into native-validate CI) compiles + smoke-runs it against the stub harness — the Kotlin announcer seam is asserted, the Swift wrapper typechecks.
+
+  **Lowering:** `announce("m")` → `PyreonA11y.announce("m", assertive: false)`; `announce("m", { politeness: 'assertive' })` → `assertive: true`. Message is any expression; a renamed import (`announce as say`) is handled. A new `announce-call` ExprIR kind is threaded through `parse` (gated on the `@pyreon/a11y` import) + both emits + the `expr-utils` walkers + `infer-type`.
+
+  The **DOM-based helpers stay web-only** — `VisuallyHidden` / `LiveRegion` / `SkipLink` / `createA11yId` still warn (per-export, `announce` excepted).
+
+  Proven R2 (emit) + R3 (typecheck vs the compiler's `PyreonA11y` stubs on swiftc + kotlinc); `native-a11y.test.ts` 7 cases + the co-source gate. Full native-compiler suite 2818 pass (fixing two tests that had encoded the old "announce warns" behavior). No device proof yet; `politeness` isn't distinguished on Android.
+
+- Add `useBluetooth` — BLE discovery on web, iOS and Android from one source (408b9b5)
+
+  `@pyreon/hooks` had no Bluetooth surface at all. This adds one that crosses:
+  a web implementation over `navigator.bluetooth`, a CoreBluetooth runtime, an
+  Android BLE runtime, and the lowering that connects them.
+
+  **Discovery only, deliberately.** GATT — services, characteristics, notify —
+  is where the three platforms stop resembling each other: Web Bluetooth
+  requires a user gesture per device and exposes no free-running scan at all,
+  while CoreBluetooth and Android BLE both scan continuously and model
+  connection state differently. Shipping discovery as a real 1:1 surface and
+  leaving connection to a native escape hatch is honest; pretending the whole
+  stack crosses would not be.
+
+  The one interaction difference that remains is documented rather than papered
+  over: on web, `scan()` opens the browser's chooser and resolves with a single
+  device, so `scanning` is true only while it is open. The reactive SHAPE is
+  identical on all three; the interaction model is the platform's.
+
+  **The contract both runtimes reproduce is first-seen order, deduped by id.**
+  BLE peripherals advertise continuously, so a duplicate sighting is the common
+  case rather than an edge one — a runtime that appended unconditionally would
+  flood the list while still passing a one-shot test. Asserted on all three
+  sides, and the FIRST sighting's name is the one kept.
+
+  Errors are state, not exceptions: a denied permission or a cancelled chooser
+  lands in `error()` and ends the scan, matching every other permission-shaped
+  hook here.
+
+  The runtimes take an injected scanner, so their ordering and state logic
+  compiles and RUNS with no radio and no SDK — both native test programs
+  execute in the co-source gate. The real `CoreBluetoothScanner` /
+  `AndroidBluetoothScanner` are device-verified rather than stub-verified,
+  because an approximated stub of a radio proves nothing.
+
+  `bt.scanning()` reads correctly on every target: Swift drops the parens (the
+  member is a stored property) and Kotlin resolves `.value`, so the web-correct
+  spelling compiles everywhere — the read-inversion `model()`'s state fields had.
+
+- `<Button variant>` lowers to iOS + Android (cce02b3)
+
+  The prop was documented (`primary | secondary | ghost | danger`, default
+  primary) and inert on both native targets, so a `danger` button rendered
+  identically to a confirm button — the case where the visual difference IS the
+  safeguard.
+
+  - **SwiftUI** — `.buttonStyle(.bordered)` / `.plain` /
+    `.borderedProminent` + `.tint(.red)`.
+  - **Compose** — the role selects the COMPOSABLE (`OutlinedButton` /
+    `TextButton`) rather than a modifier; `danger` keeps `Button` and overrides
+    its container colour via `ButtonDefaults.buttonColors(backgroundColor = …)`.
+
+  Material **2** spellings throughout (`backgroundColor`,
+  `MaterialTheme.colors`) — the emit's base is `androidx.compose.material.*`,
+  and the Material 3 names are the trap that already shipped once with
+  `<Heading>` typography. Pinned by a spec.
+
+  `primary` and an absent variant are byte-identical to the previous output. A
+  dynamic or unknown value warns and falls back rather than guessing.
+
+- Co-locate native runtimes into their own packages. (ed6518a)
+
+  The Swift/Kotlin runtimes for form, store, state-tree, machine, i18n, permissions,
+  and query move out of the `@pyreon/native-runtime-*` monolith into each package's
+  `native/{swift,kotlin}/` (declared via the `pyreon.native` package.json field,
+  aggregated by `pyreon-native wire`). Framework-base runtimes (reactivity/styling/JSON
+  helpers) stay in the monolith. A new `scripts/check-native-cosource.ts` gate compiles
+  and smoke-runs every co-located `.swift`/`.kt` against the stub harness so a relocated
+  runtime can't rot silently. No API change — this is a source-location move.
+
+- Co-locate the @pyreon/storage native runtime. (dfdb7f4)
+
+  Moves the storage-specific Swift/Kotlin runtimes (PyreonStorage,
+  PyreonSecureStorage + the Android impls) out of the monolith into
+  `@pyreon/storage/native/{swift,kotlin}`. `PyreonStorageBackends.kt` — the
+  shared persistence primitive (backend interface / registry / file backend /
+  codec, also used by PyreonCrashReporter) — deliberately STAYS in the base
+  monolith runtime; the co-located storage group references it via a new
+  `@base/<File>.kt` companion in the co-source gate.
+
+  Gate work (reusable for future batches): `verify-kotlin --files=<set>`
+  (per-service-group compile) + a companion-suppression filter that drops the
+  monolith companion append while keeping explicitly-listed `@base/` files;
+  `check-native-cosource` grows a `pyreon.native.kotlinServices` map (each group
+  compiles under one `--service` stub bundle) and a `@base/` prefix for
+  framework-base companions. The `PyreonSecureStorageAndroid` stub service now
+  also writes the compose-ui LocalContext stub so the whole storage graph
+  verifies as one group.
+
+  The six example apps whose shared source uses `useStorage`/`useSecureStorage`
+  (finance, router-demo, todomvc × android+ios) gain the co-located storage
+  source roots. No public API change — a native-source relocation.
+
+- `<OptionChart>` lowers `markLine` and `markPoint` on Swift and Kotlin: statistics (`average` / `max` / `min` / `median`), `coord`s (category names included), point-to-point pairs, colours and sizes resolve at compile time over the literal series; a mark the facade cannot place is named rather than dropped. (f2b1d43)
+- `<OptionChart>` on native: an ECharts radial gradient lowers to the radial mark gradient (it used to warn and degrade to a solid colour); the large-data keys `sampling` / `large` / `largeThreshold` / `progressive` / `progressiveThreshold` thin the literal rows at compile time through the web facade's own decimation, against the option's static `width` (or the web's 640 default), so the native chart carries the datums the web draws; an image pattern colour is named. Fixed: a negative literal datum (`data: [1, -2]`) made the whole option emit nothing — a unary minus over a numeric literal now reads as the literal it is. `PlotChart` marks accept `gradient.shape`. (dfc7231)
+
+  `<OptionChart>`'s `emphasis` / `select` / `blur` states lower to the mark's `focus` / `emphasisColor` / `selectColor` / `blurOpacity`, and `selectedMode` to the host's tap-to-pin state; state labels, symbol scale and whole-series selection are named. `PlotChart` marks accept the same four options.
+
+  The six pictorialBar geometry keys lower natively (`symbolOffset` through a new array-valued mark-option kind); percent strings and an unknown `symbolPosition` are named.
+
+  `<OptionChart option.graphic>` crosses: the elements are positioned at compile time through the web facade's own resolver and painted by the engine's `graphicDrawCommands` on both targets; a non-literal `graphic` is named rather than dropped.
+
+- `<OptionChart>` lowers a series' `label`: the `{a}`/`{b}`/`{c}`/`{d}` template resolves at compile time through the web facade's own resolver, so the native chart shows the strings the web shows, and the colour, size and rich styles cross with it. A FUNCTION formatter cannot run at compile time and is named rather than silently dropped. (a89478f)
+- `<OptionChart>` resolves a literal `dataset` at compile time with the web facade's own resolver: `source` / `dimensions` / `sourceHeader`, `datasetIndex` / `datasetId`, `encode` (x / y / itemName / seriesName / tooltip) and the built-in `filter` / `sort` transforms materialise the series data, the category axis and the tooltip extras on Swift and Kotlin. A registered transform is named as web-only. Marks carry `extras` into the engine's `Series`. (f2b1d43)
+- `createFlow` lowering: nothing silent inside the boundary. Every unported `FlowInstance` member and every signal write on a flow-state property now warns BY NAME (still emitted as written — the native build stays where it fails, but the author hears first); `fitView()` warns that no native host measures `containerSize` yet (it compiled and did nothing); node/edge literal fields the native types do not carry (`parentId`, `draggable`, `style`, `markerEnd`, `sourceHandle`, `waypoints`, …) and declaration-time non-literal `label`/`type` are named at declaration AND call site; the Swift emit uses the port's labeled parameters (`selectNode(id, additive:)`, `fitView(ids, padding:)` — positional emit was an iOS-only build break); and the Swift validation stub mirrors the runtime's real surface (stored `x`/`y`, node `type`/`width`/`height`, edge properties, `PyreonFlowContainerSize`) so valid reads like `getNode(id)?.position.x` are no longer rejected. One shared module (`flow-lowering.ts`) feeds the parser and both emitters. (e1161d6)
+- Kotlin validation runs on a warm, in-process compiler instead of one cold `kotlinc` per check. (2d2a0f5)
+
+  `validateKotlin` spawned `kotlinc` for every emit: a fresh JVM, the whole Compose stub file re-analysed, codegen to a throwaway directory — ~4s per check here, ~6s on a two-core CI runner, and ~600 checks per suite run. The compile-verdict cache could not absorb it because any stub edit legitimately invalidates every Kotlin verdict, and the stubs change most days.
+
+  Now one compiler JVM serves the whole run (`K2JVMCompiler` kept loaded, the stubs compiled once into a jar on the classpath), fed through a spool directory so the synchronous validator can wait on it; a vitest `globalSetup` starts it once per run and workers attach by pid. Measured: ~78ms per check warm against 4.2s cold; the Kotlin share of a seven-file serial run went from ~36s to ~4s. Every failure — no `java`, no compiler jar beside `kotlinc`, a JVM that never reports ready, a request past the compile timeout — falls back to the per-check `kotlinc` path, so the verdict is never a second source of truth: a parity spec compiles the same shapes both ways and asserts identical outcomes and diagnostics. `PYREON_KOTLIN_DAEMON=0` forces the plain path.
+
+- Lower `useDebouncedValue` — a debounced field never updated on device (f0146a8)
+
+  The call emitted verbatim, so a debounced search field compiled clean and
+  never updated.
+
+  The web contract was **measured before this emit was written**, because
+  "leading or trailing edge?" is exactly the question two native ports would
+  answer the same wrong way and agree with each other. Four properties, all
+  now asserted on the web side:
+
+  - the value is available IMMEDIATELY — no first-delay gap
+  - updates are TRAILING-edge
+  - a burst collapses to the LAST value
+  - the timer RESTARTS on each change rather than firing on a fixed cadence
+
+  That last one is what makes the lowering exact rather than approximate:
+  `.task(id:)` and `LaunchedEffect(key)` both cancel and restart when their key
+  changes, which IS a restarting trailing-edge debounce. No runtime, no stored
+  timer handle.
+
+  Two details that took a compile to find:
+
+  - The seed comes from the SOURCE SIGNAL's own initial, not the source
+    property. A `@State` initializer runs before `self` exists, so
+    `@State var d = query` is "cannot use instance member within property
+    initializer" — and a type-default seed would leave the field empty for the
+    whole delay on every mount, which the measured immediate-seed contract
+    forbids.
+  - The element type is inferred at EMIT time, where the component's inference
+    context knows the source signal's type. Parse-time inference produced
+    `Any`, which breaks every use site.
+
+  The Swift stubs gained the id-keyed `task` overload — without it the stub
+  matched the un-keyed one and reported "extra trailing closure", rejecting a
+  correct emit. That is the stub-narrower-than-reality trap again.
+
+  Non-literal delays and block-body getters decline by name.
+
+  Note: the `kotlinx.coroutines.delay` stub and its conditional import also
+  appear in the `useInterval`/`useTimeout` PR. Either merge order resolves
+  trivially — both add the same three lines.
+
+- Lower dynamic `useQuery` to native (SwiftUI + Compose). The v1 emit only crossed a STATIC queryKey + an inline `fetch('<url-literal>')` queryFn; this closes the common real-app shapes: (8b49de2)
+
+  - **Runtime `queryKey`** — a `queryKey` array with non-literal parts (`['user', userId]`, `['k', id()]`) now builds a RUNTIME cache key. SwiftUI's `@State` default can't reference another property (a prop/signal), so the query constructs KEYLESS and is re-keyed in the async harness via a new `PyreonQuery.setKey(_:)`, with the harness KEYED on the computed string (`.task(id:)` / `LaunchedEffect(key)`) so a key change re-keys the cache and re-fetches — matching the web's reactive queryKey.
+  - **Templated fetch URL** — `queryFn: () => fetch(`/users/${userId}`)` emits native string interpolation inside the harness (`self`/params in scope), through `URLSession`/`readText` or PyreonHttp exactly as the literal path does.
+  - **Direct-value queryFn** — `() => <expr>` / `async () => <expr>` (no fetch, no await) resolves the computed value directly (no URLSession/decode).
+
+  Both backends emit byte-identical shapes and typecheck against real `swiftc`/`kotlinc`. Static literal-key queries are unchanged (byte-identical `.task {}` / `LaunchedEffect(Unit)`). Anything still beyond scope — a non-array queryKey, a `fetch(<call-expression>)` URL, an `await`/multi-statement direct-value body, a function-reference queryFn — stays a NAMED warning rather than mis-lowering.
+
+- `@pyreon/flow` starts crossing to native (iOS + Android) — the state engine (9b1f957)
+  and the edge-drawing runtime.
+
+  `const flow = createFlow({ nodes: [...], edges: [...] })` in shared `.tsx`
+  (v1: literal node/edge config) now compiles to the `@Observable`/`remember`
+  PyreonFlowState engine — node/edge CRUD, selection, pan/zoom/fitView, and
+  graph queries (getConnectedEdges/getIncomers/getOutgoers), mutated from
+  native event handlers with the SAME method names the web `FlowInstance`
+  uses.
+
+  - **The row struct is synthesized from the first node's `data` literal**
+    (every node must share one field set, the same uniform-row assumption
+    `createTableState` makes about its rows) via the shared
+    `synthLiteralStructName` registry — the SAME name every OTHER object
+    literal in the file resolves through, so `flow.addNode({...})`'s literal
+    argument constructs the real `PyreonFlowNode<Row>`, not a synthesized
+    lookalike struct (Swift/Kotlin are both NOMINALLY typed, so a
+    structurally-identical-but-differently-named struct does not typecheck).
+  - Use-sites: `flow.nodes()`/`.edges()`/`.viewport()`/`.zoom()` drop parens
+    (property reads, matching the underlying Signal/Computed); `addNode`/
+    `addEdge`/`removeNode`/`selectNode`/… flow through as methods with the
+    SAME names.
+  - **`createFlow` owns its data** (unlike `createTableState`, which wraps an
+    external reactive source) — nodes/edges seed once from literal config and
+    mutate through the instance's own methods, so the Swift emit needs no
+    `.onAppear` wiring dance; it is a fully self-contained `@State`
+    initializer.
+  - **`PyreonFlowEdgeCanvas`** (SwiftUI `Canvas` / Compose `Canvas`) draws the
+    built-in edge path geometry — bezier / smoothstep / straight / step /
+    waypoint all reduce to a closed 4-command vocabulary (`move`/`line`/
+    `cubic`/`quad`, the new `EdgeSegment` union in `types.ts`, additive
+    alongside the existing SVG `path` string with zero web behavior change) —
+    from hand-written native code. It is reusable runtime infrastructure, not
+    yet auto-wired from `<Flow>` JSX.
+  - **The `<Flow>`/`<Background>`/`<Controls>`/`<MiniMap>`/`<Handle>`/
+    `<NodeToolbar>`/`<NodeResizer>`/`<Panel>` JSX components, `useFlow`,
+    `computeLayout`, and the edge-path helper functions have NO native emit
+    yet** — importing them from shared native source now gets a loud,
+    per-symbol compiler warning naming `PyreonFlowState`/`PyreonFlowEdgeCanvas`
+    (hand-wire natively) or the `@pyreon/flow/webview` bridge (the full
+    JSX-driven editor) as the fix, instead of silently emitting a reference to
+    a Swift/Kotlin type that does not exist.
+  - `@pyreon/flow` declares a `nativeFrontend` and leaves the derived
+    `WEB_ONLY_PACKAGES` set.
+
+  Verified: the real emit type-checks against the real SwiftUI SDK + compiles
+  and RUNS against the real `@Observable`/`Compose` ports on macOS (bisect-
+  verified — reverting either the row-struct-registration fix or the
+  struct-literal call-site rewrite reproduces the exact compile failure this
+  PR closes), and both targets validate against the compiler stubs. The
+  co-located native sources pass `check-native-cosource` in isolation (no
+  implicit dependency on `@pyreon/charts`' runtime, even though both end up in
+  the same app-level Swift module — an app depending on `@pyreon/flow` alone
+  must not need `@pyreon/charts` linked).
+
+  v1 scope, matching the discipline `createTableState`/`useSortable` set: not
+  yet ported — `updateNode` (partial merge, no faithful Swift shape without a
+  builder closure), `isValidConnection`, bulk `selectNodes`, `layout()` (the
+  separate layout-engine crossing — a follow-up mirroring the charts
+  engine-bundle-generator tooling), `undo`/`redo`/`pushHistory`,
+  `copySelected`/`paste`, `moveSelectedNodes`/snap-lines (tied to the native
+  gesture layer — pan/zoom/drag/connect — the next, most uncertain phase),
+  sub-flow/group queries.
+
+- PMTC: a mixed String/non-String `+` now concatenates on both native targets. (cbb7c29)
+
+  JS `+` where either operand is a string is string concatenation (`"count: " + 5 === "count: 5"`), but native has no such implicit coercion, so a shared `.tsx` using this everyday shape failed to compile. `"count: " + n()` emitted Swift `"count: " + n` → _binary operator '+' cannot be applied to operands of type 'String' and 'Int'_; the mirror `n() + " items"` failed the same way. Kotlin's `String.plus(Any?)` coerced a right-hand non-string so `"count: " + n` happened to compile there, but the left-hand form (`Int.plus(String)`) had no candidate and failed — so the two targets diverged and one whole idiomatic concat shape was uncompilable.
+
+  `inferType` already types a string-concat `+` as `string`; only the emit lacked the coercion. Both backends now coerce each concrete non-string operand of a string-concat `+` — Swift `String(...)` (Int/Double/Bool conform to `LosslessStringConvertible`), Kotlin `(...).toString()` — regardless of operand order. A purely numeric `+` is untouched (arithmetic handling unchanged), and a `string + <unknown>` leaves the unknown operand alone.
+
+- PMTC now lowers `@pyreon/http`'s endpoint DSL onto the existing PyreonFetch machinery: a same-file `const api = createHttp({ baseUrl })` + `const getUser = api.endpoint('GET /users/:id')` lets `useFetch<T>(getUser({ params: { id: '1' } }))` resolve at compile time to a concrete templated URL + method, emitting identically to `useFetch<T>('/api/users/1', { method: 'GET' })` on both targets. Literal params only — reactive params, a computed baseUrl, and the `.query()` fetcher form warn and stay web. No new emit/IR/stub; `createHttp`/`.endpoint` are metadata and emit nothing. `@pyreon/http`'s manifest declares the `nativeFrontend` (partial crossing). (d873013)
+- Fix two silent defects in PMTC's `@pyreon/http` endpoint lowering. (5a31e4e)
+
+  **The same source file no longer produces different URLs per platform.** The
+  native path substituted `:params` and assembled query pairs raw, while the web
+  runtime encodes both — so `getUser({ params: { id: 'a b' } })` requested
+  `/users/a%20b` on the web and `/users/a b` on iOS/Android, with no diagnostic. A
+  literal containing `#` truncated the URL at the fragment, and `?` / `&` injected
+  query structure into a path segment. Because the native path only ever
+  substitutes LITERALS, encoding now happens at COMPILE time and costs nothing at
+  runtime: the emitted URL is a fully-encoded constant.
+
+  The encoders are the web's own primitives rather than a re-implementation —
+  `encodeURIComponent` for a path segment, a real `URLSearchParams` for the query
+  — so the two positions stay correctly DIFFERENT (a space is `%20` in a path and
+  `+` in a query) and equality holds by construction. A differential test asserts
+  the baked URL is byte-identical to what `@pyreon/http`'s own `buildUrl` returns,
+  across space / `#` / `?` / `&` / `+` / `/` / non-ASCII / `$'`. Path substitution
+  also moved to a function replacement: `String.replace` interprets `$&` / `` $` ``
+  / `$'` / `$$` in a string replacement, so `id: "$'"` previously emitted
+  `/users/` with the id gone entirely.
+
+  **Options are lowered or named, never dropped.** `resolveEndpointParts` read
+  only `params` and `query`, so `createUser({ json: {…} })` emitted a POST with no
+  body and no warning. A literal `json` now lowers to the request body plus a
+  `content-type: application/json` the caller can override, and `headers` lower
+  from both the call and the endpoint declaration (a per-call object replaces the
+  declared one, matching the web). `signal` / `timeout` / `meta`, a non-literal
+  body or header, an unreadable spread, and unhonourable declaration options
+  (`timeout`, `throwHttpErrors: false`) each warn by name. Both lower onto fields
+  the fetch/query IR already carried, so there is no emit, IR or stub change.
+
+- feat(native): sma, ema and trend lower to iOS and Android (33388e8)
+
+  The three indicator overlays cross into the native chart engine — `sma`, `ema`
+  and `trend` emit real Swift and Kotlin rather than staying web-only, so a
+  multiplatform chart carries the same indicator set as its web sibling. Charts'
+  `engine/a11y.ts` gained the matching descriptions.
+
+  (Recovered entry: this work shipped in #3403 with an EMPTY changeset, which the
+  Changeset gate accepted because it counted activity by path with the content
+  unread — so the feature had no CHANGELOG line at all. The gate now rejects a
+  changeset that declares no package.)
+
+- Lower `useInterval` and `useTimeout` — a ticking clock did nothing on device (06c618f)
+
+  Both are pure timing over a callback, with no platform capability behind
+  them. Neither lowered: they are called at STATEMENT position, and the
+  component walker's bare-statement arm DROPPED them. So a ticking clock or a
+  delayed action compiled clean and did nothing on device.
+
+  They lower to the idiom that already carries each target's
+  auto-cancellation — SwiftUI's `.task`, Compose's `LaunchedEffect(Unit)` —
+  which is what reproduces the web hooks' `onUnmount` cleanup with no runtime
+  and no stored handle.
+
+  Two details that are load-bearing rather than stylistic:
+
+  - The Swift interval loop consults `Task.isCancelled` instead of `while
+true`. A cancelled sleep returns immediately, so an unguarded loop would
+    SPIN rather than stop.
+  - The `.task` attaches to the ZStack-wrapped body, not a transparent Group.
+    A modifier on a Group is redistributed onto the conditional branches inside
+    it, so it would be cancelled and restarted on every state flip — the
+    device-found bug the fetch harness already guards against.
+
+  What cannot be baked declines BY NAME: a `null` (paused) delay, a reactive
+  getter delay, and a non-inline callback. Silently treating a paused timer as
+  a running one would be worse than declining it.
+
+  `delay` is emitted unqualified, because the Kotlin stub file is a single
+  default-package unit and cannot declare `package kotlinx.coroutines`. The
+  real build gets it from a conditional import in `@pyreon/native-cli`, with
+  specs in both directions — without that, the device build would fail on
+  `unresolved reference 'delay'` while the stub gate stayed green.
+
+- feat(native): `JSON.stringify(x)` lowers to native serialization (1abcaef)
+
+  `JSON.stringify(x)` — the SAFE half of the JSON gap — now lowers to SwiftUI + Compose instead of warning: Swift `String(data: try! JSONEncoder().encode(x), encoding: .utf8) ?? ""`, Kotlin `Json.encodeToString(x)`. Emitted structs are already `Codable` / `@Serializable`, and scalars/arrays conform too, so serialization has a target on both platforms; `try!` is safe because a Codable value never throws on encode. The native-cli adds `import kotlinx.serialization.encodeToString` for the real device build (the kotlinc stub fakes it as a `Json` member, so the validate gate passed without it — the classic stub-masks-a-missing-import case).
+
+  `JSON.parse` still emits a named warning: it throws on malformed input, which needs a native error model (`try`/`throw` lowering) PMTC does not carry yet — a tracked follow-up. Decode typed API responses via `useFetch<T>` instead.
+
+  Verified end-to-end against real swiftc + kotlinc (object and array-of-structs); bisect-verified.
+
+- `<PlotChart onLegendChange>` now lowers to iOS and Android. (7b1351b)
+
+  The native legend toggle already held the hidden-series set; this was the
+  observer half, and the smallest of the five plot props that were waiting on
+  host state. Both emitters route the toggled set through a local before the
+  state write, so the handler receives the value the state settles on rather
+  than re-reading `@State` / `mutableStateOf` inside the closure that wrote it.
+
+  Also fixes the lookup that found it: chart event attrs were matched
+  case-sensitively, and the parser lowercases them — so `onLegendChange` arrived
+  as `legendchange` and silently returned undefined. Every event matched before
+  was a single word, so the casing had never shown.
+
+- Lower reactive `Map`/`Set` signals to native collections (iOS + Android). (cbb7c29)
+
+  `signal(new Set<string>())` / `signal(new Map<string, number>())` previously
+  inferred to `Any`, so every read (`.size`/`.has`/`.get`) passed through
+  verbatim and failed swiftc/kotlinc. The signal-declaration type path
+  (`inferTypeFromInitial`) now maps a `new-collection` initializer to the
+  `set`/`map` TypeIR the type mapper and the already-wired Map/Set method
+  vocabulary consume, so the annotation and its reads agree on one native
+  collection type — `@State private var seen: Set<String>` (Swift) /
+  `mutableStateOf(mutableSetOf<String>())` (Kotlin).
+
+  v1 scope (scalar element/key/value — number/string/boolean): reads
+  (`.size`→`.count`, `.has`→`.contains`/`.containsKey`, `.get`→`map[k]`),
+  construction (`new Set<T>()`, `new Set([...])`, `new Map<K,V>()`), and the
+  mutation vocabulary (`.add`/`.delete`/`.set`/`.clear`) all type-check on both
+  real toolchains. Non-scalar element/key/value types (`Set<{...}>`,
+  `Map<string, {...}>`) and seeded `new Map([...])` now WARN by name instead of
+  silently mis-emitting uncompilable native code (a non-scalar Swift `Set`
+  element is a hard `does not conform to Hashable` error).
+
+- Nested anonymous-object literals now synthesize nested structs/data-classes on both native targets. A nested object field (`signal({ name, meta: { … } })`) or an array of nested objects previously degraded the outer object to `Any` on Swift / an invalid tuple on Kotlin; each all-scalar-leaf level now gets its own synthesized struct named `Parent` + capitalized-field (e.g. `CProfile` + `meta` → `CProfileMeta`), so the whole shape compiles. (70f069f)
+- A literal `<OptionChart>` cartesian option now crosses to iOS and Android as the web facade compiled it. The spec fields ride the lowered chart: ECharts' default grid and its label containment, the axis label, line, tick and split-line rules, `onZero`, and the value-axis tick settings. So do the series fields: smoothing, `connectNulls`, area fills, label placement and the default symbols. The two targets read one interpretation of the option instead of two that drift. When the facade reads a key, the native lowering stops warning about it; an `axisLabel.formatter` (which cannot run at compile time) is still named. (896d747)
+
+  Fixed on the way:
+
+  - A native option series with a `null` datum now draws the gap instead of dropping the whole chart.
+  - A negative number (`-2`) no longer makes an option read as non-literal.
+  - A cartesian column with an integral first value and a fractional later one (`data: [1, 2.5]`) now compiles. Its rows had split into two struct types.
+
+- A literal `<OptionChart>` funnel, treemap, sankey or sunburst now sits on iOS and Android where ECharts places it: a funnel in its 80 / 60 margins, a treemap in 10%, a sankey in its 5% / 20% box, a sunburst at a 75% radius, all under the series' own box keys and `center`. Before, it filled the native canvas. The host renders into the frame the web computes, resolved at the device's size, and taps are mapped into it. A non-literal option can't be framed at compile time, so its box keys are named in a warning instead of dropped. (896d747)
+- A literal `<OptionChart>` pie or gauge now draws on iOS and Android as the web compiled it. (896d747)
+
+  - **Pie:** ECharts' arcs (start angle, direction, rose, minimum and pad angles), its outside labels with guide lines and overlap avoidance, and per-datum colours all cross. Taps and tooltips hit the same laid-out arcs.
+  - **Gauge:** the whole ECharts dial crosses: colour bands, ticks, split lines, axis labels, pointer, anchor, titles and the formatted detail. Before, native drew a half-circle track.
+
+  Placement (`center`, `radius` and the box keys) now resolves through a new engine module, `frame`, at the device's own size. The web uses the same function, so the two targets place a chart identically. `renderDial` takes an optional palette, and the new `renderDialIn`, `pieHitWith` and `pieTipWith` are shared by web and native.
+
+- PMTC: a mixed Int/Double conditional (`cond ? 1 : 2.5`) now unifies to Double on both native targets — the ternary was typed by its `then` branch alone, so Swift annotated the computed `Int` while its value was `Double` and swiftc rejected it. The Int-typed branch is coerced (`Double(n)` / `(n).toDouble()`) so a non-literal Int branch compiles too. (ce75e18)
+- Lower `useToggle` and `useCounter` — pure state needed a lowering, not a runtime (408b9b5)
+
+  Both are pure state containers: a signal plus a few mutators, with no platform
+  dependency at all. Neither lowered, so the call emitted verbatim and the native
+  build failed with `cannot find 'useToggle' in scope`.
+
+  That is the shape of most of the unlowered hook surface. Of `@pyreon/hooks`'
+  56 exported hooks, 22 lower; roughly a dozen of the remainder are logic both
+  targets already have (`usePrevious`, `useDebouncedValue`, `useInterval`,
+  `useTimeAgo`, …). This closes the first two and establishes the pattern.
+
+  The state becomes a plain `@State` / `mutableStateOf` field and every mutator
+  is rewritten at its USE SITE into the arithmetic it stands for — no runtime,
+  no wrapper type, and `useCounter`'s clamp visible in the emitted output. The
+  clamp expression is written once and shared by both emitters, because a
+  counter that clamped differently per platform is precisely the divergence a
+  shared helper prevents.
+
+  Values that cannot be baked in decline BY NAME rather than silently dropping:
+  a non-literal initial value, and — the one that matters — a non-literal bound,
+  which would otherwise emit a counter that simply stopped clamping on device.
+
+  Measured against the web rather than between the two targets: the web arm in
+  `@pyreon/hooks` pins the semantics both emits reproduce, including the subtle
+  one — `reset()` restores the CLAMPED initial, not the raw argument, so an
+  out-of-bounds seed cannot reappear. Both emits compile on real `swiftc` and
+  `kotlinc`.
+
+- Lower `useDebouncedCallback` and `useThrottledCallback` (290a386)
+
+  Both emitted verbatim, so a debounced save or a throttled scroll handler
+  compiled clean and never fired on device.
+
+  Unlike `useDebouncedValue`, these need a **runtime**: they return a callable
+  carrying `.cancel()` / `.flush()`, so there is a handle a caller reaches and a
+  latest-args slot to hold. A `.task(id:)` has no identity to offer. This adds
+  `PyreonRateLimit` — co-located in `@pyreon/hooks/native`, on both platforms.
+
+  **The edges are the contract, and were measured on the web before either port
+  existed** — two native ports would otherwise agree with each other on the
+  wrong ones:
+
+  - debounce → **no** leading edge; nothing fires until the caller goes quiet
+  - throttle → leading edge **and** a trailing one, carrying the latest args
+
+  Three design decisions worth stating:
+
+  - **Throttle is modelled as a WINDOW, not a clock.** The web compares
+    `Date.now()` against the last invocation; porting that would make the
+    runtime either untestable without real waiting or dependent on a fake clock
+    whose advance rate is its own source of divergence. A window is observably
+    identical and needs neither.
+  - **The scheduler is injected**, so both state machines are exercised
+    synchronously with no real clock. Both native test programs RUN in the
+    co-source gate. A timing test that actually sleeps is a timing test that
+    eventually flakes on a loaded runner.
+  - **Swift attaches the action post-init.** A `@State` initializer runs before
+    `self` exists, so a closure capturing sibling state cannot be passed to
+    `init` — the emit binds it in `.onAppear`, the same late attachment
+    `PyreonForm`'s `onSubmit` already uses.
+
+  Kotlin's default scheduler is a `java.util.Timer` task rather than a
+  `CoroutineScope`: a scope handed to a long-lived limiter either outlives the
+  composable that made it or is cancelled under it, and a Timer task is
+  cancellable by token with neither hazard.
+
+  A multi-argument callback declines BY NAME — the runtime carries one, and
+  silently dropping the rest would produce a callback that runs with the wrong
+  data rather than one that visibly does not run.
+
+- Lower two-element responsive style arrays on iOS and Android (eed8fe9)
+
+  `style={{ padding: [8, 16] }}` — unistyle's mobile-first idiom — previously
+  refused on the native targets, so a responsive web layout had to be rewritten
+  with an explicit `useSizeClass()` branch to cross. It now lowers directly:
+
+  - **iOS** — `.padding((pyreonSizeClass == .regular ? 16 : 8))`, with the
+    `@Environment(\.horizontalSizeClass)` injection the conditional needs.
+  - **Android** — `Modifier.padding((if (LocalConfiguration.current.screenWidthDp >= 600) 16 else 8).dp)`,
+    the same 600dp boundary `useSizeClass()` already uses.
+
+  Exactly two elements, because that is the only length that maps losslessly:
+  native resolves two size classes, not N breakpoints, so a three-element
+  array's middle band spans both and collapsing it would silently pick a wrong
+  value for part of its range. Longer arrays keep the existing refusal and its
+  diagnostic.
+
+- fix(native): a dropped inline router guard now warns by name instead of vanishing silently (27bffa7)
+
+  A global router guard written inline — `createRouter({ beforeEach: [(to) => isAuthed()] })` — is not lowered to native (closure-emit is a tracked follow-up; only a NAMED function reference `beforeEach: [authGuard]` lowers today). Until now it was dropped **silently**, which is the worst failure mode for a guard: the navigation ships **ungated** on iOS/Android with no signal — a security foot-gun. It now emits a named warning pointing at the named-function fix, upholding the compiler's invariant that outside the lowered subset the failure mode is a named warning, never a silent drop. This closes the last enumerated silent-drop shape in the router surface.
+
+- Lower `@pyreon/rx`'s standalone transforms, not just the `rx.*` namespace (35bd5ae)
+
+  `import { filter, map } from '@pyreon/rx'` emitted itself verbatim and failed
+  the native build with `cannot find 'map' in scope`. Only the namespace form
+  (`rx.map(src, fn)`) lowered — and rx's own manifest reaches for the standalone
+  form **43 times** against 5 for the namespace, so the documented, dominant
+  idiom was the broken one.
+
+  The two are structurally identical — both source-first, `map(src, fn)` vs
+  `rx.map(src, fn)` — so the recognizer only had to accept the second callee
+  shape. It resolves through the IMPORT, never the bare name: `map`, `filter`
+  and `first` are names a user is overwhelmingly likely to have of their own,
+  and claiming them would silently rewrite their code. Aliased imports
+  (`map as project`) resolve; a user's own `map` is untouched.
+
+  `pipe()` deliberately does NOT lower, and declines by name. The natural emit
+  is an immediately-applied closure per stage, which discards the parameter's
+  type — compiled against both real toolchains it fails on each (Swift "value of
+  type 'Any' has no member 'count'", Kotlin "cannot infer type for type
+  parameter 'T'"). Inlining each stage by substituting its parameter would fix
+  it and is the follow-up; shipping the closure form meanwhile would have
+  emitted code that does not build. The transforms `pipe` composes DO lower, so
+  the advice names a real alternative rather than an escape hatch.
+
+  The emitted transforms are verified against real `swiftc` and `kotlinc`.
+
+  ## `unique()` returned an arbitrary order on iOS
+
+  Swift emitted `Array(Set(_:))`, whose comment claimed it matched rx's "set of
+  unique values" semantic. Measured, rx returns **first-occurrence order**
+  (`[3,1,2,3,4]` → `[3,1,2,4]`), and Kotlin's `distinct()` preserves it — so
+  Swift was the only one of the three that did not, and a `<For>` over
+  `unique(...)` rendered in an arbitrary order on iOS and a stable one
+  everywhere else.
+
+  The obvious replacement (`reduce(into: [])`) does not typecheck: the empty
+  seed leaves the accumulator ambiguous, so `contains` resolves to
+  `contains(where:)`. The shipped form needs no seed annotation and was proven
+  by executing it against the same input the web arm asserts.
+
+- feat(native): seeded `new Map([[k, v], …])` lowers to a native dict literal (f109aea)
+
+  The mirror of the already-supported seeded `new Set([...])`. `new Map([["apple", 3], ["pear", 2]])` now lowers instead of warning + dropping: Swift `["apple": 3, "pear": 2]` (typed `[String: Int]`), Kotlin `mutableMapOf("apple" to 3, "pear" to 2)`. Key and value must be SCALAR (a native dictionary key needs Hashable; the value is held to the same scalar bar as the empty `new Map<K,V>()` form). Any other shape — a non-pair element, a non-scalar key/value, a computed pair array — stays a named warning, never a mis-emit.
+
+  Verified end-to-end against real swiftc + kotlinc; bisect-verified.
+
+- `<PlotChart selectedMode onSelectChange>` now lowers to iOS and Android: a tap (1373888)
+  pins a datum, the engine draws the pinned outline from `ChartSpec.emphasis`, and
+  the change reports with global indices.
+
+  The pin logic moved out of `<Chart>`'s `pickDatum` into `pinSelection`, a
+  crossing helper beside `legendToggle`, and the web calls it too — so the three
+  targets cannot come to disagree about what a second tap does.
+
+  `emphasis` and `onHighlight` stay web-only, and their reasons are corrected:
+  both are hover-driven (`mouseover`/`mouseout`), which a touch target has no
+  analogue for. The old text said they were "waiting on host state", which read as
+  unbuilt work. The state exists now, and they still do not lower — because a tap
+  is a pick, not a hover.
+
+- `useSortable` lowers to a native reorder engine — list drag-and-drop crosses to iOS and Android (71c4409)
+
+  `@pyreon/dnd` wraps pragmatic-drag-and-drop, which is DOM pointer machinery, so
+  the package as a whole stays web. But list REORDER — the highest-value case, and
+  the one users actually reach for on a phone — is gesture-shaped rather than
+  DOM-shaped, and both platforms have first-class support for it.
+
+  `useSortable({ items, by, onReorder })` now lowers to a co-located
+  `PyreonSortableState<T>` engine on both targets: SwiftUI `.draggable` /
+  `.dropDestination`, Compose long-press drag. The engine ships as co-located
+  Swift and Kotlin source under `packages/fundamentals/dnd/native/`, verified by
+  the co-source gate.
+
+  The rest of the surface is honest about staying web: `useDraggable` /
+  `useDroppable` are element-getter hooks, `useDragMonitor` is page-global, and
+  `useFileDrop` is an OS file-picker concept. Each still warns BY NAME rather than
+  emitting a call that does not exist natively.
+
+  The lowering requires the full contract — `items`, a single-param `by`
+  (`(item) => item.id`), and an arrow `onReorder`. Anything else warns naming the
+  exact prop and the exact shape it needs, instead of silently degrading.
+
+- Lower `@pyreon/storage`'s process-scoped backends; name why the other two cannot (408b9b5)
+
+  `@pyreon/storage` exports five backends and only `useStorage` lowered. The
+  other four warned with the GENERIC line, which left an author unable to tell
+  whether their backend was merely unimplemented or genuinely impossible — two
+  very different pieces of news.
+
+  Two have an exact native analogue and now lower to plain state:
+
+  - **`useSessionStorage`** — on the web, sessionStorage survives a reload and
+    dies with the tab. Native has neither a tab nor a reload: the PROCESS is the
+    session, so in-memory state is the analogue rather than an approximation of
+    one.
+  - **`useMemoryStorage`** — definitionally process-scoped on every platform.
+
+  Both emit a `signal` decl WITHOUT a storage key — the same IR `useStorage`
+  produces, minus the `@AppStorage` / `rememberSaveable` persistence that would
+  wrongly outlive the process. That negative is asserted, because persisting
+  them would be the opposite of what both hooks mean.
+
+  The remaining two have no native analogue at all and now say so by name:
+  `useCookie` (a native app has no cookie jar its own UI reads from) and
+  `useIndexedDB` — which points at `useDatabase()`, the hook that lowers to
+  SQLite on both targets and is the answer the author actually wants.
+
+- Lower `@pyreon/sync`'s `syncedSignal` to native (iOS + Android). (7ee508e)
+
+  `const doc = new PyreonCrdtDoc()` + `const title = syncedSignal({ doc, key, initial })`
+  in shared `.tsx` now compile to a native `PyreonSyncedSignal` over a shared
+  `PyreonCrdtDoc` — scalar `string`/`number`/`boolean`, `title()` read + `title.set(v)`
+  write flowing 1:1 to the facade.
+
+  - **Swift**: the doc + signals are typed `@State` seeded in a GENERATED component
+    `init()` (`_title = State(initialValue: PyreonSyncedSignal(doc: doc, …))`),
+    because a synced signal's `@State` initializer references the doc and one
+    `@State` cannot reference another at property init. Props thread through the
+    init as parameters, so a component can still take props.
+  - **Kotlin**: sequential `remember { }` blocks (no init needed).
+
+  `@pyreon/sync` leaves `WEB_ONLY_PACKAGES` and declares a `nativeFrontend` (the
+  Yjs engine + IndexedDB/WebSocket transports stay web; cross-device transport is
+  tracked). Verified end-to-end: the emit type-checks against the real SwiftUI SDK
+
+  - the real facade on macOS, and against the Swift/Kotlin validate stubs.
+
+- Lower `@pyreon/table`'s `createTableState` to native (iOS + Android). (2eb6540)
+
+  `const t = createTableState({ data: () => rows(), columns: [{ id }], pageSize })`
+  in shared `.tsx` now compiles to the `@Observable` PyreonTableState engine —
+  sort / filter / paginate / select, rendered with `<For each={t.rows()}>` +
+  `@pyreon/primitives`.
+
+  - **Column cell accessors are codegen'd** from the row struct's inferred field
+    types: a `String` field → `.string($0.name)`, a number → `.number(Double($0.age))`.
+  - **Swift** wires the reactive data source in `.onAppear` (`t.setData { rows }`),
+    because a `@State` initializer can't capture the source signal; the table
+    itself is a self-seeding `@State`. **Kotlin** passes it in the constructor
+    (sequential `remember`).
+  - Use-sites: `t.rows()`/`t.toggleSort(id)`/`t.setFilter(q)`/… flow through as
+    methods; `t.page()`/`t.sortColumn()`/… drop parens (property reads).
+  - The `PyreonTableState` port is now `@Observable` (Swift) / `mutableStateOf`-
+    backed (Kotlin) so sort/filter/page mutations recompose.
+  - `@pyreon/table` declares a `nativeFrontend` and leaves WEB_ONLY_PACKAGES; the
+    TanStack-backed `useTable` (row model / faceting / virtual sizing) stays web.
+
+  Verified: the actual emit type-checks against the real SwiftUI SDK + the real
+  port on macOS, and both targets validate against the compiler stubs. v1: scalar
+  columns with the default `row[id]` accessor; explicit accessors / rowId /
+  filterFn are follow-ups.
+
+- `<Text truncate>` lowers to iOS + Android; four inert props now say they are (cce02b3)
+
+  Three documented props on the canonical primitives reached the native emit and
+  produced NOTHING, on either target, with no diagnostic:
+
+  - `<Text truncate>` → a plain `Text`, so a label that should ellipsize wrapped
+    instead and reflowed the layout around it.
+  - `<Stack justify="between">` → a bare `VStack` / `Column`.
+  - `<Inline wrap>` → a plain `HStack` / `Row`.
+  - `<Link external>` → an ordinary in-app route push, so a link to an external
+    site is matched as an app route instead of opening the browser.
+  - `<Button variant="danger">` → the default style, so a destructive button is
+    indistinguishable from a confirm button.
+
+  `truncate` now lowers exactly on both — `.lineLimit(1).truncationMode(.tail)`
+  on SwiftUI, `maxLines = 1, overflow = TextOverflow.Ellipsis` on Compose (both
+  halves are required on each: a line bound alone clips mid-glyph).
+
+  The other four now WARN. `<Link external>` is the sharp one — not a layout
+  nicety but a link that silently does the wrong thing. Compose could express `justify` on its own
+  (`Arrangement.SpaceBetween`), but SwiftUI's stacks have no equivalent, and
+  shipping one platform's half would put the two out of agreement — the failure
+  `<Transition name>` already taught us to avoid. The warning names the tag the
+  author wrote and points at the escape hatches that do lower.
+
+- `@pyreon/toast` works on iOS + Android — and its native runtime is **co-located in the package** (`@pyreon/toast/native/{swift,kotlin}/`), the per-package architecture rather than the monolithic `@pyreon/native-runtime-*`. This is the first package to prove that model end-to-end. (5fc3b9f)
+
+  **Runtime (co-located) — `PyreonToast`** (Swift `@Observable` singleton / Kotlin `object`): a process-global observable queue (add/dismiss/remove/clear), newest-last, distinct monotonic ids, a bounded stack (drops the oldest past `maxToasts`), and an auto-dismiss timer. It ships in `@pyreon/toast/native/`, declared via the package.json `pyreon.native` field, so `pyreon-native wire` aggregates it into a native app build straight from the installed package — no monolith, native tree-shakes to what you import, and a third-party package can follow the same convention.
+
+  **Co-source verify gate** (`scripts/check-native-cosource.ts`, wired into the native-validate CI job): scans every package's `pyreon.native` sources and compiles + smoke-runs them against the stub harness (Kotlin via `verify-kotlin --source`, which gained a path override; Swift via `swiftc -parse-as-library` + run), so a co-located `.swift`/`.kt` can't rot silently now that it lives outside `@pyreon/native-runtime-*`'s own `src/`. Toast's queue behavior is unit-tested this way on both toolchains.
+
+  **Lowering:**
+
+  - `toast("msg")` → `PyreonToast.shared.add("msg", type: "info")` (Swift) / `PyreonToast.add("msg", "info")` (Kotlin). The message is any expression; a renamed import (`toast as notify`) is handled; a literal `{ duration }` (ms → the auto-dismiss; `0` = persistent) lowers.
+  - Preset methods `toast.success/error/warning/info/loading("msg")` select the type.
+  - `<Toaster />` → a native overlay iterating the reactive queue.
+
+  A new `toast-call` ExprIR kind is threaded through `parse` (gated on the `@pyreon/toast` import) + both emits + the `expr-utils` walkers + `infer-type`. Proven R2 (emit) + R3 (typecheck vs the compiler's `PyreonToast` stubs on swiftc + kotlinc); `native-toast.test.ts` 7 cases + the co-source gate.
+
+  **v1 scope (disclosed):** message + preset type + literal `duration` lower; the other options (`onDismiss`/`description`/`icon`/`action`) are dropped, and `toast.promise()` / `toast.update()` aren't lowered. `<Toaster />` is a minimal message stack (positioning/styling/animation are a follow-up). No device (Simulator/Emulator) proof yet — the runtime is unit-tested by the co-source gate and the emit is stub-typechecked.
+
+- Warn when a `<Transition name>` has no native translation (8f53bc7)
+
+  `<Transition name="fade">` and the slide/scale family lower to each platform's
+  own transition. Anything else — a custom CSS animation, `zoom-in`, `bounce` —
+  falls back to a fade on iOS and Android. That fallback is correct, but it was
+  SILENT: on the web the author's `${name}-enter-*` CSS runs, on device it
+  fades, and because a fade still plays there is no symptom to investigate.
+
+  The translatable vocabulary now lives in ONE module both emitters consume, so
+  a name can never be known to Swift and unknown to Kotlin — which would itself
+  be a per-platform animation divergence. Unknown names warn once per target,
+  naming the divergence and listing what does translate. Behaviour is unchanged:
+  this warns, it does not refuse.
+
+- PMTC now lowers STANDALONE `@pyreon/validate` schema validation. Before, only a top-level `const X = s.object({ … })` declaration lowered (the `@pyreon/form` path); an inline `s.object({ n: s.number() }).safeParse(x).success` — the shape real feature code writes to validate data — warned and emitted `s.object(...)` verbatim ("cannot find 's' in scope"). Now the inline schema is synthesized into a `PyreonZodSchema_Inline<N>` struct (reusing the Gap-4 field walker, so scalar objects, nested objects, arrays and constraint chains all lower), and `.safeParse(x)` lowers to a web-faithful `safeParseResult(<x-as-dictionary>)` returning `PyreonParseResult { success, data }` — so a wrapping `.success` / `.data` composes. The argument becomes a native dictionary (`[String: Any]` / `Map<String, Any?>`), so validation checks a runtime map the way the web `safeParse(unknown)` does; identical inline schemas dedup to one struct. Only a LITERAL `s.object({ … })` shape lowers — `s.object(someVar)`, inline `.parse(x)` (throwing), and a user's own `s` binding stay web (warned, never a silent broken emit). Verified end-to-end against real swiftc 6.x + kotlinc 2.x. (0dbf4ac)
+- Co-locate a native runtime for `@pyreon/sized-map`, and lower its constructor (5b93f4c)
+
+  `@pyreon/sized-map` is 102 lines of pure logic with no platform edge, and it did
+  not work natively at all: `new SizedMap(...)` fell through to the generic "class
+  constructors are not supported" path and emitted `let m = ""` — an empty STRING
+  where a bounded map was expected.
+
+  It now ships `native/{swift,kotlin}/PyreonSizedMap` and
+  `new SizedMap<K, V>({ maxEntries, lru })` lowers to it on both targets, so the
+  tier moves from `web-only` to `shared`.
+
+  The ordering is the whole of the work. JavaScript's `Map` preserves insertion
+  order, so the web gets eviction for free from `map.keys().next()`. Kotlin's
+  `LinkedHashMap` does too and mirrors it almost line for line; Swift's
+  `Dictionary` is explicitly UNORDERED, so the Swift runtime carries the recency
+  order in a parallel array — O(n) per touch against the web's O(1), which is a
+  deliberate trade for a structure whose cap is small by construction, and is
+  stated in the file rather than left to be discovered.
+
+  Three semantics are easy to get wrong and are asserted one-for-one on both
+  platforms: FIFO is the DEFAULT (a read does not rescue an entry from eviction),
+  LRU is opt-in, and `set` ALWAYS refreshes position in BOTH modes — otherwise a
+  just-written entry is evicted on the very next call.
+
+  The constructor recognizer gates on the IMPORT, not the bare name: `SizedMap` is
+  a plausible name for a user's own class. A non-literal `maxEntries` declines
+  with a reason rather than baking in a wrong constant.
+
+- Derive the native compiler's web-only warning set from the package manifests (e56b865)
+
+  Importing a web-only `@pyreon/*` package into shared source is meant to warn at
+  parse time, naming the `<Web>` escape hatch. Four packages — `@pyreon/url-state`,
+  `@pyreon/head`, `@pyreon/hotkeys` and `@pyreon/feature` — declared
+  `multiplatform: { tier: 'web-only' }` but were absent from the compiler's
+  hand-written `WEB_ONLY_PACKAGES` literal, so importing one produced **no
+  diagnostic at all**: the call emitted verbatim and the native build failed with
+  `cannot find 'x' in scope`, pointing nowhere near the cause.
+
+  The set is now derived from the manifests (`tier === 'web-only'` and no
+  `nativeFrontend`) and regenerated by `check-multiplatform-tier`, which gates that
+  it stays in sync. The hand-written list had already been repaired twice by hand —
+  `@pyreon/sync` and `@pyreon/rich-text` were missing, `@pyreon/toast` went stale
+  the other way once its core lowered — each time with a comment recording the
+  incident rather than closing the class.
+
+  A cross-check test existed but ran in one direction only (every compiler entry
+  must declare web-only), and its comment waved the other direction through as
+  acceptable. That was the direction that shipped the bug; it now asserts equality.
+
+  Two supporting changes:
+
+  - `multiplatform` gains an optional `nativeFrontend` field for packages that
+    lower part of their surface. The three-value tier vocabulary could not express
+    partial crossing, which is what made `@pyreon/toast` go stale. `toast`, `a11y`,
+    `query` and `validation` now declare it.
+  - The blanket warning defers to `UNLOWERED_PYREON_MODULES`, the finer per-symbol
+    mechanism, so packages covered there (`validate`, `validation`, `http`, `rx`)
+    warn exactly once with their specific advice instead of twice.
+
+  `@pyreon/query` and `@pyreon/validation` also had factually stale rationales:
+  query's said native fetching is `useFetch/PyreonFetch` although `PyreonQuery`
+  shipped and `useQuery` is lowered, and validation's said per-validator lowering
+  was "not shipped" although the Gap-4 schema forms emit native validators.
+
+  ## Lower `@pyreon/validate`'s `s` DSL to native validators
+
+  A top-level `const X = s.object({ … })` declaration now emits a Swift `Codable`
+  struct and a Kotlin `data class`, each with `parse` / `safeParse` and real
+  constraint enforcement — from the same source, on both targets. Before this,
+  `@pyreon/validate` had no native story at all: a native app could not validate
+  data, and the schema emitted verbatim.
+
+  It reuses the existing Gap-4 schema pipeline (recognizer → IR → per-target
+  emit) rather than adding a second one. The only structural difference from
+  zod / valibot / arktype is that `s.object({ … })` arrives with no wrapper call —
+  it already IS a Standard Schema — so the shared walker's `schemaFn` became
+  nullable instead of being copied.
+
+  Scope, stated plainly: the DECLARATION form lowers. Inline uses
+  (`s.string().parse(x)`), the JIT, JSON-schema export and the v1/mini compat
+  surfaces stay web, and still warn.
+
+  The recognizer gates on the IMPORT, not the bare name: `zodSchema(...)` is a
+  distinctive wrapper but a lone `s` is not, and claiming it would silently
+  rewrite a user's own binding.
+
+  ## Native router: implement the `query` it has always advertised
+
+  `PyreonRouter`'s header has listed `query` (typed search params) since the C1
+  scaffold on BOTH platforms, and neither implemented it. Worse than missing: a
+  path carrying `?…` was handed to `matchPath` whole, so `/users/42?tab=a`
+  captured `id == "42?tab=a"` and a static route stopped matching altogether.
+  Every deep link with a query string — an OAuth callback, a shared link — hit
+  that, on iOS and Android alike.
+
+  Both routers now parse the query alongside `params`, in the same step, so the
+  two always describe one navigation. New surface, identical on each side:
+  `query`, `setQueryParam(key, value)` (replace semantics — changing a filter must
+  not add a back-stack entry per keystroke), plus `splitPathAndQuery` /
+  `parseQuery` / `serializeQuery`. `parseQuery` follows `URLSearchParams`: a bare
+  key is present-with-empty-value, a repeated key keeps the last. `serializeQuery`
+  sorts, so the rewritten URL is stable. The query survives an unmatched path — a
+  404 page usually needs the parameters it was called with.
+
+  ## `useUrlState` lowers to the native router's search parameters
+
+  `const q = useUrlState('q', 'all')` now binds one search parameter on iOS and
+  Android, from the same source: `q()` reads and `q.set(v)` writes, exactly as on
+  the web. Built on the router `query` support above.
+
+  The helper type is emitted INLINE rather than shipped as a co-located runtime,
+  because it needs the ACTIVE router — a standalone runtime would have to import
+  PyreonRouter and stop being self-contained. Same reasoning as `PyreonSchemaError`.
+
+  Scope: string-valued keys with literal arguments. A non-string default declines
+  WITH a reason rather than coercing silently, and a non-literal key declines
+  because it cannot be baked into the emit — the conservative rule `useFetch`
+  applies to its URL and `useStorage` to its key. History entries, `popstate`,
+  `batchUrlUpdates` and the pluggable serializers stay web.
+
+  ## `<Transition name>` resolves to a native transition instead of always fading
+
+  The native `<Transition>` emit ignored `name` and animated every show/hide as a
+  fade. An author who wrote a slide-up got a fade on device — and because an
+  animation still played, nothing looked broken enough to investigate.
+
+  `name` is the Vue-style prop `@pyreon/runtime-dom`'s Transition already honours
+  on the web, and `@pyreon/kinetic` ships its presets under the same vocabulary,
+  so it is the one shape an author writes once. `fade` · `scale-in` · `slide-up` ·
+  `slide-down` · `slide-left` · `slide-right` now map to SwiftUI transitions and
+  Compose enter/exit pairs respectively. An unknown name still falls back to a
+  fade — a custom CSS animation has no native translation, and a fade beats
+  refusing to compile — and a `<Transition>` with NO name emits byte-identically
+  to before.
+
+  `kinetic()` itself stays web: the chainable class/style factory has no native
+  model. What crosses is the preset vocabulary.
+
+  ## An unlowered package's diagnostic names ITS alternative
+
+  `@pyreon/table` was told it "renders via the DOM / a browser-only library".
+  TanStack Table is HEADLESS — that claim is simply false — and the message
+  stopped short of naming the native answer this package's own manifest states.
+
+  It now says the real thing: the row model (`getRowModel` / `getVisibleCells` /
+  `flexRender`) is a WEB render surface with no native analogue, while sort and
+  filter state is ordinary logic to hold in signals and render with
+  `<For each={rows}>` + `@pyreon/primitives`.
+
+  The hook arc now reads the same per-package advice, so this improves every
+  package that has an entry (rx, validate, permissions, storage, http, table) —
+  not just the one that surfaced it.
+
+- Add `<Audio>` — sound playback on web, iOS and Android. (1612ed1)
+
+  Mirrors `<Video>` in shape: same `src` dispatch (a bare name is a bundled
+  asset), the same three-value `onStatusChange` vocabulary
+  (`waiting`/`playing`/`paused`), and a declarative prop surface rather than a
+  player-controller hook.
+
+  **It is deliberately NON-VISUAL, which is the one place it does not mirror
+  `<Video>`.** Audio has no view on the native targets — `AVAudioPlayer` and
+  Media3 are objects, not views — so there is no `controls` prop. The web's
+  browser-styled control bar has no cross-platform counterpart, and a prop that
+  silently no-ops on two of three targets is the failure this API family
+  refuses; `useScreenOrientation` omits `lock()` for exactly the same reason.
+  Compose a transport from Pyreon primitives and drive it with these props.
+
+  `volume` is **clamped** to 0..1 rather than rejected — on all three arms, and
+  at emit time too, so `volume={1.7}` bakes as `1` and the generated native
+  source is honest about what will actually play. An out-of-range value is a
+  caller slip, and refusing to play is a worse answer than the nearest legal
+  level.
+
+  The native host is a concrete zero-size view rather than `EmptyView`: a
+  modifier attached to `EmptyView` is silently inert, which is how a `<Modal>`
+  sheet once shipped that never presented. The playback engine is injected on
+  both targets, so the status machine and the clamp are testable with no
+  AVFoundation, no Android SDK and no device.
+
+  Adds `useAudioRecorder` alongside it — the input half of the same concept.
+  `start()` resolves `false` on a denied microphone permission rather than
+  throwing: that is the most likely outcome of the call and an ordinary branch
+  in any UI that uses it, so callers get an `if` rather than a `try`, matching
+  `useWakeLock.request()`. `stop()` resolves a URL — an object URL on the web,
+  a file URL natively — because that is the one representation all three targets
+  produce and every consumer can use; a zero-length capture resolves `null`
+  rather than an empty URL that plays nothing. Disposal releases the microphone
+  tracks, which is what turns the OS recording indicator off.
+
+  And `useCamera` — take a photo through the SYSTEM capture UI on every target.
+  It mirrors `useImagePicker` exactly, because the two differ only in which
+  system flow they open: `capture()` resolves a URI or `null` and never
+  rejects, since a cancel and an unavailable camera are the same outcome to a
+  caller. The system UI owns the permission prompt, so there is no permission
+  plumbing to get subtly different per platform.
+
+  A CUSTOM in-app viewfinder is deliberately out of scope. An AVCaptureSession
+  layer, a CameraX PreviewView and a `<video>` element are not one thing
+  wearing three hats, and a surface that only half-crosses is worse than one
+  that says what it covers — `useNativeModule` is the escape hatch there, as it
+  is for Bluetooth GATT.
+
+  Plus `useSpeech` and `useDeviceMotion`, the last two Tier-1 crossers.
+
+  `useSpeech` CANCELS before each `speak()` — queueing is the platform default
+  on all three, so without it a second press talks over the first instead of
+  replacing it. Rate, pitch and voice are deliberately out of scope: the
+  platforms disagree on ranges and on how voices are identified, so one name
+  would mean three different things.
+
+  `useDeviceMotion` has an explicit `start()` rather than listening on mount,
+  because an always-on hook would be wrong on all three targets: iOS Safari
+  gates the event behind a gesture-triggered prompt, and both native targets
+  want start/stop so the sensor is not draining battery for a screen nobody is
+  looking at. Where `requestPermission` does not exist (everything but iOS
+  Safari) its ABSENCE is a grant, not a failure.
+
+- Plain Mode follow-up tier: deep state, the classic→plain codemod, readiness report, Lens verdicts, and native-target support. (5c5e246)
+
+  - **Deep state** — `let user = state({ … })` / `state([ … ])` (a literal object/array initializer) now lowers to `signal(createStore(...))`: member writes (`user.name = x`) and array mutations (`todos.push(t)`) notify with per-key granularity, whole reassignment replaces the store, and every JSX position stays live through the existing signal machinery. `state.raw(v)` opts a literal out to a shallow signal (replace-the-value semantics); non-literal initializers stay shallow — the split is static. Total tracking hoists conditional static member paths (`void (user().name);`), never a write target.
+  - **Codemod + readiness** — `pyreon plain [paths] [--write] [--json]`: per-binding classic→plain migration (`migrateToPlain` in `@pyreon/compiler`) whose dry-run is the readiness report with a declined-shape histogram. Object-literal signals convert to `state.raw(...)` — the codemod never changes semantics. A seeded round-trip fuzz oracle (classic → codemod → compile → behavioral DOM diff) locks both directions.
+  - **Reactivity Lens** — plain pre-pass warnings surface as `plain-mode` footgun findings in `analyzeReactivity`, at their source locations.
+  - **Native targets** — the PMTC compiler runs the same pre-pass via the new light `@pyreon/compiler/plain` subpath; a plain shared-source file emits byte-identical Swift/Compose to its classic twin.
+  - **Cross-module** — the vite-plugin signal-export registry now recognizes `state.raw(...)` exports; imported-state member-write warnings give conditional (deep vs shallow) guidance.
+
+- Add `useSafeArea` and `useScreenOrientation` — the display-environment pair, (1025315)
+  across web, iOS and Android.
+
+  **`useSafeArea`** returns the insets content must avoid: notch / Dynamic
+  Island, home indicator, gesture bar, rounded corners. This is the one device
+  fact a multiplatform app cannot work around at the app level — without it,
+  content draws under the notch, or every screen pads by a hard-coded guess that
+  is wrong on the next device.
+
+  It returns ONE accessor rather than four, because the values move together on
+  rotation and separate accessors invite a torn read. On the web the numbers
+  come from `env(safe-area-inset-*)` read off an inert probe element, since CSS
+  environment variables are not exposed to script any other way; that needs
+  `viewport-fit=cover` in the viewport meta, and reports zeros without it —
+  which is correct (nothing is obscured) rather than broken. Natively they come
+  from `safeAreaInsets` and `WindowInsets`.
+
+  **`useScreenOrientation`** is deliberately read-only. Locking does not cross:
+  `screen.orientation.lock()` is Chromium-only and fullscreen-gated on the web,
+  and on iOS orientation is an app-level declaration
+  (`supportedInterfaceOrientations`), not something a view can request. A
+  `lock()` that silently no-ops on two of three targets is worse than a surface
+  that states what it covers. `type` is normalised to `'portrait' | 'landscape'`
+  — the part true everywhere — and the primary/secondary distinction the web
+  exposes lives in `angle`, so nothing is lost.
+
+  Both runtimes read THROUGH on every access rather than caching at
+  construction: a rotation, fold or Stage Manager resize moves them while the
+  app is live, and a captured value would silently describe the old display.
+  Both native suites assert that by mutating the probe after construction.
+
+- `<PlotChart onZoom>` lowers on both native targets: one observer over the window state (SwiftUI `onChange` over the window's fields, Compose `LaunchedEffect(pyreonZoom)`) runs the handler with the `ZoomWindow` whenever a pinch, a pan, a preset tap or the navigator moves it — the web's single observer, mirrored. Without `dataZoom`, `zoomPresets` or `navigator` the prop warns by name, since there is no window to report. (e6ef4e3)
+- `yDomain` lowers to iOS and Android (41abe4d)
+
+  `<PlotChart yDomain={{ min, max }}>` pins the y-axis range. It is a `ChartSpec`
+  field the geometry engine already consumes, and its sibling `y2Domain` has
+  lowered as a one-liner since the second axis landed — but `yDomain` sat in
+  `PLOT_UNLOWERED_PROPS`, so a native chart warned and drew an auto-scaled axis
+  instead. A fixed range is basic charting and nothing about it is web-specific.
+
+  The position matters as much as the presence: Swift's memberwise init takes
+  arguments in declaration order, and `yDomain` is `ChartSpec` field 9 — before
+  `yFormat`, not appended after `progress` where the batch-2 literal props go.
+  That order is read off the generated struct rather than restated, so a
+  regeneration cannot silently invalidate it.
+
+  Both toolchains compile the emit.
+
+- `<Audio>` now builds. It emitted `AVFoundationAudioEngine()` on iOS and (51e5d80)
+  `Media3AudioEngine(…)` on Android, and both types — along with Android's
+  `PyreonAudioPlayer` composable — existed ONLY in the validation stubs. The
+  primitive had never compiled on either platform while both stub gates were
+  green.
+
+  Both engines now ship for real (AVPlayer and ExoPlayer, so remote `src` works
+  and the audio and video halves share one dependency).
+
+  A new gate asserts that every Pyreon-owned type a stub declares AND an emitter
+  emits is also declared in that language's real runtime — the class that hid all
+  three.
+
+- `<Audio>` now has a Compose implementation. It emitted `PyreonAudioPlayer(…)` (51e5d80)
+  on Android, and the only definition of that name anywhere was the kotlinc
+  validation stub — so the emit passed the gate and referenced nothing in the real
+  runtime. Swift has had one all along, so `<Audio>` built on iOS and could not
+  have built on Android. No example uses it, which is why no device gate said so.
+
+  `<Transition>` and `<Audio>` now also carry `data-testid` and the accessibility
+  props, like every other primitive; both returned before the generic modifier
+  tail.
+
+  The completeness matrix that covers this now derives its list from the type
+  files rather than hardcoding it — it listed 15 primitives where the types
+  declare 18, which is how these two were missed.
+
+- PMTC: annotated arrow parameters carry their types into the emit — `(p: Pt) => …` now emits the Swift typed closure form `{ (p: Pt) -> … in }` and the Kotlin typed lambda `{ p: Pt -> … }` when every parameter is annotated AND the arrow is a standalone let-bound closure (callback arguments keep the bare form — the call site supplies inference, and a typed form there can disagree with the receiver's element type), resolving the swiftc "cannot infer closure parameter type" class on callback-taking engine code. The block-body arrow constructor previously dropped the annotation (single-expression arrows kept it), so a multi-statement annotated callback silently lost its types. (eac9382)
+- PMTC: a declaration with no initializer is no longer dropped, and an enum literal lowers in every expected-type position (8637009)
+
+  `let out: string`, assigned once per branch of an `if`, is ordinary TypeScript
+  and was **dropped entirely** — the parser returned null for a declarator with no
+  `init`, so every later assignment named a variable that had never been declared.
+  On the generated flow geometry that was 40 errors ("cannot find 'path' in
+  scope", "unresolved reference") from three lines of source, with no warning. A
+  declaration with no annotation EITHER is still dropped, but now says so: there
+  is genuinely nothing to declare, and guessing is worse than reporting.
+
+  Separately, the string-literal → enum-case rewrite had been added one POSITION
+  at a time — comparison, then return — and the geometry immediately produced two
+  more (a `??` default and a struct field). Rather than a third and fourth branch,
+  it now hangs off `withExpectedType`, which every position that knows its
+  expected type already threads. A fifth position works without further change.
+
+- Defaulted helper parameters (`places: number = 0`) cross as native default (eac9382)
+  parameters — Swift and Kotlin both have them, so nothing is desugared.
+  Previously the parameter silently VANISHED from the emitted signature while
+  the body kept reading it (`func currency(_ symbol: String)` with `places`
+  unresolved inside — the chart engine's formatter shapes). Call sites omit,
+  partially supply, or fully supply, all verbatim.
+- Descending count-loops lower natively: `for (let i = n; i >= 0; i--)` (and `i -= k` with a positive literal step) now emits Swift `stride(from:through:by: -k)` and Kotlin `downTo` instead of warn-dropping the loop body — the shape the charts engine's arc-polygon inner-edge walk uses. The test and update must agree in direction (`i < n; i--` stays a warn-bail), and fractional bounds round with the descending mirror of the ascending rule (exclusive → floor, inclusive → ceil). (67a41a6)
+
+  A float-typed FROM bound (the `const steps = Math.max(2, Math.ceil(...))` shape) now wraps to Int on both targets and both directions — descending `floor(f)`, ascending `ceil(f)`. Kotlin `Double downTo Int` does not resolve and a Swift Double stride mistypes the counter; identity for integral-valued Doubles.
+
+- Warn when an object literal cannot be given a synthesized struct, instead of (33c8eae)
+  silently emitting a tuple that is broken on both targets.
+
+  An object literal whose fields cannot all be typed falls back to a TUPLE, and
+  the two targets then fail differently — which is what kept the whole class
+  hidden:
+
+  - **Kotlin** emits `(id = "a", parent = null)` — named arguments with no
+    constructor. Not valid Kotlin; the Gradle build dies on it.
+  - **Swift** emits `(id: "a", parent: nil)` typed `Any` — a labelled tuple, which
+    **compiles**. Tuples are not `Codable`, so `PyreonJSON.encode` and a
+    `<WebView data=>` push silently produce the wrong bytes at runtime. (A
+    single-field labelled tuple does not compile at all.)
+
+  Six ordinary data-model shapes hit this with no diagnostic: an empty array
+  field, a `null` or `undefined` field, a nested empty array, a mixed-type array,
+  and an array of arrays. `{ id, parent: null }` is a tree node; `{ nodes, edges:
+[] }` is a graph with no edges yet.
+
+  The warning lives at the bail site rather than pattern-matching shapes, so it
+  covers the class — including shapes nobody has hit yet — and names the field and
+  the reason. The remedy it gives is verified rather than suggested: annotating
+  the declaration (`signal<Shape>({ … })`, `const x: Shape = { … }`) already
+  lowers to a real struct on both targets, and a spec asserts it still does.
+
+  `<WebView data={…}>` with an object or array literal now lowers to JSON
+  directly. The value goes straight to `PyreonJSON.encode`, so a literal in that
+  position _is_ JSON — routing it through struct synthesis was a detour that
+  failed on exactly the payloads JSON exists to carry. Static parts become JSON
+  text at compile time and runtime parts are interpolated, so live data still
+  flows; a non-literal value keeps the plain `encode(expr)` form.
+
+  This is what `examples/native-viz`, the `@pyreon/charts` webview example, needed:
+  an ECharts option object has heterogeneous nesting and empty objects, so no
+  struct existed for it and the Android build died on `cannot infer type for type
+parameter 'T'`. It now compiles.
+
+  A literal that OMITS an optional field now constructs the declared struct
+  instead of a synthesized one. Both emitters indexed declared structs by their
+  exact sorted field-name set, so `type T = { a: string; b?: string }` with
+  `{ a: 'x' }` missed and fell through to synthesis — Swift then wrote
+  `var v: T = __Obj0(a: "x")` and refused to build, while Kotlin inferred
+  `__Obj0` and compiled with the wrong type, so `encode` serialized the wrong
+  shape. Ambiguity (two declared structs both accepting the literal) bails rather
+  than guessing.
+
+  The Swift validation stubs gain `accessibilityAddTraits` / `AccessibilityTraits`
+  and `Font.system(size:weight:design:)`, all of which real SwiftUI has and the
+  stub did not — so `examples/native-router-demo-ios` failed the type gate while
+  building fine on a device. Every shipped `native-*` example now compiles on both
+  targets, and a discovered (not listed) test keeps it that way.
+
+- PMTC: a string-literal union compared against a string literal now lowers to a native enum case in every operand position (8637009)
+
+  A union alias (`type Position = 'top' | 'right' | …`) lowers to a Swift/Kotlin
+  enum, but the comparison emit only rewrote the literal side for ONE shape — an
+  enum-typed signal read. A function parameter, a struct field, or a literal on
+  the left of the comparison all emitted `p == "top"`, which neither toolchain
+  accepts:
+
+  ```
+  swiftc  cannot convert value of type 'Position' to expected argument type 'String'
+  kotlinc operator '==' cannot be applied to 'Position' and 'String'
+  ```
+
+  Branching on a union type is the ordinary reason to declare one, so this made
+  any such shared source uncompilable on both targets. It survived because the
+  only in-tree consumer of a union-alias enum is the generated chart engine,
+  which declares two and compares against neither — the emit path had never run.
+
+  The generated chart engine is byte-identical after the fix, and the new spec
+  compiles its own emit with the real `swiftc` and `kotlinc`.
+
+- PMTC: a top-level helper now infers against the file's structs, and the `Double` alias unifies with a numeric literal (e87159b)
+
+  `buildInferenceCtx`'s struct table is built PER COMPONENT, and both emitters
+  only assigned their inference context per component too. A file of pure
+  top-level helpers — which is exactly what a generated engine is — emitted every
+  expression against an EMPTY context: a member read typed as `unknown`, so every
+  inference-driven lowering silently skipped inside helper bodies.
+
+  Seeding a file-scope baseline was measured as NOT free on a first attempt: it
+  made two sites of the generated chart engine stop compiling. The cause was one
+  level down and is fixed here — the `Double` / `Float` alias arrives as an
+  unresolved `typeRef`, and any unification comparing `kind`s read it as unrelated
+  to `number`. The `binary` case already normalized it; the ternary and unary
+  cases did not, so `cond ? 1.0 : someDouble` degraded to `unknown` and took every
+  downstream type-gated lowering with it. The normalization is now shared, so the
+  three cannot disagree about whether `Double` is a number.
+
+  Net effect on the generated chart engine: **91 redundant `Double(...)` wraps
+  removed**, 29 rearranged, and it type-checks clean — those wraps are the ones
+  the emitter's own comments call out as blowing swiftc's expression budget.
+
+  `@pyreon/flow` takes one source change the improved inference surfaced: the
+  handle lookups bind through a non-optional local instead of `handles?.[0]`,
+  which Swift's safe-index lowering cannot express (it names the receiver twice)
+  and had been emitting as an UNGUARDED index that traps out of bounds.
+
+- PMTC: JS-faithful `Math.floor`/`ceil`/`round`/`trunc` — they return a NUMBER in JS, so they now infer and emit Double (bare Swift free functions / `.rounded()`; Kotlin was already faithful via java.lang.Math). The old `Int(floor(...))` wrap poisoned every downstream mixed expression (`Math.floor(min/step) * step` → 'Int _ Double'). The Int contexts survive structurally: a provably-float INDEX re-wraps at the subscript (`xs[Int(floor(x))]` / `.toInt()`), Int-vs-Double comparisons coerce (`Double(page) < pageCount`), a count-loop's Double bound wraps `Int(ceil(...))` (a bare `0..<n` over Double is not a Sequence), and the loop counter is registered Int so `step _ i`coerces`Double(i)`. `numericFloatness`also learned the`Double`/`Float`alias typeRef — an alias-annotated param previously defeated the Int×Double coercion entirely.`String(x)`over a float-typed value now routes through a JS-faithful formatter on BOTH targets (an integral Double prints without the trailing .0, like the web) — emitted once, only when used.`Number.isInteger`/`isNaN`now lower over alias-typed and helper-local arguments too: the binary-arithmetic inference normalizes the`Double`/`Float`alias typeRef, and helper bodies seed BOTH inference contexts (the type-gated lowerings read the one that was not being seeded). Division no longer wraps a PROVABLY-float operand in a no-op`Double(...)` - the redundant wraps stacked swiftc's overload-resolution work until chained interpolations timed out; Int/unknown operands keep the wrap (JS float division). (eac9382)
+- A function-type alias (`type Formatter = (v: Double) => string`) substitutes (fc30001)
+  to its function type at parse.
+
+  Previously the alias name reached both targets unresolved — the second of the
+  two blockers between the chart engine and a native compile. Substitution
+  rather than a `typealias` emit, deliberately: the emitters' existing
+  machinery then does everything — the optional form parenthesizes
+  (`((Double) -> String)?`), and `typeContainsFunction` sees a real function
+  kind and drops Codable / @Serializable from structs carrying one, which a
+  name-preserving emit could not do without teaching that check to chase
+  aliases. Generic function aliases stay out of the subset, unchanged.
+
+- `<Link>` and `<Modal>` now carry `accessibilityLabel`, `accessibilityHidden` and (51e5d80)
+  `data-testid` like every other primitive.
+
+  Both return before the generic modifier tail that applies those, so they were
+  dropped silently: an `accessibilityLabel` on a link was unread by VoiceOver and
+  TalkBack alike, and a `<Modal>` on Android had no test tag, making it
+  unselectable by `onNodeWithTag`.
+
+  The a11y lowering is now a shared helper rather than a copy in each emitter, and
+  a matrix spec asserts all 15 primitives × 3 cross-cutting props × 2 targets — so
+  a primitive that skips the tail fails at build time instead of surfacing months
+  later as an accessibility bug nobody is looking for.
+
+- `<Image fit>` now applies to a REMOTE `src` on iOS. It applied to bundled assets (51e5d80)
+  and silently did nothing for a url — one prop, one platform, two answers
+  depending on the shape of an unrelated attribute, while Kotlin implemented both.
+
+  Two more divergences fixed with it: `fit="fill"` mapped to `.scaledToFill()`,
+  which crops (that is `cover`) where CSS `fill` and Kotlin's
+  `ContentScale.FillBounds` both distort; and a remote image with no `fit` rendered
+  at intrinsic size on Swift while web and the bundled branch both default to
+  `cover`.
+
+- Resolve an `interface` props type the way the equivalent `type` alias already (79bffbc)
+  resolved.
+
+  A component whose props type was declared as an `interface` emitted a struct
+  with no stored properties while its body still referenced them — uncompilable
+  on both targets. The struct synthesizer already understood the interface and
+  emitted it; only the props extractor ignored interfaces, so the two halves of
+  the compiler disagreed about the same declaration. `interface` is the idiomatic
+  TypeScript spelling for props, so this was the shape most likely to be written
+  and least likely to work.
+
+  The out-of-subset gate is unchanged: generic, `extends` and method-bearing
+  interfaces are still declined, by the same predicate the synthesizer uses.
+
+- `margin`, `marginX` and `marginY` now lower on `<Stack>`, `<Inline>`, `<Layer>` (51e5d80)
+  and `<Scroll>`. They produced no native output at all before — typed and
+  documented on the shared `BaseLayoutProps`, and claimed in scope by the Swift
+  emitter's own docblock, but never implemented on either target. A layout written
+  with margin rendered flush on iOS and Android while the web showed it spaced,
+  with no warning.
+
+  The two frameworks place it in opposite positions, and both are locked: SwiftUI
+  modifiers wrap outward so margin is appended last (after background, radius and
+  the `style` block); Compose's chain applies outside-in so margin is prepended,
+  ahead of the content padding.
+
+  Also fills three gaps in the Swift validation stub — `padding(_:_:)`,
+  `cornerRadius`, and `ScrollView`'s axes init — which were narrower than SwiftUI,
+  so `paddingX`/`paddingY`, `radius` and `<Scroll axis>` had never been compiled
+  by the gate at all despite shipping for months.
+
+- `x === undefined ? fb : x` (and the `!==` mirror) rewrites to nil-coalescing (eac9382)
+  — `(x ?? fb)` on Swift, `(x ?: fb)` on Kotlin.
+
+  TS narrows the ternary; Swift does not, so the straight emit failed "must be
+  unwrapped" on every optional-with-default read. The idiom IS nil-coalescing,
+  and one shared pattern definition claims the same ternaries on both backends.
+  The rewrite fires only when the surviving branch is STRUCTURALLY the checked
+  expression; a provably non-optional check is skipped, while an
+  unknown-typed one rewrites — the rewrite is value-preserving either way, and
+  the failure modes are asymmetric (a non-optional coalesce is a warning, a
+  missing unwrap is an error).
+
+- PMTC: an `@pyreon/http` endpoint whose `:param` is a RUNTIME value now lowers to iOS and Android through `useQuery`. (6ff12da)
+
+  `useQuery<User>(() => getUser.query({ params: { id: props.userId } }))` previously warned and stayed web, because the URL was resolved as a compile-time constant and a signal read has no compile-time value. That made the most ordinary thing an API-backed screen does — fetch the record named by a prop — the one thing that did not cross. It now emits native string interpolation, and the runtime value is carried in the CACHE KEY as well as the URL, so the harness re-fetches when the value changes exactly as the web does.
+
+  The value is percent-encoded at runtime by a new `PyreonURL.encodePathParam` in both runtimes, which mirrors the web's `encodeURIComponent(String(value))` — verified by executing both shipped encoders against the real `encodeURIComponent` over a 60-case corpus (delimiters, whitespace, multi-byte UTF-8, numbers).
+
+  `useFetch` deliberately still bails: it lowers to a one-shot task with nothing to re-run it, so a runtime URL there would fetch once and freeze at that first value while the web kept re-fetching. Its warning now names `useQuery` as the fix rather than describing the limitation.
+
+- PMTC: four shapes that lowered to invalid Swift/Kotlin with no warning (8637009)
+
+  All four were found by generating `@pyreon/flow`'s edge geometry and then
+  COMPILING the result — which the generator's own "zero warnings" precondition
+  had reported as clean. Every new spec runs the real `swiftc` and `kotlinc`
+  rather than asserting on the emitted string alone.
+
+  - `a?.b?.filter(…)` dropped its second link on both targets, so a method call
+    landed on an optional receiver.
+  - `if (nullableObject)` emitted the bare optional as a Swift condition. It now
+    binds (`if let x`). Kotlin was already correct.
+  - `return 'bottom'` where the return type is an enum emitted a raw string on
+    both targets. (The comparison position was fixed separately.)
+  - A Swift enum is now declared `Codable`, so a struct holding an enum-typed
+    field conforms. The old failure named the struct and pointed nowhere near the
+    enum that caused it.
+
+  A fifth shape — a function returning an ANONYMOUS object — now WARNS on Kotlin
+  instead of emitting two different data classes and returning the wrong one. The
+  remedy is a one-line source fix, so `@pyreon/flow` takes it: the return types of
+  `getSmartHandlePositions` and `getFloatingEndpoints` are the newly exported
+  `SmartHandlePositions`, `NodeBoxDimensions` and `FloatingEndpoints`.
+
+- A static route branch in the emitted router dispatch now resolves through the (a0c4cd7)
+  router's own `matchPath`, exactly as the dynamic branches already did, instead
+  of comparing the current path against the route pattern.
+
+  It used `path == "/settings"`, so writing any query param — `useUrlState`'s
+  `set` rewrites the stack top to `/settings?filter=done` — made every branch miss
+  and the screen render nothing. Reproduced on BOTH device gates: the page is
+  present before the write and gone after it, on iOS and Android alike, with the
+  Android run rendering the router's own `no route for /settings?filter=done`.
+
+  Stripping the query before comparing would fix that shape and leave the class
+  open: a comparison still disagrees with `matchPath` on a trailing slash
+  (`/settings/`) and on empty segments (`//settings`), both of which are
+  documented `matchPath` behaviour locked by the runtime suites on both targets.
+  Sharing the one matcher means every normalization rule — including any added
+  later — applies to static and dynamic routes alike.
+
+- `<Text size>` and `<Text weight>` now accept the two-literal ternary (51e5d80)
+  (`size={dense() ? 'sm' : 'lg'}`) that every other styling prop supports; they
+  were on the static-only reader and silently dropped it.
+
+  `<Image fit>` and `<Field kind>` warn by name instead of dropping. Both drive a
+  structural choice — `fit="none"` selects a different AsyncImage initializer,
+  `kind="password"` selects SecureField — so a ternary cannot lower as one
+  expression. Symmetric on both targets.
+
+- A discriminated union of object shapes lowers to a fat struct. (af19db0)
+
+  `type DrawCmd = { kind: 'rect'; … } | { kind: 'line'; … }` synthesizes ONE
+  struct / data class: the union of every branch's fields, required where a
+  field appears in all branches with the same type, optional (nil / null
+  defaulted) elsewhere. That is the representation that lets a heterogeneous
+  command list share one array on Swift and Kotlin — per-variant structs have
+  no common supertype and tuples have different arities, which is why each
+  variant literal previously fell back to a tuple and the whole list failed to
+  compile.
+
+  The emitters needed no changes: optional struct fields already default so a
+  subset literal compiles, and the struct-selection subset rung already
+  resolves such literals. A field with genuinely different base types across
+  branches bails by name rather than merging to `Any`; a field optional in one
+  branch and required in another merges optional.
+
+  Measured against `@pyreon/charts`' plot engine, whose `DrawCmd[]` was the
+  blocking shape for native chart rendering.
+
+- `<Video controls={false}>` now hides the transport controls on iOS and Android. (51e5d80)
+  The prop was typed and documented on all three targets and honoured on none:
+  neither native runtime took the parameter, and the Kotlin one hardcoded
+  `useController = true`.
+
+  Compose needed a parameter passed through to `PlayerView.useController`. AVKit's
+  `VideoPlayer` always draws controls with no way to turn them off, so the Swift
+  runtime gained an `AVPlayerLayer`-backed representable for the chrome-less case
+  — same player, same lifecycle, no chrome.
+
+- `<QueryClientProvider>` lowers instead of emitting code that cannot compile (8ffcd44)
+
+  `@pyreon/query`'s `useQuery` reads its client from `<QueryClientProvider>` on the
+  web — omit it and the hook throws `No QueryClient found`. The native lowering is
+  self-contained: `useQuery` becomes a `PyreonQuery` holding its own state, with no
+  client anywhere.
+
+  So the shape a web app MUST write had no dispatch entry and fell through to the
+  generic path, which emitted a `QueryClientProvider(client:)` view that exists on
+  neither target, plus a bare `createQueryClient` identifier reference for the
+  client binding. Both silent — zero warnings — and nothing in the suite compiled
+  the result. Same class as the `<RouterLink>` gap.
+
+  The provider is now transparent (its children are the whole emit) and the client
+  binding emits nothing, so a query-driven screen can be written once for all three
+  targets.
+
+- `validateSwiftWithStubs` is exported from `@pyreon/native-compiler`. It is the (33c8eae)
+  Linux-viable TYPE gate — it strips the emit's framework imports, prepends stubs
+  mirroring the real SwiftUI / PyreonRuntime surface, and type-checks — and a
+  consumer that GENERATES Pyreon source needs it: `validateSwift` is parse-only,
+  and `validateSwiftTypecheck` needs a real Apple SDK.
+
+  The scaffolder now uses it. Its two specs were named "compiles to valid
+  SwiftUI" / "…Compose" and asserted only that the emit contained some strings —
+  a shape check wearing a compile's name. The scaffolded app is the
+  highest-stakes source in the repo, so it now goes through swiftc and kotlinc,
+  and is asserted to emit no warnings on either target.
+
+- One light/dark mode for the whole framework. `useColorMode()` in `@pyreon/core` returns the mode in scope: the nearest `<ColorModeProvider mode>` or `provideColorMode(mode)`, else the page's declared `color-scheme`, else `prefers-color-scheme` (light on the server). `mode` is `'light'`, `'dark'` or `'system'`, or an accessor. `systemColorMode()` is the page-and-OS half alone. (d5a7c06)
+
+  `<PyreonUI mode>` now provides it, so everything below a PyreonUI follows the UI system's mode with no extra wiring.
+
+  **Breaking, `@pyreon/charts`:** charts read the shared mode, so a chart below a dark `<PyreonUI>` is dark. `<ChartThemeProvider>` no longer takes `mode`: set it with `<PyreonUI mode>` or `<ColorModeProvider mode>`. `systemChartMode()` is now `systemColorMode()` in `@pyreon/core`. The provider hands down a theme per mode, so a mode set below a provider still picks that provider's `light` / `dark` override. `pyreon doctor diagnose` explains both upgrade errors.
+
+  **Native:** a literal `<ColorModeProvider mode>` or `<PyreonUI mode>` is a compile-time scope the charts below inherit, and it re-resolves an outer provider's per-mode overrides. `'system'` keeps the platform scheme. A reactive mode on `<ColorModeProvider>` warns by name; on `<PyreonUI>` it is silent, as it was before. In both cases the charts below follow the platform scheme instead of being pinned to light.
+
+- Lower `model().views().actions()` — `@pyreon/state-tree` was 1:1-inverted on native (8ab41a7)
+
+  The source that compiled natively was the source that is wrong on web, and the
+  canonical web source did not compile. Two halves, each independently broken.
+
+  **The chain.** The web API is a builder — `model({ state }).views(f).actions(f)
+.create()`. The recognizer matched only the bare `model({ state }).create()`,
+  so every model with an action — that is, every model that can change — fell
+  through to a verbatim emit:
+
+  ```swift
+  private let cart = model((state: __Obj0(count: 0)))
+    .actions({ `self` in (__Obj1(increment: "")) }).create()
+  ```
+
+  `model` exists on neither target, and the action became a `String` field.
+  Zero warnings on either target, so the failure surfaced as `cannot find 'model'
+in scope` / `unresolved reference 'model'` inside generated code, naming
+  nothing about what was unsupported. A model with no actions cannot mutate its
+  own state, so the one shape that did lower was the shape a real model never has.
+
+  **The read.** A model's state field is a signal, so the web read is
+  `cart.total()`. That emitted `…shared.total()` — calling an `Int`. The only
+  form that compiled was `cart.total`, which on web renders the accessor function
+  rather than its value. The emit already lowered the _write_
+  (`cart.total.set(1)` → `total = 1`): it knew the field was a signal when
+  written and forgot when read.
+
+  Views now emit as computed properties (Swift `var doubled: Int { total * 2 }`,
+  Kotlin `val doubled get() = total * 2`), actions as methods, and member bodies
+  address state through the factory's `self` the same way a component body
+  addresses its props param. This mirrors `defineStore`, which had already solved
+  every hard part — the model recognizer simply stopped at state.
+
+  Two smaller fixes ride along, both consequences of the state seed having been
+  stored as a raw literal plus a three-value type tag rather than the `TypeIR` /
+  `ExprIR` the store uses: a fractional seed (`{ total: 2.5 }`) emitted
+  `var total: Int = 2.5`, and an unsupported builder step now declines by name
+  instead of falling through to the verbatim emit.
+
+  Still deferred, and still declining loudly: `.asHook()`,
+  `.create(initialOverride)`, the two-step `const M = model(...); M.create()`
+  form, `getSnapshot` / `onPatch`, and nested field-models. The emitted model is
+  a singleton, so multiple instances of one definition remain out of scope — the
+  two-step form is the only way to reach them, and it declines.
+
+  The web arm that measures the semantics the emit mirrors lives in
+  `@pyreon/state-tree`'s `native-parity.test.ts`; the native specs compile
+  through real `swiftc` and `kotlinc`.
+
+- Add `useWakeLock` — keep the screen awake on web, iOS and Android from one call. (e506bcf)
+
+  Lowers to `isIdleTimerDisabled` on iOS and `FLAG_KEEP_SCREEN_ON` on Android,
+  with `PyreonWakeLock` runtimes co-located in `@pyreon/hooks`.
+
+  The web arm carries a normalization the native ones do not need. A
+  `WakeLockSentinel` is released by the browser whenever the document hides and
+  is **not** reacquired, while the native flag survives backgrounding — so the
+  same call would leave the screen sleeping on web and lit on native. The hook
+  listens for the sentinel's `release` event and re-acquires on
+  `visibilitychange` unless the caller explicitly released, which is what makes
+  it 1:1 rather than merely mirrored.
+
+  Also closes a gap in `check-native-cosource`: it failed on a _declared_ Kotlin
+  runtime file that did not exist, but never on a file that exists and is
+  declared nowhere — so such a file was silently never verified.
+  `PyreonWebView.kt` had been in that state. The gate now requires every runtime
+  `.kt` to sit in a service group or in a new `pyreon.native.kotlinSdkOnly` list
+  (files importing the real Android SDK, which the device gate covers), so a
+  deliberate omission and a forgotten one are no longer indistinguishable.
+
+- `<Text size>`, `<Text weight>` and `<Field kind>`'s keyboard now lower to native. (33c8eae)
+
+  All three are documented props on the CANONICAL primitives that produced no emit
+  on either target, with no warning:
+
+  - a heading written `<Text size="lg" weight="bold">` rendered at body size and
+    regular weight on native while the web showed it large and bold
+  - `<Field kind="number">` raised a full QWERTY keyboard on a phone where the same
+    source showed a numeric pad in a browser
+
+  Same source, a visibly different screen, and nothing said so.
+
+  Point sizes mirror the web impl's own scale (`web/Text.tsx`'s `SIZE_PX`) rather
+  than a new one — a scale that drifts from the web's is a divergence that looks
+  like a design choice. On Swift, size and weight emit as ONE
+  `.font(.system(size:weight:))`, because two `.font` modifiers do not compose
+  there (the later replaces the earlier); a custom `font` still wins. On Kotlin the
+  keyboard type MERGES into the existing `KeyboardOptions` rather than pushing a
+  second one, so an `onSubmit` imeAction and a keyboard type no longer displace
+  each other.
+
+  `kind="password"` continues to select masking rather than a keyboard — a masked
+  field keeps the platform default.
+
+  `<Text color>` and `<Press disabled>` now lower too. Each had a working SIBLING
+  in the same file — `<Heading color>` coloured and `<Text color>` did not;
+  `<Button disabled>` disabled and `<Press disabled>` did not. The Press one is
+  not cosmetic: a disabled Press stayed tappable and FIRED ITS HANDLER on both
+  targets.
+
+- PMTC: `useUrlState` lowers NUMBER and BOOLEAN defaults, not just strings (080752b)
+
+  `useUrlState('page', 1)` previously warned and stayed web — only a string
+  default lowered to the native router's query. Number and boolean defaults now
+  lower on both targets, with a codec that mirrors the web's `inferSerializer`
+  rather than deferring to each platform's own string→number initializer.
+
+  That distinction is the substance of the change. The web decodes with `+raw`
+  (JS `ToNumber`), whose grammar neither `Double(_:)` nor `toDoubleOrNull()`
+  matches — `""` is `0` in JS and `nil`/`null` on both targets, `"0b101"` is `5`
+  in JS and unparseable on both, `"inf"` is `NaN` in JS but infinity in Swift,
+  and `"1.5f"` is `NaN` in JS but `1.5` in Kotlin. Since the inputs that expose
+  those cases are exactly the ones this feature exists for — a pasted deep link —
+  the emit reproduces the JS grammar itself, identically on both targets.
+  Booleans decode by exact `'true'` match, as the web does, so `?open=1` is
+  `false` on every platform.
+
+  An integer default lowers to `Int` and a fractional one to `Double`, following
+  the same `inferTypeFromInitial` rule every other PMTC lowering uses, so
+  `` `Page ${page()}` `` renders "Page 1" rather than "Page 1.0". `set` mirrors
+  JS `String(v)`, so a whole `Double` round-trips as `?zoom=1`, not `?zoom=1.0`.
+
+  A file that binds only string parameters emits byte-identically to before —
+  each helper is emitted only when a binding of that type exists.
+
+  Still web, and still warned by name: array and object defaults (the web infers
+  a comma-join and a `JSON.parse`, neither of which has a native type to decode
+  into at this call site), non-literal defaults and keys, and the
+  `clearOnDefault` / `debounce` / custom-serializer options.
+
+- `useUrlState` accepts a module-scope `const` key, and warns when a key cannot be (33c8eae)
+  resolved instead of dropping the declaration.
+
+  The key is baked into the native emit, so it must be known at build time — but
+  the check required an INLINE literal and anything else took a bare `return null`.
+  That dropped the whole `const v = useUrlState(KEY, '')` declaration with no
+  warning, leaving every later reference pointing at a binding that no longer
+  existed, so both targets failed to compile (`unresolved reference 'v'`) with
+  nothing naming the cause.
+
+  Sharing the key between the reader and whatever writes the param is the ordinary
+  way to write this, so a module-scope `const` (including an exported one, and a
+  template with no interpolation) now resolves. `let` deliberately does not — it
+  can be reassigned, and baking its initial value would emit a stale key. What
+  still cannot be known warns by name and says where to move the key.
+
+  `useStorage`, `useHotkey` and `createI18n`'s `locale` / `fallbackLocale` accept
+  one too. All three already warned by name rather than dropping — the right tier —
+  but "must be a string LITERAL" was never the actual requirement. Statically
+  KNOWABLE is, and a module-scope const is. What still cannot be known keeps
+  warning, now saying so in those terms.
+
+  `useFetch`'s url, `createHttp`'s `baseUrl` and `defineStore`'s id take one too.
+  That last group is how an app is normally written — an API base named once and
+  shared, an endpoint constant reused, a store id keyed off elsewhere — and
+  `createHttp({ baseUrl: API_BASE })` previously made every endpoint on that
+  client decline, which is `@pyreon/http`'s whole native crossing surface.
+
+- `useQuery` now lowers to native — `@pyreon/query`'s flagship hook emits SwiftUI + Compose (v1). (69b6ad5)
+
+  PMTC compiles `useQuery<T>(() => ({ queryKey, queryFn, staleTime }))` to the `PyreonQuery` runtime — the useFetch lowering plus the one thing a query library adds over a bare fetch: a **keyed cache with stale-while-revalidate**.
+
+  - **Swift** → `@State private var q = PyreonQuery<T>(queryKey:, staleSeconds:)` + an `isStale`-guarded `.task` on the stable ZStack host (`begin → resolve|reject`). Reactive reads (`q.data`/`q.isPending`/`q.isFetching`/`q.error`) are bare `@Observable` properties.
+  - **Kotlin** → `remember { PyreonQuery<T>(queryKey =, staleMillis =) }` + an `isStale`-guarded `LaunchedEffect(Unit)`. Reactive reads append `.value` (Compose `MutableState`).
+
+  The `.task`/`LaunchedEffect` runs the fetch **only when the cache is stale**, so a fresh hit skips the network and serves the hydrated value — and a background refresh flips only `isFetching`, never `isPending`, so already-shown data never blanks. `useQuery` also participates in `<Suspense>`/`<ErrorBoundary>` and the `const { data, isPending } = useQuery(...)` destructure, exactly like `useFetch`.
+
+  A `queryFn` whose inline `fetch(url, { method, headers, body })` carries a verb/headers/body routes through `PyreonHttp` (mirroring `useFetch`) — so POST/authenticated queries work; a bare `fetch(url)` stays the GET path.
+
+  **v1 scope** (conservative, the same literal-only rule as `useFetch`): `queryKey` is an array of string/number literals (colon-joined into the cache key); `queryFn` is an inline `() => fetch('<url-literal>'[, { method, headers, body }])` whose URL + literal request fields are baked; `staleTime` is a number literal (ms). Anything else — a reactive `queryKey` (`['todo', id()]`), a `queryFn` function reference, a non-literal fetch URL, a non-literal method/body — **warns by name and bails**, so `useQuery` still reports as unsupported rather than mis-lowering a shape it cannot honour. Tracked follow-ups: reactive keys, `queryFn` references, mutations, infinite queries, cross-instance invalidation.
+
+  Proven at R2 (emit) + R3 (typecheck): the emitted Swift **and** Kotlin typecheck against the `PyreonQuery` stubs on both real toolchains (`swiftc`/`kotlinc`). The runtime it targets ships in `@pyreon/native-runtime-{swift,kotlin}` (`PyreonQuery` — a separate PR); a device (Simulator/Emulator) proof arrives with an example app that emits `useQuery`.
+
+- The web-only import warning now explains itself per package (687d0eb)
+
+  Importing any web-only `@pyreon/*` package into shared source produced one
+  identical sentence for all 29 of them — "render it behind a `<Web>` escape
+  hatch". That set spans a linter, a `<head>` manager, a virtualization library
+  and an animation engine, and the advice is wrong for most:
+
+  - `@pyreon/lint` is dev-time tooling that never reaches a component.
+  - `@pyreon/head` has no device analogue at all.
+  - `@pyreon/virtual` has a BETTER native answer — native lists are lazy by
+    construction, so `<For>` inside `<Scroll>` beats a WebView.
+  - `@pyreon/kinetic`'s preset vocabulary genuinely DOES cross via
+    `<Transition name>` (verified: it lowers to `.transition(.opacity)` on
+    SwiftUI and `AnimatedVisibility(fadeIn/fadeOut)` on Compose), so the old
+    advice steered users away from a working native path.
+
+  The reason now comes from each package's manifest `rationale` — already
+  required for web-only by `check-multiplatform-tier`, which generates this
+  mapping, so it cannot drift from the docs tier table. The native-equivalent
+  option is stated FIRST and the escape hatch second.
+
+### Patch Changes
+
+- The repo's contributor rules moved from `.claude/rules/` to `.agents/rules/`, and the agent instructions from `CLAUDE.md` to `AGENTS.md`, so they work with any coding agent. Tools that read those files now look in the new places: the MCP `get_anti_patterns` and `get_browser_smoke_status` tools, the lint rule `pyreon/require-browser-smoke-test`, and the `pyreon doctor` doc-claims gate. Messages and comments that pointed at the old paths are updated. (2ac084f)
+
+  The six `@pyreon/native-*` packages no longer describe themselves on npm as "PRIVATE / EXPERIMENTAL" or "Not published"; they are published, and their descriptions now say what each one is.
+
+  `@pyreon/mcp`: `get_content_collection` and `get_content_entry` were registered and callable but missing from the manifest, so `mcp_overview` and the API reference did not list them. They are listed now, and `check-mcp-docs` fails when a registered tool and the manifest disagree in either direction.
+
+- Add a typed single-axis canvas host and lower static option-format calendar heatmap, parallel-coordinate, river, polar, and boxplot charts through their native engines on SwiftUI and Compose, preserving calendar range and visual settings, values, axes, categories, domains, line styles, grouped streams, multiple polar series, and five-number summaries. (f2b1d43)
+- Lower `PlotChart` locale formatting to native number and UTC date formatters on Swift and Kotlin. (c6bcb95)
+- `<Audio>` is now a member of the compiler's canonical primitive set. It was lowered on both targets but missing from `CANONICAL_PRIMITIVES`, so an `<Audio>` the emitter could not read (a non-literal `src`) fell through to generic emit with no warning, while the same `<Video>` warned. A new test checks that the set matches `@pyreon/primitives`' exports, and the per-primitive typecheck suite now compiles `<Audio>` and `<Video>` too (it had pinned the count at 15). (c12635c)
+
+  Docs: the primitive count, which had drifted to 15, 16 and 18 in different places while the package exports 17, is corrected everywhere and now checked by `check-doc-claims`. The primitives manifest fixes `<Scroll>`'s prop name (`axis`, not `direction`) and the `<Link>`, `<Layer>` and `<Modal>` descriptions, and notes that `justify`/`wrap` and `<Link external>` are ignored on iOS and Android. The `prefer-canonical-primitive` lint message no longer quotes a count.
+
+- Render horizontal and vertical option mark areas with labels and colours through the shared web, SwiftUI, and Compose draw-list engine. (f2b1d43)
+- The ECharts `brush` works on web and native. (244fe91)
+
+  - `PlotChart` takes `brushType` (rect, polygon, lineX, lineY), `brushMode`, `outOfBrushOpacity`, `brushSeriesIndex` and `onBrushSelected`. Datums outside the brush fade, and the callback reports the brushed data indices per series.
+  - `toolbox.brush` adds the rect / polygon / lineX / lineY / keep / clear tools.
+  - `OptionChart` reads `option.brush` and `toolbox.feature.brush`, and reports through `onBrushSelected`. As in ECharts, a brush is taken up through its toolbox tool.
+  - iOS and Android lower all of it onto the chart host. The selection geometry is one shared engine module.
+
+- Axis `offset` maps on web and native: the x axis and both y axes move off the plot edge by their offset, with their labels, and the gutter grows by the same amount so nothing clips. Native spec literals now accept numbers. (69391bd)
+- Axis `position` maps on web and native: `xAxis.position: 'top'` draws the x axis above the plot, a lone `yAxis.position: 'right'` draws the value axis on the right, and two y axes whose first is placed right swap sides with `yAxisIndex` following. Two y axes placed on the same side warn by name. (69391bd)
+- Decals follow ECharts' model on web and native. A decal tiles its `symbol` (rect, circle, triangle, diamond, pin or arrow) on the `dashArrayX`/`dashArrayY` pitch, scaled by `symbolSize` and turned by `rotation`. Previously every decal collapsed to diagonal, cross or dots. `aria.decal.show` gives each series without a decal a distinct default texture. Pattern geometry now lives in one engine function (`patternMarks`) that the web canvas, SVG, SwiftUI and Compose painters all draw, so a texture cannot differ by target. `ChartPattern` gains `angle`, `symbol` and `spacingY`, and a `symbols` kind. (244fe91)
+- Decimation crosses to iOS and Android, and LTTB stops duplicating its last point (fbb41d9)
+
+  **The bug, found by writing the differential.** LTTB's buckets were indexed one
+  place to the right of the canonical formulation, with two consequences. The
+  first interior bucket was never considered at all, so a spike near the start of
+  a series could not be selected however prominent it was. And the last bucket
+  spanned the empty range `[n-1, n-1)` — no candidates, so `best` kept its initial
+  value of `n - 1` and the pinned final row was emitted TWICE. Measured across
+  3,781 (size, threshold) pairs, **3,608 ended in a duplicate**, so `maxPoints={N}`
+  drew `N - 1` distinct rows. The same shift made the third triangle vertex the
+  centroid of the bucket being selected FROM rather than the next one, which is
+  not the LTTB criterion — the comment beside it said "next bucket" while the
+  indices said otherwise. All three are fixed, so the selection changes.
+
+  **The arithmetic now crosses.** `decimate-values.ts` joins the generated chart
+  engine, the same split `indicator-values.ts` made out of `indicators.ts` — the
+  `Pt[]` wrapper cannot lower, and one non-crossing signature takes the whole file
+  web-only. Bucket edges are advanced by integer accumulation rather than
+  `Math.floor(i * every)`, because a Double cannot bound a native loop or
+  subscript an array, and there is no integer division to fall back on (the
+  emitters wrap both operands of `/` in `Double`). As a side effect the edges are
+  now exact: the float form could floor one row early where `span / count` is
+  unrepresentable, in 0.066% of edge computations.
+
+  **The native navigator thins its strip.** It passed every row to
+  `renderNavigator` on every frame; it now buckets to one min/max pair per 2px
+  column, exactly as the web host has since the host-parity pass. A 36px overview
+  never needed 100k points, least of all on a phone.
+
+  `lttbIndices` is exported from `@pyreon/charts/plot` alongside `lttb`, which
+  keeps its `Pt[]` signature and its real-x semantics — collapsing the two would
+  silently change what "largest triangle" means for unevenly spaced data.
+
+  Because the arithmetic now crosses, the compiler stops claiming otherwise:
+  `lttbIndices` and `minMaxBuckets` are exempt from the `@pyreon/charts/plot`
+  web-only warning (beside `binValues`, same reason), and the `maxPoints` decline
+  names the pre-decimation remedy instead of just saying "not lowered". `lttb`
+  keeps warning — it takes `Pt[]`, which is why the arithmetic was split out of it.
+
+- The chart handle's `dispatch` (ECharts' `dispatchAction`) is now one pure reducer, `applyChartAction`, and it runs on web, iOS and Android. (244fe91)
+
+  - New actions: `takeGlobalCursor` (arm the area brush) and `brush` (set or clear its areas), plus `timelineChange` and `timelinePlayChange`.
+  - `OptionChart` takes a `handle`, which binds its zoom, hover, pinned datums, brush and timeline step / play state.
+  - A dispatched `brush` fires `onBrushSelected`, as a drag does.
+  - On native, `createChartHandle()` lowers to a `PyreonChartHandle`. A bound `PlotChart` or `OptionChart` reads and writes its fields, and `handle.dispatch({ ... })` with an inline action object lowers too.
+  - Fixed: a `PlotChart` with `selectedMode` under a zoom window no longer fails to compile on native.
+
+- A third and later y axis (`yAxis[2]`, `yAxis[3]`, …) is now drawn on web and native, on its `position` side at its `offset`, with its own domain, tick labels and title. A series with `yAxisIndex: 2` or higher scales on it. A `yAxisIndex` that names no declared axis warns by name. (69391bd)
+- Every series on a `geo` now draws. Previously only the first series rendered and the rest were silently dropped. `scatter`, `effectScatter` and `lines` combine. A `heatmap` on the geo draws soft radial blobs coloured by the visual map, a `pie` with `center: [lon, lat]` draws at that point, and a `map` series with `geoIndex` colours the geo's regions. `<MapChart>` gains `heat`, `heatRadius`, `heatStops` and `pies` on web and native. Anything else on a geo (a series off it, a pie without a centre, an unsupported type, a trail on geo lines) warns by name. `withAlpha` now applies alpha to `rgb(...)` colours; it used to return them fully opaque. (69391bd)
+- Geo lines animate their `effect` trail on web and native. An ECharts `lines` series on a geo carries its trail (`period`, `trailLength`, `color`, `symbolSize`), and `<MapChart trail>` runs it along `paths` on the same frame clock as cartesian lines: the web canvas host's clock, or `PyreonChartClock` on native. Under reduced motion the trail holds still. (69391bd)
+- `@pyreon/charts/plot`: every family host gets the interaction stack `<PlotChart>` had alone, and the hosts stop re-laying out on every pointer move. (6f79b9d)
+
+  - **Pointer events everywhere**: a finger drags, pans, brushes and pinch-zooms (`dataZoom`) as a mouse does; a tap shows the tooltip. `<PlotChart>` captures the pointer for a drag and sets `touch-action: none` only when it owns a gesture.
+  - **Keyboard on every host** (`keyboard`, default on): the canvas is focusable, Arrow / Home / End walk the items the accessible table lists, each is announced in a polite live region and ringed where the family can place a ring, Enter / Space select through `onSelect` / `onSelectIndex`, Escape clears. The canvas is `aria-describedby` its table; the table stops at 1,000 rows and says so.
+  - **Update animation on every host**: a same-shape data change tweens at the draw-list level (`tweenCmds`), so a treemap cell glides and a slice sweeps; a shape change snaps. `updateAnimation` / `updateDuration` on every host.
+  - **Legend placement** (`legendPosition`: `top` / `bottom` / `left` / `right`) on every host and on `<Legend position>`.
+  - **`yDomain`** on `<PlotChart>`; `<Axis y domain>` now pins the left domain (it was silently ignored — only `y2` read it).
+  - **`dash`** on `line` marks.
+  - **A missing measurement is a gap, not a zero**: `null` / `undefined` / `NaN` / an Infinity from an accessor skips the bar, breaks the line, draws no dot, stays out of the domain, and leaves the tooltip row and table cell empty (it used to plot as `0`). Write `d.v ?? 0` where zero is the truth.
+  - **Toolbox on every host**: `toolbox={{ saveAsImage: true }}` saves the canvas as a PNG; `<PlotChart>` accepts `'svg' | 'png'` and `onSaveImage(data, format)`.
+  - `GaugeChart` is built on the shared host (theme, title, description, table, keyboard). `CalendarChart` and `MapChart` gain `onSelectIndex`. `canvasHost` and its types are exported as the extension point for a family of your own; `RadarHitIndex`, `PointMarker`, the `*In` render/hit variants and the tween primitives are exported too.
+  - `<Plot>` forwards the whole `<PlotChart>` surface (the events/actions model, `toolbox`, `seriesLabels`, `onSelectIndex`).
+  - **Performance**: one `layoutChart` per frame (paint, crosshair, brush, focus ring and every hit test share it — a pointer move cost four to six); the family hosts hit-test the last draw's layout (a force-directed graph re-simulated on every mousemove); the navigator resolves its series once per data change and thins it to the strip's width; the accessible input is memoized; a decimated selection looks its row up in a map; `graphIndexOf` / `sankeyIndexOf` return at the first match; the canvas text measurer is memoized; animation frames are cancelled on unmount.
+  - Native: the new props (`legendPosition`, `keyboard`, `updateAnimation`, `updateDuration`, `toolbox`, `onSaveImage`, `accessibleTable`, `yDomain`, `link`, `seriesLabels`) warn by name on iOS/Android instead of being dropped silently; the generated engine gains `renderChartIn` / `barsForIn` / `stackedHitIn` / `plotHitBarsIn` / `plotHitIndexIn` and the gap-safe bar layouts.
+
+- Image patterns and `path://` / `image://` decal symbols draw on web and native. An ECharts `color: { image, repeat }` fill (a URL, a data URI, an `<img>` or a `<canvas>`) tiles at its natural size with `repeat`, `repeat-x`, `repeat-y` or `no-repeat`; an `image://` decal tiles the image on the decal pitch; a `path://` decal draws its SVG path (`M L H V C Q Z`), fitted to the symbol size. The web canvas, SwiftUI and Compose load each image once and repaint when it arrives. A line stroke image is named, since only fills take patterns. (244fe91)
+- ECharts `lines` series are now an engine feature, and their animated `effect` trail works. The head travels each line once per `period`, trailing `trailLength` of it in `effect.color`, driven by a frame clock in the web canvas host and in new `PyreonChartClock` native views. Under reduced motion the clock holds at 0 and the chart is still. Native option charts lower `lines` series at all, where they previously emitted nothing. Effect keys that aren't mapped warn by name. (69391bd)
+- Maps roam on web and native. `<MapChart roam>` (and an ECharts `map` series or `geo` component with `roam`) pans on drag and zooms on the wheel or pinch, about the pointer, within `scaleLimit`. `roam: 'scale'` only zooms and `roam: 'move'` only pans. The view is part of the engine's `GeoOptions` (`zoom`, `panX`, `panY`), so regions, overlays and hit tests follow it. On native the gestures run the same `geoRoamPan` / `geoRoamZoom`. Scatter and lines on a `geo` coordinate now render through the map canvas host, so they roam too. `center`, `aspectScale`, `layoutCenter` and `layoutSize` now warn by name instead of being silently ignored. (69391bd)
+- The candlestick and heatmap geometry join the generated native chart engine (`PyreonChartEngine.swift` / `.kt`): `ohlcExtent`, `renderCandles`, `buildHeatGrid`, `colorRamp`, `HEAT_RAMP` and `renderHeat` now lower with zero transform warnings and compile on both toolchains. Two engine-side idioms made it possible with no behavior change on web: `renderCandles` takes an OPTIONAL options object (an empty-object-literal default has no native lowering) and `buildHeatGrid` keys its aggregation map by an INDEX into the cells array (a Map with a struct value has no native lowering). (e669817)
+- Docs: the README gains a "Native geometry" section stating that every `@pyreon/charts/plot` family is generated into `PyreonChartEngine.swift` / `.kt`, which API shapes exist because of the crossing (index hits, `{ min, max }` domains, ISO/day dates, `rampColor`, `calendarValues`, `parallelRows`, the seeded LCG), and what stays web-only (hosts, gestures, sonification, the tween, the option facade); the manifest's multiplatform rationale says the same, and the derived web-only rationale in `@pyreon/compiler`'s native audit and `@pyreon/native-compiler`'s web-only warning carries the same text. (8d1ff30)
+- Lower `PlotChart` `maxPoints` to Swift and Kotlin while preserving global accessor, selection, and tap indices. (c6bcb95)
+- Lower `PlotChart` `seriesLabels` into VoiceOver and TalkBack chart descriptions. (c6bcb95)
+- ECharts axes map further. On web and native, an axis `name` becomes its title, `show: false` hides the axis, `yAxis.splitLine.show: false` drops the grid, and `yAxis.type: 'log'` uses the log scale. Natively, `yAxis` may now be an array, whose second entry is the right axis (domain and title), and a series with `yAxisIndex: 1` scales on it. Unmapped per-axis keys and a one-sided `min`/`max` now warn by name instead of being silently ignored. (69391bd)
+- `OptionChart` honours an ECharts `dataZoom` over the category x axis instead of ignoring it. `inside` zooms with the wheel and pans with a drag, and `slider` draws the navigator strip, whose band and handles drag the window. `start` / `end` (or `startValue` / `endValue`) set the opening window, `filterMode: 'none' | 'empty'` keeps the y extent of every row, and `zoomLock`, `minSpan` and `maxSpan` bound every gesture. Hits report the global row index, and `onDataZoom` reports the window in percent. SVG output draws the opening window and the strip. On native the option lowers onto `PlotChart`'s own zoom, which gains `initialZoom` and `zoomLimits` on web and native, with the limits applied by a new engine function. A y-axis or second-x-axis zoom is named, never applied to the wrong axis. (244fe91)
+- Presentation states — ECharts `emphasis`/`select`/`blur` — go further, on web and native. (244fe91)
+
+  - A state's own stroke width (`lineStyle.width`) and area fill opacity (`areaStyle.opacity`) apply while that state is active.
+  - `emphasis.scale` grows the highlighted point's radius (`true` reads as ECharts' own 1.1); `emphasis.disabled` stops a series from ever highlighting.
+  - `emphasis.label` / `select.label` print the datum's label only in that state.
+  - `selectedMode: 'series'` pins a whole series with one tap, on `PlotChart` and `OptionChart`, on web, iOS and Android — the bar/stacked/grouped outline and the line/area/point fill both honour it.
+  - `emphasis.blurScope`'s three real values are accepted; an unknown one, `select.disabled`, `select.lineStyle`/`areaStyle`, `blur.label` and a state label's own styling are still named — a pinned datum has no line to stroke, and a blurred one keeps its own label.
+
+  Found on the way:
+
+  - `PlotChart` with `selectedMode` under a zoom window referenced rows a decimated chart never declares on native — fixed for the width-computed selection expressions too.
+
+- A second x axis whose `data` has the same number of categories as the first is drawn on web and native, as a second set of labels (and its `name` as a title) on the opposite edge. Series may name it with `xAxisIndex: 1`. Any other second x axis warns by name. (69391bd)
+- The ECharts `timeline` is interactive on web and native. Clicking a checkpoint jumps to that step, and the play / previous / next controls step it (`controlStyle.showPlayBtn` / `showPrevBtn` / `showNextBtn`). Auto-play honours `loop` and `rewind`, stopping at the end without `loop`. `checkpointStyle`, `lineStyle` and `label` colour the strip. A timeline over a family chart (pie, heatmap, …) now draws its strip, which it never did before. On native, every static step lowers to its own host under the same strip, instead of one frozen step. A pinned `timelineIndex` still renders exactly that step. The strip, its hit test and the stepping rules are one engine module shared by every target. (244fe91)
+- The ECharts `toolbox` works on web and native. (244fe91)
+
+  - `PlotChart toolbox` gains `magicType` stack / tiled, a box-select `dataZoom` with a back button, and a data view of the chart's table.
+  - `OptionChart` reads `option.toolbox`.
+  - On iOS and Android, every tool lowers onto the chart host. `saveAsImage` opens the share sheet, or hands `onSaveImage` a PNG data URL, on the plot host and on the family charts (pie, heatmap, sankey, …).
+  - A custom `myTool`, whose `onclick` is a function, and a y-axis box zoom are named in a warning, not silently dropped.
+
+  Also fixed:
+
+  - Two charts on one native screen with zoom state no longer declare the same SwiftUI state twice.
+  - `describeChart` no longer indexes past an empty category list, which crashed Android on a chart without categories.
+
+- Two capability rows close, and the direct-native chart ledger is now at 100%. (244fe91)
+
+  - `data.transforms`: the built-in `filter`/`sort` transforms and every dataset-chaining shape (`datasetIndex`/`datasetId`, `fromDatasetIndex`/`fromDatasetId`, `fromTransformResult`) already resolved at native compile time through the same `resolveDataset` the web runs — this was proven, not fixed, with a new chained (`fromDatasetIndex`) native compile test. A registered transform is an arbitrary JS closure that cannot run outside JS on any target, so it stays named as web-only rather than silently dropped.
+  - `presentation.universal-transition`: `OptionChart` already forwarded ECharts' `universalTransition` to its shared canvas host, but `PlotChart` — the more common, array-of-marks API — never exposed the prop at all, so a real app could never reach it there. `PlotChart` now runs its own command-level morph for a series/row-count change (the same `cmd-tween.ts` machinery the canvas host uses), so a shape change tweens instead of snapping when `universalTransition` is set. Native's runtime canvas is shape-agnostic and already emitted the flag for both facades.
+
+  Every row in the direct-native capability inventory (`CHART_CAPABILITY_CONTRACT`, now `.41`) is `'complete'`.
+
+- A second value (or time) x axis maps on web and native: a series with `xAxisIndex: 1` is placed at its own x positions over that axis's domain, whose ticks and title sit on the opposite edge, and the accessible data table prints those positions. Native option charts also lower a value or time x axis at all — `[x, y]` pairs on a shared x — where they previously emitted nothing. (69391bd)
+- The visualMap is interactive on web and native. A `calculable` continuous strip has two handles that drag the in-range interval, and a piecewise strip's swatches toggle their pieces. Values outside the selection take `inactiveColor` (`#ccc` by default). `range` and `selected` set the initial selection. The heatmap, calendar and map hosts draw the strip and own the gesture: `<HeatmapChart visualMap>`, `<CalendarChart visualMap>`, `<MapChart visualMap>` with `onVisualMapChange`, and an `OptionChart` visualMap over those series. Native builds the strip from the web's own `visualMapSpec` at compile time and keeps the selection in host state. The strip geometry, hit tests and colouring rule are one engine module shared by every target. (244fe91)
+- `xAxis.inverse: true` runs the x axis right to left, on web and native. Category charts reverse every per-datum channel together, and hits still report the original datum index. A continuous x axis inverts through its domain. (69391bd)
+- `yAxis.inverse: true` draws the value axis upside down, on web and native. The engine's `Domain` gained an `inverse` flag honoured by the linear scale, so marks, ticks and hit-testing all invert together. Stacked bars and filled areas now build their geometry through the scale, so they invert too. (69391bd)
+- The iOS `useColorScheme` device assertion now runs BOTH appearances as two CI (59123f2)
+  legs, with the runner pinning `xcrun simctl ui <sim> appearance` instead of
+  inheriting whatever the image left behind.
+
+  It previously asserted only "Theme: light" under the ambient appearance, so a
+  `colorScheme` that was a baked constant satisfied it exactly as a live
+  `@Environment(\.colorScheme)` read does — the differentiating half was a manual
+  local step, which is to say it was not in the gate at all. It also failed on any
+  simulator left in dark mode, with a message accusing the emit of not reading the
+  environment.
+
+  No compiler behaviour changes; this makes an existing R4 claim actually
+  load-bearing.
+
+- The Kotlin `PyreonSizedMap` stub was missing, so a SizedMap emit did not compile (fee8cf9)
+
+  The Swift stub gained it earlier and the Kotlin one never did, so a snippet using
+  `SizedMap` compiled on one target and not the other. Found by teaching the
+  multiplatform coverage gate to compile the Kotlin emit, not just the Swift one.
+
+- The native-coverage gate now proves a package's emit COMPILES (da12179)
+
+  It judged a package by transform WARNINGS and never compiled anything, so a
+  warning-free uncompilable emit read as "crosses". Compiling every registry
+  snippet on real toolchains found 9 Swift and 5 Kotlin failures — all invisible.
+
+  Two checks close that:
+
+  - **A verbatim-symbol detector, no toolchain required**, so it runs on every
+    `validate-fast`. If a symbol the snippet imported reappears in the emit as a
+    free call, the frontend declined silently and the emitted code names a
+    function that exists on neither target. Symbols the package's own native
+    co-source declares are exempt (`PyreonCrdtDoc` is deliberately the same name
+    in TS, Swift and Kotlin), checked against the shipped source rather than a
+    name convention.
+
+  - **An opt-in compile pass** (`PYREON_COVERAGE_COMPILE=1`), wired into the macOS
+    CI job that already owns the toolchain. Too slow for `validate-fast`, free
+    where swiftc already lives.
+
+  Six registry snippets were wrong and are corrected. None of the packages was
+  broken: `createMachine` / `createI18n` / `syncedSignal` lower only inside a
+  component body and were declared at module scope; `model('user', {…})` and
+  `syncedSignal({key, initial})` are phantom APIs that would fail on the web too;
+  `rocketstyle(Element)` and `attrs(Element)(…)` skip the curry and the options
+  object their runtimes take.
+
+  Also extends the Swift stubs with `background` and `PyreonSizedMap` — both
+  NARROWER than the shipped runtime, which manufactures false failures exactly as
+  a wider stub hides real ones.
+
+  Every crossing package's emit now compiles, and the known-uncompilable ratchet
+  is empty.
+
+- Update third-party dependencies to their latest compatible releases, (ea669a1)
+  extending #3174's sweep to every package.json the first pass hadn't reached
+  (that pass touched only the root manifest, so nothing there tripped the
+  Changeset gate — this one edits per-package manifests directly and does).
+
+  Runtime dependencies that reach consumers: `oxc-parser`/`oxc-transform`
+  0.147 → 0.148 (`@pyreon/compiler`, `@pyreon/native-compiler`, `@pyreon/lint`
+  — `@oxc-project/types` alongside it), `magic-string` 1.2.2 → 1.2.3
+  (`@pyreon/compiler`), the CodeMirror 6 family — `@codemirror/search` and
+  `@codemirror/state` 6.7.1 → 6.7.2, `@codemirror/legacy-modes` 6.5.3 → 6.5.4
+  (`@pyreon/code`), TipTap 3.30.3 → 3.31.2 (`@pyreon/rich-text`), TanStack Query
+  5.102.2 → 5.102.8 across `@tanstack/query-core` and its persist/devtools
+  companions (`@pyreon/query`, and the shared root override so `@pyreon/http`
+  agrees), `@tanstack/table-core` 9.1.2 → 9.2.4 (`@pyreon/table`), the
+  pragmatic-drag-and-drop family (`@pyreon/dnd`) — core 3.0.0 → 3.1.0,
+  auto-scroll 3.1.0 → 3.2.0, hitbox 2.1.0 → 2.2.0, all in-range within the
+  v3 major this repo already adopted.
+
+  Dev-only comparison/tooling bumps across the touched packages: `rolldown`,
+  `react-hook-form`, `hotkeys-js`, `axios`, `ky`, `i18next`, `xstate`, `joi`,
+  `typia`, `nuqs`, `@tanstack/react-virtual`, `@tanstack/react-table`,
+  `@tanstack/react-query`, `motion`, and `mobx-state-tree` 7.4.0 → 8.0.0 — a
+  real major, but its own peer range for `mobx` moved `^6.3.0` → `^7.0.0`,
+  which matches what this repo already declares (`^7.0.3`); the OLD pin was
+  the one silently out of range.
+
+  `happy-dom` deduped to ONE resolved version repo-wide — three stale copies
+  (20.11.6/20.12.0/20.13.2) were co-installed before this pass across the ~17
+  packages that each pin it independently. The unification target is
+  **20.11.6, not the newest 20.13.2** — bumping past 20.11.6 breaks
+  `@pyreon/styler`'s `memory-growth.test.ts` deterministically (5/5 local
+  runs, plus a CI failure on `test (fundamentals+ui-system+zero)`), a pure
+  `environment: 'happy-dom'` test whose eviction-cycle counting depends on
+  CSSOM/`cssRules` behavior that changed somewhere between those versions —
+  confirmed by isolating the version with an exact pin, not by assumption; 3/3
+  clean at 20.11.6, 5/5 failing at 20.13.2. Verified pre-existing on `main`
+  (3/3 passes there, at 20.11.6) so this is the same "routine bump, unvetted
+  runtime behavior change" shape as the `@tanstack/virtual-core` finding
+  below, just caught before push instead of by CI. The one other consumer
+  pinning past 20.11.6 — `@happy-dom/global-registrator` in
+  `examples/benchmark`, whose own 20.13.2 release requires `happy-dom
+^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
+  graph resolves to one version again.
+
+  `examples/benchmark`'s framework competitors were refreshed too so the
+  "fastest framework" comparisons stay honest against current releases: Vue +
+  `@vue/server-renderer` + `@vue/compiler-dom` 3.5.41 → 3.5.42, Svelte 5.56.10
+  → 5.57.0, and Octane 0.1.46 → 0.2.2 (its peer `@octanejs/vite-plugin`
+  0.1.46 → 0.1.52 alongside it) — a real minor jump, verified with a clean
+  production build before committing to it. Octane 0.2.2 replaces the
+  `forBlock` fast-path flag the row-list bench's own doc comment describes
+  un-handicapping with a new `fastKeyedForBlock` path; the bench impl still
+  reaches it (confirmed by compiling `octane.tsrx` through `octane/compiler`
+  0.2.2 and reading the emitted flags), so the comparison stays fair, but
+  every previously-published Pyreon-vs-Octane number in
+  `.agents/guides/benchmarks/README.md` was measured against 0.1.46 and
+  needs re-verification against 0.2.2 before being cited again — flagged
+  there, not restated as fact here.
+
+  Held deliberately, each for a stated reason found by actually reading the
+  dependency rather than assuming: TypeScript stays capped `<7.0.0` (removes
+  the classic Compiler API `@pyreon/compiler`/`@pyreon/mcp`/`@pyreon/cli` are
+  built on). `vitest`/`@vitest/browser`/`@vitest/browser-playwright`/
+  `@vitest/coverage-v8` stay on 4.1.11 as one locked unit (5.0.0 just went GA
+  and changes `clearMocks` to default `true`, tightens `coverage.include`/
+  `exclude` matching, and removes several import entrypoints — exactly the
+  class of change this repo's `Coverage (Full)` gate has already rotted on
+  three times; a real migration, not a version bump). `@changesets/cli`
+  2.31.1 → 3.0.1 and `@changesets/changelog-github` 0.7.0 → 1.0.0 stay put:
+  1.0.0 ships `"type": "module"` with no CJS export, and this repo's own
+  `.changeset/resilient-changelog.cjs` does `require('@changesets/changelog-
+github')` — bumping it would break `changeset version` at release time with
+  `ERR_REQUIRE_ESM`, verified by reading the published package's `exports`
+  map, not assumed. The root `uuid` override stays at `11.1.1` for the same
+  reason, one level removed: it force-pins a transitive dep of `exceljs`
+  (`^8.3.0`, itself already outside its own declared range on purpose), and
+  `uuid` 12.0.0 dropped CommonJS support entirely — `exceljs`'s own bundled
+  code does `require('uuid')`, verified directly in its installed `dist/`, so
+  the same ESM-only trap applies one hop further down the graph.
+
+  One more found by actually running the browser test tier, not just typecheck
+  and the node/happy-dom suite: `@tanstack/virtual-core` was bumped 3.17.4 →
+  3.17.8 in this branch's first pass (a routine-looking override edit, not
+  vetted as carefully as the deps above), and it broke
+  `@pyreon/virtual`'s real-Chromium `repositions a STAYING row below when row 0
+is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
+  retries) — bisected down to virtual-core's own 3.17.7 "synchronous
+  notification for scroll compensation" change, not to anything else in this
+  branch (ruled out `@tanstack/react-virtual`, unrelated — not imported by this
+  code path at all; ruled out the `oxc-parser`/`magic-string`/`rolldown`
+  bumps too, by reverting each in isolation and rebuilding). Reverted back to
+  3.17.4, matching what's currently on `main`, and NOT bumped further.
+
+  This surfaced something that predates this PR: `@pyreon/virtual`'s own
+  `package.json` has declared `@tanstack/virtual-core: "^3.17.7"` since an
+  earlier fix (commit 973c4e323, "the root overrides pinned
+  @tanstack/virtual-core to 3.17.4 while three packages declared ^3.17.7, so
+  the installed version did not satisfy its own consumers' declared range")
+  — but the root override was only ever bumped to 3.17.4 there, not to
+  3.17.7+, so the exact mismatch that fix describes is still live on `main`
+  today: the declared floor and the resolved version disagree, silently,
+  because the currently-resolved 3.17.4 happens to still pass. Bumping the
+  override to actually satisfy the package's own declared range (3.17.7,
+  confirmed — not just 3.17.8) is what surfaces the real compatibility break
+  in `use-virtualizer.ts`'s remeasurement handling. Left as-is here rather
+  than fixed, because closing it needs either updating the wrapper for
+  virtual-core's new synchronous-notification timing or re-adjudicating the
+  test's assumptions against it — real source-level work, not a version
+  bump. Tracked as a known gap, not silently left broken: someone picking
+  this up should treat `bun run test:browser` in `@pyreon/virtual` as the
+  regression gate, not just `bun run test`, which does not exercise this
+  path at all (confirmed: the full node/happy-dom suite passes 1805/1805
+  regardless of which virtual-core version is resolved).
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- Two bugs the device gates found, both invisible to every other check (6b90f4a)
+
+  **`LocalPyreonRouter.current` is nullable.** The `useUrlState` lowering passed it
+  into a synthesized `PyreonUrlState(router: PyreonRouter, …)`, so a real
+  `gradle assembleDebug` failed with
+  `actual type is 'PyreonRouter?', but 'PyreonRouter' was expected`. The Kotlin
+  stub typed the CompositionLocal non-null and hid it. The synthesized classes now
+  take `PyreonRouter?` and safe-call it, exactly as router-kotlin's own hooks do
+  (`router?.push(path)`), and the stub is nullable so the same mistake fails
+  locally.
+
+  **`PyreonToast.swift` used a bare `Task`.** That file is compiled INTO the app
+  target, so an app with its own `Task` model shadows Swift's concurrency type and
+  the bare name resolves to the user's struct — `argument type '_' does not
+conform to expected type 'any Decoder'`. A tasks app is exactly the app that has
+  one. Now `_Concurrency.Task`, which is what the emitter already writes for this
+  reason; the shipped runtime did not, and nothing compiled it until it was put in
+  a gated app.
+
+- Correct four documentation claims that contradicted the shipped code (26e1837)
+
+  - **`dehydrateStores`'s `@example` taught an XSS.** It showed a bare `JSON.stringify` interpolated into an inline `<script>`, and store state is by definition user data. Framework code is clean — every embed site routes through a script-safe serializer — but this example propagates into `llms.txt` and the MCP api reference, so an assistant reproduces it. A doc is a call site. It now shows the escaping (the `<` class plus U+2028/U+2029) and says why.
+  - **`canonical-primitives.ts` — the file the codebase treats as the single source of truth on the question — said 6 of 16 primitives were wired and named the rest as falling through to generic emit.** All 16 are wired: 15 have a dedicated per-target emit function and `Inline` deliberately shares `Stack`'s with a row default. It also listed nine names as ten and labelled a five-item group as four.
+  - **`@pyreon/state-tree`'s README said live model instances "self-register".** `registerInstance` has no caller outside its own tests, so `getActiveModels()` returns `[]` forever and the snippet as written could never work. Registration is explicit by design — only the caller can name an instance — which is what the function's own docstring already said. The README now matches, and notes that the registry holds `WeakRef`s so registering never keeps an instance alive.
+  - **The multiplatform matrix scored crash reporting `0.0 / "ABSENT — no vocabulary at all. No useCrashReporter"`** while `useCrashReporter()` shipped, was exported from `@pyreon/hooks`, and was wired in both emitters. The row is 0.2 now with an honest account: capture, persistence, and next-launch rehydration exist on all three platforms and the emit auto-starts them, but there is no device test on either target, symbolication is absent, and signal/NDK crashes are out of v1 scope. The matrix gate only checks that the headline equals the column sum, so it is structurally unable to catch a row that misdescribes itself.
+
+- `@pyreon/feature` declares the native frontend it already had (5ff6d4a)
+
+  `defineFeature({ name, schema })` with the literal field-type map has been
+  lowering to a Codable struct plus a module-scope const (`name`,
+  `initialValues`) on both targets — but the manifest still said the package had
+  NO native emit, so the compiler's derived web-only set kept warning about it and
+  the coverage registry counted it as an open gap.
+
+  The declaration half now says what it does, and the runtime half (the generated
+  CRUD hooks, the fetcher, validator/form integration) is scoped honestly as the
+  part that stays web. A runtime schema (Zod / Valibot / ArkType) is still not
+  introspected and warns by name.
+
+  Native app-runtime coverage: 34/37 → 35/37.
+
+- Add native parity inventory gates for every public Flow runtime export and supporting-component prop so new helpers, constants, components, and chrome capabilities cannot silently bypass native handling or an explicit web-only boundary. (8b8e2c3)
+- Lower the public Flow node-anchoring helpers to the native SwiftUI and Compose runtimes. (cce5404)
+
+  `getFloatingEndpoints`, `getSmartHandlePositions`, and `resolveHandleAnchor` now preserve web-compatible dimensions, configured-handle precedence, perimeter intersections, tangent sides, and result field names in shared-source native builds.
+
+  Static `<Handle>` declarations inside literal `nodeTypes` renderers now become real interactive SwiftUI and Compose connection handles, including side offsets. Explicit per-node handle arrays continue to win for their endpoint type.
+
+  Static `<NodeResizer>` declarations now render native corner and optional edge drag handles. Resize gestures preserve the opposite edge, respect minimum dimensions and viewport zoom, and update node position and size in one undo checkpoint.
+
+- Close native Flow host and chrome parity gaps. `colorMode` now reaches SwiftUI and Compose, reactive Background/Controls/MiniMap props no longer silently fall back to defaults, standalone `<Controls instance={flow}>` lowers with functional lock state and child content, and the exported `FlowProps` type cannot drift from the component's canonical props. (cce5404)
+- `createFlow`'s config takes 17 keys. The native reader took two — `nodes` and `edges` — and the other fifteen lowered to nothing, silently. So `createFlow({ nodes, edges, minZoom: 0.5, maxZoom: 2 })` clamped zoom to 2x on web and 4x on iOS/Android from the same source line: code that compiles, runs, and is simply wrong on one target, with no diagnostic anywhere. The IR's own doc comment acknowledged the gap; nothing surfaced it to the person writing the app. (faeb942)
+
+  `minZoom`/`maxZoom` now thread through when written as numeric literals. Both native constructors already accepted them, so the runtime was never the blocker — only the reader was. Kotlin renders them as Double literals, because `maxZoom: 2` emitting `maxZoom = 2` is an "argument type mismatch: actual type is 'Int', but 'Double' was expected", while Swift takes the identical source without complaint — the per-target asymmetry that hides this class until a real Kotlin compile.
+
+  Every other key now WARNS by name (`fitView`, `snapToGrid`, `defaultEdgeType`, …), including a `minZoom`/`maxZoom` written as a non-literal, rather than being dropped in silence. Guessing a native equivalent for `snapToGrid` would be worse than saying it does not cross.
+
+- Native flow nodes and Controls now look like the web ones. A node without a custom `type` rendered on iOS and Android as a bare text label, and Controls used the platform's filled buttons. Five palette colours were declared but never painted: node background, node text, node border, node selected and control colour. (2ff475b)
+
+  Both native runtimes add `PyreonFlowDefaultNode`, which matches the web's default node: palette colours, a 2px border that uses the selected colour while selected, 6px corners, 8×16 padding, 13px text and an 80px minimum width. The compiler emits it for untyped nodes. Native Controls now use the web's bordered panel box with 28px transparent buttons drawn in the control colour. A new test keeps the native palettes equal to the web's `--pyreon-flow-*` values.
+
+- A custom Flow node typed with an inline data shape, `NodeComponentProps<{ label: string }>`, now compiles on iOS and Android. It previously produced zero warnings and failed to compile on both: Swift typed `data()` as `String`, and Kotlin synthesized a class unrelated to the struct the flow's node literal used. One struct is now declared per distinct inline shape (nested objects included) and shared by the renderer and the flow. `<NodeResizer nodeId>` naming a node other than the one it is rendered in now warns, instead of silently resizing the host node natively. (9e2d7e5)
+- An inline `<svg>` inside a native Flow node, edge or connection-line renderer now draws natively on iOS and Android instead of being dropped with a pointer to `<FlowWebView>`. Every SVG shape (`path`, `rect` including rounded corners, `circle`, `ellipse`, `line`, `polyline`, `polygon`, and shapes inside `<g>`) becomes path data drawn in one canvas, sized from `width` / `height` (or the `viewBox` aspect) and scaled by the `viewBox` with the default `xMidYMid meet` or `preserveAspectRatio="none"`. `fill`, `stroke` and `stroke-width` inherit from the `<svg>` and `<g>` as they do in SVG. A dynamic attribute (`cx={…}`) is interpolated into the path at runtime. What does not lower (`<text>`, gradients, `transform`, dynamic children) is named in a warning. (411a373)
+
+  Plain `<div>`, `<p>` and `<span>` in a Flow renderer now lower in the two cases where the native layout provably matches the browser's: text-only content becomes a text run, and a `<div>` of block children (or a single child) becomes a flush-left, gap-free stack. A `class`, a `style`, an event handler or inline-flow children keep the existing warning. Outside a Flow renderer, both `<svg>` and DOM elements keep their warning.
+
+- Require every natively lowered Flow operation to remain exercised by both executable native behavior fixtures or by the explicit compiler-rewrite matrix. (8b8e2c3)
+- Preserve Flow node and edge interaction metadata when `createFlow` crosses to Swift and Kotlin. (1e03f8b)
+
+  Native `PyreonFlowNode` now carries per-node draggable, selectable, connectable, focusable, accessibility, visibility, deletion, and group-parent fields. `PyreonFlowEdge` now carries source/target handles plus focusable, accessibility, visibility, deletion, reconnection, and interaction-width fields. Declaration-time seeds and `addNode`/`addEdge` literals emit those fields on both targets instead of silently discarding them; unsupported fields remain named warnings.
+
+  The native state also gains bulk node/edge removal and selection, plain state reads, multi-node movement, coordinate conversion, viewport visibility, group-child/absolute-position queries, and node focusing. Shared-source calls lower with the Swift labels, named position types, and Kotlin numeric widening each platform requires.
+
+  Edge waypoints now survive declaration and `addEdge` lowering, and native state supports waypoint insertion, update, removal, and edge reconnection with web-compatible index behavior.
+
+  Partial viewport updates and center-on-coordinate operations now lower to equivalent native state operations.
+
+  Literal bulk node and edge additions/replacements now lower to native model arrays, retaining duplicate filtering, edge normalization, selection pruning, and removal of edges disconnected by node replacement.
+
+  Node extents now constrain native position updates and shared-source extent setup, clearing, and explicit clamping lower on both targets.
+
+  Literal `snapToGrid`, `snapGrid`, and `nodeExtent` configuration now initializes both native engines, including JavaScript-compatible rounding at negative half-grid positions.
+
+  Native edge rendering can now derive straight, bezier, and waypoint segment lists and label anchors directly from endpoint coordinates instead of requiring precomputed bridge payloads.
+
+  Native edge routing also covers every horizontal/vertical smooth-step orientation and zero-radius step paths.
+
+  Native geometry now resolves node-side handle midpoints, perimeter intersections, and floating endpoints with the same coordinates and tangent sides as web.
+
+  Configured and measured handles now resolve by ID with the web precedence rules, exact measured centers, effective node dimensions, and first-handle fallback.
+
+  Literal source/target handle declarations now survive `createFlow` seeds and `addNode`/bulk-node lowering on Swift and Kotlin.
+
+  A complete native edge-path dispatcher now combines handle/floating endpoint resolution with waypoint and built-in route selection, matching authoritative web geometry fixtures.
+
+  SwiftUI and Compose now ship complete native Flow hosts that measure their container, render state-derived nodes and edges under one viewport, and support selection, node dragging, canvas pan/zoom, visibility, and accessibility labels. Real iOS and Android example targets compile the hosts, while the graph-to-stroke rules have executable Swift and Kotlin coverage.
+
+  Shared-source `<Flow instance={flow} />` now lowers directly to those SwiftUI and Compose hosts with a default node renderer. Unsupported custom renderer maps and optional web chrome remain explicit diagnostics rather than unresolved native symbols or silent drops.
+
+  Nested `<Background>` now lowers to native viewport-aware dots, lines, or cross patterns with matching gap, size, and color configuration.
+
+  Nested `<Controls>` now lowers to functional native zoom-in, zoom-out, fit-view, zoom-percentage, placement, and canvas-lock controls; locking disables pan, zoom, and node dragging on both targets.
+
+  Native MiniMap geometry now derives graph bounds, absolute child-node rectangles, scale, and the live viewport indicator identically on Swift and Kotlin, with executable coverage for hidden-node filtering.
+
+  Nested `<MiniMap>` now lowers to native node and viewport rendering with configurable size/colors, click-to-center, drag-to-pan, and pinch zoom behavior.
+
+  Literal `connectionRules` and `isValidConnection` callbacks now lower into both native state engines, preserving callback-first veto behavior and source-type-to-target-type validation.
+
+  Native connection commits now validate before mutation, preserve source/target handle IDs, generate stable unique IDs when needed, and reject duplicate explicit IDs; shared `isValidConnection({...})` calls lower to nominal native connection values.
+
+  Swift compiler validation now uses a disposable module cache, keeping hermetic and sandboxed runs independent of a writable user-level Clang cache.
+
+- A `<path d="…">` in a native Flow custom edge or connection line now renders natively for any path data. Before, only path-helper results and the connection line's `path()` accessor lowered, and a path string such as a template literal or a constant was dropped. The Swift and Kotlin runtimes now parse SVG path data themselves, covering every command (M L H V C S Q T A Z, absolute and relative) with arcs converted to cubic curves. (411a373)
+
+  The paint now follows the browser's rules for an SVG path: fill defaults to black, stroke to none and stroke width to 1, and a `style` declaration beats the matching attribute. Previously the native default was a grey stroke with no fill, and `style` was read by taking its first hex colour.
+
+- Native flow view fixes found while device-testing the React Flow parity work. (9e2d7e5)
+
+  - A raised node (selected, dragged, or with a `zIndex`) no longer covers the connection handles and resize handles on iOS and Android. They now take their own node's stacking, as on the web, where they are the node's children.
+  - The auto-pan loop on iOS now runs only while the pointer is in the edge band, not for the whole drag. Android had the same fix.
+  - Native edge labels (the built-in label and `<EdgeText>`) use the web's 11px size. They were 12pt on iOS and the platform default on Android.
+  - `flow.updateNode(id, { zIndex: 5 })` and `updateEdge(id, { zIndex: 3 })` now compile on Android. An integer literal was emitted into a `Double` field.
+  - `<ViewportPortal>` on iOS and Android now gets one accurate warning (that it was dropped), not also an import-time warning saying the build fails.
+  - Android flow animations (`animateViewport`, `fitView`, an animated `layout`) ran their frames on a background `Timer` thread, so `onViewportChange` / `onNodesChange` listeners were called off the main thread and any that touched a View crashed with `CalledFromWrongThreadException`. Frames now go through `PyreonFlowFrames.scheduler`, which `PyreonFlowView` sets to the main looper the first time it renders. Hand-written Kotlin that animates a flow before any view exists can call `pyreonFlowUseMainThreadFrames()`.
+
+- `form.isValid()` / `form.isSubmitting()` lower to the native property reads (a0c4cd7)
+
+  The web API exposes both as accessors, so the documented spelling is a call. The
+  native `PyreonForm` exposes them as stored Bool properties, and the emit passed
+  the call through verbatim — so the web-correct line failed with `cannot call
+value of non-function type 'Bool'` on swiftc and `expression 'isValid' of type
+'Boolean' cannot be invoked as a function` on kotlinc.
+
+  Same inversion `useOnline()` and `useAppState()` already carry.
+
+- Keep native PlotChart accessibility summaries on the complete source dataset when paint is zoomed, decimated, or filtered by legend visibility. (a39f457)
+- `useHotkey` now lowers to a real keyboard shortcut on iOS and Android (5f9c82c)
+
+  The manifest used to say touch platforms have no hardware-shortcut surface.
+  That was false — iPads with keyboards, Chromebooks, DeX and keyboard-equipped
+  tablets all reach one, and both toolkits expose it. What was missing was the
+  lowering.
+
+  ```tsx
+  useHotkey("mod+s", () => save());
+  ```
+
+  ```swift
+  .background(Button("") { save() }.keyboardShortcut(KeyEquivalent("s"), modifiers: [.command])…)
+  ```
+
+  ```kotlin
+  Box(modifier = Modifier.focusRequester(__hkFocus).focusable().onPreviewKeyEvent { e -> … })
+  ```
+
+  The two emits are structurally different because the toolkits are: SwiftUI's
+  `.keyboardShortcut` attaches to a CONTROL and fires its action, so the handler
+  becomes a hidden zero-size Button's action; Compose delivers key events only to
+  a FOCUSED node, so the root is wrapped focusable with a FocusRequester that
+  actually requests focus.
+
+  `mod` stays symbolic in the IR and resolves per platform — Command on iOS, Ctrl
+  on Android.
+
+  Three shapes are refused BY NAME rather than emitted wrong: a computed shortcut
+  (neither toolkit can bake one in), a handler taking the KeyboardEvent (no native
+  equivalent — silently ignoring it would run event-dependent logic wrongly), and
+  a comma-separated combo list (one binding cannot carry two).
+
+  Every Compose `Key` constant and SwiftUI `KeyEquivalent` in the mapping was
+  verified to resolve against the real artifacts, with negative controls: Compose
+  spells it `Key.Spacebar` not `Key.Space`, digits are `Key.Zero`…`Key.Nine`, and
+  `Key.Home` is the Android home BUTTON — `MoveHome`/`MoveEnd` are the caret pair.
+
+  Native app-runtime coverage: 35/37 → 36/37.
+
+- Correct `@pyreon/hotkeys`'s multiplatform rationale, which was factually wrong (8abff03)
+
+  The manifest said _"touch platforms have no hardware-shortcut surface"_, and the
+  native compiler quotes that rationale verbatim in the warning it prints when you
+  import the package — so the claim was reaching users as guidance.
+
+  It is false. Both targets expose a hardware-shortcut surface, and both the
+  control-bound and view-level iOS shapes typecheck against the real iOS SDK:
+
+  ```swift
+  Button("s") {}.keyboardShortcut("s", modifiers: .command)   // iOS 14+
+  Color.clear.onKeyPress(.init("s")) { .handled }             // iOS 17+
+  ```
+
+  Compose has `Modifier.onPreviewKeyEvent`. iPads with keyboards, Chromebooks,
+  DeX and keyboard-equipped tablets all reach them.
+
+  The rationale now says what is actually true: no lowering is implemented yet.
+  That is an unbuilt lowering, not a platform limitation — a distinction that
+  decides whether anyone attempts it.
+
+  No emitted code changes.
+
+- The import-budget table's label now uses the same threshold as its verdict (2eb07b2)
+
+  `check-import-budgets` tolerates `budget + VERSION_NOISE_BYTES` when deciding
+  pass/fail (gzip differs by a few bytes across zlib versions), but the per-row
+  LABEL used a bare `>`. So a CI run printed
+
+  ```
+  OVER @pyreon/charts::plot-svg    gz=12624  budget=12620
+  [check-import-budgets] all 15 scenario(s) within budget.
+  ```
+
+  — four bytes inside the tolerance, labelled as a failure one line above the
+  verdict that passed it. Anyone triaging a red Build reads the `OVER` and
+  chases an entry that is not the failure.
+
+  The tag is now a shared pure function (`budgetTag`) keyed to the same
+  threshold, with a distinct `near` for the in-noise case — hiding it as `ok`
+  would be the opposite error, a budget quietly absorbing growth worth a look.
+
+- The `kinetic()` factory shipped uncompilable native code instead of declining (b5bbce2)
+
+  A `const Box = kinetic('div').preset('fade')` fell through to the module-decl
+  catch-all and emitted the call verbatim:
+
+  ```swift
+  private let Box = kinetic("div").preset("fade")   // error: cannot find 'kinetic' in scope
+  ```
+
+  Kotlin the same. `kinetic()` animates by toggling CSS classes and driving rAF
+  over a real CSSOM, so having no native analogue is correct — but the decline
+  reached the user as a failed native build rather than a message.
+
+  The repo had already solved this shape twice: `createHttp()` metadata and
+  `defineTheme()` are both skipped for exactly this reason. kinetic needed one
+  extra step those two don't, because its binding is used as a JSX **tag**:
+  skipping alone leaves `<Box>` unresolved, so the tag now rewrites to the
+  canonical container — layout and children survive, the animation is dropped.
+
+  The warning names the binding, says what happened to the element, and points at
+  the animation that does cross (`<Transition show name>` from
+  `@pyreon/primitives`, which lowers to SwiftUI `.transition`/`.animation` and
+  Compose `AnimatedVisibility`).
+
+  Also corrects the native-coverage registry's rationale for `@pyreon/hotkeys`,
+  which still carried the "no native analogue on touch platforms" claim the
+  manifest stopped making.
+
+- A `kinetic().preset()` chain now animates on iOS and Android (b7b499e)
+
+  The preset is what makes this possible: it NAMES an animation both targets
+  already know, so the box lowers through the same `<Transition>` path the
+  primitive uses — presets, durations and both emitters, all already verified.
+  None of the animation is re-implemented.
+
+  What it needs that a primitive does not is a TRIGGER. Rewriting to
+  `<Transition show={true}>` is the obvious move and is wrong: it compiles and
+  never animates, because `.animation(_:value:)` watches a constant and
+  `AnimatedVisibility(visible = true)` starts visible. So the enter is driven by a
+  synthesized flag that flips on mount, reusing the on-mount harness — which also
+  carries the SwiftUI stable-identity host an `.onAppear` needs.
+
+  ```swift
+  @State private var __kineticIn: Bool = false
+  … .transition(.opacity).animation(.default, value: __kineticIn)
+    .onAppear { __kineticIn = true }
+  ```
+
+  ```kotlin
+  var __kineticIn by remember { mutableStateOf(false) }
+  LaunchedEffect(Unit) { __kineticIn = true }
+  AnimatedVisibility(visible = __kineticIn, enter = fadeIn(…))
+  ```
+
+  A chain with NO `.preset()` has no animation vocabulary to carry across, so it
+  still degrades to a plain container and warns by name. `<Transition name>` from
+  `@pyreon/primitives` remains the portable spelling.
+
+  Native app-runtime coverage: 35/37 → 36/37.
+
+- The preset pack's own documented form now animates on native (6b90f4a)
+
+  `kinetic(tag).preset(fadeUp)` — an identifier from `@pyreon/kinetic-presets`,
+  which is how the pack documents itself — fell through to the plain-container
+  decline, because the kinetic lowering accepted only a string literal. The
+  package's own example did not animate.
+
+  Named presets now resolve. The pack ships 123 and the native vocabulary has
+  seven, so the unambiguous names map (fade / fadeUp / fadeDown / fadeLeft /
+  fadeRight / slideUp / slideDown / slideLeft / slideRight / scaleIn / scale) and
+  everything else declines **by name**, saying which preset and what the native
+  vocabulary is.
+
+  Mapping the rest to the nearest motion would be worse than declining: a
+  `bounceIn` that silently plays a fade is a bug the author cannot see. The
+  diagonal (`fadeDownLeft`) and magnitude (`slideUpBig`) variants are unmapped for
+  the same reason — native has neither a diagonal nor a distance parameter, so a
+  mapping would drop half the intent without saying so.
+
+- `<PlotChart navigator>` and `<PlotChart brush>` on Android now classify the gesture from the touch-DOWN point. Compose's `detectDragGestures` reports the point where touch slop was crossed, and slop (8dp) is wider than the navigator handle's grab (6dp), so dragging the left handle was read as a band drag and the brush anchored one slop past the press. Both surfaces are emitted as `awaitEachGesture { awaitFirstDown(); drag(id) { … } }`; the CLI adds the matching imports. Inside the drag the movement is read from `positionChange()` BEFORE `consume()` — Compose reports the unconsumed movement, so the other order reads zero on every step and the window never moves. (e6ef4e3)
+- Lathe's first hour, fixed. (b976aa0)
+
+  - **Output that compiles.** A GET with no content (Petstore 3's `logoutUser`) no longer emits `useQuery<void>` over an endpoint typed `unknown`, and no longer gets a native data component that PMTC cannot lower; Petstore 3 is now in the strict-typecheck matrix. A discriminated union whose tag cannot be proven (a `const` tag, an optional enum tag, a duplicated value) is emitted as a plain union with a note instead of throwing when `schemas.ts` is imported.
+  - **The wrong document is refused.** Swagger 2 is refused with the `swagger2openapi` conversion command; a file that is not an OpenAPI 3.x spec is refused before any output is touched. Every project is generated before any is written. A numeric YAML `info.version` is kept instead of becoming `0.0.0`.
+  - **Losses are loud.** Header and cookie parameters, security schemes, response headers, error bodies, other success responses, parameter serialization, `deprecated`, an optional request body, `const`, extra tags and a shadowed description all produce notes. Notes carry a severity (`loss` / `choice`, via `NOTE_SEVERITY` / `noteSeverity`); the report leads with losses; pointers are RFC 6901. A BROKEN native verdict's warnings print in full.
+  - **Orphans are pruned.** `lathe-manifest.json` records what each run generated; `generate` removes what it no longer produces and `check` reports it stale. Commit the manifest.
+  - **A strict CLI.** Unknown flags/commands/values are errors with a did-you-mean (exit 2); `--version`, `--config`, `--dry-run`, `--color`/`--no-color`; the config is found upward and its paths are relative to the config file; errors go to stderr; colour respects TTY and `NO_COLOR`. **Breaking:** `--json` now has one shape, `{ ok, command, projects: [...], error? }`, for any project count (a single project used to be a flat object).
+  - **`lathe pull`** works without a config (`lathe pull <url> [dest]`), sends `--token` / `--header` / `$LATHE_TOKEN`, makes conditional requests via ETag, and pulls every project with the new `source` key.
+  - **The Vite plugin** reads `pyreon.config.*` itself (`lathe({ checkOnBuild: true })` is enough), generates once at boot, warns on a missing spec with a suggestion, logs breaking changes and losses, and watches the config. `--watch` watches the config too.
+  - `@pyreon/config`'s `LatheSection` now matches Lathe's own type exactly (`client`, `validator`, `source`, literal plugin names), enforced by a compile-time test.
+  - `@pyreon/native-compiler`: schema drop warnings for the `s` DSL read `s declaration` instead of `null declaration`, and no longer cite `z.array()`.
+
+- An integer literal in a `Record<string, Double>` now emits as a Double. (1373888)
+
+  `values={{ '2024-01-03': 4 }}` is the natural way to write calendar counts —
+  they ARE integers — and it emitted an Int-valued map against a Double-valued
+  annotation, which does not compile on Android. It read fine on the web, so the
+  first sign of it was a native example refusing to build.
+
+  Applied where the value type is KNOWN (a map literal's values), deliberately not
+  at the literal emit reading the ambient expected type: that type describes an
+  ENCLOSING position and also covers an array index, the argument of
+  `Double(n - 1)` and the operands of `level == 2`.
+
+- Normalize numeric arrays passed to chart decimators so integral TypeScript `number[]` values compile as `Double` collections on Swift and Kotlin. (1373888)
+- `useClipboard`'s reads were 1:1-inverted, and `text` was missing natively (39db4ce)
+
+  Two findings, both in the same hook.
+
+  **The reads.** On the web `copied` and `text` are accessors (`copied: () => boolean`), and the hook's own documented example is
+  `{() => copied() ? 'Copied!' : 'Copy'}`. Natively they are stored properties, so that documented spelling failed with
+  `cannot call value of non-function type 'Bool'` — while the spelling that DID compile natively (`c.copied`) renders the accessor function on the web. Reads now drop their parens on both targets; a real method (`copy(text)`) keeps its parens and arguments.
+
+  This is the third instance of the class, after `model()`'s state fields and the one `useBluetooth` avoided by construction: **a hook whose web surface is accessors and whose native surface is fields needs a use-site rewrite, or the two spellings are mutually exclusive.**
+
+  **The missing member.** `text` — "the last successfully copied text" — has been in the web hook since inception and existed on neither native runtime, so a component reading it compiled on the web and failed with `has no member 'text'`. Both runtimes now expose it, set on the successful-copy path.
+
+  Found by taking each lowered hook's web-correct spelling and compiling it. Worth noting what that same sweep did NOT find: `useOnline` returns an accessor directly rather than an object, and `useCrashReporter` exposes getter-backed plain properties that already match — both were spellings I had guessed wrong, not bugs.
+
+  ## The Swift stubs were narrower than the runtimes
+
+  Sweeping every lowered hook's web-correct spelling through the compiler
+  surfaced a second class: the **type gate was rejecting correct emits**,
+  because several Swift stubs carried a fraction of their runtime's surface.
+
+  - `PyreonShare` — stub had `url`; the runtime has `text` / `url` / `textUrl` / `canShare`
+  - `PyreonHaptics` — stub had `impact`; the runtime has three
+  - `PyreonNotifications` — stub had `notify`; the runtime also has `requestPermission`
+
+  Every one of those members is reachable from the web hook, so a component
+  using them compiled on the web and was refused here. This is the mirror of
+  the documented superset-stub trap and just as costly: a stub NARROWER than
+  reality fails working code.
+
+  `useBiometrics.isAvailable` was the one real product gap in the sweep — it
+  has been in the web hook since inception and existed on neither runtime.
+  Swift now answers it with `canEvaluatePolicy` (honest: no sensor or no
+  enrolment reports false); Kotlin returns `false` alongside its v1
+  `authenticate` scaffold, because a hardcoded `true` would send a caller down
+  a path that cannot authenticate.
+
+  A new suite compiles the web-correct spelling of each lowered hook's surface,
+  so this class cannot recur silently.
+
+- `orient="vertical"` lowers on the Sankey, Calendar and Parallel hosts and through `<OptionChart>`: the layout runs in the transposed box, the draw list goes through `pyreonTransposeCmds`, and a tap is reflected before its hit. A reactive `orient` is named instead of lowering as horizontal. (f2b1d43)
+- Chart flags the native emit honours only as literals (`dataZoom`, `navigator`, `brush`, `horizontal`, `universalTransition`, `updateAnimation`) now warn by name when present but not statically resolvable — a prop, a signal read, a computed used to lower silently as off, so the web build honoured the value and the device build quietly did not. (f2b1d43)
+- `<ChartWebView group>` lowers on both targets: the group name travels in the hosted envelope (`pyreonChartWebViewData(…, group:)`) so the page joins its connected group natively. (f2b1d43)
+- Seven real bugs found while raising branch coverage 82.65% -> 93.31%, all bisect-verified: (a73f4e1)
+
+  - A sparse array literal (`[1, , 2]`, valid TS) crashed the whole `transform()` with an uncaught `TypeError` and no filename or line. Lowered to the `undefined` identifier, matching how `undefined` is represented everywhere else in the parser.
+  - A computed object key (`{ [k]: v }`) in `parse-theme.ts` and `parse-rocketstyle.ts` was emitted under its VARIABLE NAME instead of being skipped, silently reading `k` as a literal theme/dimension key.
+  - An unresolvable `<Text>` `color`/`fontWeight`/`textAlign` value (`'rebeccapurple'`, `'ultralight'`, `'justify'`) was accepted and then silently dropped by the emitter with zero warning.
+  - A degenerate `'0 / N'` `aspectRatio` (zero or negative width) emitted a real `0` ratio, collapsing the view, instead of being rejected like the number and plain-string forms already are.
+  - `@pyreon/validate`'s wrapper-less `s` DSL could not lower ANY nested schema shape (`s.object({ addr: s.object({...}) })`, `s.array(s.object({...}))`) — a synthesized re-entry wrapper built an `Identifier` callee literally named `null` instead of the required `MemberExpression`, dropping the field and then the whole schema.
+  - A CSS template segment containing an escape oxc cannot interpret (`\2014`, the ordinary CSS em-dash) silently dropped every OTHER property declaration sharing that segment, because a `TemplateLiteral` splits into quasis only at interpolation boundaries.
+
+  Several further findings are locked as self-retiring `it.fails` specs naming the fix rather than papered over (a Swift-only value-const inliner substituting through a shadowing parameter; a nested-struct name-collision in the type-path registry; `swift-stubs.ts`/`kotlin-stubs.ts` missing real SDK members and rejecting emits that compile against the real toolchains) — tracked as follow-up work.
+
+- Flow chrome lowering stops baking light-only colours: `<Background>` without `color` and `<MiniMap>` without a static `nodeColor` now emit `nil`/`null` so the renderer's palette decides per colour mode, and a `<Flow colorMode>` with `<Panel>` overlays wraps the stacked overlays in the same scoped colour mode. Two bugs found on the way are fixed: a block-bodied handler holding a SINGLE assignment (`() => { flow.config.reducedMotion = false }`) emitted an empty closure on both targets (the two-statement spelling worked), and a `defineStore` id that is not an identifier (`'native-flow-probe'`) emitted a class name neither compiler parses — ids are sanitised to identifiers. A flow listener subscriber that ignores its argument (`flow.onConnectStart(() => …)`) emitted a zero-parameter Swift closure where the port's callback takes one, so the same source built on Android and failed on iOS; it now emits `{ _ in … }`. (d98b60d)
+- A mark's literal `gradient` option (`stops` + `direction`) lowers to the engine's `SeriesGradient` on Swift and Kotlin — for `<PlotChart>` marks and for `<OptionChart>` series whose colour is an ECharts linear gradient object. (f2b1d43)
+- `<OptionChart>` lowers polar scatter / effectScatter series, and a polar option with no radius extent now emits a typed `PolarAxes` (a `categories`-only literal used to become an untyped object neither toolchain accepted). (f2b1d43)
+- `<OptionChart>` lowers `symbol`, `showSymbol` and `symbolSize` on line and scatter series to the engine's mark symbol and radius on Swift and Kotlin. (f2b1d43)
+- The native chart tooltip carries `Series.extras` through `TooltipSeries`, so extra tooltip dimensions read the same on every target. (f2b1d43)
+- `db.insert(collection, { id, description, amount })` — the flat domain object shape people naturally write, and the exact shape `native-finance`'s own showcase hit before retreating to string-keyed ops — fell through to the generic struct-synthesis path with zero warning. That path successfully synthesizes a real, compiling struct whenever the fields are individually typeable (a flat object of strings/numbers is the common case, not an edge case), so `warnUntypeableObjectLiteral` never fired: its question is "could a struct be synthesized at all", and the answer here is yes. The struct just isn't `PyreonRecord`, the nominal type `insert`'s real signature requires on both targets, so the call is guaranteed to fail the build — verified by compiling against the real stubs, not by reading the emit. (fc67b63)
+
+  `db.insert(collection, { id, fields: { ...columns } })` still lowers to a real `PyreonRecord` and is unaffected. Any other shape now warns by name, naming exactly which fields aren't `id`/`fields`, before falling through.
+
+- Native (PMTC) emit correctness: eight silent wrong-emit classes now lower or warn by name (cc2467b)
+
+  Every fix here addressed a shape that emitted with ZERO warnings on both targets and either failed to compile or answered differently from the web.
+
+  **Lowered**
+
+  - TS utility-type annotations no longer leak the TS name into emitted Swift/Kotlin (`Partial<ChartTheme>` emitted `private let T: Partial<ChartTheme>` — `cannot find type 'Partial' in scope` / `unresolved reference`). `Readonly`/`Required`/`NonNullable`/`Awaited`/`NoInfer` and the four string-case utilities erase to their base type; `Record<K, V>` lowers to a real dictionary (type AND literal); everything else warns by name and drops the annotation. The set is the complete `lib.es5.d.ts` list with a totality test.
+  - `<For>` with no `by` no longer assumes an `id` field: a primitive element keys on the value itself (`\.self` / `it`), and an element that provably has no `id` warns instead of emitting `value of type 'String' has no member 'id'`.
+
+  **Narrowed to match the web**
+
+  - `Math.round` on iOS was `.rounded()` (ties away from zero) where JS and Kotlin are `floor(x + 0.5)` — the two disagree on every negative half.
+  - `String.length` on iOS was `.count` (grapheme clusters) where JS and Kotlin count UTF-16 units (`"👍".length` was 1 instead of 2). Array `.length` is unchanged.
+  - `toFixed` on Android used the DEVICE locale, yielding `1234,57` where JS and Swift give `1234.57`.
+
+  **Now loud instead of silent**
+
+  - Unmapped `Array`/`String` methods (`toSorted`, `pop`, `entries`, `reduceRight`, `codePointAt`, `substr`, …) and `.sort()` with no comparator, which fell through to a verbatim re-emit.
+  - `||` / `&&` on a non-boolean operand (`name() || 'anon'`), which Swift and Kotlin reject as Bool-only operators.
+  - `{items.map((x) => <Row/>)}` as a child, which was interpolated into a string on both targets. The warning names `<For>`.
+  - Dynamic values on `<Video>`/`<Audio>` (`controls`, `muted`, `loop`, `autoPlay`, `volume`) and `<Text truncate>`, which emitted byte-identically to omitting the prop.
+
+  **Also**
+
+  - `useSortable` / `useForm` / `useRateLimited` / `useHotkey` now get the stable-identity SwiftUI host their `.onAppear` needs; the hand-listed gate is replaced by a set with a test that derives the answer from the emitter source.
+  - The committed native chart engine regenerates with the corrected rounding and string-length forms (20 lines of axis-label formatting were diverging on iOS).
+
+- Close four silent-wrong-emit classes in the PMTC emitters: `Math.*` members outside each target's hand-maintained set, `.length` over a component-local helper call, object spread beyond the single override shape, and a JSX-returning helper called as a function. (6dc4d21)
+
+  Each was a set the emitter recognised, a test exercising exactly that set, and nothing at all for everything else — no warning, and on Swift frequently code that compiles and answers wrongly.
+
+  - **`Math.*`** — every ECMAScript member now lowers on both targets or is warned by name. Previously Swift emitted `Math.sign / expm1 / log1p / asinh / acosh / atanh / fround / clz32 / imul / random` and every constant but `PI` verbatim (`cannot find 'Math' in scope`); Kotlin left `asinh / acosh / atanh / fround / clz32 / imul` unresolved, mismatched Int arguments on `expm1 / log1p / floor / ceil / round`, and neither target handled the variadic `Math.max(a, b, c)` / `Math.min(…)` / `Math.hypot(a, b, c)` forms.
+  - **`.length`** — a `function` declared inside a component body had no inferred return type, so the receiver typed `unknown` and Swift emitted `.count` (grapheme clusters) where the web and Kotlin count UTF-16 units: `"a👍b"` answered 3 on iOS and 4 elsewhere. `<For>` row parameters are now typed from `each` for the same reason.
+  - **Object spread** — `{ ...p }` emitted an empty statement, `{ ...p, z: 5 }` assigned a member that does not exist, `{ ...p, ...q }` emitted Swift's empty tuple `()` (Void, and it compiled), and `{ a: 9, ...p }` was byte-identical to `{ ...p, a: 9 }` although JS answers 1 and 9. Source order is now carried in the IR and the unlowerable shapes are named.
+  - **JSX helper call** — `{row("a")}` interpolated a View into a string on Swift (compiling, rendering a debug description) and produced an uncompilable call on Kotlin. Now named by target with the element-form remedy.
+
+- Reset the emitters' hook-binding-name sets per file (cb67b5f)
+
+  Both emitters keep module-level `Set`s of hook binding names (`_motionSwift`,
+  `_speechKotlin` and seven siblings each) so a read like `m.active()` knows to
+  drop its parens. A pre-pass fills them by walking every component at once, so
+  they are file-scoped — but nothing ever reset them, and they grew for the life
+  of the process.
+
+  That is a leak Class C, and it is what took `audit-leak-classes` from 44
+  findings to 51 against its ceiling of 40. Clearing them at each emitter's
+  entry brings the audit to 37.
+
+  This is hygiene, not a bug fix: no input was found where the stale names
+  changed the emitted output.
+
+- Two `@pyreon/flow` lowering fixes, both of which failed the build on iOS and Android. `createFlow<{ label: string }>(…)`, the explicit generic the compiler recommends for an empty graph, now resolves to the same struct its `data` literals construct, instead of `String` on Swift and `Any` on Kotlin. An integer coordinate expression such as `position: { x: col * 200 }` is now converted to the `Double` that `PyreonXYPosition` takes. (d98b60d)
+- `historyLimit` now works on iOS and Android. The native `PyreonFlowState` engines had a fixed undo depth of 50. They now expose a mutable `historyLimit` with the web clamp: a positive finite value is floored, and anything else means 50. PMTC lowers `createFlow({ historyLimit })` and `flow.config.historyLimit` reads and writes. Before this, the key was dropped with a warning. (0f89399)
+
+  The web engine now reads `config.historyLimit` each time it records a checkpoint, the same way it already reads `autoHistory`. A write to `flow.config.historyLimit` therefore takes effect, as it does natively. A lowered limit trims the extra checkpoints on the next push.
+
+  Two emit fixes found while testing this:
+
+  - Swift `PyreonFlowState(...)` arguments are now emitted in the init's declaration order. Before, a config combining `autoHistory` with `fitViewPadding`, or `connectionRules` with any later key, did not compile.
+  - A whole-number write to a `Double` Flow config property, such as `flow.config.minZoom = 1`, now compiles on Kotlin.
+
+- Bundle native-safe geographic point and path overlay geometry into the generated Swift and Kotlin chart runtimes. (f2b1d43)
+- A raw DOM or SVG element such as `<div>` or `<span>` in shared source now warns on both targets. It used to be written as a `div(…)` call that exists on neither iOS nor Android, with no warning. The warning names the routes: `@pyreon/primitives`, a `<Web>` branch, or, for a `<Flow>` renderer built from DOM, CSS or SVG, `<FlowWebView>` from `@pyreon/flow/webview`. The arbitrary SVG path warning names that route too. (411a373)
+- A Kotlin chart host with an `onSelect` / `onSelectIndex` handler no longer fails to compile on Android. Its items are now evaluated once, in composable scope, instead of being re-emitted inside the `pointerInput` tap handler — where the themed palette's `isSystemInDarkTheme()` is a `@Composable` call Compose rejects ("@Composable invocations can only happen from the context of a @Composable function"). (896d747)
+- feat(native): lower CSS `letter-spacing` to native (SwiftUI `.tracking` / Compose `letterSpacing`) (3d22293)
+
+  Extends the CSS-in-JS → native style mapping with `letterSpacing`, which round-trips exactly 1:1: it is an absolute per-character spacing on both targets (unlike `line-height`, a unitless multiplier on web), so `<Text style={{ letterSpacing: 0.5 }}>` lowers to SwiftUI `.tracking(0.5)` and Compose `letterSpacing = 0.5.sp`. Wired through the typography path with faithful stub entries (`View.tracking`, `Text(letterSpacing=)`) so the validate-against-stubs gate compiles it.
+
+- An inline object type inside an `interface` or object `type` field now lowers to its own named struct on both targets. `interface Task { meta: { owner: string } }` used to emit a labelled tuple on Swift, which is not `Codable`, and `Any` on Kotlin, which does not compile once the body reads `task.meta.owner`. The shape is now declared as `TaskMeta`, and an array element as `TaskTagsItem`, named after its field path. A generated name that the file already declares is refused with a warning rather than reused. (83983ab)
+- Lower literal pie, gauge, line, area, bar, and scatter `OptionChart` options through the native chart engine on SwiftUI and Compose, including pie label visibility. (a39f457)
+- Rewrote all six READMEs against current source. Every one still described a Phase-0/A4/C1/C2 implementation state and claimed `PRIVATE / EXPERIMENTAL, not published to npm` — false since the native stack was made publishable. No runtime changes. (6250032)
+- Fix two silent failures in the native toolchain: a syntax error passing `check`, and the LSP dropping any non-ASCII document. (2a7ece1)
+
+  **A file that does not parse no longer lowers to nothing.** `parseSync` reports
+  syntax errors in `ast.errors` and PMTC ignored that array, so an unparseable
+  file produced an EMPTY program that every pass below walked without complaint —
+  `transform` returned `{ code: '', warnings: [] }`, a _successful_ result. Empty
+  output is legitimate for other reasons (a types-only module, a re-export
+  barrel), so nothing downstream could tell "there was nothing to emit" from
+  "this is not TypeScript", and both tools reported success: `pyreon-native
+check` exited 0 on a file with a syntax error, and `pyreon-native build` wrote
+  an empty `.swift`/`.kt` and exited 0, so the failure surfaced later as a
+  missing symbol in Xcode or Gradle with nothing pointing back at the file.
+  Parse errors now throw as `file:line:col: message` — the form `extractPosition`
+  already parses — so `check` records an error finding and exits 2.
+
+  `EmitOptions` gains an optional `filename`, used only in diagnostics; without
+  it the message named the compiler's in-memory default (`input.tsx`), a path
+  that does not exist.
+
+  **The LSP server no longer drops documents containing non-ASCII characters.**
+  Its stdio frame parser accumulated a string and compared `buffer.length` —
+  UTF-16 code units — against `Content-Length`, which is a count of BYTES. Any
+  multi-byte character made the two disagree, the body slice came up short,
+  `JSON.parse` threw into a catch that swallows malformed frames, and the
+  document was dropped with no error. In practice diagnostics stopped working
+  for any file containing an accent, a curly quote or an emoji. The parser now
+  buffers bytes and decodes once a whole body is in hand.
+
+- Announce a `false` permission that a wildcard grant will override on device (a0611c4)
+
+  `<PermissionsProvider permissions={{ 'billing.**': true, 'billing.refunds.**': false }}>` bakes `PyreonPermissions(["billing.**"])` on both native targets, because the container is grant-only and an explicit `false` has nowhere to live. With no wildcard in the map that is exact — an unlisted key is denied either way — but under a wildcard the `false` is the ONLY thing denying the key, so dropping it INVERTS the decision: `can("billing.refunds.export")` is `false` on the web and `true` on device.
+
+  `permissionsProviderSeed` already computed `deniedUnderWildcard`, and its own docstring said the caller reports it. No caller did, so an authorization primitive was failing OPEN with zero warnings — the wrong direction to be wrong in, which is the standard this package already set for `can()` itself.
+
+  Both emitters now name the affected keys and state the direction ("DENIED on the web and GRANTED on device"), because "differs" would not tell an author whether the risk is a locked-out user or an unlocked one. An exact-key `false` with no wildcard stays silent — it loses nothing, and a warning there is the noise that gets real warnings ignored. Lowering the denies needs a change in both native containers and is not attempted here; what is closed is the silence.
+
+- Native `.*` granted more than the web did (4be7791)
+
+  `PyreonPermissions.can()` resolved a `"prefix.*"` grant with a bare prefix
+  match on both platforms, so granting `"posts.*"` also granted
+  `"posts.comments.edit"` — a key the web **denies**. A permission check that
+  grants more on device than in the browser, from the same source, is the wrong
+  direction to be wrong in. Neither runtime recognised `.**` or `*` at all, so
+  the two wildcards that _should_ widen a grant were silently ignored.
+
+  The two native runtimes agreed with each other and disagreed with the web:
+  both were written from one belief about what `.*` means. `can()` now resolves
+  in the web's order — exact, then one-segment `.*`, then recursive `.**`
+  most-specific-ancestor-first, then global `*`.
+
+  Measured three ways rather than mirrored: the web resolver via
+  `native-parity.test.ts`, and both runtimes compiled and **run** against the
+  same nine cases.
+
+  ## The call site was inverted too
+
+  Web `usePermissions()` takes no arguments — the grants come from
+  `<PermissionsProvider>`, which has no native lowering. So the correct web call
+  emitted an empty native set in which every check denies, silently: guarded
+  views simply never appeared on device. The only way to get a non-empty native
+  set is `usePermissions([...])`, a call the web API rejects.
+
+  Seeding the provider natively is a larger arc. What changes here is the
+  silence — the empty-set case now says so and names the shape that works, and
+  the provider's own advice no longer tells an author already holding the hook
+  to "use the hook instead", which changed nothing.
+
+  Still web-only: predicate permissions (`(context) => boolean`) and explicit
+  `false` values, both of which need a value-carrying granted set rather than
+  the current `Set<String>`. The web arm pins them so the gap is visible.
+
+  ## `<PermissionsProvider>` now lowers
+
+  Web `usePermissions()` takes no arguments — the grants come from the provider
+  above it, which had no native lowering. A literal
+  `<PermissionsProvider permissions={{ 'posts.*': true }}>` now injects them
+  into the SwiftUI environment / Compose `CompositionLocal` that a bare
+  `usePermissions()` reads, so the web-correct call works unchanged instead of
+  denying everything.
+
+  The plumbing is emitted INLINE rather than shipped in the co-located runtime,
+  for the reason `PyreonUrlState` already is: it needs SwiftUI's environment
+  machinery / Compose's CompositionLocal, and a runtime that pulls those in
+  stops being self-contained (and stops verifying against the compile gate's
+  stub set).
+
+  A NON-literal map (`permissions={fromServer}`) cannot be baked into the emit
+  and declines from the emitter, which is the only layer that knows whether the
+  injection happened — the blanket import warning is suppressed once the tag is
+  present, so without this a provider that injects nothing would have gone
+  silent.
+
+  One more silent drop fixed on the way: an object literal with a STRING key
+  (`{ 'posts.*': true }` — ordinary TS) was dropped by the parser with no field
+  and no warning, unlike the computed-key case beside it which warns. String
+  keys are now preserved.
+
+- Lower static pictorial-bar options to the native chart renderer on iOS and Android, including supported symbol shapes, repeated symbols, stacking, grouping, labels, colors, and patterns. Unsupported symbol shapes now produce a focused diagnostic and safely render as rectangles. (f2b1d43)
+- `<Audio>` is now exercised by a gated native example, and a new (51e5d80)
+  `check-native-primitive-coverage` gate fails if any primitive drops back out of
+  that set.
+
+  A primitive no example uses is one the device gates never compile, and the
+  device gates are the only configuration without stubs. `<Audio>` was the single
+  primitive in that position, and it turned out to be the single primitive that
+  had never compiled on either platform.
+
+- Add the `repository` field npm provenance requires. All six packages were (2b5be05)
+  rejected from the 0.51.0 release with a 422 (`"repository.url" is "",
+expected to match "https://github.com/pyreon/pyreon"`) — `--provenance`
+  publishing validates the field against the OIDC attestation, so its absence
+  is a publish blocker, not cosmetic metadata.
+- Swift: a signal seeded from sibling signal reads (`const count = signal(5); const derived = signal(count() * 2)`) no longer emits a stored-property initializer referencing a sibling `@State` member ("cannot use instance member within property initializer" — warning-free; Kotlin was never affected, and computeds were always fine since a property getter may read self). A per-component pre-pass substitutes each sibling read with that sibling's own construction-time seed expression — semantically faithful because Pyreon reads the sibling exactly once at construction; source order is a valid topological order, so chains substitute transitively. Shapes that cannot be substituted faithfully — a storage-backed source (its runtime value is not its default), enum-typed declarations, non-pure seeds, or nodes the substitution walker does not cover (caught by a total residual check) — keep the previous emit and now warn loudly, naming the declaration, the sibling, and the `computed()`/pure-seed remedy. (f26322a)
+- Swift: a signal whose object-literal (or array-of-object-literal) initializer contains a non-literal field no longer emits an `Any`-typed `@State` declaration beside a synthesized-struct value. Parse-time inference is ctx-less, so `signal([{ id: count(), name: label() }])` typed as unknown while the value emit synthesized `__ObjN` — and on `Any`, every member access and subscript fails the real-SDK typecheck (`value of type 'Any' has no subscripts`) with zero compiler warnings (the parse-only gate passes it; Kotlin was green the whole time because it emits no annotation). The annotation now resolves through the SAME three-rung struct-name resolution the value emit uses (`resolveSwiftObjectStructName`: exact index → optional-subset declared struct → synth dedup), called after the value is emitted so it is a pure lookup — annotation and value agree by construction and `__ObjN` numbering / cross-target name alignment cannot move. Mixed-shape arrays, spread-bearing literals, and declared generics are untouched. (1ac1477)
+- Swift: a signal seeded from a component value-const (`const start = 10; const count = signal(start)`) no longer emits a stored-property initializer referencing a body-local `let` — `cannot find 'start' in scope` under the real-SDK typecheck, warning-free, while Kotlin compiled fine (its `val` shares the function scope). The initializer now runs through the same `inlineValueConsts` machinery struct-level computeds and handler bodies already use for the identical constraint, and an `Any` annotation refines through the component inference context (`signal(start)` → `Int`, derived const chains included) before falling back to object-literal struct resolution. (1ac1477)
+- A bare `arr.sort(cmp)` statement now sorts the array in place on iOS and Android. It used to lower to the non-mutating `sorted(by:)` / `sortedWith` with the result thrown away, which left the array unsorted with no error. The native chart engine's boxplot read its quartiles off unsorted data because of this. A sort used as a value (`const s = xs.sort(cmp)`) still lowers to the non-mutating copy. (896d747)
+- Native schema validation accepted data the web rejects (b1f9914)
+
+  Two constraints resolved differently on device, both in the ACCEPTING
+  direction — the wrong way for a validator to be wrong.
+
+  **`.regex()` was silently dropped.** The constraint walker recognised
+  min/max/email/url/uuid and had no `regex` arm, so the modifier fell through
+  its `else if` chain: the field emitted with only a type guard, no check and
+  no diagnostic. A schema that rejects `"Not A Slug!"` on the web accepted it
+  on device.
+
+  **`.url()` parsed instead of validating.** `URL(string:)` and
+  `java.net.URI(...)` are permissive parsers; measured against zod, four of six
+  cases diverged and every one of them accepted something the web denies —
+  `"not a url"`, `"x.com"` and `"/relative"` all passed. Requiring a scheme
+  reproduces zod's rule (an absolute URL) while still accepting `mailto:` and
+  `ftp://` as zod does. All six now agree.
+
+  The regex arm is deliberately conservative. JS, NSRegularExpression and
+  java.util.regex agree on the common syntax — anchors, classes, quantifiers,
+  groups, alternation — and diverge on the rest, so a pattern carrying a
+  non-portable flag (anything but `i`), lookbehind, a named group or a Unicode
+  property escape declines BY NAME. A declined field is no worse off than it
+  was; it is just no longer silent. Both targets test for a partial match,
+  which is what `RegExp.test()` does on the web.
+
+  **The diagnostic contradicted the emit.** `zodSchema` warned "has NO native
+  lowering … the native build fails with `cannot find 'zodSchema' in scope`",
+  printed directly above the native struct it was denying, with advice sending
+  the author to a `<Web>` escape hatch for code that works. A top-level
+  `zodSchema(...)` / `valibotSchema(...)` / `arktypeSchema(...)` declaration
+  now suppresses it, decided in the same syntactic pre-scan `@pyreon/validate`
+  already uses because the warn pass runs before schemas are recognised. An
+  import with no such declaration still warns.
+
+  Measured against zod rather than mirrored between the two targets: the web
+  arm is `@pyreon/validation`'s `native-parity.test.ts`, and the emitted
+  Swift and Kotlin both compile on the real toolchains.
+
+- An absent `swiftc` or `kotlinc` now always skips validation instead of being answered by a stored verdict from a restored cache. The skip check runs before the verdict cache in every validator, matching `validateSwiftWithStubs`. (a4ad301)
+- The compile-verdict cache caches rejections again, and skips only failures the (1373888)
+  compiler never delivered. A previous change stopped caching every failed
+  validate call on the theory that a failure may be environmental — but roughly
+  half the native suite is "does NOT compile" specs, so every one of those ran a
+  cold `swiftc`/`kotlinc` on every run: a permanent 25-minute CI cell, killed by
+  its cap. Transient failures are now classified by the process's SHAPE (no exit
+  status, a signal, or an errno — a spawn failure, an OOM kill, a timeout) and
+  passed through uncached; a non-zero exit with diagnostics is the compiler's
+  judgement and is cached exactly like a success. Legacy stored rejections are
+  kept when their text is visibly compiler output, so the store main already
+  saved stays warm.
+- Two silent drops on every WebView-family host (`<WebView>`, `<ChartWebView>`, `<FlowWebView>`), on both iOS and Android: (2d4cbfc)
+
+  - A block-bodied handler — `onMessage`/`onEvent`/`onSelect`/`onError` written as `(e) => { a.set(…); b.set(…) }` — lowered to an EMPTY closure. The arrow's statements live in `stmts`, and the message-handler emitter read only `body`. Every statement now emits, through the same generic action emitter `onPress` uses (multi-statement, `async`, handler-local consts included).
+  - `data-testid` (and the rest of the generic layout tail: `padding`/`margin`, a11y props) never reached these hosts, so none was selectable by XCUITest or `onNodeWithTag`. The tail now runs on every host and skips the props the host lowers itself — `background` on a hosted view is the page's background, not a view token.
+
+  Both found by the first real device consumer of `@pyreon/flow/webview`, which now runs in both device lanes.
+
+- PMTC: stop telling authors `withField` has no native lowering — it does (2d7a108)
+
+  Importing `withField` from `@pyreon/validate` printed:
+
+  > `withField` (from `@pyreon/validate`) has NO native lowering — it is
+  > reproduced verbatim in the emitted Swift/Kotlin, where no such symbol
+  > exists, so the native build fails with "cannot find 'withField' in scope".
+
+  directly above the `PyreonFieldMeta_*` struct the same compile had just
+  emitted. A top-level `const X = withField(schema, { label: '…' })` has lowered
+  since the Tier-2 validate emit landed, and `tier2-validate-emit.test.ts` locks
+  that struct on both targets — but `withField` was never added to the
+  suppression list its siblings (`s`, the `@pyreon/validation` adapters,
+  `PermissionsProvider`) are all on.
+
+  So the diagnostic told authors a working API was unusable and pointed them at a
+  `<Web>` escape hatch they did not need. That is the same stale-blanket-warning
+  class as the `@pyreon/toast` entry, and the direction
+  `native-audit-warnings.test.ts` already calls out as the more damaging one.
+
+  The suppression is conditional, not a blanket exemption. When nothing lowers —
+  a non-literal meta object, a meta object with no string-valued entries, or an
+  import with no top-level declaration at all — the warning is accurate and still
+  fires. And when one declaration lowers while a sibling does not, the blanket
+  line is suppressed but the precise per-declaration diagnostic (naming the
+  binding and the reason) still fires, so nothing is silently dropped.
+
+  `warnUnloweredPyreonModules` runs before the top-level recognizer, so the
+  decision comes from a syntactic pre-pass. To keep the two from drifting apart,
+  the recognizer's structural match and its meta extraction are now shared
+  helpers that both callers use, rather than a hand-copied predicate.
+
+- Update third-party dependencies to their latest compatible releases. (5867cca)
+
+  Runtime dependencies that reach consumers: `oxc-parser` / `oxc-transform`
+  0.144 → 0.147 (`@pyreon/compiler`, `@pyreon/native-compiler`), the CodeMirror 6
+  family (`@pyreon/code`), TipTap 3.29 → 3.30 (`@pyreon/rich-text`), TanStack
+  Query 5.101 → 5.102 (`@pyreon/query`), the
+  pragmatic-drag-and-drop auto-scroll/hitbox companions (`@pyreon/dnd`),
+  `y-protocols` (`@pyreon/sync`), `oxlint` 1.78 → 1.80 (`@pyreon/lint`), and the
+  shiki / remark / unist chain (`@pyreon/zero-content`).
+
+  No API surface changes. Held deliberately, each for a stated reason: TypeScript
+  stays capped `<7.0.0` (TS7 removed the classic Compiler API), and
+  `@changesets/cli` v3, `@atlaskit/pragmatic-drag-and-drop` v3, and `ky` v2 are
+  majors that need their own PRs.
+
+- The accumulate-into-a-local shape now lowers to both targets: (e224194)
+
+  ```ts
+  const out: Tick[] = [];
+  for (const n of names) {
+    out.push({ label: n });
+  }
+  return out;
+  ```
+
+  Three things were wrong at once, and all three had to be fixed together for any
+  of them to matter. The declaration's type annotation was dropped, so the empty
+  literal had no element type — swiftc rejects that outright and Kotlin infers
+  `List<Nothing>`. `.push` had no mapping and emitted verbatim, and neither
+  target's array has one. And the mutability tracker only saw `=` and `++`, so a
+  local mutated only by pushing stayed immutable, which a Swift array rejects
+  because it is a value type.
+
+  Swift emits `var out: [Tick] = []` and `.append`; Kotlin emits
+  `val out: MutableList<Tick> = mutableListOf()` and `.add` — `val` is correct
+  there, since it is the list that mutates rather than the binding.
+
+  A non-empty literal is deliberately left unannotated: its elements already type
+  it, and annotating could only disagree with them.
+
+- PMTC: a helper-body destructure is no longer rewritten through a stale component-scope alias — the body walker's block-scoped locals now shadow (delete) any `hookFieldAliases` entry the component classifier registered for the same names, so later reads emit the real locals instead of referencing a container that was never declared ("cannot find '\_\_pyDestrN' in scope" on both toolchains). Also lowers the `Math.PI` member read (`Double.pi` / `kotlin.math.PI`) — previously emitted verbatim and unresolvable on Swift. And lowers `charCodeAt` (UTF-16 code unit as Double: `Double(Array(s.utf16)[Int(i)])` / `s[i].code.toDouble()`) — previously a silent verbatim emit with zero warnings on both targets. (eac9382)
+- Two verified negative results are now gated: every documented event prop reaches (51e5d80)
+  the emit on both targets, and every signal-valued prop emits differently from
+  the same prop given a static value (so it stays live rather than freezing).
+
+  Each carries a positive control, because the first version of the reactivity
+  sweep grepped the emit for the signal's NAME — which always appears, since the
+  signal is declared — and so reported "all clean" without being able to report
+  anything else.
+
+- A number written as a float now stays a float, even when its value is integral. (e224194)
+
+  `10.0` and `0.0` satisfy `Number.isInteger`, so their value alone cannot tell
+  them from `10` and `0` — they emitted as `Int` and poisoned every expression
+  they took part in (`binary operator '*' cannot be applied to operands of type
+'Int' and 'Double'`). Writing the decimal point did not help, which is what made
+  it hard to work around: there was no spelling that produced a Double. The
+  literal's raw source text is now read, which is the only place that evidence
+  exists.
+
+  The same problem from the other direction: a `Double`-annotated local
+  initialized with a plain integer (`const scale: Double = 1`) now widens from its
+  annotation.
+
+  A plain integer with no float evidence still emits as `Int` — widening
+  everything would break indices and counts, which is why Int is the default.
+
+- A top-level function is classified as a component or a helper by what it (e224194)
+  RETURNS, not by the shape of its first parameter.
+
+  The classifier used "this function has no parsed props" as its not-a-component
+  signal, but props are parsed from any object-typed first parameter — and a
+  helper taking a struct has one. So the same kind of function was classified
+  differently depending on parameter order:
+
+  ```ts
+  layoutBars(values: Double[], plot: Rect)  // → func
+  hitBar(plot: Rect, x: Double, y: Double)  // → COMPONENT
+  ```
+
+  Silently, with no warning. Swift emitted `struct hitBar: View`; Kotlin emitted a
+  `@Composable` whose parameters were taken from the struct's fields rather than
+  its own signature, leaving the body referencing names that do not exist. Any
+  library of functions over structs — geometry, layout, math — was unwritable
+  depending on how its arguments happened to be ordered.
+
+  A component renders (JSX, or `null` for "render nothing"); a helper produces a
+  value. Nullish returns stay components, so a `return null` render path still
+  emits `EmptyView()`.
+
+- The `useHotkey` unmappable-key warning now names a remedy — the keys that do map (51e5d80)
+  on both targets, and the escape-hatch branch — instead of only reporting that
+  the shortcut was dropped.
+- An `<Image>` with no `fit` now defaults to `cover` on Android, as it already (51e5d80)
+  does on web and iOS. Compose was falling back to `ContentScale.Fit`, so an image
+  that filled its box on the other two targets letterboxed there — from one
+  source, with nothing said.
+- PMTC Kotlin lambda/collection lowerings the charts engine surfaced: a top-level function used as a VALUE in `??` emits the `::` reference (bare names are "function invocation expected"); an array-literal local mutated via push/pop/shift/unshift/splice emits `mutableListOf` (Kotlin's List has no `add` — reassignment marking cannot carry this, `val` stays idiomatic); a return-bearing standalone lambda with annotated params AND a declared return type emits the ANONYMOUS FUNCTION form (plain `return` is legal there — the labeled-return bail previously DROPPED the body to `Unit`, now reserved for the un-annotated case with a sharper message); and the single-EXPRESSION arrow branch routes through the typed-params helper it had bypassed entirely. Also: an object-literal return keeps its `return` (the assignment detector misread named struct-init args — every Pt-returning helper lost its return statement); `Math.max`/`min` with mixed Int/Double args coerce the int side (java.lang.Math has no mixed overload); and Kotlin count-loops register their counter and wrap a Double bound `.toInt()` (the Swift mirror). (000ab87)
+- PMTC narrows a nullable struct through a null compare on Swift. `(r: Range | null) => { if (r === null) {…} else { r.start } }` lowered to `if r == nil {…} else { r.start }`, a Swift type error (Swift never narrows an optional through a nil compare; Kotlin smart-casts). The optional-condition classifier now recognises `x === null` / `x !== null` on an optional identifier, the Swift `if` binds (`if let x`) on both polarities — swapping the bodies for `=== null` — and a narrowing ternary (`r === null ? '' : String(r.start)`) lowers to `r.map { r in … } ?? …`. The Kotlin emit is unchanged. (49f9787)
+- Spreading an optional object now warns by name instead of emitting uncompilable code (2eb07b2)
+
+  `{ a: "x", ...o }` where `o: Opts | undefined` lowered to Swift
+  `{ var c = o; c.a = "x"; return c }()` — `c` is `Opts?`, so the member
+  assignment and the return type both fail — and to Kotlin `o.copy(a = "x")`,
+  which is rejected on a nullable receiver. TypeScript accepts the source
+  (`{ ...undefined }` is legal and contributes nothing), so nothing upstream
+  objected either, and the emit was **silent on both targets**.
+
+  The first signal was therefore a swiftc/kotlinc gate, whose error names the
+  generated Swift rather than the line that produced it. One such spread in a
+  crossing chart file cost 35 compile failures across every chart suite before it
+  was traced back.
+
+  The emit is deliberately unchanged — this is a diagnostic, not a behaviour
+  change. There is no honest fallback: JS says the spread contributes nothing
+  when the source is nullish, but the emitted struct still needs every field, and
+  the defaults for the ones the literal does not name are not knowable at that
+  point. So the message names the binding and the remedy (build the object field
+  by field: `field: o?.field ?? fallback`).
+
+  `T | null` warns as well as `T | undefined`; a non-optional spread stays silent,
+  which is the half that keeps this a diagnostic rather than noise.
+
+- The real-SDK gate now also compiles every crossing package's registry snippet (51e5d80)
+  (`defineStore`, `useQuery<T>`, `useForm`, `PyreonTableState`, …) against the real
+  runtime — 37 of them. Those snippets were checked for warnings and typechecked
+  against stubs, neither of which answers whether the runtime types they name
+  exist with the signatures the emit uses.
+
+  Also fixes the corpus walker, which excluded a directory literally named `Tests`
+  while the real one is lowercase `tests` — so test fixtures were quietly in the
+  compile set, and a fixture type named `Row` collides with an app's own `Row`.
+
+- New macOS-gated check: an emit exercising every canonical primitive is (51e5d80)
+  typechecked against the real iOS SDK AND the real runtime sources, with no stubs
+  anywhere. Every other Swift gate substitutes stubs for `PyreonRuntime`, which is
+  what lets them run on Linux and also what let `<Audio>` reference a type that
+  existed only in a stub. ~8s; skips where Xcode is absent.
+- PMTC inference-seeding fixes the charts engine surfaced: helper return types now reach the module-level inference contexts (a top-level helper's `const step = niceStep(...)` seeded unknown, so every type-gated lowering downstream went dark); local seeding falls back to the ANNOTATION when an initializer infers unknown; struct initializers coerce an Int-valued argument into a Float-typed field on BOTH targets (`Tick(value: i)` over a loop counter — neither Swift memberwise inits nor Kotlin named args widen); and every closure/handler body seeds BOTH inference contexts (two sites — the tick-handler and the returned-closure arrow — seeded only one, leaving closure locals invisible to type-gated lowerings; one site double-seeded with a leaking restore, now deduped). Annotated closure params also bind into the inference contexts (the reveal-closure shape: a param-typed receiver could not coerce its comparisons). (2a05853)
+- `<Stack align="stretch">` / `<Inline align="stretch">` now warn by name on (51e5d80)
+  native. Both emitters approximate `stretch` as `start` — a documented mapping
+  that lived only in a comment — so children hug their content on device while the
+  web build of the same source stretches them to fill. Diagnostic only; the emit
+  is unchanged, since the approximation is still the best available mapping.
+- A struct is now selected by field names AND field types, not names alone. (e224194)
+
+  The emitters resolve an object literal or object type to a declared struct of
+  the same shape, so a prop typed `{ id, text, done }` and the literal that builds
+  it agree on one nominal type. That resolution keyed on field NAMES only and kept
+  the first struct registered, so two declared types sharing a shape collapsed:
+
+  ```ts
+  type Px = { x: Double; y: Double };
+  type Idx = { x: number; y: number };
+  const i: Idx = { x: 1, y: 2 }; // emitted Px(x: 1, y: 2)
+  ```
+
+  Silent where the field types coerce, and a hard `cannot convert value of type
+'Double' to expected argument type 'Int'` where they do not. It blocks any
+  geometry code, where a point, an anchor, an offset and a tick position are all
+  `{ x, y }`.
+
+  The literal side derives its key from its own values and falls back to the
+  name-only lookup whenever a value's type is not locally decidable, so this only
+  ever adds a correct match. Both emitters share one `structShapeKey`, so they
+  cannot disagree about which struct a shape resolves to.
+
+- The query-client recognizer keyed on a function `@pyreon/query` does not export (20110e3)
+
+  `#3058` made `<QueryClientProvider>` transparent on native and taught the
+  compiler to drop the client binding. The binding it recognized was
+  `createQueryClient()` — a name I made up. `@pyreon/query` re-exports the
+  query-core class, so the real API is `new QueryClient()`.
+
+  The recognizer pattern-matches call names and never resolves the import, so it
+  cannot tell a real export from an invented one, and the test passed. A real app
+  writing the documented `new QueryClient()` still got a junk `let client = ""`
+  binding beside the transparent provider.
+
+  Fixed to match the exported API, plus a spec that asserts the name against
+  `@pyreon/query`'s own export list — the one check that can tell the difference.
+
+- `<RouterLink>` emitted an unresolvable tag on both native targets (b5bbce2)
+
+  `<RouterLink to="/x">` from `@pyreon/router` is the same concept as `<Link>` and
+  carries the same prop, but it had no entry in either emitter's tag dispatch, so
+  it fell through to the unknown-tag path:
+
+  ```swift
+  RouterLink(to: "/about") { … }   // no such type; the runtime ships PyreonLink
+  ```
+
+  It now maps to `PyreonLink` on both targets, which `<Link>` already did.
+
+  Found by compiling every native-coverage registry snippet on real `swiftc`:
+  9 of 31 did not build. The gate judges a package by TRANSFORM WARNINGS and never
+  compiles the emit, so a warning-free uncompilable emit reads as "crosses".
+
+  Also corrects the `@pyreon/styler` registry snippet, which used the call form
+  `styled('div', {…})`. That is not the lowering shape — the parser requires a
+  tagged template over a canonical primitive, and the call form fell through
+  BEFORE the existing non-canonical warning, emitting `styled("div", …)` verbatim
+  with no warning at all. The real shape emits `VStack` and typechecks.
+
+  Registry snippets compiling on real swiftc: 22/31 → 24/31.
+
+- Fix three ways the native type gate rejected correct code. (88fe476)
+
+  **The permissions stub was the wrong kind.** `PyreonPermissions` is an
+  `@Observable final class` at runtime but a `struct` in the validation stub.
+  That is not cosmetic: the emit binds it through `@Environment` (read-only), so
+  a struct cannot typecheck the mutators at all. It was also missing five
+  members (`can` / `cannot` / `set` / `grant` / `revoke`) and the `granted`
+  property, so `perms.grant("post.edit")` failed with _value of type
+  'PyreonPermissions' has no member 'grant'_.
+
+  **`perms.set(...)` emitted an assignment.** The `signal.set(v)` → `signal = v`
+  lowering fired on any `.set(` with an identifier receiver unless the name sat
+  in a hand-maintained exclusion list — a silent-hole generator: every binding
+  whose `set` is a _real_ method has to be remembered, and a forgotten one emits
+  `x = v` against a non-assignable receiver. Three had to be remembered
+  (`useUrlState`, `syncedSignal`, and now `usePermissions`, found only because a
+  stub-parity sweep happened to compile the call). Identifier receivers are now
+  deny-by-default, keyed on the tracked signal/computed declarations, so the next
+  one is correct without anyone noticing it exists. Member-expression receivers
+  (`store.field.set(v)`) keep their previous behaviour.
+
+  **`PyreonSyncedSignal.dispose` was missing from both stubs**, so a correct
+  `s.dispose()` was rejected. This had left the stub/runtime parity gate red on
+  `main`; it is fixed by mirroring the runtime rather than widening the ratchet,
+  which is now six entries shorter.
+
+  **`PyreonMachine` was the same class of defect, on iOS only.** It is an
+  `@Observable final class` at runtime but a `struct` in the Swift stub, missing
+  `can` / `nextEvents` / the `state` property / `transitions`. The Kotlin stub
+  was already complete — so `m.can("GO")`, a documented member of the web
+  `Machine` interface that `createMachine` lowers to this type, compiled on
+  Android and failed on iOS from the same source. Mirroring the Swift stub takes
+  the ratchet four entries lower.
+
+  **The gate I added last week had the same blind spot it exists to catch.** It
+  asked whether a runtime member was missing from the stub, but never whether a
+  `KNOWN_NARROW` entry was _still_ narrow. A stale entry is not noise — it is a
+  permanent hole, because it keeps excusing that member if someone later removes
+  it from the stub. Fifteen were stale. The list is now **per-target**: sharing
+  one set across Swift and Kotlin meant an entry could be stale on one and
+  genuinely narrow on the other, which is precisely why nothing could tell them
+  apart.
+
+- A component-body-only lowering now declines by NAME at module scope (da12179)
+
+  `createMachine` / `createI18n` / `syncedSignal` lower to native only inside a
+  component body — they become a `remember {}` / an `@State`, which has no meaning
+  at file scope, so their recognizers are unreachable from the module-scope walk.
+
+  A module-scope declaration therefore fell through to the module-decl catch-all,
+  which printed the call VERBATIM into Swift/Kotlin with zero diagnostics. The
+  native build then failed naming a function the user never wrote in that
+  language, with nothing pointing at the real problem — which was only ever the
+  placement.
+
+  The warning now says exactly that: the shape is right, the scope is not, move it
+  into the component. A generic "unsupported" would send someone hunting for a
+  missing feature that is in fact implemented one scope down.
+
+- The Android measure-time crash for a `<For>` under a vertical `<Scroll>` — a LazyColumn nested inside `Column(Modifier.verticalScroll())`, "measured with an infinity maximum height" — was warned about only when the `<For>` was a DIRECT child of the `<Scroll>`. One container down (`<Scroll><Stack><For/></Stack></Scroll>`) nests the identical LazyColumn under the identical scroller and throws the identical exception; depth is not something Compose consults. That shape crashed native-tasks' stats page on the emulator with no compile-time diagnostic, and the workaround comment on that page named this exact gap. (44e0a17)
+
+  The warning now walks the whole subtree — through `<Stack>`, `<Inline>`, fragments, any non-scrolling container — and stops at a nested `<Scroll>`, which is its own boundary: a `<For>` under it is that scroll's legitimate, unwrapped idiom, not the outer scroller's hazard. The emit is unchanged; only the silence is gone.
+
+- Stop publishing the build's bundle-analysis report. (5c60743)
+
+  `vl_rolldown_build` writes an HTML treemap per entry into `lib/analysis/`, and
+  54 packages published it: every install downloaded a build report (258 KB for
+  `@pyreon/charts`) that is not part of the package. Their `files` now exclude
+  `lib/analysis`, as ten packages already did. `pyreon doctor`'s distribution
+  gate enforces it twice: a `vl_rolldown_build` package that publishes `lib`
+  must exclude the report, and the live `npm pack --dry-run` probe fails if the
+  tarball carries one.
+
+- Close the stub-narrower-than-runtime class with a derived gate (62417b9)
+
+  A stub NARROWER than the runtime it mirrors rejects **correct** code. That is
+  worse than a missed bug: it reports a failure that does not exist and sends
+  an author to "fix" working code.
+
+  It was found four separate times in one session — `PyreonShare` (stub had
+  `url`; the runtime has four members), `PyreonHaptics` (one of three),
+  `PyreonNotifications` (missing `requestPermission`), and the un-keyed `task`
+  overload — each caught only because someone happened to compile a snippet
+  that used the missing member. The documented trap is the SUPERSET stub, which
+  masks breakage; this is the mirror image, and the two need opposite checks.
+
+  The gate is **derived**, not a list: it reads every co-located and monolith
+  runtime, and for every type the stubs already declare, asserts the stub
+  carries each public member the runtime does. A member added to a runtime is
+  covered the day it lands, with no test edit — the hand-written alternative is
+  the shape this repo calls a silent-hole generator.
+
+  Deliberately out of scope: types the stubs do not declare at all (a runtime
+  with no stub may simply be unreachable from any emit, and requiring one would
+  teach people to add empty stubs), and signatures (comparing parameter lists
+  across two languages needs a real parser each; NAMES catch the whole observed
+  class).
+
+  The 53 existing gaps are recorded in a ratchet that may only shrink, rather
+  than fixed in one pass — a stub with a WRONG signature masks breakage, which
+  is the worse direction, so hand-writing 53 signatures blind would have traded
+  a small problem for a larger one. Roughly half are platform delegate
+  callbacks the emit never calls; the rest (`perms.grant(...)`,
+  `machine.can(...)`, `i18n.locale`) are real refusals an author can hit today,
+  and are now visible instead of latent.
+
+  Bisect-verified: removing `canShare` from the Swift stub fails the gate
+  naming exactly `PyreonShare.canShare`; restoring it passes.
+
+- `@pyreon/table` was crossing and the gate could not see it (6b90f4a)
+
+  Its manifest has declared a `multiplatform.nativeFrontend` for
+  `createTableState` all along, but the coverage registry carried no snippet — so
+  the gate reported "native runtime ships" and the package read as
+  native-runtime-only, with `useTable` cited as proof that table does not cross.
+
+  `createTableState({ data, columns, pageSize })` lowers with ZERO warnings on
+  both targets, emits `PyreonTableState<Row>`, and compiles on real swiftc and
+  kotlinc. The registry now carries that snippet.
+
+  The reverse-direction check added earlier only covered `web-first` entries, so a
+  `native-container` entry could drift the same way — a declared frontend with
+  nothing proving it. The gate now rejects that for ANY mechanism.
+
+  `useTable` (the TanStack row model / faceting / virtual sizing) is still web,
+  which is what the manifest always said.
+
+- `<Transition>` with separate enter/leave timing (`enterDuration`, `leaveDuration`, `enterEasing`, `leaveEasing`) now keeps its preset on iOS. The Swift emit hard-coded `AnyTransition.opacity` on both sides of `.asymmetric(insertion:removal:)`, so adding `enterDuration` to a `name="slideUp"` or `name="scale"` transition silently turned it into a fade on iOS while Android kept the slide or scale. (c12635c)
+- `useUrlState`'s Kotlin emit called a router function that does not exist (6b90f4a)
+
+  It emitted `PyreonUrlState(useRouter(), …)`, but `@pyreon/native-router-kotlin`
+  ships `useNavigate` / `useParams` / `useLoaderData` and **no** `useRouter`. Every
+  such app failed a real `gradle assembleDebug` with
+  `Unresolved reference 'useRouter'`.
+
+  It survived because the Kotlin STUB declared a `useRouter()` — a stub WIDER than
+  the runtime, which is the failure mode a stub exists to prevent. Local checks,
+  the compiler suite and the coverage gate all passed; only a device build could
+  fail.
+
+  The emit now reads `LocalPyreonRouter.current`, which is what the runtime's own
+  hooks use, and the stub no longer declares the phantom function — so the same
+  mistake now fails at stub level instead of on a device.
+
+- PMTC: an un-lowered `@pyreon/validation` adapter call is now DECLINED BY NAME instead of shipped broken (78b3423)
+
+  Every schema recognizer keys on the INLINE argument — `zodSchema(z.object({ … }))`.
+  The ordinary refactor of lifting the schema to its own const, `const base =
+z.string()` then `zodSchema(base)`, matches none of them.
+
+  Declining is correct: synthesizing a native struct from an unresolved binding
+  would be a guess. But the node then fell through to a VERBATIM emit, and `z` /
+  `v` / `type` exist in neither Swift nor Kotlin — so the generated file failed to
+  compile (`cannot find 'z' in scope`, `unresolved reference`) with nothing said at
+  emit time. The compiler now warns naming the adapter, the binding, what will
+  happen, and the fix.
+
+  The existing spec asserting no struct is synthesized for this shape is the right
+  invariant and is unchanged; it was simply silent about what got emitted instead.
+  This is the missing half.
+
+  Found by compiling all 103 shared-source fixtures across the tier2 emit suites
+  against the real toolchains: 4 of 206 compiles failed with NO warning, and they
+  were these two shapes. Those suites make almost no toolchain calls — 13 of 15
+  files invoke no compiler at all — so a string assertion was the only thing
+  standing between this and a user.
+
+- Importing a package's `/webview` bridge no longer warns that it is web-only (6b90f4a)
+
+  The blanket web-only warning normalises an import to its package ROOT, so
+  `import { buildChartHostHtml } from '@pyreon/charts/webview'` triggered it — and
+  the warning's own text then told the user to _"consume on native via the
+  `<WebView>` bridge subpath"_, which is exactly what they had just done.
+
+  A warning that fires on its own recommended fix trains people to ignore it. The
+  `/webview` subpath is the documented native bridge for a web-engine package
+  (ECharts, ProseMirror, CodeMirror, an elk/SVG layout), so importing it is
+  correct usage and is now exempt. Importing the package ROOT still warns.
+
+- Ship `<Transition>` / `<TransitionGroup>` from `@pyreon/primitives` — the animation vocabulary now has an import path that resolves on every target (5a83e86)
+
+  PMTC has lowered `<Transition>` and `<TransitionGroup>` to real platform
+  animation since M2.7/M2.8 — SwiftUI `.transition(…)` + `.animation(_:value:)`,
+  Compose `AnimatedVisibility(enter =, exit =)` — with preset mapping, asymmetric
+  enter/leave timing and device proof. But `@pyreon/primitives` exported neither
+  name, and the only runtime export lived in `@pyreon/runtime-dom`, which the
+  compiler correctly flags web-only. So the one import that worked on web warned
+  on native, and the import native accepted did not exist: a fully built
+  capability with no reachable door.
+
+  `@pyreon/primitives` now exports both, with a self-contained web
+  implementation built on `h()` + `renderEffect` alone (no `@pyreon/runtime-dom`
+  dependency — the package keeps its two peer deps, which is what lets it be the
+  multiplatform vocabulary).
+
+  The prop contract mirrors the native emitters exactly: `show`, `name`
+  (`fade` / `scale-in` / `slide-up|down|left|right`, camelCase and kebab-case
+  both accepted), `duration`, `easing`, and the asymmetric
+  `enterDuration` / `leaveDuration` / `enterEasing` / `leaveEasing` overrides that
+  fall back to the symmetric value. Direction is the direction of travel, so a
+  slide-up rises into place from below — matching `.move(edge: .bottom)` and
+  `slideInVertically { it }`.
+
+  On web the hidden state is `display:none` on the wrapper rather than an unmount,
+  so an animation wrapper never gates its children out of SSR and a hidden
+  `<Transition>` contributes no flex `gap`. Only transition LONGHANDS are ever
+  assigned, so a consumer's own `transition-delay` survives.
+
+  The native emit is unchanged and asserted byte-identical to the bare-tag form.
+  The web-only warnings for `@pyreon/kinetic` and `@pyreon/runtime-dom` now name
+  `@pyreon/primitives` as the import that actually crosses, instead of naming a
+  tag whose only import was broken.
+
+- Updated dependencies:
+  - @pyreon/compiler@0.52.0
+  - @pyreon/charts@0.52.0
+
 ## 0.51.0
 
 ### Minor Changes
@@ -800,8 +4409,8 @@ database is not persisting`.
   So `if (picker.isAvailable()) { … }` — an ordinary defensive guard, and valid
   TypeScript on web — failed BOTH native targets with ZERO warnings:
 
-      Swift    value of type 'PyreonImagePicker' has no member 'isAvailable'
-      Kotlin   unresolved reference 'isAvailable'
+        Swift    value of type 'PyreonImagePicker' has no member 'isAvailable'
+        Kotlin   unresolved reference 'isAvailable'
 
   Documented-but-unimplemented, which is the `audit-types` class: the field IS
   referenced by the type surface, so nothing flagged it, and the failure appears
@@ -1256,7 +4865,7 @@ build` compiles both pickers), which is stronger than the stub gate. The Kotlin
   `createI18n({ locale, messages })` — the two-argument form the docs show, and the
   common case — failed the required `Validate emitted Swift + Kotlin` gate with:
 
-      error: missing argument for parameter 'fallbackLocale' in call
+        error: missing argument for parameter 'fallbackLocale' in call
 
   The source was fine and the emit was fine. The STUB was wrong: it declared
   `fallbackLocale: String` (required) while the real `PyreonI18n` declares
@@ -1274,10 +4883,10 @@ build` compiles both pickers), which is stronger than the stub gate. The Kotlin
   upstream"). Nothing checked STUB ↔ REAL, and that gap admits two opposite
   failures:
 
-      stub is a SUPERSET  → gate accepts an emit the real runtime rejects
-                            (green PR, broken app — the masking direction)
-      stub is a SUBSET    → gate rejects an emit the real runtime accepts
-                            (valid source, failing build — this bug)
+        stub is a SUPERSET  → gate accepts an emit the real runtime rejects
+                              (green PR, broken app — the masking direction)
+        stub is a SUBSET    → gate rejects an emit the real runtime accepts
+                              (valid source, failing build — this bug)
 
   The new locks assert DEFAULTED-ness specifically, on both targets, because that
   is the property that decides whether a call site is legal and it is invisible to

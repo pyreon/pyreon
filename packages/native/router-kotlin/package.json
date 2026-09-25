@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/native-router-kotlin",
-  "version": "0.51.0",
+  "version": "0.52.0",
   "description": "@pyreon/router's API (RouterProvider, RouterView, PyreonLink, useNavigate, useParams) for Android Jetpack Compose.",
   "license": "MIT",
   "repository": {
@@ -17,7 +17,7 @@
     "build": "if command -v kotlinc >/dev/null 2>&1; then bun scripts/verify-kotlin.ts; else echo '[native-router-kotlin] kotlinc not on PATH; skipping build (Android stack required)'; fi",
     "test": "if command -v kotlinc >/dev/null 2>&1; then bun scripts/verify-kotlin.ts; else echo '[native-router-kotlin] kotlinc not on PATH; skipping test (Android stack required)'; fi",
     "lint": "echo '[native-router-kotlin] Kotlin lint (detekt/ktlint) not yet integrated; skipping lint'",
-    "typecheck": "if [ \"$CI\" = \"true\" ]; then echo '[native-router-kotlin] skipping typecheck in CI \u2014 kotlinc cold-start + parallel-load timeouts; covered by scripts/verify-kotlin.ts which runs locally per-PR'; elif command -v kotlinc >/dev/null 2>&1; then bun scripts/verify-kotlin.ts --typecheck-only; else echo '[native-router-kotlin] kotlinc not on PATH; skipping typecheck'; fi"
+    "typecheck": "if [ \"$CI\" = \"true\" ]; then echo '[native-router-kotlin] skipping typecheck in CI — kotlinc cold-start + parallel-load timeouts; covered by scripts/verify-kotlin.ts which runs locally per-PR'; elif command -v kotlinc >/dev/null 2>&1; then bun scripts/verify-kotlin.ts --typecheck-only; else echo '[native-router-kotlin] kotlinc not on PATH; skipping typecheck'; fi"
   },
   "publishConfig": {
     "access": "public"

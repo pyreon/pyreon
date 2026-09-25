@@ -1,5 +1,100 @@
 # @pyreon/unistyle
 
+## 0.52.0
+
+### Minor Changes
+
+- A `.theme()` chain with no `.styles()` now renders its theme as CSS (a0c4cd7)
+
+  `.theme()` supplies values; nothing turned them into CSS unless the author also
+  chained `.styles()`. So a theme-only chain rendered COMPLETELY UNSTYLED in a
+  browser, while `@pyreon/native-compiler` reads the same `.theme()` statically and
+  emits real view modifiers — one declaration, fully styled on iOS/Android and bare
+  on the web.
+
+  The bridge arrives through ui-core's existing theme-engine seam
+  (`responsiveStyles`, registered by unistyle), so rocketstyle gains no dependency
+  on unistyle and still degrades to no CSS without it. It applies ONLY when the
+  chain declared no `.styles()` of its own — an explicit chain already owns the
+  bridge, and a second one would emit the theme twice.
+
+### Patch Changes
+
+- The repo's contributor rules moved from `.claude/rules/` to `.agents/rules/`, and the agent instructions from `CLAUDE.md` to `AGENTS.md`, so they work with any coding agent. Tools that read those files now look in the new places: the MCP `get_anti_patterns` and `get_browser_smoke_status` tools, the lint rule `pyreon/require-browser-smoke-test`, and the `pyreon doctor` doc-claims gate. Messages and comments that pointed at the old paths are updated. (2ac084f)
+
+  The six `@pyreon/native-*` packages no longer describe themselves on npm as "PRIVATE / EXPERIMENTAL" or "Not published"; they are published, and their descriptions now say what each one is.
+
+  `@pyreon/mcp`: `get_content_collection` and `get_content_entry` were registered and callable but missing from the manifest, so `mcp_overview` and the API reference did not list them. They are listed now, and `check-mcp-docs` fails when a registered tool and the manifest disagree in either direction.
+
+- Skip the ReDoS growth-ratio spec under coverage instrumentation (79c1bf1)
+
+  The spec times the same attack at N and 4N and asserts the ratio stays
+  linear-ish. V8 coverage adds a per-basic-block cost plus GC pressure that is
+  NOT proportional to input size, so under `--coverage` the ratio describes the
+  instrumenter rather than the scan — it read 11.9x on main while green in the
+  Test cells and green locally under coverage in isolation.
+
+  It now skips when `scripts/check-coverage.ts` sets `PYREON_COVERAGE_RUN`, and
+  still gates on every PR through the ordinary Test cell.
+
+- Docs/manifest accuracy pass over the ui-system and tools packages — no runtime changes. (c95ea09)
+
+  - `@pyreon/ui-core`: manifest grew from 6 to 18 `api[]` entries, now covering every real export — `init`, the descriptor-safe `get`/`set`/`merge`/`pick`/`omit`/`isEmpty`/`isEqual` utilities, `throttle`, `compose`, `resolveSlot`, `isPyreonComponent`, `render`, `useStableValue`, `HTML_TAGS`/`HTML_TEXT_TAGS`, the `getThemeEngine`/`setThemeEngine` theme-engine registration seam, and `resolveCssVariables`. The deprecated internal `Provider`/`context` are now called out in `gotchas`.
+  - `@pyreon/unistyle`: manifest grew from 11 to 14 entries — added `values`, and the Custom-Property Style Extraction (CPSE) primitives (`cpseRewrite`/`cpseVarName`/`extractStyleVar`, `cpseStyled`) that were previously undocumented despite backing the `styleExtraction: true` opt-in.
+  - `@pyreon/atlas`: added `atlas init`, `atlas check`, and `defineAtlas` manifest entries — three real CLI/API surfaces that had zero documentation on the manifest or the docs site. Corrected `defineAtlas`'s description: it types `createAtlas()`'s programmatic options, not the wider `atlas.config.ts` file convention (a real, easy-to-hit type mismatch if conflated).
+  - `@pyreon/lathe`: added `resolveProjects`, `resolveTransform`, and `worstVerdict` manifest entries (referenced in existing examples but previously undocumented).
+  - `@pyreon/lint`: added the `lintAsync` manifest entry (the worker-pool sibling of `lint()`, used by the CLI itself for large runs).
+  - `@pyreon/loom`: added the `loom build` manifest entry — a real, shipped CLI command (static-site export of the observatory) that was missing from both the manifest and the docs site.
+
+  Docs-site fixes:
+
+  - `docs/elements.md`: documented the previously-unexplained `contentDirection`/`contentAlignX`/`contentAlignY` trio (governs a SIMPLE Element's layout, default `'rows'`) and the per-slot `beforeContentDirection`/`afterContentDirection` trio, and clarified that the existing `direction`/`alignX`/`alignY` props only apply once `beforeContent`/`afterContent` make an Element compound — passing `direction` alone on a simple Element was silently a no-op with no explanation anywhere in the docs.
+  - `docs/ui-core.md`: added the theme-engine registration seam section (`getThemeEngine`/`setThemeEngine`) and fixed a broken internal anchor link.
+  - `docs/atlas.md`: added `atlas init` and `atlas check` sections — both real, documented-in-`--help` commands with zero prior coverage; renamed the stale "The four commands" heading (five sub-sections were already documented, plus two more added here).
+  - `docs/loom.md`: added the `loom build` section.
+  - `docs/lathe.md`: added the `lathe pull` section and a full CLI flags reference (`--target`, `--base-url`, `--client`, `--validator`, `--strict-native`, `--fail-on-breaking`, `--watch`), none of which were previously documented on the docs site despite being real, shipped flags.
+
+- UI providers are now reactive, and two diagnostics are corrected. (29f1002)
+
+  - `@pyreon/rocketstyle` `Provider` reads its parent context and its own props lazily, so `<Provider inversed>` follows a later parent mode change and a signal-driven `theme`/`mode` prop stays live (it previously froze at mount).
+  - `@pyreon/ui-core`'s low-level `Provider` no longer logs "CoreProvider is internal" on every mount — rocketstyle's public `Provider` delegates to it — and exposes getter-backed props lazily. `@pyreon/unistyle`'s `Provider` re-enriches a changing `theme` prop.
+  - `@pyreon/styler` `ThemeProvider` follows later `theme` prop changes for consumers tracking the reactive `ThemeContext`.
+  - `@pyreon/elements` `Overlay` `trigger` / `children` render-prop callbacks are contextually typed (no implicit `any` under strict TS).
+  - rocketstyle's reserved-dimension error names the clashing key(s) and the reserved set (it printed `[object Object]`).
+
+- fix(unistyle): stop silently dropping the `animation`/`keyframe` declaration when `keyframe` is paired with any other style property (968781e)
+
+  The `animation` special-key descriptor reads two trigger keys — `keyframe` and `animation` — but the fast-path index only registered the special under its `id` (`animation`). A theme that set `keyframe` (a keyframe-name-only animation) alongside any non-special property, e.g. `{ keyframe: 'spin', color: 'red' }`, resolved `color`, saw `fragments.length > 0`, skipped the fallback full-scan, and never emitted the animation — rendering `color: red;` alone. The single-key `{ keyframe: 'spin' }` shape worked only because the fallback scan caught it.
+
+  Special descriptors now carry an optional `keys` list of every additional trigger key their `processSpecial` branch reads (`animation` declares `keys: ['keyframe']`), which the index builder registers alongside `id`. This is a recurrence of the earlier "index-builder skipping a discriminated-union branch" class — the previous `d.id` fix covered specials whose trigger key equals their id, but not one that reads a second, differently-named key.
+
+- perf: cut per-render allocations on the responsive-styles hot path (5c175d4)
+
+  Three allocation reductions on the `makeItResponsive` → `styles()` → `stripUnit()`
+  path that runs on every styled/PyreonUI component render (× breakpoint × property
+  × side). Behavior-identical (341 tests unchanged):
+
+  - **`stripUnit`**: hoist the CSS-unit `RegExp` literal out of the function body to
+    module scope. It sat inside the most-executed leaf in the engine, so a fresh
+    `RegExp` was allocated on every call — thousands of throwaway objects per page
+    render. No `g`/`y` flag, so a shared instance is safe under `.match`.
+  - **`makeItResponsive`**: defer the `...restTheme` rest-spread (a shallow copy of
+    the entire provider theme — colors/space/fonts/radii/…) behind a lazy getter.
+    It was built unconditionally _before_ the rendered-cache-hit early return, so a
+    cache hit — the steady-state path the cache exists to keep cheap — paid for a
+    full large-object copy it never used.
+  - **`styles()`**: memoize the three curried unit factories (`calc`/`edge`/
+    `borderRadius`) by `rootSize` in a single-slot module cache. They depend only on
+    `rootSize` (effectively constant) yet were rebuilt on every call.
+
+  Structural/allocation wins on the hot path; not a wall-clock-benched change.
+
+- Updated dependencies:
+  - @pyreon/ui-core@0.52.0
+  - @pyreon/core@0.52.0
+  - @pyreon/styler@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

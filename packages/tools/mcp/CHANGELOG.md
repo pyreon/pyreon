@@ -1,5 +1,239 @@
 # @pyreon/mcp
 
+## 0.52.0
+
+### Minor Changes
+
+- **Verify findings are structured — catalog `version: 2`.** (ebeb330)
+
+  A finding was a prose sentence. An agent handed `"hydrateRoot threw: Cannot read properties of undefined"` could say what was wrong and never say what KIND of wrong it was — the only thing to branch on was a string free to be reworded in any release.
+
+  Every finding is now `{ code, message, fix? }`:
+
+  ```
+  ✗ button--empty
+      a11y [missing-accessible-name]: missing accessible name: "label" is empty
+        → Give "label" a non-empty value, or an aria-label if the text is decorative.
+  ```
+
+  - **`code`** is a stable identifier for the CLASS of failure — `mount-threw`, `hydrate-threw`, `hydrated-dom-differs`, `reactive-nodes-retained`, `missing-accessible-name`, and one for every reason a check did not run (`browser-only`, `no-dom`, `no-gc-hook`, `no-ssr-renderer`, `not-run`, `nothing-to-check`). Permanent once shipped: a reworded message is a patch, a renamed code is a breaking change.
+  - **`fix`** names the one concrete thing to change, and travels WITH the finding rather than in a lookup table a consumer has to know to consult — so the agent guide, the MCP tools and `atlas verify --json` all carry the actionable half without a second call. Absent when no single next step exists, rather than invented.
+
+  **Fixes a silent drop the change exposed.** Both the catalog renderer and the MCP surface collected findings from a hand-written list of five check names. `ssrParity` was added as a sixth and neither list learned about it — so a hydration failure was recorded in the catalog, marked the scenario failed, and then vanished from the agent guide, the llms text and the MCP tools: the surfaces an AI assistant actually reads. Both now derive from the verdict itself, which cannot go stale. `CHECK_KEYS` moved from `plugins/registry` down to `core/types`, beside the type it enumerates, so `core` can use it without importing upward.
+
+  **`@pyreon/mcp` refuses a stale catalog** rather than rendering blanks. At v1 findings were strings; reading one with v2 code yields `undefined` for every finding, so a component's failures display as empty — silently wrong, to a reader that cannot tell a blank is anomalous. The loader now checks the version and names the fix (`re-run atlas scan`).
+
+- **`get_api` now answers for `@pyreon/a11y` and `@pyreon/rich-text`.** Both had manifests and ZERO api-reference entries, so an agent asking about them got nothing — 53 packages were served, not 56. A manifest is the docs pipeline's INPUT; an api-reference entry is what an agent can retrieve, and nothing connected the two. Adding their marker pairs generates 7 and 3 symbols respectively from the manifests they already had. (c000667)
+
+  `check-mcp-docs` now gates that: a package with a manifest that `get_api` cannot answer for is a failure, with the marker-pair fix printed. It checks reachable KEYS rather than markers, because a package may legitimately be served by hand-written entries (`@pyreon/i18n` is) and demanding a marker would force a migration the pipeline makes optional.
+
+  **`check-doc-claims` gained 7 claim sites (23 → 30)**, covering counts that had rotted precisely because nothing watched them: the MCP tool count (CLAUDE.md said 18, actual 19), manifest coverage ("52 of 65 published packages", actual 56 of 75), the manifest-exempt count (13, actual 19 — the six `native-*` packages joined the list), and three claims in `@pyreon/primitives`' README.
+
+- Paginate the `get_anti_patterns` index. The catalog reached 383 entries, where the one-line-per-entry index crossed the 12,000-token single-response boundary its own budget test guards — so every PR that added an entry failed a test about a file it had not made worse. The index now returns 240 entries per page, names the next page in a footer, and takes a `page` argument; an out-of-range page clamps rather than answering empty, and paging is a split, so every entry still appears on exactly one page. Drill-in by `name` and `category` is unchanged. (fb15336)
+
+### Patch Changes
+
+- The repo's contributor rules moved from `.claude/rules/` to `.agents/rules/`, and the agent instructions from `CLAUDE.md` to `AGENTS.md`, so they work with any coding agent. Tools that read those files now look in the new places: the MCP `get_anti_patterns` and `get_browser_smoke_status` tools, the lint rule `pyreon/require-browser-smoke-test`, and the `pyreon doctor` doc-claims gate. Messages and comments that pointed at the old paths are updated. (2ac084f)
+
+  The six `@pyreon/native-*` packages no longer describe themselves on npm as "PRIVATE / EXPERIMENTAL" or "Not published"; they are published, and their descriptions now say what each one is.
+
+  `@pyreon/mcp`: `get_content_collection` and `get_content_entry` were registered and callable but missing from the manifest, so `mcp_overview` and the API reference did not list them. They are listed now, and `check-mcp-docs` fails when a registered tool and the manifest disagree in either direction.
+
+- Add the SSR-parity verify check — does each scenario survive `renderToString` + hydrate? (073b3ae)
+
+  A hydration mismatch is the framework's own first-class bug class: the SSR↔hydration differential fuzz found six shipped instances, every one a cursor misalignment where the server's HTML and the client's expectation disagreed about how many DOM nodes a construct occupies. None of Atlas's other checks could see it — `interaction` mounts on the client and never renders on a server, and `snapshot` photographs one render, so a build that is consistently wrong photographs consistently. Every scenario a catalog already has now becomes a parity test at zero authoring cost.
+
+  **Two oracles, because one is not enough.** The runtime's own mismatch channel must report nothing, AND the hydrated DOM must equal a fresh client mount. The second exists because the first can agree on broken — an SSR pass and a hydrate pass reaching the same wrong DOM produce zero mismatches, and only an independently-built third instance reveals it.
+
+  `VerifyVerdict` gains a sixth check, `ssrParity`. Consumers reading the catalog's verdict shape see one more field; `verify-browser` carries the node-side verdict through rather than recomputing it.
+
+  **Honest limits, stated in the source rather than discovered later.** The check is BLIND to `typeof window` branching: both renders happen in one process with DOM globals installed so components can mount at all, so the "server" pass sees a browser too and the two sides agree. What it does catch is non-deterministic renders (`Math.random()`, `Date.now()`, per-render ids), components that throw only under `renderToString`, and the framework's own cursor-misalignment class. It skips with a reason when `@pyreon/runtime-server` is not installed, since a component library with no SSR story is a legitimate project.
+
+  Verified end to end, not just unit-tested: against the 43-scenario workshop catalog it reports 43 passes, and perturbing a real component to render non-deterministically moves the scan to 39 verified / 4 failing with a source-anchored finding (`text at root > button > reactive: expected 12, DOM had 11`).
+
+- chore(deps): clear five known advisories that were fixable within existing ranges (7afa39c)
+
+  `bun audit` reported 7 advisories (4 high, 3 moderate) reachable from published
+  packages. Five are patch bumps inside the ranges already declared, so this is a
+  lockfile-only change:
+
+  - `js-yaml` 3.15.1 -> 3.15.2 and 4.3.1 -> 4.3.2 (2 high — `maxTotalMergeKeys`
+    does not limit CPU use for empty merge sources). Reached via
+    `@pyreon/lathe > gray-matter`, and via `@changesets/cli` on the dev side.
+  - `hono` 4.13.0 + 4.13.5 -> 4.13.7 (3 moderate — `toSSG()` path traversal,
+    unbounded `parseBody()` nesting, query-parser cache-key differential).
+    Reached via `@pyreon/mcp > @modelcontextprotocol/sdk > @hono/node-server`.
+
+  Two remain and are NOT fixable this way: `image-size` (2 high, DoS via infinite
+  loops in the ICNS and JXL/HEIF parsers) is fixed only above 2.0.2, and
+  `pptxgenjs@4.0.1` pins `^1.2.1`. Forcing it with an override would break that
+  declared range. Exposure is limited — `pptxgenjs` is an OPTIONAL peer of
+  `@pyreon/document`, so only consumers who opt into pptx export resolve it at all.
+
+- `<Audio>` is now a member of the compiler's canonical primitive set. It was lowered on both targets but missing from `CANONICAL_PRIMITIVES`, so an `<Audio>` the emitter could not read (a non-literal `src`) fell through to generic emit with no warning, while the same `<Video>` warned. A new test checks that the set matches `@pyreon/primitives`' exports, and the per-primitive typecheck suite now compiles `<Audio>` and `<Video>` too (it had pinned the count at 15). (c12635c)
+
+  Docs: the primitive count, which had drifted to 15, 16 and 18 in different places while the package exports 17, is corrected everywhere and now checked by `check-doc-claims`. The primitives manifest fixes `<Scroll>`'s prop name (`axis`, not `direction`) and the `<Link>`, `<Layer>` and `<Modal>` descriptions, and notes that `justify`/`wrap` and `<Link external>` are ignored on iOS and Android. The `prefer-canonical-primitive` lint message no longer quotes a count.
+
+- The chart handle's `dispatch` (ECharts' `dispatchAction`) is now one pure reducer, `applyChartAction`, and it runs on web, iOS and Android. (244fe91)
+
+  - New actions: `takeGlobalCursor` (arm the area brush) and `brush` (set or clear its areas), plus `timelineChange` and `timelinePlayChange`.
+  - `OptionChart` takes a `handle`, which binds its zoom, hover, pinned datums, brush and timeline step / play state.
+  - A dispatched `brush` fires `onBrushSelected`, as a drag does.
+  - On native, `createChartHandle()` lowers to a `PyreonChartHandle`. A bound `PlotChart` or `OptionChart` reads and writes its fields, and `handle.dispatch({ ... })` with an inline action object lowers too.
+  - Fixed: a `PlotChart` with `selectedMode` under a zoom window no longer fails to compile on native.
+
+- Several charts in one ECharts option now render, as they do in ECharts. (3a56d34)
+
+  The option facade used to route on `series[0]` and draw one series for most
+  families, dropping the rest with a warning. `planOption` now splits an option
+  into layers (`splitLayers`, a new `layers` plan kind): the cartesian series
+  over the whole box (several grids still split inside it), series that share a
+  coordinate system together (radar, polar, geo, single axis, parallel,
+  calendar), and every other family series as its own layer, placed by its
+  `center` / `radius` (pie, gauge, sunburst, chord) or its `left` / `top` /
+  `right` / `bottom` / `width` / `height` box with ECharts' defaults. Two pies
+  side by side, a pie in the corner of a line chart, a gauge beside a radar all
+  draw.
+
+  `<OptionChart>` paints the cartesian part on its canvas and mounts each family
+  layer's own interactive host over it, in its box and without a background;
+  a layer of unchanged shape stays mounted across updates, so it tweens. A
+  multi-grid option with a family series on one grid (candlesticks over volume
+  bars) now takes the same path instead of falling back to static SVG.
+  `optionToSvg` composes the layers into one document. A multi-grid option's
+  `backgroundColor` now covers the whole canvas.
+
+  Still open: a family series sharing ONE grid with line or bar series
+  (candles with moving-average lines on the same axes), and native
+  `<OptionChart>`, which lowers `series[0]` only.
+
+- The chart capability ledger can no longer claim more than it proves. (d3fa2c6)
+
+  `CHART_CAPABILITIES` rows now carry a status per target (`web`, `ios`,
+  `android`), a `gaps` list saying why a target falls short, and evidence that
+  must be a test. `chartCapabilityScore(mode, target?)` scores one target or all
+  three, and reports `partial` and `pending` counts. Every "unsupported"
+  warning in the option facade is tagged with the row it belongs to, and a
+  tagged row cannot be complete; the native compiler holds the same rule for
+  the props its hosts drop. Seven rows were added (key totality, multi-series,
+  axis pointer, media, keyboard, accessible table, split hosted rows).
+
+  The honest score is lower than the old one. The direct option contract is
+  complete for 32 of 68 rows on the web and for 1 of 68 natively, where an
+  `<OptionChart>` option still has to be a compile-time literal. The previous
+  ledger reported 100.
+
+  `echarts` is now an optional peer: `@pyreon/charts/plot` never imports it.
+  `pyreon doctor`'s doc-claims gate checks the chart host counts.
+
+- `<OptionChart>` honours ECharts' tooltip component and animation keys, and the (d3fa2c6)
+  option contract is now measured against ECharts' own types.
+
+  **Animation.** Option charts animate as ECharts does: an entrance (1000 ms
+  `cubicOut`) and an update tween (300 ms `cubicInOut`), governed by the
+  option's `animation`, `animationDuration`, `animationEasing`,
+  `animationDelay`, their `…Update` twins and `animationThreshold`, on the
+  option or a series, with ECharts' 31-curve easing table. They used to be
+  pinned off, so these keys were accepted and never read. Set `animation: false`
+  for a static first paint. Family option charts (pie, sankey, …) keep one host
+  alive across updates, so an update tweens instead of remounting and replaying
+  the entrance. The shared canvas host gains `enterDuration`, `enterDelay`,
+  `updateDelay`, `enterEasing` and `updateEasing`.
+
+  **Tooltip.** The option's `tooltip` component now decides the tooltip, as in
+  ECharts (no component, no tooltip): `trigger` (`item` / `axis`), template and
+  function `formatter`s (HTML renders through an allow-list), `valueFormatter`,
+  `order`, every `position` form, `confine`, the look keys, `triggerOn`,
+  `hideDelay`, `alwaysShowContent`, `enterable`, and `tooltip.axisPointer`
+  (`line`, `shadow`, `cross` with axis labels). These were dropped without a
+  warning.
+
+  **Fixed on the way.** A redraw whose content equalled a running tween's target
+  cancelled the tween. Hovering an option chart dropped its brush areas,
+  visualMap strip, graphic elements and timeline strip from the frame.
+
+  **Measured contract.** A new test enumerates every option key the installed
+  ECharts types define and requires each to be read, inert, or filed as a gap
+  under a capability-ledger row, which is then capped at partial. Keys the
+  facade listed as known but never read (polar `barWidth`, graph `edgeSymbol`,
+  treemap `breadcrumb`, …) now warn by name instead of being silently accepted.
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- The `get_anti_patterns` compact index clamps a title longer than 120 (c925da5)
+  characters on a word boundary and marks it with `…`; `name` lookup strips a
+  trailing `…`, so any fragment copied from the index still resolves. The
+  catalog's titles carry the whole claim and had pushed the hook-free index to
+  its 12,000-token single-response boundary (12,005 with one more entry), where
+  no new anti-pattern could be filed. Chosen over pagination so the discovery
+  path stays one call.
+- `get_changelog` rendered a changeset body's own markdown headings at the same level as the version heading. `## <version>` is the one structural boundary in the output — the thing consumers split on — but changesets inlines a body under its bullet, indented, and the parser strips that indent, so a body written with `## Title` resurfaced at column zero, indistinguishable from a version. (dd49fb7)
+
+  Not hypothetical: the 0.52.0 release carried five changesets whose bodies opened with `## …`, so `formatChangelog(query, { limit: 1 })` — one version — rendered six `## ` lines, and the release PR went red on a test that was right. Main was green only because its CHANGELOG had not been regenerated yet; the defect was in the formatter all along, waiting for the first body with a heading.
+
+  Body headings are now demoted by one level and never below h3, so `## ` is reserved for versions by construction. Relative structure is kept (h2→h3, h3→h4); a body h1 floors at h3 rather than becoming a colliding h2. Bodies without headings pass through byte-identical.
+
+- Fix `get_anti_patterns({ category })` rejecting 8 of the catalog's 15 real categories (`islands`, `ssr`, `ssg`, `bundling`, `build`, `ci`, `best-practices`, `library-api`) — the zod `category` enum was a hand-typed literal list that had drifted since inception and only ever accepted 8 of them, failing validation for every call with one of the other 7. The enum is now derived from `ANTI_PATTERN_CATEGORIES` (the same list `parseAntiPatterns` uses), so it cannot drift out of sync again. Also corrects a batch of stale prose across the manifest, README, and docs page: outdated tool/pattern/category counts, an out-of-date detector-code count (16 → 18), a `get_anti_patterns` example using the entry TITLE (`'props-destructured'`, which never matched) instead of the correct lookup value, stale `docs/patterns/` paths (now `docs/src/content/docs/patterns/`), and a docs "Exports summary" table listing six symbols that are not actually exported from the package's only module entry. (4837605)
+- Documentation-only: closes five README/manifest gaps against shipped 0.52-cycle APIs, found by auditing every package README against its real exports. (87b581a)
+
+  - **`@pyreon/core`** — `<Async>`, `use()` (already in the manifest but undocumented in the README) and `elementRef()` (missing from BOTH the README and the manifest) are now documented. `elementRef` gets a new manifest `api[]` entry with a real `mistakes` catalog, and the package `longExample` now demonstrates all three primitives so they surface in `llms-full.txt` / the MCP `api-reference` (the manifest's `longExample`, not `api[].example`, is what drives that section).
+  - **`@pyreon/sync`** — the multiplatform pure-TS CRDT engine (`pyreonAdapter`, `PyreonCrdtAdapter`, `PyreonCrdtDoc`, `createActorId`, `connectPyreonSync`, `webSocketChannel`, `createNativeSyncHost`) shipped via #2824/#3207 and was undocumented everywhere — the README's own roadmap table still implied only the Yjs engine had landed. Adds a "Multiplatform engine" README section, 7 new manifest `api[]` entries, and a roadmap row.
+  - **`@pyreon/table`** — `createTableState` (the dependency-free, PMTC-lowerable table-state core) was documented in the manifest but absent from the README, which reads as TanStack-only. Adds a full section + a comparison table + a gotcha distinguishing it from `useTable`.
+  - **`@pyreon/router`** — `safeRedirectLocation` / `classifyRedirectTarget` (public open-redirect-guard exports) get a short "Redirect-target security" subsection under `notFound() / redirect()`.
+  - **`@pyreon/hooks`** — the README's "full surface" table-count line said "55 hooks across 7 categories" against a real 65 (the prose line three lines above it was correct and already guarded by `check-doc-claims`; this second, unguarded restatement of the same number silently drifted on its own). The table itself listed three hooks that do not exist (`useRootSize`, `useSpacing`, `useThemeValue`) and was missing 19 real ones across Interaction/Data (`useBluetooth`, `useSafeArea`, `useScreenOrientation`, `useDeviceMotion`, `useSpeech`, `useDeviceInfo`, `useCamera`, `useAudioRecorder`, `useWakeLock`, `useAppState`, `useCrashReporter`, `useAuth`, `useDatabase`, `useGeolocation`, `useMap`, `useWebSocket`, `useSecureStorage`, `usePush`, `usePayments`). The table is now a verified 1:1 match against `src/index.ts`'s real exports (programmatically diffed).
+  - **`@pyreon/cli`** — `check-doc-claims` gains a guarded claim site for the hooks README's table-count line, closing the exact gap that let it drift silently: `packages/tools/cli/src/doctor/gates/doc-claims.ts`'s `hook export count` check previously only watched the prose line in that file, not this second restatement a few lines below it. Bisect-verified: reverting the new claim spec makes the new regression test fail with `expected +0 to be 1` (drift undetected); restored, it passes.
+  - **`@pyreon/mcp`** — `api-reference.ts` regenerated (`bun run gen-docs`) from the `@pyreon/core` / `@pyreon/sync` manifest edits above; no hand edits.
+
+  No runtime behavior changes in any package.
+
+- Stop publishing the build's bundle-analysis report. (5c60743)
+
+  `vl_rolldown_build` writes an HTML treemap per entry into `lib/analysis/`, and
+  54 packages published it: every install downloaded a build report (258 KB for
+  `@pyreon/charts`) that is not part of the package. Their `files` now exclude
+  `lib/analysis`, as ten packages already did. `pyreon doctor`'s distribution
+  gate enforces it twice: a `vl_rolldown_build` package that publishes `lib`
+  must exclude the report, and the live `npm pack --dry-run` probe fails if the
+  tarball carries one.
+
+- Ship `<Transition>` / `<TransitionGroup>` from `@pyreon/primitives` — the animation vocabulary now has an import path that resolves on every target (5a83e86)
+
+  PMTC has lowered `<Transition>` and `<TransitionGroup>` to real platform
+  animation since M2.7/M2.8 — SwiftUI `.transition(…)` + `.animation(_:value:)`,
+  Compose `AnimatedVisibility(enter =, exit =)` — with preset mapping, asymmetric
+  enter/leave timing and device proof. But `@pyreon/primitives` exported neither
+  name, and the only runtime export lived in `@pyreon/runtime-dom`, which the
+  compiler correctly flags web-only. So the one import that worked on web warned
+  on native, and the import native accepted did not exist: a fully built
+  capability with no reachable door.
+
+  `@pyreon/primitives` now exports both, with a self-contained web
+  implementation built on `h()` + `renderEffect` alone (no `@pyreon/runtime-dom`
+  dependency — the package keeps its two peer deps, which is what lets it be the
+  multiplatform vocabulary).
+
+  The prop contract mirrors the native emitters exactly: `show`, `name`
+  (`fade` / `scale-in` / `slide-up|down|left|right`, camelCase and kebab-case
+  both accepted), `duration`, `easing`, and the asymmetric
+  `enterDuration` / `leaveDuration` / `enterEasing` / `leaveEasing` overrides that
+  fall back to the symmetric value. Direction is the direction of travel, so a
+  slide-up rises into place from below — matching `.move(edge: .bottom)` and
+  `slideInVertically { it }`.
+
+  On web the hidden state is `display:none` on the wrapper rather than an unmount,
+  so an animation wrapper never gates its children out of SSR and a hidden
+  `<Transition>` contributes no flex `gap`. Only transition LONGHANDS are ever
+  assigned, so a consumer's own `transition-delay` survives.
+
+  The native emit is unchanged and asserted byte-identical to the bare-tag form.
+  The web-only warnings for `@pyreon/kinetic` and `@pyreon/runtime-dom` now name
+  `@pyreon/primitives` as the import that actually crosses, instead of naming a
+  tag whose only import was broken.
+
+- `zero({ pwa })`: emits `manifest.webmanifest` (linked with `theme-color` into every page) and generates `sw.js` after the output is final — before the deploy adapter stages it — precaching exactly the emitted content-hashed assets plus, under `mode: 'ssg'`, every prerendered page. Navigations are network-first, `<base><assetsDir>/` requests cache-first; a new worker waits by default (`skipWaiting: true` opts in). New client helper `registerServiceWorker({ onUpdate })` from `@pyreon/zero` (no-op in dev and SSR). The node/bun adapters now serve `sw.js` and `*.webmanifest` with `max-age=0, must-revalidate` instead of a 1-hour cache. (dc580fc)
+- Per-route OG images from JSX. A page route can `export const og` — a component rendering the social card as SVG JSX from `{ path, params, data }` (typed `OgImage` from `@pyreon/zero/server`). SSG paths rasterize at build time (via the optional `sharp` peer) to a content-hashed PNG under `assets/og/` with `og:image` / `og:image:width|height` / `twitter:card` injected into that page; SSR/ISR routes are served from an auto-mounted `/_zero/og/<path>.png` endpoint (CDN `s-maxage` + `stale-while-revalidate`) with an absolute `og:image` injected into the rendered page. The `og` export is only referenced from the server graph. Configure with `zero({ routeOg: { width, height, siteUrl } })`. (dc580fc)
+- Updated dependencies:
+  - @pyreon/compiler@0.52.0
+
 ## 0.51.0
 
 ### Minor Changes
