@@ -5,7 +5,7 @@ import { isPortablePath, portablePathsFrom } from '../../utils/portable-paths'
 /**
  * A raw DOM element in a file that has to reach iOS and Android.
  *
- * PMTC lowers a fixed vocabulary — the 15 canonical primitives — into SwiftUI
+ * PMTC lowers a fixed vocabulary — the canonical primitives — into SwiftUI
  * views and Compose composables. A `<div>` has no such mapping, because there
  * is nothing on either target that a div corresponds to; the compiler either
  * warns and drops it or bails on the file.
@@ -83,7 +83,7 @@ export const preferCanonicalPrimitive: Rule = {
     id: 'pyreon/prefer-canonical-primitive',
     category: 'portable',
     description:
-      'A raw DOM element in portable source — PMTC lowers only the 15 canonical primitives, and a `<div>` has no SwiftUI or Compose counterpart to lower to.',
+      'A raw DOM element in portable source — PMTC lowers only the canonical primitives, and a `<div>` has no SwiftUI or Compose counterpart to lower to.',
     severity: 'warn',
     optIn: true,
     fixable: false,
@@ -106,7 +106,7 @@ export const preferCanonicalPrimitive: Rule = {
     const report = (what: string, tag: string, node: unknown) => {
       const suggestion = SUGGESTIONS[tag]
       context.report({
-        message: `${what} is a DOM element, and this file has to compile for iOS and Android where there is no DOM. PMTC lowers the 15 canonical primitives from \`@pyreon/primitives\`${
+        message: `${what} is a DOM element, and this file has to compile for iOS and Android where there is no DOM. PMTC lowers the canonical primitives from \`@pyreon/primitives\`${
           suggestion === undefined ? '' : ` — this is usually \`<${suggestion}>\``
         }. If it genuinely has to be a DOM node, put it behind a \`<Web>\` branch with native siblings.`,
         span: getSpan(node),
