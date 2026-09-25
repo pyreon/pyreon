@@ -81,7 +81,7 @@ describe('never present a PARTIAL generation as a complete one', () => {
   it('renders a BROKEN verdict in words, not just colour', () => {
     const out = render(result(), {
       ran: true,
-      files: [{ path: 'a.swift', target: 'swift', verdict: 'broken', warnings: [], markers: [], leaked: [] }],
+      files: [{ path: 'a.swift', target: 'swift', verdict: 'broken', warnings: [], markers: [], leaked: [], declarations: [] }],
     })
     expect(out).toContain('BROKEN')
   })
@@ -98,7 +98,7 @@ describe('never present a PARTIAL generation as a complete one', () => {
           verdict: 'broken',
           warnings: [],
           markers: [],
-          leaked: ['useQuery', 'useFetch'],
+          leaked: ['useQuery', 'useFetch'], declarations: [],
         },
       ],
     })
@@ -110,7 +110,7 @@ describe('never present a PARTIAL generation as a complete one', () => {
   it('surfaces a web-only verdict distinctly from a passing one', () => {
     const out = render(result(), {
       ran: true,
-      files: [{ path: 'a.swift', target: 'swift', verdict: 'web-only', warnings: [], markers: [], leaked: [] }],
+      files: [{ path: 'a.swift', target: 'swift', verdict: 'web-only', warnings: [], markers: [], leaked: [], declarations: [] }],
     })
     expect(out).toContain('web-only')
   })
@@ -119,7 +119,7 @@ describe('never present a PARTIAL generation as a complete one', () => {
     const out = render(result(), {
       ran: true,
       files: [
-        { path: 'a.swift', target: 'swift', verdict: 'lowers', warnings: [], markers: ['PyreonQuery<'], leaked: [] },
+        { path: 'a.swift', target: 'swift', verdict: 'lowers', warnings: [], markers: ['PyreonQuery<'], leaked: [], declarations: [] },
       ],
     })
     expect(out).toContain('lowers')

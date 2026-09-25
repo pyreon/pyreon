@@ -131,12 +131,14 @@ describe('model dependency graph', () => {
     // A native module imports nothing. Inlining `Order` while leaving out the
     // `Customer` it names emits a module that does not typecheck.
     const src = file(generate(CHAIN, native), 'a.native.tsx')
-    expect(src).toContain('export const Address')
-    expect(src).toContain('export const Customer')
-    expect(src).toContain('export const Order')
+    // Native schema bindings are `<model>_schema` (audit G6: Swift/Kotlin
+    // have one namespace, so the binding cannot share the type's name).
+    expect(src).toContain('export const address_schema')
+    expect(src).toContain('export const customer_schema')
+    expect(src).toContain('export const order_schema')
     // And in dependency order, for the same `const` reason.
-    expect(src.indexOf('const Address')).toBeLessThan(src.indexOf('const Customer'))
-    expect(src.indexOf('const Customer')).toBeLessThan(src.indexOf('const Order'))
+    expect(src.indexOf('const address_schema')).toBeLessThan(src.indexOf('const customer_schema'))
+    expect(src.indexOf('const customer_schema')).toBeLessThan(src.indexOf('const order_schema'))
   })
 
   it('topoSortModels reports back edges and stays deterministic', () => {

@@ -88,7 +88,7 @@ describe('generate', () => {
     // Client, schema and endpoint must share a top level: PMTC resolves
     // nothing across files, so a shared `client.ts` would stop them lowering.
     expect(src).toContain('const api = createHttp(')
-    expect(src).toContain('export const Book = s.object({')
+    expect(src).toContain('export const book_schema = s.object({')
     expect(src).toContain("export const listBooks = api.endpoint('GET /books'")
   })
 

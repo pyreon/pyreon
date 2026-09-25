@@ -16,7 +16,7 @@ import {
 } from '../core/config'
 import { generate } from '../core/generate'
 import { diffSurface, type ApiSurface, type SurfaceChange } from '../core/surface'
-import { resolveTransform, verifyNative, worstVerdict } from '../verify/lower'
+import { resolveNativeCompiler, verifyNative, worstVerdict } from '../verify/lower'
 import { renderReport } from './report'
 
 export interface Argv {
@@ -169,7 +169,8 @@ export async function run(
       }
     }
     const result = generate(fs.read(config.input), config)
-    const verify = verifyNative(result.files, await resolveTransform())
+    const nativeCompiler = await resolveNativeCompiler()
+    const verify = verifyNative(result.files, nativeCompiler.transform, nativeCompiler.compile)
 
     // Read the PREVIOUS surface before the write loop overwrites it. This is
     // the only moment both versions exist, and it is what turns "your spec

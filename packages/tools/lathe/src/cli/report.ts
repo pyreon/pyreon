@@ -149,17 +149,36 @@ export function renderReport(
       const tag =
         f.verdict === 'lowers'
           ? C.green('lowers')
-          : f.verdict === 'web-only'
-            ? C.yellow('web-only')
-            : C.red('BROKEN')
+          : f.verdict === 'partial'
+            ? C.yellow('partial')
+            : f.verdict === 'web-only'
+              ? C.yellow('web-only')
+              : C.red('BROKEN')
       const markers = f.markers.length > 0 ? C.dim(`  [${f.markers.join(' ')}]`) : ''
-      lines.push(`  ${tag} ${f.path} ${C.dim(f.target)}${markers}`)
+      const compiled =
+        f.compiled === undefined
+          ? ''
+          : 'skipped' in f.compiled
+            ? C.dim('  (not compiled)')
+            : f.compiled.ok
+              ? C.dim('  compiled')
+              : C.red('  does not compile')
+      lines.push(`  ${tag} ${f.path} ${C.dim(f.target)}${markers}${compiled}`)
       for (const l of f.leaked) {
         lines.push(
           `      ${C.red('leaked')} ${l} ${C.dim('emitted verbatim; the native build will not link')}`,
         )
       }
-      for (const w of f.warnings.slice(0, 2)) lines.push(`      ${C.dim(truncate(w, 120))}`)
+      if (f.compiled && 'ok' in f.compiled) {
+        for (const e of f.compiled.errors.slice(0, 2)) lines.push(`      ${C.red('error')} ${truncate(e, 120)}`)
+      }
+      // Per DECLARATION (audit G2): which model lost what, not just "a warning".
+      for (const d of f.declarations.filter((x) => x.verdict !== 'lowers').slice(0, 5)) {
+        lines.push(`      ${C.yellow(d.verdict)} ${d.name}${C.dim(` — ${truncate(d.reasons[0] ?? '', 110)}`)}`)
+      }
+      if (f.declarations.length === 0) {
+        for (const w of f.warnings.slice(0, 2)) lines.push(`      ${C.dim(truncate(w, 120))}`)
+      }
     }
   }
 

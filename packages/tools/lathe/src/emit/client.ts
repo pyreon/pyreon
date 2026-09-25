@@ -459,7 +459,41 @@ function responseCfg(
 ): string {
   if (!op.response) return ''
   if (op.response.kind === 'unknown') return ''
-  return `, { response: ${schemaExpr(op.response, { native, validator, models })} }`
+  const refBinding = native ? nativeSchemaBinding : undefined
+  return `, { response: ${schemaExpr(op.response, { native, validator, models, refBinding })} }`
+}
+
+/**
+ * A TypeScript type for the native layout, with every NON-OBJECT model
+ * expanded in place (audit G5). PMTC turns an object alias into a struct and
+ * an array/scalar alias into nothing, so `PyreonQuery<Pets>` named a type that
+ * did not exist on either target.
+ */
+function nativeTs(type: IrType, models: ReadonlyMap<string, IrType>, depth = 0): string {
+  if (type.kind === 'ref') {
+    const target = models.get(type.name)
+    if (target && target.kind !== 'object' && depth < 8) return nativeTs(target, models, depth + 1)
+    return type.name
+  }
+  if (type.kind === 'array') {
+    const inner = nativeTs(type.items, models, depth + 1)
+    return /[|&]/.test(inner) ? `(${inner})[]` : `${inner}[]`
+  }
+  return tsType(type, 0, true)
+}
+
+/**
+ * A model's schema BINDING in a native module (audit G6).
+ *
+ * Not the model's name: TypeScript keeps `const Pet` and `type Pet` in
+ * separate namespaces, Swift and Kotlin do not — PMTC turned the pair into
+ * `let Pet` + `struct Pet` (`invalid redeclaration`) and `val Pet` +
+ * `data class Pet` (`conflicting declarations`), so no native module with a
+ * model compiled on either target. `pet_schema` cannot collide: `ident()`
+ * never emits an inner underscore and model names are PascalCase.
+ */
+export function nativeSchemaBinding(model: string): string {
+  return `${model.charAt(0).toLowerCase()}${model.slice(1)}_schema`
 }
 
 /**
@@ -671,6 +705,7 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
       defer,
       validator: dialect.name,
       models: modelTypes,
+      refBinding: nativeSchemaBinding,
     })
     // zod is recognised ONLY inside `@pyreon/validation`'s `zodSchema(...)` —
     // the recognizer keys on that distinctive wrapper call rather than on the
@@ -715,9 +750,14 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
       if (!model || !needed.has(name)) continue
       f.line()
       f.doc(model.doc)
-      f.line(
-        `export const ${model.name} = ${nativeSchema.get(model.name) ?? `${dialect.binding}.object({})`}`,
-      )
+      // Only OBJECT models get a schema binding; every other kind is inlined
+      // where it is used (audit G5 — see `schemaExpr`). The TYPE is declared
+      // for every model: the data components name it.
+      if (model.type.kind === 'object') {
+        f.line(
+          `export const ${nativeSchemaBinding(model.name)} = ${nativeSchema.get(model.name) ?? `${dialect.binding}.object({})`}`,
+        )
+      }
       // A STRUCTURAL type, not `Infer<typeof X>`. `Infer` would be an
       // `import type` — erased by TypeScript, but PMTC's warn pass reads the
       // import statement itself and reports the module as un-lowerable. The
@@ -738,7 +778,7 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
     // produces Swift that does not compile, with no warning at all.
     for (const op of ops) {
       if (isMutation(op)) continue
-      const ret = op.response ? tsType(op.response) : 'unknown'
+      const ret = op.response ? nativeTs(op.response, modelTypes) : 'unknown'
       const name = `${typeIdent(op.id)}Data`
       // A path param becomes a PROP, and the `params` object is built from
       // those props. PMTC lowers this to native string interpolation and keys
