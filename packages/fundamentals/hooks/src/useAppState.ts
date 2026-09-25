@@ -1,4 +1,5 @@
-import { isClient, onCleanup, signal } from '@pyreon/reactivity'
+import { isClient, signal } from '@pyreon/reactivity'
+import { onHookCleanup } from './lifecycle'
 
 /** App lifecycle phase — the cross-platform union `useAppState` reports. */
 export type AppStatePhase = 'active' | 'background' | 'inactive'
@@ -35,7 +36,7 @@ export function useAppState(): () => AppStatePhase {
     document.addEventListener('visibilitychange', update)
     window.addEventListener('focus', update)
     window.addEventListener('blur', update)
-    onCleanup(() => {
+    onHookCleanup(() => {
       document.removeEventListener('visibilitychange', update)
       window.removeEventListener('focus', update)
       window.removeEventListener('blur', update)

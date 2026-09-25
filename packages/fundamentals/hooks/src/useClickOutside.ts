@@ -2,6 +2,12 @@ import { onMount, onUnmount } from '@pyreon/core'
 
 /**
  * Call handler when a click occurs outside the target element.
+ *
+ * Listens for `pointerdown` (capture phase) — ONE event per press for mouse,
+ * touch and pen alike. It used to listen for both `mousedown` and
+ * `touchstart`, and a touch tap dispatches BOTH (the compatibility mouse
+ * event follows the touch), so every tap outside ran the handler twice — a
+ * toggle-on-outside-click reopened what it had just closed.
  */
 export function useClickOutside(getEl: () => HTMLElement | null, handler: () => void): void {
   const listener = (e: Event) => {
@@ -11,13 +17,11 @@ export function useClickOutside(getEl: () => HTMLElement | null, handler: () => 
   }
 
   onMount(() => {
-    document.addEventListener('mousedown', listener, true)
-    document.addEventListener('touchstart', listener, true)
+    document.addEventListener('pointerdown', listener, true)
     return undefined
   })
 
   onUnmount(() => {
-    document.removeEventListener('mousedown', listener, true)
-    document.removeEventListener('touchstart', listener, true)
+    document.removeEventListener('pointerdown', listener, true)
   })
 }
