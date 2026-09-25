@@ -26,6 +26,7 @@ import {
 import { tagFile, typeIdent } from './naming'
 import { docsImportBase, emitDocs } from '../emit/docs'
 import { emitFaker } from '../emit/faker'
+import { emitMcpTools } from '../emit/mcp'
 import { emitMocks } from '../emit/mock'
 import { emitPackageMarker } from '../emit/package-marker'
 import { isStreamOnly, streamHookName, streamName } from '../emit/stream'
@@ -103,6 +104,7 @@ export function generate(
     push(emitKeys(doc))
   }
   if (has('mocks')) push(emitMocks(doc, config.client))
+  if (has('mcp')) push(emitMcpTools(doc))
   // The factories import the model TYPES, which both `schemas` and `types`
   // export under the same names. `faker` requires `schemas`, so the first
   // branch is the live one; the second keeps the emitter honest if that

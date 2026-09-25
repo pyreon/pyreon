@@ -174,6 +174,7 @@ export type LathePluginName =
   | 'components'
   | 'atlas'
   | 'docs'
+  | 'mcp'
 
 /**
  * The whole-ecosystem config.

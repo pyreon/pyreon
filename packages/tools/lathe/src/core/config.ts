@@ -27,6 +27,7 @@ export type PluginName =
   | 'components'
   | 'atlas'
   | 'docs'
+  | 'mcp'
 
 export const ALL_PLUGINS: readonly PluginName[] = [
   'types',
@@ -38,6 +39,7 @@ export const ALL_PLUGINS: readonly PluginName[] = [
   'components',
   'atlas',
   'docs',
+  'mcp',
 ]
 
 export const DEFAULT_PLUGINS: readonly PluginName[] = ['schemas', 'client', 'queries']
@@ -73,6 +75,8 @@ export const PLUGIN_REQUIRES: Readonly<Record<PluginName, readonly PluginName[]>
   // Markdown rendered from the IR. It imports nothing and is imported by
   // nothing, so it is the one plugin with no edges at all.
   docs: [],
+  // Each tool's `call` runs the generated endpoint.
+  mcp: ['client'],
 }
 
 /**
