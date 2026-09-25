@@ -3653,7 +3653,7 @@ function focusField(name: FieldNames<typeof form>) { /* … */ }`,
   },
 
   'query/useQuery': {
-    signature: '<TData, TError, TKey>(options: () => QueryObserverOptions<...>) => UseQueryResult<TData, TError>',
+    signature: '<TQueryFnData, TError, TData = TQueryFnData, TKey>(options: () => QueryObserverOptions<...>) => UseQueryResult<TData, TError>',
     example: `const userId = signal(1)
 const user = useQuery(() => ({
   queryKey: ['user', userId()],
@@ -3708,7 +3708,7 @@ const user = useQuery(() => ({
   },
 
   'query/useQueries': {
-    signature: '(queries: () => UseQueriesOptions[]) => Signal<QueryObserverResult[]>',
+    signature: '<const T extends readonly UseQueriesInput[]>(queries: () => T) => Signal<QueriesResults<T>>',
     example: `const results = useQueries(() =>
   userIds().map((id) => ({ queryKey: ['user', id], queryFn: () => fetchUser(id) })),
 )
@@ -3749,9 +3749,9 @@ usePrefetchQuery(() => ({ queryKey: ['user', id], queryFn: fetchUser }))
     }
   },
 })
-// sub.status() — 'connecting' | 'connected' | 'disconnected' | 'error'
+// sub.status() — 'connecting' | 'connected' | 'disconnected' | 'error' | 'failed'
 // sub.send(data), sub.close(), sub.reconnect()`,
-    notes: 'Reactive WebSocket with auto-reconnect and QueryClient cache integration. `onMessage` receives the active `QueryClient` so push updates can invalidate or directly patch cached queries in a single line. Exponential backoff on reconnect (default 1s doubling, max 10 attempts — configurable via `reconnectDelay` / `maxReconnectAttempts`). `url` and `enabled` may be signals for reactive connection management — changing the URL closes the old socket and opens a new one. Returns `status` (signal), `send(data)`, `close()`, `reconnect()`. See also: useSSE, useQuery.',
+    notes: `Reactive WebSocket with auto-reconnect and QueryClient cache integration. \`onMessage\` receives the active \`QueryClient\` so push updates can invalidate or directly patch cached queries in a single line. Jittered exponential backoff on reconnect (default 1s doubling, capped at \`maxReconnectDelay\` = 30s, max 10 attempts — configurable via \`reconnectDelay\` / \`maxReconnectDelay\` / \`maxReconnectAttempts\`); when attempts run out \`status()\` is \`'failed'\`, and a browser \`online\` event starts over. \`url\` and \`enabled\` may be signals for reactive connection management — changing the URL closes the old socket and opens a new one. Returns \`status\` (signal), \`send(data)\`, \`close()\`, \`reconnect()\`. See also: useSSE, useQuery.`,
     mistakes: `- \`onMessage\` runs on every frame the socket receives — debounce cache invalidations for high-frequency streams or you'll trigger N refetches per second
 - Storing data in a parallel signal instead of using \`queryClient.setQueryData\` inside \`onMessage\` — defeats the QueryClient cache; use \`setQueryData\` to push updates into the same cache that \`useQuery\` reads
 - Forgetting \`enabled: false\` on unmount-sensitive connections — the WebSocket stays open unless \`enabled\` is a signal that tracks component lifecycle or a reactive condition`,
@@ -3769,15 +3769,15 @@ usePrefetchQuery(() => ({ queryKey: ['user', id], queryFn: fetchUser }))
   },
 })
 // sse.data() — last parsed message
-// sse.status() — 'connecting' | 'connected' | 'disconnected' | 'error'
+// sse.status() — 'connecting' | 'connected' | 'disconnected' | 'error' | 'failed'
 // sse.lastEventId(), sse.readyState(), sse.close(), sse.reconnect()`,
-    notes: 'Reactive Server-Sent Events hook with QueryClient cache integration. Same pattern as `useSubscription` but read-only (no `send`). `parse` deserializes raw event data per message (e.g. `JSON.parse`); `events` filters named SSE event types (defaults to generic `message` events). Honours the SSE spec `id` field via `lastEventId()` so the browser includes `Last-Event-ID` on reconnect and the server can resume from the right offset. `onMessage` receives the `QueryClient` for cache invalidation. See also: useSubscription.',
+    notes: `Reactive Server-Sent Events hook with QueryClient cache integration. Same pattern as \`useSubscription\` but read-only (no \`send\`). \`parse\` deserializes raw event data per message (e.g. \`JSON.parse\`); \`events\` filters named SSE event types (defaults to generic \`message\` events). Honours the SSE spec \`id\` field via \`lastEventId()\` so the browser includes \`Last-Event-ID\` on reconnect and the server can resume from the right offset. \`onMessage\` receives the \`QueryClient\` for cache invalidation. A \`parse\` failure surfaces on \`error()\` (the last good \`data()\` is kept); a throwing \`onMessage\` is reported in dev. Same capped, jittered backoff + \`'failed'\` status + \`online\` recovery as \`useSubscription\`. See also: useSubscription.`,
     mistakes: `- Passing \`queryKey\` (TanStack v4 pattern) instead of using \`onMessage\` for cache integration — Pyreon's \`useSSE\` does NOT auto-update query cache; use \`queryClient.setQueryData\` or \`invalidateQueries\` inside \`onMessage\`
 - Omitting \`parse\` and expecting typed data — without \`parse\`, \`data()\` is \`string\` (raw event payload); pass \`parse: JSON.parse\` for auto-deserialization`,
   },
 
   'query/useSuspenseQuery': {
-    signature: '<TData, TError>(options: () => QueryObserverOptions<...>) => UseSuspenseQueryResult<TData, TError>',
+    signature: '<TQueryFnData, TError, TData = TQueryFnData, TKey>(options: () => QueryObserverOptions<...>) => UseSuspenseQueryResult<TData, TError>',
     example: `const user = useSuspenseQuery(() => ({ queryKey: ['user', id()], queryFn: fetchUser }))
 
 <QuerySuspense query={user} fallback={<Spinner />}>
