@@ -8,6 +8,7 @@
 // Type inference is deliberately naive — numeric assumption for
 // computed properties. Phase 1 grows a real inference pass.
 
+import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 import { swiftStr } from './string-literals'
 import {
   HANDLED_FLOW_EDGE_FIELDS,
@@ -1904,13 +1905,27 @@ function emitSwiftScalarConstraints(
       lines.push(`${ind}}`)
     }
     if (c.url) {
-      // `URL(string:)` is a PARSER, not a validator — it accepts
-      // "not a url", "x.com" and "/relative", all of which zod rejects.
-      // Requiring a scheme reproduces zod's rule (an absolute URL), which
-      // still accepts "mailto:a@b.co" and "ftp://x.com" as zod does.
-      lines.push(
-        `${ind}if URL(string: ${targetName})?.scheme == nil {`,
-      )
+      // The AUTHORING library's rule (see `UrlRule`), not one rule for all.
+      const rule = c.url
+      if (rule.kind === 'scheme') {
+        // zod: `URL(string:)` is a PARSER, not a validator — it accepts
+        // "not a url", "x.com" and "/relative", all of which zod rejects.
+        // Requiring a scheme reproduces zod's rule (an absolute URL), which
+        // still accepts "mailto:a@b.co" and "ftp://x.com" as zod does.
+        lines.push(`${ind}if URL(string: ${targetName})?.scheme == nil {`)
+      } else if (rule.kind === 'http') {
+        // `@pyreon/validate`'s default: http(s) with a host, exactly.
+        lines.push(
+          `${ind}if ${targetName}.range(of: #"${HTTP_URL_PATTERN}"#, options: [.regularExpression]) == nil {`,
+        )
+      } else {
+        // `.url({ protocol })`: an absolute URI, then the scheme (the text
+        // before the first colon) partially matched, as `RegExp.test()` is.
+        const opts = rule.ignoreCase ? '[.regularExpression, .caseInsensitive]' : '[.regularExpression]'
+        lines.push(
+          `${ind}if ${targetName}.range(of: #"${URI_PATTERN}"#, options: [.regularExpression]) == nil || String(${targetName}.prefix(while: { $0 != ":" })).range(of: #"${rule.source}"#, options: ${opts}) == nil {`,
+        )
+      }
       lines.push(
         `${innerInd}throw PyreonSchemaError.constraintViolation(field: ${swiftStr(fieldName)}, rule: "url${ruleSuffix}")`,
       )

@@ -185,3 +185,43 @@ describe('a path-param operation emits a prop-driven native component', () => {
     expect(worstVerdict(report)).toBe('lowers')
   })
 })
+
+describe('`format: uri` means the same thing on device as on the web', () => {
+  // The web emits `.url({ protocol })` (any RFC 3986 scheme). The native module
+  // used to emit a bare `.url()`, which PMTC now lowers as `@pyreon/validate`
+  // does -- http(s) only -- so a device would reject a `git:` URI the web
+  // accepts. Both paths spell it the same way, and the protocol form lowers.
+  const spec = `
+openapi: 3.0.3
+info: { title: T, version: '1' }
+servers: [{ url: 'https://api.test/v1' }]
+paths:
+  /repos:
+    get:
+      operationId: getRepo
+      tags: [r]
+      responses: { '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Repo' } } } } }
+components:
+  schemas:
+    Repo:
+      type: object
+      required: [clone]
+      properties:
+        clone: { type: string, format: uri }
+`
+  const mod = generate(spec, resolveConfig({ input: 'x', target: 'multiplatform' })).files.find(
+    (f) => f.path === 'r.native.tsx',
+  )
+
+  it('emits the protocol form on the native path too', () => {
+    expect(mod?.contents).toContain('.url({ protocol: /^[A-Za-z][A-Za-z0-9+.-]*$/ })')
+  })
+
+  it('lowers to an any-scheme URI check on both targets, with no url warning', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(mod?.contents ?? '', { target })
+      expect(r.warnings.filter((w) => /url/i.test(w))).toEqual([])
+      expect(r.code).toContain('[A-Za-z][A-Za-z0-9+.-]*:')
+    }
+  })
+})

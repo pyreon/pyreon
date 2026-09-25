@@ -473,6 +473,8 @@ A numeric TS `enum { A }` compiles to `{ A: 0, 0: 'A' }`. `s.nativeEnum` filters
 | `.email(opts?)` | email; precision tiers `'html5'` / `'standard'` (default) / `'rfc5322'` |
 | `.url()` | `http(s)://…` |
 | `.url({ protocol })` | any RFC 3986 absolute URI whose scheme matches `protocol` (zod 4's option) — e.g. `/^[a-z][a-z0-9+.-]*$/i` for every scheme |
+
+On iOS and Android (PMTC), both forms lower to the same verdicts as the web — asserted by executing the emitted Swift and Kotlin over a corpus that includes the cases where the three regex engines disagree (`$` before a trailing newline, `\s` and `.` membership, case folding). A `protocol` that is not an inline, portable regular-expression literal is not guessed at: the field lowers without a URL check and the compiler warns by name.
 | `.uuid()` | UUID v1–v5 |
 | `.ip()` | IPv4 or IPv6 |
 | `.cidr()` | CIDR notation (`x.x.x.x/0-32` or `…/0-128`) |

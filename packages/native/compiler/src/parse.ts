@@ -3488,6 +3488,50 @@ function tryPortableRegexLiteral(
   return { source: re.pattern, ignoreCase: flags.includes('i') }
 }
 
+/**
+ * The URL rule a `.url(...)` call lowers to -- or null, with a warning, when it
+ * cannot lower faithfully (see `UrlRule` for why the library matters).
+ *
+ * Only `@pyreon/validate` has a `protocol` option. It lowers when it is an
+ * inline regular-expression literal that ports (the same test `.regex()`
+ * applies); anything else DECLINES by name rather than falling back to the
+ * default rule, which would reject on device the schemes the web accepts.
+ * zod's `.url(...)` options (`hostname`, its own `protocol`) are not read, as
+ * before -- its rule was, and stays, "any scheme".
+ */
+function urlRule(
+  arg: AnyNode | undefined,
+  pyreonValidate: boolean,
+  label: string,
+  ctx: ParseCtx,
+): ZodFieldConstraints['url'] | null {
+  if (!pyreonValidate) return { kind: 'scheme' }
+  if (!arg) return { kind: 'http' }
+  const opts = unwrapTypeLayers(arg) as AnyNode | undefined
+  if (opts?.type !== 'ObjectExpression') {
+    ctx.warnings.push(
+      `${label}: the options argument is not an inline object, so whether it sets \`protocol\` cannot be read — the field is NOT URL-validated on device. Write the options inline: \`.url({ protocol: /^https?$/ })\`.`,
+    )
+    return null
+  }
+  let protocol: AnyNode | undefined
+  for (const p of (opts.properties as AnyNode[] | undefined) ?? []) {
+    if (p?.type !== 'Property' && p?.type !== 'ObjectProperty') {
+      ctx.warnings.push(
+        `${label}: a spread in the options cannot be read, so whether it sets \`protocol\` is unknown — the field is NOT URL-validated on device. Write \`protocol\` inline.`,
+      )
+      return null
+    }
+    const key = p.key as AnyNode | undefined
+    const name = key?.type === 'Identifier' ? key.name : key?.type === 'Literal' ? String(key.value) : undefined
+    if (name === 'protocol') protocol = p.value as AnyNode | undefined
+  }
+  if (protocol === undefined) return { kind: 'http' }
+  const re = tryPortableRegexLiteral(protocol, `${label} protocol`, ctx)
+  if (!re) return null
+  return { kind: 'protocol', source: re.source, ignoreCase: re.ignoreCase }
+}
+
 function tryModelDefnFromTopLevel(
   node: AnyNode,
   ctx: ParseCtx,
@@ -4250,6 +4294,8 @@ function extractTypeAndConstraints(
   expr: AnyNode,
   prefix: string,
   ctx: ParseCtx,
+  /** `@pyreon/validate`'s `s` DSL, whose `.url()` differs from zod's. */
+  pyreonValidate: boolean,
 ): { method: string; constraints: ZodFieldConstraints } | null {
   const constraints: ZodFieldConstraints = {}
   let cursor: AnyNode | undefined = expr
@@ -4282,7 +4328,8 @@ function extractTypeAndConstraints(
       } else if (modName === 'email') {
         constraints.email = true
       } else if (modName === 'url') {
-        constraints.url = true
+        const rule = urlRule(firstArg, pyreonValidate, 'schema element .url()', ctx)
+        if (rule) constraints.url = rule
       } else if (modName === 'uuid') {
         constraints.uuid = true
       } else if (modName === 'regex') {
@@ -4679,7 +4726,8 @@ function tryNamespacedSchemaDefnFromTopLevel(
         } else if (modName === 'email') {
           constraints.email = true
         } else if (modName === 'url') {
-          constraints.url = true
+          const rule = urlRule(firstArg, schemaFn === null, `schema field \`${fieldName}\` .url()`, ctx)
+          if (rule) constraints.url = rule
         } else if (modName === 'uuid') {
           constraints.uuid = true
         } else if (modName === 'regex') {
@@ -4813,7 +4861,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
       }
       // Otherwise: primitive element (with possible per-element constraints)
       const inner = innerArg
-        ? extractTypeAndConstraints(innerArg, prefix, ctx)
+        ? extractTypeAndConstraints(innerArg, prefix, ctx, schemaFn === null)
         : null
       let innerType: 'string' | 'number' | 'boolean' | undefined
       if (inner) {

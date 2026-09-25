@@ -4,6 +4,7 @@
 // `var x by remember { mutableStateOf(initial) }`, computeds to
 // `derivedStateOf { ... }`, JSX elements to Composable function calls.
 
+import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 import { kotlinStr } from './string-literals'
 import {
   HANDLED_FLOW_EDGE_FIELDS,
@@ -1358,13 +1359,29 @@ function emitKotlinScalarConstraints(
     }
     if (c.url) {
       const guard = nullableTarget ? `if (${targetName} != null) ` : ''
-      // `URI(...)` PARSES; it does not validate. It accepts "not a url",
-      // "x.com" and "/relative", all of which zod rejects. Requiring a
-      // scheme reproduces zod's rule (an absolute URL) while still
-      // accepting "mailto:a@b.co" and "ftp://x.com" as zod does.
-      lines.push(
-        `${ind}${guard}if ((try { java.net.URI(${targetName}${nullableTarget ? '!!' : ''}).scheme } catch (_: Throwable) { null }) == null) throw PyreonSchemaError.ConstraintViolation(${kotlinStr(fieldName)}, "url${ruleSuffix}")`,
-      )
+      const v = `${targetName}${nullableTarget ? '!!' : ''}`
+      const fail = `throw PyreonSchemaError.ConstraintViolation(${kotlinStr(fieldName)}, "url${ruleSuffix}")`
+      // The AUTHORING library's rule (see `UrlRule`), not one rule for all.
+      const rule = c.url
+      if (rule.kind === 'scheme') {
+        // zod: `URI(...)` PARSES; it does not validate. It accepts "not a
+        // url", "x.com" and "/relative", all of which zod rejects. Requiring
+        // a scheme reproduces zod's rule (an absolute URL) while still
+        // accepting "mailto:a@b.co" and "ftp://x.com" as zod does.
+        lines.push(
+          `${ind}${guard}if ((try { java.net.URI(${v}).scheme } catch (_: Throwable) { null }) == null) ${fail}`,
+        )
+      } else if (rule.kind === 'http') {
+        // `@pyreon/validate`'s default: http(s) with a host, exactly.
+        lines.push(`${ind}${guard}if (!Regex(${kotlinStr(HTTP_URL_PATTERN)}).containsMatchIn(${v})) ${fail}`)
+      } else {
+        // `.url({ protocol })`: an absolute URI, then the scheme (the text
+        // before the first colon) partially matched, as `RegExp.test()` is.
+        const opts = rule.ignoreCase ? ', RegexOption.IGNORE_CASE' : ''
+        lines.push(
+          `${ind}${guard}if (!Regex(${kotlinStr(URI_PATTERN)}).containsMatchIn(${v}) || !Regex(${kotlinStr(rule.source)}${opts}).containsMatchIn(${v}.substringBefore(':'))) ${fail}`,
+        )
+      }
     }
     if (c.regex) {
       const guard = nullableTarget ? `if (${targetName} != null) ` : ''

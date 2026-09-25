@@ -160,7 +160,11 @@ export function schemaExpr(type: IrType, opts: SchemaExprOptions, depth = 0): st
           // like GitHub's `git:git.example.com/octocat/Hello-World.git`; the
           // dialect spells the any-scheme form (`.url({ protocol })` there,
           // plain `.url()` on zod, which already accepts any scheme).
-          return opts.native ? `${c('string')}().url()` : `${c('string')}()${dialect.uriCheck}`
+          // The SAME spelling on the native path: PMTC lowers `.url()` per
+          // library now (`@pyreon/validate`'s bare `.url()` to http(s) only,
+          // its `protocol` form faithfully), so a bare `.url()` here would make
+          // a device reject the `git:` / `mailto:` URIs the web accepts.
+          return `${c('string')}()${dialect.uriCheck}`
         case 'uuid':
           return `${c('string')}().uuid()`
         // `date` / `date-time` stay strings deliberately: a date schema does
