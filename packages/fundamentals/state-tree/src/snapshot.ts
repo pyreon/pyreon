@@ -52,7 +52,7 @@ function serializeValue(val: unknown): unknown {
  */
 export function getSnapshot<TState extends StateShape>(instance: object): Snapshot<TState> {
   const meta = instanceMeta.get(instance)
-  if (!meta) throw new Error('[@pyreon/state-tree] getSnapshot: not a model instance')
+  if (!meta) throw new Error('[Pyreon] state-tree getSnapshot: not a model instance')
 
   // Repeated getSnapshot on an UNCHANGED instance returns the cached object
   // (MST-aligned — MST backs its snapshot with a computed). The cache is
@@ -93,7 +93,14 @@ export function applySnapshot<TState extends StateShape>(
   snapshot: Partial<Snapshot<TState>>,
 ): void {
   const meta = instanceMeta.get(instance)
-  if (!meta) throw new Error('[@pyreon/state-tree] applySnapshot: not a model instance')
+  if (!meta) throw new Error('[Pyreon] state-tree applySnapshot: not a model instance')
+  if (snapshot === null || typeof snapshot !== 'object') {
+    throw new Error(
+      `[Pyreon] state-tree applySnapshot: snapshot must be an object, got ${
+        snapshot === null ? 'null' : typeof snapshot
+      }`,
+    )
+  }
 
   // Schema mode: route through the schema-validated `patch` helper so an
   // invalid snapshot is REJECTED (the schema is the source of truth) rather
@@ -123,8 +130,10 @@ export function applySnapshot<TState extends StateShape>(
       const sig = (instance as Record<string, Signal<unknown>>)[key]
       if (!sig) continue
       const current = sig.peek()
-      if (isModelInstance(current)) {
-        // Recurse into nested model instance
+      if (isModelInstance(current) && isPlainObject(val)) {
+        // Recurse into nested model instance. A non-object value (`null`, a
+        // live instance) falls through to the plain write below — recursing
+        // with `null` used to throw `Cannot use 'in' operator … in null`.
         applySnapshot(current as object, val as Record<string, unknown>)
       } else if (Array.isArray(current) && Array.isArray(val) && holdsInstance(current)) {
         // Array of model instances (`todos: Todo[]`): reconcile the existing

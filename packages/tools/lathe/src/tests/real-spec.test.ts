@@ -78,8 +78,11 @@ describe('shapes only a real spec produces', () => {
     expect(r.doc.notes.some((n) => n.message.includes('non-object member'))).toBe(true)
   })
 
-  it('keeps a discriminated union when every member IS an object', () => {
-    // The degradation must not fire on the shape it exists to preserve.
+  it('keeps a discriminated union when every member IS an object with a provable tag', () => {
+    // The degradation must not fire on the shape it exists to preserve. The
+    // members' tags are ENUMS: a bare `type: string` tag (what this spec used to
+    // carry) cannot be registered, and both schema libraries THROW at import on
+    // it -- so this assertion used to lock in a module that could not load.
     const src = spec(`    Target:
       oneOf:
         - { $ref: '#/components/schemas/A_' }
@@ -88,11 +91,11 @@ describe('shapes only a real spec produces', () => {
     A_:
       type: object
       required: [kind]
-      properties: { kind: { type: string } }
+      properties: { kind: { type: string, enum: [a] } }
     B_:
       type: object
       required: [kind]
-      properties: { kind: { type: string } }`)
+      properties: { kind: { type: string, enum: [b] } }`)
     expect(file(src, 'schemas.ts')).toContain("s.discriminatedUnion('kind'")
   })
 

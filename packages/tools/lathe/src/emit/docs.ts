@@ -19,7 +19,7 @@
  * GitHub with nothing installed.
  */
 
-import type { IrDocument, IrOperation, IrType, Reach } from '../core/ir'
+import { noteSeverity, type IrDocument, type IrOperation, type IrType, type Reach } from '../core/ir'
 import { propKey, typeIdent } from '../core/naming'
 import { byTag, endpointSpec, isMutation, tagFile } from './client'
 import { tsType } from './schema'
@@ -137,7 +137,9 @@ function indexPage(
     lines.push(`See [models](./models.md) for the ${doc.models.length} generated types.`, '')
   }
 
-  if (doc.notes.length > 0) {
+  const losses = doc.notes.filter((n) => noteSeverity(n) === 'loss')
+  const choices = doc.notes.filter((n) => noteSeverity(n) === 'choice')
+  if (losses.length > 0) {
     // The dropped features belong in the docs, not only in the CLI output. A
     // reader asking "why is this field `unknown`" is holding the page that
     // should answer it.
@@ -147,7 +149,18 @@ function indexPage(
       '',
     )
     lines.push('| Code | Where | Detail |', '| --- | --- | --- |')
-    for (const n of doc.notes) {
+    for (const n of losses) {
+      lines.push(`| \`${n.code}\` | \`${md(n.at)}\` | ${md(n.message)} |`)
+    }
+    lines.push('')
+  }
+  if (choices.length > 0) {
+    // Kept apart from the losses: "used JSON over XML" is not something this
+    // client fails to do, and interleaving the two buries the ones that are.
+    lines.push('## Choices made', '')
+    lines.push('Where the spec allowed several readings, the one this client uses. Nothing here is lost.', '')
+    lines.push('| Code | Where | Detail |', '| --- | --- | --- |')
+    for (const n of choices) {
       lines.push(`| \`${n.code}\` | \`${md(n.at)}\` | ${md(n.message)} |`)
     }
     lines.push('')

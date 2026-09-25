@@ -201,6 +201,21 @@ describe('spec losses are reported on the page, not only in the CLI', () => {
     expect(out).toContain('a ref did not resolve')
   })
 
+  it('keeps CHOICES out of the "Not represented" table', () => {
+    // "Used JSON over XML" is not something the client fails to do; listing
+    // it among the losses buries the ones that are.
+    const out = all(doc({
+      notes: [
+        { code: 'multiple-content-types', at: '#/c', message: 'picked json' },
+        { code: 'unsupported-parameter', at: '#/p', message: 'header dropped' },
+      ],
+    } as never))
+    const lost = out.slice(out.indexOf('## Not represented'), out.indexOf('## Choices made'))
+    expect(lost).toContain('header dropped')
+    expect(lost).not.toContain('picked json')
+    expect(out.slice(out.indexOf('## Choices made'))).toContain('picked json')
+  })
+
   it('omits the section when nothing was dropped', () => {
     const out = all(doc({ notes: [] }))
     expect(out.toLowerCase()).not.toContain('unsupported-ref')
