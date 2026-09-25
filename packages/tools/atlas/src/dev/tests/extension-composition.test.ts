@@ -35,7 +35,9 @@ describe('the emitted module', () => {
   })
 
   it('composes with reduceRight so the FIRST listed is outermost', () => {
-    expect(emit()).toContain('__layers.reduceRight((__acc, __ext) => h(__ext.wrap, {}, __acc), __el)')
+    expect(emit()).toContain(
+      '__layers.reduceRight((__acc, __ext) => h(__ext.wrap, { ...(__ctx?.wrapperProps ?? {}) }, __acc), __el)',
+    )
   })
 
   it('appends the `wrapper` shorthand as the innermost layer', () => {
@@ -58,7 +60,7 @@ describe('the emitted module', () => {
   })
 
   it('wraps every scenario through the composed chain', () => {
-    expect(emit()).toContain('return __wrapAll(__el)')
+    expect(emit()).toContain('return __wrapAll(__el, ctx)')
   })
 })
 
@@ -94,5 +96,47 @@ describe('the composition semantics, executed', () => {
 
   it('skips setup-only extensions in the layer chain', () => {
     expect(compose([{ name: 'fonts' }, { name: 'theme', wrap: fn }])).toEqual(['theme'])
+  })
+})
+
+describe('the APPEARANCE reaches every wrapper layer', () => {
+  // Each layer was mounted with `{}` — no mode, no brand — so a project's
+  // `<PyreonUI>` never learned the workbench was dark, and the Theme Lab tiled
+  // identical cards. Evaluated, not string-matched: the emitted `__wrapAll` is
+  // run against fake layers and a fake `h`.
+  const wrapAll = (): ((el: unknown, ctx?: unknown) => unknown) => {
+    const code = emit()
+    const start = code.indexOf('const __wrapAll')
+    const end = code.indexOf('\n\n', start)
+    const h = (type: unknown, props: Record<string, unknown>, child: unknown) => ({ type, props, child })
+    const layers = [{ wrap: 'Outer' }, { wrap: 'Inner' }]
+    // oxlint-disable-next-line no-new-func -- evaluating the module's own emitted helper
+    return new Function('h', '__layers', `${code.slice(start, end)}\nreturn __wrapAll`)(h, layers)
+  }
+
+  it('hands each layer its OWN copy of the render context appearance', () => {
+    const mode = () => 'dark'
+    const out = wrapAll()('scenario', { wrapperProps: { mode } }) as {
+      type: string
+      props: Record<string, unknown>
+      child: { type: string; props: Record<string, unknown>; child: unknown }
+    }
+    expect(out.type).toBe('Outer')
+    expect(out.props.mode).toBe(mode)
+    expect(out.child.type).toBe('Inner')
+    expect(out.child.props.mode).toBe(mode)
+    // Separate objects — `h` owns the props it is handed.
+    expect(out.props).not.toBe(out.child.props)
+    expect(out.child.child).toBe('scenario')
+  })
+
+  it('still wraps when a hand-rolled context carries no appearance', () => {
+    const out = wrapAll()('scenario') as { props: Record<string, unknown> }
+    expect(out.props).toEqual({})
+  })
+
+  it('flags the catalog as WRAPPED, so the Theme Lab knows whose provider decides', () => {
+    expect(emit()).toContain('wrapped: __layers.length > 0,')
+    expect(generateCatalogModule([entry()], { root: '/p/src' })).not.toContain('wrapped:')
   })
 })

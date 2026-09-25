@@ -65,6 +65,7 @@ These helpers work on **any** Standard Schema validator. The `s` runtime below i
 ## Quick start
 
 ```ts
+// @check
 import { z } from 'zod'
 import { signal, effect } from '@pyreon/reactivity'
 import { useI18n } from '@pyreon/i18n'
@@ -100,6 +101,7 @@ const messages = formatErrors($result().issues ?? [], t)
 // → strings resolved via t('auth.email.required', …), falling back to issue.fallback or issue.message
 
 // 4. Watch validity flips (does NOT fire on every error change).
+const submitButton = document.querySelector('button')!
 const stop = watchValid(emailSchema, $email, (valid) => {
   submitButton.disabled = !valid
 })

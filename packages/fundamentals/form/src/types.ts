@@ -39,6 +39,16 @@ export interface FieldState<T = unknown> {
   reset: () => void
 }
 
+/** Options for a programmatic `form.handleSubmit(options)` call. */
+export interface SubmitOptions {
+  /**
+   * Re-throw an error thrown by `onSubmit` (after recording it in
+   * `submitError`). Default `false` — the promise resolves and the error is
+   * read from `form.submitError()`.
+   */
+  rethrow?: boolean
+}
+
 /** Props returned by `register(field)` for binding a text / number input. */
 export interface FieldRegisterProps<T> {
   /** Stable input id (auto-generated). Pairs with `labelProps().for` and the
@@ -219,8 +229,16 @@ export interface FormState<TValues extends Record<string, unknown>> {
   /**
    * Submit handler — runs validation, then calls onSubmit if valid.
    * Can be called directly or as a form event handler (calls preventDefault).
+   *
+   * Concurrent calls (a double Enter / double click) share ONE in-flight
+   * submit, so `onSubmit` runs at most once per submit.
+   *
+   * An error thrown by `onSubmit` is captured in `submitError` and the
+   * returned promise RESOLVES (so `<form onSubmit>` never produces an
+   * unhandled rejection). Pass `{ rethrow: true }` for a programmatic submit
+   * that should reject instead: `await form.handleSubmit({ rethrow: true })`.
    */
-  handleSubmit: (e?: Event) => Promise<void>
+  handleSubmit: (eventOrOptions?: Event | SubmitOptions) => Promise<void>
   /**
    * Reset the form. With no argument, reverts every field to its initial value
    * and clears errors/touched/dirty + submitCount. Pass `values` to reset TO
