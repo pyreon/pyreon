@@ -24,7 +24,7 @@ import { spawn } from 'node:child_process'
 import { chromium } from 'playwright'
 
 const FW = process.argv[2] ?? 'Pyreon (PlotChart)'
-const OP = (process.argv[3] ?? 'mount') as 'mount' | 'update' | 'settled'
+const OP = (process.argv[3] ?? 'mount') as 'mount' | 'update' | 'settled' | 'update-settled'
 const N = Number(process.argv[4] ?? 1000)
 const K = Number(process.argv[5] ?? (N >= 1_000_000 ? 12 : 30))
 const PORT = process.env.CP_PORT ?? '4184'
@@ -53,22 +53,31 @@ try {
   await page.goto(`http://localhost:${PORT}/?profileChartsLibs=1`)
   await page.waitForFunction(() => '__chartsLibsProf' in globalThis, undefined, { timeout: 30_000 })
 
-  type Prof = { prepare(fw: string, n: number): void; mount(): void; sampleMount(): Promise<number>; sampleUpdate(): Promise<number>; sampleMountSettled(): Promise<{ mass: number; tableRows: number }> }
+  type Prof = { prepare(fw: string, n: number): void; mount(): void; sampleMount(): Promise<number>; sampleUpdate(): Promise<number>; sampleMountSettled(): Promise<{ mass: number; tableRows: number }>; sampleUpdateSettled(): Promise<{ mass: number; firstRow: string }>; expectedFirstValue(): string }
   const run = (count: number) =>
     page.evaluate(
       async ({ fw, n, op, k }) => {
         const p = (globalThis as never as { __chartsLibsProf: Prof }).__chartsLibsProf
         p.prepare(fw, n)
-        if (op === 'update') p.mount()
+        if (op === 'update' || op === 'update-settled') p.mount()
+        let stale = 0
         let minMass = Infinity
         let tableRows = -1
         for (let i = 0; i < k; i++) {
           if (op === 'settled') {
             const r = await p.sampleMountSettled()
             minMass = Math.min(minMass, r.mass)
-            tableRows = tableRows < 0 ? r.tableRows : Math.min(tableRows, r.tableRows)
+            if (r.tableRows === 0) throw new Error('[charts-trace] settled window closed with an EMPTY accessible table — the window is too short to include the deferred fill')
+            tableRows = r.tableRows
+          } else if (op === 'update-settled') {
+            const r = await p.sampleUpdateSettled()
+            minMass = Math.min(minMass, r.mass)
+            // A table that exists must show the NEW first value once settled.
+            if (r.firstRow !== '' && !r.firstRow.includes(p.expectedFirstValue())) stale++
+            tableRows = r.firstRow === '' ? 0 : 1
           } else minMass = Math.min(minMass, op === 'mount' ? await p.sampleMount() : await p.sampleUpdate())
         }
+        if (stale > 0) throw new Error(`[charts-trace] ${stale} settled update(s) left the accessible table showing OLD data`)
         return { minMass, tableRows }
       },
       { fw: FW, n: N, op: OP, k: count },
@@ -92,7 +101,7 @@ try {
     categories: ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'v8', 'blink.user_timing', 'disabled-by-default-v8.gc', 'blink'],
   })
   const { minMass, tableRows } = await run(K)
-  if (OP === 'settled') console.log(`[charts-trace] accessible table body rows at window close (min over samples): ${tableRows}`)
+  if (OP === 'settled') console.log(`[charts-trace] accessible table body rows at window close (-1 = no table): ${tableRows}`)
   const buf = await browser.stopTracing()
   if (minMass < 400) throw new Error(`[charts-trace] ${FW}: min series mass ${minMass} — nothing drawn`)
 

@@ -339,101 +339,121 @@ Measured 2026-09-08, Bun 1.x on an M3 Max, K=15 medians, `NODE_ENV=production`; 
 
 Mount-to-first-painted-frame and full-data update of one line chart, 800×300,
 same seeded random walk for every library, animation off everywhere, no point
-symbols, axes + grid on all four. **The default `<PlotChart>` loses to uPlot on
-every line cell (1.3–4.8×) and to Chart.js from 100k points up and on both
-updates; it beats Chart.js at 1k and 10k points, Recharts on every cell, and
-both uPlot and Chart.js on 1k bars.**
+symbols, axes + grid on all four. **The default `<PlotChart>` still loses to
+uPlot on every line mount (1.13–2.6×) and on the 100k update; it ties uPlot on
+the 10k update, loses to Chart.js from 100k points up and on the 100k update,
+beats Chart.js at 1k/10k and on the 10k update, and beats both on 1k bars and
+Recharts everywhere.**
 
 | op | `<PlotChart>` (default) | `<PlotChart accessibleTable={false}>` | uPlot 1.6.32 | Chart.js 4.5.1 ¹ | Recharts 3.10.1 |
 | --- | --- | --- | --- | --- | --- |
-| mount line, 1k | 2.08 [2.02–2.16] | 1.77 [1.65–1.95] | **1.62** [1.49–1.77] | 3.53 [3.38–3.61] | 10.25 [10.04–10.39] |
-| mount line, 10k | 3.10 [2.92–3.30] | 3.04 [2.88–3.19] | **2.32** [2.22–2.41] | 4.19 [4.13–4.31] | 78.30 [78.04–78.73] |
-| mount line, 100k | 7.02 [6.56–7.24] | 6.73 [6.34–6.91] | **4.85** [4.73–5.05] | 5.22 [5.07–5.37] | 698.6 [696.8–700.7] |
-| mount line, 1M ³ | 51.54 [48.21–52.40] | 51.05 [48.42–51.48] | **11.56** [10.51–12.98] | 12.04 [11.96–12.11] 🤝 | 7,226 [7,198–7,234] ² |
-| update line, 10k | 6.04 [5.89–6.14] | 1.41 [1.38–1.45] | **1.26** [1.20–1.27] | 1.96 [1.82–2.02] | 23.14 [23.03–23.29] |
-| update line, 100k | 9.34 [9.17–9.45] | 5.46 [5.18–5.65] | 4.13 [4.06–4.19] | **2.64** [2.59–2.68] | 193.3 [192.3–193.9] |
-| mount bars, 1k | **4.25** [4.07–4.51] | 3.97 [3.89–4.10] | 19.81 [19.74–19.92] | 9.48 [9.39–9.59] | 44.62 [44.25–44.88] |
+| mount line, 1k | 2.02 [1.90–2.08] | 1.81 [1.64–1.89] | **1.79** [1.71–1.88] | 3.24 [3.11–3.40] | 9.95 [9.76–10.19] |
+| mount line, 10k | 3.16 [3.03–3.38] | 3.41 [3.32–3.48] | **2.20** [2.09–2.28] | 4.36 [4.19–4.55] | 78.28 [77.91–79.30] |
+| mount line, 100k | 9.12 [8.94–9.63] ⁴ | 9.23 [8.93–9.46] | **4.76** [4.58–5.06] | 5.09 [4.99–5.21] 🤝 | 692.8 [691.5–693.7] |
+| mount line, 1M ³ | 18.10 / 33.82 | 17.97 / 34.29 | **10.16 / 13.22** | 11.90 [11.83–11.99] | 7,195 [7,130–7,233] ² |
+| update line, 10k | 1.20 [1.17–1.23] 🤝 | 1.33 [1.27–1.35] | **1.19** [1.17–1.25] | 1.85 [1.79–1.93] | 23.28 [23.06–23.47] |
+| update line, 100k | 4.50 [4.39–4.60] | 4.82 [4.54–5.07] | 3.84 [3.55–4.00] | **2.64** [2.61–2.70] | 193.7 [192.1–194.3] |
+| mount bars, 1k | **3.91** [3.82–4.11] | 4.06 [3.88–4.19] | 19.86 [19.74–20.03] | 9.32 [9.22–9.46] | 44.88 [44.31–45.39] |
 
 Milliseconds, median [95% bootstrap CI]; bold = fastest ranked arm, 🤝 = CI
 overlaps the fastest. ¹ with its documented large-data config (`parsing: false`,
-`normalized`, `min-max` decimation); ² n=15, every other cell n=60; ³ see
-"history" below.
+`normalized`, `min-max` decimation); ² n=15, every other cell n=60.
+³ **Bimodal — two numbers, not one.** Pyreon and uPlot both alternate strictly
+between a fast and a slow sample (30 + 30); the table gives the median of each
+mode. The pooled median (Pyreon 26.15, uPlot 11.72) falls between the modes and
+describes neither sample. The split is inside JS, not GC (0.2 ms) or rendering
+(~1 ms): a per-sample CPU profile of the slow Pyreon mounts shows `renderChartIn`,
+`resolveMarks` and the `aria-label` getter running un-inlined, i.e. the same code
+in a lower V8 tier every other mount. Chart.js does not alternate. ⁴ see
+"100k" below.
 
-Verdicts for the default `<PlotChart>` (every CI below is disjoint — no ties):
+Verdicts for the default `<PlotChart>` (1M compared mode against mode):
 
 | op | vs uPlot | vs Chart.js | vs Recharts |
 | --- | --- | --- | --- |
-| mount line, 1k | loss 1.29× | win 1.70× | win 4.9× |
-| mount line, 10k | loss 1.34× | win 1.35× | win 25× |
-| mount line, 100k | loss 1.45× | loss 1.35× | win 100× |
-| mount line, 1M | loss 4.46× | loss 4.28× | win 140× |
-| update line, 10k | loss 4.79× | loss 3.08× | win 3.8× |
-| update line, 100k | loss 2.26× | loss 3.54× | win 21× |
-| mount bars, 1k | win 4.66× | win 2.23× | win 10.5× |
+| mount line, 1k | loss 1.13× | win 1.60× | win 4.9× |
+| mount line, 10k | loss 1.44× | win 1.38× | win 25× |
+| mount line, 100k | loss 1.92× | loss 1.79× | win 76× |
+| mount line, 1M | loss 1.78× (fast) / 2.56× (slow) | loss 1.52× (fast) / 2.84× (slow) | win 213× (slow) |
+| update line, 10k | **tie** | win 1.54× | win 19× |
+| update line, 100k | loss 1.17× | loss 1.70× | win 43× |
+| mount bars, 1k | win 5.1× | win 2.4× | win 11× |
 
-**What changed since the first run (2026-09-25, base `fcc34578a` → `ae6c2a242`).**
-Two fixes landed for the hot spots that run found: the rows are resolved once
-per mount (the accessible description reuses the frame's resolution instead of
-walking every row through every accessor a second time), and an accessible
-table over 200 rows fills after the first paint instead of before it. Pyreon,
-default arm, first run → this run:
+**What changed since the last run.** Base `ae6c2a242` → `6cd8e21a2`: a data
+update to a table over 200 rows is written after the next paint, coalesced
+(`e453e42e9`), and a dense category line is M4-reduced straight from its value
+array with no per-datum point objects (`6cd8e21a2`). Pyreon default arm, last
+run → this run, with the same-run ratio against uPlot (both arms measured in
+the same passes — the fair before/after):
 
 | op | before | after | Δ | Pyreon ÷ uPlot, same run |
 | --- | --- | --- | --- | --- |
-| mount line, 1k | 10.90 | 2.08 | −81% | 7.82× → 1.29× |
-| mount line, 10k | 12.04 | 3.10 | −74% | 6.45× → 1.34× |
-| mount line, 100k | 17.01 | 7.02 | −59% | 3.71× → 1.45× |
-| mount line, 1M | 62.29 | 51.54 | −17% | 5.43× → 4.46× |
-| update line, 10k | 5.93 | 6.04 | +2% (unchanged) | 5.76× → 4.81× |
-| update line, 100k | 10.69 | 9.34 | −13% | 2.70× → 2.26× |
-| mount bars, 1k | 12.71 | 4.25 | −67% | 0.64× → 0.21× |
+| mount line, 1k | 2.08 | 2.02 | −3% (flat) | 1.29× → 1.13× |
+| mount line, 10k | 3.10 | 3.16 | +2% (flat) | 1.34× → 1.44× |
+| mount line, 100k | 7.02 | 9.12 | **+30%** | 1.45× → 1.91× |
+| mount line, 1M | 51.54 | 18.10 / 33.82 (median 26.15) | −49% on the median | 4.46× → 1.78× / 2.56× |
+| update line, 10k | 6.04 | 1.20 | **−80%** | 4.81× → 1.01× |
+| update line, 100k | 9.34 | 4.50 | **−52%** | 2.26× → 1.17× |
+| mount bars, 1k | 4.25 | 3.91 | −8% | 0.21× → 0.20× |
 
-Read the small cells with the run-to-run drift in mind: this run's machine was
-slower on sub-3 ms work — the raw-canvas control moved +39% (1k) / +14% (10k) /
-+20% (bars) and uPlot +16–24%, with no code change on either — and flat on
-large cells (control −11% to 0% at 100k/1M). That drift works *against* the
-Pyreon deltas, so the ratio column (both arms from the same run) is the fair
-before/after. Every competitor verdict above comes from this run alone.
+Across the two runs the raw-canvas control moved −20% (1k), −5% to +7%
+elsewhere, and uPlot −7% to +11%: the machine was comparable, and the small
+cells' Pyreon deltas are within that drift.
 
-**The first-painted-frame window does NOT include the deferred table fill — it
-is a trade, not a saving.** The fill is scheduled from the table's `ref` with
-`requestAnimationFrame(() => setTimeout(…))`; registered during the mount frame,
-that runs after the *next* frame paints, i.e. at least one frame after the
-window this table measures has closed (the timed mount samples tear the chart
-down before it runs). Traced separately, from mount until the table is filled
-and laid out (1,000 rows asserted present): **13.7 ms** of main-thread work for
-the default chart at 1k points, against 2.1 ms for its first frame alone and
-~2.2 ms for the no-table chart and uPlot over the same span. So the table still
-costs ~11.5 ms of main thread; what changed is that the chart is on screen
-before it runs, and a screen reader gets the table one frame later. The fill is
-a single task of that size, which can delay input handled in the frame after the
-first paint. Charts at or under 200 rows fill the table before the first paint,
-as before.
+**100k got slower, and it is a stability problem rather than a fixed cost.**
+An interleaved A/B of only the `6cd8e21a2` render hunk (old / new / old / new,
+fresh builds, marker-verified, 75 samples each, same preceding 1k/10k mounts as
+the scenario) read old **6.88, 6.42 ms** and new **5.84, 8.86 ms** at 100k — one
+new build faster than the old path, the other much slower — and at 1M old
+**51.65, 51.81** vs new **29.45, 23.00**. The new path is a clear win at 1M;
+at 100k it lands in a fast or a slow mode depending on the build/JIT state, and
+this table's run landed in the slow one (per-pass medians 9.05 / 9.20 / 9.14).
+Read the 100k cell as "5.8–9.1 ms depending on JIT tiering", not as a regression
+of the reduction itself.
 
-**Hot spots that remain** (Chromium trace + CPU profile):
+**The deferred accessible table: the windows above do NOT include it, on mount
+or on update — the cost moved, it did not disappear.** A table over 200 rows is
+written from `requestAnimationFrame(() => setTimeout(…))`, so it lands after the
+frame this table measures. Verified directly: when a timed window closes the
+table is empty (mount) or still shows the previous data (update); it is complete
+**two frames after the chart's first paint on mount** (ready flag, then the
+coalesced write, each one post-paint hop) and **one frame after the updated
+chart's paint on update**. Traced from the op until the table is written and
+laid out (the trace fails if the table is still empty when its window closes):
 
-- **Updates still rebuild the table synchronously.** The deferral applies to the
-  first mount only; a data change refills the table in the same frame — 6.04 ms
-  vs 1.41 ms without a table on the 10k update (≈ 4.6 ms of table work), the one
-  Pyreon cell that did not move.
-- **Per-point allocation before M4 (not fixed) — and it shows up as GC.** Every
-  point is placed as an object before the pixel reduction runs; uPlot reduces
-  from the value arrays without allocating. On a fresh page the 1M mount is
-  **~31 ms** (untraced, median of 20; traced: 32 ms JS, 0.6 ms GC). In this
-  table it is **~51 ms** because the 1M cell runs after hundreds of 1k–100k
-  mounts on the same page (³), and after that history the same mount spends
-  **21.5 ms of a 50 ms window in GC** (27.9 ms JS). uPlot reads ~13 ms both
-  ways. It is not a leak: the heap returns to 5.3 MB (uPlot 5.0 MB) once the
-  data is dropped. Remaining 1M JS, self time: `layoutSeriesPoints` 25%,
-  `m4Pixels` 22%, mark accessor map 18%, `extendSpan` 13%, `splitRuns` 7%,
-  `describeChart` 5%.
+| | `<PlotChart>` default | no table | uPlot |
+| --- | --- | --- | --- |
+| mount 1k, first frame | 1.5 ms | 1.5 ms | 1.4 ms |
+| mount 1k, until table complete | **15.1 ms** | 1.9 ms | 2.1 ms |
+| update 10k, first frame | 1.7 ms | 1.2 ms | 1.1 ms |
+| update 10k, until table complete | **8.3 ms** | 1.7 ms | 1.5 ms |
+
+(busy main-thread time from a Chromium trace; tracing adds overhead, so these
+read higher than the timed table). So the table still costs ~13 ms of main
+thread at mount and ~6.5 ms per 10k update. It now runs as one task after the
+chart is on screen, which is what a sighted user feels. A screen reader gets
+the table two frames late on mount and one frame late on each update, and that
+one task can delay input handled in the frame it lands in. A burst of updates
+writes the table once (coalesced). Charts at or under 200 rows still write the
+table before the first paint, as before.
+
+**The GC-after-history effect is gone.** Last run the 1M mount spent 21.5 ms of
+a 50 ms window in GC after the page had mounted the smaller charts. Traced now,
+fresh page / after that history: 31.2 / 26.5 ms busy, GC 0.2 / 0.001 ms (uPlot
+12.1 / 12.0, GC ≈ 0).
+
+**Where Pyreon still loses.** To uPlot on every line mount (1k included) and
+the 100k update; to Chart.js from 100k points up and on the 100k update. At 1M the remaining gap to uPlot is JS in the reduction and
+the description, and it doubles in the slow tier (footnote ³). The 100k cell is
+tier-sensitive, as measured above.
 
 **Who draws fewer segments than points.** Pyreon: M4 (first/min/max/last per
-half-pixel column), default on. uPlot: in/min/max/out per device pixel once
-`n ≥ 4 × width`, default on. Chart.js: `min-max` decimation, **off by default** —
-without it (diagnostic arm) it is 3.48 / 7.06 / 20.91 / 165.8 ms for the four
-mounts, so Pyreon's default beats *default* Chart.js at every size. Recharts:
-none, every point becomes an SVG path segment.
+half-pixel column), default on — now taken straight from the value array for a
+category line. uPlot: in/min/max/out per device pixel once `n ≥ 4 × width`,
+default on. Chart.js: `min-max` decimation, **off by default** — without it
+(diagnostic arm) 3.48 / 7.29 / 21.19 / 165.7 ms for the four mounts, which
+Pyreon's default beats at every size. Recharts: none, every point becomes an SVG
+path segment.
 
 **Method.** Each sample starts inside a `requestAnimationFrame` callback, runs
 the op synchronously (React through `flushSync`), lets the frame's style /
@@ -451,17 +471,18 @@ library's own data shape, built outside the window. A raw-canvas control arm
 Apple M3 Max (14 cores), macOS 26, Chromium 151 (Playwright), production
 builds, forced GC between samples, `crossOriginIsolated` page. Three passes,
 each taken in its own window after six consecutive 20 s load samples below 5 and
-accepted only if every stamp stayed ≤ 8 (they read 2.6–6.3), 20 samples per
-arm per pass, arm order reshuffled per pass, every arm re-run in every pass.
-2026-09-25, at commit `ae6c2a242`. The first run (2.3–3.6 load, base
-`fcc34578a`) is kept above only as the "before" column.
+accepted only if every stamp stayed ≤ 8 (they read 2.8–4.4; one attempt that
+reached 29 was rejected and re-taken), 20 samples per arm per pass, arm order
+reshuffled per pass, every arm re-run in every pass. 2026-09-25, at commit
+`6cd8e21a2`. The previous run (base `ae6c2a242`) is kept above only as the
+"before" column.
 
 Bundle, the minimal import that draws one line chart (JS, gzip -9):
 
 | entry | total | over its framework |
 | --- | --- | --- |
-| Pyreon `<PlotChart>` + `line()` | 46.7 KB | 35.9 KB over the 10.7 KB Pyreon runtime |
-| Pyreon `<Chart><Line/>` | 45.9 KB | 35.2 KB |
+| Pyreon `<PlotChart>` + `line()` | 47.0 KB | 36.2 KB over the 10.7 KB Pyreon runtime |
+| Pyreon `<Chart><Line/>` | 46.3 KB | 35.5 KB |
 | uPlot | 21.5 KB (+ 0.7 KB CSS) | — (no framework) |
 | Chart.js, tree-shaken | 46.6 KB | — (no framework) |
 | Recharts | 152.9 KB | 86.9 KB over the 66.0 KB React + ReactDOM |
@@ -470,7 +491,7 @@ Reproduce from `examples/benchmark`:
 `bun bench-scenarios.ts --scenario charts-libs --repeat 3 --wait-quiet 6`
 (or per pass: `--repeat 1 --pass-offset K --raw-out passK.json`, then
 `--pool pass0.json,pass1.json,pass2.json`), `bun bench-charts-libs-bundle.ts`,
-and for the decomposition `bun bench-charts-libs-trace.ts <arm> mount|settled|update <n> [k] [--history]` /
+and for the decomposition `bun bench-charts-libs-trace.ts <arm> mount|settled|update|update-settled <n> [k] [--history]` /
 `BENCH_PROFILE=1 bun run build && bun bench-charts-libs-profile.ts <arm> mount <n> [k] [--history]`.
 *Written and judged by the Pyreon authors; a synthetic single-chart bench, not
 application latency.*

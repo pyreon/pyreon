@@ -804,13 +804,12 @@ export function setupChartsLibsProfile(): void {
       await traced(__updateOnly)
       return inspect(h).mass
     },
-    // SETTLED: the same start, but the window runs through TWO more frames —
-    // frame N paints the chart, a large accessible table fills in a task after
-    // frame N+1's paint (rAF → setTimeout), and frame N+2 lays it out. The
-    // window closes in the first task after N+2. Idle vsync time is inside the
+    // SETTLED: the same start, but the window runs SETTLE_FRAMES more frames,
+    // long enough for a large accessible table's deferred fill and its layout.
+    // The window closes in the first task after the last of them. Idle vsync time is inside the
     // window; the trace driver reports BUSY time (window − idle), which is the
     // total main-thread work a mount costs including its deferred table.
-    // Returns the filled table's body-row count (0 when there is no table).
+    // Returns the table's body-row count (-1 when the chart has no table).
     sampleMountSettled: async (): Promise<{ mass: number; tableRows: number }> => {
       await settle()
       forceGc()
@@ -819,24 +818,55 @@ export function setupChartsLibsProfile(): void {
         requestAnimationFrame(() => {
           performance.mark('cl-w0')
           __mountOnly()
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              const ch = new MessageChannel()
-              ch.port1.onmessage = () => {
-                for (const c of h.querySelectorAll('canvas')) c.getContext('2d')?.getImageData(0, 0, 1, 1)
-                performance.mark('cl-w1')
-                ch.port1.close()
-                resolve()
-              }
-              ch.port2.postMessage(0)
-            })
-          })
+          closeAfterFrames(SETTLE_FRAMES, resolve)
         })
       })
-      const out = { mass: inspect(h).mass, tableRows: h.querySelectorAll('table tbody tr').length }
+      const out = { mass: inspect(h).mass, tableRows: h.querySelector('table') === null ? -1 : h.querySelectorAll('table tbody tr').length }
       __teardownOnly()
       return out
     },
+    // SETTLED update: same SETTLE_FRAMES window as `sampleMountSettled`, on
+    // a chart already mounted (call `mount()` first). Returns a fingerprint of
+    // the accessible table's first body row, so the caller can assert the
+    // table now holds the NEW data rather than the old.
+    sampleUpdateSettled: async (): Promise<{ mass: number; firstRow: string }> => {
+      await settle()
+      forceGc()
+      await settle()
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => {
+          performance.mark('cl-w0')
+          __updateOnly()
+          closeAfterFrames(SETTLE_FRAMES, resolve)
+        })
+      })
+      return { mass: inspect(h).mass, firstRow: h.querySelector('table tbody tr')?.textContent ?? '' }
+    },
+    /** Value the first table row should show for the CURRENT flip state. */
+    expectedFirstValue: (): string => String((flip ? b : a)[0]),
+  }
+  /**
+   * Frames a SETTLED window runs past the op's own frame. A large accessible
+   * table can take two post-paint hops at mount (ready flag, then the
+   * coalesced write), each rAF → setTimeout, and its layout lands in the frame
+   * after that — four frames covers it with one to spare. The trace driver
+   * FAILS if a table exists but is still empty when the window closes, so a
+   * too-short window cannot report a cheap fill that never happened.
+   */
+  const SETTLE_FRAMES = 4
+  function closeAfterFrames(n: number, resolve: () => void): void {
+    if (n > 0) {
+      requestAnimationFrame(() => closeAfterFrames(n - 1, resolve))
+      return
+    }
+    const ch = new MessageChannel()
+    ch.port1.onmessage = () => {
+      for (const c of h.querySelectorAll('canvas')) c.getContext('2d')?.getImageData(0, 0, 1, 1)
+      performance.mark('cl-w1')
+      ch.port1.close()
+      resolve()
+    }
+    ch.port2.postMessage(0)
   }
   async function traced(op: () => void): Promise<void> {
     await settle()
