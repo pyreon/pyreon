@@ -1030,6 +1030,10 @@ function buildSummaryPlugin(): Plugin {
 	let isServerBuild = false;
 	let startedAt = 0;
 	let resolvedOnce = false;
+	// The summary is info-level output: suppressed under `logLevel` warn /
+	// error / silent, like Vite's own build report.
+	// oxlint-disable-next-line no-console
+	let logInfo: (msg: string) => void = (msg) => console.log(msg);
 	return {
 		name: "pyreon-zero-build-summary",
 		apply: "build",
@@ -1046,6 +1050,7 @@ function buildSummaryPlugin(): Plugin {
 			outDir = cfg.build.outDir;
 			assetsDir = cfg.build.assetsDir;
 			isServerBuild = Boolean(cfg.build.ssr);
+			logInfo = (msg) => cfg.logger.info(msg);
 		},
 		buildStart() {
 			// First build only — inner sub-builds re-fire this on the reused
@@ -1065,10 +1070,7 @@ function buildSummaryPlugin(): Plugin {
 						color: detectColorLevel(),
 						elapsedMs: performance.now() - startedAt,
 					});
-					for (const line of lines) {
-						// oxlint-disable-next-line no-console
-						console.log(line);
-					}
+					for (const line of lines) logInfo(line);
 				} catch {
 					/* summary is informational only — never fail a finished build */
 				}
