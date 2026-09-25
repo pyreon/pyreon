@@ -107,6 +107,10 @@ useMutation(createUser.mutation({ invalidates: [listUsers] }))
 
 `params` is **required by the type system exactly when the path declares `:placeholders`**, and its keys come from the path literal — so `{ params: { userId } }` against `/users/:id` is a compile error.
 
+<Example file="./examples/http/mocked-crud-endpoints" title="Endpoints — mocked GET + POST, schema-validated" />
+
+The live example above uses `@pyreon/http/mock` (see "Testing" below) so the page never makes a real network call — the endpoint declaration, the schema validation, and the `<For>`-rendered list are all real.
+
 `invalidates` takes **endpoints**, not stringly-typed keys.
 
 ## Middleware

@@ -55,7 +55,7 @@ Counter source doesn't carry `data-testid` (predates the canonical-primitives mi
 ## Limitations
 
 - **No real-device validation in this PR**: this scaffold's Gradle build was not run against a real Android SDK in this session (no Android Studio / Gradle / Android SDK runner available). Real-device validation lands when the `native-device` workflow runs against this directory.
-- **Counter source uses the OLD vocabulary** (`<VStack>` / `<Text>` / `<Button>` / `onClick`). The canonical-primitives migration (PMTC P3) would replace these with `<Stack>` / `<Button onPress>`. Deferred — separate migration PR.
+- **The canonical-primitives migration (PMTC P3) has landed** — the shared `Counter.tsx` now imports `Stack` / `Button` (with `onPress`) from `@pyreon/primitives`, not the old `<VStack>` / `onClick` vocabulary. (`Counter.tsx` has also grown well beyond a simple counter since this README was first written — it's now a shared multi-feature device-proof fixture; see `native-counter-ios/README.md` for the current description.)
 
 ## Audit status
 

@@ -57,6 +57,8 @@ const Button = attrs({ name: 'Button', component: Element })
 `attrs()` is called with an **object** — `attrs({ name, component })` — not `attrs(component)`. Both `name` and `component` are required; dev builds throw a clear error (`Parameter `component` is missing in params!`) when either is absent. The `name` becomes the component's `displayName` and the dev-only `data-attrs` debug attribute.
 :::
 
+<Example file="./examples/attrs/button-variant-chain" title="A .attrs() chain — live" />
+
 ## Why attrs?
 
 In a design system you frequently want pre-configured variants of a base primitive without writing a one-off wrapper component for each. `attrs` lets you layer defaults declaratively:

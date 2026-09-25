@@ -77,8 +77,15 @@ Both were found by building this app, and both are noted at their call sites.
   the property without calling it yields the signal function, which is truthy —
   so `books.data ?? []` silently skips the fallback and `.length` reads the
   function's arity.
-- **The detail title is deliberately not wrapped in `<Show>`.** An accessor
-  mounted as a `<Show>` child updates once and then stops re-tracking, even
-  while the Show's own condition is unchanged. Reproduced against a
-  hand-written query too, so it is a framework behaviour rather than anything
-  about generated code.
+- **The detail title IS wrapped in `<Show>`, deliberately, as a live check.**
+  It used to be kept OUTSIDE `<Show>` to dodge a real framework bug: a
+  reactive boundary that rebuilds on every re-run (even when its `when`
+  verdict is unchanged) would tear down and re-mount this accessor's binding,
+  pinning the title to the first book picked. That's fixed now (`mountReactive`
+  skips the rebuild when the boundary's child value is unchanged — see
+  `.claude/rules/anti-patterns.md`, "A reactive boundary that tears down and
+  re-mounts on EVERY re-run destroys a MEMOIZED child"), so `src/main.tsx`
+  puts the title back inside `<Show>` on purpose: selecting a different book
+  re-runs `when` while its `true` verdict stays the same, and the title still
+  updates. Reproduced against a hand-written query too, so it was a framework
+  behaviour rather than anything about generated code.

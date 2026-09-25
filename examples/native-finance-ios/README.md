@@ -57,12 +57,10 @@ The `native-device` workflow runs exactly this.
 
 ## Scope
 
-**iOS only for now.** The shared source is platform-agnostic and emits clean
-Kotlin, but there is no Android host yet, so the composed flow is proven on one
-platform. Adding `native-finance-android` (mirroring
-`native-counter-android`, which points at its sibling's `src/`) is the
-follow-up that would make the "one source → both platforms" claim complete
-for a real app.
+**Both platforms now.** [`native-finance-android`](../native-finance-android)
+landed as the Android host for the same shared `FinanceApp.tsx` source (same
+pattern `native-counter-android` uses — points at its sibling's `src/`), so
+the composed flow is proven on both platforms.
 
 `useDatabase`'s backend is in-memory, so `db.delete` on the remove path is
 exercised but not *asserted* — the ledger renders from the store, which is

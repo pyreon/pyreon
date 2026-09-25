@@ -1,15 +1,15 @@
 # native-tasks-ios — Tasks showcase on iOS / SwiftUI
 
-> **PRIVATE / EXPERIMENTAL.** iOS host shell for the Gap 5 tasks showcase. Compiles the SHARED `TasksApp.tsx` source (from #1449's `examples/native-tasks/src/`) to SwiftUI via PMTC; SAME source the web (#1456) and Android (follow-up) hosts use.
+> **PRIVATE / EXPERIMENTAL.** iOS host shell for the Gap 5 tasks showcase. Compiles the SHARED `TasksApp.tsx` source (`examples/native-tasks/src/`) to SwiftUI via PMTC; SAME source the web and Android hosts use.
 
 ## Architecture
 
 ```text
-examples/native-tasks/src/TasksApp.tsx     ← canonical source (from #1449)
+examples/native-tasks/src/TasksApp.tsx     ← canonical source
                           │
-                          ├─→ Web (#1456)            Vite + runtime-dom
-                          ├─→ iOS (THIS dir)         XcodeGen + SwiftUI
-                          └─→ Android (follow-up)    Gradle + Compose
+                          ├─→ Web (native-tasks-web)          Vite + runtime-dom
+                          ├─→ iOS (THIS dir)                  XcodeGen + SwiftUI
+                          └─→ Android (native-tasks-android)  Gradle + Compose
 ```
 
 ## What this delivers
@@ -59,22 +59,15 @@ python3 -m http.server 8787 --bind 127.0.0.1 \
   --directory ../native-tasks/fixtures &
 ```
 
-## Dependency on #1449
+## Status
 
-`scripts/build.sh` points at `../native-tasks/src/TasksApp.tsx` — that directory lands in [#1449](https://github.com/pyreon/pyreon/pull/1449). **This PR sequences AFTER #1449 merges.** Before #1449 lands, `scripts/build.sh` fails with `[build.sh] cd: ../native-tasks/src: No such file or directory`.
-
-When #1449 merges, this PR rebases cleanly (no source conflicts — different directories) and the source path resolves.
-
-## CI wiring (follow-up)
-
-This PR ships project files only. CI integration (extending `.github/workflows/native-device.yml` with 4 new steps for emit + xcodegen + build + test, same pattern as the counter-android wiring in #1454 + the iOS counter/router-demo wiring in #1452) lands in a follow-up after #1449 merges.
-
-## What's NOT in this PR
-
-- **CI integration** — sequenced post-#1449
-- **Android Gradle host shell for `native-tasks-android`** — final Gap 5 host follow-up
-- **Validation that the build actually runs on Xcode** — deferred to first real-Mac CI run
+`scripts/build.sh` points at `../native-tasks/src/TasksApp.tsx` (#1449) —
+that directory has landed, so the source path resolves. CI wiring has landed
+too: `.github/workflows/native-device.yml` runs this directory's emit +
+xcodegen + `xcodebuild build` + `xcodebuild test` steps. The Android sibling,
+[`native-tasks-android`](../native-tasks-android), has also landed — Gap 5's
+full host-shells surface (web + iOS + Android) is closed.
 
 ## Audit status
 
-Closes the iOS half of Gap 5's host-shells follow-up. Android host shell is the last remaining Gap 5 sub-item.
+Closes the iOS half of Gap 5's host-shells follow-up.
