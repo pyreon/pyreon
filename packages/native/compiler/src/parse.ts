@@ -9717,6 +9717,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   })()
   const fitView = literalBool(objProp(configArg, 'fitView'))
   const fitViewPadding = literalNumber(objProp(configArg, 'fitViewPadding'))
+  const historyLimit = literalNumber(objProp(configArg, 'historyLimit'))
   const connectionRules = (() => {
     if (connectionRulesNode === undefined) return undefined
     if (connectionRulesNode.type !== 'ObjectExpression') return null
@@ -9752,7 +9753,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (droppedEdgeFields.size > 0) {
     ctx.warnings.push(droppedFlowFieldsWarning(`${factory} declaration \`${name}\``, 'edge', [...droppedEdgeFields]))
   }
-  const HANDLED_FLOW_CONFIG_KEYS = new Set(['nodes', 'edges', 'minZoom', 'maxZoom', 'snapToGrid', 'snapGrid', 'nodeExtent', 'defaultMarkerEnd', 'connectionRules', 'isValidConnection', ...interactionBoolKeys, 'edgeInteractionWidth', 'connectionRadius', 'panOnScrollSpeed', 'deleteKeys', ...modifierKeys, 'defaultEdgeType', 'connectionLineType', 'selectionMode', 'connectionMode', 'autoPanSpeed', 'defaultEdgeOptions', 'fitView', 'fitViewPadding'])
+  const HANDLED_FLOW_CONFIG_KEYS = new Set(['nodes', 'edges', 'minZoom', 'maxZoom', 'snapToGrid', 'snapGrid', 'nodeExtent', 'defaultMarkerEnd', 'connectionRules', 'isValidConnection', ...interactionBoolKeys, 'edgeInteractionWidth', 'connectionRadius', 'panOnScrollSpeed', 'deleteKeys', ...modifierKeys, 'defaultEdgeType', 'connectionLineType', 'selectionMode', 'connectionMode', 'autoPanSpeed', 'defaultEdgeOptions', 'fitView', 'fitViewPadding', 'historyLimit'])
   const droppedKeys: string[] = []
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
@@ -9801,6 +9802,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (defaultEdgeOptions === null) droppedKeys.push('defaultEdgeOptions (not a supported literal edge-options object)')
   if (objProp(configArg, 'fitView') && fitView === undefined) droppedKeys.push('fitView (not a boolean literal)')
   if (objProp(configArg, 'fitViewPadding') && fitViewPadding === undefined) droppedKeys.push('fitViewPadding (not a numeric literal)')
+  if (objProp(configArg, 'historyLimit') && historyLimit === undefined) droppedKeys.push('historyLimit (not a numeric literal)')
   if (droppedKeys.length > 0) {
     ctx.warnings.push(
       `${factory} declaration \`${name}\`: ${droppedKeys.map((k) => `\`${k}\``).join(', ')} ` +
@@ -9838,6 +9840,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     ...(defaultEdgeOptions !== undefined && defaultEdgeOptions !== null ? { defaultEdgeOptions } : {}),
     ...(fitView !== undefined ? { fitView } : {}),
     ...(fitViewPadding !== undefined ? { fitViewPadding } : {}),
+    ...(historyLimit !== undefined ? { historyLimit } : {}),
     ...(connectionRules !== undefined && connectionRules !== null ? { connectionRules } : {}),
     ...(connectionValidator !== undefined ? { connectionValidator } : {}),
   }

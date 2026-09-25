@@ -13,6 +13,8 @@ import {
   HANDLED_FLOW_EDGE_FIELDS,
   HANDLED_FLOW_NODE_FIELDS,
   LOWERED_FLOW_CONFIG_PROPERTIES,
+  SWIFT_FLOW_STATE_INIT_LABELS,
+  DOUBLE_FLOW_CONFIG_PROPERTIES,
   LOWERED_FLOW_METHODS,
   LOWERED_FLOW_PROPERTY_READS,
   droppedFlowFieldsWarning,
@@ -4453,6 +4455,7 @@ function emitSwiftDecl(
       ].join(', ')})`] : []),
       ...(d.fitView !== undefined ? [`fitView: ${d.fitView}`] : []),
       ...(d.fitViewPadding !== undefined ? [`fitViewPadding: ${d.fitViewPadding}`] : []),
+      ...(d.historyLimit !== undefined ? [`historyLimit: ${d.historyLimit}`] : []),
       ...(d.connectionRules !== undefined ? [`connectionRules: [${Object.entries(d.connectionRules).map(([key, outputs]) => `${swiftStr(key)}: [${outputs.map((output) => swiftStr(output)).join(', ')}]`).join(', ')}]`] : []),
       ...(d.connectionValidator !== undefined ? [`isValidConnection: ${emitSwiftExpr(d.connectionValidator, 0)}`] : []),
       ...(rowFields.some((field) => field.name === 'label') ? ['searchText: { $0.label }'] : []),
@@ -4460,7 +4463,14 @@ function emitSwiftDecl(
       ...(d.deleteKeys !== undefined ? [`deleteKeys: ${d.deleteKeys === null ? 'nil' : `[${d.deleteKeys.map((key) => JSON.stringify(key)).join(', ')}]`}`] : []),
       ...(['multiSelectionKey', 'selectionKey', 'zoomActivationKey'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key}: ${d[key] === null ? 'nil' : JSON.stringify(d[key])}`]),
       ...(d.preventScrolling !== undefined ? [`preventScrolling: ${d.preventScrolling}`] : []),
-    ].join(', ')
+    ]
+      // Swift requires labelled arguments in declaration order; sort by the
+      // init's own label order (see SWIFT_FLOW_STATE_INIT_LABELS). Stable, and
+      // a no-op for configs that were already in order.
+      .map((arg, i) => ({ arg, i, rank: swiftFlowInitRank(arg) }))
+      .sort((a, b) => a.rank - b.rank || a.i - b.i)
+      .map(({ arg }) => arg)
+      .join(', ')
     return `@State private var ${swiftIdent(d.name)} = PyreonFlowState<${rowType}>(nodes: [${nodeLits}], edges: [${edgeLits}]${zoomArgs === '' ? '' : `, ${zoomArgs}`})`
   }
   // computed — infer the return type from the expression body so we
@@ -4575,6 +4585,12 @@ function swiftFlowNodeExtentArgs(expr: ExprIR): string[] | null {
 
 function swiftFlowParsedHandles(handles: StaticFlowHandle[]): string {
   return `[${handles.map((h) => `PyreonFlowHandleConfig(${h.id === undefined ? '' : `id: ${swiftStr(h.id)}, `}type: ${swiftStr(h.type)}, position: .${h.position}${'offset' in h && typeof h.offset === 'number' ? `, offset: ${h.offset}` : ''})`).join(', ')}]`
+}
+
+const SWIFT_FLOW_INIT_RANK: ReadonlyMap<string, number> = new Map(SWIFT_FLOW_STATE_INIT_LABELS.map((label, i) => [label, i]))
+/** Declaration rank of one `label: value` init argument; an unknown label sorts last (and fails swiftc loudly). */
+function swiftFlowInitRank(arg: string): number {
+  return SWIFT_FLOW_INIT_RANK.get(arg.slice(0, arg.indexOf(':')).trim()) ?? Number.MAX_SAFE_INTEGER
 }
 
 function swiftFlowMarker(marker: { type: string; color?: string; width?: number; height?: number; strokeWidth?: number }): string {
@@ -5345,8 +5361,18 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
           _typedClosureLet = prevTyped
         }
       }
-    case 'assign':
-      return `${emitSwiftExpr(s.target, indent)} ${s.op} ${emitSwiftExpr(s.value, indent)}`
+    case 'assign': {
+      const value = emitSwiftExpr(s.value, indent)
+      // A Double-typed Flow config property takes a Double. A numeric literal
+      // already infers as one; an Int EXPRESSION would not compile.
+      const t = s.target
+      const flowDouble =
+        t.kind === 'member' && t.object.kind === 'member' && t.object.property === 'config' &&
+        t.object.object.kind === 'identifier' && _flowStateNamesSwift.has(t.object.object.name) &&
+        DOUBLE_FLOW_CONFIG_PROPERTIES.has(t.property) &&
+        !(s.value.kind === 'literal' && typeof s.value.value === 'number')
+      return `${emitSwiftExpr(s.target, indent)} ${s.op} ${flowDouble ? `Double(${value})` : value}`
+    }
     case 'return': {
       const ex = s.expr
       if (ex === undefined) return 'return'

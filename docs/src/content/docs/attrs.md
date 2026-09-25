@@ -85,7 +85,7 @@ Each call returns a brand-new component (`cloneAndEnhance` clones the accumulate
 | Method | Purpose |
 | ------ | ------- |
 | `.attrs(props \| cb, opts?)` | Layer default props (static object or callback) |
-| `.config({ name?, component?, DEBUG? })` | Rename, swap the base component, or toggle debug |
+| `.config({ name?, component?, DEBUG? })` | Rename, swap the base component, or (typed-only) DEBUG flag — see caution below |
 | `.compose({ name: hoc })` | Attach named higher-order components |
 | `.statics({ key: value })` | Attach metadata, readable at `Component.meta` |
 
@@ -191,6 +191,10 @@ const AnchorButton = Button.config({ component: 'a' })
 
 :::note{title="Swapping the base preserves the chains"}
 In `@pyreon/attrs`, `.config({ component })` **keeps** the accumulated `.attrs()` / `priorityAttrs` / `filter` / `.compose()` / `.statics()` chains and re-applies them to the new base. (This is verified by the package's tests — a `.attrs(() => ({ label: 'from-attrs' }))` set before a `.config({ component: Alt })` swap still applies the label.) The chain-reset-on-swap behavior described for the higher-level `@pyreon/rocketstyle` does **not** happen at this layer. If the new base has a different prop shape, that's on you to reconcile.
+:::
+
+:::warning{title="`DEBUG` is typed but currently a no-op at this layer"}
+`ConfigAttrs` types a `DEBUG?: boolean` field, and `.config({ DEBUG: true })` typechecks — but nothing in `@pyreon/attrs`' runtime reads `options.DEBUG`: `cloneAndEnhance` only ever forwards `name` and `component` out of the object you pass to `.config()`, and the component body never logs anything conditionally. This differs from `@pyreon/rocketstyle`, where `.config({ DEBUG: true })` really does `console.debug(...)` the resolved theme/props on every render. If you need attrs-chain visibility, log inside a `.attrs()` callback yourself, or use `getDefaultAttrs()` (below) to inspect the resolved defaults directly.
 :::
 
 ## `.compose()` — Higher-Order Components
@@ -337,6 +341,7 @@ TypeScript's recursive conditional-type inference caps at roughly 24–50 levels
 - **`priorityAttrs` is the lowest-precedence layer** — the name is about resolution *order*, not final precedence.
 - **The dev `data-attrs` attribute** is added in dev builds for debugging and tree-shaken in production (gated on `process.env.NODE_ENV !== 'production'`).
 - **`hoistNonReactStatics`** copies non-React statics from the base onto the wrapper, so `Base.someStaticMethod` survives the HOC chain.
+- **`.config({ DEBUG: true })` does nothing.** The field is typed on `ConfigAttrs` but no runtime code in this package reads it — unlike `@pyreon/rocketstyle`'s `DEBUG`, which really does log. See the caution box under [`.config()`](#config-rename-swap-debug).
 
 ## API Reference
 
@@ -357,7 +362,7 @@ Returns an `AttrsComponent` — a callable component with chain methods and intr
 | ------ | --------- | ----------- |
 | _(callable)_ | `(props) => VNode \| null` | Render the component (Pyreon components are plain functions) |
 | `.attrs()` | `(props \| (props) => Partial<props>, opts?: { priority?: boolean; filter?: string[] }) => AttrsComponent` | Layer default props; returns a new component |
-| `.config()` | `({ name?, component?, DEBUG? }) => AttrsComponent` | Rename / swap base / toggle debug; returns a new component |
+| `.config()` | `({ name?, component?, DEBUG? }) => AttrsComponent` | Rename / swap base; `DEBUG` is typed but currently a no-op (see caution above); returns a new component |
 | `.compose()` | `(Record<string, (c) => c \| null \| undefined \| false>) => AttrsComponent` | Attach/remove named HOCs; returns a new component |
 | `.statics()` | `(Record<string, unknown>) => AttrsComponent` | Attach metadata onto `.meta`; returns a new component |
 | `.getDefaultAttrs()` | `(props) => Record<string, unknown>` | Resolve the accumulated `.attrs()` chain against `props` |
