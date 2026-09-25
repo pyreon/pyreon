@@ -18,6 +18,7 @@ import {
 import {
   emitClient,
   emitNativeModules,
+  hasNativeDataComponent,
   emitWebEndpoints,
   emitWebQueries,
 } from '../emit/client'
@@ -29,7 +30,8 @@ import { emitSchemas, emitTypes } from '../emit/schema'
 import { banner, jsonLiteral, type GeneratedFile } from '../emit/writer'
 import type { ResolvedConfig } from './config'
 import type { IrDocument, IrOperation, Reach } from './ir'
-import { loadOpenApi } from '../input/openapi'
+import { loadOpenApi, type LoadOptions } from '../input/openapi'
+import { emitOutputManifest } from './output-manifest'
 import { extractSurface, type ApiSurface } from './surface'
 
 export interface GenerateResult {
@@ -49,8 +51,13 @@ export interface GenerateResult {
 }
 
 /** Run the pipeline over a spec document's text. */
-export function generate(specText: string, config: ResolvedConfig): GenerateResult {
-  const { doc } = loadOpenApi(specText)
+export function generate(
+  specText: string,
+  config: ResolvedConfig,
+  /** Where the spec came from; resolves a relative `servers[].url`. */
+  options: LoadOptions = {},
+): GenerateResult {
+  const { doc } = loadOpenApi(specText, options)
   const native = config.target === 'multiplatform'
   const files: GeneratedFile[] = []
   const reach = reachOf(doc, config)
@@ -140,6 +147,13 @@ export function generate(specText: string, config: ResolvedConfig): GenerateResu
   // consuming app's own package.json is configured.
   files.push(emitPackageMarker(config.plugins))
 
+  // The record of what THIS run generated, so the next one can remove what it
+  // no longer produces. Listed before `api-surface.json` is appended, and that
+  // file is added to it explicitly: every path the run writes is on the list.
+  files.push(emitOutputManifest([...files.map((f) => f.path), 'api-surface.json']))
+
+  assertUniquePaths(files)
+
   const surface = extractSurface(doc)
   // Emitted LAST and unconditionally: it is not a plugin's output but the
   // record of what this run promised, and a run that emitted only schemas
@@ -156,6 +170,27 @@ export function generate(specText: string, config: ResolvedConfig): GenerateResu
 }
 
 /**
+ * Two generated files with one path means one silently overwrites the other
+ * on disk -- a whole tag's endpoints gone, with no error anywhere. Compared
+ * case-INSENSITIVELY, because macOS and Windows filesystems are: `users.ts`
+ * and `Users.ts` are one file there. The input layer is responsible for names
+ * that never collide; this is the guard that makes a regression loud.
+ */
+function assertUniquePaths(files: readonly GeneratedFile[]): void {
+  const seen = new Map<string, string>()
+  for (const f of files) {
+    const key = f.path.toLowerCase()
+    const prev = seen.get(key)
+    if (prev !== undefined) {
+      throw new Error(
+        `[Pyreon] lathe: two generated files map to the same path (\`${prev}\` and \`${f.path}\`) — one would overwrite the other. This is a lathe naming bug; please report it with the spec's tag and operation names.`,
+      )
+    }
+    seen.set(key, f.path)
+  }
+}
+
+/**
  * Decide, per operation, whether the generated code can reach native.
  *
  * Static and cheap — it reads the IR, not the emitted source, so the CLI can
@@ -167,7 +202,7 @@ function reachOf(doc: IrDocument, config: ResolvedConfig): Map<string, { reach: 
   const out = new Map<string, { reach: Reach; reason?: string }>()
   const baseUrl = config.baseUrl ?? doc.baseUrl
   for (const op of doc.operations) {
-    out.set(op.id, decide(op, baseUrl))
+    out.set(op.id, decide(op, op.baseUrl ?? baseUrl))
   }
   return out
 }
@@ -194,6 +229,15 @@ function decide(op: IrOperation, baseUrl: string): { reach: Reach; reason?: stri
     return {
       reach: 'web-only',
       reason: `\`${op.method}\` lowers through mutations, which PMTC does not yet recognise; GET operations on this client DO reach native.`,
+    }
+  }
+  // Asked of the emitter rather than re-derived: the reach report and the
+  // native layout must agree about which reads get a data component.
+  if (!hasNativeDataComponent(op)) {
+    return {
+      reach: 'web-only',
+      reason:
+        'no typed JSON response (no content, or a media type Lathe cannot type) -- a native query decodes into a declared type, so there is nothing to lower it to.',
     }
   }
   return { reach: 'web+native' }

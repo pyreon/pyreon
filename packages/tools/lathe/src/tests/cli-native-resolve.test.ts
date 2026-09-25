@@ -7,7 +7,7 @@
  * verdict for a web run is unchanged (`no native modules were generated`), so
  * the only observable difference is whether the import happened.
  */
-import { run, type Fs } from '../cli/run'
+import { parseArgv, run, type Fs } from '../cli/run'
 import * as lower from '../verify/lower'
 
 const SPEC = `
@@ -30,12 +30,15 @@ function memFs(): Fs {
       files[p] = c
     },
     exists: (p) => p in files,
+    remove: (p) => {
+      delete files[p]
+    },
     mkdirp: () => undefined,
     join: (...parts) => parts.join('/').replace(/\/+/g, '/'),
   }
 }
 
-const argv = { command: 'check' as const, json: false }
+const argv = parseArgv(['check'])
 
 describe('native compiler resolution', () => {
   afterEach(() => {
@@ -44,7 +47,7 @@ describe('native compiler resolution', () => {
 
   it('is NOT imported for a web target', async () => {
     const spy = vi.spyOn(lower, 'resolveTransform')
-    await run(argv as never, { input: 'a.yaml', output: 'out' }, memFs())
+    await run(argv, { input: 'a.yaml', output: 'out' }, memFs())
     expect(spy).not.toHaveBeenCalled()
   })
 

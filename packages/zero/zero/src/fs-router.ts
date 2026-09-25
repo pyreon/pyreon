@@ -984,30 +984,60 @@ export function generateRouteModuleFromRoutes(
 export function generateMiddlewareModule(files: string[], routesDir: string): string {
   const routes = parseFileRoutes(files)
   const imports: string[] = []
-  const entries: string[] = []
+  const layoutEntries: string[] = []
+  const pageEntries: string[] = []
   let counter = 0
 
-  for (const route of routes) {
-    if (route.isLayout || route.isError || route.isLoading || route.isNotFound) continue
-    let hasMw = false
+  const readsMiddleware = (filePath: string): boolean => {
     try {
-      const source = readFileSync(`${routesDir}/${route.filePath}`, 'utf-8')
-      hasMw = detectRouteExports(source, route.filePath).hasMiddleware
+      return detectRouteExports(readFileSync(`${routesDir}/${filePath}`, 'utf-8'), filePath).hasMiddleware
     } catch {
       // File can't be read — skip; the SSR runtime falls back gracefully.
+      return false
     }
-    if (!hasMw) continue
+  }
+
+  const pages = routes.filter((r) => !r.isLayout && !r.isError && !r.isLoading && !r.isNotFound)
+
+  // A `_layout.tsx` middleware guards its whole subtree. It used to be
+  // skipped outright — and silently — while a layout is exactly where a
+  // subtree auth gate belongs. Scope is by DIRECTORY, not URL: a group layout
+  // (`(app)/_layout.tsx`) has URL path `/`, and a `/`-prefix pattern would
+  // wrongly apply it to every route outside the group. So each layout gets
+  // ONE entry carrying the URL patterns of the pages inside its directory —
+  // one entry, so it runs once per request even when two of those patterns
+  // match (`/users/new` and `/users/:id`). Shallow layouts are emitted first,
+  // so an outer gate runs before an inner one, and both before the page's.
+  const layouts = routes
+    .filter((r) => r.isLayout)
+    .sort((a, b) => a.dirPath.split('/').filter(Boolean).length - b.dirPath.split('/').filter(Boolean).length)
+  for (const layout of layouts) {
+    if (!readsMiddleware(layout.filePath)) continue
+    const dir = layout.dirPath
+    const covered = pages
+      .filter((p) => dir === '' || p.dirPath === dir || p.dirPath.startsWith(`${dir}/`))
+      .map((p) => p.urlPath)
+    if (covered.length === 0) continue
+    const name = `_mw${counter++}`
+    imports.push(`import { middleware as ${name} } from "${routesDir}/${layout.filePath}"`)
+    layoutEntries.push(
+      `  { pattern: ${JSON.stringify(covered[0])}, patterns: ${JSON.stringify(covered)}, middleware: ${name} }`,
+    )
+  }
+
+  for (const route of pages) {
+    if (!readsMiddleware(route.filePath)) continue
     const name = `_mw${counter++}`
     const fullPath = `${routesDir}/${route.filePath}`
     imports.push(`import { middleware as ${name} } from "${fullPath}"`)
-    entries.push(`  { pattern: ${JSON.stringify(route.urlPath)}, middleware: ${name} }`)
+    pageEntries.push(`  { pattern: ${JSON.stringify(route.urlPath)}, middleware: ${name} }`)
   }
 
   return [
     ...imports,
     '',
     `export const routeMiddleware = [`,
-    entries.join(',\n'),
+    [...layoutEntries, ...pageEntries].join(',\n'),
     `].filter(e => e.middleware)`,
   ].join('\n')
 }

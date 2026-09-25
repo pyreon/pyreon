@@ -8,8 +8,9 @@
  */
 
 import { deferredTargets, modelDependencies, modelIndex, stronglyConnected, topoSortModels } from '../core/graph'
-import type { IrDocument, IrField, IrType } from '../core/ir'
+import type { IrDocument, IrField, IrLiteral, IrNumberType, IrStringType, IrType } from '../core/ir'
 import { propKey, typeIdent } from '../core/naming'
+import { collectRefNames } from '../core/walk'
 import { dialectOf, type ValidatorName } from './validator'
 import { q, regexLiteral, relativeSpecifier, SourceFile } from './writer'
 
@@ -48,12 +49,13 @@ export interface SchemaExprOptions {
 /**
  * Render an IR type as a TypeScript type expression.
  *
- * `widenEnums` renders an enum as `string` rather than as its literal union.
- * Two callers need it, for the same underlying reason — the declared type must
- * match what the runtime schema actually produces: the native path narrows
- * enums to a plain string, and `@pyreon/validate`'s `s.enum` infers `string`
- * too. Declaring `'a' | 'b'` against either is a type the schema does not
- * enforce.
+ * `widenEnums` renders a STRING enum as `string` rather than as its literal
+ * union. Two callers need it, for the same underlying reason — the declared
+ * type must match what the runtime schema actually produces: the native path
+ * narrows enums to their base scalar, and `@pyreon/validate`'s `s.enum` infers
+ * `string` too. Declaring `'a' | 'b'` against either is a type the schema does
+ * not enforce. Non-string enums are emitted as a union of `literal`s, which
+ * both libraries infer exactly, so they only widen on the native path.
  *
  * `emptyObject` is how an object with no fields and no `additionalProperties`
  * is spelled: what the schema library infers for `object({})`. zod strips
@@ -64,15 +66,17 @@ export function tsType(
   type: IrType,
   depth = 0,
   widenEnums = false,
+  native = false,
+  files = false,
   emptyObject = 'Record<string, unknown>',
 ): string {
-  const native = widenEnums
   switch (type.kind) {
     case 'string':
-      // On the native path enums narrow to `s.string()`, so the TYPE must
-      // narrow with them — otherwise the declared union and the runtime schema
-      // disagree and the generated module does not compile.
-      return type.enum && !native ? type.enum.map((v) => q(v)).join(' | ') : 'string'
+      // In a REQUEST body a `binary` string is a file: what a caller hands the
+      // client is a `Blob` (a `File` is one), never text.
+      return files && type.format === 'binary' ? 'Blob' : 'string'
+    case 'enum':
+      return enumTs(type.values, widenEnums, native)
     case 'number':
       return 'number'
     case 'boolean':
@@ -83,35 +87,66 @@ export function tsType(
       return 'unknown'
     case 'ref':
       return type.name
+    case 'nullable': {
+      const inner = tsType(type.inner, depth, widenEnums, native, files, emptyObject)
+      return `${inner} | null`
+    }
     case 'array': {
-      const inner = tsType(type.items, depth + 1, native, emptyObject)
+      const inner = tsType(type.items, depth + 1, widenEnums, native, files, emptyObject)
       // `A | B[]` parses as `A | (B[])`, so a union element needs parens.
       return /[|&]/.test(inner) ? `(${inner})[]` : `${inner}[]`
     }
     case 'union':
-      return type.options.map((o) => tsType(o, depth + 1, native, emptyObject)).join(' | ')
+      return type.options.map((o) => tsType(o, depth + 1, widenEnums, native, files, emptyObject)).join(' | ')
     case 'object': {
       if (type.fields.length === 0) {
-        return type.additional ? `Record<string, ${tsType(type.additional, depth + 1, native, emptyObject)}>` : emptyObject
+        return type.additional
+          ? `Record<string, ${tsType(type.additional, depth + 1, widenEnums, native, files, emptyObject)}>`
+          : emptyObject
       }
       const pad = '  '.repeat(depth + 1)
       const close = '  '.repeat(depth)
       const body = type.fields
-        .map((f) => `${pad}${propKey(f.name)}${f.required ? '' : '?'}: ${fieldTs(f, depth + 1, native, emptyObject)}`)
+        .map((f) => `${pad}${propKey(f.name)}${f.required ? '' : '?'}: ${fieldTs(f, depth + 1, widenEnums, native, files, emptyObject)}`)
         .join('\n')
+      if (type.additional && !native) {
+        // An index signature must admit every declared property's type too.
+        const values = new Set([
+          tsType(type.additional, depth + 1, widenEnums, native, files, emptyObject),
+          ...type.fields.map((f) => fieldTs(f, depth + 1, widenEnums, native, files, emptyObject)),
+        ])
+        return `{\n${body}\n${close}} & Record<string, ${[...values].join(' | ')}>`
+      }
       return `{\n${body}\n${close}}`
     }
   }
 }
 
-function fieldTs(field: IrField, depth: number, native = false, emptyObject = 'Record<string, unknown>'): string {
-  const base = tsType(field.type, depth, native, emptyObject)
-  const withNull = field.nullable ? `${base} | null` : base
+/** The TS rendering of an enum's values, matching what its schema infers. */
+function enumTs(values: readonly IrLiteral[], widen: boolean, native: boolean): string {
+  if (native) {
+    // The native path narrows to one scalar schema (see `schemaExpr`).
+    const kinds = new Set(values.map((v) => typeof v))
+    return kinds.size === 1 ? (kinds.has('number') ? 'number' : kinds.has('boolean') ? 'boolean' : 'string') : 'string'
+  }
+  if (widen && values.length > 1 && values.every((v) => typeof v === 'string')) return 'string'
+  return values.map((v) => (typeof v === 'string' ? q(v) : String(v))).join(' | ')
+}
+
+function fieldTs(
+  field: IrField,
+  depth: number,
+  widenEnums: boolean,
+  native: boolean,
+  files = false,
+  emptyObject = 'Record<string, unknown>',
+): string {
+  const base = tsType(field.type, depth, widenEnums, native, files, emptyObject)
   // `exactOptionalPropertyTypes` is on across this repo and in the consumer
   // presets, where `x?: number` and `x?: number | undefined` are DIFFERENT
   // types. The schema infers the second, so the emitted type must say it — or
   // the generated module fails to typecheck against its own schema.
-  return field.required ? withNull : `${withNull} | undefined`
+  return field.required ? base : `${base} | undefined`
 }
 
 /**
@@ -128,60 +163,46 @@ function fieldTs(field: IrField, depth: number, native = false, emptyObject = 'R
 export const PURE = '/* @__PURE__ */ '
 
 /**
+ * Annotate an expression pure unless it already starts with a pure call. A
+ * chain on a bare model NAME (`Author.optional()`) is a method call the bundler
+ * cannot prove pure, and it sits inside the enclosing `s.object({ … })`
+ * arguments -- without its own annotation it pinned the whole enclosing model
+ * into every bundle that reached its module.
+ */
+function purify(expr: string, native: boolean): string {
+  return native || expr.startsWith(PURE) ? expr : `${PURE}${expr}`
+}
+
+/**
  * Render an IR type as an `s.*` expression.
  *
  * `native` narrows the output to the subset PMTC lowers. The difference is not
- * cosmetic: on the native path an enum becomes `s.string()` and the constraint
- * is LOST there, so callers must report that rather than let a reader assume
- * the two targets validate identically.
+ * cosmetic: on the native path an enum becomes its base scalar and the
+ * constraint is LOST there, so callers must report that rather than let a
+ * reader assume the two targets validate identically.
  */
 export function schemaExpr(type: IrType, opts: SchemaExprOptions, depth = 0): string {
   const dialect = dialectOf(opts.validator ?? 'pyreon')
   const b = dialect.binding
   // Every builder CALL is annotated pure (web only -- the native recognizers
   // read these files, and they are not bundled). See `PURE` for why.
-  const c = (ctor: string): string => `${opts.native ? '' : PURE}${b}.${ctor}`
+  const p = opts.native ? '' : PURE
+  const c = (ctor: string): string => `${p}${b}.${ctor}`
   switch (type.kind) {
-    case 'string': {
-      if (type.enum && !opts.native) return `${c('enum')}([${type.enum.map((v) => q(v)).join(', ')}])`
-      if (type.enum && opts.native) return `${c('string')}()`
-      switch (type.format) {
-        // The `.email()` / `.url()` / `.uuid()` chain is DEPRECATED in zod 4 in
-        // favour of top-level `z.email()`, and emitted anyway: the chained form
-        // works in both zod 3 and zod 4 while the top-level form exists only in
-        // 4. Picking the newer spelling would silently narrow the zod versions
-        // this output compiles against, and the failure would land in the
-        // consumer's repo rather than here.
-        case 'email':
-          return `${c('string')}().email()`
-        case 'uri':
-          // OpenAPI's `uri` is RFC 3986: any scheme. `@pyreon/validate`'s
-          // bare `.url()` accepts only http(s), so it rejected real values
-          // like GitHub's `git:git.example.com/octocat/Hello-World.git`; the
-          // dialect spells the any-scheme form (`.url({ protocol })` there,
-          // plain `.url()` on zod, which already accepts any scheme).
-          // The SAME spelling on the native path: PMTC lowers `.url()` per
-          // library now (`@pyreon/validate`'s bare `.url()` to http(s) only,
-          // its `protocol` form faithfully), so a bare `.url()` here would make
-          // a device reject the `git:` / `mailto:` URIs the web accepts.
-          return `${c('string')}()${dialect.uriCheck}`
-        case 'uuid':
-          return `${c('string')}().uuid()`
-        // `date` / `date-time` stay strings deliberately: a date schema does
-        // not lower, and parsing to a Date on web and a String on native is a
-        // divergence no consumer can see coming.
-        default:
-          return `${c('string')}()`
-      }
-    }
+    case 'string':
+      return stringExpr(type, b, p, dialect.uriCheck)
+    case 'enum':
+      return enumExpr(type.values, b, opts.native, p)
     case 'number':
-      return type.integer ? `${c('number')}().int()` : `${c('number')}()`
+      return numberExpr(type, b, opts.native, p)
     case 'boolean':
       return `${c('boolean')}()`
     case 'null':
       return opts.native ? `${c('string')}()` : `${c('null')}()`
     case 'unknown':
       return opts.native ? `${c('string')}()` : `${c('unknown')}()`
+    case 'nullable':
+      return purify(`${schemaExpr(type.inner, opts, depth)}.nullable()`, opts.native)
     case 'ref': {
       // On the native path, INLINE the target where the dialect says nested
       // objects lower: PMTC drops a field that NAMES another schema, and an
@@ -202,26 +223,38 @@ export function schemaExpr(type: IrType, opts: SchemaExprOptions, depth = 0): st
       // defers the read to first use, which is exactly what a cycle needs.
       return opts.defer?.has(type.name) === true ? `${c('lazy')}(() => ${type.name})` : type.name
     }
-    case 'array':
-      return `${c('array')}(${schemaExpr(type.items, opts, depth + 1)})`
+    case 'array': {
+      let expr = `${c('array')}(${schemaExpr(type.items, opts, depth + 1)})`
+      if (opts.native) return expr
+      if (type.minItems !== undefined) expr += `.min(${type.minItems})`
+      if (type.maxItems !== undefined) expr += `.max(${type.maxItems})`
+      // Neither library has a built-in uniqueness check. Items are compared by
+      // their JSON text, which is exact for scalars (the dominant case) and
+      // for objects serialized in a consistent key order.
+      if (type.uniqueItems) {
+        expr += `.refine((a) => new Set(a.map((v) => JSON.stringify(v))).size === a.length, { message: 'items must be unique' })`
+      }
+      return expr
+    }
     case 'union': {
       if (opts.native) return `${c('string')}()`
       const members = type.options.map((o) => schemaExpr(o, opts, depth + 1))
       const inner = members.join(', ')
-      if (!type.discriminator) return `${c('union')}([${inner}])`
+      // A member deferred through `lazy` has no `.shape` at construction, and
+      // `discriminatedUnion` reads every member's tag field right then -- it
+      // would throw at import. A plain union validates the same payloads.
+      const deferred = type.options.some((o) => o.kind === 'ref' && opts.defer?.has(o.name) === true)
+      if (!type.discriminator || deferred) return `${c('union')}([${inner}])`
       // A member that NAMES a model is typed as that model's `Schema<X>` (see
       // `emitSchemas`), which a discriminated union's signature rejects -- it
       // needs the object-schema type to read the discriminant's values. At
       // runtime the const IS an object schema, so the member is cast back to
       // one and the call's result is cast to the union of the members' types,
-      // which is what it validates. A DEFERRED member (`lazy`, closing a
-      // cycle) is not an object schema at runtime and cannot be dispatched on
-      // eagerly, so that union stays a plain one.
+      // which is what it validates.
       const named = type.options.map((o, i) => o.kind === 'ref' && members[i] === o.name)
       if (!named.some(Boolean)) return `${c('discriminatedUnion')}(${q(type.discriminator)}, [${inner}])`
-      if (type.options.some((o, i) => o.kind === 'ref' && !named[i])) return `${c('union')}([${inner}])`
       const cast = members.map((m, i) => (named[i] ? `(${m} as unknown as ${dialect.objectSchemaRef})` : m))
-      return `(${c('discriminatedUnion')}(${q(type.discriminator)}, [${cast.join(', ')}]) as unknown as ${dialect.schemaTypeRef(tsType(type, depth, dialect.enumWidensToString, dialect.emptyObjectType))})`
+      return `(${c('discriminatedUnion')}(${q(type.discriminator)}, [${cast.join(', ')}]) as unknown as ${dialect.schemaTypeRef(tsType(type, depth, dialect.enumWidensToString, false, false, dialect.emptyObjectType))})`
     }
     case 'object': {
       if (type.fields.length === 0) {
@@ -232,32 +265,90 @@ export function schemaExpr(type: IrType, opts: SchemaExprOptions, depth = 0): st
       const pad = '  '.repeat(depth + 1)
       const close = '  '.repeat(depth)
       const body = type.fields.map((f) => `${pad}${propKey(f.name)}: ${fieldSchema(f, opts, depth + 1)},`).join('\n')
-      return `${c('object')}({\n${body}\n${close}})`
+      // Declared properties AND an `additionalProperties` schema: the extra
+      // keys are typed too. Dropping the map part accepted any value there.
+      const rest = type.additional && !opts.native ? `.catchall(${schemaExpr(type.additional, opts, depth + 1)})` : ''
+      return `${c('object')}({\n${body}\n${close}})${rest}`
     }
   }
 }
 
-function fieldSchema(field: IrField, opts: SchemaExprOptions, depth: number): string {
-  const base = schemaExpr(field.type, opts, depth)
-  let expr = base
-  // Constraints only attach to the kinds that carry them.
-  if (field.type.kind === 'string') {
-    if (typeof field.min === 'number') expr += `.min(${field.min})`
-    if (typeof field.max === 'number') expr += `.max(${field.max})`
-    if (field.pattern && portableRegex(field.pattern)) expr += `.regex(${regexLiteral(field.pattern)})`
-  } else if (field.type.kind === 'number') {
-    if (typeof field.min === 'number') expr += `.min(${field.min})`
-    if (typeof field.max === 'number') expr += `.max(${field.max})`
+function stringExpr(type: IrStringType, b: string, p: string, uriCheck: string): string {
+  let expr: string
+  switch (type.format) {
+    // The `.email()` / `.uuid()` chain is DEPRECATED in zod 4 in favour of
+    // top-level `z.email()`, and emitted anyway: the chained form works in
+    // both zod 3 and zod 4 while the top-level form exists only in 4. Picking
+    // the newer spelling would silently narrow the zod versions this output
+    // compiles against, and the failure would land in the consumer's repo.
+    case 'email':
+      expr = `${p}${b}.string().email()`
+      break
+    case 'uuid':
+      expr = `${p}${b}.string().uuid()`
+      break
+    // OpenAPI's `uri` is RFC 3986: any scheme. `@pyreon/validate`'s bare
+    // `.url()` accepts only http(s), so a valid URI such as
+    // `git:git.example.com/x` (GitHub's `mirror_url`) was rejected; the
+    // dialect spells the any-scheme form (`.url({ protocol })` there, plain
+    // `.url()` on zod, which already accepts any scheme). The SAME spelling on
+    // the native path: PMTC lowers each library's rule faithfully.
+    case 'uri':
+      expr = `${p}${b}.string()${uriCheck}`
+      break
+    // `date` / `date-time` stay strings deliberately: a date schema does not
+    // lower, and parsing to a Date on web and a String on native is a
+    // divergence no consumer can see coming.
+    default:
+      expr = `${p}${b}.string()`
   }
-  if (field.nullable) expr += '.nullable()'
-  if (!field.required) expr += '.optional()'
-  // A chain on a bare model NAME (`Author.optional()`) is a method call the
-  // bundler cannot prove pure, and it sits inside the enclosing
-  // `s.object({ … })` arguments -- so without its own annotation it pinned the
-  // whole enclosing model into every bundle that reached its module. An
-  // expression already starting with a builder call carries the annotation.
-  if (!opts.native && expr !== base && !expr.startsWith(PURE)) expr = `${PURE}${expr}`
+  // Length and pattern checks LOWER natively (PMTC emits them into the schema
+  // struct's parse), so they are kept on both paths.
+  if (type.minLength !== undefined) expr += `.min(${type.minLength})`
+  if (type.maxLength !== undefined) expr += `.max(${type.maxLength})`
+  if (type.pattern && portableRegex(type.pattern)) expr += `.regex(${regexLiteral(type.pattern)})`
   return expr
+}
+
+function numberExpr(type: IrNumberType, b: string, native: boolean, p: string): string {
+  let expr = type.integer ? `${p}${b}.number().int()` : `${p}${b}.number()`
+  // Inclusive bounds lower natively; the strict / step checks below are not
+  // in PMTC's recognised chain, so the native path stops here.
+  if (type.minimum !== undefined) expr += `.min(${type.minimum})`
+  if (type.maximum !== undefined) expr += `.max(${type.maximum})`
+  if (native) return expr
+  if (type.exclusiveMinimum !== undefined) expr += `.gt(${type.exclusiveMinimum})`
+  if (type.exclusiveMaximum !== undefined) expr += `.lt(${type.exclusiveMaximum})`
+  // Both libraries decide a FRACTIONAL step float-safely (`@pyreon/validate`
+  // since its `multipleOf` stopped using a bare `%`), so `19.99` passes
+  // `.multipleOf(0.01)` on both.
+  if (type.multipleOf !== undefined) expr += `.multipleOf(${type.multipleOf})`
+  return expr
+}
+
+/**
+ * An enum / const.
+ *
+ * All-string -> `enum([...])`; one value -> `literal(v)`; anything else -> a
+ * union of literals. Never a `string()` with constraints chained on: that was
+ * `s.enum([...]).min(3)`, a TypeError at import time.
+ */
+function enumExpr(values: readonly IrLiteral[], b: string, native: boolean, p: string): string {
+  if (native) {
+    const kinds = new Set(values.map((v) => typeof v))
+    if (kinds.size === 1 && kinds.has('number')) return `${p}${b}.number()`
+    if (kinds.size === 1 && kinds.has('boolean')) return `${p}${b}.boolean()`
+    return `${p}${b}.string()`
+  }
+  const lit = (v: IrLiteral): string => (v === null ? `${p}${b}.null()` : `${p}${b}.literal(${typeof v === 'string' ? q(v) : String(v)})`)
+  if (values.length === 1) return lit(values[0] as IrLiteral)
+  if (values.every((v) => typeof v === 'string')) return `${p}${b}.enum([${values.map((v) => q(v as string)).join(', ')}])`
+  return `${p}${b}.union([${values.map(lit).join(', ')}])`
+}
+
+function fieldSchema(field: IrField, opts: SchemaExprOptions, depth: number): string {
+  const expr = schemaExpr(field.type, opts, depth)
+  return field.required ? expr : purify(`${expr}.optional()`, opts.native)
 }
 
 /**
@@ -423,33 +514,12 @@ export function emitSchemas(
 }
 
 /**
- * The model names a web schema expression for `type` actually NAMES.
- *
- * Mirrors `schemaExpr`'s non-native branches exactly -- in particular an
- * object WITH fields drops `additionalProperties`, so a model referenced only
- * there is not named and must not be imported (an unused import is a lint
- * error in the consumer's repo, in a file nobody wrote).
+ * The model names a web schema expression for `type` NAMES -- every ref at
+ * any depth, `additionalProperties` included (the web renders it: a record,
+ * or a `.catchall`).
  */
 export function schemaRefs(type: IrType, into: Set<string>): void {
-  switch (type.kind) {
-    case 'ref':
-      into.add(type.name)
-      return
-    case 'array':
-      schemaRefs(type.items, into)
-      return
-    case 'union':
-      for (const o of type.options) schemaRefs(o, into)
-      return
-    case 'object':
-      if (type.fields.length === 0) {
-        if (type.additional) schemaRefs(type.additional, into)
-      } else {
-        for (const f of type.fields) schemaRefs(f.type, into)
-      }
-      return
-    default:
-  }
+  collectRefNames(type, into)
 }
 
 /** One generated schema module and the models it declares, in order. */
@@ -586,10 +656,12 @@ export function emitTypes(doc: IrDocument): SourceFile {
 /**
  * `export interface X {…}` or `export type X = …`, decided from the IR KIND.
  *
- * An interface is only valid for a single object type literal. This used to
- * test whether the RENDERED text started with `{`, which a union whose first
- * member is an inline object also does -- `export interface X { … } | { … }`
- * is a parse error, and GitHub's `types.ts` carried 3,997 errors from it.
+ * An interface is only valid for a single object type literal. Deciding from
+ * the RENDERED text (does it start with `{`?) also caught a union whose first
+ * member is an inline object -- `export interface X { … } | { … }`, a parse
+ * error; GitHub's `types.ts` carried 3,997 errors from it. An object with
+ * typed extra keys renders `{…} & Record<…>`, which is not an interface body
+ * either.
  */
 export function typeDeclaration(
   name: string,
@@ -597,8 +669,8 @@ export function typeDeclaration(
   widenEnums = false,
   emptyObject = 'Record<string, unknown>',
 ): string {
-  const rendered = tsType(type, 0, widenEnums, emptyObject)
-  return type.kind === 'object' && type.fields.length > 0
+  const rendered = tsType(type, 0, widenEnums, false, false, emptyObject)
+  return type.kind === 'object' && type.fields.length > 0 && !type.additional
     ? `export interface ${name} ${rendered}`
     : `export type ${name} = ${rendered}`
 }
@@ -613,6 +685,7 @@ export function refName(type: IrType | undefined): string | undefined {
   if (!type) return undefined
   if (type.kind === 'ref') return type.name
   if (type.kind === 'array' && type.items.kind === 'ref') return type.items.name
+  if (type.kind === 'nullable') return refName(type.inner)
   return undefined
 }
 

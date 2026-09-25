@@ -14,6 +14,7 @@
  */
 
 import type { IrDocument, IrType } from './ir'
+import { collectRefNames } from './walk'
 
 /**
  * Per-document memo for the two whole-graph passes below.
@@ -89,23 +90,9 @@ function computeDependencies(doc: IrDocument): Map<string, Set<string>> {
 }
 
 function collect(type: IrType | undefined, into: Set<string>, known: Set<string>): void {
-  if (!type) return
-  switch (type.kind) {
-    case 'ref':
-      if (known.has(type.name)) into.add(type.name)
-      return
-    case 'array':
-      collect(type.items, into, known)
-      return
-    case 'union':
-      for (const o of type.options) collect(o, into, known)
-      return
-    case 'object':
-      for (const f of type.fields) collect(f.type, into, known)
-      collect(type.additional, into, known)
-      return
-    default:
-  }
+  const found = new Set<string>()
+  collectRefNames(type, found)
+  for (const name of found) if (known.has(name)) into.add(name)
 }
 
 export interface ModelOrder {

@@ -21,6 +21,7 @@ export default defineManifest({
     'Endpoints derive the call, the cache key and the response type from one declaration, so queryKey and URL cannot drift',
     'Typed error hierarchy where AbortError stays distinct from a real failure',
     'Timeout ON by default — `fetch` has none, so a hung request otherwise never settles',
+    'Every common body encoding: `json`, `form` (application/x-www-form-urlencoded with OpenAPI `style`/`explode` per field — Stripe/Twilio), `multipart` (files as `Blob`/`File`), raw `body`, plus `cookies` and header records whose `undefined` values are omitted',
     'Per-request SSR context via AsyncLocalStorage, so concurrent renders never cross cookies',
     'Network-free mocking: middleware short-circuits, so tests need no MSW and no global fetch patch',
   ],
@@ -76,7 +77,9 @@ const user = await api.get('/users/:id', { params: { id: '1' } }).json()`,
         'Reaching for `api.defaults.headers.common.X = …` (axios muscle memory). It does not exist — mutable shared defaults are the classic SSR cross-request leak. Use `api.extend({ headers })`, which returns a NEW client.',
         'Passing `baseURL` (axios spelling). The option is `baseUrl`.',
         'Expecting `baseUrl` to behave like `new URL(path, base)`. It is a plain PREFIX, so a leading slash does NOT discard the base path.',
-        'Passing both `json` and `body`. They are mutually exclusive — `json` serializes and sets Content-Type for you, and passing both throws rather than silently picking one.',
+        'Passing more than one of `json` / `form` / `multipart` / `body`. They are mutually exclusive encodings of the same body, and passing two throws rather than silently picking one.',
+        'Setting `content-type: multipart/form-data` yourself alongside `multipart`. The platform writes it WITH the boundary it generated; a hand-set value has no boundary and the server cannot parse the body.',
+        'Expecting `cookies` to reach the server from a browser. `Cookie` is a forbidden request header and `fetch` drops it silently — in the browser use `credentials: "include"`; `cookies` is for server-side and native callers.',
         'Interpolating into the path (`api.get(`/users/${id}`)`). That skips URL encoding, so an id containing "/" escapes its segment. Use `{ params: { id } }`.',
         'Expecting retry by default. It is OFF, because it compounds with @pyreon/query’s own retry.',
       ],
@@ -99,7 +102,7 @@ const user = await api.get('/users/1').json() // decoded body`,
       name: 'endpoint',
       kind: 'function',
       signature:
-        "(spec: `${HttpMethod} ${string}`, options?: { response?: Validator }) => Endpoint",
+        "(spec: `${HttpMethod} ${string}`, options?: { response?: Validator; headers?: HeadersInit; formEncoding?: Record<string, FormFieldEncoding>; timeout?: number | false }) => Endpoint",
       summary:
         'Declare a reusable endpoint. One declaration yields the callable, a stable structural cache key, and the response type — which is what stops queryKey and URL from drifting apart, the single biggest pain with axios plus TanStack Query. `params` is REQUIRED by the type system exactly when the path declares `:placeholders`, and its keys are extracted from the path literal, so a typo is a compile error. `.query(args)` emits `{ queryKey, queryFn }` with the AbortSignal already forwarded; `.mutation()` emits `{ mutationFn, invalidates }`.',
       example: `const getUser = api.endpoint('GET /users/:id', { response: UserSchema })
@@ -112,6 +115,26 @@ console.log(options.queryKey)`,
         'Expecting `mutationFn` to receive an AbortSignal. TanStack gives mutations no context at all — pass one in the variables if the mutation must be cancellable.',
         'Writing the spec without a method (`"/users"`). It must be `"<METHOD> <path>"`.',
         'Assuming `invalidates` takes strings. It takes ENDPOINTS, and resolves each to its key prefix.',
+        'Expecting a per-call `headers` to REPLACE the declared ones. They MERGE (per-call wins per key), so a declared `content-type` survives a call that adds an idempotency key.',
+      ],
+    },
+    {
+      name: 'encodeForm',
+      kind: 'function',
+      signature:
+        '(fields: FormFields, encoding?: Record<string, { style?: "form" | "deepObject" | "spaceDelimited" | "pipeDelimited"; explode?: boolean }>) => URLSearchParams',
+      summary:
+        'The `application/x-www-form-urlencoded` serializer behind the `form` request option, exported so a transport or a generated client can produce byte-identical bodies. Follows OpenAPI\'s Encoding Object: the default is `form` + `explode` (arrays repeat the key, an object spreads its properties), `deepObject` uses brackets recursively with indexed arrays (`items[0][price]=…`, the shape Stripe declares), and `spaceDelimited`/`pipeDelimited` join arrays. `null`/`undefined` entries are dropped rather than sent as text. Siblings `encodeMultipart` (FormData; `Blob` values become file parts, objects become JSON text parts) and `encodeCookies` (a `Cookie` header value) cover the other encodings.',
+      example: `import { encodeForm } from '@pyreon/http'
+
+const body = encodeForm(
+  { amount: 2000, metadata: { order: 'A1' } },
+  { metadata: { style: 'deepObject', explode: true } },
+)
+body.toString() // "amount=2000&metadata%5Border%5D=A1"`,
+      mistakes: [
+        'Expecting a nested object under the DEFAULT style to keep its nesting. OpenAPI\'s `form` style spreads one level; declare `deepObject` for nested fields (a deeper value falls back to brackets rather than `[object Object]`).',
+        'Building the body with `new URLSearchParams(obj)` instead. That stringifies nested values to `[object Object]` and sends `null` as the text "null".',
       ],
     },
     {

@@ -5,8 +5,15 @@ document; emits `@pyreon/validate` schemas, `@pyreon/http` endpoints,
 `@pyreon/query` hooks, mock fixtures and `@pyreon/atlas` scenarios.
 
 ```bash
-pyreon lathe generate ./openapi.yaml
+bun add -d @pyreon/lathe        # or: pyreon add @pyreon/lathe
+npx lathe generate ./openapi.yaml
 ```
+
+OpenAPI 3.0 and 3.1. A Swagger 2 document is refused with the conversion
+command (`npx swagger2openapi`), and a file that is not a spec at all is refused
+before anything is written. `@pyreon/native-compiler` is an optional peer (it
+verifies `target: 'multiplatform'` output); `@faker-js/faker` is needed only for
+the `faker` plugin, `zod` only for `validator: 'zod'`.
 
 ## What makes it different
 
@@ -74,14 +81,16 @@ rather than passing.
 import lathe from '@pyreon/lathe/vite'
 
 export default defineConfig({
-  plugins: [
-    lathe({ input: './openapi.yaml', output: './src/gen', checkOnBuild: true }),
-    pyreon(),
-  ],
+  plugins: [lathe({ checkOnBuild: true }), pyreon()],
 })
 ```
 
-Regenerates on dev-server start and whenever a spec changes. `checkOnBuild`
+Reads the `lathe` section of `pyreon.config.ts` itself (found and resolved
+exactly as the CLI does); options passed to `lathe()` win per key. Generates
+once at dev-server start and again whenever a spec or the config changes, and
+logs what moved — breaking contract changes by name, spec features not
+represented, files written and removed. A missing spec is a warning with a
+did-you-mean rather than silence. `checkOnBuild`
 turns a stale client into a **build error** rather than a warning — generated
 output that disagrees with its spec compiles and then fails against the real
 server, which is the worst place to find out.
@@ -96,7 +105,8 @@ they can open.
 lathe generate --watch
 ```
 
-Watches the containing directory with a filename filter rather than the file
+Watches the spec(s) **and the config** (an edited config is re-read). Each
+watch is on the containing directory with a filename filter rather than the file
 itself — editors write via rename as often as in place, and a watch on the
 inode dies the first time one replaces it. Events are coalesced, and a spec
 that is unparseable mid-save prints the error and keeps watching rather than
@@ -394,10 +404,10 @@ Real, current, and reported per-operation rather than papered over:
 | Construct | Native |
 | --- | --- |
 | Schemas: string/number/boolean, nested objects, arrays, optional/nullable, min/max/email/url/uuid/regex | lowers |
-| `GET` with no path parameters | lowers |
-| `GET` with a path parameter | **web-only** — PMTC bakes the URL at compile time; a runtime param cannot be baked |
+| `GET` with a typed JSON response, with or without path parameters | lowers — a path parameter becomes a prop of the data component |
+| `GET` with no content, or a non-JSON response | **web-only** — the web hook resolves to `unknown`, and there is no declared type for a native query to decode into, so no data component is emitted |
 | `POST`/`PUT`/`PATCH`/`DELETE` | **web-only** — mutations are not recognised yet |
-| `enum` | narrowed to a plain string on the native path; the constraint is genuinely lost there |
+| `enum` / `const` | narrowed to its base scalar (`string` / `number` / `boolean`) on the native path; the constraint is genuinely lost there |
 | a model field naming another model | **lowers under `validator: 'zod'`** (inlined); dropped under the default `s.*`, with a compiler warning |
 | a `$ref` **cycle** | web-only for that field — there is no finite nesting to inline, on either validator |
 | `date` / `date-time` | kept as strings on both paths, deliberately — `s.date()` does not lower, and parsing to a `Date` on web only would be a silent divergence |
@@ -408,6 +418,26 @@ than `pyreon` — and that combination is refused at config time rather than
 generating modules that lower to nothing.
 
 ## Config
+
+Relative paths are relative to the **config file**; the config is the nearest
+`pyreon.config.*` walking up from the working directory (stopping at the
+repository root), or the one named by `--config`. Every key:
+
+| key | default | |
+| --- | --- | --- |
+| `input` | — (required) | the OpenAPI 3.x document |
+| `output` | `./src/gen` | where the client is written |
+| `source` | — | the URL `lathe pull` fetches `input` from |
+| `target` | `web` | `multiplatform` also emits and verifies native modules |
+| `plugins` | `schemas, client, queries` | see [Pick only what you want](#pick-only-what-you-want) |
+| `client` | `pyreon` | `fetch` / `axios` / `ky`; only `pyreon` reaches native |
+| `validator` | `pyreon` | `zod`; both reach native |
+| `baseUrl` | `servers[0].url` | must be an absolute literal to reach native |
+| `strictNative` | `false` | exit 1 when a native module does not lower |
+| `projects` | — | several specs in one run |
+
+`@pyreon/config`'s `LatheSection` is the same type, held identical by a
+compile-time test, so `defineConfig` rejects a misspelt plugin.
 
 ```ts
 // pyreon.config.ts
@@ -645,12 +675,78 @@ single directory is never what was meant.
 `lathe check` regenerates in memory and fails when committed output has drifted
 from the spec — the CI half, same contract as `gen-docs --check`.
 
-## The spec parser is first-party
+## CLI
 
-There is no third-party OpenAPI or YAML dependency. The YAML reader is scoped
-to the subset OpenAPI documents actually use and **refuses** anchors, merge
-keys, explicit tags and tab indentation with a line number, rather than
-producing a document that is subtly wrong everywhere the construct was used.
+```bash
+lathe generate [spec]          # read the spec, write the client
+lathe check    [spec]          # generate in memory; exit 1 if anything is stale
+lathe pull     [url] [dest]    # fetch a remote spec
+```
+
+`lathe --help` lists every flag. Flags are strict — an unknown flag, command or
+value is an error with a did-you-mean and exit code `2`, rather than being
+ignored. `--dry-run` reports what `generate` would write and remove. Errors go
+to stderr; colour only reaches a TTY and respects `NO_COLOR`.
+
+`--json` prints one documented shape for every command and any project count —
+`{ ok, command, projects: [...], error? }` (`JsonReport` in
+`@pyreon/lathe/cli`); an error under `--json` is still JSON.
+
+### Pulling a remote spec
+
+```bash
+lathe pull https://api.example.com/openapi.json            # to the configured input
+lathe pull https://api.example.com/openapi.json spec.json  # to a path, no config needed
+lathe pull                                                 # every project with a `source`
+lathe pull --token "$TOKEN" --header "X-Team: core"        # a spec behind auth
+```
+
+`$LATHE_TOKEN` is used when `--token` is absent. Nothing is written unless the
+response is an OpenAPI 3.x document. `ETag` / `Last-Modified` are kept under
+`node_modules/.cache/lathe` and sent back as a conditional request — only while
+the file on disk is still exactly what was fetched.
+
+### Losses and choices
+
+Every spec feature the client does not honour is a note with a stable `code`,
+an RFC 6901 pointer and a severity: `loss` (security schemes, response
+headers, error bodies, non-default serialization, a non-scalar `const`,
+`deprecated`, an optional body the generated call requires, …) or `choice`
+(JSON picked over XML, the first tag, the summary over the description). The
+report leads with the losses and summarises the choices.
+
+### Generated files are pruned
+
+Each run writes `lathe-manifest.json` listing the files it generated; the next
+`generate` removes the ones it no longer produces, and `check` reports them as
+stale. Only listed paths are ever removed. Commit the manifest.
+
+## YAML is read strictly
+
+YAML goes through the [`yaml`](https://eemeli.org/yaml/) package (ISC, zero
+dependencies) as YAML 1.2 core. An earlier first-party reader covered "the
+subset OpenAPI uses" and turned out to refuse GitHub, Stripe, OpenAI, Twilio
+and DigitalOcean outright while silently corrupting block scalars in the files
+it did open. Anchors, aliases and merge keys are now resolved. Refused, with a
+line number: duplicate keys, a multi-document stream, custom tags (`!Ref`), a
+recursive alias, `.inf` / `.nan`, a collection used as a key, and tab
+indentation — each would otherwise produce a document the author did not
+write. A UTF-8 BOM is accepted on both the JSON and the YAML path.
+
+## What the reader represents
+
+The input layer resolves a spec's semantics once, so no emitter rediscovers them:
+
+- **Nullability everywhere** — 3.0 `nullable`, 3.1 `type: [X, 'null']` and `anyOf: [X, {type: 'null'}]` on any node, component models included.
+- **`enum` / `const` of any JSON scalar** (numbers, booleans, `null`), and constraints on the type itself — `minLength`, `pattern`, 3.0 and 3.1 exclusive bounds, `multipleOf` (float-safe for fractional steps), `minItems` / `maxItems` / `uniqueItems` — so they apply to array items and alias models too.
+- **Composition** — `allOf` merges `required` across parts, lets a later part narrow a field, and DISTRIBUTES over a member that is a `oneOf` (`A ∧ (B ∨ C)` becomes `(A ∧ B) ∨ (A ∧ C)`, keeping the discriminator); properties next to a `oneOf` apply to every member; `oneOf` and `anyOf` together are both enforced. A discriminator the schema library cannot build (an implicit one, or over a non-object member) becomes a plain union with a note, never a module that throws at import.
+- **`readOnly` / `writeOnly`** — the model keeps its RESPONSE shape and gains a `<Name>Input` REQUEST shape, used for bodies and parameters.
+- **`$ref` siblings** — a constraint next to a `$ref` (`{ $ref: Code, maxLength: 3 }`, `{ $ref: Base, required: [id] }`) merges with the target; annotation-only siblings keep the named reference.
+- **Cycles** — a recursive schema anywhere (`#/$defs/Node`) is hoisted into a named model; a cycle made only of `$ref`s is `unknown` with a `cyclic-ref` note.
+- **Request media types** — `json`, `form` (with the spec's per-field `encoding`), `multipart` (binary fields typed `Blob`), `text` and raw binary bodies each travel as what the server accepts. `application/json; charset=…`, `*+json` and `*/*` count as JSON.
+- **Parameters** — header and cookie parameters are typed call arguments; an operation-level parameter overrides a path-level one; an undeclared path placeholder is synthesized.
+- **Servers** — variables take their `default`; an operation- or path-level server travels with its operation (on native, as its own literal-base client); a relative server is reported, and `lathe pull` prints the absolute URL it resolves to.
+- **Names** — models, operation ids, path placeholders and tag files that normalize to one identifier are disambiguated deterministically; nothing is dropped.
 
 ## Contract changes
 

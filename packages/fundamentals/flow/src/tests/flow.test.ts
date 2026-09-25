@@ -699,7 +699,7 @@ describe('createFlow', () => {
   })
 
   describe('listeners', () => {
-    it('onConnect fires when edge is added', () => {
+    it('onConnect does NOT fire for a programmatic addEdge (user-gesture event only)', () => {
       const flow = createFlow({
         nodes: [
           { id: '1', position: { x: 0, y: 0 }, data: {} },
@@ -710,6 +710,8 @@ describe('createFlow', () => {
       flow.onConnect(fn)
 
       flow.addEdge({ source: '1', target: '2' })
+      expect(fn).not.toHaveBeenCalled()
+      flow._emit.connect({ source: '1', target: '2' })
       expect(fn).toHaveBeenCalledWith(expect.objectContaining({ source: '1', target: '2' }))
     })
 
@@ -745,12 +747,11 @@ describe('createFlow', () => {
       const fn = vi.fn()
       const unsub = flow.onConnect(fn)
 
-      flow.addEdge({ source: '1', target: '2' })
+      flow._emit.connect({ source: '1', target: '2' })
       expect(fn).toHaveBeenCalledOnce()
 
       unsub()
-      flow.removeEdge('e-1-2')
-      flow.addEdge({ source: '1', target: '2' })
+      flow._emit.connect({ source: '1', target: '2' })
       expect(fn).toHaveBeenCalledOnce() // not called again
     })
 
@@ -765,6 +766,7 @@ describe('createFlow', () => {
 
       flow.addNode({ id: '1', position: { x: 0, y: 0 }, data: {} })
       flow.addEdge({ source: '1', target: '1' })
+      flow._emit.connect({ source: '1', target: '1' })
       expect(fn1).not.toHaveBeenCalled()
       expect(fn2).not.toHaveBeenCalled()
     })

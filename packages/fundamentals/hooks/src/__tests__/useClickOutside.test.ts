@@ -41,7 +41,7 @@ describe('useClickOutside', () => {
     const outside = document.createElement('div')
     document.body.appendChild(outside)
 
-    const event = new MouseEvent('mousedown', { bubbles: true })
+    const event = new Event('pointerdown', { bubbles: true })
     Object.defineProperty(event, 'target', { value: outside })
     document.dispatchEvent(event)
 
@@ -59,7 +59,7 @@ describe('useClickOutside', () => {
       cb()
     })
 
-    const event = new MouseEvent('mousedown', { bubbles: true })
+    const event = new Event('pointerdown', { bubbles: true })
     Object.defineProperty(event, 'target', { value: child })
     document.dispatchEvent(event)
 
@@ -73,7 +73,7 @@ describe('useClickOutside', () => {
       cb()
     })
 
-    const event = new MouseEvent('mousedown', { bubbles: true })
+    const event = new Event('pointerdown', { bubbles: true })
     Object.defineProperty(event, 'target', { value: container })
     document.dispatchEvent(event)
 
@@ -87,14 +87,16 @@ describe('useClickOutside', () => {
       cb()
     })
 
-    const event = new MouseEvent('mousedown', { bubbles: true })
+    const event = new Event('pointerdown', { bubbles: true })
     Object.defineProperty(event, 'target', { value: document.body })
     document.dispatchEvent(event)
 
     expect(handler).not.toHaveBeenCalled()
   })
 
-  it('handles touchstart events', () => {
+  // A touch press arrives as ONE pointerdown (see hooks-hardening.test.ts for
+  // the double-fire regression the old mousedown+touchstart pair caused).
+  it('handles touch presses via pointerdown', () => {
     const handler = vi.fn()
     useClickOutside(() => container, handler)
     mountCallbacks.forEach((cb) => {
@@ -104,7 +106,7 @@ describe('useClickOutside', () => {
     const outside = document.createElement('div')
     document.body.appendChild(outside)
 
-    const event = new Event('touchstart', { bubbles: true })
+    const event = new Event('pointerdown', { bubbles: true })
     Object.defineProperty(event, 'target', { value: outside })
     document.dispatchEvent(event)
 
@@ -124,8 +126,7 @@ describe('useClickOutside', () => {
       cb()
     })
 
-    expect(removeSpy).toHaveBeenCalledWith('mousedown', expect.any(Function), true)
-    expect(removeSpy).toHaveBeenCalledWith('touchstart', expect.any(Function), true)
+    expect(removeSpy).toHaveBeenCalledWith('pointerdown', expect.any(Function), true)
     removeSpy.mockRestore()
   })
 
@@ -137,8 +138,7 @@ describe('useClickOutside', () => {
       cb()
     })
 
-    expect(addSpy).toHaveBeenCalledWith('mousedown', expect.any(Function), true)
-    expect(addSpy).toHaveBeenCalledWith('touchstart', expect.any(Function), true)
+    expect(addSpy).toHaveBeenCalledWith('pointerdown', expect.any(Function), true)
     addSpy.mockRestore()
   })
 })

@@ -3972,7 +3972,9 @@ const user = await api.get('/users/:id', { params: { id: '1' } }).json()`,
     mistakes: `- Reaching for \`api.defaults.headers.common.X = …\` (axios muscle memory). It does not exist — mutable shared defaults are the classic SSR cross-request leak. Use \`api.extend({ headers })\`, which returns a NEW client.
 - Passing \`baseURL\` (axios spelling). The option is \`baseUrl\`.
 - Expecting \`baseUrl\` to behave like \`new URL(path, base)\`. It is a plain PREFIX, so a leading slash does NOT discard the base path.
-- Passing both \`json\` and \`body\`. They are mutually exclusive — \`json\` serializes and sets Content-Type for you, and passing both throws rather than silently picking one.
+- Passing more than one of \`json\` / \`form\` / \`multipart\` / \`body\`. They are mutually exclusive encodings of the same body, and passing two throws rather than silently picking one.
+- Setting \`content-type: multipart/form-data\` yourself alongside \`multipart\`. The platform writes it WITH the boundary it generated; a hand-set value has no boundary and the server cannot parse the body.
+- Expecting \`cookies\` to reach the server from a browser. \`Cookie\` is a forbidden request header and \`fetch\` drops it silently — in the browser use \`credentials: "include"\`; \`cookies\` is for server-side and native callers.
 - Interpolating into the path (\`api.get(\`/users/\${id}\`)\`). That skips URL encoding, so an id containing "/" escapes its segment. Use \`{ params: { id } }\`.
 - Expecting retry by default. It is OFF, because it compounds with @pyreon/query’s own retry.`,
   },
@@ -3987,7 +3989,7 @@ const user = await api.get('/users/1').json() // decoded body`,
   },
 
   'http/endpoint': {
-    signature: '(spec: `${HttpMethod} ${string}`, options?: { response?: Validator }) => Endpoint',
+    signature: '(spec: `${HttpMethod} ${string}`, options?: { response?: Validator; headers?: HeadersInit; formEncoding?: Record<string, FormFieldEncoding>; timeout?: number | false }) => Endpoint',
     example: `const getUser = api.endpoint('GET /users/:id', { response: UserSchema })
 
 await getUser({ params: { id: '1' } })
@@ -3997,7 +3999,22 @@ console.log(options.queryKey)`,
     mistakes: `- Hand-writing a \`queryKey\` next to an endpoint call. Use \`endpoint.query(...)\` so the key is derived from the same declaration as the URL.
 - Expecting \`mutationFn\` to receive an AbortSignal. TanStack gives mutations no context at all — pass one in the variables if the mutation must be cancellable.
 - Writing the spec without a method (\`"/users"\`). It must be \`"<METHOD> <path>"\`.
-- Assuming \`invalidates\` takes strings. It takes ENDPOINTS, and resolves each to its key prefix.`,
+- Assuming \`invalidates\` takes strings. It takes ENDPOINTS, and resolves each to its key prefix.
+- Expecting a per-call \`headers\` to REPLACE the declared ones. They MERGE (per-call wins per key), so a declared \`content-type\` survives a call that adds an idempotency key.`,
+  },
+
+  'http/encodeForm': {
+    signature: '(fields: FormFields, encoding?: Record<string, { style?: "form" | "deepObject" | "spaceDelimited" | "pipeDelimited"; explode?: boolean }>) => URLSearchParams',
+    example: `import { encodeForm } from '@pyreon/http'
+
+const body = encodeForm(
+  { amount: 2000, metadata: { order: 'A1' } },
+  { metadata: { style: 'deepObject', explode: true } },
+)
+body.toString() // "amount=2000&metadata%5Border%5D=A1"`,
+    notes: `The \`application/x-www-form-urlencoded\` serializer behind the \`form\` request option, exported so a transport or a generated client can produce byte-identical bodies. Follows OpenAPI's Encoding Object: the default is \`form\` + \`explode\` (arrays repeat the key, an object spreads its properties), \`deepObject\` uses brackets recursively with indexed arrays (\`items[0][price]=…\`, the shape Stripe declares), and \`spaceDelimited\`/\`pipeDelimited\` join arrays. \`null\`/\`undefined\` entries are dropped rather than sent as text. Siblings \`encodeMultipart\` (FormData; \`Blob\` values become file parts, objects become JSON text parts) and \`encodeCookies\` (a \`Cookie\` header value) cover the other encodings.`,
+    mistakes: `- Expecting a nested object under the DEFAULT style to keep its nesting. OpenAPI's \`form\` style spreads one level; declare \`deepObject\` for nested fields (a deeper value falls back to brackets rather than \`[object Object]\`).
+- Building the body with \`new URLSearchParams(obj)\` instead. That stringifies nested values to \`[object Object]\` and sends \`null\` as the text "null".`,
   },
 
   'http/HttpMiddleware': {
@@ -6638,7 +6655,7 @@ get_api({ package: '@pyreon/router', symbol: 'useTypedSearchParams' })`,
     notes: `Look up any Pyreon API by \`package\` (e.g. \`"flow"\` or \`"@pyreon/flow"\`) and \`symbol\` (e.g. \`"createFlow"\`). Returns the canonical signature, example, foot-gun catalogue, and cross-references — drawn from \`api-reference.ts\`, which is regenerated from each package\\'s \`manifest.ts\`. The single agent-facing entry point for "what does this API do and how do I avoid the common mistakes." See also: validate, get_pattern.`,
     mistakes: `- Passing the package name with a typo or wrong scope — \`get_api({ package: "pyreon-flow", ... })\` returns nothing. Use \`"flow"\` or \`"@pyreon/flow"\`; the tool accepts both.
 - Expecting \`symbol\` to match a method on a returned instance (e.g. \`Posts.useList\`) — only TOP-LEVEL exports are in api-reference. Method-on-instance APIs are documented in the parent symbol's \`summary\` / \`example\`.
-- Treating a 404 as "the API doesn't exist" — it may exist but the package's manifest is not yet on the MCP pipeline (~33 of ~55 packages migrated). Check the docs page or source as a fallback when get_api returns empty.
+- Treating a 404 as "the API doesn't exist" — it may exist but the package's manifest is not yet on the MCP pipeline (57 of 76 published packages have one as of this writing — see AGENTS.md "Manifest-driven docs pipeline" for the live count). Check the docs page or source as a fallback when get_api returns empty.
 - Forgetting that \`summary\` may contain the answer to a follow-up question — read the full body before falling back to \`get_pattern\` / \`validate\` / source diving.`,
   },
 
@@ -6818,21 +6835,22 @@ get_dependency_fabric({ package: '@pyreon/router' })
 // → full canonical pattern body
 get_pattern({})
 // → [{ name: 'controllable-state', summary: '...' }, ...]`,
-    notes: 'Fetch a canonical "how do I do X" pattern body from `docs/patterns/`. 16 foundational patterns ship: `controllable-state`, `data-fetching`, `dev-warnings`, `dynamic-fields`, `event-listeners`, `form-fields`, `imperative-toasts`, `islands`, `keyed-lists`, `reactive-context`, `reactive-spread`, `routing-setup`, `signal-writes`, `ssr-safe-hooks`, `state-management`, `styler-theming`. Omit `name` to list available patterns. Drop a new `docs/patterns/<slug>.md` file to add one — picked up on next call. See also: get_anti_patterns.',
+    notes: `Fetch a canonical "how do I do X" pattern body from \`docs/src/content/docs/patterns/\` (the same files the docs site renders — one source, two surfaces). 17 foundational patterns ship: \`controllable-state\`, \`data-fetching\`, \`dev-warnings\`, \`dynamic-fields\`, \`event-listeners\`, \`form-fields\`, \`imperative-toasts\`, \`islands\`, \`keyed-lists\`, \`multiplatform\`, \`reactive-context\`, \`reactive-spread\`, \`routing-setup\`, \`signal-writes\`, \`ssr-safe-hooks\`, \`state-management\`, \`styler-theming\`. Omit \`name\` to list available patterns. Drop a new \`docs/src/content/docs/patterns/<slug>.md\` file to add one — picked up on next call (no code change, no bundling step in dev; \`scripts/copy-content.ts\` mirrors it into this package's bundled \`content/patterns/\` for the published \`bunx @pyreon/mcp\` consumer case at build time). See also: get_anti_patterns.`,
     mistakes: `- Passing a name in CamelCase or PascalCase — pattern names are kebab-case (\`controllable-state\`, not \`ControllableState\`). A wrong-case name 404s.
-- Expecting the pattern list to include every Pyreon idiom — \`get_pattern\` covers the 16 foundational shapes (data fetching, forms, signal writes, etc.). Specialized patterns (PMTC, native compat, devtools wiring) live elsewhere in the docs.
+- Expecting the pattern list to include every Pyreon idiom — \`get_pattern\` covers the 17 foundational shapes (data fetching, forms, signal writes, multiplatform, etc.). Specialized topics (PMTC internals, native compat shims, devtools wiring) live in the wider docs site, not as a \`get_pattern\` slug.
 - Confusing patterns with anti-patterns — \`get_pattern\` returns "how to do X correctly"; \`get_anti_patterns\` returns "what to avoid". They're complementary.`,
   },
 
   'mcp/get_anti_patterns': {
-    signature: `tool: get_anti_patterns({ category?: 'reactivity'|'jsx'|'context'|'architecture'|'testing'|'lifecycle'|'documentation'|'all'; name?: string; full?: boolean }) → string`,
+    signature: `tool: get_anti_patterns({ category?: 'reactivity'|'jsx'|'context'|'architecture'|'islands'|'ssr'|'ssg'|'bundling'|'testing'|'lifecycle'|'build'|'ci'|'best-practices'|'library-api'|'documentation'|'all'; name?: string; full?: boolean; page?: number }) → string`,
     example: `get_anti_patterns()
-// → compact index (~3.3K): titles + detector tags + one-line hooks
+// → compact index (paginated — "page 1 of 2" on this catalog's current size): titles + detector tags + one-line hooks
 get_anti_patterns({ name: 'Destructuring props' })  // → that entry's full body
 get_anti_patterns({ category: 'reactivity' })       // → full bodies, one category
-get_anti_patterns({ full: true })                   // → entire catalog (~14K)`,
-    notes: `Browse the anti-patterns catalog from \`.agents/rules/anti-patterns.md\`, token-frugal by default. **No args → a COMPACT INDEX** (one line per entry: title + \`[detector: <code>]\` tag + one-sentence hook; ≈3.3K tokens vs the ≈14K full dump — a ~76% cut on the common orient call). Drill in deliberately: \`{ name }\` → the single matching entry\\'s full body (cheapest); \`{ category }\` → full bodies for one category; \`{ full: true }\` → entire catalog (≈14K, explicit opt-in). The index keeps per-category \`## <Heading>\` markers so categories are still discoverable in one call; each \`[detector: <code>]\` tag pairs the entry with the live \`validate\` detector. See also: validate, get_pattern.`,
-    mistakes: `- Reaching for \`{ full: true }\` to "see the anti-patterns" — that is the ~14K dump. The no-arg index is the orient call; pull full bodies with \`{ name }\` once you know which entry matters
+get_anti_patterns({ category: 'islands' })          // → any of the 15 real categories works, not just the first 8
+get_anti_patterns({ full: true })                   // → entire catalog (tens of thousands of tokens)`,
+    notes: `Browse the anti-patterns catalog from \`.agents/rules/anti-patterns.md\`, token-frugal by default. **No args → a COMPACT INDEX** (one line per entry: title + \`[detector: <code>]\` tag + one-sentence hook), kept at least ~60% smaller than \`{ full: true }\` by a density gate rather than a pinned size (the catalog has grown past 400 entries and past a single page — the index is PAGINATED at 240 entries/page, footer names the next). Drill in deliberately: \`{ name }\` → the single matching entry\\'s full body (cheapest); \`{ category }\` → full bodies for one of the 15 real categories (\`reactivity\`, \`jsx\`, \`context\`, \`architecture\`, \`islands\`, \`ssr\`, \`ssg\`, \`bundling\`, \`testing\`, \`lifecycle\`, \`build\`, \`ci\`, \`best-practices\`, \`library-api\`, \`documentation\`); \`{ full: true }\` → the entire catalog (tens of thousands of tokens, explicit opt-in). The index keeps per-category \`## <Heading>\` markers so categories are still discoverable in one call; each \`[detector: <code>]\` tag pairs the entry with the live \`validate\` detector. See also: validate, get_pattern.`,
+    mistakes: `- Reaching for \`{ full: true }\` to "see the anti-patterns" — that is the multi-tens-of-thousands-of-token dump. The no-arg index is the orient call; pull full bodies with \`{ name }\` once you know which entry matters
 - Expecting no-arg to return full bodies — it returns the index (behaviour changed in the token-slim PR). Full bodies need \`{ name }\`, \`{ category }\`, or \`{ full: true }\``,
   },
 
@@ -10900,7 +10918,7 @@ report.issues.filter((i) => i.severity === 'error')`,
   // <gen-docs:api-reference:start @pyreon/lathe>
 
   'lathe/generate': {
-    signature: 'generate(specText: string, config: ResolvedConfig): GenerateResult',
+    signature: 'generate(specText: string, config: ResolvedConfig, options?: { sourceUrl?: string }): GenerateResult',
     example: `import { generate, resolveConfig } from '@pyreon/lathe'
 
 const config = resolveConfig({ input: './openapi.yaml', target: 'multiplatform' })
@@ -10913,7 +10931,7 @@ for (const [id, r] of reach) {
     mistakes: `- Passing a relative \`baseUrl\` (or omitting \`servers\` from the spec) and expecting native output — PMTC bakes the request URL at compile time, so a relative base makes EVERY operation web-only. The reach report names this, but only if you read it.
 - Assuming the \`.native.tsx\` modules replace the web output. They are ADDITIVE: the web files are byte-identical whether the target is \`web\` or \`multiplatform\`.
 - Editing generated files. Every file carries a DO-NOT-EDIT banner and is overwritten on the next run; change the spec or the emitter.
-- Expecting \`s.enum\` in native output. Enums do not lower, so the native path narrows them to \`s.string()\` — the constraint is genuinely lost there, which is why the two layouts are emitted separately rather than shared.`,
+- Expecting \`s.enum\` in native output. Enums do not lower, so the native path narrows them to their base scalar (\`s.string()\` / \`s.number()\`) — the constraint is genuinely lost there, which is why the two layouts are emitted separately rather than shared.`,
   },
 
   'lathe/resolveConfig': {
@@ -10954,15 +10972,17 @@ if (worstVerdict(report) !== 'lowers') process.exitCode = 1`,
   },
 
   'lathe/loadOpenApi': {
-    signature: 'loadOpenApi(source: string): { doc: IrDocument }',
+    signature: 'loadOpenApi(source: string, options?: { sourceUrl?: string }): { doc: IrDocument }',
     example: `import { loadOpenApi } from '@pyreon/lathe'
 
 const { doc } = loadOpenApi(await readFile('./openapi.yaml', 'utf8'))
 console.log(doc.models.length, 'models', doc.operations.length, 'operations')
 for (const note of doc.notes) console.warn(note.code, note.at, note.message)`,
-    notes: 'Parses an OpenAPI 3.x document (JSON or YAML text) into the spec-agnostic IR. Every reduction the IR cannot represent is recorded in `doc.notes` with a stable code and a location, so a loss is reported once at the boundary instead of being rediscovered differently by each emitter. Deterministic: models and operations are sorted, so the same spec always produces the same IR.',
-    mistakes: `- Ignoring \`doc.notes\`. A spec with a remote \`$ref\` or a non-JSON media type still produces output — with those pieces typed \`unknown\`. The note is the only signal.
-- Expecting anchors or merge keys to work. The YAML reader refuses them by design with a line number, because silently ignoring an anchor produces a document that is wrong everywhere it was used.`,
+    notes: 'Parses an OpenAPI 3.x document (JSON or YAML text) into the spec-agnostic IR. Every reduction the IR cannot represent is recorded in `doc.notes` with a stable code and a location, so a loss is reported once at the boundary instead of being rediscovered differently by each emitter. Deterministic: models and operations are sorted, so the same spec always produces the same IR. Pass `sourceUrl` (where the spec was fetched from) and a RELATIVE `servers[].url` is resolved against it, as OpenAPI specifies.',
+    mistakes: `- Ignoring \`doc.notes\`. A spec with a remote \`$ref\` or a non-JSON media type still produces output — with those pieces typed \`unknown\`. The note is the only signal. Filter on \`noteSeverity(note) === 'loss'\` for the ones that change behaviour.
+- Reading \`op.body\` as a type. It is \`{ mediaType, encoding, type }\` — \`encoding\` (\`json\` / \`form\` / \`multipart\` / \`text\` / \`binary\`) decides the call argument (\`json:\` / \`form:\` / \`multipart:\` / \`body:\`), and a form body carries its per-field \`fieldEncoding\`.
+- Passing a Swagger 2 document. It is refused (\`openApiVersionProblem\` names the \`swagger2openapi\` conversion) rather than read as an empty 3.x spec.
+- Expecting a custom YAML tag (\`!Ref\`, \`!include\`) to be expanded. The reader refuses it with a line number instead of reading it as a plain string; resolve or bundle the spec first. Anchors, aliases and merge keys DO resolve.`,
   },
   // <gen-docs:api-reference:end @pyreon/lathe>
   // <gen-docs:api-reference:start @pyreon/atlas>

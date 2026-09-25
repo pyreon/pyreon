@@ -225,3 +225,99 @@ components:
     }
   })
 })
+
+/**
+ * A read with no typed response body -- the Petstore 3 `logoutUser` shape.
+ *
+ * It used to get a data component like every other GET, as
+ * `useQuery<unknown>(...)`, which PMTC lowers to a decode of `Any`: not
+ * compilable on Swift. One content-less GET turned its whole tag module BROKEN.
+ * Nothing renders from an absent body, so the component is left out and the
+ * reach analysis says why.
+ */
+describe('a content-less GET does not break its native module', () => {
+  const CONTENTLESS = `
+openapi: 3.0.3
+info: { title: Session, version: '1' }
+servers: [{ url: 'https://s.test/v1' }]
+paths:
+  /me:
+    get:
+      operationId: getMe
+      tags: [session]
+      responses:
+        '200':
+          content: { application/json: { schema: { $ref: '#/components/schemas/Me' } } }
+  /logout:
+    get:
+      operationId: logout
+      tags: [session]
+      responses: { default: { description: done } }
+components:
+  schemas:
+    Me: { type: object, required: [id], properties: { id: { type: string } } }
+`
+  const out = generate(CONTENTLESS, resolveConfig({ input: 'x', target: 'multiplatform' }))
+  const mod = out.files.find((f) => f.path === 'session.native.tsx')
+
+  it('still declares the endpoint, but emits no data component for it', () => {
+    expect(mod?.contents).toContain('export const logout = api.endpoint(')
+    expect(mod?.contents).toContain('export function GetMeData(')
+    expect(mod?.contents).not.toContain('LogoutData(')
+  })
+
+  it('reports the operation web-only, with the reason, rather than lowering it', () => {
+    expect(out.reach.get('logout')?.reach).toBe('web-only')
+    expect(out.reach.get('logout')?.reason).toContain('no typed JSON response')
+    expect(out.reach.get('getMe')?.reach).toBe('web+native')
+  })
+
+  it('the real compiler lowers the module on both targets', () => {
+    const report = verifyNative(out.files, transform)
+    expect(report.files.length).toBe(2)
+    for (const f of report.files) {
+      expect(f.verdict, `${f.target}: ${f.warnings.join(' | ')}`).toBe('lowers')
+    }
+  })
+})
+
+describe('non-string enums on the native path', () => {
+  // The native target narrows an enum to ONE scalar schema: PMTC has no literal
+  // union, so a numeric or boolean enum must become `number()` / `boolean()`
+  // -- and the TS type must agree, or the emitted module does not typecheck.
+  const spec = `
+openapi: 3.0.3
+info: { title: T, version: '1' }
+servers: [{ url: 'https://t.test/v1' }]
+paths:
+  /k:
+    get:
+      operationId: getK
+      tags: [k]
+      responses: { '200': { content: { application/json: { schema: { $ref: '#/components/schemas/K' } } } } }
+components:
+  schemas:
+    K:
+      type: object
+      required: [level, on]
+      properties:
+        level: { type: integer, enum: [1, 2, 3] }
+        on: { type: boolean, enum: [true, false] }
+`
+  const mod = generate(spec, resolveConfig({ input: 'x', target: 'multiplatform' })).files.find(
+    (f) => f.path === 'k.native.tsx',
+  )
+
+  it('narrows the schema and the type to the scalar', () => {
+    expect(mod?.contents).toMatch(/level: s\.number\(\)/)
+    expect(mod?.contents).toMatch(/on: s\.boolean\(\)/)
+    expect(mod?.contents).toMatch(/level: number/)
+    expect(mod?.contents).toMatch(/on: boolean/)
+  })
+
+  for (const target of ['swift', 'kotlin'] as const) {
+    it(`lowers to ${target} with no warnings`, () => {
+      expect(transform(mod!.contents, { target }).warnings).toEqual([])
+    })
+  }
+})

@@ -27,12 +27,13 @@ const doc = (fields: Array<{ name: string; type: IrType; pattern?: string }>): I
       name: 'M',
       type: {
         kind: 'object',
+        // A pattern is a STRING constraint and lives on the string type; on
+        // any other kind the field carries it nowhere, which is exactly what
+        // the "non-string ignores pattern" spec checks.
         fields: fields.map((f) => ({
           name: f.name,
-          type: f.type,
+          type: f.pattern !== undefined && f.type.kind === 'string' ? { ...f.type, pattern: f.pattern } : f.type,
           required: true,
-          nullable: false,
-          ...(f.pattern === undefined ? {} : { pattern: f.pattern }),
         })),
       },
     },

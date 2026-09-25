@@ -25,7 +25,7 @@
  */
 
 import { cyclicModels, modelIndex, stronglyConnected } from '../core/graph'
-import type { IrDocument, IrField, IrModel, IrType } from '../core/ir'
+import type { IrDocument, IrField, IrLiteral, IrModel, IrNumberType, IrStringType, IrType } from '../core/ir'
 import { pascal, propKey } from '../core/naming'
 import { q, relativeSpecifier, SourceFile } from './writer'
 
@@ -150,8 +150,8 @@ function takesOverrides(model: IrModel): boolean {
 
 /**
  * Model -> models its FACTORY expands. Mirrors exactly what `render` walks:
- * object fields, array items, union options -- never `additional`, which no
- * factory renders.
+ * object fields, array items, union options, a nullable's inner type -- never
+ * `additional`, which no factory renders.
  */
 function fakerDependencies(doc: IrDocument): Map<string, Set<string>> {
   const known = new Set(doc.models.map((m) => m.name))
@@ -169,6 +169,9 @@ function fakerDependencies(doc: IrDocument): Map<string, Set<string>> {
         return
       case 'union':
         for (const o of t.options) walk(o, into)
+        return
+      case 'nullable':
+        walk(t.inner, into)
         return
       default:
     }
@@ -201,15 +204,14 @@ function render(
   switch (type.kind) {
     case 'string':
       return stringExpr(type, field)
-    case 'number': {
-      const min = field?.min
-      const max = field?.max
-      if (type.integer) {
-        const opts = rangeOpts(min ?? 1, max ?? 1000)
-        return `faker.number.int(${opts})`
-      }
-      return `faker.number.float(${rangeOpts(min ?? 0, max ?? 1000)})`
-    }
+    case 'enum':
+      return `faker.helpers.arrayElement([${type.values.map(literalExpr).join(', ')}] as const)`
+    case 'nullable':
+      // The non-null branch: a fixture that is `null` exercises nothing, and
+      // a test wanting null pins it through `overrides`.
+      return render(type.inner, doc, depth, field, self)
+    case 'number':
+      return numberFaker(type)
     case 'boolean':
       return 'faker.datatype.boolean()'
     case 'null':
@@ -221,7 +223,13 @@ function render(
       // A recursive array bottoms out as EMPTY, which is the one value a
       // recursive list is always allowed to take.
       const guard = referencesSelf(type.items, doc, self)
-      const body = `faker.helpers.multiple(() => ${arrowBody(inner)}, { count: { min: 1, max: 3 } })`
+      const lo = Math.max(type.minItems ?? 1, 0)
+      const hi = Math.max(lo, Math.min(type.maxItems ?? 3, Math.max(lo, 3)))
+      // Unique items: a Set of JSON texts drops repeats, so ask for the
+      // multiple through faker's own `uniqueArray` when the spec demands it.
+      const body = type.uniqueItems
+        ? `faker.helpers.uniqueArray(() => ${arrowBody(inner)}, ${hi})`
+        : `faker.helpers.multiple(() => ${arrowBody(inner)}, { count: { min: ${lo}, max: ${hi} } })`
       return guard ? `(d >= ${MAX_DEPTH} ? [] : ${body})` : body
     }
     case 'ref': {
@@ -244,7 +252,8 @@ function render(
       }
       // Overrides land LAST at the top level only; nested objects have none.
       // Only the root of a model that takes overrides (see `takesOverrides`).
-      const spread = depth === 1 && type.fields.length > 0 ? ', ...o' : ''
+      const root = modelIndex(doc).get(self)
+      const spread = depth === 1 && root !== undefined && takesOverrides(root) ? ', ...o' : ''
       if (parts.length === 0) return `{${spread ? ' ...o ' : ''}}`
       const indent = '  '.repeat(depth + 1)
       const close = '  '.repeat(depth)
@@ -274,8 +283,11 @@ function renderField(
   // indents its children at `depth + 1`, which is the intent this
   // restores.
   const value = render(field.type, doc, depth + 1, field, self)
-  if (field.type.kind !== 'ref') return value
-  if (!referencesSelf(field.type, doc, self)) return value
+  const refType = field.type.kind === 'nullable' ? field.type.inner : field.type
+  if (refType.kind !== 'ref') return value
+  if (!referencesSelf(refType, doc, self)) return value
+  // A NULLABLE recursive ref bottoms out as `null`, which it may always be.
+  if (field.type.kind === 'nullable') return `(d >= ${MAX_DEPTH} ? null : ${value})`
   // A recursive REF. Optional -> omit at the limit. Required -> there is no
   // finite value; recursion is capped and the cast is deliberate, with the
   // reason in the emitted comment rather than a silent `null`.
@@ -307,6 +319,8 @@ function referencesSelf(type: IrType, doc: IrDocument, self: string): boolean {
         return t.fields.some((f) => hit(f.type))
       case 'union':
         return t.options.some(hit)
+      case 'nullable':
+        return hit(t.inner)
       default:
         return false
     }
@@ -360,6 +374,35 @@ function stripAnchors(pattern: string): string {
   return out
 }
 
+function literalExpr(v: IrLiteral): string {
+  return typeof v === 'string' ? q(v) : String(v)
+}
+
+/**
+ * A number inside every bound the spec states.
+ *
+ * Strict bounds are tightened by one step (an integer) or a small epsilon (a
+ * float); a `multipleOf` is honoured by generating the MULTIPLIER and scaling,
+ * which is the only way to guarantee it rather than hope for it.
+ */
+function numberFaker(type: IrNumberType): string {
+  const lo = type.minimum ?? (type.exclusiveMinimum !== undefined ? type.exclusiveMinimum + (type.integer ? 1 : 0.001) : undefined)
+  const hi = type.maximum ?? (type.exclusiveMaximum !== undefined ? type.exclusiveMaximum - (type.integer ? 1 : 0.001) : undefined)
+  const min = lo ?? (type.integer ? 1 : 0)
+  const max = hi ?? Math.max(min, 1000)
+  if (type.multipleOf !== undefined) {
+    const step = type.multipleOf
+    const kLo = Math.ceil(min / step)
+    const kHi = Math.max(kLo, Math.floor(max / step))
+    // Rounded: `3 * 0.1` is `0.30000000000000004` in binary floating point.
+    const decimals = (String(step).split('.')[1] ?? '').length
+    return decimals === 0
+      ? `faker.number.int(${rangeOpts(kLo, kHi)}) * ${step}`
+      : `Number((faker.number.int(${rangeOpts(kLo, kHi)}) * ${step}).toFixed(${decimals}))`
+  }
+  return type.integer ? `faker.number.int(${rangeOpts(Math.ceil(min), Math.floor(max))})` : `faker.number.float(${rangeOpts(min, max)})`
+}
+
 function rangeOpts(min: number, max: number): string {
   // A spec can state a min above the default max; the generator must not be
   // handed an empty range.
@@ -374,11 +417,8 @@ function rangeOpts(min: number, max: number): string {
  * satisfiable only by a length-controlled generator, and the pretty
  * name/format guesses come last because they cannot honour a length.
  */
-function stringExpr(type: Extract<IrType, { kind: 'string' }>, field?: IrField): string {
-  if (type.enum && type.enum.length > 0) {
-    return `faker.helpers.arrayElement([${type.enum.map(q).join(', ')}] as const)`
-  }
-  if (field?.pattern) {
+function stringExpr(type: IrStringType, field?: IrField): string {
+  if (type.pattern) {
     // `fromRegExp` understands a useful subset; an expression it cannot
     // satisfy throws at CALL time, which is a loud, local failure in a test
     // rather than a fixture that quietly fails validation later.
@@ -387,10 +427,10 @@ function stringExpr(type: Extract<IrType, { kind: 'string' }>, field?: IrField):
     // so `'^[A-Z]{3}$'` generates the string `"^ABC$"` -- which then fails the
     // very pattern it was generated from. OpenAPI patterns carry anchors
     // almost universally, so this is the common case, not an edge one.
-    return `faker.helpers.fromRegExp(${q(stripAnchors(field.pattern))})`
+    return `faker.helpers.fromRegExp(${q(stripAnchors(type.pattern))})`
   }
-  const min = field?.min
-  const max = field?.max
+  const min = type.minLength
+  const max = type.maxLength
   // A LOWER bound is the only constraint a realistic generator cannot be made
   // to satisfy: `faker.person.fullName()` has no minimum length anyone can
   // promise. So a real `minLength` falls back to `alpha`, which guarantees an

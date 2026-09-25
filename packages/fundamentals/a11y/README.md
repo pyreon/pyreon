@@ -20,7 +20,9 @@ announce('Copied to clipboard', { clearAfter: 1000 })    // auto-clear after 1s
 
 - `politeness`: `'polite'` (default — queued, spoken when idle) or `'assertive'` (interrupts; reserve for errors / time-critical alerts).
 - `clearAfter`: ms after which the region is emptied, so stale text isn't re-read.
-- Identical consecutive messages are still re-announced (the region is cleared then re-written on the next frame).
+- Both regions are created on the first call and messages are written ~100ms later, so even the first announcement lands in a region the screen reader has already seen.
+- Messages announced together (same politeness, within that window) are joined into one announcement instead of overwriting each other.
+- Identical consecutive messages are still re-announced (the region is cleared, then re-written).
 
 ## `<LiveRegion>`
 
@@ -38,6 +40,7 @@ import { LiveRegion } from '@pyreon/a11y'
 - `atomic` (default `true`): announce the WHOLE region on change; set `false` with `role="log"` for append-only feeds.
 - `role`: defaults to `'status'` for polite, `'alert'` for assertive.
 - `visible` (default `false`): render visibly instead of screen-reader-only (a visible "Saving…" line that doubles as the live region).
+- `politeness` / `atomic` / `role` / `visible` accept a value or an accessor (`politeness={() => muted() ? 'off' : 'polite'}`) and stay reactive; flipping `visible` restyles the same element rather than remounting it.
 
 Because it renders on the server too, the region exists at hydration — the very first reactive update is announced. Prefer `announce()` for fire-and-forget global messages; prefer `<LiveRegion>` for owned, positioned, signal-driven status.
 
@@ -69,12 +72,12 @@ import { SkipLink } from '@pyreon/a11y'
 <main id="main">…</main>
 ```
 
-- `href` (default `'#main'`): in-page fragment pointing at your main landmark. The target gets a programmatic-focus `tabindex="-1"` if it has none, so the next Tab continues from the content.
+- `href` (default `'#main'`): in-page fragment pointing at your main landmark. The link handles the jump itself (focus + `scrollIntoView`) and cancels the default hash navigation, so it works under a hash-mode router, which would otherwise read `#main` as a route. The target gets a programmatic-focus `tabindex="-1"` if it has none, so the next Tab continues from the content.
 - Styling: hidden with the same clip technique as `<VisuallyHidden>`, revealed fixed at the top-left on focus with neutral defaults — pass `style` / `class` to restyle the focused appearance without losing the hide-until-focus behavior.
 
 ## `createA11yId(prefix?)`
 
-Stable, SSR-safe unique id for ARIA relationship attributes (`aria-labelledby` / `aria-describedby` / `aria-controls` / `for`). Wraps `@pyreon/core`'s `createUniqueId`, so server and client agree — no hydration mismatch.
+Unique id for ARIA relationship attributes (`aria-labelledby` / `aria-describedby` / `aria-controls` / `for`). Wraps `@pyreon/core`'s `createUniqueId`. The id is counter-based: server and client produce the same id only when they call it in the same order, and the counter is not reset per SSR request — so do not rely on a server-rendered id surviving hydration byte-for-byte.
 
 ```tsx
 import { createA11yId } from '@pyreon/a11y'
@@ -117,7 +120,7 @@ Customize the message with `format`, or opt into `assertive` / `clearAfter` / `a
 
 The hook form `useRouteAnnouncer(options?)` is equivalent — call it once from a long-lived component.
 
-**Overlap with `@pyreon/router`'s built-in announcements**: the root `<RouterView>` already announces route changes by default (its `announceRouteChanges` prop) — mounting `<RouteAnnouncer>` alongside it produces DOUBLE announcements, so pass `<RouterView announceRouteChanges={false}>` when you use `<RouteAnnouncer>` (reach for it when you need `format` / politeness / `clearAfter` control the built-in doesn't offer).
+**Overlap with `@pyreon/router`'s built-in announcements**: the root `<RouterView>` already announces route changes by default (its `announceRouteChanges` prop) — mounting `<RouteAnnouncer>` alongside it produces DOUBLE announcements, so pass `<RouterView announceRouteChanges={false}>` when you use `<RouteAnnouncer>` (a dev warning fires when both announce) (reach for it when you need `format` / politeness / `clearAfter` control the built-in doesn't offer).
 
 Imported from the `@pyreon/a11y/router` subpath (with `@pyreon/router` as an **optional** peer dependency), so the base `@pyreon/a11y` entry stays router-free for consumers who only use `announce()` / `<VisuallyHidden>` / `createA11yId`. SSR-safe — the hook registers only in `onMount` and `announce()` no-ops on the server.
 
