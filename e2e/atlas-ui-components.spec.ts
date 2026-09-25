@@ -23,6 +23,14 @@ const TINY_BY_DESIGN: Record<string, string> = {
 async function componentIds(page: Page): Promise<string[]> {
   await page.goto('/')
   await expect(page.getByTestId('canvas-name')).not.toHaveText('')
+  // A component's PARTS start collapsed under it (the tree opens as the list
+  // of components) — open every part list first, so this reads the whole
+  // library rather than the top level.
+  for (let guard = 0; guard < 50; guard += 1) {
+    const closed = page.locator('[data-testid^="group-"][aria-expanded="false"]')
+    if ((await closed.count()) === 0) break
+    await closed.first().click()
+  }
   // Every sidebar component row carries its id as `data-testid="component-<id>"`,
   // and `<id>` is the route. Read from the page rather than a list written
   // here, so the library and the gate cannot drift apart.
@@ -93,5 +101,52 @@ test.describe('atlas build — @pyreon/ui-components', () => {
     const hr = page.getByTestId('canvas-preview').locator('hr')
     const box = await hr.boundingBox()
     expect(box?.width ?? 0).toBeGreaterThan(300)
+  })
+})
+
+/**
+ * The shell's LAYOUT contracts, on the real 108-component library — the shape
+ * (folders beside their namesake components, parts nested) that the synthetic
+ * fixtures do not have.
+ */
+test.describe('atlas build — shell layout', () => {
+  test('a link to a part lands with its row open, marked and on screen', async ({ page }) => {
+    // Regression: the row sat inside a collapsed part list three screens
+    // down the tree, nothing highlighted where the eye starts.
+    await page.goto('/accordion-item/')
+    const row = page.getByTestId('component-accordion-item')
+    await expect(row).toHaveAttribute('aria-current', 'true')
+    await expect(row).toBeInViewport()
+    // The folder named after `Accordion` IS the Accordion row: one row, not a
+    // leaf plus a same-named folder header.
+    await expect(page.getByRole('button', { name: 'Accordion', exact: true })).toHaveCount(1)
+  })
+
+  test('on a phone the shell is one row, the tree a drawer, the panels a sheet', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto('/button/')
+    await expect(page.getByTestId('canvas-name')).toHaveText('Button')
+    // One 56px top bar — it used to wrap to three rows (163px).
+    const header = await page.locator('header').boundingBox()
+    expect(header?.height ?? 0).toBeLessThanOrEqual(64)
+    const previewWidth = async () => (await page.getByTestId('canvas-preview').boundingBox())?.width ?? 0
+    const before = await previewWidth()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+
+    // The drawer OVERLAYS the canvas instead of squeezing it to ~80px.
+    await page.getByTestId('toggle-drawer').click()
+    await expect(page.getByTestId('sidebar-drawer')).toBeVisible()
+    expect(await previewWidth()).toBe(before)
+    // Choosing a component is navigation — the drawer closes onto it.
+    await page.getByTestId('component-badge').click()
+    await expect(page.getByTestId('sidebar-drawer')).toHaveCount(0)
+    await expect(page.getByTestId('canvas-name')).toHaveText('Badge')
+
+    // The panels are one labelled tap away, as a sheet.
+    await page.getByTestId('toggle-panel').click()
+    await expect(page.getByTestId('panel-sheet')).toBeVisible()
+    await expect(page.getByTestId('addon-tab-controls')).toBeInViewport()
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('panel-sheet')).toHaveCount(0)
   })
 })

@@ -12,5 +12,11 @@ WORKDIR /app
 # (SSR bundle — externals are node:* builtins only) + dist/client/
 # (static assets). No node_modules needed at runtime.
 COPY --from=build /app/dist ./dist
+# Production mode: dev-only diagnostics stay off and error responses stay
+# generic. The server bundle also bakes this in; setting it here covers
+# anything read at runtime.
+ENV NODE_ENV=production
+# Never run the server as root.
+USER bun
 EXPOSE 3000
 CMD ["bun", "dist/index.ts"]

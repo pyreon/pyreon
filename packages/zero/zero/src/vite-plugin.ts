@@ -77,6 +77,7 @@ import { seoPlugin } from "./seo";
 import { ssgPlugin } from "./ssg-plugin";
 import { ssrPlugin } from "./ssr-plugin";
 import { themeScript } from "./theme";
+import { serializeServerConfig } from "./server-config";
 import type { ZeroConfig } from "./types";
 
 import { withSilent } from "@pyreon/reactivity";
@@ -893,6 +894,12 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 					// Public env snapshot — inlined into client + SSR bundles so
 					// `publicEnv()` works in the browser. Only ZERO_PUBLIC_* vars.
 					__ZERO_PUBLIC_ENV__: JSON.stringify(publicEnvVars),
+					// The serializable part of this config, read by
+					// `createServer` in the production server bundle. The
+					// generated server entry cannot import vite.config.ts,
+					// so without it `mode: 'isr'`, `base`, `ssr.mode` and
+					// `routeRules` never reached the runtime.
+					__ZERO_SERVER_CONFIG__: JSON.stringify(serializeServerConfig(config).value),
 					...routerLoadersDefine,
 				},
 			};
