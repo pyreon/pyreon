@@ -49,6 +49,20 @@ try {
   await page.waitForFunction(() => '__chartsLibsProf' in globalThis, undefined, { timeout: 30_000 })
 
   type Prof = { prepare(fw: string, n: number): void; mount(): void; update(): void; teardown(): void; mass(): number }
+  // --history: mount 1k / 10k / 100k charts 30× each first, the state the
+  // timed scenario's 1M cell starts from (it runs after the smaller cells).
+  // Measured: Pyreon's 1M mount is ~31 ms on a fresh page and ~50 ms after
+  // this history; uPlot is ~13 ms either way.
+  if (process.argv.includes('--history')) {
+    await page.evaluate(async (fw) => {
+      const P = (globalThis as never as { __chartsLibsProf: { prepare(f: string, n: number): void; sampleMount(): Promise<unknown> } }).__chartsLibsProf
+      for (const n of [1000, 10000, 100000]) {
+        P.prepare(fw, n)
+        for (let i = 0; i < 30; i++) await P.sampleMount()
+      }
+    }, FW)
+    console.log('[charts] --history: ran 1k/10k/100k × 30 mounts first')
+  }
   // Warm + gate: the op must actually draw.
   const mass = await page.evaluate(
     ({ fw, n, op }) => {

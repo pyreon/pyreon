@@ -804,6 +804,39 @@ export function setupChartsLibsProfile(): void {
       await traced(__updateOnly)
       return inspect(h).mass
     },
+    // SETTLED: the same start, but the window runs through TWO more frames —
+    // frame N paints the chart, a large accessible table fills in a task after
+    // frame N+1's paint (rAF → setTimeout), and frame N+2 lays it out. The
+    // window closes in the first task after N+2. Idle vsync time is inside the
+    // window; the trace driver reports BUSY time (window − idle), which is the
+    // total main-thread work a mount costs including its deferred table.
+    // Returns the filled table's body-row count (0 when there is no table).
+    sampleMountSettled: async (): Promise<{ mass: number; tableRows: number }> => {
+      await settle()
+      forceGc()
+      await settle()
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => {
+          performance.mark('cl-w0')
+          __mountOnly()
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              const ch = new MessageChannel()
+              ch.port1.onmessage = () => {
+                for (const c of h.querySelectorAll('canvas')) c.getContext('2d')?.getImageData(0, 0, 1, 1)
+                performance.mark('cl-w1')
+                ch.port1.close()
+                resolve()
+              }
+              ch.port2.postMessage(0)
+            })
+          })
+        })
+      })
+      const out = { mass: inspect(h).mass, tableRows: h.querySelectorAll('table tbody tr').length }
+      __teardownOnly()
+      return out
+    },
   }
   async function traced(op: () => void): Promise<void> {
     await settle()

@@ -24,7 +24,7 @@ import { spawn } from 'node:child_process'
 import { chromium } from 'playwright'
 
 const FW = process.argv[2] ?? 'Pyreon (PlotChart)'
-const OP = (process.argv[3] ?? 'mount') as 'mount' | 'update'
+const OP = (process.argv[3] ?? 'mount') as 'mount' | 'update' | 'settled'
 const N = Number(process.argv[4] ?? 1000)
 const K = Number(process.argv[5] ?? (N >= 1_000_000 ? 12 : 30))
 const PORT = process.env.CP_PORT ?? '4184'
@@ -53,7 +53,7 @@ try {
   await page.goto(`http://localhost:${PORT}/?profileChartsLibs=1`)
   await page.waitForFunction(() => '__chartsLibsProf' in globalThis, undefined, { timeout: 30_000 })
 
-  type Prof = { prepare(fw: string, n: number): void; mount(): void; sampleMount(): Promise<number>; sampleUpdate(): Promise<number> }
+  type Prof = { prepare(fw: string, n: number): void; mount(): void; sampleMount(): Promise<number>; sampleUpdate(): Promise<number>; sampleMountSettled(): Promise<{ mass: number; tableRows: number }> }
   const run = (count: number) =>
     page.evaluate(
       async ({ fw, n, op, k }) => {
@@ -61,16 +61,38 @@ try {
         p.prepare(fw, n)
         if (op === 'update') p.mount()
         let minMass = Infinity
-        for (let i = 0; i < k; i++) minMass = Math.min(minMass, op === 'mount' ? await p.sampleMount() : await p.sampleUpdate())
-        return minMass
+        let tableRows = -1
+        for (let i = 0; i < k; i++) {
+          if (op === 'settled') {
+            const r = await p.sampleMountSettled()
+            minMass = Math.min(minMass, r.mass)
+            tableRows = tableRows < 0 ? r.tableRows : Math.min(tableRows, r.tableRows)
+          } else minMass = Math.min(minMass, op === 'mount' ? await p.sampleMount() : await p.sampleUpdate())
+        }
+        return { minMass, tableRows }
       },
       { fw: FW, n: N, op: OP, k: count },
     )
+  // --history: mount 1k / 10k / 100k charts 30× each first, the state the
+  // timed scenario's 1M cell starts from (it runs after the smaller cells).
+  // Measured: Pyreon's 1M mount is ~31 ms on a fresh page and ~50 ms after
+  // this history; uPlot is ~13 ms either way.
+  if (process.argv.includes('--history')) {
+    await page.evaluate(async (fw) => {
+      const P = (globalThis as never as { __chartsLibsProf: { prepare(f: string, n: number): void; sampleMount(): Promise<unknown> } }).__chartsLibsProf
+      for (const n of [1000, 10000, 100000]) {
+        P.prepare(fw, n)
+        for (let i = 0; i < 30; i++) await P.sampleMount()
+      }
+    }, FW)
+    console.log('[charts] --history: ran 1k/10k/100k × 30 mounts first')
+  }
   await run(5) // warm
   await browser.startTracing(page, {
     categories: ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'v8', 'blink.user_timing', 'disabled-by-default-v8.gc', 'blink'],
   })
-  const minMass = await run(K)
+  const { minMass, tableRows } = await run(K)
+  if (OP === 'settled') console.log(`[charts-trace] accessible table body rows at window close (min over samples): ${tableRows}`)
   const buf = await browser.stopTracing()
   if (minMass < 400) throw new Error(`[charts-trace] ${FW}: min series mass ${minMass} — nothing drawn`)
 
@@ -107,6 +129,8 @@ try {
     totals.set('untraced', (totals.get('untraced') ?? 0) + (w1 - w0 - covered))
   }
   const ms = (us: number): string => (us / 1000 / K).toFixed(3).padStart(8)
+  const idle = totals.get('untraced') ?? 0
+  console.log(`[charts-trace] BUSY main-thread time per window (window − untraced idle): ${ms(windowSum - idle).trim()}ms`)
   console.log(`\n=== ${FW} · ${OP} ${N.toLocaleString('en')} · ${K} traced windows · mean window ${ms(windowSum).trim()}ms (tracing overhead included) ===`)
   const rows = [...totals].sort((a, b) => b[1] - a[1])
   const merged = new Map<string, number>()
