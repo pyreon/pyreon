@@ -22,7 +22,13 @@ import {
   type ResponseKind,
 } from './endpoint'
 import { AbortError, HttpError, TimeoutError, isAbortError } from './errors'
-import { buildHttpError, createResponsePromise, type HttpResponsePromise, type ParseContext } from './response'
+import {
+  buildHttpError,
+  createResponsePromise,
+  type BodyLink,
+  type HttpResponsePromise,
+  type ParseContext,
+} from './response'
 import { resolveAgainstAmbientOrigin } from './request-context'
 import { linkSignals } from './signal'
 import { fetchTransport } from './transport'
@@ -242,6 +248,38 @@ function fromResolved(resolved: ResolvedConfig): HttpClient {
     const parse = resolved.validateSource
       ? { validate: resolved.validateSource(), schema: resolved.parse.schema }
       : resolved.parse
+    const timeoutMs = options.timeout ?? resolved.timeout
+    // Built synchronously so a decoder called in the same tick
+    // (`api.get(x).json()`) can CLAIM the body before the headers arrive —
+    // see `BodyLink`. `link` itself is created inside `exec`.
+    let link: ReturnType<typeof linkSignals> | undefined
+    let httpRequest: HttpRequest | undefined
+    let claims = 0
+    let settled = false
+    let released = false
+    const releaseLink = (): void => {
+      if (released) return
+      released = true
+      link?.cleanup()
+    }
+    const bodyLink: BodyLink = {
+      get signal() {
+        return link?.signal
+      },
+      claim() {
+        claims++
+      },
+      release() {
+        claims--
+        if (claims <= 0 && settled) releaseLink()
+      },
+      abortError() {
+        return link?.timedOut()
+          ? new TimeoutError(typeof timeoutMs === 'number' ? timeoutMs : 0, httpRequest)
+          : new AbortError(httpRequest)
+      },
+    }
+
     const exec = (async (): Promise<HttpResponse> => {
       const headers = new Headers(folded.base)
       for (const source of folded.dynamic) {
@@ -252,9 +290,13 @@ function fromResolved(resolved: ResolvedConfig): HttpClient {
       // On the server a root-relative URL has no origin and `fetch`
       // rejects; resolve it against the inbound request when one is in
       // scope. A no-op in the browser, where the document supplies it.
+      // An accessor `baseUrl` is read ONCE per request, so the URL and the
+      // origin boundary `bearer()` enforces (`req.baseUrl`) always agree.
+      const baseUrl =
+        typeof resolved.baseUrl === 'function' ? resolved.baseUrl() : resolved.baseUrl
       const url = resolveAgainstAmbientOrigin(
         buildUrl(
-          typeof resolved.baseUrl === 'function' ? resolved.baseUrl() : resolved.baseUrl,
+          baseUrl,
           path,
           options.params,
           options.query,
@@ -262,10 +304,11 @@ function fromResolved(resolved: ResolvedConfig): HttpClient {
         ),
       )
 
-      const link = linkSignals(options.signal, options.timeout ?? resolved.timeout)
-      const httpRequest: HttpRequest = {
+      link = linkSignals(options.signal, timeoutMs)
+      const req: HttpRequest = {
         method,
         url,
+        baseUrl,
         headers,
         body,
         signal: link.signal,
@@ -278,43 +321,46 @@ function fromResolved(resolved: ResolvedConfig): HttpClient {
             ? {}
             : { ...resolved.meta },
       }
+      httpRequest = req
 
+      let ok = false
       try {
         // Never dispatch an already-cancelled request. `fetch` rejects
         // immediately on a pre-aborted signal, and a client that instead
         // performs the call would issue real traffic for work the caller
         // has already abandoned — the exact shape a rapidly-retyped
         // autocomplete produces.
-        if (link.signal?.aborted) throw new AbortError(httpRequest)
+        if (link.signal?.aborted) throw new AbortError(req)
 
-        const response = await dispatch(httpRequest)
+        const response = await dispatch(req)
         const shouldThrow = options.throwHttpErrors ?? resolved.throwHttpErrors
-        if (shouldThrow && !response.ok) throw await buildHttpError(response, options.errors, parse)
+        if (shouldThrow && !response.ok) {
+          throw await buildHttpError(response, options.errors, parse, link.signal)
+        }
+        ok = true
         return response
       } catch (cause) {
         // A timeout surfaces from the transport as an abort — re-label it,
         // because "timed out after 30000ms" and "the user navigated away"
         // demand opposite handling (retry vs. stay silent).
         if (link.timedOut() && isAbortError(cause)) {
-          throw new TimeoutError(
-            typeof (options.timeout ?? resolved.timeout) === 'number'
-              ? (options.timeout ?? resolved.timeout) as number
-              : 0,
-            httpRequest,
-          )
+          throw new TimeoutError(typeof timeoutMs === 'number' ? timeoutMs : 0, req)
         }
         if (isAbortError(cause) && !(cause instanceof AbortError)) {
-          throw new AbortError(httpRequest)
+          throw new AbortError(req)
         }
         throw cause
       } finally {
-        // Leak class I: the timeout timer AND the caller-signal listener
-        // are released on every path, success included.
-        link.cleanup()
+        // Leak classes I + D: the timeout timer AND the caller-signal
+        // listener are released on every path. The ONE deferral: a decoder
+        // has claimed the body, so the link must keep covering the body read
+        // (abort + timeout) — the decoder releases it when the read settles.
+        settled = true
+        if (!ok || claims <= 0) releaseLink()
       }
     })()
 
-    return createResponsePromise(exec, parse)
+    return createResponsePromise(exec, parse, bodyLink)
   }
 
   const client: HttpClient = {

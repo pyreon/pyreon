@@ -51,7 +51,14 @@ The TipTap engine (`@tiptap/core` + `@tiptap/starter-kit`) is **lazy-loaded on m
 
 `createRichTextEditor(config?)` returns a framework-independent instance whose document state is exposed as signals. Create it once (e.g. at component setup), then mount it with `<RichText>`.
 
-```tsx
+```ts
+// @check
+import { createRichTextEditor } from '@pyreon/rich-text'
+import type { JSONContent } from '@pyreon/rich-text'
+
+declare function save(json: JSONContent): void
+declare function report(err: unknown): void
+
 const editor = createRichTextEditor({
   content: '<p>Initial content</p>',  // HTML string OR ProseMirror JSON
   editable: true,                     // false → read-only

@@ -127,3 +127,51 @@ describe('an endpoint that declares `errors`', () => {
     expectTypeOf<Extract<EndpointError<typeof plain>, { matched: string }>>().toBeNever()
   })
 })
+
+// ─── merge with #3647: the error-body read honours abort, timeout, redaction ──
+
+describe('reading an error body is covered by the request signal', () => {
+  /** A body that never finishes and is NOT wired to the request signal —
+   * the mock / custom-transport shape, where only the client's race can stop it. */
+  const hangingError: import('../types').Transport = async (request) => {
+    const { toHttpResponse } = await import('../transport')
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"partial":'))
+      },
+    })
+    return toHttpResponse(new Response(body, { status: 500 }), request)
+  }
+
+  it('the timeout covers a hung error body and surfaces as TimeoutError', async () => {
+    const { TimeoutError } = await import('../errors')
+    const api = createHttp({ transport: hangingError, timeout: 30 })
+    await expect(api.get('/x')).rejects.toBeInstanceOf(TimeoutError)
+  })
+
+  it("the caller's abort covers a hung error body and surfaces as AbortError", async () => {
+    const { AbortError } = await import('../errors')
+    const api = createHttp({ transport: hangingError, timeout: false })
+    const controller = new AbortController()
+    const pending = api.get('/x', { signal: controller.signal })
+    await new Promise((r) => setTimeout(r, 5))
+    controller.abort()
+    await expect(pending).rejects.toBeInstanceOf(AbortError)
+  })
+
+  it("'warn' on a mismatched error body never logs the query string", async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    // A string mock path matches the END of path+query, so name the query.
+    const ep = createHttp({
+      baseUrl: '/api',
+      use: [createMock([{ path: '/users/wrong?token=s3cret', status: 404, json: { nope: true } }]).middleware],
+      schema: standardSchema,
+      validate: 'warn',
+    }).endpoint('GET /users/:id', { errors: { 404: NotFound } })
+    await ep({ params: { id: 'wrong' }, query: { token: 's3cret' } }).catch(() => undefined)
+    const logged = String(warn.mock.calls[0]?.[0])
+    warn.mockRestore()
+    expect(logged).toContain('did not match its declared `404` error schema')
+    expect(logged).not.toContain('s3cret')
+  })
+})
