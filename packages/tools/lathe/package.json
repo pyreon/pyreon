@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/lathe",
   "version": "0.51.0",
-  "description": "Spec-to-Pyreon code generator \u2014 OpenAPI in, typed schemas / endpoints / queries out, with a multiplatform mode that proves its own output lowers to Swift and Kotlin.",
+  "description": "Spec-to-Pyreon code generator — OpenAPI in, typed schemas / endpoints / queries out, with a multiplatform mode that proves its own output lowers to Swift and Kotlin.",
   "license": "MIT",
   "publishConfig": {
     "access": "public"
@@ -59,7 +59,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
-    "bench": "bun bench/scaling.ts"
+    "bench": "bun bench/scaling.ts",
+    "corpus": "bun scripts/corpus.ts"
   },
   "devDependencies": {
     "@faker-js/faker": "^10.1.0",
@@ -79,7 +80,8 @@
   },
   "dependencies": {
     "@pyreon/config": "workspace:*",
-    "@pyreon/reactivity": "workspace:*"
+    "@pyreon/reactivity": "workspace:*",
+    "yaml": "^2.9.1"
   },
   "peerDependencies": {
     "@pyreon/native-compiler": "workspace:*"

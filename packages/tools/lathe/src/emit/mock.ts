@@ -12,7 +12,7 @@
  * runs turns every snapshot test into a flake.
  */
 
-import type { IrDocument, IrField, IrOperation, IrType } from '../core/ir'
+import type { IrDocument, IrField, IrNumberType, IrOperation, IrStringType, IrType } from '../core/ir'
 import { byTag, CLIENT_FILE, endpointSpec, tagFile } from './client'
 import type { ClientName } from './client-runtime'
 import { jsonLiteral, q, regexLiteral, relativeSpecifier, SourceFile } from './writer'
@@ -142,7 +142,10 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
  * lexical half.
  */
 function mockPath(op: IrOperation, pyreon: boolean): string {
-  if (!pyreon || op.pathParams.length === 0) return q(op.path)
+  // The generated adapters match on the DECLARED path, host included when
+  // the operation has its own server.
+  if (!pyreon) return q(`${op.baseUrl ?? ''}${op.path}`)
+  if (op.pathParams.length === 0) return q(op.path)
   const source = op.path
     .split('/')
     .map((seg) => (seg.startsWith(':') ? '[^/?#]+' : seg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
@@ -161,8 +164,13 @@ function fixture(
   if (field?.example !== undefined) return field.example
   if (depth > 6) return null
   switch (type.kind) {
+    case 'enum':
+      return type.values[0]
+    case 'nullable':
+      // The non-null shape: a fixture of `null` renders nothing, so it tests
+      // nothing. A nullable OPTIONAL field is omitted below instead.
+      return fixture(type.inner, doc, depth, field, index)
     case 'string': {
-      if (type.enum && type.enum.length > 0) return type.enum[0]
       switch (type.format) {
         case 'email':
           return 'user@example.com'
@@ -175,27 +183,30 @@ function fixture(
         case 'date-time':
           return '2026-01-01T00:00:00Z'
         default:
-          return field ? `sample ${field.name}${index > 0 ? ` ${index}` : ''}` : 'sample'
+          return fitLength(field ? `sample ${field.name}${index > 0 ? ` ${index}` : ''}` : 'sample', type)
       }
     }
     case 'number':
-      return type.integer ? Math.max(1, index) : 1.5
+      return numberFixture(type, index)
     case 'boolean':
       return true
     case 'null':
       return null
     case 'unknown':
       return null
-    case 'array':
+    case 'array': {
       // Two elements: one is indistinguishable from a scalar in a UI, three is
       // noise. Two proves the list renders. The INDEX is threaded so the
       // elements differ — identical elements share an id, which collapses a
       // keyed `<For>` to one row and trips the duplicate-key warning, so a
       // fixture that ships them tests the opposite of what it looks like.
-      return [
-        fixture(type.items, doc, depth + 1, undefined, 1),
-        fixture(type.items, doc, depth + 1, undefined, 2),
-      ]
+      //
+      // `minItems` / `maxItems` win over the two: a fixture the generated
+      // schema rejects fails every test that uses it, with a validation error
+      // about data the test never wrote.
+      const n = Math.min(Math.max(2, type.minItems ?? 0), type.maxItems ?? Number.POSITIVE_INFINITY)
+      return Array.from({ length: n }, (_, i) => fixture(type.items, doc, depth + 1, undefined, i + 1))
+    }
     case 'ref': {
       const model = doc.models.find((m) => m.name === type.name)
       return model ? fixture(model.type, doc, depth + 1, undefined, index) : null
@@ -209,13 +220,39 @@ function fixture(
         // they are an ENUM — an enum drives a visible variant (a status badge,
         // a filter), so a fixture that omits it renders the one state a UI
         // never has to handle. Other optionals stay out to keep fixtures small.
-        const isEnum = f.type.kind === 'string' && f.type.enum !== undefined
+        const base = f.type.kind === 'nullable' ? f.type.inner : f.type
+        const isEnum = base.kind === 'enum'
         if (!f.required && f.example === undefined && !isEnum) continue
-        out[f.name] = f.nullable && !f.required ? null : fixture(f.type, doc, depth + 1, f, index)
+        out[f.name] = fixture(f.type, doc, depth + 1, f, index)
       }
       return out
     }
   }
+}
+
+/** Pad or cut a sample string into `[minLength, maxLength]`. */
+function fitLength(value: string, type: IrStringType): string {
+  let out = value
+  if (type.maxLength !== undefined) out = out.slice(0, type.maxLength)
+  if (type.minLength !== undefined && out.length < type.minLength) out = out.padEnd(type.minLength, 'x')
+  return out
+}
+
+/** A sample number inside the spec's bounds, distinct per index. */
+function numberFixture(type: IrNumberType, index: number): number {
+  const step = type.multipleOf ?? (type.integer ? 1 : 0.5)
+  const lo = type.minimum ?? (type.exclusiveMinimum !== undefined ? type.exclusiveMinimum + step : undefined)
+  const hi = type.maximum ?? (type.exclusiveMaximum !== undefined ? type.exclusiveMaximum - step : undefined)
+  const base = lo !== undefined ? Math.ceil(lo / step) * step : type.integer ? 1 : 1.5
+  const value = base + Math.max(0, index - 1) * step
+  const picked = hi !== undefined && value > hi ? (lo !== undefined ? Math.ceil(lo / step) * step : Math.floor(hi / step) * step) : value
+  return type.integer ? Math.round(picked) : roundToStep(picked, step)
+}
+
+/** `3 * 0.1` is `0.30000000000000004`; a fixture should read `0.3`. */
+function roundToStep(value: number, step: number): number {
+  const decimals = (String(step).split('.')[1] ?? '').length
+  return Number(value.toFixed(Math.min(decimals + 2, 20)))
 }
 
 /** JSON literal, with every line after the first indented to `pad`. */

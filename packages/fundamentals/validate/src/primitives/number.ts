@@ -8,6 +8,7 @@
 import { Schema as SchemaBase, attachCheck, makeCheckIssue } from '../core/schema'
 import { typeIssue } from '../core/issue'
 import type { CheckOpts, ParseCtx } from '../core/ops'
+import { isMultipleOf } from '../core/multiple'
 
 export class NumberSchema extends SchemaBase<number> {
   readonly _kind = 'number' as const
@@ -192,22 +193,24 @@ export class NumberSchema extends SchemaBase<number> {
   }
 
   multipleOf(n: number, opts?: CheckOpts): this {
-    return this._cloneWith(
-      attachCheck({ kind: 'check:number:multiple-of', n, opts }, (value, ctx) => {
-        if (typeof value !== 'number' || value % n === 0) return
-        ctx.issues.push(
-          makeCheckIssue(
-            'not_multiple_of',
-            `Must be a multiple of ${n}`,
-            'validate.number.not-multiple-of',
-            { divisor: n, actual: value },
-            `Must be a multiple of ${n}`,
-            ctx,
-            opts,
-          ),
-        )
-      }),
-    )
+    const op = attachCheck({ kind: 'check:number:multiple-of', n, opts }, (value, ctx) => {
+      if (typeof value !== 'number' || isMultipleOf(value, n)) return
+      ctx.issues.push(
+        makeCheckIssue(
+          'not_multiple_of',
+          `Must be a multiple of ${n}`,
+          'validate.number.not-multiple-of',
+          { divisor: n, actual: value },
+          `Must be a multiple of ${n}`,
+          ctx,
+          opts,
+        ),
+      )
+    })
+    // The JIT's verdict for a FRACTIONAL step (an integer one inlines `%`):
+    // the same float-safe test, without the issue machinery.
+    ;(op as { _pred?: (v: number) => boolean })._pred = (v) => isMultipleOf(v, n)
+    return this._cloneWith(op)
   }
 
   /** Strictly greater than `n` (exclusive lower bound). `gte` is the inclusive form. */

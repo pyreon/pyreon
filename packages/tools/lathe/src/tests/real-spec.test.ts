@@ -75,7 +75,7 @@ describe('shapes only a real spec produces', () => {
     expect(out).not.toContain('s.discriminatedUnion')
     expect(out).toContain('s.union(')
     // Reported, not silently downgraded.
-    expect(r.doc.notes.some((n) => n.message.includes('non-object member'))).toBe(true)
+    expect(r.doc.notes.some((n) => n.message.includes('not an object'))).toBe(true)
   })
 
   it('keeps a discriminated union when every member IS an object with a provable tag', () => {

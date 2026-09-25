@@ -25,12 +25,12 @@ import type { IrDocument, IrOperation, IrType } from '../core/ir'
 
 const op = (over: Partial<IrOperation> = {}): IrOperation => ({
   id: 'getUser', tag: 'users', method: 'GET', path: '/users/{id}',
-  pathParams: [], queryParams: [],
+  pathParams: [], queryParams: [], headerParams: [], cookieParams: [],
   ...over,
 } as IrOperation)
 
 const param = (name: string, required = true, type: IrType = { kind: 'string' }) =>
-  ({ name, type, required, nullable: false })
+  ({ name, type, required })
 
 const doc = (over: Partial<IrDocument> = {}): IrDocument => ({
   title: 'My API', version: '1.2.3', baseUrl: 'https://spec.example.com',
@@ -147,7 +147,7 @@ describe('the usage snippet is copyable', () => {
         queryParams: [
           param('page', true, { kind: 'number', integer: true }),
           param('active', true, { kind: 'boolean' }),
-          param('status', true, { kind: 'string', enum: ['open', 'closed'] }),
+          param('status', true, { kind: 'enum', values: ['open', 'closed'] }),
         ],
       })],
     }))

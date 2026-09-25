@@ -39,9 +39,21 @@ const CASES: Record<IrNoteCode, [Record<string, unknown>, Record<string, unknown
     { components: { schemas: { X: { $ref: 'other.yaml#/X' } } } },
     { components: { schemas: { X: { $ref: '#/components/schemas/Y' }, Y: { type: 'string' } } } },
   ],
+  // A scalar `const` IS enforced (a one-value enum); only a non-scalar one --
+  // which no JSON literal schema can spell -- is a loss.
   'unsupported-const': [
+    { components: { schemas: { X: { const: { a: 1 } } } } },
     { components: { schemas: { X: { type: 'string', const: 'a' } } } },
-    { components: { schemas: { X: { type: 'string', enum: ['a'] } } } },
+  ],
+  'int64-precision': [
+    { components: { schemas: { X: { type: 'integer', format: 'int64' } } } },
+    { components: { schemas: { X: { type: 'integer', format: 'int32' } } } },
+  ],
+  'cyclic-ref': [
+    { $defs: { A: { $ref: '#/$defs/B' }, B: { $ref: '#/$defs/A' } }, components: { schemas: { X: { $ref: '#/$defs/A' } } } },
+    // A recursive schema that passes through a real object is represented
+    // (hoisted into a model), not a loss.
+    { $defs: { N: { type: 'object', properties: { next: { $ref: '#/$defs/N' } } } }, components: { schemas: { X: { $ref: '#/$defs/N' } } } },
   ],
   'missing-operation-id': [
     { paths: { '/x': { get: { responses: {} } } } },
@@ -56,9 +68,12 @@ const CASES: Record<IrNoteCode, [Record<string, unknown>, Record<string, unknown
     get({}),
   ],
   'no-servers': [{ servers: [] }, {}],
+  // Header and cookie parameters are typed call arguments now; what is left
+  // with no place in the call is a location 3.x does not define (`body` is
+  // Swagger 2's).
   'unsupported-parameter': [
+    get({ parameters: [{ name: 'payload', in: 'body', schema: { type: 'string' } }] }),
     get({ parameters: [{ name: 'X-Id', in: 'header', schema: { type: 'string' } }] }),
-    get({ parameters: [{ name: 'id', in: 'query', schema: { type: 'string' } }] }),
   ],
   'parameter-serialization': [
     get({ parameters: [{ name: 'f', in: 'query', style: 'deepObject', schema: { type: 'object' } }] }),
@@ -121,7 +136,7 @@ describe('note locations are real JSON pointers', () => {
   })
 
   it('a parameter note points at its INDEX, which is where it lives', () => {
-    const d = doc(get({ parameters: [{ name: 'q', in: 'query' }, { name: 'X-A', in: 'header' }] }))
+    const d = doc(get({ parameters: [{ name: 'q', in: 'query' }, { name: 'X-A', in: 'formData' }] }))
     expect(d.notes.find((n) => n.code === 'unsupported-parameter')?.at).toBe('#/paths/~1x/get/parameters/1')
   })
 
@@ -135,7 +150,7 @@ describe('note locations are real JSON pointers', () => {
         },
       },
     })
-    const note = d.notes.find((n) => n.message.includes('cannot be proven'))
+    const note = d.notes.find((n) => n.message.includes('discriminator `t`'))
     expect(note?.at).toBe('#/components/schemas/my-shape')
   })
 })
@@ -151,7 +166,7 @@ describe('the docs page documents every note code, with its real severity', () =
       'utf8',
     )
     const rows = new Map<string, string>()
-    for (const m of page.matchAll(/^\| `([a-z-]+)`(?: \/ `([a-z-]+)`)? \| (loss|choice) \|/gm)) {
+    for (const m of page.matchAll(/^\| `([a-z0-9-]+)`(?: \/ `([a-z0-9-]+)`)? \| (loss|choice) \|/gm)) {
       rows.set(m[1] as string, m[3] as string)
       if (m[2]) rows.set(m[2], m[3] as string)
     }

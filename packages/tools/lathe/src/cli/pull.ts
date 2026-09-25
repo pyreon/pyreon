@@ -238,7 +238,32 @@ export async function pullSpec(url: string, dest: string, opts: PullOptions = {}
   }
   process.stdout.write(
     `  ${previous === undefined ? 'fetched' : 'updated'}  ${dest}  ${dim(`${body.length} bytes`)}\n` +
-      '  Review the diff, then run `lathe generate`.\n',
+      '  Review the diff, then run `lathe generate`.\n' +
+      relativeServerAdvice(parsed, url),
   )
   return 0
+}
+
+/**
+ * A RELATIVE `servers[0].url` means "relative to where the spec was served",
+ * and `pull` is the only step that knows where that was -- once the file is on
+ * disk the origin is gone. The spec is written byte-for-byte (rewriting a
+ * vendor's file would make the next pull a spurious diff), so the resolved URL
+ * is printed as the `baseUrl` to configure instead.
+ */
+export function relativeServerAdvice(parsed: unknown, specUrl: string): string {
+  const servers = (parsed as { servers?: unknown }).servers
+  const first = Array.isArray(servers) ? (servers[0] as { url?: unknown } | undefined) : undefined
+  const url = typeof first?.url === 'string' ? first.url : undefined
+  if (!url || /^[a-z][a-z\d+.-]*:/i.test(url) || url.includes('{')) return ''
+  let resolved: string
+  try {
+    resolved = new URL(url, specUrl).href.replace(/\/$/, '')
+  } catch {
+    return ''
+  }
+  return (
+    `  servers[0].url \`${url}\` is relative to the spec's URL, so it means ${resolved}.\n` +
+    `  Set \`lathe: { baseUrl: '${resolved}' }\` so the client (and native) use it.\n`
+  )
 }

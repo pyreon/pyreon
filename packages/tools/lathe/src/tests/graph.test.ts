@@ -105,6 +105,25 @@ describe('model dependency graph', () => {
     expect(() => evaluate(src)).not.toThrow()
   })
 
+  it('orders a dependency reached only through a NULLABLE / union / array wrapper', () => {
+    // The dependency walk once skipped the `nullable` kind, so a model named
+    // only through a nullable field was emitted before its dependency --
+    // Twilio, OpenAI and DigitalOcean all threw `Cannot access … before
+    // initialization` at import. Each wrapper kind is exercised here.
+    const src = spec(`    Alpha:
+      type: object
+      properties:
+        a: { $ref: '#/components/schemas/Zulu', nullable: true }
+        b: { type: array, items: { $ref: '#/components/schemas/Yankee' }, nullable: true }
+        c: { oneOf: [{ $ref: '#/components/schemas/Xray' }, { type: string }] }
+    Xray: { type: object, properties: { x: { type: string } } }
+    Yankee: { type: object, properties: { y: { type: string } } }
+    Zulu: { type: object, properties: { z: { type: string } } }`)
+    const out = generate(src, resolveConfig({ input: 'x', plugins: ['schemas'] }))
+    const file = out.files.find((f) => f.path === 'schemas.ts')?.contents ?? ''
+    expect(() => evaluate(file)).not.toThrow()
+  })
+
   it('breaks a `$ref` CYCLE with s.lazy rather than emitting an unorderable file', () => {
     // A self-referencing node cannot be ordered at all; `s.lazy` defers the
     // read to first use, which is what a cycle needs.

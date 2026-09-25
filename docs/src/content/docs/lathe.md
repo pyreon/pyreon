@@ -87,11 +87,30 @@ a loss is reported once instead of rediscovered by six emitters — and it lands
 in the generated reference pages, not only in the terminal. See
 [Losses and choices](#losses-and-choices).
 
-### The spec parser is first-party
+### YAML is read strictly
 
-Including a YAML reader scoped to the OpenAPI subset, which **refuses** anchors,
-merge keys, explicit tags and tab indentation with a line number rather than
-mis-reading them. There is no third-party spec dependency to trust.
+YAML is parsed by the [`yaml`](https://eemeli.org/yaml/) package (ISC, zero
+dependencies) as YAML 1.2 core, so the multi-line scalars, `- >-` items and
+nested sequences every YAML dumper writes all read correctly. Anchors, aliases
+and merge keys are resolved. What the reader **refuses**, with a line number,
+is everything that would otherwise produce a document the author did not
+write: duplicate keys, a multi-document stream, custom tags (`!Ref`), a
+recursive alias, `.inf` / `.nan`, and tab indentation.
+
+### What the reader represents
+
+The input layer resolves a spec's semantics once, so no emitter rediscovers them:
+
+- **Nullability everywhere** — 3.0 `nullable`, 3.1 `type: [X, 'null']` and `anyOf: [X, {type: 'null'}]` on any node, component models included.
+- **`enum` / `const` of any JSON scalar** (numbers, booleans, `null`), and constraints on the type itself — `minLength`, `pattern`, 3.0 and 3.1 exclusive bounds, `multipleOf` (float-safe for fractional steps), `minItems` / `maxItems` / `uniqueItems` — so they apply to array items and alias models too.
+- **Composition** — `allOf` merges `required` across parts, lets a later part narrow a field, and DISTRIBUTES over a member that is a `oneOf` (`A ∧ (B ∨ C)` becomes `(A ∧ B) ∨ (A ∧ C)`, keeping the discriminator); properties next to a `oneOf` apply to every member; `oneOf` and `anyOf` together are both enforced. A discriminator the schema library cannot build (an implicit one, or over a non-object member) becomes a plain union with a note, never a module that throws at import.
+- **`readOnly` / `writeOnly`** — the model keeps its RESPONSE shape and gains a `<Name>Input` REQUEST shape, used for bodies and parameters.
+- **`$ref` siblings** — a constraint next to a `$ref` (`{ $ref: Code, maxLength: 3 }`, `{ $ref: Base, required: [id] }`) merges with the target; annotation-only siblings keep the named reference.
+- **Cycles** — a recursive schema anywhere (`#/$defs/Node`) is hoisted into a named model; a cycle made only of `$ref`s is `unknown` with a `cyclic-ref` note.
+- **Request media types** — `json`, `form` (with the spec's per-field `encoding`), `multipart` (binary fields typed `Blob`), `text` and raw binary bodies each travel as what the server accepts. `application/json; charset=…`, `*+json` and `*/*` count as JSON.
+- **Parameters** — header and cookie parameters are typed call arguments; an operation-level parameter overrides a path-level one; an undeclared path placeholder is synthesized.
+- **Servers** — variables take their `default`; an operation- or path-level server travels with its operation (on native, as its own literal-base client); a relative server is reported, and `lathe pull` prints the absolute URL it resolves to.
+- **Names** — models, operation ids, path placeholders and tag files that normalize to one identifier are disambiguated deterministically; nothing is dropped.
 
 ## Entry points mirror the dependency graph
 
@@ -533,18 +552,20 @@ a stable `code`, an RFC 6901 pointer into the spec, and a severity:
 
 | code | severity | what it means |
 | --- | --- | --- |
-| `unsupported-parameter` | loss | a header or cookie parameter — not part of the generated call; send it yourself |
+| `unsupported-parameter` | loss | a parameter in a location 3.x does not define (`body`, `formData`) — not part of the generated call |
 | `unsupported-security` | loss | a security scheme or requirement — the client sends no credentials |
 | `response-headers` | loss | response headers are not exposed; the call resolves to the body |
 | `error-responses` | loss | 4xx/5xx bodies are not typed; a failure rejects with an `unknown` body |
 | `other-success-responses` | loss | only the first 2xx is typed |
 | `parameter-serialization` | loss | a non-default `style` / `explode` / `allowReserved` |
-| `optional-request-body` | loss | the spec's body is optional, the generated `json` argument is required |
+| `optional-request-body` | loss | the spec's body is optional, the generated body argument is required |
 | `deprecated` | loss | the generated code carries no `@deprecated` marker |
-| `unsupported-const` | loss | `const` is not enforced |
+| `unsupported-const` | loss | a `const` whose value is not a JSON scalar — not enforced (a scalar `const` is) |
 | `non-json-media-type` | loss | no JSON media type; the body is typed `unknown` |
-| `unsupported-schema` / `unsupported-ref` | loss | a schema or `$ref` that reduces to `unknown` |
-| `no-servers` | loss | no absolute base URL, so nothing reaches native |
+| `unsupported-schema` / `unsupported-ref` | loss | a schema or `$ref` that reduces to `unknown`, or a degradation (a discriminator that cannot be proven, a contradictory `allOf`) |
+| `cyclic-ref` | loss | a `$ref` cycle through references alone, or the cyclic part of an `allOf` — contributes nothing |
+| `int64-precision` | loss | one note for every `format: int64` number — `JSON.parse` rounds past 2^53 − 1 before validation, so no generated type (bigint or string) can recover the value; typed as `number` |
+| `no-servers` | loss | no absolute base URL (none declared, relative, or a variable with no default), so nothing reaches native |
 | `multiple-content-types` | choice | JSON picked among several media types |
 | `extra-tags` | choice | grouped under the first tag only |
 | `description-dropped` | choice | the JSDoc carries the summary, not the description |
@@ -566,8 +587,9 @@ never touched. Commit the manifest with the rest of the output.
 ## Honest limits
 
 - **OpenAPI 3.0 and 3.1 only.** Swagger 2 is refused with the conversion command.
-- **Security schemes, header and cookie parameters, response headers and error
-  bodies are not generated** — each is reported as a `loss` note.
+- **Security schemes, response headers and error bodies are not generated** —
+  each is reported as a `loss` note. (Header and cookie parameters ARE: they are
+  typed `headers:` / `cookies:` call arguments.)
 - **A read with no typed JSON response** gets a web hook typed `unknown` and no
   native data component.
 - **Mutations are web-only on the native target.** PMTC recognises queries, not

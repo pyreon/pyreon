@@ -18,8 +18,9 @@
  */
 
 import { reachableModels, topoSortModels } from '../core/graph'
-import type { IrDocument, IrOperation, IrType } from '../core/ir'
-import { propKey, typeIdent } from '../core/naming'
+import { childTypes, collectRefNames } from '../core/walk'
+import type { IrBody, IrDocument, IrOperation, IrParam, IrType } from '../core/ir'
+import { propKey, tagFile, typeIdent } from '../core/naming'
 import {
   CLIENT_PACKAGE,
   runtimeEndpoint,
@@ -155,9 +156,16 @@ function emitAdapterClient(
   return f
 }
 
-/** The `'GET /users/:id'` literal an endpoint is declared with. */
+/**
+ * The `'GET /users/:id'` literal an endpoint is declared with.
+ *
+ * An operation with its OWN server carries it in the literal
+ * (`'POST https://upload.box.com/api/2.0/files'`): every client here treats an
+ * absolute path as overriding the base URL, so that one call goes to its own
+ * host while the rest keep the shared client.
+ */
 export function endpointSpec(op: IrOperation): string {
-  return `${op.method} ${op.path}`
+  return `${op.method} ${op.baseUrl ?? ''}${op.path}`
 }
 
 /**
@@ -177,7 +185,7 @@ export function byTag(doc: IrDocument): Map<string, IrOperation[]> {
 }
 
 /** The argument type for one operation's call site. */
-function argsType(op: IrOperation): string | undefined {
+function argsType(op: IrOperation, models: ReadonlyMap<string, IrType>): string | undefined {
   const parts: string[] = []
   // `propKey` quotes anything that is not a plain identifier. Without it a
   // spec parameter name carrying a `}` closes the type and injects an
@@ -186,14 +194,83 @@ function argsType(op: IrOperation): string | undefined {
     const inner = op.pathParams.map((p) => `${propKey(p.name)}: ${tsType(p.type)}`).join('; ')
     parts.push(`params: { ${inner} }`)
   }
-  if (op.queryParams.length > 0) {
-    const inner = op.queryParams
-      .map((p) => `${propKey(p.name)}${p.required ? '' : '?'}: ${tsType(p.type)}`)
-      .join('; ')
-    parts.push(`query${op.queryParams.some((p) => p.required) ? '' : '?'}: { ${inner} }`)
+  const record = (name: string, params: readonly IrParam[], rest: string | undefined): void => {
+    if (params.length === 0) return
+    const inner = params.map((p) => `${propKey(p.name)}${p.required ? '' : '?'}: ${tsType(p.type)}`).join('; ')
+    // A header / cookie record may carry OTHER keys too (an idempotency key,
+    // a trace id); the declared ones are typed, the rest stay open.
+    const type = rest ? `{ ${inner} } & ${rest}` : `{ ${inner} }`
+    parts.push(`${name}${params.some((p) => p.required) ? '' : '?'}: ${type}`)
   }
-  if (op.body) parts.push(`json: ${tsType(op.body)}`)
+  record('query', op.queryParams, undefined)
+  record('headers', op.headerParams, 'Record<string, string | number | boolean | undefined>')
+  record('cookies', op.cookieParams, undefined)
+  if (op.body) parts.push(`${bodyArg(op.body)}: ${bodyTs(op.body, models)}`)
   return parts.length > 0 ? `{ ${parts.join('; ')} }` : undefined
+}
+
+/**
+ * The call-argument NAME a body travels under -- one per wire encoding, the
+ * same names `@pyreon/http` and the generated adapter runtime accept.
+ */
+export function bodyArg(body: IrBody): 'json' | 'form' | 'multipart' | 'body' {
+  switch (body.encoding) {
+    case 'json':
+      return 'json'
+    case 'form':
+      return 'form'
+    case 'multipart':
+      return 'multipart'
+    case 'text':
+    case 'binary':
+      return 'body'
+  }
+}
+
+/** The TS type a caller passes for a body. */
+function bodyTs(body: IrBody, models: ReadonlyMap<string, IrType>): string {
+  if (body.encoding === 'text') return 'string'
+  if (body.encoding === 'binary') return 'Blob | ArrayBuffer'
+  // In a multipart body a `binary` string is a FILE. A model named by a ref
+  // renders its binary fields as `string` in `schemas.ts` (a response never
+  // carries a Blob), so a ref that reaches one is expanded here.
+  const t = body.encoding === 'multipart' ? expandFileRefs(body.type, models, new Set()) : body.type
+  return tsType(t, 0, false, false, body.encoding === 'multipart')
+}
+
+function hasBinary(type: IrType, models: ReadonlyMap<string, IrType>, seen: Set<string>): boolean {
+  if (type.kind === 'string') return type.format === 'binary'
+  if (type.kind === 'ref') {
+    if (seen.has(type.name)) return false
+    seen.add(type.name)
+    const target = models.get(type.name)
+    return target ? hasBinary(target, models, seen) : false
+  }
+  return childTypes(type).some((c) => hasBinary(c, models, seen))
+}
+
+function expandFileRefs(type: IrType, models: ReadonlyMap<string, IrType>, expanding: Set<string>): IrType {
+  switch (type.kind) {
+    case 'ref': {
+      const target = models.get(type.name)
+      if (!target || expanding.has(type.name) || !hasBinary(target, models, new Set())) return type
+      return expandFileRefs(target, models, new Set([...expanding, type.name]))
+    }
+    case 'array':
+      return { ...type, items: expandFileRefs(type.items, models, expanding) }
+    case 'nullable':
+      return { kind: 'nullable', inner: expandFileRefs(type.inner, models, expanding) }
+    case 'union':
+      return { ...type, options: type.options.map((o) => expandFileRefs(o, models, expanding)) }
+    case 'object':
+      return {
+        ...type,
+        fields: type.fields.map((f) => ({ ...f, type: expandFileRefs(f.type, models, expanding) })),
+        additional: type.additional ? expandFileRefs(type.additional, models, expanding) : undefined,
+      }
+    default:
+      return type
+  }
 }
 
 /**
@@ -272,9 +349,27 @@ function responseCfg(
   validator: ValidatorName = 'pyreon',
   models?: ReadonlyMap<string, IrType>,
 ): string {
+  const entries: string[] = []
   const response = typedResponse(op)
-  if (!response) return ''
-  return `, { response: ${schemaExpr(response, { native, validator, models })} }`
+  if (response) entries.push(`response: ${schemaExpr(response, { native, validator, models })}`)
+  // Declared ON the endpoint because they are properties of the API, not of a
+  // call: a raw body's media type, and how each form field serializes.
+  if (!native && op.body) {
+    if (op.body.encoding === 'text' || op.body.encoding === 'binary') {
+      entries.push(`headers: { 'content-type': ${q(op.body.mediaType)} }`)
+    }
+    if (op.body.encoding === 'form' && op.body.fieldEncoding) {
+      const fields = Object.entries(op.body.fieldEncoding).map(([k, e]) => {
+        const parts: string[] = []
+        if (e.style !== undefined) parts.push(`style: ${q(e.style)}`)
+        if (e.explode !== undefined) parts.push(`explode: ${String(e.explode)}`)
+        return `${propKey(k)}: { ${parts.join(', ')} }`
+      })
+      entries.push(`formEncoding: { ${fields.join(', ')} }`)
+    }
+  }
+  return entries.length > 0 ? `, { ${entries.join(', ')} }` : ''
+
 }
 
 /**
@@ -308,6 +403,7 @@ function queryResultType(op: IrOperation): string {
 /** WEB layout: `queries.ts` — reactive hooks, one per operation. */
 export function emitWebQueries(doc: IrDocument): SourceFile[] {
   const files: SourceFile[] = []
+  const modelTypes = new Map(doc.models.map((m) => [m.name, m.type]))
   for (const [tag, ops] of byTag(doc)) {
     const path = `queries/${tagFile(tag)}.ts`
     const f = new SourceFile(path)
@@ -324,19 +420,19 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
     // consumer's repo and a confusing one, since nobody wrote the file.
     const typeImports = new Set<string>()
     for (const op of ops) {
-      if (isMutation(op)) collectRefs(op.body, typeImports)
+      if (isMutation(op)) collectRefs(op.body ? expandFileRefs(op.body.type, modelTypes, new Set()) : undefined, typeImports)
       else collectRefs(op.response, typeImports)
       // A PARAMETER's schema can be a `$ref` too - GitHub's spec does this
       // heavily (`AlertNumber`, `CodeScanningRef`). Collecting only the
       // response and body left those names used in the args type and never
       // imported, so the generated module did not compile.
       for (const p of op.pathParams) collectRefs(p.type, typeImports)
-      for (const p of op.queryParams) collectRefs(p.type, typeImports)
+      for (const p of [...op.queryParams, ...op.headerParams, ...op.cookieParams]) collectRefs(p.type, typeImports)
     }
     if (typeImports.size > 0) f.importType(schemaSpecifier(path), ...typeImports)
 
     for (const op of ops) {
-      const args = argsType(op)
+      const args = argsType(op, modelTypes)
       const hook = `use${typeIdent(op.id)}`
       const ret = queryResultType(op)
       f.line()
@@ -482,6 +578,16 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
       'because PMTC resolves nothing across file boundaries.',
     )
     f.line(`const api = createHttp({ baseUrl: ${q(baseUrlOf(doc, opts))}, schema: standardSchema })`)
+    // PMTC bakes `baseUrl + path` at compile time, so an operation with its
+    // own server cannot carry the host in the path the way the web layout
+    // does -- it gets its own literal-base client instead, which lowers.
+    const hosts = [...new Set(ops.map((o) => o.baseUrl).filter((b): b is string => b !== undefined))].sort()
+    const clientOf = new Map<string, string>()
+    hosts.forEach((h, i) => {
+      const name = `api${i + 2}`
+      clientOf.set(h, name)
+      f.line(`const ${name} = createHttp({ baseUrl: ${q(h)}, schema: standardSchema })`)
+    })
 
     // Schemas, inlined. The TRANSITIVE closure, not just the models an
     // operation names: a native module imports nothing, so inlining `Order`
@@ -491,7 +597,7 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
     const direct = new Set<string>()
     for (const op of ops) {
       collectRefs(op.response, direct)
-      collectRefs(op.body, direct)
+      collectRefs(op.body?.type, direct)
     }
     const needed = reachableModels(doc, direct)
     const byName = new Map(doc.models.map((m) => [m.name, m]))
@@ -507,14 +613,15 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
       // `import type` — erased by TypeScript, but PMTC's warn pass reads the
       // import statement itself and reports the module as un-lowerable. The
       // rendered type is identical; only the derivation differs.
-      f.line(`export type ${model.name} = ${tsType(model.type, 0, true)}`)
+      f.line(`export type ${model.name} = ${tsType(model.type, 0, true, true)}`)
     }
 
     for (const op of ops) {
       f.line()
       f.doc(op.summary, `\`${endpointSpec(op)}\``)
+      const client = op.baseUrl ? (clientOf.get(op.baseUrl) as string) : 'api'
       f.line(
-        `export const ${op.id} = api.endpoint(${q(endpointSpec(op))}${responseCfg(op, true, dialect.name, modelTypes)})`,
+        `export const ${op.id} = ${client}.endpoint(${q(`${op.method} ${op.path}`)}${responseCfg(op, true, dialect.name, modelTypes)})`,
       )
     }
 
@@ -587,26 +694,7 @@ const DISABLED_FN =
   "() => Promise.reject(new Error('[Pyreon] lathe: query is disabled — its arguments are not ready'))"
 
 function collectRefs(type: IrType | undefined, into: Set<string>): void {
-  if (!type) return
-  switch (type.kind) {
-    case 'ref':
-      into.add(type.name)
-      return
-    case 'array':
-      collectRefs(type.items, into)
-      return
-    case 'union':
-      for (const o of type.options) collectRefs(o, into)
-      return
-    case 'object':
-      for (const f of type.fields) collectRefs(f.type, into)
-      if (type.additional) collectRefs(type.additional, into)
-      return
-    default:
-  }
+  collectRefNames(type, into)
 }
 
-/** Filename-safe tag. */
-export function tagFile(tag: string): string {
-  return tag.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'default'
-}
+export { tagFile }

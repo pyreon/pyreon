@@ -30,7 +30,7 @@ import { emitSchemas, emitTypes } from '../emit/schema'
 import { banner, jsonLiteral, type GeneratedFile } from '../emit/writer'
 import type { ResolvedConfig } from './config'
 import type { IrDocument, IrOperation, Reach } from './ir'
-import { loadOpenApi } from '../input/openapi'
+import { loadOpenApi, type LoadOptions } from '../input/openapi'
 import { emitOutputManifest } from './output-manifest'
 import { extractSurface, type ApiSurface } from './surface'
 
@@ -51,8 +51,13 @@ export interface GenerateResult {
 }
 
 /** Run the pipeline over a spec document's text. */
-export function generate(specText: string, config: ResolvedConfig): GenerateResult {
-  const { doc } = loadOpenApi(specText)
+export function generate(
+  specText: string,
+  config: ResolvedConfig,
+  /** Where the spec came from; resolves a relative `servers[].url`. */
+  options: LoadOptions = {},
+): GenerateResult {
+  const { doc } = loadOpenApi(specText, options)
   const native = config.target === 'multiplatform'
   const files: GeneratedFile[] = []
   const reach = reachOf(doc, config)
@@ -140,6 +145,8 @@ export function generate(specText: string, config: ResolvedConfig): GenerateResu
   // file is added to it explicitly: every path the run writes is on the list.
   files.push(emitOutputManifest([...files.map((f) => f.path), 'api-surface.json']))
 
+  assertUniquePaths(files)
+
   const surface = extractSurface(doc)
   // Emitted LAST and unconditionally: it is not a plugin's output but the
   // record of what this run promised, and a run that emitted only schemas
@@ -156,6 +163,27 @@ export function generate(specText: string, config: ResolvedConfig): GenerateResu
 }
 
 /**
+ * Two generated files with one path means one silently overwrites the other
+ * on disk -- a whole tag's endpoints gone, with no error anywhere. Compared
+ * case-INSENSITIVELY, because macOS and Windows filesystems are: `users.ts`
+ * and `Users.ts` are one file there. The input layer is responsible for names
+ * that never collide; this is the guard that makes a regression loud.
+ */
+function assertUniquePaths(files: readonly GeneratedFile[]): void {
+  const seen = new Map<string, string>()
+  for (const f of files) {
+    const key = f.path.toLowerCase()
+    const prev = seen.get(key)
+    if (prev !== undefined) {
+      throw new Error(
+        `[Pyreon] lathe: two generated files map to the same path (\`${prev}\` and \`${f.path}\`) — one would overwrite the other. This is a lathe naming bug; please report it with the spec's tag and operation names.`,
+      )
+    }
+    seen.set(key, f.path)
+  }
+}
+
+/**
  * Decide, per operation, whether the generated code can reach native.
  *
  * Static and cheap — it reads the IR, not the emitted source, so the CLI can
@@ -167,7 +195,7 @@ function reachOf(doc: IrDocument, config: ResolvedConfig): Map<string, { reach: 
   const out = new Map<string, { reach: Reach; reason?: string }>()
   const baseUrl = config.baseUrl ?? doc.baseUrl
   for (const op of doc.operations) {
-    out.set(op.id, decide(op, baseUrl))
+    out.set(op.id, decide(op, op.baseUrl ?? baseUrl))
   }
   return out
 }
