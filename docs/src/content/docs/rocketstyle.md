@@ -440,7 +440,7 @@ import { Provider } from '@pyreon/rocketstyle'
 The rocketstyle `Provider`'s props are `{ theme, mode, inversed, provider, children }`. In most apps you'll use the higher-level `PyreonUI` provider from `@pyreon/ui-core` (which wraps theme + mode + config in one), and reach for rocketstyle's `Provider` only for fine-grained subtree overrides.
 :::
 
-:::warning{title="Two unrelated meanings of \"provider\""}
+:::warning{title="Two unrelated meanings of 'provider'"}
 `<Provider provider={CustomProvider}>` (a prop on the tree-level `Provider` component, default `CoreProvider` from `@pyreon/ui-core`) swaps the low-level context-provider implementation underneath it — a rare, advanced knob most apps never touch. This is **completely unrelated** to `.config({ provider: true })` on an individual rocketstyle component, which marks that component as exposing its pseudo-state to consumer descendants (see below). Don't confuse the two just because they share a name.
 :::
 
