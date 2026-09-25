@@ -240,8 +240,17 @@ describe('@pyreon/native-cli build', () => {
       target: 'kotlin',
       kotlinPackage: 'com.pyreon.generated',
     })
-    const fetchOutputs = result.outputs.filter((o) => o.code.includes('PyreonFetch<'))
+    // A network harness is recognised by what it RUNS (`withContext(`), not by
+    // one wrapper type: `useFetch` lowers to `PyreonFetch<…>` but `useQuery`
+    // (and a render-prop data component built on it) lowers to
+    // `PyreonQuery<…>` with the SAME IO block. Keying on `PyreonFetch<` alone
+    // misclassified every query output as "plain" and then asserted it had no
+    // coroutine import — the opposite of what it needs.
+    const fetchOutputs = result.outputs.filter((o) => o.code.includes('withContext('))
     expect(fetchOutputs.length).toBeGreaterThan(0)
+    for (const output of result.outputs.filter((o) => o.code.includes('PyreonFetch<'))) {
+      expect(fetchOutputs).toContain(output)
+    }
     for (const output of fetchOutputs) {
       expect(output.code).toContain('import kotlinx.coroutines.withContext')
       expect(output.code).toContain('import kotlinx.coroutines.Dispatchers')
@@ -259,7 +268,7 @@ describe('@pyreon/native-cli build', () => {
     // Outputs using NEITHER fetch NOR the bridge stay clean of both the
     // coroutine and the serialization.json imports.
     const plain = result.outputs.filter(
-      (o) => !o.code.includes('PyreonFetch<') && !o.code.includes('PyreonJson.encode('),
+      (o) => !o.code.includes('withContext(') && !o.code.includes('PyreonJson.encode('),
     )
     expect(plain.length).toBeGreaterThan(0)
     for (const output of plain) {
