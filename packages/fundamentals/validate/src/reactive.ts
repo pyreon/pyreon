@@ -22,7 +22,7 @@
  */
 
 import { type Computed, type Signal, computed, watch } from '@pyreon/reactivity'
-import type { StandardSchemaIssue, StandardSchemaResult, StandardSchemaV1 } from './types'
+import type { Output, StandardSchemaIssue, StandardSchemaResult, StandardSchemaV1 } from './types'
 
 /**
  * Source the validator reads. Accepts a `Signal<T>` directly OR a
@@ -81,10 +81,12 @@ export type ParseResult<T> = StandardSchemaResult<T>
 export function parseReactive<S extends StandardSchemaV1<unknown, unknown>>(
   schema: S,
   source: ReactiveSource<unknown>,
-): Computed<ParseResult<unknown>> {
-  return computed<ParseResult<unknown>>(() => {
+): Computed<ParseResult<Output<S>>> {
+  return computed<ParseResult<Output<S>>>(() => {
     const value = read(source)
-    const result = schema['~standard'].validate(value)
+    const result = schema['~standard'].validate(value) as
+      | ParseResult<Output<S>>
+      | Promise<ParseResult<Output<S>>>
     if (result instanceof Promise) {
       // Sync-only API: surface an issue so the caller knows to switch
       // to `parseReactiveAsync`. The error is structured so test code
@@ -134,9 +136,10 @@ export function parseReactive<S extends StandardSchemaV1<unknown, unknown>>(
 export function parseReactiveAsync<S extends StandardSchemaV1<unknown, unknown>>(
   schema: S,
   source: ReactiveSource<unknown>,
-): Computed<Promise<ParseResult<unknown>>> {
+): Computed<Promise<ParseResult<Output<S>>>> {
+  type R = ParseResult<Output<S>>
   let version = 0
-  let latest: Promise<ParseResult<unknown>>
+  let latest: Promise<R>
 
   // Validate `value`; when this run settles, two supersede checks apply:
   //  1. a newer computed re-run happened (version bumped) → forward to ITS
@@ -144,15 +147,15 @@ export function parseReactiveAsync<S extends StandardSchemaV1<unknown, unknown>>
   //  2. the SOURCE flipped but the (lazy) computed hasn't been re-read yet —
   //     re-validate the CURRENT value (untracked read: we're past an await,
   //     outside any tracking scope), recursing until the value is stable.
-  const run = async (value: unknown, myVersion: number): Promise<ParseResult<unknown>> => {
-    const result = await Promise.resolve(schema['~standard'].validate(value))
+  const run = async (value: unknown, myVersion: number): Promise<R> => {
+    const result = (await Promise.resolve(schema['~standard'].validate(value))) as R
     if (myVersion !== version) return latest
     const current = read(source)
     if (!Object.is(current, value)) return run(current, myVersion)
     return result
   }
 
-  return computed<Promise<ParseResult<unknown>>>(() => {
+  return computed<Promise<R>>(() => {
     // `read(source)` runs synchronously inside the computed body, so
     // dependency tracking is preserved; only the validation itself defers.
     const value = read(source)
@@ -167,8 +170,9 @@ export function parseReactiveAsync<S extends StandardSchemaV1<unknown, unknown>>
  * flips (true→false or false→true), not on every error-message change.
  * Returns an unsubscribe function.
  *
- * Internally a `watch()` over `parseReactive(schema, source)` with an
- * equality check on `issues === undefined`. Cheap.
+ * ASYNC schemas are supported: the verdict is reported once the validation
+ * settles, and a settle that a newer input has superseded is dropped (the
+ * latest input always wins). A validator that REJECTS counts as invalid.
  *
  * @example
  * ```ts
@@ -185,20 +189,30 @@ export function watchValid<S extends StandardSchemaV1<unknown, unknown>>(
   callback: (valid: boolean) => void,
 ): () => void {
   let lastValid: boolean | undefined
+  let version = 0
+  const report = (valid: boolean): void => {
+    // Filter — only fire on REAL transitions.
+    if (lastValid !== valid) {
+      lastValid = valid
+      callback(valid)
+    }
+  }
   return watch(
-    () => {
-      const value = read(source)
-      const result = schema['~standard'].validate(value)
-      if (result instanceof Promise) return undefined
-      return result.issues === undefined
-    },
-    (valid) => {
-      // Filter — only fire on REAL transitions.
-      if (valid === undefined) return
-      if (lastValid !== valid) {
-        lastValid = valid
-        callback(valid)
+    () => schema['~standard'].validate(read(source)),
+    (result) => {
+      const myVersion = ++version
+      if (result instanceof Promise) {
+        result.then(
+          (r) => {
+            if (myVersion === version) report(r.issues === undefined)
+          },
+          () => {
+            if (myVersion === version) report(false)
+          },
+        )
+        return
       }
+      report(result.issues === undefined)
     },
     { immediate: true },
   )

@@ -2956,15 +2956,15 @@ afterEach(() => resetAllHooks())   // else a mutation in one test leaks to the n
   // <gen-docs:api-reference:start @pyreon/validate>
 
   'validate/withField': {
-    signature: '<S extends StandardSchemaV1>(schema: S, meta: FieldMeta) => S',
+    signature: '<S extends StandardSchemaV1>(schema: S, meta: FieldMeta) => WithFieldMeta<S>',
     example: `const emailSchema = withField(z.string().email(), {
   label: 'Email address',
   placeholder: 'you@example.com',
   i18nLabel: 'auth.email.label',
   autoComplete: 'email',
 })`,
-    notes: `Attach Pyreon field metadata (label, hint, placeholder, i18n keys, autoFocus, autoComplete, defaultValue) to any Standard Schema. The returned schema is the SAME REFERENCE as the input — Pyreon mutates a Symbol-keyed non-enumerable slot in place, which is invisible to JSON serialization, for…in, Object.keys, and library-internal comparators. Mutation (instead of cloning) is required because ArkType's \`Type\` instances are callable functions whose \`~standard.validate\` does \`this(input)\` — a shallow clone would not be callable and would break that contract. Re-wrapping merges new metadata onto existing (later keys win). See also: getMeta, resolveMetaField, StandardSchemaV1.`,
-    mistakes: `- Expecting withField to return a NEW reference — it doesn't. The metadata mutation is in place. If you need an isolated copy, construct two separate schemas instead.
+    notes: `Attach Pyreon field metadata (label, hint, placeholder, i18n keys, autoFocus, autoComplete, defaultValue) to any Standard Schema. Returns a NEW schema carrying the metadata and never modifies its input (a frozen schema is fine), so two \`withField\` calls on one shared base keep separate labels. A Pyreon \`s\` schema is cloned (copy-on-write, like its chainable methods); any other Standard Schema is wrapped in a transparent Proxy that answers only the Symbol-keyed metadata slot and forwards everything else — \`.parse\`, \`~standard\`, and an ArkType schema's call signature keep working. Re-wrapping a wrapped schema merges (later keys win). See also: getMeta, resolveMetaField, StandardSchemaV1.`,
+    mistakes: `- Expecting withField to label the schema you PASSED — it returns a new one and leaves the input untouched. Use the RETURNED schema (\`const email = withField(base, …)\`); calling \`withField(base, …)\` for its side effect attaches nothing to \`base\`.
 - Adding \`i18nLabel\` without a corresponding \`label\` — without a translation provider (or when t echoes the key), there's no fallback. Always set both.
 - Storing schemas with metadata in JSON.stringify-d state and round-tripping — the metadata is Symbol-keyed and won't survive serialization. Re-attach on load.`,
   },
@@ -2995,7 +2995,7 @@ const label = meta?.label ?? humanize(fieldName)`,
     signature: `<S extends StandardSchemaV1>(
   schema: S,
   source: Signal<unknown> | (() => unknown),
-) => Computed<ParseResult>`,
+) => Computed<ParseResult<Output<S>>>`,
     example: `const $email = signal('')
 const $result = parseReactive(emailSchema, $email)
 
@@ -3006,7 +3006,7 @@ effect(() => {
 })
 
 $email.set('foo@bar.com')  // $result re-derives`,
-    notes: 'Reactively parse `source` through `schema`. Returns a `Computed<ParseResult>` that re-validates on every source change. Synchronous only — for schemas with async refinements (Zod `.refine(async)`, Valibot async pipe), use parseReactiveAsync (this sync variant surfaces an actionable issue if the schema returns a Promise). See also: parseReactiveAsync, watchValid, formatErrors.',
+    notes: `Reactively parse \`source\` through \`schema\`. Returns a \`Computed<ParseResult<Output<S>>>\` (typed by the schema's output) that re-validates on every source change. Synchronous only — for schemas with async refinements (Zod \`.refine(async)\`, Valibot async pipe), use parseReactiveAsync (this sync variant surfaces an actionable issue if the schema returns a Promise). See also: parseReactiveAsync, watchValid, formatErrors.`,
     mistakes: `- Using parseReactive on an async schema — it surfaces a clear "use parseReactiveAsync" issue rather than silently producing a Promise as the validation result.
 - Calling parseReactive on every render of a component — it allocates a Computed; cache it at component setup time (call once per signal-source pair).`,
   },
@@ -3015,7 +3015,7 @@ $email.set('foo@bar.com')  // $result re-derives`,
     signature: `<S extends StandardSchemaV1>(
   schema: S,
   source: Signal<unknown> | (() => unknown),
-) => Computed<Promise<ParseResult>>`,
+) => Computed<Promise<ParseResult<Output<S>>>>`,
     example: `const schema = z.string().refine(async (s) => await checkUnique(s))
 const $result = parseReactiveAsync(schema, $username)
 
@@ -3041,7 +3041,7 @@ watch($result, async (current) => {
 })
 
 onUnmount(stop)`,
-    notes: 'Subscribe to validity transitions. The callback fires only when validity flips (true→false or false→true), NOT on every error-message change — ideal for form-state hooks that care about "is this OK?" without re-rendering on every typo. Returns an unsubscribe function. Internally a `watch()` over `parseReactive`. See also: parseReactive.',
+    notes: 'Subscribe to validity transitions. The callback fires only when validity flips (true→false or false→true), NOT on every error-message change — ideal for form-state hooks that care about "is this OK?" without re-rendering on every typo. Returns an unsubscribe function. Async schemas report once the validation settles; a settle superseded by newer input is dropped, and a rejected validator counts as invalid. See also: parseReactive.',
   },
 
   'validate/formatError': {
