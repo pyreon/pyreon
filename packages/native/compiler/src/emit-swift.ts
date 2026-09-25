@@ -131,6 +131,7 @@ import {
   viewHelperFromModuleDecl,
   type SlotProp,
   type ViewHelper,
+  unparenExpr,
 } from './render-slots'
 import {
   stretchAlignWarning,
@@ -4886,7 +4887,7 @@ function emitSwiftViewHelper(h: ViewHelper, visibility: 'private' | 'internal', 
   const vis = visibility === 'private' ? 'private ' : ''
   const body = withSwiftLocals(
     h.params.map((p) => [p.name, p.type] as const),
-    () => emitSwiftChild({ kind: 'expr', expr: inlineValueConsts(h.body) }, indent + 2),
+    () => emitSwiftChild({ kind: 'expr', expr: unparenExpr(inlineValueConsts(h.body)) }, indent + 2),
   )
   return `@ViewBuilder ${vis}func ${swiftIdent(h.name)}(${params}) -> some View {\n${' '.repeat(indent + 2)}${body}\n${' '.repeat(indent)}}`
 }
@@ -4952,7 +4953,7 @@ function emitSwiftSlotArg(
     const types = names.map((_, i) => slot?.params[i] ?? x.paramTypes?.[i])
     const body = withSwiftLocals(
       names.map((n, i) => [n, types[i]] as const).filter(([n]) => n !== '_'),
-      () => emitSwiftChild({ kind: 'expr', expr: x.body }, indent + 2),
+      () => emitSwiftChild({ kind: 'expr', expr: unparenExpr(x.body) }, indent + 2),
     )
     const head = arity === 0 ? '{' : `{ ${names.map((n) => (n === '_' ? '_' : swiftIdent(n))).join(', ')} in`
     return `${head}\n${pad}${body}\n${base}}`

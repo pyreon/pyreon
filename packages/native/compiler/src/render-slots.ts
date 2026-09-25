@@ -73,9 +73,10 @@ export interface SlotProp {
 }
 
 /** Unwrap parens. */
-function unparen(e: ExprIR): ExprIR {
-  return e.kind === 'paren' ? unparen(e.inner) : e
+export function unparenExpr(e: ExprIR): ExprIR {
+  return e.kind === 'paren' ? unparenExpr(e.inner) : e
 }
+const unparen = unparenExpr
 
 /**
  * The prop name `e` refers to, when it is a reference to one of the
@@ -304,10 +305,19 @@ function pascal(s: string): string {
 export function liftSlotParamStructs(
   components: ComponentIR[],
   declared: ReadonlySet<string>,
+  existing: readonly StructIR[],
   warnings: string[],
 ): StructIR[] {
   const taken = new Set<string>([...declared, ...components.map((c) => c.name)])
   const out: StructIR[] = []
+  // Structurally identical shapes are ONE type in TypeScript, so they must be
+  // one struct natively: `Shell` forwarding its `render` to `Picker` passes a
+  // `(ShellRenderItem) -> C` where `(PickerRenderItem) -> C` is expected, and
+  // swiftc rejects it, although the TS was one type written twice. A lifted
+  // shape that matches an existing struct field-for-field reuses its name.
+  const byShape = new Map<string, string>()
+  for (const st of existing) byShape.set(shapeKey(st.fields), st.name)
+  const rename = new Map<string, string>()
   for (const c of components) {
     for (const slot of slotPropsOf(c)) {
       if (slot.bare || !slot.params.some(containsObject)) continue
@@ -321,9 +331,24 @@ export function liftSlotParamStructs(
       }
       const lifted = liftInlineObjectStructs(pseudo, taken)
       warnings.push(...lifted.warnings)
-      for (const st of lifted.lifted) taken.add(st.name)
-      out.push(...lifted.lifted)
-      const params = fnType.params.map((q, i) => ({ ...q, type: lifted.struct.fields[i]!.type }))
+      // Innermost first, so a nested shape is renamed before its parent's
+      // key is computed.
+      for (const st of lifted.lifted) {
+        taken.add(st.name)
+        const fields = st.fields.map((f) => ({ ...f, type: renameRefs(f.type, rename) }))
+        const key = shapeKey(fields)
+        const same = byShape.get(key)
+        if (same !== undefined) {
+          rename.set(st.name, same)
+          continue
+        }
+        byShape.set(key, st.name)
+        out.push({ ...st, fields })
+      }
+      const params = fnType.params.map((q, i) => ({
+        ...q,
+        type: renameRefs(lifted.struct.fields[i]!.type, rename),
+      }))
       const next: TypeIR = { ...fnType, params }
       prop.type = optional ? { kind: 'union', branches: [next, { kind: 'undefined' }] } : next
     }
@@ -344,5 +369,27 @@ function containsObject(t: TypeIR): boolean {
       return t.branches.some(containsObject)
     default:
       return false
+  }
+}
+
+function shapeKey(fields: readonly { name: string; type: TypeIR }[]): string {
+  return JSON.stringify([...fields].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)))
+}
+
+function renameRefs(t: TypeIR, rename: ReadonlyMap<string, string>): TypeIR {
+  switch (t.kind) {
+    case 'typeRef': {
+      const to = rename.get(t.name)
+      return { ...t, name: to ?? t.name, args: t.args.map((a) => renameRefs(a, rename)) }
+    }
+    case 'array':
+    case 'set':
+      return { ...t, element: renameRefs(t.element, rename) }
+    case 'map':
+      return { ...t, value: renameRefs(t.value, rename) }
+    case 'union':
+      return { ...t, branches: t.branches.map((b) => renameRefs(b, rename)) }
+    default:
+      return t
   }
 }

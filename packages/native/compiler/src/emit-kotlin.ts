@@ -122,6 +122,7 @@ import {
   viewHelperFromModuleDecl,
   type SlotProp,
   type ViewHelper,
+  unparenExpr,
 } from './render-slots'
 import {
   stretchAlignWarning,
@@ -4036,7 +4037,7 @@ function emitKotlinViewHelper(h: ViewHelper, visibility: string, indent: number,
   const params = h.params.map((p) => `${kotlinIdent(p.name)}: ${kotlinType(p.type, ctx, p.name)}`).join(', ')
   const body = withKotlinLocals(
     h.params.map((p) => [p.name, p.type] as const),
-    () => emitKotlinChild({ kind: 'expr', expr: h.body }, indent + 2),
+    () => emitKotlinChild({ kind: 'expr', expr: unparenExpr(h.body) }, indent + 2),
   )
   return `@Composable\n${' '.repeat(indent)}${visibility}fun ${kotlinIdent(h.name)}(${params}) {\n${' '.repeat(indent + 2)}${body}\n${' '.repeat(indent)}}`
 }
@@ -4097,7 +4098,7 @@ function emitKotlinSlotArg(
     const types = names.map((_, i) => slot?.params[i] ?? x.paramTypes?.[i])
     const body = withKotlinLocals(
       names.map((n, i) => [n, types[i]] as const).filter(([n]) => n !== '_'),
-      () => emitKotlinChild({ kind: 'expr', expr: x.body }, indent + 2),
+      () => emitKotlinChild({ kind: 'expr', expr: unparenExpr(x.body) }, indent + 2),
     )
     return `${head}\n${pad}${body}\n${base}}`
   }

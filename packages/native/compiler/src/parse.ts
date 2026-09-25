@@ -741,6 +741,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     ...liftSlotParamStructs(
       components,
       new Set([...declaredTypeNames, ...structs.map((st) => st.name)]),
+      structs,
       ctx.warnings,
     ),
   )
@@ -5967,6 +5968,35 @@ function liftedAliasType(
   return { kind: 'object', fields: struct.fields }
 }
 
+/**
+ * `return () => <…/>` — the reactive-accessor return, the documented web
+ * idiom for a component whose output depends on a signal (a component body
+ * runs ONCE on the web, so a signal read directly in the return is frozen at
+ * its first value). Native has no such split: SwiftUI's `body` and a Compose
+ * function re-run on every state change, so the accessor's BODY is the view.
+ *
+ * Unwrapping was missing, and the accessor reached both targets as a closure
+ * literal inside `var body` / the composable — `{ Text(…) }`, which does not
+ * compile. The render-prop data component makes it load-bearing: the only
+ * shape that stays live on the web is `return () => props.children(q.data())`.
+ *
+ * A BLOCK-bodied accessor (several statements) has no single view to unwrap
+ * and is named rather than emitted broken.
+ */
+function unwrapAccessorReturn(e: ExprIR, component: string, ctx: ParseCtx): ExprIR {
+  const x = e.kind === 'paren' ? e.inner : e
+  if (x.kind !== 'arrow' || x.params.length > 0 || x.async === true) return e
+  if (x.stmts !== undefined && x.stmts.length > 0) {
+    ctx.warnings.push(
+      `Component ${component}: it returns a reactive accessor with a BLOCK body (\`return () => { …; return <…/> }\`), which has no native lowering — native views re-render on state change without an accessor, but only a single expression can become the view. Return the expression directly (\`return () => cond ? <A/> : <B/>\`), or compute the intermediate values with \`computed\`.`,
+    )
+    return { kind: 'literal', value: null }
+  }
+  let body = x.body
+  while (body.kind === 'paren') body = body.inner
+  return body
+}
+
 /** Declare a struct's lifted inline object types ahead of it, and report collisions. */
 function liftInlineObjects(
   st: StructIR,
@@ -6206,7 +6236,7 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
     } else if (stmt.type === 'ReturnStatement' && stmt.argument) {
       // Fold any early-return conditionals collected before this final return
       // into a nested ternary the emitter lowers to a result-builder view.
-      returnExpr = foldPending(parseExpr(stmt.argument, ctx))
+      returnExpr = foldPending(unwrapAccessorReturn(parseExpr(stmt.argument, ctx), name, ctx))
     } else if (stmt.type === 'ExpressionStatement') {
       // A bare component-body statement. `onMount(fn)` — the documented
       // lifecycle escape hatch — LOWERS to a mount-time harness decl.
