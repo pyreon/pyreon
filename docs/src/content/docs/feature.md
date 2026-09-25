@@ -40,6 +40,7 @@ The query hooks (`useList`, `useById`, `useSearch`, `useCreate`, `useUpdate`, `u
 Define a feature with a validation schema and an API base path, then use the auto-generated hooks in your components:
 
 ```ts
+// @check
 import { defineFeature } from '@pyreon/feature'
 import { z } from 'zod'
 

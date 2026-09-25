@@ -8,6 +8,7 @@
  * alias, so the strings would ship.
  */
 
+import { describeRequest } from '../errors'
 import type { HttpMiddleware } from '../types'
 
 export interface LoggerOptions {
@@ -38,12 +39,12 @@ export function logger(options: LoggerOptions = {}): HttpMiddleware {
     const started = Date.now()
     try {
       const response = await next()
-      emit(`[Pyreon] http ${request.method} ${request.url} → ${response.status}`, {
+      emit(`[Pyreon] http ${describeRequest(request)} → ${response.status}`, {
         ms: Date.now() - started,
       })
       return response
     } catch (error) {
-      emit(`[Pyreon] http ${request.method} ${request.url} → failed`, {
+      emit(`[Pyreon] http ${describeRequest(request)} → failed`, {
         ms: Date.now() - started,
         error,
       })
