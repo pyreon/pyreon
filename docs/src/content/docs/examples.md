@@ -1,11 +1,11 @@
 ---
 title: "Examples"
-description: "A gallery of 82 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
+description: "A gallery of 84 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
 ---
 
 # Examples
 
-Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 82 examples across 34 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
+Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 84 examples across 36 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
 
 ## Charts
 
@@ -184,6 +184,12 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 ### Hotkeys Move Dot
 
 <Example file="./examples/hotkeys/hotkeys-move-dot" />
+
+## Http
+
+### Mocked Crud Endpoints
+
+<Example file="./examples/http/mocked-crud-endpoints" />
 
 ## i18n
 
@@ -390,6 +396,12 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 ### Url Synced State
 
 <Example file="./examples/url-state/url-synced-state" />
+
+## Validate
+
+### Reactive Parse With Field Metadata
+
+<Example file="./examples/validate/reactive-parse-with-field-metadata" />
 
 ## Validation
 
