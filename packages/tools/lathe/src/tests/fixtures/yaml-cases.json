@@ -1,0 +1,476 @@
+[
+  {
+    "name": "multiline plain scalar",
+    "source": "a: one\n  two\nb: 1\n",
+    "expected": {
+      "a": "one two",
+      "b": 1
+    }
+  },
+  {
+    "name": "multiline double-quoted",
+    "source": "a: \"one\n  two\"\n",
+    "expected": {
+      "a": "one two"
+    }
+  },
+  {
+    "name": "multiline single-quoted",
+    "source": "a: 'one\n  two'\n",
+    "expected": {
+      "a": "one two"
+    }
+  },
+  {
+    "name": "multiline flow seq",
+    "source": "a: [x,\n  y]\n",
+    "expected": {
+      "a": [
+        "x",
+        "y"
+      ]
+    }
+  },
+  {
+    "name": "multiline flow map",
+    "source": "a: { x: 1,\n  y: 2 }\n",
+    "expected": {
+      "a": {
+        "x": 1,
+        "y": 2
+      }
+    }
+  },
+  {
+    "name": "literal with blank line",
+    "source": "a: |\n  p1\n\n  p2\nb: 1\n",
+    "expected": {
+      "a": "p1\n\np2\n",
+      "b": 1
+    }
+  },
+  {
+    "name": "literal trailing newline (clip)",
+    "source": "a: |\n  x\nb: 1\n",
+    "expected": {
+      "a": "x\n",
+      "b": 1
+    }
+  },
+  {
+    "name": "literal strip |-",
+    "source": "a: |-\n  x\nb: 1\n",
+    "expected": {
+      "a": "x",
+      "b": 1
+    }
+  },
+  {
+    "name": "literal keep |+",
+    "source": "a: |+\n  x\n\nb: 1\n",
+    "expected": {
+      "a": "x\n\n",
+      "b": 1
+    }
+  },
+  {
+    "name": "folded paragraphs",
+    "source": "a: >\n  one\n  two\n\n  three\nb: 1\n",
+    "expected": {
+      "a": "one two\nthree\n",
+      "b": 1
+    }
+  },
+  {
+    "name": "folded more-indented line",
+    "source": "a: >\n  one\n    code\n  two\n",
+    "expected": {
+      "a": "one\n  code\ntwo\n"
+    }
+  },
+  {
+    "name": "hash line inside literal",
+    "source": "a: |\n  # Heading\n  body\nb: 1\n",
+    "expected": {
+      "a": "# Heading\nbody\n",
+      "b": 1
+    }
+  },
+  {
+    "name": "hash line inside folded",
+    "source": "a: >\n  text\n  # not a comment\n",
+    "expected": {
+      "a": "text # not a comment\n"
+    }
+  },
+  {
+    "name": "block scalar as seq item",
+    "source": "a:\n  - >-\n    long\n  - b\n",
+    "expected": {
+      "a": [
+        "long",
+        "b"
+      ]
+    }
+  },
+  {
+    "name": "literal seq item",
+    "source": "a:\n  - |\n    x\n",
+    "expected": {
+      "a": [
+        "x\n"
+      ]
+    }
+  },
+  {
+    "name": "nested seq - -",
+    "source": "a:\n  - - 1\n    - 2\n  - - 3\n",
+    "expected": {
+      "a": [
+        [
+          1,
+          2
+        ],
+        [
+          3
+        ]
+      ]
+    }
+  },
+  {
+    "name": "seq item map extra indent",
+    "source": "a:\n  -   x: 1\n      y: 2\n",
+    "expected": {
+      "a": [
+        {
+          "x": 1,
+          "y": 2
+        }
+      ]
+    }
+  },
+  {
+    "name": "duplicate key",
+    "source": "a: 1\na: 2\n",
+    "expected": null,
+    "throws": true
+  },
+  {
+    "name": "quoted key with colon",
+    "source": "\"a: b\": 1\n",
+    "expected": {
+      "a: b": 1
+    }
+  },
+  {
+    "name": "key with hash",
+    "source": "a#b: 1\n",
+    "expected": {
+      "a#b": 1
+    }
+  },
+  {
+    "name": "value with \" #\"",
+    "source": "a: foo #bar\n",
+    "expected": {
+      "a": "foo"
+    }
+  },
+  {
+    "name": "value quoted with #",
+    "source": "a: \"foo #bar\"\n",
+    "expected": {
+      "a": "foo #bar"
+    }
+  },
+  {
+    "name": "escaped unicode",
+    "source": "a: \"caf\\u00e9\"\n",
+    "expected": {
+      "a": "café"
+    }
+  },
+  {
+    "name": "escaped hex",
+    "source": "a: \"\\x41\"\n",
+    "expected": {
+      "a": "A"
+    }
+  },
+  {
+    "name": "escaped quote",
+    "source": "a: \"say \\\"hi\\\"\"\n",
+    "expected": {
+      "a": "say \"hi\""
+    }
+  },
+  {
+    "name": "single quote escape",
+    "source": "a: 'it''s'\n",
+    "expected": {
+      "a": "it's"
+    }
+  },
+  {
+    "name": "number forms",
+    "source": "a: [1e3, 0x1F, 0o17, .5, +1, .inf, -.inf, .nan, 1_000, 01]\n",
+    "expected": {
+      "a": [
+        1000,
+        31,
+        15,
+        0.5,
+        1,
+        null,
+        null,
+        null,
+        "1_000",
+        1
+      ]
+    }
+  },
+  {
+    "name": "float exp",
+    "source": "a: 1.5e3\n",
+    "expected": {
+      "a": 1500
+    }
+  },
+  {
+    "name": "yes/no (1.2 strings)",
+    "source": "a: yes\nb: no\nc: on\n",
+    "expected": {
+      "a": "yes",
+      "b": "no",
+      "c": "on"
+    }
+  },
+  {
+    "name": "version 1.0 number",
+    "source": "v: 1.0\n",
+    "expected": {
+      "v": 1
+    }
+  },
+  {
+    "name": "empty value then sibling",
+    "source": "a:\nb: 1\n",
+    "expected": {
+      "a": null,
+      "b": 1
+    }
+  },
+  {
+    "name": "explicit ? key",
+    "source": "? a\n: 1\n",
+    "expected": {
+      "a": 1
+    }
+  },
+  {
+    "name": "document start with comment",
+    "source": "--- # c\na: 1\n",
+    "expected": {
+      "a": 1
+    }
+  },
+  {
+    "name": "%YAML directive",
+    "source": "%YAML 1.2\n---\na: 1\n",
+    "expected": {
+      "a": 1
+    }
+  },
+  {
+    "name": "tab after value",
+    "source": "a: 1\t# c\n",
+    "expected": {
+      "a": 1
+    }
+  },
+  {
+    "name": "CRLF",
+    "source": "a: 1\r\nb: 2\r\n",
+    "expected": {
+      "a": 1,
+      "b": 2
+    }
+  },
+  {
+    "name": "BOM",
+    "source": "﻿a: 1\n",
+    "expected": {
+      "a": 1
+    }
+  },
+  {
+    "name": "empty flow in seq",
+    "source": "a:\n  - {}\n  - []\n",
+    "expected": {
+      "a": [
+        {},
+        []
+      ]
+    }
+  },
+  {
+    "name": "flow with quoted comma",
+    "source": "a: [\"x, y\", z]\n",
+    "expected": {
+      "a": [
+        "x, y",
+        "z"
+      ]
+    }
+  },
+  {
+    "name": "flow with url",
+    "source": "a: [http://x.com/a]\n",
+    "expected": {
+      "a": [
+        "http://x.com/a"
+      ]
+    }
+  },
+  {
+    "name": "plain url value",
+    "source": "u: http://x.com:8080/p\n",
+    "expected": {
+      "u": "http://x.com:8080/p"
+    }
+  },
+  {
+    "name": "seq same indent as key",
+    "source": "a:\n- 1\n- 2\nb: 3\n",
+    "expected": {
+      "a": [
+        1,
+        2
+      ],
+      "b": 3
+    }
+  },
+  {
+    "name": "colon without space in value",
+    "source": "a: b:c\n",
+    "expected": {
+      "a": "b:c"
+    }
+  },
+  {
+    "name": "plain scalar starting with @",
+    "source": "a: @x\n",
+    "expected": null,
+    "throws": true
+  },
+  {
+    "name": "plain scalar starting with `",
+    "source": "a: `x`\n",
+    "expected": null,
+    "throws": true
+  },
+  {
+    "name": "anchor (refused?)",
+    "source": "a: &x 1\nb: *x\n",
+    "expected": {
+      "a": 1,
+      "b": 1
+    }
+  },
+  {
+    "name": "merge key",
+    "source": "base: &b {x: 1}\nd:\n  <<: *b\n",
+    "expected": {
+      "base": {
+        "x": 1
+      },
+      "d": {
+        "<<": {
+          "x": 1
+        }
+      }
+    }
+  },
+  {
+    "name": "multi-doc",
+    "source": "a: 1\n---\nb: 2\n",
+    "expected": null,
+    "throws": true
+  },
+  {
+    "name": "null variants",
+    "source": "a: ~\nb: null\nc:\n",
+    "expected": {
+      "a": null,
+      "b": null,
+      "c": null
+    }
+  },
+  {
+    "name": "string \"null\" quoted",
+    "source": "a: \"null\"\n",
+    "expected": {
+      "a": "null"
+    }
+  },
+  {
+    "name": "deep indent 4 spaces",
+    "source": "a:\n    b: 1\n    c:\n        - x\n",
+    "expected": {
+      "a": {
+        "b": 1,
+        "c": [
+          "x"
+        ]
+      }
+    }
+  },
+  {
+    "name": "dash no space at end",
+    "source": "a:\n  -\n    x: 1\n",
+    "expected": {
+      "a": [
+        {
+          "x": 1
+        }
+      ]
+    }
+  },
+  {
+    "name": "key only colon at end of line with comment",
+    "source": "a: # c\n  b: 1\n",
+    "expected": {
+      "a": {
+        "b": 1
+      }
+    }
+  },
+  {
+    "name": "trailing spaces after block indicator",
+    "source": "a: |  \n  x\n",
+    "expected": {
+      "a": "x\n"
+    }
+  },
+  {
+    "name": "block indentation indicator",
+    "source": "a: |2\n    x\n",
+    "expected": {
+      "a": "  x\n"
+    }
+  },
+  {
+    "name": "unicode key",
+    "source": "ünïcode: 1\n",
+    "expected": {
+      "ünïcode": 1
+    }
+  },
+  {
+    "name": "__proto__ key",
+    "source": "__proto__: 1\n",
+    "expected": {
+      "__proto__": 1
+    }
+  }
+]

@@ -8,6 +8,7 @@
 // Type inference is deliberately naive — numeric assumption for
 // computed properties. Phase 1 grows a real inference pass.
 
+import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 import { swiftStr } from './string-literals'
 import {
   HANDLED_FLOW_EDGE_FIELDS,
@@ -120,6 +121,21 @@ import {
 import { plotMarkColorSlots, ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTipHeader, chartTooltipCells, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, colorModeScope, literalColorMode, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, optionSpecArgs, chartPieArgs, chartDialCmds, chartFrameLiteral, chartSpecFieldIndex, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig, chartActionFields } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
+import {
+  blockBodiedRenderCallbackWarning,
+  isRenderArrow,
+  isViewShaped,
+  moduleViewHelpers,
+  optionalSlotSwiftWarning,
+  propRefName,
+  slotPropsOf,
+  unlowerableRenderValueWarning,
+  viewHelperFromDecl,
+  viewHelperFromModuleDecl,
+  type SlotProp,
+  type ViewHelper,
+  unparenExpr,
+} from './render-slots'
 import {
   stretchAlignWarning,
   bakedPropDynamicWarning,
@@ -256,6 +272,22 @@ function canAliasIntercept(tag: string, expectedPkg: string, expectedImport = ta
 /** Component name → its declared props, for expanding `<Comp {...src} />`
  * spread attrs into per-prop constructor args. Built in the emitSwift pre-pass. */
 let _componentPropsMap: Map<string, { name: string; type: TypeIR }[]> = new Map()
+/**
+ * Render props / view slots per same-file component (see render-slots.ts),
+ * so a call site knows the receiving closure's arity and parameter types.
+ * A component from ANOTHER file is absent — its call sites still lower, from
+ * the shape of the value alone.
+ */
+let _componentSlotsMap: Map<string, SlotProp[]> = new Map()
+/** The slots of the component being emitted, by prop name. */
+let _activeSlots: Map<string, SlotProp> = new Map()
+/**
+ * View helpers in scope — file-scope ones plus the current component's —
+ * by name. Lowered to `@ViewBuilder func`, so a call is a VIEW and a
+ * reference can be handed to a render prop.
+ */
+let _moduleViewHelpersSwift: Map<string, ViewHelper> = new Map()
+let _viewHelpersSwift: Map<string, ViewHelper> = new Map()
 type StaticFlowHandle = { id?: string; type: string; position: string; offset?: number }
 let _flowComponentHandles: Map<string, StaticFlowHandle[]> = new Map()
 let _flowComponentsWithInvalidHandles: Set<string> = new Set()
@@ -1227,6 +1259,9 @@ export function emitSwift(
   _componentNames = new Set(components.map((c) => c.name))
   _jsxFnNames = collectJsxFnNames(components, [], moduleDecls)
   _componentPropsMap = new Map(components.map((c) => [c.name, c.props]))
+  _componentSlotsMap = new Map(components.map((c) => [c.name, slotPropsOf(c)]))
+  _moduleViewHelpersSwift = moduleViewHelpers(moduleDecls)
+  _viewHelpersSwift = new Map(_moduleViewHelpersSwift)
   _flowComponentHandles = new Map()
   _flowComponentsWithInvalidHandles = new Set()
   _flowComponentResizers = new Map()
@@ -1484,6 +1519,10 @@ export function emitSwift(
   _exprInferCtx = emptyInferenceCtx()
   _componentNames = new Set()
   _jsxFnNames = new Set()
+  _componentSlotsMap = new Map()
+  _activeSlots = new Map()
+  _moduleViewHelpersSwift = new Map()
+  _viewHelpersSwift = new Map()
   _styledComponents = new Map()
   _rocketstyleComponents = new Map()
   _attrsComponents = new Map()
@@ -1906,13 +1945,27 @@ function emitSwiftScalarConstraints(
       lines.push(`${ind}}`)
     }
     if (c.url) {
-      // `URL(string:)` is a PARSER, not a validator — it accepts
-      // "not a url", "x.com" and "/relative", all of which zod rejects.
-      // Requiring a scheme reproduces zod's rule (an absolute URL), which
-      // still accepts "mailto:a@b.co" and "ftp://x.com" as zod does.
-      lines.push(
-        `${ind}if URL(string: ${targetName})?.scheme == nil {`,
-      )
+      // The AUTHORING library's rule (see `UrlRule`), not one rule for all.
+      const rule = c.url
+      if (rule.kind === 'scheme') {
+        // zod: `URL(string:)` is a PARSER, not a validator — it accepts
+        // "not a url", "x.com" and "/relative", all of which zod rejects.
+        // Requiring a scheme reproduces zod's rule (an absolute URL), which
+        // still accepts "mailto:a@b.co" and "ftp://x.com" as zod does.
+        lines.push(`${ind}if URL(string: ${targetName})?.scheme == nil {`)
+      } else if (rule.kind === 'http') {
+        // `@pyreon/validate`'s default: http(s) with a host, exactly.
+        lines.push(
+          `${ind}if ${targetName}.range(of: #"${HTTP_URL_PATTERN}"#, options: [.regularExpression]) == nil {`,
+        )
+      } else {
+        // `.url({ protocol })`: an absolute URI, then the scheme (the text
+        // before the first colon) partially matched, as `RegExp.test()` is.
+        const opts = rule.ignoreCase ? '[.regularExpression, .caseInsensitive]' : '[.regularExpression]'
+        lines.push(
+          `${ind}if ${targetName}.range(of: #"${URI_PATTERN}"#, options: [.regularExpression]) == nil || String(${targetName}.prefix(while: { $0 != ":" })).range(of: #"${rule.source}"#, options: ${opts}) == nil {`,
+        )
+      }
       lines.push(
         `${innerInd}throw PyreonSchemaError.constraintViolation(field: ${swiftStr(fieldName)}, rule: "url${ruleSuffix}")`,
       )
@@ -2368,6 +2421,11 @@ function emitSwiftStruct(s: StructIR): string {
  * omits it (TypeIR `unknown` → Swift type inferred from `= value`).
  */
 function emitSwiftModuleDecl(md: ModuleDeclIR): string {
+  // A file-scope `const renderRow = (r: Row) => <…/>` is a VIEW function, not
+  // a closure value: a Swift closure `let` with an untyped parameter does not
+  // compile at all, and a view cannot be a stored value anyway.
+  const vh = viewHelperFromModuleDecl(md)
+  if (vh !== null) return emitSwiftViewHelper(vh, 'private', 0)
   const kw = md.mutable ? 'var' : 'let'
   const initial = withExpectedType(md.type, () => emitSwiftExpr(md.initial, 0))
   if (md.type.kind === 'unknown') {
@@ -2543,7 +2601,8 @@ function emitSwiftComponent(c: ComponentIR): string {
   // call-emit keeps parens for `addTodo()` (function call) and drops
   // them only for `count()` (signal read). Seed with the file-scope helper
   // names so a `dbl(21)` call in this component resolves as a free function.
-  _functionNames = new Set(_helperFnNames)
+  // File-scope view helpers are CALLED (`row()`), never read like a signal.
+  _functionNames = new Set([..._helperFnNames, ..._moduleViewHelpersSwift.keys()])
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
   // Gap 4 PR-2: track machine names so `m()` keeps parens (Swift
   // callAsFunction).
@@ -2583,6 +2642,16 @@ function emitSwiftComponent(c: ComponentIR): string {
   // typecheck-or-no-op trap.
   for (const p of c.props) {
     if (p.type.kind === 'function') _functionNames.add(p.name)
+  }
+  // Render props / view slots of THIS component, and the view helpers in
+  // scope (file-scope + this component's own). Both must be known before any
+  // of the body is emitted — a call to either is a view, not a value.
+  const slots = _componentSlotsMap.get(c.name) ?? slotPropsOf(c)
+  _activeSlots = new Map(slots.map((sl) => [sl.name, sl]))
+  _viewHelpersSwift = new Map(_moduleViewHelpersSwift)
+  for (const d of c.decls) {
+    const vh = viewHelperFromDecl(d)
+    if (vh !== null) _viewHelpersSwift.set(vh.name, vh)
   }
   for (const d of c.decls) {
     if (d.kind === 'signal' && d.type.kind === 'typeRef' && _enumNames.has(d.type.name)) {
@@ -2693,11 +2762,28 @@ function emitSwiftComponent(c: ComponentIR): string {
   // site that skips the prop (`Card(qty: 2)`) compiles. A defaultless
   // `let label: String?` would still REQUIRE the argument. Required
   // props stay `let` (immutable per instance).
-  const propLines = c.props.map((p) =>
-    typeIsOptional(p.type)
+  // A render prop / view slot is a generic `@ViewBuilder` closure whose view
+  // type is a type parameter of the struct, inferred from the caller's closure
+  // — the shape SwiftUI's own containers use. `@ViewBuilder` on the stored
+  // property carries over to the memberwise initializer's parameter, so a
+  // caller's closure body is a view builder (if/else, several views).
+  const slotGenerics: string[] = []
+  const propLines = c.props.map((p) => {
+    const slot = _activeSlots.get(p.name)
+    if (slot !== undefined) {
+      const generic = `${p.name.charAt(0).toUpperCase()}${p.name.slice(1)}Content`
+      slotGenerics.push(`${generic}: View`)
+      if (slot.optional) {
+        const w = optionalSlotSwiftWarning(c.name, p.name)
+        if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+      }
+      const params = slot.params.map((t, i) => swiftType(t, synth, `${p.name}${i}`)).join(', ')
+      return `  @ViewBuilder let ${swiftIdent(p.name)}: (${params}) -> ${generic}`
+    }
+    return typeIsOptional(p.type)
       ? `  var ${swiftIdent(p.name)}: ${swiftType(p.type, synth, p.name)} = nil`
-      : `  let ${swiftIdent(p.name)}: ${swiftType(p.type, synth, p.name)}`,
-  )
+      : `  let ${swiftIdent(p.name)}: ${swiftType(p.type, synth, p.name)}`
+  })
   // Pre-walk signal decl types through the synth ctx so INLINE anonymous
   // object types in signal generics (`signal<{ price: number }[]>`)
   // synthesize a struct — collected here so they emit BEFORE the View
@@ -2768,11 +2854,12 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.push(emitSwiftStruct(s))
     lines.push('')
   }
-  if (isLayout) {
-    lines.push(`struct ${swiftIdent(c.name)}<Content: View>: View {`)
-  } else {
-    lines.push(`struct ${swiftIdent(c.name)}: View {`)
-  }
+  const generics = [...slotGenerics, ...(isLayout ? ['Content: View'] : [])]
+  lines.push(
+    generics.length > 0
+      ? `struct ${swiftIdent(c.name)}<${generics.join(', ')}>: View {`
+      : `struct ${swiftIdent(c.name)}: View {`,
+  )
   lines.push(...propLines)
   if (isLayout) {
     lines.push(`  @ViewBuilder var content: () -> Content`)
@@ -4787,6 +4874,154 @@ function swiftFlowPositionLiteral(arg: ExprIR): string | null {
 }
 
 /**
+ * Run `fn` with the given names typed in BOTH inference contexts (they alias
+ * inside a component and differ at file scope), restoring them after. Every
+ * closure / function body that binds parameters needs this, or a type-gated
+ * lowering inside it (`.length`, an optional condition, Int×Double) sees the
+ * parameter as unknown.
+ */
+function withSwiftLocals<T>(bindings: readonly (readonly [string, TypeIR | undefined])[], fn: () => T): T {
+  const saved = bindings.map(([name]) => ({
+    name,
+    had: _activeInferCtx.locals.has(name),
+    prev: _activeInferCtx.locals.get(name),
+    hadExpr: _exprInferCtx.locals.has(name),
+    prevExpr: _exprInferCtx.locals.get(name),
+  }))
+  for (const [name, t] of bindings) {
+    if (t === undefined) continue
+    _activeInferCtx.locals.set(name, t)
+    _exprInferCtx.locals.set(name, t)
+  }
+  try {
+    return fn()
+  } finally {
+    for (const s of saved.reverse()) {
+      if (s.had) _activeInferCtx.locals.set(s.name, s.prev!)
+      else _activeInferCtx.locals.delete(s.name)
+      if (s.hadExpr) _exprInferCtx.locals.set(s.name, s.prevExpr!)
+      else _exprInferCtx.locals.delete(s.name)
+    }
+  }
+}
+
+/**
+ * `const renderRow = (r: Row) => <Text>{r.name}</Text>` →
+ * `@ViewBuilder private func renderRow(_ r: Row) -> some View { Text(…) }`.
+ *
+ * The unlabeled parameters match the JS call shape `renderRow(r)`, the same
+ * convention every other emitted function follows. `some View` is a concrete
+ * type to the caller, so a REFERENCE to the function satisfies a render prop's
+ * generic `(Row) -> Content` as well.
+ */
+function emitSwiftViewHelper(h: ViewHelper, visibility: 'private' | 'internal', indent: number): string {
+  const params = h.params.map((p) => `_ ${swiftIdent(p.name)}: ${swiftType(p.type)}`).join(', ')
+  const vis = visibility === 'private' ? 'private ' : ''
+  const body = withSwiftLocals(
+    h.params.map((p) => [p.name, p.type] as const),
+    () => emitSwiftChild({ kind: 'expr', expr: unparenExpr(inlineValueConsts(h.body)) }, indent + 2),
+  )
+  return `@ViewBuilder ${vis}func ${swiftIdent(h.name)}(${params}) -> some View {\n${' '.repeat(indent + 2)}${body}\n${' '.repeat(indent)}}`
+}
+
+/** The slot of the component being emitted that `e` references, if any. */
+function activeSlotRef(e: ExprIR): SlotProp | undefined {
+  const name = propRefName(e, _activePropsParamName)
+  return name === null ? undefined : _activeSlots.get(name)
+}
+
+/** Is `e` a call to something that renders — a render prop of this component, or a view helper? */
+function swiftCallRendersView(e: ExprIR): boolean {
+  const x = e.kind === 'paren' ? e.inner : e
+  if (x.kind !== 'call') return false
+  const slot = activeSlotRef(x.callee)
+  if (slot !== undefined && !slot.bare) return true
+  return x.callee.kind === 'identifier' && _viewHelpersSwift.has(x.callee.name)
+}
+
+/**
+ * Invoke a render prop from the component body: `props.render(item)` →
+ * `render(item)`, with each argument emitted against the declared parameter
+ * type so an object literal constructs the parameter's struct.
+ */
+function emitSwiftSlotInvocation(slot: SlotProp, args: readonly ExprIR[], indent: number): string {
+  const parts = args.map((a, i) => withExpectedType(slot.params[i], () => emitSwiftExpr(a, indent)))
+  return `${swiftIdent(slot.name)}(${parts.join(', ')})`
+}
+
+/**
+ * A render-prop VALUE at a call site — what the receiving component's
+ * `@ViewBuilder` closure parameter is handed.
+ *
+ *   (u) => <Text>{u.name}</Text>   →  { u in Text(…) }
+ *   renderRow                      →  { a0 in renderRow(a0) }   (a view helper)
+ *   props.render                   →  render                    (forwarded)
+ *   <Text>hi</Text>                →  { Text("hi") }            (a bare slot)
+ *
+ * `slot` is the receiving declaration when it is in this file; otherwise the
+ * value is lowered from its own shape, which is what lets a generated data
+ * component in another module receive it.
+ */
+function emitSwiftSlotArg(
+  value: ExprIR,
+  slot: SlotProp | undefined,
+  where: string,
+  indent: number,
+): string {
+  const x = value.kind === 'paren' ? value.inner : value
+  const base = ' '.repeat(indent)
+  const pad = ' '.repeat(indent + 2)
+  if (x.kind === 'arrow') {
+    if (x.stmts !== undefined && x.stmts.length > 0) {
+      const w = blockBodiedRenderCallbackWarning(where)
+      if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+      const arity = slot?.params.length ?? x.params.length
+      return arity === 0 ? '{ EmptyView() }' : `{ ${Array.from({ length: arity }, () => '_').join(', ')} in EmptyView() }`
+    }
+    // A callback may declare FEWER parameters than it is passed (JS ignores
+    // the rest); a Swift closure must name every one, so pad with `_`.
+    const arity = Math.max(slot?.params.length ?? 0, x.params.length)
+    const names = Array.from({ length: arity }, (_, i) => x.params[i] ?? '_')
+    const types = names.map((_, i) => slot?.params[i] ?? x.paramTypes?.[i])
+    const body = withSwiftLocals(
+      names.map((n, i) => [n, types[i]] as const).filter(([n]) => n !== '_'),
+      () => emitSwiftChild({ kind: 'expr', expr: unparenExpr(x.body) }, indent + 2),
+    )
+    const head = arity === 0 ? '{' : `{ ${names.map((n) => (n === '_' ? '_' : swiftIdent(n))).join(', ')} in`
+    return `${head}\n${pad}${body}\n${base}}`
+  }
+  // Forwarding the enclosing component's own render prop: same closure type.
+  const forwarded = activeSlotRef(x)
+  if (forwarded !== undefined) return swiftIdent(forwarded.name)
+  if (x.kind === 'identifier' && _viewHelpersSwift.has(x.name)) {
+    const h = _viewHelpersSwift.get(x.name)!
+    const arity = h.params.length
+    const args = Array.from({ length: arity }, (_, i) => `a${i}`)
+    return arity === 0
+      ? `{ ${swiftIdent(h.name)}() }`
+      : `{ ${args.join(', ')} in ${swiftIdent(h.name)}(${args.join(', ')}) }`
+  }
+  if (isViewShaped(x) || swiftCallRendersView(x)) {
+    return `{\n${pad}${emitSwiftChild({ kind: 'expr', expr: x }, indent + 2)}\n${base}}`
+  }
+  const w = unlowerableRenderValueWarning(where)
+  if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+  return emitSwiftExpr(x, indent)
+}
+
+/**
+ * Is `value` passed to a render prop? Yes when the receiving declaration (same
+ * file) says the prop is a slot, or when the value can only be a view — an
+ * arrow returning JSX, a view helper, or an element.
+ */
+function isSwiftSlotValue(value: ExprIR, slot: SlotProp | undefined): boolean {
+  if (slot !== undefined) return true
+  const x = value.kind === 'paren' ? value.inner : value
+  if (isRenderArrow(x) || isViewShaped(x)) return true
+  return x.kind === 'identifier' && _viewHelpersSwift.has(x.name)
+}
+
+/**
  * Emit `const fn = () => { ... }` as a Swift `private func` on the
  * SwiftUI View struct. Parser-A from the TodoMVC walkthrough.
  *
@@ -4802,6 +5037,11 @@ function emitSwiftFunction(
   visibility: 'private' | 'internal' = 'private',
   inferCtx?: ReturnType<typeof buildInferenceCtx>,
 ): string {
+  // A function whose whole body returns a view is a VIEW function — see
+  // render-slots.ts. Emitted as a plain `func` it returned Void, and every
+  // call to it interpolated a View into a string.
+  const vh = viewHelperFromDecl(d)
+  if (vh !== null) return emitSwiftViewHelper(vh, visibility, 2)
   // Use `_` (no external label) so call sites match the JS-style
   // unnamed-arg shape `toggle(t.id)` instead of requiring Swift's
   // labeled-call shape `toggle(id: t.id)`. The TS source doesn't
@@ -12931,7 +13171,28 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
     }
   }
   const argEntries: { name: string; part: string }[] = []
+  // Render props. A same-file component DECLARES which props are slots; one
+  // from another file is judged by the value's own shape (see
+  // `isSwiftSlotValue`) — generated data components live in their own module.
+  const calleeSlots = _componentSlotsMap.get(e.tag)
+  const slotFor = (name: string): { slot: SlotProp | undefined; isSlot: (v: ExprIR) => boolean } => {
+    const slot = calleeSlots?.find((sl) => sl.name === name)
+    return {
+      slot,
+      isSlot: (v) => (calleeSlots !== undefined ? slot !== undefined : isSwiftSlotValue(v, undefined)),
+    }
+  }
   for (const a of e.attrs) {
+    if (a.kind === 'attr' && (isUserComponent || !isCanonicalPrimitive(e.tag))) {
+      const { slot, isSlot } = slotFor(a.name)
+      if (isSlot(a.value)) {
+        argEntries.push({
+          name: a.name,
+          part: `${swiftIdent(safeIdent(a.name))}: ${emitSwiftSlotArg(a.value, slot, `<${e.tag} ${a.name}={…}>`, indent)}`,
+        })
+        continue
+      }
+    }
     if (a.kind === 'attr') {
       // `safeIdent` converts kebab-case HTML attrs (`data-test`,
       // `aria-label`) to camelCase. Swift rejects `-` in argument
@@ -12970,6 +13231,29 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
   // components (SwiftUI primitives) keep author order — their inits are
   // hand-mapped, not memberwise.
   const targetPropsOrder = isUserComponent ? _componentPropsMap.get(e.tag) : undefined
+  // Function-as-children — `<UserData>{(u) => <Text/>}</UserData>` — and a
+  // same-file component's declared `children` slot. Passed as a LABELED
+  // argument rather than a trailing closure, so it binds by name and the
+  // memberwise-order sort below places it wherever `children` is declared.
+  let children = e.children
+  const { slot: childrenSlot } = slotFor('children')
+  const lone = children.length === 1 && children[0]!.kind === 'expr' ? children[0]!.expr : undefined
+  const loneIsCallback =
+    lone !== undefined &&
+    (isRenderArrow(lone) ||
+      activeSlotRef(lone) !== undefined ||
+      (lone.kind === 'identifier' && _viewHelpersSwift.has(lone.name)))
+  if (loneIsCallback && (calleeSlots === undefined || childrenSlot !== undefined)) {
+    argEntries.push({
+      name: 'children',
+      part: `children: ${emitSwiftSlotArg(lone!, childrenSlot, `<${e.tag}>{…}</${e.tag}>`, indent)}`,
+    })
+    children = []
+  } else if (childrenSlot !== undefined && childrenSlot.bare && children.length > 0) {
+    const inner = children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
+    argEntries.push({ name: 'children', part: `children: {\n${inner}\n${' '.repeat(indent)}}` })
+    children = []
+  }
   if (targetPropsOrder !== undefined && targetPropsOrder.length > 0) {
     const orderOf = new Map(targetPropsOrder.map((p, i) => [p.name, i]))
     argEntries.sort(
@@ -12982,10 +13266,10 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
   // `swiftIdent`-escape the tag name — covers user-defined components
   // whose name collides with a Swift keyword (e.g. `<class>...</class>`).
   const tag = swiftIdent(e.tag)
-  if (e.children.length === 0) {
+  if (children.length === 0) {
     return attrPairs ? `${tag}(${attrPairs})` : `${tag}()`
   }
-  const contentLines = e.children
+  const contentLines = children
     .map((c) => pad + emitSwiftChild(c, indent + 2))
     .join('\n')
   if (attrPairs) {
@@ -13005,6 +13289,10 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
  */
 function swiftExprProducesView(e: ExprIR): boolean {
   if (e.kind === 'jsx-element') return true
+  // A render prop invoked, a view slot read, or a view helper called — all
+  // views, though none is JSX at this position.
+  if (swiftCallRendersView(e)) return true
+  if (activeSlotRef(e)?.bare === true) return true
   if (e.kind === 'ternary') {
     return swiftExprProducesView(e.then) || swiftExprProducesView(e.otherwise)
   }
@@ -13055,6 +13343,8 @@ function emitSwiftReturnExpr(expr: ExprIR, indent: number): string {
   if (expr.kind === 'literal' && expr.value == null) {
     return 'EmptyView()'
   }
+  const slotUse = emitSwiftSlotUse(expr, indent)
+  if (slotUse !== null) return slotUse
   if (
     expr.kind === 'ternary' &&
     (swiftExprProducesView(expr.then) || swiftExprProducesView(expr.otherwise))
@@ -13064,8 +13354,25 @@ function emitSwiftReturnExpr(expr: ExprIR, indent: number): string {
   return emitSwiftExpr(expr, indent)
 }
 
+/**
+ * A use of one of this component's render props / view slots, in view
+ * position: `{props.children}` → `children()` (the slot is a closure),
+ * `props.render(item)` → `render(item)`. Null for anything else.
+ */
+function emitSwiftSlotUse(e: ExprIR, indent: number): string | null {
+  const x = e.kind === 'paren' ? e.inner : e
+  const bare = activeSlotRef(x)
+  if (bare !== undefined) return bare.bare ? `${swiftIdent(bare.name)}()` : null
+  if (x.kind !== 'call') return null
+  const slot = activeSlotRef(x.callee)
+  if (slot === undefined || slot.bare) return null
+  return emitSwiftSlotInvocation(slot, x.args, indent)
+}
+
 function emitSwiftChild(c: ChildIR, indent: number): string {
   if (c.kind === 'text') return `Text(${swiftStr(c.value)})`
+  const slotUse = emitSwiftSlotUse(c.expr, indent)
+  if (slotUse !== null) return slotUse
   if (!swiftExprProducesView(c.expr)) {
     // The expression is about to be STRINGIFIED. If it builds JSX anywhere
     // inside, the author wrote a list and is getting a debug description —

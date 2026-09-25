@@ -28,18 +28,25 @@ const doc = (models: IrModel[]): IrDocument =>
 const model = (name: string, type: unknown): IrModel => ({ name, type }) as IrModel
 
 /**
- * Constraints live on the FIELD (`min` / `max`), not on the type — the
- * IR's `string` carries only `format` and `enum`. A fixture that put
- * `minLength` on the type would exercise the unconstrained path while
- * claiming to test the constrained one.
+ * Constraints live on the TYPE (`minLength` / `maximum`, …), which is where
+ * the input layer puts them so they apply to array items and alias models as
+ * well as object fields. `bounds` maps the short `min` / `max` onto the
+ * right keywords for the type's kind.
  */
 const obj = (
   fields: Array<[string, unknown, boolean?, { min?: number; max?: number }?]>,
 ) => ({
   kind: 'object',
-  fields: fields.map(([name, type, required = true, bounds = {}]) => ({
-    name, type, required, nullable: false, ...bounds,
-  })),
+  fields: fields.map(([name, type, required = true, bounds = {}]) => {
+    const t = type as { kind: string }
+    const withBounds =
+      t.kind === 'string'
+        ? { ...t, minLength: bounds.min, maxLength: bounds.max }
+        : t.kind === 'number'
+          ? { ...t, minimum: bounds.min, maximum: bounds.max }
+          : t
+    return { name, type: withBounds, required }
+  }),
 })
 
 // `emitFaker` returns a SourceFile builder, not text — `build(header)`
@@ -101,7 +108,7 @@ describe('constraints outrank realism', () => {
 
   it('picks an enum member, never an arbitrary string', () => {
     // An off-enum value fails the generated validator immediately.
-    const out = emit([model('U', obj([['status', { kind: 'string', enum: ['active', 'banned'] }]]))])
+    const out = emit([model('U', obj([['status', { kind: 'enum', values: ['active', 'banned'] }]]))])
     expect(out).toContain('active')
     expect(out).toContain('banned')
   })
@@ -200,8 +207,10 @@ describe('every IR kind produces SOMETHING valid', () => {
 
   it('emits an empty object for a model with no fields', () => {
     const out = emit([model('Empty', obj([]))])
-    expect(out).toContain('createEmpty')
-    expect(out).toMatch(/\{\s*\.\.\.o\s*\}/)
+    expect(out).toContain('export function createEmpty(): Empty {')
+    // No fields means nothing to override: `{ ...o }` typed `Partial<Dict>`
+    // made every dictionary value `T | undefined`, which does not typecheck.
+    expect(out).toContain('return {}')
   })
 })
 
@@ -286,4 +295,27 @@ describe('output is deterministic', () => {
     expect(out).toContain('createZeta')
     expect(out).toContain('createAlpha')
   })
+})
+
+describe('recursion detection scales with the graph, not with its square', () => {
+  it('emits factories for a 3,000-model graph full of cycles', () => {
+    // Each model references three others chosen by a fixed LCG, so nearly the
+    // whole graph is one strongly-connected component -- Stripe's shape. The
+    // old per-field transitive walk was cubic here (2,000 models: ~42 s of
+    // CPU); the component lookup is linear. The budget is ~50x the measured
+    // time under heavy load, and far below what the old walk needs.
+    let seed = 1
+    const rnd = (): number => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648
+    const M = 3000
+    const models = Array.from({ length: M }, (_, i) =>
+      model(`M${i}`, obj([
+        ['id', { kind: 'string' }],
+        ...[0, 1, 2].map((k): [string, unknown, boolean] => [`r${k}`, { kind: 'ref', name: `M${Math.floor(rnd() * M)}` }, false]),
+      ])),
+    )
+    const t0 = performance.now()
+    const out = emit(models)
+    expect(performance.now() - t0).toBeLessThan(15_000)
+    expect(out).toContain('createM2999')
+  }, 60_000)
 })

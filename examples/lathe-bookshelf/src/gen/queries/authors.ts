@@ -5,7 +5,7 @@
 // Re-run `lathe generate` to update. Edits here are lost on the next run;
 // to change the output, change the spec or the emitter.
 
-import type { Author } from '../schemas'
+import type { UseQueryOptions } from '@pyreon/query'
 import { listAuthors } from '../endpoints/authors'
 import { useQuery } from '@pyreon/query'
 
@@ -14,11 +14,14 @@ import { useQuery } from '@pyreon/query'
  * `GET /authors`
  * Takes an ACCESSOR so signal reads in the arguments stay reactive.
  * Return `undefined` from `args` while the arguments are not ready — the query is DISABLED rather than fired with a placeholder.
- * Second accessor merges extra query options (`enabled`, `staleTime`, `select`).
+ * Second accessor merges typed query options (`enabled`, `staleTime`, `select` — which changes the result type).
  * Result fields are SIGNALS: `q.data()`, `q.isPending()` — call them.
  */
-export function useListAuthors(args: () => { query?: { limit?: number } } | undefined, options?: () => Record<string, unknown>) {
-  return useQuery<Author[]>(() => {
+export function useListAuthors<TData = Awaited<ReturnType<typeof listAuthors>>>(
+  args: () => Parameters<typeof listAuthors>[0] | undefined,
+  options?: () => Omit<UseQueryOptions<Awaited<ReturnType<typeof listAuthors>>, Error, TData>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery<Awaited<ReturnType<typeof listAuthors>>, Error, TData>(() => {
     const a = args()
     const extra = options?.() ?? {}
     if (a === undefined) {

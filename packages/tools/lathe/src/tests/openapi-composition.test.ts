@@ -125,7 +125,7 @@ describe('nullability reaches both the type and the validator', () => {
   it('renders `| null` on a nullable field', () => {
     const t = tsType({
       kind: 'object',
-      fields: [{ name: 'a', type: { kind: 'string' }, required: true, nullable: true }],
+      fields: [{ name: 'a', type: { kind: 'nullable', inner: { kind: 'string' } }, required: true }],
     } as IrType)
     expect(t).toContain('| null')
   })
@@ -133,7 +133,7 @@ describe('nullability reaches both the type and the validator', () => {
   it('does NOT render it on a non-nullable one', () => {
     const t = tsType({
       kind: 'object',
-      fields: [{ name: 'a', type: { kind: 'string' }, required: true, nullable: false }],
+      fields: [{ name: 'a', type: { kind: 'string' }, required: true }],
     } as IrType)
     expect(t).not.toContain('null')
   })
@@ -143,7 +143,7 @@ describe('nullability reaches both the type and the validator', () => {
     // the worst combination: it compiles and fails at runtime.
     const out = schemaExpr({
       kind: 'object',
-      fields: [{ name: 'a', type: { kind: 'string' }, required: true, nullable: true }],
+      fields: [{ name: 'a', type: { kind: 'nullable', inner: { kind: 'string' } }, required: true }],
     } as IrType, { native: false })
     expect(out).toContain('nullable')
   })
@@ -208,7 +208,7 @@ describe('a rendered model is an interface when it can be', () => {
     // an object shape cannot be reopened.
     const objectModel = tsType({
       kind: 'object',
-      fields: [{ name: 'a', type: { kind: 'string' }, required: true, nullable: false }],
+      fields: [{ name: 'a', type: { kind: 'string' }, required: true }],
     } as IrType)
     expect(objectModel.startsWith('{'), 'an object renders brace-first').toBe(true)
     const aliasModel = tsType({ kind: 'union', options: [{ kind: 'string' }, { kind: 'null' }] })

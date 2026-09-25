@@ -9,19 +9,20 @@
  * Everything from Bookshelf 1.2.0 that a page ships.
  * The per-tag split is an emitter concern: a consumer should not have to
  * know which tag an operation was filed under, or that tags exist.
- * Reaching for one hook here reaches every operation in the spec, because
- * an endpoint declaration is a module-level call a bundler must keep. On a
- * 120-operation spec that measured 30.7 kB against 6.1 kB for the same hook
- * imported from its own tag. If that matters, import the tag:
- * `import { useListBooks } from './gen/queries/books'`.
+ * Importing one hook from here costs the same as importing it from its own
+ * tag module: every declaration is annotated pure and the `package.json`
+ * next to this file declares the output side-effect-free, so a bundler keeps
+ * only what the hook reaches (measured on GitHub's spec with Vite 8: 2.8 kB
+ * gzipped of generated code either way). A bundler that ignores both hints
+ * keeps more through this file than through the tag.
  * Fixtures and fake-data factories are NOT re-exported here -- they live in
  * `./dev`, so a page bundle cannot reach them. Preview components are absent
  * for the same reason and live in `./components`.
  */
 export * from './schemas'
-export { api } from './client'
+export { api, configureApi, type ApiConfig } from './client'
 export * from './endpoints/authors'
 export * from './endpoints/books'
 export * from './queries/authors'
 export * from './queries/books'
-export { keys } from './keys'
+export { keys, optimisticUpdate } from './keys'

@@ -5,37 +5,98 @@
 // Re-run `lathe generate` to update. Edits here are lost on the next run;
 // to change the output, change the spec or the emitter.
 
-import type { HttpMiddleware } from '@pyreon/http'
-import { createHttp } from '@pyreon/http'
+import type { HttpMiddleware, ValidateMode } from '@pyreon/http'
+import { compose, createHttp } from '@pyreon/http'
 import { standardSchema } from '@pyreon/http/schema'
 
 /**
- * HTTP client for Bookshelf 1.2.0.
- * The baseUrl is emitted as a STRING LITERAL on purpose. PMTC reads it at
- * compile time to build the native request URL, and a computed value (an
- * env read, a concatenation) makes every endpoint on this client web-only.
- * `schema` is REQUIRED here, not optional polish: @pyreon/http keeps schema
- * support opt-in so the core costs nothing when unused, and an endpoint
- * declared with `{ response }` against a client that has not enabled it
- * FAILS AT RUNTIME — the request succeeds, the validation step rejects, and
- * the query settles as an error with a 200 on the wire.
+ * Runtime configuration of the generated client — see {@link configureApi}.
+ * Each field is its own SLOT, so setting one never disturbs another: auth
+ * middleware in `use` survives `installMocks()`, which answers through a
+ * separate transport slot, and a `baseUrl` switch keeps the headers.
  */
+export interface ApiConfig {
+  /** Replaces the spec's server URL for every request (an environment switch). */
+  baseUrl?: string | undefined
+  /** Headers for every request. An accessor is re-read per request — use one for a token. */
+  headers?: HeadersInit | (() => HeadersInit) | undefined
+  /** Middleware around every request, outermost first — auth, logging, retry. */
+  use?: readonly HttpMiddleware[] | undefined
+  /** Response validation: `'strict'` throws, `'warn'` logs and passes the body through, `'off'` skips it. */
+  validate?: ValidateMode | undefined
+}
+
+const DEFAULT_BASE_URL = 'http://localhost:5199/v1'
+const DEFAULT_VALIDATE: ValidateMode = 'strict'
+
+const settings: {
+  baseUrl: string
+  headers: ApiConfig['headers']
+  use: readonly HttpMiddleware[]
+  validate: ValidateMode
+} = { baseUrl: DEFAULT_BASE_URL, headers: undefined, use: [], validate: DEFAULT_VALIDATE }
+
 let devTransport: HttpMiddleware | null = null
 
 /**
- * Install middleware AFTER the client was built.
- * Endpoints bind to the client at declaration time, so middleware passed to
- * `createHttp` has to be known before any endpoint exists -- which a mock
- * installed by a workbench wrapper or a test never is. One passthrough entry
- * reserves the slot; it costs a function call per request and nothing else
- * when unused. The generated `installMocks()` uses it.
+ * Configure the client at runtime — base URL, headers, middleware, validation.
+ * Endpoints bind to the client when they are declared, so everything that
+ * varies (an environment, a session token, a logger) is read from here on
+ * every request rather than baked in. A key present with `undefined` resets
+ * that slot to its generated default; an absent key leaves it alone.
+ * ```ts
+ * configureApi({
+ *   baseUrl: import.meta.env.VITE_API_URL,
+ *   headers: () => ({ 'x-request-id': crypto.randomUUID() }),
+ *   use: [logger],
+ *   validate: import.meta.env.PROD ? 'warn' : 'strict',
+ * })
+ * ```
+ */
+export function configureApi(config: ApiConfig): void {
+  if ('baseUrl' in config) settings.baseUrl = config.baseUrl ?? DEFAULT_BASE_URL
+  if ('headers' in config) settings.headers = config.headers
+  if ('use' in config) settings.use = config.use ?? []
+  if ('validate' in config) settings.validate = config.validate ?? DEFAULT_VALIDATE
+}
+
+/**
+ * Answer requests from a transport slot of their own — the generated
+ * `installMocks()` uses it. Separate from `configureApi({ use })` on purpose:
+ * installing mocks must not remove auth middleware, and configuring auth must
+ * not uninstall mocks. Pass `null` to go back to the network.
  */
 export function setDevTransport(middleware: HttpMiddleware | null): void {
   devTransport = middleware
 }
 
+/** The base URL requests currently go to — the generated default, or what `configureApi` set. */
+export function apiBaseUrl(): string {
+  return settings.baseUrl
+}
+
+/**
+ * HTTP client for Bookshelf 1.2.0.
+ * `schema` is REQUIRED here, not optional polish: @pyreon/http keeps schema
+ * support opt-in so the core costs nothing when unused, and an endpoint
+ * declared with `{ response }` against a client that has not enabled it
+ * FAILS AT RUNTIME — the request succeeds, the validation step rejects, and
+ * the query settles as an error with a 200 on the wire.
+ * The native modules (`*.native.tsx`) declare their own client with a
+ * LITERAL base URL, which is what PMTC reads; this one reads its settings
+ * per request.
+ */
 export const api = createHttp({
-  baseUrl: 'http://localhost:5199/v1',
+  baseUrl: () => settings.baseUrl,
+  keyScope: 'http://localhost:5199/v1',
   schema: standardSchema,
-  use: [(req, next) => (devTransport ? devTransport(req, next) : next(req))],
+  validate: () => settings.validate,
+  headers: () => {
+    const h = settings.headers
+    return typeof h === 'function' ? h() : (h ?? {})
+  },
+  use: [
+    (req, next) => (settings.use.length === 0 ? next(req) : compose(settings.use, next)(req)),
+    (req, next) => (devTransport ? devTransport(req, next) : next(req)),
+  ],
 })

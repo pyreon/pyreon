@@ -13,21 +13,58 @@
  * never imports `@pyreon/validation`.
  */
 
+import type { FormFieldEncoding, FormFields, FormScalar, MultipartFields } from './body'
+
 /** HTTP methods the client can issue. Mirrors zero's `HttpMethod`. */
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'
+
+/** A single query-string value. */
+export type QueryScalar = string | number | boolean
+
+/**
+ * A query parameter that is an OBJECT — serialized with bracket keys
+ * (`filter[status]=open`) unless its {@link QueryStyle} says otherwise.
+ * One level deep, which is all OpenAPI's styles define.
+ */
+export interface QueryObject {
+  readonly [key: string]: QueryScalar | null | undefined | readonly QueryScalar[]
+}
 
 /**
  * A value accepted for a query-string entry. `undefined` / `null` entries
  * are DROPPED (not serialized as the strings `"undefined"` / `"null"` —
- * the classic hand-rolled `URLSearchParams` bug); arrays repeat the key.
+ * the classic hand-rolled `URLSearchParams` bug); arrays repeat the key;
+ * objects use bracket keys. {@link QueryStyle} changes the last two.
  */
-export type QueryValue =
-  | string
-  | number
-  | boolean
-  | null
-  | undefined
-  | readonly (string | number | boolean)[]
+export type QueryValue = QueryScalar | null | undefined | readonly QueryScalar[] | QueryObject
+
+/**
+ * How one query parameter is serialized — OpenAPI's vocabulary, so a
+ * generated client can state what the spec says instead of hand-writing it.
+ *
+ * | style | array `[1, 2]` | object `{ a: 1, b: 2 }` |
+ * | --- | --- | --- |
+ * | default | `k=1&k=2` | `k[a]=1&k[b]=2` |
+ * | `form` (explode) | `k=1&k=2` | `a=1&b=2` |
+ * | `form`, `explode: false` | `k=1,2` | `k=a,1,b,2` |
+ * | `spaceDelimited`, `explode: false` | `k=1 2` | — |
+ * | `pipeDelimited`, `explode: false` | `k=1\|2` | — |
+ * | `deepObject` | — | `k[a]=1&k[b]=2` |
+ *
+ * `explode` defaults to `true`, as in OpenAPI. The delimiter is
+ * form-encoded like every other character (`%2C`), which servers decode
+ * before splitting.
+ */
+export interface QueryStyle {
+  style?: 'form' | 'spaceDelimited' | 'pipeDelimited' | 'deepObject' | undefined
+  explode?: boolean | undefined
+}
+
+/**
+ * A header record whose values need not be strings yet. Numbers and booleans
+ * are stringified; `null` / `undefined` omit the header.
+ */
+export type HeaderValues = Record<string, string | number | boolean | null | undefined>
 
 /** Path parameters substituted into a `:name` placeholder. */
 export type PathParams = Record<string, string | number>
@@ -228,10 +265,37 @@ export interface RequestOptions {
   params?: PathParams | undefined
   /** Appended as a query string. */
   query?: QueryParams | undefined
-  headers?: HeadersInit | undefined
+  /** Per-key serialization of `query` — see {@link QueryStyle}. */
+  queryStyle?: Readonly<Record<string, QueryStyle>> | undefined
+  /**
+   * Per-request headers. A plain record may carry numbers and booleans
+   * (stringified) and `undefined` / `null` (the header is OMITTED, not sent as
+   * the text `"undefined"` -- the shape an optional header parameter takes).
+   */
+  headers?: HeadersInit | HeaderValues | undefined
   /** Serialized with `JSON.stringify` + `Content-Type: application/json`. */
   json?: unknown
-  /** Raw body — passed through untouched. Mutually exclusive with `json`. */
+  /**
+   * An `application/x-www-form-urlencoded` body (Stripe, Twilio, OAuth token
+   * endpoints). Encoded per `formEncoding`; see {@link encodeForm}.
+   */
+  form?: FormFields | undefined
+  /** Per-field serialization for `form` — OpenAPI's Encoding Object. */
+  formEncoding?: Readonly<Record<string, FormFieldEncoding>> | undefined
+  /**
+   * A `multipart/form-data` body — `Blob`/`File` values become file parts.
+   * The boundary `Content-Type` is left to the platform.
+   */
+  multipart?: MultipartFields | undefined
+  /**
+   * Cookies, sent as a `Cookie` header. Server-side and native only: a browser
+   * silently drops a `Cookie` header set from script (use `credentials`).
+   */
+  cookies?: Readonly<Record<string, FormScalar>> | undefined
+  /**
+   * Raw body — passed through untouched. `json`, `form`, `multipart` and
+   * `body` are mutually exclusive.
+   */
   body?: BodyInit | null | undefined
   /** Caller cancellation. Composed with the timeout signal. */
   signal?: AbortSignal | undefined
@@ -246,12 +310,26 @@ export interface RequestOptions {
 
 /** Client-level configuration. Every field is optional. */
 export interface HttpClientConfig
-  extends Omit<RequestOptions, 'params' | 'json' | 'body' | 'headers'> {
+  extends Omit<
+    RequestOptions,
+    | 'params'
+    | 'json'
+    | 'body'
+    | 'headers'
+    | 'form'
+    | 'formEncoding'
+    | 'multipart'
+    | 'cookies'
+    | 'queryStyle'
+  > {
   /**
    * Prefix for relative paths. A path starting with `http://`/`https://`
    * ignores it.
+   *
+   * An ACCESSOR is read per request — the seam for an environment switch or
+   * a runtime-configured API origin (`baseUrl: () => settings.apiUrl()`).
    */
-  baseUrl?: string | undefined
+  baseUrl?: string | (() => string | undefined) | undefined
   /**
    * Static headers, or an ACCESSOR evaluated per request (the seam for a
    * token signal: `headers: () => ({ Authorization: \`Bearer ${token()}\` })`).
@@ -282,6 +360,16 @@ export interface HttpClientConfig
    * validation code when you do not use it.
    */
   schema?: SchemaResolver | undefined
-  /** How a validation failure is handled. Defaults to `'strict'`. */
-  validate?: ValidateMode | undefined
+  /**
+   * How a validation failure is handled. Defaults to `'strict'`. An accessor
+   * is read per request, so it can change at runtime.
+   */
+  validate?: ValidateMode | (() => ValidateMode) | undefined
+  /**
+   * Namespace every endpoint's cache key with this string —
+   * `[keyScope, method, path, …]`. Set it when two clients share one
+   * `QueryClient`: without it, `GET /users` on one API and `GET /users` on
+   * another are the SAME cache entry.
+   */
+  keyScope?: string | undefined
 }

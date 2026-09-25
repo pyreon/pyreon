@@ -65,8 +65,8 @@ describe('openapi -> ir', () => {
     const book = doc.models.find((m) => m.name === 'Book')
     const fields = book?.type.kind === 'object' ? book.type.fields : []
     const status = fields.find((f) => f.name === 'status')
-    expect(status?.type).toEqual({ kind: 'string', enum: ['a', 'b'] })
-    expect(fields.find((f) => f.name === 'note')?.nullable).toBe(true)
+    expect(status?.type).toEqual({ kind: 'enum', values: ['a', 'b'] })
+    expect(fields.find((f) => f.name === 'note')?.type).toEqual({ kind: 'nullable', inner: { kind: 'string' } })
     expect(fields.find((f) => f.name === 'title')?.required).toBe(true)
     expect(fields.find((f) => f.name === 'status')?.required).toBe(false)
   })

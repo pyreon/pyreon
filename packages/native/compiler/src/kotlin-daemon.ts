@@ -394,6 +394,15 @@ function spawnDaemon(kotlincVersion: string): Daemon | string {
     /* surfaced through exitCode/readiness below */
   })
   process.once('exit', () => stopDaemon(d))
+  // The daemon must never keep its HOST alive. A test runner exits
+  // explicitly, but a CLI (`lathe generate` verifies native output through
+  // `validateKotlin`) ends when its event loop drains — and a referenced
+  // child plus its piped stdin/stderr kept that loop open forever, so the
+  // command finished its work and then hung. Unreferenced, the host exits
+  // normally and the `exit` handler above stops the JVM.
+  child.unref()
+  ;(child.stdin as { unref?: () => void } | null)?.unref?.()
+  ;(child.stderr as { unref?: () => void } | null)?.unref?.()
 
   // A cold JVM under CI load can take a while to report; the verdict cache's
   // probe budget (60s) is the documented worst case for `kotlinc -version`.

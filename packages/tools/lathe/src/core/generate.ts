@@ -18,18 +18,21 @@ import {
 import {
   emitClient,
   emitNativeModules,
+  hasNativeDataComponent,
   emitWebEndpoints,
   emitWebQueries,
 } from '../emit/client'
-import { emitDocs } from '../emit/docs'
+import { docsImportBase, emitDocs } from '../emit/docs'
 import { emitFaker } from '../emit/faker'
 import { emitMocks } from '../emit/mock'
 import { emitPackageMarker } from '../emit/package-marker'
 import { emitSchemas, emitTypes } from '../emit/schema'
 import { banner, jsonLiteral, type GeneratedFile } from '../emit/writer'
 import type { ResolvedConfig } from './config'
-import type { IrDocument, IrOperation, Reach } from './ir'
-import { loadOpenApi } from '../input/openapi'
+import type { IrDocument, IrNote, IrOperation, Reach } from './ir'
+import { loadOpenApi, parsePagination, type LoadOptions } from '../input/openapi'
+import { checkPagination } from '../emit/pagination'
+import { emitOutputManifest } from './output-manifest'
 import { extractSurface, type ApiSurface } from './surface'
 
 export interface GenerateResult {
@@ -49,8 +52,14 @@ export interface GenerateResult {
 }
 
 /** Run the pipeline over a spec document's text. */
-export function generate(specText: string, config: ResolvedConfig): GenerateResult {
-  const { doc } = loadOpenApi(specText)
+export function generate(
+  specText: string,
+  config: ResolvedConfig,
+  /** Where the spec came from; resolves a relative `servers[].url`. */
+  options: LoadOptions = {},
+): GenerateResult {
+  const { doc } = loadOpenApi(specText, options)
+  applyPagination(doc, config)
   const native = config.target === 'multiplatform'
   const files: GeneratedFile[] = []
   const reach = reachOf(doc, config)
@@ -69,10 +78,20 @@ export function generate(specText: string, config: ResolvedConfig): GenerateResu
   const has = (p: string): boolean => config.plugins.includes(p as never)
 
   if (has('types')) push(emitTypes(doc))
-  if (has('schemas')) push(emitSchemas(doc, { native: false, validator: config.validator }))
+  if (has('schemas')) for (const f of emitSchemas(doc, { native: false, validator: config.validator })) push(f)
   if (has('client')) {
-    push(emitClient(doc, { native, baseUrl: config.baseUrl, client: config.client }))
-    for (const f of emitWebEndpoints(doc, config.validator)) push(f)
+    push(
+      emitClient(doc, {
+        native,
+        baseUrl: config.baseUrl,
+        client: config.client,
+        // A project's NAME when it has one, else the API's own base URL (unique
+        // per API by construction), else its title.
+        keyScope: config.name || config.baseUrl || doc.baseUrl || doc.title,
+        responseValidation: config.responseValidation,
+      }),
+    )
+    for (const f of emitWebEndpoints(doc, config.validator, config.client)) push(f)
   }
   if (has('queries')) {
     for (const f of emitWebQueries(doc)) push(f)
@@ -112,6 +131,7 @@ export function generate(specText: string, config: ResolvedConfig): GenerateResu
       // reach analysis read — not the spec's `servers[0]`, which a config
       // `baseUrl` overrides.
       baseUrl: config.baseUrl ?? doc.baseUrl,
+      importBase: docsImportBase(config.output),
     })) {
       files.push(f)
     }
@@ -121,9 +141,15 @@ export function generate(specText: string, config: ResolvedConfig): GenerateResu
   // Per-LAYER, not one flat barrel: an entry point is a reachability edge, and
   // a barrel naming every layer makes one hook reach every operation and every
   // fixture. Measured at 120 operations that was 30.7 kB against 6.1 kB.
-  const entryOpts = { plugins: config.plugins, client: config.client }
+  // Keyed on what was EMITTED, not on what was selected: an emitter with
+  // nothing to say writes no file, and a barrel naming it does not compile.
   if (has('client')) pushMaybe(emitEndpointsBarrel(doc))
   if (has('queries')) pushMaybe(emitQueriesBarrel(doc))
+  const entryOpts = {
+    plugins: config.plugins,
+    client: config.client,
+    emitted: new Set(files.map((f) => f.path)),
+  }
   pushMaybe(emitDevEntry(doc, entryOpts))
   push(emitBarrel(doc, entryOpts))
 
@@ -132,6 +158,13 @@ export function generate(specText: string, config: ResolvedConfig): GenerateResu
   // makes the whole generated graph tree-shakeable regardless of how the
   // consuming app's own package.json is configured.
   files.push(emitPackageMarker(config.plugins))
+
+  // The record of what THIS run generated, so the next one can remove what it
+  // no longer produces. Listed before `api-surface.json` is appended, and that
+  // file is added to it explicitly: every path the run writes is on the list.
+  files.push(emitOutputManifest([...files.map((f) => f.path), 'api-surface.json']))
+
+  assertUniquePaths(files)
 
   const surface = extractSurface(doc)
   // Emitted LAST and unconditionally: it is not a plugin's output but the
@@ -149,6 +182,66 @@ export function generate(specText: string, config: ResolvedConfig): GenerateResu
 }
 
 /**
+ * Merge `pagination` config onto the operations and CHECK every declaration
+ * against the spec's types (audit E3).
+ *
+ * A config entry is the user's explicit instruction, so a wrong one FAILS the
+ * run with the reason; a wrong `x-pyreon-pagination` in someone else's spec is
+ * NOTED and skipped, like every other spec construct Lathe cannot honour.
+ */
+function applyPagination(doc: IrDocument, config: ResolvedConfig): void {
+  const byId = new Map(doc.operations.map((o) => [o.id, o]))
+  for (const [id, entry] of Object.entries(config.pagination ?? {})) {
+    const op = byId.get(id)
+    if (!op) {
+      throw new Error(
+        `[Pyreon] lathe: \`pagination.${id}\` names no operation. Keys are the GENERATED operation names (the \`endpoints\` exports): ${[...byId.keys()].slice(0, 20).join(', ')}.`,
+      )
+    }
+    const parsed = parsePagination(entry)
+    if (typeof parsed === 'string') throw new Error(`[Pyreon] lathe: \`pagination.${id}\`: ${parsed}`)
+    op.pagination = parsed
+  }
+  const models = new Map(doc.models.map((m) => [m.name, m.type]))
+  const fromConfig = new Set(Object.keys(config.pagination ?? {}))
+  for (const op of doc.operations) {
+    if (!op.pagination) continue
+    const clash = [`${op.id}Infinite`, `${op.id}InfiniteOptions`].find((n) => byId.has(n))
+    const problem =
+      op.method !== 'GET'
+        ? `pagination for \`${op.id}\`: only a GET can be paged.`
+        : clash
+          ? `pagination for \`${op.id}\`: its hook would collide with the operation \`${clash}\`.`
+          : checkPagination(op, models)
+    if (problem === undefined) continue
+    if (fromConfig.has(op.id)) throw new Error(`[Pyreon] lathe: ${problem}`)
+    ;(doc.notes as IrNote[]).push({ code: 'invalid-pagination', at: `#/paths/${op.path}`, message: `${problem} Ignored.` })
+    op.pagination = undefined
+  }
+}
+
+/**
+ * Two generated files with one path means one silently overwrites the other
+ * on disk -- a whole tag's endpoints gone, with no error anywhere. Compared
+ * case-INSENSITIVELY, because macOS and Windows filesystems are: `users.ts`
+ * and `Users.ts` are one file there. The input layer is responsible for names
+ * that never collide; this is the guard that makes a regression loud.
+ */
+function assertUniquePaths(files: readonly GeneratedFile[]): void {
+  const seen = new Map<string, string>()
+  for (const f of files) {
+    const key = f.path.toLowerCase()
+    const prev = seen.get(key)
+    if (prev !== undefined) {
+      throw new Error(
+        `[Pyreon] lathe: two generated files map to the same path (\`${prev}\` and \`${f.path}\`) — one would overwrite the other. This is a lathe naming bug; please report it with the spec's tag and operation names.`,
+      )
+    }
+    seen.set(key, f.path)
+  }
+}
+
+/**
  * Decide, per operation, whether the generated code can reach native.
  *
  * Static and cheap — it reads the IR, not the emitted source, so the CLI can
@@ -160,7 +253,7 @@ function reachOf(doc: IrDocument, config: ResolvedConfig): Map<string, { reach: 
   const out = new Map<string, { reach: Reach; reason?: string }>()
   const baseUrl = config.baseUrl ?? doc.baseUrl
   for (const op of doc.operations) {
-    out.set(op.id, decide(op, baseUrl))
+    out.set(op.id, decide(op, op.baseUrl ?? baseUrl))
   }
   return out
 }
@@ -187,6 +280,15 @@ function decide(op: IrOperation, baseUrl: string): { reach: Reach; reason?: stri
     return {
       reach: 'web-only',
       reason: `\`${op.method}\` lowers through mutations, which PMTC does not yet recognise; GET operations on this client DO reach native.`,
+    }
+  }
+  // Asked of the emitter rather than re-derived: the reach report and the
+  // native layout must agree about which reads get a data component.
+  if (!hasNativeDataComponent(op)) {
+    return {
+      reach: 'web-only',
+      reason:
+        'no typed JSON response (no content, or a media type Lathe cannot type) -- a native query decodes into a declared type, so there is nothing to lower it to.',
     }
   }
   return { reach: 'web+native' }
