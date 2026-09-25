@@ -43,7 +43,7 @@ export function readContractSide(text: string, name: string): ContractSide {
   try {
     parsed = parseSpecText(text)
   } catch (err) {
-    throw new Error(`[Pyreon] lathe diff: \`${name}\` is not JSON or YAML: ${(err as Error).message}`)
+    throw new Error(`[Pyreon] lathe diff: \`${name}\` is not JSON or YAML: ${(err as Error).message}`, { cause: err })
   }
   const o = parsed !== null && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : undefined
   if (o && 'operations' in o && 'models' in o && !('openapi' in o) && !('swagger' in o)) {

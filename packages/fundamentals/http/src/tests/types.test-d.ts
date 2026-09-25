@@ -217,13 +217,13 @@ describe('@pyreon/http/stream', () => {
   it('types events from `parse`, and `data: text` as strings', async () => {
     const { openEventStream, openNdjsonStream } = await import('../stream')
     const connect = async () => null
-    const typed = openEventStream(connect, { parse: (v) => z.object({ n: z.number() }).parse(v) })
+    const typed = openEventStream(connect, { parse: (raw) => z.object({ n: z.number() }).parse(raw) })
     for await (const ev of typed) expectTypeOf(ev.data).toEqualTypeOf<{ n: number }>()
     const text = openEventStream(connect, { data: 'text' })
     for await (const ev of text) expectTypeOf(ev.data).toEqualTypeOf<string>()
     const untyped = openEventStream(connect)
     for await (const ev of untyped) expectTypeOf(ev.data).toEqualTypeOf<unknown>()
-    const rows = openNdjsonStream(connect, { parse: (v) => String(v) })
+    const rows = openNdjsonStream(connect, { parse: (raw) => String(raw) })
     for await (const row of rows) expectTypeOf(row).toEqualTypeOf<string>()
   })
 })

@@ -163,6 +163,27 @@ describe('rendering', () => {
     expect(renderContractDiff(none, 'github')).toBe('')
   })
 
+  it('names a renamed API, and falls back to operation ids when the surface recorded no symbols', () => {
+    const a = readContractSide(BEFORE, 'a').surface
+    const b = readContractSide(AFTER.replace('"Shop"', '"Shop v2"'), 'b').surface
+    for (const op of Object.values(b.operations)) {
+      delete op.module
+      delete op.symbols
+    }
+    for (const op of Object.values(a.operations)) {
+      delete op.module
+      delete op.symbols
+    }
+    const d = contractDiff(a, b)
+    const md = renderContractDiff(d, 'markdown')
+    expect(md).toContain('Shop → Shop v2')
+    expect(md).toContain('| `getOrder`; `listCustomers` |')
+    expect(renderContractDiff(d, 'text')).toContain('affects getOrder; listCustomers')
+    const noAffects = { ...d, changes: [{ ...d.changes[0]!, affects: [] }] }
+    expect(renderContractDiff(noAffects, 'github')).not.toContain('(affects')
+    expect(renderContractDiff(noAffects, 'markdown')).toContain('| — |')
+  })
+
   it('limits the affected list and says how many more', () => {
     const many = { ...diff, changes: [{ ...diff.changes[0]!, affects: Array.from({ length: 9 }, (_, i) => ({ id: `op${i}`, symbols: [] })) }] }
     expect(renderContractDiff(many, 'text')).toContain('and 3 more')

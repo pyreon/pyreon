@@ -914,9 +914,9 @@ server.tool(
           const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')))
           const r = spawnSync('git', ['show', `${rev[1]}:${rev[2]}`], { cwd, env, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })
           if (r.status === 0) return r.stdout
-          throw new Error(`\`${rev[2]}\` does not exist at git revision \`${rev[1]}\`.`)
+          throw new Error(`[Pyreon] mcp: \`${rev[2]}\` does not exist at git revision \`${rev[1]}\`.`)
         }
-        throw new Error(`\`${spec}\` does not exist.`)
+        throw new Error(`[Pyreon] mcp: \`${spec}\` does not exist. Pass a spec, an api-surface.json, or \`<git-rev>:<path>\`.`)
       }
       try {
         let afterPath = after
