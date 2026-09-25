@@ -748,7 +748,7 @@ function resolvedKind(type: IrType, models: ReadonlyMap<string, IrType>, depth =
 }
 
 /** WEB layout: `queries.ts` — reactive hooks, one per operation. */
-export function emitWebQueries(doc: IrDocument, client: ClientName = 'pyreon'): SourceFile[] {
+export function emitWebQueries(doc: IrDocument): SourceFile[] {
   const files: SourceFile[] = []
   const queryOps = doc.operations.filter((o) => !isMutation(o))
   // The FILE group each operation lives in — an untagged operation is grouped

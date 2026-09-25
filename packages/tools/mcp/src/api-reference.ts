@@ -3653,14 +3653,14 @@ function focusField(name: FieldNames<typeof form>) { /* … */ }`,
   },
 
   'query/useQuery': {
-    signature: '<TData, TError, TKey>(options: () => QueryObserverOptions<...>) => UseQueryResult<TData, TError>',
+    signature: '<TQueryFnData, TError, TData = TQueryFnData, TKey>(options: () => UseQueryOptions<TQueryFnData, TError, TData, TKey>) => UseQueryResult<TData, TError>',
     example: `const userId = signal(1)
 const user = useQuery(() => ({
   queryKey: ['user', userId()],
   queryFn: () => fetch(\`/api/users/\${userId()}\`).then((r) => r.json()),
 }))
 // user.data(), user.error(), user.isFetching() — each its own signal`,
-    notes: `Subscribe to a query with fine-grained reactive signals. \`options\` is a FUNCTION (not an object) so it can read Pyreon signals — when a tracked signal inside changes (e.g. a reactive queryKey), the observer re-evaluates options and refetches automatically. Returns one independent \`Signal<T>\` per observer field (\`data\`, \`error\`, \`status\`, \`isPending\`, \`isLoading\`, \`isFetching\`, \`isError\`, \`isSuccess\`) so templates only re-run for the exact fields they read. Internally wraps TanStack's \`QueryObserver\` and subscribes via \`onUnmount\`-guarded effect — the observer unsubscribes when the component unmounts. See also: useQueryClient, useMutation, useSuspenseQuery.`,
+    notes: `Subscribe to a query with fine-grained reactive signals. Generic order matches TanStack (\`TQueryFnData\` is what \`queryFn\` resolves to, \`TData\` what \`select\` produces), so \`select: (posts) => posts.length\` types \`data()\` as \`number\` with no cast. \`options\` is a FUNCTION (not an object) so it can read Pyreon signals — when a tracked signal inside changes (e.g. a reactive queryKey), the observer re-evaluates options and refetches automatically. Returns one independent \`Signal<T>\` per observer field (\`data\`, \`error\`, \`status\`, \`isPending\`, \`isLoading\`, \`isFetching\`, \`isError\`, \`isSuccess\`) so templates only re-run for the exact fields they read. Internally wraps TanStack's \`QueryObserver\` and subscribes via \`onUnmount\`-guarded effect — the observer unsubscribes when the component unmounts. See also: useQueryClient, useMutation, useSuspenseQuery.`,
     mistakes: `- Passing the options object directly instead of a function — loses reactive queryKey support; the observer never re-evaluates when signals change
 - Reading \`.data\` / \`.error\` / \`.isFetching\` as plain values — they are \`Signal<T>\`, call them: \`user.data()\`, \`user.isFetching()\`
 - Destructuring \`const { data } = useQuery(...)\` at setup and reading \`data\` later — captures the Signal reference once, which is fine, but storing \`data()\` at setup captures the initial VALUE and defeats reactivity
@@ -3989,13 +3989,13 @@ const user = await api.get('/users/1').json() // decoded body`,
   },
 
   'http/endpoint': {
-    signature: '(spec: `${HttpMethod} ${string}`, options?: { response?: Validator; headers?: HeadersInit; formEncoding?: Record<string, FormFieldEncoding>; timeout?: number | false }) => Endpoint',
+    signature: `<S, V, I = EndpointInput<path>, K = 'json'>(spec: \`\${HttpMethod} \${string}\`, options?: { response?: V; responseType?: K; queryStyle?; formEncoding?; keyScope?; headers?; timeout? }) => Endpoint<S, BodyOf<K, V>, I>`,
     example: `const getUser = api.endpoint('GET /users/:id', { response: UserSchema })
 
 await getUser({ params: { id: '1' } })
 const options = getUser.query({ params: { id: '1' } })
 console.log(options.queryKey)`,
-    notes: 'Declare a reusable endpoint. One declaration yields the callable, a stable structural cache key, and the response type — which is what stops queryKey and URL from drifting apart, the single biggest pain with axios plus TanStack Query. `params` is REQUIRED by the type system exactly when the path declares `:placeholders`, and its keys are extracted from the path literal, so a typo is a compile error. `.query(args)` emits `{ queryKey, queryFn }` with the AbortSignal already forwarded; `.mutation()` emits `{ mutationFn, invalidates }`.',
+    notes: `Declare a reusable endpoint. One declaration yields the callable, a stable structural cache key, and the response type — which is what stops queryKey and URL from drifting apart, the single biggest pain with axios plus TanStack Query. \`params\` is REQUIRED by the type system exactly when the path declares \`:placeholders\`, and its keys are extracted from the path literal, so a typo is a compile error. \`.query(args)\` emits \`{ queryKey, queryFn }\` with the AbortSignal already forwarded; \`.mutation()\` emits \`{ mutationFn, invalidates }\`. \`responseType\` (\`text\` / \`blob\` / \`arrayBuffer\` / \`stream\` / \`void\`) decodes non-JSON bodies and types the result accordingly; \`queryStyle\` states OpenAPI query serialization per key (\`form\` / \`spaceDelimited\` / \`pipeDelimited\` / \`deepObject\`, \`explode\`); \`keyScope\` namespaces the cache key. The third generic \`I\` narrows what a call sends (\`api.endpoint<S, typeof Schema, { json: NewPet }>(…)\`) — how a generated client types \`query\` and \`json\` on direct calls. In a path, \`\\\\:\` is a literal colon (\`/v1/:name\\\\:cancel\`).`,
     mistakes: `- Hand-writing a \`queryKey\` next to an endpoint call. Use \`endpoint.query(...)\` so the key is derived from the same declaration as the URL.
 - Expecting \`mutationFn\` to receive an AbortSignal. TanStack gives mutations no context at all — pass one in the variables if the mutation must be cancellable.
 - Writing the spec without a method (\`"/users"\`). It must be \`"<METHOD> <path>"\`.
@@ -10957,15 +10957,16 @@ const { files } = generate(specText, config)`,
   },
 
   'lathe/verifyNative': {
-    signature: 'verifyNative(files: GeneratedFile[], transform: TransformFn | undefined): VerifyReport',
-    example: `import { generate, resolveConfig, resolveTransform, verifyNative, worstVerdict } from '@pyreon/lathe'
+    signature: 'verifyNative(files: GeneratedFile[], transform: TransformFn | undefined, compile?: NativeCompilers): VerifyReport',
+    example: `import { generate, resolveConfig, resolveNativeCompiler, verifyNative, worstVerdict } from '@pyreon/lathe'
 
 const { files } = generate(specText, resolveConfig({ input: 'spec', target: 'multiplatform' }))
-const report = verifyNative(files, await resolveTransform())
+const { transform, compile } = await resolveNativeCompiler()
+const report = verifyNative(files, transform, compile)
 
 if (!report.ran) console.warn('not verified:', report.reason)
 if (worstVerdict(report) !== 'lowers') process.exitCode = 1`,
-    notes: 'Runs the real native compiler over the generated `.native.tsx` modules on both targets and returns a per-file verdict. The check is POSITIVE — it asserts the emitted Swift/Kotlin contains `PyreonQuery<` / `PyreonZodSchema_` and contains no leaked web-only symbol — because zero warnings is not evidence: a standalone hook wrapping `useQuery` produces no warnings and emits Swift that cannot find the symbol. Passing `undefined` for `transform` yields `ran: false` with a reason, never a pass.',
+    notes: `Runs the real native compiler over the generated \`.native.tsx\` modules on both targets and returns a per-file verdict. The check is POSITIVE — it asserts the emitted Swift/Kotlin contains \`PyreonQuery<\` / \`PyreonZodSchema_\` and contains no leaked web-only symbol — because zero warnings is not evidence: a standalone hook wrapping \`useQuery\` produces no warnings and emits Swift that cannot find the symbol. Passing \`undefined\` for \`transform\` yields \`ran: false\` with a reason, never a pass. Warnings are classified by CLASS per declaration (a verbatim reproduction is \`broken\`, a dropped field \`partial\`), identically for both targets; with \`compile\` (the project compiler's \`validateSwiftWithStubs\` / \`validateKotlin\`, as \`resolveNativeCompiler()\` returns them) each module is compiled too, and a compile error outranks every heuristic.`,
     mistakes: `- Reading \`warnings.length === 0\` as success. That is exactly the shape this function exists to catch — PMTC reproduces an unrecognised call verbatim and says nothing, so the native build fails later with "cannot find useQuery in scope".
 - Treating \`ran: false\` as a pass. A verification that could not run is not one that ran and succeeded; \`--strict-native\` fails on it deliberately.
 - Bundling a copy of \`@pyreon/native-compiler\` instead of resolving the project's. A verdict from a different compiler version than the one that will build the app is worse than no verdict.`,

@@ -9,8 +9,9 @@ import { api } from '../client'
 import { Author } from '../schemas/Author'
 import { s } from '@pyreon/validate'
 
+const listAuthors$response = /* @__PURE__ */ s.array(Author)
 /**
  * Every author.
  * `GET /authors`
  */
-export const listAuthors = /* @__PURE__ */ api.endpoint('GET /authors', { response: /* @__PURE__ */ s.array(Author) })
+export const listAuthors = /* @__PURE__ */ api.endpoint<'GET /authors', typeof listAuthors$response, { query?: ({ limit?: number | undefined }) | undefined }>('GET /authors', { response: listAuthors$response })
