@@ -41,6 +41,7 @@ import { isCanonicalPrimitive } from './canonical-primitives'
 import { parseRocketstyleDefn } from './rocketstyle-native'
 import { parseAttrsDefn } from './attrs-native'
 import { collectDeclaredTypeNames, liftInlineObjectStructs } from './inline-object-structs'
+import { liftSlotParamStructs } from './render-slots'
 import {
   DEFAULT_THEME,
   mergeTheme,
@@ -731,6 +732,18 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     const mds = tryModuleDeclsFromTopLevel(node, ctx)
     if (mds) moduleDecls.push(...mds)
   }
+
+  // A render prop's inline object PARAMETER type (`render: (item: { title:
+  // string }) => VNodeChild`) is lifted to a declared struct, so the prop's
+  // declaration and the object literal its body passes agree on one type —
+  // see render-slots.ts. Before the float refinements, which read structs.
+  structs.push(
+    ...liftSlotParamStructs(
+      components,
+      new Set([...declaredTypeNames, ...structs.map((st) => st.name)]),
+      ctx.warnings,
+    ),
+  )
 
   // Double-type follow-up: a `type X = { rate: number }` annotation can't
   // express whether a field is fractional, so the struct field defaults
