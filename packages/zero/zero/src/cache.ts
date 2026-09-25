@@ -16,7 +16,15 @@ export interface CacheConfig {
   immutable?: number
   /** Cache duration for static assets like images/fonts (seconds). Default: 86400 (1 day) */
   static?: number
-  /** Cache duration for pages (seconds). Default: 0 (no cache) */
+  /**
+   * Cache duration for pages (seconds). Default: 0, which sends `no-cache`.
+   *
+   * Note for `mode: 'isr'`: ISR refuses to cache a response marked
+   * `no-cache`, so with the default this middleware turns ISR off for every
+   * page. Scope it with `rules` (for example assets only), or leave pages to
+   * ISR. A request carrying a Cookie or Authorization header always gets
+   * `private, no-cache` for its page, whatever this is set to.
+   */
   pages?: number
   /** Stale-while-revalidate window for pages (seconds). Default: 60 */
   staleWhileRevalidate?: number
@@ -102,7 +110,20 @@ export function cacheMiddleware(config: CacheConfig = {}): Middleware {
       }
     }
 
-    const control = resolveControl(path, immutableDuration, staticDuration, pageDuration, swr)
+    let control = resolveControl(path, immutableDuration, staticDuration, pageDuration, swr)
+    // A page rendered for a request that carried credentials is per-user:
+    // `public` would let a CDN serve it to the next visitor (and lift ISR's
+    // own credential fail-safe, which honours an explicit `public`). Assets
+    // are unaffected — they are the same for everyone.
+    if (
+      control.startsWith('public') &&
+      !HASHED_ASSET.test(path) &&
+      !SCRIPT_EXT.test(path) &&
+      !STATIC_EXT.test(path) &&
+      (ctx.req.headers.has('cookie') || ctx.req.headers.has('authorization'))
+    ) {
+      control = 'private, no-cache'
+    }
     ctx.headers.set('Cache-Control', control)
   }
 }

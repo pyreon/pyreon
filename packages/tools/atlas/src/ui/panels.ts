@@ -52,6 +52,14 @@ export interface AddonPanelDef {
    * would just be a nested accessor the renderer cannot mount.
    */
   render: AddonPanelRender
+  /**
+   * Does this panel have anything to say about the SELECTED component? A
+   * panel that answers `false` stays reachable but is dimmed in the tab strip
+   * — twelve equal-weight tabs, most of them empty for a Button, made the
+   * relevant ones hard to find. Reactive: read signals inside and the strip
+   * re-evaluates. Omit it for a panel that always applies.
+   */
+  applies?: (model: unknown) => boolean
 }
 
 /**

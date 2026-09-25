@@ -30,6 +30,8 @@ export const Counter = island(() => import('./Counter'), {
 
 Import `island` from `@pyreon/server/client`, never the `@pyreon/server` barrel — the barrel drags `node:` server code into the client bundle.
 
+`name` is shown here for clarity, but under `@pyreon/vite-plugin` it's optional for a `const`-bound declaration — the plugin derives a collision-free one from the binding. See [`IslandOptions`](/docs/island-architecture#islandoptions).
+
 ## Hydration strategies
 
 - `'load'` — hydrate immediately on page load (above-the-fold interactive content).
