@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { productionTruthSpecs } from './production-truth.shared'
 
 /**
  * SSR node-deploy artifact gate (Bug A + C). Runs against the emitted
@@ -299,4 +300,8 @@ test.describe('zero <Link> prefetch — no modulepreload MIME error', () => {
     ).toHaveCount(1)
   })
 
+})
+
+test.describe('production truth (A1)', () => {
+  productionTruthSpecs()
 })

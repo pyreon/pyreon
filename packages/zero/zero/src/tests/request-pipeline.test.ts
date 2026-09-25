@@ -224,3 +224,34 @@ describe('routingPathname', () => {
     expect(routingPathname(new URL('http://x/app'), cfg)).toBe('/')
   })
 })
+
+describe('under a base path, the framework endpoints live under it too', () => {
+  const api: ApiRouteEntry[] = [
+    { pattern: '/api/ping', module: { GET: () => Response.json({ pong: true }) } },
+  ]
+  const based = () =>
+    createServer({ routes: routes(), routeMiddleware: adminMiddleware, apiRoutes: api, config: { base: '/app/' } })
+
+  it('the base-prefixed data endpoint still runs the TARGET page middleware', async () => {
+    // The data-endpoint check ran before the base strip, so `/app/_pyreon/data`
+    // was matched as a plain path and the target's middleware never ran.
+    const res = await based()(req('/app/_pyreon/data?path=/admin'))
+    expect(res.status).toBe(401)
+    expect(await res.text()).not.toContain('TOP-SECRET')
+    expect(routingPathname(new URL('http://x/app/_pyreon/data?path=/admin'), { base: '/app/' })).toBe('/admin')
+  })
+
+  it('serves the data endpoint and API routes at their base-prefixed URLs', async () => {
+    const data = await based()(req('/app/_pyreon/data?path=/admin', { headers: { authorization: 'ok' } }))
+    expect(data.status).toBe(200)
+    expect(await data.text()).toContain('TOP-SECRET')
+    const ping = await based()(req('/app/api/ping'))
+    expect(ping.status).toBe(200)
+    expect(await ping.json()).toEqual({ pong: true })
+  })
+
+  it('renders pages at their base-prefixed URLs', async () => {
+    const res = await based()(req('/app/'))
+    expect(res.status).toBe(200)
+  })
+})

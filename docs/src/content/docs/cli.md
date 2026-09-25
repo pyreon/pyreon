@@ -515,6 +515,24 @@ By default the target is the **highest** `@pyreon/*` version already present (al
 
 After `--write`, run your package manager's install to pull the aligned versions. `workspace:` / `link:` / `file:` / git specifiers and non-`@pyreon` dependencies are left untouched.
 
+### Upgrade codemods
+
+When an upgrade crosses a release with a breaking change that can be migrated mechanically, `pyreon upgrade` also runs that release's **codemod**. It picks every codemod introduced after your lowest declared `@pyreon/*` version and at or before the target, runs them oldest first, and lists the files each would change. Like the dependency rewrite, it is a dry run until you pass `--write`; `--json` reports them under `codemods`.
+
+```text
+  codemods for the breaking changes between 0.51.0 and 0.52.0:
+    zero-remove-vite-option
+      vite.config.ts
+```
+
+Codemods only make changes that keep behaviour the same, and skip `node_modules`, `dist` and `lib`. Current codemods:
+
+| Id | Since | What it does |
+| --- | --- | --- |
+| `zero-remove-vite-option` | 0.52.0 | Removes the `vite` option from `zero({...})` in `vite.config.*`. `zero()` never read it; the old value is kept as a comment so you can move it into `defineConfig`. |
+
+Every `@pyreon/zero` changeset that bumps a minor version (a breaking change while Pyreon is 0.x) states how to upgrade in an `Upgrade:` line: `none`, the codemod id, or the manual step. That line appears in the changelog.
+
 ## `pyreon lint`
 
 `pyreon lint` is the unified front door to `@pyreon/lint` — it forwards **every** `pyreon-lint` flag verbatim.

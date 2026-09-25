@@ -172,6 +172,10 @@ Opt out for minimal logs (log scrapers, size-diff tooling):
 zero({ buildSummary: false })
 ```
 
+### SPA apps ship without hydration code
+
+When every page is client-rendered (`mode: 'spa'`, no `routeRules` or route file declaring another `renderMode`), a production build compiles hydration out of the client bundle: no page ever arrives with server HTML to adopt. On `examples/kanban` that is 6.6 KB gzipped (10.6%) of the initial JavaScript. Any route that can be server-rendered keeps hydration, and dev is unchanged.
+
 ### Router loaders are compiled out when unused
 
 A production build scans `src/routes`. When no route exports a `loader` and there is no `.server.ts` sibling, zero defines `globalThis.__PYREON_ROUTER_LOADERS__` as `false`, which removes the router's loader engine and loader rendering from the client bundle (0.9–1 KB gz off the initial load, measured on two example apps). Apps with loaders get `true`, which costs nothing. `zero dev` never sets it, so adding a loader never needs a restart.

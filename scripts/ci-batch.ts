@@ -87,6 +87,9 @@ const WEIGHTS: Record<string, number> = {
   'cpa-smoke-blog-cloudflare': 373,
   'cpa-smoke-dashboard-vercel-full': 370,
   'cpa-smoke-dashboard-node-supabase': 372,
+  // Not yet measured in CI: build + typecheck + doctor + built-server +
+  // Chromium; sized like the other flat cells plus the browser install.
+  'cpa-smoke-app-node': 420,
   'cpa-smoke-monorepo-vercel': 35,
 }
 

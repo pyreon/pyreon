@@ -378,7 +378,11 @@ export const Link = createLink((props: LinkRenderProps) => (
     {...(props.target ? { target: props.target } : {})}
     {...(props.rel ? { rel: props.rel } : {})}
     {...(props['aria-label'] ? { 'aria-label': props['aria-label'] } : {})}
-    {...(props.isExactActive() ? { 'aria-current': 'page' as const } : {})}
+    // An ACCESSOR, not a spread: a spread reads `isExactActive()` once at
+    // setup, so `aria-current` never moved after a client-side navigation and
+    // assistive tech kept announcing the first page as current. `undefined`
+    // removes the attribute.
+    aria-current={() => (props.isExactActive() ? 'page' : undefined)}
     onClick={props.onClick}
     onMouseEnter={props.onMouseEnter}
     onTouchStart={props.onTouchStart}

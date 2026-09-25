@@ -1,0 +1,29 @@
+{
+  "$comment": "Documented @pyreon/zero features with NO real-build test (e2e spec or verify-modes cell). This list is a RATCHET: scripts/check-zero-feature-coverage.ts fails if it grows relative to origin/main. To remove an entry, add a real-build test and a registry entry in scripts/zero-feature-coverage.ts. Never add one to make the gate pass.",
+  "uncovered": {
+    "Single-instance contract": "unit-tested only (duplicate-instance sentinel); no built app loads two copies",
+    "SPA apps ship without hydration code": "no cell asserts the hydration runtime is ABSENT from a pure-SPA client bundle",
+    "Route Groups": "no example uses a (group)/_layout directory in a built app",
+    "Virtual Modules": "exercised implicitly by every build; no test imports virtual:zero/* from user code",
+    "Typed routes": "type-level unit tests only; no built example typechecks RouterLink against generated route types",
+    "Streaming by default (`mode: 'ssr'`)": "no e2e asserts an SSR page response is chunked / streamed",
+    "Delivery polish (SSG toggles)": "no verify-modes cell toggles these SSG options",
+    "ISR: tag-based invalidation + filesystem store": "revalidateTag and createFsStore have no built-server test",
+    "`<Link>` external links": "unit-tested only; no e2e asserts target/rel on a built page",
+    "Script": "no example renders <Script>",
+    "Icon": "no example renders <Icon>",
+    "Composing them — `@pyreon/zero/middleware`": "no built app composes the shipped middlewares (rate limit, CORS, security headers)",
+    "CSP Nonce": "no built-server test asserts the nonce reaches inline scripts",
+    "Using a backend proxy in dev": "integration test runs a dev server in vitest, not an e2e spec",
+    "Image Processing": "no cell asserts the image plugin's generated variants",
+    "Favicons": "no cell asserts generated favicon files",
+    "Social-Share Images (og:image)": "no cell asserts generated og:image files",
+    "Server env — `validateEnv`": "unit-tested only",
+    "Validating env with any schema (zod / valibot / `@pyreon/validate`)": "unit-tested only",
+    "Fail the build on a missing public var — `zero({ env })`": "no cell asserts a failing build",
+    "Other Build-Time Plugins": "no cell exercises these plugins",
+    "Request Locals": "useRequestLocals has no built-server test",
+    "Testing Utilities": "a test-helper API; exercised by unit tests, which is its real-world use",
+    "Router loaders are compiled out when unused": "covered by a real Vite build inside vitest (packages/zero/zero/src/tests/router-loaders-flag.test.ts), not by an e2e spec or verify-modes cell"
+  }
+}

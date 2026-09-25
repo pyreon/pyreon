@@ -42,12 +42,13 @@ export function nodeAdapter(): Adapter {
       const port = options.config.port ?? 3000
       // The hashed-asset URL prefix (`/<assetsDir>/`, default `/assets/`) baked
       // into the emitted handler so a custom `build.assetsDir` still gets
-      // immutable cache. NOTE: `base` is deliberately NOT included — this
-      // self-hosted handler serves files by raw `url.pathname` (no base-strip),
-      // so a subpath deploy isn't supported here regardless; threading base into
-      // only the cache check would imply support that doesn't exist. (The CDN
-      // adapters DO scope their rules to `<base><assetsDir>`.)
+      // immutable cache. Static lookups are made on the BASE-STRIPPED path:
+      // Vite emits `<base>assets/…` URLs, but the client dir holds `assets/…`,
+      // so without the strip a subpath deploy served every asset as a page.
       const assetPrefix = `/${options.assetsDir ?? 'assets'}/`
+      let basePrefix = options.config.base && options.config.base !== '/' ? options.config.base : ''
+      if (basePrefix && !basePrefix.startsWith('/')) basePrefix = `/${basePrefix}`
+      while (basePrefix.endsWith('/')) basePrefix = basePrefix.slice(0, -1)
       const serverEntry = `
 import { createServer } from "node:http"
 import { readFile } from "node:fs/promises"
@@ -100,8 +101,18 @@ function requestOrigin(req) {
   return \`\${proto}://\${req.headers.host ?? "localhost"}\`
 }
 
+// \`base\` (e.g. "/app"), removed before any static lookup. Routing gets the
+// full URL — the SSR handler strips base itself.
+const BASE = ${JSON.stringify(basePrefix)}
+function staticPath(pathname) {
+  if (!BASE) return pathname
+  if (pathname === BASE) return "/"
+  return pathname.startsWith(BASE + "/") ? pathname.slice(BASE.length) : null
+}
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", requestOrigin(req))
+  const staticPathname = staticPath(url.pathname)
 
   // Serve existing static files (js / css / images / fonts / prerendered
   // .html / public assets). The root "/" deliberately has NO index.html
@@ -111,13 +122,13 @@ const server = createServer(async (req, res) => {
   // a missing file falls through to SSR. (An explicit "/index.html" request
   // serves the template shell — a harmless non-canonical edge the client
   // still hydrates.)
-  if (req.method === "GET") {
+  if (req.method === "GET" && staticPathname !== null) {
     // Hybrid static-first: prerendered route → serve its index.html.
-    if (prerenderedPaths.has(url.pathname)) {
+    if (prerenderedPaths.has(staticPathname)) {
       try {
-        const pagePath = url.pathname === "/"
+        const pagePath = staticPathname === "/"
           ? join(clientDir, "index.html")
-          : join(clientDir, url.pathname, "index.html")
+          : join(clientDir, staticPathname, "index.html")
         if (resolve(pagePath).startsWith(clientRoot)) {
           const html = await readFile(pagePath)
           res.writeHead(200, {
@@ -130,10 +141,10 @@ const server = createServer(async (req, res) => {
       } catch {}
       // File missing → fall through to SSR below.
     }
-    const ext = extname(url.pathname)
+    const ext = extname(staticPathname)
     if (ext) {
       try {
-        const filePath = join(clientDir, url.pathname)
+        const filePath = join(clientDir, staticPathname)
         // Prevent path traversal — ensure resolved path stays within clientDir.
         const resolved = resolve(filePath)
         if (!resolved.startsWith(clientRoot)) {
@@ -151,7 +162,7 @@ const server = createServer(async (req, res) => {
         // (prerendered pages change on every content edit).
         res.writeHead(200, {
           "content-type": mime,
-          "cache-control": url.pathname.startsWith(${JSON.stringify(assetPrefix)})
+          "cache-control": staticPathname.startsWith(${JSON.stringify(assetPrefix)})
             ? "public, max-age=31536000, immutable"
             : ext === ".html"
               ? "public, max-age=0, must-revalidate"

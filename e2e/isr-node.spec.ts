@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { productionTruthSpecs } from './production-truth.shared'
 
 /**
  * ISR node-deploy artifact gate — runs against the emitted `node dist/index.js`
@@ -95,4 +96,8 @@ test.describe('ISR node deploy artifact', () => {
     expect(res.headers()['content-type']).toContain('application/json')
     expect(res.headers()['x-isr-cache']).toBeUndefined()
   })
+})
+
+test.describe('production truth (A1)', () => {
+  productionTruthSpecs()
 })

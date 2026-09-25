@@ -111,6 +111,36 @@ export interface HandlerOptions {
    * Values ≤0 or `NaN` fall back to the default.
    */
   suspenseTimeoutMs?: number
+  /**
+   * The app's base path (`zero({ base: '/app/' })`, Vite `base`). Requests
+   * under it are routed with the prefix removed, and the router renders
+   * prefixed `<RouterLink>` hrefs. Without it a subpath deploy answered
+   * `/app/about` with 404 while serving `/about` — the router received the
+   * prefixed path and no route pattern carries a base.
+   *
+   * @example
+   * createHandler({ App, routes, base: '/app/' })
+   */
+  base?: string
+}
+
+/** `base` as `/app` (leading slash, no trailing slashes), or `''` for root. */
+function normalizeHandlerBase(base: string | undefined): string {
+  if (!base || base === '/') return ''
+  let b = base.startsWith('/') ? base : `/${base}`
+  while (b.length > 1 && b.endsWith('/')) b = b.slice(0, -1)
+  return b === '/' ? '' : b
+}
+
+/** `path` (pathname + search) with `base` removed when it is under it. */
+function stripHandlerBase(path: string, base: string): string {
+  if (!base) return path
+  const q = path.search(/[?#]/)
+  const pathname = q === -1 ? path : path.slice(0, q)
+  const rest = q === -1 ? '' : path.slice(q)
+  if (pathname === base) return `/${rest}`
+  if (pathname.startsWith(`${base}/`)) return pathname.slice(base.length) + rest
+  return path
 }
 
 /**
@@ -144,6 +174,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
     collectStyles,
     suspenseTimeoutMs,
   } = options
+  const base = normalizeHandlerBase(options.base)
 
   // Pre-compile once at handler creation — avoids 3x string scan per request
   const compiled = compileTemplate(template)
@@ -216,7 +247,9 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
     }
 
     // ── Per-request router ────────────────────────────────────────────────────
-    const router = createRouter({ routes, mode: 'history', url: path })
+    // Route on the base-stripped path; the router keeps `base` for hrefs.
+    const appPath = stripHandlerBase(path, base)
+    const router = createRouter({ routes, mode: 'history', url: appPath, ...(base ? { base } : {}) })
 
     if (mode === 'stream') {
       // Streaming keeps its own pipeline — renderToStream's shell flush +
@@ -230,7 +263,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
           // render (see renderPage's docstring for the empty-page failure mode
           // `prefetchLoaderData` alone caused). Forward the request so loaders
           // can read cookies and `throw redirect()` BEFORE the layout renders.
-          await router.preload(path, req)
+          await router.preload(appPath, req)
 
           const app = h(RouterProvider, { router }, h(App, null))
           // Pass through `req.signal` so an upstream abort (client disconnect,
@@ -253,6 +286,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
             suspenseTimeoutMs,
             streamStatus,
             method === 'HEAD',
+            typeof ctx.locals.cspNonce === 'string' ? ctx.locals.cspNonce : undefined,
           )
         } catch (err) {
           const info = getRedirectInfo(err)
@@ -277,7 +311,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
     // with zero's SSG prerender entry and dev SSR middleware. This handler
     // only composes the parts into its pre-compiled template.
     try {
-      const result = await renderPage(App, router as never, path, {
+      const result = await renderPage(App, router as never, appPath, {
         request: req,
         ...(collectStyles ? { collectStyles } : {}),
         locals: ctx.locals,
@@ -351,9 +385,11 @@ async function renderStreamResponse(
   // body production entirely — saves the body-buffering cost and matches
   // the standard HTTP semantic.
   isHead: boolean = false,
+  // Per-request CSP nonce (`ctx.locals.cspNonce`), for every inline tag.
+  nonce?: string,
 ): Promise<Response> {
   const loaderData = serializeLoaderData(router as never)
-  const scripts = buildScriptsFast(clientEntryTag, loaderData)
+  const scripts = buildScriptsFast(clientEntryTag, loaderData, nonce)
 
   // Use pre-split parts: [before-head, between-head-app, between-app-scripts, after-scripts]
   const [p0, p1, p2, p3] = compiled.parts
@@ -366,9 +402,10 @@ async function renderStreamResponse(
   // ops-controlled per-boundary timeout. Both options are only
   // included when defined, so unconfigured deploys land on
   // renderToStream's defaults byte-identically.
-  const streamOptions: { signal?: AbortSignal; suspenseTimeoutMs?: number } = {}
+  const streamOptions: { signal?: AbortSignal; suspenseTimeoutMs?: number; nonce?: string } = {}
   if (signal !== undefined) streamOptions.signal = signal
   if (suspenseTimeoutMs !== undefined) streamOptions.suspenseTimeoutMs = suspenseTimeoutMs
+  if (nonce) streamOptions.nonce = nonce
   const appStream
     = Object.keys(streamOptions).length > 0
       ? renderToStream(app, streamOptions)
