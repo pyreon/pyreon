@@ -254,6 +254,16 @@ export function validateCreditCard(value: string): boolean {
   return sum % 10 === 0
 }
 
+/** The `.iso` sub-namespace of a string schema — each check returns the schema. */
+export interface IsoChecks<S> {
+  /** ISO date, `YYYY-MM-DD`. */
+  date(opts?: CheckOpts): S
+  /** ISO 8601 date-time. */
+  dateTime(opts?: CheckOpts): S
+  /** ISO time, `HH:MM:SS`. */
+  time(opts?: CheckOpts): S
+}
+
 export class StringSchema extends SchemaBase<string> {
   readonly _kind = 'string' as const
 
@@ -651,8 +661,14 @@ export class StringSchema extends SchemaBase<string> {
    * ISO date helpers grouped under a sub-namespace for ergonomic API.
    * `s.string().iso.date()` reads naturally; ditto `.iso.dateTime()` /
    * `.iso.time()`.
+   *
+   * Typed through the named `IsoChecks<this>`, not inferred: an inferred type
+   * is emitted as `{ date: (…) => this }`, and polymorphic `this` inside an
+   * object type literal is invalid in a declaration file (TS2526), so under the
+   * default `skipLibCheck` every consumer silently got `any` back from
+   * `.iso.date()`, and the rest of the chain was untyped.
    */
-  readonly iso = {
+  readonly iso: IsoChecks<this> = {
     date: (opts?: CheckOpts): this =>
       this._format(
         'check:string:iso:date',
