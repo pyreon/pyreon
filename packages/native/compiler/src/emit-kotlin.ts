@@ -2127,7 +2127,8 @@ function emitKotlinComponent(c: ComponentIR): string {
   _signalNames = new Set()
   // Seed with file-scope helper names so a `dbl(21)` call in this component
   // resolves as a free function.
-  _functionNames = new Set(_helperFnNames)
+  // File-scope view helpers are CALLED (`row()`), never read like a signal.
+  _functionNames = new Set([..._helperFnNames, ..._moduleViewHelpersKotlin.keys()])
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
   _machineNames = new Set()
   _syncedSignalNames = new Set()

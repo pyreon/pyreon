@@ -9,14 +9,17 @@
 //   Kotlin `Text(text = "${row("a")}")` against a `fun row()` the component
 //          emit gave no parameters — a hard build failure.
 //
-// One source, two different wrong answers. This fix NAMES the shape on both
-// targets and stops interpolating a View into a string; the full lowering (a
-// `@ViewBuilder func` / `@Composable fun` invoked in view position) is a
-// separate feature.
+// One source, two different wrong answers. The first fix NAMED the shape on
+// both targets and stopped interpolating a View into a string. The arrow
+// helper with annotated parameters now LOWERS (a `@ViewBuilder func` /
+// `@Composable fun` called in view position — render-slots.ts), so it is no
+// longer a warning; the shapes that are really COMPONENTS (a top-level
+// `function` declaration, a PascalCase arrow taking a props object) still
+// cannot be called as functions and are still named.
 //
 // Bisect-load-bearing: revert the `jsxHelperCallName` guard in either emitter
-// and the Swift specs fail with `Text(verbatim: "\(row("a"))")` present and
-// `warnings` empty.
+// and the still-warned Swift specs fail with `Text(verbatim: "\(row("a"))")`
+// present and `warnings` empty.
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
@@ -26,10 +29,14 @@ const app = (decl: string, child: string) =>
 ${decl}
 export function App() { return (<Stack>{${child}}</Stack>) }`
 
-/** Every spelling of "declare a thing that returns JSX". */
-const SHAPES: readonly (readonly [string, string, string])[] = [
+/** The arrow spellings — a view function, which now lowers. */
+const LOWERED: readonly (readonly [string, string, string])[] = [
   ['file-scope arrow, lowercase', `const row = (x: string) => <Text>{x}</Text>`, `row("a")`],
   ['file-scope arrow, zero-arg', `const row = () => <Text>hi</Text>`, `row()`],
+]
+
+/** The spellings that are components, which have no function-call form. */
+const SHAPES: readonly (readonly [string, string, string])[] = [
   ['function declaration', `function row(x: string) { return <Text>{x}</Text> }`, `row("a")`],
   [
     'PascalCase called as a function',
@@ -37,6 +44,20 @@ const SHAPES: readonly (readonly [string, string, string])[] = [
     `Row({ x: "a" })`,
   ],
 ]
+
+describe('a JSX-returning ARROW helper called as a function renders in view position', () => {
+  for (const target of ['swift', 'kotlin'] as const) {
+    for (const [name, decl, child] of LOWERED) {
+      it(`${target}: ${name} — a view call, never interpolated`, () => {
+        const out = transform(app(decl, child), { target })
+        expect(out.warnings, name).toEqual([])
+        const call = target === 'swift' ? child.replace(/"/g, '"') : child
+        expect(out.code, name).toContain(`\n      ${call}\n`.replace('      ', target === 'swift' ? '      ' : '    '))
+        expect(out.code, name).toContain(target === 'swift' ? '@ViewBuilder private func row(' : '@Composable\nprivate fun row(')
+      })
+    }
+  }
+})
 
 describe('a JSX-returning helper called as a function', () => {
   for (const target of ['swift', 'kotlin'] as const) {

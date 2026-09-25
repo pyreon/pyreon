@@ -2584,7 +2584,8 @@ function emitSwiftComponent(c: ComponentIR): string {
   // call-emit keeps parens for `addTodo()` (function call) and drops
   // them only for `count()` (signal read). Seed with the file-scope helper
   // names so a `dbl(21)` call in this component resolves as a free function.
-  _functionNames = new Set(_helperFnNames)
+  // File-scope view helpers are CALLED (`row()`), never read like a signal.
+  _functionNames = new Set([..._helperFnNames, ..._moduleViewHelpersSwift.keys()])
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
   // Gap 4 PR-2: track machine names so `m()` keeps parens (Swift
   // callAsFunction).

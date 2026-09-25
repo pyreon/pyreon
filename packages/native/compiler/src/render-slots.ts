@@ -197,6 +197,16 @@ export interface ViewHelper {
   body: ExprIR
 }
 
+/**
+ * A view helper's parameter must have a native spelling. Unannotated has none;
+ * an INLINE object type (`(p: { x: string }) => …`) is the component-props
+ * shape, which is a component, not a helper — and lowering it here would type
+ * the parameter as a degenerate tuple / `Any`.
+ */
+function isHelperParamType(t: TypeIR): boolean {
+  return t.kind !== 'unknown' && !containsObject(t)
+}
+
 /** A component-scope `const renderX = (u: T) => <…/>` / `function renderX(u: T) { return <…/> }`. */
 export function viewHelperFromDecl(d: DeclIR): ViewHelper | null {
   if (d.kind !== 'function') return null
@@ -204,7 +214,7 @@ export function viewHelperFromDecl(d: DeclIR): ViewHelper | null {
   const only = d.body[0]!
   if (only.kind !== 'return' || only.expr === undefined) return null
   if (!isViewShaped(only.expr)) return null
-  if (d.params.some((p) => p.type.kind === 'unknown' || p.defaultValue !== undefined)) return null
+  if (d.params.some((p) => !isHelperParamType(p.type) || p.defaultValue !== undefined)) return null
   return { name: d.name, params: d.params.map((p) => ({ name: p.name, type: p.type })), body: only.expr }
 }
 
@@ -218,7 +228,7 @@ export function viewHelperFromModuleDecl(md: ModuleDeclIR): ViewHelper | null {
   const params: { name: string; type: TypeIR }[] = []
   for (const [i, name] of init.params.entries()) {
     const t = types[i]
-    if (t === undefined || t.kind === 'unknown') return null
+    if (t === undefined || !isHelperParamType(t)) return null
     params.push({ name, type: t })
   }
   return { name: md.name, params, body: init.body }
