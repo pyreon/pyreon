@@ -335,6 +335,108 @@ The one surface the two engines share with no DOM is "a spec in, an SVG string o
 
 Measured 2026-09-08, Bun 1.x on an M3 Max, K=15 medians, `NODE_ENV=production`; reproduce with `bun run --filter=@pyreon/charts bench:engine`. Read it as that surface and nothing finer: ECharts draws more chrome by default (a themed legend, styled ticks), the engine emits one command per datum where ECharts batches a line into one path, and neither number is a canvas paint — the canvas executors need a real 2D context on one side and a real DOM on the other, so they are not comparable here. The engine's own layout + render throughput (bars ×10k, line ×100k, treemap, sankey, LTTB) prints above these rows in the same run. *Author-run bench; magnitudes are the signal.*
 
+## Performance — in the browser vs uPlot, Chart.js and Recharts
+
+Mount-to-first-painted-frame and full-data update of one line chart, 800×300,
+same seeded random walk for every library, animation off everywhere, no point
+symbols, axes + grid on all four. **Pyreon loses to uPlot and Chart.js on every
+line cell, and wins against Recharts on every cell but the smallest.**
+
+| op | `<PlotChart>` (default) | `<PlotChart accessibleTable={false}>` | uPlot 1.6.32 | Chart.js 4.5.1 ¹ | Recharts 3.10.1 |
+| --- | --- | --- | --- | --- | --- |
+| mount line, 1k | 10.90 [10.85–10.97] | 1.42 [1.34–1.48] | **1.39** [1.35–1.46] | 2.97 [2.87–3.10] | 9.64 [9.46–9.77] |
+| mount line, 10k | 12.04 [11.96–12.17] | 3.17 [3.12–3.27] | **1.87** [1.79–1.92] | 3.91 [3.81–3.98] | 77.75 [77.39–78.09] |
+| mount line, 100k | 17.01 [16.53–17.46] | 8.08 [7.38–8.55] | **4.59** [4.50–4.69] | 4.77 [4.69–4.86] | 692.0 [691.3–694.1] |
+| mount line, 1M | 62.29 [62.04–62.71] | 53.31 [52.90–53.56] | **11.47** [10.14–12.85] | 11.87 [11.82–11.96] 🤝 | 7,129 [7,090–7,162] ² |
+| update line, 10k | 5.93 [5.78–6.00] | 1.69 [1.64–1.74] | **1.03** [1.01–1.05] | 1.74 [1.69–1.82] | 22.94 [22.74–23.09] |
+| update line, 100k | 10.69 [10.41–11.19] | 7.07 [6.57–7.39] | 3.96 [3.84–4.01] | **2.39** [2.33–2.46] | 191.7 [191.0–192.4] |
+| mount bars, 1k | 12.71 [12.63–12.78] | 3.64 [3.57–3.71] | 19.79 [19.66–19.88] | **9.23** [9.13–9.31] | 43.72 [43.50–44.10] |
+
+Milliseconds, median [95% bootstrap CI]; bold = fastest ranked arm, 🤝 = CI
+overlaps the fastest. ¹ with its documented large-data config (`parsing: false`,
+`normalized`, `min-max` decimation); ² n=15, every other cell n=60.
+
+Verdicts for the default `<PlotChart>` (what you get without configuration):
+
+| op | vs uPlot | vs Chart.js | vs Recharts |
+| --- | --- | --- | --- |
+| mount line, 1k | loss 7.8× | loss 3.7× | **loss 1.13×** |
+| mount line, 10k | loss 6.4× | loss 3.1× | win 6.5× |
+| mount line, 100k | loss 3.7× | loss 3.6× | win 41× |
+| mount line, 1M | loss 5.4× | loss 5.2× | win 114× |
+| update line, 10k | loss 5.8× | loss 3.4× | win 3.9× |
+| update line, 100k | loss 2.7× | loss 4.5× | win 18× |
+| mount bars, 1k | win 1.56× | loss 1.38× | win 3.4× |
+
+No cell is a tie. With `accessibleTable={false}` the picture changes: a tie with
+uPlot at 1k points (CIs overlap), a tie with Chart.js on the 10k update, wins
+over Chart.js at 1k/10k mount and over everyone on 1k bars — and still clear
+losses to uPlot at 10k (mount and update), and to both uPlot and Chart.js at
+100k and 1M points and on the 100k update.
+
+**Where the time goes** (Chromium trace + CPU profile, same window):
+
+- **The accessible data table is most of the small-chart cost.** Pyreon renders
+  an offscreen `<table>` of up to 1,000 rows by default; none of the others do.
+  At 1k points it is ~9 ms of the ~10.5 ms frame: layout 4.9 ms + style 1.8 ms +
+  paint 1.1 ms for 1,000 rows that are visually clipped but read by screen
+  readers, plus ~1.5 ms of JS. Without it the 1k frame is 1.30 ms against
+  uPlot's 1.29 ms (traced figures; tracing adds overhead to both).
+- **Large series are JS-bound, and the marks are resolved twice.** At 1M points
+  96% of the frame is JS. The mount walks all rows through the mark accessors
+  once to draw (`buildSpec`, 26% of mount JS) and **again** for the canvas's
+  `aria-label` description (`a11yInput` → `resolveMarks` + `describeChart`,
+  26.5%) — the second pass runs even with `accessibleTable={false}`. The draw
+  path itself places every point before reducing (`layoutSeriesPoints` 10%,
+  `m4Pixels` 13%, `extendSpan` 10%, `splitRuns` 5%); uPlot reduces from the
+  value arrays without allocating a point per datum.
+
+**Who draws fewer segments than points.** Pyreon: M4 (first/min/max/last per
+half-pixel column), default on. uPlot: in/min/max/out per device pixel once
+`n ≥ 4 × width`, default on. Chart.js: `min-max` decimation, **off by default** —
+without it (diagnostic arm) it is 2.98 / 6.76 / 20.45 / 163.2 ms for the four
+mounts, i.e. Pyreon's default beats *default* Chart.js at 100k and 1M. Recharts:
+none, every point becomes an SVG path segment.
+
+**Method.** Each sample starts inside a `requestAnimationFrame` callback, runs
+the op synchronously (React through `flushSync`), lets the frame's style /
+layout / paint run, and stops in the first task after it — a `MessageChannel`
+message — after a 1×1 `getImageData` on every canvas forces its raster to
+finish. The chart host is visible and in the viewport (off-screen content is
+not painted). The correctness gate runs in the same task the clock stops in, so
+a library that draws late fails the run: series-colour pixels on canvas, path
+segments / bar rects in Recharts' SVG, and a changed picture after an update.
+**One asymmetry remains and it favours Recharts**: SVG raster happens off the
+main thread after paint, so its raster cost is not in the window. Input is each
+library's own data shape, built outside the window. A raw-canvas control arm
+(no axes, no reduction) drifted ≤ 4% between passes on large cells and ≤ 10% on
+sub-2 ms cells.
+
+Apple M3 Max (14 cores), macOS 26, Chromium 151 (Playwright), production
+builds, forced GC between samples, `crossOriginIsolated` page. Three passes,
+each taken in its own window after six consecutive 20 s load samples below 5 and
+accepted only if every stamp stayed ≤ 8 (they read 2.3–3.6), 20 samples per
+arm per pass, arm order reshuffled per pass. 2026-09-25, at commit `fcc34578a`.
+
+Bundle, the minimal import that draws one line chart (JS, gzip -9):
+
+| entry | total | over its framework |
+| --- | --- | --- |
+| Pyreon `<PlotChart>` + `line()` | 46.3 KB | 35.6 KB over the 10.7 KB Pyreon runtime |
+| Pyreon `<Chart><Line/>` | 45.5 KB | 34.8 KB |
+| uPlot | 21.5 KB (+ 0.7 KB CSS) | — (no framework) |
+| Chart.js, tree-shaken | 46.6 KB | — (no framework) |
+| Recharts | 152.9 KB | 86.9 KB over the 66.0 KB React + ReactDOM |
+
+Reproduce from `examples/benchmark`:
+`bun bench-scenarios.ts --scenario charts-libs --repeat 3 --wait-quiet 6`
+(or per pass: `--repeat 1 --pass-offset K --raw-out passK.json`, then
+`--pool pass0.json,pass1.json,pass2.json`), `bun bench-charts-libs-bundle.ts`,
+and for the decomposition `bun bench-charts-libs-trace.ts` /
+`BENCH_PROFILE=1 bun run build && bun bench-charts-libs-profile.ts`.
+*Written and judged by the Pyreon authors; a synthetic single-chart bench, not
+application latency.*
+
 ## Native geometry — the plot engine on iOS/Android
 
 Every family in `@pyreon/charts` — cartesian marks, pie/gauge, radar, candlestick, heatmap, funnel, treemap, sunburst, tree, sankey, graph, polar, theme river, calendar, gantt, parallel coordinates — has its geometry written in the PMTC native subset and BUNDLED into `PyreonChartEngine.swift` and `PyreonChartEngine.kt` by `packages/native/compiler/scripts/gen-chart-engine.ts`. The same TypeScript that lays out a chart on the web is what lays it out on a device: the generator compiles the engine sources through the real Pyreon compiler, and a drift test compiles the generated Swift and Kotlin with `swiftc` / `kotlinc` on every change, so the three targets cannot diverge silently.
