@@ -1,6 +1,6 @@
 import { onUnmount } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
-import { batch, effect } from '@pyreon/reactivity'
+import { batch } from '@pyreon/reactivity'
 import type {
   DefaultError,
   InfiniteData,
@@ -12,6 +12,7 @@ import type {
 import { InfiniteQueryObserver } from '@tanstack/query-core'
 import { subscribeWhenRestored, useIsRestoring } from './is-restoring'
 import { useQueryClient } from './query-client'
+import { observeOptions } from './observe-options'
 import { makeResultProto } from './result-proto'
 
 
@@ -118,13 +119,18 @@ export function useInfiniteQuery<
 
   const client = useQueryClient()
   const isRestoring = useIsRestoring()
-  const observer = new InfiniteQueryObserver<
-    TQueryFnData,
-    TError,
-    InfiniteData<TQueryFnData>,
-    TQueryKey,
-    TPageParam
-  >(client, options())
+  const observer = observeOptions(
+    options,
+    (o) =>
+      new InfiniteQueryObserver<
+        TQueryFnData,
+        TError,
+        InfiniteData<TQueryFnData>,
+        TQueryKey,
+        TPageParam
+      >(client, o),
+    (obs, o) => obs.setOptions(o),
+  )
 
   // Lazy signal slots — see use-query.ts for the pattern + rationale. Apps
   // typically read 1-2 of the 13 fields, so 13 eager allocations + 13 writes
@@ -165,10 +171,6 @@ export function useInfiniteQuery<
     })
   })
 
-  effect(() => {
-    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.setOptions')
-    observer.setOptions(options())
-  })
 
   onUnmount(() => unsub())
 
