@@ -79,6 +79,10 @@ const varThemeModeCallback = ((light: unknown, dark: unknown) => {
       `[${attribute}="dark"] { ${varName}: ${d}; }`,
     ],
     varName,
+    // Ambient: a mode pair is allocated while a theme resolves, and that
+    // resolution is memoized — later requests reuse the `var()` reference
+    // without re-injecting, so the declaration must reach every request.
+    true,
   )
   return `var(${varName})`
 }) as unknown as ThemeModeCallback

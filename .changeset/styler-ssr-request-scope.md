@@ -1,28 +1,9 @@
 ---
-"@pyreon/styler": patch
-"@pyreon/runtime-server": patch
+'@pyreon/styler': patch
+'@pyreon/runtime-server': patch
+'@pyreon/unistyle': patch
+'@pyreon/rocketstyle': patch
+'@pyreon/zero': patch
 ---
 
-Fix a cross-request bug in concurrent streaming SSR: the styler's SSR rule buffer
-and streaming flush watermark are now scoped per request.
-
-`@pyreon/styler`'s `sheet` is a module-level singleton, and its SSR accumulation
-state (`ssrBuffer` + the streaming `flushSSRPending()` watermark) lived on the
-instance. Under `renderToStream` / `mode: 'stream'`, two CONCURRENT streaming
-renders therefore shared one buffer and one watermark — request A's per-boundary
-flush advanced the watermark past request B's rules, so a boundary could ship
-missing or another request's CSS (FOUC / cross-request styles).
-
-`@pyreon/runtime-server` (which owns the request lifecycle and can use
-`AsyncLocalStorage` — the styler is browser-safe and cannot import
-`node:async_hooks`) now establishes a per-request styler scope around every
-render and exposes an opaque per-request bag via
-`globalThis.__PYREON_STYLER_REQUEST_STATE__`. The styler stashes its SSR state
-in that bag when a scope is active, and falls back to its instance state
-otherwise — so string SSR, SSG, direct callers and the client are unchanged
-(the change is strictly additive; it only ISOLATES concurrent streams).
-
-Bisect-verified: neutering the styler's scope getter leaks request A's rules into
-request B's flush; reverting the runtime-server scope wrap leaves renders with no
-per-request bag. String mode was already synchronous-safe; the caches (which are
-content-addressed) stay correctly shared.
+String-mode SSR no longer leaks CSS between requests. The styler's server rule buffer was never reset, so a page's `<style>` carried every rule an earlier request had inserted (ssr-showcase `/posts/1`: 2,850 B, then 12,710 B after one `/sections` request), and prerendered page CSS depended on prerender order. `runWithRequestContext` is now a styler request scope, render sites that hand out a cached class mark it used (`sheet.markUsed`), and module-level `keyframes` / static `createGlobalStyle` rules are emitted to every request. `ssg.cssMode: 'asset'` now writes one file per distinct rule set instead of linking every page to the first page's CSS.

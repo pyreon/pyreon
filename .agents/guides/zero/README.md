@@ -7,6 +7,8 @@ Read before touching `packages/zero/**`, a build adapter, SSG/SSR/ISR output, or
 ## SSG (`ssgPlugin`)
 
 - Per-route HTML is built by a nested Vite SSR sub-build. An env flag stops it re-triggering itself; pages render concurrently via `runWithConcurrency`, with progress through `ssg.onProgress`.
+- `ssg.workers` (opt-in, `ssg-worker-pool.ts`) renders on N worker threads that each import the same built SSG entry; only the renderer runs off-thread (template injection, writes, manifests stay on main). Byte-identical output depends on per-page CSS being order-independent — every page renders inside `runWithRequestContext`, which is a styler request scope (`sheet.markUsed` at cached-class render sites; module-level keyframes/static globals are ambient). Breaking that scope makes worker output differ from the single-thread build.
+- `ssg.cssMode: 'asset'` writes one content-addressed CSS file per DISTINCT page rule set (it used to write the first page's CSS and link it everywhere).
 - `getStaticPaths` enumerates dynamic routes (`[id].tsx`).
 - `_404.tsx` / `_not-found.tsx` → `dist/404.html`. It renders inside layout chrome: `findNotFoundFallback` builds the chain, loaders are skipped via `router.preload(path, _, { skipLoaders: true })`, and `noindex` is injected.
 - A loader-thrown `redirect()` → `dist/_redirects` (Netlify/Cloudflare) + `_redirects.json` (Vercel) + optional meta-refresh HTML.
@@ -76,6 +78,12 @@ Read before touching `packages/zero/**`, a build adapter, SSG/SSR/ISR output, or
 - Custom hosts: `*.localhost` resolves natively; for anything else the `/etc/hosts` lines are printed, never written.
 - X.509 is hand-rolled on `node:crypto` (`src/https/der.ts`, `selfsign.ts`). An IP must be an `iPAddress` SAN. A `dNSName` holding an IP parses fine and browsers ignore it.
 - HTTP/1.1 only (Vite dev dropped h2).
+
+## Client build flags (`client-flags-plugin.ts`)
+
+- `__ZERO_HYDRATE__`: defined `false` in a production build only when `isSpaEverywhere` holds (app mode `spa`, no non-spa `routeRules`, no route file mentioning `renderMode` — every doubt keeps hydration). `client.ts` checks it inline, so `hydrateRoot` and the hydration machinery drop out of the bundle (−6.6 KB gz on kanban). If a flagged build still receives markup, the client clears it before mounting rather than duplicating it.
+- **Rejected, measured:** grouping the always-loaded runtime into one chunk (`output.codeSplitting.groups`). It cut ssr-showcase by 3.3 KB gz and 14 requests but made kanban 1.7 KB bigger (runtime code only lazy chunks used became eager); with `minShareCount: 2` kanban was neutral but ui-showcase grew 1.5 KB. Not a win for every app, so not shipped.
+- Dev SSR loads `createApp` from `@pyreon/zero/app` (one module) rather than the whole `@pyreon/zero/server` package.
 
 ## Gates
 

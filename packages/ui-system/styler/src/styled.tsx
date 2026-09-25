@@ -194,7 +194,11 @@ const createStyledComponent = (
     const cssText = normalizeCSS(raw)
     const hasCss = cssText.length > 0
 
-    const staticClassName = hasCss ? sheet.insert(cssText, false, insertLayer) : ''
+    // `use = false`: creation is not a render. On the server the class reaches
+    // a request's `<style>` only when a render marks it used (StaticStyled
+    // below) — otherwise whichever request first evaluated this module would
+    // carry the rules of every component the module DEFINES.
+    const staticClassName = hasCss ? sheet.insert(cssText, false, insertLayer, false) : ''
 
     // Hoisted out of the render fn: `tag` is known at component-creation time,
     // and `tag` matches `rawProps.as ?? tag` whenever rawProps is empty (the
@@ -223,6 +227,9 @@ const createStyledComponent = (
     const cachedEmptyVNode = h(tag as string, staticClassName ? { class: staticClassName } : {})
 
     const StaticStyled: ComponentFn = (rawPropsIn: Record<string, any>): VNode | null => {
+      // SSR: the class was inserted once at creation, so a render never calls
+      // `insert()` — tell the sheet this request used it (see `markUsed`).
+      if (IS_SERVER && staticClassName) sheet.markUsed(staticClassName)
       // Normalize `innerRef` → `ref` before the ref-aware fast path below
       // (otherwise an innerRef-only call would hit the cached ref-less VNode).
       const rawProps = aliasInnerRef(rawPropsIn)
@@ -460,6 +467,9 @@ const createStyledComponent = (
           isReactiveText ? $textRaw() : undefined,
         ),
       )
+      // `doResolve` may answer from `classCache` / `elClassCache` without
+      // touching the sheet — mark the class used by THIS request either way.
+      sheet.markUsed(className)
       const finalProps = buildProps(rawProps, className, typeof finalTag === 'string', customFilter)
       // CPSE: surface the per-instance custom properties into the SSR style attr.
       if (pendingCpseVars) mergeCpseStyle(finalProps, pendingCpseVars)

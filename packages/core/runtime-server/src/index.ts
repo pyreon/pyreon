@@ -140,6 +140,41 @@ class DeferredHtml {
   constructor(readonly render: () => RawHtml | Promise<RawHtml>) {}
 }
 
+/**
+ * A component hole kept UNRENDERED so the stream can walk it in place.
+ *
+ * `_ssrNode` renders its node to a string — correct for `renderToString`, but
+ * in a stream it turned every compiled page into one buffered chunk: the
+ * compiler lowers `<div>…<Suspense>…</Suspense>…</div>` to ONE `_ssr(...)`
+ * call whose Suspense hole was rendered by the string renderer, which awaits
+ * the slow child and emits no fallback. So the page (the default compiler
+ * output, `ssrTemplate` on) arrived as a single chunk after the slowest child,
+ * while the same page built with h() streamed its shell and fallback at once.
+ *
+ * While `streamNode` evaluates a `DeferredHtml` thunk it sets
+ * `_streamHoleMode`; `_ssrNode` then returns this wrapper and `_ssr` returns a
+ * `StreamParts` list instead of a string. `streamNode` enqueues the static
+ * parts and streams each hole with `streamNode` itself — the same function the
+ * h() path uses for that vnode, so the bytes are identical by construction
+ * (the concatenated stream equals the string render).
+ */
+class StreamHole {
+  constructor(readonly node: VNodeChild) {}
+}
+
+/** Ordered output of an `_ssr(...)` call that contains a `StreamHole`. */
+class StreamParts {
+  constructor(readonly parts: readonly unknown[]) {}
+}
+
+// True ONLY for the synchronous extent of a `DeferredHtml` thunk invoked by
+// `streamNode` (set and restored around the call — see `StreamHole`). The
+// compiler emits `_ssrNode` exclusively as a DIRECT argument of that thunk's
+// single `_ssr(...)` call, so no other consumer can observe a `StreamHole`.
+// `renderNode`'s DeferredHtml branch clears it, so a string render nested
+// inside the window (an `_escSole(vnode)` hole) keeps rendering to strings.
+let _streamHoleMode = false
+
 // ─── Streaming Suspense context ───────────────────────────────────────────────
 // Tracks in-flight async Suspense boundary resolutions within a single stream.
 
@@ -165,6 +200,15 @@ interface StreamCtx {
    * hard-coded value, so unset is byte-identical to prior behavior.
    */
   suspenseTimeoutMs: number
+  /** ` nonce="…"` or `''` — appended to every inline tag the stream emits. */
+  nonceAttr: string
+  /** Hand the batched output to the consumer now (see `STREAM_FLUSH_BYTES`). */
+  flush: () => void
+}
+
+/** Flush the active stream's batched output before a real wait. No-op outside a stream. */
+function flushStream(): void {
+  _streamCtxAls.getStore()?.flush()
 }
 
 const _streamCtxAls = new AsyncLocalStorage<StreamCtx>()
@@ -317,17 +361,17 @@ const _stylerSSRAls = new AsyncLocalStorage<Record<string, unknown>>()
  * per-boundary flush advancing past request B's rules, which OMITS CSS and
  * shows as FOUC. `flushSSRPending` exists only on the streaming path.
  *
- * String-mode SSR must NOT be scoped: it reads the buffer AFTER the render
- * returns (`renderToString(...)` then `getStyleTag()` / `getStyleRules()`), which
- * is the documented pattern the SSG pipeline, the server handler and the
- * rocketstyle-collapse resolver all use. Scoping it puts every rule in a bag
- * that is gone by the time anyone reads, so the page renders with NO styles —
- * caught by 4 collapse-resolver specs and the ssg-i18n-prefix + ui-regression
- * e2e suites, all reporting an empty rule set.
+ * A bare `renderToString` is NOT scoped: its callers read the buffer AFTER
+ * it returns (`renderToString(...)` then `getStyleTag()` / `getStyleRules()`
+ * — the rocketstyle-collapse resolver and direct users), and a scope would
+ * put every rule in a bag that is gone by the time they read.
  *
- * Two concurrent string renders still share the instance buffer. That is
- * pre-existing and strictly milder: the reader takes the whole buffer, so the
- * failure mode is over-inclusion, never the omission the watermark causes.
+ * `runWithRequestContext` IS scoped, because its callers (`renderPage`, the
+ * streaming handler) render and read inside the same call. Inside a scope the
+ * request's buffer holds only the rules its render touched — the styler marks
+ * cached classes used on every render (`sheet.markUsed`) and emits
+ * module-level keyframes / static globals as ambient rules — so a page's CSS
+ * no longer depends on which pages rendered before it.
  */
 function withStylerSSRScope<T>(fn: () => T): T {
   if (_stylerSSRAls.getStore() !== undefined) return fn()
@@ -450,7 +494,12 @@ export async function renderToString(root: VNode | null): Promise<string> {
  * outside of renderToString but still want per-request isolation.
  */
 export function runWithRequestContext<T>(fn: () => Promise<T>): Promise<T> {
-  return withIsolatedRegistries(() => _contextAls.run([], fn))
+  // A request context is also a styler SSR scope: every string-mode consumer
+  // (`renderPage` — createHandler, zero dev SSR, SSG) renders AND reads its
+  // styles inside this call, so the rules one request inserts can no longer
+  // leak into the next request's `<style>` (the shared instance buffer was
+  // never reset — a page's CSS grew with every other page rendered before it).
+  return withStylerSSRScope(() => withIsolatedRegistries(() => _contextAls.run([], fn)))
 }
 
 /**
@@ -500,6 +549,38 @@ export interface RenderToStreamOptions {
    * cancels.
    */
   suspenseTimeoutMs?: number
+  /**
+   * Per-request CSP nonce. When set, every inline `<script>` and `<style>`
+   * the stream emits (the Suspense swap helper, each swap call, styler
+   * flushes) carries it, so a strict `script-src 'nonce-…'` policy admits
+   * them. Without it streaming forced apps onto `'unsafe-inline'`.
+   */
+  nonce?: string
+}
+
+/**
+ * Output batching threshold for `renderToStream`, in string length.
+ *
+ * The stream used to `controller.enqueue` every fragment the walker produced —
+ * each open tag, text node and close tag — so a 3.3 KB h()-built page went out
+ * as 314 chunks, each paying a queue + consumer read. Fragments are now
+ * accumulated and handed over (a) whenever the batch reaches this size, and
+ * (b) at every point the render is about to WAIT: before an async component or
+ * async hole is awaited, at the end of the shell, after each Suspense swap
+ * script, and on close/error. (b) is what keeps streaming semantics intact —
+ * nothing the client could already render sits in the buffer while the server
+ * waits. The concatenated output is byte-identical; only chunk boundaries move.
+ */
+let STREAM_FLUSH_BYTES = 4096
+
+/**
+ * @internal Test-only: set the batching threshold (`0` = hand every fragment
+ * over as produced, the pre-batching behaviour). Returns the previous value.
+ */
+export function _setStreamFlushBytes(n: number): number {
+  const prev = STREAM_FLUSH_BYTES
+  STREAM_FLUSH_BYTES = n
+  return prev
 }
 
 export function renderToStream(
@@ -529,12 +610,23 @@ export function renderToStream(
       : userTimeout !== undefined && Number.isFinite(userTimeout) && userTimeout > 0
         ? userTimeout
         : 30_000
+  // Sanitized to a bare token so it can never break out of the attribute.
+  const nonce = options.nonce ? options.nonce.replace(/["'<>\s]/g, '') : ''
+  const nonceAttr = nonce ? ` nonce="${nonce}"` : ''
 
   return new ReadableStream<string>({
     start(controller) {
+      let pendingOut = ''
+      const flush = (): void => {
+        if (pendingOut === '') return
+        const out = pendingOut
+        pendingOut = ''
+        if (!signal.aborted) controller.enqueue(out)
+      }
       const enqueue = (chunk: string) => {
         if (signal.aborted) return // stop appending after abort
-        controller.enqueue(chunk)
+        pendingOut += chunk
+        if (pendingOut.length >= STREAM_FLUSH_BYTES) flush()
       }
       let bid = 0
       const ctx: StreamCtx = {
@@ -544,6 +636,8 @@ export function renderToStream(
         suspenseDepth: 0,
         signal,
         suspenseTimeoutMs,
+        nonceAttr,
+        flush,
       }
       // One shared abort-promise — registered ONCE, resolved on signal
       // abort. Racing each pending batch against this lets the drain
@@ -573,12 +667,14 @@ export function renderToStream(
               const newRules = stylerFlush()
               if (newRules) {
                 const safeCss = newRules.replace(/<\/style/gi, '<\\/style')
-                enqueue(`<style data-pyreon-stream="shell">${safeCss}</style>`)
+                enqueue(`<style data-pyreon-stream="shell"${nonceAttr}>${safeCss}</style>`)
               }
             }
             // Drain all pending Suspense resolutions (which may spawn nested
             // ones). Each batch is RACED against the abort signal so a mid-flight
             // child doesn't keep us blocked after the consumer hung up.
+            // The shell is complete: hand it over before waiting on boundaries.
+            flush()
             while (ctx.pending.length > 0) {
               if (signal.aborted) break
               const batch = Promise.all(ctx.pending.splice(0))
@@ -587,6 +683,7 @@ export function renderToStream(
             // ALWAYS close — gracefully on natural completion AND on abort.
             // (`if (!aborted) close()` left the stream open forever on cancel,
             // hanging the reader.) Wrapped because `cancel()` may have closed it.
+            flush()
             try {
               controller.close()
             } catch {
@@ -604,6 +701,8 @@ export function renderToStream(
               }
               return
             }
+            // Deliver what rendered before the failure, then error the stream.
+            flush()
             controller.error(err)
           })
       return _contextAls.getStore() !== undefined
@@ -673,6 +772,7 @@ async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): 
     // hydrate walker matches the nearest unclosed start.
     if (output instanceof Promise) {
       enqueue('<!--$pas-->')
+      flushStream()
       const resolved = await output
       if (resolved !== null) await streamNode(resolved, enqueue)
       enqueue('<!--$pae-->')
@@ -785,7 +885,15 @@ async function streamNode(
   // h() path would have rendered the same vnode, so enclosing providers have
   // already pushed. See `DeferredHtml`.
   if (node instanceof DeferredHtml) {
-    enqueue((await node.render()).value)
+    const prev = _streamHoleMode
+    _streamHoleMode = true
+    let r: unknown
+    try {
+      r = node.render()
+    } finally {
+      _streamHoleMode = prev
+    }
+    await streamPart(r, enqueue)
     return
   }
   if (node == null || node === false) return
@@ -805,10 +913,42 @@ async function streamNode(
   await streamVNode(node as VNode, enqueue)
 }
 
+/**
+ * Stream one resolved piece of a compiled template: a static string or an
+ * already-formatted hole (verbatim — `_ssrConcat` appends both raw), a
+ * `RawHtml` (its value), a `StreamParts` list (each part in order), a
+ * `StreamHole` (streamed with `streamNode`, like the h() path), or a Promise of
+ * any of these (an async text hole) — awaited, then streamed.
+ */
+async function streamPart(p: unknown, enqueue: (s: string) => void): Promise<void> {
+  if (typeof p === 'string') {
+    if (p !== '') enqueue(p)
+    return
+  }
+  if (p instanceof RawHtml) {
+    enqueue(p.value)
+    return
+  }
+  if (p instanceof StreamParts) {
+    for (const part of p.parts) await streamPart(part, enqueue)
+    return
+  }
+  if (p instanceof StreamHole) {
+    await streamNode(p.node, enqueue)
+    return
+  }
+  if (p instanceof Promise) {
+    flushStream()
+    await streamPart(await p, enqueue)
+    return
+  }
+  enqueue(holeToString(p))
+}
+
 // Inline swap helper emitted once per stream, before the first <template>
-const SUSPENSE_SWAP_FN =
-  '<script>function __NS(s,t){var e=document.getElementById(s),l=document.getElementById(t);' +
-  'if(e&&l){e.replaceWith(l.content.cloneNode(!0));l.remove()}}</script>'
+const SUSPENSE_SWAP_BODY =
+  'function __NS(s,t){var e=document.getElementById(s),l=document.getElementById(t);' +
+  'if(e&&l){e.replaceWith(l.content.cloneNode(!0));l.remove()}}'
 
 /**
  * Stream a Suspense boundary: emit fallback immediately, then resolve children
@@ -820,7 +960,15 @@ const SUSPENSE_SWAP_FN =
 async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void): Promise<void> {
   _count('runtime-server.suspense.boundary')
   const ctx = _streamCtxAls.getStore()
-  const { fallback, children } = vnode.props as { fallback: VNodeChild; children?: VNodeChild }
+  // Merged, not `vnode.props`: `h(Suspense, props, child)` carries its child in
+  // `vnode.children` (only the automatic JSX runtime puts it on props), and
+  // reading props alone streamed an EMPTY `<template>` for every h()-built
+  // boundary — the swap then replaced the fallback with nothing. The string
+  // renderer always merged (`renderComponent`); the stream now matches it.
+  const { fallback, children } = mergeChildrenIntoProps(vnode) as {
+    fallback: VNodeChild
+    children?: VNodeChild
+  }
 
   // Defensive: the streaming pipeline only enters here via `_streamCtxAls.run`,
   // so `ctx` is always defined. Kept as a safety net in case a future entry point
@@ -841,10 +989,10 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
   /* c8 ignore stop */
 
   const id = ctx.nextId()
-  const { mainEnqueue } = ctx
+  const { mainEnqueue, nonceAttr } = ctx
 
   // Emit the swap helper function once (before first use)
-  if (id === 0) mainEnqueue(SUSPENSE_SWAP_FN)
+  if (id === 0) mainEnqueue(`<script${nonceAttr}>${SUSPENSE_SWAP_BODY}</script>`)
 
   // Stream the fallback synchronously (no await on children)
   mainEnqueue(`<div id="pyreon-s-${id}">`)
@@ -925,12 +1073,14 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
           const newRules = stylerFlush()
           if (newRules) {
             const safeCss = newRules.replace(/<\/style/gi, '<\\/style')
-            mainEnqueue(`<style data-pyreon-stream="${id}">${safeCss}</style>`)
+            mainEnqueue(`<style data-pyreon-stream="${id}"${nonceAttr}>${safeCss}</style>`)
           }
         }
 
         mainEnqueue(`<template id="pyreon-t-${id}">${content}</template>`)
-        mainEnqueue(`<script>__NS("pyreon-s-${id}","pyreon-t-${id}")</script>`)
+        mainEnqueue(`<script${nonceAttr}>__NS("pyreon-s-${id}","pyreon-t-${id}")</script>`)
+        // The swap is ready — deliver it now, not with the next boundary.
+        ctx.flush()
       } catch (err) {
         if (process.env.NODE_ENV !== 'production') {
           console.error(
@@ -1044,7 +1194,16 @@ function renderNode(node: VNodeChild | (() => VNodeChild)): MaybeAsync {
   // path would have rendered the equivalent vnode, so the context stack holds
   // every enclosing provider.
   if (node instanceof DeferredHtml) {
-    const r = node.render()
+    // A string render never streams holes — even when it runs inside a
+    // stream's hole window (see `_streamHoleMode`).
+    const prev = _streamHoleMode
+    _streamHoleMode = false
+    let r: RawHtml | Promise<RawHtml>
+    try {
+      r = node.render()
+    } finally {
+      _streamHoleMode = prev
+    }
     return r instanceof RawHtml ? r.value : r.then((x) => x.value)
   }
 
@@ -1434,6 +1593,13 @@ export function _ssr(
   }
   // oxlint-disable-next-line prefer-rest-params
   const holes = _collectHoles(arguments.length - 1, a, b, c, d, e, f, rest)
+  if (_streamHoleMode && holes.some((x) => x instanceof StreamHole)) {
+    // Interleave statics and holes as-is; `streamParts` resolves each hole
+    // exactly as `_ssrConcat` would, streaming `StreamHole`s in place.
+    const parts: unknown[] = [statics[0] ?? '']
+    for (let i = 0; i < holes.length; i++) parts.push(holes[i], statics[i + 1] ?? '')
+    return new StreamParts(parts) as unknown as RawHtml
+  }
   const r = _ssrConcat(statics, holes, 0, statics[0] ?? '')
   return typeof r === 'string' ? new RawHtml(r) : r.then((s) => new RawHtml(s))
 }
@@ -1756,7 +1922,8 @@ export function _ssrChildren(items: readonly unknown[]): RawHtml | Promise<RawHt
  * inside an `_ssrDeferred` thunk, which is what places it at the h() path's
  * render time. Calling it eagerly is the bug documented on `DeferredHtml`.
  */
-export function _ssrNode(node: VNodeChild): MaybeAsync {
+export function _ssrNode(node: VNodeChild): MaybeAsync | StreamHole {
+  if (_streamHoleMode) return new StreamHole(node)
   return renderNode(node)
 }
 
