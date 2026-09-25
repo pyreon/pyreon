@@ -1,5 +1,168 @@
 # @pyreon/server
 
+## 0.52.0
+
+### Minor Changes
+
+- fix(ssr): ship the styler CSS for the class names SSR emits (9dafed7)
+
+  Server-rendered HTML carried styler class names (`pyr-1abc23`) with **no
+  `<style>` tag at all** on two of the three SSR paths: `@pyreon/zero`'s dev SSR
+  middleware and its production `createServer`. Measured on `examples/ui-showcase`
+  before the fix: 23 of 23 styler classes on `/button` had zero matching CSS
+  rules, on every route. The page hydrated to the correct DOM, so only the FIRST
+  PAINT was wrong — every SSR page flashed unstyled.
+
+  The cause was that `renderPage`'s `collectStyles` hook is opt-in, and of its
+  three consumers only zero's SSG prerender entry ever passed one. SSG had been
+  fixed for exactly this bug ("prerendered HTML carried styler-generated class
+  names … but had ZERO `<style>` tags in the head"), and the sibling call sites
+  were left behind — a fix applied to one call site rather than to the class.
+
+  `renderPage` now defaults `collectStyles` to a `globalThis.__PYREON_STYLER_COLLECT__`
+  collector that `@pyreon/styler`'s singleton registers on SSR init — the
+  string-mode twin of the `__PYREON_STYLER_FLUSH__` seam the streaming pipeline
+  already used, so there is still no `@pyreon/server` → `@pyreon/styler`
+  dependency. Fixing the one choke point covers all three consumers plus any bare
+  `@pyreon/server` user, so no caller can forget it again.
+
+  Unchanged: an explicit `collectStyles` still wins (SSG is byte-identical);
+  apps without styler get no global and no `<style>`; the streaming path keeps
+  its per-boundary watermarked flush, which `getStyleTag()` never disturbs.
+
+  Why it survived this long: a second bug hid it. Hydration was discarding the
+  server DOM and rebuilding it, so users saw _nothing_ for ~300ms rather than
+  seeing the content unstyled. The mask made the defect symptomless — it only
+  becomes visible once hydration correctly adopts the server DOM.
+
+### Patch Changes
+
+- Close the pre-release audit's long tail: a fail-open URL guard, an inert verification axis, an unnecessary supply-chain surface, and two overstated claims (8563e97)
+
+  **`isSafeImageDataUri` failed OPEN on a malformed percent-escape.** The base64 branch returns "unsafe" when `atob` throws; the percent branch caught the `decodeURIComponent` failure, kept the raw still-encoded payload, and scanned that — but the scripted-SVG regex matches `<script` and ` on…=`, neither of which appears in `%3Cscript%3E`. So one trailing `%` took a payload from blocked to allowed. The function's own docstring already promised the base64 branch's behaviour for both, so the two branches disagreeing was the whole defect. Scoped to `src`/`srcset`/`poster` on image/video elements where a scripted SVG does not execute, so this is defence-in-depth — reported because a guard that fails open is worse than one that does not exist: it is relied on.
+
+  **`@pyreon/atlas`'s route axis was inert.** `installRouter` had zero callers and `Scenario.route` had zero readers while `routerPlugin` was publicly exported, so a `routerPlugin({ urls })` config produced the expected doubled scenario count with names like `Profile @ /users/999` — and every one passed having mounted with no router installed. Two different URLs rendered byte-identically and both reported `pass`. The router is now installed around the scenario mount through a registration seam (the plugin publishes an installer; the plugin that owns mounting consumes it, so there is still ONE owner of the router's install/dispose), disposed in the same window so it cannot answer for the next scenario, and a route that CANNOT be applied is reported as a finding rather than passing silently.
+
+  **`@pyreon/code`'s 15 `@codemirror/lang-*` packages move from `optionalDependencies` to optional peers.** `optionalDependencies` reads as optional and is not: every package manager installs them by default, so every consumer carried their install weight and CVE surface for grammars they never load. Each is reached through a lazy `import()`, which is exactly the shape `@pyreon/document` moved to `peerDependenciesMeta.optional` for the same reason.
+
+  **The Vercel revalidate handler compares its secret in constant time.** It was `secret !== expected` under a comment calling it "constant-time-ish"; `!==` short-circuits at the first differing byte regardless of length, which is precisely the leak the phrase claimed to avoid. Length is compared separately because `timingSafeEqual` requires equal-length buffers — that leaks the secret's LENGTH, which is stated rather than hidden.
+
+  **`serverIsland` documents that its props are client-controlled.** The fragment endpoint is public and unauthenticated; the island NAME is allowlisted, the props are not, so a fragment renders with attacker-chosen props inside a full request context. That is the intended design, but neither the JSDoc nor the manifest said so — an island that reads a `userId` prop and returns that user's data is an IDOR by construction. Now named as the first entry in the API's `mistakes`, so it reaches `llms.txt` and the MCP reference too.
+
+- Stop treating a shared reference in island props as a circular one (99a1888)
+
+  `encodeIslandProps` tracked every object it had ever visited and never pruned it,
+  so a DAG — one object referenced twice, which `JSON.stringify` handles fine — was
+  reported as a circular reference. `{ author: user, lastEditor: user }`, a list
+  whose rows share a lookup object, and a shared `Date` are all ordinary island
+  props, and all were rejected.
+
+  Because both callers catch (an island must never 500 the SSR), the failure was
+  not an error anyone saw: production hydrated the island with EMPTY PROPS, with
+  only a dev-mode `console.error` explaining why. Detection now tracks the ancestor
+  path — added on descend, removed on ascend — so only a genuine self-reference
+  throws. This is the same defect, and the same fix, as `stringifyLoaderData` in
+  `@pyreon/router`.
+
+- Fixed three README examples that imported symbols which do not exist. (b0761a2)
+
+  - **`@pyreon/native-router-swift` / `-kotlin`** taught `import { RouterProvider, RouterView, Link, useNavigate } from '@pyreon/router'`. `Link` has never existed — the export is `RouterLink`. Both blocks also used `createRouter` without importing it.
+  - **`@pyreon/server`** taught `import { pyreon } from '@pyreon/vite-plugin'`, which is a **default** export. Every other README in the repo had it right.
+  - **`@pyreon/zero-content`** taught `import { registerExamples } from '@pyreon/zero/client'` — it lives in `@pyreon/zero-content`, and the block imported it from both, aliasing the real one to dodge a clash with the import that does not exist.
+
+  None was reachable by an existing gate (native packages are manifest-exempt; none of the blocks was opted into `check-doc-examples`). A new `check-readme-imports` gate now compiles every `@pyreon/*` symbol a package README tells you to import — 603 symbols across 119 packages — and fails on `TS2305`/`TS2724`/`TS2614`.
+
+- Fix redirect target handling: cross-origin redirects now actually work on the (0e434c8)
+  client, and client + server agree on what a target means.
+
+  Two defects were tangled together. **Functional**: `redirect()`'s docs promised
+  cross-origin support (`redirect('https://provider.com/oauth')`), but the client
+  router rewrote EVERY absolute URL to `/` via `sanitizePath` — so a cross-origin
+  redirect silently failed to `/` on an SPA navigation (breaking e.g. an OAuth
+  hand-off), while the SSR handler emitted it verbatim. **Security**: that same
+  client/server disagreement meant a guard a developer verified on the client (which
+  blocks absolute URLs) did not hold on the server (which emitted them raw).
+
+  A single shared classifier — `classifyRedirectTarget` (exported) — now drives
+  BOTH paths:
+
+  - **`external`** (an explicit `http(s)://` URL): a real `window.location`
+    navigation on the client (was silently `/`), a `Location:` header on the server.
+    The target is trusted to the caller — validate an untrusted `?next=` value
+    against an allowlist, exactly as with any framework (Remix/Next model); the
+    `redirect()` JSDoc now says so.
+  - **`block`** (protocol-relative `//host`, or a non-`http(s)` scheme like
+    `javascript:` / `data:` / `mailto:`): refused and routed to `/`, on both the
+    client redirect application and the server `Location:` (`safeRedirectLocation`).
+  - **`internal`** (a same-origin path): an in-router SPA navigation, unchanged.
+
+  Bisect-verified: reverting the client external branch fails a cross-origin
+  redirect (no real navigation); reverting the server sanitizer emits
+  `javascript:alert(1)` as the raw `Location`. Full `@pyreon/router` 758/758 +
+  `@pyreon/server` 256/256, typecheck + lint + budgets clean. `push`/`replace` of a
+  string path and route-config redirects keep their same-origin-only behavior.
+
+- **`useSecureStorage` and `useDatabase` shared their store across requests on the (5493aa8)
+  server.** Both back their web arm with a module-level `Map`, under comments that
+  reason correctly about a browser — "the secret store is app-wide, like the
+  Keychain it mirrors"; "module-scoped so reads and writes within one page agree".
+  In a browser one process serves one user, so app-wide and page-wide are the same
+  scope. On a server one process serves everyone, and both hooks reached that map
+  under SSR: `useDatabase` mirrored into it _before_ its `isServer` early return
+  and read from it, while `useSecureStorage` had no server branch at all.
+
+  Verified by running the modules with no `document` — the real SSR arm, not a
+  mock: a record inserted by one render came back to the next, and a session token
+  written by one render was returned to the next verbatim.
+
+  Both now have an inert server arm — reads empty, `write` returns `false`,
+  nothing stored. That is chosen over a per-call map, which removes the leak but
+  makes two components in one render disagree; inert is consistent for every
+  caller and carries nothing across a request. It is also the honest answer: a
+  localStorage/Keychain mirror has nothing to mirror on a server, and secrets
+  needed there belong in the request context or the environment.
+
+  Also repairs a security docblock in `@pyreon/server`: the server-island fragment
+  renderer's SECURITY CONTRACT paragraph had been spliced into the middle of the
+  preceding sentence, leaving both halves reading as fragments.
+
+- Stop publishing the build's bundle-analysis report. (5c60743)
+
+  `vl_rolldown_build` writes an HTML treemap per entry into `lib/analysis/`, and
+  54 packages published it: every install downloaded a build report (258 KB for
+  `@pyreon/charts`) that is not part of the package. Their `files` now exclude
+  `lib/analysis`, as ten packages already did. `pyreon doctor`'s distribution
+  gate enforces it twice: a `vl_rolldown_build` package that publishes `lib`
+  must exclude the report, and the live `npm pack --dry-run` probe fails if the
+  tarball carries one.
+
+- - `@pyreon/router`: `stringifyLoaderData` serializes with native `JSON.stringify` and only walks the data for cycles when serialization fails. Output is byte-identical (checked against the previous implementation over 2,000 seeded payloads) and it is ~3.7× faster on a 200-item payload; the named circular-reference error is unchanged. It runs on every loader-backed SSR request, every SSG page and every data-endpoint call. (dc580fc)
+  - `@pyreon/zero`: apps that are SPA everywhere no longer ship hydration code (−6.6 KB gz, −10.6% of initial JS on the kanban example). A production build defines `__ZERO_HYDRATE__` from the app mode, `routeRules` and route files; anything that could be server-rendered keeps hydration.
+  - `@pyreon/zero`: `<Link>`'s `aria-current="page"` now follows client-side navigation (it was set once and never moved).
+  - `@pyreon/zero`: SSG fails the build when two different route files produce the same URL (the check never ran for auto-detected paths), and a `_redirects` file shipped in `public/` is kept, with build-time loader redirects appended after it, instead of being overwritten.
+  - `@pyreon/zero`: new `@pyreon/zero/app` subpath exporting `createApp`; dev SSR loads it instead of the whole server package.
+  - `@pyreon/runtime-server`: `renderToStream` accepts `nonce`, which it puts on every inline `<script>`/`<style>` it emits. `@pyreon/server` passes the request's CSP nonce to it and to the streamed loader-data script, so streaming SSR works under a strict nonce CSP.
+- Security and production-correctness fixes for zero's server runtime. (1339dbc)
+
+  - **Route middleware can no longer be bypassed.** It is matched on the pathname (a query string used to skip it), with `base` and the i18n locale prefix removed, and the `/_pyreon/data` endpoint now runs the middleware of the page whose data it returns (it used to run none, so client-side navigation exposed server-loader data behind an auth middleware). `_layout.tsx` middleware is now applied to the pages under that layout; it was silently ignored.
+  - **Middleware runs before the framework endpoints.** App-wide and route middleware now run before API routes, server actions, the data endpoint and island fragments, so auth, rate limits, CORS and security headers apply to them.
+  - **`zero({...})` settings reach the production server.** The serializable config (`mode`, `base`, `ssr`, `isr`, `routeRules`, `i18n`) is injected into the server build and merged under the entry's own `config`. ISR, `base` and route rules previously had no effect in production. Code-valued options (`middleware`, custom ISR store or `cacheKey` function) print a build warning when there is no `src/entry-server.ts` to carry them. `ssr.mode` defaults to `'string'`; streaming is opt-in with `ssr: { mode: 'stream' }`.
+  - **ISR caches page renders only.** Non-HTML responses (API JSON), responses with a per-response CSP nonce, and responses that vary on headers outside the cache key are no longer cached; cached entries keep their own content type (JSON was replayed as `text/html`). API routes and framework endpoints bypass ISR entirely. Concurrent cold misses for the same key render once (never for credentialed requests), a cold render no longer repopulates an entry invalidated while it ran, and revalidation failures are logged.
+  - **Node adapter server:** request bodies are forwarded (POSTs arrived empty), the request origin comes from `Host` (server actions failed their same-origin check), a throwing handler returns 500 instead of exiting the process, and the client address is passed to `ctx.locals.remoteAddress` so rate limiting keys per client. The Bun runner also passes the client address and no longer runs `Bun.serve` in development mode.
+  - The server bundle is built with `NODE_ENV=production`, and the scaffolded Dockerfiles set it and run as a non-root user; `wrangler.toml` sets it too.
+  - `@pyreon/server`: a throwing middleware returns 500 instead of rejecting, server errors are always logged, and adapters can supply the client address via `Symbol.for('pyreon.remoteAddress')`.
+  - `cacheMiddleware` no longer marks a page `public` for a request carrying a Cookie or Authorization header. API routes answer `HEAD` with their `GET` handler, and actions/rate-limit/logger match on the pathname.
+
+  Upgrade: manual — app and route middleware now run before API routes, actions and the data endpoint, and `_layout.tsx` middleware now applies to its pages, so review middleware that assumed it never saw those requests; streaming SSR is opt-in via `ssr: { mode: 'stream' }`.
+
+- Updated dependencies:
+  - @pyreon/runtime-dom@0.52.0
+  - @pyreon/core@0.52.0
+  - @pyreon/runtime-server@0.52.0
+  - @pyreon/router@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/head@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

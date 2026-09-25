@@ -1,5 +1,39 @@
 # @pyreon/testing
 
+## 0.52.0
+
+### Patch Changes
+
+- The repo's contributor rules moved from `.claude/rules/` to `.agents/rules/`, and the agent instructions from `CLAUDE.md` to `AGENTS.md`, so they work with any coding agent. Tools that read those files now look in the new places: the MCP `get_anti_patterns` and `get_browser_smoke_status` tools, the lint rule `pyreon/require-browser-smoke-test`, and the `pyreon doctor` doc-claims gate. Messages and comments that pointed at the old paths are updated. (2ac084f)
+
+  The six `@pyreon/native-*` packages no longer describe themselves on npm as "PRIVATE / EXPERIMENTAL" or "Not published"; they are published, and their descriptions now say what each one is.
+
+  `@pyreon/mcp`: `get_content_collection` and `get_content_entry` were registered and callable but missing from the manifest, so `mcp_overview` and the API reference did not list them. They are listed now, and `check-mcp-docs` fails when a registered tool and the manifest disagree in either direction.
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- Test-infrastructure only — no runtime or consumer-facing behavior change. The happy-dom spec-parity `hashchange`-echo guard (happy-dom fires a deferred synthetic `hashchange` for hash-changing `history.pushState`/`replaceState`; real browsers never do) was extracted from `@pyreon/router`'s test setup into the shared internal `@pyreon/test-utils` and installed in every suite that drives a real router in happy-dom: router (unchanged behavior), a11y (fixes a load-dependent CI flake where a stale echo made the route announcer fire for a traversal the test never made, plus a deterministic regression spec), and testing's own suite (internal devDep on the private `@pyreon/test-utils`; the shipped `/vitest` setup module is unchanged). (a6e9c1a)
+- Stop publishing the build's bundle-analysis report. (5c60743)
+
+  `vl_rolldown_build` writes an HTML treemap per entry into `lib/analysis/`, and
+  54 packages published it: every install downloaded a build report (258 KB for
+  `@pyreon/charts`) that is not part of the package. Their `files` now exclude
+  `lib/analysis`, as ten packages already did. `pyreon doctor`'s distribution
+  gate enforces it twice: a `vl_rolldown_build` package that publishes `lib`
+  must exclude the report, and the live `npm pack --dry-run` probe fails if the
+  tarball carries one.
+
+- Updated dependencies:
+  - @pyreon/runtime-dom@0.52.0
+  - @pyreon/form@0.52.0
+  - @pyreon/ui-core@0.52.0
+  - @pyreon/core@0.52.0
+  - @pyreon/router@0.52.0
+  - @pyreon/store@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/i18n@0.52.0
+  - @pyreon/query@0.52.0
+  - @pyreon/toast@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

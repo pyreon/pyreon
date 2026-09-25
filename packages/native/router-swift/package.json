@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/native-router-swift",
-  "version": "0.51.0",
+  "version": "0.52.0",
   "description": "@pyreon/router's API (RouterProvider, RouterView, Link, useNavigate, useParams) for SwiftUI, built on NavigationStack.",
   "license": "MIT",
   "repository": {

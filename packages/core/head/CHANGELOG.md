@@ -1,5 +1,59 @@
 # @pyreon/head
 
+## 0.52.0
+
+### Patch Changes
+
+- Refuse event-handler attributes on every render path, not just one (99a1888)
+
+  An inline `onclick="…"` is executable markup, and the refusal added in #3432
+  reached exactly one of the sinks a prop can travel through. Verified executing in
+  real Chromium, three did not refuse it: the `h()` path wrote it on any SVG /
+  MathML element (its foreign-namespace branch returns before the later checks),
+  the compiled template sink (`_setAttr`) wrote it on plain HTML too — and CALLED a
+  function-valued one to build the string — and the compiled SSR sink
+  (`_ssrAttrGen`) serialized it, because the compiler's own `on*` bail is
+  camelCase-only.
+
+  The name set was HTML-only as well: enumerating the `on*` IDL handlers a shipping
+  browser exposes on the HTML, SVG and Window prototypes found 36 missing,
+  including SVG's SMIL handlers (`onbegin` / `onend` / `onrepeat`) and the
+  vendor-legacy names browsers still compile (`onmousewheel`, `onwebkit*`,
+  `onbeforecopy`, `onsearch`). The set is now a vocabulary union and is ratcheted
+  against a real browser so a new handler reds a gate instead of becoming a sink.
+
+  `@pyreon/head` had no attribute guard at all, in either of its renderers: an
+  attribute NAME went out raw, so a user-keyed object could inject sibling
+  attributes (`{ 'name x="y" onload': 'z' }` serialized as
+  `<meta name x="y" onload="z">`), and `javascript:` URLs on `<link href>` /
+  `<script src>` were emitted verbatim. Head now runs the same guards the element
+  renderer already ran, sharing the predicates rather than re-deriving them.
+
+  Scripted-SVG detection in `data:image/svg+xml` URIs required whitespace before an
+  `on*=` handler; a slash separator, a comment-looking one, and no separator at all
+  (the closing quote of the previous attribute) each produced a live handler and
+  were allowed.
+
+  The documented camelCase props (`onClick`) are unaffected, and attributes that
+  merely start with "on" (`once`, `onyx`, `only`) still render.
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- Smaller client bundles: the client no longer ships the ~160-name event-handler list. `runtime-dom` and `@pyreon/head`'s DOM syncer now ask the element which lowercase `on*` names are real handlers (`key in el`, new `isElementEventHandlerAttr` export) — the engine's exact answer — while SSR keeps the list. The template cache is a plain FIFO `Map` (drops the `@pyreon/sized-map` dependency), and a signal's production read closure no longer carries a dev-only rest parameter. The krausest-style table app bundle goes from 16.6 KB to 15.7 KB gzipped. (d0e57b2)
+- Stop publishing the build's bundle-analysis report. (5c60743)
+
+  `vl_rolldown_build` writes an HTML treemap per entry into `lib/analysis/`, and
+  54 packages published it: every install downloaded a build report (258 KB for
+  `@pyreon/charts`) that is not part of the package. Their `files` now exclude
+  `lib/analysis`, as ten packages already did. `pyreon doctor`'s distribution
+  gate enforces it twice: a `vl_rolldown_build` package that publishes `lib`
+  must exclude the report, and the live `npm pack --dry-run` probe fails if the
+  tarball carries one.
+
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/runtime-server@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

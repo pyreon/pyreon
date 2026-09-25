@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/charts",
-  "version": "0.51.0",
+  "version": "0.52.0",
   "description": "Charts for Pyreon on the web, iOS and Android: <Chart> with mark children over a first-party engine (21 chart families, one flat draw list), plus a lazy-loaded ECharts wrapper at /echarts",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/charts#readme",
@@ -120,7 +120,9 @@
       "swift": "native/swift",
       "kotlin": "native/kotlin",
       "kotlinServices": {},
-      "kotlinSdkOnly": ["PyreonChartWebView.kt"]
+      "kotlinSdkOnly": [
+        "PyreonChartWebView.kt"
+      ]
     }
   }
 }

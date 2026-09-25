@@ -1,5 +1,54 @@
 # @pyreon/elements
 
+## 0.52.0
+
+### Patch Changes
+
+- perf(elements): build the Wrapper props lazily so a plain `<Element>` skips them (1f3d974)
+
+  `Element` is mounted on essentially every UI subtree, so its `buildBody` is one
+  of the hottest per-mount paths in the system. It eagerly built `wrapperLayout`
+  (a `computeWrapperLayout` call) **and** `WRAPPER_PROPS` on every mount — but the
+  **dominant** simple fast path (`isSimpleElement && !needsFix`, i.e. a plain
+  `<Element>`) returns via `WrapperStyled` + its own `buildSimpleBundle` and never
+  reads either one. So every plain Element paid:
+
+  - a wasted `computeWrapperLayout(isSimpleElement)` (the fast path recomputes its
+    own layout in `buildSimpleBundle` — layout was computed **twice**), and
+  - a wasted `WRAPPER_PROPS` allocation: a 9-property object literal in the static
+    case, or a `definePropsFromAccessors` with **six** `Object.defineProperty`
+    getters in the reactive-layout case — allocated and thrown away.
+
+  `WRAPPER_PROPS` is now a lazy `buildWrapperProps()` builder, called only by the
+  three paths that consume it (empty / needsFix-simple / compound). All four
+  return paths keep their exact order, so precedence is unchanged and VNode output
+  is byte-identical.
+
+  Notes: the reactive-layout simple path additionally no longer reads the
+  wrapper-layout getters it never used, which on that path also avoids a spurious
+  outer-accessor subscription — a strict behavioural improvement (layout still
+  updates via the styler's class swap), not asserted by a separate new test.
+
+  Verified: full node suite (555) + the real-Chromium reactive suites
+  (slot-reactivity, reactive-prop-through-element, reactive-prop-class-sweep,
+  css-variables — 36 specs) all green; import + bundle budgets within limits
+  (element gz 4439 / budget 4442).
+
+- UI providers are now reactive, and two diagnostics are corrected. (29f1002)
+
+  - `@pyreon/rocketstyle` `Provider` reads its parent context and its own props lazily, so `<Provider inversed>` follows a later parent mode change and a signal-driven `theme`/`mode` prop stays live (it previously froze at mount).
+  - `@pyreon/ui-core`'s low-level `Provider` no longer logs "CoreProvider is internal" on every mount — rocketstyle's public `Provider` delegates to it — and exposes getter-backed props lazily. `@pyreon/unistyle`'s `Provider` re-enriches a changing `theme` prop.
+  - `@pyreon/styler` `ThemeProvider` follows later `theme` prop changes for consumers tracking the reactive `ThemeContext`.
+  - `@pyreon/elements` `Overlay` `trigger` / `children` render-prop callbacks are contextually typed (no implicit `any` under strict TS).
+  - rocketstyle's reserved-dimension error names the clashing key(s) and the reserved set (it printed `[object Object]`).
+
+- Updated dependencies:
+  - @pyreon/ui-core@0.52.0
+  - @pyreon/core@0.52.0
+  - @pyreon/unistyle@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/sized-map@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

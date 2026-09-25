@@ -1,5 +1,134 @@
 # @pyreon/storage
 
+## 0.52.0
+
+### Minor Changes
+
+- Co-locate the @pyreon/storage native runtime. (dfdb7f4)
+
+  Moves the storage-specific Swift/Kotlin runtimes (PyreonStorage,
+  PyreonSecureStorage + the Android impls) out of the monolith into
+  `@pyreon/storage/native/{swift,kotlin}`. `PyreonStorageBackends.kt` — the
+  shared persistence primitive (backend interface / registry / file backend /
+  codec, also used by PyreonCrashReporter) — deliberately STAYS in the base
+  monolith runtime; the co-located storage group references it via a new
+  `@base/<File>.kt` companion in the co-source gate.
+
+  Gate work (reusable for future batches): `verify-kotlin --files=<set>`
+  (per-service-group compile) + a companion-suppression filter that drops the
+  monolith companion append while keeping explicitly-listed `@base/` files;
+  `check-native-cosource` grows a `pyreon.native.kotlinServices` map (each group
+  compiles under one `--service` stub bundle) and a `@base/` prefix for
+  framework-base companions. The `PyreonSecureStorageAndroid` stub service now
+  also writes the compose-ui LocalContext stub so the whole storage graph
+  verifies as one group.
+
+  The six example apps whose shared source uses `useStorage`/`useSecureStorage`
+  (finance, router-demo, todomvc × android+ios) gain the co-located storage
+  source roots. No public API change — a native-source relocation.
+
+- **@pyreon/storage** (5a52b2b)
+
+  - Cross-tab sync no longer writes back. An inbound `storage` event updates this tab's signal without re-persisting it, so a removal in another tab is no longer undone here, and two tabs on different `version`s no longer re-serialize each other's value. An inbound value also cancels this tab's pending debounced write of an older value.
+  - `localStorage.clear()` in another tab (a `storage` event with `key === null`) now resets every `useStorage` signal to its default, instead of leaving values such as auth tokens alive in memory. Events for a different storage area are ignored. **Behaviour change.**
+  - `useIndexedDB`: a `.set()` / `.remove()` made before the initial async read settles is no longer overwritten by that read. Several `storeName`s in one `dbName` now work — a missing store is created by upgrading the database version (previously every read/write to a second store failed). An open connection now closes when another tab upgrades the database.
+  - `useIndexedDB` returns an `IndexedDBSignal<T>` with `ready()` (reactive), `whenReady()` and `flush()`, and flushes a pending debounced write on `pagehide` / `beforeunload`.
+  - `useCookie`: cookie names that need URI encoding (spaces, `;`, `=`, non-ASCII) now read back. `secure` now defaults to `true` on `https:` pages and for `sameSite: 'none'` (browsers reject `SameSite=None` without it); an explicit `secure` still wins. **Behaviour change.** Dev warnings for `sameSite: 'none'` + `secure: false`, for cookies over ~4 KB, and for a `.set()` on the server (which sends no `Set-Cookie`).
+  - Dev warning when a same-key call passes a different default or options than the call that created the shared signal (those are ignored).
+
+  **@pyreon/query**
+
+  - `useSubscription` / `useSSE`: the reconnect backoff is now capped (`maxReconnectDelay`, default 30 s) and jittered. Uncapped, unlimited attempts overflowed the `setTimeout` limit after ~31 failures and reconnected immediately in a loop. When attempts run out, `status()` is the new `'failed'` state, and a browser `online` event restarts the connection. **Behaviour change:** the status unions gain `'failed'`.
+  - `useSSE`: a `parse` failure now surfaces on `error()` (keeping the last good `data()`) instead of being swallowed; `error` is typed `Signal<Event | Error | null>`. A throwing `onMessage` (both hooks) is reported with `console.error` in dev.
+  - `useQuery` / `useSuspenseQuery` take TanStack's generic order `<TQueryFnData, TError, TData = TQueryFnData, TQueryKey>`, so `select` can change the result type without casts. A single explicit generic still means the data type. **Breaking** only for callers passing three explicit generics (the third was the key type, now `TData`).
+  - `useQueries` infers each entry's result type from its `queryFn` (or annotated `select`); a tuple of queries gives a tuple of typed results. New exported types `UseQueriesInput`, `QueriesResults`, `QueriesEntryData`.
+  - Every observer-backed hook evaluates its `options()` builder once per run instead of twice at mount.
+
+### Patch Changes
+
+- The repo's contributor rules moved from `.claude/rules/` to `.agents/rules/`, and the agent instructions from `CLAUDE.md` to `AGENTS.md`, so they work with any coding agent. Tools that read those files now look in the new places: the MCP `get_anti_patterns` and `get_browser_smoke_status` tools, the lint rule `pyreon/require-browser-smoke-test`, and the `pyreon doctor` doc-claims gate. Messages and comments that pointed at the old paths are updated. (2ac084f)
+
+  The six `@pyreon/native-*` packages no longer describe themselves on npm as "PRIVATE / EXPERIMENTAL" or "Not published"; they are published, and their descriptions now say what each one is.
+
+  `@pyreon/mcp`: `get_content_collection` and `get_content_entry` were registered and callable but missing from the manifest, so `mcp_overview` and the API reference did not list them. They are listed now, and `check-mcp-docs` fails when a registered tool and the manifest disagree in either direction.
+
+- fix(storage): a malformed cookie no longer breaks all cookie reads (24178cc)
+
+  `parseCookies` (behind every `useCookie` read) called `decodeURIComponent(value)`
+  on each cookie value with no guard. `decodeURIComponent` throws `URIError` on a
+  malformed percent-escape (a bare `%`, or `%` not followed by two hex digits), so
+  a SINGLE bad entry anywhere in `document.cookie` threw out of `parseCookies` and
+  broke EVERY cookie read app-wide.
+
+  `document.cookie` mixes in cookies set by any code on the origin — third-party
+  scripts, a server reflecting user input un-encoded, subdomains — so this is
+  realistically reachable and is an availability (DoS-shaped) bug, not just a
+  theoretical edge. Pyreon's own write side encodes correctly, so it only bites on
+  cookies set by other code, which is exactly what the jar mixes in.
+
+  The decode is now wrapped: a malformed value falls back to its raw string so
+  every other cookie still reads. Bisect-verified: without the guard, a jar with
+  one incomplete escape throws `URI malformed` and the good cookies read their
+  defaults; with it, they read their real values.
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- Ship the MIT LICENSE file in the package tarball (8aeffe0)
+
+  These eight published packages were missing a `LICENSE` file. The repo's
+  own rule has always been that every package carries one ("Every package
+  MUST have `LICENSE` (MIT) and `README.md` — no exceptions"), but nothing
+  enforced it, so the gap went unnoticed.
+
+  No runtime change. It matters anyway: consumers, vendoring tools and
+  licence scanners read the file from the tarball, and its absence makes an
+  MIT-licensed package look unlicensed at the point where that question is
+  actually asked. A gate now keeps every workspace covered.
+
+- Isolate the `@pyreon/storage` and `@pyreon/state-tree` key-addressed registries per SSR request (6b1ff6b)
+
+  Both packages kept a module-level registry keyed by a user-chosen key — correct in a browser, where one process serves one user, and a cross-request state bleed on a server, where one process serves everyone.
+
+  - `@pyreon/storage`'s registry cached the resolved SIGNAL per `backend:key`, so a second concurrent request's `useCookie('session')` was handed the signal the first request created, holding the first user's value. `setCookieSource`'s accessor form exists for exactly this case; the cache sat above it and short-circuited the read, so the accessor was consulted on the first request and never again. `useMemoryStorage`'s byte store had the same shape one layer down and is now request-scoped too.
+  - `@pyreon/state-tree`'s `asHook(id)` was a process-global singleton, so two concurrent requests calling `Cart.asHook('cart')()` shared one instance.
+
+  Both now mirror the `@pyreon/store` seam: a registry provider plus a `globalThis` setter that `@pyreon/runtime-server` picks up automatically inside `renderToString` / `renderToStream` / `runWithRequestContext`. No application wiring is required, and no package imports another. Client behaviour is unchanged — outside a request scope the provider answers `undefined` and the process-wide registry is used, so the storage refcount contract and the `asHook` singleton contract both hold exactly as before.
+
+- Stop publishing the build's bundle-analysis report. (5c60743)
+
+  `vl_rolldown_build` writes an HTML treemap per entry into `lib/analysis/`, and
+  54 packages published it: every install downloaded a build report (258 KB for
+  `@pyreon/charts`) that is not part of the package. Their `files` now exclude
+  `lib/analysis`, as ten packages already did. `pyreon doctor`'s distribution
+  gate enforces it twice: a `vl_rolldown_build` package that publishes `lib`
+  must exclude the report, and the live `npm pack --dry-run` probe fails if the
+  tarball carries one.
+
+- Same-key consumers are refcounted on EVERY backend, not just localStorage (073a94f)
+
+  `useStorage` was taught (#725/#729) that same-key consumers share one signal and
+  one registry entry, so that a single consumer's `.remove()` does not destroy the
+  entry its siblings still hold. The registry's own docstring states the contract —
+  "per-consumer `.remove()` goes through `releaseEntry`" — and four of the five
+  backends kept the pre-fix shape:
+
+  - `useSessionStorage` never RETAINED yet always RELEASED (it shares
+    `createStorageSignal` with localStorage), so the count went 1 → 0 on whichever
+    consumer removed first;
+  - `useCookie`, `useIndexedDB` and `createStorage(...)` called `removeEntry`
+    directly, bypassing the refcount entirely.
+
+  The consequence was the same in each: the first `.remove()` orphaned every
+  sibling. `removeStorage`/`clearStorage` stopped seeing their signal, and the next
+  call for that key minted a SECOND, independent one — so two live consumers of one
+  storage key silently stopped agreeing.
+
+  `.remove()` still clears the stored value and resets the shared signal every
+  time; only the registry entry is refcounted, matching what `createStorageSignal`
+  already did for local and session.
+
+- Updated dependencies:
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

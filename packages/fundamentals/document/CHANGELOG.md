@@ -1,5 +1,140 @@
 # @pyreon/document
 
+## 0.52.0
+
+### Minor Changes
+
+- **The four binary-format libraries are now OPTIONAL PEER dependencies instead of `optionalDependencies`.** `optionalDependencies` reads as "optional" and is not — every package manager installs them by default (the field means "tolerate an install failure", which is why `@pyreon/compiler` uses it correctly for platform binaries). So every consumer of `@pyreon/document` was force-fed pdfmake + docx + exceljs + pptxgenjs whether or not they ever emitted a binary format, carrying both their install weight and their CVE surface — two live advisories reached consumers this way (exceljs → a vulnerable `uuid`, pptxgenjs → a vulnerable `image-size`). (afd139e)
+
+  The renderers were always written for peer semantics: each one `await import()`s its library and throws a named, actionable error when it is missing. This aligns the manifest with the code.
+
+  **Action required if you emit a binary format**: install its library alongside `@pyreon/document` — `bun add pdfmake` (PDF), `docx` (DOCX), `exceljs` (XLSX), `pptxgenjs` (PPTX). Every text format (HTML, Markdown, SVG, text, email, chat, JSON/JSONL, CSV) is built in and needs nothing extra. A missing library fails with the install command in the message rather than silently.
+
+- Harden every renderer against output injection, and fix several render/DX bugs. (4798bc7)
+
+  Security:
+
+  - `sanitizeHref` / `sanitizeImageSrc` are now ALLOWLISTS (`http`, `https`, `mailto`, `tel`, relative; plus `data:image/…` for images). The old blocklist was bypassed by a leading control character (`\x01javascript:`) or an entity-encoded scheme (`&#106;avascript:`). Control characters are stripped from accepted URLs.
+  - PDF links/buttons and inline links in PDF and DOCX paragraphs are now sanitized (they previously wrote the raw href into a live link annotation). Inline links are sanitized once in `getInlineRuns`, so every inline-link consumer is covered.
+  - Markdown, Teams and Discord link/image destinations are percent-encoded so a `)` or space in a URL cannot close the link and open a second one. Slack `<url|label>` URLs are entity/percent-encoded so `>` or `|` cannot inject `<!channel>`.
+  - Markdown text (headings, paragraphs, lists, table cells, captions, alt text) is escaped, so raw HTML such as `<img onerror>` and markdown metacharacters are no longer live. Discord text is escaped the same way; Teams and Google Chat list items now get the same escaping as other text.
+  - Code blocks cannot be closed by their content: Markdown uses a fence longer than any backtick run; Slack/WhatsApp/Discord/Teams break ```runs in content with a zero-width space. Code language tags are restricted to`[\w+#.-]`.
+  - CSV: text cells starting with `=` `+` `-` `@` tab or CR are prefixed with `'` (formula injection); numbers are untouched. Cells containing `\r` are quoted, and the table caption is written as a quoted cell so a newline cannot inject a row.
+  - Email links/buttons with `target="_blank"` carry `rel="noopener noreferrer"`.
+
+  Bugs / DX:
+
+  - XLSX sheet names derived from headings are normalized to Excel's rules (forbidden `[]:*?/\` removed, 31-char cap, case-insensitive dedupe, `Sheet N` fallback) — a heading like `Q1/Q2: [draft]` made `render()` throw.
+  - `render()` now has per-format overloads: `pdf`/`docx`/`xlsx`/`pptx` resolve to `Uint8Array`, every other built-in format to `string`; a custom format string still returns `RenderResult`. New exported types `BinaryOutputFormat` and `TextOutputFormat`. Calls that passed the format `as never` now resolve to `Uint8Array` — drop the cast.
+  - A link or button whose href is rejected renders as its plain label instead of an empty link (`[label]()`, `label: `, `<a href="">`, an Adaptive Card / Slack button with no url).
+  - Inline links inside paragraphs now keep their href in Notion, Discord and Teams output.
+  - `download()` gives binary Blobs their MIME type, revokes the object URL on a later task instead of synchronously after `click()`, and checks for a browser before rendering.
+
+  Behaviour changes: link destinations with schemes outside the allowlist (including `data:` links, `ftp:`, `file:` and custom app schemes) are now dropped; Markdown/Discord output contains backslash escapes for markup characters in text.
+
+### Patch Changes
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- JSX follow-ups: a `true` child in a document tree now renders nothing (JSX semantics) instead of the text "true"; `<Page header={<Text>…</Text>}>` / `footer` given as JSX are resolved (they were silently dropped by the PDF/DOCX renderers); `createDocument().add()` is typed to accept a JSX / `h()` tree (it already worked at runtime). Manifest/docs updated; the long example no longer uses a non-existent `<List items>` prop. (5874d04)
+- fix(document): `TableColumn.width` broke out of the style attribute (3c8af9c)
+
+  `width` is typed `number | string` and a string is documented input, so it
+  reached a `style` attribute raw — while every sibling in the same template
+  literal was guarded (`sanitizeColor` on the background and colour, the escaped
+  header). A value of `1px" onmouseover="alert(1)` closed the attribute early and
+  became an event handler:
+
+  ```html
+  <th
+    style="font-weight:bold;width:1px"
+    onmouseover="alert(1);padding:8px"
+  ></th>
+  ```
+
+  Both the `html` and `email` renderers carried it; `sanitizeStyle` was already
+  imported in one of them. Severity depends on provenance — developer-authored
+  columns cap it low, but a tenant config or a user-saved view makes it stored
+  XSS.
+
+- Fix: composing document primitives through JSX or `h()` now renders the real document. Previously `render(<Document><Page><Text>hello</Text></Page></Document>, 'html')` (and the `h()` equivalent) produced flat concatenated text — or nothing at all for the automatic JSX runtime — because the VNode tree was never resolved: its component types were never invoked and every renderer fell through to its default arm. `render()` and `download()` now accept a `DocNode` or a Pyreon VNode tree and resolve it first (primitive and user components invoked with children merged into `props.children`, fragments flattened, accessor children read once), so JSX, `h()` and direct calls render byte-identically in every format; primitives called directly also accept VNode children. A DOM element (`<div>`) inside a document tree now throws a `[@pyreon/document]` error naming the tag instead of rendering garbage, and a root that does not resolve to exactly one document node throws. `isDocNode` no longer reports a VNode as a `DocNode`. The primitives gain a JSX-compatible call signature (`DocPrimitive` / `OptionalPropsDocPrimitive` types), so `<Document>…</Document>` now typechecks — it did not before. (5874d04)
+- perf: PURE-form node brands so a subset import drops unused nodes (−68%) (7a07462)
+
+  The document node primitives (`Text`, `Heading`, `Table`, …) each did a bare
+  top-level `X._documentType = '…'` mutation. Because a bundler must run every
+  top-level side effect once ANY binding of the module is used, importing a SINGLE
+  node retained ALL 18 — the same bundle-pinning class fixed in `@pyreon/elements`
+  (#2418), through a brand property (`_documentType`) the `no-bare-component-brand`
+  gate did not scan.
+
+  Each node now brands on its export via `/* @__PURE__ */ Object.assign(fn, {
+_documentType })` (same identity, `_documentType` still an own property read
+  identically by `extractDocumentTree`). Measured on the nodes module: a
+  `Text`-only import drops **1949 → 626 bytes (−68%)**; the full barrel grows
+  2996 → 3288 (+292, the accepted subset-vs-whole trade — most consumers use a
+  subset of node types). The gate now scans `_documentType` too (bisect-verified),
+  excluding manifest/api-reference doc-string examples.
+
+- Render hot-path performance pass + a code-block double-escape fix. (ebb0b3d)
+
+  - **Fix: code blocks no longer double-escape in the html and email renderers.** Both wrapped `renderChildren(...)` — which already escapes string children — in a second outer escape, so `<Code>a < b && c</Code>` emitted `a &amp;lt; b &amp;amp;&amp;amp; c` and the entities rendered literally. Code content is now escaped exactly once (regression-locked through the public `render()` API, bisect-verified).
+  - **Perf: `escapeXml` is now single-pass** — a `NEEDS_ESCAPE_RE` fast path returns clean strings untouched (the dominant case), and dirty strings take one charCode scan with lazy slicing instead of the previous 4 chained `.replace()` passes. The entity set is unchanged (`& < > "` — no `&#39;`); output is byte-identical (differential-tested against the old implementation).
+  - **Perf: `''`-joined `.map().join('')` child concatenation replaced with `acc +=` loops** in `getTextContent` and the html/email/markdown/text/telegram/whatsapp/slack renderers (V8 cons-strings beat join at every measured size). Separator joins are untouched.
+
+  Measured on the repo's `bench:document` (median-of-7): escape-heavy formats gain the most — LARGE report email ~6×, html ~5×, svg ~3×, google-chat ~2.6× docs/sec; most other formats move within noise.
+
+- Fix attribute/style breakouts across the `html`, `email` and `svg` renderers — funnel, not enumeration (ff6a451)
+
+  PR #3435 guarded `TableColumn.width` breaking out of a `style` attribute. The FIELD
+  was fixed; the CLASS was not. Every user-controllable value reaching an attribute or
+  style position broke out identically — `col.align` one line above the guarded `width`,
+  the image `width`/`height` ATTRIBUTES, the divider/spacer/button geometry, and (because
+  the `email` renderer had no sanitizing funnel at all) the whole of its `heading`, `text`
+  and `section` emit. `email`'s heading interpolated `level` into the TAG NAME.
+
+  Every style-position value in all three renderers now goes through one shared funnel
+  (`styleDecls` / `cssDecl`, both `sanitizeStyle`-backed), and every numerically-typed
+  field (`width`, `height`, `thickness`, `borderRadius`, `size`, `lineHeight`, `gap`,
+  `level`) is coerced with `sanitizeNumber`, which emits nothing when the value is not
+  finite. A numeric STRING still renders, so a JSON document tree keeps working. `svg`
+  additionally stops poisoning every later coordinate with a non-numeric spacer height.
+
+- perf: O(n) table column indexing in the teams/discord renderers (was O(n²)) (cb90140)
+
+  Both renderers resolved a cell's column with `columns.indexOf(col)` inside a
+  per-column × per-row loop — O(cols) per cell, O(rows × cols²) per table. The
+  loop index is already available (`.map`'s second arg / the `for` counter), so
+  use it directly: O(1) per cell. Using the actual loop position is also more
+  correct than `indexOf` if two column defs compare equal.
+
+  Behaviour-identical; locked by the existing multi-column table tests plus a new
+  column-alignment spec (bisect-verified: a wrong index drops later columns).
+
+- Ship the MIT LICENSE file in the package tarball (8aeffe0)
+
+  These eight published packages were missing a `LICENSE` file. The repo's
+  own rule has always been that every package carries one ("Every package
+  MUST have `LICENSE` (MIT) and `README.md` — no exceptions"), but nothing
+  enforced it, so the gap went unnoticed.
+
+  No runtime change. It matters anyway: consumers, vendoring tools and
+  licence scanners read the file from the tarball, and its absence makes an
+  MIT-licensed package look unlicensed at the point where that question is
+  actually asked. A gate now keeps every workspace covered.
+
+- Stop publishing the build's bundle-analysis report. (5c60743)
+
+  `vl_rolldown_build` writes an HTML treemap per entry into `lib/analysis/`, and
+  54 packages published it: every install downloaded a build report (258 KB for
+  `@pyreon/charts`) that is not part of the package. Their `files` now exclude
+  `lib/analysis`, as ten packages already did. `pyreon doctor`'s distribution
+  gate enforces it twice: a `vl_rolldown_build` package that publishes `lib`
+  must exclude the report, and the live `npm pack --dry-run` probe fails if the
+  tarball carries one.
+
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

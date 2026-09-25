@@ -1,5 +1,59 @@
 # @pyreon/rocketstyle
 
+## 0.52.0
+
+### Minor Changes
+
+- A `.theme()` chain with no `.styles()` now renders its theme as CSS (a0c4cd7)
+
+  `.theme()` supplies values; nothing turned them into CSS unless the author also
+  chained `.styles()`. So a theme-only chain rendered COMPLETELY UNSTYLED in a
+  browser, while `@pyreon/native-compiler` reads the same `.theme()` statically and
+  emits real view modifiers — one declaration, fully styled on iOS/Android and bare
+  on the web.
+
+  The bridge arrives through ui-core's existing theme-engine seam
+  (`responsiveStyles`, registered by unistyle), so rocketstyle gains no dependency
+  on unistyle and still degrades to no CSS without it. It applies ONLY when the
+  chain declared no `.styles()` of its own — an explicit chain already owns the
+  bridge, and a second one would emit the theme twice.
+
+- Type theme callbacks locally with `rocketstyle(config).withTheme<Tokens>()`, and actually check them. (a92fd69)
+
+  - `withTheme<Tokens>()` binds the theme type every `.theme()` and dimension callback built from the factory receives, so `t` is inferred and checked, with no global `declare module '@pyreon/rocketstyle'` augmentation. It is type-only and returns the same factory. An `interface` works directly.
+  - `.theme()` now checks its callback. Its object arm (`Partial<Record<string, unknown>>`) accepted any function, so every callback matched it and a wrong annotation on `t` compiled. **Type-level breaking:** a `.theme((t: X) => …)` whose annotation disagrees with the bound theme is now an error. Bind the factory with `withTheme<X>()` and drop the annotation.
+  - New exported types: `RocketstyleFactory`, `ThemeShape`, `ThemeObject`.
+
+### Patch Changes
+
+- Expose the chain's base as a `__rs_component` static (a tag string for `.config({ component: 'hr' })`, otherwise the wrapped component), beside the existing `__rs_attrs`, so `@pyreon/atlas` discovery can learn what a component renders as when its attrs chain sets no `tag`. (c52e915)
+- fix(rocketstyle): use a named optional param in the `Rocketstyle` type instead of a destructuring pattern (1e6c0f2)
+
+  The `Rocketstyle` function type declared its optional config as a destructuring pattern (`({ dimensions, useBooleans }?: {...})`). Binding-pattern names in a function type are documentary, but destructuring an OPTIONAL param makes some TypeScript builds report `Property 'dimensions' does not exist on type '{...} | undefined'` when this source is type-checked cross-package (e.g. `@pyreon/loom` importing rocketstyle) — which surfaces only when a rocketstyle dependency changes forces a re-typecheck. The runtime implementation already destructures with defaults, so this is a type-only, behaviour-preserving change (the param is now a named `config?`).
+
+- Published type declarations now compile strictly (`skipLibCheck: false`), and no longer degrade to `any` under the default `skipLibCheck: true`. (5438e9a)
+
+  - `@pyreon/core`: component props may be a plain `interface`. `ComponentFn`, `defineComponent`, `lazy`, `Defer`, `HigherOrderComponent` and `h()` bounded props by `Record<string, unknown>`, which an interface does not satisfy (no implicit index signature). `ComponentFn<ButtonProps>` was TS2344, and every `@pyreon/elements` props type violated the bound once emitted into a `.d.ts`. The bound is now `object`; `Props` is unchanged.
+  - `@pyreon/rocketstyle`: the origin-props parameter of `RocketStyleComponent` accepts interface-typed props for the same reason.
+  - `@pyreon/validate`: `s.string().iso.date()` / `.dateTime()` / `.time()` returned `any` to consumers. The inferred type put polymorphic `this` inside an object type literal, which is invalid in a declaration file. It is now typed as the named `IsoChecks<this>`, and the chain stays typed.
+  - `@pyreon/feature`: its declarations import `@tanstack/table-core`, which it now declares as a dependency. Before, the import resolved only where the package manager hoists transitive dependencies.
+  - `@pyreon/document-primitives`: declares `@pyreon/ui-core`, which its declarations import.
+
+- UI providers are now reactive, and two diagnostics are corrected. (29f1002)
+
+  - `@pyreon/rocketstyle` `Provider` reads its parent context and its own props lazily, so `<Provider inversed>` follows a later parent mode change and a signal-driven `theme`/`mode` prop stays live (it previously froze at mount).
+  - `@pyreon/ui-core`'s low-level `Provider` no longer logs "CoreProvider is internal" on every mount — rocketstyle's public `Provider` delegates to it — and exposes getter-backed props lazily. `@pyreon/unistyle`'s `Provider` re-enriches a changing `theme` prop.
+  - `@pyreon/styler` `ThemeProvider` follows later `theme` prop changes for consumers tracking the reactive `ThemeContext`.
+  - `@pyreon/elements` `Overlay` `trigger` / `children` render-prop callbacks are contextually typed (no implicit `any` under strict TS).
+  - rocketstyle's reserved-dimension error names the clashing key(s) and the reserved set (it printed `[object Object]`).
+
+- Updated dependencies:
+  - @pyreon/ui-core@0.52.0
+  - @pyreon/core@0.52.0
+  - @pyreon/styler@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/sized-map@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes
