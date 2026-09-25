@@ -104,6 +104,7 @@ beforeAll(async () => {
         '/split/models/pet.yaml': 'type: object\nproperties: { name: { type: string } }\n',
         '/split/foreign.yaml': 'type: string\n',
         '/split/broken.yaml': splitRoot('missing.yaml'),
+        '/split/local.yaml': splitRoot('file:///etc/hosts'),
       }
       const body = docs[req.url]
       if (body === undefined) {
@@ -339,6 +340,20 @@ describe('lathe pull', () => {
     expect(code).toBe(1)
     expect(said).toContain('split/missing.yaml: responded 404')
     expect(readFileSync(join(dir, 'openapi.yaml'), 'utf8')).toBe(SPEC)
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('a remote spec cannot make pull read a LOCAL file', async () => {
+    // `$ref: file:///…` in a downloaded document must not reach the disk of
+    // the machine running `lathe pull`.
+    const dir = project()
+    const err = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    const code = await main(['pull', `http://127.0.0.1:${port}/split/local.yaml`], dir)
+    const said = err.mock.calls.map((c) => String(c[0])).join('')
+    err.mockRestore()
+    expect(code).toBe(1)
+    expect(said).toContain('can only reference other http(s) documents')
+    expect(existsSync(join(dir, 'openapi.yaml'))).toBe(false)
     rmSync(dir, { recursive: true, force: true })
   })
 

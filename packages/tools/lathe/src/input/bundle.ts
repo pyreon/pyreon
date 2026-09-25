@@ -365,7 +365,8 @@ export function bundle(rootId: DocId, docs: ReadonlyMap<DocId, ReadOutcome>): Bu
    */
   const nameFor = (doc: DocId, pointer: string): string => {
     const last = pointer.split('/').filter(Boolean).pop()?.replace(/~1/g, '/').replace(/~0/g, '~')
-    const file = (doc.split(/[\\/]/).pop() ?? '').replace(/\.(ya?ml|json)$/i, '').split('?')[0] ?? ''
+    // The query string first: `pet.json?v=2` names `pet`, not `pet.json`.
+    const file = (doc.split('?')[0]?.split(/[\\/]/).pop() ?? '').replace(/\.(ya?ml|json)$/i, '')
     const candidates = [last ?? file, ...(last !== undefined && file ? [`${file}_${last}`] : [])].filter(Boolean)
     const base = candidates[0] ?? 'Schema'
     let name = candidates.find((c) => !taken.has(c)) ?? base

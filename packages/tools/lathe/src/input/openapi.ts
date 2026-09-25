@@ -76,13 +76,13 @@ export function loadOpenApi(source: string, options: LoadOptions = {}): LoadResu
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('[Pyreon] lathe: spec did not parse to an object')
   }
-  const { location, readDocument } = options
+  const { location: specAt, readDocument } = options
   // Refused BEFORE reading any other file: a document that is not a spec at
   // all should not make lathe go looking for the files it names.
   const refusal = openApiVersionProblem(raw)
   if (refusal) throw new Error(refusal)
-  if (location !== undefined && readDocument !== undefined && referencedDocuments(raw, location).length > 0) {
-    const docs = collectDocuments(raw, location, (id) => {
+  if (specAt !== undefined && readDocument !== undefined && referencedDocuments(raw, specAt).length > 0) {
+    const docs = collectDocuments(raw, specAt, (id) => {
       if (isRemote(id)) {
         return {
           error:
@@ -95,10 +95,10 @@ export function loadOpenApi(source: string, options: LoadOptions = {}): LoadResu
         return { error: err instanceof Error ? err.message : String(err) }
       }
     })
-    const bundled = bundle(location, docs)
+    const bundled = bundle(specAt, docs)
     return { doc: loadParsed(bundled.doc, options, bundled.notes), documents: bundled.documents }
   }
-  return { doc: loadParsed(raw as Json, options), documents: location !== undefined ? [location] : [] }
+  return { doc: loadParsed(raw as Json, options), documents: specAt !== undefined ? [specAt] : [] }
 }
 
 /**
@@ -678,8 +678,8 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
         const cAt = sub(at, 'callbacks', cbName)
         const cb = obj(deref(callbacks[cbName], cAt, ctx)) ?? {}
         for (const expression of Object.keys(cb)) {
-          const item = obj(deref(cb[expression], sub(cAt, expression), ctx))
-          if (item) ctx.callbacks.push(...webhookEntries('callback', `${id}.${cbName}`, item, sub(cAt, expression), expression, ctx))
+          const cbItem = obj(deref(cb[expression], sub(cAt, expression), ctx))
+          if (cbItem) ctx.callbacks.push(...webhookEntries('callback', `${id}.${cbName}`, cbItem, sub(cAt, expression), expression, ctx))
         }
       }
     }
