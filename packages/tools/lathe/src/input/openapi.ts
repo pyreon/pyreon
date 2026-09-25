@@ -123,7 +123,8 @@ function serverUrl(server: Json | undefined, at: string, ctx: Ctx, sourceUrl: st
   let url = str(server?.url)
   if (!url) return ''
   const vars = obj(server?.variables)
-  url = url.replace(/\{([^}]+)\}/g, (match, name: string) => {
+  // `[^{}]`, not `[^}]`: a name holding `{` let the engine backtrack from every brace, quadratic on a long run of `{{`. A variable name has no braces.
+  url = url.replace(/\{([^{}]+)\}/g, (match, name: string) => {
     const def = obj(vars?.[name])?.default
     if (typeof def === 'string' || typeof def === 'number') return String(def)
     ctx.notes.push({
