@@ -1,5 +1,5 @@
 import { signal, computed } from '@pyreon/reactivity'
-import { h } from '@pyreon/core'
+import { For, h } from '@pyreon/core'
 
 /**
  * Migrated from `<Playground>` — 12-column responsive grid.
@@ -43,20 +43,28 @@ export default function Ex12ColumnResponsiveGrid() {
     ),
     h('div', {
       style: { display: 'flex', gap: '8px', padding: '8px', background: 'var(--surface)', borderRadius: '8px', border: '1px solid var(--border)' },
-    }, () =>
-      cols().map((span) =>
-        h('div', {
-          style: {
-            flex: span,
-            padding: '20px 8px',
-            background: 'var(--accent)',
-            color: 'var(--bg)',
-            borderRadius: '6px',
-            textAlign: 'center',
-            fontWeight: '600',
-          },
-        }, span + ' / 12'),
-      ),
+    },
+      // Keyed by POSITION, not by the span value — presets like `thirds`
+      // repeat the same span (4, 4, 4) for every column, so the value
+      // alone isn't a valid key. The whole array is REPLACED on every
+      // preset click, so a fresh position-keyed set is exactly right —
+      // there's no "same column, new width" case here to get wrong.
+      h(For, {
+        each: () => cols().map((span, i) => ({ span, i })),
+        by: (c: { span: number; i: number }) => c.i,
+        children: (c: { span: number; i: number }) =>
+          h('div', {
+            style: {
+              flex: c.span,
+              padding: '20px 8px',
+              background: 'var(--accent)',
+              color: 'var(--bg)',
+              borderRadius: '6px',
+              textAlign: 'center',
+              fontWeight: '600',
+            },
+          }, c.span + ' / 12'),
+      }),
     ),
     h('div', { class: 'muted' }, () => 'sum: ' + total() + ' / 12'),
   )

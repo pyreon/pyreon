@@ -1,50 +1,44 @@
-// @ts-nocheck — 1:1 port from a JS `<Playground>`. Strict-mode TS
-// would need a manual rewrite (signal shapes, possibly-null guards).
-// Renders + behaves correctly; type tightening is a follow-up.
-import { signal, effect } from '@pyreon/reactivity'
 import { h } from '@pyreon/core'
+import { QueryClient, QueryClientProvider, useQuery } from '@pyreon/query'
+import { signal } from '@pyreon/reactivity'
+
+interface User {
+  id: number
+  name: string
+  email: string
+  company?: { name: string }
+}
+
+// A real `QueryClient` — the same cache/dedup/retry engine `@tanstack/query-core`
+// gives every adapter. One instance per app (module scope here since this
+// demo has no server-rendered hydration to worry about).
+const queryClient = new QueryClient()
 
 /**
- * Migrated from `<Playground>` — useQuery — fetch + cache by key.
+ * The live counterpart to the "useQuery" basic-usage snippet on the Query
+ * docs page — a REAL `@pyreon/query` observer, not a hand-rolled Map cache.
  *
- * The original playground ran inline JS inside an iframe via `mount(ui, app)`.
- * This is the same code as a real Pyreon component file: typechecked, lint-
- * covered, refactor-safe. See `<Example>` in docs/zero-content for the
- * inline-mount + signal-share contract.
+ * `options` is a FUNCTION so the reactive `userId()` read inside `queryKey`
+ * is tracked: changing `userId` gives `useQuery` a new key, so it refetches
+ * automatically and reuses whatever it already cached for a key it's seen
+ * before (switch back to a user you already loaded — no request, no
+ * "fetching…" flash). `data` / `error` / `isPending` / `isError` /
+ * `isFetching` are each an independent signal, so only the bindings that
+ * read the field that changed re-run.
  */
-export default function UseQueryFetchCacheByKey() {
-  // Distilled version: stale-while-revalidate via a Map keyed by id.
-  // The real useQuery() adds retry, dedup, focus refetch, and
-  // suspense integration — same key model underneath.
-  const cache = new Map()
+function UserPanel() {
   const userId = signal(1)
-  const status = signal('idle') // idle | loading | success | error
-  const data = signal(null)
-  const error = signal(null)
-  let token = 0
 
-  const fetchUser = async (id: any) => {
-    if (cache.has(id)) { status.set('success'); data.set(cache.get(id)); return }
-    const myToken = ++token
-    status.set('loading')
-    try {
-      const res = await fetch('https://jsonplaceholder.typicode.com/users/' + id)
-      const json = await res.json()
-      if (myToken !== token) return // stale — newer call won
-      cache.set(id, json)
-      data.set(json); status.set('success')
-    } catch (e) {
-      if (myToken !== token) return
-      error.set(e); status.set('error')
-    }
-  }
-
-  effect(() => { fetchUser(userId()) })
+  const query = useQuery<User>(() => ({
+    queryKey: ['user', userId()],
+    queryFn: () =>
+      fetch(`https://jsonplaceholder.typicode.com/users/${userId()}`).then((r) => r.json()),
+  }))
 
   return h('div', { class: 'col' },
     h('div', { class: 'row' },
       h('span', { class: 'muted' }, 'user id:'),
-      ...[1, 2, 3, 4, 5].map(id =>
+      ...[1, 2, 3, 4, 5].map((id) =>
         h('button', {
           onClick: () => userId.set(id),
           style: () => ({
@@ -56,15 +50,20 @@ export default function UseQueryFetchCacheByKey() {
       ),
     ),
     h('div', { class: 'card', style: { minHeight: '80px' } }, () => {
-      if (status() === 'loading') return h('div', { class: 'muted' }, 'fetching…')
-      if (status() === 'error')   return h('div', { style: { color: '#FF1F8C' } }, String(error()))
-      if (!data())                return h('div', { class: 'muted' }, '∅')
+      if (query.isPending()) return h('div', { class: 'muted' }, 'fetching…')
+      if (query.isError()) return h('div', { style: { color: '#FF1F8C' } }, String(query.error()))
+      const user = query.data()
+      if (user === undefined) return h('div', { class: 'muted' }, '∅')
       return h('div', { class: 'col' },
-        h('div', { style: { fontWeight: '700', fontSize: '16px' } }, !!data().name),
-        h('div', { class: 'muted' }, !!data().email),
-        h('div', { class: 'muted' }, !!data().company?.name || '—'),
+        h('div', { style: { fontWeight: '700', fontSize: '16px' } }, user.name),
+        h('div', { class: 'muted' }, user.email),
+        h('div', { class: 'muted' }, user.company?.name ?? '—'),
       )
     }),
-    h('div', { class: 'muted' }, () => 'cache size: ' + cache.size + (cache.has(userId()) ? ' · hit' : ' · miss')),
+    h('div', { class: 'muted' }, () => query.isFetching() ? 'refetching…' : 'idle · cached by TanStack Query'),
   )
+}
+
+export default function UseQueryFetchCacheByKey() {
+  return h(QueryClientProvider, { client: queryClient }, h(UserPanel, {}))
 }

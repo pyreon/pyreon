@@ -1,8 +1,7 @@
-// @ts-nocheck — 1:1 port from a JS `<Playground>`. Strict-mode TS
-// would need a manual rewrite (signal shapes, possibly-null guards).
-// Renders + behaves correctly; type tightening is a follow-up.
 import { signal } from '@pyreon/reactivity'
 import { h } from '@pyreon/core'
+
+type Perm = 'read' | 'write' | 'admin'
 
 /**
  * Migrated from `<Playground>` — Permissions — reactive can().
@@ -14,12 +13,14 @@ import { h } from '@pyreon/core'
  */
 export default function PermissionsReactiveCan() {
   // The real createPermissions() returns a callable can(key) with
-  // wildcard, all(), any(), and context-passing on top of this shape.
-  const permissions = signal({ read: true, write: false, admin: false })
-  const can = (key: any) => permissions()[key] === true
-  const toggle = (key: any) => permissions.update(p => ({ ...p, [key]: !(p as Record<string, any>)[key] }))
+  // wildcard, all(), any(), and context-passing on top of this shape —
+  // see the "rbac-role-tiles" / "wildcard-grant-tiles" examples on this
+  // page for that. This is the minimal shape it wraps.
+  const permissions = signal<Record<Perm, boolean>>({ read: true, write: false, admin: false })
+  const can = (key: Perm) => permissions()[key] === true
+  const toggle = (key: Perm) => permissions.update(p => ({ ...p, [key]: !p[key] }))
 
-  const Row = (key: any) =>
+  const Row = (key: Perm) =>
     h('div', { class: 'row', style: { justifyContent: 'space-between' } },
       h('span', null, key),
       h('span', { class: 'badge', style: () => ({ background: can(key) ? null : 'transparent', color: can(key) ? null : 'var(--muted)' }) },

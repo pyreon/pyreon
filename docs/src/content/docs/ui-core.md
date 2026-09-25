@@ -48,10 +48,17 @@ const App = () => (
   </PyreonUI>
 )
 
-// useMode() reads the resolved mode reactively — "light" or "dark"
+// useMode() returns the CURRENT resolved mode ("light" | "dark") — a
+// snapshot, not an accessor. Components run once, so call it INSIDE a
+// reactive scope (a JSX accessor) to track it — calling it once at setup
+// and caching the string in a const would freeze the badge at whatever
+// mode was active on first render.
 function ThemeBadge() {
-  const mode = useMode()
-  return <div class={mode() === 'dark' ? 'badge-dark' : 'badge-light'}>{mode()}</div>
+  return (
+    <div class={() => (useMode() === 'dark' ? 'badge-dark' : 'badge-light')}>
+      {() => useMode()}
+    </div>
+  )
 }
 ```
 

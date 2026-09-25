@@ -53,6 +53,8 @@ function TodoApp() {
 }
 ```
 
+<Example file="./examples/primitives/todo-app" title="Quick start — live" />
+
 - **Web target** — compiles via `@pyreon/runtime-dom` to DOM (the implementations in `src/web/`).
 - **iOS / Android via PMTC** — the compiler intercepts JSX BEFORE the runtime is invoked and emits SwiftUI / Compose. The import is type-anchor only on native targets; `Stack` is never actually called.
 

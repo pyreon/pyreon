@@ -1,8 +1,5 @@
-// @ts-nocheck — 1:1 port from a JS `<Playground>`. Strict-mode TS
-// would need a manual rewrite (signal shapes, possibly-null guards).
-// Renders + behaves correctly; type tightening is a follow-up.
 import { signal } from '@pyreon/reactivity'
-import { h } from '@pyreon/core'
+import { For, h } from '@pyreon/core'
 
 /**
  * Migrated from `<Playground>` — Drag-to-reorder — useSortable distilled.
@@ -16,32 +13,40 @@ export default function DragToReorderUseSortableDistilled() {
   // useSortable() wraps this same pattern with pointer-events,
   // keyboard accessibility, and pragmatic-drag-and-drop's smoother
   // motion. Here we use the raw HTML5 dnd API for clarity.
+  //
+  // The rows are mounted with a keyed <For> (by the item's own text — the
+  // list has no numeric id) so a drop moves the EXISTING DOM node instead
+  // of tearing down and remounting every row. <For>'s children callback
+  // only receives the item, not its index, so `index()` re-derives the
+  // row's CURRENT position from the live array on every event — it must
+  // never be captured once, since a drop upstream shifts every index below it.
   const items = signal(['🍎 Apple', '🍌 Banana', '🍒 Cherry', '📅 Date'])
   const dragIndex = signal(-1)
   const hoverIndex = signal(-1)
 
-  const move = (from: any, to: any) => {
+  const move = (from: number, to: number) => {
     if (from === to || from < 0) return
     const arr = [...items()]
     const [m] = arr.splice(from, 1)
-    arr.splice(to, 0, m)
+    arr.splice(to, 0, m as string)
     items.set(arr)
   }
 
-  const Row = (item: any, i: any) =>
-    h('div', {
+  const Row = (item: string) => {
+    const index = () => items().indexOf(item)
+    return h('div', {
       draggable: 'true',
-      onDragStart: () => dragIndex.set(i),
-      onDragEnter: () => hoverIndex.set(i),
-      onDragOver: (e: any) => e.preventDefault(),
+      onDragStart: () => dragIndex.set(index()),
+      onDragEnter: () => hoverIndex.set(index()),
+      onDragOver: (e: DragEvent) => e.preventDefault(),
       onDragEnd: () => { dragIndex.set(-1); hoverIndex.set(-1) },
-      onDrop: (e: any) => { e.preventDefault(); move(dragIndex(), i); dragIndex.set(-1); hoverIndex.set(-1) },
+      onDrop: (e: DragEvent) => { e.preventDefault(); move(dragIndex(), index()); dragIndex.set(-1); hoverIndex.set(-1) },
       class: 'card',
       style: () => ({
         cursor: 'grab',
         userSelect: 'none',
-        opacity: dragIndex() === i ? 0.4 : 1,
-        borderColor: hoverIndex() === i && dragIndex() !== i ? 'var(--accent)' : null,
+        opacity: dragIndex() === index() ? 0.4 : 1,
+        borderColor: hoverIndex() === index() && dragIndex() !== index() ? 'var(--accent)' : null,
         transition: 'opacity 120ms, border-color 120ms',
         display: 'flex',
         alignItems: 'center',
@@ -51,9 +56,12 @@ export default function DragToReorderUseSortableDistilled() {
       h('span', { class: 'muted' }, '☰'),
       h('span', { style: { flex: 1 } }, item),
     )
+  }
 
   return h('div', { class: 'col' },
     h('div', { class: 'muted' }, 'drag the rows to reorder them'),
-    h('div', { class: 'col', style: { gap: '6px' } }, () => items().map(Row)),
+    h('div', { class: 'col', style: { gap: '6px' } },
+      h(For, { each: () => items(), by: (item: string) => item, children: Row }),
+    ),
   )
 }
