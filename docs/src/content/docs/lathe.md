@@ -392,6 +392,47 @@ lathe: {
 `target` and `plugins` are written once and overridable per project. `lathe
 check` covers them all.
 
+### `lathe pull` — fetch a remote spec
+
+```bash
+lathe pull https://api.example.com/openapi.json
+# fetches the URL and writes it to lathe.input (the configured input path)
+```
+
+Fetches a remote OpenAPI document over HTTP(S) and writes it to the configured
+`input` path — the spec then lives in the repo as a normal file, reviewable in
+a diff, and `lathe generate` reads it exactly like a hand-authored one. Useful
+for a spec a backend team owns and publishes, where committing a fetch step is
+easier than hand-syncing the file on every API change.
+
+## CLI reference
+
+Every flag `lathe generate` / `lathe check` accept, straight from the CLI's own
+`--help`:
+
+```
+lathe generate [spec]     read the spec, write the client
+lathe check    [spec]     generate in memory; fail if anything is stale
+lathe pull     <url>      fetch a remote spec to the configured input path
+
+  --target web|multiplatform      emit native modules and verify them (default: web)
+  --out <dir>                     output directory (default: ./src/gen)
+  --base-url <url>                override servers[0].url; must be absolute to reach native
+  --plugins a,b                   types,schemas,client,queries,mocks,atlas
+  --client pyreon|fetch|axios|ky  HTTP runtime (default: pyreon; only pyreon reaches native)
+  --validator pyreon|zod          schema library (default: pyreon; both reach native)
+  --strict-native                 exit non-zero when a native module fails to lower
+  --fail-on-breaking               exit non-zero when the spec breaks the client
+                                   contract; pair with `generate`, whose run is
+                                   the one that causes the change
+  --json                          machine-readable output
+  --watch, -w                     regenerate whenever a spec changes
+```
+
+A bare path (`lathe ./openapi.yaml`) is treated as `lathe generate ./openapi.yaml`. `--help` wins over any command/verb — `lathe generate --help` prints usage rather than running a generation. Every option also has a `pyreon.config.ts` `lathe` key equivalent (`target`, `output`, `baseUrl`, `plugins`, `client`, `validator`, `strictNative`) — the CLI flags override the config file per run.
+
+`--strict-native` and `--fail-on-breaking` answer different questions and are commonly used together in CI: `--strict-native` fails when a `target: multiplatform` module does not lower to Swift/Kotlin; `--fail-on-breaking` fails when the NEW spec would change the generated client's public contract (a removed field, a narrowed type) in a way existing callers depend on.
+
 ## Honest limits
 
 - **Mutations are web-only on the native target.** PMTC recognises queries, not
