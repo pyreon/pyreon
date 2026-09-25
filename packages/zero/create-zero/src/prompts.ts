@@ -90,6 +90,13 @@ export async function runPrompts(args: CliArgs): Promise<ProjectConfig> {
   // ─── Rendering mode (skipped if template forces it) ───────────────────────
   let renderMode: ProjectConfig['renderMode']
   if (tmpl.forcesMode) {
+    if (args.mode && args.mode !== tmpl.defaultMode) {
+      p.cancel(
+        `Template "${template}" only supports --mode ${tmpl.defaultMode} (got --mode ${args.mode}). ` +
+          'Drop --mode, or pick a template that supports it.',
+      )
+      process.exit(2)
+    }
     renderMode = tmpl.defaultMode
   } else if (args.mode) {
     renderMode = args.mode
@@ -127,9 +134,10 @@ export async function runPrompts(args: CliArgs): Promise<ProjectConfig> {
   }
 
   // ─── Adapter (filtered by template compatibility) ─────────────────────────
-  // ISR keeps a server-side SWR cache — it cannot deploy to a static host.
-  const modeAdapters =
-    renderMode === 'isr' ? tmpl.adapters.filter((id) => id !== 'static') : tmpl.adapters
+  // SSR and ISR render per request (ISR also keeps a server-side SWR cache) —
+  // neither can deploy to a static host.
+  const needsServer = renderMode === 'isr' || renderMode === 'ssr-stream' || renderMode === 'ssr-string'
+  const modeAdapters = needsServer ? tmpl.adapters.filter((id) => id !== 'static') : tmpl.adapters
   const modeDefaultAdapter = modeAdapters.includes(tmpl.defaultAdapter)
     ? tmpl.defaultAdapter
     : (modeAdapters[0] as AdapterId)
@@ -137,8 +145,8 @@ export async function runPrompts(args: CliArgs): Promise<ProjectConfig> {
   if (args.adapter) {
     if (!modeAdapters.includes(args.adapter)) {
       const why =
-        renderMode === 'isr' && args.adapter === 'static'
-          ? `Adapter "static" cannot serve ISR (the SWR cache needs a server).`
+        needsServer && args.adapter === 'static'
+          ? `Adapter "static" cannot serve ${renderMode === 'isr' ? 'ISR (the SWR cache needs a server)' : `--mode ${renderMode} (SSR renders per request on a server)`}; use --mode ssg or spa for a static host.`
           : `Adapter "${args.adapter}" is not supported by template "${template}".`
       p.cancel(`${why} Allowed: ${modeAdapters.join(', ')}.`)
       process.exit(2)

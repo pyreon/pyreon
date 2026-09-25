@@ -813,6 +813,17 @@ export interface ZeroConfig {
  * and silencing `IMPORT_IS_UNDEFINED` warnings from Rolldown.
  */
 export interface RouteFileExports {
+  /**
+   * Has a default export (the page / special component). `undefined` when the
+   * file could not be parsed or the exports were supplied synthetically.
+   */
+  hasDefault?: boolean
+  /** Has a named `layout` export (the `_layout` convention). */
+  hasLayoutExport?: boolean
+  /** `export const loader = <literal>` — not callable. */
+  loaderIsLiteral?: boolean
+  /** Pure-literal `gcTime` initializer, inlined so it needs no static import. */
+  gcTimeLiteral?: string
   /** Has `export const loader` or `export function loader` */
   hasLoader: boolean
   /** Has `export const guard` or `export function guard` */
@@ -832,6 +843,11 @@ export interface RouteFileExports {
   hasError: boolean
   /** Has `export const middleware` */
   hasMiddleware: boolean
+  /**
+   * Route exports `action` — a `defineAction()` that handles POSTs to the
+   * page (no-JS form submissions). Server-only: never makes the route eager.
+   */
+  hasAction?: boolean
   /**
    * Has `export const loaderKey` or `export function loaderKey`. When present,
    * the route generator wires it as the `loaderKey` field on the route record,

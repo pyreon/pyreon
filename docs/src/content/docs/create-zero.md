@@ -418,7 +418,7 @@ Every prompt maps to a flag, so the entire flow is scriptable. Run `--help` (or 
 | `--install` / `--no-install` | accepted no-ops (the scaffolder never installs) |
 | `--help`, `-h` | print usage and exit |
 
-`--packages` also accepts the aliases `--pm` and `--package-strategy`. An unknown flag, an invalid enum value, or an extra positional argument fails fast with an actionable message and a non-zero exit code.
+`--packages` also accepts the alias `--package-strategy` (`--pm` is rejected: the package manager is whichever one ran `create`). `--mode` that a mode-forcing template (blog, dashboard) cannot honor, and `--adapter static` with an SSR or ISR mode, are refused rather than silently overridden. An unknown flag, an invalid enum value, or an extra positional argument fails fast with an actionable message and a non-zero exit code.
 
 :::warning{title="`--yes` requires a project name"}
 Running `--yes` with no positional name exits with an error — there is no default name to fall back to. Always pass the name first: `npm create @pyreon/zero@latest my-app -- --yes`.
@@ -481,6 +481,6 @@ The generated project is a complete Pyreon Zero app: file-based routing, SSR/SSG
 | `--integrations` | template default (`[]`, both for `dashboard`) | `supabase` / `email` |
 | `--ai` | `mcp,claude` | `mcp` / `claude` / `cursor` / `copilot` / `agents` |
 | `--compat` | `none` | `react` / `vue` / `solid` / `preact` shim |
-| `--packages` | prompt | `meta` / `individual` (aliases: `--pm`, `--package-strategy`) |
+| `--packages` | prompt | `meta` / `individual` (alias: `--package-strategy`) |
 | `--lint` | `true` | `--no-lint` to opt out |
 | `--yes` | — | requires a positional name |

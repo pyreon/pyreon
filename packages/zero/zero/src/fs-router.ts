@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs'
 import { parseSync } from 'oxc-parser'
 import { join } from 'node:path'
 import type { FileRoute, RenderMode, RouteFileExports } from './types'
+import { jsStringLiteral } from './codegen-literal'
 import { matchRouteRules } from './route-modes'
 
 // `filePathToUrlPath` + `ROUTE_EXTENSIONS` are the fs-route CONVENTION —
@@ -84,6 +85,7 @@ const ROUTE_EXPORT_NAMES = [
   'renderMode',
   'error',
   'middleware',
+  'action',
   'loaderKey',
   'gcTime',
   'getStaticPaths',
@@ -137,9 +139,17 @@ export function detectRouteExports(source: string, filename = 'route.tsx'): Rout
     return { ...EMPTY_EXPORTS, readsRequestAuth: READS_REQUEST_AUTH_RE.test(source) }
   }
 
+  let hasDefault = false
+  let hasLayoutExport = false
   for (const stmt of staticExports) {
     for (const entry of stmt.entries) {
-      if (entry.isType || entry.exportName.kind !== 'Name') continue
+      if (entry.isType) continue
+      if (entry.exportName.kind === 'Default' || entry.exportName.name === 'default') {
+        hasDefault = true
+        continue
+      }
+      if (entry.exportName.kind !== 'Name') continue
+      if (entry.exportName.name === 'layout') hasLayoutExport = true
       const name = entry.exportName.name
       if (name === null || !(ROUTE_EXPORT_NAMES as readonly string[]).includes(name)) continue
       found.add(name as RouteExportName)
@@ -169,14 +179,24 @@ export function detectRouteExports(source: string, filename = 'route.tsx'): Rout
   // (`dist/_pyreon-revalidate.json`); it is never inlined into the route
   // record.
   const revalidateLiteral = literalOf('revalidate')
+  // A `loader` whose initializer is a pure literal (object / string / number
+  // / array) is not callable — the router would throw `loader is not a
+  // function` per request. Recorded so the scan can fail naming the file.
+  const loaderIsLiteral = found.has('loader') && literalOf('loader') !== undefined
+  const gcTimeLiteral = literalOf('gcTime')
 
   return {
+    hasDefault,
+    hasLayoutExport,
+    ...(loaderIsLiteral ? { loaderIsLiteral: true } : {}),
+    ...(gcTimeLiteral !== undefined ? { gcTimeLiteral } : {}),
     hasLoader: found.has('loader'),
     hasGuard: found.has('guard'),
     hasMeta: found.has('meta'),
     hasRenderMode: found.has('renderMode'),
     hasError: found.has('error'),
     hasMiddleware: found.has('middleware'),
+    hasAction: found.has('action'),
     hasLoaderKey: found.has('loaderKey'),
     hasGcTime: found.has('gcTime'),
     hasGetStaticPaths: found.has('getStaticPaths'),
@@ -211,19 +231,6 @@ function routeLang(filename: string): 'ts' | 'tsx' | 'jsx' {
   if (/\.[mc]?ts$/.test(filename)) return 'ts'
   if (/\.[mc]?jsx?$/.test(filename)) return 'jsx'
   return 'tsx'
-}
-
-/**
- * A string literal for GENERATED code. `JSON.stringify` alone leaves `<`,
- * U+2028 and U+2029 raw: harmless for most file paths, but a module emitted
- * into a script context or a path carrying those characters would break out
- * of the literal. The escapes read back as the same string.
- */
-function jsString(value: string): string {
-  return JSON.stringify(value)
-    .replace(/</g, '\\u003C')
-    .replace(/\u2028/g, '\\u2028')
-    .replace(/\u2029/g, '\\u2029')
 }
 
 /**
@@ -384,6 +391,19 @@ export function hasAnyMetaExport(exports: RouteFileExports): boolean {
  *   code generator uses to optimize imports (skip metadata namespace
  *   imports for routes that only export `default`).
  */
+/**
+ * Normalize a filesystem path to forward slashes. Windows `path.relative` /
+ * `path.join` produce `\`, which breaks the route TREE (dirPath keys never
+ * match `/`-split segments, so nested routes lose their layout) and the
+ * generated `import "C:\app\src\routes\a.tsx"` strings (`\a` etc. are
+ * JS escapes). Every path is normalized at the scan boundary; Windows and
+ * Vite both accept `C:/…`.
+ * @internal
+ */
+export function toPosixPath(p: string): string {
+  return p.includes('\\') ? p.replace(/\\/g, '/') : p
+}
+
 export function parseFileRoutes(
   files: string[],
   defaultMode: RenderMode = 'ssr',
@@ -391,9 +411,10 @@ export function parseFileRoutes(
 ): FileRoute[] {
   return files
     .filter((f) => ROUTE_EXTENSIONS.some((ext) => f.endsWith(ext)))
-    .map((filePath) => {
+    .map((rawPath) => {
+      const filePath = toPosixPath(rawPath)
       const route = parseFilePath(filePath, defaultMode)
-      const exp = exportsMap?.get(filePath)
+      const exp = exportsMap?.get(filePath) ?? exportsMap?.get(rawPath)
       return exp ? { ...route, exports: exp } : route
     })
     .sort(sortRoutes)
@@ -570,6 +591,7 @@ export function generateRouteModule(
   routesDir: string,
   options?: GenerateRouteModuleOptions,
 ): string {
+  routesDir = toPosixPath(routesDir)
   // Synchronously read each route file's source and detect its optional
   // metadata exports. This produces the optimal shape every time:
   //   • `lazy(() => import(...))` for routes with no metadata
@@ -608,6 +630,12 @@ export function generateRouteModuleFromRoutes(
   routesDir: string,
   options?: GenerateRouteModuleOptions,
 ): string {
+  routesDir = toPosixPath(routesDir)
+  routes = routes.map((r) =>
+    r.filePath.includes('\\') || r.dirPath.includes('\\')
+      ? { ...r, filePath: toPosixPath(r.filePath), dirPath: toPosixPath(r.dirPath) }
+      : r,
+  )
   const tree = buildRouteTree(routes)
   const imports: string[] = []
   let importCounter = 0
@@ -627,9 +655,9 @@ export function generateRouteModuleFromRoutes(
     const name = `_${importCounter++}`
     const fullPath = `${routesDir}/${filePath}`
     if (exportName === 'default') {
-      imports.push(`import ${name} from "${fullPath}"`)
+      imports.push(`import ${name} from ${jsStringLiteral(fullPath)}`)
     } else {
-      imports.push(`import { ${exportName} as ${name} } from "${fullPath}"`)
+      imports.push(`import { ${exportName} as ${name} } from ${jsStringLiteral(fullPath)}`)
     }
     return name
   }
@@ -637,11 +665,16 @@ export function generateRouteModuleFromRoutes(
   function nextModuleImport(filePath: string): string {
     const name = `_m${importCounter++}`
     const fullPath = `${routesDir}/${filePath}`
-    imports.push(`import * as ${name} from "${fullPath}"`)
+    imports.push(`import * as ${name} from ${jsStringLiteral(fullPath)}`)
     return name
   }
 
-  function nextLazy(filePath: string, loadingName?: string, errorName?: string): string {
+  function nextLazy(
+    filePath: string,
+    loadingName?: string,
+    errorName?: string,
+    loaderExpr?: string,
+  ): string {
     const name = `_${importCounter++}`
     const fullPath = `${routesDir}/${filePath}`
     needsLazyImport = true
@@ -653,10 +686,12 @@ export function generateRouteModuleFromRoutes(
     // component swap (no page reload, signals preserved). Inert in
     // production — the coordinator is only registered in a dev browser,
     // so `_hmrId` is dead metadata once built.
-    opts.push(`hmrId: ${jsString(fullPath)}`)
+    opts.push(`hmrId: ${jsStringLiteral(fullPath)}`)
     const optsStr = `, { ${opts.join(', ')} }`
-    // JSON.stringify for safe-embed — matches the `hmrId` line above.
-    imports.push(`const ${name} = lazy(() => import(${jsString(fullPath)})${optsStr})`)
+    // jsStringLiteral for safe-embed — matches the `hmrId` line above.
+    imports.push(
+      `const ${name} = lazy(${loaderExpr ?? `() => import(${jsStringLiteral(fullPath)})`}${optsStr})`,
+    )
     return name
   }
 
@@ -731,8 +766,12 @@ export function generateRouteModuleFromRoutes(
           if (exp.hasRenderMode) metaParts.push(`renderMode: ${mod}.renderMode`)
           props.push(`${indent}  meta: { ${metaParts.join(', ')} }`)
         }
-        if (errorName) {
-          const errorRef = exp.hasError ? `${mod}.error || ${errorName}` : errorName
+        // A page's OWN `error` export applies with or without a directory
+        // `_error.tsx`; the directory one is only the fallback.
+        if (errorName || exp.hasError) {
+          const errorRef = exp.hasError
+            ? errorName ? `${mod}.error || ${errorName}` : `${mod}.error`
+            : errorName
           props.push(`${indent}  errorComponent: ${errorRef}`)
         }
       } else {
@@ -785,47 +824,71 @@ export function generateRouteModuleFromRoutes(
         // them into one chunk. Inlining the literal metadata is what
         // makes this safe — without it, the meta access would force
         // a static import that would collide with the dynamic one.
-        const comp = nextLazy(page.filePath, loadingName, errorName)
         const fullPath = `${routesDir}/${page.filePath}`
+        // `loaderKey` is read SYNCHRONOUSLY by the router's cache check, so it
+        // cannot be a dynamic import — and a static `import * as` next to the
+        // lazy component pulls the whole route into the main chunk (lost code
+        // splitting + INEFFECTIVE_DYNAMIC_IMPORT). Instead every dynamic
+        // import of this route goes through ONE loader that records the
+        // module in a cell; `loaderKey` delegates to the cell once loaded.
+        // Before the first load (a first client-side navigation — SSR and
+        // `startClient` preload the component first) it returns a key that
+        // never matches, so that one load is simply not cached. It can never
+        // serve data under a wrong key.
+        let modLoader: string | undefined
+        let modCell: string | undefined
+        if (exp.hasLoaderKey) {
+          const n = importCounter++
+          modCell = `_mc${n}`
+          modLoader = `_ml${n}`
+          imports.push(`let ${modCell}, ${modCell}_pending = 0`)
+          imports.push(
+            `const ${modLoader} = () => import(${jsStringLiteral(fullPath)}).then((m) => (${modCell} = m))`,
+          )
+        }
+        const dyn = modLoader ? `${modLoader}()` : `import(${jsStringLiteral(fullPath)})`
+        const comp = nextLazy(page.filePath, loadingName, errorName, modLoader)
         props.push(`${indent}  component: ${comp}`)
         if (exp.hasLoader) {
           props.push(
-            `${indent}  loader: (ctx) => import("${fullPath}").then((m) => m.loader(ctx))`,
+            `${indent}  loader: (ctx) => ${dyn}.then((m) => m.loader(ctx))`,
           )
         }
         if (exp.hasGuard) {
           props.push(
-            `${indent}  beforeEnter: (to, from) => import("${fullPath}").then((m) => m.guard(to, from))`,
+            `${indent}  beforeEnter: (to, from) => ${dyn}.then((m) => m.guard(to, from))`,
           )
         }
-        if (exp.hasLoaderKey) {
-          // loaderKey runs SYNCHRONOUSLY during the cache-key check; can't be
-          // routed through a dynamic import. Inline a `mod.loaderKey` lookup
-          // via the same namespace-import pattern as the metadata path. Rolldown
-          // will share the chunk with the lazy() component thunk.
-          const mod = nextModuleImport(page.filePath)
-          props.push(`${indent}  loaderKey: ${mod}.loaderKey`)
+        if (modCell) {
+          props.push(
+            `${indent}  loaderKey: (ctx) => ${modCell} ? ${modCell}.loaderKey(ctx) : "\\0pyreon:loader-key-pending:" + (++${modCell}_pending)`,
+          )
         }
         if (exp.hasGcTime) {
-          const mod = nextModuleImport(page.filePath)
-          props.push(`${indent}  gcTime: ${mod}.gcTime`)
+          if (exp.gcTimeLiteral !== undefined) {
+            props.push(`${indent}  gcTime: ${exp.gcTimeLiteral}`)
+          } else {
+            const mod = nextModuleImport(page.filePath)
+            props.push(`${indent}  gcTime: ${mod}.gcTime`)
+          }
         }
         if (exp.hasGetStaticPaths) {
-          // getStaticPaths runs at SSG build time (not request time), so
-          // routing it through a dynamic import is fine — but going through
-          // a namespace import keeps it consistent with loaderKey/gcTime
-          // and avoids per-call import overhead during the SSG enumeration
-          // phase.
-          const mod = nextModuleImport(page.filePath)
-          props.push(`${indent}  getStaticPaths: ${mod}.getStaticPaths`)
+          // getStaticPaths runs at SSG build time and is AWAITED there, so a
+          // thunk over the same dynamic import as the lazy component works.
+          // A static namespace import here (the previous shape) pulled the
+          // whole route module into the main chunk — the route lost code
+          // splitting and every fresh build printed INEFFECTIVE_DYNAMIC_IMPORT.
+          props.push(
+            `${indent}  getStaticPaths: (...args) => import(${jsStringLiteral(fullPath)}).then((m) => m.getStaticPaths(...args))`,
+          )
         }
         emitInlineMeta(exp, props, indent)
-        if (errorName) {
+        if (errorName || exp.hasError) {
           // For error components we can't easily await — pass the lazy
           // thunk through `lazy()` so the router resolves it like any
           // other lazy component when an error fires.
           const errorRef = exp.hasError
-            ? `lazy(() => import("${fullPath}").then((m) => ({ default: m.error })))`
+            ? `lazy(() => import(${jsStringLiteral(fullPath)}).then((m) => ({ default: m.error })))`
             : errorName
           if (exp.hasError) needsLazyImport = true
           props.push(`${indent}  errorComponent: ${errorRef}`)
@@ -848,8 +911,12 @@ export function generateRouteModuleFromRoutes(
           if (exp.hasRenderMode) metaParts.push(`renderMode: ${mod}.renderMode`)
           props.push(`${indent}  meta: { ${metaParts.join(', ')} }`)
         }
-        if (errorName) {
-          const errorRef = exp.hasError ? `${mod}.error || ${errorName}` : errorName
+        // A page's OWN `error` export applies with or without a directory
+        // `_error.tsx`; the directory one is only the fallback.
+        if (errorName || exp.hasError) {
+          const errorRef = exp.hasError
+            ? errorName ? `${mod}.error || ${errorName}` : `${mod}.error`
+            : errorName
           props.push(`${indent}  errorComponent: ${errorRef}`)
         }
       } else {
@@ -868,7 +935,7 @@ export function generateRouteModuleFromRoutes(
     // server module graph (SSG sub-build + SSR bundle), as a lazy getter so
     // it never pulls the route module eagerly and never reaches the client.
     if (exp.hasOg && emitServerLoaders) {
-      props.push(`${indent}  og: () => import(${jsString(`${routesDir}/${page.filePath}`)}).then((m) => m.og)`)
+      props.push(`${indent}  og: () => import(${jsStringLiteral(`${routesDir}/${page.filePath}`)}).then((m) => m.og)`)
     }
 
     // Phase 5 — server loaders (uniform across every emission branch).
@@ -1004,20 +1071,22 @@ export function generateRouteModuleFromRoutes(
  * skipping no-middleware files keeps both paths working.
  */
 export function generateMiddlewareModule(files: string[], routesDir: string): string {
+  routesDir = toPosixPath(routesDir)
   const routes = parseFileRoutes(files)
   const imports: string[] = []
   const layoutEntries: string[] = []
   const pageEntries: string[] = []
   let counter = 0
 
-  const readsMiddleware = (filePath: string): boolean => {
+  const readExports = (filePath: string): RouteFileExports => {
     try {
-      return detectRouteExports(readFileSync(`${routesDir}/${filePath}`, 'utf-8'), filePath).hasMiddleware
+      return detectRouteExports(readFileSync(`${routesDir}/${filePath}`, 'utf-8'), filePath)
     } catch {
       // File can't be read — skip; the SSR runtime falls back gracefully.
-      return false
+      return EMPTY_EXPORTS
     }
   }
+  const readsMiddleware = (filePath: string): boolean => readExports(filePath).hasMiddleware
 
   const pages = routes.filter((r) => !r.isLayout && !r.isError && !r.isLoading && !r.isNotFound)
 
@@ -1041,18 +1110,33 @@ export function generateMiddlewareModule(files: string[], routesDir: string): st
       .map((p) => p.urlPath)
     if (covered.length === 0) continue
     const name = `_mw${counter++}`
-    imports.push(`import { middleware as ${name} } from "${routesDir}/${layout.filePath}"`)
+    imports.push(`import { middleware as ${name} } from ${jsStringLiteral(`${routesDir}/${layout.filePath}`)}`)
     layoutEntries.push(
       `  { pattern: ${JSON.stringify(covered[0])}, patterns: ${JSON.stringify(covered)}, middleware: ${name} }`,
     )
   }
 
   for (const route of pages) {
-    if (!readsMiddleware(route.filePath)) continue
-    const name = `_mw${counter++}`
+    const exp = readExports(route.filePath)
     const fullPath = `${routesDir}/${route.filePath}`
-    imports.push(`import { middleware as ${name} } from "${fullPath}"`)
-    pageEntries.push(`  { pattern: ${JSON.stringify(route.urlPath)}, middleware: ${name} }`)
+    if (exp.hasMiddleware) {
+      const name = `_mw${counter++}`
+      imports.push(`import { middleware as ${name} } from ${jsStringLiteral(fullPath)}`)
+      pageEntries.push(`  { pattern: ${JSON.stringify(route.urlPath)}, middleware: ${name} }`)
+    }
+    // A route-level `action` export handles POSTs to the page — a plain
+    // `<form method="post">` works with no JavaScript and no `<Form>`. The
+    // marker only POINTS at the action (via ctx.locals); zero's form-action
+    // middleware runs it later, after every other middleware — including
+    // this page's own — so a route auth gate also gates its action. Placed
+    // after the page's middleware entry for the same reason.
+    if (exp.hasAction) {
+      const name = `_act${counter++}`
+      imports.push(`import { action as ${name} } from ${jsStringLiteral(fullPath)}`)
+      pageEntries.push(
+        `  { pattern: ${JSON.stringify(route.urlPath)}, middleware: (ctx) => { if (ctx.req.method === "POST") ctx.locals["zero:routeAction"] = ${name} } }`,
+      )
+    }
   }
 
   return [
@@ -1064,15 +1148,72 @@ export function generateMiddlewareModule(files: string[], routesDir: string): st
   ].join('\n')
 }
 
+interface RouteScan {
+  files: string[]
+  /** `.server.*` siblings (posix, relative) — never routes themselves. */
+  serverFiles: Set<string>
+}
+
+// Route-scan memoization. One build calls the scan 5–7 times (routes /
+// middleware / api virtual modules, SSG path resolution, sitemap, typed
+// routes, …) over a tree that does not change during the build. Keyed by the
+// routes dir; BOUNDED (leak class C) because a long-lived process (tests, a
+// programmatic build loop) can scan many dirs. Eviction/invalidation:
+// `invalidateRouteScanCache()` — called by the zero plugin at the start of
+// every outer build and on every dev watcher event under the routes dir.
+const SCAN_CACHE_MAX = 16
+const _walkCache = new Map<string, Promise<RouteScan>>()
+const _exportsCache = new Map<string, Promise<FileRoute[]>>()
+
+function remember<T>(cache: Map<string, Promise<T>>, key: string, make: () => Promise<T>): Promise<T> {
+  const hit = cache.get(key)
+  if (hit) return hit
+  const p = make()
+  // A failed scan must not be served forever.
+  p.catch(() => {
+    if (cache.get(key) === p) cache.delete(key)
+  })
+  cache.set(key, p)
+  if (cache.size > SCAN_CACHE_MAX) cache.delete(cache.keys().next().value as string)
+  return p
+}
+
+/**
+ * Drop memoized route scans — for one routes dir, or all of them.
+ * @internal
+ */
+export function invalidateRouteScanCache(routesDir?: string): void {
+  if (routesDir === undefined) {
+    _walkCache.clear()
+    _exportsCache.clear()
+    return
+  }
+  const dir = toPosixPath(routesDir)
+  _walkCache.delete(dir)
+  for (const key of [..._exportsCache.keys()]) {
+    if (key.startsWith(`${dir}\0`)) _exportsCache.delete(key)
+  }
+}
+
+function scanRoutesDirCached(routesDir: string): Promise<RouteScan> {
+  return remember(_walkCache, toPosixPath(routesDir), () => walkRoutesDir(routesDir))
+}
+
 /**
  * Scan a directory for route files.
- * Returns paths relative to the routes directory.
+ * Returns paths relative to the routes directory (posix separators).
+ * Memoized per build — see `invalidateRouteScanCache`.
  */
 export async function scanRouteFiles(routesDir: string): Promise<string[]> {
+  return [...(await scanRoutesDirCached(routesDir)).files]
+}
+
+async function walkRoutesDir(routesDir: string): Promise<RouteScan> {
   const { readdir } = await import('node:fs/promises')
   const { relative } = await import('node:path')
 
   const files: string[] = []
+  const serverFiles = new Set<string>()
 
   async function walk(dir: string) {
     const entries = await readdir(dir, { withFileTypes: true })
@@ -1093,13 +1234,17 @@ export async function scanRouteFiles(routesDir: string): Promise<string[]> {
         // bundle" guarantee. All four extensions are now excluded.
         && !/\.server\.[jt]sx?$/.test(entry.name)
       ) {
-        files.push(relative(routesDir, fullPath))
+        files.push(toPosixPath(relative(routesDir, fullPath)))
+      } else if (/\.server\.[jt]sx?$/.test(entry.name)) {
+        // Collected by the SAME walk so the server-loader sibling probe needs
+        // no per-route `existsSync` round trips.
+        serverFiles.add(toPosixPath(relative(routesDir, fullPath)))
       }
     }
   }
 
   await walk(routesDir)
-  return files
+  return { files, serverFiles }
 }
 
 /**
@@ -1293,7 +1438,7 @@ function walkRouteFilesSync(routesDir: string, fs: SyncRouteFs): string[] | null
       try {
         if (fs.statSync(full).isDirectory()) walk(full)
         else if (ROUTE_EXTENSIONS.some((ext) => entry.endsWith(ext))) {
-          files.push(full.slice(routesDir.length + 1))
+          files.push(toPosixPath(full.slice(routesDir.length + 1)))
         }
       } catch {
         /* unreadable entry */
@@ -1456,6 +1601,17 @@ export async function scanRouteFilesWithExports(
   routesDir: string,
   defaultMode: RenderMode = 'ssr',
 ): Promise<FileRoute[]> {
+  const routes = await remember(_exportsCache, `${toPosixPath(routesDir)}\0${defaultMode}`, () =>
+    scanRouteFilesWithExportsUncached(routesDir, defaultMode),
+  )
+  // Callers may decorate the records; hand each a private shallow copy.
+  return routes.map((r) => ({ ...r }))
+}
+
+async function scanRouteFilesWithExportsUncached(
+  routesDir: string,
+  defaultMode: RenderMode,
+): Promise<FileRoute[]> {
   const { readFile } = await import('node:fs/promises')
   const { isApiRoute } = await import('./api-routes')
 
@@ -1467,9 +1623,9 @@ export async function scanRouteFilesWithExports(
   // missing-export check at build time. The bug only surfaced under SSG
   // because the regular lazy()-mode `import()` doesn't fail on missing
   // default exports.
-  const files = (await scanRouteFiles(routesDir)).filter((f) => !isApiRoute(f))
+  const scan = await scanRoutesDirCached(routesDir)
+  const files = scan.files.filter((f) => !isApiRoute(f))
   const exportsMap = new Map<string, RouteFileExports>()
-  const { existsSync } = await import('node:fs')
 
   await Promise.all(
     files.map(async (filePath) => {
@@ -1493,7 +1649,7 @@ export async function scanRouteFilesWithExports(
         const base = filePath.replace(/\.[jt]sx?$/, '')
         const serverLoaderFile = ['.server.ts', '.server.tsx', '.server.js', '.server.jsx']
           .map((ext) => `${base}${ext}`)
-          .find((candidate) => existsSync(join(routesDir, candidate)))
+          .find((candidate) => scan.serverFiles.has(candidate))
         if (serverLoaderFile && detected.hasLoader) {
           throw new Error(
             `[Pyreon] Route "${filePath}" exports a \`loader\` AND has a server-loader sibling ("${serverLoaderFile}"). ` +
@@ -1514,4 +1670,49 @@ export async function scanRouteFilesWithExports(
   )
 
   return parseFileRoutes(files, defaultMode, exportsMap)
+}
+
+/**
+ * Fail the build (or dev module load) naming the FILE when a route cannot
+ * work at runtime. Without this a page with no default export lazy-loads
+ * `undefined` and the app sits on its loading state forever with a 200, and
+ * a literal `loader` throws `loader is not a function` on every request.
+ * Only checked when the source was actually parsed (`hasDefault` defined).
+ * @internal
+ */
+const _warnedNoDefault = new Set<string>()
+
+export function assertRouteFileShapes(routes: readonly FileRoute[]): void {
+  const problems: string[] = []
+  for (const r of routes) {
+    const exp = r.exports
+    if (!exp || exp.hasDefault === undefined) continue
+    if (r.isLayout) {
+      if (!exp.hasLayoutExport) {
+        problems.push(
+          `"${r.filePath}": a _layout file must \`export function layout()\` (render <RouterView /> inside it)` +
+            (exp.hasDefault ? ' — a default export is not used for layouts.' : '.'),
+        )
+      }
+    } else if (!exp.hasDefault) {
+      // A WARNING, not an error: apps colocate helper modules under
+      // src/routes (examples/app-showcase does), and those are not pages.
+      if (!_warnedNoDefault.has(r.filePath)) {
+        _warnedNoDefault.add(r.filePath)
+        console.warn(
+          `[Pyreon] Route file "${r.filePath}" has no default export, so ${r.urlPath} renders nothing. ` +
+            'Add `export default function Page() { … }`, or move a helper module out of src/routes ' +
+            '(an API handler belongs in src/routes/api/*.ts).',
+        )
+      }
+    }
+    if (exp.loaderIsLiteral) {
+      problems.push(
+        `"${r.filePath}": \`loader\` is a value, not a function — write \`export async function loader(ctx) { return … }\`.`,
+      )
+    }
+  }
+  if (problems.length > 0) {
+    throw new Error(`[Pyreon] Invalid route file(s):\n${problems.map((p) => `  - ${p}`).join('\n')}`)
+  }
 }

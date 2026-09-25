@@ -404,6 +404,26 @@ describe('Audit #1: i18nRouting middleware does NOT write to module localeSignal
   })
 })
 
+describe('i18n dev middleware — dotted page URLs', () => {
+  it.each(['/de/v1.2/notes', '/de/search?q=1.5'])('%s still gets its locale', async (url) => {
+    const { i18nRouting: routing } = await import('../i18n-routing-plugin')
+    const { useLocale } = await import('../i18n-routing')
+    const plugin = routing({ locales: ['en', 'de'], defaultLocale: 'en' }) as Plugin
+    type Mid = (req: unknown, res: unknown, next: () => void) => void
+    let mid: Mid | undefined
+    const server = { middlewares: { use: (m: Mid) => { mid = m } } }
+    await (plugin.configureServer as (s: unknown) => Promise<void> | void)?.call(plugin, server)
+    let got: string | undefined
+    await new Promise<void>((resolve) => {
+      mid!({ url, headers: {} }, { writeHead: () => {}, end: () => resolve() }, () => {
+        got = useLocale()
+        resolve()
+      })
+    })
+    expect(got).toBe('de')
+  })
+})
+
 // ─── PR H — expandRoutesForLocales ─────────────────────────────────────────
 
 describe('expandRoutesForLocales', () => {

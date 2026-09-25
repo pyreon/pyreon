@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, vi, beforeEach, describe, expect, it } from 'vitest'
 import { vercelRevalidateHandler } from '../vercel-revalidate-handler'
 
 // M3.1 — Drop-in Vercel revalidate webhook handler.
@@ -127,6 +127,48 @@ describe('vercelRevalidateHandler (M3.1)', () => {
       const body = (await res.json()) as { revalidated: boolean; path: string }
       expect(body).toEqual({ revalidated: true, path: '/about' })
     } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('accepts the secret from `Authorization: Bearer` (no secret in the URL)', async () => {
+    const dir = makeManifestDir({ revalidate: { '/about': 60 } })
+    try {
+      const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
+      const ok = await handler(
+        new Request('http://localhost/api/_pyreon-revalidate?path=/about', {
+          method: 'POST',
+          headers: { authorization: `Bearer ${VALID_SECRET}` },
+        }),
+      )
+      expect(ok.status).toBe(200)
+      const bad = await handler(
+        new Request('http://localhost/api/_pyreon-revalidate?path=/about', {
+          method: 'POST',
+          headers: { authorization: 'Bearer wrong' },
+        }),
+      )
+      expect(bad.status).toBe(403)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('a legacy `?secret=` still works but warns once (deprecated)', async () => {
+    const dir = makeManifestDir({ revalidate: { '/about': 60 } })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
+      const req = () =>
+        new Request(`http://localhost/api/_pyreon-revalidate?path=/about&secret=${VALID_SECRET}`, {
+          method: 'POST',
+        })
+      expect((await handler(req())).status).toBe(200)
+      expect((await handler(req())).status).toBe(200)
+      const deprecations = warn.mock.calls.filter((c) => String(c[0]).includes('Authorization: Bearer'))
+      expect(deprecations).toHaveLength(1)
+    } finally {
+      warn.mockRestore()
       rmSync(dir, { recursive: true, force: true })
     }
   })

@@ -914,6 +914,28 @@ export interface RedirectEntry {
 const oneLine = (v: string): string => v.replace(/[\r\n\u2028\u2029]/g, '')
 
 /**
+ * A loader `redirect()` target lands verbatim in `_redirects`,
+ * `_redirects.json` and (with `redirectsAsHtml: 'meta-refresh'`) an HTML
+ * `<meta http-equiv="refresh">` + `<a href>`. A `javascript:` / `data:` /
+ * `vbscript:` target there is script execution on the site's origin. Only a
+ * relative path or an `http(s):` URL is a redirect; anything else fails the
+ * path loudly (recorded in the build's errors, honoring `ssg.onPathError`).
+ *
+ * The scheme is read the way a browser reads it: leading C0/space stripped
+ * and tab/newline removed first, so `  java\tscript:` is still caught.
+ * @internal
+ */
+export function assertSafeRedirectTarget(to: string, from: string): void {
+  // oxlint-disable-next-line no-control-regex
+  const normalized = to.replace(/^[\u0000-\u0020]+/, '').replace(/[\t\n\r]/g, '')
+  const scheme = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(normalized)?.[1]?.toLowerCase()
+  if (scheme === undefined || scheme === 'http' || scheme === 'https') return
+  throw new Error(
+    `[Pyreon] SSG: route "${from}" threw redirect(${JSON.stringify(to)}) — only relative paths and http(s) URLs are allowed as redirect targets (a "${scheme}:" URL would run in _redirects / meta-refresh output). Validate the value before calling redirect().`,
+  )
+}
+
+/**
  * Render Netlify / Cloudflare Pages `_redirects` file content. One line
  * per redirect, format: `<from> <to> <status>`. Both platforms parse this
  * format identically; Vercel ignores it (use the JSON below). Lines with
@@ -1697,6 +1719,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
             if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('ssg.pathRedirect')
             // PR B — loader threw `redirect()`. Record for the manifest;
             // optionally emit a meta-refresh HTML stub at the source path.
+            assertSafeRedirectTarget(result.to, result.from)
             redirects.push({ from: result.from, to: result.to, status: result.status })
 
             if (config.ssg?.redirectsAsHtml === 'meta-refresh') {

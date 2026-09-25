@@ -2,14 +2,15 @@
  * M3.1 — Drop-in Vercel revalidate webhook handler.
  *
  * Pre-M3.1 the `vercelAdapter.revalidate(path)` (PR I) POSTed to
- * `/api/_pyreon-revalidate?path=...&secret=...` — a CONVENTION that users
+ * `/api/_pyreon-revalidate?path=...` (secret in `Authorization: Bearer`) — a CONVENTION that users
  * had to implement themselves. This helper scaffolds the convention:
  *
  *     // src/routes/api/_pyreon-revalidate.ts (or `pages/api/...` in
  *     // Next-style apps deployed to Vercel)
  *     export { vercelRevalidateHandler as default } from '@pyreon/zero/server'
  *
- * The handler validates the secret query param against
+ * The handler validates the `Authorization: Bearer` secret (a legacy
+ * `?secret=` query param is still accepted, with a deprecation warning) against
  * `VERCEL_REVALIDATE_TOKEN`, validates the path is in the build-time
  * revalidate manifest, and calls Vercel's `res.revalidate(path)` API.
  *
@@ -119,16 +120,28 @@ export function vercelRevalidateHandler(
   // request gets 500 until restart". A `{ manifest: ... }` shape is the
   // happy path.
   let cache: { manifest: RevalidateManifest } | { error: unknown } | null = null
+  let warnedQuerySecret = false
 
   return async function handler(req: Request): Promise<Response> {
-    // Validate request shape: only POST, with `?path=&secret=` query.
+    // Validate request shape: only POST, with `?path=` + the secret.
     if (req.method !== 'POST') {
       return new Response(`Method ${req.method} not allowed`, { status: 405 })
     }
 
     const url = new URL(req.url)
     const path = url.searchParams.get('path')
-    const secret = url.searchParams.get('secret')
+    // The secret is read from `Authorization: Bearer <secret>`. A `?secret=`
+    // query param is still accepted for existing CMS webhooks, with a one-time
+    // deprecation warning — a URL secret ends up in access/proxy logs.
+    const bearer = /^Bearer\s+(.+)$/i.exec(req.headers.get('authorization') ?? '')?.[1]?.trim()
+    const querySecret = url.searchParams.get('secret')
+    const secret = bearer || querySecret
+    if (!bearer && querySecret && !warnedQuerySecret) {
+      warnedQuerySecret = true
+      console.warn(
+        '[Pyreon] vercelRevalidateHandler: the revalidation secret was sent as a `?secret=` query parameter, which leaks into access and proxy logs. Send it as `Authorization: Bearer <secret>` instead — query-param support will be removed in a future minor.',
+      )
+    }
 
     if (!path || !secret) {
       return new Response('Bad Request: missing path or secret', { status: 400 })

@@ -228,3 +228,46 @@ describe('runPrompts — isr mode + typed routes (zero-modes-dx N)', () => {
     expect(cfg.typedRoutes).toBe(false)
   })
 })
+
+describe('runPrompts — flag conflicts fail loudly instead of being silently overridden', () => {
+  const exitWith = () =>
+    vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`exit:${code}`)
+    }) as never)
+
+  it('--adapter static with an SSR mode is refused (static cannot render per request)', async () => {
+    const exit = exitWith()
+    try {
+      for (const mode of ['ssr-stream', 'ssr-string'] as const) {
+        await expect(
+          runPrompts(interactiveArgs({ yes: true, name: 'cz-flag-conflict-does-not-exist', template: 'app', mode, adapter: 'static' })),
+        ).rejects.toThrow('exit:2')
+      }
+      const cfg = await runPrompts(interactiveArgs({ yes: true, name: 'cz-flag-conflict-does-not-exist', template: 'app', mode: 'ssg', adapter: 'static' }))
+      expect(cfg.adapter).toBe('static')
+    } finally {
+      exit.mockRestore()
+    }
+  })
+
+  it('--mode that a mode-forcing template cannot honor is refused, not overridden', async () => {
+    const exit = exitWith()
+    try {
+      await expect(
+        runPrompts(interactiveArgs({ yes: true, name: 'cz-flag-conflict-does-not-exist', template: 'blog', mode: 'ssr-stream' })),
+      ).rejects.toThrow('exit:2')
+      const cfg = await runPrompts(interactiveArgs({ yes: true, name: 'cz-flag-conflict-does-not-exist', template: 'blog', mode: 'ssg' }))
+      expect(cfg.renderMode).toBe('ssg')
+    } finally {
+      exit.mockRestore()
+    }
+  })
+})
+
+describe('--pm is not an alias for the import strategy', () => {
+  it('fails with a message naming --packages instead of a meta|individual enum error', async () => {
+    const { parseArgs } = await import('../args')
+    expect(() => parseArgs(['my-app', '--pm', 'bun'])).toThrow(/--pm is not a flag.*--packages meta\|individual/)
+    expect(parseArgs(['my-app', '--packages', 'individual']).packageStrategy).toBe('individual')
+  })
+})

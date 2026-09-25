@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { invalidateRouteScanCache } from '../fs-router'
 import { collectRoutePaths, writeRouteTypes } from '../route-types-gen'
 import type { FileRoute } from '../types'
 
@@ -80,6 +81,8 @@ describe('typed routes — writeRouteTypes (real fs-router scan)', () => {
   it('re-writes (returns true) after a route is added', async () => {
     await writeRouteTypes(routesDir, root, 'ssr')
     writeFileSync(join(routesDir, 'contact.tsx'), 'export default function Contact() { return null }')
+    // The dev watcher drops the memoized route scan before regenerating.
+    invalidateRouteScanCache(routesDir)
     expect(await writeRouteTypes(routesDir, root, 'ssr')).toBe(true)
     const dts = readFileSync(join(root, 'src', 'pyreon-routes.d.ts'), 'utf-8')
     expect(dts).toContain('"/contact": Record<string, never>')
