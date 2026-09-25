@@ -4,7 +4,7 @@
  * boundary streamed an EMPTY `<template>` and the swap replaced the fallback
  * with nothing (the string renderer merged children and was correct).
  */
-import { Suspense, h } from '@pyreon/core'
+import { type ComponentFn, Suspense, h } from '@pyreon/core'
 import { renderToStream } from '../index'
 
 async function read(s: ReadableStream<string>): Promise<string> {
@@ -24,7 +24,7 @@ describe('streamed Suspense — h() children', () => {
       return h('p', null, 'slow')
     }
     const html = await read(
-      renderToStream(h('div', null, h(Suspense, { fallback: h('i', null, 'fb') }, h(Slow, null)))),
+      renderToStream(h('div', null, h(Suspense, { fallback: h('i', null, 'fb') }, h(Slow as unknown as ComponentFn, null)))),
     )
     expect(html).toMatch(/<template id="pyreon-t-0">.*slow.*<\/template>/)
   })

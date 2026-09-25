@@ -4,7 +4,7 @@
  * fragment over as produced, and everything rendered before a real wait is
  * delivered BEFORE that wait (the shell is not held back by a slow boundary).
  */
-import { For, Suspense, h } from '@pyreon/core'
+import { type ComponentFn, For, Suspense, h } from '@pyreon/core'
 import { _setStreamFlushBytes, renderToStream } from '../index'
 
 async function chunks(v: ReturnType<typeof h>): Promise<{ out: string[]; at: number[] }> {
@@ -22,10 +22,13 @@ async function chunks(v: ReturnType<typeof h>): Promise<{ out: string[]; at: num
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-async function Slow(p: { ms: number; label: string }) {
+async function SlowAsync(p: { ms: number; label: string }) {
   await sleep(p.ms)
   return h('p', { class: 'slow' }, p.label)
 }
+// An async component is valid at runtime (SSR awaits it) but not a
+// `ComponentFn` by type — the same cast the rest of this suite uses.
+const Slow = SlowAsync as unknown as ComponentFn<{ ms: number; label: string }>
 
 function page(n: number, ms: number) {
   const rows = Array.from({ length: n }, (_, i) => ({ id: i, t: `row <${i}> & "q"` }))
@@ -33,9 +36,11 @@ function page(n: number, ms: number) {
     'div',
     { class: 'page' },
     h('h1', null, 'Title'),
-    h(For, { each: rows, by: (r: { id: number }) => r.id }, (r: { id: number; t: string }) =>
-      h('li', { 'data-id': r.id }, r.t),
-    ),
+    h(For, {
+      each: rows,
+      by: (r: { id: number }) => r.id,
+      children: (r: { id: number; t: string }) => h('li', { 'data-id': r.id }, r.t),
+    }),
     h(Suspense, { fallback: h('i', null, 'loading') }, h(Slow, { ms, label: 'A' })),
     h(Slow, { ms: 1, label: 'inline-async' }),
     h(Suspense, { fallback: h('i', null, 'loading2') }, h(Slow, { ms: ms * 2, label: 'B' })),

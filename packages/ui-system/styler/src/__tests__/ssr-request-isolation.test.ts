@@ -27,7 +27,7 @@ const Red = styled('div')`color: red;`
 const Blue = styled('div')`color: blue;`
 const Dyn = styled('span')`
   color: ${(p: { c: string }) => p.c};
-  animation: ${spin} 1s;
+  animation: ${String(spin)} 1s;
 `
 
 async function page(children: () => unknown): Promise<string> {
