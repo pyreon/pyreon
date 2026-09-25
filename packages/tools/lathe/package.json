@@ -59,7 +59,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
-    "bench": "bun bench/scaling.ts"
+    "bench": "bun build bench/scaling.ts --target=node --format=esm --outfile=bench/.out/scaling.mjs && node bench/.out/scaling.mjs",
+    "bench:jsc": "bun bench/scaling.ts"
   },
   "devDependencies": {
     "@faker-js/faker": "^10.1.0",
