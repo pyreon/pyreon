@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs'
 import { parseSync } from 'oxc-parser'
 import { join } from 'node:path'
 import type { FileRoute, RenderMode, RouteFileExports } from './types'
+import { jsStringLiteral } from './codegen-literal'
 import { matchRouteRules } from './route-modes'
 
 // `filePathToUrlPath` + `ROUTE_EXTENSIONS` are the fs-route CONVENTION —
@@ -652,9 +653,9 @@ export function generateRouteModuleFromRoutes(
     const name = `_${importCounter++}`
     const fullPath = `${routesDir}/${filePath}`
     if (exportName === 'default') {
-      imports.push(`import ${name} from "${fullPath}"`)
+      imports.push(`import ${name} from ${jsStringLiteral(fullPath)}`)
     } else {
-      imports.push(`import { ${exportName} as ${name} } from "${fullPath}"`)
+      imports.push(`import { ${exportName} as ${name} } from ${jsStringLiteral(fullPath)}`)
     }
     return name
   }
@@ -662,7 +663,7 @@ export function generateRouteModuleFromRoutes(
   function nextModuleImport(filePath: string): string {
     const name = `_m${importCounter++}`
     const fullPath = `${routesDir}/${filePath}`
-    imports.push(`import * as ${name} from "${fullPath}"`)
+    imports.push(`import * as ${name} from ${jsStringLiteral(fullPath)}`)
     return name
   }
 
@@ -683,11 +684,11 @@ export function generateRouteModuleFromRoutes(
     // component swap (no page reload, signals preserved). Inert in
     // production — the coordinator is only registered in a dev browser,
     // so `_hmrId` is dead metadata once built.
-    opts.push(`hmrId: ${JSON.stringify(fullPath)}`)
+    opts.push(`hmrId: ${jsStringLiteral(fullPath)}`)
     const optsStr = `, { ${opts.join(', ')} }`
-    // JSON.stringify for safe-embed — matches the `hmrId` line above.
+    // jsStringLiteral for safe-embed — matches the `hmrId` line above.
     imports.push(
-      `const ${name} = lazy(${loaderExpr ?? `() => import(${JSON.stringify(fullPath)})`}${optsStr})`,
+      `const ${name} = lazy(${loaderExpr ?? `() => import(${jsStringLiteral(fullPath)})`}${optsStr})`,
     )
     return name
   }
@@ -840,10 +841,10 @@ export function generateRouteModuleFromRoutes(
           modLoader = `_ml${n}`
           imports.push(`let ${modCell}, ${modCell}_pending = 0`)
           imports.push(
-            `const ${modLoader} = () => import(${JSON.stringify(fullPath)}).then((m) => (${modCell} = m))`,
+            `const ${modLoader} = () => import(${jsStringLiteral(fullPath)}).then((m) => (${modCell} = m))`,
           )
         }
-        const dyn = modLoader ? `${modLoader}()` : `import("${fullPath}")`
+        const dyn = modLoader ? `${modLoader}()` : `import(${jsStringLiteral(fullPath)})`
         const comp = nextLazy(page.filePath, loadingName, errorName, modLoader)
         props.push(`${indent}  component: ${comp}`)
         if (exp.hasLoader) {
@@ -876,7 +877,7 @@ export function generateRouteModuleFromRoutes(
           // whole route module into the main chunk — the route lost code
           // splitting and every fresh build printed INEFFECTIVE_DYNAMIC_IMPORT.
           props.push(
-            `${indent}  getStaticPaths: (...args) => import("${fullPath}").then((m) => m.getStaticPaths(...args))`,
+            `${indent}  getStaticPaths: (...args) => import(${jsStringLiteral(fullPath)}).then((m) => m.getStaticPaths(...args))`,
           )
         }
         emitInlineMeta(exp, props, indent)
@@ -885,7 +886,7 @@ export function generateRouteModuleFromRoutes(
           // thunk through `lazy()` so the router resolves it like any
           // other lazy component when an error fires.
           const errorRef = exp.hasError
-            ? `lazy(() => import("${fullPath}").then((m) => ({ default: m.error })))`
+            ? `lazy(() => import(${jsStringLiteral(fullPath)}).then((m) => ({ default: m.error })))`
             : errorName
           if (exp.hasError) needsLazyImport = true
           props.push(`${indent}  errorComponent: ${errorRef}`)
@@ -1100,7 +1101,7 @@ export function generateMiddlewareModule(files: string[], routesDir: string): st
       .map((p) => p.urlPath)
     if (covered.length === 0) continue
     const name = `_mw${counter++}`
-    imports.push(`import { middleware as ${name} } from "${routesDir}/${layout.filePath}"`)
+    imports.push(`import { middleware as ${name} } from ${jsStringLiteral(`${routesDir}/${layout.filePath}`)}`)
     layoutEntries.push(
       `  { pattern: ${JSON.stringify(covered[0])}, patterns: ${JSON.stringify(covered)}, middleware: ${name} }`,
     )
@@ -1111,7 +1112,7 @@ export function generateMiddlewareModule(files: string[], routesDir: string): st
     const fullPath = `${routesDir}/${route.filePath}`
     if (exp.hasMiddleware) {
       const name = `_mw${counter++}`
-      imports.push(`import { middleware as ${name} } from "${fullPath}"`)
+      imports.push(`import { middleware as ${name} } from ${jsStringLiteral(fullPath)}`)
       pageEntries.push(`  { pattern: ${JSON.stringify(route.urlPath)}, middleware: ${name} }`)
     }
     // A route-level `action` export handles POSTs to the page — a plain
@@ -1122,7 +1123,7 @@ export function generateMiddlewareModule(files: string[], routesDir: string): st
     // after the page's middleware entry for the same reason.
     if (exp.hasAction) {
       const name = `_act${counter++}`
-      imports.push(`import { action as ${name} } from "${fullPath}"`)
+      imports.push(`import { action as ${name} } from ${jsStringLiteral(fullPath)}`)
       pageEntries.push(
         `  { pattern: ${JSON.stringify(route.urlPath)}, middleware: (ctx) => { if (ctx.req.method === "POST") ctx.locals["zero:routeAction"] = ${name} } }`,
       )
