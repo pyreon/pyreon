@@ -118,7 +118,7 @@ for (const [id, r] of reach) {
 resolveConfig(section: LatheSection | undefined): ResolvedConfig
 ```
 
-Fills defaults and validates one project's settings, and is where the whole option surface lives: `plugins` (which emitters run), `client` (`pyreon` | `fetch` | `axios` | `ky`), `validator` (`pyreon` | `zod`), `target` (`web` | `multiplatform`), `baseUrl` and `strictNative`. A plugin selection is EXPANDED to cover what its output imports rather than refused -- asking for `components` gets `queries`, `client` and `schemas` too, and the CLI report says what came along. Use `resolveProjects` instead when the config may declare `projects: [...]`; it always returns a LIST, so a single-project config is a one-element list rather than a special case.
+Fills defaults and validates one project's settings, and is where the whole option surface lives: `plugins` (which emitters run), `client` (`pyreon` | `fetch` | `axios` | `ky`), `validator` (`pyreon` | `zod`), `target` (`web` | `multiplatform`), `baseUrl`, `validate` (the generated client's default response validation: `strict` | `warn` | `off`) and `strictNative`. A plugin selection is EXPANDED to cover what its output imports rather than refused -- asking for `components` gets `queries`, `client` and `schemas` too, and the CLI report says what came along. Use `resolveProjects` instead when the config may declare `projects: [...]`; it always returns a LIST, so a single-project config is a one-element list rather than a special case.
 
 **Example**
 
@@ -150,18 +150,19 @@ const { files } = generate(specText, config)
 ### verifyNative `function`
 
 ```ts
-verifyNative(files: GeneratedFile[], transform: TransformFn | undefined): VerifyReport
+verifyNative(files: GeneratedFile[], transform: TransformFn | undefined, compile?: NativeCompilers): VerifyReport
 ```
 
-Runs the real native compiler over the generated `.native.tsx` modules on both targets and returns a per-file verdict. The check is POSITIVE — it asserts the emitted Swift/Kotlin contains `PyreonQuery<` / `PyreonZodSchema_` and contains no leaked web-only symbol — because zero warnings is not evidence: a standalone hook wrapping `useQuery` produces no warnings and emits Swift that cannot find the symbol. Passing `undefined` for `transform` yields `ran: false` with a reason, never a pass.
+Runs the real native compiler over the generated `.native.tsx` modules on both targets and returns a per-file verdict. The check is POSITIVE — it asserts the emitted Swift/Kotlin contains `PyreonQuery<` / `PyreonZodSchema_` and contains no leaked web-only symbol — because zero warnings is not evidence: a standalone hook wrapping `useQuery` produces no warnings and emits Swift that cannot find the symbol. Passing `undefined` for `transform` yields `ran: false` with a reason, never a pass. Warnings are classified by CLASS per declaration (a verbatim reproduction is `broken`, a dropped field `partial`), identically for both targets; with `compile` (the project compiler's `validateSwiftWithStubs` / `validateKotlin`, as `resolveNativeCompiler()` returns them) each module is compiled too, and a compile error outranks every heuristic.
 
 **Example**
 
 ```tsx
-import { generate, resolveConfig, resolveTransform, verifyNative, worstVerdict } from '@pyreon/lathe'
+import { generate, resolveConfig, resolveNativeCompiler, verifyNative, worstVerdict } from '@pyreon/lathe'
 
 const { files } = generate(specText, resolveConfig({ input: 'spec', target: 'multiplatform' }))
-const report = verifyNative(files, await resolveTransform())
+const { transform, compile } = await resolveNativeCompiler()
+const report = verifyNative(files, transform, compile)
 
 if (!report.ran) console.warn('not verified:', report.reason)
 if (worstVerdict(report) !== 'lowers') process.exitCode = 1

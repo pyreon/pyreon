@@ -326,6 +326,153 @@ const query = useGetBook(() => ({ params: { bookId: '…' } }))
 The reach column comes from the same analysis the CLI prints, so a page and a
 terminal cannot disagree about whether an operation runs on a phone.
 
+## Calling the API
+
+### Every call site is typed from the spec
+
+Each endpoint is declared with its input type, so a DIRECT call — a loader, a
+server route, a script — is as strict as a hook:
+
+```ts
+import { addPet, findPetsByStatus, getPetById } from './gen/endpoints/pet'
+
+await getPetById({ params: { petId: 1 } })
+await findPetsByStatus({ query: { status: 'sold', limit: maybeLimit } }) // limit?: number | undefined
+await addPet({ json: { name: 'Rex', photoUrls: [] } })
+
+getPetById({ params: { petId: 'x' } })          // ✗ petId is an integer
+findPetsByStatus({ query: { status: 'nope' } })  // ✗ not a value of the enum
+addPet()                                         // ✗ the body is required
+```
+
+Required exactly where the spec says (`requestBody.required` defaults to
+**false** in OpenAPI, so an unmarked body is optional), and
+`exactOptionalPropertyTypes`-correct, so a signal-derived value that might be
+`undefined` passes. An operation that sends nothing accepts no query or body at
+all. A body on `GET`/`HEAD` — which `fetch` refuses to send — is dropped with a
+`body-on-get` note.
+
+The hooks DERIVE their types from the endpoint (`Parameters<typeof op>[0]`,
+`Awaited<ReturnType<typeof op>>`) rather than re-rendering the spec, so a hook
+and a direct call can never disagree about a type.
+
+### Hook options are typed, and `select` changes the result
+
+```ts
+const pet = useGetPetById(() => ({ params: { petId: id() } }), () => ({ staleTime: 60_000 }))
+const count = useFindPetsByStatus(() => ({}), () => ({ select: (pets) => pets.length }))
+count.data() // number | undefined
+```
+
+A typo in an option is a compile error. Return `undefined` from the args
+accessor while the arguments are not ready — the query is disabled rather than
+fired with a placeholder.
+
+### Mutations invalidate what they change
+
+```ts
+const add = useAddPet({ onSuccess: (pet) => toast(`Added ${pet.name}`) })
+add.mutate({ json: { name: 'Rex', photoUrls: [] } })
+```
+
+By default a mutation invalidates every query at or below the collection it
+changes — `DELETE /pets/{id}` refetches `GET /pets`, `GET /pets/{id}` and
+`GET /pets/findByStatus`. Pass `invalidates` to replace the list, or `[]` to
+turn it off. For optimistic updates, `keys.ts` exports a helper typed from the
+endpoint that returns a rollback:
+
+```ts
+import { optimisticUpdate } from './gen'
+
+const rename = useUpdatePet({
+  onMutate: async (vars) => ({
+    rollback: await optimisticUpdate(client, getPetById, getPetById.key.prefix, (pet) =>
+      pet && { ...pet, name: vars.json.name }),
+  }),
+  onError: (_e, _v, ctx) => ctx?.rollback(),
+})
+```
+
+### Configure the client at runtime
+
+```ts
+import { auth, configureApi } from './gen'
+
+configureApi({
+  baseUrl: import.meta.env.VITE_API_URL,               // an environment switch
+  headers: () => ({ 'x-request-id': crypto.randomUUID() }),
+  use: [auth.petstoreAuth(() => session.token()), logger],
+  validate: import.meta.env.PROD ? 'warn' : 'strict',
+})
+```
+
+Every field is its own slot, read per request — endpoints bind to the client
+when they are declared, so nothing that varies is baked in. `installMocks()`
+answers through a SEPARATE slot, so it never removes your auth middleware. A
+key present with `undefined` resets that slot to its generated default.
+
+`auth` has one typed helper per `components.securitySchemes` entry: bearer
+(also OAuth2 / OpenID Connect, which reach the client as a bearer token), basic
+(UTF-8 safe), and API keys in a header, a query parameter or a cookie (the
+cookie form applies on the server — browsers forbid setting `Cookie`). A
+credential may be an accessor, re-read on every request.
+
+`validate` also has a config default — `lathe: { validate: 'warn' }` — for a
+backend that drifts: `'warn'` logs a mismatch and passes the body through,
+`'off'` skips validation (safe only for non-transforming schemas).
+
+The `fetch` / `axios` / `ky` clients export the same `configureApi` minus `use`;
+interceptors belong on their exported `instance`.
+
+### Serialization the spec states
+
+- **Query `style` / `explode`** — CSV (`form`, `explode: false`), space- and
+  pipe-delimited arrays, `deepObject` and exploded `form` objects are declared
+  on the endpoint (`queryStyle`), so the wire matches the spec on every client.
+- **Non-JSON responses** decode by media type: `text/*` and XML as a string,
+  `text/event-stream` / NDJSON as a `ReadableStream`, everything else (PDFs,
+  images, octet-stream) as a `Blob` — typed accordingly.
+- **Custom verbs** — a literal `:` in a path (`/v1/{name}:cancel`) is escaped,
+  so it is not read as a second parameter.
+- **Cache keys** are namespaced per generated client (the project name, else
+  the API's base URL), so two generated clients can share one `QueryClient`.
+
+### Mocks for tests
+
+Every fixture satisfies its own generated schema — values are chosen
+constraints-first (enum, pattern, length, range) and a spec `example` is used
+only when it conforms. Routes are anchored at the client's base URL and matched
+most-specific first, so `GET /pets?limit=5` is intercepted and `GET /users/me`
+is not answered by `/users/{id}`.
+
+```ts
+import { installMocks, mockCalls, mockOperation, resetMocks } from './gen/dev'
+
+beforeEach(installMocks)
+afterEach(resetMocks)
+
+it('shows the empty state', async () => {
+  mockOperation('findPetsByStatus', { json: [] })
+  // …
+})
+it('shows the error state', async () => {
+  mockOperation('getPetById', { status: 500, json: { message: 'down' }, delay: 50 })
+})
+```
+
+### Not generated (yet): infinite queries
+
+Pagination is not detected. Doing it properly needs two facts a spec does not
+state in a standard way — WHICH parameter advances the page and WHERE the next
+value is in the response (a `next_cursor` field, the last item's id for
+Stripe's `starting_after`, a full `next` URL for Spotify, a `Link` header for
+GitHub). A name heuristic would guess wrong on a large share of real APIs and a
+wrong `getNextPageParam` loops or stops silently. The intended design is
+explicit: an `x-pagination` spec extension or a per-operation config entry
+naming the parameter and the response path, emitting a `use<Op>Infinite` hook
+over `useInfiniteQuery`. Until then, call the endpoint from your own
+`useInfiniteQuery` — its input type makes that fully typed.
+
 ## Honest limits
 
 Real, current, and reported per-operation rather than papered over:
@@ -334,7 +481,9 @@ Real, current, and reported per-operation rather than papered over:
 | --- | --- |
 | Schemas: string/number/boolean, nested objects, arrays, optional/nullable, min/max/email/url/uuid/regex | lowers |
 | `GET` with no path parameters | lowers |
-| `GET` with a path parameter | **web-only** — PMTC bakes the URL at compile time; a runtime param cannot be baked |
+| `GET` with a path parameter | lowers — the data component takes the param as a prop and re-fetches when it changes |
+| the generated data components (`<Op>Data`, a render prop) | **compile on Kotlin, not on Swift** — PMTC has no render-prop component support yet (`children` lowers to `-> Void`, which is not a `View`). With `swiftc` installed the verifier reports this module `BROKEN`, which is the honest answer |
+| an array / scalar / union MODEL | lowers — inlined at its use sites; PMTC synthesizes structs from object literals only |
 | `POST`/`PUT`/`PATCH`/`DELETE` | **web-only** — mutations are not recognised yet |
 | `enum` | narrowed to a plain string on the native path; the constraint is genuinely lost there |
 | a model field naming another model | **lowers under `validator: 'zod'`** (inlined); dropped under the default `s.*`, with a compiler warning |

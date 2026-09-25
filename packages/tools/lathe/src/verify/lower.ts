@@ -109,6 +109,14 @@ const WARNING_CLASSES: readonly [WarningClass, RegExp][] = [
   ['dropped', /\bdropping\b|dropping field|\bdropped\b/i],
 ]
 
+/**
+ * Classify one PMTC warning.
+ *
+ * @example
+ * ```ts
+ * classifyWarning('null declaration `Pet`: field `tags` … Dropping field.') // 'dropped'
+ * ```
+ */
 export function classifyWarning(warning: string): WarningClass {
   for (const [cls, re] of WARNING_CLASSES) if (re.test(warning)) return cls
   return 'info'
@@ -290,6 +298,12 @@ export async function resolveTransform(): Promise<TransformFn | undefined> {
  * validators when the installed version exports them. The validators SKIP
  * themselves when `swiftc` / `kotlinc` is absent, so this never fails a run
  * on a machine without a toolchain — it reports that the compile did not run.
+ *
+ * @example
+ * ```ts
+ * const { transform, compile } = await resolveNativeCompiler()
+ * const report = verifyNative(files, transform, compile)
+ * ```
  */
 export async function resolveNativeCompiler(): Promise<{
   transform: TransformFn | undefined
