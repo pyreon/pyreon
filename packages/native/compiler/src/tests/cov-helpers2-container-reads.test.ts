@@ -45,7 +45,9 @@ describe('useFetch container — the CALL form (what shared source actually writ
   })
 
   it('`q.error()` is an OPTIONAL — a bare error is not a Bool condition on either target', () => {
-    expect(annot(`  const c = computed(() => q.error())`, 'c')).toContain('var c: String?')
+    // The runtime field is `Error?` (not `String?`, which this spec used to
+    // assert — an annotation that could not hold the value it computed).
+    expect(annot(`  const c = computed(() => q.error())`, 'c')).toContain('var c: Error?')
   })
 
   it('an ALREADY-optional payload type is not double-wrapped', () => {
