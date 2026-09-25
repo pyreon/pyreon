@@ -213,6 +213,7 @@ is a normal thing to want.
 | `components` | one browsable preview per read operation | `queries` |
 | `atlas` | workbench scenarios + wrapper | `components`, `mocks` |
 | `docs` | Markdown reference pages | — |
+| `mcp` | every operation as an MCP tool definition (`mcp.ts`) | `client` |
 
 The **needs** column is import edges in the emitted code, not preferences. A
 selection is expanded to cover them rather than refused, and the report says
@@ -638,6 +639,107 @@ emitted: the parameter must exist, every path must exist, `hasMore` must be a
 boolean and the next value's type must be one the parameter takes. A wrong
 config entry fails the run with the reason; a wrong spec extension is noted and
 skipped.
+### Streams: Server-Sent Events and NDJSON
+
+An operation whose 2xx response declares `text/event-stream`, or an NDJSON
+media type (`application/x-ndjson`, `application/jsonl`, `application/stream+json`, …),
+gets two more exports: `<op>Stream` — an async iterator of **validated** events
+— and `use<Op>Stream`, the same stream as signals. The event type is the spec's
+OpenAPI 3.2 `itemSchema` (for SSE, its `data` property, through `contentSchema`
+when `data` is JSON in a string), or the media type's `schema` before 3.2.
+
+```ts
+import { roomEventsStream } from './gen/endpoints/rooms'
+
+for await (const ev of roomEventsStream({ params: { room: 'lobby' } })) {
+  ev.type        // 'message', or the SSE `event:` name
+  ev.data.kind   // typed and validated against RoomEvent
+  if (ev.data.kind === 'leave') break      // break closes the connection
+}
+```
+
+```tsx
+import { useRoomEventsStream } from './gen/queries/rooms'
+
+const live = useRoomEventsStream(() => ({ params: { room: room() } }), { maxEvents: 200 })
+// live.events() / live.latest() / live.status() / live.error() — signals
+// a new room() re-opens the stream; unmount closes it; live.abort() / live.restart()
+```
+
+What makes these more than `EventSource`:
+
+- **It is an ordinary call through the client.** POST bodies, `configureApi`
+  headers and auth, middleware and the mock transport all apply — `EventSource`
+  can send none of them. It works the same on every `client`.
+- **Every event is validated**, honouring `configureApi({ validate })`: `strict`
+  ends the stream on a bad event, `warn` logs it and passes it through, `off`
+  skips the check.
+- **A dropped GET stream reconnects**, with exponential backoff, sending
+  `Last-Event-ID` so the server can resume; a server `retry:` sets the delay, a
+  4xx other than 408/429 is not retried, and the budget resets once an event
+  arrives. A non-GET stream (an LLM completion) is **not** reconnected by
+  default — repeating the request would repeat its effect; pass `reconnect` if
+  the server makes that safe. NDJSON has no resume id, so it never reconnects.
+- **Wire-format correct**: CR, LF and CRLF line ends split across chunks,
+  multi-line `data`, comments, a leading BOM, an `id` containing NUL — the
+  WHATWG grammar, over [`@pyreon/http/stream`](/docs/http), which you can use
+  directly for a stream no spec describes.
+
+An operation that offers JSON **and** a stream (the OpenAI shape) keeps its
+JSON endpoint and hooks and gains the stream beside them. A stream-only
+operation gets `use<Op>Stream` *instead of* `useQuery` — a one-shot body in a
+query cache is re-read on every refetch. The generated mocks answer a streaming
+operation with a valid one-event stream built from its event type.
+
+When the spec does not say an operation streams — an endpoint that streams
+when its body says `stream: true` — declare it:
+
+```ts
+lathe: {
+  streams: {
+    createChatCompletion: { format: 'sse', event: 'ChatCompletionChunk' },
+    exportRows: { format: 'ndjson', event: 'Row' },
+    tailLog: { data: 'text' },                    // SSE data as plain strings
+  },
+}
+```
+
+Every entry is checked: an unknown operation or model fails the run with a
+suggestion, and a stream whose name would collide with an operation is refused.
+Streams are web-only — PMTC has no streaming lowering.
+
+### MCP tools, generated from the spec
+
+The `mcp` plugin writes `mcp.ts`: one [Model Context Protocol](/docs/mcp) tool
+per operation, so an agent can call the API — a name, a description, a
+self-contained JSON Schema of the endpoint's own call arguments (models as
+`$defs`), method-derived annotations (`readOnlyHint` for a GET,
+`destructiveHint` for a DELETE), and a `call` that runs the **generated**
+endpoint — through the same client, auth and middleware as the app.
+
+```ts
+import { tools } from './gen/mcp'
+
+server.setRequestHandler(ListToolsRequestSchema, () => ({
+  tools: tools.map(({ call, ...definition }) => definition),
+}))
+server.setRequestHandler(CallToolRequestSchema, async (req) => {
+  const tool = tools.find((t) => t.name === req.params.name)
+  if (!tool) throw new Error(`unknown tool ${req.params.name}`)
+  return { content: [{ type: 'text', text: JSON.stringify((await tool.call(req.params.arguments ?? {})) ?? null) }] }
+})
+```
+
+The output is plain data plus a function — no SDK import, so the generated
+client gains no dependency. A stream-only operation, a body a model cannot
+write as JSON (multipart, raw binary) and a name over MCP's 64 characters are
+not tools; each is listed with its reason at the top of `mcp.ts`.
+
+For the reverse direction — an assistant *writing code against* the generated
+client — `@pyreon/mcp` serves it: `get_api_client` (every operation and its
+generated symbols), `get_api_operation` (a typed signature and example calls)
+and `explain_api_diff` (this page's contract diff, with what to check).
+
 ## Configuration reference
 
 Every key of the `lathe` section of `pyreon.config.ts`. `@pyreon/config`'s
@@ -661,6 +763,7 @@ Paths passed on the command line are relative to the working directory.
 | `baseUrl` | `string` | the spec's `servers[0].url` | must be an absolute literal to reach native |
 | `responseValidation` | `'strict' \| 'warn' \| 'off'` | `'strict'` | the web client's default response validation; `configureApi({ validate })` switches it at runtime |
 | `pagination` | `Record<operation, PaginationConfig>` | — | declared infinite queries; see [Infinite queries](#infinite-queries-declared) |
+| `streams` | `Record<operation, StreamConfig>` | — | declared SSE / NDJSON streams; see [Streams](#streams-server-sent-events-and-ndjson) |
 | `strictNative` | `boolean` | `false` | exit 1 when a native module does not lower |
 | `projects` | `{ name, input, ...any key above }[]` | — | several specs in one run; see [Several specs](#several-specs-one-pass) |
 
@@ -673,6 +776,7 @@ name, with the known values listed.
 lathe generate [spec]          # read the spec, write the client
 lathe check    [spec]          # generate in memory; exit 1 if anything is stale
 lathe pull     [url] [dest]    # fetch a remote spec (see below)
+lathe diff <before> <after>    # the client-contract diff between two versions (see below)
 lathe [spec]                   # same as lathe generate [spec]
 ```
 
@@ -687,6 +791,7 @@ lathe [spec]                   # same as lathe generate [spec]
 | `--dry-run` | report what `generate` would write and remove; touch nothing |
 | `--strict-native` | exit 1 when a native module fails to lower |
 | `--fail-on-breaking` | exit 1 when the spec breaks the client contract |
+| `--format text\|markdown\|github\|json` | `diff` only — how the report is rendered |
 | `--json` | machine-readable output (shape below) |
 | `--watch`, `-w` | regenerate when a spec **or the config** changes |
 | `--color`, `--no-color` | force colour; by default only a TTY gets it, and `NO_COLOR` turns it off |
@@ -707,7 +812,7 @@ One shape for every command and any number of projects:
 ```ts
 interface JsonReport {
   ok: boolean                       // the run exited 0
-  command: 'generate' | 'check' | 'pull' | 'help' | 'version'
+  command: 'generate' | 'check' | 'pull' | 'diff' | 'help' | 'version'
   projects: Array<{
     name: string                    // '' for a single-project config
     title: string; version: string
@@ -724,11 +829,80 @@ interface JsonReport {
     changes: Array<{ code: string; severity: 'breaking' | 'additive'; subject: string; detail: string }>
   }>
   error?: { message: string }       // a run that failed before producing a report
+  diff?: ContractDiff               // `lathe diff` only (projects is then [])
 }
 ```
 
 An error under `--json` is still JSON (`ok: false`), never plain text on stdout.
 The types are exported from `@pyreon/lathe/cli` as `JsonReport` / `JsonProject`.
+
+### `lathe diff` — the contract change, for a pull request
+
+`generate` and `check` compare the regenerated contract with the committed
+`api-surface.json`. `lathe diff` compares **any two** versions — each side a
+spec (JSON or YAML), an `api-surface.json`, or `<git-rev>:<path>` for a file
+that is not on disk, like the base of the PR:
+
+```bash
+lathe diff main:openapi.yaml openapi.yaml
+lathe diff old/api-surface.json src/gen/api-surface.json --format markdown
+```
+
+```text
+API contract: 2 breaking, 1 additive
+  BREAKING  field-now-optional  RoomEvent.at — required → optional
+             affects roomEvents, roomEventsStream, useRoomEventsStream (rooms)
+  BREAKING  operation-removed  tailLog — `GET /log` no longer exists
+             affects tailLog, tailLogStream, useTailLogStream (rows)
+  additive  field-added  ChatChunk.role — string (optional)
+             affects createChat, createChatStream, useCreateChat, useCreateChatStream (chat)
+```
+
+Severities are from the **client's** point of view (a response field turning
+optional breaks; a request field doing so does not), breaking first, and every
+change names the generated code it touches — a model change is traced through
+other models to each operation that reaches it. `--format markdown` is a PR
+comment; `--format github` prints `::error` / `::notice` annotations and appends
+the Markdown to the job summary; `--json` is the one report shape with a `diff`
+field. Exit `0`, `1` for a breaking change under `--fail-on-breaking`, `2` when
+an input cannot be read — so a step can tell "the API broke" from "the step is
+misconfigured".
+
+A GitHub Action that comments on every PR touching the spec:
+
+```yaml
+name: API contract
+on:
+  pull_request:
+    paths: ['openapi.yaml']
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }          # the base revision must be readable
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - name: Diff the contract
+        id: diff
+        run: |
+          set +e
+          bunx lathe diff "origin/${{ github.base_ref }}:openapi.yaml" openapi.yaml \
+            --format markdown --fail-on-breaking > contract.md
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+      - name: Comment
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: gh pr comment ${{ github.event.pull_request.number }} --body-file contract.md --edit-last --create-if-none
+      - name: Fail on a breaking change
+        if: steps.diff.outputs.code != '0'
+        run: exit ${{ steps.diff.outputs.code }}
+```
+
+`--format github` in a plain `run:` step is the no-comment alternative: the
+annotations land on the PR's checks and the table in the job summary.
 
 ## Pulling a remote spec
 
@@ -822,6 +996,17 @@ never touched. Commit the manifest with the rest of the output.
 - **No multi-project composition.** `projects: [...]` writes N independent
   output trees; there is no combined entry across them.
 - **`faker` does not reach native**, and neither do the preview components.
+- **Streams are web-only.** PMTC has no streaming lowering, so `<op>Stream` /
+  `use<Op>Stream` exist in the web output only; a stream-only operation is
+  reported `web-only` with that reason.
+- **Streams on non-`pyreon` clients import `@pyreon/http/stream`** (the
+  zero-dependency subpath) — the one place an axios / ky / fetch client depends
+  on `@pyreon/http`, and only when the spec has a streaming operation. On axios,
+  a stream request uses axios's `fetch` adapter: its default adapter returns a
+  Node `Readable` on the server and cannot stream at all in a browser.
+- **Mocks answer a dual JSON + stream operation with its JSON body**, so its
+  `<op>Stream` yields nothing under `installMocks()`; stream-only operations
+  get a valid one-event stream.
 - A `$ref` **cycle** has no finite nesting, so the native schema names the
   target and the compiler drops that one field with a warning.
 

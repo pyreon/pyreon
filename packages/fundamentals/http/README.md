@@ -123,6 +123,30 @@ const createCustomer = api.endpoint('POST /v1/customers', {
 await createCustomer({ form: { metadata: { plan: 'pro' } }, headers: { 'idempotency-key': key } })
 ```
 
+## Streaming (SSE, NDJSON)
+
+`@pyreon/http/stream` parses Server-Sent Events and NDJSON from any
+`ReadableStream`, so a stream can be a POST with auth headers and go through
+your middleware — `EventSource` can do neither.
+
+```ts
+import { openEventStream } from '@pyreon/http/stream'
+
+const tail = api.endpoint('GET /logs/tail', { responseType: 'stream' })
+
+for await (const ev of openEventStream((ctx) => tail({ signal: ctx.signal, headers: ctx.headers }), {
+  parse: (v) => LogLine.parse(v),
+})) {
+  if (ev.data.level === 'fatal') break // closes the connection
+}
+```
+
+A dropped connection, 408, 429 or 5xx reconnects with backoff, resuming with
+`Last-Event-ID` (a server `retry:` sets the delay; other 4xx are final).
+`openNdjsonStream` yields one value per line and never reconnects.
+`readEventStream` / `readNdjson` are the bare parsers (WHATWG grammar: line
+ends split across chunks, multi-line `data`, comments, BOM). Zero dependencies.
+
 ## Middleware
 
 ```ts

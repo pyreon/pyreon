@@ -29,7 +29,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - The multiplatform claim is MEASURED: `verifyNative` runs the real `@pyreon/native-compiler` on both targets and asserts the positive marker plus the absence of leaked web-only symbols. A `does NOT compile` warning is treated as broken, not advisory, and an absent compiler SKIPS loudly rather than passing
 - Per-operation native reach with a reason in spec terms: a mutation, a relative base URL, or a read with no typed JSON response (there is no declared type for a native query to decode into) is reported `web-only` by name instead of silently degrading. A path parameter becomes a PROP of the native data component and lowers
 - Plugin selection is expanded along the IMPORT EDGES of the emitted code, not refused: `components` pulls in `queries` -&gt; `client` -&gt; `schemas` because `components.tsx` imports the hooks, and the report names what came along. Selecting a plugin without what its output imports previously produced files referencing modules that were never written - output that looks complete and does not resolve. `components` itself is independent of Atlas: the previews are ordinary Pyreon components over the generated hooks, so a project that wants them without a workbench gets exactly that
-- Every emitter is opt-in via `plugins` (`types`/`schemas`/`client`/`queries`/`mocks`/`faker`/`components`/`atlas`/`docs`) — schemas alone is a first-class use, and `target` is ADDITIVE on top of the selection rather than a separate output, so asking for schemas gets schemas on both targets
+- Every emitter is opt-in via `plugins` (`types`/`schemas`/`client`/`queries`/`mocks`/`faker`/`components`/`atlas`/`docs`/`mcp`) — schemas alone is a first-class use, and `target` is ADDITIVE on top of the selection rather than a separate output, so asking for schemas gets schemas on both targets
 - The output is a LAYERED graph, not one barrel: `index.ts` carries the production surface, `dev.ts` the fixtures/factories/previews, and `endpoints/index.ts` + `queries/index.ts` one layer each, so a consumer can take exactly the layer it needs. An emitted `package.json` declares the output side-effect-free (an ARRAY naming `atlas.wrapper.tsx`, which really does call `installMocks()` at module scope, rather than a blanket `false` that would be a lie) — and together with ONE SCHEMA MODULE PER MODEL (a `$ref` cycle shares one) and `/* @__PURE__ */` on every emitted call, one hook costs what it uses: measured with Vite 8 on GitHub's spec, one hook went from 94.4 KB to 2.8 KB gzipped of generated code, and the root barrel costs exactly what the per-tag import costs. Untagged operations are grouped by path (Stripe's single 612-endpoint `default` module became 79)
 - Model TYPES are written out as interfaces and each schema const is cast to its schema (`export const Book = s.object({…}) as unknown as Schema<Book>`) instead of inferred, which cut the TypeScript cost of the generated schemas + client + queries by 26-65% on GitHub and Stripe (instantiations, deterministic). Interface/schema agreement is enforced by lathe's own tests, both ways, for every model. The trade: a generated schema is a `Schema<Book>`, so object-only builders (`.extend`, `.pick`) do not type-check on it
 - `faker` emits one factory per model (`createBook(overrides?)`), and its rule is that a factory must produce data its OWN schema accepts: `min`/`max`/`pattern`/`enum` choose the generator and the field-name guess only applies where the spec states nothing. Depth is threaded explicitly so a recursive model terminates. `docs` renders Markdown with frontmatter — the generated HOOK name and its import site next to the HTTP contract, plus the one column a rendering of the spec cannot produce: whether the operation reaches iOS and Android, and when it does not, why
@@ -47,6 +47,9 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - Failure is normalised across adapters into one `LatheHttpError` carrying `status` and the parsed body — `fetch` resolves a 500, axios rejects with an `AxiosError`, ky with an `HTTPError`, and a generated query's `error` must not change shape when the transport is swapped. Retry policy is deliberately NOT normalised (ky retries 5xx GETs, the others do not) and is asserted rather than papered over
 - `target: 'multiplatform'` with a non-Pyreon client is REFUSED, not silently downgraded: PMTC lowers `createHttp` + `api.endpoint(...)` by NAME, so emitting native modules over axios would produce exactly the silent regression to web-only that the target exists to catch
 - Mocks ride on `@pyreon/http`'s own `mock()` middleware rather than MSW: no service worker, no extra install, identical in node and the browser. A parameterised route emits a bounded RegExp — the declared `/books/:id` is not a SUFFIX of the resolved `/v1/books/b1`, so a plain string matched nothing and every such fixture fell through to the real network. Adapter clients need no pattern at all: their seam is handed the declared path alongside the resolved one
+- STREAMS: an operation whose 2xx response is `text/event-stream` or NDJSON (read from OpenAPI 3.2 `itemSchema` or the media `schema`, or declared in the `streams` config) gets `<op>Stream` — an async iterator of events validated per `configureApi({ validate })` — and `use<Op>Stream` (events/latest/status/error signals, aborted on unmount). It is an ordinary call through the generated client, so POST bodies, auth, middleware and mocks apply on every `client`; a dropped GET stream reconnects with backoff and `Last-Event-ID`, a non-GET one is not replayed by default
+- `lathe diff <before> <after>`: the client-contract diff between any two specs, `api-surface.json` files or `<git-rev>:<path>`, breaking first, each change naming the generated SYMBOLS it reaches (model changes traced transitively to operations), rendered as text, a Markdown PR comment, GitHub annotations + job summary, or JSON; exit 1 on breaking under `--fail-on-breaking`, 2 when an input cannot be read. The same classifier backs `@pyreon/mcp`'s `explain_api_diff`
+- The `mcp` plugin emits every operation as a Model Context Protocol tool definition — a self-contained JSON Schema of the endpoint's own call arguments, method-derived annotations, and a `call` that runs the GENERATED endpoint — as plain data with no SDK dependency; stream-only operations, non-JSON bodies and over-long names are excluded and listed with the reason
 - Atlas scenarios generated from the spec — one per enum value on a response field, so a variant axis the API declares is one the workbench actually exercises, and it regenerates when the API changes instead of drifting
 
 ## Complete example
@@ -83,6 +86,7 @@ lathe / Bookshelf 1.2.0
 | [`generate`](#generate) | function | The whole pipeline, pure: spec text in, file CONTENTS out. |
 | [`resolveConfig`](#resolveconfig) | function | Fills defaults and validates one project's settings, and is where the whole option surface lives: `plugins` (which emitt |
 | [`verifyNative`](#verifynative) | function | Runs the real native compiler over the generated `.native.tsx` modules on both targets and returns a per-file verdict. |
+| [`contractDiff`](#contractdiff) | function | The client-contract diff `lathe diff` prints, as data: every change classified `breaking` or `additive` from the CLIENT' |
 | [`loadOpenApi`](#loadopenapi) | function | Parses an OpenAPI 3.x document (JSON or YAML text) into the spec-agnostic IR. |
 
 ## API
@@ -178,6 +182,34 @@ if (worstVerdict(report) !== 'lowers') process.exitCode = 1
 - Reading `warnings.length === 0` as success. That is exactly the shape this function exists to catch — PMTC reproduces an unrecognised call verbatim and says nothing, so the native build fails later with "cannot find useQuery in scope".
 - Treating `ran: false` as a pass. A verification that could not run is not one that ran and succeeded; `--strict-native` fails on it deliberately.
 - Bundling a copy of `@pyreon/native-compiler` instead of resolving the project's. A verdict from a different compiler version than the one that will build the app is worse than no verdict.
+
+---
+
+### contractDiff `function`
+
+```ts
+contractDiff(before: ApiSurface, after: ApiSurface): ContractDiff
+```
+
+The client-contract diff `lathe diff` prints, as data: every change classified `breaking` or `additive` from the CLIENT's side (a response field turning optional breaks, a request field doing so does not), breaking first, each with the operations it `affects` — a model change is traced through other models to every operation that reaches it, and each operation carries its generated module and symbols when the surface came from a generation run. Read either side with `readContractSide(text, name)` (a spec or an `api-surface.json`) and render with `renderContractDiff(diff, 'text' | 'markdown' | 'github' | 'json')`. Pure — no filesystem.
+
+**Example**
+
+```tsx
+import { contractDiff, readContractSide, renderContractDiff } from '@pyreon/lathe/core'
+
+const before = readContractSide(baseSpecText, 'main:openapi.yaml').surface
+const after = readContractSide(headSpecText, 'openapi.yaml').surface
+const diff = contractDiff(before, after)
+
+if (diff.breaking > 0) console.log(renderContractDiff(diff, 'markdown'))
+```
+
+**Common mistakes**
+
+- Diffing the generated TypeScript instead — formatting, ordering and doc comments move for non-contract reasons, and a real change hides inside that noise. The surface holds only what a caller can observe.
+- Reading `additive` as "no action needed" for an enum — `member-added` on a RESPONSE model is breaking (a `switch` can now receive a member it does not handle); the classifier already applies that, so trust `severity`, not the code name.
+- Passing an `api-surface.json` written by an incompatible Lathe — `readContractSide` refuses a wrong-version surface by name rather than diffing a shape it does not understand.
 
 ---
 

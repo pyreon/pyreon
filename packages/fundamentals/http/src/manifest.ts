@@ -24,6 +24,7 @@ export default defineManifest({
     'Every common body encoding: `json`, `form` (application/x-www-form-urlencoded with OpenAPI `style`/`explode` per field — Stripe/Twilio), `multipart` (files as `Blob`/`File`), raw `body`, plus `cookies` and header records whose `undefined` values are omitted',
     'Per-request SSR context via AsyncLocalStorage, so concurrent renders never cross cookies',
     'Network-free mocking: middleware short-circuits, so tests need no MSW and no global fetch patch',
+    'Server-Sent Events and NDJSON over ANY transport (`@pyreon/http/stream`) — typed, validated events, `Last-Event-ID` reconnection with backoff, and cancellation that closes the socket; POST bodies and auth headers work, unlike `EventSource`',
   ],
   peerDeps: ['@pyreon/validation'],
   gotchas: [
@@ -197,6 +198,29 @@ export const middleware = (ctx: { req: Request }) =>
         'Importing it from `@pyreon/http` instead of `@pyreon/http/server` — the split is what keeps node:async_hooks out of the client bundle.',
         'Expecting relative URLs to resolve on the server WITHOUT it. There is no ambient origin until you wire it.',
         'Assuming headers forward automatically. `forwardHeaders` requires an explicit allowlist and stops at the origin boundary by default.',
+      ],
+    },
+    {
+      name: 'openEventStream',
+      kind: 'function',
+      signature:
+        '<T>(connect: (ctx: StreamContext) => Promise<ReadableStream<Uint8Array> | null | undefined>, options?: EventStreamOptions<T>) => EventStream<SseEvent<T>>',
+      summary:
+        'Server-Sent Events over any transport, from `@pyreon/http/stream`. `connect(ctx)` opens the body — an endpoint declared with `responseType: \'stream\'`, a raw `fetch`, an axios/ky client — and receives an `AbortSignal`, the headers the stream needs (`accept`, `last-event-id` when resuming) and the attempt number. The result is an async iterable of `{ type, data, id }` with `data` JSON-parsed (or `data: \'text\'`) and run through `parse`. A dropped connection, 408, 429 or 5xx is retried with exponential backoff resuming from the last id; a server `retry:` sets the delay; other 4xx are final; `reconnect: { onEnd: true }` resumes after a clean end the way `EventSource` does. `break`, `close()` or `options.signal` cancel the request. `openNdjsonStream` is the NDJSON sibling (no reconnection — there is no resume id); `readEventStream` / `readNdjson` are the bare WHATWG-grammar parsers.',
+      example: `import { openEventStream } from '@pyreon/http/stream'
+
+const tail = api.endpoint('GET /logs/tail', { responseType: 'stream' })
+
+for await (const ev of openEventStream((ctx) => tail({ signal: ctx.signal, headers: ctx.headers }), {
+  parse: (v) => LogLine.parse(v),
+})) {
+  if (ev.data.level === 'fatal') break
+}`,
+      mistakes: [
+        'Not merging `ctx.headers` into the request — without them the server gets no `Last-Event-ID` on a reconnect and replays from the start. `streamHeaders(callHeaders, ctx.headers)` merges any header shape.',
+        'Turning on `reconnect: { onEnd: true }` for a request/response stream (an LLM completion) — a clean end means "done", and resuming re-sends the request.',
+        'Expecting NDJSON to reconnect — it has no event id, so a retry would duplicate everything already received; a failure ends the stream with the error.',
+        'Iterating the same stream twice — it is single-use; call the function again for a new request.',
       ],
     },
     {

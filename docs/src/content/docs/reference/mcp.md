@@ -80,6 +80,9 @@ A full, end-to-end usage of the package:
 | [`get_atlas_catalog`](#get-atlas-catalog) | constant | Serve the VERIFIED component catalog `atlas scan` writes (`atlas-catalog.json`) — every component with its real props, a |
 | [`get_dependency_fabric`](#get-dependency-fabric) | constant | Serve the workspace dependency graph `loom scan` writes (`loom-report.json`): the shape (packages, edges, depth), runtim |
 | [`get_atlas_component`](#get-atlas-component) | constant | Prescriptive usage for ONE catalogued component: required and optional props with their exact allowed values, which prop |
+| [`get_api_client`](#get-api-client) | constant | Serve the generated API client `lathe generate` wrote — every operation with its method, path, summary and the exact sym |
+| [`get_api_operation`](#get-api-operation) | constant | One generated operation's TYPED signature: each parameter with its location (path/query) and whether it is required, the |
+| [`explain_api_diff`](#explain-api-diff) | constant | The client-contract diff between two versions of an API — each side a spec (JSON/YAML), an `api-surface.json`, or `&lt;git- |
 | [`get_pattern`](#get-pattern) | constant | Fetch a canonical "how do I do X" pattern body from `docs/src/content/docs/patterns/` (the same files the docs site rend |
 | [`get_anti_patterns`](#get-anti-patterns) | constant | Browse the anti-patterns catalog from `.agents/rules/anti-patterns.md`, token-frugal by default. |
 | [`get_changelog`](#get-changelog) | constant | Recent release notes for any `@pyreon/*` package without scraping `git log`. |
@@ -529,6 +532,88 @@ get_atlas_component({ name: 'Button' })
 - Inventing a value for a prop whose allowed set is printed — `state(primary|secondary)` is the complete list for that component.
 
 **See also:** `get_atlas_catalog` · `validate`
+
+---
+
+### get_api_client `constant`
+
+```ts
+tool: get_api_client({ search?: string, path?: string }) → string
+```
+
+Serve the generated API client `lathe generate` wrote — every operation with its method, path, summary and the exact symbols it exports (endpoint, `use<Op>` hook, `<op>Stream` / `use<Op>Stream` for streaming operations), grouped by the module they live in, plus every model. Read from the `api-surface.json` beside the generated code, so it describes the client the agent will actually import rather than a re-reading of the spec. Filter with `search`; point `path` at a generated directory when a project has several.
+
+**Example**
+
+```tsx
+get_api_client({})
+// → # Shop — 3 operation(s), 2 model(s)
+//   ## orders
+//   - `getOrder` GET /orders/:id — One order → `getOrder`, `useGetOrder`
+get_api_client({ search: 'order' })
+```
+
+**Common mistakes**
+
+- Guessing a hook name from the spec's operationId — the generated name is normalized (and a stream-only operation has no `use<Op>` at all). The symbols listed here are the real exports.
+- Calling it before `lathe generate` has run — the surface is a generation artifact, so the tool returns setup instructions rather than a guessed client.
+- Expecting parameter detail from the index — it is deliberately compact. Use `get_api_operation` for one operation's typed signature and a call.
+
+**See also:** `get_api_operation` · `explain_api_diff`
+
+---
+
+### get_api_operation `constant`
+
+```ts
+tool: get_api_operation({ operation: string, path?: string }) → string
+```
+
+One generated operation's TYPED signature: each parameter with its location (path/query) and whether it is required, the request body, the response and stream event types, the fields of every model they name, and example calls shaped by those types — the direct endpoint call, the query or mutation hook, and a `for await` over the stream when there is one. Imports are written relative to the working directory. Unknown names get near-match suggestions.
+
+**Example**
+
+```tsx
+get_api_operation({ operation: 'getOrder' })
+// → - `id` (path, required): string
+//   - response: Order
+//   const q = useGetOrder(() => ({ params: { id: '…' } }))
+```
+
+**Common mistakes**
+
+- Passing a path parameter under `query` (or the reverse) — the location is printed per parameter; path params go in `params`.
+- Calling a `use<Op>` hook with a value instead of an accessor — generated hooks take `() => args` so signal reads stay reactive; return `undefined` to hold the query disabled.
+- Awaiting a stream function — `<op>Stream(...)` returns an async iterable; iterate it with `for await`, and `break` closes the connection.
+
+**See also:** `get_api_client` · `explain_api_diff`
+
+---
+
+### explain_api_diff `constant`
+
+```ts
+tool: explain_api_diff({ before: string, after?: string }) → string
+```
+
+The client-contract diff between two versions of an API — each side a spec (JSON/YAML), an `api-surface.json`, or `<git-rev>:<path>` (`main:openapi.yaml`); `after` defaults to the generated client in the project. Uses `@pyreon/lathe`'s own classifier (the same one `lathe diff` and `lathe check` run), so severities are from the CLIENT's point of view: a response field turning optional is breaking, a request field doing so is not. Breaking first, each change naming the generated symbols it reaches (model changes are traced transitively to operations), followed by what to check in the code for every breaking change.
+
+**Example**
+
+```tsx
+explain_api_diff({ before: 'main:openapi.yaml', after: 'openapi.yaml' })
+// → ### API contract: 1 breaking, 0 additive
+//   | `field-now-optional` | `Customer.email` | required → optional | `getOrder`, `useGetOrder` (orders) |
+//   - `Customer.email` (`field-now-optional`): guard every read.
+```
+
+**Common mistakes**
+
+- Trusting a green typecheck after regenerating — breaking changes here are exactly the ones that still COMPILE (a field that is now sometimes absent) and fail at runtime.
+- Diffing generated TypeScript instead of the contract — formatting and ordering move for non-contract reasons; this compares only what a caller can observe.
+- Reading `member-added` as harmless — a `switch` over that value can now receive a member it does not handle.
+
+**See also:** `get_api_client` · `get_api_operation`
 
 ---
 

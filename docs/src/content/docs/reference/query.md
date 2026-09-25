@@ -147,6 +147,7 @@ const feed = useInfiniteQuery(() => ({
 | [`usePrefetchInfiniteQuery`](#useprefetchinfinitequery) | hook | Infinite-query variant of `usePrefetchQuery` — warms the first page of a paginated query into the cache during setup, on |
 | [`useSubscription`](#usesubscription) | hook | Reactive WebSocket with auto-reconnect and QueryClient cache integration. |
 | [`useSSE`](#usesse) | hook | Reactive Server-Sent Events hook with QueryClient cache integration. |
+| [`useStream`](#usestream) | hook | Any async-iterable stream as signals — typically `openEventStream` / `openNdjsonStream` from `@pyreon/http/stream`, so u |
 | [`useSuspenseQuery`](#usesuspensequery) | hook | Like `useQuery` but `data` is narrowed to `Signal<TData>` (never undefined). |
 | [`useSuspenseInfiniteQuery`](#usesuspenseinfinitequery) | hook | Like `useInfiniteQuery` but `data` is narrowed to `Signal<InfiniteData<TQueryFnData>>` (never undefined) — for use insid |
 | [`useSuspenseQueries`](#usesuspensequeries) | hook | Like `useQueries` but shaped for a `QuerySuspense` boundary: aggregates the array of queries into ONE query-like (`isPen |
@@ -474,7 +475,39 @@ const sse = useSSE({
 - Passing `queryKey` (TanStack v4 pattern) instead of using `onMessage` for cache integration — Pyreon's `useSSE` does NOT auto-update query cache; use `queryClient.setQueryData` or `invalidateQueries` inside `onMessage`
 - Omitting `parse` and expecting typed data — without `parse`, `data()` is `string` (raw event payload); pass `parse: JSON.parse` for auto-deserialization
 
-**See also:** `useSubscription`
+**See also:** `useSubscription` · `useStream`
+
+---
+
+### useStream `hook`
+
+```ts
+<T>(source: (ctx: StreamSourceContext) => AsyncIterable<T> | undefined, options?: UseStreamOptions<T>) => UseStreamResult<T>
+```
+
+Any async-iterable stream as signals — typically `openEventStream` / `openNdjsonStream` from `@pyreon/http/stream`, so unlike `useSSE` (which wraps `EventSource`) the stream can be a POST with auth headers, validated per event, and mocked. `events()` (bounded by `maxEvents`, default 1000), `latest()`, `status()` (`idle` / `connecting` / `open` / `reconnecting` / `closed` / `error`), `error()`, `abort()`, `restart()`. The source runs TRACKED: a signal it reads re-opens the stream when it changes — the previous request is aborted and a generation guard drops its late events. Return `undefined` to hold it idle; unmount aborts. Pass `ctx.onStatus` through for the finer states.
+
+**Example**
+
+```tsx
+import { openEventStream } from '@pyreon/http/stream'
+
+const feed = useStream((ctx) =>
+  openEventStream((c) => roomEvents({ params: { room: room() }, signal: c.signal, headers: c.headers }), {
+    signal: ctx.signal,
+    onStatus: ctx.onStatus,
+  }),
+)
+// feed.events() / feed.latest() / feed.status() / feed.error()
+```
+
+**Common mistakes**
+
+- Ignoring `ctx.signal` — without it an input change or unmount cannot cancel the old request, which keeps streaming into a dropped consumer.
+- Setting `maxEvents: Infinity` on a long-lived feed — `events()` then grows for as long as the page is open; read `latest()` or fold events into your own state instead.
+- Expecting an input change to revive a stream after `abort()` — an explicit abort sticks until `restart()`.
+
+**See also:** `useSSE` · `useSubscription`
 
 ---
 

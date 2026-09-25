@@ -585,6 +585,32 @@ boolean and the next value's type must be one the parameter takes. A wrong
 config entry fails the run with the reason; a wrong spec extension is noted and
 skipped.
 
+### Streams: SSE and NDJSON
+
+An operation whose 2xx response is `text/event-stream` or NDJSON (or that the
+`streams` config declares) gets `<op>Stream` — an async iterator of events
+validated against the spec's event type (3.2 `itemSchema`, or the media
+`schema`) — and `use<Op>Stream`, the same as signals:
+
+```ts
+for await (const ev of roomEventsStream({ params: { room: 'lobby' } })) {
+  if (ev.data.kind === 'leave') break      // closes the connection
+}
+const live = useRoomEventsStream(() => ({ params: { room: room() } }))
+// live.events() / live.latest() / live.status() / live.error()
+```
+
+It is an ordinary call through the generated client (POST bodies, auth,
+middleware and mocks all apply — unlike `EventSource`), every event honours
+`configureApi({ validate })`, and a dropped GET stream reconnects with backoff
+and `Last-Event-ID`. A non-GET stream is not reconnected by default (that
+would repeat the request). Built on `@pyreon/http/stream` and
+`@pyreon/query`'s `useStream`, for every `client`.
+
+```ts
+lathe: { streams: { createChatCompletion: { format: 'sse', event: 'ChatCompletionChunk' } } }
+```
+
 ## Honest limits
 
 Real, current, and reported per-operation rather than papered over:
@@ -597,6 +623,7 @@ Real, current, and reported per-operation rather than papered over:
 | the generated data components (`<Op>Data`, a render prop returning an accessor, so it re-renders on the web) | lowers **only with a `@pyreon/native-compiler` that supports render props**. Against an older compiler, with `swiftc`/`kotlinc` installed, the verifier reports the module `BROKEN`, which is the honest answer |
 | an array / scalar / union MODEL | lowers — inlined at its use sites; PMTC synthesizes structs from object literals only |
 | `POST`/`PUT`/`PATCH`/`DELETE` | **web-only** — mutations are not recognised yet |
+| SSE / NDJSON streams (`<op>Stream`, `use<Op>Stream`) | **web-only** — PMTC has no streaming lowering |
 | `enum` / `const` | narrowed to its base scalar (`string` / `number` / `boolean`) on the native path; the constraint is genuinely lost there |
 | a model field naming another model | **lowers under `validator: 'zod'`** (inlined); dropped under the default `s.*`, with a compiler warning |
 | a `$ref` **cycle** | web-only for that field — there is no finite nesting to inline, on either validator |
@@ -792,6 +819,7 @@ lathe: { input: './openapi.yaml', output: './src/schemas', plugins: ['schemas'] 
 lathe generate --plugins schemas          # just s.* schemas + types
 lathe generate --plugins schemas,mocks    # ...and deterministic fixtures
 lathe generate --plugins docs             # just the Markdown reference
+lathe generate --plugins mcp              # client + every operation as an MCP tool
 ```
 
 | plugin | emits | needs |
@@ -805,6 +833,7 @@ lathe generate --plugins docs             # just the Markdown reference
 | `components` | one browsable preview per read operation | `queries` |
 | `atlas` | workbench scenarios + wrapper | `components`, `mocks` |
 | `docs` | Markdown reference pages | — |
+| `mcp` | every operation as an MCP tool definition (`mcp.ts`) — name, description, JSON Schema input, a `call` running the generated endpoint | `client` |
 
 The **needs** column is import edges in the emitted code, not preferences —
 `queries/*.ts` imports `endpoints/*.ts`, `components.tsx` imports the hooks. A
@@ -871,6 +900,7 @@ from the spec — the CI half, same contract as `gen-docs --check`.
 lathe generate [spec]          # read the spec, write the client
 lathe check    [spec]          # generate in memory; exit 1 if anything is stale
 lathe pull     [url] [dest]    # fetch a remote spec
+lathe diff <before> <after>    # contract diff of two specs / surfaces / `<git-rev>:<path>`
 ```
 
 `lathe --help` lists every flag. Flags are strict — an unknown flag, command or
@@ -978,3 +1008,20 @@ to move, and a gate that fires there gets disabled rather than heeded.
 A missing or wrong-version baseline reports no changes rather than reporting
 every operation as added: a wall of "additive" on day one teaches people to skim
 the section.
+
+### `lathe diff` — for a pull request
+
+```bash
+lathe diff main:openapi.yaml openapi.yaml --format markdown --fail-on-breaking
+```
+
+Compares any two versions — a spec, an `api-surface.json`, or `<git-rev>:<path>`
+— with the same classifier, breaking first, each change naming the generated
+symbols it reaches (a model change traced through other models to every
+operation using it). `--format markdown` is a PR comment, `--format github`
+prints `::error` / `::notice` annotations and appends to the job summary,
+`--json` returns the report shape with a `diff` field. Exit `0`, `1` on a
+breaking change under `--fail-on-breaking`, `2` when an input cannot be read.
+The docs page has a ready GitHub Action. The same diff is served to AI
+assistants by `@pyreon/mcp`'s `explain_api_diff`, with `get_api_client` /
+`get_api_operation` describing the generated client itself.

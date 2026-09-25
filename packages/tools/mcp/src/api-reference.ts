@@ -3771,9 +3771,26 @@ usePrefetchQuery(() => ({ queryKey: ['user', id], queryFn: fetchUser }))
 // sse.data() — last parsed message
 // sse.status() — 'connecting' | 'connected' | 'disconnected' | 'error'
 // sse.lastEventId(), sse.readyState(), sse.close(), sse.reconnect()`,
-    notes: 'Reactive Server-Sent Events hook with QueryClient cache integration. Same pattern as `useSubscription` but read-only (no `send`). `parse` deserializes raw event data per message (e.g. `JSON.parse`); `events` filters named SSE event types (defaults to generic `message` events). Honours the SSE spec `id` field via `lastEventId()` so the browser includes `Last-Event-ID` on reconnect and the server can resume from the right offset. `onMessage` receives the `QueryClient` for cache invalidation. See also: useSubscription.',
+    notes: 'Reactive Server-Sent Events hook with QueryClient cache integration. Same pattern as `useSubscription` but read-only (no `send`). `parse` deserializes raw event data per message (e.g. `JSON.parse`); `events` filters named SSE event types (defaults to generic `message` events). Honours the SSE spec `id` field via `lastEventId()` so the browser includes `Last-Event-ID` on reconnect and the server can resume from the right offset. `onMessage` receives the `QueryClient` for cache invalidation. See also: useSubscription, useStream.',
     mistakes: `- Passing \`queryKey\` (TanStack v4 pattern) instead of using \`onMessage\` for cache integration — Pyreon's \`useSSE\` does NOT auto-update query cache; use \`queryClient.setQueryData\` or \`invalidateQueries\` inside \`onMessage\`
 - Omitting \`parse\` and expecting typed data — without \`parse\`, \`data()\` is \`string\` (raw event payload); pass \`parse: JSON.parse\` for auto-deserialization`,
+  },
+
+  'query/useStream': {
+    signature: '<T>(source: (ctx: StreamSourceContext) => AsyncIterable<T> | undefined, options?: UseStreamOptions<T>) => UseStreamResult<T>',
+    example: `import { openEventStream } from '@pyreon/http/stream'
+
+const feed = useStream((ctx) =>
+  openEventStream((c) => roomEvents({ params: { room: room() }, signal: c.signal, headers: c.headers }), {
+    signal: ctx.signal,
+    onStatus: ctx.onStatus,
+  }),
+)
+// feed.events() / feed.latest() / feed.status() / feed.error()`,
+    notes: 'Any async-iterable stream as signals — typically `openEventStream` / `openNdjsonStream` from `@pyreon/http/stream`, so unlike `useSSE` (which wraps `EventSource`) the stream can be a POST with auth headers, validated per event, and mocked. `events()` (bounded by `maxEvents`, default 1000), `latest()`, `status()` (`idle` / `connecting` / `open` / `reconnecting` / `closed` / `error`), `error()`, `abort()`, `restart()`. The source runs TRACKED: a signal it reads re-opens the stream when it changes — the previous request is aborted and a generation guard drops its late events. Return `undefined` to hold it idle; unmount aborts. Pass `ctx.onStatus` through for the finer states. See also: useSSE, useSubscription.',
+    mistakes: `- Ignoring \`ctx.signal\` — without it an input change or unmount cannot cancel the old request, which keeps streaming into a dropped consumer.
+- Setting \`maxEvents: Infinity\` on a long-lived feed — \`events()\` then grows for as long as the page is open; read \`latest()\` or fold events into your own state instead.
+- Expecting an input change to revive a stream after \`abort()\` — an explicit abort sticks until \`restart()\`.`,
   },
 
   'query/useSuspenseQuery': {
@@ -4061,6 +4078,24 @@ export const middleware = (ctx: { req: Request }) =>
     mistakes: `- Importing it from \`@pyreon/http\` instead of \`@pyreon/http/server\` — the split is what keeps node:async_hooks out of the client bundle.
 - Expecting relative URLs to resolve on the server WITHOUT it. There is no ambient origin until you wire it.
 - Assuming headers forward automatically. \`forwardHeaders\` requires an explicit allowlist and stops at the origin boundary by default.`,
+  },
+
+  'http/openEventStream': {
+    signature: '<T>(connect: (ctx: StreamContext) => Promise<ReadableStream<Uint8Array> | null | undefined>, options?: EventStreamOptions<T>) => EventStream<SseEvent<T>>',
+    example: `import { openEventStream } from '@pyreon/http/stream'
+
+const tail = api.endpoint('GET /logs/tail', { responseType: 'stream' })
+
+for await (const ev of openEventStream((ctx) => tail({ signal: ctx.signal, headers: ctx.headers }), {
+  parse: (v) => LogLine.parse(v),
+})) {
+  if (ev.data.level === 'fatal') break
+}`,
+    notes: `Server-Sent Events over any transport, from \`@pyreon/http/stream\`. \`connect(ctx)\` opens the body — an endpoint declared with \`responseType: 'stream'\`, a raw \`fetch\`, an axios/ky client — and receives an \`AbortSignal\`, the headers the stream needs (\`accept\`, \`last-event-id\` when resuming) and the attempt number. The result is an async iterable of \`{ type, data, id }\` with \`data\` JSON-parsed (or \`data: 'text'\`) and run through \`parse\`. A dropped connection, 408, 429 or 5xx is retried with exponential backoff resuming from the last id; a server \`retry:\` sets the delay; other 4xx are final; \`reconnect: { onEnd: true }\` resumes after a clean end the way \`EventSource\` does. \`break\`, \`close()\` or \`options.signal\` cancel the request. \`openNdjsonStream\` is the NDJSON sibling (no reconnection — there is no resume id); \`readEventStream\` / \`readNdjson\` are the bare WHATWG-grammar parsers.`,
+    mistakes: `- Not merging \`ctx.headers\` into the request — without them the server gets no \`Last-Event-ID\` on a reconnect and replays from the start. \`streamHeaders(callHeaders, ctx.headers)\` merges any header shape.
+- Turning on \`reconnect: { onEnd: true }\` for a request/response stream (an LLM completion) — a clean end means "done", and resuming re-sends the request.
+- Expecting NDJSON to reconnect — it has no event id, so a retry would duplicate everything already received; a failure ends the stream with the error.
+- Iterating the same stream twice — it is single-use; call the function again for a new request.`,
   },
 
   'http/createMock': {
@@ -6827,6 +6862,43 @@ get_dependency_fabric({ package: '@pyreon/router' })
     mistakes: `- Reading \`example (UNVERIFIED …)\` as a known-good example — it is args from a scenario nothing has checked. Only \`correct (verified)\` carries evidence.
 - Passing a resolved value to a prop listed as reactive — those take an accessor (\`() => count()\`), and passing the value captures it once.
 - Inventing a value for a prop whose allowed set is printed — \`state(primary|secondary)\` is the complete list for that component.`,
+  },
+
+  'mcp/get_api_client': {
+    signature: 'tool: get_api_client({ search?: string, path?: string }) → string',
+    example: `get_api_client({})
+// → # Shop — 3 operation(s), 2 model(s)
+//   ## orders
+//   - \`getOrder\` GET /orders/:id — One order → \`getOrder\`, \`useGetOrder\`
+get_api_client({ search: 'order' })`,
+    notes: 'Serve the generated API client `lathe generate` wrote — every operation with its method, path, summary and the exact symbols it exports (endpoint, `use<Op>` hook, `<op>Stream` / `use<Op>Stream` for streaming operations), grouped by the module they live in, plus every model. Read from the `api-surface.json` beside the generated code, so it describes the client the agent will actually import rather than a re-reading of the spec. Filter with `search`; point `path` at a generated directory when a project has several. See also: get_api_operation, explain_api_diff.',
+    mistakes: `- Guessing a hook name from the spec's operationId — the generated name is normalized (and a stream-only operation has no \`use<Op>\` at all). The symbols listed here are the real exports.
+- Calling it before \`lathe generate\` has run — the surface is a generation artifact, so the tool returns setup instructions rather than a guessed client.
+- Expecting parameter detail from the index — it is deliberately compact. Use \`get_api_operation\` for one operation's typed signature and a call.`,
+  },
+
+  'mcp/get_api_operation': {
+    signature: 'tool: get_api_operation({ operation: string, path?: string }) → string',
+    example: `get_api_operation({ operation: 'getOrder' })
+// → - \`id\` (path, required): string
+//   - response: Order
+//   const q = useGetOrder(() => ({ params: { id: '…' } }))`,
+    notes: `One generated operation's TYPED signature: each parameter with its location (path/query) and whether it is required, the request body, the response and stream event types, the fields of every model they name, and example calls shaped by those types — the direct endpoint call, the query or mutation hook, and a \`for await\` over the stream when there is one. Imports are written relative to the working directory. Unknown names get near-match suggestions. See also: get_api_client, explain_api_diff.`,
+    mistakes: `- Passing a path parameter under \`query\` (or the reverse) — the location is printed per parameter; path params go in \`params\`.
+- Calling a \`use<Op>\` hook with a value instead of an accessor — generated hooks take \`() => args\` so signal reads stay reactive; return \`undefined\` to hold the query disabled.
+- Awaiting a stream function — \`<op>Stream(...)\` returns an async iterable; iterate it with \`for await\`, and \`break\` closes the connection.`,
+  },
+
+  'mcp/explain_api_diff': {
+    signature: 'tool: explain_api_diff({ before: string, after?: string }) → string',
+    example: `explain_api_diff({ before: 'main:openapi.yaml', after: 'openapi.yaml' })
+// → ### API contract: 1 breaking, 0 additive
+//   | \`field-now-optional\` | \`Customer.email\` | required → optional | \`getOrder\`, \`useGetOrder\` (orders) |
+//   - \`Customer.email\` (\`field-now-optional\`): guard every read.`,
+    notes: `The client-contract diff between two versions of an API — each side a spec (JSON/YAML), an \`api-surface.json\`, or \`<git-rev>:<path>\` (\`main:openapi.yaml\`); \`after\` defaults to the generated client in the project. Uses \`@pyreon/lathe\`'s own classifier (the same one \`lathe diff\` and \`lathe check\` run), so severities are from the CLIENT's point of view: a response field turning optional is breaking, a request field doing so is not. Breaking first, each change naming the generated symbols it reaches (model changes are traced transitively to operations), followed by what to check in the code for every breaking change. See also: get_api_client, get_api_operation.`,
+    mistakes: `- Trusting a green typecheck after regenerating — breaking changes here are exactly the ones that still COMPILE (a field that is now sometimes absent) and fail at runtime.
+- Diffing generated TypeScript instead of the contract — formatting and ordering move for non-contract reasons; this compares only what a caller can observe.
+- Reading \`member-added\` as harmless — a \`switch\` over that value can now receive a member it does not handle.`,
   },
 
   'mcp/get_pattern': {
@@ -10970,6 +11042,21 @@ if (worstVerdict(report) !== 'lowers') process.exitCode = 1`,
     mistakes: `- Reading \`warnings.length === 0\` as success. That is exactly the shape this function exists to catch — PMTC reproduces an unrecognised call verbatim and says nothing, so the native build fails later with "cannot find useQuery in scope".
 - Treating \`ran: false\` as a pass. A verification that could not run is not one that ran and succeeded; \`--strict-native\` fails on it deliberately.
 - Bundling a copy of \`@pyreon/native-compiler\` instead of resolving the project's. A verdict from a different compiler version than the one that will build the app is worse than no verdict.`,
+  },
+
+  'lathe/contractDiff': {
+    signature: 'contractDiff(before: ApiSurface, after: ApiSurface): ContractDiff',
+    example: `import { contractDiff, readContractSide, renderContractDiff } from '@pyreon/lathe/core'
+
+const before = readContractSide(baseSpecText, 'main:openapi.yaml').surface
+const after = readContractSide(headSpecText, 'openapi.yaml').surface
+const diff = contractDiff(before, after)
+
+if (diff.breaking > 0) console.log(renderContractDiff(diff, 'markdown'))`,
+    notes: `The client-contract diff \`lathe diff\` prints, as data: every change classified \`breaking\` or \`additive\` from the CLIENT's side (a response field turning optional breaks, a request field doing so does not), breaking first, each with the operations it \`affects\` — a model change is traced through other models to every operation that reaches it, and each operation carries its generated module and symbols when the surface came from a generation run. Read either side with \`readContractSide(text, name)\` (a spec or an \`api-surface.json\`) and render with \`renderContractDiff(diff, 'text' | 'markdown' | 'github' | 'json')\`. Pure — no filesystem.`,
+    mistakes: `- Diffing the generated TypeScript instead — formatting, ordering and doc comments move for non-contract reasons, and a real change hides inside that noise. The surface holds only what a caller can observe.
+- Reading \`additive\` as "no action needed" for an enum — \`member-added\` on a RESPONSE model is breaking (a \`switch\` can now receive a member it does not handle); the classifier already applies that, so trust \`severity\`, not the code name.
+- Passing an \`api-surface.json\` written by an incompatible Lathe — \`readContractSide\` refuses a wrong-version surface by name rather than diffing a shape it does not understand.`,
   },
 
   'lathe/loadOpenApi': {

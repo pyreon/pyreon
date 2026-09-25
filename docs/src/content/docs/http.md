@@ -128,6 +128,58 @@ useMutation(createUser.mutation({ invalidates: [listUsers] }))
 
 `invalidates` takes **endpoints**, not stringly-typed keys.
 
+## Streaming — Server-Sent Events and NDJSON
+
+`@pyreon/http/stream` reads the wire format from any `ReadableStream<Uint8Array>`
+— an endpoint declared with `responseType: 'stream'`, a raw `fetch`, a
+generated axios or ky client — so a stream can be a POST, carry auth headers,
+and go through your middleware and mock transport. `EventSource` can do none
+of that.
+
+```ts
+import { openEventStream, openNdjsonStream } from '@pyreon/http/stream'
+
+const tail = api.endpoint('GET /logs/tail', { responseType: 'stream' })
+
+const stream = openEventStream((ctx) => tail({ signal: ctx.signal, headers: ctx.headers }), {
+  parse: (v) => LogLine.parse(v),      // validate each event's JSON `data`
+  events: ['line'],                    // only these `event:` types
+})
+for await (const ev of stream) {
+  console.log(ev.type, ev.data, ev.id)
+  if (ev.data.done) break              // closes the connection
+}
+stream.lastEventId()                   // persist it to resume later
+```
+
+- **`connect(ctx)`** is called for every (re)connection with an `AbortSignal`,
+  the headers the stream needs (`accept`, and `last-event-id` when resuming)
+  and the attempt number. Merge `ctx.headers` into the request —
+  `streamHeaders(callHeaders, ctx.headers)` does that for any header shape.
+- **Reconnection (SSE)**: a dropped connection, a 408 / 429 or a 5xx is retried
+  with exponential backoff (`reconnect: { attempts: 5, delay: 1000, maxDelay: 30000 }`),
+  resuming with `Last-Event-ID`; a server `retry:` sets the delay, any other
+  4xx is final, and the attempt budget resets once an event arrives. A clean
+  end finishes the stream unless `reconnect: { onEnd: true }` (what
+  `EventSource` does — wrong for a request/response stream like an LLM
+  completion). `reconnect: false` turns it off.
+- **NDJSON** yields one parsed value per line; blank lines are skipped, a final
+  line without a newline still counts, and a bad line throws a
+  `StreamParseError` naming its line number. It never reconnects — there is no
+  resume id, so a retry would replay.
+- **Cancellation**: `break`, `stream.close()` or `options.signal` abort the
+  request and cancel the body, so the server sees the socket close.
+- **`data: 'text'`** keeps each SSE event's `data` as a string instead of JSON.
+- `readEventStream(body)` / `readNdjson(body)` are the bare parsers, for a
+  stream you manage yourself. They follow the WHATWG grammar: CR / LF / CRLF
+  split anywhere across chunks, multi-byte characters split across chunks,
+  multi-line `data`, comments, a leading BOM, and an unterminated final event
+  discarded.
+
+For a component, `useStream` from `@pyreon/query` turns any of these into
+signals, and a [Lathe](/docs/lathe) client generates typed `<op>Stream` /
+`use<Op>Stream` pairs for every streaming operation in a spec.
+
 ## Middleware
 
 ```ts
