@@ -27,6 +27,7 @@ import type {
 } from '../core/ir'
 import { assignNames, ident, modelIdent, operationIdent, operationIdFrom, tagFile } from '../core/naming'
 import { splitByDirection } from './direction'
+import { isSwagger2, upgradeSwagger2 } from './swagger2'
 import { parseSpecText } from './yaml'
 
 type Json = Record<string, unknown>
@@ -53,9 +54,22 @@ export function loadOpenApi(source: string, options: LoadOptions = {}): LoadResu
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('[Pyreon] lathe: spec did not parse to an object')
   }
+  return { doc: loadParsed(raw as Json, options) }
+}
+
+/**
+ * Convert an already-parsed spec document to the IR. A Swagger 2.0 document is
+ * up-converted to OpenAPI 3.0 first (see `swagger2.ts`); anything else that is
+ * not OpenAPI 3.x is refused.
+ */
+export function loadParsed(raw: Json, options: LoadOptions = {}): IrDocument {
   const refusal = openApiVersionProblem(raw)
   if (refusal) throw new Error(refusal)
-  return { doc: convert(raw as Json, options) }
+  if (isSwagger2(raw)) {
+    const upgraded = upgradeSwagger2(raw, options.sourceUrl)
+    return convert(upgraded.doc, options, upgraded.notes)
+  }
+  return convert(raw, options)
 }
 
 /**
@@ -75,12 +89,14 @@ export function loadOpenApi(source: string, options: LoadOptions = {}): LoadResu
 export function openApiVersionProblem(doc: unknown): string | undefined {
   const d = obj(doc)
   if (!d) return '[Pyreon] lathe: the spec did not parse to an object.'
+  // Swagger 2.0 is up-converted in process (`swagger2.ts`). Any OTHER
+  // `swagger` version (1.x) has an unrelated layout and is refused.
   if (d.swagger !== undefined) {
+    if (isSwagger2(d)) return undefined
     return (
-      `[Pyreon] lathe: this is a Swagger ${String(d.swagger)} document, and Lathe reads OpenAPI 3.x.\n` +
-      '  Swagger 2 keeps models in `definitions` and request bodies in `in: body` parameters,\n' +
-      '  so reading it as 3.x would produce an empty client. Convert it first, then generate:\n' +
-      '    npx swagger2openapi swagger.json -o openapi.json'
+      `[Pyreon] lathe: this is a Swagger ${String(d.swagger)} document. Lathe reads OpenAPI 3.x and Swagger 2.0.\n` +
+      '  Nothing was generated and the output directory was not touched.\n' +
+      '  Convert it to Swagger 2.0 or OpenAPI 3 first (e.g. with the swagger-converter tools), then generate.'
     )
   }
   // A YAML `openapi: 3.0` (unquoted) reads as the NUMBER 3, which is still a
@@ -142,8 +158,8 @@ function serverUrl(server: Json | undefined, at: string, ctx: Ctx, sourceUrl: st
   return stripTrailingSlash(url)
 }
 
-function convert(spec: Json, options: LoadOptions = {}): IrDocument {
-  const notes: IrNote[] = []
+function convert(spec: Json, options: LoadOptions = {}, preNotes: readonly IrNote[] = []): IrDocument {
+  const notes: IrNote[] = [...preNotes]
   const ctx: Ctx = {
     spec,
     notes,

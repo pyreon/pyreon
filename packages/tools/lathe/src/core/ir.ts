@@ -281,6 +281,8 @@ export type IrNoteCode =
   | 'extra-tags'
   | 'description-dropped'
   | 'numeric-version'
+  | 'swagger2-converted'
+  | 'swagger2-lossy'
 
 /**
  * What a note means for the generated client.
@@ -323,6 +325,9 @@ export const NOTE_SEVERITY: Readonly<Record<IrNoteCode, IrNoteSeverity>> = {
   'extra-tags': 'choice',
   'description-dropped': 'choice',
   'numeric-version': 'choice',
+  // The conversion itself loses nothing; `swagger2-lossy` names what it did.
+  'swagger2-converted': 'choice',
+  'swagger2-lossy': 'loss',
 }
 
 /** The severity of a note, from its code. */

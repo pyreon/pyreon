@@ -33,17 +33,36 @@ const pick = (flag: string): string[] =>
   args.flatMap((a, i) => (a === flag && args[i + 1] !== undefined ? [args[i + 1] as string] : []))
 
 const spec = parseSpecText(readFileSync(specPath, 'utf8')) as Json
-const components = (spec.components ?? {}) as Record<string, Json>
+// A Swagger 2 document keeps its reusable sections at the TOP level
+// (`definitions`, `parameters`, `responses`) and refs point there directly.
+const swagger2 = spec.swagger !== undefined
+const components = (
+  swagger2
+    ? { schemas: spec.definitions, parameters: spec.parameters, responses: spec.responses }
+    : (spec.components ?? {})
+) as Record<string, Json>
 
-const out: Json = {
-  openapi: spec.openapi,
-  info: spec.info,
-  ...(spec.servers ? { servers: spec.servers } : {}),
-  paths: {},
-  components: {},
-}
-const outComponents = out.components as Record<string, Json>
+const out: Json = swagger2
+  ? {
+      swagger: spec.swagger,
+      info: spec.info,
+      ...Object.fromEntries(
+        ['host', 'basePath', 'schemes', 'consumes', 'produces', 'securityDefinitions', 'security']
+          .filter((k) => spec[k] !== undefined)
+          .map((k) => [k, spec[k]]),
+      ),
+      paths: {},
+    }
+  : {
+      openapi: spec.openapi,
+      info: spec.info,
+      ...(spec.servers ? { servers: spec.servers } : {}),
+      paths: {},
+      components: {},
+    }
+const outComponents = (swagger2 ? out : out.components) as Record<string, Json>
 const outPaths = out.paths as Json
+const SWAGGER2_SECTION: Record<string, string> = { schemas: 'definitions', parameters: 'parameters', responses: 'responses' }
 
 const queue: unknown[] = []
 const seen = new Set<string>()
@@ -54,7 +73,7 @@ function take(section: string, name: string): void {
   const node = components[section]?.[name]
   if (node === undefined) return
   seen.add(key)
-  ;(outComponents[section] ??= {})[name] = node
+  ;(outComponents[swagger2 ? (SWAGGER2_SECTION[section] as string) : section] ??= {})[name] = node
   queue.push(node)
 }
 
@@ -91,7 +110,11 @@ while (queue.length > 0) {
   }
   if (node === null || typeof node !== 'object') continue
   for (const [k, v] of Object.entries(node as Json)) {
-    if (k === '$ref' && typeof v === 'string' && v.startsWith('#/components/')) {
+    const swaggerRef = swagger2 && typeof v === 'string' ? /^#\/(definitions|parameters|responses)\/(.+)$/.exec(v) : null
+    if (k === '$ref' && swaggerRef) {
+      const section = swaggerRef[1] === 'definitions' ? 'schemas' : (swaggerRef[1] as string)
+      take(section, decodeURIComponent(swaggerRef[2] as string).replace(/~1/g, '/').replace(/~0/g, '~'))
+    } else if (k === '$ref' && typeof v === 'string' && v.startsWith('#/components/')) {
       const [, , section, name] = v.split('/')
       if (section && name) take(section, decodeURIComponent(name).replace(/~1/g, '/').replace(/~0/g, '~'))
     } else {

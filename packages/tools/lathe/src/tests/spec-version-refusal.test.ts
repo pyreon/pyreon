@@ -45,8 +45,15 @@ function memFs(files: Record<string, string>): Fs & { files: Record<string, stri
 describe('the input must be OpenAPI 3.x', () => {
   const cfg = resolveConfig({ input: 'x' })
 
-  it('refuses Swagger 2 and names the conversion', () => {
-    expect(() => generate(SWAGGER2, cfg)).toThrow(/Swagger 2\.0 document[\s\S]*swagger2openapi/)
+  it('reads Swagger 2.0 by up-converting it, rather than producing an empty client', () => {
+    const r = generate(SWAGGER2, cfg)
+    expect(r.doc.models.map((m) => m.name)).toEqual(['Pet'])
+    expect(r.doc.baseUrl).toBe('https://api.x.com')
+    expect(openApiVersionProblem({ swagger: '2.0' })).toBeUndefined()
+  })
+
+  it('refuses a Swagger version that is not 2.0', () => {
+    expect(() => generate('{"swagger":"1.2","apis":[]}', cfg)).toThrow(/Swagger 1\.2 document[\s\S]*Swagger 2\.0/)
   })
 
   it('refuses a document with no `openapi` key', () => {
@@ -79,7 +86,7 @@ describe('a refused spec leaves every output tree untouched', () => {
   })
 
   it('does not write an EARLIER project when a later one is refused', async () => {
-    const fs = memFs({ 'good.yaml': OPENAPI, 'bad.json': SWAGGER2 })
+    const fs = memFs({ 'good.yaml': OPENAPI, 'bad.json': '{"swagger":"1.2","apis":[]}' })
     const section = {
       projects: [
         { name: 'good', input: 'good.yaml', output: 'gen/good' },
@@ -89,7 +96,7 @@ describe('a refused spec leaves every output tree untouched', () => {
     const r = await run(parseArgv(['generate']), section, fs)
     expect(r.code).toBe(1)
     // Names WHICH project was refused -- the error itself cannot know.
-    expect(r.stderr).toMatch(/Swagger 2[\s\S]*project `bad`/)
+    expect(r.stderr).toMatch(/Swagger 1\.2[\s\S]*project `bad`/)
     expect(Object.keys(fs.files).filter((p) => p.startsWith('gen/'))).toEqual([])
   })
 })

@@ -111,6 +111,25 @@ const CASES: Record<IrNoteCode, [Record<string, unknown>, Record<string, unknown
     get({ description: 'only a description' }),
   ],
   'numeric-version': [{ info: { title: 'T', version: 2 } }, { info: { title: 'T', version: '2' } }],
+  // A Swagger 2 document is up-converted; the `openapi` key the helper adds is
+  // not read once `swagger` identifies the document.
+  'swagger2-converted': [{ swagger: '2.0', host: 't.test', schemes: ['https'] }, {}],
+  'swagger2-lossy': [
+    { swagger: '2.0', host: 't.test', schemes: ['https'], paths: swaggerArrayQuery('tsv') },
+    { swagger: '2.0', host: 't.test', schemes: ['https'], paths: swaggerArrayQuery('csv') },
+  ],
+}
+
+function swaggerArrayQuery(collectionFormat: string): Record<string, unknown> {
+  return {
+    '/x': {
+      get: {
+        operationId: 'x',
+        parameters: [{ in: 'query', name: 'a', type: 'array', items: { type: 'string' }, collectionFormat }],
+        responses: { 200: { description: 'ok' } },
+      },
+    },
+  }
 }
 
 describe('every note code fires on its defect and not on the corrected form', () => {
