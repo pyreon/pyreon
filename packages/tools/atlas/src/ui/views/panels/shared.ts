@@ -12,3 +12,12 @@ export function tab(id: string): { id: string; title: string; hint: string } {
   if (!found) throw new Error(`[Pyreon] atlas: no ADDON_TABS entry for built-in panel "${id}"`)
   return { id: found.id, title: found.title, hint: found.hint }
 }
+
+/**
+ * `for=<id>` for a control's `<label>`, as a spreadable prop. `for` is a real
+ * attribute on `<label>`, but the text base's props type does not list it —
+ * spreading keeps the one cast here instead of at every call site.
+ */
+export function labelFor(id: string): Record<string, string> {
+  return { for: id }
+}

@@ -2,14 +2,31 @@ import { dropTargetForExternal } from '@atlaskit/pragmatic-drag-and-drop/adapter
 import { monitorForExternal } from '@atlaskit/pragmatic-drag-and-drop/adapter/monitor-for-external'
 import { containsFiles } from '@atlaskit/pragmatic-drag-and-drop/utils/contains-files'
 import { getFiles } from '@atlaskit/pragmatic-drag-and-drop/utils/get-files'
-import { batch, isServer, onCleanup, signal } from '@pyreon/reactivity'
+import { batch, isServer, signal } from '@pyreon/reactivity'
+import { bindElement } from './element-binding'
+
+/** Why a dropped file was not delivered to `onDrop`. */
+export type FileRejectReason = 'accept' | 'maxFiles'
 
 export interface UseFileDropOptions {
-  /** Element getter for the drop zone. */
-  element: () => HTMLElement | null
-  /** Called when files are dropped. */
+  /**
+   * Element getter for the drop zone. Optional — attach the returned `ref`
+   * instead for an element that mounts later or may be swapped. A getter that
+   * reads a signal re-registers when the signal changes.
+   */
+  element?: () => HTMLElement | null
+  /** Called when files are dropped (only the accepted ones). */
   onDrop: (files: File[]) => void
-  /** Filter accepted file types (e.g. ["image/*", ".pdf"]). */
+  /**
+   * Called with the dropped files that were NOT delivered, and why: `'accept'`
+   * (type / extension not in `accept`) or `'maxFiles'` (over the limit). Fired
+   * once per reason per drop. Without it a rejected drop is silent.
+   */
+  onReject?: (rejected: File[], reason: FileRejectReason) => void
+  /**
+   * Filter accepted file types — MIME types (`"image/png"`), MIME wildcards
+   * (`"image/*"`), extensions (`".pdf"`), or `"*"` / `"*\/*"` for any file.
+   */
   accept?: string[]
   /** Maximum number of files. */
   maxFiles?: number
@@ -22,6 +39,21 @@ export interface UseFileDropResult {
   isOver: () => boolean
   /** Whether files are being dragged anywhere on the page. */
   isDraggingFiles: () => boolean
+  /** Ref callback for the drop zone — see `UseFileDropOptions.element`. */
+  ref: (el: HTMLElement | null) => void
+}
+
+function matchesAccept(file: File, accept: string[]): boolean {
+  return accept.some((pattern) => {
+    if (pattern === '*' || pattern === '*/*') return true
+    if (pattern.startsWith('.')) {
+      return file.name.toLowerCase().endsWith(pattern.toLowerCase())
+    }
+    if (pattern.endsWith('/*')) {
+      return file.type.startsWith(pattern.slice(0, -1))
+    }
+    return file.type === pattern
+  })
 }
 
 /**
@@ -30,17 +62,15 @@ export interface UseFileDropResult {
  *
  * @example
  * ```tsx
- * let dropZone: HTMLElement | null = null
- *
- * const { isOver, isDraggingFiles } = useFileDrop({
- *   element: () => dropZone,
+ * const { ref, isOver, isDraggingFiles } = useFileDrop({
  *   accept: ["image/*", ".pdf"],
  *   maxFiles: 5,
  *   onDrop: (files) => upload(files),
+ *   onReject: (files, reason) => toast(`${files.length} file(s) rejected: ${reason}`),
  * })
  *
  * <div
- *   ref={(el) => dropZone = el}
+ *   ref={ref}
  *   class={isOver() ? "drop-active" : isDraggingFiles() ? "drop-ready" : ""}
  * >
  *   Drop files here
@@ -48,35 +78,12 @@ export interface UseFileDropResult {
  * ```
  */
 export function useFileDrop(options: UseFileDropOptions): UseFileDropResult {
-  if (isServer) return { isOver: () => false, isDraggingFiles: () => false }
+  if (isServer) return { isOver: () => false, isDraggingFiles: () => false, ref: () => {} }
 
   const isOver = signal(false)
   const isDraggingFiles = signal(false)
-  let cleanup: (() => void) | undefined
-  let disposed = false
 
-  function matchesAccept(file: File, accept: string[]): boolean {
-    return accept.some((pattern) => {
-      if (pattern.startsWith('.')) {
-        return file.name.toLowerCase().endsWith(pattern.toLowerCase())
-      }
-      if (pattern.endsWith('/*')) {
-        return file.type.startsWith(pattern.slice(0, -1))
-      }
-      return file.type === pattern
-    })
-  }
-
-  function setup() {
-    // Unmounted before this deferred setup ran — don't register a drop target
-    // that onCleanup (already fired with `cleanup` undefined) can never remove.
-    /* v8 ignore next — defensive disposed-during-setup guard */
-    if (disposed) return
-    if (cleanup) cleanup()
-
-    const el = options.element()
-    if (!el) return
-
+  function register(el: HTMLElement): () => void {
     const cleanups: (() => void)[] = []
 
     // Monitor for file drags anywhere on the page
@@ -110,12 +117,18 @@ export function useFileDrop(options: UseFileDropOptions): UseFileDropResult {
           let files = getFiles({ source })
 
           // Filter by accept
-          if (options.accept && options.accept.length > 0) {
-            files = files.filter((f) => matchesAccept(f, options.accept as string[]))
+          const accept = options.accept
+          if (accept && accept.length > 0) {
+            const rejected = files.filter((f) => !matchesAccept(f, accept))
+            if (rejected.length > 0) {
+              files = files.filter((f) => matchesAccept(f, accept))
+              options.onReject?.(rejected, 'accept')
+            }
           }
 
           // Limit count
           if (options.maxFiles && files.length > options.maxFiles) {
+            options.onReject?.(files.slice(options.maxFiles), 'maxFiles')
             files = files.slice(0, options.maxFiles)
           }
 
@@ -126,17 +139,12 @@ export function useFileDrop(options: UseFileDropOptions): UseFileDropResult {
       }),
     )
 
-    cleanup = () => {
+    return () => {
       for (const fn of cleanups) fn()
     }
   }
 
-  queueMicrotask(setup)
+  const { ref } = bindElement('useFileDrop', options.element, register)
 
-  onCleanup(() => {
-    disposed = true
-    if (cleanup) cleanup()
-  })
-
-  return { isOver, isDraggingFiles }
+  return { isOver, isDraggingFiles, ref }
 }

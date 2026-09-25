@@ -74,6 +74,7 @@ export function SearchDialog(props: { model: WorkbenchModel }) {
           <C.SearchField
             ref={m.searchRef}
             data-search
+            aria-label="Search components"
             placeholder="Search components…"
             value={() => m.query()}
             onInput={(e: Event) =>
@@ -84,7 +85,7 @@ export function SearchDialog(props: { model: WorkbenchModel }) {
             }
             onKeyDown={onKey}
           />
-          <C.Kbd>esc</C.Kbd>
+          <C.SearchEsc>esc</C.SearchEsc>
         </C.SearchHead>
         <C.SearchResults>
           {() =>

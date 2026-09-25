@@ -1,6 +1,7 @@
-import { isClient, onCleanup, signal } from '@pyreon/reactivity'
+import { isClient, signal } from '@pyreon/reactivity'
 
 import { warnIfInsecureContext } from './secure-context'
+import { onHookCleanup } from './lifecycle'
 
 export type AudioRecorderControls = {
   /** True when the platform can record at all. */
@@ -87,7 +88,7 @@ export function useAudioRecorder(): AudioRecorderControls {
     chunks = []
   }
 
-  if (isClient) onCleanup(teardown)
+  if (isClient) onHookCleanup(teardown)
 
   return {
     supported,
