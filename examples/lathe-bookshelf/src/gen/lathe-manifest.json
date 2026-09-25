@@ -25,6 +25,10 @@
     "queries/authors.ts",
     "queries/books.ts",
     "queries/index.ts",
-    "schemas.ts"
+    "schemas.ts",
+    "schemas/Author.ts",
+    "schemas/Book.ts",
+    "schemas/Entity.ts",
+    "schemas/NewBook.ts"
   ]
 }
