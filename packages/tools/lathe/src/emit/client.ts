@@ -1051,8 +1051,13 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
       )
       f.line(`export function ${name}(props: { ${propsType} }) {`)
       f.line(`  const q = useQuery<${ret}>(() => ${op.id}.query${args})`)
-      // `q.data` is a SIGNAL; passing it uncalled hands the child a function.
-      f.line('  return props.children(q.data())')
+      // Returned as an ACCESSOR. A Pyreon component body runs ONCE, so
+      // `return props.children(q.data())` read the data at mount — `undefined`
+      // — and the rendered output never moved again: on the web the component
+      // stayed at its loading state forever. The accessor re-reads `q.data()`
+      // in a tracked scope, and PMTC lowers it to the same render-prop view.
+      // (`q.data` is a SIGNAL; it is still CALLED inside the accessor.)
+      f.line('  return () => props.children(q.data())')
       f.line('}')
     }
     files.push(f)
