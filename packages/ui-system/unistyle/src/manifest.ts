@@ -263,6 +263,68 @@ resolveCssVarReferences('var(--px-missing, 1rem)', registry)           // '1rem'
       ],
       seeAlso: ['themeToCssVars'],
     },
+    {
+      name: 'values',
+      kind: 'function',
+      signature:
+        "values(inputs: Array<string | number | null | undefined>, rootSize?: number, outputUnit?: string): string | number | null",
+      summary:
+        'Companion to `value()` for a mobile-first FALLBACK CHAIN: picks the first non-nullish entry in `inputs` (left to right) and runs it through the same `value()` conversion. Built for a responsive-prop shape where a smaller breakpoint may be unset and should fall back to a larger one\'s already-resolved raw value, without the caller hand-writing the `??` chain.',
+      example: `import { values } from '@pyreon/unistyle'
+
+values([undefined, 24, 16])   // → '1.5rem' (first defined: 24 → converted)
+values([null, null, 8])       // → '0.5rem'`,
+      mistakes: [
+        'Confusing this with `value()` (singular) — `value` converts ONE input; `values` selects the first defined item from a LIST, then converts it',
+      ],
+      seeAlso: ['value', 'stripUnit'],
+    },
+    {
+      name: 'cpseRewrite / cpseVarName / extractStyleVar',
+      kind: 'function',
+      signature:
+        'extractStyleVar(property, rawValue, rootSize?) → { rule, varName, varValue } · cpseVarName(property, breakpoint?) → string · cpseRewrite(frag, varsOut, breakpoint?) → string',
+      summary:
+        'The Custom-Property Style Extraction (CPSE) primitives — the machinery behind `styleExtraction: true` / `cpseStyled`. The thesis: decouple a style rule\'s IDENTITY from its VALUE. Instead of baking a value into the rule (`gap: 2.25rem` — a new rule + resolve per distinct value, cost O(distinct values)), emit a value-AGNOSTIC rule that reads a custom property (`gap: var(--u-<hash>)` — resolved ONCE per component definition) and deliver the value per-instance as an inline `style="--u-<hash>: 2.25rem"` — cost O(component definitions), and a signal-driven value updates for free (write the inline custom property, no re-resolve). `extractStyleVar` extracts ONE declaration; `cpseVarName` derives the stable hashed var name for a property (+ optional breakpoint suffix); `cpseRewrite` rewrites every FLAT `prop: value;` declaration in an already-resolved CSS fragment to its var form — a fragment with any structure (selectors, nesting, `@media`, `url(...)`) passes through UNCHANGED (conservative: correct-but-unextracted beats wrong).',
+      example: `import { extractStyleVar, cpseVarName, cpseRewrite } from '@pyreon/unistyle'
+
+extractStyleVar('gap', 36)
+// → { rule: 'gap:var(--u-1n2k4)', varName: '--u-1n2k4', varValue: '2.25rem' }
+
+cpseVarName('gap')            // '--u-1n2k4' — stable, shared across instances
+cpseVarName('gap', 'sm')      // '--u-1n2k4-sm' — per-breakpoint suffix
+
+const vars = {}
+cpseRewrite('gap: 2.25rem; margin: 1rem 2rem;', vars)
+// → 'gap:var(--u-1n2k4);margin:var(--u-8f3a1);'
+// vars → { '--u-1n2k4': '2.25rem', '--u-8f3a1': '1rem 2rem' }`,
+      mistakes: [
+        'Calling these directly to style a component — reach for `cpseStyled(tag)` (the complete, opt-in vehicle) or `<PyreonUI>` `init({ styleExtraction: true })` instead; these are the low-level primitives they\'re built on',
+        'Expecting `cpseRewrite` to extract a declaration inside a selector / `@media` block / `extendCss` fragment — anything with structure (`{`, `}`, `&`, `@`, `url(`) is returned VERBATIM by design, since a flat-declaration rewrite would corrupt it',
+        'Reusing a `varsOut` object across unrelated fragments without clearing it — `cpseRewrite` only ADDS keys, so a stale entry from a previous call can silently linger',
+      ],
+      seeAlso: ['cpseStyled', 'themeToCssVars'],
+    },
+    {
+      name: 'cpseStyled',
+      kind: 'function',
+      signature: 'cpseStyled(tag: string): ComponentFn<{ styles?, rootSize?, breakpoints?, class?, ref?, children? }>',
+      summary:
+        'The complete, opt-in CPSE-backed styled primitive — pass a `styles` prop (static object, or `() => object` for signal-driven dynamic values) instead of a template literal. Per-definition, styling cost is FLAT in style-VALUE cardinality: the emitted class depends only on the declaration SHAPE (which properties, at which breakpoints), so N instances with N distinct values share ONE class and pay ONE resolve — the values themselves travel as per-instance inline custom properties. Supports responsive values as a mobile-first array (`padding={[8, 16]}`) or a breakpoint object (`padding={{ sm: 16 }}`), each breakpoint emitting its own suffixed var wrapped in a `@media` block. A dynamic (function) `styles` prop updates the inline vars via a `renderEffect` — the class itself never re-resolves.',
+      example: `import { cpseStyled } from '@pyreon/unistyle'
+
+const Box = cpseStyled('div')
+
+<Box styles={{ gap: 24, padding: [8, 16] }} />
+// one shared class; gap/padding delivered as inline custom properties
+
+<Box styles={() => ({ gap: signal() })} />  // dynamic — updates the inline var only`,
+      mistakes: [
+        'Expecting `styles` to accept the same shorthand as a `styled` template literal — it takes unistyle-convention property keys (`borderWidthTop`, not `borderTopWidth`) in a flat object, not arbitrary CSS text',
+        'Mounting many DIFFERENT shapes (different property SETS) expecting the flat-cost guarantee — the win is per-SHAPE; a component whose author varies which properties are set per instance still resolves once per distinct shape',
+      ],
+      seeAlso: ['cpseRewrite / cpseVarName / extractStyleVar'],
+    },
   ],
   gotchas: [
     {
@@ -274,6 +336,16 @@ resolveCssVarReferences('var(--px-missing, 1rem)', registry)           // '1rem'
       label: 'CSS property naming',
       note:
         'Unistyle uses property-first naming (`borderWidthTop`, `borderColorLeft`) rather than CSS-spec order (`borderTopWidth`, `borderLeftColor`). Stick to the unistyle convention when authoring components — the responsive transformer expects it.',
+    },
+    {
+      label: 'Deprecated internal Provider / context',
+      note:
+        'The package exports a low-level `Provider` (default export) + `context` (re-exported from `@pyreon/ui-core`) that `<PyreonUI>` no longer calls directly — it is `@deprecated`-tagged and dev-warns on mount. There is no reason to import it: use `<PyreonUI theme={theme}>` instead.',
+    },
+    {
+      label: 'Responsive-pipeline internals (normalizeTheme / sortBreakpoints / transformTheme)',
+      note:
+        'These three are re-exported for advanced consumers but are the internal steps `makeItResponsive()` already runs for you: `sortBreakpoints` orders breakpoint keys by their min-width, `normalizeTheme` expands a mobile-first array/breakpoint-object value into a per-breakpoint map (carrying forward the "null slot inherits the previous breakpoint" rule), `transformTheme` maps a normalized per-breakpoint theme through a `styles`-shaped callback. Reach for `makeItResponsive()` first; use these directly only when building a custom responsive pipeline outside the styled-component path.',
     },
   ],
 })
