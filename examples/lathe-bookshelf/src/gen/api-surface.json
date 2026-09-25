@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "title": "Bookshelf",
   "operations": {
     "createBook": {
@@ -8,7 +8,7 @@
       "path": "/books",
       "params": {},
       "requiredParams": [],
-      "body": "NewBook",
+      "body": "json NewBook",
       "response": "Book"
     },
     "getBook": {
@@ -51,8 +51,8 @@
     "Book": {
       "id": "uuid",
       "pages": "integer (optional)",
-      "status": "enum(available|borrowed|lost)",
-      "subtitle": "string (optional)",
+      "status": "enum(\"available\"|\"borrowed\"|\"lost\")",
+      "subtitle": "string | null (optional)",
       "tags": "string[] (optional)",
       "title": "string"
     },
@@ -63,5 +63,12 @@
       "pages": "integer (optional)",
       "title": "string"
     }
+  },
+  "aliases": {},
+  "usage": {
+    "Author": "response",
+    "Book": "response",
+    "Entity": "unused",
+    "NewBook": "request"
   }
 }

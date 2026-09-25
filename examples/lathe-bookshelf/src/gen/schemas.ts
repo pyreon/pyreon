@@ -5,33 +5,12 @@
 // Re-run `lathe generate` to update. Edits here are lost on the next run;
 // to change the output, change the spec or the emitter.
 
-import type { Infer } from '@pyreon/validate'
-import { s } from '@pyreon/validate'
-
-export const Author = s.object({
-  id: s.string().uuid(),
-  name: s.string().min(1).max(120),
-  email: s.string().email().optional(),
-})
-export type Author = Infer<typeof Author>
-
-export const Book = s.object({
-  id: s.string().uuid(),
-  title: s.string().min(1),
-  status: s.enum(['available', 'borrowed', 'lost']),
-  pages: s.number().int().min(1).optional(),
-  subtitle: s.string().nullable().optional(),
-  tags: s.array(s.string()).optional(),
-})
-export type Book = Infer<typeof Book>
-
-export const Entity = s.object({
-  id: s.string().uuid(),
-})
-export type Entity = Infer<typeof Entity>
-
-export const NewBook = s.object({
-  title: s.string().min(1),
-  pages: s.number().int().min(1).optional(),
-})
-export type NewBook = Infer<typeof NewBook>
+/**
+ * Every schema of Bookshelf 1.2.0.
+ * One module per model (a `$ref` cycle shares one), so a hook reaches only
+ * the schemas its response actually names -- see `./schemas/`.
+ */
+export * from './schemas/Author'
+export * from './schemas/Book'
+export * from './schemas/Entity'
+export * from './schemas/NewBook'

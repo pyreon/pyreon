@@ -1826,6 +1826,10 @@ const ENDPOINT_UNLOWERABLE_ARGS: ReadonlyMap<string, string> = new Map([
   ['signal', 'an AbortSignal has no analogue in the emitted fetch harness, which runs to completion'],
   ['timeout', 'PyreonHttpRequest carries no timeout field'],
   ['meta', 'per-call metadata is read by client middleware, which does not lower'],
+  ['form', 'a url-encoded form body is not lowered — the native request body is built only from `json`'],
+  ['multipart', 'PyreonHttpRequest carries a single string/Data body, with no multipart parts'],
+  ['body', 'a raw BodyInit (Blob, FormData, stream) has no native analogue'],
+  ['cookies', 'the native request has no cookie option — send a `Cookie` header through `headers`'],
 ])
 
 /**
@@ -3488,6 +3492,50 @@ function tryPortableRegexLiteral(
   return { source: re.pattern, ignoreCase: flags.includes('i') }
 }
 
+/**
+ * The URL rule a `.url(...)` call lowers to -- or null, with a warning, when it
+ * cannot lower faithfully (see `UrlRule` for why the library matters).
+ *
+ * Only `@pyreon/validate` has a `protocol` option. It lowers when it is an
+ * inline regular-expression literal that ports (the same test `.regex()`
+ * applies); anything else DECLINES by name rather than falling back to the
+ * default rule, which would reject on device the schemes the web accepts.
+ * zod's `.url(...)` options (`hostname`, its own `protocol`) are not read, as
+ * before -- its rule was, and stays, "any scheme".
+ */
+function urlRule(
+  arg: AnyNode | undefined,
+  pyreonValidate: boolean,
+  label: string,
+  ctx: ParseCtx,
+): ZodFieldConstraints['url'] | null {
+  if (!pyreonValidate) return { kind: 'scheme' }
+  if (!arg) return { kind: 'http' }
+  const opts = unwrapTypeLayers(arg) as AnyNode | undefined
+  if (opts?.type !== 'ObjectExpression') {
+    ctx.warnings.push(
+      `${label}: the options argument is not an inline object, so whether it sets \`protocol\` cannot be read — the field is NOT URL-validated on device. Write the options inline: \`.url({ protocol: /^https?$/ })\`.`,
+    )
+    return null
+  }
+  let protocol: AnyNode | undefined
+  for (const p of (opts.properties as AnyNode[] | undefined) ?? []) {
+    if (p?.type !== 'Property' && p?.type !== 'ObjectProperty') {
+      ctx.warnings.push(
+        `${label}: a spread in the options cannot be read, so whether it sets \`protocol\` is unknown — the field is NOT URL-validated on device. Write \`protocol\` inline.`,
+      )
+      return null
+    }
+    const key = p.key as AnyNode | undefined
+    const name = key?.type === 'Identifier' ? key.name : key?.type === 'Literal' ? String(key.value) : undefined
+    if (name === 'protocol') protocol = p.value as AnyNode | undefined
+  }
+  if (protocol === undefined) return { kind: 'http' }
+  const re = tryPortableRegexLiteral(protocol, `${label} protocol`, ctx)
+  if (!re) return null
+  return { kind: 'protocol', source: re.source, ignoreCase: re.ignoreCase }
+}
+
 function tryModelDefnFromTopLevel(
   node: AnyNode,
   ctx: ParseCtx,
@@ -4250,6 +4298,8 @@ function extractTypeAndConstraints(
   expr: AnyNode,
   prefix: string,
   ctx: ParseCtx,
+  /** `@pyreon/validate`'s `s` DSL, whose `.url()` differs from zod's. */
+  pyreonValidate: boolean,
 ): { method: string; constraints: ZodFieldConstraints } | null {
   const constraints: ZodFieldConstraints = {}
   let cursor: AnyNode | undefined = expr
@@ -4282,7 +4332,8 @@ function extractTypeAndConstraints(
       } else if (modName === 'email') {
         constraints.email = true
       } else if (modName === 'url') {
-        constraints.url = true
+        const rule = urlRule(firstArg, pyreonValidate, 'schema element .url()', ctx)
+        if (rule) constraints.url = rule
       } else if (modName === 'uuid') {
         constraints.uuid = true
       } else if (modName === 'regex') {
@@ -4425,7 +4476,7 @@ function parseDiscriminatedUnion(
     typeof discrArg.value !== 'string'
   ) {
     ctx.warnings.push(
-      `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() first arg must be a string literal field name — dropping.`,
+      `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() first arg must be a string literal field name — dropping.`,
     )
     return null
   }
@@ -4437,14 +4488,14 @@ function parseDiscriminatedUnion(
     variantsArg.type !== 'ArrayExpression'
   ) {
     ctx.warnings.push(
-      `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() second arg must be a literal array of ${prefix}.object() variants — dropping.`,
+      `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() second arg must be a literal array of ${prefix}.object() variants — dropping.`,
     )
     return null
   }
   const variantNodes = (variantsArg.elements as AnyNode[] | undefined) ?? []
   if (variantNodes.length === 0) {
     ctx.warnings.push(
-      `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() needs at least one variant — dropping.`,
+      `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() needs at least one variant — dropping.`,
     )
     return null
   }
@@ -4454,7 +4505,7 @@ function parseDiscriminatedUnion(
     const variantNode = variantNodes[i]!
     if (variantNode.type !== 'CallExpression') {
       ctx.warnings.push(
-        `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() variant ${i} is not a ${prefix}.object() call — dropping.`,
+        `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() variant ${i} is not a ${prefix}.object() call — dropping.`,
       )
       return null
     }
@@ -4463,7 +4514,7 @@ function parseDiscriminatedUnion(
     const literal = extractDiscriminatorLiteral(variantNode, discrField, prefix)
     if (literal === null) {
       ctx.warnings.push(
-        `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() variant ${i} doesn't expose ${prefix}.literal() at "${discrField}" — dropping.`,
+        `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() variant ${i} doesn't expose ${prefix}.literal() at "${discrField}" — dropping.`,
       )
       return null
     }
@@ -4478,7 +4529,7 @@ function parseDiscriminatedUnion(
     )
     if (!variantSchema) {
       ctx.warnings.push(
-        `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() variant ${i} has an unparseable ${prefix}.object() shape — dropping.`,
+        `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() variant ${i} has an unparseable ${prefix}.object() shape — dropping.`,
       )
       return null
     }
@@ -4679,7 +4730,8 @@ function tryNamespacedSchemaDefnFromTopLevel(
         } else if (modName === 'email') {
           constraints.email = true
         } else if (modName === 'url') {
-          constraints.url = true
+          const rule = urlRule(firstArg, schemaFn === null, `schema field \`${fieldName}\` .url()`, ctx)
+          if (rule) constraints.url = rule
         } else if (modName === 'uuid') {
           constraints.uuid = true
         } else if (modName === 'regex') {
@@ -4700,7 +4752,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
     // value should now be a CallExpression whose callee is `<prefix>.X`.
     if (!value || value.type !== 'CallExpression') {
       ctx.warnings.push(
-        `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` is not a ${prefix}.X() call — dropping.`,
+        `${schemaFn ?? prefix} declaration \`${bindingName}\`: field \`${fieldName}\` is not a ${prefix}.X() call — dropping.`,
       )
       continue
     }
@@ -4712,7 +4764,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
       baseCallee.property?.type !== 'Identifier'
     ) {
       ctx.warnings.push(
-        `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` has unsupported shape (expected ${prefix}.string/${prefix}.number/${prefix}.boolean) — dropping.`,
+        `${schemaFn ?? prefix} declaration \`${bindingName}\`: field \`${fieldName}\` has unsupported shape (expected ${prefix}.string/${prefix}.number/${prefix}.boolean) — dropping.`,
       )
       continue
     }
@@ -4765,7 +4817,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
       )
       if (!nested) {
         ctx.warnings.push(
-          `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` is a nested ${prefix}.object() but its shape isn't a literal — dropping field.`,
+          `${schemaFn ?? prefix} declaration \`${bindingName}\`: field \`${fieldName}\` is a nested ${prefix}.object() but its shape isn't a literal — dropping field.`,
         )
         continue
       }
@@ -4813,7 +4865,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
       }
       // Otherwise: primitive element (with possible per-element constraints)
       const inner = innerArg
-        ? extractTypeAndConstraints(innerArg, prefix, ctx)
+        ? extractTypeAndConstraints(innerArg, prefix, ctx, schemaFn === null)
         : null
       let innerType: 'string' | 'number' | 'boolean' | undefined
       if (inner) {
@@ -4823,7 +4875,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
       }
       if (!innerType) {
         ctx.warnings.push(
-          `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` is z.array() with an unsupported inner type — supported: z.array(z.string/z.number/z.boolean) and z.array(z.object(...)). Dropping field.`,
+          `${schemaFn ?? prefix} declaration \`${bindingName}\`: field \`${fieldName}\` is ${prefix}.array() with an unsupported inner type — supported: ${prefix}.array(${prefix}.string/${prefix}.number/${prefix}.boolean) and ${prefix}.array(${prefix}.object(...)). Dropping field.`,
         )
         continue
       }
@@ -4842,7 +4894,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
       fields.push(entry)
     } else {
       ctx.warnings.push(
-        `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` uses unsupported ${prefix}.${method}() — supported: ${prefix}.string / ${prefix}.number / ${prefix}.boolean / ${prefix}.array / ${prefix}.object. Dropping field.`,
+        `${schemaFn ?? prefix} declaration \`${bindingName}\`: field \`${fieldName}\` uses unsupported ${prefix}.${method}() — supported: ${prefix}.string / ${prefix}.number / ${prefix}.boolean / ${prefix}.array / ${prefix}.object. Dropping field.`,
       )
     }
     void libraryDisplay
@@ -4850,7 +4902,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
 
   if (fields.length === 0) {
     ctx.warnings.push(
-      `${schemaFn} declaration \`${bindingName}\`: no recognized fields. Falling back to silent-drop.`,
+      `${schemaFn ?? prefix} declaration \`${bindingName}\`: no recognized fields. Falling back to silent-drop.`,
     )
     return null
   }

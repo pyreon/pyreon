@@ -24,8 +24,8 @@
  * frame state instead of resetting it.
  */
 
-import { topoSortModels } from '../core/graph'
-import type { IrDocument, IrField, IrModel, IrType } from '../core/ir'
+import { cyclicModels, modelIndex, stronglyConnected } from '../core/graph'
+import type { IrDocument, IrField, IrLiteral, IrModel, IrNumberType, IrStringType, IrType } from '../core/ir'
 import { pascal, propKey } from '../core/naming'
 import { q, relativeSpecifier, SourceFile } from './writer'
 
@@ -46,14 +46,16 @@ export function emitFaker(doc: IrDocument, typesFrom: 'schemas' | 'types'): Sour
   const f = new SourceFile(FAKER_FILE)
   if (doc.models.length === 0) return null
 
-  const { backEdges } = topoSortModels(doc)
-  const cyclic = new Set<string>()
-  for (const key of backEdges) {
-    // `edgeKey` is `from -> to`; both ends of a back edge can recurse.
-    const [from, to] = key.split('->')
-    if (from) cyclic.add(from.trim())
-    if (to) cyclic.add(to.trim())
-  }
+  // Which models can reach THEMSELVES through the fields a factory actually
+  // expands. Over the FAKER graph, not the schema one: `additionalProperties`
+  // is never rendered here, so a cycle that only closes through it cannot
+  // recurse. This used to be derived from the topological sort's back edges,
+  // split on `'->'` -- while `edgeKey` joins with `'|'`, so the set held whole
+  // keys as names and the recursion notice below never fired for anything.
+  // Computed fresh for every emit and held for the render walk below.
+  const graph = computeFakerGraph(doc)
+  graphs.set(doc, graph)
+  const cyclic = graph.cyclic
 
   f.import(FAKER_PACKAGE, 'faker')
   f.importType(relativeSpecifier(FAKER_FILE, `${typesFrom}.ts`), ...doc.models.map((m) => m.name))
@@ -88,17 +90,27 @@ export function emitFaker(doc: IrDocument, typesFrom: 'schemas' | 'types'): Sour
 
   for (const model of doc.models) {
     const name = `create${pascal(model.name)}`
+    const overridable = takesOverrides(model)
     f.line()
     f.doc(
       model.doc ?? `A fake \`${model.name}\`.`,
       '',
-      '`overrides` is shallow and applied LAST, so any field can be pinned',
-      'without rebuilding the rest.',
+      overridable
+        ? '`overrides` is shallow and applied LAST, so any field can be pinned'
+        : undefined,
+      overridable ? 'without rebuilding the rest.' : undefined,
     )
+    // Only an OBJECT model takes overrides. `Partial<X> = {}` for an array,
+    // a scalar or a union model does not typecheck (`{}` is not a `Pet[]`),
+    // and there is no field to pin in any of them -- the parameter existed and
+    // was silently ignored. A caller wanting a specific value of a non-object
+    // model already has it: it is the value.
     f.line(
-      `export function ${name}(overrides: Partial<${model.name}> = {}): ${model.name} {`,
+      overridable
+        ? `export function ${name}(overrides: Partial<${model.name}> = {}): ${model.name} {`
+        : `export function ${name}(): ${model.name} {`,
     )
-    f.line(`  return ${buildCall(model, 0)}`)
+    f.line(`  return build${pascal(model.name)}(0${overridable ? ', overrides' : ''})`)
     f.line('}')
   }
 
@@ -114,7 +126,9 @@ export function emitFaker(doc: IrDocument, typesFrom: 'schemas' | 'types'): Sour
         : undefined,
     )
     f.line(
-      `function build${pascal(model.name)}(d: number, o: Partial<${model.name}> = {}): ${model.name} {`,
+      takesOverrides(model)
+        ? `function build${pascal(model.name)}(d: number, o: Partial<${model.name}> = {}): ${model.name} {`
+        : `function build${pascal(model.name)}(d: number): ${model.name} {`,
     )
     f.line(`  return ${render(model.type, doc, 1, undefined, model.name)}`)
     f.line('}')
@@ -122,8 +136,61 @@ export function emitFaker(doc: IrDocument, typesFrom: 'schemas' | 'types'): Sour
   return f
 }
 
-function buildCall(model: IrModel, _d: number): string {
-  return `build${pascal(model.name)}(0, overrides)`
+/**
+ * Does this model's factory take `overrides`? Only when it renders as an
+ * object literal carrying the `...o` spread -- see the object branch below.
+ */
+function takesOverrides(model: IrModel): boolean {
+  // An object with NO fields is a dictionary (`additionalProperties`) or an
+  // empty object: `Partial<Record<string, T[]>>` makes every value
+  // `T[] | undefined`, which is not a `Record<string, T[]>`, and there is no
+  // named field to pin anyway.
+  return model.type.kind === 'object' && model.type.fields.length > 0
+}
+
+/**
+ * Model -> models its FACTORY expands. Mirrors exactly what `render` walks:
+ * object fields, array items, union options, a nullable's inner type -- never
+ * `additional`, which no factory renders.
+ */
+function fakerDependencies(doc: IrDocument): Map<string, Set<string>> {
+  const known = new Set(doc.models.map((m) => m.name))
+  const out = new Map<string, Set<string>>()
+  const walk = (t: IrType, into: Set<string>): void => {
+    switch (t.kind) {
+      case 'ref':
+        if (known.has(t.name)) into.add(t.name)
+        return
+      case 'array':
+        walk(t.items, into)
+        return
+      case 'object':
+        for (const f of t.fields) walk(f.type, into)
+        return
+      case 'union':
+        for (const o of t.options) walk(o, into)
+        return
+      case 'nullable':
+        walk(t.inner, into)
+        return
+      default:
+    }
+  }
+  for (const m of doc.models) {
+    const deps = new Set<string>()
+    walk(m.type, deps)
+    out.set(m.name, deps)
+  }
+  return out
+}
+
+/**
+ * An arrow function's body. An object literal must be PARENTHESIZED: `() => {
+ * id: 1 }` parses as a block with a label, and a real one with two fields is a
+ * syntax error. Every inline-object array item and union branch produced it.
+ */
+function arrowBody(expr: string): string {
+  return expr.startsWith('{') ? `(${expr})` : expr
 }
 
 /** Render an expression producing a value of `type`. */
@@ -137,15 +204,14 @@ function render(
   switch (type.kind) {
     case 'string':
       return stringExpr(type, field)
-    case 'number': {
-      const min = field?.min
-      const max = field?.max
-      if (type.integer) {
-        const opts = rangeOpts(min ?? 1, max ?? 1000)
-        return `faker.number.int(${opts})`
-      }
-      return `faker.number.float(${rangeOpts(min ?? 0, max ?? 1000)})`
-    }
+    case 'enum':
+      return `faker.helpers.arrayElement([${type.values.map(literalExpr).join(', ')}] as const)`
+    case 'nullable':
+      // The non-null branch: a fixture that is `null` exercises nothing, and
+      // a test wanting null pins it through `overrides`.
+      return render(type.inner, doc, depth, field, self)
+    case 'number':
+      return numberFaker(type)
     case 'boolean':
       return 'faker.datatype.boolean()'
     case 'null':
@@ -157,19 +223,24 @@ function render(
       // A recursive array bottoms out as EMPTY, which is the one value a
       // recursive list is always allowed to take.
       const guard = referencesSelf(type.items, doc, self)
-      const body = `faker.helpers.multiple(() => ${inner}, { count: { min: 1, max: 3 } })`
+      const lo = Math.max(type.minItems ?? 1, 0)
+      const hi = Math.max(lo, Math.min(type.maxItems ?? 3, Math.max(lo, 3)))
+      // Unique items: a Set of JSON texts drops repeats, so ask for the
+      // multiple through faker's own `uniqueArray` when the spec demands it.
+      const body = type.uniqueItems
+        ? `faker.helpers.uniqueArray(() => ${arrowBody(inner)}, ${hi})`
+        : `faker.helpers.multiple(() => ${arrowBody(inner)}, { count: { min: ${lo}, max: ${hi} } })`
       return guard ? `(d >= ${MAX_DEPTH} ? [] : ${body})` : body
     }
     case 'ref': {
-      const model = doc.models.find((m) => m.name === type.name)
-      if (!model) return 'null'
+      if (!modelIndex(doc).has(type.name)) return 'null'
       return `build${pascal(type.name)}(d + 1)`
     }
     case 'union': {
       if (type.options.length === 0) return 'null'
       // Every branch is rendered and one is picked at call time, so a union
       // exercises all of its shapes across a run rather than pinning the first.
-      const branches = type.options.map((o) => `() => ${render(o, doc, depth + 1, undefined, self)}`)
+      const branches = type.options.map((o) => `() => ${arrowBody(render(o, doc, depth + 1, undefined, self))}`)
       return `faker.helpers.arrayElement([${branches.join(', ')}])()`
     }
     case 'object': {
@@ -180,7 +251,9 @@ function render(
         parts.push(`${propKey(fld.name)}: ${value}`)
       }
       // Overrides land LAST at the top level only; nested objects have none.
-      const spread = depth === 1 ? ', ...o' : ''
+      // Only the root of a model that takes overrides (see `takesOverrides`).
+      const root = modelIndex(doc).get(self)
+      const spread = depth === 1 && root !== undefined && takesOverrides(root) ? ', ...o' : ''
       if (parts.length === 0) return `{${spread ? ' ...o ' : ''}}`
       const indent = '  '.repeat(depth + 1)
       const close = '  '.repeat(depth)
@@ -210,8 +283,11 @@ function renderField(
   // indents its children at `depth + 1`, which is the intent this
   // restores.
   const value = render(field.type, doc, depth + 1, field, self)
-  if (field.type.kind !== 'ref') return value
-  if (!referencesSelf(field.type, doc, self)) return value
+  const refType = field.type.kind === 'nullable' ? field.type.inner : field.type
+  if (refType.kind !== 'ref') return value
+  if (!referencesSelf(refType, doc, self)) return value
+  // A NULLABLE recursive ref bottoms out as `null`, which it may always be.
+  if (field.type.kind === 'nullable') return `(d >= ${MAX_DEPTH} ? null : ${value})`
   // A recursive REF. Optional -> omit at the limit. Required -> there is no
   // finite value; recursion is capped and the cast is deliberate, with the
   // reason in the emitted comment rather than a silent `null`.
@@ -219,24 +295,68 @@ function renderField(
   return `(d >= ${MAX_DEPTH} ? (null as never) : ${value})`
 }
 
-/** Whether `type` can reach `self` — i.e. expanding it recurses. */
-function referencesSelf(type: IrType, doc: IrDocument, self: string, seen = new Set<string>()): boolean {
-  switch (type.kind) {
-    case 'ref': {
-      if (type.name === self) return true
-      if (seen.has(type.name)) return false
-      seen.add(type.name)
-      const model = doc.models.find((m) => m.name === type.name)
-      return model ? referencesSelf(model.type, doc, self, seen) : false
+/**
+ * Whether `type` can reach `self` — i.e. expanding it recurses.
+ *
+ * A ref recurses iff it IS `self` or can reach `self`, and since `self`
+ * references it, "can reach `self`" is exactly "shares `self`'s strongly-
+ * connected component". So this is a walk of `type`'s OWN refs plus a lookup,
+ * where it used to be a transitive walk of the whole reachable graph per field
+ * with a linear `doc.models.find` per step -- quadratic to cubic on a spec with
+ * a large cycle. Measured on Stripe (`--plugins faker`) that walk was 64% of
+ * generation.
+ */
+function referencesSelf(type: IrType, doc: IrDocument, self: string): boolean {
+  const { component } = fakerGraph(doc)
+  const mine = component.get(self)
+  const hit = (t: IrType): boolean => {
+    switch (t.kind) {
+      case 'ref':
+        return t.name === self || (mine !== undefined && component.get(t.name) === mine)
+      case 'array':
+        return hit(t.items)
+      case 'object':
+        return t.fields.some((f) => hit(f.type))
+      case 'union':
+        return t.options.some(hit)
+      case 'nullable':
+        return hit(t.inner)
+      default:
+        return false
     }
-    case 'array':
-      return referencesSelf(type.items, doc, self, seen)
-    case 'object':
-      return type.fields.some((f) => referencesSelf(f.type, doc, self, seen))
-    case 'union':
-      return type.options.some((o) => referencesSelf(o, doc, self, seen))
-    default:
-      return false
+  }
+  return hit(type)
+}
+
+interface FakerGraph {
+  /** Model -> strongly-connected component id, over the FAKER graph. */
+  component: Map<string, number>
+  /** Models whose expansion recurses. */
+  cyclic: Set<string>
+}
+
+/**
+ * The faker graph for a document, computed once per emit and held WEAKLY so
+ * it dies with the document. A lookup table the render walk consults, not
+ * state it mutates.
+ */
+const graphs = new WeakMap<IrDocument, FakerGraph>()
+
+function fakerGraph(doc: IrDocument): FakerGraph {
+  let graph = graphs.get(doc)
+  if (!graph) {
+    graph = computeFakerGraph(doc)
+    graphs.set(doc, graph)
+  }
+  return graph
+}
+
+function computeFakerGraph(doc: IrDocument): FakerGraph {
+  const deps = fakerDependencies(doc)
+  const component = stronglyConnected(deps)
+  return {
+    component,
+    cyclic: cyclicModels(deps, component),
   }
 }
 
@@ -254,6 +374,35 @@ function stripAnchors(pattern: string): string {
   return out
 }
 
+function literalExpr(v: IrLiteral): string {
+  return typeof v === 'string' ? q(v) : String(v)
+}
+
+/**
+ * A number inside every bound the spec states.
+ *
+ * Strict bounds are tightened by one step (an integer) or a small epsilon (a
+ * float); a `multipleOf` is honoured by generating the MULTIPLIER and scaling,
+ * which is the only way to guarantee it rather than hope for it.
+ */
+function numberFaker(type: IrNumberType): string {
+  const lo = type.minimum ?? (type.exclusiveMinimum !== undefined ? type.exclusiveMinimum + (type.integer ? 1 : 0.001) : undefined)
+  const hi = type.maximum ?? (type.exclusiveMaximum !== undefined ? type.exclusiveMaximum - (type.integer ? 1 : 0.001) : undefined)
+  const min = lo ?? (type.integer ? 1 : 0)
+  const max = hi ?? Math.max(min, 1000)
+  if (type.multipleOf !== undefined) {
+    const step = type.multipleOf
+    const kLo = Math.ceil(min / step)
+    const kHi = Math.max(kLo, Math.floor(max / step))
+    // Rounded: `3 * 0.1` is `0.30000000000000004` in binary floating point.
+    const decimals = (String(step).split('.')[1] ?? '').length
+    return decimals === 0
+      ? `faker.number.int(${rangeOpts(kLo, kHi)}) * ${step}`
+      : `Number((faker.number.int(${rangeOpts(kLo, kHi)}) * ${step}).toFixed(${decimals}))`
+  }
+  return type.integer ? `faker.number.int(${rangeOpts(Math.ceil(min), Math.floor(max))})` : `faker.number.float(${rangeOpts(min, max)})`
+}
+
 function rangeOpts(min: number, max: number): string {
   // A spec can state a min above the default max; the generator must not be
   // handed an empty range.
@@ -268,11 +417,8 @@ function rangeOpts(min: number, max: number): string {
  * satisfiable only by a length-controlled generator, and the pretty
  * name/format guesses come last because they cannot honour a length.
  */
-function stringExpr(type: Extract<IrType, { kind: 'string' }>, field?: IrField): string {
-  if (type.enum && type.enum.length > 0) {
-    return `faker.helpers.arrayElement([${type.enum.map(q).join(', ')}] as const)`
-  }
-  if (field?.pattern) {
+function stringExpr(type: IrStringType, field?: IrField): string {
+  if (type.pattern) {
     // `fromRegExp` understands a useful subset; an expression it cannot
     // satisfy throws at CALL time, which is a loud, local failure in a test
     // rather than a fixture that quietly fails validation later.
@@ -281,10 +427,10 @@ function stringExpr(type: Extract<IrType, { kind: 'string' }>, field?: IrField):
     // so `'^[A-Z]{3}$'` generates the string `"^ABC$"` -- which then fails the
     // very pattern it was generated from. OpenAPI patterns carry anchors
     // almost universally, so this is the common case, not an edge one.
-    return `faker.helpers.fromRegExp(${q(stripAnchors(field.pattern))})`
+    return `faker.helpers.fromRegExp(${q(stripAnchors(type.pattern))})`
   }
-  const min = field?.min
-  const max = field?.max
+  const min = type.minLength
+  const max = type.maxLength
   // A LOWER bound is the only constraint a realistic generator cannot be made
   // to satisfy: `faker.person.fullName()` has no minimum length anyone can
   // promise. So a real `minLength` falls back to `alpha`, which guarantees an

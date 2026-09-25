@@ -27,7 +27,14 @@
  * on generated code proves the emitter wrote what the emitter meant to write
  * and nothing about whether it is correct.
  */
-import { buildUrl as oracleBuildUrl, type QueryValue } from '@pyreon/http'
+import {
+  buildUrl as oracleBuildUrl,
+  encodeCookies as oracleEncodeCookies,
+  encodeForm as oracleEncodeForm,
+  type FormFieldEncoding,
+  type FormValue,
+  type QueryValue,
+} from '@pyreon/http'
 import { join } from 'node:path'
 import { ADAPTER_CLIENTS, cleanGenerated, writeGenerated } from './helpers/adapter-fixture'
 
@@ -196,6 +203,46 @@ describe('adapter cache keys are identical to @pyreon/http', () => {
       expect(ep.query({ params: { id: '1' } }).queryKey, client).toEqual(
         oracle.query({ params: { id: '1' } }).queryKey,
       )
+    }
+  })
+})
+
+describe('adapter body encoders are byte-identical to @pyreon/http', () => {
+  // The emitted `encodeForm` / `encodeCookies` duplicate `@pyreon/http`'s for
+  // the same reason `buildUrl` does, and are held to the same oracle: a
+  // different form encoding per `client` setting would send a different
+  // request BODY for the same spec.
+  const FORM_CASES: { name: string; fields: Record<string, FormValue>; enc?: Record<string, FormFieldEncoding> }[] = [
+    { name: 'scalars and nullish', fields: { a: 1, b: true, c: 'x y', d: null, e: undefined } },
+    { name: 'exploded array', fields: { t: ['a', 'b'] } },
+    { name: 'comma array', fields: { t: ['a', 'b'] }, enc: { t: { explode: false } } },
+    { name: 'pipe / space', fields: { p: ['a', 'b'], s: ['c', 'd'] }, enc: { p: { style: 'pipeDelimited' }, s: { style: 'spaceDelimited' } } },
+    {
+      name: 'deepObject (Stripe)',
+      fields: { metadata: { k: 'v', n: 1 }, items: [{ price: 'p', qty: 2 }], expand: ['a'] },
+      enc: { metadata: { style: 'deepObject' }, items: { style: 'deepObject' }, expand: { style: 'deepObject' } },
+    },
+    { name: 'exploded object', fields: { o: { a: 1, b: null } } },
+    { name: 'non-exploded object', fields: { o: { a: 1, b: 'x' } }, enc: { o: { explode: false } } },
+    { name: 'nested under default style', fields: { o: { a: { b: 1 } }, l: [{ x: 1 }] } },
+    { name: 'a Date', fields: { at: new Date('2026-01-02T03:04:05.000Z') } },
+  ]
+
+  for (const c of FORM_CASES) {
+    it(`form: ${c.name}`, () => {
+      const expected = oracleEncodeForm(c.fields, c.enc).toString()
+      for (const client of ADAPTER_CLIENTS) {
+        const mod = modules.get(client) as unknown as { encodeForm: typeof oracleEncodeForm }
+        expect(mod.encodeForm(c.fields, c.enc).toString(), client).toBe(expected)
+      }
+    })
+  }
+
+  it('cookies', () => {
+    const cookies = { a: 'x;y', b: null, c: 1, d: true }
+    for (const client of ADAPTER_CLIENTS) {
+      const mod = modules.get(client) as unknown as { encodeCookies: typeof oracleEncodeCookies }
+      expect(mod.encodeCookies(cookies), client).toBe(oracleEncodeCookies(cookies))
     }
   })
 })

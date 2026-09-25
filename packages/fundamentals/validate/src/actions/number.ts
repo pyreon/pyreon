@@ -9,6 +9,7 @@
  */
 import type { CheckOpts } from '../core/ops'
 import type { Action } from '../core/schema'
+import { isMultipleOf } from '../core/multiple'
 import { defineCheck } from './_core'
 
 /** Minimum value (inclusive). Alias: {@link gte}. */
@@ -161,8 +162,9 @@ export const nonPositive = (opts?: CheckOpts): Action<number> =>
 /** Divisible by `n`. */
 export const multipleOf = (n: number, opts?: CheckOpts): Action<number> =>
   defineCheck<number>(
-    { kind: 'check:number:multiple-of', n, opts },
-    (v) => typeof v !== 'number' || v % n === 0,
+    // `_pred` gives the JIT the float-safe verdict for a fractional step.
+    Object.assign({ kind: 'check:number:multiple-of' as const, n, opts }, { _pred: (v: number) => isMultipleOf(v, n) }),
+    (v) => typeof v !== 'number' || isMultipleOf(v, n),
     (v) => ({
       code: 'not_multiple_of',
       message: `Must be a multiple of ${n}`,
