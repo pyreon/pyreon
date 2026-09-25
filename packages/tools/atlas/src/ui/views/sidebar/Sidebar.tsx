@@ -12,7 +12,7 @@ import { onMount, Show, type VNodeChild } from '@pyreon/core'
 import { effect, signal } from '@pyreon/reactivity'
 import * as C from '../../components'
 import type { HierarchyNode } from '../../hierarchy'
-import { countUnder, withParts } from '../../hierarchy'
+import { countUnder, nodeEntries, partCount } from '../../hierarchy'
 import type { WorkbenchComponent } from '../../catalog'
 import type { WorkbenchModel } from '../../model'
 
@@ -32,14 +32,37 @@ export function Sidebar(props: { model: WorkbenchModel }) {
   }
   // A subscription opened on mount rather than a setup-time effect: scrolling
   // is imperative DOM work, and the rows only exist once mounted.
+  //
+  // Deferred a FRAME, for two reasons that each made the old synchronous
+  // call a silent no-op: on first mount the sidebar is not yet attached to
+  // the document when `onMount` runs (scrolling a detached element does
+  // nothing — a link to `/accordion-item` landed with the row three screens
+  // down), and on a selection change the model has just EXPANDED the folders
+  // above the row, so the row itself does not exist until that re-render.
+  let pending = 0
   const scrollToSelected = () => {
-    const el = rows.get(m.selId.peek())
-    if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest' })
+    if (typeof requestAnimationFrame !== 'function') return
+    if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(pending)
+    pending = requestAnimationFrame(() => {
+      const el = rows.get(m.selId.peek())
+      if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest' })
+    })
   }
   onMount(() => {
     scrollToSelected()
-    return m.selId.subscribe(scrollToSelected)
+    const off = m.selId.subscribe(scrollToSelected)
+    return () => {
+      off()
+      if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(pending)
+    }
   })
+
+  // Choosing something in the compact DRAWER is navigation — close it so the
+  // canvas the choice was for is what the user sees next.
+  const choose = (apply: () => void) => {
+    apply()
+    if (m.compact()) m.drawerOpen.set(false)
+  }
 
   // "Show all N" is per selection: selecting another component collapses the
   // list again, so 60 scenarios never follow you across the tree.
@@ -49,20 +72,42 @@ export function Sidebar(props: { model: WorkbenchModel }) {
     showAll.set(false)
   })
 
-  const component = (c: WorkbenchComponent, depth: number) => (
+  const compBtn = (c: WorkbenchComponent, depth: number) => (
+    <C.CompBtn
+      data-testid={`component-${c.id}`}
+      ref={rowRef(c.id)}
+      state={() => (m.selId() === c.id ? 'active' : 'idle')}
+      aria-current={() => (m.selId() === c.id ? 'true' : undefined)}
+      onClick={() => choose(() => m.selId.set(c.id))}
+      {...(depth > 0 ? { 'data-depth': String(depth) } : {})}
+    >
+      <C.CompBar state={() => (m.selId() === c.id ? 'active' : 'idle')} />
+      <C.CompName>{c.title ?? c.name}</C.CompName>
+      {c.isNew ? <C.NewTag>NEW</C.NewTag> : null}
+    </C.CompBtn>
+  )
+
+  // `owner` → the row is ALSO a folder header: the component button plus a
+  // sibling toggle for the folder's parts.
+  const component = (c: WorkbenchComponent, depth: number, owns?: HierarchyNode) => (
     <>
-      <C.CompBtn
-        data-testid={`component-${c.id}`}
-        ref={rowRef(c.id)}
-        state={() => (m.selId() === c.id ? 'active' : 'idle')}
-        aria-current={() => (m.selId() === c.id ? 'true' : undefined)}
-        onClick={() => m.selId.set(c.id)}
-        {...(depth > 0 ? { 'data-depth': String(depth) } : {})}
-      >
-        <C.CompBar state={() => (m.selId() === c.id ? 'active' : 'idle')} />
-        <C.CompName>{c.title ?? c.name}</C.CompName>
-        {c.isNew ? <C.NewTag>NEW</C.NewTag> : null}
-      </C.CompBtn>
+      {owns && partCount(owns) > 0 ? (
+        <C.CompRow>
+          {compBtn(c, depth)}
+          <C.TreeToggle
+            data-testid={`group-${owns.path}`}
+            data-depth={String(owns.depth)}
+            aria-label={() => `${m.isCollapsed(owns.path) ? 'Show' : 'Hide'} parts of ${c.title ?? c.name}`}
+            aria-expanded={() => (m.isCollapsed(owns.path) ? 'false' : 'true')}
+            onClick={() => m.toggleGroup(owns.path)}
+          >
+            <span>{String(partCount(owns))}</span>
+            <span aria-hidden="true">{() => (m.isCollapsed(owns.path) ? '▸' : '▾')}</span>
+          </C.TreeToggle>
+        </C.CompRow>
+      ) : (
+        compBtn(c, depth)
+      )}
       {/* The pipeline's derived scenarios, expanded under the SELECTED
           component (expansion = selection, so 40 scenarios never flood the
           list), capped until "show all". Each carries its three-state verdict
@@ -75,12 +120,24 @@ export function Sidebar(props: { model: WorkbenchModel }) {
         return [
           ...shown.map((s) => (
             <C.ScenRow>
-              <C.ScenBtn data-testid={`scenario-${s.id}`} onClick={() => m.selectScenario(c.id, s.id)}>
+              {/* The scenario the canvas shows EXACTLY is marked — every dot
+                  is a verdict colour, so without this nothing said which of
+                  twelve green rows you were looking at. */}
+              <C.ScenBtn
+                data-testid={`scenario-${s.id}`}
+                state={() => (m.activeScenario() === s.id ? 'active' : 'idle')}
+                aria-current={() => (m.activeScenario() === s.id ? 'true' : undefined)}
+                onClick={() => choose(() => m.selectScenario(c.id, s.id))}
+              >
                 <C.ScenDot variant={s.verdict} data-verdict={s.verdict} />
                 <C.ScenName>{s.name}</C.ScenName>
               </C.ScenBtn>
               {s.play ? (
-                <C.ScenPlay data-testid={`play-${s.id}`} onClick={() => void m.runPlay(c.id, s.id)}>
+                <C.ScenPlay
+                  data-testid={`play-${s.id}`}
+                  aria-label={`Play ${s.name}`}
+                  onClick={() => choose(() => void m.runPlay(c.id, s.id))}
+                >
                   ▶
                 </C.ScenPlay>
               ) : null}
@@ -100,27 +157,41 @@ export function Sidebar(props: { model: WorkbenchModel }) {
     </>
   )
 
+  // A folder NAMED after a component (`Accordion/` next to `Accordion`) has
+  // that component as its `owner`: the header row IS the component, so the
+  // name no longer appears twice — once as a leaf, once as a folder.
   const node = (n: HierarchyNode): VNodeChild => (
     <>
-      <C.GroupBtn
-        data-testid={`group-${n.path}`}
-        data-depth={String(n.depth)}
-        aria-expanded={() => (m.collapsed().has(n.path) ? 'false' : 'true')}
-        onClick={() => m.toggleGroup(n.path)}
-      >
-        <C.GroupCaret>{() => (m.collapsed().has(n.path) ? '▸' : '▾')}</C.GroupCaret>
-        <C.GroupText>{n.name}</C.GroupText>
-        <C.GroupCount>{String(countUnder(n))}</C.GroupCount>
-      </C.GroupBtn>
+      {n.owner ? (
+        component(n.owner, n.depth, n)
+      ) : (
+        <C.GroupBtn
+          data-testid={`group-${n.path}`}
+          data-depth={String(n.depth)}
+          aria-expanded={() => (m.isCollapsed(n.path) ? 'false' : 'true')}
+          onClick={() => m.toggleGroup(n.path)}
+        >
+          <C.GroupCaret aria-hidden="true">{() => (m.isCollapsed(n.path) ? '▸' : '▾')}</C.GroupCaret>
+          <C.GroupText>{n.name}</C.GroupText>
+          <C.GroupCount>{String(countUnder(n))}</C.GroupCount>
+        </C.GroupBtn>
+      )}
       {/* Collapse hides the whole branch — children AND items. A part renders
-          one level deeper than its parent. */}
+          one level deeper than its parent; an owned folder's contents sit one
+          level under the OWNER row. */}
       {() =>
-        m.collapsed().has(n.path)
+        m.isCollapsed(n.path)
           ? null
-          : [
-              ...withParts(n.items).map((c) => component(c, n.depth + 1 + (c.partOf ? 1 : 0))),
-              ...n.children.map((child) => node(child)),
-            ]
+          : nodeEntries(n).map((entry) =>
+              entry.kind === 'node'
+                ? node(entry.node)
+                : // A part of the OWNER is already one level under it by
+                  // virtue of the folder — `partOf` must not indent it twice.
+                  component(
+                    entry.component,
+                    n.depth + 1 + (entry.component.partOf && entry.component.partOf !== n.owner?.id ? 1 : 0),
+                  ),
+            )
       }
     </>
   )
@@ -129,25 +200,36 @@ export function Sidebar(props: { model: WorkbenchModel }) {
     <C.Sidebar
       // Width is live drag geometry (measurement, not styling) — a hashed
       // class per pixel would grow the style cache without bound.
-      style={() => `width:${m.sidebarW()}px`}
+      style={() => (m.compact() ? 'width:100%;height:100%;border-right:none' : `width:${m.sidebarW()}px`)}
       aria-label="Components"
     >
       <C.SideHead>
-        <C.SideLabel>components</C.SideLabel>
-        <C.CountPill>{m.total}</C.CountPill>
+        <C.SideLabel>Components</C.SideLabel>
+        {/* The MATCHED count while filtering — a pill still reading 108 over
+            an empty list contradicted the list. */}
+        <C.CountPill data-testid="sidebar-count" aria-live="polite">
+          {() => (m.filter().trim() ? `${m.matchCount()} / ${m.total}` : String(m.total))}
+        </C.CountPill>
       </C.SideHead>
-      <C.SideList>
+      <C.FilterWrap>
         <C.FilterInput
           data-testid="sidebar-filter"
           type="search"
-          placeholder="Filter…"
+          placeholder="Filter components…"
           aria-label="Filter components"
           value={() => m.filter()}
           onInput={(e: Event) => m.filter.set((e.target as HTMLInputElement).value)}
         />
+      </C.FilterWrap>
+      <C.SideList>
         {() => m.tree().map((n) => node(n)) as VNodeChild[]}
         <Show when={() => m.noResults()}>
-          <C.Empty>no matches</C.Empty>
+          <C.Empty data-testid="sidebar-empty">
+            <span>{() => `No components match “${m.filter().trim()}”.`}</span>
+            <C.EmptyAction data-testid="sidebar-filter-clear" onClick={() => m.filter.set('')}>
+              Clear filter
+            </C.EmptyAction>
+          </C.Empty>
         </Show>
       </C.SideList>
       {/* Real hints only — an earlier footer said "Tokens synced" next to a

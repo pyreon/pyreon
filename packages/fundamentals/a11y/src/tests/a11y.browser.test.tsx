@@ -49,7 +49,8 @@ describe('announce (real Chromium)', () => {
     const el = document.querySelector<HTMLElement>('[data-pyreon-announcer="polite"]')!
     expect(el.getAttribute('aria-live')).toBe('polite')
     expect(getComputedStyle(el).width).toBe('1px')
-    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
+    // Written ~100ms after the call, into a region that already exists.
+    await new Promise<void>((r) => setTimeout(r, 150))
     expect(el.textContent).toBe('Saved')
     clearAnnouncements()
   })

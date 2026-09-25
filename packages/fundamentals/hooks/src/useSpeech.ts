@@ -1,4 +1,5 @@
-import { isClient, onCleanup, signal } from '@pyreon/reactivity'
+import { isClient, signal } from '@pyreon/reactivity'
+import { onHookCleanup } from './lifecycle'
 
 export type SpeechControls = {
   /** True when the platform can synthesise speech. */
@@ -37,8 +38,18 @@ export function useSpeech(): SpeechControls {
     isClient && typeof speechSynthesis !== 'undefined' &&
     typeof SpeechSynthesisUtterance !== 'undefined'
 
+  // The utterance THIS hook started and that has not finished yet. The
+  // synthesiser is a process-wide singleton, so every decision below is keyed
+  // on it: state only follows our own current utterance, and cancel() only
+  // runs when we are the one speaking.
+  let current: SpeechSynthesisUtterance | null = null
+
   const stop = () => {
     if (!supported()) return
+    // Do not cancel speech another hook (or another component) started:
+    // unmounting a component that never spoke used to silence the whole page.
+    if (current === null) return
+    current = null
     speechSynthesis.cancel()
     speaking.set(false)
   }
@@ -46,7 +57,7 @@ export function useSpeech(): SpeechControls {
   if (isClient) {
     // Speech outlives the page's DOM on every browser: navigating away with
     // an utterance in flight leaves it talking over the next screen.
-    onCleanup(stop)
+    onHookCleanup(stop)
   }
 
   return {
@@ -60,8 +71,18 @@ export function useSpeech(): SpeechControls {
       // press talks over itself instead of replacing.
       speechSynthesis.cancel()
       const u = new SpeechSynthesisUtterance(text)
-      u.onend = () => speaking.set(false)
-      u.onerror = () => speaking.set(false)
+      // The replaced utterance's `onend` fires ASYNCHRONOUSLY after that
+      // cancel() — i.e. after the new one is already speaking — so an
+      // unconditional `speaking.set(false)` flipped the flag off mid-speech.
+      // Only the current utterance may end the speaking state.
+      const done = () => {
+        if (current !== u) return
+        current = null
+        speaking.set(false)
+      }
+      u.onend = done
+      u.onerror = done
+      current = u
       speechSynthesis.speak(u)
       speaking.set(true)
       return true

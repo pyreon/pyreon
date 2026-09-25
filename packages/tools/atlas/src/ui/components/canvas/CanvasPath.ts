@@ -8,4 +8,5 @@ export const CanvasPath = txt
     fontFamily: t.font.mono,
     fontSize: t.size.label,
     color: t.faint,
+    marginTop: '4px',
   }))

@@ -5,12 +5,14 @@ description: SSR and SSG renderer that walks VNode trees and produces HTML strin
 
 `@pyreon/runtime-server` is Pyreon's server-side rendering (SSR) and static site generation (SSG) renderer. It walks VNode trees and produces HTML strings or streams. Signal accessors are called synchronously to snapshot their current value -- no effects are set up on the server. Async components are fully supported.
 
-The package provides four exports:
+The four functions you call directly:
 
 - **`renderToString`** -- render a VNode tree to a complete HTML string
 - **`renderToStream`** -- render a VNode tree to a `ReadableStream<string>` with progressive streaming and out-of-order Suspense
 - **`runWithRequestContext`** -- run an async function with a fresh, isolated context and store registry
 - **`configureStoreIsolation`** -- enable per-request store isolation for concurrent SSR
+
+The package also exports a family of `_ssr*`/`_esc*` helpers the compiler emits for eligible components (the `ssrTemplate` compile-to-string SSR fast path — default-on under `@pyreon/vite-plugin`). You never call these by hand; see [Compile-to-String SSR Fast Path](#compile-to-string-ssr-fast-path-ssrtemplate) below.
 
 <PackageBadge name="@pyreon/runtime-server" href="/docs/runtime-server" />
 
@@ -458,6 +460,32 @@ function App() {
 
 ---
 
+## Compile-to-String SSR Fast Path (`ssrTemplate`)
+
+Everything above describes the general-purpose `h()`-tree walk — `renderToString`/`renderToStream` recursively call `renderNode` on every VNode. For an **eligible static-skeleton subtree** (the same eligibility class `@pyreon/compiler` uses for the client-side [`_tpl()` template-emission optimization](/docs/compiler#pass-3-template-emission) — a lowercase-DOM-element tree with no components), the compiler instead lowers the WHOLE server render of that subtree into ONE lean string-concatenation call, `_ssr(statics, ...holes)`, bypassing the per-node `renderNode` dispatch entirely:
+
+```tsx
+// Input
+function Card(props) {
+  return <div class="box"><span>{props.name}</span></div>
+}
+
+// Compiled output (ssrTemplate: true):
+import { _ssr, _escSole } from '@pyreon/runtime-server'
+function Card(props) {
+  return _ssr(
+    ['<div class="box"><span>', '</span></div>'],
+    _escSole(props.name),
+  )
+}
+```
+
+`statics` is the array of literal HTML chunks (`statics.length === holes.length + 1`); each hole is PRE-STRINGIFIED by `_esc`/`_escSole`/`_ssrAttr` before `_ssr` ever sees it, so the concatenation itself does one type check per hole rather than a full `renderNode` dispatch. The whole family — `_esc` (a text-position value), `_escSole` (the same, for an element's SOLE child, which additionally elides the `<!--$-->…<!--/$-->` hydration-range markers the general path would add — see [Runtime-DOM's hydration adoption](/docs/runtime-dom#reactive-children-adopt-the-server-dom-they-dont-rebuild-it)), `_ssrAttr`/`_ssrAttrGen`/`_ssrAttrUrl` (a dynamic attribute fragment), `_ssrChildren`/`_ssrItem`/`_ssrForKeyed` (list rendering), `_ssrNode` (a nested VNode), `_ssrDeferred` (a Suspense-deferred fragment) — is engineered to be **byte-identical** to what the general `h()`-path renderer would have produced for the same input: `_esc` matches `renderNode`'s per-value output exactly, and `_ssrAttr` is `renderProp` called verbatim (the very same function the general element-attribute path uses), including its URL-injection guard, `cx()`/style-object normalization, and boolean/aria rules.
+
+This is default-on in `@pyreon/vite-plugin` and requires no application code changes — you'll see the `_ssr*` imports if you read compiled server output or a server-side stack trace, but you never call them directly. A subtree that doesn't qualify (contains a component, a spread on a non-root element, etc.) falls back to the ordinary `h()` render path exactly as on the client, with identical output either way.
+
+---
+
 ## runWithRequestContext
 
 Run an async function with a fresh, isolated context stack and store registry. This is useful when you need to call Pyreon APIs (such as `useHead` or `prefetchLoaderData`) outside of `renderToString` but still want per-request isolation.
@@ -715,16 +743,25 @@ CamelCase prop names are converted to kebab-case HTML attributes. Two special ca
 | `null`      | Attribute omitted                                   |
 | `undefined` | Attribute omitted                                   |
 
+:::warning{title="ARIA booleans are the exception — rendered as the string 'true'/'false', not presence"}
+`aria-*` attributes are string enums, not HTML's presence-based booleans, so `aria-checked={true}` renders `aria-checked="true"`, not the bare `aria-checked` an ordinary boolean prop would produce. This mirrors the client's runtime behavior exactly (see [`@pyreon/runtime-dom`'s Boolean Attributes](/docs/runtime-dom#boolean-attributes)) so hydration never disagrees on the value.
+:::
+
 ### URL Injection Protection
 
-URL-bearing attributes (`href`, `src`, `action`, `formaction`, `poster`, `cite`, `data`) are checked for `javascript:` and `data:` URI schemes. If detected, the attribute is silently omitted to prevent XSS:
+URL-bearing attributes (`href`, `src`, `action`, `formaction`, `poster`, `cite`, `data`, and SVG's `xlink:href`) are checked for `javascript:` URI schemes, and for `data:` schemes that aren't a safe image payload. If detected, the attribute is silently omitted to prevent XSS. This guard is the exact same logic the client `h()` path and the compiled-template path use (one shared module), so a URL blocked on one is blocked everywhere — an SSR page can never emit raw markup that the client would have refused to render:
 
 ```tsx
 <a href="javascript:alert(1)" />
 // => '<a></a>'  (href omitted)
 
 <img src="data:text/html,<h1>hi</h1>" />
-// => '<img />'  (src omitted)
+// => '<img />'  (src omitted -- data:text/html is never a safe image payload)
+
+<img src="data:image/png;base64,iVBORw0KGgo=" />
+// => '<img src="data:image/png;base64,iVBORw0KGgo=" />'  (raster data: URI on an
+//     image-context src is allowed through -- this is what makes @pyreon/zero's
+//     own <Image> blur/color placeholders work)
 ```
 
 ### Void Elements
@@ -1164,12 +1201,26 @@ The `<!--k:key-->` comments allow the client-side hydrator to match server-rende
 
 ## Exports Summary
 
+**Hand-written-code API:**
+
 | Export                            | Type                                                           | Description                                           |
 | --------------------------------- | -------------------------------------------------------------- | ----------------------------------------------------- |
 | `renderToString(root)`            | `(VNode \| null) => Promise<string>`                           | Render VNode tree to complete HTML string             |
 | `renderToStream(root)`            | `(VNode \| null) => ReadableStream<string>`                    | Render VNode tree to progressive HTML stream          |
 | `runWithRequestContext(fn)`       | `<T>(fn: () => Promise<T>) => Promise<T>`                      | Run function with isolated context and store registry |
-| `configureStoreIsolation(setter)` | `(fn: (provider: () => Map<string, unknown>) => void) => void` | Enable per-request store isolation for concurrent SSR |
+| `configureStoreIsolation(setter)` | `(setter: (provider: () => Map<string, unknown> \| undefined) => void) => void` | Enable per-request store isolation for concurrent SSR |
+
+**Compiler-facing API** (the `ssrTemplate` compile-to-string fast path — see [above](#compile-to-string-ssr-fast-path-ssrtemplate)), not meant for hand-written calls:
+
+| Export                                          | Description                                                                    |
+| ------------------------------------------------ | ------------------------------------------------------------------------------- |
+| `_ssr`                                          | Concatenate static HTML chunks with pre-stringified holes into a `RawHtml` fragment |
+| `_esc` / `_escSole`                             | Serialize ONE text-position hole value; `_escSole` additionally elides hydration-range markers for a sole-child hole |
+| `_ssrAttr` / `_ssrAttrGen` / `_ssrAttrUrl`      | Serialize ONE dynamic attribute fragment (name-tag-aware / generic / URL-guarded variants) |
+| `_ssrChildren` / `_ssrItem` / `_ssrForKeyed`    | List-rendering fast paths (a `.map()`/`<For>` row, and the keyed-`<For>` marker variant) |
+| `_ssrNode`                                      | Render a nested VNode from within a fast-path hole                              |
+| `_ssrDeferred`                                  | A Suspense-deferred fragment                                                    |
+| `decodeKeyFromMarker`                           | Decode a `<For>` key back out of its SSR marker comment                         |
 
 ## HTML & SVG Attribute Mapping
 
