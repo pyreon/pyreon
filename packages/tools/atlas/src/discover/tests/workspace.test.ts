@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   detectProjects,
+  enclosingWorkspaceRoot,
   expandGlob,
   pnpmWorkspaceGlobs,
   projectNameFor,
@@ -204,5 +205,27 @@ describe('detectProjects', () => {
     write('packages/core/package.json', pkg('@acme/core'))
     write('packages/core/src/Button.tsx', component)
     expect(detectProjects(root)[0]!.dir).not.toContain('\\')
+  })
+})
+
+describe('enclosingWorkspaceRoot', () => {
+  // `atlas dev packages/ui/components` scans from a package; its prop types
+  // extend SIBLING packages', which resolve only against the monorepo root.
+  it('walks up from a package to the directory that declares workspaces', () => {
+    write('package.json', pkg('root', { workspaces: ['packages/*'] }))
+    write('packages/ui/package.json', pkg('@x/ui'))
+    expect(enclosingWorkspaceRoot(join(root, 'packages/ui'))).toBe(root)
+  })
+
+  it('is the start itself when it IS a workspace root', () => {
+    write('pnpm-workspace.yaml', "packages:\n  - 'packages/*'\n")
+    expect(enclosingWorkspaceRoot(root)).toBe(root)
+  })
+
+  it('is the start itself when no ancestor declares one', () => {
+    const lone = join(root, 'lone')
+    mkdirSync(lone, { recursive: true })
+    // The temp dir's ancestors declare no workspaces either.
+    expect(enclosingWorkspaceRoot(lone)).toBe(lone)
   })
 })

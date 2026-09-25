@@ -19,7 +19,7 @@ export class BigIntSchema extends SchemaBase<bigint> {
   }
 
   min(n: bigint, opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:bigint:min', n, opts }, (value, ctx) => {
         if (typeof value !== 'bigint' || value >= n) return
         ctx.issues.push(
@@ -27,12 +27,10 @@ export class BigIntSchema extends SchemaBase<bigint> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   max(n: bigint, opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:bigint:max', n, opts }, (value, ctx) => {
         if (typeof value !== 'bigint' || value <= n) return
         ctx.issues.push(
@@ -40,12 +38,10 @@ export class BigIntSchema extends SchemaBase<bigint> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   positive(opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:bigint:positive', opts }, (value, ctx) => {
         if (typeof value !== 'bigint' || value > 0n) return
         ctx.issues.push(
@@ -53,12 +49,10 @@ export class BigIntSchema extends SchemaBase<bigint> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   negative(opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:bigint:negative', opts }, (value, ctx) => {
         if (typeof value !== 'bigint' || value < 0n) return
         ctx.issues.push(
@@ -66,12 +60,10 @@ export class BigIntSchema extends SchemaBase<bigint> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   multipleOf(n: bigint, opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:bigint:multiple-of', n, opts }, (value, ctx) => {
         if (typeof value !== 'bigint' || value % n === 0n) return
         ctx.issues.push(
@@ -79,13 +71,11 @@ export class BigIntSchema extends SchemaBase<bigint> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   /** Strictly greater than `n` (exclusive lower bound). `gte` is the inclusive form. */
   gt(n: bigint, opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:bigint:gt', n, opts }, (value, ctx) => {
         if (typeof value !== 'bigint' || value > n) return
         ctx.issues.push(
@@ -93,8 +83,6 @@ export class BigIntSchema extends SchemaBase<bigint> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   /** Greater than or equal to `n` (inclusive) — alias for {@link min}. */
@@ -104,7 +92,7 @@ export class BigIntSchema extends SchemaBase<bigint> {
 
   /** Strictly less than `n` (exclusive upper bound). `lte` is the inclusive form. */
   lt(n: bigint, opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:bigint:lt', n, opts }, (value, ctx) => {
         if (typeof value !== 'bigint' || value < n) return
         ctx.issues.push(
@@ -112,8 +100,6 @@ export class BigIntSchema extends SchemaBase<bigint> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   /** Less than or equal to `n` (inclusive) — alias for {@link max}. */
@@ -128,7 +114,7 @@ export class BigIntSchema extends SchemaBase<bigint> {
 
   /** Inclusive range `lo … hi`. */
   between(lo: bigint, hi: bigint, opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:bigint:between', lo, hi, opts }, (value, ctx) => {
         if (typeof value !== 'bigint' || (value >= lo && value <= hi)) return
         ctx.issues.push(
@@ -144,8 +130,6 @@ export class BigIntSchema extends SchemaBase<bigint> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 }
 

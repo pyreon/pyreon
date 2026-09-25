@@ -26,6 +26,7 @@
 import { readFileSync } from 'node:fs'
 import { isAbsolute, resolve, sep } from 'node:path'
 import { ambiguousComponentMessage, type ComponentIntelligence, resolveComponent } from '../core'
+import { definingModule } from '../discover/defining-module'
 import { generateCatalogModule, type CatalogEntrySource } from './catalog-module'
 import { lensMethod } from './lens'
 
@@ -80,11 +81,17 @@ export function builtinMethods(ctx: RpcContext): Record<string, RpcMethod> {
       const found = match.found
       if (!found?.source) throw new Error(`[Pyreon] atlas dev: no source on record for component "${name}"`)
 
-      const abs = isAbsolute(found.source) ? found.source : resolve(ctx.root, found.source)
+      const recorded = isAbsolute(found.source) ? found.source : resolve(ctx.root, found.source)
+      // The file the component was DISCOVERED in is often the package barrel
+      // (`export { default as Stack } from './components/Stack'`) — right for
+      // importing, wrong for reading. Follow the re-export to the module that
+      // defines it.
+      const abs = definingModule(recorded, found.name)
       // Path guard: the recorded path came from OUR scan, but treating it as
       // trusted would make any future caller-supplied path a traversal. The
       // separator is part of the check — a bare prefix admits a SIBLING dir
-      // (`/proj-evil` passes for root `/proj`).
+      // (`/proj-evil` passes for root `/proj`). Checked on the FOLLOWED path:
+      // a re-export may point anywhere.
       if (abs !== ctx.root && !abs.startsWith(ctx.root + sep))
         throw new Error('[Pyreon] atlas dev: refusing to read outside the project root')
 

@@ -104,8 +104,9 @@ export interface ValidateSchemaInfo {
 // (`new RegExp(re.source, re.flags)`) so a literal can't drift in transcription.
 const EMAIL_RE =
   /^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9-]*\.)+[A-Za-z]{2,}$/
-const URL_RE = /^https?:\/\/[^\s/$.?#].[^\s]*$/i
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const URL_RE = /^https?:\/\/[^\s/$.?#][^\s]*$/i
+const UUID_RE =
+  /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/i
 
 /** Emit a faithful `new RegExp(...)` call source from a real RegExp. */
 function reExpr(re: RegExp): string {

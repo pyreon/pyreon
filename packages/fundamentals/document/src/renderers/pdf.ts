@@ -1,3 +1,4 @@
+import { sanitizeHref } from '../sanitize'
 import type { DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
 import { getInlineRuns, getTextContent, hasLinkRun, warnUnknownNodeType } from '../nodes'
 
@@ -147,13 +148,15 @@ function nodeToContent(node: DocNode): PdfContent | PdfContent[] | null {
       }
     }
 
-    case 'link':
+    case 'link': {
+      const href = sanitizeHref(p.href as string)
       return {
         text: getTextContent(node.children),
-        link: p.href as string,
+        ...(href ? { link: href } : {}),
         color: (p.color as string) ?? '#4f46e5',
         decoration: 'underline',
       }
+    }
 
     case 'image': {
       const src = p.src as string
@@ -257,15 +260,17 @@ function nodeToContent(node: DocNode): PdfContent | PdfContent[] | null {
     case 'spacer':
       return { text: '', margin: [0, (p.height as number) ?? 12, 0, 0] }
 
-    case 'button':
+    case 'button': {
+      const href = sanitizeHref(p.href as string)
       return {
         text: getTextContent(node.children),
-        link: p.href as string,
+        ...(href ? { link: href } : {}),
         bold: true,
         color: (p.color as string) ?? '#ffffff',
         background: (p.background as string) ?? '#4f46e5',
         margin: [0, 8, 0, 8],
       }
+    }
 
     case 'quote':
       return {

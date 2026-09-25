@@ -3,8 +3,10 @@
  *
  * Architecture:
  *   - Each schema has a `_kind` discriminator + an ordered `_ops` list.
- *   - Chainable methods (e.g. `.min(2)`) push Ops onto the list and
- *     return `this` so they can chain.
+ *   - Chainable methods (e.g. `.min(2)`) are COPY-ON-WRITE: they return a
+ *     new schema whose ops list is the receiver's plus the new Op, and never
+ *     touch the receiver — so a base schema shared by several derived ones
+ *     can never be tightened by a sibling (`_cloneWith`).
  *   - The first call to `.parse()` / `~standard.validate` compiles the
  *     ops into a single closure — subsequent parses just invoke it.
  *     This is what makes chainable APIs cheap: we don't pay
@@ -128,8 +130,8 @@ export type SyncValidator = (input: unknown, ctx: ParseCtx) => unknown
 export type AsyncValidator = (input: unknown, ctx: ParseCtx) => Promise<unknown>
 
 /**
- * A standalone, tree-shakeable check/transform ACTION — applies an op to a
- * schema in place and returns it. Composed via `schema.check(...actions)` or
+ * A standalone, tree-shakeable check/transform ACTION — returns a NEW schema
+ * carrying one extra op (copy-on-write; the input is never mutated). Composed via `schema.check(...actions)` or
  * `pipe(schema, ...actions)`. The generic `S` is preserved so chaining after
  * a `.check()` (`.optional()`, `.default()`, …) still infers the concrete type.
  *
@@ -152,7 +154,10 @@ export abstract class Schema<T> {
   /** Subclass discriminator. Used by the compiler + StdSchema vendor. */
   abstract readonly _kind: string
 
-  /** Ordered list of operations applied at parse time. Mutated by chainable methods. */
+  /**
+   * Ordered list of operations applied at parse time. Never mutated after
+   * construction by the public API — chainable methods clone (`_cloneWith`).
+   */
   _ops: Op[] = []
 
   /** Cached parse closure — built on first parse, reused thereafter. */
@@ -269,7 +274,11 @@ export abstract class Schema<T> {
     return r.value
   }
 
-  /** Zod-compat alias for {@link parse}. */
+  /**
+   * Alias for {@link parse} — same `{ ok, value | issues }` result. The NAME
+   * matches Zod's, the SHAPE does not: Zod returns `{ success, data | error }`,
+   * so code ported from Zod must read `ok` / `value` / `issues`.
+   */
   safeParse(input: unknown): Result<T> {
     return this.parse(input)
   }
@@ -295,7 +304,8 @@ export abstract class Schema<T> {
     // It can be removed by caching the compiled function as an OWN `is`
     // property, so `schema.is` IS the compiled function. Deliberately not done:
     // the compiled verdict must be invalidated whenever the schema tree changes
-    // (chained methods mutate in place), and an own-property cache makes
+    // (chained methods are copy-on-write now, but `_ops` is still reachable for
+    // direct internal mutation), and an own-property cache makes
     // stale-after-mutation the failure mode — `.is()` disagreeing with
     // `.parse().ok`, which shipped once already and is locked by
     // `jit-check-differential`. 1.27ns is not worth re-opening that class.
@@ -465,9 +475,7 @@ export abstract class Schema<T> {
       fallback?: string
     },
   ): this {
-    this._ops.push({ kind: 'refine', fn: fn as (v: unknown) => boolean | Promise<boolean>, opts })
-    this._invalidateCompile()
-    return this
+    return this._cloneWith({ kind: 'refine', fn: fn as (v: unknown) => boolean | Promise<boolean>, opts })
   }
 
   /**
@@ -531,7 +539,8 @@ export abstract class Schema<T> {
    * chainable methods. `s.string().email()` pulls EVERY string-format
    * validator (they all live on the class prototype); `string().check(email())`
    * from `@pyreon/validate/mini` pulls ONLY the actions you import. Actions are
-   * applied in order, mutating this schema; returns `this`, so it still chains.
+   * applied in order, each returning a NEW schema (copy-on-write, like the
+   * chainable methods); the result still chains.
    *
    * @example
    * import { string, email, minLength } from '@pyreon/validate/mini'
@@ -539,8 +548,9 @@ export abstract class Schema<T> {
    * const mail = string().check(email())
    */
   check(...actions: ReadonlyArray<(schema: Schema<T>) => Schema<T>>): this {
-    for (const action of actions) action(this)
-    return this
+    let out: Schema<T> = this
+    for (const action of actions) out = action(out)
+    return out as this
   }
 
   /**
@@ -585,13 +595,11 @@ export abstract class Schema<T> {
   ): this {
     // Spread first, then force a resolved string message (so an explicit
     // `message: undefined` can't override the default).
-    this._ops.push({
+    return this._cloneWith({
       kind: 'serverCheck',
       key,
       opts: { ...opts, message: opts?.message ?? `Failed server check: ${key}` },
     })
-    this._invalidateCompile()
-    return this
   }
 
   /**
@@ -610,9 +618,7 @@ export abstract class Schema<T> {
    * ```
    */
   catch(value: T | ((input: unknown) => T)): this {
-    this._ops.push({ kind: 'catch', value: value as unknown })
-    this._invalidateCompile()
-    return this
+    return this._cloneWith({ kind: 'catch', value: value as unknown })
   }
 
   /**
@@ -629,12 +635,10 @@ export abstract class Schema<T> {
    * ```
    */
   readonly(): Schema<ShallowReadonly<T>> {
-    this._ops.push({
+    return this._cloneWith({
       kind: 'transform',
       fn: (v) => (v !== null && typeof v === 'object' ? Object.freeze(v) : v),
-    })
-    this._invalidateCompile()
-    return this as unknown as Schema<ShallowReadonly<T>>
+    }) as unknown as Schema<ShallowReadonly<T>>
   }
 
   /**
@@ -644,9 +648,7 @@ export abstract class Schema<T> {
    * `PostId` both being `string`).
    */
   brand<TBrand extends string>(): Schema<T & { readonly __brand: TBrand }> {
-    this._ops.push({ kind: 'brand' })
-    this._invalidateCompile()
-    return this as unknown as Schema<T & { readonly __brand: TBrand }>
+    return this._cloneWith({ kind: 'brand' }) as unknown as Schema<T & { readonly __brand: TBrand }>
   }
 
   /**
@@ -655,17 +657,11 @@ export abstract class Schema<T> {
    * hint })` — `describe` is the Zod-compatible alias.
    */
   describe(text: string): this {
-    this._ops.push({ kind: 'describe', text })
+    const next = this._cloneWith({ kind: 'describe', text })
     // Also mirror to the Symbol-keyed meta slot so `getMeta` sees it as `hint`.
     const existing = (this as { [META_SLOT]?: FieldMeta })[META_SLOT]
-    const meta: FieldMeta = { ...existing, hint: text }
-    Object.defineProperty(this, META_SLOT, {
-      value: meta,
-      enumerable: false,
-      configurable: true,
-      writable: false,
-    })
-    return this
+    setMetaSlot(next, { ...existing, hint: text })
+    return next
   }
 
   /**
@@ -679,14 +675,48 @@ export abstract class Schema<T> {
    */
   field(meta: FieldMeta): this {
     const existing = (this as { [META_SLOT]?: FieldMeta })[META_SLOT]
-    const merged: FieldMeta = existing ? { ...existing, ...meta } : meta
-    Object.defineProperty(this, META_SLOT, {
-      value: merged,
-      enumerable: false,
-      configurable: true,
-      writable: false,
-    })
-    return this
+    const next = this._cloneWith()
+    setMetaSlot(next, existing ? { ...existing, ...meta } : meta)
+    return next
+  }
+
+  // ─── Copy-on-write ────────────────────────────────────────────────────
+
+  /**
+   * Shallow clone of this schema with its OWN ops list (plus `op`, when given)
+   * and none of the receiver's compiled artifacts — the primitive every
+   * chainable method returns through. Construction-time only: the parse hot
+   * path never runs this, and the clone compiles lazily on its first parse
+   * exactly like a freshly-constructed schema.
+   *
+   * Subclass state (object shape, union members, element schemas, …) is copied
+   * by reference: it is immutable after construction, so sharing it is safe.
+   * Field metadata (the non-enumerable META_SLOT) is carried over.
+   * @internal
+   */
+  _cloneWith(op?: Op): this {
+    const clone = Object.create(Object.getPrototypeOf(this) as object) as this
+    // Copy own fields in their original insertion order (so the clone shares
+    // the receiver's hidden class), EXCEPT the installed own-property `parse`
+    // seam: it closes over the receiver's compiled artifact, and copying it
+    // only to `delete` it again would push the clone to a slow dictionary-mode
+    // shape on some engines.
+    const ownParse = this._ownParse
+    const src = this as unknown as Record<string, unknown>
+    const dst = clone as unknown as Record<string, unknown>
+    for (const key of Object.keys(src)) {
+      if (key === 'parse' && src[key] === ownParse) continue
+      dst[key] = src[key]
+    }
+    clone._ops = op === undefined ? this._ops.slice() : [...this._ops, op]
+    // The memoized `~standard` closes over the RECEIVER — drop it.
+    clone._std = undefined
+    // Drops `_compiled` / `_pureCtx` / `_jitCheck` / a build-attached verdict,
+    // and deletes the own-property `parse` seam copied from the receiver.
+    clone._invalidateCompile()
+    const meta = (this as { [META_SLOT]?: FieldMeta })[META_SLOT]
+    if (meta !== undefined) setMetaSlot(clone, meta)
+    return clone
   }
 
   // ─── Subclass hook ────────────────────────────────────────────────────
@@ -750,8 +780,9 @@ export abstract class Schema<T> {
       const jit = tryCompileJit(this)
       this._compiled = jit ?? compileSchema(this)
       // Built HERE, in the same pass, rather than lazily on first `.is()`.
-      // Invalidating the two together is not sufficient: a chained method
-      // mutates a schema in place without invalidating its ancestors, so a
+      // Invalidating the two together is not sufficient: a direct mutation of
+      // `_ops` (chained methods are copy-on-write, but the field is reachable)
+      // does not invalidate its ancestors, so a
       // parent can hold a `_compiled` snapshot older than the tree — and a
       // verdict function compiled LATER would read the newer tree and answer
       // differently. Same pass ⇒ same snapshot ⇒ `is(x) === parse(x).ok`
@@ -817,6 +848,16 @@ function installOwnParse<T>(schema: Schema<T>, compiled: SyncValidator, pure: Pa
   // whole gain back (5.25ns, measured — same as no change at all).
   ;(schema as { parse: (input: unknown) => Result<T> }).parse = parse
   ;(schema as unknown as { _ownParse: typeof parse })._ownParse = parse
+}
+
+/** Attach field metadata as a non-enumerable, replaceable Symbol-keyed slot. */
+function setMetaSlot(schema: object, meta: FieldMeta): void {
+  Object.defineProperty(schema, META_SLOT, {
+    value: meta,
+    enumerable: false,
+    configurable: true,
+    writable: false,
+  })
 }
 
 function pureFail<T>(pure: ParseCtx): Result<T> {
@@ -1138,34 +1179,43 @@ function applyRefines(
   ctx: ParseCtx,
 ): unknown | Promise<unknown> {
   if (value instanceof Promise) {
-    return value.then((resolved) => applyRefinesSync(resolved, refines, ctx))
+    // Snapshot the path NOW: an enclosing object/array pops its segment before
+    // the Promise settles, so reading `ctx.path` later would file the issue at
+    // the parent (the root, for a top-level object field).
+    const path = ctx.path.slice()
+    return value.then((resolved) => applyRefinesSync(resolved, refines, ctx, path))
   }
-  return applyRefinesSync(value, refines, ctx)
+  return applyRefinesSync(value, refines, ctx, ctx.path)
 }
 
 function applyRefinesSync(
   value: unknown,
   refines: ReadonlyArray<RefineSpec>,
   ctx: ParseCtx,
+  path: ParseCtx['path'],
 ): unknown {
-  for (const r of refines) {
+  for (let i = 0; i < refines.length; i++) {
+    const r = refines[i]!
     const ok = r.fn(value)
     if (ok instanceof Promise) {
-      // Promote to async by returning the awaited check.
-      // We rebuild the remaining-refines chain as a Promise.
-      const rest = refines.slice(refines.indexOf(r))
+      // Promote to async by returning the awaited check. Snapshot the path
+      // before yielding (same reason as above — see `applyServerChecksSync`).
+      const rest = refines.slice(i)
+      const pathSnap = path.slice()
       return Promise.resolve().then(async () => {
-        for (const rr of rest) {
-          const passed = await rr.fn(value)
+        for (let j = 0; j < rest.length; j++) {
+          // The first entry's Promise is already in flight — await it rather
+          // than invoking the refine a second time.
+          const passed = j === 0 ? await ok : await rest[j]!.fn(value)
           if (!passed) {
-            ctx.issues.push(makeRefineIssue(rr.opts, ctx.path))
+            ctx.issues.push(makeRefineIssue(rest[j]!.opts, pathSnap))
           }
         }
         return value
       })
     }
     if (!ok) {
-      ctx.issues.push(makeRefineIssue(r.opts, ctx.path))
+      ctx.issues.push(makeRefineIssue(r.opts, path))
     }
   }
   return value

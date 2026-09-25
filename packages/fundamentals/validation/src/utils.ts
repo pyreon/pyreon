@@ -26,14 +26,34 @@ export function flattenIssuePath(
 }
 
 /**
+ * A fresh, EMPTY error record with a NULL prototype. Every per-field error
+ * record this package builds starts here: on a plain `{}`, `errors.constructor`
+ * / `errors.toString` read as inherited functions (a field with that name looks
+ * like it already has an "error", so its real one is never stored, and a
+ * consumer reading an absent field gets a function back), and assigning
+ * `errors['__proto__']` re-points the prototype instead of storing the message.
+ */
+export function emptyErrors<TValues>(): Partial<Record<keyof TValues, ValidationError>> {
+  return Object.create(null) as Partial<Record<keyof TValues, ValidationError>>
+}
+
+/** A null-prototype record carrying one form-level (`''`) error from a thrown value. */
+export function formLevelError<TValues>(err: unknown): Partial<Record<keyof TValues, ValidationError>> {
+  const errors = emptyErrors<Record<string, unknown>>() as Record<string, ValidationError>
+  errors[''] = err instanceof Error ? err.message : String(err)
+  return errors as Partial<Record<keyof TValues, ValidationError>>
+}
+
+/**
  * Convert an array of validation issues into a flat field → error record.
  * For nested paths like ["address", "city"], produces "address.city".
  * When multiple issues exist for the same path, the first message wins.
+ * The record has a null prototype (see {@link emptyErrors}).
  */
 export function issuesToRecord<TValues extends Record<string, unknown>>(
   issues: ValidationIssue[],
 ): Partial<Record<keyof TValues, ValidationError>> {
-  const errors = {} as Partial<Record<keyof TValues, ValidationError>>
+  const errors = emptyErrors<TValues>()
   for (const issue of issues) {
     const key = issue.path as keyof TValues
     // First error per field wins
