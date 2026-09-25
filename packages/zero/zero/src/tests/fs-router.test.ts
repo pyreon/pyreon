@@ -475,7 +475,7 @@ describe('generateMiddlewareModule', () => {
     expect(code).toContain('pattern: "/about"')
   })
 
-  it('skips layout, error, loading, and not-found files', () => {
+  it('skips error, loading, and not-found files (layouts are covered below)', () => {
     writeRouteWithMiddleware('_layout.tsx')
     writeRouteWithMiddleware('_error.tsx')
     writeRouteWithMiddleware('_loading.tsx')
@@ -486,12 +486,52 @@ describe('generateMiddlewareModule', () => {
       ['_layout.tsx', '_error.tsx', '_loading.tsx', '_404.tsx', '_not-found.tsx', 'index.tsx'],
       mwTmp,
     )
-    expect(code).not.toContain('_layout')
     expect(code).not.toContain('_error')
     expect(code).not.toContain('_loading')
     expect(code).not.toContain('_404')
     expect(code).not.toContain('_not-found')
     expect(code).toContain('pattern: "/"')
+  })
+
+  // A `_layout.tsx` middleware used to be dropped silently — while a layout is
+  // exactly where a subtree auth gate belongs.
+  it('a layout middleware guards the pages under its directory, once', () => {
+    mkdirSync(join(mwTmp, 'admin'), { recursive: true })
+    writeRouteWithMiddleware('admin/_layout.tsx')
+    writeRouteWithoutMiddleware('admin/index.tsx')
+    writeRouteWithoutMiddleware('admin/[id].tsx')
+    writeRouteWithoutMiddleware('about.tsx')
+    const code = generateMiddlewareModule(
+      ['admin/_layout.tsx', 'admin/index.tsx', 'admin/[id].tsx', 'about.tsx'],
+      mwTmp,
+    )
+    expect(code).toContain('admin/_layout.tsx')
+    expect(code).toMatch(/patterns: \["\/admin","\/admin\/:id"\]|patterns: \["\/admin\/:id","\/admin"\]/)
+    expect(code).not.toContain('"/about"')
+  })
+
+  it('a group layout is scoped to its group, not to every route under /', () => {
+    mkdirSync(join(mwTmp, '(app)'), { recursive: true })
+    writeRouteWithMiddleware('(app)/_layout.tsx')
+    writeRouteWithoutMiddleware('(app)/dashboard.tsx')
+    writeRouteWithoutMiddleware('public.tsx')
+    const code = generateMiddlewareModule(['(app)/_layout.tsx', '(app)/dashboard.tsx', 'public.tsx'], mwTmp)
+    expect(code).toContain('patterns: ["/dashboard"]')
+    expect(code).not.toContain('"/public"')
+  })
+
+  it('emits outer layouts before inner ones, and both before the page', () => {
+    mkdirSync(join(mwTmp, 'a/b'), { recursive: true })
+    writeRouteWithMiddleware('a/b/_layout.tsx')
+    writeRouteWithMiddleware('_layout.tsx')
+    writeRouteWithMiddleware('a/b/page.tsx')
+    const code = generateMiddlewareModule(['a/b/_layout.tsx', '_layout.tsx', 'a/b/page.tsx'], mwTmp)
+    const root = code.indexOf('/_layout.tsx"')
+    const inner = code.indexOf('a/b/_layout.tsx"')
+    const page = code.indexOf('a/b/page.tsx"')
+    expect(root).toBeGreaterThan(-1)
+    expect(root).toBeLessThan(inner)
+    expect(inner).toBeLessThan(page)
   })
 
   it('filters out entries with no middleware at runtime', () => {

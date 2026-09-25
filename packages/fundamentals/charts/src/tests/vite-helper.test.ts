@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { chartsViteAlias } from '../vite'
+import { chartsViteAlias } from '../echarts/vite'
 
 // Tests for `chartsViteAlias()` from `@pyreon/charts/vite`.
 //
@@ -17,7 +17,7 @@ import { chartsViteAlias } from '../vite'
 // `chartsViteAlias()` resolves from its OWN file location (uses
 // `import.meta.url`) rather than accepting a directory or URL —
 // because consumer Vite configs do `import { chartsViteAlias } from
-// '@pyreon/charts/vite'` and call it with no arguments. So we can't
+// '@pyreon/charts/echarts/vite'` and call it with no arguments. So we can't
 // vary the resolution root from outside; the tests assert the real-
 // world Pyreon worktree case (echarts is reachable from this package
 // via Bun's nested layout) and rely on the runtime check that returns
@@ -95,12 +95,12 @@ describe('chartsViteAlias — fixture: hoisted node_modules layout', () => {
 
 describe('@pyreon/charts/vite subpath export contract', () => {
   // Regression guard: the package.json must export `./vite` so
-  // consumer apps can do `import { chartsViteAlias } from '@pyreon/charts/vite'`.
+  // consumer apps can do `import { chartsViteAlias } from '@pyreon/charts/echarts/vite'`.
   // If a future cleanup pass removes the export entry, all consumer
   // apps' Vite configs will fail to resolve and charts will silently
   // re-hit the tslib `__extends` crash.
   it('exports chartsViteAlias from the vite.ts entry', async () => {
-    const mod = await import('../vite')
+    const mod = await import('../echarts/vite')
     expect(typeof mod.chartsViteAlias).toBe('function')
   })
 
@@ -111,6 +111,6 @@ describe('@pyreon/charts/vite subpath export contract', () => {
       exports?: Record<string, unknown>
     }
     expect(pkg.exports).toBeDefined()
-    expect(pkg.exports?.['./vite']).toBeDefined()
+    expect(pkg.exports?.['./echarts/vite']).toBeDefined()
   })
 })

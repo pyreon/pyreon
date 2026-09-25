@@ -115,7 +115,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { plotMarkColorSlots, ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTipHeader, chartTooltipCells, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, optionSpecArgs, chartPieArgs, chartDialCmds, chartFrameLiteral, chartSpecFieldIndex, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig, chartActionFields } from './chart-hosts'
+import { plotMarkColorSlots, ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTipHeader, chartTooltipCells, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, colorModeScope, literalColorMode, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, optionSpecArgs, chartPieArgs, chartDialCmds, chartFrameLiteral, chartSpecFieldIndex, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig, chartActionFields } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -8644,8 +8644,17 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // @Environment(\.colorScheme)) — so the provider carries no runtime context.
   // Render its children directly (mirror the jsx-fragment `Group {…}`).
   if ((tag === 'PyreonUI' || tag === 'PyreonUIProvider') && canAliasIntercept(tag, '@pyreon/ui-core')) {
-    const p = ' '.repeat(indent + 2)
-    return `Group {\n${e.children.map((c) => p + emitSwiftChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
+    // A literal `mode` pins the framework-wide colour mode for the charts below
+    // (web: PyreonUI provides `useColorMode`); a reactive one keeps the
+    // platform scheme, silently, as it always has here.
+    const prevScope = _chartThemeScope
+    _chartThemeScope = colorModeScope(e, (w) => _emitWarnings.push(w), prevScope ?? undefined, false) ?? null
+    try {
+      const p = ' '.repeat(indent + 2)
+      return `Group {\n${e.children.map((c) => p + emitSwiftChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
+    } finally {
+      _chartThemeScope = prevScope
+    }
   }
 
   // @pyreon/toast `<Toaster />` → a native overlay over the reactive PyreonToast
@@ -8791,7 +8800,7 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   }
   if (tag === 'Flow' && canAliasIntercept(tag, '@pyreon/flow')) return emitSwiftFlowHost(e)
   if (tag === 'Controls' && canAliasIntercept(tag, '@pyreon/flow')) return emitSwiftStandaloneFlowControls(e, indent)
-  // `@pyreon/charts/plot` family hosts → PyreonChartCanvas over the generated
+  // `@pyreon/charts` family hosts → PyreonChartCanvas over the generated
   // engine (chart-hosts.ts); accessor-prop hosts warn by name.
   if (isChartHostTag(tag)) return emitSwiftChartHost(e, indent)
   // `<ChartThemeProvider>` provides a theme through CONTEXT on the web; the
@@ -8804,6 +8813,24 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // reads it (chart-hosts.ts chartThemeScope / chartThemeFields). Saved and
   // restored around the children — providers nest, and a sibling must not
   // inherit.
+  // `<ColorModeProvider mode>` (@pyreon/core) pins the framework-wide colour
+  // mode; natively a compile-time scope the chart hosts below read. Children
+  // render as they are.
+  if (tag === 'ColorModeProvider' && canAliasIntercept(tag, '@pyreon/core')) {
+    const prevScope = _chartThemeScope
+    _chartThemeScope = colorModeScope(e, (w) => _emitWarnings.push(w), prevScope ?? undefined) ?? null
+    try {
+      const inner = ' '.repeat(indent + 2)
+      // A literal mode also pins SwiftUI's colour scheme for the subtree, so a
+      // component's own `useColorMode()` (lowered to @Environment(\.colorScheme))
+      // and every system control below agree with it, as on the web.
+      const pinned = literalColorMode(e)
+      const env = pinned === undefined ? '' : `.environment(\\.colorScheme, .${pinned})`
+      return `Group {\n${e.children.map((c) => inner + emitSwiftChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}${env}`
+    } finally {
+      _chartThemeScope = prevScope
+    }
+  }
   if (tag === 'ChartThemeProvider') {
     const prev = _chartThemeScope
     _chartThemeScope = chartThemeScope(e, (w) => _emitWarnings.push(w), prev ?? undefined)
@@ -8901,7 +8928,7 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'Link' || tag === 'RouterLink') return emitSwiftLink(e, indent)
   if (tag === 'PieChart') return emitSwiftPieChart(e, indent)
   if (tag === 'GaugeChart') return emitSwiftGaugeChart(e, indent)
-  // `<PieChart>` / `<GaugeChart>` from @pyreon/charts/plot — the radial
+  // `<PieChart>` / `<GaugeChart>` from @pyreon/charts — the radial
   // family lowers to the runtime wrapper views over the GENERATED engine
   // (renderPie / renderGauge), so web and native draw the same math.
   // `<QueryClientProvider client={…}>` is TRANSPARENT on native. It exists on
@@ -13270,7 +13297,7 @@ function emitSwiftRxCall(
 }
 
 /**
- * `<PieChart data value label …>` (@pyreon/charts/plot) → the runtime-swift
+ * `<PieChart data value label …>` (@pyreon/charts) → the runtime-swift
  * `PyreonPieChart` view. The accessor props pass through as closures — the
  * wrapper is generic over the row type, so `value={(d) => d.amount}` emits
  * `{ d in d.amount }` and Swift infers the parameter from `data`.
@@ -13334,7 +13361,7 @@ function emitSwiftPieChart(
 }
 
 /**
- * `<GaugeChart value …>` (@pyreon/charts/plot) → the runtime-swift
+ * `<GaugeChart value …>` (@pyreon/charts) → the runtime-swift
  * `PyreonGaugeChart` view. Scalar props map 1:1; `value={() => x()}`
  * unwraps to the reactive read.
  */
@@ -13383,7 +13410,7 @@ function emitSwiftGaugeChart(
 
 
 // ---------------------------------------------------------------------------
-// `@pyreon/charts/plot` family hosts → PyreonChartCanvas (the SwiftUI Canvas
+// `@pyreon/charts` family hosts → PyreonChartCanvas (the SwiftUI Canvas
 // that walks the generated engine's draw list). See chart-hosts.ts.
 // ---------------------------------------------------------------------------
 
@@ -13701,7 +13728,7 @@ function emitSwiftChartHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
 
 function emitSwiftChartHostInner(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const tag = e.tag
-  // The grammar: `<Plot>` with mark children desugars to the `<PlotChart marks>` element the plot emit lowers.
+  // The grammar: `<Chart>` with mark children desugars to the `<PlotChart marks>` element the plot emit lowers.
   if (tag === GRAMMAR_CHART_HOST) {
     // The grammar desugars to the host it names (`<PlotChart marks>`, or a family host for `<Arc>` / `<Stage>` / `<Cell>` / `<Candle>`) and re-enters here as that element.
     return emitSwiftChartHost(desugarChartGrammar(e, (w) => _emitWarnings.push(w)), indent)
@@ -13711,7 +13738,7 @@ function emitSwiftChartHostInner(e: Extract<ExprIR, { kind: 'jsx-element' }>, in
     return lowered === undefined ? 'EmptyView()' : emitSwiftChartHost(lowered, indent)
   }
   if (Object.hasOwn(GRAMMAR_MARK_TAGS, tag) || Object.hasOwn(GRAMMAR_FAMILY_TAGS, tag) || GRAMMAR_CONFIG_TAGS.includes(tag)) {
-    _emitWarnings.push(`<${tag}> only means something as a child of <Plot>; on its own it renders nothing.`)
+    _emitWarnings.push(`<${tag}> only means something as a child of <Chart>; on its own it renders nothing.`)
     return 'EmptyView()'
   }
   // Chrome the web host draws but this target does not yet — named, never silent.
@@ -14099,9 +14126,14 @@ function swiftChartMap(
  * native chart canvas is therefore named; before this only a titled host was.
  */
 function swiftChartA11y(e: Extract<ExprIR, { kind: 'jsx-element' }>, describe: string | undefined, indent: number): string {
+  // With the data in hand (the plot host), VoiceOver also gets the chart's
+  // DATA: an AXChartDescriptor over the same A11yInput the description reads —
+  // the Audio Graph and a per-point explorer, the native twin of the web
+  // host's hidden table.
+  const descriptor = describe === undefined ? '' : `.accessibilityChartDescriptor(PyreonChartDescriptor(${describe.slice('describeChart('.length, -1)}))`
   const explicit = readStringAttrExpr(e, 'accessibilityLabel', indent)
-  if (explicit !== undefined) return `.accessibilityLabel(${explicit})`
-  if (describe !== undefined) return `.accessibilityLabel(${describe})`
+  if (explicit !== undefined) return `.accessibilityLabel(${explicit})${descriptor}`
+  if (describe !== undefined) return `.accessibilityLabel(${describe})${descriptor}`
   const title = readStringAttrExpr(e, 'title', indent)
   return `.accessibilityLabel(${title ?? swiftStr(chartDefaultLabel(e.tag))})`
 }

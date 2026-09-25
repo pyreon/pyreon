@@ -27,7 +27,7 @@ function Editor() {
 }
 ```
 
-`mod` = `⌘` on Mac, `Ctrl` everywhere else. Shortcuts are ignored when typing in `<input>` / `<textarea>` / `contenteditable` by default (`enableOnInputs: true` to opt in).
+`mod` = `⌘` on Mac, `Ctrl` everywhere else. Shortcuts are ignored when typing in `<input>` / `<textarea>` / `contenteditable` by default (`enableOnInputs: true` to opt in) — including inputs inside a shadow root (detected via `composedPath()`). Keystrokes that belong to an IME composition, and synthetic keydowns with no `key` (autofill), never fire a shortcut. `alt+<letter/digit>` matches on macOS too, where Option types a different character (`Option+S` → `ß`): the physical key from `event.code` is used.
 
 ## Hooks
 
@@ -77,6 +77,7 @@ interface HotkeyOptions {
   ignoreRepeat?: boolean                  // default: false; true skips held-key auto-repeat
   once?: boolean                          // default: false; fire once, auto-unregister
   target?: EventTarget                    // default: window; element-scoped shortcuts
+                                          // (useHotkey also accepts a ref / getter, resolved at mount)
 }
 ```
 
@@ -189,7 +190,7 @@ Clears every registered hotkey and active scope. Underscore-prefixed because it'
 - **Scopes are reference-counted** — two components that both activate `'editor'` keep it active until BOTH release it. `enableScope`/`disableScope` are acquire/release; pair them evenly.
 - **`'global'` is the default scope** and is always active. A hotkey with no `scope` option fires whenever the global scope is active (which is always, unless you disable it).
 - **Multiple scopes can fire simultaneously** — if both `'modal'` and `'global'` are active and both have a `'mod+s'` binding, both handlers fire. Use `stopPropagation: true` or different scopes to disambiguate; `getHotkeyConflicts()` surfaces same-scope duplicates.
-- **`enableOnInputs: true` is required** to let users trigger shortcuts while typing — by default the listener checks the event target and bails on `<input>` / `<textarea>` / `<select>` / `contenteditable`.
+- **`enableOnInputs: true` is required** to let users trigger shortcuts while typing — by default the listener checks the event's real target (`composedPath()[0]`) and bails on `<input>` / `<textarea>` / `<select>` / `contenteditable`.
 - **Bind shifted symbols directly** — write `?` (not `shift+?`) for a help shortcut; a single symbol key already implies shift, so `?` fires on the real `Shift+/` keystroke.
 - **`enabled` is re-evaluated on every dispatch** — pass a function for reactive gating; a static `false` is equivalent to never registering.
 - **The hotkey listener attaches to `window`** at first registration and detaches when the last hotkey is removed (`_resetHotkeys` or every `unregister()` called).

@@ -13,7 +13,7 @@ export interface VisuallyHiddenProps {
 // The canonical "visually hidden but screen-reader accessible" rule set.
 // Clipped to a 1px box and pulled out of flow so it never affects layout,
 // but kept in the accessibility tree (unlike `display:none` / `hidden`).
-const SR_ONLY: Record<string, string> = {
+export const SR_ONLY: Record<string, string> = {
   position: 'absolute',
   width: '1px',
   height: '1px',
@@ -43,19 +43,35 @@ const SR_ONLY: Record<string, string> = {
  * ```
  */
 export function VisuallyHidden(props: VisuallyHiddenProps): VNodeChild {
-  // splitProps, not a destructure: the compiler passes signal-driven props as
-  // getters, and a destructure read each once — a reactive attribute or style
-  // on VisuallyHidden froze at its first value. `as` is the element's TAG, a
-  // structural choice read once at setup.
-  const [own, rest] = splitProps(
-    props as VisuallyHiddenProps & { style?: Record<string, string> | string },
-    ['as', 'children', 'style'],
+  // splitProps, not destructuring: a destructure (and a `...rest` spread)
+  // fires every compiler-emitted getter ONCE at setup, freezing a signal-driven
+  // `class` / `id` / `aria-*` / `style` at its first value.
+  const [own, rest] = splitProps(props as VisuallyHiddenProps & { style?: unknown }, [
+    'as',
+    'children',
+    'style',
+  ])
+  return h(
+    own.as ?? 'span',
+    // mergeProps copies DESCRIPTORS, so forwarded getters stay live.
+    mergeProps(rest, {
+      // Merge caller styles AFTER the sr-only base so an explicit override
+      // wins, but the clipping defaults still apply for any property the
+      // caller omits. Read inside the accessor so a reactive style tracks.
+      style: () => srOnlyStyle(readProp(own.style)),
+    }),
+    own.children,
   )
-  // Merge caller styles AFTER the sr-only base so an explicit override wins,
-  // but the clipping defaults still apply for any property the caller omits.
-  const style = () => {
-    const s = own.style
-    return s && typeof s === 'object' ? { ...SR_ONLY, ...s } : SR_ONLY
-  }
-  return h(own.as ?? 'span', mergeProps(rest as Record<string, unknown>, { style }), own.children)
+}
+
+/** Resolve a prop that may be a plain value or a `() => value` accessor. */
+export function readProp<T>(value: T | (() => T)): T {
+  return typeof value === 'function' ? (value as () => T)() : value
+}
+
+/** The sr-only base with a caller's style object merged over it. */
+export function srOnlyStyle(style: unknown): Record<string, string> {
+  return style && typeof style === 'object'
+    ? { ...SR_ONLY, ...(style as Record<string, string>) }
+    : SR_ONLY
 }

@@ -74,13 +74,12 @@ function _currentLocaleStore(): LocaleStore | undefined {
 //   self-identifies its locale.
 //
 // Usage:
-//   // zero.config.ts
-//   import { defineConfig } from "@pyreon/zero/config"
-//   import { i18nRouting } from "@pyreon/zero/server"
-//   export default defineConfig({
-//     i18n: { locales: ["en","de","cs"], defaultLocale: "en" },
-//     plugins: [i18nRouting({ locales: ["en","de","cs"], defaultLocale: "en" })],
-//   })
+//   // vite.config.ts
+//   import zero, { i18nRouting } from "@pyreon/zero/server"
+//   const i18n = { locales: ["en","de","cs"], defaultLocale: "en" }
+//   export default {
+//     plugins: [pyreon(), zero({ i18n }), i18nRouting(i18n)],
+//   }
 
 export interface I18nRoutingConfig {
   /** Supported locales. e.g. ["en", "de", "cs"] */
