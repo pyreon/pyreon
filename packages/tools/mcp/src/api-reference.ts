@@ -11223,7 +11223,8 @@ const { doc } = loadOpenApi(await readFile('./openapi.yaml', 'utf8'))
 console.log(doc.models.length, 'models', doc.operations.length, 'operations')
 for (const note of doc.notes) console.warn(note.code, note.at, note.message)`,
     notes: 'Parses an OpenAPI 3.x document (JSON or YAML text) into the spec-agnostic IR. Every reduction the IR cannot represent is recorded in `doc.notes` with a stable code and a location, so a loss is reported once at the boundary instead of being rediscovered differently by each emitter. Deterministic: models and operations are sorted, so the same spec always produces the same IR.',
-    mistakes: `- Ignoring \`doc.notes\`. A spec with a remote \`$ref\` or a non-JSON media type still produces output — with those pieces typed \`unknown\`. The note is the only signal.
+    mistakes: `- Ignoring \`doc.notes\`. A spec with a remote \`$ref\` or a non-JSON media type still produces output — with those pieces typed \`unknown\`. The note is the only signal. Filter on \`noteSeverity(note) === 'loss'\` for the ones that change behaviour.
+- Passing a Swagger 2 document. It is refused (\`openApiVersionProblem\` names the \`swagger2openapi\` conversion) rather than read as an empty 3.x spec.
 - Expecting anchors or merge keys to work. The YAML reader refuses them by design with a line number, because silently ignoring an anchor produces a document that is wrong everywhere it was used.`,
   },
 

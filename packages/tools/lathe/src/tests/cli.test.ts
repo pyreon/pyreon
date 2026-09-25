@@ -1,4 +1,4 @@
-import { HELP, parseArgv, run, type Fs } from '../cli/run'
+import { HELP, parseArgv, run, type Fs, type JsonReport } from '../cli/run'
 
 const SPEC = `
 openapi: 3.0.3
@@ -37,6 +37,9 @@ function memFs(seed: Record<string, string> = {}): Fs & { files: Record<string, 
     },
     exists: (p) => p in files,
     mkdirp: () => undefined,
+    remove: (p) => {
+      delete files[p]
+    },
     join: (...parts) => parts.join('/').replace(/\/+/g, '/'),
   }
 }
@@ -111,7 +114,10 @@ describe('run', () => {
   it('fails with an actionable message when the spec is missing', async () => {
     const r = await run(parseArgv(['generate', 'nope.yaml']), undefined, memFs())
     expect(r.code).toBe(1)
-    expect(r.stdout).toContain('spec not found')
+    // On STDERR: an error on stdout is mixed into whatever a caller is
+    // capturing, and never reaches a terminal when stdout is piped.
+    expect(r.stderr).toContain('spec not found')
+    expect(r.stdout).toBe('')
   })
 
   it('config supplies defaults and argv overrides them', async () => {
@@ -129,10 +135,12 @@ describe('run', () => {
   it('emits machine-readable output with --json', async () => {
     const fs = memFs()
     const r = await run(parseArgv(['generate', 'openapi.yaml', '--out', 'gen', '--json']), undefined, fs)
-    const parsed = JSON.parse(r.stdout) as { operations: number; files: string[]; verify: { ran: boolean } }
-    expect(parsed.operations).toBe(1)
-    expect(parsed.files).toContain('schemas.ts')
-    expect(parsed.verify).toHaveProperty('ran')
+    const parsed = JSON.parse(r.stdout) as JsonReport
+    expect(parsed.ok).toBe(true)
+    expect(parsed.projects).toHaveLength(1)
+    expect(parsed.projects[0]?.operations).toBe(1)
+    expect(parsed.projects[0]?.files).toContain('schemas.ts')
+    expect(parsed.projects[0]?.verify).toHaveProperty('ran')
   })
 
   it('help mentions both verbs', () => {
@@ -140,10 +148,36 @@ describe('run', () => {
     expect(HELP).toContain('lathe check')
   })
 
-  it('rejects an unknown plugin by name', async () => {
-    await expect(
-      run(parseArgv(['generate', 'openapi.yaml', '--plugins', 'nope']), undefined, memFs()),
-    ).rejects.toThrow('unknown plugin')
+  it('rejects an unknown plugin by name, with a usage exit code', async () => {
+    const r = await run(parseArgv(['generate', 'openapi.yaml', '--plugins', 'nope']), undefined, memFs())
+    expect(r.code).toBe(2)
+    expect(r.stderr).toContain('unknown plugin')
+  })
+
+  it('an error under --json is JSON, never plain text on stdout', async () => {
+    // A script parsing stdout used to receive `[Pyreon] lathe: …` and die in
+    // JSON.parse, with the real error lost.
+    const r = await run(parseArgv(['generate', 'nope.yaml', '--json']), undefined, memFs())
+    expect(r.code).toBe(1)
+    const parsed = JSON.parse(r.stdout) as JsonReport
+    expect(parsed).toMatchObject({ ok: false, projects: [] })
+    expect(parsed.error?.message).toContain('spec not found')
+    expect(r.stderr).toBe('')
+  })
+
+  it('--dry-run reports what generate would change and writes nothing', async () => {
+    const fs = memFs()
+    const r = await run(parseArgv(['generate', 'openapi.yaml', '--out', 'gen', '--dry-run']), undefined, fs)
+    expect(r.code).toBe(0)
+    expect(Object.keys(fs.files)).toEqual(['openapi.yaml'])
+    expect(r.stdout).toContain('DRY RUN')
+    expect(r.stdout).toContain('schemas.ts')
+  })
+
+  it('a config typo in `target` is refused by name', async () => {
+    const r = await run(parseArgv(['generate']), { input: 'openapi.yaml', target: 'native' as never }, memFs())
+    expect(r.code).toBe(1)
+    expect(r.stderr).toContain('unknown target `native`')
   })
 })
 
@@ -215,28 +249,28 @@ components:
     expect(r.stdout).toContain('billing')
   })
 
-  it('wraps --json output only when there is more than one project', async () => {
-    // A single-project run keeps the flat object it always had, so an existing
-    // `--json` consumer is unaffected by this feature existing.
+  it('--json has ONE shape whatever the project count', async () => {
+    // A single project used to be a flat object and several were
+    // `{ projects }`, so every consumer branched on an undocumented property.
     const fs = memFs({ 'billing.yaml': SECOND })
     const many = JSON.parse(
       (await run(parseArgv(['generate', '--json']), twoProjects, fs)).stdout,
-    ) as { projects: { name: string }[] }
+    ) as JsonReport
     expect(many.projects.map((p) => p.name)).toEqual(['catalog', 'billing'])
 
     const one = JSON.parse(
       (await run(parseArgv(['generate', 'openapi.yaml', '--out', 'g', '--json']), undefined, memFs()))
         .stdout,
-    ) as { projects?: unknown; operations: number }
-    expect(one.projects).toBeUndefined()
-    expect(one.operations).toBe(1)
+    ) as JsonReport
+    expect(Object.keys(one).sort()).toEqual(Object.keys(many).sort())
+    expect(one.projects.map((p) => p.operations)).toEqual([1])
   })
 
   it('REFUSES a CLI --out alongside projects instead of writing them all to one place', async () => {
     const fs = memFs({ 'billing.yaml': SECOND })
     const r = await run(parseArgv(['generate', '--out', 'somewhere']), twoProjects, fs)
     expect(r.code).toBe(1)
-    expect(r.stdout).toContain('ambiguous')
+    expect(r.stderr).toContain('ambiguous')
     expect(fs.files['somewhere/schemas.ts']).toBeUndefined()
   })
 
@@ -251,8 +285,8 @@ components:
 
   it('names a duplicate or missing project name rather than guessing', async () => {
     const dup = { projects: [{ name: 'x', input: 'openapi.yaml' }, { name: 'x', input: 'openapi.yaml' }] }
-    await expect(run(parseArgv(['generate']), dup, memFs())).rejects.toThrow('both named')
+    expect((await run(parseArgv(['generate']), dup, memFs())).stderr).toContain('both named')
     const noName = { projects: [{ input: 'openapi.yaml' } as never] }
-    await expect(run(parseArgv(['generate']), noName, memFs())).rejects.toThrow('no `name`')
+    expect((await run(parseArgv(['generate']), noName, memFs())).stderr).toContain('no `name`')
   })
 })

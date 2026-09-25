@@ -16,7 +16,7 @@
  * CODE, so dropping one turns a gate into a no-op that reports success.
  */
 import { describe, expect, it } from 'vitest'
-import { HELP, parseArgv } from '../cli/run'
+import { HELP, KNOWN_FLAGS, parseArgv } from '../cli/run'
 
 const p = (...args: string[]) => parseArgv(args)
 
@@ -144,20 +144,58 @@ describe('--plugins takes a comma list', () => {
     expect(p('generate', '--plugins=').plugins).toEqual([])
   })
 
-  it('does not consume the next flag when the value is missing', () => {
+  it('does not consume the next flag when the value is missing — and says so', () => {
     // `--plugins --json` — the parser must not swallow `--json` as the
-    // plugin list, which would silently drop the flag.
-    const a = p('generate', '--plugins')
-    expect(a.plugins).toEqual([])
+    // plugin list, which would silently drop the flag. A missing value used to
+    // become an EMPTY plugin list, i.e. "generate nothing"; it is an error now.
+    const a = p('generate', '--plugins', '--json')
+    expect(a.plugins).toBeUndefined()
+    expect(a.json).toBe(true)
+    expect(a.errors).toEqual(['`--plugins` needs a value.'])
   })
 })
 
-describe('an UNKNOWN flag is ignored rather than taken as the spec path', () => {
+describe('an UNKNOWN flag is an error, never silently ignored', () => {
   it('does not treat it as a positional', () => {
     // Treating `--nonsense` as the input path produces "spec not found
     // at --nonsense", which reads as a missing file rather than a typo.
     const a = p('generate', '--nonsense', 'openapi.yaml')
     expect(a.input).toBe('openapi.yaml')
+    expect(a.errors).toEqual(['unknown option `--nonsense`.'])
+  })
+
+  it('suggests the flag that was probably meant', () => {
+    // `--josn` used to be IGNORED: the run wrote a client and printed the
+    // human report, indistinguishable from a flag that works.
+    expect(p('generate', '--josn').errors[0]).toContain('Did you mean `--json`?')
+    expect(p('generate', '--targt=web').errors[0]).toContain('Did you mean `--target`?')
+  })
+
+  it('validates enumerated values instead of passing them through', () => {
+    // `--target native` used to reach the config layer as-is, where every
+    // `=== 'multiplatform'` check read it as web.
+    expect(p('generate', '--target', 'native').errors[0]).toMatch(/`--target` must be one of web, multiplatform/)
+    expect(p('generate', '--client', 'axois').errors[0]).toContain('Did you mean `axios`?')
+    expect(p('generate', '--plugins', 'querys').errors[0]).toContain('Did you mean `queries`?')
+  })
+
+  it('refuses a mistyped COMMAND rather than reading it as a spec path', () => {
+    expect(p('generat').errors[0]).toContain('Did you mean `generate`?')
+    // A bare PATH still means generate.
+    expect(p('./api.yaml').errors).toEqual([])
+  })
+
+  it('refuses a stray extra positional', () => {
+    expect(p('generate', 'a.yaml', 'b.yaml').errors).toEqual(['unexpected argument `b.yaml`.'])
+  })
+
+  it('reads --version, --dry-run, --config and the pull auth flags', () => {
+    expect(p('--version').command).toBe('version')
+    expect(p('generate', '--dry-run').dryRun).toBe(true)
+    expect(p('generate', '--config', 'x/pyreon.config.ts').config).toBe('x/pyreon.config.ts')
+    const pull = p('pull', 'https://x.test/s.json', 'spec.json', '--header', 'X-Key: 1', '--token=t')
+    expect([pull.input, pull.dest, pull.headers, pull.token]).toEqual(['https://x.test/s.json', 'spec.json', ['X-Key: 1'], 't'])
+    expect(p('generate', '--token', 't').errors[0]).toContain('only apply to `lathe pull`')
   })
 })
 
@@ -182,8 +220,7 @@ describe('the help text names what the flags do', () => {
     // A flag the parser reads but help never mentions is undiscoverable,
     // and one help mentions but the parser drops is worse.
     for (const flag of [
-      '--out', '--target', '--client', '--validator', '--plugins',
-      '--base-url', '--strict-native', '--fail-on-breaking', '--json', '--watch',
+      ...KNOWN_FLAGS,
     ]) {
       expect(HELP, flag).toContain(flag)
     }

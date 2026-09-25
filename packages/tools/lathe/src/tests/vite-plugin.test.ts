@@ -5,10 +5,27 @@
  * behaviour is assertable without a dev server -- the real server is exercised
  * by the bookshelf e2e, which is the layer that can actually prove it.
  */
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { lathe, runPass } from '../vite/plugin'
+import { resolveConfig } from '../core/config'
+import { lathe, missingSpecMessage, passSummary, runPass, specPathsOf } from '../vite/plugin'
+import { vi } from 'vitest'
+
+// vitest's module runner strips the `?t=` cache-bust query that `loadConfig`
+// relies on (real Node honours it), so a re-read would return the stale
+// module. The watch-loop spec overrides the reload through this seam instead.
+const configOverride: { section: unknown } = { section: undefined }
+vi.mock('../cli/config-file', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../cli/config-file')>()
+  return {
+    ...actual,
+    loadConfig: async (...args: Parameters<typeof actual.loadConfig>) => {
+      const loaded = await actual.loadConfig(...args)
+      return args[2] && configOverride.section ? { ...loaded, section: configOverride.section } : loaded
+    },
+  }
+})
 
 const SPEC = `
 openapi: 3.0.3
@@ -96,22 +113,274 @@ describe('lathe vite plugin', () => {
     expect(readFileSync(join(root, 'src/b/schemas.ts'), 'utf8')).toContain('export const Book')
   })
 
-  it('THROWS on a stale build when checkOnBuild is set', () => {
+  it('removes a file the previous pass generated and this one does not', () => {
+    // The dev server regenerates on every spec save; an orphan left by a
+    // dropped tag would keep compiling against endpoints that no longer exist.
+    const { root, spec } = project()
+    const withClient = { ...opts, plugins: ['schemas', 'client'] as const }
+    runPass({ ...withClient, plugins: [...withClient.plugins] }, root, 'write')
+    expect(existsSync(join(root, 'src/gen/endpoints/books.ts'))).toBe(true)
+    writeFileSync(spec, SPEC.replace('tags: [books]', 'tags: [library]'))
+    const res = runPass({ ...withClient, plugins: [...withClient.plugins] }, root, 'write')
+    expect(existsSync(join(root, 'src/gen/endpoints/books.ts'))).toBe(false)
+    expect(existsSync(join(root, 'src/gen/endpoints/library.ts'))).toBe(true)
+    expect(res.removed).toEqual([join(root, 'src/gen/endpoints/books.ts')])
+  })
+
+  it('THROWS on a stale build when checkOnBuild is set', async () => {
     // A build error, not a warning: generated output that disagrees with its
     // spec compiles and then fails against the real server.
     const { root } = project()
     runPass({ ...opts }, root, 'write')
     writeFileSync(join(root, 'src/gen/schemas.ts'), '// hand-edited')
     const plugin = lathe({ ...opts, checkOnBuild: true })
-    plugin.configResolved?.({ root, command: 'build' })
+    await plugin.configResolved?.({ root, command: 'build' })
     expect(() => plugin.buildStart?.()).toThrow(/stale against the spec/)
   })
 
-  it('WRITES on a build when checkOnBuild is not set', () => {
+  it('WRITES on a build when checkOnBuild is not set', async () => {
     const { root } = project()
     const plugin = lathe({ ...opts })
-    plugin.configResolved?.({ root, command: 'build' })
+    await plugin.configResolved?.({ root, command: 'build' })
     expect(() => plugin.buildStart?.()).not.toThrow()
     expect(readFileSync(join(root, 'src/gen/schemas.ts'), 'utf8')).toContain('export const Book')
+  })
+})
+
+describe('the plugin reads pyreon.config and says what it did', () => {
+  const withConfig = (): string => {
+    const { root } = project()
+    mkdirSync(join(root, '.git'))
+    writeFileSync(
+      join(root, 'pyreon.config.ts'),
+      "export default { lathe: { input: './openapi.yaml', output: './src/from-config', plugins: ['schemas'] } }\n",
+    )
+    return root
+  }
+
+  it('`lathe()` with NO options generates from the pyreon.config section', async () => {
+    // It used to read nothing but its own options, so a project configured
+    // for the CLI generated no client at all in `vite dev`.
+    const root = withConfig()
+    const plugin = lathe()
+    await plugin.configResolved?.({ root, command: 'serve' })
+    plugin.buildStart?.()
+    expect(readFileSync(join(root, 'src/from-config/schemas.ts'), 'utf8')).toContain('export const Book')
+  })
+
+  it('options passed to the plugin win over the config, per key', async () => {
+    const root = withConfig()
+    const plugin = lathe({ output: './src/from-options' })
+    await plugin.configResolved?.({ root, command: 'serve' })
+    plugin.buildStart?.()
+    expect(existsSync(join(root, 'src/from-options/schemas.ts'))).toBe(true)
+    expect(existsSync(join(root, 'src/from-config'))).toBe(false)
+  })
+
+  it('WARNS on a missing spec and suggests the file that exists', async () => {
+    // A typo'd `input` used to boot the dev server with no client and no word.
+    const { root } = project()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const plugin = lathe({ ...opts, input: './openapi.yml' })
+    await plugin.configResolved?.({ root, command: 'serve' })
+    plugin.buildStart?.()
+    const said = warn.mock.calls.map((c) => String(c[0])).join('\n')
+    warn.mockRestore()
+    expect(said).toContain('spec not found')
+    expect(said).toContain('Did you mean')
+    expect(said).toContain('openapi.yaml')
+    expect(missingSpecMessage(join(root, 'nothing-like-it.txt'))).not.toContain('Did you mean')
+  })
+
+  it('summarises contract changes and losses rather than a bare file count', () => {
+    const { root, spec } = project()
+    runPass({ ...opts, plugins: ['schemas', 'client'] }, root, 'write')
+    // Removing the operation is a BREAKING change for a client that calls it.
+    writeFileSync(spec, SPEC.replace(/paths:[\s\S]*components:/, 'paths: {}\ncomponents:'))
+    const lines = passSummary(runPass({ ...opts, plugins: ['schemas', 'client'] }, root, 'write'))
+    expect(lines.join('\n')).toMatch(/BREAKING contract change/)
+  })
+
+  it('does NOT generate from configureServer -- once at boot, in buildStart', async () => {
+    // configureServer runs before buildStart in dev; it used to run a whole
+    // generation just to learn the spec paths.
+    const { root } = project()
+    const plugin = lathe({ ...opts })
+    await plugin.configResolved?.({ root, command: 'serve' })
+    const added: string[] = []
+    plugin.configureServer?.({ watcher: { add: (p) => added.push(p), on: () => undefined } })
+    expect(existsSync(join(root, 'src/gen'))).toBe(false)
+    expect(added).toEqual([join(root, 'openapi.yaml')])
+  })
+})
+
+describe('the dev-server watch loop', () => {
+  /** A fake watcher that records adds and lets the test fire `change`. */
+  function fakeWatcher(): {
+    added: string[]
+    fire: (path: string) => Promise<void>
+    watcher: { add(path: string): void; on(event: string, cb: (path: string) => void): void }
+  } {
+    const added: string[] = []
+    let handler: ((path: string) => void) | undefined
+    return {
+      added,
+      watcher: {
+        add: (p) => added.push(p),
+        on: (event, cb) => {
+          if (event === 'change') handler = cb
+        },
+      },
+      // The handler kicks off an async pass; give it a few ticks to settle.
+      fire: async (path) => {
+        handler?.(path)
+        await new Promise((r) => setTimeout(r, 100))
+      },
+    }
+  }
+
+  it('`watch: false` registers nothing', async () => {
+    const { root } = project()
+    const plugin = lathe({ ...opts, watch: false })
+    await plugin.configResolved?.({ root, command: 'serve' })
+    const w = fakeWatcher()
+    plugin.configureServer?.({ watcher: w.watcher })
+    expect(w.added).toEqual([])
+  })
+
+  it('a spec change regenerates; an unrelated change does not', async () => {
+    const { root, spec } = project()
+    const plugin = lathe({ ...opts })
+    await plugin.configResolved?.({ root, command: 'serve' })
+    const w = fakeWatcher()
+    plugin.configureServer?.({ watcher: w.watcher })
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    try {
+      await w.fire(join(root, 'unrelated.ts'))
+      expect(existsSync(join(root, 'src/gen'))).toBe(false)
+      await w.fire(spec)
+      expect(readFileSync(join(root, 'src/gen/schemas.ts'), 'utf8')).toContain('export const Book')
+    } finally {
+      log.mockRestore()
+    }
+  })
+
+  it('a config change is re-read and its new spec starts being watched', async () => {
+    const { root } = project()
+    mkdirSync(join(root, '.git'))
+    const config = join(root, 'pyreon.config.ts')
+    writeFileSync(
+      config,
+      "export default { lathe: { input: './openapi.yaml', output: './src/one', plugins: ['schemas'] } }\n",
+    )
+    writeFileSync(join(root, 'second.yaml'), SPEC)
+    const plugin = lathe()
+    await plugin.configResolved?.({ root, command: 'serve' })
+    const w = fakeWatcher()
+    plugin.configureServer?.({ watcher: w.watcher })
+    expect(w.added).toContain(config)
+    configOverride.section = { input: './second.yaml', output: './src/two', plugins: ['schemas'] }
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    try {
+      await w.fire(config)
+    } finally {
+      log.mockRestore()
+      configOverride.section = undefined
+    }
+    expect(w.added).toContain(join(root, 'second.yaml'))
+    expect(readFileSync(join(root, 'src/two/schemas.ts'), 'utf8')).toContain('export const Book')
+  })
+
+  it('an unparseable spec mid-save is logged, not thrown', async () => {
+    const { root, spec } = project()
+    const plugin = lathe({ ...opts })
+    await plugin.configResolved?.({ root, command: 'serve' })
+    const w = fakeWatcher()
+    plugin.configureServer?.({ watcher: w.watcher })
+    writeFileSync(spec, 'openapi: [\n')
+    const err = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      await w.fire(spec)
+      expect(err.mock.calls.map((c) => String(c[0])).join('\n')).toContain('[Pyreon] lathe:')
+    } finally {
+      err.mockRestore()
+    }
+  })
+})
+
+describe('runPass edge cases', () => {
+  it('accepts an absolute input path', () => {
+    const { root, spec } = project()
+    const res = runPass({ ...opts, input: spec }, root, 'write')
+    expect(res.specs).toEqual([spec])
+    expect(res.written.length).toBeGreaterThan(0)
+  })
+
+  it('check mode reports an orphan as stale and leaves it on disk', () => {
+    const { root, spec } = project()
+    const plugins = ['schemas', 'client'] as ('schemas' | 'client')[]
+    runPass({ ...opts, plugins }, root, 'write')
+    writeFileSync(spec, SPEC.replace('tags: [books]', 'tags: [library]'))
+    const orphan = join(root, 'src/gen/endpoints/books.ts')
+    const res = runPass({ ...opts, plugins }, root, 'check')
+    expect(res.stale).toContain(orphan)
+    expect(existsSync(orphan)).toBe(true)
+  })
+
+  it('an orphan already deleted by hand is skipped', () => {
+    const { root, spec } = project()
+    const plugins = ['schemas', 'client'] as ('schemas' | 'client')[]
+    runPass({ ...opts, plugins }, root, 'write')
+    writeFileSync(spec, SPEC.replace('tags: [books]', 'tags: [library]'))
+    rmSync(join(root, 'src/gen/endpoints/books.ts'))
+    expect(runPass({ ...opts, plugins }, root, 'write').removed).toEqual([])
+  })
+})
+
+describe('passSummary', () => {
+  it('truncates a long breaking list and counts losses', () => {
+    const pass = {
+      written: ['a'],
+      stale: [],
+      specs: [],
+      removed: ['b'],
+      missing: [],
+      projects: [
+        {
+          result: {
+            doc: { title: 'T', version: '1', notes: [{ code: 'unsupported-schema', message: 'm', at: '#' }] },
+          } as never,
+          changes: ['a', 'b', 'c', 'd'].map((subject) => ({ subject, severity: 'breaking' })) as never,
+        },
+      ],
+    }
+    const text = passSummary(pass).join('\n')
+    expect(text).toContain('4 BREAKING contract change(s): a, b, c, ...')
+    expect(text).toContain('1 spec feature(s) not represented')
+    expect(text).toContain('removed 1')
+    expect(text).toContain('run `lathe generate`')
+  })
+
+  it('says nothing when nothing moved and nothing broke', () => {
+    const pass = {
+      written: [],
+      stale: [],
+      specs: [],
+      removed: [],
+      missing: [],
+      projects: [{ result: { doc: { title: 'T', version: '1', notes: [] } } as never, changes: [] }],
+    }
+    expect(passSummary(pass)).toEqual([])
+  })
+})
+
+describe('config refusal reaches the plugin as an empty watch set', () => {
+  it('specPathsOf returns [] for a config resolveConfig refuses', () => {
+    // No input and an unknown plugin are both REFUSED by resolveConfig; the
+    // watcher must not crash on either, it simply has nothing to watch.
+    expect(() => resolveConfig({})).toThrow(/no input spec/)
+    expect(() => resolveConfig({ input: 'x.yaml', plugins: ['nope' as never] })).toThrow(/unknown plugin `nope`/)
+    expect(specPathsOf({}, '/root')).toEqual([])
+    expect(specPathsOf({ input: '/abs/spec.yaml' }, '/root')).toEqual(['/abs/spec.yaml'])
   })
 })

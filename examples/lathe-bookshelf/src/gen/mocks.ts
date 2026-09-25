@@ -11,9 +11,9 @@ import { mock } from '@pyreon/http/mock'
 
 /**
  * Deterministic fixtures for Bookshelf.
- * Install with `api.use(mockRoutes)` (or pass `mock(routes)` as middleware)
- * to run the generated client with no server. Values are derived from the
- * spec — same input, same bytes, every run — so snapshots stay stable.
+ * Call `installMocks()` (below) to run the generated client with no server.
+ * Values are derived from the spec — same input, same bytes, every run — so
+ * snapshots stay stable.
  */
 export const routes: MockRoute[] = [
   {

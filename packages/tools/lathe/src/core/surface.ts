@@ -267,3 +267,28 @@ export function diffSurface(before: ApiSurface, after: ApiSurface): SurfaceChang
     a.severity === b.severity ? a.subject.localeCompare(b.subject) : a.severity === 'breaking' ? -1 : 1,
   )
 }
+
+/**
+ * Diff this run's surface against the COMMITTED one (the previous run's
+ * `api-surface.json` text), or `[]` when there is none to compare.
+ *
+ * A MISSING baseline returns no changes rather than reporting every operation
+ * as added: the first run has nothing to compare against, and a wall of
+ * "additive" on day one teaches people to skim the section. An UNREADABLE or
+ * wrong-version baseline is treated the same way -- a diff computed against a
+ * shape this code does not understand is worse than no diff.
+ *
+ * Shared by the CLI and the Vite plugin, so the two cannot disagree about what
+ * a contract change is.
+ */
+export function diffCommittedSurface(previous: string | undefined, now: ApiSurface): SurfaceChange[] {
+  if (previous === undefined) return []
+  let parsed: ApiSurface
+  try {
+    parsed = JSON.parse(previous) as ApiSurface
+  } catch {
+    return []
+  }
+  if (parsed?.version !== now.version) return []
+  return diffSurface(parsed, now)
+}
