@@ -472,6 +472,7 @@ A numeric TS `enum { A }` compiles to `{ A: 0, 0: 'A' }`. `s.nativeEnum` filters
 | --- | --- |
 | `.email(opts?)` | email; precision tiers `'html5'` / `'standard'` (default) / `'rfc5322'` |
 | `.url()` | `http(s)://…` |
+| `.url({ protocol })` | any RFC 3986 absolute URI whose scheme matches `protocol` (zod 4's option) — e.g. `/^[a-z][a-z0-9+.-]*$/i` for every scheme |
 | `.uuid()` | UUID v1–v5 |
 | `.ip()` | IPv4 or IPv6 |
 | `.cidr()` | CIDR notation (`x.x.x.x/0-32` or `…/0-128`) |
