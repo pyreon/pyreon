@@ -123,21 +123,28 @@ export default {
 
 | Option       | Type                                                                          | Default | Description                                                  |
 | ------------ | ----------------------------------------------------------------------------- | ------- | ------------------------------------------------------------ |
-| `mode`       | `"ssr" \| "ssg" \| "spa" \| "isr"`                                            | `"ssr"` | Global rendering mode                                        |
-| `ssr.mode`   | `"stream" \| "string"`                                                        | `"string"` | SSR output mode. `"stream"` flushes the shell first and streams Suspense boundaries — opt in with `ssr: { mode: 'stream' }` |
-| `ssg`        | `{ paths?, emit404?, emitRedirects?, redirectsAsHtml?, onPathError?, errorArtifact?, concurrency?, onProgress?, splitChunks?, speculationRules?, viewTransitions?, cssMode?, earlyHints?, modulePreload? }` | `{}` | SSG options — see **[SSG](/docs/ssg)** |
-| `isr`        | `ISRConfig` (`{ revalidate, maxEntries?, cacheKey?, store?, tagsForRequest? }`) | —       | Runtime ISR config (only used when `mode: "isr"`)            |
-| `adapter`    | `"node" \| "bun" \| "static" \| "vercel" \| "cloudflare" \| "netlify" \| Adapter` | auto     | Deployment adapter (name or constructed instance). When unset, the build platform is auto-detected from its env (`VERCEL` / `NETLIFY` / `CF_PAGES`) and that adapter is used — local builds default to `"node"` |
+| `mode`       | `"ssr" \| "ssg" \| "spa" \| "isr"`                                            | `"ssr"` | Global rendering mode. `zero()`'s own parameter also widens this to accept `"auto"` (EXPERIMENTAL — per-route inference, see [Per-route render modes](#per-route-render-modes-hybrid-rendering)); `ZeroConfig.mode` itself never carries `"auto"` |
+| `ssr.mode`   | `"stream" \| "string"`                                                        | `"string"` | SSR output mode. `"stream"` flushes the shell first and streams Suspense boundaries — opt in with `ssr: { mode: 'stream' }`. ISR routes always render buffered (the cache stores complete responses) regardless of this setting |
+| `ssg`        | `{ paths?, format?, modulePreload?, speculationRules?, viewTransitions?, cssMode?, earlyHints?, emit404?, emitRedirects?, redirectsAsHtml?, onPathError?, errorArtifact?, concurrency?, onProgress?, splitChunks? }` | `{}` | SSG options — see **[SSG](/docs/ssg)** |
+| `isr`        | `ISRConfig` (`{ revalidate, maxEntries?, revalidateTimeoutMs?, cacheKey?, expireOnTimeout?, store?, revalidateRequest?, tagsForRequest? }`) | —       | Runtime ISR config (only used when `mode: "isr"`)            |
+| `routeRules` | `Record<string, { renderMode?: RenderMode }>`                                 | —       | Central glob-keyed per-path render-mode overrides (`'*'` = one segment, `'**'` = any depth). Applies only to routes without their own `renderMode` export — precedence is route-file export > `routeRules` > app `mode`. See [Per-route render modes](#per-route-render-modes-hybrid-rendering) |
+| `adapter`    | `"node" \| "bun" \| "static" \| "vercel" \| "cloudflare" \| "netlify" \| Adapter` | auto     | Deployment adapter (name or constructed instance, e.g. `adapter: vercelAdapter()`). When unset, the build platform is auto-detected from its env (`VERCEL` / `NETLIFY` / `CF_PAGES`) and that adapter is used — local/self-hosted builds default to `"node"` |
 | `base`       | `string`                                                                      | `"/"`   | Base URL path — single source of truth (see [Base Path](#base-path)) |
-| `i18n`       | `I18nRoutingConfig`                                                           | —       | Build-time locale-prefixed route duplication — see **[SSG → i18n](/docs/ssg#i18n-localized-routes)** |
-| `middleware` | `Middleware[]`                                                                | `[]`    | Global server middleware                                     |
+| `i18n`       | `I18nRoutingConfig`                                                           | —       | Build-time locale-prefixed route duplication (fans every route into per-locale copies at build) — see **[SSG → i18n](/docs/ssg#i18n-localized-routes)**. Independent of the `i18nRouting()` Vite plugin below, which only does request-time locale detection — the two compose |
+| `middleware` | `Middleware[]`                                                                | `[]`    | App-level server middleware, applied to every route            |
 | `port`       | `number`                                                                      | `3000`  | Dev/preview server port                                     |
 | `typedRoutes`| `boolean`                                                                     | `false` | Generate `src/pyreon-routes.d.ts` so `<Link href>` autocompletes your routes — see **[Typed routes](#typed-routes)** |
+| `entryClient`| `string \| false`                                                             | `'/src/entry-client.ts'` | Client entry module, auto-injected as a `<script type="module">` before `<!--pyreon-scripts-->` in `index.html`. `false` disables auto-injection (you add the `<script>` tag yourself) |
+| `image`      | `ImagePluginConfig \| false`                                                  | `{}`    | Auto-wires `imagePlugin` (build-time AVIF/WebP + blur/color placeholder generation for `?optimize` imports). Default `{}` means `webp` fallback, blur placeholder, quality 80 (`imagePlugin`'s own defaults) — see **[Image Processing](#image-processing)**. `false` skips the auto-wire entirely |
+| `font`       | `FontConfig \| false`                                                        | `{}`    | Auto-wires `fontPlugin` (self-hosts Google/local fonts at build time, injects preload + `font-display: swap`). Default `{}` is harmless (no fonts declared) until you pass `google`/`local` — see **[Font Optimization](#font-optimization)** |
 | `seo`        | `SeoPluginConfig`                                                             | —       | Auto-wires `seoPlugin` (sitemap.xml, robots.txt, RSS) — same shape as the plugin config, no manual import. See **[SEO](#seo)** |
 | `favicon`    | `FaviconPluginConfig \| false`                                                | auto    | Explicit config wires `faviconPlugin`; **omitted → file-convention auto-detect** (`src/favicon.svg` → full set, zero config); `false` disables — see **[Favicons](#favicons)** |
 | `theme`      | `boolean`                                                                     | `false` | `true` auto-injects the pre-paint `themeScript` into every page `<head>` (no manual script tag) — see **[Theme System](#theme-system)** |
 | `og`         | `OgImagePluginConfig`                                                         | —       | Auto-wires `ogImagePlugin` (templates + text layers → per-locale social-share images) |
 | `ai`         | `AiPluginConfig`                                                              | —       | Auto-wires `aiPlugin` (llms.txt, llms-full.txt, /.well-known/ai-plugin.json, OpenAPI spec) |
+| `env`        | `Record<string, SchemaEntry>`                                                | —       | Declares the PUBLIC (`ZERO_PUBLIC_*`) env schema — a missing/invalid declared var **fails the build** (warns in dev). See **[Fail the build on a missing public var](#fail-the-build-on-a-missing-public-var-zero-env)** |
+| `perfAdvisor`| `boolean \| { jsBudget?: number }`                                            | off     | Opt-in build-time per-route perf advisor — flags routes over a JS-size budget (default 150 KB) and `content-visibility: auto` without `contain-intrinsic-size`; writes `dist/_pyreon-perf-advisor.json`. Advisory only, never fails the build |
+| `buildSummary`| `boolean`                                                                    | `true`  | End-of-build branded summary (client assets, server bundle, prerendered page count). `false` for minimal logs — see [Build Output](#build-output) |
 
 `resolveConfig(userConfig?)` merges user config with the defaults above (`mode: 'ssr'`, `base: '/'`, `port: 3000`, `adapter: 'node'`). `ssr.mode` defaults to `'string'` (buffered). Streaming is opt-in: `ssr: { mode: 'stream' }`. ISR routes always render buffered, because the cache stores complete responses.
 
@@ -356,6 +363,12 @@ export function guard({ params }) {
 // Optional: head/meta tags
 export const meta = { title: 'User Profile', description: 'View user profile details' }
 
+// Optional: per-route error boundary component — overrides the nearest
+// `_error.tsx` for THIS route only. Receives { params, query, meta, error }.
+export function error(props) {
+  return <p>Couldn't load user {props.params.id}: {props.error.message}</p>
+}
+
 // Optional: per-route rendering mode override
 export const renderMode = 'ssr' // "ssr" | "ssg" | "spa" | "isr"
 
@@ -394,7 +407,7 @@ The default mode. Pages are rendered on the server for every request and hydrate
 ```ts
 defineConfig({
   mode: 'ssr',
-  ssr: { mode: 'string' }, // streaming is the default for mode: 'ssr'; 'string' opts back to buffered
+  ssr: { mode: 'stream' }, // buffered ('string') is the default for a zero() app; opt IN to streaming
 })
 ```
 
@@ -516,9 +529,17 @@ Precedence is always: route-file `export const renderMode` (closest to the code)
 
 **No silent missing pages.** Under SSG, a dynamic route (`[id].tsx`) with no `getStaticPaths` cannot be enumerated — the build now warns loudly, naming the file and the three fixes (add `getStaticPaths`, hand-list `ssg.paths`, or declare `renderMode = 'spa'` if a client-rendered shell is intended). Routes that declare a non-static mode and API routes are exempt.
 
-### Streaming by default (`mode: 'ssr'`)
+### Streaming is opt-in (`ssr: { mode: 'stream' }`)
 
-`mode: 'ssr'` streams by default: the shell flushes immediately and Suspense boundaries resolve out-of-order (styles flush inline per boundary, so streamed content arrives styled). Opt back into buffered rendering with `ssr: { mode: 'string' }`. ISR apps stay buffered — the SWR cache stores complete bodies; a per-route `renderMode = 'isr'` declaration inside a streaming app automatically uses a buffered render for the cached routes.
+`ssr.mode` defaults to `'string'` (buffered — `renderToString`, one complete response) for a `zero()` app, same as `createHandler`'s own default. Opt into streaming explicitly:
+
+```ts
+zero({ mode: 'ssr', ssr: { mode: 'stream' } })
+```
+
+With `mode: 'stream'`, the shell flushes immediately and Suspense boundaries resolve out-of-order (styles flush inline per boundary, so streamed content arrives styled). ISR apps stay buffered regardless of this setting — the SWR cache stores complete response bodies, and a per-route `renderMode = 'isr'` declaration inside a streaming app automatically uses a buffered render for the cached routes.
+
+A narrow exception exists at the framework level, worth knowing if you hand-build your own `entry-server.ts` calling `createServer({ config })` OUTSIDE the `zero()` Vite plugin entirely (so `__ZERO_SERVER_CONFIG__` is never injected): in that specific case, an omitted `ssr.mode` falls back to `'stream'` when the app `mode` is `'ssr'`. This fallback never fires for a normal `zero()`-plugin app — `resolveConfig` always fills in `ssr.mode: 'string'` before the runtime ever sees the config, so the default you get in practice is buffered.
 
 ## Server Islands
 
@@ -987,7 +1008,7 @@ Vite's [`server.proxy`](https://vite.dev/config/server-options#server-proxy) wor
 
 ```ts title="vite.config.ts"
 import pyreon from '@pyreon/vite-plugin'
-import zero from '@pyreon/zero'
+import zero from '@pyreon/zero/server'
 
 export default {
   plugins: [pyreon(), zero({ mode: 'ssr' })],
@@ -1314,7 +1335,7 @@ Declare your public env schema in the plugin config and the **build fails** if a
 ```ts
 // vite.config.ts
 import { url } from '@pyreon/zero/env'
-import { zero } from '@pyreon/zero'
+import zero from '@pyreon/zero/server'
 
 export default {
   plugins: [
