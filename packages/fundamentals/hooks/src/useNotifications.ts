@@ -30,8 +30,41 @@ export interface UseNotificationsResult {
 }
 
 function post(title: string, body: string): void {
-  // eslint-disable-next-line no-new -- the Notification side effect IS the API
-  new Notification(title, { body })
+  /* v8 ignore next — only reached after `available()` (which requires
+     isClient); the guard states the SSR contract at the `navigator` access. */
+  if (!isClient) return
+  try {
+    // eslint-disable-next-line no-new -- the Notification side effect IS the API
+    new Notification(title, { body })
+  } catch (err) {
+    // Android Chrome (and any page controlled by a service worker there)
+    // THROWS from the constructor — "Illegal constructor. Use
+    // ServiceWorkerRegistration.showNotification() instead." Uncaught, that
+    // escaped the click handler and nothing was shown. The registration's
+    // `showNotification` is the platform's supported path, so use it.
+    const sw = (navigator as Navigator & { serviceWorker?: ServiceWorkerContainer }).serviceWorker
+    if (sw) {
+      void sw.ready.then((reg) => reg.showNotification(title, { body })).catch(() => {})
+      return
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(
+        '[Pyreon] useNotifications: the Notification constructor threw and no service worker is registered to fall back to — nothing was shown.',
+        err,
+      )
+    }
+  }
+}
+
+let warnedUnavailable = false
+function warnUnavailable(): void {
+  warnIfInsecureContext('useNotifications')
+  if (process.env.NODE_ENV !== 'production' && !warnedUnavailable) {
+    warnedUnavailable = true
+    console.warn(
+      '[Pyreon] useNotifications: notify() was called but the Notification API is not available here, so nothing was shown.',
+    )
+  }
 }
 
 /**
@@ -57,7 +90,10 @@ export function useNotifications(): UseNotificationsResult {
       void Notification.requestPermission()
     },
     notify: (title, body) => {
-      if (!available()) return
+      if (!available()) {
+        warnUnavailable()
+        return
+      }
       if (Notification.permission === 'granted') {
         post(title, body)
       } else if (Notification.permission !== 'denied') {
