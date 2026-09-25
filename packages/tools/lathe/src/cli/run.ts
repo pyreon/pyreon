@@ -23,6 +23,7 @@ import { OUTPUT_MANIFEST, orphanedPaths } from '../core/output-manifest'
 import { diffCommittedSurface, type ApiSurface, type SurfaceChange } from '../core/surface'
 import { resolveNativeCompiler, verifyNative, worstVerdict } from '../verify/lower'
 import { closest } from '../core/suggest'
+import { fetchRemoteParts } from './remote-refs'
 import { renderReport } from './report'
 
 export interface Argv {
@@ -285,6 +286,13 @@ export interface Fs {
   /** Delete one file. Only ever called for a path a previous run generated. */
   remove(path: string): void
   join(...parts: string[]): string
+  /**
+   * The ABSOLUTE path of `path` -- where a file outside this abstraction (the
+   * remote-document cache, written by `lathe pull`'s code) must go so it lands
+   * in the project, not in the process's working directory. Absent for an
+   * in-memory fs, which then gets no cache.
+   */
+  resolve?(path: string): string
 }
 
 export interface RunResult {
@@ -453,9 +461,16 @@ async function runChecked(
     try {
       // `location` + `readDocument` resolve a `$ref` into another FILE against
       // the spec's own path and bundle it (see `input/bundle.ts`).
+      const text = fs.read(config.input)
+      // `remoteRefs: 'fetch'`: the remote parts are downloaded FIRST, so the
+      // generation itself stays synchronous and reads only what it is handed.
+      const remoteDocuments =
+        config.remoteRefs === 'fetch'
+          ? await fetchRemoteParts(text, config.input, (id) => fs.read(id), config.remoteHeaders, remoteCacheDir(fs))
+          : undefined
       generated.push({
         config,
-        result: generate(fs.read(config.input), config, { location: config.input, readDocument: (id) => fs.read(id) }),
+        result: generate(text, config, { location: config.input, readDocument: (id) => fs.read(id), remoteDocuments }),
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -613,6 +628,11 @@ function report(runs: RunOutcome[], argv: Argv): RunResult {
     }
   }
   return { code, stdout, stderr: '', documents: documentsOf(runs) }
+}
+
+/** `lathe pull`'s cache directory, when there is a `node_modules` to hold it. */
+function remoteCacheDir(fs: Fs): string | undefined {
+  return fs.resolve && fs.exists('node_modules') ? fs.resolve(fs.join('node_modules', '.cache', 'lathe')) : undefined
 }
 
 function documentsOf(runs: ReadonlyArray<{ result: { documents: readonly string[] } }>): string[] {

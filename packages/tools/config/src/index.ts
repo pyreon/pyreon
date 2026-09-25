@@ -148,6 +148,14 @@ export interface LatheSection {
    * body through, `off` skips validation.
    */
   responseValidation?: 'strict' | 'warn' | 'off'
+  /**
+   * What `generate` does with a `$ref` into a REMOTE document: `off` (default)
+   * reports it and stays offline; `fetch` downloads it with `lathe pull`'s
+   * rules (ETag cache, credentials per origin, a failed fetch fails the run).
+   */
+  remoteRefs?: 'off' | 'fetch'
+  /** Headers for `remoteRefs: 'fetch'`, keyed by origin — each set goes to that origin only. */
+  remoteHeaders?: Readonly<Record<string, Readonly<Record<string, string>>>>
 }
 
 /** One entry of {@link LatheSection.projects}. */

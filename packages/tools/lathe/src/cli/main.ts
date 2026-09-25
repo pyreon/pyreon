@@ -68,6 +68,7 @@ export async function main(argvRaw: readonly string[], cwd: string): Promise<num
     exists: (p) => realFs.exists(abs(p)),
     mkdirp: (p) => realFs.mkdirp(abs(p)),
     remove: (p) => realFs.remove(abs(p)),
+    resolve: abs,
   }
   let section = loaded.section
   // Set once the watcher exists: every document a run READ -- the spec and

@@ -896,8 +896,9 @@ response is an OpenAPI 3.x or Swagger 2.0 document. `ETag` / `Last-Modified` are
 kept under `node_modules/.cache/lathe` and sent back as a conditional request —
 only while the file on disk is still exactly what was fetched.
 
-A spec that `$ref`s other documents is fetched whole — each referenced document
-with its own conditional request — and written as ONE bundled spec. The auth
+A spec that `$ref`s other documents is fetched whole — the root and each
+referenced document with its own conditional request — and written as ONE
+bundled spec. The auth
 headers go to the spec's own origin only, never to another host a `$ref` names;
 if any part cannot be fetched, nothing is written.
 
@@ -943,7 +944,7 @@ The input layer resolves a spec's semantics once, so no emitter rediscovers them
 - **Servers** — variables take their `default`; an operation- or path-level server travels with its operation (on native, as its own literal-base client); a relative server is reported, and `lathe pull` prints the absolute URL it resolves to.
 - **Names** — models, operation ids, path placeholders and tag files that normalize to one identifier are disambiguated deterministically; nothing is dropped.
 - **Swagger 2.0** — converted to 3.0 first (`definitions`, body / `formData` parameters, `produces` / `consumes`, `securityDefinitions`, `host` + `basePath` + `schemes`, `x-nullable`, `collectionFormat`); what 3.0 cannot spell is a `swagger2-lossy` note. Kubernetes' spec generates output that typechecks.
-- **Multi-file specs** — a `$ref` into another file (JSON or YAML) is resolved against the spec's own path and bundled: schemas become named models (stable names, cycles across files closed), everything else is inlined. `generate` never fetches; `lathe pull` bundles remote parts. DigitalOcean's 2,954-file source gives the same models and operations as Redocly's bundle.
+- **Multi-file specs** — a `$ref` into another file (JSON or YAML) is resolved against the spec's own path and bundled: schemas become named models (stable names, cycles across files closed), everything else is inlined. `generate` stays offline by default; `remoteRefs: 'fetch'` (credentials per origin via `remoteHeaders`, ETag-cached, a failed fetch fails the run) or `lathe pull` bundles remote parts. DigitalOcean's 2,954-file source gives the same models and operations as Redocly's bundle.
 - **Error responses** — each operation's `4xx` / `5xx` / `4XX` / `default` JSON bodies are its endpoint's `errors`. A rejection's `body` is validated and `matched` names the key it passed, so `err.matched === '404'` narrows `err.body`; hooks carry `EndpointError<typeof op>` as their error type.
 - **Webhooks and callbacks** — `webhooks.ts`: a schema per payload (`webhookSchemas`) and `WebhookHandler<name>` typed from it. No endpoint or hook — the API sends these.
 

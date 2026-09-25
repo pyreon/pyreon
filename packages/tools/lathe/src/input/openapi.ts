@@ -28,7 +28,7 @@ import type {
   StringFormat,
 } from '../core/ir'
 import { assignNames, ident, modelIdent, operationIdent, operationIdFrom, tagFile } from '../core/naming'
-import { bundle, collectDocuments, isRemote, referencedDocuments } from './bundle'
+import { bundle, collectDocuments, isRemote, referencedDocuments, type ReadOutcome } from './bundle'
 import { splitByDirection } from './direction'
 import { isSwagger2, upgradeSwagger2 } from './swagger2'
 import { parseSpecText } from './yaml'
@@ -68,6 +68,12 @@ export interface LoadOptions {
    * which bundles it, so generation stays offline and deterministic.
    */
   readDocument?: ((id: string) => string) | undefined
+  /**
+   * REMOTE documents already fetched (`remoteRefs: 'fetch'`), by URL. Without
+   * it a remote `$ref` is reported, never fetched: this reader is synchronous
+   * and offline.
+   */
+  remoteDocuments?: ReadonlyMap<string, ReadOutcome> | undefined
 }
 
 /** Parse a spec document (JSON or YAML text) into the IR. */
@@ -83,10 +89,12 @@ export function loadOpenApi(source: string, options: LoadOptions = {}): LoadResu
   if (refusal) throw new Error(refusal)
   if (specAt !== undefined && readDocument !== undefined && referencedDocuments(raw, specAt).length > 0) {
     const docs = collectDocuments(raw, specAt, (id) => {
+      const fetched = options.remoteDocuments?.get(id)
+      if (fetched) return fetched
       if (isRemote(id)) {
         return {
           error:
-            'a remote document is not fetched at generate time. Run `lathe pull <spec-url>`, which fetches every referenced document (with the same `--header` / `--token`) and writes one bundled spec.',
+            "a remote document is not fetched at generate time. Set `remoteRefs: 'fetch'` in the config, or run `lathe pull <spec-url>`, which fetches every referenced document (with the same `--header` / `--token`) and writes one bundled spec.",
         }
       }
       try {

@@ -23,6 +23,8 @@ import { OUTPUT_MANIFEST, orphanedPaths } from '../core/output-manifest'
 import { diffCommittedSurface, type SurfaceChange } from '../core/surface'
 import { loadConfig } from '../cli/config-file'
 import { closest } from '../core/suggest'
+import type { ReadOutcome } from '../input/bundle'
+import { fetchRemoteParts } from '../cli/remote-refs'
 
 /** The subset of Vite's plugin surface this needs, so vite is not a dependency. */
 export interface LathePluginHost {
@@ -95,6 +97,8 @@ export function runPass(
   root: string,
   mode: 'write' | 'check',
   only?: string,
+  /** Remote parts fetched for `remoteRefs: 'fetch'`, by absolute spec path. */
+  remote?: ReadonlyMap<string, ReadonlyMap<string, ReadOutcome>>,
 ): LathePassResult {
   const abs = (p: string): string => (isAbsolute(p) ? p : resolve(root, p))
   const written: string[] = []
@@ -127,14 +131,22 @@ export function runPass(
     }
     // `location` + `readDocument` resolve a `$ref` into another file against
     // the spec's own path and bundle it (see `input/bundle.ts`).
-    const result = generate(source, project, { location: input, readDocument: (id) => readFileSync(id, 'utf8') })
-    for (const d of result.documents) if (d !== input && !/^https?:\/\//i.test(d)) documents.set(d, input)
+    const result = generate(source, project, {
+      location: input,
+      readDocument: (id) => readFileSync(id, 'utf8'),
+      remoteDocuments: remote?.get(input),
+    })
+    for (const d of result.documents)
+      if (d !== input && !/^https?:\/\//i.test(d)) documents.set(d, input)
     generated.push({ out: abs(project.output), result })
   }
   for (const { out, result } of generated) {
     // Read before the writes below replace it: afterwards only the new
     // surface exists, and the diff is what makes a contract change visible.
-    const changes = diffCommittedSurface(readFileOrUndefined(join(out, 'api-surface.json')), result.surface)
+    const changes = diffCommittedSurface(
+      readFileOrUndefined(join(out, 'api-surface.json')),
+      result.surface,
+    )
     const orphans = orphanedPaths(
       readFileOrUndefined(join(out, OUTPUT_MANIFEST)),
       result.files.map((f) => f.path),
@@ -248,7 +260,10 @@ export function lathe(options: LathePluginOptions = {}): LathePluginHost {
   let configFile: string | undefined
   let effective: LathePluginOptions = options
 
-  const merge = (section: LatheSection | undefined): LathePluginOptions => ({ ...section, ...options })
+  const merge = (section: LatheSection | undefined): LathePluginOptions => ({
+    ...section,
+    ...options,
+  })
   const log = (lines: readonly string[]): void => {
     // eslint-disable-next-line no-console
     for (const l of lines) console.log(l)
@@ -256,6 +271,31 @@ export function lathe(options: LathePluginOptions = {}): LathePluginHost {
   const warnMissing = (pass: LathePassResult): void => {
     // eslint-disable-next-line no-console
     for (const m of pass.missing) console.warn(missingSpecMessage(m))
+  }
+
+  // `remoteRefs: 'fetch'`: remote parts are downloaded once per build start
+  // (and on a config edit) -- a local edit regenerates from them without
+  // re-fetching.
+  const remote = new Map<string, ReadonlyMap<string, ReadOutcome>>()
+  const fetchRemote = async (): Promise<void> => {
+    remote.clear()
+    const cacheDir = join(root, 'node_modules', '.cache', 'lathe')
+    for (const project of resolveProjects(effective)) {
+      if (project.remoteRefs !== 'fetch') continue
+      const input = isAbsolute(project.input) ? project.input : resolve(root, project.input)
+      const source = readFileOrUndefined(input)
+      if (source === undefined) continue
+      remote.set(
+        input,
+        await fetchRemoteParts(
+          source,
+          input,
+          (id) => readFileSync(id, 'utf8'),
+          project.remoteHeaders,
+          cacheDir,
+        ),
+      )
+    }
   }
 
   // Referenced documents (a split spec's parts) -> the spec that owns them.
@@ -279,20 +319,27 @@ export function lathe(options: LathePluginOptions = {}): LathePluginHost {
       effective = merge(loaded.section)
     },
     buildStart() {
-      const mode = command === 'build' && effective.checkOnBuild === true ? 'check' : 'write'
-      const pass = runPass(effective, root, mode)
-      track(pass)
-      if (pass.stale.length > 0) {
-        // A build error, not a warning. Generated output that disagrees with
-        // its spec compiles and then fails against the real server.
-        throw new Error(
-          `[Pyreon] lathe: ${pass.stale.length} generated file(s) are stale against the spec:\n` +
-            `${pass.stale.map((f) => `  ${f}`).join('\n')}\n` +
-            'Run `lathe generate` and commit the result.',
-        )
+      const generateNow = (): void => {
+        const mode = command === 'build' && effective.checkOnBuild === true ? 'check' : 'write'
+        const pass = runPass(effective, root, mode, undefined, remote)
+        track(pass)
+        if (pass.stale.length > 0) {
+          // A build error, not a warning. Generated output that disagrees with
+          // its spec compiles and then fails against the real server.
+          throw new Error(
+            `[Pyreon] lathe: ${pass.stale.length} generated file(s) are stale against the spec:\n` +
+              `${pass.stale.map((f) => `  ${f}`).join('\n')}\n` +
+              'Run `lathe generate` and commit the result.',
+          )
+        }
+        warnMissing(pass)
+        log(passSummary(pass))
       }
-      warnMissing(pass)
-      log(passSummary(pass))
+      // Synchronous unless a project fetches remote parts: the generation must
+      // have run before Vite resolves anything, and an async hook for the
+      // common offline case would only add a tick.
+      if (!resolveProjects(effective).some((p) => p.remoteRefs === 'fetch')) return generateNow()
+      return fetchRemote().then(generateNow)
     },
     configureServer(server) {
       if (effective.watch === false) return
@@ -316,7 +363,8 @@ export function lathe(options: LathePluginOptions = {}): LathePluginHost {
           }
           // A spec change regenerates the project that owns it; a config
           // change can move every project, so it regenerates all of them.
-          const pass = runPass(effective, root, 'write', isConfig ? undefined : path)
+          if (isConfig) await fetchRemote()
+          const pass = runPass(effective, root, 'write', isConfig ? undefined : path, remote)
           track(pass)
           warnMissing(pass)
           log(passSummary(pass))

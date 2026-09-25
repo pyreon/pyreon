@@ -146,8 +146,25 @@ before generation:
 - An unreadable file or an inline self-inclusion is a note; `example` / `enum`
   / `default` values are data and never rewritten.
 
-`generate` reads files, never the network: a remote `$ref` is reported, and
-`lathe pull` (below) bundles it. `--watch` and the Vite plugin regenerate when
+`generate` reads files, not the network, by default: a remote `$ref` is
+reported, and `lathe pull` (below) bundles it. `remoteRefs: 'fetch'` lets
+`generate` download the remote parts of a spec on disk itself, with the same
+rules as `pull` — each part conditional on its own `ETag`, credentials from
+`remoteHeaders` sent only to their origin, and a part that cannot be fetched
+failing the run instead of becoming `unknown`:
+
+```ts
+export default {
+  lathe: {
+    input: './openapi.yaml',
+    remoteRefs: 'fetch',
+    remoteHeaders: { 'https://specs.internal.test': { Authorization: `Bearer ${process.env.SPEC_TOKEN}` } },
+  },
+}
+```
+
+Opting in makes the output depend on those servers, so a `check` in CI needs
+network access to them. `--watch` and the Vite plugin regenerate when
 any referenced file changes. DigitalOcean's own 2,954-file description
 produces the same 1,151 models and 715 operations as Redocly's bundle of it.
 
@@ -763,6 +780,8 @@ Paths passed on the command line are relative to the working directory.
 | `responseValidation` | `'strict' \| 'warn' \| 'off'` | `'strict'` | the web client's default response validation; `configureApi({ validate })` switches it at runtime |
 | `pagination` | `Record<operation, PaginationConfig>` | — | declared infinite queries; see [Infinite queries](#infinite-queries-declared) |
 | `strictNative` | `boolean` | `false` | exit 1 when a native module does not lower |
+| `remoteRefs` | `'off' \| 'fetch'` | `'off'` | a `$ref` into a REMOTE document in a spec on disk: `off` reports it and stays offline; `fetch` downloads it with `lathe pull`'s rules (ETag cache, credentials per origin, a failed fetch fails the run) |
+| `remoteHeaders` | `Record<origin, Record<string, string>>` | — | headers for `remoteRefs: 'fetch'`; each set is sent only to its own origin |
 | `projects` | `{ name, input, ...any key above }[]` | — | several specs in one run; see [Several specs](#several-specs-one-pass) |
 
 An unknown `plugins`, `client`, `validator` or `target` value is refused by
@@ -854,7 +873,8 @@ was fetched, so a local edit is always re-downloaded rather than "confirmed
 unchanged".
 
 A spec that `$ref`s other documents is fetched WHOLE: every referenced document
-is downloaded, each with its own conditional request, and one bundled spec is
+is downloaded, each with its own conditional request (the root spec included —
+its body is cached beside the parts), and one bundled spec is
 written (JSON for a `.json` destination, YAML otherwise). `--header` /
 `--token` are sent to the spec's own origin only — never to another host a
 `$ref` names. If any referenced document cannot be fetched, nothing is written.
@@ -912,8 +932,8 @@ never touched. Commit the manifest with the rest of the output.
 - **Response headers are not generated** — reported as a `loss` note. (Header
   and cookie parameters ARE: they are typed `headers:` / `cookies:` call
   arguments.) A NON-JSON error body stays untyped.
-- **`generate` never fetches.** A remote `$ref` in a spec on disk is reported;
-  `lathe pull` a remote spec to bundle its remote parts. Names of hoisted
+- **`generate` does not fetch unless told to.** A remote `$ref` in a spec on
+  disk is reported by default; `remoteRefs: 'fetch'` or `lathe pull` bundles it. Names of hoisted
   schemas are stable per target, but a new collision can renumber a
   `<name>2` model.
 - **Webhooks and callbacks are types and schemas only** — Lathe generates no
