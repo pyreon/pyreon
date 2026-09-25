@@ -7,7 +7,7 @@
   "@pyreon/elements::element": 4600,
   "@pyreon/styler::useTheme": 1183,
   "@pyreon/styler::css": 1588,
-  "@pyreon/core::jsx": 664,
+  "@pyreon/core::jsx": 683,
   "@pyreon/hooks::useEventListener": 768,
   "@pyreon/hooks::useAuth": 731,
   "@pyreon/charts::plot-minimal": 46300,
