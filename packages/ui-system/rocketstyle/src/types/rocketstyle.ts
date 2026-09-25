@@ -33,7 +33,7 @@ export type InnerComponentProps = {
 export type ThemeObject<O> = O & { call?: never; apply?: never }
 
 export type RocketStyleComponent<
-  OA extends TObj = {},
+  OA extends object = {},
   EA extends TObj = {},
   T extends TObj = {},
   CSS extends TObj = {},
@@ -69,7 +69,7 @@ export type RocketStyleComponent<
  */
 export interface IRocketStyleComponent<
   // original component props
-  OA extends TObj = {},
+  OA extends object = {},
   // extended component props
   EA extends TObj = {},
   // theme
