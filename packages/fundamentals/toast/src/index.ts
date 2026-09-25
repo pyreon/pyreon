@@ -40,6 +40,8 @@ export { _reset, _toasts, toast } from './toast'
 export { Toaster } from './toaster'
 export type {
   Toast,
+  ToastAction,
+  ToastActionContext,
   ToasterProps,
   ToastOptions,
   ToastPosition,

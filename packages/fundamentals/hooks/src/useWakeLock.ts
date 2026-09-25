@@ -1,6 +1,7 @@
-import { isClient, onCleanup, signal } from '@pyreon/reactivity'
+import { isClient, signal } from '@pyreon/reactivity'
 
 import { warnIfInsecureContext } from './secure-context'
+import { onHookCleanup } from './lifecycle'
 
 /**
  * The slice of `WakeLockSentinel` this hook uses. `addEventListener` is
@@ -132,7 +133,7 @@ export function useWakeLock(): WakeLockControls {
       }
     }
     document.addEventListener('visibilitychange', onVisible)
-    onCleanup(() => {
+    onHookCleanup(() => {
       document.removeEventListener('visibilitychange', onVisible)
       // A lock outliving its view keeps the user's screen lit with nothing
       // on it — the battery-drain shape of the listener-pile-up leak class.

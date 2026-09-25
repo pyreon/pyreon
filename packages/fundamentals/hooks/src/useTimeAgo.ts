@@ -1,4 +1,5 @@
-import { onCleanup, signal } from '@pyreon/reactivity'
+import { effect, signal, untrack } from '@pyreon/reactivity'
+import { onHookCleanup } from './lifecycle'
 
 type TimeUnit = 'second' | 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year'
 
@@ -29,7 +30,10 @@ function getRefreshInterval(diffSeconds: number): number {
 }
 
 export interface UseTimeAgoOptions {
-  /** Custom formatter. Receives the value, unit, and whether it's in the past. */
+  /**
+   * Custom formatter. Receives the value, unit, and whether it's in the past.
+   * The "just now" bucket (under 5 seconds) is passed as `(0, 'second', isPast)`.
+   */
   formatter?: (value: number, unit: TimeUnit, isPast: boolean) => string
   /** Update interval override in ms. If not set, adapts based on age. */
   interval?: number
@@ -44,6 +48,9 @@ const defaultFormatter = (() => {
     typeof Intl !== 'undefined' ? new Intl.RelativeTimeFormat('en', { numeric: 'auto' }) : undefined
 
   return (value: number, unit: TimeUnit, isPast: boolean): string => {
+    // The "just now" bucket arrives as `value === 0`. Kept as the literal
+    // phrase for the default English formatter (Intl would say "now").
+    if (value === 0) return 'just now'
     if (rtf) return rtf.format(isPast ? -value : value, unit)
     // Fallback for environments without Intl
     const label = value === 1 ? unit : `${unit}s`
@@ -65,7 +72,9 @@ function computeTimeAgo(
   const diffSeconds = Math.floor(diff / 1000)
   const isPast = target < now
 
-  if (diffSeconds < 5) return 'just now'
+  // Routed through the formatter (as `0 seconds`) rather than returned as a
+  // hard-coded English string, so an i18n formatter covers this bucket too.
+  if (diffSeconds < 5) return formatter(0, 'second', isPast)
 
   for (const { unit, seconds } of INTERVALS) {
     const value = Math.floor(diffSeconds / seconds)
@@ -75,7 +84,7 @@ function computeTimeAgo(
   /* v8 ignore next — unreachable: line 68 returns for diffSeconds < 5, and the
      `second` interval (seconds=1) yields value = diffSeconds >= 5 >= 1, so the
      loop always returns first. Defensive fallback only. */
-  return 'just now'
+  return formatter(0, 'second', isPast)
 }
 
 /**
@@ -106,7 +115,7 @@ export function useTimeAgo(
   const formatter = options?.formatter ?? defaultFormatter
   const resolveDate = typeof date === 'function' ? date : () => date
 
-  const result = signal(computeTimeAgo(resolveDate(), formatter))
+  const result = signal('')
 
   // Disposed flag prevents timer chain from continuing after cleanup.
   // Without this, the setTimeout callback could fire after the component
@@ -114,28 +123,37 @@ export function useTimeAgo(
   let timer: ReturnType<typeof setTimeout> | undefined
   let disposed = false
 
-  function tick() {
-    if (disposed) return
-
-    const d = resolveDate()
+  function render(d: Date | number): void {
     result.set(computeTimeAgo(d, formatter))
-
-    // Schedule next update with adaptive interval
+    // (Re)schedule with an adaptive interval — the age just changed, so the
+    // refresh cadence may have too.
+    if (timer !== undefined) clearTimeout(timer)
     const target = typeof d === 'number' ? d : d.getTime()
     const diffSeconds = Math.floor(Math.abs(Date.now() - target) / 1000)
     const interval = options?.interval ?? getRefreshInterval(diffSeconds)
     timer = setTimeout(tick, interval)
   }
 
-  // Schedule first tick (don't call synchronously — let cleanup register first)
-  timer = setTimeout(tick, 0)
+  function tick(): void {
+    if (disposed) return
+    render(untrack(resolveDate))
+  }
 
-  onCleanup(() => {
+  // The date is read INSIDE an effect so a reactive getter is tracked: a
+  // change re-renders immediately and restarts the timer. It used to be read
+  // only by the timer, so `useTimeAgo(() => post().createdAt)` kept showing
+  // the previous post's age until the next tick (up to an hour later).
+  const e = effect(() => {
+    const d = resolveDate()
+    untrack(() => render(d))
+  })
+
+  onHookCleanup(() => {
     disposed = true
-    /* v8 ignore next — `timer` is always a live timeout id here (assigned on
-       the line above onCleanup registers, and reassigned by every tick), so the
-       falsy arm is defensive only. */
-    if (timer) clearTimeout(timer)
+    e.dispose()
+    /* v8 ignore next — `timer` is always a live timeout id here (render()
+       runs synchronously in the effect above, before this registers). */
+    if (timer !== undefined) clearTimeout(timer)
   })
 
   return result

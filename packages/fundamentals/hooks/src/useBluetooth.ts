@@ -1,6 +1,7 @@
-import { batch, isClient, onCleanup, signal } from '@pyreon/reactivity'
+import { batch, isClient, signal } from '@pyreon/reactivity'
 
 import { warnIfInsecureContext } from './secure-context'
+import { onHookCleanup } from './lifecycle'
 
 /** A device seen during a scan. */
 export interface BluetoothDevice {
@@ -38,8 +39,9 @@ export interface UseBluetoothResult {
  *
  * The web implementation uses `navigator.bluetooth.requestDevice`, which
  * shows the browser's own chooser and resolves with ONE device — so on web
- * `scan()` appends a single device per call and `scanning` is true only
- * while the chooser is open. That difference is real and documented rather
+ * each `scan()` REPLACES the list with the single device picked (like every
+ * `scan()`, it clears the previous results first), and `scanning` is true
+ * only while the chooser is open. That difference is real and documented rather
  * than papered over: the reactive SHAPE is identical, the interaction model
  * is the platform's.
  *
@@ -109,7 +111,7 @@ export function useBluetooth(): UseBluetoothResult {
     scanning.set(false)
   }
 
-  onCleanup(() => {
+  onHookCleanup(() => {
     scanning.set(false)
   })
 

@@ -127,14 +127,19 @@ export async function render() {
 }
 ```
 
-For streaming SSR with Suspense support:
+For streaming SSR with Suspense support — `renderToStream` returns a `ReadableStream<string>` you hand to a `Response` (or pipe to your platform's writable):
 
 ```tsx title="src/entry-server.tsx"
 import { renderToStream } from '@pyreon/runtime-server'
 import App from './App'
 
-export function render(res: WritableStream) {
-  return renderToStream(<App />, res)
+export function render(): ReadableStream<string> {
+  return renderToStream(<App />)
+}
+
+// e.g. in a Request-handling server entry:
+export function handleRequest() {
+  return new Response(render(), { headers: { 'Content-Type': 'text/html' } })
 }
 ```
 
