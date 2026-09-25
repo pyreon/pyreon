@@ -118,6 +118,8 @@ import {
   planGuard,
   readsSubject,
   stmtExprs,
+  isNarrowablePath,
+  truthinessFor,
   nonPathSubjectWarning,
   unnarrowableSubject,
   unnarrowableWarning,
@@ -4368,9 +4370,10 @@ function kotlinCondition(e: ExprIR, emit: (x: ExprIR) => string): string {
   // JS truthiness on an optional string / number / boolean — see the Swift
   // twin. A stable identifier keeps the explicit `x != null && …` form so the
   // branch still smart-casts it.
-  const t = narrowingFor(e, _kotlinExprInferCtx, _activePropsParamName)
+  const t = truthinessFor(e, _kotlinExprInferCtx, _activePropsParamName)
   if (t !== null && t.truth !== null) {
-    const x = emit(t.subject)
+    const raw = emit(t.subject)
+    const x = isNarrowablePath(t.subject, _activePropsParamName) ? raw : `(${raw})`
     const stable = t.subject.kind === 'identifier' && !_signalNames.has(t.subject.name)
     if (t.truth === 'boolean') return t.presentWhenTrue ? `${x} == true` : `${x} != true`
     const test = t.truth === 'string' ? 'isNotEmpty()' : 'toDouble() != 0.0'

@@ -159,6 +159,38 @@ describe('JS truthiness is kept for strings', () => {
   })
 })
 
+describe('a condition whose branch does not read the value', () => {
+  it('Swift tests presence instead of binding a value nothing reads', () => {
+    const src = `export function App() {
+  const n = signal(0)
+  const f = (b: Book | undefined) => { if (b) { n.set(1) } }
+  return <Text>{n()}</Text>
+}`
+    const sw = swift(src).code
+    expect(sw).toContain('if b != nil {')
+    expect(sw).not.toContain('if let b')
+  })
+
+  it('a NON-path optional string keeps JS truthiness (the empty string is falsy)', () => {
+    const src = `export function App() {
+  const items = signal<Book[]>([])
+  return (
+    <Stack>
+      <Text>{items().find((b) => b.title === 'a')?.note ? 'noted' : 'none'}</Text>
+      {items().find((b) => b.title === 'a')?.note && <Text>has note</Text>}
+    </Stack>
+  )
+}`
+    const sw = swift(src)
+    expect(sw.warnings).toEqual([])
+    expect(sw.code).toContain('(items.first(where: { b in b.title == "a" })?.note)?.isEmpty == false ? "noted" : "none"')
+    expect(sw.code).toContain('if (items.first(where: { b in b.title == "a" })?.note)?.isEmpty == false {')
+    const kt = kotlin(src)
+    expect(kt.warnings).toEqual([])
+    expect(kt.code).toContain('if ((items.find({ b -> b.title == "a" })?.note)?.isNotEmpty() == true) "noted" else "none"')
+  })
+})
+
 describe('shapes that cannot be narrowed are NAMED', () => {
   it('an optional that is not a re-readable path (a `.find(…)` call)', () => {
     const src = `export function App() {
@@ -237,6 +269,14 @@ export function App() {
   }
   const sLen = (s: string | undefined): number => (s === undefined ? 0 : s.length)
   const sTruthy = (s: string | undefined): number => (s ? s.length : -1)
+  const anyNote = (): boolean => {
+    if (sel()?.note) {
+      return true
+    }
+    return false
+  }
+  const items = signal<Book[]>([])
+  const firstNote = (): boolean => (items().find((b) => b.title === 'x')?.note ? true : false)
   const clear = () => {
     const cur = sel()
     if (!cur) return
@@ -254,6 +294,9 @@ export function App() {
       <Text>{lenOf(sel())}</Text>
       <Text>{sLen('x')}</Text>
       <Text>{sTruthy('')}</Text>
+      <Text>{anyNote() ? 'y' : 'n'}</Text>
+      <Text>{firstNote() ? 'y' : 'n'}</Text>
+      {items().find((b) => b.title === 'a')?.note ? <Text>noted</Text> : <Text>none</Text>}
       <Text>{noteLen({ title: 'a' })}</Text>
       <Text>{tagCount({ title: 'a' })}</Text>
       <Text>{firstTag({ title: 'a' })}</Text>

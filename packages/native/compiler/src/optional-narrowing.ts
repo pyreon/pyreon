@@ -90,6 +90,22 @@ export function narrowingFor(
 }
 
 /**
+ * A JS TRUTHINESS test on an optional string / number / boolean, for any
+ * subject — a path OR an arbitrary expression (`items().find(…)?.note`). The
+ * condition itself evaluates the subject once (`(x)?.isEmpty == false`), so no
+ * binding is needed when the branch does not read it again; a branch that does
+ * is the separate `unnarrowableSubject` case. Null for a nil-only test.
+ */
+export function truthinessFor(
+  cond: ExprIR,
+  ctx: InferenceCtx,
+  propsParamName: string | undefined,
+): Narrowing | null {
+  const n = analyzeCond(cond, ctx, propsParamName, false)
+  return n !== null && n.truth !== null ? n : null
+}
+
+/**
  * The subject of a nil / truthiness test that is optional but NOT a
  * narrowable path — `items().find((i) => i.id === id) ? items().find(…).title
  * : ''` — when one of `readers` reads it again. Re-reading a call with

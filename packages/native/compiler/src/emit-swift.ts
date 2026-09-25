@@ -126,6 +126,8 @@ import {
   planGuard,
   readsSubject,
   stmtExprs,
+  isNarrowablePath,
+  truthinessFor,
   nonPathSubjectWarning,
   unnarrowableSubject,
   unnarrowableWarning,
@@ -5247,9 +5249,12 @@ function swiftCondition(e: ExprIR, emit: (x: ExprIR) => string): string {
   // JS truthiness on an optional string / number / boolean is more than a nil
   // test: '' / 0 / false are falsy too. Without this, `if (s)` took the branch
   // on an empty string, which the web never does.
-  const t = narrowingFor(e, _exprInferCtx, _activePropsParamName)
+  const t = truthinessFor(e, _exprInferCtx, _activePropsParamName)
   if (t !== null && t.truth !== null) {
-    const x = emit(t.subject)
+    // A non-path subject (`items().find(…)?.note`) is parenthesized so the
+    // appended `?.isEmpty` / `??` binds to the whole expression.
+    const raw = emit(t.subject)
+    const x = isNarrowablePath(t.subject, _activePropsParamName) ? raw : `(${raw})`
     const present =
       t.truth === 'string' ? `${x}?.isEmpty == false` : t.truth === 'number' ? `(${x} ?? 0) != 0` : `${x} == true`
     const absent =
@@ -5394,14 +5399,11 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       if (optN !== null) {
         const narrowedBody = optN.presentWhenTrue ? s.then : s.elseBody
         const otherBody = optN.presentWhenTrue ? s.elseBody : s.then
-        // A bare identifier binds even when the body does not read it (the
-        // established `if let t {` contract); any other subject binds only
-        // when the body needs the unwrapped value.
-        const bindAnyway = optN.subject.kind === 'identifier'
-        if (
-          narrowedBody !== undefined &&
-          (bindAnyway || stmtExprs(narrowedBody).some((x) => readsSubject(x, optN.subject)))
-        ) {
+        // Bind only when the narrowed body READS the value: a binding nothing
+        // reads is swiftc's "value 't' was defined but never used" warning,
+        // and the plain test (`t != nil`, or the truthiness form) says the
+        // same thing. A body that does read it gets `if let`.
+        if (narrowedBody !== undefined && stmtExprs(narrowedBody).some((x) => readsSubject(x, optN.subject))) {
           const binder = binderName(optN.subject, stmtExprs(narrowedBody))
           const rewritten = narrowStmts(narrowedBody, optN.subject, binder)
           if (rewritten !== null) {
