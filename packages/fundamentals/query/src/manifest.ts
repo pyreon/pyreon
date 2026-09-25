@@ -74,7 +74,7 @@ const sub = useSubscription({
     }
   },
 })
-// sub.status() — 'connecting' | 'connected' | 'disconnected' | 'error'
+// sub.status() — 'connecting' | 'connected' | 'disconnected' | 'error' | 'failed'
 // sub.send(data), sub.close(), sub.reconnect()
 
 // 5. useSSE — same pattern as useSubscription but read-only (no send).
@@ -247,7 +247,7 @@ const user = useQuery(() => ({
     {
       name: 'useQueries',
       kind: 'hook',
-      signature: '(queries: () => UseQueriesOptions[]) => Signal<QueryObserverResult[]>',
+      signature: '<const T extends readonly UseQueriesInput[]>(queries: () => T) => Signal<QueriesResults<T>>',
       summary:
         'Subscribe to multiple queries in parallel. Returns a `Signal<QueryObserverResult[]>` — one entry per input query. Options is a function so the query list can depend on signals (e.g. derive one query per item in a reactive array). Each inner query independently tracks its own `data` / `error` / `isFetching` — the outer signal fires when ANY inner query updates.',
       mistakes: [
@@ -294,7 +294,7 @@ usePrefetchQuery(() => ({ queryKey: ['user', id], queryFn: fetchUser }))
       kind: 'hook',
       signature: '(options: UseSubscriptionOptions) => UseSubscriptionResult',
       summary:
-        'Reactive WebSocket with auto-reconnect and QueryClient cache integration. `onMessage` receives the active `QueryClient` so push updates can invalidate or directly patch cached queries in a single line. Exponential backoff on reconnect (default 1s doubling, max 10 attempts — configurable via `reconnectDelay` / `maxReconnectAttempts`). `url` and `enabled` may be signals for reactive connection management — changing the URL closes the old socket and opens a new one. Returns `status` (signal), `send(data)`, `close()`, `reconnect()`.',
+        'Reactive WebSocket with auto-reconnect and QueryClient cache integration. `onMessage` receives the active `QueryClient` so push updates can invalidate or directly patch cached queries in a single line. Jittered exponential backoff on reconnect (default 1s doubling, capped at `maxReconnectDelay` = 30s, max 10 attempts — configurable via `reconnectDelay` / `maxReconnectDelay` / `maxReconnectAttempts`); when attempts run out `status()` is `\'failed\'`, and a browser `online` event starts over. `url` and `enabled` may be signals for reactive connection management — changing the URL closes the old socket and opens a new one. Returns `status` (signal), `send(data)`, `close()`, `reconnect()`.',
       example: `const sub = useSubscription({
   url: 'wss://api.example.com/feed',
   onMessage: (event, client) => {
@@ -303,7 +303,7 @@ usePrefetchQuery(() => ({ queryKey: ['user', id], queryFn: fetchUser }))
     }
   },
 })
-// sub.status() — 'connecting' | 'connected' | 'disconnected' | 'error'
+// sub.status() — 'connecting' | 'connected' | 'disconnected' | 'error' | 'failed'
 // sub.send(data), sub.close(), sub.reconnect()`,
       mistakes: [
         '`onMessage` runs on every frame the socket receives — debounce cache invalidations for high-frequency streams or you\'ll trigger N refetches per second',
@@ -317,7 +317,7 @@ usePrefetchQuery(() => ({ queryKey: ['user', id], queryFn: fetchUser }))
       kind: 'hook',
       signature: '<T>(options: UseSSEOptions<T>) => UseSSEResult<T>',
       summary:
-        'Reactive Server-Sent Events hook with QueryClient cache integration. Same pattern as `useSubscription` but read-only (no `send`). `parse` deserializes raw event data per message (e.g. `JSON.parse`); `events` filters named SSE event types (defaults to generic `message` events). Honours the SSE spec `id` field via `lastEventId()` so the browser includes `Last-Event-ID` on reconnect and the server can resume from the right offset. `onMessage` receives the `QueryClient` for cache invalidation.',
+        'Reactive Server-Sent Events hook with QueryClient cache integration. Same pattern as `useSubscription` but read-only (no `send`). `parse` deserializes raw event data per message (e.g. `JSON.parse`); `events` filters named SSE event types (defaults to generic `message` events). Honours the SSE spec `id` field via `lastEventId()` so the browser includes `Last-Event-ID` on reconnect and the server can resume from the right offset. `onMessage` receives the `QueryClient` for cache invalidation. A `parse` failure surfaces on `error()` (the last good `data()` is kept); a throwing `onMessage` is reported in dev. Same capped, jittered backoff + `\'failed\'` status + `online` recovery as `useSubscription`.',
       mistakes: [
         'Passing `queryKey` (TanStack v4 pattern) instead of using `onMessage` for cache integration — Pyreon\'s `useSSE` does NOT auto-update query cache; use `queryClient.setQueryData` or `invalidateQueries` inside `onMessage`',
         'Omitting `parse` and expecting typed data — without `parse`, `data()` is `string` (raw event payload); pass `parse: JSON.parse` for auto-deserialization',
@@ -332,7 +332,7 @@ usePrefetchQuery(() => ({ queryKey: ['user', id], queryFn: fetchUser }))
   },
 })
 // sse.data() — last parsed message
-// sse.status() — 'connecting' | 'connected' | 'disconnected' | 'error'
+// sse.status() — 'connecting' | 'connected' | 'disconnected' | 'error' | 'failed'
 // sse.lastEventId(), sse.readyState(), sse.close(), sse.reconnect()`,
       seeAlso: ['useSubscription', 'useStream'],
     },
@@ -362,7 +362,7 @@ const feed = useStream((ctx) =>
       name: 'useSuspenseQuery',
       kind: 'hook',
       signature:
-        '<TData, TError>(options: () => QueryObserverOptions<...>) => UseSuspenseQueryResult<TData, TError>',
+        '<TQueryFnData, TError, TData = TQueryFnData, TKey>(options: () => QueryObserverOptions<...>) => UseSuspenseQueryResult<TData, TError>',
       summary:
         'Like `useQuery` but `data` is narrowed to `Signal<TData>` (never undefined). Designed for use inside a `QuerySuspense` boundary that guarantees children only render after the query succeeds — read `user.data().name` unconditionally, no `undefined` guard needed. The Suspense-mode observer fires a background refetch but never transitions `data` back to `undefined` (the previous data is retained as placeholder). `useSuspenseInfiniteQuery` is the equivalent for paginated queries.',
       mistakes: [

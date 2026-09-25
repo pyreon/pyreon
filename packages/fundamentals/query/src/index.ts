@@ -68,7 +68,12 @@ export type { MutationOptions, UseMutationResult } from './use-mutation'
 export { useMutation } from './use-mutation'
 export type { UseMutationStateOptions } from './use-mutation-state'
 export { useMutationState } from './use-mutation-state'
-export type { UseQueriesOptions } from './use-queries'
+export type {
+  QueriesEntryData,
+  QueriesResults,
+  UseQueriesInput,
+  UseQueriesOptions,
+} from './use-queries'
 export { useQueries } from './use-queries'
 export { usePrefetchInfiniteQuery, usePrefetchQuery } from './use-prefetch'
 export type { UseQueryOptions, UseQueryResult } from './use-query'

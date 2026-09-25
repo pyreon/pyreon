@@ -47,3 +47,27 @@ describe('buildInnerBuildOptions — asset-emission inheritance (#2)', () => {
     expect(b.assetsInlineLimit).toBe(predicate)
   })
 })
+
+describe('buildInnerBuildOptions — chunk extension follows the entry', () => {
+  // An `.mjs` entry loads as ESM whatever the project's package.json says; a
+  // `.js` chunk beside it does not, and Node printed MODULE_TYPELESS_PACKAGE_JSON
+  // for every chunk, telling the user to edit their own root manifest.
+  it('names chunks .mjs when the entry is .mjs', () => {
+    const output = (buildInnerBuildOptions(base).rollupOptions as { output: { chunkFileNames?: string } }).output
+    expect(output.chunkFileNames).toBe('assets/[name]-[hash].mjs')
+  })
+
+  it('keeps the configured assetsDir', () => {
+    const output = (buildInnerBuildOptions({ ...base, assetsDir: 'static' }).rollupOptions as {
+      output: { chunkFileNames?: string }
+    }).output
+    expect(output.chunkFileNames).toBe('static/[name]-[hash].mjs')
+  })
+
+  it('leaves a .js entry on Vite defaults', () => {
+    const output = (buildInnerBuildOptions({ ...base, outputFilename: 'entry-server.js' }).rollupOptions as {
+      output: { chunkFileNames?: string }
+    }).output
+    expect(output.chunkFileNames).toBeUndefined()
+  })
+})
