@@ -4782,6 +4782,10 @@ export function kotlinType(t: TypeIR, ctx?: KotlinCtx, signalName?: string): str
         // shape.
         return `Deferred<${kotlinType(t.args[0]!, ctx, signalName)}>`
       }
+      // A service `error` (see infer-type.ts `ERROR_OBJECT`) is `Throwable?`
+      // on Android — `kotlin.Error` is a narrower subclass the runtime never
+      // declares.
+      if (t.name === 'Error' && t.args.length === 0 && !_declaredStructs.some((st) => st.name === 'Error')) return 'Throwable'
       if (t.args.length === 0) return t.name
       return `${t.name}<${t.args.map((a) => kotlinType(a, ctx, signalName)).join(', ')}>`
     }
