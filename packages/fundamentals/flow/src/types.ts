@@ -471,6 +471,9 @@ export interface FlowConfig<TData = Record<string, unknown>> {
    * Maximum number of undo checkpoints kept — default: 50. The oldest
    * checkpoint is dropped past the limit. Each checkpoint is a shallow
    * (nodes + edges) array snapshot, so memory is O(limit × (N + E)) references.
+   * A fraction is floored; a non-positive or non-finite value means 50. Read at
+   * every checkpoint, so a write to `flow.config.historyLimit` applies from the
+   * next one. Same semantics on iOS and Android (`PyreonFlowState.historyLimit`).
    */
   historyLimit?: number
   /** Whether to allow multi-selection — default: true */
