@@ -28,16 +28,22 @@ const HELP = `
       --strict          Exit non-zero on warnings too.
       --no-imports      Skip the source-import scan (phantom/dev-dep/unused detectors).
       --no-write        Don't write loom-report.json.
+      --json            Print the full report as JSON to stdout — and ONLY that, so
+                        "loom scan . --json > report.json" is valid JSON (the
+                        write notice goes to stderr instead). Still writes the
+                        report unless --no-write.
+    dev [dir]           Serve the observatory UI (graph / matrix / cycles / impact /
+                        manifests) on a local dev server that re-reads the workspace
+                        on every reload. Needs vite + @pyreon/vite-plugin (optional
+                        peers; scan needs none of them).
+      --port=<n>        Port (default 5230).
     build [dir]         Prerender the observatory to a STANDALONE STATIC SITE —
                         one page per view, deployable to any static host or
                         openable from disk. Needs vite + @pyreon/vite-plugin +
                         @pyreon/zero (optional peers; scan needs none of them).
       --out=<dir>       Output directory (default loom-dist).
       --base=<path>     Public base path for a subdirectory deploy.
-      --json            Print the full report as JSON to stdout — and ONLY that, so
-                        "loom scan . --json > report.json" is valid JSON (the
-                        write notice goes to stderr instead). Still writes the
-                        report unless --no-write.
+      --no-imports      Skip the source-import scan, as for scan.
   loom --help           Show this help.
 
   Configuration (both homes read the same shape; package.json wins per key):
