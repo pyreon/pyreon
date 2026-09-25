@@ -1,3 +1,5 @@
+import type { VNode } from '@pyreon/core'
+import { resolveDocNode } from './nodes'
 import type {
   BinaryOutputFormat,
   DocNode,
@@ -167,33 +169,41 @@ function applyBaseUrl(node: DocNode, baseUrl: string): DocNode {
  * const md = await render(doc, 'md')        // → Markdown string
  * ```
  *
+ * `node` may be a `DocNode` (a primitive called directly, or the builder) or a
+ * Pyreon VNode tree built by JSX / `h()` — the tree is resolved first
+ * (primitive and user components invoked with children merged, fragments
+ * flattened, accessor children read once), so all three forms render
+ * identically. A DOM element in the tree, or a root that does not resolve to
+ * exactly one document node, throws a `[@pyreon/document]` error.
+ *
  * When `options.baseUrl` is set, relative image `src` values are resolved
  * against it before rendering — so `<Image src="./logo.png" />` rendered with
  * `{ baseUrl: 'https://cdn.example.com/assets/' }` emits the absolute URL in
  * every output format.
  */
 export function render(
-  node: DocNode,
+  node: DocNode | VNode,
   format: BinaryOutputFormat,
   options?: RenderOptions,
 ): Promise<Uint8Array>
 export function render(
-  node: DocNode,
+  node: DocNode | VNode,
   format: TextOutputFormat,
   options?: RenderOptions,
 ): Promise<string>
 export function render(
-  node: DocNode,
+  node: DocNode | VNode,
   format: OutputFormat | (string & {}),
   options?: RenderOptions,
 ): Promise<RenderResult>
 export async function render(
-  node: DocNode,
+  node: DocNode | VNode,
   format: OutputFormat | string,
   options?: RenderOptions,
 ): Promise<RenderResult> {
   const renderer = await resolveRenderer(format)
-  const resolved = options?.baseUrl ? applyBaseUrl(node, options.baseUrl) : node
+  const root = resolveDocNode(node)
+  const resolved = options?.baseUrl ? applyBaseUrl(root, options.baseUrl) : root
   return renderer.render(resolved, options)
 }
 

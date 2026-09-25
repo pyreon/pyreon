@@ -4,7 +4,7 @@
  * components" entry (dev/build-time; Node only).
  */
 import { type Dirent, readdirSync, readFileSync } from 'node:fs'
-import { extname, join } from 'node:path'
+import { extname, join, relative, sep } from 'node:path'
 import type { ComponentIntelligence } from '../core'
 import type { AtlasPlugin } from '../plugins'
 import { defineAtlasPlugin } from '../plugins'
@@ -48,7 +48,22 @@ export const DEFAULT_EXTENSIONS = ['.tsx', '.jsx', '.ts'] as const
 
 export const DEFAULT_IGNORE = ['node_modules', '.test.', '.spec.', '.stories.', '.d.ts']
 
-function walk(dir: string, exts: readonly string[], ignore: readonly string[], acc: string[]): void {
+/**
+ * Walk `dir`, skipping any entry whose path RELATIVE TO `root` contains an
+ * ignore pattern.
+ *
+ * Relative, not absolute: the patterns describe the project's own tree, and
+ * matching them against the whole absolute path made the CHECKOUT's location
+ * part of the rule — a project living under `~/code/my.test.app/` matched
+ * `.test.` on every file and discovery found nothing, silently.
+ */
+function walk(
+  root: string,
+  dir: string,
+  exts: readonly string[],
+  ignore: readonly string[],
+  acc: string[],
+): void {
   let entries: Dirent[]
   try {
     entries = readdirSync(dir, { withFileTypes: true }) as unknown as Dirent[]
@@ -58,8 +73,9 @@ function walk(dir: string, exts: readonly string[], ignore: readonly string[], a
   for (const entry of entries) {
     const name = String(entry.name)
     const full = join(dir, name)
-    if (ignore.some((p) => full.includes(p))) continue
-    if (entry.isDirectory()) walk(full, exts, ignore, acc)
+    const rel = relative(root, full).split(sep).join('/')
+    if (ignore.some((p) => rel.includes(p))) continue
+    if (entry.isDirectory()) walk(root, full, exts, ignore, acc)
     else if (exts.includes(extname(name))) acc.push(full)
   }
 }
@@ -68,7 +84,7 @@ function walk(dir: string, exts: readonly string[], ignore: readonly string[], a
 export function listComponentFiles(options: DiscoverOptions = {}): string[] {
   const root = join(options.cwd ?? '.', options.dir ?? 'src')
   const files: string[] = []
-  walk(root, options.extensions ?? DEFAULT_EXTENSIONS, options.ignore ?? DEFAULT_IGNORE, files)
+  walk(root, root, options.extensions ?? DEFAULT_EXTENSIONS, options.ignore ?? DEFAULT_IGNORE, files)
   return files.sort() // deterministic order
 }
 

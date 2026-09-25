@@ -1,5 +1,5 @@
 /** A collapsible hierarchy group header — indented by `data-depth` via padding steps. */
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const GroupBtn = el
   .attrs({
@@ -9,7 +9,7 @@ export const GroupBtn = el
     block: true,
     gap: 8,
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     font: 'inherit',
     cursor: 'pointer',
     textAlign: 'left',

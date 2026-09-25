@@ -573,6 +573,9 @@ extension View {
   public func buttonStyle(_ style: PrimitiveButtonStyleStub) -> some View { self }
   public func tint(_ color: Color?) -> some View { self }
   public func accessibilityIdentifier(_ id: String) -> some View { self }
+  // The real SwiftUI signature (WritableKeyPath), so a key path the real SDK
+  // rejects fails here too — <ColorModeProvider mode> pins the colorScheme key.
+  public func environment<V>(_ keyPath: WritableKeyPath<EnvironmentValues, V>, _ value: V) -> some View { self }
   public func accessibilityLabel(_ label: String) -> some View { self }
   public func accessibilityValue(_ value: String) -> some View { self }
   public func accessibilityElement(children: AccessibilityChildBehavior) -> some View { self }
@@ -1223,12 +1226,12 @@ public final class PyreonFlowState<T> {
     snapToGrid: Bool = false,
     snapGrid: Double = 15,
     nodeExtent: PyreonFlowNodeExtent? = nil,
+    connectionRules: [String: [String]]? = nil,
     defaultMarkerEnd: PyreonFlowMarker? = PyreonFlowMarker(type: "arrowclosed"),
     nodesDraggable: Bool = true, nodesConnectable: Bool = true, nodesSelectable: Bool = true, nodesFocusable: Bool = true,
     edgesFocusable: Bool = true, disableKeyboardA11y: Bool = false, nodesDeletable: Bool = true, edgesDeletable: Bool = true, edgesReconnectable: Bool = true,
     edgeInteractionWidth: Double = 20, connectionRadius: Double = 0, pannable: Bool = true, panOnDrag: Bool = true, panOnScroll: Bool = false, panOnScrollSpeed: Double = 0.5, zoomable: Bool = true, zoomOnScroll: Bool = true, zoomOnPinch: Bool = true, zoomOnDoubleClick: Bool = false, selectionOnDrag: Bool = false, selectionMode: String = "partial", connectionMode: String = "strict", elevateNodesOnSelect: Bool = true, elevateEdgesOnSelect: Bool = false, autoPanOnNodeDrag: Bool = true, autoPanOnConnect: Bool = true, autoPanSpeed: Double = 15, multiSelect: Bool = true, onlyRenderVisibleElements: Bool = false, snapToObjects: Bool = true,
-    defaultEdgeType: String = "bezier", connectionLineType: String = "bezier", defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(), fitView: Bool = false, fitViewPadding: Double = 0.1, autoHistory: Bool = true,
-    connectionRules: [String: [String]]? = nil,
+    defaultEdgeType: String = "bezier", connectionLineType: String = "bezier", defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(), fitView: Bool = false, fitViewPadding: Double = 0.1, autoHistory: Bool = true, historyLimit: Double = 50,
     isValidConnection: ((PyreonFlowConnection) -> Bool)? = nil,
     searchText: ((T) -> String?)? = nil,
     reducedMotion: Bool? = nil,
@@ -1244,7 +1247,7 @@ public final class PyreonFlowState<T> {
   public var zoomable = true; public var zoomOnScroll = true; public var zoomOnPinch = true; public var zoomOnDoubleClick = false
   public var selectionOnDrag = false; public var selectionMode = "partial"; public var connectionMode = "strict"; public var elevateNodesOnSelect = true; public var elevateEdgesOnSelect = false; public var autoPanOnNodeDrag = true; public var autoPanOnConnect = true; public var autoPanSpeed: Double = 15; public var multiSelect = true; public var onlyRenderVisibleElements = false; public var snapToObjects = true
   public var defaultEdgeType = "bezier"; public var connectionLineType = "bezier"; public var defaultEdgeOptions = PyreonFlowDefaultEdgeOptions(); public var fitViewOnLoad = false; public var fitViewPadding = 0.1
-  public var autoHistory = true; public var deleteKeys: [String]? = ["Delete", "Backspace"]; public var multiSelectionKey: String? = "shift"; public var selectionKey: String? = "shift"; public var zoomActivationKey: String? = "ctrl"; public var preventScrolling = true
+  public var autoHistory = true; public var historyLimit: Double = 50; public var deleteKeys: [String]? = ["Delete", "Backspace"]; public var multiSelectionKey: String? = "shift"; public var selectionKey: String? = "shift"; public var zoomActivationKey: String? = "ctrl"; public var preventScrolling = true
   public private(set) var nodes: [PyreonFlowNode<T>] = []
   public var nodeLookup: [String: PyreonFlowNode<T>] { [:] }
   public private(set) var edges: [PyreonFlowEdge] = []
@@ -2020,14 +2023,14 @@ public struct AsyncImage: View {
 `
 
 /**
- * The two views a `@pyreon/charts/plot` host emit needs that the generated
+ * The two views a `@pyreon/charts` host emit needs that the generated
  * engine never declares. validate.ts appends the REAL engine + canvas types
  * next to this when a chart host is present; the view stubs live here so the
  * stub-coverage ratchet counts `PyreonChartCanvas` as covered. The init
  * mirrors runtime-swift `PyreonChartCanvas.swift` exactly.
  */
 export const SWIFT_CHART_VIEW_STUBS = `
-// ---- @pyreon/charts/plot hosts (chart-hosts.ts emit) ----
+// ---- @pyreon/charts hosts (chart-hosts.ts emit) ----
 public struct GeometryProxy { public var size: CGSize = CGSize() }
 public func pyreonChartDataUrl(_ cmds: [PyreonDrawCmd], _ width: Double, _ height: Double) -> String { "" }
 public func pyreonShareChartImage(_ cmds: [PyreonDrawCmd], _ width: Double, _ height: Double, _ name: String) {}
@@ -2069,5 +2072,13 @@ public struct PyreonChartEntrance<Content: View>: View {
 public struct PyreonChartClock<Content: View>: View {
   public init(@ViewBuilder content: @escaping (Double) -> Content) {}
   public typealias Body = Never
+}
+// Mirrors runtime-swift PyreonChartDescriptor.swift: VoiceOver's chart data.
+public struct PyreonChartDescriptor {
+  public let input: A11yInput
+  public init(_ input: A11yInput) { self.input = input }
+}
+extension View {
+  public func accessibilityChartDescriptor(_ descriptor: PyreonChartDescriptor) -> some View { self }
 }
 `

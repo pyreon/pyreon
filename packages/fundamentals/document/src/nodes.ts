@@ -5,6 +5,7 @@ import type {
   DividerProps,
   DocChild,
   DocNode,
+  DocPrimitive,
   DocumentProps,
   HeadingProps,
   ImageProps,
@@ -12,6 +13,7 @@ import type {
   ListItemProps,
   ListProps,
   NodeType,
+  OptionalPropsDocPrimitive,
   PageProps,
   QuoteProps,
   RowProps,
@@ -32,18 +34,120 @@ function createNode(type: NodeType, props: object, children: unknown): DocNode {
   }
 }
 
+// ─── VNode (JSX / `h()`) resolution ───────────────────────────────────────
+//
+// The primitives are eager factories returning a `DocNode`. Composed through
+// the Pyreon JSX runtime (or `h()`), they are NOT invoked — the runtime builds
+// a VNode `{ type: <the primitive function>, props, children, key }` and
+// leaves invocation to a renderer. A document tree is rendered by `render()`,
+// not mounted, so this module is that renderer's resolution step: invoke
+// component types (the primitives AND user components that return them) with
+// Pyreon's children-merge semantics, flatten fragments, and snapshot accessor
+// children. Before this existed a VNode passed the old structural `isDocNode`
+// check, no renderer recognised a function `type`, and every format emitted
+// the children's concatenated text with no structure at all.
+//
+// Symbols come from the GLOBAL registry so no runtime import of
+// `@pyreon/core` is needed (and a dual-instance split can't break matching).
+const FRAGMENT = Symbol.for('Pyreon.Fragment')
+const REACTIVE_PROP = Symbol.for('pyreon.reactiveProp')
+
+interface VNodeLike {
+  type: unknown
+  props: Record<string, unknown> | null
+  children?: unknown
+}
+
+/** A Pyreon VNode (from `h()` / the JSX runtime). DocNodes never carry `key`. */
+function isVNodeLike(value: object): value is VNodeLike {
+  return 'type' in value && 'props' in value && 'children' in value && 'key' in value
+}
+
+/**
+ * Resolve a component's props the way the mount pipeline does before calling
+ * it: compiler-emitted `_rp`/`_lc` thunks (branded `REACTIVE_PROP`) become
+ * their value — a document render is a one-shot snapshot — and h()-style rest
+ * children are merged into `props.children` (one child → the child itself).
+ */
+function componentProps(vnode: VNodeLike): Record<string, unknown> {
+  const raw = vnode.props ?? {}
+  const props: Record<string, unknown> = {}
+  for (const key of Object.keys(raw)) {
+    const val = raw[key]
+    props[key] =
+      typeof val === 'function' && (val as unknown as Record<symbol, unknown>)[REACTIVE_PROP]
+        ? (val as () => unknown)()
+        : val
+  }
+  const rest = Array.isArray(vnode.children) ? vnode.children : []
+  if (rest.length > 0) props.children = rest.length === 1 ? rest[0] : rest
+  return props
+}
+
+function resolveVNode(vnode: VNodeLike): DocChild[] {
+  const { type } = vnode
+  if (typeof type === 'function') {
+    return normalizeChildren((type as (p: Record<string, unknown>) => unknown)(componentProps(vnode)))
+  }
+  if (type === FRAGMENT) {
+    const rest = Array.isArray(vnode.children) ? vnode.children : []
+    return normalizeChildren(rest.length > 0 ? rest : vnode.props?.children)
+  }
+  if (typeof type === 'string') {
+    throw new Error(
+      `[@pyreon/document] <${type}> is a DOM element, not a document primitive. A document tree may only contain @pyreon/document primitives (Document, Page, Heading, Text, …), components that return them, strings and numbers.`,
+    )
+  }
+  throw new Error(
+    `[@pyreon/document] Unsupported node type ${String(type)} in a document tree — only @pyreon/document primitives, components that return them, and fragments are supported.`,
+  )
+}
+
 function normalizeChildren(children: unknown): DocChild[] {
-  if (children == null || children === false) return []
+  // JSX semantics: `true` / `false` / `null` / `undefined` render NOTHING
+  // (`{cond && <X/>}` yields `true`/`false`). Without the `true` arm a
+  // truthy boolean fell through to `String(children)` and every renderer
+  // emitted the literal text "true".
+  if (children == null || typeof children === 'boolean') return []
   if (typeof children === 'string') return [children]
   if (typeof children === 'number') return [String(children)]
   if (Array.isArray(children)) return children.flatMap(normalizeChildren)
+  // Accessor child (`{() => x()}`) — snapshot its current value.
+  if (typeof children === 'function') return normalizeChildren((children as () => unknown)())
   if (isDocNode(children)) return [children]
   if (typeof children === 'object') {
+    if (isVNodeLike(children)) return resolveVNode(children)
     throw new Error(
       '[@pyreon/document] Invalid child: plain objects are not valid document children. Use a document node (Text, Heading, etc.) instead.',
     )
   }
   return [String(children)]
+}
+
+/**
+ * Resolve a render input — a `DocNode` (primitive called directly, or the
+ * builder) OR a Pyreon VNode tree (JSX / `h()`) — to the root `DocNode`.
+ * Throws when the input does not resolve to exactly one document node.
+ */
+export function resolveDocNode(input: unknown): DocNode {
+  // A DocNode — or a hand-built / JSON-round-tripped tree that omits `props`
+  // (renderers tolerate that) — passes through untouched, as it always has.
+  if (
+    typeof input === 'object' &&
+    input !== null &&
+    typeof (input as { type?: unknown }).type === 'string' &&
+    !('key' in input)
+  ) {
+    return input as DocNode
+  }
+  const resolved = normalizeChildren(input)
+  const only = resolved[0]
+  if (resolved.length !== 1 || typeof only === 'string' || only === undefined) {
+    throw new Error(
+      `[@pyreon/document] render() input must resolve to a single document node (e.g. <Document>), but it resolved to ${resolved.length} item(s).`,
+    )
+  }
+  return only
 }
 
 /**
@@ -154,14 +258,21 @@ export function _resetUnknownTypeWarnings(): void {
   _warnedUnknownTypes.clear()
 }
 
-/** Type guard — checks if a value is a DocNode. */
+/**
+ * Type guard — checks if a value is a DocNode: an object with a STRING
+ * `type`, `props` and `children`. A Pyreon VNode (JSX / `h()` output) is NOT a
+ * DocNode — its `type` is the primitive function and it carries a `key` —
+ * even though it has the same three keys; `render()` resolves those.
+ */
 export function isDocNode(value: unknown): value is DocNode {
   return (
     typeof value === 'object' &&
     value !== null &&
     'type' in value &&
+    typeof (value as { type: unknown }).type === 'string' &&
     'props' in value &&
-    'children' in value
+    'children' in value &&
+    !('key' in value)
   )
 }
 
@@ -183,7 +294,7 @@ export const Document = /* @__PURE__ */ Object.assign(
     return createNode('document', rest, children)
   },
   { _documentType: 'document' as const },
-)
+) as DocPrimitive<DocumentProps, 'document'>
 
 /**
  * Page container. Maps to a PDF page, DOCX section, or email block.
@@ -197,11 +308,19 @@ export const Document = /* @__PURE__ */ Object.assign(
  */
 export const Page = /* @__PURE__ */ Object.assign(
   function Page(props: PageProps): DocNode {
-    const { children, ...rest } = props
-    return createNode('page', rest, children)
+    const { children, header, footer, ...rest } = props
+    // `header` / `footer` are PROPS, not children, so child normalization
+    // never reaches them. A JSX value there (`header={<Text>…</Text>}`) is a
+    // VNode the PDF/DOCX renderers would read as a DocNode — with the
+    // automatic JSX runtime its text lives in `props.children`, so the
+    // header was silently dropped. Resolve them here, like children.
+    const pageProps: Record<string, unknown> = rest
+    if (header != null) pageProps.header = resolveDocNode(header)
+    if (footer != null) pageProps.footer = resolveDocNode(footer)
+    return createNode('page', pageProps, children)
   },
   { _documentType: 'page' as const },
-)
+) as DocPrimitive<PageProps, 'page'>
 
 /**
  * Layout section — groups content with optional direction, padding, background.
@@ -220,7 +339,7 @@ export const Section = /* @__PURE__ */ Object.assign(
     return createNode('section', rest, children)
   },
   { _documentType: 'section' as const },
-)
+) as DocPrimitive<SectionProps, 'section'>
 
 /**
  * Horizontal layout container.
@@ -239,7 +358,7 @@ export const Row = /* @__PURE__ */ Object.assign(
     return createNode('row', rest, children)
   },
   { _documentType: 'row' as const },
-)
+) as DocPrimitive<RowProps, 'row'>
 
 /**
  * Column within a Row.
@@ -250,7 +369,7 @@ export const Column = /* @__PURE__ */ Object.assign(
     return createNode('column', rest, children)
   },
   { _documentType: 'column' as const },
-)
+) as DocPrimitive<ColumnProps, 'column'>
 
 /**
  * Heading text (h1–h6).
@@ -267,7 +386,7 @@ export const Heading = /* @__PURE__ */ Object.assign(
     return createNode('heading', { level: 1, ...rest }, children)
   },
   { _documentType: 'heading' as const },
-)
+) as DocPrimitive<HeadingProps, 'heading'>
 
 /**
  * Text paragraph with optional formatting.
@@ -284,7 +403,7 @@ export const Text = /* @__PURE__ */ Object.assign(
     return createNode('text', rest, children)
   },
   { _documentType: 'text' as const },
-)
+) as DocPrimitive<TextProps, 'text'>
 
 /**
  * Hyperlink.
@@ -300,7 +419,7 @@ export const Link = /* @__PURE__ */ Object.assign(
     return createNode('link', rest, children)
   },
   { _documentType: 'link' as const },
-)
+) as DocPrimitive<LinkProps, 'link'>
 
 /**
  * Image with optional sizing and caption.
@@ -316,7 +435,7 @@ export const Image = /* @__PURE__ */ Object.assign(
     return createNode('image', props, [])
   },
   { _documentType: 'image' as const },
-)
+) as DocPrimitive<ImageProps, 'image'>
 
 /**
  * Data table with columns and rows.
@@ -336,7 +455,7 @@ export const Table = /* @__PURE__ */ Object.assign(
     return createNode('table', props, [])
   },
   { _documentType: 'table' as const },
-)
+) as DocPrimitive<TableProps, 'table'>
 
 /**
  * Ordered or unordered list.
@@ -355,7 +474,7 @@ export const List = /* @__PURE__ */ Object.assign(
     return createNode('list', rest, children)
   },
   { _documentType: 'list' as const },
-)
+) as DocPrimitive<ListProps, 'list'>
 
 /**
  * Single list item within a List.
@@ -366,7 +485,7 @@ export const ListItem = /* @__PURE__ */ Object.assign(
     return createNode('list-item', {}, children)
   },
   { _documentType: 'list-item' as const },
-)
+) as DocPrimitive<ListItemProps, 'list-item'>
 
 /**
  * Code block with optional language hint.
@@ -382,7 +501,7 @@ export const Code = /* @__PURE__ */ Object.assign(
     return createNode('code', rest, children)
   },
   { _documentType: 'code' as const },
-)
+) as DocPrimitive<CodeProps, 'code'>
 
 /**
  * Horizontal divider line.
@@ -397,7 +516,7 @@ export const Divider = /* @__PURE__ */ Object.assign(
     return createNode('divider', props, [])
   },
   { _documentType: 'divider' as const },
-)
+) as OptionalPropsDocPrimitive<DividerProps, 'divider'>
 
 /**
  * Page break — forces content after this point to the next page (PDF/DOCX)
@@ -413,7 +532,7 @@ export const PageBreak = /* @__PURE__ */ Object.assign(
     return createNode('page-break', {}, [])
   },
   { _documentType: 'page-break' as const },
-)
+) as OptionalPropsDocPrimitive<Record<string, never>, 'page-break'>
 
 /**
  * Vertical spacer.
@@ -428,7 +547,7 @@ export const Spacer = /* @__PURE__ */ Object.assign(
     return createNode('spacer', props, [])
   },
   { _documentType: 'spacer' as const },
-)
+) as DocPrimitive<SpacerProps, 'spacer'>
 
 /**
  * CTA button — renders as a bulletproof button in email, styled link in PDF/DOCX.
@@ -446,7 +565,7 @@ export const Button = /* @__PURE__ */ Object.assign(
     return createNode('button', rest, children)
   },
   { _documentType: 'button' as const },
-)
+) as DocPrimitive<ButtonProps, 'button'>
 
 /**
  * Block quote.
@@ -462,4 +581,4 @@ export const Quote = /* @__PURE__ */ Object.assign(
     return createNode('quote', rest, children)
   },
   { _documentType: 'quote' as const },
-)
+) as DocPrimitive<QuoteProps, 'quote'>

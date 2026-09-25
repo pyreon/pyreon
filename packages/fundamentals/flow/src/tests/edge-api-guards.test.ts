@@ -109,44 +109,30 @@ describe('addEdges is idempotent', () => {
   })
 })
 
-describe('connect listeners receive the handle fields exactly as given', () => {
-  const captured = (fn: (f: ReturnType<typeof graph>) => void): Connection[] => {
+describe('programmatic edge additions are onEdgesChange events, not onConnect', () => {
+  // onConnect is reserved for the USER gesture (a handle drag resolved by the
+  // renderer), matching React Flow and the native runtimes; the gesture path
+  // is locked in gesture-hardening.browser.test.tsx.
+  it('addEdge / addEdges never fire onConnect', () => {
     const f = graph()
     const seen: Connection[] = []
     f.onConnect((c) => seen.push(c))
-    fn(f)
-    return seen
-  }
-
-  it('forwards sourceHandle and targetHandle when present', () => {
-    // Multi-handle nodes route by handle id; dropping it connects the edge
-    // to the node's default anchor and the diagram is wrong in a way that
-    // still renders.
-    const seen = captured((f) =>
-      f.addEdges([{ id: 'h', source: 'a', target: 'b', sourceHandle: 'out', targetHandle: 'in' }]),
-    )
-    expect(seen).toHaveLength(1)
-    expect(seen[0]).toMatchObject({ source: 'a', target: 'b', sourceHandle: 'out', targetHandle: 'in' })
+    f.addEdge(e('one'))
+    f.addEdges([{ id: 'h', source: 'a', target: 'b', sourceHandle: 'out', targetHandle: 'in' }])
+    expect(seen).toEqual([])
   })
 
-  it('OMITS the keys entirely when absent, rather than passing undefined', () => {
-    // `exactOptionalPropertyTypes` is on: a present-but-undefined key is a
-    // different value from an absent one, and a consumer spreading the
-    // connection into an edge would write `sourceHandle: undefined` over a
-    // default it meant to keep.
-    const seen = captured((f) => f.addEdges([e('plain')]))
-    expect(seen).toHaveLength(1)
-    expect('sourceHandle' in seen[0]!, 'sourceHandle must be absent').toBe(false)
-    expect('targetHandle' in seen[0]!, 'targetHandle must be absent').toBe(false)
-  })
-
-  it('fires once per FRESH edge and not at all for duplicates', () => {
+  it('add changes carry the handle fields exactly as given, once per FRESH edge', () => {
     const f = graph()
-    const seen: Connection[] = []
-    f.onConnect((c) => seen.push(c))
-    f.addEdges([e('e1'), e('e2', 'b', 'c')])
-    f.addEdges([e('e1')])
-    expect(seen.map((c) => c.target), 'the duplicate must not re-notify').toEqual(['b', 'c'])
+    const added: FlowEdge[] = []
+    f.onEdgesChange((changes) => {
+      for (const c of changes) if (c.type === 'add') added.push(c.edge)
+    })
+    f.addEdges([{ id: 'h', source: 'a', target: 'b', sourceHandle: 'out', targetHandle: 'in' }, e('plain', 'b', 'c')])
+    f.addEdges([e('plain', 'b', 'c')])
+    expect(added.map((x) => x.id), 'the duplicate must not re-notify').toEqual(['h', 'plain'])
+    expect(added[0]).toMatchObject({ sourceHandle: 'out', targetHandle: 'in' })
+    expect('sourceHandle' in added[1]!, 'sourceHandle must be absent').toBe(false)
   })
 })
 

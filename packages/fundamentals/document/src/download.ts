@@ -1,3 +1,4 @@
+import type { VNode } from '@pyreon/core'
 import { render } from './render'
 import type { DocNode, RenderOptions } from './types'
 import { isServer } from '@pyreon/reactivity'
@@ -47,9 +48,11 @@ const MIME_TYPES: Record<string, string> = {
  * await download(doc, 'report.pdf')
  * await download(doc, 'report.docx')
  * ```
+ *
+ * `node` may be a `DocNode` or a JSX / `h()` VNode tree — see `render()`.
  */
 export async function download(
-  node: DocNode,
+  node: DocNode | VNode,
   filename: string,
   options?: RenderOptions,
 ): Promise<void> {

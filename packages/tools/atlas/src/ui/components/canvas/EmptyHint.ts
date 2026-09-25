@@ -1,4 +1,4 @@
-import { txt, type T } from '../../kit'
+import { txt } from '../../kit'
 
 /**
  * Shown UNDER the frame when the preview surface holds no DOM at all. A blank
@@ -8,7 +8,7 @@ import { txt, type T } from '../../kit'
  */
 export const EmptyHint = txt
   .attrs({ tag: 'p' })
-  .theme((t: T) => ({
+  .theme((t) => ({
     maxWidth: '440px',
     marginTop: '4px',
     padding: '10px 14px',

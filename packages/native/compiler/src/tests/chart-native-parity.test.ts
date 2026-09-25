@@ -25,7 +25,7 @@ const ENGINE_SWIFT = 'packages/native/runtime-swift/Sources/PyreonRuntime/Pyreon
 
 const BOXPLOT = `import { Stack, Text } from '@pyreon/primitives'
 import { signal } from '@pyreon/reactivity'
-import { BoxplotChart } from '@pyreon/charts/plot'
+import { BoxplotChart } from '@pyreon/charts'
 interface Row { team: string; samples: number[] }
 const ROWS: Row[] = [{ team: 'A', samples: [3, 4, 5, 9] }, { team: 'B', samples: [1, 2, 2, 8] }]
 export function Spread() {
@@ -40,8 +40,8 @@ export function Spread() {
 
 const RADAR_TAP = `import { Stack, Text } from '@pyreon/primitives'
 import { signal } from '@pyreon/reactivity'
-import { RadarChart } from '@pyreon/charts/plot'
-import type { RadarAxis, RadarHitIndex } from '@pyreon/charts/plot'
+import { RadarChart } from '@pyreon/charts'
+import type { RadarAxis, RadarHitIndex } from '@pyreon/charts'
 interface Team { name: string; scores: number[] }
 const TEAMS: Team[] = [{ name: 'A', scores: [3, 4, 5] }]
 const AXES: RadarAxis[] = [{ label: 'x', max: 5 }, { label: 'y', max: 5 }, { label: 'z', max: 5 }]
@@ -56,8 +56,9 @@ export function Skills() {
 }`
 
 const RICH_SELECT = `import { Stack } from '@pyreon/primitives'
-import { TreemapChart, ParallelChart, MapChart } from '@pyreon/charts/plot'
-import type { TreeNode, TreemapCell, ParallelAxis } from '@pyreon/charts/plot'
+import { TreemapChart, ParallelChart, MapChart } from '@pyreon/charts'
+import type { TreeNode, ParallelAxis } from '@pyreon/charts'
+import type { TreemapCell } from '@pyreon/charts/engine'
 const DATA: TreeNode[] = [{ name: 'root', value: 10 }]
 const AXES: ParallelAxis[] = [{ name: 'a' }, { name: 'b' }]
 export function Rich() {
@@ -71,22 +72,26 @@ export function Rich() {
 }`
 
 const THEMED = `import { Stack } from '@pyreon/primitives'
-import { PieChart, ChartThemeProvider, chartThemes } from '@pyreon/charts/plot'
+import { ColorModeProvider } from '@pyreon/core'
+import { ChartThemeProvider, chartThemes } from '@pyreon/charts'
+import { PieChart } from '@pyreon/charts/engine'
 interface S { n: string; v: number }
 const SLICES: S[] = [{ n: 'a', v: 1 }, { n: 'b', v: 2 }]
 export function Themed() {
   return (
     <Stack>
       <PieChart data={SLICES} value={(d) => d.v} label={(d) => d.n} theme={chartThemes.dark} height={200} />
-      <ChartThemeProvider mode="light">
-        <PieChart data={SLICES} value={(d) => d.v} label={(d) => d.n} height={200} />
-      </ChartThemeProvider>
+      <ColorModeProvider mode="light">
+        <ChartThemeProvider>
+          <PieChart data={SLICES} value={(d) => d.v} label={(d) => d.n} height={200} />
+        </ChartThemeProvider>
+      </ColorModeProvider>
     </Stack>
   )
 }`
 
 const HEAT_KEYED = `import { Stack } from '@pyreon/primitives'
-import { HeatmapChart } from '@pyreon/charts/plot'
+import { HeatmapChart } from '@pyreon/charts/engine'
 interface Cell { d: string; hour: string; n: number }
 const CELLS: Cell[] = [{ d: 'Mon', hour: '09', n: 3 }]
 export function Heat() {

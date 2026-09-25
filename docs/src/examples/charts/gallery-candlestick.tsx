@@ -1,4 +1,5 @@
-import { ChartThemeProvider, OptionChart, systemChartMode } from '@pyreon/charts/plot'
+import { ChartThemeProvider } from '@pyreon/charts'
+import { OptionChart } from '@pyreon/charts/option'
 import type { Signal } from '@pyreon/reactivity'
 
 /**
@@ -6,8 +7,8 @@ import type { Signal } from '@pyreon/reactivity'
  * opening on the latest 60 through `dataZoom`. Drag the slider's band or a
  * handle under the chart, or scroll and drag inside the plot. The labels thin
  * to what fits.
- * The provider hands it the PAGE's scheme (`systemChartMode` reads the
- * root's `color-scheme`); a bare option chart keeps ECharts' own light look.
+ * The provider opts it into the colour mode in scope — the page's scheme
+ * here (the root's `color-scheme`); a bare option chart keeps ECharts' own light look.
  */
 function ohlc(n: number): { days: string[]; candles: number[][] } {
   let seed = 7
@@ -31,7 +32,7 @@ const { days, candles } = ohlc(120)
 
 export default function GalleryCandlestick(_props: { shared?: Signal<number> }) {
   return (
-    <ChartThemeProvider mode={systemChartMode()}>
+    <ChartThemeProvider>
       <OptionChart
         height={340}
         option={{

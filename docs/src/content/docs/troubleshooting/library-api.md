@@ -7,6 +7,16 @@ description: "Common library api-shape mistakes in Pyreon and how to fix them."
 
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
+### Importing `@pyreon/charts` through a pre-0.52 entry point
+
+The main entry is now the engine (`<Chart>` with mark children, formerly `<Plot>` at `/plot`), and the ECharts wrapper is `<EChart>` at `/echarts`, with `/manual` and `/vite` under it. `<Chart options={…}>` from the root is the old wrapper and no longer type-checks.
+  - `pyreon check --fix` rewrites each import to the entry that exports the name now, and renames `Plot`→`Chart`, `Tip`→`Tooltip` and the wrapper's `Chart`→`EChart` at every reference.
+  - The wrapper is told apart from the grammar by an `options` attribute or a wrapper-only name in the same import.
+
+**Detected by:** `charts-legacy-import` — surfaced by `@pyreon/lint` / `pyreon doctor` / MCP `validate`.
+
+---
+
 ### Narrower projections silently drop a new struct field
 
 A layer that copies a shared struct field by field into its own narrower type compiles and renders when a field is added, but loses it. In `@pyreon/charts`, `values2` (a band's second bound) was lost by the value labels, a11y description and tooltip types, and the bubble mark's reader surfaces held pixel `radii` instead of the datum. Rules:
@@ -82,5 +92,79 @@ Rules for release tooling:
 ### Using an own-key count as a membership test
 
 `@pyreon/validate`'s `.strict()` emitters once short-circuited on `Object.keys(x).length === N`, but field checks read through the prototype chain, so a prototype-carried object and a typo'd key in place of a real one both slipped past the unknown-key scan. The short-circuit must prove each declared key is in `Object.keys(x)`: use `Object.prototype.propertyIsEnumerable.call` (own and enumerable), not `Object.hasOwn`, which also matches non-enumerable own keys. When optimizing a predicate, name what the cheap version assumes and what code establishes it. When two emitters share one predicate, a fuzz whose oracle is their agreement (`is() === parse().ok`) cannot catch it; differential-test against the interpreter. Reference: `packages/fundamentals/validate/src/core/jit.ts:strictShortCircuitMiss`; locks `src/tests/strict-prototype-keys.test.ts`, the schema-paired fuzz in `src/tests/jit-check-differential.test.ts`, and the `.strict()` block in `src/tests/jit-differential.test.ts`.
+
+---
+
+### A callback-or-object union whose OBJECT arm is `Partial<Record<string, unknown>>` silently swallows every callback
+
+(`@pyreon/rocketstyle` `.theme()`, 2026-09). `{ [k: string]?: unknown }` accepts a FUNCTION, so `.theme((t: Anything) => …)` matched the object arm and its `ThemeCb` contract was never consulted: a wrong annotation on `t` compiled, and `@pyreon/atlas`/`@pyreon/loom` carried ~180 `(t: T)` annotations nothing verified. They annotated because the factory hard-coded the theme generic to `{}` — no channel for a token type except a global `ThemeDefault` augmentation (unsafe from a library) or a cast. **Fix: exclude functions from the object arm (`O & { call?: never; apply?: never }`) and give the type a LOCAL channel (`rocketstyle(cfg).withTheme<Tokens>()`, type-only).** General rule: when a parameter accepts "an object OR a callback", prove a mistyped callback is REJECTED — an index-signature object type accepts functions, so the union collapses to its loosest arm. Lock with an `@ts-expect-error` spec. Reference: `rocketstyle/src/types/rocketstyle.ts:ThemeObject` + `src/__tests__/with-theme.types.test.ts`.
+
+A 27-package audit of `packages/fundamentals` (PRs #3642–#3653) found the same few shapes in many packages. Each entry names the class once; the per-package fixes live in those PRs.
+
+---
+
+### Setup-time `onCleanup` had no owner
+
+`onCleanup` registers only while a collector window is open, and only effect runs opened one. Called during component setup it was DROPPED at a root mount, or CAPTURED by the enclosing `<For>`/`<Show>` effect, so adding one row ran the cleanups of rows still on screen. `onCleanup` inside `onMount` was dropped the same way. **Fix (#3653)**: `runWithHooks` and `EffectScope.runInScope` open their own frame (save-then-restore, never reset to a constant) and hand what they collect to the owner's unmount. **Rule: every owner that should receive registrations must open the window itself; a collector only effects open is a collector nothing else can reach.**
+
+---
+
+### Plain-object records keyed by user data hit `Object.prototype`
+
+`groupBy` on a key `constructor` threw, `keyBy` on `__proto__` replaced the prototype, `machine.send('toString')` moved to an `undefined` state, and an error for a field named `constructor` read as already present so the form reported VALID. Six packages had it. **Fix**: `Object.create(null)` for records built from user keys, `Object.hasOwn` for lookups. **Rule: any object whose keys come from data (field names, event names, locale ids, store ids) must not inherit.**
+
+---
+
+### An async gate that attaches its listener after the `await`
+
+`sync`'s relay attached `socket.on('message')` after `await authorize()`, so the client's first frame was lost and a late joiner never synced. **Fix**: listen immediately, buffer until the gate decides, bound the buffer, replay or drop. The same bug class covers a `ws` server socket with no `error` listener, where one malformed frame kills the process.
+
+---
+
+### Inbound cross-tab updates written through the persisting setter
+
+`storage`'s `storage`-event handler set the persisting wrapper, which wrote the value back and undid another tab's removal; it also ignored `key === null`, which is `localStorage.clear()`, so "log out everywhere" left tokens in memory. **Rule: apply external state to the underlying signal, never the persisting wrapper; treat a null key as a clear.**
+
+---
+
+### Request dedupe keyed without credentials, and an abort link released at the headers
+
+`http`'s default dedupe key was `METHOD url`, so two users' concurrent requests shared one response under SSR; separately, the abort/timeout link was cleaned up when headers arrived, so neither covered reading the body. **Rule: a shared in-flight key must include whatever makes the response user-specific; request lifetime ends when the body is consumed, not at the headers.**
+
+---
+
+### Chainable builders that push and `return this`
+
+`validate`'s `.min()`/`.max()` mutated the schema they were called on, so a shared base schema changed under every schema built from it, and a JIT cache made the result depend on parse order. **Rule: builder methods return a copy with the new op (copy-on-write); `withField`-style metadata helpers wrap, never write into the argument.**
+
+---
+
+### Interpolate first, parse markup second
+
+`i18n`'s `<Trans>` substituted `{{values}}` before parsing its `<tag>` syntax, so a user value could open a real component call. **Rule: parse the template's structure before any value can add to it.** Same family as `document`'s renderers trusting hrefs from a shared inline-link helper — sanitize where the data is produced, with a scheme ALLOWLIST checked after stripping control characters and decoding entities.
+
+---
+
+### A reset that clears values but not in-flight work
+
+`form`'s `reset()` left the async-validation version counter unchanged, so a validator that resolved afterwards wrote its error onto the now-empty field. Related in the same package: a submit guard set after the first `await` let a double Enter submit twice, and an event-bound handler that rethrows produces an unhandled rejection because nothing awaits it. **Rules: reset bumps every version/abort token it owns; a re-entrancy guard is set synchronously before the first `await`; a handler bound to a DOM event must not rethrow.**
+
+---
+
+### An element getter read once, before the element exists
+
+`dnd`'s hooks, `useEventListener` (which then fell back to `window`), `useIntersection`, `useElementSize` and `virtual` read their element getter once at setup or on a microtask, so an element behind `<Show>` or mounted later was never registered, with no warning. **Rule: resolve at mount or accept a ref callback, re-resolve on swap, and dev-warn when a target was requested but is still null.**
+
+---
+
+### Pointer gestures without an owner or a cancel path
+
+`flow`'s node drag had no `pointercancel`/`lostpointercapture` handling and did not track the pointer id, so an OS-interrupted touch drag stayed live and an unrelated later pointer moved the node. **Rule: a gesture records its `pointerId`, ignores other pointers, and ends — uncommitted — on cancel or lost capture.**
+
+---
+
+### `setTimeout` delays above 2³¹−1 ms fire immediately
+
+`toast`'s `duration: Infinity` dismissed after ~1ms, and `query`'s uncapped exponential reconnect backoff passed the limit and turned into a reconnect storm. **Rule: cap and jitter every computed delay; treat a non-finite duration as "never", not as a number.**
 
 ---

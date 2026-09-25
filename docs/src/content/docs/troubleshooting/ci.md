@@ -7,6 +7,12 @@ description: "Common ci / build gate mistakes in Pyreon and how to fix them."
 
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
+### A published `.d.ts` that is invalid or imports an undeclared package degrades to `any` SILENTLY — the default `skipLibCheck: true` hides it from every consumer
+
+(2026-09, `check-declarations`). Three shipped instances, all green in-repo because the workspace resolves everything and nothing compiled the OUTPUT strictly: `s.string().iso.date()` returned `any` (an inferred `{ date: (…) => this }` put polymorphic `this` in an object type literal — TS2526 in a declaration, fine in source); `@pyreon/feature` emitted `import("@tanstack/table-core")`, a package only its dependency declares; and every `@pyreon/elements` props type violated `ComponentFn<P extends Record<string, unknown>>` once instantiated, because an `interface` has no implicit index signature (source passed only because the generic hid it). **Rules: (1) a props/theme bound should be `object`, not `Record<string, unknown>` — the latter rejects every `interface`; (2) give an inferred PUBLIC export a named type when the inference mentions `this` or a transitive package; (3) a declaration-emitting package must declare every package its `.d.ts` imports.** Gate: `bun run check-declarations` (imports declared + every `types` entry compiles with `skipLibCheck: false`). Probe gotcha: on macOS `/tmp` is a symlink — list the files by REAL path or core's global JSX types load twice and report `Duplicate identifier 'Element'`.
+
+---
+
 ### A publish-time manifest rewrite that the distribution gate never models
 
 `scripts/publish.ts` strips the `bun` export condition and drops `src` from `files` before `npm publish`, on the premise that nothing reaches `src/` after the strip. That premise is false for `@pyreon/native-runtime-kotlin` and `@pyreon/native-router-kotlin`: they have no JS, and Gradle reads `node_modules/…/src/main/kotlin` by path, so the tarball shipped only `package.json` + README + LICENSE. The Swift twins escaped only because SwiftPM names the directory `Sources`.
@@ -208,6 +214,8 @@ Export `doThing(cwd): StructuredResult` from the script (no `process.cwd()` insi
   2. Inside a git hook, `GIT_DIR`/`GIT_WORK_TREE`/`GIT_INDEX_FILE` override both `cwd` and `git -C`, so a test's `git config` can write to the outer repo.
 
   Fix: the script's git helper (`runGit` in `scripts/install-git-hooks.ts`) clears every `GIT_*` env var and also uses `-C`; test fixtures pass a cleaned env to their own git calls (`cleanGitEnv` in `install-git-hooks.test.ts`). Keep one smoke test that spawns the binary and asserts only the exit status.
+
+  Reason 2 is now closed for every test, not per call site: the root `vitest.setup.ts` scrubs every `GIT_*` in each worker (`scrubGitEnv` in `@pyreon/vitest-config`), and `.githooks/pre-push` unsets the repository-locating variables before running gates. Per-test guards were not enough: a CLI test written without one (#3456) re-initialised this repo with `git -C <tmp> init` and wrote `T <t@t.local>` into `.git/config`, so every session committed under that identity for two weeks. Locked by `vitest-config/src/tests/git-env.test.ts`, which spawns vitest with a hook-like `GIT_DIR`.
 
 ---
 

@@ -2,7 +2,7 @@ import { onUnmount } from '@pyreon/core'
 import { batch, effect, signal, untrack } from '@pyreon/reactivity'
 import type { EChartsOption } from 'echarts'
 import { ensureModules, ensureModulesSync, getCoreSync } from './loader'
-import type { ChartTheme, UseChartConfig, UseChartResult } from './types'
+import type { EChartTheme, UseChartConfig, UseChartResult } from './types'
 
 /**
  * @internal — exported for testing only.
@@ -65,7 +65,7 @@ export function _throttle(fn: () => void, ms: number): { run: () => void; cancel
  * const chart = useChart(optionsFn, { theme: () => (dark() ? 'dark' : null) })
  *
  * // Strict — only bar + line allowed, full autocomplete
- * import type { ComposeOption, BarSeriesOption, LineSeriesOption } from '@pyreon/charts'
+ * import type { ComposeOption, BarSeriesOption, LineSeriesOption } from '@pyreon/charts/echarts'
  * type MyChartOption = ComposeOption<BarSeriesOption | LineSeriesOption>
  *
  * const chart = useChart<MyChartOption>(() => ({
@@ -89,10 +89,10 @@ export function useChart<TOption extends EChartsOption = EChartsOption>(
   // Theme the LIVE instance was created with — the reactive-theme effect
   // compares the accessor's current value against it to decide whether a
   // dispose + re-init is needed. Only meaningful once an instance exists.
-  let appliedTheme: ChartTheme | null = null
+  let appliedTheme: EChartTheme | null = null
 
   /** Resolve the configured theme (value or accessor) to its current value. */
-  const resolveTheme = (): ChartTheme | null => {
+  const resolveTheme = (): EChartTheme | null => {
     const t = config?.theme
     return (typeof t === 'function' ? t() : t) ?? null
   }
@@ -238,7 +238,7 @@ export function useChart<TOption extends EChartsOption = EChartsOption>(
   // has no in-place theme swap, so dispose + re-init IS the mechanism (what
   // vue-echarts does). Publishing the new instance re-runs the reactive-
   // update effect below (current option re-applied from optionsFn) and any
-  // consumer effect subscribed to `instance()` — the <Chart> component's
+  // consumer effect subscribed to `instance()` — the <EChart> component's
   // event/showLoading effects rebind automatically. `group` is carried over
   // from the live instance (covers a runtime-assigned group, not just
   // config.group); the ResizeObserver needs no rebind (reads instance.peek()

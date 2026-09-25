@@ -1,6 +1,6 @@
 // Log and time scales.
 
-import { plain } from './format'
+import { groupThousands } from './format'
 import { scaleLinear } from './scale'
 import type { Formatter } from './format'
 import type { Domain, Double, Tick } from './types'
@@ -46,7 +46,7 @@ export function logTicks(d: Domain, r0: Double, r1: Double): Tick[] {
   while (e <= to && count < limit) {
     const v = Math.pow(10.0, e)
     if (v >= min && v <= max) {
-      out.push({ value: v, pos: scaleLog(d, r0, r1, v), label: plain(v) })
+      out.push({ value: v, pos: scaleLog(d, r0, r1, v), label: groupThousands(v) })
       count = count + 1
     }
     e = e + 1.0
@@ -162,7 +162,7 @@ export function formatTime(ms: Double, step: Double): string {
  * a single tick.
  */
 export function logViewTicks(lo: Double, hi: Double, r0: Double, r1: Double, format?: Formatter): Tick[] {
-  const fmt = format ?? plain
+  const fmt = format ?? groupThousands
   const out: Tick[] = []
   if (!(lo > 0.0) || !(hi > lo)) return out
   const view: Domain = { min: 0.0, max: Math.log10(hi / lo) }

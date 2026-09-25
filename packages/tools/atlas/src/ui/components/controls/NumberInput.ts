@@ -1,12 +1,12 @@
 /** Number editor — the TextInput look with the native spinner. */
-import { el, type InputEl, type T } from '../../kit'
+import { el, type InputEl } from '../../kit'
 
 export const NumberInput = el
   .attrs({
     tag: 'input',
     type: 'number',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     font: 'inherit',
     fontSize: t.size.input,
     width: '100%',
@@ -16,5 +16,5 @@ export const NumberInput = el
     border: t.hairline,
     background: t.bg,
     color: t.text,
-    focus: { borderColor: t.accent },
+    focus: { borderColor: t.accent, boxShadow: `0 0 0 3px ${t.accentSoft}` },
   })) as unknown as InputEl

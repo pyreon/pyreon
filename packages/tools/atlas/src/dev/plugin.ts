@@ -135,7 +135,41 @@ export interface AtlasDevPluginOptions {
    * so a component added, a prop renamed or a variant declared after `atlas
    * dev` started was invisible until a restart.
    */
-  rescan?: () => Promise<readonly CatalogEntrySource[]>
+  rescan?: () => Promise<readonly CatalogEntrySource[] | RescanResult>
+  /**
+   * What a change to re-derive the catalog on. Default: files under `scanRoot`.
+   *
+   * `scanRoot` alone missed two whole classes of edit: in a monorepo
+   * (`projects`) the components live in each project's directory, not under
+   * `<root>/src`, so NO save rescanned; and an edit to `atlas.config.ts` —
+   * the file that decides the theme, wrapper, presets and pages — never
+   * rescanned anywhere.
+   */
+  watch?: WatchTargets
+}
+
+/** Directories whose source files, and exact files, trigger a rescan. */
+export interface WatchTargets {
+  /** Absolute directories — any source file beneath one counts. */
+  dirs: readonly string[]
+  /** Absolute file paths — e.g. every `atlas.config.*` candidate. */
+  files: readonly string[]
+}
+
+/**
+ * A rescan's full answer: the entries, plus the config-derived options that
+ * change when `atlas.config.ts` does. Returning bare entries is still
+ * accepted and leaves those options as they were.
+ */
+export interface RescanResult {
+  entries: readonly CatalogEntrySource[]
+  configPath?: string | undefined
+  presets?: import('../ui/catalog').WorkbenchPresets | undefined
+  pages?: Record<string, import('../discover/config').PageMeta> | undefined
+  parts?: Record<string, string> | undefined
+  projects?: readonly { name: string; dir: string }[] | undefined
+  /** Fresh watch targets — a config edit can add or move a project. */
+  watch?: WatchTargets | undefined
 }
 
 /** Minimal Vite plugin shape — typed locally so this module needs no vite import. */
@@ -151,7 +185,11 @@ export interface VitePluginLike {
       ) => void
     }
     /** Vite's chokidar watcher — present on a real dev server, absent in unit tests. */
-    watcher?: { on: (event: string, listener: (file: string) => void) => unknown }
+    watcher?: {
+      on: (event: string, listener: (file: string) => void) => unknown
+      /** Watch paths outside the Vite root (a project dir elsewhere). */
+      add?: (paths: string | readonly string[]) => unknown
+    }
     moduleGraph?: {
       getModuleById: (id: string) => unknown
       invalidateModule: (mod: never) => void
@@ -165,6 +203,16 @@ export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
   // `let`, not `const`: a rescan replaces both — the catalog module reads
   // `entries`, and the source/lens methods are built over the component list.
   let entries = options.entries
+  // The config-derived half of the catalog — replaced by a rescan that
+  // reports it, so an `atlas.config.ts` edit reaches the workbench too.
+  let catalogOptions = {
+    configPath: options.configPath,
+    presets: options.presets,
+    pages: options.pages,
+    parts: options.parts,
+    projects: options.projects,
+  }
+  let watch: WatchTargets = options.watch ?? { dirs: [options.scanRoot], files: [] }
   const buildMethods = () => ({
     ...builtinMethods({ root: options.root, components: entries.map((e) => e.component) }),
     ...options.methods,
@@ -181,13 +229,14 @@ export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
 
     load(id) {
       if (id === resolved(CATALOG_ID)) {
+        const o = catalogOptions
         return generateCatalogModule(entries, {
           root: options.scanRoot,
-          ...(options.configPath ? { configPath: options.configPath } : {}),
-          ...(options.presets ? { presets: options.presets } : {}),
-          ...(options.pages ? { pages: options.pages } : {}),
-          ...(options.parts ? { parts: options.parts } : {}),
-          ...(options.projects ? { projects: options.projects } : {}),
+          ...(o.configPath ? { configPath: o.configPath } : {}),
+          ...(o.presets ? { presets: o.presets } : {}),
+          ...(o.pages ? { pages: o.pages } : {}),
+          ...(o.parts ? { parts: o.parts } : {}),
+          ...(o.projects ? { projects: o.projects } : {}),
         })
       }
       if (id === resolved(ENTRY_ID)) {
@@ -228,7 +277,14 @@ export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
       // lands during a rescan queues exactly one more.
       const rescan = options.rescan
       if (rescan && server.watcher) {
-        const scanRoot = options.scanRoot.endsWith('/') ? options.scanRoot : `${options.scanRoot}/`
+        const watcher = server.watcher
+        const withSep = (dir: string): string => (dir.endsWith(sep) ? dir : `${dir}${sep}`)
+        // Chokidar watches the Vite root; a project directory or config file
+        // outside it has to be added, or its saves never arrive at all.
+        const register = (targets: WatchTargets): void => {
+          watcher.add?.([...targets.dirs, ...targets.files])
+        }
+        register(watch)
         let timer: ReturnType<typeof setTimeout> | undefined
         let running = false
         let queued = false
@@ -239,7 +295,24 @@ export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
           }
           running = true
           try {
-            entries = await rescan()
+            const next = await rescan()
+            if (Array.isArray(next)) {
+              entries = next
+            } else {
+              const result = next as RescanResult
+              entries = result.entries
+              catalogOptions = {
+                configPath: result.configPath,
+                presets: result.presets,
+                pages: result.pages,
+                parts: result.parts,
+                projects: result.projects,
+              }
+              if (result.watch) {
+                watch = result.watch
+                register(watch)
+              }
+            }
             methods = buildMethods()
             const mod = server.moduleGraph?.getModuleById(resolved(CATALOG_ID))
             if (mod) server.moduleGraph?.invalidateModule(mod as never)
@@ -257,7 +330,9 @@ export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
           }
         }
         const onFile = (file: string) => {
-          if (!file.startsWith(scanRoot) || !/\.(?:[cm]?[jt]sx?)$/.test(file)) return
+          const isSource =
+            /\.(?:[cm]?[jt]sx?)$/.test(file) && watch.dirs.some((dir) => file.startsWith(withSep(dir)))
+          if (!isSource && !watch.files.includes(file)) return
           if (timer !== undefined) clearTimeout(timer)
           timer = setTimeout(() => void run(), 150)
         }
@@ -340,6 +415,30 @@ function escapeHtml(text: string): string {
  * query string — its host router has never heard of `/button/`, so a reload
  * there would 404.
  */
+/**
+ * The web-font `<head>` lines, shared by `atlas dev` and `atlas build`.
+ *
+ * - WEIGHTS are exactly the ones the chrome uses (Space Grotesk 600/700 for
+ *   titles, Public Sans 400-700 for UI text, JetBrains Mono 400/600 for data):
+ *   the previous request asked for eleven faces, four of which nothing drew.
+ * - The stylesheet is loaded NON-BLOCKING (`media="print"`, swapped to `all`
+ *   on load, with a `<noscript>` fallback). As a plain `rel="stylesheet"` it
+ *   held first paint on a cross-origin round trip; `display=swap` only governs
+ *   the font FILES, not the CSS that declares them. The fallback stacks in the
+ *   theme render the shell until the faces arrive.
+ */
+export const FONT_CSS_URL =
+  'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap'
+
+export function fontLinks(): string[] {
+  return [
+    '    <link rel="preconnect" href="https://fonts.googleapis.com" />',
+    '    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />',
+    `    <link rel="stylesheet" href="${FONT_CSS_URL}" media="print" onload="this.media='all'" />`,
+    `    <noscript><link rel="stylesheet" href="${FONT_CSS_URL}" /></noscript>`,
+  ]
+}
+
 export function routesFlagScript(): string {
   return '<script>globalThis.__ATLAS_ROUTES__ = true</script>'
 }
@@ -358,9 +457,7 @@ export function devHtml(title = 'atlas'): string {
     // The workbench's typography depends on these three families; without
     // them every `font: inherit` fell back to the BROWSER default (Times) —
     // the single biggest "unstyled" impression the workbench could give.
-    '    <link rel="preconnect" href="https://fonts.googleapis.com" />',
-    '    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />',
-    '    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />',
+    ...fontLinks(),
     `    ${routesFlagScript()}`,
     '  </head>',
     '  <body>',

@@ -1,4 +1,4 @@
-// `tooltip` on `<PlotChart>` (and `<Tip>` in the grammar) was the last chrome
+// `tooltip` on `<PlotChart>` (and `<Tooltip>` in the grammar) was the last chrome
 // prop still named "not lowered on native". It is a TAP here, as on the
 // family hosts: the tap that selects reads the crossing `tooltipAt` /
 // `tooltipLines` over the sliced series and categories with the LOCAL hit,
@@ -18,25 +18,26 @@ import { Stack, Text } from '@pyreon/primitives'
 const DATA = `interface Month { name: string; revenue: number; cost: number }
 const MONTHS: Month[] = [{ name: 'Jan', revenue: 12, cost: 8 }, { name: 'Feb', revenue: 15, cost: 9 }]
 `
-const TIP = `${HEAD}import { PlotChart, bars, line, compact } from '@pyreon/charts/plot'
+const TIP = `${HEAD}import { compact } from '@pyreon/charts'
+import { PlotChart, bars, line } from '@pyreon/charts/engine'
 ${DATA}export function Revenue() {
   const picked = signal(-1)
   return (<Stack><Text>{picked()}</Text><PlotChart data={MONTHS} x={(d) => d.name} marks={[bars((d) => d.revenue, { label: 'Revenue' }), line((d) => d.cost, { label: 'Cost' })]} format={compact} tooltip height={200} onSelect={(i: number) => picked.set(i)} /></Stack>)
 }
 `
-const TIP_ONLY = `${HEAD}import { PlotChart, bars } from '@pyreon/charts/plot'
+const TIP_ONLY = `${HEAD}import { PlotChart, bars } from '@pyreon/charts/engine'
 ${DATA}export function Revenue() {
   return (<Stack><PlotChart data={MONTHS} x={(d) => d.name} marks={[bars((d) => d.revenue)]} tooltip height={200} /></Stack>)
 }
 `
-const WINDOWED = `${HEAD}import { PlotChart, bars } from '@pyreon/charts/plot'
+const WINDOWED = `${HEAD}import { PlotChart, bars } from '@pyreon/charts/engine'
 ${DATA}export function Revenue() {
   const picked = signal(-1)
   return (<Stack><PlotChart data={MONTHS} x={(d) => d.name} marks={[bars((d) => d.revenue)]} tooltip dataZoom height={200} onSelect={(i: number) => picked.set(i)} /></Stack>)
 }
 `
-const FORMATTED = `${HEAD}import { PlotChart, bars } from '@pyreon/charts/plot'
-import type { TooltipContent } from '@pyreon/charts/plot'
+const FORMATTED = `${HEAD}import { PlotChart, bars } from '@pyreon/charts/engine'
+import type { TooltipContent } from '@pyreon/charts/engine'
 ${DATA}function describe(c: TooltipContent): string {
   return c.title
 }
@@ -44,9 +45,9 @@ export function Revenue() {
   return (<Stack><PlotChart data={MONTHS} x={(d) => d.name} marks={[bars((d) => d.revenue)]} tooltip tooltipFormatter={describe} height={200} /></Stack>)
 }
 `
-const GRAMMAR = `${HEAD}import { Plot, Bar, Tip } from '@pyreon/charts/plot'
+const GRAMMAR = `${HEAD}import { Chart, Bar, Tooltip } from '@pyreon/charts'
 ${DATA}export function Revenue() {
-  return (<Stack><Plot data={MONTHS} x="name" height={200}><Bar y="revenue" /><Tip crosshair /></Plot></Stack>)
+  return (<Stack><Chart data={MONTHS} x="name" height={200}><Bar y="revenue" /><Tooltip crosshair /></Chart></Stack>)
 }
 `
 const PLAIN = TIP_ONLY.replace(' tooltip height', ' height')
@@ -74,7 +75,7 @@ describe('<PlotChart tooltip> — a tap tooltip on both targets', () => {
     const k = transform(WINDOWED, { target: 'kotlin' })
     expect(k.code).toContain('val i = (if (pyreonLocal < 0) -1 else pyreonLocal + pyreonRange.from)')
   })
-  it('a named tooltipFormatter lowers (its string split on newlines); the grammar\'s <Tip> draws too and names crosshair as web-only', () => {
+  it('a named tooltipFormatter lowers (its string split on newlines); the grammar\'s <Tooltip> draws too and names crosshair as web-only', () => {
     const f = transform(FORMATTED, { target: 'swift' })
     expect(f.warnings).toEqual([])
     expect(f.code).toContain('pyreonTip = pyreonLocal < 0 ? [] : describe(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label: $0.label, values: $0.values, color: $0.color, values2: $0.values2, rValues: $0.rValues, extras: $0.extras) })).components(separatedBy: "\\n")')
