@@ -604,7 +604,9 @@ It is an ordinary call through the generated client (POST bodies, auth,
 middleware and mocks all apply — unlike `EventSource`), every event honours
 `configureApi({ validate })`, and a dropped GET stream reconnects with backoff
 and `Last-Event-ID`. A non-GET stream is not reconnected by default (that
-would repeat the request). Built on `@pyreon/http/stream` and
+would repeat the request). Under `installMocks()` it answers a real stream —
+three fixture events with ids, resuming after `Last-Event-ID` — and an
+operation offering JSON too is mocked by `Accept`, so both calls work. Built on `@pyreon/http/stream` and
 `@pyreon/query`'s `useStream`, for every `client`.
 
 ```ts

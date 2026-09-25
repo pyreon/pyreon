@@ -176,6 +176,23 @@ stream.lastEventId()                   // persist it to resume later
   multi-line `data`, comments, a leading BOM, and an unterminated final event
   discarded.
 
+To mock a stream, `@pyreon/http/mock` routes take `accept` (match only a
+request whose `Accept` names that media type — one URL answering JSON to a
+plain call and a stream to a streaming one) and a computed `body`:
+
+```ts
+createMock([
+  {
+    path: '/chat',
+    accept: 'text/event-stream',
+    headers: { 'content-type': 'text/event-stream' },
+    // resume after the id the client sends, like a real server
+    body: (call) => events.slice(Number(call.headers['last-event-id'] ?? 0)).join(''),
+  },
+  { path: '/chat', json: { text: 'whole' } },   // the non-stream call
+])
+```
+
 For a component, `useStream` from `@pyreon/query` turns any of these into
 signals, and a [Lathe](/docs/lathe) client generates typed `<op>Stream` /
 `use<Op>Stream` pairs for every streaming operation in a spec.

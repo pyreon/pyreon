@@ -117,8 +117,12 @@ beforeEach(() => {
 
 type Stream<T> = AsyncIterable<T> & { close(): void }
 interface Mod {
-  roomEventsStream(args: { params: { room: string } }): Stream<{ type: string; data: { kind: string; at: number }; id: string }>
+  roomEventsStream(
+    args: { params: { room: string } },
+    options?: { lastEventId?: string },
+  ): Stream<{ type: string; data: { kind: string; at: number }; id: string }>
   createChatStream(args: { json: { prompt: string } }): Stream<{ data: { delta: string } }>
+  createChat(args: { json: { prompt: string } }): Promise<unknown>
   exportRowsStream(args?: { query?: { limit?: number } }): Stream<{ id: number; name?: string }>
   tailLogStream(): Stream<{ data: string }>
   configureApi(c: Record<string, unknown>): void
@@ -205,15 +209,34 @@ for (const client of CLIENTS) {
       expect((await collect(gen.tailLogStream())).map((e) => e.data)).toEqual(['line one'])
     })
 
-    it('the generated mocks answer with a stream the generated function reads', async () => {
+    it('the generated mocks answer with a REAL stream: several events, ids, resume, and JSON beside a stream', async () => {
       const gen = await load(client)
       gen.installMocks()
       try {
         const events = await collect(gen.roomEventsStream({ params: { room: 'lobby' } }))
-        expect(events.map((e) => e.data.kind)).toEqual(['join'])
+        expect(events.map((e) => e.id)).toEqual(['1', '2', '3'])
+        expect(events.every((e) => typeof e.data.kind === 'string' && typeof e.data.at === 'number')).toBe(true)
+        // A dual JSON + SSE operation: the stream route is picked by the
+        // Accept the stream sends, the plain call still gets JSON.
+        const chat = await collect(gen.createChatStream({ json: { prompt: 'hi' } }))
+        expect(chat.map((e) => e.data.delta)).toEqual(['sample delta', 'sample delta 1', 'sample delta 2'])
+        expect(await gen.createChat({ json: { prompt: 'hi' } })).toEqual({ text: 'sample text' })
         const rows = await collect(gen.exportRowsStream())
-        expect(rows).toEqual([{ id: 1 }])
+        expect(rows).toHaveLength(3)
+        expect(rows.every((r) => typeof r.id === 'number')).toBe(true)
+        expect((await collect(gen.tailLogStream())).map((e) => e.data)).toEqual(['sample 1', 'sample 2', 'sample 3'])
         expect(seen).toEqual([])
+      } finally {
+        gen.setDevTransport(null)
+      }
+    })
+
+    it('a mocked stream resumes after the Last-Event-ID it is sent', async () => {
+      const gen = await load(client)
+      gen.installMocks()
+      try {
+        const resumed = await collect(gen.roomEventsStream({ params: { room: 'lobby' } }, { lastEventId: '2' }))
+        expect(resumed.map((e) => e.id)).toEqual(['3'])
       } finally {
         gen.setDevTransport(null)
       }

@@ -318,7 +318,7 @@ for await (const ev of openEventStream((ctx) => tail({ signal: ctx.signal, heade
 (routes: readonly MockRoute[]) => MockHandle
 ```
 
-Stub responses as middleware, from `@pyreon/http/mock`. Because middleware can short-circuit, mocking needs no MSW, no service worker and no global fetch patch — so it cannot leak between test files the way a patched global does. Returns the middleware plus the recorded calls for assertions. A request matching no route falls through to the next layer, so you can stub a couple of endpoints and let the rest hit a real transport.
+Stub responses as middleware, from `@pyreon/http/mock`. A route may set `accept` (match only a request whose `Accept` names that media type — so one URL answers JSON to a plain call and a stream to a streaming one; order it before the unconditional route) and a computed `body: (call) => string` (e.g. an SSE mock resuming after `call.headers['last-event-id']`). Because middleware can short-circuit, mocking needs no MSW, no service worker and no global fetch patch — so it cannot leak between test files the way a patched global does. Returns the middleware plus the recorded calls for assertions. A request matching no route falls through to the next layer, so you can stub a couple of endpoints and let the rest hit a real transport.
 
 **Example**
 

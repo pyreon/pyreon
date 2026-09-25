@@ -688,8 +688,15 @@ What makes these more than `EventSource`:
 An operation that offers JSON **and** a stream (the OpenAI shape) keeps its
 JSON endpoint and hooks and gains the stream beside them. A stream-only
 operation gets `use<Op>Stream` *instead of* `useQuery` — a one-shot body in a
-query cache is re-read on every refetch. The generated mocks answer a streaming
-operation with a valid one-event stream built from its event type.
+query cache is re-read on every refetch.
+
+Under `installMocks()` a streaming operation answers with a **real** stream:
+three events built from its event type, with ids `1`–`3`, and a request
+carrying `Last-Event-ID: k` gets only the events after `k` — so reconnect code
+runs against the mocks too. For an operation offering JSON **and** a stream the
+mock picks by the request's `Accept`: `<op>Stream` gets the stream, the plain
+call gets the JSON fixture. Override either with `mockOperation('createChat', …)`
+or `mockOperation('createChatStream', …)`.
 
 When the spec does not say an operation streams — an endpoint that streams
 when its body says `stream: true` — declare it:
@@ -1004,9 +1011,9 @@ never touched. Commit the manifest with the rest of the output.
   on `@pyreon/http`, and only when the spec has a streaming operation. On axios,
   a stream request uses axios's `fetch` adapter: its default adapter returns a
   Node `Readable` on the server and cannot stream at all in a browser.
-- **Mocks answer a dual JSON + stream operation with its JSON body**, so its
-  `<op>Stream` yields nothing under `installMocks()`; stream-only operations
-  get a valid one-event stream.
+- **A mocked stream ends after its fixture events** — it never drops the
+  connection by itself, so exercising a reconnect still needs a test that
+  fails a request (`mockOperation(…, { error })`) or a real server.
 - A `$ref` **cycle** has no finite nesting, so the native schema names the
   target and the compiler drops that one field with a warning.
 

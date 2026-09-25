@@ -58,8 +58,10 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
     f.line('  headers?: Record<string, string> | undefined')
     f.line('  /** Absent for a no-content operation, matching a real 204. */')
     f.line('  json?: unknown')
-    f.line('  /** A raw body — for a non-JSON response. */')
-    f.line('  body?: string | undefined')
+    f.line('  /** Only match a request whose `Accept` names this media type (a stream beside JSON). */')
+    f.line('  accept?: string | undefined')
+    f.line('  /** A raw body — for a non-JSON response. A function computes it from the request. */')
+    f.line('  body?: string | ((call: { headers: Record<string, string> }) => string) | undefined')
     f.line('  /** Simulated latency, in ms. */')
     f.line('  delay?: number | undefined')
     f.line('  /** Reject with this instead of answering. */')
@@ -82,7 +84,28 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
     'snapshots stay stable. Ordered most-specific first.',
   )
   f.line('export const routes: MockRoute[] = [')
+  // Route keys, in table order: the operation id, plus `<op>Stream` for the
+  // stream route of an operation that ALSO answers JSON.
+  const keys: string[] = []
   for (const op of ops) {
+    const streamOnly = op.stream !== undefined && responseKindOf(op) === 'stream'
+    if (op.stream) {
+      // A REAL stream of a few events built from the event type, with ids, so
+      // `<op>Stream` / `use<Op>Stream` yield events under mocks and a resume
+      // (`last-event-id`) answers only what came after it. An operation that
+      // ALSO answers JSON gets this route FIRST, gated on the `Accept` the
+      // stream sends — the first matching route wins, so a plain call falls
+      // through to the JSON route below.
+      f.line(`  {`)
+      f.line(`    method: ${q(op.method)},`)
+      f.line(`    path: ${mockPath(op)},`)
+      if (!streamOnly) f.line(`    accept: ${q(op.stream.media)},`)
+      f.line(`    headers: { 'content-type': ${q(op.stream.media)} },`)
+      f.line(`    body: ${streamFixture(op.stream, doc)},`)
+      f.line(`  },`)
+      keys.push(streamOnly ? op.id : `${op.id}Stream`)
+      if (streamOnly) continue
+    }
     f.line(`  {`)
     f.line(`    method: ${q(op.method)},`)
     f.line(`    path: ${mockPath(op)},`)
@@ -91,13 +114,7 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
     // Emitting `json: null` made the mock answer 200 with the body `null`
     // while the real server answers 204 with nothing, so an app tested
     // against the fixtures saw `null` where production gives `undefined`.
-    if (op.stream && responseKindOf(op) === 'stream') {
-      // A streaming operation answers with a VALID stream of one event built
-      // from its event type, so `<op>Stream` and `use<Op>Stream` yield
-      // something under mocks instead of parsing an opaque sample string.
-      f.line(`    body: ${streamFixture(op.stream, doc)},`)
-      f.line(`    headers: { 'content-type': ${q(op.stream.media)} },`)
-    } else if (op.response) {
+    if (op.response) {
       const kind = responseKindOf(op)
       if (kind === 'json') {
         f.line(`    json: ${indentAfterFirst(fixture(op.response, doc, 0), 4)},`)
@@ -109,17 +126,21 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
       }
     }
     f.line(`  },`)
+    keys.push(op.id)
   }
   f.line(']')
 
   f.line()
-  f.doc('Operation ids that have a mock route — what {@link mockOperation} accepts.')
+  f.doc(
+    'Operation ids that have a mock route — what {@link mockOperation} accepts.',
+    'An operation answering JSON AND a stream has two: `<op>` and `<op>Stream`.',
+  )
   f.line(
-    `export type MockedOperation = ${ops.length > 0 ? [...ops].sort((a, b) => byCodeUnit(a.id, b.id)).map((o) => q(o.id)).join(' | ') : 'never'}`,
+    `export type MockedOperation = ${keys.length > 0 ? [...keys].sort(byCodeUnit).map((k) => q(k)).join(' | ') : 'never'}`,
   )
   f.line()
   f.line('const index: Record<MockedOperation, number> = {')
-  for (const [i, op] of ops.entries()) f.line(`  ${op.id}: ${i},`)
+  for (const [i, key] of keys.entries()) f.line(`  ${key}: ${i},`)
   f.line('}')
   f.line()
   f.doc(
@@ -156,6 +177,7 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
   f.line('  active.splice(0, active.length, ...routes)')
   f.line('}')
 
+  if (ops.some((o) => o.stream)) emitStreamMockHelpers(f, ops, pyreon)
   f.line()
   f.line('function baseRelative(url: string): string {')
   f.line("  const strip = (u: string): string => u.replace(/^[a-z][a-z\\d+\\-.]*:\\/\\/[^/?#]*/i, '')")
@@ -204,14 +226,20 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
     // and hooks have run on the request this sees — as they have on a real one.
     f.line('  setDevTransport(async (req) => {')
     f.line('    const url = baseRelative(req.url)')
-    f.line('    const route = active.find((r) => r.method === req.method && r.path.test(url))')
+    f.line(
+      ops.some((o) => o.stream && responseKindOf(o) !== 'stream')
+        ? '    const route = active.find((r) => r.method === req.method && r.path.test(url) && (r.accept === undefined || acceptsMedia(req.headers.accept, r.accept)))'
+        : '    const route = active.find((r) => r.method === req.method && r.path.test(url))',
+    )
     // `null` means NOT HANDLED. A matched route answers with an envelope, so
     // a no-content response stays distinguishable from no route at all.
     f.line('    if (!route) return null')
     f.line('    mockCalls.push({ method: req.method, url, headers: req.headers })')
     f.line('    if (route.delay) await new Promise((resolve) => setTimeout(resolve, route.delay))')
     f.line('    if (route.error !== undefined) throw route.error')
-    f.line('    return { status: route.status, json: route.json, body: route.body, headers: route.headers }')
+    f.line(
+      "    return { status: route.status, json: route.json, body: typeof route.body === 'function' ? route.body({ headers: req.headers }) : route.body, headers: route.headers }",
+    )
     f.line('  })')
   }
   f.line('}')
@@ -300,11 +328,71 @@ function escapeRegex(text: string): string {
  * lockstep with the non-stream fixtures.
  */
 function streamFixture(stream: NonNullable<IrOperation['stream']>, doc: IrDocument): string {
-  if (stream.format === 'sse' && stream.data === 'text') return q('id: 1\ndata: sample\n\n')
-  const value = stream.event.kind === 'unknown' ? '{}' : indentAfterFirst(fixture(stream.event, doc, 0), 4)
-  return stream.format === 'sse'
-    ? `\`id: 1\\ndata: \${JSON.stringify(${value})}\\n\\n\``
-    : `\`\${JSON.stringify(${value})}\\n\``
+  const values =
+    stream.format === 'sse' && stream.data === 'text'
+      ? STREAM_EVENTS.map((i) => q(`sample ${i + 1}`))
+      : stream.event.kind === 'unknown'
+        ? STREAM_EVENTS.map(() => '{}')
+        : STREAM_EVENTS.map((i) => indentAfterFirst(fixture(stream.event, doc, 0, undefined, i), 6))
+  const helper = stream.format === 'sse' ? (stream.data === 'text' ? 'sseTextBody' : 'sseBody') : 'ndjsonBody'
+  const arg = stream.format === 'sse' ? ", call.headers['last-event-id']" : ''
+  // NDJSON has no resume id, so its body ignores the request.
+  const param = stream.format === 'sse' ? '(call)' : '()'
+  return `${param} => ${helper}([\n      ${values.join(',\n      ')},\n    ]${arg})`
+}
+
+/** How many events a stream mock answers with — enough to resume mid-way. */
+const STREAM_EVENTS = [0, 1, 2]
+
+/**
+ * The wire encoders the stream routes call — emitted only for the formats the
+ * spec uses, because an unused function is a TS6133 in any app compiling with
+ * `noUnusedLocals`.
+ */
+function emitStreamMockHelpers(f: SourceFile, ops: readonly IrOperation[], pyreon: boolean): void {
+  const streams = ops.flatMap((o) => (o.stream ? [o.stream] : []))
+  const sseJson = streams.some((s) => s.format === 'sse' && s.data === 'json')
+  const sseText = streams.some((s) => s.format === 'sse' && s.data === 'text')
+  const ndjson = streams.some((s) => s.format === 'ndjson')
+  if (sseJson || sseText) {
+    f.line()
+    f.doc(
+      'An SSE body with ids `1…n`. A resumed request (`last-event-id: k`) gets',
+      'only the events after `k`, as a server that honours the header does.',
+    )
+    f.line('function sse(data: readonly string[], lastEventId: string | undefined): string {')
+    f.line('  const after = lastEventId !== undefined && /^\\d+$/.test(lastEventId) ? Number(lastEventId) : 0')
+    f.line("  return data.map((d, i) => `id: ${i + 1}\\ndata: ${d}\\n\\n`).slice(after).join('')")
+    f.line('}')
+  }
+  if (sseJson) {
+    f.line()
+    f.line('function sseBody(events: readonly unknown[], lastEventId: string | undefined): string {')
+    f.line('  return sse(events.map((e) => JSON.stringify(e)), lastEventId)')
+    f.line('}')
+  }
+  if (sseText) {
+    f.line()
+    f.line('function sseTextBody(events: readonly string[], lastEventId: string | undefined): string {')
+    f.line('  return sse(events, lastEventId)')
+    f.line('}')
+  }
+  if (ndjson) {
+    f.line()
+    f.doc('An NDJSON body: one value per line.')
+    f.line('function ndjsonBody(events: readonly unknown[]): string {')
+    f.line("  return events.map((e) => `${JSON.stringify(e)}\\n`).join('')")
+    f.line('}')
+  }
+  // `@pyreon/http`'s `MockRoute` matches `accept` itself; an adapter's seam does it here.
+  if (!pyreon && ops.some((o) => o.stream && responseKindOf(o) !== 'stream')) {
+    f.line()
+    f.doc('Does an `Accept` header list this media type (parameters and case ignored)?')
+    f.line('function acceptsMedia(header: string | undefined, media: string): boolean {')
+    f.line("  if (header === undefined) return false")
+    f.line("  return header.split(',').some((p) => (p.split(';')[0] ?? '').trim().toLowerCase() === media.toLowerCase())")
+    f.line('}')
+  }
 }
 
 function fixture(
