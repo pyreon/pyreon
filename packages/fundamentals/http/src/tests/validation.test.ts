@@ -244,4 +244,20 @@ describe('validate modes', () => {
     const base = createHttp({ use: [mock(routes)], schema: standardSchema, validate: 'off' })
     expect(await base.extend({ baseUrl: '' }).get('/bad').json(Schema)).toBeTruthy()
   })
+
+  it('a per-request `validate` overrides the client mode, in both directions', async () => {
+    const strict = withSchema()
+    expect(await strict.get('/bad', { validate: 'off' }).json(Schema)).toEqual({ id: 1, name: 'Ada' })
+    // The accessor form too: a request-level mode wins over a client accessor.
+    const lax = createHttp({ use: [mock(routes)], schema: standardSchema, validate: () => 'off' })
+    await expect(lax.get('/bad', { validate: 'strict' }).json(Schema)).rejects.toBeInstanceOf(ResponseValidationError)
+  })
+
+  it('an endpoint-level `validate` applies to every call of that endpoint only', async () => {
+    const api = withSchema()
+    const lenient = api.endpoint('GET /bad', { response: Schema, validate: 'off' })
+    const checked = api.endpoint('GET /bad', { response: Schema })
+    expect(await lenient()).toEqual({ id: 1, name: 'Ada' })
+    await expect(checked()).rejects.toBeInstanceOf(ResponseValidationError)
+  })
 })
