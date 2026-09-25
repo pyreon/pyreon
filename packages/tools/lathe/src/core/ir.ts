@@ -196,17 +196,84 @@ export interface IrDocument {
   notes: readonly IrNote[]
 }
 
+/** Stable, greppable class of a {@link IrNote}. */
+export type IrNoteCode =
+  | 'unsupported-schema'
+  | 'unsupported-ref'
+  | 'cyclic-ref'
+  | 'unsupported-const'
+  | 'missing-operation-id'
+  | 'multiple-content-types'
+  | 'non-json-media-type'
+  | 'no-servers'
+  | 'unsupported-parameter'
+  | 'parameter-serialization'
+  | 'unsupported-security'
+  | 'response-headers'
+  | 'error-responses'
+  | 'other-success-responses'
+  | 'optional-request-body'
+  | 'deprecated'
+  | 'extra-tags'
+  | 'description-dropped'
+  | 'numeric-version'
+
+/**
+ * What a note means for the generated client.
+ *
+ * - `loss` — the spec says something the generated code does NOT honour: a
+ *   parameter it cannot send, a header it cannot read, a constraint it does not
+ *   enforce. These are the notes to read.
+ * - `choice` — Lathe picked among equivalent readings (JSON over XML, the first
+ *   tag, the summary over the description). Nothing the spec requires is lost;
+ *   the note records WHICH reading, for the reader who wonders.
+ *
+ * Keeping them under separate severities is what lets the report lead with the
+ * losses: Petstore 3 produced 17 notes and 16 were "picked JSON over XML",
+ * which buried the one real loss under a wall of benign ones.
+ */
+export type IrNoteSeverity = 'loss' | 'choice'
+
+/**
+ * Severity per code. A `Record` over the code union, so a new code cannot be
+ * added without deciding which kind it is -- the compiler refuses the map.
+ */
+export const NOTE_SEVERITY: Readonly<Record<IrNoteCode, IrNoteSeverity>> = {
+  'unsupported-schema': 'loss',
+  'unsupported-ref': 'loss',
+  'cyclic-ref': 'loss',
+  'unsupported-const': 'loss',
+  'missing-operation-id': 'choice',
+  'multiple-content-types': 'choice',
+  'non-json-media-type': 'loss',
+  'no-servers': 'loss',
+  'unsupported-parameter': 'loss',
+  'parameter-serialization': 'loss',
+  'unsupported-security': 'loss',
+  'response-headers': 'loss',
+  'error-responses': 'loss',
+  'other-success-responses': 'loss',
+  'optional-request-body': 'loss',
+  deprecated: 'loss',
+  'extra-tags': 'choice',
+  'description-dropped': 'choice',
+  'numeric-version': 'choice',
+}
+
+/** The severity of a note, from its code. */
+export function noteSeverity(note: Pick<IrNote, 'code'>): IrNoteSeverity {
+  return NOTE_SEVERITY[note.code]
+}
+
 export interface IrNote {
   /** Stable, greppable class an agent or a gate can branch on. */
-  code:
-    | 'unsupported-schema'
-    | 'unsupported-ref'
-    | 'missing-operation-id'
-    | 'multiple-content-types'
-    | 'no-servers'
-    | 'cyclic-ref'
+  code: IrNoteCode
   message: string
-  /** JSON-pointer-ish location in the source document. */
+  /**
+   * RFC 6901 JSON pointer into the source document (`#/paths/~1pets/get`).
+   * `/` and `~` inside a segment are escaped, so the pointer resolves -- a raw
+   * path key used to produce `#/paths//pets/get`, which points nowhere.
+   */
   at: string
 }
 

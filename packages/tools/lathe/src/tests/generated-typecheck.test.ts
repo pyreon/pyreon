@@ -16,7 +16,7 @@
  * against the same strict options the repo uses.
  */
 import ts from 'typescript'
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveConfig, type ClientName, type ValidatorName } from '../core/config'
@@ -48,6 +48,14 @@ paths:
       tags: [n]
       requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/Node' } } } }
       responses: { '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Node' } } } } }
+  /session/ping:
+    get:
+      # A CONTENT-LESS read: a 200 with only a description. Petstore 3's
+      # \`logoutUser\` is this shape, and it emitted \`useQuery<void>\` over an
+      # endpoint typed \`unknown\` -- the one hook in the file that did not compile.
+      operationId: ping
+      tags: [n]
+      responses: { '200': { description: ok } }
   /nodes/{id}:
     get:
       operationId: getNode
@@ -163,7 +171,12 @@ components:
  * is most of what is being tested. A virtual host would need its own resolver,
  * and a bug in that resolver is indistinguishable from a bug in the output.
  */
-function diagnose(client: ClientName, validator: ValidatorName): string[] {
+function diagnose(
+  client: ClientName,
+  validator: ValidatorName,
+  spec: string = SPEC,
+  label = `${client}-${validator}`,
+): string[] {
   const cfg = resolveConfig({
     input: 'x',
     client,
@@ -176,9 +189,9 @@ function diagnose(client: ClientName, validator: ValidatorName): string[] {
   })
   // `types.ts` is a SECOND rendering of every model (plain TS, no runtime);
   // it is typechecked too, standalone, because nothing imports it.
-  const typesFile = generate(SPEC, resolveConfig({ input: 'x', plugins: ['types'] })).files.find((f) => f.path === 'types.ts')
-  const files = [...generate(SPEC, cfg).files, ...(typesFile ? [typesFile] : [])].filter((f) => f.path.endsWith('.ts'))
-  const root = join(TC_ROOT, `${client}-${validator}`)
+  const typesFile = generate(spec, resolveConfig({ input: 'x', plugins: ['types'] })).files.find((f) => f.path === 'types.ts')
+  const files = [...generate(spec, cfg).files, ...(typesFile ? [typesFile] : [])].filter((f) => f.path.endsWith('.ts'))
+  const root = join(TC_ROOT, label)
   rmSync(root, { recursive: true, force: true })
   for (const f of files) {
     const abs = join(root, f.path)
@@ -221,6 +234,26 @@ describe('generated output typechecks under strict TypeScript', () => {
         expect(errors, errors.join('\n')).toEqual([])
       })
     }
+  }
+})
+
+/**
+ * A REAL spec, not one written to exercise the emitter.
+ *
+ * Petstore 3 is the first spec nearly everyone points a generator at, and its
+ * output did not compile: `logoutUser` is a GET whose 200 carries no content.
+ * A hand-written fixture only contains the shapes its author thought of --
+ * which is exactly why this one is here verbatim (swagger-api/swagger-petstore,
+ * Apache-2.0).
+ */
+const PETSTORE3 = readFileSync(join(HERE, 'fixtures', 'petstore3.json'), 'utf8')
+
+describe('Petstore 3 output typechecks under strict TypeScript', () => {
+  for (const validator of VALIDATORS) {
+    it(`client=pyreon validator=${validator}`, () => {
+      const errors = diagnose('pyreon', validator, PETSTORE3, `petstore3-${validator}`)
+      expect(errors, errors.join('\n')).toEqual([])
+    })
   }
 })
 

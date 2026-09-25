@@ -18,6 +18,7 @@ import {
 import {
   emitClient,
   emitNativeModules,
+  hasNativeDataComponent,
   emitWebEndpoints,
   emitWebQueries,
 } from '../emit/client'
@@ -30,6 +31,7 @@ import { banner, jsonLiteral, type GeneratedFile } from '../emit/writer'
 import type { ResolvedConfig } from './config'
 import type { IrDocument, IrOperation, Reach } from './ir'
 import { loadOpenApi, type LoadOptions } from '../input/openapi'
+import { emitOutputManifest } from './output-manifest'
 import { extractSurface, type ApiSurface } from './surface'
 
 export interface GenerateResult {
@@ -138,6 +140,11 @@ export function generate(
   // consuming app's own package.json is configured.
   files.push(emitPackageMarker(config.plugins))
 
+  // The record of what THIS run generated, so the next one can remove what it
+  // no longer produces. Listed before `api-surface.json` is appended, and that
+  // file is added to it explicitly: every path the run writes is on the list.
+  files.push(emitOutputManifest([...files.map((f) => f.path), 'api-surface.json']))
+
   assertUniquePaths(files)
 
   const surface = extractSurface(doc)
@@ -215,6 +222,15 @@ function decide(op: IrOperation, baseUrl: string): { reach: Reach; reason?: stri
     return {
       reach: 'web-only',
       reason: `\`${op.method}\` lowers through mutations, which PMTC does not yet recognise; GET operations on this client DO reach native.`,
+    }
+  }
+  // Asked of the emitter rather than re-derived: the reach report and the
+  // native layout must agree about which reads get a data component.
+  if (!hasNativeDataComponent(op)) {
+    return {
+      reach: 'web-only',
+      reason:
+        'no typed JSON response (no content, or a media type Lathe cannot type) -- a native query decodes into a declared type, so there is nothing to lower it to.',
     }
   }
   return { reach: 'web+native' }

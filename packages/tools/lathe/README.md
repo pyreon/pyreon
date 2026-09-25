@@ -5,8 +5,15 @@ document; emits `@pyreon/validate` schemas, `@pyreon/http` endpoints,
 `@pyreon/query` hooks, mock fixtures and `@pyreon/atlas` scenarios.
 
 ```bash
-pyreon lathe generate ./openapi.yaml
+bun add -d @pyreon/lathe        # or: pyreon add @pyreon/lathe
+npx lathe generate ./openapi.yaml
 ```
+
+OpenAPI 3.0 and 3.1. A Swagger 2 document is refused with the conversion
+command (`npx swagger2openapi`), and a file that is not a spec at all is refused
+before anything is written. `@pyreon/native-compiler` is an optional peer (it
+verifies `target: 'multiplatform'` output); `@faker-js/faker` is needed only for
+the `faker` plugin, `zod` only for `validator: 'zod'`.
 
 ## What makes it different
 
@@ -74,14 +81,16 @@ rather than passing.
 import lathe from '@pyreon/lathe/vite'
 
 export default defineConfig({
-  plugins: [
-    lathe({ input: './openapi.yaml', output: './src/gen', checkOnBuild: true }),
-    pyreon(),
-  ],
+  plugins: [lathe({ checkOnBuild: true }), pyreon()],
 })
 ```
 
-Regenerates on dev-server start and whenever a spec changes. `checkOnBuild`
+Reads the `lathe` section of `pyreon.config.ts` itself (found and resolved
+exactly as the CLI does); options passed to `lathe()` win per key. Generates
+once at dev-server start and again whenever a spec or the config changes, and
+logs what moved — breaking contract changes by name, spec features not
+represented, files written and removed. A missing spec is a warning with a
+did-you-mean rather than silence. `checkOnBuild`
 turns a stale client into a **build error** rather than a warning — generated
 output that disagrees with its spec compiles and then fails against the real
 server, which is the worst place to find out.
@@ -96,7 +105,8 @@ they can open.
 lathe generate --watch
 ```
 
-Watches the containing directory with a filename filter rather than the file
+Watches the spec(s) **and the config** (an edited config is re-read). Each
+watch is on the containing directory with a filename filter rather than the file
 itself — editors write via rename as often as in place, and a watch on the
 inode dies the first time one replaces it. Events are coalesced, and a spec
 that is unparseable mid-save prints the error and keeps watching rather than
@@ -333,8 +343,8 @@ Real, current, and reported per-operation rather than papered over:
 | Construct | Native |
 | --- | --- |
 | Schemas: string/number/boolean, nested objects, arrays, optional/nullable, min/max/email/url/uuid/regex | lowers |
-| `GET` with no path parameters | lowers |
-| `GET` with a path parameter | **web-only** — PMTC bakes the URL at compile time; a runtime param cannot be baked |
+| `GET` with a typed JSON response, with or without path parameters | lowers — a path parameter becomes a prop of the data component |
+| `GET` with no content, or a non-JSON response | **web-only** — the web hook resolves to `unknown`, and there is no declared type for a native query to decode into, so no data component is emitted |
 | `POST`/`PUT`/`PATCH`/`DELETE` | **web-only** — mutations are not recognised yet |
 | `enum` / `const` | narrowed to its base scalar (`string` / `number` / `boolean`) on the native path; the constraint is genuinely lost there |
 | a model field naming another model | **lowers under `validator: 'zod'`** (inlined); dropped under the default `s.*`, with a compiler warning |
@@ -347,6 +357,26 @@ than `pyreon` — and that combination is refused at config time rather than
 generating modules that lower to nothing.
 
 ## Config
+
+Relative paths are relative to the **config file**; the config is the nearest
+`pyreon.config.*` walking up from the working directory (stopping at the
+repository root), or the one named by `--config`. Every key:
+
+| key | default | |
+| --- | --- | --- |
+| `input` | — (required) | the OpenAPI 3.x document |
+| `output` | `./src/gen` | where the client is written |
+| `source` | — | the URL `lathe pull` fetches `input` from |
+| `target` | `web` | `multiplatform` also emits and verifies native modules |
+| `plugins` | `schemas, client, queries` | see [Pick only what you want](#pick-only-what-you-want) |
+| `client` | `pyreon` | `fetch` / `axios` / `ky`; only `pyreon` reaches native |
+| `validator` | `pyreon` | `zod`; both reach native |
+| `baseUrl` | `servers[0].url` | must be an absolute literal to reach native |
+| `strictNative` | `false` | exit 1 when a native module does not lower |
+| `projects` | — | several specs in one run |
+
+`@pyreon/config`'s `LatheSection` is the same type, held identical by a
+compile-time test, so `defineConfig` rejects a misspelt plugin.
 
 ```ts
 // pyreon.config.ts
@@ -579,6 +609,52 @@ single directory is never what was meant.
 
 `lathe check` regenerates in memory and fails when committed output has drifted
 from the spec — the CI half, same contract as `gen-docs --check`.
+
+## CLI
+
+```bash
+lathe generate [spec]          # read the spec, write the client
+lathe check    [spec]          # generate in memory; exit 1 if anything is stale
+lathe pull     [url] [dest]    # fetch a remote spec
+```
+
+`lathe --help` lists every flag. Flags are strict — an unknown flag, command or
+value is an error with a did-you-mean and exit code `2`, rather than being
+ignored. `--dry-run` reports what `generate` would write and remove. Errors go
+to stderr; colour only reaches a TTY and respects `NO_COLOR`.
+
+`--json` prints one documented shape for every command and any project count —
+`{ ok, command, projects: [...], error? }` (`JsonReport` in
+`@pyreon/lathe/cli`); an error under `--json` is still JSON.
+
+### Pulling a remote spec
+
+```bash
+lathe pull https://api.example.com/openapi.json            # to the configured input
+lathe pull https://api.example.com/openapi.json spec.json  # to a path, no config needed
+lathe pull                                                 # every project with a `source`
+lathe pull --token "$TOKEN" --header "X-Team: core"        # a spec behind auth
+```
+
+`$LATHE_TOKEN` is used when `--token` is absent. Nothing is written unless the
+response is an OpenAPI 3.x document. `ETag` / `Last-Modified` are kept under
+`node_modules/.cache/lathe` and sent back as a conditional request — only while
+the file on disk is still exactly what was fetched.
+
+### Losses and choices
+
+Every spec feature the client does not honour is a note with a stable `code`,
+an RFC 6901 pointer and a severity: `loss` (security schemes, response
+headers, error bodies, non-default serialization, a non-scalar `const`,
+`deprecated`, an optional body the generated call requires, …) or `choice`
+(JSON picked over XML, the first tag, the summary over the description). The
+report leads with the losses and summarises the choices.
+
+### Generated files are pruned
+
+Each run writes `lathe-manifest.json` listing the files it generated; the next
+`generate` removes the ones it no longer produces, and `check` reports them as
+stale. Only listed paths are ever removed. Commit the manifest.
 
 ## YAML is read strictly
 

@@ -21,7 +21,7 @@ describe('scalars and enums', () => {
   it('a `const` holding an object is unsupported, with a note', () => {
     const d = doc({ X: { const: { a: 1 } } })
     expect(model(d, 'X')?.kind).toBe('unknown')
-    expect(d.notes.some((n) => n.message.includes('`const`'))).toBe(true)
+    expect(d.notes.some((n) => n.code === 'unsupported-const')).toBe(true)
   })
 
   it('an enum of only non-scalars is unsupported; a mixed one keeps its scalars with a note', () => {
@@ -72,8 +72,8 @@ describe('unions and discriminators', () => {
     })
     expect(model(d, 'Missing')).toMatchObject({ kind: 'union', discriminator: undefined })
     expect(model(d, 'Dup')).toMatchObject({ kind: 'union', discriminator: undefined })
-    expect(d.notes.some((n) => n.message.includes('without a `k` field'))).toBe(true)
-    expect(d.notes.some((n) => n.message.includes('two members claiming the tag `a`'))).toBe(true)
+    expect(d.notes.some((n) => n.message.includes('a member has no `k` field'))).toBe(true)
+    expect(d.notes.some((n) => n.message.includes('two members claim the tag value `a`'))).toBe(true)
   })
 
   it('a member that is a ref cycle with no object is a non-object member', () => {

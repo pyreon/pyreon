@@ -10978,8 +10978,9 @@ const { doc } = loadOpenApi(await readFile('./openapi.yaml', 'utf8'))
 console.log(doc.models.length, 'models', doc.operations.length, 'operations')
 for (const note of doc.notes) console.warn(note.code, note.at, note.message)`,
     notes: 'Parses an OpenAPI 3.x document (JSON or YAML text) into the spec-agnostic IR. Every reduction the IR cannot represent is recorded in `doc.notes` with a stable code and a location, so a loss is reported once at the boundary instead of being rediscovered differently by each emitter. Deterministic: models and operations are sorted, so the same spec always produces the same IR. Pass `sourceUrl` (where the spec was fetched from) and a RELATIVE `servers[].url` is resolved against it, as OpenAPI specifies.',
-    mistakes: `- Ignoring \`doc.notes\`. A spec with a remote \`$ref\` or a non-JSON media type still produces output — with those pieces typed \`unknown\`. The note is the only signal.
+    mistakes: `- Ignoring \`doc.notes\`. A spec with a remote \`$ref\` or a non-JSON media type still produces output — with those pieces typed \`unknown\`. The note is the only signal. Filter on \`noteSeverity(note) === 'loss'\` for the ones that change behaviour.
 - Reading \`op.body\` as a type. It is \`{ mediaType, encoding, type }\` — \`encoding\` (\`json\` / \`form\` / \`multipart\` / \`text\` / \`binary\`) decides the call argument (\`json:\` / \`form:\` / \`multipart:\` / \`body:\`), and a form body carries its per-field \`fieldEncoding\`.
+- Passing a Swagger 2 document. It is refused (\`openApiVersionProblem\` names the \`swagger2openapi\` conversion) rather than read as an empty 3.x spec.
 - Expecting a custom YAML tag (\`!Ref\`, \`!include\`) to be expanded. The reader refuses it with a line number instead of reading it as a plain string; resolve or bundle the spec first. Anchors, aliases and merge keys DO resolve.`,
   },
   // <gen-docs:api-reference:end @pyreon/lathe>

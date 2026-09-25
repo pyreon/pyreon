@@ -51,7 +51,54 @@ export function loadOpenApi(source: string, options: LoadOptions = {}): LoadResu
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('[Pyreon] lathe: spec did not parse to an object')
   }
+  const refusal = openApiVersionProblem(raw)
+  if (refusal) throw new Error(refusal)
   return { doc: convert(raw as Json, options) }
+}
+
+/**
+ * Why a parsed document is not an OpenAPI 3.x spec Lathe can read, or
+ * `undefined` when it is.
+ *
+ * Checked BEFORE conversion, because conversion is lenient by design and a
+ * lenient reader turns the wrong document into an EMPTY client rather than an
+ * error: a Swagger 2 spec (whose models live under `definitions` and whose
+ * bodies live in `in: body` parameters) produced 0 models and exit 0, and a
+ * YAML file that was not a spec at all overwrote a working generated tree --
+ * `api-surface.json` included, which silently reset the contract baseline.
+ *
+ * Shared with `lathe pull`, so a download is refused by the same rule that
+ * would refuse it at generate time.
+ */
+export function openApiVersionProblem(doc: unknown): string | undefined {
+  const d = obj(doc)
+  if (!d) return '[Pyreon] lathe: the spec did not parse to an object.'
+  if (d.swagger !== undefined) {
+    return (
+      `[Pyreon] lathe: this is a Swagger ${String(d.swagger)} document, and Lathe reads OpenAPI 3.x.\n` +
+      '  Swagger 2 keeps models in `definitions` and request bodies in `in: body` parameters,\n' +
+      '  so reading it as 3.x would produce an empty client. Convert it first, then generate:\n' +
+      '    npx swagger2openapi swagger.json -o openapi.json'
+    )
+  }
+  // A YAML `openapi: 3.0` (unquoted) reads as the NUMBER 3, which is still a
+  // 3.x document; stringifying first accepts it rather than refusing a spec on
+  // a quoting technicality.
+  const version = typeof d.openapi === 'number' ? String(d.openapi) : d.openapi
+  if (typeof version !== 'string') {
+    return (
+      '[Pyreon] lathe: this document has no `openapi` version key, so it is not an OpenAPI spec.\n' +
+      '  Nothing was generated and the output directory was not touched.\n' +
+      '  Check that `input` points at the API description (it starts with `openapi: 3.x`).'
+    )
+  }
+  if (!/^3(\.|$)/.test(version)) {
+    return (
+      `[Pyreon] lathe: \`openapi: ${version}\` is not a version Lathe reads — it supports OpenAPI 3.0 and 3.1.\n` +
+      '  Nothing was generated and the output directory was not touched.'
+    )
+  }
+  return undefined
 }
 
 /**
@@ -109,12 +156,13 @@ function convert(spec: Json, options: LoadOptions = {}): IrDocument {
     taken: new Set(),
     baseUrl: '',
     sourceUrl: undefined,
+    opAt: new Map(),
   }
 
   const info = obj(spec.info) ?? {}
   const servers = arr(spec.servers)
   const firstServer = servers.length > 0 ? obj(servers[0]) : undefined
-  const baseUrl = serverUrl(firstServer, '#/servers/0', ctx, options.sourceUrl)
+  const baseUrl = serverUrl(firstServer, ptr('servers', 0), ctx, options.sourceUrl)
   ctx.baseUrl = baseUrl
   ctx.sourceUrl = options.sourceUrl
   if (baseUrl === '') {
@@ -148,6 +196,7 @@ function convert(spec: Json, options: LoadOptions = {}): IrDocument {
     })
   }
 
+  noteSecurity(spec, ctx)
   const operations = collectOperations(spec, ctx)
   // Schemas reached through a non-component pointer that turned out to be
   // RECURSIVE were hoisted into named models while converting; they join the
@@ -165,7 +214,7 @@ function convert(spec: Json, options: LoadOptions = {}): IrDocument {
 
   return {
     title: str(info.title) ?? 'API',
-    version: str(info.version) ?? '0.0.0',
+    version: specVersion(info.version, notes),
     baseUrl,
     models,
     operations,
@@ -210,15 +259,15 @@ function normalizeUnions(models: IrModel[], operations: IrOperation[], ctx: Ctx)
     const claimed = new Set<IrLiteral>()
     for (const o of options) {
       const target = objectOf(o)
-      if (!target) return 'has a non-object member'
+      if (!target) return 'a member is not an object'
       const field = target.fields.find((f) => f.name === key)
-      if (!field) return `has a member without a \`${key}\` field`
-      if (!field.required) return `has a member whose \`${key}\` is optional`
+      if (!field) return `a member has no \`${key}\` field`
+      if (!field.required) return `a member's \`${key}\` is optional`
       if (field.type.kind !== 'enum') {
-        return `has a member whose \`${key}\` is not a fixed value (an implicit discriminator)`
+        return `a member's \`${key}\` is not a fixed value — an implicit discriminator`
       }
       for (const v of field.type.values) {
-        if (claimed.has(v)) return `has two members claiming the tag \`${String(v)}\``
+        if (claimed.has(v)) return `two members claim the tag value \`${String(v)}\``
         claimed.add(v)
       }
     }
@@ -262,7 +311,7 @@ function normalizeUnions(models: IrModel[], operations: IrOperation[], ctx: Ctx)
             ctx.notes.push({
               code: 'unsupported-schema',
               at,
-              message: `discriminator \`${type.discriminator}\` ${why}, which a discriminated union cannot take - emitted as a plain union instead (every member still validates).`,
+              message: `discriminator \`${type.discriminator}\` cannot be proven from the members (${why}) - emitted as a plain union instead, which validates the same data without the tag dispatch.`,
             })
             return { kind: 'union', options, discriminator: undefined }
           }
@@ -278,9 +327,15 @@ function normalizeUnions(models: IrModel[], operations: IrOperation[], ctx: Ctx)
   // walked first with its own result visible to the next -- the member types a
   // union names are final by the time the union is checked. The IR is a
   // finite tree (refs close cycles), so the walk needs no depth cap.
-  for (const m of models) m.type = walk(m.type, `#/components/schemas/${m.name}`) as IrType
+  // Pointers into the SOURCE document. The generated model name and the
+  // Pyreon-shaped path are not spec keys (`Pet_1`, `/pets/:id`), so a note built
+  // from them pointed at nothing.
+  for (const m of models) {
+    const key = ctx.modelKeys.get(m.name)
+    m.type = walk(m.type, key !== undefined ? ptr('components', 'schemas', key) : ptr('components', 'schemas', m.name)) as IrType
+  }
   for (const op of operations) {
-    const at = `#/paths/${op.path}/${op.method.toLowerCase()}`
+    const at = ctx.opAt.get(op) ?? ptr('paths', op.path, op.method.toLowerCase())
     if (op.response) op.response = walk(op.response, at)
     if (op.body) op.body = { ...op.body, type: walk(op.body.type, at) as IrType }
     op.headerParams = op.headerParams.map((p) => ({ ...p, type: walk(p.type, at) as IrType }))
@@ -319,6 +374,8 @@ interface Ctx {
   baseUrl: string
   /** Where the spec came from, for resolving relative server URLs. */
   sourceUrl: string | undefined
+  /** Each operation's pointer in the source document, for post-pass notes. */
+  opAt: Map<IrOperation, string>
 }
 
 /**
@@ -338,7 +395,7 @@ function modelType(key: string, ctx: Ctx): IrType | undefined {
   const schema = obj(obj(obj(ctx.spec.components)?.schemas)?.[key])
   if (!schema) return undefined
   ctx.converting.add(key)
-  const t = toType(schema, `#/components/schemas/${key}`, ctx)
+  const t = toType(schema, ptr('components', 'schemas', key), ctx)
   ctx.converting.delete(key)
   ctx.modelTypes.set(key, t)
   return t
@@ -373,13 +430,16 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
   }
   const ids = assignNames(rawIds, ident)
   const tagNames = tagFileNames([...tags])
+  const globalSecurity = spec.security !== undefined
   let next = 0
 
   for (const rawPath of Object.keys(paths).sort()) {
     const item = obj(paths[rawPath])
     if (!item) continue
-    // Path-level parameters apply to every operation under the path.
-    const shared = arr(item.parameters)
+    // Path-level parameters apply to every operation under the path. Each is
+    // paired with its OWN pointer: an operation parameter and a path-level one
+    // live at different places in the document.
+    const shared = arr(item.parameters).map((p, i) => ({ p, at: ptr('paths', rawPath, 'parameters', i) }))
     // One identifier per `{placeholder}`, unique WITHIN the path: `{a-b}` and
     // `{a_b}` both normalize to `aB`, and two `:aB` segments bind one value
     // to both.
@@ -389,7 +449,7 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
     for (const method of METHODS) {
       const op = obj(item[method.toLowerCase()])
       if (!op) continue
-      const at = `#/paths/${rawPath}/${method.toLowerCase()}`
+      const at = ptr('paths', rawPath, method.toLowerCase())
       const id = ids[next++] as string
       if (!str(op.operationId)) {
         ctx.notes.push({
@@ -398,7 +458,7 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
           message: `operation has no operationId — derived \`${id}\` from method + path. Add one to the spec to make the generated name stable against path edits.`,
         })
       }
-      const params = [...shared, ...arr(op.parameters)]
+      const params = [...shared, ...arr(op.parameters).map((p, i) => ({ p, at: sub(at, 'parameters', i) }))]
       const pathParams: IrParam[] = []
       const queryParams: IrParam[] = []
       const headerParams: IrParam[] = []
@@ -406,15 +466,16 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
       // An operation-level parameter OVERRIDES a path-level one with the same
       // (name, in) -- OpenAPI 3 §Operation Object. Concatenating them gave two
       // `q` parameters with different types and required-ness.
-      const byKey = new Map<string, Json>()
-      for (const p of params) {
-        const po = obj(deref(p, at, ctx))
+      const byKey = new Map<string, { po: Json; pAt: string }>()
+      for (const { p, at: pAt } of params) {
+        const po = obj(deref(p, pAt, ctx))
         const name = po ? str(po.name) : undefined
         if (!po || !name) continue
-        byKey.set(`${String(po.in)}:${name}`, po)
+        byKey.set(`${String(po.in)}:${name}`, { po, pAt })
       }
-      for (const po of byKey.values()) {
+      for (const { po, pAt } of byKey.values()) {
         const name = str(po.name) as string
+        const where = str(po.in)
         const target =
           po.in === 'path'
             ? pathParams
@@ -425,7 +486,27 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
                 : po.in === 'cookie'
                   ? cookieParams
                   : null
-        if (!target) continue
+        if (!target) {
+          // An `Accept` / `Content-Type` / `Authorization` header parameter is
+          // ignored by rule (OpenAPI says so) and is not a loss. Anything else
+          // without a place in the call -- an unknown location -- is.
+          if (where !== 'header') {
+            ctx.notes.push({
+              code: 'unsupported-parameter',
+              at: pAt,
+              message: `${po.required === true ? 'REQUIRED ' : ''}${where ?? 'unknown-location'} parameter \`${name}\` is not part of the generated call — \`in\` must be path, query, header or cookie.`,
+            })
+          }
+          continue
+        }
+        if (where === 'path' || where === 'query') noteSerialization(po, name, where, pAt, ctx)
+        if (po.deprecated === true) {
+          ctx.notes.push({
+            code: 'deprecated',
+            at: pAt,
+            message: `parameter \`${name}\` is deprecated, but the generated signature carries no \`@deprecated\` marker — call sites get no warning.`,
+          })
+        }
         target.push({
           // A PATH parameter's name must match the `:placeholder` the path was
           // rewritten to, so it takes the same per-path identifier -- they
@@ -434,7 +515,7 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
           // generated signature. A QUERY parameter's name is a WIRE name
           // (`?page=2`), so it stays verbatim and is quoted at emit instead.
           name: po.in === 'path' ? (placeholderIds.get(name) ?? ident(name)) : name,
-          type: toType(paramSchema(po), `${at}/parameters/${name}`, ctx),
+          type: toType(paramSchema(po), sub(pAt, 'schema'), ctx),
           // A path parameter is always required, whatever the spec claims.
           required: po.in === 'path' ? true : po.required === true,
           doc: str(po.description),
@@ -443,8 +524,9 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
       // Operation- and path-level `servers` override the document's (Box's
       // uploads go to upload.box.com, not api.box.com). They were ignored.
       const ownServers = arr(op.servers).length > 0 ? arr(op.servers) : arr(item.servers)
-      const ownBase = ownServers.length > 0 ? serverUrl(obj(ownServers[0]), `${at}/servers/0`, ctx, ctx.sourceUrl) : ''
-      ops.push({
+      const ownBase = ownServers.length > 0 ? serverUrl(obj(ownServers[0]), sub(at, 'servers', 0), ctx, ctx.sourceUrl) : ''
+      noteOperation(op, at, spec, globalSecurity, ctx)
+      const irOp: IrOperation = {
         id,
         method,
         baseUrl: ownBase !== '' && ownBase !== ctx.baseUrl ? ownBase : undefined,
@@ -457,10 +539,108 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
         cookieParams,
         body: bodyOf(op, at, ctx),
         response: responseType(op, at, ctx),
-      })
+      }
+      ctx.opAt.set(irOp, at)
+      ops.push(irOp)
     }
   }
   return ops
+}
+
+/**
+ * Notes for what an operation declares and the generated call does not carry:
+ * extra tags, a dropped description, `deprecated`, and a security requirement.
+ */
+function noteOperation(op: Json, at: string, spec: Json, globalSecurity: boolean, ctx: Ctx): void {
+  const tags = arr(op.tags).filter((t): t is string => typeof t === 'string' && t.length > 0)
+  if (tags.length > 1) {
+    ctx.notes.push({
+      code: 'extra-tags',
+      at: sub(at, 'tags'),
+      message: `grouped under its first tag \`${tags[0]}\` only; also tagged ${tags.slice(1).map((t) => `\`${t}\``).join(', ')}.`,
+    })
+  }
+  if (str(op.summary) && str(op.description)) {
+    ctx.notes.push({
+      code: 'description-dropped',
+      at: sub(at, 'description'),
+      message: 'the operation has both a summary and a description; the generated JSDoc carries the summary only.',
+    })
+  }
+  if (op.deprecated === true) {
+    ctx.notes.push({
+      code: 'deprecated',
+      at,
+      message: 'the operation is deprecated, but the generated endpoint and hook carry no `@deprecated` marker — call sites get no warning.',
+    })
+  }
+  // An EXPLICIT operation-level requirement, or the document's global one.
+  // `security: []` on an operation opts out of the global requirement.
+  const opSecurity = Array.isArray(op.security) ? op.security : undefined
+  const required = opSecurity ?? (globalSecurity ? arr(spec.security) : [])
+  const schemes = [...new Set(required.flatMap((r) => Object.keys(obj(r) ?? {})))].sort()
+  if (schemes.length > 0 && opSecurity) {
+    ctx.notes.push({
+      code: 'unsupported-security',
+      at: sub(at, 'security'),
+      message: `requires ${schemes.map((n) => `\`${n}\``).join(' or ')}, which the generated client does not send — the request fails authorization until you add the credential yourself.`,
+    })
+  }
+}
+
+/**
+ * Note a parameter whose SERIALIZATION the generated client does not follow.
+ *
+ * The client serializes the OpenAPI defaults: a path segment as `simple`, a
+ * query value as `form` with `explode: true` (an array repeats its key). A
+ * spec asking for anything else -- `deepObject`, `spaceDelimited`,
+ * `explode: false` -- gets a request the server was not written to parse, and
+ * nothing at compile time says so.
+ */
+function noteSerialization(po: Json, name: string, where: 'path' | 'query', at: string, ctx: Ctx): void {
+  const style = str(po.style)
+  const explode = typeof po.explode === 'boolean' ? po.explode : undefined
+  const defaultStyle = where === 'path' ? 'simple' : 'form'
+  const defaultExplode = where === 'query'
+  const odd: string[] = []
+  if (style && style !== defaultStyle) odd.push(`style: ${style}`)
+  if (explode !== undefined && explode !== defaultExplode) odd.push(`explode: ${explode}`)
+  if (po.allowReserved === true) odd.push('allowReserved: true')
+  if (odd.length === 0) return
+  ctx.notes.push({
+    code: 'parameter-serialization',
+    at,
+    message: `${where} parameter \`${name}\` declares ${odd.join(', ')}; the generated client serializes the default (${defaultStyle}${where === 'query' ? ', explode' : ''}), which the server may not parse.`,
+  })
+}
+
+/**
+ * Note every security scheme, and the global requirement.
+ *
+ * Lathe applies none of them, so the generated client sends no credentials.
+ * That is a loss worth leading with: every protected operation fails with a
+ * 401 against a client that compiled cleanly.
+ */
+function noteSecurity(spec: Json, ctx: Ctx): void {
+  const schemes = obj(obj(spec.components)?.securitySchemes) ?? {}
+  for (const name of Object.keys(schemes).sort()) {
+    const scheme = obj(schemes[name]) ?? {}
+    const kind = [str(scheme.type), str(scheme.scheme), str(scheme.in)].filter(Boolean).join(' ')
+    ctx.notes.push({
+      code: 'unsupported-security',
+      at: ptr('components', 'securitySchemes', name),
+      message: `security scheme \`${name}\`${kind ? ` (${kind})` : ''} is not applied — the generated client sends no credentials for it.`,
+    })
+  }
+  const global = arr(spec.security)
+  const names = [...new Set(global.flatMap((r) => Object.keys(obj(r) ?? {})))].sort()
+  if (names.length > 0) {
+    ctx.notes.push({
+      code: 'unsupported-security',
+      at: '#/security',
+      message: `every operation requires ${names.map((n) => `\`${n}\``).join(' or ')} unless it opts out; the generated client sends no credentials, so those requests fail authorization until you add them yourself.`,
+    })
+  }
 }
 
 /**
@@ -554,7 +734,8 @@ function encodingOf(mediaType: string): BodyEncoding {
 const ENCODING_RANK: Readonly<Record<BodyEncoding, number>> = { json: 0, form: 1, multipart: 2, text: 3, binary: 4 }
 
 function bodyOf(op: Json, at: string, ctx: Ctx): IrBody | undefined {
-  const rb = obj(deref(op.requestBody, at, ctx))
+  const where = sub(at, 'requestBody')
+  const rb = obj(deref(op.requestBody, where, ctx))
   if (!rb) return undefined
   const content = obj(rb.content)
   if (!content) return undefined
@@ -562,11 +743,20 @@ function bodyOf(op: Json, at: string, ctx: Ctx): IrBody | undefined {
   if (keys.length === 0) return undefined
   const mediaType = [...keys].sort((a, b) => ENCODING_RANK[encodingOf(a)] - ENCODING_RANK[encodingOf(b)])[0] as string
   const encoding = encodingOf(mediaType)
-  const where = `${at}/requestBody`
+  // `requestBody.required` defaults to FALSE in OpenAPI, and the generated body
+  // argument is required either way. A caller that wants to omit it gets a
+  // compile error for something the spec allows.
+  if (rb.required !== true) {
+    ctx.notes.push({
+      code: 'optional-request-body',
+      at: where,
+      message: 'the request body is optional in the spec (`required` is not `true`), but the generated body argument is required.',
+    })
+  }
   if (keys.length > 1) {
     ctx.notes.push({
       code: 'multiple-content-types',
-      at: where,
+      at: sub(where, 'content'),
       message: `${keys.length} media types (${keys.join(', ')}) — generated code sends ${mediaType}.`,
     })
   }
@@ -574,7 +764,7 @@ function bodyOf(op: Json, at: string, ctx: Ctx): IrBody | undefined {
   const schema = obj(media.schema)
   if (encoding === 'text') return { mediaType, encoding, type: { kind: 'string' } }
   if (encoding === 'binary') return { mediaType, encoding, type: { kind: 'string', format: 'binary' } }
-  const type = schema ? toType(schema, where, ctx) : { kind: 'unknown' as const, reason: 'no schema' }
+  const type = schema ? toType(schema, sub(where, 'content', mediaType, 'schema'), ctx) : { kind: 'unknown' as const, reason: 'no schema' }
   return {
     mediaType,
     encoding,
@@ -601,18 +791,54 @@ function fieldEncodingOf(encoding: Json | undefined): Record<string, IrFieldEnco
 function responseType(op: Json, at: string, ctx: Ctx): IrType | undefined {
   const responses = obj(op.responses)
   if (!responses) return undefined
+  const rAt = sub(at, 'responses')
   // First 2xx wins, numerically, so `200` beats `201` deterministically. A
   // `2XX` RANGE counts too, after the explicit codes (OpenAPI: an explicit
   // code takes precedence over the range); ignoring it typed the response
   // `void` and the generated call discarded the body.
   const keys = Object.keys(responses)
-  const ok = keys.filter((k) => /^2\d\d$/.test(k)).sort()[0] ?? keys.find((k) => /^2XX$/i.test(k))
+  const successes = [...keys.filter((k) => /^2\d\d$/.test(k)).sort(), ...keys.filter((k) => /^2XX$/i.test(k))]
+  const ok = successes[0]
   const chosen = ok ?? (responses.default !== undefined ? 'default' : undefined)
+
+  // What the typed result does NOT carry. Each is a response the spec
+  // describes and the generated call cannot surface: a different success
+  // shape, or an error body that reaches the caller as an untyped rejection.
+  const withBody = (k: string): boolean => Object.keys(obj(obj(deref(responses[k], sub(rAt, k), ctx))?.content) ?? {}).length > 0
+  const others = successes.slice(1).filter(withBody)
+  if (others.length > 0) {
+    ctx.notes.push({
+      code: 'other-success-responses',
+      at: rAt,
+      message: `only \`${ok}\` is typed; the ${others.map((k) => `\`${k}\``).join(', ')} response${others.length > 1 ? 's are' : ' is'} decoded as if ${others.length > 1 ? 'they were' : 'it were'} \`${ok}\`.`,
+    })
+  }
+  const errors = keys
+    .filter((k) => k !== chosen && (/^[45](\d\d|XX)$/i.test(k) || k === 'default'))
+    .filter(withBody)
+    .sort()
+  if (errors.length > 0) {
+    ctx.notes.push({
+      code: 'error-responses',
+      at: rAt,
+      message: `error response${errors.length > 1 ? 's' : ''} ${errors.map((k) => `\`${k}\``).join(', ')} ${errors.length > 1 ? 'are' : 'is'} not typed — a failed call rejects with an error whose body is \`unknown\`.`,
+    })
+  }
+
   if (!chosen) return undefined
-  const res = obj(deref(responses[chosen], at, ctx))
+  const cAt = sub(rAt, chosen)
+  const res = obj(deref(responses[chosen], cAt, ctx))
+  const headers = Object.keys(obj(res?.headers) ?? {}).sort()
+  if (headers.length > 0) {
+    ctx.notes.push({
+      code: 'response-headers',
+      at: sub(cAt, 'headers'),
+      message: `response header${headers.length > 1 ? 's' : ''} ${headers.map((h) => `\`${h}\``).join(', ')} ${headers.length > 1 ? 'are' : 'is'} not exposed — the generated call resolves to the body only.`,
+    })
+  }
   const content = obj(res?.content)
   if (!content) return undefined
-  return pickResponseContent(content, `${at}/responses/${chosen}`, ctx)
+  return pickResponseContent(content, cAt, ctx)
 }
 
 /**
@@ -629,8 +855,8 @@ function pickResponseContent(content: Json, at: string, ctx: Ctx): IrType | unde
     const first = keys[0]
     if (!first) return undefined
     ctx.notes.push({
-      code: 'multiple-content-types',
-      at,
+      code: 'non-json-media-type',
+      at: sub(at, 'content'),
       message: `no JSON media type (found ${keys.join(', ')}) — using \`${first}\` and typing it as unknown.`,
     })
     return { kind: 'unknown', reason: `media type ${first}` }
@@ -638,12 +864,12 @@ function pickResponseContent(content: Json, at: string, ctx: Ctx): IrType | unde
   if (keys.length > 1) {
     ctx.notes.push({
       code: 'multiple-content-types',
-      at,
+      at: sub(at, 'content'),
       message: `${keys.length} media types (${keys.join(', ')}) — generated code uses ${json}.`,
     })
   }
   const schema = obj(obj(content[json])?.schema)
-  return schema ? toType(schema, at, ctx) : { kind: 'unknown', reason: 'no schema' }
+  return schema ? toType(schema, sub(at, 'content', json, 'schema'), ctx) : { kind: 'unknown', reason: 'no schema' }
 }
 
 /** Resolve a local `$ref`. Remote refs are refused rather than fetched. */
@@ -725,12 +951,12 @@ function toTypeNonNull(schema: Json, at: string, ctx: Ctx): IrType {
     const discriminator = str(obj(schema.discriminator)?.propertyName)
     const unions: IrType[] = []
     if (oneOf.length > 0) {
-      unions.push({ kind: 'union', options: oneOf.map((o, i) => toType(obj(o) ?? {}, `${at}/oneOf/${i}`, ctx)), discriminator })
+      unions.push({ kind: 'union', options: oneOf.map((o, i) => toType(obj(o) ?? {}, sub(at, 'oneOf', i), ctx)), discriminator })
     }
     if (anyOf.length > 0) {
       unions.push({
         kind: 'union',
-        options: anyOf.map((o, i) => toType(obj(o) ?? {}, `${at}/anyOf/${i}`, ctx)),
+        options: anyOf.map((o, i) => toType(obj(o) ?? {}, sub(at, 'anyOf', i), ctx)),
         discriminator: oneOf.length > 0 ? undefined : discriminator,
       })
     }
@@ -773,7 +999,12 @@ function toTypeNonNull(schema: Json, at: string, ctx: Ctx): IrType {
   if ('const' in schema) {
     const v = schema.const
     if (isLiteral(v)) return enumOf([v])
-    return unsupported(at, ctx, '`const` whose value is not a JSON scalar')
+    ctx.notes.push({
+      code: 'unsupported-const',
+      at: sub(at, 'const'),
+      message: `\`const: ${JSON.stringify(v)}\` is not a JSON scalar, so it is not enforced — typed as unknown.`,
+    })
+    return { kind: 'unknown', reason: 'non-scalar const' }
   }
   if (Array.isArray(schema.enum)) {
     const values = schema.enum.filter(isLiteral)
@@ -815,7 +1046,7 @@ function toTypeNonNull(schema: Json, at: string, ctx: Ctx): IrType {
       const items = obj(schema.items)
       return {
         kind: 'array',
-        items: items ? toType(items, `${at}/items`, ctx) : { kind: 'unknown', reason: 'array without items' },
+        items: items ? toType(items, sub(at, 'items'), ctx) : { kind: 'unknown', reason: 'array without items' },
         minItems: count(schema.minItems),
         maxItems: count(schema.maxItems),
         uniqueItems: schema.uniqueItems === true ? true : undefined,
@@ -828,7 +1059,7 @@ function toTypeNonNull(schema: Json, at: string, ctx: Ctx): IrType {
         // A bare `{}` / `type: object` with no properties is a free-form map.
         const ap = schema.additionalProperties
         if (ap && typeof ap === 'object') {
-          return { kind: 'object', fields: [], additional: toType(ap as Json, `${at}/additionalProperties`, ctx) }
+          return { kind: 'object', fields: [], additional: toType(ap as Json, sub(at, 'additionalProperties'), ctx) }
         }
         if (t === 'object' || ap === true) return { kind: 'object', fields: [], additional: { kind: 'unknown', reason: 'free-form object' } }
         return { kind: 'unknown', reason: 'schema declares no type' }
@@ -969,9 +1200,16 @@ function fieldsOf(schema: Json, props: Json, at: string, ctx: Ctx): IrField[] {
   for (const key of Object.keys(props)) {
     const p = obj(props[key])
     if (!p) continue
+    if (p.deprecated === true) {
+      ctx.notes.push({
+        code: 'deprecated',
+        at: sub(at, 'properties', key),
+        message: `property \`${key}\` is deprecated, but the generated type carries no \`@deprecated\` marker.`,
+      })
+    }
     out.push({
       name: key,
-      type: toType(p, `${at}/properties/${key}`, ctx),
+      type: toType(p, sub(at, 'properties', key), ctx),
       required: required.has(key),
       doc: str(p.description) ?? str(p.title),
       example: p.example,
@@ -1007,7 +1245,7 @@ function siblingObject(schema: Json): Json | undefined {
 function mergeAllOf(parts: unknown[], self: Json, at: string, ctx: Ctx): IrType {
   const merged: MergePart[] = parts.map((p, i) => {
     const raw = obj(p) ?? {}
-    return { type: toType(raw, `${at}/allOf/${i}`, ctx), required: stringList(raw.required) }
+    return { type: toType(raw, sub(at, 'allOf', i), ctx), required: stringList(raw.required) }
   })
   // Properties / required / additionalProperties declared ALONGSIDE the allOf
   // are one more part. A sibling `oneOf` is one more part too.
@@ -1210,6 +1448,43 @@ function decodePointerSegment(seg: string): string {
     // A lone `%` is not an escape; the segment is taken literally.
   }
   return s.replace(/~1/g, '/').replace(/~0/g, '~')
+}
+
+/**
+ * `info.version`, as the string the banner and the surface record.
+ *
+ * YAML reads an unquoted `version: 1` as a NUMBER, and the old `str()`-only
+ * read turned every such spec into `0.0.0` -- a version the author never wrote,
+ * stamped on every generated file. A number is stringified instead, with a note,
+ * because the conversion is lossy for the case that matters: `version: 1.0`
+ * reads as `1` before this code ever sees it.
+ */
+function specVersion(raw: unknown, notes: IrNote[]): string {
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    notes.push({
+      code: 'numeric-version',
+      at: '#/info/version',
+      message: `\`info.version\` is the number ${raw}, not a string -- used as \`${raw}\`. Quote it in YAML (\`version: '1.0'\`); an unquoted \`1.0\` has already lost its \`.0\` by the time it is read.`,
+    })
+    return String(raw)
+  }
+  return str(raw) ?? '0.0.0'
+}
+
+/**
+ * An RFC 6901 JSON pointer (`#/paths/~1pets~1{id}/get`).
+ *
+ * A segment's `~` and `/` must be escaped, or the pointer does not resolve:
+ * every path key starts with `/`, so every operation note used to point at
+ * `#/paths//pets/get`.
+ */
+export function ptr(...segments: ReadonlyArray<string | number>): string {
+  return `#/${segments.map((seg) => String(seg).replace(/~/g, '~0').replace(/\//g, '~1')).join('/')}`
+}
+
+/** Append segments to an existing pointer. */
+function sub(at: string, ...segments: ReadonlyArray<string | number>): string {
+  return `${at}/${ptr(...segments).slice(2)}`
 }
 
 function stripTrailingSlash(url: string): string {

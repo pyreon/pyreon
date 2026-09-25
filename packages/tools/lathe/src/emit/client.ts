@@ -273,6 +273,22 @@ function expandFileRefs(type: IrType, models: ReadonlyMap<string, IrType>, expan
   }
 }
 
+/**
+ * Does this operation get a native DATA COMPONENT?
+ *
+ * A read with a TYPED response only. PMTC decodes a native query into a
+ * declared type, and there is no declared type to decode an untyped body into:
+ * `useQuery<unknown>` lowers to a decode of `Any`, which does not compile on
+ * Swift, so emitting the component anyway turned a content-less GET into a
+ * BROKEN native module (Petstore 3's `user.native.tsx`). The endpoint is still
+ * declared -- only the component that would render nothing is left out, and the
+ * reach analysis in `core/generate.ts` reports the operation as web-only by
+ * asking this same predicate.
+ */
+export function hasNativeDataComponent(op: IrOperation): boolean {
+  return !isMutation(op) && typedResponse(op) !== undefined
+}
+
 /** Does this operation mutate? Decides query vs mutation binding. */
 export function isMutation(op: IrOperation): boolean {
   return op.method !== 'GET' && op.method !== 'HEAD' && op.method !== 'OPTIONS'
@@ -334,9 +350,8 @@ function responseCfg(
   models?: ReadonlyMap<string, IrType>,
 ): string {
   const entries: string[] = []
-  if (op.response && op.response.kind !== 'unknown') {
-    entries.push(`response: ${schemaExpr(op.response, { native, validator, models })}`)
-  }
+  const response = typedResponse(op)
+  if (response) entries.push(`response: ${schemaExpr(response, { native, validator, models })}`)
   // Declared ON the endpoint because they are properties of the API, not of a
   // call: a raw body's media type, and how each form field serializes.
   if (!native && op.body) {
@@ -354,6 +369,35 @@ function responseCfg(
     }
   }
   return entries.length > 0 ? `, { ${entries.join(', ')} }` : ''
+
+}
+
+/**
+ * The response type an endpoint is DECLARED with, or `undefined` when it has
+ * none -- no content at all (a 204, a `200` with only a description), or a
+ * body Lathe could not type (`text/csv`, an SSE stream).
+ *
+ * This is the one place that decision is made. The hook's type argument and
+ * the endpoint's `{ response }` clause used to decide it separately, and they
+ * disagreed exactly here: a content-less GET emitted `useQuery<void>` over an
+ * endpoint whose `.query()` yields `QueryOptionsLike<unknown>`, so Petstore 3's
+ * `logoutUser` did not typecheck in the consumer's repo.
+ */
+export function typedResponse(op: IrOperation): IrType | undefined {
+  if (!op.response || op.response.kind === 'unknown') return undefined
+  return op.response
+}
+
+/**
+ * The TypeScript type a query over this operation resolves to.
+ *
+ * `unknown`, not `void`, for an untyped response: with no schema the endpoint
+ * is an unchecked `unknown`, and that is also the honest answer -- a spec
+ * that declares no body does not stop a server sending one.
+ */
+function queryResultType(op: IrOperation): string {
+  const response = typedResponse(op)
+  return response ? tsType(response) : 'unknown'
 }
 
 /** WEB layout: `queries.ts` — reactive hooks, one per operation. */
@@ -390,7 +434,7 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
     for (const op of ops) {
       const args = argsType(op, modelTypes)
       const hook = `use${typeIdent(op.id)}`
-      const ret = op.response ? tsType(op.response) : 'void'
+      const ret = queryResultType(op)
       f.line()
       if (isMutation(op)) {
         // The variables type is the endpoint's own call args, so a caller
@@ -522,7 +566,7 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
     f.import('@pyreon/http/schema', 'standardSchema')
     f.import(dialect.module, dialect.binding)
     if (dialect.nativeWrap) f.import(dialect.nativeWrap.module, dialect.nativeWrap.fn)
-    if (ops.some((o) => !isMutation(o))) f.import('@pyreon/query', 'useQuery')
+    if (ops.some(hasNativeDataComponent)) f.import('@pyreon/query', 'useQuery')
 
     f.line()
     f.doc(
@@ -585,8 +629,8 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
     // a standalone hook function is read as a View and emitted verbatim, which
     // produces Swift that does not compile, with no warning at all.
     for (const op of ops) {
-      if (isMutation(op)) continue
-      const ret = op.response ? tsType(op.response) : 'unknown'
+      if (!hasNativeDataComponent(op)) continue
+      const ret = queryResultType(op)
       const name = `${typeIdent(op.id)}Data`
       // A path param becomes a PROP, and the `params` object is built from
       // those props. PMTC lowers this to native string interpolation and keys
