@@ -74,3 +74,11 @@ describe('useQuery select generic', () => {
     >()
   })
 })
+
+describe('UseInfiniteQueryOptions', () => {
+  it('types the page and the page param', () => {
+    type O = import('../index').UseInfiniteQueryOptions<Post[], Error, readonly unknown[], number>
+    expectTypeOf<O['initialPageParam']>().toEqualTypeOf<number>()
+    expectTypeOf<Parameters<O['getNextPageParam']>[0]>().toEqualTypeOf<Post[]>()
+  })
+})

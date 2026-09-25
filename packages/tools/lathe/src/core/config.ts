@@ -164,6 +164,20 @@ export interface LatheSection {
    */
   validate?: 'strict' | 'warn' | 'off'
   /**
+   * How to page through operations, keyed by the GENERATED operation name
+   * (the `endpoints` export). Declared, never guessed — each entry emits a
+   * `use<Op>Infinite` hook and a `<op>InfiniteOptions` factory. Same shape as
+   * the `x-pyreon-pagination` spec extension, which a config entry overrides.
+   *
+   * ```ts
+   * pagination: {
+   *   listCustomers: { kind: 'lastItem', param: 'starting_after', items: 'data', field: 'id', hasMore: 'has_more' },
+   *   listEvents: { kind: 'cursor', param: 'cursor', next: 'meta.next_cursor' },
+   * }
+   * ```
+   */
+  pagination?: Readonly<Record<string, PaginationConfig>>
+  /**
    * Fail the run when a generated native module does not lower.
    *
    * Off by default: a spec is usually partly un-lowerable and that is fine and
@@ -172,6 +186,12 @@ export interface LatheSection {
    */
   strictNative?: boolean
 }
+
+/** One operation's pagination declaration — see `LatheSection.pagination`. */
+export type PaginationConfig =
+  | { kind: 'cursor'; param: string; next: string; hasMore?: string }
+  | { kind: 'lastItem'; param: string; items?: string; field: string; hasMore?: string }
+  | { kind: 'offset' | 'page'; param: string; items?: string; hasMore?: string; initial?: number }
 
 export interface ResolvedConfig {
   /** Project name, or `''` for a single-project config. */
@@ -192,6 +212,7 @@ export interface ResolvedConfig {
   validator: ValidatorName
   baseUrl?: string | undefined
   validate?: 'strict' | 'warn' | 'off' | undefined
+  pagination?: Readonly<Record<string, PaginationConfig>> | undefined
   strictNative: boolean
 }
 
@@ -286,6 +307,7 @@ export function resolveConfig(section: LatheSection | undefined): ResolvedConfig
     validator,
     baseUrl: section?.baseUrl,
     validate: section?.validate,
+    pagination: section?.pagination,
     strictNative: section?.strictNative ?? false,
   }
 }

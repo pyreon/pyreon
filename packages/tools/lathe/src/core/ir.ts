@@ -96,7 +96,30 @@ export interface IrOperation {
    * `core/media.ts`.
    */
   responseMedia?: string | undefined
+  /**
+   * How to page through this operation — declared, never guessed. From the
+   * `x-pyreon-pagination` spec extension or the `pagination` config entry.
+   */
+  pagination?: IrPagination | undefined
 }
+
+/**
+ * An EXPLICIT pagination declaration. Paths are dotted property paths into the
+ * response (`meta.next_cursor`); an empty path means the response itself.
+ *
+ * - `cursor`   — the next value is read from `next`; nullish/empty ends it.
+ * - `lastItem` — the next value is `items[last][field]` (Stripe's
+ *                `starting_after`); an empty page ends it.
+ * - `offset`   — the next value is the current one plus the page's length.
+ * - `page`     — the next value is the current one plus one.
+ *
+ * `hasMore`, when given, is a boolean path that ends paging when `false`.
+ */
+export type IrPagination =
+  | { kind: 'cursor'; param: string; next: string; hasMore?: string | undefined }
+  | { kind: 'lastItem'; param: string; items: string; field: string; hasMore?: string | undefined }
+  | { kind: 'offset'; param: string; items: string; hasMore?: string | undefined; initial?: number | undefined }
+  | { kind: 'page'; param: string; items: string; hasMore?: string | undefined; initial?: number | undefined }
 
 /**
  * One `components.securitySchemes` entry, reduced to how a CLIENT applies it.
@@ -144,6 +167,7 @@ export interface IrNote {
     | 'no-servers'
     | 'cyclic-ref'
     | 'body-on-get'
+    | 'invalid-pagination'
   message: string
   /** JSON-pointer-ish location in the source document. */
   at: string

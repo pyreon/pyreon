@@ -116,6 +116,18 @@ export interface LatheSection {
   baseUrl?: string
   /** The generated client's default response validation: `strict` (default), `warn`, `off`. */
   validate?: 'strict' | 'warn' | 'off'
+  /**
+   * Declared pagination per generated operation name — emits `use<Op>Infinite`
+   * hooks. See `@pyreon/lathe`'s `PaginationConfig`.
+   */
+  pagination?: Readonly<
+    Record<
+      string,
+      | { kind: 'cursor'; param: string; next: string; hasMore?: string }
+      | { kind: 'lastItem'; param: string; items?: string; field: string; hasMore?: string }
+      | { kind: 'offset' | 'page'; param: string; items?: string; hasMore?: string; initial?: number }
+    >
+  >
   /** Exit non-zero when a generated native module does not lower. */
   strictNative?: boolean
 }

@@ -460,18 +460,52 @@ it('shows the error state', async () => {
 })
 ```
 
-### Not generated (yet): infinite queries
+### Infinite queries, declared
 
-Pagination is not detected. Doing it properly needs two facts a spec does not
-state in a standard way — WHICH parameter advances the page and WHERE the next
-value is in the response (a `next_cursor` field, the last item's id for
-Stripe's `starting_after`, a full `next` URL for Spotify, a `Link` header for
-GitHub). A name heuristic would guess wrong on a large share of real APIs and a
-wrong `getNextPageParam` loops or stops silently. The intended design is
-explicit: an `x-pagination` spec extension or a per-operation config entry
-naming the parameter and the response path, emitting a `use<Op>Infinite` hook
-over `useInfiniteQuery`. Until then, call the endpoint from your own
-`useInfiniteQuery` — its input type makes that fully typed.
+Pagination is never guessed — a spec does not say, in any standard way, which
+parameter advances a page or where the next value is, and a wrong guess loops
+or stops silently. Declare it per operation, in config or in the spec, and each
+declaration emits a typed `use<Op>Infinite` hook plus a pure
+`<op>InfiniteOptions` factory (for a loader's `prefetchInfiniteQuery`):
+
+```ts
+// pyreon.config.ts — keys are the generated operation names
+lathe: {
+  pagination: {
+    listCustomers: { kind: 'lastItem', param: 'starting_after', items: 'data', field: 'id', hasMore: 'has_more' },
+    listEvents:    { kind: 'cursor', param: 'cursor', next: 'meta.next_cursor' },
+    listRows:      { kind: 'offset', param: 'offset' },            // items default: the response itself
+    listPages:     { kind: 'page', param: 'page', items: 'results', initial: 1 },
+  },
+}
+```
+
+```yaml
+# or on the operation itself — same shape
+get:
+  operationId: listEvents
+  x-pyreon-pagination: { kind: cursor, param: cursor, next: meta.next_cursor }
+```
+
+```ts
+const customers = useListCustomersInfinite(() => ({ query: { limit: 20 } }))
+customers.data()?.pages          // typed pages
+customers.fetchNextPage()        // starting_after = the last customer's id
+customers.hasNextPage()          // false once `has_more` is false
+```
+
+| `kind` | next value | ends when |
+| --- | --- | --- |
+| `cursor` | `next` path in the page | it is null/empty, or `hasMore` is false |
+| `lastItem` | the last item's `field` (Stripe `starting_after`) | the page is empty, or `hasMore` is false |
+| `offset` | current + page length | the page is empty, or `hasMore` is false |
+| `page` | current + 1 | the page is empty, or `hasMore` is false |
+
+Each declaration is checked against the spec's own types before anything is
+emitted: the parameter must exist, every path must exist, `hasMore` must be a
+boolean and the next value's type must be one the parameter takes. A wrong
+config entry fails the run with the reason; a wrong spec extension is noted and
+skipped.
 
 ## Honest limits
 

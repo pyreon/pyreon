@@ -31,6 +31,7 @@ import {
   type ClientName,
 } from './client-runtime'
 import { hasInput, inputType, type ModelTypes, responseTypeOf } from './operation-types'
+import { emitInfinite } from './pagination'
 import { schemaExpr, schemaSpecifier, tsType } from './schema'
 import { dialectOf, type ValidatorName } from './validator'
 import { q, relativeSpecifier, SourceFile } from './writer'
@@ -554,6 +555,10 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
       f.import('@pyreon/query', 'useMutation')
       f.importType('@pyreon/query', 'MutationOptions')
     }
+    if (ops.some((o) => o.pagination && !isMutation(o))) {
+      f.import('@pyreon/query', 'useInfiniteQuery')
+      f.importType('@pyreon/query', 'UseInfiniteQueryOptions')
+    }
     // Invalidation targets can live in another tag's endpoint module.
     for (const op of ops.filter(isMutation)) {
       for (const target of invalidationTargets(op, queryOps)) {
@@ -641,6 +646,7 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
         f.line(`  return useQuery<${data}, Error, TData>(() => ({ ...${op.id}.query(), ...options?.() }))`)
       }
       f.line('}')
+      emitInfinite(f, op, DISABLED_FN)
     }
     files.push(f)
   }

@@ -11,6 +11,7 @@ export type {
   IrModel,
   IrNote,
   IrOperation,
+  IrPagination,
   IrParam,
   IrSecurityScheme,
   IrType,
@@ -24,6 +25,7 @@ export {
   resolveProjects,
   type LatheProject,
   type LatheSection,
+  type PaginationConfig,
   type PluginName,
   type ResolvedConfig,
 } from './core/config'

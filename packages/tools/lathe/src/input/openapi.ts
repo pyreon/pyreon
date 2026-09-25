@@ -15,6 +15,7 @@ import type {
   IrModel,
   IrNote,
   IrOperation,
+  IrPagination,
   IrParam,
   IrSecurityScheme,
   IrType,
@@ -235,6 +236,7 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
         queryParams,
         ...bodyOf(method, op, at, ctx),
         ...responseOf(op, at, ctx),
+        ...paginationOf(op['x-pyreon-pagination'], at, ctx),
       })
     }
   }
@@ -270,6 +272,51 @@ function collectSecuritySchemes(spec: Json, ctx: Ctx): IrSecurityScheme[] {
     }
   }
   return out
+}
+
+/**
+ * The `x-pyreon-pagination` operation extension (audit E3) — the same shape
+ * as the `pagination` config entry. Malformed input is NOTED and ignored:
+ * a wrong pagination declaration produces a hook that loops or stops early,
+ * which is worse than no hook.
+ */
+function paginationOf(raw: unknown, at: string, ctx: Ctx): Pick<IrOperation, 'pagination'> {
+  if (raw === undefined) return {}
+  const parsed = parsePagination(raw)
+  if (typeof parsed === 'string') {
+    ctx.notes.push({ code: 'invalid-pagination', at: `${at}/x-pyreon-pagination`, message: parsed })
+    return {}
+  }
+  return { pagination: parsed }
+}
+
+/** Parse a pagination declaration, or return why it is invalid. */
+export function parsePagination(raw: unknown): IrPagination | string {
+  const o = obj(raw)
+  if (!o) return 'x-pyreon-pagination must be an object.'
+  const param = str(o.param)
+  if (!param) return 'pagination needs `param` — the query parameter that advances the page.'
+  const hasMore = str(o.hasMore)
+  const path = (v: unknown): string => (typeof v === 'string' ? v : '')
+  switch (o.kind) {
+    case 'cursor':
+      if (typeof o.next !== 'string') return 'cursor pagination needs `next` — the response path holding the next cursor.'
+      return { kind: 'cursor', param, next: o.next, hasMore }
+    case 'lastItem':
+      if (!str(o.field)) return 'lastItem pagination needs `field` — the item property that is the next cursor.'
+      return { kind: 'lastItem', param, items: path(o.items), field: str(o.field) as string, hasMore }
+    case 'offset':
+    case 'page':
+      return {
+        kind: o.kind,
+        param,
+        items: path(o.items),
+        hasMore,
+        initial: num(o.initial),
+      }
+    default:
+      return `pagination \`kind\` must be one of cursor, lastItem, offset, page (got ${JSON.stringify(o.kind)}).`
+  }
 }
 
 const QUERY_STYLES = ['form', 'spaceDelimited', 'pipeDelimited', 'deepObject'] as const
