@@ -58,6 +58,7 @@ $ loom dev . --port=5230   # the observatory UI over the same report
 | --- | --- | --- |
 | [`loom scan`](#loom-scan) | function | Read the workspace, analyze the dependency fabric, and report. |
 | [`loom dev`](#loom-dev) | function | The observatory: five views over the scan report — the layered dependency graph (columns by resolution depth, cycle edge |
+| [`loom build`](#loom-build) | function | Prerenders the observatory to a STANDALONE STATIC SITE — one prerendered page per view (graph / matrix / cycles / impact |
 | [`buildReport`](#buildreport) | function | The programmatic engine behind the CLI — scan the workspace, analyze the graph, run every detector, fold the stats. |
 
 ## API
@@ -115,6 +116,30 @@ loom dev: 142 package(s) → http://localhost:5230/
 - Reading graph depth as import distance — depth is LONGEST-path from the entry points (how far below the surface a package sits), hard-bounded at V−1; packages inside a cycle keep the depth their first visit found
 
 **See also:** `loom scan`
+
+---
+
+### loom build `function`
+
+```ts
+loom build [dir] [--out=<dir>] [--base=<path>]
+```
+
+Prerenders the observatory to a STANDALONE STATIC SITE — one prerendered page per view (graph / matrix / cycles / impact / manifest table), so a specific view has its own shareable URL instead of living behind a client-side signal. Output goes to `<dir>/loom-dist` by default (`--out=<dir>` to change it); `--base=<path>` sets the public base path for a subdirectory deploy. Needs `vite` + `@pyreon/vite-plugin` + `@pyreon/zero` as dev dependencies — `loom scan` needs NONE of them, so a CI gate that only runs `scan` is unaffected. The five views + the scan report are baked into the build so the output also works opened directly from `file://`, with no server.
+
+**Example**
+
+```tsx
+$ loom build . --out=dist/observatory
+loom: 142 package(s) → dist/observatory
+```
+
+**Common mistakes**
+
+- Running `loom build` in a project without Vite installed — it names the exact install (`vite @pyreon/vite-plugin @pyreon/zero`) rather than failing with a bare module-resolution error
+- Expecting the static build to re-scan on reload like `loom dev` does — it is a SNAPSHOT of the workspace at build time; re-run `loom build` after dependency changes to refresh it
+
+**See also:** `loom dev` · `loom scan`
 
 ---
 

@@ -53,7 +53,7 @@ describe('html resolvedCssRecord — the connector-styles pipeline', () => {
       maxWidth: '90%',
       opacity: 0.9,
     })
-    const out = (await render(doc, 'html' as never)) as string
+    const out = (await render(doc, 'html')) as string
     for (const frag of [
       'color:#112233',
       'background-color:#445566',
@@ -82,14 +82,14 @@ describe('html resolvedCssRecord — the connector-styles pipeline', () => {
 
   it('4-tuple padding/margin emit all four sides', async () => {
     const { doc } = styledDoc({ padding: [1, 2, 3, 4], margin: [5, 6, 7, 8] })
-    const out = ((await render(doc, 'html' as never)) as string).replace(/\s+/g, '')
+    const out = ((await render(doc, 'html')) as string).replace(/\s+/g, '')
     expect(out).toContain('padding:1px2px3px4px')
     expect(out).toContain('margin:5px6px7px8px')
   })
 
   it('options.styles per-node-type override wins over node.styles', async () => {
     const { doc } = styledDoc({ color: '#111111' })
-    const out = (await render(doc, 'html' as never, {
+    const out = (await render(doc, 'html', {
       styles: { text: { color: '#ff0000' } },
     } as never)) as string
     expect(out.replace(/\s+/g, '')).toContain('color:#ff0000')
@@ -101,7 +101,7 @@ describe('html resolvedCssRecord — the connector-styles pipeline', () => {
       title: 's',
       children: [Page({ children: [Text({ children: ['t'] })] })],
     })
-    const out = (await render(doc, 'html' as never, {
+    const out = (await render(doc, 'html', {
       styles: { text: { backgroundColor: '#00ff00' } },
     } as never)) as string
     expect(out.replace(/\s+/g, '')).toContain('background-color:#00ff00')
@@ -112,7 +112,7 @@ describe('html resolvedCssRecord — the connector-styles pipeline', () => {
       title: 's',
       children: [Page({ children: [Text({ children: ['plain'] })] })],
     })
-    const out = (await render(doc, 'html' as never)) as string
+    const out = (await render(doc, 'html')) as string
     expect(out).toContain('plain')
   })
 })
@@ -196,14 +196,14 @@ describe('html resolved styles on code/divider/button/quote (the `extra ?` arms)
   it('code: resolved styles land on the <pre>', async () => {
     const { Code } = await import('../nodes')
     const node = Object.assign(Code({ children: 'x' }), { styles: { color: '#123456' } })
-    const out = (await render(wrap(node), 'html' as never)) as string
+    const out = (await render(wrap(node), 'html')) as string
     expect(out).toContain('overflow-x:auto;color:#123456')
   })
 
   it('divider: resolved styles land on the <hr>', async () => {
     const { Divider } = await import('../nodes')
     const node = Object.assign(Divider({}), { styles: { margin: 4 } })
-    const out = (await render(wrap(node), 'html' as never)) as string
+    const out = (await render(wrap(node), 'html')) as string
     expect(out).toContain('margin:16px 0;margin:4px')
   })
 
@@ -212,14 +212,14 @@ describe('html resolved styles on code/divider/button/quote (the `extra ?` arms)
     const node = Object.assign(Button({ href: 'https://e.com', children: 'B' }), {
       styles: { letterSpacing: '1px' },
     })
-    const out = (await render(wrap(node), 'html' as never)) as string
+    const out = (await render(wrap(node), 'html')) as string
     expect(out).toContain('font-weight:bold;letter-spacing:1px')
   })
 
   it('quote: resolved styles land on the <blockquote>', async () => {
     const { Quote } = await import('../nodes')
     const node = Object.assign(Quote({ children: 'Q' }), { styles: { opacity: 0.5 } })
-    const out = (await render(wrap(node), 'html' as never)) as string
+    const out = (await render(wrap(node), 'html')) as string
     expect(out).toContain('color:#555;opacity:0.5')
   })
 })

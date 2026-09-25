@@ -1116,7 +1116,8 @@ type Props = ExtractProps<typeof Iterator>
     example: '<Stack gap="md" align="center"><Text>a</Text><Text>b</Text></Stack>',
     notes: 'Primary layout container. Web → `<div style="display:flex;flex-direction:column|row">`; iOS → `VStack`/`HStack`; Android → `Column`/`Row`. Default `direction="column"`. `gap`/`padding` are theme-space tokens (number index OR "sm"|"md"|"lg"). See also: Inline, Layer, Scroll.',
     mistakes: `- Using \`<View>\` / \`<VStack>\` / \`<div>\` — the canonical name is \`<Stack>\` (one name, all platforms)
-- Expecting responsive props (breakpoint arrays) — not supported in v1; use @pyreon/elements for responsive web`,
+- Expecting responsive props (breakpoint arrays) — not supported in v1; use @pyreon/elements for responsive web
+- Relying on \`justify\` or \`wrap\` natively — both are IGNORED on iOS and Android (the compiler warns); use \`<Spacer />\` between children to distribute them`,
   },
 
   'primitives/Inline': {
@@ -1130,14 +1131,14 @@ type Props = ExtractProps<typeof Iterator>
   'primitives/Layer': {
     signature: '(props: { align?: Align; padding?: Space; children }) => VNode',
     example: '<Layer><Image src={hero} alt="" /><Text>overlaid caption</Text></Layer>',
-    notes: 'Stacked / overlay container. Web → `position:relative` + abs children; iOS → `ZStack`; Android → `Box`. Use for badges, overlays, layered composition. See also: Stack.',
+    notes: 'Stacked / overlay container. Web → `position:relative` single-cell grid (`align` → `place-items`); iOS → `ZStack`; Android → `Box`. Native children overlap automatically; on web, ordinary children flow into separate grid rows, so give the front child `position:absolute` to overlap. Use for badges, overlays, layered composition. See also: Stack.',
     mistakes: '- Using it for flow layout — Layer stacks children on the z-axis, not in a row/column',
   },
 
   'primitives/Scroll': {
-    signature: `(props: { direction?: 'vertical' | 'horizontal'; padding?: Space; children }) => VNode`,
+    signature: `(props: { axis?: 'vertical' | 'horizontal'; padding?: Space; children }) => VNode`,
     example: '<Scroll><Stack gap="md">{/* long content */}</Stack></Scroll>',
-    notes: 'Scrollable region. Web → `overflow:auto`; iOS → `ScrollView`; Android → `Column(verticalScroll)` / `Row(horizontalScroll)`. ⚠ Do not put a weighted `<Spacer>` inside a Scroll on Android (weight inside a scroll is invalid Compose). See also: Stack.',
+    notes: 'Scrollable region, vertical unless `axis="horizontal"`. Web → `overflow-y:auto` (or `overflow-x`); iOS → `ScrollView`; Android → `Column(verticalScroll)` / `Row(horizontalScroll)`. ⚠ Do not put a weighted `<Spacer>` inside a Scroll on Android (weight inside a scroll is invalid Compose). See also: Stack.',
     mistakes: '- Nesting a `<Spacer>` (weight) inside `<Scroll>` — invalid on Android Compose',
   },
 
@@ -1212,8 +1213,10 @@ type Props = ExtractProps<typeof Iterator>
   'primitives/Link': {
     signature: '(props: { to: string; external?: boolean; children }) => VNode',
     example: '<Link to="/profile">Profile</Link>',
-    notes: 'Navigation link. Web `<a>`; iOS/Android router-aware navigation. Integrates with `@pyreon/router` (`to` is a route path). `external` opens outside the app. See also: Button.',
-    mistakes: '- Hardcoding an href for internal routes — use `to` so it routes natively too',
+    notes: 'Navigation link. Web → a real `<a href>`; the package has NO router dependency, so call `init({ navigate })` once and plain left-clicks route through your handler (modifier-clicks stay with the browser; without `init` it is a full-page link). iOS/Android → `PyreonLink(to)`, which pushes `to` onto the native router (`@pyreon/native-router-swift` / `-kotlin`). `external` renders `target="_blank" rel="noopener noreferrer"` on web. See also: Button.',
+    mistakes: `- Hardcoding an href for internal routes — use \`to\` so it routes natively too
+- Relying on \`external\` natively — it is IGNORED on iOS and Android (the compiler warns) and the URL is pushed onto the in-app router; open websites with \`useLinking().openUrl(url)\`
+- Expecting SPA navigation on web without calling \`init({ navigate })\` — the link then does a full page load`,
   },
 
   'primitives/Field': {
@@ -1234,7 +1237,7 @@ type Props = ExtractProps<typeof Iterator>
   'primitives/Modal': {
     signature: '(props: { open: boolean | (() => boolean); onClose: () => void; children }) => VNode',
     example: '<Modal open={showSheet()} onClose={() => showSheet.set(false)}><Stack>{/* sheet body */}</Stack></Modal>',
-    notes: 'Modal/sheet. Web overlay; iOS `.sheet(isPresented:)`; Android `Dialog(onDismissRequest)`. Drive `open` with a signal; `onClose` fires on dismiss. See also: Layer.',
+    notes: 'Modal/sheet. Web → native `<dialog>` opened with `showModal()` (focus trap, backdrop, top layer); Escape and backdrop clicks call `onClose` instead of closing the dialog themselves, so `open` stays the source of truth. iOS `.sheet(isPresented:)`; Android `Dialog(onDismissRequest)`. Drive `open` with a signal; `onClose` fires on dismiss. See also: Layer.',
     mistakes: '- Forgetting `onClose` — needed so the platform dismiss gesture updates your signal',
   },
 
@@ -1289,7 +1292,7 @@ bar.onclick = () => host.emit(String(bar.dataset.id))`,
     example: `<Web>{/* web-only-rich: <Chart>, <Flow>, <Table> */}</Web>
 <NativeIOS>{/* Swift Charts, or a <WebView> embed */}</NativeIOS>
 <NativeAndroid>{/* Compose chart, or a <WebView> embed */}</NativeAndroid>`,
-    notes: `The Layer-4 per-platform escape hatch — one source carries a platform-specific subtree and exactly ONE branch renders per target. \`<Web>\` renders its children on WEB only (a layout-transparent Fragment, no wrapper element); \`<NativeIOS>\` / \`<NativeAndroid>\` render NOTHING on web (they return null — their children are emitted only on the iOS / Android target by PMTC). Reach for these for the rare genuinely-per-platform UI branch the 15 canonical primitives can't express (a web-only-rich chart/flow/table view vs a native equivalent or a \`<WebView>\` embed). See also: WebView, init / resetPrimitivesConfig, defineNativeModule / useNativeModule.`,
+    notes: `The Layer-4 per-platform escape hatch — one source carries a platform-specific subtree and exactly ONE branch renders per target. \`<Web>\` renders its children on WEB only (a layout-transparent Fragment, no wrapper element); \`<NativeIOS>\` / \`<NativeAndroid>\` render NOTHING on web (they return null — their children are emitted only on the iOS / Android target by PMTC). Reach for these for the rare genuinely-per-platform UI branch the canonical primitives can't express (a web-only-rich chart/flow/table view vs a native equivalent or a \`<WebView>\` embed). See also: WebView, init / resetPrimitivesConfig, defineNativeModule / useNativeModule.`,
     mistakes: `- Overusing them — defeats the one-source model; reach for them only when a target genuinely needs different UI.
 - Putting web-visible content in \`<NativeIOS>\` / \`<NativeAndroid>\` — both render NOTHING on web (they are no-ops there); only \`<Web>\` content reaches the browser.`,
   },
@@ -2379,7 +2382,7 @@ const html = await renderToString(<App />)`,
   },
 
   'runtime-server/renderToStream': {
-    signature: 'renderToStream(root: VNode | null, options?: { signal?: AbortSignal; suspenseTimeoutMs?: number }): ReadableStream<string>',
+    signature: 'renderToStream(root: VNode | null, options?: { signal?: AbortSignal; suspenseTimeoutMs?: number; nonce?: string }): ReadableStream<string>',
     example: `import { renderToStream } from "@pyreon/runtime-server"
 
 return new Response(renderToStream(<App />, {
@@ -2388,7 +2391,7 @@ return new Response(renderToStream(<App />, {
 }), {
   headers: { "content-type": "text/html" },
 })`,
-    notes: 'Render to a Web-standard `ReadableStream<string>` with true progressive flushing — synchronous subtrees enqueue immediately, async component boundaries are awaited in order. Suspense boundaries stream OUT OF ORDER: the fallback is emitted inline at once, and the resolved children arrive later as a `<template>` + a tiny inline swap `<script>` that replaces the placeholder client-side — without blocking the rest of the page. Each call gets its own isolated ALS context stack. A Suspense boundary that does not resolve within the per-boundary timeout (default 30_000 ms, configurable via `options.suspenseTimeoutMs`; pass `Infinity` to disable) leaves its fallback in place and a dev-mode warning fires; a boundary that throws also leaves the fallback (no swap script emitted). Pass `options.signal` (e.g. `Request.signal`) to abort pending Suspense work when the consumer disconnects. See also: renderToString.',
+    notes: `Render to a Web-standard \`ReadableStream<string>\` with true progressive flushing — synchronous subtrees enqueue immediately, async component boundaries are awaited in order. Suspense boundaries stream OUT OF ORDER: the fallback is emitted inline at once, and the resolved children arrive later as a \`<template>\` + a tiny inline swap \`<script>\` that replaces the placeholder client-side — without blocking the rest of the page. Each call gets its own isolated ALS context stack. A Suspense boundary that does not resolve within the per-boundary timeout (default 30_000 ms, configurable via \`options.suspenseTimeoutMs\`; pass \`Infinity\` to disable) leaves its fallback in place and a dev-mode warning fires; a boundary that throws also leaves the fallback (no swap script emitted). Pass \`options.signal\` (e.g. \`Request.signal\`) to abort pending Suspense work when the consumer disconnects. Pass \`options.nonce\` (the per-request CSP nonce) and every inline \`<script>\`/\`<style>\` the stream emits carries it, so a strict \`script-src 'nonce-…'\` policy admits the Suspense swaps; \`@pyreon/server\` forwards \`ctx.locals.cspNonce\` automatically. See also: renderToString.`,
     mistakes: `- Assuming Suspense children arrive in source order — they are swapped in as each boundary resolves; the fallback ships first, resolved content can arrive in any order
 - Expecting \`@pyreon/head\` tags registered inside a Suspense child to reach the document \`<head>\` — the head is flushed in the shell BEFORE any boundary resolves, so async-loaded data does not contribute to it
 - Treating a timed-out boundary as an error — by design the fallback simply stays; only a dev-mode \`console.warn\` signals it. Tune \`options.suspenseTimeoutMs\` to match your SLA (5_000–10_000 typical for user-facing apps; \`Infinity\` to disable entirely for export jobs / reports)
@@ -2956,15 +2959,15 @@ afterEach(() => resetAllHooks())   // else a mutation in one test leaks to the n
   // <gen-docs:api-reference:start @pyreon/validate>
 
   'validate/withField': {
-    signature: '<S extends StandardSchemaV1>(schema: S, meta: FieldMeta) => S',
+    signature: '<S extends StandardSchemaV1>(schema: S, meta: FieldMeta) => WithFieldMeta<S>',
     example: `const emailSchema = withField(z.string().email(), {
   label: 'Email address',
   placeholder: 'you@example.com',
   i18nLabel: 'auth.email.label',
   autoComplete: 'email',
 })`,
-    notes: `Attach Pyreon field metadata (label, hint, placeholder, i18n keys, autoFocus, autoComplete, defaultValue) to any Standard Schema. The returned schema is the SAME REFERENCE as the input — Pyreon mutates a Symbol-keyed non-enumerable slot in place, which is invisible to JSON serialization, for…in, Object.keys, and library-internal comparators. Mutation (instead of cloning) is required because ArkType's \`Type\` instances are callable functions whose \`~standard.validate\` does \`this(input)\` — a shallow clone would not be callable and would break that contract. Re-wrapping merges new metadata onto existing (later keys win). See also: getMeta, resolveMetaField, StandardSchemaV1.`,
-    mistakes: `- Expecting withField to return a NEW reference — it doesn't. The metadata mutation is in place. If you need an isolated copy, construct two separate schemas instead.
+    notes: `Attach Pyreon field metadata (label, hint, placeholder, i18n keys, autoFocus, autoComplete, defaultValue) to any Standard Schema. Returns a NEW schema carrying the metadata and never modifies its input (a frozen schema is fine), so two \`withField\` calls on one shared base keep separate labels. A Pyreon \`s\` schema is cloned (copy-on-write, like its chainable methods); any other Standard Schema is wrapped in a transparent Proxy that answers only the Symbol-keyed metadata slot and forwards everything else — \`.parse\`, \`~standard\`, and an ArkType schema's call signature keep working. Re-wrapping a wrapped schema merges (later keys win). See also: getMeta, resolveMetaField, StandardSchemaV1.`,
+    mistakes: `- Expecting withField to label the schema you PASSED — it returns a new one and leaves the input untouched. Use the RETURNED schema (\`const email = withField(base, …)\`); calling \`withField(base, …)\` for its side effect attaches nothing to \`base\`.
 - Adding \`i18nLabel\` without a corresponding \`label\` — without a translation provider (or when t echoes the key), there's no fallback. Always set both.
 - Storing schemas with metadata in JSON.stringify-d state and round-tripping — the metadata is Symbol-keyed and won't survive serialization. Re-attach on load.`,
   },
@@ -2995,7 +2998,7 @@ const label = meta?.label ?? humanize(fieldName)`,
     signature: `<S extends StandardSchemaV1>(
   schema: S,
   source: Signal<unknown> | (() => unknown),
-) => Computed<ParseResult>`,
+) => Computed<ParseResult<Output<S>>>`,
     example: `const $email = signal('')
 const $result = parseReactive(emailSchema, $email)
 
@@ -3006,7 +3009,7 @@ effect(() => {
 })
 
 $email.set('foo@bar.com')  // $result re-derives`,
-    notes: 'Reactively parse `source` through `schema`. Returns a `Computed<ParseResult>` that re-validates on every source change. Synchronous only — for schemas with async refinements (Zod `.refine(async)`, Valibot async pipe), use parseReactiveAsync (this sync variant surfaces an actionable issue if the schema returns a Promise). See also: parseReactiveAsync, watchValid, formatErrors.',
+    notes: `Reactively parse \`source\` through \`schema\`. Returns a \`Computed<ParseResult<Output<S>>>\` (typed by the schema's output) that re-validates on every source change. Synchronous only — for schemas with async refinements (Zod \`.refine(async)\`, Valibot async pipe), use parseReactiveAsync (this sync variant surfaces an actionable issue if the schema returns a Promise). See also: parseReactiveAsync, watchValid, formatErrors.`,
     mistakes: `- Using parseReactive on an async schema — it surfaces a clear "use parseReactiveAsync" issue rather than silently producing a Promise as the validation result.
 - Calling parseReactive on every render of a component — it allocates a Computed; cache it at component setup time (call once per signal-source pair).`,
   },
@@ -3015,7 +3018,7 @@ $email.set('foo@bar.com')  // $result re-derives`,
     signature: `<S extends StandardSchemaV1>(
   schema: S,
   source: Signal<unknown> | (() => unknown),
-) => Computed<Promise<ParseResult>>`,
+) => Computed<Promise<ParseResult<Output<S>>>>`,
     example: `const schema = z.string().refine(async (s) => await checkUnique(s))
 const $result = parseReactiveAsync(schema, $username)
 
@@ -3041,7 +3044,7 @@ watch($result, async (current) => {
 })
 
 onUnmount(stop)`,
-    notes: 'Subscribe to validity transitions. The callback fires only when validity flips (true→false or false→true), NOT on every error-message change — ideal for form-state hooks that care about "is this OK?" without re-rendering on every typo. Returns an unsubscribe function. Internally a `watch()` over `parseReactive`. See also: parseReactive.',
+    notes: 'Subscribe to validity transitions. The callback fires only when validity flips (true→false or false→true), NOT on every error-message change — ideal for form-state hooks that care about "is this OK?" without re-rendering on every typo. Returns an unsubscribe function. Async schemas report once the validation settles; a settle superseded by newer input is dropped, and a rejected validator counts as invalid. See also: parseReactive.',
   },
 
   'validate/formatError': {
@@ -3653,7 +3656,7 @@ function focusField(name: FieldNames<typeof form>) { /* … */ }`,
   },
 
   'query/useQuery': {
-    signature: '<TData, TError, TKey>(options: () => QueryObserverOptions<...>) => UseQueryResult<TData, TError>',
+    signature: '<TQueryFnData, TError, TData = TQueryFnData, TKey>(options: () => QueryObserverOptions<...>) => UseQueryResult<TData, TError>',
     example: `const userId = signal(1)
 const user = useQuery(() => ({
   queryKey: ['user', userId()],
@@ -3708,7 +3711,7 @@ const user = useQuery(() => ({
   },
 
   'query/useQueries': {
-    signature: '(queries: () => UseQueriesOptions[]) => Signal<QueryObserverResult[]>',
+    signature: '<const T extends readonly UseQueriesInput[]>(queries: () => T) => Signal<QueriesResults<T>>',
     example: `const results = useQueries(() =>
   userIds().map((id) => ({ queryKey: ['user', id], queryFn: () => fetchUser(id) })),
 )
@@ -3749,9 +3752,9 @@ usePrefetchQuery(() => ({ queryKey: ['user', id], queryFn: fetchUser }))
     }
   },
 })
-// sub.status() — 'connecting' | 'connected' | 'disconnected' | 'error'
+// sub.status() — 'connecting' | 'connected' | 'disconnected' | 'error' | 'failed'
 // sub.send(data), sub.close(), sub.reconnect()`,
-    notes: 'Reactive WebSocket with auto-reconnect and QueryClient cache integration. `onMessage` receives the active `QueryClient` so push updates can invalidate or directly patch cached queries in a single line. Exponential backoff on reconnect (default 1s doubling, max 10 attempts — configurable via `reconnectDelay` / `maxReconnectAttempts`). `url` and `enabled` may be signals for reactive connection management — changing the URL closes the old socket and opens a new one. Returns `status` (signal), `send(data)`, `close()`, `reconnect()`. See also: useSSE, useQuery.',
+    notes: `Reactive WebSocket with auto-reconnect and QueryClient cache integration. \`onMessage\` receives the active \`QueryClient\` so push updates can invalidate or directly patch cached queries in a single line. Jittered exponential backoff on reconnect (default 1s doubling, capped at \`maxReconnectDelay\` = 30s, max 10 attempts — configurable via \`reconnectDelay\` / \`maxReconnectDelay\` / \`maxReconnectAttempts\`); when attempts run out \`status()\` is \`'failed'\`, and a browser \`online\` event starts over. \`url\` and \`enabled\` may be signals for reactive connection management — changing the URL closes the old socket and opens a new one. Returns \`status\` (signal), \`send(data)\`, \`close()\`, \`reconnect()\`. See also: useSSE, useQuery.`,
     mistakes: `- \`onMessage\` runs on every frame the socket receives — debounce cache invalidations for high-frequency streams or you'll trigger N refetches per second
 - Storing data in a parallel signal instead of using \`queryClient.setQueryData\` inside \`onMessage\` — defeats the QueryClient cache; use \`setQueryData\` to push updates into the same cache that \`useQuery\` reads
 - Forgetting \`enabled: false\` on unmount-sensitive connections — the WebSocket stays open unless \`enabled\` is a signal that tracks component lifecycle or a reactive condition`,
@@ -3769,15 +3772,15 @@ usePrefetchQuery(() => ({ queryKey: ['user', id], queryFn: fetchUser }))
   },
 })
 // sse.data() — last parsed message
-// sse.status() — 'connecting' | 'connected' | 'disconnected' | 'error'
+// sse.status() — 'connecting' | 'connected' | 'disconnected' | 'error' | 'failed'
 // sse.lastEventId(), sse.readyState(), sse.close(), sse.reconnect()`,
-    notes: 'Reactive Server-Sent Events hook with QueryClient cache integration. Same pattern as `useSubscription` but read-only (no `send`). `parse` deserializes raw event data per message (e.g. `JSON.parse`); `events` filters named SSE event types (defaults to generic `message` events). Honours the SSE spec `id` field via `lastEventId()` so the browser includes `Last-Event-ID` on reconnect and the server can resume from the right offset. `onMessage` receives the `QueryClient` for cache invalidation. See also: useSubscription.',
+    notes: `Reactive Server-Sent Events hook with QueryClient cache integration. Same pattern as \`useSubscription\` but read-only (no \`send\`). \`parse\` deserializes raw event data per message (e.g. \`JSON.parse\`); \`events\` filters named SSE event types (defaults to generic \`message\` events). Honours the SSE spec \`id\` field via \`lastEventId()\` so the browser includes \`Last-Event-ID\` on reconnect and the server can resume from the right offset. \`onMessage\` receives the \`QueryClient\` for cache invalidation. A \`parse\` failure surfaces on \`error()\` (the last good \`data()\` is kept); a throwing \`onMessage\` is reported in dev. Same capped, jittered backoff + \`'failed'\` status + \`online\` recovery as \`useSubscription\`. See also: useSubscription.`,
     mistakes: `- Passing \`queryKey\` (TanStack v4 pattern) instead of using \`onMessage\` for cache integration — Pyreon's \`useSSE\` does NOT auto-update query cache; use \`queryClient.setQueryData\` or \`invalidateQueries\` inside \`onMessage\`
 - Omitting \`parse\` and expecting typed data — without \`parse\`, \`data()\` is \`string\` (raw event payload); pass \`parse: JSON.parse\` for auto-deserialization`,
   },
 
   'query/useSuspenseQuery': {
-    signature: '<TData, TError>(options: () => QueryObserverOptions<...>) => UseSuspenseQueryResult<TData, TError>',
+    signature: '<TQueryFnData, TError, TData = TQueryFnData, TKey>(options: () => QueryObserverOptions<...>) => UseSuspenseQueryResult<TData, TError>',
     example: `const user = useSuspenseQuery(() => ({ queryKey: ['user', id()], queryFn: fetchUser }))
 
 <QuerySuspense query={user} fallback={<Spinner />}>
@@ -6547,7 +6550,21 @@ lint({
     "pyreon/no-window-in-ssr": { exemptPaths: ["src/foundation/"] },
   },
 })`,
-    notes: '132 rules across 25 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`. Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. `exemptPaths` is honoured CENTRALLY for every rule (the runner skips an exempt file before the rule runs), so it means the same thing everywhere rather than only in rules that opted in. Wrong-typed options surface on `result.configDiagnostics`, as does a `rules`/`groups`/`settings` key that names nothing — a mistyped rule id used to be silently ignored, which is indistinguishable from working. Uses `oxc-parser` with AST caching. See also: lintFile, getPreset, AstCache.',
+    notes: '132 rules across 25 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`. Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. `exemptPaths` is honoured CENTRALLY for every rule (the runner skips an exempt file before the rule runs), so it means the same thing everywhere rather than only in rules that opted in. Wrong-typed options surface on `result.configDiagnostics`, as does a `rules`/`groups`/`settings` key that names nothing — a mistyped rule id used to be silently ignored, which is indistinguishable from working. Uses `oxc-parser` with AST caching. See also: lintFile, lintAsync, getPreset, AstCache.',
+  },
+
+  'lint/lintAsync': {
+    signature: 'lintAsync(options?: LintOptions): Promise<LintResult>',
+    example: `import { lintAsync } from '@pyreon/lint'
+
+// Same call shape as lint() — awaits, and pools automatically above the
+// file-count threshold. Safe to always reach for this over lint() in an
+// async context; it only pays worker overhead when it is worth it.
+const result = await lintAsync({ paths: ['src/'], preset: 'recommended' })
+console.log(result.totalErrors, result.totalWarnings)`,
+    notes: `Same options + same \`LintResult\` shape as \`lint()\`, but fans the file set out across a \`worker_threads\` pool for large runs — byte-identical output to the sequential path either way (locked by a test that diffs both over the same corpus). Falls back to running \`lint()\` SEQUENTIALLY, in-process, whenever pooling would not help or cannot work: below \`PARALLEL_FILE_THRESHOLD\` (200 files — worker spin-up cost would dominate), when the resolved worker entry is a \`.ts\` source file (a dev/workspace layout — Node's ESM loader inside a worker thread cannot resolve its extensionless imports), or when the built worker entry is missing. \`pyreon-lint\`'s own CLI calls this, not \`lint()\`, so a large-repo CI run gets the pool automatically. See also: lint, planRun.`,
+    mistakes: `- Calling it from a SYNCHRONOUS context expecting the sequential fallback to be free — worker spin-up is skipped below the threshold, but the function is still \`async\`; use \`lint()\` directly in a sync caller
+- Assuming a large monorepo always pools — a dev/workspace checkout resolves the worker entry to a \`.ts\` file, which deliberately falls back to sequential (a built \`lib/\` is what enables pooling)`,
   },
 
   'lint/lintFile': {
@@ -6959,6 +6976,151 @@ const mode = useMode()
 - Using it without the ROOT PyreonUI under cssVariables — the script fixes the PRE-hydration paint; the root provider keeps documentElement in sync AFTER hydration. Both are needed
 - Expecting it to cover a hardcoded \`mode="dark"\` SSR app with no stored preference — the mode lives only in the app JSX; stamp \`<html data-theme="dark">\` server-side for that case`,
   },
+
+  'ui-core/init': {
+    signature: 'init(props: { css?, styled?, keyframes?, component?, textComponent?, createMediaQueries?, cssVariables?: boolean | CssVariablesConfig, styleExtraction?: boolean }): void',
+    example: `import { init } from '@pyreon/ui-core'
+
+// Test setup with no <PyreonUI> in the tree:
+init({ cssVariables: true, styleExtraction: true })`,
+    notes: 'The escape hatch `<PyreonUI>` calls internally to configure the ui-system-wide `Configuration` singleton (`config.css`/`config.styled`/`config.keyframes`, the default host `component`/`textComponent` used by Element/Text when no `tag` is given, and the `cssVariables` / `styleExtraction` opt-ins). Call it yourself only when `<PyreonUI>` is not mounted — a test harness, an SSR entry that pre-warms config before the first render, or a bare `@pyreon/rocketstyle`-only setup. Every field is optional and merges onto the existing singleton; omitted fields keep their current value. See also: PyreonUI, config.',
+    mistakes: `- Calling \`init()\` AFTER the first render to flip \`cssVariables\`/\`styleExtraction\` — both are boot-time contracts; theme-resolution caches across the ui-system assume they never change mid-session
+- Calling it redundantly alongside \`<PyreonUI>\` — the provider already calls \`init()\` with its own props on every mount; a second manual call can race the provider's own config depending on mount order`,
+  },
+
+  'ui-core/get / set / merge / pick / omit / isEmpty / isEqual': {
+    signature: 'get(obj, path, default?) · set(obj, path, value) · merge(target, ...sources) · pick(obj, keys?) · omit(obj, keys?) · isEmpty(value) · isEqual(a, b)',
+    example: `import { get, set, merge, pick, omit, isEqual } from '@pyreon/ui-core'
+
+get({ a: { b: [1, 2] } }, 'a.b[1]')        // 2
+get({}, 'missing.path', 'fallback')        // 'fallback'
+set({}, 'a.b', 1)                          // { a: { b: 1 } }
+merge({ a: 1 }, { b: 2 }, { a: 3 })        // { a: 3, b: 2 }
+pick({ a: 1, b: 2, c: 3 }, ['a', 'c'])     // { a: 1, c: 3 }
+omit({ a: 1, b: 2 }, ['a'])                // { b: 2 }
+isEqual({ x: [1] }, { x: [1] })            // true`,
+    notes: `Zero-dependency object utilities the ui-system builds its HOC/prop pipelines on — \`@pyreon/lodash\` without the dependency. \`get\`/\`set\` take a dot-or-bracket PATH string or a pre-split array (\`"a.b[0].c"\` or \`["a","b",0,"c"]\`) and both refuse \`__proto__\`/\`prototype\`/\`constructor\` segments (prototype-pollution guard). \`pick\`/\`omit\` copy own-property DESCRIPTORS, not values, so getter-shaped reactive props (\`makeReactiveProps\`' \`_rp()\` wrappers) survive the copy with their subscription intact — critical for any HOC that filters props before forwarding them. \`merge\` deep-merges plain objects (arrays and non-plain objects are replaced, not merged) and mutates+returns \`target\`. \`isEqual\` is a structural deep-equal (arrays + plain objects); \`isEmpty\` is true for \`null\`/\`undefined\`/non-objects/empty arrays/objects with no own keys. See also: useStableValue.`,
+    mistakes: `- Reaching for a value-copying \`{ ...obj }\` / manual filter loop instead of \`pick\`/\`omit\` when the object may carry compiler-emitted reactive getter props — a plain spread reads the getter once and freezes the value; \`pick\`/\`omit\` preserve the getter
+- \`merge\` mutates its FIRST argument — pass \`merge({}, base, overrides)\` when you need an immutable result
+- \`set\` with a numeric-looking next key (\`"a.0.b"\`) creates an ARRAY at that segment, not an object — matches lodash \`set\` but can surprise a hand-rolled path builder
+- isEqual/isEmpty are NOT reactive — they compare snapshots at call time; wrap the comparison in a \`computed()\`/\`effect()\` if you need it to re-run on signal change`,
+  },
+
+  'ui-core/throttle': {
+    signature: 'throttle(fn, wait?: number = 0, options?: { leading?: boolean; trailing?: boolean }): typeof fn & { cancel: () => void }',
+    example: `import { throttle } from '@pyreon/ui-core'
+
+const onScroll = throttle(() => updatePosition(), 100)
+window.addEventListener('scroll', onScroll)
+onMount(() => () => onScroll.cancel())`,
+    notes: 'Rate-limits `fn` to at most once per `wait` ms. `leading` (default `true`) fires on the first call in a window; `trailing` (default `true`) schedules one final call with the most recent args if calls kept arriving during the window. The returned function carries a `.cancel()` that clears any pending trailing timer and drops buffered args (useful on component unmount).',
+    mistakes: `- Not calling \`.cancel()\` on unmount — a pending trailing call fires after the consumer is gone, writing to a signal nobody reads
+- Expecting \`{ leading: false, trailing: false }\` to still invoke \`fn\` — with BOTH off the call is dropped entirely; at least one must stay true`,
+  },
+
+  'ui-core/compose': {
+    signature: 'compose<T extends ((arg: any) => any)[]>(...fns: T) => (value) => result',
+    example: `import { compose } from '@pyreon/ui-core'
+
+const shout = compose(
+  (s: string) => s + '!',
+  (s: string) => s.toUpperCase(),
+)
+shout('hi') // 'HI!'`,
+    notes: 'Right-to-left function composition — `compose(f, g, h)(x)` is `f(g(h(x)))`. Used internally to chain unary transforms (HOC wrappers, value pipelines); exported as a general-purpose utility.',
+    mistakes: '- Expecting left-to-right (pipe) order — `compose` runs the LAST argument first; use it as `compose(outer, ..., inner)`',
+  },
+
+  'ui-core/resolveSlot': {
+    signature: 'resolveSlot(value: unknown): VNodeChildAtom | VNodeChildAtom[]',
+    example: `import { resolveSlot } from '@pyreon/ui-core'
+
+// Inside a component that accepts a slot prop:
+<div>{() => resolveSlot(props.beforeContent)}</div>`,
+    notes: `Resolves a slot prop (\`beforeContent\`, \`afterContent\`, \`content\` — the pattern \`@pyreon/elements\`' Element/Text/List use for their inject-a-node props) INSIDE a reactive accessor, so it must be called as \`content={() => resolveSlot(value)}\`. It discriminates a component-reference shorthand (\`beforeContent={Header}\` — mount via \`h(Header, null)\` so the component's own setup frame runs) from an inline reactive accessor (\`content={() => <Icon name={signal()} />}\` — call bare so its signal reads track in the enclosing effect). Both are functions at the \`typeof\` level; the discriminator is \`isPyreonComponent()\` under the hood. See also: isPyreonComponent, render.`,
+    mistakes: `- Calling it OUTSIDE a reactive accessor — a slot value that reads a signal (\`() => <Icon name={sig()} />\`) needs the enclosing \`() => resolveSlot(...)\` to be the tracking scope, or the read never subscribes
+- Reaching for it directly instead of building on \`@pyreon/elements\`' Element/Text, which already wire this pattern for \`beforeContent\`/\`afterContent\`/\`content\` — most consumers never need to call it themselves`,
+  },
+
+  'ui-core/isPyreonComponent': {
+    signature: 'isPyreonComponent(value: unknown): boolean',
+    example: `import { isPyreonComponent } from '@pyreon/ui-core'
+
+isPyreonComponent(MyButton)              // true — PascalCase name
+isPyreonComponent(() => <div/>)          // false — anonymous accessor
+isPyreonComponent(rocketstyle(Element))  // true — IS_ROCKETSTYLE marker`,
+    notes: `Detects whether a function value is a Pyreon COMPONENT (framework-marked via \`IS_ROCKETSTYLE\`/\`PYREON__COMPONENT\`, or user-authored by convention — an explicit \`displayName\`, or a \`.name\` starting with an uppercase letter) as opposed to a bare reactive-accessor function (\`() => <X/>\`). Both shapes are functions at the \`typeof\` level, so a slot-resolver (\`resolveSlot\`) needs this to decide whether to mount via \`h(Component, null)\` (establishing the component's own setup frame — required for any HOC that reads \`props\`) or call the function bare (so its signal reads track in the enclosing effect). See also: resolveSlot.`,
+    mistakes: '- Relying on it for a lowercase-named or camelCase helper function that returns JSX — the naming-convention tier only recognizes PascalCase or an explicit `displayName`; give the helper a `displayName` if it must be detected as a component',
+  },
+
+  'ui-core/render': {
+    signature: 'render(content?: ComponentFn | string | VNodeChild | VNodeChild[] | ((props) => VNodeChild), attachProps?): VNodeChild',
+    example: `import render from '@pyreon/ui-core'
+// (default export — most consumers reach it through resolveSlot instead)`,
+    notes: `A flexible one-shot renderer used internally by the ui-system's content/slot props: primitives (string/number/boolean) and arrays pass through unchanged, a component function is mounted via \`h(content, attachProps)\`, a render-prop function is called with \`attachProps\`, and an already-built VNode passes through. \`key\` is stripped out of \`attachProps\` before mounting (it's a VNode reconciliation concept, not a component prop, and passing it through triggers a JSX runtime warning). See also: resolveSlot.`,
+    mistakes: '- Calling it directly for a content prop that should be LIVE (reactive) — `render()` is a one-shot resolve; wrap the call in `() => render(...)` inside a reactive accessor, or prefer `resolveSlot()` which is built for exactly this',
+  },
+
+  'ui-core/useStableValue': {
+    signature: 'useStableValue<T>(value: T): T',
+    example: `import { useStableValue } from '@pyreon/ui-core'
+
+// options is a fresh object literal every call — useStableValue keeps
+// its IDENTITY stable across calls that produce a deep-equal result
+const options = useStableValue({ page: page(), size: 20 })`,
+    notes: 'Returns a referentially-stable version of `value` — the returned reference only changes when the new value is no longer deeply equal (`isEqual`) to the last one it returned. Backed by a signal held internally; useful for passing a freshly-constructed object/array literal (which would otherwise be a NEW reference every call) into something that memoizes on identity, without needing the caller to hoist the literal to module scope. See also: get / set / merge / pick / omit / isEmpty / isEqual.',
+    mistakes: `- Expecting it to be reactive — it returns a plain (non-accessor) value snapshotted at call time via \`.peek()\`; call \`useStableValue\` again on the next reactive re-run to get the latest stabilized value, don't cache the return across renders
+- Using it on huge or deeply-nested objects in a hot path — \`isEqual\` walks the whole structure on every call to decide whether to update`,
+  },
+
+  'ui-core/HTML_TAGS / HTML_TEXT_TAGS': {
+    signature: 'HTML_TAGS: readonly string[] · HTML_TEXT_TAGS: readonly string[]',
+    example: `import { HTML_TAGS, HTML_TEXT_TAGS } from '@pyreon/ui-core'
+
+HTML_TAGS.includes('button')      // true
+HTML_TEXT_TAGS.includes('div')    // false — div is structural, not text`,
+    notes: `The two tag allowlists \`@pyreon/elements\`' Element/Text bases dispatch on: \`HTML_TAGS\` is every recognized host tag (used to validate/narrow a \`tag\` prop), \`HTML_TEXT_TAGS\` is the subset of TEXT-flavored tags (\`span\`, \`p\`, \`label\`, \`h1\`-\`h6\`, …) Text defaults \`component\` to when no explicit tag is given.`,
+  },
+
+  'ui-core/getThemeEngine / setThemeEngine': {
+    signature: 'getThemeEngine(): ThemeEngine · setThemeEngine(engine: ThemeEngine): void',
+    example: `// User code never calls this — it's how @pyreon/unistyle wires itself into
+// <PyreonUI> without ui-core depending on unistyle. Documented here because
+// "theme isn't enriched" / "no CSS variables" debugging starts here: import
+// "@pyreon/unistyle" somewhere in your app to register the real engine.`,
+    notes: `@internal — the registration seam that breaks the \`ui-core ↔ unistyle\` dependency cycle. \`@pyreon/unistyle\` calls \`setThemeEngine({ enrichTheme, themeToCssVars, cpseRewrite, responsiveStyles })\` at module load (a side effect its \`package.json\` marks \`sideEffects\` for, so tree-shaking can't drop the registration); \`<PyreonUI>\` reads it lazily via \`getThemeEngine()\` at each use-site, never eagerly at setup. When unistyle is NOT in the module graph (a bare \`@pyreon/rocketstyle\`-only app), \`getThemeEngine()\` returns a minimal FALLBACK — identity \`enrichTheme\`, no CSS vars, no CPSE — and dev-warns ONCE, so \`<PyreonUI>\` degrades instead of crashing. See also: PyreonUI.`,
+    mistakes: `- Seeing an un-enriched theme (missing default breakpoints/spacing, no CSS variables) and not realizing \`@pyreon/unistyle\` was never imported — every styled \`@pyreon\` UI package except bare \`@pyreon/rocketstyle\` pulls it in transitively, but a minimal custom setup can miss it
+- Calling \`setThemeEngine()\` from app code — it is for a THEME ENGINE PACKAGE to register itself (the unistyle precedent); overwriting it from an app silently replaces every consumer's theme resolution`,
+  },
+
+  'ui-core/resolveCssVariables': {
+    signature: 'resolveCssVariables(): { enabled: boolean; prefix: string; attribute: string }',
+    example: `import { resolveCssVariables } from '@pyreon/ui-core'
+
+const { enabled, prefix, attribute } = resolveCssVariables()
+// enabled: false by default; prefix: 'px'; attribute: 'data-theme'`,
+    notes: `The single defaulted view of \`config.cssVariables\` — every CSS-variables-mode consumer (\`<PyreonUI>\`, rocketstyle's \`mode(a, b)\` pair factory) reads through this instead of re-deriving defaults from the raw \`boolean | CssVariablesConfig\` config value. Identity-memoized: re-resolves only when \`config.cssVariables\` is reassigned by \`init()\`, not on every call. See also: init.`,
+    mistakes: '- Reading `config.cssVariables` directly instead of `resolveCssVariables()` — the raw config value can be a bare `true`/`false` OR a `CssVariablesConfig` object; the raw form has no defaulted `prefix`/`attribute`',
+  },
+
+  'ui-core/hoistNonReactStatics': {
+    signature: 'hoistNonReactStatics<T, S>(target: T, source: S, excludeList?: Record<string, true>): T',
+    example: `import { hoistNonReactStatics } from '@pyreon/ui-core'
+
+const Original = Object.assign(
+  (props: { label: string }) => props.label,
+  { meta: { category: 'action' } },
+)
+function Wrapped(props: { label: string }) {
+  return Original(props)
+}
+// At runtime Wrapped now also carries Original's non-framework statics
+// (here, .meta) — the return value is typed T, so read the copied static
+// off the SOURCE's own shape (Object.assign, as above) when you need it typed.
+hoistNonReactStatics(Wrapped, Original)`,
+    notes: `Copies non-framework static properties (walking the prototype chain) from \`source\` onto \`target\` — the Pyreon equivalent of the \`hoist-non-react-statics\` package, simplified since Pyreon components are plain functions without React-specific statics (\`contextType\`, \`propTypes\`, …). Used by HOC factories (\`@pyreon/attrs\`, \`@pyreon/rocketstyle\`) so a wrapped component keeps the original's statics (\`.meta\`, custom attached properties) visible on the wrapper. See also: compose.`,
+    mistakes: `- Reaching for it directly when writing an app-level HOC — \`@pyreon/attrs\`' \`.compose()\` already hoists statics for you; this is the low-level primitive it's built on`,
+  },
   // <gen-docs:api-reference:end @pyreon/ui-core>
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -7122,6 +7284,51 @@ resolveCssVarReferences('var(--px-missing, 1rem)', registry)           // '1rem'
     notes: 'Resolve `var(--…)` references in a string back to their raw emitted values using a `themeToCssVars` registry — for consumers that cannot evaluate CSS custom properties (document export to PDF/DOCX/email, devtools, non-CSS render targets). Inline fallbacks (`var(--x, 1rem)`) apply when the name is unknown; unresolvable references stay verbatim; non-strings pass through untouched. `calc()` expressions are inlined, NOT evaluated. See also: themeToCssVars.',
     mistakes: `- Expecting calc() to be EVALUATED — only the var() references inside are inlined; a non-CSS target needing one number must evaluate the calc itself or avoid calc-composed values
 - Passing a registry from a DIFFERENT theme identity — registries are per themeToCssVars(theme) result; mixed registries resolve to wrong values`,
+  },
+
+  'unistyle/values': {
+    signature: 'values(inputs: Array<string | number | null | undefined>, rootSize?: number, outputUnit?: string): string | number | null',
+    example: `import { values } from '@pyreon/unistyle'
+
+values([undefined, 24, 16])   // → '1.5rem' (first defined: 24 → converted)
+values([null, null, 8])       // → '0.5rem'`,
+    notes: `Companion to \`value()\` for a mobile-first FALLBACK CHAIN: picks the first non-nullish entry in \`inputs\` (left to right) and runs it through the same \`value()\` conversion. Built for a responsive-prop shape where a smaller breakpoint may be unset and should fall back to a larger one's already-resolved raw value, without the caller hand-writing the \`??\` chain. See also: value, stripUnit.`,
+    mistakes: '- Confusing this with `value()` (singular) — `value` converts ONE input; `values` selects the first defined item from a LIST, then converts it',
+  },
+
+  'unistyle/cpseRewrite / cpseVarName / extractStyleVar': {
+    signature: 'extractStyleVar(property, rawValue, rootSize?) → { rule, varName, varValue } · cpseVarName(property, breakpoint?) → string · cpseRewrite(frag, varsOut, breakpoint?) → string',
+    example: `import { extractStyleVar, cpseVarName, cpseRewrite } from '@pyreon/unistyle'
+
+extractStyleVar('gap', 36)
+// → { rule: 'gap:var(--u-1n2k4)', varName: '--u-1n2k4', varValue: '2.25rem' }
+
+cpseVarName('gap')            // '--u-1n2k4' — stable, shared across instances
+cpseVarName('gap', 'sm')      // '--u-1n2k4-sm' — per-breakpoint suffix
+
+const vars = {}
+cpseRewrite('gap: 2.25rem; margin: 1rem 2rem;', vars)
+// → 'gap:var(--u-1n2k4);margin:var(--u-8f3a1);'
+// vars → { '--u-1n2k4': '2.25rem', '--u-8f3a1': '1rem 2rem' }`,
+    notes: `The Custom-Property Style Extraction (CPSE) primitives — the machinery behind \`styleExtraction: true\` / \`cpseStyled\`. The thesis: decouple a style rule's IDENTITY from its VALUE. Instead of baking a value into the rule (\`gap: 2.25rem\` — a new rule + resolve per distinct value, cost O(distinct values)), emit a value-AGNOSTIC rule that reads a custom property (\`gap: var(--u-<hash>)\` — resolved ONCE per component definition) and deliver the value per-instance as an inline \`style="--u-<hash>: 2.25rem"\` — cost O(component definitions), and a signal-driven value updates for free (write the inline custom property, no re-resolve). \`extractStyleVar\` extracts ONE declaration; \`cpseVarName\` derives the stable hashed var name for a property (+ optional breakpoint suffix); \`cpseRewrite\` rewrites every FLAT \`prop: value;\` declaration in an already-resolved CSS fragment to its var form — a fragment with any structure (selectors, nesting, \`@media\`, \`url(...)\`) passes through UNCHANGED (conservative: correct-but-unextracted beats wrong). See also: cpseStyled, themeToCssVars.`,
+    mistakes: `- Calling these directly to style a component — reach for \`cpseStyled(tag)\` (the complete, opt-in vehicle) or \`<PyreonUI>\` \`init({ styleExtraction: true })\` instead; these are the low-level primitives they're built on
+- Expecting \`cpseRewrite\` to extract a declaration inside a selector / \`@media\` block / \`extendCss\` fragment — anything with structure (\`{\`, \`}\`, \`&\`, \`@\`, \`url(\`) is returned VERBATIM by design, since a flat-declaration rewrite would corrupt it
+- Reusing a \`varsOut\` object across unrelated fragments without clearing it — \`cpseRewrite\` only ADDS keys, so a stale entry from a previous call can silently linger`,
+  },
+
+  'unistyle/cpseStyled': {
+    signature: 'cpseStyled(tag: string): ComponentFn<{ styles?, rootSize?, breakpoints?, class?, ref?, children? }>',
+    example: `import { cpseStyled } from '@pyreon/unistyle'
+
+const Box = cpseStyled('div')
+
+<Box styles={{ gap: 24, padding: [8, 16] }} />
+// one shared class; gap/padding delivered as inline custom properties
+
+<Box styles={() => ({ gap: signal() })} />  // dynamic — updates the inline var only`,
+    notes: 'The complete, opt-in CPSE-backed styled primitive — pass a `styles` prop (static object, or `() => object` for signal-driven dynamic values) instead of a template literal. Per-definition, styling cost is FLAT in style-VALUE cardinality: the emitted class depends only on the declaration SHAPE (which properties, at which breakpoints), so N instances with N distinct values share ONE class and pay ONE resolve — the values themselves travel as per-instance inline custom properties. Supports responsive values as a mobile-first array (`padding={[8, 16]}`) or a breakpoint object (`padding={{ sm: 16 }}`), each breakpoint emitting its own suffixed var wrapped in a `@media` block. A dynamic (function) `styles` prop updates the inline vars via a `renderEffect` — the class itself never re-resolves. See also: cpseRewrite / cpseVarName / extractStyleVar.',
+    mistakes: `- Expecting \`styles\` to accept the same shorthand as a \`styled\` template literal — it takes unistyle-convention property keys (\`borderWidthTop\`, not \`borderTopWidth\`) in a flat object, not arbitrary CSS text
+- Mounting many DIFFERENT shapes (different property SETS) expecting the flat-cost guarantee — the win is per-SHAPE; a component whose author varies which properties are set per instance still resolves once per distinct shape`,
   },
   // <gen-docs:api-reference:end @pyreon/unistyle>
 
@@ -8403,6 +8610,38 @@ createISRHandler(handler, {
     signature: 'function aiPlugin(config?: AiPluginConfig): Plugin // server-only',
     example: 'plugins: [pyreon(), zero(), seoPlugin({ ... }), aiPlugin()]',
     notes: `AI integration plugin — generates \`llms.txt\`, \`llms-full.txt\`, and JSON-LD inference metadata at build time. Designed for sites that want to be AI-readable (search engines, model trainers, agentic crawlers). The generated files are themselves Pyreon's on-publish artifacts; the plugin runs \`inferJsonLd\` per route to extract structured data from \`meta\` exports. See also: seoPlugin, zero.`,
+  },
+
+  'zero/OgImage': {
+    signature: 'type OgImage<TData = unknown, TParams = Record<string, string>> = (ctx: { path: string; params: TParams; data: TData | undefined }) => VNodeChild // route file `export const og`',
+    example: `import type { OgImage } from '@pyreon/zero/server'
+
+export const og: OgImage<{ title: string }> = ({ data }) => (
+  <svg width="1200" height="630">
+    <rect width="1200" height="630" fill="#0b1020" />
+    <text x="80" y="330" font-size="72" fill="#fff">{data?.title}</text>
+  </svg>
+)`,
+    notes: 'Per-route Open Graph image from JSX. A page route exports `og` — a component rendering the card as SVG JSX from its params + loader data. SSG paths rasterize at BUILD time to a content-hashed PNG under `assets/og/` and get `og:image` (+ width/height, `twitter:card`) injected; SSR/ISR routes are served at request time from `/_zero/og/<path>.png` (CDN `s-maxage` + `stale-while-revalidate`) with an absolute `og:image` injected into the page. Referenced only from the server graph — never the client bundle. Rasterizer: the optional peer `sharp`. Size + absolute origin via `zero({ routeOg: { width, height, siteUrl } })`. See also: zero, seoPlugin.',
+    mistakes: `- Rendering HTML (\`<div>\`) instead of an \`<svg>\` root — sharp rasterizes SVG via librsvg, which does not lay out HTML or \`<foreignObject>\`; the build fails with a \`[Pyreon]\` error naming the fix
+- Omitting \`routeOg.siteUrl\` for SSG — most crawlers (Facebook, LinkedIn, Slack) need an ABSOLUTE og:image URL; without it the build-time tag is root-relative
+- Expecting \`vite dev\` to serve \`/_zero/og/…\` — the image is produced by the build / production server; preview with a build
+- Setting og:image via \`useHead\` AND exporting \`og\` — the explicit tag wins and nothing is injected`,
+  },
+
+  'zero/registerServiceWorker': {
+    signature: 'function registerServiceWorker(options?: { url?: string; scope?: string; onUpdate?: (activate: () => void) => void }): Promise<ServiceWorkerRegistration | null>',
+    example: `import { registerServiceWorker } from '@pyreon/zero'
+
+registerServiceWorker({
+  onUpdate: (activate) => {
+    if (confirm('A new version is available. Reload?')) activate()
+  },
+})`,
+    notes: `Registers the worker generated by \`zero({ pwa })\` (\`<base>sw.js\`, \`updateViaCache: 'none'\`). The worker precaches exactly the emitted hashed assets (+ prerendered pages under \`mode: 'ssg'\`), serves navigations network-first and hashed assets cache-first. New versions WAIT by default; \`onUpdate(activate)\` fires when one is installed so the app can ask, and \`activate()\` switches + reloads. Resolves \`null\` during SSR, outside production builds, and without service-worker support. See also: zero.`,
+    mistakes: `- Expecting it to register in \`vite dev\` — it no-ops outside production builds on purpose (a caching worker fights HMR)
+- Setting \`pwa.skipWaiting: true\` without understanding it swaps the asset cache under running tabs — prefer \`onUpdate\` + \`activate()\`
+- Serving \`sw.js\` with a long or immutable Cache-Control from a custom host — the worker script is the update channel; zero's adapters serve it must-revalidate`,
   },
 
   'zero/i18nRouting': {
@@ -10896,6 +11135,15 @@ loom dev: 142 package(s) → http://localhost:5230/`,
 - Reading graph depth as import distance — depth is LONGEST-path from the entry points (how far below the surface a package sits), hard-bounded at V−1; packages inside a cycle keep the depth their first visit found`,
   },
 
+  'loom/loom build': {
+    signature: 'loom build [dir] [--out=<dir>] [--base=<path>]',
+    example: `$ loom build . --out=dist/observatory
+loom: 142 package(s) → dist/observatory`,
+    notes: 'Prerenders the observatory to a STANDALONE STATIC SITE — one prerendered page per view (graph / matrix / cycles / impact / manifest table), so a specific view has its own shareable URL instead of living behind a client-side signal. Output goes to `<dir>/loom-dist` by default (`--out=<dir>` to change it); `--base=<path>` sets the public base path for a subdirectory deploy. Needs `vite` + `@pyreon/vite-plugin` + `@pyreon/zero` as dev dependencies — `loom scan` needs NONE of them, so a CI gate that only runs `scan` is unaffected. The five views + the scan report are baked into the build so the output also works opened directly from `file://`, with no server. See also: loom dev, loom scan.',
+    mistakes: `- Running \`loom build\` in a project without Vite installed — it names the exact install (\`vite @pyreon/vite-plugin @pyreon/zero\`) rather than failing with a bare module-resolution error
+- Expecting the static build to re-scan on reload like \`loom dev\` does — it is a SNAPSHOT of the workspace at build time; re-run \`loom build\` after dependency changes to refresh it`,
+  },
+
   'loom/buildReport': {
     signature: '(rootDir: string, options?: { noImports?: boolean }) => LoomReport',
     example: `import { buildReport } from '@pyreon/loom'
@@ -10976,6 +11224,35 @@ for (const note of doc.notes) console.warn(note.code, note.at, note.message)`,
     mistakes: `- Ignoring \`doc.notes\`. A spec with a remote \`$ref\` or a non-JSON media type still produces output — with those pieces typed \`unknown\`. The note is the only signal.
 - Expecting anchors or merge keys to work. The YAML reader refuses them by design with a line number, because silently ignoring an anchor produces a document that is wrong everywhere it was used.`,
   },
+
+  'lathe/resolveProjects': {
+    signature: 'resolveProjects(section: LatheSection | undefined): ResolvedConfig[]',
+    example: `import { resolveProjects, generate } from '@pyreon/lathe'
+
+const projects = resolveProjects({
+  target: 'multiplatform',
+  projects: [
+    { name: 'billing', input: './billing.yaml', output: './src/gen/billing' },
+    { name: 'catalog', input: './catalog.yaml', output: './src/gen/catalog' },
+  ],
+})
+for (const config of projects) {
+  const { files } = generate(await readSpec(config), config)
+}`,
+    notes: 'The multi-spec sibling of `resolveConfig` — ALWAYS returns a list, so a config with no `projects` array resolves to a one-element list (the top-level config alone) rather than a special case the caller has to branch on. Each declared project inherits the top-level `target`/`plugins`/`client`/`validator` and may override any of them; a project without a unique `name` — the key the CLI report and error messages use — throws. See also: resolveConfig, generate.',
+    mistakes: `- Reaching for \`resolveConfig\` when the section MAY declare \`projects\` — it resolves only the top-level fields and silently ignores a \`projects\` array; \`resolveProjects\` is the one that fans it out
+- Passing a CLI \`--out\` alongside a \`projects\` config expecting it to apply to every project — it is REFUSED, since each project already declares its own \`output\``,
+  },
+
+  'lathe/resolveTransform / worstVerdict': {
+    signature: 'resolveTransform(): Promise<TransformFn | undefined> · worstVerdict(report: VerifyReport): "lowers" | "web-only" | "broken" | "skipped"',
+    example: `import { resolveTransform, verifyNative, worstVerdict } from '@pyreon/lathe'
+
+const report = verifyNative(files, await resolveTransform())
+if (worstVerdict(report) !== 'lowers') process.exitCode = 1`,
+    notes: `\`resolveTransform\` resolves the CONSUMING PROJECT's own \`@pyreon/native-compiler\` (dynamic \`import()\`, never bundled) — the \`transform\` fn \`verifyNative\` needs — and returns \`undefined\` when the package is not installed, so a verify call never silently substitutes a different compiler version than the one that will actually build the app. \`worstVerdict\` reduces a whole \`VerifyReport\` (one verdict per generated \`.native.tsx\` file) to a single exit-worthy answer: \`"broken"\` beats \`"web-only"\` beats \`"lowers"\`, and an un-run report (\`report.ran === false\`) is \`"skipped"\` — never conflated with a pass. See also: verifyNative.`,
+    mistakes: '- Checking `report.files.length` instead of `worstVerdict(report)` — a report with zero broken/web-only files can still be `"skipped"` (compiler absent), which is not the same as every file lowering',
+  },
   // <gen-docs:api-reference:end @pyreon/lathe>
   // <gen-docs:api-reference:start @pyreon/atlas>
 
@@ -10997,6 +11274,20 @@ atlas: 2 failing scenario(s):
 - Expecting the leak check under plain \`node\` — it needs a GC hook (\`bun\`, or \`node --expose-gc\`); without one it reports skip, not pass
 - Expecting reactivityCoverage/snapshot verdicts from the scan — those are browser-only claims; run \`atlas verify-browser\` to earn them
 - Reading a \`--check\` run that reports FEWER failures as an improvement without looking at the ratchet line — fewer failures is exactly what losing a check produces, and only the diff distinguishes "fixed" from "no longer measured"`,
+  },
+
+  'atlas/atlas check': {
+    signature: `atlas check <Component> ['{"prop":"value"}'] [--cwd <dir>]`,
+    example: `$ atlas check Button '{"state":"primry"}'
+Button: 1 problem(s):
+  · \`state\` must be one of \`primary\`, \`secondary\`, \`danger\` — got \`primry\` — did you mean \`primary\`?
+
+$ atlas check Input
+Input: 1 problem(s):
+  · \`label\` is required and was not supplied  # omitted args → missing-required findings only`,
+    notes: `Validates a PROPOSED usage against the catalog's already-derived contract — catches the value that typechecks in JS but renders silently wrong (\`state="primry"\` against a select-kind prop whose real options are \`primary\`/\`secondary\`/\`danger\`), an unknown prop name, or a value of the wrong TYPE. Reads the COMMITTED \`atlas-catalog.json\` rather than re-scanning, deliberately: a check must be instant and must agree with the exact answer the workbench and agent guide already gave — a rescan here could silently disagree with the catalog an agent was handed moments earlier. Every unresolved prop / unmatched value gets a \`did you mean\` suggestion (edit-distance nearest match) for the same reason a typo'd component name does. Missing required props are reported when the args object omits them, even with no args at all. Exits non-zero on any finding, so it is safe to wire into a pre-commit hook or a CI step gating a generated-usage PR. See also: atlas scan, atlas verify.`,
+    mistakes: `- Running \`atlas check\` before ever running \`atlas scan\` — there is no catalog to check against, so it fails with "Run atlas scan first" rather than a usage verdict
+- Expecting \`atlas check\` to catch a REGRESSION since the last scan — it validates the ARGS you pass against the LAST-WRITTEN catalog; it does not itself re-derive anything, so a source change needs a fresh \`atlas scan\` before checking against it means anything`,
   },
 
   'atlas/atlas verify': {
@@ -11075,6 +11366,28 @@ const graph = await atlas.build()      // discover → decorate → verify → g
 graph.search('button')                 // Catalog Graph queries`,
     notes: 'The programmatic pipeline factory behind the CLI: `discover → decorate → verify → graph`, plugin-driven. The recommended preset bundles the built-in plugins (controls inference, variant matrix, mount/interaction/leak verification). Pass `preset: "none"` when you assemble the plugin list yourself — appending the recommended bundle on top of an explicit list runs duplicate plugins whose default verdicts can overwrite real ones. See also: atlas scan.',
     mistakes: '- Passing an explicit plugin list WITHOUT `preset: "none"` — the recommended bundle is appended a second time and a duplicate mount plugin’s empty-graph default verdict can overwrite the real one',
+  },
+
+  'atlas/defineAtlas': {
+    signature: 'defineAtlas(config: AtlasConfig): AtlasConfig',
+    example: `import { defineAtlas, createAtlas } from '@pyreon/atlas'
+
+const options = defineAtlas({ preset: 'recommended', matrix: 'axes' })
+const graph = await createAtlas(options).build()`,
+    notes: 'Identity helper for a typed `createAtlas(...)` options object — returns its argument unchanged, purely for editor DX (autocomplete + type-checking on `plugins` / `preset` / `baseArgs` / `matrix` / `cwd` / `focus`) when the object is built up in its own module instead of inlined at the `createAtlas()` call site. See also: createAtlas, AtlasConfig.projects (monorepo — one site, several packages).',
+    mistakes: `- Reaching for this to type \`atlas.config.ts\` / the \`pyreon.config.ts\` \`atlas:\` section — that file-level convention (\`title\`, \`projects\`, \`pages\`, \`scenarios\`, \`wrapper\`, \`presets\`, \`theme\`, \`parts\`, \`browserOnly\`, \`ignore\`) is a WIDER, separate shape the CLI loads dynamically; \`defineAtlas\`'s \`AtlasConfig\` is specifically the \`createAtlas()\` programmatic-API options bag and does not carry those fields`,
+  },
+
+  'atlas/atlas init': {
+    signature: 'atlas init [dir] [--force] [--dry-run] [--title <text>]',
+    example: `$ atlas init
+atlas init: wrote pyreon.config.ts (2 project(s) detected)
+
+$ atlas init --dry-run   # print instead of writing
+$ atlas init --force     # overwrite an existing config`,
+    notes: `Writes the config the workspace already implies — the ONE file you author by hand. Atlas works with zero config for a plain single-package library (\`atlas scan\` and \`atlas dev\` need nothing), but the first thing anyone wants to do after that is adjust a guess: rename a monorepo project group, drop an internal package, pin an order. \`atlas init\` detects the workspace's packages (populating \`AtlasConfig.projects\` for a monorepo), guesses a site \`title\` from the root \`package.json\` name, and writes \`pyreon.config.ts\` with every OTHER optional field present but commented out — \`wrapper\`, \`pages\`, \`scenarios\`, \`matrix\`, \`parts\`, \`browserOnly\` — so the file is self-documenting. Nothing regenerates it after; it is yours to edit. It writes no story files by design — components, controls and scenarios stay derived from source. See also: createAtlas, AtlasConfig.projects (monorepo — one site, several packages).`,
+    mistakes: `- Expecting \`atlas init\` to be required — it is a convenience for adjusting the auto-detected project list and documenting the optional fields; \`atlas scan\`/\`atlas dev\` work with no config file at all
+- Running it a second time expecting an incremental update — \`--force\` OVERWRITES the whole file; hand edits are lost unless you diff first`,
   },
 
   'atlas/AtlasConfig.projects (monorepo — one site, several packages)': {

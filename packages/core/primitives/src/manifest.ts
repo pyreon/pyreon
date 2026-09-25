@@ -2,8 +2,9 @@ import { defineManifest } from '@pyreon/manifest'
 
 /**
  * `@pyreon/primitives` — the canonical MULTIPLATFORM UI vocabulary. These
- * 15 primitives (+ `<WebView>` + the `<Web>`/`<NativeIOS>`/`<NativeAndroid>`
- * escape hatches) are the ONLY UI layer that compiles to web DOM + iOS
+ * 17 canonical primitives (+ `<Transition>`/`<TransitionGroup>`, `<WebView>`
+ * and the `<Web>`/`<NativeIOS>`/`<NativeAndroid>` escape hatches) are the
+ * ONLY UI layer that compiles to web DOM + iOS
  * SwiftUI + Android Compose from one source via PMTC. This manifest is the
  * AI's primitive-API reference — pair it with `get_pattern({ name:
  * 'multiplatform' })` for the full build-one-shot guide. (For web-only rich
@@ -14,17 +15,17 @@ export default defineManifest({
   name: '@pyreon/primitives',
   title: 'Canonical Multiplatform Primitives',
   tagline:
-    '16 cross-platform UI primitives that compile to DOM + SwiftUI + Compose from one .tsx: Stack, Inline, Layer, Scroll, Spacer (layout); Text, Heading, Image, Icon, Video (content); Button, Press, Link (interaction); Field, Toggle, Modal (input). Plus <WebView> (host a web-only component natively, bidirectional bridge) and <Web>/<NativeIOS>/<NativeAndroid> escape hatches.',
+    '17 canonical cross-platform UI primitives that compile to DOM + SwiftUI + Compose from one .tsx: Stack, Inline, Layer, Scroll, Spacer (layout); Text, Heading, Image, Audio, Video, Icon (content); Button, Press, Link (interaction); Field, Toggle, Modal (input). Plus <Transition>/<TransitionGroup> (animation), <WebView> (host a web-only component natively, bidirectional bridge) and <Web>/<NativeIOS>/<NativeAndroid> escape hatches.',
   description:
-    'The multiplatform UI vocabulary for Pyreon. ONE canonical name per concept (`<Stack>` not `<View>`/`<VStack>`/`<div>`; `onPress` everywhere, not `onClick` vs `action:`). Web renders real DOM via `@pyreon/runtime-dom`; on iOS/Android the PMTC compiler intercepts the JSX at build time and emits idiomatic SwiftUI / Compose (the import is a type-anchor on native). Tokens-first styling (`padding={4}`, `gap="md"`) resolves through the theme per target. No responsive props / animations in v1 — apps needing responsive web use `@pyreon/elements` directly. CRITICAL boundary for native: PMTC compiles your component SOURCE in a narrow declarative TS subset, NOT npm libraries — see `get_pattern({ name: "multiplatform" })` for the supported subset + the silent-failure cliff.',
+    'The multiplatform UI vocabulary for Pyreon. ONE canonical name per concept (`<Stack>` not `<View>`/`<VStack>`/`<div>`; `onPress` everywhere, not `onClick` vs `action:`). Web renders real DOM via `@pyreon/runtime-dom`; on iOS/Android the PMTC compiler intercepts the JSX at build time and emits idiomatic SwiftUI / Compose (the import is a type-anchor on native). Tokens-first styling (`padding={4}`, `gap="md"`) resolves through the theme per target. No responsive props in v1 — apps needing responsive web use `@pyreon/elements` directly; animation is `<Transition>` / `<TransitionGroup>`. CRITICAL boundary for native: PMTC compiles your component SOURCE in a narrow declarative TS subset, NOT npm libraries — see `get_pattern({ name: "multiplatform" })` for the supported subset + the silent-failure cliff.',
   category: 'browser',
   multiplatform: {
     tier: 'shared',
     rationale:
-      'the 15 canonical primitives: real web DOM runtime AND SwiftUI/Compose emit — the compiler\'s native target vocabulary',
+      'the 17 canonical primitives: real web DOM runtime AND SwiftUI/Compose emit — the compiler\'s native target vocabulary',
   },
   features: [
-    '15 canonical primitives compile to web DOM + iOS SwiftUI + Android Compose from one .tsx',
+    '17 canonical primitives compile to web DOM + iOS SwiftUI + Android Compose from one .tsx',
     'One canonical name + event per concept — `<Stack>` (not View/VStack/div), `onPress` everywhere',
     'Tokens-first styling (`padding={4}`, `gap="md"`) resolves through the theme per target',
     'PMTC compiles your component SOURCE in a narrow declarative TS subset — NOT npm libraries',
@@ -32,7 +33,7 @@ export default defineManifest({
     '`<Transition>` / `<TransitionGroup>` — the animation vocabulary, lowered to SwiftUI `.transition(…)` and Compose `AnimatedVisibility` (import from HERE; `@pyreon/runtime-dom` is web-only)',
     '`<Web>` / `<NativeIOS>` / `<NativeAndroid>` escape hatches for genuinely per-platform UI',
     '`useNativeModule` FFI — add a platform capability the framework does not ship (Bluetooth, ARKit, a vendor SDK) as an app-level Swift/Kotlin class, no framework PR',
-    'No responsive props or animations in v1 — responsive web uses `@pyreon/elements` directly',
+    'No responsive props in v1 — responsive web uses `@pyreon/elements` directly',
   ],
   longExample: `import { Stack, Inline, Text, Heading, Button, Field, Toggle } from '@pyreon/primitives'
 import { signal, computed } from '@pyreon/reactivity'
@@ -76,6 +77,7 @@ export function App() {
       mistakes: [
         'Using `<View>` / `<VStack>` / `<div>` — the canonical name is `<Stack>` (one name, all platforms)',
         'Expecting responsive props (breakpoint arrays) — not supported in v1; use @pyreon/elements for responsive web',
+        'Relying on `justify` or `wrap` natively — both are IGNORED on iOS and Android (the compiler warns); use `<Spacer />` between children to distribute them',
       ],
       seeAlso: ['Inline', 'Layer', 'Scroll'],
     },
@@ -98,7 +100,7 @@ export function App() {
       kind: 'component',
       signature: '(props: { align?: Align; padding?: Space; children }) => VNode',
       summary:
-        'Stacked / overlay container. Web → `position:relative` + abs children; iOS → `ZStack`; Android → `Box`. Use for badges, overlays, layered composition.',
+        'Stacked / overlay container. Web → `position:relative` single-cell grid (`align` → `place-items`); iOS → `ZStack`; Android → `Box`. Native children overlap automatically; on web, ordinary children flow into separate grid rows, so give the front child `position:absolute` to overlap. Use for badges, overlays, layered composition.',
       example: `<Layer><Image src={hero} alt="" /><Text>overlaid caption</Text></Layer>`,
       mistakes: ['Using it for flow layout — Layer stacks children on the z-axis, not in a row/column'],
       seeAlso: ['Stack'],
@@ -106,9 +108,9 @@ export function App() {
     {
       name: 'Scroll',
       kind: 'component',
-      signature: "(props: { direction?: 'vertical' | 'horizontal'; padding?: Space; children }) => VNode",
+      signature: "(props: { axis?: 'vertical' | 'horizontal'; padding?: Space; children }) => VNode",
       summary:
-        'Scrollable region. Web → `overflow:auto`; iOS → `ScrollView`; Android → `Column(verticalScroll)` / `Row(horizontalScroll)`. ⚠ Do not put a weighted `<Spacer>` inside a Scroll on Android (weight inside a scroll is invalid Compose).',
+        'Scrollable region, vertical unless `axis="horizontal"`. Web → `overflow-y:auto` (or `overflow-x`); iOS → `ScrollView`; Android → `Column(verticalScroll)` / `Row(horizontalScroll)`. ⚠ Do not put a weighted `<Spacer>` inside a Scroll on Android (weight inside a scroll is invalid Compose).',
       example: `<Scroll><Stack gap="md">{/* long content */}</Stack></Scroll>`,
       mistakes: ['Nesting a `<Spacer>` (weight) inside `<Scroll>` — invalid on Android Compose'],
       seeAlso: ['Stack'],
@@ -225,9 +227,13 @@ export function App() {
       kind: 'component',
       signature: '(props: { to: string; external?: boolean; children }) => VNode',
       summary:
-        'Navigation link. Web `<a>`; iOS/Android router-aware navigation. Integrates with `@pyreon/router` (`to` is a route path). `external` opens outside the app.',
+        'Navigation link. Web → a real `<a href>`; the package has NO router dependency, so call `init({ navigate })` once and plain left-clicks route through your handler (modifier-clicks stay with the browser; without `init` it is a full-page link). iOS/Android → `PyreonLink(to)`, which pushes `to` onto the native router (`@pyreon/native-router-swift` / `-kotlin`). `external` renders `target="_blank" rel="noopener noreferrer"` on web.',
       example: `<Link to="/profile">Profile</Link>`,
-      mistakes: ['Hardcoding an href for internal routes — use `to` so it routes natively too'],
+      mistakes: [
+        'Hardcoding an href for internal routes — use `to` so it routes natively too',
+        'Relying on `external` natively — it is IGNORED on iOS and Android (the compiler warns) and the URL is pushed onto the in-app router; open websites with `useLinking().openUrl(url)`',
+        'Expecting SPA navigation on web without calling `init({ navigate })` — the link then does a full page load',
+      ],
       seeAlso: ['Button'],
     },
     {
@@ -258,7 +264,7 @@ export function App() {
       kind: 'component',
       signature: '(props: { open: boolean | (() => boolean); onClose: () => void; children }) => VNode',
       summary:
-        'Modal/sheet. Web overlay; iOS `.sheet(isPresented:)`; Android `Dialog(onDismissRequest)`. Drive `open` with a signal; `onClose` fires on dismiss.',
+        'Modal/sheet. Web → native `<dialog>` opened with `showModal()` (focus trap, backdrop, top layer); Escape and backdrop clicks call `onClose` instead of closing the dialog themselves, so `open` stays the source of truth. iOS `.sheet(isPresented:)`; Android `Dialog(onDismissRequest)`. Drive `open` with a signal; `onClose` fires on dismiss.',
       example: `<Modal open={showSheet()} onClose={() => showSheet.set(false)}><Stack>{/* sheet body */}</Stack></Modal>`,
       mistakes: ['Forgetting `onClose` — needed so the platform dismiss gesture updates your signal'],
       seeAlso: ['Layer'],
@@ -344,7 +350,7 @@ bar.onclick = () => host.emit(String(bar.dataset.id))`,
       signature:
         'Web(props: { children }) => VNodeChild · NativeIOS(props: { children }) => VNodeChild · NativeAndroid(props: { children }) => VNodeChild',
       summary:
-        "The Layer-4 per-platform escape hatch — one source carries a platform-specific subtree and exactly ONE branch renders per target. `<Web>` renders its children on WEB only (a layout-transparent Fragment, no wrapper element); `<NativeIOS>` / `<NativeAndroid>` render NOTHING on web (they return null — their children are emitted only on the iOS / Android target by PMTC). Reach for these for the rare genuinely-per-platform UI branch the 15 canonical primitives can't express (a web-only-rich chart/flow/table view vs a native equivalent or a `<WebView>` embed).",
+        "The Layer-4 per-platform escape hatch — one source carries a platform-specific subtree and exactly ONE branch renders per target. `<Web>` renders its children on WEB only (a layout-transparent Fragment, no wrapper element); `<NativeIOS>` / `<NativeAndroid>` render NOTHING on web (they return null — their children are emitted only on the iOS / Android target by PMTC). Reach for these for the rare genuinely-per-platform UI branch the canonical primitives can't express (a web-only-rich chart/flow/table view vs a native equivalent or a `<WebView>` embed).",
       example: `<Web>{/* web-only-rich: <Chart>, <Flow>, <Table> */}</Web>
 <NativeIOS>{/* Swift Charts, or a <WebView> embed */}</NativeIOS>
 <NativeAndroid>{/* Compose chart, or a <WebView> embed */}</NativeAndroid>`,

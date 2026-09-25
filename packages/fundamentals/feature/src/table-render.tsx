@@ -62,26 +62,42 @@ export function createTableComponent<TValues extends Record<string, unknown>>():
           'tr',
           { key: group.id },
           group.headers.map((header: any) =>
-            h(
-              'th',
-              {
-                key: header.id,
-                ...(sortable
-                  ? {
+            sortable
+              ? h(
+                  'th',
+                  {
+                    key: header.id,
+                    'data-sortable': 'true',
+                    // Accessor for the same keyed-freeze reason as the arrow.
+                    'aria-sort': () => {
+                      const dir = header.column.getIsSorted()
+                      return dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : 'none'
+                    },
+                  },
+                  // The sort control is a real <button>: a click handler on
+                  // the <th> itself was unreachable by keyboard and announced
+                  // as nothing to a screen reader. The <th> keeps `aria-sort`
+                  // (where assistive tech reads the column's sort state).
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      class: 'pyreon-feature-sort',
                       onClick: header.column.getToggleSortingHandler(),
-                      'data-sortable': 'true',
-                    }
-                  : {}),
-              },
-              flexRender(header.column.columnDef.header, header.getContext()) as VNodeChild,
-              // MUST be an accessor — see the keyed-freeze note above.
-              sortable
-                ? () => {
-                    const dir = header.column.getIsSorted()
-                    return dir === 'asc' ? ' ↑' : dir === 'desc' ? ' ↓' : ''
-                  }
-                : null,
-            ),
+                    },
+                    flexRender(header.column.columnDef.header, header.getContext()) as VNodeChild,
+                    // MUST be an accessor — see the keyed-freeze note above.
+                    () => {
+                      const dir = header.column.getIsSorted()
+                      return dir === 'asc' ? ' ↑' : dir === 'desc' ? ' ↓' : ''
+                    },
+                  ),
+                )
+              : h(
+                  'th',
+                  { key: header.id },
+                  flexRender(header.column.columnDef.header, header.getContext()) as VNodeChild,
+                ),
           ),
         ),
       )

@@ -1,6 +1,7 @@
 import type { Computed, Signal } from '@pyreon/reactivity'
 import { computed } from '@pyreon/reactivity'
 import type { FormState } from './types'
+import { FIELDS_VERSION } from './use-form'
 
 /**
  * Watch specific field values reactively. Returns a computed signal
@@ -41,7 +42,14 @@ export function useWatch<TValues extends Record<string, unknown>, K extends keyo
 ): Signal<TValues[K]> | Signal<TValues[K]>[] | Computed<TValues> {
   // Watch all fields
   if (nameOrNames === undefined) {
+    // Track the field SET too: `Object.keys(form.fields)` alone is not
+    // reactive, so a field added by `registerField()` after this watch was
+    // created never appeared in it (and a removed one lingered).
+    const fieldsVersion = (form as unknown as Record<symbol, (() => number) | undefined>)[
+      FIELDS_VERSION
+    ]
     return computed(() => {
+      fieldsVersion?.()
       const result = {} as TValues
       for (const key of Object.keys(form.fields) as (keyof TValues & string)[]) {
         ;(result as Record<string, unknown>)[key] = form.fields[key].value()
@@ -56,7 +64,7 @@ export function useWatch<TValues extends Record<string, unknown>, K extends keyo
   const assertField = (name: K): void => {
     if (!form.fields[name]) {
       throw new Error(
-        `[@pyreon/form] useWatch("${name}"): field "${name}" not found. ` +
+        `[Pyreon] useWatch("${name}"): field "${name}" not found. ` +
           `Available fields: ${Object.keys(form.fields).join(', ')}. ` +
           `Declare it in useForm({ initialValues }) (or the fields array) — ` +
           `@pyreon/form does not auto-register fields.`,

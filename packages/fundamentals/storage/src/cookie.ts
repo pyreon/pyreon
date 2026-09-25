@@ -1,5 +1,5 @@
 import { signal, wrapSignal } from '@pyreon/reactivity'
-import { getEntry, releaseEntry, retainEntry, setEntry } from './registry'
+import { getEntry, releaseEntry, retainEntry, setEntry, warnIfOptionsDiffer } from './registry'
 import type { CookieOptions, StorageSignal } from './types'
 import { deserialize, isBrowser, serialize } from './utils'
 
@@ -56,9 +56,19 @@ function parseCookies(cookieString: string): Map<string, string> {
   for (const pair of cookieString.split(';')) {
     const eqIndex = pair.indexOf('=')
     if (eqIndex === -1) continue
-    const name = pair.slice(0, eqIndex).trim()
+    const rawName = pair.slice(0, eqIndex).trim()
     const value = pair.slice(eqIndex + 1).trim()
-    if (!name) continue
+    if (!rawName) continue
+    // `writeCookie` URI-encodes the NAME as well as the value, so the name must
+    // be decoded here too — otherwise a key with a space, `;`, `=` or any
+    // non-ASCII character is written under its encoded form and never found
+    // again on read. Same malformed-escape fallback as the value below.
+    let name: string
+    try {
+      name = decodeURIComponent(rawName)
+    } catch {
+      name = rawName
+    }
     // `decodeURIComponent` throws `URIError` on a malformed percent-escape (a
     // bare `%`, or `%` not followed by two hex digits). `document.cookie` mixes
     // in cookies set by ANY code on the origin (third-party scripts, a server
@@ -88,12 +98,29 @@ function readCookie(key: string): string | null {
 
 // ─── Cookie writing ──────────────────────────────────────────────────────────
 
+// Browsers drop a cookie whose name + value exceeds ~4096 bytes — silently.
+const COOKIE_SIZE_LIMIT = 4096
+
+function isHttpsPage(): boolean {
+  return globalThis.location?.protocol === 'https:'
+}
+
 function writeCookie<T>(key: string, value: T, options: CookieOptions<T>): void {
-  /* v8 ignore next — SSR/isBrowser guard */
-  if (!isBrowser()) return
+  if (!isBrowser()) {
+    // Nothing can reach the response from here: a server-side `.set()` updates
+    // the signal for this render and nothing else. Say so once, in dev.
+    if (process.env.NODE_ENV !== 'production') {
+      warnOnce(
+        `server-set:${key}`,
+        `[Pyreon] useCookie("${key}").set() ran on the server. It updates the signal for this render only — no Set-Cookie header is sent. Set the cookie in your server response (or from the client) to persist it.`,
+      )
+    }
+    return
+  }
 
   const serialized = serialize(value, options)
-  let cookie = `${encodeURIComponent(key)}=${encodeURIComponent(serialized)}`
+  const pair = `${encodeURIComponent(key)}=${encodeURIComponent(serialized)}`
+  let cookie = pair
 
   if (options.maxAge !== undefined) {
     cookie += `; max-age=${options.maxAge}`
@@ -105,12 +132,47 @@ function writeCookie<T>(key: string, value: T, options: CookieOptions<T>): void 
   if (options.domain) {
     cookie += `; domain=${options.domain}`
   }
-  if (options.secure) {
+  const sameSite = options.sameSite ?? 'lax'
+  // Default: secure on an https page (a cookie set there should never travel
+  // over plain http), and ALWAYS for `sameSite: 'none'`, which browsers reject
+  // outright without `secure`. An explicit `secure` still wins.
+  const secure = options.secure ?? (sameSite === 'none' || isHttpsPage())
+  if (secure) {
     cookie += '; secure'
   }
-  cookie += `; samesite=${options.sameSite ?? 'lax'}`
+  cookie += `; samesite=${sameSite}`
+
+  if (process.env.NODE_ENV !== 'production') {
+    if (sameSite === 'none' && !secure) {
+      warnOnce(
+        `none-insecure:${key}`,
+        `[Pyreon] useCookie("${key}"): sameSite: 'none' with secure: false — browsers reject this cookie, so it is never stored. Drop \`secure: false\` (it defaults to true for sameSite 'none') or pick another sameSite.`,
+      )
+    }
+    if (pair.length > COOKIE_SIZE_LIMIT) {
+      warnOnce(
+        `size:${key}`,
+        `[Pyreon] useCookie("${key}"): the encoded cookie is ${pair.length} bytes, over the ~${COOKIE_SIZE_LIMIT}-byte browser limit — browsers silently drop it. Store large values with useIndexedDB or useStorage instead.`,
+      )
+    }
+  }
 
   document.cookie = cookie
+}
+
+// Dev-only, once per message id. Bounded by (keys × 3 kinds).
+const warned = new Set<string>()
+function warnOnce(id: string, message: string): void {
+  if (process.env.NODE_ENV === 'production') return
+  if (warned.has(id)) return
+  warned.add(id)
+  // oxlint-disable-next-line no-console
+  console.warn(message)
+}
+
+/** Test-only: forget which cookie warnings were already shown. */
+export function _resetCookieWarnings(): void {
+  warned.clear()
 }
 
 function deleteCookie<T>(key: string, options: CookieOptions<T>): void {
@@ -159,6 +221,7 @@ export function useCookie<T>(
   // and the next call for the same key minted a SECOND, independent one.
   const existing = getEntry<T>('cookie', key)
   if (existing) {
+    warnIfOptionsDiffer('cookie', key, existing, defaultValue, options)
     retainEntry('cookie', key)
     return existing.signal
   }
