@@ -21,7 +21,7 @@ import {
   emitWebEndpoints,
   emitWebQueries,
 } from '../emit/client'
-import { emitDocs } from '../emit/docs'
+import { docsImportBase, emitDocs } from '../emit/docs'
 import { emitFaker } from '../emit/faker'
 import { emitMocks } from '../emit/mock'
 import { emitPackageMarker } from '../emit/package-marker'
@@ -122,6 +122,7 @@ export function generate(specText: string, config: ResolvedConfig): GenerateResu
       // reach analysis read — not the spec's `servers[0]`, which a config
       // `baseUrl` overrides.
       baseUrl: config.baseUrl ?? doc.baseUrl,
+      importBase: docsImportBase(config.output),
     })) {
       files.push(f)
     }

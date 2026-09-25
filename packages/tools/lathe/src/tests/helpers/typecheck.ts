@@ -15,6 +15,7 @@ import { generate, type GenerateResult } from '../../core/generate'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(HERE, '..', '.generated', 'tc')
+const CORE = join(HERE, '..', '..', '..', '..', '..', 'core', 'core', 'src')
 
 export interface TypecheckOptions {
   /** Extra consumer-side source files, keyed by path relative to the output root. */
@@ -61,6 +62,15 @@ export function typecheckSpec(
     moduleResolution: ts.ModuleResolutionKind.Bundler,
     allowImportingTsExtensions: true,
     customConditions: ['bun'],
+    // `components.tsx` needs `@pyreon/core`, which this package does not
+    // depend on — resolve it to the workspace source instead of adding a
+    // dependency only a test would use.
+    baseUrl: HERE,
+    paths: {
+      '@pyreon/core': [join(CORE, 'index.ts')],
+      '@pyreon/core/jsx-runtime': [join(CORE, 'jsx-runtime.ts')],
+      '@pyreon/core/jsx-dev-runtime': [join(CORE, 'jsx-dev-runtime.ts')],
+    },
     jsx: ts.JsxEmit.Preserve,
     jsxImportSource: '@pyreon/core',
     lib: ['lib.es2022.d.ts', 'lib.dom.d.ts', 'lib.dom.iterable.d.ts'],

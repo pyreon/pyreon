@@ -19,6 +19,7 @@
  * GitHub with nothing installed.
  */
 
+import { hasInput } from './operation-types'
 import type { IrDocument, IrOperation, IrType, Reach } from '../core/ir'
 import { propKey, typeIdent } from '../core/naming'
 import { byTag, endpointSpec, isMutation, tagFile } from './client'
@@ -42,6 +43,27 @@ export interface DocsOptions {
    * the reach column beside it was decided from a different one.
    */
   baseUrl: string
+  /**
+   * The module specifier a page's usage snippets import the generated client
+   * from (audit H1). Derived from the configured `output` — see
+   * {@link docsImportBase} — rather than hard-coded to `./gen`, which named a
+   * directory that does not exist under any non-default output.
+   */
+  importBase?: string | undefined
+}
+
+/**
+ * The import specifier for snippets, from the configured output directory.
+ *
+ * Written relative to `src/` when the output lives under it — the directory
+ * application code is written in, so `./src/gen` reads `./gen`, matching what
+ * a file at `src/main.ts` imports — and relative to the project root
+ * otherwise.
+ */
+export function docsImportBase(output: string): string {
+  const rel = output.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '')
+  if (rel.startsWith('/')) return rel
+  return rel.startsWith('src/') ? `./${rel.slice('src/'.length)}` : `./${rel}`
 }
 
 /** Emit `docs/index.md` plus one page per tag. */
@@ -220,22 +242,25 @@ function usage(
 ): string[] {
   const file = tagFile(tag)
   const args = argsLiteral(op)
+  const base = opts.importBase ?? './gen'
   if (!opts.hasQueries) {
     return [
-      `import { ${op.id} } from './gen/endpoints/${file}'`,
+      `import { ${op.id} } from '${base}/endpoints/${file}'`,
       '',
       `const data = await ${op.id}(${args})`,
     ]
   }
   const hook = hookName(op)
   const lines = [
-    `import { ${hook} } from './gen/queries/${file}'`,
+    `import { ${hook} } from '${base}/queries/${file}'`,
     '',
   ]
   if (isMutation(op)) {
     lines.push(
       `const ${op.id} = ${hook}()`,
-      `${op.id}.mutate(${args || '{}'})`,
+      // A mutation that sends nothing takes NO variables (`void`); `{}` there
+      // is a type error in the reader's code.
+      `${op.id}.mutate(${hasInput(op) ? args || '{}' : ''})`,
     )
   } else {
     lines.push(
@@ -269,7 +294,9 @@ function argsLiteral(op: IrOperation): string {
     const fields = required.map((p) => `${propKey(p.name)}: ${sample(p.type)}`)
     parts.push(`query: { ${fields.join(', ')} }`)
   }
-  if (op.body) parts.push('json: /* … */ {}')
+  // An OPTIONAL body (`requestBody.required` absent) is left out, like an
+  // optional query parameter — the snippet shows what the types REQUIRE.
+  if (op.body && op.bodyRequired) parts.push('json: /* … */ {}')
   return parts.length > 0 ? `{ ${parts.join(', ')} }` : ''
 }
 

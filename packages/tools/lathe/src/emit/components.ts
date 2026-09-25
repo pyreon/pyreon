@@ -18,6 +18,7 @@
  * being told.
  */
 
+import { hasInput } from './operation-types'
 import type { IrDocument, IrOperation } from '../core/ir'
 import { typeIdent } from '../core/naming'
 import { byTag, isMutation, tagFile } from './client'
@@ -49,7 +50,10 @@ export function previewOperations(doc: IrDocument): IrOperation[] {
         // A REQUIRED query parameter has the same problem as a path one: any
         // value the generator invents is a guess, and a preview built on a
         // guess renders an error rather than the shape it exists to show.
-        !op.queryParams.some((p) => p.required),
+        !op.queryParams.some((p) => p.required) &&
+        // So does a REQUIRED body (audit H2): Stripe's GETs declared one, and
+        // their previews called the hook with no argument and did not compile.
+        !(op.body !== undefined && op.bodyRequired === true),
     ),
   )
 }
@@ -61,7 +65,7 @@ export function previewOperations(doc: IrDocument): IrOperation[] {
  * when every one of them is optional, so calling it bare does not compile.
  */
 function hookCall(op: IrOperation, hook: string): string {
-  return op.queryParams.length > 0 ? `${hook}(() => ({}))` : `${hook}()`
+  return hasInput(op) ? `${hook}(() => ({}))` : `${hook}()`
 }
 
 /** Emit `components.tsx`. */
