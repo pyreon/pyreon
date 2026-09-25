@@ -53,9 +53,12 @@ describe('scalar constraint guards — one arm per rule, per type', () => {
   it('email / url / uuid each get their own check', () => {
     expect(out).toContain('mailVal.range(of: #"^[A-Z0-9._%+-]+@')
     expect(out).toContain('rule: "email"')
-    // `URL(string:)` alone is a PARSER, not a validator — the scheme check
-    // is what rejects "x.com" and "/relative" the way zod does.
-    expect(out).toContain('if URL(string: siteVal)?.scheme == nil {')
+    // This schema is `@pyreon/validate`'s `s`, whose `.url()` is http(s)
+    // with a host -- NOT zod's any-scheme rule, which this spec used to
+    // assert (a device then accepted `javascript:` the web rejects). The
+    // executed web<->native parity lives in `native-url-rule-parity.test.ts`.
+    expect(out).toContain('if siteVal.range(of: #"^[hH][tT][tT][pP][sS]?://')
+    expect(out).not.toContain('URL(string: siteVal)')
     expect(out).toContain('rule: "url"')
     expect(out).toContain('if UUID(uuidString: uidVal) == nil {')
     expect(out).toContain('rule: "uuid"')

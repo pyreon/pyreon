@@ -10,13 +10,16 @@
  * same discipline `pyreon/prefer-request-context` enforces elsewhere.
  */
 
+import { encodeCookies, encodeForm, encodeMultipart } from './body'
 import { compose } from './chain'
 import {
   defineEndpoint,
+  type BodyOf,
   type Endpoint,
   type EndpointConfig,
+  type EndpointInput,
   type EndpointSpec,
-  type ResponseOf,
+  type ResponseKind,
 } from './endpoint'
 import { AbortError, HttpError, TimeoutError, httpErrorFor, isAbortError } from './errors'
 import {
@@ -29,6 +32,7 @@ import { resolveAgainstAmbientOrigin } from './request-context'
 import { linkSignals } from './signal'
 import { fetchTransport } from './transport'
 import type {
+  HeaderValues,
   HttpClientConfig,
   HttpMethod,
   HttpMiddleware,
@@ -36,6 +40,7 @@ import type {
   HttpResponse,
   RequestOptions,
   Transport,
+  ValidateMode,
   Validator,
 } from './types'
 import { buildUrl } from './url'
@@ -44,7 +49,7 @@ type HeaderSource = HeadersInit | (() => HeadersInit)
 
 /** Config after `extend()` folding — header/middleware sources accumulate. */
 interface ResolvedConfig {
-  baseUrl: string | undefined
+  baseUrl: string | (() => string | undefined) | undefined
   headerSources: readonly HeaderSource[]
   middleware: readonly HttpMiddleware[]
   transport: Transport
@@ -53,6 +58,9 @@ interface ResolvedConfig {
   throwHttpErrors: boolean
   meta: Record<string, unknown>
   parse: ParseContext
+  /** Set when `validate` is an accessor — read per request instead of once. */
+  validateSource: (() => ValidateMode) | undefined
+  keyScope: string | undefined
 }
 
 /** A configured HTTP client. Immutable — use {@link HttpClient.extend}. */
@@ -68,13 +76,20 @@ export interface HttpClient {
   /** Derive a new client. Headers and middleware ACCUMULATE; scalars override. */
   extend(config: HttpClientConfig): HttpClient
   /** Declare a reusable endpoint — see {@link defineEndpoint}. */
-  endpoint<S extends EndpointSpec, V extends Validator<unknown> | undefined = undefined>(
+  endpoint<
+    S extends EndpointSpec,
+    V extends Validator<unknown> | undefined = undefined,
+    I extends EndpointInput<PathOfSpec<S>> = EndpointInput<PathOfSpec<S>>,
+    K extends ResponseKind = 'json',
+  >(
     spec: S,
-    options?: EndpointConfig<V>,
-  ): Endpoint<S, ResponseOf<V>>
+    options?: EndpointConfig<V, K>,
+  ): Endpoint<S, BodyOf<K, V>, I>
 }
 
 const DEFAULT_TIMEOUT = 30_000
+
+type PathOfSpec<S extends string> = S extends `${string} ${infer P}` ? P : never
 
 function toResolved(config: HttpClientConfig, base?: ResolvedConfig): ResolvedConfig {
   const headerSources = [...(base?.headerSources ?? [])]
@@ -89,14 +104,22 @@ function toResolved(config: HttpClientConfig, base?: ResolvedConfig): ResolvedCo
     credentials: config.credentials ?? base?.credentials ?? 'same-origin',
     throwHttpErrors: config.throwHttpErrors ?? base?.throwHttpErrors ?? true,
     meta: { ...base?.meta, ...config.meta },
+    keyScope: config.keyScope ?? base?.keyScope,
     parse: {
-      validate: config.validate ?? base?.parse.validate ?? 'strict',
+      validate:
+        typeof config.validate === 'string' ? config.validate : (base?.parse.validate ?? 'strict'),
       schema: config.schema ?? base?.parse.schema,
     },
+    validateSource:
+      typeof config.validate === 'function'
+        ? config.validate
+        : config.validate === undefined
+          ? base?.validateSource
+          : undefined,
   }
 }
 
-function applyHeaderSource(target: Headers, source: HeadersInit): void {
+function applyHeaderSource(target: Headers, source: HeadersInit | HeaderValues): void {
   if (source instanceof Headers) {
     source.forEach((value, key) => {
       target.set(key, value)
@@ -116,20 +139,43 @@ function applyHeaderSource(target: Headers, source: HeadersInit): void {
   // same name/value validation + normalization the constructor would, so
   // this skips only the intermediate `Headers` allocation, not any check.
   for (const key of Object.keys(source)) {
-    target.set(key, (source as Record<string, string>)[key] as string)
+    const value = (source as HeaderValues)[key]
+    // An optional header left `undefined` is OMITTED. `Headers.set` would
+    // otherwise stringify it and send the literal text "undefined".
+    if (value === undefined || value === null) continue
+    target.set(key, typeof value === 'string' ? value : String(value))
   }
 }
 
 /** Encode the body and set `Content-Type` when the caller has not. */
 function buildBody(options: RequestOptions, headers: Headers): BodyInit | null {
+  const given = [
+    options.json !== undefined && 'json',
+    options.form !== undefined && 'form',
+    options.multipart !== undefined && 'multipart',
+    options.body !== undefined && options.body !== null && 'body',
+  ].filter((k): k is string => k !== false)
+  if (given.length > 1) {
+    throw new Error(
+      `[Pyreon] http: pass ONE of \`json\`, \`form\`, \`multipart\` or \`body\` — got ${given.map((k) => `\`${k}\``).join(' and ')}. Each is a different encoding of the same body.`,
+    )
+  }
+  if (options.cookies) {
+    const cookie = encodeCookies(options.cookies)
+    if (cookie) headers.set('cookie', headers.has('cookie') ? `${headers.get('cookie')}; ${cookie}` : cookie)
+  }
   if (options.json !== undefined) {
-    if (options.body !== undefined && options.body !== null) {
-      throw new Error(
-        '[Pyreon] http: pass either `json` or `body`, not both — `json` serializes for you.',
-      )
-    }
     if (!headers.has('content-type')) headers.set('content-type', 'application/json')
     return JSON.stringify(options.json)
+  }
+  if (options.form !== undefined) {
+    if (!headers.has('content-type')) headers.set('content-type', 'application/x-www-form-urlencoded')
+    return encodeForm(options.form, options.formEncoding).toString()
+  }
+  if (options.multipart !== undefined) {
+    // No Content-Type: the platform writes it WITH the boundary it chose. A
+    // caller-set `multipart/form-data` without a boundary breaks the body.
+    return encodeMultipart(options.multipart)
   }
   return options.body ?? null
 }
@@ -234,15 +280,25 @@ function fromResolved(resolved: ResolvedConfig): HttpClient {
       // On the server a root-relative URL has no origin and `fetch`
       // rejects; resolve it against the inbound request when one is in
       // scope. A no-op in the browser, where the document supplies it.
+      // An accessor `baseUrl` is read ONCE per request, so the URL and the
+      // origin boundary `bearer()` enforces (`req.baseUrl`) always agree.
+      const baseUrl =
+        typeof resolved.baseUrl === 'function' ? resolved.baseUrl() : resolved.baseUrl
       const url = resolveAgainstAmbientOrigin(
-        buildUrl(resolved.baseUrl, path, options.params, options.query),
+        buildUrl(
+          baseUrl,
+          path,
+          options.params,
+          options.query,
+          options.queryStyle,
+        ),
       )
 
       link = linkSignals(options.signal, timeoutMs)
       const req: HttpRequest = {
         method,
         url,
-        baseUrl: resolved.baseUrl,
+        baseUrl,
         headers,
         body,
         signal: link.signal,
@@ -292,7 +348,17 @@ function fromResolved(resolved: ResolvedConfig): HttpClient {
       }
     })()
 
-    return createResponsePromise(exec, resolved.parse, bodyLink)
+    // An accessor `validate` is read per request (so a runtime switch between
+    // 'strict' and 'warn' applies to the next call); the static form keeps
+    // sharing the one context object.
+    // A per-request `validate` wins over both.
+    const parse =
+      options.validate !== undefined
+        ? { validate: options.validate, schema: resolved.parse.schema }
+        : resolved.validateSource
+          ? { validate: resolved.validateSource(), schema: resolved.parse.schema }
+          : resolved.parse
+    return createResponsePromise(exec, parse, bodyLink)
   }
 
   const client: HttpClient = {
@@ -305,7 +371,17 @@ function fromResolved(resolved: ResolvedConfig): HttpClient {
     options: (path, options) => request('OPTIONS', path, options),
     request,
     extend: (next) => fromResolved(toResolved(next, resolved)),
-    endpoint: (spec, endpointOptions) => defineEndpoint(client, spec, endpointOptions),
+    // The client's `keyScope` is the endpoint's DEFAULT; an endpoint may set
+    // its own. Copied only when there is something to copy, so the dominant
+    // unscoped client passes the caller's options object through untouched.
+    endpoint: (spec, endpointOptions) =>
+      defineEndpoint(
+        client,
+        spec,
+        resolved.keyScope !== undefined && endpointOptions?.keyScope === undefined
+          ? { ...endpointOptions, keyScope: resolved.keyScope }
+          : endpointOptions,
+      ),
   }
 
   return client

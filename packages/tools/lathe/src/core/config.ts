@@ -5,10 +5,21 @@
  * configures every Pyreon tool in one `pyreon.config.ts`.
  */
 
-import { ALL_CLIENTS, reachesNative, type ClientName } from '../emit/client-runtime'
+import {
+  ALL_CLIENTS,
+  ALL_RESPONSE_VALIDATION,
+  reachesNative,
+  type ClientName,
+  type ResponseValidation,
+} from '../emit/client-runtime'
 import { ALL_VALIDATORS, type ValidatorName } from '../emit/validator'
+import type { LatheNaming, LatheOperationSettings } from './customize'
+import type { LatheFormatter } from './format'
+import type { LatheSpecPatch } from './patch'
+import { isLathePlugin, type LathePlugin } from './plugin'
+import type { LatheFilters } from './select'
 
-export type { ClientName, ValidatorName }
+export type { ClientName, ResponseValidation, ValidatorName }
 
 /** Which emitters run. Omitted means "the sensible default set". */
 export type PluginName =
@@ -113,10 +124,22 @@ export interface LatheSection {
    */
   projects?: readonly LatheProject[]
 
-  /** Path to the OpenAPI document (`.json`, `.yaml`, `.yml`). */
+  /**
+   * Path to the OpenAPI 3.x document (`.json`, `.yaml`, `.yml`).
+   *
+   * Relative to the config FILE when read from `pyreon.config.ts`; a path given
+   * on the command line is relative to the working directory, like any other
+   * CLI argument.
+   */
   input?: string
-  /** Output directory, relative to the config file. */
+  /** Output directory. Relative to the config file, like `input`. Default `./src/gen`. */
   output?: string
+  /**
+   * Where `lathe pull` fetches the spec from: an http(s) URL, written to
+   * `input`. With `projects`, `lathe pull` pulls every project that sets one.
+   */
+  source?: string
+
   /**
    * `web` emits the idiomatic multi-file layout.
    *
@@ -126,8 +149,18 @@ export interface LatheSection {
    * worse.
    */
   target?: 'web' | 'multiplatform'
-  /** Emitters to run. */
-  plugins?: readonly PluginName[]
+  /**
+   * Emitters to run: built-in names, and third-party plugins made with
+   * `definePlugin` (see {@link LathePlugin}). Built-ins run first, then
+   * plugins in the order listed.
+   *
+   * @example
+   * ```ts
+   * import { mswHandlers } from './lathe-msw'
+   * export default defineConfig({ lathe: { input: './openapi.yaml', plugins: ['schemas', 'client', mswHandlers()] } })
+   * ```
+   */
+  plugins?: readonly (PluginName | LathePlugin)[]
   /**
    * Which HTTP runtime the generated client is built on.
    *
@@ -155,6 +188,113 @@ export interface LatheSection {
   /** Overrides the spec's `servers[0].url` — must be a literal to reach native. */
   baseUrl?: string
   /**
+   * What the generated client does with a response that does not match its
+   * schema. `strict` (the default) rejects; `warn` logs and passes the raw body
+   * through, which is the usual choice in production when a backend may drift;
+   * `off` skips validation, which also skips its cost on large list responses.
+   *
+   * Web client only. The native modules decode into typed structs, which is
+   * validation in itself and is not configurable.
+   *
+   * @example
+   * ```ts
+   * export default { lathe: { input: './openapi.yaml', responseValidation: 'warn' } }
+   * ```
+   */
+  responseValidation?: ResponseValidation
+  /**
+   * How to page through operations, keyed by the GENERATED operation name
+   * (the `endpoints` export). Declared, never guessed — each entry emits a
+   * `use<Op>Infinite` hook and a `<op>InfiniteOptions` factory. Same shape as
+   * the `x-pyreon-pagination` spec extension, which a config entry overrides.
+   *
+   * ```ts
+   * pagination: {
+   *   listCustomers: { kind: 'lastItem', param: 'starting_after', items: 'data', field: 'id', hasMore: 'has_more' },
+   *   listEvents: { kind: 'cursor', param: 'cursor', next: 'meta.next_cursor' },
+   * }
+   * ```
+   */
+  pagination?: Readonly<Record<string, PaginationConfig>>
+  /**
+   * Per-operation settings, keyed by the generated endpoint name OR the
+   * spec's `operationId`. Each entry may rename the hook, turn it off, set the
+   * operation's own response validation, or declare its pagination (the same
+   * entry `pagination` takes — use one or the other for an operation).
+   *
+   * @example
+   * ```ts
+   * operations: {
+   *   listEvents: { responseValidation: 'off', pagination: { kind: 'cursor', param: 'cursor', next: 'next' } },
+   *   getPetById: { hook: 'usePet' },
+   *   deleteAccount: { hook: false }, // endpoint only — no mutation hook
+   * }
+   * ```
+   */
+  operations?: Readonly<Record<string, LatheOperationSettings<PaginationConfig>>>
+  /**
+   * Generate a SUBSET of the spec. `include` keeps operations some matcher
+   * selects, then `exclude` drops any a matcher selects; models only the
+   * dropped operations used are dropped too (`models: 'all'` keeps them).
+   * A matcher that selects nothing is an error — it is almost always a typo.
+   *
+   * @example
+   * ```ts
+   * filters: {
+   *   include: [{ tag: ['pets', 'store'] }, { path: '/users/**', method: 'get' }],
+   *   exclude: { operationId: '*Deprecated' },
+   * }
+   * ```
+   */
+  filters?: LatheFilters
+  /**
+   * Corrections applied to the spec BEFORE it is read — RFC 6902 `add` /
+   * `replace` / `remove` at an RFC 6901 pointer. A note's `at` (`#/paths/…`)
+   * can be pasted in as the path. A patch whose target no longer exists FAILS
+   * the run: the spec changed under it and it needs another look.
+   *
+   * @example
+   * ```ts
+   * patches: [
+   *   { op: 'add', path: '/paths/~1pets/get/operationId', value: 'listPets' },
+   *   { op: 'replace', path: '/components/schemas/Pet/properties/tag/nullable', value: true },
+   * ]
+   * ```
+   */
+  patches?: readonly LatheSpecPatch[]
+  /**
+   * Rename what Lathe generates. Each function receives Lathe's own choice as
+   * `default`, so returning it keeps it. Results are checked: an invalid name
+   * or two things mapped to one name is an error naming both.
+   *
+   * @example
+   * ```ts
+   * naming: {
+   *   operation: ({ default: name }) => name.replace(/^v1/, ''),
+   *   model: ({ default: name }) => `${name}Dto`,
+   *   file: ({ default: stem }) => `${stem}-api`,
+   *   hook: ({ default: name, kind }) => (kind === 'mutation' ? false : name),
+   * }
+   * ```
+   */
+  naming?: LatheNaming
+  /**
+   * Format every generated source file before it is written AND before
+   * `lathe check` compares — so committed, formatted output is not reported
+   * stale. Receives the file's path so a formatter can pick its parser.
+   * Lathe's own bookkeeping (`lathe-manifest.json`, `api-surface.json`) is
+   * never passed. Must be deterministic, like everything else here.
+   *
+   * @example
+   * ```ts
+   * import { format as prettier } from 'prettier'
+   * export default defineConfig({
+   *   lathe: { input: './openapi.yaml', format: (code, path) => prettier(code, { filepath: path }) },
+   * })
+   * ```
+   */
+  format?: LatheFormatter
+  /**
    * Fail the run when a generated native module does not lower.
    *
    * Off by default: a spec is usually partly un-lowerable and that is fine and
@@ -163,6 +303,12 @@ export interface LatheSection {
    */
   strictNative?: boolean
 }
+
+/** One operation's pagination declaration — see `LatheSection.pagination`. */
+export type PaginationConfig =
+  | { kind: 'cursor'; param: string; next: string; hasMore?: string }
+  | { kind: 'lastItem'; param: string; items?: string; field: string; hasMore?: string }
+  | { kind: 'offset' | 'page'; param: string; items?: string; hasMore?: string; initial?: number }
 
 export interface ResolvedConfig {
   /** Project name, or `''` for a single-project config. */
@@ -182,7 +328,16 @@ export interface ResolvedConfig {
   client: ClientName
   validator: ValidatorName
   baseUrl?: string | undefined
+  pagination?: Readonly<Record<string, PaginationConfig>> | undefined
   strictNative: boolean
+  responseValidation: ResponseValidation
+  /** Third-party plugins, in declaration order. Built-ins are in `plugins`. */
+  customPlugins: readonly LathePlugin[]
+  operations?: Readonly<Record<string, LatheOperationSettings<PaginationConfig>>> | undefined
+  filters?: LatheFilters | undefined
+  patches?: readonly LatheSpecPatch[] | undefined
+  naming?: LatheNaming | undefined
+  format?: LatheFormatter | undefined
 }
 
 /**
@@ -226,14 +381,44 @@ export function resolveConfig(section: LatheSection | undefined): ResolvedConfig
       '[Pyreon] lathe: no input spec. Set `lathe.input` in pyreon.config.ts, or pass one: `lathe generate ./openapi.yaml`.',
     )
   }
-  const plugins = section?.plugins ?? DEFAULT_PLUGINS
-  for (const p of plugins) {
-    if (!ALL_PLUGINS.includes(p)) {
+  const entries = section?.plugins ?? DEFAULT_PLUGINS
+  const plugins: PluginName[] = []
+  const customPlugins: LathePlugin[] = []
+  for (const p of entries) {
+    if (typeof p === 'string') {
+      if (!ALL_PLUGINS.includes(p)) {
+        throw new Error(
+          `[Pyreon] lathe: unknown plugin \`${p}\`. Known: ${ALL_PLUGINS.join(', ')}.`,
+        )
+      }
+      plugins.push(p)
+      continue
+    }
+    // A plugin object must come from `definePlugin`, which validated its
+    // shape; a bare object literal with a typo'd hook would otherwise run
+    // nothing, silently.
+    if (!isLathePlugin(p)) {
       throw new Error(
-        `[Pyreon] lathe: unknown plugin \`${p}\`. Known: ${ALL_PLUGINS.join(', ')}.`,
+        `[Pyreon] lathe: a \`plugins\` entry is neither a built-in name nor a plugin. Create plugins with \`definePlugin({ name, … })\` from '@pyreon/lathe'.`,
       )
     }
+    if ((ALL_PLUGINS as readonly string[]).includes(p.name)) {
+      throw new Error(`[Pyreon] lathe: plugin \`${p.name}\` has the name of a built-in plugin. Choose another name.`)
+    }
+    if (customPlugins.some((c) => c.name === p.name)) {
+      throw new Error(`[Pyreon] lathe: two plugins are named \`${p.name}\`. Names must be unique — they attribute errors.`)
+    }
+    customPlugins.push(p)
+    for (const dep of p.requires ?? []) {
+      if (!ALL_PLUGINS.includes(dep)) {
+        throw new Error(`[Pyreon] lathe: plugin \`${p.name}\` requires \`${String(dep)}\`, which is not a built-in plugin. Known: ${ALL_PLUGINS.join(', ')}.`)
+      }
+    }
   }
+  if (section?.format !== undefined && typeof section.format !== 'function') {
+    throw new Error('[Pyreon] lathe: `format` must be a function `(code, path) => string | Promise<string>`.')
+  }
+  const required = customPlugins.flatMap((p) => p.requires ?? [])
   const client = section?.client ?? 'pyreon'
   if (!ALL_CLIENTS.includes(client)) {
     throw new Error(
@@ -246,7 +431,21 @@ export function resolveConfig(section: LatheSection | undefined): ResolvedConfig
       `[Pyreon] lathe: unknown validator \`${validator}\`. Known: ${ALL_VALIDATORS.join(', ')}.`,
     )
   }
+  const responseValidation = section?.responseValidation ?? 'strict'
+  if (!ALL_RESPONSE_VALIDATION.includes(responseValidation)) {
+    throw new Error(
+      `[Pyreon] lathe: unknown responseValidation \`${String(responseValidation)}\`. Known: ${ALL_RESPONSE_VALIDATION.join(', ')}.`,
+    )
+  }
   const target = section?.target ?? 'web'
+  // Validated like the others: a config typo (`target: 'native'`) used to be
+  // treated as `web` by every `=== 'multiplatform'` check downstream, so the
+  // native modules the author asked for were silently never generated.
+  if (target !== 'web' && target !== 'multiplatform') {
+    throw new Error(
+      `[Pyreon] lathe: unknown target \`${String(target)}\`. Known: web, multiplatform.`,
+    )
+  }
   // REFUSED rather than silently downgraded. `multiplatform` exists to prove
   // the generated modules lower, and PMTC recognises `createHttp` by NAME — an
   // axios instance is an ordinary import it has never heard of. Emitting
@@ -265,10 +464,18 @@ export function resolveConfig(section: LatheSection | undefined): ResolvedConfig
     input,
     output: section?.output ?? './src/gen',
     target,
-    plugins: expandPlugins(plugins),
+    plugins: expandPlugins([...plugins, ...required]),
     client,
     validator,
     baseUrl: section?.baseUrl,
+    pagination: section?.pagination,
     strictNative: section?.strictNative ?? false,
+    responseValidation,
+    customPlugins,
+    operations: section?.operations,
+    filters: section?.filters,
+    patches: section?.patches,
+    naming: section?.naming,
+    format: section?.format,
   }
 }

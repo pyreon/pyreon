@@ -12,6 +12,7 @@
  * assertion here that can actually fail for the right reason.
  */
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { schemaSource, writeTree } from './helpers/write-tree'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveConfig, type ValidatorName } from '../core/config'
@@ -104,10 +105,7 @@ let recursiveSchema: Validator
 async function emitTo(dir: string, spec: string, validator: ValidatorName): Promise<void> {
   const cfg = resolveConfig({ input: 'x', validator, plugins: ['schemas', 'faker'] })
   mkdirSync(dir, { recursive: true })
-  for (const f of generate(spec, cfg).files) {
-    if (!f.path.endsWith('.ts')) continue
-    writeFileSync(join(dir, f.path), f.contents)
-  }
+  writeTree(dir, generate(spec, cfg).files, (p) => p.endsWith('.ts'))
 }
 
 beforeAll(async () => {
@@ -254,9 +252,7 @@ describe('the generated dev entry', () => {
     const cfg = resolveConfig({ input: 'x', plugins: ['schemas', 'client', 'queries', 'mocks', 'faker'] })
     mkdirSync(join(dir, 'endpoints'), { recursive: true })
     mkdirSync(join(dir, 'queries'), { recursive: true })
-    for (const f of generate(SPEC, cfg).files) {
-      if (f.path.endsWith('.ts')) writeFileSync(join(dir, f.path), f.contents)
-    }
+    writeTree(dir, generate(SPEC, cfg).files, (p) => p.endsWith('.ts'))
     const dev = (await import(join(dir, 'dev.ts'))) as {
       seedFaker: (n?: number) => void
       createBook: () => Record<string, unknown>

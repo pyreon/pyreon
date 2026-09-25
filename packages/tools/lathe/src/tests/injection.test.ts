@@ -15,6 +15,8 @@
  * the one nobody wrote a sanitizer for.
  */
 import { s } from '@pyreon/validate'
+import { schemaSource } from './helpers/write-tree'
+import { stripTs } from './helpers/strip-ts'
 import { parseSync } from 'oxc-parser'
 import { resolveConfig } from '../core/config'
 import { generate } from '../core/generate'
@@ -69,10 +71,7 @@ const PAYLOADS = ['__TITLE_PWNED', '__SUMMARY_PWNED', '__DESC_PWNED', '__ENUM_PW
 
 /** Evaluate an emitted schema module; returns any global the payloads set. */
 function executeAndCatchInjection(source: string): string[] {
-  const body = source
-    .replace(/^import\s+.*$/gm, '')
-    .replace(/^export type .*$/gm, '')
-    .replace(/^export const /gm, 'const ')
+  const body = stripTs(source)
   const names = [...source.matchAll(/^export const (\w+)/gm)].map((m) => m[1] as string)
   for (const p of PAYLOADS) delete (globalThis as Record<string, unknown>)[p]
   // eslint-disable-next-line no-new-func
@@ -104,9 +103,9 @@ describe('spec-controlled strings cannot inject code', () => {
   })
 
   it('EXECUTES the emitted schema module and nothing injected runs', () => {
-    const schemas = files.find((f) => f.path === 'schemas.ts')
-    expect(schemas).toBeDefined()
-    expect(executeAndCatchInjection(schemas!.contents)).toEqual([])
+    const schemas = schemaSource(files)
+    expect(schemas).toContain('export const')
+    expect(executeAndCatchInjection(schemas)).toEqual([])
   })
 
   it('carries no RAW line terminator into a string literal', () => {
@@ -156,7 +155,9 @@ describe('spec-controlled strings cannot inject code', () => {
     for (const f of out.files) {
       expect(f.contents, `${f.path} took an injected parameter`).not.toContain('INJECTED')
     }
-    const queries = out.files.find((f) => f.path === 'queries/x.ts')?.contents ?? ''
+    // The input type lives on the endpoint declaration now (dx D6); the hooks
+    // derive theirs from it.
+    const queries = out.files.find((f) => f.path === 'endpoints/x.ts')?.contents ?? ''
     // A QUERY name is a WIRE name (`?odd wire-name=1`), so it survives verbatim
     // -- QUOTED, not normalized, or the request would go to the wrong key.
     // `propKey` quotes with JSON.stringify, which is the correct escaper for a
@@ -186,7 +187,7 @@ describe('spec-controlled strings cannot inject code', () => {
     const op = out.doc.operations[0]
     expect(op?.path).toBe('/x/:userId')
     expect(op?.pathParams[0]?.name).toBe('userId')
-    expect(out.files.find((f) => f.path === 'queries/x.ts')?.contents).toContain('userId: string')
+    expect(out.files.find((f) => f.path === 'endpoints/x.ts')?.contents).toContain('userId: string')
   })
 
   it('a `pattern` cannot break out of the REGEX literal it is emitted into', () => {
@@ -236,17 +237,17 @@ describe('spec-controlled strings cannot inject code', () => {
       },
     })
     const out = generate(spec, resolveConfig({ input: 'x', plugins: ['schemas'] }))
-    const schemas = out.files.find((f) => f.path === 'schemas.ts')
-    expect(schemas).toBeDefined()
+    const schemas = { contents: schemaSource(out.files) }
+    expect(schemas.contents).toContain('export const')
 
     delete (globalThis as Record<string, unknown>).__REGEX_PWNED
     // Parses AND runs. Pre-fix this line threw the SyntaxError.
-    expect(() => executeAndCatchInjection(schemas!.contents)).not.toThrow()
+    expect(() => executeAndCatchInjection(schemas.contents)).not.toThrow()
     expect((globalThis as Record<string, unknown>).__REGEX_PWNED).toBeUndefined()
 
     // Exactly one constraint survived: the portable one.
-    expect([...schemas!.contents.matchAll(/\.regex\(/g)]).toHaveLength(1)
-    expect(schemas!.contents).toContain('.regex(/^[a-z]+$/)')
+    expect([...schemas.contents.matchAll(/\.regex\(/g)]).toHaveLength(1)
+    expect(schemas.contents).toContain('.regex(/^[a-z]+$/)')
   })
 
   it('carries no RAW line terminator into a regex literal either', () => {
@@ -268,10 +269,7 @@ describe('spec-controlled strings cannot inject code', () => {
         },
       },
     })
-    const schemas =
-      generate(spec, resolveConfig({ input: 'x', plugins: ['schemas'] })).files.find(
-        (f) => f.path === 'schemas.ts',
-      )?.contents ?? ''
+    const schemas = schemaSource(generate(spec, resolveConfig({ input: 'x', plugins: ['schemas'] })).files)
     expect(schemas).not.toContain(LS)
   })
 
@@ -404,9 +402,12 @@ describe('a regex literal cannot be broken from either site that emits one', () 
     const routes = new Function(`return ${literal}`)() as Array<{ path: string | RegExp }>
     const re = routes.map((r) => r.path).find((x): x is RegExp => x instanceof RegExp)
     expect(re).toBeDefined()
-    expect((re as RegExp).test('https://e.test/x/b1/detail')).toBe(true)
-    expect((re as RegExp).test('https://e.test/x/b1/detail?q=1')).toBe(true)
-    expect((re as RegExp).test('https://e.test/x/b1/detail/more')).toBe(false)
+    // Routes are anchored at the BASE-RELATIVE path (the generated middleware
+    // strips the client's base URL before matching).
+    expect((re as RegExp).test('/x/b1/detail')).toBe(true)
+    expect((re as RegExp).test('/x/b1/detail?q=1')).toBe(true)
+    expect((re as RegExp).test('/x/b1/detail/more')).toBe(false)
+    expect((re as RegExp).test('/other/x/b1/detail')).toBe(false)
   })
 
   describe('regexLiteral itself', () => {

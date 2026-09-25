@@ -40,7 +40,7 @@ const result = (over: Partial<GenerateResult> = {}): GenerateResult => ({
   // widening the factory's type keeps the compiler enforcing that this fixture
   // is a REAL result — a `Partial` here would have let the field go missing
   // silently, which is how the shape drifted in the first place.
-  surface: { version: 1, title: 'API', operations: {}, models: {} },
+  surface: { version: 2, title: 'API', operations: {}, models: {}, aliases: {}, usage: {} },
   ...over,
 })
 
@@ -81,9 +81,21 @@ describe('never present a PARTIAL generation as a complete one', () => {
   it('renders a BROKEN verdict in words, not just colour', () => {
     const out = render(result(), {
       ran: true,
-      files: [{ path: 'a.swift', target: 'swift', verdict: 'broken', warnings: [], markers: [], leaked: [] }],
+      files: [{ path: 'a.swift', target: 'swift', verdict: 'broken', warnings: [], markers: [], leaked: [], declarations: [] }],
     })
     expect(out).toContain('BROKEN')
+  })
+
+  it('prints a BROKEN verdict\'s warnings IN FULL — they are the diagnosis', () => {
+    // Truncated at 120 characters, every PMTC warning lost its actionable
+    // half ("Give it the shape you expect: ...").
+    const long = `Declaration q: useQuery without a response type ${'x'.repeat(150)} THE-FIX-IS-HERE`
+    const out = render(result(), {
+      ran: true,
+      files: [{ path: 'a.native.tsx', target: 'swift', verdict: 'broken', warnings: [long, 'second', 'third'], markers: [], leaked: [], declarations: [] }],
+    })
+    expect(out).toContain('THE-FIX-IS-HERE')
+    expect(out).toContain('third')
   })
 
   it('names every LEAKED symbol and what it costs', () => {
@@ -98,7 +110,7 @@ describe('never present a PARTIAL generation as a complete one', () => {
           verdict: 'broken',
           warnings: [],
           markers: [],
-          leaked: ['useQuery', 'useFetch'],
+          leaked: ['useQuery', 'useFetch'], declarations: [],
         },
       ],
     })
@@ -110,7 +122,7 @@ describe('never present a PARTIAL generation as a complete one', () => {
   it('surfaces a web-only verdict distinctly from a passing one', () => {
     const out = render(result(), {
       ran: true,
-      files: [{ path: 'a.swift', target: 'swift', verdict: 'web-only', warnings: [], markers: [], leaked: [] }],
+      files: [{ path: 'a.swift', target: 'swift', verdict: 'web-only', warnings: [], markers: [], leaked: [], declarations: [] }],
     })
     expect(out).toContain('web-only')
   })
@@ -119,7 +131,7 @@ describe('never present a PARTIAL generation as a complete one', () => {
     const out = render(result(), {
       ran: true,
       files: [
-        { path: 'a.swift', target: 'swift', verdict: 'lowers', warnings: [], markers: ['PyreonQuery<'], leaked: [] },
+        { path: 'a.swift', target: 'swift', verdict: 'lowers', warnings: [], markers: ['PyreonQuery<'], leaked: [], declarations: [] },
       ],
     })
     expect(out).toContain('lowers')
@@ -144,6 +156,32 @@ describe('spec notes — a reported loss, never a silent one', () => {
     // Truncating silently is the same failure as dropping silently.
     const out = render(result({ doc: doc(Array.from({ length: 13 }, (_, i) => note(i))) }), RAN)
     expect(out).toContain('and 3 more')
+  })
+
+  it('counts WITHHELD notes after de-duplication, not before', () => {
+    // 12 notes, 3 of them repeats of one message: 10 distinct are shown, so 0
+    // are withheld. The old math subtracted 10 from the RAW count and claimed
+    // "and 2 more" for notes that had been printed.
+    const dup = { code: 'unsupported-ref', at: '#/d', message: 'same' } as IrNote
+    const notes = [...Array.from({ length: 9 }, (_, i) => note(i)), dup, dup, dup]
+    const out = render(result({ doc: doc(notes) }), RAN)
+    expect(out).not.toMatch(/and \d+ more distinct/)
+    expect(out).toContain('(+2 more like it)')
+  })
+
+  it('leads with LOSSES and summarises CHOICES by code', () => {
+    // Petstore 3's 17 notes were 16 "JSON over XML" choices and one loss,
+    // printed at one weight under one heading.
+    const choice = (i: number): IrNote =>
+      ({ code: 'multiple-content-types', at: `#/c/${i}`, message: `c${i}` }) as IrNote
+    const loss = { code: 'unsupported-parameter', at: '#/p', message: 'header dropped' } as IrNote
+    const out = render(result({ doc: doc([...Array.from({ length: 16 }, (_, i) => choice(i)), loss]) }), RAN)
+    expect(out).toContain('1 lost')
+    expect(out).toContain('16 choice(s)')
+    expect(out).toContain('header dropped')
+    expect(out).toContain('multiple-content-types x16')
+    // No individual choice message is listed.
+    expect(out).not.toContain('c3')
   })
 
   it('omits the section entirely when there is nothing to report', () => {
@@ -231,3 +269,49 @@ describe('native reach — only under the multiplatform target', () => {
   })
 })
 
+
+describe('native verdict detail (audit G1/G2)', () => {
+  it('renders partial, compile status, compile errors and per-declaration losses', () => {
+    const out = render(result(), {
+      ran: true,
+      files: [
+        {
+          path: 'a.native.tsx',
+          target: 'swift',
+          verdict: 'broken',
+          warnings: [],
+          markers: [],
+          leaked: [],
+          declarations: [],
+          compiled: { ok: false, errors: ["invalid redeclaration of 'Pet'"] },
+        },
+        {
+          path: 'a.native.tsx',
+          target: 'kotlin',
+          verdict: 'partial',
+          warnings: ['null declaration `Pet`: field `tags` — dropping.'],
+          markers: ['PyreonQuery<'],
+          leaked: [],
+          declarations: [{ name: 'Pet', verdict: 'partial', reasons: ['field `tags` — dropping.'] }],
+          compiled: { ok: true, errors: [] },
+        },
+        {
+          path: 'b.native.tsx',
+          target: 'swift',
+          verdict: 'lowers',
+          warnings: [],
+          markers: ['PyreonQuery<'],
+          leaked: [],
+          declarations: [],
+          compiled: { skipped: 'swiftc not found' },
+        },
+      ],
+    })
+    expect(out).toContain('does not compile')
+    expect(out).toContain("error invalid redeclaration of 'Pet'")
+    expect(out).toContain('partial a.native.tsx kotlin')
+    expect(out).toContain('compiled')
+    expect(out).toContain('partial Pet')
+    expect(out).toContain('(not compiled)')
+  })
+})
