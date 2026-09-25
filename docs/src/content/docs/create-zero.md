@@ -105,7 +105,7 @@ Run without `--yes` (or with any prompt's flag omitted) and you get an ordered s
 
 1. **Project name** — the positional argument, or a text prompt. The target directory must not already exist (it bails if it does). Required up front when using `--yes`.
 2. **Template** — `app` / `blog` / `dashboard` / `monorepo`.
-3. **Rendering mode** — `ssr-stream` / `ssr-string` / `ssg` / `spa`. **Skipped** for templates that force a mode (`blog` → SSG, `dashboard` → SSR streaming).
+3. **Rendering mode** — `ssr-stream` / `ssr-string` / `ssg` / `isr` / `spa`. **Skipped** for templates that force a mode (`blog` → SSG, `dashboard` → SSR streaming).
 4. **Deployment target** — filtered to the adapters the chosen template supports.
 5. **Feature preset** — pick a preset, or `Custom` to drop into a grouped multiselect of all 22 features (8 categories).
 6. **Package imports** — `@pyreon/meta` single barrel, or individual packages.
@@ -113,6 +113,7 @@ Run without `--yes` (or with any prompt's flag omitted) and you get an ordered s
 8. **AI tooling** — multi-select of rule files (MCP, `CLAUDE.md`, Cursor, Copilot, `AGENTS.md`).
 9. **Compat mode** — native Pyreon, or a React / Vue / Solid / Preact migration shim.
 10. **Lint** — include `@pyreon/lint` (the prompt advertises "59 Pyreon-specific rules").
+11. **Typed routes** — `<Link href>` autocompletes real route paths and rejects typos at compile time (default on).
 
 Cancelling at any prompt (Ctrl-C) aborts cleanly.
 
@@ -208,9 +209,14 @@ Set with `--mode` (ignored when the template forces a mode). The mode maps direc
 | `ssr-stream` | `mode: 'ssr', ssr: { mode: 'stream' }` | **Recommended.** Progressive HTML with Suspense — best TTFB. |
 | `ssr-string` | `mode: 'ssr'` | Buffered HTML — simpler, slower first byte. |
 | `ssg` | `mode: 'ssg'` | Pre-rendered at build time. No runtime server. |
+| `isr` | `mode: 'isr'` | Static-first with periodic revalidation (a server-side SWR cache). |
 | `spa` | `mode: 'spa'` | Client-only — no server rendering. |
 
-At the server level the `ssr.mode` field only has `stream` / `string`; `ssg` and `spa` both fall back to `string` (SSG renders once at build time; SPA never SSRs). See [Zero → Rendering modes](/docs/zero) for the full semantics.
+At the server level the `ssr.mode` field only has `stream` / `string`; `ssg`, `isr`, and `spa` all fall back to `string` (SSG renders once at build time; ISR caches complete HTML documents, and a stream can't be cached-then-replayed; SPA never SSRs). See [Zero → Rendering modes](/docs/zero) for the full semantics.
+
+:::note{title="ISR needs a server"}
+Because `isr` keeps a server-side SWR cache, the deployment-target prompt drops the `static` adapter whenever `isr` is selected — passing `--adapter static --mode isr` explicitly fails fast with `Adapter "static" cannot serve ISR (the SWR cache needs a server).`
+:::
 
 ## Deployment adapters
 
