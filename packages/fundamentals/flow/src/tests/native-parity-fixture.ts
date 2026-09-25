@@ -133,6 +133,8 @@ export interface ParityConfig {
   nodesDeletable?: boolean
   edgesDeletable?: boolean
   autoHistory?: boolean
+  /** Undo depth. Web and native both floor it and fall back to 50 when non-positive. */
+  historyLimit?: number
   /** Node type -> the node types it may connect to. Web spells it `{ outputs }`. */
   connectionRules?: Record<string, string[]>
   defaultEdgeType?: string
@@ -643,6 +645,32 @@ export const PARITY_SCENARIOS: readonly ParityScenario[] = [
     nodes: grid(3),
     edges: chain(3),
     ops: [{ op: 'removeNode', id: '2' }, { op: 'undo' }],
+    queries: [],
+  },
+  {
+    // Three checkpoints are pushed; the limit keeps the last two, so the third
+    // undo has nothing left and node 2 (removed first) stays gone.
+    name: 'config: historyLimit 2 keeps only the last two undo checkpoints',
+    nodes: grid(4),
+    edges: chain(4),
+    config: { historyLimit: 2 },
+    ops: [{ op: 'removeNode', id: '2' }, { op: 'removeNode', id: '3' }, { op: 'removeNode', id: '4' }, { op: 'undo' }, { op: 'undo' }, { op: 'undo' }],
+    queries: [],
+  },
+  {
+    name: 'config: a fractional historyLimit is floored',
+    nodes: grid(4),
+    edges: chain(4),
+    config: { historyLimit: 2.9 },
+    ops: [{ op: 'removeNode', id: '2' }, { op: 'removeNode', id: '3' }, { op: 'removeNode', id: '4' }, { op: 'undo' }, { op: 'undo' }, { op: 'undo' }],
+    queries: [],
+  },
+  {
+    name: 'config: a non-positive historyLimit falls back to the default depth',
+    nodes: grid(4),
+    edges: chain(4),
+    config: { historyLimit: 0 },
+    ops: [{ op: 'removeNode', id: '2' }, { op: 'removeNode', id: '3' }, { op: 'removeNode', id: '4' }, { op: 'undo' }, { op: 'undo' }, { op: 'undo' }],
     queries: [],
   },
   {
