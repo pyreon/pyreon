@@ -684,6 +684,15 @@ it('shows the error state', async () => {
 })
 ```
 
+An error `status` with no body of its own answers with the operation's
+declared error fixture (exact status, then range, then `default`) — schema-valid,
+so the generated client's `err.matched` branch is the one the test drives:
+
+```ts
+mockOperation('getPetById', { status: 404 }) // body from the spec's 404 schema
+// pet.error()?.matched === '404'
+```
+
 ### Infinite queries, declared
 
 Pagination is never guessed — a spec does not say, in any standard way, which

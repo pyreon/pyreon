@@ -125,7 +125,8 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
   f.doc(
     "Override one operation's mock — for a test that needs an empty list, an",
     'error, a slow response. Returns a function restoring the generated route;',
-    '{@link resetMocks} restores them all.',
+    '{@link resetMocks} restores them all. An error `status` with no body answers',
+    "with the operation's declared error fixture, when it has one.",
     '',
     '```ts',
     ops[0]
@@ -134,12 +135,50 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
     'afterEach(resetMocks)',
     '```',
   )
+  const withErrors = ops.filter((o) => (o.errors?.length ?? 0) > 0)
+  if (withErrors.length > 0) {
+    f.doc(
+      "Schema-valid ERROR bodies per operation, keyed like the spec's responses",
+      "(`404`, `4XX`, `default`). `mockOperation(id, { status: 404 })` answers with",
+      "the most specific one, so a test can drive the typed `err.matched` branch.",
+    )
+    f.line('export const errorFixtures: { [K in MockedOperation]?: Record<string, unknown> } = {')
+    for (const op of withErrors) {
+      f.line(`  ${op.id}: {`)
+      for (const e of op.errors ?? []) f.line(`    ${q(e.status)}: ${indentAfterFirst(fixture(e.type, doc, 0), 4)},`)
+      f.line('  },')
+    }
+    f.line('}')
+    f.line()
+    f.line('function errorFixture(id: MockedOperation, status: number): { json: unknown } | undefined {')
+    f.line('  const table = errorFixtures[id]')
+    f.line('  if (!table) return undefined')
+    f.line('  const exact = String(status)')
+    f.line('  for (const key of [exact, `${exact.charAt(0)}XX`, "default"]) {')
+    f.line('    if (key in table) return { json: table[key] }')
+    f.line('  }')
+    f.line('  return undefined')
+    f.line('}')
+    f.line()
+  }
   f.line(
     `export function mockOperation(id: MockedOperation, override: Partial<Omit<MockRoute, 'method' | 'path'>>): () => void {`,
   )
   f.line('  const i = index[id]')
   f.line('  const generated = routes[i] as MockRoute')
-  f.line('  active[i] = { ...generated, ...override }')
+  if (withErrors.length > 0) {
+    // An error STATUS with no body of its own answers with the declared error
+    // fixture -- never with the SUCCESS body, which no server sends on a 404.
+    f.line('  const status = override.status')
+    f.line('  const bare = override.json === undefined && override.body === undefined && override.error === undefined')
+    f.line('  if (status !== undefined && status >= 400 && bare) {')
+    f.line('    active[i] = { method: generated.method, path: generated.path, ...errorFixture(id, status), ...override }')
+    f.line('  } else {')
+    f.line('    active[i] = { ...generated, ...override }')
+    f.line('  }')
+  } else {
+    f.line('  active[i] = { ...generated, ...override }')
+  }
   f.line('  return () => {')
   f.line('    active[i] = generated')
   f.line('  }')

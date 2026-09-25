@@ -82,7 +82,7 @@ describe('the IR carries typed error responses', () => {
 })
 
 describe('the generated client', () => {
-  const e = emitToDisk('typed-errors', SPEC, { plugins: ['schemas', 'client', 'queries'] })
+  const e = emitToDisk('typed-errors', SPEC, { plugins: ['schemas', 'client', 'queries', 'mocks'] })
 
   it('declares the schemas on the endpoint and types the hooks with them', () => {
     const endpoints = e.layer('endpoints')
@@ -122,5 +122,39 @@ describe('the generated client', () => {
     expect(await call(400, { code: 3 })).toMatchObject({ matched: 'default', body: { code: 3 } })
     // Fails its schema: still the HTTP failure, unmatched, raw body kept.
     expect(await call(404, { oops: 1 })).toMatchObject({ status: 404, matched: undefined, body: { oops: 1 } })
+  })
+
+  it('mockOperation with an error status answers with a SCHEMA-VALID error body', async () => {
+    const mocks = await e.load<{
+      installMocks(): void
+      resetMocks(): void
+      mockOperation(id: string, o: Record<string, unknown>): () => void
+    }>('mocks.ts')
+    const client = await e.load<{ setDevTransport(m: unknown): void }>('client.ts')
+    const eps = await e.load<Record<string, (a: unknown) => Promise<unknown>>>('endpoints/index.ts')
+    mocks.installMocks()
+    const reject = async (): Promise<{ status: number; matched: unknown; body: unknown }> =>
+      eps.getPet?.({ params: { id: '1' } }).then(
+        () => {
+          throw new Error('expected a rejection')
+        },
+        (err: { status: number; matched: unknown; body: unknown }) => err,
+      ) as Promise<{ status: number; matched: unknown; body: unknown }>
+    try {
+      mocks.mockOperation('getPet', { status: 404 })
+      // `matched` is only set when the body VALIDATED -- the proof the fixture
+      // satisfies the declared schema.
+      expect(await reject()).toMatchObject({ status: 404, matched: '404', body: { message: expect.any(String) } })
+      mocks.mockOperation('getPet', { status: 503 })
+      expect(await reject()).toMatchObject({ status: 503, matched: '5XX' })
+      mocks.mockOperation('getPet', { status: 400 })
+      expect(await reject()).toMatchObject({ status: 400, matched: 'default', body: { code: expect.any(Number) } })
+      // An explicit body wins over the fixture.
+      mocks.mockOperation('getPet', { status: 404, json: { oops: 1 } })
+      expect(await reject()).toMatchObject({ matched: undefined, body: { oops: 1 } })
+    } finally {
+      mocks.resetMocks()
+      client.setDevTransport(null)
+    }
   })
 })

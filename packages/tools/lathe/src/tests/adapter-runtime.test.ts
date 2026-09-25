@@ -36,6 +36,8 @@ interface Generated {
   createBook: Endpoint
   deleteBook: Endpoint
   installMocks: () => void
+  mockOperation: (id: string, o: Record<string, unknown>) => () => void
+  resetMocks: () => void
   setDevTransport: (t: unknown) => void
   LatheHttpError: new (...args: never[]) => Error
 }
@@ -110,7 +112,11 @@ async function load(
     LatheHttpError: new (...args: never[]) => Error
   }
   const endpoints = (await import(join(dir, 'endpoints', 'books.ts'))) as Record<string, Endpoint>
-  const mocks = (await import(join(dir, 'mocks.ts'))) as { installMocks: () => void }
+  const mocks = (await import(join(dir, 'mocks.ts'))) as {
+    installMocks: () => void
+    mockOperation: (id: string, o: Record<string, unknown>) => () => void
+    resetMocks: () => void
+  }
   // `import()` is cached per path and the generated client holds its dev
   // transport at MODULE scope, so a test that installs mocks would otherwise
   // leak them into every test after it — which reads as "the request was never
@@ -201,6 +207,23 @@ for (const client of ADAPTER_CLIENTS) {
       const unmatched = await rejected()
       expect(unmatched).toBeInstanceOf(gen.LatheHttpError)
       expect([unmatched.status, unmatched.matched, unmatched.body]).toEqual([409, undefined, { message: 'nope' }])
+    })
+
+    it('a mocked error status answers with the declared, schema-valid error body', async () => {
+      const gen = await load(client)
+      gen.installMocks()
+      try {
+        gen.mockOperation('listBooks', { status: 404 })
+        const err = await gen.listBooks().then(
+          () => null,
+          (e: { status: number; matched: unknown; body: unknown }) => e,
+        )
+        expect(err).toMatchObject({ status: 404, matched: '404', body: { message: expect.any(String) } })
+        expect(recorded).toHaveLength(0)
+      } finally {
+        gen.resetMocks()
+        gen.setDevTransport(null)
+      }
     })
 
     it('validates the response against the generated schema', async () => {
