@@ -55,12 +55,12 @@ const flash = css`
 `
 ```
 
-Switch theme at runtime by passing a different theme prop to `PyreonUI` — the resolver effect in `styled()` re-resolves CSS and swaps class names without remounting the VNode.
+Switch theme at runtime by passing a different theme prop to `PyreonUI`. `ThemeContext` is a reactive context, but a PLAIN `styled()` component only picks up the swap automatically when it's driven through `@pyreon/rocketstyle` or `@pyreon/elements` (both pass their dimension/layout props as reactive accessors, which is what wires the theme-tracking `computed()` internally — see [styler's Theming docs](/docs/styler#theming) for the exact mechanism). A hand-written `styled()` component used directly resolves its CSS once at mount and needs a remount (e.g. behind a `<Show>`/accessor keyed on the theme) to pick up a later swap.
 
 ## Why
 
 - **PyreonUI** replaces 3 separate providers (theme / mode / config) with one. It internally calls `init()` to wire the CSS engine, so app code never needs to.
-- **`styled` is reactive** — the theme argument is a snapshot at call time, but the underlying `ThemeContext` is a reactive context, so whole-theme swaps re-resolve without remount.
+- **`styled` is reactive when rocketstyle/elements-driven** — the theme argument is a snapshot at call time for a plain `styled()` call, but `@pyreon/ui-components` (built on rocketstyle) re-resolves on a whole-theme swap without remount, because rocketstyle threads its dimension/theme reads through a `computed()` styler tracks.
 - **FNV-1a hashing + dedup cache** — repeated `styled` templates with the same CSS resolve to the same class, so identical buttons share one class on the page.
 
 ## Anti-pattern
