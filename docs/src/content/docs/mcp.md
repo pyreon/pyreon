@@ -7,7 +7,7 @@ description: Model Context Protocol server that gives AI coding assistants deep 
 
 <PackageBadge name="@pyreon/mcp" href="/docs/mcp" />
 
-The server runs as a subprocess over **stdio transport**, so any MCP-compatible client can connect by spawning it. It exposes **17 tools** spanning discovery, API lookup, static validation, React migration, error diagnosis, project introspection, content-collection navigation, and project-wide audits. It is read-only and deterministic — every tool returns **text only**; nothing mutates your files and no LLM is embedded in the server itself.
+The server runs as a subprocess over **stdio transport**, so any MCP-compatible client can connect by spawning it. It exposes **21 tools** spanning discovery, API lookup, static validation, React migration, error diagnosis, project introspection, content-collection navigation, project-wide audits, and workspace / component-catalog verification (`loom` / `atlas`). It is read-only and deterministic — every tool returns **text only**; nothing mutates your files and no LLM is embedded in the server itself.
 
 ## Installation
 
@@ -101,7 +101,7 @@ The server makes no network calls and runs no long scans at startup — it retur
 An AI assistant's training data has a cutoff and is averaged across many frameworks — it tends to "fall back to React" or invent plausible-but-wrong Pyreon APIs. The MCP server closes that gap by exposing Pyreon's structured knowledge as callable tools the assistant reaches for *before* writing code:
 
 - **`get_api`** answers "what does this API do, and how do I avoid the common mistakes?" from the same manifest that generates the docs.
-- **`validate`** catches "coming-from-React" and "using-Pyreon-wrong" mistakes statically, with line/column and an auto-fix suggestion — before the code is pasted. A finding that is genuinely correct code (the detectors have no type checker) can be silenced where it sits with `// pyreon-lint-ignore <code>` on the line above — the same comment `@pyreon/lint` uses, accepting either the bare code or the prefixed id the doctor prints.
+- **`validate`** catches "coming-from-React", "using-Pyreon-wrong", and (for snippets importing `@pyreon/primitives`) multiplatform-only mistakes statically, with line/column and an auto-fix suggestion — before the code is pasted. A finding that is genuinely correct code (the detectors have no type checker) can be silenced where it sits with `// pyreon-lint-ignore <code>` on the line above — the same comment `@pyreon/lint` uses, accepting either the bare code or the prefixed id the doctor prints.
 - **`get_pattern` / `get_anti_patterns`** are proactive: fetch the canonical shape (or the foot-gun catalog) *before* writing, not after a bug ships.
 - **`diagnose` / `explain_error`** turn a runtime error string (or a full dev-mode error report with the reactive trace) into structured fix context.
 - The **`audit_*`** tools and **`get_routes` / `get_components` / `get_content_*`** introspect your real project so generated code references things that actually exist.
@@ -129,12 +129,13 @@ Pick the tool that matches what you're trying to do — or call [`mcp_overview`]
 - **Audit islands cross-file foot-guns** — [`audit_islands`](#audit_islands)
 - **Check browser smoke coverage** — [`get_browser_smoke_status`](#get_browser_smoke_status)
 - **Write against components that provably exist** — [`get_atlas_catalog`](#get_atlas_catalog), [`get_atlas_component`](#get_atlas_component)
+- **Ask "what does changing this package reach?"** — [`get_dependency_fabric`](#get_dependency_fabric)
 
 ---
 
 ## Tools reference
 
-The server registers **17 tools**. The table below is the complete surface — every tool, its parameters, and what it returns.
+The server registers **21 tools**. The table below is the complete surface — every tool, its parameters, and what it returns; it is hand-maintained (this page isn't code-generated), but `scripts/check-mcp-docs.ts` (CI-gated) cross-checks the THREE surfaces that must agree — the `server.tool(...)` registrations in `src/index.ts`, the tool entries in `src/manifest.ts` (which drive `mcp_overview()` and the entry count below), and this page's `### <name>` sections — and fails the build if any tool is missing from any of them.
 
 | Tool | Parameters | Returns |
 | ---- | ---------- | ------- |
@@ -156,12 +157,11 @@ The server registers **17 tools**. The table below is the complete surface — e
 | [`get_changelog`](#get_changelog) | `package?: string`, `limit?: number`, `includeDependencyUpdates?: boolean`, `since?: string` | Recent release notes for a `@pyreon/*` package, ceremonial bumps filtered |
 | [`audit_test_environment`](#audit_test_environment) | `minRisk?: enum`, `limit?: number` | Mock-vnode test scanner, files ranked HIGH / MEDIUM / LOW |
 | [`audit_islands`](#audit_islands) | `json?: boolean` | Project-wide islands audit — five cross-file foot-gun detectors |
+| [`get_dependency_fabric`](#get_dependency_fabric) | `package?: string` | The `loom scan` workspace graph — shape, cycles, gating findings, blast-radius ranking (or one package's slice of it) |
+| [`get_atlas_catalog`](#get_atlas_catalog) | `tag?: string` | The `atlas scan` verified component catalog — every component's real props + scenario verification counts |
+| [`get_atlas_component`](#get_atlas_component) | `name: string` | One catalogued component's exact prop values, which props are reactive, and a verified-or-labelled-unverified example |
 
 `ReactiveTraceEntry` is `{ name?: string; prev: string; next: string; timestamp: number }`.
-
-:::note{title="14 in the overview, 16 registered"}
-`mcp_overview()` and the `get_api` database are generated from the package manifest, which currently documents **15** of the 17 tools — it reports **"MCP Tools (15)"**. The two content-navigation tools, `get_content_collection` and `get_content_entry`, are fully registered and callable but not yet listed in the manifest, so they don't appear in the overview table. Call them directly by name; they're documented in full below.
-:::
 
 ---
 
@@ -179,17 +179,37 @@ This is the intended **first call** for any agent connecting to the server: it e
 {}
 ```
 
-**Response shape:**
+**Response shape** (captured from a real call against this repo — every row comes straight from `manifest.ts`, so a new tool appears here the moment it's added there):
 
 ```text
-**MCP Tools (15):**
+**MCP Tools (21):**
 
 | Tool | When to use | Example |
 |---|---|---|
-| `mcp_overview` | Returns a markdown table of every registered MCP tool... | `mcp_overview()` |
-| `get_api` | Look up any Pyreon API by package and symbol... | `get_api({ package: 'flow', symbol: 'createFlow' })` |
-| ... (one row per manifest-documented tool)
+| `mcp_overview` | Returns a markdown table of every registered MCP tool with a one-sentence "when to use" description and a one-line example. | `mcp_overview()` |
+| `get_browser_smoke_status` | Companion to the `pyreon/require-browser-smoke-test` lint rule. | `// Ask the MCP server:` |
+| `get_api` | Look up any Pyreon API by `package` (e.g. | `// Agent-side` |
+| `validate` | Two AST-based detectors run in parallel: `detectReactPatterns` flags "coming from React" mistakes … | `validate({ code: ... })` |
+| `explain_reactivity` | The compiler's per-expression reactivity VERDICT for a snippet. | `explain_reactivity({ code: ... })` |
+| `migrate_react` | Convert React code to idiomatic Pyreon. | `migrate_react({ code: ... })` |
+| `migrate_pyreon` | The Pyreon → correct-Pyreon codemod (parallel to `migrate_react`). | `migrate_pyreon({ code: ... })` |
+| `diagnose` | Parse a Pyreon runtime / build error into structured fix information. | `// v1 — unchanged, backward-compatible` |
+| `explain_error` | The rich-context sibling of `diagnose`. | `explain_error({ report: JSON.stringify(errorContext) })` |
+| `get_routes` | List every route in the current project — path, loader presence, guards, params, and named-route name. | `get_routes()` |
+| `get_components` | List every component in the current project with its props and signal usage. | `get_components()` |
+| `get_content_collection` | List the `@pyreon/zero-content` collections declared in the project's `content.config.{ts,mts,js,mjs}` … | `get_content_collection()` |
+| `get_content_entry` | Fetch one content entry: its path, title and size, the parsed frontmatter, and the heading outline. | `get_content_entry({ collection: 'docs', slug: 'getting-started' })` |
+| `get_atlas_catalog` | Serve the VERIFIED component catalog `atlas scan` writes — every component's real props, allowed values and scenario counts. | `get_atlas_catalog({})` |
+| `get_dependency_fabric` | Serve the workspace dependency graph `loom scan` writes: shape, cycles, gating findings, blast-radius ranking. | `get_dependency_fabric({})` |
+| `get_atlas_component` | Prescriptive usage for ONE catalogued component: exact allowed values, reactive props, a verified example. | `get_atlas_component({ name: 'Button' })` |
+| `get_pattern` | Fetch a canonical "how do I do X" pattern body from `docs/src/content/docs/patterns/`. | `get_pattern({ name: 'controllable-state' })` |
+| `get_anti_patterns` | Browse the anti-patterns catalog from `.agents/rules/anti-patterns.md`, token-frugal by default. | `get_anti_patterns()` |
+| `get_changelog` | Recent release notes for any `@pyreon/*` package without scraping `git log`. | `get_changelog({ package: 'flow', limit: 5 })` |
+| `audit_test_environment` | Scan every `*.test.{ts,tsx}` under `packages/` for the mock-vnode anti-pattern that caused PR #197's silent metadata drop. | `audit_test_environment({ minRisk: 'medium', limit: 10 })` |
+| `audit_islands` | Project-wide cross-file islands audit (PR C of the islands DX roadmap). | `audit_islands({})` |
 ```
+
+The order above is the manifest's own order (not alphabetical, not the docs-page order) — the `mcp_overview` tool doesn't re-sort. Rows shown above with `...` have their real multi-line `example` collapsed to its first line for this page; that part is unchanged from the tool's real output. The "When to use" column is genuinely the manifest's **first sentence** (split on `.`/`!`/`?` + whitespace) — which is why `get_api`'s row above cuts off at `"(e.g."`: the period in "e.g." reads as a sentence boundary. It's a real, verbatim quirk of the current implementation, not a doc simplification — call `get_api({ package, symbol })` itself, or read the full `summary` via [`get_api({ package: 'mcp', symbol: 'get_api' })`](#get_api), when the truncated hint isn't enough.
 
 :::warning{title="Prefer mcp_overview over tools/list"}
 `tools/list` returns names + parameter schemas but no "when to use" guidance, so an agent has to call several tools to figure out which one fits the task. `mcp_overview` gives you the intent map in one call.
@@ -506,6 +526,34 @@ List every route detected in the current project — walking the source from `pr
 
 **Reports per route:** path pattern (e.g. `/user/:id`), route name (if set), whether it has a `loader`, whether it has a navigation `guard`, and the extracted path parameters.
 
+**Example call:**
+
+```json
+{}
+```
+
+**Response** (captured from a real call against `examples/hn-clone`, an fs-router `@pyreon/zero` app):
+
+```text
+**Routes (15):**
+
+  /
+  /ask
+  /bookmarks
+  /item/:id (params: id)
+  /jobs
+  /leaderboard
+  /new
+  /prefs
+  /search
+  /shortcuts
+  /show
+  /stats
+  /submit
+  /todos
+  /user/:id (params: id)
+```
+
 :::warning{title="Common mistakes"}
 - **Run it from the project root.** Outside a Pyreon project (no reachable `@pyreon/router` / `@pyreon/zero`), it returns empty.
 - **The scan caches per server instance + cwd** — it won't pick up file changes mid-session. Restart the server or change cwd to refresh.
@@ -521,6 +569,29 @@ List every component in the current project with its props and signal usage. Sam
 **Parameters:** None
 
 **Reports per component:** name + file path, props (extracted from the first parameter type / destructure), and the signals declared inside the component body.
+
+**Example call:**
+
+```json
+{}
+```
+
+**Response** (same `hn-clone` project, first few of 29 components — real output, not fabricated):
+
+```text
+**Components (29):**
+
+  CommentTree — src/components/CommentTree.tsx
+  FeedPage — src/components/FeedPage.tsx
+  StoryRow — src/components/StoryRow.tsx
+  VirtualizedComments — src/components/VirtualizedComments.tsx
+    signals: [parentRef]
+  ErrorPage — src/routes/_error.tsx
+  ...
+  LeaderboardPage — src/routes/leaderboard.tsx
+    signals: [sorting]
+  ...
+```
 
 :::warning{title="Common mistakes"}
 - **The props list may be incomplete** — components using prop spread (`<Comp {...rest}>`) or computed prop shapes won't have their forwarded keys listed.
@@ -547,6 +618,37 @@ Enumerate `@pyreon/zero-content` collections in the current project, or fetch on
 
 Falls back with a clear message when no `content.config.{ts,mts,js,mjs}` exists in the project, and lists the known collections when the requested `name` isn't found.
 
+**Example calls + real response** (captured against this repo's own `docs/` package — a `@pyreon/zero-content` app):
+
+```json
+{}
+```
+
+```text
+# Content collections (1)
+
+- `docs` (pages) — 210 entries at `src/content/docs`
+```
+
+```json
+{ "name": "docs" }
+```
+
+```text
+# Collection: `docs` (pages)
+
+- **Config**: `content.config.ts`
+- **Content dir**: `src/content/docs`
+- **Entries**: 210
+
+## Entries
+
+- `(index)` — Pyreon (`src/content/docs/index.md`)
+- `a11y` — Accessibility primitives (a11y) (`src/content/docs/a11y.md`)
+- `accessibility` — Accessibility (`src/content/docs/accessibility.md`)
+...
+```
+
 ---
 
 ### get_content_entry
@@ -561,6 +663,38 @@ Fetch a single entry from a `@pyreon/zero-content` collection. Returns the entry
 | `slug`       | `string` | Entry slug (e.g. `"getting-started"`). Use `""` for the index |
 
 **Response includes:** path + title + bytes, the frontmatter as a `key: value` list, and the heading outline as a depth-indented bullet list (code-fence-aware — it skips `## heading`-shaped lines inside fenced code blocks). Returns nearest-match slug suggestions when the entry isn't found within an existing collection.
+
+**Example call — fetching THIS page's own entry** (a real, reflexive worked example: `docs/src/content/docs/mcp.md` is itself a `docs` collection entry):
+
+```json
+{ "collection": "docs", "slug": "mcp" }
+```
+
+```text
+# `docs/mcp`
+
+- **Path**: `src/content/docs/mcp.md`
+- **Title**: @pyreon/mcp
+- **Bytes**: <this page's current byte count — necessarily stale the moment this page is next edited; that's expected, it's a real file-size read, not a pinned constant>
+
+## Frontmatter
+
+- **title**: @pyreon/mcp
+- **description**: Model Context Protocol server that gives AI coding
+  assistants deep knowledge of Pyreon APIs, patterns, and project structure.
+
+## Heading outline
+
+  - Installation
+  - Quick Start
+    - Claude Code
+    - Cursor
+    ...
+  - Tools reference
+    - mcp_overview
+    - get_api
+    ...
+```
 
 ---
 
@@ -578,6 +712,25 @@ Companion to the `pyreon/require-browser-smoke-test` lint rule. Reports which br
 
 Falls back with a clear message when `.agents/rules/browser-packages.json` isn't present (consumer apps that don't ship the Pyreon monorepo layout).
 
+**Example call + real response** (this repo currently has full coverage — every browser-categorized package ships a smoke test):
+
+```json
+{}
+```
+
+```text
+**Browser smoke coverage** (34 / 34):
+
+✓ Covered (34):
+  - @pyreon/runtime-dom
+  - @pyreon/router
+  - @pyreon/head
+  - @pyreon/server
+  - @pyreon/flow
+  ...
+  - @pyreon/zero-content
+```
+
 :::warning{title="Common mistakes"}
 This tool only checks **file existence**, not the self-expiring-exemption logic that `bun run lint:browser-smoke` performs. Don't use its output as a substitute for running the CI script.
 :::
@@ -586,11 +739,11 @@ This tool only checks **file existence**, not the self-expiring-exemption logic 
 
 ### get_pattern
 
-Fetch a canonical "how do I do X" pattern body from `docs/patterns/`. The patterns are markdown files keyed by slug — **16 ship today**:
+Fetch a canonical "how do I do X" pattern body from `docs/src/content/docs/patterns/` — the exact same markdown files the docs website renders, so the assistant and the human read identical text. The patterns are markdown files keyed by slug — **17 ship today**:
 
-`controllable-state`, `data-fetching`, `dev-warnings`, `dynamic-fields`, `event-listeners`, `form-fields`, `imperative-toasts`, `islands`, `keyed-lists`, `reactive-context`, `reactive-spread`, `routing-setup`, `signal-writes`, `ssr-safe-hooks`, `state-management`, `styler-theming`.
+`controllable-state`, `data-fetching`, `dev-warnings`, `dynamic-fields`, `event-listeners`, `form-fields`, `imperative-toasts`, `islands`, `keyed-lists`, `multiplatform`, `reactive-context`, `reactive-spread`, `routing-setup`, `signal-writes`, `ssr-safe-hooks`, `state-management`, `styler-theming`.
 
-Drop a new `docs/patterns/<slug>.md` file to add one — it's discovered at runtime on the next call, no code change needed. Omit `name` to receive the catalog of available slugs.
+Drop a new `docs/src/content/docs/patterns/<slug>.md` file to add one — it's discovered at runtime on the next call in a monorepo checkout, no code change needed. (The published `bunx @pyreon/mcp` case reads a bundled snapshot instead — see [Troubleshooting](#troubleshooting) below.) Omit `name` to receive the catalog of available slugs.
 
 **Parameters:**
 
@@ -608,7 +761,7 @@ When a pattern isn't found, the tool returns up to 5 fuzzy-matched suggestions p
 
 :::warning{title="Common mistakes"}
 - **Pattern slugs are kebab-case** — `controllable-state`, not `ControllableState`. A wrong-case name 404s.
-- **It covers the 16 foundational shapes.** Specialized patterns (PMTC, native compat, devtools wiring) live elsewhere in the docs.
+- **It covers the 17 foundational shapes.** Specialized topics (PMTC internals, native compat shims, devtools wiring) live in the wider docs site, not as a `get_pattern` slug.
 - **Patterns ≠ anti-patterns.** `get_pattern` returns "how to do X correctly"; `get_anti_patterns` returns "what to avoid". They're complementary.
 :::
 
@@ -618,12 +771,12 @@ When a pattern isn't found, the tool returns up to 5 fuzzy-matched suggestions p
 
 The compact index clamps a title longer than 120 characters on a word boundary and marks it with `…`; pass any fragment of a title as `name` (a copied `…` is stripped) to get the full entry.
 
-Browse the anti-pattern catalog parsed live from `.agents/rules/anti-patterns.md`. **Token-frugal by default**: with no arguments the tool returns a **compact index** — one line per entry (title + `[detector: <code>]` tag + a one-sentence hook), with the per-category `## <Heading>` markers preserved so categories stay discoverable in a single call. That's roughly 3.3K tokens versus ~14K for the full dump — a ~76% cut on the common "what should I avoid?" orient call. Drill into full bodies deliberately:
+Browse the anti-pattern catalog parsed live from `.agents/rules/anti-patterns.md`. **Token-frugal by default**: with no arguments the tool returns a **compact index** — one line per entry (title + `[detector: <code>]` tag + a one-sentence hook), with the per-category `## <Heading>` markers preserved so categories stay discoverable. The index is at least ~60% smaller than `{ full: true }` (measured on this repo's 413-entry catalog: ~8.7K index tokens vs ~68.6K for the full dump — a ~87% cut; the catalog only grows, so treat these two figures as illustrative, not a pinned contract — the ≥60% *ratio* is what `token-budget.test.ts` actually gates). Drill into full bodies deliberately:
 
 - `{ name }` → the single matching entry's full body (cheapest drill-in; case-insensitive title substring match).
 - `{ category }` → full bodies for one category (the pre-existing filtered contract).
-- `{ full: true }` → the entire catalog (~14K tokens — explicit, expensive opt-in).
-- `{ page }` → the next slice of the index. The index is PAGINATED at 240 entries, because its size follows the entry count rather than any entry's density; the footer names the next page when there is one.
+- `{ full: true }` → the entire catalog (tens of thousands of tokens — explicit, expensive opt-in).
+- `{ page }` → the next slice of the index. The index is PAGINATED at 240 entries, because its size follows the entry count rather than any entry's density — and pagination is no longer hypothetical: this repo's catalog is already past that threshold, so a real no-arg call today returns `page 1 of 2`; the footer names the next page.
 
 Each `[detector: <code>]` tag pairs the entry with the live static detector run by the [`validate`](#validate) tool.
 
@@ -631,10 +784,14 @@ Each `[detector: <code>]` tag pairs the entry with the live static detector run 
 
 | Param      | Type       | Description                                                                                                                                                |
 | ---------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `category` | `string?`  | Full bodies for one category. Allowed: `reactivity`, `jsx`, `context`, `architecture`, `testing`, `lifecycle`, `documentation`, `all`. Omit for the index |
+| `category` | `string?`  | Full bodies for one category. Allowed: `reactivity`, `jsx`, `context`, `architecture`, `islands`, `ssr`, `ssg`, `bundling`, `testing`, `lifecycle`, `build`, `ci`, `best-practices`, `library-api`, `documentation`, `all`. Omit for the index |
 | `name`     | `string?`  | Full body of the entry whose title contains this (case-insensitive). Most token-frugal drill-in                                                           |
-| `full`     | `boolean?` | Return the entire catalog (~14K tokens). Default is the compact index
+| `full`     | `boolean?` | Return the entire catalog (tens of thousands of tokens). Default is the compact index
 | `page`     | `number?`  | Index page (240 entries each). Default 1; the footer names the next page                                                                                     |
+
+:::note{title="15 categories, only 8 accepted a `category` value until recently"}
+The catalog's real category set is the 15 above (one `##` heading per section of `anti-patterns.md`, minus `Reactivity-Seam Adapter Mistakes` which folds into `reactivity`, and the `Memory Leak Classes` table which is not a bullet list and contributes no entries). The `category` enum used to hand-list only 8 of them — calling `{ category: 'islands' }`, `'ssr'`, `'ssg'`, `'bundling'`, `'build'`, `'ci'`, `'best-practices'`, or `'library-api'` failed zod validation for the tool's entire lifetime even though those sections parse fine. The enum is now DERIVED from the same category list `parseAntiPatterns` uses, so it can't drift out of sync with the doc again.
+:::
 
 **Example calls:**
 
@@ -650,13 +807,41 @@ Each `[detector: <code>]` tag pairs the entry with the live static detector run 
 { "category": "reactivity" }
 ```
 
+```json
+{ "category": "islands" }
+```
+
+```json
+{ "page": 2 }
+```
+
+**Response shape** (no-arg call, captured against this repo's real catalog):
+
+```text
+# Pyreon Anti-Patterns — index (413 total, page 1 of 2, 10 categories)
+
+Compact index — one line per entry; a long title is clamped with `…`. For the
+full body of an entry call get_anti_patterns({ name: "<any fragment of the
+title>" }); …
+
+## Reactivity Mistakes (56)
+
+- **Bare signal in JSX text**: `{count()}` → wrap in `{() => count()}` …
+- **[FIXED, 2026-07] Module-level tracking collectors set-then-NULLED …
+
+...
+
+Showing entries 1-240 of 413. Next: get_anti_patterns({ page: 2 }).
+```
+
 :::warning{title="Common mistakes"}
-- **`{ full: true }` is the ~14K dump** — reach for the no-arg index to orient, then pull full bodies with `{ name }` once you know which entry matters.
+- **`{ full: true }` is the multi-tens-of-thousands-of-token dump** — reach for the no-arg index to orient, then pull full bodies with `{ name }` once you know which entry matters.
 - **No-arg returns the index, not full bodies** (behavior changed in the token-slim work). Full bodies need `{ name }`, `{ category }`, or `{ full: true }`.
+- **The index is paginated — page 1 alone does not cover every category.** A category that happens to sit entirely on page 2 won't show its `## <Heading>` marker on page 1; either page through, or drill straight in with `{ category: '<slug>' }` if you already know which one you want.
 :::
 
 :::note{title="Behavior note"}
-A token-budget CI gate (`src/tests/token-budget.test.ts`) pins `get_anti_patterns({})` under 5,000 tokens and keeps the index at least 60% smaller than `{ full: true }`.
+A token-budget CI gate (`src/tests/token-budget.test.ts`) keeps the index a DENSITY budget (average tokens/entry, max single line) rather than an absolute size ceiling, plus a design-boundary tripwire (the index must stay under 12,000 tokens — past that the fix is pagination, not a bigger number) and the ≥60%-smaller-than-full-dump ratio above.
 :::
 
 ---
@@ -762,22 +947,76 @@ CI-gate it by piping `--json` and asserting `findings.length === 0`.
 
 Serves the **workspace dependency graph** `loom scan` writes to `loom-report.json` — the shape (packages, internal edges, depth), runtime cycles, the gating findings, and the blast-radius ranking that answers the question a graph exists to answer: *what does changing this reach?*
 
-Call it with no arguments for the whole-fabric overview. Pass `package` for one package's declared runtime dependencies, its dependents, its depth and reach, and its own findings.
+Call it with no arguments for the whole-fabric overview. Pass `package` for one package's declared runtime dependencies, its dependents, its depth and reach, and its own findings. The tool reads the report file rather than re-running the scan itself — loom's scan walks every file in the workspace, so importing and re-running it inside a tool call would make every question pay for a full scan.
 
 Every rendering carries loom's honesty rule through. Loom reads **declared truth** — manifests and source imports, never a lockfile or the registry — so it cannot tell you which version is *installed*, and `unused-dep` is lexical evidence rather than proof: bins, plugin autoloads and CSS imports all load without an import statement. An agent that reads "unused" as "safe to delete" will delete a package a bin loads at runtime, which is exactly why the note travels with the data.
 
 The report is a build artifact, so a report older than a day is flagged with its age, and a missing one returns instructions to run `loom scan` rather than an invented graph.
 
+**Parameters:**
+
+| Param     | Type      | Description                                                                    |
+| --------- | --------- | -------------------------------------------------------------------------------- |
+| `package` | `string?` | A workspace package name (e.g. `"@pyreon/router"`). Omit for the whole-fabric overview |
+
+**Example calls + real response** (captured by running `loom scan` against this repo, then calling the tool — numbers will differ on your workspace and change as this repo grows):
+
+```json
+{}
 ```
-get_dependency_fabric({})
-get_dependency_fabric({ package: '@pyreon/router' })
+
+```text
+# Dependency fabric — 145 workspace package(s)
+
+- internal edges: 768 · max depth: 8 · external deps: 167
+- findings: 0 error · 0 warning · 259 info
+
+## Blast radius — changing these reaches the most packages
+- @pyreon/reactivity → 104 dependent(s)
+- @pyreon/core → 95 dependent(s)
+- @pyreon/runtime-dom → 64 dependent(s)
+...
+
+> Loom reads DECLARED truth — manifests + source imports. It cannot tell you
+> which version is INSTALLED (no lockfile, no registry), and `unused-dep` is
+> lexical evidence, not proof: bins, plugin autoloads and CSS imports load
+> without an import statement.
 ```
+
+```json
+{ "package": "@pyreon/router" }
+```
+
+```text
+# @pyreon/router
+
+- version: 0.51.0
+- depth: 4
+- blast radius: 33 dependent(s)
+
+## Declares (4 runtime)
+`@pyreon/sized-map`, `@pyreon/core`, `@pyreon/reactivity`, `@pyreon/runtime-dom`
+
+## Depended on by (29)
+`@pyreon/docs`, `@pyreon/example-ai-reference`, ..., `@pyreon/zero`, `@pyreon/zero-content`
+
+> Loom reads DECLARED truth — …
+```
+
+:::warning{title="Common mistakes"}
+- **Reading `unused-dep` as "safe to delete"** — it is lexical evidence with INFO severity; bins, plugin autoloads and CSS imports load without an import statement. Verify before removing.
+- **Asking it which version is installed** — loom reads manifests and source, never a lockfile or the registry.
+- **Trusting a stale report** — the fabric changes with every dependency edit; the tool prints the artifact age, and you should re-run `loom scan` after one.
+- **Expecting dev-dependency cycles** — loom excludes dev edges from cycle detection on purpose (monorepos legitimately share test utilities both ways).
+:::
+
+---
 
 ### get_atlas_catalog
 
 Serves the **verified component catalog** `atlas scan` writes to `atlas-catalog.json` — every component with the props it actually takes, the values those props actually allow, and how many of its scenarios have been checked. All of it is read from your source, so an assistant writing UI code stops guessing prop names.
 
-Each component line carries three scenario counts — **verified**, **failing**, **unverified**. That split is deliberate: four of Atlas' five verify checks are still stubs, so a catalogued component is not automatically a checked one, and collapsing the counts would let "we have a catalog entry" read as "this is known good".
+Each component line carries three scenario counts — **verified**, **failing**, **unverified**. That split is deliberate: Atlas ships six named checks (`a11y`, `interaction`, `ssrParity`, `leak`, `reactivityCoverage`, `snapshot`), and depending on the scan environment some don't run at all — a plain-`node` `atlas scan` skips `leak` (needs a GC hook — run under `bun` or `node --expose-gc`) and both browser-only checks (`reactivityCoverage`, `snapshot` — need `atlas verify-browser`). So a catalogued component is not automatically a fully-checked one, and collapsing the counts would let "we have a catalog entry" read as "this is known good".
 
 If no catalog is present the tool returns instructions to run `atlas scan` rather than an invented list — the whole value of the catalog is that it is derived from real components.
 
@@ -787,9 +1026,44 @@ If no catalog is present the tool returns instructions to run `atlas scan` rathe
 | ----- | --------- | --------------------------------------------------------- |
 | `tag` | `string?` | Only components carrying this tag. Omit for the full set.  |
 
-**Example call:** `{ "tag": "form" }`
+**Example call + real response** (captured by running `atlas scan` against `packages/ui/components`, this repo's private component library — 108 components, 489 scenarios):
 
-Returns an index block per component: its name, tags, a compact prop list such as `label(text), variant(solid|soft|outline|ghost)`, and the line `scenarios: 2 (1 verified, 0 failing, 1 unverified)`.
+```json
+{}
+```
+
+```text
+# Atlas catalog — 108 component(s)
+
+Verified = at least one check ran and none failed. Unverified means nothing
+examined the scenario; it is NOT a pass. Use `get_atlas_component` for the
+exact prop values of one component.
+
+## Combobox [layout]
+Combobox — 1 scenario(s), 1 verified. Props: children.
+props: children(()=>…)
+scenarios: 1 (1 verified, 0 failing, 0 unverified)
+
+## PasswordInput [form]
+PasswordInput — 1 scenario(s), 1 verified. Props: visible, defaultVisible, onVisibleChange, showLabel, hideLabel.
+props: visible(bool), defaultVisible(bool), onVisibleChange(()=>…), showLabel(text), hideLabel(text)
+scenarios: 1 (1 verified, 0 failing, 0 unverified)
+...
+```
+
+```json
+{ "tag": "form" }
+```
+
+Filters the same index down to components tagged `form` (e.g. `PasswordInput` above).
+
+:::warning{title="Common mistakes"}
+- **Treating a catalogued component as a verified one** — the counts on each line are the point. `unverified` means nothing examined that scenario; it is not a pass.
+- **Calling it before `atlas scan` has run** — the catalog is a build artifact, so the tool returns setup instructions rather than a stale or invented list.
+- **Expecting per-prop detail here** — the index is deliberately token-frugal. Use [`get_atlas_component`](#get_atlas_component) for one component's exact prop values.
+:::
+
+---
 
 ### get_atlas_component
 
@@ -805,10 +1079,28 @@ Unknown names come back with near-match suggestions instead of a bare miss.
 | ------ | -------- | ---------------------------------------------------- |
 | `name` | `string` | Component name exactly as it appears in the catalog   |
 
-**Example call:** `{ "name": "Button" }`
+**Example call + real response** (same catalog as above):
 
-Returns the component's required and optional prop lists, a `reactive (pass a signal accessor, not a value):` line naming the accessor props, and either `correct (verified): {"label":"Save"}` or an `example (UNVERIFIED …)` line.
+```json
+{ "name": "Button" }
+```
 
+```text
+# Button
+Button — 12 scenario(s), 12 verified. Props: state, size, variant, children.
+tags: form
+source: src/index.ts
+
+optional: state(primary|secondary|danger|success), size(small|medium|large), variant(solid|outline|subtle|ghost|link), children(text)
+
+correct (verified): {"children":"Button","state":"primary","size":"small","variant":"solid"}
+```
+
+:::warning{title="Common mistakes"}
+- **Reading `example (UNVERIFIED …)` as a known-good example** — it is args from a scenario nothing has checked. Only `correct (verified)` carries evidence.
+- **Passing a resolved value to a prop listed as reactive** — those take an accessor (`() => count()`), and passing the value captures it once.
+- **Inventing a value for a prop whose allowed set is printed** — `state(primary|secondary|danger|success)` above is the COMPLETE list for that component; nothing else is valid.
+:::
 
 ## How it works
 
@@ -867,15 +1159,12 @@ The server makes no network calls or long startup scans — it returns `initiali
 
 ## Exports summary
 
-`@pyreon/mcp` is primarily a binary, but it exports a small surface for embedding / testing.
+`@pyreon/mcp` is primarily a binary. Its ONLY module entry is `src/index.ts` (no subpath exports in `package.json`), and that file exports exactly two runtime symbols — verified by importing the built module and listing its keys, not assumed from source reading:
 
-| Export                 | Description                                                            |
-| ---------------------- | --------------------------------------------------------------------- |
-| CLI entry (`pyreon-mcp`) | Starts the MCP server on stdio transport                            |
-| `createServer()`       | Factory that returns a configured `McpServer` (tests stand one up with an in-memory transport instead of stdio) |
-| `API_REFERENCE`        | Structured API documentation database (`get_api` reads this)          |
-| `generateContext`      | Project scanner (re-exported from `@pyreon/compiler`)                 |
-| `ProjectContext`       | Type: scanned project metadata                                        |
-| `RouteInfo`            | Type: detected route information                                      |
-| `ComponentInfo`        | Type: detected component information                                  |
-| `IslandInfo`           | Type: detected island information                                     |
+| Export                    | Description                                                                                                                      |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| CLI entry (`pyreon-mcp`)   | Starts the MCP server on stdio transport (runs when the module is invoked as a process, not on import)                          |
+| `createServer()`           | Factory that returns a configured `McpServer` with all 21 tools registered (tests stand one up with an in-memory transport instead of stdio) |
+| `matchesProcessEntry(meta, moduleUrl, resolvedEntryUrl)` | Pure helper deciding "is this module the process entry?" across runtimes — Bun / Node ≥24.2 expose `import.meta.main` directly; older Node needs the URL-comparison fallback this function implements. Exported so the fallback path is unit-testable without an actual old Node runtime. |
+
+`API_REFERENCE`, `generateContext`, `ProjectContext`, `RouteInfo`, `ComponentInfo`, and `IslandInfo` are **internal** — used by the tool handlers inside `index.ts`, but not re-exported from the package, and there is no `@pyreon/mcp/<subpath>` export for them (`package.json` `exports` declares only `"."`; a deep-path import like `@pyreon/mcp/src/api-reference` fails to resolve — verified, not assumed). `API_REFERENCE` lives at `packages/tools/mcp/src/api-reference.ts` — inside this monorepo, reach it by a relative file path if you genuinely need the raw table, not a package-specifier import. `generateContext` / `ProjectContext` / `RouteInfo` / `ComponentInfo` / `IslandInfo` come from `@pyreon/compiler`'s project scanner — import them from `@pyreon/compiler` if you need the raw scan, not from `@pyreon/mcp`.

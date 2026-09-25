@@ -80,7 +80,7 @@ A full, end-to-end usage of the package:
 | [`get_atlas_catalog`](#get-atlas-catalog) | constant | Serve the VERIFIED component catalog `atlas scan` writes (`atlas-catalog.json`) — every component with its real props, a |
 | [`get_dependency_fabric`](#get-dependency-fabric) | constant | Serve the workspace dependency graph `loom scan` writes (`loom-report.json`): the shape (packages, edges, depth), runtim |
 | [`get_atlas_component`](#get-atlas-component) | constant | Prescriptive usage for ONE catalogued component: required and optional props with their exact allowed values, which prop |
-| [`get_pattern`](#get-pattern) | constant | Fetch a canonical "how do I do X" pattern body from `docs/patterns/`. |
+| [`get_pattern`](#get-pattern) | constant | Fetch a canonical "how do I do X" pattern body from `docs/src/content/docs/patterns/` (the same files the docs site rend |
 | [`get_anti_patterns`](#get-anti-patterns) | constant | Browse the anti-patterns catalog from `.agents/rules/anti-patterns.md`, token-frugal by default. |
 | [`get_changelog`](#get-changelog) | constant | Recent release notes for any `@pyreon/*` package without scraping `git log`. |
 | [`audit_test_environment`](#audit-test-environment) | constant | Scan every `*.test.{ts,tsx}` under `packages/` for the mock-vnode anti-pattern that caused PR #197\'s silent metadata dr |
@@ -160,7 +160,7 @@ get_api({ package: '@pyreon/router', symbol: 'useTypedSearchParams' })
 
 - Passing the package name with a typo or wrong scope — `get_api({ package: "pyreon-flow", ... })` returns nothing. Use `"flow"` or `"@pyreon/flow"`; the tool accepts both.
 - Expecting `symbol` to match a method on a returned instance (e.g. `Posts.useList`) — only TOP-LEVEL exports are in api-reference. Method-on-instance APIs are documented in the parent symbol's `summary` / `example`.
-- Treating a 404 as "the API doesn't exist" — it may exist but the package's manifest is not yet on the MCP pipeline (~33 of ~55 packages migrated). Check the docs page or source as a fallback when get_api returns empty.
+- Treating a 404 as "the API doesn't exist" — it may exist but the package's manifest is not yet on the MCP pipeline (57 of 76 published packages have one as of this writing — see AGENTS.md "Manifest-driven docs pipeline" for the live count). Check the docs page or source as a fallback when get_api returns empty.
 - Forgetting that `summary` may contain the answer to a follow-up question — read the full body before falling back to `get_pattern` / `validate` / source diving.
 
 **See also:** `validate` · `get_pattern`
@@ -538,7 +538,7 @@ get_atlas_component({ name: 'Button' })
 tool: get_pattern({ name?: string }) → PatternBody | string[]
 ```
 
-Fetch a canonical "how do I do X" pattern body from `docs/patterns/`. 16 foundational patterns ship: `controllable-state`, `data-fetching`, `dev-warnings`, `dynamic-fields`, `event-listeners`, `form-fields`, `imperative-toasts`, `islands`, `keyed-lists`, `reactive-context`, `reactive-spread`, `routing-setup`, `signal-writes`, `ssr-safe-hooks`, `state-management`, `styler-theming`. Omit `name` to list available patterns. Drop a new `docs/patterns/<slug>.md` file to add one — picked up on next call.
+Fetch a canonical "how do I do X" pattern body from `docs/src/content/docs/patterns/` (the same files the docs site renders — one source, two surfaces). 17 foundational patterns ship: `controllable-state`, `data-fetching`, `dev-warnings`, `dynamic-fields`, `event-listeners`, `form-fields`, `imperative-toasts`, `islands`, `keyed-lists`, `multiplatform`, `reactive-context`, `reactive-spread`, `routing-setup`, `signal-writes`, `ssr-safe-hooks`, `state-management`, `styler-theming`. Omit `name` to list available patterns. Drop a new `docs/src/content/docs/patterns/<slug>.md` file to add one — picked up on next call (no code change, no bundling step in dev; `scripts/copy-content.ts` mirrors it into this package's bundled `content/patterns/` for the published `bunx @pyreon/mcp` consumer case at build time).
 
 **Example**
 
@@ -552,7 +552,7 @@ get_pattern({})
 **Common mistakes**
 
 - Passing a name in CamelCase or PascalCase — pattern names are kebab-case (`controllable-state`, not `ControllableState`). A wrong-case name 404s.
-- Expecting the pattern list to include every Pyreon idiom — `get_pattern` covers the 16 foundational shapes (data fetching, forms, signal writes, etc.). Specialized patterns (PMTC, native compat, devtools wiring) live elsewhere in the docs.
+- Expecting the pattern list to include every Pyreon idiom — `get_pattern` covers the 17 foundational shapes (data fetching, forms, signal writes, multiplatform, etc.). Specialized topics (PMTC internals, native compat shims, devtools wiring) live in the wider docs site, not as a `get_pattern` slug.
 - Confusing patterns with anti-patterns — `get_pattern` returns "how to do X correctly"; `get_anti_patterns` returns "what to avoid". They're complementary.
 
 **See also:** `get_anti_patterns`
@@ -562,24 +562,25 @@ get_pattern({})
 ### get_anti_patterns `constant`
 
 ```ts
-tool: get_anti_patterns({ category?: 'reactivity'|'jsx'|'context'|'architecture'|'testing'|'lifecycle'|'documentation'|'all'; name?: string; full?: boolean }) → string
+tool: get_anti_patterns({ category?: 'reactivity'|'jsx'|'context'|'architecture'|'islands'|'ssr'|'ssg'|'bundling'|'testing'|'lifecycle'|'build'|'ci'|'best-practices'|'library-api'|'documentation'|'all'; name?: string; full?: boolean; page?: number }) → string
 ```
 
-Browse the anti-patterns catalog from `.agents/rules/anti-patterns.md`, token-frugal by default. **No args → a COMPACT INDEX** (one line per entry: title + `[detector: <code>]` tag + one-sentence hook; ≈3.3K tokens vs the ≈14K full dump — a ~76% cut on the common orient call). Drill in deliberately: `{ name }` → the single matching entry\'s full body (cheapest); `{ category }` → full bodies for one category; `{ full: true }` → entire catalog (≈14K, explicit opt-in). The index keeps per-category `## <Heading>` markers so categories are still discoverable in one call; each `[detector: <code>]` tag pairs the entry with the live `validate` detector.
+Browse the anti-patterns catalog from `.agents/rules/anti-patterns.md`, token-frugal by default. **No args → a COMPACT INDEX** (one line per entry: title + `[detector: <code>]` tag + one-sentence hook), kept at least ~60% smaller than `{ full: true }` by a density gate rather than a pinned size (the catalog has grown past 400 entries and past a single page — the index is PAGINATED at 240 entries/page, footer names the next). Drill in deliberately: `{ name }` → the single matching entry\'s full body (cheapest); `{ category }` → full bodies for one of the 15 real categories (`reactivity`, `jsx`, `context`, `architecture`, `islands`, `ssr`, `ssg`, `bundling`, `testing`, `lifecycle`, `build`, `ci`, `best-practices`, `library-api`, `documentation`); `{ full: true }` → the entire catalog (tens of thousands of tokens, explicit opt-in). The index keeps per-category `## <Heading>` markers so categories are still discoverable in one call; each `[detector: <code>]` tag pairs the entry with the live `validate` detector.
 
 **Example**
 
 ```tsx
 get_anti_patterns()
-// → compact index (~3.3K): titles + detector tags + one-line hooks
+// → compact index (paginated — "page 1 of 2" on this catalog's current size): titles + detector tags + one-line hooks
 get_anti_patterns({ name: 'Destructuring props' })  // → that entry's full body
 get_anti_patterns({ category: 'reactivity' })       // → full bodies, one category
-get_anti_patterns({ full: true })                   // → entire catalog (~14K)
+get_anti_patterns({ category: 'islands' })          // → any of the 15 real categories works, not just the first 8
+get_anti_patterns({ full: true })                   // → entire catalog (tens of thousands of tokens)
 ```
 
 **Common mistakes**
 
-- Reaching for `{ full: true }` to "see the anti-patterns" — that is the ~14K dump. The no-arg index is the orient call; pull full bodies with `{ name }` once you know which entry matters
+- Reaching for `{ full: true }` to "see the anti-patterns" — that is the multi-tens-of-thousands-of-token dump. The no-arg index is the orient call; pull full bodies with `{ name }` once you know which entry matters
 - Expecting no-arg to return full bodies — it returns the index (behaviour changed in the token-slim PR). Full bodies need `{ name }`, `{ category }`, or `{ full: true }`
 
 **See also:** `validate` · `get_pattern`

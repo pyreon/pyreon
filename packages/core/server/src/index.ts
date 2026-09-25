@@ -63,7 +63,7 @@ registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
 export type { HandlerOptions } from './handler'
 // SSR handler
-export { createHandler } from './handler'
+export { createHandler, REMOTE_ADDRESS } from './handler'
 export type { CompiledTemplate, TemplateData } from './html'
 // HTML template
 export {

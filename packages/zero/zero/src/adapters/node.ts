@@ -51,12 +51,16 @@ export function nodeAdapter(): Adapter {
       const serverEntry = `
 import { createServer } from "node:http"
 import { readFile } from "node:fs/promises"
-import { join, extname } from "node:path"
+import { join, extname, resolve, sep } from "node:path"
+import { Readable } from "node:stream"
 import { fileURLToPath } from "node:url"
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url))
 const handler = (await import("./${NODE_ADAPTER_OUTPUT.serverDir}/entry-server.js")).default
 const clientDir = join(__dirname, "${NODE_ADAPTER_OUTPUT.clientDir}")
+// Containment root WITH a trailing separator: a bare prefix would also admit a
+// sibling directory whose name starts with the client dir's name.
+const clientRoot = resolve(clientDir) + sep
 
 // Phase 2 — hybrid static-first. Routes declaring \`renderMode = 'ssg'\` are
 // prerendered at build time and listed in \`_pyreon-ssg-paths.json\` (the
@@ -84,8 +88,20 @@ const MIME_TYPES = {
   ".ico": "image/x-icon",
 }
 
+// The request's real origin. Server actions compare the browser's \`Origin\`
+// header against it (CSRF baseline), so a hardcoded "http://localhost" made
+// every same-origin browser action a 403. \`X-Forwarded-Proto\` is honoured only
+// behind a proxy you declare with TRUST_PROXY=1 — otherwise any client could
+// claim to be https.
+const TRUST_PROXY = process.env.TRUST_PROXY === "1" || process.env.TRUST_PROXY === "true"
+function requestOrigin(req) {
+  const forwarded = TRUST_PROXY ? String(req.headers["x-forwarded-proto"] ?? "").split(",")[0].trim() : ""
+  const proto = forwarded || (req.socket.encrypted ? "https" : "http")
+  return \`\${proto}://\${req.headers.host ?? "localhost"}\`
+}
+
 const server = createServer(async (req, res) => {
-  const url = new URL(req.url ?? "/", "http://localhost")
+  const url = new URL(req.url ?? "/", requestOrigin(req))
 
   // Serve existing static files (js / css / images / fonts / prerendered
   // .html / public assets). The root "/" deliberately has NO index.html
@@ -102,8 +118,7 @@ const server = createServer(async (req, res) => {
         const pagePath = url.pathname === "/"
           ? join(clientDir, "index.html")
           : join(clientDir, url.pathname, "index.html")
-        const { resolve } = await import("node:path")
-        if (resolve(pagePath).startsWith(resolve(clientDir))) {
+        if (resolve(pagePath).startsWith(clientRoot)) {
           const html = await readFile(pagePath)
           res.writeHead(200, {
             "content-type": "text/html",
@@ -120,9 +135,8 @@ const server = createServer(async (req, res) => {
       try {
         const filePath = join(clientDir, url.pathname)
         // Prevent path traversal — ensure resolved path stays within clientDir.
-        const { resolve } = await import("node:path")
         const resolved = resolve(filePath)
-        if (!resolved.startsWith(resolve(clientDir))) {
+        if (!resolved.startsWith(clientRoot)) {
           res.writeHead(403)
           res.end("Forbidden")
           return
@@ -155,12 +169,30 @@ const server = createServer(async (req, res) => {
     if (value) headers[key] = Array.isArray(value) ? value.join(", ") : value
   }
 
+  // Forward the body. Without it every POST/PUT reached API routes and
+  // actions EMPTY, and a handler calling \`req.json()\` threw.
+  const hasBody = req.method !== "GET" && req.method !== "HEAD"
   const request = new Request(url.href, {
     method: req.method,
     headers,
+    ...(hasBody ? { body: Readable.toWeb(req), duplex: "half" } : {}),
   })
+  // The client's socket address, for rate limiting and logging (read by
+  // @pyreon/server as ctx.locals.remoteAddress). Set on the Request, not a
+  // header, so a client cannot forge it.
+  request[Symbol.for("pyreon.remoteAddress")] = req.socket.remoteAddress
 
-  const response = await handler(request)
+  // One failing request must never take the server down: an async throw here
+  // was an unhandled rejection, which exits Node.
+  let response
+  try {
+    response = await handler(request)
+  } catch (err) {
+    console.error("[Pyreon] Request failed:", req.method, url.pathname, err)
+    if (!res.headersSent) res.writeHead(500, { "content-type": "text/plain" })
+    res.end("Internal Server Error")
+    return
+  }
 
   const responseHeaders = {}
   response.headers.forEach((v, k) => { responseHeaders[k] = v })
@@ -182,6 +214,8 @@ const server = createServer(async (req, res) => {
         if (done) break
         res.write(value)
       }
+    } catch (err) {
+      console.error("[Pyreon] Response stream failed:", url.pathname, err)
     } finally {
       res.end()
     }
