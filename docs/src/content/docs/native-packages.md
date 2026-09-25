@@ -6,7 +6,7 @@ description: The six published packages behind PMTC — the compiler, its CLI, a
 The multiplatform story is told from the app's side in [Multi-Platform (PMTC)](/docs/multiplatform). This page is the other side: the **six packages** that story runs on. All six are published to npm; none of them had a page until now, which made them hard to reason about when one showed up in a lockfile or an error message.
 
 :::warning{title="Experimental"}
-Every one of these ships with `PRIVATE / EXPERIMENTAL` in its npm description. They are published because the toolchain needs to resolve them — a scaffolded app installs them like any other dependency — not because their APIs are settled. Treat them as internals of the PMTC toolchain rather than libraries to build against directly.
+All six are published (`publishConfig.access: public`, part of the fixed native release group) because the toolchain needs to resolve them — a scaffolded app installs them like any other dependency — not because their APIs are settled. Treat them as internals of the PMTC toolchain rather than libraries to build against directly.
 :::
 
 ## The six
@@ -72,24 +72,26 @@ pyreon-native check     [--target=<ios|android>] [--typecheck] [--watch] [--json
 pyreon-native check     --lsp
 pyreon-native assets    --target=<ios|android|web> --source=<dir> --out=<dir>
 pyreon-native stage-web --target=<ios|android> --source=<dir> --out=<dir>
-pyreon-native wire      [--app=<dir>] [--android-out=<file>] [--json]
+pyreon-native wire      [--app=<dir>] [--android-out=<file>] [--ios-out=<dir>] [--json]
 ```
 
 | Command | Does |
 | --- | --- |
-| `build` | Compiles a source tree to Swift and/or Kotlin, writing files. |
+| `build` | Compiles a source tree to Swift and/or Kotlin, writing files. `--target=all` builds BOTH into `<out>/ios` + `<out>/android` in one command (and keeps building the second target even if the first errors). `--kotlin-package=<fqn>` prefixes every emitted `.kt` file — required when a real Android app imports the generated code by fully-qualified name. `--fonts=<dir>` builds the canonical→PostScript-name map the Swift emit needs for `Font.custom`. A `.tsx` importing a web-only runtime (`@pyreon/runtime-dom`/`@pyreon/runtime-server` — e.g. a scaffold's `entry-web.tsx`) is a web entry point, not shared source, and is skipped rather than compiled or errored. |
 | `check` | The **authoring-loop** command — runs the compiler for both targets **in memory**: no build, no xcodegen, no gradle, no file writes. Reports transform errors and unsupported-TypeScript-subset warnings per file. |
 | `assets` | Materializes bundled images and fonts into the platform's expected layout. |
 | `stage-web` | Stages a web bundle for the [WebView host](/docs/multiplatform). |
-| `wire` | Resolves the native source roots an app needs (see above). |
+| `wire` | Resolves the native source roots an app needs (see above). `--android-out=<file>` writes the resolved Gradle `srcDirs` list; `--ios-out=<dir>` stages co-located Swift into `<dir>/PyreonNative` and links the SwiftPM runtimes into `<dir>/PyreonPackages`. A package that declares native sources whose directory is missing exits `2`. |
 
-Exit codes: `0` success, `1` usage error, `2` a compiler error on a source file.
+Exit codes: `0` success, `1` usage error, `2` a compiler/build error on a source file (or a broken `wire` declaration).
 
 ### `check` is the one to reach for
 
 `build` needs somewhere to write and is bound to a platform toolchain. `check` needs neither, which makes it the fast inner loop: it answers "does this file lower to both targets, and what does it warn about?" without leaving the editor.
 
-`--typecheck` additionally runs `swiftc -typecheck` over the Swift emit, catching what the transform cannot — a lowering that is syntactically fine and does not compile. `--lsp` runs the same thing as a stdio LSP server, so the warnings arrive as editor diagnostics instead of terminal output.
+`--typecheck` additionally runs `swiftc -typecheck` over the Swift emit, catching what the transform cannot — a lowering that is syntactically fine and does not compile (skips, doesn't fail, off macOS). `--watch` re-checks on every source change (mtime poll). `--lsp` runs the same thing as a stdio LSP server (no `--source` needed — documents arrive over JSON-RPC), so the warnings arrive as editor diagnostics instead of terminal output.
+
+See [`@pyreon/native-cli`](https://www.npmjs.com/package/@pyreon/native-cli)'s own README for the full flag reference and a programmatic-API example.
 
 ## What to read next
 
