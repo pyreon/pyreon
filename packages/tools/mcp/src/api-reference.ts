@@ -7147,7 +7147,7 @@ const Button = styled("button")\`
   padding: \${(p) => (p.$compact ? "4px" : "12px")};
 \`
 // <Button $compact onClick={...}>Go</Button>  — $compact not forwarded to <button>`,
-    notes: `Component factory. \`styled('div')\`, \`styled(MyComp)\`, and \`styled.div\` (Proxy sugar) are all tagged templates returning a \`ComponentFn\` that injects a generated class. Tagged-template interpolations are called with the live \`props\` object (theme included), so a function interpolation reading \`p.theme.color\` / signal-driven values works and puts the component on the dynamic resolve path. Supports the polymorphic \`as\` prop and \`$\`-prefixed TRANSIENT props (consumed by styles, NOT forwarded to the DOM). Per-definition caching keys generated classes so repeat mounts skip re-resolution. See also: css, useCSS, useTheme.`,
+    notes: `Component factory. \`styled('div')\`, \`styled(MyComp)\`, and \`styled.div\` (Proxy sugar) are all tagged templates returning a \`ComponentFn\` that injects a generated class. Tagged-template interpolations are called with the live \`props\` object (theme included), so a function interpolation reading \`p.theme.color\` / signal-driven values works and puts the component on the dynamic resolve path. Supports the polymorphic \`as\` prop and \`$\`-prefixed TRANSIENT props (consumed by styles, NOT forwarded to the DOM); \`innerRef\` is accepted as an alias for \`ref\`. \`options\` takes \`shouldForwardProp(prop)\` (per-component DOM prop filter — replaces the default allowlist) and \`layer\` (wrap the generated rules in \`@layer <name>\`). A template with NO function interpolation is resolved and injected ONCE, when the component is defined; per-definition caching keys generated classes so repeat mounts skip re-resolution. See also: css, useCSS, useTheme.`,
     mistakes: `- Expecting \`$\`-prefixed props to reach the DOM — they are transient by design (consumed by the template, stripped before forwarding). Use a non-\`$\` name if the attribute must land on the element
 - Destructuring \`props\` in the interpolation (\`\${({ theme }) => …}\`) and being surprised it does not update on a whole-theme swap — read \`props.theme\` lazily; the theme context is reactive and the styled resolver re-runs on swap
 - Passing a resolved value where a function interpolation is needed for reactivity — \`\${signal()}\` snapshots once at definition; use \`\${() => signal()}\` (or \`\${(p) => p.x}\`) to stay on the dynamic path
@@ -7174,9 +7174,10 @@ function Card(props) {
 
 const spin = keyframes\`from { transform: rotate(0) } to { transform: rotate(360deg) }\`
 const Spinner = styled("div")\`animation: \${spin} 1s linear infinite;\``,
-    notes: 'Tagged-template returning a `KeyframesResult` whose string form is the GENERATED, content-hashed `@keyframes` animation NAME. Reference it inside a `css` / `styled` template as the `animation-name` value; the `@keyframes` rule is injected (deduped via FNV-1a) on first use. See also: css, styled.',
+    notes: 'Tagged-template returning a `KeyframesResult` whose string form is the GENERATED, content-hashed `@keyframes` animation NAME (`pyr-kf-<hash>`). Reference it inside a `css` / `styled` template as the `animation-name` value. The `@keyframes` rule is injected (deduped via FNV-1a) IMMEDIATELY, when `keyframes` is called — not when a component first uses it — and any function interpolation inside it is resolved against an EMPTY props object (no theme, no component props). See also: css, styled.',
     mistakes: `- Expecting a CSS class — \`keyframes\` yields an animation-NAME token, used as the \`animation\` / \`animation-name\` value, not a class applied to an element
-- Defining \`keyframes\` inside the render body per mount — define once at module scope so the hashed rule is injected once and reused`,
+- Defining \`keyframes\` inside the render body per mount — define once at module scope so the hashed rule is injected once and reused
+- Reading the theme inside a \`keyframes\` interpolation (\`\${(p) => p.theme.x}\`) — keyframes resolve at call time against \`{}\`, so there is no \`theme\`; put theme-dependent values in the \`styled\` / \`css\` template that references the animation`,
   },
 
   'styler/createGlobalStyle': {
@@ -7188,8 +7189,9 @@ const GlobalReset = createGlobalStyle\`
   body { margin: 0; font-family: \${(p) => p.theme.fonts.body}; }
 \`
 // render <GlobalReset /> once at the app root`,
-    notes: `Returns a \`ComponentFn\` that injects GLOBAL CSS (resets, \`:root\` tokens, body styles) when MOUNTED — it is not a side-effecting call. Render the returned component once near the app root. The injected rule PERSISTS for the document's lifetime, deduped by content hash — like emotion's \`injectGlobal\`, and UNLIKE styled-components' \`createGlobalStyle\`, it is NOT removed on unmount (a global reset shouldn't vanish when the mounting component re-renders away). Function interpolations make the global block dynamic (re-resolves on prop/theme change). See also: styled, css.`,
-    mistakes: `- Calling \`createGlobalStyle\` (the tagged template) and expecting the CSS to inject — nothing happens until the returned component is RENDERED. Mount \`<GlobalReset />\` once near the root
+    notes: `Returns a \`ComponentFn\` that injects GLOBAL CSS (resets, \`:root\` tokens, body styles) when MOUNTED — it is not a side-effecting call. Render the returned component once near the app root. The injected rule PERSISTS for the document's lifetime, deduped by content hash — like emotion's \`injectGlobal\`, and UNLIKE styled-components' \`createGlobalStyle\`, it is NOT removed on unmount (a global reset shouldn't vanish when the mounting component re-renders away). A template with NO function interpolation is injected immediately, when \`createGlobalStyle\` is called — rendering the component is then a no-op. A template WITH function interpolations resolves when the component mounts, ONCE per mount, against its props plus a snapshot of the theme; it does not re-resolve when a signal or the theme changes later, and each distinct resolution adds another persistent rule. See also: styled, css.`,
+    mistakes: `- Assuming nothing injects until render — a fully static template injects at call time (module evaluation); only a template with function interpolations waits for \`<GlobalReset />\` to mount. Mount it once near the root either way so the intent is visible
+- Expecting a dynamic global block to follow a theme or signal change — it resolves once per mount (theme snapshot); for live global values, set CSS custom properties on \`:root\` and reference them from a static global
 - Expecting the global CSS to be removed when the component unmounts — it persists (deduped by hash), matching emotion \`injectGlobal\` not styled-components. Toggle globals with a class/attribute on \`:root\`, not by mounting/unmounting the component`,
   },
 
@@ -7201,8 +7203,10 @@ const box = css\`color: \${(p) => p.danger ? "red" : "inherit"};\`
 function Box(props) {
   return <div class={useCSS(box, props)}>{props.children}</div>
 }`,
-    notes: 'Resolves a `CSSResult` (from the `css` tagged template) to an injected class-name string inside a component. Pass `props` so function interpolations in the template read live values; `boost` opts into a faster cache path for hot, stable templates. The returned class is deduped/hashed by the active `StyleSheet`. See also: css, styled.',
-    mistakes: `- Forgetting to pass \`props\` when the template has function interpolations — they then resolve against an empty object and the dynamic values are lost
+    notes: 'Resolves a `CSSResult` (from the `css` tagged template) to an injected class-name string inside a component. Function interpolations receive `props` merged with a snapshot of the current theme. It resolves ONCE, when called — the returned string is a plain value, not a reactive binding, so later prop or theme changes do not re-resolve it. The third `boost` parameter is accepted for compatibility but currently has no effect. The returned class is deduped/hashed by the singleton `sheet`. See also: css, styled.',
+    mistakes: `- Forgetting to pass \`props\` when the template has function interpolations — they then resolve against the theme alone and the prop-driven values are lost
+- Expecting \`useCSS(box, props)\` to update when \`props.danger\` flips — it resolves once at setup; for signal-driven styles use a \`styled()\` component (its resolver tracks props and theme)
+- Passing \`boost: true\` expecting a faster path — the parameter is ignored by the current sheet
 - Calling \`useCSS\` outside a component setup — it depends on the active sheet/theme context like any hook`,
   },
 
@@ -7232,15 +7236,17 @@ effect(() => applyChartPalette(theme().colors)) // re-runs on theme swap`,
   },
 
   'styler/ThemeProvider': {
-    signature: 'ThemeProvider(props: { theme: Theme | ((parent: Theme) => Theme); children?: VNodeChild }): VNodeChild',
+    signature: 'ThemeProvider(props: { theme: Theme; children?: VNodeChild }): VNode | null',
     example: `import { ThemeProvider } from "@pyreon/styler"
 
+// Standalone styler use, outside any <PyreonUI>:
 <ThemeProvider theme={{ colors: { primary: "#06f" } }}>
   <App />
 </ThemeProvider>`,
-    notes: 'Provides a theme to the reactive `ThemeContext`. Nested providers compose — a function `theme` receives the parent theme so subtrees can extend rather than replace. Because the context is reactive, swapping the `theme` prop re-resolves every `styled` / `useCSS` consumer below without remounting the tree. Marked `nativeCompat` so it works inside `@pyreon/{react,preact,vue,solid}-compat` apps. See also: useTheme, useThemeAccessor, ThemeContext.',
-    mistakes: `- Replacing the whole theme in a nested provider when you meant to extend — pass \`theme={(parent) => ({ ...parent, colors: { ...parent.colors, accent: "#0a0" } })}\`
-- Expecting most apps to mount this directly — \`<PyreonUI>\` wraps it; use \`ThemeProvider\` standalone only outside the \`@pyreon/ui-core\` provider`,
+    notes: 'Low-level provider for the reactive `ThemeContext` — marked `@internal` / `@deprecated` in source in favour of `<PyreonUI theme={…}>` from `@pyreon/ui-core`. It provides exactly the object it receives: no merge with a parent theme, no enrichment (breakpoints, CSS variables), and no ui-core context for rocketstyle components. The `theme` prop is read once at setup, so passing a different theme later does not update consumers — swap themes through `<PyreonUI>`, whose provided theme is reactive. `<PyreonUI>` provides `ThemeContext` itself rather than wrapping this component. Marked `nativeCompat` so it works inside `@pyreon/{react,preact,vue,solid}-compat` apps. See also: useTheme, useThemeAccessor, ThemeContext.',
+    mistakes: `- Passing a function to extend the parent theme (\`theme={(parent) => …}\`) — there is no function form; the object is provided as-is. Read the parent with \`useTheme()\` and spread it yourself, or nest \`<PyreonUI>\` (it inherits the parent theme)
+- Expecting a signal-driven \`theme={t()}\` to swap the theme — the prop is read once at setup; use \`<PyreonUI theme={…}>\` for reactive theme swaps
+- Using it in an app that renders \`<PyreonUI>\` — PyreonUI already provides \`ThemeContext\` (enriched); a nested \`ThemeProvider\` replaces it with the raw object for that subtree`,
   },
 
   'styler/ThemeContext': {
@@ -7276,7 +7282,7 @@ const s = new StyleSheet({ /* options */ })`,
     signature: 'sheet: StyleSheet',
     example: `import { sheet } from "@pyreon/styler"
 // SSR: render the app, then read the collected rules off \`sheet\` for the <head>`,
-    notes: 'The process-wide singleton `StyleSheet` that `styled()` / `css` / `keyframes` / `createGlobalStyle` inject into by default. Read it for SSR critical-CSS extraction or debugging the rule registry; do not mutate it directly. See also: StyleSheet, createSheet.',
+    notes: 'The process-wide singleton `StyleSheet` that `styled()` / `css` / `keyframes` / `createGlobalStyle` inject into by default. For SSR, render the app and then emit `sheet.getStyleTag(nonce?)` (a complete `<style>` tag) or `sheet.getStyles()` (the CSS text) into the document head; do not mutate it directly. See also: StyleSheet, createSheet.',
   },
 
   'styler/resolve': {
@@ -7318,7 +7324,8 @@ afterEach(() => clearNormCache())`,
 const forwarded = buildProps(rawProps, "sc-abc123", true)`,
     notes: 'Builds the final prop object forwarded to the rendered element: merges the generated class, drops `$`-transient props, and (for DOM targets) filters non-DOM attributes — `customFilter` overrides per-component. **Copies DESCRIPTORS, not values**, so compiler-emitted reactive (`_rp` getter) props survive forwarding instead of collapsing to a static snapshot. See also: filterProps, styled.',
     mistakes: `- Re-implementing prop forwarding with \`result[key] = source[key]\` — that fires getters and freezes reactive props to a one-time value. styler uses descriptor copy specifically to preserve the \`_rp\` getter contract; any custom forwarder must do the same
-- Passing \`isDOM: true\` for a component target — DOM-attr filtering will strip props the wrapped component legitimately needs`,
+- Passing \`isDOM: true\` for a component target — DOM-attr filtering will strip props the wrapped component legitimately needs
+- Assuming a \`customFilter\` still strips \`$\`-props — on a DOM target, a custom filter REPLACES the default allowlist entirely, \`$\`-transient handling included; return \`false\` for \`$\`-prefixed names yourself`,
   },
 
   'styler/filterProps': {
@@ -7326,7 +7333,7 @@ const forwarded = buildProps(rawProps, "sc-abc123", true)`,
     example: `import { filterProps } from "@pyreon/styler"
 
 const domSafe = filterProps(props)`,
-    notes: 'Returns a copy of `props` with `$`-transient and known non-DOM props removed — the DOM-safety filter `buildProps` applies for element targets. Exposed for consumers doing their own forwarding who still want the styler allowlist semantics. Descriptor-preserving, same reactive-prop rationale as `buildProps`. See also: buildProps.',
+    notes: 'Returns a copy of `props` keeping ONLY known HTML attributes plus `data-*` / `aria-*` (an allowlist, not a denylist); `$`-transient props and `as` are always dropped, and any unknown prop name is dropped too. It is the default DOM-safety filter `buildProps` applies for element targets, exposed for consumers doing their own forwarding. Own enumerable keys only; descriptor-preserving, same reactive-prop rationale as `buildProps`. See also: buildProps.',
   },
 
   'styler/isDynamic': {
@@ -7368,9 +7375,16 @@ init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the ho
     signature: 'Element(props: ElementProps): VNodeChild',
     example: `import { Element } from "@pyreon/elements"
 
-<Element tag="section" direction="rows" gap="md" alignX="center">
+// SIMPLE element (no before/after slots) — the content* trio lays it out.
+// A numeric gap is converted to rem against the theme rootSize.
+<Element tag="section" block contentDirection="rows" contentAlignX="center" gap={16}>
   <Header />
   <Body />
+</Element>
+
+// COMPOUND element — the bare trio lays out the slots
+<Element direction="inline" alignY="center" gap={8} beforeContent={<Icon />}>
+  Label
 </Element>`,
     notes: 'The responsive flexbox block primitive every layout-bearing component renders through. Layout props live here (NOT in a styler `.theme()`): `direction` (`inline` | `rows` | `reverseInline` | `reverseRows` — note `row` is INVALID), `alignX`, `alignY`, `gap`, `block`, plus `beforeContent` / `afterContent` slot wrappers and `equalBeforeAfter` (equalizes the slot widths on mount AND keeps them equal via ResizeObserver). On a SIMPLE element (no slots) the wrapper reads the `content*` trio — `contentDirection` (default `rows`) / `contentAlignX` / `contentAlignY` — while the bare trio governs the slot axis of compound elements; `gap` renders CSS gap on the simple path and the button/fieldset/legend flex-fix layer (slot spacing on compound elements stays margin-based). Alignment values are AXIS-FIXED (X always horizontal): `left|center|right|spaceBetween|spaceAround|block` / `top|center|bottom|block`. The 2026-Q2 simple-path fast path inlines the Wrapper for non-compound, non-needsFix tags: the rendered VNode then exposes the HTML tag as `props.as` and layout under `props.$element.{direction,alignX,alignY,block,equalCols,extraStyles}` rather than flat props (styled-components consumers see no change since `as` is the canonical tag selector). See also: Text, List, Portal.',
     mistakes: `- Using \`direction="row"\` — invalid; the values are \`inline\` / \`rows\` / \`reverseInline\` / \`reverseRows\`
@@ -7381,7 +7395,8 @@ init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the ho
 - Reading flat \`props.direction\` on a simple-path Element in a test or styled consumer — the fast path moves layout to \`props.$element.*\` and the tag to \`props.as\`; read both shapes via a helper
 - Passing children to a void \`tag\` (\`hr\` / \`img\` / \`br\` / \`input\`) — Element correctly drops them; do not rely on a children slot for void tags
 - Relying on \`equalBeforeAfter\` measuring async slot content where \`ResizeObserver\` is undefined (older runtimes / SSR) — it falls back to the one-shot mount measurement there
-- Reaching for a theme-level flex \`gap\` because the \`gap\` prop "does nothing" — historical: before 0.51 \`gap\` was wired only into the before/after slot margins; it now renders CSS gap on simple elements and the button flex-fix layer too`,
+- Reaching for a theme-level flex \`gap\` because the \`gap\` prop "does nothing" — historical: before 0.51 \`gap\` was wired only into the before/after slot margins; it now renders CSS gap on simple elements and the button flex-fix layer too
+- Passing a design-token NAME as \`gap\` (\`gap="md"\`) — \`gap\` is a length: a number (converted to rem) or a CSS length string (\`"1rem"\`); a bare token name is emitted verbatim as invalid CSS`,
   },
 
   'elements/Text': {
@@ -7399,11 +7414,15 @@ init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the ho
     signature: 'List(props: ListProps): VNodeChild',
     example: `import { List } from "@pyreon/elements"
 
-<List tag="ul" data={items()} component={(item) => <li>{item.name}</li>} />`,
-    notes: 'A flowing-children container (`ul` / `ol` / `dl` / custom) built on the Iterator data API. Render children directly OR drive it with `data` + a `component` renderer. Inherits Iterator’s four typed overloads (Simple / Object / Children / Loose) and additionally blocks Element-only `label` / `content` props at the type level. See also: Iterator, Element.',
+const items = [{ id: 1, name: "Ada" }, { id: 2, name: "Linus" }]
+
+// rootElement → a real <ul> container; without it only the <li>s render
+<List rootElement tag="ul" data={items} component={(p) => <li>{p.name}</li>} />`,
+    notes: `The Iterator data API with an OPTIONAL container. By default it renders only the items, as a fragment — no wrapping element, so \`tag\` and every other Element prop are ignored. Pass \`rootElement\` to render the items inside an \`Element\` that receives the remaining props (\`tag="ul"\`, layout, \`ref\`). Render children directly OR drive it with \`data\` + a \`component\` renderer; for object data each entry's FIELDS are spread as the component's props (so \`component={(p) => …}\` reads \`p.name\`, not \`p.item.name\`). Inherits Iterator’s four typed overloads (Simple / Object / Children / Loose) and additionally blocks Element-only \`label\` / \`content\` props at the type level. See also: Iterator, Element.`,
     mistakes: `- Mixing primitive and object entries in \`data\` (\`[1, {id:1}, null]\`) — primitive arrays and object arrays are mutually exclusive iteration modes; the typed overloads reject the mix for direct callers
 - Passing \`valueName\` with an object-array \`data\` — \`valueName\` is a Simple-mode (primitive) prop only
-- Passing \`children\` AND \`data\`/\`component\` — Children mode and Object mode are distinct overloads; pick one`,
+- Passing \`children\` AND \`data\`/\`component\` — Children mode and Object mode are distinct overloads; pick one
+- Setting \`tag="ul"\` (or layout props) without \`rootElement\` — List then renders a fragment and drops them silently; add \`rootElement\` to get the container`,
   },
 
   'elements/Overlay': {
@@ -7422,10 +7441,12 @@ init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the ho
     </ul>
   )}
 </Overlay>`,
-    notes: 'A positioned layer (dropdown / modal / tooltip / popover) with an optional backdrop, driven internally by `useOverlay`. It handles viewport flipping, ESC-to-close, click-outside, scroll tracking, and hover delay — do NOT reimplement any of that in a primitive; compose `Overlay` (or `useOverlay`) instead. Takes a `trigger` render prop (receives `{ ref, active, showContent, hideContent }` — attach `ref` to the anchor) and a content render prop as `children` (receives `{ ref, active, align, alignX, alignY, … }` — attach `ref` to the floating node); the content renders through `Portal` so the layer escapes overflow/stacking contexts. `align`/`alignX`/`alignY` reach the content as LIVE reactive props, so a viewport-edge flip re-styles the content in place without remounting it. See also: useOverlay, OverlayProvider, Portal.',
+    notes: 'A positioned layer (dropdown / modal / tooltip / popover) with an optional backdrop, driven internally by `useOverlay`. It handles viewport flipping, ESC-to-close, click-outside, scroll tracking, and hover delay — do NOT reimplement any of that in a primitive; compose `Overlay` (or `useOverlay`) instead. Takes a `trigger` render prop and a content render prop as `children`; the content renders through `Portal` (into `DOMLocation`, default `document.body`) so the layer escapes overflow/stacking contexts. The trigger receives `ref` (attach to the anchor), `active`, and the ARIA wiring `aria-expanded` / `aria-haspopup` / `aria-describedby` (tooltips); the content receives `ref` (attach to the floating node), `active`, `align` / `alignX` / `alignY`, plus `role` (`dialog` / `tooltip`), `id` and `aria-modal`. Forward the ARIA props onto the DOM element — the render-prop TYPES only list `ref` / `active` / handlers / aligns, but the values are passed. `showContent` / `hideContent` are passed to both ONLY when `openOn` or `closeOn` is `"manual"` or `closeOn` is `"clickOutsideContent"`. `triggerRefName` / `contentRefName` rename the `ref` key (default `"ref"`). `active` and the aligns arrive as LIVE reactive props, so a viewport-edge flip re-styles the content in place without remounting it. See also: useOverlay, OverlayProvider, Portal.',
     mistakes: `- Hand-rolling positioning / flip / click-outside / ESC logic in a tooltip or dropdown primitive — \`useOverlay\` already owns all of it; reimplementing drifts from the shared behavior
 - Forgetting to attach the \`ref\` the trigger / content render props receive — without it the hook cannot measure, position, wire click-outside, or restore focus (the layer renders at the document origin)
-- Reading the rendered overlay as \`document.body.firstChild\` — it renders through \`Portal\` into a per-instance wrapper; traverse the wrapper, not body’s direct child`,
+- Reading the rendered overlay as \`document.body.firstChild\` — it renders through \`Portal\` into a per-instance wrapper; traverse the wrapper, not body’s direct child
+- Calling \`t.showContent()\` from the trigger with the default \`openOn="click"\` — the handlers are only passed in manual / \`clickOutsideContent\` configurations; the default click/hover wiring is automatic
+- Dropping the ARIA props the render props carry — a trigger that renders only \`ref\` loses \`aria-expanded\` / \`aria-haspopup\`, so assistive tech never hears the popup open`,
   },
 
   'elements/useOverlay': {
@@ -7435,7 +7456,7 @@ init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the ho
 const o = useOverlay({ openOn: "hover", type: "tooltip", hoverDelay: 150 })
 // attach o.triggerRef to the anchor and o.contentRef to the floating layer;
 // read o.active() for open state; call o.showContent() / o.hideContent()`,
-    notes: 'The positioning + interaction engine `Overlay` is built on, exposed for headless consumers. Returns `triggerRef` / `contentRef` (attach to the anchor + floating node), the `active` open-state signal, the resolved `align` accessor + `alignX` / `alignY` signals, `showContent` / `hideContent` (programmatic control), and `setContentPosition` (reposition when the content SIZE changes while open — async option lists). Options: `openOn` / `closeOn` (`click` | `hover` | …), `type` (`dropdown` | `modal` | …), `position` (`fixed` | …), `align` + `alignX` / `alignY` + `offsetX` / `offsetY`, `closeOnEsc`, `hoverDelay`, `throttleDelay`, `parentContainer`, `disabled`, `onOpen` / `onClose`. Focus management is built in: focus returns to the opener on close (all types), and `type: "modal"` additionally moves focus into the content on open and traps Tab / Shift+Tab within it (the WAI-ARIA dialog pattern — no extra wiring). Listeners auto-attach on mount (idempotent) — a hover overlay keeps open while the pointer is over its content (the content listeners re-bind as it mounts). SSR-safe: the internal positioning + focus helpers early-return under no-`window`. See also: Overlay, OverlayProvider.',
+    notes: 'The positioning + interaction engine `Overlay` is built on, exposed for headless consumers. Returns `triggerRef` / `contentRef` (attach to the anchor + floating node), the `active` open-state signal, the resolved `align` accessor + `alignX` / `alignY` signals, `showContent` / `hideContent` (programmatic control), and `setContentPosition` (reposition when the content SIZE changes while open — async option lists). Options: `isOpen` (INITIAL open state only — seeds `active`, later changes are ignored), `openOn` (`click` | `hover` | `manual`) / `closeOn` (`click` | `clickOnTrigger` | `clickOutsideContent` | `hover` | `manual`), `type` (`dropdown` | `tooltip` | `popover` | `modal` | `custom`), `position` (`fixed` | …), `align` + `alignX` / `alignY` + `offsetX` / `offsetY`, `closeOnEsc`, `hoverDelay`, `throttleDelay`, `parentContainer`, `disabled`, `onOpen` / `onClose`. Focus management is built in: focus returns to the opener on close (all types), and `type: "modal"` additionally moves focus into the content on open and traps Tab / Shift+Tab within it (the WAI-ARIA dialog pattern — no extra wiring). Listeners auto-attach on mount (idempotent) — a hover overlay keeps open while the pointer is over its content (the content listeners re-bind as it mounts). SSR-safe: the internal positioning + focus helpers early-return under no-`window`. See also: Overlay, OverlayProvider.',
     mistakes: `- Reading \`o.isOpen\` / spreading \`o.triggerProps\` / \`o.overlayProps\` — those do not exist; the hook returns \`active\` (a signal), \`triggerRef\` / \`contentRef\` (ref callbacks), and \`showContent\` / \`hideContent\`
 - Passing \`align\` as a function accessor — it is a value option, not a signal accessor; let the compiler wrap reactive values
 - Expecting positioning to run during SSR — the helpers are guarded and no-op without \`window\`; positioning happens post-mount on the client
@@ -7466,13 +7487,21 @@ const o = useOverlay({ openOn: "hover", type: "tooltip", hoverDelay: 150 })
 
   'elements/Iterator': {
     signature: 'Iterator<T>(props: IteratorProps<T>): VNodeChild',
-    example: `import Iterator from "@pyreon/elements/helpers/Iterator"
+    example: `import { Iterator } from "@pyreon/elements"
 
-<Iterator data={users()} component={(u) => <Row user={u} />} />`,
-    notes: 'The data-iteration helper backing `List` (default export of `helpers/Iterator`). FOUR typed overloads keep iteration modes honest: `SimpleProps<T>` (primitive arrays — `valueName` allowed), `ObjectProps<T>` (object arrays — `valueName` and `children` FORBIDDEN), `ChildrenProps` (no data/component, only children), and a `LooseProps` fallback that exists so rocketstyle/attrs forwarding patterns (`<Iterator {...wrapperProps} />`) bind without a per-call-site overload error. The discriminator picks the overload via `unknown extends T ? Loose : T extends SimpleValue ? Simple : T extends ObjectValue ? Object : Children`. See also: List.',
+const users = [{ id: 1, name: "Ada" }, { id: 2, name: "Linus" }]
+
+// Object data — each entry's FIELDS are spread as the component's props
+<Iterator data={users} component={(u) => <span>{u.name}</span>} />
+
+// Primitive data — the value arrives as \`children\` (or under \`valueName\`)
+<Iterator data={["a", "b"]} valueName="label" component={(p) => <b>{p.label}</b>} />`,
+    notes: `The data-iteration helper backing \`List\`, exported as \`Iterator\` from the package root. It renders items only — no container element. For object data each entry's fields are spread as the item component's props (an entry's own \`component\` field overrides the renderer for that item); for primitive data the value is passed as \`children\`, or under the \`valueName\` key. FOUR typed overloads keep iteration modes honest: \`SimpleProps<T>\` (primitive arrays — \`valueName\` allowed), \`ObjectProps<T>\` (object arrays — \`valueName\` and \`children\` FORBIDDEN), \`ChildrenProps\` (no data/component, only children), and a \`LooseProps\` fallback that exists so rocketstyle/attrs forwarding patterns (\`<Iterator {...wrapperProps} />\`) bind without a per-call-site overload error. The discriminator picks the overload via \`unknown extends T ? Loose : T extends SimpleValue ? Simple : T extends ObjectValue ? Object : Children\`. See also: List.`,
     mistakes: `- Mixed-shape \`data\` (\`[1, {id:1}, null]\`) — primitive and object iteration are mutually exclusive; the narrow overloads reject it (the Loose fallback only catches forwarding-pattern shapes)
 - \`valueName\` with object-array \`data\` — Simple-mode only; ObjectProps forbids it
-- \`children\` together with \`data\`/\`component\` — Children and Object are distinct overloads; the runtime picks the mode by which props are populated, but the types steer you to one`,
+- \`children\` together with \`data\`/\`component\` — Children and Object are distinct overloads; the runtime picks the mode by which props are populated, but the types steer you to one
+- Importing from a deep path (\`@pyreon/elements/helpers/Iterator\`) — the package exports only its root; use \`import { Iterator } from "@pyreon/elements"\`
+- Writing the item component as \`(item) => <Row user={item} />\` expecting the original object — it receives the entry's fields spread as props (plus \`key\`), so read \`props.name\` directly`,
   },
 
   'elements/Util': {
@@ -7489,9 +7518,16 @@ const o = useOverlay({ openOn: "hover", type: "tooltip", hoverDelay: 150 })
   },
 
   'elements/Provider': {
-    signature: 'Provider(props: { children?: VNodeChild }): VNodeChild',
-    example: 'import { Provider } from "@pyreon/elements"',
-    notes: 'Re-exported from `@pyreon/unistyle` for convenience (responsive/breakpoint context). Most apps mount the unified `<PyreonUI>` from `@pyreon/ui-core` instead, which wires this internally — reach for the bare `Provider` only outside the `ui-core` provider tree. See also: Element.',
+    signature: 'Provider(props: { theme: PyreonTheme; children?: VNode | null }): VNode | null',
+    example: `import { Provider } from "@pyreon/elements"
+
+// Only outside <PyreonUI> — e.g. an isolated test or embed:
+<Provider theme={{ rootSize: 16, breakpoints: { xs: 0, md: 768 } }}>
+  <App />
+</Provider>`,
+    notes: `Re-export of \`@pyreon/unistyle\`'s low-level theme provider (marked \`@internal\` / \`@deprecated\` in source). It ENRICHES \`theme\` (pre-sorted breakpoints + media-query helpers) and provides it to both the styler \`ThemeContext\` and the ui-core context. \`theme\` is required. \`<PyreonUI theme={…}>\` from \`@pyreon/ui-core\` supersedes it — PyreonUI provides the same contexts itself (plus reactive mode), so an app that renders PyreonUI never needs this. See also: Element, @pyreon/ui-core.`,
+    mistakes: `- Nesting it inside \`<PyreonUI>\` expecting it to extend the outer theme — it provides only its own \`theme\`, fresh; nest \`<PyreonUI>\` instead (it inherits)
+- Being surprised by the dev warning \`[Pyreon] CoreProvider is internal\` — this Provider delegates to ui-core's internal provider, which logs it in development; use \`<PyreonUI>\``,
   },
   // <gen-docs:api-reference:end @pyreon/elements>
 
@@ -9756,9 +9792,10 @@ Button.displayName    // 'Button' — original untouched
 
 // Base swap — the .attrs() chain still applies to the new base
 const Anchor = Button.config({ component: 'a', name: 'Anchor' })`,
-    notes: `Reconfigure the builder: rename (\`name\` → new \`displayName\`), swap the underlying base component (\`component\`), or toggle dev debugging (\`DEBUG\`). Returns a new component; the original keeps its own name/base. Unlike \`@pyreon/rocketstyle\`, swapping \`component\` at this layer PRESERVES the accumulated \`.attrs()\` / \`priorityAttrs\` / \`filter\` / \`.compose()\` / \`.statics()\` chains and re-applies them to the new base — reconciling the new base's prop shape is the caller's responsibility. See also: attrs, .attrs(), @pyreon/rocketstyle.`,
+    notes: `Reconfigure the builder: rename (\`name\` → new \`displayName\`) or swap the underlying base component (\`component\`). \`DEBUG\` is accepted by the type for parity with \`@pyreon/rocketstyle\` but has NO runtime effect at this layer. Returns a new component; the original keeps its own name/base. Unlike \`@pyreon/rocketstyle\`, swapping \`component\` at this layer PRESERVES the accumulated \`.attrs()\` / \`priorityAttrs\` / \`filter\` / \`.compose()\` / \`.statics()\` chains and re-applies them to the new base — reconciling the new base's prop shape is the caller's responsibility. See also: attrs, .attrs(), @pyreon/rocketstyle.`,
     mistakes: `- Expecting the rocketstyle chain-reset behavior — \`@pyreon/attrs\`' \`.config({ component })\` KEEPS the accumulated chains across a base swap (test-locked); only \`@pyreon/rocketstyle\`'s \`.config()\` resets prop-shape-coupled chains. If the new base has a different prop shape, stale defaults can leak invalid props — audit them yourself
-- Passing dimension or theme options — this \`.config()\` accepts only \`name\` / \`component\` / \`DEBUG\`; dimensions/provider/consumer/inversed are \`@pyreon/rocketstyle\` \`.config()\` surface
+- Passing dimension or theme options — this \`.config()\` acts only on \`name\` / \`component\`; dimensions/provider/consumer/inversed are \`@pyreon/rocketstyle\` \`.config()\` surface
+- Expecting \`.config({ DEBUG: true })\` to log — the key typechecks but \`@pyreon/attrs\` never reads it; render logging exists only on \`@pyreon/rocketstyle\` components
 - Reading \`displayName\` off the original after renaming — \`.config()\` is immutable; the rename lands on the RETURNED component`,
   },
 
@@ -9772,10 +9809,10 @@ const Enhanced = attrs({ name: 'Button', component: Element })
 
 // Remove one by its name
 const NoTracking = Enhanced.compose({ withTracking: null })`,
-    notes: `Attach named higher-order components. The argument is a RECORD of \`{ name: hoc }\` — the name is the removal handle: a later \`.compose({ name: null })\` (or \`undefined\` / \`false\`) removes that HOC from the chain; only function values are kept. Application order: the record's values are reversed so the LAST-defined HOC wraps innermost, and the built-in attrs HOC (which resolves the \`.attrs()\` chain) is always the outermost wrapper — default props are computed before any user HOC runs. See also: attrs, .config().`,
+    notes: 'Attach named higher-order components. The argument is a RECORD of `{ name: hoc }` — the name is the removal handle: a later `.compose({ name: null })` (or `undefined` / `false`) removes that HOC from the chain; only function values are kept. Application order: the built-in attrs HOC (which resolves the `.attrs()` chain) is always the outermost wrapper, so default props are computed before any user HOC runs; the user HOCs wrap in REVERSE record order — the LAST-defined HOC is the outer one and runs first, the FIRST-defined sits closest to the component. Replacing an existing name keeps its original position. See also: attrs, .config().',
     mistakes: `- Passing an array of HOCs — \`.compose()\` takes a named record; the names are what make falsy-removal possible
 - A composed HOC that value-copies props (\`const next = { ...props }\`) — fires reactive getter props at setup and collapses them to static values; copy descriptors (\`mergeProps\` / \`splitProps\` from \`@pyreon/core\`) or pass by reference
-- Assuming record order equals wrap order outside-in — values are REVERSED before composition, so the last-defined HOC runs closest to the component; the attrs HOC always stays outermost regardless`,
+- Assuming record order equals wrap order outside-in — it is the reverse: with \`{ first, second }\`, \`second\` receives the props first and \`first\` wraps the component directly; the attrs HOC always stays outermost regardless`,
   },
 
   'attrs/.statics()': {
@@ -9835,11 +9872,11 @@ const Button = rs({ name: 'Button', component: 'button' })
 const rsCustom = rocketstyle({
   dimensions: { tones: 'tone', decorations: { propName: 'decoration', multi: true } },
 })`,
-    notes: 'Factory initializer (default + named export). `rocketstyle(config?)` returns a component factory; call THAT with `{ name, component }` to get the chainable builder. `config.dimensions` overrides the dimension map (default: `states: "state"`, `sizes: "size"`, `variants: "variant"`, `multiple: { propName: "multiple", multi: true }`, `modifiers: { propName: "modifier", multi: true, transform: true }`) — each key becomes a chain method, each propName a consumer prop. `config.useBooleans` (default `false`) switches dimension props from strings (`state="primary"`) to boolean shorthands (`<Button primary />`). Dev mode throws on missing `name`/`component`/`dimensions` and on dimension names colliding with reserved keys. See also: Provider, isRocketComponent, @pyreon/attrs, @pyreon/styler.',
+    notes: 'Factory initializer (default + named export). `rocketstyle(config?)` returns a component factory; call THAT with `{ name, component }` to get the chainable builder. `config.dimensions` overrides the dimension map (default: `states: "state"`, `sizes: "size"`, `variants: "variant"`, `multiple: { propName: "multiple", multi: true }`, `modifiers: { propName: "modifier", multi: true, transform: true }`) — each key becomes a chain method, each propName a consumer prop. `config.useBooleans` (default `false`) switches dimension props from strings (`state="primary"`) to boolean shorthands (`<Button primary />`). In dev builds, CALLING the returned factory (`rs({ name, component })`) throws on a missing `name`/`component`/`dimensions` or on a dimension name that collides with a reserved key; production builds skip the validation. See also: Provider, isRocketComponent, @pyreon/attrs, @pyreon/styler.',
     mistakes: `- Calling the factory with a tag string — \`rs('button')\` is not a valid form. The factory takes \`{ name, component }\` and BOTH are required (dev mode throws on a missing one)
 - Passing boolean shorthand props under the default \`useBooleans: false\` — \`<Button primary />\` is an UNKNOWN prop that silently does nothing; write \`<Button state="primary" />\` or opt into \`rocketstyle({ useBooleans: true })\`
 - Passing a function accessor to a dimension prop — \`state={() => expr}\` is the wrong shape; dimension props take plain string values (\`state={expr}\`) and the compiler handles reactivity via \`_rp()\` wrapping
-- Using a reserved key as a custom dimension name — \`light\`, \`dark\`, \`provider\`, \`consumer\`, \`DEBUG\`, \`name\`, \`component\`, \`inversed\`, \`passProps\`, \`styled\`, \`theme\`, \`styles\`, \`compose\`, \`attrs\` all throw at factory init in dev mode
+- Using a reserved key as a custom dimension name — \`light\`, \`dark\`, \`provider\`, \`consumer\`, \`DEBUG\`, \`name\`, \`component\`, \`inversed\`, \`passProps\`, \`styled\`, \`theme\`, \`styles\`, \`compose\`, \`attrs\` all throw when the factory is called (\`rs({ name, component })\`) in dev mode
 - Calling a dimension method with the singular prop name — \`.state({...})\` is not a method; DEFINITION methods are plural (\`.states()\`), the consumer PROP is singular (\`state="primary"\`)
 - Mounting each rocketstyle-heavy view under its own theme provider — the \`_rsMemo\` dimension-prop memo is keyed by theme identity, so real apps need ONE shared \`<PyreonUI>\` provider for the memo to span component instances
 - Expecting the chain to mutate — every chain method returns a NEW component; \`Button.states({...})\` without assigning the return value does nothing to \`Button\``,
@@ -9879,9 +9916,10 @@ const ButtonIcon = rs({ name: 'ButtonIcon', component: Element })
 
 // Swap the base — resets attrs/compose chains (see mistakes)
 const Anchor = Button.config({ component: 'a', name: 'Anchor' }).attrs({ href: '#' })`,
-    notes: `Reconfigure the builder: rename (\`name\` → \`displayName\`), swap the base (\`component\`), wire parent-child pseudo-state context (\`provider: true\` exposes this component's hover/focus/pressed state to descendants; \`consumer\` reads a parent provider's state into this component's props), flip dark/light for the subtree (\`inversed: true\`), re-forward normally-consumed props to the base (\`passProps\`), and toggle dev-only debug logging (\`DEBUG\`). Accepted keys are exactly the CONFIG_KEYS set — anything else is ignored. See also: rocketstyle, Provider.`,
+    notes: `Reconfigure the builder: rename (\`name\` → \`displayName\`), swap the base (\`component\`), wire parent-child pseudo-state context (\`provider: true\` exposes this component's hover/focus/pressed state to descendants; \`consumer\` reads a parent provider's state into this component's props), invert dark/light for THIS component's own theme resolution (\`inversed: true\` — descendants still read the surrounding mode), re-forward normally-consumed props to the base (\`passProps\`), toggle dev-only \`console.debug\` render logging (\`DEBUG\`), and control the styled wrapper (\`styled\` — the factory sets it to \`true\`, which wraps a non-rocketstyle base in \`styled()\` so \`.theme()\` / \`.styles()\` CSS is emitted; \`styled: false\` renders the base unwrapped, with no generated CSS). Accepted keys are exactly the CONFIG_KEYS set — anything else is ignored. See also: rocketstyle, Provider.`,
     mistakes: `- \`.config({ component: NewBase })\` with a DIFFERENT component RESETS the accumulated \`attrs\` / \`priorityAttrs\` / \`filterAttrs\` / \`compose\` chains — they were tailored to the previous component's prop shape and would leak invalid props to the DOM (e.g. \`disabled\` on an \`<a>\`). \`theme\` / \`styles\` / dimension chains ARE preserved. Re-chain shared attrs explicitly after the swap
-- Expecting \`.config({ inversed: true })\` to set a mode — it INVERTS whatever mode the surrounding provider resolves (light↔dark) for this subtree; it does not force dark
+- Expecting \`.config({ inversed: true })\` to set a mode — it INVERTS whatever mode the surrounding provider resolves (light↔dark); it does not force dark
+- Expecting \`.config({ inversed: true })\` to flip the component's CHILDREN — it only changes how THIS component resolves \`mode()\`; nested rocketstyle components still read the surrounding mode. For a dark island in a light page, wrap the subtree in \`<PyreonUI inversed>\`
 - \`DEBUG: true\` logging is dev-only (\`process.env.NODE_ENV !== "production"\`) — it is tree-shaken from production builds, so don't rely on it for runtime diagnostics
 - Using \`provider\`/\`consumer\` for theme data — they propagate live PSEUDO-STATE (hover/focus/pressed) between parent and child rocketstyle components; theme/mode flow through the theme provider (\`PyreonUI\` or rocketstyle \`Provider\`), not this channel`,
   },
@@ -10004,7 +10042,7 @@ const Button = rs({ name: 'Button', component: 'button' })
 
 // Remove a previously composed HOC by name
 const Plain = Button.compose({ withTooltip: null })`,
-    notes: 'Wrap the component in named higher-order components. The argument is a RECORD of `{ name: hoc }` (not an array) so later chain calls can remove a previously composed HOC by setting its name to a falsy value. The built-in rocketstyle attrs HOC is always the outermost wrapper, so default props are resolved before any user HOC runs. See also: .config(), @pyreon/attrs.',
+    notes: 'Wrap the component in named higher-order components. The argument is a RECORD of `{ name: hoc }` (not an array) so later chain calls can remove a previously composed HOC by setting its name to a falsy value. The built-in rocketstyle attrs HOC is always the outermost wrapper, so default props are resolved before any user HOC runs. User HOCs wrap in REVERSE record order: the LAST-defined HOC is the outer one (it runs first), the FIRST-defined sits closest to the component. Replacing an existing name keeps its original position. See also: .config(), @pyreon/attrs.',
     mistakes: `- Passing an array of HOCs — \`.compose()\` takes a named record (\`{ withTooltip }\`), which is what makes falsy-removal (\`{ withTooltip: null }\`) possible
 - Composing a HOC that value-copies props (\`{ ...props }\` into a new object at setup) — that fires reactive getter props once and collapses them to static values; forward props by reference or merge with \`mergeProps\` from \`@pyreon/core\`
 - Forgetting that \`.config({ component: NewBase })\` RESETS the compose chain along with the attrs chains — re-chain HOCs after a base swap`,
@@ -10023,19 +10061,25 @@ Button.meta.category   // 'action'
   },
 
   'rocketstyle/Provider': {
-    signature: '(props: TProvider) => VNodeChild',
+    signature: `(props: { children: VNodeChild; theme?: Theme; mode?: 'light' | 'dark'; inversed?: boolean; provider?: (props) => VNodeChild }) => VNodeChild`,
     example: `import { Provider } from '@pyreon/rocketstyle'
 
+// A fixed theme + mode for rocketstyle components below
 <Provider theme={myTheme} mode="dark">
   <Button state="primary">Dark mode button</Button>
 </Provider>
 
-// Invert a subtree (dark island in a light page)
-<Provider inversed>
+// Preferred — PyreonUI covers the same cases, reactively:
+import { PyreonUI } from '@pyreon/ui-core'
+<PyreonUI inversed>
   <Card>Resolves mode() as the opposite mode</Card>
-</Provider>`,
-    notes: `Tree-level theme + mode provider. Props are \`{ children, theme?, mode?, inversed?, provider? }\` — \`mode\` is \`"light" | "dark"\`, \`inversed: true\` flips the resolved mode for the subtree, and values merge over any parent rocketstyle context. Most apps use the higher-level \`<PyreonUI>\` from \`@pyreon/ui-core\` (theme + mode + config in one) and reach for rocketstyle's \`Provider\` only for fine-grained subtree overrides. The raw context object backing it is exported as \`context\`. See also: rocketstyle, .config(), @pyreon/ui-core.`,
+</PyreonUI>`,
+    notes: `Low-level theme + mode provider for rocketstyle components. It reads the surrounding ui-core \`context\` ONCE at setup, shallow-merges its own props over it (\`theme\` and \`mode\` fall back to the parent's), resolves the mode (\`inversed: true\` flips it; with no mode anywhere it is \`"light"\`), and hands \`{ theme, mode, isDark, isLight, children }\` to the \`provider\` component — by default \`@pyreon/ui-core\`'s internal \`Provider\`, which writes the shared ui-core \`context\`. It writes ONLY that context: \`styled()\` components below it keep reading the outer styler \`ThemeContext\`. Prefer \`<PyreonUI>\` from \`@pyreon/ui-core\` for every case, including subtree overrides — it provides all three layers (styler, core, mode), accepts a reactive \`mode\`, and supports \`inversed\` for a nested section. See also: rocketstyle, context, @pyreon/ui-core.`,
     mistakes: `- Passing a \`value\` prop (React-context muscle memory) — there is no \`value\`; \`Provider\` takes \`theme\` / \`mode\` / \`inversed\` directly
+- Expecting a nested \`<Provider inversed>\` to follow the parent when the parent's mode changes — the parent context is read ONCE at setup, so the inverted mode is frozen at mount; \`<PyreonUI inversed>\` stays reactive
+- Setting only \`mode\` with no theme in scope — the default delegate provides nothing when the resolved theme is empty, so \`<Provider mode="dark">\` outside any themed ancestor leaves descendants on \`"light"\`; pass a \`theme\` or use \`<PyreonUI>\`
+- Expecting \`styled()\` / \`useTheme()\` from \`@pyreon/styler\` to see the theme passed here — this Provider writes only the ui-core context that rocketstyle reads; \`<PyreonUI>\` writes both
+- Being surprised by the dev warning \`[Pyreon] CoreProvider is internal\` — mounting this Provider delegates to ui-core's internal provider, which logs it in development; switch to \`<PyreonUI>\`
 - Mounting a fresh \`Provider\`/\`PyreonUI\` per view — the \`_rsMemo\` cache keys on theme identity, so per-view providers defeat cross-instance memoization; share ONE app-level provider
 - Confusing this theme/mode provider with \`.config({ provider: true })\` — the latter is the component-to-component PSEUDO-STATE channel, unrelated to theming`,
   },
@@ -10089,7 +10133,7 @@ resolveModeVar('#ff0000', 'dark')              // '#ff0000' — passthrough`,
   // <gen-docs:api-reference:start @pyreon/coolgrid>
 
   'coolgrid/Container': {
-    signature: '(props: { columns?: ValueType; gap?: ValueType; gutter?: ValueType; padding?: ValueType; contentAlignX?: ContentAlignX; width?: ContainerWidth; component?: ComponentFn; css?: ExtraStyles }) => VNodeChild',
+    signature: '(props: { columns?: ValueType; size?: ValueType; gap?: ValueType; gutter?: ValueType; padding?: ValueType; contentAlignX?: ContentAlignX; colCss?: ExtraStyles; colComponent?: ComponentFn; rowCss?: ExtraStyles; rowComponent?: ComponentFn; width?: ContainerWidth; component?: ComponentFn; css?: ExtraStyles }) => VNodeChild',
     example: `import { Container, Row, Col } from '@pyreon/coolgrid'
 
 <Container columns={12} gap={16} gutter={24} padding={16} width={{ xs: '100%', lg: 1140 }}>
@@ -10165,7 +10209,8 @@ import { PyreonUI } from '@pyreon/ui-core'
     notes: `Re-export of \`@pyreon/unistyle\`'s low-level theme provider — enriches the theme (pre-computed sorted breakpoints + media-query helpers) and provides it to BOTH the ui-core context and the styler \`ThemeContext\`. Marked \`@deprecated\` in source: prefer \`<PyreonUI theme={theme} mode="light">\` from \`@pyreon/ui-core\`, which handles all three context layers (styler, core, mode) in one component. The remaining legitimate use is scoping DIFFERENT breakpoints / grid defaults to a subtree. See also: theme, @pyreon/ui-core.`,
     mistakes: `- Wrapping a fresh \`<Provider>\` inside an app that already renders \`<PyreonUI>\` at the root — PyreonUI sets up the unistyle context already; only add a nested Provider to scope DIFFERENT breakpoints to a subtree
 - Expecting a nested \`<Provider>\` to inherit the outer Provider's overrides — context is per-Provider; the inner one starts fresh from its own \`theme\`
-- Reaching for \`Provider\` in new code — it is deprecated in favor of \`PyreonUI\` from \`@pyreon/ui-core\``,
+- Reaching for \`Provider\` in new code — it is deprecated in favor of \`PyreonUI\` from \`@pyreon/ui-core\`
+- Being surprised by the dev warning \`[Pyreon] CoreProvider is internal\` — this Provider delegates to ui-core's internal provider, which logs it in development; \`<PyreonUI>\` does not`,
   },
 
   'coolgrid/theme': {
@@ -10203,8 +10248,9 @@ const AnimatedList = kinetic('ul').preset(fade).group()          // keyed list
 
 // Group mode — keyed children via accessor, no show prop:
 <AnimatedList>{() => todos().map((t) => <li key={t.id}>{t.text}</li>)}</AnimatedList>`,
-    notes: `Create a renderable, chainable animated component in transition mode. Every chain method returns a NEW component (immutable) — define once at module scope and reuse. Style methods (\`.enter\`/\`.enterTo\`/\`.enterTransition\` + \`leave\` siblings) set inline-style phases; \`.enterClass\`/\`.leaveClass({ active, from, to })\` set class phases (Tailwind-friendly); \`.preset(p)\` spreads a \`Preset\`'s fields; \`.on(callbacks)\` attaches lifecycle callbacks; \`.config(opts)\` sets mode-scoped options. Mode switches: \`.collapse(opts?)\` (height 0 ↔ auto, measures \`scrollHeight\`), \`.stagger({ interval?, reverseLeave? })\` (sequenced children), \`.group()\` (keyed-list enter/exit, no \`show\` prop). Rendered props: \`show: () => boolean\` (reactive accessor; not in group mode), \`appear\` (default false), \`timeout\` (default 5000ms), mode extras (\`unmount\` transition-only default true, \`transition\` collapse-only default "height 300ms ease", \`interval\` stagger-only default 50, \`reverseLeave\` stagger-only), the four callbacks, plus any HTML attr — forwarded to the rendered tag with reactivity preserved. See also: KineticComponent, presets, useTransitionState, @pyreon/kinetic-presets.`,
-    mistakes: `- Passing \`show={visible()}\` (a static boolean) — \`show\` is a reactive accessor \`() => boolean\`; kinetic subscribes to it and runs enter/leave on flips. Write \`show={() => visible()}\`
+    notes: `Create a renderable, chainable animated component in transition mode. Every chain method returns a NEW component (immutable) — define once at module scope and reuse. Style methods (\`.enter\`/\`.enterTo\`/\`.enterTransition\` + \`leave\` siblings) set inline-style phases; \`.enterClass\`/\`.leaveClass({ active, from, to })\` set class phases (Tailwind-friendly); \`.preset(p)\` spreads a \`Preset\`'s fields; \`.on(callbacks)\` attaches lifecycle callbacks; \`.config(opts)\` sets mode-scoped options. Mode switches: \`.collapse(opts?)\` (height 0 ↔ auto, measures \`scrollHeight\`), \`.stagger({ interval?, reverseLeave? })\` (sequenced children), \`.group()\` (keyed-list enter/exit, no \`show\` prop). Rendered props: \`show\` (not in group mode) — an accessor \`() => boolean\`, a boolean, or ABSENT (absent = always shown; use \`appear\` to animate the entrance). A compiled \`show={visible()}\` stays reactive because the compiler emits it as a live getter, and kinetic reads it per call rather than once at setup; \`appear\` (default false), \`timeout\` (default 5000ms), mode extras (\`unmount\` transition-only default true, \`transition\` collapse-only default "height 300ms ease", \`interval\` stagger-only default 50, \`reverseLeave\` stagger-only), the four callbacks, plus any HTML attr — forwarded to the rendered tag with reactivity preserved. See also: KineticComponent, presets, useTransitionState, @pyreon/kinetic-presets.`,
+    mistakes: `- Expecting \`show={true}\` (a literal) or a value computed once at module scope to animate later — only a signal-derived value re-runs enter/leave; \`show={visible()}\`, \`show={visible}\` and \`show={() => visible()}\` are all live, a literal is not
+- Omitting \`show\` on a preset used as a plain entrance and expecting it to animate — absent \`show\` means always shown; add \`appear\` to run the enter animation on mount
 - Building \`kinetic('div').preset(...)\` inside a render body — chaining is immutable and re-creates the component on every call; define animated components once at module scope
 - Passing a \`show\` prop in group mode — group has NO \`show\`; visibility is driven by which keys are present in the children
 - Group-mode children without a unique \`key\` — the enter/exit diff is keyed; children without a key are skipped (no animation)
@@ -10229,7 +10275,7 @@ const SlideBox = kinetic('div').preset(presets.slideUp)   // map access for dyna
   },
 
   'kinetic/useTransitionState': {
-    signature: '(options: { show: () => boolean; appear?: boolean }) => TransitionStateResult',
+    signature: '(options: { show?: boolean | (() => boolean); appear?: boolean }) => TransitionStateResult',
     example: `const { stage, ref, shouldMount, complete } = useTransitionState({
   show: () => visible(),
   appear: true,
@@ -10257,6 +10303,24 @@ useAnimationEnd({ ref: elementRef, active: () => stage() === 'entering' || stage
 - Setting \`timeout\` shorter than the actual transition duration — the fallback timer calls \`onEnd\` early, before the animation finishes
 - Expecting \`onEnd\` for a child element's transition — bubbled events where \`e.target !== el\` are deliberately ignored
 - Passing a static boolean for \`active\` — it is a reactive accessor; the listeners attach/detach as it flips`,
+  },
+
+  'kinetic/TransitionStage': {
+    signature: `type TransitionStage = 'hidden' | 'entering' | 'entered' | 'leaving'`,
+    example: `import type { TransitionStage } from '@pyreon/kinetic'
+
+const isAnimating = (s: TransitionStage) => s === 'entering' || s === 'leaving'`,
+    notes: 'The four lifecycle stages `useTransitionState` moves through. `show` flipping true moves `hidden → entering`; `complete()` then settles it to `entered`. `show` flipping false moves to `leaving`; `complete()` settles it to `hidden`. Only `hidden` means "do not render". See also: useTransitionState, TransitionStateResult.',
+  },
+
+  'kinetic/TransitionStateResult': {
+    signature: 'type TransitionStateResult = { stage: Signal<TransitionStage>; ref: Ref<HTMLElement> | ((node: HTMLElement | null) => void); shouldMount: () => boolean; complete: () => void }',
+    example: `import type { TransitionStateResult } from '@pyreon/kinetic'
+
+function describe(t: TransitionStateResult): string {
+  return t.shouldMount() ? \`mounted (\${t.stage()})\` : 'hidden'
+}`,
+    notes: 'What `useTransitionState` returns: the `stage` signal, a `ref` to attach to the transitioning element (it starts the `appear` animation once wired), a `shouldMount()` accessor (false only while `hidden`), and `complete()` to advance past `entering` / `leaving`. See also: useTransitionState, TransitionStage.',
   },
 
   'kinetic/KineticComponent': {

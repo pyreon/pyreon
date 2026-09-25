@@ -20,7 +20,7 @@ export default defineManifest({
     'Overlay + useOverlay — positioned layer (dropdown/modal/tooltip) with viewport flip, ESC, click-outside, scroll tracking, hover delay, and focus management (restore-to-opener on close; for type:"modal" a focus-in on open + Tab/Shift+Tab focus trap — the WAI-ARIA dialog pattern, out of the box)',
     'Portal — renders children into a per-instance wrapper inside a DOMLocation (default document.body)',
     'Iterator — Simple / Object / Children / Loose overloads keep primitive-vs-object iteration modes type-safe',
-    'Util — bare utility primitive; Provider re-exported from @pyreon/unistyle',
+    'Util — stamps className / style onto its child without adding a DOM node; Provider (deprecated) re-exported from @pyreon/unistyle',
     'Simple-path fast path: non-compound Elements skip a component invocation + splitProps + mountChild',
   ],
   api: [
@@ -32,9 +32,16 @@ export default defineManifest({
         "The responsive flexbox block primitive every layout-bearing component renders through. Layout props live here (NOT in a styler `.theme()`): `direction` (`inline` | `rows` | `reverseInline` | `reverseRows` — note `row` is INVALID), `alignX`, `alignY`, `gap`, `block`, plus `beforeContent` / `afterContent` slot wrappers and `equalBeforeAfter` (equalizes the slot widths on mount AND keeps them equal via ResizeObserver). On a SIMPLE element (no slots) the wrapper reads the `content*` trio — `contentDirection` (default `rows`) / `contentAlignX` / `contentAlignY` — while the bare trio governs the slot axis of compound elements; `gap` renders CSS gap on the simple path and the button/fieldset/legend flex-fix layer (slot spacing on compound elements stays margin-based). Alignment values are AXIS-FIXED (X always horizontal): `left|center|right|spaceBetween|spaceAround|block` / `top|center|bottom|block`. The 2026-Q2 simple-path fast path inlines the Wrapper for non-compound, non-needsFix tags: the rendered VNode then exposes the HTML tag as `props.as` and layout under `props.$element.{direction,alignX,alignY,block,equalCols,extraStyles}` rather than flat props (styled-components consumers see no change since `as` is the canonical tag selector).",
       example: `import { Element } from "@pyreon/elements"
 
-<Element tag="section" direction="rows" gap="md" alignX="center">
+// SIMPLE element (no before/after slots) — the content* trio lays it out.
+// A numeric gap is converted to rem against the theme rootSize.
+<Element tag="section" block contentDirection="rows" contentAlignX="center" gap={16}>
   <Header />
   <Body />
+</Element>
+
+// COMPOUND element — the bare trio lays out the slots
+<Element direction="inline" alignY="center" gap={8} beforeContent={<Icon />}>
+  Label
 </Element>`,
       mistakes: [
         'Using `direction="row"` — invalid; the values are `inline` / `rows` / `reverseInline` / `reverseRows`',
@@ -46,6 +53,7 @@ export default defineManifest({
         'Passing children to a void `tag` (`hr` / `img` / `br` / `input`) — Element correctly drops them; do not rely on a children slot for void tags',
         'Relying on `equalBeforeAfter` measuring async slot content where `ResizeObserver` is undefined (older runtimes / SSR) — it falls back to the one-shot mount measurement there',
         'Reaching for a theme-level flex `gap` because the `gap` prop "does nothing" — historical: before 0.51 `gap` was wired only into the before/after slot margins; it now renders CSS gap on simple elements and the button flex-fix layer too',
+        'Passing a design-token NAME as `gap` (`gap="md"`) — `gap` is a length: a number (converted to rem) or a CSS length string (`"1rem"`); a bare token name is emitted verbatim as invalid CSS',
       ],
       seeAlso: ['Text', 'List', 'Portal'],
     },
@@ -70,14 +78,18 @@ export default defineManifest({
       kind: 'component',
       signature: 'List(props: ListProps): VNodeChild',
       summary:
-        'A flowing-children container (`ul` / `ol` / `dl` / custom) built on the Iterator data API. Render children directly OR drive it with `data` + a `component` renderer. Inherits Iterator’s four typed overloads (Simple / Object / Children / Loose) and additionally blocks Element-only `label` / `content` props at the type level.',
+        'The Iterator data API with an OPTIONAL container. By default it renders only the items, as a fragment — no wrapping element, so `tag` and every other Element prop are ignored. Pass `rootElement` to render the items inside an `Element` that receives the remaining props (`tag="ul"`, layout, `ref`). Render children directly OR drive it with `data` + a `component` renderer; for object data each entry\'s FIELDS are spread as the component\'s props (so `component={(p) => …}` reads `p.name`, not `p.item.name`). Inherits Iterator’s four typed overloads (Simple / Object / Children / Loose) and additionally blocks Element-only `label` / `content` props at the type level.',
       example: `import { List } from "@pyreon/elements"
 
-<List tag="ul" data={items()} component={(item) => <li>{item.name}</li>} />`,
+const items = [{ id: 1, name: "Ada" }, { id: 2, name: "Linus" }]
+
+// rootElement → a real <ul> container; without it only the <li>s render
+<List rootElement tag="ul" data={items} component={(p) => <li>{p.name}</li>} />`,
       mistakes: [
         'Mixing primitive and object entries in `data` (`[1, {id:1}, null]`) — primitive arrays and object arrays are mutually exclusive iteration modes; the typed overloads reject the mix for direct callers',
         'Passing `valueName` with an object-array `data` — `valueName` is a Simple-mode (primitive) prop only',
         'Passing `children` AND `data`/`component` — Children mode and Object mode are distinct overloads; pick one',
+        'Setting `tag="ul"` (or layout props) without `rootElement` — List then renders a fragment and drops them silently; add `rootElement` to get the container',
       ],
       seeAlso: ['Iterator', 'Element'],
     },
@@ -86,7 +98,7 @@ export default defineManifest({
       kind: 'component',
       signature: 'Overlay(props: OverlayProps): VNodeChild',
       summary:
-        'A positioned layer (dropdown / modal / tooltip / popover) with an optional backdrop, driven internally by `useOverlay`. It handles viewport flipping, ESC-to-close, click-outside, scroll tracking, and hover delay — do NOT reimplement any of that in a primitive; compose `Overlay` (or `useOverlay`) instead. Takes a `trigger` render prop (receives `{ ref, active, showContent, hideContent }` — attach `ref` to the anchor) and a content render prop as `children` (receives `{ ref, active, align, alignX, alignY, … }` — attach `ref` to the floating node); the content renders through `Portal` so the layer escapes overflow/stacking contexts. `align`/`alignX`/`alignY` reach the content as LIVE reactive props, so a viewport-edge flip re-styles the content in place without remounting it.',
+        'A positioned layer (dropdown / modal / tooltip / popover) with an optional backdrop, driven internally by `useOverlay`. It handles viewport flipping, ESC-to-close, click-outside, scroll tracking, and hover delay — do NOT reimplement any of that in a primitive; compose `Overlay` (or `useOverlay`) instead. Takes a `trigger` render prop and a content render prop as `children`; the content renders through `Portal` (into `DOMLocation`, default `document.body`) so the layer escapes overflow/stacking contexts. The trigger receives `ref` (attach to the anchor), `active`, and the ARIA wiring `aria-expanded` / `aria-haspopup` / `aria-describedby` (tooltips); the content receives `ref` (attach to the floating node), `active`, `align` / `alignX` / `alignY`, plus `role` (`dialog` / `tooltip`), `id` and `aria-modal`. Forward the ARIA props onto the DOM element — the render-prop TYPES only list `ref` / `active` / handlers / aligns, but the values are passed. `showContent` / `hideContent` are passed to both ONLY when `openOn` or `closeOn` is `"manual"` or `closeOn` is `"clickOutsideContent"`. `triggerRefName` / `contentRefName` rename the `ref` key (default `"ref"`). `active` and the aligns arrive as LIVE reactive props, so a viewport-edge flip re-styles the content in place without remounting it.',
       example: `import { Overlay } from "@pyreon/elements"
 
 <Overlay
@@ -105,6 +117,8 @@ export default defineManifest({
         'Hand-rolling positioning / flip / click-outside / ESC logic in a tooltip or dropdown primitive — `useOverlay` already owns all of it; reimplementing drifts from the shared behavior',
         'Forgetting to attach the `ref` the trigger / content render props receive — without it the hook cannot measure, position, wire click-outside, or restore focus (the layer renders at the document origin)',
         'Reading the rendered overlay as `document.body.firstChild` — it renders through `Portal` into a per-instance wrapper; traverse the wrapper, not body’s direct child',
+        'Calling `t.showContent()` from the trigger with the default `openOn="click"` — the handlers are only passed in manual / `clickOutsideContent` configurations; the default click/hover wiring is automatic',
+        'Dropping the ARIA props the render props carry — a trigger that renders only `ref` loses `aria-expanded` / `aria-haspopup`, so assistive tech never hears the popup open',
       ],
       seeAlso: ['useOverlay', 'OverlayProvider', 'Portal'],
     },
@@ -114,7 +128,7 @@ export default defineManifest({
       signature:
         'useOverlay(props?: Partial<UseOverlayProps>): { triggerRef, contentRef, active, align, alignX, alignY, showContent, hideContent, blocked, setBlocked, setUnblocked, setContentPosition, setupListeners, Provider }',
       summary:
-        'The positioning + interaction engine `Overlay` is built on, exposed for headless consumers. Returns `triggerRef` / `contentRef` (attach to the anchor + floating node), the `active` open-state signal, the resolved `align` accessor + `alignX` / `alignY` signals, `showContent` / `hideContent` (programmatic control), and `setContentPosition` (reposition when the content SIZE changes while open — async option lists). Options: `openOn` / `closeOn` (`click` | `hover` | …), `type` (`dropdown` | `modal` | …), `position` (`fixed` | …), `align` + `alignX` / `alignY` + `offsetX` / `offsetY`, `closeOnEsc`, `hoverDelay`, `throttleDelay`, `parentContainer`, `disabled`, `onOpen` / `onClose`. Focus management is built in: focus returns to the opener on close (all types), and `type: "modal"` additionally moves focus into the content on open and traps Tab / Shift+Tab within it (the WAI-ARIA dialog pattern — no extra wiring). Listeners auto-attach on mount (idempotent) — a hover overlay keeps open while the pointer is over its content (the content listeners re-bind as it mounts). SSR-safe: the internal positioning + focus helpers early-return under no-`window`.',
+        'The positioning + interaction engine `Overlay` is built on, exposed for headless consumers. Returns `triggerRef` / `contentRef` (attach to the anchor + floating node), the `active` open-state signal, the resolved `align` accessor + `alignX` / `alignY` signals, `showContent` / `hideContent` (programmatic control), and `setContentPosition` (reposition when the content SIZE changes while open — async option lists). Options: `isOpen` (INITIAL open state only — seeds `active`, later changes are ignored), `openOn` (`click` | `hover` | `manual`) / `closeOn` (`click` | `clickOnTrigger` | `clickOutsideContent` | `hover` | `manual`), `type` (`dropdown` | `tooltip` | `popover` | `modal` | `custom`), `position` (`fixed` | …), `align` + `alignX` / `alignY` + `offsetX` / `offsetY`, `closeOnEsc`, `hoverDelay`, `throttleDelay`, `parentContainer`, `disabled`, `onOpen` / `onClose`. Focus management is built in: focus returns to the opener on close (all types), and `type: "modal"` additionally moves focus into the content on open and traps Tab / Shift+Tab within it (the WAI-ARIA dialog pattern — no extra wiring). Listeners auto-attach on mount (idempotent) — a hover overlay keeps open while the pointer is over its content (the content listeners re-bind as it mounts). SSR-safe: the internal positioning + focus helpers early-return under no-`window`.',
       example: `import { useOverlay } from "@pyreon/elements"
 
 const o = useOverlay({ openOn: "hover", type: "tooltip", hoverDelay: 150 })
@@ -164,14 +178,22 @@ const o = useOverlay({ openOn: "hover", type: "tooltip", hoverDelay: 150 })
       kind: 'component',
       signature: 'Iterator<T>(props: IteratorProps<T>): VNodeChild',
       summary:
-        'The data-iteration helper backing `List` (default export of `helpers/Iterator`). FOUR typed overloads keep iteration modes honest: `SimpleProps<T>` (primitive arrays — `valueName` allowed), `ObjectProps<T>` (object arrays — `valueName` and `children` FORBIDDEN), `ChildrenProps` (no data/component, only children), and a `LooseProps` fallback that exists so rocketstyle/attrs forwarding patterns (`<Iterator {...wrapperProps} />`) bind without a per-call-site overload error. The discriminator picks the overload via `unknown extends T ? Loose : T extends SimpleValue ? Simple : T extends ObjectValue ? Object : Children`.',
-      example: `import Iterator from "@pyreon/elements/helpers/Iterator"
+        'The data-iteration helper backing `List`, exported as `Iterator` from the package root. It renders items only — no container element. For object data each entry\'s fields are spread as the item component\'s props (an entry\'s own `component` field overrides the renderer for that item); for primitive data the value is passed as `children`, or under the `valueName` key. FOUR typed overloads keep iteration modes honest: `SimpleProps<T>` (primitive arrays — `valueName` allowed), `ObjectProps<T>` (object arrays — `valueName` and `children` FORBIDDEN), `ChildrenProps` (no data/component, only children), and a `LooseProps` fallback that exists so rocketstyle/attrs forwarding patterns (`<Iterator {...wrapperProps} />`) bind without a per-call-site overload error. The discriminator picks the overload via `unknown extends T ? Loose : T extends SimpleValue ? Simple : T extends ObjectValue ? Object : Children`.',
+      example: `import { Iterator } from "@pyreon/elements"
 
-<Iterator data={users()} component={(u) => <Row user={u} />} />`,
+const users = [{ id: 1, name: "Ada" }, { id: 2, name: "Linus" }]
+
+// Object data — each entry's FIELDS are spread as the component's props
+<Iterator data={users} component={(u) => <span>{u.name}</span>} />
+
+// Primitive data — the value arrives as \`children\` (or under \`valueName\`)
+<Iterator data={["a", "b"]} valueName="label" component={(p) => <b>{p.label}</b>} />`,
       mistakes: [
         'Mixed-shape `data` (`[1, {id:1}, null]`) — primitive and object iteration are mutually exclusive; the narrow overloads reject it (the Loose fallback only catches forwarding-pattern shapes)',
         '`valueName` with object-array `data` — Simple-mode only; ObjectProps forbids it',
         '`children` together with `data`/`component` — Children and Object are distinct overloads; the runtime picks the mode by which props are populated, but the types steer you to one',
+        'Importing from a deep path (`@pyreon/elements/helpers/Iterator`) — the package exports only its root; use `import { Iterator } from "@pyreon/elements"`',
+        'Writing the item component as `(item) => <Row user={item} />` expecting the original object — it receives the entry\'s fields spread as props (plus `key`), so read `props.name` directly',
       ],
       seeAlso: ['List'],
     },
@@ -196,11 +218,20 @@ const o = useOverlay({ openOn: "hover", type: "tooltip", hoverDelay: 150 })
     {
       name: 'Provider',
       kind: 'component',
-      signature: 'Provider(props: { children?: VNodeChild }): VNodeChild',
+      signature: 'Provider(props: { theme: PyreonTheme; children?: VNode | null }): VNode | null',
       summary:
-        'Re-exported from `@pyreon/unistyle` for convenience (responsive/breakpoint context). Most apps mount the unified `<PyreonUI>` from `@pyreon/ui-core` instead, which wires this internally — reach for the bare `Provider` only outside the `ui-core` provider tree.',
-      example: `import { Provider } from "@pyreon/elements"`,
-      seeAlso: ['Element'],
+        'Re-export of `@pyreon/unistyle`\'s low-level theme provider (marked `@internal` / `@deprecated` in source). It ENRICHES `theme` (pre-sorted breakpoints + media-query helpers) and provides it to both the styler `ThemeContext` and the ui-core context. `theme` is required. `<PyreonUI theme={…}>` from `@pyreon/ui-core` supersedes it — PyreonUI provides the same contexts itself (plus reactive mode), so an app that renders PyreonUI never needs this.',
+      example: `import { Provider } from "@pyreon/elements"
+
+// Only outside <PyreonUI> — e.g. an isolated test or embed:
+<Provider theme={{ rootSize: 16, breakpoints: { xs: 0, md: 768 } }}>
+  <App />
+</Provider>`,
+      mistakes: [
+        'Nesting it inside `<PyreonUI>` expecting it to extend the outer theme — it provides only its own `theme`, fresh; nest `<PyreonUI>` instead (it inherits)',
+        'Being surprised by the dev warning `[Pyreon] CoreProvider is internal` — this Provider delegates to ui-core\'s internal provider, which logs it in development; use `<PyreonUI>`',
+      ],
+      seeAlso: ['Element', '@pyreon/ui-core'],
     },
   ],
   gotchas: [

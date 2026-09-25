@@ -22,7 +22,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - attrs(&#123; name, component &#125;) factory — immutable chainable builder, every method returns a new component
 - .attrs(object | callback, &#123; priority?, filter? &#125;) — stacking default props; callbacks receive the current resolved props
 - Merge precedence priorityAttrs &lt; attrs &lt; explicit props — call-site props always win; undefined values never shadow defaults
-- .config(&#123; name?, component?, DEBUG? &#125;) — rename / base swap / dev logging; chains are PRESERVED across a swap
+- .config(&#123; name?, component? &#125;) — rename / base swap; chains are PRESERVED across a swap
 - .compose(&#123; name: hoc &#125;) — named HOC record; falsy value removes a previously composed HOC
 - .statics(meta) — metadata on Component.meta, merged across calls
 - TypeScript accumulation — .attrs&lt;P&gt;() widens the prop type; $$types / $$originTypes / $$extendedTypes expose the shapes
@@ -77,7 +77,7 @@ isAttrsComponent(Button)                        // true (IS_ATTRS marker)
 | --- | --- | --- |
 | [`attrs`](#attrs) | function | Factory entry (default + named export). |
 | [`.attrs()`](#attrs) | function | Add default props. |
-| [`.config()`](#config) | function | Reconfigure the builder: rename (`name` → new `displayName`), swap the underlying base component (`component`), or toggl |
+| [`.config()`](#config) | function | Reconfigure the builder: rename (`name` → new `displayName`) or swap the underlying base component (`component`). |
 | [`.compose()`](#compose) | function | Attach named higher-order components. |
 | [`.statics()`](#statics) | function | Attach arbitrary metadata, readable on the component's `.meta` object. |
 | [`.getDefaultAttrs()`](#getdefaultattrs) | function | Resolve the accumulated `.attrs()` chain for a given props bag — every callback in the chain runs against `props` and th |
@@ -164,7 +164,7 @@ const Small = Base.attrs({ size: 'sm' })     // → size: 'sm'
 (opts: { name?: string; component?: ElementType; DEBUG?: boolean }) => AttrsComponent
 ```
 
-Reconfigure the builder: rename (`name` → new `displayName`), swap the underlying base component (`component`), or toggle dev debugging (`DEBUG`). Returns a new component; the original keeps its own name/base. Unlike `@pyreon/rocketstyle`, swapping `component` at this layer PRESERVES the accumulated `.attrs()` / `priorityAttrs` / `filter` / `.compose()` / `.statics()` chains and re-applies them to the new base — reconciling the new base's prop shape is the caller's responsibility.
+Reconfigure the builder: rename (`name` → new `displayName`) or swap the underlying base component (`component`). `DEBUG` is accepted by the type for parity with `@pyreon/rocketstyle` but has NO runtime effect at this layer. Returns a new component; the original keeps its own name/base. Unlike `@pyreon/rocketstyle`, swapping `component` at this layer PRESERVES the accumulated `.attrs()` / `priorityAttrs` / `filter` / `.compose()` / `.statics()` chains and re-applies them to the new base — reconciling the new base's prop shape is the caller's responsibility.
 
 **Example**
 
@@ -182,7 +182,8 @@ const Anchor = Button.config({ component: 'a', name: 'Anchor' })
 **Common mistakes**
 
 - Expecting the rocketstyle chain-reset behavior — `@pyreon/attrs`' `.config({ component })` KEEPS the accumulated chains across a base swap (test-locked); only `@pyreon/rocketstyle`'s `.config()` resets prop-shape-coupled chains. If the new base has a different prop shape, stale defaults can leak invalid props — audit them yourself
-- Passing dimension or theme options — this `.config()` accepts only `name` / `component` / `DEBUG`; dimensions/provider/consumer/inversed are `@pyreon/rocketstyle` `.config()` surface
+- Passing dimension or theme options — this `.config()` acts only on `name` / `component`; dimensions/provider/consumer/inversed are `@pyreon/rocketstyle` `.config()` surface
+- Expecting `.config({ DEBUG: true })` to log — the key typechecks but `@pyreon/attrs` never reads it; render logging exists only on `@pyreon/rocketstyle` components
 - Reading `displayName` off the original after renaming — `.config()` is immutable; the rename lands on the RETURNED component
 
 **See also:** `attrs` · `.attrs()` · `@pyreon/rocketstyle`
@@ -195,7 +196,7 @@ const Anchor = Button.config({ component: 'a', name: 'Anchor' })
 (hocs: Record<string, ((c: ComponentFn) => ComponentFn) | null | false>) => AttrsComponent
 ```
 
-Attach named higher-order components. The argument is a RECORD of `{ name: hoc }` — the name is the removal handle: a later `.compose({ name: null })` (or `undefined` / `false`) removes that HOC from the chain; only function values are kept. Application order: the record's values are reversed so the LAST-defined HOC wraps innermost, and the built-in attrs HOC (which resolves the `.attrs()` chain) is always the outermost wrapper — default props are computed before any user HOC runs.
+Attach named higher-order components. The argument is a RECORD of `{ name: hoc }` — the name is the removal handle: a later `.compose({ name: null })` (or `undefined` / `false`) removes that HOC from the chain; only function values are kept. Application order: the built-in attrs HOC (which resolves the `.attrs()` chain) is always the outermost wrapper, so default props are computed before any user HOC runs; the user HOCs wrap in REVERSE record order — the LAST-defined HOC is the outer one and runs first, the FIRST-defined sits closest to the component. Replacing an existing name keeps its original position.
 
 **Example**
 
@@ -214,7 +215,7 @@ const NoTracking = Enhanced.compose({ withTracking: null })
 
 - Passing an array of HOCs — `.compose()` takes a named record; the names are what make falsy-removal possible
 - A composed HOC that value-copies props (`const next = { ...props }`) — fires reactive getter props at setup and collapses them to static values; copy descriptors (`mergeProps` / `splitProps` from `@pyreon/core`) or pass by reference
-- Assuming record order equals wrap order outside-in — values are REVERSED before composition, so the last-defined HOC runs closest to the component; the attrs HOC always stays outermost regardless
+- Assuming record order equals wrap order outside-in — it is the reverse: with `{ first, second }`, `second` receives the props first and `first` wraps the component directly; the attrs HOC always stays outermost regardless
 
 **See also:** `attrs` · `.config()`
 
