@@ -110,11 +110,15 @@ beforeAll(async () => {
       if (body === undefined) {
         res.writeHead(404)
         res.end('nope')
-      } else if (req.url === '/split/models/pet.yaml' && req.headers['if-none-match'] === '"pet-1"') {
+      } else if (
+        (req.url === '/split/models/pet.yaml' && req.headers['if-none-match'] === '"pet-1"') ||
+        (req.url === '/split/openapi.yaml' && req.headers['if-none-match'] === '"root-1"')
+      ) {
         res.writeHead(304)
         res.end()
       } else {
-        res.writeHead(200, { 'content-type': 'text/yaml', ...(req.url === '/split/models/pet.yaml' ? { etag: '"pet-1"' } : {}) })
+        const etag = req.url === '/split/models/pet.yaml' ? '"pet-1"' : req.url === '/split/openapi.yaml' ? '"root-1"' : undefined
+        res.writeHead(200, { 'content-type': 'text/yaml', ...(etag ? { etag } : {}) })
         res.end(body)
       }
     } else if (req.url === '/html') {
@@ -322,6 +326,16 @@ describe('lathe pull', () => {
     splitRequests.length = 0
     expect(await silently(() => main(['pull', url, '--token', 's3cret'], dir))).toBe(0)
     expect(splitRequests.find((r) => r.url === '/split/models/pet.yaml')?.inm).toBe('"pet-1"')
+    // The ROOT is conditional too, on its own cached body -- and a 304 on it
+    // still re-checks every part rather than "confirming" the bundle.
+    expect(splitRequests.find((r) => r.url === '/split/openapi.yaml')?.inm).toBe('"root-1"')
+    expect(splitRequests.map((r) => r.url)).toContain('/split/paths/pet.yaml')
+    expect(readFileSync(join(dir, 'openapi.yaml'), 'utf8')).toBe(written)
+    // A locally EDITED bundle is re-downloaded unconditionally.
+    writeFileSync(join(dir, 'openapi.yaml'), '# edited\n')
+    splitRequests.length = 0
+    expect(await silently(() => main(['pull', url, '--token', 's3cret'], dir))).toBe(0)
+    expect(splitRequests.find((r) => r.url === '/split/openapi.yaml')?.inm).toBeUndefined()
     expect(readFileSync(join(dir, 'openapi.yaml'), 'utf8')).toBe(written)
     rmSync(dir, { recursive: true, force: true })
   })
