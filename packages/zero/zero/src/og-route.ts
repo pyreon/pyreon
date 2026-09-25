@@ -150,7 +150,14 @@ export async function renderOgSvgFromLoaded(
 function normalizeSvg(markup: string, path: string): string {
   // Strip hydration comment markers — librsvg ignores comments, but a
   // leading one would defeat the root-element check below.
-  const svg = markup.replace(/<!--[\s\S]*?-->/g, '').trim()
+  // Repeated until nothing changes: one pass over `<!<!---->--` leaves a fresh
+  // `<!--` behind (CodeQL js/incomplete-multi-character-sanitization).
+  let svg = markup
+  for (let prev = ''; prev !== svg; ) {
+    prev = svg
+    svg = svg.replace(/<!--[\s\S]*?-->/g, '')
+  }
+  svg = svg.trim()
   if (!/^<svg[\s>]/i.test(svg)) {
     throw new Error(
       `[Pyreon] The \`og\` export for "${path}" must render an <svg> root element ` +

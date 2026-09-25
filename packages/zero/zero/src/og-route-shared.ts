@@ -37,7 +37,11 @@ const OG_ENDPOINT_PREFIX = '/_zero/og'
  * ```
  */
 export function ogEndpointPath(pagePath: string): string {
-  const clean = pagePath.split(/[?#]/)[0]!.replace(/\/+$/, '')
+  // A loop, not `/\/+$/`: that regex backtracks quadratically on a long run of `/`.
+  let clean = pagePath.split(/[?#]/)[0]!
+  let end = clean.length
+  while (end > 0 && clean.charCodeAt(end - 1) === 47) end--
+  clean = clean.slice(0, end)
   return `${OG_ENDPOINT_PREFIX}${clean === '' ? '/index' : clean}.png`
 }
 
