@@ -26,7 +26,12 @@ export interface MiddlewareContext {
   req: Request
   /** Parsed URL */
   url: URL
-  /** Pathname + search (passed to router) */
+  /**
+   * Pathname PLUS search (`/admin?x=1`) — the router's input. Do NOT match
+   * routes against it: a query string changes it, so `path === '/admin'` or a
+   * segment-exact pattern is bypassed by appending `?x`. Match on
+   * `url.pathname` instead.
+   */
   path: string
   /** Response headers — middleware can set custom headers */
   headers: Headers

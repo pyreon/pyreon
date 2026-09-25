@@ -9,6 +9,7 @@ export const Segment = el
   })
   .theme((t) => ({
     padding: '4px',
+    flex: 'none',
     borderRadius: t.radius.panel,
     background: t.surface2,
   }))

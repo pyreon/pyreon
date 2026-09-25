@@ -17,29 +17,25 @@ bun add @pyreon/dnd @pyreon/core @pyreon/reactivity
 import { useDraggable, useDroppable } from '@pyreon/dnd'
 
 function Card(props: { card: { id: string; title: string } }) {
-  let el: HTMLElement | null = null
-  const { isDragging } = useDraggable({
-    element: () => el,
+  const { ref, isDragging } = useDraggable({
     data: { id: props.card.id, type: 'card' },
   })
 
   return (
-    <div ref={(node) => (el = node)} class={() => (isDragging() ? 'opacity-50' : '')}>
+    <div ref={ref} class={() => (isDragging() ? 'opacity-50' : '')}>
       {props.card.title}
     </div>
   )
 }
 
 function DropZone() {
-  let el: HTMLElement | null = null
-  const { isOver } = useDroppable({
-    element: () => el,
+  const { ref, isOver } = useDroppable({
     canDrop: (data) => data.type === 'card',
-    onDrop: (data) => acceptCard(data.id as string),
+    onDrop: (data, { edge }) => acceptCard(data.id as string, edge),
   })
 
   return (
-    <div ref={(node) => (el = node)} class={() => (isOver() ? 'bg-blue-50' : '')}>
+    <div ref={ref} class={() => (isOver() ? 'bg-blue-50' : '')}>
       Drop here
     </div>
   )
@@ -48,23 +44,31 @@ function DropZone() {
 
 ## Hooks
 
-### `useDraggable({ element, data, handle?, disabled?, onDragStart?, onDragEnd? })`
+### Binding the element: `ref` or `element`
+
+`useDraggable` / `useDroppable` / `useFileDrop` return a `ref` callback — attach it (`<div ref={ref}>`) and the registration follows the element: it registers when the element mounts (even if that is long after the hook ran — behind `<Show>`, a lazy branch), moves when the element is swapped, and is disposed on unmount. The `element: () => el` getter still works: it is resolved on a microtask after the hook runs, and a getter that reads a **signal** re-registers when the signal changes. A getter that is still `null` at that point (with no `ref` attached) prints a `[Pyreon]` dev warning instead of silently registering nothing.
+
+### `useDraggable({ element?, data, handle?, disabled?, preview?, onDragStart?, onDragEnd? })`
 
 Make an element draggable. `data` may be an object OR a function for dynamic payloads. `disabled` is reactive (accepts a function). `handle` lets you scope drag initiation to a sub-element.
 
 ```ts
-type Result = { isDragging: () => boolean }
+type Result = { isDragging: () => boolean; ref: (el: HTMLElement | null) => void }
 ```
 
-### `useDroppable({ element, data?, canDrop?, onDragEnter?, onDragLeave?, onDrop? })`
+### `useDroppable<TTarget, TSource>({ element?, data?, canDrop?, onDragEnter?, onDragLeave?, onDrop?, edges?, sticky? })`
 
-Make an element a drop target. `canDrop(sourceData)` filters; return `false` to reject. `data` is attached to the drop event so handlers can read target metadata.
+Make an element a drop target. `canDrop(sourceData)` filters; return `false` to reject — type the SOURCE data with the second generic. `onDrop(sourceData, { edge, data })` receives where it landed: the closest configured edge (`null` without `edges`) and this target's own `data`, captured before `isOver` / `overEdge` reset.
 
 ```ts
-type Result = { isOver: () => boolean }
+type Result = {
+  isOver: () => boolean
+  overEdge: () => DropEdge | null // live closest edge while hovered (needs `edges`)
+  ref: (el: HTMLElement | null) => void
+}
 ```
 
-### `useSortable({ items, by, onReorder, axis? })`
+### `useSortable({ items, by, onReorder, axis?, label?, disabled?, groupId?, onCrossListDrop?, onCrossListReceive? })`
 
 Full sortable list with edge detection, auto-scroll, and keyboard reordering. `by` matches Pyreon's `<For by={...}>` pattern so the same key extractor flows through.
 
@@ -101,18 +105,24 @@ Behaviour:
 
 - Auto-scroll when dragging near container edges
 - `overEdge` signal — `'top'`/`'bottom'` (vertical) or `'left'`/`'right'` (horizontal)
-- Keyboard reordering with Alt+Arrow keys
-- ARIA: `role="listitem"`, `aria-roledescription`, `tabindex`
+- Keyboard reordering — Space/Enter picks the focused item up, the axis arrows move it, Space/Enter drops it, Escape cancels and restores its position; Alt+Arrow moves directly
+- ARIA: `role="listitem"` (only when the item has no role of its own), `role="list"` on a non-`<ul>`/`<ol>` container, `aria-roledescription`, `tabindex`
+- `label: (item) => string` — human names in screen-reader announcements
+- `disabled` (boolean or accessor) — blocks pointer drags and keyboard reordering
+- `groupId` + `onCrossListDrop` / `onCrossListReceive` — drag between sortables sharing a group (kanban)
+- `itemHandleRef(key)` — scope drag initiation to a grip element inside the row
+- `overEdge()`, `activeId()`, `overId()`, plus the O(2) `isActive(key)` / `isOverKey(key)` selectors
 - Fine-grained teardown: each **item** registration is disposed the moment its `itemRef` fires with `null` (or re-registers), and the **container** registration (auto-scroll + reorder drop-target + keyboard handler) is disposed on `containerRef(null)` / re-register — so a churning `<For>` list _and_ a `<Show>`-toggled container never leak listeners on detached elements.
 
-### `useFileDrop({ element, onDrop, accept?, maxFiles?, disabled? })`
+### `useFileDrop({ element?, onDrop, onReject?, accept?, maxFiles?, disabled? })`
 
-Native file-drop zone. `accept` mirrors `<input accept>` syntax (`['image/*', '.pdf']`); `maxFiles` enforces an upper bound; both filter the array passed to `onDrop`.
+Native file-drop zone. `accept` mirrors `<input accept>` syntax (`['image/*', '.pdf']`, and `'*'` / `'*/*'` for anything); `maxFiles` enforces an upper bound; both filter the array passed to `onDrop`. `onReject(files, reason)` receives what was filtered out (`reason`: `'accept'` or `'maxFiles'`).
 
 ```ts
 type Result = {
   isOver: () => boolean // files dragged over THIS zone
   isDraggingFiles: () => boolean // files dragged anywhere on the page
+  ref: (el: HTMLElement | null) => void
 }
 ```
 
@@ -175,7 +185,7 @@ useDraggable({
 
 ## Accessibility (built in)
 
-`useSortable` announces drags through `@pyreon/a11y`'s live region — "Picked up Alice", "Moved Alice to position 2 of 3", "Dropped …" — and auto-creates a visually-hidden instructions node ("Press Alt plus arrow keys to reorder") linked to every item via `aria-describedby`. Pass `label: (item) => string` so announcements use human names instead of raw keys. Alt+Arrow keyboard reordering ships by default.
+`useSortable` announces drags through `@pyreon/a11y`'s live region — "Picked up Alice", "Moved Alice to position 2 of 3", "Dropped …" — and auto-creates a visually-hidden instructions node linked to every item via `aria-describedby` (it lives in a shared host on `document.body`, never inside your list). Pass `label: (item) => string` so announcements use human names instead of raw keys. Keyboard pickup mode (Space/Enter, arrows, Escape) and Alt+Arrow direct moves ship by default.
 
 ## Custom drag previews, edges, handles
 
@@ -186,11 +196,11 @@ useDraggable({
 ## Gotchas
 
 - **Hooks are SSR-safe** — they return zero-state accessors when `document` is undefined. Real registration happens at first browser tick.
-- **`element: () => el` must return the SAME element across reads** until the component unmounts. Setup is single-shot (deferred via `queueMicrotask`, never re-invoked) — reassigning `el` to a new node mid-life is NOT re-registered; the hook stays bound to the original node. Unmount and remount to bind a new element.
+- **Prefer the returned `ref` over `element: () => el`.** A getter reading a plain `let` is resolved once (on a microtask); it can only re-resolve when it reads a signal. The `ref` follows mounts, swaps and unmounts by construction.
 - **`useSortable` requires `items` to be reactive** (a getter or signal call) — the hook needs to re-derive on insert / remove. Passing a captured array snapshot breaks reordering.
 - **`canMonitor` / `canDrop` run on every drag event** — keep them cheap. For expensive checks, derive a flag in a `computed` upstream.
 - **`useFileDrop` only fires on REAL file drags from the OS** — not from `useDraggable` (those go through pdnd's element adapter). The two adapters are isolated.
-- **`onDrop` receives accepted files only** — files rejected by `accept` / `maxFiles` are silently filtered. Pair with `onDragEnter` / `isOver` if you need user feedback on rejection.
+- **`onDrop` receives accepted files only** — files rejected by `accept` / `maxFiles` go to `onReject(files, reason)`.
 - **`@pyreon/dnd` does NOT bundle pdnd** — the pragmatic-drag-and-drop chunks come from your app's bundle graph. ~6KB minified for the element adapter (the common case).
 
 ## Performance
