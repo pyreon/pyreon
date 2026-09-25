@@ -212,3 +212,18 @@ describe('typed endpoint input + response kinds', () => {
     expectTypeOf(await api.endpoint('GET /p', { response: Pet })()).toEqualTypeOf<{ id: number }>()
   })
 })
+
+describe('@pyreon/http/stream', () => {
+  it('types events from `parse`, and `data: text` as strings', async () => {
+    const { openEventStream, openNdjsonStream } = await import('../stream')
+    const connect = async () => null
+    const typed = openEventStream(connect, { parse: (v) => z.object({ n: z.number() }).parse(v) })
+    for await (const ev of typed) expectTypeOf(ev.data).toEqualTypeOf<{ n: number }>()
+    const text = openEventStream(connect, { data: 'text' })
+    for await (const ev of text) expectTypeOf(ev.data).toEqualTypeOf<string>()
+    const untyped = openEventStream(connect)
+    for await (const ev of untyped) expectTypeOf(ev.data).toEqualTypeOf<unknown>()
+    const rows = openNdjsonStream(connect, { parse: (v) => String(v) })
+    for await (const row of rows) expectTypeOf(row).toEqualTypeOf<string>()
+  })
+})
