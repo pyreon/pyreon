@@ -1,10 +1,10 @@
-import { txt, type T } from '../../kit'
+import { txt } from '../../kit'
 
 export const Kbd = txt
   .attrs({
     tag: 'span',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     position: 'absolute',
     right: '12px',
     top: '50%',
@@ -15,4 +15,6 @@ export const Kbd = txt
     borderRadius: t.radius.chip,
     color: t.faint,
     border: t.hairline,
+    // A keyboard shortcut is noise on a touch screen.
+    extendCss: '@media (pointer:coarse){display:none;}',
   }))

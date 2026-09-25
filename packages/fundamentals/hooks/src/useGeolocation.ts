@@ -38,9 +38,13 @@
 // null reads as empty on all three targets (the native emit wraps the optional
 // interpolation; a raw one would print `Optional(37.3349)` on Swift).
 
-import { batch, onCleanup, signal } from '@pyreon/reactivity'
+import { batch, signal } from '@pyreon/reactivity'
 
 import { warnIfInsecureContext } from './secure-context'
+import { onHookCleanup } from './lifecycle'
+
+/** `GeolocationPositionError.PERMISSION_DENIED` — a literal so SSR never touches the global. */
+const PERMISSION_DENIED = 1
 
 /** Options for {@link useGeolocation}. Mirrors `PositionOptions`. */
 export interface UseGeolocationOptions {
@@ -164,13 +168,22 @@ export function useGeolocation(options: UseGeolocationOptions = {}): UseGeolocat
         })
       },
       (err) => {
-        // A denial ends the watch on every browser, so reflect that in
-        // `isTracking` rather than leaving it stuck true.
+        // Only a DENIAL ends the watch. TIMEOUT and POSITION_UNAVAILABLE are
+        // transient: the browser keeps watching and delivers the next fix, so
+        // the id must survive them. Dropping it here (the old behaviour) lost
+        // the only handle able to clear the watch — `stop()` and the unmount
+        // cleanup became no-ops, the GPS stayed on, and a retry `start()`
+        // opened a SECOND watch beside the orphaned one.
+        const denied = err.code === PERMISSION_DENIED
         batch(() => {
           error.set(`[Pyreon] useGeolocation: ${err.message}`)
-          tracking.set(false)
+          if (denied) tracking.set(false)
         })
-        watchId = undefined
+        if (denied && watchId !== undefined) {
+          // Clear explicitly rather than trusting every engine to end it.
+          navigator.geolocation.clearWatch(watchId)
+          watchId = undefined
+        }
       },
       {
         enableHighAccuracy: options.enableHighAccuracy ?? false,
@@ -182,7 +195,7 @@ export function useGeolocation(options: UseGeolocationOptions = {}): UseGeolocat
 
   // A watch left running after unmount keeps the GPS active and holds the
   // callback's closure alive — a battery drain the user cannot see.
-  onCleanup(stop)
+  onHookCleanup(stop)
 
   return {
     get latitude() {

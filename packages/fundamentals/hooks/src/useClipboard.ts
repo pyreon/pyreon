@@ -1,6 +1,7 @@
-import { batch, onCleanup, signal } from '@pyreon/reactivity'
+import { batch, signal } from '@pyreon/reactivity'
 
 import { warnIfInsecureContext } from './secure-context'
+import { onHookCleanup } from './lifecycle'
 
 export interface UseClipboardResult {
   /** Copy text to clipboard. Returns true on success. */
@@ -62,7 +63,7 @@ export function useClipboard(options?: { timeout?: number }): UseClipboardResult
     }
   }
 
-  onCleanup(() => {
+  onHookCleanup(() => {
     if (timer) clearTimeout(timer)
   })
 

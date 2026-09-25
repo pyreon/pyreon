@@ -1,4 +1,4 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const LabWrap = el
   .attrs({
@@ -6,7 +6,7 @@ export const LabWrap = el
     contentDirection: 'rows',
     contentAlignX: 'block',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     flex: '1',
     overflowY: 'auto',
     padding: '28px 32px',

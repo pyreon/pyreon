@@ -1,4 +1,4 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const Segment = el
   .attrs({
@@ -7,8 +7,9 @@ export const Segment = el
     contentAlignY: 'center',
     gap: 2,
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     padding: '4px',
+    flex: 'none',
     borderRadius: t.radius.panel,
     background: t.surface2,
   }))

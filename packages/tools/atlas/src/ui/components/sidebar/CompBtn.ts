@@ -1,4 +1,4 @@
-import { dim, el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const CompBtn = el
   .attrs({
@@ -8,7 +8,7 @@ export const CompBtn = el
     block: true,
     gap: 12,
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     font: 'inherit',
     cursor: 'pointer',
     textAlign: 'left',
@@ -22,14 +22,19 @@ export const CompBtn = el
     color: t.muted,
     background: 'transparent',
     hover: { background: t.surface2 },
+    minWidth: '0',
+    // Nesting depth → indent. A part sits under its parent, a folder's
+    // components under the folder header.
+    extendCss:
+      '&[data-depth="2"]{padding-left:20px;}&[data-depth="3"]{padding-left:32px;}&[data-depth="4"]{padding-left:44px;}',
   }))
   .states(
-    dim((t) => ({
+    (t) => ({
       active: {
         fontWeight: 600,
         color: t.text,
         backgroundColor: t.accentSoft,
       },
       idle: {},
-    })),
+    }),
   )

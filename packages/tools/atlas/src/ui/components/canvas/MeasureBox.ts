@@ -5,13 +5,13 @@
  * — hashing a class per mousemove would grow the style cache without bound.
  * Same precedent as `@pyreon/elements`' overlay positioning.
  */
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const MeasureBox = el
   .attrs({
     tag: 'div',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     position: 'absolute',
     display: 'none',
     pointerEvents: 'none',

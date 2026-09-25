@@ -1,10 +1,10 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const ClearBtn = el
   .attrs({
     tag: 'button',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     font: 'inherit',
     fontSize: t.size.small,
     cursor: 'pointer',
