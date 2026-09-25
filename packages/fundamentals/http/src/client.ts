@@ -21,12 +21,13 @@ import {
   type EndpointSpec,
   type ResponseKind,
 } from './endpoint'
-import { AbortError, HttpError, TimeoutError, httpErrorFor, isAbortError } from './errors'
-import { createResponsePromise, type HttpResponsePromise, type ParseContext } from './response'
+import { AbortError, HttpError, TimeoutError, isAbortError } from './errors'
+import { buildHttpError, createResponsePromise, type HttpResponsePromise, type ParseContext } from './response'
 import { resolveAgainstAmbientOrigin } from './request-context'
 import { linkSignals } from './signal'
 import { fetchTransport } from './transport'
 import type {
+  ErrorSchemas,
   HeaderValues,
   HttpClientConfig,
   HttpMethod,
@@ -76,10 +77,11 @@ export interface HttpClient {
     V extends Validator<unknown> | undefined = undefined,
     I extends EndpointInput<PathOfSpec<S>> = EndpointInput<PathOfSpec<S>>,
     K extends ResponseKind = 'json',
+    E extends ErrorSchemas | undefined = undefined,
   >(
     spec: S,
-    options?: EndpointConfig<V, K>,
-  ): Endpoint<S, BodyOf<K, V>, I>
+    options?: EndpointConfig<V, K, E>,
+  ): Endpoint<S, BodyOf<K, V>, I, E>
 }
 
 const DEFAULT_TIMEOUT = 30_000
@@ -233,6 +235,13 @@ function fromResolved(resolved: ResolvedConfig): HttpClient {
     options: RequestOptions = {},
   ): HttpResponsePromise => {
     const folded = foldedState ?? fold()
+    // An accessor `validate` is read per request (so a runtime switch between
+    // 'strict' and 'warn' applies to the next call); the static form keeps
+    // sharing the one context object. Resolved BEFORE dispatch because a
+    // thrown HttpError validates its body against `errors` under it too.
+    const parse = resolved.validateSource
+      ? { validate: resolved.validateSource(), schema: resolved.parse.schema }
+      : resolved.parse
     const exec = (async (): Promise<HttpResponse> => {
       const headers = new Headers(folded.base)
       for (const source of folded.dynamic) {
@@ -280,7 +289,7 @@ function fromResolved(resolved: ResolvedConfig): HttpClient {
 
         const response = await dispatch(httpRequest)
         const shouldThrow = options.throwHttpErrors ?? resolved.throwHttpErrors
-        if (shouldThrow && !response.ok) throw httpErrorFor(response)
+        if (shouldThrow && !response.ok) throw await buildHttpError(response, options.errors, parse)
         return response
       } catch (cause) {
         // A timeout surfaces from the transport as an abort — re-label it,
@@ -305,12 +314,6 @@ function fromResolved(resolved: ResolvedConfig): HttpClient {
       }
     })()
 
-    // An accessor `validate` is read per request (so a runtime switch between
-    // 'strict' and 'warn' applies to the next call); the static form keeps
-    // sharing the one context object.
-    const parse = resolved.validateSource
-      ? { validate: resolved.validateSource(), schema: resolved.parse.schema }
-      : resolved.parse
     return createResponsePromise(exec, parse)
   }
 

@@ -13,6 +13,7 @@ import type {
   HttpMethod,
   IrBody,
   IrDocument,
+  IrErrorResponse,
   IrField,
   IrFieldEncoding,
   IrLiteral,
@@ -360,6 +361,7 @@ function normalizeUnions(models: IrModel[], operations: IrOperation[], ctx: Ctx)
   for (const op of operations) {
     const at = ctx.opAt.get(op) ?? ptr('paths', op.path, op.method.toLowerCase())
     if (op.response) op.response = walk(op.response, at)
+    if (op.errors) op.errors = op.errors.map((e) => ({ ...e, type: walk(e.type, at) as IrType }))
     if (op.body) op.body = { ...op.body, type: walk(op.body.type, at) as IrType }
     op.headerParams = op.headerParams.map((p) => ({ ...p, type: walk(p.type, at) as IrType }))
     op.cookieParams = op.cookieParams.map((p) => ({ ...p, type: walk(p.type, at) as IrType }))
@@ -913,7 +915,7 @@ function fieldEncodingOf(encoding: Json | undefined): Record<string, IrFieldEnco
   return Object.keys(out).length > 0 ? out : undefined
 }
 
-function responseOf(op: Json, at: string, ctx: Ctx): Pick<IrOperation, 'response' | 'responseMedia'> {
+function responseOf(op: Json, at: string, ctx: Ctx): Pick<IrOperation, 'response' | 'responseMedia' | 'errors'> {
   const responses = obj(op.responses)
   if (!responses) return {}
   const rAt = sub(at, 'responses')
@@ -926,9 +928,7 @@ function responseOf(op: Json, at: string, ctx: Ctx): Pick<IrOperation, 'response
   const ok = successes[0]
   const chosen = ok ?? (responses.default !== undefined ? 'default' : undefined)
 
-  // What the typed result does NOT carry. Each is a response the spec
-  // describes and the generated call cannot surface: a different success
-  // shape, or an error body that reaches the caller as an untyped rejection.
+  // What the typed result does NOT carry: a different success shape.
   const withBody = (k: string): boolean => Object.keys(obj(obj(deref(responses[k], sub(rAt, k), ctx))?.content) ?? {}).length > 0
   const others = successes.slice(1).filter(withBody)
   if (others.length > 0) {
@@ -938,19 +938,10 @@ function responseOf(op: Json, at: string, ctx: Ctx): Pick<IrOperation, 'response
       message: `only \`${ok}\` is typed; the ${others.map((k) => `\`${k}\``).join(', ')} response${others.length > 1 ? 's are' : ' is'} decoded as if ${others.length > 1 ? 'they were' : 'it were'} \`${ok}\`.`,
     })
   }
-  const errors = keys
-    .filter((k) => k !== chosen && (/^[45](\d\d|XX)$/i.test(k) || k === 'default'))
-    .filter(withBody)
-    .sort()
-  if (errors.length > 0) {
-    ctx.notes.push({
-      code: 'error-responses',
-      at: rAt,
-      message: `error response${errors.length > 1 ? 's' : ''} ${errors.map((k) => `\`${k}\``).join(', ')} ${errors.length > 1 ? 'are' : 'is'} not typed — a failed call rejects with an error whose body is \`unknown\`.`,
-    })
-  }
+  const errors = errorResponsesOf(responses, chosen, rAt, ctx)
 
-  if (!chosen) return {}
+  const typedErrors = errors.length > 0 ? { errors } : {}
+  if (!chosen) return typedErrors
   const cAt = sub(rAt, chosen)
   const res = obj(deref(responses[chosen], cAt, ctx))
   const headers = Object.keys(obj(res?.headers) ?? {}).sort()
@@ -962,8 +953,45 @@ function responseOf(op: Json, at: string, ctx: Ctx): Pick<IrOperation, 'response
     })
   }
   const content = obj(res?.content)
-  if (!content) return {}
-  return pickResponseContent(content, cAt, ctx)
+  if (!content) return typedErrors
+  return { ...pickResponseContent(content, cAt, ctx), ...typedErrors }
+}
+
+/**
+ * The TYPED error responses of an operation: every `4xx`/`5xx` code, `4XX`/
+ * `5XX` range and `default` with a JSON body, in the order a client matches
+ * them (exact codes, ranges, `default`). One whose body is not JSON, or has no
+ * schema, cannot be validated or typed -- that is the loss the
+ * `error-responses` note reports. `chosen` (a `default` read as the success
+ * response) is not an error.
+ */
+function errorResponsesOf(responses: Json, chosen: string | undefined, rAt: string, ctx: Ctx): IrErrorResponse[] {
+  const rank = (k: string): number => (/^\d{3}$/.test(k) ? 0 : k === 'default' ? 2 : 1)
+  const keys = Object.keys(responses)
+    .filter((k) => k !== chosen && (/^[45](\d\d|XX)$/i.test(k) || k === 'default'))
+    .sort((a, b) => rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0))
+  const out: IrErrorResponse[] = []
+  const untyped: string[] = []
+  for (const key of keys) {
+    const eAt = sub(rAt, key)
+    const content = obj(obj(deref(responses[key], eAt, ctx))?.content)
+    if (!content || Object.keys(content).length === 0) continue
+    const json = Object.keys(content).find((k) => encodingOf(k) === 'json')
+    const schema = json ? obj(obj(content[json])?.schema) : undefined
+    if (!json || !schema) {
+      untyped.push(key)
+      continue
+    }
+    out.push({ status: key === 'default' ? key : key.toUpperCase(), type: toType(schema, sub(eAt, 'content', json, 'schema'), ctx) })
+  }
+  if (untyped.length > 0) {
+    ctx.notes.push({
+      code: 'error-responses',
+      at: rAt,
+      message: `error response${untyped.length > 1 ? 's' : ''} ${untyped.map((k) => `\`${k}\``).join(', ')} ${untyped.length > 1 ? 'have' : 'has'} no JSON schema, so ${untyped.length > 1 ? 'their bodies are' : 'its body is'} not typed — the rejection's \`body\` is \`unknown\` for ${untyped.length > 1 ? 'those statuses' : 'that status'}.`,
+    })
+  }
+  return out
 }
 
 /**

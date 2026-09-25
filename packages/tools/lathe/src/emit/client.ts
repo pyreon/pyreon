@@ -32,7 +32,7 @@ import {
   type ClientName,
   type ResponseValidation,
 } from './client-runtime'
-import { bodyRefType, hasInput, inputType, type ModelTypes, responseTypeOf } from './operation-types'
+import { bodyRefType, errorTypeOf, hasInput, inputType, type ModelTypes, responseTypeOf } from './operation-types'
 import { emitInfinite } from './pagination'
 import { PURE, schemaExpr, schemaRefs, schemaSpecifierFor, tsType } from './schema'
 import { dialectOf, type ValidatorName } from './validator'
@@ -169,6 +169,12 @@ export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
   f.line('    (req, next) => (devTransport ? devTransport(req, next) : next(req)),')
   f.line('  ],')
   f.line('})')
+  f.line()
+  f.doc(
+    'What a generated call rejects with, typed by the status codes the spec',
+    'declares: `err.matched && err.status === 404` narrows `err.body`.',
+  )
+  f.line("export type { EndpointError, HttpErrorOf, RequestFailure } from '@pyreon/http'")
   return f
 }
 
@@ -516,6 +522,7 @@ export function emitWebEndpoints(
     const typeImports = new Set<string>()
     for (const op of ops) {
       if (op.response && op.response.kind !== 'unknown') schemaRefs(op.response, schemaImports)
+      for (const e of op.errors ?? []) schemaRefs(e.type, schemaImports)
       // A PARAMETER's schema can be a `$ref` too - GitHub's spec does this
       // heavily (`AlertNumber`, `CodeScanningRef`) - and so can a body.
       for (const p of [...op.pathParams, ...op.queryParams, ...op.headerParams, ...op.cookieParams]) {
@@ -603,6 +610,25 @@ function endpointDecl(op: IrOperation, validator: ValidatorName, models: ModelTy
     }
   }
   if (kind !== undefined) entries.push(`responseType: ${q(kind)}`)
+  // Typed error bodies: one schema per declared status key, validated by the
+  // client when a call rejects (`HttpError.body` / `matched`). A composite
+  // body gets a named const for the same reason a composite response does.
+  const errorConsts: string[] = []
+  const errorTypes: string[] = []
+  const errorEntries: string[] = []
+  for (const e of op.errors ?? []) {
+    const key = /^\d+$/.test(e.status) ? e.status : e.status === 'default' ? 'default' : q(e.status)
+    let binding: string
+    if (e.type.kind === 'ref') {
+      binding = e.type.name
+    } else {
+      binding = `${op.id}$error${e.status === 'default' ? 'Default' : e.status}`
+      errorConsts.push(`const ${binding} = ${schemaExpr(e.type, { native: false, validator })}`)
+    }
+    errorEntries.push(`${key}: ${binding}`)
+    errorTypes.push(`${key}: typeof ${binding}`)
+  }
+  if (errorEntries.length > 0) entries.push(`errors: { ${errorEntries.join(', ')} }`)
   const styles = op.queryParams.flatMap((p) => {
     const style = runtimeQueryStyle(p, models)
     return style ? [`${propKey(p.name)}: ${style}`] : []
@@ -627,14 +653,19 @@ function endpointDecl(op: IrOperation, validator: ValidatorName, models: ModelTy
   // ALWAYS explicit, even for an operation that sends nothing: its input is
   // then `{}`, so a direct call cannot pass a query or a body the spec never
   // declared — the loose default would accept both.
-  const generics = `<${[q(endpointSpec(op)), v, inputType(op, models), ...(kind ? [q(kind)] : [])].join(', ')}>`
+  // `E` (the error schemas' types) is the fifth type parameter, so a typed
+  // error needs the kind spelled out even when it is the default `json`.
+  const errorsGeneric = errorTypes.length > 0 ? [q(kind ?? 'json'), `{ ${errorTypes.join('; ')} }`] : kind ? [q(kind)] : []
+  const generics = `<${[q(endpointSpec(op)), v, inputType(op, models), ...errorsGeneric].join(', ')}>`
   const config = entries.length > 0 ? `, { ${entries.join(', ')} }` : ''
+  const consts = [...(responseConst ? [responseConst] : []), ...errorConsts]
+  const constText = consts.join('\n')
   return {
     generics,
     config,
-    responseConst,
-    text: `${config} ${responseConst ?? ''}`,
-    usesBinding: (binding) => new RegExp(`\\b${binding}\\.`).test(`${config} ${responseConst ?? ''}`),
+    responseConst: consts.length > 0 ? constText : undefined,
+    text: `${config} ${constText}`,
+    usesBinding: (binding) => new RegExp(`\\b${binding}\\.`).test(`${config} ${constText}`),
   }
 }
 
@@ -770,6 +801,7 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
       f.import('@pyreon/query', 'useMutation')
       f.importType('@pyreon/query', 'MutationOptions')
     }
+    if (ops.some((o) => (o.errors?.length ?? 0) > 0)) f.importType(relativeSpecifier(path, CLIENT_FILE), 'EndpointError')
     if (ops.some((o) => o.pagination && !isMutation(o))) {
       f.import('@pyreon/query', 'useInfiniteQuery')
       f.importType('@pyreon/query', 'UseInfiniteQueryOptions')
@@ -788,6 +820,9 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
       // re-rendered from the spec — the declaration is the one source.
       const data = `Awaited<ReturnType<typeof ${op.id}>>`
       const input = `Parameters<typeof ${op.id}>[0]`
+      // What `error()` holds: the endpoint's typed rejection when the spec
+      // declares error bodies, `Error` otherwise.
+      const err = errorTypeOf(op)
       f.line()
       if (isMutation(op)) {
         const targets = invalidationTargets(op, queryOps)
@@ -803,7 +838,7 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
           '`onMutate` / `onError` / `onSettled` take the usual optimistic-update shape — see `optimisticUpdate` in `./keys`.',
         )
         f.line(`export function ${hook}(`)
-        f.line(`  options?: Omit<MutationOptions<${data}, Error, ${vars}>, 'mutationFn'>,`)
+        f.line(`  options?: Omit<MutationOptions<${data}, ${err}, ${vars}>, 'mutationFn'>,`)
         f.line(') {')
         f.line('  return useMutation({')
         f.line(
@@ -837,13 +872,13 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
         '',
         'Result fields are SIGNALS: `q.data()`, `q.isPending()` — call them.',
       )
-      const extra = `options?: () => Omit<UseQueryOptions<${data}, Error, TData>, 'queryKey' | 'queryFn'>`
+      const extra = `options?: () => Omit<UseQueryOptions<${data}, ${err}, TData>, 'queryKey' | 'queryFn'>`
       if (args) {
         f.line(`export function ${hook}<TData = ${data}>(`)
         f.line(`  args: () => ${input} | undefined,`)
         f.line(`  ${extra},`)
         f.line(') {')
-        f.line(`  return useQuery<${data}, Error, TData>(() => {`)
+        f.line(`  return useQuery<${data}, ${err}, TData>(() => {`)
         f.line('    const a = args()')
         f.line('    const extra = options?.() ?? {}')
         // The disabled branch keys on the endpoint's own PREFIX — the same key
@@ -859,7 +894,7 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
         f.line('  })')
       } else {
         f.line(`export function ${hook}<TData = ${data}>(${extra}) {`)
-        f.line(`  return useQuery<${data}, Error, TData>(() => ({ ...${op.id}.query(), ...options?.() }))`)
+        f.line(`  return useQuery<${data}, ${err}, TData>(() => ({ ...${op.id}.query(), ...options?.() }))`)
       }
       f.line('}')
       emitInfinite(f, op, DISABLED_FN)

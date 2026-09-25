@@ -24,7 +24,9 @@
 
 import type { FormFieldEncoding, FormFields, FormScalar, MultipartFields } from './body'
 import type { HttpClient } from './client'
+import type { HttpError } from './errors'
 import type {
+  ErrorSchemas,
   HeaderValues,
   HttpMethod,
   PathParams,
@@ -203,13 +205,99 @@ export type BodyOf<K extends ResponseKind, V> = K extends 'text'
           ? void
           : ResponseOf<V>
 
-/** {@link EndpointOptions} plus the validator slot that types the response. */
-export type EndpointConfig<V, K extends ResponseKind = 'json'> = EndpointOptions & {
+/** {@link EndpointOptions} plus the validator slots that type the response and its errors. */
+export type EndpointConfig<V, K extends ResponseKind = 'json', E = undefined> = EndpointOptions & {
   /** Validates and types the response. Omit for an unchecked `unknown`. */
   response?: V | undefined
   /** How the body is decoded — see {@link ResponseKind}. Defaults to `json`. */
   responseType?: K | undefined
+  /**
+   * Validates and types ERROR bodies, keyed by status (`404`), range
+   * (`'4XX'`) or `'default'`. A thrown {@link HttpError}'s `body` is checked
+   * against the most specific match and `matched` records which one passed;
+   * {@link EndpointError} is the resulting type. Its own slot for the same
+   * reason `response` has one.
+   *
+   * @example
+   * ```ts
+   * const getUser = api.endpoint('GET /users/:id', {
+   *   response: User,
+   *   errors: { 404: NotFound, default: Problem },
+   * })
+   * ```
+   */
+  errors?: E | undefined
 }
+
+type StatusOfKey<K> = K extends number ? K : K extends `${infer N extends number}` ? N : number
+
+/**
+ * The {@link HttpError} an endpoint declared with `errors: E` rejects with,
+ * discriminated by `matched` -- the `errors` key the body validated against.
+ *
+ * Each declared key is a member carrying that schema's body type, with
+ * `status` narrowed to the literal for an exact key (`number` for a `'4XX'`
+ * range or `'default'`). The `matched: undefined` member is the honest
+ * remainder -- a status nothing was declared for, or a body that failed its
+ * schema -- with an `unknown` body.
+ *
+ * @example
+ * ```ts
+ * type E = HttpErrorOf<{ 404: typeof NotFound; default: typeof Problem }>
+ * declare const e: E
+ * if (e.matched === '404') e.body // NotFound's output type
+ * if (e.matched === 'default') e.body // Problem's
+ * ```
+ */
+export type HttpErrorOf<E> = HttpError &
+  (
+    | {
+        [K in keyof E & (string | number)]: {
+          readonly matched: `${K}`
+          readonly status: StatusOfKey<K>
+          readonly body: ValidatorOutput<E[K]>
+        }
+      }[keyof E & (string | number)]
+    | { readonly matched: undefined }
+  )
+
+/**
+ * Anything else a call can reject with -- a network failure, a timeout, a
+ * cancellation, a response that failed its schema, an exception thrown by
+ * middleware. Typed so that `err.matched` / `err.status` / `err.body` are readable on the
+ * whole {@link EndpointError} union and narrow it away.
+ */
+export type RequestFailure = Error & {
+  readonly matched?: undefined
+  readonly status?: undefined
+  readonly body?: undefined
+}
+
+/**
+ * Everything a call to `EP` can reject with: its typed {@link HttpErrorOf}
+ * plus {@link RequestFailure}. The error type of a query or mutation built
+ * from the endpoint.
+ *
+ * @example
+ * ```ts
+ * const q = useQuery<User, EndpointError<typeof getUser>>(() => getUser.query({ params: { id: id() } }))
+ * const err = q.error()
+ * if (err?.matched === '404') show(err.body.message)
+ * ```
+ */
+export type EndpointError<EP> = HttpErrorOf<DeclaredErrors<EP>> | RequestFailure
+
+/**
+ * The `errors` an endpoint was declared with, or `undefined`. Guarded rather
+ * than `NonNullable<E>`: with nothing declared that is `never`, whose `keyof`
+ * is EVERY key -- the unmatched-only type would turn into one member per
+ * possible string.
+ */
+type DeclaredErrors<EP> = EP extends { readonly errors: infer E }
+  ? [Exclude<E, undefined>] extends [never]
+    ? undefined
+    : Exclude<E, undefined>
+  : undefined
 
 /** Structural mirror of TanStack's query options — no dependency needed. */
 export interface QueryOptionsLike<T> {
@@ -236,8 +324,11 @@ export interface Endpoint<
   S extends EndpointSpec,
   TResponse,
   I extends EndpointInput<PathOf<S>> = EndpointInput<PathOf<S>>,
+  E = undefined,
 > {
   (...args: CallArgs<I & EndpointCallOptions>): Promise<TResponse>
+  /** The declared error-body schemas — see {@link EndpointError}. */
+  readonly errors: E
   /** Narrowed to the literal from the spec — `'GET'`, not `HttpMethod`. */
   readonly method: MethodOf<S>
   /** The declared path, placeholders intact — `'/users/:id'`. */
@@ -341,11 +432,12 @@ export function defineEndpoint<
   V extends Validator<unknown> | undefined = undefined,
   I extends EndpointInput<PathOf<S>> = EndpointInput<PathOf<S>>,
   K extends ResponseKind = 'json',
+  E extends ErrorSchemas | undefined = undefined,
 >(
   client: HttpClient,
   spec: S,
-  options: EndpointConfig<V, K> = {},
-): Endpoint<S, BodyOf<K, V>, I> {
+  options: EndpointConfig<V, K, E> = {},
+): Endpoint<S, BodyOf<K, V>, I, E> {
   const { method, path } = splitSpec(spec)
   const prefix: EndpointKey =
     options.keyScope === undefined ? [method, path] : [options.keyScope, method, path]
@@ -376,6 +468,7 @@ export function defineEndpoint<
       timeout: args?.timeout ?? options.timeout,
       meta: args?.meta,
       throwHttpErrors: options.throwHttpErrors,
+      errors: options.errors,
     })
     switch (options.responseType ?? 'json') {
       case 'text':
@@ -400,6 +493,7 @@ export function defineEndpoint<
   const endpoint = Object.assign(call, {
     method,
     path,
+    errors: options.errors,
     key,
     query: (args?: RawArgs) => ({
       queryKey: buildKey(args),
@@ -417,5 +511,5 @@ export function defineEndpoint<
   // `EndpointArgs<PathOf<S>>` and `unknown` the erasure of the inferred
   // response type; TypeScript cannot verify that relation through
   // `Object.assign`, so it is asserted once, here, rather than at each site.
-  return endpoint as unknown as Endpoint<S, BodyOf<K, V>, I>
+  return endpoint as unknown as Endpoint<S, BodyOf<K, V>, I, E>
 }

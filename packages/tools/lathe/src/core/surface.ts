@@ -159,6 +159,7 @@ function usageOf(doc: IrDocument): Record<string, SurfaceUsage> {
       collectRefNames(p.type, requestRoots)
     }
     collectRefNames(op.response, responseRoots)
+    for (const e of op.errors ?? []) collectRefNames(e.type, responseRoots)
   }
   const req = reachableModels(doc, requestRoots)
   const res = reachableModels(doc, responseRoots)

@@ -275,3 +275,12 @@ function expandFileRefs(type: IrType, models: ReadonlyMap<string, IrType>, expan
       return type
   }
 }
+
+/**
+ * The error type a hook built on `op` reports: `EndpointError<typeof op>` --
+ * the endpoint's validated, status-discriminated rejection -- when the spec
+ * declares typed error bodies, and plain `Error` when it declares none.
+ */
+export function errorTypeOf(op: IrOperation): string {
+  return (op.errors?.length ?? 0) > 0 ? `EndpointError<typeof ${op.id}>` : 'Error'
+}

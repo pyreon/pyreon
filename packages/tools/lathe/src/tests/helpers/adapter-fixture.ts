@@ -54,6 +54,14 @@ paths:
           content:
             application/json:
               schema: { type: array, items: { $ref: '#/components/schemas/Book' } }
+        '404':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        default:
+          content:
+            application/json:
+              schema: { type: object, required: [code], properties: { code: { type: integer } } }
     post:
       operationId: createBook
       tags: [books]
@@ -93,6 +101,11 @@ components:
         id: { type: string }
         title: { type: string }
         pages: { type: integer }
+    Problem:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
 `
 
 /**

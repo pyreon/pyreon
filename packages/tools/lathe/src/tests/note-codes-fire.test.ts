@@ -95,10 +95,11 @@ const CASES: Record<IrNoteCode, [Record<string, unknown>, Record<string, unknown
     get({ responses: { 200: { headers: { 'X-Next': { schema: { type: 'string' } } }, content: json({ type: 'string' }) } } }),
     get({}),
   ],
+  // A JSON error body is TYPED (the endpoint's `errors`); only one that
+  // cannot be -- not JSON, or no schema -- is a loss.
   'error-responses': [
+    get({ responses: { 200: { content: json({ type: 'string' }) }, 404: { content: { 'text/html': { schema: { type: 'string' } } } } } }),
     get({ responses: { 200: { content: json({ type: 'string' }) }, 404: { content: json({ type: 'object' }) } } }),
-    // An error status with NO body loses nothing -- there is nothing to type.
-    get({ responses: { 200: { content: json({ type: 'string' }) }, 404: { description: 'gone' } } }),
   ],
   'other-success-responses': [
     get({ responses: { 200: { content: json({ type: 'string' }) }, 202: { content: json({ type: 'object' }) } } }),

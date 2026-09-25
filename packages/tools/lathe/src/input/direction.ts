@@ -133,6 +133,8 @@ export function splitByDirection(
   for (const op of operations) {
     if (op.body) op.body = { ...op.body, type: project(op.body.type, 'request', toInput) }
     if (op.response) op.response = project(op.response, 'response', same)
+    // An error body is a RESPONSE: server-assigned fields stay in it.
+    if (op.errors) op.errors = op.errors.map((e) => ({ ...e, type: project(e.type, 'response', same) }))
     op.pathParams = op.pathParams.map((p) => ({ ...p, type: project(p.type, 'request', toInput) }))
     op.queryParams = op.queryParams.map((p) => ({ ...p, type: project(p.type, 'request', toInput) }))
     op.headerParams = op.headerParams.map((p) => ({ ...p, type: project(p.type, 'request', toInput) }))
@@ -144,5 +146,5 @@ export function splitByDirection(
 function hasMarkers(op: IrOperation): boolean {
   const any = (t: IrType | undefined): boolean =>
     !!t && ((t.kind === 'object' && t.fields.some((f) => f.readOnly || f.writeOnly)) || childTypes(t).some(any))
-  return any(op.body?.type) || any(op.response)
+  return any(op.body?.type) || any(op.response) || (op.errors ?? []).some((e) => any(e.type))
 }

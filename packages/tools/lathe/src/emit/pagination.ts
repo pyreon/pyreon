@@ -15,7 +15,7 @@
 import type { IrOperation, IrPagination, IrType } from '../core/ir'
 import { propKey, typeIdent } from '../core/naming'
 import type { ModelTypes } from './operation-types'
-import { resolve as resolveRef } from './operation-types'
+import { errorTypeOf, resolve as resolveRef } from './operation-types'
 import { tsType } from './schema'
 import type { SourceFile } from './writer'
 
@@ -169,7 +169,8 @@ export function emitInfinite(f: SourceFile, op: IrOperation, disabledFn: string)
   const data = `Awaited<ReturnType<typeof ${op.id}>>`
   const input = `Parameters<typeof ${op.id}>[0]`
   const pp = pageParamType(p, op)
-  const opts = `UseInfiniteQueryOptions<${data}, Error, readonly unknown[], ${pp}>`
+  const err = errorTypeOf(op)
+  const opts = `UseInfiniteQueryOptions<${data}, ${err}, readonly unknown[], ${pp}>`
   const name = infiniteOptionsName(op)
   const hook = `use${typeIdent(op.id)}Infinite`
   const describe =
@@ -209,7 +210,7 @@ export function emitInfinite(f: SourceFile, op: IrOperation, disabledFn: string)
   f.line(`  args: () => ${input} | undefined,`)
   f.line(`  options?: () => Omit<${opts}, 'queryKey' | 'queryFn' | 'initialPageParam' | 'getNextPageParam'>,`)
   f.line(') {')
-  f.line(`  return useInfiniteQuery<${data}, Error, readonly unknown[], ${pp}>(() => {`)
+  f.line(`  return useInfiniteQuery<${data}, ${err}, readonly unknown[], ${pp}>(() => {`)
   f.line('    const a = args()')
   f.line('    const extra = options?.() ?? {}')
   f.line('    if (a === undefined) {')

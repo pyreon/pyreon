@@ -11,8 +11,9 @@
  * and two consumers of the same promise share one network call.
  */
 
-import { ParseError, ResponseValidationError } from './errors'
+import { type HttpError, ParseError, ResponseValidationError, httpErrorFor } from './errors'
 import type {
+  ErrorSchemas,
   HttpResponse,
   ParseFn,
   SchemaResolver,
@@ -111,6 +112,80 @@ export function applyValidator(
       return raw
     }
     throw new ResponseValidationError(cause, raw, response.request)
+  }
+}
+
+/**
+ * Read an error response's body without consuming it: parsed JSON when it
+ * parses, the text otherwise, `undefined` when empty or unreadable (a body
+ * cut off by the request's own timeout included). Reads a CLONE, so the
+ * caller can still read `error.response.raw`.
+ */
+async function readErrorBody(response: HttpResponse): Promise<unknown> {
+  if (isBodyless(response.status)) return undefined
+  let text: string
+  try {
+    text = await response.raw.clone().text()
+  } catch {
+    return undefined
+  }
+  if (text.length === 0) return undefined
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    return text
+  }
+}
+
+/**
+ * The declared error schema for a status: the exact code, then its range
+ * (`4XX`, either case), then `default`. `undefined` when none applies.
+ */
+export function errorSchemaFor(
+  errors: ErrorSchemas,
+  status: number,
+): [key: string, validator: Validator<unknown>] | undefined {
+  const exact = String(status)
+  const range = `${exact.charAt(0)}XX`
+  for (const key of [exact, range, range.toLowerCase(), 'default']) {
+    const v = errors[key]
+    if (v !== undefined) return [key, v]
+  }
+  return undefined
+}
+
+/**
+ * The {@link HttpError} a non-2xx response throws, with its body decoded and,
+ * when the request declared `errors`, validated against the matching schema.
+ *
+ * A body that fails its schema is NOT turned into a `ResponseValidationError`:
+ * the caller's question is "what did the server say went wrong", and replacing
+ * the HTTP failure with a schema failure would hide it. It stays an
+ * `HttpError` with `matched: undefined` and the raw body -- and `'warn'` logs.
+ */
+export async function buildHttpError(
+  response: HttpResponse,
+  errors: ErrorSchemas | undefined,
+  ctx: ParseContext,
+): Promise<HttpError> {
+  const body = await readErrorBody(response)
+  const match = errors ? errorSchemaFor(errors, response.status) : undefined
+  if (match === undefined) return httpErrorFor(response, body)
+  const [key, validator] = match
+  if (ctx.validate === 'off') return httpErrorFor(response, body, key)
+  const parse = resolveValidator(validator, ctx)
+  try {
+    return httpErrorFor(response, parse(body), key)
+  } catch (cause) {
+    if (ctx.validate === 'warn') {
+      // Same reasoning as `applyValidator`: 'warn' exists for production.
+      // pyreon-lint-disable-next-line pyreon/dev-guard-warnings
+      console.warn(
+        `[Pyreon] http: the ${response.status} body from ${response.request.method} ${response.request.url} ` +
+          `did not match its declared \`${key}\` error schema — \`matched\` is undefined. ${cause instanceof Error ? cause.message : String(cause)}`,
+      )
+    }
+    return httpErrorFor(response, body)
   }
 }
 

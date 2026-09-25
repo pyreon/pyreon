@@ -192,6 +192,14 @@ export interface IrOperation {
   /** The 2xx response type. `undefined` means no content. */
   response?: IrType | undefined
   /**
+   * Typed ERROR responses: every `4xx` / `5xx` / `4XX` / `default` response
+   * with a JSON body, in status-key order (exact codes, then ranges, then
+   * `default`). Emitted as the endpoint's `errors` schemas, so a rejection's
+   * `body` is validated and typed by status. A `default` chosen as the
+   * SUCCESS response (no 2xx declared) is not repeated here.
+   */
+  errors?: readonly IrErrorResponse[] | undefined
+  /**
    * The media type the response was read from, when it is NOT JSON
    * (`text/plain`, `image/png`, `text/event-stream`). Absent for JSON and for
    * no content. Decides how the client DECODES the body — see
@@ -203,6 +211,13 @@ export interface IrOperation {
    * `x-pyreon-pagination` spec extension or the `pagination` config entry.
    */
   pagination?: IrPagination | undefined
+}
+
+/** One typed error response. */
+export interface IrErrorResponse {
+  /** The spec's response key, verbatim in meaning: `'404'`, `'4XX'` or `'default'`. */
+  status: string
+  type: IrType
 }
 
 /**

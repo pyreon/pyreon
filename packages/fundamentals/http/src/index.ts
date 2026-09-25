@@ -78,14 +78,17 @@ export {
   type Endpoint,
   type EndpointArgs,
   type EndpointCallOptions,
+  type EndpointError,
   type EndpointInput,
   type EndpointKey,
   type EndpointOptions,
   type EndpointSpec,
+  type HttpErrorOf,
   type MutationOptionsLike,
   type PathParamNames,
   type QueryOptionsLike,
   type ResponseKind,
+  type RequestFailure,
   type ResponseOf,
 } from './endpoint'
 
@@ -114,6 +117,7 @@ export { type HttpResponsePromise } from './response'
 export { applyPathParams, buildQuery, buildUrl, isAbsoluteUrl, joinUrl } from './url'
 
 export type {
+  ErrorSchemas,
   HeaderValues,
   HttpClientConfig,
   HttpMethod,
