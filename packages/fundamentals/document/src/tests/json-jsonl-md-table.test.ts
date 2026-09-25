@@ -22,17 +22,14 @@ afterEach(() => {
 
 // ─── test-environment parity note ────────────────────────────────────────────
 //
-// @pyreon/document has NO @pyreon/core dependency and no JSX/`h()` pipeline.
-// Its primitives (`Document`, `Page`, `Table`, …) are eager factory functions
-// that return a `DocNode` directly, so the primitives ARE the "real" pipeline
-// this package ships. `h(Document, …)` from @pyreon/core would build a Pyreon
-// VNode whose `type` is the FUNCTION (not the `'document'` tag), which
-// `render()` cannot consume (JSON.stringify even drops the function `type`) —
-// so unlike the ui-system packages the audit scanner was tuned for, there is no
-// separate real-`h()` path to pair against. Every test in this file already
-// builds its input through the real primitives; the `real-primitive parity`
-// describe at the bottom is the explicit, bisect-anchored companion covering
-// the three serialization formats added in PR #2239.
+// @pyreon/document's primitives (`Document`, `Page`, `Table`, …) are eager
+// factory functions that return a `DocNode` directly. A JSX / `h()` tree is a
+// Pyreon VNode tree instead, which `render()` resolves to the same DocNodes —
+// that path is locked separately in `jsx-vnode-tree.test.tsx` (h() and JSX vs
+// direct calls, byte-identical across formats). Every test in this file builds
+// its input through the real primitives; the `real-primitive parity` describe
+// at the bottom is the explicit, bisect-anchored companion covering the three
+// serialization formats added in PR #2239.
 
 // ─── json format ─────────────────────────────────────────────────────────────
 
