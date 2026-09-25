@@ -10,6 +10,7 @@ import {
   HANDLED_FLOW_EDGE_FIELDS,
   HANDLED_FLOW_NODE_FIELDS,
   LOWERED_FLOW_CONFIG_PROPERTIES,
+  DOUBLE_FLOW_CONFIG_PROPERTIES,
   LOWERED_FLOW_METHODS,
   LOWERED_FLOW_PROPERTY_READS,
   droppedFlowFieldsWarning,
@@ -3526,6 +3527,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       ].join(', ')})`] : []),
       ...(d.fitView !== undefined ? [`fitViewOnLoad = ${d.fitView}`] : []),
       ...(d.fitViewPadding !== undefined ? [`fitViewPadding = ${ktDouble(d.fitViewPadding)}`] : []),
+      ...(d.historyLimit !== undefined ? [`historyLimit = ${ktDouble(d.historyLimit)}`] : []),
       ...(d.connectionRules !== undefined ? [`connectionRules = mapOf(${Object.entries(d.connectionRules).map(([key, outputs]) => `${kotlinStr(key)} to listOf(${outputs.map((output) => kotlinStr(output)).join(', ')})`).join(', ')})`] : []),
       ...(d.connectionValidator !== undefined ? [`connectionValidator = ${emitKotlinExpr(d.connectionValidator, 0)}`] : []),
       ...(rowFields.some((field) => field.name === 'label') ? ['searchText = { it.label }'] : []),
@@ -4161,8 +4163,22 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
           _typedLambdaLet = prevTyped
         }
       }
-    case 'assign':
-      return `${emitKotlinExpr(s.target, indent)} ${s.op} ${emitKotlinExpr(s.value, indent)}`
+    case 'assign': {
+      const value = emitKotlinExpr(s.value, indent)
+      // A Double-typed Flow config property takes a Double: a whole-number
+      // literal or an Int expression would not compile.
+      const t = s.target
+      const flowDouble =
+        t.kind === 'member' && t.object.kind === 'member' && t.object.property === 'config' &&
+        t.object.object.kind === 'identifier' && _flowStateNamesKt.has(t.object.object.name) &&
+        DOUBLE_FLOW_CONFIG_PROPERTIES.has(t.property)
+      const coerced = !flowDouble
+        ? value
+        : s.value.kind === 'literal' && typeof s.value.value === 'number'
+          ? (Number.isInteger(s.value.value) ? `${s.value.value}.0` : `${s.value.value}`)
+          : `(${value}).toDouble()`
+      return `${emitKotlinExpr(s.target, indent)} ${s.op} ${coerced}`
+    }
     case 'return': {
       // K2: emit `return@<label> expr` inside labeled lambda contexts
       // (e.g. multi-statement `derivedStateOf { … }` bodies) so kotlinc
