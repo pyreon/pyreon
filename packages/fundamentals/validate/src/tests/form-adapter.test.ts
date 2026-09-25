@@ -9,7 +9,13 @@ const schema = s.object({
 })
 
 describe('toFormValidator', () => {
-  const validate = toFormValidator(schema)
+  const validateAny = toFormValidator(schema)
+  // This schema is sync, so the validator returns the record directly.
+  const validate = (values: Parameters<typeof validateAny>[0]): Record<string, string> => {
+    const r = validateAny(values)
+    if (r instanceof Promise) throw new Error('expected a sync result')
+    return r
+  }
 
   it('returns {} for valid values', () => {
     expect(validate({ email: 'a@b.co', age: 21 })).toEqual({})
@@ -31,7 +37,7 @@ describe('toFormValidator', () => {
   it('routes messages through the i18n t when keys resolve', () => {
     // formatErrorsByPath uses formatError(issue, t); Pyreon issues carry a `key`.
     const t = (key: string) => (key === 'validate.string.email' ? 'Bad email!' : key)
-    const errors = toFormValidator(schema, t)({ email: 'nope', age: 21 })
+    const errors = toFormValidator(schema, t)({ email: 'nope', age: 21 }) as Record<string, string>
     expect(errors.email).toBe('Bad email!')
   })
 
@@ -40,5 +46,11 @@ describe('toFormValidator', () => {
     // Record<string,string> is assignable. Smoke the structural contract.
     const out: Partial<Record<'email' | 'age', string | undefined>> = validate({ email: 'x', age: 1 })
     expect(typeof out).toBe('object')
+    // …and the validator as a whole is assignable to the form contract
+    // (which admits a Promise of the record for async schemas).
+    const fn: (v: { email: string; age: number }) =>
+      | Partial<Record<'email' | 'age', string>>
+      | Promise<Partial<Record<'email' | 'age', string>>> = validateAny
+    expect(typeof fn).toBe('function')
   })
 })

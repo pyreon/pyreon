@@ -240,7 +240,7 @@ describe('useUpdate — onError without previous cache', () => {
   // if@260#1: the PUT fails but no cache entry was pre-populated, so
   // onMutate's `previous` is undefined → onError's `if (context?.previous)`
   // takes the false arm (no rollback write).
-  it('does not write a rollback when there is no cached previous value', async () => {
+  it('removes the optimistic entry when there is no cached previous value', async () => {
     const users = defineFeature<UserValues & { id: number }>({
       name: 'cg-update-no-previous',
       schema: z.object({
@@ -271,12 +271,10 @@ describe('useUpdate — onError without previous cache', () => {
     await new Promise((r) => setTimeout(r, 100))
 
     expect(mutation.isError()).toBe(true)
-    // onMutate optimistically wrote variables.data; onError did NOT roll back
-    // (no previous), so the optimistic value remains.
-    const cached = client.getQueryData(['cg-update-no-previous', 99]) as
-      | Record<string, unknown>
-      | undefined
-    expect(cached).toEqual({ name: 'Nobody' })
+    // onMutate optimistically wrote variables.data (a PARTIAL record). With no
+    // previous snapshot to restore, onError removes the entry rather than
+    // leaving the server-rejected half-record cached for useById readers.
+    expect(client.getQueryData(['cg-update-no-previous', 99])).toBeUndefined()
     unmount()
   })
 })

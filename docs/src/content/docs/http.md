@@ -18,7 +18,13 @@ pyreon add @pyreon/http
 ## Quick start
 
 ```ts
+// @check
 import { createHttp } from '@pyreon/http'
+
+interface User {
+  id: string
+  name: string
+}
 
 export const api = createHttp({ baseUrl: '/api' })
 

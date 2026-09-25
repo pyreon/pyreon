@@ -146,3 +146,26 @@ describe('startClient — hydration barrier', () => {
     })
   })
 })
+
+describe('startClient — __ZERO_HYDRATE__ false (SPA-everywhere build)', () => {
+  const g = globalThis as { __ZERO_HYDRATE__?: boolean }
+  afterEach(() => {
+    delete g.__ZERO_HYDRATE__
+  })
+
+  it('mounts, never hydrates, and clears stray markup instead of duplicating it', async () => {
+    const dom = await import('@pyreon/runtime-dom')
+    const hydrate = vi.mocked(dom.hydrateRoot)
+    const mountFn = vi.mocked(dom.mount)
+    hydrate.mockClear()
+    mountFn.mockClear()
+    g.__ZERO_HYDRATE__ = false
+    const { startClient } = await import('../client')
+    const container = query<HTMLElement>(document, '#app')
+    container.innerHTML = '<span>stale shell</span>'
+    startClient({ routes: [route] })
+    await vi.waitFor(() => expect(mountFn).toHaveBeenCalledTimes(1))
+    expect(hydrate).not.toHaveBeenCalled()
+    expect(container.textContent).not.toContain('stale shell')
+  })
+})

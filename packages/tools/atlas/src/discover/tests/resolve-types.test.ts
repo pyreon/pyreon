@@ -169,3 +169,88 @@ describe('what it deliberately does NOT resolve', () => {
     expect(component?.controls).toEqual([])
   })
 })
+
+describe('inherited props — `interface Props extends Base`', () => {
+  // `ComboboxProps extends ComboboxBaseProps` reported ONE prop (`children`,
+  // a render prop — not a control), so Combobox showed an empty Controls
+  // panel while its headless base declares the whole contract.
+  it('reads a SAME-FILE base', () => {
+    const code =
+      'interface Base { label: string; disabled?: boolean }\n' +
+      'interface Props extends Base { size?: number }\n' +
+      'export function Button(props: Props) {}'
+    expect(controlsOf(code, '/p/Button.tsx', {})).toEqual({ size: 'number', label: 'text', disabled: 'boolean' })
+  })
+
+  it('reads an IMPORTED base, and the base of THAT base from its own file', () => {
+    const files = {
+      '/p/base.ts':
+        "import type { Root } from './root'\nexport interface Base extends Root { options: string; multiple?: boolean }",
+      '/p/root.ts': 'export interface Root { placeholder?: string }',
+    }
+    const code =
+      "import type { Base } from './base'\n" +
+      'interface ComboProps extends Base { children?: (s: unknown) => unknown }\n' +
+      'export function Combo(props: ComboProps) {}'
+    expect(controlsOf(code, '/p/Combo.tsx', files)).toEqual({
+      children: 'reactive',
+      options: 'text',
+      multiple: 'boolean',
+      placeholder: 'text',
+    })
+  })
+
+  it('reads a base declared beside the IMPORTED base, and skips index signatures', () => {
+    const files = {
+      '/p/base.ts':
+        'interface Root { placeholder?: string; [key: string]: unknown }\n' +
+        'export interface Base extends Root { options: string; [key: string]: unknown }',
+    }
+    const code =
+      "import type { Base } from './base'\n" +
+      'interface Props extends Base { own: number }\n' +
+      'export function Combo(props: Props) {}'
+    expect(controlsOf(code, '/p/Combo.tsx', files)).toEqual({
+      own: 'number',
+      options: 'text',
+      placeholder: 'text',
+    })
+  })
+
+  it('lets the OWN member win over an inherited one of the same name (TS narrowing)', () => {
+    const code =
+      "interface Base { size?: string }\ninterface Props extends Base { size?: 'sm' | 'lg' }\n" +
+      'export function Button(props: Props) {}'
+    expect(controlsOf(code, '/p/Button.tsx', {})).toEqual({ size: 'select' })
+  })
+
+  it('does not evaluate `Omit<…>` (it would re-add what the component removed), nor chase an unknown base', () => {
+    const code =
+      "interface Base { a: string; b: string }\ninterface Props extends Omit<Base, 'b'>, Missing { c: string }\n" +
+      'export function Button(props: Props) {}'
+    expect(controlsOf(code, '/p/Button.tsx', {})).toEqual({ c: 'text' })
+  })
+
+  it('survives a heritage cycle', () => {
+    const code =
+      'interface A extends B { a: string }\ninterface B extends A { b: string }\n' +
+      'export function Button(props: A) {}'
+    expect(controlsOf(code, '/p/Button.tsx', {})).toEqual({ a: 'text', b: 'text' })
+  })
+
+  it('an imported base that is not resolvable (no resolver) contributes nothing', () => {
+    const code =
+      "import type { Base } from './base'\ninterface Props extends Base { own: string }\n" +
+      'export function Button(props: Props) {}'
+    const [component] = scanSource(code, '/p/Button.tsx')
+    expect(component?.controls.map((c) => c.name)).toEqual(['own'])
+  })
+
+  it('an imported base whose OWN base is not resolvable stops there', () => {
+    const files = { '/p/base.ts': "import type { Far } from '@scope/far'\nexport interface Base extends Far { x: string }" }
+    const code =
+      "import type { Base } from './base'\ninterface Props extends Base { own: string }\n" +
+      'export function Button(props: Props) {}'
+    expect(controlsOf(code, '/p/Button.tsx', files)).toEqual({ own: 'text', x: 'text' })
+  })
+})

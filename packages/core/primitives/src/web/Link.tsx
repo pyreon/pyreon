@@ -16,8 +16,8 @@ import { collectPassthroughAttrs, mergePassthroughStyle } from './passthrough'
  * Compiles to:
  * - Web (this impl): `<a href>` (+ SPA-nav click interception when
  *   `init({ navigate })` is configured)
- * - iOS (via PMTC): `NavigationLink(destination: ...)`
- * - Android (via PMTC): `Box(Modifier.clickable { navController.navigate(...) })`
+ * - iOS (via PMTC): `PyreonLink(to) { … }` — pushes onto the native router
+ * - Android (via PMTC): `PyreonLink(to) { navigate -> Box(Modifier.clickable { navigate() }) }`
  *
  * ## Internal vs external
  *

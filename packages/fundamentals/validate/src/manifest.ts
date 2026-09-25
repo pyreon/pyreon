@@ -88,9 +88,9 @@ const $sameResult = parseReactive(sameSchema, $email)
     {
       name: 'withField',
       kind: 'function',
-      signature: '<S extends StandardSchemaV1>(schema: S, meta: FieldMeta) => S',
+      signature: '<S extends StandardSchemaV1>(schema: S, meta: FieldMeta) => WithFieldMeta<S>',
       summary:
-        "Attach Pyreon field metadata (label, hint, placeholder, i18n keys, autoFocus, autoComplete, defaultValue) to any Standard Schema. The returned schema is the SAME REFERENCE as the input — Pyreon mutates a Symbol-keyed non-enumerable slot in place, which is invisible to JSON serialization, for…in, Object.keys, and library-internal comparators. Mutation (instead of cloning) is required because ArkType's `Type` instances are callable functions whose `~standard.validate` does `this(input)` — a shallow clone would not be callable and would break that contract. Re-wrapping merges new metadata onto existing (later keys win).",
+        "Attach Pyreon field metadata (label, hint, placeholder, i18n keys, autoFocus, autoComplete, defaultValue) to any Standard Schema. Returns a NEW schema carrying the metadata and never modifies its input (a frozen schema is fine), so two `withField` calls on one shared base keep separate labels. A Pyreon `s` schema is cloned (copy-on-write, like its chainable methods); any other Standard Schema is wrapped in a transparent Proxy that answers only the Symbol-keyed metadata slot and forwards everything else — `.parse`, `~standard`, and an ArkType schema's call signature keep working. Re-wrapping a wrapped schema merges (later keys win).",
       example: `const emailSchema = withField(z.string().email(), {
   label: 'Email address',
   placeholder: 'you@example.com',
@@ -98,7 +98,7 @@ const $sameResult = parseReactive(sameSchema, $email)
   autoComplete: 'email',
 })`,
       mistakes: [
-        "Expecting withField to return a NEW reference — it doesn't. The metadata mutation is in place. If you need an isolated copy, construct two separate schemas instead.",
+        "Expecting withField to label the schema you PASSED — it returns a new one and leaves the input untouched. Use the RETURNED schema (`const email = withField(base, …)`); calling `withField(base, …)` for its side effect attaches nothing to `base`.",
         "Adding `i18nLabel` without a corresponding `label` — without a translation provider (or when t echoes the key), there's no fallback. Always set both.",
         "Storing schemas with metadata in JSON.stringify-d state and round-tripping — the metadata is Symbol-keyed and won't survive serialization. Re-attach on load.",
       ],
@@ -140,9 +140,9 @@ const label = meta?.label ?? humanize(fieldName)`,
       signature: `<S extends StandardSchemaV1>(
   schema: S,
   source: Signal<unknown> | (() => unknown),
-) => Computed<ParseResult>`,
+) => Computed<ParseResult<Output<S>>>`,
       summary:
-        "Reactively parse `source` through `schema`. Returns a `Computed<ParseResult>` that re-validates on every source change. Synchronous only — for schemas with async refinements (Zod `.refine(async)`, Valibot async pipe), use parseReactiveAsync (this sync variant surfaces an actionable issue if the schema returns a Promise).",
+        "Reactively parse `source` through `schema`. Returns a `Computed<ParseResult<Output<S>>>` (typed by the schema's output) that re-validates on every source change. Synchronous only — for schemas with async refinements (Zod `.refine(async)`, Valibot async pipe), use parseReactiveAsync (this sync variant surfaces an actionable issue if the schema returns a Promise).",
       example: `const $email = signal('')
 const $result = parseReactive(emailSchema, $email)
 
@@ -165,7 +165,7 @@ $email.set('foo@bar.com')  // $result re-derives`,
       signature: `<S extends StandardSchemaV1>(
   schema: S,
   source: Signal<unknown> | (() => unknown),
-) => Computed<Promise<ParseResult>>`,
+) => Computed<Promise<ParseResult<Output<S>>>>`,
       summary:
         "Async variant of parseReactive. The outer Computed re-evaluates synchronously on source change; the inner Promise resolves once the validator finishes. Stale results are superseded automatically — each re-run bumps an internal version, and a validation that finishes after a newer one started resolves to the NEWEST run's result, so an awaited stale frame can never deliver a stale verdict.",
       example: `const schema = z.string().refine(async (s) => await checkUnique(s))
@@ -192,7 +192,7 @@ watch($result, async (current) => {
   callback: (valid: boolean) => void,
 ) => () => void`,
       summary:
-        "Subscribe to validity transitions. The callback fires only when validity flips (true→false or false→true), NOT on every error-message change — ideal for form-state hooks that care about \"is this OK?\" without re-rendering on every typo. Returns an unsubscribe function. Internally a `watch()` over `parseReactive`.",
+        "Subscribe to validity transitions. The callback fires only when validity flips (true→false or false→true), NOT on every error-message change — ideal for form-state hooks that care about \"is this OK?\" without re-rendering on every typo. Returns an unsubscribe function. Async schemas report once the validation settles; a settle superseded by newer input is dropped, and a rejected validator counts as invalid.",
       example: `const stop = watchValid(emailSchema, $email, (valid) => {
   submitButton.disabled = !valid
 })
@@ -490,8 +490,8 @@ s.nativeEnum(Role).parse('admin') // → { ok: true, value: 'admin' }`,
       note: "The protocol deliberately omits a metadata channel — that's the gap `withField` fills. The protocol also doesn't carry i18n keys — `formatErrors` adds that layer.",
     },
     {
-      label: 'withField mutates in place',
-      note: "ArkType's Type instances are callable functions whose `~standard.validate` does `this(input)` — `this` must be the callable schema itself. An Object.create() clone is not callable and breaks ArkType. Symbol-keyed non-enumerable mutation is invisible to JSON / for…in / Object.keys / library-internal comparators. Safe.",
+      label: 'Schemas are immutable (copy-on-write)',
+      note: "Every chainable method (`.min()`, `.email()`, `.refine()`, `.field()`, …), every `/mini` action, `pipe()`, and `withField()` returns a NEW schema and never mutates its receiver — a shared base schema can be specialised freely without tightening its other users. Always use the RETURNED schema. Under a CSP without 'unsafe-eval', call `configure({ jit: false })` once at startup (the interpreter then runs every schema; results are identical).",
     },
     {
       label: 'Ships its own validator AND interops with others',

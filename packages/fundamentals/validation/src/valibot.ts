@@ -3,10 +3,10 @@ import type {
   SchemaValidateFn,
   TypedSchemaAdapter,
   ValidateFn,
-  ValidationError,
   ValidationIssue,
 } from './types'
-import { flattenIssuePath, issuesToRecord } from './utils'
+import type { InferSchema, StandardSchemaTyped } from './schema'
+import { emptyErrors, flattenIssuePath, formLevelError, issuesToRecord } from './utils'
 
 /**
  * Minimal Valibot-compatible interfaces so we don't require valibot as a hard dep.
@@ -72,6 +72,14 @@ type InternalParseFn = (
  * form.register('email')    // ✅ OK
  * form.register('invalid')  // ❌ Type error!
  */
+export function valibotSchema<S extends StandardSchemaTyped>(
+  schema: S,
+  safeParseFn: GenericSafeParseFn,
+): TypedSchemaAdapter<InferSchema<S>>
+export function valibotSchema<TValues extends Record<string, unknown>>(
+  schema: unknown,
+  safeParseFn: GenericSafeParseFn,
+): TypedSchemaAdapter<TValues>
 export function valibotSchema<TValues extends Record<string, unknown>>(
   schema: unknown,
   safeParseFn: GenericSafeParseFn,
@@ -80,12 +88,10 @@ export function valibotSchema<TValues extends Record<string, unknown>>(
   const validator: SchemaValidateFn<TValues> = async (values: TValues) => {
     try {
       const result = await runParse(schema, values)
-      if (result.success) return {} as Partial<Record<keyof TValues, ValidationError>>
+      if (result.success) return emptyErrors<TValues>()
       return issuesToRecord<TValues>(valibotIssuesToGeneric(result.issues ?? []))
     } catch (err) {
-      return {
-        '': err instanceof Error ? err.message : String(err),
-      } as Partial<Record<keyof TValues, ValidationError>>
+      return formLevelError<TValues>(err)
     }
   }
 

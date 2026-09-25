@@ -1,10 +1,12 @@
 import type { Computed, Signal } from '@pyreon/reactivity'
 import { computed } from '@pyreon/reactivity'
 import { useFormContext } from './context'
+import { isRealError } from './use-form'
 import type {
   FieldErrorProps,
   FieldLabelProps,
   FieldRegisterCheckboxProps,
+  FieldRegisterFileProps,
   FieldRegisterProps,
   FieldState,
   FormState,
@@ -38,6 +40,7 @@ export interface UseFieldResult<T> {
    */
   register: {
     (options: { type: 'checkbox' }): FieldRegisterCheckboxProps
+    (options: { type: 'file' }): FieldRegisterFileProps
     (options?: { type?: 'number' }): FieldRegisterProps<T>
   }
   /** Whether the field has an error (computed). */
@@ -104,7 +107,7 @@ export function useField(
 
   if (!fieldState) {
     throw new Error(
-      `[@pyreon/form] useField("${name}"): field "${name}" not found. ` +
+      `[Pyreon] useField("${name}"): field "${name}" not found. ` +
         `Available fields: ${Object.keys(form.fields).join(', ')}. ` +
         `Declare "${name}" in useForm({ initialValues: { "${name}": … } }) (or the fields array) — ` +
         `@pyreon/form does not auto-register fields on first use.`,
@@ -116,7 +119,8 @@ export function useField(
   // error before re-setting it, so the boolean genuinely flips true→false→true
   // per validation — 8 notifications over 4 attempts either way. There is
   // nothing for an equality gate to suppress here.
-  const hasError = computed(() => fieldState.error() !== undefined)
+  // `''` is a VALID result (see isRealError) — it must not light up the error UI.
+  const hasError = computed(() => isRealError(fieldState.error()))
   const showError = computed(() => fieldState.touched() && hasError())
 
   return {
@@ -133,7 +137,7 @@ export function useField(
     // typed wrapper pick the right overload. The narrow `unknown` cast
     // is needed because TS can't prove the union narrowing through a
     // function-typed delegation otherwise.
-    register: ((opts?: { type?: 'checkbox' | 'number' }) =>
+    register: ((opts?: { type?: 'checkbox' | 'number' | 'file' }) =>
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       (form.register as (f: string, o?: unknown) => unknown)(name, opts)) as UseFieldResult<unknown>['register'],
     hasError,

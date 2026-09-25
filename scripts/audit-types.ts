@@ -95,6 +95,18 @@ const EXEMPT_FIELDS: Exemption[] = [
     field: 'isDynamicEntry',
     reason: 'external Vite-manifest-shape mirror — documented field Vite emits; the perf-advisor + resolver read it',
   },
+  // `PwaManifest` is the W3C web-app-manifest subset zero writes VERBATIM:
+  // `buildWebManifest` spreads the user's object into the emitted JSON, so
+  // no field is read by name. `orientation` is the one field whose name
+  // appears nowhere else in the package (its siblings coincidentally match
+  // `favicon.ts`'s own manifest keys). Pass-through is locked by
+  // `pwa.test.ts` ("writes every declared manifest field verbatim").
+  {
+    package: '@pyreon/zero',
+    interface: 'PwaManifest',
+    field: 'orientation',
+    reason: 'W3C manifest field written verbatim by buildWebManifest (object spread) — never read by name; pass-through locked by pwa.test.ts',
+  },
 ]
 
 // File-level exemptions — entire files whose interfaces are

@@ -1,4 +1,4 @@
-import { sanitizeHref } from '../sanitize'
+import { breakCodeFences, sanitizeHref } from '../sanitize'
 import type { DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
 import { getInlineRuns, getTextContent, hasLinkRun, imagePlaceholderText, warnUnknownNodeType } from '../nodes'
 
@@ -49,7 +49,7 @@ function renderNode(node: DocNode): string {
     case 'link': {
       const href = sanitizeHref(p.href as string)
       const text = getTextContent(node.children)
-      return `${text}: ${href}\n\n`
+      return href ? `${text}: ${href}\n\n` : `${text}\n\n`
     }
 
     case 'image':
@@ -84,7 +84,9 @@ function renderNode(node: DocNode): string {
     }
 
     case 'code': {
-      const text = getTextContent(node.children)
+      // WhatsApp's ``` block cannot be lengthened — break any ``` run in
+      // the content so it cannot end the block early.
+      const text = breakCodeFences(getTextContent(node.children))
       return `\`\`\`${text}\`\`\`\n\n`
     }
 
@@ -98,7 +100,7 @@ function renderNode(node: DocNode): string {
     case 'button': {
       const href = sanitizeHref(p.href as string)
       const text = getTextContent(node.children)
-      return `*${text}*: ${href}\n\n`
+      return href ? `*${text}*: ${href}\n\n` : `*${text}*\n\n`
     }
 
     case 'quote': {
