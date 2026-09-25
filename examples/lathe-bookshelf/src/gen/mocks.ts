@@ -68,7 +68,10 @@ export const routes: MockRoute[] = [
   },
 ]
 
-/** Operation ids that have a mock route — what {@link mockOperation} accepts. */
+/**
+ * Operation ids that have a mock route — what {@link mockOperation} accepts.
+ * An operation answering JSON AND a stream has two: `<op>` and `<op>Stream`.
+ */
 export type MockedOperation = 'createBook' | 'getBook' | 'listAuthors' | 'listBooks'
 
 const index: Record<MockedOperation, number> = {
