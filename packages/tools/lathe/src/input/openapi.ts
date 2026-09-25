@@ -927,7 +927,25 @@ function nullable(inner: IrType): IrType {
 
 function toTypeNonNull(schema: Json, at: string, ctx: Ctx): IrType {
   const ref = str(schema.$ref)
-  if (ref) return refType(ref, schema, at, ctx)
+  if (ref) {
+    // 3.1 gives `$ref` siblings meaning (JSON Schema 2020-12: a `$ref` is one
+    // more assertion, not a replacement), and 3.0 authors write them anyway:
+    // `{ $ref: Name, maxLength: 20 }`, `{ $ref: Base, required: [id] }`.
+    // Ignoring them (what happened before) dropped the constraint. A `$ref`
+    // with CONSTRAINING siblings is the allOf of the two; annotation-only
+    // siblings (description, readOnly, nullable, …) are read where they
+    // always were and leave the plain reference -- and its model name -- alone.
+    const siblings = constrainingSiblings(schema)
+    if (!siblings) return refType(ref, schema, at, ctx)
+    return mergeParts(
+      [
+        { type: refType(ref, schema, at, ctx), required: [] },
+        { type: toTypeNonNull(siblings, at, ctx), required: stringList(siblings.required) },
+      ],
+      at,
+      ctx,
+    )
+  }
 
   // allOf: merge object members. This is how specs express inheritance, and
   // flattening is the only representation the targets have.
@@ -1124,6 +1142,30 @@ function refType(ref: string, schema: Json, at: string, ctx: Ctx): IrType {
     return { kind: 'ref', name: synthetic }
   }
   return t
+}
+
+/**
+ * Keywords next to a `$ref` that ANNOTATE rather than constrain. They are read
+ * elsewhere (a property's description, readOnly, nullable, deprecated) or not at
+ * all, and never turn a named reference into an inline merge.
+ */
+const REF_ANNOTATIONS = new Set([
+  '$ref', 'description', 'title', 'summary', 'example', 'examples', 'default', 'deprecated',
+  'readOnly', 'writeOnly', 'nullable', 'externalDocs', 'xml', '$comment', '$id', '$schema', '$anchor',
+  // A bare `type` restating the target's own kind constrains nothing new.
+  'type',
+])
+
+/** The constraining keywords next to a `$ref`, as a schema, or undefined. */
+function constrainingSiblings(schema: Json): Json | undefined {
+  const rest: Json = {}
+  for (const [k, v] of Object.entries(schema)) {
+    if (REF_ANNOTATIONS.has(k) || k.startsWith('x-')) continue
+    rest[k] = v
+  }
+  if (Object.keys(rest).length === 0) return undefined
+  if (typeof schema.type === 'string' || Array.isArray(schema.type)) rest.type = schema.type
+  return rest
 }
 
 /** The type a schema with no `type` keyword implies by its other keywords. */
