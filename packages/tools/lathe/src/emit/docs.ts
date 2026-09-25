@@ -62,7 +62,13 @@ export interface DocsOptions {
  * otherwise.
  */
 export function docsImportBase(output: string): string {
-  const rel = output.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '')
+  let rel = output.replace(/\\/g, '/').replace(/^\.\//, '')
+  // Trailing slashes trimmed by index, not `/\/+$/` — an anchored-at-end `+`
+  // is retried from every `/` in a long run, which is quadratic on input a
+  // config controls.
+  let end = rel.length
+  while (end > 0 && rel[end - 1] === '/') end--
+  rel = rel.slice(0, end)
   if (rel.startsWith('/')) return rel
   return rel.startsWith('src/') ? `./${rel.slice('src/'.length)}` : `./${rel}`
 }

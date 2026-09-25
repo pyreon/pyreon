@@ -33,6 +33,11 @@ describe('docs import base', () => {
     expect(docsImportBase('/abs/out')).toBe('/abs/out')
   })
 
+  it('trims a long run of trailing slashes in linear time', () => {
+    expect(docsImportBase(`src/gen${'/'.repeat(100_000)}`)).toBe('./gen')
+    expect(docsImportBase('/')).toBe('./')
+  })
+
   it('pages import from the configured output, and a no-input mutation takes no variables', () => {
     const e = emitToDisk('h1', SPEC, { output: './src/api', plugins: ['schemas', 'client', 'queries', 'docs'] })
     const page = e.result.files.find((f) => f.path.startsWith('docs/') && f.path !== 'docs/index.md')?.contents ?? ''
