@@ -34,6 +34,7 @@ yarn add @pyreon/state-tree
 `model()` returns a chainable builder. Add derived values with `.views(...)` and mutators with `.actions(...)`, then `.create(initial?)` to instantiate or `.asHook(id)` for a singleton.
 
 ```ts
+// @check
 import { model, getSnapshot, onPatch, addMiddleware } from '@pyreon/state-tree'
 
 const Counter = model({ state: { count: 0 } })

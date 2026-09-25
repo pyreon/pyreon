@@ -6,14 +6,16 @@
  *     re-instantiated plugin chains include buildSummaryPlugin too — the
  *     `build.ssr` / `innerBuildFlagSet()` gates must keep those silent
  *     (the "exactly once" assertions are the lock);
- *   - `buildSummary: false` opts out entirely.
+ *   - `buildSummary: false` opts out entirely;
+ *   - the summary is info-level output, so `logLevel: 'warn'` suppresses it
+ *     like Vite's own build report.
  *
  * Bisect-verified: removing the gates in buildSummaryPlugin.closeBundle
  * multiplies the "Build complete" count; removing the plugin zeroes it.
  */
 import { cp, rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { build } from 'vite'
+import { build, type Logger } from 'vite'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { zeroPlugin } from '../../vite-plugin'
 import type { ZeroConfig } from '../../types'
@@ -29,8 +31,28 @@ const FIXTURE_SRC = resolve(import.meta.dirname, 'fixture-build')
 const FIXTURE = resolve(import.meta.dirname, 'fixture-build-summary-run')
 const DIST = join(FIXTURE, 'dist')
 
-async function buildFixture(zeroConfig: ZeroConfig & { buildSummary?: boolean }): Promise<string[]> {
+async function buildFixture(
+  zeroConfig: ZeroConfig & { buildSummary?: boolean },
+  logLevel: 'info' | 'warn' = 'info',
+): Promise<string[]> {
   const lines: string[] = []
+  const push = (msg: string) => {
+    lines.push(msg)
+  }
+  // Every line zero prints goes through Vite's logger, so capturing the
+  // logger captures the summary without printing Vite's own report. Only
+  // `info` is gated here; the logger's level decides whether it is called.
+  const customLogger: Logger = {
+    info: (msg) => {
+      if (logLevel === 'info') push(msg)
+    },
+    warn: () => {},
+    warnOnce: () => {},
+    error: () => {},
+    clearScreen: () => {},
+    hasErrorLogged: () => false,
+    hasWarned: false,
+  }
   const logSpy = vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
     lines.push(args.map(String).join(' '))
   })
@@ -38,7 +60,8 @@ async function buildFixture(zeroConfig: ZeroConfig & { buildSummary?: boolean })
     await build({
       root: FIXTURE,
       configFile: false,
-      logLevel: 'error',
+      logLevel,
+      customLogger,
       plugins: zeroPlugin(zeroConfig),
       resolve: { conditions: ['bun'] },
       build: { outDir: 'dist', emptyOutDir: true },
@@ -83,6 +106,18 @@ describe('build summary — real build', () => {
       // their own buildSummaryPlugin and must stay silent.
       const completions = lines.filter((l) => l.includes('Build complete'))
       expect(completions).toHaveLength(1)
+    },
+    120_000,
+  )
+
+  it(
+    "logLevel 'warn' suppresses the summary, like Vite's own report",
+    async () => {
+      const lines = await buildFixture({ mode: 'ssr' }, 'warn')
+      const text = lines.join('\n')
+      expect(text).not.toContain('▲ pyreon zero')
+      expect(text).not.toContain('Build complete')
+      expect(text).not.toContain('Route modes')
     },
     120_000,
   )
