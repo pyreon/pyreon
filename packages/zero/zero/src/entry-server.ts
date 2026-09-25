@@ -139,7 +139,12 @@ function readBuiltTemplate(): string | undefined {
  *
  * export default createServer({ routes, routeMiddleware, apiRoutes })
  */
-export function createServer(options: CreateServerOptions) {
+// The return type is annotated on purpose: the handler carries an internal
+// symbol-keyed tag (`PipelineTaggedHandler`), and leaving it inferred made
+// `export default createServer(...)` in a declaration-emitting app fail with
+// TS2883 ("cannot be named without a reference to PipelineTaggedHandler").
+// The tag is read by symbol at runtime (vite-plugin.ts), never by type.
+export function createServer(options: CreateServerOptions): (req: Request) => Promise<Response> {
 	const config = mergeServerConfig(
 		typeof __ZERO_SERVER_CONFIG__ !== "undefined" ? __ZERO_SERVER_CONFIG__ : undefined,
 		options.config,
