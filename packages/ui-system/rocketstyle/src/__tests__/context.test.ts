@@ -1,5 +1,6 @@
 import type { VNodeChild } from '@pyreon/core'
 import { h, useContext } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 import { Provider as CoreProvider } from '@pyreon/ui-core'
 import Provider from '../context/context'
 
@@ -107,12 +108,59 @@ describe('Provider (context)', () => {
     expect(callArgs.theme).toEqual(theme)
   })
 
-  it('does not pass theme key when theme is undefined', () => {
+  // The invariant this protected: with no theme anywhere, the provider must
+  // not receive a theme to override the parent with. `theme` is now a lazy
+  // getter (props.theme ?? parent theme) rather than an omitted key, so the
+  // assertion is on its VALUE — undefined → CoreProvider passes through.
+  it('resolves theme to undefined when neither props nor parent carry one', () => {
     const children = h('span', null, 'Hello')
     Provider({ children })
 
     const callArgs = mockedCoreProvider.mock.calls[0]?.[0] as Record<string, unknown>
-    expect('theme' in callArgs).toBe(false)
+    expect(callArgs.theme).toBeUndefined()
+  })
+
+  it('falls back to the PARENT theme when no theme prop is given', () => {
+    const parentTheme = { rootSize: 14 }
+    mockedUseContext.mockReturnValue((() => ({ theme: parentTheme })) as any)
+    Provider({ children: h('span', null, 'Hello') })
+
+    const callArgs = mockedCoreProvider.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(callArgs.theme).toBe(parentTheme)
+  })
+
+  it('inversed mode FOLLOWS a later parent mode change (lazy parent read)', () => {
+    const parentMode = signal<'light' | 'dark'>('light')
+    mockedUseContext.mockReturnValue((() => ({ mode: parentMode() })) as any)
+    Provider({ children: h('span', null, 'Hello'), inversed: true })
+
+    const callArgs = mockedCoreProvider.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(callArgs.mode).toBe('dark')
+    expect(callArgs.isDark).toBe(true)
+    parentMode.set('dark')
+    expect(callArgs.mode).toBe('light')
+    expect(callArgs.isLight).toBe(true)
+    expect(callArgs.isDark).toBe(false)
+  })
+
+  it('a getter-backed mode/theme prop stays live', () => {
+    const mode = signal<'light' | 'dark'>('light')
+    const theme = signal<Record<string, unknown>>({ rootSize: 16 })
+    Provider({
+      children: h('span', null, 'Hello'),
+      get mode() {
+        return mode()
+      },
+      get theme() {
+        return theme()
+      },
+    })
+    const callArgs = mockedCoreProvider.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(callArgs.mode).toBe('light')
+    mode.set('dark')
+    theme.set({ rootSize: 20 })
+    expect(callArgs.mode).toBe('dark')
+    expect(callArgs.theme).toEqual({ rootSize: 20 })
   })
 
   it('uses custom provider when specified', () => {

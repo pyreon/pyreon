@@ -1,5 +1,6 @@
 import { popContext, useContext } from '@pyreon/core'
-import { afterEach, describe, expect, it } from 'vitest'
+import { signal } from '@pyreon/reactivity'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import Provider, { context } from '../context'
 
 describe('Provider', () => {
@@ -59,6 +60,43 @@ describe('Provider', () => {
     const theme = { rootSize: 16 }
     const result = Provider({ theme })
     expect(result).toBeNull()
+  })
+
+  it('does NOT log a "CoreProvider is internal" warning (it is the public rocketstyle path)', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      Provider({ theme: { rootSize: 16 }, children: 'x' })
+      expect(warn).not.toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('exposes getter-backed props LAZILY in the provided value', () => {
+    const mode = signal<'light' | 'dark'>('light')
+    const theme = signal<Record<string, unknown>>({ rootSize: 16 })
+    Provider({
+      get theme() {
+        return theme()
+      },
+      get mode() {
+        return mode()
+      },
+      get isDark() {
+        return mode() === 'dark'
+      },
+      extra: 'kept',
+      children: 'x',
+    })
+    const read = useContext(context) as unknown as () => Record<string, unknown>
+    expect(read().mode).toBe('light')
+    expect(read().isDark).toBe(false)
+    expect(read().extra).toBe('kept')
+    mode.set('dark')
+    theme.set({ rootSize: 20 })
+    expect(read().mode).toBe('dark')
+    expect(read().isDark).toBe(true)
+    expect(read().theme).toEqual({ rootSize: 20 })
   })
 })
 
