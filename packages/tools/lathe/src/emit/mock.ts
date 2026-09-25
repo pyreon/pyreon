@@ -125,8 +125,13 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
   f.doc(
     "Override one operation's mock — for a test that needs an empty list, an",
     'error, a slow response. Returns a function restoring the generated route;',
-    '{@link resetMocks} restores them all. An error `status` with no body answers',
-    "with the operation's declared error fixture, when it has one.",
+    // Only said where it is true: every other mocks.ts stays byte-identical.
+    ...(ops.some((o) => (o.errors?.length ?? 0) > 0)
+      ? [
+          '{@link resetMocks} restores them all. An error `status` with no body answers',
+          "with the operation's declared error fixture, when it has one.",
+        ]
+      : ['{@link resetMocks} restores them all.']),
     '',
     '```ts',
     ops[0]
