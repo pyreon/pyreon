@@ -770,15 +770,29 @@ function NodeLayer(props: {
   // unmount call — when the layer unmounts, every node's ref(null) empties the
   // registry and the observer (0 targets) is dropped with this closure.
   let sharedResizeObserver: ResizeObserver | null = null
-  const measureCallbacks = new Map<Element, () => void>()
+  // Each entry READS its node's layout and returns a deferred COMMIT (or null
+  // when nothing is measurable). The observer callback runs every read first
+  // and then every commit inside ONE batch: interleaving read → signal write →
+  // read forced a synchronous layout per node (each write re-rendered edge
+  // paths before the next `offsetWidth`), and each unbatched write was its own
+  // notify pass.
+  const measureCallbacks = new Map<Element, () => (() => void) | null>()
   // Dev-only: unknown `nodeTypes` keys already warned for, per <Flow> mount.
   const warnedNodeTypes = new Set<string>()
-  const observeNode = (el: Element, measure: () => void): void => {
+  const observeNode = (el: Element, measure: () => (() => void) | null): void => {
     if (typeof ResizeObserver === 'function') {
       measureCallbacks.set(el, measure)
       if (!sharedResizeObserver) {
         sharedResizeObserver = new ResizeObserver((entries) => {
-          for (const entry of entries) measureCallbacks.get(entry.target)?.()
+          const commits: Array<() => void> = []
+          for (const entry of entries) {
+            const commit = measureCallbacks.get(entry.target)?.()
+            if (commit) commits.push(commit)
+          }
+          if (commits.length === 0) return
+          batch(() => {
+            for (const commit of commits) commit()
+          })
         })
       }
       sharedResizeObserver.observe(el)
@@ -877,16 +891,16 @@ function NodeLayer(props: {
             instance._clearNodeMeasurement(id)
             return
           }
-          const measure = (): void => {
+          const readMeasure = (): (() => void) | null => {
             const wrapper = el as HTMLElement
             // Late RO tick after unmount: skip — a stale measure here would
             // RE-ADD the measurement `_clearNodeMeasurement` just removed
             // (and write into the graph mid-teardown; same class as the
             // container updateSize guard above).
-            if (!wrapper.isConnected) return
+            if (!wrapper.isConnected) return null
             const w = wrapper.offsetWidth
             const h = wrapper.offsetHeight
-            if (!(w > 0 && h > 0)) return
+            if (!(w > 0 && h > 0)) return null
             // Also record every <Handle> dot's CENTER relative to the node's
             // top-left, in unscaled flow units, so edge geometry anchors the
             // arrow exactly at the dot — wherever the consumer's CSS placed it.
@@ -914,11 +928,11 @@ function NodeLayer(props: {
               }
               if (handles.length === 0) handles = undefined
             }
-            instance._setNodeMeasurement(id, w, h, handles)
+            return () => instance._setNodeMeasurement(id, w, h, handles)
           }
-          measure()
+          readMeasure()?.()
           observedEl = el
-          observeNode(el, measure)
+          observeNode(el, readMeasure)
         }
 
         return (
@@ -1211,10 +1225,30 @@ export function Flow(props: FlowComponentProps): VNodeChild {
   // for the duration of one gesture.
   let gestureRect: DOMRect | null = null
 
+  // The pointer that owns the in-flight gesture (node drag, connection draw,
+  // reconnect, rubber band, pan), or null. Every gesture START claims it and
+  // every move / up from a DIFFERENT pointer is ignored: without it a second
+  // finger (touch) started a pan mid-drag and its moves drove the drag too.
+  // `pointercancel` / `lostpointercapture` for the owner END the gesture —
+  // the OS interrupting a touch (a system gesture, an incoming call) never
+  // delivers the pointerup, so the drag used to stay live and the next
+  // unrelated move dragged the node.
+  let activePointerId: number | null = null
+  /** A new gesture may start only when no other pointer owns one. */
+  const claimPointer = (e: PointerEvent): boolean => {
+    if (activePointerId !== null && activePointerId !== e.pointerId) return false
+    activePointerId = e.pointerId
+    return true
+  }
+  /** Events from a non-owning pointer are ignored while a gesture is live. */
+  const ownsPointer = (e: PointerEvent): boolean =>
+    activePointerId === null || e.pointerId === undefined || e.pointerId === activePointerId
+
   // ── Node dragging ──────────────────────────────────────────────────────
 
   const handleNodePointerDown = (e: PointerEvent, node: FlowNode) => {
     e.stopPropagation()
+    if (!claimPointer(e)) return
 
     // Capture starting positions of all selected nodes (for multi-drag)
     const selected = instance.selectedNodes()
@@ -1284,9 +1318,13 @@ export function Flow(props: FlowComponentProps): VNodeChild {
   ) => {
     e.stopPropagation()
     e.preventDefault()
+    if (!claimPointer(e)) return
 
     const node = instance.getNode(nodeId)
-    if (!node) return
+    if (!node) {
+      activePointerId = null
+      return
+    }
 
     // Start the live connection line at the MEASURED dot center when the
     // measurement pass has one for this handle — pixel-exact with where the
@@ -1388,7 +1426,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
   ) => {
     e.stopPropagation()
     e.preventDefault()
-    if (!edge.id) return
+    if (!edge.id || !claimPointer(e)) return
     const fixedIsSource = end === 'target'
     connectionState.set({
       active: true,
@@ -1436,6 +1474,14 @@ export function Flow(props: FlowComponentProps): VNodeChild {
     // `selectionOnDrag` turns a plain drag into a box (buttons listed in a
     // `panOnDrag` array still pan — the figma-like `[1, 2]` preset); then a
     // pan, if this button is allowed to.
+    // A second finger while another pointer owns a gesture: never start a
+    // competing pan / band. A live PAN yields to it (a two-finger pinch takes
+    // over the viewport through the touch handlers) instead of fighting it.
+    if (activePointerId !== null && activePointerId !== e.pointerId) {
+      if (isPanning && e.pointerType === 'touch') isPanning = false
+      return
+    }
+
     const cfg = instance.config
     const panOnDrag = cfg.panOnDrag ?? true
     const buttonPans =
@@ -1460,11 +1506,13 @@ export function Flow(props: FlowComponentProps): VNodeChild {
         currentX: flowX,
         currentY: flowY,
       })
+      activePointerId = e.pointerId
       container.setPointerCapture(e.pointerId)
       return
     }
     if (!buttonPans) return
 
+    activePointerId = e.pointerId
     isPanning = true
     panStartX = e.clientX
     panStartY = e.clientY
@@ -1502,7 +1550,12 @@ export function Flow(props: FlowComponentProps): VNodeChild {
     instance.setViewport({ x: vp.x + v.x, y: vp.y + v.y, zoom: vp.zoom })
     const drag = dragState.peek()
     if (drag.active) dragState.set({ ...drag, startX: drag.startX + v.x, startY: drag.startY + v.y })
-    handlePointerMove({ clientX: p.clientX, clientY: p.clientY, currentTarget: el } as unknown as PointerEvent)
+    handlePointerMove({
+      clientX: p.clientX,
+      clientY: p.clientY,
+      currentTarget: el,
+      pointerId: activePointerId ?? undefined,
+    } as unknown as PointerEvent)
   }
   const stopAutoPan = () => {
     if (autoPanFrame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(autoPanFrame)
@@ -1512,6 +1565,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
   onUnmount(stopAutoPan)
 
   const handlePointerMove = (e: PointerEvent) => {
+    if (!ownsPointer(e)) return
     const drag = dragState.peek()
     const conn = connectionState.peek()
     const sel = selectionBox.peek()
@@ -1655,6 +1709,8 @@ export function Flow(props: FlowComponentProps): VNodeChild {
   }
 
   const handlePointerUp = (e: PointerEvent) => {
+    if (!ownsPointer(e)) return
+    activePointerId = null
     stopAutoPan()
     const drag = dragState.peek()
     const conn = connectionState.peek()
@@ -1792,6 +1848,8 @@ export function Flow(props: FlowComponentProps): VNodeChild {
                 ...(connection.targetHandle != null ? { targetHandle: connection.targetHandle } : {}),
               })
               made = connection
+              // The user-gesture event — programmatic addEdge does not fire it.
+              instance._emit.connect(connection)
             }
           }
         }
@@ -1800,6 +1858,39 @@ export function Flow(props: FlowComponentProps): VNodeChild {
         instance._emit.connectEnd(made)
       }
 
+      isPanning = false
+      gestureRect = null
+    })
+  }
+
+  /**
+   * The owning pointer was interrupted (`pointercancel`) or lost its capture
+   * without a pointerup (`lostpointercapture`) — end the gesture WITHOUT
+   * committing it: a drag stops where it is (drag-end fires), a connection
+   * draw is abandoned (`connectEnd(null)`, no edge), a rubber band selects
+   * nothing, a pan stops. After a normal pointerup `activePointerId` is
+   * already null, so the trailing `lostpointercapture` is a no-op.
+   */
+  const handlePointerCancel = (e: PointerEvent) => {
+    if (activePointerId === null || e.pointerId !== activePointerId) return
+    activePointerId = null
+    stopAutoPan()
+    const drag = dragState.peek()
+    const conn = connectionState.peek()
+    batch(() => {
+      if (selectionBox.peek().active) selectionBox.set({ ...emptySelectionBox })
+      if (drag.active) {
+        const node = instance.getNode(drag.nodeId)
+        if (node) instance._emit.nodeDragEnd(node)
+        dragState.set({ ...emptyDrag })
+        snapSession = null
+        const lines = helperLines.peek()
+        if (lines.x !== null || lines.y !== null) helperLines.set({ x: null, y: null })
+      }
+      if (conn.active) {
+        connectionState.set({ ...emptyConnection })
+        instance._emit.connectEnd(null)
+      }
       isPanning = false
       gestureRect = null
     })
@@ -1834,21 +1925,27 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       instance.clearSelection()
       connectionState.set({ ...emptyConnection })
     }
-    if (e.key === 'a' && (e.metaKey || e.ctrlKey)) {
+    // Letter shortcuts compare CASE-INSENSITIVELY: with Shift held (or Caps
+    // Lock on) Windows / Linux report `e.key === 'Z'`, so the old `=== 'z'`
+    // redo check never matched Ctrl+Shift+Z there.
+    const mod = e.metaKey || e.ctrlKey
+    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key
+    if (k === 'a' && mod) {
       e.preventDefault()
       instance.selectAll()
     }
-    if (e.key === 'c' && (e.metaKey || e.ctrlKey)) {
+    if (k === 'c' && mod) {
       instance.copySelected()
     }
-    if (e.key === 'v' && (e.metaKey || e.ctrlKey)) {
+    if (k === 'v' && mod) {
       instance.paste()
     }
-    if (e.key === 'z' && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
+    if (k === 'z' && mod && !e.shiftKey) {
       e.preventDefault()
       instance.undo()
     }
-    if (e.key === 'z' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
+    // Redo: Cmd/Ctrl+Shift+Z everywhere, plus the Windows-convention Ctrl+Y.
+    if ((k === 'z' && mod && e.shiftKey) || (k === 'y' && e.ctrlKey && !e.shiftKey)) {
       e.preventDefault()
       instance.redo()
     }
@@ -1936,6 +2033,10 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       return
     }
     if (layers) el.appendChild(layers.toolbars)
+    // `lostpointercapture` has no JSX event prop in @pyreon/core's DOM types;
+    // the IDL handler property is the listener-free equivalent (replaced, not
+    // accumulated, on a re-ref; dies with the element).
+    ;(el as HTMLElement).onlostpointercapture = handlePointerCancel
 
     const updateSize = () => {
       // A ResizeObserver batch queued before `disconnect()` can still deliver
@@ -2036,6 +2137,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onKeyDown={handleKeyDown}

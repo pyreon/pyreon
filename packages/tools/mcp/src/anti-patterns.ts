@@ -341,12 +341,16 @@ export function formatAntiPatterns(
  * Compact INDEX of anti-patterns — one short line per entry instead of
  * the full body. This is the default `get_anti_patterns()` response.
  *
- * Why: the full catalog is ~14K tokens. An agent calling
- * `get_anti_patterns()` to orient ("what should I avoid?") almost never
- * needs every full body at once — it needs the map, then the one or two
- * entries relevant to what it's writing. The index is ~1.5K tokens (a
- * ~90% cut on the common path); full bodies stay one explicit call away
- * (`{ category }`, `{ name }`, or `{ full: true }`).
+ * Why: the full catalog is tens of thousands of tokens and only grows as
+ * the anti-patterns catalog does. An agent calling `get_anti_patterns()`
+ * to orient ("what should I avoid?") almost never needs every full body
+ * at once — it needs the map, then the one or two entries relevant to
+ * what it's writing. The index is density-gated to stay at least ~60%
+ * smaller than the full dump (see `token-budget.test.ts` for the live
+ * ratio, currently ~87% on this catalog's 413 entries — treat any exact
+ * figure here as illustrative, not pinned, since the catalog keeps
+ * growing); full bodies stay one explicit call away (`{ category }`,
+ * `{ name }`, or `{ full: true }`).
  *
  * Structural markers are deliberately preserved: the `# Pyreon
  * Anti-Patterns — index (...)` header and per-category `## <Heading>`
@@ -444,7 +448,7 @@ export function formatAntiPatternsIndex(entries: AntiPatternEntry[], page = 1): 
   const parts: string[] = [
     `# Pyreon Anti-Patterns — index (${entries.length} total, page ${current} of ${pageCount}, ${byCategory.size} categor${byCategory.size === 1 ? 'y' : 'ies'})`,
     '',
-    'Compact index — one line per entry; a long title is clamped with `…`. For the full body of an entry call `get_anti_patterns({ name: "<any fragment of the title>" })`; for every entry in a category call `get_anti_patterns({ category: "<slug>" })`; for the entire catalog (~14K tokens) call `get_anti_patterns({ full: true })`. Entries tagged `[detector: <code>]` are caught statically by the `validate` tool.',
+    'Compact index — one line per entry; a long title is clamped with `…`. For the full body of an entry call `get_anti_patterns({ name: "<any fragment of the title>" })`; for every entry in a category call `get_anti_patterns({ category: "<slug>" })`; for the entire catalog (many tens of thousands of tokens — expensive, explicit opt-in) call `get_anti_patterns({ full: true })`. Entries tagged `[detector: <code>]` are caught statically by the `validate` tool.',
     '',
   ]
   for (const [, catEntries] of byCategory) {

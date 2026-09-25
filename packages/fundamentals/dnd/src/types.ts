@@ -40,8 +40,14 @@ export interface DragPreviewOptions {
 }
 
 export interface UseDraggableOptions<T extends DragData = DragData> {
-  /** Ref callback or element getter for the draggable element. */
-  element: () => HTMLElement | null
+  /**
+   * Element getter for the draggable element. Optional — attach the result's
+   * `ref` instead for an element that mounts later or may be swapped. Resolved
+   * on a microtask after the hook runs; a getter that reads a SIGNAL
+   * re-registers when the signal changes. A getter still returning `null` at
+   * that point (with no `ref` attached) warns in dev.
+   */
+  element?: () => HTMLElement | null
   /** Data to transfer on drag. Can be a function for dynamic data. */
   data: T | (() => T)
   /** Optional drag handle element (subset of the draggable). */
@@ -63,23 +69,43 @@ export interface UseDraggableOptions<T extends DragData = DragData> {
 export interface UseDraggableResult {
   /** Whether this element is currently being dragged. */
   isDragging: () => boolean
+  /**
+   * Ref callback for the draggable element: registers on mount, moves the
+   * registration when the element is swapped, disposes on `null`.
+   */
+  ref: (el: HTMLElement | null) => void
 }
 
 // ─── useDroppable ───────────────────────────────────────────────────────────
 
-export interface UseDroppableOptions<T extends DragData = DragData> {
-  /** Ref callback or element getter for the drop target. */
-  element: () => HTMLElement | null
-  /** Data to attach to the drop target. */
+export interface UseDroppableOptions<
+  T extends DragData = DragData,
+  TSource extends DragData = DragData,
+> {
+  /**
+   * Element getter for the drop target. Optional — attach the result's `ref`
+   * instead for an element that mounts later or may be swapped (same
+   * semantics as `UseDraggableOptions.element`).
+   */
+  element?: () => HTMLElement | null
+  /** Data to attach to the drop target (`T`). */
   data?: T | (() => T)
-  /** Filter what can be dropped. Return false to reject. */
-  canDrop?: (sourceData: DragData) => boolean
+  /**
+   * Filter what can be dropped. Return false to reject. Receives the DRAG
+   * SOURCE's data — type it with the second generic, `TSource`.
+   */
+  canDrop?: (sourceData: TSource) => boolean
   /** Called when a draggable enters this target. */
-  onDragEnter?: (sourceData: DragData) => void
+  onDragEnter?: (sourceData: TSource) => void
   /** Called when a draggable leaves this target. */
   onDragLeave?: () => void
-  /** Called when an item is dropped on this target. */
-  onDrop?: (sourceData: DragData) => void
+  /**
+   * Called when an item is dropped on this target, with the source's data and
+   * WHERE it landed: `edge` (the closest configured edge, `null` without
+   * `edges`) and `data` (this target's own data). Both are captured before the
+   * `isOver` / `overEdge` signals reset.
+   */
+  onDrop?: (sourceData: TSource, location: DropLocation) => void
   /**
    * Opt into closest-edge detection (pdnd hitbox `attachClosestEdge` /
    * `extractClosestEdge`). Pass the edges you care about (e.g.
@@ -104,6 +130,8 @@ export interface UseDroppableResult {
    * otherwise. Always `null` unless the `edges` option is set.
    */
   overEdge: () => DropEdge | null
+  /** Ref callback for the drop target — see `UseDroppableOptions.element`. */
+  ref: (el: HTMLElement | null) => void
 }
 
 // ─── useSortable ────────────────────────────────────────────────────────────
@@ -151,14 +179,19 @@ export interface UseSortableOptions<T> {
    * your keys are opaque ids.
    */
   label?: (item: T) => string
+  /**
+   * Disable reordering (pointer drag AND keyboard). Reactive when a function.
+   */
+  disabled?: boolean | (() => boolean)
 }
 
 export interface UseSortableResult {
   /**
    * Attach to the scroll container. Pyreon's runtime invokes refs with
-   * `T | null` (called with `null` on unmount), so the parameter widens
-   * accordingly. The hook ignores `null` calls — they're a no-op
-   * because the underlying pdnd cleanup is registered via `onCleanup`.
+   * `T | null`: an element (re)registers the container (auto-scroll, the
+   * container drop target, the keyboard handler, `role="list"` on a non-list
+   * element), and `null` DISPOSES that registration — so a container behind
+   * `<Show>` can toggle without leaking.
    */
   containerRef: (el: HTMLElement | null) => void
   /**
