@@ -46,6 +46,9 @@ import { warnMissingEnv } from './warn-missing-env'
 export function cloudflareAdapter(): Adapter {
   return {
     name: 'cloudflare',
+    // Every route already runs on workerd, so `runtime = 'edge'` needs no
+    // second bundle. Pages has no cron triggers (Workers-only) → no schedules.
+    capabilities: { edgeRoutes: 'native' },
     async build(options: AdapterBuildOptions) {
       if (options.kind === 'ssg') {
         // PR J — SSG branch. Emit Cloudflare Pages `_routes.json` with

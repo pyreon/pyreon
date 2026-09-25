@@ -194,6 +194,13 @@ export interface BuildSsrBundleOptions {
    * virtual-module errors.
    */
   userPlugins?: readonly Plugin[]
+  /**
+   * Build for an EDGE runtime (Vercel Edge, Netlify Edge / Deno) instead of
+   * Node: `ssr.target: 'webworker'` with every dependency bundled, and every
+   * Node builtin resolved to a stub (see `edgeNodeBuiltinsPlugin`) so the
+   * output contains no `node:*` import at all.
+   */
+  edge?: boolean
 }
 
 /**
@@ -231,12 +238,84 @@ export function buildInnerBuildOptions(options: BuildSsrBundleOptions): BuildOpt
           ? { chunkFileNames: `${options.assetsDir ?? 'assets'}/[name]-[hash].mjs` }
           : {}),
       },
-      external: [/^node:/],
+      // The edge bundle must be self-contained — no externals at all.
+      ...(options.edge ? {} : { external: [/^node:/] }),
     },
   }
   if (options.assetsInlineLimit !== undefined) build.assetsInlineLimit = options.assetsInlineLimit
   if (options.assetsDir !== undefined) build.assetsDir = options.assetsDir
   return build
+}
+
+const EDGE_BUILTIN_PREFIX = '\0pyreon-edge-builtin:'
+
+/**
+ * Resolve every Node builtin (`node:fs`, bare `fs`, …) in the EDGE sub-build
+ * to a generated stub, so the emitted bundle contains no `node:*` import.
+ *
+ *  - `async_hooks` bridges to `globalThis.AsyncLocalStorage`. The platform
+ *    wrapper each edge adapter writes (outside the bundle) installs that
+ *    global from the one Node API every supported edge runtime provides —
+ *    Vercel Edge, Netlify Edge and Deno all ship `node:async_hooks` — so the
+ *    request-scoped context `@pyreon/runtime-server` needs keeps working.
+ *  - every other builtin exports its real member NAMES (read from the Node
+ *    running the build, so named imports resolve) as functions that throw a
+ *    `[Pyreon]` error when called. Code that only IMPORTS `node:fs` —
+ *    `readBuiltTemplate`'s fallback, a node-only route that is never routed
+ *    to the edge — is fine; code that USES it on the edge fails loudly and
+ *    names the fix, instead of the bundle failing to load on the platform.
+ */
+export function edgeNodeBuiltinsPlugin(): Plugin {
+  let builtins: Set<string> | undefined
+  return {
+    name: 'pyreon-zero-edge-node-builtins',
+    enforce: 'pre',
+    async resolveId(id, importer) {
+      // The `/server` barrel also exports the build tooling (Vite plugins,
+      // the oxc route parser, sharp pipelines), and a fully-bundled edge
+      // server has to resolve every module it reaches. Serve the request-time
+      // runtime instead — see `src/edge.ts`.
+      if (id === '@pyreon/zero/server') {
+        return this.resolve('@pyreon/zero/edge', importer, { skipSelf: true })
+      }
+      if (!builtins) {
+        const { builtinModules } = await import('node:module')
+        builtins = new Set(builtinModules)
+      }
+      const bare = id.startsWith('node:') ? id.slice(5) : id
+      if (!id.startsWith('node:') && !builtins.has(bare)) return null
+      return EDGE_BUILTIN_PREFIX + bare
+    },
+    async load(id) {
+      if (!id.startsWith(EDGE_BUILTIN_PREFIX)) return null
+      const mod = id.slice(EDGE_BUILTIN_PREFIX.length)
+      if (mod === 'async_hooks') {
+        return `const unavailable = () => { throw new Error("[Pyreon] AsyncLocalStorage is not available on this edge runtime. The zero edge wrapper installs globalThis.AsyncLocalStorage from node:async_hooks; if you import the edge bundle directly, set it first.") }
+export class AsyncLocalStorage {
+  constructor() {
+    const Impl = globalThis.AsyncLocalStorage
+    if (typeof Impl !== "function") unavailable()
+    return new Impl()
+  }
+}
+export default { AsyncLocalStorage }
+`
+      }
+      let names: string[] = []
+      try {
+        const real = (await import(/* @vite-ignore */ `node:${mod}`)) as Record<string, unknown>
+        names = Object.keys(real).filter((k) => k !== 'default' && /^[A-Za-z_$][\w$]*$/.test(k))
+      } catch {
+        // Not importable in this Node — a default-only stub is still valid.
+      }
+      const stub = (member: string) =>
+        `() => { throw new Error(${JSON.stringify(`[Pyreon] node:${mod}${member ? `.${member}` : ''} is not available on the edge runtime. Remove \`export const runtime = 'edge'\` from the route that reaches it (it will run on Node), or use a web API instead.`)}) }`
+      return [
+        ...names.map((n) => `export const ${n} = ${stub(n)}`),
+        `export default new Proxy({}, { get: (_t, k) => typeof k === "string" ? (${stub('')}) : undefined })`,
+      ].join('\n')
+    },
+  }
 }
 
 /**
@@ -366,10 +445,12 @@ export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<vo
       // `inner-pyreon-options.ts` for the per-option split and why it is typed
       // as a total Record.
       plugins: [
+        ...(options.edge ? [edgeNodeBuiltinsPlugin()] : []),
         pyreon(innerPyreonOptions(options.userPlugins)),
         zeroPlugin(innerZeroConfig),
         ...userPlugins,
       ] as Plugin[],
+      ...(options.edge ? { ssr: { target: 'webworker' as const, noExternal: true as const } } : {}),
       // NOTE this REPLACES the user's whole `resolve` block, so a
       // `resolve.alias` from their vite.config (e.g. `chartsViteAlias()`) does
       // not reach this build. Measured on `examples/hn-clone`, which is exactly
