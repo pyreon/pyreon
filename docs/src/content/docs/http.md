@@ -165,7 +165,7 @@ const api = createHttp({
 
 ```text
 RequestError                  base — catch this to cover everything
-├── HttpError                 non-2xx (carries .status and .response)
+├── HttpError                 non-2xx (carries .status, .response, the decoded .body, .matched)
 │   ├── ClientError           4xx
 │   └── ServerError           5xx
 ├── TimeoutError              exceeded `timeout`
@@ -176,6 +176,23 @@ RequestError                  base — catch this to cover everything
 ```
 
 `AbortError` is kept deliberately distinct: "the user navigated away" and "the API is down" demand opposite handling.
+
+An `HttpError` carries its decoded `body` (JSON when it parses, the text otherwise; read from a clone, so `response.raw` stays readable). Declare `errors` on an endpoint to validate and TYPE it by status:
+
+```ts
+import type { EndpointError } from '@pyreon/http'
+
+const getUser = api.endpoint('GET /users/:id', {
+  response: User,
+  errors: { 404: NotFound, '5XX': Outage, default: Problem },
+})
+
+getUser({ params: { id } }).catch((err: EndpointError<typeof getUser>) => {
+  if (err.matched === '404') console.log(err.body.message) // NotFound
+})
+```
+
+The most specific key wins (exact, then range, then `default`), under the client's `validate` mode. A body that fails its schema is still the same `HttpError`, with `matched` undefined and the raw body — the HTTP failure is what the caller needs to see. Network failures and timeouts have no `matched`, so the union narrows cleanly.
 
 ```ts
 import { HttpError } from '@pyreon/http'

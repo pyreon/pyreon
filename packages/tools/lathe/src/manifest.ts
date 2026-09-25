@@ -14,10 +14,12 @@ export default defineManifest({
       'the code generator — build-time tooling that emits app code, not app runtime itself',
   },
   features: [
-    'OpenAPI 3.x reader: JSON or YAML, local `$ref` resolution, `allOf` flattening through refs (the inheritance idiom), `oneOf`/`anyOf` with `discriminator` (validated at generation — an implicit or non-object discriminator degrades to a plain union with a note instead of a module that throws at import), nullability in every spelling (3.0 `nullable`, 3.1 `type: [X, null]` / `anyOf: [X, {type: null}]`) on every node including component models, `enum`/`const` of any JSON scalar, constraints on the type itself (so they apply to array items and alias models), path-level parameters, and `{id}` → `:id` conversion to the `@pyreon/http` endpoint form',
+    'OpenAPI 3.x and Swagger 2.0 (up-converted in process) reader: JSON or YAML, `$ref` resolution within and ACROSS files (a split spec is bundled; `lathe pull` bundles remote parts), `allOf` flattening through refs (the inheritance idiom), `oneOf`/`anyOf` with `discriminator` (validated at generation — an implicit or non-object discriminator degrades to a plain union with a note instead of a module that throws at import), nullability in every spelling (3.0 `nullable`, 3.1 `type: [X, null]` / `anyOf: [X, {type: null}]`) on every node including component models, `enum`/`const` of any JSON scalar, constraints on the type itself (so they apply to array items and alias models), path-level parameters, and `{id}` → `:id` conversion to the `@pyreon/http` endpoint form',
     'Strict YAML 1.2 reading via the `yaml` package — anchors, aliases and merge keys resolve; duplicate keys, multi-document streams, custom tags, recursive aliases and `.inf`/`.nan` are REFUSED with a line number rather than producing a subtly wrong document',
     'Loss is REPORTED, never silent: every spec feature the client does not honour becomes a `note` with a stable greppable `code`, an RFC 6901 JSON-pointer location, and a SEVERITY derived from the code (`NOTE_SEVERITY`) -- `loss` (security schemes, response headers, typed error bodies, non-default serialization, a non-scalar `const`, a `$ref` cycle through references alone, `deprecated`, an optional body the call requires, a non-JSON media type, …) or `choice` (JSON over XML, the first tag, the summary over the description). The report leads with losses and summarises choices; the reference pages split them',
-    'Refuses the wrong document before writing anything: Swagger 2 with the `swagger2openapi` conversion command, a file with no `openapi` key, an unsupported major. Every project is generated before any is written, so a refused spec leaves every output tree untouched',
+    'Typed error responses: each operation\'s 4xx / 5xx / range / `default` JSON bodies become its endpoint\'s `errors`, and every hook types `error()` as `EndpointError<typeof op>` — `err.matched === \'404\'` narrows `err.body`, on every client',
+    'Webhooks and callbacks: `webhooks.ts` with a schema per payload (`webhookSchemas`) and `WebhookHandler<name>` typed from it',
+    'Refuses the wrong document before writing anything: Swagger 1.x, a file with no `openapi` key, an unsupported major. Every project is generated before any is written, so a refused spec leaves every output tree untouched',
     'A strict CLI: unknown flags, commands and values are errors with a did-you-mean (exit 2), `--dry-run` reports what would change, the config is found upward from the cwd with paths relative to the config FILE, errors go to stderr, colour respects TTY/`NO_COLOR`, and `--json` has ONE documented shape (`JsonReport`) for any project count. `lathe pull` supports `--token` / `--header`, conditional requests via ETag, and every project with a `source`',
     'Orphaned output is pruned: each run writes `lathe-manifest.json`, and the next `generate` removes files it no longer produces while `check` reports them stale -- only manifest-listed paths are ever removed',
     '`target: \'multiplatform\'` emits an additional self-contained module per tag — client, schemas, endpoints and calls sharing one top level — because PMTC resolves nothing across file boundaries; the web output is unchanged, so enabling it can never make the web build worse',
@@ -68,9 +70,10 @@ lathe / Bookshelf 1.2.0
     {
       name: 'generate',
       kind: 'function',
-      signature: 'generate(specText: string, config: ResolvedConfig, options?: { sourceUrl?: string }): GenerateResult',
+      signature:
+        'generate(specText: string, config: ResolvedConfig, options?: { sourceUrl?: string; location?: string; readDocument?: (id: string) => string }): GenerateResult',
       summary:
-        'The whole pipeline, pure: spec text in, file CONTENTS out. Touches no filesystem, which is what makes the generator testable without a temp directory and lets `lathe check` diff before writing. Returns the IR document, the generated files, and a per-operation `reach` map explaining in spec terms which operations can run natively and why the others cannot.',
+        'The whole pipeline, pure: spec text in, file CONTENTS out. Touches no filesystem, which is what makes the generator testable without a temp directory and lets `lathe check` diff before writing. Returns the IR document, the generated files, and a per-operation `reach` map explaining in spec terms which operations can run natively and why the others cannot. Pass `location` (the spec file\'s path) and `readDocument` and a `$ref` into another file is resolved and bundled; `documents` lists every file read, for a watcher.',
       example: `import { generate, resolveConfig } from '@pyreon/lathe'
 
 const config = resolveConfig({ input: './openapi.yaml', target: 'multiplatform' })
@@ -136,18 +139,20 @@ if (worstVerdict(report) !== 'lowers') process.exitCode = 1`,
     {
       name: 'loadOpenApi',
       kind: 'function',
-      signature: 'loadOpenApi(source: string, options?: { sourceUrl?: string }): { doc: IrDocument }',
+      signature:
+        'loadOpenApi(source: string, options?: { sourceUrl?: string; location?: string; readDocument?: (id: string) => string }): { doc: IrDocument; documents: string[] }',
       summary:
-        'Parses an OpenAPI 3.x document (JSON or YAML text) into the spec-agnostic IR. Every reduction the IR cannot represent is recorded in `doc.notes` with a stable code and a location, so a loss is reported once at the boundary instead of being rediscovered differently by each emitter. Deterministic: models and operations are sorted, so the same spec always produces the same IR. Pass `sourceUrl` (where the spec was fetched from) and a RELATIVE `servers[].url` is resolved against it, as OpenAPI specifies.',
+        'Parses an OpenAPI 3.x document (JSON or YAML text) into the spec-agnostic IR. Every reduction the IR cannot represent is recorded in `doc.notes` with a stable code and a location, so a loss is reported once at the boundary instead of being rediscovered differently by each emitter. Deterministic: models and operations are sorted, so the same spec always produces the same IR. Pass `sourceUrl` (where the spec was fetched from) and a RELATIVE `servers[].url` is resolved against it, as OpenAPI specifies. A Swagger 2.0 document is up-converted to OpenAPI 3.0 first (a `swagger2-converted` note, plus `swagger2-lossy` for what 3.0 cannot spell). With `location` + `readDocument`, `$ref`s into other files are resolved and bundled (schemas hoisted into named models, everything else inlined). Each operation carries its typed error bodies (`op.errors`), and 3.1 webhooks / callbacks land in `doc.webhooks`.',
       example: `import { loadOpenApi } from '@pyreon/lathe'
 
 const { doc } = loadOpenApi(await readFile('./openapi.yaml', 'utf8'))
 console.log(doc.models.length, 'models', doc.operations.length, 'operations')
 for (const note of doc.notes) console.warn(note.code, note.at, note.message)`,
       mistakes: [
+        'Calling it with only the TEXT of a split spec. Without `location` + `readDocument` there is nothing to resolve a relative `$ref` against, so every cross-file reference is an `unsupported-ref` note and `unknown`. A REMOTE `$ref` is never fetched here — `lathe pull` bundles it.',
         'Ignoring `doc.notes`. A spec with a remote `$ref` or a non-JSON media type still produces output — with those pieces typed `unknown`. The note is the only signal. Filter on `noteSeverity(note) === \'loss\'` for the ones that change behaviour.',
         'Reading `op.body` as a type. It is `{ mediaType, encoding, type }` — `encoding` (`json` / `form` / `multipart` / `text` / `binary`) decides the call argument (`json:` / `form:` / `multipart:` / `body:`), and a form body carries its per-field `fieldEncoding`.',
-        'Passing a Swagger 2 document. It is refused (`openApiVersionProblem` names the `swagger2openapi` conversion) rather than read as an empty 3.x spec.',
+        'Reading pointers in the notes of a Swagger 2 spec against the ORIGINAL file. The document is up-converted first, so `#/components/schemas/X` was `#/definitions/X`. Swagger 1.x is refused.',
         'Expecting a custom YAML tag (`!Ref`, `!include`) to be expanded. The reader refuses it with a line number instead of reading it as a plain string; resolve or bundle the spec first. Anchors, aliases and merge keys DO resolve.',
       ],
     },

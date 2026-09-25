@@ -7,6 +7,7 @@
 export type {
   HttpMethod,
   IrDocument,
+  IrErrorResponse,
   IrField,
   IrModel,
   IrNote,
@@ -17,6 +18,7 @@ export type {
   IrParam,
   IrSecurityScheme,
   IrType,
+  IrWebhook,
   Reach,
   StringFormat,
 } from './core/ir'

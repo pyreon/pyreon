@@ -3989,18 +3989,19 @@ const user = await api.get('/users/1').json() // decoded body`,
   },
 
   'http/endpoint': {
-    signature: `<S, V, I = EndpointInput<path>, K = 'json'>(spec: \`\${HttpMethod} \${string}\`, options?: { response?: V; responseType?: K; queryStyle?; formEncoding?; keyScope?; headers?; timeout? }) => Endpoint<S, BodyOf<K, V>, I>`,
+    signature: `<S, V, I = EndpointInput<path>, K = 'json', E = undefined>(spec: \`\${HttpMethod} \${string}\`, options?: { response?: V; responseType?: K; errors?: E; queryStyle?; formEncoding?; keyScope?; headers?; timeout? }) => Endpoint<S, BodyOf<K, V>, I, E>`,
     example: `const getUser = api.endpoint('GET /users/:id', { response: UserSchema })
 
 await getUser({ params: { id: '1' } })
 const options = getUser.query({ params: { id: '1' } })
 console.log(options.queryKey)`,
-    notes: `Declare a reusable endpoint. One declaration yields the callable, a stable structural cache key, and the response type — which is what stops queryKey and URL from drifting apart, the single biggest pain with axios plus TanStack Query. \`params\` is REQUIRED by the type system exactly when the path declares \`:placeholders\`, and its keys are extracted from the path literal, so a typo is a compile error. \`.query(args)\` emits \`{ queryKey, queryFn }\` with the AbortSignal already forwarded; \`.mutation()\` emits \`{ mutationFn, invalidates }\`. \`responseType\` (\`text\` / \`blob\` / \`arrayBuffer\` / \`stream\` / \`void\`) decodes non-JSON bodies and types the result accordingly; \`queryStyle\` states OpenAPI query serialization per key (\`form\` / \`spaceDelimited\` / \`pipeDelimited\` / \`deepObject\`, \`explode\`); \`keyScope\` namespaces the cache key. The third generic \`I\` narrows what a call sends (\`api.endpoint<S, typeof Schema, { json: NewPet }>(…)\`) — how a generated client types \`query\` and \`json\` on direct calls. In a path, \`\\\\:\` is a literal colon (\`/v1/:name\\\\:cancel\`).`,
+    notes: `Declare a reusable endpoint. One declaration yields the callable, a stable structural cache key, and the response type — which is what stops queryKey and URL from drifting apart, the single biggest pain with axios plus TanStack Query. \`params\` is REQUIRED by the type system exactly when the path declares \`:placeholders\`, and its keys are extracted from the path literal, so a typo is a compile error. \`.query(args)\` emits \`{ queryKey, queryFn }\` with the AbortSignal already forwarded; \`.mutation()\` emits \`{ mutationFn, invalidates }\`. \`responseType\` (\`text\` / \`blob\` / \`arrayBuffer\` / \`stream\` / \`void\`) decodes non-JSON bodies and types the result accordingly; \`queryStyle\` states OpenAPI query serialization per key (\`form\` / \`spaceDelimited\` / \`pipeDelimited\` / \`deepObject\`, \`explode\`); \`keyScope\` namespaces the cache key. The third generic \`I\` narrows what a call sends (\`api.endpoint<S, typeof Schema, { json: NewPet }>(…)\`) — how a generated client types \`query\` and \`json\` on direct calls. \`errors\` declares error-body schemas by status (\`404\`), range (\`'4XX'\`) or \`default\`: a rejected call's \`HttpError.body\` is validated against the most specific one and \`matched\` names the key it passed, so with \`EndpointError<typeof ep>\` as the error type \`err.matched === '404'\` narrows \`err.body\`; a body that fails its schema stays the same HttpError with \`matched\` undefined. In a path, \`\\\\:\` is a literal colon (\`/v1/:name\\\\:cancel\`).`,
     mistakes: `- Hand-writing a \`queryKey\` next to an endpoint call. Use \`endpoint.query(...)\` so the key is derived from the same declaration as the URL.
 - Expecting \`mutationFn\` to receive an AbortSignal. TanStack gives mutations no context at all — pass one in the variables if the mutation must be cancellable.
 - Writing the spec without a method (\`"/users"\`). It must be \`"<METHOD> <path>"\`.
 - Assuming \`invalidates\` takes strings. It takes ENDPOINTS, and resolves each to its key prefix.
-- Expecting a per-call \`headers\` to REPLACE the declared ones. They MERGE (per-call wins per key), so a declared \`content-type\` survives a call that adds an idempotency key.`,
+- Expecting a per-call \`headers\` to REPLACE the declared ones. They MERGE (per-call wins per key), so a declared \`content-type\` survives a call that adds an idempotency key.
+- Narrowing a typed error on \`status\` alone. A \`default\` or \`'4XX'\` schema covers statuses beyond its own key, so \`err.status === 404\` still admits them — discriminate on \`err.matched === '404'\`.`,
   },
 
   'http/encodeForm': {
@@ -10918,7 +10919,7 @@ report.issues.filter((i) => i.severity === 'error')`,
   // <gen-docs:api-reference:start @pyreon/lathe>
 
   'lathe/generate': {
-    signature: 'generate(specText: string, config: ResolvedConfig, options?: { sourceUrl?: string }): GenerateResult',
+    signature: 'generate(specText: string, config: ResolvedConfig, options?: { sourceUrl?: string; location?: string; readDocument?: (id: string) => string }): GenerateResult',
     example: `import { generate, resolveConfig } from '@pyreon/lathe'
 
 const config = resolveConfig({ input: './openapi.yaml', target: 'multiplatform' })
@@ -10927,7 +10928,7 @@ const { doc, files, reach } = generate(specText, config)
 for (const [id, r] of reach) {
   if (r.reach === 'web-only') console.warn(id, r.reason)
 }`,
-    notes: 'The whole pipeline, pure: spec text in, file CONTENTS out. Touches no filesystem, which is what makes the generator testable without a temp directory and lets `lathe check` diff before writing. Returns the IR document, the generated files, and a per-operation `reach` map explaining in spec terms which operations can run natively and why the others cannot.',
+    notes: `The whole pipeline, pure: spec text in, file CONTENTS out. Touches no filesystem, which is what makes the generator testable without a temp directory and lets \`lathe check\` diff before writing. Returns the IR document, the generated files, and a per-operation \`reach\` map explaining in spec terms which operations can run natively and why the others cannot. Pass \`location\` (the spec file's path) and \`readDocument\` and a \`$ref\` into another file is resolved and bundled; \`documents\` lists every file read, for a watcher.`,
     mistakes: `- Passing a relative \`baseUrl\` (or omitting \`servers\` from the spec) and expecting native output — PMTC bakes the request URL at compile time, so a relative base makes EVERY operation web-only. The reach report names this, but only if you read it.
 - Assuming the \`.native.tsx\` modules replace the web output. They are ADDITIVE: the web files are byte-identical whether the target is \`web\` or \`multiplatform\`.
 - Editing generated files. Every file carries a DO-NOT-EDIT banner and is overwritten on the next run; change the spec or the emitter.
@@ -10973,16 +10974,17 @@ if (worstVerdict(report) !== 'lowers') process.exitCode = 1`,
   },
 
   'lathe/loadOpenApi': {
-    signature: 'loadOpenApi(source: string, options?: { sourceUrl?: string }): { doc: IrDocument }',
+    signature: 'loadOpenApi(source: string, options?: { sourceUrl?: string; location?: string; readDocument?: (id: string) => string }): { doc: IrDocument; documents: string[] }',
     example: `import { loadOpenApi } from '@pyreon/lathe'
 
 const { doc } = loadOpenApi(await readFile('./openapi.yaml', 'utf8'))
 console.log(doc.models.length, 'models', doc.operations.length, 'operations')
 for (const note of doc.notes) console.warn(note.code, note.at, note.message)`,
-    notes: 'Parses an OpenAPI 3.x document (JSON or YAML text) into the spec-agnostic IR. Every reduction the IR cannot represent is recorded in `doc.notes` with a stable code and a location, so a loss is reported once at the boundary instead of being rediscovered differently by each emitter. Deterministic: models and operations are sorted, so the same spec always produces the same IR. Pass `sourceUrl` (where the spec was fetched from) and a RELATIVE `servers[].url` is resolved against it, as OpenAPI specifies.',
-    mistakes: `- Ignoring \`doc.notes\`. A spec with a remote \`$ref\` or a non-JSON media type still produces output — with those pieces typed \`unknown\`. The note is the only signal. Filter on \`noteSeverity(note) === 'loss'\` for the ones that change behaviour.
+    notes: 'Parses an OpenAPI 3.x document (JSON or YAML text) into the spec-agnostic IR. Every reduction the IR cannot represent is recorded in `doc.notes` with a stable code and a location, so a loss is reported once at the boundary instead of being rediscovered differently by each emitter. Deterministic: models and operations are sorted, so the same spec always produces the same IR. Pass `sourceUrl` (where the spec was fetched from) and a RELATIVE `servers[].url` is resolved against it, as OpenAPI specifies. A Swagger 2.0 document is up-converted to OpenAPI 3.0 first (a `swagger2-converted` note, plus `swagger2-lossy` for what 3.0 cannot spell). With `location` + `readDocument`, `$ref`s into other files are resolved and bundled (schemas hoisted into named models, everything else inlined). Each operation carries its typed error bodies (`op.errors`), and 3.1 webhooks / callbacks land in `doc.webhooks`.',
+    mistakes: `- Calling it with only the TEXT of a split spec. Without \`location\` + \`readDocument\` there is nothing to resolve a relative \`$ref\` against, so every cross-file reference is an \`unsupported-ref\` note and \`unknown\`. A REMOTE \`$ref\` is never fetched here — \`lathe pull\` bundles it.
+- Ignoring \`doc.notes\`. A spec with a remote \`$ref\` or a non-JSON media type still produces output — with those pieces typed \`unknown\`. The note is the only signal. Filter on \`noteSeverity(note) === 'loss'\` for the ones that change behaviour.
 - Reading \`op.body\` as a type. It is \`{ mediaType, encoding, type }\` — \`encoding\` (\`json\` / \`form\` / \`multipart\` / \`text\` / \`binary\`) decides the call argument (\`json:\` / \`form:\` / \`multipart:\` / \`body:\`), and a form body carries its per-field \`fieldEncoding\`.
-- Passing a Swagger 2 document. It is refused (\`openApiVersionProblem\` names the \`swagger2openapi\` conversion) rather than read as an empty 3.x spec.
+- Reading pointers in the notes of a Swagger 2 spec against the ORIGINAL file. The document is up-converted first, so \`#/components/schemas/X\` was \`#/definitions/X\`. Swagger 1.x is refused.
 - Expecting a custom YAML tag (\`!Ref\`, \`!include\`) to be expanded. The reader refuses it with a line number instead of reading it as a plain string; resolve or bundle the spec first. Anchors, aliases and merge keys DO resolve.`,
   },
   // <gen-docs:api-reference:end @pyreon/lathe>

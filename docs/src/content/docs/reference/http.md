@@ -129,10 +129,10 @@ const user = await api.get('/users/1').json() // decoded body
 ### endpoint `function`
 
 ```ts
-<S, V, I = EndpointInput<path>, K = 'json'>(spec: `${HttpMethod} ${string}`, options?: { response?: V; responseType?: K; queryStyle?; formEncoding?; keyScope?; headers?; timeout? }) => Endpoint<S, BodyOf<K, V>, I>
+<S, V, I = EndpointInput<path>, K = 'json', E = undefined>(spec: `${HttpMethod} ${string}`, options?: { response?: V; responseType?: K; errors?: E; queryStyle?; formEncoding?; keyScope?; headers?; timeout? }) => Endpoint<S, BodyOf<K, V>, I, E>
 ```
 
-Declare a reusable endpoint. One declaration yields the callable, a stable structural cache key, and the response type — which is what stops queryKey and URL from drifting apart, the single biggest pain with axios plus TanStack Query. `params` is REQUIRED by the type system exactly when the path declares `:placeholders`, and its keys are extracted from the path literal, so a typo is a compile error. `.query(args)` emits `{ queryKey, queryFn }` with the AbortSignal already forwarded; `.mutation()` emits `{ mutationFn, invalidates }`. `responseType` (`text` / `blob` / `arrayBuffer` / `stream` / `void`) decodes non-JSON bodies and types the result accordingly; `queryStyle` states OpenAPI query serialization per key (`form` / `spaceDelimited` / `pipeDelimited` / `deepObject`, `explode`); `keyScope` namespaces the cache key. The third generic `I` narrows what a call sends (`api.endpoint<S, typeof Schema, { json: NewPet }>(…)`) — how a generated client types `query` and `json` on direct calls. In a path, `\\:` is a literal colon (`/v1/:name\\:cancel`).
+Declare a reusable endpoint. One declaration yields the callable, a stable structural cache key, and the response type — which is what stops queryKey and URL from drifting apart, the single biggest pain with axios plus TanStack Query. `params` is REQUIRED by the type system exactly when the path declares `:placeholders`, and its keys are extracted from the path literal, so a typo is a compile error. `.query(args)` emits `{ queryKey, queryFn }` with the AbortSignal already forwarded; `.mutation()` emits `{ mutationFn, invalidates }`. `responseType` (`text` / `blob` / `arrayBuffer` / `stream` / `void`) decodes non-JSON bodies and types the result accordingly; `queryStyle` states OpenAPI query serialization per key (`form` / `spaceDelimited` / `pipeDelimited` / `deepObject`, `explode`); `keyScope` namespaces the cache key. The third generic `I` narrows what a call sends (`api.endpoint<S, typeof Schema, { json: NewPet }>(…)`) — how a generated client types `query` and `json` on direct calls. `errors` declares error-body schemas by status (`404`), range (`'4XX'`) or `default`: a rejected call's `HttpError.body` is validated against the most specific one and `matched` names the key it passed, so with `EndpointError<typeof ep>` as the error type `err.matched === '404'` narrows `err.body`; a body that fails its schema stays the same HttpError with `matched` undefined. In a path, `\\:` is a literal colon (`/v1/:name\\:cancel`).
 
 **Example**
 
@@ -151,6 +151,7 @@ console.log(options.queryKey)
 - Writing the spec without a method (`"/users"`). It must be `"<METHOD> <path>"`.
 - Assuming `invalidates` takes strings. It takes ENDPOINTS, and resolves each to its key prefix.
 - Expecting a per-call `headers` to REPLACE the declared ones. They MERGE (per-call wins per key), so a declared `content-type` survives a call that adds an idempotency key.
+- Narrowing a typed error on `status` alone. A `default` or `'4XX'` schema covers statuses beyond its own key, so `err.status === 404` still admits them — discriminate on `err.matched === '404'`.
 
 ---
 
