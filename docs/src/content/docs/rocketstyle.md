@@ -48,7 +48,7 @@ Rocketstyle inverts this: you describe each **dimension independently**, and the
 
 ```tsx
 // ✅ Dimensions compose — define each axis ONCE
-const Button = rs({ name: 'Button', component: 'button' })
+const Button = rs({ name: 'Button', component: Element })
   .theme((t) => ({ borderRadius: '4px', cursor: 'pointer' })) // always-applied base
   .states({ primary: { /* ... */ }, danger: { /* ... */ }, ghost: { /* ... */ } })
   .sizes({ sm: { /* ... */ }, md: { /* ... */ }, lg: { /* ... */ } })
@@ -60,18 +60,22 @@ const Button = rs({ name: 'Button', component: 'button' })
 
 Resolution at render time is: **base theme → matched `state` slice → matched `size` slice → matched `variant` slice**, deep-merged in that order, then handed to the styling layer (`@pyreon/styler`) which produces a deduplicated, SSR-safe CSS class.
 
+<Example file="./examples/rocketstyle/multi-dimensional-button" title="state + size + variant — live" />
+
 ## The Factory
 
 Calling `rocketstyle(config?)` returns a **component factory**. You call that factory with `{ name, component }` to wrap a base component into a chainable rocketstyle builder.
 
 ```tsx
 import rocketstyle from '@pyreon/rocketstyle'
+import { Element } from '@pyreon/elements'
 
 // 1. Create the factory once (per app / per design system)
 const rs = rocketstyle({ useBooleans: false }) // useBooleans: false is the default
 
 // 2. Wrap a base component — `name` is required, `component` is required
-const Button = rs({ name: 'Button', component: 'button' })
+const Button = rs({ name: 'Button', component: Element })
+  .attrs({ tag: 'button' }) // Element defaults to a <div> — pick the real HTML tag
   .theme((t) => ({ borderRadius: '4px', cursor: 'pointer', fontWeight: 500 }))
   .states({
     primary: { background: 'royalblue', color: 'white' },
@@ -80,7 +84,7 @@ const Button = rs({ name: 'Button', component: 'button' })
 ```
 
 :::warning{title="The factory takes `{ name, component }`, not a tag string"}
-`rocketstyle()` returns a function whose argument is the object `{ name, component }` — `rs({ name: 'Button', component: 'button' })`. Both keys are **required** (in dev mode, a missing `name`, `component`, or `dimensions` throws). There is no `rs('button')` string-tag shorthand.
+`rocketstyle()` returns a function whose argument is the object `{ name, component }` — `rs({ name: 'Button', component: Element })`. Both keys are **required** (in dev mode, a missing `name`, `component`, or `dimensions` throws). There is no `rs('button')` string-tag shorthand, AND `component` is typed as a real Pyreon component (`ComponentFn`) — a bare HTML tag string is not assignable there either. To start from a plain tag, base on `@pyreon/elements`' `Element` and set the tag via `.attrs({ tag: 'button' })`, as above. (`.config({ component: 'hr' })` — LATER in the chain, swapping an already-built component's base — does accept a bare tag string; that's a different, looser entry point covered below.)
 :::
 
 `rocketstyle()` accepts two optional config fields:
@@ -95,9 +99,9 @@ const Button = rs({ name: 'Button', component: 'button' })
 Every chain method returns a **new** rocketstyle component (immutable builder — the original is untouched), so you can fork a base into variants. The canonical order is `.config()` → `.attrs()` → `.theme()` → dimension methods, but methods can be chained in any order and repeated.
 
 ```tsx
-const Button = rs({ name: 'Button', component: 'button' })
+const Button = rs({ name: 'Button', component: Element })
   .config({ name: 'Button' })           // metadata + provider/consumer wiring
-  .attrs({ type: 'button' })            // default props injected into the component
+  .attrs({ tag: 'button', type: 'button' }) // default props injected into the component
   .theme((t) => ({ /* base CSS */ }))   // always-applied styles
   .states({ /* ... */ })                // the `state` dimension
   .sizes({ /* ... */ })                 // the `size` dimension
@@ -111,7 +115,7 @@ const Button = rs({ name: 'Button', component: 'button' })
 `.theme()` takes a **callback** that receives `(theme, mode, css)` and returns the base style object that applies to **every** instance regardless of dimension props. `theme` is the app theme from context, `mode` is the `mode(light, dark)` helper (see [Dark/Light Mode](#darklight-mode)), and `css` is the styling-layer's css helper.
 
 ```tsx
-const Button = rs({ name: 'Button', component: 'button' })
+const Button = rs({ name: 'Button', component: Element })
   .theme((t, mode, css) => ({
     borderRadius: '4px',
     fontWeight: 500,
@@ -139,7 +143,7 @@ Each dimension method declares **every valid value** for that dimension's prop. 
 A dimension is defined by mapping each value name to a style object (or a callback, see below). The active value's slice is merged onto the base theme:
 
 ```tsx
-const Button = rs({ name: 'Button', component: 'button' })
+const Button = rs({ name: 'Button', component: Element })
   .theme((t) => ({ borderRadius: '4px', cursor: 'pointer' }))
   .states({
     primary: { background: 'royalblue', color: 'white' },
@@ -171,7 +175,7 @@ A dimension prop with no matching value contributes nothing — every dimension 
 A dimension method can take a **callback** (instead of a plain map) that receives `(theme, mode, css)` and returns the value map. This is how you base dimension styles on theme tokens:
 
 ```tsx
-const Button = rs({ name: 'Button', component: 'button' })
+const Button = rs({ name: 'Button', component: Element })
   .states((t) => ({
     primary: { backgroundColor: t.color.primary, color: t.color.onPrimary },
     danger: { backgroundColor: t.color.error, color: t.color.onError },
@@ -185,7 +189,7 @@ const Button = rs({ name: 'Button', component: 'button' })
 Individual **values** can also be callbacks receiving the component's props, for value-level conditional styling:
 
 ```tsx
-const Card = rs({ name: 'Card', component: 'div' })
+const Card = rs({ name: 'Card', component: Element })
   .states({
     light: { background: '#fff', color: '#333' },
     dark: (props) => ({
@@ -201,11 +205,11 @@ const Card = rs({ name: 'Card', component: 'div' })
 
 ```tsx
 // Object form — static default props
-const SubmitButton = rs({ name: 'SubmitButton', component: 'button' })
+const SubmitButton = rs({ name: 'SubmitButton', component: Element })
   .attrs({ type: 'submit', 'aria-label': 'Submit form' })
 
 // Callback form — (props, theme, helpers) => partial props
-const ThemedButton = rs({ name: 'ThemedButton', component: 'button' })
+const ThemedButton = rs({ name: 'ThemedButton', component: Element })
   .attrs((props, theme, helpers) => ({
     'data-mode': helpers.mode, // 'light' | 'dark'
     title: props.disabled ? 'Disabled' : 'Click me',
@@ -232,7 +236,7 @@ When you wrap a layout-aware base component (such as `@pyreon/elements`' `Elemen
 `.styles()` gives you the styler's tagged-template `css` helper directly, for cases the dimension model can't express (pseudo-selectors keyed on resolved state, complex interpolation, etc.). Interpolation functions receive `$rocketstyle` (the fully resolved theme object) and `$rocketstate` (the active dimension values + pseudo state):
 
 ```tsx
-const Button = rs({ name: 'Button', component: 'button' })
+const Button = rs({ name: 'Button', component: Element })
   .theme((t) => ({ background: '#eee', hover: { background: '#ddd' } }))
   .styles(
     (css) => css`
@@ -254,7 +258,7 @@ const Button = rs({ name: 'Button', component: 'button' })
 ```tsx
 const withTooltip = (Component) => (props) => /* ...wrap... */ Component(props)
 
-const Button = rs({ name: 'Button', component: 'button' })
+const Button = rs({ name: 'Button', component: Element })
   .states({ primary: { background: 'royalblue' } })
   .compose({ withTooltip })
 ```
@@ -264,7 +268,7 @@ const Button = rs({ name: 'Button', component: 'button' })
 `.statics()` attaches arbitrary static values, readable on the component's `.meta`:
 
 ```tsx
-const Button = rs({ name: 'Button', component: 'button' })
+const Button = rs({ name: 'Button', component: Element })
   .statics({ version: '1.0', category: 'form' })
 
 Button.meta.version  // '1.0'
@@ -275,7 +279,7 @@ Button.meta.version  // '1.0'
 `.config()` sets component metadata and opts into the provider/consumer context wiring.
 
 ```tsx
-const Button = rs({ name: 'Button', component: 'button' })
+const Button = rs({ name: 'Button', component: Element })
   .config({
     name: 'Button',         // displayName
     component: 'a',          // swap the rendered base component
@@ -304,7 +308,7 @@ Setting `.config({ component: NewBase })` to a *different* component resets the 
 Pseudo-state styles (`hover`, `focus`, `active`, `disabled`, plus `pressed` / `readOnly`) are written as **nested objects** inside any theme or dimension slice. The styling layer generates the matching CSS (`:hover`, `:focus-visible`, `:active`, `:disabled`):
 
 ```tsx
-const Button = rs({ name: 'Button', component: 'button' })
+const Button = rs({ name: 'Button', component: Element })
   .theme((t) => ({
     background: '#3b82f6',
     color: 'white',
@@ -333,7 +337,7 @@ The Element-based bases apply `:hover` CSS to **every** component that defines a
 The `mode(light, dark)` helper — the **second argument** to `.theme()` and dimension callbacks — picks a value based on the active mode. It lets a single style definition carry both light and dark values without duplicating the whole object:
 
 ```tsx
-const Card = rs({ name: 'Card', component: 'div' })
+const Card = rs({ name: 'Card', component: Element })
   .theme((t, mode) => ({
     background: mode('#ffffff', '#1a1a1a'),  // light → '#fff', dark → '#1a1a1a'
     color: mode('#1a1a1a', '#e0e0e0'),
@@ -359,7 +363,7 @@ The `useBooleans` factory option controls how dimension values are passed at the
 ```tsx
 // useBooleans: false (DEFAULT) — string props
 const rs = rocketstyle({ useBooleans: false })
-const Button = rs({ name: 'Button', component: 'button' }).states({ primary: {}, danger: {} })
+const Button = rs({ name: 'Button', component: Element }).states({ primary: {}, danger: {} })
 
 <Button state="primary" />
 <Button state="danger" size="lg" />
@@ -370,7 +374,7 @@ Opt into boolean shorthands with `useBooleans: true` — each dimension *value* 
 ```tsx
 // useBooleans: true — boolean shorthand props
 const rs = rocketstyle({ useBooleans: true })
-const Button = rs({ name: 'Button', component: 'button' }).states({ primary: {}, danger: {} })
+const Button = rs({ name: 'Button', component: Element }).states({ primary: {}, danger: {} })
 
 <Button primary />
 <Button danger />
@@ -406,7 +410,7 @@ const rs = rocketstyle({
   },
 })
 
-const Badge = rs({ name: 'Badge', component: 'span' })
+const Badge = rs({ name: 'Badge', component: Element }).attrs({ tag: 'span' })
   .tones({ info: { color: 'blue' }, warn: { color: 'orange' } })       // method = plural key
   .decorations({ pill: { borderRadius: '999px' }, bordered: { borderWidth: 1 } })
 
@@ -462,7 +466,7 @@ Literal-prop call sites — `<Button state="primary" size="medium">Save</Button>
 // ❌ Calling the factory with a tag string
 const Button = rs('button')                         // wrong — no string-tag form
 // ✅ The factory takes { name, component }
-const Button = rs({ name: 'Button', component: 'button' })
+const Button = rs({ name: 'Button', component: Element })
 ```
 
 ```tsx
@@ -474,22 +478,22 @@ const Button = rs({ name: 'Button', component: 'button' })
 
 ```tsx
 // ❌ Empty .theme({}) — a no-op that does nothing
-const Button = rs({ name: 'Button', component: 'button' }).theme({})
+const Button = rs({ name: 'Button', component: Element }).theme({})
 // ✅ Skip .theme() entirely when there are no base styles
-const Button = rs({ name: 'Button', component: 'button' }).states({ primary: {} })
+const Button = rs({ name: 'Button', component: Element }).states({ primary: {} })
 ```
 
 ```tsx
 // ❌ Singular dimension method name
-rs({ name: 'B', component: 'button' }).state({ primary: {} })  // .state is not a method
+rs({ name: 'B', component: Element }).state({ primary: {} })  // .state is not a method
 // ✅ Dimension methods are plural
-rs({ name: 'B', component: 'button' }).states({ primary: {} }) // prop stays singular: state="primary"
+rs({ name: 'B', component: Element }).states({ primary: {} }) // prop stays singular: state="primary"
 ```
 
 ```tsx
 // ❌ Boolean props with the default useBooleans: false
 const rs = rocketstyle()              // useBooleans defaults to false
-const Button = rs({ name: 'B', component: 'button' }).states({ primary: {} })
+const Button = rs({ name: 'B', component: Element }).states({ primary: {} })
 <Button primary />                    // 'primary' is an unknown prop, not a state selector
 // ✅ Use the string prop form (or opt into useBooleans: true)
 <Button state="primary" />

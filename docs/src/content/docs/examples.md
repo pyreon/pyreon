@@ -1,11 +1,23 @@
 ---
 title: "Examples"
-description: "A gallery of 84 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
+description: "A gallery of 90 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
 ---
 
 # Examples
 
-Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 84 examples across 36 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
+Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 90 examples across 42 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
+
+## A11y
+
+### Save Button Live Region
+
+<Example file="./examples/a11y/save-button-live-region" />
+
+## Attrs
+
+### Button Variant Chain
+
+<Example file="./examples/attrs/button-variant-chain" />
 
 ## Charts
 
@@ -64,6 +76,12 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 ### Plot Theme
 
 <Example file="./examples/charts/plot-theme" />
+
+## Code
+
+### Reactive Code Editor
+
+<Example file="./examples/code/reactive-code-editor" />
 
 ## Coolgrid
 
@@ -144,6 +162,12 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 ### Field Validation Error Gating On Blur
 
 <Example file="./examples/form/field-validation-error-gating-on-blur" />
+
+## Head
+
+### Live Title And Meta Preview
+
+<Example file="./examples/head/live-title-and-meta-preview" />
 
 ## Hooks
 
@@ -256,6 +280,18 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 ### Signals Read Write React
 
 <Example file="./examples/reactivity/signals-read-write-react" />
+
+## Rich Text
+
+### Toolbar And Word Count
+
+<Example file="./examples/rich-text/toolbar-and-word-count" />
+
+## Rocketstyle
+
+### Multi Dimensional Button
+
+<Example file="./examples/rocketstyle/multi-dimensional-button" />
 
 ## Router
 

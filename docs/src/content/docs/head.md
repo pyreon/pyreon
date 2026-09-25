@@ -133,6 +133,10 @@ function ProductPage() {
 
 On the client, the reactive getter is wrapped in an `effect()` that re-evaluates and re-syncs the DOM whenever dependencies change. On the server, it evaluates once synchronously.
 
+<Example file="./examples/head/live-title-and-meta-preview" title="Reactive title + meta — live" />
+
+The demo above is a REAL `useHead()` call, not a mock — editing the fields genuinely rewrites `document.title` and the `<meta name="description">` tag, so your browser's own tab title updates as you type (check it!). It gets its own `HeadProvider`/`createHeadContext()` pair so it can't collide with this docs site's own head tags.
+
 ### Signature
 
 ```ts

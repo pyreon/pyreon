@@ -15,9 +15,13 @@
     "gen:check": "bun scripts/check-generated-fresh.ts"
   },
   "dependencies": {
+    "@pyreon/a11y": "workspace:*",
+    "@pyreon/attrs": "workspace:*",
     "@pyreon/charts": "workspace:*",
+    "@pyreon/code": "workspace:*",
     "@pyreon/core": "workspace:*",
     "@pyreon/document": "workspace:*",
+    "@pyreon/elements": "workspace:*",
     "@pyreon/flow": "workspace:*",
     "@pyreon/form": "workspace:*",
     "@pyreon/head": "workspace:*",
@@ -30,6 +34,8 @@
     "@pyreon/primitives": "workspace:*",
     "@pyreon/query": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
+    "@pyreon/rich-text": "workspace:*",
+    "@pyreon/rocketstyle": "workspace:*",
     "@pyreon/router": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
     "@pyreon/runtime-server": "workspace:*",
