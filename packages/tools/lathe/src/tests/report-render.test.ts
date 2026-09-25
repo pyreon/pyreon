@@ -231,3 +231,49 @@ describe('native reach — only under the multiplatform target', () => {
   })
 })
 
+
+describe('native verdict detail (audit G1/G2)', () => {
+  it('renders partial, compile status, compile errors and per-declaration losses', () => {
+    const out = render(result(), {
+      ran: true,
+      files: [
+        {
+          path: 'a.native.tsx',
+          target: 'swift',
+          verdict: 'broken',
+          warnings: [],
+          markers: [],
+          leaked: [],
+          declarations: [],
+          compiled: { ok: false, errors: ["invalid redeclaration of 'Pet'"] },
+        },
+        {
+          path: 'a.native.tsx',
+          target: 'kotlin',
+          verdict: 'partial',
+          warnings: ['null declaration `Pet`: field `tags` — dropping.'],
+          markers: ['PyreonQuery<'],
+          leaked: [],
+          declarations: [{ name: 'Pet', verdict: 'partial', reasons: ['field `tags` — dropping.'] }],
+          compiled: { ok: true, errors: [] },
+        },
+        {
+          path: 'b.native.tsx',
+          target: 'swift',
+          verdict: 'lowers',
+          warnings: [],
+          markers: ['PyreonQuery<'],
+          leaked: [],
+          declarations: [],
+          compiled: { skipped: 'swiftc not found' },
+        },
+      ],
+    })
+    expect(out).toContain('does not compile')
+    expect(out).toContain("error invalid redeclaration of 'Pet'")
+    expect(out).toContain('partial a.native.tsx kotlin')
+    expect(out).toContain('compiled')
+    expect(out).toContain('partial Pet')
+    expect(out).toContain('(not compiled)')
+  })
+})
