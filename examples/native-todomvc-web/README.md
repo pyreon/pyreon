@@ -9,7 +9,7 @@
 
 ## What this proves
 
-`@pyreon/primitives`' 7 implemented web primitives (`Stack`, `Inline`, `Text`, `Button`, `Press`, `Field`, `Toggle`) plus Pyreon's `<For>` / `<Show>` control flow render a non-trivial app (TodoMVC) end-to-end with reactive signals + persistent storage. The `verify-modes` cell `native-todomvc-web × spa` asserts the production build emits expected HTML content.
+`@pyreon/primitives`' web primitives (this app uses `Stack`, `Inline`, `Text`, `Button`, `Field`, `Toggle` — 6 of the now 17 implemented) plus Pyreon's `<For>` / `<Show>` control flow render a non-trivial app (TodoMVC) end-to-end with reactive signals + persistent storage. The `verify-modes` cell `native-todomvc-web × spa` asserts the production build emits expected HTML content.
 
 ## Build / dev
 
@@ -52,7 +52,6 @@ The non-signal value path (PR #970) routes through SwiftUI's `Binding(get:set:)`
 ## What's NOT in Phase D
 
 - **Real-Chromium e2e gate** (Playwright spec asserting click → DOM updates). Verify-modes catches the build emits content; the runtime click contract is a follow-up.
-- **Native counter-ios `<Press>` migration** — the existing native counter scaffold doesn't use canonical primitives yet.
 
 ## Privacy
 

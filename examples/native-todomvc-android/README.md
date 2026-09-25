@@ -46,9 +46,13 @@ The compiler-emit pipeline works end-to-end — `./scripts/build.sh` produces `a
 | [K4 #882](https://github.com/pyreon/pyreon/pull/882) | Extended Compose stubs (rememberSaveable / Saver / Material widgets / kotlinx-serialization) | ✅ merged |
 | K-FINAL (this PR) | End-to-end TodoMVC `transform()` → kotlinc validation gate | this PR |
 
-### Remaining gap (shared with iOS, runtime-only)
+### Remaining gap
 
-The `nextId + 1` shared-with-iOS bug remains: the emit uses `nextId + 1` (pure expression) instead of post-increment `nextId++` (assign + return), so every new Todo gets `id=2` forever. Documented runtime bug — does NOT affect typecheck on either platform. Tracked as a future shared follow-up.
+None currently known. The `nextId + 1` id-generation bug this section used
+to describe no longer applies — the shared `TodoApp.tsx` source now derives
+each new todo's id from `todos().reduce((m, t) => (t.id > m ? t.id : m), 0) +
+1` (recomputed from the current list on every add), not a stale incrementing
+counter variable.
 
 ## Verifiable locally vs requires Android SDK
 

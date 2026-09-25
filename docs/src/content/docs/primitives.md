@@ -7,8 +7,8 @@ description: 'Canonical multi-platform UI primitives — semantic vocabulary tha
 
 Canonical multi-platform UI primitives — semantic vocabulary that compiles to DOM (web), SwiftUI (iOS), and Compose (Android). Same `.tsx` source, three idiomatic outputs.
 
-:::warning{title="Phase A — experimental"}
-6 of 16 planned primitives ship with real web implementations today; the remaining 10 have type definitions but no runtime yet. See the [multiplatform overview](/docs/multiplatform) for the full PMTC roadmap.
+:::warning{title="Experimental"}
+All 17 canonical primitives now ship with real web implementations, and 16 of them (everything except `<Audio>`) also lower to native SwiftUI/Compose via PMTC's `canonical-primitives` table. Still marked experimental while the API surface stabilizes from real-app usage. See the [multiplatform overview](/docs/multiplatform) for the full PMTC roadmap.
 :::
 
 ## Install
@@ -68,20 +68,29 @@ The competing alternatives all force a choice:
 
 Pyreon's split: `@pyreon/elements` stays web-only-rich (rocketstyle/styler-coupled, full responsive design). `@pyreon/primitives` is the canonical multiplatform layer — minimal vocabulary, fixed token-based style props, no responsive arrays. Different architectural tiers; no naming collision because imports are explicit.
 
-## Phase A scope — 6 primitives with real web runtime
+## All 17 primitives ship with real web runtime
 
-| Primitive | DOM shape | Notes |
-|-----------|-----------|-------|
-| `<Stack>` | `<div style="display:flex">` | Default `direction="column"`. |
-| `<Inline>` | `<div style="display:flex;flex-direction:row">` | Sugar for `<Stack direction="row">`. |
-| `<Text>` | `<span>` | Tokenized color / size / weight / truncate. |
-| `<Button>` | `<button>` | 4 variants — `primary` / `secondary` / `ghost` / `danger`. |
-| `<Press>` | `<div role="button" tabindex="0">` | ARIA-button keyboard contract + long-press polyfill. |
-| `<Field>` | `<input>` | `kind` prop selects `type` (`text` / `email` / `password` / `number` / `search`). |
+| Primitive | DOM shape | Native lowering (PMTC) | Notes |
+|-----------|-----------|-------------------------|-------|
+| `<Stack>` | `<div style="display:flex">` | SwiftUI `VStack` / Compose `Column` | Default `direction="column"`; `direction="row"` switches the emitted native container too. |
+| `<Inline>` | `<div style="display:flex;flex-direction:row">` | SwiftUI `HStack` / Compose `Row` | Sugar for `<Stack direction="row">`. |
+| `<Layer>` | `<div style="position:relative; display:grid">` | SwiftUI `ZStack` / Compose `Box` | Stacked/overlapping children. |
+| `<Scroll>` | `<div style="overflow-y:auto">` (or `overflow-x`) | SwiftUI `ScrollView` / Compose `Column` + `verticalScroll` | |
+| `<Spacer>` | `<div>` | SwiftUI `Spacer` | Flexible gap-filler. |
+| `<Text>` | `<span>` | SwiftUI `Text` / Compose `Text` | Tokenized color / size / weight / truncate. |
+| `<Heading>` | `<h1>`–`<h6>` (explicit size + weight, not the browser's inconsistent defaults) | SwiftUI `Text` (`.font(.largeTitle)` etc. at emit time) | |
+| `<Image>` | `<img>` | SwiftUI `Image` / Compose `Image` | |
+| `<Video>` | `<video>` | SwiftUI `PyreonVideoPlayer` | |
+| `<Audio>` | `<audio>` | — (web-only; no native lowering yet) | |
+| `<Icon>` | `<svg><use href="#name" /></svg>` | SwiftUI `Image` (`systemName:` from `name`) | Semantic name, per-platform icon system. |
+| `<Button>` | `<button>` | SwiftUI `Button` / Compose (canonical primitives table) | 4 variants — `primary` / `secondary` / `ghost` / `danger`. |
+| `<Press>` | `<div role="button" tabindex="0">` | SwiftUI `Button` (chrome-less, trailing-closure form) | ARIA-button keyboard contract + long-press polyfill. |
+| `<Link>` | `<a href>` (+ SPA-nav click interception when wired) | SwiftUI `NavigationLink` | Router-agnostic — plain anchor until `init({ navigate })`. |
+| `<Field>` | `<input>` | SwiftUI `TextField` (`SecureField` when `kind="password"`) | `kind` prop selects `type` (`text` / `email` / `password` / `number` / `search`). |
+| `<Toggle>` | `<input type="checkbox" role="switch">` | SwiftUI `Toggle` / Compose `Switch` | |
+| `<Modal>` | `<dialog>` via `showModal()` / `close()` | SwiftUI `.sheet(isPresented:)` | |
 
-## Phase A scope — 10 primitives with types but no runtime yet
-
-`<Layer>`, `<Scroll>`, `<Spacer>`, `<Heading>`, `<Image>`, `<Icon>`, `<Link>`, `<Toggle>`, `<Modal>`. They ship in follow-up PRs as real apps demand each.
+`<Audio>` is the one primitive with no PMTC native lowering yet — every other primitive above lowers to both SwiftUI and Compose via `canonical-primitives.ts` (`packages/native/compiler/src/canonical-primitives.ts`).
 
 ## Design principles
 
@@ -89,7 +98,7 @@ Pyreon's split: `@pyreon/elements` stays web-only-rich (rocketstyle/styler-coupl
 2. **One canonical event name per concept** — `onPress` everywhere (not `onClick` on web + `action:` on iOS).
 3. **Tokens-first styling** — `padding={4}` / `gap="md"` resolve via theme. No raw pixels in source.
 4. **Pyreon idioms preserved** — existing `<For>` / `<Show>` / `<Match>` control flow stays.
-5. **Minimal first; expand from real-world usage** — 16 primitives; more when demanded.
+5. **Minimal first; expand from real-world usage** — 17 primitives shipped so far; more when demanded.
 
 ## Style props (v1)
 
