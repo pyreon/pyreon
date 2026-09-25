@@ -13,12 +13,12 @@ import type { Schema } from '../core/schema'
 type SizeKind = 'check:collection:min' | 'check:collection:max' | 'check:collection:size'
 
 /**
- * Push a `.size`-based check onto a Set/Map schema. Runs after `_compileType`
+ * Derive a Set/Map schema with a `.size`-based check (copy-on-write). Runs after `_compileType`
  * (in the shared checks pass) against the validated collection; both `Set` and
  * `Map` expose `.size`, so one helper serves both.
  */
 function pushSizeCheck<S extends SchemaBase<unknown>>(schema: S, kind: SizeKind, n: number, opts?: CheckOpts): S {
-  ;(schema as unknown as { _ops: Op[] })._ops.push(
+  return schema._cloneWith(
     attachCheck({ kind, n, opts } as Op, (value, ctx) => {
       const size = value instanceof Set || value instanceof Map ? value.size : undefined
       if (size === undefined) return
@@ -31,8 +31,6 @@ function pushSizeCheck<S extends SchemaBase<unknown>>(schema: S, kind: SizeKind,
       )
     }),
   )
-  ;(schema as unknown as { _invalidateCompile(): void })._invalidateCompile()
-  return schema
 }
 
 export class MapSchema<K, V> extends SchemaBase<Map<K, V>> {

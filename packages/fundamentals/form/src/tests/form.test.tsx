@@ -722,12 +722,12 @@ describe('useForm', () => {
     props.onInput(validEvent)
     expect(form.fields.age.value()).toBe(25)
 
-    // Simulate input with NaN (e.g. empty string) — falls back to target.value
+    // Simulate input with NaN (e.g. empty string) — stores undefined, never the raw string
     const nanEvent = {
       target: { value: '', valueAsNumber: NaN },
     } as unknown as Event
     props.onInput(nanEvent)
-    expect(form.fields.age.value()).toBe('')
+    expect(form.fields.age.value()).toBeUndefined()
     unmount()
   })
 
@@ -1263,7 +1263,7 @@ describe('useForm nonexistent field operations', () => {
     )
 
     expect(() => form.setFieldValue('nonexistent' as any, 'value')).toThrow(
-      '[@pyreon/form] Field "nonexistent" does not exist',
+      '[Pyreon] Field "nonexistent" does not exist',
     )
     expect(form.fields.name.value()).toBe('Alice')
     unmount()
@@ -1280,7 +1280,7 @@ describe('useForm nonexistent field operations', () => {
     )
 
     expect(() => form.setFieldError('nonexistent' as any, 'error')).toThrow(
-      '[@pyreon/form] Field "nonexistent" does not exist',
+      '[Pyreon] Field "nonexistent" does not exist',
     )
     expect(form.isValid()).toBe(true)
     unmount()

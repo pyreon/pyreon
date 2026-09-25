@@ -88,6 +88,7 @@ const ROUTE_EXPORT_NAMES = [
   'gcTime',
   'getStaticPaths',
   'revalidate',
+  'og',
 ] as const
 
 type RouteExportName = (typeof ROUTE_EXPORT_NAMES)[number]
@@ -180,6 +181,7 @@ export function detectRouteExports(source: string, filename = 'route.tsx'): Rout
     hasGcTime: found.has('gcTime'),
     hasGetStaticPaths: found.has('getStaticPaths'),
     hasRevalidate: found.has('revalidate'),
+    hasOg: found.has('og'),
     readsRequestAuth: READS_REQUEST_AUTH_RE.test(source),
     ...(metaLiteral !== undefined ? { metaLiteral } : {}),
     ...(renderModeLiteral !== undefined ? { renderModeLiteral } : {}),
@@ -209,6 +211,19 @@ function routeLang(filename: string): 'ts' | 'tsx' | 'jsx' {
   if (/\.[mc]?ts$/.test(filename)) return 'ts'
   if (/\.[mc]?jsx?$/.test(filename)) return 'jsx'
   return 'tsx'
+}
+
+/**
+ * A string literal for GENERATED code. `JSON.stringify` alone leaves `<`,
+ * U+2028 and U+2029 raw: harmless for most file paths, but a module emitted
+ * into a script context or a path carrying those characters would break out
+ * of the literal. The escapes read back as the same string.
+ */
+function jsString(value: string): string {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003C')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029')
 }
 
 /**
@@ -638,10 +653,10 @@ export function generateRouteModuleFromRoutes(
     // component swap (no page reload, signals preserved). Inert in
     // production — the coordinator is only registered in a dev browser,
     // so `_hmrId` is dead metadata once built.
-    opts.push(`hmrId: ${JSON.stringify(fullPath)}`)
+    opts.push(`hmrId: ${jsString(fullPath)}`)
     const optsStr = `, { ${opts.join(', ')} }`
     // JSON.stringify for safe-embed — matches the `hmrId` line above.
-    imports.push(`const ${name} = lazy(() => import(${JSON.stringify(fullPath)})${optsStr})`)
+    imports.push(`const ${name} = lazy(() => import(${jsString(fullPath)})${optsStr})`)
     return name
   }
 
@@ -847,6 +862,13 @@ export function generateRouteModuleFromRoutes(
 
     if (notFoundName) {
       props.push(`${indent}  notFoundComponent: ${notFoundName}`)
+    }
+
+    // Route OG images — `export const og` is referenced ONLY from the
+    // server module graph (SSG sub-build + SSR bundle), as a lazy getter so
+    // it never pulls the route module eagerly and never reaches the client.
+    if (exp.hasOg && emitServerLoaders) {
+      props.push(`${indent}  og: () => import(${jsString(`${routesDir}/${page.filePath}`)}).then((m) => m.og)`)
     }
 
     // Phase 5 — server loaders (uniform across every emission branch).

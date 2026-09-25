@@ -102,6 +102,16 @@ export type { SeoPluginConfig, SitemapConfig, RobotsConfig, RssConfig, RssItem }
 export { seoPlugin, generateSitemap, generateRobots, generateRssFeed, toRfc822, jsonLd, seoMiddleware } from "./seo";
 export type { OgImagePluginConfig, OgImageTemplate, OgImageLayer } from "./og-image";
 export { ogImagePlugin, ogImagePath } from "./og-image";
+// Route-level OG images from JSX (`export const og` in a route file).
+export type { OgContext, OgImage, RouteOgConfig } from "./og-route";
+export type { PwaConfig, PwaManifest, PwaManifestIcon } from "./pwa";
+export {
+	createOgImageMiddleware,
+	ogEndpointPath,
+	renderOgSvgFromLoaded,
+	renderRouteOgSvg,
+	rasterizeOgSvg,
+} from "./og-route";
 export type { PerfAdvisorConfig } from "./perf-advisor-plugin";
 export { perfAdvisorPlugin } from "./perf-advisor-plugin";
 export type {

@@ -121,6 +121,15 @@ async function handler(req: IncomingMessage, res: ServerResponse): Promise<void>
       })
       return
 
+    case '/slow-body': {
+      // Headers now, body never — the hung-body shape. Ended when the
+      // client goes away so the server can close cleanly.
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.write('{"partial":')
+      req.on('close', () => res.destroy())
+      return
+    }
+
     case '/big':
       json(res, 200, { items: Array.from({ length: 500 }, (_, i) => ({ i })) })
       return
@@ -340,5 +349,20 @@ describe('real HTTP — endpoints end to end', () => {
     setTimeout(() => controller.abort(), 20)
 
     await expect(promise).rejects.toBeInstanceOf(AbortError)
+  })
+})
+
+describe('real HTTP — abort and timeout cover the BODY, not just the headers', () => {
+  it('a timeout that fires while the body streams rejects with TimeoutError', async () => {
+    await expect(api({ timeout: 150 }).get('/slow-body').json()).rejects.toBeInstanceOf(
+      TimeoutError,
+    )
+  })
+
+  it('aborting while the body streams rejects with AbortError', async () => {
+    const controller = new AbortController()
+    const body = api({ timeout: false }).get('/slow-body', { signal: controller.signal }).text()
+    setTimeout(() => controller.abort(), 50)
+    await expect(body).rejects.toBeInstanceOf(AbortError)
   })
 })

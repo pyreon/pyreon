@@ -13,7 +13,7 @@
  *
  * The contract locked here:
  *  - binding/subscription APIs (register, useWatch, useField) THROW the
- *    actionable `[@pyreon/form]` guidance;
+ *    actionable `[Pyreon]` guidance;
  *  - validity APIs treat unknown as INVALID (trigger → false + dev-warn);
  *  - probes stay probes (getFieldState → `undefined`, honestly typed);
  *  - baseline writes skip + dev-warn unknown keys (server payloads carry
@@ -39,28 +39,28 @@ describe('unknown-field consistency — binding APIs throw actionable guidance',
   it('register("missing") throws the guidance, not a bare TypeError', () => {
     const form = makeForm()
     expect(() => form.register('missing' as never)).toThrowError(
-      /\[@pyreon\/form\] register\("missing"\).*does not exist.*Available fields: title, count.*registerField\("missing"/s,
+      /\[Pyreon\] register\("missing"\).*does not exist.*Available fields: title, count.*registerField\("missing"/s,
     )
   })
 
   it('useWatch(form, "missing") throws the guidance (single form)', () => {
     const form = makeForm()
     expect(() => useWatch(form, 'missing' as never)).toThrowError(
-      /\[@pyreon\/form\] useWatch\("missing"\).*not found.*Available fields: title, count/s,
+      /\[Pyreon\] useWatch\("missing"\).*not found.*Available fields: title, count/s,
     )
   })
 
   it('useWatch(form, [known, missing]) throws the guidance (array form)', () => {
     const form = makeForm()
     expect(() => useWatch(form, ['title', 'missing'] as never)).toThrowError(
-      /\[@pyreon\/form\] useWatch\("missing"\).*not found/s,
+      /\[Pyreon\] useWatch\("missing"\).*not found/s,
     )
   })
 
   it('useField message carries the full guidance (was asserted nowhere)', () => {
     const form = makeForm()
     expect(() => useField(form as never, 'missing' as never)).toThrowError(
-      /\[@pyreon\/form\] useField\("missing"\).*not found.*Available fields: title, count.*does not auto-register/s,
+      /\[Pyreon\] useField\("missing"\).*not found.*Available fields: title, count.*does not auto-register/s,
     )
   })
 })

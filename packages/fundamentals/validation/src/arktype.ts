@@ -3,10 +3,10 @@ import type {
   SchemaValidateFn,
   TypedSchemaAdapter,
   ValidateFn,
-  ValidationError,
   ValidationIssue,
 } from './types'
-import { flattenIssuePath, issuesToRecord } from './utils'
+import type { InferSchema, StandardSchemaTyped } from './schema'
+import { emptyErrors, flattenIssuePath, formLevelError, issuesToRecord } from './utils'
 
 /**
  * Minimal ArkType-compatible interfaces so we don't require arktype as a hard dep.
@@ -26,8 +26,15 @@ interface ArkErrors extends Array<ArkError> {
  */
 type ArkTypeCallable = (data: unknown) => unknown
 
+/**
+ * ArkType brands its error collection with `" arkKind": "errors"` (the
+ * leading space is ArkType's own no-autocomplete convention). Matching on
+ * that brand — not on "an array with a `summary` key" — keeps a VALID
+ * array output that happens to carry a `summary` property from being read
+ * as a failure.
+ */
 function isArkErrors(result: unknown): result is ArkErrors {
-  return Array.isArray(result) && 'summary' in (result as object)
+  return Array.isArray(result) && (result as unknown as Record<string, unknown>)[' arkKind'] === 'errors'
 }
 
 function arkIssuesToGeneric(errors: ArkErrors): ValidationIssue[] {
@@ -63,18 +70,22 @@ function arkIssuesToGeneric(errors: ArkErrors): ValidationIssue[] {
  * form.register('email')    // ✅ OK
  * form.register('invalid')  // ❌ Type error!
  */
+export function arktypeSchema<S extends ArkTypeCallable & StandardSchemaTyped>(
+  schema: S,
+): TypedSchemaAdapter<InferSchema<S>>
+export function arktypeSchema<TValues extends Record<string, unknown>>(
+  schema: ArkTypeCallable,
+): TypedSchemaAdapter<TValues>
 export function arktypeSchema<TValues extends Record<string, unknown>>(
   schema: ArkTypeCallable,
 ): TypedSchemaAdapter<TValues> {
   const validator: SchemaValidateFn<TValues> = (values: TValues) => {
     try {
       const result = schema(values)
-      if (!isArkErrors(result)) return {} as Partial<Record<keyof TValues, ValidationError>>
+      if (!isArkErrors(result)) return emptyErrors<TValues>()
       return issuesToRecord<TValues>(arkIssuesToGeneric(result))
     } catch (err) {
-      return {
-        '': err instanceof Error ? err.message : String(err),
-      } as Partial<Record<keyof TValues, ValidationError>>
+      return formLevelError<TValues>(err)
     }
   }
 

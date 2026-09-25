@@ -159,12 +159,14 @@ Bun.serve({
           // Keying on the EXTENSION would 1-year-immutable-cache a non-hashed
           // root file like public/sw.js or public/config.js — a deploy-poisoning
           // bug (a stale service worker becomes unevictable). HTML must always
-          // revalidate (prerendered pages change on every content edit).
+          // revalidate (prerendered pages change on every content edit), and so
+          // must a service worker + web manifest: the SW script is the update
+          // channel — an hour of HTTP caching delays every PWA update.
           return new Response(file, {
             headers: {
               "cache-control": decoded.startsWith(${JSON.stringify(assetPrefix)})
                 ? "public, max-age=31536000, immutable"
-                : decoded.endsWith(".html")
+                : decoded.endsWith(".html") || /(^|\\/)sw\\.js$|\\.webmanifest$/.test(decoded)
                   ? "public, max-age=0, must-revalidate"
                   : "public, max-age=3600",
             },
