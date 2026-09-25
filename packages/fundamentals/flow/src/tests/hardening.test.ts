@@ -236,4 +236,25 @@ describe('historyLimit', () => {
     for (let i = 0; i < 100; i++) dflt.undo()
     expect(dflt.nodes()).toHaveLength(10)
   })
+
+  it('floors a fractional limit and falls back to 50 for a non-positive or non-finite one', () => {
+    for (const [limit, remaining] of [[2.9, 4], [0, 0], [-3, 0], [Number.NaN, 0], [Number.POSITIVE_INFINITY, 0]] as const) {
+      const flow = createFlow({ nodes: [], historyLimit: limit })
+      for (let i = 0; i < 6; i++) flow.addNode(n(`n${i}`))
+      for (let i = 0; i < 10; i++) flow.undo()
+      expect(flow.nodes(), `historyLimit ${limit}`).toHaveLength(remaining)
+    }
+  })
+
+  it('honours a write to flow.config.historyLimit, like the native engines', () => {
+    // The native PyreonFlowState exposes historyLimit as a mutable property;
+    // the web engine reads it at push time so the same write behaves the same.
+    const flow = createFlow({ nodes: [] })
+    for (let i = 0; i < 6; i++) flow.addNode(n(`n${i}`))
+    flow.config.historyLimit = 2
+    flow.addNode(n('n6'))
+    for (let i = 0; i < 10; i++) flow.undo()
+    // The push after the write trims the stack to the last two checkpoints.
+    expect(flow.nodes()).toHaveLength(5)
+  })
 })
