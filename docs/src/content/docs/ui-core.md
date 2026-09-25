@@ -175,7 +175,7 @@ When `mode="system"`, `PyreonUI` subscribes to `matchMedia('(prefers-color-schem
 const mode = useMode() // tracks the OS preference, reactive
 ```
 
-The detection is SSR-safe: when there's no DOM (`matchMedia` unavailable), the system mode resolves to `'light'` on the server. For correct first-paint mode under SSR, pair this with [`cssVariablesPrePaintScript()`](#fouc-prevention-csspaintscript) (CSS-variables mode) or stamp the mode on `<html>` server-side.
+The detection is SSR-safe: when there's no DOM (`matchMedia` unavailable), the system mode resolves to `'light'` on the server. For correct first-paint mode under SSR, pair this with [`cssVariablesPrePaintScript()`](#fouc-prevention-cssvariablesprepaintscript) (CSS-variables mode) or stamp the mode on `<html>` server-side.
 
 ## `useMode()` — Reading the Resolved Mode
 
@@ -338,6 +338,24 @@ import { Provider, context } from '@pyreon/ui-core'
 - `context` — the internal `CoreContextValue` reactive context (`{ theme, mode, isDark, isLight }`). Because it's a reactive context, `useContext(context)` returns a getter — call it to read.
 - `Provider` (`CoreProvider`) — the low-level theme provider. `@internal` / `@deprecated`; it warns in dev. Prefer `PyreonUI`.
 
+## The theme-engine registration seam (`getThemeEngine` / `setThemeEngine`)
+
+`@pyreon/ui-core` is the FOUNDATION of the UI system and must not depend on `@pyreon/unistyle` — but `<PyreonUI>` needs unistyle's `enrichTheme` / `themeToCssVars` / `cpseRewrite` to do anything useful. The two packages avoid a dependency cycle (`unistyle` already depends on `ui-core`) through a registration seam:
+
+```tsx
+import { getThemeEngine, setThemeEngine } from '@pyreon/ui-core'
+```
+
+`@pyreon/unistyle` calls `setThemeEngine({ enrichTheme, themeToCssVars, cpseRewrite, responsiveStyles })` at **module load** — its own `package.json` marks this a side effect so bundlers cannot tree-shake it away. `<PyreonUI>` reads the registered engine **lazily**, at each use-site, via `getThemeEngine()` — never eagerly at setup, since the root provider mounts before any child that pulls in unistyle.
+
+If `@pyreon/unistyle` is never imported anywhere in your app — a bare `@pyreon/rocketstyle`-only setup, for example — `getThemeEngine()` returns a minimal **fallback engine** (identity `enrichTheme`, no CSS variables, no CPSE) and dev-warns once, so `<PyreonUI>` degrades gracefully instead of crashing.
+
+:::tip
+Seeing an un-enriched theme (missing default breakpoints/spacing, no `--px-*` CSS variables)? The most common cause is that `@pyreon/unistyle` was never imported anywhere reachable from your app's module graph — `import '@pyreon/unistyle'` (or anything that transitively pulls it, which is every styled `@pyreon` UI package except bare rocketstyle) fixes it.
+:::
+
+You will not normally call either function yourself — `setThemeEngine` exists for a theme-ENGINE package to register itself, not for app code.
+
 ## Utilities
 
 `@pyreon/ui-core` ships zero-dependency helpers used across the UI system. They're available to apps too.
@@ -453,6 +471,7 @@ The matching types are `HTMLTags`, `HTMLTextTags`, `HTMLElementAttrs`, and `HTML
 | `resolveCssVariables`      | Function  | Returns the defaulted `{ enabled, prefix, attribute }` config               |
 | `cssVariablesPrePaintScript` | Function | Builds the blocking `<head>` FOUC script for CSS-variables mode             |
 | `Provider`                 | Component | `@internal`/`@deprecated` low-level theme provider — prefer `PyreonUI`       |
+| `getThemeEngine` / `setThemeEngine` | Function | `@internal` theme-engine registration seam — see above                      |
 | `context`                  | Context   | Internal `CoreContextValue` reactive context                                |
 | `compose`                  | Function  | HOC composition (right-to-left)                                             |
 | `render`                   | Function  | Flexible element/slot renderer                                              |
