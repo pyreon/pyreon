@@ -2994,6 +2994,7 @@ $ pyreon lathe generate ./openapi.yaml --target multiplatform
 lathe / Bookshelf 1.2.0
   4 models  4 operations  target=multiplatform
 
+  + src/gen/schemas/Book.ts
   + src/gen/schemas.ts
   + src/gen/client.ts
   + src/gen/endpoints/books.ts

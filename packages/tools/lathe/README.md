@@ -26,7 +26,7 @@ opinion, so the native layout is exactly that:
 
 ```
 web target                    multiplatform target (additive)
-  schemas.ts                    books.native.tsx   <- client + schemas +
+  schemas/Book.ts               books.native.tsx   <- client + schemas +
   client.ts                                           endpoints + calls,
   endpoints/books.ts                                  one top level
   queries/books.ts
@@ -125,8 +125,18 @@ gen/dev.ts              fixtures and faker factories (node-safe, no JSX)
 gen/endpoints/index.ts  every call, no hooks   (loaders, scripts, server code)
 gen/queries/index.ts    every hook, no previews
 gen/queries/books.ts    one tag — Vite emits one chunk per tag file
+gen/schemas.ts          re-exports every schema module
+gen/schemas/Book.ts     one module per model (a `$ref` cycle shares one)
 gen/package.json        `sideEffects`, so all of the above tree-shakes
 ```
+
+An operation the spec does not tag is grouped by its first static path segment
+after the prefix every untagged path shares — `/v1/customers/{id}` lands in
+`customers` — rather than in one catch-all `default` module. Stripe's spec tags
+nothing, and the catch-all was one 147 KB endpoint module of 612 endpoints; it is
+79 modules now. A path group whose file name matches a real tag joins that tag.
+An operation explicitly tagged `default` is grouped by path too: the IR cannot
+tell it apart from an untagged one.
 
 `dev.ts` is the same shape as `@pyreon/server/client` in this repo: nothing in
 it is unsafe to import, it is unsafe to import *by accident*.
@@ -156,33 +166,84 @@ assertion against one would pass with the whole module bundled. A control that
 bundles `dev.ts` itself and requires every marker to be PRESENT is what caught
 that.
 
-### Why the emitted `package.json` matters
+### A hook's bundle is what the hook uses
 
 A bundler keeps a module-level CALL unless it can prove the call is pure, and
 `api.endpoint('GET /books', …)` and `s.object({ … })` are both module-level
-calls. Measured with Vite 8 on a 30-tag / 120-operation spec, importing **one**
-hook:
+calls. Two things make one hook cost what it uses, and both are needed:
 
-| | raw | gzip | endpoints kept | fixtures kept |
-| --- | ---: | ---: | ---: | ---: |
-| flat barrel, no marker | 30,710 B | 2,420 B | 120 | 120 |
-| layered entries, no marker | 10,400 B | 1,681 B | 116 | 0 |
-| layered entries + marker | **5,748 B** | **642 B** | **4** | **0** |
+- **One schema module per model.** A hook imports its response model; its tag's
+  endpoint module imports each model its endpoints name, from that model's own
+  module. A `$ref` cycle shares ONE module: split across two ES modules it is
+  an import cycle, and which side evaluates first depends on who imported
+  first.
+- **`/* @__PURE__ */` on every emitted call** — every `s.*(…)` builder,
+  arguments included, a chain on a bare model name (`Author.optional()`), and
+  every `api.endpoint(…)`. So an unused declaration inside a module that IS
+  reached is dropped too.
 
-Two honest notes on that table. The **marker is what closes the size gap** — the
-layering alone removes the fixtures, not the endpoints. And the marker's effect
-depends on nothing else being in the way: an app whose own `package.json`
-already declares `sideEffects: false` was never affected, because its
-declaration covered the generated files too. Emitting the marker means the
-result no longer depends on a field in a file the generator did not write.
+Measured with Vite 8.2.2, one hook, minified and gzipped ("generated" externalises
+`@pyreon/*`, "+ runtime" bundles it):
 
-`/* @__PURE__ */` on each declaration is the reflex and is nearly useless here —
-measured 2,041 B → 2,000 B, 2% — because the ARGUMENTS are calls
-(`s.string().uuid()`) the bundler must still evaluate.
+| GitHub, `useIssuesGet` | generated | + runtime |
+| --- | ---: | ---: |
+| before | 94.4 KB | 121.1 KB |
+| pure annotations only | 10.5 KB | 37.3 KB |
+| per-model modules only | 5.2 KB | 31.7 KB |
+| **both** | **2.8 KB** | **29.2 KB** |
 
-The marker is an ARRAY, not `false`, whenever `atlas` is selected:
-`atlas.wrapper.tsx` calls `installMocks()` at module scope, so a blanket `false`
-would be a lie a bundler would act on.
+| Stripe, `useGetCustomersCustomer` | generated | + runtime |
+| --- | ---: | ---: |
+| before | 70.8 KB | 97.7 KB |
+| pure annotations only | 61.1 KB | 87.8 KB |
+| per-model modules only | 69.2 KB | 96.0 KB |
+| **both** | **42.8 KB** | **69.7 KB** |
+
+Stripe stays large for a real reason: `Customer` reaches 928 of its 1,537
+models, through a 97-model `$ref` cycle, and validating a `Customer` needs them.
+Importing the hook through the root `./gen` costs the same as through its tag.
+
+An earlier version of this page said `/* @__PURE__ */` was "nearly useless —
+2%". That measured the annotation on the OUTER declaration only, with every
+argument still a call the bundler had to keep; annotated throughout, it is the
+larger of the two levers.
+
+The emitted `package.json` is the third piece. It declares the output
+side-effect-free (an ARRAY naming `atlas.wrapper.tsx` when `atlas` is selected,
+because that file really does call `installMocks()` at module scope), so an
+unreached module is dropped whole and the result no longer depends on a field in
+the app's own `package.json`. Without it, `keys.ts` — whose `op.key.prefix`
+reads a bundler must assume may run a getter — keeps every endpoint it names.
+
+### Model types are written out, not inferred
+
+```ts
+// gen/schemas/Book.ts
+export interface Book { id: string; title: string; pages?: number | undefined }
+export const Book = /* @__PURE__ */ s.object({ … }) as unknown as Schema<Book>
+```
+
+The inferred form (`export type Book = Infer<typeof Book>`) made every
+consumer's TypeScript re-derive every model from the builder types of the whole
+spec. tsc 6.0.3 over the generated schemas + client + queries, instantiations
+(deterministic):
+
+| | inferred | written out |
+| --- | ---: | ---: |
+| Stripe, `@pyreon/validate` | 1,372,857 | 580,009 |
+| Stripe, zod | 1,043,674 | 364,887 |
+| GitHub, `@pyreon/validate` | 1,947,953 | 1,483,741 |
+
+Annotating the const instead (`const Book: Schema<Book> = …`) was measured and
+is WORSE than inferring — it keeps the initializer's type and adds an
+assignability check. `as unknown as` is the form that relates nothing, so the
+agreement between each interface and its schema is enforced by lathe's own
+tests instead, in both directions, for every model.
+
+The trade: a generated schema is typed `Schema<Book>` (`z.ZodType<Book>` under
+zod), so `.parse`, `.optional()`, `.nullable()`, `.array()` and Standard Schema
+all work, but object-only builders such as `.extend` or `.pick` do not
+type-check on it. Compose a new schema around it instead.
 
 ### Query keys come from the endpoints
 
@@ -361,6 +422,10 @@ export default {
     validator: 'pyreon',
     plugins: ['schemas', 'client', 'queries', 'mocks', 'atlas'],
     strictNative: true,
+    // 'strict' (default) | 'warn' | 'off' — what the web client does with a
+    // response that does not match its schema. `warn` logs and passes the raw
+    // body through; `off` also skips the validation cost on large lists.
+    responseValidation: 'strict',
   },
 }
 ```

@@ -98,8 +98,15 @@ gen/dev.ts              fixtures and faker factories (node-safe, no JSX)
 gen/endpoints/index.ts  every call, no hooks   (loaders, scripts, server code)
 gen/queries/index.ts    every hook, no previews
 gen/queries/books.ts    one tag — Vite emits one chunk per tag file
+gen/schemas.ts          re-exports every schema module
+gen/schemas/Book.ts     one module per model (a `$ref` cycle shares one)
 gen/package.json        the sideEffects marker
 ```
+
+An operation the spec does not tag is grouped by its first static path segment
+after the prefix all untagged paths share (`/v1/customers/{id}` → `customers`),
+not dumped in one `default` module — Stripe tags nothing, and that module was
+612 endpoints. A path group whose file name matches a real tag joins it.
 
 ### A page can never reach a dev surface
 
@@ -124,32 +131,46 @@ there is no edge for any bundler to follow. A 24-case matrix (every production
 entry × every dev surface, with **and without** the marker) asserts it by
 bundling for real.
 
-### Why the emitted `package.json` matters
+### A hook's bundle is what the hook uses
 
-A bundler keeps a module-level **call** unless it can prove the call is pure,
-and `api.endpoint('GET /books', …)` and `s.object({ … })` are both module-level
-calls. Measured with Vite 8 on a 30-tag / 120-operation spec, importing **one**
-hook:
+Two changes, both needed: **one schema module per model** (a `$ref` cycle shares
+one, since a cycle split across ES modules evaluates in whatever order the
+importer happened to pick), and **`/* @__PURE__ */` on every emitted call** —
+each `s.*` builder, arguments included, and each `api.endpoint(…)` — so an
+unused declaration inside a reached module is dropped as well.
 
-| | raw | gzip | endpoints kept | fixtures kept |
-| --- | ---: | ---: | ---: | ---: |
-| flat barrel, no marker | 30,710 B | 2,420 B | 120 | 120 |
-| layered entries, no marker | 10,400 B | 1,681 B | 116 | 0 |
-| layered entries + marker | **5,748 B** | **642 B** | **4** | 0 |
+Vite 8.2.2, one hook, gzipped (generated code only / with the runtime):
 
-Two honest notes. The **marker** is what closes the size gap — the layering
-removes the fixtures, not the endpoints. And an app whose own `package.json`
-already declares `sideEffects: false` was never affected, because its
-declaration covered the generated files too; emitting the marker means the
-outcome no longer depends on a field in a file the generator did not write.
+| | GitHub `useIssuesGet` | Stripe `useGetCustomersCustomer` |
+| --- | ---: | ---: |
+| before | 94.4 KB / 121.1 KB | 70.8 KB / 97.7 KB |
+| pure annotations only | 10.5 KB / 37.3 KB | 61.1 KB / 87.8 KB |
+| per-model modules only | 5.2 KB / 31.7 KB | 69.2 KB / 96.0 KB |
+| **both** | **2.8 KB / 29.2 KB** | **42.8 KB / 69.7 KB** |
 
-`/* @__PURE__ */` per declaration is the reflex and is nearly useless here —
-measured 2,041 B → 2,000 B, 2% — because the arguments are themselves calls
-(`s.string().uuid()`) the bundler must still evaluate.
+Stripe stays large because `Customer` really reaches 928 of 1,537 models
+through a 97-model cycle. Earlier docs called the pure annotation "2%": that
+measured it on the outer declaration only.
 
-The declaration is an **array** naming `atlas.wrapper.tsx` whenever `atlas` is
-selected, because that file really does call `installMocks()` at module scope.
-`false` would be a lie, and a bundler would act on it.
+The emitted `package.json` declares the output side-effect-free — an **array**
+naming `atlas.wrapper.tsx` when `atlas` is selected, because that file really
+does call `installMocks()` at module scope — so an unreached module is dropped
+whole, whatever the app's own `package.json` says.
+
+### Model types are written out, not inferred
+
+```ts
+export interface Book { id: string; title: string }
+export const Book = /* @__PURE__ */ s.object({ … }) as unknown as Schema<Book>
+```
+
+Inferring every model (`Infer<typeof Book>`) made each consumer's TypeScript
+re-derive the whole spec. tsc instantiations over schemas + client + queries:
+Stripe 1,372,857 → 580,009, Stripe under zod 1,043,674 → 364,887, GitHub
+1,947,953 → 1,483,741. Agreement between each interface and its schema is
+checked by lathe's tests, both ways, for every model. The trade: a generated
+schema is a `Schema<Book>`, so object-only builders (`.extend`, `.pick`) do not
+type-check on it.
 
 ## Plugins
 
@@ -225,6 +246,19 @@ That is the opposite of what you would assume from `@pyreon/validate` being
 first-party, and it is why `validator: 'zod'` is not merely an interoperability
 option. Under zod, refs are **inlined** on the native path — and an inlined ref
 is a nested object, which lowers.
+
+## Response validation is configurable
+
+```ts
+lathe: { input: './openapi.yaml', responseValidation: 'warn' }
+```
+
+`'strict'` (default) rejects a response that does not match its schema,
+`'warn'` logs and passes the raw body through, `'off'` skips validation — and
+its cost on large lists. The same meaning on every client: passed to
+`createHttp({ validate })` for `pyreon`, baked into the generated validation step
+for `fetch` / `axios` / `ky`. Native modules decode into typed structs and are
+not affected.
 
 ## Fake data that stays valid
 
