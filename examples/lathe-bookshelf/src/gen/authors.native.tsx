@@ -19,7 +19,7 @@ import { s } from '@pyreon/validate'
  */
 const api = createHttp({ baseUrl: 'http://localhost:5199/v1', schema: standardSchema })
 
-export const Author = s.object({
+export const author_schema = s.object({
   id: s.string().uuid(),
   name: s.string().min(1).max(120),
   email: s.string().email().optional(),
@@ -34,7 +34,7 @@ export type Author = {
  * Every author.
  * `GET /authors`
  */
-export const listAuthors = api.endpoint('GET /authors', { response: s.array(Author) })
+export const listAuthors = api.endpoint('GET /authors', { response: s.array(author_schema) })
 
 /**
  * Fetches `GET /authors` and renders it through `children`.

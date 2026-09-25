@@ -19,9 +19,9 @@
  * for the same reason and live in `./components`.
  */
 export * from './schemas'
-export { api } from './client'
+export { api, configureApi, type ApiConfig } from './client'
 export * from './endpoints/authors'
 export * from './endpoints/books'
 export * from './queries/authors'
 export * from './queries/books'
-export { keys } from './keys'
+export { keys, optimisticUpdate } from './keys'

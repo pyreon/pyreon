@@ -19,7 +19,7 @@ import { s } from '@pyreon/validate'
  */
 const api = createHttp({ baseUrl: 'http://localhost:5199/v1', schema: standardSchema })
 
-export const Book = s.object({
+export const book_schema = s.object({
   id: s.string().uuid(),
   title: s.string().min(1),
   status: s.string(),
@@ -36,7 +36,7 @@ export type Book = {
   tags?: string[] | undefined
 }
 
-export const NewBook = s.object({
+export const newBook_schema = s.object({
   title: s.string().min(1),
   pages: s.number().int().min(1).optional(),
 })
@@ -49,19 +49,19 @@ export type NewBook = {
  * Add a book.
  * `POST /books`
  */
-export const createBook = api.endpoint('POST /books', { response: Book })
+export const createBook = api.endpoint('POST /books', { response: book_schema })
 
 /**
  * One book by id.
  * `GET /books/:bookId`
  */
-export const getBook = api.endpoint('GET /books/:bookId', { response: Book })
+export const getBook = api.endpoint('GET /books/:bookId', { response: book_schema })
 
 /**
  * Every book in the catalogue.
  * `GET /books`
  */
-export const listBooks = api.endpoint('GET /books', { response: s.array(Book) })
+export const listBooks = api.endpoint('GET /books', { response: s.array(book_schema) })
 
 /**
  * Fetches `GET /books/:bookId` and renders it through `children`.

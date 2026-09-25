@@ -5,7 +5,7 @@
 // Re-run `lathe generate` to update. Edits here are lost on the next run;
 // to change the output, change the spec or the emitter.
 
-import type { Book, NewBook } from '../schemas'
+import type { MutationOptions, UseQueryOptions } from '@pyreon/query'
 import { createBook, getBook, listBooks } from '../endpoints/books'
 import { useMutation, useQuery } from '@pyreon/query'
 
@@ -13,9 +13,17 @@ import { useMutation, useQuery } from '@pyreon/query'
  * Add a book.
  * `POST /books`
  * Mutation options are a plain object — imperative, nothing to track.
+ * On success it invalidates the queries this operation can change (`getBook`, `listBooks`); pass `invalidates` to replace that list, or `[]` to turn it off.
+ * `onMutate` / `onError` / `onSettled` take the usual optimistic-update shape — see `optimisticUpdate` in `./keys`.
  */
-export function useCreateBook() {
-  return useMutation({ mutationFn: (vars: { json: NewBook }) => createBook(vars) })
+export function useCreateBook(
+  options?: Omit<MutationOptions<Awaited<ReturnType<typeof createBook>>, Error, Parameters<typeof createBook>[0]>, 'mutationFn'>,
+) {
+  return useMutation({
+    mutationFn: (vars: Parameters<typeof createBook>[0]) => createBook(vars),
+    invalidates: [getBook.key.prefix, listBooks.key.prefix],
+    ...options,
+  })
 }
 
 /**
@@ -23,11 +31,14 @@ export function useCreateBook() {
  * `GET /books/:bookId`
  * Takes an ACCESSOR so signal reads in the arguments stay reactive.
  * Return `undefined` from `args` while the arguments are not ready — the query is DISABLED rather than fired with a placeholder.
- * Second accessor merges extra query options (`enabled`, `staleTime`, `select`).
+ * Second accessor merges typed query options (`enabled`, `staleTime`, `select` — which changes the result type).
  * Result fields are SIGNALS: `q.data()`, `q.isPending()` — call them.
  */
-export function useGetBook(args: () => { params: { bookId: string } } | undefined, options?: () => Record<string, unknown>) {
-  return useQuery<Book>(() => {
+export function useGetBook<TData = Awaited<ReturnType<typeof getBook>>>(
+  args: () => Parameters<typeof getBook>[0] | undefined,
+  options?: () => Omit<UseQueryOptions<Awaited<ReturnType<typeof getBook>>, Error, TData>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery<Awaited<ReturnType<typeof getBook>>, Error, TData>(() => {
     const a = args()
     const extra = options?.() ?? {}
     if (a === undefined) {
@@ -40,9 +51,9 @@ export function useGetBook(args: () => { params: { bookId: string } } | undefine
 /**
  * Every book in the catalogue.
  * `GET /books`
- * Second accessor merges extra query options (`enabled`, `staleTime`, `select`).
+ * Second accessor merges typed query options (`enabled`, `staleTime`, `select` — which changes the result type).
  * Result fields are SIGNALS: `q.data()`, `q.isPending()` — call them.
  */
-export function useListBooks(options?: () => Record<string, unknown>) {
-  return useQuery<Book[]>(() => ({ ...listBooks.query(), ...options?.() }))
+export function useListBooks<TData = Awaited<ReturnType<typeof listBooks>>>(options?: () => Omit<UseQueryOptions<Awaited<ReturnType<typeof listBooks>>, Error, TData>, 'queryKey' | 'queryFn'>) {
+  return useQuery<Awaited<ReturnType<typeof listBooks>>, Error, TData>(() => ({ ...listBooks.query(), ...options?.() }))
 }

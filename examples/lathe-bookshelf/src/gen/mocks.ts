@@ -5,20 +5,31 @@
 // Re-run `lathe generate` to update. Edits here are lost on the next run;
 // to change the output, change the spec or the emitter.
 
+import type { HttpMiddleware } from '@pyreon/http'
 import type { MockRoute } from '@pyreon/http/mock'
-import { setDevTransport } from './client'
-import { mock } from '@pyreon/http/mock'
+import { apiBaseUrl, setDevTransport } from './client'
+import { createMock } from '@pyreon/http/mock'
 
 /**
  * Deterministic fixtures for Bookshelf.
- * Install with `api.use(mockRoutes)` (or pass `mock(routes)` as middleware)
- * to run the generated client with no server. Values are derived from the
- * spec — same input, same bytes, every run — so snapshots stay stable.
+ * Install with `installMocks()` to run the generated client with no server.
+ * Values are derived from the spec — constraints first, so every fixture is
+ * one its own schema accepts — and are the same bytes every run, so
+ * snapshots stay stable. Ordered most-specific first.
  */
 export const routes: MockRoute[] = [
   {
     method: 'GET',
-    path: '/authors',
+    path: /^\/books\/[^\/?#]+(?:[?#]|$)/,
+    json: {
+      "id": "00000000-0000-4000-8000-000000000000",
+      "title": "The Left Hand of Darkness",
+      "status": "available"
+    },
+  },
+  {
+    method: 'GET',
+    path: /^\/authors(?:[?#]|$)/,
     json: [
       {
         "id": "00000000-0000-4000-8000-000000000001",
@@ -31,26 +42,8 @@ export const routes: MockRoute[] = [
     ],
   },
   {
-    method: 'POST',
-    path: '/books',
-    json: {
-      "id": "00000000-0000-4000-8000-000000000000",
-      "title": "The Left Hand of Darkness",
-      "status": "available"
-    },
-  },
-  {
     method: 'GET',
-    path: /\/books\/[^\/?#]+(?:\?|$)/,
-    json: {
-      "id": "00000000-0000-4000-8000-000000000000",
-      "title": "The Left Hand of Darkness",
-      "status": "available"
-    },
-  },
-  {
-    method: 'GET',
-    path: '/books',
+    path: /^\/books(?:[?#]|$)/,
     json: [
       {
         "id": "00000000-0000-4000-8000-000000000001",
@@ -64,17 +57,85 @@ export const routes: MockRoute[] = [
       }
     ],
   },
+  {
+    method: 'POST',
+    path: /^\/books(?:[?#]|$)/,
+    json: {
+      "id": "00000000-0000-4000-8000-000000000000",
+      "title": "The Left Hand of Darkness",
+      "status": "available"
+    },
+  },
 ]
 
-/** Ready-made middleware over the routes above. */
-export const mockRoutes = mock(routes)
+/** Operation ids that have a mock route — what {@link mockOperation} accepts. */
+export type MockedOperation = 'createBook' | 'getBook' | 'listAuthors' | 'listBooks'
+
+const index: Record<MockedOperation, number> = {
+  getBook: 0,
+  listAuthors: 1,
+  listBooks: 2,
+  createBook: 3,
+}
+
+/**
+ * The routes CURRENTLY answering — `routes` with any {@link mockOperation}
+ * overrides applied. The middleware reads this array on every request.
+ */
+const active: MockRoute[] = [...routes]
+
+/**
+ * Override one operation's mock — for a test that needs an empty list, an
+ * error, a slow response. Returns a function restoring the generated route;
+ * {@link resetMocks} restores them all.
+ * ```ts
+ * const restore = mockOperation('getBook', { status: 500, json: { message: 'down' } })
+ * afterEach(resetMocks)
+ * ```
+ */
+export function mockOperation(id: MockedOperation, override: Partial<Omit<MockRoute, 'method' | 'path'>>): () => void {
+  const i = index[id]
+  const generated = routes[i] as MockRoute
+  active[i] = { ...generated, ...override }
+  return () => {
+    active[i] = generated
+  }
+}
+
+/** Undo every {@link mockOperation} override. */
+export function resetMocks(): void {
+  active.splice(0, active.length, ...routes)
+}
+
+/**
+ * The mock middleware.
+ * Routes are anchored at the client's base URL (audit D2): the request URL
+ * is made relative to `apiBaseUrl()` — read per request, so a
+ * `configureApi({ baseUrl })` switch keeps matching — before the anchored
+ * patterns are tested. An unanchored `/pets/:id` also matched
+ * `/owners/1/pets/2`.
+ */
+const handle = createMock(active)
+
+function baseRelative(url: string): string {
+  const strip = (u: string): string => u.replace(/^[a-z][a-z\d+\-.]*:\/\/[^/?#]*/i, '')
+  const path = strip(url)
+  const base = strip(apiBaseUrl()).replace(/\/+$/, '')
+  return base !== '' && path.startsWith(base) ? path.slice(base.length) : path
+}
+
+export const mockRoutes: HttpMiddleware = (req, next) =>
+  handle.middleware({ ...req, url: baseRelative(req.url) }, () => next(req))
+
+/** Every request a mock answered, in order (URLs base-relative) — for assertions. */
+export const mockCalls = handle.calls
 
 /**
  * Serve every request from the fixtures above, with no server.
- * Endpoints bind to the client at declaration time, so middleware cannot be
- * added to `createHttp` after the fact -- this goes through the transport
- * seam the client reserves. Call it from a test setup or a workbench
- * wrapper; pass nothing to `setDevTransport` to go back to the network.
+ * Goes through the transport slot the client reserves for this, which is
+ * separate from `configureApi({ use })` — installing mocks keeps any auth or
+ * logging middleware. Call it from a test setup or a workbench wrapper; pass
+ * `null` to `setDevTransport` to go back to the network.
  */
 export function installMocks(): void {
   setDevTransport(mockRoutes)
