@@ -467,6 +467,12 @@ export interface FlowConfig<TData = Record<string, unknown>> {
    * `pushHistory()` right before a mutation never double-records.
    */
   autoHistory?: boolean
+  /**
+   * Maximum number of undo checkpoints kept — default: 50. The oldest
+   * checkpoint is dropped past the limit. Each checkpoint is a shallow
+   * (nodes + edges) array snapshot, so memory is O(limit × (N + E)) references.
+   */
+  historyLimit?: number
   /** Whether to allow multi-selection — default: true */
   multiSelect?: boolean
   /** Drag boundaries for nodes — [[minX, minY], [maxX, maxY]] */
@@ -764,7 +770,11 @@ export interface FlowInstance<TData = Record<string, unknown>> {
 
   // ── Listeners ────────────────────────────────────────────────────────────
 
-  /** Called when a connection is made */
+  /**
+   * Called when the USER makes a connection (a handle drag dropped on a valid
+   * handle). Programmatic `addEdge` / `addEdges` / `paste` / `fromJSON` do NOT
+   * fire it — observe those through `onEdgesChange` (`type: 'add'`).
+   */
   onConnect: (callback: (connection: Connection) => void) => () => void
   /** Called when nodes change */
   onNodesChange: (callback: (changes: NodeChange[]) => void) => () => void
@@ -1020,6 +1030,7 @@ export interface FlowInstance<TData = Record<string, unknown>> {
 
   /** @internal */
   _emit: {
+    connect: (connection: Connection) => void
     nodeDragStart: (node: FlowNode<TData>) => void
     nodeDragEnd: (node: FlowNode<TData>) => void
     nodeDoubleClick: (node: FlowNode<TData>) => void

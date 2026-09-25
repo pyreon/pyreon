@@ -14,6 +14,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createISRHandler } from '../isr'
 
+// ISR caches PAGE renders only (a text/html content type). Fixtures default
+// to HTML; a test that needs another type passes its own header.
+function htmlResponse(body?: BodyInit | null, init: ResponseInit = {}): Response {
+  const headers = new Headers(init.headers)
+  if (!headers.has('content-type')) headers.set('content-type', 'text/html')
+  return new Response(body, { ...init, headers })
+}
+
+
 describe('createISRHandler revalidate — clears the timeout on the success path', () => {
   let activeTimers: number
   let originalSetTimeout: typeof globalThis.setTimeout
@@ -49,7 +58,7 @@ describe('createISRHandler revalidate — clears the timeout on the success path
     let i = 0
     const handler = vi.fn(
       async () =>
-        new Response(`<html>v${i++}</html>`, { headers: { 'content-type': 'text/html' } }),
+        htmlResponse(`<html>v${i++}</html>`, { headers: { 'content-type': 'text/html' } }),
     )
 
     // Tiny revalidate window so we can drive multiple stale requests

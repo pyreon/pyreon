@@ -1,4 +1,5 @@
-import { isClient, onCleanup, signal } from '@pyreon/reactivity'
+import { isClient, signal } from '@pyreon/reactivity'
+import { onHookCleanup } from './lifecycle'
 
 /**
  * Crash-reporter handle. Member names + semantics match the native
@@ -119,7 +120,7 @@ export function useCrashReporter(): UseCrashReporterResult {
       }
       window.addEventListener('error', onError)
       window.addEventListener('unhandledrejection', onRejection)
-      onCleanup(() => {
+      onHookCleanup(() => {
         window.removeEventListener('error', onError)
         window.removeEventListener('unhandledrejection', onRejection)
       })

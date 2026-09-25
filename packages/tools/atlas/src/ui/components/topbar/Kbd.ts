@@ -15,4 +15,6 @@ export const Kbd = txt
     borderRadius: t.radius.chip,
     color: t.faint,
     border: t.hairline,
+    // A keyboard shortcut is noise on a touch screen.
+    extendCss: '@media (pointer:coarse){display:none;}',
   }))
