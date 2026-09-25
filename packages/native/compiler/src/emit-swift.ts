@@ -5228,6 +5228,18 @@ function emitSwiftFunction(
  * sites — see `classifyOptionalCondition` for the shared form definition.
  */
 function swiftCondition(e: ExprIR, emit: (x: ExprIR) => string): string {
+  // JS truthiness on an optional string / number / boolean is more than a nil
+  // test: '' / 0 / false are falsy too. Without this, `if (s)` took the branch
+  // on an empty string, which the web never does.
+  const t = narrowingFor(e, _exprInferCtx, _activePropsParamName)
+  if (t !== null && t.truth !== null) {
+    const x = emit(t.subject)
+    const present =
+      t.truth === 'string' ? `${x}?.isEmpty == false` : t.truth === 'number' ? `(${x} ?? 0) != 0` : `${x} == true`
+    const absent =
+      t.truth === 'string' ? `${x}?.isEmpty != false` : t.truth === 'number' ? `(${x} ?? 0) == 0` : `${x} != true`
+    return t.presentWhenTrue ? present : absent
+  }
   const c = classifyOptionalCondition(e, _exprInferCtx)
   if (c?.form === 'absent') return `${emit(c.argument)} == nil`
   if (c?.form === 'present') return `${emit(c.argument ?? e)} != nil`
@@ -5365,7 +5377,14 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       if (optN !== null) {
         const narrowedBody = optN.presentWhenTrue ? s.then : s.elseBody
         const otherBody = optN.presentWhenTrue ? s.elseBody : s.then
-        if (narrowedBody !== undefined && stmtExprs(narrowedBody).some((x) => readsSubject(x, optN.subject))) {
+        // A bare identifier binds even when the body does not read it (the
+        // established `if let t {` contract); any other subject binds only
+        // when the body needs the unwrapped value.
+        const bindAnyway = optN.subject.kind === 'identifier'
+        if (
+          narrowedBody !== undefined &&
+          (bindAnyway || stmtExprs(narrowedBody).some((x) => readsSubject(x, optN.subject)))
+        ) {
           const binder = binderName(optN.subject, stmtExprs(narrowedBody))
           const rewritten = narrowStmts(narrowedBody, optN.subject, binder)
           if (rewritten !== null) {
@@ -8508,8 +8527,18 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // `b.tags ? b.tags.length : 0`): Swift has no ternary narrowing, so the
       // narrowed branch runs inside `.map { x in … }` on an unwrapped binding
       // and the other branch is the `??` fallback. See optional-narrowing.ts.
+      // `opt ? opt.title : fb` whose member emits VERBATIM keeps the plainer
+      // optional-chaining form below; a member that LOWERS (`s.length` →
+      // `s.utf16.count`) cannot be chained that way and narrows instead.
       {
-        const narrowed = emitSwiftNarrowedTernary(e, indent)
+        const omtProbe = optionalMemberTernary(e, _exprInferCtx)
+        const truthProbe = narrowingFor(e.cond, _exprInferCtx, _activePropsParamName)?.truth ?? null
+        const verbatim =
+          omtProbe !== null &&
+          truthProbe === null &&
+          emitSwiftExpr({ kind: 'member', object: omtProbe.opt, property: omtProbe.property }, indent) ===
+            `${emitSwiftExpr(omtProbe.opt, indent)}.${swiftIdent(omtProbe.property)}`
+        const narrowed = verbatim ? null : emitSwiftNarrowedTernary(e, indent)
         if (narrowed !== null) return narrowed
       }
       const omt = optionalMemberTernary(e, _exprInferCtx)

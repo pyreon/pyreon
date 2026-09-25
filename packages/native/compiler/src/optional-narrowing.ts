@@ -182,7 +182,10 @@ function writesSignal(e: ExprIR, subject: ExprIR): boolean {
 /** Rewrite every read of `subject` in `e` to the identifier `binder`. Null = cannot (a shadowing arrow, a statement-bodied closure). */
 export function narrowExpr(e: ExprIR, subject: ExprIR, binder: string): ExprIR | null {
   return substituteMatching(e, {
-    matches: (n) => samePath(n, subject),
+    // `x ?? fallback` where `x` is the narrowed subject is just the binding —
+    // left as `x ?? fallback` it would be a coalesce on a non-optional, a
+    // warning on both targets.
+    matches: (n) => samePath(n, subject) || (n.kind === 'logical' && n.op === '??' && samePath(n.left, subject)),
     replacement: { kind: 'identifier', name: binder },
     shadow: pathRoot(subject) === binder ? binder : pathRoot(subject),
     narrowing: true,

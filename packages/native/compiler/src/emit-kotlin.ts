@@ -4047,9 +4047,11 @@ function withKotlinLocals<T>(bindings: readonly (readonly [string, TypeIR | unde
 
 /** Does kotlinc smart-cast this narrowing on its own? */
 function kotlinSmartCasts(n: Narrowing): boolean {
-  if (n.truth !== null) return false
   const x = n.subject
+  // A stable identifier smart-casts even under a truthiness test, because
+  // `kotlinCondition` spells it `x != null && x.isNotEmpty()`.
   if (x.kind === 'identifier') return !_signalNames.has(x.name)
+  if (n.truth !== null) return false
   // `props.maybe` is the composable's own PARAMETER after the props rewrite.
   return (
     x.kind === 'member' &&
@@ -4350,6 +4352,21 @@ function emitKotlinFunction(
  * aware `emitKotlinSignalRead` for `<Show when>`). Mirror of `swiftCondition`.
  */
 function kotlinCondition(e: ExprIR, emit: (x: ExprIR) => string): string {
+  // JS truthiness on an optional string / number / boolean — see the Swift
+  // twin. A stable identifier keeps the explicit `x != null && …` form so the
+  // branch still smart-casts it.
+  const t = narrowingFor(e, _kotlinExprInferCtx, _activePropsParamName)
+  if (t !== null && t.truth !== null) {
+    const x = emit(t.subject)
+    const stable = t.subject.kind === 'identifier' && !_signalNames.has(t.subject.name)
+    if (t.truth === 'boolean') return t.presentWhenTrue ? `${x} == true` : `${x} != true`
+    const test = t.truth === 'string' ? 'isNotEmpty()' : 'toDouble() != 0.0'
+    if (stable) {
+      const neg = t.truth === 'string' ? 'isEmpty()' : 'toDouble() == 0.0'
+      return t.presentWhenTrue ? `${x} != null && ${x}.${test}` : `${x} == null || ${x}.${neg}`
+    }
+    return t.presentWhenTrue ? `${x}?.${test} == true` : `${x}?.${test} != true`
+  }
   const c = classifyOptionalCondition(e, _kotlinExprInferCtx)
   if (c?.form === 'absent') return `${emit(c.argument)} == null`
   if (c?.form === 'present') return `${emit(c.argument ?? e)} != null`
@@ -7048,16 +7065,22 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       if (nc) {
         return `(${emitKotlinExpr(nc.opt, indent)} ?: ${emitKotlinExpr(nc.fallback, indent)})`
       }
+      // `s ? s.length : -1` on an optional STRING is a truthiness test, not a
+      // nil test — `s?.length ?: -1` would answer 0 for '' where the web
+      // answers -1. The generic if-expression below carries the truthiness.
+      const omt =
+        narrowingFor(e.cond, _kotlinExprInferCtx, _activePropsParamName)?.truth != null
+          ? null
+          : optionalMemberTernary(e, _kotlinExprInferCtx)
+      if (omt) {
+        return `(${emitKotlinExpr(omt.opt, indent)}?.${kotlinIdent(omt.property)} ?: ${emitKotlinExpr(e.otherwise, indent)})`
+      }
       // A ternary whose surviving branch reads an optional kotlinc cannot
       // smart-cast (a signal, a computed, a data-class `var` field) binds it
       // with `when (val x = …)` — see optional-narrowing.ts.
       {
         const narrowed = emitKotlinNarrowedTernary(e, indent)
         if (narrowed !== null) return narrowed
-      }
-      const omt = optionalMemberTernary(e, _kotlinExprInferCtx)
-      if (omt) {
-        return `(${emitKotlinExpr(omt.opt, indent)}?.${kotlinIdent(omt.property)} ?: ${emitKotlinExpr(e.otherwise, indent)})`
       }
       const condStr = kotlinCondition(e.cond, (x) => emitKotlinExpr(x, indent))
       let thenStr = emitKotlinExpr(e.then, indent)

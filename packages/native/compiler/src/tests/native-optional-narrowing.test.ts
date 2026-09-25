@@ -154,7 +154,8 @@ describe('JS truthiness is kept for strings', () => {
   return <Text>{f('')}</Text>
 }`
     expect(swift(src).code).toContain('s.flatMap { $0.isEmpty ? nil : $0 }.map { s in s.utf16.count } ?? -1')
-    expect(kotlin(src).code).toContain('when (val s = s?.takeIf { it.isNotEmpty() }) { null -> -1 else -> s.length }')
+    // a parameter is stable, so Kotlin keeps the smart-cast form with the extra test
+    expect(kotlin(src).code).toContain('if (s != null && s.isNotEmpty()) s.length else -1')
   })
 })
 
