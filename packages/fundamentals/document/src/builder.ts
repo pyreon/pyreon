@@ -1,3 +1,4 @@
+import type { VNode } from '@pyreon/core'
 import { download } from './download'
 import {
   Button,
@@ -50,7 +51,9 @@ import type {
  * ```
  */
 export function createDocument(props: DocumentProps = {}): DocumentBuilder {
-  const sections: DocNode[] = []
+  // VNode entries (from `.add(<Comp />)`) are resolved by Page's child
+  // normalization when the tree is built, like any JSX child.
+  const sections: (DocNode | VNode)[] = []
 
   function getNode(): DocNode {
     return Document({ ...props, children: [Page({ children: sections })] })

@@ -1,9 +1,9 @@
 ---
 title: Document Primitives
-description: 18 rocketstyle document components that render in the browser AND export to 14+ formats from one tree.
+description: 18 rocketstyle document components that render in the browser AND export to 20 formats from one tree.
 ---
 
-`@pyreon/document-primitives` ships **18 rocketstyle-based document components** — `DocDocument`, `DocPage`, `DocSection`, `DocRow`, `DocColumn`, `DocHeading`, `DocText`, `DocLink`, `DocImage`, `DocTable`, `DocList`, `DocListItem`, `DocCode`, `DocDivider`, `DocSpacer`, `DocButton`, `DocQuote`, `DocPageBreak`. The **same JSX tree renders in the browser AND exports to 14+ formats** (PDF, DOCX, XLSX, PPTX, HTML, Markdown, email, Slack, Teams, and more) through the `@pyreon/document` pipeline.
+`@pyreon/document-primitives` ships **18 rocketstyle-based document components** — `DocDocument`, `DocPage`, `DocSection`, `DocRow`, `DocColumn`, `DocHeading`, `DocText`, `DocLink`, `DocImage`, `DocTable`, `DocList`, `DocListItem`, `DocCode`, `DocDivider`, `DocSpacer`, `DocButton`, `DocQuote`, `DocPageBreak`. The **same JSX tree renders in the browser AND exports to 20 output formats** (PDF, DOCX, XLSX, PPTX, HTML, Markdown, email, text, CSV, SVG, Slack, Teams, Discord, Telegram, Notion, Confluence, WhatsApp, Google Chat, JSON, JSONL) through the `@pyreon/document` pipeline.
 
 <PackageBadge name="@pyreon/document-primitives" href="/docs/document-primitives" />
 
@@ -92,7 +92,7 @@ This works because every primitive is a [`@pyreon/rocketstyle`](/docs/rocketstyl
                                      │  @pyreon/document renderer    │
                                      │  PDF · DOCX · XLSX · PPTX ·   │
                                      │  HTML · Markdown · email ·    │
-                                     │  Slack · Teams · …  (14+)     │
+                                     │  Slack · Teams · …  (20)     │
                                      └─────────────────────────────┘
 ```
 
@@ -102,7 +102,7 @@ Three packages collaborate:
 | --- | --- |
 | `@pyreon/document-primitives` | **This package.** The 18 styled building blocks you author with. |
 | [`@pyreon/connector-document`](/docs/connector-document) | The **bridge** — `extractDocumentTree()` walks a primitive tree, resolves its rocketstyle styles, and produces a `DocNode`. |
-| [`@pyreon/document`](/docs/document) | The **renderer** — takes a `DocNode` and emits any of the 14+ output formats via `render()` / `download()`. |
+| [`@pyreon/document`](/docs/document) | The **renderer** — takes a `DocNode` and emits any of the 20 output formats via `render()` / `download()`. |
 
 :::note
 `extractDocumentTree` and `resolveStyles` are re-exported from `@pyreon/document-primitives` for convenience — you can import them from either package and they're the same functions.
@@ -217,6 +217,10 @@ Several primitives expose rocketstyle dimensions for visual variation. These are
 <DocButton variant="primary" href="/signup">Get started</DocButton>
 ```
 
+:::danger{title="`DocHeading` — always pass `level` as a string, never the boolean shorthand"}
+All five `.levels()`/`.variants()`/`.weights()` dimensions above are declared with `useBooleans: true`, so rocketstyle's usual boolean-shorthand convention (`<Button primary />` — see [Rocketstyle: Booleans vs Strings](/docs/rocketstyle#booleans-vs-strings)) would suggest `<DocHeading h2>` works too. For `DocHeading` specifically, **it doesn't** — not safely. `_documentProps.level` (which sets the exported/rendered heading level and tag) comes from a *separate* `.attrs()` callback that reads the **string** `level` prop directly; it does not resolve rocketstyle's boolean shorthand itself, since attrs resolve before the styling dimension's own boolean fallback runs. So `<DocHeading h2>` alone visually styles as an h2 (the dimension's boolean fallback DOES apply to the CSS) but silently renders/exports as `<h1>` / level `1` (the `.attrs()` default) — a mismatch between what it looks like and what it *is* semantically. Always pass `level="h2"` explicitly; `DocText`/`DocButton`/`DocTable`'s dimensions have no such trap because none of their `.attrs()` callbacks read the dimension prop.
+:::
+
 ## Exporting to a Format
 
 ### `extractDocNode` (recommended)
@@ -275,8 +279,7 @@ When the app is on the classic (non-CSS-variable) path, most primitives emit raw
 Because every primitive renders to real DOM, the export tree can also drive an interactive preview. The package ships a `DocumentPreview` wrapper for this — a paginated "page on a canvas" frame (A4/A3/A5/letter/legal) you can mount around your document in the browser:
 
 ```tsx
-import DocumentPreview from '@pyreon/document-primitives/dist/DocumentPreview'
-// (or: import { DocumentPreview } from '@pyreon/document-primitives')
+import { DocumentPreview } from '@pyreon/document-primitives'
 
 function Editor(props: { resume: () => Resume }) {
   return (

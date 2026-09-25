@@ -62,6 +62,16 @@ Plus a detail panel per package (metrics, depends-on / required-by, findings, re
 
 Vite + `@pyreon/vite-plugin` are **optional peers**: `loom scan` runs without them; `loom dev` names the install when missing. The dev server reports with the same settings `loom scan` resolves (config file + `package.json` key), and keeps its own dependency cache in `node_modules/.cache/loom-vite`, so it never invalidates your app's Vite cache.
 
+## `loom build` — the observatory as a static site
+
+```bash
+pyreon loom build . --out=loom-dist --base=/deps/
+```
+
+Prerenders the same five views to plain files — one page per view at its own URL (`/`, `/matrix`, `/cycles`, `/impact`, `/manifests`), so you can link someone straight to the cycles view. The scan is baked in once, so the output works from any static host or opened from disk. `--out` defaults to `loom-dist`; `--base` sets the public path for a subdirectory deploy; `--no-imports` behaves as it does for `scan`.
+
+`loom build` needs `vite`, `@pyreon/vite-plugin` **and** `@pyreon/zero` as dev dependencies (the site is a zero SSG app); when they are missing it names the exact install command. `loom scan` needs none of them.
+
 ## Configuration
 
 Two homes, one shape. The root `package.json`'s `loom` key, or a `loom` section in the ecosystem-wide `pyreon.config.*`:

@@ -32,9 +32,11 @@ const HELP = `
       --no-write        Don't write loom-report.json.
       --json            Print the full report as JSON to stdout — and ONLY that, so
                         "loom scan . --json > report.json" is valid JSON (the
-                        write notice goes to stderr instead).
+                        write notice goes to stderr instead). Still writes the
+                        report unless --no-write.
     dev [dir]           Serve the observatory UI: layered graph, matrix, cycles,
-                        impact ranking, manifests. Needs vite + @pyreon/vite-plugin
+                        impact ranking, manifests — on a local dev server that
+                        re-reads the workspace on every reload. Needs vite + @pyreon/vite-plugin
                         (optional peers; scan needs none of them).
       --port <n>        Port to listen on (default 5230, or the next free one).
       --no-imports      As for scan.
