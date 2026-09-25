@@ -82,6 +82,8 @@ lathe / Bookshelf 1.2.0
 | [`resolveConfig`](#resolveconfig) | function | Fills defaults and validates one project's settings, and is where the whole option surface lives: `plugins` (which emitt |
 | [`verifyNative`](#verifynative) | function | Runs the real native compiler over the generated `.native.tsx` modules on both targets and returns a per-file verdict. |
 | [`loadOpenApi`](#loadopenapi) | function | Parses an OpenAPI 3.x document (JSON or YAML text) into the spec-agnostic IR. |
+| [`resolveProjects`](#resolveprojects) | function | The multi-spec sibling of `resolveConfig` — ALWAYS returns a list, so a config with no `projects` array resolves to a on |
+| [`resolveTransform / worstVerdict`](#resolvetransform-worstverdict) | function | `resolveTransform` resolves the CONSUMING PROJECT's own `@pyreon/native-compiler` (dynamic `import()`, never bundled) —  |
 
 ## API
 
@@ -201,5 +203,64 @@ for (const note of doc.notes) console.warn(note.code, note.at, note.message)
 - Ignoring `doc.notes`. A spec with a remote `$ref` or a non-JSON media type still produces output — with those pieces typed `unknown`. The note is the only signal. Filter on `noteSeverity(note) === 'loss'` for the ones that change behaviour.
 - Passing a Swagger 2 document. It is refused (`openApiVersionProblem` names the `swagger2openapi` conversion) rather than read as an empty 3.x spec.
 - Expecting anchors or merge keys to work. The YAML reader refuses them by design with a line number, because silently ignoring an anchor produces a document that is wrong everywhere it was used.
+
+---
+
+### resolveProjects `function`
+
+```ts
+resolveProjects(section: LatheSection | undefined): ResolvedConfig[]
+```
+
+The multi-spec sibling of `resolveConfig` — ALWAYS returns a list, so a config with no `projects` array resolves to a one-element list (the top-level config alone) rather than a special case the caller has to branch on. Each declared project inherits the top-level `target`/`plugins`/`client`/`validator` and may override any of them; a project without a unique `name` — the key the CLI report and error messages use — throws.
+
+**Example**
+
+```tsx
+import { resolveProjects, generate } from '@pyreon/lathe'
+
+const projects = resolveProjects({
+  target: 'multiplatform',
+  projects: [
+    { name: 'billing', input: './billing.yaml', output: './src/gen/billing' },
+    { name: 'catalog', input: './catalog.yaml', output: './src/gen/catalog' },
+  ],
+})
+for (const config of projects) {
+  const { files } = generate(await readSpec(config), config)
+}
+```
+
+**Common mistakes**
+
+- Reaching for `resolveConfig` when the section MAY declare `projects` — it resolves only the top-level fields and silently ignores a `projects` array; `resolveProjects` is the one that fans it out
+- Passing a CLI `--out` alongside a `projects` config expecting it to apply to every project — it is REFUSED, since each project already declares its own `output`
+
+**See also:** `resolveConfig` · `generate`
+
+---
+
+### resolveTransform / worstVerdict `function`
+
+```ts
+resolveTransform(): Promise<TransformFn | undefined> · worstVerdict(report: VerifyReport): "lowers" | "web-only" | "broken" | "skipped"
+```
+
+`resolveTransform` resolves the CONSUMING PROJECT's own `@pyreon/native-compiler` (dynamic `import()`, never bundled) — the `transform` fn `verifyNative` needs — and returns `undefined` when the package is not installed, so a verify call never silently substitutes a different compiler version than the one that will actually build the app. `worstVerdict` reduces a whole `VerifyReport` (one verdict per generated `.native.tsx` file) to a single exit-worthy answer: `"broken"` beats `"web-only"` beats `"lowers"`, and an un-run report (`report.ran === false`) is `"skipped"` — never conflated with a pass.
+
+**Example**
+
+```tsx
+import { resolveTransform, verifyNative, worstVerdict } from '@pyreon/lathe'
+
+const report = verifyNative(files, await resolveTransform())
+if (worstVerdict(report) !== 'lowers') process.exitCode = 1
+```
+
+**Common mistakes**
+
+- Checking `report.files.length` instead of `worstVerdict(report)` — a report with zero broken/web-only files can still be `"skipped"` (compiler absent), which is not the same as every file lowering
+
+**See also:** `verifyNative`
 
 ---

@@ -458,6 +458,17 @@ invalid one is an error with a suggestion (`unknown option --josn. Did you mean
 --json?`), and nothing runs. Exit codes: `0` success, `1` failure (a stale
 check, a refused spec, a failed gate), `2` a usage error. Errors go to stderr.
 
+`--help` wins over any command: `lathe generate --help` prints usage rather
+than running a generation, the convention `git commit --help` and
+`npm install --help` follow.
+
+`--strict-native` and `--fail-on-breaking` answer different questions and are
+commonly used together in CI: `--strict-native` fails when a
+`target: multiplatform` module does not lower to Swift/Kotlin;
+`--fail-on-breaking` fails when the new spec would change the generated
+client's public contract (a removed field, a narrowed type) in a way existing
+callers depend on.
+
 ### `--json`
 
 One shape for every command and any number of projects:
