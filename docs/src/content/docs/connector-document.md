@@ -72,9 +72,10 @@ You rarely call `@pyreon/connector-document` directly. `@pyreon/document-primiti
    - `_documentProps` → `DocNode.props` (function values are resolved to their live value at this point)
    - `$rocketstyle` → `resolveStyles()` → `DocNode.styles`
    - Recurse into children.
-2. **Component without a marker** → call it to get its VNode output, then recurse (transparent).
-3. **DOM element** (`'div'`, `'span'`, …) → transparent: its children are flattened into the parent's children. Text content is collected.
-4. **Strings / numbers** → collected as text children. `null` / `false` / `true` are skipped.
+2. **Component without a marker** → call it to get its VNode output, then recurse (transparent). If the call returns a bare array (`() => items.map(...)`) instead of a single VNode, each element is flattened and extracted the same way — a component is free to return multiple siblings this way.
+3. **Fragment** (`<>…</>`, `h(Fragment, null, …)`) → transparent, exactly like a DOM element: its children are flattened into the parent. This is what lets a wrapper component group multiple document primitives with a bare `<>` without losing them from the export.
+4. **DOM element** (`'div'`, `'span'`, …) → transparent: its children are flattened into the parent's children. Text content is collected.
+5. **Strings / numbers** → collected as text children. `null` / `false` / `true` are skipped.
 
 Reactive children (function getters) and nested arrays are flattened and resolved during the walk, so a tree built with signals exports its live state.
 
