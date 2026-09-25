@@ -14,7 +14,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const GENERATORS = ['gen-reference.ts', 'gen-troubleshooting.ts', 'gen-examples-gallery.ts']
+const GENERATORS = ['gen-reference.ts', 'gen-troubleshooting.ts', 'gen-examples-gallery.ts', 'gen-lathe-config.ts']
 
 let failed = false
 for (const g of GENERATORS) {

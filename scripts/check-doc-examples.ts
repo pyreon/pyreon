@@ -46,7 +46,7 @@
  */
 
 import { execSync } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 
 const REPO_ROOT = resolve(import.meta.dirname, '..')
@@ -66,6 +66,20 @@ const DOCS_DIR = join(REPO_ROOT, 'docs', 'src', 'content', 'docs')
  */
 const README_GLOB = join(REPO_ROOT, 'packages')
 const CACHE_DIR = join(REPO_ROOT, '.cache', 'doc-examples')
+
+/**
+ * The generated client a `@pyreon/lathe` example imports as `./gen`.
+ *
+ * A Lathe docs example shows code written AGAINST a generated client, and the
+ * natural spelling is the import a user writes: `from './gen'`. That module
+ * only exists once something has been generated, so the committed output of
+ * `examples/lathe-bookshelf` (kept fresh by `lathe check` in its own tests) is
+ * copied next to the blocks. Its operations — `listBooks`, `getBook`,
+ * `createBook`, `listAuthors` — are what the Lathe pages use, so a renamed
+ * hook, a changed argument shape or a removed export fails here instead of in
+ * a reader's editor.
+ */
+const LATHE_EXAMPLE_CLIENT = join(REPO_ROOT, 'examples', 'lathe-bookshelf', 'src', 'gen')
 const MARKER = '// @check'
 
 // ─── Discover @pyreon/* workspace paths for tsconfig path-aliases ─────────
@@ -325,6 +339,9 @@ function main(): number {
 
   console.log(`[check-doc-examples] Checking ${all.length} opted-in code block(s)…`)
 
+  if (all.some((b) => /from ['"]\.\/gen(\/[\w./-]*)?['"]/.test(b.body)) && existsSync(LATHE_EXAMPLE_CLIENT)) {
+    cpSync(LATHE_EXAMPLE_CLIENT, join(CACHE_DIR, 'gen'), { recursive: true })
+  }
   writeTsconfig(filenames)
   const { ok, out } = runTsc()
 

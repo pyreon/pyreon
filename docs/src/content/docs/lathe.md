@@ -22,7 +22,37 @@ pyreon add @pyreon/lathe
 `target: 'multiplatform'` verify its own output. `@faker-js/faker` is needed
 only for the `faker` plugin, `zod` only for `validator: 'zod'`.
 
-## Quick start
+## Getting started
+
+```bash
+npx lathe init
+```
+
+`lathe init` finds what the project generates from today — an orval,
+`@hey-api/openapi-ts` or kubb config, an `openapi-typescript` script, or a
+bare `openapi.yaml` / `openapi.json` — and:
+
+1. writes a `lathe` section into `pyreon.config.ts` (creating it, or adding one
+   entry to the one you have — a `lathe` section already there is never
+   replaced),
+2. maps every option it can and **lists every one it cannot**, with what to do
+   instead (an orval `mutator` becomes `configureApi({ use })`),
+3. adds `lathe:generate` and `lathe:check` scripts to `package.json`,
+4. prints the install command for what the generated code imports,
+5. runs the first `lathe generate`.
+
+It asks only on a terminal, and only when it has to (several candidates, or
+none). In CI or a scaffolder, `--yes` takes every default; `--from orval`
+skips detection; `--dry-run` writes nothing; `--json` prints one document. It
+never writes into a directory that holds another generator's files — the old
+client keeps working until your imports move.
+
+Coming from another generator? [orval](/docs/lathe-from-orval) ·
+[hey-api](/docs/lathe-from-hey-api) · [kubb](/docs/lathe-from-kubb) ·
+[openapi-fetch](/docs/lathe-from-openapi-fetch) map the client, hooks,
+mutations, mocks, auth and base URL one by one.
+
+By hand, the whole configuration is two keys:
 
 ```ts
 // pyreon.config.ts
@@ -394,14 +424,68 @@ changes and nothing catches it. `.all` matches every call of an endpoint;
 ## The workbench, generated
 
 `plugins: ['atlas']` emits three files that line up with each other:
-`components.tsx` (one browsable preview per read operation, whose variant axis
-is the data state — a real prop, so Atlas infers a control),
-`atlas.scenarios.ts` (keyed to those exact component names), and
-`atlas.wrapper.tsx` (a `QueryClientProvider` with the generated mocks
-installed, so every card renders with no server).
+`components.tsx` (one preview per safe read), `atlas.scenarios.ts` (keyed to
+those exact component names), and `atlas.wrapper.tsx` (a
+`QueryClientProvider` with the generated mocks installed, so every card
+renders with no server).
 
-Every preview gets the three states a live request will not produce on demand —
-loading, error, empty — which are the three a UI most often gets wrong.
+**Which operations get a preview.** Every `GET` with a JSON response —
+detail views with path parameters included (`getBook` requests with the spec's
+example values, and the mocks answer any id). Operations that handle a
+credential or a session (`login`, `logout`, `token`, `session`, a `password`
+parameter) are left out: a workbench calls its operations when it opens.
+
+**What a preview shows.** The response by its shape: a list of records is a
+table whose columns are the model's declared fields, one record a description
+list, anything else its value as text. Password, token and secret fields are
+never displayed.
+
+**Scenarios.** Each preview gets `Default` (the request, answered by the mocks),
+`Data` (fake data from the `faker` factories, seeded so a visual baseline does
+not flake — or the deterministic sample when `faker` is off), and the three
+states a live request will not produce on demand: `Loading`, `Error`, `Empty`.
+The props behind them — `args`, `data`, `force` — are real props, so Atlas
+builds controls for them.
+
+```ts
+// atlas.config.ts
+import { scenarios } from './src/gen/atlas.scenarios'
+import { wrapper } from './src/gen/atlas.wrapper'
+
+export default { scenarios, wrapper }
+```
+
+`atlas verify` and `atlas verify-browser` run against the generated previews
+like any other component.
+
+## Generated code documents itself
+
+Hovering a generated symbol shows the spec's own words: the operation's summary
+and description, one bullet per parameter (where it goes, whether it is
+optional, what it means), `@deprecated` when the spec says so, a `@see` link
+from `externalDocs`, and an `@example` you can paste — built from the spec's
+examples, or from the same deterministic sample the mocks return:
+
+```ts
+/**
+ * Find pet by ID.
+ *
+ * Returns a single pet.
+ *
+ * `GET /pet/:petId`
+ *
+ * Parameters:
+ * - `petId` (path) — ID of pet to return
+ *
+ * @example
+ * ```ts
+ * const result = await getPetById({ params: { petId: 1 } })
+ * ```
+ */
+```
+
+Model interfaces carry each field's description, example and `@deprecated`.
+Every generated file starts with the same two-line header and nothing else.
 
 ## Automation
 
@@ -649,20 +733,25 @@ Relative paths resolve against the directory of the **config file**, not the
 shell's working directory, so `lathe` behaves the same from any subdirectory.
 Paths passed on the command line are relative to the working directory.
 
+<!-- gen:lathe-config:start -->
+<!-- Generated from `LatheSection` in packages/tools/lathe/src/core/config.ts by
+     docs/scripts/gen-lathe-config.ts. Edit the type and its JSDoc, not this table. -->
+
 | key | type | default | meaning |
 | --- | --- | --- | --- |
-| `input` | `string` | — (required) | the OpenAPI 3.0/3.1 document, `.json` / `.yaml` / `.yml` |
-| `output` | `string` | `./src/gen` | directory the client is written to |
-| `source` | `string` | — | http(s) URL `lathe pull` fetches the spec from |
-| `target` | `'web' \| 'multiplatform'` | `'web'` | `multiplatform` also emits and verifies native modules |
-| `plugins` | plugin names | `['schemas', 'client', 'queries']` | see [Plugins](#plugins) |
-| `client` | `'pyreon' \| 'fetch' \| 'axios' \| 'ky'` | `'pyreon'` | HTTP runtime; only `pyreon` reaches native |
-| `validator` | `'pyreon' \| 'zod'` | `'pyreon'` | schema library; both reach native |
-| `baseUrl` | `string` | the spec's `servers[0].url` | must be an absolute literal to reach native |
-| `responseValidation` | `'strict' \| 'warn' \| 'off'` | `'strict'` | the web client's default response validation; `configureApi({ validate })` switches it at runtime |
-| `pagination` | `Record<operation, PaginationConfig>` | — | declared infinite queries; see [Infinite queries](#infinite-queries-declared) |
-| `strictNative` | `boolean` | `false` | exit 1 when a native module does not lower |
-| `projects` | `{ name, input, ...any key above }[]` | — | several specs in one run; see [Several specs](#several-specs-one-pass) |
+| `input` | `string` | — | Path to the OpenAPI 3.x document (`.json`, `.yaml`, `.yml`). |
+| `output` | `string` | `'./src/gen'` | Output directory. Relative to the config file, like `input`. |
+| `source` | `string` | — | Where `lathe pull` fetches the spec from: an http(s) URL, written to `input`. With `projects`, `lathe pull` pulls every project that sets one. |
+| `target` | `"web" \| "multiplatform"` | `'web'` | Which platforms the client is for: `web`, or `multiplatform`, which also emits native modules for iOS and Android and verifies they lower. |
+| `plugins` | `("types" \| "schemas" \| "client" \| "queries" \| "mocks" \| "faker" \| "components" \| "atlas" \| "docs")[]` | `['schemas', 'client', 'queries']` | Emitters to run. A plugin brings along what its output imports (`components` needs `queries`), and the report says so. |
+| `client` | `"pyreon" \| "fetch" \| "axios" \| "ky"` | `'pyreon'` | Which HTTP runtime the generated client is built on. |
+| `validator` | `"pyreon" \| "zod"` | `'pyreon'` | Which library the generated schemas are written in. |
+| `baseUrl` | `string` | the spec's `servers[0].url` | Overrides the spec's `servers[0].url` — must be an absolute literal to reach native. `configureApi({ baseUrl })` switches it at runtime. |
+| `responseValidation` | `"strict" \| "warn" \| "off"` | `'strict'` | What the generated client does with a response that does not match its schema. `strict` (the default) rejects; `warn` logs and passes the raw body through, which is the usual choice in production when a backend may drift; `off` skips validation, which also skips its cost on large list responses. `configureApi({ validate })` switches it at runtime. |
+| `pagination` | `Record<string, PaginationConfig>` | — | How to page through operations, keyed by the GENERATED operation name (the `endpoints` export). Declared, never guessed — each entry emits a `use<Op>Infinite` hook and a `<op>InfiniteOptions` factory. Same shape as the `x-pyreon-pagination` spec extension, which a config entry overrides. |
+| `strictNative` | `boolean` | `false` | Fail the run when a generated native module does not lower. |
+| `projects` | `{ name, input, …any key above }[]` | — | Several specs in one run, each with its own output and target. |
+<!-- gen:lathe-config:end -->
 
 An unknown `plugins`, `client`, `validator` or `target` value is refused by
 name, with the known values listed.
@@ -670,6 +759,7 @@ name, with the known values listed.
 ## Command line
 
 ```bash
+lathe init     [spec]          # set up pyreon.config.ts (see Getting started)
 lathe generate [spec]          # read the spec, write the client
 lathe check    [spec]          # generate in memory; exit 1 if anything is stale
 lathe pull     [url] [dest]    # fetch a remote spec (see below)
@@ -690,6 +780,9 @@ lathe [spec]                   # same as lathe generate [spec]
 | `--json` | machine-readable output (shape below) |
 | `--watch`, `-w` | regenerate when a spec **or the config** changes |
 | `--color`, `--no-color` | force colour; by default only a TTY gets it, and `NO_COLOR` turns it off |
+| `--from <tool>` | `init`: migrate from `orval`, `hey-api`, `kubb`, `openapi-typescript` or `spec` instead of detecting |
+| `--yes`, `-y` | `init`: ask nothing, take every default |
+| `--no-generate` | `init`: write the config, skip the first generate |
 | `--version`, `-v` / `--help`, `-h` | |
 
 The config is the nearest `pyreon.config.*` found walking **up** from the
@@ -797,9 +890,11 @@ never touched. Commit the manifest with the rest of the output.
 ## Honest limits
 
 - **OpenAPI 3.0 and 3.1 only.** Swagger 2 is refused with the conversion command.
-- **Security schemes, response headers and error bodies are not generated** —
-  each is reported as a `loss` note. (Header and cookie parameters ARE: they are
-  typed `headers:` / `cookies:` call arguments.)
+- **Response headers and error bodies are not typed**, and a security scheme
+  other than bearer / OAuth2 / OpenID Connect / basic / API key (HTTP digest,
+  mutual TLS) gets no `auth` helper — each is reported as a `loss` note. (Header
+  and cookie parameters ARE generated: they are typed `headers:` / `cookies:`
+  call arguments.)
 - **A read with no typed JSON response** gets a web hook typed `unknown` and no
   native data component.
 - **Mutations are web-only on the native target.** PMTC recognises queries, not
@@ -840,9 +935,33 @@ is optional, not a string enum, or claims a value another member claims. The
 model is emitted as a plain union, which accepts the same data. Make each tag a
 required `enum: [value]` to get the tagged form.
 
-**Requests fail with 401 against a client that compiled** — Lathe does not
-apply security schemes (the `unsupported-security` note says so). Add the
-credential in the transport: on the exported `instance` for `axios` / `ky`.
+**Requests fail with 401 against a client that compiled** — the client sends
+no credential until you give it one. For each `securitySchemes` entry the
+client exports a helper: `configureApi({ use: [auth.<scheme>(() => token())] })`.
+Anything else goes in `headers` (an accessor, read per request) or in
+middleware via `use`. An `unsupported-security` note names a scheme with no
+helper (HTTP digest, mutual TLS).
+
+**`lathe init` says it could not read the config** — the old tool's config is
+read as text, never executed, so a config built by a function call it cannot
+see into (`export default build(process.env)`) is not readable. Point init at
+the spec instead: `lathe init ./openapi.yaml`, then copy any options across by
+hand.
+
+**`lathe init` wrote to `./src/gen`, not the old output directory** — that
+directory still holds the old generator's files, and writing into it would
+overwrite some of them (every generator writes an `index.ts`). Move your
+imports to the new client, delete the old directory, then set `output` back.
+
+**`lathe init` left `pyreon.config.ts` untouched** — it already has a `lathe`
+section, which init never replaces. It printed the section it would have
+written; merge it by hand.
+
+**A preview you expected is missing from Atlas** — previews are generated for
+`GET` operations with a JSON response. A `POST`, a read with no body, and any
+operation that handles a credential or session (`login`, `logout`, `token`,
+`session`, a `password` parameter) are skipped on purpose: the workbench calls
+every preview's operation as soon as it opens.
 
 **The config seems ignored** — run `lathe generate --dry-run`: the report names
 the output directory it resolved. The config is found upward from the working

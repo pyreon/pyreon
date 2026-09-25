@@ -127,7 +127,11 @@ export interface LatheSection {
    * CLI argument.
    */
   input?: string
-  /** Output directory. Relative to the config file, like `input`. Default `./src/gen`. */
+  /**
+   * Output directory. Relative to the config file, like `input`.
+   *
+   * @default './src/gen'
+   */
   output?: string
   /**
    * Where `lathe pull` fetches the spec from: an http(s) URL, written to
@@ -136,15 +140,23 @@ export interface LatheSection {
   source?: string
 
   /**
-   * `web` emits the idiomatic multi-file layout.
+   * Which platforms the client is for: `web`, or `multiplatform`, which also
+   * emits native modules for iOS and Android and verifies they lower.
    *
-   * `multiplatform` ALSO emits one self-contained module per tag, shaped for
+   * `web` emits the idiomatic multi-file layout. `multiplatform` ALSO emits one self-contained module per tag, shaped for
    * PMTC, and verifies that those modules actually lower. It is additive: the
    * web output is unchanged, so turning it on can never make the web build
    * worse.
+   *
+   * @default 'web'
    */
   target?: 'web' | 'multiplatform'
-  /** Emitters to run. */
+  /**
+   * Emitters to run. A plugin brings along what its output imports
+   * (`components` needs `queries`), and the report says so.
+   *
+   * @default ['schemas', 'client', 'queries']
+   */
   plugins?: readonly PluginName[]
   /**
    * Which HTTP runtime the generated client is built on.
@@ -154,6 +166,8 @@ export interface LatheSection {
    * to a real `URLSession` / `OkHttp` call. The others emit a self-contained
    * endpoint factory over that library, satisfying the SAME seam — so every
    * other generated file is byte-identical whichever is chosen.
+   *
+   * @default 'pyreon'
    */
   client?: ClientName
   /**
@@ -168,15 +182,23 @@ export interface LatheSection {
    * `@pyreon/validation`'s `zodSchema(...)`. Measured against the real
    * compiler, the zod recogniser lowers strictly more — nested objects and
    * arrays of objects lower there and are dropped under `s.*`.
+   *
+   * @default 'pyreon'
    */
   validator?: ValidatorName
-  /** Overrides the spec's `servers[0].url` — must be a literal to reach native. */
+  /**
+   * Overrides the spec's `servers[0].url` — must be an absolute literal to
+   * reach native. `configureApi({ baseUrl })` switches it at runtime.
+   *
+   * @default the spec's `servers[0].url`
+   */
   baseUrl?: string
   /**
    * What the generated client does with a response that does not match its
    * schema. `strict` (the default) rejects; `warn` logs and passes the raw body
    * through, which is the usual choice in production when a backend may drift;
    * `off` skips validation, which also skips its cost on large list responses.
+   * `configureApi({ validate })` switches it at runtime.
    *
    * Web client only. The native modules decode into typed structs, which is
    * validation in itself and is not configurable.
@@ -185,6 +207,8 @@ export interface LatheSection {
    * ```ts
    * export default { lathe: { input: './openapi.yaml', responseValidation: 'warn' } }
    * ```
+   *
+   * @default 'strict'
    */
   responseValidation?: ResponseValidation
   /**
@@ -207,6 +231,8 @@ export interface LatheSection {
    * Off by default: a spec is usually partly un-lowerable and that is fine and
    * expected. Turn it on in CI for an app that means to ship on iOS/Android,
    * where a silent regression to web-only is a real defect.
+   *
+   * @default false
    */
   strictNative?: boolean
 }
