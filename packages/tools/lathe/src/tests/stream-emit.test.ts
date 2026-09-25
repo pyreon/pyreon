@@ -264,6 +264,10 @@ describe('the contract surface records streams', () => {
     })
     expect(s.operations.createChat?.symbols).toEqual(['createChat', 'createChatStream', 'useCreateChat', 'useCreateChatStream'])
     expect(s.operations.tailLog?.stream).toBe('sse string')
+    // A streamed event is RECEIVED: its model is response-side, which decides
+    // how a member added to it is classified.
+    expect(s.usage.RoomEvent).toBe('response')
+    expect(s.usage.ChatChunk).toBe('response')
     expect(s.operations.exportRows?.stream).toBe('ndjson { id: integer; name?: string }')
   })
 

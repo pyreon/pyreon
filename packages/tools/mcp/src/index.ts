@@ -27,6 +27,9 @@
  *   get_atlas_catalog         — The verified component catalog `atlas scan` derives from source
  *   get_atlas_component       — One component's exact props, allowed values and scenarios
  *   get_dependency_fabric     — The workspace dependency graph `loom scan` produces: cycles, blast radius, findings
+ *   get_api_client            — The generated API client (`lathe generate`): every operation + model, with its symbols
+ *   get_api_operation         — One generated operation's typed signature, the models it uses, and example calls
+ *   explain_api_diff          — The client-contract diff between two specs / surfaces, breaking first, with what to check
  *
  * Usage:
  *   bunx @pyreon/mcp          # stdio transport (for IDE integration)
@@ -47,8 +50,9 @@ import {
   migratePyreonCode,
   migrateReactCode,
 } from '@pyreon/compiler'
-import { realpathSync } from 'node:fs'
-import { relative } from 'node:path'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { isAbsolute, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { z } from 'zod'
 import {
@@ -63,6 +67,13 @@ import {
   renderCatalogIndex,
   renderComponent,
 } from './atlas'
+import {
+  loadSurfaces,
+  MISSING_SURFACE_MESSAGE,
+  renderClientIndex,
+  renderDiffExplanation,
+  renderOperation,
+} from './lathe'
 import packageJson from '../package.json' with { type: 'json' }
 import {
   ANTI_PATTERN_CATEGORIES,
@@ -833,6 +844,103 @@ server.tool(
           ? renderPackageFabric(loaded.report, pkgName, loaded.ageDays)
           : renderFabricOverview(loaded.report, loaded.ageDays),
       )
+    },
+  )
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Tools: get_api_client / get_api_operation / explain_api_diff — the
+  // generated API client `lathe generate` wrote (its `api-surface.json`)
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  const surfaceFailure = (reason: 'missing' | 'unreadable', detail?: string) =>
+    textResult(
+      reason === 'missing' && detail === undefined
+        ? MISSING_SURFACE_MESSAGE
+        : `Could not read the generated client${detail ? `: ${detail}` : ''}.`,
+    )
+
+  server.tool(
+    'get_api_client',
+    {
+      search: z.string().optional().describe('Only operations whose id, path or summary contains this. Omit for everything.'),
+      path: z
+        .string()
+        .optional()
+        .describe('The generated directory or its api-surface.json. Omit to search under the current directory.'),
+    },
+    async ({ search, path }) => {
+      // `lathe generate` records every operation, model and generated symbol in
+      // `api-surface.json`; an agent writing a call used to guess hook names.
+      const loaded = loadSurfaces(process.cwd(), path)
+      if (!loaded.ok) return surfaceFailure(loaded.reason, loaded.detail)
+      return textResult(renderClientIndex(loaded.surfaces, search))
+    },
+  )
+
+  server.tool(
+    'get_api_operation',
+    {
+      operation: z.string().describe('The generated operation name (the endpoint export), e.g. `getPetById`.'),
+      path: z
+        .string()
+        .optional()
+        .describe('The generated directory or its api-surface.json. Omit to search under the current directory.'),
+    },
+    async ({ operation, path }) => {
+      const loaded = loadSurfaces(process.cwd(), path)
+      if (!loaded.ok) return surfaceFailure(loaded.reason, loaded.detail)
+      return textResult(renderOperation(loaded.surfaces, operation))
+    },
+  )
+
+  server.tool(
+    'explain_api_diff',
+    {
+      before: z
+        .string()
+        .describe('The BEFORE side: a spec, an api-surface.json, or `<git-rev>:<path>` (e.g. `main:openapi.yaml`).'),
+      after: z
+        .string()
+        .optional()
+        .describe('The AFTER side, same forms. Omit to use the generated client found under the current directory.'),
+    },
+    async ({ before, after }) => {
+      const cwd = process.cwd()
+      const read = (spec: string): string => {
+        const abs = isAbsolute(spec) ? spec : resolve(cwd, spec)
+        if (existsSync(abs)) return readFileSync(abs, 'utf8')
+        const rev = /^([^:]{2,}):(.+)$/.exec(spec)
+        if (rev) {
+          const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')))
+          const r = spawnSync('git', ['show', `${rev[1]}:${rev[2]}`], { cwd, env, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })
+          if (r.status === 0) return r.stdout
+          throw new Error(`\`${rev[2]}\` does not exist at git revision \`${rev[1]}\`.`)
+        }
+        throw new Error(`\`${spec}\` does not exist.`)
+      }
+      try {
+        let afterPath = after
+        if (afterPath === undefined) {
+          const loaded = loadSurfaces(cwd)
+          if (!loaded.ok) return surfaceFailure(loaded.reason, loaded.detail)
+          if (loaded.surfaces.length > 1) {
+            return textResult(
+              `This project has ${loaded.surfaces.length} generated clients — pass \`after\`:\n${loaded.surfaces.map((l) => `- ${relative(cwd, l.path)}`).join('\n')}`,
+            )
+          }
+          afterPath = (loaded.surfaces[0] as { path: string }).path
+        }
+        // Loaded lazily: the classifier is @pyreon/lathe's own, so this tool
+        // and `lathe diff` / `lathe check` can never disagree about severity.
+        const { contractDiff, readContractSide, renderContractDiff } = await import('@pyreon/lathe/core')
+        const diff = contractDiff(
+          readContractSide(read(before), before).surface,
+          readContractSide(read(afterPath), afterPath).surface,
+        )
+        return textResult(renderDiffExplanation(renderContractDiff(diff, 'markdown'), diff.changes))
+      } catch (err) {
+        return textResult(`Could not compute the diff: ${(err as Error).message}`)
+      }
     },
   )
 

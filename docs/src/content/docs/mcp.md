@@ -7,7 +7,7 @@ description: Model Context Protocol server that gives AI coding assistants deep 
 
 <PackageBadge name="@pyreon/mcp" href="/docs/mcp" />
 
-The server runs as a subprocess over **stdio transport**, so any MCP-compatible client can connect by spawning it. It exposes **21 tools** spanning discovery, API lookup, static validation, React migration, error diagnosis, project introspection, content-collection navigation, project-wide audits, and workspace / component-catalog verification (`loom` / `atlas`). It is read-only and deterministic — every tool returns **text only**; nothing mutates your files and no LLM is embedded in the server itself.
+The server runs as a subprocess over **stdio transport**, so any MCP-compatible client can connect by spawning it. It exposes **24 tools** spanning discovery, API lookup, static validation, React migration, error diagnosis, project introspection, content-collection navigation, project-wide audits, workspace / component-catalog verification (`loom` / `atlas`), and the generated API client (`lathe`). It is read-only and deterministic — every tool returns **text only**; nothing mutates your files and no LLM is embedded in the server itself.
 
 ## Installation
 
@@ -130,12 +130,14 @@ Pick the tool that matches what you're trying to do — or call [`mcp_overview`]
 - **Check browser smoke coverage** — [`get_browser_smoke_status`](#get_browser_smoke_status)
 - **Write against components that provably exist** — [`get_atlas_catalog`](#get_atlas_catalog), [`get_atlas_component`](#get_atlas_component)
 - **Ask "what does changing this package reach?"** — [`get_dependency_fabric`](#get_dependency_fabric)
+- **Call the project's generated API client correctly** — [`get_api_client`](#get_api_client), [`get_api_operation`](#get_api_operation)
+- **Ask "what does this spec change break?"** — [`explain_api_diff`](#explain_api_diff)
 
 ---
 
 ## Tools reference
 
-The server registers **21 tools**. The table below is the complete surface — every tool, its parameters, and what it returns; it is hand-maintained (this page isn't code-generated), but `scripts/check-mcp-docs.ts` (CI-gated) cross-checks the THREE surfaces that must agree — the `server.tool(...)` registrations in `src/index.ts`, the tool entries in `src/manifest.ts` (which drive `mcp_overview()` and the entry count below), and this page's `### <name>` sections — and fails the build if any tool is missing from any of them.
+The server registers **24 tools**. The table below is the complete surface — every tool, its parameters, and what it returns; it is hand-maintained (this page isn't code-generated), but `scripts/check-mcp-docs.ts` (CI-gated) cross-checks the THREE surfaces that must agree — the `server.tool(...)` registrations in `src/index.ts`, the tool entries in `src/manifest.ts` (which drive `mcp_overview()` and the entry count below), and this page's `### <name>` sections — and fails the build if any tool is missing from any of them.
 
 | Tool | Parameters | Returns |
 | ---- | ---------- | ------- |
@@ -160,6 +162,9 @@ The server registers **21 tools**. The table below is the complete surface — e
 | [`get_dependency_fabric`](#get_dependency_fabric) | `package?: string` | The `loom scan` workspace graph — shape, cycles, gating findings, blast-radius ranking (or one package's slice of it) |
 | [`get_atlas_catalog`](#get_atlas_catalog) | `tag?: string` | The `atlas scan` verified component catalog — every component's real props + scenario verification counts |
 | [`get_atlas_component`](#get_atlas_component) | `name: string` | One catalogued component's exact prop values, which props are reactive, and a verified-or-labelled-unverified example |
+| [`get_api_client`](#get_api_client) | `search?: string`, `path?: string` | The `lathe generate` client — every operation with its generated symbols, grouped by module, plus every model |
+| [`get_api_operation`](#get_api_operation) | `operation: string`, `path?: string` | One operation's typed signature (parameter locations, body, response, stream), the models it names, and example calls |
+| [`explain_api_diff`](#explain_api_diff) | `before: string`, `after?: string` | The client-contract diff between two specs / surfaces / git revisions — breaking first, with the symbols each change reaches and what to check |
 
 `ReactiveTraceEntry` is `{ name?: string; prev: string; next: string; timestamp: number }`.
 
@@ -182,7 +187,7 @@ This is the intended **first call** for any agent connecting to the server: it e
 **Response shape** (captured from a real call against this repo — every row comes straight from `manifest.ts`, so a new tool appears here the moment it's added there):
 
 ```text
-**MCP Tools (21):**
+**MCP Tools (24):**
 
 | Tool | When to use | Example |
 |---|---|---|
@@ -202,6 +207,9 @@ This is the intended **first call** for any agent connecting to the server: it e
 | `get_atlas_catalog` | Serve the VERIFIED component catalog `atlas scan` writes — every component's real props, allowed values and scenario counts. | `get_atlas_catalog({})` |
 | `get_dependency_fabric` | Serve the workspace dependency graph `loom scan` writes: shape, cycles, gating findings, blast-radius ranking. | `get_dependency_fabric({})` |
 | `get_atlas_component` | Prescriptive usage for ONE catalogued component: exact allowed values, reactive props, a verified example. | `get_atlas_component({ name: 'Button' })` |
+| `get_api_client` | Serve the generated API client `lathe generate` wrote — every operation with its method, path, summary and the exact symbols it exports (endpoint, `use<Op>` hook, `<op>Stream` / `use<Op>Stream` for streaming operations), grouped by the module they live in, plus every model. | `get_api_client({})` |
+| `get_api_operation` | One generated operation's TYPED signature: each parameter with its location (path/query) and whether it is required, the request body, the response and stream event types, the fields of every model they name, and example calls shaped by those types — the direct endpoint call, the query or mutation hook, and a `for await` over the stream when there is one. | `get_api_operation({ operation: 'getOrder' })` |
+| `explain_api_diff` | The client-contract diff between two versions of an API — each side a spec (JSON/YAML), an `api-surface.json`, or `<git-rev>:<path>` (`main:openapi.yaml`); `after` defaults to the generated client in the project. | `explain_api_diff({ before: 'main:openapi.yaml', after: 'openapi.yaml' })` |
 | `get_pattern` | Fetch a canonical "how do I do X" pattern body from `docs/src/content/docs/patterns/`. | `get_pattern({ name: 'controllable-state' })` |
 | `get_anti_patterns` | Browse the anti-patterns catalog from `.agents/rules/anti-patterns.md`, token-frugal by default. | `get_anti_patterns()` |
 | `get_changelog` | Recent release notes for any `@pyreon/*` package without scraping `git log`. | `get_changelog({ package: 'flow', limit: 5 })` |
@@ -1102,6 +1110,146 @@ correct (verified): {"children":"Button","state":"primary","size":"small","varia
 - **Inventing a value for a prop whose allowed set is printed** — `state(primary|secondary|danger|success)` above is the COMPLETE list for that component; nothing else is valid.
 :::
 
+---
+
+### get_api_client
+
+Serves the **generated API client** `lathe generate` wrote — every operation with its method, path, summary and the exact symbols it exports (the endpoint, the `use<Op>` hook, and `<op>Stream` / `use<Op>Stream` for a streaming operation), grouped by the module they live in, plus every model with its kind and whether it travels in requests, responses or both.
+
+It reads the `api-surface.json` Lathe writes next to the generated code (found by searching the working directory for one that sits beside a `lathe-manifest.json`), so it describes the client the agent will actually import — not a re-reading of the spec, which can describe an API the committed client does not implement. The surface is the same file `lathe check` and `lathe diff` read.
+
+**Parameters:**
+
+| Param    | Type      | Description |
+| -------- | --------- | ----------- |
+| `search` | `string?` | Only operations whose id, path or summary contains this |
+| `path`   | `string?` | The generated directory or its `api-surface.json` — for a project with several clients |
+
+**Example call + real response** (the `streams.json` fixture from `@pyreon/lathe`'s tests):
+
+```json
+{}
+```
+
+```text
+# Streams — 5 operation(s), 4 model(s)
+generated at `./src/gen`
+
+## chat
+- `createChat` POST /chat (streams sse ChatChunk) — Chat completion → `createChat`, `createChatStream`, `useCreateChat`, `useCreateChatStream`
+
+## rooms
+- `createRoom` POST /rooms → `createRoom`, `useCreateRoom`
+- `roomEvents` GET /rooms/:room/events (streams sse RoomEvent) — Live events in a room → `roomEvents`, `roomEventsStream`, `useRoomEventsStream`
+
+## Models
+- `ChatChunk` (1 fields, response)
+- `ChatRequest` (2 fields, request)
+…
+```
+
+:::warning{title="Common mistakes"}
+- **Guessing a hook name from the spec's `operationId`** — the generated name is normalized, and a stream-only operation has no `use<Op>` at all. The symbols listed are the real exports.
+- **Calling it before `lathe generate` has run** — the surface is a generation artifact; the tool returns setup instructions rather than a guessed client.
+:::
+
+---
+
+### get_api_operation
+
+One generated operation's **typed signature**: each parameter with its location (`path` / `query`) and whether it is required, the request body, the response and stream event types, the fields of every model they name, and example calls shaped by those types — the direct endpoint call, the query or mutation hook, and a `for await` over the stream (plus its hook) when the operation streams. Imports are written relative to the working directory. An unknown name gets near-match suggestions.
+
+**Parameters:**
+
+| Param       | Type      | Description |
+| ----------- | --------- | ----------- |
+| `operation` | `string`  | The generated operation name (the endpoint export) |
+| `path`      | `string?` | The generated directory or its `api-surface.json` |
+
+**Example call + real response:**
+
+```json
+{ "operation": "roomEvents" }
+```
+
+````text
+# `roomEvents` — GET /rooms/:room/events
+
+Live events in a room
+
+Endpoint in `./src/gen/endpoints/rooms.ts`; hooks in `./src/gen/queries/rooms.ts`.
+
+## Input
+- `room` (path, required): string
+
+## Output
+- response: unknown
+- stream: sse RoomEvent — one event per iteration
+
+## Models it uses
+- `RoomEvent` { at: integer; kind: enum("join"|"leave"|"message"); text: string (optional) }
+
+## Call it
+
+```ts
+import { roomEventsStream } from './src/gen/endpoints/rooms'
+
+for await (const event of roomEventsStream({ params: { room: '…' } })) {
+  // break closes the connection
+}
+
+import { useRoomEventsStream } from './src/gen/queries/rooms'
+
+const live = useRoomEventsStream(() => ({ params: { room: '…' } }))
+```
+````
+
+:::warning{title="Common mistakes"}
+- **Passing a path parameter under `query`** — the location is printed per parameter; path parameters go in `params`.
+- **Calling a `use<Op>` hook with a value** — generated hooks take an accessor (`() => args`) so signal reads stay reactive.
+- **Awaiting a stream function** — `<op>Stream(...)` returns an async iterable; iterate it, and `break` closes the connection.
+:::
+
+---
+
+### explain_api_diff
+
+The **client-contract diff** between two versions of an API. Each side is a spec (JSON or YAML), an `api-surface.json`, or `<git-rev>:<path>` (`main:openapi.yaml` — the base of a PR is not on disk); `after` defaults to the generated client in the project.
+
+It runs `@pyreon/lathe`'s own classifier — the same one `lathe diff` and `lathe check` use, loaded lazily so server startup does not pay for it — so the two can never disagree. Severities are from the **client's** point of view: a response field turning optional is breaking, a request field doing so is not. The report lists breaking changes first, names the generated symbols each change reaches (a model change is traced through other models to every operation that uses it), and ends with what to check in the code for every breaking change.
+
+**Parameters:**
+
+| Param    | Type      | Description |
+| -------- | --------- | ----------- |
+| `before` | `string`  | The BEFORE side: spec, `api-surface.json`, or `<git-rev>:<path>` |
+| `after`  | `string?` | The AFTER side, same forms. Omit to use the project's generated client |
+
+**Example call + response shape** (symbols and counts depend on your spec):
+
+```json
+{ "before": "main:openapi.yaml", "after": "openapi.yaml" }
+```
+
+```text
+### API contract: 1 breaking, 0 additive
+
+#### Breaking (1)
+
+| Change | Subject | Detail | Generated code affected |
+| --- | --- | --- | --- |
+| `field-now-optional` | `Customer.email` | required → optional | `getOrder`, `useGetOrder` (orders); `updateOrder`, `useUpdateOrder` (orders) |
+
+### What to check in the code
+
+- `Customer.email` (`field-now-optional`): the app reads it unconditionally today and it typechecks only because it never asks — guard every read.
+```
+
+:::warning{title="Common mistakes"}
+- **Trusting a green typecheck after regenerating** — the breaking changes here are the ones that still COMPILE and fail at runtime.
+- **Reading `member-added` as harmless** — a `switch` over that value can now receive a member it does not handle.
+:::
+
 ## How it works
 
 The server runs as a subprocess communicating over **stdio**. When an AI assistant needs Pyreon-specific knowledge it calls one of the tools above instead of guessing from training data — so the assistant always has accurate, current API information regardless of its training cutoff.
@@ -1164,7 +1312,7 @@ The server makes no network calls or long startup scans — it returns `initiali
 | Export                    | Description                                                                                                                      |
 | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | CLI entry (`pyreon-mcp`)   | Starts the MCP server on stdio transport (runs when the module is invoked as a process, not on import)                          |
-| `createServer()`           | Factory that returns a configured `McpServer` with all 21 tools registered (tests stand one up with an in-memory transport instead of stdio) |
+| `createServer()`           | Factory that returns a configured `McpServer` with all 24 tools registered (tests stand one up with an in-memory transport instead of stdio) |
 | `matchesProcessEntry(meta, moduleUrl, resolvedEntryUrl)` | Pure helper deciding "is this module the process entry?" across runtimes — Bun / Node ≥24.2 expose `import.meta.main` directly; older Node needs the URL-comparison fallback this function implements. Exported so the fallback path is unit-testable without an actual old Node runtime. |
 
 `API_REFERENCE`, `generateContext`, `ProjectContext`, `RouteInfo`, `ComponentInfo`, and `IslandInfo` are **internal** — used by the tool handlers inside `index.ts`, but not re-exported from the package, and there is no `@pyreon/mcp/<subpath>` export for them (`package.json` `exports` declares only `"."`; a deep-path import like `@pyreon/mcp/src/api-reference` fails to resolve — verified, not assumed). `API_REFERENCE` lives at `packages/tools/mcp/src/api-reference.ts` — inside this monorepo, reach it by a relative file path if you genuinely need the raw table, not a package-specifier import. `generateContext` / `ProjectContext` / `RouteInfo` / `ComponentInfo` / `IslandInfo` come from `@pyreon/compiler`'s project scanner — import them from `@pyreon/compiler` if you need the raw scan, not from `@pyreon/mcp`.

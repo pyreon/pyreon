@@ -180,6 +180,8 @@ function usageOf(doc: IrDocument): Record<string, SurfaceUsage> {
       collectRefNames(p.type, requestRoots)
     }
     collectRefNames(op.response, responseRoots)
+    // A streamed event is RECEIVED exactly like a response body.
+    collectRefNames(op.stream?.event, responseRoots)
   }
   const req = reachableModels(doc, requestRoots)
   const res = reachableModels(doc, responseRoots)

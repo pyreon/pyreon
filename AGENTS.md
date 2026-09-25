@@ -45,7 +45,7 @@ Read the matching file **before** working in its area, and prefer it over memory
 
 ### The Pyreon MCP server
 
-The repo ships its own MCP server (`@pyreon/mcp`), which exposes 21 tools: `get_anti_patterns` (a token-budgeted index over the anti-pattern catalog), `validate` (static detectors for Pyreon and React-habit mistakes), `diagnose`, `explain_error`, `explain_reactivity`, `get_api`, `get_pattern`, `audit_test_environment`, `audit_islands` and more. Prefer them over grepping large files.
+The repo ships its own MCP server (`@pyreon/mcp`), which exposes 24 tools: `get_anti_patterns` (a token-budgeted index over the anti-pattern catalog), `validate` (static detectors for Pyreon and React-habit mistakes), `diagnose`, `explain_error`, `explain_reactivity`, `get_api`, `get_pattern`, `audit_test_environment`, `audit_islands` and more. Prefer them over grepping large files.
 
 Project configs register it for the common tools: `.mcp.json` (Claude Code; approve the server once), `.vscode/mcp.json` (VS Code / Copilot), `.cursor/mcp.json` (Cursor) and `.gemini/settings.json` (Gemini CLI, which also points Gemini at this file). Any other MCP client: run `node packages/tools/mcp/lib/index.js` over stdio from the repo root. The server runs from `lib/`, which `bun install` builds.
 
