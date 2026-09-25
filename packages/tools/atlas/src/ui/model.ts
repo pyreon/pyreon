@@ -5,7 +5,7 @@
  */
 import { h, type VNodeChildAtom } from '@pyreon/core'
 import { PermissionsProvider } from '@pyreon/permissions'
-import { computed, effect, isClient, signal, type Computed, type Effect, type Signal } from '@pyreon/reactivity'
+import { batch, computed, effect, isClient, signal, type Computed, type Effect, type Signal } from '@pyreon/reactivity'
 import type { A11yReport } from './a11y'
 import { analyzeA11y } from './a11y'
 import type { AddonTabId, BackgroundPreset, LocalePreset, PseudoId, ViewportPreset } from './addons'
@@ -26,14 +26,23 @@ import {
   pathBase,
   serializeUrlState,
   urlStateChanged,
+  type UrlDefaults,
   type UrlState,
 } from './url-state'
 import type { CatalogGroup, WorkbenchCatalog, WorkbenchComponent } from './catalog'
 import { buildSearchIndex, defaultValues, groupComponents } from './catalog'
 import { captureDomActions } from './dom-actions'
 import { adoptBodyPortals } from './portal-adopt'
-import { browseOrder, buildHierarchy, filterHierarchy, type HierarchyNode } from './hierarchy'
 import type { AtlasWrapperProps } from '../core/extension'
+import {
+  ancestorPaths,
+  browseOrder,
+  buildHierarchy,
+  filterHierarchy,
+  mergeOwners,
+  ownerPaths,
+  type HierarchyNode,
+} from './hierarchy'
 import type { BrandTheme, ThemeTokens } from './theme'
 import { THEMES, tokens } from './theme'
 
@@ -139,10 +148,39 @@ export interface WorkbenchModel {
    * after their parent, collapsed groups skipped) — what ↑↓ walks.
    */
   browseIds: Computed<string[]>
-  /** Collapsed group PATHS (default: everything expanded). */
+  /**
+   * Collapsed group PATHS as the user left them. Plain folders start
+   * expanded; a folder OWNED by a component (its part list) starts collapsed.
+   */
   collapsed: Signal<ReadonlySet<string>>
+  /**
+   * Is this folder collapsed ON SCREEN? While the sidebar filter is active
+   * every folder is open — a match hidden inside a collapsed part list read as
+   * "the filter found nothing".
+   */
+  isCollapsed: (path: string) => boolean
   toggleGroup: (path: string) => void
   noResults: Computed<boolean>
+  /** Components the sidebar filter currently matches (== `total` when unfiltered). */
+  matchCount: Computed<number>
+  /**
+   * The scenario the canvas is showing EXACTLY — set when one is applied,
+   * cleared by any edit, and `Default` when the component has no edits at all.
+   * `null` means "edited away from every scenario".
+   */
+  activeScenario: Computed<string | null>
+  /**
+   * Bumped after every preview render settles (the same observer that
+   * re-probes a11y). Anything that needs to know what the LAST render did —
+   * which permission keys it consulted — reads it to re-evaluate.
+   */
+  renderTick: Signal<number>
+  /** Narrow viewport (≤900px): the sidebar is a drawer and the panels a sheet. */
+  compact: Signal<boolean>
+  /** Compact-mode sidebar drawer. Not persisted — a drawer is transient. */
+  drawerOpen: Signal<boolean>
+  /** Compact-mode addon bottom sheet. Not persisted. */
+  sheetOpen: Signal<boolean>
   /** Live a11y verdict for the RENDERED preview (re-probed after each render). */
   a11y: Signal<A11yReport>
   /** True when the last render left the preview surface with no DOM at all. */
@@ -281,7 +319,15 @@ export function createModel(
   // used as an object KEY below. Narrowing it to an id the catalog already
   // contains means no attacker-chosen string ever names a property.
   const linkedComponent = catalog.components.find((c) => c.id === initial.c)
-  const selId = signal(linkedComponent?.id ?? catalog.components[0]?.id ?? '')
+  // The unfiltered tree, owners folded in. Built BEFORE the selection because
+  // the default selection is read off it.
+  const fullTree = mergeOwners(buildHierarchy(catalog.components))
+  // No link → the FIRST ROW THE SIDEBAR SHOWS, not `catalog.components[0]`.
+  // The two orders differ (a derived catalog lists nested folders first), and
+  // opening on a component three screens down the tree, with nothing
+  // highlighted where the eye starts, read as "nothing is selected".
+  const firstShown = browseOrder(fullTree, new Set())[0]
+  const selId = signal(linkedComponent?.id ?? firstShown ?? catalog.components[0]?.id ?? '')
 
   // The state a component OPENS on: its `Default` scenario's args, over the
   // control defaults.
@@ -383,30 +429,74 @@ export function createModel(
     const ids = visibleIds()
     return groups.map((g) => ({ ...g, items: g.items.filter((i) => ids.has(i.id)) })).filter((g) => g.items.length > 0)
   })
-  const fullTree = buildHierarchy(catalog.components)
-  const tree = computed(() => filterHierarchy(fullTree, visibleIds()))
-  // Collapsed rather than expanded state, so the default needs no
-  // initialisation pass: an unknown path is expanded.
-  const collapsed = signal<ReadonlySet<string>>(new Set())
+  const rawTree = buildHierarchy(catalog.components)
+  // Filter the RAW tree, then fold owners in — so an owner the filter hides
+  // leaves a plain folder behind rather than a row for a non-match.
+  const tree = computed(() => {
+    const ids = visibleIds()
+    return ids.size === total ? fullTree : mergeOwners(filterHierarchy(rawTree, ids))
+  })
+  // Collapsed rather than expanded state, so an unknown path is expanded.
+  // Part lists (owned folders) start collapsed: the tree opens as the list of
+  // COMPONENTS, and a part is one caret away — ~40 fewer rows to scan (and to
+  // mount) on a design-system-sized catalog.
+  const collapsed = signal<ReadonlySet<string>>(new Set(ownerPaths(fullTree)))
+  const filtering = computed(() => filter().trim() !== '')
+  const NONE: ReadonlySet<string> = new Set()
+  const shownCollapsed = computed(() => (filtering() ? NONE : collapsed()))
+  const isCollapsed = (path: string) => shownCollapsed().has(path)
   const toggleGroup = (path: string) => {
     const next = new Set(collapsed())
     if (next.has(path)) next.delete(path)
     else next.add(path)
     collapsed.set(next)
   }
+  // Reveal: whenever the selection changes (a link, ⌘K, ↑↓, a docs scenario
+  // link), open every folder above its row. Only on a CHANGE — collapsing the
+  // folder that holds the selection is a deliberate act and must stick.
+  const reveal = (id: string) => {
+    const need = ancestorPaths(fullTree, id).filter((p) => collapsed.peek().has(p))
+    if (need.length === 0) return
+    const next = new Set(collapsed.peek())
+    for (const p of need) next.delete(p)
+    collapsed.set(next)
+  }
+  reveal(selId.peek())
+  selId.subscribe(() => reveal(selId.peek()))
   const noResults = computed(() => tree().length === 0)
-  const browseIds = computed(() => browseOrder(tree(), collapsed()))
+  const matchCount = computed(() => visibleIds().size)
+  const browseIds = computed(() => browseOrder(tree(), shownCollapsed()))
 
+  // The scenario last APPLIED, per component. Any edit clears it — the canvas
+  // no longer shows the pinned state that scenario's verdict covered.
+  const applied = signal<Record<string, string>>({})
+  const clearApplied = (id: string) => {
+    if (!(id in applied.peek())) return
+    const next = { ...applied.peek() }
+    delete next[id]
+    applied.set(next)
+  }
   const setValue = (id: string, key: string, v: unknown) => {
     const cur = values()[id] ?? initialArgs(catalog.components.find((c) => c.id === id))
     values.set({ ...values(), [id]: { ...cur, [key]: v } })
+    clearApplied(id)
   }
   // Forget the edits; the component falls back to its opening scenario.
   const reset = () => {
     const next = { ...values() }
     delete next[selId()]
     values.set(next)
+    clearApplied(selId())
   }
+  const activeScenario = computed<string | null>(() => {
+    const id = selId()
+    const pinned = applied()[id]
+    if (pinned) return pinned
+    // No edits at all → the component is showing its opening state, which IS
+    // the `Default` scenario when it has one.
+    if (values()[id] !== undefined) return null
+    return sel()?.scenarios?.find((s) => s.name === 'Default')?.id ?? null
+  })
 
   const runPlay = async (compId: string, scenarioId: string) => {
     const comp = catalog.components.find((c) => c.id === compId)
@@ -437,40 +527,45 @@ export function createModel(
     const comp = catalog.components.find((c) => c.id === compId)
     const scenario = comp?.scenarios?.find((s) => s.id === scenarioId)
     if (!comp || !scenario) return
-    selId.set(compId)
-    // REPLACE the component's stored values with the scenario's args (not a
-    // merge — a scenario is a complete pinned state, and stale edits bleeding
-    // through would render something the verdict never covered). ALL of the
-    // args, not only the ones with an editable control: a `Tree` scenario is
-    // its `data`, and filtering to controls was how selecting it rendered an
-    // empty tree.
-    //
-    // EXCEPT the user's own words. A derived scenario pins the content SEED
-    // too (`state=danger` carries `children: "Button"`), so typing "Save" and
-    // then picking a state silently put "Button" back. A text control the user
-    // edited survives when the scenario does not VARY it — it carries the
-    // opening state's value, i.e. it is the seed, not the point of the state.
-    // A scenario that pins different content wins, and says so in Actions.
-    const next: Record<string, unknown> = { ...scenario.args }
-    const current = values()[compId]
-    if (current) {
-      const opening = initialArgs(comp)
-      const replaced: string[] = []
-      for (const ctrl of comp.controls) {
-        if (ctrl.type !== 'text') continue
-        const mine = current[ctrl.key]
-        if (typeof mine !== 'string') continue
-        const base = ctrl.key in opening ? opening[ctrl.key] : ctrl.default
-        if (mine === base) continue
-        const pinned = scenario.args[ctrl.key]
-        if (pinned === undefined || JSON.stringify(pinned) === JSON.stringify(base)) next[ctrl.key] = mine
-        else replaced.push(ctrl.key)
+    // One notification for the writes — the canvas, the controls and
+    // the sidebar's scenario marker all settle together.
+    batch(() => {
+      selId.set(compId)
+      // REPLACE the component's stored values with the scenario's args (not a
+      // merge — a scenario is a complete pinned state, and stale edits bleeding
+      // through would render something the verdict never covered). ALL of the
+      // args, not only the ones with an editable control: a `Tree` scenario is
+      // its `data`, and filtering to controls was how selecting it rendered an
+      // empty tree.
+      //
+      // EXCEPT the user's own words. A derived scenario pins the content SEED
+      // too (`state=danger` carries `children: "Button"`), so typing "Save" and
+      // then picking a state silently put "Button" back. A text control the user
+      // edited survives when the scenario does not VARY it — it carries the
+      // opening state's value, i.e. it is the seed, not the point of the state.
+      // A scenario that pins different content wins, and says so in Actions.
+      const next: Record<string, unknown> = { ...scenario.args }
+      const current = values()[compId]
+      if (current) {
+        const opening = initialArgs(comp)
+        const replaced: string[] = []
+        for (const ctrl of comp.controls) {
+          if (ctrl.type !== 'text') continue
+          const mine = current[ctrl.key]
+          if (typeof mine !== 'string') continue
+          const base = ctrl.key in opening ? opening[ctrl.key] : ctrl.default
+          if (mine === base) continue
+          const pinned = scenario.args[ctrl.key]
+          if (pinned === undefined || JSON.stringify(pinned) === JSON.stringify(base)) next[ctrl.key] = mine
+          else replaced.push(ctrl.key)
+        }
+        if (replaced.length > 0) {
+          logAction(`▶ ${scenario.name}`, `replaced your edit to ${replaced.join(', ')} with the scenario's`)
+        }
       }
-      if (replaced.length > 0) {
-        logAction(`▶ ${scenario.name}`, `replaced your edit to ${replaced.join(', ')} with the scenario's`)
-      }
-    }
-    values.set({ ...values(), [compId]: next })
+      values.set({ ...values(), [compId]: next })
+      applied.set({ ...applied.peek(), [compId]: scenarioId })
+    })
   }
 
   let actionSeq = 0
@@ -485,6 +580,13 @@ export function createModel(
   const panelW = signal(prefs.panelW ?? 352)
   const sidebarOpen = signal(prefs.sidebarOpen ?? !narrow)
   const panelOpen = signal(prefs.panelOpen ?? !narrow)
+  // Compact layout is its own state, not the desktop flags reinterpreted: a
+  // desktop preference of "sidebar open" must not open a drawer over the
+  // canvas the moment the same workbench is viewed on a phone.
+  const compact = signal(narrow)
+  const drawerOpen = signal(false)
+  const sheetOpen = signal(false)
+  const renderTick = signal(0)
   effect(() => {
     writePrefs({
       brand: brandId(),
@@ -695,10 +797,14 @@ export function createModel(
       scheduled = true
       const run = () => {
         scheduled = false
-        if (!previewEl) return
-        setA11y(analyzeA11y(previewEl))
-        previewEmpty.set(isEmpty(previewEl))
-        overlayOpen.set(hasAdoptedOverlay(previewEl))
+        const target = previewEl
+        if (!target) return
+        batch(() => {
+          setA11y(analyzeA11y(target))
+          previewEmpty.set(isEmpty(target))
+          overlayOpen.set(hasAdoptedOverlay(target))
+          renderTick.set(renderTick.peek() + 1)
+        })
       }
       if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run)
       else run()
@@ -744,6 +850,14 @@ export function createModel(
     const loc = location
     const hist = history
     let lastWritten: UrlState = initial
+    // What the workbench opens on with NO parameters — the first preset of
+    // each per-project family — so a link states only what differs from it.
+    const urlDefaults: UrlDefaults = {
+      viewport: viewports[0]?.id ?? 'full',
+      background: backgrounds[0]?.id ?? 'theme',
+      locale: locales[0]?.id ?? 'en',
+      role: roles[0]?.id ?? 'anonymous',
+    }
     effect(() => {
       // Only the EDITS travel in the link — the keys that differ from the
       // opening scenario. The scenario itself is reconstructable from the
@@ -763,7 +877,7 @@ export function createModel(
         query: queryState(),
         role: permissionSet(),
       }
-      if (!urlStateChanged(lastWritten, next)) return
+      if (!urlStateChanged(lastWritten, next, urlDefaults)) return
       lastWritten = next
       // `nextQuery`, because both obvious names are taken in this scope:
       // `query` is the search-box signal and `search` is the search function.
@@ -780,7 +894,7 @@ export function createModel(
         forQuery = { ...next }
         delete forQuery.c
       }
-      const nextQuery = serializeUrlState(forQuery)
+      const nextQuery = serializeUrlState(forQuery, urlDefaults)
       if (hasRoutes) {
         // An ABSOLUTE path, not the bare `?query` below. That form resolves
         // against the current directory, so once the URL is `/atlas/button/`
@@ -803,9 +917,9 @@ export function createModel(
     wrapperReads,
     wrapped: catalog.wrapped === true,
     viewports, backgrounds, locales, roles, viewportPreset, backgroundPreset, dir,
-    brand, theme, sel, vals, visibleGroups, tree, browseIds, collapsed, toggleGroup, noResults, a11y, previewEmpty,
+    brand, theme, sel, vals, visibleGroups, tree, browseIds, collapsed, isCollapsed, toggleGroup, noResults, matchCount, activeScenario, renderTick, a11y, previewEmpty,
     setValue, selectScenario, runPlay, reset, logAction, clearActions, search, searchHits, preview, searchRef, focusSearch, previewRef,
-    searchOpen, sidebarW, panelW, sidebarOpen, panelOpen,
+    searchOpen, sidebarW, panelW, sidebarOpen, panelOpen, compact, drawerOpen, sheetOpen,
   }
 }
 

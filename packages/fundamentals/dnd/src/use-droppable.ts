@@ -4,68 +4,59 @@ import {
   type Edge,
   extractClosestEdge,
 } from '@atlaskit/pragmatic-drag-and-drop-hitbox/closest-edge'
-import { batch, isServer, onCleanup, signal } from '@pyreon/reactivity'
-import type { DragData, DropEdge, UseDroppableOptions, UseDroppableResult } from './types'
+import { batch, isServer, signal } from '@pyreon/reactivity'
+import { bindElement } from './element-binding'
+import type {
+  DragData,
+  DropEdge,
+  DropLocation,
+  UseDroppableOptions,
+  UseDroppableResult,
+} from './types'
 
 /**
  * Make an element a drop target with signal-driven state.
  *
+ * Attach the returned `ref` to the element (works for elements that mount
+ * later or get swapped), or pass an `element` getter.
+ *
  * @example
  * ```tsx
- * let zoneEl: HTMLElement | null = null
- *
- * const { isOver, overEdge } = useDroppable({
- *   element: () => zoneEl,
- *   onDrop: (data) => handleDrop(data),
+ * const { ref, isOver, overEdge } = useDroppable({
+ *   onDrop: (data, { edge }) => handleDrop(data, edge),
  *   canDrop: (data) => data.type === "card",
  *   edges: ["top", "bottom"], // opt-in closest-edge detection
  * })
  *
- * <div ref={(el) => zoneEl = el} class={isOver() ? "bg-blue-50" : ""}>
+ * <div ref={ref} class={isOver() ? "bg-blue-50" : ""}>
  *   Drop here
  * </div>
  * ```
  */
-export function useDroppable<T extends DragData = DragData>(
-  options: UseDroppableOptions<T>,
+export function useDroppable<T extends DragData = DragData, TSource extends DragData = DragData>(
+  options: UseDroppableOptions<T, TSource>,
 ): UseDroppableResult {
-  if (isServer) return { isOver: () => false, overEdge: () => null }
+  if (isServer) return { isOver: () => false, overEdge: () => null, ref: () => {} }
 
   const isOver = signal(false)
   const overEdge = signal<DropEdge | null>(null)
-  let cleanup: (() => void) | undefined
-  let disposed = false
+  const edges = options.edges
+  const hasEdges = !!edges && edges.length > 0
 
-  function setup() {
-    // Unmounted before this deferred setup ran — don't register a target that
-    // onCleanup (already fired with `cleanup` undefined) can never tear down.
-    /* v8 ignore next — defensive disposed-during-setup guard */
-    if (disposed) return
-    // Defensive re-setup teardown: `setup` runs exactly once
-    // (`queueMicrotask(setup)`, never re-invoked), so `cleanup` is always
-    // undefined here — this branch never fires in the current single-shot
-    // design. Kept so a future re-setup trigger can't leak a double target.
-    /* v8 ignore next — defensive re-setup teardown; unreachable with single-shot queueMicrotask */
-    if (cleanup) cleanup()
+  const resolveData = (): DragData => {
+    if (!options.data) return {}
+    return typeof options.data === 'function' ? (options.data as () => T)() : options.data
+  }
 
-    const el = options.element()
-    if (!el) return
-
-    const edges = options.edges
-
-    const resolveData = (): DragData => {
-      if (!options.data) return {}
-      return typeof options.data === 'function' ? (options.data as () => T)() : options.data
-    }
-
-    cleanup = dropTargetForElements({
+  function register(el: HTMLElement): () => void {
+    return dropTargetForElements({
       element: el,
       getData: ({ input, element }) => {
         const data = resolveData()
         // Opt-in closest-edge detection — wraps the target data with
         // pdnd hitbox metadata so extractClosestEdge can read the live
         // edge on enter/drag.
-        if (edges && edges.length > 0) {
+        if (hasEdges) {
           return attachClosestEdge(data, { input, element, allowedEdges: edges as Edge[] })
         }
         return data
@@ -75,20 +66,20 @@ export function useDroppable<T extends DragData = DragData>(
       ...(options.sticky ? { getIsSticky: () => true } : {}),
       canDrop: ({ source }) => {
         if (!options.canDrop) return true
-        return options.canDrop(source.data as DragData)
+        return options.canDrop(source.data as TSource)
       },
       onDragEnter: ({ source, self }) => {
         // batch — isOver + overEdge settle in ONE notify pass for
         // subscribers reading both (matches useSortable's batching).
         batch(() => {
           isOver.set(true)
-          if (edges) overEdge.set(extractClosestEdge(self.data) as DropEdge | null)
+          if (hasEdges) overEdge.set(extractClosestEdge(self.data) as DropEdge | null)
         })
-        options.onDragEnter?.(source.data as DragData)
+        options.onDragEnter?.(source.data as TSource)
       },
       // Live edge tracking while the pointer moves over the target —
       // only meaningful (and only wired) when edges are configured.
-      ...(edges && edges.length > 0
+      ...(hasEdges
         ? {
             onDrag: ({ self }: { self: { data: Record<string | symbol, unknown> } }) => {
               overEdge.set(extractClosestEdge(self.data) as DropEdge | null)
@@ -102,22 +93,26 @@ export function useDroppable<T extends DragData = DragData>(
         })
         options.onDragLeave?.()
       },
-      onDrop: ({ source }) => {
+      onDrop: ({ source, self }) => {
+        // Capture WHERE the drop landed before the reset below clears the
+        // signal — `onDrop` used to receive only the source, so the edge a
+        // consumer needs to insert above/below was already gone.
+        const location: DropLocation = {
+          edge: hasEdges
+            ? ((extractClosestEdge(self.data) as DropEdge | null) ?? overEdge.peek())
+            : null,
+          data: resolveData(),
+        }
         batch(() => {
           isOver.set(false)
           overEdge.set(null)
         })
-        options.onDrop?.(source.data as DragData)
+        options.onDrop?.(source.data as TSource, location)
       },
     })
   }
 
-  queueMicrotask(setup)
+  const { ref } = bindElement('useDroppable', options.element, register)
 
-  onCleanup(() => {
-    disposed = true
-    if (cleanup) cleanup()
-  })
-
-  return { isOver, overEdge }
+  return { isOver, overEdge, ref }
 }

@@ -19,6 +19,12 @@ export const PreviewSurface = el
     // independently of the zoom level and of any future transform change.
     contain: 'layout',
     transition: `transform ${t.motion.base} ease, min-height ${t.motion.base} ease`,
+    // The surface's own edge. In light mode the stage, the frame and a
+    // `bgTheme` surface are all white, so without it the preview had no
+    // boundary at all — the component floated on an empty page.
+    borderRadius: t.radius.card,
+    border: t.hairline,
+    boxShadow: '0 1px 2px rgba(15,18,30,.06), 0 8px 24px -12px rgba(15,18,30,.18)',
   }))
   .sizes(() => ({
     z50: { transform: 'scale(.5)' },
