@@ -146,6 +146,22 @@ const SCENARIOS: { id: string; label: string; frameworks: string[] }[] = [
     label: 'charts — @pyreon/charts vs ECharts 6 (line, 1k / 100k points, 800×400 canvas)',
     frameworks: ['Pyreon (PlotChart)', 'ECharts 6', 'Pyreon (PlotChart, no a11y table)'].filter((f) => (NARROW ? NARROW.includes(f) : true)),
   },
+  {
+    // Frame-bounded timing (rAF → rendering step → first task + canvas
+    // readback) — see src/impl/scenario-charts-libs.ts for the window, the
+    // gate, and which library reduces points per pixel.
+    id: 'charts-libs',
+    label: 'charts — @pyreon/charts vs uPlot 1.6, Chart.js 4, Recharts 3 (800×300, first painted frame)',
+    frameworks: [
+      'Pyreon (PlotChart)',
+      'uPlot 1.6',
+      'Chart.js 4 (min-max decimation)',
+      'Recharts 3',
+      'Chart.js 4 (defaults, no decimation)',
+      'Pyreon (PlotChart, no a11y table)',
+      'Vanilla canvas (control)',
+    ].filter((f) => (NARROW ? NARROW.includes(f) : true)),
+  },
 ]
 
 /**
@@ -171,6 +187,12 @@ const NON_RANKING = new Set([
   'Pyreon (tpl append)',
   // Prices Pyreon's default offscreen data table, which ECharts does not ship.
   'Pyreon (PlotChart, no a11y table)',
+  // charts-libs: Chart.js WITHOUT its documented large-data config. The ranked
+  // Chart.js arm is the one with min-max decimation, because Pyreon and uPlot
+  // both reduce points per pixel by default.
+  'Chart.js 4 (defaults, no decimation)',
+  // Raw 2D stroke of every point, no axes — a drift control, not a competitor.
+  'Vanilla canvas (control)',
 ])
 
 interface SuiteResult {
@@ -288,7 +310,9 @@ try {
           // `waitForFunction(fn, arg, options)` — options is the THIRD argument.
           // Passed second, it was taken as `arg` and the 30s default applied.
           undefined,
-          { timeout: 300_000 },
+          // charts-libs cells are wall-budgeted (≤60s each), but Recharts at
+          // 1M points can spend minutes in one page.
+          { timeout: 1_200_000 },
         )
         const status = await page.evaluate(() => document.getElementById('status')?.textContent)
         if (!status?.includes('Done')) {
