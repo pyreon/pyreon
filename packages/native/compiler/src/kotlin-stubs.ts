@@ -1768,6 +1768,7 @@ class PyreonFlowState<T>(
   var fitViewOnLoad: Boolean = false,
   fitViewPadding: Double = 0.1,
   var autoHistory: Boolean = true,
+  var historyLimit: Double = 50.0,
   var deleteKeys: List<String>? = listOf("Delete", "Backspace"),
   var multiSelectionKey: String? = "shift",
   var selectionKey: String? = "shift",

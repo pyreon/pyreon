@@ -53,7 +53,8 @@ function printUsage(): void {
                                      re-checks one component and names WHICH check failed, dev serves the
                                      workbench, build emits a static site, verify-browser runs Chromium checks
     loom [args]                      Dependency observatory (delegates to @pyreon/loom): scan analyzes the
-                                     workspace fabric with a red-exit CI contract, dev serves the graph UI
+                                     workspace fabric with a red-exit CI contract, dev serves the observatory
+                                     UI, build prerenders it to a static site
     lathe [args]                     Spec-to-client generator (delegates to @pyreon/lathe): generate emits
                                      schemas/endpoints/queries from OpenAPI, check fails on stale output
     doctor [options]                 Project-wide health audit with 0-100 score.

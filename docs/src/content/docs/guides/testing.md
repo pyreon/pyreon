@@ -29,7 +29,7 @@ test('renders the greeting', () => {
 })
 ```
 
-`render(ui, options?)` mounts into an isolated container and returns bound queries + `container` / `unmount` / `debug`. `screen` exposes the same queries scoped to the whole document. Query kinds: `getByText`, `getByTestId`, `getByRole` (implicit + explicit ARIA roles, narrow by accessible `name`), `getByLabelText`, `getByPlaceholderText` — each with `queryBy` / `getAllBy` / `findBy` variants.
+`render(ui, options?)` mounts into an isolated container (a fresh `<div>` appended to `document.body` by default) and returns bound queries + `container` / `unmount` / `debug`. **The returned queries are bound to `document.body` by default, not to `container`** — same scope as `screen` — because `<Portal>` / Overlay / Modal / Toast / Dropdown render *outside* the container into `document.body`, and container-scoped queries would silently never find them. Scope to just the mounted tree with `within(result.container)` when you need it (e.g. asserting something is absent from your tree but present elsewhere). Query kinds: `getByText`, `getByTestId`, `getByRole` (implicit + explicit ARIA roles, narrow by accessible `name`), `getByLabelText`, `getByPlaceholderText` — each with `queryBy` / `getAllBy` / `findBy` variants.
 
 ## Interaction
 
