@@ -134,11 +134,49 @@ export function matchesComboWithKey(
 }
 
 /**
+ * The lower-cased key a keystroke dispatches under, or `null` when it must not
+ * be treated as a shortcut at all. Shared by the registry's dispatch and
+ * {@link matchesCombo}.
+ *
+ * @internal
+ *
+ * - No string `key`: Chrome fires synthetic `keydown`s WITHOUT one (autofill
+ *   picking a saved value). `event.key.toLowerCase()` threw out of the shared
+ *   listener, on every page, for every user with a saved password.
+ * - IME composition (`isComposing`, or the `'Process'` placeholder key): the
+ *   keystroke belongs to the candidate window — typing "ka" to compose か must
+ *   not fire the `k` and `a` shortcuts.
+ * - Option on macOS types a CHARACTER (`Option+S` → `key: 'ß'`), so
+ *   `alt+s` never matched on a Mac. When Alt is held and `key` is not a plain
+ *   letter/digit, the PHYSICAL key from `event.code` (`KeyS` → `s`,
+ *   `Digit1` → `1`) is used instead.
+ */
+export function normalizeEventKey(event: KeyboardEvent): string | null {
+  if (typeof event.key !== 'string') return null
+  if (event.isComposing || event.key === 'Process') return null
+  const key = event.key.toLowerCase()
+  if (event.altKey && !/^[a-z0-9]$/.test(key)) {
+    const physical = physicalKey(event.code)
+    if (physical !== null) return physical
+  }
+  return key
+}
+
+/** `KeyS` → `s`, `Digit1` → `1`; anything else → `null`. */
+function physicalKey(code: string): string | null {
+  const m = /^(?:Key([A-Z])|Digit([0-9]))$/.exec(code)
+  if (!m) return null
+  return (m[1] ?? m[2]!).toLowerCase()
+}
+
+/**
  * Check if a KeyboardEvent matches a KeyCombo. See {@link matchesComboWithKey}
- * for the Shift/symbol semantics.
+ * for the Shift/symbol semantics and {@link normalizeEventKey} for which
+ * keystrokes never match (key-less synthetic events, IME composition).
  */
 export function matchesCombo(event: KeyboardEvent, combo: KeyCombo): boolean {
-  return matchesComboWithKey(event, combo, event.key.toLowerCase())
+  const key = normalizeEventKey(event)
+  return key !== null && matchesComboWithKey(event, combo, key)
 }
 
 /**
