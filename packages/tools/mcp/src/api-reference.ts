@@ -2379,7 +2379,7 @@ const html = await renderToString(<App />)`,
   },
 
   'runtime-server/renderToStream': {
-    signature: 'renderToStream(root: VNode | null, options?: { signal?: AbortSignal; suspenseTimeoutMs?: number }): ReadableStream<string>',
+    signature: 'renderToStream(root: VNode | null, options?: { signal?: AbortSignal; suspenseTimeoutMs?: number; nonce?: string }): ReadableStream<string>',
     example: `import { renderToStream } from "@pyreon/runtime-server"
 
 return new Response(renderToStream(<App />, {
@@ -2388,7 +2388,7 @@ return new Response(renderToStream(<App />, {
 }), {
   headers: { "content-type": "text/html" },
 })`,
-    notes: 'Render to a Web-standard `ReadableStream<string>` with true progressive flushing — synchronous subtrees enqueue immediately, async component boundaries are awaited in order. Suspense boundaries stream OUT OF ORDER: the fallback is emitted inline at once, and the resolved children arrive later as a `<template>` + a tiny inline swap `<script>` that replaces the placeholder client-side — without blocking the rest of the page. Each call gets its own isolated ALS context stack. A Suspense boundary that does not resolve within the per-boundary timeout (default 30_000 ms, configurable via `options.suspenseTimeoutMs`; pass `Infinity` to disable) leaves its fallback in place and a dev-mode warning fires; a boundary that throws also leaves the fallback (no swap script emitted). Pass `options.signal` (e.g. `Request.signal`) to abort pending Suspense work when the consumer disconnects. See also: renderToString.',
+    notes: `Render to a Web-standard \`ReadableStream<string>\` with true progressive flushing — synchronous subtrees enqueue immediately, async component boundaries are awaited in order. Suspense boundaries stream OUT OF ORDER: the fallback is emitted inline at once, and the resolved children arrive later as a \`<template>\` + a tiny inline swap \`<script>\` that replaces the placeholder client-side — without blocking the rest of the page. Each call gets its own isolated ALS context stack. A Suspense boundary that does not resolve within the per-boundary timeout (default 30_000 ms, configurable via \`options.suspenseTimeoutMs\`; pass \`Infinity\` to disable) leaves its fallback in place and a dev-mode warning fires; a boundary that throws also leaves the fallback (no swap script emitted). Pass \`options.signal\` (e.g. \`Request.signal\`) to abort pending Suspense work when the consumer disconnects. Pass \`options.nonce\` (the per-request CSP nonce) and every inline \`<script>\`/\`<style>\` the stream emits carries it, so a strict \`script-src 'nonce-…'\` policy admits the Suspense swaps; \`@pyreon/server\` forwards \`ctx.locals.cspNonce\` automatically. See also: renderToString.`,
     mistakes: `- Assuming Suspense children arrive in source order — they are swapped in as each boundary resolves; the fallback ships first, resolved content can arrive in any order
 - Expecting \`@pyreon/head\` tags registered inside a Suspense child to reach the document \`<head>\` — the head is flushed in the shell BEFORE any boundary resolves, so async-loaded data does not contribute to it
 - Treating a timed-out boundary as an error — by design the fallback simply stays; only a dev-mode \`console.warn\` signals it. Tune \`options.suspenseTimeoutMs\` to match your SLA (5_000–10_000 typical for user-facing apps; \`Infinity\` to disable entirely for export jobs / reports)

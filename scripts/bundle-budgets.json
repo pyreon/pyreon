@@ -51,7 +51,7 @@
   "@pyreon/runtime-dom": 20261,
   "@pyreon/runtime-server": 7585,
   "@pyreon/rx": 2304,
-  "@pyreon/server": 3440,
+  "@pyreon/server": 3535,
   "@pyreon/sized-map": 512,
   "@pyreon/solid-compat": 4864,
   "@pyreon/state-tree": 6020,

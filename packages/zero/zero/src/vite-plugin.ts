@@ -77,6 +77,7 @@ import { seoPlugin } from "./seo";
 import { ssgPlugin } from "./ssg-plugin";
 import { ssrPlugin } from "./ssr-plugin";
 import { themeScript } from "./theme";
+import { clientFlagsPlugin } from "./client-flags-plugin";
 import { serializeServerConfig } from "./server-config";
 import type { ZeroConfig } from "./types";
 
@@ -923,7 +924,7 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 	// `configureServer` middleware). Each one internally no-ops when
 	// the mode doesn't match (defense-in-depth) but we omit them from
 	// the chain entirely for clarity — one less closeBundle to call.
-	const plugins: Plugin[] = [mainPlugin];
+	const plugins: Plugin[] = [mainPlugin, clientFlagsPlugin(userConfig, config.mode ?? "ssr")];
 	// Opt-in build perf advisor. Pushed BEFORE ssgPlugin so its closeBundle
 	// reads `dist/.vite/manifest.json` before the SSG plugin deletes it; in
 	// any mode where ssgPlugin joins the chain (ssg/ssr/isr) it defers
@@ -1386,10 +1387,15 @@ async function renderSsr(
 		server,
 		"@pyreon/server",
 	)) as unknown as typeof import("@pyreon/server");
+	// `@pyreon/zero/app` — just `createApp`. Loading `@pyreon/zero/server` here
+	// pulled the whole server package (vite plugins, SSG, ISR, fonts, OG
+	// images, zod, vite itself) into the dev SSR graph for one function:
+	// measured 141 modules against 68, plus a font-fallback warning in every
+	// dev session.
 	const appMod = (await ssrLoadModuleQuiet(
 		server,
-		"@pyreon/zero/server",
-	)) as unknown as typeof import("./server");
+		"@pyreon/zero/app",
+	)) as unknown as typeof import("./app");
 	const { App, router: routerInst } = appMod.createApp({
 		routes: routes as import("@pyreon/router").RouteRecord[],
 		routerMode: "history",
