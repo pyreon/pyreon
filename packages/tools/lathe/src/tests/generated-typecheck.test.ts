@@ -274,6 +274,11 @@ describe('generated output typechecks under strict TypeScript', () => {
  * - `Blank` / `Dict`: an object with no fields, and a dictionary. zod infers
  *   `Record<string, never>` for `z.object({})`, and the faker factory spread
  *   `Partial<Dict>` into a `Dict`, which does not typecheck.
+ * - `postCustomer` / `deleteCustomer` / `uploadFile`: Stripe-shaped FORM and
+ *   multipart bodies -- a model ref (an `interface`, with no implicit index
+ *   signature), a free-form value (`unknown`), a dictionary-or-empty-string
+ *   union, and an empty closed object. None of those fit
+ *   `Record<string, FormValue>` as rendered; Stripe's hooks carried 250 errors.
  * - `Animal` / `getAnimal`: a discriminated union over NAMED models, as a
  *   model and as an inline response (GitHub's `GET /user`). A model const is
  *   typed `Schema<Cat>`, which the discriminated-union signature rejects.
@@ -318,6 +323,45 @@ paths:
       operationId: getZoo
       tags: [a]
       responses: { '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Zoo' } } } } }
+  /v1/customers/{customer}:
+    post:
+      operationId: postCustomer
+      tags: [c]
+      parameters: [{ name: customer, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            encoding: { address: { style: deepObject, explode: true }, metadata: { style: deepObject, explode: true } }
+            schema:
+              type: object
+              properties:
+                address: { $ref: '#/components/schemas/Address' }
+                metadata:
+                  anyOf:
+                    - { type: object, additionalProperties: { type: string } }
+                    - { type: string, enum: [''] }
+                expand: { type: array, items: { type: string } }
+                invoice_settings: { type: object, properties: { custom: {}, footer: { type: string } } }
+                anything: {}
+      responses: { '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Customer' } } } } }
+    delete:
+      operationId: deleteCustomer
+      tags: [c]
+      parameters: [{ name: customer, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema: { type: object, properties: {}, additionalProperties: false }
+      responses: { '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Customer' } } } } }
+  /v1/files:
+    post:
+      operationId: uploadFile
+      tags: [c]
+      requestBody:
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/Upload' }
+      responses: { '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Customer' } } } } }
   /shapes:
     get:
       operationId: getShape
@@ -341,6 +385,8 @@ components:
             - { type: object, required: [w], properties: { w: { type: number } } }
     Pets: { type: array, items: { $ref: '#/components/schemas/Pet' } }
     Mark: { type: string, enum: [X, O] }
+    Address: { type: object, properties: { city: { type: string }, line1: { type: string }, meta: {} } }
+    Upload: { type: object, required: [file], properties: { file: { type: string, format: binary }, purpose: { type: string }, address: { $ref: '#/components/schemas/Address' } } }
     Blank: { type: object, properties: {} }
     Dict: { type: object, additionalProperties: { type: array, items: { type: string } } }
     Holder: { type: object, required: [blank, dict], properties: { blank: { $ref: '#/components/schemas/Blank' }, dict: { $ref: '#/components/schemas/Dict' } } }
@@ -382,6 +428,12 @@ describe('every plugin typechecks over the shapes that broke on real specs', () 
       expect(errors, errors.join('\n')).toEqual([])
     })
   }
+  // The form / multipart value type comes from the ADAPTER runtime here, not
+  // `@pyreon/http` -- the import has to follow the client.
+  it('client=fetch (schemas, client, queries)', () => {
+    const errors = diagnose('fetch', 'pyreon', SHAPES, ['schemas', 'client', 'queries'], 'shapes-fetch')
+    expect(errors, errors.join('\n')).toEqual([])
+  })
 })
 
 /**

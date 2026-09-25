@@ -300,11 +300,65 @@ export function bodyArg(body: IrBody): 'json' | 'form' | 'multipart' | 'body' {
 function bodyTs(body: IrBody, models: ReadonlyMap<string, IrType>): string {
   if (body.encoding === 'text') return 'string'
   if (body.encoding === 'binary') return 'Blob | ArrayBuffer'
-  // In a multipart body a `binary` string is a FILE. A model named by a ref
-  // renders its binary fields as `string` in `schemas.ts` (a response never
-  // carries a Blob), so a ref that reaches one is expanded here.
-  const t = body.encoding === 'multipart' ? expandFileRefs(body.type, models, new Set()) : body.type
-  return tsType(t, 0, false, false, body.encoding === 'multipart')
+  if (body.encoding === 'form' || body.encoding === 'multipart') {
+    // An ENCODED body is typed as what the encoder accepts. `@pyreon/http`
+    // (and the adapter runtime) take `Record<string, FormValue>` for `form`,
+    // whose object branch is an index signature -- and two things in a spec's
+    // body do not fit one: a model named by a ref (rendered as an `interface`,
+    // which has no implicit index signature) and a value of unknown shape
+    // (`unknown`). Stripe's form bodies carry both on almost every mutation,
+    // which was 250 type errors in its generated hooks. So refs are inlined
+    // and unknown becomes `FormValue` -- the precise shape, spelled so the
+    // encoder's type accepts it, with nothing loosened to `any`.
+    return tsType(
+      encodableBody(body.type, models, new Set()),
+      0,
+      false,
+      false,
+      body.encoding === 'multipart',
+      'Record<string, FormValue>',
+      'FormValue',
+    )
+  }
+  return tsType(expandFileRefs(body.type, models, new Set()), 0, false, false, false)
+}
+
+/**
+ * A form / multipart body with every model ref INLINED (see `bodyTs`).
+ *
+ * A ref that closes a cycle cannot be inlined -- there is no finite shape --
+ * and a form body cannot express recursion anyway, so it becomes an unknown
+ * value, i.e. any `FormValue`.
+ */
+function encodableBody(type: IrType, models: ReadonlyMap<string, IrType>, expanding: ReadonlySet<string>): IrType {
+  switch (type.kind) {
+    case 'ref': {
+      const target = models.get(type.name)
+      if (!target || expanding.has(type.name)) return { kind: 'unknown', reason: 'recursive form value' }
+      return encodableBody(target, models, new Set([...expanding, type.name]))
+    }
+    case 'array':
+      return { ...type, items: encodableBody(type.items, models, expanding) }
+    case 'nullable':
+      return { kind: 'nullable', inner: encodableBody(type.inner, models, expanding) }
+    case 'union':
+      return { ...type, options: type.options.map((o) => encodableBody(o, models, expanding)) }
+    case 'object':
+      return {
+        ...type,
+        fields: type.fields.map((f) => ({ ...f, type: encodableBody(f.type, models, expanding) })),
+        additional: type.additional ? encodableBody(type.additional, models, expanding) : undefined,
+      }
+    default:
+      return type
+  }
+}
+
+/** The body type whose model refs a generated file must import. */
+function bodyRefType(body: IrBody, models: ReadonlyMap<string, IrType>): IrType {
+  return body.encoding === 'form' || body.encoding === 'multipart'
+    ? encodableBody(body.type, models, new Set())
+    : expandFileRefs(body.type, models, new Set())
 }
 
 function hasBinary(type: IrType, models: ReadonlyMap<string, IrType>, seen: Set<string>): boolean {
@@ -480,7 +534,7 @@ function queryResultType(op: IrOperation): string {
 }
 
 /** WEB layout: `queries.ts` — reactive hooks, one per operation. */
-export function emitWebQueries(doc: IrDocument): SourceFile[] {
+export function emitWebQueries(doc: IrDocument, client: ClientName = 'pyreon'): SourceFile[] {
   const files: SourceFile[] = []
   const modelTypes = new Map(doc.models.map((m) => [m.name, m.type]))
   for (const [tag, ops] of byTag(doc)) {
@@ -501,7 +555,7 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
     for (const op of ops) {
       // A query's data type is read off its ENDPOINT (below), so its response
       // models are not named here -- only a mutation's body is.
-      if (isMutation(op)) collectRefs(op.body ? expandFileRefs(op.body.type, modelTypes, new Set()) : undefined, typeImports)
+      if (isMutation(op)) collectRefs(op.body ? bodyRefType(op.body, modelTypes) : undefined, typeImports)
       // A PARAMETER's schema can be a `$ref` too - GitHub's spec does this
       // heavily (`AlertNumber`, `CodeScanningRef`). Collecting only the
       // response and body left those names used in the args type and never
@@ -513,6 +567,11 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
 
     for (const op of ops) {
       const args = argsType(op, modelTypes)
+      // An encoded body is typed through the encoder's own value type, which
+      // lives in `@pyreon/http` -- or in the generated adapter client.
+      if (args?.includes('FormValue')) {
+        f.importType(client === 'pyreon' ? '@pyreon/http' : relativeSpecifier(path, CLIENT_FILE), 'FormValue')
+      }
       const hook = `use${typeIdent(op.id)}`
       // The data type is the ENDPOINT's response type, not a second rendering
       // of the IR. A separately rendered `tsType(response)` disagreed with the

@@ -61,6 +61,10 @@ export interface SchemaExprOptions {
  * is spelled: what the schema library infers for `object({})`. zod strips
  * unknown keys and infers `Record<string, never>`; `@pyreon/validate` infers
  * a type `Record<string, unknown>` agrees with.
+ *
+ * `unknownType` is how a value of unknown shape is spelled -- `unknown`
+ * everywhere except a form / multipart body, where it is what the encoder
+ * accepts (`FormValue`): `unknown` is not assignable to it.
  */
 export function tsType(
   type: IrType,
@@ -69,6 +73,7 @@ export function tsType(
   native = false,
   files = false,
   emptyObject = 'Record<string, unknown>',
+  unknownType = 'unknown',
 ): string {
   switch (type.kind) {
     case 'string':
@@ -84,36 +89,36 @@ export function tsType(
     case 'null':
       return 'null'
     case 'unknown':
-      return 'unknown'
+      return unknownType
     case 'ref':
       return type.name
     case 'nullable': {
-      const inner = tsType(type.inner, depth, widenEnums, native, files, emptyObject)
+      const inner = tsType(type.inner, depth, widenEnums, native, files, emptyObject, unknownType)
       return `${inner} | null`
     }
     case 'array': {
-      const inner = tsType(type.items, depth + 1, widenEnums, native, files, emptyObject)
+      const inner = tsType(type.items, depth + 1, widenEnums, native, files, emptyObject, unknownType)
       // `A | B[]` parses as `A | (B[])`, so a union element needs parens.
       return /[|&]/.test(inner) ? `(${inner})[]` : `${inner}[]`
     }
     case 'union':
-      return type.options.map((o) => tsType(o, depth + 1, widenEnums, native, files, emptyObject)).join(' | ')
+      return type.options.map((o) => tsType(o, depth + 1, widenEnums, native, files, emptyObject, unknownType)).join(' | ')
     case 'object': {
       if (type.fields.length === 0) {
         return type.additional
-          ? `Record<string, ${tsType(type.additional, depth + 1, widenEnums, native, files, emptyObject)}>`
+          ? `Record<string, ${tsType(type.additional, depth + 1, widenEnums, native, files, emptyObject, unknownType)}>`
           : emptyObject
       }
       const pad = '  '.repeat(depth + 1)
       const close = '  '.repeat(depth)
       const body = type.fields
-        .map((f) => `${pad}${propKey(f.name)}${f.required ? '' : '?'}: ${fieldTs(f, depth + 1, widenEnums, native, files, emptyObject)}`)
+        .map((f) => `${pad}${propKey(f.name)}${f.required ? '' : '?'}: ${fieldTs(f, depth + 1, widenEnums, native, files, emptyObject, unknownType)}`)
         .join('\n')
       if (type.additional && !native) {
         // An index signature must admit every declared property's type too.
         const values = new Set([
-          tsType(type.additional, depth + 1, widenEnums, native, files, emptyObject),
-          ...type.fields.map((f) => fieldTs(f, depth + 1, widenEnums, native, files, emptyObject)),
+          tsType(type.additional, depth + 1, widenEnums, native, files, emptyObject, unknownType),
+          ...type.fields.map((f) => fieldTs(f, depth + 1, widenEnums, native, files, emptyObject, unknownType)),
         ])
         return `{\n${body}\n${close}} & Record<string, ${[...values].join(' | ')}>`
       }
@@ -140,8 +145,9 @@ function fieldTs(
   native: boolean,
   files = false,
   emptyObject = 'Record<string, unknown>',
+  unknownType = 'unknown',
 ): string {
-  const base = tsType(field.type, depth, widenEnums, native, files, emptyObject)
+  const base = tsType(field.type, depth, widenEnums, native, files, emptyObject, unknownType)
   // `exactOptionalPropertyTypes` is on across this repo and in the consumer
   // presets, where `x?: number` and `x?: number | undefined` are DIFFERENT
   // types. The schema infers the second, so the emitted type must say it — or

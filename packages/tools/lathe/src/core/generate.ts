@@ -89,7 +89,7 @@ export function generate(
     for (const f of emitWebEndpoints(doc, config.validator)) push(f)
   }
   if (has('queries')) {
-    for (const f of emitWebQueries(doc)) push(f)
+    for (const f of emitWebQueries(doc, config.client)) push(f)
     push(emitKeys(doc))
   }
   if (has('mocks')) push(emitMocks(doc, config.client))
