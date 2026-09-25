@@ -98,15 +98,19 @@ describe('the OAI petstore shape, through the real compiler', () => {
       }
     })
 
-    it.skipIf(!isKotlincAvailable())(`${validator}: the Kotlin module compiles`, () => {
-      const r = validateKotlin(transform(mod?.contents ?? '', { target: 'kotlin' }).code)
-      expect(r.ok, String((r as { error?: string }).error ?? '')).toBe(true)
+    describe.skipIf(!isKotlincAvailable())('kotlinc', () => {
+      it(`${validator}: the Kotlin module compiles`, () => {
+        const r = validateKotlin(transform(mod?.contents ?? '', { target: 'kotlin' }).code)
+        expect(r.ok, String((r as { error?: string }).error ?? '')).toBe(true)
+      })
     })
 
-    it.skipIf(!isSwiftcAvailable())(`${validator}: Swift no longer fails on the schema or the model name`, () => {
-      const r = validateSwiftWithStubs(transform(mod?.contents ?? '', { target: 'swift' }).code)
-      const errors = String((r as { error?: string }).error ?? '')
-      expect(errors).not.toMatch(/invalid redeclaration|cannot find 'zodSchema'|cannot find 's' in scope|cannot find type 'Pets'/)
+    describe.skipIf(!isSwiftcAvailable())('swiftc', () => {
+      it(`${validator}: Swift no longer fails on the schema or the model name`, () => {
+        const r = validateSwiftWithStubs(transform(mod?.contents ?? '', { target: 'swift' }).code)
+        const errors = String((r as { error?: string }).error ?? '')
+        expect(errors).not.toMatch(/invalid redeclaration|cannot find 'zodSchema'|cannot find 's' in scope|cannot find type 'Pets'/)
+      })
     })
   }
 })
