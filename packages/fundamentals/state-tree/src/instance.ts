@@ -63,6 +63,26 @@ function deepMerge(target: unknown, source: unknown): unknown {
   return out
 }
 
+/**
+ * Deep-clone the schema-mode reset baseline. `structuredClone` preserves Date /
+ * Map / Set / bigint / undefined / typed arrays; per-field fallback to the value
+ * itself when a field is not structured-cloneable (a function, a class instance
+ * with private state) — reset then restores that reference, which is the best
+ * available answer rather than a throw at `.create()` time.
+ */
+function cloneResetBaseline(source: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const key of Object.keys(source)) {
+    const value = source[key]
+    try {
+      out[key] = structuredClone(value)
+    } catch {
+      out[key] = value
+    }
+  }
+  return out
+}
+
 // ─── createInstance ───────────────────────────────────────────────────────────
 
 /**
@@ -199,9 +219,12 @@ export function createInstance(
     } else {
       allocationSource = result.value as Record<string, unknown>
     }
-    // Capture the parsed-initial for `reset`. JSON clone ensures
-    // subsequent in-place mutations don't poison the reset value.
-    initialSnapshotForReset = JSON.parse(JSON.stringify(allocationSource))
+    // Capture the parsed-initial for `reset`. A deep clone ensures subsequent
+    // in-place mutations (`self.tags().add(x)`) don't poison the reset value.
+    // `structuredClone`, not a JSON round-trip: JSON turned a Date into a
+    // string, a Map/Set into `{}`, dropped `undefined`, and THREW on bigint —
+    // so a schema with any of those made `reset()` fail or corrupt state.
+    initialSnapshotForReset = cloneResetBaseline(allocationSource)
   } else {
     // Plain mode — STRUCTURAL source is `config.state` (keys + ModelDef
     // sentinels). Caller's `initial` is consulted per-key in the loop.
@@ -237,44 +260,71 @@ export function createInstance(
       }
     }
   }
-  // Upward patch/snapshot PROPAGATION for array/object-held model children (the
-  // headline `todos: Todo[]` composition). A field-nested model (`isModelDef`)
-  // is wired once at creation below; array/object children reach the instance
-  // via `scanForChildren` (parent pointer only), so without this a mutation
-  // inside `self.todos()[0]` never fired the parent's onPatch/onSnapshot (stale
-  // persistence) and `destroy(parent)` never tore them down (leak). `path` is
-  // the field's `/key`; propagation prefixes it exactly like the field-nested
-  // branch. Per-key disposal + `meta.children` reconciliation on every re-`.set`
-  // prevents a Class-D listener pile-up and keeps `destroy` from tearing down
-  // instances no longer in the tree.
-  const childWiring = new Map<string, { unsubs: Array<() => void>; kids: object[] }>()
-  const wireContainerChildPropagation = (value: unknown, key: string, path: string): void => {
-    // Dispose the PREVIOUS set's wiring for this key FIRST — regardless of the
+  // Upward patch/snapshot PROPAGATION for the model children a field holds — a
+  // field-nested model (`profile: Profile`, an `isModelDef` field) or model
+  // instances held in an array / plain-object CONTAINER (the headline
+  // `todos: Todo[]` composition). `path` is the field's `/key`; propagation
+  // prefixes it. The wiring is disposed and REBUILT on every write to the field,
+  // so:
+  //   - a REPLACED child (`app.profile.set(P.create())`) is wired — its writes
+  //     reach the parent's onPatch / onSnapshot / snapshot cache;
+  //   - the DETACHED old child is unwired — it can no longer emit phantom
+  //     `/profile/name` patches on a parent it no longer belongs to;
+  //   - `meta.children` (what `destroy(parent)` tears down) tracks exactly the
+  //     children currently held;
+  //   - a detached node's `parent` pointer is cleared, so getParent / getRoot /
+  //     getPath stop reporting a stale ancestor.
+  // A bare model written into a PLAIN (non-model-typed) field keeps its
+  // parent-only behaviour: it is parented (and un-parented on detach) but not
+  // propagated or owned — such fields can legitimately form cycles
+  // (`a.child.set(b); b.child.set(a)`), where propagation would recurse forever.
+  // Per-key disposal prevents a Class-D listener pile-up.
+  const childWiring = new Map<string, { unsubs: Array<() => void>; attached: object[] }>()
+  // Called after the current key's entry was deleted, so every remaining entry
+  // belongs to ANOTHER field.
+  const heldByOtherKey = (node: object): boolean => {
+    for (const w of childWiring.values()) if (w.attached.includes(node)) return true
+    return false
+  }
+  const wireChildPropagation = (
+    value: unknown,
+    key: string,
+    path: string,
+    ownsDirectChild: boolean,
+  ): void => {
+    const direct = isModelInstance(value)
+    const attached = direct ? [value as object] : collectModelChildren(value)
+    // Dispose the PREVIOUS write's wiring for this key FIRST — regardless of the
     // new value's shape (the field may have gone from an array to null/scalar).
     const prev = childWiring.get(key)
     if (prev) {
       for (const unsub of prev.unsubs) unsub()
-      for (const kid of prev.kids) meta.children.delete(kid)
       childWiring.delete(key)
+      for (const node of prev.attached) {
+        if (attached.includes(node) || heldByOtherKey(node)) continue
+        meta.children.delete(node)
+        // Clear the parent pointer — but only if it still points at US: the node
+        // may already have been attached to another parent (a move).
+        const nodeMeta = instanceMeta.get(node)
+        if (nodeMeta && nodeMeta.parent === instance) {
+          delete nodeMeta.parent
+          delete nodeMeta.parentKey
+        }
+      }
     }
-    // Wire model-instance children held in an array / plain-object CONTAINER.
-    // A direct model value is either the `isModelDef` field (already wired at
-    // creation) or a bare model on a plain field (keeps parent-only behaviour) —
-    // both outside this gap, so skip it. `collectModelChildren` returns [] for a
-    // scalar/null, so the array/object containers are all that remain.
-    if (isModelInstance(value)) return
-    const kids = collectModelChildren(value)
-    if (kids.length === 0) return
+    if (attached.length === 0) return
     const unsubs: Array<() => void> = []
-    for (const kid of kids) {
-      meta.children.add(kid)
-      // Disposal (above) removes this listener when the key is re-set, so a
-      // detached child can't emit — no stale-emit guard needed here.
-      unsubs.push(
-        onPatch(kid, (patch) => meta.emitPatch({ ...patch, path: path + patch.path })),
-      )
+    if (!direct || ownsDirectChild) {
+      for (const kid of attached) {
+        meta.children.add(kid)
+        // Disposal (above) removes this listener when the key is re-set, so a
+        // detached child can't emit — no stale-emit guard needed here.
+        unsubs.push(
+          onPatch(kid, (patch) => meta.emitPatch({ ...patch, path: path + patch.path })),
+        )
+      }
     }
-    childWiring.set(key, { unsubs, kids })
+    childWiring.set(key, { unsubs, attached })
   }
 
   for (const [key, defaultValue] of Object.entries(allocationSource)) {
@@ -309,8 +359,9 @@ export function createInstance(
     }
 
     let rawSig: Signal<unknown>
+    const ownsDirectChild = !isSchemaMode && isModelDef(defaultValue)
 
-    if (!isSchemaMode && isModelDef(defaultValue)) {
+    if (ownsDirectChild) {
       // Plain-mode nested model — instantiate from caller's snapshot for
       // this key (or empty for defaults).
       const nestedInitial =
@@ -318,18 +369,14 @@ export function createInstance(
           ? (callerOverride as Record<string, unknown>)
           : {}
       const nestedInstance = createInstance(defaultValue._config, nestedInitial, defaultValue)
-      // Track the child so `destroy(parent)` tears down the whole subtree.
-      meta.children.add(nestedInstance)
       // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
       rawSig = signal(nestedInstance)
 
       // Capture the nested SNAPSHOT (not the live instance) for reset.
       initialSnapshotForReset[key] = nestedInitial
-
-      // Propagate nested patches upward with the key as path prefix.
-      onPatch(nestedInstance, (patch) => {
-        meta.emitPatch({ ...patch, path: path + patch.path })
-      })
+      // Child tracking + upward patch propagation are wired by
+      // `wireChildPropagation` below (initial value) and re-wired on every
+      // subsequent write — NOT once here, which left a replaced child unwired.
     } else {
       // Plain leaf OR schema-mode field.
       const value = isSchemaMode ? defaultValue : hasCallerOverride ? callerOverride : defaultValue
@@ -354,7 +401,7 @@ export function createInstance(
         // self-invalidation for a leaf write when this instance has no listeners.
         meta.snapshotCache = undefined
         scanForChildren(v, instance, key)
-        wireContainerChildPropagation(v, key, path)
+        wireChildPropagation(v, key, path, ownsDirectChild)
       },
     )
     instance[key] = tracked
@@ -362,7 +409,7 @@ export function createInstance(
     // afterSet didn't fire) — attaches field-nested children + any model
     // instances in an initial array/object, and wires their upward propagation.
     scanForChildren(rawSig.peek(), instance, key)
-    wireContainerChildPropagation(rawSig.peek(), key, path)
+    wireChildPropagation(rawSig.peek(), key, path, ownsDirectChild)
   }
 
   // ── 3. Schema-mode helpers ────────────────────────────────────────────────
@@ -479,7 +526,10 @@ export function createInstance(
       if (!guardAlive('reset')) return
       // initialSnapshotForReset is the PARSED value captured at .create()
       // time. Re-parse to apply any defaults that depend on call time.
-      const result = parseFn(initialSnapshotForReset)
+      // Clone per call: a parser may hand back the SAME Set/Map/array it was
+      // given, and an in-place mutation after this reset would otherwise
+      // poison the baseline for the NEXT reset.
+      const result = parseFn(cloneResetBaseline(initialSnapshotForReset))
       if (result instanceof Promise) {
         throw new Error(
           '[Pyreon] model.reset(): schema returned a Promise. Async schemas unsupported.',
