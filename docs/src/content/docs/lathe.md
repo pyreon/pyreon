@@ -539,6 +539,12 @@ else if (err?.matched === 'default') report(err.body.code) // Problem
 getPetById({ params: { petId: 1 } }).catch((e: EndpointError<typeof getPetById>) => …)
 ```
 
+Declared errors are part of the contract `api-surface.json` records: removing a
+key or changing its body is **breaking** (a branch narrowing on it stops
+running, or reads the old shape); adding one is additive — except when a `4XX`
+or `default` already covered that status, which re-routes those responses to
+the new key and is breaking too.
+
 A body that fails its schema is still the same HTTP failure, with `matched`
 undefined and the raw body — replacing it with a schema error would hide what
 the server said. A network failure, a timeout or a cancellation has no

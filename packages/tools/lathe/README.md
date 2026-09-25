@@ -977,6 +977,9 @@ server's:
 | request param added as required | breaking | existing calls omit it |
 | request param removed | additive | the request still goes out; the server ignores it |
 | operation removed or moved | breaking | the call site no longer resolves |
+| error key removed (`404` no longer declared) | breaking | the branch narrowing on `err.matched === '404'` never runs; the body arrives untyped |
+| error body changed | breaking | that branch reads fields of the old shape |
+| error key added | additive | a new branch to narrow on — **breaking** when a `4XX` or `default` already covered the status, because those responses now match the new key instead of the one the client narrows on |
 
 `--fail-on-breaking` exits non-zero when any breaking change is present. Pair it
 with `generate` rather than `check`: the baseline moves when output is written,
