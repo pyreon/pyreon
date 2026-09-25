@@ -64,8 +64,36 @@ export class RequestError extends Error {
 export class HttpError extends RequestError {
   readonly response: HttpResponse
   readonly status: number
+  /**
+   * The decoded error body: parsed JSON when it parses, the raw text when it
+   * does not (an HTML error page is more useful as its text than as a parse
+   * failure), `undefined` when empty or unreadable. Read from a CLONE, so
+   * `response.raw` can still be read by the caller.
+   *
+   * Typed `unknown` here; an endpoint that declares `errors` narrows it --
+   * see {@link HttpError.matched} and `HttpErrorOf`.
+   */
+  readonly body: unknown
+  /**
+   * The `errors` key {@link HttpError.body} validated against -- `'404'`, a
+   * range such as `'4XX'`, or `'default'` -- so the body has that schema's
+   * type. `undefined` when nothing was declared for the status or the body
+   * did not match; the body is then the raw decoded value.
+   *
+   * It discriminates the typed union exactly, where `status` cannot: a
+   * `default` schema covers every undeclared status, so `status === 404`
+   * alone still admits it.
+   *
+   * @example
+   * ```ts
+   * getUser({ params: { id } }).catch((err: EndpointError<typeof getUser>) => {
+   *   if (err.matched === '404') console.log(err.body.message)
+   * })
+   * ```
+   */
+  readonly matched: string | undefined
 
-  constructor(response: HttpResponse) {
+  constructor(response: HttpResponse, body?: unknown, matched?: string) {
     super(
       `[Pyreon] ${describeRequest(response.request)} — HTTP ${response.status}`,
       response.request,
@@ -73,30 +101,32 @@ export class HttpError extends RequestError {
     this.name = 'HttpError'
     this.response = response
     this.status = response.status
+    this.body = body
+    this.matched = matched
   }
 }
 
 /** A 4xx response. */
 export class ClientError extends HttpError {
-  constructor(response: HttpResponse) {
-    super(response)
+  constructor(response: HttpResponse, body?: unknown, matched?: string) {
+    super(response, body, matched)
     this.name = 'ClientError'
   }
 }
 
 /** A 5xx response. */
 export class ServerError extends HttpError {
-  constructor(response: HttpResponse) {
-    super(response)
+  constructor(response: HttpResponse, body?: unknown, matched?: string) {
+    super(response, body, matched)
     this.name = 'ServerError'
   }
 }
 
 /** Build the most specific `HttpError` subclass for a status. */
-export function httpErrorFor(response: HttpResponse): HttpError {
-  if (response.status >= 500) return new ServerError(response)
-  if (response.status >= 400) return new ClientError(response)
-  return new HttpError(response)
+export function httpErrorFor(response: HttpResponse, body?: unknown, matched?: string): HttpError {
+  if (response.status >= 500) return new ServerError(response, body, matched)
+  if (response.status >= 400) return new ClientError(response, body, matched)
+  return new HttpError(response, body, matched)
 }
 
 /** The request exceeded its `timeout`. */

@@ -98,6 +98,31 @@ useMutation(createUser.mutation({ invalidates: [listUsers] }))
 `:placeholders`**, and its keys come from the path literal — so
 `{ params: { userId } }` against `/users/:id` is a compile error.
 
+## Request bodies
+
+One option per encoding; they are mutually exclusive, and passing two throws.
+
+```ts
+api.post('/users', { json: { name: 'Ada' } })               // application/json
+api.post('/v1/customers', {                                  // x-www-form-urlencoded
+  form: { email: 'a@b.c', metadata: { plan: 'pro' } },
+  formEncoding: { metadata: { style: 'deepObject', explode: true } },
+})                                                           // email=a%40b.c&metadata%5Bplan%5D=pro
+api.post('/files', { multipart: { file, purpose: 'x' } })   // FormData; Blob/File = file part
+api.post('/raw', { body: bytes, headers: { 'content-type': 'application/octet-stream' } })
+```
+
+`form` follows OpenAPI's Encoding Object per field: the default `form` + `explode` repeats an array's key, `deepObject` writes brackets (`items[0][price]=…`, what Stripe declares), `spaceDelimited` / `pipeDelimited` join arrays. `null` / `undefined` fields are dropped, never sent as text. `encodeForm`, `encodeMultipart` and `encodeCookies` are exported for transports that need the same bytes.
+
+A header record may carry numbers, booleans and `undefined` — an `undefined` header is omitted rather than sent as `"undefined"`. `cookies: { session }` writes a `Cookie` header; a browser drops that header silently (it is forbidden from script), so there use `credentials: 'include'`. On an endpoint, declared `headers` and per-call `headers` MERGE, and `formEncoding` is declared once:
+
+```ts
+const createCustomer = api.endpoint('POST /v1/customers', {
+  formEncoding: { metadata: { style: 'deepObject', explode: true } },
+})
+await createCustomer({ form: { metadata: { plan: 'pro' } }, headers: { 'idempotency-key': key } })
+```
+
 ## Middleware
 
 ```ts
@@ -131,7 +156,7 @@ registry and no `eject()` handle to leak.
 
 ```text
 RequestError                  base — catch this to cover everything
-├── HttpError                 non-2xx (carries .status and .response)
+├── HttpError                 non-2xx (carries .status, .response, the decoded .body, .matched)
 │   ├── ClientError           4xx
 │   └── ServerError           5xx
 ├── TimeoutError              exceeded `timeout`
@@ -143,6 +168,27 @@ RequestError                  base — catch this to cover everything
 
 `AbortError` is kept deliberately distinct: "the user navigated away" and
 "the API is down" demand opposite handling.
+
+An `HttpError` carries its decoded `body` (JSON when it parses, the text
+otherwise; read from a clone, so `response.raw` stays readable). Declare
+`errors` on an endpoint to validate and TYPE it by status:
+
+```ts
+const getUser = api.endpoint('GET /users/:id', {
+  response: User,
+  errors: { 404: NotFound, '5XX': Outage, default: Problem },
+})
+
+getUser({ params: { id } }).catch((err: EndpointError<typeof getUser>) => {
+  if (err.matched === '404') console.log(err.body.message) // NotFound
+})
+```
+
+The most specific key wins (exact, then range, then `default`), under the
+client's `validate` mode. A body that fails its schema is still the same
+`HttpError`, with `matched` undefined and the raw body — the HTTP failure is
+what the caller needs to see. Network failures and timeouts have no `matched`,
+so the union narrows cleanly.
 
 Error **messages** carry the URL without its query string, fragment or
 userinfo — they end up in reporters and logs, and a query string is where

@@ -8,8 +8,8 @@
  * is gone.
  *
  * So the order matters as much as the checks: nothing is written until
- * the response has been proved to be a spec. `looksLikeSpec` is the last
- * gate — valid JSON is not enough, because a JSON error envelope from a
+ * the response has been proved to be a spec. `openApiVersionProblem` is the
+ * last gate — the same rule `generate` applies — — valid JSON is not enough, because a JSON error envelope from a
  * gateway parses perfectly.
  *
  * The size cap has two halves because the header covers only one case.
@@ -48,11 +48,23 @@ describe('a real spec is written', () => {
     expect(readFileSync(d, 'utf8')).toBe(SPEC)
   })
 
-  it('accepts a swagger 2 document too', async () => {
-    respond(JSON.stringify({ swagger: '2.0', info: {}, paths: {} }))
+  it('refuses a Swagger 1.x document and writes nothing', async () => {
+    // Pull and generate apply one rule, so a spec pull accepts is one generate
+    // reads. Swagger 2.0 is read (up-converted); 1.x is not.
+    respond(JSON.stringify({ swagger: '1.2', info: {}, apis: [] }))
+    const err = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    const d = dest()
+    expect(await pullSpec('https://x.com/s.json', d)).toBe(1)
+    expect(existsSync(d)).toBe(false)
+    expect(String(err.mock.calls.map((c) => c[0]).join(''))).toContain('Swagger 1.2')
+  })
+
+  it('accepts a Swagger 2.0 document, which generate up-converts', async () => {
+    const body = JSON.stringify({ swagger: '2.0', info: { title: 'S', version: '1' }, paths: {} })
+    respond(body)
     const d = dest()
     expect(await pullSpec('https://x.com/s.json', d)).toBe(0)
-    expect(existsSync(d)).toBe(true)
+    expect(readFileSync(d, 'utf8')).toBe(body)
   })
 
   it('is a no-op when the content is UNCHANGED', async () => {

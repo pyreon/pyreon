@@ -62,3 +62,31 @@ export const ordersSchema = s.object({
     expect(warnings.join('\n')).not.toMatch(/null declaration/)
   })
 })
+
+/**
+ * A field PMTC genuinely cannot lower must still produce a READABLE warning.
+ *
+ * The wrapper-less `s` DSL has no wrapper function, so `schemaFn` is `null`,
+ * and every drop warning interpolated it verbatim: `null declaration \`Pet\``.
+ * The array drop also named `z.array()` for code that never mentioned zod.
+ * Lathe prints these warnings to every user of a generated multiplatform
+ * client, so the text is product surface.
+ */
+describe('a dropped field in the s DSL names the s DSL', () => {
+  const src = `import { s } from '@pyreon/validate'
+export const Category = s.object({ id: s.number() })
+export const Pet = s.object({
+  name: s.string(),
+  category: Category,
+  tags: s.array(Category),
+})`
+
+  it('never says `null declaration`, and never cites zod', () => {
+    const { warnings } = transform(src, { target: 'swift' })
+    const text = warnings.join('\n')
+    expect(text).toContain('s declaration `Pet`')
+    expect(text).toContain('`tags` is s.array() with an unsupported inner type')
+    expect(text).not.toContain('null declaration')
+    expect(text).not.toMatch(/z\.array/)
+  })
+})

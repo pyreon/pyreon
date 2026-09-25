@@ -22,7 +22,24 @@
 
 import type { GeneratedFile } from '../emit/writer'
 
-export type Verdict = 'lowers' | 'web-only' | 'broken' | 'skipped'
+/**
+ * `partial` — the module lowers, but PMTC DROPPED part of it (a field it
+ * cannot represent), so the native app decodes less than the web one. Named
+ * rather than folded into `lowers` (audit G2): a Pet without its `category`
+ * and `tags` is a different app, and the verdict has to say so.
+ */
+export type Verdict = 'lowers' | 'partial' | 'web-only' | 'broken' | 'skipped'
+
+/** What one compiler warning means, decided by its CLASS rather than one phrase (audit G1). */
+export type WarningClass = 'fatal' | 'unlowered' | 'dropped' | 'info'
+
+/** One declaration's outcome, when a warning names it. */
+export interface DeclarationVerdict {
+  name: string
+  verdict: Exclude<Verdict, 'skipped'>
+  /** The warnings that decided it, verbatim. */
+  reasons: string[]
+}
 
 export interface FileVerdict {
   path: string
@@ -34,6 +51,13 @@ export interface FileVerdict {
   markers: string[]
   /** Framework symbols that survived into the output un-lowered. */
   leaked: string[]
+  /** Per-declaration outcomes (audit G2). Only declarations a warning names. */
+  declarations: DeclarationVerdict[]
+  /**
+   * The emitted source run through the platform compiler, when it was
+   * available: `ok`, the first errors, or why it did not run.
+   */
+  compiled?: { ok: boolean; errors: string[] } | { skipped: string } | undefined
 }
 
 export interface VerifyReport {
@@ -59,11 +83,77 @@ const MARKERS: readonly string[] = [
  * call verbatim instead of lowering it — which compiles here and fails at
  * `swiftc` / `kotlinc` time, far from the cause.
  */
-const LEAKS: readonly string[] = ['useQuery(', 'useMutation(', 'createHttp(', 's.object(', 'useFetch(']
+const LEAKS: readonly string[] = [
+  'useQuery(',
+  'useMutation(',
+  'createHttp(',
+  's.object(',
+  's.array(',
+  'z.object(',
+  'z.array(',
+  'zodSchema(',
+  'useFetch(',
+]
+
+/**
+ * Warning classes, by what PMTC SAYS happened rather than by one magic phrase.
+ *
+ * The verifier used to treat only `does NOT compile` as fatal. PMTC reports a
+ * verbatim reproduction as "reproduced VERBATIM — the native build then fails
+ * on a symbol", and that is exactly as fatal; it was read as advisory, and a
+ * module that could not compile reported `lowers` (audit G1).
+ */
+const WARNING_CLASSES: readonly [WarningClass, RegExp][] = [
+  ['fatal', /does NOT compile|reproduced VERBATIM|fails on a symbol|cannot find|unresolved reference|will not (?:build|link)/i],
+  ['unlowered', /no recognized fields|silent-drop|stays web|call stays web|cannot be lowered|not lowered|is OMITTED/i],
+  ['dropped', /\bdropping\b|dropping field|\bdropped\b/i],
+]
+
+/**
+ * Classify one PMTC warning.
+ *
+ * @example
+ * ```ts
+ * classifyWarning('null declaration `Pet`: field `tags` … Dropping field.') // 'dropped'
+ * ```
+ */
+export function classifyWarning(warning: string): WarningClass {
+  for (const [cls, re] of WARNING_CLASSES) if (re.test(warning)) return cls
+  return 'info'
+}
+
+/** The declaration a PMTC warning is about, when it names one. */
+function declarationOf(warning: string): string | undefined {
+  return (
+    /declaration `([^`]+)`/i.exec(warning)?.[1] ??
+    /\bDeclaration ([A-Za-z_$][\w$]*)/.exec(warning)?.[1] ??
+    /\bendpoint ([A-Za-z_$][\w$]*)/.exec(warning)?.[1]
+  )
+}
+
+const CLASS_VERDICT: Record<Exclude<WarningClass, 'info'>, Exclude<Verdict, 'skipped' | 'lowers'>> = {
+  fatal: 'broken',
+  unlowered: 'web-only',
+  dropped: 'partial',
+}
+
+const RANK: Record<Verdict, number> = { skipped: 0, lowers: 1, partial: 2, 'web-only': 3, broken: 4 }
+
+function worse(a: Verdict, b: Verdict): Verdict {
+  return RANK[b] > RANK[a] ? b : a
+}
 
 type TransformFn = (source: string, options: { target: 'swift' | 'kotlin' }) => {
   code: string
   warnings: string[]
+}
+
+/** A platform compile of emitted native source — `@pyreon/native-compiler`'s validators. */
+export type CompileFn = (code: string) => { ok: boolean; skipped?: boolean; skipReason?: string; error?: string }
+
+export interface NativeCompilers {
+  swift?: CompileFn | undefined
+  kotlin?: CompileFn | undefined
 }
 
 /**
@@ -72,9 +162,15 @@ type TransformFn = (source: string, options: { target: 'swift' | 'kotlin' }) => 
  * `transform` is injected so the verifier is unit-testable without the native
  * compiler installed, and so the CLI can resolve the PROJECT'S copy rather than
  * one bundled here — the version that will actually build the app is the only
- * one whose verdict means anything.
+ * one whose verdict means anything. `compile`, when given, runs the emitted
+ * source through `swiftc` / `kotlinc`: a compile error is the strongest
+ * evidence there is, and it outranks every heuristic below.
  */
-export function verifyNative(files: GeneratedFile[], transform: TransformFn | undefined): VerifyReport {
+export function verifyNative(
+  files: GeneratedFile[],
+  transform: TransformFn | undefined,
+  compile?: NativeCompilers,
+): VerifyReport {
   const native = files.filter((f) => f.path.endsWith('.native.tsx'))
   if (native.length === 0) {
     return { ran: false, reason: 'no native modules were generated (target is `web`)', files: [] }
@@ -105,22 +201,52 @@ export function verifyNative(files: GeneratedFile[], transform: TransformFn | un
           warnings: [`transform threw: ${(err as Error).message}`],
           markers: [],
           leaked: [],
+          declarations: [],
         })
         continue
       }
       const markers = MARKERS.filter((m) => code.includes(m))
       const leaked = LEAKS.filter((l) => code.includes(l))
-      out.push({
-        path: file.path,
-        target,
-        verdict: decide(markers, leaked, warnings, file.contents),
-        warnings,
-        markers,
-        leaked,
-      })
+      const declarations = declarationVerdicts(warnings)
+      const compiled = runCompile(compile?.[target], code)
+      let verdict = decide(markers, leaked, warnings, file.contents)
+      for (const d of declarations) verdict = worse(verdict, d.verdict)
+      if (compiled && 'ok' in compiled && !compiled.ok) verdict = 'broken'
+      out.push({ path: file.path, target, verdict, warnings, markers, leaked, declarations, compiled })
     }
   }
   return { ran: true, files: out }
+}
+
+function runCompile(fn: CompileFn | undefined, code: string): FileVerdict['compiled'] {
+  if (!fn) return undefined
+  try {
+    const r = fn(code)
+    if (r.skipped) return { skipped: r.skipReason ?? 'compiler not available' }
+    const errors = (r.error ?? '')
+      .split('\n')
+      .filter((l) => /\berror:/.test(l))
+      .map((l) => l.replace(/^.*?\berror:\s*/, '').trim())
+      .filter((l, i, all) => l.length > 0 && all.indexOf(l) === i)
+    return { ok: r.ok, errors: r.ok ? [] : errors.slice(0, 5) }
+  } catch (err) {
+    return { skipped: `compile threw: ${(err as Error).message}` }
+  }
+}
+
+/** Group warnings by the declaration they name; each takes its worst class. */
+function declarationVerdicts(warnings: readonly string[]): DeclarationVerdict[] {
+  const byName = new Map<string, DeclarationVerdict>()
+  for (const w of warnings) {
+    const cls = classifyWarning(w)
+    if (cls === 'info') continue
+    const name = declarationOf(w) ?? '(module)'
+    const entry = byName.get(name) ?? { name, verdict: 'lowers' as const, reasons: [] }
+    entry.verdict = worse(entry.verdict, CLASS_VERDICT[cls]) as DeclarationVerdict['verdict']
+    entry.reasons.push(w)
+    byName.set(name, entry)
+  }
+  return [...byName.values()].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
 }
 
 /**
@@ -131,18 +257,17 @@ export function verifyNative(files: GeneratedFile[], transform: TransformFn | un
  * while shipping a native build that cannot decode a response — the schema
  * marker is real, and it is answering a different question.
  *
- * Warnings are also read for the class PMTC calls out as fatal. It emits
- * `does NOT compile` for shapes it reproduced verbatim, and treating that as
- * advisory is precisely how a broken native build reaches a device.
+ * Warning CLASSES are folded in by the caller, per declaration, identically
+ * for both targets — so the same warnings yield the same verdict on Swift and
+ * Kotlin (audit G4) unless a real compile says otherwise.
  */
 function decide(markers: string[], leaked: string[], warnings: string[], source: string): Verdict {
   // A leak outranks everything: the emitted source references a symbol the
   // target does not have, so the native build cannot link.
   if (leaked.length > 0) return 'broken'
-  if (warnings.some((w) => w.includes('does NOT compile'))) return 'broken'
   // Expectations are read off the SOURCE, so a file that never asked for a
   // query is not penalised for lacking a query marker.
-  const wantsSchema = source.includes('s.object(')
+  const wantsSchema = /\b[sz]\.object\(/.test(source)
   const wantsQuery = source.includes('useQuery')
   if (wantsSchema && !markers.some((m) => m.startsWith('PyreonZodSchema_'))) return 'web-only'
   if (wantsQuery && !markers.some((m) => m === 'PyreonQuery<')) return 'web-only'
@@ -153,9 +278,8 @@ function decide(markers: string[], leaked: string[], warnings: string[], source:
 /** Reduce per-file verdicts to a single exit-worthy answer. */
 export function worstVerdict(report: VerifyReport): Verdict {
   if (!report.ran) return 'skipped'
-  if (report.files.some((f) => f.verdict === 'broken')) return 'broken'
-  if (report.files.some((f) => f.verdict === 'web-only')) return 'web-only'
-  return report.files.length > 0 ? 'lowers' : 'skipped'
+  if (report.files.length === 0) return 'skipped'
+  return report.files.reduce<Verdict>((acc, f) => worse(acc, f.verdict), 'lowers')
 }
 
 /**
@@ -166,10 +290,39 @@ export function worstVerdict(report: VerifyReport): Verdict {
  * that will build the app is worse than no verdict.
  */
 export async function resolveTransform(): Promise<TransformFn | undefined> {
+  return (await resolveNativeCompiler()).transform
+}
+
+/**
+ * The project's `@pyreon/native-compiler`: its `transform`, and its platform
+ * validators when the installed version exports them. The validators SKIP
+ * themselves when `swiftc` / `kotlinc` is absent, so this never fails a run
+ * on a machine without a toolchain — it reports that the compile did not run.
+ *
+ * @example
+ * ```ts
+ * const { transform, compile } = await resolveNativeCompiler()
+ * const report = verifyNative(files, transform, compile)
+ * ```
+ */
+export async function resolveNativeCompiler(): Promise<{
+  transform: TransformFn | undefined
+  compile: NativeCompilers
+}> {
   try {
-    const mod = (await import('@pyreon/native-compiler')) as { transform?: TransformFn }
-    return typeof mod.transform === 'function' ? mod.transform : undefined
+    const mod = (await import('@pyreon/native-compiler')) as {
+      transform?: TransformFn
+      validateSwiftWithStubs?: CompileFn
+      validateKotlin?: CompileFn
+    }
+    return {
+      transform: typeof mod.transform === 'function' ? mod.transform : undefined,
+      compile: {
+        swift: typeof mod.validateSwiftWithStubs === 'function' ? mod.validateSwiftWithStubs : undefined,
+        kotlin: typeof mod.validateKotlin === 'function' ? mod.validateKotlin : undefined,
+      },
+    }
   } catch {
-    return undefined
+    return { transform: undefined, compile: {} }
   }
 }

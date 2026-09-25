@@ -28,11 +28,13 @@ const op = (over: Partial<IrOperation> = {}): IrOperation => ({
   path: '/users/{id}',
   pathParams: [],
   queryParams: [],
+  headerParams: [],
+  cookieParams: [],
   ...over,
 } as IrOperation)
 
 const param = (name: string, required = true, type: IrType = { kind: 'string' }) =>
-  ({ name, type, required, nullable: false })
+  ({ name, type, required })
 
 const doc = (over: Partial<IrDocument> = {}): IrDocument => ({
   title: 'T', version: '1', baseUrl: '', models: [], operations: [], notes: [], ...over,
@@ -137,8 +139,8 @@ describe('bodies and responses', () => {
   it('a changed request body is breaking, and names both sides', () => {
     // The message is what tells the reader whether they can adapt.
     const cs = diff(
-      { operations: [op({ body: { kind: 'string' } })] },
-      { operations: [op({ body: { kind: 'number', integer: true } })] },
+      { operations: [op({ body: { mediaType: 'application/json', encoding: 'json', type: { kind: 'string' }, required: true } })] },
+      { operations: [op({ body: { mediaType: 'application/json', encoding: 'json', type: { kind: 'number', integer: true }, required: true } })] },
     )
     const change = cs.find((c) => c.code === 'body-changed')
     expect(change?.severity).toBe('breaking')
@@ -151,7 +153,7 @@ describe('bodies and responses', () => {
   it('ADDING a body where there was none is breaking, and says "none"', () => {
     // The `?? 'none'` arm — `undefined → number` in a diff line reads as
     // a bug in the tool.
-    const cs = diff({ operations: [op()] }, { operations: [op({ body: { kind: 'string' } })] })
+    const cs = diff({ operations: [op()] }, { operations: [op({ body: { mediaType: 'application/json', encoding: 'json', type: { kind: 'string' }, required: true } })] })
     const change = cs.find((c) => c.code === 'body-changed')
     expect(change?.detail).toContain('none')
     expect(change?.detail).not.toContain('undefined')
@@ -278,6 +280,43 @@ describe('the surface renders types as stable, readable strings', () => {
   it('stamps a version, so a stale baseline is reported as stale', () => {
     // Without it, a change to the RENDERING diffs as a thousand
     // unrelated changes and the reader learns to ignore the gate.
-    expect(surface().version).toBe(1)
+    expect(surface().version).toBe(2)
+  })
+})
+
+describe('typed error bodies', () => {
+  const str: IrType = { kind: 'string' }
+  const int: IrType = { kind: 'number', integer: true }
+  const withErrors = (errors: Record<string, IrType>) => ({
+    operations: [op({ errors: Object.entries(errors).map(([status, type]) => ({ status, type })) })],
+  })
+
+  it('records them in the surface, keyed by status', () => {
+    expect(surface(withErrors({ '404': str, default: int })).operations.getUser?.errors).toEqual({ '404': 'string', default: 'integer' })
+    expect(surface({ operations: [op()] }).operations.getUser?.errors).toBeUndefined()
+  })
+
+  it('a REMOVED key is breaking: the branch narrowing on it never runs', () => {
+    const cs = diff(withErrors({ '404': str, default: int }), withErrors({ default: int }))
+    expect(breaking(cs)).toEqual(['error-removed'])
+    expect(cs[0]?.subject).toBe('getUser.errors.404')
+  })
+
+  it('a CHANGED body is breaking', () => {
+    expect(breaking(diff(withErrors({ '404': str }), withErrors({ '404': int })))).toEqual(['error-changed'])
+  })
+
+  it('an ADDED key is additive, unless a range or `default` already covered it', () => {
+    const fresh = diff(withErrors({ '500': str }), withErrors({ '500': str, '404': int }))
+    expect(fresh.map((c) => [c.code, c.severity])).toEqual([['error-added', 'additive']])
+    for (const covering of ['default', '4XX']) {
+      const rerouted = diff(withErrors({ [covering]: str }), withErrors({ [covering]: str, '404': int }))
+      expect(rerouted.map((c) => [c.code, c.severity])).toEqual([['error-added', 'breaking']])
+      expect(rerouted[0]?.detail).toContain(`instead of '${covering}'`)
+    }
+  })
+
+  it('a baseline written before errors were recorded is not diffed for them', () => {
+    expect(diff({ operations: [op()] }, withErrors({ '404': str }))).toEqual([])
   })
 })

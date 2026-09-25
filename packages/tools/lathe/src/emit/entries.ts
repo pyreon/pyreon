@@ -15,13 +15,15 @@
  * for the same hook reached through its own tag. 5.1x raw, 3.2x gzipped, and
  * a production bundle carrying a fixture table nobody asked for.
  *
- * The mechanism is worth stating because the obvious fix does not work.
  * `api.endpoint(...)` and `s.object({ ... })` are module-level CALLS, so a
- * bundler cannot prove them side-effect-free and retains every one the entry
- * reaches. Annotating them `/* @__PURE__ *\/` is the reflex and it is nearly
- * useless — measured 2,041 B -> 2,000 B, 2% — because the ARGUMENTS are
- * themselves calls (`s.string().uuid()`), which esbuild must still evaluate.
- * The lever is not purity, it is REACHABILITY: what the entry point names.
+ * bundler retains every one it cannot prove side-effect-free. Two things
+ * answer that, and both are needed: REACHABILITY (what an entry names -- this
+ * file, plus one schema module per model) and PURITY (`/* @__PURE__ *\/` on
+ * EVERY emitted call, arguments included, so an unused declaration inside a
+ * reached module is dropped). An early measurement annotated only the OUTER
+ * declaration, found 2%, and concluded purity was useless; annotated
+ * throughout it is the larger of the two levers -- see `emitSchemas` for the
+ * GitHub/Stripe numbers.
  *
  * So the entries mirror the dependency layering instead of flattening it:
  *
@@ -51,6 +53,22 @@ export const QUERIES_BARREL = 'queries/index.ts'
 export interface EntryOptions {
   plugins: readonly string[]
   client?: ClientName | undefined
+  /**
+   * The paths that were ACTUALLY emitted before the entries.
+   *
+   * An entry re-exports files, and the plugin selection says which files were
+   * ASKED for, not which exist: an emitter with nothing to say (no models, no
+   * query operations, no faker factories) produces no file at all. Keying the
+   * barrel on the selection made a zero-model or zero-operation spec emit an
+   * `index.ts` importing `./schemas` / `./keys` / `./faker` that were never
+   * written. When omitted, every selected module is assumed present.
+   */
+  emitted?: ReadonlySet<string> | undefined
+}
+
+/** Is `file` (a path relative to the output root) going to exist? */
+function exists(opts: EntryOptions, file: string): boolean {
+  return opts.emitted === undefined || opts.emitted.has(file)
 }
 
 /**
@@ -72,30 +90,50 @@ export function emitBarrel(doc: IrDocument, opts: EntryOptions): SourceFile {
     'The per-tag split is an emitter concern: a consumer should not have to',
     'know which tag an operation was filed under, or that tags exist.',
     '',
-    'Reaching for one hook here reaches every operation in the spec, because',
-    'an endpoint declaration is a module-level call a bundler must keep. On a',
-    '120-operation spec that measured 30.7 kB against 6.1 kB for the same hook',
-    "imported from its own tag. If that matters, import the tag: ",
-    "`import { useListBooks } from './gen/queries/books'`.",
+    'Importing one hook from here costs the same as importing it from its own',
+    'tag module: every declaration is annotated pure and the `package.json`',
+    'next to this file declares the output side-effect-free, so a bundler keeps',
+    'only what the hook reaches (measured on GitHub\'s spec with Vite 8: 2.8 kB',
+    'gzipped of generated code either way). A bundler that ignores both hints',
+    'keeps more through this file than through the tag.',
     '',
     'Fixtures and fake-data factories are NOT re-exported here -- they live in',
     '`./dev`, so a page bundle cannot reach them. Preview components are absent',
     'for the same reason and live in `./components`.',
   )
 
-  if (has('schemas')) lines.push(`export * from './schemas'`)
-  else if (has('types')) lines.push(`export * from './types'`)
+  if (has('schemas')) {
+    if (exists(opts, 'schemas.ts')) lines.push(`export * from './schemas'`)
+    // Webhook / callback payloads: production code, used by the server that
+    // receives them.
+    if (exists(opts, 'webhooks.ts')) lines.push(`export * from './webhooks'`)
+  } else if (has('types') && exists(opts, 'types.ts')) lines.push(`export * from './types'`)
   if (has('client')) {
-    lines.push(`export { api } from './client'`)
+    if (exists(opts, 'client.ts')) {
+      // The runtime seam (dx D8) is part of the production surface: an app
+      // configures its base URL and auth from here, not by editing output.
+      // Identical for every client: each one exports `configureApi` and, per
+      // security scheme, `auth` — only their per-library shapes differ.
+      const auth = (doc.securitySchemes?.length ?? 0) > 0
+      lines.push(`export { api, configureApi, ${auth ? 'auth, ' : ''}type ApiConfig } from './client'`)
+    }
     for (const [tag] of byTag(doc)) {
-      lines.push(`export * from './endpoints/${tagFile(tag)}'`)
+      if (exists(opts, `endpoints/${tagFile(tag)}.ts`)) {
+        lines.push(`export * from './endpoints/${tagFile(tag)}'`)
+      }
     }
   }
   if (has('queries')) {
-    for (const [tag] of byTag(doc)) lines.push(`export * from './queries/${tagFile(tag)}'`)
-    lines.push(`export { keys } from './keys'`)
+    for (const [tag] of byTag(doc)) {
+      if (exists(opts, `queries/${tagFile(tag)}.ts`)) lines.push(`export * from './queries/${tagFile(tag)}'`)
+    }
+    if (exists(opts, KEYS_FILE)) lines.push(`export { keys, optimisticUpdate } from './keys'`)
   }
   for (const l of lines) f.line(l)
+  // A file with no import/export is a SCRIPT, and a consumer compiling with
+  // `isolatedModules` rejects it (TS1208). Only reachable for a spec that
+  // emits nothing re-exportable.
+  if (lines.length === 0) f.line('export {}')
   return f
 }
 
@@ -113,7 +151,9 @@ export function emitBarrel(doc: IrDocument, opts: EntryOptions): SourceFile {
 export function emitDevEntry(doc: IrDocument, opts: EntryOptions): SourceFile | null {
   const f = new SourceFile(DEV_FILE)
   const has = (p: string): boolean => opts.plugins.includes(p)
-  if (!has('mocks') && !has('faker')) return null
+  const mocks = has('mocks') && exists(opts, 'mocks.ts')
+  const faker = has('faker') && exists(opts, 'faker.ts')
+  if (!mocks && !faker) return null
 
   f.line()
   f.doc(
@@ -131,15 +171,17 @@ export function emitDevEntry(doc: IrDocument, opts: EntryOptions): SourceFile | 
     'exactly one kind of consumer (an Atlas config, a story), and that consumer',
     'imports `./components` directly.',
   )
-  if (has('mocks')) {
-    f.line(`export { installMocks, routes as mockRouteTable } from './mocks'`)
+  if (mocks) {
+    f.line(
+      `export { installMocks, mockCalls, mockOperation, resetMocks, routes as mockRouteTable, type MockedOperation } from './mocks'`,
+    )
     // `mockRoutes` is a `@pyreon/http` MIDDLEWARE and has no equivalent on the
     // generated adapters, which answer through their own transport seam.
     if ((opts.client ?? 'pyreon') === 'pyreon') {
       f.line(`export { mockRoutes } from './mocks'`)
     }
   }
-  if (has('faker')) f.line(`export * from './faker'`)
+  if (faker) f.line(`export * from './faker'`)
   return f
 }
 
@@ -188,12 +230,12 @@ export function emitKeys(doc: IrDocument): SourceFile {
   const f = new SourceFile(KEYS_FILE)
   const tags = [...byTag(doc)]
   const queryOps = tags.map(([tag, ops]) => [tag, ops.filter((o) => !isMutation(o))] as const)
-  if (queryOps.every(([, ops]) => ops.length === 0)) return f
 
   for (const [tag, ops] of queryOps) {
     if (ops.length === 0) continue
     f.import(relativeSpecifier(KEYS_FILE, `endpoints/${tagFile(tag)}.ts`), ...ops.map((o) => o.id))
   }
+  f.importType('@pyreon/query', 'QueryClient', 'QueryKey')
 
   f.line()
   f.doc(
@@ -221,5 +263,39 @@ export function emitKeys(doc: IrDocument): SourceFile {
     f.line('  },')
   }
   f.line('} as const')
+
+  f.line()
+  f.doc(
+    'Optimistically rewrite cached query data, returning a ROLLBACK (audit E2).',
+    '',
+    'Cancels in-flight fetches for `queryKey` (so a late response cannot',
+    'overwrite the optimistic value), applies `update` to every cached entry',
+    'under it, and returns a function restoring exactly what was there. The',
+    'data type is the endpoint\'s own response type — pass the endpoint.',
+    '',
+    '```ts',
+    'const rename = useRenamePet({',
+    '  onMutate: async (vars) => {',
+    '    const rollback = await optimisticUpdate(client, getPet, getPet.key(vars), (pet) =>',
+    '      pet && { ...pet, name: vars.json.name })',
+    '    return { rollback }',
+    '  },',
+    '  onError: (_e, _v, ctx) => ctx?.rollback(),',
+    '})',
+    '```',
+  )
+  f.line('export async function optimisticUpdate<E extends (...args: never[]) => Promise<unknown>>(')
+  f.line('  client: QueryClient,')
+  f.line('  _endpoint: E,')
+  f.line('  queryKey: QueryKey,')
+  f.line('  update: (current: Awaited<ReturnType<E>> | undefined) => Awaited<ReturnType<E>> | undefined,')
+  f.line('): Promise<() => void> {')
+  f.line('  await client.cancelQueries({ queryKey })')
+  f.line('  const previous = client.getQueriesData<Awaited<ReturnType<E>>>({ queryKey })')
+  f.line('  client.setQueriesData<Awaited<ReturnType<E>>>({ queryKey }, update)')
+  f.line('  return () => {')
+  f.line('    for (const [key, data] of previous) client.setQueryData(key, data)')
+  f.line('  }')
+  f.line('}')
   return f
 }
