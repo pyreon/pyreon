@@ -160,6 +160,76 @@ describe('requireUser', () => {
   })
 })
 
+describe('getSession / useSession without sessionMiddleware', () => {
+  it('throws a [Pyreon] error for every source shape when no session was attached', () => {
+    const ctx = ctxFor('https://x.test/')
+    expect(() => getSession(ctx)).toThrow(/\[Pyreon\] getSession: no session/)
+    expect(() => getSession(ctx.req)).toThrow(/\[Pyreon\] getSession/)
+    expect(() => getSession({ request: ctx.req })).toThrow(/\[Pyreon\] getSession/)
+    expect(() => getSession({})).toThrow(/\[Pyreon\] getSession/)
+  })
+
+  it('resolves the same session from a Request and a loader context once the middleware ran', async () => {
+    const ctx = ctxFor('https://x.test/')
+    await sessionMiddleware({ secret: SECRET })(ctx)
+    await getSession(ctx).set('userId', 'u9')
+    expect(getSession(ctx.req).get('userId')).toBe('u9')
+    expect(getSession({ request: ctx.req }).get('userId')).toBe('u9')
+  })
+
+  it('useSession() is null outside a request (no provided locals)', () => {
+    expect(useSession()).toBeNull()
+  })
+})
+
+describe('session cookie Secure attribute', () => {
+  it('drops Secure for every loopback http host, keeps it for non-loopback http', async () => {
+    for (const url of ['http://127.0.0.1:3000/', 'http://[::1]:3000/']) {
+      const ctx = ctxFor(url)
+      await sessionMiddleware({ secret: SECRET })(ctx)
+      await getSession(ctx).set('a', 1)
+      expect(ctx.headers.getSetCookie()[0]).not.toMatch(/Secure/)
+    }
+    const lan = ctxFor('http://192.168.1.5/')
+    await sessionMiddleware({ secret: SECRET })(lan)
+    await getSession(lan).set('a', 1)
+    expect(lan.headers.getSetCookie()[0]).toMatch(/Secure/)
+  })
+
+  it('a verified non-object payload (array) reads as an empty session', async () => {
+    const v = await createSigner([SECRET], 'pyreon-session').sign(['x'], 60)
+    const ctx = ctxFor('https://x.test/', `pyreon_session=${v}`)
+    await sessionMiddleware({ secret: SECRET })(ctx)
+    expect(getSession(ctx).all()).toEqual({})
+  })
+
+  it('unset removes one key and re-signs; unsetting the last key expires the cookie', async () => {
+    const ctx = ctxFor('https://x.test/')
+    await sessionMiddleware({ secret: SECRET })(ctx)
+    await getSession(ctx).update({ a: 1, b: 2 })
+    await getSession(ctx).unset('a')
+    const v = cookieValue(ctx.headers)!
+    const next = ctxFor('https://x.test/', `pyreon_session=${v}`)
+    await sessionMiddleware({ secret: SECRET })(next)
+    expect(getSession(next).all()).toEqual({ b: 2 })
+    await getSession(next).unset('b')
+    expect(next.headers.getSetCookie()[0]).toMatch(/Max-Age=0/)
+  })
+})
+
+describe('requireUser — redirect target and custom check', () => {
+  it('a cross-origin redirectTo keeps the absolute URL; a custom nextParam and check are honoured', async () => {
+    const anon = ctxFor('https://x.test/dash')
+    await sessionMiddleware({ secret: SECRET })(anon)
+    const res = requireUser({ redirectTo: 'https://auth.test/login', nextParam: 'return' })(anon) as Response
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe('https://auth.test/login?return=%2Fdash')
+
+    await getSession(anon).set('role', 'admin')
+    expect(requireUser({ check: (s) => s.get('role') === 'admin' })(anon)).toBeUndefined()
+  })
+})
+
 describe('session × ISR — a session-touching render is never cached', () => {
   // A custom cacheKey DISABLES ISR's request-credential refusal (it is the
   // documented per-user escape hatch), so this proves the session's own

@@ -78,6 +78,42 @@ describe('previewMiddleware + isPreview', () => {
   })
 })
 
+describe('createPreviewHandler — edge paths', () => {
+  it('a missing token answers 401 (treated as the empty string, never a match)', async () => {
+    const res = await createPreviewHandler({ secret: SECRET, token: TOKEN })(
+      ctxFor('https://x.test/api/preview'),
+    ) as Response
+    expect(res.status).toBe(401)
+    expect(await res.text()).toBe('Invalid preview token')
+  })
+
+  it('a custom path (trailing slash stripped) and loopback http drop Secure', async () => {
+    const mw = createPreviewHandler({ secret: SECRET, token: TOKEN, path: '/cms/preview/' })
+    for (const host of ['localhost', '127.0.0.1', '[::1]']) {
+      const res = await mw(ctxFor(`http://${host}:3000/cms/preview?token=${TOKEN}`)) as Response
+      expect(res.status).toBe(307)
+      expect(res.headers.getSetCookie()[0]).not.toMatch(/Secure/)
+    }
+    const exit = await mw(ctxFor('https://x.test/cms/preview/exit?redirect=/blog')) as Response
+    expect(exit.headers.get('location')).toBe('/blog')
+    expect(await mw(ctxFor(`https://x.test/api/preview?token=${TOKEN}`))).toBeUndefined()
+  })
+})
+
+describe('previewMiddleware — no cookie, and isPreview source shapes', () => {
+  it('a request with no preview cookie is untouched', async () => {
+    const ctx = ctxFor('https://x.test/')
+    await previewMiddleware({ secret: SECRET })(ctx)
+    expect(isPreview(ctx)).toBe(false)
+    expect(ctx.headers.get('cache-control')).toBeNull()
+  })
+
+  it('a loader context without a request is not in preview', () => {
+    expect(isPreview({})).toBe(false)
+    expect(isPreview({ request: undefined })).toBe(false)
+  })
+})
+
 describe('preview × ISR — a preview visitor bypasses the cache and never populates it', () => {
   it('published page cached for the public; preview visitor gets a fresh draft render', async () => {
     let version = 'published-v1'

@@ -31,7 +31,55 @@ describe('webVitalsEndpoint', () => {
   })
 })
 
+describe('webVitalsEndpoint — payload shape validation', () => {
+  it('400s for non-object JSON, a non-finite value, and a missing id or path', async () => {
+    const mw = webVitalsEndpoint('/api/vitals', () => {
+      throw new Error('onMetric must not run for an invalid body')
+    })
+    for (const body of [
+      'null',
+      '42',
+      '"LCP"',
+      // JSON.parse turns 1e999 into Infinity — valid JSON, not a usable metric.
+      JSON.stringify({ ...metric }).replace('1200,', '1e999,'),
+      JSON.stringify({ ...metric, id: 7 }),
+      JSON.stringify({ ...metric, path: undefined }),
+    ]) {
+      expect((await mw(post(body)))!.status, body).toBe(400)
+    }
+  })
+
+  it('awaits an async onMetric and hands it the original request', async () => {
+    const order: string[] = []
+    let seenReq: Request | null = null
+    const mw = webVitalsEndpoint('/api/vitals', async (m, req) => {
+      await Promise.resolve()
+      seenReq = req
+      order.push(`metric:${m.name}`)
+    })
+    const ctx = post(JSON.stringify({ ...metric, name: 'CLS', value: 0.02 }))
+    const res = await mw(ctx)
+    order.push('responded')
+    expect(res!.status).toBe(204)
+    expect(order).toEqual(['metric:CLS', 'responded'])
+    expect(seenReq).toBe(ctx.req)
+  })
+})
+
 describe('sendToBeacon / server no-op', () => {
+  it('falls back to fetch when navigator has no sendBeacon, and swallows a fetch rejection', async () => {
+    vi.stubGlobal('navigator', {})
+    const f = vi.fn(() => Promise.reject(new Error('offline')))
+    vi.stubGlobal('fetch', f)
+    expect(() => sendToBeacon('/v')(metric)).not.toThrow()
+    expect(f).toHaveBeenCalledOnce()
+    const [, init] = f.mock.calls[0] as unknown as [string, RequestInit]
+    expect(JSON.parse(init.body as string)).toEqual(metric)
+    expect(init.headers).toEqual({ 'content-type': 'application/json' })
+    // Let the rejected promise settle: an unhandled rejection would fail the run.
+    await new Promise((r) => setTimeout(r, 0))
+  })
+
   it('uses navigator.sendBeacon when it accepts, else fetch keepalive', () => {
     const beacon = vi.fn(() => true)
     vi.stubGlobal('navigator', { sendBeacon: beacon })
