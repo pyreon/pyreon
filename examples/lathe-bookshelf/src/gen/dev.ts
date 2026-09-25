@@ -18,6 +18,6 @@
  * exactly one kind of consumer (an Atlas config, a story), and that consumer
  * imports `./components` directly.
  */
-export { installMocks, mockOperation, resetMocks, routes as mockRouteTable, type MockedOperation } from './mocks'
-export { mockCalls, mockRoutes } from './mocks'
+export { installMocks, mockCalls, mockOperation, resetMocks, routes as mockRouteTable, type MockedOperation } from './mocks'
+export { mockRoutes } from './mocks'
 export * from './faker'

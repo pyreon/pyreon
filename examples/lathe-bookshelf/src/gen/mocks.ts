@@ -107,6 +107,13 @@ export function resetMocks(): void {
   active.splice(0, active.length, ...routes)
 }
 
+function baseRelative(url: string): string {
+  const strip = (u: string): string => u.replace(/^[a-z][a-z\d+\-.]*:\/\/[^/?#]*/i, '')
+  const path = strip(url)
+  const base = strip(apiBaseUrl()).replace(/\/+$/, '')
+  return base !== '' && path.startsWith(base) ? path.slice(base.length) : path
+}
+
 /**
  * The mock middleware.
  * Routes are anchored at the client's base URL (audit D2): the request URL
@@ -116,13 +123,6 @@ export function resetMocks(): void {
  * `/owners/1/pets/2`.
  */
 const handle = createMock(active)
-
-function baseRelative(url: string): string {
-  const strip = (u: string): string => u.replace(/^[a-z][a-z\d+\-.]*:\/\/[^/?#]*/i, '')
-  const path = strip(url)
-  const base = strip(apiBaseUrl()).replace(/\/+$/, '')
-  return base !== '' && path.startsWith(base) ? path.slice(base.length) : path
-}
 
 export const mockRoutes: HttpMiddleware = (req, next) =>
   handle.middleware({ ...req, url: baseRelative(req.url) }, () => next(req))
