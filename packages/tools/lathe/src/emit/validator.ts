@@ -130,9 +130,10 @@ export const DIALECTS: Readonly<Record<ValidatorName, ValidatorDialect>> = {
     schemaTypeImport: { module: '@pyreon/validate', name: 'Schema' },
     objectSchemaRef: 'ObjectSchema<Record<string, Schema<unknown>>>',
     objectSchemaImport: { module: '@pyreon/validate', name: 'ObjectSchema' },
-    // `s.string().url()` is http(s)-only, so a scheme check spelled out.
     emptyObjectType: 'Record<string, unknown>',
-    uriCheck: String.raw`.regex(/^[A-Za-z][A-Za-z0-9+.-]*:\S*$/)`,
+    // `s.string().url()` is http(s)-only by default; `protocol` opens it to
+    // any RFC 3986 scheme, which is what OpenAPI's `uri` means.
+    uriCheck: '.url({ protocol: /^[A-Za-z][A-Za-z0-9+.-]*$/ })',
     enumWidensToString: true,
     inlineRefsOnNative: false,
   },
