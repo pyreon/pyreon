@@ -45,6 +45,10 @@ const CASES: Record<IrNoteCode, [Record<string, unknown>, Record<string, unknown
     { components: { schemas: { X: { const: { a: 1 } } } } },
     { components: { schemas: { X: { type: 'string', const: 'a' } } } },
   ],
+  'int64-precision': [
+    { components: { schemas: { X: { type: 'integer', format: 'int64' } } } },
+    { components: { schemas: { X: { type: 'integer', format: 'int32' } } } },
+  ],
   'cyclic-ref': [
     { $defs: { A: { $ref: '#/$defs/B' }, B: { $ref: '#/$defs/A' } }, components: { schemas: { X: { $ref: '#/$defs/A' } } } },
     // A recursive schema that passes through a real object is represented
@@ -162,7 +166,7 @@ describe('the docs page documents every note code, with its real severity', () =
       'utf8',
     )
     const rows = new Map<string, string>()
-    for (const m of page.matchAll(/^\| `([a-z-]+)`(?: \/ `([a-z-]+)`)? \| (loss|choice) \|/gm)) {
+    for (const m of page.matchAll(/^\| `([a-z0-9-]+)`(?: \/ `([a-z0-9-]+)`)? \| (loss|choice) \|/gm)) {
       rows.set(m[1] as string, m[3] as string)
       if (m[2]) rows.set(m[2], m[3] as string)
     }

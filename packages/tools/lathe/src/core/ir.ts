@@ -202,6 +202,7 @@ export type IrNoteCode =
   | 'unsupported-ref'
   | 'cyclic-ref'
   | 'unsupported-const'
+  | 'int64-precision'
   | 'missing-operation-id'
   | 'multiple-content-types'
   | 'non-json-media-type'
@@ -243,6 +244,7 @@ export const NOTE_SEVERITY: Readonly<Record<IrNoteCode, IrNoteSeverity>> = {
   'unsupported-ref': 'loss',
   'cyclic-ref': 'loss',
   'unsupported-const': 'loss',
+  'int64-precision': 'loss',
   'missing-operation-id': 'choice',
   'multiple-content-types': 'choice',
   'non-json-media-type': 'loss',

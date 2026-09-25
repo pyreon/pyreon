@@ -157,6 +157,7 @@ function convert(spec: Json, options: LoadOptions = {}): IrDocument {
     baseUrl: '',
     sourceUrl: undefined,
     opAt: new Map(),
+    int64At: new Set(),
   }
 
   const info = obj(spec.info) ?? {}
@@ -211,6 +212,7 @@ function convert(spec: Json, options: LoadOptions = {}): IrDocument {
   // DSL cannot express. Runs here, after models exist, because deciding either
   // one needs to resolve `$ref`s.
   normalizeUnions(models, operations, ctx)
+  noteInt64(ctx)
 
   return {
     title: str(info.title) ?? 'API',
@@ -376,6 +378,8 @@ interface Ctx {
   sourceUrl: string | undefined
   /** Each operation's pointer in the source document, for post-pass notes. */
   opAt: Map<IrOperation, string>
+  /** Pointers of every `format: int64` number, for one aggregated note. */
+  int64At: Set<string>
 }
 
 /**
@@ -1057,6 +1061,7 @@ function toTypeNonNull(schema: Json, at: string, ctx: Ctx): IrType {
       return stringType(schema)
     case 'integer':
     case 'number':
+      if (schema.format === 'int64') ctx.int64At.add(at)
       return numberType(schema, t === 'integer')
     case 'boolean':
       return { kind: 'boolean' }
@@ -1206,6 +1211,28 @@ function stringType(schema: Json): IrType {
     maxLength: count(schema.maxLength),
     pattern: str(schema.pattern),
   }
+}
+
+/**
+ * One note for every `format: int64` number in the spec.
+ *
+ * A JSON number past 2^53 - 1 is ROUNDED by `JSON.parse`, before any schema
+ * runs, so no generated type can recover it: mapping the field to `bigint` or a
+ * string validates a value that is already wrong. The honest fix lives at parse
+ * time (a reviver, or the server sending the id as a string), so this is
+ * reported, not papered over. Aggregated because an int64-heavy spec would
+ * otherwise bury every other loss under hundreds of identical lines.
+ */
+function noteInt64(ctx: Ctx): void {
+  if (ctx.int64At.size === 0) return
+  const all = [...ctx.int64At]
+  const first = all[0] as string
+  const more = all.length > 1 ? ` (and ${all.length - 1} more)` : ''
+  ctx.notes.push({
+    code: 'int64-precision',
+    at: first,
+    message: `${all.length} \`format: int64\` number${all.length === 1 ? '' : 's'}${more} — JSON.parse rounds any value past 2^53 - 1 (9007199254740991) before validation runs, so such values arrive silently rounded. Typed as \`number\`; a \`bigint\` or string mapping would validate an already-wrong value. If the API can exceed that range, have it send the value as a string.`,
+  })
 }
 
 function numberType(schema: Json, integer: boolean): IrType {
