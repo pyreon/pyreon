@@ -145,6 +145,7 @@ const Card = () => {
 | [`Dynamic`](#dynamic) | component | Renders a component by reference or string tag name. |
 | [`cx`](#cx) | function | Combine a class value into a single string. |
 | [`useControllableState`](#usecontrollablestate) | function | The controlled/uncontrolled state pattern, as one primitive. |
+| [`useColorMode`](#usecolormode) | function | The framework-wide light/dark mode, as an accessor — the ONE source every package reads, so `<PyreonUI>`, charts, flow a |
 | [`splitProps`](#splitprops) | function | Split a props object into two parts: the picked keys and the rest. |
 | [`mergeProps`](#mergeprops) | function | Merge multiple props objects with last-source-wins semantics. |
 | [`removeUndefinedProps`](#removeundefinedprops) | function | Copy a props object, dropping keys whose DATA value is exactly `undefined` while preserving every getter-shaped (reactiv |
@@ -755,6 +756,40 @@ const Switch = (props: { checked?: boolean; onChange?: (v: boolean) => void }) =
 - Assuming `defaultValue` still applies once `value` is supplied — controlled wins for the whole lifetime of the component
 
 **See also:** `splitProps` · `mergeProps`
+
+---
+
+### useColorMode `function`
+
+```ts
+useColorMode(): () => 'light' | 'dark'  // + provideColorMode(mode), <ColorModeProvider mode>, systemColorMode()
+```
+
+The framework-wide light/dark mode, as an accessor — the ONE source every package reads, so `<PyreonUI>`, charts, flow and the code editor agree. Resolution, nearest first: a `<ColorModeProvider mode>` / `provideColorMode(mode)` above the component (`<PyreonUI mode>` calls it), else the page's scheme (the CSS `color-scheme` `<html>` declares, when it names exactly one — a site's own theme toggle), else `prefers-color-scheme`; light on the server. `mode` is `'light'`, `'dark'` or `'system'`, or an accessor over one. `systemColorMode()` is the page/OS half alone, a document-lifetime singleton. On native a literal `mode` is a compile-time scope; a reactive one follows the platform scheme.
+
+**Example**
+
+```tsx
+import { ColorModeProvider, useColorMode } from '@pyreon/core'
+
+const Badge = () => {
+  const mode = useColorMode()
+  return <span class={() => (mode() === 'dark' ? 'badge-dark' : 'badge-light')}>new</span>
+}
+
+<ColorModeProvider mode="dark">
+  <Badge />
+</ColorModeProvider>
+```
+
+**Common mistakes**
+
+- Calling `useColorMode()()` once at setup — it returns an ACCESSOR; read it inside JSX, an effect or a computed so a flip re-renders
+- Adding a separate mode prop to each library component — `<PyreonUI mode>` or `<ColorModeProvider mode>` sets it for everything below; a component that takes its own mode prop should treat it as an override of `useColorMode()`, not the source
+- Reading `matchMedia('(prefers-color-scheme: dark)')` directly — it ignores both an app's pinned mode and the page's declared `color-scheme`
+- Calling it outside component setup — it reads context, so outside a component it returns the system mode, not a provider's
+
+**See also:** `createReactiveContext` · `provide`
 
 ---
 

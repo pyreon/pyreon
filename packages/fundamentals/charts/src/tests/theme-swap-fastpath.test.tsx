@@ -77,7 +77,7 @@ vi.mock('echarts/renderers', () => ({
   SVGRenderer: { __echartsStub: 'SVGRenderer' },
 }))
 
-import { Chart } from '../chart-component'
+import { EChart } from '../chart-component'
 import { _resetLoader } from '../loader'
 import type { ChartEventParams, ECharts } from '../types'
 import { _throttle, useChart } from '../use-chart'
@@ -257,7 +257,7 @@ describe('reactive theme swap', () => {
     el.remove()
   })
 
-  it('<Chart> rebinds event handlers + a signal-read theme VALUE prop is live', async () => {
+  it('<EChart> rebinds event handlers + a signal-read theme VALUE prop is live', async () => {
     const theme = signal<string>('one')
     const clicks: string[] = []
 
@@ -269,10 +269,10 @@ describe('reactive theme swap', () => {
     // for `theme={theme()}` (this test file compiles through the automatic
     // JSX runtime, which would pass a captured static value instead) — the
     // mount pipeline's makeReactiveProps converts the _rp brand to a live
-    // getter, and <Chart>'s accessor normalization re-reads it per swap
-    // check. Locks the "signal-read VALUE prop is live" claim in ChartProps.
+    // getter, and <EChart>'s accessor normalization re-reads it per swap
+    // check. Locks the "signal-read VALUE prop is live" claim in EChartProps.
     const unmount = mount(
-      h(Chart, {
+      h(EChart, {
         options: () => ({ series: [{ type: 'bar', data: [1] }] }),
         theme: _rp(() => theme()),
         onEvents: { click: (p: ChartEventParams) => clicks.push(String(p.name)) },

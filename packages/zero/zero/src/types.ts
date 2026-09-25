@@ -299,8 +299,6 @@ export interface ZeroConfig {
    */
   typedRoutes?: boolean
 
-  /** Vite config overrides. */
-  vite?: Record<string, unknown>
 
   /**
    * Path to the client-side entry module that mounts the app. Auto-
@@ -940,6 +938,12 @@ export interface FileRoute {
 /** Entry mapping a URL pattern to its route-level middleware. */
 export interface RouteMiddlewareEntry {
   pattern: string
+  /**
+   * Every pattern this middleware guards, when it is more than one — a
+   * `_layout.tsx` middleware lists the pages under its directory. The entry
+   * runs once per request if ANY of them match. `pattern` is then the first.
+   */
+  patterns?: string[]
   middleware: Middleware | Middleware[]
 }
 

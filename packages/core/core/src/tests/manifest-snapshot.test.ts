@@ -111,7 +111,7 @@ describe('gen-docs — core snapshot', () => {
 
   it('renders @pyreon/core to MCP api-reference entries — one per api[] item', () => {
     const record = renderApiReferenceEntries(coreManifest)
-    expect(Object.keys(record).length).toBe(39)
+    expect(Object.keys(record).length).toBe(40)
     expect(Object.keys(record)).toContain('core/h')
     expect(Object.keys(record)).toContain('core/removeUndefinedProps')
     // Async + use — the data-boundary component and the directive composer.

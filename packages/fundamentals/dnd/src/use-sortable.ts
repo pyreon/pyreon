@@ -22,6 +22,41 @@ const SR_ONLY =
 
 let _sortableCounter = 0
 
+// Visually-hidden keyboard instructions live in ONE shared host on
+// document.body — NOT inside the consumer's container. Appending a <div> into
+// the container put an invalid child inside a <ul>/<ol> AND broke `<For>`'s
+// owns-parent bulk clear (its markers were no longer the container's first
+// child, so every clear fell back to the per-node walk). Cleanup contract:
+// each sortable removes its OWN node by identity; the host is removed when its
+// last node goes (refcount = host.childElementCount).
+const INSTRUCTIONS =
+  'To reorder, press Space or Enter to pick up an item, use the arrow keys to move it, then Space or Enter to drop it, or Escape to cancel. Alt plus an arrow key moves an item directly.'
+let _instructionsHost: HTMLElement | null = null
+
+function mountInstructions(id: string): () => void {
+  /* v8 ignore next — callers run client-side only (containerRef is a DOM ref) */
+  if (isServer) return () => {}
+  if (!_instructionsHost || !_instructionsHost.isConnected) {
+    _instructionsHost = document.createElement('div')
+    _instructionsHost.setAttribute('data-pyreon-sortable-instructions-host', '')
+    _instructionsHost.style.cssText = SR_ONLY
+    document.body.appendChild(_instructionsHost)
+  }
+  const host = _instructionsHost
+  const node = document.createElement('div')
+  node.id = id
+  node.setAttribute('data-pyreon-sortable-instructions', '')
+  node.textContent = INSTRUCTIONS
+  host.appendChild(node)
+  return () => {
+    node.remove()
+    if (host.childElementCount === 0) {
+      host.remove()
+      if (_instructionsHost === host) _instructionsHost = null
+    }
+  }
+}
+
 // Module-level registry of live sortable instances — used to dispatch
 // cross-list drop notifications from the destination back to the source
 // (W18). Keyed by sortableId.
@@ -41,7 +76,9 @@ const _sortableRegistry = new Map<
  * - Auto-scroll when dragging near container edges
  * - Closest-edge detection (drop above/below or left/right)
  * - Axis constraint (vertical/horizontal)
- * - Keyboard reordering (Alt+Arrow keys)
+ * - Keyboard reordering: Space/Enter picks an item up, arrows move it,
+ *   Space/Enter drops, Escape cancels (restores the original position);
+ *   Alt+Arrow moves directly. Every step is announced to screen readers.
  * - Optional cross-list `groupId` for Trello/Notion/Linear board layouts
  *   (W18) — share the same `groupId` between two
  *   sortable instances and items can be dragged between them. The
@@ -111,6 +148,10 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
   const isOverSelector = createSelector<string | number | null>(overId)
   const axis = options.axis ?? 'vertical'
   const groupId = options.groupId
+  const isDisabled = (): boolean => {
+    const d = options.disabled
+    return typeof d === 'function' ? d() : !!d
+  }
 
   /** Resolve the announcement label for an item: `label(item)` else the key. */
   function labelOf(item: T | undefined, key: string | number): string {
@@ -120,7 +161,7 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
 
   /** Resolve the announcement label for a key by looking the item up. */
   function labelFor(key: string | number): string {
-    const item = options.items().find((i) => options.by(i) === key)
+    const item = options.items().find((i) => options.by(i) === key || String(options.by(i)) === key)
     return labelOf(item, key)
   }
 
@@ -216,15 +257,19 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
 
     // Visually-hidden keyboard instructions, referenced by every item via
     // aria-describedby (the dnd-kit pattern — screen-reader users land on
-    // an item and hear how to reorder it). Created once per container
-    // mount, removed with the container registration.
-    const instructions = document.createElement('div')
-    instructions.id = instructionsId
-    instructions.setAttribute('data-pyreon-sortable-instructions', '')
-    instructions.style.cssText = SR_ONLY
-    instructions.textContent = 'Press Alt plus arrow keys to reorder'
-    el.appendChild(instructions)
-    containerCleanups.push(() => instructions.remove())
+    // an item and hear how to reorder it). Lives in a shared host OUTSIDE
+    // the container (see mountInstructions), removed with the container
+    // registration.
+    containerCleanups.push(mountInstructions(instructionsId))
+
+    // A non-list container gets `role="list"` so its `listitem` children are
+    // valid; a <ul>/<ol> (implicit list) or a consumer-set role is left alone.
+    if (!el.hasAttribute('role') && el.tagName !== 'UL' && el.tagName !== 'OL') {
+      el.setAttribute('role', 'list')
+      containerCleanups.push(() => {
+        if (el.getAttribute('role') === 'list') el.removeAttribute('role')
+      })
+    }
 
     // Auto-scroll when dragging near container edges
     containerCleanups.push(
@@ -276,45 +321,24 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
       }),
     )
 
-    // Keyboard reordering: Alt+Arrow keys
-    const keyHandler = (e: KeyboardEvent) => {
-      if (!e.altKey) return
+    // ── Keyboard reordering ────────────────────────────────────────────
+    // Pickup mode (WAI-ARIA / dnd-kit model): Space or Enter on a focused
+    // item picks it up, the axis arrows move it one slot per press, Space or
+    // Enter drops it, Escape cancels and restores the original index. The
+    // Alt+Arrow direct move is kept. Every step is announced.
+    let picked: { key: string; origin: number } | null = null
+    let focusFrame = 0
 
-      const isUp = axis === 'vertical' ? e.key === 'ArrowUp' : e.key === 'ArrowLeft'
-      const isDown = axis === 'vertical' ? e.key === 'ArrowDown' : e.key === 'ArrowRight'
-      if (!isUp && !isDown) return
+    const indexOf = (key: string): number =>
+      options.items().findIndex((item) => String(options.by(item)) === key)
 
-      const focused = document.activeElement as HTMLElement | null
-      if (!focused || !el.contains(focused)) return
-
-      const focusedKey = focused.dataset.pyreonSortKey
-      if (!focusedKey) return
-
-      e.preventDefault()
-
-      const currentItems = options.items()
-      const currentIndex = currentItems.findIndex((item) => String(options.by(item)) === focusedKey)
-      /* v8 ignore next — defensive findIndex guard; focusedKey is from active item */
-      if (currentIndex === -1) return
-
-      const targetIndex = isUp ? currentIndex - 1 : currentIndex + 1
-      if (targetIndex < 0 || targetIndex >= currentItems.length) return
-
-      const reordered = [...currentItems]
-      const temp = reordered[currentIndex]
-      reordered[currentIndex] = reordered[targetIndex] as T
-      reordered[targetIndex] = temp as T
-      options.onReorder(reordered)
-      // Screen-reader announcement for the keyboard path (1-based).
-      announce(
-        `Moved ${labelOf(temp, focusedKey)} to position ${targetIndex + 1} of ${currentItems.length}`,
-      )
-
-      // Restore focus after DOM update
-      requestAnimationFrame(() => {
+    const restoreFocus = (key: string) => {
+      if (focusFrame) cancelAnimationFrame(focusFrame)
+      focusFrame = requestAnimationFrame(() => {
+        focusFrame = 0
         const items = el.querySelectorAll('[data-pyreon-sort-key]')
         for (const item of items) {
-          if ((item as HTMLElement).dataset.pyreonSortKey === focusedKey) {
+          if ((item as HTMLElement).dataset.pyreonSortKey === key) {
             ;(item as HTMLElement).focus()
             break
           }
@@ -322,8 +346,112 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
       })
     }
 
+    /** Move the item with `key` from its index to `to`; returns false when out of range. */
+    const moveTo = (key: string, to: number): boolean => {
+      const currentItems = options.items()
+      const from = indexOf(key)
+      /* v8 ignore next — defensive findIndex guard; the key comes from a live item */
+      if (from === -1) return false
+      if (to < 0 || to >= currentItems.length || to === from) return false
+      const reordered = [...currentItems]
+      const [moved] = reordered.splice(from, 1)
+      reordered.splice(to, 0, moved as T)
+      options.onReorder(reordered)
+      restoreFocus(key)
+      return true
+    }
+
+    const endPickup = () => {
+      picked = null
+      activeId.set(null)
+    }
+
+    const keyHandler = (e: KeyboardEvent) => {
+      const focused = document.activeElement as HTMLElement | null
+      if (!focused || !el.contains(focused)) return
+      const focusedKey = focused.dataset.pyreonSortKey
+      if (!focusedKey) return
+
+      const isSpaceOrEnter = e.key === ' ' || e.key === 'Enter'
+      const isUp = axis === 'vertical' ? e.key === 'ArrowUp' : e.key === 'ArrowLeft'
+      const isDown = axis === 'vertical' ? e.key === 'ArrowDown' : e.key === 'ArrowRight'
+
+      if (picked) {
+        if (isUp || isDown) {
+          e.preventDefault()
+          const from = indexOf(picked.key)
+          const to = isUp ? from - 1 : from + 1
+          if (moveTo(picked.key, to)) {
+            announce(
+              `Moved ${labelFor(picked.key)} to position ${to + 1} of ${options.items().length}`,
+            )
+          }
+          return
+        }
+        if (isSpaceOrEnter) {
+          e.preventDefault()
+          const key = picked.key
+          endPickup()
+          announce(
+            `Dropped ${labelFor(key)} at position ${indexOf(key) + 1} of ${options.items().length}`,
+          )
+          return
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          const { key, origin } = picked
+          moveTo(key, origin)
+          endPickup()
+          announce(
+            `Reorder cancelled. ${labelFor(key)} returned to position ${origin + 1} of ${options.items().length}`,
+          )
+        }
+        return
+      }
+
+      if (isDisabled()) return
+
+      // Pickup starts only from the ITEM's own keystroke: a button / input
+      // inside an item keeps its native Space / Enter behaviour.
+      if (
+        isSpaceOrEnter &&
+        e.target === focused &&
+        !e.altKey &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.shiftKey
+      ) {
+        e.preventDefault()
+        const origin = indexOf(focusedKey)
+        /* v8 ignore next — defensive findIndex guard; the key comes from a live item */
+        if (origin === -1) return
+        picked = { key: focusedKey, origin }
+        // Real key type (number keys stay numbers) so isActive(key) matches.
+        activeId.set(options.by(options.items()[origin] as T))
+        announce(
+          `Picked up ${labelFor(focusedKey)}. Current position ${origin + 1} of ${options.items().length}. Use the arrow keys to move, Space or Enter to drop, Escape to cancel.`,
+        )
+        return
+      }
+
+      if (!e.altKey || (!isUp && !isDown)) return
+      e.preventDefault()
+      const from = indexOf(focusedKey)
+      const to = isUp ? from - 1 : from + 1
+      if (moveTo(focusedKey, to)) {
+        // Screen-reader announcement for the keyboard path (1-based).
+        announce(`Moved ${labelFor(focusedKey)} to position ${to + 1} of ${options.items().length}`)
+      }
+    }
+
     el.addEventListener('keydown', keyHandler)
     containerCleanups.push(() => el.removeEventListener('keydown', keyHandler))
+    // A pending focus-restore frame must not run against a torn-down list.
+    containerCleanups.push(() => {
+      if (focusFrame) cancelAnimationFrame(focusFrame)
+      focusFrame = 0
+      if (picked) endPickup()
+    })
 
     containerCleanup = () => {
       for (const fn of containerCleanups) fn()
@@ -338,7 +466,19 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
   const itemHandles = new Map<string | number, HTMLElement>()
 
   function itemRef(key: string | number): (el: HTMLElement | null) => void {
+    // The element THIS ref callback registered. A keyed re-render mounts the
+    // replacement row (same key) BEFORE the old row's ref(null) fires; when
+    // this callback registered an element that is no longer the live one for
+    // the key, its null is stale and must not tear down the live row's
+    // registration. (A callback that never registered anything — an
+    // imperative `itemRef(key)(null)` — still disposes the key.)
+    let mine: HTMLElement | null = null
     return (el: HTMLElement | null) => {
+      if (!el) {
+        const stale = mine !== null && itemEls.get(key) !== mine
+        mine = null
+        if (stale) return
+      }
       // Per-key disposal. The ref fires with the element on mount and
       // with `null` on unmount. The old code pushed every registration
       // onto the shared `cleanups[]` and made the null branch a pure
@@ -358,6 +498,7 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
         itemEls.delete(key)
         return
       }
+      mine = el
       itemEls.set(key, el)
       registerItem(key, el)
     }
@@ -370,9 +511,19 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
    * effect — pdnd captures the handle at registration time.
    */
   function itemHandleRef(key: string | number): (el: HTMLElement | null) => void {
+    // Same ownership rule as itemRef: a stale handle's null must not drop a
+    // replacement row's handle.
+    let mine: HTMLElement | null = null
     return (el: HTMLElement | null) => {
-      if (el) itemHandles.set(key, el)
-      else itemHandles.delete(key)
+      if (el) {
+        mine = el
+        itemHandles.set(key, el)
+      } else {
+        const stale = mine !== null && itemHandles.get(key) !== mine
+        mine = null
+        if (stale) return
+        itemHandles.delete(key)
+      }
       const itemEl = itemEls.get(key)
       if (!itemEl) return
       // itemEls and itemCleanups are set together (itemRef → registerItem),
@@ -388,7 +539,8 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
   function registerItem(key: string | number, el: HTMLElement) {
     el.dataset.pyreonSortKey = String(key)
     if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0')
-    el.setAttribute('role', 'listitem')
+    // A consumer-supplied role (option, row, treeitem, …) wins.
+    if (!el.hasAttribute('role')) el.setAttribute('role', 'listitem')
     el.setAttribute('aria-roledescription', 'sortable item')
     // Link the container's visually-hidden keyboard instructions so a
     // screen-reader user focusing the item hears how to reorder it.
@@ -406,6 +558,7 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
         // Per-item drag handle (pdnd dragHandle) — drag initiation is
         // scoped to the registered handle element when one exists.
         ...(handle ? { dragHandle: handle } : {}),
+        canDrag: () => !isDisabled(),
         getInitialData: () => {
           const currentItems = options.items()
           const item = currentItems.find((i) => options.by(i) === key)

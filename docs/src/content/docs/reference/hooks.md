@@ -838,6 +838,7 @@ const scheme = useColorScheme()
 
 - Reads `'light'` on the first render / SSR regardless of OS preference — it inherits `useMediaQuery`'s seed-then-correct-on-mount behavior. Use a pre-paint script for a flash-free initial theme.
 - Returns an accessor — call `scheme()` to read.
+- Using it to theme a component — it reads the OS ONLY, so it ignores the mode an app chose (`<PyreonUI mode>`, a zero theme toggle) and the page's declared `color-scheme`. Theme with `useColorMode()` from `@pyreon/core`, the framework-wide mode; keep this for code that genuinely wants the OS setting.
 
 **See also:** `useMediaQuery` · `useReducedMotion`
 

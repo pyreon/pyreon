@@ -6,9 +6,10 @@ import packageJson from '../package.json' with { type: 'json' }
 import { build } from './commands/build'
 import { context } from './commands/context'
 import { create } from './commands/create'
-import { dev } from './commands/dev'
+import { type DevOptions, dev } from './commands/dev'
 import { doctor } from './commands/doctor'
 import { preview } from './commands/preview'
+import { checkRootArg } from './commands/unknown-command'
 
 const cli = cac('zero')
 
@@ -23,7 +24,16 @@ cli
   .option('--host [host]', 'Server host')
   .option('--open', 'Open browser on start')
   .option('--routes', 'Print the full route table (collapsed to a one-line summary by default)')
-  .action(dev)
+  .action((root: string | undefined, options: DevOptions) => {
+    // Every unknown word lands in `[root]`, so `zero biuld` would start a
+    // dev server in a directory that does not exist. Reject it instead.
+    const error = checkRootArg(root)
+    if (error) {
+      console.error(error)
+      process.exit(1)
+    }
+    return dev(root, options)
+  })
 
 cli
   // No `--mode` flag — the render mode comes from `zero({ mode })` in
@@ -54,7 +64,12 @@ cli
   .option('--out <path>', 'Output path (default: .pyreon/context.json)')
   .action(context)
 
-cli.command('create <name>', 'Scaffold a new Pyreon Zero project').action(create)
+cli
+  // Delegates to @pyreon/create-zero; every argument after `create` is
+  // forwarded unchanged, so its flags (`--template`, `--yes`, …) all work.
+  .command('create [...args]', 'Scaffold a new Pyreon Zero project (runs @pyreon/create-zero)')
+  .allowUnknownOptions()
+  .action(create)
 
 cli.help()
 cli.version(packageJson.version)

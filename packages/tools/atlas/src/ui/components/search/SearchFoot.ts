@@ -5,4 +5,5 @@ export const SearchFoot = el
   .theme((t) => ({
     padding: '8px 16px', borderTop: t.hairline, flex: 'none',
     fontFamily: t.font.mono, fontSize: t.size.nano, color: t.faint,
+    extendCss: '@media (pointer:coarse){display:none;}',
   }))
