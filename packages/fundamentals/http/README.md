@@ -147,9 +147,10 @@ registry and no `eject()` handle to leak.
 
 | Concern | Default | Why |
 | --- | --- | --- |
-| timeout | **on**, 30s | `fetch` has none — a hung request otherwise hangs forever |
+| timeout | **on**, 30s — covers the body read too (`.json()` / `.text()`) | `fetch` has none — a hung request otherwise hangs forever |
 | retry | **off** | query already retries 3×; a client default of 3 makes one logical query **nine** requests |
-| dedupe | off | query already dedupes by key |
+| dedupe | off | query already dedupes by key. When on, `authorization` + `cookie` are part of the key, so two users never share a response |
+| `bearer` scope | the `baseUrl` origin | a path that is an absolute URL leaves `baseUrl`; the token does not follow it (`bearer(token, { crossOrigin: true })` opts in) |
 | throw on non-2xx | on | query needs a *rejected* promise to enter its error state |
 | credentials | `same-origin` | — |
 
@@ -169,6 +170,11 @@ RequestError                  base — catch this to cover everything
 
 `AbortError` is kept deliberately distinct: "the user navigated away" and
 "the API is down" demand opposite handling.
+
+Error **messages** carry the URL without its query string, fragment or
+userinfo — they end up in reporters and logs, and a query string is where
+signed-URL signatures and tokens live. The full URL is still on
+`error.request.url`.
 
 ## SSR
 

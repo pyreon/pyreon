@@ -286,7 +286,11 @@ cat "$TEST_OUTPUT_FILE"
 if [ $TEST_EXIT -eq 124 ]; then
   exit 1
 elif [ $TEST_EXIT -ne 0 ]; then
-  if grep -q "No packages matched the filter" "$TEST_OUTPUT_FILE"; then
+  # bun 1.4 changed this message from "No packages matched the filter" to
+  # "No workspace packages matched the filter" — match the stable suffix
+  # so a future bun wording tweak doesn't silently turn this back into a
+  # hard failure for every docs-only / test-script-less affected set.
+  if grep -q "packages matched the filter" "$TEST_OUTPUT_FILE"; then
     echo "[pyreon pre-push] (no test scripts in affected packages — ok)"
   else
     echo
