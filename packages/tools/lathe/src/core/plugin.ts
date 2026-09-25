@@ -33,7 +33,7 @@
 
 import type { GeneratedFile } from '../emit/writer'
 import { SourceFile } from '../emit/writer'
-import type { IrDocument, IrNote, IrOperation, Reach } from './ir'
+import type { IrDocument, IrNote, Reach } from './ir'
 import type { PluginName, ResolvedConfig } from './config'
 import { collectRefNames, operationTypes } from './walk'
 import { modelIdent, operationIdent } from './naming'

@@ -66,7 +66,8 @@ describe('the Vite plugin formats before it writes and before it checks', () => 
     expect(readFileSync(join(root, 'gen', 'client.ts'), 'utf8').endsWith('// formatted by test\n')).toBe(true)
     expect((await runPass({ ...opts, plugins: [...opts.plugins] }, root, 'check')).stale).toEqual([])
     // Without the formatter, the same committed output IS stale.
-    const unformatted = await runPass({ ...opts, plugins: [...opts.plugins], format: undefined }, root, 'check')
+    const { format: _unused, ...plain } = opts
+    const unformatted = await runPass({ ...plain, plugins: [...plain.plugins] }, root, 'check')
     expect(unformatted.stale.length).toBeGreaterThan(0)
   })
 })

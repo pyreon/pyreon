@@ -291,9 +291,7 @@ export function applyOperationSettings(
       ...(validate !== undefined ? { validate } : {}),
     }
   })
-  const out = { ...doc, operations: operationsOut }
-  assertHookNames(out)
-  return out
+  return { ...doc, operations: operationsOut }
 }
 
 /**

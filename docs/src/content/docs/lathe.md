@@ -228,6 +228,175 @@ lathe generate --plugins schemas,mocks    # ...and deterministic fixtures
 lathe generate --plugins docs             # just the Markdown reference
 ```
 
+### Writing your own plugin
+
+A plugin is an object made with `definePlugin`. It sees the same document every
+built-in emitter reads, and writes files with the same writer, so a new output
+(MSW handlers, an MCP tool table, a Postman collection) lives in your repo
+instead of a fork:
+
+```ts
+// lathe-path-table.ts
+import { definePlugin, SourceFile } from '@pyreon/lathe'
+
+export const pathTable = definePlugin({
+  name: 'path-table',
+  emit({ doc }) {
+    const f = new SourceFile('extras/paths.ts')
+    for (const op of doc.operations) f.line(`export const ${op.id}Path = ${JSON.stringify(op.path)}`)
+    return [f]
+  },
+})
+```
+
+```ts
+// pyreon.config.ts
+import { defineConfig } from '@pyreon/config'
+import { pathTable } from './lathe-path-table'
+
+export default defineConfig({
+  lathe: { input: './openapi.yaml', plugins: ['schemas', 'client', 'queries', pathTable] },
+})
+```
+
+| hook | runs | receives | returns |
+| --- | --- | --- | --- |
+| `setup(ctx)` | once per project, first | `{ config }` | nothing; throw to refuse the config |
+| `transformDocument(doc, ctx)` | after filters, naming and `operations`; in plugin order | the frozen document, `{ config, note }` | a modified copy, or nothing |
+| `emit(ctx)` | after every built-in emitter | `{ doc, config, reach, files, banner }` | `SourceFile`s or `{ path, contents, sideEffects? }` |
+
+`requires: ['queries']` turns on the built-ins whose output your files import.
+The IR types (`IrDocument`, `IrOperation`, `IrType`, …), the writer
+(`SourceFile`, `q`, `jsonLiteral`, `relativeSpecifier`) and the identifier
+rules (`ident`, `typeIdent`, `hookOf`, `tagFile`, `byTag`, `byCodeUnit`) are
+exported from `@pyreon/lathe` for plugin authors.
+
+Four guarantees hold for every plugin:
+
+- **Errors name it.** A throw inside a hook surfaces as
+  `plugin \`path-table\` failed in \`emit\`: …`.
+- **The document is immutable.** A hook gets a frozen document; writing to it
+  fails with a message saying to return a modified copy. A copy that leaves a
+  model reference dangling is refused, naming the plugin.
+- **Output is deterministic.** Each hook runs twice on the same input and must
+  agree with itself, so a timestamp or a random value cannot turn
+  `lathe check` red on the next machine. Files are sorted by path; sort any
+  list you emit with `byCodeUnit`, never `localeCompare`.
+- **Plugin files are ordinary output.** They are listed in
+  `lathe-manifest.json` (a file you stop emitting is pruned), compared by
+  `lathe check`, passed to `format`, and may not collide with a built-in's path.
+  A file that does something at import time returns `sideEffects: true`, which
+  lists it in the emitted `package.json`.
+
+Hooks are synchronous: generation is a function of the spec and the config.
+Anything a plugin needs from elsewhere is an option it takes when it is
+constructed, where the config shows it.
+
+## Customizing the output
+
+Five config keys shape what gets generated without touching the spec file.
+
+### Generate a subset (`filters`)
+
+```ts
+lathe: {
+  input: './stripe.yaml',
+  filters: {
+    include: [{ tag: ['Customers', 'Charges'] }, { path: '/v1/refunds/**', method: 'get' }],
+    exclude: { operationId: '*Deprecated*' },
+  },
+}
+```
+
+`include` keeps operations some matcher selects, then `exclude` drops any a
+matcher selects. Within a matcher every field must match; a field given as a
+list matches when any entry does. `tag` matches every tag the spec gives the
+operation (not only the first), `path` is a glob over the spec's `{param}`
+path (`*` within a segment, `**` across segments), `operationId` is a glob over
+the spec's id or the generated name, and `method` takes either case.
+
+Models only the dropped operations used are dropped with them, and so are the
+notes about both; `models: 'all'` keeps every model. A matcher that selects
+nothing is an error with a suggestion (`tag \`Customer\` -> \`Customers\`?`) —
+in `include` it would produce an empty client, in `exclude` it would generate
+the very operations it names.
+
+### Correct the spec (`patches`)
+
+```ts
+lathe: {
+  patches: [
+    // A note's own `at` can be pasted in as the path.
+    { op: 'add', path: '#/paths/~1health/get/operationId', value: 'checkHealth' },
+    { op: 'replace', path: '/components/schemas/Pet/properties/tag/nullable', value: true },
+    { op: 'remove', path: '/paths/~1internal~1debug' },
+  ],
+}
+```
+
+RFC 6902 `add` / `replace` / `remove` at an RFC 6901 pointer, applied in order
+to the parsed spec before anything reads it — so the correction survives every
+`lathe pull`. A patch whose target no longer exists fails the run and names the
+nearest key: the vendor changed the spec under it, and it needs another look.
+
+### Per-operation settings (`operations`)
+
+```ts
+lathe: {
+  operations: {
+    getPetById: { hook: 'usePet' },
+    deleteAccount: { hook: false },                 // endpoint only — no hook, preview or native component
+    listEvents: {
+      responseValidation: 'off',                   // this endpoint only
+      pagination: { kind: 'cursor', param: 'cursor', next: 'next' },
+    },
+  },
+}
+```
+
+Keys are the generated endpoint name or the spec's `operationId`. `pagination`
+is the same declaration the top-level `pagination` map takes — use one or the
+other for an operation; both at once is an error. `responseValidation`
+overrides the client-wide mode (and `configureApi({ validate })`) for that
+endpoint, on every client.
+
+### Rename things (`naming`)
+
+```ts
+lathe: {
+  naming: {
+    operation: ({ default: name, operationId }) => (operationId?.startsWith('v1') ? name.slice(2) : name),
+    model: ({ default: name }) => `${name}Dto`,
+    file: ({ default: stem }) => `${stem}-api`,
+    hook: ({ default: name, kind }) => (kind === 'mutation' ? false : name),
+  },
+}
+```
+
+Each function receives Lathe's own choice as `default`, so returning it keeps
+it. `model` rewrites every reference to the model. `file` renames the group
+under every layer (`endpoints/`, `queries/`, the native modules, the docs).
+`hook` may return `false` to generate none; an `operations.<id>.hook` wins over
+it. Every result is checked the way Lathe checks its own names — a valid
+identifier on every target, clear of the names the generated modules bind,
+and unique (file names case-insensitively) — and a collision names both sides.
+
+### Format the output (`format`)
+
+```ts
+import { format as prettier } from 'prettier'
+
+lathe: {
+  format: (code, path) => prettier(code, { filepath: path }),
+}
+```
+
+Applied to every generated file before it is written **and before `lathe
+check` compares**, so formatted output you committed is current rather than
+stale — in the CLI and the Vite plugin alike. It receives the path so the
+formatter can pick a parser (skip a file by returning `code` unchanged).
+`lathe-manifest.json` and `api-surface.json` are never passed.
+
 ## The HTTP client is selectable
 
 ```ts
@@ -601,7 +770,8 @@ declaration emits a typed `use<Op>Infinite` hook plus a pure
 `<op>InfiniteOptions` factory (for a loader's `prefetchInfiniteQuery`):
 
 ```ts
-// pyreon.config.ts — keys are the generated operation names
+// pyreon.config.ts — keys are the generated operation names (or the spec's
+// operationIds); `operations.<id>.pagination` takes the same shape
 lathe: {
   pagination: {
     listCustomers: { kind: 'lastItem', param: 'starting_after', items: 'data', field: 'id', hasMore: 'has_more' },
@@ -655,12 +825,17 @@ Paths passed on the command line are relative to the working directory.
 | `output` | `string` | `./src/gen` | directory the client is written to |
 | `source` | `string` | — | http(s) URL `lathe pull` fetches the spec from |
 | `target` | `'web' \| 'multiplatform'` | `'web'` | `multiplatform` also emits and verifies native modules |
-| `plugins` | plugin names | `['schemas', 'client', 'queries']` | see [Plugins](#plugins) |
+| `plugins` | plugin names and `definePlugin` plugins | `['schemas', 'client', 'queries']` | see [Plugins](#plugins) and [Writing your own plugin](#writing-your-own-plugin) |
 | `client` | `'pyreon' \| 'fetch' \| 'axios' \| 'ky'` | `'pyreon'` | HTTP runtime; only `pyreon` reaches native |
 | `validator` | `'pyreon' \| 'zod'` | `'pyreon'` | schema library; both reach native |
 | `baseUrl` | `string` | the spec's `servers[0].url` | must be an absolute literal to reach native |
 | `responseValidation` | `'strict' \| 'warn' \| 'off'` | `'strict'` | the web client's default response validation; `configureApi({ validate })` switches it at runtime |
 | `pagination` | `Record<operation, PaginationConfig>` | — | declared infinite queries; see [Infinite queries](#infinite-queries-declared) |
+| `operations` | `Record<operation, { hook?, responseValidation?, pagination? }>` | — | per-operation settings; see [Per-operation settings](#per-operation-settings-operations) |
+| `filters` | `{ include?, exclude?, models? }` | — | generate a subset; see [Generate a subset](#generate-a-subset-filters) |
+| `patches` | `{ op, path, value? }[]` | — | spec corrections; see [Correct the spec](#correct-the-spec-patches) |
+| `naming` | `{ operation?, model?, file?, hook? }` | — | rename generated names; see [Rename things](#rename-things-naming) |
+| `format` | `(code, path) => string \| Promise<string>` | — | formatter run before write and before `check`; see [Format the output](#format-the-output-format) |
 | `strictNative` | `boolean` | `false` | exit 1 when a native module does not lower |
 | `projects` | `{ name, input, ...any key above }[]` | — | several specs in one run; see [Several specs](#several-specs-one-pass) |
 
@@ -821,6 +996,11 @@ never touched. Commit the manifest with the rest of the output.
 - **No multi-project composition.** `projects: [...]` writes N independent
   output trees; there is no combined entry across them.
 - **`faker` does not reach native**, and neither do the preview components.
+- **Plugin hooks are synchronous** and run twice each (the determinism check);
+  an expensive `emit` costs twice its work. `format` is the one asynchronous
+  hook.
+- **`--plugins` on the command line takes built-in names only**; plugins made
+  with `definePlugin` are configured in `pyreon.config.ts`.
 - A `$ref` **cycle** has no finite nesting, so the native schema names the
   target and the compiler drops that one field with a warning.
 

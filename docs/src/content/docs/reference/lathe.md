@@ -47,6 +47,8 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - Failure is normalised across adapters into one `LatheHttpError` carrying `status` and the parsed body — `fetch` resolves a 500, axios rejects with an `AxiosError`, ky with an `HTTPError`, and a generated query's `error` must not change shape when the transport is swapped. Retry policy is deliberately NOT normalised (ky retries 5xx GETs, the others do not) and is asserted rather than papered over
 - `target: 'multiplatform'` with a non-Pyreon client is REFUSED, not silently downgraded: PMTC lowers `createHttp` + `api.endpoint(...)` by NAME, so emitting native modules over axios would produce exactly the silent regression to web-only that the target exists to catch
 - Mocks ride on `@pyreon/http`'s own `mock()` middleware rather than MSW: no service worker, no extra install, identical in node and the browser. A parameterised route emits a bounded RegExp — the declared `/books/:id` is not a SUFFIX of the resolved `/v1/books/b1`, so a plain string matched nothing and every such fixture fell through to the real network. Adapter clients need no pattern at all: their seam is handed the declared path alongside the resolved one
+- A public PLUGIN API: `definePlugin({ name, requires?, setup?, transformDocument?, emit? })` over the same IR and `SourceFile` writer the built-ins use, so a new output (MSW handlers, an MCP tool table) is a file in the app rather than a fork. Enforced, not hoped for: every hook failure names the plugin and the hook; the document a hook receives is FROZEN (a transform returns a modified copy, and a copy whose model references dangle is refused by name); each hook runs TWICE and must agree with itself, so a timestamp cannot make `lathe check` flap; plugin files join the manifest (pruned when dropped), `check`, `format` and the case-insensitive path-collision guard
+- Author control without editing the spec: `filters` (include/exclude matchers by tag — every tag, not only the first — path glob, operationId glob and method; models only the dropped operations used go with them, and a matcher that selects NOTHING is an error with a did-you-mean), `patches` (RFC 6902 add/replace/remove at an RFC 6901 pointer, applied before the spec is read so the fix survives `lathe pull`; a target that moved FAILS the run), `operations` (per operation: hook name or `false`, `responseValidation`, `pagination`), `naming` (operation/model/file/hook functions receiving Lathe's own choice as `default`, every result validated and collision-checked) and `format` (the project formatter, applied before write AND before `check` compares)
 - Atlas scenarios generated from the spec — one per enum value on a response field, so a variant axis the API declares is one the workbench actually exercises, and it regenerates when the API changes instead of drifting
 
 ## Complete example
@@ -82,6 +84,8 @@ lathe / Bookshelf 1.2.0
 | --- | --- | --- |
 | [`generate`](#generate) | function | The whole pipeline, pure: spec text in, file CONTENTS out. |
 | [`resolveConfig`](#resolveconfig) | function | Fills defaults and validates one project's settings, and is where the whole option surface lives: `plugins` (which emitt |
+| [`definePlugin`](#defineplugin) | function | Declares a third-party Lathe plugin, listed in `plugins` beside the built-in names. |
+| [`formatFiles`](#formatfiles) | function | Applies the `format` config hook to generated files, preserving order, skipping Lathe's own bookkeeping (`lathe-manifest |
 | [`verifyNative`](#verifynative) | function | Runs the real native compiler over the generated `.native.tsx` modules on both targets and returns a per-file verdict. |
 | [`loadOpenApi`](#loadopenapi) | function | Parses an OpenAPI 3.x document (JSON or YAML text) into the spec-agnostic IR. |
 
@@ -123,7 +127,7 @@ for (const [id, r] of reach) {
 resolveConfig(section: LatheSection | undefined): ResolvedConfig
 ```
 
-Fills defaults and validates one project's settings, and is where the whole option surface lives: `plugins` (which emitters run), `client` (`pyreon` | `fetch` | `axios` | `ky`), `validator` (`pyreon` | `zod`), `target` (`web` | `multiplatform`), `baseUrl`, `strictNative` and `responseValidation` (`strict` | `warn` | `off`, what the web client does with a response that does not match its schema). A plugin selection is EXPANDED to cover what its output imports rather than refused -- asking for `components` gets `queries`, `client` and `schemas` too, and the CLI report says what came along. Use `resolveProjects` instead when the config may declare `projects: [...]`; it always returns a LIST, so a single-project config is a one-element list rather than a special case.
+Fills defaults and validates one project's settings, and is where the whole option surface lives: `plugins` (which emitters run — built-in names and `definePlugin` plugins), `filters` / `patches` / `operations` / `naming` / `format` (author control over the subset, the spec, per-operation hooks and validation, generated names, and formatting), `client` (`pyreon` | `fetch` | `axios` | `ky`), `validator` (`pyreon` | `zod`), `target` (`web` | `multiplatform`), `baseUrl`, `strictNative` and `responseValidation` (`strict` | `warn` | `off`, what the web client does with a response that does not match its schema). A plugin selection is EXPANDED to cover what its output imports rather than refused -- asking for `components` gets `queries`, `client` and `schemas` too, and the CLI report says what came along. Use `resolveProjects` instead when the config may declare `projects: [...]`; it always returns a LIST, so a single-project config is a one-element list rather than a special case.
 
 **Example**
 
@@ -149,6 +153,67 @@ const { files } = generate(specText, config)
 - Importing `installMocks`, `mockRoutes` or the faker factories from the generated `index.ts`. They are NOT there by design -- they live in `./dev`, so a page bundle has no import edge that could reach a fixture table or `@faker-js/faker`.
 - Assuming `validator: 'pyreon'` lowers more natively than `zod` because it is first-party. Measured against the real compiler it is the OPPOSITE: nested objects and arrays of objects lower under zod and are DROPPED under `s.*`, so `zod` is the better native choice for any spec with nested models.
 - Setting `plugins` and expecting the generated `package.json` to change. The `sideEffects` marker is emitted unconditionally -- it is a statement ABOUT the output rather than a plugin's output -- and it names `./atlas.wrapper.tsx` only when `atlas` is selected, because that file alone has a module-scope side effect.
+
+---
+
+### definePlugin `function`
+
+```ts
+definePlugin<P extends LathePlugin>(plugin: P): P  // LathePlugin = { name, requires?, setup?(ctx), transformDocument?(doc, ctx), emit?(ctx) }
+```
+
+Declares a third-party Lathe plugin, listed in `plugins` beside the built-in names. `setup({ config })` runs once per project and may throw to refuse a config; `transformDocument(doc, { config, note })` rewrites the IR after `filters`, `naming` and `operations` (the argument is frozen — return a modified copy; `note()` reports a loss under code `plugin`); `emit({ doc, config, reach, files, banner })` runs after every built-in and returns `SourceFile`s (banner added) or `{ path, contents, sideEffects? }`. `requires` turns on the built-ins its files import. Failures are attributed (`plugin `x` failed in `emit`: …`), each hook runs twice to prove determinism, and plugin files are listed in the manifest, compared by `check`, formatted by `format`, and refused on a path collision. Hooks are synchronous; take anything external as a construction option.
+
+**Example**
+
+```tsx
+import { definePlugin, SourceFile } from '@pyreon/lathe'
+
+export const pathTable = definePlugin({
+  name: 'path-table',
+  emit({ doc }) {
+    const f = new SourceFile('extras/paths.ts')
+    for (const op of doc.operations) f.line(`export const ${op.id}Path = ${JSON.stringify(op.path)}`)
+    return [f]
+  },
+})
+
+// pyreon.config.ts
+export default { lathe: { input: './openapi.yaml', plugins: ['schemas', 'client', pathTable] } }
+```
+
+**Common mistakes**
+
+- Mutating the document in `transformDocument`. It is frozen and the write throws; return `{ ...doc, operations: doc.operations.map(...) }`.
+- Emitting anything that varies between runs — a date, a random id, a `Set` iterated in insertion order built from unordered input. Each hook runs twice and a disagreement is an error; sort with `byCodeUnit`, never `localeCompare` (locale-dependent across machines).
+- Passing a plain object instead of a `definePlugin` result. The config refuses it: a typo such as `transform:` for `transformDocument:` would otherwise be a hook that silently never runs.
+- Emitting to a path a built-in owns (`client.ts`, `index.ts`) or Lathe's own bookkeeping (`lathe-manifest.json`, `api-surface.json`, `package.json`). Emit under a directory of the plugin's own.
+- Renaming a model in a transform without rewriting every `{ kind: 'ref' }` to it. The document is refused, naming the dangling references — use the `renameRefs` walker, or `naming.model` in the config.
+
+---
+
+### formatFiles `function`
+
+```ts
+formatFiles(files: GeneratedFile[], format: ((code: string, path: string) => string | Promise<string>) | undefined): Promise<GeneratedFile[]>
+```
+
+Applies the `format` config hook to generated files, preserving order, skipping Lathe's own bookkeeping (`lathe-manifest.json`, `api-surface.json`). The CLI and the Vite plugin call it after `generate()` and BEFORE both writing and `check`'s comparison, which is what keeps formatted, committed output from reading as stale. `generate()` itself stays synchronous and unformatted; call this when driving the pipeline programmatically.
+
+**Example**
+
+```tsx
+import { format as prettier } from 'prettier'
+import { formatFiles, generate, resolveConfig } from '@pyreon/lathe'
+
+const config = resolveConfig({ input: './openapi.yaml', format: (code, path) => prettier(code, { filepath: path }) })
+const files = await formatFiles(generate(specText, config).files, config.format)
+```
+
+**Common mistakes**
+
+- Formatting only on write. `lathe check` then compares Lathe's raw bytes with your formatted files and reports everything stale — the formatter must run before the comparison too, which the CLI and Vite plugin do.
+- A formatter that is not deterministic (plugin order, config read from the network). The output must regenerate byte-identically.
 
 ---
 

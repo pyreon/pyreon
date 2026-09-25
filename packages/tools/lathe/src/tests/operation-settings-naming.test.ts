@@ -233,6 +233,41 @@ describe('naming', () => {
   })
 })
 
+describe('a DEFAULT hook name colliding with an endpoint', () => {
+  // `pets` gets the hook `usePets`, and `usePets` is also an endpoint. The
+  // queries module imported the endpoint and declared the hook under one name
+  // (TS2440), and the root barrel exported both (TS2308) -- a client that did
+  // not compile, from two perfectly ordinary operationIds. Now it is an error
+  // naming both sides, and the rename it suggests produces a compiling client.
+  const SPEC = JSON.stringify({
+    openapi: '3.0.3',
+    info: { title: 'T', version: '1' },
+    servers: [{ url: 'https://a.test' }],
+    paths: {
+      '/pets': { get: { operationId: 'pets', tags: ['p'], responses: { 200: { content: { 'application/json': { schema: { type: 'string' } } } } } } },
+      '/x': { get: { operationId: 'usePets', tags: ['p'], responses: { 200: { content: { 'application/json': { schema: { type: 'string' } } } } } } },
+    },
+  })
+
+  it('is refused, naming both sides', () => {
+    expect(() => generate(SPEC, resolveConfig({ input: 'x' }))).toThrow(
+      '[Pyreon] lathe: the name `usePets` is used twice in the generated hooks — the endpoint `usePets` and the hook for `pets`.',
+    )
+  })
+
+  it('is not checked when no hooks are generated', () => {
+    expect(() => generate(SPEC, resolveConfig({ input: 'x', plugins: ['schemas', 'client'] }))).not.toThrow()
+  })
+
+  it('the suggested rename compiles', () => {
+    const { errors } = typecheckSpec('hook-collision-renamed', SPEC, {
+      plugins: ['schemas', 'client', 'queries'],
+      operations: { pets: { hook: 'usePetsQuery' } },
+    })
+    expect(errors).toEqual([])
+  })
+})
+
 describe('the customized client TYPECHECKS as a consumer uses it', () => {
   it('renamed hooks, a dropped hook, renamed models and files, per-op validation', () => {
     const { errors } = typecheckSpec(
