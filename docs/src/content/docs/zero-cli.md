@@ -186,17 +186,19 @@ Run Pyreon's project health gates against the project. Delegates to [`@pyreon/cl
 | `--fix` | Auto-fix the fixable findings (e.g. `className` → `class`). |
 | `--json` | Emit machine-readable JSON instead of the formatted report. |
 | `--ci` | CI mode — exit with code `1` when there are errors. |
+| `--full` | Also run the two slow gates (`audit-types`, `bundle-budgets`). |
 
 ```bash
-zero doctor                # formatted report against the cwd
+zero doctor                # formatted report against the cwd (13 fast gates)
 zero doctor --fix          # apply auto-fixes
 zero doctor --json         # JSON output for tooling
 zero doctor --ci           # non-zero exit on errors — wire into CI
+zero doctor --full         # add the slow gates (15 gates total)
 zero doctor ./apps/web     # check a project in a subdirectory
 ```
 
 :::note
-`zero doctor` exposes exactly three flags: `--fix`, `--json`, `--ci`. The richer audits some workflows reach for — cross-file island checks, SSG misconfiguration audits, test-environment parity — live on the framework-wide `pyreon doctor` binary in [`@pyreon/cli`](/docs/cli), and are **not** forwarded through `zero doctor`. Run `pyreon doctor --check-islands` / `--check-ssg` / `--audit-tests` for those.
+`zero doctor` exposes exactly four flags: `--fix`, `--json`, `--ci`, `--full`. The richer controls `pyreon doctor` itself exposes — `--only`/`--skip` a specific gate, cross-file island checks, SSG misconfiguration audits, test-environment parity, `--roots` for non-standard layouts — live on the framework-wide `pyreon doctor` binary in [`@pyreon/cli`](/docs/cli), and are **not** forwarded through `zero doctor`. Run `pyreon doctor --check-islands` / `--check-ssg` / `--audit-tests` / `--only <gate>` for those.
 :::
 
 ### `zero context [root]`
@@ -213,33 +215,21 @@ zero context --out ./ctx.json      # custom output path
 zero context ./apps/web            # generate for a subdirectory project
 ```
 
-### `zero create <name>`
+### `zero create [...args]`
 
-Scaffold a new Pyreon Zero project from the bundled default template. `<name>` is required — it's both the new directory name and the generated `package.json` `name`.
+Scaffold a new Pyreon Zero project — a convenience wrapper that runs the **exact same interactive scaffolder** as `bun create @pyreon/zero` / `npm create @pyreon/zero@latest`, without a separate invocation. Every argument after `create` is forwarded **verbatim** to `@pyreon/create-zero`'s own bin (spawned with inherited stdio, so its prompts work) — the project name, `--template`, `--preset`, `--adapter`, `--yes`, `--help`, all of it.
 
 ```bash
-zero create my-app
+zero create my-app                                    # interactive — walks every prompt
+zero create my-app --yes                               # non-interactive, accept defaults
+zero create my-app --template dashboard --adapter vercel --yes
+zero create --help                                     # create-zero's own usage text
 ```
 
-What it does:
+Because it's a direct passthrough, the full [`@pyreon/create-zero`](/docs/create-zero) surface applies — templates (`app` / `blog` / `dashboard` / `monorepo`), rendering modes, feature presets + the grouped multiselect, deployment adapters, backend integrations, AI tooling, and compat mode. See that page for the complete flag reference and worked examples.
 
-1. Refuses to overwrite — errors out if a directory named `<name>` already exists.
-2. Copies `@pyreon/create-zero`'s **default** template into `./<name>`.
-3. Rewrites the template's `package.json` `name` to your project name.
-4. Writes a starter `.gitignore` (`node_modules`, `dist`, `.DS_Store`, `*.local`).
-5. Prints next steps.
-
-```text
-Created "my-app"!
-
-Next steps:
-  cd my-app
-  bun install
-  bun run dev
-```
-
-:::tip
-`zero create` ships only the **default** template (no prompts). For the full interactive scaffolder — template choice, feature presets, deployment adapter, compat mode, monorepo layout — use `bun create @pyreon/zero` (see [`@pyreon/create-zero`](/docs/create-zero)). The CLI's `create` is the zero-prompt shortcut.
+:::note{title="Version history"}
+Earlier versions of `zero create` copied a `templates/default` directory that `@pyreon/create-zero` stopped shipping — every invocation failed with "Template not found". It now delegates to create-zero's real bin instead, so `zero create` and `bun create @pyreon/zero` produce identical projects.
 :::
 
 ## How it relates to Vite and the `zero()` plugin
@@ -278,21 +268,21 @@ The flags `zero` exposes are deliberately minimal — the per-invocation knobs t
 - **There is no `--mode` flag.** The render mode is `zero({ mode })` in `vite.config.ts` — the plugin instances are constructed from that file, so a CLI flag can't reach them. Change the config to switch modes.
 - **`zero preview` does not build for you** — run `zero build` first. It serves `dist/client/` when a node/bun-adapter build staged it, otherwise your `build.outDir`.
 - **`zero` is not `pyreon`.** `zero` (this package) is the Zero-aware CLI for `@pyreon/zero` apps; `pyreon` ([`@pyreon/cli`](/docs/cli)) is the framework-wide CLI for non-Zero / library packages. Same `doctor` philosophy, different default scope. Zero apps should use `zero`.
-- **`zero --version` reports `0.0.1`.** The `--version` string is a placeholder baked into the CLI, independent of the installed package version. Check `package.json` (or `npm ls @pyreon/zero-cli`) for the real version.
-- **`zero create` is template-only.** It copies the *default* `@pyreon/create-zero` template with no prompts. The next-steps it prints assume `bun`; substitute your package manager (`npm install` / `pnpm install`) as needed.
+- **`zero create` forwards ALL args.** It is not a stripped-down shortcut — passing no flags at all runs the full interactive flow, same as `bun create @pyreon/zero`.
+- **A mistyped command is rejected, not silently treated as a directory.** Because `zero dev` accepts a bare `[root]` positional, `zero biuld` looks like "start a dev server in a directory named `biuld`" — the CLI instead checks whether the word names a real directory and, if not, rejects it with a suggestion (`"biuld" is not a zero command or a directory. Did you mean "zero build"?`).
 
 ## Command & flag reference
 
 | Command | Positional | Flags | Purpose |
 | --- | --- | --- | --- |
-| `zero dev [root]` | `[root]` (dir, default `.`) | `--port <port>`, `--host [host]`, `--open` | Vite dev server + route table |
+| `zero dev [root]` (alias: `zero [root]`) | `[root]` (dir, default `.`) | `--port <port>`, `--host [host]`, `--open`, `--routes` | Vite dev server + route table |
 | `zero build [root]` | `[root]` | — | Production build (one `vite build`; the zero plugin owns client + SSR + prerender + adapter) |
 | `zero preview [root]` | `[root]` | `--port <port>`, `--host [host]` | Serve the built client bundle locally |
-| `zero doctor [root]` | `[root]` | `--fix`, `--json`, `--ci` | Pyreon health gates |
+| `zero doctor [root]` | `[root]` | `--fix`, `--json`, `--ci`, `--full` | Pyreon health gates |
 | `zero context [root]` | `[root]` | `--out <path>` (default `.pyreon/context.json`) | AI-readable project summary |
-| `zero create <name>` | `<name>` (required) | — | Scaffold from the default template |
+| `zero create [...args]` | forwarded to create-zero | forwarded to create-zero | Scaffold via `@pyreon/create-zero`'s full interactive flow |
 | `zero --help` | — | — | Print usage |
-| `zero --version` | — | — | Print version (placeholder `0.0.1`) |
+| `zero --version` | — | — | Print the installed `@pyreon/zero-cli` version |
 
 Render modes (`ssr`, `ssg`, `isr`, `spa`) are set via `zero({ mode })` in `vite.config.ts`; the default is `ssr`. What each mode emits is documented in the [Zero overview](/docs/zero).
 
