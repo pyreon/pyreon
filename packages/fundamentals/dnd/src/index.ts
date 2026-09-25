@@ -25,6 +25,6 @@ export { useDragMonitor } from './use-drag-monitor'
 
 export { useDraggable } from './use-draggable'
 export { useDroppable } from './use-droppable'
-export type { UseFileDropOptions, UseFileDropResult } from './use-file-drop'
+export type { FileRejectReason, UseFileDropOptions, UseFileDropResult } from './use-file-drop'
 export { useFileDrop } from './use-file-drop'
 export { useSortable } from './use-sortable'

@@ -10,7 +10,6 @@ export const EnumBtn = el
     cursor: 'pointer',
     padding: '8px 12px',
     borderRadius: t.radius.item,
-    textTransform: 'capitalize',
     transition: `border-color ${t.motion.fast},color ${t.motion.fast}`,
     border: t.hairline,
     color: t.muted,

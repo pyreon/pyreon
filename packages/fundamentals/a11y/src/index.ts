@@ -12,7 +12,7 @@
  *   reactive complement to the imperative `announce()`).
  * - `<SkipLink>` — keyboard "skip to content" link (hidden until focused) that
  *   moves focus past repeated nav to the main landmark (WCAG 2.4.1).
- * - `createA11yId(prefix?)` — stable, SSR-safe id for ARIA relationships
+ * - `createA11yId(prefix?)` — unique id for ARIA relationships
  *   (`aria-labelledby` / `aria-describedby` / `for`).
  *
  * @example

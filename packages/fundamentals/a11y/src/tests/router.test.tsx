@@ -4,8 +4,8 @@ import { createRouter, type RouteRecord, RouterProvider } from '@pyreon/router'
 import { clearAnnouncements } from '../announce'
 import { RouteAnnouncer, type RouteAnnouncerOptions } from '../router'
 
-const nextFrame = (): Promise<void> =>
-  new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
+// announce() writes ~100ms after the call (see ANNOUNCE_DELAY_MS).
+const nextFrame = (): Promise<void> => new Promise<void>((r) => setTimeout(r, 150))
 
 function region(politeness: 'polite' | 'assertive' = 'polite'): HTMLElement | null {
   return document.querySelector<HTMLElement>(`[data-pyreon-announcer="${politeness}"]`)
@@ -122,16 +122,16 @@ describe('RouteAnnouncer / useRouteAnnouncer', () => {
     await router.push('/about')
     await nextFrame()
     expect(region('assertive')!.textContent).toBe('About')
-    expect(region('polite')).toBeNull()
+    expect(region('polite')!.textContent).toBe('')
   })
 
   it('forwards clearAfter to announce (announcement is cleared after the delay)', async () => {
-    const { router, dispose } = mountAnnouncer('/', { clearAfter: 10 })
+    const { router, dispose } = mountAnnouncer('/', { clearAfter: 200 })
     active = dispose
     await router.push('/about')
     await nextFrame()
     expect(region()!.textContent).toBe('About')
-    await new Promise((r) => setTimeout(r, 60))
+    await new Promise((r) => setTimeout(r, 250))
     expect(region()!.textContent).toBe('') // clearAfter reached announce()
   })
 
