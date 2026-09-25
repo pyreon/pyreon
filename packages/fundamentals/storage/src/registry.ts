@@ -3,7 +3,7 @@ import type { StorageOptions, StorageSignal } from './types'
 
 // ─── Signal Registry ─────────────────────────────────────────────────────────
 
-interface RegistryEntry<T = unknown> {
+export interface RegistryEntry<T = unknown> {
   signal: StorageSignal<T>
   defaultValue: T
   backend: string
@@ -24,6 +24,15 @@ interface RegistryEntry<T = unknown> {
    * in `local.ts:useStorage` for the bug class (post-#725/#729 sweep).
    */
   refCount: number
+  /**
+   * Apply a value that ALREADY lives in the backing store (an inbound
+   * cross-tab `storage` event). Sets the shared base signal and cancels any
+   * pending debounced write — it must NOT go through `signal.set`, which
+   * persists: persisting an inbound value writes it back, so a removal in
+   * another tab is undone here and two tabs on different `version`s
+   * re-serialize each other's value forever.
+   */
+  applyExternal?: (value: T) => void
 }
 
 // Default: module-level singleton — correct for a browser, where one process
@@ -143,6 +152,7 @@ export function setEntry<T>(
   signal: StorageSignal<T>,
   defaultValue: T,
   options?: StorageOptions<T>,
+  applyExternal?: (value: T) => void,
 ): void {
   // Cast through `RegistryEntry` (T → unknown): `options` carries contravariant
   // callbacks (`serializer`/`migrate`) so `StorageOptions<T>` isn't structurally
@@ -155,6 +165,7 @@ export function setEntry<T>(
     backend,
     refCount: 1,
     options,
+    applyExternal,
   } as RegistryEntry)
 }
 
@@ -214,9 +225,77 @@ export function getEntriesByBackend(backend: string): RegistryEntry[] {
   return entries
 }
 
+// ─── Same-key option mismatch (dev) ───────────────────────────────────────────
+//
+// Same-key calls share ONE signal (that is the registry's whole contract), so a
+// second `useX(key, otherDefault, otherOptions)` silently gets the FIRST call's
+// default, serializer, version, cookie attributes, … Warn once per key in dev.
+// Bounded by the number of distinct keys an app uses; dev-only.
+const warnedMismatch = new Set<string>()
+
+function sameValue(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true
+  if (a instanceof Date && b instanceof Date) return a.getTime() === b.getTime()
+  if (typeof a === 'object' && typeof b === 'object' && a !== null && b !== null) {
+    try {
+      return JSON.stringify(a) === JSON.stringify(b)
+    } catch {
+      /* v8 ignore next — circular default: cannot compare, do not warn */
+      return true
+    }
+  }
+  return false
+}
+
+function firstDifference(
+  prevDefault: unknown,
+  nextDefault: unknown,
+  prevOptions: object | undefined,
+  nextOptions: object | undefined,
+): string | null {
+  if (!sameValue(prevDefault, nextDefault)) return 'default value'
+  const prev = (prevOptions ?? {}) as Record<string, unknown>
+  const next = (nextOptions ?? {}) as Record<string, unknown>
+  for (const name of new Set([...Object.keys(prev), ...Object.keys(next)])) {
+    const a = prev[name]
+    const b = next[name]
+    // Inline callbacks are a new function on every call — compare presence only.
+    if (typeof a === 'function' && typeof b === 'function') continue
+    if (!sameValue(a, b)) return `\`${name}\` option`
+  }
+  return null
+}
+
+/**
+ * Dev-only: warn (once per key) when a same-key call passes a default or
+ * options that differ from the call that created the shared signal — those
+ * differences are silently ignored.
+ */
+export function warnIfOptionsDiffer<T>(
+  backend: string,
+  key: string,
+  entry: RegistryEntry<T>,
+  defaultValue: T,
+  options: StorageOptions<T> | undefined,
+): void {
+  if (process.env.NODE_ENV === 'production') return
+  const id = `${backend}:${key}`
+  if (warnedMismatch.has(id)) return
+  const diff = firstDifference(entry.defaultValue, defaultValue, entry.options, options)
+  if (diff === null) return
+  warnedMismatch.add(id)
+  // oxlint-disable-next-line no-console
+  console.warn(
+    `[Pyreon] @pyreon/storage: "${key}" (${backend}) is already in use with a different ${diff}. ` +
+      'Every call for the same key shares ONE signal, so this call\'s default and options are ignored. ' +
+      'Pass the same default and options everywhere, or use a different key.',
+  )
+}
+
 /**
  * Clear all entries from the registry. Used for testing.
  */
 export function _resetRegistry(): void {
   getRegistry().clear()
+  warnedMismatch.clear()
 }
