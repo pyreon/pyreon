@@ -51,8 +51,9 @@ describe('a JSX-returning ARROW helper called as a function renders in view posi
       it(`${target}: ${name} — a view call, never interpolated`, () => {
         const out = transform(app(decl, child), { target })
         expect(out.warnings, name).toEqual([])
-        const call = target === 'swift' ? child.replace(/"/g, '"') : child
-        expect(out.code, name).toContain(`\n      ${call}\n`.replace('      ', target === 'swift' ? '      ' : '    '))
+        // In view position, at the VStack / Column child indent — never inside a string.
+        const indent = target === 'swift' ? '      ' : '    '
+        expect(out.code, name).toContain(`\n${indent}${child}\n`)
         expect(out.code, name).toContain(target === 'swift' ? '@ViewBuilder private func row(' : '@Composable\nprivate fun row(')
       })
     }

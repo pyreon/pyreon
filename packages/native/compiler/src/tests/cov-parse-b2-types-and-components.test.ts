@@ -180,9 +180,12 @@ describe('parse.ts — tryHelperFnFromArrowConst', () => {
     expect(r.code).not.toContain('func g(')
   })
 
-  it('declines an arrow whose body returns JSX — that is a component, not a helper', () => {
+  it('declines an arrow whose body returns JSX — that is a VIEW function, not a pure-logic helper', () => {
+    // Not routed through the helper emit (which would type it `-> Text` or
+    // Void); it lowers as a view function instead (render-slots.ts).
     const r = swift(`const Row = (x: number) => <Text>{String(x)}</Text>` + APP)
-    expect(r.code).not.toContain('func Row')
+    expect(r.code).toContain('@ViewBuilder private func Row(_ x: Int) -> some View {')
+    expect(r.code.match(/func Row\(/g)).toHaveLength(1)
   })
 
   it('declines a VOID-bodied arrow (no top-level return)', () => {
