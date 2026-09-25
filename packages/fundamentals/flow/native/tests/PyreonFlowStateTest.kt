@@ -624,6 +624,51 @@ private fun runParityChecks() {
         check(f.selectedEdges().sorted() == listOf<String>(), "parity: with autoHistory on, the same removal is undoable — selected edges")
         check(abs(f.viewport.x - 0.0) < 1e-6 && abs(f.viewport.y - 0.0) < 1e-6 && abs(f.viewport.zoom - 1.0) < 1e-6, "parity: with autoHistory on, the same removal is undoable — viewport")
     }
+    run { // config: historyLimit 2 keeps only the last two undo checkpoints
+        val f = PyreonFlowState<NodeData>(nodes = listOf<PyreonFlowNode<NodeData>>(PyreonFlowNode("1", position = PyreonXYPosition(0.0, 0.0), data = NodeData("1")), PyreonFlowNode("2", position = PyreonXYPosition(200.0, 120.0), data = NodeData("2")), PyreonFlowNode("3", position = PyreonXYPosition(400.0, 0.0), data = NodeData("3")), PyreonFlowNode("4", position = PyreonXYPosition(600.0, 120.0), data = NodeData("4"))), edges = listOf<PyreonFlowEdge>(PyreonFlowEdge("e1", source = "1", target = "2"), PyreonFlowEdge("e2", source = "2", target = "3"), PyreonFlowEdge("e3", source = "3", target = "4")), searchText = { it.label })
+        f.historyLimit = 2.0
+        f.removeNode("2")
+        f.removeNode("3")
+        f.removeNode("4")
+        f.undo()
+        f.undo()
+        f.undo()
+        check(parityNodes(f, listOf<Triple<String, Double, Double>>(Triple("1", 0.0, 0.0), Triple("3", 400.0, 0.0), Triple("4", 600.0, 120.0))), "parity: config: historyLimit 2 keeps only the last two undo checkpoints — nodes")
+        check(parityEdges(f, listOf<Triple<String, String, String>>(Triple("e3", "3", "4"))), "parity: config: historyLimit 2 keeps only the last two undo checkpoints — edges")
+        check(f.selectedNodes().sorted() == listOf<String>(), "parity: config: historyLimit 2 keeps only the last two undo checkpoints — selected nodes")
+        check(f.selectedEdges().sorted() == listOf<String>(), "parity: config: historyLimit 2 keeps only the last two undo checkpoints — selected edges")
+        check(abs(f.viewport.x - 0.0) < 1e-6 && abs(f.viewport.y - 0.0) < 1e-6 && abs(f.viewport.zoom - 1.0) < 1e-6, "parity: config: historyLimit 2 keeps only the last two undo checkpoints — viewport")
+    }
+    run { // config: a fractional historyLimit is floored
+        val f = PyreonFlowState<NodeData>(nodes = listOf<PyreonFlowNode<NodeData>>(PyreonFlowNode("1", position = PyreonXYPosition(0.0, 0.0), data = NodeData("1")), PyreonFlowNode("2", position = PyreonXYPosition(200.0, 120.0), data = NodeData("2")), PyreonFlowNode("3", position = PyreonXYPosition(400.0, 0.0), data = NodeData("3")), PyreonFlowNode("4", position = PyreonXYPosition(600.0, 120.0), data = NodeData("4"))), edges = listOf<PyreonFlowEdge>(PyreonFlowEdge("e1", source = "1", target = "2"), PyreonFlowEdge("e2", source = "2", target = "3"), PyreonFlowEdge("e3", source = "3", target = "4")), searchText = { it.label })
+        f.historyLimit = 2.9
+        f.removeNode("2")
+        f.removeNode("3")
+        f.removeNode("4")
+        f.undo()
+        f.undo()
+        f.undo()
+        check(parityNodes(f, listOf<Triple<String, Double, Double>>(Triple("1", 0.0, 0.0), Triple("3", 400.0, 0.0), Triple("4", 600.0, 120.0))), "parity: config: a fractional historyLimit is floored — nodes")
+        check(parityEdges(f, listOf<Triple<String, String, String>>(Triple("e3", "3", "4"))), "parity: config: a fractional historyLimit is floored — edges")
+        check(f.selectedNodes().sorted() == listOf<String>(), "parity: config: a fractional historyLimit is floored — selected nodes")
+        check(f.selectedEdges().sorted() == listOf<String>(), "parity: config: a fractional historyLimit is floored — selected edges")
+        check(abs(f.viewport.x - 0.0) < 1e-6 && abs(f.viewport.y - 0.0) < 1e-6 && abs(f.viewport.zoom - 1.0) < 1e-6, "parity: config: a fractional historyLimit is floored — viewport")
+    }
+    run { // config: a non-positive historyLimit falls back to the default depth
+        val f = PyreonFlowState<NodeData>(nodes = listOf<PyreonFlowNode<NodeData>>(PyreonFlowNode("1", position = PyreonXYPosition(0.0, 0.0), data = NodeData("1")), PyreonFlowNode("2", position = PyreonXYPosition(200.0, 120.0), data = NodeData("2")), PyreonFlowNode("3", position = PyreonXYPosition(400.0, 0.0), data = NodeData("3")), PyreonFlowNode("4", position = PyreonXYPosition(600.0, 120.0), data = NodeData("4"))), edges = listOf<PyreonFlowEdge>(PyreonFlowEdge("e1", source = "1", target = "2"), PyreonFlowEdge("e2", source = "2", target = "3"), PyreonFlowEdge("e3", source = "3", target = "4")), searchText = { it.label })
+        f.historyLimit = 0.0
+        f.removeNode("2")
+        f.removeNode("3")
+        f.removeNode("4")
+        f.undo()
+        f.undo()
+        f.undo()
+        check(parityNodes(f, listOf<Triple<String, Double, Double>>(Triple("1", 0.0, 0.0), Triple("2", 200.0, 120.0), Triple("3", 400.0, 0.0), Triple("4", 600.0, 120.0))), "parity: config: a non-positive historyLimit falls back to the default depth — nodes")
+        check(parityEdges(f, listOf<Triple<String, String, String>>(Triple("e1", "1", "2"), Triple("e2", "2", "3"), Triple("e3", "3", "4"))), "parity: config: a non-positive historyLimit falls back to the default depth — edges")
+        check(f.selectedNodes().sorted() == listOf<String>(), "parity: config: a non-positive historyLimit falls back to the default depth — selected nodes")
+        check(f.selectedEdges().sorted() == listOf<String>(), "parity: config: a non-positive historyLimit falls back to the default depth — selected edges")
+        check(abs(f.viewport.x - 0.0) < 1e-6 && abs(f.viewport.y - 0.0) < 1e-6 && abs(f.viewport.zoom - 1.0) < 1e-6, "parity: config: a non-positive historyLimit falls back to the default depth — viewport")
+    }
     run { // config: connectionRules gate a connection by the source and target node types
         val f = PyreonFlowState<NodeData>(nodes = listOf<PyreonFlowNode<NodeData>>(PyreonFlowNode("in", type = "input", position = PyreonXYPosition(0.0, 0.0), data = NodeData("in")), PyreonFlowNode("proc", type = "process", position = PyreonXYPosition(200.0, 0.0), data = NodeData("proc")), PyreonFlowNode("out", type = "output", position = PyreonXYPosition(400.0, 0.0), data = NodeData("out")), PyreonFlowNode("plain", position = PyreonXYPosition(600.0, 0.0), data = NodeData("plain"))), edges = listOf<PyreonFlowEdge>(), searchText = { it.label })
         f.connectionRules = mapOf("input" to listOf<String>("process"), "process" to listOf<String>("output"), "default" to listOf<String>("output"))
@@ -723,7 +768,7 @@ fun main() {
         selectionMode = "full", multiSelect = false, onlyRenderVisibleElements = true, snapToObjects = false,
         defaultEdgeType = "straight", connectionLineType = "step",
         defaultEdgeOptions = PyreonFlowDefaultEdgeOptions(type = "smoothstep", animated = true, interactionWidth = 44.0),
-        fitViewOnLoad = true, fitViewPadding = 0.2, autoHistory = false,
+        fitViewOnLoad = true, fitViewPadding = 0.2, autoHistory = false, historyLimit = 7.5,
         deleteKeys = listOf("ForwardDelete"), multiSelectionKey = "ctrl",
         selectionKey = null, zoomActivationKey = "meta", preventScrolling = false,
         connectionValidator = { it.source != it.target }, reducedMotion = false,
@@ -742,7 +787,7 @@ fun main() {
     check(!parityConfigured.autoPanOnNodeDrag && !parityConfigured.autoPanOnConnect && parityConfigured.autoPanSpeed == 0.0, "Android retains autoPanOnNodeDrag / autoPanOnConnect and clamps autoPanSpeed")
     check(configured.onlyRenderVisibleElements && !configured.snapToObjects && configured.defaultEdgeType == "straight" && configured.connectionLineType == "step", "Android retains render and connection config")
     check(configured.defaultEdgeOptions == PyreonFlowDefaultEdgeOptions(type = "smoothstep", animated = true, interactionWidth = 44.0) && configured.defaultMarkerEnd == null, "Android retains edge defaults")
-    check(configured.fitViewOnLoad && configured.fitViewPadding == 0.2 && !configured.autoHistory && configured.reducedMotion == false, "Android retains lifecycle config")
+    check(configured.fitViewOnLoad && configured.fitViewPadding == 0.2 && !configured.autoHistory && configured.historyLimit == 7.5 && configured.reducedMotion == false, "Android retains lifecycle config")
     check(!configured.isValidConnection(PyreonFlowConnection("same", "same")) && configured.deleteKeys == listOf("ForwardDelete"), "Android retains validation and delete-key config")
     configured.minZoom = 0.75
     configured.pannable = false

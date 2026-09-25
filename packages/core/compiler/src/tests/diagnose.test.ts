@@ -232,3 +232,21 @@ describe('diagnoseError — TypeScript 7 Compiler-API removal entry', () => {
     expect(diagnoseError('the className prop was updated')).toBeNull()
   })
 })
+
+describe('diagnoseError — validate compiler unsupported-node entry', () => {
+  it('names the option-dependent format bail and the emittable check', () => {
+    for (const msg of [
+      '[Pyreon] emitValidator: cannot emit an unsupported node (string.url with a protocol option)',
+      '[Pyreon] emitSchemaSource: unsupported node (string.email with a precision option)',
+    ]) {
+      const r = diagnoseError(msg)
+      expect(r, msg).not.toBeNull()
+      expect(r!.cause).toContain('with a')
+      expect(r!.fix).toContain('emittable')
+    }
+  })
+
+  it('does not fire on an unrelated unsupported message', () => {
+    expect(diagnoseError('unsupported node type in the AST')).toBeNull()
+  })
+})
