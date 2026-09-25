@@ -1,11 +1,12 @@
 import * as Y from 'yjs'
 import {
+  type Awareness,
   applyAwarenessUpdate,
   encodeAwarenessUpdate,
   removeAwarenessStates,
 } from 'y-protocols/awareness'
 import { REMOTE_ORIGIN } from './types'
-import { peekDocAwareness } from './yjs-awareness'
+import { onDocAwareness } from './yjs-awareness'
 import type { YjsCrdtDoc } from './yjs-adapter'
 
 /**
@@ -103,18 +104,29 @@ export function connectViaBroadcastChannel(
   doc.yDoc.on('update', onUpdate)
 
   // Awareness (ephemeral presence) across tabs — same channel, separate message
-  // kind. Wired ONLY when the app opted in (peek, don't create). Reuse the SHARED
+  // kind. Wired ONLY when the app opts in — before this call OR at any point
+  // after (`onDocAwareness` waits without creating). Reuse the SHARED
   // REMOTE_ORIGIN tag so a received awareness is applied but NOT re-broadcast by
   // this OR a sibling WS transport on the same doc (the cross-transport loop guard).
-  const aw = peekDocAwareness(doc)
-  const onAwarenessUpdate =
-    aw &&
-    (({ added, updated, removed }: AwarenessChange, origin: unknown) => {
-      if (!connected || origin === REMOTE_ORIGIN) return
-      const changed = [...added, ...updated, ...removed]
-      bc.postMessage({ kind: 'awareness', update: encodeAwarenessUpdate(aw, changed) } satisfies BcMessage)
-    })
-  if (aw && onAwarenessUpdate) aw.on('update', onAwarenessUpdate)
+  let aw: Awareness | undefined
+  const onAwarenessUpdate = ({ added, updated, removed }: AwarenessChange, origin: unknown) => {
+    if (!connected || origin === REMOTE_ORIGIN || !aw) return
+    const changed = [...added, ...updated, ...removed]
+    bc.postMessage({ kind: 'awareness', update: encodeAwarenessUpdate(aw, changed) } satisfies BcMessage)
+  }
+  let announced = false
+  const cancelAwarenessWait = onDocAwareness(doc, (created) => {
+    aw = created
+    created.on('update', onAwarenessUpdate)
+    // Created after connect: publish ourselves, and re-send our state vector —
+    // every peer answers an `sv` with its presence, which is how a late opt-in
+    // learns the tabs whose presence it dropped before it had an awareness.
+    // (At connect time the announce below does both.)
+    if (announced) {
+      bc.postMessage({ kind: 'awareness', update: encodeAwarenessUpdate(created, [created.clientID]) } satisfies BcMessage)
+      bc.postMessage({ kind: 'sv', sv: Y.encodeStateVector(doc.yDoc) } satisfies BcMessage)
+    }
+  })
 
   bc.onmessage = (event: MessageEvent<BcMessage>) => {
     /* v8 ignore next — belt-and-suspenders: disconnect() closes the BroadcastChannel,
@@ -162,10 +174,12 @@ export function connectViaBroadcastChannel(
       update: encodeAwarenessUpdate(aw, [aw.clientID]),
     } satisfies BcMessage)
   }
+  announced = true
 
   return {
     disconnect() {
-      if (aw && onAwarenessUpdate) {
+      cancelAwarenessWait()
+      if (aw) {
         // Announce departure WHILE still connected (the listener posts the
         // removal — there is no relay here, so this IS the cleanup), then detach.
         try {

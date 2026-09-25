@@ -2709,6 +2709,8 @@ const InvertedSection = () => (
 > **Provider replacement**: The legacy split (separate theme / mode / config providers) is removed. `PyreonUI` is the only correct mount; calling `init()` directly is the escape hatch for SSR or test environments where the provider tree is unavailable.
 >
 > **System-mode subscription**: `mode="system"` lazily creates a `matchMedia('(prefers-color-scheme: dark)')` subscription on first read; the listener stays alive for the document lifetime, so a single subscription handles every `useMode()` consumer.
+>
+> **Deprecated internal Provider / context**: The package also exports a low-level `Provider` (default export) + `context` from `context.tsx` — an internal, `@deprecated`-tagged reactive-context provider `<PyreonUI>` no longer uses directly. It dev-warns on every mount. There is no reason to import it: use `<PyreonUI theme={theme}>` for the provider and `useMode()` / `useThemeValue()` for reads.
 
 ## @pyreon/styler — CSS-in-JS
 
@@ -2887,6 +2889,10 @@ const width = `calc(${vars.spacing.small} * ${vars.ratio.medium})` // proportion
 > **Single source for responsive semantics**: Every visual package (`elements`, `rocketstyle`, `coolgrid`, `kinetic`) reads breakpoints / spacing / unit conventions from this package. Override defaults via `enrichTheme()` once at the app root rather than per-component.
 >
 > **CSS property naming**: Unistyle uses property-first naming (`borderWidthTop`, `borderColorLeft`) rather than CSS-spec order (`borderTopWidth`, `borderLeftColor`). Stick to the unistyle convention when authoring components — the responsive transformer expects it.
+>
+> **Deprecated internal Provider / context**: The package exports a low-level `Provider` (default export) + `context` (re-exported from `@pyreon/ui-core`) that `<PyreonUI>` no longer calls directly — it is `@deprecated`-tagged and dev-warns on mount. There is no reason to import it: use `<PyreonUI theme={theme}>` instead.
+>
+> **Responsive-pipeline internals (normalizeTheme / sortBreakpoints / transformTheme)**: These three are re-exported for advanced consumers but are the internal steps `makeItResponsive()` already runs for you: `sortBreakpoints` orders breakpoint keys by their min-width, `normalizeTheme` expands a mobile-first array/breakpoint-object value into a per-breakpoint map (carrying forward the "null slot inherits the previous breakpoint" rule), `transformTheme` maps a normalized per-breakpoint theme through a `styles`-shaped callback. Reach for `makeItResponsive()` first; use these directly only when building a custom responsive pipeline outside the styled-component path.
 
 ## @pyreon/elements — Base Primitives
 
