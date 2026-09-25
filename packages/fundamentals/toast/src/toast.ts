@@ -1,5 +1,5 @@
 import type { VNodeChild } from '@pyreon/core'
-import { computed, signal } from '@pyreon/reactivity'
+import { computed, isServer, signal } from '@pyreon/reactivity'
 import type { Toast, ToastOptions, ToastPromiseOptions, ToastType } from './types'
 
 // ─── State ───────────────────────────────────────────────────────────────────
@@ -60,6 +60,30 @@ let _defaultDuration = DEFAULT_DURATION
 export function _setDefaultDuration(ms: number): void {
   _defaultDuration = ms
 }
+
+/** @internal Read the app-wide default duration (so a Toaster can restore it). */
+export function _getDefaultDuration(): number {
+  return _defaultDuration
+}
+
+/**
+ * Largest delay `setTimeout` can hold — it stores the delay as a signed 32-bit
+ * integer, and anything above this (including `Infinity`) OVERFLOWS to ~1ms.
+ */
+const MAX_TIMER_DELAY = 2 ** 31 - 1
+
+/**
+ * Normalise a duration to "ms to wait" or `0` (= persistent). `Infinity` is
+ * the natural way to write "never auto-dismiss", and it used to overflow the
+ * timer and dismiss the toast immediately; `NaN` and negative values did the
+ * same. Anything that cannot be a real countdown is persistent.
+ */
+function normalizeDuration(ms: number): number {
+  if (!(ms > 0) || !Number.isFinite(ms) || ms > MAX_TIMER_DELAY) return 0
+  return ms
+}
+
+let _warnedServer = false
 
 /**
  * Hard cap on the queue. Without this, runaway loops (e.g. a toast call from
@@ -122,11 +146,25 @@ function startTimer(t: Toast): void {
 
 function addToast(message: string | VNodeChild, options: ToastOptions = {}): string {
   const id = generateId()
+  // The store is a module singleton — on a server it is shared by EVERY
+  // request. A toast raised while rendering one request would otherwise be
+  // rendered into the next user's page. Toasts are client-side feedback; on
+  // the server this is a no-op.
+  if (isServer) {
+    if (process.env.NODE_ENV !== 'production' && !_warnedServer) {
+      _warnedServer = true
+      console.warn(
+        '[Pyreon] toast() was called on the server and was ignored — the toast store is process-wide, ' +
+          'so a server-side toast would leak into other requests. Raise toasts from client code (an event handler or onMount).',
+      )
+    }
+    return id
+  }
   const t: Toast = {
     id,
     message,
     type: options.type ?? 'info',
-    duration: options.duration ?? _defaultDuration,
+    duration: normalizeDuration(options.duration ?? _defaultDuration),
     description: options.description,
     icon: options.icon,
     dismissible: options.dismissible ?? true,
@@ -256,7 +294,7 @@ function updateToast(
     ...t,
     message: updates.message ?? t.message,
     type: updates.type ?? t.type,
-    duration: updates.duration ?? t.duration,
+    duration: normalizeDuration(updates.duration ?? t.duration),
     description: updates.description ?? t.description,
     state: t.state === 'exiting' ? 'visible' : t.state,
     timer: undefined,
@@ -265,8 +303,6 @@ function updateToast(
     timerStart: 0,
   }
 
-  const duration = updates.duration ?? t.duration
-  updated.duration = duration
   startTimer(updated)
 
   const next = [...current]

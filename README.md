@@ -95,7 +95,7 @@ The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect
 | [`@pyreon/router`](packages/core/router/) | Hash/history router, nested routes, guards, loaders, prefetching, `useIsActive` |
 | [`@pyreon/head`](packages/core/head/) | `useHead()` — reactive document head management with SSR |
 | [`@pyreon/server`](packages/core/server/) | `createHandler` (SSR), `prerender` (SSG), `island()` architecture |
-| [`@pyreon/primitives`](packages/core/primitives/) | 15 canonical multi-platform primitives — `Stack`, `Inline`, `Text`, `Button`, `Field`… one source → DOM + SwiftUI + Compose |
+| [`@pyreon/primitives`](packages/core/primitives/) | 20 canonical multi-platform primitives — `Stack`, `Inline`, `Text`, `Button`, `Field`… one source → DOM + SwiftUI + Compose |
 | [`@pyreon/sized-map`](packages/core/sized-map/) | Bounded `Map<K, V>` — FIFO (default) or LRU-on-read eviction |
 
 ### Fundamentals
@@ -108,6 +108,7 @@ The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect
 | [`@pyreon/validation`](packages/fundamentals/validation/) | Universal validation gate — owns the validation contract + Standard Schema bridge (`standardSchemaToValidator`, `InferSchema`); adapters for Zod / Valibot / ArkType; zero pyreon deps |
 | [`@pyreon/validate`](packages/fundamentals/validate/) | DX layer over Standard Schema — `withField` metadata, reactive parse, i18n-aware error formatting, plus its own `s` validator runtime |
 | [`@pyreon/query`](packages/fundamentals/query/) | TanStack Query adapter with Suspense, SSE, WebSocket subscriptions |
+| [`@pyreon/http`](packages/fundamentals/http/) | HTTP client under `@pyreon/query` — onion middleware, immutable clients, typed errors, optional schema-validated responses |
 | [`@pyreon/table`](packages/fundamentals/table/) | TanStack Table adapter with reactive state sync |
 | [`@pyreon/virtual`](packages/fundamentals/virtual/) | TanStack Virtual adapter — element and window virtualizers |
 | [`@pyreon/i18n`](packages/fundamentals/i18n/) | Reactive i18n — async namespaces, plurals, interpolation |
@@ -121,7 +122,7 @@ The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect
 | [`@pyreon/flow`](packages/fundamentals/flow/) | Flow diagrams — signal-native nodes, edges, pan/zoom, auto-layout |
 | [`@pyreon/code`](packages/fundamentals/code/) | Code editor — CodeMirror 6 with signals, minimap, diff editor |
 | [`@pyreon/document`](packages/fundamentals/document/) | Universal document rendering — 18 primitives, 20 output formats |
-| [`@pyreon/rx`](packages/fundamentals/rx/) | Signal-aware transforms — filter, map, sortBy, groupBy, pipe, debounce, 39 functions |
+| [`@pyreon/rx`](packages/fundamentals/rx/) | 42 signal-aware transforms — filter, map, sortBy, groupBy, pipe, debounce |
 | [`@pyreon/toast`](packages/fundamentals/toast/) | Toast notifications — imperative API, auto-dismiss, a11y |
 | [`@pyreon/url-state`](packages/fundamentals/url-state/) | URL-synced state — auto type coercion, schema mode, SSR-safe |
 | [`@pyreon/dnd`](packages/fundamentals/dnd/) | Drag and drop — sortable, droppable, file drop, keyboard support |
@@ -161,6 +162,10 @@ The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect
 | [`@pyreon/testing`](packages/tools/testing/) | Test kit at Testing-Library parity — `render`/`screen`/`fireEvent`, jest-dom matchers, plus reactive fire-count / leak matchers |
 | [`@pyreon/cli`](packages/tools/cli/) | `pyreon` CLI — `doctor`, `check`, `add`, `new`, `mcp`, `lint`, `info`, `upgrade` |
 | [`@pyreon/mcp`](packages/tools/mcp/) | MCP server — API reference, patterns, `validate`, `diagnose` for AI assistants |
+| [`@pyreon/config`](packages/tools/config/) | One `pyreon.config.ts` for the whole ecosystem — a typed section per package |
+| [`@pyreon/atlas`](packages/tools/atlas/) | AI-native component workbench — derives, verifies, and serves a machine-readable component catalog |
+| [`@pyreon/loom`](packages/tools/loom/) | Monorepo dependency observatory — workspace graph, version-sync drift, cycles, phantom deps, blast radius, as data |
+| [`@pyreon/lathe`](packages/tools/lathe/) | Spec-to-Pyreon code generator — OpenAPI in, typed schemas / endpoints / queries out, with a multiplatform mode |
 
 ### Zero (meta-framework)
 
@@ -172,6 +177,19 @@ The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect
 | [`@pyreon/create-zero`](packages/zero/create-zero/) | Scaffold a new Pyreon app (`create-pyreon-app`) |
 | [`@pyreon/create-multiplatform`](packages/zero/create-multiplatform/) | Scaffold a web + iOS (SwiftUI) + Android (Compose) app from one source |
 | [`@pyreon/meta`](packages/zero/meta/) | Barrel package re-exporting the full Pyreon fundamentals ecosystem |
+
+### Native (multiplatform)
+
+The Pyreon Multi-Target Compiler (PMTC) lowers a subset of Pyreon JSX to native SwiftUI and Jetpack Compose — one source, three targets.
+
+| Package | Description |
+|---|---|
+| [`@pyreon/native-compiler`](packages/native/compiler/) | PMTC — compiles Pyreon JSX to native Swift (SwiftUI) and Kotlin (Jetpack Compose) |
+| [`@pyreon/native-cli`](packages/native/cli/) | CLI that builds a directory of Pyreon sources to SwiftUI and Jetpack Compose with `@pyreon/native-compiler` |
+| [`@pyreon/native-runtime-swift`](packages/native/runtime-swift/) | Swift Package Manager runtime that compiler-emitted SwiftUI code links against on iOS |
+| [`@pyreon/native-runtime-kotlin`](packages/native/runtime-kotlin/) | Kotlin runtime that compiler-emitted Jetpack Compose code links against on Android |
+| [`@pyreon/native-router-swift`](packages/native/router-swift/) | `@pyreon/router`'s API (`RouterProvider`, `RouterView`, `Link`, `useNavigate`, `useParams`) for SwiftUI, built on `NavigationStack` |
+| [`@pyreon/native-router-kotlin`](packages/native/router-kotlin/) | `@pyreon/router`'s API (`RouterProvider`, `RouterView`, `PyreonLink`, `useNavigate`, `useParams`) for Android Jetpack Compose |
 
 ## How It Works
 

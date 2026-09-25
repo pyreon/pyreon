@@ -5094,16 +5094,25 @@ i18n.t('auth:errors.bad')   // ✓ namespaced — unchecked by design`,
   // <gen-docs:api-reference:start @pyreon/document>
 
   'document/render': {
-    signature: '(node: DocNode, format: OutputFormat, options?: RenderOptions) => Promise<RenderResult>',
-    example: `const pdf = await render(doc, 'pdf')            // Uint8Array
+    signature: '(node: DocNode | VNode, format: OutputFormat, options?: RenderOptions) => Promise<RenderResult>',
+    example: `const doc = (
+  <Document title="Report">
+    <Page>
+      <Heading>Summary</Heading>
+      {showNotes && <Text>Notes</Text>}
+    </Page>
+  </Document>
+)
+const pdf = await render(doc, 'pdf')            // Uint8Array
 const html = await render(doc, 'html')           // string
 const email = await render(doc, 'email')         // Outlook-safe HTML
 const md = await render(doc, 'md')               // Markdown string
 const slack = await render(doc, 'slack')          // Slack Block Kit JSON`,
-    notes: 'Render a document node tree to any supported format. Returns a string (HTML, Markdown, text, CSV, email, JSON, JSONL, Slack, Teams, etc.) or Uint8Array (PDF, DOCX, XLSX, PPTX) depending on the format. Heavy format renderers are lazy-loaded on first use. Supports 20 built-in formats plus custom renderers registered via `registerRenderer()`. The `json` format serializes the full DocNode tree (round-trippable — JSON.parse it back and render again); `jsonl` emits one content block per line for ingestion / chunking pipelines. See also: createDocument, Document, download, registerRenderer.',
+    notes: 'Render a document tree to any supported format. The input is a `DocNode` (primitives called directly, or `createDocument()`) OR a JSX / `h()` VNode tree of primitives — `render()` resolves the VNode tree first (components invoked, fragments flattened, `true`/`false`/`null`/`undefined` children dropped), so JSX, `h()` and direct calls produce identical output. Returns a string (HTML, Markdown, text, CSV, email, JSON, JSONL, Slack, Teams, etc.) or Uint8Array (PDF, DOCX, XLSX, PPTX) depending on the format. Heavy format renderers are lazy-loaded on first use. Supports 20 built-in formats plus custom renderers registered via `registerRenderer()`. The `json` format serializes the full DocNode tree (round-trippable — JSON.parse it back and render again); `jsonl` emits one content block per line for ingestion / chunking pipelines. See also: createDocument, Document, download, registerRenderer.',
     mistakes: `- Not awaiting the render call — render() is always async due to lazy-loaded format renderers
 - Expecting render("pdf") to return a string — PDF, DOCX, XLSX, PPTX return Uint8Array
-- Passing a VNode instead of a DocNode — render() expects the output of JSX primitives (Document, Page, etc.) or createDocument(), not arbitrary Pyreon VNodes`,
+- Putting a DOM element in a document tree (\`<div>\`, \`<p>\`, \`<span>\`) — a document tree may only contain @pyreon/document primitives, components that return them, strings and numbers; render() throws \`<div> is a DOM element, not a document primitive\`. Use \`<Section>\` / \`<Text>\` instead.
+- Expecting a signal-driven child to stay live — render() takes a one-shot snapshot: accessor children (\`{() => x()}\`) and reactive props are read ONCE at render time. Re-render to reflect new values.`,
   },
 
   'document/createDocument': {
@@ -5132,15 +5141,15 @@ await doc.toDocx()     // Word document`,
   </Document>
 )
 await render(doc, 'pdf')`,
-    notes: 'Root JSX primitive for document trees. Accepts `title`, `author`, `subject` as metadata props. Children should be `Page` elements (or other block-level primitives for single-page documents). The returned DocNode is passed to `render()` for output. See also: render, Page, createDocument.',
+    notes: 'Root primitive for document trees. Accepts `title`, `author`, `subject` as metadata props. Children should be `Page` elements (or other block-level primitives for single-page documents). Use it as JSX (`<Document>`), via `h(Document, props, ...children)`, or call it directly (`Document({ title, children })`) — all three render identically. Called directly it returns a `DocNode`; as JSX / `h()` it is a VNode that `render()` / `download()` resolve. See also: render, Page, createDocument.',
   },
 
   'document/download': {
-    signature: '(node: DocNode, filename: string, options?: RenderOptions) => Promise<void>',
+    signature: '(node: DocNode | VNode, filename: string, options?: RenderOptions) => Promise<void>',
     example: `await download(doc, 'report.pdf')   // renders 'pdf', downloads
 await download(doc, 'report.docx')  // renders 'docx', downloads
 await download(doc, 'tree.json')    // renders 'json', downloads`,
-    notes: 'Browser helper that renders a document node tree and triggers a file download in one call. The FILE EXTENSION on `filename` selects the format (`.pdf` → pdf, `.md` → markdown, `.json` → json, `.jsonl`/`.ndjson` → jsonl, etc.) — it renders internally, so you pass the DocNode, NOT already-rendered bytes. Creates a temporary Blob URL and clicks a hidden anchor. Browser-only — throws on the server. See also: render.',
+    notes: 'Browser helper that renders a document node tree and triggers a file download in one call. The FILE EXTENSION on `filename` selects the format (`.pdf` → pdf, `.md` → markdown, `.json` → json, `.jsonl`/`.ndjson` → jsonl, etc.) — it renders internally, so you pass the document tree (a DocNode or a JSX / `h()` tree), NOT already-rendered bytes. Creates a temporary Blob URL and clicks a hidden anchor. Browser-only — throws on the server. See also: render.',
     mistakes: `- Passing already-rendered bytes as the first arg — download() takes the DocNode and renders internally; the extension picks the format
 - Forgetting the file extension — download(doc, "report") throws; the extension is how the format is chosen
 - Calling it on the server — download() is browser-only and throws in Node`,
@@ -5179,9 +5188,10 @@ await download(doc, 'tree.json')    // renders 'json', downloads`,
   <ListItem>First</ListItem>
   <ListItem>Second</ListItem>
 </List>`,
-    notes: `A bulleted (default) or numbered list. \`List\` takes \`ordered\` (unordered when omitted — there is no applied default, undefined is falsy) and \`ListItem\` children. NOTE: the JSX \`<List items={[…]} />\` shorthand in the builder/examples is convenience sugar; the primitive itself nests \`ListItem\` children. \`ListItem\` DISCARDS every prop except \`children\` — it always renders { type: 'list-item', props: {}, children }. See also: Text.`,
+    notes: `A bulleted (default) or numbered list. \`List\` takes \`ordered\` (unordered when omitted — there is no applied default, undefined is falsy) and \`ListItem\` children. There is NO \`items\` prop on the primitive — nest \`ListItem\` children; only the builder's \`.list(items[])\` takes an array. \`ListItem\` DISCARDS every prop except \`children\` — it always renders { type: 'list-item', props: {}, children }. See also: Text.`,
     mistakes: `- Setting any prop other than \`children\` on \`ListItem\` (an id, a style) — it is silently dropped; the primitive hard-codes empty props.
-- Expecting \`ordered\` to have a truthy default — omitting it yields an UNORDERED list (undefined → falsy).`,
+- Expecting \`ordered\` to have a truthy default — omitting it yields an UNORDERED list (undefined → falsy).
+- Writing \`<List items={[…]} />\` — the primitive has no \`items\` prop (it is a type error, and at runtime the list renders EMPTY). Nest \`<ListItem>\` children, or use the builder \`.list([...])\`.`,
   },
 
   'document/Code': {
@@ -5212,8 +5222,8 @@ await download(doc, 'tree.json')    // renders 'json', downloads`,
   },
 
   'document/Page / Section / Row / Column / Divider / Spacer / Quote / PageBreak': {
-    signature: `Page({ size?: PageSize; orientation?: 'portrait' | 'landscape'; margin?: number | number[]; header?: DocNode; footer?: DocNode; children? }) · Section({ direction?: 'column' | 'row'; gap?; padding?; background?; borderRadius?; border?; children? }) · Row({ gap?: number; align?; children? }) · Column({ width?: number | string; align?; children? }) · Divider({ color?; thickness? }) · Spacer({ height: number }) · Quote({ borderColor?; children? }) · PageBreak()`,
-    example: `<Page size="A4" orientation="portrait">
+    signature: `Page({ size?: PageSize; orientation?: 'portrait' | 'landscape'; margin?: number | number[]; header?: DocNode | VNode; footer?: DocNode | VNode; children? }) · Section({ direction?: 'column' | 'row'; gap?; padding?; background?; borderRadius?; border?; children? }) · Row({ gap?: number; align?; children? }) · Column({ width?: number | string; align?; children? }) · Divider({ color?; thickness? }) · Spacer({ height: number }) · Quote({ borderColor?; children? }) · PageBreak()`,
+    example: `<Page size="A4" orientation="portrait" header={<Text size={9}>Acme — Confidential</Text>}>
   <Section gap={16}>
     <Heading>Title</Heading>
     <Spacer height={12} />
@@ -5222,7 +5232,7 @@ await download(doc, 'tree.json')    // renders 'json', downloads`,
   </Section>
   <PageBreak />
 </Page>`,
-    notes: `The structural / layout primitives. \`Page\` is a page boundary (\`size\` 'A4'|'A3'|'A5'|'letter'|'legal'|'tabloid', orientation, margins, optional \`header\`/\`footer\` DocNodes). \`Section\`/\`Row\`/\`Column\` are layout boxes (gap, align, padding, background). \`Divider\` is a horizontal rule (no children, all props optional — \`Divider()\` works bare). \`Spacer\` adds vertical space (\`height: number\` is REQUIRED). \`Quote\` is a blockquote (children). \`PageBreak()\` takes NO arguments — a hard break in PDF/DOCX, a visual rule in md/text/html, a no-op in per-slide PPTX. See also: Document, render.`,
+    notes: `The structural / layout primitives. \`Page\` is a page boundary (\`size\` 'A4'|'A3'|'A5'|'letter'|'legal'|'tabloid', orientation, margins, optional \`header\`/\`footer\` — a primitive given as JSX (\`header={<Text>…</Text>}\`) or a direct call, resolved when the Page is built; honoured by PDF/DOCX only). \`Section\`/\`Row\`/\`Column\` are layout boxes (gap, align, padding, background). \`Divider\` is a horizontal rule (no children, all props optional — \`Divider()\` works bare). \`Spacer\` adds vertical space (\`height: number\` is REQUIRED). \`Quote\` is a blockquote (children). \`PageBreak()\` takes NO arguments — a hard break in PDF/DOCX, a visual rule in md/text/html, a no-op in per-slide PPTX. See also: Document, render.`,
     mistakes: `- \`Spacer\` without \`height\` — it is the only required field on these primitives; omitting it is a type error.
 - Calling \`PageBreak({ ... })\` with props — it takes NO arguments and always emits empty props/children.
 - Expecting \`Column\` to enforce a parent \`Row\` (or \`Row\` to require \`Column\` children) — neither is enforced at runtime; children are typed \`unknown\` and just normalized.`,
@@ -5234,9 +5244,10 @@ await download(doc, 'tree.json')    // renders 'json', downloads`,
 
 registerRenderer('rtf', { render: async (node) => toRtf(node) })
 const rtf = await render(doc, 'rtf')`,
-    notes: `The extension + guard API. \`registerRenderer\` adds (or REPLACES) a format's renderer — pass a \`DocumentRenderer\` object ({ render(node, options?) }) or a lazy \`() => Promise<DocumentRenderer>\` loader (every built-in format is a lazy loader; the resolved renderer is cached back into the registry on first use). \`unregisterRenderer\` deletes a format (no-op if absent). \`isDocNode\` is a structural type guard. See also: render, createDocument.`,
+    notes: `The extension + guard API. \`registerRenderer\` adds (or REPLACES) a format's renderer — pass a \`DocumentRenderer\` object ({ render(node, options?) }) or a lazy \`() => Promise<DocumentRenderer>\` loader (every built-in format is a lazy loader; the resolved renderer is cached back into the registry on first use). \`unregisterRenderer\` deletes a format (no-op if absent). \`isDocNode\` checks for a DocNode: an object with a STRING \`type\`, \`props\`, \`children\`, and NO \`key\` — so a JSX / \`h()\` VNode (whose \`type\` is the primitive function and which carries a \`key\`) is NOT a DocNode, even though \`render()\` accepts one. See also: render, createDocument.`,
     mistakes: `- registerRenderer SILENTLY OVERWRITES an existing format (it is a bare Map.set, no guard) — re-registering \`html\` replaces the built-in renderer with no warning.
-- Trusting isDocNode to validate the tree — it only checks \`value\` is an object carrying \`type\`, \`props\`, and \`children\` keys; it does NOT verify \`type\` is a real node type or that the shapes are valid (a hand-rolled { type: 'x', props: 0, children: 0 } passes).
+- Trusting isDocNode to validate the tree — it only checks for a string \`type\`, \`props\` and \`children\` keys and no \`key\`; it does NOT verify \`type\` is a real node type or that the shapes are valid (a hand-rolled { type: 'x', props: 0, children: 0 } passes).
+- Using isDocNode to test JSX output — \`isDocNode(<Text>hi</Text>)\` is FALSE (it is a VNode); call the primitive directly (\`Text({ children: 'hi' })\`) when you need a DocNode value, or just pass the JSX to render().
 - Rendering to an unregistered format — render() rejects with [@pyreon/document] No renderer registered for format 'X'. Available: … (the message enumerates the currently-registered keys). The markdown key is 'md', not 'markdown'.`,
   },
   // <gen-docs:api-reference:end @pyreon/document>
@@ -6638,7 +6649,7 @@ get_api({ package: '@pyreon/router', symbol: 'useTypedSearchParams' })`,
     notes: `Look up any Pyreon API by \`package\` (e.g. \`"flow"\` or \`"@pyreon/flow"\`) and \`symbol\` (e.g. \`"createFlow"\`). Returns the canonical signature, example, foot-gun catalogue, and cross-references — drawn from \`api-reference.ts\`, which is regenerated from each package\\'s \`manifest.ts\`. The single agent-facing entry point for "what does this API do and how do I avoid the common mistakes." See also: validate, get_pattern.`,
     mistakes: `- Passing the package name with a typo or wrong scope — \`get_api({ package: "pyreon-flow", ... })\` returns nothing. Use \`"flow"\` or \`"@pyreon/flow"\`; the tool accepts both.
 - Expecting \`symbol\` to match a method on a returned instance (e.g. \`Posts.useList\`) — only TOP-LEVEL exports are in api-reference. Method-on-instance APIs are documented in the parent symbol's \`summary\` / \`example\`.
-- Treating a 404 as "the API doesn't exist" — it may exist but the package's manifest is not yet on the MCP pipeline (~33 of ~55 packages migrated). Check the docs page or source as a fallback when get_api returns empty.
+- Treating a 404 as "the API doesn't exist" — it may exist but the package's manifest is not yet on the MCP pipeline (57 of 76 published packages have one as of this writing — see AGENTS.md "Manifest-driven docs pipeline" for the live count). Check the docs page or source as a fallback when get_api returns empty.
 - Forgetting that \`summary\` may contain the answer to a follow-up question — read the full body before falling back to \`get_pattern\` / \`validate\` / source diving.`,
   },
 
@@ -6818,21 +6829,22 @@ get_dependency_fabric({ package: '@pyreon/router' })
 // → full canonical pattern body
 get_pattern({})
 // → [{ name: 'controllable-state', summary: '...' }, ...]`,
-    notes: 'Fetch a canonical "how do I do X" pattern body from `docs/patterns/`. 16 foundational patterns ship: `controllable-state`, `data-fetching`, `dev-warnings`, `dynamic-fields`, `event-listeners`, `form-fields`, `imperative-toasts`, `islands`, `keyed-lists`, `reactive-context`, `reactive-spread`, `routing-setup`, `signal-writes`, `ssr-safe-hooks`, `state-management`, `styler-theming`. Omit `name` to list available patterns. Drop a new `docs/patterns/<slug>.md` file to add one — picked up on next call. See also: get_anti_patterns.',
+    notes: `Fetch a canonical "how do I do X" pattern body from \`docs/src/content/docs/patterns/\` (the same files the docs site renders — one source, two surfaces). 17 foundational patterns ship: \`controllable-state\`, \`data-fetching\`, \`dev-warnings\`, \`dynamic-fields\`, \`event-listeners\`, \`form-fields\`, \`imperative-toasts\`, \`islands\`, \`keyed-lists\`, \`multiplatform\`, \`reactive-context\`, \`reactive-spread\`, \`routing-setup\`, \`signal-writes\`, \`ssr-safe-hooks\`, \`state-management\`, \`styler-theming\`. Omit \`name\` to list available patterns. Drop a new \`docs/src/content/docs/patterns/<slug>.md\` file to add one — picked up on next call (no code change, no bundling step in dev; \`scripts/copy-content.ts\` mirrors it into this package's bundled \`content/patterns/\` for the published \`bunx @pyreon/mcp\` consumer case at build time). See also: get_anti_patterns.`,
     mistakes: `- Passing a name in CamelCase or PascalCase — pattern names are kebab-case (\`controllable-state\`, not \`ControllableState\`). A wrong-case name 404s.
-- Expecting the pattern list to include every Pyreon idiom — \`get_pattern\` covers the 16 foundational shapes (data fetching, forms, signal writes, etc.). Specialized patterns (PMTC, native compat, devtools wiring) live elsewhere in the docs.
+- Expecting the pattern list to include every Pyreon idiom — \`get_pattern\` covers the 17 foundational shapes (data fetching, forms, signal writes, multiplatform, etc.). Specialized topics (PMTC internals, native compat shims, devtools wiring) live in the wider docs site, not as a \`get_pattern\` slug.
 - Confusing patterns with anti-patterns — \`get_pattern\` returns "how to do X correctly"; \`get_anti_patterns\` returns "what to avoid". They're complementary.`,
   },
 
   'mcp/get_anti_patterns': {
-    signature: `tool: get_anti_patterns({ category?: 'reactivity'|'jsx'|'context'|'architecture'|'testing'|'lifecycle'|'documentation'|'all'; name?: string; full?: boolean }) → string`,
+    signature: `tool: get_anti_patterns({ category?: 'reactivity'|'jsx'|'context'|'architecture'|'islands'|'ssr'|'ssg'|'bundling'|'testing'|'lifecycle'|'build'|'ci'|'best-practices'|'library-api'|'documentation'|'all'; name?: string; full?: boolean; page?: number }) → string`,
     example: `get_anti_patterns()
-// → compact index (~3.3K): titles + detector tags + one-line hooks
+// → compact index (paginated — "page 1 of 2" on this catalog's current size): titles + detector tags + one-line hooks
 get_anti_patterns({ name: 'Destructuring props' })  // → that entry's full body
 get_anti_patterns({ category: 'reactivity' })       // → full bodies, one category
-get_anti_patterns({ full: true })                   // → entire catalog (~14K)`,
-    notes: `Browse the anti-patterns catalog from \`.agents/rules/anti-patterns.md\`, token-frugal by default. **No args → a COMPACT INDEX** (one line per entry: title + \`[detector: <code>]\` tag + one-sentence hook; ≈3.3K tokens vs the ≈14K full dump — a ~76% cut on the common orient call). Drill in deliberately: \`{ name }\` → the single matching entry\\'s full body (cheapest); \`{ category }\` → full bodies for one category; \`{ full: true }\` → entire catalog (≈14K, explicit opt-in). The index keeps per-category \`## <Heading>\` markers so categories are still discoverable in one call; each \`[detector: <code>]\` tag pairs the entry with the live \`validate\` detector. See also: validate, get_pattern.`,
-    mistakes: `- Reaching for \`{ full: true }\` to "see the anti-patterns" — that is the ~14K dump. The no-arg index is the orient call; pull full bodies with \`{ name }\` once you know which entry matters
+get_anti_patterns({ category: 'islands' })          // → any of the 15 real categories works, not just the first 8
+get_anti_patterns({ full: true })                   // → entire catalog (tens of thousands of tokens)`,
+    notes: `Browse the anti-patterns catalog from \`.agents/rules/anti-patterns.md\`, token-frugal by default. **No args → a COMPACT INDEX** (one line per entry: title + \`[detector: <code>]\` tag + one-sentence hook), kept at least ~60% smaller than \`{ full: true }\` by a density gate rather than a pinned size (the catalog has grown past 400 entries and past a single page — the index is PAGINATED at 240 entries/page, footer names the next). Drill in deliberately: \`{ name }\` → the single matching entry\\'s full body (cheapest); \`{ category }\` → full bodies for one of the 15 real categories (\`reactivity\`, \`jsx\`, \`context\`, \`architecture\`, \`islands\`, \`ssr\`, \`ssg\`, \`bundling\`, \`testing\`, \`lifecycle\`, \`build\`, \`ci\`, \`best-practices\`, \`library-api\`, \`documentation\`); \`{ full: true }\` → the entire catalog (tens of thousands of tokens, explicit opt-in). The index keeps per-category \`## <Heading>\` markers so categories are still discoverable in one call; each \`[detector: <code>]\` tag pairs the entry with the live \`validate\` detector. See also: validate, get_pattern.`,
+    mistakes: `- Reaching for \`{ full: true }\` to "see the anti-patterns" — that is the multi-tens-of-thousands-of-token dump. The no-arg index is the orient call; pull full bodies with \`{ name }\` once you know which entry matters
 - Expecting no-arg to return full bodies — it returns the index (behaviour changed in the token-slim PR). Full bodies need \`{ name }\`, \`{ category }\`, or \`{ full: true }\``,
   },
 
