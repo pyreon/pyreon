@@ -27,6 +27,7 @@ import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 import { CONFIG_FILENAMES, sectionFrom } from '@pyreon/config'
 import type { IssueCode, IssueSeverity, LoomIgnore } from './types'
+import { closest } from './closest'
 
 /** The settings loom reads, from either home. */
 export interface LoomSettings {
@@ -35,6 +36,9 @@ export interface LoomSettings {
   strict?: boolean
   severity: Partial<Record<IssueCode, IssueSeverity>>
 }
+
+/** The keys a `loom` section may carry — anything else is rejected. */
+const SECTION_KEYS: readonly string[] = ['devPaths', 'ignore', 'strict', 'severity']
 
 /** Every code a `severity` override may name — unknown keys are rejected. */
 export const ISSUE_CODES: readonly IssueCode[] = [
@@ -69,6 +73,17 @@ export function validateLoomSection(raw: unknown, where: string): Partial<LoomSe
   }
   const section = raw as Record<string, unknown>
   const out: Partial<LoomSettings> = {}
+
+  // A misspelled key would otherwise be ignored in silence, so the setting the
+  // user meant (`strict`, say) never takes effect and nothing says so.
+  for (const key of Object.keys(section)) {
+    if (SECTION_KEYS.includes(key)) continue
+    const guess = closest(key, SECTION_KEYS)
+    bad(
+      `${where}: unknown \`loom.${key}\`.${guess ? ` Did you mean \`${guess}\`?` : ''} ` +
+        `Known keys: ${SECTION_KEYS.join(', ')}.`,
+    )
+  }
 
   if (section.devPaths !== undefined) {
     const v = section.devPaths

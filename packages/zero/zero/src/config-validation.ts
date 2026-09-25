@@ -31,6 +31,8 @@ const ZERO_CONFIG_KEYS = {
   theme: true,
   og: true,
   ai: true,
+  routeOg: true,
+  pwa: true,
 } as const satisfies Record<UserKeys, true>
 
 const MODES = ['ssr', 'ssg', 'spa', 'isr', 'auto'] as const

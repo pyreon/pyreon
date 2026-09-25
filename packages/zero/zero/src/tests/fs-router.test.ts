@@ -614,6 +614,21 @@ describe('generateRouteModuleFromRoutes — with detected exports', () => {
     }
   }
 
+  it('route `og` export: lazy getter in the SERVER graph only, never the client graph', () => {
+    const routes = [makeRoute('about.tsx', { hasOg: true })]
+    const server = generateRouteModuleFromRoutes(routes, './routes', { serverLoaders: true })
+    expect(server).toContain('og: () => import("./routes/about.tsx").then((m) => m.og)')
+    const client = generateRouteModuleFromRoutes(routes, './routes')
+    expect(client).not.toContain('m.og')
+    // `og` alone must not force an eager namespace import (keeps lazy splitting).
+    expect(server).not.toContain('import * as')
+  })
+
+  it('detectRouteExports reports `og`', () => {
+    expect(detectRouteExports('export const og = () => null\nexport default 1').hasOg).toBe(true)
+    expect(detectRouteExports('export default 1').hasOg).toBe(false)
+  })
+
   it('uses lazy() for routes with no metadata exports (code splitting)', () => {
     const routes = [makeRoute('about.tsx')]
     const result = generateRouteModuleFromRoutes(routes, './routes')

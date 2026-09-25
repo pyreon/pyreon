@@ -7,10 +7,13 @@
  * tables from a single schema. `withField()` attaches a `FieldMeta`
  * object via a Symbol-keyed property; `getMeta()` reads it.
  *
- * The wrapper is a shallow `Object.create` clone — the returned schema
- * keeps every method / property of the original (so `Zod.parse`,
- * `Valibot.pipe`, ArkType template-literal forms all still work
- * end-to-end on the wrapped schema). Only the new Symbol slot is added.
+ * `withField` NEVER mutates the schema it is given — it returns a new schema
+ * carrying the metadata, so two `withField` calls on one shared base keep
+ * their own labels. A Pyreon `s` schema is cloned (copy-on-write, like its
+ * chainable methods); any other Standard Schema (Zod / Valibot / ArkType, …)
+ * is wrapped in a transparent Proxy that answers ONLY the metadata slot and
+ * forwards everything else — so `.parse`, `.safeParse`, `~standard`, and an
+ * ArkType schema's call signature all keep working on the result.
  */
 
 import { type FieldMeta, type StandardSchemaV1, META_SLOT, type WithFieldMeta } from './types'
@@ -18,8 +21,8 @@ import { type FieldMeta, type StandardSchemaV1, META_SLOT, type WithFieldMeta } 
 /**
  * Attach Pyreon field metadata to any Standard Schema. The returned
  * schema is structurally `schema` PLUS a Symbol-keyed `FieldMeta` slot.
- * Library methods (`.parse`, `.safeParse`, `.optional`, etc.) are
- * preserved by reference — no proxying, no boxing.
+ * Library methods (`.parse`, `.safeParse`, `.optional`, etc.) keep working.
+ * The input schema is not modified (and may be frozen).
  *
  * Re-wrapping a previously-wrapped schema MERGES the new metadata with
  * the existing (later wins on key collision). This is the natural
@@ -49,37 +52,32 @@ export function withField<S extends StandardSchemaV1<unknown, unknown>>(
   const existing = getMeta(schema)
   const merged: FieldMeta = existing ? { ...existing, ...meta } : meta
 
-  // Attach the metadata via a Symbol-keyed non-enumerable property on
-  // the original schema. We mutate in place rather than clone because:
-  //
-  //   1. **Callable schemas can't be naively cloned.** ArkType's `Type`
-  //      instances are functions whose `~standard.validate` does
-  //      `this(input)` — `this` must be the callable schema itself.
-  //      An `Object.create(proto)` clone is not callable and breaks
-  //      ArkType. A Proxy would work but adds prototype-chain
-  //      subtleties (`instanceof` checks, hidden ownership).
-  //
-  //   2. **Symbol-keyed non-enumerable mutation is invisible** to JSON
-  //      serialization (`JSON.stringify` skips symbol keys), `for…in`
-  //      enumeration, `Object.keys`, structured clone, library-internal
-  //      schema comparators. The slot is functionally hidden.
-  //
-  //   3. **Re-wrapping is the natural extension** — `withField(base,
-  //      { a: 1 })` then `withField(base, { b: 2 })` should produce a
-  //      schema with both `a` and `b`. With mutate-in-place that's
-  //      automatic; with cloning we'd need merge logic and two
-  //      separate schema references would confuse consumers.
-  //
-  // The mutation is idempotent — repeated calls overwrite the slot
-  // with the merged metadata. `configurable: true` so a future call
-  // can replace it.
-  Object.defineProperty(schema, META_SLOT, {
-    value: merged,
-    enumerable: false,
-    configurable: true,
-    writable: false,
-  })
-  return schema as WithFieldMeta<S>
+  // A Pyreon `s` schema: copy-on-write clone (duck-typed so the DX-only entry
+  // keeps not importing the validator runtime).
+  const cloneable = schema as unknown as { _cloneWith?: () => object }
+  if (typeof cloneable._cloneWith === 'function') {
+    const clone = cloneable._cloneWith()
+    Object.defineProperty(clone, META_SLOT, {
+      value: merged,
+      enumerable: false,
+      configurable: true,
+      writable: false,
+    })
+    return clone as WithFieldMeta<S>
+  }
+
+  // Any other Standard Schema: a transparent Proxy. It intercepts only the
+  // metadata READ; every other access is forwarded to the original, with the
+  // original as the getter receiver (so a library getter reading internal
+  // state sees its real instance). A callable schema (ArkType's `Type`) stays
+  // callable — a function target keeps the `apply` trap's default forwarding.
+  // Why not a mutation (the old shape): a shared base labelled twice kept only
+  // the LAST label, and a frozen schema threw.
+  return new Proxy(schema, {
+    get(target, prop) {
+      return prop === META_SLOT ? merged : Reflect.get(target, prop, target)
+    },
+  }) as WithFieldMeta<S>
 }
 
 /**

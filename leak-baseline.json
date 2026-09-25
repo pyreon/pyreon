@@ -18,6 +18,7 @@
     "unbalanced-listeners::packages/tools/devtools/src/page-hook.ts": 1,
     "unbalanced-listeners::packages/tools/devtools/src/panel.ts": 1,
     "unbalanced-listeners::packages/ui-system/ui-core/src/PyreonUI.tsx": 1,
+    "unbalanced-listeners::packages/zero/zero/src/pwa-client.ts": 1,
     "unbounded-cache::packages/core/compiler/src/ssg-audit.ts": 1,
     "unbounded-cache::packages/core/router/src/components.tsx": 1,
     "unbounded-cache::packages/core/runtime-dom/src/sanitizer.ts": 1,

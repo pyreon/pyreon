@@ -20,7 +20,7 @@ export class DateSchema extends SchemaBase<Date> {
 
   /** Earliest allowed instant (inclusive). */
   min(d: Date, opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:date:min', d, opts }, (value, ctx) => {
         if (!(value instanceof Date) || value.getTime() >= d.getTime()) return
         ctx.issues.push(
@@ -36,13 +36,11 @@ export class DateSchema extends SchemaBase<Date> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   /** Latest allowed instant (inclusive). */
   max(d: Date, opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:date:max', d, opts }, (value, ctx) => {
         if (!(value instanceof Date) || value.getTime() <= d.getTime()) return
         ctx.issues.push(
@@ -58,8 +56,6 @@ export class DateSchema extends SchemaBase<Date> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 }
 

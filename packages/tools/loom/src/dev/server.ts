@@ -12,12 +12,23 @@ import { existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildReport } from '../core/report'
+import type { LoomSettings } from '../core/config'
 
 export interface DevServerOptions {
   /** Workspace root (default `.`). */
   cwd?: string
-  /** Port (default 5230). */
+  /**
+   * Port. When given, it is required (the server fails if it is taken). When
+   * omitted, 5230 is tried first and the next free port is used.
+   */
   port?: number
+  /**
+   * Resolved loom settings (config file + manifest), so the UI reports exactly
+   * what `loom scan` reports. The CLI resolves them; defaults otherwise.
+   */
+  settings?: LoomSettings
+  /** Skip the source-import scan, as `loom scan --no-imports`. */
+  noImports?: boolean
   /** Brand label in the header (default `loom`). */
   brand?: string
 }
@@ -112,7 +123,8 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
 
   // Boot-time scan: fail LOUDLY here (a dev server over a non-workspace is a
   // misconfiguration, not a state to render).
-  const first = buildReport(root)
+  const scanOptions = { noImports: options.noImports === true, ...(options.settings ? { settings: options.settings } : {}) }
+  const first = buildReport(root, scanOptions)
 
   type ViteServer = { listen: () => Promise<unknown>; close: () => Promise<void> }
   type CreateServer = (config: Record<string, unknown>) => Promise<ViteServer>
@@ -142,11 +154,19 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
 
   const html = devHtml(brand)
   const port = options.port ?? 5230
+  const strictPort = options.port !== undefined
 
   const server = await createServer({
     root,
     configFile: false,
-    server: { port, strictPort: true },
+    // Its own dependency cache. Sharing the project's `node_modules/.vite`
+    // made loom and the project's own dev server invalidate each other's
+    // pre-bundle on every start ("Re-optimizing dependencies because vite
+    // config has changed"), costing both a full re-optimize.
+    cacheDir: join(root, 'node_modules', '.cache', 'loom-vite'),
+    // loom prints its own ready line; Vite's info chatter is not the user's.
+    logLevel: 'warn',
+    server: { port, strictPort },
     optimizeDeps: { entries: [] },
     // The observatory is a finished TOOL, not code the user is developing:
     // Pyreon's dev-mode instrumentation (reactive devtools stack capture, dev
@@ -168,10 +188,13 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
           return [
             `import { mountObservatory } from ${JSON.stringify(uiModulePath())}`,
             '',
-            `const res = await fetch(${JSON.stringify(REPORT_PATH)})`,
-            `const report = await res.json()`,
             `const root = document.getElementById('loom-root')`,
-            `if (root) mountObservatory(root, report, { brand: ${JSON.stringify(brand)} })`,
+            `const res = await fetch(${JSON.stringify(REPORT_PATH)})`,
+            `const body = await res.json()`,
+            // A failed rescan (a manifest mid-edit that no longer parses) must
+            // say why, not hand an error object to the UI as if it were a report.
+            `if (!res.ok) { if (root) { root.textContent = 'loom: ' + (body.error ?? 'the scan failed'); root.style.cssText = 'font:14px/1.5 ui-monospace,monospace;padding:24px;white-space:pre-wrap;color:#b91c1c' } }`,
+            `else if (root) mountObservatory(root, body, { brand: ${JSON.stringify(brand)} })`,
             '',
           ].join('\n')
         },
@@ -192,7 +215,7 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
               // fresh truth without restarting the server.
               try {
                 response.setHeader('Content-Type', 'application/json')
-                response.end(JSON.stringify(buildReport(root)))
+                response.end(JSON.stringify(buildReport(root, scanOptions)))
               } catch (error) {
                 response.statusCode = 500
                 response.end(JSON.stringify({ error: String((error as Error)?.message ?? error) }))
@@ -200,10 +223,17 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
               return
             }
             if (request.method !== 'GET' || url.includes('.') || url.startsWith('/@')) return next()
-            void inner.transformIndexHtml(url, html).then((page) => {
-              response.setHeader('Content-Type', 'text/html')
-              response.end(page)
-            })
+            inner.transformIndexHtml(url, html).then(
+              (page) => {
+                response.setHeader('Content-Type', 'text/html')
+                response.end(page)
+              },
+              (error: unknown) => {
+                response.statusCode = 500
+                response.setHeader('Content-Type', 'text/plain')
+                response.end(`loom dev: ${String((error as Error)?.message ?? error)}`)
+              },
+            )
           })
         },
       },
@@ -211,8 +241,9 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
   })
 
   await server.listen()
+  const bound = (server as { resolvedUrls?: { local?: string[] } }).resolvedUrls?.local?.[0]
   return {
-    url: `http://localhost:${port}/`,
+    url: bound ?? `http://localhost:${port}/`,
     packages: first.model.packages.length,
     close: () => server.close(),
   }

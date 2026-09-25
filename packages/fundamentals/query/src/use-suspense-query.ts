@@ -1,7 +1,7 @@
 import type { VNodeChild, VNodeChildAtom } from '@pyreon/core'
 import { onUnmount } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
-import { batch, effect, signal } from '@pyreon/reactivity'
+import { batch, signal } from '@pyreon/reactivity'
 import type {
   DefaultError,
   InfiniteData,
@@ -14,6 +14,7 @@ import type {
 import { InfiniteQueryObserver, QueriesObserver, QueryObserver } from '@tanstack/query-core'
 import { subscribeWhenRestored, useIsRestoring } from './is-restoring'
 import { useQueryClient } from './query-client'
+import { observeOptions } from './observe-options'
 import { makeResultProto } from './result-proto'
 import type { UseQueriesOptions } from './use-queries'
 
@@ -171,17 +172,22 @@ export function QuerySuspense(props: QuerySuspenseProps): VNodeChild {
  * )
  */
 export function useSuspenseQuery<
-  TData = unknown,
+  TQueryFnData = unknown,
   TError = DefaultError,
-  TKey extends QueryKey = QueryKey,
+  TData = TQueryFnData,
+  TQueryKey extends QueryKey = QueryKey,
 >(
-  options: () => QueryObserverOptions<TData, TError, TData, TData, TKey>,
+  options: () => QueryObserverOptions<TQueryFnData, TError, TData, TQueryFnData, TQueryKey>,
 ): UseSuspenseQueryResult<TData, TError> {
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.useQuery')
 
   const client = useQueryClient()
   const isRestoring = useIsRestoring()
-  const observer = new QueryObserver<TData, TError, TData, TData, TKey>(client, options())
+  const observer = observeOptions(
+    options,
+    (o) => new QueryObserver<TQueryFnData, TError, TData, TQueryFnData, TQueryKey>(client, o),
+    (obs, o) => obs.setOptions(o),
+  )
 
   // Lazy signal slots — see use-query.ts for the pattern.
   const slots: {
@@ -209,10 +215,6 @@ export function useSuspenseQuery<
     })
   })
 
-  effect(() => {
-    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.setOptions')
-    observer.setOptions(options())
-  })
   onUnmount(() => unsub())
 
   const result = {
@@ -248,13 +250,18 @@ export function useSuspenseInfiniteQuery<
 
   const client = useQueryClient()
   const isRestoring = useIsRestoring()
-  const observer = new InfiniteQueryObserver<
-    TQueryFnData,
-    TError,
-    InfiniteData<TQueryFnData>,
-    TQueryKey,
-    TPageParam
-  >(client, options())
+  const observer = observeOptions(
+    options,
+    (o) =>
+      new InfiniteQueryObserver<
+        TQueryFnData,
+        TError,
+        InfiniteData<TQueryFnData>,
+        TQueryKey,
+        TPageParam
+      >(client, o),
+    (obs, o) => obs.setOptions(o),
+  )
 
   // Lazy signal slots — see use-query.ts for the pattern.
   type Result = InfiniteQueryObserverResult<InfiniteData<TQueryFnData>, TError>
@@ -289,10 +296,6 @@ export function useSuspenseInfiniteQuery<
     })
   })
 
-  effect(() => {
-    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.setOptions')
-    observer.setOptions(options())
-  })
   onUnmount(() => unsub())
 
   const result = {
@@ -352,7 +355,11 @@ export function useSuspenseQueries<TData = unknown, TError = DefaultError>(
 
   const client = useQueryClient()
   const isRestoring = useIsRestoring()
-  const observer = new QueriesObserver(client, queries())
+  const observer = observeOptions(
+    queries,
+    (q) => new QueriesObserver(client, q),
+    (obs, q) => obs.setQueries(q),
+  )
 
   const seed = observer.getCurrentResult() as readonly QueryObserverResult[]
   const results = signal(seed as QueryObserverResult[]) as Signal<
@@ -378,10 +385,6 @@ export function useSuspenseQueries<TData = unknown, TError = DefaultError>(
     apply(r),
   )
 
-  effect(() => {
-    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.setOptions')
-    observer.setQueries(queries())
-  })
 
   onUnmount(() => {
     unsub()

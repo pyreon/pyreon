@@ -90,6 +90,7 @@ const ROUTE_EXPORT_NAMES = [
   'gcTime',
   'getStaticPaths',
   'revalidate',
+  'og',
 ] as const
 
 type RouteExportName = (typeof ROUTE_EXPORT_NAMES)[number]
@@ -200,6 +201,7 @@ export function detectRouteExports(source: string, filename = 'route.tsx'): Rout
     hasGcTime: found.has('gcTime'),
     hasGetStaticPaths: found.has('getStaticPaths'),
     hasRevalidate: found.has('revalidate'),
+    hasOg: found.has('og'),
     readsRequestAuth: READS_REQUEST_AUTH_RE.test(source),
     ...(metaLiteral !== undefined ? { metaLiteral } : {}),
     ...(renderModeLiteral !== undefined ? { renderModeLiteral } : {}),
@@ -927,6 +929,13 @@ export function generateRouteModuleFromRoutes(
 
     if (notFoundName) {
       props.push(`${indent}  notFoundComponent: ${notFoundName}`)
+    }
+
+    // Route OG images — `export const og` is referenced ONLY from the
+    // server module graph (SSG sub-build + SSR bundle), as a lazy getter so
+    // it never pulls the route module eagerly and never reaches the client.
+    if (exp.hasOg && emitServerLoaders) {
+      props.push(`${indent}  og: () => import(${jsStringLiteral(`${routesDir}/${page.filePath}`)}).then((m) => m.og)`)
     }
 
     // Phase 5 — server loaders (uniform across every emission branch).

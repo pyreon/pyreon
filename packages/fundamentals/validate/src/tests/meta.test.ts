@@ -36,16 +36,16 @@ describe('withField + getMeta — Zod', () => {
     })
   })
 
-  it('mutates the original schema in place (callable-schema safe)', () => {
-    // Why mutate-in-place: ArkType's `Type` instances are callable
-    // functions whose `~standard.validate` does `this(input)`. An
-    // `Object.create()` clone is not callable and breaks that contract.
-    // Symbol-keyed non-enumerable mutation is invisible to JSON,
-    // for…in, Object.keys, and library-internal comparators — safe.
+  it('returns a NEW schema and leaves the input untouched', () => {
+    // withField used to mutate the input in place, so two labels on one shared
+    // base clobbered each other and a frozen schema threw. A foreign schema is
+    // now wrapped in a transparent Proxy (callable-safe for ArkType).
     const schema = z.string()
     const wrapped = withField(schema, { label: 'Name' })
-    expect(wrapped).toBe(schema) // same reference
-    expect(getMeta(schema)).toEqual({ label: 'Name' }) // metadata visible from either ref
+    expect(wrapped).not.toBe(schema)
+    expect(getMeta(wrapped)).toEqual({ label: 'Name' })
+    expect(getMeta(schema)).toBeUndefined()
+    expect(wrapped.safeParse('x').success).toBe(true)
   })
 
   it('merges metadata when re-wrapping', () => {
@@ -65,11 +65,12 @@ describe('withField + getMeta — Zod', () => {
     expect(getMeta(overridden)?.label).toBe('Email Address')
   })
 
-  it('metadata slot is non-enumerable so JSON.stringify ignores it', () => {
-    const wrapped = withField(z.string(), { label: 'Email' })
-    expect(Object.keys(wrapped)).not.toContain(META_SLOT.toString())
-    const descriptor = Object.getOwnPropertyDescriptor(wrapped, META_SLOT)
-    expect(descriptor?.enumerable).toBe(false)
+  it('metadata is invisible to key enumeration and JSON', () => {
+    const base = v.pipe(v.string(), v.email())
+    const wrapped = withField(base, { label: 'Email' })
+    expect(Object.keys(wrapped)).toEqual(Object.keys(base))
+    expect(Reflect.ownKeys(wrapped)).not.toContain(META_SLOT)
+    expect(JSON.stringify(wrapped)).toBe(JSON.stringify(base))
   })
 })
 

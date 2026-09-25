@@ -20,6 +20,7 @@ import { createFormActionMiddleware } from "./form-actions-server";
 import type { ApiRouteEntry } from "./api-routes";
 import { createApiMiddleware, matchApiRoute } from "./api-routes";
 import { createDataEndpointMiddleware } from "./data-endpoint-middleware";
+import { createOgImageMiddleware } from "./og-route";
 import { createServerIslandMiddleware } from "./server-islands-middleware";
 import type { RouteMiddlewareEntry, ZeroConfig } from "./types";
 
@@ -78,6 +79,10 @@ export function createRequestPipeline(options: RequestPipelineOptions): RequestP
 	// each costs one path-prefix check.
 	middleware.push(createServerIslandMiddleware(options.routes));
 	middleware.push(createDataEndpointMiddleware(options.routes));
+	// Route OG images for SSR/ISR routes (`GET /_zero/og/<path>.png`). `og`
+	// exports live in the same lazily-loaded route modules, so it is mounted
+	// unconditionally too.
+	middleware.push(createOgImageMiddleware(options.routes, config.routeOg));
 	if (options.actions !== false) {
 		const resolvedActions = resolveActionOptions(
 			typeof options.actions === "object" ? options.actions : undefined,

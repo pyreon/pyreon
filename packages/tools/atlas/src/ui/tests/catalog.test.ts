@@ -58,6 +58,15 @@ describe('defaultValues', () => {
     expect(Object.keys(defaultValues(c))).toHaveLength(4)
   })
 
+  it('omits a control with NO default — an `undefined` key would override the content seed', () => {
+    const c = comp('x', 'g', [
+      { key: 'value', label: 'Value', type: 'text', default: undefined },
+      { key: 'label', label: 'Label', type: 'text', default: '' },
+    ])
+    expect(defaultValues(c)).toEqual({ label: '' })
+    expect('value' in defaultValues(c)).toBe(false)
+  })
+
   it('is {} for a control-less component', () => {
     expect(defaultValues(comp('x', 'g'))).toEqual({})
   })

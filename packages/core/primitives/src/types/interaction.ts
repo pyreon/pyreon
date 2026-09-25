@@ -54,11 +54,16 @@ export interface PressProps extends ChildrenProp, HtmlPassthroughProps {
  * Per-platform mapping:
  * - Web: `<a href=...>` + SPA-nav click interception when `init({ navigate })`
  *   is configured (see `@pyreon/primitives` `init`)
- * - iOS: `NavigationLink(destination: ...)`
- * - Android: `Box(modifier=Modifier.clickable { navController.navigate(...) })`
+ * - iOS: `PyreonLink(to) { … }` — pushes `to` onto the native router
+ * - Android: `PyreonLink(to) { navigate -> Box(Modifier.clickable { navigate() }) { … } }`
  */
 export interface LinkProps extends ChildrenProp, HtmlPassthroughProps {
   to: string
-  /** Equivalent to `<a target="_blank">` on web; opens in external app on native. */
+  /**
+   * Equivalent to `<a target="_blank" rel="noopener noreferrer">` on web.
+   * NOT lowered on iOS/Android: the compiler warns and the link still
+   * pushes `to` onto the in-app router — use `useLinking().openUrl(url)`
+   * to open a website from native code.
+   */
   external?: boolean
 }

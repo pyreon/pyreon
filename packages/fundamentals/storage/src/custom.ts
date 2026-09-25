@@ -1,5 +1,5 @@
 import { signal, wrapSignal } from '@pyreon/reactivity'
-import { getEntry, getScopedMap, releaseEntry, retainEntry, setEntry } from './registry'
+import { getEntry, getScopedMap, releaseEntry, retainEntry, setEntry, warnIfOptionsDiffer } from './registry'
 import type { StorageBackend, StorageOptions, StorageSignal } from './types'
 import { deserialize, serialize } from './utils'
 
@@ -40,6 +40,7 @@ export function createStorage(
     // and the next call for the same key minted a SECOND, independent one.
     const existing = getEntry<T>(name, key)
     if (existing) {
+      warnIfOptionsDiffer(name, key, existing, defaultValue, options)
       retainEntry(name, key)
       return existing.signal
     }

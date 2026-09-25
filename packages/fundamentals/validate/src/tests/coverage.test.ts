@@ -65,11 +65,13 @@ describe('pipe() function-comp helper', () => {
     expect(out).toBe(schema)
   })
 
-  it('preserves schema identity across step functions', () => {
+  it('returns the derived schema and leaves the input untouched', () => {
     const schema = s.string()
     const out = pipe(schema, (s) => s.email())
-    // chainable methods mutate `this` and return `this`, so identity holds
-    expect(out).toBe(schema)
+    // chainable methods are copy-on-write: `pipe` returns the derived schema
+    expect(out).not.toBe(schema)
+    expect(out.parse('nope').ok).toBe(false)
+    expect(schema.parse('nope').ok).toBe(true)
   })
 
   it('composes with named function exports', () => {

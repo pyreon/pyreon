@@ -64,6 +64,16 @@ describe('controls', () => {
     expect(control).toMatchObject({ type: 'enum', options: ['solid', 'soft'], default: 'solid' })
   })
 
+  it('fabricates NO default for a prop whose type the scan could not read', () => {
+    // `value?: string | string[]` handed `''` made TagsInput controlled with a
+    // string where it expects an array — an empty 36px box on the canvas.
+    const unknown = toWorkbenchControl({ name: 'value', kind: 'unknown', reactive: false, required: false })
+    expect(unknown).toMatchObject({ type: 'text', default: undefined })
+    // A real string prop still blanks to '' — and a content seed still wins.
+    expect(toWorkbenchControl({ name: 'title', kind: 'text', reactive: false, required: false }).default).toBe('')
+    expect(toWorkbenchControl({ name: 'label', kind: 'unknown', reactive: false, required: false }, 'Save').default).toBe('Save')
+  })
+
   it('derives a readable label from a camelCase prop', () => {
     const control = toWorkbenchControl({
       name: 'isDisabled',
@@ -222,7 +232,7 @@ describe('the project wrapper (atlas.config.ts)', () => {
     expect(code).toContain('typeof __section.wrapper === "function"')
     // Wrapping is COMPOSED now rather than a single function, so that every
     // extension contributes instead of the last one winning.
-    expect(code).toContain('__wrapAll(__el)')
+    expect(code).toContain('__wrapAll(__el, ctx)')
     expect(code).toContain('__layers.reduceRight')
     // The recording permissions provider goes INNERMOST: a project wrapper
     // commonly carries its own static PermissionsProvider, and nearest-wins

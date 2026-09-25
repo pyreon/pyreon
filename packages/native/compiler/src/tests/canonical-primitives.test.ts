@@ -1,11 +1,10 @@
-// Phase B — emit-shape tests for the 6 wired canonical primitives.
+// Phase B — emit-shape tests for the canonical primitives (started with
+// the first six: `<Stack>` / `<Inline>` / `<Text>` / `<Button>` / `<Press>`
+// / `<Field>`). Validates the expected SwiftUI + Compose output shapes, with
+// token resolution + canonical `onPress` event name applied per target.
+// Whole-set coverage lives in `canonical-primitives-typecheck.test.ts`.
 //
-// Validates that `<Stack>` / `<Inline>` / `<Text>` / `<Button>` /
-// `<Press>` / `<Field>` produce the expected SwiftUI + Compose output
-// shapes, with token resolution + canonical `onPress` event name
-// applied correctly per target.
-//
-// Snapshot tests would be over-specific for 16 primitives; instead
+// Snapshot tests would be over-specific for every primitive; instead
 // these tests use targeted `toContain` / `toMatch` assertions on the
 // load-bearing emit fragments. Per-primitive, per-target.
 //
