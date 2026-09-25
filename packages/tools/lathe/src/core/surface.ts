@@ -63,8 +63,19 @@ export interface SurfaceOperation {
    * operation is for and where its generated symbols live without re-reading
    * the spec.
    */
-  tag?: string | undefined
+  /**
+   * The generated module stem: this operation's endpoint is exported from
+   * `endpoints/<module>.ts` and its hooks from `queries/<module>.ts`. Not the
+   * spec tag verbatim — an untagged operation is grouped by path.
+   */
+  module?: string | undefined
   summary?: string | undefined
+  /**
+   * Generated symbols a caller imports for this operation, when the surface
+   * was written by a generation run (`lathe generate`). The contract diff and
+   * the MCP server name them so a reader knows which code to look at.
+   */
+  symbols?: readonly string[] | undefined
 }
 
 /** Where a model is reachable from: a request, a response, both, or neither. */
@@ -181,11 +192,25 @@ function usageOf(doc: IrDocument): Record<string, SurfaceUsage> {
   return out
 }
 
+/**
+ * Optional metadata a generation run knows and a bare document does not:
+ * which module each operation lands in and the symbols it exports.
+ */
+export interface SurfaceMetadata {
+  moduleOf?: (op: IrOperation) => string | undefined
+  symbolsOf?: (op: IrOperation) => readonly string[]
+}
+
 /** Extract the comparable surface from a parsed document. */
-export function extractSurface(doc: IrDocument): ApiSurface {
+export function extractSurface(doc: IrDocument, meta: SurfaceMetadata = {}): ApiSurface {
   const operations: Record<string, SurfaceOperation> = {}
   for (const op of [...doc.operations].sort((a, b) => byCodeUnit(a.id, b.id))) {
-    operations[op.id] = surfaceOf(op)
+    const s = surfaceOf(op)
+    const module = meta.moduleOf?.(op)
+    if (module !== undefined) s.module = module
+    const symbols = meta.symbolsOf?.(op)
+    if (symbols && symbols.length > 0) s.symbols = symbols
+    operations[op.id] = s
   }
   const models: Record<string, Record<string, string>> = {}
   const aliases: Record<string, SurfaceAlias> = {}
@@ -219,7 +244,6 @@ function surfaceOf(op: IrOperation): SurfaceOperation {
   if (op.stream !== undefined) {
     out.stream = `${op.stream.format} ${op.stream.format === 'sse' && op.stream.data === 'text' ? 'string' : renderType(op.stream.event)}`
   }
-  out.tag = op.tag
   if (op.summary !== undefined) out.summary = op.summary
   return out
 }

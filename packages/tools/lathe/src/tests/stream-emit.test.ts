@@ -256,7 +256,13 @@ describe('the contract surface records streams', () => {
 
   it('renders what one event carries, and carries tag/summary as metadata', () => {
     const s = surface()
-    expect(s.operations.roomEvents).toMatchObject({ stream: 'sse RoomEvent', tag: 'rooms', summary: 'Live events in a room' })
+    expect(s.operations.roomEvents).toMatchObject({
+      stream: 'sse RoomEvent',
+      module: 'rooms',
+      summary: 'Live events in a room',
+      symbols: ['roomEvents', 'roomEventsStream', 'useRoomEventsStream'],
+    })
+    expect(s.operations.createChat?.symbols).toEqual(['createChat', 'createChatStream', 'useCreateChat', 'useCreateChatStream'])
     expect(s.operations.tailLog?.stream).toBe('sse string')
     expect(s.operations.exportRows?.stream).toBe('ndjson { id: integer; name?: string }')
   })
@@ -283,7 +289,8 @@ describe('the contract surface records streams', () => {
     const b = structuredClone(a)
     for (const op of Object.values(b.operations)) {
       op.summary = 'reworded'
-      op.tag = 'moved'
+      op.module = 'moved'
+      op.symbols = ['renamed']
     }
     expect(diffSurface(a, b)).toEqual([])
   })

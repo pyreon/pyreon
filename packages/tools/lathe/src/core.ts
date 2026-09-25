@@ -34,7 +34,27 @@ export {
   type ResolvedConfig,
   type StreamConfig,
 } from './core/config'
-export { generate, type GenerateResult, type GeneratedFile } from './core/generate'
+export { generate, surfaceMetadata, type GenerateResult, type GeneratedFile } from './core/generate'
+export {
+  diffCommittedSurface,
+  diffSurface,
+  extractSurface,
+  type ApiSurface,
+  type SurfaceChange,
+  type SurfaceMetadata,
+  type SurfaceOperation,
+} from './core/surface'
+export {
+  CONTRACT_FORMATS,
+  contractDiff,
+  readContractSide,
+  renderContractDiff,
+  type AffectedOperation,
+  type ContractChange,
+  type ContractDiff,
+  type ContractFormat,
+  type ContractSide,
+} from './core/contract'
 export { loadOpenApi, openApiVersionProblem, type LoadOptions } from './input/openapi'
 export { parseSpecText, parseYaml, YamlError } from './input/yaml'
 export {

@@ -5,7 +5,8 @@
  * is the only place that touches `node:fs`, `process` or the config loader.
  */
 
-import { existsSync, mkdirSync, readFileSync, rmSync, watch, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, watch, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { version as LATHE_VERSION } from '../../package.json' with { type: 'json' }
 import type { LatheSection } from '../core/config'
@@ -51,6 +52,25 @@ export async function main(argvRaw: readonly string[], cwd: string): Promise<num
   // Parse errors and help need no config, and a broken config must not stop
   // someone reading `--help`.
   if (argv.errors.length > 0 || argv.command === 'help') return emit(await run(argv, undefined, realFs))
+  // `diff` compares two files and generates nothing, so it needs no config.
+  if (argv.command === 'diff') {
+    const abs = (p: string): string => (isAbsolute(p) ? p : resolve(cwd, p))
+    const result = await run(argv, undefined, {
+      ...realFs,
+      read: (p) => realFs.read(abs(p)),
+      exists: (p) => realFs.exists(abs(p)),
+      gitShow: (rev, path) => {
+        // GIT_* dropped: inside a git hook they point at the HOOK's repository
+        // and override `cwd`, so `git show` would read the wrong one.
+        const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')))
+        const r = spawnSync('git', ['show', `${rev}:${path}`], { cwd, env, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })
+        return r.status === 0 ? r.stdout : undefined
+      },
+    })
+    const summaryFile = process.env.GITHUB_STEP_SUMMARY
+    if (result.summary && summaryFile) appendFileSync(summaryFile, result.summary)
+    return emit(result)
+  }
 
   let loaded: LoadedConfig
   try {

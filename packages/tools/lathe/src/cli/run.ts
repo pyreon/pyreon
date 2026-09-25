@@ -23,14 +23,28 @@ import { OUTPUT_MANIFEST, orphanedPaths } from '../core/output-manifest'
 import { diffCommittedSurface, type ApiSurface, type SurfaceChange } from '../core/surface'
 import { resolveNativeCompiler, verifyNative, worstVerdict } from '../verify/lower'
 import { closest } from '../core/suggest'
+import {
+  CONTRACT_FORMATS,
+  contractDiff,
+  readContractSide,
+  renderContractDiff,
+  type ContractDiff,
+  type ContractFormat,
+  type ContractSide,
+} from '../core/contract'
 import { renderReport } from './report'
 
 export interface Argv {
-  command: 'generate' | 'check' | 'pull' | 'help' | 'version'
+  command: 'generate' | 'check' | 'pull' | 'diff' | 'help' | 'version'
   /**
-   * Positional spec path, overriding config. For `pull`, the URL.
+   * Positional spec path, overriding config. For `pull`, the URL. For `diff`,
+   * the BEFORE side.
    */
   input?: string | undefined
+  /** `diff` only: the AFTER side. */
+  compare?: string | undefined
+  /** `diff` only: how the report is rendered. `--json` means `json`. */
+  format?: ContractFormat | undefined
   /** `pull` only: where to write the spec, overriding the configured `input`. */
   dest?: string | undefined
   output?: string | undefined
@@ -65,7 +79,7 @@ export interface Argv {
   errors: string[]
 }
 
-const COMMANDS = ['generate', 'check', 'pull', 'help', 'version'] as const
+const COMMANDS = ['generate', 'check', 'pull', 'diff', 'help', 'version'] as const
 const TARGETS = ['web', 'multiplatform'] as const
 
 /**
@@ -99,6 +113,7 @@ const FLAGS: Readonly<Record<string, 'bool' | 'value'>> = {
   '--config': 'value',
   '--header': 'value',
   '--token': 'value',
+  '--format': 'value',
 }
 
 /** The flag names a user could have meant, for "did you mean" hints. */
@@ -229,6 +244,9 @@ export function parseArgv(args: readonly string[]): Argv {
       case '--token':
         out.token = value
         break
+      case '--format':
+        out.format = oneOf(name, value as string, CONTRACT_FORMATS)
+        break
     }
   }
 
@@ -236,9 +254,13 @@ export function parseArgv(args: readonly string[]): Argv {
   if (verb !== undefined && (COMMANDS as readonly string[]).includes(verb)) {
     out.command = verb as Argv['command']
     const positional = rest.slice(1)
-    const max = verb === 'pull' ? 2 : verb === 'generate' || verb === 'check' ? 1 : 0
+    const max = verb === 'pull' || verb === 'diff' ? 2 : verb === 'generate' || verb === 'check' ? 1 : 0
     if (positional[0] !== undefined) out.input = positional[0]
     if (verb === 'pull' && positional[1] !== undefined) out.dest = positional[1]
+    if (verb === 'diff' && positional[1] !== undefined) out.compare = positional[1]
+    if (verb === 'diff' && positional.length < 2) {
+      out.errors.push('`diff` takes two files: `lathe diff <before> <after>` (a spec or an api-surface.json each).')
+    }
     for (const extra of positional.slice(max)) out.errors.push(`unexpected argument \`${extra}\`.`)
   } else if (verb !== undefined) {
     // `lathe ./openapi.yaml` -- a bare PATH is `generate`. A bare WORD is
@@ -265,6 +287,26 @@ export function parseArgv(args: readonly string[]): Argv {
   if (out.command !== 'pull' && (out.headers.length > 0 || out.token !== undefined)) {
     out.errors.push('`--header` and `--token` only apply to `lathe pull`.')
   }
+  if (out.format !== undefined && out.command !== 'diff') {
+    out.errors.push('`--format` only applies to `lathe diff`.')
+  }
+  if (out.command === 'diff') {
+    if (out.json) out.format = 'json'
+    for (const [flag, set] of [
+      ['--watch', out.watch],
+      ['--dry-run', out.dryRun],
+      ['--strict-native', out.strictNative],
+      ['--target', out.target !== undefined],
+      ['--out', out.output !== undefined],
+      ['--plugins', out.plugins !== undefined],
+      ['--client', out.client !== undefined],
+      ['--validator', out.validator !== undefined],
+      ['--base-url', out.baseUrl !== undefined],
+      ['--config', out.config !== undefined],
+    ] as const) {
+      if (set) out.errors.push(`\`${flag}\` does not apply to \`diff\`, which generates nothing.`)
+    }
+  }
   if (out.command === 'check' && out.dryRun) {
     out.errors.push('`--dry-run` is implied by `check`, which never writes.')
   }
@@ -285,6 +327,12 @@ export interface Fs {
   /** Delete one file. Only ever called for a path a previous run generated. */
   remove(path: string): void
   join(...parts: string[]): string
+  /**
+   * `git show <rev>:<path>` from the working directory, or `undefined` when git
+   * has no such object. Only `lathe diff` uses it; optional so a test or a
+   * library caller need not provide git.
+   */
+  gitShow?(rev: string, path: string): string | undefined
 }
 
 export interface RunResult {
@@ -293,6 +341,11 @@ export interface RunResult {
   stdout: string
   /** Errors and diagnostics in human mode. Always empty under `--json`. */
   stderr: string
+  /**
+   * `diff --format github` only: the Markdown report, which the bin appends
+   * to `$GITHUB_STEP_SUMMARY` when the runner provides one.
+   */
+  summary?: string | undefined
 }
 
 export const HELP = `lathe - generate Pyreon clients from an OpenAPI 3.x spec
@@ -301,6 +354,8 @@ Usage
   lathe generate [spec]          read the spec, write the client
   lathe check    [spec]          generate in memory; exit 1 if anything is stale
   lathe pull     [url] [dest]    fetch a remote spec to the configured input path
+  lathe diff <before> <after>    the client-contract diff between two specs or two
+                                 api-surface.json files (git refs: main:openapi.yaml)
   lathe [spec]                   same as \`lathe generate [spec]\`
 
 Options
@@ -323,6 +378,12 @@ Options
   --version, -v                  print the version
   --help, -h                     print this help
 
+Diff options
+  --format text|markdown|github|json
+                                 markdown/github are PR-comment ready (breaking first);
+                                 github also emits ::error / ::notice annotations
+  --fail-on-breaking             exit 1 when any change is breaking
+
 Pull options
   --header "Name: value"         send a request header (repeatable)
   --token <token>                send \`Authorization: Bearer <token>\`
@@ -341,6 +402,8 @@ export interface JsonReport {
   projects: JsonProject[]
   /** Present when the run failed before producing a project report. */
   error?: { message: string } | undefined
+  /** `diff` only: the classified contract changes. */
+  diff?: ContractDiff | undefined
 }
 
 export interface JsonProject {
@@ -395,11 +458,59 @@ export async function run(
     )
   }
   if (argv.command === 'help') return { code: 0, stdout: HELP, stderr: '' }
+  if (argv.command === 'diff') return runDiff(argv, fs, fail)
   try {
     return await runChecked(argv, section, fs, fail)
   } catch (err) {
     return fail(err instanceof Error ? err.message : String(err))
   }
+}
+
+/**
+ * `lathe diff <before> <after>`: never touches the filesystem beyond reading
+ * the two inputs. Exit 0, or 1 on a breaking change under
+ * `--fail-on-breaking`; an input that cannot be read is exit 2, so a CI step
+ * can tell "the API broke" from "the step is misconfigured".
+ */
+function runDiff(argv: Argv, fs: Fs, fail: (message: string, code?: number) => RunResult): RunResult {
+  let before: ContractSide
+  let after: ContractSide
+  try {
+    before = readContractSide(readInput(argv.input as string, fs), argv.input as string)
+    after = readContractSide(readInput(argv.compare as string, fs), argv.compare as string)
+  } catch (err) {
+    return fail((err as Error).message, 2)
+  }
+  const diff = contractDiff(before.surface, after.surface)
+  const code = argv.failOnBreaking && diff.breaking > 0 ? 1 : 0
+  if (argv.format === 'json') {
+    const doc: JsonReport = { ok: code === 0, command: 'diff', projects: [], diff }
+    return { code, stdout: `${JSON.stringify(doc, null, 2)}\n`, stderr: '' }
+  }
+  const format = argv.format ?? 'text'
+  // `github`: the annotations, then the Markdown body for a PR comment or the
+  // job summary — one command produces everything the Action needs.
+  if (format === 'github') {
+    const markdown = renderContractDiff(diff, 'markdown')
+    return { code, stdout: `${renderContractDiff(diff, 'github')}${markdown}`, stderr: '', summary: markdown }
+  }
+  return { code, stdout: renderContractDiff(diff, format), stderr: '' }
+}
+
+/**
+ * Read one diff input. A path that does not exist but looks like
+ * `<rev>:<path>` is read from git (`main:openapi.yaml`, `HEAD~1:api/spec.yaml`)
+ * — the base of a PR is the usual BEFORE, and it is not on disk.
+ */
+function readInput(spec: string, fs: Fs): string {
+  if (fs.exists(spec)) return fs.read(spec)
+  const rev = /^([^:]{2,}):(.+)$/.exec(spec)
+  if (rev && fs.gitShow) {
+    const text = fs.gitShow(rev[1] as string, rev[2] as string)
+    if (text !== undefined) return text
+    throw new Error(`[Pyreon] lathe diff: \`${rev[2]}\` does not exist at git revision \`${rev[1]}\`.`)
+  }
+  throw new Error(`[Pyreon] lathe diff: \`${spec}\` does not exist. Pass a spec, an api-surface.json, or \`<git-rev>:<path>\`.`)
 }
 
 async function runChecked(

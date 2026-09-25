@@ -16,17 +16,19 @@ import {
   emitQueriesBarrel,
 } from '../emit/entries'
 import {
+  byTag,
   emitClient,
   emitNativeModules,
   hasNativeDataComponent,
   emitWebEndpoints,
   emitWebQueries,
 } from '../emit/client'
+import { tagFile, typeIdent } from './naming'
 import { docsImportBase, emitDocs } from '../emit/docs'
 import { emitFaker } from '../emit/faker'
 import { emitMocks } from '../emit/mock'
 import { emitPackageMarker } from '../emit/package-marker'
-import { isStreamOnly } from '../emit/stream'
+import { isStreamOnly, streamHookName, streamName } from '../emit/stream'
 import { emitSchemas, emitTypes } from '../emit/schema'
 import { banner, jsonLiteral, type GeneratedFile } from '../emit/writer'
 import type { ResolvedConfig } from './config'
@@ -35,7 +37,7 @@ import { loadOpenApi, parsePagination, type LoadOptions } from '../input/openapi
 import { checkPagination } from '../emit/pagination'
 import { emitOutputManifest } from './output-manifest'
 import { closest } from './suggest'
-import { extractSurface, type ApiSurface } from './surface'
+import { extractSurface, type ApiSurface, type SurfaceMetadata } from './surface'
 
 export interface GenerateResult {
   doc: IrDocument
@@ -169,7 +171,10 @@ export function generate(
 
   assertUniquePaths(files)
 
-  const surface = extractSurface(doc)
+  // Module + symbols per operation, so the surface can name the code a
+  // contract change touches. Recorded for what THIS run emitted: an
+  // `endpoints`-only run has no hooks to name.
+  const surface = extractSurface(doc, surfaceMetadata(doc, { client: has('client'), queries: has('queries') }))
   // Emitted LAST and unconditionally: it is not a plugin's output but the
   // record of what this run promised, and a run that emitted only schemas
   // still changed the contract if a model moved.
@@ -221,6 +226,35 @@ function applyPagination(doc: IrDocument, config: ResolvedConfig): void {
     ;(doc.notes as IrNote[]).push({ code: 'invalid-pagination', at: `#/paths/${op.path}`, message: `${problem} Ignored.` })
     op.pagination = undefined
   }
+}
+
+/**
+ * Which module each operation lands in and the symbols it exports, for a run
+ * with these emitters. `lathe diff` over two SPECS asks it with the default
+ * set, so a spec-to-spec diff names the same symbols a generated tree has.
+ */
+export function surfaceMetadata(doc: IrDocument, ran: { client: boolean; queries: boolean }): SurfaceMetadata {
+  const groupOf = new Map<string, string>()
+  for (const [group, ops] of byTag(doc)) for (const op of ops) groupOf.set(op.id, tagFile(group))
+  return {
+    moduleOf: (op) => (ran.client ? groupOf.get(op.id) : undefined),
+    symbolsOf: (op) => generatedSymbols(op, ran),
+  }
+}
+
+/** The public symbols generated for one operation, given which plugins ran. */
+function generatedSymbols(op: IrOperation, ran: { client: boolean; queries: boolean }): string[] {
+  const out: string[] = []
+  if (ran.client) {
+    out.push(op.id)
+    if (op.stream) out.push(streamName(op))
+  }
+  if (ran.queries) {
+    if (!isStreamOnly(op)) out.push(`use${typeIdent(op.id)}`)
+    if (op.pagination && op.method === 'GET') out.push(`use${typeIdent(op.id)}Infinite`)
+    if (op.stream) out.push(streamHookName(op))
+  }
+  return out
 }
 
 /**
