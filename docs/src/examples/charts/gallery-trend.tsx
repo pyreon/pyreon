@@ -1,4 +1,4 @@
-import { area, currency, line, PlotChart, points, smooth } from '@pyreon/charts/plot'
+import { Area, Chart, Dot, Legend, Line, Tooltip, currency, smooth } from '@pyreon/charts'
 import { signal, type Signal } from '@pyreon/reactivity'
 
 /**
@@ -41,21 +41,14 @@ export default function GalleryTrend(props: { shared?: Signal<number> }) {
         </button>
         <span>shuffles: {() => shuffles()}</span>
       </div>
-      <PlotChart<Row>
-        data={() => rows()}
-        x={(d) => d.month}
-        marks={[
-          area((d) => d.revenue, { curve: smooth, label: 'Revenue' }),
-          line((d) => d.revenue, { curve: smooth, width: 2, label: 'Revenue' }),
-          points((d) => d.revenue, { radius: 3, label: 'Revenue' }),
-          line((d) => d.target, { width: 1, dash: [4, 4], label: 'Target' }),
-        ]}
-        format={currency('$')}
-        title="Revenue against target"
-        showLegend
-        tooltip
-        height={280}
-      />
+      <Chart<Row> data={() => rows()} x="month" format={currency('$')} title="Revenue against target" height={280}>
+        <Area y="revenue" curve={smooth} label="Revenue" />
+        <Line y="revenue" curve={smooth} width={2} label="Revenue" />
+        <Dot y="revenue" radius={3} label="Revenue" />
+        <Line y="target" width={1} dash={[4, 4]} label="Target" />
+        <Legend />
+        <Tooltip />
+      </Chart>
     </div>
   )
 }

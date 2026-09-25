@@ -46,7 +46,7 @@ const expected = '55.0,52.5,13.5\n2,3.0'
 
 describe('native universal chart transition runtime', () => {
   it('emits configurable update hosts on both targets and honors the opt-out', () => {
-    const source = `import { PlotChart, bars } from '@pyreon/charts/plot'
+    const source = `import { PlotChart, bars } from '@pyreon/charts/engine'
 const DATA = [{ value: 1 }]
 export function Demo() { return <PlotChart data={DATA} marks={[bars(d => d.value)]} updateDuration={480} universalTransition /> }`
     const swift = transform(source, { target: 'swift' })

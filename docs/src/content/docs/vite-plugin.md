@@ -166,12 +166,22 @@ npx vite build
 
 ```ts
 interface PyreonPluginOptions {
+  /** Restrict which modules the JSX transform runs on (picomatch globs, regexes, or arrays). */
+  include?: FilterPattern
+  /** Modules the transform must never touch. */
+  exclude?: FilterPattern
+  /** Alias imports from an existing framework to Pyreon's compat layer. */
+  compat?: 'react' | 'vue' | 'solid' | 'svelte' | 'preact'
   ssr?: {
     /** Server entry file path (e.g. "./src/entry-server.ts") */
     entry: string
   }
   /** Enable island auto-discovery + virtual registry. Default: true. */
   islands?: boolean
+  /** LPIH auto-bridge (dev-only Live Program Inlay Hints wiring). Default: true in dev. */
+  lpih?: boolean | PyreonLpihOptions
+  /** Dev throw-time fix printer for known-foot-gun error messages. Default: true in dev. */
+  devErrorPrinter?: boolean
   /**
    * Compile-time rocketstyle wrapper collapse. OFF by default (zero
    * behaviour change). `true` enables it with defaults; pass an object
@@ -179,28 +189,56 @@ interface PyreonPluginOptions {
    * dev keeps the normal mount.
    */
   collapse?: boolean | PyreonCollapseOptions
+  /**
+   * Compile-to-string SSR fast path (see `@pyreon/compiler`'s
+   * `ssrTemplate` option). Default (`undefined`): auto-detected — on
+   * when `@pyreon/runtime-server` is resolvable from the app, else the
+   * plugin gracefully falls back to the h() SSR path.
+   */
+  ssrTemplate?: boolean
+  /**
+   * Absorb COMPONENT children into the enclosing `_tpl()` template
+   * instead of bailing that element to `h()` (client build only).
+   * Default: true.
+   */
+  templatizeComponentChildren?: boolean
+  /** Emit an inlined compiled verdict for `@pyreon/validate` schemas. OFF by default — currently measures SLOWER than the runtime JIT; see the source JSDoc before enabling. */
+  compileValidators?: boolean
+  /** Rewrite `@pyreon/validate` chainable schemas to the tree-shakeable `@pyreon/validate/mini` form at build time. OFF by default. */
+  optimizeValidators?: boolean
+  /** Auto-import canonical primitives (`Stack`/`Inline`/`Text`/`Button`/`Press`/`Field`/`Toggle`/`For`/`Show`) used bare in JSX. Default: true. */
+  jsxAutoImport?: boolean | PyreonJsxAutoImportOptions
 }
 
 interface PyreonCollapseOptions {
-  /** Glob(s) of source files whose call sites are eligible. */
-  sources?: string | string[]
-  /** Component local names to treat as collapsible (default: rocketstyle UI components). */
+  /** Import sources whose components may collapse. Default: `['@pyreon/ui-components']`. */
+  sources?: string[]
+  /** Component local-name allowlist applied after the source scan. Omit to collapse every eligible component. */
   components?: string[]
-  /** The provider component the resolver wraps when SSR-rendering for class capture. */
-  provider?: string
-  /** Theme module/import used by the resolver. */
-  theme?: string
-  /** The mode accessor the collapsed node binds its class to (light/dark swap). */
-  mode?: string
+  /** Override the theme/mode provider. Default: `{ name: 'PyreonUI', source: '@pyreon/ui-core' }`. */
+  provider?: { name: string; source: string }
+  /** Override the theme object. Default: `{ name: 'theme', source: '@pyreon/ui-theme' }`. */
+  theme?: { name: string; source: string }
+  /** Override the live mode accessor. Default: `{ name: 'useMode', source: '@pyreon/ui-core' }`. */
+  mode?: { name: string; source: string }
 }
 ```
 
 | Option      | Type      | Required              | Description                                                                                                                                                                             |
 | ----------- | --------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `include` / `exclude` | `FilterPattern` | No | Restrict/exclude which modules the JSX transform runs on. Default: every JSX-bearing module except `node_modules` (where only `@pyreon/*` packages are transformed). |
+| `compat`    | `'react' \| 'vue' \| 'solid' \| 'svelte' \| 'preact'` | No | Alias an existing framework's imports (`react`, `react-dom`, `vue`, …) to Pyreon's matching compat layer — drop-in migration with zero source changes. |
 | `ssr`       | `object`  | No                    | Enable SSR dev middleware. When provided, the plugin adds middleware to Vite's dev server that handles server-rendered requests.                                                        |
 | `ssr.entry` | `string`  | Yes (if `ssr` is set) | Path to the server entry file, relative to the project root. This file must export a `handler` function (or a default export) with the signature `(req: Request) => Promise<Response>`. |
 | `islands`   | `boolean` | No                    | Auto-discover `island()` declarations + emit a virtual registry. Default: `true`. Set `false` to opt out of auto-registration (e.g., when using `hydrateIslands({ ... })` manually).    |
+| `lpih`      | `boolean \| object` | No          | Zero-config Live Program Inlay Hints dev-server bridge. Default: `true` in dev, no-op in production builds. See [`@pyreon/reactivity-lens`](/docs/lpih). |
+| `devErrorPrinter` | `boolean` | No               | Print a foot-gun's cause + fix at throw time in dev, matched against the `@pyreon/compiler/diagnose` catalog. Default: `true` in dev; zero cost in production. |
 | `collapse`  | `boolean \| object` | No          | Compile-time rocketstyle wrapper collapse. Default: `false` (off — zero behaviour change). `true` enables with defaults; an object scopes `sources` / `components` / `provider` / `theme` / `mode`. See [Compile-time rocketstyle collapse](#compile-time-rocketstyle-collapse).                                       |
+| `ssrTemplate` | `boolean` | No                 | Compile-to-string SSR fast path. Default: auto-detected (on when `@pyreon/runtime-server` is resolvable). See [`@pyreon/runtime-server`'s Compile-to-String SSR Fast Path](/docs/runtime-server#compile-to-string-ssr-fast-path-ssrtemplate). |
+| `templatizeComponentChildren` | `boolean` | No     | Absorb component children into the enclosing `_tpl()` template (client build only). Default: `true`. |
+| `compileValidators` | `boolean` | No           | Emit an inlined compiled verdict for `@pyreon/validate` schemas. Default: `false` — measured slower than the runtime JIT today; only useful under a CSP that blocks `unsafe-eval`. |
+| `optimizeValidators` | `boolean` | No          | Rewrite chainable `@pyreon/validate` schemas to the tree-shakeable `/mini` form at build time. Default: `false`. |
+| `jsxAutoImport` | `boolean \| object` | No       | Auto-import canonical `@pyreon/primitives`/`@pyreon/core` components used bare in JSX (keeps one `.tsx` source working across web + native). Default: `true`. |
 
 ### Usage
 
@@ -263,11 +301,11 @@ Measured on the E2 micro-benchmark: **~44× wall-clock** for the eligible shape,
 // Scope which sources / components participate (all fields optional):
 pyreon({
   collapse: {
-    sources: 'src/**/*.tsx',
-    components: ['Button', 'Card'],
-    provider: 'PyreonUI',
-    theme: './theme',
-    mode: 'useMode',
+    sources: ['@pyreon/ui-components'], // import sources eligible components come from
+    components: ['Button', 'Card'],     // local-name allowlist, applied after the source scan
+    provider: { name: 'PyreonUI', source: '@pyreon/ui-core' },
+    theme: { name: 'theme', source: '@pyreon/ui-theme' },
+    mode: { name: 'useMode', source: '@pyreon/ui-core' },
   },
 })
 ```
@@ -288,9 +326,9 @@ The Pyreon compiler transform does three things:
 
 2. **Static hoisting** -- VNodes that are completely static (no dynamic props, no reactive children) are hoisted to module scope. This avoids re-creating the same VNode objects on every render, reducing GC pressure.
 
-3. **Template emission** -- Element trees with 2 or more consecutive DOM elements (no components) are compiled into `_tpl()` calls. Templates use `cloneNode` internally, which is faster than creating elements one by one.
+3. **Template emission** -- A JSX tree of DOM elements (no components) is compiled into a `_tpl()` call — including a SINGLE element like `<div>{x()}</div>`, not just multi-element trees. Templates use `cloneNode` internally, which is faster than creating elements one by one.
 
-   Within templates, the compiler emits `_bindText` only for **simple identifiers** (e.g., `count()`, `name()`). Property access calls like `value.toLocaleString()` or `row.label()` use `_bind()` instead, which preserves the correct `this` context. The `_bindText` and `_bindDirect` runtime helpers include a fallback to `renderEffect` when the source is a non-signal callable (i.e., lacks `.direct()`), making them safe for any callable value.
+   Within templates, the compiler emits `_bindText` (an O(1) direct-dispatch binding) for a **bare identifier call** (`count()`, `name()`) or a bare `props.x` read passed through `_bindProp`. A property-access method call (`value.toLocaleString()`, `row.label()`) also reaches `_bindText`, but as a 4-argument call carrying the receiver object (`_bindText(row.label, node, undefined, row)`) so `this` resolves correctly WITHOUT building a wrapping closure eagerly — the receiver-bound caller is constructed lazily, only on the binding's slow path. Any more complex expression (a formatter chain, a ternary, string concatenation, `??`) falls back to the general `bindPolymorphicText`, which also handles the case where the bound value turns out to be a VNode rather than text. See [`@pyreon/compiler`'s Reactive Text Nodes](/docs/compiler#reactive-text-nodes) for the full picture, including TEXT FUSION (adjacent static text + expressions collapse into one binding).
 
 Compiler warnings are surfaced in the terminal via Vite's warning system, including the file path, line, and column number.
 

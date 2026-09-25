@@ -1,6 +1,6 @@
 # Anti-Patterns
 
-Known mistakes and their fixes, grouped by area. `detectPyreonPatterns` in `@pyreon/compiler` (`packages/core/compiler/src/pyreon-intercept.ts`) flags 18 of the patterns below statically: an entry tagged `[detector: <code>]` is reported by `pyreon check` and the MCP `validate` tool. Untagged entries need scope, type or runtime information a syntax walk cannot get, so only reading this file catches them. `packages/core/compiler/src/tests/detector-tag-consistency.test.ts` keeps tags and diagnostic codes in sync.
+Known mistakes and their fixes, grouped by area. `detectPyreonPatterns` in `@pyreon/compiler` (`packages/core/compiler/src/pyreon-intercept.ts`) flags 19 of the patterns below statically: an entry tagged `[detector: <code>]` is reported by `pyreon check` and the MCP `validate` tool. Untagged entries need scope, type or runtime information a syntax walk cannot get, so only reading this file catches them. `packages/core/compiler/src/tests/detector-tag-consistency.test.ts` keeps tags and diagnostic codes in sync.
 
 This file is also the source of the MCP `get_anti_patterns` tool and the docs site's troubleshooting pages, so keep its format: `## Category` headings, one `- **Title**` bullet per entry, and a detector tag on the entry's first line.
 
@@ -335,6 +335,8 @@ This file is also the source of the MCP `get_anti_patterns` tool and the docs si
 - **Cross-file registry drift**: a manual `hydrateIslands({ X })` key with no matching `island()` `name` (keys are case-sensitive). Use `hydrateIslandsAuto()` with `pyreon({ islands: true })` to avoid manual sync. `pyreon doctor --check-islands` reports `registry-mismatch`.
 
 ## SSR-rendering Mistakes
+
+- **[FIXED, 2026-09] A security gate placed AFTER the endpoints it guards, or matched on a path that includes the query.** zero's `createServer` mounted API routes, actions, island fragments and the `/_pyreon/data` single-fetch endpoint BEFORE route and app-wide middleware, and matched route middleware against `ctx.path` (`pathname + search`). So `/admin?x=1` skipped `/admin`'s auth middleware, `/_pyreon/data?path=/admin` returned its serverLoader data with no middleware at all (every client-side navigation takes that path), and the documented `rateLimitMiddleware({ include: ['/api/*'] })` never ran for `/api`. **Rules: (1) middleware that can refuse a request runs before every handler that can answer one; (2) match on the pathname, never on a string that carries the query; (3) an endpoint that serves data FOR another path (a data/fragment/preview endpoint) must be gated by THAT path's middleware.** The same audit found the sibling "the build and the runtime disagree" class: the generated server entry could not import `vite.config.ts`, so `zero({ mode: 'isr', base, routeRules })` shaped the build and did nothing in production — fixed by injecting the serializable config as a define (`__ZERO_SERVER_CONFIG__`). Why it shipped: every gate ran dev servers, unit calls or node-invoked functions, and the one production e2e asserted "same HTML twice", which uncached SSR also satisfies. Reference: `packages/zero/zero/src/entry-server.ts:routingPathname` + `server-config.ts`; locked by `tests/request-pipeline.test.ts` and the `ssr-node`/`isr-node` e2e guarded-route + `x-isr-cache` specs (all bisect-verified).
 
 - **Quantified regex over an ambiguous character class is polynomial ReDoS**: `/^[\u0000-\u0020\s]+|[\u0000-\u0020\s]+$/g` looks like a safer `trim()` but is O(n²), because `\u0000-\u0020` already contains every `\s` character below U+0080, so the engine retries from every position. A hardening function is the worst place for this: its input is attacker-supplied by design (here a `?next=` redirect target on every SSR redirect).
   - Keep every quantified class unambiguous (no member reachable two ways).
@@ -865,6 +867,9 @@ Rules for backing a third-party library's pluggable reactivity (atom-style `crea
 
 ## Library API-Shape Mistakes
 
+- **Importing `@pyreon/charts` through a pre-0.52 entry point** `[detector: charts-legacy-import]`: the main entry is now the engine (`<Chart>` with mark children, formerly `<Plot>` at `/plot`), and the ECharts wrapper is `<EChart>` at `/echarts`, with `/manual` and `/vite` under it. `<Chart options={…}>` from the root is the old wrapper and no longer type-checks.
+  - `pyreon check --fix` rewrites each import to the entry that exports the name now, and renames `Plot`→`Chart`, `Tip`→`Tooltip` and the wrapper's `Chart`→`EChart` at every reference.
+  - The wrapper is told apart from the grammar by an `options` attribute or a wrapper-only name in the same import.
 - **Narrower projections silently drop a new struct field**: a layer that copies a shared struct field by field into its own narrower type compiles and renders when a field is added, but loses it. In `@pyreon/charts`, `values2` (a band's second bound) was lost by the value labels, a11y description and tooltip types, and the bubble mark's reader surfaces held pixel `radii` instead of the datum. Rules:
   - When adding a field to a cross-layer struct, grep for every type that restates its shape. Pass by reference where possible.
   - A totality spec must have no unexamined exemptions; a documented limit and an unwritten branch look the same.

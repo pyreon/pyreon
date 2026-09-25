@@ -114,7 +114,7 @@ function EditorWithStatus() {
 const editor = createEditor({
   value: '', // initial content                       (default: '')
   language: 'plain', // syntax highlighting language          (default: 'plain')
-  theme: 'light', // 'light' | 'dark' | Extension          (default: 'light')
+  theme: 'light', // 'light' | 'dark' | Extension          (default: 'light', or the app's colour mode under <PyreonUI mode> / <ColorModeProvider mode>)
   lineNumbers: true, // show the line-number gutter            (default: true)
   readOnly: false, // read-only mode                         (default: false)
   foldGutter: true, // code folding gutter                    (default: true)

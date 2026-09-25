@@ -76,7 +76,7 @@ describe('toast() creates toast entries', () => {
     const t = at(0)
     expect(t.action).toBeDefined()
     expect(t.action!.label).toBe('Undo')
-    t.action!.onClick()
+    t.action!.onClick({ id: t.id, dismiss: () => {} })
     expect(onClick).toHaveBeenCalledOnce()
   })
 })

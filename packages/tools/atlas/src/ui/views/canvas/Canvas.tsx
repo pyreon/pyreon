@@ -92,30 +92,55 @@ export function Canvas(props: { model: WorkbenchModel }) {
   return (
     <C.Main>
       <C.CanvasBar>
-        <C.ZoomBtn
-          data-testid="toggle-sidebar"
-          title="Toggle sidebar"
-          onClick={() => m.sidebarOpen.set(!m.sidebarOpen())}
-        >
-          {() => (m.sidebarOpen() ? '⇤' : '⇥')}
-        </C.ZoomBtn>
-        <C.Col>
+        {/* Compact layout opens the sidebar from the top bar's drawer button. */}
+        <Show when={() => !m.compact()}>
+          <C.ZoomBtn
+            data-testid="toggle-sidebar"
+            title="Toggle sidebar"
+            aria-label={() => (m.sidebarOpen() ? 'Hide sidebar' : 'Show sidebar')}
+            aria-pressed={() => (m.sidebarOpen() ? 'true' : 'false')}
+            onClick={() => m.sidebarOpen.set(!m.sidebarOpen())}
+          >
+            {() => (m.sidebarOpen() ? '⇤' : '⇥')}
+          </C.ZoomBtn>
+        </Show>
+        {/* Title, then the render context on its own line. The component
+            path used to lead that line AND the status bar's — it now lives in
+            the status bar only. */}
+        <C.CanvasTitle>
           <C.CanvasName data-testid="canvas-name">{() => m.sel()?.name ?? ''}</C.CanvasName>
-          <C.CanvasPath data-testid="canvas-meta">{() => `components/${m.selId()} · ${chrome()}`}</C.CanvasPath>
-        </C.Col>
+          <C.CanvasPath data-testid="canvas-meta">{chrome}</C.CanvasPath>
+        </C.CanvasTitle>
         <C.Spacer />
         <C.Segment>
-          <C.ZoomBtn onClick={() => m.zoomIdx.set(Math.max(0, m.zoomIdx() - 1))}>−</C.ZoomBtn>
+          <C.ZoomBtn aria-label="Zoom out" onClick={() => m.zoomIdx.set(Math.max(0, m.zoomIdx() - 1))}>−</C.ZoomBtn>
           <C.ZoomLabel data-testid="zoom-label">{() => `${ZOOM_PCT[m.zoomIdx()]}%`}</C.ZoomLabel>
-          <C.ZoomBtn onClick={() => m.zoomIdx.set(Math.min(ZOOM_PCT.length - 1, m.zoomIdx() + 1))}>+</C.ZoomBtn>
+          <C.ZoomBtn aria-label="Zoom in" onClick={() => m.zoomIdx.set(Math.min(ZOOM_PCT.length - 1, m.zoomIdx() + 1))}>+</C.ZoomBtn>
         </C.Segment>
-        <C.ZoomBtn
-          data-testid="toggle-panel"
-          title="Toggle addon panel"
-          onClick={() => m.panelOpen.set(!m.panelOpen())}
+        {/* Compact: a LABELLED button that opens the panels as a bottom sheet
+            — on a phone this is the only route to Controls. */}
+        <Show
+          when={() => m.compact()}
+          fallback={
+            <C.ZoomBtn
+              data-testid="toggle-panel"
+              title="Toggle addon panel"
+              aria-label={() => (m.panelOpen() ? 'Hide addon panel' : 'Show addon panel')}
+              aria-pressed={() => (m.panelOpen() ? 'true' : 'false')}
+              onClick={() => m.panelOpen.set(!m.panelOpen())}
+            >
+              {() => (m.panelOpen() ? '⇥' : '⇤')}
+            </C.ZoomBtn>
+          }
         >
-          {() => (m.panelOpen() ? '⇥' : '⇤')}
-        </C.ZoomBtn>
+          <C.PanelsBtn
+            data-testid="toggle-panel"
+            aria-expanded={() => (m.sheetOpen() ? 'true' : 'false')}
+            onClick={() => m.sheetOpen.set(!m.sheetOpen())}
+          >
+            Panels
+          </C.PanelsBtn>
+        </Show>
       </C.CanvasBar>
 
       {/*
