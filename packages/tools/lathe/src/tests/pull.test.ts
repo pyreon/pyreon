@@ -15,7 +15,7 @@ import { createServer, type Server } from 'node:http'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { main } from '../cli/main'
 
 const SPEC = `openapi: 3.1.0
@@ -27,6 +27,20 @@ components: { schemas: {} }
 let server: Server
 let port = 0
 const requests: Array<{ url: string | undefined; inm: string | string[] | undefined }> = []
+/** Requests to the split spec's documents: host, path, auth, conditional. */
+const splitRequests: Array<{ host: string | undefined; url: string | undefined; auth: string | undefined; inm: string | undefined }> = []
+/** Stand-in for a split spec published as several files (DigitalOcean's shape). */
+const splitRoot = (foreign: string): string => `openapi: 3.0.3
+info: { title: Split, version: '1' }
+servers: [{ url: 'https://api.test' }]
+paths:
+  /pets/{id}:
+    $ref: 'paths/pet.yaml'
+  /other:
+    get:
+      operationId: other
+      responses: { '200': { description: ok, content: { application/json: { schema: { $ref: '${foreign}' } } } } }
+`
 
 beforeAll(async () => {
   server = createServer((req, res) => {
@@ -76,6 +90,32 @@ beforeAll(async () => {
     } else if (req.url === '/second.yaml') {
       res.writeHead(200, { 'content-type': 'text/yaml' })
       res.end(SPEC.replace('Remote', 'Second'))
+    } else if (req.url?.startsWith('/split/')) {
+      splitRequests.push({
+        host: req.headers.host,
+        url: req.url,
+        auth: req.headers.authorization,
+        inm: req.headers['if-none-match'] as string | undefined,
+      })
+      const docs: Record<string, string> = {
+        '/split/openapi.yaml': splitRoot(`http://localhost:${port}/split/foreign.yaml`),
+        '/split/paths/pet.yaml':
+          "get:\n  operationId: getPet\n  parameters: [{ name: id, in: path, required: true, schema: { type: string } }]\n  responses: { '200': { description: ok, content: { application/json: { schema: { $ref: '../models/pet.yaml' } } } } }\n",
+        '/split/models/pet.yaml': 'type: object\nproperties: { name: { type: string } }\n',
+        '/split/foreign.yaml': 'type: string\n',
+        '/split/broken.yaml': splitRoot('missing.yaml'),
+      }
+      const body = docs[req.url]
+      if (body === undefined) {
+        res.writeHead(404)
+        res.end('nope')
+      } else if (req.url === '/split/models/pet.yaml' && req.headers['if-none-match'] === '"pet-1"') {
+        res.writeHead(304)
+        res.end()
+      } else {
+        res.writeHead(200, { 'content-type': 'text/yaml', ...(req.url === '/split/models/pet.yaml' ? { etag: '"pet-1"' } : {}) })
+        res.end(body)
+      }
     } else if (req.url === '/html') {
       // The dangerous case: a 200 whose BODY is not a spec. A proxy error page,
       // a login redirect, a truncated response.
@@ -254,6 +294,51 @@ describe('lathe pull', () => {
     expect(await silently(() => main(['pull'], dir))).toBe(0)
     expect(readFileSync(join(dir, 'one.yaml'), 'utf8')).toContain('Remote')
     expect(readFileSync(join(dir, 'two.yaml'), 'utf8')).toContain('Second')
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('a split spec: fetches every referenced document and writes ONE bundle', async () => {
+    const dir = project()
+    mkdirSync(join(dir, 'node_modules'))
+    splitRequests.length = 0
+    const url = `http://127.0.0.1:${port}/split/openapi.yaml`
+    expect(await silently(() => main(['pull', url, '--token', 's3cret'], dir))).toBe(0)
+    const written = readFileSync(join(dir, 'openapi.yaml'), 'utf8')
+    // Nothing points outside the file any more.
+    expect(written).not.toMatch(/\$ref: .*\.yaml/)
+    expect(written).toContain('getPet')
+    const { loadOpenApi } = await import('../input/openapi')
+    const doc = loadOpenApi(written).doc
+    expect(doc.operations.find((o) => o.id === 'getPet')?.response).toEqual({ kind: 'ref', name: 'Pet' })
+    expect(doc.notes.filter((n) => n.code === 'unsupported-ref')).toEqual([])
+    // The credential goes to the spec's own origin ONLY -- never to a host a
+    // `$ref` happens to name (`localhost` is a different origin).
+    const byHost = (h: string) => splitRequests.filter((r) => r.host?.startsWith(h)).map((r) => r.auth)
+    expect(byHost('127.0.0.1').every((a) => a === 'Bearer s3cret')).toBe(true)
+    expect(byHost('localhost')).toEqual([undefined])
+    // A second pull is conditional per DOCUMENT, and a 304 is answered from
+    // the cached body -- the bundle is identical.
+    splitRequests.length = 0
+    expect(await silently(() => main(['pull', url, '--token', 's3cret'], dir))).toBe(0)
+    expect(splitRequests.find((r) => r.url === '/split/models/pet.yaml')?.inm).toBe('"pet-1"')
+    expect(readFileSync(join(dir, 'openapi.yaml'), 'utf8')).toBe(written)
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('a split spec with an unreachable document writes nothing', async () => {
+    // A bundle missing a part would type every `$ref` into it as unknown and
+    // overwrite a working spec with a hollow one.
+    const dir = project()
+    writeFileSync(join(dir, 'openapi.yaml'), SPEC)
+    const err = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    const out = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    const code = await main(['pull', `http://127.0.0.1:${port}/split/broken.yaml`], dir)
+    const said = err.mock.calls.map((c) => String(c[0])).join('')
+    err.mockRestore()
+    out.mockRestore()
+    expect(code).toBe(1)
+    expect(said).toContain('split/missing.yaml: responded 404')
+    expect(readFileSync(join(dir, 'openapi.yaml'), 'utf8')).toBe(SPEC)
     rmSync(dir, { recursive: true, force: true })
   })
 

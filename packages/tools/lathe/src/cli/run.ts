@@ -293,6 +293,11 @@ export interface RunResult {
   stdout: string
   /** Errors and diagnostics in human mode. Always empty under `--json`. */
   stderr: string
+  /**
+   * Every spec document a generating run read -- the input plus any file it
+   * `$ref`s -- so `--watch` regenerates on an edit to any of them.
+   */
+  documents?: string[] | undefined
 }
 
 export const HELP = `lathe - generate Pyreon clients from an OpenAPI 3.x spec
@@ -446,7 +451,12 @@ async function runChecked(
       )
     }
     try {
-      generated.push({ config, result: generate(fs.read(config.input), config) })
+      // `location` + `readDocument` resolve a `$ref` into another FILE against
+      // the spec's own path and bundle it (see `input/bundle.ts`).
+      generated.push({
+        config,
+        result: generate(fs.read(config.input), config, { location: config.input, readDocument: (id) => fs.read(id) }),
+      })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       // Name WHICH spec in a multi-project run; the error itself cannot know.
@@ -571,7 +581,7 @@ function report(runs: RunOutcome[], argv: Argv): RunResult {
         changes,
       })),
     }
-    return { code, stdout: `${JSON.stringify(doc, null, 2)}\n`, stderr: '' }
+    return { code, stdout: `${JSON.stringify(doc, null, 2)}\n`, stderr: '', documents: documentsOf(runs) }
   }
 
   let stdout = ''
@@ -602,7 +612,11 @@ function report(runs: RunOutcome[], argv: Argv): RunResult {
       stdout += '\n  DRY RUN: nothing would change.\n'
     }
   }
-  return { code, stdout, stderr: '' }
+  return { code, stdout, stderr: '', documents: documentsOf(runs) }
+}
+
+function documentsOf(runs: ReadonlyArray<{ result: { documents: readonly string[] } }>): string[] {
+  return [...new Set(runs.flatMap((r) => r.result.documents))]
 }
 
 function exitCode(

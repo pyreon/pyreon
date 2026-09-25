@@ -64,6 +64,11 @@ export interface LathePassResult {
   missing: string[]
   /** Each generated project's result and contract changes, for the summary. */
   projects: Array<{ result: GenerateResult; changes: SurfaceChange[] }>
+  /**
+   * Every OTHER document a spec `$ref`s, mapped to that spec: an edit to a
+   * split spec's part regenerates the project that owns it.
+   */
+  documents: Map<string, string>
 }
 
 /**
@@ -98,6 +103,7 @@ export function runPass(
   const removed: string[] = []
   const missing: string[] = []
   const projects: Array<{ result: GenerateResult; changes: SurfaceChange[] }> = []
+  const documents = new Map<string, string>()
 
   // Generate every project before writing any, as the CLI does: a refused
   // spec must leave every output tree untouched, not half of them.
@@ -119,7 +125,11 @@ export function runPass(
       missing.push(input)
       continue
     }
-    generated.push({ out: abs(project.output), result: generate(source, project) })
+    // `location` + `readDocument` resolve a `$ref` into another file against
+    // the spec's own path and bundle it (see `input/bundle.ts`).
+    const result = generate(source, project, { location: input, readDocument: (id) => readFileSync(id, 'utf8') })
+    for (const d of result.documents) if (d !== input && !/^https?:\/\//i.test(d)) documents.set(d, input)
+    generated.push({ out: abs(project.output), result })
   }
   for (const { out, result } of generated) {
     // Read before the writes below replace it: afterwards only the new
@@ -156,7 +166,7 @@ export function runPass(
     }
     projects.push({ result, changes })
   }
-  return { written, stale, specs, removed, missing, projects }
+  return { written, stale, specs, removed, missing, projects, documents }
 }
 
 /** Absolute spec paths a set of options reads, WITHOUT generating anything. */
@@ -248,6 +258,17 @@ export function lathe(options: LathePluginOptions = {}): LathePluginHost {
     for (const m of pass.missing) console.warn(missingSpecMessage(m))
   }
 
+  // Referenced documents (a split spec's parts) -> the spec that owns them.
+  // Filled by every pass; watched once the dev server exists.
+  const owners = new Map<string, string>()
+  let watcher: { add(path: string): unknown } | undefined
+  const track = (pass: LathePassResult): void => {
+    for (const [doc, spec] of pass.documents) {
+      if (!owners.has(doc)) watcher?.add(doc)
+      owners.set(doc, spec)
+    }
+  }
+
   return {
     name: 'pyreon:lathe',
     async configResolved(config) {
@@ -260,6 +281,7 @@ export function lathe(options: LathePluginOptions = {}): LathePluginHost {
     buildStart() {
       const mode = command === 'build' && effective.checkOnBuild === true ? 'check' : 'write'
       const pass = runPass(effective, root, mode)
+      track(pass)
       if (pass.stale.length > 0) {
         // A build error, not a warning. Generated output that disagrees with
         // its spec compiles and then fails against the real server.
@@ -277,8 +299,12 @@ export function lathe(options: LathePluginOptions = {}): LathePluginHost {
       let specs = specPathsOf(effective, root)
       for (const spec of specs) server.watcher.add(spec)
       if (configFile) server.watcher.add(configFile)
-      server.watcher.on('change', (path) => {
-        const isConfig = path === configFile
+      watcher = server.watcher
+      for (const doc of owners.keys()) server.watcher.add(doc)
+      server.watcher.on('change', (changed) => {
+        const isConfig = changed === configFile
+        // A referenced document stands in for the spec that owns it.
+        const path = owners.get(changed) ?? changed
         if (!isConfig && !specs.includes(path)) return
         void (async () => {
           if (isConfig && configFile) {
@@ -291,6 +317,7 @@ export function lathe(options: LathePluginOptions = {}): LathePluginHost {
           // A spec change regenerates the project that owns it; a config
           // change can move every project, so it regenerates all of them.
           const pass = runPass(effective, root, 'write', isConfig ? undefined : path)
+          track(pass)
           warnMissing(pass)
           log(passSummary(pass))
         })().catch((err: unknown) => {

@@ -66,7 +66,8 @@ for (const spec of specs) {
     const name = `${basename(spec).replace(/\.[^.]+$/, '')}-${validator}`
     const root = join(ROOT, name)
     const cfg = resolveConfig({ input: 'x', validator, plugins })
-    const result = generate(readFileSync(spec, 'utf8'), cfg)
+    // With `location`, a split spec's `$ref`s into other files are bundled.
+    const result = generate(readFileSync(spec, 'utf8'), cfg, { location: spec, readDocument: (id) => readFileSync(id, 'utf8') })
     const files = [...result.files]
     // Proves every written-out interface agrees with its schema, both ways --
     // the output's own consts are cast, so nothing in it relates the two.

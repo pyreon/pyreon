@@ -27,6 +27,7 @@ import type {
   StringFormat,
 } from '../core/ir'
 import { assignNames, ident, modelIdent, operationIdent, operationIdFrom, tagFile } from '../core/naming'
+import { bundle, collectDocuments, isRemote, referencedDocuments } from './bundle'
 import { splitByDirection } from './direction'
 import { isSwagger2, upgradeSwagger2 } from './swagger2'
 import { parseSpecText } from './yaml'
@@ -38,6 +39,11 @@ const FORMATS: readonly StringFormat[] = ['email', 'uri', 'uuid', 'date', 'date-
 
 export interface LoadResult {
   doc: IrDocument
+  /**
+   * Every document the spec was read from, root first -- more than one when
+   * it `$ref`s other files. A watcher regenerates when any of them changes.
+   */
+  documents: string[]
 }
 
 export interface LoadOptions {
@@ -47,6 +53,20 @@ export interface LoadOptions {
    * relative server stays relative and is reported.
    */
   sourceUrl?: string | undefined
+  /**
+   * Where the spec document lives -- a file path or an http(s) URL. With
+   * {@link LoadOptions.readDocument}, a `$ref` into ANOTHER document is
+   * resolved against it and the documents are bundled into one (see
+   * `bundle.ts`). Without it, a cross-document `$ref` is reported and typed
+   * `unknown`, as a single-document reader must.
+   */
+  location?: string | undefined
+  /**
+   * Read a referenced document's TEXT by id (a normalized file path). Called
+   * only for documents on disk: a remote `$ref` is fetched by `lathe pull`,
+   * which bundles it, so generation stays offline and deterministic.
+   */
+  readDocument?: ((id: string) => string) | undefined
 }
 
 /** Parse a spec document (JSON or YAML text) into the IR. */
@@ -55,7 +75,29 @@ export function loadOpenApi(source: string, options: LoadOptions = {}): LoadResu
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('[Pyreon] lathe: spec did not parse to an object')
   }
-  return { doc: loadParsed(raw as Json, options) }
+  const { location, readDocument } = options
+  // Refused BEFORE reading any other file: a document that is not a spec at
+  // all should not make lathe go looking for the files it names.
+  const refusal = openApiVersionProblem(raw)
+  if (refusal) throw new Error(refusal)
+  if (location !== undefined && readDocument !== undefined && referencedDocuments(raw, location).length > 0) {
+    const docs = collectDocuments(raw, location, (id) => {
+      if (isRemote(id)) {
+        return {
+          error:
+            'a remote document is not fetched at generate time. Run `lathe pull <spec-url>`, which fetches every referenced document (with the same `--header` / `--token`) and writes one bundled spec.',
+        }
+      }
+      try {
+        return { doc: parseSpecText(readDocument(id)) }
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) }
+      }
+    })
+    const bundled = bundle(location, docs)
+    return { doc: loadParsed(bundled.doc, options, bundled.notes), documents: bundled.documents }
+  }
+  return { doc: loadParsed(raw as Json, options), documents: location !== undefined ? [location] : [] }
 }
 
 /**
@@ -63,14 +105,14 @@ export function loadOpenApi(source: string, options: LoadOptions = {}): LoadResu
  * up-converted to OpenAPI 3.0 first (see `swagger2.ts`); anything else that is
  * not OpenAPI 3.x is refused.
  */
-export function loadParsed(raw: Json, options: LoadOptions = {}): IrDocument {
+export function loadParsed(raw: Json, options: LoadOptions = {}, preNotes: readonly IrNote[] = []): IrDocument {
   const refusal = openApiVersionProblem(raw)
   if (refusal) throw new Error(refusal)
   if (isSwagger2(raw)) {
     const upgraded = upgradeSwagger2(raw, options.sourceUrl)
-    return convert(upgraded.doc, options, upgraded.notes)
+    return convert(upgraded.doc, options, [...preNotes, ...upgraded.notes])
   }
-  return convert(raw, options)
+  return convert(raw, options, preNotes)
 }
 
 /**
@@ -1041,7 +1083,7 @@ function deref(node: unknown, at: string, ctx: Ctx): unknown {
     ctx.notes.push({
       code: 'unsupported-ref',
       at,
-      message: `remote $ref \`${ref}\` is not resolved — Lathe reads one document and never fetches. Bundle the spec first.`,
+      message: `\`$ref\` \`${ref}\` points into another document, which was not read — generate from the spec FILE (so relative refs resolve), or \`lathe pull\` a remote spec, which bundles every document it references.`,
     })
     return { }
   }

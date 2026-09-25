@@ -41,6 +41,7 @@ const result = (over: Partial<GenerateResult> = {}): GenerateResult => ({
   // is a REAL result — a `Partial` here would have let the field go missing
   // silently, which is how the shape drifted in the first place.
   surface: { version: 2, title: 'API', operations: {}, models: {}, aliases: {}, usage: {} },
+  documents: [],
   ...over,
 })
 

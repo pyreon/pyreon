@@ -49,6 +49,11 @@ export interface GenerateResult {
    * with the new spec and with nothing the app was written for.
    */
   surface: ApiSurface
+  /**
+   * Every document the spec was read from, root first -- more than one for a
+   * spec that `$ref`s other files. Watchers regenerate when any changes.
+   */
+  documents: string[]
 }
 
 /** Run the pipeline over a spec document's text. */
@@ -58,7 +63,7 @@ export function generate(
   /** Where the spec came from; resolves a relative `servers[].url`. */
   options: LoadOptions = {},
 ): GenerateResult {
-  const { doc } = loadOpenApi(specText, options)
+  const { doc, documents } = loadOpenApi(specText, options)
   applyPagination(doc, config)
   const native = config.target === 'multiplatform'
   const files: GeneratedFile[] = []
@@ -178,7 +183,7 @@ export function generate(
     // breaks the moment anything imports it as a module.
     contents: `${jsonLiteral(surface, 2)}\n`,
   })
-  return { doc, files, reach, surface }
+  return { doc, files, reach, surface, documents }
 }
 
 /**

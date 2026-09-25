@@ -161,6 +161,32 @@ describe('lathe vite plugin', () => {
   })
 })
 
+describe('a split spec in dev', () => {
+  it('watches every file the spec references, and an edit to one regenerates its project', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'lathe-vite-split-'))
+    mkdirSync(join(root, 'models'))
+    writeFileSync(
+      join(root, 'openapi.yaml'),
+      SPEC.replace("properties: { id: { type: string } }", "properties: { id: { type: string } }\n    Shelf: { $ref: 'models/shelf.yaml' }"),
+    )
+    const part = join(root, 'models', 'shelf.yaml')
+    writeFileSync(part, 'type: object\nproperties: { name: { type: string } }\n')
+    const plugin = lathe({ ...opts })
+    await plugin.configResolved?.({ root, command: 'serve' })
+    const watched: string[] = []
+    let onChange: (path: string) => void = () => {}
+    plugin.configureServer?.({ watcher: { add: (p) => watched.push(p), on: (_e, cb) => (onChange = cb) } })
+    plugin.buildStart?.()
+    expect(watched).toContain(part)
+    expect(readFileSync(join(root, 'src/gen/schemas/Shelf.ts'), 'utf8')).toContain('name')
+    writeFileSync(part, 'type: object\nproperties: { title: { type: string } }\n')
+    onChange(part)
+    // The regeneration is async-scheduled by the handler; give it a tick.
+    await new Promise((r) => setTimeout(r, 50))
+    expect(readFileSync(join(root, 'src/gen/schemas/Shelf.ts'), 'utf8')).toContain('title')
+  })
+})
+
 describe('the plugin reads pyreon.config and says what it did', () => {
   const withConfig = (): string => {
     const { root } = project()
