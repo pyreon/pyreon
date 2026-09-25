@@ -104,12 +104,7 @@ const CASES: Record<IrNoteCode, [Record<string, unknown>, Record<string, unknown
     get({ responses: { 200: { content: json({ type: 'string' }) }, 202: { content: json({ type: 'object' }) } } }),
     get({ responses: { 200: { content: json({ type: 'string' }) }, 204: { description: 'none' } } }),
   ],
-  deprecated: [get({ deprecated: true }), get({ deprecated: false })],
   'extra-tags': [get({ tags: ['a', 'b'] }), get({ tags: ['a'] })],
-  'description-dropped': [
-    get({ summary: 's', description: 'd' }),
-    get({ description: 'only a description' }),
-  ],
   'numeric-version': [{ info: { title: 'T', version: 2 } }, { info: { title: 'T', version: '2' } }],
 }
 

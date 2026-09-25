@@ -70,10 +70,9 @@ describe('parameter notes', () => {
     ],
   }).notes
 
-  it('a deprecated parameter is noted at its own pointer', () => {
-    expect(notes).toContainEqual(
-      expect.objectContaining({ code: 'deprecated', at: '#/paths/~1x~1{id}/get/parameters/0' }),
-    )
+  it('a deprecated parameter is carried on the IR, not reported as a loss', () => {
+    // It is honoured now: the generated JSDoc marks it `@deprecated`.
+    expect(notes.map((n) => n.code)).not.toContain('deprecated')
   })
 
   it('`allowReserved: true` is a serialization loss', () => {

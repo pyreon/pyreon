@@ -107,7 +107,7 @@ export function generate(
   // names, so emitting scenarios without them is a plausible-looking no-op.
   if (has('components')) push(emitComponents(doc))
   if (has('atlas')) {
-    push(emitAtlasScenarios(doc))
+    push(emitAtlasScenarios(doc, { faker: has('faker') }))
     push(emitAtlasWrapper(doc))
   }
   // The native modules are the `client` + `queries` emitters' native LAYOUT,

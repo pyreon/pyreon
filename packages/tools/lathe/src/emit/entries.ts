@@ -87,19 +87,9 @@ export function emitBarrel(doc: IrDocument, opts: EntryOptions): SourceFile {
   f.doc(
     `Everything from ${doc.title} ${doc.version} that a page ships.`,
     '',
-    'The per-tag split is an emitter concern: a consumer should not have to',
-    'know which tag an operation was filed under, or that tags exist.',
-    '',
-    'Importing one hook from here costs the same as importing it from its own',
-    'tag module: every declaration is annotated pure and the `package.json`',
-    'next to this file declares the output side-effect-free, so a bundler keeps',
-    'only what the hook reaches (measured on GitHub\'s spec with Vite 8: 2.8 kB',
-    'gzipped of generated code either way). A bundler that ignores both hints',
-    'keeps more through this file than through the tag.',
-    '',
-    'Fixtures and fake-data factories are NOT re-exported here -- they live in',
-    '`./dev`, so a page bundle cannot reach them. Preview components are absent',
-    'for the same reason and live in `./components`.',
+    'Import from here without thinking about tags: a bundler keeps only what',
+    'you use. Test fixtures and fake-data factories live in `./dev`, and the',
+    'preview components in `./components`, so a page can never ship them.',
   )
 
   if (has('schemas')) {
@@ -156,17 +146,9 @@ export function emitDevEntry(doc: IrDocument, opts: EntryOptions): SourceFile | 
   f.doc(
     `Development surface for ${doc.title} -- fixtures and fake-data factories.`,
     '',
-    'Kept out of `./index` on purpose. A fixture table is DATA, so it survives',
-    'tree-shaking anywhere it is reachable; a barrel that named it shipped',
-    'every fixture to production. Import from here in tests, workbenches and',
-    'stories, and a page bundle can never reach it by accident.',
-    '',
-    'NODE-SAFE by construction, and that is why the preview components are NOT',
-    'here. They are JSX, so re-exporting them made this entry require a JSX',
-    'transform -- a plain node test that wanted one fake object had to configure',
-    'one, for components it never touches. Previews are a workbench surface with',
-    'exactly one kind of consumer (an Atlas config, a story), and that consumer',
-    'imports `./components` directly.',
+    'For tests, stories and workbenches — never imported by `./index`, so a',
+    'page bundle cannot reach it. Plain TypeScript with no JSX, so any node test',
+    'can import it. The preview components are in `./components`.',
   )
   if (mocks) {
     f.line(
@@ -191,8 +173,8 @@ export function emitEndpointsBarrel(doc: IrDocument): SourceFile | null {
   f.doc(
     'Every endpoint, without the query layer.',
     '',
-    'For code that calls the API directly -- a loader, a server route, a',
-    'script -- and has no use for hooks or a QueryClient.',
+    'For code that calls the API directly — a loader, a server route, a',
+    'script — and needs no hooks or QueryClient.',
   )
   for (const [tag] of tags) f.line(`export * from './${tagFile(tag)}'`)
   return f
@@ -207,8 +189,8 @@ export function emitQueriesBarrel(doc: IrDocument): SourceFile | null {
   f.doc(
     'Every generated hook.',
     '',
-    'Reaches every endpoint in the spec. Import a single tag instead when',
-    'bundle size matters -- Vite emits one chunk per tag file.',
+    'Import from a single tag module (`./queries/<tag>`) when you want one',
+    'chunk per tag.',
   )
   for (const [tag] of tags) f.line(`export * from './${tagFile(tag)}'`)
   return f
@@ -235,21 +217,27 @@ export function emitKeys(doc: IrDocument): SourceFile {
   f.importType('@pyreon/query', 'QueryClient', 'QueryKey')
 
   f.line()
+  // The example names a real key from THIS spec, not a placeholder API.
+  const first = queryOps.find(([, ops]) => ops.length > 0)
+  const firstOp = first?.[1][0]
   f.doc(
-    'Query keys, derived from the endpoints rather than written by hand.',
+    'Query keys for every read, derived from the endpoints so they change with the spec.',
     '',
-    "A hand-written `['GET', '/books']` drifts from the endpoint the moment",
-    'a path changes, and nothing catches it. These move with the spec.',
-    '',
-    '```ts',
-    "queryClient.invalidateQueries({ queryKey: keys.books.listBooks.all })",
-    "queryClient.invalidateQueries({ queryKey: keys.books.getBook.of({ params: { bookId: '1' } }) })",
-    '```',
+    '`.all` matches every call of an endpoint; `.of(args)` matches one.',
+    ...(first && firstOp
+      ? [
+          '',
+          '@example',
+          '```ts',
+          `queryClient.invalidateQueries({ queryKey: keys.${lowerFirst(typeIdent(first[0]))}.${firstOp.id}.all })`,
+          '```',
+        ]
+      : []),
   )
   f.line('export const keys = {')
   for (const [tag, ops] of queryOps) {
     if (ops.length === 0) continue
-    f.line(`  ${typeIdent(tag).charAt(0).toLowerCase()}${typeIdent(tag).slice(1)}: {`)
+    f.line(`  ${lowerFirst(typeIdent(tag))}: {`)
     for (const op of ops) {
       f.line(`    ${op.id}: {`)
       // `.all` matches EVERY call of this endpoint; `.of(args)` matches one.
@@ -263,13 +251,12 @@ export function emitKeys(doc: IrDocument): SourceFile {
 
   f.line()
   f.doc(
-    'Optimistically rewrite cached query data, returning a ROLLBACK (audit E2).',
+    'Optimistically rewrite cached query data; returns a function that undoes it.',
     '',
-    'Cancels in-flight fetches for `queryKey` (so a late response cannot',
-    'overwrite the optimistic value), applies `update` to every cached entry',
-    'under it, and returns a function restoring exactly what was there. The',
-    'data type is the endpoint\'s own response type — pass the endpoint.',
+    'Cancels in-flight fetches for `queryKey` first, so a late response cannot',
+    'overwrite the new value. `update` is typed by the endpoint you pass.',
     '',
+    '@example',
     '```ts',
     'const rename = useRenamePet({',
     '  onMutate: async (vars) => {',
@@ -295,4 +282,8 @@ export function emitKeys(doc: IrDocument): SourceFile {
   f.line('  }')
   f.line('}')
   return f
+}
+
+function lowerFirst(s: string): string {
+  return s.charAt(0).toLowerCase() + s.slice(1)
 }

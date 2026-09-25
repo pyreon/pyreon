@@ -103,6 +103,8 @@ export interface IrField {
    */
   readOnly?: boolean | undefined
   writeOnly?: boolean | undefined
+  /** `deprecated: true` in the spec — rendered as a `@deprecated` JSDoc tag. */
+  deprecated?: boolean | undefined
 }
 
 /** A named top-level model — one generated schema + one generated type. */
@@ -110,6 +112,8 @@ export interface IrModel {
   name: string
   type: IrType
   doc?: string | undefined
+  /** `deprecated: true` on the component schema. */
+  deprecated?: boolean | undefined
 }
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'
@@ -119,6 +123,15 @@ export interface IrParam {
   type: IrType
   required: boolean
   doc?: string | undefined
+  /** `deprecated: true` on the parameter. */
+  deprecated?: boolean | undefined
+  /**
+   * The spec's example value — the parameter's own `example`, the first of its
+   * `examples`, or its schema's `example`. Rendered into the generated
+   * `@example` and used as a preview argument, so it is only kept when it is
+   * a JSON value; whether it satisfies the type is the consumer's check.
+   */
+  example?: unknown
   /**
    * OpenAPI serialization for a QUERY parameter, verbatim from the spec.
    * Absent means the spec's default (`form`, exploded). Emitters decide what
@@ -158,6 +171,8 @@ export interface IrBody {
    * does not mark required is optional at the call site.
    */
   required: boolean
+  /** The media type's `example`, or the first of its `examples`. */
+  example?: unknown
 }
 
 /** One API operation — the unit every emitter iterates. */
@@ -175,7 +190,19 @@ export interface IrOperation {
   baseUrl?: string | undefined
   /** Grouping key from the spec's first tag; `default` when untagged. */
   tag: string
+  /**
+   * One-line headline: the spec's `summary`, else its `description`.
+   */
   summary?: string | undefined
+  /**
+   * The spec's `description`, when it adds something to `summary` (present
+   * and different). Rendered as the body of the generated JSDoc.
+   */
+  description?: string | undefined
+  /** `deprecated: true` on the operation. */
+  deprecated?: boolean | undefined
+  /** The operation's `externalDocs`, when it has a URL. */
+  externalDocs?: { url: string; description?: string | undefined } | undefined
   pathParams: readonly IrParam[]
   queryParams: readonly IrParam[]
   /**
@@ -277,9 +304,7 @@ export type IrNoteCode =
   | 'other-success-responses'
   | 'body-on-get'
   | 'invalid-pagination'
-  | 'deprecated'
   | 'extra-tags'
-  | 'description-dropped'
   | 'numeric-version'
 
 /**
@@ -289,7 +314,7 @@ export type IrNoteCode =
  *   parameter it cannot send, a header it cannot read, a constraint it does not
  *   enforce. These are the notes to read.
  * - `choice` — Lathe picked among equivalent readings (JSON over XML, the first
- *   tag, the summary over the description). Nothing the spec requires is lost;
+ *   tag). Nothing the spec requires is lost;
  *   the note records WHICH reading, for the reader who wonders.
  *
  * Keeping them under separate severities is what lets the report lead with the
@@ -319,9 +344,7 @@ export const NOTE_SEVERITY: Readonly<Record<IrNoteCode, IrNoteSeverity>> = {
   'other-success-responses': 'loss',
   'body-on-get': 'loss',
   'invalid-pagination': 'loss',
-  deprecated: 'loss',
   'extra-tags': 'choice',
-  'description-dropped': 'choice',
   'numeric-version': 'choice',
 }
 

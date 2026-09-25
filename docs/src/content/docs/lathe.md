@@ -772,7 +772,6 @@ a stable `code`, an RFC 6901 pointer into the spec, and a severity:
 | `parameter-serialization` | loss | a path `style` other than `simple`, or `allowReserved` — query `style` / `explode` are honoured |
 | `body-on-get` | loss | a `GET` / `HEAD` request body — `fetch` refuses to send it, so it is dropped |
 | `invalid-pagination` | loss | an `x-pyreon-pagination` that does not fit the operation — ignored |
-| `deprecated` | loss | the generated code carries no `@deprecated` marker |
 | `unsupported-const` | loss | a `const` whose value is not a JSON scalar — not enforced (a scalar `const` is) |
 | `unsupported-schema` / `unsupported-ref` | loss | a schema or `$ref` that reduces to `unknown`, or a degradation (a discriminator that cannot be proven, a contradictory `allOf`) |
 | `cyclic-ref` | loss | a `$ref` cycle through references alone, or the cyclic part of an `allOf` — contributes nothing |
@@ -780,7 +779,6 @@ a stable `code`, an RFC 6901 pointer into the spec, and a severity:
 | `no-servers` | loss | no absolute base URL (none declared, relative, or a variable with no default), so nothing reaches native |
 | `multiple-content-types` | choice | JSON picked among several media types |
 | `extra-tags` | choice | grouped under the first tag only |
-| `description-dropped` | choice | the JSDoc carries the summary, not the description |
 | `missing-operation-id` | choice | a name derived from method + path |
 | `numeric-version` | choice | `info.version` was a YAML number |
 

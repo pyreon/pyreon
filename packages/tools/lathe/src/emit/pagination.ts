@@ -202,8 +202,10 @@ export function emitInfinite(f: SourceFile, op: IrOperation, disabledFn: string)
   f.doc(
     `\`${op.id}\`, a page at a time — \`q.data()?.pages\`, \`q.fetchNextPage()\`, \`q.hasNextPage()\`.`,
     '',
-    'Return `undefined` from `args` while the arguments are not ready — the query is DISABLED.',
+    'Return `undefined` from `args` to hold the request until the arguments are ready.',
     `\`${p.param}\` is set per page; a value passed in \`args\` is overridden.`,
+    op.deprecated ? '' : undefined,
+    op.deprecated ? '@deprecated The spec marks this operation deprecated.' : undefined,
   )
   f.line(`export function ${hook}(`)
   f.line(`  args: () => ${input} | undefined,`)

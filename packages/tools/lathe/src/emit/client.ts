@@ -33,6 +33,7 @@ import {
   type ResponseValidation,
 } from './client-runtime'
 import { bodyRefType, hasInput, inputType, type ModelTypes, responseTypeOf } from './operation-types'
+import { modelDoc, operationDoc } from './jsdoc'
 import { emitInfinite } from './pagination'
 import { PURE, schemaExpr, schemaRefs, schemaSpecifierFor, tsType } from './schema'
 import { dialectOf, type ValidatorName } from './validator'
@@ -73,11 +74,10 @@ export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
   f.import('@pyreon/http/schema', 'standardSchema')
   f.line()
   f.doc(
-    'Runtime configuration of the generated client — see {@link configureApi}.',
+    'Runtime settings for the client — see {@link configureApi}.',
     '',
-    'Each field is its own SLOT, so setting one never disturbs another: auth',
-    'middleware in `use` survives `installMocks()`, which answers through a',
-    'separate transport slot, and a `baseUrl` switch keeps the headers.',
+    'Each key is independent: setting one never resets another, and',
+    '`installMocks()` keeps whatever middleware `use` holds.',
   )
   f.line('export interface ApiConfig {')
   f.line("  /** Replaces the spec's server URL for every request (an environment switch). */")
@@ -105,11 +105,11 @@ export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
   f.doc(
     'Configure the client at runtime — base URL, headers, middleware, validation.',
     '',
-    'Endpoints bind to the client when they are declared, so everything that',
-    'varies (an environment, a session token, a logger) is read from here on',
-    'every request rather than baked in. A key present with `undefined` resets',
-    'that slot to its generated default; an absent key leaves it alone.',
+    'Every setting is read per request, so it can change at any time — after a',
+    'login, on an environment switch. A key set to `undefined` goes back to its',
+    'generated default; a key left out is unchanged.',
     '',
+    '@example',
     '```ts',
     'configureApi({',
     '  baseUrl: import.meta.env.VITE_API_URL,',
@@ -127,10 +127,9 @@ export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
   f.line('}')
   f.line()
   f.doc(
-    'Answer requests from a transport slot of their own — the generated',
-    '`installMocks()` uses it. Separate from `configureApi({ use })` on purpose:',
-    'installing mocks must not remove auth middleware, and configuring auth must',
-    'not uninstall mocks. Pass `null` to go back to the network.',
+    'Answer every request with `middleware` instead of the network — what the',
+    'generated `installMocks()` does. Independent of `configureApi({ use })`, so',
+    'mocks and auth middleware work together. Pass `null` to use the network again.',
   )
   f.line('export function setDevTransport(middleware: HttpMiddleware | null): void {')
   f.line('  devTransport = middleware')
@@ -143,17 +142,10 @@ export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
   emitAuthHelpers(f, doc, 'pyreon')
   f.line()
   f.doc(
-    `HTTP client for ${doc.title} ${doc.version}.`,
+    `The HTTP client for ${doc.title} ${doc.version} that every endpoint is declared on.`,
     '',
-    '`schema` is REQUIRED here, not optional polish: @pyreon/http keeps schema',
-    'support opt-in so the core costs nothing when unused, and an endpoint',
-    'declared with `{ response }` against a client that has not enabled it',
-    'FAILS AT RUNTIME — the request succeeds, the validation step rejects, and',
-    'the query settles as an error with a 200 on the wire.',
-    '',
-    'The native modules (`*.native.tsx`) declare their own client with a',
-    'LITERAL base URL, which is what PMTC reads; this one reads its settings',
-    'per request.',
+    'Its base URL, headers, middleware and validation mode come from',
+    '{@link configureApi}; responses are checked against the generated schemas.',
   )
   f.line('export const api = createHttp({')
   f.line('  baseUrl: () => settings.baseUrl,')
@@ -349,14 +341,10 @@ function emitAdapterClient(
   f.doc(
     `HTTP client for ${doc.title} ${doc.version}, built on ${pkg ?? 'the platform fetch'}.`,
     '',
-    'The URL is resolved HERE and handed to the transport fully-formed, so the',
-    'instance below carries no `baseURL` / `prefixUrl`. That is deliberate:',
-    'axios and ky each resolve a base differently from the other and from',
-    '`@pyreon/http`, and letting them do it would make the same spec issue a',
-    'different request depending on which client was configured.',
-    '',
-    'The instance is exported so interceptors, hooks, auth headers and retries',
-    'are added the way that library documents — nothing here wraps them.',
+    'The request URL is built from {@link configureApi}\'s base URL, so do not',
+    'set a base URL on the instance itself. The instance is exported for',
+    'everything else — interceptors, hooks, auth headers, retries — added the',
+    'way that library documents.',
   )
   if (client === 'axios') {
     f.line('export const instance: AxiosInstance = axios.create({ adapter: axiosTransport })')
@@ -548,7 +536,7 @@ export function emitWebEndpoints(
       const d = decls[i] as EndpointDecl
       f.line()
       if (d.responseConst) f.line(d.responseConst)
-      f.doc(op.summary, `\`${endpointSpec(op)}\``)
+      f.doc(...operationDoc(op, doc, 'endpoint'))
       // Pure, so an endpoint nothing imports is dropped from the bundle even
       // though its tag module is reached (see `PURE`).
       f.line(`export const ${op.id} = ${PURE}api.endpoint${d.generics}(${q(endpointSpec(op))}${d.config})`)
@@ -793,14 +781,12 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
         const targets = invalidationTargets(op, queryOps)
         const vars = hasInput(op) ? input : 'void'
         f.doc(
-          op.summary,
-          `\`${endpointSpec(op)}\``,
-          '',
-          'Mutation options are a plain object — imperative, nothing to track.',
-          targets.length > 0
-            ? `On success it invalidates the queries this operation can change (${targets.map((t) => `\`${t.id}\``).join(', ')}); pass \`invalidates\` to replace that list, or \`[]\` to turn it off.`
-            : undefined,
-          '`onMutate` / `onError` / `onSettled` take the usual optimistic-update shape — see `optimisticUpdate` in `./keys`.',
+          ...operationDoc(op, doc, 'mutation', [
+            targets.length > 0
+              ? `On success it refetches ${targets.map((t) => `\`${t.id}\``).join(', ')}. Pass \`invalidates\` to change that list, or \`[]\` to turn it off.`
+              : undefined,
+            'For an optimistic update, see `optimisticUpdate` in `./keys`.',
+          ]),
         )
         f.line(`export function ${hook}(`)
         f.line(`  options?: Omit<MutationOptions<${data}, Error, ${vars}>, 'mutationFn'>,`)
@@ -821,21 +807,16 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
       }
       const args = hasInput(op)
       f.doc(
-        op.summary,
-        `\`${endpointSpec(op)}\``,
-        '',
-        // The accessor argument is the whole reason this is a function and not
-        // an object: `@pyreon/query` re-reads it, so a signal in `args` makes
-        // the query key move and the request refetch.
-        args ? 'Takes an ACCESSOR so signal reads in the arguments stay reactive.' : undefined,
-        // The single most common way to get a detail query wrong is to fire it
-        // before its id exists. Returning `undefined` is how you say "not yet".
-        args
-          ? 'Return `undefined` from `args` while the arguments are not ready — the query is DISABLED rather than fired with a placeholder.'
-          : undefined,
-        'Second accessor merges typed query options (`enabled`, `staleTime`, `select` — which changes the result type).',
-        '',
-        'Result fields are SIGNALS: `q.data()`, `q.isPending()` — call them.',
+        ...operationDoc(op, doc, 'query', [
+          // The accessor argument is the whole reason this is a function and
+          // not an object: `@pyreon/query` re-reads it, so a signal in `args`
+          // makes the query key move and the request refetch. Returning
+          // `undefined` is how a caller says "not yet" for a detail query.
+          args
+            ? '`args` is an accessor: signals read in it refetch when they change. Return `undefined` to hold the request until the arguments are ready.'
+            : undefined,
+          '`options` takes `enabled`, `staleTime`, `select` (which changes the result type) and the rest of the query options.',
+        ]),
       )
       const extra = `options?: () => Omit<UseQueryOptions<${data}, Error, TData>, 'queryKey' | 'queryFn'>`
       if (args) {
@@ -942,12 +923,10 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
 
     f.line()
     f.doc(
-      `${doc.title} — \`${tag}\`, self-contained for the native compiler.`,
+      `${doc.title} — \`${tag}\`, for iOS and Android.`,
       '',
-      'Everything PMTC must recognise lives at THIS file\'s top level: the',
-      'client, the schemas and the endpoint declarations. Splitting any of it',
-      'into a shared module would compile fine and silently stop lowering,',
-      'because PMTC resolves nothing across file boundaries.',
+      'Self-contained on purpose: the native compiler reads one file at a time,',
+      'so the client, schemas and endpoints it lowers all live here.',
     )
     f.line(`const api = createHttp({ baseUrl: ${q(baseUrlOf(doc, opts))}, schema: standardSchema })`)
     // PMTC bakes `baseUrl + path` at compile time, so an operation with its
@@ -977,7 +956,7 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
       const model = byName.get(name)
       if (!model || !needed.has(name)) continue
       f.line()
-      f.doc(model.doc)
+      f.doc(...modelDoc(model))
       // Only OBJECT models get a schema binding; every other kind is inlined
       // where it is used (audit G5 — see `schemaExpr`). The TYPE is declared
       // for every model: the data components name it.
@@ -995,7 +974,7 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
 
     for (const op of ops) {
       f.line()
-      f.doc(op.summary, `\`${endpointSpec(op)}\``)
+      f.doc(...operationDoc(op, doc, 'native'))
       const client = op.baseUrl ? (clientOf.get(op.baseUrl) as string) : 'api'
       f.line(
         `export const ${op.id} = ${client}.endpoint(${q(`${op.method} ${op.path}`)}${responseCfg(op, true, dialect.name, modelTypes)})`,
@@ -1044,10 +1023,6 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
               `Takes ${params.map((p) => `\`${p.name}\``).join(', ')} as ${params.length === 1 ? 'a prop' : 'props'} and re-fetches when ${params.length === 1 ? 'it changes' : 'they change'}.`,
             ]
           : []),
-        '',
-        'The `useQuery` call sits directly in the component body, in the same',
-        'file as its client and endpoint — the one arrangement PMTC lowers to',
-        'PyreonQuery. Moving it into a hook silently breaks the native build.',
       )
       f.line(`export function ${name}(props: { ${propsType} }) {`)
       f.line(`  const q = useQuery<${ret}>(() => ${op.id}.query${args})`)

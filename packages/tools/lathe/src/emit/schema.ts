@@ -12,7 +12,8 @@ import type { IrDocument, IrField, IrLiteral, IrNumberType, IrStringType, IrType
 import { propKey, typeIdent } from '../core/naming'
 import { collectRefNames } from '../core/walk'
 import { dialectOf, type ValidatorName } from './validator'
-import { q, regexLiteral, relativeSpecifier, SourceFile } from './writer'
+import { fieldDoc, modelDoc } from './jsdoc'
+import { q, regexLiteral, relativeSpecifier, safeBlockComment, SourceFile } from './writer'
 
 export const SCHEMA_FILE = 'schemas.ts'
 
@@ -507,7 +508,7 @@ export function emitSchemas(
       // always inside one module, since a cycle is one component.
       const defer = deferredTargets(backEdges, name)
       f.line()
-      f.doc(model.doc)
+      f.doc(...modelDoc(model))
       f.line(typeDeclaration(model.name, model.type, dialect.enumWidensToString, dialect.emptyObjectType))
       const expr = schemaExpr(model.type, { ...opts, defer })
       if (dialect.objectSchemaImport && expr.includes(dialect.objectSchemaRef)) needsObjectType.value = true
@@ -527,8 +528,8 @@ export function emitSchemas(
   barrel.doc(
     `Every schema of ${doc.title} ${doc.version}.`,
     '',
-    'One module per model (a `$ref` cycle shares one), so a hook reaches only',
-    'the schemas its response actually names -- see `./schemas/`.',
+    'Each model is its own module under `./schemas/`, so importing one keeps',
+    'the rest out of the bundle.',
   )
   for (const mod of modules) barrel.line(`export * from '${relativeSpecifier(SCHEMA_FILE, mod.path)}'`)
   files.push(barrel)
@@ -669,7 +670,7 @@ export function emitTypes(doc: IrDocument): SourceFile {
   const byName = new Map(doc.models.map((m) => [m.name, m]))
   for (const model of order.map((n) => byName.get(n)).filter((m) => m !== undefined)) {
     f.line()
-    f.doc(model.doc)
+    f.doc(...modelDoc(model))
     f.line(typeDeclaration(model.name, model.type))
   }
   return f
@@ -691,10 +692,24 @@ export function typeDeclaration(
   widenEnums = false,
   emptyObject = 'Record<string, unknown>',
 ): string {
+  if (type.kind === 'object' && type.fields.length > 0 && !type.additional) {
+    // The interface body carries each field's description, example and
+    // `@deprecated`, so a hover on `pet.status` explains the field.
+    const body = type.fields.map((f) => {
+      const docs = fieldDoc(f)
+      const ts = tsType({ kind: 'object', fields: [f] }, 0, widenEnums, false, false, emptyObject)
+      const line = ts.slice(2, -2) // `{\n  x: T\n}` -> `  x: T`
+      if (!docs) return line
+      const comment =
+        docs.length === 1
+          ? [`  /** ${safeBlockComment(docs[0] as string)} */`]
+          : ['  /**', ...docs.flatMap((d) => safeBlockComment(d).split('\n')).map((d) => `   * ${d}`.trimEnd()), '   */']
+      return [...comment, line].join('\n')
+    })
+    return `export interface ${name} {\n${body.join('\n')}\n}`
+  }
   const rendered = tsType(type, 0, widenEnums, false, false, emptyObject)
-  return type.kind === 'object' && type.fields.length > 0 && !type.additional
-    ? `export interface ${name} ${rendered}`
-    : `export type ${name} = ${rendered}`
+  return `export type ${name} = ${rendered}`
 }
 
 /** Specifier another generated file uses to import the schema module. */
