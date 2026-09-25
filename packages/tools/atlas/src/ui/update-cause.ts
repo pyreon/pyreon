@@ -43,8 +43,32 @@ export interface CauseStep {
 
 function where(loc: { file?: string; line?: number } | undefined): string {
   if (!loc?.file) return ''
-  const file = loc.file.split('/').slice(-2).join('/')
+  // A dev-server location is a URL: drop the `?t=…` cache-buster, keep the
+  // last two path segments — enough to find the file, short enough for a chip.
+  const file = loc.file.split(/[?#]/)[0]!.split('/').slice(-2).join('/')
   return loc.line ? `${file}:${loc.line}` : file
+}
+
+/** The name the framework synthesizes when a node was given none. */
+const SYNTHETIC_NAME = /^(?:signal|derived|effect)#\d+$/
+
+/**
+ * What to CALL a reactive node in the panel.
+ *
+ * A node given a name (a signal's `label`) is shown by it. An anonymous one
+ * was shown by the framework's synthetic id — `Derived#3337`, which says
+ * nothing about where it lives — so it is shown by its kind and the source
+ * location it was created at, and only by id when neither is known.
+ */
+export function nodeLabel(node: {
+  id: number
+  kind: 'signal' | 'derived' | 'effect'
+  name?: string
+  loc?: { file?: string; line?: number }
+}): string {
+  if (node.name && !SYNTHETIC_NAME.test(node.name)) return node.name
+  const at = where(node.loc)
+  return at ? `${node.kind} · ${at}` : `${node.kind} #${node.id}`
 }
 
 const RELATION: Record<CauseStep['kind'], string> = {
@@ -64,7 +88,7 @@ export function causeSteps(cause: UpdateCause): CauseStep[] {
   const steps: CauseStep[] = cause.chain.map((link) => ({
     id: link.id,
     kind: link.kind,
-    name: link.name || `#${link.id}`,
+    name: nodeLabel(link),
     where: where(link.loc),
     relation: RELATION[link.kind],
     isTarget: false,
@@ -72,7 +96,7 @@ export function causeSteps(cause: UpdateCause): CauseStep[] {
   steps.push({
     id: cause.target.id,
     kind: cause.target.kind,
-    name: cause.target.name || `#${cause.target.id}`,
+    name: nodeLabel(cause.target),
     where: where(cause.target.loc),
     relation: RELATION[cause.target.kind],
     isTarget: true,
@@ -89,12 +113,12 @@ export function causeSteps(cause: UpdateCause): CauseStep[] {
  * trying to reason carefully.
  */
 export function causeSummary(cause: UpdateCause): string {
-  const target = cause.target.name || `#${cause.target.id}`
+  const target = nodeLabel(cause.target)
   if (cause.chain.length === 0) {
     return `${target} IS the origin — it was set directly, not by another node.`
   }
   const root = cause.chain[0]!
-  const rootName = root.name || `#${root.id}`
+  const rootName = nodeLabel(root)
   const hops = cause.chain.length
   const truncated = cause.rootReached ? '' : ' (chain truncated — older fires aged out)'
   return `${target} updated because ${rootName} changed, ${hops} hop${hops === 1 ? '' : 's'} away${truncated}.`
@@ -128,9 +152,13 @@ export function recentCandidates(limit = 12): CauseCandidate[] {
     seen.add(id)
     const node = byId.get(id)
     if (!node) continue
-    out.push({ id: node.id, kind: node.kind, name: node.name || `#${node.id}`, fires: node.fires })
+    out.push({ id: node.id, kind: node.kind, name: nodeLabel(node), fires: node.fires })
   }
-  return out
+  // One creation site often mints many nodes (a styled component's per-
+  // instance derived). Same label, different nodes — disambiguate by id.
+  const count = new Map<string, number>()
+  for (const c of out) count.set(c.name, (count.get(c.name) ?? 0) + 1)
+  return out.map((c) => (count.get(c.name)! > 1 ? { ...c, name: `${c.name} #${c.id}` } : c))
 }
 
 /** Explain one node, or `null` when there is nothing recorded to explain. */

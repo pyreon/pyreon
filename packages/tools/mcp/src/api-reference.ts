@@ -1116,7 +1116,8 @@ type Props = ExtractProps<typeof Iterator>
     example: '<Stack gap="md" align="center"><Text>a</Text><Text>b</Text></Stack>',
     notes: 'Primary layout container. Web → `<div style="display:flex;flex-direction:column|row">`; iOS → `VStack`/`HStack`; Android → `Column`/`Row`. Default `direction="column"`. `gap`/`padding` are theme-space tokens (number index OR "sm"|"md"|"lg"). See also: Inline, Layer, Scroll.',
     mistakes: `- Using \`<View>\` / \`<VStack>\` / \`<div>\` — the canonical name is \`<Stack>\` (one name, all platforms)
-- Expecting responsive props (breakpoint arrays) — not supported in v1; use @pyreon/elements for responsive web`,
+- Expecting responsive props (breakpoint arrays) — not supported in v1; use @pyreon/elements for responsive web
+- Relying on \`justify\` or \`wrap\` natively — both are IGNORED on iOS and Android (the compiler warns); use \`<Spacer />\` between children to distribute them`,
   },
 
   'primitives/Inline': {
@@ -1130,14 +1131,14 @@ type Props = ExtractProps<typeof Iterator>
   'primitives/Layer': {
     signature: '(props: { align?: Align; padding?: Space; children }) => VNode',
     example: '<Layer><Image src={hero} alt="" /><Text>overlaid caption</Text></Layer>',
-    notes: 'Stacked / overlay container. Web → `position:relative` + abs children; iOS → `ZStack`; Android → `Box`. Use for badges, overlays, layered composition. See also: Stack.',
+    notes: 'Stacked / overlay container. Web → `position:relative` single-cell grid (`align` → `place-items`); iOS → `ZStack`; Android → `Box`. Native children overlap automatically; on web, ordinary children flow into separate grid rows, so give the front child `position:absolute` to overlap. Use for badges, overlays, layered composition. See also: Stack.',
     mistakes: '- Using it for flow layout — Layer stacks children on the z-axis, not in a row/column',
   },
 
   'primitives/Scroll': {
-    signature: `(props: { direction?: 'vertical' | 'horizontal'; padding?: Space; children }) => VNode`,
+    signature: `(props: { axis?: 'vertical' | 'horizontal'; padding?: Space; children }) => VNode`,
     example: '<Scroll><Stack gap="md">{/* long content */}</Stack></Scroll>',
-    notes: 'Scrollable region. Web → `overflow:auto`; iOS → `ScrollView`; Android → `Column(verticalScroll)` / `Row(horizontalScroll)`. ⚠ Do not put a weighted `<Spacer>` inside a Scroll on Android (weight inside a scroll is invalid Compose). See also: Stack.',
+    notes: 'Scrollable region, vertical unless `axis="horizontal"`. Web → `overflow-y:auto` (or `overflow-x`); iOS → `ScrollView`; Android → `Column(verticalScroll)` / `Row(horizontalScroll)`. ⚠ Do not put a weighted `<Spacer>` inside a Scroll on Android (weight inside a scroll is invalid Compose). See also: Stack.',
     mistakes: '- Nesting a `<Spacer>` (weight) inside `<Scroll>` — invalid on Android Compose',
   },
 
@@ -1212,8 +1213,10 @@ type Props = ExtractProps<typeof Iterator>
   'primitives/Link': {
     signature: '(props: { to: string; external?: boolean; children }) => VNode',
     example: '<Link to="/profile">Profile</Link>',
-    notes: 'Navigation link. Web `<a>`; iOS/Android router-aware navigation. Integrates with `@pyreon/router` (`to` is a route path). `external` opens outside the app. See also: Button.',
-    mistakes: '- Hardcoding an href for internal routes — use `to` so it routes natively too',
+    notes: 'Navigation link. Web → a real `<a href>`; the package has NO router dependency, so call `init({ navigate })` once and plain left-clicks route through your handler (modifier-clicks stay with the browser; without `init` it is a full-page link). iOS/Android → `PyreonLink(to)`, which pushes `to` onto the native router (`@pyreon/native-router-swift` / `-kotlin`). `external` renders `target="_blank" rel="noopener noreferrer"` on web. See also: Button.',
+    mistakes: `- Hardcoding an href for internal routes — use \`to\` so it routes natively too
+- Relying on \`external\` natively — it is IGNORED on iOS and Android (the compiler warns) and the URL is pushed onto the in-app router; open websites with \`useLinking().openUrl(url)\`
+- Expecting SPA navigation on web without calling \`init({ navigate })\` — the link then does a full page load`,
   },
 
   'primitives/Field': {
@@ -1234,7 +1237,7 @@ type Props = ExtractProps<typeof Iterator>
   'primitives/Modal': {
     signature: '(props: { open: boolean | (() => boolean); onClose: () => void; children }) => VNode',
     example: '<Modal open={showSheet()} onClose={() => showSheet.set(false)}><Stack>{/* sheet body */}</Stack></Modal>',
-    notes: 'Modal/sheet. Web overlay; iOS `.sheet(isPresented:)`; Android `Dialog(onDismissRequest)`. Drive `open` with a signal; `onClose` fires on dismiss. See also: Layer.',
+    notes: 'Modal/sheet. Web → native `<dialog>` opened with `showModal()` (focus trap, backdrop, top layer); Escape and backdrop clicks call `onClose` instead of closing the dialog themselves, so `open` stays the source of truth. iOS `.sheet(isPresented:)`; Android `Dialog(onDismissRequest)`. Drive `open` with a signal; `onClose` fires on dismiss. See also: Layer.',
     mistakes: '- Forgetting `onClose` — needed so the platform dismiss gesture updates your signal',
   },
 
@@ -1289,7 +1292,7 @@ bar.onclick = () => host.emit(String(bar.dataset.id))`,
     example: `<Web>{/* web-only-rich: <Chart>, <Flow>, <Table> */}</Web>
 <NativeIOS>{/* Swift Charts, or a <WebView> embed */}</NativeIOS>
 <NativeAndroid>{/* Compose chart, or a <WebView> embed */}</NativeAndroid>`,
-    notes: `The Layer-4 per-platform escape hatch — one source carries a platform-specific subtree and exactly ONE branch renders per target. \`<Web>\` renders its children on WEB only (a layout-transparent Fragment, no wrapper element); \`<NativeIOS>\` / \`<NativeAndroid>\` render NOTHING on web (they return null — their children are emitted only on the iOS / Android target by PMTC). Reach for these for the rare genuinely-per-platform UI branch the 15 canonical primitives can't express (a web-only-rich chart/flow/table view vs a native equivalent or a \`<WebView>\` embed). See also: WebView, init / resetPrimitivesConfig, defineNativeModule / useNativeModule.`,
+    notes: `The Layer-4 per-platform escape hatch — one source carries a platform-specific subtree and exactly ONE branch renders per target. \`<Web>\` renders its children on WEB only (a layout-transparent Fragment, no wrapper element); \`<NativeIOS>\` / \`<NativeAndroid>\` render NOTHING on web (they return null — their children are emitted only on the iOS / Android target by PMTC). Reach for these for the rare genuinely-per-platform UI branch the canonical primitives can't express (a web-only-rich chart/flow/table view vs a native equivalent or a \`<WebView>\` embed). See also: WebView, init / resetPrimitivesConfig, defineNativeModule / useNativeModule.`,
     mistakes: `- Overusing them — defeats the one-source model; reach for them only when a target genuinely needs different UI.
 - Putting web-visible content in \`<NativeIOS>\` / \`<NativeAndroid>\` — both render NOTHING on web (they are no-ops there); only \`<Web>\` content reaches the browser.`,
   },
@@ -2379,7 +2382,7 @@ const html = await renderToString(<App />)`,
   },
 
   'runtime-server/renderToStream': {
-    signature: 'renderToStream(root: VNode | null, options?: { signal?: AbortSignal; suspenseTimeoutMs?: number }): ReadableStream<string>',
+    signature: 'renderToStream(root: VNode | null, options?: { signal?: AbortSignal; suspenseTimeoutMs?: number; nonce?: string }): ReadableStream<string>',
     example: `import { renderToStream } from "@pyreon/runtime-server"
 
 return new Response(renderToStream(<App />, {
@@ -2388,7 +2391,7 @@ return new Response(renderToStream(<App />, {
 }), {
   headers: { "content-type": "text/html" },
 })`,
-    notes: 'Render to a Web-standard `ReadableStream<string>` with true progressive flushing — synchronous subtrees enqueue immediately, async component boundaries are awaited in order. Suspense boundaries stream OUT OF ORDER: the fallback is emitted inline at once, and the resolved children arrive later as a `<template>` + a tiny inline swap `<script>` that replaces the placeholder client-side — without blocking the rest of the page. Each call gets its own isolated ALS context stack. A Suspense boundary that does not resolve within the per-boundary timeout (default 30_000 ms, configurable via `options.suspenseTimeoutMs`; pass `Infinity` to disable) leaves its fallback in place and a dev-mode warning fires; a boundary that throws also leaves the fallback (no swap script emitted). Pass `options.signal` (e.g. `Request.signal`) to abort pending Suspense work when the consumer disconnects. See also: renderToString.',
+    notes: `Render to a Web-standard \`ReadableStream<string>\` with true progressive flushing — synchronous subtrees enqueue immediately, async component boundaries are awaited in order. Suspense boundaries stream OUT OF ORDER: the fallback is emitted inline at once, and the resolved children arrive later as a \`<template>\` + a tiny inline swap \`<script>\` that replaces the placeholder client-side — without blocking the rest of the page. Each call gets its own isolated ALS context stack. A Suspense boundary that does not resolve within the per-boundary timeout (default 30_000 ms, configurable via \`options.suspenseTimeoutMs\`; pass \`Infinity\` to disable) leaves its fallback in place and a dev-mode warning fires; a boundary that throws also leaves the fallback (no swap script emitted). Pass \`options.signal\` (e.g. \`Request.signal\`) to abort pending Suspense work when the consumer disconnects. Pass \`options.nonce\` (the per-request CSP nonce) and every inline \`<script>\`/\`<style>\` the stream emits carries it, so a strict \`script-src 'nonce-…'\` policy admits the Suspense swaps; \`@pyreon/server\` forwards \`ctx.locals.cspNonce\` automatically. See also: renderToString.`,
     mistakes: `- Assuming Suspense children arrive in source order — they are swapped in as each boundary resolves; the fallback ships first, resolved content can arrive in any order
 - Expecting \`@pyreon/head\` tags registered inside a Suspense child to reach the document \`<head>\` — the head is flushed in the shell BEFORE any boundary resolves, so async-loaded data does not contribute to it
 - Treating a timed-out boundary as an error — by design the fallback simply stays; only a dev-mode \`console.warn\` signals it. Tune \`options.suspenseTimeoutMs\` to match your SLA (5_000–10_000 typical for user-facing apps; \`Infinity\` to disable entirely for export jobs / reports)
@@ -2956,15 +2959,15 @@ afterEach(() => resetAllHooks())   // else a mutation in one test leaks to the n
   // <gen-docs:api-reference:start @pyreon/validate>
 
   'validate/withField': {
-    signature: '<S extends StandardSchemaV1>(schema: S, meta: FieldMeta) => S',
+    signature: '<S extends StandardSchemaV1>(schema: S, meta: FieldMeta) => WithFieldMeta<S>',
     example: `const emailSchema = withField(z.string().email(), {
   label: 'Email address',
   placeholder: 'you@example.com',
   i18nLabel: 'auth.email.label',
   autoComplete: 'email',
 })`,
-    notes: `Attach Pyreon field metadata (label, hint, placeholder, i18n keys, autoFocus, autoComplete, defaultValue) to any Standard Schema. The returned schema is the SAME REFERENCE as the input — Pyreon mutates a Symbol-keyed non-enumerable slot in place, which is invisible to JSON serialization, for…in, Object.keys, and library-internal comparators. Mutation (instead of cloning) is required because ArkType's \`Type\` instances are callable functions whose \`~standard.validate\` does \`this(input)\` — a shallow clone would not be callable and would break that contract. Re-wrapping merges new metadata onto existing (later keys win). See also: getMeta, resolveMetaField, StandardSchemaV1.`,
-    mistakes: `- Expecting withField to return a NEW reference — it doesn't. The metadata mutation is in place. If you need an isolated copy, construct two separate schemas instead.
+    notes: `Attach Pyreon field metadata (label, hint, placeholder, i18n keys, autoFocus, autoComplete, defaultValue) to any Standard Schema. Returns a NEW schema carrying the metadata and never modifies its input (a frozen schema is fine), so two \`withField\` calls on one shared base keep separate labels. A Pyreon \`s\` schema is cloned (copy-on-write, like its chainable methods); any other Standard Schema is wrapped in a transparent Proxy that answers only the Symbol-keyed metadata slot and forwards everything else — \`.parse\`, \`~standard\`, and an ArkType schema's call signature keep working. Re-wrapping a wrapped schema merges (later keys win). See also: getMeta, resolveMetaField, StandardSchemaV1.`,
+    mistakes: `- Expecting withField to label the schema you PASSED — it returns a new one and leaves the input untouched. Use the RETURNED schema (\`const email = withField(base, …)\`); calling \`withField(base, …)\` for its side effect attaches nothing to \`base\`.
 - Adding \`i18nLabel\` without a corresponding \`label\` — without a translation provider (or when t echoes the key), there's no fallback. Always set both.
 - Storing schemas with metadata in JSON.stringify-d state and round-tripping — the metadata is Symbol-keyed and won't survive serialization. Re-attach on load.`,
   },
@@ -2995,7 +2998,7 @@ const label = meta?.label ?? humanize(fieldName)`,
     signature: `<S extends StandardSchemaV1>(
   schema: S,
   source: Signal<unknown> | (() => unknown),
-) => Computed<ParseResult>`,
+) => Computed<ParseResult<Output<S>>>`,
     example: `const $email = signal('')
 const $result = parseReactive(emailSchema, $email)
 
@@ -3006,7 +3009,7 @@ effect(() => {
 })
 
 $email.set('foo@bar.com')  // $result re-derives`,
-    notes: 'Reactively parse `source` through `schema`. Returns a `Computed<ParseResult>` that re-validates on every source change. Synchronous only — for schemas with async refinements (Zod `.refine(async)`, Valibot async pipe), use parseReactiveAsync (this sync variant surfaces an actionable issue if the schema returns a Promise). See also: parseReactiveAsync, watchValid, formatErrors.',
+    notes: `Reactively parse \`source\` through \`schema\`. Returns a \`Computed<ParseResult<Output<S>>>\` (typed by the schema's output) that re-validates on every source change. Synchronous only — for schemas with async refinements (Zod \`.refine(async)\`, Valibot async pipe), use parseReactiveAsync (this sync variant surfaces an actionable issue if the schema returns a Promise). See also: parseReactiveAsync, watchValid, formatErrors.`,
     mistakes: `- Using parseReactive on an async schema — it surfaces a clear "use parseReactiveAsync" issue rather than silently producing a Promise as the validation result.
 - Calling parseReactive on every render of a component — it allocates a Computed; cache it at component setup time (call once per signal-source pair).`,
   },
@@ -3015,7 +3018,7 @@ $email.set('foo@bar.com')  // $result re-derives`,
     signature: `<S extends StandardSchemaV1>(
   schema: S,
   source: Signal<unknown> | (() => unknown),
-) => Computed<Promise<ParseResult>>`,
+) => Computed<Promise<ParseResult<Output<S>>>>`,
     example: `const schema = z.string().refine(async (s) => await checkUnique(s))
 const $result = parseReactiveAsync(schema, $username)
 
@@ -3041,7 +3044,7 @@ watch($result, async (current) => {
 })
 
 onUnmount(stop)`,
-    notes: 'Subscribe to validity transitions. The callback fires only when validity flips (true→false or false→true), NOT on every error-message change — ideal for form-state hooks that care about "is this OK?" without re-rendering on every typo. Returns an unsubscribe function. Internally a `watch()` over `parseReactive`. See also: parseReactive.',
+    notes: 'Subscribe to validity transitions. The callback fires only when validity flips (true→false or false→true), NOT on every error-message change — ideal for form-state hooks that care about "is this OK?" without re-rendering on every typo. Returns an unsubscribe function. Async schemas report once the validation settles; a settle superseded by newer input is dropped, and a rejected validator counts as invalid. See also: parseReactive.',
   },
 
   'validate/formatError': {
@@ -3653,7 +3656,7 @@ function focusField(name: FieldNames<typeof form>) { /* … */ }`,
   },
 
   'query/useQuery': {
-    signature: '<TData, TError, TKey>(options: () => QueryObserverOptions<...>) => UseQueryResult<TData, TError>',
+    signature: '<TQueryFnData, TError, TData = TQueryFnData, TKey>(options: () => QueryObserverOptions<...>) => UseQueryResult<TData, TError>',
     example: `const userId = signal(1)
 const user = useQuery(() => ({
   queryKey: ['user', userId()],
@@ -3708,7 +3711,7 @@ const user = useQuery(() => ({
   },
 
   'query/useQueries': {
-    signature: '(queries: () => UseQueriesOptions[]) => Signal<QueryObserverResult[]>',
+    signature: '<const T extends readonly UseQueriesInput[]>(queries: () => T) => Signal<QueriesResults<T>>',
     example: `const results = useQueries(() =>
   userIds().map((id) => ({ queryKey: ['user', id], queryFn: () => fetchUser(id) })),
 )
@@ -3749,9 +3752,9 @@ usePrefetchQuery(() => ({ queryKey: ['user', id], queryFn: fetchUser }))
     }
   },
 })
-// sub.status() — 'connecting' | 'connected' | 'disconnected' | 'error'
+// sub.status() — 'connecting' | 'connected' | 'disconnected' | 'error' | 'failed'
 // sub.send(data), sub.close(), sub.reconnect()`,
-    notes: 'Reactive WebSocket with auto-reconnect and QueryClient cache integration. `onMessage` receives the active `QueryClient` so push updates can invalidate or directly patch cached queries in a single line. Exponential backoff on reconnect (default 1s doubling, max 10 attempts — configurable via `reconnectDelay` / `maxReconnectAttempts`). `url` and `enabled` may be signals for reactive connection management — changing the URL closes the old socket and opens a new one. Returns `status` (signal), `send(data)`, `close()`, `reconnect()`. See also: useSSE, useQuery.',
+    notes: `Reactive WebSocket with auto-reconnect and QueryClient cache integration. \`onMessage\` receives the active \`QueryClient\` so push updates can invalidate or directly patch cached queries in a single line. Jittered exponential backoff on reconnect (default 1s doubling, capped at \`maxReconnectDelay\` = 30s, max 10 attempts — configurable via \`reconnectDelay\` / \`maxReconnectDelay\` / \`maxReconnectAttempts\`); when attempts run out \`status()\` is \`'failed'\`, and a browser \`online\` event starts over. \`url\` and \`enabled\` may be signals for reactive connection management — changing the URL closes the old socket and opens a new one. Returns \`status\` (signal), \`send(data)\`, \`close()\`, \`reconnect()\`. See also: useSSE, useQuery.`,
     mistakes: `- \`onMessage\` runs on every frame the socket receives — debounce cache invalidations for high-frequency streams or you'll trigger N refetches per second
 - Storing data in a parallel signal instead of using \`queryClient.setQueryData\` inside \`onMessage\` — defeats the QueryClient cache; use \`setQueryData\` to push updates into the same cache that \`useQuery\` reads
 - Forgetting \`enabled: false\` on unmount-sensitive connections — the WebSocket stays open unless \`enabled\` is a signal that tracks component lifecycle or a reactive condition`,
@@ -3769,15 +3772,15 @@ usePrefetchQuery(() => ({ queryKey: ['user', id], queryFn: fetchUser }))
   },
 })
 // sse.data() — last parsed message
-// sse.status() — 'connecting' | 'connected' | 'disconnected' | 'error'
+// sse.status() — 'connecting' | 'connected' | 'disconnected' | 'error' | 'failed'
 // sse.lastEventId(), sse.readyState(), sse.close(), sse.reconnect()`,
-    notes: 'Reactive Server-Sent Events hook with QueryClient cache integration. Same pattern as `useSubscription` but read-only (no `send`). `parse` deserializes raw event data per message (e.g. `JSON.parse`); `events` filters named SSE event types (defaults to generic `message` events). Honours the SSE spec `id` field via `lastEventId()` so the browser includes `Last-Event-ID` on reconnect and the server can resume from the right offset. `onMessage` receives the `QueryClient` for cache invalidation. See also: useSubscription.',
+    notes: `Reactive Server-Sent Events hook with QueryClient cache integration. Same pattern as \`useSubscription\` but read-only (no \`send\`). \`parse\` deserializes raw event data per message (e.g. \`JSON.parse\`); \`events\` filters named SSE event types (defaults to generic \`message\` events). Honours the SSE spec \`id\` field via \`lastEventId()\` so the browser includes \`Last-Event-ID\` on reconnect and the server can resume from the right offset. \`onMessage\` receives the \`QueryClient\` for cache invalidation. A \`parse\` failure surfaces on \`error()\` (the last good \`data()\` is kept); a throwing \`onMessage\` is reported in dev. Same capped, jittered backoff + \`'failed'\` status + \`online\` recovery as \`useSubscription\`. See also: useSubscription.`,
     mistakes: `- Passing \`queryKey\` (TanStack v4 pattern) instead of using \`onMessage\` for cache integration — Pyreon's \`useSSE\` does NOT auto-update query cache; use \`queryClient.setQueryData\` or \`invalidateQueries\` inside \`onMessage\`
 - Omitting \`parse\` and expecting typed data — without \`parse\`, \`data()\` is \`string\` (raw event payload); pass \`parse: JSON.parse\` for auto-deserialization`,
   },
 
   'query/useSuspenseQuery': {
-    signature: '<TData, TError>(options: () => QueryObserverOptions<...>) => UseSuspenseQueryResult<TData, TError>',
+    signature: '<TQueryFnData, TError, TData = TQueryFnData, TKey>(options: () => QueryObserverOptions<...>) => UseSuspenseQueryResult<TData, TError>',
     example: `const user = useSuspenseQuery(() => ({ queryKey: ['user', id()], queryFn: fetchUser }))
 
 <QuerySuspense query={user} fallback={<Spinner />}>
@@ -8624,6 +8627,38 @@ createISRHandler(handler, {
     signature: 'function aiPlugin(config?: AiPluginConfig): Plugin // server-only',
     example: 'plugins: [pyreon(), zero(), seoPlugin({ ... }), aiPlugin()]',
     notes: `AI integration plugin — generates \`llms.txt\`, \`llms-full.txt\`, and JSON-LD inference metadata at build time. Designed for sites that want to be AI-readable (search engines, model trainers, agentic crawlers). The generated files are themselves Pyreon's on-publish artifacts; the plugin runs \`inferJsonLd\` per route to extract structured data from \`meta\` exports. See also: seoPlugin, zero.`,
+  },
+
+  'zero/OgImage': {
+    signature: 'type OgImage<TData = unknown, TParams = Record<string, string>> = (ctx: { path: string; params: TParams; data: TData | undefined }) => VNodeChild // route file `export const og`',
+    example: `import type { OgImage } from '@pyreon/zero/server'
+
+export const og: OgImage<{ title: string }> = ({ data }) => (
+  <svg width="1200" height="630">
+    <rect width="1200" height="630" fill="#0b1020" />
+    <text x="80" y="330" font-size="72" fill="#fff">{data?.title}</text>
+  </svg>
+)`,
+    notes: 'Per-route Open Graph image from JSX. A page route exports `og` — a component rendering the card as SVG JSX from its params + loader data. SSG paths rasterize at BUILD time to a content-hashed PNG under `assets/og/` and get `og:image` (+ width/height, `twitter:card`) injected; SSR/ISR routes are served at request time from `/_zero/og/<path>.png` (CDN `s-maxage` + `stale-while-revalidate`) with an absolute `og:image` injected into the page. Referenced only from the server graph — never the client bundle. Rasterizer: the optional peer `sharp`. Size + absolute origin via `zero({ routeOg: { width, height, siteUrl } })`. See also: zero, seoPlugin.',
+    mistakes: `- Rendering HTML (\`<div>\`) instead of an \`<svg>\` root — sharp rasterizes SVG via librsvg, which does not lay out HTML or \`<foreignObject>\`; the build fails with a \`[Pyreon]\` error naming the fix
+- Omitting \`routeOg.siteUrl\` for SSG — most crawlers (Facebook, LinkedIn, Slack) need an ABSOLUTE og:image URL; without it the build-time tag is root-relative
+- Expecting \`vite dev\` to serve \`/_zero/og/…\` — the image is produced by the build / production server; preview with a build
+- Setting og:image via \`useHead\` AND exporting \`og\` — the explicit tag wins and nothing is injected`,
+  },
+
+  'zero/registerServiceWorker': {
+    signature: 'function registerServiceWorker(options?: { url?: string; scope?: string; onUpdate?: (activate: () => void) => void }): Promise<ServiceWorkerRegistration | null>',
+    example: `import { registerServiceWorker } from '@pyreon/zero'
+
+registerServiceWorker({
+  onUpdate: (activate) => {
+    if (confirm('A new version is available. Reload?')) activate()
+  },
+})`,
+    notes: `Registers the worker generated by \`zero({ pwa })\` (\`<base>sw.js\`, \`updateViaCache: 'none'\`). The worker precaches exactly the emitted hashed assets (+ prerendered pages under \`mode: 'ssg'\`), serves navigations network-first and hashed assets cache-first. New versions WAIT by default; \`onUpdate(activate)\` fires when one is installed so the app can ask, and \`activate()\` switches + reloads. Resolves \`null\` during SSR, outside production builds, and without service-worker support. See also: zero.`,
+    mistakes: `- Expecting it to register in \`vite dev\` — it no-ops outside production builds on purpose (a caching worker fights HMR)
+- Setting \`pwa.skipWaiting: true\` without understanding it swaps the asset cache under running tabs — prefer \`onUpdate\` + \`activate()\`
+- Serving \`sw.js\` with a long or immutable Cache-Control from a custom host — the worker script is the update channel; zero's adapters serve it must-revalidate`,
   },
 
   'zero/i18nRouting': {

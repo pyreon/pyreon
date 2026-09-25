@@ -51,11 +51,20 @@ const CORPUS: Array<{ src: string; inputs: unknown[] }> = [
   },
   {
     src: `s.string().url()`,
-    inputs: ['https://x.com', 'http://a.b/c?d=1', 'ftp://x', 'notaurl', '', 5],
+    inputs: ['https://x.com', 'http://a.b/c?d=1', 'https://a', 'https://', 'ftp://x', 'notaurl', '', 5],
   },
   {
     src: `s.string().uuid()`,
-    inputs: ['550e8400-e29b-41d4-a716-446655440000', 'not-a-uuid', '550e8400', 9],
+    inputs: [
+      '550e8400-e29b-41d4-a716-446655440000',
+      '017f22e2-79b0-7cc3-98c4-dc0c0c07398f', // v7
+      '00000000-0000-0000-0000-000000000000', // nil
+      'ffffffff-ffff-ffff-ffff-ffffffffffff', // max
+      '550e8400-e29b-91d4-a716-446655440000', // version 9
+      'not-a-uuid',
+      '550e8400',
+      9,
+    ],
   },
   {
     src: `s.string().nonEmpty()`,

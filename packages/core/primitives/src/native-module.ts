@@ -1,7 +1,7 @@
 /**
  * User-defined native modules — the FFI escape hatch (Layer 4).
  *
- * The 15 canonical primitives and the built-in service hooks cover the
+ * The canonical primitives and the built-in service hooks cover the
  * common surface, but every real app eventually needs something the
  * framework does not ship: a Bluetooth stack, an AR scene, a payments
  * SDK, a vendor analytics library. Before this escape hatch the only

@@ -53,7 +53,7 @@ function renderNode(node: DocNode): string {
     case 'link': {
       const href = sanitizeHref(p.href as string)
       const text = esc(getTextContent(node.children))
-      return `<a href="${esc(href)}">${text}</a>\n\n`
+      return href ? `<a href="${esc(href)}">${text}</a>\n\n` : `${text}\n\n`
     }
 
     case 'image':
@@ -105,7 +105,7 @@ function renderNode(node: DocNode): string {
     case 'button': {
       const href = sanitizeHref(p.href as string)
       const text = esc(getTextContent(node.children))
-      return `<a href="${esc(href)}">${text}</a>\n\n`
+      return href ? `<a href="${esc(href)}">${text}</a>\n\n` : `${text}\n\n`
     }
 
     case 'quote': {

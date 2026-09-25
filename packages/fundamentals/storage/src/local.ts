@@ -1,5 +1,13 @@
 import { signal, wrapSignal } from '@pyreon/reactivity'
-import { getEntry, releaseEntry, retainEntry, setEntry } from './registry'
+import {
+  getEntriesByBackend,
+  getEntry,
+  type RegistryEntry,
+  releaseEntry,
+  retainEntry,
+  setEntry,
+  warnIfOptionsDiffer,
+} from './registry'
 import type { StorageOptions, StorageSignal } from './types'
 import { deserialize, getWebStorage, isBrowser, serialize } from './utils'
 
@@ -14,7 +22,26 @@ let activeCount = 0
 let storageHandler: ((e: StorageEvent) => void) | null = null
 
 function onStorageEvent(e: StorageEvent): void {
-  if (!e.key) return
+  /* v8 ignore next — only ever attached in a browser (retainStorageListener) */
+  if (!isBrowser()) return
+  // Only localStorage events concern `useStorage`. A same-origin
+  // sessionStorage event (iframes of the same tab) must not be routed into
+  // local signals just because it shares a key.
+  // (Read `window.localStorage` directly — `getWebStorage` probes with a
+  // write, which an inbound-event handler must never do.)
+  if (e.storageArea != null && e.storageArea !== window.localStorage) return
+
+  // `key === null` is `localStorage.clear()` in another tab. Every value this
+  // tab holds for a local key is now gone from storage, so every local signal
+  // resets — ignoring it left e.g. an auth token alive in memory after another
+  // tab logged out by clearing storage.
+  if (e.key === null) {
+    for (const entry of getEntriesByBackend('local')) {
+      applyInbound(entry, entry.defaultValue)
+    }
+    return
+  }
+
   const entry = getEntry('local', e.key)
   if (!entry) return
 
@@ -23,7 +50,16 @@ function onStorageEvent(e: StorageEvent): void {
       ? deserialize(e.newValue, entry.defaultValue, entry.options)
       : entry.defaultValue
 
-  entry.signal.set(newValue)
+  applyInbound(entry, newValue)
+}
+
+// Apply a value the other tab ALREADY persisted. Never through `entry.signal.set`
+// — that is the persisting wrapper, and writing an inbound value back undoes a
+// removal made in the other tab (the default gets re-written) and makes two tabs
+// on different `version`s re-serialize each other's value forever.
+function applyInbound(entry: RegistryEntry, value: unknown): void {
+  /* v8 ignore next — every local entry registers `applyExternal` (createStorageSignal) */
+  if (entry.applyExternal) entry.applyExternal(value)
 }
 
 function retainStorageListener(): void {
@@ -72,7 +108,7 @@ export function releaseStorageListener(): void {
 // and ONE shared `pagehide`/`beforeunload` listener flushes them all. A single
 // idempotent listener (not one per signal) avoids the event-listener pile-up
 // leak class — `pagehide` covers the mobile bfcache case `beforeunload` misses.
-const pendingFlushes = new Set<() => void>()
+const pendingFlushes = new Set<() => unknown>()
 let unloadListenerAttached = false
 
 function flushAllPending(): void {
@@ -86,6 +122,19 @@ function ensureUnloadFlush(): void {
   unloadListenerAttached = true
   window.addEventListener('pagehide', flushAllPending)
   window.addEventListener('beforeunload', flushAllPending)
+}
+
+/**
+ * Register a flush to run on `pagehide`/`beforeunload`. Shared with
+ * `useIndexedDB`, whose debounced writes need the same last-value guarantee.
+ */
+export function registerPendingFlush(flush: () => unknown): void {
+  pendingFlushes.add(flush)
+  ensureUnloadFlush()
+}
+
+export function unregisterPendingFlush(flush: () => unknown): void {
+  pendingFlushes.delete(flush)
 }
 
 /** Test-only: detach the unload-flush listeners + drop pending writes. */
@@ -125,6 +174,7 @@ export function useStorage<T>(
   // `.remove()`, not the first.
   const existing = getEntry<T>('local', key)
   if (existing) {
+    warnIfOptionsDiffer('local', key, existing, defaultValue, options)
     retainEntry('local', key)
     retainStorageListener()
     return existing.signal
@@ -146,8 +196,6 @@ export function useStorage<T>(
 
   // Create the storage signal by extending the base signal
   const storageSig = createStorageSignal(sig, key, defaultValue, 'local', options)
-
-  setEntry('local', key, storageSig, defaultValue, options)
   retainStorageListener()
 
   return storageSig
@@ -156,7 +204,7 @@ export function useStorage<T>(
 // ─── Storage Signal Factory ──────────────────────────────────────────────────
 
 /**
- * Wraps a base signal with storage persistence behavior.
+ * Wraps a base signal with storage persistence behavior and registers it.
  * Used by both useStorage and useSessionStorage.
  */
 export function createStorageSignal<T>(
@@ -265,6 +313,16 @@ export function createStorageSignal<T>(
       releaseStorageListener()
     }
   }
+
+  // Inbound cross-tab value: update the shared base signal only, and drop any
+  // pending debounced write — that write holds a value OLDER than the one the
+  // other tab just persisted, and flushing it would clobber the newer one.
+  const applyExternal = (value: T): void => {
+    cancelPending()
+    sig.set(value)
+  }
+
+  setEntry(backend, key, storageSig, defaultValue, options, applyExternal)
 
   return storageSig
 }

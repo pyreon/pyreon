@@ -56,7 +56,7 @@ import {
   formatBrokenImports,
   formatPluginVirtuals,
 } from '../discover'
-import { type DetectedProject, detectProjects } from '../discover/workspace'
+import { type DetectedProject, detectProjects, enclosingWorkspaceRoot } from '../discover/workspace'
 import { missingRuntimeMessage } from '../discover/load'
 
 export interface ScanOptions extends DiscoverOptions {
@@ -267,6 +267,15 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
   // It also feeds prop-type resolution, where a component importing its props
   // from a SIBLING package is the dominant monorepo shape.
   const packages = buildPackageMap(workspacePackageDirs(resolve(cwd)))
+  // PROP TYPES resolve across the ENCLOSING workspace, not just the scanned
+  // directory's own: `atlas dev packages/ui/components` scans from a package,
+  // and a component whose props extend a sibling package's type came back
+  // with no controls. Kept separate from `packages` on purpose — that map also
+  // steers MODULE loading, and widening it would change which copy of a
+  // dependency the loader picks.
+  const workspaceRoot = enclosingWorkspaceRoot(resolve(cwd))
+  const typePackages =
+    workspaceRoot === resolve(cwd) ? packages : buildPackageMap([...workspacePackageDirs(workspaceRoot), ...workspacePackageDirs(resolve(cwd))])
   // The project's `resolve.alias`, read from its own vite config BEFORE the
   // loader exists — because the loader is what fails without it. A component
   // importing `~/components/…` does not load, which drops it from the catalog
@@ -402,7 +411,7 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
             // Rocketstyle components are a call chain, not a typed function, so
             // the static scan cannot see them at all. Detecting them needs the
             // module loaded — the same loader the mount checks use.
-            ...(packages.size > 0 ? { packages } : {}),
+            ...(typePackages.size > 0 ? { packages: typePackages } : {}),
             ...(loader
               ? {
                   rocketstyle: {
