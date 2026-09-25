@@ -185,6 +185,9 @@ describe('generated output typechecks under strict TypeScript', () => {
  *   `Property 'nullable' does not exist on type 'UnionSchema<…>'`.
  * - `ListEnvelope`: an inline response carrying a string enum. The hook's
  *   declared data type said `'list'` where `@pyreon/validate` infers `string`.
+ * - `Blank` / `Dict`: an object with no fields, and a dictionary. zod infers
+ *   `Record<string, never>` for `z.object({})`, and the faker factory spread
+ *   `Partial<Dict>` into a `Dict`, which does not typecheck.
  * - `Animal` / `getAnimal`: a discriminated union over NAMED models, as a
  *   model and as an inline response (GitHub's `GET /user`). A model const is
  *   typed `Schema<Cat>`, which the discriminated-union signature rejects.
@@ -252,6 +255,9 @@ components:
             - { type: object, required: [w], properties: { w: { type: number } } }
     Pets: { type: array, items: { $ref: '#/components/schemas/Pet' } }
     Mark: { type: string, enum: [X, O] }
+    Blank: { type: object, properties: {} }
+    Dict: { type: object, additionalProperties: { type: array, items: { type: string } } }
+    Holder: { type: object, required: [blank, dict], properties: { blank: { $ref: '#/components/schemas/Blank' }, dict: { $ref: '#/components/schemas/Dict' } } }
     Cat: { type: object, required: [kind, meows], properties: { kind: { type: string, enum: [cat] }, meows: { type: boolean } } }
     Dog: { type: object, required: [kind], properties: { kind: { type: string, enum: [dog] }, barks: { type: boolean } } }
     Animal:

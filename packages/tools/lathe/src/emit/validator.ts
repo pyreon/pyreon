@@ -95,6 +95,8 @@ export interface ValidatorDialect {
    * of ANY scheme (RFC 3986), which is also what the native lowering checks.
    */
   uriCheck: string
+  /** What the library infers for an object schema with no fields. */
+  emptyObjectType: string
   /**
    * Does this library's `enum` widen its members to `string` in the inferred
    * type? The written-out interface must say what the schema infers.
@@ -129,6 +131,7 @@ export const DIALECTS: Readonly<Record<ValidatorName, ValidatorDialect>> = {
     objectSchemaRef: 'ObjectSchema<Record<string, Schema<unknown>>>',
     objectSchemaImport: { module: '@pyreon/validate', name: 'ObjectSchema' },
     // `s.string().url()` is http(s)-only, so a scheme check spelled out.
+    emptyObjectType: 'Record<string, unknown>',
     uriCheck: String.raw`.regex(/^[A-Za-z][A-Za-z0-9+.-]*:\S*$/)`,
     enumWidensToString: true,
     inlineRefsOnNative: false,
@@ -147,6 +150,8 @@ export const DIALECTS: Readonly<Record<ValidatorName, ValidatorDialect>> = {
     objectSchemaRef: 'z.ZodObject',
     objectSchemaImport: undefined,
     // zod's `.url()` already accepts any scheme (`mailto:`, `git:`).
+    // `z.object({})` strips unknown keys and infers `Record<string, never>`.
+    emptyObjectType: 'Record<string, never>',
     uriCheck: '.url()',
     enumWidensToString: false,
     inlineRefsOnNative: true,

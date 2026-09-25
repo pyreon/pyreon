@@ -200,8 +200,10 @@ describe('every IR kind produces SOMETHING valid', () => {
 
   it('emits an empty object for a model with no fields', () => {
     const out = emit([model('Empty', obj([]))])
-    expect(out).toContain('createEmpty')
-    expect(out).toMatch(/\{\s*\.\.\.o\s*\}/)
+    expect(out).toContain('export function createEmpty(): Empty {')
+    // No fields means nothing to override: `{ ...o }` typed `Partial<Dict>`
+    // made every dictionary value `T | undefined`, which does not typecheck.
+    expect(out).toContain('return {}')
   })
 })
 

@@ -141,7 +141,11 @@ export function emitFaker(doc: IrDocument, typesFrom: 'schemas' | 'types'): Sour
  * object literal carrying the `...o` spread -- see the object branch below.
  */
 function takesOverrides(model: IrModel): boolean {
-  return model.type.kind === 'object'
+  // An object with NO fields is a dictionary (`additionalProperties`) or an
+  // empty object: `Partial<Record<string, T[]>>` makes every value
+  // `T[] | undefined`, which is not a `Record<string, T[]>`, and there is no
+  // named field to pin anyway.
+  return model.type.kind === 'object' && model.type.fields.length > 0
 }
 
 /**
@@ -239,7 +243,8 @@ function render(
         parts.push(`${propKey(fld.name)}: ${value}`)
       }
       // Overrides land LAST at the top level only; nested objects have none.
-      const spread = depth === 1 ? ', ...o' : ''
+      // Only the root of a model that takes overrides (see `takesOverrides`).
+      const spread = depth === 1 && type.fields.length > 0 ? ', ...o' : ''
       if (parts.length === 0) return `{${spread ? ' ...o ' : ''}}`
       const indent = '  '.repeat(depth + 1)
       const close = '  '.repeat(depth)

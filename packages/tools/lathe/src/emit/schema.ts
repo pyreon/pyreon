@@ -54,8 +54,18 @@ export interface SchemaExprOptions {
  * enums to a plain string, and `@pyreon/validate`'s `s.enum` infers `string`
  * too. Declaring `'a' | 'b'` against either is a type the schema does not
  * enforce.
+ *
+ * `emptyObject` is how an object with no fields and no `additionalProperties`
+ * is spelled: what the schema library infers for `object({})`. zod strips
+ * unknown keys and infers `Record<string, never>`; `@pyreon/validate` infers
+ * a type `Record<string, unknown>` agrees with.
  */
-export function tsType(type: IrType, depth = 0, widenEnums = false): string {
+export function tsType(
+  type: IrType,
+  depth = 0,
+  widenEnums = false,
+  emptyObject = 'Record<string, unknown>',
+): string {
   const native = widenEnums
   switch (type.kind) {
     case 'string':
@@ -74,28 +84,28 @@ export function tsType(type: IrType, depth = 0, widenEnums = false): string {
     case 'ref':
       return type.name
     case 'array': {
-      const inner = tsType(type.items, depth + 1, native)
+      const inner = tsType(type.items, depth + 1, native, emptyObject)
       // `A | B[]` parses as `A | (B[])`, so a union element needs parens.
       return /[|&]/.test(inner) ? `(${inner})[]` : `${inner}[]`
     }
     case 'union':
-      return type.options.map((o) => tsType(o, depth + 1, native)).join(' | ')
+      return type.options.map((o) => tsType(o, depth + 1, native, emptyObject)).join(' | ')
     case 'object': {
       if (type.fields.length === 0) {
-        return type.additional ? `Record<string, ${tsType(type.additional, depth + 1, native)}>` : 'Record<string, unknown>'
+        return type.additional ? `Record<string, ${tsType(type.additional, depth + 1, native, emptyObject)}>` : emptyObject
       }
       const pad = '  '.repeat(depth + 1)
       const close = '  '.repeat(depth)
       const body = type.fields
-        .map((f) => `${pad}${propKey(f.name)}${f.required ? '' : '?'}: ${fieldTs(f, depth + 1, native)}`)
+        .map((f) => `${pad}${propKey(f.name)}${f.required ? '' : '?'}: ${fieldTs(f, depth + 1, native, emptyObject)}`)
         .join('\n')
       return `{\n${body}\n${close}}`
     }
   }
 }
 
-function fieldTs(field: IrField, depth: number, native = false): string {
-  const base = tsType(field.type, depth, native)
+function fieldTs(field: IrField, depth: number, native = false, emptyObject = 'Record<string, unknown>'): string {
+  const base = tsType(field.type, depth, native, emptyObject)
   const withNull = field.nullable ? `${base} | null` : base
   // `exactOptionalPropertyTypes` is on across this repo and in the consumer
   // presets, where `x?: number` and `x?: number | undefined` are DIFFERENT
@@ -207,7 +217,7 @@ export function schemaExpr(type: IrType, opts: SchemaExprOptions, depth = 0): st
       if (!named.some(Boolean)) return `${c('discriminatedUnion')}(${q(type.discriminator)}, [${inner}])`
       if (type.options.some((o, i) => o.kind === 'ref' && !named[i])) return `${c('union')}([${inner}])`
       const cast = members.map((m, i) => (named[i] ? `(${m} as unknown as ${dialect.objectSchemaRef})` : m))
-      return `(${c('discriminatedUnion')}(${q(type.discriminator)}, [${cast.join(', ')}]) as unknown as ${dialect.schemaTypeRef(tsType(type, depth, dialect.enumWidensToString))})`
+      return `(${c('discriminatedUnion')}(${q(type.discriminator)}, [${cast.join(', ')}]) as unknown as ${dialect.schemaTypeRef(tsType(type, depth, dialect.enumWidensToString, dialect.emptyObjectType))})`
     }
     case 'object': {
       if (type.fields.length === 0) {
@@ -381,7 +391,7 @@ export function emitSchemas(
       const defer = deferredTargets(backEdges, name)
       f.line()
       f.doc(model.doc)
-      f.line(typeDeclaration(model.name, model.type, dialect.enumWidensToString))
+      f.line(typeDeclaration(model.name, model.type, dialect.enumWidensToString, dialect.emptyObjectType))
       const expr = schemaExpr(model.type, { ...opts, defer })
       if (dialect.objectSchemaImport && expr.includes(dialect.objectSchemaRef)) needsObjectType.value = true
       f.line(`export const ${model.name} = ${expr} as unknown as ${dialect.schemaTypeRef(model.name)}`)
@@ -577,8 +587,13 @@ export function emitTypes(doc: IrDocument): SourceFile {
  * member is an inline object also does -- `export interface X { … } | { … }`
  * is a parse error, and GitHub's `types.ts` carried 3,997 errors from it.
  */
-export function typeDeclaration(name: string, type: IrType, widenEnums = false): string {
-  const rendered = tsType(type, 0, widenEnums)
+export function typeDeclaration(
+  name: string,
+  type: IrType,
+  widenEnums = false,
+  emptyObject = 'Record<string, unknown>',
+): string {
+  const rendered = tsType(type, 0, widenEnums, emptyObject)
   return type.kind === 'object' && type.fields.length > 0
     ? `export interface ${name} ${rendered}`
     : `export type ${name} = ${rendered}`
