@@ -24,7 +24,7 @@
  * import, which is why it has its own spec.
  */
 import { build } from 'esbuild'
-import { schemaSource, writeTree } from './helpers/write-tree'
+import { writeTree } from './helpers/write-tree'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'

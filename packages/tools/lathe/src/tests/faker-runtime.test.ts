@@ -11,8 +11,8 @@
  * validated against the schema the same run emitted. That is the only
  * assertion here that can actually fail for the right reason.
  */
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
-import { schemaSource, writeTree } from './helpers/write-tree'
+import { mkdirSync, rmSync } from 'node:fs'
+import { writeTree } from './helpers/write-tree'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveConfig, type ValidatorName } from '../core/config'
