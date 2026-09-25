@@ -30,6 +30,7 @@ import type {
   PathParams,
   QueryParams,
   QueryStyle,
+  ValidateMode,
   Validator,
   ValidatorOutput,
 } from './types'
@@ -148,6 +149,17 @@ export interface EndpointOptions {
    */
   headers?: HeadersInit | undefined
   throwHttpErrors?: boolean | undefined
+  /**
+   * Response validation for every call of this endpoint, overriding the
+   * client's `validate` — `'off'` for a list too large to check per call,
+   * `'warn'` for a server known to drift. See {@link ValidateMode}.
+   *
+   * @example
+   * ```ts
+   * const events = api.endpoint('GET /events', { response: EventList, validate: 'off' })
+   * ```
+   */
+  validate?: ValidateMode | undefined
   /**
    * Per-key query serialization — OpenAPI's `style` / `explode`, stated once
    * on the endpoint so no call site has to know that `ids` goes out as
@@ -376,6 +388,7 @@ export function defineEndpoint<
       timeout: args?.timeout ?? options.timeout,
       meta: args?.meta,
       throwHttpErrors: options.throwHttpErrors,
+      validate: options.validate,
     })
     switch (options.responseType ?? 'json') {
       case 'text':

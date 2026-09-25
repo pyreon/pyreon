@@ -17,6 +17,7 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import type { LatheSection } from '../core/config'
 import { resolveProjects } from '../core/config'
+import { formatFiles } from '../core/format'
 import { generate, type GenerateResult } from '../core/generate'
 import { noteSeverity } from '../core/ir'
 import { OUTPUT_MANIFEST, orphanedPaths } from '../core/output-manifest'
@@ -85,12 +86,12 @@ function readFileOrUndefined(path: string): string | undefined {
   }
 }
 
-export function runPass(
+export async function runPass(
   options: LathePluginOptions,
   root: string,
   mode: 'write' | 'check',
   only?: string,
-): LathePassResult {
+): Promise<LathePassResult> {
   const abs = (p: string): string => (isAbsolute(p) ? p : resolve(root, p))
   const written: string[] = []
   const stale: string[] = []
@@ -119,7 +120,10 @@ export function runPass(
       missing.push(input)
       continue
     }
-    generated.push({ out: abs(project.output), result: generate(source, project) })
+    const result = generate(source, project)
+    // Formatted before comparing, exactly as the CLI does, so the two never
+    // disagree about whether committed output is stale.
+    generated.push({ out: abs(project.output), result: { ...result, files: await formatFiles(result.files, project.format) } })
   }
   for (const { out, result } of generated) {
     // Read before the writes below replace it: afterwards only the new
@@ -257,9 +261,9 @@ export function lathe(options: LathePluginOptions = {}): LathePluginHost {
       configFile = loaded.file
       effective = merge(loaded.section)
     },
-    buildStart() {
+    async buildStart() {
       const mode = command === 'build' && effective.checkOnBuild === true ? 'check' : 'write'
-      const pass = runPass(effective, root, mode)
+      const pass = await runPass(effective, root, mode)
       if (pass.stale.length > 0) {
         // A build error, not a warning. Generated output that disagrees with
         // its spec compiles and then fails against the real server.
@@ -290,7 +294,7 @@ export function lathe(options: LathePluginOptions = {}): LathePluginHost {
           }
           // A spec change regenerates the project that owns it; a config
           // change can move every project, so it regenerates all of them.
-          const pass = runPass(effective, root, 'write', isConfig ? undefined : path)
+          const pass = await runPass(effective, root, 'write', isConfig ? undefined : path)
           warnMissing(pass)
           log(passSummary(pass))
         })().catch((err: unknown) => {

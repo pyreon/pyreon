@@ -33,6 +33,9 @@ import type { IrDocument, IrNote, IrOperation, Reach } from './ir'
 import { loadOpenApi, parsePagination, type LoadOptions } from '../input/openapi'
 import { checkPagination } from '../emit/pagination'
 import { emitOutputManifest } from './output-manifest'
+import { applyNaming, applyOperationSettings, assertHookNames, operationByKey } from './customize'
+import { runEmits, runSetup, runTransforms } from './plugin'
+import { applyFilters } from './select'
 import { extractSurface, type ApiSurface } from './surface'
 
 export interface GenerateResult {
@@ -58,8 +61,23 @@ export function generate(
   /** Where the spec came from; resolves a relative `servers[].url`. */
   options: LoadOptions = {},
 ): GenerateResult {
-  const { doc } = loadOpenApi(specText, options)
+  const plugins = config.customPlugins ?? []
+  runSetup(plugins, config)
+  // The document, in the order an author reasons about it: correct the spec,
+  // read it, choose the subset, name things, set per-operation directives —
+  // and only then hand it to plugins, so a plugin sees exactly the names and
+  // directives the built-in emitters will use.
+  const loaded = loadOpenApi(specText, { ...options, patches: options.patches ?? config.patches })
+  let doc = applyFilters(loaded.doc, config.filters)
+  doc = applyNaming(doc, config.naming)
+  doc = applyOperationSettings(doc, config.operations, config.naming?.hook)
   applyPagination(doc, config)
+  // Frozen from here on, with or without plugins: every emitter reads, none
+  // writes, and a plugin is held to the same rule.
+  doc = runTransforms(doc, plugins, config)
+  // Hook names are checked after the plugins, which may set them too — and
+  // only when hooks are generated at all.
+  if (config.plugins.includes('queries')) assertHookNames(doc)
   const native = config.target === 'multiplatform'
   const files: GeneratedFile[] = []
   const reach = reachOf(doc, config)
@@ -153,11 +171,17 @@ export function generate(
   pushMaybe(emitDevEntry(doc, entryOpts))
   push(emitBarrel(doc, entryOpts))
 
+  // Third-party plugins, after every built-in, so each can read (and must not
+  // collide with) what the built-ins wrote. Their files are ordinary output:
+  // listed in the manifest below, compared by `check`, pruned when dropped.
+  const extra = runEmits(plugins, { doc, config, reach, banner: head }, files)
+  files.push(...extra.files)
+
   // The `sideEffects` marker. Emitted unconditionally and last-but-one: it is
   // not a plugin's output but a statement ABOUT the output, and it is what
   // makes the whole generated graph tree-shakeable regardless of how the
   // consuming app's own package.json is configured.
-  files.push(emitPackageMarker(config.plugins))
+  files.push(emitPackageMarker(config.plugins, extra.sideEffects))
 
   // The record of what THIS run generated, so the next one can remove what it
   // no longer produces. Listed before `api-surface.json` is appended, and that
@@ -191,19 +215,28 @@ export function generate(
  */
 function applyPagination(doc: IrDocument, config: ResolvedConfig): void {
   const byId = new Map(doc.operations.map((o) => [o.id, o]))
-  for (const [id, entry] of Object.entries(config.pagination ?? {})) {
-    const op = byId.get(id)
-    if (!op) {
-      throw new Error(
-        `[Pyreon] lathe: \`pagination.${id}\` names no operation. Keys are the GENERATED operation names (the \`endpoints\` exports): ${[...byId.keys()].slice(0, 20).join(', ')}.`,
-      )
+  // Two places declare pagination -- the `pagination` map and an
+  // `operations.<id>.pagination` entry. Both are honoured; declaring BOTH for
+  // one operation is refused rather than picking a winner silently.
+  const declared: Array<{ where: string; key: string; entry: unknown }> = [
+    ...Object.entries(config.pagination ?? {}).map(([key, entry]) => ({ where: `pagination.${key}`, key, entry })),
+    ...Object.entries(config.operations ?? {}).flatMap(([key, s]) =>
+      s?.pagination === undefined ? [] : [{ where: `operations.${key}.pagination`, key, entry: s.pagination as unknown }],
+    ),
+  ]
+  const fromConfig = new Map<string, string>()
+  for (const { where, key, entry } of declared) {
+    const op = operationByKey(doc, key, where)
+    const prev = fromConfig.get(op.id)
+    if (prev !== undefined) {
+      throw new Error(`[Pyreon] lathe: \`${op.id}\` declares pagination twice (\`${prev}\` and \`${where}\`). Keep one.`)
     }
+    fromConfig.set(op.id, where)
     const parsed = parsePagination(entry)
-    if (typeof parsed === 'string') throw new Error(`[Pyreon] lathe: \`pagination.${id}\`: ${parsed}`)
+    if (typeof parsed === 'string') throw new Error(`[Pyreon] lathe: \`${where}\`: ${parsed}`)
     op.pagination = parsed
   }
   const models = new Map(doc.models.map((m) => [m.name, m.type]))
-  const fromConfig = new Set(Object.keys(config.pagination ?? {}))
   for (const op of doc.operations) {
     if (!op.pagination) continue
     const clash = [`${op.id}Infinite`, `${op.id}InfiniteOptions`].find((n) => byId.has(n))

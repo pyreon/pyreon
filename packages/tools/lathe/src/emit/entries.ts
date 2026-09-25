@@ -40,7 +40,7 @@
  */
 
 import type { IrDocument } from '../core/ir'
-import { typeIdent } from '../core/naming'
+import { hookOf, typeIdent } from '../core/naming'
 import { byTag, isMutation, tagFile } from './client'
 import type { ClientName } from './client-runtime'
 import { relativeSpecifier, SourceFile } from './writer'
@@ -200,7 +200,8 @@ export function emitEndpointsBarrel(doc: IrDocument): SourceFile | null {
 
 /** `queries/index.ts` — every hook, no previews. */
 export function emitQueriesBarrel(doc: IrDocument): SourceFile | null {
-  const tags = [...byTag(doc)]
+  // A group whose every hook is turned off emits no queries module.
+  const tags = [...byTag(doc)].filter(([, ops]) => ops.some((op) => hookOf(op) !== undefined))
   if (tags.length === 0) return null
   const f = new SourceFile(QUERIES_BARREL)
   f.line()

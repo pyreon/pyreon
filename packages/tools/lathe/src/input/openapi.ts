@@ -26,6 +26,7 @@ import type {
   StringFormat,
 } from '../core/ir'
 import { assignNames, ident, modelIdent, operationIdent, operationIdFrom, tagFile } from '../core/naming'
+import { applyPatches, type LatheSpecPatch } from '../core/patch'
 import { splitByDirection } from './direction'
 import { parseSpecText } from './yaml'
 
@@ -45,6 +46,12 @@ export interface LoadOptions {
    * relative server stays relative and is reported.
    */
   sourceUrl?: string | undefined
+  /**
+   * Corrections applied to the parsed document before it is read — see
+   * `LatheSection.patches`. Applied before the version check, so a patch can
+   * repair the document's own `openapi` key.
+   */
+  patches?: readonly LatheSpecPatch[] | undefined
 }
 
 /** Parse a spec document (JSON or YAML text) into the IR. */
@@ -53,6 +60,7 @@ export function loadOpenApi(source: string, options: LoadOptions = {}): LoadResu
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('[Pyreon] lathe: spec did not parse to an object')
   }
+  applyPatches(raw as Record<string, unknown>, options.patches)
   const refusal = openApiVersionProblem(raw)
   if (refusal) throw new Error(refusal)
   return { doc: convert(raw as Json, options) }
@@ -196,6 +204,7 @@ function convert(spec: Json, options: LoadOptions = {}): IrDocument {
       name: ctx.modelNames.get(key) as string,
       type: modelType(key, ctx) ?? { kind: 'unknown', reason: 'cyclic model' },
       doc: str(schema.description) ?? str(schema.title),
+      source: { name: key, at: ptr('components', 'schemas', key) },
     })
   }
 
@@ -552,6 +561,12 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
         body: bodyOf(method, op, at, ctx),
         ...responseOf(op, at, ctx),
         ...paginationOf(op['x-pyreon-pagination'], at, ctx),
+        source: {
+          ...(str(op.operationId) ? { operationId: str(op.operationId) } : {}),
+          path: rawPath,
+          tags: arr(op.tags).flatMap((t) => (typeof t === 'string' ? [t] : [])),
+          at,
+        },
       }
       ctx.opAt.set(irOp, at)
       ops.push(irOp)

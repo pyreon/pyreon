@@ -783,6 +783,7 @@ a stable `code`, an RFC 6901 pointer into the spec, and a severity:
 | `description-dropped` | choice | the JSDoc carries the summary, not the description |
 | `missing-operation-id` | choice | a name derived from method + path |
 | `numeric-version` | choice | `info.version` was a YAML number |
+| `plugin` | loss | a third-party plugin reported something it could not honour (`ctx.note(...)` in `transformDocument`) |
 
 The terminal report lists the losses and summarises the choices; the generated
 reference pages split them into "Not represented" and "Choices made".

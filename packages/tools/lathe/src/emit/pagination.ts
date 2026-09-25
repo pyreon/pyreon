@@ -13,7 +13,7 @@
  * at runtime.
  */
 import type { IrOperation, IrPagination, IrType } from '../core/ir'
-import { propKey, typeIdent } from '../core/naming'
+import { hookOf, propKey } from '../core/naming'
 import type { ModelTypes } from './operation-types'
 import { resolve as resolveRef } from './operation-types'
 import { tsType } from './schema'
@@ -171,7 +171,7 @@ export function emitInfinite(f: SourceFile, op: IrOperation, disabledFn: string)
   const pp = pageParamType(p, op)
   const opts = `UseInfiniteQueryOptions<${data}, Error, readonly unknown[], ${pp}>`
   const name = infiniteOptionsName(op)
-  const hook = `use${typeIdent(op.id)}Infinite`
+  const hook = `${hookOf(op) as string}Infinite`
   const describe =
     p.kind === 'cursor'
       ? `the next \`${p.param}\` is \`${p.next}\` from each page`

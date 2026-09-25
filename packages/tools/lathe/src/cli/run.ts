@@ -17,6 +17,7 @@ import {
 } from '../core/config'
 import { ALL_CLIENTS } from '../emit/client-runtime'
 import { ALL_VALIDATORS } from '../emit/validator'
+import { formatFiles } from '../core/format'
 import { generate } from '../core/generate'
 import { noteSeverity, type IrNote, type IrNoteSeverity, type Reach } from '../core/ir'
 import { OUTPUT_MANIFEST, orphanedPaths } from '../core/output-manifest'
@@ -446,7 +447,10 @@ async function runChecked(
       )
     }
     try {
-      generated.push({ config, result: generate(fs.read(config.input), config) })
+      const result = generate(fs.read(config.input), config)
+      // Formatted BEFORE the comparison below, so formatted output that was
+      // committed is current rather than stale, and `check` agrees with it.
+      generated.push({ config, result: { ...result, files: await formatFiles(result.files, config.format) } })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       // Name WHICH spec in a multi-project run; the error itself cannot know.

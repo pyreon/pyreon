@@ -20,7 +20,7 @@
 
 import { hasInput } from './operation-types'
 import type { IrDocument, IrOperation } from '../core/ir'
-import { typeIdent } from '../core/naming'
+import { hookOf, typeIdent } from '../core/naming'
 import { byTag, isMutation, tagFile } from './client'
 import { relativeSpecifier, SourceFile } from './writer'
 
@@ -46,6 +46,8 @@ export function previewOperations(doc: IrDocument): IrOperation[] {
     ops.filter(
       (op) =>
         !isMutation(op) &&
+        // A preview is built on the operation's hook; no hook, no preview.
+        hookOf(op) !== undefined &&
         op.pathParams.length === 0 &&
         // A REQUIRED query parameter has the same problem as a path one: any
         // value the generator invents is a guess, and a preview built on a
@@ -80,7 +82,7 @@ export function emitComponents(doc: IrDocument): SourceFile {
     if (mine.length === 0) continue
     f.import(
       relativeSpecifier(COMPONENTS_FILE, `queries/${tagFile(tag)}.ts`),
-      ...mine.map((op) => `use${typeIdent(op.id)}`),
+      ...mine.map((op) => hookOf(op) as string),
     )
   }
 
@@ -96,7 +98,7 @@ export function emitComponents(doc: IrDocument): SourceFile {
 
   for (const op of ops) {
     const name = previewName(op)
-    const hook = `use${typeIdent(op.id)}`
+    const hook = hookOf(op) as string
     const isList = op.response?.kind === 'array'
     f.line()
     f.line(`export interface ${name}Props {`)

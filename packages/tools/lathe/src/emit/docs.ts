@@ -21,7 +21,7 @@
 
 import { hasInput } from './operation-types'
 import { noteSeverity, type IrDocument, type IrOperation, type IrType, type Reach } from '../core/ir'
-import { propKey, typeIdent } from '../core/naming'
+import { hookOf, propKey } from '../core/naming'
 import { bodyArg, byTag, endpointSpec, isMutation, tagFile } from './client'
 import { tsType } from './schema'
 import type { GeneratedFile } from './writer'
@@ -262,14 +262,16 @@ function usage(
   const file = tagFile(tag)
   const args = argsLiteral(op)
   const base = opts.importBase ?? './gen'
-  if (!opts.hasQueries) {
+  const hook = hookOf(op)
+  // No queries plugin, or this operation's hook was turned off: the endpoint
+  // is the only generated symbol to show.
+  if (!opts.hasQueries || hook === undefined) {
     return [
       `import { ${op.id} } from '${base}/endpoints/${file}'`,
       '',
       `const data = await ${op.id}(${args})`,
     ]
   }
-  const hook = hookName(op)
   const lines = [
     `import { ${hook} } from '${base}/queries/${file}'`,
     '',
@@ -289,11 +291,6 @@ function usage(
     )
   }
   return lines
-}
-
-/** The generated hook's name, matching the client emitter's convention. */
-function hookName(op: IrOperation): string {
-  return `use${typeIdent(op.id)}`
 }
 
 /** An argument literal shaped like the endpoint's own `EndpointArgs`. */

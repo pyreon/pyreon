@@ -29,8 +29,15 @@ const get = (op: Record<string, unknown>) => ({
   paths: { '/x': { get: { operationId: 'x', responses: { 200: { content: json({ type: 'string' }) } }, ...op } } },
 })
 
+/**
+ * Codes the INPUT layer emits. `plugin` is excluded because no spec can make
+ * the loader produce it -- a plugin's `transformDocument` does, and
+ * `plugin-api.test.ts` proves it fires (and is quiet when no note is added).
+ */
+type LoaderCode = Exclude<IrNoteCode, 'plugin'>
+
 /** [fires, quiet] per code. */
-const CASES: Record<IrNoteCode, [Record<string, unknown>, Record<string, unknown>]> = {
+const CASES: Record<LoaderCode, [Record<string, unknown>, Record<string, unknown>]> = {
   'unsupported-schema': [
     { components: { schemas: { X: { type: 'frobnicate' } } } },
     { components: { schemas: { X: { type: 'string' } } } },
@@ -115,10 +122,10 @@ const CASES: Record<IrNoteCode, [Record<string, unknown>, Record<string, unknown
 
 describe('every note code fires on its defect and not on the corrected form', () => {
   it('the table covers every code', () => {
-    expect(Object.keys(CASES).sort()).toEqual(Object.keys(NOTE_SEVERITY).sort())
+    expect([...Object.keys(CASES), 'plugin'].sort()).toEqual(Object.keys(NOTE_SEVERITY).sort())
   })
 
-  for (const [code, [fires, quiet]] of Object.entries(CASES) as Array<[IrNoteCode, (typeof CASES)[IrNoteCode]]>) {
+  for (const [code, [fires, quiet]] of Object.entries(CASES) as Array<[LoaderCode, (typeof CASES)[LoaderCode]]>) {
     it(`${code} — fires`, () => {
       expect(doc(fires).notes.map((n) => n.code)).toContain(code)
     })

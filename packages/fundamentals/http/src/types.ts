@@ -296,6 +296,12 @@ export interface RequestOptions {
   credentials?: RequestCredentials | undefined
   /** Throw {@link HttpError} on a non-2xx status. Defaults to `true`. */
   throwHttpErrors?: boolean | undefined
+  /**
+   * Response validation for THIS request, overriding the client's `validate`
+   * (static or accessor). For an endpoint whose payload is too large to check
+   * on every call, or one whose server is known to drift.
+   */
+  validate?: ValidateMode | undefined
   /** Per-request middleware data. */
   meta?: Record<string, unknown> | undefined
 }
@@ -313,6 +319,8 @@ export interface HttpClientConfig
     | 'multipart'
     | 'cookies'
     | 'queryStyle'
+    // Redeclared below, WIDER: the client-level mode may be an accessor.
+    | 'validate'
   > {
   /**
    * Prefix for relative paths. A path starting with `http://`/`https://`

@@ -45,44 +45,44 @@ function project(): { root: string; spec: string } {
 const opts = { input: './openapi.yaml', output: './src/gen', plugins: ['schemas'] as const }
 
 describe('lathe vite plugin', () => {
-  it('writes the client on the first pass and nothing on the second', () => {
+  it('writes the client on the first pass and nothing on the second', async () => {
     // Idempotence is what makes the plugin safe to run on every server start:
     // a pass that rewrote unchanged files would touch mtimes and retrigger
     // Vite's own watcher, which is a loop.
     const { root } = project()
-    const first = runPass({ ...opts }, root, 'write')
+    const first = await runPass({ ...opts }, root, 'write')
     expect(first.written.length).toBeGreaterThan(0)
     expect(readFileSync(join(root, 'src/gen/schemas/Book.ts'), 'utf8')).toContain('export const Book')
-    expect(runPass({ ...opts }, root, 'write').written).toEqual([])
+    expect((await runPass({ ...opts }, root, 'write')).written).toEqual([])
   })
 
-  it('check mode REPORTS staleness and writes nothing', () => {
+  it('check mode REPORTS staleness and writes nothing', async () => {
     const { root } = project()
-    runPass({ ...opts }, root, 'write')
+    await runPass({ ...opts }, root, 'write')
     writeFileSync(join(root, 'src/gen/schemas.ts'), '// hand-edited')
-    const res = runPass({ ...opts }, root, 'check')
+    const res = await runPass({ ...opts }, root, 'check')
     expect(res.stale.length).toBeGreaterThan(0)
     expect(res.written).toEqual([])
     expect(readFileSync(join(root, 'src/gen/schemas.ts'), 'utf8')).toBe('// hand-edited')
   })
 
-  it('reports the spec paths so the dev server can watch them', () => {
+  it('reports the spec paths so the dev server can watch them', async () => {
     const { root, spec } = project()
-    expect(runPass({ ...opts }, root, 'check').specs).toEqual([spec])
+    expect((await runPass({ ...opts }, root, 'check')).specs).toEqual([spec])
   })
 
-  it('a missing spec is skipped, not a crash', () => {
+  it('a missing spec is skipped, not a crash', async () => {
     // A config can legitimately point at a spec that is not there yet.
     const { root } = project()
-    const res = runPass({ ...opts, input: './absent.yaml' }, root, 'check')
+    const res = await runPass({ ...opts, input: './absent.yaml' }, root, 'check')
     expect(res.written).toEqual([])
     expect(res.stale).toEqual([])
   })
 
-  it('covers every project', () => {
+  it('covers every project', async () => {
     const { root } = project()
     writeFileSync(join(root, 'second.yaml'), SPEC)
-    const res = runPass(
+    const res = await runPass(
       {
         plugins: ['schemas'],
         projects: [
@@ -98,15 +98,15 @@ describe('lathe vite plugin', () => {
     expect(readFileSync(join(root, 'src/b/schemas/Book.ts'), 'utf8')).toContain('export const Book')
   })
 
-  it('removes a file the previous pass generated and this one does not', () => {
+  it('removes a file the previous pass generated and this one does not', async () => {
     // The dev server regenerates on every spec save; an orphan left by a
     // dropped tag would keep compiling against endpoints that no longer exist.
     const { root, spec } = project()
     const withClient = { ...opts, plugins: ['schemas', 'client'] as const }
-    runPass({ ...withClient, plugins: [...withClient.plugins] }, root, 'write')
+    await runPass({ ...withClient, plugins: [...withClient.plugins] }, root, 'write')
     expect(existsSync(join(root, 'src/gen/endpoints/books.ts'))).toBe(true)
     writeFileSync(spec, SPEC.replace('tags: [books]', 'tags: [library]'))
-    const res = runPass({ ...withClient, plugins: [...withClient.plugins] }, root, 'write')
+    const res = await runPass({ ...withClient, plugins: [...withClient.plugins] }, root, 'write')
     expect(existsSync(join(root, 'src/gen/endpoints/books.ts'))).toBe(false)
     expect(existsSync(join(root, 'src/gen/endpoints/library.ts'))).toBe(true)
     expect(res.removed).toEqual([join(root, 'src/gen/endpoints/books.ts')])
@@ -116,22 +116,22 @@ describe('lathe vite plugin', () => {
     // A build error, not a warning: generated output that disagrees with its
     // spec compiles and then fails against the real server.
     const { root } = project()
-    runPass({ ...opts }, root, 'write')
+    await runPass({ ...opts }, root, 'write')
     writeFileSync(join(root, 'src/gen/schemas.ts'), '// hand-edited')
     const plugin = lathe({ ...opts, checkOnBuild: true })
     await plugin.configResolved?.({ root, command: 'build' })
-    expect(() => plugin.buildStart?.()).toThrow(/stale against the spec/)
+    await expect(plugin.buildStart?.()).rejects.toThrow(/stale against the spec/)
   })
 
   it('WRITES on a build when checkOnBuild is not set', async () => {
     const { root } = project()
     const plugin = lathe({ ...opts })
     await plugin.configResolved?.({ root, command: 'build' })
-    expect(() => plugin.buildStart?.()).not.toThrow()
+    await expect(plugin.buildStart?.()).resolves.toBeUndefined()
     expect(readFileSync(join(root, 'src/gen/schemas/Book.ts'), 'utf8')).toContain('export const Book')
   })
 
-  it('the dev server generates nothing on start, and one project per spec change', () => {
+  it('the dev server generates nothing on start, and one project per spec change', async () => {
     // `buildStart` has already generated. A second full pass in
     // `configureServer` only to learn the spec paths doubled every dev start,
     // and a change to one spec used to regenerate every project.
@@ -144,7 +144,7 @@ describe('lathe vite plugin', () => {
         { name: 'b', input: './second.yaml', output: './src/b' },
       ],
     })
-    plugin.configResolved?.({ root, command: 'serve' })
+    await plugin.configResolved?.({ root, command: 'serve' })
     const spy = vi.spyOn(gen, 'generate')
     const watched: string[] = []
     let onChange: (path: string) => void = () => {}
@@ -154,8 +154,9 @@ describe('lathe vite plugin', () => {
     expect(spy).not.toHaveBeenCalled()
     expect(watched).toEqual([join(root, 'openapi.yaml'), join(root, 'second.yaml')])
     onChange(join(root, 'second.yaml'))
+    // The regeneration is asynchronous (a configured formatter may be).
+    await vi.waitFor(() => expect(readFileSync(join(root, 'src/b/schemas/Book.ts'), 'utf8')).toContain('export const Book'))
     expect(spy).toHaveBeenCalledTimes(1)
-    expect(readFileSync(join(root, 'src/b/schemas/Book.ts'), 'utf8')).toContain('export const Book')
     expect(() => readFileSync(join(root, 'src/a/schemas.ts'), 'utf8')).toThrow()
     spy.mockRestore()
   })
@@ -178,7 +179,7 @@ describe('the plugin reads pyreon.config and says what it did', () => {
     const root = withConfig()
     const plugin = lathe()
     await plugin.configResolved?.({ root, command: 'serve' })
-    plugin.buildStart?.()
+    await plugin.buildStart?.()
     expect(readFileSync(join(root, 'src/from-config/schemas/Book.ts'), 'utf8')).toContain('export const Book')
   })
 
@@ -186,7 +187,7 @@ describe('the plugin reads pyreon.config and says what it did', () => {
     const root = withConfig()
     const plugin = lathe({ output: './src/from-options' })
     await plugin.configResolved?.({ root, command: 'serve' })
-    plugin.buildStart?.()
+    await plugin.buildStart?.()
     expect(existsSync(join(root, 'src/from-options/schemas.ts'))).toBe(true)
     expect(existsSync(join(root, 'src/from-config'))).toBe(false)
   })
@@ -197,7 +198,7 @@ describe('the plugin reads pyreon.config and says what it did', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const plugin = lathe({ ...opts, input: './openapi.yml' })
     await plugin.configResolved?.({ root, command: 'serve' })
-    plugin.buildStart?.()
+    await plugin.buildStart?.()
     const said = warn.mock.calls.map((c) => String(c[0])).join('\n')
     warn.mockRestore()
     expect(said).toContain('spec not found')
@@ -206,12 +207,12 @@ describe('the plugin reads pyreon.config and says what it did', () => {
     expect(missingSpecMessage(join(root, 'nothing-like-it.txt'))).not.toContain('Did you mean')
   })
 
-  it('summarises contract changes and losses rather than a bare file count', () => {
+  it('summarises contract changes and losses rather than a bare file count', async () => {
     const { root, spec } = project()
-    runPass({ ...opts, plugins: ['schemas', 'client'] }, root, 'write')
+    await runPass({ ...opts, plugins: ['schemas', 'client'] }, root, 'write')
     // Removing the operation is a BREAKING change for a client that calls it.
     writeFileSync(spec, SPEC.replace(/paths:[\s\S]*components:/, 'paths: {}\ncomponents:'))
-    const lines = passSummary(runPass({ ...opts, plugins: ['schemas', 'client'] }, root, 'write'))
+    const lines = passSummary(await runPass({ ...opts, plugins: ['schemas', 'client'] }, root, 'write'))
     expect(lines.join('\n')).toMatch(/BREAKING contract change/)
   })
 

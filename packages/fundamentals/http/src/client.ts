@@ -308,9 +308,13 @@ function fromResolved(resolved: ResolvedConfig): HttpClient {
     // An accessor `validate` is read per request (so a runtime switch between
     // 'strict' and 'warn' applies to the next call); the static form keeps
     // sharing the one context object.
-    const parse = resolved.validateSource
-      ? { validate: resolved.validateSource(), schema: resolved.parse.schema }
-      : resolved.parse
+    // A per-request `validate` wins over both.
+    const parse =
+      options.validate !== undefined
+        ? { validate: options.validate, schema: resolved.parse.schema }
+        : resolved.validateSource
+          ? { validate: resolved.validateSource(), schema: resolved.parse.schema }
+          : resolved.parse
     return createResponsePromise(exec, parse)
   }
 
