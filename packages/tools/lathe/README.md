@@ -421,8 +421,14 @@ credential may be an accessor, re-read on every request.
 backend that drifts: `'warn'` logs a mismatch and passes the body through,
 `'off'` skips validation (safe only for non-transforming schemas).
 
-The `fetch` / `axios` / `ky` clients export the same `configureApi` minus `use`;
-interceptors belong on their exported `instance`.
+The `fetch` / `axios` / `ky` clients export the SAME `configureApi` and `auth`.
+`use` takes each library's own extension shape — a fetch middleware
+`(request, next) => Promise<Response>`, an axios request interceptor
+`(config) => config`, a ky `beforeRequest` hook — so an interceptor written for
+that library elsewhere drops straight in, and `auth.*` returns that shape. A
+differential test runs all four clients against one server and asserts they
+send byte-identical requests. (With an adapter, `installMocks()` answers before
+the library runs, so `use` does not see mocked requests.)
 
 ### Serialization the spec states
 

@@ -432,6 +432,70 @@ export function runtimeError(): string[] {
   ]
 }
 
+/**
+ * The `Interceptor` type — each library's own request-extension shape, so an
+ * interceptor or hook written for that library elsewhere drops straight in.
+ */
+function interceptorDecl(client: ClientName): string[] {
+  const doc = '/** One `configureApi({ use })` entry, in this library\'s own idiom. */'
+  if (client === 'axios') {
+    return [doc, 'export type Interceptor = (config: InternalAxiosRequestConfig) => InternalAxiosRequestConfig | Promise<InternalAxiosRequestConfig>']
+  }
+  if (client === 'ky') return [doc, 'export type Interceptor = BeforeRequestHook']
+  return [
+    doc,
+    '// fetch has no interceptor API of its own, so this is the standard',
+    '// middleware shape: call `next` with the (possibly replaced) Request.',
+    'export type Interceptor = (request: Request, next: (request: Request) => Promise<Response>) => Promise<Response>',
+  ]
+}
+
+/** How the `use` slot runs, per library. */
+function interceptorRun(client: ClientName): string[] {
+  if (client === 'axios') {
+    return [
+      '',
+      'let installed: number[] = []',
+      '',
+      '/**',
+      ' * Mirror `settings.use` onto the instance\'s request interceptors. axios runs',
+      ' * request interceptors LAST-registered first, so they are registered in',
+      ' * reverse to run in `use` order, outermost first.',
+      ' */',
+      'function installInterceptors(): void {',
+      '  for (const id of installed) instance.interceptors.request.eject(id)',
+      '  installed = [...settings.use].reverse().map((fn) => instance.interceptors.request.use(fn))',
+      '}',
+    ]
+  }
+  if (client === 'ky') {
+    return [
+      '',
+      '/** The instance\'s one `beforeRequest` hook: ky\'s own semantics over the `use` slot. */',
+      'async function runInterceptors(state: BeforeRequestState): Promise<Request | Response | void> {',
+      '  let request = state.request',
+      '  for (const hook of settings.use) {',
+      '    const out = await hook({ ...state, request })',
+      '    if (out instanceof Response) return out',
+      '    if (out instanceof Request) request = out',
+      '  }',
+      '  return request === state.request ? undefined : request',
+      '}',
+    ]
+  }
+  return [
+    '',
+    '/** Run the `use` slot around the platform fetch, outermost first. */',
+    'function runInterceptors(request: Request): Promise<Response> {',
+    '  const at = (i: number, r: Request): Promise<Response> => {',
+    '    const mw = settings.use[i]',
+    '    return mw ? mw(r, (next) => at(i + 1, next)) : fetch(r)',
+    '  }',
+    '  return at(0, request)',
+    '}',
+  ]
+}
+
 /** The adapter-specific request execution. */
 function sendFn(client: ClientName): string[] {
   if (client === 'fetch') {
@@ -444,7 +508,7 @@ function sendFn(client: ClientName): string[] {
       '  signal: AbortSignal | undefined,',
       '  kind: ResponseKind,',
       '): Promise<unknown> {',
-      '  const res = await fetch(url, {',
+      '  const res = await runInterceptors(new Request(url, {',
       '    method,',
       '    headers,',
       '    // Spread rather than assigned: under `exactOptionalPropertyTypes` an',
@@ -452,7 +516,7 @@ function sendFn(client: ClientName): string[] {
     '    // the key has to be ABSENT rather than present-and-undefined.',
     '    ...(json === undefined ? {} : { body: JSON.stringify(json) }),',
       '    ...(signal ? { signal } : {}),',
-      '  })',
+      '  }))',
       '  // `fetch` resolves a 500 like any other response; every other adapter',
       '  // here rejects. Normalised so the generated hooks behave identically.',
       '  if (!res.ok) throw new LatheHttpError(res.status, url, await readBody(res))',
@@ -564,10 +628,12 @@ export function runtimeEndpoint(
   return [
     ...sendFn(client),
     '',
+    ...interceptorDecl(client),
+    '',
     '/**',
     ' * Runtime configuration — the same `configureApi` the `@pyreon/http` client',
-    ' * exposes, minus `use`: interceptors, hooks and retries belong on the',
-    ' * exported `instance`, the way this library documents them.',
+    ' * exposes. `use` takes this library\'s OWN extension shape (see',
+    ' * `Interceptor`), so anything written for it elsewhere works here.',
     ' */',
     'export interface ApiConfig {',
     '  /** Replaces the spec\'s server URL for every request. */',
@@ -576,22 +642,35 @@ export function runtimeEndpoint(
     '  headers?: Record<string, string> | (() => Record<string, string>) | undefined',
     '  /** Response validation: throw, warn and pass through, or skip. */',
     '  validate?: ValidateMode | undefined',
+    '  /** Run around every request, outermost first — auth, logging, tracing. */',
+    '  use?: readonly Interceptor[] | undefined',
     '}',
     '',
     `const DEFAULT_BASE_URL = ${JSON.stringify(baseUrl)}`,
     `const DEFAULT_VALIDATE: ValidateMode = ${JSON.stringify(validate)}`,
     '',
-    'const settings: { baseUrl: string; headers: ApiConfig["headers"]; validate: ValidateMode } = {',
+    'const settings: {',
+    '  baseUrl: string',
+    '  headers: ApiConfig["headers"]',
+    '  validate: ValidateMode',
+    '  use: readonly Interceptor[]',
+    '} = {',
     '  baseUrl: DEFAULT_BASE_URL,',
     '  headers: undefined,',
     '  validate: DEFAULT_VALIDATE,',
+    '  use: [],',
     '}',
+    ...interceptorRun(client),
     '',
     '/** A key present with `undefined` resets that slot; an absent key leaves it alone. */',
     'export function configureApi(config: ApiConfig): void {',
     '  if ("baseUrl" in config) settings.baseUrl = config.baseUrl ?? DEFAULT_BASE_URL',
     '  if ("headers" in config) settings.headers = config.headers',
     '  if ("validate" in config) settings.validate = config.validate ?? DEFAULT_VALIDATE',
+    '  if ("use" in config) {',
+    '    settings.use = config.use ?? []',
+    ...(client === 'axios' ? ['    installInterceptors()'] : []),
+    '  }',
     '}',
     '',
     '/** Namespace for every cache key — `@pyreon/http`\'s `keyScope`. */',

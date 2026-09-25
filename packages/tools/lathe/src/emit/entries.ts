@@ -106,8 +106,9 @@ export function emitBarrel(doc: IrDocument, opts: EntryOptions): SourceFile {
     if (exists(opts, 'client.ts')) {
       // The runtime seam (dx D8) is part of the production surface: an app
       // configures its base URL and auth from here, not by editing output.
-      const pyreon = (opts.client ?? 'pyreon') === 'pyreon'
-      const auth = pyreon && (doc.securitySchemes?.length ?? 0) > 0
+      // Identical for every client: each one exports `configureApi` and, per
+      // security scheme, `auth` — only their per-library shapes differ.
+      const auth = (doc.securitySchemes?.length ?? 0) > 0
       lines.push(`export { api, configureApi, ${auth ? 'auth, ' : ''}type ApiConfig } from './client'`)
     }
     for (const [tag] of byTag(doc)) {

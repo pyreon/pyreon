@@ -138,7 +138,7 @@ export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
   f.line('export function apiBaseUrl(): string {')
   f.line('  return settings.baseUrl')
   f.line('}')
-  emitAuthHelpers(f, doc)
+  emitAuthHelpers(f, doc, 'pyreon')
   f.line()
   f.doc(
     `HTTP client for ${doc.title} ${doc.version}.`,
@@ -171,24 +171,42 @@ export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
 }
 
 /**
- * `auth` — one helper per `components.securitySchemes` entry (dx D8).
+ * `auth` — one helper per `components.securitySchemes` entry (dx D8), for
+ * EVERY client.
  *
- * Each returns MIDDLEWARE, so it composes with `configureApi({ use })` and
- * with anything else there. A credential may be an accessor, re-read per
- * request, which is how a token that rotates stays current without
- * reconfiguring the client.
+ * Each scheme reduces to a DECORATION — a header, a cookie or a query
+ * parameter — computed per request from a credential that may be an accessor.
+ * How a decoration is applied is the only per-client part, and it is written
+ * in that library's own idiom: `@pyreon/http` middleware, a fetch middleware,
+ * an axios request interceptor, a ky `beforeRequest` hook. So
+ * `configureApi({ use: [auth.token(() => t())] })` reads the same and sends
+ * the same request whichever client was generated.
  */
-function emitAuthHelpers(f: SourceFile, doc: IrDocument): void {
+function emitAuthHelpers(f: SourceFile, doc: IrDocument, client: ClientName): void {
   const schemes = doc.securitySchemes ?? []
   if (schemes.length === 0) return
   f.line()
   f.doc('A credential, or an accessor re-read on every request. Nullish sends nothing.')
   f.line('export type Credential = string | null | undefined | (() => string | null | undefined)')
   f.line()
-  f.line('const read = (c: Credential): string | null | undefined => (typeof c === \'function\' ? c() : c)')
+  f.line("const read = (c: Credential): string | null | undefined => (typeof c === 'function' ? c() : c)")
+  f.line()
+  f.doc('What one scheme adds to a request. `null` adds nothing.')
+  f.line('type Decoration = { header: [string, string] } | { cookie: [string, string] } | { query: [string, string] } | null')
+  f.line()
+  f.line('function withQuery(url: string, [k, v]: [string, string]): string {')
+  f.line("  return `${url}${url.includes('?') ? '&' : '?'}${encodeURIComponent(k)}=${encodeURIComponent(v)}`")
+  f.line('}')
+  f.line()
+  f.line('function withCookie(prev: string | null | undefined, [k, v]: [string, string]): string {')
+  f.line('  const pair = `${encodeURIComponent(k)}=${encodeURIComponent(v)}`')
+  f.line('  return prev ? `${prev}; ${pair}` : pair')
+  f.line('}')
+  f.line()
+  for (const l of decoratingFn(client)) f.line(l)
   f.line()
   f.doc(
-    'Auth middleware for each security scheme the spec declares.',
+    'Auth for each security scheme the spec declares — pass to `configureApi({ use })`.',
     '',
     '```ts',
     `configureApi({ use: [auth.${ident(schemes[0]?.name ?? 'x')}(${schemes[0]?.kind === 'basic' ? "'user', () => password()" : '() => session.token()'})] })`,
@@ -200,55 +218,100 @@ function emitAuthHelpers(f: SourceFile, doc: IrDocument): void {
     const key = propKey(unique(ident(sc.name)))
     if (sc.kind === 'bearer') {
       f.doc(sc.doc, `\`${sc.name}\` — sends \`Authorization: Bearer <token>\`.`)
-      f.line(`  ${key}: (token: Credential): HttpMiddleware => (req, next) => {`)
-      f.line('    const t = read(token)')
-      f.line("    if (t) req.headers.set('authorization', `Bearer ${t}`)")
-      f.line('    return next(req)')
-      f.line('  },')
+      f.line(`  ${key}: (token: Credential) =>`)
+      f.line('    decorating(() => {')
+      f.line('      const t = read(token)')
+      f.line("      return t ? { header: ['authorization', `Bearer ${t}`] } : null")
+      f.line('    }),')
     } else if (sc.kind === 'basic') {
       f.doc(sc.doc, `\`${sc.name}\` — sends \`Authorization: Basic <base64(username:password)>\`.`)
-      f.line(`  ${key}: (username: Credential, password: Credential): HttpMiddleware => (req, next) => {`)
-      f.line('    const u = read(username)')
-      f.line('    if (u !== null && u !== undefined) {')
+      f.line(`  ${key}: (username: Credential, password: Credential) =>`)
+      f.line('    decorating(() => {')
+      f.line('      const u = read(username)')
+      f.line('      if (u === null || u === undefined) return null')
       f.line('      // UTF-8 first: `btoa` alone throws on any non-Latin-1 character.')
       f.line("      const bytes = new TextEncoder().encode(`${u}:${read(password) ?? ''}`)")
-      f.line("      req.headers.set('authorization', `Basic ${btoa(String.fromCharCode(...bytes))}`)")
-      f.line('    }')
-      f.line('    return next(req)')
-      f.line('  },')
-    } else if (sc.in === 'header') {
-      f.doc(sc.doc, `\`${sc.name}\` — sends the key in the \`${sc.param}\` header.`)
-      f.line(`  ${key}: (apiKey: Credential): HttpMiddleware => (req, next) => {`)
-      f.line('    const k = read(apiKey)')
-      f.line(`    if (k) req.headers.set(${q(sc.param)}, k)`)
-      f.line('    return next(req)')
-      f.line('  },')
-    } else if (sc.in === 'query') {
-      f.doc(sc.doc, `\`${sc.name}\` — appends the key as the \`${sc.param}\` query parameter.`)
-      f.line(`  ${key}: (apiKey: Credential): HttpMiddleware => (req, next) => {`)
-      f.line('    const k = read(apiKey)')
-      f.line('    if (!k) return next(req)')
-      f.line("    const sep = req.url.includes('?') ? '&' : '?'")
-      f.line(`    return next({ ...req, url: \`\${req.url}\${sep}${encodeURIComponent(sc.param)}=\${encodeURIComponent(k)}\` })`)
-      f.line('  },')
+      f.line("      return { header: ['authorization', `Basic ${btoa(String.fromCharCode(...bytes))}`] }")
+      f.line('    }),')
     } else {
-      f.doc(
-        sc.doc,
-        `\`${sc.name}\` — sends the key as the \`${sc.param}\` cookie. Browsers forbid setting`,
-        'the Cookie header from script, so this applies on the SERVER (SSR, scripts);',
-        'in a browser the cookie must already be set on the API origin.',
-      )
-      f.line(`  ${key}: (apiKey: Credential): HttpMiddleware => (req, next) => {`)
-      f.line('    const k = read(apiKey)')
-      f.line('    if (!k) return next(req)')
-      f.line("    const prev = req.headers.get('cookie')")
-      f.line(`    const pair = \`${encodeURIComponent(sc.param)}=\${encodeURIComponent(k)}\``)
-      f.line("    req.headers.set('cookie', prev ? `${prev}; ${pair}` : pair)")
-      f.line('    return next(req)')
-      f.line('  },')
+      const where =
+        sc.in === 'header'
+          ? `in the \`${sc.param}\` header`
+          : sc.in === 'query'
+            ? `as the \`${sc.param}\` query parameter`
+            : `as the \`${sc.param}\` cookie (server-side — browsers forbid setting Cookie from script)`
+      f.doc(sc.doc, `\`${sc.name}\` — sends the key ${where}.`)
+      f.line(`  ${key}: (apiKey: Credential) =>`)
+      f.line('    decorating(() => {')
+      f.line('      const k = read(apiKey)')
+      f.line(`      return k ? { ${sc.in}: [${q(sc.param)}, k] } : null`)
+      f.line('    }),')
     }
   }
   f.line('}')
+}
+
+/** The per-client half: apply a decoration in the library's own idiom. */
+function decoratingFn(client: ClientName): string[] {
+  const head = '/** Apply a decoration the way this client extends a request. */'
+  if (client === 'pyreon') {
+    return [
+      head,
+      'function decorating(decorate: () => Decoration): HttpMiddleware {',
+      '  return (req, next) => {',
+      '    const d = decorate()',
+      '    if (d === null) return next(req)',
+      "    if ('header' in d) req.headers.set(...d.header)",
+      "    else if ('cookie' in d) req.headers.set('cookie', withCookie(req.headers.get('cookie'), d.cookie))",
+      '    else return next({ ...req, url: withQuery(req.url, d.query) })',
+      '    return next(req)',
+      '  }',
+      '}',
+    ]
+  }
+  if (client === 'fetch') {
+    return [
+      head,
+      'function decorating(decorate: () => Decoration): Interceptor {',
+      '  return (request, next) => {',
+      '    const d = decorate()',
+      '    if (d === null) return next(request)',
+      "    const out = 'query' in d ? new Request(withQuery(request.url, d.query), request) : request",
+      "    if ('header' in d) out.headers.set(...d.header)",
+      "    else if ('cookie' in d) out.headers.set('cookie', withCookie(out.headers.get('cookie'), d.cookie))",
+      '    return next(out)',
+      '  }',
+      '}',
+    ]
+  }
+  if (client === 'axios') {
+    return [
+      head,
+      'function decorating(decorate: () => Decoration): Interceptor {',
+      '  return (config) => {',
+      '    const d = decorate()',
+      '    if (d === null) return config',
+      "    if ('header' in d) config.headers.set(...d.header)",
+      "    else if ('cookie' in d) config.headers.set('cookie', withCookie(config.headers.get('cookie') as string | null, d.cookie))",
+      "    else config.url = withQuery(config.url ?? '', d.query)",
+      '    return config',
+      '  }',
+      '}',
+    ]
+  }
+  return [
+    head,
+    'function decorating(decorate: () => Decoration): Interceptor {',
+    '  return ({ request }) => {',
+    '    const d = decorate()',
+    '    if (d === null) return',
+    "    const out = 'query' in d ? new Request(withQuery(request.url, d.query), request) : request",
+    "    if ('header' in d) out.headers.set(...d.header)",
+    "    else if ('cookie' in d) out.headers.set('cookie', withCookie(out.headers.get('cookie'), d.cookie))",
+    '    return out',
+    '  }',
+    '}',
+  ]
 }
 
 function baseUrlOf(doc: IrDocument, opts: ClientOptions): string {
@@ -274,10 +337,10 @@ function emitAdapterClient(
   const pkg = CLIENT_PACKAGE[client]
   if (client === 'axios') {
     f.importDefault('axios', 'axios')
-    f.importType('axios', 'AxiosInstance')
+    f.importType('axios', 'AxiosInstance', 'InternalAxiosRequestConfig')
   } else if (client === 'ky') {
     f.importDefault('ky', 'ky')
-    f.importType('ky', 'KyInstance')
+    f.importType('ky', 'BeforeRequestHook', 'BeforeRequestState', 'KyInstance')
   }
   f.line()
   f.doc(
@@ -295,7 +358,9 @@ function emitAdapterClient(
   if (client === 'axios') {
     f.line('export const instance: AxiosInstance = axios.create()')
   } else if (client === 'ky') {
-    f.line('export const instance: KyInstance = ky.create({})')
+    // One permanent hook that runs the `configureApi({ use })` slot, so the
+    // slot can change at runtime without re-creating the instance.
+    f.line('export const instance: KyInstance = ky.create({ hooks: { beforeRequest: [runInterceptors] } })')
   }
   if (client !== 'fetch') f.line()
   f.lines(...runtimeError())
@@ -307,6 +372,7 @@ function emitAdapterClient(
   f.lines(...runtimeTransport())
   f.line()
   f.lines(...runtimeEndpoint(client, baseUrlOf(doc, opts), opts.keyScope, opts.validate))
+  emitAuthHelpers(f, doc, client)
   return f
 }
 
