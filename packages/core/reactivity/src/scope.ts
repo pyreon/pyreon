@@ -1,3 +1,4 @@
+import { _enterCleanupFrame, _exitCleanupFrame } from './effect'
 export class EffectScope {
   private _effects: { dispose(): void }[] | null = null
   private _active = true
@@ -50,10 +51,18 @@ export class EffectScope {
   runInScope<T>(fn: () => T): T {
     const prev = _currentScope
     _currentScope = this
+    // `onCleanup()` called in `fn` (outside any effect it creates) belongs to
+    // THIS scope and runs on `stop()` — the same ownership rule as effects. It
+    // must not inherit an enclosing effect run's window (a store first created
+    // inside a component would otherwise hand its cleanups to that component)
+    // nor vanish when no window is open (onCleanup inside onMount).
+    const token = _enterCleanupFrame()
     try {
       return fn()
     } finally {
       _currentScope = prev
+      const collected = _exitCleanupFrame(token)
+      if (collected !== null) for (const c of collected) this.add({ dispose: c })
     }
   }
 
