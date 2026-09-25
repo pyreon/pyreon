@@ -1,17 +1,20 @@
 import type { ZeroConfig } from './types'
 
 /**
- * Define a Zero configuration.
- * Used in `zero.config.ts` at the project root.
+ * Define a Zero configuration — a typed identity helper for building the
+ * object you pass to `zero()` in `vite.config.ts`. (There is no separate
+ * `zero.config.ts`; nothing reads one.)
  *
  * @example
- * import { defineConfig } from "@pyreon/zero/config"
+ * import zero, { defineConfig } from "@pyreon/zero/server"
  *
- * export default defineConfig({
+ * const config = defineConfig({
  *   mode: "ssr",
  *   ssr: { mode: "stream" },
  *   port: 3000,
  * })
+ *
+ * export default { plugins: [pyreon(), zero(config)] }
  */
 export function defineConfig(config: ZeroConfig): ZeroConfig {
   return config

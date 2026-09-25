@@ -471,7 +471,7 @@ async function warnUnenumeratedDynamicRoute(
   if (ruleMode === 'spa' || ruleMode === 'ssr' || ruleMode === 'isr') return
   try {
     const source = await readFile(join(routesDir, filePath), 'utf-8')
-    const literal = detectRouteExports(source).renderModeLiteral
+    const literal = detectRouteExports(source, filePath).renderModeLiteral
     const declared = literal?.replace(/['"]/g, '')
     // Declared non-static mode → the skip is intentional, not a footgun.
     if (declared === 'spa' || declared === 'ssr' || declared === 'isr') return

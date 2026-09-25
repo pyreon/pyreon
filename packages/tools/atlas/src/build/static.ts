@@ -31,6 +31,7 @@ import {
   atlasDevPlugin,
   builtinMethods,
   CATALOG_ID,
+  fontLinks,
   routesFlagScript,
   type RpcMethod,
 } from '../dev/plugin'
@@ -489,9 +490,7 @@ export function staticHtml(title: string, baked: BakedRpc, base = '/'): string {
     '    <meta charset="utf-8" />',
     '    <meta name="viewport" content="width=device-width, initial-scale=1" />',
     `    <title>${escapeHtml(title)}</title>`,
-    '    <link rel="preconnect" href="https://fonts.googleapis.com" />',
-    '    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />',
-    '    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />',
+    ...fontLinks(),
     // Before the module script, which is deferred — see `bakedRpcScript`.
     `    ${bakedRpcScript(baked)}`,
     `    ${bakedRpcUrlScript(base)}`,

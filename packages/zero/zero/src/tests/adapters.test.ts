@@ -105,7 +105,9 @@ describe('vercel adapter build', () => {
 
     // Verify function config
     const vcConfig = JSON.parse(await readFile(join(vercelDir, 'functions', 'ssr.func', '.vc-config.json'), 'utf-8'))
-    expect(vcConfig.runtime).toMatch(/^nodejs/)
+    // Node 20 is end-of-life (April 2026); the default must be a supported
+    // runtime, and it must be overridable.
+    expect(vcConfig.runtime).toBe('nodejs22.x')
 
     // Verify the SSR module import is HOISTED to module scope, NOT
     // dynamically imported inside the handler. Pre-fix the emitted
@@ -127,6 +129,26 @@ describe('vercel adapter build', () => {
     // and Vercel's launcher logged generic 500s without context.
     expect(funcSrc).toMatch(/console\.error\([^)]*Pyreon SSR/)
 
+    await cleanup()
+  })
+})
+
+describe('vercel adapter runtime option', () => {
+  it('uses the runtime the caller pins', async () => {
+    await setupMockBuild()
+    const outDir = join(TMP, 'vercel-runtime')
+    await vercelAdapter({ runtime: 'nodejs24.x' }).build({
+      kind: 'ssr',
+      serverEntry: join(MOCK_SERVER, 'entry-server.js'),
+      clientOutDir: MOCK_CLIENT,
+      outDir,
+      projectRoot: outDir,
+      config: {},
+    })
+    const vc = JSON.parse(
+      await readFile(join(outDir, '.vercel', 'output', 'functions', 'ssr.func', '.vc-config.json'), 'utf-8'),
+    )
+    expect(vc.runtime).toBe('nodejs24.x')
     await cleanup()
   })
 })
@@ -1612,6 +1634,62 @@ describe('node adapter — runtime contract', () => {
         const res = await fetch(`http://127.0.0.1:${port}/api/anything`)
         expect(res.status).toBe(200)
         expect(await res.text()).toBe('ok')
+      } finally {
+        await stop()
+        await cleanup()
+      }
+    },
+    20000,
+  )
+
+  // The generated runner used to build `new Request(url, { method, headers })`
+  // — no body — against a hardcoded "http://localhost" origin, with no
+  // try/catch around the handler. So every POST reached API routes empty,
+  // every browser server action failed the same-origin check with 403, and
+  // one throwing handler exited the whole process (an unhandled rejection).
+  it.skipIf(!hasNode)(
+    'forwards the body, the real origin and the client address, and survives a throwing handler',
+    async () => {
+      await setupMockBuild()
+      const { writeFile } = await import('node:fs/promises')
+      await writeFile(
+        join(MOCK_SERVER, 'entry-server.js'),
+        `export default async (req) => {
+  const url = new URL(req.url)
+  if (url.pathname === '/boom') throw new Error('handler exploded')
+  return Response.json({
+    body: await req.text(),
+    origin: url.origin,
+    remote: req[Symbol.for('pyreon.remoteAddress')] ?? null,
+  })
+}`,
+      )
+      const outDir = join(TMP, 'node-runtime-body')
+      const port = await pickFreePort()
+      await nodeAdapter().build({
+        kind: 'ssr',
+        serverEntry: join(MOCK_SERVER, 'entry-server.js'),
+        clientOutDir: MOCK_CLIENT,
+        outDir,
+        config: { port },
+      })
+      const stop = await startNodeServer(join(outDir, 'index.js'), port)
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/api/echo`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: '{"a":1}',
+        })
+        const json = (await res.json()) as { body: string; origin: string; remote: string | null }
+        expect(json.body).toBe('{"a":1}')
+        expect(json.origin).toBe(`http://127.0.0.1:${port}`)
+        expect(typeof json.remote === 'string' && json.remote.length > 0).toBe(true)
+
+        const boom = await fetch(`http://127.0.0.1:${port}/boom`)
+        expect(boom.status).toBe(500)
+        // Still serving after the throw.
+        const after = await fetch(`http://127.0.0.1:${port}/api/echo`, { method: 'POST', body: 'x' })
+        expect(after.status).toBe(200)
       } finally {
         await stop()
         await cleanup()

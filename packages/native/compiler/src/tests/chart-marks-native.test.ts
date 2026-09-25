@@ -10,7 +10,7 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
  * paths are the generated twins of the web renderer.
  */
 const OPTION = `
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return (
     <OptionChart option={{
@@ -60,7 +60,7 @@ describe.each(['swift', 'kotlin'] as const)('markLine / markPoint on %s', (targe
 
   it('an endpoint or a mark the facade cannot place is named, never dropped silently', () => {
     const r = transform(`
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart option={{ xAxis: { type: 'category', data: ['a'] }, yAxis: {}, series: [{ type: 'bar', data: [1],
     markLine: { data: [[{ type: 'max' }, { coord: ['zzz', 1] }], { foo: 1 }] },

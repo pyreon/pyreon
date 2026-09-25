@@ -219,6 +219,35 @@ test.describe('SSR node deploy artifact', () => {
     await expect(page).toHaveURL(/\/about$/)
     expect(errors, errors.join('\n')).toHaveLength(0)
   })
+  // Route middleware is the documented auth hook. It must gate EVERY way to
+  // the page and its server data — not only a bare full-page GET.
+  test('route middleware gates the page, a query-string variant, and the data endpoint', async ({ page }) => {
+    for (const path of [
+      '/guarded',
+      '/guarded?x=1',
+      '/_pyreon/data?path=/guarded',
+      `/_pyreon/data?path=${encodeURIComponent('/guarded?x=1')}`,
+    ]) {
+      const res = await page.request.get(path)
+      expect(res.status(), path).toBe(401)
+      expect(await res.text(), path).not.toContain('GUARDED_SENTINEL_m4k2')
+    }
+    const ok = await page.request.get('/_pyreon/data?path=/guarded', {
+      headers: { 'x-demo-auth': 'let-me-in' },
+    })
+    expect(ok.status()).toBe(200)
+    expect(await ok.text()).toContain('GUARDED_SENTINEL_m4k2')
+  })
+
+  // The node runner used to drop request bodies, so every API POST arrived
+  // empty and `req.json()` threw.
+  test('an API POST reaches its handler with its body', async ({ page }) => {
+    const res = await page.request.post('/api/posts', {
+      data: { title: 'from e2e', body: 'body survives' },
+    })
+    expect(res.status()).toBe(201)
+    expect(await res.json()).toMatchObject({ title: 'from e2e', body: 'body survives' })
+  })
 })
 
 /**
@@ -269,4 +298,5 @@ test.describe('zero <Link> prefetch — no modulepreload MIME error', () => {
       page.locator('head link[rel="prefetch"][href="/about"][as="document"]'),
     ).toHaveCount(1)
   })
+
 })

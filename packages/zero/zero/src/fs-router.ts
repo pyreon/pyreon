@@ -4,6 +4,7 @@ import {
   stripRouteExtension,
 } from '@pyreon/compiler/fs-route-convention'
 import { readFileSync } from 'node:fs'
+import { parseSync } from 'oxc-parser'
 import { join } from 'node:path'
 import type { FileRoute, RenderMode, RouteFileExports } from './types'
 import { matchRouteRules } from './route-modes'
@@ -94,80 +95,79 @@ type RouteExportName = (typeof ROUTE_EXPORT_NAMES)[number]
 /**
  * Detect which optional metadata exports a route file source declares.
  *
- * Walks the source character-by-character, tracking string-literal and
- * comment state, then collects top-level `export …` statements. This is
- * more accurate than regex (no false matches inside string literals,
- * template literals, or comments) and lighter than a full AST parse
- * (no oxc/babel dependency, ~1µs per file).
+ * Parses the file with `oxc-parser` and reads the top-level `export`
+ * statements off the AST. This replaced a hand-rolled character scanner
+ * that treated every quote as a string opener: an apostrophe in JSX text
+ * (`<p>Don't miss</p>`) or a quote inside a regex literal (`/'/g`)
+ * desynchronised it and hid every export that followed — a route's
+ * `loader`/`renderMode`/`middleware` silently stopped existing. JSX text,
+ * regex literals and template literals are exactly the grammar a
+ * character scanner cannot model without being a parser, so it is one.
  *
- * Recognizes:
- *   • `export const NAME = …`
- *   • `export let NAME = …`
- *   • `export var NAME = …`
- *   • `export function NAME(…)`
- *   • `export async function NAME(…)`
- *   • `export { NAME }` and `export { localName as NAME }`
- *   • `export { NAME } from '…'` (re-export)
+ * Recognizes every ESM named-export form:
+ *   • `export const | let | var NAME = …` (incl. destructuring)
+ *   • `export function NAME(…)` / `export async function NAME(…)`
+ *   • `export class NAME`
+ *   • `export { NAME }`, `export { local as NAME }`, `export { NAME } from '…'`
+ *   • `export * as NAME from '…'`
+ * Type-only exports (`export type`, `export { type X }`, `export declare`)
+ * are ignored — they have no runtime value.
  *
- * Names checked: loader, guard, meta, renderMode, error, middleware.
+ * `filename` only selects the parser dialect (`.ts` keeps `<T>x` casts
+ * legal; everything else parses as TSX/JSX). Defaults to TSX.
  */
-export function detectRouteExports(source: string): RouteFileExports {
+export function detectRouteExports(source: string, filename = 'route.tsx'): RouteFileExports {
   const found = new Set<RouteExportName>()
-  const tokens = scanTopLevelExportTokens(source)
+  // The statement text that declares each found export — re-parsed on
+  // its own below when a literal initializer is wanted.
+  const declaringStatement = new Map<RouteExportName, string>()
+  const lang = routeLang(filename)
 
-  for (const tok of tokens) {
-    if (tok.kind === 'declaration') {
-      // `export const NAME` / `export function NAME`
-      if ((ROUTE_EXPORT_NAMES as readonly string[]).includes(tok.name)) {
-        found.add(tok.name as RouteExportName)
-      }
-    } else {
-      // `export { localName as exportedName, ... }`
-      for (const name of tok.names) {
-        if ((ROUTE_EXPORT_NAMES as readonly string[]).includes(name)) {
-          found.add(name as RouteExportName)
-        }
+  let staticExports: ReturnType<typeof parseSync>['module']['staticExports']
+  try {
+    // Read the parser's ESM MODULE RECORD rather than the AST: the record
+    // is a flat list of export entries (type-only ones flagged `isType`),
+    // and skipping the full AST deserialisation halves the per-file cost.
+    staticExports = parseSync(filename, source, { sourceType: 'module', lang }).module
+      .staticExports
+  } catch {
+    // A file the parser cannot even start on is a file Vite will reject
+    // with a real diagnostic. Report no exports rather than guessing.
+    return { ...EMPTY_EXPORTS, readsRequestAuth: READS_REQUEST_AUTH_RE.test(source) }
+  }
+
+  for (const stmt of staticExports) {
+    for (const entry of stmt.entries) {
+      if (entry.isType || entry.exportName.kind !== 'Name') continue
+      const name = entry.exportName.name
+      if (name === null || !(ROUTE_EXPORT_NAMES as readonly string[]).includes(name)) continue
+      found.add(name as RouteExportName)
+      // Only a LOCAL declaration (`export const NAME = …`) carries an
+      // initializer; `export { NAME }` / re-exports do not.
+      if (entry.moduleRequest === null && entry.localName.name === name) {
+        declaringStatement.set(name as RouteExportName, source.slice(stmt.start, stmt.end))
       }
     }
   }
 
-  // Capture literal `meta` and `renderMode` initializers when present
-  // so the route generator can inline them and avoid forcing a static
-  // import of the entire route module just to read the metadata.
-  // Strip any trailing `as const` / `satisfies T` type assertions —
-  // the generated routes module is plain JS, not TS.
-  //
-  // We then run `isPureLiteral()` to make sure the captured expression
-  // doesn't reference any free identifiers (e.g. `meta = { title: foo }`
-  // where `foo` is a const declared elsewhere in the file). Inlining
-  // such an expression into the routes module would produce a runtime
-  // ReferenceError, so we drop the literal and let the generator fall
-  // back to a static module import in those cases.
-  const rawMeta = found.has('meta') ? extractLiteralExport(source, 'meta') : undefined
-  const rawRenderMode = found.has('renderMode')
-    ? extractLiteralExport(source, 'renderMode')
-    : undefined
-  // PR I — capture `revalidate` as a literal so the build-time ISR
-  // manifest (`dist/_pyreon-revalidate.json`) can be emitted from the
-  // SSG plugin without loading the route module. The route generator
-  // does NOT inline `revalidate` into the route record — it's a build-
-  // time-only concern that adapters consume via the manifest.
-  const rawRevalidate = found.has('revalidate')
-    ? extractLiteralExport(source, 'revalidate')
-    : undefined
-  const cleanMeta = rawMeta !== undefined ? stripTypeAssertions(rawMeta) : undefined
-  const cleanRenderMode =
-    rawRenderMode !== undefined ? stripTypeAssertions(rawRenderMode) : undefined
-  const cleanRevalidate =
-    rawRevalidate !== undefined ? stripTypeAssertions(rawRevalidate) : undefined
-  const metaLiteral = cleanMeta !== undefined && isPureLiteral(cleanMeta) ? cleanMeta : undefined
-  const renderModeLiteral =
-    cleanRenderMode !== undefined && isPureLiteral(cleanRenderMode) ? cleanRenderMode : undefined
-  // `revalidate` literals are number (`60`) or boolean (`false`) — never
-  // an object/array — so `isPureLiteral` is overkill. Keep the same
-  // safety check for defense-in-depth.
-  const revalidateLiteral =
-    cleanRevalidate !== undefined && isPureLiteral(cleanRevalidate) ? cleanRevalidate : undefined
+  // Capture literal `meta`, `renderMode` and `revalidate` initializers so
+  // the route generator can inline them (and the SSG plugin can build the
+  // ISR manifest) without importing the route module. Only a PURE literal
+  // qualifies — anything referencing a free identifier would be a
+  // ReferenceError once inlined into the generated routes module, so the
+  // generator falls back to a static import instead. TypeScript-only
+  // wrappers (`as const`, `satisfies T`, `!`) are removed, at any depth:
+  // the generated module is plain JavaScript.
+  const literalOf = (name: RouteExportName): string | undefined => {
+    const stmt = declaringStatement.get(name)
+    return stmt === undefined ? undefined : constInitializerLiteral(stmt, name, lang)
+  }
+  const metaLiteral = literalOf('meta')
+  const renderModeLiteral = literalOf('renderMode')
+  // PR I — `revalidate` feeds the build-time ISR manifest
+  // (`dist/_pyreon-revalidate.json`); it is never inlined into the route
+  // record.
+  const revalidateLiteral = literalOf('revalidate')
 
   return {
     hasLoader: found.has('loader'),
@@ -197,622 +197,130 @@ export function detectRouteExports(source: string): RouteFileExports {
  */
 const READS_REQUEST_AUTH_RE = /headers\s*\.\s*get\s*\(\s*['"`](?:cookie|authorization)['"`]\s*\)/i
 
+/** Loose ESTree node shape — only the fields read here are relied on. */
+interface AstNode {
+  type: string
+  start: number
+  end: number
+  [key: string]: unknown
+}
+
+function routeLang(filename: string): 'ts' | 'tsx' | 'jsx' {
+  if (/\.[mc]?ts$/.test(filename)) return 'ts'
+  if (/\.[mc]?jsx?$/.test(filename)) return 'jsx'
+  return 'tsx'
+}
+
 /**
- * Extract the literal initializer of an `export const NAME = …` statement
- * as a raw text slice — used by the route generator to inline `meta` and
- * `renderMode` values into the generated routes module.
- *
- * Walks the source character-by-character respecting strings, template
- * literals, comments, and brace/bracket/paren nesting. The slice runs
- * from the first non-whitespace character after `=` to the matching
- * end-of-expression terminator (`;`, newline at depth 0, or top-level
- * `export`). Whatever the slice contains is handed to V8 verbatim by
- * embedding it inside `{ … }` in the generated module — which means
- * the original source must already be valid JavaScript (which it is,
- * since the route file compiles).
- *
- * Returns `undefined` when extraction fails for any reason — the
- * generator falls back to a static module import in that case.
+ * The pure-literal initializer of `export const NAME = …` in `statement`
+ * (a single top-level export statement, parsed on its own), or
+ * `undefined` for any other shape — `let`/`var`, a function, a
+ * destructuring binding, or a non-literal initializer.
  */
-function extractLiteralExport(source: string, name: string): string | undefined {
-  // Find `export const NAME = ` at top level. Reuse the same
-  // string/comment/depth tracking as the token scanner so we don't
-  // false-match inside literals.
-  const len = source.length
-  let i = 0
-  let depth = 0
-
-  const isIdCont = (c: string) => /[A-Za-z0-9_$]/.test(c)
-  const skipWs = (p: number): number => {
-    while (p < len && /\s/.test(source[p] as string)) p++
-    return p
+function constInitializerLiteral(
+  statement: string,
+  name: string,
+  lang: 'ts' | 'tsx' | 'jsx',
+): string | undefined {
+  let stmt: AstNode | undefined
+  try {
+    stmt = parseSync(`stmt.${lang}`, statement, { sourceType: 'module', lang }).program
+      .body[0] as unknown as AstNode | undefined
+  } catch {
+    return undefined
   }
-
-  while (i < len) {
-    const ch = source[i] as string
-    const next = source[i + 1] ?? ''
-
-    // Skip comments
-    if (ch === '/' && next === '/') {
-      while (i < len && source[i] !== '\n') i++
-      continue
+  const decl = stmt?.declaration as AstNode | null | undefined
+  if (!decl || decl.type !== 'VariableDeclaration' || decl.kind !== 'const') return undefined
+  for (const d of decl.declarations as AstNode[]) {
+    const id = d.id as AstNode
+    if (id.type === 'Identifier' && id.name === name && d.init) {
+      return pureLiteralSource(d.init as AstNode, statement)
     }
-    if (ch === '/' && next === '*') {
-      i += 2
-      while (i < len - 1 && !(source[i] === '*' && source[i + 1] === '/')) i++
-      i += 2
-      continue
-    }
-
-    // Skip string literals
-    if (ch === '"' || ch === "'") {
-      const quote = ch
-      i++
-      while (i < len && source[i] !== quote) {
-        if (source[i] === '\\') i += 2
-        else i++
-      }
-      i++
-      continue
-    }
-    if (ch === '`') {
-      i++
-      while (i < len && source[i] !== '`') {
-        if (source[i] === '\\') {
-          i += 2
-          continue
-        }
-        if (source[i] === '$' && source[i + 1] === '{') {
-          i += 2
-          let exprDepth = 1
-          while (i < len && exprDepth > 0) {
-            const c = source[i] as string
-            if (c === '{') exprDepth++
-            else if (c === '}') exprDepth--
-            if (exprDepth === 0) {
-              i++
-              break
-            }
-            i++
-          }
-          continue
-        }
-        i++
-      }
-      i++
-      continue
-    }
-
-    // Brace depth tracking
-    if (ch === '{') {
-      depth++
-      i++
-      continue
-    }
-    if (ch === '}') {
-      depth--
-      i++
-      continue
-    }
-
-    // Look for `export const NAME = …` at depth 0
-    if (depth === 0 && ch === 'e') {
-      const afterExport = source.slice(i, i + 6) === 'export' && !isIdCont(source[i + 6] ?? '')
-      if (afterExport) {
-        let p = skipWs(i + 6)
-        if (source.slice(p, p + 5) === 'const' && !isIdCont(source[p + 5] ?? '')) {
-          p = skipWs(p + 5)
-          // Check that the identifier matches our target name
-          if (
-            source.slice(p, p + name.length) === name &&
-            !isIdCont(source[p + name.length] ?? '')
-          ) {
-            p = skipWs(p + name.length)
-            if (source[p] === '=') {
-              p = skipWs(p + 1)
-              return readExpressionUntilEnd(source, p)
-            }
-          }
-        }
-        i = i + 6
-        continue
-      }
-    }
-
-    i++
   }
-
   return undefined
 }
 
-/**
- * Read a JavaScript expression starting at `start` and return the raw
- * text up to (but not including) its end. The end is whichever comes
- * first of:
- *   • a `;` at depth 0
- *   • a newline at depth 0 that is not inside a string/template
- *   • the next top-level `export` / `const` / `function` keyword
- *   • end of file
- *
- * Tracks `()`, `[]`, and `{}` nesting plus string/template/comment
- * state so depth-0 boundaries are detected correctly even for nested
- * objects, arrays, and tagged templates.
- */
-function readExpressionUntilEnd(source: string, start: number): string | undefined {
-  const len = source.length
-  let i = start
-  let depth = 0 // combined paren/bracket/brace depth
-
-  while (i < len) {
-    const ch = source[i] as string
-    const next = source[i + 1] ?? ''
-
-    // End conditions at depth 0
-    if (depth === 0) {
-      if (ch === ';') return source.slice(start, i).trim() || undefined
-      if (ch === '\n') {
-        // Allow trailing whitespace/comma but stop at the newline.
-        // Some authors close objects on the same line, others span
-        // them across lines — the depth check above handles the
-        // multi-line case so a depth-0 newline really is the end.
-        const trimmed = source.slice(start, i).trim()
-        if (trimmed.length === 0) {
-          i++
-          continue
-        }
-        return trimmed
-      }
-    }
-
-    // Skip comments
-    if (ch === '/' && next === '/') {
-      while (i < len && source[i] !== '\n') i++
-      continue
-    }
-    if (ch === '/' && next === '*') {
-      i += 2
-      while (i < len - 1 && !(source[i] === '*' && source[i + 1] === '/')) i++
-      i += 2
-      continue
-    }
-
-    // Skip strings
-    if (ch === '"' || ch === "'") {
-      const quote = ch
-      i++
-      while (i < len && source[i] !== quote) {
-        if (source[i] === '\\') i += 2
-        else i++
-      }
-      i++
-      continue
-    }
-    if (ch === '`') {
-      i++
-      while (i < len && source[i] !== '`') {
-        if (source[i] === '\\') {
-          i += 2
-          continue
-        }
-        if (source[i] === '$' && source[i + 1] === '{') {
-          i += 2
-          let exprDepth = 1
-          while (i < len && exprDepth > 0) {
-            const c = source[i] as string
-            if (c === '{') exprDepth++
-            else if (c === '}') exprDepth--
-            if (exprDepth === 0) {
-              i++
-              break
-            }
-            i++
-          }
-          continue
-        }
-        i++
-      }
-      i++
-      continue
-    }
-
-    // Track depth across all bracket families
-    if (ch === '{' || ch === '[' || ch === '(') {
-      depth++
-      i++
-      continue
-    }
-    if (ch === '}' || ch === ']' || ch === ')') {
-      depth--
-      if (depth < 0) {
-        // We ran past our scope without seeing a terminator. The
-        // expression must have ended right before this closer.
-        return source.slice(start, i).trim() || undefined
-      }
-      i++
-      continue
-    }
-
-    i++
-  }
-
-  // Hit EOF without an explicit terminator — return whatever we have
-  // if it looks plausible, otherwise undefined.
-  const trimmed = source.slice(start).trim()
-  return trimmed.length > 0 ? trimmed : undefined
-}
+const TS_WRAPPERS = new Set([
+  'TSAsExpression',
+  'TSSatisfiesExpression',
+  'TSNonNullExpression',
+  'TSTypeAssertion',
+  'ParenthesizedExpression',
+])
 
 /**
- * True if `text` is a pure JS literal — only string/number/boolean/null
- * literals plus the structural punctuation needed to compose them into
- * objects, arrays, and tuples. Identifiers, operators, function calls,
- * template-literal expression slots, and references to other names all
- * disqualify the expression.
+ * The JavaScript source of `node` when it is a PURE literal — string,
+ * number, boolean, `null`, `undefined`, a negative number, an expression-
+ * free template literal, or an object/array composed only of those (plain
+ * keys, no spreads, shorthands, methods or computed keys). Returns
+ * `undefined` otherwise.
  *
- * Walks the source character-by-character, tracking string/template/
- * comment state. Inside a string or template head (no `${}` slot) every
- * character is fine; outside strings, only the structural symbols
- * `{}[](),:` plus whitespace, digits, the literal keywords `true`,
- * `false`, `null`, and `-` (for negative numbers) are allowed.
- *
- * The check is conservative on purpose — anything fancier than a flat
- * literal falls back to the static-import path, which still works,
- * just at the cost of one un-split chunk.
+ * TypeScript wrappers are removed wherever they appear, by splicing each
+ * wrapper's range with its inner expression's source — so the result is
+ * the author's own formatting minus the type syntax.
  */
-function isPureLiteral(text: string): boolean {
-  const len = text.length
-  let i = 0
-
-  while (i < len) {
-    const ch = text[i] as string
-
-    // Strings — anything inside is literal data
-    if (ch === '"' || ch === "'") {
-      const quote = ch
-      i++
-      while (i < len && text[i] !== quote) {
-        if (text[i] === '\\') i += 2
-        else i++
-      }
-      i++
-      continue
+function pureLiteralSource(node: AstNode, source: string): string | undefined {
+  if (TS_WRAPPERS.has(node.type)) return pureLiteralSource(node.expression as AstNode, source)
+  const text = (): string => source.slice(node.start, node.end)
+  switch (node.type) {
+    case 'Literal': {
+      const v = node.value
+      if (node.regex || node.bigint) return undefined
+      return v === null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
+        ? text()
+        : undefined
     }
-
-    // Template literals — only allowed if they contain no ${} slots
-    if (ch === '`') {
-      i++
-      while (i < len && text[i] !== '`') {
-        if (text[i] === '\\') {
-          i += 2
-          continue
+    case 'TemplateLiteral':
+      return (node.expressions as AstNode[]).length === 0 ? text() : undefined
+    case 'Identifier':
+      return node.name === 'undefined' ? 'undefined' : undefined
+    case 'UnaryExpression': {
+      const arg = node.argument as AstNode
+      return node.operator === '-' && arg.type === 'Literal' && typeof arg.value === 'number'
+        ? text()
+        : undefined
+    }
+    case 'ArrayExpression': {
+      const parts: Array<[AstNode, string]> = []
+      for (const el of node.elements as Array<AstNode | null>) {
+        if (el === null) continue // hole — valid JS as written
+        if (el.type === 'SpreadElement') return undefined
+        const inner = pureLiteralSource(el, source)
+        if (inner === undefined) return undefined
+        parts.push([el, inner])
+      }
+      return splice(node, parts, source)
+    }
+    case 'ObjectExpression': {
+      const parts: Array<[AstNode, string]> = []
+      for (const prop of node.properties as AstNode[]) {
+        if (prop.type !== 'Property') return undefined // spread
+        if (prop.computed || prop.method || prop.shorthand || prop.kind !== 'init') {
+          return undefined
         }
-        if (text[i] === '$' && text[i + 1] === '{') {
-          // Template with an expression slot — not a pure literal
-          return false
-        }
-        i++
+        const key = prop.key as AstNode
+        if (key.type !== 'Identifier' && key.type !== 'Literal') return undefined
+        const value = prop.value as AstNode
+        const inner = pureLiteralSource(value, source)
+        if (inner === undefined) return undefined
+        parts.push([value, inner])
       }
-      i++
-      continue
+      return splice(node, parts, source)
     }
-
-    // Whitespace + structural punctuation are fine
-    if (/\s/.test(ch)) {
-      i++
-      continue
-    }
-    if (ch === '{' || ch === '}' || ch === '[' || ch === ']' || ch === ',' || ch === ':') {
-      i++
-      continue
-    }
-
-    // Number literals (including leading - and 0x/0b/0o)
-    if (/[0-9]/.test(ch) || (ch === '-' && /[0-9]/.test(text[i + 1] ?? ''))) {
-      while (i < len && /[0-9a-fA-Fxob.eE+\-_]/.test(text[i] as string)) i++
-      continue
-    }
-
-    // Allowed bare identifiers — only the literal keywords
-    if (text.slice(i, i + 4) === 'true' && !isIdContChar(text[i + 4] ?? '')) {
-      i += 4
-      continue
-    }
-    if (text.slice(i, i + 5) === 'false' && !isIdContChar(text[i + 5] ?? '')) {
-      i += 5
-      continue
-    }
-    if (text.slice(i, i + 4) === 'null' && !isIdContChar(text[i + 4] ?? '')) {
-      i += 4
-      continue
-    }
-    if (text.slice(i, i + 9) === 'undefined' && !isIdContChar(text[i + 9] ?? '')) {
-      i += 9
-      continue
-    }
-
-    // Property keys can be unquoted identifiers — they're followed by `:`.
-    // Walk over the identifier; if the next non-whitespace char is `:`,
-    // accept it as a key. Otherwise the identifier is a free reference
-    // and the expression isn't pure.
-    if (/[A-Za-z_$]/.test(ch)) {
-      let end = i + 1
-      while (end < len && isIdContChar(text[end] as string)) end++
-      let after = end
-      while (after < len && /\s/.test(text[after] as string)) after++
-      if (text[after] === ':') {
-        // unquoted property key — fine
-        i = end
-        continue
-      }
-      return false
-    }
-
-    // Anything else (operators, parens for function calls, etc.) → not pure
-    return false
+    default:
+      return undefined
   }
-
-  return true
 }
 
-function isIdContChar(c: string): boolean {
-  return /[A-Za-z0-9_$]/.test(c)
-}
-
-/**
- * Strip TypeScript type-only suffixes (`as const`, `as SomeType`,
- * `satisfies SomeType`) from a literal expression so the generated
- * JS module is syntactically valid.
- *
- * The route file is TypeScript so authors freely write
- * `export const renderMode = 'ssg' as const` — but the generated
- * `virtual:zero/routes` module is JavaScript and can't keep the cast.
- * Strip from the rightmost top-level `as` or `satisfies` keyword.
- */
-export function stripTypeAssertions(literal: string): string {
-  let result = literal.trim()
-
-  // Walk from the right at depth 0, find the LAST occurrence of
-  // ` as ` or ` satisfies ` and cut everything to the right of it.
-  // We use a depth-aware right-to-left scan because the literal can
-  // contain `as`/`satisfies` inside nested objects (e.g. a string
-  // value `'satisfies the schema'` should be left untouched).
-  let depth = 0
-  for (let i = result.length - 1; i > 0; i--) {
-    const ch = result[i] as string
-    if (ch === ')' || ch === ']' || ch === '}') depth++
-    else if (ch === '(' || ch === '[' || ch === '{') depth--
-
-    if (depth !== 0) continue
-
-    // Check for ` as ` boundary
-    if (
-      i >= 4 &&
-      result[i - 3] === ' ' &&
-      result[i - 2] === 'a' &&
-      result[i - 1] === 's' &&
-      result[i] === ' '
-    ) {
-      result = result.slice(0, i - 3).trim()
-      i = result.length
-      depth = 0
-      continue
-    }
-    // Check for ` satisfies ` boundary
-    if (
-      i >= 11 &&
-      result.slice(i - 10, i + 1) === ' satisfies '
-    ) {
-      result = result.slice(0, i - 10).trim()
-      i = result.length
-      depth = 0
-      continue
-    }
+/** `node`'s source with each child range replaced by its rewritten text. */
+function splice(node: AstNode, parts: Array<[AstNode, string]>, source: string): string {
+  let out = ''
+  let pos = node.start
+  for (const [child, text] of parts) {
+    out += source.slice(pos, child.start) + text
+    pos = child.end
   }
-
-  return result
-}
-
-/**
- * Lightweight tokenizer for the export forms detectRouteExports cares about.
- * Returns an array of either:
- *   • `{ kind: 'declaration', name }` — `export const NAME = …`
- *   • `{ kind: 'list', names }`        — `export { NAME, other as NAME2 }`
- *
- * Only top-level statements (brace depth 0) are considered. String literals,
- * template literals, and comments are skipped so their contents can't trigger
- * false matches.
- */
-type ExportToken =
-  | { kind: 'declaration'; name: string }
-  | { kind: 'list'; names: string[] }
-
-function scanTopLevelExportTokens(source: string): ExportToken[] {
-  const tokens: ExportToken[] = []
-  const len = source.length
-  let i = 0
-  let depth = 0 // brace depth — we only care about top-level (depth 0)
-
-  // Identifier characters used to skip past names and to validate that
-  // a match isn't a substring of a longer identifier.
-  const isIdStart = (c: string) => /[A-Za-z_$]/.test(c)
-  const isIdCont = (c: string) => /[A-Za-z0-9_$]/.test(c)
-
-  // Read an identifier starting at position p; returns [name, nextPos] or null.
-  const readIdentifier = (p: number): [string, number] | null => {
-    if (p >= len || !isIdStart(source[p] as string)) return null
-    let end = p + 1
-    while (end < len && isIdCont(source[end] as string)) end++
-    return [source.slice(p, end), end]
-  }
-
-  // Skip whitespace including newlines.
-  const skipWs = (p: number): number => {
-    while (p < len && /\s/.test(source[p] as string)) p++
-    return p
-  }
-
-  // Match the literal `keyword` at position p, requiring an identifier
-  // boundary on both sides. Returns nextPos or -1.
-  const matchKeyword = (p: number, keyword: string): number => {
-    if (source.slice(p, p + keyword.length) !== keyword) return -1
-    const after = p + keyword.length
-    if (after < len && isIdCont(source[after] as string)) return -1
-    if (p > 0 && isIdCont(source[p - 1] as string)) return -1
-    return after
-  }
-
-  while (i < len) {
-    const ch = source[i] as string
-    const next = source[i + 1] ?? ''
-
-    // ── Comments ──────────────────────────────────────────────────────
-    if (ch === '/' && next === '/') {
-      // Line comment — skip to newline
-      while (i < len && source[i] !== '\n') i++
-      continue
-    }
-    if (ch === '/' && next === '*') {
-      // Block comment — skip to closing */
-      i += 2
-      while (i < len - 1 && !(source[i] === '*' && source[i + 1] === '/')) i++
-      i += 2
-      continue
-    }
-
-    // ── String / template literals ────────────────────────────────────
-    if (ch === '"' || ch === "'") {
-      const quote = ch
-      i++
-      while (i < len && source[i] !== quote) {
-        if (source[i] === '\\') i += 2
-        else i++
-      }
-      i++
-      continue
-    }
-    if (ch === '`') {
-      // Template literal — skip to closing backtick, handling ${...} blocks
-      i++
-      while (i < len && source[i] !== '`') {
-        if (source[i] === '\\') {
-          i += 2
-          continue
-        }
-        if (source[i] === '$' && source[i + 1] === '{') {
-          // Skip a balanced ${ ... } expression
-          i += 2
-          let exprDepth = 1
-          while (i < len && exprDepth > 0) {
-            const c = source[i] as string
-            if (c === '{') exprDepth++
-            else if (c === '}') exprDepth--
-            if (exprDepth === 0) {
-              i++
-              break
-            }
-            i++
-          }
-          continue
-        }
-        i++
-      }
-      i++
-      continue
-    }
-
-    // ── Brace depth tracking ──────────────────────────────────────────
-    if (ch === '{') {
-      depth++
-      i++
-      continue
-    }
-    if (ch === '}') {
-      depth--
-      i++
-      continue
-    }
-
-    // ── `export …` at top level ──────────────────────────────────────
-    if (depth === 0 && ch === 'e') {
-      const afterExport = matchKeyword(i, 'export')
-      if (afterExport > 0) {
-        // Found `export` token at top level. Look at what follows.
-        let p = skipWs(afterExport)
-
-        // `export default …` — not a named export we care about
-        const afterDefault = matchKeyword(p, 'default')
-        if (afterDefault > 0) {
-          i = afterDefault
-          continue
-        }
-
-        // `export { … }` (export list, possibly followed by `from '…'`)
-        if (source[p] === '{') {
-          p++
-          const names: string[] = []
-          while (p < len && source[p] !== '}') {
-            p = skipWs(p)
-            if (source[p] === '}') break
-            const id = readIdentifier(p)
-            if (!id) {
-              p++
-              continue
-            }
-            const [first, afterFirst] = id
-            // `localName as exportedName` — the EXPORTED name is what counts
-            let exportedName = first
-            const afterFirstWs = skipWs(afterFirst)
-            const afterAs = matchKeyword(afterFirstWs, 'as')
-            if (afterAs > 0) {
-              const aliasStart = skipWs(afterAs)
-              const alias = readIdentifier(aliasStart)
-              if (alias) {
-                exportedName = alias[0]
-                p = alias[1]
-              } else {
-                p = afterFirst
-              }
-            } else {
-              p = afterFirst
-            }
-            names.push(exportedName)
-            p = skipWs(p)
-            if (source[p] === ',') p++
-          }
-          tokens.push({ kind: 'list', names })
-          i = p + 1 // past closing brace
-          continue
-        }
-
-        // `export async function NAME …`
-        const afterAsync = matchKeyword(p, 'async')
-        if (afterAsync > 0) p = skipWs(afterAsync)
-
-        // `export const | let | var | function NAME …`
-        let foundDecl = false
-        for (const kw of ['const', 'let', 'var', 'function'] as const) {
-          const afterKw = matchKeyword(p, kw)
-          if (afterKw > 0) {
-            const nameStart = skipWs(afterKw)
-            const id = readIdentifier(nameStart)
-            if (id) {
-              tokens.push({ kind: 'declaration', name: id[0] })
-              i = id[1] // advance past the identifier we just consumed
-              foundDecl = true
-              break
-            }
-          }
-        }
-        // If we couldn't recognize a declaration form, advance past `export`
-        // so the outer loop doesn't re-match the same token forever.
-        if (!foundDecl) i = afterExport
-        continue
-      }
-    }
-
-    i++
-  }
-
-  return tokens
+  return out + source.slice(pos, node.end)
 }
 
 /** All-false exports record. Used when source detection fails. */
@@ -1063,7 +571,7 @@ export function generateRouteModule(
     if (!ROUTE_EXTENSIONS.some((ext) => filePath.endsWith(ext))) continue
     try {
       const source = readFileSync(join(routesDir, filePath), 'utf-8')
-      exportsMap.set(filePath, detectRouteExports(source))
+      exportsMap.set(filePath, detectRouteExports(source, filePath))
     } catch {
       exportsMap.set(filePath, EMPTY_EXPORTS)
     }
@@ -1476,30 +984,60 @@ export function generateRouteModuleFromRoutes(
 export function generateMiddlewareModule(files: string[], routesDir: string): string {
   const routes = parseFileRoutes(files)
   const imports: string[] = []
-  const entries: string[] = []
+  const layoutEntries: string[] = []
+  const pageEntries: string[] = []
   let counter = 0
 
-  for (const route of routes) {
-    if (route.isLayout || route.isError || route.isLoading || route.isNotFound) continue
-    let hasMw = false
+  const readsMiddleware = (filePath: string): boolean => {
     try {
-      const source = readFileSync(`${routesDir}/${route.filePath}`, 'utf-8')
-      hasMw = detectRouteExports(source).hasMiddleware
+      return detectRouteExports(readFileSync(`${routesDir}/${filePath}`, 'utf-8'), filePath).hasMiddleware
     } catch {
       // File can't be read — skip; the SSR runtime falls back gracefully.
+      return false
     }
-    if (!hasMw) continue
+  }
+
+  const pages = routes.filter((r) => !r.isLayout && !r.isError && !r.isLoading && !r.isNotFound)
+
+  // A `_layout.tsx` middleware guards its whole subtree. It used to be
+  // skipped outright — and silently — while a layout is exactly where a
+  // subtree auth gate belongs. Scope is by DIRECTORY, not URL: a group layout
+  // (`(app)/_layout.tsx`) has URL path `/`, and a `/`-prefix pattern would
+  // wrongly apply it to every route outside the group. So each layout gets
+  // ONE entry carrying the URL patterns of the pages inside its directory —
+  // one entry, so it runs once per request even when two of those patterns
+  // match (`/users/new` and `/users/:id`). Shallow layouts are emitted first,
+  // so an outer gate runs before an inner one, and both before the page's.
+  const layouts = routes
+    .filter((r) => r.isLayout)
+    .sort((a, b) => a.dirPath.split('/').filter(Boolean).length - b.dirPath.split('/').filter(Boolean).length)
+  for (const layout of layouts) {
+    if (!readsMiddleware(layout.filePath)) continue
+    const dir = layout.dirPath
+    const covered = pages
+      .filter((p) => dir === '' || p.dirPath === dir || p.dirPath.startsWith(`${dir}/`))
+      .map((p) => p.urlPath)
+    if (covered.length === 0) continue
+    const name = `_mw${counter++}`
+    imports.push(`import { middleware as ${name} } from "${routesDir}/${layout.filePath}"`)
+    layoutEntries.push(
+      `  { pattern: ${JSON.stringify(covered[0])}, patterns: ${JSON.stringify(covered)}, middleware: ${name} }`,
+    )
+  }
+
+  for (const route of pages) {
+    if (!readsMiddleware(route.filePath)) continue
     const name = `_mw${counter++}`
     const fullPath = `${routesDir}/${route.filePath}`
     imports.push(`import { middleware as ${name} } from "${fullPath}"`)
-    entries.push(`  { pattern: ${JSON.stringify(route.urlPath)}, middleware: ${name} }`)
+    pageEntries.push(`  { pattern: ${JSON.stringify(route.urlPath)}, middleware: ${name} }`)
   }
 
   return [
     ...imports,
     '',
     `export const routeMiddleware = [`,
-    entries.join(',\n'),
+    [...layoutEntries, ...pageEntries].join(',\n'),
     `].filter(e => e.middleware)`,
   ].join('\n')
 }
@@ -1792,7 +1330,7 @@ export function resolveAutoModeSync(
   const withExports = routes.map((r) => {
     try {
       const source = fs.readFileSync(`${routesDir}/${r.filePath}`, 'utf-8')
-      return { ...r, exports: detectRouteExports(source) }
+      return { ...r, exports: detectRouteExports(source, r.filePath) }
     } catch {
       return r
     }
@@ -1915,7 +1453,7 @@ export async function scanRouteFilesWithExports(
     files.map(async (filePath) => {
       try {
         const source = await readFile(join(routesDir, filePath), 'utf-8')
-        const detected = detectRouteExports(source)
+        const detected = detectRouteExports(source, filePath)
         // Phase 5 — `.server.ts` sibling = server loader module. Detected
         // here (the scan already touches the fs) so the generator can emit
         // the dual shape: `serverLoader: mod.serverLoader` in the SSR

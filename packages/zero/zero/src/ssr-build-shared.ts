@@ -374,6 +374,12 @@ export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<vo
       // a prerendered route, thread it the way `base` / `assetsInlineLimit` /
       // `assetsDir` are threaded above, each with the bug that motivated it.
       resolve: { conditions: ['bun'] },
+      // Vite leaves `process.env.NODE_ENV` as a RUNTIME read in SSR builds,
+      // and the scaffolded Dockerfiles / wrangler config never set it — so
+      // the deployed server ran in development mode: dev-only diagnostics
+      // on, server-action errors returning raw `err.message`. This bundle is
+      // a production artifact by definition.
+      define: { 'process.env.NODE_ENV': JSON.stringify('production') },
       build: buildInnerBuildOptions(options),
     })
   } finally {
@@ -455,14 +461,21 @@ export function injectIntoTemplate(
   template: string,
   result: { appHtml: string; head: string; loaderScript: string },
 ): string {
+  // Every insertion below is a FUNCTION replacement (or string slicing),
+  // never a string replacement: `String.prototype.replace` interprets
+  // `$$`, `$&`, `` $` ``, `$'` and `$n` in a STRING replacement even when
+  // the search is a literal, and rendered HTML / head tags / loader JSON
+  // routinely contain them (prices, code samples, regexes) — `<p>$$5</p>`
+  // rendered `$5`, and `$'` spliced the rest of the template into the page.
+  // Same rule `@pyreon/server`'s `processTemplate` follows.
   let html = template
   if (html.includes('<!--pyreon-head-->')) {
-    html = html.replace('<!--pyreon-head-->', result.head)
+    html = html.replace('<!--pyreon-head-->', () => result.head)
   } else if (result.head) {
-    html = html.replace('</head>', `${result.head}</head>`)
+    html = html.replace('</head>', () => `${result.head}</head>`)
   }
   if (html.includes('<!--pyreon-app-->')) {
-    html = html.replace('<!--pyreon-app-->', result.appHtml)
+    html = html.replace('<!--pyreon-app-->', () => result.appHtml)
   } else if (result.appHtml) {
     // Find `<div id="app">` (either quote style) with linear indexOf
     // rather than a regex, to avoid CodeQL polynomial-regex flags AND
@@ -487,16 +500,16 @@ export function injectIntoTemplate(
           + `<div id="app">${result.appHtml}</div>`
           + html.slice(closeIdx + '</div>'.length)
       } else {
-        html = html.replace('</body>', `<div id="app">${result.appHtml}</div></body>`)
+        html = html.replace('</body>', () => `<div id="app">${result.appHtml}</div></body>`)
       }
     } else {
-      html = html.replace('</body>', `<div id="app">${result.appHtml}</div></body>`)
+      html = html.replace('</body>', () => `<div id="app">${result.appHtml}</div></body>`)
     }
   }
   if (html.includes('<!--pyreon-scripts-->')) {
-    html = html.replace('<!--pyreon-scripts-->', result.loaderScript)
+    html = html.replace('<!--pyreon-scripts-->', () => result.loaderScript)
   } else if (result.loaderScript) {
-    html = html.replace('</body>', `${result.loaderScript}</body>`)
+    html = html.replace('</body>', () => `${result.loaderScript}</body>`)
   }
   return html
 }

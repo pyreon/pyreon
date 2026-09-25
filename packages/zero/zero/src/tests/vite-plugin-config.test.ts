@@ -335,3 +335,16 @@ describe('zero vite-plugin config', () => {
     })
   })
 })
+
+describe('zero vite-plugin — server config define', () => {
+  // The generated server entry cannot import vite.config.ts; this define is
+  // how `mode: 'isr'`, `base`, … reach `createServer` in production.
+  it('injects the serializable config as __ZERO_SERVER_CONFIG__', async () => {
+    const { zeroPlugin } = await vitePluginModulePromise
+    const plugins = zeroPlugin({ mode: 'isr', base: '/app/', isr: { revalidate: 30 } })
+    const plugin = getMainPlugin(plugins)
+    const config = plugin.config({ root: process.cwd() }, { command: 'build', mode: 'production' })
+    const injected = JSON.parse(config.define.__ZERO_SERVER_CONFIG__)
+    expect(injected).toMatchObject({ mode: 'isr', base: '/app/', isr: { revalidate: 30 } })
+  })
+})

@@ -16,7 +16,6 @@
  * REAL pdnd paths are exercised by the `*.browser.test.tsx` suites in
  * real Chromium.
  */
-import { query } from '@pyreon/test-utils'
 import { effect, signal } from '@pyreon/reactivity'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -227,7 +226,7 @@ describe('useDroppable — closest-edge detection + stickiness', () => {
     // Enter again, then drop clears both.
     config.onDragEnter({ source: { data: {} }, self: { data: { __edge: 'top' } } })
     expect(overEdge()).toBe('top')
-    config.onDrop({ source: { data: {} } })
+    config.onDrop({ source: { data: {} }, self: { data: { __edge: 'top' } } })
     expect(isOver()).toBe(false)
     expect(overEdge()).toBeNull()
   })
@@ -391,14 +390,17 @@ describe('useSortable — aria-describedby keyboard instructions', () => {
     document.body.appendChild(ul)
     s.containerRef(ul)
 
-    const instructions = query<HTMLElement>(ul, '[data-pyreon-sortable-instructions]')
-    expect(instructions).not.toBeNull()
-    expect(instructions.textContent).toBe('Press Alt plus arrow keys to reorder')
-    expect(instructions.id).toMatch(/^sortable-\d+-instructions$/)
+    // The node lives in a shared body-level host, NOT inside the container
+    // (a <div> child is invalid in a <ul> and breaks <For>'s bulk clear).
+    expect(ul.querySelector('[data-pyreon-sortable-instructions]')).toBeNull()
 
     const li = document.createElement('li')
     s.itemRef('1')(li)
-    expect(li.getAttribute('aria-describedby')).toBe(instructions.id)
+    const instructions = document.getElementById(li.getAttribute('aria-describedby')!)!
+    expect(instructions).not.toBeNull()
+    expect(instructions.hasAttribute('data-pyreon-sortable-instructions')).toBe(true)
+    expect(instructions.textContent).toMatch(/Space or Enter to pick up/)
+    expect(instructions.id).toMatch(/^sortable-\d+-instructions$/)
 
     // A consumer-supplied aria-describedby wins.
     const li2 = document.createElement('li')
@@ -408,7 +410,7 @@ describe('useSortable — aria-describedby keyboard instructions', () => {
 
     // The instructions node is removed with the container registration.
     s.containerRef(null)
-    expect(ul.querySelector('[data-pyreon-sortable-instructions]')).toBeNull()
+    expect(document.getElementById(instructions.id)).toBeNull()
     ul.remove()
   })
 })

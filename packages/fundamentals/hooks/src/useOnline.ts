@@ -1,4 +1,5 @@
-import { isClient, onCleanup, signal } from '@pyreon/reactivity'
+import { isClient, signal } from '@pyreon/reactivity'
+import { onHookCleanup } from './lifecycle'
 
 /**
  * Reactive online/offline status.
@@ -20,7 +21,7 @@ export function useOnline(): () => boolean {
     const setOffline = () => online.set(false)
     window.addEventListener('online', setOnline)
     window.addEventListener('offline', setOffline)
-    onCleanup(() => {
+    onHookCleanup(() => {
       window.removeEventListener('online', setOnline)
       window.removeEventListener('offline', setOffline)
     })
