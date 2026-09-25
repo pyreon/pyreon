@@ -111,6 +111,17 @@ import { plotMarkColorSlots, ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALET
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
+  binderName,
+  narrowExpr,
+  narrowingFor,
+  narrowStmts,
+  planGuard,
+  readsSubject,
+  stmtExprs,
+  unnarrowableWarning,
+  type Narrowing,
+} from './optional-narrowing'
+import {
   blockBodiedRenderCallbackWarning,
   isRenderArrow,
   isViewShaped,
@@ -4028,6 +4039,112 @@ function withKotlinLocals<T>(bindings: readonly (readonly [string, TypeIR | unde
   }
 }
 
+// ---------------------------------------------------------------------------
+// Optional narrowing — see optional-narrowing.ts. Kotlin smart-casts only a
+// STABLE value: a parameter or local. A `by mutableStateOf` signal, a
+// `derivedStateOf` computed and a `var` field of a data class (every emitted
+// struct field) are not, so those subjects bind the value once instead.
+
+/** Does kotlinc smart-cast this narrowing on its own? */
+function kotlinSmartCasts(n: Narrowing): boolean {
+  if (n.truth !== null) return false
+  const x = n.subject
+  if (x.kind === 'identifier') return !_signalNames.has(x.name)
+  // `props.maybe` is the composable's own PARAMETER after the props rewrite.
+  return (
+    x.kind === 'member' &&
+    x.optional !== true &&
+    x.object.kind === 'identifier' &&
+    x.object.name === _activePropsParamName
+  )
+}
+
+/** The bound subject, carrying JS truthiness for a string / number / boolean. */
+function kotlinBoundSubject(n: Narrowing, indent: number): string {
+  const subj = emitKotlinExpr(n.subject, indent)
+  if (n.truth === 'string') return `${subj}?.takeIf { it.isNotEmpty() }`
+  if (n.truth === 'number') return `${subj}?.takeIf { it.toDouble() != 0.0 }`
+  if (n.truth === 'boolean') return `${subj}?.takeIf { it }`
+  return subj
+}
+
+function warnUnnarrowableKotlin(n: Narrowing, indent: number): void {
+  const w = unnarrowableWarning(emitKotlinExpr(n.subject, indent), 'kotlin')
+  if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+}
+
+interface KotlinNarrowPlan {
+  n: Narrowing
+  binder: string
+}
+
+/** Plan a narrowing for `cond` over the branch that will read the subject; null = nothing to do (or kotlinc smart-casts it). */
+function planKotlinNarrowing(cond: ExprIR, readers: readonly ExprIR[]): KotlinNarrowPlan | null {
+  const n = narrowingFor(cond, _kotlinExprInferCtx, _activePropsParamName)
+  if (n === null || kotlinSmartCasts(n)) return null
+  if (!readers.some((r) => readsSubject(r, n.subject))) return null
+  return { n, binder: binderName(n.subject, readers) }
+}
+
+/**
+ * A ternary that narrows (value or view position): `x == null ? a : f(x)` →
+ * `when (val x = x) { null -> a else -> f(x) }`. The `when` subject binding
+ * is stable, so the else branch smart-casts it.
+ */
+function emitKotlinNarrowedTernary(e: Extract<ExprIR, { kind: 'ternary' }>, indent: number): string | null {
+  const probe = narrowingFor(e.cond, _kotlinExprInferCtx, _activePropsParamName)
+  if (probe === null) return null
+  const narrowed = probe.presentWhenTrue ? e.then : e.otherwise
+  const other = probe.presentWhenTrue ? e.otherwise : e.then
+  const plan = planKotlinNarrowing(e.cond, [narrowed])
+  if (plan === null) return null
+  const rewritten = narrowExpr(narrowed, plan.n.subject, plan.binder)
+  if (rewritten === null) {
+    warnUnnarrowableKotlin(plan.n, indent)
+    return null
+  }
+  const b = kotlinIdent(plan.binder)
+  const inner = withKotlinLocals([[plan.binder, plan.n.unwrapped]], () => emitKotlinExpr(rewritten, indent))
+  return `when (val ${b} = ${kotlinBoundSubject(plan.n, indent)}) { null -> ${emitKotlinExpr(other, indent)} else -> ${inner} }`
+}
+
+/** `{x && <B x/>}` → `x?.let { x -> B(x) }`. */
+function emitKotlinNarrowedAnd(cond: ExprIR, view: ExprIR, indent: number): string | null {
+  const probe = narrowingFor(cond, _kotlinExprInferCtx, _activePropsParamName)
+  if (probe === null || !probe.presentWhenTrue) return null
+  const plan = planKotlinNarrowing(cond, [view])
+  if (plan === null) return null
+  const rewritten = narrowExpr(view, plan.n.subject, plan.binder)
+  if (rewritten === null) {
+    warnUnnarrowableKotlin(plan.n, indent)
+    return null
+  }
+  const pad = ' '.repeat(indent + 2)
+  const inner = withKotlinLocals([[plan.binder, plan.n.unwrapped]], () =>
+    emitKotlinChild({ kind: 'expr', expr: rewritten }, indent + 2),
+  )
+  return `${kotlinBoundSubject(plan.n, indent)}?.let { ${kotlinIdent(plan.binder)} ->\n${pad}${inner}\n${' '.repeat(indent)}}`
+}
+
+/** A statement list with the early-return guard lowered (`val x = a.b ?: run { return 0 }`). */
+function emitKotlinStmtLines(stmts: readonly StatementIR[], indent: number, ctx: KotlinCtx): string[] {
+  const pad = ' '.repeat(indent)
+  const out: string[] = []
+  for (let i = 0; i < stmts.length; i++) {
+    const s = stmts[i]!
+    const g = planGuard(s, stmts.slice(i + 1), _kotlinExprInferCtx, _activePropsParamName)
+    if (g !== null && !kotlinSmartCasts(g.narrowing)) {
+      const exitLines = g.exitBody.map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`).join('\n')
+      out.push(`${pad}val ${kotlinIdent(g.binder)} = ${kotlinBoundSubject(g.narrowing, indent)} ?: run {\n${exitLines}\n${pad}}`)
+      out.push(...withKotlinLocals([[g.binder, g.narrowing.unwrapped]], () => emitKotlinStmtLines(g.rest, indent, ctx)))
+      return out
+    }
+    out.push(`${pad}${emitKotlinStatement(s, indent, ctx)}`)
+  }
+  return out
+}
+
+
 /**
  * `const renderRow = (r: Row) => <Text>{r.name}</Text>` →
  * `@Composable fun renderRow(r: Row) { Text(…) }` — a local composable at
@@ -4218,9 +4335,7 @@ function emitKotlinFunction(
   // inline seeding in emitKotlinAction). Restored after. Mirror of the Swift
   // function-decl seeding.
   const savedLocals = seedHandlerLocals(d.body, _kotlinExprInferCtx)
-  const bodyLines = d.body
-    .map((s) => `    ${emitKotlinStatement(s, 4, ctx)}`)
-    .join('\n')
+  const bodyLines = emitKotlinStmtLines(d.body, 4, ctx).join('\n')
   _kotlinExprInferCtx.locals = savedLocals
   kParamRestore()
   return `fun ${kotlinIdent(d.name)}(${params})${blockRetType} {\n${bodyLines}\n  }`
@@ -4356,6 +4471,29 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       return emitKotlinExpr(s.expr, indent)
     case 'if': {
       const pad = ' '.repeat(indent)
+      // An optional kotlinc cannot smart-cast, read by the narrowed body:
+      // bind it once with `when (val x = …)` — see optional-narrowing.ts.
+      {
+        const probe = narrowingFor(s.cond, _kotlinExprInferCtx, _activePropsParamName)
+        const narrowedBody = probe === null ? undefined : probe.presentWhenTrue ? s.then : s.elseBody
+        const otherBody = probe === null ? undefined : probe.presentWhenTrue ? s.elseBody : s.then
+        const plan = narrowedBody === undefined ? null : planKotlinNarrowing(s.cond, stmtExprs(narrowedBody))
+        if (plan !== null && narrowedBody !== undefined) {
+          const rewritten = narrowStmts(narrowedBody, plan.n.subject, plan.binder)
+          if (rewritten !== null) {
+            const inner = withKotlinLocals([[plan.binder, plan.n.unwrapped]], () =>
+              emitKotlinStmtLines(rewritten, indent + 4, ctx).join('\n'),
+            )
+            const otherLines = otherBody === undefined ? '' : emitKotlinStmtLines(otherBody, indent + 4, ctx).join('\n')
+            return (
+              `when (val ${kotlinIdent(plan.binder)} = ${kotlinBoundSubject(plan.n, indent)}) {\n` +
+              `${pad}  null -> {${otherLines === '' ? '}' : `\n${otherLines}\n${pad}  }`}\n` +
+              `${pad}  else -> {\n${inner}\n${pad}  }\n${pad}}`
+            )
+          }
+          warnUnnarrowableKotlin(plan.n, indent)
+        }
+      }
       const cond = kotlinCondition(s.cond, (x) => emitKotlinExpr(x, indent))
       // Mirror of the Swift if-let narrowing, for the EMITTER's own eyes:
       // kotlinc smart-casts a val local inside `if (token != null)` by
@@ -4379,9 +4517,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       }
       let thenLines: string
       try {
-        thenLines = s.then
-          .map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`)
-          .join('\n')
+        thenLines = emitKotlinStmtLines(s.then, indent + 2, ctx).join('\n')
       } finally {
         if (narrowName !== undefined && narrowPrev !== undefined) {
           _kotlinExprInferCtx.locals.set(narrowName, narrowPrev)
@@ -4389,9 +4525,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       }
       const head = `if (${cond}) {\n${thenLines}\n${pad}}`
       if (!s.elseBody) return head
-      const elseLines = s.elseBody
-        .map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`)
-        .join('\n')
+      const elseLines = emitKotlinStmtLines(s.elseBody, indent + 2, ctx).join('\n')
       return `${head} else {\n${elseLines}\n${pad}}`
     }
     case 'while': {
@@ -6914,6 +7048,13 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       if (nc) {
         return `(${emitKotlinExpr(nc.opt, indent)} ?: ${emitKotlinExpr(nc.fallback, indent)})`
       }
+      // A ternary whose surviving branch reads an optional kotlinc cannot
+      // smart-cast (a signal, a computed, a data-class `var` field) binds it
+      // with `when (val x = …)` — see optional-narrowing.ts.
+      {
+        const narrowed = emitKotlinNarrowedTernary(e, indent)
+        if (narrowed !== null) return narrowed
+      }
       const omt = optionalMemberTernary(e, _kotlinExprInferCtx)
       if (omt) {
         return `(${emitKotlinExpr(omt.opt, indent)}?.${kotlinIdent(omt.property)} ?: ${emitKotlinExpr(e.otherwise, indent)})`
@@ -8280,10 +8421,7 @@ function emitKotlinAction(handler: ExprIR, indent: number): string {
       // so a synchronous `onClick: () -> Unit` slot can run suspend calls.
       const isAsync = handler.async === true
       const bodyIndent = isAsync ? indent + 4 : indent + 2
-      const bodyPad = ' '.repeat(bodyIndent)
-      const lines = handler.stmts
-        .map((s) => bodyPad + emitKotlinStatement(s, bodyIndent, stmtCtx))
-        .join('\n')
+      const lines = emitKotlinStmtLines(handler.stmts, bodyIndent, stmtCtx).join('\n')
       _kotlinExprInferCtx.locals = savedLocals
       const head =
         handler.params.length === 0 ? '{' : `{ ${handler.params.map(kotlinIdent).join(', ')} ->`
@@ -11297,6 +11435,8 @@ function emitKotlinChild(c: ChildIR, indent: number): string {
     // `t` is NULLABLE (e.g. a `.find` result) → `if (t != null) { … }` (and `{!t
     // && <X/>}` → `if (t == null) { … }`), not the bare `if (t) { … }` kotlinc
     // rejects as a non-Boolean condition.
+    const narrowedAnd = emitKotlinNarrowedAnd(c.expr.left, c.expr.right, indent)
+    if (narrowedAnd !== null) return narrowedAnd
     const cond = kotlinCondition(c.expr.left, (x) => emitKotlinExpr(x, indent))
     const pad = ' '.repeat(indent + 2)
     const inner = emitKotlinChild({ kind: 'expr', expr: c.expr.right }, indent + 2)
