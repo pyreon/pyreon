@@ -3111,6 +3111,7 @@
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
+        "@vitest/browser-playwright": "^4.1.11",
         "sharp": "^0.35.3",
       },
       "peerDependencies": {

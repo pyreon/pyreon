@@ -182,6 +182,21 @@
       "bun": "./src/logger.ts",
       "import": "./lib/logger.js",
       "types": "./lib/types/logger.d.ts"
+    },
+    "./session": {
+      "bun": "./src/session.ts",
+      "import": "./lib/session.js",
+      "types": "./lib/types/session.d.ts"
+    },
+    "./preview": {
+      "bun": "./src/preview.ts",
+      "import": "./lib/preview.js",
+      "types": "./lib/types/preview.d.ts"
+    },
+    "./web-vitals": {
+      "bun": "./src/web-vitals.ts",
+      "import": "./lib/web-vitals.js",
+      "types": "./lib/types/web-vitals.d.ts"
     }
   },
   "files": [
@@ -196,6 +211,7 @@
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
+    "test:browser": "vitest run --config ./vitest.browser.config.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.types-tests.json",
     "lint": "oxlint ."
   },
@@ -229,6 +245,7 @@
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
+    "@vitest/browser-playwright": "^4.1.11",
     "sharp": "^0.35.3"
   },
   "publishConfig": {
