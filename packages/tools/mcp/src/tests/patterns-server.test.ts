@@ -1,4 +1,5 @@
 import { callTool, newClient } from './helpers'
+import { ANTI_PATTERN_CATEGORIES } from '../anti-patterns'
 
 // Real MCP server <-> client round-trip for the T2.5.3 (`get_pattern`)
 // and T2.5.4 (`get_anti_patterns`) tools. Same setup as the validate
@@ -62,10 +63,12 @@ describe('MCP server — get_pattern tool', () => {
 describe('MCP server — get_anti_patterns tool', () => {
   it('returns the COMPACT INDEX (not full bodies) when called with no arg', async () => {
     // Behaviour change (PR: mcp token slim): the default response is now
-    // the ~3.3K-token index, not the ~14K full dump. The index keeps the
-    // per-category `## <Heading>` markers (so category discovery still
-    // works in one call) and the inline detector tags, but elides the
-    // prose body in favour of a one-line hook.
+    // the compact index (density-gated to stay ≥60% smaller than the
+    // full dump — see token-budget.test.ts), not the full multi-tens-of-
+    // thousands-of-token dump. The index keeps the per-category
+    // `## <Heading>` markers (so category discovery still works in one
+    // call) and the inline detector tags, but elides the prose body in
+    // favour of a one-line hook.
     const { client, close } = await newClient()
     try {
       const text = await callTool(client, 'get_anti_patterns', {})
@@ -159,6 +162,30 @@ describe('MCP server — get_anti_patterns tool', () => {
       const withArg = await callTool(client, 'get_anti_patterns', { category: 'all' })
       const noArg = await callTool(client, 'get_anti_patterns', {})
       expect(withArg).toBe(noArg)
+    } finally {
+      await close()
+    }
+  })
+
+  it('accepts EVERY real category (zod enum parity with ANTI_PATTERN_CATEGORIES)', async () => {
+    // Regression: the zod `category` enum used to be a hand-typed literal
+    // list that only covered 8 of the 15 real categories — calling
+    // `get_anti_patterns({ category: 'islands' })` (or ssr/ssg/bundling/
+    // build/ci/best-practices/library-api) failed zod validation for the
+    // tool's entire lifetime, even though those categories parse fine from
+    // `.agents/rules/anti-patterns.md`. The enum must be DERIVED from
+    // ANTI_PATTERN_CATEGORIES (src/index.ts does `z.enum([...ANTI_PATTERN_CATEGORIES, 'all'])`)
+    // so a category can never drift out of reach again.
+    const { client, close } = await newClient()
+    try {
+      for (const category of ANTI_PATTERN_CATEGORIES) {
+        const result = (await client.callTool({
+          name: 'get_anti_patterns',
+          arguments: { category },
+        })) as { isError?: boolean; content: Array<{ type: string; text: string }> }
+        expect(result.isError, `category "${category}" was rejected`).not.toBe(true)
+        expect(result.content[0]!.text).not.toMatch(/Invalid (option|arguments)/i)
+      }
     } finally {
       await close()
     }
