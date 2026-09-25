@@ -74,7 +74,7 @@ for (const p of pick('--path')) {
       if (!responses) continue
       item[method] = {
         ...(op as Json),
-        responses: Object.fromEntries(Object.entries(responses).filter(([code]) => /^2/.test(code))),
+        responses: Object.fromEntries(Object.entries(responses).filter(([code]) => code.startsWith('2'))),
       }
     }
   }

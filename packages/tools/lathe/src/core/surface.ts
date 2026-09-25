@@ -336,8 +336,8 @@ export function diffSurface(before: ApiSurface, after: ApiSurface): SurfaceChang
       const wasOptional = type.endsWith('(optional)')
       const isOptional = nowType.endsWith('(optional)')
       const bare = (t: string): string => t.replace(/ \(optional\)$/, '')
-      const wasNull = / \| null$/.test(bare(type))
-      const isNull = / \| null$/.test(bare(nowType))
+      const wasNull = bare(type).endsWith(' | null')
+      const isNull = bare(nowType).endsWith(' | null')
       const core = (t: string): string => bare(t).replace(/ \| null$/, '')
       if (!wasOptional && isOptional && core(type) === core(nowType) && wasNull === isNull) {
         // The subtle one. The app reads the field unconditionally today and

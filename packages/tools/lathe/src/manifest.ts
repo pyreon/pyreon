@@ -63,7 +63,7 @@ lathe / Bookshelf 1.2.0
     {
       name: 'generate',
       kind: 'function',
-      signature: 'generate(specText: string, config: ResolvedConfig): GenerateResult',
+      signature: 'generate(specText: string, config: ResolvedConfig, options?: { sourceUrl?: string }): GenerateResult',
       summary:
         'The whole pipeline, pure: spec text in, file CONTENTS out. Touches no filesystem, which is what makes the generator testable without a temp directory and lets `lathe check` diff before writing. Returns the IR document, the generated files, and a per-operation `reach` map explaining in spec terms which operations can run natively and why the others cannot.',
       example: `import { generate, resolveConfig } from '@pyreon/lathe'
@@ -130,9 +130,9 @@ if (worstVerdict(report) !== 'lowers') process.exitCode = 1`,
     {
       name: 'loadOpenApi',
       kind: 'function',
-      signature: 'loadOpenApi(source: string): { doc: IrDocument }',
+      signature: 'loadOpenApi(source: string, options?: { sourceUrl?: string }): { doc: IrDocument }',
       summary:
-        'Parses an OpenAPI 3.x document (JSON or YAML text) into the spec-agnostic IR. Every reduction the IR cannot represent is recorded in `doc.notes` with a stable code and a location, so a loss is reported once at the boundary instead of being rediscovered differently by each emitter. Deterministic: models and operations are sorted, so the same spec always produces the same IR.',
+        'Parses an OpenAPI 3.x document (JSON or YAML text) into the spec-agnostic IR. Every reduction the IR cannot represent is recorded in `doc.notes` with a stable code and a location, so a loss is reported once at the boundary instead of being rediscovered differently by each emitter. Deterministic: models and operations are sorted, so the same spec always produces the same IR. Pass `sourceUrl` (where the spec was fetched from) and a RELATIVE `servers[].url` is resolved against it, as OpenAPI specifies.',
       example: `import { loadOpenApi } from '@pyreon/lathe'
 
 const { doc } = loadOpenApi(await readFile('./openapi.yaml', 'utf8'))
@@ -140,6 +140,7 @@ console.log(doc.models.length, 'models', doc.operations.length, 'operations')
 for (const note of doc.notes) console.warn(note.code, note.at, note.message)`,
       mistakes: [
         'Ignoring `doc.notes`. A spec with a remote `$ref` or a non-JSON media type still produces output — with those pieces typed `unknown`. The note is the only signal.',
+        'Reading `op.body` as a type. It is `{ mediaType, encoding, type }` — `encoding` (`json` / `form` / `multipart` / `text` / `binary`) decides the call argument (`json:` / `form:` / `multipart:` / `body:`), and a form body carries its per-field `fieldEncoding`.',
         'Expecting a custom YAML tag (`!Ref`, `!include`) to be expanded. The reader refuses it with a line number instead of reading it as a plain string; resolve or bundle the spec first. Anchors, aliases and merge keys DO resolve.',
       ],
     },
