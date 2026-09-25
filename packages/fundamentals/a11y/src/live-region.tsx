@@ -1,7 +1,10 @@
 import { h, mergeProps, splitProps } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 import type { A11yPoliteness } from './announce'
-import { VisuallyHidden } from './visually-hidden'
+import { readProp, srOnlyStyle } from './visually-hidden'
+
+/** A prop that may be a plain value or a `() => value` accessor. */
+type MaybeAccessor<T> = T | (() => T)
 
 /**
  * Politeness of a `<LiveRegion>`. Adds `'off'` to the announce politeness set
@@ -18,24 +21,24 @@ export interface LiveRegionProps {
    * interrupts immediately (errors, time-critical alerts — use sparingly);
    * `'off'` silences the region without removing it.
    */
-  politeness?: LiveRegionPoliteness
+  politeness?: MaybeAccessor<LiveRegionPoliteness>
   /**
    * `aria-atomic` (default `true`) — when the content changes, announce the
    * WHOLE region, not just the changed node. Set `false` with `role="log"` for
    * append-only regions where only the newest entry should be read.
    */
-  atomic?: boolean
+  atomic?: MaybeAccessor<boolean>
   /**
    * ARIA role. Defaults to `'status'` for `'polite'` and `'alert'` for
    * `'assertive'` (omitted for `'off'`). Pass `'log'` for an append-only feed.
    */
-  role?: 'status' | 'alert' | 'log'
+  role?: MaybeAccessor<'status' | 'alert' | 'log' | undefined>
   /**
    * Render the region visibly instead of screen-reader-only (default `false`).
    * Use `true` when the status text is ALSO meant to be seen (a visible
    * "Saving…" line that doubles as the live region).
    */
-  visible?: boolean
+  visible?: MaybeAccessor<boolean>
   children?: VNodeChild
   /** Any other props (id, class, aria-*, ...) are forwarded to the element. */
   [key: string]: unknown
@@ -75,30 +78,42 @@ export interface LiveRegionProps {
  * ```
  */
 export function LiveRegion(props: LiveRegionProps): VNodeChild {
-  // splitProps, not a destructure: signal-driven props arrive as getters, and a
-  // destructure read each once — `politeness={mode()}` never moved the region
-  // between polite and assertive, and forwarded attributes froze. The ARIA
-  // attributes are accessors over `own`, so they track. `visible` picks the
-  // element shape and is read once at setup.
-  const [own, rest] = splitProps(props as LiveRegionProps, [
+  // splitProps + reads INSIDE accessors, never a destructure: destructuring
+  // fired each compiler-emitted getter once at setup, so a signal-driven
+  // `politeness` / `atomic` / `role` / `visible` was frozen at mount — the
+  // documented `politeness={() => muted() ? 'off' : 'polite'}` toggle included.
+  const [own, rest] = splitProps(props as LiveRegionProps & { style?: unknown }, [
     'politeness',
     'atomic',
     'role',
     'visible',
     'children',
+    'style',
   ])
-  const politeness = () => own.politeness ?? 'polite'
-  const ariaProps = mergeProps(rest as Record<string, unknown>, {
-    'aria-live': politeness,
-    'aria-atomic': () => ((own.atomic ?? true) ? 'true' : 'false'),
-    role: () =>
-      own.role ??
-      (politeness() === 'off' ? undefined : politeness() === 'assertive' ? 'alert' : 'status'),
-  })
 
-  // Visible: a plain element carrying the live-region semantics.
-  if (own.visible) return h('div', ariaProps, own.children)
-  // Default: screen-reader-only — reuse VisuallyHidden's canonical clipping
-  // (kept in the a11y tree, unlike display:none) and forward the ARIA props.
-  return h(VisuallyHidden, mergeProps({ as: 'div' }, ariaProps), own.children)
+  const politeness = (): LiveRegionPoliteness => readProp(own.politeness) ?? 'polite'
+
+  return h(
+    'div',
+    mergeProps(rest, {
+      'aria-live': politeness,
+      'aria-atomic': () => ((readProp(own.atomic) ?? true) ? 'true' : 'false'),
+      // Defaults to `status` / `alert` by politeness; `undefined` (for 'off')
+      // removes the attribute so the region carries no contradictory role.
+      role: () => {
+        const p = politeness()
+        return readProp(own.role) ?? (p === 'off' ? undefined : p === 'assertive' ? 'alert' : 'status')
+      },
+      // Screen-reader-only by default (kept in the a11y tree, unlike
+      // display:none); `visible` renders it in normal flow. A style toggle
+      // rather than two different trees, so flipping `visible` never
+      // remounts the region — a remounted live region is not announced.
+      style: () => {
+        const user = readProp(own.style)
+        if (readProp(own.visible) ?? false) return user as Record<string, string> | undefined
+        return srOnlyStyle(user)
+      },
+    }),
+    own.children,
+  )
 }

@@ -120,3 +120,12 @@ describe('buildSsrBundle — the inner pyreon plugin inherits the user options',
     expect(all.filter((p) => typeof p === 'object' && p?.name === 'pyreon')).toHaveLength(1)
   })
 })
+
+describe('buildSsrBundle — the server bundle is a production artifact', () => {
+  // Vite leaves NODE_ENV a runtime read in SSR builds, and nothing in the
+  // scaffolded deploy configs set it, so deployed servers ran in dev mode.
+  it('bakes NODE_ENV=production into the sub-build', async () => {
+    const config = await run({})
+    expect(config.define?.['process.env.NODE_ENV']).toBe('"production"')
+  })
+})

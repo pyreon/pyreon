@@ -152,6 +152,14 @@ localStorage.setItem('flow', JSON.stringify(snapshot))
 flow.fromJSON(JSON.parse(localStorage.getItem('flow')!))
 ```
 
+`toJSON()` returns one-level copies (node `data` is shared by reference, so function-valued data never throws). `fromJSON()` treats its input as untrusted: duplicate node / edge ids keep the first, edges referencing a missing node are dropped, and a node without a valid `position` is placed at `{ x: 0, y: 0 }` — each with a `[Pyreon]` dev warning.
+
+## Events and history notes
+
+- `onConnect` fires only for a USER connection (a handle drag dropped on a valid handle). Programmatic `addEdge` / `addEdges` / `paste` / `fromJSON` report through `onEdgesChange` (`type: 'add'`).
+- Removing a sub-flow parent (`removeNode(s)`, `deleteSelected`, the Delete key) removes its descendants and their edges; `paste` re-parents copied children onto the copied parent.
+- `historyLimit` (default `50`) bounds the undo stack. Redo is Cmd/Ctrl+Shift+Z or Ctrl+Y.
+
 ## Edge path helpers
 
 For custom edge renderers — pure functions returning SVG `d`-string + label coordinates:
