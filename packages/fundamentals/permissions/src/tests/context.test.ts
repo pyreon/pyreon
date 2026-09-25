@@ -26,10 +26,15 @@ describe('usePermissions', () => {
       expect(can('users.edit')).toBe(false)
     })
 
-    it('still falls through to the provider contract for an EMPTY list', () => {
-      // An empty seed grants nothing, so treating it as self-contained would
-      // silently deny everything instead of reading the provider.
-      expect(() => usePermissions([])).toThrow('[Pyreon] usePermissions()')
+    it('an EMPTY list is a self-contained deny-all instance, not a provider read', () => {
+      // The mode is chosen by PRESENCE: `usePermissions([])` says "this screen
+      // grants nothing". Falling back to the provider for an empty (often
+      // computed-to-empty) list widened authorization to whatever the provider
+      // granted — the opposite of what the call site asked for. The native
+      // lowering makes the same choice (PyreonPermissions() with no grants).
+      const can = usePermissions([])
+      expect(can('posts.edit')).toBe(false)
+      expect(can.granted()).toEqual([])
     })
   })
 })

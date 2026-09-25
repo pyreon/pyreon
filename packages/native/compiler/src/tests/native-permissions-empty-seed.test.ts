@@ -101,3 +101,47 @@ describe('a provider that lowers does not claim it does not', () => {
     expect(w).toContain('every check below it denies')
   })
 })
+
+// `usePermissions([])` — an explicit EMPTY grant list. The web runtime selects
+// the self-contained mode by PRESENCE, so `[]` is a deny-all instance, never a
+// fallback to the provider (an authorization-widening footgun when the list is
+// computed to empty). The native lowering has to make the same choice, or one
+// source line grants on device what it denies in a browser.
+describe('usePermissions([]) is a deny-all container on every target', () => {
+  const explicitEmpty = `import { PermissionsProvider, usePermissions } from '@pyreon/permissions'
+import { Text } from '@pyreon/primitives'
+function Inner() {
+  const can = usePermissions([])
+  return <Text>{can('posts.edit') ? 'y' : 'n'}</Text>
+}
+export function App() {
+  return <PermissionsProvider permissions={{ 'posts.*': true }}><Inner /></PermissionsProvider>
+}`
+
+  it('swift: an empty container, not the environment provider', () => {
+    const code = transform(explicitEmpty, { target: 'swift' }).code
+    expect(code).toContain('= PyreonPermissions()')
+    expect(code).not.toMatch(/@Environment\(\\\.pyreonPermissions\) private var can\b/)
+  })
+
+  it('kotlin: an empty container, not the CompositionLocal', () => {
+    const code = transform(explicitEmpty, { target: 'kotlin' }).code
+    expect(code).toContain('val can = remember { PyreonPermissions() }')
+    expect(code).not.toContain('val can = LocalPyreonPermissions.current')
+  })
+
+  it('an explicit empty list is intentional, so it does not warn', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const w = transform(
+        `import { usePermissions } from '@pyreon/permissions'
+import { Text } from '@pyreon/primitives'
+export function App() {
+  const can = usePermissions([])
+  return <Text>{can('posts.edit') ? 'y' : 'n'}</Text>
+}`,
+        { target },
+      ).warnings.join('\n')
+      expect(w).not.toContain('usePermissions()')
+    }
+  })
+})

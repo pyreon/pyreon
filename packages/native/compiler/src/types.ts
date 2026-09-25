@@ -424,7 +424,15 @@ export type DeclIR =
    * the methods read the underlying reactive set internally and return a
    * plain Bool / Void on both targets.
    */
-  | { kind: 'permissions'; name: string; grants: string[] }
+  | {
+      kind: 'permissions'
+      name: string
+      grants: string[]
+      /** The call passed an ARRAY LITERAL (`usePermissions([...])`, including
+       *  `[]`) — a self-contained instance. False for a bare call, which reads
+       *  the provider. Mirrors the web's presence-not-length mode selection. */
+      seeded: boolean
+    }
   /**
    * `useToggle(initial)` / `useCounter(initial, { min, max })` from
    * `@pyreon/hooks` — pure state containers with no platform dependency at

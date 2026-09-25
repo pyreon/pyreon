@@ -52,10 +52,14 @@ export function createFormatters(config: FormatterConfig) {
     locale: string,
     name: string,
   ): O | undefined {
-    return (
-      table?.[locale]?.[name] ??
-      (config.fallbackLocale ? table?.[config.fallbackLocale]?.[name] : undefined)
-    )
+    // OWN keys only: an inline spec is translation-author text, and a name
+    // like `constructor` / `toString` read an inherited member (`Object`) as
+    // if it were a configured format — then handed it to `Intl.*Format`.
+    return ownAt(ownAt(table, locale), name) ?? ownAt(ownAt(table, config.fallbackLocale), name)
+  }
+
+  function ownAt<V>(obj: Record<string, V> | undefined, key: string | undefined): V | undefined {
+    return obj !== undefined && key !== undefined && Object.hasOwn(obj, key) ? obj[key] : undefined
   }
 
   function numberFormatter(locale: string, options?: Intl.NumberFormatOptions | string) {
@@ -138,8 +142,8 @@ export function createFormatters(config: FormatterConfig) {
     const unit = (parts[1] ?? 'second') as Intl.RelativeTimeFormatUnit
 
     // 1. Custom named formatter wins.
-    const custom = config.formats?.[name]
-    if (custom) return custom(value, locale)
+    const custom = ownAt(config.formats, name)
+    if (typeof custom === 'function') return custom(value, locale)
 
     // 2. Builtin spec names.
     if (name === 'number') return n(locale, value as number)

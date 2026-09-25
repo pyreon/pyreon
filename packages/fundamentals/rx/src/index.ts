@@ -53,7 +53,7 @@ export type { KeyOf, ReadableSignal } from './types'
  * // Or pipe:
  * const result = rx.pipe(users,
  *   items => items.filter(u => u.active),
- *   items => items.sort((a, b) => a.name.localeCompare(b.name)),
+ *   items => [...items].sort((a, b) => a.name.localeCompare(b.name)),
  *   items => items.slice(0, 10),
  * )
  * ```

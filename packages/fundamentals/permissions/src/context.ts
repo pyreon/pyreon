@@ -64,7 +64,11 @@ export { _PermissionsProvider as PermissionsProvider }
 export function usePermissions(grants?: readonly string[]): Permissions {
   // A seeded call is self-contained by definition — it says what it grants, so
   // there is nothing for a provider to contribute and no reason to require one.
-  if (grants && grants.length > 0) {
+  // The mode is chosen by PRESENCE, not length: `usePermissions([])` states
+  // "this screen grants nothing" and must be a deny-all instance. Keying on
+  // `length > 0` made an empty (e.g. computed-to-empty) list silently fall
+  // back to the provider — an authorization-widening footgun.
+  if (grants !== undefined) {
     const map: PermissionMap = {}
     for (const key of grants) map[key] = true
     return createPermissions(map)

@@ -42,18 +42,27 @@ interface PermIndex {
   recursive: Map<string, PermissionValue> // 'prefix.**' → prefix → value
   global: PermissionValue | undefined // '*'
   hasWildcard: boolean
-  // True when ANY value is a predicate fn. Predicates depend on `context`, so a
-  // key→boolean resolve memo is only sound when the WHOLE map is static booleans.
-  hasPredicate: boolean
+  // How many values are predicate fns. Predicates depend on `context`, so a
+  // key→boolean resolve memo is only sound when the WHOLE map is static
+  // booleans (count === 0). A COUNT, not a flag: `patch` can overwrite the last
+  // predicate with a boolean, and a sticky flag left the memo disabled forever.
+  predicates: number
 }
 
 function emptyIndex(): PermIndex {
-  return { exact: new Map(), single: new Map(), recursive: new Map(), global: undefined, hasWildcard: false, hasPredicate: false }
+  return { exact: new Map(), single: new Map(), recursive: new Map(), global: undefined, hasWildcard: false, predicates: 0 }
 }
 
 /** Route one key into its partition (deterministic by key shape). */
-function indexKey(idx: PermIndex, key: string, value: PermissionValue): void {
-  if (typeof value === 'function') idx.hasPredicate = true
+function indexKey(
+  idx: PermIndex,
+  key: string,
+  value: PermissionValue,
+  prev?: PermissionValue,
+): void {
+  // `prev` is the value this key held before (patch overwrites in place).
+  if (typeof prev === 'function') idx.predicates--
+  if (typeof value === 'function') idx.predicates++
   if (key === '*') {
     idx.global = value
     idx.hasWildcard = true
@@ -195,7 +204,7 @@ export function createPermissions(initial?: PermissionMap): Permissions {
     // Reading version subscribes this call to reactive updates
     version()
     // Memoized fast path: pure-static map + no context → resolve(key) is pure.
-    if (context === undefined && !index.hasPredicate) {
+    if (context === undefined && index.predicates === 0) {
       const cached = resolveCache.get(key)
       if (cached !== undefined) return cached
       const result = resolve(index, key)
@@ -209,13 +218,23 @@ export function createPermissions(initial?: PermissionMap): Permissions {
     return !can(key, context)
   }
 
-  can.all = (...keys: string[]): boolean => {
-    return keys.every((key) => can(key))
+  // Two call shapes: rest keys (`can.all('a', 'b')`, no context) or an ARRAY
+  // plus an optional context (`can.all(['a', 'b'], post)`) so a multi-check can
+  // reach context-dependent predicates, which the rest form cannot express.
+  function splitMulti(args: unknown[]): { keys: string[]; context: unknown } {
+    if (Array.isArray(args[0])) return { keys: args[0] as string[], context: args[1] }
+    return { keys: args as string[], context: undefined }
   }
 
-  can.any = (...keys: string[]): boolean => {
-    return keys.some((key) => can(key))
-  }
+  can.all = ((...args: unknown[]): boolean => {
+    const { keys, context } = splitMulti(args)
+    return keys.every((key) => can(key, context))
+  }) as Permissions['all']
+
+  can.any = ((...args: unknown[]): boolean => {
+    const { keys, context } = splitMulti(args)
+    return keys.some((key) => can(key, context))
+  }) as Permissions['any']
 
   can.set = (permissions: PermissionMap): void => {
     batch(() => {
@@ -231,11 +250,12 @@ export function createPermissions(initial?: PermissionMap): Permissions {
     batch(() => {
       const current = store.peek()
       for (const [key, value] of Object.entries(permissions)) {
+        const prev = current.get(key)
         current.set(key, value)
         // Incremental: `patch` only adds/overwrites (never deletes), and a key's
         // partition is determined by its string shape — so routing each patched
         // key keeps the index in sync without an O(map) rebuild.
-        indexKey(index, key, value)
+        indexKey(index, key, value, prev)
       }
       store.set(current)
       resolveCache.clear() // permissions changed → memo is stale

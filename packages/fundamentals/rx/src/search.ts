@@ -12,6 +12,17 @@ import { isSignal } from './types'
  * ```
  */
 export function search<T>(
+  source: ReadableSignal<T[]>,
+  query: ReadableSignal<string> | string,
+  keys: (keyof T)[],
+): ReturnType<typeof computed<T[]>>
+export function search<T>(
+  source: T[],
+  query: ReadableSignal<string>,
+  keys: (keyof T)[],
+): ReturnType<typeof computed<T[]>>
+export function search<T>(source: T[], query: string, keys: (keyof T)[]): T[]
+export function search<T>(
   source: ReadableSignal<T[]> | T[],
   query: ReadableSignal<string> | string,
   keys: (keyof T)[],

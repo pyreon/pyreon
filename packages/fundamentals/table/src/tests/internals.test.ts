@@ -57,12 +57,16 @@ describe('columnSignature', () => {
     expect(columnSignature([{ accessorKey: 0 }])).not.toBe(columnSignature([{ accessorKey: 1 }]))
   })
 
-  it('ignores a NON-STRING header rather than stringifying it', () => {
-    // A function/JSX header has no stable string form — `String(fn)` would
-    // embed the source text and churn the signature on every re-render.
-    const fnHeader = columnSignature([{ accessorKey: 'a', header: () => 'X' }])
+  it('keys a FUNCTION header by its source: stable across re-creation, distinct across renderers', () => {
+    // The invariant this spec protects: an inline column literal recreated on
+    // every options run must NOT churn the signature. Source text satisfies it
+    // (a recreated arrow has the same source); identity would not. Ignoring the
+    // function entirely — the old behaviour — also satisfied it, but made a
+    // real renderer swap invisible, freezing every cell on the old renderer.
+    const make = () => columnSignature([{ accessorKey: 'a', header: () => 'X' }])
+    expect(make()).toBe(make())
     const otherFn = columnSignature([{ accessorKey: 'a', header: () => 'Y' }])
-    expect(fnHeader).toBe(otherFn)
+    expect(make()).not.toBe(otherFn)
   })
 
   it('does not let adjacent columns bleed into one another', () => {
