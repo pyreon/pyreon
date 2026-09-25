@@ -1,3 +1,5 @@
+import type { VNode, VNodeChild } from '@pyreon/core'
+
 // ─── Node Types ─────────────────────────────────────────────────────────────
 
 export type NodeType =
@@ -35,6 +37,32 @@ export interface DocNode {
 }
 
 export type DocChild = DocNode | string
+
+/**
+ * A document primitive (`Document`, `Page`, `Text`, …). It has two uses:
+ *
+ * - **Called directly** — `Text({ children: 'hi' })` — it returns a `DocNode`.
+ * - **As a JSX tag / `h()` type** — `<Text>hi</Text>` — it is never called by
+ *   you; the JSX runtime builds a Pyreon VNode, and `render()` resolves that
+ *   VNode tree to `DocNode`s.
+ *
+ * The second call signature exists only so a primitive is a valid JSX
+ * component type (`JSX.ElementType` requires a VNodeChild-returning
+ * function). Direct calls resolve to the first signature, so they are typed
+ * `DocNode` — which is what they return at runtime.
+ */
+export interface DocPrimitive<P, T extends NodeType> {
+  (props: P): DocNode
+  (props: P): VNodeChild
+  readonly _documentType: T
+}
+
+/** A primitive whose props are optional (`Divider`, `PageBreak`). */
+export interface OptionalPropsDocPrimitive<P, T extends NodeType> {
+  (props?: P): DocNode
+  (props?: P): VNodeChild
+  readonly _documentType: T
+}
 
 // ─── Style Types ────────────────────────────────────────────────────────────
 
@@ -80,10 +108,10 @@ export interface PageProps {
   orientation?: PageOrientation
   margin?: number | [number, number] | [number, number, number, number]
   children?: unknown
-  /** Header content for this page (PDF/DOCX). */
-  header?: DocNode
-  /** Footer content for this page (PDF/DOCX). */
-  footer?: DocNode
+  /** Header content for this page (PDF/DOCX) — a primitive, as JSX or a direct call. */
+  header?: DocNode | VNode
+  /** Footer content for this page (PDF/DOCX) — a primitive, as JSX or a direct call. */
+  footer?: DocNode | VNode
 }
 
 export interface SectionProps {
@@ -275,8 +303,11 @@ export interface DocumentBuilder {
   button(text: string, props: Omit<ButtonProps, 'children'>): DocumentBuilder
   link(text: string, props: Omit<LinkProps, 'children'>): DocumentBuilder
   pageBreak(): DocumentBuilder
-  /** Add an arbitrary DocNode (or fragment returned by a helper function). */
-  add(node: DocNode | DocNode[]): DocumentBuilder
+  /**
+   * Add an arbitrary DocNode (or fragment returned by a helper function), or a
+   * JSX / `h()` tree of primitives — it is resolved when the document is built.
+   */
+  add(node: DocNode | VNode | (DocNode | VNode)[]): DocumentBuilder
   /** Add a group of nodes as a logical section. */
   section(children: DocNode[]): DocumentBuilder
   /** Add a chart snapshot from a @pyreon/charts instance. */

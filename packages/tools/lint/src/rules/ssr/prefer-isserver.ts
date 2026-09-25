@@ -29,9 +29,14 @@ import { isProjectDependency } from '../../utils/project-deps'
  * i.e. genuine feature detection) — only the bare `window` / `document`
  * identifier.
  *
- * Not auto-fixable: the fix requires adding/merging an `import { isServer }
- * from '@pyreon/reactivity'` which a span-replacement can't manage safely.
- * The message names the exact primitive to use.
+ * Auto-fixable, as ONE multi-edit fix: the check is rewritten to `isServer` /
+ * `isClient` AND the import is added in the same fix (extending an existing
+ * `import { … } from '@pyreon/reactivity'`, or inserting a new one after the
+ * last import). `applyFixes` applies a multi-edit fix whole or not at all, so
+ * a file is never left with the rewritten check but no import. When the
+ * import cannot be edited unambiguously — a namespace/default import, a
+ * type-only import, or a bare side-effect import — the diagnostic is reported
+ * WITHOUT a fix rather than emitting code that does not compile.
  *
  * The reactivity module that DEFINES the primitives is exempt (it can't
  * import them from itself).

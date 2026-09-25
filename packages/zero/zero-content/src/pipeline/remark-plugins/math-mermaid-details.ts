@@ -10,7 +10,7 @@ import type { ContainerDirective, LeafDirective, TextDirective } from 'mdast-uti
 //   E = mc^2
 //   :::
 //
-//   :::math inline
+//   :::math{inline}
 //   E = mc^2
 //   :::
 //
@@ -19,7 +19,7 @@ import type { ContainerDirective, LeafDirective, TextDirective } from 'mdast-uti
 //     A --> B
 //   :::
 //
-//   :::details Click me
+//   :::details[Click me]
 //   Hidden body.
 //   :::
 //
