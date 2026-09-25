@@ -1,5 +1,6 @@
 import type { VNode } from '@pyreon/core'
 import { nativeCompat, provide } from '@pyreon/core'
+import { computed } from '@pyreon/reactivity'
 import { ThemeContext } from '@pyreon/styler'
 import { Provider as CoreProvider, context } from '@pyreon/ui-core'
 import type { PyreonTheme } from './enrichTheme'
@@ -21,18 +22,27 @@ export type TProvider = {
  * all three context layers (styler, core, mode) in one component.
  */
 function Provider(props: TProvider): VNode | null {
-  const { theme, children } = props
-
-  const enrichedTheme = enrichTheme(theme)
+  // Enrich LAZILY off `props.theme` (not a setup-time destructure): a
+  // signal-driven `theme={t()}` arrives as a getter, and reading it once at
+  // setup froze the enriched theme forever. The computed re-enriches only
+  // when the theme actually changes.
+  const enrichedTheme = computed(() => enrichTheme(props.theme))
 
   // Provide enriched theme to both the ui-core context (for rocketstyle/elements)
   // AND the styler ThemeContext (for styled() components and makeItResponsive).
   // Without this, styled() components receive an empty theme and all responsive
   // styles are skipped (@media queries produce NaN values).
   // ThemeContext is a ReactiveContext — provide an accessor.
-  provide(ThemeContext, () => enrichedTheme)
+  provide(ThemeContext, () => enrichedTheme())
 
-  return CoreProvider({ theme: enrichedTheme, children }) as VNode | null
+  return CoreProvider({
+    get theme() {
+      return enrichedTheme()
+    },
+    get children() {
+      return props.children
+    },
+  }) as VNode | null
 }
 
 // Mark as native — invoked by PyreonUI internally; needs Pyreon's setup

@@ -61,9 +61,20 @@ type ContentRenderer = (
   }>,
 ) => VNodeChild
 
+// `Content` (the `render()` input) is a union carrying SEVERAL function types —
+// `ComponentFn`, the generic `RenderProps<T>` and `VNodeChild`'s `() => …`
+// accessor. With more than one function signature in the union, TypeScript
+// gives an inline arrow NO contextual type, so the idiomatic
+// `trigger={(t) => <button ref={t.ref} />}` failed strict mode with
+// `TS7006: Parameter 't' implicitly has an 'any' type`. Every function reaching
+// `render()` is invoked the same way (`h(fn, attachProps)`), so the renderer
+// signature is the ONLY callable member the union needs: a component or a
+// zero-arg accessor still assigns to it structurally.
+type NonCallableContent = Exclude<Content, (...args: never[]) => unknown>
+
 export type Props = {
-  children: ContentRenderer | Content
-  trigger: TriggerRenderer | Content
+  children: ContentRenderer | NonCallableContent
+  trigger: TriggerRenderer | NonCallableContent
   DOMLocation?: HTMLElement
   triggerRefName?: string
   contentRefName?: string
@@ -163,7 +174,7 @@ const Component: PyreonComponent<Props> = (props) => {
         // flips "false" → "true" on open with NO trigger remount. Pre-fix,
         // `active: active()` read the signal at setup and froze both forever
         // (screen readers were told the popup never opens).
-        render(own.trigger, {
+        render(own.trigger as Content, {
           [triggerRefName]: triggerRef,
           active: _reactiveProp(() => active()),
           'aria-expanded': _reactiveProp(() => active()),
@@ -177,7 +188,7 @@ const Component: PyreonComponent<Props> = (props) => {
         isClient && active() ? (
           <Portal target={own.DOMLocation ?? document.body}>
             <Provider {...ctx}>
-              {render(own.children, {
+              {render(own.children as Content, {
                 [contentRefName]: contentRef,
                 // Inside the accessor these re-read `overlayProps` per
                 // open/close cycle — live for getter-shaped config props.

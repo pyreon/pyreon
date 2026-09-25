@@ -34,34 +34,47 @@ export type TProvider = {
  * the active mode (with optional inversion for nested dark/light switching).
  *
  * In Pyreon, context is provided via provide() instead of React.Provider.
+ *
+ * REACTIVE: every value handed to the provider is a GETTER that re-reads the
+ * parent context and this component's props on access. Components run once, so
+ * the previous shape — `const ctx = getCtx()` + an object spread at setup —
+ * froze the parent's mode at mount: `<Provider inversed>` under a
+ * `<PyreonUI mode={mode()}>` kept its first inverted value forever, and a
+ * signal-driven `theme`/`mode` prop (a compiler getter) was resolved once. The
+ * getters keep each read lazy, so a rocketstyle consumer reading `.mode` inside
+ * its resolution computed subscribes to exactly the parent mode it depends on
+ * (and reading only `.theme` never subscribes to mode — same contract as
+ * `PyreonUI`'s own core-context getters).
  */
-const Provider = ({ provider = CoreProvider, inversed, ...props }: TProvider): VNodeChild => {
+const Provider = (props: TProvider): VNodeChild => {
   const getCtx = useContext(context)
-  const ctx = getCtx()
+  // The provider COMPONENT is structural — which component renders is fixed
+  // at mount, exactly like any other component choice.
+  const FinalProvider = props.provider ?? CoreProvider
 
-  const merged = { ...ctx, ...props, provider } as unknown as TProvider & Record<string, unknown>
-  const { theme, mode, provider: RocketstyleProvider, children } = merged
-
-  let newMode = MODE_DEFAULT
-
-  if (mode) {
-    newMode = inversed ? THEME_MODES_INVERSED[mode] : mode
+  const resolveMode = (): 'light' | 'dark' => {
+    const mode = props.mode ?? getCtx().mode
+    if (!mode) return MODE_DEFAULT
+    return props.inversed ? THEME_MODES_INVERSED[mode] : mode
   }
 
-  // `RocketstyleProvider` is `merged.provider`, which is always set: the
-  // destructure defaults `provider` to `CoreProvider` and re-adds it to
-  // `merged` after `...props` (which no longer carries `provider`). The
-  // `?? CoreProvider` fallback is therefore defensive and never taken.
-  /* v8 ignore next 2 */
-  const FinalProvider =
-    RocketstyleProvider ?? CoreProvider
   const result = FinalProvider({
-    mode: newMode,
-    isDark: newMode === 'dark',
-    isLight: newMode === 'light',
-    ...(theme !== undefined ? { theme } : {}),
-    provider,
-    children,
+    get mode() {
+      return resolveMode()
+    },
+    get isDark() {
+      return resolveMode() === 'dark'
+    },
+    get isLight() {
+      return resolveMode() === 'light'
+    },
+    get theme() {
+      return props.theme ?? getCtx().theme
+    },
+    provider: FinalProvider,
+    get children() {
+      return props.children
+    },
   })
 
   return result ?? null

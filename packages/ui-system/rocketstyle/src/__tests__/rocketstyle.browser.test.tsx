@@ -6,6 +6,7 @@ import { sheet } from '@pyreon/styler'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
 import { PyreonUI } from '@pyreon/ui-core'
 import { afterEach, describe, expect, it } from 'vitest'
+import Provider from '../context/context'
 import rocketstyle from '../init'
 
 // Real-Chromium smoke for @pyreon/rocketstyle.
@@ -92,6 +93,46 @@ describe('@pyreon/rocketstyle in real browser', () => {
     await new Promise((r) => requestAnimationFrame(() => r(undefined)))
 
     expect(getComputedStyle(el).color).toBe('rgb(0, 0, 255)')
+    unmount()
+  })
+
+  it('<Provider inversed> follows a LATER parent mode change (reactive, no remount)', async () => {
+    // Pre-fix the Provider read its parent context ONCE at setup, so the
+    // inverted mode was frozen at mount: flipping the parent left the
+    // inversed subtree stuck on its first value.
+    const modeSig = signal<'light' | 'dark'>('light')
+    const Box: any = rocketstyle()({ name: 'InversedBox', component: Base })
+      .styles(
+        (css: any) => css`
+          color: ${({ $rocketstyle }: any) => $rocketstyle.color};
+        `,
+      )
+      .theme((_t: any, m: any) => ({
+        color: m('rgb(255, 0, 0)', 'rgb(0, 0, 255)'),
+      }))
+
+    const { container, unmount } = mountInBrowser(
+      h(
+        PyreonUI,
+        { theme: { rootSize: 16 }, mode: modeSig },
+        h(Box, { id: 'outer' }),
+        h(Provider, { inversed: true, children: h(Box, { id: 'inv' }) }),
+      ),
+    )
+    const outer = container.querySelector<HTMLElement>('#outer')!
+    const inv = container.querySelector<HTMLElement>('#inv')!
+    // light parent → inversed subtree is dark
+    expect(getComputedStyle(outer).color).toBe('rgb(255, 0, 0)')
+    expect(getComputedStyle(inv).color).toBe('rgb(0, 0, 255)')
+
+    modeSig.set('dark')
+    await new Promise((r) => setTimeout(r, 0))
+    await new Promise((r) => requestAnimationFrame(() => r(undefined)))
+
+    // dark parent → inversed subtree is light, same element
+    expect(container.querySelector('#inv')).toBe(inv)
+    expect(getComputedStyle(outer).color).toBe('rgb(0, 0, 255)')
+    expect(getComputedStyle(inv).color).toBe('rgb(255, 0, 0)')
     unmount()
   })
 
