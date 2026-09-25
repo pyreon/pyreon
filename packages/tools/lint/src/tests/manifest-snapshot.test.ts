@@ -22,6 +22,7 @@ describe('gen-docs — lint snapshot', () => {
     expect(Object.keys(record).sort()).toEqual([
       'lint/cli',
       'lint/lint',
+      'lint/lintAsync',
       'lint/lintFile',
       'lint/no-process-dev-gate',
       'lint/require-browser-smoke-test',
