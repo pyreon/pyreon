@@ -40,6 +40,16 @@ export function isCalloutType(name: string): name is CalloutType {
 }
 
 /**
+ * Container-directive names owned by OTHER plugins in this pipeline
+ * (`codegroup.ts`, `math-mermaid-details.ts`). They are valid, so the
+ * callout pass must not report them as unknown — before this list only
+ * `code-group` was skipped, so every `:::math` / `:::mermaid` /
+ * `:::details` block emitted a spurious `Unknown callout directive`
+ * warning (and failed `check-docs-content-drops`) while rendering fine.
+ */
+const OTHER_PLUGIN_DIRECTIVES = new Set(['code-group', 'math', 'mermaid', 'details'])
+
+/**
  * Optional collector for diagnostics surfaced during the callout pass.
  * The Vite plugin passes one in and pipes every message through
  * `this.warn(...)` so authors see actionable feedback (unknown name
@@ -152,10 +162,9 @@ export function remarkCallout(options: RemarkCalloutOptions = {}) {
       // circuits on `isCalloutType` so codegroup is left intact for
       // its own pass).
       if (!isCalloutType(directive.name)) {
-        // Skip ones we know belong to other plugins — `code-group`
-        // is the codegroup directive name; anything else is
-        // unknown.
-        if (directive.name !== 'code-group' && warnings) {
+        // Skip the names other plugins own (see OTHER_PLUGIN_DIRECTIVES);
+        // anything else is unknown.
+        if (!OTHER_PLUGIN_DIRECTIVES.has(directive.name) && warnings) {
           const hint = suggestCalloutType(directive.name)
           warnings.push(
             hint
@@ -215,24 +224,43 @@ export function remarkCallout(options: RemarkCalloutOptions = {}) {
       return index + 2 + body.length
     })
 
-    // Raw-leak diagnostic. `:::warning bare text` (a known type followed by
-    // bare text rather than `[label]` / `{attrs}` / EOL) is NOT valid
+    // Raw-leak diagnostic. `:::warning bare text` (a directive name followed
+    // by bare text rather than `[label]` / `{attrs}` / EOL) is NOT valid
     // remark-directive syntax — the opener is rejected and the whole line
     // ships to the page as the literal string `:::warning bare text`. It
     // produced ZERO diagnostics pre-fix (73 instances leaked across the docs).
     // The rejected opener lands as a PARAGRAPH whose first text child starts
-    // with `:::type`, so scanning parsed paragraphs (not the raw source)
+    // with `:::name`, so scanning parsed paragraphs (not the raw source)
     // catches it precisely while skipping fenced code blocks — a ```` ```md ````
     // sample that shows `:::warning …` is a `code` node, never a paragraph,
     // so it is never flagged.
+    //
+    // The match is on ANY directive name, not just the five callout types:
+    // an unknown name with bare text (`:::caution Title`) is rejected before
+    // it becomes a directive, so the `Unknown callout directive` check above
+    // never sees it — `table.md` shipped five literal `:::caution …` lines
+    // that way. The same holds for `:::details Label` / `:::math inline`.
     if (warnings) {
       visit(tree, 'paragraph', (para) => {
         const first = (para.children as Array<{ type: string; value?: string }>)[0]
-        if (!first || typeof first.value !== 'string') return
-        const m = /^:::(tip|warning|note|danger|info)\b/.exec(first.value)
+        // A TEXT child only — a paragraph opening with inline code (`:::math` in backticks)
+        // is prose ABOUT the syntax, not a rejected opener.
+        if (!first || first.type !== 'text' || typeof first.value !== 'string') return
+        const m = /^:::([A-Za-z][\w-]*)/.exec(first.value)
         if (!m) return
+        const name = m[1] as string
+        const known = isCalloutType(name) || OTHER_PLUGIN_DIRECTIVES.has(name)
+        const callout = isCalloutType(name)
+        const hint = known ? null : suggestCalloutType(name)
+        const target = known ? name : (hint ?? 'warning')
+        const fix =
+          name === 'math'
+            ? '`:::math{inline}` for inline math, or a bare `:::math` line for display math'
+            : name === 'details'
+              ? '`:::details[Summary]` (the summary must be bracketed)'
+              : `\`:::${target}[Title]\` (bracketed) or \`:::${target}{title="Title"}\``
         warnings.push(
-          `[@pyreon/zero-content] \`:::${m[1]}\` did not parse as a callout — a title must be \`:::${m[1]}[Title]\` (bracketed) or \`:::${m[1]}{title="Title"}\`. Bare text after the name is not valid directive syntax and ships as literal \`:::${m[1]}…\` text.`,
+          `[@pyreon/zero-content] \`:::${name}\` did not parse as a ${callout || !known ? 'callout' : 'directive'} — use ${fix}. Bare text after the name is not valid directive syntax and ships as literal \`:::${name}…\` text.${known ? '' : ` \`${name}\` is not a callout type either — valid types: tip, warning, note, danger, info.`}`,
         )
       })
     }
