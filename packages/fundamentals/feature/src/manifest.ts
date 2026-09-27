@@ -191,7 +191,7 @@ isReference('users')                       // false — a bare string is not a r
         'Passing `useTable({ data })` — data is the FIRST positional argument (`useTable(rows, options?)`), options are second.',
         'Expecting `empty` to render when rows exist but are filtered away to nothing — it renders whenever the row model is empty, filtered or not, which is usually what you want but is not "no data on the server".',
       ],
-      seeAlso: ['useTable', 'Field'],
+      seeAlso: ['useTable', 'Field', 'createTableComponent'],
     },
     {
       name: 'Field',
@@ -213,7 +213,24 @@ isReference('users')                       // false — a bare string is not a r
         'Reaching for it to render a whole form — there is no `<AutoForm>` yet, and per-field is the point. Map over `feature.fields` yourself if you want every field.',
         'Passing a plain `useForm()` from `@pyreon/form` — `Field` is bound to the FEATURE\'s schema fields, so it must receive the form from `feature.useForm()`.',
       ],
-      seeAlso: ['useForm', 'extractFields'],
+      seeAlso: ['useForm', 'extractFields', 'createFieldComponent'],
+    },
+    {
+      name: 'createFieldComponent / createTableComponent',
+      kind: 'function',
+      signature:
+        'createFieldComponent<TValues>(fields: FieldInfo[]) => (props: FieldProps<TValues>) => VNodeChild · createTableComponent<TValues>() => (props: TableProps<TValues>) => VNodeChild',
+      summary:
+        "The factories `defineFeature` calls internally to build the bound `feature.Field` and `feature.Table` components — every consumer uses those bound components, not these factories directly. `createFieldComponent(fields)` closes over the schema's `FieldInfo[]` (what makes `<Feature.Field name=\"title\">` know the control type without a prop) and `createTableComponent()` builds the generic table renderer `featureTableFeatures` wires up. Exported standalone for building your OWN bound component outside `defineFeature` — e.g. a table/field renderer bound to a schema assembled some other way.",
+      example: `// What defineFeature does internally:
+import { createFieldComponent, createTableComponent } from '@pyreon/feature'
+
+const Field = createFieldComponent<MyValues>(fields)
+const Table = createTableComponent<MyValues>()`,
+      mistakes: [
+        'Calling these directly when `defineFeature(...)` already gives you bound `Field`/`Table` — reach for these only when building a schema-driven component OUTSIDE the standard `defineFeature` flow',
+      ],
+      seeAlso: ['Field', 'Table', 'defineFeature'],
     },
     {
       name: 'extractFields',
