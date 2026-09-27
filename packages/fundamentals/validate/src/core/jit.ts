@@ -43,6 +43,7 @@
  * is written via `Object.defineProperty`, never `obj.__proto__ =`).
  */
 
+import { jitAllowed, markEvalUnavailable } from './config'
 import { makeIssue, typeIssue } from './issue'
 import type { PathSegment } from './issue'
 import { mutablePath, type ParseCtx } from './ops'
@@ -464,6 +465,9 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
   // whose member bodies inline. Other roots (plain union, record, coerce,
   // modifier-wrapped, …) gain nothing from flattening, so the interpreter
   // handles them.
+  // Jitless (configure({ jit: false })) or a previously-refused eval (CSP):
+  // never attempt codegen — the interpreter is always correct.
+  if (!jitAllowed()) return null
   if (!isPlainObject(root, CHECK) && !isInlineArray(root) && !isInlinePrimitive(root) && !isInlineDU(root))
     return null
 
@@ -1349,7 +1353,10 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
     const fn = factory(helpers)
     if (!hasFallback) fn._jitPure = true
     return fn
-  } catch {
+  } catch (err) {
+    // `new Function` throws EvalError when a CSP forbids eval — remember it so
+    // later schemas don't each pay (and report) another violation.
+    if (err instanceof EvalError) markEvalUnavailable()
     return null
   }
 }

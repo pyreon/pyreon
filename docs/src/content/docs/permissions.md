@@ -34,7 +34,15 @@ Peer dependencies: `@pyreon/reactivity`, `@pyreon/core`.
 ## Quick Start
 
 ```tsx
+// @check
 import { createPermissions } from '@pyreon/permissions'
+
+interface Post {
+  authorId: string
+}
+
+const currentUserId = () => 'u1'
+const myPost: Post = { authorId: 'u1' }
 
 const can = createPermissions({
   'posts.read': true,

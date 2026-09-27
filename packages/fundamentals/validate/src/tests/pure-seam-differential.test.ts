@@ -275,8 +275,17 @@ describe('pure-seam differential — fast seam ≡ general seam (public API)', (
     const P = s.number().int()
     expect(P.parse(4)).toEqual({ ok: true, value: 4 })
     expect(seamActive(P)).toBe(true)
-    P.refine((v) => (v as number) % 2 === 0, { message: 'even' })
-    expect(seamActive(P)).toBe(false) // refine → fallback tree → impure
+    // Copy-on-write: the derived schema compiles its own (impure) tree; the
+    // receiver keeps its pure seam.
+    const R = P.refine((v) => (v as number) % 2 === 0, { message: 'even' })
+    R.parse(4)
+    expect(seamActive(R)).toBe(false) // refine → fallback tree → impure
+    expect(seamActive(P)).toBe(true)
+    expect(P.parse(3).ok).toBe(true)
+    // Direct op-list change + invalidation (internal path) recompiles correctly.
+    P._ops = R._ops
+    P._invalidateCompile()
+    expect(seamActive(P)).toBe(false)
     expect(P.parse(4)).toEqual({ ok: true, value: 4 })
     const odd = P.parse(3)
     expect(odd.ok).toBe(false)

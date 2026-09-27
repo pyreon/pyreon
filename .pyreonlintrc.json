@@ -13,6 +13,7 @@
           "packages/core/server/",
           "packages/core/runtime-server/",
           "packages/tools/vite-plugin/",
+          "packages/tools/lathe/src/vite/",
           "packages/tools/cli/",
           "packages/tools/lint/",
           "packages/tools/mcp/",

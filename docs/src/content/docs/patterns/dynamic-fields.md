@@ -11,7 +11,9 @@ seeAlso: [form-fields, keyed-lists]
 Manage variable-length form inputs with `useFieldArray`. Each item has a **stable monotonic key** — use it with `<For by>` so reordering/insertion preserves input focus and DOM state:
 
 ```tsx
-import { useFieldArray, For } from '@pyreon/form'
+// @check
+import { useFieldArray } from '@pyreon/form'
+import { For } from '@pyreon/core'
 
 function TagEditor() {
   const tags = useFieldArray<string>(['typescript', 'signals'])
@@ -87,7 +89,7 @@ const GoodRemove = (item: { key: number }) => (
 )
 ```
 
-Cleanest: the `useFieldArray` API takes a key-or-predicate for mutations. Check `get_api({ package: "form", symbol: "useFieldArray" })` for the full surface.
+`useFieldArray`'s mutation methods (`append` / `prepend` / `insert` / `remove` / `update` / `move` / `swap` / `replace`) are all **index-based** — there is no key-or-predicate overload. When a handler only has the item's `key` in scope (not its current index, which can move under reorder), resolve the index first, as `GoodRemove` does above. Check `get_api({ package: "form", symbol: "useFieldArray" })` for the full surface.
 
 ## Related
 

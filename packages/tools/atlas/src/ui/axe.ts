@@ -16,6 +16,13 @@ export interface AxeFinding {
   help: string
   /** CSS selector of the first offending node — the highlight target. */
   target: string
+  /**
+   * The first offending node's outer HTML, trimmed. A violation that says only
+   * "Elements must meet minimum color contrast" does not say WHICH element,
+   * and hover-to-highlight is no help to someone reading a screenshot or a
+   * report — the markup is.
+   */
+  html: string
   /** How many nodes this rule flagged. */
   nodes: number
 }
@@ -35,9 +42,15 @@ interface RawAxeResult {
     id: string
     impact?: string
     help: string
-    nodes: { target: unknown[] }[]
+    nodes: { target: unknown[]; html?: string }[]
   }[]
   incomplete: { id: string }[]
+}
+
+/** Collapse whitespace and cap the length — a violation row, not a dump. */
+export function snippet(html: string, max = 140): string {
+  const flat = html.replace(/\s+/g, ' ').trim()
+  return flat.length > max ? `${flat.slice(0, max)}…` : flat
 }
 
 type AxeRun = (context: Element, options: Record<string, unknown>) => Promise<RawAxeResult>
@@ -73,6 +86,7 @@ export async function runAxe(
         impact: v.impact ?? 'unknown',
         help: v.help,
         target: String(v.nodes[0]?.target?.[0] ?? ''),
+        html: snippet(v.nodes[0]?.html ?? ''),
         nodes: v.nodes.length,
       })),
       incomplete: result.incomplete.length,

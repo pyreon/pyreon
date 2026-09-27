@@ -171,3 +171,22 @@ describe('Provider', () => {
     provideSpy.mockRestore()
   })
 })
+
+describe('Provider — reactive theme prop', () => {
+  it('re-enriches a getter-backed theme prop that changes later', async () => {
+    const { signal } = await import('@pyreon/reactivity')
+    mockCoreProvider.mockClear()
+    const theme = signal<Record<string, unknown>>({ rootSize: 16 })
+    Provider({
+      get theme() {
+        return theme() as never
+      },
+      children: null,
+    })
+    const calledWith = firstCallArg()
+    expect(calledWith.theme.rootSize).toBe(16)
+    theme.set({ rootSize: 20 })
+    expect(calledWith.theme.rootSize).toBe(20)
+    expect(calledWith.theme).toHaveProperty('__PYREON__')
+  })
+})

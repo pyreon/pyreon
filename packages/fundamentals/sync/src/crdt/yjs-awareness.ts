@@ -20,14 +20,51 @@ import type { YjsCrdtDoc } from './yjs-adapter'
 // transports skip the awareness channel entirely when none exists).
 const docAwareness = new WeakMap<object, Awareness>()
 
+// Transports attached to a doc BEFORE any awareness exists register here, so
+// the awareness channel is wired the moment an app opts into presence later.
+// Peeking once at connect time (the old shape) meant a `syncedAwareness` created
+// after the transport — the ordinary order when an avatars component mounts
+// after the app connected — was never sent or received. Keyed by `Y.Doc` like
+// `docAwareness`; each transport removes its own waiter on disconnect.
+const awarenessWaiters = new WeakMap<object, Set<(aw: Awareness) => void>>()
+
 /** Get (lazily creating + caching) the {@link Awareness} for a doc. */
 export function getDocAwareness(doc: YjsCrdtDoc): Awareness {
   let aw = docAwareness.get(doc.yDoc)
   if (!aw) {
     aw = new Awareness(doc.yDoc)
     docAwareness.set(doc.yDoc, aw)
+    const waiters = awarenessWaiters.get(doc.yDoc)
+    if (waiters) {
+      awarenessWaiters.delete(doc.yDoc)
+      for (const cb of waiters) cb(aw)
+    }
   }
   return aw
+}
+
+/**
+ * Run `cb` with the doc's {@link Awareness} — synchronously if one exists, else
+ * the moment one is created (by `syncedAwareness` / `getDocAwareness`). Does NOT
+ * create one, so a doc-only app still pays nothing. Returns a cancel fn (a no-op
+ * once `cb` has run). Used by the transports.
+ */
+export function onDocAwareness(doc: YjsCrdtDoc, cb: (aw: Awareness) => void): () => void {
+  const existing = docAwareness.get(doc.yDoc)
+  if (existing) {
+    cb(existing)
+    return () => {}
+  }
+  let waiters = awarenessWaiters.get(doc.yDoc)
+  if (!waiters) {
+    waiters = new Set()
+    awarenessWaiters.set(doc.yDoc, waiters)
+  }
+  waiters.add(cb)
+  const set = waiters
+  return () => {
+    set.delete(cb)
+  }
 }
 
 /**

@@ -1,6 +1,6 @@
 import { sanitizeHref, sanitizeImageSrc } from '../sanitize'
 import type { DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
-import { getTextContent, imagePlaceholderText, warnUnknownNodeType } from '../nodes'
+import { getInlineRuns, getTextContent, imagePlaceholderText, warnUnknownNodeType } from '../nodes'
 
 /**
  * Notion renderer — outputs Notion Block JSON for the Notion API.
@@ -69,7 +69,8 @@ function nodeToBlocks(node: DocNode): NotionBlock[] {
     }
 
     case 'text': {
-      const text = getTextContent(node.children)
+      const inline = getInlineRuns(node.children)
+      const runs = inline.length > 0 ? inline : [{ text: '' }]
       const annotations: RichText['annotations'] = {}
       if (p.bold) annotations.bold = true
       if (p.italic) annotations.italic = true
@@ -79,10 +80,16 @@ function nodeToBlocks(node: DocNode): NotionBlock[] {
         object: 'block',
         type: 'paragraph',
         paragraph: {
-          rich_text: textToRichText(
-            text,
-            Object.keys(annotations).length > 0 ? annotations : undefined,
-          ),
+          // One rich_text item per run, so an inline <Link> keeps its url
+          // (pre-fix the paragraph was flattened and the href dropped).
+          rich_text: runs.flatMap((r) => {
+            const items = textToRichText(
+              r.text,
+              Object.keys(annotations).length > 0 ? annotations : undefined,
+            )
+            if ('href' in r && r.href !== undefined) items[0]!.text.link = { url: r.href }
+            return items
+          }),
         },
       })
       break

@@ -53,12 +53,13 @@ TanStack Virtual core is included as a dependency -- core utilities and types ar
 Create a virtualizer for an element-based scroll container. Options are passed as a function so reactive signals can be read inside -- the virtualizer updates automatically when those signals change.
 
 ```tsx
+// @check
 import { defineComponent } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { useVirtualizer } from '@pyreon/virtual'
 
 const VirtualList = defineComponent(() => {
-  const parentRef = signal<HTMLDivElement | null>(null)
+  const parentRef = signal<HTMLElement | null>(null)
 
   const virtual = useVirtualizer(() => ({
     count: 10000,
@@ -390,7 +391,7 @@ For items whose size is determined by their content (and cannot be known upfront
 import { useVirtualizer, measureElement } from '@pyreon/virtual'
 
 const VirtualList = defineComponent(() => {
-  const parentRef = signal<HTMLDivElement | null>(null)
+  const parentRef = signal<HTMLElement | null>(null)
   const items = signal(generateVariableHeightItems(1000))
 
   const virtual = useVirtualizer(() => ({
@@ -467,7 +468,7 @@ Set `horizontal: true` to virtualize horizontally. The `totalSize` signal repres
 
 ```tsx
 const HorizontalList = defineComponent(() => {
-  const parentRef = signal<HTMLDivElement | null>(null)
+  const parentRef = signal<HTMLElement | null>(null)
 
   const virtual = useVirtualizer(() => ({
     count: 10000,
@@ -530,7 +531,7 @@ To virtualize a 2D grid, use two virtualizers -- one for rows and one for column
 
 ```tsx
 const VirtualGrid = defineComponent(() => {
-  const parentRef = signal<HTMLDivElement | null>(null)
+  const parentRef = signal<HTMLElement | null>(null)
 
   const rowCount = 10000
   const columnCount = 50
@@ -721,7 +722,7 @@ import { signal, computed } from '@pyreon/reactivity'
 import { useVirtualizer } from '@pyreon/virtual'
 
 const InfiniteList = defineComponent(() => {
-  const parentRef = signal<HTMLDivElement | null>(null)
+  const parentRef = signal<HTMLElement | null>(null)
   const items = signal<string[]>([])
   const isLoading = signal(false)
   const hasMore = signal(true)
@@ -800,7 +801,7 @@ import { useQuery } from '@pyreon/query'
 import { useVirtualizer } from '@pyreon/virtual'
 
 const DataList = defineComponent(() => {
-  const parentRef = signal<HTMLDivElement | null>(null)
+  const parentRef = signal<HTMLElement | null>(null)
 
   const query = useQuery(() => ({
     queryKey: ['large-dataset'],
@@ -856,7 +857,7 @@ import { useInfiniteQuery } from '@pyreon/query'
 import { useVirtualizer } from '@pyreon/virtual'
 
 const InfiniteQueryList = defineComponent(() => {
-  const parentRef = signal<HTMLDivElement | null>(null)
+  const parentRef = signal<HTMLElement | null>(null)
 
   const query = useInfiniteQuery(() => ({
     queryKey: ['infinite-items'],
@@ -929,7 +930,7 @@ interface ListItem {
 }
 
 const MixedList = defineComponent(() => {
-  const parentRef = signal<HTMLDivElement | null>(null)
+  const parentRef = signal<HTMLElement | null>(null)
   const items = signal<ListItem[]>(generateMixedItems())
 
   const virtual = useVirtualizer(() => ({
@@ -1026,7 +1027,7 @@ When items can expand/collapse, use `measureElement` to remeasure after size cha
 
 ```tsx
 const ExpandableList = defineComponent(() => {
-  const parentRef = signal<HTMLDivElement | null>(null)
+  const parentRef = signal<HTMLElement | null>(null)
   const expandedItems = signal(new Set<number>())
 
   const virtual = useVirtualizer(() => ({

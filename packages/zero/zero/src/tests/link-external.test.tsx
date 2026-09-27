@@ -143,3 +143,26 @@ describe('<Link> navigation vs full-load', () => {
     expect(pushed).toEqual([])
   })
 })
+
+describe('<Link> aria-current', () => {
+  // A conditional spread read `isExactActive()` once at setup, so the
+  // attribute never moved after a client-side navigation.
+  it('follows the active route after navigation', async () => {
+    const router = createRouter({ routes, mode: 'hash' })
+    mount(
+      h(
+        RouterProvider,
+        { router },
+        h(Link, { href: '/' }, 'home'),
+        h(Link, { href: '/about' }, 'about'),
+      ),
+      host,
+    )
+    const [home, about] = Array.from(host.querySelectorAll('a'))
+    expect(home!.getAttribute('aria-current')).toBe('page')
+    expect(about!.hasAttribute('aria-current')).toBe(false)
+    await router.push('/about')
+    expect(about!.getAttribute('aria-current')).toBe('page')
+    expect(home!.hasAttribute('aria-current')).toBe(false)
+  })
+})

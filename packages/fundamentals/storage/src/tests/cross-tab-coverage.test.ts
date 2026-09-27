@@ -12,8 +12,9 @@ describe('cross-tab sync — edge cases', () => {
     _resetRegistry()
   })
 
-  it('ignores storage events with null key', () => {
+  it('a null-key event (localStorage.clear() in another tab) resets to default', () => {
     const theme = useStorage('theme', 'light')
+    theme.set('dark')
 
     // Simulate storage event with null key (happens on storage.clear())
     const event = Object.assign(new Event('storage'), {
@@ -23,7 +24,6 @@ describe('cross-tab sync — edge cases', () => {
     })
     window.dispatchEvent(event)
 
-    // Signal should not change
     expect(theme()).toBe('light')
   })
 

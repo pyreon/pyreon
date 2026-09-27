@@ -629,9 +629,9 @@ The plugin surfaces non-fatal compile warnings via Vite (with a clickable, root-
 | `:::warning` / `note` / `danger` / `info` | `<Callout type="…">`                 |
 | `:::code-group` + `[label]` fences | `<CodeGroup labels={[…]}>`                  |
 | `:::math` … `:::`              | `<Math>…</Math>` (display)                       |
-| `:::math inline` … `:::`       | `<Math inline>…</Math>`                          |
+| `:::math{inline}` … `:::`      | `<Math inline>…</Math>`                          |
 | `:::mermaid` … `:::`           | `<Mermaid>…</Mermaid>`                           |
-| `:::details Label` … `:::`     | `<Details summary="Label">…</Details>`          |
+| `:::details[Label]` … `:::`    | `<Details summary="Label">…</Details>`          |
 | ` ```ts {1,3-5} filename=x showLineNumbers ` | `<CodeBlock …>` (Shiki HTML)      |
 
 ## Reference
