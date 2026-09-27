@@ -179,15 +179,15 @@ describe('error guards', () => {
       onPatch({} as object, () => {
         /* noop */
       }),
-    ).toThrow('[@pyreon/state-tree]')
+    ).toThrow('[Pyreon] state-tree')
   })
 
   it('addMiddleware throws for non-model-instance', () => {
-    expect(() => addMiddleware({} as object, (_c, n) => n(_c))).toThrow('[@pyreon/state-tree]')
+    expect(() => addMiddleware({} as object, (_c, n) => n(_c))).toThrow('[Pyreon] state-tree')
   })
 
   it('applySnapshot throws for non-model-instance', () => {
-    expect(() => applySnapshot({} as object, {})).toThrow('[@pyreon/state-tree]')
+    expect(() => applySnapshot({} as object, {})).toThrow('[Pyreon] state-tree')
   })
 })
 
@@ -210,7 +210,7 @@ describe('getSnapshot', () => {
   })
 
   it('throws for non-model-instance values', () => {
-    expect(() => getSnapshot({} as object)).toThrow('[@pyreon/state-tree]')
+    expect(() => getSnapshot({} as object)).toThrow('[Pyreon] state-tree')
   })
 })
 

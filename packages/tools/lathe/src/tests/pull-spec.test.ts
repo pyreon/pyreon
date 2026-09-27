@@ -8,8 +8,8 @@
  * is gone.
  *
  * So the order matters as much as the checks: nothing is written until
- * the response has been proved to be a spec. `looksLikeSpec` is the last
- * gate — valid JSON is not enough, because a JSON error envelope from a
+ * the response has been proved to be a spec. `openApiVersionProblem` is the
+ * last gate — the same rule `generate` applies — — valid JSON is not enough, because a JSON error envelope from a
  * gateway parses perfectly.
  *
  * The size cap has two halves because the header covers only one case.
@@ -48,11 +48,16 @@ describe('a real spec is written', () => {
     expect(readFileSync(d, 'utf8')).toBe(SPEC)
   })
 
-  it('accepts a swagger 2 document too', async () => {
+  it('refuses a Swagger 2 document, with the conversion command, and writes nothing', async () => {
+    // It used to be ACCEPTED here and then read by `generate` as an empty
+    // 3.x document -- 0 models, exit 0. Pull and generate now apply one rule,
+    // so a spec pull accepts is one generate reads.
     respond(JSON.stringify({ swagger: '2.0', info: {}, paths: {} }))
+    const err = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
     const d = dest()
-    expect(await pullSpec('https://x.com/s.json', d)).toBe(0)
-    expect(existsSync(d)).toBe(true)
+    expect(await pullSpec('https://x.com/s.json', d)).toBe(1)
+    expect(existsSync(d)).toBe(false)
+    expect(String(err.mock.calls.map((c) => c[0]).join(''))).toContain('swagger2openapi')
   })
 
   it('is a no-op when the content is UNCHANGED', async () => {
