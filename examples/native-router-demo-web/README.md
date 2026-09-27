@@ -17,7 +17,7 @@ The same RouterApp.tsx compiles to SwiftUI via PMTC + Compose via PMTC. The nati
 
 ```bash
 cd examples/native-router-demo-web
-bun run dev       # vite on http://localhost:5203
+bun run dev       # vite on http://localhost:5173 (no explicit port override; plain vite default)
 bun run build     # production bundle → dist/
 bun run preview   # serve dist/ via vite preview
 ```

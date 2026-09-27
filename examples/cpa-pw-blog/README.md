@@ -84,15 +84,15 @@ vite.config.ts                       # mode: 'ssg', seoPlugin, fontPlugin
 
 ## Audit + lint
 
-The project ships with `@pyreon/lint`'s recommended preset (which includes the three SSG rules) plus `pyreon doctor` for project-wide audits:
+The project ships with `@pyreon/lint`'s recommended preset (which includes the three SSG rules) plus `zero doctor` (this project's thin wrapper over `pyreon doctor`) for project-wide audits:
 
 ```bash
-bun run doctor              # all audits (--check-islands, --check-ssg, --audit-tests)
+bun run doctor              # the full battery — islands-audit, ssg-audit, audit-tests, and 12 more
 bun run lint                # SSG rules + reactivity + JSX + accessibility
 bun run typecheck           # tsc --noEmit
 ```
 
-`bun run doctor --check-ssg` catches:
+`zero doctor` only forwards `--fix` / `--json` / `--ci` / `--full` — unlike the root monorepo's `pyreon doctor --only <gate>`, there's no per-gate flag here (`--check-ssg` is not a real option; it always runs everything). Among the gates it runs, `ssg-audit` catches:
 
 - Dynamic routes without `getStaticPaths`
 - `_404.tsx` outside a `_layout.tsx` directory

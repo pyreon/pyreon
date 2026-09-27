@@ -115,6 +115,8 @@ const sameSchema = withField(v.pipe(v.string(), v.email()), { label: 'Email' })
 const $sameResult = parseReactive(sameSchema, $email)
 ```
 
+<Example file="./examples/validate/reactive-parse-with-field-metadata" title="withField + parseReactive — live" />
+
 ## Field metadata
 
 `withField(schema, meta)` attaches Pyreon metadata to any Standard Schema validator.
