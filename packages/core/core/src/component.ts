@@ -1,3 +1,4 @@
+import { _enterCleanupFrame, _exitCleanupFrame } from '@pyreon/reactivity'
 import { getCurrentHooks, setCurrentHooks } from './lifecycle'
 import type { ComponentFn, LifecycleHooks, VNodeChild } from './types'
 
@@ -47,11 +48,23 @@ export function runWithHooks<P extends object>(
   // parent registered afterwards.
   const prevHooks = getCurrentHooks()
   setCurrentHooks(hooks)
+  // `onCleanup()` in a component body belongs to THIS component: collect it in
+  // a fresh window and run it on unmount. Without this the body inherited
+  // whatever window was open — none at the root (the cleanup vanished) or the
+  // enclosing <For>/<Show>/router effect's (re-runs of that boundary fired it
+  // while this component was still mounted). Saved-then-restored like the hooks
+  // frame; allocation-free unless the body actually calls `onCleanup`.
+  const cleanupToken = _enterCleanupFrame()
   let vnode: VNodeChild = null
   try {
     vnode = fn(props)
   } finally {
     setCurrentHooks(prevHooks)
+    const collected = _exitCleanupFrame(cleanupToken)
+    if (collected !== null) {
+      if (hooks.unmount === null) hooks.unmount = collected
+      else for (const c of collected) hooks.unmount.push(c)
+    }
   }
   return { vnode, hooks }
 }
