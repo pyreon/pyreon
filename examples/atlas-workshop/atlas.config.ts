@@ -20,6 +20,7 @@
 import { h, type VNodeChild } from '@pyreon/core'
 import { createPermissions, PermissionsProvider } from '@pyreon/permissions'
 import { PyreonUI } from '@pyreon/ui-core'
+import type { AtlasWrapperProps } from '@pyreon/atlas/core'
 import { THEMES, tokens } from '@pyreon/atlas/ui'
 
 export const theme = tokens(THEMES[0]!, false)
@@ -36,10 +37,20 @@ export const theme = tokens(THEMES[0]!, false)
  * verdict overwrote the real one, which made the same scenarios look verified.
  * They never were.)
  */
-export function wrapper(props: { children?: unknown }): VNodeChild {
+export function wrapper(props: AtlasWrapperProps): VNodeChild {
+  // The workbench's APPEARANCE, forwarded: `mode` flips the provider in place,
+  // and `brand` picks this project's matching token set — which is what makes
+  // the Theme Lab's eight tiles eight appearances. Both are absent under
+  // `atlas scan` (no workbench), where the light Ember tokens are the answer.
+  const brand = props.brand
+  const dark = props.dark
+  const themed =
+    brand || dark
+      ? () => tokens(THEMES.find((b) => b.id === brand?.().id) ?? THEMES[0]!, dark?.() ?? false)
+      : theme
   return h(
     PyreonUI,
-    { theme },
+    { theme: themed as never, ...(props.mode ? { mode: props.mode } : {}) },
     h(PermissionsProvider, { value: createPermissions({ '*': true }) }, props.children as VNodeChild),
   )
 }

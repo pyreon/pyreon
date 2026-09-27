@@ -11,6 +11,22 @@ export interface StorageSignal<T> extends Signal<T> {
   remove(): void
 }
 
+/**
+ * The signal returned by `useIndexedDB`. IndexedDB is asynchronous, so the
+ * value starts at `defaultValue` and the stored value arrives later.
+ */
+export interface IndexedDBSignal<T> extends StorageSignal<T> {
+  /** Reactive: `true` once the initial read from IndexedDB has settled. */
+  ready: () => boolean
+  /** Resolves once the initial read from IndexedDB has settled. */
+  whenReady(): Promise<void>
+  /**
+   * Write a pending debounced value NOW. Resolves once it is persisted (or the
+   * write failed and `onError` was notified).
+   */
+  flush(): Promise<void>
+}
+
 // ─── Shared Options ──────────────────────────────────────────────────────────
 
 /**
@@ -88,7 +104,10 @@ export interface CookieOptions<T> extends StorageOptions<T> {
   path?: string
   /** Cookie domain */
   domain?: string
-  /** HTTPS only — default: false */
+  /**
+   * HTTPS only. Default: `true` on an `https:` page and whenever `sameSite` is
+   * `'none'` (browsers reject `SameSite=None` without it); `false` otherwise.
+   */
   secure?: boolean
   /** SameSite policy — default: 'lax' */
   sameSite?: 'strict' | 'lax' | 'none'

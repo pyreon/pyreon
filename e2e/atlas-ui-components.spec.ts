@@ -4,8 +4,8 @@ import { expect, test, type Page } from '@playwright/test'
  * Every `@pyreon/ui-components` page on the built workbench shows the
  * component — the deployed pyreon.dev/atlas contract.
  *
- * VISIBLE, measured: a bounding box with area, or a portaled overlay on the
- * body. "The preview has children" was true of an empty `<button>`; "verified"
+ * VISIBLE, measured: a bounding box with area INSIDE the preview — an overlay
+ * the component portals is adopted into it, so it is measured there too. "The preview has children" was true of an empty `<button>`; "verified"
  * was true of a scenario that mounted no DOM at all. The list of components is
  * read from the built site's own sidebar, so a component added to the library
  * is covered the day it lands, and one dropped by discovery fails this rather
@@ -64,14 +64,13 @@ test.describe('atlas build — @pyreon/ui-components', () => {
           const r = n.getBoundingClientRect()
           return Math.max(a, r.width * r.height)
         }, 0)
-        // An overlay portals to the body; the runtime brackets it in
-        // `<!--portal-->` markers.
-        const portaled = [...document.body.childNodes].some(
-          (n) => n.nodeType === 8 && (n as Comment).data === 'portal',
-        )
-        return { own, portaled, text: (el.textContent ?? '').trim() }
+        return { own, text: (el.textContent ?? '').trim() }
       })
-      const visible = box.own > 200 || box.portaled
+      // An overlay the component portals to the body is ADOPTED into the
+      // preview (see atlas `portal-adopt`), so it counts here like any other
+      // preview DOM. It used to be counted from the body — which passed while
+      // the dialog covered the whole workbench in an unstyled font.
+      const visible = box.own > 200
       if (!visible && !(id in TINY_BY_DESIGN)) {
         empty.push(`${id} (area ${Math.round(box.own)}, text "${box.text.slice(0, 30)}")`)
       }
@@ -88,12 +87,99 @@ test.describe('atlas build — @pyreon/ui-components', () => {
   })
 
   test('an overlay opens on the canvas and closes back into its control', async ({ page }) => {
+    for (const id of ['dialog', 'modal', 'drawer']) {
+      await page.goto(`/${id}/`)
+      const preview = page.getByTestId('canvas-preview')
+      // INSIDE the preview frame — not merely visible somewhere on the page.
+      // A portal to the body was "visible" too, as a fixed layer over the whole
+      // workbench that swallowed the sidebar's clicks.
+      const dialog = preview.getByRole('dialog')
+      await expect(dialog, id).toBeVisible()
+      const inside = await page.evaluate(() => {
+        const d = document.querySelector('[role="dialog"]')!
+        const pv = document.querySelector('[data-testid="canvas-preview"]')!
+        const a = d.getBoundingClientRect()
+        const b = pv.getBoundingClientRect()
+        const fits =
+          a.left >= b.left - 1 && a.top >= b.top - 1 && a.right <= b.right + 1 && a.bottom <= b.bottom + 1
+        // The workbench chrome beside the canvas is still the workbench's.
+        const side = document.elementFromPoint(20, 200)
+        return { fits, contained: pv.contains(d), sideFree: !d.contains(side) }
+      })
+      expect(inside, id).toEqual({ fits: true, contained: true, sideFree: true })
+      await expect(page.getByTestId('canvas-empty')).toHaveCount(0)
+    }
     await page.goto('/dialog/')
-    const dialog = page.getByRole('dialog')
+    const dialog = page.getByTestId('canvas-preview').getByRole('dialog')
     await expect(dialog).toBeVisible()
-    await expect(page.getByTestId('canvas-empty')).toHaveCount(0)
     await page.keyboard.press('Escape')
     await expect(dialog).toHaveCount(0)
+  })
+
+  test('a rocketstyle click lands in Actions — the library declares no typed onClick', async ({ page }) => {
+    await page.goto('/button/')
+    await page.getByTestId('addon-tab-actions').click()
+    await page.getByTestId('canvas-preview').getByRole('button').click()
+    // The preview root logs the DOM event and names the element it hit.
+    await expect(page.getByText(/^<button[^>]*> "Button"$/).first()).toBeVisible()
+  })
+
+  test('the docs props table is ONE grid, and a verified scenario reads as a pass', async ({ page }) => {
+    await page.goto('/button/')
+    await page.getByRole('tab', { name: 'Docs', exact: true }).click()
+    const table = page.getByTestId('props-table')
+    await expect(table).toBeVisible()
+    // Every row's cells start at the same x as the header's — rows used to
+    // shrink-wrap, so no two rows' TYPE columns lined up.
+    const columns = await table.evaluate((t) =>
+      [...t.children].map((row) => [...row.children].map((c) => Math.round(c.getBoundingClientRect().left))),
+    )
+    for (const row of columns) expect(row).toEqual(columns[0])
+    const verdict = page.getByTestId('docs-verdict-button--default')
+    await expect(verdict).toHaveText('ok')
+    // Not the workbench's error-orange accent.
+    const color = await verdict.evaluate((el) => getComputedStyle(el).color)
+    expect(color).not.toBe('rgb(255, 107, 61)')
+    await expect(page.getByTestId('copy-usage')).toHaveCSS('border-top-style', 'solid')
+  })
+
+  test('the docs Source block shows the component\'s OWN module, not the package barrel', async ({ page }) => {
+    await page.goto('/stack/')
+    await page.getByRole('tab', { name: 'Docs', exact: true }).click()
+    await page.getByTestId('docs-source-load').click()
+    const source = page.getByTestId('docs-source')
+    await expect(source).toContainText('const Stack')
+    await expect(source).not.toContainText('export { default as Box }')
+  })
+
+  test('a component whose props EXTEND a sibling package\'s type has controls', async ({ page }) => {
+    // `ComboboxProps extends ComboboxBaseProps` (from @pyreon/ui-primitives)
+    // used to read as ONE render prop — an empty Controls panel.
+    await page.goto('/combobox/')
+    await page.getByTestId('addon-tab-controls').click()
+    await expect(page.getByText('Placeholder', { exact: true })).toBeVisible()
+    // An options array is structure — shown, never edited as text.
+    await expect(page.getByTestId('ctrl-locked-options')).toHaveValue('[4 items]')
+  })
+
+  test('the a11y strip counts what axe found', async ({ page }) => {
+    await page.goto('/button/')
+    await page.getByTestId('addon-tab-a11y').click()
+    await page.getByTestId('axe-run').click()
+    await expect(page.getByTestId('a11y-scope')).toHaveText('checks + axe', { timeout: 15_000 })
+    // ONE number for one question: the strip = structural failures + axe's.
+    const axeCount = await page.locator('[data-axe-violation]').count()
+    const staticFails = await page.getByTestId('a11y-row-danger').count()
+    const strip = await page.getByTestId('a11y-violations').innerText()
+    expect(Number.parseInt(strip, 10)).toBe(staticFails + axeCount)
+    if (axeCount > 0) await expect(page.getByTestId('axe-target').first()).not.toBeEmpty()
+  })
+
+  test('the Theme Lab says brands cannot apply instead of tiling identical cards', async ({ page }) => {
+    await page.goto('/button/')
+    await page.getByRole('tab', { name: 'Theme Lab', exact: true }).click()
+    await expect(page.getByTestId('lab-note')).toContainText('does not read `brand`')
+    await expect(page.locator('[data-testid^="lab-tile-"]')).toHaveCount(2)
   })
 
   test('block-level components span the stage — the frame is not shrink-wrapped', async ({ page }) => {

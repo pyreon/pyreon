@@ -5,6 +5,7 @@
  * the canvas in exactly that state), and Source (fetched over the `atlas dev`
  * channel, with an honest empty state when there is none).
  */
+import { _rp } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import * as C from '../../components'
 import { callRpc } from '../../lens-client'
@@ -106,7 +107,16 @@ export function DocsView(props: { model: WorkbenchModel }) {
             {c.status ? <C.DocsStatus>{c.status}</C.DocsStatus> : null}
           </C.DocsTitleRow>
           <C.DocsDesc>{c.desc ?? ''}</C.DocsDesc>
-          <C.DocsPreview>{() => m.preview()}</C.DocsPreview>
+          <C.DocsPreview
+            data-testid="docs-preview"
+            ref={m.overlayHostRef}
+            {...({
+              // Same room-to-open rule as the canvas surface.
+              css: _rp(() => (m.overlayOpen() ? 'min-height:420px;' : '')),
+            } as Record<string, unknown>)}
+          >
+            {() => m.preview()}
+          </C.DocsPreview>
           <C.DocsH2>Props</C.DocsH2>
           <C.PropsTable data-testid="props-table">
             <C.PropsHead>
@@ -140,7 +150,7 @@ export function DocsView(props: { model: WorkbenchModel }) {
           </C.PropsTable>
           <C.DocsH2>Usage</C.DocsH2>
           <CodeBlock model={m} code={() => usage()} language="tsx" />
-          <C.ZoomBtn
+          <C.DocsCopyBtn
             data-testid="copy-usage"
             title="Copy the usage snippet"
             onClick={() => {
@@ -154,7 +164,7 @@ export function DocsView(props: { model: WorkbenchModel }) {
             }}
           >
             Copy
-          </C.ZoomBtn>
+          </C.DocsCopyBtn>
           {c.scenarios && c.scenarios.length > 0 ? (
             <>
               <C.DocsH2>Scenarios</C.DocsH2>
@@ -162,7 +172,9 @@ export function DocsView(props: { model: WorkbenchModel }) {
                 <C.ScenBtn data-testid={`docs-scenario-${s.id}`} onClick={() => openScenario(c.id, s.id)}>
                   <C.ScenDot variant={s.verdict} data-verdict={s.verdict} />
                   <C.ScenName>{s.name}</C.ScenName>
-                  <C.PropKind>{s.verdict}</C.PropKind>
+                  <C.VerdictTag state={s.verdict} data-testid={`docs-verdict-${s.id}`}>
+                    {s.verdict}
+                  </C.VerdictTag>
                 </C.ScenBtn>
               ))}
             </>

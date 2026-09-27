@@ -95,7 +95,7 @@ The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect
 | [`@pyreon/router`](packages/core/router/) | Hash/history router, nested routes, guards, loaders, prefetching, `useIsActive` |
 | [`@pyreon/head`](packages/core/head/) | `useHead()` — reactive document head management with SSR |
 | [`@pyreon/server`](packages/core/server/) | `createHandler` (SSR), `prerender` (SSG), `island()` architecture |
-| [`@pyreon/primitives`](packages/core/primitives/) | 20 canonical multi-platform primitives — `Stack`, `Inline`, `Text`, `Button`, `Field`… one source → DOM + SwiftUI + Compose |
+| [`@pyreon/primitives`](packages/core/primitives/) | 17 canonical multi-platform primitives — `Stack`, `Inline`, `Text`, `Button`, `Field`… one source → DOM + SwiftUI + Compose |
 | [`@pyreon/sized-map`](packages/core/sized-map/) | Bounded `Map<K, V>` — FIFO (default) or LRU-on-read eviction |
 
 ### Fundamentals

@@ -49,15 +49,17 @@ export const useThemeAccessor = <T extends object = Theme>(): (() => T) =>
  * @internal Low-level provider — use `PyreonUI` from `@pyreon/ui-core` instead.
  * @deprecated Prefer `<PyreonUI theme={theme}>`
  */
-function ThemeProvider({
-  theme,
-  children,
-}: {
-  theme: Theme
-  children?: VNodeChild
-}): VNode | null {
-  provide(ThemeContext, () => theme)
-  return (children ?? null) as VNode | null
+function ThemeProvider(props: { theme: Theme; children?: VNodeChild }): VNode | null {
+  // Read `props.theme` INSIDE the provided accessor, never at setup. The
+  // compiler lowers `<ThemeProvider theme={current()}>` to a getter-backed
+  // prop, and `ThemeContext` is reactive — consumers (`DynamicStyled`'s
+  // computed, `useThemeAccessor()` effects) call this accessor inside a
+  // tracking scope. Destructuring the prop (the previous shape) resolved the
+  // getter ONCE at component setup, so a later theme change never reached a
+  // single styled component. Reading lazily makes the accessor track whatever
+  // `theme` is bound to; a static object is simply read each time (same value).
+  provide(ThemeContext, () => props.theme)
+  return (props.children ?? null) as VNode | null
 }
 
 // Mark as native — compat-mode jsx() runtimes skip wrapCompatComponent so

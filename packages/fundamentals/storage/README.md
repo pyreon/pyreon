@@ -93,7 +93,7 @@ Extends `StorageOptions<T>` with:
 | `expires?`   | `Date`                            | —       |
 | `path?`      | `string`                          | `'/'`   |
 | `domain?`    | `string`                          | —       |
-| `secure?`    | `boolean`                         | `false` |
+| `secure?`    | `boolean`                         | `true` on `https:` pages and for `sameSite: 'none'`, else `false` |
 | `sameSite?`  | `'strict' \| 'lax' \| 'none'`     | `'lax'` |
 
 ## `useIndexedDB` options
@@ -107,6 +107,14 @@ Extends `StorageOptions<T>` with:
 | `debounceMs?`| `number` | `100`              |
 
 IndexedDB writes are debounced — rapid `.set()` calls coalesce to a single transaction. The signal updates synchronously; persistence is async.
+
+`useIndexedDB` returns an `IndexedDBSignal<T>` with three extra members:
+
+- `ready()` — reactive, `true` once the initial read from IndexedDB has settled.
+- `whenReady()` — a promise for the same moment.
+- `flush()` — write a pending debounced value now; resolves once it is persisted.
+
+A `.set()` or `.remove()` made before the initial read settles wins — the late read never overwrites it. A pending debounced write is flushed on `pagehide` / `beforeunload`. Several `storeName`s in one `dbName` are supported: a missing store is created by upgrading the database version.
 
 ## `setCookieSource(source)` — SSR
 
@@ -207,6 +215,7 @@ Every storage signal wraps a base `signal()` with a facade that **forwards `_v` 
 ## Gotchas
 
 - **Same key returns the SAME signal instance per backend** — two `useStorage('theme', 'light')` calls in different components share state. This is by design; do NOT expect a fresh signal per call.
+- **Inbound cross-tab events never write back** — a value (or removal) arriving from another tab updates this tab's signal without re-persisting it, and `localStorage.clear()` in another tab resets every `useStorage` signal to its default.
 - **`useStorage` cross-tab listener is ref-counted** — attached on first `useStorage`, removed when the last signal disposes via `.remove()`. Pre-fix the listener leaked across the page lifetime.
 - **The internal `_v` getter is load-bearing** — if you hand-roll a wrapper-signal on top of `@pyreon/reactivity` and forget to forward `_v` (or `.direct`), the compiler-emitted fast path binds to `undefined` and renders empty (the bug class PR #546 fixed). **Use `wrapSignal()` from `@pyreon/reactivity` for any new backend** — it forwards both by construction so the bug is impossible. The `pyreon/storage-signal-v-forwarding` lint rule guards the hand-rolled case.
 - **Cookies need `setCookieSource(header)` on the server** — `document.cookie` doesn't exist in SSR. Without it, `useCookie` returns the default value during render.

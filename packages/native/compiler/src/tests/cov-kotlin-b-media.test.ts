@@ -62,16 +62,9 @@ export function App() { const u = signal('a.mp3'); return (<Stack><Audio src={u(
     ).toBe(true)
   })
 
-  it.fails(
-    'KNOWN BUG: an <Audio> that falls through to generic emit is SILENT, while the structurally identical <Video> '
-      + 'shape warns — on BOTH targets. FIX: add `Audio` to CANONICAL_PRIMITIVES in src/canonical-primitives.ts '
-      + '(and correct its "16 primitives total (matches @pyreon/primitives exports)" comment). '
-      + '`warnCanonicalPrimitiveFellThrough` — the OUTCOME check written precisely to retire hand-maintained lists — '
-      + 'is itself gated on `isCanonicalPrimitive`, a hand-maintained Set that has drifted from the package\'s exports. '
-      + '`generic-tail-completeness.test.ts` already lists Audio as a primitive and derives ITS list from the '
-      + '`*Props extends HtmlPassthroughProps` interfaces; CANONICAL_PRIMITIVES has no such drift check. '
-      + 'Audio is the only affected tag: WebView/Transition/TransitionGroup are also absent from the Set but their '
-      + 'emitters never reach generic emit. Delete this spec when it starts passing.',
+  it(
+    'an <Audio> that falls through to generic emit is NAMED as such on BOTH targets, like <Video> '
+      + '(was silent: Audio was missing from CANONICAL_PRIMITIVES, the Set that gates the fell-through warning)',
     () => {
       const audioDyn = `import { signal } from '@pyreon/reactivity'
 import { Stack, Audio } from '@pyreon/primitives'
