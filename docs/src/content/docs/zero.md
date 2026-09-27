@@ -125,7 +125,7 @@ export default {
 | ------------ | ----------------------------------------------------------------------------- | ------- | ------------------------------------------------------------ |
 | `mode`       | `"ssr" \| "ssg" \| "spa" \| "isr"`                                            | `"ssr"` | Global rendering mode. `zero()`'s own parameter also widens this to accept `"auto"` (EXPERIMENTAL — per-route inference, see [Per-route render modes](#per-route-render-modes-hybrid-rendering)); `ZeroConfig.mode` itself never carries `"auto"` |
 | `ssr.mode`   | `"stream" \| "string"`                                                        | `"string"` | SSR output mode. `"stream"` flushes the shell first and streams Suspense boundaries — opt in with `ssr: { mode: 'stream' }`. ISR routes always render buffered (the cache stores complete responses) regardless of this setting |
-| `ssg`        | `{ paths?, format?, modulePreload?, speculationRules?, viewTransitions?, cssMode?, earlyHints?, emit404?, emitRedirects?, redirectsAsHtml?, onPathError?, errorArtifact?, concurrency?, onProgress?, splitChunks? }` | `{}` | SSG options — see **[SSG](/docs/ssg)** |
+| `ssg`        | `{ paths?, format?, modulePreload?, speculationRules?, viewTransitions?, cssMode?, earlyHints?, emit404?, emitRedirects?, redirectsAsHtml?, onPathError?, errorArtifact?, concurrency?, workers?, onProgress?, splitChunks? }` | `{}` | SSG options — see **[SSG](/docs/ssg)** |
 | `isr`        | `ISRConfig` (`{ revalidate, maxEntries?, revalidateTimeoutMs?, cacheKey?, expireOnTimeout?, store?, revalidateRequest?, tagsForRequest? }`) | —       | Runtime ISR config (only used when `mode: "isr"`)            |
 | `routeRules` | `Record<string, { renderMode?: RenderMode }>`                                 | —       | Central glob-keyed per-path render-mode overrides (`'*'` = one segment, `'**'` = any depth). Applies only to routes without their own `renderMode` export — precedence is route-file export > `routeRules` > app `mode`. See [Per-route render modes](#per-route-render-modes-hybrid-rendering) |
 | `adapter`    | `"node" \| "bun" \| "static" \| "vercel" \| "cloudflare" \| "netlify" \| Adapter` | auto     | Deployment adapter (name or constructed instance, e.g. `adapter: vercelAdapter()`). When unset, the build platform is auto-detected from its env (`VERCEL` / `NETLIFY` / `CF_PAGES`) and that adapter is used — local/self-hosted builds default to `"node"` |
@@ -585,7 +585,7 @@ zero({
   ssg: {
     speculationRules: 'prefetch', // or 'prerender' — Chrome Speculation Rules; near-instant MPA navs
     viewTransitions: true,        // cross-document View Transitions (@view-transition CSS, zero JS)
-    cssMode: 'asset',             // styler CSS as ONE hashed shared file instead of inlined per page
+    cssMode: 'asset',             // styler CSS as content-hashed shared files instead of inlined per page
     earlyHints: true,             // per-path Link: modulepreload entries in _headers → HTTP 103 on CF/Netlify
   },
 })
@@ -593,7 +593,7 @@ zero({
 
 - `speculationRules` injects a document-rules block (`href_matches: "/*"`, moderate eagerness) into every prerendered page; unsupported browsers ignore it.
 - `viewTransitions` opts prerendered pages into cross-document View Transitions — MPA navigations animate with zero JS in supporting browsers.
-- `cssMode: 'asset'` extracts the styler's per-page inline `<style>` (identical across pages by construction) into one content-hashed `assets/pyreon-ssg.<hash>.css` that every page links — pages share the browser-cached file instead of re-downloading the full sheet inside each HTML. No-op for projects without `@pyreon/styler`.
+- `cssMode: 'asset'` extracts the styler's per-page inline `<style>` into a content-hashed `assets/pyreon-ssg.<hash>.css` that the page links — one file per distinct rule set, so pages whose render used the same styles share one browser-cached file. (Each page's CSS is exactly the rules its own render used plus module-level `keyframes`/`createGlobalStyle`; it no longer depends on which pages were prerendered first.) No-op for projects without `@pyreon/styler`.
 - `earlyHints` appends per-path `Link: <chunk>; rel=modulepreload` entries to `_headers` (existing user `_headers` content is preserved); Cloudflare Pages and Netlify turn those into HTTP 103 Early Hints.
 
 ### ISR: tag-based invalidation + filesystem store
