@@ -1,8 +1,11 @@
-// @ts-nocheck — 1:1 port from a JS `<Playground>`. Strict-mode TS
-// would need a manual rewrite (signal shapes, possibly-null guards).
-// Renders + behaves correctly; type tightening is a follow-up.
 import { signal, computed } from '@pyreon/reactivity'
 import { h } from '@pyreon/core'
+
+interface Route {
+  path: string
+  label: string
+  render: () => string
+}
 
 /**
  * Migrated from `<Playground>` — Router — signal-backed path matching.
@@ -17,21 +20,21 @@ export default function RouterSignalBackedPathMatching() {
   // The real createRouter() adds history sync, lazy components, guards,
   // loaders, prefetching, and View Transitions on top of this shape.
   const route = signal('/')
-  const routes = [
+  const routes: Route[] = [
     { path: '/',        label: 'Home',    render: () => 'Welcome 👋'                },
     { path: '/about',   label: 'About',   render: () => 'A tiny signal-based router.' },
     { path: '/contact', label: 'Contact', render: () => 'hello@pyreon.dev'           },
   ]
 
-  const current = computed(() =>
-    routes.find(r => r.path === route()) ||
+  const current = computed((): Pick<Route, 'render'> =>
+    routes.find(r => r.path === route()) ??
     { render: () => '404 — not found' }
   )
 
-  const navItem = (r: any) =>
+  const navItem = (r: Route) =>
     h('a', {
       href: '#' + r.path,
-      onClick: (e: any) => { e.preventDefault(); route.set(r.path) },
+      onClick: (e: MouseEvent) => { e.preventDefault(); route.set(r.path) },
       'aria-current': () => route() === r.path ? 'page' : null,
       style: () => ({
         padding: '4px 10px',

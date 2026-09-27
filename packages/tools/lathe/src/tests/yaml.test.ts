@@ -30,9 +30,10 @@ nested:
   })
 
   it('preserves newlines in a literal block scalar and folds a folded one', () => {
-    const v = parseYaml('lit: |\n  one\n  two\nfold: >\n  three\n  four') as Record<string, string>
-    expect(v.lit).toBe('one\ntwo')
-    expect(v.fold).toBe('three four')
+    const v = parseYaml('lit: |\n  one\n  two\nfold: >\n  three\n  four\n') as Record<string, string>
+    // Clip chomping keeps the final newline -- YAML 1.2 8.1.1.2.
+    expect(v.lit).toBe('one\ntwo\n')
+    expect(v.fold).toBe('three four\n')
   })
 
   it('accepts a sequence indented at its key', () => {
@@ -55,11 +56,11 @@ nested:
     expect(v).toEqual({ a: 1, b: 1.5, c: true, d: null, e: null, f: 'text' })
   })
 
-  it('REFUSES anchors, tags and tab indentation instead of mis-reading them', () => {
-    // Each of these would otherwise produce a document that is subtly wrong
-    // everywhere the construct was used — far worse than declining to open it.
-    for (const bad of ['a: &x 1', 'a: *x', 'a: !!str 1', 'a:\n\tb: 1']) {
-      expect(() => parseYaml(bad)).toThrow(YamlError)
+  it('REFUSES an undefined alias, a custom tag and tab indentation', () => {
+    // Each would otherwise produce a document that is subtly wrong everywhere
+    // the construct was used — far worse than declining to open it.
+    for (const bad of ['a: *x', 'a: !Custom 1', 'a:\n\tb: 1']) {
+      expect(() => parseYaml(bad), bad).toThrow(YamlError)
     }
   })
 
@@ -67,9 +68,16 @@ nested:
     expect(parseSpecText('{"a":[1,2]}')).toEqual({ a: [1, 2] })
   })
 
+  it('accepts a UTF-8 BOM on the JSON path as well as the YAML one', () => {
+    // Detection trimmed the BOM but `JSON.parse` was handed the untrimmed
+    // text and rejected it as an unrecognised token.
+    expect(parseSpecText('\uFEFF{"a":1}')).toEqual({ a: 1 })
+    expect(parseSpecText('\uFEFFa: 1')).toEqual({ a: 1 })
+  })
+
   it('reports the line number on a failure', () => {
     try {
-      parseYaml('a: 1\nb: &anchor 2')
+      parseYaml('a: 1\nb: !Custom 2')
       expect.unreachable('should have thrown')
     } catch (err) {
       expect((err as YamlError).line).toBe(2)

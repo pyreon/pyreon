@@ -1,27 +1,46 @@
 /**
- * A YAML reader scoped to OpenAPI documents.
+ * Reading a spec document: JSON, or YAML 1.2.
  *
- * Written rather than depended on, deliberately. A general YAML parser is a
- * large surface with a genuinely hostile spec (anchors, tags, merge keys, five
- * scalar styles, implicit typing rules that famously turn `NO` into `false`),
- * and Lathe needs one narrow slice of it: the subset an OpenAPI document
- * actually uses. Depending on a full implementation would import all of that
- * risk to read block maps and sequences.
+ * YAML is read by the `yaml` package (eemeli/yaml, ISC, zero dependencies),
+ * configured STRICTLY. This file used to be a ~390-line hand-written reader
+ * scoped to "the subset an OpenAPI document uses", on the argument that a full
+ * parser imports risk. Measured against real specs, the argument ran the other
+ * way: the narrow reader refused GitHub, Stripe, OpenAI, Twilio and
+ * DigitalOcean outright (multi-line plain scalars, `- >-` sequence items, nested
+ * `- - 1` sequences are the default output of every YAML dumper), and SILENTLY
+ * corrupted the files it did open -- `#` lines and blank lines inside `|`
+ * blocks dropped, chomping ignored, `\uXXXX` escapes left literal, duplicate
+ * keys last-wins. 31 of 57 micro-cases diverged from YAML 1.2. The subset real
+ * specs use is simply most of YAML.
  *
- * SUPPORTED: block maps, block sequences, inline `{}` / `[]` flow collections,
- * plain / single- / double-quoted scalars, `|` and `>` block scalars, comments,
- * multi-document `---` (first document wins), explicit `null`/`~`, and the
- * JSON-compatible scalar types.
+ * What stays is the POLICY the old reader was right about -- a document that is
+ * subtly wrong is worse than one that does not open -- now enforced by options
+ * and one tree walk instead of by an incomplete grammar:
  *
- * NOT SUPPORTED, and REFUSED LOUDLY rather than mis-parsed: anchors (`&`/`*`),
- * merge keys (`<<`), and explicit tags (`!!`). A parser that silently ignores
- * an anchor produces a document that is subtly wrong everywhere the anchor was
- * used, which is far worse than not opening the file — so each throws with the
- * line number and the offending token.
+ *  - DUPLICATE KEYS throw (`uniqueKeys`). Last-wins silently discards a schema.
+ *  - A MULTI-DOCUMENT stream throws, rather than quietly using the first.
+ *  - CUSTOM TAGS (`!Ref`, `!include`) throw. `yaml` would keep the scalar and
+ *    warn, which turns a tag the author meant to be expanded into a literal
+ *    string. The YAML 1.2 core tags (`!!str`, `!!int`, …) are accepted: they
+ *    only restate a type.
+ *  - NON-JSON values throw: `.inf` / `.nan` (no JSON spelling) and a map or
+ *    sequence used as a KEY. The IR is built from JSON-shaped data, and the
+ *    JSON half of this reader cannot produce either.
+ *  - A RECURSIVE alias (an alias inside its own anchor) throws. It would build
+ *    a cyclic object, and every walk downstream would loop on it.
  *
- * Tabs are rejected for the same reason YAML itself rejects them: a tab in
- * indentation makes the document's structure depend on the reader's tab width.
+ * ANCHORS, ALIASES AND MERGE KEYS ARE SUPPORTED. The old reader refused them
+ * because it could not resolve them, and refusing was better than ignoring.
+ * `yaml` resolves them exactly, they are valid YAML, and hand-maintained specs
+ * use them to share parameter and error-response blocks -- refusing a correct
+ * document is a bug, not a safety property. Expansion is bounded by
+ * `maxAliasCount` (the "billion laughs" guard), and merge keys (`<<`) are
+ * enabled so they merge rather than landing as a literal `"<<"` property.
+ *
+ * Every error carries a 1-based line number.
  */
+
+import { isCollection, LineCounter, parseDocument, visit, type Node } from 'yaml'
 
 export class YamlError extends Error {
   constructor(
@@ -33,360 +52,108 @@ export class YamlError extends Error {
   }
 }
 
-type Line = { indent: number; text: string; n: number }
+/**
+ * Alias expansions allowed per document before the reader refuses.
+ *
+ * Each alias can expand a whole subtree, so an adversarial document with a few
+ * nested aliases can expand exponentially. 1000 is far above what any real
+ * spec uses (they alias a handful of shared blocks) and far below what makes a
+ * `lathe pull` of a hostile URL a memory problem.
+ */
+const MAX_ALIAS_COUNT = 1000
 
-/** Parse a YAML document. Returns the first document in a multi-doc stream. */
+/** Parse a YAML document. Throws {@link YamlError} on anything not JSON-shaped. */
 export function parseYaml(source: string): unknown {
-  const lines = scan(source)
-  if (lines.length === 0) return null
-  const [value] = parseBlock(lines, 0, lines[0]!.indent)
-  return value
-}
-
-/** Strip comments and blank lines; measure indentation; reject tabs. */
-function scan(source: string): Line[] {
-  const out: Line[] = []
-  const raw = source.split(/\r?\n/)
-  let started = false
-  for (let i = 0; i < raw.length; i++) {
-    const text = raw[i] as string
-    const n = i + 1
-    // A document separator ends the first document once we have content.
-    if (/^---\s*$/.test(text)) {
-      if (started && out.length > 0) break
-      continue
-    }
-    if (/^\.\.\.\s*$/.test(text)) break
-    const indentMatch = /^[ \t]*/.exec(text)![0]
-    if (indentMatch.includes('\t')) {
-      throw new YamlError('tab in indentation (YAML forbids it; use spaces)', n)
-    }
-    const body = text.slice(indentMatch.length)
-    if (body === '' || body.startsWith('#')) continue
-    started = true
-    out.push({ indent: indentMatch.length, text: body, n })
-  }
-  return out
-}
-
-/**
- * Parse the block starting at `i` whose members sit at `indent`.
- * Returns the value and the index of the first line NOT consumed.
- */
-function parseBlock(lines: Line[], i: number, indent: number): [unknown, number] {
-  const first = lines[i]
-  if (!first) return [null, i]
-  if (first.text.startsWith('- ') || first.text === '-') {
-    return parseSeq(lines, i, indent)
-  }
-  return parseMap(lines, i, indent)
-}
-
-function parseSeq(lines: Line[], start: number, indent: number): [unknown[], number] {
-  const items: unknown[] = []
-  let i = start
-  while (i < lines.length) {
-    const line = lines[i]!
-    if (line.indent < indent) break
-    if (line.indent > indent) throw new YamlError('unexpected indent in sequence', line.n)
-    if (!(line.text === '-' || line.text.startsWith('- '))) break
-    const rest = line.text === '-' ? '' : line.text.slice(2).trim()
-    if (rest === '') {
-      // Value lives on the following, more-indented lines.
-      const next = lines[i + 1]
-      if (next && next.indent > indent) {
-        const [v, ni] = parseBlock(lines, i + 1, next.indent)
-        items.push(v)
-        i = ni
-      } else {
-        items.push(null)
-        i += 1
-      }
-      continue
-    }
-    // A FLOW collection (`- { name: x, in: path }`) is a complete value, not
-    // the head of a block map. It must be tested BEFORE the inline-map branch:
-    // `{ name: x, ... }` contains a `key:` and would otherwise be read as one,
-    // producing a single bogus entry keyed `"{ name"` — which is exactly how a
-    // parameter list silently becomes empty.
-    if (rest.startsWith('{') || rest.startsWith('[')) {
-      items.push(scalar(rest, line.n))
-      i += 1
-      continue
-    }
-    // `- key: value` opens an inline map whose members align after the dash.
-    if (isMapEntry(rest)) {
-      const synthetic: Line[] = [{ indent: indent + 2, text: rest, n: line.n }]
-      let j = i + 1
-      while (j < lines.length && lines[j]!.indent > indent) {
-        synthetic.push(lines[j]!)
-        j++
-      }
-      const [v] = parseMap(synthetic, 0, indent + 2)
-      items.push(v)
-      i = j
-      continue
-    }
-    items.push(scalar(rest, line.n))
-    i += 1
-  }
-  return [items, i]
-}
-
-/**
- * Assign one parsed mapping entry.
- *
- * `map[key] = value` is wrong for exactly two keys, and wrong SILENTLY:
- * `__proto__` runs the accessor inherited from `Object.prototype`, which
- * REPLACES the object's prototype instead of adding a key — so the key
- * vanishes from the parsed document while its value's properties leak into
- * every subsequent member read on that object. `constructor` is not an
- * accessor, so plain assignment does define it, but a spec that names it
- * is worth treating the same way rather than relying on that distinction.
- *
- * A spec reaches this parser over the network (`lathe pull <url>` fetches
- * one and writes it to disk), and the IR it produces is what the emitters
- * turn into SOURCE — so a key that silently disappears, or a property that
- * silently appears, is a code-generation input the author never wrote.
- *
- * The fix is to do what `JSON.parse` already does for the `.json` half of
- * this same reader: define the property rather than assign it, so
- * `__proto__` becomes an ordinary own key and nothing is lost or injected.
- * Without this the two input formats disagree about the same document.
- */
-function setKey(map: Record<string, unknown>, key: string, value: unknown): void {
-  Object.defineProperty(map, key, {
-    value,
-    writable: true,
-    enumerable: true,
-    configurable: true,
+  const lineCounter = new LineCounter()
+  const doc = parseDocument(stripBom(source), {
+    lineCounter,
+    uniqueKeys: true,
+    merge: true,
+    prettyErrors: false,
+    // `core` is YAML 1.2's default schema: `yes`/`no` stay strings, `0x1F` is
+    // 31, `1e3` is 1000. No timestamps, no binary, no sets -- nothing that
+    // is not JSON-shaped, which the walk below then enforces.
+    schema: 'core',
   })
-}
+  const lineOf = (offset: number | undefined): number =>
+    offset === undefined ? 1 : lineCounter.linePos(offset).line
 
-function parseMap(lines: Line[], start: number, indent: number): [Record<string, unknown>, number] {
-  const map: Record<string, unknown> = {}
-  let i = start
-  while (i < lines.length) {
-    const line = lines[i]!
-    if (line.indent < indent) break
-    if (line.indent > indent) throw new YamlError('unexpected indent in mapping', line.n)
-    if (line.text.startsWith('- ')) break
-    const split = splitMapEntry(line.text)
-    if (!split) throw new YamlError(`expected 'key: value', got ${JSON.stringify(line.text)}`, line.n)
-    const [key, rest] = split
-    if (rest === '') {
-      const next = lines[i + 1]
-      if (next && next.indent > line.indent) {
-        const [v, ni] = parseBlock(lines, i + 1, next.indent)
-        setKey(map, key, v)
-        i = ni
-        continue
+  const first = doc.errors[0]
+  if (first) {
+    // The library's own wording for this one tells the reader to call a
+    // different API, which is advice for a programmer holding `yaml`, not for
+    // someone holding a spec.
+    const message =
+      first.code === 'MULTIPLE_DOCS'
+        ? 'the file holds more than one YAML document (`---`); a spec is exactly one -- split the file.'
+        : firstLine(first.message)
+    throw new YamlError(message, lineOf(first.pos[0]))
+  }
+  for (const w of doc.warnings) {
+    if (w.code === 'TAG_RESOLVE_FAILED') {
+      throw new YamlError(
+        `${firstLine(w.message)} -- custom tags are not expanded. Resolve them (or bundle the spec) before generating.`,
+        lineOf(w.pos[0]),
+      )
+    }
+  }
+
+  visit(doc, {
+    Pair(_key, pair) {
+      const k = pair.key as Node | null
+      if (k && isCollection(k)) {
+        throw new YamlError('a mapping or sequence used as a KEY has no JSON form.', lineOf(k.range?.[0]))
       }
-      // A sequence may sit at the SAME indent as its key — legal YAML.
-      if (next && next.indent === line.indent && next.text.startsWith('-')) {
-        const [v, ni] = parseSeq(lines, i + 1, line.indent)
-        setKey(map, key, v)
-        i = ni
-        continue
+    },
+    Scalar(_key, node) {
+      if (typeof node.value === 'number' && !Number.isFinite(node.value)) {
+        throw new YamlError(
+          `\`${node.source ?? String(node.value)}\` has no JSON form -- quote it if a string was meant.`,
+          lineOf(node.range?.[0]),
+        )
       }
-      setKey(map, key, null)
-      i += 1
-      continue
-    }
-    if (rest === '|' || rest === '>' || /^[|>][-+]?$/.test(rest)) {
-      const [text, ni] = parseBlockScalar(lines, i + 1, line.indent, rest.startsWith('>'))
-      setKey(map, key, text)
-      i = ni
-      continue
-    }
-    setKey(map, key, scalar(rest, line.n))
-    i += 1
-  }
-  return [map, i]
-}
-
-function parseBlockScalar(
-  lines: Line[],
-  start: number,
-  parentIndent: number,
-  folded: boolean,
-): [string, number] {
-  const parts: string[] = []
-  let i = start
-  let base = -1
-  while (i < lines.length && lines[i]!.indent > parentIndent) {
-    const line = lines[i]!
-    if (base < 0) base = line.indent
-    parts.push(' '.repeat(Math.max(0, line.indent - base)) + line.text)
-    i += 1
-  }
-  return [folded ? parts.join(' ') : parts.join('\n'), i]
-}
-
-function isMapEntry(text: string): boolean {
-  return splitMapEntry(text) !== null
-}
-
-/**
- * Split `key: value`, honouring quotes so a colon inside a quoted key or a URL
- * value (`url: https://x.com`) does not split in the wrong place.
- */
-function splitMapEntry(text: string): [string, string] | null {
-  let quote: string | null = null
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i] as string
-    if (quote) {
-      if (c === '\\' && quote === '"') i++
-      else if (c === quote) quote = null
-      continue
-    }
-    if (c === '"' || c === "'") {
-      quote = c
-      continue
-    }
-    if (c === '#' && i > 0 && text[i - 1] === ' ') break
-    if (c === ':' && (i + 1 === text.length || text[i + 1] === ' ')) {
-      const rawKey = text.slice(0, i).trim()
-      const key =
-        (rawKey.startsWith('"') && rawKey.endsWith('"')) ||
-        (rawKey.startsWith("'") && rawKey.endsWith("'"))
-          ? rawKey.slice(1, -1)
-          : rawKey
-      return [key, stripComment(text.slice(i + 1).trim())]
-    }
-  }
-  return null
-}
-
-/** Drop a trailing ` # comment` outside quotes. */
-function stripComment(text: string): string {
-  let quote: string | null = null
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i] as string
-    if (quote) {
-      if (c === '\\' && quote === '"') i++
-      else if (c === quote) quote = null
-      continue
-    }
-    if (c === '"' || c === "'") quote = c
-    else if (c === '#' && (i === 0 || text[i - 1] === ' ')) return text.slice(0, i).trim()
-  }
-  return text
-}
-
-/** Convert a scalar token to a JS value, including flow collections. */
-function scalar(token: string, line: number): unknown {
-  const t = token.trim()
-  if (t === '') return null
-  if (t.startsWith('&') || t.startsWith('*')) {
-    throw new YamlError(
-      `anchors and aliases are not supported (${JSON.stringify(t)}); inline the value`,
-      line,
-    )
-  }
-  if (t.startsWith('!')) {
-    throw new YamlError(`explicit tags are not supported (${JSON.stringify(t)})`, line)
-  }
-  if (t.startsWith('{') || t.startsWith('[')) return parseFlow(t, line)
-  if (t.startsWith('"') || t.startsWith("'")) return unquote(t, line)
-  if (t === 'null' || t === '~' || t === 'Null' || t === 'NULL') return null
-  if (t === 'true' || t === 'True' || t === 'TRUE') return true
-  if (t === 'false' || t === 'False' || t === 'FALSE') return false
-  if (/^-?(0|[1-9][0-9]*)$/.test(t)) return Number(t)
-  if (/^-?(0|[1-9][0-9]*)\.[0-9]+([eE][-+]?[0-9]+)?$/.test(t)) return Number(t)
-  return t
-}
-
-function unquote(t: string, line: number): string {
-  const q = t[0] as string
-  if (!t.endsWith(q) || t.length < 2) throw new YamlError('unterminated quoted scalar', line)
-  const body = t.slice(1, -1)
-  if (q === "'") return body.split("''").join("'")
-  return body.replace(/\\(["\\/nrt])/g, (_m, c: string) =>
-    c === 'n' ? '\n' : c === 'r' ? '\r' : c === 't' ? '\t' : c,
-  )
-}
-
-/**
- * Flow collections (`{a: 1, b: [2, 3]}`).
- *
- * A hand-rolled recursive reader rather than a `JSON.parse` after quoting
- * repair: OpenAPI flow scalars are frequently unquoted (`type: [string, null]`),
- * so any repair pass would have to make the same decisions this does anyway.
- */
-function parseFlow(src: string, line: number): unknown {
-  let pos = 0
-  const value = readValue()
-  skipWs()
-  if (pos !== src.length) throw new YamlError('trailing characters in flow collection', line)
-  return value
-
-  function skipWs(): void {
-    while (pos < src.length && /\s/.test(src[pos] as string)) pos++
-  }
-  function readValue(): unknown {
-    skipWs()
-    const c = src[pos]
-    if (c === '{') return readMap()
-    if (c === '[') return readSeq()
-    return scalar(readToken(), line)
-  }
-  function readMap(): Record<string, unknown> {
-    pos++ // {
-    const out: Record<string, unknown> = {}
-    skipWs()
-    if (src[pos] === '}') { pos++; return out }
-    for (;;) {
-      skipWs()
-      const rawKey = readToken(':')
-      const key = rawKey.startsWith('"') || rawKey.startsWith("'") ? unquote(rawKey, line) : rawKey
-      skipWs()
-      if (src[pos] !== ':') throw new YamlError('expected ":" in flow mapping', line)
-      pos++
-      setKey(out, key, readValue())
-      skipWs()
-      if (src[pos] === ',') { pos++; continue }
-      if (src[pos] === '}') { pos++; return out }
-      throw new YamlError('expected "," or "}" in flow mapping', line)
-    }
-  }
-  function readSeq(): unknown[] {
-    pos++ // [
-    const out: unknown[] = []
-    skipWs()
-    if (src[pos] === ']') { pos++; return out }
-    for (;;) {
-      out.push(readValue())
-      skipWs()
-      if (src[pos] === ',') { pos++; continue }
-      if (src[pos] === ']') { pos++; return out }
-      throw new YamlError('expected "," or "]" in flow sequence', line)
-    }
-  }
-  /** Read a scalar token, honouring quotes, stopping at flow punctuation. */
-  function readToken(extraStop = ''): string {
-    skipWs()
-    const start = pos
-    const q = src[pos]
-    if (q === '"' || q === "'") {
-      pos++
-      while (pos < src.length && src[pos] !== q) {
-        if (src[pos] === '\\' && q === '"') pos++
-        pos++
+    },
+    Alias(_key, alias, path) {
+      const target = alias.resolve(doc)
+      if (target && path.includes(target)) {
+        throw new YamlError(
+          `alias \`*${alias.source}\` refers to an anchor that contains it -- a recursive document has no JSON form.`,
+          lineOf(alias.range?.[0]),
+        )
       }
-      pos++
-      return src.slice(start, pos)
-    }
-    while (pos < src.length && !',}]'.includes(src[pos] as string) && !extraStop.includes(src[pos] as string)) {
-      pos++
-    }
-    return src.slice(start, pos).trim()
+    },
+  })
+
+  try {
+    return doc.toJS({ maxAliasCount: MAX_ALIAS_COUNT })
+  } catch (err) {
+    // `toJS` throws on excessive alias expansion. It carries no position, so
+    // report the first alias -- the expansion necessarily starts at one.
+    let aliasLine = 1
+    visit(doc, {
+      Alias(_k, a) {
+        aliasLine = lineOf(a.range?.[0])
+        return visit.BREAK
+      },
+    })
+    throw new YamlError(err instanceof Error ? err.message : String(err), aliasLine)
   }
 }
 
 /** Read a spec from text, choosing JSON or YAML by content. */
 export function parseSpecText(source: string): unknown {
-  const trimmed = source.trimStart()
-  if (trimmed.startsWith('{')) return JSON.parse(source)
-  return parseYaml(source)
+  // A UTF-8 BOM (Windows editors, some CDNs) must go before BOTH branches:
+  // `JSON.parse` rejects it as an unrecognised token.
+  const text = stripBom(source)
+  if (text.trimStart().startsWith('{')) return JSON.parse(text)
+  return parseYaml(text)
+}
+
+function stripBom(s: string): string {
+  return s.charCodeAt(0) === 0xfeff ? s.slice(1) : s
+}
+
+function firstLine(message: string): string {
+  const nl = message.indexOf('\n')
+  return nl === -1 ? message : message.slice(0, nl)
 }

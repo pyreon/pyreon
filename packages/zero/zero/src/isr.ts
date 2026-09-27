@@ -1,4 +1,6 @@
 import { SizedMap } from '@pyreon/sized-map'
+import { PREVIEW_COOKIE } from './preview'
+import { readCookie } from './utils/signed-cookie'
 import type { ISRConfig } from './types'
 
 // Dev-mode counter sink — see packages/internals/perf-harness for contract.
@@ -705,6 +707,19 @@ export function createISRHandler(
     // Only cache GET requests
     if (req.method !== 'GET') {
       return handler(req)
+    }
+
+    // Preview / draft mode: a visitor holding the preview cookie must see a
+    // FRESH render — never a cached HIT, and their draft render must never be
+    // stored. Bypass on cookie PRESENCE (verification is previewMiddleware's
+    // job): a forged cookie buys nothing an attacker could not already get by
+    // varying the query string under the default key, and the render it
+    // triggers is never stored.
+    if (readCookie(req, PREVIEW_COOKIE) !== null) {
+      const res = await handler(req)
+      const headers = new Headers(res.headers)
+      headers.set('x-isr-cache', 'BYPASS')
+      return new Response(res.body, { status: res.status, statusText: res.statusText, headers })
     }
 
     const url = new URL(req.url)

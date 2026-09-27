@@ -10,6 +10,7 @@
  * same discipline `pyreon/prefer-request-context` enforces elsewhere.
  */
 
+import { encodeCookies, encodeForm, encodeMultipart } from './body'
 import { compose } from './chain'
 import {
   defineEndpoint,
@@ -29,6 +30,7 @@ import { resolveAgainstAmbientOrigin } from './request-context'
 import { linkSignals } from './signal'
 import { fetchTransport } from './transport'
 import type {
+  HeaderValues,
   HttpClientConfig,
   HttpMethod,
   HttpMiddleware,
@@ -96,7 +98,7 @@ function toResolved(config: HttpClientConfig, base?: ResolvedConfig): ResolvedCo
   }
 }
 
-function applyHeaderSource(target: Headers, source: HeadersInit): void {
+function applyHeaderSource(target: Headers, source: HeadersInit | HeaderValues): void {
   if (source instanceof Headers) {
     source.forEach((value, key) => {
       target.set(key, value)
@@ -116,20 +118,43 @@ function applyHeaderSource(target: Headers, source: HeadersInit): void {
   // same name/value validation + normalization the constructor would, so
   // this skips only the intermediate `Headers` allocation, not any check.
   for (const key of Object.keys(source)) {
-    target.set(key, (source as Record<string, string>)[key] as string)
+    const value = (source as HeaderValues)[key]
+    // An optional header left `undefined` is OMITTED. `Headers.set` would
+    // otherwise stringify it and send the literal text "undefined".
+    if (value === undefined || value === null) continue
+    target.set(key, typeof value === 'string' ? value : String(value))
   }
 }
 
 /** Encode the body and set `Content-Type` when the caller has not. */
 function buildBody(options: RequestOptions, headers: Headers): BodyInit | null {
+  const given = [
+    options.json !== undefined && 'json',
+    options.form !== undefined && 'form',
+    options.multipart !== undefined && 'multipart',
+    options.body !== undefined && options.body !== null && 'body',
+  ].filter((k): k is string => k !== false)
+  if (given.length > 1) {
+    throw new Error(
+      `[Pyreon] http: pass ONE of \`json\`, \`form\`, \`multipart\` or \`body\` — got ${given.map((k) => `\`${k}\``).join(' and ')}. Each is a different encoding of the same body.`,
+    )
+  }
+  if (options.cookies) {
+    const cookie = encodeCookies(options.cookies)
+    if (cookie) headers.set('cookie', headers.has('cookie') ? `${headers.get('cookie')}; ${cookie}` : cookie)
+  }
   if (options.json !== undefined) {
-    if (options.body !== undefined && options.body !== null) {
-      throw new Error(
-        '[Pyreon] http: pass either `json` or `body`, not both — `json` serializes for you.',
-      )
-    }
     if (!headers.has('content-type')) headers.set('content-type', 'application/json')
     return JSON.stringify(options.json)
+  }
+  if (options.form !== undefined) {
+    if (!headers.has('content-type')) headers.set('content-type', 'application/x-www-form-urlencoded')
+    return encodeForm(options.form, options.formEncoding).toString()
+  }
+  if (options.multipart !== undefined) {
+    // No Content-Type: the platform writes it WITH the boundary it chose. A
+    // caller-set `multipart/form-data` without a boundary breaks the body.
+    return encodeMultipart(options.multipart)
   }
   return options.body ?? null
 }

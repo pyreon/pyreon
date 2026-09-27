@@ -595,6 +595,23 @@ export interface ZeroConfig {
      */
     concurrency?: number
     /**
+     * Render prerender paths on this many worker THREADS (default `1` = the
+     * main thread only). Page rendering is CPU-bound, which `concurrency`
+     * (in-flight renders on one thread) cannot parallelize; workers do.
+     * Measured on the Pyreon docs site: 2.9× faster with 4 workers, 4.1×
+     * with 8. Output is byte-identical to the single-thread build.
+     *
+     * Opt-in because each worker has its OWN module instances: module-level
+     * state your loaders rely on (an in-memory cache, a DB client, a
+     * counter) exists once per worker and is not shared across pages
+     * rendered on different workers. `concurrency` still bounds how many
+     * paths are in flight in total, across all workers.
+     *
+     * @example
+     * ssg: { workers: 4 } // e.g. os.availableParallelism() - 1
+     */
+    workers?: number
+    /**
      * Per-path progress callback. Invoked once per path AFTER its render
      * settles (success, redirect, OR failure) — never during in-flight
      * renders. Receives `{ completed, total, currentPath, elapsed }`

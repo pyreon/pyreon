@@ -78,8 +78,8 @@ import { seoPlugin } from "./seo";
 import { ssgPlugin } from "./ssg-plugin";
 import { ssrPlugin } from "./ssr-plugin";
 import { themeScript } from "./theme";
-import { serializeServerConfig } from "./server-config";
 import { clientFlagsPlugin } from "./client-flags-plugin";
+import { serializeServerConfig } from "./server-config";
 import type { RouteMiddlewareEntry, ZeroConfig } from "./types";
 
 import { withSilent } from "@pyreon/reactivity";

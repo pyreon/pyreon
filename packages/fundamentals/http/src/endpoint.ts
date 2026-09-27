@@ -22,8 +22,10 @@
  * NO dependency on `@pyreon/query`.
  */
 
+import type { FormFieldEncoding, FormFields, FormScalar, MultipartFields } from './body'
 import type { HttpClient } from './client'
 import type {
+  HeaderValues,
   HttpMethod,
   PathParams,
   QueryParams,
@@ -69,7 +71,11 @@ export type EndpointArgs<P extends string> = ([PathParamNames<P>] extends [never
   : { params: Record<PathParamNames<P>, string | number> }) & {
   query?: QueryParams | undefined
   json?: unknown
-  headers?: HeadersInit | undefined
+  form?: FormFields | undefined
+  multipart?: MultipartFields | undefined
+  body?: BodyInit | null | undefined
+  headers?: HeadersInit | HeaderValues | undefined
+  cookies?: Readonly<Record<string, FormScalar>> | undefined
   signal?: AbortSignal | undefined
   timeout?: number | false | undefined
   meta?: Record<string, unknown> | undefined
@@ -93,8 +99,19 @@ export type EndpointKey = readonly unknown[]
  */
 export interface EndpointOptions {
   timeout?: number | false | undefined
+  /**
+   * Headers every call sends. A per-call `headers` is MERGED over these (a
+   * per-call value wins per key), so declaring a `content-type` here survives
+   * a call that also passes, say, an idempotency key.
+   */
   headers?: HeadersInit | undefined
   throwHttpErrors?: boolean | undefined
+  /**
+   * How a `form` body's fields serialize — OpenAPI's Encoding Object, keyed by
+   * field. Declared once on the endpoint because it is a property of the API,
+   * not of a call. See {@link encodeForm}.
+   */
+  formEncoding?: Readonly<Record<string, FormFieldEncoding>> | undefined
 }
 
 /** {@link EndpointOptions} plus the validator slot that types the response. */
@@ -180,10 +197,39 @@ interface RawArgs {
   params?: PathParams | undefined
   query?: QueryParams | undefined
   json?: unknown
-  headers?: HeadersInit | undefined
+  form?: FormFields | undefined
+  multipart?: MultipartFields | undefined
+  body?: BodyInit | null | undefined
+  cookies?: Readonly<Record<string, FormScalar>> | undefined
+  headers?: HeadersInit | HeaderValues | undefined
   signal?: AbortSignal | undefined
   timeout?: number | false | undefined
   meta?: Record<string, unknown> | undefined
+}
+
+/**
+ * Declared headers, then per-call headers over them. Replacing the declared
+ * set wholesale (what `args.headers ?? options.headers` did) dropped a
+ * declared `content-type` the moment a caller passed any header at all.
+ */
+function mergeHeaders(
+  declared: HeadersInit | undefined,
+  call: HeadersInit | HeaderValues | undefined,
+): HeadersInit | HeaderValues | undefined {
+  if (!declared) return call
+  if (!call) return declared
+  const out: Record<string, string> = {}
+  new Headers(declared).forEach((v, k) => {
+    out[k] = v
+  })
+  const put = (k: string, v: string | number | boolean | null | undefined): void => {
+    if (v === null || v === undefined) delete out[k.toLowerCase()]
+    else out[k.toLowerCase()] = String(v)
+  }
+  if (call instanceof Headers) call.forEach((v, k) => put(k, v))
+  else if (Array.isArray(call)) for (const [k, v] of call) put(k as string, v as string)
+  else for (const k of Object.keys(call)) put(k, (call as HeaderValues)[k])
+  return out
 }
 
 /** Build an {@link Endpoint} bound to `client`. */
@@ -213,7 +259,12 @@ export function defineEndpoint<
       params: args?.params,
       query: args?.query,
       json: args?.json,
-      headers: args?.headers ?? options.headers,
+      form: args?.form,
+      formEncoding: options.formEncoding,
+      multipart: args?.multipart,
+      body: args?.body,
+      cookies: args?.cookies,
+      headers: mergeHeaders(options.headers, args?.headers),
       signal: args?.signal,
       timeout: args?.timeout ?? options.timeout,
       meta: args?.meta,

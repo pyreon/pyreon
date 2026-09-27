@@ -3975,7 +3975,9 @@ const user = await api.get('/users/:id', { params: { id: '1' } }).json()`,
     mistakes: `- Reaching for \`api.defaults.headers.common.X = …\` (axios muscle memory). It does not exist — mutable shared defaults are the classic SSR cross-request leak. Use \`api.extend({ headers })\`, which returns a NEW client.
 - Passing \`baseURL\` (axios spelling). The option is \`baseUrl\`.
 - Expecting \`baseUrl\` to behave like \`new URL(path, base)\`. It is a plain PREFIX, so a leading slash does NOT discard the base path.
-- Passing both \`json\` and \`body\`. They are mutually exclusive — \`json\` serializes and sets Content-Type for you, and passing both throws rather than silently picking one.
+- Passing more than one of \`json\` / \`form\` / \`multipart\` / \`body\`. They are mutually exclusive encodings of the same body, and passing two throws rather than silently picking one.
+- Setting \`content-type: multipart/form-data\` yourself alongside \`multipart\`. The platform writes it WITH the boundary it generated; a hand-set value has no boundary and the server cannot parse the body.
+- Expecting \`cookies\` to reach the server from a browser. \`Cookie\` is a forbidden request header and \`fetch\` drops it silently — in the browser use \`credentials: "include"\`; \`cookies\` is for server-side and native callers.
 - Interpolating into the path (\`api.get(\`/users/\${id}\`)\`). That skips URL encoding, so an id containing "/" escapes its segment. Use \`{ params: { id } }\`.
 - Expecting retry by default. It is OFF, because it compounds with @pyreon/query’s own retry.`,
   },
@@ -3990,7 +3992,7 @@ const user = await api.get('/users/1').json() // decoded body`,
   },
 
   'http/endpoint': {
-    signature: '(spec: `${HttpMethod} ${string}`, options?: { response?: Validator }) => Endpoint',
+    signature: '(spec: `${HttpMethod} ${string}`, options?: { response?: Validator; headers?: HeadersInit; formEncoding?: Record<string, FormFieldEncoding>; timeout?: number | false }) => Endpoint',
     example: `const getUser = api.endpoint('GET /users/:id', { response: UserSchema })
 
 await getUser({ params: { id: '1' } })
@@ -4000,7 +4002,22 @@ console.log(options.queryKey)`,
     mistakes: `- Hand-writing a \`queryKey\` next to an endpoint call. Use \`endpoint.query(...)\` so the key is derived from the same declaration as the URL.
 - Expecting \`mutationFn\` to receive an AbortSignal. TanStack gives mutations no context at all — pass one in the variables if the mutation must be cancellable.
 - Writing the spec without a method (\`"/users"\`). It must be \`"<METHOD> <path>"\`.
-- Assuming \`invalidates\` takes strings. It takes ENDPOINTS, and resolves each to its key prefix.`,
+- Assuming \`invalidates\` takes strings. It takes ENDPOINTS, and resolves each to its key prefix.
+- Expecting a per-call \`headers\` to REPLACE the declared ones. They MERGE (per-call wins per key), so a declared \`content-type\` survives a call that adds an idempotency key.`,
+  },
+
+  'http/encodeForm': {
+    signature: '(fields: FormFields, encoding?: Record<string, { style?: "form" | "deepObject" | "spaceDelimited" | "pipeDelimited"; explode?: boolean }>) => URLSearchParams',
+    example: `import { encodeForm } from '@pyreon/http'
+
+const body = encodeForm(
+  { amount: 2000, metadata: { order: 'A1' } },
+  { metadata: { style: 'deepObject', explode: true } },
+)
+body.toString() // "amount=2000&metadata%5Border%5D=A1"`,
+    notes: `The \`application/x-www-form-urlencoded\` serializer behind the \`form\` request option, exported so a transport or a generated client can produce byte-identical bodies. Follows OpenAPI's Encoding Object: the default is \`form\` + \`explode\` (arrays repeat the key, an object spreads its properties), \`deepObject\` uses brackets recursively with indexed arrays (\`items[0][price]=…\`, the shape Stripe declares), and \`spaceDelimited\`/\`pipeDelimited\` join arrays. \`null\`/\`undefined\` entries are dropped rather than sent as text. Siblings \`encodeMultipart\` (FormData; \`Blob\` values become file parts, objects become JSON text parts) and \`encodeCookies\` (a \`Cookie\` header value) cover the other encodings.`,
+    mistakes: `- Expecting a nested object under the DEFAULT style to keep its nesting. OpenAPI's \`form\` style spreads one level; declare \`deepObject\` for nested fields (a deeper value falls back to brackets rather than \`[object Object]\`).
+- Building the body with \`new URLSearchParams(obj)\` instead. That stringifies nested values to \`[object Object]\` and sends \`null\` as the text "null".`,
   },
 
   'http/HttpMiddleware': {
@@ -8399,7 +8416,7 @@ plugins: [pyreon(), zero({
 
 // Subpath deploy (e.g. served at /blog/)
 plugins: [pyreon(), zero({ base: '/blog/', mode: 'ssg' })]`,
-    notes: `Top-level Vite plugin chain for @pyreon/zero. Single config object selects rendering mode (\`'ssr' | 'ssg' | 'isr' | 'spa'\`), subpath base (\`base: '/blog/'\`), SSG settings (paths, concurrency, onProgress, emit404, emitRedirects), i18n config (locales / defaultLocale / strategy), and deployment adapter. Returns \`Plugin[]\` because the SSG mode adds a companion \`ssgPlugin()\` automatically — Vite's plugins array natively flattens nested arrays so \`plugins: [pyreon(), zero()]\` works without spread. See also: I18nRoutingConfig, GetStaticPaths, Adapter, createISRHandler.`,
+    notes: `Top-level Vite plugin chain for @pyreon/zero. Single config object selects rendering mode (\`'ssr' | 'ssg' | 'isr' | 'spa'\`), subpath base (\`base: '/blog/'\`), SSG settings (paths, concurrency, workers — opt-in worker-thread prerender, onProgress, emit404, emitRedirects), i18n config (locales / defaultLocale / strategy), and deployment adapter. Returns \`Plugin[]\` because the SSG mode adds a companion \`ssgPlugin()\` automatically — Vite's plugins array natively flattens nested arrays so \`plugins: [pyreon(), zero()]\` works without spread. See also: I18nRoutingConfig, GetStaticPaths, Adapter, createISRHandler.`,
     mistakes: `- Setting \`base\` in BOTH \`vite.config.base\` AND \`zero({ base })\` and expecting them to merge — user's explicit \`vite.config.base\` overrides the plugin-returned base. Set base ONCE via \`zero({ base })\`; let it propagate to Vite + router automatically
 - Passing \`layout\` to \`createApp\` / \`startClient\` when fs-router already emits \`_layout.tsx\` as a parent route — double-mounts the layout. Drop the explicit option; \`_layout.tsx\` is the canonical layout registration
 - Mixing \`mode: 'ssg'\` with a runtime adapter that has no SSG branch (e.g. expecting \`nodeAdapter\` to write platform routing config under SSG) — node/bun/static adapters no-op for SSG; use vercel/cloudflare/netlify if you need platform routing emission
@@ -8538,6 +8555,48 @@ app.post('/api/webhooks/posts-changed', async () => {
 - Setting \`revalidate: 0\` and expecting "never cache" — pass-through is the explicit handler call (no \`createISRHandler\` wrapper). Use \`revalidate: Number.MAX_SAFE_INTEGER\` for "cache forever, invalidate only via \`revalidateNow\`"
 - Calling \`.revalidateTag()\` against a custom store without \`setTags\`/\`keysByTag\` — throws a clear error naming the missing methods; both shipped stores implement them
 - A throwing \`tagsForRequest\` never breaks caching — the entry is cached UNTAGGED (dev-mode warns)`,
+  },
+
+  'zero/sessionMiddleware': {
+    signature: 'function sessionMiddleware(options: SessionOptions): Middleware  // + getSession(ctx | request | { request }), useSession(), requireUser(options)',
+    example: `import { getSession, requireUser, sessionMiddleware } from '@pyreon/zero/session'
+
+createServer({ routes, middleware: [sessionMiddleware({ secret: process.env.SESSION_SECRET! })] })
+
+export const loader = ({ request }) => ({ userId: getSession({ request }).get('userId') ?? null })
+export const middleware = requireUser({ redirectTo: '/login' })`,
+    notes: 'Signed cookie sessions from `@pyreon/zero/session` (also re-exported by `@pyreon/zero/server`). The whole session lives in one HMAC-SHA256-signed cookie via Web Crypto, so it runs on Node, Bun, Deno and Cloudflare workerd. `secret` takes a string or an array (index 0 signs, all verify — key rotation). Defaults: HttpOnly, SameSite=Lax, Path=/, Secure except on http://localhost, 7-day maxAge enforced as a SIGNED expiry too, 4096-byte limit (throws). Tampered/expired cookies read as an empty session. Any read or write marks the response `Cache-Control: private, no-store` + `Vary: Cookie`, which createISRHandler refuses unconditionally — a per-user render can never be ISR-cached. `requireUser({ redirectTo? })` is route middleware answering 302 (with `?next=`) or 401. See also: createISRHandler, createPreviewHandler.',
+    mistakes: `- Calling \`getSession\` without registering \`sessionMiddleware\` first — throws a [Pyreon] error naming the fix
+- Forgetting \`await\` on \`set\`/\`update\`/\`unset\`/\`destroy\` — writes re-sign asynchronously and the Set-Cookie lands only when the promise resolves
+- Storing large objects in the session — the signed cookie is capped at 4096 bytes; store an id and keep the data server-side
+- Rendering session values in a component — \`useSession()\` is \`null\` on the client (HttpOnly cookie), so hydration disagrees; pass the data through a loader
+- Touching the session inside a late Suspense boundary under \`mode: 'stream'\` — headers already left with the shell, so the response is not marked private and no cookie is set
+- Overriding \`Cache-Control\` to \`public\` after reading the session — the private marking is what keeps per-user HTML out of shared caches`,
+  },
+
+  'zero/createPreviewHandler': {
+    signature: 'function createPreviewHandler(options: { secret; token; path?; maxAge? }): Middleware  // + previewMiddleware({ secret }), isPreview(request | ctx | { request })',
+    example: `import { createPreviewHandler, isPreview, previewMiddleware } from '@pyreon/zero/preview'
+
+const secret = process.env.PREVIEW_SECRET!
+createServer({ routes, middleware: [createPreviewHandler({ secret, token: process.env.PREVIEW_TOKEN! }), previewMiddleware({ secret })] })
+
+export const loader = ({ request }) => getCollection('blog', { request })`,
+    notes: 'Preview / draft mode from the client-safe `@pyreon/zero/preview`. `GET /api/preview?token=…&redirect=/path` (constant-time token check, same-origin redirect only) sets a signed HttpOnly preview cookie; `/api/preview/exit` clears it. `previewMiddleware` verifies the cookie, marks the response private, and makes `isPreview()` true. createISRHandler bypasses its cache for any request carrying the preview cookie — no HIT, never stored. `@pyreon/zero-content` `getCollection(name, { request })` includes `draft: true` entries for a verified preview request. SSG static files are unaffected (no server code runs for them). See also: sessionMiddleware, createISRHandler.',
+    mistakes: `- Registering \`createPreviewHandler\` without \`previewMiddleware\` — the cookie is set but nothing verifies it, so \`isPreview()\` stays false
+- Expecting preview to affect SSG pages — a prerendered file is served by the host without running server code
+- Reusing the signing secret as the URL token — keep them separate so the token (visible in CMS config) can rotate independently`,
+  },
+
+  'zero/reportWebVitals': {
+    signature: 'function reportWebVitals(handler: (m: WebVitalMetric) => void, options?: { router?: RouterLike | false }): () => void  // + sendToBeacon(url), webVitalsEndpoint(path, onMetric)',
+    example: `import { reportWebVitals, sendToBeacon } from '@pyreon/zero/web-vitals'
+
+reportWebVitals(sendToBeacon('/api/vitals'))`,
+    notes: `Core Web Vitals from \`@pyreon/zero/web-vitals\` (standalone ~1.5 KB gz, import-budget-locked): LCP, CLS, INP, FCP, TTFB via PerformanceObserver, following the web-vitals library (activation-relative timings, session-window CLS, p98 INP with durationThreshold 40, LCP finalized on first input or hide). Deviation: on a client route change (active router's afterEach) CLS and INP are reported and reset per route with \`navigationType: 'soft-navigation'\`; LCP/FCP/TTFB are hard-load only. \`sendToBeacon(url)\` posts via navigator.sendBeacon; \`webVitalsEndpoint(path, fn)\` is the validating server middleware. No-op on the server. See also: zero.`,
+    mistakes: `- Calling it before \`startClient\` — the default router is resolved at call time; call after, or pass \`{ router }\`
+- Expecting LCP per client route — browsers expose no stable soft-navigation LCP; only CLS/INP are per route
+- Expecting a metric immediately — LCP/CLS/INP report on first input / page hide / route change, like web-vitals`,
   },
 
   'zero/ISRStore': {
@@ -11209,7 +11268,7 @@ report.issues.filter((i) => i.severity === 'error')`,
   // <gen-docs:api-reference:start @pyreon/lathe>
 
   'lathe/generate': {
-    signature: 'generate(specText: string, config: ResolvedConfig): GenerateResult',
+    signature: 'generate(specText: string, config: ResolvedConfig, options?: { sourceUrl?: string }): GenerateResult',
     example: `import { generate, resolveConfig } from '@pyreon/lathe'
 
 const config = resolveConfig({ input: './openapi.yaml', target: 'multiplatform' })
@@ -11222,7 +11281,7 @@ for (const [id, r] of reach) {
     mistakes: `- Passing a relative \`baseUrl\` (or omitting \`servers\` from the spec) and expecting native output — PMTC bakes the request URL at compile time, so a relative base makes EVERY operation web-only. The reach report names this, but only if you read it.
 - Assuming the \`.native.tsx\` modules replace the web output. They are ADDITIVE: the web files are byte-identical whether the target is \`web\` or \`multiplatform\`.
 - Editing generated files. Every file carries a DO-NOT-EDIT banner and is overwritten on the next run; change the spec or the emitter.
-- Expecting \`s.enum\` in native output. Enums do not lower, so the native path narrows them to \`s.string()\` — the constraint is genuinely lost there, which is why the two layouts are emitted separately rather than shared.`,
+- Expecting \`s.enum\` in native output. Enums do not lower, so the native path narrows them to their base scalar (\`s.string()\` / \`s.number()\`) — the constraint is genuinely lost there, which is why the two layouts are emitted separately rather than shared.`,
   },
 
   'lathe/resolveConfig': {
@@ -11263,16 +11322,17 @@ if (worstVerdict(report) !== 'lowers') process.exitCode = 1`,
   },
 
   'lathe/loadOpenApi': {
-    signature: 'loadOpenApi(source: string): { doc: IrDocument }',
+    signature: 'loadOpenApi(source: string, options?: { sourceUrl?: string }): { doc: IrDocument }',
     example: `import { loadOpenApi } from '@pyreon/lathe'
 
 const { doc } = loadOpenApi(await readFile('./openapi.yaml', 'utf8'))
 console.log(doc.models.length, 'models', doc.operations.length, 'operations')
 for (const note of doc.notes) console.warn(note.code, note.at, note.message)`,
-    notes: 'Parses an OpenAPI 3.x document (JSON or YAML text) into the spec-agnostic IR. Every reduction the IR cannot represent is recorded in `doc.notes` with a stable code and a location, so a loss is reported once at the boundary instead of being rediscovered differently by each emitter. Deterministic: models and operations are sorted, so the same spec always produces the same IR.',
+    notes: 'Parses an OpenAPI 3.x document (JSON or YAML text) into the spec-agnostic IR. Every reduction the IR cannot represent is recorded in `doc.notes` with a stable code and a location, so a loss is reported once at the boundary instead of being rediscovered differently by each emitter. Deterministic: models and operations are sorted, so the same spec always produces the same IR. Pass `sourceUrl` (where the spec was fetched from) and a RELATIVE `servers[].url` is resolved against it, as OpenAPI specifies.',
     mistakes: `- Ignoring \`doc.notes\`. A spec with a remote \`$ref\` or a non-JSON media type still produces output — with those pieces typed \`unknown\`. The note is the only signal. Filter on \`noteSeverity(note) === 'loss'\` for the ones that change behaviour.
+- Reading \`op.body\` as a type. It is \`{ mediaType, encoding, type }\` — \`encoding\` (\`json\` / \`form\` / \`multipart\` / \`text\` / \`binary\`) decides the call argument (\`json:\` / \`form:\` / \`multipart:\` / \`body:\`), and a form body carries its per-field \`fieldEncoding\`.
 - Passing a Swagger 2 document. It is refused (\`openApiVersionProblem\` names the \`swagger2openapi\` conversion) rather than read as an empty 3.x spec.
-- Expecting anchors or merge keys to work. The YAML reader refuses them by design with a line number, because silently ignoring an anchor produces a document that is wrong everywhere it was used.`,
+- Expecting a custom YAML tag (\`!Ref\`, \`!include\`) to be expanded. The reader refuses it with a line number instead of reading it as a plain string; resolve or bundle the spec first. Anchors, aliases and merge keys DO resolve.`,
   },
 
   'lathe/resolveProjects': {

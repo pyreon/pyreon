@@ -97,7 +97,7 @@ Every experiment writes one JSON file per measurement run to `results/<sha>.json
 }
 ```
 
-The shared `bun run perf:diff` (in `@pyreon/perf-harness`) compares two such files. CI workflow `.github/workflows/perf.yml` posts the delta to the PR.
+The shared `bun run perf:diff` (`scripts/perf/diff.ts` at repo root) compares two such files. CI workflow `.github/workflows/perf.yml` posts the delta to the PR.
 
 ## Disciplines
 

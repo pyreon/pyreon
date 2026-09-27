@@ -125,7 +125,7 @@ export default {
 | ------------ | ----------------------------------------------------------------------------- | ------- | ------------------------------------------------------------ |
 | `mode`       | `"ssr" \| "ssg" \| "spa" \| "isr"`                                            | `"ssr"` | Global rendering mode. `zero()`'s own parameter also widens this to accept `"auto"` (EXPERIMENTAL — per-route inference, see [Per-route render modes](#per-route-render-modes-hybrid-rendering)); `ZeroConfig.mode` itself never carries `"auto"` |
 | `ssr.mode`   | `"stream" \| "string"`                                                        | `"string"` | SSR output mode. `"stream"` flushes the shell first and streams Suspense boundaries — opt in with `ssr: { mode: 'stream' }`. ISR routes always render buffered (the cache stores complete responses) regardless of this setting |
-| `ssg`        | `{ paths?, format?, modulePreload?, speculationRules?, viewTransitions?, cssMode?, earlyHints?, emit404?, emitRedirects?, redirectsAsHtml?, onPathError?, errorArtifact?, concurrency?, onProgress?, splitChunks? }` | `{}` | SSG options — see **[SSG](/docs/ssg)** |
+| `ssg`        | `{ paths?, format?, modulePreload?, speculationRules?, viewTransitions?, cssMode?, earlyHints?, emit404?, emitRedirects?, redirectsAsHtml?, onPathError?, errorArtifact?, concurrency?, workers?, onProgress?, splitChunks? }` | `{}` | SSG options — see **[SSG](/docs/ssg)** |
 | `isr`        | `ISRConfig` (`{ revalidate, maxEntries?, revalidateTimeoutMs?, cacheKey?, expireOnTimeout?, store?, revalidateRequest?, tagsForRequest? }`) | —       | Runtime ISR config (only used when `mode: "isr"`)            |
 | `routeRules` | `Record<string, { renderMode?: RenderMode }>`                                 | —       | Central glob-keyed per-path render-mode overrides (`'*'` = one segment, `'**'` = any depth). Applies only to routes without their own `renderMode` export — precedence is route-file export > `routeRules` > app `mode`. See [Per-route render modes](#per-route-render-modes-hybrid-rendering) |
 | `adapter`    | `"node" \| "bun" \| "static" \| "vercel" \| "cloudflare" \| "netlify" \| Adapter` | auto     | Deployment adapter (name or constructed instance, e.g. `adapter: vercelAdapter()`). When unset, the build platform is auto-detected from its env (`VERCEL` / `NETLIFY` / `CF_PAGES`) and that adapter is used — local/self-hosted builds default to `"node"` |
@@ -589,7 +589,7 @@ zero({
   ssg: {
     speculationRules: 'prefetch', // or 'prerender' — Chrome Speculation Rules; near-instant MPA navs
     viewTransitions: true,        // cross-document View Transitions (@view-transition CSS, zero JS)
-    cssMode: 'asset',             // styler CSS as ONE hashed shared file instead of inlined per page
+    cssMode: 'asset',             // styler CSS as content-hashed shared files instead of inlined per page
     earlyHints: true,             // per-path Link: modulepreload entries in _headers → HTTP 103 on CF/Netlify
   },
 })
@@ -597,7 +597,7 @@ zero({
 
 - `speculationRules` injects a document-rules block (`href_matches: "/*"`, moderate eagerness) into every prerendered page; unsupported browsers ignore it.
 - `viewTransitions` opts prerendered pages into cross-document View Transitions — MPA navigations animate with zero JS in supporting browsers.
-- `cssMode: 'asset'` extracts the styler's per-page inline `<style>` (identical across pages by construction) into one content-hashed `assets/pyreon-ssg.<hash>.css` that every page links — pages share the browser-cached file instead of re-downloading the full sheet inside each HTML. No-op for projects without `@pyreon/styler`.
+- `cssMode: 'asset'` extracts the styler's per-page inline `<style>` into a content-hashed `assets/pyreon-ssg.<hash>.css` that the page links — one file per distinct rule set, so pages whose render used the same styles share one browser-cached file. (Each page's CSS is exactly the rules its own render used plus module-level `keyframes`/`createGlobalStyle`; it no longer depends on which pages were prerendered first.) No-op for projects without `@pyreon/styler`.
 - `earlyHints` appends per-path `Link: <chunk>; rel=modulepreload` entries to `_headers` (existing user `_headers` content is preserved); Cloudflare Pages and Netlify turn those into HTTP 103 Early Hints.
 
 ### ISR: tag-based invalidation + filesystem store
@@ -1780,6 +1780,76 @@ const server = createTestApiServer([{ pattern: '/api/posts', module: { GET: () =
 const res = await server.request('/api/posts')
 ```
 
+## Sessions, Preview Mode & Web Vitals
+
+### Signed cookie sessions (`@pyreon/zero/session`)
+
+```ts
+import { createServer } from '@pyreon/zero/server'
+import { getSession, requireUser, sessionMiddleware } from '@pyreon/zero/session'
+
+export default createServer({
+  routes,
+  middleware: [sessionMiddleware({ secret: [process.env.SESSION_SECRET!, process.env.OLD_SESSION_SECRET!] })],
+})
+
+// A loader (gets only `request`):
+export const loader = async ({ request }) => {
+  const session = getSession<{ userId?: string }>({ request })
+  return { userId: session.get('userId') ?? null }
+}
+
+// A login API route:
+await getSession(ctx).set('userId', user.id)
+
+// A protected layout (route middleware):
+export const middleware = requireUser({ redirectTo: '/login' }) // 302 to /login?next=…; omit → 401
+```
+
+- The whole session lives in one HMAC-SHA256-signed cookie (Web Crypto — Node, Bun, Deno and Cloudflare workerd). Each secret must be ≥ 32 characters; `secret[0]` signs and every entry verifies, so you rotate by prepending the new one.
+- Defaults: `HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` (dropped only for `http://localhost`), 7-day `maxAge` enforced both as `Max-Age` AND as a signed expiry. A tampered, expired or malformed cookie reads as an **empty** session. A write that would exceed 4096 bytes throws.
+- Reads are sync (`get`/`has`/`all`); writes are async (`set`/`update`/`unset`/`destroy`) because they re-sign.
+- **Privacy is automatic:** any response whose handling READ or WROTE the session gets `Cache-Control: private, no-store` + `Vary: Cookie`. `createISRHandler` refuses a `private` response unconditionally — even with a custom `cacheKey` — so a per-user page can never be cached or served to someone else. Requests that never touch the session stay cacheable.
+- `useSession()` works in components during SSR and returns `null` on the client (the cookie is `HttpOnly`); pass session-derived data through a loader.
+- In `mode: 'stream'` headers leave with the shell: touch the session in middleware or a loader, not inside a late Suspense boundary.
+
+### Preview / draft mode (`@pyreon/zero/preview`)
+
+```ts
+import { createPreviewHandler, isPreview, previewMiddleware } from '@pyreon/zero/preview'
+
+const secret = process.env.PREVIEW_SECRET!
+createServer({
+  routes,
+  middleware: [
+    // CMS preview URL: /api/preview?token=…&redirect=/blog/draft · exit: /api/preview/exit
+    createPreviewHandler({ secret, token: process.env.PREVIEW_TOKEN! }),
+    previewMiddleware({ secret }),
+  ],
+})
+
+export const loader = ({ request }) => getCollection('blog', { request }) // drafts included in preview
+```
+
+- The enable endpoint compares the token in constant time, sets a signed `HttpOnly` cookie (1 hour by default) and redirects to a same-origin path only.
+- `createISRHandler` skips its cache entirely for a request carrying the preview cookie — no HIT, and the draft render is never stored. `previewMiddleware` additionally marks verified preview responses `private`.
+- `isPreview(request | ctx | { request })` is true only for a verified cookie. `@pyreon/zero-content`'s `getCollection(name, { request })` includes `draft: true` entries for such requests (an explicit `includeDrafts` still wins).
+- Preview affects server-rendered responses only (SSR/ISR routes, and everything under `zero dev`). An SSG page is a static file — no server code runs for it.
+
+### Web Vitals (`@pyreon/zero/web-vitals`)
+
+```ts
+import { reportWebVitals, sendToBeacon, webVitalsEndpoint } from '@pyreon/zero/web-vitals'
+
+startClient({ routes })
+reportWebVitals(sendToBeacon('/api/vitals'))
+
+// server
+createServer({ routes, middleware: [webVitalsEndpoint('/api/vitals', (m) => log.info(m))] })
+```
+
+Reports LCP, CLS, INP, FCP and TTFB with `web-vitals`-library semantics (activation-relative timings, session-window CLS, p98 INP with `durationThreshold: 40`, LCP finalized on first input or hide). Each metric carries `value`, `delta`, `rating`, `id`, `path` and `navigationType`. **Deviation:** on a client-side route change (the active router's `afterEach`, or the `router` option) CLS and INP are reported and reset per route (`navigationType: 'soft-navigation'`); LCP, FCP and TTFB are reported for the initial hard load only. No attribution build, no bfcache re-reporting, no first-input fallback for browsers without `interactionId`.
+
 ## Subpath Exports
 
 | Import Path                | Exports                                                                              |
@@ -1809,6 +1879,9 @@ const res = await server.request('/api/posts')
 | `@pyreon/zero/og-image`    | `ogImagePlugin`, `ogImagePath`                                                        |
 | `@pyreon/zero/ai`          | `aiPlugin`, `inferJsonLd`, `generateLlmsTxt`, `generateLlmsFullTxt`                   |
 | `@pyreon/zero/i18n-routing`| `useLocale`, `setLocale`, `buildLocalePath`, `extractLocaleFromPath`                  |
+| `@pyreon/zero/session`    | `sessionMiddleware`, `getSession`, `useSession`, `requireUser`                        |
+| `@pyreon/zero/preview`    | `createPreviewHandler`, `previewMiddleware`, `isPreview`, `PREVIEW_COOKIE` (client-safe) |
+| `@pyreon/zero/web-vitals` | `reportWebVitals`, `sendToBeacon`, `webVitalsEndpoint`                                |
 | `@pyreon/zero/testing`     | Test helpers for middleware + API routes                                             |
 
 :::info

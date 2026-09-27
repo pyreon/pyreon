@@ -4048,7 +4048,7 @@ public func hasCorners(_ radii: [Double]) -> Bool {
   }
 
 public func rectCmd(_ rect: PyreonChartRect, _ fill: String, _ corners: [Double]?, _ grad: PyreonChartGradient?, _ pattern: PyreonChartPattern? = nil) -> PyreonDrawCmd {
-    if pattern == nil {
+    guard let pattern else {
       if corners == nil && grad == nil {
         return PyreonDrawCmd(kind: "rect", rect: rect, fill: fill)
       }
@@ -4063,10 +4063,10 @@ public func rectCmd(_ rect: PyreonChartRect, _ fill: String, _ corners: [Double]
     if corners == nil && grad == nil {
       return PyreonDrawCmd(kind: "rect", rect: rect, fill: fill, pattern: pattern)
     }
-    if grad == nil {
+    guard let grad else {
       return PyreonDrawCmd(kind: "rect", rect: rect, fill: fill, corners: corners, pattern: pattern)
     }
-    if corners == nil {
+    guard let corners else {
       return PyreonDrawCmd(kind: "rect", rect: rect, fill: fill, grad: grad, pattern: pattern)
     }
     return PyreonDrawCmd(kind: "rect", rect: rect, fill: fill, corners: corners, grad: grad, pattern: pattern)
@@ -4076,10 +4076,10 @@ public func polygonCmd(_ points: [PyreonChartPt], _ fill: String, _ grad: Pyreon
     if grad == nil && pattern == nil {
       return PyreonDrawCmd(kind: "polygon", fill: fill, points: points)
     }
-    if grad == nil {
+    guard let grad else {
       return PyreonDrawCmd(kind: "polygon", fill: fill, pattern: pattern, points: points)
     }
-    if pattern == nil {
+    guard let pattern else {
       return PyreonDrawCmd(kind: "polygon", fill: fill, grad: grad, points: points)
     }
     return PyreonDrawCmd(kind: "polygon", fill: fill, grad: grad, pattern: pattern, points: points)
@@ -7549,8 +7549,8 @@ public func hasX2Axis(_ spec: ChartSpec) -> Bool {
   }
 
 public func resolveX2Domain(_ spec: ChartSpec) -> Domain {
-    if spec.x2Domain != nil {
-      return (spec.x2Domain ?? Domain(min: 0.0, max: 1.0))
+    if let x2Domain = spec.x2Domain {
+      return x2Domain
     }
     var all: [Double] = []
     for s in spec.series {
@@ -7857,7 +7857,7 @@ public func barColumns(_ spec: ChartSpec, _ band: Double) -> [PyreonChartPt] {
     let cols = countToDouble(ids.count)
     let gapLength = (spec.barGap ?? NO_LENGTH)
     let gapPct = spec.barGap == nil ? 0.1 : gapLength.value / 100.0
-    let catGap = spec.barCategoryGap == nil ? (max(35.0 - cols * 4.0, 15.0) / 100.0) * band : barPx(spec.barCategoryGap, band, 0.0)
+    let catGap = (spec.barCategoryGap.map { barCategoryGap in barPx(barCategoryGap, band, 0.0) } ?? (max(35.0 - cols * 4.0, 15.0) / 100.0) * band)
     var remained = band
     var autoCount = cols
     for q in 0..<ids.count {
@@ -10360,8 +10360,8 @@ public func hitFunnelEc(_ stages: [FunnelStage], _ box: PyreonChartRect, _ cfg: 
   }
 
 public func nodeValue(_ node: TreeNode) -> Double {
-    if node.value != nil {
-      return (node.value ?? 0.0)
+    if let value = node.value {
+      return value
     }
     var sum = 0.0
     var stack: [TreeNode] = []
@@ -14206,8 +14206,8 @@ public func layoutSingleAxis(_ axis: SingleAxisSpec, _ points: [SingleAxisPoint]
       lo = 0.0
       hi = max(0.0, Double(((axis.categories ?? [])).count) * 1.0 - 1.0)
     } else {
-      if axis.domain != nil {
-        let domain = (axis.domain ?? Domain(min: 0.0, max: 1.0))
+      if let domainValue = axis.domain {
+        let domain = domainValue
         lo = domain.min
         hi = domain.max
       } else {
@@ -14273,8 +14273,8 @@ public func renderSingleAxis(_ layout: SingleAxisLayout, _ options: SingleAxisOp
       out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: t.x, y: a.y), to: PyreonChartPt(x: t.x, y: a.y + 4.0), stroke: axisColor, width: 1.0))
       out.append(PyreonDrawCmd(kind: "text", fill: labelColor, text: t.label, at: PyreonChartPt(x: t.x, y: a.y + 8.0), size: fontSize, align: "middle", baseline: "top"))
     }
-    if a.name != nil {
-      out.append(PyreonDrawCmd(kind: "text", fill: labelColor, text: a.name, at: PyreonChartPt(x: a.x1, y: a.y + fontSize * 2.2), size: fontSize, align: "end", baseline: "top"))
+    if let name = a.name {
+      out.append(PyreonDrawCmd(kind: "text", fill: labelColor, text: name, at: PyreonChartPt(x: a.x1, y: a.y + fontSize * 2.2), size: fontSize, align: "end", baseline: "top"))
     }
     for p in layout.points {
       out.append(PyreonDrawCmd(kind: "circle", fill: p.color, center: p.at, radius: p.radius * progress))
@@ -15179,10 +15179,10 @@ public func treeTip(_ layout: TreeLayout, _ px: Double, _ py: Double, _ symbolSi
       return []
     }
     let n = layout.nodes[i]
-    if n.value == nil {
+    guard let value = n.value else {
       return [n.name]
     }
-    return [n.name, plain((n.value ?? 0.0))]
+    return [n.name, plain(value)]
   }
 
 public func riverTip(_ layout: RiverLayout, _ px: Double, _ py: Double, _ curve: String? = nil) -> [String] {
@@ -15222,10 +15222,10 @@ public func graphTip(_ layout: GraphLayout, _ px: Double, _ py: Double) -> [Stri
       return []
     }
     let n = layout.nodes[i]
-    if n.value == nil {
+    guard let value = n.value else {
       return [n.name]
     }
-    return [n.name, plain((n.value ?? 0.0))]
+    return [n.name, plain(value)]
   }
 
 public func ganttTip(_ layout: GanttLayout, _ px: Double, _ py: Double) -> [String] {

@@ -11,8 +11,13 @@ import { h } from '@pyreon/core'
  */
 export default function MountReactiveChildren() {
   // mount() takes a VNode tree and inserts it into a host element.
-  // The list child thunk re-evaluates when items() changes; the
-  // runtime keys VDOM-style and reconciles with minimal DOM churn.
+  // The `<ul>` here is built by an ACCESSOR (`() => ...`) — when
+  // items() changes, the accessor re-runs and rebuilds every `<li>`
+  // from scratch. That's fine for a handful of short-lived rows, but
+  // it does NOT reconcile by identity: use `<For each by>` instead
+  // (see the "core" example group) when the list is large or items
+  // carry local state (focus, animation, input) that must survive a
+  // reorder/insert without remounting.
   const items = signal(['Apple', 'Banana', 'Cherry'])
   const draft = signal('')
 

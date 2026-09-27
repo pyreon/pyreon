@@ -501,3 +501,12 @@ The compiled template path routes attributes by name straight to `_setAttr`/`_se
 Vite replaces it only in client builds, and `ssr.noExternal` bundles `@pyreon/*` into the server output with the reads intact. Under Node, `process.env` is a native interceptor (a getenv per read; bun's costs ~1ns), and the bare-gate convention puts several reads on hot paths such as signal create/read/write. `@pyreon/vite-plugin` folds the read to a same-length `"production"` literal in `@pyreon/*` package files during production SSR builds (`isPyreonPackageFile`; user code untouched, positions preserved). Open: an unbundled Node consumer importing `lib/` directly still pays the cost. Run micro-benchmarks under Node as well as bun (`scripts/bench/core/reactivity.ts --runtime node`). Lock: `vite-plugin/src/tests/ssr-node-env-fold.test.ts`.
 
 ---
+
+### A generator must check what the emitted library validates at construction
+
+`s.discriminatedUnion` registers every member's tag when the module is imported, and `s.enum([...]).min(3)` is a TypeError, so one bad schema kills every export of the generated file. Check the construction precondition in the IR (object members, required fixed-value tag, distinct values) and degrade with a note.
+  - Test by IMPORTING the generated module over real specs; a string assertion passes on the throwing emit (`tests/corpus.test.ts`).
+  - Put nullability and constraints on the type, not the field, or a component model, array item or parameter silently loses them.
+  - Reference: `packages/tools/lathe/src/input/openapi.ts:normalizeUnions`, `src/core/walk.ts` (one exhaustive child walk).
+
+---
