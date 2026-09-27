@@ -1,6 +1,6 @@
-import { sanitizeHref, sanitizeImageSrc } from '../sanitize'
+import { breakCodeFences, markdownLinkDestination, sanitizeHref, sanitizeImageSrc } from '../sanitize'
 import type { DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
-import { getTextContent, imagePlaceholderText, warnUnknownNodeType } from '../nodes'
+import { getInlineRuns, getTextContent, hasLinkRun, imagePlaceholderText, warnUnknownNodeType } from '../nodes'
 
 /**
  * Microsoft Teams renderer — outputs Adaptive Cards JSON.
@@ -24,7 +24,12 @@ interface AdaptiveElement {
  * Code blocks are NOT escaped — fenced content renders verbatim.
  */
 function mdEscape(text: string): string {
-  return text.replace(/\\/g, '\\\\').replace(/([*_~])/g, '\\$1')
+  return text.replace(/\\/g, '\\\\').replace(/([*_~[\]])/g, '\\$1')
+}
+
+/** `[label](dest)`, or just the label when the href was rejected. */
+function mdLink(label: string, href: string): string {
+  return href ? `[${label}](${markdownLinkDestination(href)})` : label
 }
 
 function nodeToElements(node: DocNode): AdaptiveElement[] {
@@ -65,7 +70,14 @@ function nodeToElements(node: DocNode): AdaptiveElement[] {
     }
 
     case 'text': {
-      let text = mdEscape(getTextContent(node.children))
+      // Inline <Link> children keep their href (pre-fix the paragraph was
+      // flattened and the href silently dropped).
+      const runs = getInlineRuns(node.children)
+      let text = hasLinkRun(runs)
+        ? runs
+            .map((r) => (r.href !== undefined ? mdLink(mdEscape(r.text), r.href) : mdEscape(r.text)))
+            .join('')
+        : mdEscape(getTextContent(node.children))
       if (p.bold) text = `**${text}**`
       if (p.italic) text = `_${text}_`
       if (p.strikethrough) text = `~~${text}~~`
@@ -84,7 +96,7 @@ function nodeToElements(node: DocNode): AdaptiveElement[] {
       const text = mdEscape(getTextContent(node.children))
       elements.push({
         type: 'TextBlock',
-        text: `[${text}](${href})`,
+        text: mdLink(text, href),
         wrap: true,
       })
       break
@@ -150,7 +162,7 @@ function nodeToElements(node: DocNode): AdaptiveElement[] {
         .filter((c): c is DocNode => typeof c !== 'string')
         .map((item, i) => {
           const prefix = ordered ? `${i + 1}.` : '•'
-          return `${prefix} ${getTextContent(item.children)}`
+          return `${prefix} ${mdEscape(getTextContent(item.children))}`
         })
         .join('\n')
       elements.push({
@@ -162,7 +174,7 @@ function nodeToElements(node: DocNode): AdaptiveElement[] {
     }
 
     case 'code': {
-      const text = getTextContent(node.children)
+      const text = breakCodeFences(getTextContent(node.children))
       elements.push({
         type: 'TextBlock',
         text: `\`\`\`\n${text}\n\`\`\``,
@@ -190,13 +202,20 @@ function nodeToElements(node: DocNode): AdaptiveElement[] {
       break
 
     case 'button': {
+      const href = sanitizeHref(p.href as string)
+      // An Action.OpenUrl without a url is an invalid card — a rejected
+      // href degrades to the plain label.
+      if (!href) {
+        elements.push({ type: 'TextBlock', text: mdEscape(getTextContent(node.children)), wrap: true })
+        break
+      }
       elements.push({
         type: 'ActionSet',
         actions: [
           {
             type: 'Action.OpenUrl',
             title: getTextContent(node.children),
-            url: sanitizeHref(p.href as string),
+            url: href,
             style: 'positive',
           },
         ],

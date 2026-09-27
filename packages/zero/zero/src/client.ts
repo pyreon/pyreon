@@ -11,6 +11,11 @@ import { createApp } from './app'
 // safe. The fallback is documented intent — there's no Pyreon
 // deployment outside Vite that consumes this.
 declare const __ZERO_BASE__: string
+// Build-time flag from `client-flags-plugin.ts`: `false` in an app that is SPA
+// everywhere, which lets the bundler drop `hydrateRoot` and the hydration
+// machinery behind it. Checked inline, never through a local alias — several
+// bundlers do not fold a define through one.
+declare const __ZERO_HYDRATE__: boolean | undefined
 
 // ─── Client entry factory ───────────────────────────────────────────────────
 
@@ -183,7 +188,15 @@ export function startClient(options: StartClientOptions) {
     // `startClient`'s returned cleanup may be called before pre-resolution
     // settles; do not mount into a container the caller has abandoned.
     if (disposed) return
-    innerCleanup = hasSSRContent ? hydrateRoot(container, vnode) : mount(vnode, container)
+    if (hasSSRContent && typeof __ZERO_HYDRATE__ !== 'undefined' && !__ZERO_HYDRATE__) {
+      // Built SPA-everywhere, yet the page carries markup (a stale shell, a
+      // proxy's error page): mounting beside it would duplicate the app.
+      container.replaceChildren()
+    }
+    innerCleanup =
+      hasSSRContent && (typeof __ZERO_HYDRATE__ === 'undefined' || __ZERO_HYDRATE__)
+        ? hydrateRoot(container, vnode)
+        : mount(vnode, container)
     runInitialLoadersIfNeeded()
 
     // ── Hydration barrier ────────────────────────────────────────────────────

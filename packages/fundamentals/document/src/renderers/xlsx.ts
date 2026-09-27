@@ -71,7 +71,7 @@ function extractSheets(node: DocNode): ExtractedSheet[] {
     const text = getTextContent(n.children)
     currentSheet.headings.push(text)
     if (currentSheet.headings.length === 1) {
-      currentSheet.name = text.slice(0, 31) // Excel sheet name max 31 chars
+      currentSheet.name = text // normalized to Excel's rules by toSheetName
     }
   }
 
@@ -79,6 +79,38 @@ function extractSheets(node: DocNode): ExtractedSheet[] {
   pushCurrentSheet()
 
   return sheets
+}
+
+const SHEET_NAME_MAX = 31
+
+/**
+ * Normalize a worksheet name to Excel's rules — exceljs THROWS on a
+ * violation, so an ordinary heading like `Q1/Q2: [draft]` used to make the
+ * whole render() reject:
+ * - the characters `[ ] : * ? / \` are forbidden (replaced with a space);
+ * - no leading / trailing apostrophe; at most 31 characters;
+ * - names are unique CASE-INSENSITIVELY (`Report` and `report` collide) —
+ *   a collision gets a ` (2)`-style suffix, truncated to still fit;
+ * - an empty result (or Excel's reserved `History`) falls back to `Sheet N`.
+ */
+function toSheetName(raw: string, index: number, used: Set<string>): string {
+  let base = raw
+    // oxlint-disable-next-line no-control-regex
+    .replace(/[[\]:*?/\\\x00-\x1F]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^'+|'+$/g, '')
+    .trim()
+    .slice(0, SHEET_NAME_MAX)
+    .trim()
+  if (base === '' || base.toLowerCase() === 'history') base = `Sheet ${index + 1}`
+  let name = base
+  for (let n = 2; used.has(name.toLowerCase()); n++) {
+    const suffix = ` (${n})`
+    name = `${base.slice(0, SHEET_NAME_MAX - suffix.length).trimEnd()}${suffix}`
+  }
+  used.add(name.toLowerCase())
+  return name
 }
 
 /** Parse a cell value, handling currencies, percentages, and plain numbers. */
@@ -295,8 +327,9 @@ export const xlsxRenderer: DocumentRenderer = {
       workbook.addWorksheet('Sheet 1')
     }
 
-    for (const sheet of sheets) {
-      const ws = workbook.addWorksheet(sheet.name)
+    const usedNames = new Set<string>()
+    for (const [index, sheet] of sheets.entries()) {
+      const ws = workbook.addWorksheet(toSheetName(sheet.name, index, usedNames))
 
       let rowNum = 1
 

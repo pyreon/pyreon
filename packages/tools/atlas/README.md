@@ -414,10 +414,18 @@ mounted is what the project ships. Two consequences worth knowing:
 
   ```ts
   // atlas.config.ts — `wrapper` receives the scenario as `children`
-  export function wrapper(props) {
-    return h(ThemeProvider, { theme }, props.children)
+  export function wrapper(props: AtlasWrapperProps) {
+    return h(ThemeProvider, { theme, mode: props.mode }, props.children)
   }
   ```
+
+  In the workbench the wrapper also receives the render's APPEARANCE as
+  accessors — `mode` (`'light' | 'dark'`), `dark`, and `brand`
+  (`{ id, name, accent }`) — per render, so each Theme Lab tile is its own
+  appearance. Forward `mode` or the dark workbench shows components in their
+  light mode; read `brand` to make the Lab's brand tiles mean something (a
+  wrapper that never reads it gets one tile per mode and a note saying so).
+  `atlas scan` passes `children` only.
 
 - Modules are transformed in SSR mode, so a component arrives via the
   compiler's `h()` lowering rather than the `_tpl()` template path a browser

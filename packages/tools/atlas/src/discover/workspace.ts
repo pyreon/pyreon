@@ -29,7 +29,7 @@
  * would drag a whole CLI into a workbench install (or the reverse).
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import type { ProjectRoot } from './config'
 import { discoverComponents } from './discover'
 
@@ -104,6 +104,27 @@ export function workspacePackageDirs(root: string): string[] {
   const seen = new Set<string>()
   for (const glob of globs) for (const dir of expandGlob(root, glob)) seen.add(dir)
   return [...seen]
+}
+
+/**
+ * The workspace root ENCLOSING `start` — the nearest directory at or above it
+ * that declares workspace globs — or `start` itself when there is none.
+ *
+ * `atlas dev packages/ui/components` scans from the package, not the monorepo
+ * root, and a package declares no workspaces. Building the prop-type map from
+ * there left every type imported from a SIBLING package unresolvable, so a
+ * component whose props extend a headless base from another workspace package
+ * (`ComboboxProps extends ComboboxBaseProps`) showed no controls at all.
+ */
+export function enclosingWorkspaceRoot(start: string): string {
+  let dir = start
+  for (let i = 0; i < 12; i += 1) {
+    if (readWorkspaceGlobs(dir).length > 0) return dir
+    const parent = dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+  return start
 }
 
 /** Every workspace glob a root declares, from either source. */

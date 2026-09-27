@@ -253,6 +253,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
             suspenseTimeoutMs,
             streamStatus,
             method === 'HEAD',
+            typeof ctx.locals.cspNonce === 'string' ? ctx.locals.cspNonce : undefined,
           )
         } catch (err) {
           const info = getRedirectInfo(err)
@@ -351,9 +352,11 @@ async function renderStreamResponse(
   // body production entirely — saves the body-buffering cost and matches
   // the standard HTTP semantic.
   isHead: boolean = false,
+  // Per-request CSP nonce (`ctx.locals.cspNonce`), for every inline tag.
+  nonce?: string,
 ): Promise<Response> {
   const loaderData = serializeLoaderData(router as never)
-  const scripts = buildScriptsFast(clientEntryTag, loaderData)
+  const scripts = buildScriptsFast(clientEntryTag, loaderData, nonce)
 
   // Use pre-split parts: [before-head, between-head-app, between-app-scripts, after-scripts]
   const [p0, p1, p2, p3] = compiled.parts
@@ -366,9 +369,10 @@ async function renderStreamResponse(
   // ops-controlled per-boundary timeout. Both options are only
   // included when defined, so unconfigured deploys land on
   // renderToStream's defaults byte-identically.
-  const streamOptions: { signal?: AbortSignal; suspenseTimeoutMs?: number } = {}
+  const streamOptions: { signal?: AbortSignal; suspenseTimeoutMs?: number; nonce?: string } = {}
   if (signal !== undefined) streamOptions.signal = signal
   if (suspenseTimeoutMs !== undefined) streamOptions.suspenseTimeoutMs = suspenseTimeoutMs
+  if (nonce) streamOptions.nonce = nonce
   const appStream
     = Object.keys(streamOptions).length > 0
       ? renderToStream(app, streamOptions)

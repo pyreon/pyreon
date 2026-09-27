@@ -1116,7 +1116,8 @@ type Props = ExtractProps<typeof Iterator>
     example: '<Stack gap="md" align="center"><Text>a</Text><Text>b</Text></Stack>',
     notes: 'Primary layout container. Web → `<div style="display:flex;flex-direction:column|row">`; iOS → `VStack`/`HStack`; Android → `Column`/`Row`. Default `direction="column"`. `gap`/`padding` are theme-space tokens (number index OR "sm"|"md"|"lg"). See also: Inline, Layer, Scroll.',
     mistakes: `- Using \`<View>\` / \`<VStack>\` / \`<div>\` — the canonical name is \`<Stack>\` (one name, all platforms)
-- Expecting responsive props (breakpoint arrays) — not supported in v1; use @pyreon/elements for responsive web`,
+- Expecting responsive props (breakpoint arrays) — not supported in v1; use @pyreon/elements for responsive web
+- Relying on \`justify\` or \`wrap\` natively — both are IGNORED on iOS and Android (the compiler warns); use \`<Spacer />\` between children to distribute them`,
   },
 
   'primitives/Inline': {
@@ -1130,14 +1131,14 @@ type Props = ExtractProps<typeof Iterator>
   'primitives/Layer': {
     signature: '(props: { align?: Align; padding?: Space; children }) => VNode',
     example: '<Layer><Image src={hero} alt="" /><Text>overlaid caption</Text></Layer>',
-    notes: 'Stacked / overlay container. Web → `position:relative` + abs children; iOS → `ZStack`; Android → `Box`. Use for badges, overlays, layered composition. See also: Stack.',
+    notes: 'Stacked / overlay container. Web → `position:relative` single-cell grid (`align` → `place-items`); iOS → `ZStack`; Android → `Box`. Native children overlap automatically; on web, ordinary children flow into separate grid rows, so give the front child `position:absolute` to overlap. Use for badges, overlays, layered composition. See also: Stack.',
     mistakes: '- Using it for flow layout — Layer stacks children on the z-axis, not in a row/column',
   },
 
   'primitives/Scroll': {
-    signature: `(props: { direction?: 'vertical' | 'horizontal'; padding?: Space; children }) => VNode`,
+    signature: `(props: { axis?: 'vertical' | 'horizontal'; padding?: Space; children }) => VNode`,
     example: '<Scroll><Stack gap="md">{/* long content */}</Stack></Scroll>',
-    notes: 'Scrollable region. Web → `overflow:auto`; iOS → `ScrollView`; Android → `Column(verticalScroll)` / `Row(horizontalScroll)`. ⚠ Do not put a weighted `<Spacer>` inside a Scroll on Android (weight inside a scroll is invalid Compose). See also: Stack.',
+    notes: 'Scrollable region, vertical unless `axis="horizontal"`. Web → `overflow-y:auto` (or `overflow-x`); iOS → `ScrollView`; Android → `Column(verticalScroll)` / `Row(horizontalScroll)`. ⚠ Do not put a weighted `<Spacer>` inside a Scroll on Android (weight inside a scroll is invalid Compose). See also: Stack.',
     mistakes: '- Nesting a `<Spacer>` (weight) inside `<Scroll>` — invalid on Android Compose',
   },
 
@@ -1212,8 +1213,10 @@ type Props = ExtractProps<typeof Iterator>
   'primitives/Link': {
     signature: '(props: { to: string; external?: boolean; children }) => VNode',
     example: '<Link to="/profile">Profile</Link>',
-    notes: 'Navigation link. Web `<a>`; iOS/Android router-aware navigation. Integrates with `@pyreon/router` (`to` is a route path). `external` opens outside the app. See also: Button.',
-    mistakes: '- Hardcoding an href for internal routes — use `to` so it routes natively too',
+    notes: 'Navigation link. Web → a real `<a href>`; the package has NO router dependency, so call `init({ navigate })` once and plain left-clicks route through your handler (modifier-clicks stay with the browser; without `init` it is a full-page link). iOS/Android → `PyreonLink(to)`, which pushes `to` onto the native router (`@pyreon/native-router-swift` / `-kotlin`). `external` renders `target="_blank" rel="noopener noreferrer"` on web. See also: Button.',
+    mistakes: `- Hardcoding an href for internal routes — use \`to\` so it routes natively too
+- Relying on \`external\` natively — it is IGNORED on iOS and Android (the compiler warns) and the URL is pushed onto the in-app router; open websites with \`useLinking().openUrl(url)\`
+- Expecting SPA navigation on web without calling \`init({ navigate })\` — the link then does a full page load`,
   },
 
   'primitives/Field': {
@@ -1234,7 +1237,7 @@ type Props = ExtractProps<typeof Iterator>
   'primitives/Modal': {
     signature: '(props: { open: boolean | (() => boolean); onClose: () => void; children }) => VNode',
     example: '<Modal open={showSheet()} onClose={() => showSheet.set(false)}><Stack>{/* sheet body */}</Stack></Modal>',
-    notes: 'Modal/sheet. Web overlay; iOS `.sheet(isPresented:)`; Android `Dialog(onDismissRequest)`. Drive `open` with a signal; `onClose` fires on dismiss. See also: Layer.',
+    notes: 'Modal/sheet. Web → native `<dialog>` opened with `showModal()` (focus trap, backdrop, top layer); Escape and backdrop clicks call `onClose` instead of closing the dialog themselves, so `open` stays the source of truth. iOS `.sheet(isPresented:)`; Android `Dialog(onDismissRequest)`. Drive `open` with a signal; `onClose` fires on dismiss. See also: Layer.',
     mistakes: '- Forgetting `onClose` — needed so the platform dismiss gesture updates your signal',
   },
 
@@ -1289,7 +1292,7 @@ bar.onclick = () => host.emit(String(bar.dataset.id))`,
     example: `<Web>{/* web-only-rich: <Chart>, <Flow>, <Table> */}</Web>
 <NativeIOS>{/* Swift Charts, or a <WebView> embed */}</NativeIOS>
 <NativeAndroid>{/* Compose chart, or a <WebView> embed */}</NativeAndroid>`,
-    notes: `The Layer-4 per-platform escape hatch — one source carries a platform-specific subtree and exactly ONE branch renders per target. \`<Web>\` renders its children on WEB only (a layout-transparent Fragment, no wrapper element); \`<NativeIOS>\` / \`<NativeAndroid>\` render NOTHING on web (they return null — their children are emitted only on the iOS / Android target by PMTC). Reach for these for the rare genuinely-per-platform UI branch the 15 canonical primitives can't express (a web-only-rich chart/flow/table view vs a native equivalent or a \`<WebView>\` embed). See also: WebView, init / resetPrimitivesConfig, defineNativeModule / useNativeModule.`,
+    notes: `The Layer-4 per-platform escape hatch — one source carries a platform-specific subtree and exactly ONE branch renders per target. \`<Web>\` renders its children on WEB only (a layout-transparent Fragment, no wrapper element); \`<NativeIOS>\` / \`<NativeAndroid>\` render NOTHING on web (they return null — their children are emitted only on the iOS / Android target by PMTC). Reach for these for the rare genuinely-per-platform UI branch the canonical primitives can't express (a web-only-rich chart/flow/table view vs a native equivalent or a \`<WebView>\` embed). See also: WebView, init / resetPrimitivesConfig, defineNativeModule / useNativeModule.`,
     mistakes: `- Overusing them — defeats the one-source model; reach for them only when a target genuinely needs different UI.
 - Putting web-visible content in \`<NativeIOS>\` / \`<NativeAndroid>\` — both render NOTHING on web (they are no-ops there); only \`<Web>\` content reaches the browser.`,
   },
@@ -2379,7 +2382,7 @@ const html = await renderToString(<App />)`,
   },
 
   'runtime-server/renderToStream': {
-    signature: 'renderToStream(root: VNode | null, options?: { signal?: AbortSignal; suspenseTimeoutMs?: number }): ReadableStream<string>',
+    signature: 'renderToStream(root: VNode | null, options?: { signal?: AbortSignal; suspenseTimeoutMs?: number; nonce?: string }): ReadableStream<string>',
     example: `import { renderToStream } from "@pyreon/runtime-server"
 
 return new Response(renderToStream(<App />, {
@@ -2388,7 +2391,7 @@ return new Response(renderToStream(<App />, {
 }), {
   headers: { "content-type": "text/html" },
 })`,
-    notes: 'Render to a Web-standard `ReadableStream<string>` with true progressive flushing — synchronous subtrees enqueue immediately, async component boundaries are awaited in order. Suspense boundaries stream OUT OF ORDER: the fallback is emitted inline at once, and the resolved children arrive later as a `<template>` + a tiny inline swap `<script>` that replaces the placeholder client-side — without blocking the rest of the page. Each call gets its own isolated ALS context stack. A Suspense boundary that does not resolve within the per-boundary timeout (default 30_000 ms, configurable via `options.suspenseTimeoutMs`; pass `Infinity` to disable) leaves its fallback in place and a dev-mode warning fires; a boundary that throws also leaves the fallback (no swap script emitted). Pass `options.signal` (e.g. `Request.signal`) to abort pending Suspense work when the consumer disconnects. See also: renderToString.',
+    notes: `Render to a Web-standard \`ReadableStream<string>\` with true progressive flushing — synchronous subtrees enqueue immediately, async component boundaries are awaited in order. Suspense boundaries stream OUT OF ORDER: the fallback is emitted inline at once, and the resolved children arrive later as a \`<template>\` + a tiny inline swap \`<script>\` that replaces the placeholder client-side — without blocking the rest of the page. Each call gets its own isolated ALS context stack. A Suspense boundary that does not resolve within the per-boundary timeout (default 30_000 ms, configurable via \`options.suspenseTimeoutMs\`; pass \`Infinity\` to disable) leaves its fallback in place and a dev-mode warning fires; a boundary that throws also leaves the fallback (no swap script emitted). Pass \`options.signal\` (e.g. \`Request.signal\`) to abort pending Suspense work when the consumer disconnects. Pass \`options.nonce\` (the per-request CSP nonce) and every inline \`<script>\`/\`<style>\` the stream emits carries it, so a strict \`script-src 'nonce-…'\` policy admits the Suspense swaps; \`@pyreon/server\` forwards \`ctx.locals.cspNonce\` automatically. See also: renderToString.`,
     mistakes: `- Assuming Suspense children arrive in source order — they are swapped in as each boundary resolves; the fallback ships first, resolved content can arrive in any order
 - Expecting \`@pyreon/head\` tags registered inside a Suspense child to reach the document \`<head>\` — the head is flushed in the shell BEFORE any boundary resolves, so async-loaded data does not contribute to it
 - Treating a timed-out boundary as an error — by design the fallback simply stays; only a dev-mode \`console.warn\` signals it. Tune \`options.suspenseTimeoutMs\` to match your SLA (5_000–10_000 typical for user-facing apps; \`Infinity\` to disable entirely for export jobs / reports)
@@ -2956,15 +2959,15 @@ afterEach(() => resetAllHooks())   // else a mutation in one test leaks to the n
   // <gen-docs:api-reference:start @pyreon/validate>
 
   'validate/withField': {
-    signature: '<S extends StandardSchemaV1>(schema: S, meta: FieldMeta) => S',
+    signature: '<S extends StandardSchemaV1>(schema: S, meta: FieldMeta) => WithFieldMeta<S>',
     example: `const emailSchema = withField(z.string().email(), {
   label: 'Email address',
   placeholder: 'you@example.com',
   i18nLabel: 'auth.email.label',
   autoComplete: 'email',
 })`,
-    notes: `Attach Pyreon field metadata (label, hint, placeholder, i18n keys, autoFocus, autoComplete, defaultValue) to any Standard Schema. The returned schema is the SAME REFERENCE as the input — Pyreon mutates a Symbol-keyed non-enumerable slot in place, which is invisible to JSON serialization, for…in, Object.keys, and library-internal comparators. Mutation (instead of cloning) is required because ArkType's \`Type\` instances are callable functions whose \`~standard.validate\` does \`this(input)\` — a shallow clone would not be callable and would break that contract. Re-wrapping merges new metadata onto existing (later keys win). See also: getMeta, resolveMetaField, StandardSchemaV1.`,
-    mistakes: `- Expecting withField to return a NEW reference — it doesn't. The metadata mutation is in place. If you need an isolated copy, construct two separate schemas instead.
+    notes: `Attach Pyreon field metadata (label, hint, placeholder, i18n keys, autoFocus, autoComplete, defaultValue) to any Standard Schema. Returns a NEW schema carrying the metadata and never modifies its input (a frozen schema is fine), so two \`withField\` calls on one shared base keep separate labels. A Pyreon \`s\` schema is cloned (copy-on-write, like its chainable methods); any other Standard Schema is wrapped in a transparent Proxy that answers only the Symbol-keyed metadata slot and forwards everything else — \`.parse\`, \`~standard\`, and an ArkType schema's call signature keep working. Re-wrapping a wrapped schema merges (later keys win). See also: getMeta, resolveMetaField, StandardSchemaV1.`,
+    mistakes: `- Expecting withField to label the schema you PASSED — it returns a new one and leaves the input untouched. Use the RETURNED schema (\`const email = withField(base, …)\`); calling \`withField(base, …)\` for its side effect attaches nothing to \`base\`.
 - Adding \`i18nLabel\` without a corresponding \`label\` — without a translation provider (or when t echoes the key), there's no fallback. Always set both.
 - Storing schemas with metadata in JSON.stringify-d state and round-tripping — the metadata is Symbol-keyed and won't survive serialization. Re-attach on load.`,
   },
@@ -2995,7 +2998,7 @@ const label = meta?.label ?? humanize(fieldName)`,
     signature: `<S extends StandardSchemaV1>(
   schema: S,
   source: Signal<unknown> | (() => unknown),
-) => Computed<ParseResult>`,
+) => Computed<ParseResult<Output<S>>>`,
     example: `const $email = signal('')
 const $result = parseReactive(emailSchema, $email)
 
@@ -3006,7 +3009,7 @@ effect(() => {
 })
 
 $email.set('foo@bar.com')  // $result re-derives`,
-    notes: 'Reactively parse `source` through `schema`. Returns a `Computed<ParseResult>` that re-validates on every source change. Synchronous only — for schemas with async refinements (Zod `.refine(async)`, Valibot async pipe), use parseReactiveAsync (this sync variant surfaces an actionable issue if the schema returns a Promise). See also: parseReactiveAsync, watchValid, formatErrors.',
+    notes: `Reactively parse \`source\` through \`schema\`. Returns a \`Computed<ParseResult<Output<S>>>\` (typed by the schema's output) that re-validates on every source change. Synchronous only — for schemas with async refinements (Zod \`.refine(async)\`, Valibot async pipe), use parseReactiveAsync (this sync variant surfaces an actionable issue if the schema returns a Promise). See also: parseReactiveAsync, watchValid, formatErrors.`,
     mistakes: `- Using parseReactive on an async schema — it surfaces a clear "use parseReactiveAsync" issue rather than silently producing a Promise as the validation result.
 - Calling parseReactive on every render of a component — it allocates a Computed; cache it at component setup time (call once per signal-source pair).`,
   },
@@ -3015,7 +3018,7 @@ $email.set('foo@bar.com')  // $result re-derives`,
     signature: `<S extends StandardSchemaV1>(
   schema: S,
   source: Signal<unknown> | (() => unknown),
-) => Computed<Promise<ParseResult>>`,
+) => Computed<Promise<ParseResult<Output<S>>>>`,
     example: `const schema = z.string().refine(async (s) => await checkUnique(s))
 const $result = parseReactiveAsync(schema, $username)
 
@@ -3041,7 +3044,7 @@ watch($result, async (current) => {
 })
 
 onUnmount(stop)`,
-    notes: 'Subscribe to validity transitions. The callback fires only when validity flips (true→false or false→true), NOT on every error-message change — ideal for form-state hooks that care about "is this OK?" without re-rendering on every typo. Returns an unsubscribe function. Internally a `watch()` over `parseReactive`. See also: parseReactive.',
+    notes: 'Subscribe to validity transitions. The callback fires only when validity flips (true→false or false→true), NOT on every error-message change — ideal for form-state hooks that care about "is this OK?" without re-rendering on every typo. Returns an unsubscribe function. Async schemas report once the validation settles; a settle superseded by newer input is dropped, and a rejected validator counts as invalid. See also: parseReactive.',
   },
 
   'validate/formatError': {
@@ -7448,7 +7451,7 @@ function Badge() {
   return <span style={{ color: t.colors.primary }}>{/* … */}</span>
 }`,
     notes: 'Returns the current theme as a SNAPSHOT at call time. `ThemeContext` is a REACTIVE context — `useTheme()` reads it once, so the returned object is static unless the read happens inside a reactive scope. For values that must track whole-theme swaps inside an `effect` / `computed`, use `useThemeAccessor()` instead. See also: useThemeAccessor, ThemeProvider, styled.',
-    mistakes: `- Destructuring \`const { colors } = useTheme()\` and expecting it to update on a user-preference theme swap — the snapshot is captured once. Use \`useThemeAccessor()\` and read inside the reactive scope, or rely on \`styled\` templates (their resolver tracks the theme)
+    mistakes: `- Destructuring \`const { colors } = useTheme()\` and expecting it to update on a user-preference theme swap — the snapshot is captured once. Use \`useThemeAccessor()\` and read inside the reactive scope, or rely on rocketstyle-backed components (their reactive resolver tracks the theme — a plain \`styled()\` with no reactive axis resolves once at mount)
 - Calling \`useTheme()\` at module scope — it must run during component setup where the context is available`,
   },
 
@@ -7465,14 +7468,15 @@ effect(() => applyChartPalette(theme().colors)) // re-runs on theme swap`,
   },
 
   'styler/ThemeProvider': {
-    signature: 'ThemeProvider(props: { theme: Theme | ((parent: Theme) => Theme); children?: VNodeChild }): VNodeChild',
+    signature: 'ThemeProvider(props: { theme: Theme; children?: VNodeChild }): VNode | null',
     example: `import { ThemeProvider } from "@pyreon/styler"
 
 <ThemeProvider theme={{ colors: { primary: "#06f" } }}>
   <App />
 </ThemeProvider>`,
-    notes: 'Provides a theme to the reactive `ThemeContext`. Nested providers compose — a function `theme` receives the parent theme so subtrees can extend rather than replace. Because the context is reactive, swapping the `theme` prop re-resolves every `styled` / `useCSS` consumer below without remounting the tree. Marked `nativeCompat` so it works inside `@pyreon/{react,preact,vue,solid}-compat` apps. See also: useTheme, useThemeAccessor, ThemeContext.',
-    mistakes: `- Replacing the whole theme in a nested provider when you meant to extend — pass \`theme={(parent) => ({ ...parent, colors: { ...parent.colors, accent: "#0a0" } })}\`
+    notes: 'Provides a theme to the reactive `ThemeContext`. The provided accessor reads `props.theme` LAZILY, so a signal-driven `theme={current()}` stays live: consumers that read the theme inside a tracking scope — `useThemeAccessor()` in an `effect` / `computed` / JSX thunk, and rocketstyle-backed components (whose reactive `$rocketstyle` axis tracks the theme) — follow a later `theme` change without a remount. A plain `styled()` component with no reactive axis resolves its class ONCE at mount (the static fast path), so it does not re-resolve on a swap. A nested provider REPLACES the theme for its subtree — there is no merge and no `(parent) => theme` function form. Marked `nativeCompat` so it works inside `@pyreon/{react,preact,vue,solid}-compat` apps. See also: useTheme, useThemeAccessor, ThemeContext.',
+    mistakes: `- Expecting a nested provider to MERGE with its parent — it replaces the theme for its subtree. To extend, read the parent with \`useTheme()\` and spread it yourself: \`theme={{ ...parent, colors: { ...parent.colors, accent: "#0a0" } }}\` (there is no function \`theme\` form)
+- Expecting a plain \`styled()\` component (no rocketstyle, no reactive axis) to re-resolve when the \`theme\` prop changes — it resolves once at mount; read the theme through \`useThemeAccessor()\` inside a reactive scope, or use \`<PyreonUI>\` + rocketstyle components for live whole-theme swaps
 - Expecting most apps to mount this directly — \`<PyreonUI>\` wraps it; use \`ThemeProvider\` standalone only outside the \`@pyreon/ui-core\` provider`,
   },
 
@@ -7655,7 +7659,7 @@ init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the ho
     </ul>
   )}
 </Overlay>`,
-    notes: 'A positioned layer (dropdown / modal / tooltip / popover) with an optional backdrop, driven internally by `useOverlay`. It handles viewport flipping, ESC-to-close, click-outside, scroll tracking, and hover delay — do NOT reimplement any of that in a primitive; compose `Overlay` (or `useOverlay`) instead. Takes a `trigger` render prop (receives `{ ref, active, showContent, hideContent }` — attach `ref` to the anchor) and a content render prop as `children` (receives `{ ref, active, align, alignX, alignY, … }` — attach `ref` to the floating node); the content renders through `Portal` so the layer escapes overflow/stacking contexts. `align`/`alignX`/`alignY` reach the content as LIVE reactive props, so a viewport-edge flip re-styles the content in place without remounting it. See also: useOverlay, OverlayProvider, Portal.',
+    notes: 'A positioned layer (dropdown / modal / tooltip / popover) with an optional backdrop, driven internally by `useOverlay`. It handles viewport flipping, ESC-to-close, click-outside, scroll tracking, and hover delay — do NOT reimplement any of that in a primitive; compose `Overlay` (or `useOverlay`) instead. Takes a `trigger` render prop (receives `{ ref, active, showContent, hideContent }` — attach `ref` to the anchor) and a content render prop as `children` (receives `{ ref, active, align, alignX, alignY, … }` — attach `ref` to the floating node); the content renders through `Portal` so the layer escapes overflow/stacking contexts. `align`/`alignX`/`alignY` reach the content as LIVE reactive props, so a viewport-edge flip re-styles the content in place without remounting it. Both render-prop parameters are contextually typed, so inline `(t) => …` / `(c) => …` callbacks typecheck under strict TS with no annotation. See also: useOverlay, OverlayProvider, Portal.',
     mistakes: `- Hand-rolling positioning / flip / click-outside / ESC logic in a tooltip or dropdown primitive — \`useOverlay\` already owns all of it; reimplementing drifts from the shared behavior
 - Forgetting to attach the \`ref\` the trigger / content render props receive — without it the hook cannot measure, position, wire click-outside, or restore focus (the layer renders at the document origin)
 - Reading the rendered overlay as \`document.body.firstChild\` — it renders through \`Portal\` into a per-instance wrapper; traverse the wrapper, not body’s direct child`,
@@ -8624,6 +8628,38 @@ createISRHandler(handler, {
     signature: 'function aiPlugin(config?: AiPluginConfig): Plugin // server-only',
     example: 'plugins: [pyreon(), zero(), seoPlugin({ ... }), aiPlugin()]',
     notes: `AI integration plugin — generates \`llms.txt\`, \`llms-full.txt\`, and JSON-LD inference metadata at build time. Designed for sites that want to be AI-readable (search engines, model trainers, agentic crawlers). The generated files are themselves Pyreon's on-publish artifacts; the plugin runs \`inferJsonLd\` per route to extract structured data from \`meta\` exports. See also: seoPlugin, zero.`,
+  },
+
+  'zero/OgImage': {
+    signature: 'type OgImage<TData = unknown, TParams = Record<string, string>> = (ctx: { path: string; params: TParams; data: TData | undefined }) => VNodeChild // route file `export const og`',
+    example: `import type { OgImage } from '@pyreon/zero/server'
+
+export const og: OgImage<{ title: string }> = ({ data }) => (
+  <svg width="1200" height="630">
+    <rect width="1200" height="630" fill="#0b1020" />
+    <text x="80" y="330" font-size="72" fill="#fff">{data?.title}</text>
+  </svg>
+)`,
+    notes: 'Per-route Open Graph image from JSX. A page route exports `og` — a component rendering the card as SVG JSX from its params + loader data. SSG paths rasterize at BUILD time to a content-hashed PNG under `assets/og/` and get `og:image` (+ width/height, `twitter:card`) injected; SSR/ISR routes are served at request time from `/_zero/og/<path>.png` (CDN `s-maxage` + `stale-while-revalidate`) with an absolute `og:image` injected into the page. Referenced only from the server graph — never the client bundle. Rasterizer: the optional peer `sharp`. Size + absolute origin via `zero({ routeOg: { width, height, siteUrl } })`. See also: zero, seoPlugin.',
+    mistakes: `- Rendering HTML (\`<div>\`) instead of an \`<svg>\` root — sharp rasterizes SVG via librsvg, which does not lay out HTML or \`<foreignObject>\`; the build fails with a \`[Pyreon]\` error naming the fix
+- Omitting \`routeOg.siteUrl\` for SSG — most crawlers (Facebook, LinkedIn, Slack) need an ABSOLUTE og:image URL; without it the build-time tag is root-relative
+- Expecting \`vite dev\` to serve \`/_zero/og/…\` — the image is produced by the build / production server; preview with a build
+- Setting og:image via \`useHead\` AND exporting \`og\` — the explicit tag wins and nothing is injected`,
+  },
+
+  'zero/registerServiceWorker': {
+    signature: 'function registerServiceWorker(options?: { url?: string; scope?: string; onUpdate?: (activate: () => void) => void }): Promise<ServiceWorkerRegistration | null>',
+    example: `import { registerServiceWorker } from '@pyreon/zero'
+
+registerServiceWorker({
+  onUpdate: (activate) => {
+    if (confirm('A new version is available. Reload?')) activate()
+  },
+})`,
+    notes: `Registers the worker generated by \`zero({ pwa })\` (\`<base>sw.js\`, \`updateViaCache: 'none'\`). The worker precaches exactly the emitted hashed assets (+ prerendered pages under \`mode: 'ssg'\`), serves navigations network-first and hashed assets cache-first. New versions WAIT by default; \`onUpdate(activate)\` fires when one is installed so the app can ask, and \`activate()\` switches + reloads. Resolves \`null\` during SSR, outside production builds, and without service-worker support. See also: zero.`,
+    mistakes: `- Expecting it to register in \`vite dev\` — it no-ops outside production builds on purpose (a caching worker fights HMR)
+- Setting \`pwa.skipWaiting: true\` without understanding it swaps the asset cache under running tabs — prefer \`onUpdate\` + \`activate()\`
+- Serving \`sw.js\` with a long or immutable Cache-Control from a custom host — the worker script is the update channel; zero's adapters serve it must-revalidate`,
   },
 
   'zero/i18nRouting': {
@@ -10068,7 +10104,7 @@ const Button = rs({ name: 'Button', component: 'button' })
 const rsCustom = rocketstyle({
   dimensions: { tones: 'tone', decorations: { propName: 'decoration', multi: true } },
 })`,
-    notes: 'Factory initializer (default + named export). `rocketstyle(config?)` returns a component factory; call THAT with `{ name, component }` to get the chainable builder. `config.dimensions` overrides the dimension map (default: `states: "state"`, `sizes: "size"`, `variants: "variant"`, `multiple: { propName: "multiple", multi: true }`, `modifiers: { propName: "modifier", multi: true, transform: true }`) — each key becomes a chain method, each propName a consumer prop. `config.useBooleans` (default `false`) switches dimension props from strings (`state="primary"`) to boolean shorthands (`<Button primary />`). Dev mode throws on missing `name`/`component`/`dimensions` and on dimension names colliding with reserved keys. See also: Provider, isRocketComponent, @pyreon/attrs, @pyreon/styler.',
+    notes: 'Factory initializer (default + named export). `rocketstyle(config?)` returns a component factory; call THAT with `{ name, component }` to get the chainable builder. `config.dimensions` overrides the dimension map (default: `states: "state"`, `sizes: "size"`, `variants: "variant"`, `multiple: { propName: "multiple", multi: true }`, `modifiers: { propName: "modifier", multi: true, transform: true }`) — each key becomes a chain method, each propName a consumer prop. `config.useBooleans` (default `false`) switches dimension props from strings (`state="primary"`) to boolean shorthands (`<Button primary />`). Dev mode throws on missing `name`/`component`/`dimensions` and on dimension names colliding with reserved keys (the error names the clashing key(s) and lists the reserved set). See also: Provider, isRocketComponent, @pyreon/attrs, @pyreon/styler.',
     mistakes: `- Calling the factory with a tag string — \`rs('button')\` is not a valid form. The factory takes \`{ name, component }\` and BOTH are required (dev mode throws on a missing one)
 - Passing boolean shorthand props under the default \`useBooleans: false\` — \`<Button primary />\` is an UNKNOWN prop that silently does nothing; write \`<Button state="primary" />\` or opt into \`rocketstyle({ useBooleans: true })\`
 - Passing a function accessor to a dimension prop — \`state={() => expr}\` is the wrong shape; dimension props take plain string values (\`state={expr}\`) and the compiler handles reactivity via \`_rp()\` wrapping
@@ -10267,9 +10303,10 @@ Button.meta.category   // 'action'
 <Provider inversed>
   <Card>Resolves mode() as the opposite mode</Card>
 </Provider>`,
-    notes: `Tree-level theme + mode provider. Props are \`{ children, theme?, mode?, inversed?, provider? }\` — \`mode\` is \`"light" | "dark"\`, \`inversed: true\` flips the resolved mode for the subtree, and values merge over any parent rocketstyle context. Most apps use the higher-level \`<PyreonUI>\` from \`@pyreon/ui-core\` (theme + mode + config in one) and reach for rocketstyle's \`Provider\` only for fine-grained subtree overrides. The raw context object backing it is exported as \`context\`. See also: rocketstyle, .config(), @pyreon/ui-core.`,
+    notes: `Tree-level theme + mode provider. Props are \`{ children, theme?, mode?, inversed?, provider? }\` — \`mode\` is \`"light" | "dark"\`, \`inversed: true\` flips the resolved mode for the subtree, and values merge over any parent rocketstyle context. It is REACTIVE: the parent context and its own props are read LAZILY (the provided value is getter-based), so \`<Provider inversed>\` follows a later parent mode flip and a signal-driven \`theme={t()}\` / \`mode={m()}\` stays live — no remount. Most apps use the higher-level \`<PyreonUI>\` from \`@pyreon/ui-core\` (theme + mode + config in one) and reach for rocketstyle's \`Provider\` only for fine-grained subtree overrides. The raw context object backing it is exported as \`context\`. See also: rocketstyle, .config(), @pyreon/ui-core.`,
     mistakes: `- Passing a \`value\` prop (React-context muscle memory) — there is no \`value\`; \`Provider\` takes \`theme\` / \`mode\` / \`inversed\` directly
 - Mounting a fresh \`Provider\`/\`PyreonUI\` per view — the \`_rsMemo\` cache keys on theme identity, so per-view providers defeat cross-instance memoization; share ONE app-level provider
+- Expecting \`inversed\` to FORCE dark — it inverts whatever mode the parent resolves (light↔dark), and tracks that parent as it changes
 - Confusing this theme/mode provider with \`.config({ provider: true })\` — the latter is the component-to-component PSEUDO-STATE channel, unrelated to theming`,
   },
 
