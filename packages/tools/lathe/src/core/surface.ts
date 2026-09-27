@@ -40,7 +40,9 @@
  * a structural deep-equal: a deep-equal reports every difference with equal
  * weight, which is the same as reporting none.
  */
-import type { IrDocument, IrField, IrOperation, IrType } from './ir'
+import { reachableModels } from './graph'
+import type { IrDocument, IrOperation, IrType } from './ir'
+import { collectRefNames } from './walk'
 
 /** One operation's observable contract. */
 export interface SurfaceOperation {
@@ -54,15 +56,37 @@ export interface SurfaceOperation {
   response?: string | undefined
 }
 
+/** Where a model is reachable from: a request, a response, both, or neither. */
+export type SurfaceUsage = 'request' | 'response' | 'both' | 'unused'
+
+/** A model that is not an object with fields: an enum, a union, an array, … */
+export interface SurfaceAlias {
+  type: string
+  /** The members of an enum / union (incl. `null`), for member-level diffs. */
+  members?: string[] | undefined
+}
+
 /** The comparable surface of a whole document. */
 export interface ApiSurface {
   /** Bumped when the RENDERING below changes shape, so a stale baseline is
    *  reported as such rather than diffed as a thousand changes. */
-  version: 1
+  version: 2
   title: string
   operations: Record<string, SurfaceOperation>
-  /** Model name → field name → rendered type, with `?` marking optional. */
+  /** Object model name → field name → rendered type, with `?` marking optional. */
   models: Record<string, Record<string, string>>
+  /**
+   * Every OTHER model (enum, union, array, scalar alias) → its rendering. They
+   * used to be recorded as an empty field map, so an enum losing a value or a
+   * union losing a member was invisible to the diff.
+   */
+  aliases: Record<string, SurfaceAlias>
+  /**
+   * Which direction each model travels in. A change that narrows a value is
+   * breaking where the CLIENT sends it and harmless where it only receives it,
+   * and the reverse -- the classifier cannot be right without this.
+   */
+  usage: Record<string, SurfaceUsage>
 }
 
 /**
@@ -78,7 +102,11 @@ export function renderType(type: IrType | undefined, depth = 0): string {
   if (depth > 6) return '…'
   switch (type.kind) {
     case 'string':
-      return type.enum ? `enum(${[...type.enum].sort().join('|')})` : type.format ?? 'string'
+      return type.format ?? 'string'
+    case 'enum':
+      return `enum(${type.values.map((v) => JSON.stringify(v)).sort().join('|')})`
+    case 'nullable':
+      return `${renderType(type.inner, depth)} | null`
     case 'number':
       return type.integer ? 'integer' : 'number'
     case 'boolean':
@@ -97,45 +125,90 @@ export function renderType(type: IrType | undefined, depth = 0): string {
       return [...type.options.map((o) => renderType(o, depth + 1))].sort().join(' | ')
     case 'object': {
       const fields = [...type.fields]
-        .sort((a, b) => a.name.localeCompare(b.name))
+        .sort((a, b) => byName(a.name, b.name))
         .map((f) => `${f.name}${f.required ? '' : '?'}: ${renderType(f.type, depth + 1)}`)
       return `{ ${fields.join('; ')} }`
     }
   }
 }
 
-function fieldsOf(type: IrType | undefined): readonly IrField[] {
-  return type?.kind === 'object' ? type.fields : []
+/** Plain code-unit order: `localeCompare` made the committed file depend on the machine's locale. */
+function byName(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0
+}
+
+/** The members of an enum or union, `null` included, or undefined. */
+function membersOf(type: IrType): string[] | undefined {
+  switch (type.kind) {
+    case 'enum':
+      return type.values.map((v) => JSON.stringify(v)).sort(byName)
+    case 'union':
+      return type.options.map((o) => renderType(o)).sort(byName)
+    case 'nullable': {
+      const inner = membersOf(type.inner) ?? [renderType(type.inner)]
+      return [...inner, 'null'].sort(byName)
+    }
+    default:
+      return undefined
+  }
+}
+
+/** Direction each model travels in, following references. */
+function usageOf(doc: IrDocument): Record<string, SurfaceUsage> {
+  const requestRoots = new Set<string>()
+  const responseRoots = new Set<string>()
+  for (const op of doc.operations) {
+    collectRefNames(op.body?.type, requestRoots)
+    for (const p of [...op.pathParams, ...op.queryParams, ...op.headerParams, ...op.cookieParams]) {
+      collectRefNames(p.type, requestRoots)
+    }
+    collectRefNames(op.response, responseRoots)
+  }
+  const req = reachableModels(doc, requestRoots)
+  const res = reachableModels(doc, responseRoots)
+  const out: Record<string, SurfaceUsage> = {}
+  for (const m of [...doc.models].sort((a, b) => byName(a.name, b.name))) {
+    const r = req.has(m.name)
+    const s = res.has(m.name)
+    out[m.name] = r && s ? 'both' : r ? 'request' : s ? 'response' : 'unused'
+  }
+  return out
 }
 
 /** Extract the comparable surface from a parsed document. */
 export function extractSurface(doc: IrDocument): ApiSurface {
   const operations: Record<string, SurfaceOperation> = {}
-  for (const op of [...doc.operations].sort((a, b) => a.id.localeCompare(b.id))) {
+  for (const op of [...doc.operations].sort((a, b) => byName(a.id, b.id))) {
     operations[op.id] = surfaceOf(op)
   }
   const models: Record<string, Record<string, string>> = {}
-  for (const m of [...doc.models].sort((a, b) => a.name.localeCompare(b.name))) {
-    const fields: Record<string, string> = {}
-    for (const f of [...fieldsOf(m.type)].sort((a, b) => a.name.localeCompare(b.name))) {
-      fields[f.name] = `${renderType(f.type)}${f.required ? '' : ' (optional)'}`
+  const aliases: Record<string, SurfaceAlias> = {}
+  for (const m of [...doc.models].sort((a, b) => byName(a.name, b.name))) {
+    if (m.type.kind === 'object' && m.type.fields.length > 0) {
+      const fields: Record<string, string> = {}
+      for (const f of [...m.type.fields].sort((a, b) => byName(a.name, b.name))) {
+        fields[f.name] = `${renderType(f.type)}${f.required ? '' : ' (optional)'}`
+      }
+      models[m.name] = fields
+    } else {
+      const members = membersOf(m.type)
+      aliases[m.name] = members ? { type: renderType(m.type), members } : { type: renderType(m.type) }
     }
-    models[m.name] = fields
   }
-  return { version: 1, title: doc.title, operations, models }
+  return { version: 2, title: doc.title, operations, models, aliases, usage: usageOf(doc) }
 }
 
 function surfaceOf(op: IrOperation): SurfaceOperation {
   const params: Record<string, string> = {}
   const requiredParams: string[] = []
-  for (const p of [...op.pathParams, ...op.queryParams].sort((a, b) => a.name.localeCompare(b.name))) {
+  for (const p of [...op.pathParams, ...op.queryParams].sort((a, b) => byName(a.name, b.name))) {
     params[p.name] = renderType(p.type)
     // A PATH param is required by construction — a URL cannot omit a segment —
     // whatever the spec marked it.
     if (p.required || op.pathParams.includes(p)) requiredParams.push(p.name)
   }
   const out: SurfaceOperation = { id: op.id, method: op.method, path: op.path, params, requiredParams }
-  if (op.body !== undefined) out.body = renderType(op.body)
+  if (op.body !== undefined) out.body = `${op.body.encoding} ${renderType(op.body.type)}`
   if (op.response !== undefined) out.response = renderType(op.response)
   return out
 }
@@ -160,7 +233,12 @@ export interface SurfaceChange {
     | 'field-removed'
     | 'field-type-changed'
     | 'field-now-optional'
+    | 'field-now-nullable'
+    | 'field-no-longer-nullable'
     | 'field-added'
+    | 'model-type-changed'
+    | 'member-removed'
+    | 'member-added'
   /** What moved — an operation id or `Model.field`. */
   subject: string
   detail: string
@@ -231,27 +309,51 @@ export function diffSurface(before: ApiSurface, after: ApiSurface): SurfaceChang
     }
   }
 
+  const usage = (name: string): SurfaceUsage => after.usage?.[name] ?? before.usage?.[name] ?? 'unused'
+  // Where the CLIENT sends a model, narrowing it breaks existing calls; where
+  // it only receives one, widening it is what the app has not handled. A model
+  // no operation reaches is treated as both -- the conservative reading.
+  const sends = (name: string): boolean => usage(name) !== 'response'
+  const receives = (name: string): boolean => usage(name) !== 'request'
+
   for (const [name, was] of Object.entries(before.models)) {
     const now = after.models[name]
     if (!now) {
-      add('breaking', 'model-removed', name, 'model no longer exists')
+      if (after.aliases?.[name]) {
+        add('breaking', 'model-type-changed', name, `object → ${after.aliases[name]?.type}`)
+      } else {
+        add('breaking', 'model-removed', name, 'model no longer exists')
+      }
       continue
     }
     for (const [field, type] of Object.entries(was)) {
       const nowType = now[field]
       if (nowType === undefined) {
         add('breaking', 'field-removed', `${name}.${field}`, `was ${type}`)
-      } else if (nowType !== type) {
-        const wasOptional = type.endsWith('(optional)')
-        const isOptional = nowType.endsWith('(optional)')
-        if (!wasOptional && isOptional) {
-          // The subtle one. The app reads the field unconditionally today and
-          // keeps typechecking against the regenerated optional type only
-          // because it never asks; at runtime it is now sometimes absent.
-          add('breaking', 'field-now-optional', `${name}.${field}`, 'required → optional')
+        continue
+      }
+      if (nowType === type) continue
+      const wasOptional = type.endsWith('(optional)')
+      const isOptional = nowType.endsWith('(optional)')
+      const bare = (t: string): string => t.replace(/ \(optional\)$/, '')
+      const wasNull = bare(type).endsWith(' | null')
+      const isNull = bare(nowType).endsWith(' | null')
+      const core = (t: string): string => bare(t).replace(/ \| null$/, '')
+      if (!wasOptional && isOptional && core(type) === core(nowType) && wasNull === isNull) {
+        // The subtle one. The app reads the field unconditionally today and
+        // keeps typechecking against the regenerated optional type only
+        // because it never asks; at runtime it is now sometimes absent.
+        add('breaking', 'field-now-optional', `${name}.${field}`, 'required → optional')
+      } else if (core(type) === core(nowType) && wasOptional === isOptional && wasNull !== isNull) {
+        if (isNull) {
+          // The app reads a value that can now be null.
+          add(receives(name) ? 'breaking' : 'additive', 'field-now-nullable', `${name}.${field}`, `${bare(type)} → ${bare(nowType)}`)
         } else {
-          add('breaking', 'field-type-changed', `${name}.${field}`, `${type} → ${nowType}`)
+          // A caller that sends null is now rejected.
+          add(sends(name) ? 'breaking' : 'additive', 'field-no-longer-nullable', `${name}.${field}`, `${bare(type)} → ${bare(nowType)}`)
         }
+      } else {
+        add('breaking', 'field-type-changed', `${name}.${field}`, `${type} → ${nowType}`)
       }
     }
     for (const field of Object.keys(now)) {
@@ -259,12 +361,38 @@ export function diffSurface(before: ApiSurface, after: ApiSurface): SurfaceChang
     }
   }
   for (const name of Object.keys(after.models)) {
-    if (before.models[name] === undefined) add('additive', 'model-added', name, 'new model')
+    if (before.models[name] === undefined && before.aliases?.[name] === undefined) add('additive', 'model-added', name, 'new model')
+  }
+
+  for (const [name, was] of Object.entries(before.aliases ?? {})) {
+    const now = after.aliases?.[name]
+    if (!now) {
+      if (after.models[name]) add('breaking', 'model-type-changed', name, `${was.type} → object`)
+      else add('breaking', 'model-removed', name, 'model no longer exists')
+      continue
+    }
+    if (now.type === was.type) continue
+    if (was.members && now.members) {
+      // An enum or union: classify each member that moved.
+      const removed = was.members.filter((m) => !now.members?.includes(m))
+      const added = now.members.filter((m) => !was.members?.includes(m))
+      for (const m of removed) {
+        add(sends(name) ? 'breaking' : 'additive', 'member-removed', name, `${m} no longer accepted`)
+      }
+      for (const m of added) {
+        add(receives(name) ? 'breaking' : 'additive', 'member-added', name, `${m} may now be returned`)
+      }
+      continue
+    }
+    add('breaking', 'model-type-changed', name, `${was.type} → ${now.type}`)
+  }
+  for (const name of Object.keys(after.aliases ?? {})) {
+    if (before.aliases?.[name] === undefined && before.models[name] === undefined) add('additive', 'model-added', name, 'new model')
   }
 
   // Breaking first, then by subject — the order someone reads it in.
   return changes.sort((a, b) =>
-    a.severity === b.severity ? a.subject.localeCompare(b.subject) : a.severity === 'breaking' ? -1 : 1,
+    a.severity === b.severity ? byName(a.subject, b.subject) : a.severity === 'breaking' ? -1 : 1,
   )
 }
 

@@ -30,7 +30,7 @@ export {
   type ResolvedConfig,
 } from './core/config'
 export { generate, type GenerateResult, type GeneratedFile } from './core/generate'
-export { loadOpenApi, openApiVersionProblem } from './input/openapi'
+export { loadOpenApi, openApiVersionProblem, type LoadOptions } from './input/openapi'
 export { parseSpecText, parseYaml, YamlError } from './input/yaml'
 export {
   resolveTransform,

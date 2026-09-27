@@ -46,14 +46,15 @@ substantial native shell — a hybrid that satisfies App Store / Play
 policy (not a thin web wrapper; local-bundled assets). See
 `docs/src/content/docs/multiplatform.md` and the heavy-viz plan.
 
-## Numeric types — fractional fields work; one slice remains
+## Numeric types — fractional fields AND fractional reduce both work
 
 `revenue` / `deals` are integers → `Int`; `growth` is a **fractional**
 percent (`12.5`) → the `Metric.growth` struct field refines to `Double`
 from its literal initializer, so `growth.toFixed(1)` formats correctly on
-both targets. The single remaining slice: **reducing** a Double column (a
-true average of `growth`) needs Double-aware reduce-seed typing
-(`reduce(0.0, …)`), so the summary row sums only the Int revenue/deals
-columns. Integer reduce + fractional per-row display is the current
-capability. (Also tracked: a `computed`'s return type infers as `Any`, so
-the totals are reduced inline rather than via intermediate computeds.)
+both targets. **Reducing** the fractional `growth` column also works now —
+the compiler widens the accumulator seed to a Double-aware form
+(`reduce(0.0, …)` Swift / `fold(0.0, …)` Kotlin) whenever the accumulation
+body (`s + m.growth`) infers fractional, so the summary row's growth total
+is a real average, not just the Int revenue/deals columns. (Still tracked: a
+`computed`'s return type infers as `Any`, so the totals are reduced inline
+rather than via intermediate computeds.)

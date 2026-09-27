@@ -1,8 +1,12 @@
-// @ts-nocheck — 1:1 port from a JS `<Playground>`. Strict-mode TS
-// would need a manual rewrite (signal shapes, possibly-null guards).
-// Renders + behaves correctly; type tightening is a follow-up.
 import { signal, computed } from '@pyreon/reactivity'
-import { h } from '@pyreon/core'
+import { For, h } from '@pyreon/core'
+
+type Status = 'todo' | 'in-progress' | 'done'
+interface Task {
+  id: string
+  title: string
+  status: Status
+}
 
 /**
  * Migrated from `<Playground>` — defineFeature — CRUD from a schema.
@@ -17,7 +21,7 @@ export default function DefineFeatureCRUDFromASchema() {
   // hooks from a schema. Here we model the surface inline with
   // signals so you can see what's reactive — the real thing wires
   // the same shape to TanStack Query + @pyreon/form + @pyreon/store.
-  const tasks = signal([
+  const tasks = signal<Task[]>([
     { id: '1', title: 'Write docs',    status: 'done' },
     { id: '2', title: 'Ship feature',  status: 'in-progress' },
     { id: '3', title: 'Review PRs',    status: 'todo' },
@@ -25,7 +29,7 @@ export default function DefineFeatureCRUDFromASchema() {
   let nextId = 4
 
   const draft = signal('')
-  const newStatus = signal('todo')
+  const newStatus = signal<Status>('todo')
 
   const create = () => {
     const t = draft().trim()
@@ -33,32 +37,36 @@ export default function DefineFeatureCRUDFromASchema() {
     tasks.update((all) => [...all, { id: String(nextId++), title: t, status: newStatus() }])
     draft.set('')
   }
-  const remove = (id: any) => tasks.update((all) => all.filter((t) => t.id !== id))
-  const advance = (id: any) => tasks.update((all) =>
+  const remove = (id: string) => tasks.update((all) => all.filter((t) => t.id !== id))
+  const advance = (id: string) => tasks.update((all) =>
     all.map((t) => {
       if (t.id !== id) return t
-      const next = { todo: 'in-progress', 'in-progress': 'done', done: 'todo' }[t.status]
-      return { ...t, status: next }
+      const next: Record<Status, Status> = { todo: 'in-progress', 'in-progress': 'done', done: 'todo' }
+      return { ...t, status: next[t.status] }
     }),
   )
+  // <For> keys by id, so a status advance patches only that row — but
+  // its children callback runs once per key, so a live lookup (not the
+  // captured task) is what keeps the badge in sync after the first mount.
+  const liveTask = (id: string) => tasks().find((t) => t.id === id)
 
-  const dot = (status: any) =>
+  const dot = (status: () => Status) =>
     h('span', {
       class: 'badge',
-      style: {
-        background: {
+      style: () => ({
+        background: ({
           todo: 'transparent',
           'in-progress': '#FFC83D',
           done: '#4ade80',
-        }[status],
-        color: status === 'todo' ? 'var(--muted)' : '#0A0A0E',
-        border: status === 'todo' ? '1px solid var(--border)' : 'none',
-      },
+        } as Record<Status, string>)[status()],
+        color: status() === 'todo' ? 'var(--muted)' : '#0A0A0E',
+        border: status() === 'todo' ? '1px solid var(--border)' : 'none',
+      }),
     }, status)
 
   const stats = computed(() => {
-    const byStatus = { todo: 0, 'in-progress': 0, done: 0 }
-    for (const t of tasks()) (byStatus as Record<string, any>)[t.status]++
+    const byStatus: Record<Status, number> = { todo: 0, 'in-progress': 0, done: 0 }
+    for (const t of tasks()) byStatus[t.status]++
     return byStatus
   })
 
@@ -79,22 +87,25 @@ export default function DefineFeatureCRUDFromASchema() {
       ),
       h('button', { onClick: create }, '＋ Create'),
     ),
-    h('div', { class: 'card' }, () =>
+    h('div', { class: 'card' },
       h('div', { class: 'col', style: { gap: '4px' } },
-        ...tasks().map((t) =>
-          h('div', { class: 'row', style: { justifyContent: 'space-between', padding: '4px 0' } },
-            h('span', { style: { flex: 1 } }, t.title),
-            dot(t.status),
-            h('button', {
-              onClick: () => advance(t.id),
-              style: { padding: '2px 8px', fontSize: '12px' },
-            }, '↻ next'),
-            h('button', {
-              onClick: () => remove(t.id),
-              style: { padding: '2px 8px', fontSize: '12px' },
-            }, '✕'),
-          ),
-        ),
+        h(For, {
+          each: () => tasks(),
+          by: (t: Task) => t.id,
+          children: (t: Task) =>
+            h('div', { class: 'row', style: { justifyContent: 'space-between', padding: '4px 0' } },
+              h('span', { style: { flex: 1 } }, t.title),
+              dot(() => liveTask(t.id)?.status ?? t.status),
+              h('button', {
+                onClick: () => advance(t.id),
+                style: { padding: '2px 8px', fontSize: '12px' },
+              }, '↻ next'),
+              h('button', {
+                onClick: () => remove(t.id),
+                style: { padding: '2px 8px', fontSize: '12px' },
+              }, '✕'),
+            ),
+        }),
       ),
     ),
     h('div', { class: 'muted' }, () =>
