@@ -10,7 +10,8 @@
  * Builds `fixture-actions` with the zero plugin chain from src and reads the
  * emitted files — the only place both bundles exist side by side.
  */
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { build } from 'vite'
@@ -87,5 +88,35 @@ describe('server actions — client and server bundles agree', () => {
     expect(client).not.toContain('DB_MODULE_MARKER')
     expect(server).toContain('HANDLER_BODY_MARKER')
     expect(server).toContain('DB_MODULE_MARKER')
+  })
+})
+
+describe('a FRESH built server answers an action with no prior render', () => {
+  // defineAction registers when its module evaluates, and route modules load
+  // lazily — so before the build-time manifest, a fresh server answered 404
+  // "Action not found" until some page render had loaded the module. Run the
+  // built entry in its OWN process so nothing has been rendered or imported.
+  it('POST /_zero/actions/<id> loads the defining module on demand', () => {
+    const id = actionId('src/actions.js', 'createPost')
+    const out = join(DIST, 'fresh-result.json')
+    const script = join(DIST, 'fresh-probe.mjs')
+    writeFileSync(
+      script,
+      `import { writeFileSync } from 'node:fs'
+const { default: handler } = await import(${JSON.stringify(join(DIST, 'server', 'entry-server.js'))})
+const res = await handler(new Request('http://localhost/_zero/actions/${id}', {
+  method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ t: 1 }),
+}))
+writeFileSync(${JSON.stringify(out)}, JSON.stringify({ status: res.status, body: await res.text() }))
+`,
+    )
+    const run = spawnSync(process.execPath.includes('bun') ? 'node' : process.execPath, [script], {
+      cwd: FIXTURE,
+      env: { ...process.env, NODE_ENV: 'production' },
+    })
+    expect(run.status).toBe(0)
+    const result = JSON.parse(readFileSync(out, 'utf-8')) as { status: number; body: string }
+    expect(result.status).toBe(200)
+    expect(result.body).toContain('HANDLER_BODY_MARKER')
   })
 })

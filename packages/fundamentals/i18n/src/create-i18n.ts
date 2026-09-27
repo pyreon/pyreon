@@ -17,6 +17,9 @@ function resolveKey(dict: TranslationDictionary, keyPath: string): string | unde
 
   for (const part of parts) {
     if (current == null || typeof current === 'string') return undefined
+    // OWN keys only: `a.constructor.name` otherwise walked into
+    // Object.prototype and resolved to the string 'Object'.
+    if (!Object.hasOwn(current, part)) return undefined
     current = current[part] as TranslationDictionary | string
   }
 
@@ -75,6 +78,9 @@ function buildKeyCandidates(
 const NESTING_RE = /\$t\(([^()]*)\)/g
 const MAX_NESTING_DEPTH = 4
 
+/** Per-instance bound on the (locale, namespace, key) resolution cache. */
+const RESOLUTION_CACHE_CAP = 2000
+
 /**
  * Convert flat dotted keys into nested objects.
  * `{ 'section.title': 'Report' }` → `{ section: { title: 'Report' } }`
@@ -116,25 +122,58 @@ function nestFlatKeys(messages: TranslationDictionary): TranslationDictionary {
   return hasFlatKeys ? result : messages
 }
 
+function isPlainDict(v: unknown): v is TranslationDictionary {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
 /**
- * Deep-merge source into target (mutates target).
+ * Deep-merge source into target (mutates target). Nested dictionaries are
+ * COPIED, never shared by reference, so the store owns every level: a caller
+ * mutating its object after `addMessages`/a loader resolved cannot change
+ * stored translations, and the unsafe-key filter applies at every depth (a
+ * shared nested object used to carry its own `__proto__` key straight in).
  */
 function deepMerge(target: TranslationDictionary, source: TranslationDictionary): void {
   for (const key of Object.keys(source)) {
-    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue
+    if (isUnsafeI18nKey(key)) continue
     const sourceVal = source[key]
-    const targetVal = target[key]
-    if (
-      typeof sourceVal === 'object' &&
-      sourceVal !== null &&
-      typeof targetVal === 'object' &&
-      targetVal !== null
-    ) {
-      deepMerge(targetVal as TranslationDictionary, sourceVal as TranslationDictionary)
+    if (sourceVal === undefined) continue
+    if (isPlainDict(sourceVal)) {
+      const targetVal = Object.hasOwn(target, key) ? target[key] : undefined
+      const into: TranslationDictionary = isPlainDict(targetVal) ? targetVal : {}
+      deepMerge(into, sourceVal)
+      target[key] = into
     } else {
-      target[key] = sourceVal!
+      target[key] = sourceVal
     }
   }
+}
+
+/**
+ * Normalize an INCOMING dictionary (static `messages`, `addMessages`, a
+ * loader's result) into a store-owned copy: flat dotted keys expanded, unsafe
+ * keys dropped, every level cloned. One funnel, so the three entry points can
+ * never disagree about what a dictionary may contain.
+ */
+function normalizeDict(dict: TranslationDictionary): TranslationDictionary {
+  const out: TranslationDictionary = {}
+  deepMerge(out, nestFlatKeys(dict))
+  return out
+}
+
+/**
+ * The BCP 47 step-down chain for a tag, most specific first:
+ * `zh-Hant-TW` → `zh-Hant-TW`, `zh-Hant`, `zh`. `_` is accepted as a separator
+ * too (`en_US`), since it is common in message-file names.
+ */
+function stepDown(tag: string): string[] {
+  const out = [tag]
+  let cur = tag
+  for (let i = cur.search(/[-_][^-_]*$/); i > 0; i = cur.search(/[-_][^-_]*$/)) {
+    cur = cur.slice(0, i)
+    out.push(cur)
+  }
+  return out
 }
 
 /**
@@ -255,6 +294,21 @@ export function createI18n(options: I18nOptions): I18nInstance {
     return [...store.keys()]
   })
 
+  // Step-down chains, memoized per active locale (bounded — the locale can be
+  // request-derived on a server). `fallbackLocale` is fixed per instance.
+  const chainCache = new Map<string, string[]>()
+  function localeChain(loc: string): string[] {
+    let chain = chainCache.get(loc)
+    if (chain === undefined) {
+      const seen = new Set(stepDown(loc))
+      if (fallbackLocale) for (const f of stepDown(fallbackLocale)) seen.add(f)
+      chain = [...seen]
+      if (chainCache.size >= 64) chainCache.clear()
+      chainCache.set(loc, chain)
+    }
+    return chain
+  }
+
   // ── Initialize static messages ──────────────────────────────────────
 
   if (options.messages) {
@@ -271,7 +325,7 @@ export function createI18n(options: I18nOptions): I18nInstance {
       // user passing flat keys via the runtime API worked, but anyone
       // using the canonical `createI18n` initialization saw "key
       // returned as fallback" mystery behavior with no warning.
-      nsMap.set(defaultNamespace, nestFlatKeys(dict))
+      nsMap.set(defaultNamespace, normalizeDict(dict))
       store.set(loc, nsMap)
     }
   }
@@ -296,7 +350,12 @@ export function createI18n(options: I18nOptions): I18nInstance {
     const cached = resolutionCache.get(cacheKey)
     // `undefined` = not cached; a cached miss is stored as `null`. Single Map
     // lookup — `null !== undefined` distinguishes a cached not-found.
-    if (cached !== undefined) return cached ?? undefined
+    if (cached !== undefined) {
+      // LRU: refresh recency (Map iterates in insertion order).
+      resolutionCache.delete(cacheKey)
+      resolutionCache.set(cacheKey, cached)
+      return cached ?? undefined
+    }
     // Miss — resolve for real. The counter now fires per RESOLUTION (it
     // plateaus as the cache warms while `i18n.t` keeps growing), which is the
     // divergence the old comment above anticipated.
@@ -304,7 +363,13 @@ export function createI18n(options: I18nOptions): I18nInstance {
     const nsMap = store.get(loc)
     const dict = nsMap?.get(namespace)
     const result = dict ? resolveKey(dict, keyPath) : undefined
-    if (resolutionCache.size < 2000) resolutionCache.set(cacheKey, result ?? null)
+    // LRU-bounded (leak-class C). The old `size < 2000` guard stopped caching
+    // FOREVER once 2000 distinct keys had been seen — every later key paid the
+    // full split + walk on every call for the life of the instance.
+    if (resolutionCache.size >= RESOLUTION_CACHE_CAP) {
+      resolutionCache.delete(resolutionCache.keys().next().value as string)
+    }
+    resolutionCache.set(cacheKey, result ?? null)
     return result
   }
 
@@ -317,25 +382,41 @@ export function createI18n(options: I18nOptions): I18nInstance {
     values: InterpolationValues | undefined,
     depth: number,
   ): string {
-    let resolved = template
     if (depth < MAX_NESTING_DEPTH && template.includes('$t(')) {
-      resolved = template.replace(NESTING_RE, (_whole, inner: string) => {
-        // inner = "key" or "key, {json}" — split on the first comma.
-        const commaIdx = inner.indexOf(',')
-        const innerKey = (commaIdx === -1 ? inner : inner.slice(0, commaIdx)).trim()
-        const jsonOpts = commaIdx === -1 ? undefined : inner.slice(commaIdx + 1).trim()
-        let innerValues = values
-        if (jsonOpts) {
-          try {
-            innerValues = { ...values, ...(JSON.parse(jsonOpts) as InterpolationValues) }
-          } catch {
-            // Malformed inline options — fall back to the parent's values.
-          }
-        }
-        return resolveTranslation(innerKey, innerValues, depth + 1)
-      })
+      // Interpolate the TEMPLATE's own text segments and splice each nested
+      // result in verbatim. Resolving `$t()` first and interpolating the whole
+      // string afterwards re-interpolated the nested OUTPUT — a value that
+      // merely looked like `{{secret}}` was substituted a second time.
+      let out = ''
+      let last = 0
+      for (const m of template.matchAll(NESTING_RE)) {
+        out += interpolate(template.slice(last, m.index), values, interpolateOptions)
+        out += resolveNested(m[1] as string, values, depth)
+        last = (m.index as number) + m[0].length
+      }
+      return out + interpolate(template.slice(last), values, interpolateOptions)
     }
-    return interpolate(resolved, values, interpolateOptions)
+    return interpolate(template, values, interpolateOptions)
+  }
+
+  function resolveNested(
+    inner: string,
+    values: InterpolationValues | undefined,
+    depth: number,
+  ): string {
+    // inner = "key" or "key, {json}" — split on the first comma.
+    const commaIdx = inner.indexOf(',')
+    const innerKey = (commaIdx === -1 ? inner : inner.slice(0, commaIdx)).trim()
+    const jsonOpts = commaIdx === -1 ? undefined : inner.slice(commaIdx + 1).trim()
+    let innerValues = values
+    if (jsonOpts) {
+      try {
+        innerValues = { ...values, ...(JSON.parse(jsonOpts) as InterpolationValues) }
+      } catch {
+        // Malformed inline options — fall back to the parent's values.
+      }
+    }
+    return resolveTranslation(innerKey, innerValues, depth + 1)
   }
 
   function resolveTranslation(
@@ -371,18 +452,21 @@ export function createI18n(options: I18nOptions): I18nInstance {
     // fallback-locale plural form win over an active-locale one — a German user
     // could see the English `items_zero` when German had `items_other`. This is
     // i18next's resolution order (active locale exhausted first).
+    //
+    // Locales are tried along the BCP 47 step-down chain: `en-US` → `en` →
+    // fallbackLocale (itself stepped down). A regional locale with only base-
+    // language messages used to skip straight to the fallback.
     const candidates = buildKeyCandidates(keyPath, currentLocale, context, hasCount, count, pluralRules)
-    for (const candidate of candidates) {
-      const result = lookupKey(currentLocale, namespace, candidate)
-      if (result !== undefined) return finalize(result, values, depth)
-    }
-    if (fallbackLocale && fallbackLocale !== currentLocale) {
+    const chain = localeChain(currentLocale)
+    for (let li = 0; li < chain.length; li++) {
+      const loc = chain[li] as string
       for (const candidate of candidates) {
         // Fires when the active locale missed ALL candidates and we're consulting
-        // fallbackLocale. Should be ~0 in well-translated apps; growing = missing
-        // translations.
-        if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('i18n.lookupKey.fallback')
-        const result = lookupKey(fallbackLocale, namespace, candidate)
+        // a less specific / fallback locale. Should be ~0 in well-translated
+        // apps; growing = missing translations.
+        if (li > 0 && process.env.NODE_ENV !== 'production')
+          _countSink.__pyreon_count__?.('i18n.lookupKey.fallback')
+        const result = lookupKey(loc, namespace, candidate)
         if (result !== undefined) return finalize(result, values, depth)
       }
     }
@@ -454,7 +538,10 @@ export function createI18n(options: I18nOptions): I18nInstance {
     const promise = loader(targetLocale, namespace)
       .then((dict) => {
         if (dict) {
-          nsMap.set(namespace, dict)
+          // Same normalization as `messages` / `addMessages`: flat dotted keys
+          // expanded, unsafe keys dropped, a store-owned copy. Loader output
+          // (often fetched from a CDN) skipped all three.
+          nsMap.set(namespace, normalizeDict(dict))
           resolutionCache.clear() // messages changed → resolutions may differ
           storeVersion.update((c) => c + 1)
           loadedNsVersion.update((c) => c + 1)
@@ -480,25 +567,21 @@ export function createI18n(options: I18nOptions): I18nInstance {
       keyPath = key.slice(colonIndex + 1)
     }
 
-    return (
-      lookupKey(currentLocale, namespace, keyPath) !== undefined ||
-      (fallbackLocale ? lookupKey(fallbackLocale, namespace, keyPath) !== undefined : false)
+    return localeChain(currentLocale).some(
+      (loc) => lookupKey(loc, namespace, keyPath) !== undefined,
     )
   }
 
   const addMessages = (loc: string, messages: TranslationDictionary, namespace?: string): void => {
     const ns = namespace ?? defaultNamespace
     const nsMap = getNamespaceMap(loc)
-    const nested = nestFlatKeys(messages)
     const existing = nsMap.get(ns)
 
     if (existing) {
-      deepMerge(existing, nested)
+      deepMerge(existing, nestFlatKeys(messages))
     } else {
-      // Deep-clone to prevent external mutation from corrupting the store
-      const cloned: TranslationDictionary = {}
-      deepMerge(cloned, nested)
-      nsMap.set(ns, cloned)
+      // Store-owned copy — external mutation cannot corrupt the store.
+      nsMap.set(ns, normalizeDict(messages))
     }
 
     resolutionCache.clear() // messages changed → resolutions may differ

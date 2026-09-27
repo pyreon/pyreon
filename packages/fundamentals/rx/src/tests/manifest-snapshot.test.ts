@@ -69,7 +69,9 @@ describe('gen-docs — rx snapshot', () => {
       // effectScope; call dispose() for standalone usage:
       const debounced = debounce(query, 300)     // ReadableSignal<string> & { dispose }
       const throttled = rx.throttle(query, 100)  // ReadableSignal<string> & { dispose }
-      effect(() => matches())
+      effect(() => {
+        matches()
+      })
 
       // Plain input → plain output (no signals):
       const staticResult = filter([1, 2, 3, 4, 5], n => n > 3)  // [4, 5]
