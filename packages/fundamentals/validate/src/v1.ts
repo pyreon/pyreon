@@ -208,6 +208,8 @@ export {
 } from './core/schema'
 export { type PyreonIssue, type StandardSchemaIssue, ValidationError } from './core/issue'
 export { type PendingCheck } from './core/ops'
+// Global runtime config — `configure({ jit: false })` for CSP without 'unsafe-eval'.
+export { configure, type ValidateConfig } from './core/config'
 
 // ─── Format registry (client/server-split mechanism) ───────────────────
 // `installFormatValidator` plugs a superior validator for any format
@@ -230,4 +232,4 @@ export {
   uninstallServerCheck,
 } from './core/registry'
 // Lightweight (client) format validators — exported for standalone use.
-export { type EmailPrecision, validateCreditCard, validateIp, validatePhone } from './primitives/string'
+export { type EmailPrecision, isIPv6, validateCreditCard, validateIp, validatePhone } from './primitives/string'

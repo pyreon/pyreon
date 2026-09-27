@@ -54,3 +54,15 @@ describe('recentCandidates — a node the author never named', () => {
     expect(recentCandidates(3)).toHaveLength(3)
   })
 })
+
+describe('recentCandidates — one creation site, many nodes', () => {
+  it('disambiguates same-label rows by id, so the chips are not indistinguishable', () => {
+    // Created at ONE site (a loop body), so they share a creation location.
+    const sources = [0, 1, 2].map(() => signal(0))
+    for (const s of sources) effect(() => void s())
+    for (const s of sources) s.set(1)
+    const rows = recentCandidates(50)
+    const names = rows.map((c) => c.name)
+    expect(new Set(names).size).toBe(names.length)
+  })
+})

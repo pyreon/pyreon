@@ -88,10 +88,13 @@ The seam is what keeps the bridge engine-free. Note its boundary, though: it por
 The fastest way to understand the model is the in-memory adapter. It needs no server, no `yjs`, and connects two "peers" in-process:
 
 ```ts
-import { syncedSignal, FakeCrdtAdapter, connectFakeDocs } from '@pyreon/sync'
+// @check
+import { syncedSignal, FakeCrdtDoc, connectFakeDocs } from '@pyreon/sync'
 
-const a = new FakeCrdtAdapter().createDoc()
-const b = new FakeCrdtAdapter().createDoc()
+// FakeCrdtAdapter.createDoc() returns the widened CrdtDoc interface type —
+// construct FakeCrdtDoc directly to get the concrete type connectFakeDocs needs.
+const a = new FakeCrdtDoc()
+const b = new FakeCrdtDoc()
 connectFakeDocs(a, b) // simulate a transport between two peers
 
 const titleA = syncedSignal({ doc: a, key: 'title', initial: 'Untitled' })
@@ -571,11 +574,13 @@ async function CollabDoc() {
 Use the in-memory adapter — no engine, no server, fully synchronous:
 
 ```ts
-import { syncedStore, FakeCrdtAdapter, connectFakeDocs } from '@pyreon/sync'
+import { syncedStore, FakeCrdtDoc, connectFakeDocs } from '@pyreon/sync'
 
 test('two peers converge', () => {
-  const a = new FakeCrdtAdapter().createDoc()
-  const b = new FakeCrdtAdapter().createDoc()
+  // FakeCrdtAdapter.createDoc() returns the widened CrdtDoc interface —
+  // construct FakeCrdtDoc directly for the concrete type connectFakeDocs needs.
+  const a = new FakeCrdtDoc()
+  const b = new FakeCrdtDoc()
   const link = connectFakeDocs(a, b)
 
   const sa = syncedStore({ title: 'x' }, { doc: a })

@@ -86,6 +86,18 @@ describe('never present a PARTIAL generation as a complete one', () => {
     expect(out).toContain('BROKEN')
   })
 
+  it('prints a BROKEN verdict\'s warnings IN FULL — they are the diagnosis', () => {
+    // Truncated at 120 characters, every PMTC warning lost its actionable
+    // half ("Give it the shape you expect: ...").
+    const long = `Declaration q: useQuery without a response type ${'x'.repeat(150)} THE-FIX-IS-HERE`
+    const out = render(result(), {
+      ran: true,
+      files: [{ path: 'a.native.tsx', target: 'swift', verdict: 'broken', warnings: [long, 'second', 'third'], markers: [], leaked: [] }],
+    })
+    expect(out).toContain('THE-FIX-IS-HERE')
+    expect(out).toContain('third')
+  })
+
   it('names every LEAKED symbol and what it costs', () => {
     // A framework symbol emitted verbatim does not link. Counting it without
     // naming it is the report saying "something is wrong" and stopping.
@@ -144,6 +156,32 @@ describe('spec notes — a reported loss, never a silent one', () => {
     // Truncating silently is the same failure as dropping silently.
     const out = render(result({ doc: doc(Array.from({ length: 13 }, (_, i) => note(i))) }), RAN)
     expect(out).toContain('and 3 more')
+  })
+
+  it('counts WITHHELD notes after de-duplication, not before', () => {
+    // 12 notes, 3 of them repeats of one message: 10 distinct are shown, so 0
+    // are withheld. The old math subtracted 10 from the RAW count and claimed
+    // "and 2 more" for notes that had been printed.
+    const dup = { code: 'unsupported-ref', at: '#/d', message: 'same' } as IrNote
+    const notes = [...Array.from({ length: 9 }, (_, i) => note(i)), dup, dup, dup]
+    const out = render(result({ doc: doc(notes) }), RAN)
+    expect(out).not.toMatch(/and \d+ more distinct/)
+    expect(out).toContain('(+2 more like it)')
+  })
+
+  it('leads with LOSSES and summarises CHOICES by code', () => {
+    // Petstore 3's 17 notes were 16 "JSON over XML" choices and one loss,
+    // printed at one weight under one heading.
+    const choice = (i: number): IrNote =>
+      ({ code: 'multiple-content-types', at: `#/c/${i}`, message: `c${i}` }) as IrNote
+    const loss = { code: 'unsupported-parameter', at: '#/p', message: 'header dropped' } as IrNote
+    const out = render(result({ doc: doc([...Array.from({ length: 16 }, (_, i) => choice(i)), loss]) }), RAN)
+    expect(out).toContain('1 lost')
+    expect(out).toContain('16 choice(s)')
+    expect(out).toContain('header dropped')
+    expect(out).toContain('multiple-content-types x16')
+    // No individual choice message is listed.
+    expect(out).not.toContain('c3')
   })
 
   it('omits the section entirely when there is nothing to report', () => {

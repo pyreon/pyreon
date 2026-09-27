@@ -21,7 +21,7 @@ export class NumberSchema extends SchemaBase<number> {
   }
 
   min(n: number, opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:number:min', n, opts }, (value, ctx) => {
         if (typeof value !== 'number' || value >= n) return
         ctx.issues.push(
@@ -37,12 +37,10 @@ export class NumberSchema extends SchemaBase<number> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   max(n: number, opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:number:max', n, opts }, (value, ctx) => {
         if (typeof value !== 'number' || value <= n) return
         ctx.issues.push(
@@ -58,12 +56,10 @@ export class NumberSchema extends SchemaBase<number> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   int(opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:number:int', opts }, (value, ctx) => {
         if (typeof value !== 'number' || Number.isInteger(value)) return
         ctx.issues.push(
@@ -79,12 +75,10 @@ export class NumberSchema extends SchemaBase<number> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   finite(opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:number:finite', opts }, (value, ctx) => {
         if (typeof value !== 'number' || Number.isFinite(value)) return
         ctx.issues.push(
@@ -100,12 +94,10 @@ export class NumberSchema extends SchemaBase<number> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   positive(opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:number:positive', opts }, (value, ctx) => {
         if (typeof value !== 'number' || value > 0) return
         ctx.issues.push(
@@ -121,12 +113,10 @@ export class NumberSchema extends SchemaBase<number> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   negative(opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:number:negative', opts }, (value, ctx) => {
         if (typeof value !== 'number' || value < 0) return
         ctx.issues.push(
@@ -142,12 +132,10 @@ export class NumberSchema extends SchemaBase<number> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   nonNegative(opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:number:non-negative', opts }, (value, ctx) => {
         if (typeof value !== 'number' || value >= 0) return
         ctx.issues.push(
@@ -163,12 +151,10 @@ export class NumberSchema extends SchemaBase<number> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   nonPositive(opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:number:non-positive', opts }, (value, ctx) => {
         if (typeof value !== 'number' || value <= 0) return
         ctx.issues.push(
@@ -184,12 +170,10 @@ export class NumberSchema extends SchemaBase<number> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   between(lo: number, hi: number, opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:number:between', lo, hi, opts }, (value, ctx) => {
         if (typeof value !== 'number' || (value >= lo && value <= hi)) return
         ctx.issues.push(
@@ -205,12 +189,10 @@ export class NumberSchema extends SchemaBase<number> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   multipleOf(n: number, opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:number:multiple-of', n, opts }, (value, ctx) => {
         if (typeof value !== 'number' || value % n === 0) return
         ctx.issues.push(
@@ -226,13 +208,11 @@ export class NumberSchema extends SchemaBase<number> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   /** Strictly greater than `n` (exclusive lower bound). `gte` is the inclusive form. */
   gt(n: number, opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:number:gt', n, opts }, (value, ctx) => {
         if (typeof value !== 'number' || value > n) return
         ctx.issues.push(
@@ -248,8 +228,6 @@ export class NumberSchema extends SchemaBase<number> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   /** Greater than or equal to `n` (inclusive) — alias for {@link min}. */
@@ -259,7 +237,7 @@ export class NumberSchema extends SchemaBase<number> {
 
   /** Strictly less than `n` (exclusive upper bound). `lte` is the inclusive form. */
   lt(n: number, opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:number:lt', n, opts }, (value, ctx) => {
         if (typeof value !== 'number' || value < n) return
         ctx.issues.push(
@@ -275,8 +253,6 @@ export class NumberSchema extends SchemaBase<number> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   /** Less than or equal to `n` (inclusive) — alias for {@link max}. */
@@ -296,7 +272,7 @@ export class NumberSchema extends SchemaBase<number> {
    * with `.int()` if you need an integer).
    */
   safe(opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:number:safe', opts }, (value, ctx) => {
         if (
           typeof value !== 'number' ||
@@ -317,8 +293,6 @@ export class NumberSchema extends SchemaBase<number> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 }
 

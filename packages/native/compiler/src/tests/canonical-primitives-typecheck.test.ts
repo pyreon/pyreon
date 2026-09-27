@@ -1,10 +1,10 @@
 // The framework's most fundamental multiplatform claim, checked end to end.
 //
-// "All 15 canonical primitives map to both targets" is the headline of the
+// "Every canonical primitive maps to both targets" is the headline of the
 // PMTC story — the emit VOCABULARY the whole four-layer shared-code model rests
 // on. It was locked at the emit-string level (`canonical-primitives.test.ts`
 // asserts the SwiftUI/Compose names) and by fixtures that exercise SOME of
-// them, but nothing compiled all fifteen and asked whether the result
+// them, but nothing compiled every one of them and asked whether the result
 // type-checks on both platforms.
 //
 // That distinction has mattered repeatedly in this compiler: an emit can be
@@ -18,6 +18,7 @@
 // guard for a working contract, not a ratchet over known debt.
 
 import { describe, expect, it } from 'vitest'
+import { CANONICAL_PRIMITIVES } from '../canonical-primitives'
 import { transform } from '../index'
 import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
 
@@ -32,6 +33,8 @@ const USAGES: ReadonlyArray<readonly [string, string]> = [
   ['Text', '<Text>x</Text>'],
   ['Heading', '<Heading level={1}>h</Heading>'],
   ['Image', '<Image src="https://example.com/a.png" alt="a" />'],
+  ['Audio', '<Audio src="https://example.com/a.mp3" />'],
+  ['Video', '<Video src="https://example.com/a.mp4" />'],
   ['Icon', '<Icon name="star" />'],
   ['Button', '<Button onPress={() => {}}>b</Button>'],
   ['Press', '<Press onPress={() => {}}><Text>p</Text></Press>'],
@@ -46,9 +49,13 @@ const app = (jsx: string) =>
   `import { ${ALL} } from '@pyreon/primitives'\nexport function C(){ return (<Stack>${jsx}</Stack>) }`
 
 describe('every canonical primitive compiles on both targets', () => {
-  it('covers all 15 — the count is the claim', () => {
+  it('covers EVERY canonical primitive — the list is the claim', () => {
     // A silently-shrinking list would make the suite pass by testing less.
-    expect(USAGES).toHaveLength(15)
+    // Keyed on the compiler's own Set (itself drift-locked against the
+    // package exports), not a literal count: this spec used to pin 15 while
+    // the package shipped 17, so `<Video>` and `<Audio>` were never compiled
+    // here and the pinned number said everything was covered.
+    expect(USAGES.map(([n]) => n).sort()).toEqual([...CANONICAL_PRIMITIVES].sort())
   })
 
   for (const [name, jsx] of USAGES) {

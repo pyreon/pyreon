@@ -49,6 +49,28 @@ export interface PyreonCrdtOp {
   actor: string
 }
 
+/**
+ * Is an inbound op structurally safe to MERGE? Ops arrive as untrusted wire data
+ * (JSON from a peer, possibly relayed), and LWW trusts the stamp absolutely: a
+ * clock of `Infinity` / `1e308` out-ranks every future local write forever
+ * (`clock++` on Infinity is still Infinity, so the local write only TIES and
+ * then loses on actor), a string clock compares lexicographically, and a
+ * non-string map/key/actor corrupts the register map. Only a finite,
+ * non-negative SAFE integer clock and string identifiers are accepted — the same
+ * range the native ports can represent without overflow.
+ */
+function isValidOp(op: PyreonCrdtOp): boolean {
+  return (
+    op !== null &&
+    typeof op === 'object' &&
+    typeof op.map === 'string' &&
+    typeof op.key === 'string' &&
+    typeof op.actor === 'string' &&
+    Number.isSafeInteger(op.clock) &&
+    op.clock >= 0
+  )
+}
+
 /** `true` if `remote` should overwrite `local` under LWW (higher clock wins;
  *  equal clock → higher actor id wins). A deterministic total order, so every
  *  peer resolves a concurrent pair the same way. */
@@ -203,8 +225,13 @@ export class PyreonCrdtDoc implements CrdtDoc {
     }
     this.origin = origin
     this.depth++
+    let rejected = 0
     try {
       for (const op of ops) {
+        if (!isValidOp(op)) {
+          rejected++
+          continue
+        }
         // Advance the Lamport clock past anything we've seen.
         if (op.clock > this.clock) this.clock = op.clock
         const map = this.maps.get(op.map) ?? (this.getMap(op.map) as PyreonCrdtMap)
@@ -218,6 +245,11 @@ export class PyreonCrdtDoc implements CrdtDoc {
       }
     } finally {
       this.depth--
+      if (rejected > 0 && process.env.NODE_ENV !== 'production') {
+        console.warn(
+          `[Pyreon] PyreonCrdtDoc.applyOps: dropped ${rejected} malformed op(s) — an op needs string map/key/actor and a non-negative safe-integer clock. A peer sending these is buggy or hostile.`,
+        )
+      }
       // Commit WITHOUT re-broadcasting: applyOps stages pending observer fires
       // but does NOT push to committedOps, so the op-listener relay does not
       // re-emit a received update (echo-prevention lives here + in the transport).

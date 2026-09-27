@@ -27,7 +27,7 @@
  *    times — and could disagree if the workspace changed mid-build. One blob,
  *    baked in, which is also what makes the output work from `file://`.
  */
-import { existsSync, realpathSync } from 'node:fs'
+import { existsSync, realpathSync, rmSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { LoomReport } from '../core/types'
@@ -137,6 +137,11 @@ export async function buildStaticSite(options: BuildOptions): Promise<string> {
       ],
       build: { outDir, emptyOutDir: true },
     })
+    // zero leaves two build-internal files for deploy adapters: Vite's
+    // `.vite/` manifest directory and `_pyreon-ssg-paths.json`. A static site
+    // has no adapter, so neither belongs in what the user deploys.
+    rmSync(join(outDir, '.vite'), { recursive: true, force: true })
+    rmSync(join(outDir, '_pyreon-ssg-paths.json'), { force: true })
   } finally {
     // Restore, including the "was unset" case — leaving NODE_ENV=production
     // behind would change how the CALLER's later code behaves.

@@ -235,14 +235,14 @@ describe('defaultInitialValues', () => {
     expect(values.status).toBe('')
   })
 
-  it('uses empty string for date type', () => {
+  it('uses undefined (not an invalid empty string) for date type', () => {
     const fields = extractFields(
       z.object({
         createdAt: z.date(),
       }),
     )
     const values = defaultInitialValues(fields)
-    expect(values.createdAt).toBe('')
+    expect(values.createdAt).toBeUndefined()
   })
 })
 

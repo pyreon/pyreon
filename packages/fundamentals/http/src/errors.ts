@@ -15,6 +15,32 @@
 
 import type { HttpRequest, HttpResponse } from './types'
 
+/**
+ * The URL as it may appear in a MESSAGE: no query string, no fragment, no
+ * userinfo.
+ *
+ * Error messages travel — into error reporters, logs, toasts, crash dumps —
+ * and a query string is where signed-URL signatures, API keys and one-time
+ * tokens live (`?token=…`, `?X-Amz-Signature=…`). The full URL stays
+ * available on `error.request.url` for code that genuinely needs it; only
+ * the human-readable string is redacted.
+ */
+export function redactUrl(url: string): string {
+  let end = url.length
+  const q = url.indexOf('?')
+  if (q !== -1) end = q
+  const h = url.indexOf('#')
+  if (h !== -1 && h < end) end = h
+  const base = end === url.length ? url : url.slice(0, end)
+  // `scheme://user:pass@host` → `scheme://host`
+  return base.replace(/^([a-z][a-z\d+\-.]*:\/\/)[^/@]*@/i, '$1')
+}
+
+/** `METHOD url` for a message, with the URL redacted. */
+export function describeRequest(request: HttpRequest): string {
+  return `${request.method} ${redactUrl(request.url)}`
+}
+
 /** Base class for every error this package throws. */
 export class RequestError extends Error {
   /** The request that failed. `undefined` if it failed before being built. */
@@ -41,7 +67,7 @@ export class HttpError extends RequestError {
 
   constructor(response: HttpResponse) {
     super(
-      `[Pyreon] ${response.request.method} ${response.request.url} — HTTP ${response.status}`,
+      `[Pyreon] ${describeRequest(response.request)} — HTTP ${response.status}`,
       response.request,
     )
     this.name = 'HttpError'
@@ -79,7 +105,7 @@ export class TimeoutError extends RequestError {
 
   constructor(timeout: number, request?: HttpRequest) {
     super(
-      `[Pyreon] ${request ? `${request.method} ${request.url} ` : ''}timed out after ${timeout}ms. ` +
+      `[Pyreon] ${request ? `${describeRequest(request)} ` : ''}timed out after ${timeout}ms. ` +
         `Pass \`timeout\` to raise it, or \`timeout: false\` to disable.`,
       request,
     )
@@ -96,7 +122,7 @@ export class TimeoutError extends RequestError {
  */
 export class AbortError extends RequestError {
   constructor(request?: HttpRequest) {
-    super(`[Pyreon] ${request ? `${request.method} ${request.url} ` : ''}was aborted.`, request)
+    super(`[Pyreon] ${request ? `${describeRequest(request)} ` : ''}was aborted.`, request)
     this.name = 'AbortError'
   }
 }
@@ -107,7 +133,7 @@ export class NetworkError extends RequestError {
 
   constructor(cause: unknown, request?: HttpRequest) {
     super(
-      `[Pyreon] ${request ? `${request.method} ${request.url} ` : ''}failed before a response was received: ` +
+      `[Pyreon] ${request ? `${describeRequest(request)} ` : ''}failed before a response was received: ` +
         `${cause instanceof Error ? cause.message : String(cause)}`,
       request,
     )
@@ -122,7 +148,7 @@ export class ParseError extends RequestError {
 
   constructor(as: string, cause: unknown, request?: HttpRequest) {
     super(
-      `[Pyreon] ${request ? `${request.method} ${request.url} — ` : ''}response body could not be read as ${as}: ` +
+      `[Pyreon] ${request ? `${describeRequest(request)} — ` : ''}response body could not be read as ${as}: ` +
         `${cause instanceof Error ? cause.message : String(cause)}`,
       request,
     )
@@ -139,7 +165,7 @@ export class ResponseValidationError extends RequestError {
 
   constructor(cause: unknown, value: unknown, request?: HttpRequest) {
     super(
-      `[Pyreon] ${request ? `${request.method} ${request.url} — ` : ''}response did not match the expected schema: ` +
+      `[Pyreon] ${request ? `${describeRequest(request)} — ` : ''}response did not match the expected schema: ` +
         `${cause instanceof Error ? cause.message : String(cause)}`,
       request,
     )

@@ -38,6 +38,7 @@ The core editor (CodeMirror state, view, search, history, lint underlines, diff)
 ## Quick Start
 
 ```tsx
+// @check
 import { createEditor, CodeEditor } from '@pyreon/code'
 
 const editor = createEditor({
@@ -46,7 +47,7 @@ const editor = createEditor({
   theme: 'dark',
 })
 
-<CodeEditor instance={editor} style="height: 400px" />
+const view = <CodeEditor instance={editor} style="height: 400px" />
 ```
 
 `createEditor` builds a framework-independent `EditorInstance`; the `<CodeEditor>` component mounts the CodeMirror view into a container `<div>` and cleans it up on unmount. The two are split so the instance (and all its signals) can live in a store, a parent component, or a hook — independent of when it's actually mounted.

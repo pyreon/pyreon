@@ -17,7 +17,9 @@ Two equivalent approaches — pick per case:
 Preferred when the browser API is a subscription (listener, observer, timer):
 
 ```tsx
-import { onMount, signal } from '@pyreon/reactivity'
+// @check
+import { onMount } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 
 export function useWindowWidth() {
   const width = signal(0)

@@ -8,13 +8,16 @@ seeAlso: [ssr-safe-hooks]
 
 ## The pattern
 
-Register DOM event listeners via `useEventListener` from `@pyreon/hooks`. It handles cleanup on unmount, SSR safety, and listener re-binding when the target changes:
+Register DOM event listeners via `useEventListener` from `@pyreon/hooks`. It handles cleanup on unmount and SSR safety:
 
 ```tsx
+// @check
 import { useEventListener } from '@pyreon/hooks'
 
+declare function closeModal(): void
+
 function KeyboardShortcuts() {
-  useEventListener(window, 'keydown', (e) => {
+  useEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeModal()
   })
 
@@ -22,14 +25,21 @@ function KeyboardShortcuts() {
 }
 ```
 
+:::warning{title="The signature is event-first — `(event, handler, options?, target?)`"}
+`useEventListener(window, 'keydown', handler)` (target first) is a common but **wrong** call — it silently fails to compile against the real overload. The target is the OPTIONAL FOURTH argument, defaulting to `window`:
+
+```tsx
+useEventListener('click', onDocClick, {}, () => document)
+```
+
+The `target` getter is resolved **once at setup**, not reactively — it does not re-bind if the value it returns later changes. If you pass `() => buttonEl` and `buttonEl` is still `null` at setup time (the common ref-callback race), the listener silently falls back to `window` instead of erroring. Attach to a stable target, or read a ref that is guaranteed populated by the time `useEventListener` runs.
+:::
+
 Targets can be:
 
-- `window` — page-level keybinds, resize/scroll, online/offline
-- `document` — delegation, focus management
-- An element signal / ref — `useEventListener(() => buttonEl, 'click', handler)`
-- A ref callback — wire via `ref={(el) => buttonEl = el}` then pass `() => buttonEl`
-
-The listener runs on mount, is removed on unmount, and is rebound if the target signal changes.
+- `window` (default — omit the 4th argument) — page-level keybinds, resize/scroll, online/offline
+- `() => document` — delegation, focus management
+- `() => el` — a specific element, where `el` is already populated by setup time
 
 ## Why
 
