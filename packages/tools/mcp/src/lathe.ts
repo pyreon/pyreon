@@ -292,6 +292,8 @@ const ADVICE: Readonly<Record<SurfaceChange['code'], string>> = {
   'response-changed': 'every reader of the result must handle the new shape.',
   'stream-removed': 'every `for await` / stream hook over this operation must go.',
   'stream-changed': 'every consumer of the streamed events must handle the new event type.',
+  'error-removed': 'every branch matching this typed error must be removed or replaced with untyped fallback handling.',
+  'error-changed': 'every handler for this error status must accept the new body type.',
   'model-removed': 'every use of the model (and the operations listed) must change.',
   'field-removed': 'every read of this field now yields `undefined` at runtime — search the listed operations\' consumers.',
   'field-type-changed': 'every read and write of this field must handle the new type.',
@@ -307,6 +309,7 @@ const ADVICE: Readonly<Record<SurfaceChange['code'], string>> = {
   'model-added': 'nothing to fix — a new model.',
   'field-added': 'nothing to fix — a new field.',
   'stream-added': 'nothing to fix — the operation can now be streamed.',
+  'error-added': 'check exhaustive error handling — this status can now produce a new typed result.',
 }
 
 /** Markdown diff + a "what to check" line per breaking change. */
