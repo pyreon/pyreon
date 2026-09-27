@@ -108,6 +108,7 @@ const $sameResult = parseReactive(sameSchema, $email)
 | [`formatError`](#formaterror) | function | Resolve a single issue to a human-readable string. |
 | [`formatErrors`](#formaterrors) | function | Resolve an array of issues to strings via the same per-issue logic as formatError. |
 | [`formatErrorsByPath`](#formaterrorsbypath) | function | Build a per-field error map keyed by the issue's path joined with `.`. |
+| [`toFormValidator`](#toformvalidator) | function | Adapt an `s.*` schema directly into `@pyreon/form`'s `schema` validator shape — a `(values) =&gt; Record&lt;field, errorMessag |
 | [`toJsonSchema`](#tojsonschema) | function | Emit a JSON Schema (draft 2020-12) document from an `s` schema — for OpenAPI specs, AI structured-output constraints, ed |
 | [`serverCheck`](#servercheck) | function | Declare a server-only validation step on a shared schema — the async/privileged tier of the client/server split (unique- |
 | [`registerServerCheck`](#registerservercheck) | function | Register the heavy/privileged half of a `.serverCheck(key)` — the implementation that must NEVER reach the client bundle |
@@ -365,6 +366,36 @@ const errorMap = formatErrorsByPath(result.issues ?? [], t)
 ```
 
 **See also:** `formatErrors`
+
+---
+
+### toFormValidator `function`
+
+```ts
+<TValues>(schema: Schema<TValues>, t?: TFn) => (values: TValues) => Record<string, string>
+```
+
+Adapt an `s.*` schema directly into `@pyreon/form`'s `schema` validator shape — a `(values) => Record<field, errorMessage>` function. Runs `schema.safeParse(values)` and, on failure, maps every issue's path through `formatErrorsByPath` (so `key`/`params` resolve through `t` exactly like any other issue); valid input returns `{}`. Designed for a FLAT object schema (`s.object({ email, age })`) whose top-level keys match the form's field names — each issue's path is expected to be a single segment.
+
+**Example**
+
+```tsx
+const schema = s.object({ email: s.string().email(), age: s.number().int().min(18) })
+const { t } = useI18n()
+const form = useForm({
+  fields: [emailField, ageField],
+  schema: toFormValidator(schema, t),
+  onSubmit,
+})
+```
+
+**Common mistakes**
+
+- Using a NESTED schema (`s.object({ user: s.object({ email }) })`) — its issues produce dotted paths (`user.email`), which will not match a flat form field named `email`; flatten the schema or use `@pyreon/form` field arrays for nested shapes
+- Omitting `t` when the schema uses `key`/`params` issues — without it, i18n keys never resolve and every message falls back to `fallback`/`message`
+- Expecting the returned function to THROW — it never does; `schema.safeParse` failures become the returned error record, `{}` on success
+
+**See also:** `formatErrorsByPath` · `formatErrors`
 
 ---
 

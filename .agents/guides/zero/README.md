@@ -25,7 +25,7 @@ Read before touching `packages/zero/**`, a build adapter, SSG/SSR/ISR output, or
 
 ## SSR and ISR
 
-- `ssrPlugin` builds `dist/server/entry-server.js` and calls `adapter.build({ kind: 'ssr' })`. `AdapterBuildOptions` is a `kind: 'ssr' | 'ssg'` discriminated union.
+- `ssrPlugin` builds `dist/server/entry-server.js` and calls `adapter.build({ kind: 'ssr' })`. Route `export const runtime` / API-route `export const schedule` are scanned first (`adapters/deploy-scan.ts` — build-only, it parses with oxc, never import it from the adapter barrel) and checked against `Adapter.capabilities`; an unsupported declaration FAILS the build. When an edge function is needed a second bundle lands in `dist/server-edge/` (web-worker target, all deps bundled, `@pyreon/zero/server` → `@pyreon/zero/edge`, node builtins stubbed — asserted `node:*`-free by `tests/integration/runtime-targets.test.ts`). `AdapterBuildOptions` is a `kind: 'ssr' | 'ssg'` discriminated union.
 - Deploy staging uses `materialize(src, dest)`, which handles same-dir and dest-inside-src. Never `cp` a directory into itself (`ERR_FS_CP_EINVAL`).
 - The production template is the built client `index.html` (hashed `<script>` + CSS), copied to `dist/server/template.html` and read by `readBuiltTemplate()`. `clientEntry: false` suppresses the dev entry. Without this the page server-renders but ships `/src/entry-client.ts` and never hydrates.
 - The node runner forwards the request body (`Readable.toWeb`, `duplex: 'half'`), builds the origin from `Host` (+ `X-Forwarded-Proto` only with `TRUST_PROXY=1`), catches handler throws (an unhandled rejection used to exit the process), and sets `Symbol.for('pyreon.remoteAddress')` on the Request, which `@pyreon/server` copies to `ctx.locals.remoteAddress` for rate limiting. The bun runner does the same and runs `Bun.serve` with `development: false`. The SSR sub-build bakes `NODE_ENV=production`.
@@ -91,11 +91,17 @@ Read before touching `packages/zero/**`, a build adapter, SSG/SSR/ISR output, or
 - `bun run verify-modes` checks built artifacts.
 - E2E: `ssr-node`, `isr-node`, `ssg-*`. SSG suites serve `dist/` with `scripts/serve-ssg.ts`, never `vite preview` — its SPA fallback serves `index.html` for every path and hides missing per-route HTML.
 
+## Sessions, preview, web vitals
+
+- `@pyreon/zero/session`: HMAC-SHA256 signed cookie sessions (Web Crypto; rotation via secret array; tamper/expiry → empty). ANY session read/write calls `markPrivate(ctx.headers)` → `Cache-Control: private, no-store` + `Vary: Cookie`, which `isCacheable` in `isr.ts` refuses UNCONDITIONALLY (custom `cacheKey` included). Loaders reach the session through a `WeakMap<Request, Session>` (`getSession({ request })`). Stream mode: headers leave with the shell — touch the session before it.
+- `@pyreon/zero/preview` (client-safe): `createISRHandler` bypasses the cache on preview-cookie PRESENCE (verification is `previewMiddleware`'s job; a forged cookie buys nothing a query-string variant does not). zero-content `getCollection({ request })` includes drafts for a verified preview request. No effect on SSG static files.
+- `@pyreon/zero/web-vitals`: web-vitals semantics; CLS/INP flush+reset per client route via `router.afterEach`; LCP/FCP/TTFB hard-load only. Import budget `@pyreon/zero::web-vitals`. Real-Chromium test `src/tests/web-vitals.browser.test.ts`.
+
 ## Other features
 
 - The route hydrates in place: `startClient` calls `router.preload(path, undefined, { skipLoaders: true })` before `hydrateRoot`, so the first client render is the real route component rather than a `lazy()` fallback that matches nothing (a rejection still hydrates). The client's first render is the source of truth — any host whose first render is a placeholder must resolve before hydrating, or the server DOM is rebuilt. Islands are unaffected: the client island vnode has no children, so the host adopts the marker and only the island's own `hydrateRoot` touches its interior.
 - The main entry is client-safe; server-only code is at `@pyreon/zero/server` (clear stubs on misimport).
-- Adapters: Vercel, Cloudflare Pages, Netlify, Node, Bun, static. Immutable caching applies only to `<base><assetsDir>`, keyed on path, never extension.
+- Adapters: Vercel, Cloudflare Pages, Netlify, Deno, Node, Bun, static. Immutable caching applies only to `<base><assetsDir>`, keyed on path, never extension.
 - CSP: `cspMiddleware` + `useNonce`. `renderPage` reads `useRequestLocals().cspNonce` once and stamps it on the loader-data and store-state `<script>`s, passes it to `collectStyles(nonce)` and `renderWithHead(app, { nonce })`. The client styler inherits the nonce from the reused SSR `<style>` (`.nonce` property). SSG/SPA cannot carry a per-request nonce (use hash-based CSP); the client entry `<script src>` relies on `'self'`.
 - Also: `loggerMiddleware`, `aiPlugin` (llms.txt/JSON-LD), `useRequestLocals`.
 - Env vars (`@pyreon/zero/env`: `str`/`num`/`bool`/`url`/`oneOf`/`schema`, typed from defaults):

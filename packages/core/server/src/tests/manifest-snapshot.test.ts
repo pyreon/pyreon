@@ -20,6 +20,7 @@ describe('gen-docs — server snapshot', () => {
   it('renders MCP api-reference entries for every api[] item', () => {
     const record = renderApiReferenceEntries(manifest)
     expect(Object.keys(record).sort()).toEqual([
+      'server/activateServerIslands',
       'server/createHandler',
       'server/hydrateIslands',
       'server/hydrateIslandsAuto',

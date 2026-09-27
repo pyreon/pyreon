@@ -123,6 +123,30 @@ const WindowList = () => {
       ],
       seeAlso: ['useVirtualizer'],
     },
+    {
+      name: 'Virtualizer',
+      kind: 'class',
+      signature:
+        'class Virtualizer<TScrollElement, TItemElement> — plus config primitives: elementScroll, observeElementOffset, observeElementRect, windowScroll, observeWindowOffset, observeWindowRect, measureElement, defaultKeyExtractor, defaultRangeExtractor',
+      summary:
+        "The `@tanstack/virtual-core` engine `useVirtualizer`/`useWindowVirtualizer` build on top of, re-exported for single-import convenience and for the rare case of composing a CUSTOM adapter (a different framework's virtualizer, or a non-DOM scroll surface). `useVirtualizer` wires `elementScroll`/`observeElementOffset`/`observeElementRect` as its `scrollToFn`/`observeElementOffset`/`observeElementRect` options; `useWindowVirtualizer` wires the `window*` siblings instead — you almost never call these directly, they exist as the pluggable pieces TanStack's `VirtualizerOptions` accepts. `measureElement` is the DEFAULT dynamic-size measurer (`element.getBoundingClientRect()`-based); `defaultKeyExtractor` returns the item's index; `defaultRangeExtractor` computes the visible-plus-overscan index range from scroll offset. Reach for the raw `Virtualizer` class only when building your own reactive adapter from scratch — `useVirtualizer` already IS that adapter for Pyreon signals.",
+      example: `// Advanced: composing a custom adapter (rare — useVirtualizer covers the normal case)
+import { Virtualizer, observeElementRect, observeElementOffset, elementScroll } from '@pyreon/virtual'
+
+const instance = new Virtualizer({
+  count: items.length,
+  getScrollElement: () => scrollEl,
+  estimateSize: () => 50,
+  observeElementRect,
+  observeElementOffset,
+  scrollToFn: elementScroll,
+})`,
+      mistakes: [
+        'Reaching for the raw `Virtualizer` class in ordinary app code — `useVirtualizer`/`useWindowVirtualizer` already wrap it with Pyreon-signal-native return values; only bypass them when building a genuinely new adapter',
+        'Passing `measureElement` as a size ESTIMATE — it measures the ACTUAL rendered element (`getBoundingClientRect`), so it only makes sense once the element exists in the DOM; `estimateSize` is the pre-render guess',
+      ],
+      seeAlso: ['useVirtualizer', 'useWindowVirtualizer'],
+    },
   ],
   gotchas: [
     'Both hooks return reactive signals (`virtualItems()`, `totalSize()`, `isScrolling()`). Always read them inside reactive scopes (JSX thunks, effect, computed) so they update on scroll.',
