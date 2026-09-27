@@ -106,7 +106,8 @@ export const nullish = <T>(schema: Schema<T>): Schema<T | null | undefined> => s
 // ─── pipe — apply actions point-free ─────────────────────────────────────────
 
 /**
- * Apply a sequence of actions to a schema, left-to-right, returning it.
+ * Apply a sequence of actions to a schema, left-to-right, returning the
+ * derived schema (the input schema is never mutated).
  *
  * @example
  * import { pipe, string, minLength, email } from '@pyreon/validate/mini'
@@ -116,8 +117,9 @@ export function pipe<S extends Schema<unknown>>(
   schema: S,
   ...actions: ReadonlyArray<(s: S) => S>
 ): S {
-  for (const action of actions) action(schema)
-  return schema
+  let out = schema
+  for (const action of actions) out = action(out)
+  return out
 }
 
 // ─── Check actions ───────────────────────────────────────────────────────────
@@ -128,6 +130,7 @@ export * from './actions/number'
 // ─── Shared types + core surface ─────────────────────────────────────────────
 
 export { type Action, type Result, Schema } from './core/schema'
+export { configure, type ValidateConfig } from './core/config'
 export { type Infer, type Input, type Output } from './core/infer'
 export { type PyreonIssue, type StandardSchemaIssue, ValidationError } from './core/issue'
 export type { CheckOpts } from './core/ops'

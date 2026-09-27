@@ -21,7 +21,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 
 - OpenAPI 3.x and Swagger 2.0 (up-converted in process) reader: JSON or YAML, `$ref` resolution within and ACROSS files (a split spec is bundled; `lathe pull` bundles remote parts), `allOf` flattening through refs (the inheritance idiom), `oneOf`/`anyOf` with `discriminator` (validated at generation — an implicit or non-object discriminator degrades to a plain union with a note instead of a module that throws at import), nullability in every spelling (3.0 `nullable`, 3.1 `type: [X, null]` / `anyOf: [X, {type: null}]`) on every node including component models, `enum`/`const` of any JSON scalar, constraints on the type itself (so they apply to array items and alias models), path-level parameters, and `{id}` → `:id` conversion to the `@pyreon/http` endpoint form
 - Strict YAML 1.2 reading via the `yaml` package — anchors, aliases and merge keys resolve; duplicate keys, multi-document streams, custom tags, recursive aliases and `.inf`/`.nan` are REFUSED with a line number rather than producing a subtly wrong document
-- Loss is REPORTED, never silent: every spec feature the client does not honour becomes a `note` with a stable greppable `code`, an RFC 6901 JSON-pointer location, and a SEVERITY derived from the code (`NOTE_SEVERITY`) -- `loss` (security schemes, response headers, typed error bodies, non-default serialization, a non-scalar `const`, a `$ref` cycle through references alone, `deprecated`, an optional body the call requires, a non-JSON media type, …) or `choice` (JSON over XML, the first tag, the summary over the description). The report leads with losses and summarises choices; the reference pages split them
+- Loss is REPORTED, never silent: every spec feature the client does not honour becomes a `note` with a stable greppable `code`, an RFC 6901 JSON-pointer location, and a SEVERITY derived from the code (`NOTE_SEVERITY`) -- `loss` (security schemes, response headers, untyped error bodies, non-default serialization, a non-scalar `const`, a `$ref` cycle through references alone, an optional body the call requires, a non-JSON media type, …) or `choice` (JSON over XML, the first tag). The report leads with losses and summarises choices; the reference pages split them
 - Typed error responses: each operation's 4xx / 5xx / range / `default` JSON bodies become its endpoint's `errors`, and every hook types `error()` as `EndpointError<typeof op>` — `err.matched === '404'` narrows `err.body`, on every client
 - Webhooks and callbacks: `webhooks.ts` with a schema per payload (`webhookSchemas`) and `WebhookHandler<name>` typed from it
 - Refuses the wrong document before writing anything: Swagger 1.x, a file with no `openapi` key, an unsupported major. Every project is generated before any is written, so a refused spec leaves every output tree untouched
@@ -31,13 +31,15 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - The multiplatform claim is MEASURED: `verifyNative` runs the real `@pyreon/native-compiler` on both targets and asserts the positive marker plus the absence of leaked web-only symbols. A `does NOT compile` warning is treated as broken, not advisory, and an absent compiler SKIPS loudly rather than passing
 - Per-operation native reach with a reason in spec terms: a mutation, a relative base URL, or a read with no typed JSON response (there is no declared type for a native query to decode into) is reported `web-only` by name instead of silently degrading. A path parameter becomes a PROP of the native data component and lowers
 - Plugin selection is expanded along the IMPORT EDGES of the emitted code, not refused: `components` pulls in `queries` -&gt; `client` -&gt; `schemas` because `components.tsx` imports the hooks, and the report names what came along. Selecting a plugin without what its output imports previously produced files referencing modules that were never written - output that looks complete and does not resolve. `components` itself is independent of Atlas: the previews are ordinary Pyreon components over the generated hooks, so a project that wants them without a workbench gets exactly that
-- Every emitter is opt-in via `plugins` (`types`/`schemas`/`client`/`queries`/`mocks`/`faker`/`components`/`atlas`/`docs`) — schemas alone is a first-class use, and `target` is ADDITIVE on top of the selection rather than a separate output, so asking for schemas gets schemas on both targets
+- Every emitter is opt-in via `plugins` (`types`/`schemas`/`client`/`queries`/`mocks`/`faker`/`components`/`atlas`/`docs`/`mcp`) — schemas alone is a first-class use, and `target` is ADDITIVE on top of the selection rather than a separate output, so asking for schemas gets schemas on both targets
 - The output is a LAYERED graph, not one barrel: `index.ts` carries the production surface, `dev.ts` the fixtures/factories/previews, and `endpoints/index.ts` + `queries/index.ts` one layer each, so a consumer can take exactly the layer it needs. An emitted `package.json` declares the output side-effect-free (an ARRAY naming `atlas.wrapper.tsx`, which really does call `installMocks()` at module scope, rather than a blanket `false` that would be a lie) — and together with ONE SCHEMA MODULE PER MODEL (a `$ref` cycle shares one) and `/* @__PURE__ */` on every emitted call, one hook costs what it uses: measured with Vite 8 on GitHub's spec, one hook went from 94.4 KB to 2.8 KB gzipped of generated code, and the root barrel costs exactly what the per-tag import costs. Untagged operations are grouped by path (Stripe's single 612-endpoint `default` module became 79)
 - Model TYPES are written out as interfaces and each schema const is cast to its schema (`export const Book = s.object({…}) as unknown as Schema<Book>`) instead of inferred, which cut the TypeScript cost of the generated schemas + client + queries by 26-65% on GitHub and Stripe (instantiations, deterministic). Interface/schema agreement is enforced by lathe's own tests, both ways, for every model. The trade: a generated schema is a `Schema<Book>`, so object-only builders (`.extend`, `.pick`) do not type-check on it
 - `faker` emits one factory per model (`createBook(overrides?)`), and its rule is that a factory must produce data its OWN schema accepts: `min`/`max`/`pattern`/`enum` choose the generator and the field-name guess only applies where the spec states nothing. Depth is threaded explicitly so a recursive model terminates. `docs` renders Markdown with frontmatter — the generated HOOK name and its import site next to the HTTP contract, plus the one column a rendering of the spec cannot produce: whether the operation reaches iOS and Android, and when it does not, why
 - Several specs in ONE pass via `projects: [{ name, input, output }]` — each to its own path (typically another package in the workspace, which is the intended use), with `target`/`plugins` written once at the top level and overridable per project. `lathe check` covers them all and fails if any is stale; a CLI `--out` alongside `projects` is REFUSED rather than applied to every one
 - A generated `index.ts` barrel and a `keys.ts` query-key registry: one import site regardless of how operations were tagged, and invalidation keys derived from the endpoints rather than hand-written literals that drift the moment a path changes (`keys.books.listBooks.all` matches every call; `.of(args)` matches one)
-- The Atlas story is FULLY generated: `components.tsx` emits one browsable preview per read operation whose variant axis is the DATA STATE (a real prop, so Atlas infers a control), `atlas.scenarios.ts` keys those exact component names, and `atlas.wrapper.tsx` supplies the QueryClientProvider with the generated mocks installed so every card renders with NO server. Measured on the example: `atlas scan` reports 2 components, 8 scenarios, 8 verified, 0 failing, from an `atlas.config.ts` that names no component, scenario or provider
+- The Atlas story is FULLY generated: `components.tsx` emits one preview per SAFE READ — every `GET` with a JSON body, detail views with path parameters included (requested with the spec's example values, which the generated mocks answer), credential and session operations (login, logout, token, password) excluded — and renders the response by its SHAPE: a list of records as a table of the model's fields, one record as a description list, never a JSON dump; password/secret fields are not displayed. `force` (loading / error / empty), `args` and `data` are real props, so Atlas infers controls; `atlas.scenarios.ts` keys those names with Default, a seeded faker-built "Data" scenario, and the three forced states; `atlas.wrapper.tsx` installs the mocks so every card renders with NO server. Measured on the example with `atlas verify` + `atlas verify-browser`: 3 components, 15 scenarios, 0 failing, rendered in real Chromium
+- `lathe init` sets a project up from what it already has: it detects an orval / @hey-api/openapi-ts / kubb config (read as TEXT, never imported or executed), an openapi-typescript script, or a bare `openapi.*` file; maps every option it can onto a `lathe` section and NAMES every one it cannot with what to do instead (an orval mutator becomes `configureApi({ use })`); writes `pyreon.config.ts` — creating it, or inserting one entry into an existing one, never replacing a `lathe` section already there; adds `lathe:generate` / `lathe:check` scripts; prints the install command for what the generated code imports; and runs the first generate. It asks only on a terminal; `--yes` takes every default for CI, `--dry-run` writes nothing, and it never writes into a directory holding another generator's files
+- Generated JSDoc is written for the person hovering a symbol: the spec's summary AND description, one bullet per parameter with its location and meaning, `@deprecated` (operation, parameter, property, schema), a copyable `@example` built from the spec's own examples (else the same deterministic sample the mocks return), a `@see` link from `externalDocs`, and per-field docs on every model interface. One two-line header per file; no generator commentary
 - Automation: a `@pyreon/lathe/vite` plugin that reads `pyreon.config.*` itself, generates ONCE at dev-server start and on every spec or config change, warns on a missing spec with a did-you-mean, and logs breaking contract changes and spec losses -- with `checkOnBuild` turning a stale client into a BUILD ERROR rather than a warning; plus `lathe generate --watch`, which watches the config too. The watcher is on the containing DIRECTORY with a filename filter, because editors write via rename and a watch on the inode dies the first time one replaces the file; an unparseable mid-save spec prints and keeps watching rather than exiting
 - Deterministic by construction: sorted models, sorted operations, sorted imports, no randomness in fixtures — an unchanged spec regenerates byte-identically, so a regeneration diff is reviewable
 - `lathe check` is the CI half — regenerates in memory and fails when committed output has drifted from the spec, the same contract as `gen-docs --check`
@@ -49,6 +51,11 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - Failure is normalised across adapters into one `LatheHttpError` carrying `status` and the parsed body — `fetch` resolves a 500, axios rejects with an `AxiosError`, ky with an `HTTPError`, and a generated query's `error` must not change shape when the transport is swapped. Retry policy is deliberately NOT normalised (ky retries 5xx GETs, the others do not) and is asserted rather than papered over
 - `target: 'multiplatform'` with a non-Pyreon client is REFUSED, not silently downgraded: PMTC lowers `createHttp` + `api.endpoint(...)` by NAME, so emitting native modules over axios would produce exactly the silent regression to web-only that the target exists to catch
 - Mocks ride on `@pyreon/http`'s own `mock()` middleware rather than MSW: no service worker, no extra install, identical in node and the browser. A parameterised route emits a bounded RegExp — the declared `/books/:id` is not a SUFFIX of the resolved `/v1/books/b1`, so a plain string matched nothing and every such fixture fell through to the real network. Adapter clients need no pattern at all: their seam is handed the declared path alongside the resolved one
+- STREAMS: an operation whose 2xx response is `text/event-stream` or NDJSON (read from OpenAPI 3.2 `itemSchema` or the media `schema`, or declared in the `streams` config) gets `<op>Stream` — an async iterator of events validated per `configureApi({ validate })` — and `use<Op>Stream` (events/latest/status/error signals, aborted on unmount). It is an ordinary call through the generated client, so POST bodies, auth, middleware and mocks apply on every `client`; a dropped GET stream reconnects with backoff and `Last-Event-ID`, a non-GET one is not replayed by default
+- `lathe diff <before> <after>`: the client-contract diff between any two specs, `api-surface.json` files or `<git-rev>:<path>`, breaking first, each change naming the generated SYMBOLS it reaches (model changes traced transitively to operations), rendered as text, a Markdown PR comment, GitHub annotations + job summary, or JSON; exit 1 on breaking under `--fail-on-breaking`, 2 when an input cannot be read. The same classifier backs `@pyreon/mcp`'s `explain_api_diff`
+- The `mcp` plugin emits every operation as a Model Context Protocol tool definition — a self-contained JSON Schema of the endpoint's own call arguments, method-derived annotations, and a `call` that runs the GENERATED endpoint — as plain data with no SDK dependency; stream-only operations, non-JSON bodies and over-long names are excluded and listed with the reason
+- A public PLUGIN API: `definePlugin({ name, requires?, setup?, transformDocument?, emit? })` over the same IR and `SourceFile` writer the built-ins use, so a new output (MSW handlers, an MCP tool table) is a file in the app rather than a fork. Enforced, not hoped for: every hook failure names the plugin and the hook; the document a hook receives is FROZEN (a transform returns a modified copy, and a copy whose model references dangle is refused by name); each hook runs TWICE and must agree with itself, so a timestamp cannot make `lathe check` flap; plugin files join the manifest (pruned when dropped), `check`, `format` and the case-insensitive path-collision guard
+- Author control without editing the spec: `filters` (include/exclude matchers by tag — every tag, not only the first — path glob, operationId glob and method; models only the dropped operations used go with them, and a matcher that selects NOTHING is an error with a did-you-mean), `patches` (RFC 6902 add/replace/remove at an RFC 6901 pointer, applied before the spec is read so the fix survives `lathe pull`; a target that moved FAILS the run), `operations` (per operation: hook name or `false`, `responseValidation`, `pagination`), `naming` (operation/model/file/hook functions receiving Lathe's own choice as `default`, every result validated and collision-checked) and `format` (the project formatter, applied before write AND before `check` compares)
 - Atlas scenarios generated from the spec — one per enum value on a response field, so a variant axis the API declares is one the workbench actually exercises, and it regenerates when the API changes instead of drifting
 
 ## Complete example
@@ -84,7 +91,10 @@ lathe / Bookshelf 1.2.0
 | --- | --- | --- |
 | [`generate`](#generate) | function | The whole pipeline, pure: spec text in, file CONTENTS out. |
 | [`resolveConfig`](#resolveconfig) | function | Fills defaults and validates one project's settings, and is where the whole option surface lives: `plugins` (which emitt |
+| [`definePlugin`](#defineplugin) | function | Declares a third-party Lathe plugin, listed in `plugins` beside the built-in names. |
+| [`formatFiles`](#formatfiles) | function | Applies the `format` config hook to generated files, preserving order, skipping Lathe's own bookkeeping (`lathe-manifest |
 | [`verifyNative`](#verifynative) | function | Runs the real native compiler over the generated `.native.tsx` modules on both targets and returns a per-file verdict. |
+| [`contractDiff`](#contractdiff) | function | The client-contract diff `lathe diff` prints, as data: every change classified `breaking` or `additive` from the CLIENT' |
 | [`loadOpenApi`](#loadopenapi) | function | Parses an OpenAPI 3.x document (JSON or YAML text) into the spec-agnostic IR. |
 | [`resolveProjects`](#resolveprojects) | function | The multi-spec sibling of `resolveConfig` — ALWAYS returns a list, so a config with no `projects` array resolves to a on |
 | [`resolveTransform / worstVerdict`](#resolvetransform-worstverdict) | function | `resolveTransform` resolves the CONSUMING PROJECT's own `@pyreon/native-compiler` (dynamic `import()`, never bundled) —  |
@@ -127,7 +137,7 @@ for (const [id, r] of reach) {
 resolveConfig(section: LatheSection | undefined): ResolvedConfig
 ```
 
-Fills defaults and validates one project's settings, and is where the whole option surface lives: `plugins` (which emitters run), `client` (`pyreon` | `fetch` | `axios` | `ky`), `validator` (`pyreon` | `zod`), `target` (`web` | `multiplatform`), `baseUrl`, `strictNative` and `responseValidation` (`strict` | `warn` | `off`, what the web client does with a response that does not match its schema). A plugin selection is EXPANDED to cover what its output imports rather than refused -- asking for `components` gets `queries`, `client` and `schemas` too, and the CLI report says what came along. Use `resolveProjects` instead when the config may declare `projects: [...]`; it always returns a LIST, so a single-project config is a one-element list rather than a special case.
+Fills defaults and validates one project's settings, and is where the whole option surface lives: `plugins` (which emitters run — built-in names and `definePlugin` plugins), `filters` / `patches` / `operations` / `naming` / `format` (author control over the subset, the spec, per-operation hooks and validation, generated names, and formatting), `client` (`pyreon` | `fetch` | `axios` | `ky`), `validator` (`pyreon` | `zod`), `target` (`web` | `multiplatform`), `baseUrl`, `strictNative` and `responseValidation` (`strict` | `warn` | `off`, what the web client does with a response that does not match its schema). A plugin selection is EXPANDED to cover what its output imports rather than refused -- asking for `components` gets `queries`, `client` and `schemas` too, and the CLI report says what came along. Use `resolveProjects` instead when the config may declare `projects: [...]`; it always returns a LIST, so a single-project config is a one-element list rather than a special case.
 
 **Example**
 
@@ -153,6 +163,67 @@ const { files } = generate(specText, config)
 - Importing `installMocks`, `mockRoutes` or the faker factories from the generated `index.ts`. They are NOT there by design -- they live in `./dev`, so a page bundle has no import edge that could reach a fixture table or `@faker-js/faker`.
 - Assuming `validator: 'pyreon'` lowers more natively than `zod` because it is first-party. Measured against the real compiler it is the OPPOSITE: nested objects and arrays of objects lower under zod and are DROPPED under `s.*`, so `zod` is the better native choice for any spec with nested models.
 - Setting `plugins` and expecting the generated `package.json` to change. The `sideEffects` marker is emitted unconditionally -- it is a statement ABOUT the output rather than a plugin's output -- and it names `./atlas.wrapper.tsx` only when `atlas` is selected, because that file alone has a module-scope side effect.
+
+---
+
+### definePlugin `function`
+
+```ts
+definePlugin<P extends LathePlugin>(plugin: P): P  // LathePlugin = { name, requires?, setup?(ctx), transformDocument?(doc, ctx), emit?(ctx) }
+```
+
+Declares a third-party Lathe plugin, listed in `plugins` beside the built-in names. `setup({ config })` runs once per project and may throw to refuse a config; `transformDocument(doc, { config, note })` rewrites the IR after `filters`, `naming` and `operations` (the argument is frozen — return a modified copy; `note()` reports a loss under code `plugin`); `emit({ doc, config, reach, files, banner })` runs after every built-in and returns `SourceFile`s (banner added) or `{ path, contents, sideEffects? }`. `requires` turns on the built-ins its files import. Failures are attributed (`plugin `x` failed in `emit`: …`), each hook runs twice to prove determinism, and plugin files are listed in the manifest, compared by `check`, formatted by `format`, and refused on a path collision. Hooks are synchronous; take anything external as a construction option.
+
+**Example**
+
+```tsx
+import { definePlugin, SourceFile } from '@pyreon/lathe'
+
+export const pathTable = definePlugin({
+  name: 'path-table',
+  emit({ doc }) {
+    const f = new SourceFile('extras/paths.ts')
+    for (const op of doc.operations) f.line(`export const ${op.id}Path = ${JSON.stringify(op.path)}`)
+    return [f]
+  },
+})
+
+// pyreon.config.ts
+export default { lathe: { input: './openapi.yaml', plugins: ['schemas', 'client', pathTable] } }
+```
+
+**Common mistakes**
+
+- Mutating the document in `transformDocument`. It is frozen and the write throws; return `{ ...doc, operations: doc.operations.map(...) }`.
+- Emitting anything that varies between runs — a date, a random id, a `Set` iterated in insertion order built from unordered input. Each hook runs twice and a disagreement is an error; sort with `byCodeUnit`, never `localeCompare` (locale-dependent across machines).
+- Passing a plain object instead of a `definePlugin` result. The config refuses it: a typo such as `transform:` for `transformDocument:` would otherwise be a hook that silently never runs.
+- Emitting to a path a built-in owns (`client.ts`, `index.ts`) or Lathe's own bookkeeping (`lathe-manifest.json`, `api-surface.json`, `package.json`). Emit under a directory of the plugin's own.
+- Renaming a model in a transform without rewriting every `{ kind: 'ref' }` to it. The document is refused, naming the dangling references — use the `renameRefs` walker, or `naming.model` in the config.
+
+---
+
+### formatFiles `function`
+
+```ts
+formatFiles(files: GeneratedFile[], format: ((code: string, path: string) => string | Promise<string>) | undefined): Promise<GeneratedFile[]>
+```
+
+Applies the `format` config hook to generated files, preserving order, skipping Lathe's own bookkeeping (`lathe-manifest.json`, `api-surface.json`). The CLI and the Vite plugin call it after `generate()` and BEFORE both writing and `check`'s comparison, which is what keeps formatted, committed output from reading as stale. `generate()` itself stays synchronous and unformatted; call this when driving the pipeline programmatically.
+
+**Example**
+
+```tsx
+import { format as prettier } from 'prettier'
+import { formatFiles, generate, resolveConfig } from '@pyreon/lathe'
+
+const config = resolveConfig({ input: './openapi.yaml', format: (code, path) => prettier(code, { filepath: path }) })
+const files = await formatFiles(generate(specText, config).files, config.format)
+```
+
+**Common mistakes**
+
+- Formatting only on write. `lathe check` then compares Lathe's raw bytes with your formatted files and reports everything stale — the formatter must run before the comparison too, which the CLI and Vite plugin do.
+- A formatter that is not deterministic (plugin order, config read from the network). The output must regenerate byte-identically.
 
 ---
 
@@ -182,6 +253,34 @@ if (worstVerdict(report) !== 'lowers') process.exitCode = 1
 - Reading `warnings.length === 0` as success. That is exactly the shape this function exists to catch — PMTC reproduces an unrecognised call verbatim and says nothing, so the native build fails later with "cannot find useQuery in scope".
 - Treating `ran: false` as a pass. A verification that could not run is not one that ran and succeeded; `--strict-native` fails on it deliberately.
 - Bundling a copy of `@pyreon/native-compiler` instead of resolving the project's. A verdict from a different compiler version than the one that will build the app is worse than no verdict.
+
+---
+
+### contractDiff `function`
+
+```ts
+contractDiff(before: ApiSurface, after: ApiSurface): ContractDiff
+```
+
+The client-contract diff `lathe diff` prints, as data: every change classified `breaking` or `additive` from the CLIENT's side (a response field turning optional breaks, a request field doing so does not), breaking first, each with the operations it `affects` — a model change is traced through other models to every operation that reaches it, and each operation carries its generated module and symbols when the surface came from a generation run. Read either side with `readContractSide(text, name)` (a spec or an `api-surface.json`) and render with `renderContractDiff(diff, 'text' | 'markdown' | 'github' | 'json')`. Pure — no filesystem.
+
+**Example**
+
+```tsx
+import { contractDiff, readContractSide, renderContractDiff } from '@pyreon/lathe/core'
+
+const before = readContractSide(baseSpecText, 'main:openapi.yaml').surface
+const after = readContractSide(headSpecText, 'openapi.yaml').surface
+const diff = contractDiff(before, after)
+
+if (diff.breaking > 0) console.log(renderContractDiff(diff, 'markdown'))
+```
+
+**Common mistakes**
+
+- Diffing the generated TypeScript instead — formatting, ordering and doc comments move for non-contract reasons, and a real change hides inside that noise. The surface holds only what a caller can observe.
+- Reading `additive` as "no action needed" for an enum — `member-added` on a RESPONSE model is breaking (a `switch` can now receive a member it does not handle); the classifier already applies that, so trust `severity`, not the code name.
+- Passing an `api-surface.json` written by an incompatible Lathe — `readContractSide` refuses a wrong-version surface by name rather than diffing a shape it does not understand.
 
 ---
 

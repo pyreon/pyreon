@@ -85,12 +85,32 @@ interface HandlerOptions {
   mode?: 'string' | 'stream'
   /**
    * Collect CSS styles after rendering — return a <style> tag string to
-   * inject into <head> (e.g. () => sheet.getStyleTag() from @pyreon/styler).
+   * inject into <head>. Receives the per-request CSP nonce (undefined when
+   * there is none) — forward it to `sheet.getStyleTag(nonce)` so a strict
+   * `style-src 'nonce-…'` policy admits the emitted tag.
+   *
+   *   collectStyles: (nonce) => {
+   *     const tag = sheet.getStyleTag(nonce)
+   *     sheet.reset()
+   *     return tag
+   *   }
+   *
+   * **You usually don't need to pass this at all when using `@pyreon/styler`.**
+   * `createHandler` only forwards `collectStyles` to the shared render
+   * pipeline when you explicitly set it — when omitted, the pipeline falls
+   * back to `globalThis.__PYREON_STYLER_COLLECT__`, which styler's own
+   * singleton registers on SSR module init. So a plain `createHandler({ App, routes })`
+   * already ships the correct CSS with no FOUC, and `collectStyles` is only
+   * needed to override the default (a custom flush/reset sequence, a
+   * different CSS-in-JS library).
    */
-  collectStyles?: () => string
+  collectStyles?: (nonce?: string) => string
   /**
-   * Per-boundary Suspense timeout in ms for mode: "stream" (default 30_000).
-   * Ignored in mode: "string".
+   * Per-boundary Suspense timeout in ms for `mode: "stream"` (default
+   * `30_000`). Ignored in `mode: "string"`. Set lower for tight-SLA pages
+   * where the fallback is preferable to a delayed render; set to `Infinity`
+   * to disable the timeout for renders that legitimately need long async
+   * work. Values ≤0 or `NaN` fall back to the default.
    */
   suspenseTimeoutMs?: number
 }
@@ -211,7 +231,12 @@ interface MiddlewareContext {
   req: Request
   /** Parsed URL */
   url: URL
-  /** Pathname + search (passed to router) */
+  /**
+   * Pathname PLUS search (`/admin?x=1`) — the router's input. Do NOT match
+   * routes against it directly: an EXACT comparison (`ctx.path === '/admin'`)
+   * is bypassed by any query string. Use `ctx.url.pathname` for exact/segment
+   * matching; `ctx.path.startsWith(...)` is safe for prefix checks either way.
+   */
   path: string
   /** Response headers — middleware can set custom headers */
   headers: Headers
@@ -285,6 +310,19 @@ function Footer() {
   return <p>Served to {country}</p>
 }
 ```
+
+### The client's real socket address — `REMOTE_ADDRESS`
+
+`ctx.locals.remoteAddress` is populated automatically — **if** the runtime adapter set it. `REMOTE_ADDRESS` is a `Symbol.for('pyreon.remoteAddress')` key: `createHandler` looks for it on the incoming `Request` object and, when present, copies its value into `ctx.locals.remoteAddress` before any middleware runs (so `rateLimitMiddleware` and request logging can key on it).
+
+```ts
+import { REMOTE_ADDRESS } from '@pyreon/server'
+
+// In a runtime adapter's request-handling code, BEFORE calling the handler:
+;(req as unknown as Record<symbol, unknown>)[REMOTE_ADDRESS] = socket.remoteAddress
+```
+
+It's a `Symbol.for` (global symbol registry) key rather than a plain field so an adapter's generated runner can set it without depending on / bundling `@pyreon/server` at all. Deliberately NOT read from a header (`X-Forwarded-For` etc.) — a header is spoofable by the client; this can only be set by code that holds the raw `Request` before the handler ever sees it (the actual TCP/TLS layer).
 
 ### Composing middleware
 
@@ -373,12 +411,16 @@ interface PrerenderResult {
 
 ### File output mapping
 
-| Path          | Output file                                     |
-| ------------- | ----------------------------------------------- |
-| `/`           | `outDir/index.html`                             |
-| `/about`      | `outDir/about/index.html`                       |
-| `/blog/hello` | `outDir/blog/hello/index.html`                  |
-| `/feed.xml`   | `outDir/feed.xml` (if path ends with extension) |
+| Path          | Output file                    |
+| ------------- | ------------------------------- |
+| `/`           | `outDir/index.html`              |
+| `/about`      | `outDir/about/index.html`        |
+| `/blog/hello` | `outDir/blog/hello/index.html`   |
+| `/feed.xml`   | `outDir/feed.xml/index.html`     |
+
+:::warning{title="Only `.html`-suffixed paths write a flat file"}
+`resolveOutputPath` special-cases exactly one extension: a path ending in `.html` writes directly to `outDir/<path>` (e.g. `/404.html` → `outDir/404.html`). Every other path — **including `/feed.xml`, `/sitemap.xml`, `/robots.txt`** — falls back to the directory form and writes `outDir/<path>/index.html`, NOT `outDir/<path>`. For a route that must produce a literal `outDir/feed.xml` file (an RSS feed, `robots.txt`), either end the path in `.html` (not applicable to a real feed URL) or write the file yourself in `onPage` (return `false` to skip prerender's own write, then `fs.writeFile` the path you actually want). `@pyreon/zero`'s SSG plugin has its own, separate output pipeline (`ssg.format`) that doesn't share this limitation — see [SSG](/docs/ssg).
+:::
 
 ### Basic SSG build script
 
@@ -484,12 +526,17 @@ import { renderPage } from '@pyreon/server'
 
 const result = await renderPage(App, router, '/dashboard', { request, locals })
 if (result.kind === 'redirect') return Response.redirect(result.to, result.status)
+if (result.kind === 'unmatched') { /* only when bailOnUnmatched: true */ }
 if (result.kind === 'html') {
-  // result.appHtml, result.head, result.loaderScript, result.status (200 | 404)
+  // result.appHtml, result.head, result.loaderScript, result.status (200 | 404), result.routeModules
 }
 ```
 
-`options` carries `request` (forwarded to loaders), `skipLoaders`, `collectStyles`, `locals` (bridged to `useRequestLocals()`), and `bailOnUnmatched` (returns `{ kind: 'unmatched' }` instead of rendering — used by the dev middleware's static-404 fall-through).
+`options` carries `request` (forwarded to loaders — `router.preload` runs entirely inside `runWithRequestContext`, so loaders observe the same per-request context/store isolation the production handler gives them), `skipLoaders`, `collectStyles`, `locals` (bridged to `useRequestLocals()`), and `bailOnUnmatched` (returns `{ kind: 'unmatched' }` instead of rendering — used by the dev middleware's static-404 fall-through).
+
+`result.head` already carries the styler `<style>` tag prepended (via `collectStyles`, including the `globalThis.__PYREON_STYLER_COLLECT__` default described under `HandlerOptions.collectStyles` above) when it's non-empty; `result.routeModules` is the matched chain's lazy-component source ids, used by the SSG plugin to emit per-route `<link rel=modulepreload>` — empty for a non-lazy chain.
+
+`renderPage` is the ONE string-mode render pipeline shared by `createHandler` (`mode: 'string'`), zero's SSG prerender, and zero's dev-server SSR middleware — a per-page concern added here (the styler `<style>` tag, `noindex` injection, loader-data serialization) reaches all three consumers at once instead of drifting across copies.
 
 ---
 
@@ -611,9 +658,9 @@ This eliminates the manual sync between every `island()` declaration and the cli
 
 `hydrate: 'never'` islands are deliberately omitted from the auto-registry so their components stay out of the client bundle. Don't pair `hydrate: 'never'` with a manual `hydrateIslands({ X })` entry — the lint rule `pyreon/island-never-with-registry-entry` flags this in the same file; the project-wide `pyreon doctor --check-islands` audit catches the cross-file shape.
 
-### `interaction` strategy + click replay
+### `interaction` strategy + click/submit replay
 
-`hydrate: 'interaction'` defers hydration until first user interaction (`focus` / `click` / `pointerenter` / `touchstart` by default). Customize via `'interaction(<events>)'`. Click events are **replayed** on the equivalent live element post-hydration so the user's first click both wakes the island AND fires the action — closes the "user clicks but nothing happens until they click again" UX trap. The replay path uses `data-testid` when present, falling back to a tag + child-index walk relative to the island root.
+`hydrate: 'interaction'` defers hydration until first user interaction (`focus` / `click` / `pointerenter` / `touchstart` / `submit` by default — the first matching event triggers hydration and removes every listener, one-shot). Customize via `'interaction(<events>)'`, e.g. `'interaction(click,touchstart)'`. Only `click` and form `submit` are **replayed** on the equivalent live element post-hydration (as a real `MouseEvent`/`SubmitEvent`) so the user's first click/submit both wakes the island AND fires the action — closes the "user clicks but nothing happens until they click again" UX trap. `focus`/`pointerenter`/`touchstart` wake the island but are NOT replayed (focus in particular can't be reliably re-fired once the user has tabbed past it). The replay path uses `data-testid` when present, falling back to a tag + child-index walk relative to the island root.
 
 Pair with `prefetch: 'idle' | 'visible'` to pre-warm the chunk before the trigger fires:
 
@@ -708,7 +755,7 @@ const scripts = buildScripts('/client.js', { users: [{ id: 1 }] })
 // <script type="module" src="/client.js"></script>
 ```
 
-If no loader data is present (empty object), only the module script is emitted. The function also escapes `</script>` sequences inside the JSON to prevent XSS via premature tag closing.
+If no loader data is present (empty object), only the module script is emitted. The JSON is serialized via `@pyreon/router`'s `stringifyLoaderData` — it neutralizes the whole `<` class (not just `</script>` — a bare `</`-only escape is bypassable via `<!--<script>`, which the HTML tokenizer treats as a script-data-double-escape opener with no slash involved) plus the U+2028/U+2029 line terminators JSON permits but a `<script>` body doesn't, and throws a `[Pyreon]`-prefixed error naming the offending key on a circular reference instead of a bare `Converting circular structure to JSON`.
 
 ### `compileTemplate`
 
@@ -1017,6 +1064,7 @@ app.listen(3000)
 | Export                                         | Description                                                                           |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------- |
 | `createHandler(options)`                       | Create an SSR request handler that returns a Web-standard fetch function              |
+| `REMOTE_ADDRESS`                               | Symbol key an adapter sets on `Request` carrying the client's socket address, copied into `ctx.locals.remoteAddress` |
 | `prerender(options)`                           | Pre-render routes to static HTML files                                                |
 | `renderPage(App, router, path, options?)`      | The one string-mode render pipeline shared by the handler, SSG, and dev SSR           |
 | `island(loader, options)`                      | Create an island component for partial hydration                                      |

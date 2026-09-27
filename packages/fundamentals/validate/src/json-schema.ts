@@ -156,7 +156,10 @@ function walkKind(schema: Schema<unknown>, ctx: WalkCtx): JsonSchema {
       return { enum: [...(schema as NativeEnumSchema<Record<string, string | number>>).values] }
     case 'object': {
       const obj = schema as ObjectSchema<Record<string, Schema<unknown>>>
-      const properties: Record<string, JsonSchema> = {}
+      // Null-prototype: a field literally named `__proto__` must become an own
+      // property (on `{}` the assignment re-points the prototype and the field
+      // silently vanishes from the emitted document).
+      const properties = Object.create(null) as Record<string, JsonSchema>
       const required: string[] = []
       for (const key of Object.keys(obj.shape)) {
         const field = obj.shape[key]!

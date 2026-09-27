@@ -1,6 +1,6 @@
 ---
 title: 'Multiplatform app (one source → web + iOS + Android)'
-summary: 'Write ONE .tsx that PMTC compiles to SwiftUI + Compose. Stay inside the supported declarative subset + the 15 canonical primitives; web-only packages (the ECharts facade, the code/rich-text editors) run only via a <WebView>; @pyreon/flow and the @pyreon/charts/plot engine render natively. Knowing the boundary is how you build native correctly first-try.'
+summary: 'Write ONE .tsx that PMTC compiles to SwiftUI + Compose. Stay inside the supported declarative subset + the 17 canonical primitives; web-only packages (the ECharts facade, the code/rich-text editors) run only via a <WebView>; @pyreon/flow and the @pyreon/charts/plot engine render natively. Knowing the boundary is how you build native correctly first-try.'
 seeAlso: [routing-setup, state-management, data-fetching]
 ---
 
@@ -8,7 +8,7 @@ seeAlso: [routing-setup, state-management, data-fetching]
 
 ## The golden rule (read this first)
 
-**PMTC compiles your COMPONENT SOURCE — signals, the 15 canonical primitives, a fixed hook set, and a narrow declarative TS subset — to SwiftUI (iOS) and Jetpack Compose (Android). It does NOT transpile npm packages to native.** So a multiplatform app is built from: the canonical primitives + reactivity + the ported hooks/services, written in the supported TS subset. Anything outside that compiles for web but **silently breaks or drops on native**. Build inside the lane and it works first-try; step outside and it won't.
+**PMTC compiles your COMPONENT SOURCE — signals, the 17 canonical primitives, a fixed hook set, and a narrow declarative TS subset — to SwiftUI (iOS) and Jetpack Compose (Android). It does NOT transpile npm packages to native.** So a multiplatform app is built from: the canonical primitives + reactivity + the ported hooks/services, written in the supported TS subset. Anything outside that compiles for web but **silently breaks or drops on native**. Build inside the lane and it works first-try; step outside and it won't.
 
 > Status: native PMTC is **demo-quality, not production-ready**. The one authoritative number is the gated capability matrix in [multiplatform.md](../multiplatform) (`check-multiplatform-matrix` fails CI when its headline disagrees with its table) — do not quote a score from memory. Per-PR validation is `swiftc -parse` + `kotlinc`-against-stubs (syntax-level); full device builds are advisory. Treat the rules below as hard constraints, not suggestions.
 
@@ -20,13 +20,13 @@ import { Stack, Inline, Text, Heading, Button, Press, Field, Toggle,
 import { signal, computed, effect } from '@pyreon/reactivity'
 ```
 
-Use **`@pyreon/primitives`** (the multiplatform layer), NOT `@pyreon/elements` / `@pyreon/ui-components` (those are web-only, CSS-in-JS-coupled). The 15 primitives are the entire native UI vocabulary:
+Use **`@pyreon/primitives`** (the multiplatform layer), NOT `@pyreon/elements` / `@pyreon/ui-components` (those are web-only, CSS-in-JS-coupled). The 17 canonical primitives below are the native UI vocabulary, alongside `<Transition>`/`<TransitionGroup>`, `<WebView>` and the `<Web>`/`<NativeIOS>`/`<NativeAndroid>` escape hatches (full per-primitive reference: [primitives](/docs/primitives)):
 
 | Primitive | Web | iOS | Android | Notes |
 |---|---|---|---|---|
 | `<Stack>` | flex column | `VStack` | `Column` | `direction?="column"\|"row"`, `gap`, `align` |
 | `<Inline>` | flex row | `HStack` | `Row` | sugar for `<Stack direction="row">`. **⚠ does NOT wrap** — see gotchas |
-| `<Layer>` | abs/overlay | `ZStack` | `Box` | stacked children |
+| `<Layer>` | relative grid | `ZStack` | `Box` | stacked children (on web, overlap needs `position:absolute`) |
 | `<Scroll>` | scroll container | `ScrollView` | `verticalScroll` Column | |
 | `<Spacer>` | flex spacer | `Spacer` | `Spacer(Modifier.weight)` | |
 | `<Text>` / `<Heading>` | `<span>`/`<h*>` | `Text` | `Text` | |
@@ -35,7 +35,8 @@ Use **`@pyreon/primitives`** (the multiplatform layer), NOT `@pyreon/elements` /
 | `<Field value onChangeText>` | `<input>` | `TextField` | `TextField` | |
 | `<Toggle>` | checkbox | `Toggle` | `Switch` | |
 | `<Image>` / `<Icon>` | `<img>`/svg | `Image`/SF Symbol | `AsyncImage`/`Icon` | |
-| `<Link>` | `<a>` | nav | nav | router-aware |
+| `<Video>` / `<Audio>` | `<video>`/`<audio>` | `PyreonVideoPlayer`/`PyreonAudioPlayer` | same | `<Audio>` has no visible UI |
+| `<Link>` | `<a href>` | `PyreonLink` | `PyreonLink` | router-agnostic on web (`init({ navigate })`); pushes onto the native router |
 | `<Modal open onClose>` | overlay | `.sheet` | `Dialog` | |
 
 One canonical event name everywhere: **`onPress`** (not `onClick`), **`onChangeText`**, `onSubmit`. Tokens-first styling: `padding={4}`, `gap="md"`. No responsive props on native (v1).
@@ -96,7 +97,7 @@ import { defineStore } from '@pyreon/store'        // → PyreonStore
 import { useNavigate, useParams, useLoaderData } from '@pyreon/router'
 ```
 
-Native-ported: reactivity, the 15 primitives, `store`, `machine`, `state-tree`, `i18n`, `form`, `permissions`, `storage`, the router (nested routes, `beforeEnter`, per-route `loader`), and the hooks `useFetch` / `useOnline` / `useClipboard` / `useColorScheme`. **For data, use `useFetch` — NOT `@pyreon/query`** (TanStack is web-only).
+Native-ported: reactivity, the 17 canonical primitives, `store`, `machine`, `state-tree`, `i18n`, `form`, `permissions`, `storage`, the router (nested routes, `beforeEnter`, per-route `loader`), and the hooks `useFetch` / `useOnline` / `useClipboard` / `useColorScheme`. **For data, use `useFetch` — NOT `@pyreon/query`** (TanStack is web-only).
 
 ## Web-only packages — only via a `<WebView>` bridge
 

@@ -1,0 +1,76 @@
+{
+  "openapi": "3.1.0",
+  "info": { "title": "Streams", "version": "1.0.0" },
+  "servers": [{ "url": "https://streams.test/v1" }],
+  "paths": {
+    "/rooms/{room}/events": {
+      "get": {
+        "operationId": "roomEvents",
+        "summary": "Live events in a room",
+        "tags": ["rooms"],
+        "parameters": [{ "name": "room", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "content": { "text/event-stream": { "schema": { "$ref": "#/components/schemas/RoomEvent" } } } }
+        }
+      }
+    },
+    "/chat": {
+      "post": {
+        "operationId": "createChat",
+        "summary": "Chat completion",
+        "tags": ["chat"],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChatRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ChatCompletion" } },
+              "text/event-stream": {
+                "itemSchema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "string", "contentMediaType": "application/json", "contentSchema": { "$ref": "#/components/schemas/ChatChunk" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rows": {
+      "get": {
+        "operationId": "exportRows",
+        "tags": ["rows"],
+        "parameters": [{ "name": "limit", "in": "query", "schema": { "type": "integer" } }],
+        "responses": {
+          "200": { "content": { "application/jsonl": { "itemSchema": { "type": "object", "required": ["id"], "properties": { "id": { "type": "integer" }, "name": { "type": "string" } } } } } }
+        }
+      }
+    },
+    "/log": {
+      "get": {
+        "operationId": "tailLog",
+        "tags": ["rows"],
+        "responses": { "200": { "content": { "text/event-stream": { "schema": { "type": "string" } } } } }
+      }
+    },
+    "/rooms": {
+      "post": {
+        "operationId": "createRoom",
+        "tags": ["rooms"],
+        "responses": { "201": { "content": { "application/json": { "schema": { "type": "object", "properties": { "id": { "type": "string" } } } } } } }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "RoomEvent": { "type": "object", "required": ["kind", "at"], "properties": { "kind": { "type": "string", "enum": ["join", "leave", "message"] }, "at": { "type": "integer" }, "text": { "type": "string" } } },
+      "ChatRequest": { "type": "object", "required": ["prompt"], "properties": { "prompt": { "type": "string" }, "stream": { "type": "boolean" } } },
+      "ChatCompletion": { "type": "object", "required": ["text"], "properties": { "text": { "type": "string" } } },
+      "ChatChunk": { "type": "object", "required": ["delta"], "properties": { "delta": { "type": "string" } } }
+    }
+  }
+}

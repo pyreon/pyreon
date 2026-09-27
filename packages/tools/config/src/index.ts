@@ -50,16 +50,16 @@ export interface LoomSection {
    * manifest files, generators. Segment-wise: `*` within one segment, `**` any
    * depth. A declared path still counts as USED; it stops counting as SHIPPED.
    */
-  devPaths?: string[]
+  devPaths?: string[];
   /**
    * Suppressions. `reason` is mandatory — an unexplained suppression is a lie
    * waiting to age — and a match is downgraded to `info` with the reason
    * attached rather than dropped, so the report still shows what was waved
    * through.
    */
-  ignore?: { pkg?: string; dep?: string; code?: string; reason: string }[]
+  ignore?: { pkg?: string; dep?: string; code?: string; reason: string }[];
   /** Exit non-zero on warnings too, without passing `--strict` at every call site. */
-  strict?: boolean
+  strict?: boolean;
   /**
    * Per-code severity overrides, keyed by issue code (`unused-dep`,
    * `version-drift`, …). The escape hatch for adopting loom on an existing
@@ -67,23 +67,25 @@ export interface LoomSection {
    * while it is being burned down — the ratchet this repo already runs its
    * lint backlogs on. An unknown code is a loud error, not a silent no-op.
    */
-  severity?: Record<string, 'error' | 'warning' | 'info'>
+  severity?: Record<string, "error" | "warning" | "info">;
 }
 
 /** Atlas's configuration — see `@pyreon/atlas`'s `AtlasConfig` for the field docs. */
 export interface AtlasSection {
-  title?: string
-  wrapper?: (props: { children?: unknown }) => unknown
-  theme?: unknown
-  presets?: unknown
-  pages?: Record<string, { title?: string; group?: string; order?: number; summary?: string }>
-  projects?: readonly { name: string; dir: string }[]
+  title?: string;
+  wrapper?: (props: { children?: unknown }) => unknown;
+  theme?: unknown;
+  presets?: unknown;
+  pages?: Record<
+    string,
+    { title?: string; group?: string; order?: number; summary?: string }
+  >;
+  projects?: readonly { name: string; dir: string }[];
   scenarios?: Record<
     string,
     readonly { name: string; args?: Record<string, unknown>; play?: unknown }[]
-  >
+  >;
 }
-
 
 /**
  * Lathe's configuration — see `@pyreon/lathe`'s `LatheSection` for field docs.
@@ -107,41 +109,60 @@ export interface LatheSection {
    * When present, the top-level `input`/`output` are ignored; fields a project
    * omits fall back to the top-level value, so shared settings are written once.
    */
-  projects?: readonly LatheProjectSection[]
+  projects?: readonly LatheProjectSection[];
   /** Path to the OpenAPI 3.x document (`.json`, `.yaml`, `.yml`), relative to the config file. */
-  input?: string
+  input?: string;
   /** Output directory, relative to the config file. Default `./src/gen`. */
-  output?: string
+  output?: string;
   /** Where `lathe pull` fetches the spec from — an http(s) URL, written to `input`. */
-  source?: string
+  source?: string;
   /**
    * `web` emits the idiomatic multi-file layout; `multiplatform` ALSO emits
    * one self-contained module per tag, shaped for the native compiler, and
    * verifies that those modules actually lower.
    */
-  target?: 'web' | 'multiplatform'
-  /** Emitters to run. Default `['schemas', 'client', 'queries']`. */
-  plugins?: readonly LathePluginName[]
+  target?: "web" | "multiplatform";
+  /**
+   * Emitters to run — built-in names and plugins made with `@pyreon/lathe`'s
+   * `definePlugin`. Default `['schemas', 'client', 'queries']`.
+   */
+  plugins?: readonly (LathePluginName | LathePluginObject)[];
   /** The generated client's HTTP runtime. Only `pyreon` reaches native. Default `pyreon`. */
-  client?: 'pyreon' | 'fetch' | 'axios' | 'ky'
+  client?: "pyreon" | "fetch" | "axios" | "ky";
   /** The generated schemas' library. Default `pyreon` (`@pyreon/validate`). */
-  validator?: 'pyreon' | 'zod'
+  validator?: "pyreon" | "zod";
   /** Overrides the spec's `servers[0].url` — must be literal to reach native. */
-  baseUrl?: string
+  baseUrl?: string;
   /**
    * Declared pagination per generated operation name — emits `use<Op>Infinite`
    * hooks. See `@pyreon/lathe`'s `PaginationConfig`.
    */
-  pagination?: Readonly<
+  pagination?: Readonly<Record<string, LathePaginationConfig>>;
+  /**
+   * Streaming responses per generated operation name — emits `<op>Stream` and
+   * `use<Op>Stream`. See `@pyreon/lathe`'s `StreamConfig`.
+   */
+  streams?: Readonly<
     Record<
       string,
-      | { kind: 'cursor'; param: string; next: string; hasMore?: string }
-      | { kind: 'lastItem'; param: string; items?: string; field: string; hasMore?: string }
-      | { kind: 'offset' | 'page'; param: string; items?: string; hasMore?: string; initial?: number }
+      { format?: "sse" | "ndjson"; event?: string; data?: "json" | "text" }
     >
-  >
+  >;
+  /**
+   * Per-operation settings keyed by endpoint name or `operationId`: `hook`
+   * (a name, or `false` for none), `responseValidation`, `pagination`.
+   */
+  operations?: Readonly<Record<string, LatheOperationSettings>>;
+  /** Generate a subset: `include` / `exclude` operation matchers; `models: 'all'` keeps unreached models. */
+  filters?: LatheFilters;
+  /** RFC 6902 `add` / `replace` / `remove` corrections applied to the spec before it is read. */
+  patches?: readonly LatheSpecPatch[];
+  /** Rename generated operations, models, files and hooks. */
+  naming?: LatheNaming;
+  /** Format each generated source file before it is written and before `check` compares. */
+  format?: (code: string, path: string) => string | Promise<string>;
   /** Exit non-zero when a generated native module does not lower. */
-  strictNative?: boolean
+  strictNative?: boolean;
   /**
    * What the generated web client does with a response that does not match
    * its schema: `strict` (default) rejects, `warn` logs and passes the raw
@@ -159,24 +180,128 @@ export interface LatheSection {
 }
 
 /** One entry of {@link LatheSection.projects}. */
-export interface LatheProjectSection extends Omit<LatheSection, 'projects'> {
+export interface LatheProjectSection extends Omit<LatheSection, "projects"> {
   /** Identifies the project in the report and in errors. */
-  name: string
+  name: string;
   /** Required per project — there is no single top-level spec to fall back on. */
-  input: string
+  input: string;
+}
+
+/** One operation's pagination declaration — see `@pyreon/lathe`'s `PaginationConfig`. */
+export type LathePaginationConfig =
+  | { kind: "cursor"; param: string; next: string; hasMore?: string }
+  | {
+      kind: "lastItem";
+      param: string;
+      items?: string;
+      field: string;
+      hasMore?: string;
+    }
+  | {
+      kind: "offset" | "page";
+      param: string;
+      items?: string;
+      hasMore?: string;
+      initial?: number;
+    };
+
+/**
+ * A third-party Lathe plugin, as the config holds it. Its hooks' parameters
+ * are typed by `@pyreon/lathe` (`definePlugin`); this dependency-free copy
+ * only needs to ACCEPT one, which `never` parameters do for any hook.
+ */
+export interface LathePluginObject {
+  readonly name: string;
+  readonly requires?: readonly LathePluginName[] | undefined;
+  setup?(ctx: never): void;
+  transformDocument?(doc: never, ctx: never): unknown;
+  emit?(ctx: never): unknown;
+}
+
+/** One operation's settings — see `@pyreon/lathe`'s `LatheSection.operations`. */
+export interface LatheOperationSettings {
+  hook?: string | false | undefined;
+  responseValidation?: "strict" | "warn" | "off" | undefined;
+  pagination?: LathePaginationConfig | undefined;
+}
+
+/** An HTTP method, either case. */
+export type LatheHttpMethod =
+  | "GET"
+  | "POST"
+  | "PUT"
+  | "PATCH"
+  | "DELETE"
+  | "HEAD"
+  | "OPTIONS"
+  | "get"
+  | "post"
+  | "put"
+  | "patch"
+  | "delete"
+  | "head"
+  | "options";
+
+/** Which operations a filter selects — every field given must match. */
+export interface LatheOperationMatcher {
+  tag?: string | readonly string[] | undefined;
+  path?: string | readonly string[] | undefined;
+  operationId?: string | readonly string[] | undefined;
+  method?: LatheHttpMethod | readonly LatheHttpMethod[] | undefined;
+}
+
+/** See `@pyreon/lathe`'s `LatheSection.filters`. */
+export interface LatheFilters {
+  include?:
+    LatheOperationMatcher | readonly LatheOperationMatcher[] | undefined;
+  exclude?:
+    LatheOperationMatcher | readonly LatheOperationMatcher[] | undefined;
+  models?: "reachable" | "all" | undefined;
+}
+
+/** One spec correction — see `@pyreon/lathe`'s `LatheSection.patches`. */
+export type LatheSpecPatch =
+  | { op: "add"; path: string; value: unknown }
+  | { op: "replace"; path: string; value: unknown }
+  | { op: "remove"; path: string };
+
+/** See `@pyreon/lathe`'s `LatheSection.naming`. */
+export interface LatheNaming {
+  operation?:
+    | ((ctx: {
+        default: string;
+        operationId: string | undefined;
+        method:
+          "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
+        path: string;
+        tags: readonly string[];
+      }) => string)
+    | undefined;
+  model?:
+    | ((ctx: { default: string; name: string | undefined }) => string)
+    | undefined;
+  file?: ((ctx: { default: string; group: string }) => string) | undefined;
+  hook?:
+    | ((ctx: {
+        default: string;
+        operation: string;
+        kind: "query" | "mutation";
+      }) => string | false)
+    | undefined;
 }
 
 /** A Lathe emitter. */
 export type LathePluginName =
-  | 'types'
-  | 'schemas'
-  | 'client'
-  | 'queries'
-  | 'mocks'
-  | 'faker'
-  | 'components'
-  | 'atlas'
-  | 'docs'
+  | "types"
+  | "schemas"
+  | "client"
+  | "queries"
+  | "mocks"
+  | "faker"
+  | "components"
+  | "atlas"
+  | "docs"
+  | "mcp";
 
 /**
  * The whole-ecosystem config.
@@ -188,13 +313,13 @@ export type LathePluginName =
  */
 export interface PyreonConfig {
   /** `@pyreon/atlas` — the component workbench. */
-  atlas?: AtlasSection
+  atlas?: AtlasSection;
   /** `@pyreon/loom` — the dependency observatory. */
-  loom?: LoomSection
+  loom?: LoomSection;
   /** `@pyreon/lathe` — the spec-to-client generator. */
-  lathe?: LatheSection
+  lathe?: LatheSection;
   /** Config for a tool this version does not know about. Carried, never read. */
-  [tool: string]: unknown
+  [tool: string]: unknown;
 }
 
 /**
@@ -205,16 +330,16 @@ export interface PyreonConfig {
  * driven tool ships one.
  */
 export function defineConfig(config: PyreonConfig): PyreonConfig {
-  return config
+  return config;
 }
 
 /** Filenames tried, in order. */
 export const CONFIG_FILENAMES = [
-  'pyreon.config.ts',
-  'pyreon.config.tsx',
-  'pyreon.config.mjs',
-  'pyreon.config.js',
-] as const
+  "pyreon.config.ts",
+  "pyreon.config.tsx",
+  "pyreon.config.mjs",
+  "pyreon.config.js",
+] as const;
 
 /**
  * Read one tool's section out of a loaded config module.
@@ -223,7 +348,10 @@ export const CONFIG_FILENAMES = [
  * loader already behaves — guessing wrong between them is a config that is
  * silently ignored, which is the failure this whole file exists to reduce.
  */
-export function sectionFrom(module: Record<string, unknown>, tool: string): unknown {
-  const fromDefault = (module.default ?? {}) as Record<string, unknown>
-  return module[tool] ?? fromDefault[tool]
+export function sectionFrom(
+  module: Record<string, unknown>,
+  tool: string,
+): unknown {
+  const fromDefault = (module.default ?? {}) as Record<string, unknown>;
+  return module[tool] ?? fromDefault[tool];
 }

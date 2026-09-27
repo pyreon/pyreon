@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import config, { init, resolveCssVariables } from '../config'
+import config, { init, resolveCssVariables, resolveStyleExtraction } from '../config'
 
 describe('Configuration', () => {
   it('has default component as div', () => {
@@ -126,5 +126,21 @@ describe('resolveCssVariables', () => {
     const e = resolveCssVariables()
     expect(e).toEqual({ enabled: true, prefix: 'v', attribute: 'data-x' })
     expect(resolveCssVariables()).toBe(e)
+  })
+})
+
+describe('resolveStyleExtraction', () => {
+  afterEach(() => {
+    init({ styleExtraction: false })
+  })
+
+  it('reflects init({ styleExtraction }) and ignores an init() call that omits it', () => {
+    init({ styleExtraction: true })
+    expect(resolveStyleExtraction()).toBe(true)
+    // An unrelated init() must not reset the flag (the `!== undefined` guard).
+    init({ cssVariables: false })
+    expect(resolveStyleExtraction()).toBe(true)
+    init({ styleExtraction: false })
+    expect(resolveStyleExtraction()).toBe(false)
   })
 })

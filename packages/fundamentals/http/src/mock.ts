@@ -27,13 +27,25 @@ export interface MockRoute {
    * is tested against the whole URL.
    */
   path: string | RegExp
+  /**
+   * Only match a request whose `Accept` header names this media type — so one
+   * URL can answer JSON to a plain call and a stream to a streaming one (an
+   * operation offering both). Compared case-insensitively, parameters
+   * ignored. Order routes with `accept` BEFORE the unconditional route for
+   * the same path: the first match wins.
+   */
+  accept?: string | undefined
   /** Defaults to 200, or 204 when there is no body. */
   status?: number | undefined
   headers?: Record<string, string> | undefined
   /** Serialized as JSON with `Content-Type: application/json`. */
   json?: unknown
-  /** Raw body — mutually exclusive with `json`. */
-  body?: string | undefined
+  /**
+   * Raw body — mutually exclusive with `json`. A function computes it from
+   * the request, e.g. a Server-Sent Events mock that resumes after the
+   * `last-event-id` header.
+   */
+  body?: string | ((call: MockCall) => string) | undefined
   /** Simulated latency, in ms. */
   delay?: number | undefined
   /** Reject with this instead of responding. */
@@ -56,9 +68,17 @@ export interface MockHandle {
   reset(): void
 }
 
+/** Does an `Accept` header list this media type (ignoring parameters and q-values)? */
+function accepts(header: string | null, media: string): boolean {
+  if (header === null) return false
+  const want = media.toLowerCase()
+  return header.split(',').some((part) => (part.split(';')[0] ?? '').trim().toLowerCase() === want)
+}
+
 function matches(route: MockRoute, request: HttpRequest): boolean {
   const method = route.method ?? 'GET'
   if (method !== request.method) return false
+  if (route.accept !== undefined && !accepts(request.headers.get('accept'), route.accept)) return false
   if (route.path instanceof RegExp) return route.path.test(request.url)
   return request.url.endsWith(route.path)
 }
@@ -121,7 +141,8 @@ export function createMock(routes: readonly MockRoute[]): MockHandle {
     const route = routes.find((candidate) => matches(candidate, request))
     if (!route) return next()
 
-    calls.push(record(request))
+    const call = record(request)
+    calls.push(call)
 
     if (route.delay) await delayOrAbort(route.delay, request.signal)
     if (route.error) throw route.error
@@ -132,7 +153,7 @@ export function createMock(routes: readonly MockRoute[]): MockHandle {
       body = JSON.stringify(route.json)
       if (!headers.has('content-type')) headers.set('content-type', 'application/json')
     } else if (route.body !== undefined) {
-      body = route.body
+      body = typeof route.body === 'function' ? route.body(call) : route.body
     }
 
     const status = route.status ?? (body === null ? 204 : 200)

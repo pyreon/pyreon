@@ -27,6 +27,7 @@ describe('gen-docs — http snapshot', () => {
       'http/createMock',
       'http/encodeForm',
       'http/endpoint',
+      'http/openEventStream',
       'http/retry',
       'http/runWithRequest',
       'http/standardSchema',

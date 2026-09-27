@@ -64,25 +64,17 @@ export function emitFaker(doc: IrDocument, typesFrom: 'schemas' | 'types'): Sour
   f.doc(
     `Fake-data factories for ${doc.title} ${doc.version}.`,
     '',
-    'Every factory produces a value its own schema ACCEPTS: where the spec',
-    'states a length, a range, a pattern or an enum, that constraint chooses',
-    'the generator, and the prettier field-name guess only applies when',
-    'nothing in the spec objects.',
+    'Every factory returns a value its own schema accepts: lengths, ranges,',
+    'patterns and enums from the spec are honoured.',
     '',
-    '```ts',
-    'seedFaker(42)                       // reproducible across runs',
-    'const book = createBook()',
-    "const lost = createBook({ status: 'lost' })",
-    'const many = Array.from({ length: 20 }, () => createBook())',
-    '```',
+    ...exampleFor(doc),
   )
 
   f.doc(
     'Seed the shared generator so factories are reproducible.',
     '',
-    'faker keeps ONE global generator, so this affects every factory here and',
-    'anything else in the process using faker. Call it in a test setup, not',
-    'inside a factory -- a factory that reseeds returns the same value forever.',
+    'faker has one global generator, so this also affects any other faker use',
+    'in the process. Call it once in a test setup.',
   )
   f.line('export function seedFaker(seed = 1): void {')
   f.line('  faker.seed(seed)')
@@ -96,9 +88,8 @@ export function emitFaker(doc: IrDocument, typesFrom: 'schemas' | 'types'): Sour
       model.doc ?? `A fake \`${model.name}\`.`,
       '',
       overridable
-        ? '`overrides` is shallow and applied LAST, so any field can be pinned'
+        ? '`overrides` is applied last (shallowly), so any field can be pinned.'
         : undefined,
-      overridable ? 'without rebuilding the rest.' : undefined,
     )
     // Only an OBJECT model takes overrides. `Partial<X> = {}` for an array,
     // a scalar or a union model does not typecheck (`{}` is not a `Pet[]`),
@@ -120,7 +111,7 @@ export function emitFaker(doc: IrDocument, typesFrom: 'schemas' | 'types'): Sour
     f.line()
     const recurses = cyclic.has(model.name)
     f.doc(
-      `Depth-threaded builder for \`${model.name}\`.`,
+      `Builds a fake \`${model.name}\` at nesting depth \`d\`.`,
       recurses
         ? `\`${model.name}\` is recursive in the spec, so expansion stops at depth ${MAX_DEPTH}.`
         : undefined,
@@ -503,4 +494,22 @@ function byName(name: string): string {
   if (/(^|_)(color|colour)$/.test(n)) return 'faker.color.human()'
   if (/(^|_)(company|organisation|organization|org)$/.test(n)) return 'faker.company.name()'
   return 'faker.lorem.word()'
+}
+
+/**
+ * A usage example naming a real factory from THIS spec — an example written
+ * against a placeholder API (`createBook`) is one a reader cannot run.
+ */
+function exampleFor(doc: IrDocument): string[] {
+  const model = doc.models.find(takesOverrides) ?? doc.models[0]
+  if (!model) return []
+  const name = `create${pascal(model.name)}`
+  return [
+    '@example',
+    '```ts',
+    'seedFaker(42) // reproducible across runs',
+    `const one = ${name}()`,
+    `const many = Array.from({ length: 20 }, () => ${name}())`,
+    '```',
+  ]
 }

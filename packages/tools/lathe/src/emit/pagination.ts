@@ -13,7 +13,7 @@
  * at runtime.
  */
 import type { IrOperation, IrPagination, IrType } from '../core/ir'
-import { propKey, typeIdent } from '../core/naming'
+import { hookOf, propKey } from '../core/naming'
 import type { ModelTypes } from './operation-types'
 import { errorTypeOf, resolve as resolveRef } from './operation-types'
 import { tsType } from './schema'
@@ -172,7 +172,7 @@ export function emitInfinite(f: SourceFile, op: IrOperation, disabledFn: string)
   const err = errorTypeOf(op)
   const opts = `UseInfiniteQueryOptions<${data}, ${err}, readonly unknown[], ${pp}>`
   const name = infiniteOptionsName(op)
-  const hook = `use${typeIdent(op.id)}Infinite`
+  const hook = `${hookOf(op) as string}Infinite`
   const describe =
     p.kind === 'cursor'
       ? `the next \`${p.param}\` is \`${p.next}\` from each page`
@@ -203,8 +203,10 @@ export function emitInfinite(f: SourceFile, op: IrOperation, disabledFn: string)
   f.doc(
     `\`${op.id}\`, a page at a time — \`q.data()?.pages\`, \`q.fetchNextPage()\`, \`q.hasNextPage()\`.`,
     '',
-    'Return `undefined` from `args` while the arguments are not ready — the query is DISABLED.',
+    'Return `undefined` from `args` to hold the request until the arguments are ready.',
     `\`${p.param}\` is set per page; a value passed in \`args\` is overridden.`,
+    op.deprecated ? '' : undefined,
+    op.deprecated ? '@deprecated The spec marks this operation deprecated.' : undefined,
   )
   f.line(`export function ${hook}(`)
   f.line(`  args: () => ${input} | undefined,`)

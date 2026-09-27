@@ -110,6 +110,11 @@ export interface PullOptions {
    * locally is always re-downloaded rather than "confirmed unchanged".
    */
   cacheDir?: string | undefined
+  /**
+   * Where the progress lines go (default: stdout). `lathe init --json` sends
+   * them to stderr so stdout stays one JSON document.
+   */
+  out?: ((text: string) => void) | undefined
   /** Colour the output. */
   color?: boolean | undefined
 }
@@ -143,6 +148,7 @@ const sha256 = (text: string): string => createHash('sha256').update(text).diges
 /** Fetch `url` and write it to `dest`. Returns a process exit code. */
 export async function pullSpec(url: string, dest: string, opts: PullOptions = {}): Promise<number> {
   const dim = (s: string): string => (opts.color ? `${DIM}${s}${RESET}` : s)
+  const write = opts.out ?? ((text: string): void => void process.stdout.write(text))
   const cacheFile = opts.cacheDir ? join(opts.cacheDir, 'pull-cache.json') : undefined
   const cache = readCache(cacheFile)
   let onDisk: string | undefined
@@ -184,7 +190,7 @@ export async function pullSpec(url: string, dest: string, opts: PullOptions = {}
     return 1
   }
   if (res.status === 304 && rootCachedBody === undefined) {
-    process.stdout.write(`  spec unchanged  ${dest}  ${dim('304 Not Modified')}\n`)
+    write(`  spec unchanged  ${dest}  ${dim('304 Not Modified')}\n`)
     return 0
   }
   if (!res.ok && res.status !== 304) {
@@ -271,10 +277,10 @@ export async function pullSpec(url: string, dest: string, opts: PullOptions = {}
   }
   const bundledNote = bundledCount > 0 ? `, bundled from ${bundledCount} documents` : ''
   if (previous === written) {
-    process.stdout.write(`  spec unchanged  ${dest}${dim(bundledNote)}\n`)
+    write(`  spec unchanged  ${dest}${dim(bundledNote)}\n`)
     return 0
   }
-  process.stdout.write(
+  write(
     `  ${previous === undefined ? 'fetched' : 'updated'}  ${dest}  ${dim(`${written.length} bytes${bundledNote}`)}\n` +
       '  Review the diff, then run `lathe generate`.\n' +
       relativeServerAdvice(parsed, url),

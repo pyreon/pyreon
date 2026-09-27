@@ -29,8 +29,15 @@ const get = (op: Record<string, unknown>) => ({
   paths: { '/x': { get: { operationId: 'x', responses: { 200: { content: json({ type: 'string' }) } }, ...op } } },
 })
 
+/**
+ * Codes the INPUT layer emits. `plugin` is excluded because no spec can make
+ * the loader produce it -- a plugin's `transformDocument` does, and
+ * `plugin-api.test.ts` proves it fires (and is quiet when no note is added).
+ */
+type LoaderCode = Exclude<IrNoteCode, 'plugin'>
+
 /** [fires, quiet] per code. */
-const CASES: Record<IrNoteCode, [Record<string, unknown>, Record<string, unknown>]> = {
+const CASES: Record<LoaderCode, [Record<string, unknown>, Record<string, unknown>]> = {
   'unsupported-schema': [
     { components: { schemas: { X: { type: 'frobnicate' } } } },
     { components: { schemas: { X: { type: 'string' } } } },
@@ -105,13 +112,38 @@ const CASES: Record<IrNoteCode, [Record<string, unknown>, Record<string, unknown
     get({ responses: { 200: { content: json({ type: 'string' }) }, 202: { content: json({ type: 'object' }) } } }),
     get({ responses: { 200: { content: json({ type: 'string' }) }, 204: { description: 'none' } } }),
   ],
-  deprecated: [get({ deprecated: true }), get({ deprecated: false })],
   'extra-tags': [get({ tags: ['a', 'b'] }), get({ tags: ['a'] })],
-  'description-dropped': [
-    get({ summary: 's', description: 'd' }),
-    get({ description: 'only a description' }),
-  ],
   'numeric-version': [{ info: { title: 'T', version: 2 } }, { info: { title: 'T', version: '2' } }],
+  // An SSE response with no schema: events arrive as raw strings, and the
+  // report says so. With `itemSchema` the event type is stated, not guessed.
+  'stream-event': [
+    get({ responses: { 200: { content: { 'text/event-stream': {} } } } }),
+    get({
+      responses: {
+        200: {
+          content: {
+            'text/event-stream': {
+              itemSchema: { type: 'object', properties: { data: { type: 'string', contentSchema: { type: 'object' } } } },
+            },
+          },
+        },
+      },
+    }),
+  ],
+  'invalid-stream': [
+    {
+      paths: {
+        '/x': { get: { operationId: 'x', responses: { 200: { content: { 'text/event-stream': { schema: { type: 'string' } } } } } } },
+        '/y': { get: { operationId: 'xStream', responses: {} } },
+      },
+    },
+    {
+      paths: {
+        '/x': { get: { operationId: 'x', responses: { 200: { content: { 'text/event-stream': { schema: { type: 'string' } } } } } } },
+        '/y': { get: { operationId: 'other', responses: {} } },
+      },
+    },
+  ],
   // A Swagger 2 document is up-converted; the `openapi` key the helper adds is
   // not read once `swagger` identifies the document.
   'swagger2-converted': [{ swagger: '2.0', host: 't.test', schemes: ['https'] }, {}],
@@ -139,10 +171,10 @@ function swaggerArrayQuery(collectionFormat: string): Record<string, unknown> {
 
 describe('every note code fires on its defect and not on the corrected form', () => {
   it('the table covers every code', () => {
-    expect(Object.keys(CASES).sort()).toEqual(Object.keys(NOTE_SEVERITY).sort())
+    expect([...Object.keys(CASES), 'plugin'].sort()).toEqual(Object.keys(NOTE_SEVERITY).sort())
   })
 
-  for (const [code, [fires, quiet]] of Object.entries(CASES) as Array<[IrNoteCode, (typeof CASES)[IrNoteCode]]>) {
+  for (const [code, [fires, quiet]] of Object.entries(CASES) as Array<[LoaderCode, (typeof CASES)[LoaderCode]]>) {
     it(`${code} — fires`, () => {
       expect(doc(fires).notes.map((n) => n.code)).toContain(code)
     })

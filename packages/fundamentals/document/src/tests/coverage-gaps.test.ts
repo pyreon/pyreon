@@ -431,7 +431,10 @@ describe('download — binary result path', () => {
     await download(d, 'sheet.xlsx')
 
     expect(clickSpy).toHaveBeenCalled()
-    expect(revokeSpy).toHaveBeenCalled()
+    // Revocation is deferred to a later task (see download.ts; locked with
+    // fake timers in render-dx.test.ts — exceljs's own zip writer needs
+    // real timers, so this binary-path spec cannot fake them).
+    expect(revokeSpy).not.toHaveBeenCalled()
 
     urlSpy.mockRestore()
     revokeSpy.mockRestore()

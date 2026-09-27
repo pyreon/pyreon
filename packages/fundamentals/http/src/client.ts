@@ -241,13 +241,6 @@ function fromResolved(resolved: ResolvedConfig): HttpClient {
     options: RequestOptions = {},
   ): HttpResponsePromise => {
     const folded = foldedState ?? fold()
-    // An accessor `validate` is read per request (so a runtime switch between
-    // 'strict' and 'warn' applies to the next call); the static form keeps
-    // sharing the one context object. Resolved BEFORE dispatch because a
-    // thrown HttpError validates its body against `errors` under it too.
-    const parse = resolved.validateSource
-      ? { validate: resolved.validateSource(), schema: resolved.parse.schema }
-      : resolved.parse
     const timeoutMs = options.timeout ?? resolved.timeout
     // Built synchronously so a decoder called in the same tick
     // (`api.get(x).json()`) can CLAIM the body before the headers arrive —
@@ -279,7 +272,17 @@ function fromResolved(resolved: ResolvedConfig): HttpClient {
           : new AbortError(httpRequest)
       },
     }
-
+    // An accessor `validate` is read per request (so a runtime switch between
+    // 'strict' and 'warn' applies to the next call); the static form keeps
+    // sharing the one context object. Resolved BEFORE dispatch because a
+    // thrown HttpError validates its body against `errors` under it too.
+    // A per-request `validate` wins over both.
+    const parse =
+      options.validate !== undefined
+        ? { validate: options.validate, schema: resolved.parse.schema }
+        : resolved.validateSource
+          ? { validate: resolved.validateSource(), schema: resolved.parse.schema }
+          : resolved.parse
     const exec = (async (): Promise<HttpResponse> => {
       const headers = new Headers(folded.base)
       for (const source of folded.dynamic) {
@@ -334,9 +337,7 @@ function fromResolved(resolved: ResolvedConfig): HttpClient {
 
         const response = await dispatch(req)
         const shouldThrow = options.throwHttpErrors ?? resolved.throwHttpErrors
-        if (shouldThrow && !response.ok) {
-          throw await buildHttpError(response, options.errors, parse, link.signal)
-        }
+        if (shouldThrow && !response.ok) throw await buildHttpError(response, options.errors, parse, link.signal)
         ok = true
         return response
       } catch (cause) {

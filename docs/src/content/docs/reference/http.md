@@ -32,6 +32,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - Every common body encoding: `json`, `form` (application/x-www-form-urlencoded with OpenAPI `style`/`explode` per field — Stripe/Twilio), `multipart` (files as `Blob`/`File`), raw `body`, plus `cookies` and header records whose `undefined` values are omitted
 - Per-request SSR context via AsyncLocalStorage, so concurrent renders never cross cookies
 - Network-free mocking: middleware short-circuits, so tests need no MSW and no global fetch patch
+- Server-Sent Events and NDJSON over ANY transport (`@pyreon/http/stream`) — typed, validated events, `Last-Event-ID` reconnection with backoff, and cancellation that closes the socket; POST bodies and auth headers work, unlike `EventSource`
 
 ## Complete example
 
@@ -70,6 +71,7 @@ console.log(user.name)
 | [`retry`](#retry) | function | Replay a failed request. |
 | [`standardSchema`](#standardschema) | constant | The resolver that enables schema objects in `.json(schema)` and `endpoint({ response })`. |
 | [`runWithRequest`](#runwithrequest) | function | Establish the per-request SSR context, from `@pyreon/http/server`. |
+| [`openEventStream`](#openeventstream) | function | Server-Sent Events over any transport, from `@pyreon/http/stream`. |
 | [`createMock`](#createmock) | function | Stub responses as middleware, from `@pyreon/http/mock`. |
 
 ## API
@@ -132,7 +134,7 @@ const user = await api.get('/users/1').json() // decoded body
 <S, V, I = EndpointInput<path>, K = 'json', E = undefined>(spec: `${HttpMethod} ${string}`, options?: { response?: V; responseType?: K; errors?: E; queryStyle?; formEncoding?; keyScope?; headers?; timeout? }) => Endpoint<S, BodyOf<K, V>, I, E>
 ```
 
-Declare a reusable endpoint. One declaration yields the callable, a stable structural cache key, and the response type — which is what stops queryKey and URL from drifting apart, the single biggest pain with axios plus TanStack Query. `params` is REQUIRED by the type system exactly when the path declares `:placeholders`, and its keys are extracted from the path literal, so a typo is a compile error. `.query(args)` emits `{ queryKey, queryFn }` with the AbortSignal already forwarded; `.mutation()` emits `{ mutationFn, invalidates }`. `responseType` (`text` / `blob` / `arrayBuffer` / `stream` / `void`) decodes non-JSON bodies and types the result accordingly; `queryStyle` states OpenAPI query serialization per key (`form` / `spaceDelimited` / `pipeDelimited` / `deepObject`, `explode`); `keyScope` namespaces the cache key. The third generic `I` narrows what a call sends (`api.endpoint<S, typeof Schema, { json: NewPet }>(…)`) — how a generated client types `query` and `json` on direct calls. `errors` declares error-body schemas by status (`404`), range (`'4XX'`) or `default`: a rejected call's `HttpError.body` is validated against the most specific one and `matched` names the key it passed, so with `EndpointError<typeof ep>` as the error type `err.matched === '404'` narrows `err.body`; a body that fails its schema stays the same HttpError with `matched` undefined. In a path, `\\:` is a literal colon (`/v1/:name\\:cancel`).
+Declare a reusable endpoint. One declaration yields the callable, a stable structural cache key, and the response type — which is what stops queryKey and URL from drifting apart, the single biggest pain with axios plus TanStack Query. `params` is REQUIRED by the type system exactly when the path declares `:placeholders`, and its keys are extracted from the path literal, so a typo is a compile error. `.query(args)` emits `{ queryKey, queryFn }` with the AbortSignal already forwarded; `.mutation()` emits `{ mutationFn, invalidates }`. `responseType` (`text` / `blob` / `arrayBuffer` / `stream` / `void`) decodes non-JSON bodies and types the result accordingly; `queryStyle` states OpenAPI query serialization per key (`form` / `spaceDelimited` / `pipeDelimited` / `deepObject`, `explode`); `keyScope` namespaces the cache key; `validate` (`strict` / `warn` / `off`) overrides response validation for one endpoint or call. The third generic `I` narrows what a call sends. `errors` declares error-body schemas by status (`404`), range (`'4XX'`) or `default`; `err.matched === '404'` narrows `err.body`. In a path, `\\:` is a literal colon (`/v1/:name\\:cancel`).
 
 **Example**
 
@@ -280,13 +282,44 @@ export const middleware = (ctx: { req: Request }) =>
 
 ---
 
+### openEventStream `function`
+
+```ts
+<T>(connect: (ctx: StreamContext) => Promise<ReadableStream<Uint8Array> | null | undefined>, options?: EventStreamOptions<T>) => EventStream<SseEvent<T>>
+```
+
+Server-Sent Events over any transport, from `@pyreon/http/stream`. `connect(ctx)` opens the body — an endpoint declared with `responseType: 'stream'`, a raw `fetch`, an axios/ky client — and receives an `AbortSignal`, the headers the stream needs (`accept`, `last-event-id` when resuming) and the attempt number. The result is an async iterable of `{ type, data, id }` with `data` JSON-parsed (or `data: 'text'`) and run through `parse`. A dropped connection, 408, 429 or 5xx is retried with exponential backoff resuming from the last id; a server `retry:` sets the delay; other 4xx are final; `reconnect: { onEnd: true }` resumes after a clean end the way `EventSource` does. `break`, `close()` or `options.signal` cancel the request. `openNdjsonStream` is the NDJSON sibling (no reconnection — there is no resume id); `readEventStream` / `readNdjson` are the bare WHATWG-grammar parsers.
+
+**Example**
+
+```tsx
+import { openEventStream } from '@pyreon/http/stream'
+
+const tail = api.endpoint('GET /logs/tail', { responseType: 'stream' })
+
+for await (const ev of openEventStream((ctx) => tail({ signal: ctx.signal, headers: ctx.headers }), {
+  parse: (v) => LogLine.parse(v),
+})) {
+  if (ev.data.level === 'fatal') break
+}
+```
+
+**Common mistakes**
+
+- Not merging `ctx.headers` into the request — without them the server gets no `Last-Event-ID` on a reconnect and replays from the start. `streamHeaders(callHeaders, ctx.headers)` merges any header shape.
+- Turning on `reconnect: { onEnd: true }` for a request/response stream (an LLM completion) — a clean end means "done", and resuming re-sends the request.
+- Expecting NDJSON to reconnect — it has no event id, so a retry would duplicate everything already received; a failure ends the stream with the error.
+- Iterating the same stream twice — it is single-use; call the function again for a new request.
+
+---
+
 ### createMock `function`
 
 ```ts
 (routes: readonly MockRoute[]) => MockHandle
 ```
 
-Stub responses as middleware, from `@pyreon/http/mock`. Because middleware can short-circuit, mocking needs no MSW, no service worker and no global fetch patch — so it cannot leak between test files the way a patched global does. Returns the middleware plus the recorded calls for assertions. A request matching no route falls through to the next layer, so you can stub a couple of endpoints and let the rest hit a real transport.
+Stub responses as middleware, from `@pyreon/http/mock`. A route may set `accept` (match only a request whose `Accept` names that media type — so one URL answers JSON to a plain call and a stream to a streaming one; order it before the unconditional route) and a computed `body: (call) => string` (e.g. an SSE mock resuming after `call.headers['last-event-id']`). Because middleware can short-circuit, mocking needs no MSW, no service worker and no global fetch patch — so it cannot leak between test files the way a patched global does. Returns the middleware plus the recorded calls for assertions. A request matching no route falls through to the next layer, so you can stub a couple of endpoints and let the rest hit a real transport.
 
 **Example**
 

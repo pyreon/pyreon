@@ -587,7 +587,7 @@ export function runtimeValidate(): string[] {
  * unchanged when the client is swapped, which is the entire point of having
  * the seam in the first place.
  */
-export function runtimeTransport(): string[] {
+export function runtimeTransport(client: ClientName = 'fetch'): string[] {
   return [
     '/** A request as the library is about to send it — after its interceptors. */',
     'export interface DevRequest {',
@@ -645,17 +645,25 @@ export function runtimeTransport(): string[] {
     '  return new Response(empty ? null : body, { status, headers })',
     '}',
     '',
-    '/** Ask the dev transport for a platform `Request`; `null` means the network. */',
-    'async function devResponse(request: Request): Promise<Response | null> {',
-    '  if (!devTransport) return null',
-    '  const headers: Record<string, string> = {}',
-    '  request.headers.forEach((value, key) => {',
-    '    headers[key] = value',
-    '  })',
-    '  const body = request.body === null ? null : await request.clone().text()',
-    '  const answer = await devTransport({ method: request.method, url: request.url, headers, body })',
-    '  return answer === null ? null : answerResponse(answer)',
-    '}',
+    // axios answers from the dev transport inside its own adapter (it has no
+    // platform `Request` to hand over), so this helper would be dead code
+    // there — and dead code is a TS6133 in any app with `noUnusedLocals`.
+    ...(client === 'axios'
+      ? []
+      : [
+          '',
+          '/** Ask the dev transport for a platform `Request`; `null` means the network. */',
+          'async function devResponse(request: Request): Promise<Response | null> {',
+          '  if (!devTransport) return null',
+          '  const headers: Record<string, string> = {}',
+          '  request.headers.forEach((value, key) => {',
+          '    headers[key] = value',
+          '  })',
+          '  const body = request.body === null ? null : await request.clone().text()',
+          '  const answer = await devTransport({ method: request.method, url: request.url, headers, body })',
+          '  return answer === null ? null : answerResponse(answer)',
+          '}',
+        ]),
   ]
 }
 
@@ -717,6 +725,14 @@ function interceptorRun(client: ClientName): string[] {
       'const networkAdapter = axios.getAdapter(axios.defaults.adapter)',
       '',
       '/**',
+      ' * A `stream` response must be a WEB `ReadableStream` — that is what the',
+      ' * endpoint type promises and what a stream parser reads. axios\'s',
+      ' * default adapter hands back a Node `Readable` on the server and cannot',
+      ' * stream at all in a browser (XHR); its `fetch` adapter returns `res.body`.',
+      ' */',
+      'const streamAdapter = axios.getAdapter("fetch")',
+      '',
+      '/**',
       ' * The instance\'s `adapter` — the bottom of axios, BELOW its interceptors, so',
       ' * a mocked request has been through everything a real one has. The body it',
       ' * returns is RAW; axios\'s own `transformResponse` decodes it after, as for',
@@ -774,7 +790,7 @@ function interceptorRun(client: ClientName): string[] {
       '      return response',
       '    }',
       '  }',
-      '  return networkAdapter(config)',
+      '  return (config.responseType === "stream" ? streamAdapter : networkAdapter)(config)',
       '}',
       '',
       'let installed: number[] = []',
@@ -1047,6 +1063,8 @@ export function runtimeEndpoint(
     '      headers?: Record<string, string>',
     '      /** How each field of a `form` body serializes. */',
     '      formEncoding?: Readonly<Record<string, FormFieldEncoding>>',
+    '      /** This endpoint\'s response validation, overriding `configureApi({ validate })`. */',
+    '      validate?: ValidateMode',
     '    },',
     '  ): Endpoint<BodyOf<K, Infer<V>>, I, E> {',
     '    const sep = spec.indexOf(" ")',
@@ -1106,10 +1124,10 @@ export function runtimeEndpoint(
     '        body = await send(method, url, headers, payload, args?.signal, kind)',
     '      } catch (err) {',
     '        throw err instanceof LatheHttpError',
-    '          ? await matchError(err, config?.errors as Readonly<Record<string, unknown>> | undefined, settings.validate)',
+    '          ? await matchError(err, config?.errors as Readonly<Record<string, unknown>> | undefined, config?.validate ?? settings.validate)',
     '          : err',
     '      }',
-    '      return kind === "json" ? validateResponse(config?.response, body, settings.validate) : body',
+    '      return kind === "json" ? validateResponse(config?.response, body, config?.validate ?? settings.validate) : body',
     '    }',
     '',
     '    const key = Object.assign((args?: EndpointArgs) => buildKey(args), { prefix })',

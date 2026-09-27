@@ -23,11 +23,14 @@ import type {
   IrPagination,
   IrParam,
   IrSecurityScheme,
+  IrStream,
   IrType,
   IrWebhook,
   StringFormat,
 } from '../core/ir'
+import { streamFormatOf } from '../core/media'
 import { assignNames, ident, modelIdent, operationIdent, operationIdFrom, tagFile } from '../core/naming'
+import { applyPatches, type LatheSpecPatch } from '../core/patch'
 import { bundle, collectDocuments, isRemote, referencedDocuments, type ReadOutcome } from './bundle'
 import { splitByDirection } from './direction'
 import { isSwagger2, upgradeSwagger2 } from './swagger2'
@@ -54,6 +57,12 @@ export interface LoadOptions {
    * relative server stays relative and is reported.
    */
   sourceUrl?: string | undefined
+  /**
+   * Corrections applied to the parsed document before it is read — see
+   * `LatheSection.patches`. Applied before the version check, so a patch can
+   * repair the document's own `openapi` key.
+   */
+  patches?: readonly LatheSpecPatch[] | undefined
   /**
    * Where the spec document lives -- a file path or an http(s) URL. With
    * {@link LoadOptions.readDocument}, a `$ref` into ANOTHER document is
@@ -82,6 +91,7 @@ export function loadOpenApi(source: string, options: LoadOptions = {}): LoadResu
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('[Pyreon] lathe: spec did not parse to an object')
   }
+  applyPatches(raw as Record<string, unknown>, options.patches)
   const { location: specAt, readDocument } = options
   // Refused BEFORE reading any other file: a document that is not a spec at
   // all should not make lathe go looking for the files it names.
@@ -183,7 +193,8 @@ function serverUrl(server: Json | undefined, at: string, ctx: Ctx, sourceUrl: st
   let url = str(server?.url)
   if (!url) return ''
   const vars = obj(server?.variables)
-  // `[^{}]`, not `[^}]`: a name holding `{` let the engine backtrack from every brace, quadratic on a long run of `{{`. A variable name has no braces.
+  // `[^{}]`, not `[^}]`: a name holding `{` let the engine backtrack from
+  // every brace, quadratic on a long run of `{{`. A variable name has no braces.
   url = url.replace(/\{([^{}]+)\}/g, (match, name: string) => {
     const def = obj(vars?.[name])?.default
     if (typeof def === 'string' || typeof def === 'number') return String(def)
@@ -266,6 +277,8 @@ function convert(spec: Json, options: LoadOptions = {}, preNotes: readonly IrNot
       name: ctx.modelNames.get(key) as string,
       type: modelType(key, ctx) ?? { kind: 'unknown', reason: 'cyclic model' },
       doc: str(schema.description) ?? str(schema.title),
+      deprecated: schema.deprecated === true ? true : undefined,
+      source: { name: key, at: ptr('components', 'schemas', key) },
     })
   }
 
@@ -273,6 +286,7 @@ function convert(spec: Json, options: LoadOptions = {}, preNotes: readonly IrNot
   ctx.appliedSecurity = new Set(securitySchemes.map((sc) => sc.name))
   noteSecurity(spec, securitySchemes, ctx)
   const operations = collectOperations(spec, ctx)
+  dropClashingStreams(operations, ctx)
   const webhooks = [...collectWebhooks(spec, ctx), ...ctx.callbacks]
   // Schemas reached through a non-component pointer that turned out to be
   // RECURSIVE were hoisted into named models while converting; they join the
@@ -636,13 +650,6 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
           continue
         }
         if (where === 'path' || where === 'query') noteSerialization(po, name, where, pAt, ctx)
-        if (po.deprecated === true) {
-          ctx.notes.push({
-            code: 'deprecated',
-            at: pAt,
-            message: `parameter \`${name}\` is deprecated, but the generated signature carries no \`@deprecated\` marker — call sites get no warning.`,
-          })
-        }
         target.push({
           // A PATH parameter's name must match the `:placeholder` the path was
           // rewritten to, so it takes the same per-path identifier -- they
@@ -655,6 +662,8 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
           // A path parameter is always required, whatever the spec claims.
           required: po.in === 'path' ? true : po.required === true,
           doc: str(po.description),
+          deprecated: po.deprecated === true ? true : undefined,
+          example: exampleOf(po, paramSchema(po)),
           ...(po.in === 'query' ? queryStyle(po) : {}),
         })
       }
@@ -670,6 +679,9 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
         path: toPyreonPath(rawPath, placeholderIds),
         tag: tagNames.get(str(arr(op.tags)[0]) ?? 'default') as string,
         summary: str(op.summary) ?? str(op.description),
+        description: str(op.summary) && str(op.description) !== str(op.summary) ? str(op.description) : undefined,
+        deprecated: op.deprecated === true ? true : undefined,
+        externalDocs: externalDocsOf(op.externalDocs),
         pathParams: withUndeclaredPathParams(pathParams, placeholders, placeholderIds),
         queryParams,
         headerParams,
@@ -677,6 +689,12 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
         body: bodyOf(method, op, at, ctx),
         ...responseOf(op, at, ctx),
         ...paginationOf(op['x-pyreon-pagination'], at, ctx),
+        source: {
+          ...(str(op.operationId) ? { operationId: str(op.operationId) } : {}),
+          path: rawPath,
+          tags: arr(op.tags).flatMap((t) => (typeof t === 'string' ? [t] : [])),
+          at,
+        },
       }
       ctx.opAt.set(irOp, at)
       ops.push(irOp)
@@ -698,7 +716,7 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
 
 /**
  * Notes for what an operation declares and the generated call does not carry:
- * extra tags, a dropped description, `deprecated`, and a security requirement.
+ * extra tags and a security requirement.
  */
 function noteOperation(op: Json, at: string, spec: Json, globalSecurity: boolean, ctx: Ctx): void {
   const tags = arr(op.tags).filter((t): t is string => typeof t === 'string' && t.length > 0)
@@ -707,20 +725,6 @@ function noteOperation(op: Json, at: string, spec: Json, globalSecurity: boolean
       code: 'extra-tags',
       at: sub(at, 'tags'),
       message: `grouped under its first tag \`${tags[0]}\` only; also tagged ${tags.slice(1).map((t) => `\`${t}\``).join(', ')}.`,
-    })
-  }
-  if (str(op.summary) && str(op.description)) {
-    ctx.notes.push({
-      code: 'description-dropped',
-      at: sub(at, 'description'),
-      message: 'the operation has both a summary and a description; the generated JSDoc carries the summary only.',
-    })
-  }
-  if (op.deprecated === true) {
-    ctx.notes.push({
-      code: 'deprecated',
-      at,
-      message: 'the operation is deprecated, but the generated endpoint and hook carry no `@deprecated` marker — call sites get no warning.',
     })
   }
   // An EXPLICIT operation-level requirement, or the document's global one.
@@ -1011,6 +1015,7 @@ function bodyOf(method: string, op: Json, at: string, ctx: Ctx): IrBody | undefi
   const schema = obj(media.schema)
   if (encoding === 'text') return { mediaType, encoding, required, type: { kind: 'string' } }
   if (encoding === 'binary') return { mediaType, encoding, required, type: { kind: 'string', format: 'binary' } }
+  const example = exampleOf(media, schema)
   const type = schema ? toType(schema, sub(where, 'content', mediaType, 'schema'), ctx) : { kind: 'unknown' as const, reason: 'no schema' }
   return {
     mediaType,
@@ -1018,7 +1023,57 @@ function bodyOf(method: string, op: Json, at: string, ctx: Ctx): IrBody | undefi
     required,
     type,
     fieldEncoding: encoding === 'form' ? fieldEncodingOf(obj(media.encoding)) : undefined,
+    ...(example !== undefined ? { example } : {}),
   }
+}
+
+/**
+ * The example a parameter or media type carries, in OpenAPI's precedence:
+ * its own `example`, then the first `examples` entry's inline `value`, then
+ * the schema's `example`. A `$ref`'d or `externalValue` example is skipped
+ * rather than fetched -- the generator reads one document.
+ *
+ * Only JSON values survive: the result is emitted into source (`@example`,
+ * preview args), and a YAML date or a function-typed value has no literal.
+ */
+function exampleOf(holder: Json, schema: Json | undefined): unknown {
+  if (holder.example !== undefined) return jsonValue(holder.example)
+  const examples = obj(holder.examples)
+  if (examples) {
+    for (const key of Object.keys(examples)) {
+      const entry = obj(examples[key])
+      if (entry && entry.$ref === undefined && entry.value !== undefined) return jsonValue(entry.value)
+    }
+  }
+  return schema?.example !== undefined ? jsonValue(schema.example) : undefined
+}
+
+/** `value` when it round-trips through JSON unchanged in kind, else `undefined`. */
+function jsonValue(value: unknown): unknown {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined
+  if (Array.isArray(value)) {
+    const items = value.map(jsonValue)
+    return items.some((v) => v === undefined) ? undefined : items
+  }
+  if (typeof value === 'object' && [Object.prototype, null].includes(Object.getPrototypeOf(value))) {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      const j = jsonValue(v)
+      if (j === undefined) return undefined
+      out[k] = j
+    }
+    return out
+  }
+  return undefined
+}
+
+/** `externalDocs` with an http(s) URL; anything else is not a link worth emitting. */
+function externalDocsOf(value: unknown): { url: string; description?: string | undefined } | undefined {
+  const ed = obj(value)
+  const url = ed ? str(ed.url) : undefined
+  if (!ed || !url || !/^https?:\/\//.test(url)) return undefined
+  return { url, description: str(ed.description) }
 }
 
 /** A form body's `encoding` map, reduced to style/explode per property. */
@@ -1036,7 +1091,7 @@ function fieldEncodingOf(encoding: Json | undefined): Record<string, IrFieldEnco
   return Object.keys(out).length > 0 ? out : undefined
 }
 
-function responseOf(op: Json, at: string, ctx: Ctx): Pick<IrOperation, 'response' | 'responseMedia' | 'errors'> {
+function responseOf(op: Json, at: string, ctx: Ctx): Pick<IrOperation, 'response' | 'responseMedia' | 'stream' | 'errors'> {
   const responses = obj(op.responses)
   if (!responses) return {}
   const rAt = sub(at, 'responses')
@@ -1122,13 +1177,24 @@ function errorResponsesOf(responses: Json, chosen: string | undefined, rAt: stri
  * client that silently decodes `text/csv` as JSON fails at runtime, far from
  * the spec line that caused it.
  */
-function pickResponseContent(content: Json, at: string, ctx: Ctx): Pick<IrOperation, 'response' | 'responseMedia'> {
+function pickResponseContent(
+  content: Json,
+  at: string,
+  ctx: Ctx,
+): Pick<IrOperation, 'response' | 'responseMedia' | 'stream'> {
   const keys = Object.keys(content)
-  const json = keys.find((k) => encodingOf(k) === 'json')
+  // A streaming media type is read ALONGSIDE the primary choice, not instead
+  // of it: an API offering `application/json` AND `text/event-stream` (the
+  // OpenAI shape) gets both a plain endpoint and a stream.
+  const streaming = keys.find((k) => streamFormatOf(k) !== undefined)
+  const stream = streaming ? streamOf(streaming, content[streaming], sub(at, 'content', streaming), ctx) : undefined
+  const withStream = <T extends object>(r: T): T & Pick<IrOperation, 'stream'> => (stream ? { ...r, stream } : r)
+  // A stream media type is never the JSON pick, even `application/stream+json`.
+  const json = keys.find((k) => encodingOf(k) === 'json' && streamFormatOf(k) === undefined)
   if (!json) {
     // A non-JSON response is not a LOSS (audit B4): the client decodes it as
     // text, a Blob or a stream by media type. Noted only when a choice was made.
-    const first = keys[0]
+    const first = streaming ?? keys[0]
     if (!first) return {}
     if (keys.length > 1) {
       ctx.notes.push({
@@ -1137,19 +1203,99 @@ function pickResponseContent(content: Json, at: string, ctx: Ctx): Pick<IrOperat
         message: `no JSON media type (found ${keys.join(', ')}) — the client decodes \`${first}\`.`,
       })
     }
-    return { response: { kind: 'unknown', reason: `media type ${first}` }, responseMedia: first }
+    return withStream({ response: { kind: 'unknown', reason: `media type ${first}` }, responseMedia: first })
   }
-  if (keys.length > 1) {
+  const others = keys.filter((k) => k !== streaming)
+  if (others.length > 1) {
     ctx.notes.push({
       code: 'multiple-content-types',
       at: sub(at, 'content'),
-      message: `${keys.length} media types (${keys.join(', ')}) — generated code uses ${json}.`,
+      message: `${others.length} media types (${others.join(', ')}) — generated code uses ${json}.`,
     })
   }
   const schema = obj(obj(content[json])?.schema)
-  return {
+  return withStream({
     response: schema ? toType(schema, sub(at, 'content', json, 'schema'), ctx) : { kind: 'unknown', reason: 'no schema' },
+  })
+}
+
+/**
+ * A stream's generated names (`<op>Stream`, `use<Op>Stream`) must not collide
+ * with another operation's (`getLogsStream`, `useGetLogsStream`). A clash
+ * would emit two declarations of one name — a module that does not load — so
+ * the stream is dropped and the loss NOTED; the plain endpoint still works.
+ */
+function dropClashingStreams(ops: IrOperation[], ctx: Ctx): void {
+  const ids = new Set(ops.map((o) => o.id))
+  for (const op of ops) {
+    if (!op.stream || !ids.has(`${op.id}Stream`)) continue
+    ctx.notes.push({
+      code: 'invalid-stream',
+      at: ctx.opAt.get(op) ?? '#/paths',
+      message: `the stream for \`${op.id}\` would be named \`${op.id}Stream\`, which is already an operation. The stream is not generated; rename one operationId.`,
+    })
+    op.stream = undefined
   }
+}
+
+/**
+ * What ONE event of a streaming response carries (see {@link IrStream}).
+ *
+ * OpenAPI 3.2 `itemSchema` is the authoritative source. For SSE it describes
+ * the whole event (`{ event, data, id, retry }`), so the payload type is its
+ * `data` property — through `contentSchema` when `data` is JSON-in-a-string.
+ * Before 3.2 the media type's `schema` is the event type by convention, and a
+ * bare `type: string` means the data is plain text. Every reading that had to
+ * be guessed is NOTED, so the report says why events are `unknown`.
+ */
+function streamOf(media: string, node: unknown, at: string, ctx: Ctx): IrStream {
+  const format = streamFormatOf(media) as 'sse' | 'ndjson'
+  const mo = obj(deref(node, at, ctx)) ?? {}
+  // RAW nodes are what `toType` converts — a `$ref` must reach it intact, or
+  // the event loses its model NAME and becomes an anonymous inline copy. The
+  // DEREFERENCED form is only for looking inside (`type`, `properties`).
+  const rawItem = obj(mo.itemSchema)
+  const rawSchema = obj(mo.schema)
+  const item = rawItem ? obj(deref(rawItem, sub(at, 'itemSchema'), ctx)) : undefined
+  const schema = rawSchema ? obj(deref(rawSchema, sub(at, 'schema'), ctx)) : undefined
+  const noteEvent = (message: string): void => {
+    ctx.notes.push({ code: 'stream-event', at, message })
+  }
+  if (format === 'sse') {
+    if (rawItem && item) {
+      const dataAt = sub(at, 'itemSchema', 'properties', 'data')
+      const rawData = obj(obj(item.properties)?.data)
+      const data = rawData ? obj(deref(rawData, dataAt, ctx)) : undefined
+      if (rawData && data) {
+        const inner = obj(data.contentSchema)
+        if (inner) return { format, media, data: 'json', event: toType(inner, sub(dataAt, 'contentSchema'), ctx) }
+        return data.type === 'string' || data.type === undefined
+          ? { format, media, data: 'text', event: { kind: 'string' } }
+          : { format, media, data: 'json', event: toType(rawData, dataAt, ctx) }
+      }
+      noteEvent('`itemSchema` has no `data` property — it is read as the type of each event\'s JSON `data`.')
+      return { format, media, data: 'json', event: toType(rawItem, sub(at, 'itemSchema'), ctx) }
+    }
+    if (!rawSchema || !schema) {
+      noteEvent('no event schema — each event\'s `data` arrives as the raw string. Declare `itemSchema`, or name a model in the `streams` config.')
+      return { format, media, data: 'text', event: { kind: 'string' } }
+    }
+    if (schema.type === 'string') return { format, media, data: 'text', event: { kind: 'string' } }
+    return { format, media, data: 'json', event: toType(rawSchema, sub(at, 'schema'), ctx) }
+  }
+  if (rawItem) return { format, media, data: 'json', event: toType(rawItem, sub(at, 'itemSchema'), ctx) }
+  if (!rawSchema || !schema) {
+    noteEvent('no line schema — each NDJSON value arrives as `unknown`. Declare `itemSchema`, or name a model in the `streams` config.')
+    return { format, media, data: 'json', event: { kind: 'unknown', reason: 'no schema' } }
+  }
+  const items = obj(schema.items)
+  if (schema.type === 'array' && items) {
+    // A common pre-3.2 spelling: "the body is a list of these". Each LINE is
+    // one item, so the item type is the event type.
+    noteEvent('an `array` schema on an NDJSON response is read as its `items` — one item per line.')
+    return { format, media, data: 'json', event: toType(items, sub(at, 'schema', 'items'), ctx) }
+  }
+  return { format, media, data: 'json', event: toType(rawSchema, sub(at, 'schema'), ctx) }
 }
 
 /** Resolve a local `$ref`. Remote refs are refused rather than fetched. */
@@ -1545,19 +1691,13 @@ function fieldsOf(schema: Json, props: Json, at: string, ctx: Ctx): IrField[] {
   for (const key of Object.keys(props)) {
     const p = obj(props[key])
     if (!p) continue
-    if (p.deprecated === true) {
-      ctx.notes.push({
-        code: 'deprecated',
-        at: sub(at, 'properties', key),
-        message: `property \`${key}\` is deprecated, but the generated type carries no \`@deprecated\` marker.`,
-      })
-    }
     out.push({
       name: key,
       type: toType(p, sub(at, 'properties', key), ctx),
       required: required.has(key),
       doc: str(p.description) ?? str(p.title),
       example: p.example,
+      deprecated: p.deprecated === true ? true : undefined,
       readOnly: p.readOnly === true ? true : undefined,
       writeOnly: p.writeOnly === true ? true : undefined,
     })

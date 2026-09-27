@@ -1,0 +1,14 @@
+{
+  "name": "orval-app",
+  "private": true,
+  "scripts": {
+    "api": "orval",
+    "dev": "vite"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.0.0"
+  },
+  "devDependencies": {
+    "orval": "^7.10.0"
+  }
+}

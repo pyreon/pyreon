@@ -1,0 +1,15 @@
+import { defineConfig } from 'orval'
+
+const common = { mode: 'split' }
+
+export default defineConfig({
+  petstore: {
+    input: 'https://petstore3.swagger.io/api/v3/openapi.json',
+    output: { target: './src/petstore/client.ts', client: 'axios' },
+  },
+  // A zod-only project: schemas, no client.
+  petstoreZod: {
+    input: { target: './petstore.json', filters: { tags: ['pet'] } },
+    output: { target: './src/zod/petstore.zod.ts', client: 'zod', ...common },
+  },
+})

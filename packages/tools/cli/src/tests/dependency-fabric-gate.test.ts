@@ -21,6 +21,8 @@ import { join, resolve } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import {
   findingsFromReport,
+  isEmptyWorkspaceRefusal,
+  loomFailureReason,
   resolveLoomBin,
   runDependencyFabricGate,
 } from '../doctor/gates/dependency-fabric'
@@ -135,22 +137,36 @@ describe('runDependencyFabricGate', () => {
     expect(r.findings).toHaveLength(1)
     expect(r.findings[0]?.code).toBe('dependency-fabric/scan-failed')
     expect(r.findings[0]?.severity).toBe('warning')
+    // loom's own reason, read from its stderr — not the process error's
+    // "Command failed: node …/loom.js scan …", which names nothing.
+    expect(r.findings[0]?.message).toMatch(/no package\.json/)
+    expect(r.findings[0]?.message).not.toMatch(/Command failed/)
   })
 
-  it('a workspace with ZERO packages is reported as scanning zero, not as healthy', async () => {
-    // The counterpart to the spec above, and the more dangerous shape: loom
-    // succeeds, so the gate cannot tell from the exit code that it measured
-    // nothing. `scanned: 0` is what lets a reader distinguish "clean fabric"
-    // from "nothing was looked at" — the empty-scan class this repo gates on.
+  it('a workspace with ZERO packages is an empty-scan SKIP, not a clean pass or a defect', async () => {
+    // loom refuses a root with no member packages (exit 1) rather than
+    // reporting a clean scan of nothing. For doctor that must be an EMPTY
+    // SCAN: skipped, excluded from the mean, flagged `emptyScan` so the
+    // renderer shows it loudly. Neither a clean pass (it measured nothing)
+    // nor a scored `scan-failed` warning (the dependencies are not at fault).
     if (!LOOM_BUILT) return
-    const root = mkdtempSync(join(tmpdir(), 'doctor-fabric-empty-'))
-    roots.push(root)
-    writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'no-workspaces' }))
-    mkdirSync(join(root, 'node_modules/@pyreon'), { recursive: true })
-    symlinkSync(LOOM_PKG, join(root, 'node_modules/@pyreon/loom'))
-    const r = await runDependencyFabricGate({ cwd: root })
-    expect(r.findings).toEqual([])
-    expect(r.meta?.scanned).toBe(0)
+    const cases = [
+      { name: 'no-workspaces' },
+      { name: 'globs-match-nothing', workspaces: ['packages/*'] },
+    ]
+    for (const manifest of cases) {
+      const root = mkdtempSync(join(tmpdir(), 'doctor-fabric-empty-'))
+      roots.push(root)
+      writeFileSync(join(root, 'package.json'), JSON.stringify(manifest))
+      mkdirSync(join(root, 'node_modules/@pyreon'), { recursive: true })
+      symlinkSync(LOOM_PKG, join(root, 'node_modules/@pyreon/loom'))
+      const r = await runDependencyFabricGate({ cwd: root })
+      expect(r.findings, manifest.name).toEqual([])
+      expect(r.meta?.scanned, manifest.name).toBe(0)
+      expect(r.meta?.skipped, manifest.name).toBe(true)
+      expect(r.meta?.emptyScan, manifest.name).toBe(true)
+      expect(r.meta?.skipReason, manifest.name).toMatch(/no workspace packages/)
+    }
   })
 
   it('@pyreon/loom is built in this environment — the skipIf specs are NOT free passes', () => {
@@ -183,4 +199,29 @@ describe('the gate is registered', () => {
         `(gate-names.ts must stay dependency-free)`,
     ).toContain('dependency-fabric')
   }, 60_000)
+})
+
+describe('loom refusal classification', () => {
+  it('reads loom\'s reason from stderr, string or Buffer, skipping blank lines', () => {
+    const err = Object.assign(new Error('Command failed: node loom.js scan /x'), {
+      stderr: '\nloom: /x is not a workspace root — its package.json declares no `workspaces`.\nmore',
+    })
+    expect(loomFailureReason(err)).toBe(
+      'loom: /x is not a workspace root — its package.json declares no `workspaces`.',
+    )
+    const buf = Object.assign(new Error('Command failed'), { stderr: Buffer.from('loom: bad config\n') })
+    expect(loomFailureReason(buf)).toBe('loom: bad config')
+  })
+
+  it('falls back to the error\'s first line when stderr is empty or absent', () => {
+    expect(loomFailureReason(Object.assign(new Error('spawn failed\ndetail'), { stderr: '' }))).toBe('spawn failed')
+    expect(loomFailureReason(new Error('ENOENT'))).toBe('ENOENT')
+  })
+
+  it('classifies only loom\'s two empty-workspace refusals as empty', () => {
+    expect(isEmptyWorkspaceRefusal('loom: /x is not a workspace root — its package.json declares no `workspaces`.')).toBe(true)
+    expect(isEmptyWorkspaceRefusal('loom: /x/package.json declares workspaces, but its globs match no packages.')).toBe(true)
+    expect(isEmptyWorkspaceRefusal('[Pyreon] loom: no package.json at /x — point loom at a workspace root.')).toBe(false)
+    expect(isEmptyWorkspaceRefusal('loom: invalid config')).toBe(false)
+  })
 })

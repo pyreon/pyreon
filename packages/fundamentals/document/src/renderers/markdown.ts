@@ -1,4 +1,11 @@
-import { sanitizeHref, sanitizeImageSrc } from '../sanitize'
+import {
+  longestBacktickRun,
+  markdownLinkDestination,
+  sanitizeCodeLanguage,
+  sanitizeHref,
+  sanitizeImageSrc,
+} from '../sanitize'
+import { getTextContent } from '../nodes'
 import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
 
 function resolveColumn(col: string | TableColumn): TableColumn {
@@ -14,14 +21,48 @@ function resolveColumn(col: string | TableColumn): TableColumn {
  * line break `<br>` (the only line break a table cell supports).
  */
 function mdTableCell(value: string): string {
-  return value
-    .replace(/\\/g, '\\\\')
-    .replace(/\|/g, '\\|')
-    .replace(/\r?\n/g, '<br>')
+  // Escape FIRST (covers `\`, `|`, raw HTML), then insert the only markup
+  // we emit ourselves — the `<br>` line break.
+  return mdEscapeInline(value).replace(/\r\n|\r|\n/g, '<br>')
+}
+
+/**
+ * Escape user text for inline Markdown. Every ASCII character that can
+ * open markup mid-line gets a CommonMark backslash escape: emphasis
+ * (`*` `_` `~`), code spans (`` ` ``), links/images (`[` `]`), raw HTML and
+ * autolinks (`<` `>`), entity references (`&`), table pipes (`|`), and the
+ * escape character itself. Without it `<img src=x onerror=…>` in a
+ * paragraph is live HTML in every renderer that allows it (GitHub strips
+ * it; many static-site pipelines do not).
+ */
+function mdEscapeInline(text: string): string {
+  return text.replace(/[\\`*_~[\]<>&|]/g, '\\$&')
+}
+
+/**
+ * {@link mdEscapeInline} plus the BLOCK-level markers that only matter at
+ * the start of a line: ATX headings, block quotes, list bullets, ordered
+ * list numbers, setext underlines / thematic breaks, and indented code.
+ */
+function mdEscapeText(text: string): string {
+  return mdEscapeInline(text)
+    .split('\n')
+    .map((line) =>
+      line
+        .replace(/^(\s*)([#>+=-])/, '$1\\$2')
+        .replace(/^(\s*\d+)([.)])/, '$1\\$2')
+        .replace(/^ {4,}/, (sp) => sp.slice(0, 3)),
+    )
+    .join('\n')
+}
+
+/** `[label](dest)`, or the plain escaped label when the href was rejected. */
+function mdLink(label: string, href: string): string {
+  return href ? `[${label}](${markdownLinkDestination(href)})` : label
 }
 
 function renderChild(child: DocChild): string {
-  if (typeof child === 'string') return child
+  if (typeof child === 'string') return mdEscapeText(child)
   return renderNode(child)
 }
 
@@ -43,7 +84,14 @@ function renderInline(children: DocChild[]): string {
  * escaping; other characters pass through.
  */
 function yamlString(value: string): string {
-  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+  // Line breaks are escaped too: a raw newline followed by `---` would end
+  // the frontmatter block early in the line-splitting parsers most static-
+  // site generators use.
+  return `"${value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n')}"`
 }
 
 /**
@@ -132,12 +180,13 @@ function renderNode(node: DocNode): string {
     }
 
     case 'link':
-      return `[${renderInline(node.children)}](${sanitizeHref(p.href as string)})`
+      return mdLink(renderInline(node.children), sanitizeHref(p.href as string))
 
     case 'image': {
-      const alt = (p.alt as string) ?? ''
-      let md = `![${alt}](${sanitizeImageSrc(p.src as string)})`
-      if (p.caption) md += `\n*${p.caption}*`
+      const alt = mdEscapeInline((p.alt as string) ?? '')
+      const src = sanitizeImageSrc(p.src as string)
+      let md = src ? `![${alt}](${markdownLinkDestination(src)})` : alt
+      if (p.caption) md += `\n*${mdEscapeInline(String(p.caption))}*`
       return `${md}\n\n`
     }
 
@@ -166,7 +215,7 @@ function renderNode(node: DocNode): string {
         .join('\n')
 
       let md = `${header}\n${separator}\n${body}\n\n`
-      if (p.caption) md = `*${p.caption}*\n\n${md}`
+      if (p.caption) md = `*${mdEscapeInline(String(p.caption))}*\n\n${md}`
       return md
     }
 
@@ -177,9 +226,12 @@ function renderNode(node: DocNode): string {
       return renderInline(node.children)
 
     case 'code': {
-      const lang = (p.language as string) ?? ''
-      const content = renderInline(node.children)
-      return `\`\`\`${lang}\n${content}\n\`\`\`\n\n`
+      const lang = sanitizeCodeLanguage(p.language as string | undefined)
+      // Verbatim content (NOT escaped); the fence is made longer than the
+      // longest backtick run inside it so the content cannot close it.
+      const content = getTextContent(node.children)
+      const fence = '`'.repeat(Math.max(3, longestBacktickRun(content) + 1))
+      return `${fence}${lang}\n${content}\n${fence}\n\n`
     }
 
     case 'divider':
@@ -192,7 +244,7 @@ function renderNode(node: DocNode): string {
       return '\n'
 
     case 'button':
-      return `[${renderInline(node.children)}](${sanitizeHref(p.href as string)})\n\n`
+      return `${mdLink(renderInline(node.children), sanitizeHref(p.href as string))}\n\n`
 
     case 'quote':
       return `> ${renderInline(node.children)}\n\n`

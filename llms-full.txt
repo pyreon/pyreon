@@ -202,7 +202,7 @@ const Card = () => {
 
 ## @pyreon/primitives — Canonical Multiplatform Primitives
 
-The multiplatform UI vocabulary for Pyreon. ONE canonical name per concept (`<Stack>` not `<View>`/`<VStack>`/`<div>`; `onPress` everywhere, not `onClick` vs `action:`). Web renders real DOM via `@pyreon/runtime-dom`; on iOS/Android the PMTC compiler intercepts the JSX at build time and emits idiomatic SwiftUI / Compose (the import is a type-anchor on native). Tokens-first styling (`padding={4}`, `gap="md"`) resolves through the theme per target. No responsive props / animations in v1 — apps needing responsive web use `@pyreon/elements` directly. CRITICAL boundary for native: PMTC compiles your component SOURCE in a narrow declarative TS subset, NOT npm libraries — see `get_pattern({ name: "multiplatform" })` for the supported subset + the silent-failure cliff.
+The multiplatform UI vocabulary for Pyreon. ONE canonical name per concept (`<Stack>` not `<View>`/`<VStack>`/`<div>`; `onPress` everywhere, not `onClick` vs `action:`). Web renders real DOM via `@pyreon/runtime-dom`; on iOS/Android the PMTC compiler intercepts the JSX at build time and emits idiomatic SwiftUI / Compose (the import is a type-anchor on native). Tokens-first styling (`padding={4}`, `gap="md"`) resolves through the theme per target. No responsive props in v1 — apps needing responsive web use `@pyreon/elements` directly; animation is `<Transition>` / `<TransitionGroup>`. CRITICAL boundary for native: PMTC compiles your component SOURCE in a narrow declarative TS subset, NOT npm libraries — see `get_pattern({ name: "multiplatform" })` for the supported subset + the silent-failure cliff.
 
 ```typescript
 import { Stack, Inline, Text, Heading, Button, Field, Toggle } from '@pyreon/primitives'
@@ -1021,7 +1021,7 @@ const $sameResult = parseReactive(sameSchema, $email)
 
 > **Standard Schema is parse-only**: The protocol deliberately omits a metadata channel — that's the gap `withField` fills. The protocol also doesn't carry i18n keys — `formatErrors` adds that layer.
 >
-> **withField mutates in place**: ArkType's Type instances are callable functions whose `~standard.validate` does `this(input)` — `this` must be the callable schema itself. An Object.create() clone is not callable and breaks ArkType. Symbol-keyed non-enumerable mutation is invisible to JSON / for…in / Object.keys / library-internal comparators. Safe.
+> **Schemas are immutable (copy-on-write)**: Every chainable method (`.min()`, `.email()`, `.refine()`, `.field()`, …), every `/mini` action, `pipe()`, and `withField()` returns a NEW schema and never mutates its receiver — a shared base schema can be specialised freely without tightening its other users. Always use the RETURNED schema. Under a CSP without 'unsafe-eval', call `configure({ jit: false })` once at startup (the interpreter then runs every schema; results are identical).
 >
 > **Ships its own validator AND interops with others**: v1 ships Pyreon's own `s` validator runtime (chainable + function-comp, Standard Schema-native, opt-in by import). The DX helpers (`withField` / `parseReactive` / `formatErrors`) ALSO work on top of any other Standard Schema validator (Zod / Valibot / ArkType / typia) — backward-compatible. Use whichever; mix freely.
 >

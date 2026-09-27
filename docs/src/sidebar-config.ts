@@ -137,6 +137,16 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Coming from Angular', slug: 'migrating-from-angular' },
     ],
   },
+  {
+    text: 'Migrating an API client',
+    tier: 'Migrate',
+    items: [
+      { text: 'Lathe from orval', slug: 'lathe-from-orval' },
+      { text: 'Lathe from hey-api', slug: 'lathe-from-hey-api' },
+      { text: 'Lathe from kubb', slug: 'lathe-from-kubb' },
+      { text: 'Lathe from openapi-fetch', slug: 'lathe-from-openapi-fetch' },
+    ],
+  },
 
   // ─── REFERENCE (information-oriented, per package) ──────────────────────
   {
