@@ -73,7 +73,8 @@ describe('generate', () => {
     expect(src).toContain('}) as unknown as Schema<Book>')
     expect(src).toContain('id: /* @__PURE__ */ s.string().uuid(),')
     expect(src).toContain('title: /* @__PURE__ */ s.string().min(1),')
-    expect(src).toContain("status: /* @__PURE__ */ s.enum(['available', 'lost']).optional(),")
+    expect(src).toContain("status: /* @__PURE__ */ s.enum(['available', 'lost'] as const).optional(),")
+    expect(src).toContain("status?: 'available' | 'lost' | undefined")
   })
 
   it('puts the response generic on useQuery, not on .query()', () => {

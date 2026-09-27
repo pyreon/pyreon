@@ -12,11 +12,10 @@
  * runs turns every snapshot test into a flake.
  */
 
-import { modelIndex } from '../core/graph'
-import type { IrDocument, IrField, IrOperation, IrType } from '../core/ir'
+import type { IrDocument, IrOperation } from '../core/ir'
 import { responseKindOf } from '../core/media'
 import { byCodeUnit } from '../core/order'
-import { conforms, sampleNumber, sampleString } from '../core/sample'
+import { sampleValue } from '../core/sample-value'
 import { CLIENT_FILE, endpointSpec, tagFile } from './client'
 import type { ClientName } from './client-runtime'
 import { jsonLiteral, q, regexLiteral, relativeSpecifier, SourceFile } from './writer'
@@ -77,9 +76,8 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
     `Deterministic fixtures for ${doc.title}.`,
     '',
     'Install with `installMocks()` to run the generated client with no server.',
-    'Values are derived from the spec — constraints first, so every fixture is',
-    'one its own schema accepts — and are the same bytes every run, so',
-    'snapshots stay stable. Ordered most-specific first.',
+    'Every fixture satisfies its own schema and is identical on every run, so',
+    'snapshots stay stable.',
   )
   f.line('export const routes: MockRoute[] = [')
   for (const op of ops) {
@@ -94,7 +92,7 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
     if (op.response) {
       const kind = responseKindOf(op)
       if (kind === 'json') {
-        f.line(`    json: ${indentAfterFirst(fixture(op.response, doc, 0), 4)},`)
+        f.line(`    json: ${indentAfterFirst(sampleValue(op.response, doc), 4)},`)
       } else {
         // A non-JSON response answers with a BODY in its own media type, so
         // the client decodes it exactly as it will decode the server's.
@@ -117,8 +115,8 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
   f.line('}')
   f.line()
   f.doc(
-    'The routes CURRENTLY answering — `routes` with any {@link mockOperation}',
-    'overrides applied. The middleware reads this array on every request.',
+    'The routes currently answering — `routes` with any {@link mockOperation}',
+    'overrides applied.',
   )
   f.line('const active: MockRoute[] = [...routes]')
   f.line()
@@ -160,13 +158,9 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
   if (pyreon) {
     f.line()
     f.doc(
-      'The mock middleware.',
-      '',
-      "Routes are anchored at the client's base URL (audit D2): the request URL",
-      'is made relative to `apiBaseUrl()` — read per request, so a',
-      '`configureApi({ baseUrl })` switch keeps matching — before the anchored',
-      'patterns are tested. An unanchored `/pets/:id` also matched',
-      '`/owners/1/pets/2`.',
+      'The mock middleware. Routes match against the URL relative to the',
+      "client's current base URL, so a `configureApi({ baseUrl })` switch keeps",
+      'them answering.',
     )
     f.line('const handle = createMock(active)')
     f.line()
@@ -185,10 +179,9 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
   f.doc(
     'Serve every request from the fixtures above, with no server.',
     '',
-    'Goes through the transport slot the client reserves for this, which is',
-    'separate from `configureApi({ use })` — installing mocks keeps any auth or',
-    'logging middleware. Call it from a test setup or a workbench wrapper; pass',
-    '`null` to `setDevTransport` to go back to the network.',
+    'Any middleware set with `configureApi({ use })` keeps running. Call it from',
+    'a test setup or a workbench wrapper; `setDevTransport(null)` goes back to',
+    'the network.',
   )
   f.line('export function installMocks(): void {')
   if (pyreon) {
@@ -285,77 +278,6 @@ function pathPattern(path: string): string {
 
 function escapeRegex(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-/** A deterministic sample value for a type. */
-function fixture(
-  type: IrType,
-  doc: IrDocument,
-  depth: number,
-  field?: IrField,
-  index = 0,
-): unknown {
-  // A spec `example` is used only when it satisfies the schema it sits in —
-  // real specs carry examples that contradict their own types (audit C7).
-  if (field?.example !== undefined && conforms(field.example, type, (n) => modelType(doc, n))) {
-    return field.example
-  }
-  if (depth > 6) return null
-  switch (type.kind) {
-    case 'enum':
-      return type.values[0]
-    case 'nullable':
-      // The non-null shape: a fixture of `null` renders nothing, so it tests
-      // nothing. A nullable OPTIONAL field is omitted below instead.
-      return fixture(type.inner, doc, depth, field, index)
-    case 'string':
-      return sampleString(type, field, index)
-    case 'number':
-      return sampleNumber(type, index)
-    case 'boolean':
-      return true
-    case 'null':
-      return null
-    case 'unknown':
-      return null
-    case 'array': {
-      // Two elements: one is indistinguishable from a scalar in a UI, three is
-      // noise. Two proves the list renders. The INDEX is threaded so the
-      // elements differ — identical elements share an id, which collapses a
-      // keyed `<For>` to one row and trips the duplicate-key warning, so a
-      // fixture that ships them tests the opposite of what it looks like.
-      //
-      // `minItems` / `maxItems` win over the two: a fixture the generated
-      // schema rejects fails every test that uses it, with a validation error
-      // about data the test never wrote.
-      const n = Math.min(Math.max(2, type.minItems ?? 0), type.maxItems ?? Number.POSITIVE_INFINITY)
-      return Array.from({ length: n }, (_, i) => fixture(type.items, doc, depth + 1, undefined, i + 1))
-    }
-    case 'ref': {
-      const model = modelIndex(doc).get(type.name)
-      return model ? fixture(model.type, doc, depth + 1, undefined, index) : null
-    }
-    case 'union':
-      return type.options.length > 0 ? fixture(type.options[0] as IrType, doc, depth + 1) : null
-    case 'object': {
-      const out: Record<string, unknown> = {}
-      for (const f of type.fields) {
-        // Optional fields are included when they carry an example, and when
-        // they are an ENUM — an enum drives a visible variant (a status badge,
-        // a filter), so a fixture that omits it renders the one state a UI
-        // never has to handle. Other optionals stay out to keep fixtures small.
-        const base = f.type.kind === 'nullable' ? f.type.inner : f.type
-        const isEnum = base.kind === 'enum'
-        if (!f.required && f.example === undefined && !isEnum) continue
-        out[f.name] = fixture(f.type, doc, depth + 1, f, index)
-      }
-      return out
-    }
-  }
-}
-
-function modelType(doc: IrDocument, name: string): IrType | undefined {
-  return modelIndex(doc).get(name)?.type
 }
 
 /** JSON literal, with every line after the first indented to `pad`. */

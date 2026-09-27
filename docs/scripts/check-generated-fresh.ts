@@ -22,6 +22,9 @@ const GENERATED = [
   'docs/src/content/docs/troubleshooting',
   'docs/src/content/docs/troubleshooting.md',
   'docs/src/content/docs/examples.md',
+  // Only the table between the gen:lathe-config markers is generated; the
+  // rest of the page is hand-written, so an edit there never trips this.
+  'docs/src/content/docs/lathe.md',
   'docs/src/reference-nav.generated.ts',
   'docs/src/troubleshooting-nav.generated.ts',
   'packages/native/compiler/src/generated-flow-webview-host.ts',

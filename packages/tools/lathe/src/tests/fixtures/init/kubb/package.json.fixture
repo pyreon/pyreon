@@ -1,0 +1,1 @@
+{ "name": "kubb-app", "private": true, "scripts": { "generate": "kubb generate" }, "devDependencies": { "@kubb/cli": "^3.0.0" } }

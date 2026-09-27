@@ -132,14 +132,12 @@ export function toWorkbenchControl(
   if (control.kind === 'color') {
     return { key: control.name, label, type: 'color', default: control.defaultValue ?? '#3b82f6', ...(control.required ? { required: true } : {}) }
   }
-  // Everything else edits as text.
-  //
-  // A string prop blanks to `''`. A prop whose type the scan could NOT read
-  // (`value?: string | string[]`, an options array, a labels object) keeps NO
-  // default: `''` was a fabricated value, handed to the component on every
-  // render — `TagsInput` received `value: ''`, became controlled with a string
-  // where it expects an array, and rendered an empty 36px box. Same rule as the
-  // number control above.
+  // Everything else edits as text. A STRING prop with no default starts empty;
+  // a prop whose type Atlas could not classify (an object, a VNode, a union
+  // of shapes) starts UNSET, for the same reason a number gets no fabricated
+  // `0`: `''` is a value the component never expected. A generated `@pyreon/lathe`
+  // preview took `data: ''` as "render this" and showed a record of dashes
+  // instead of requesting its data.
   const fallback = typeof seeded === 'string' ? seeded : control.kind === 'unknown' ? undefined : ''
   return { key: control.name, label, type: 'text', default: control.defaultValue ?? fallback, ...(control.required ? { required: true } : {}) }
 }
