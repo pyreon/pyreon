@@ -1,0 +1,8 @@
+{
+  "$comment": "Gzipped first-load JS per built zero route (entry + modulepreloads + static-import closure), measured by scripts/zero-app-checks.ts inside the verify-modes ssr-showcase x ssg cell. ~3% headroom over the 2026-09-24 measurement (48151 / 48134 / 50290 B). Raise ONE entry by hand when growth is intended and say why; run with PYREON_ZERO_BUDGETS_REPORT=1 to print measurements.",
+  "budgets": {
+    "ssr-showcase:/": 49600,
+    "ssr-showcase:/about": 49600,
+    "ssr-showcase:/island-demo": 51800
+  }
+}

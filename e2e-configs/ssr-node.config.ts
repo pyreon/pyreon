@@ -1,4 +1,12 @@
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { definePlaywrightConfig } from '@pyreon/playwright-config'
+
+// The built server's stderr goes to a file the spec reads, so it can assert
+// what production LOGS for a failing request (a 500 must name `[Pyreon]` and
+// the path). Exported through the env so the spec process sees the same path.
+const STDERR_LOG = join(tmpdir(), `pyreon-e2e-ssr-node-stderr.log`)
+process.env.PYREON_E2E_SERVER_STDERR = STDERR_LOG
 
 /**
  * SSR node-deploy real-Chromium gate (Bug A + C).
@@ -25,7 +33,7 @@ export default definePlaywrightConfig({
   webServer: [
     {
       command:
-        'bun run --filter=@pyreon/example-ssr-showcase build:ssr && bun run --filter=@pyreon/example-ssr-showcase start:ssr',
+        'bun run --filter=@pyreon/example-ssr-showcase build:ssr && node ../examples/ssr-showcase/dist/index.js 2> ' + JSON.stringify(STDERR_LOG),
       port: 5203,
       timeout: 180_000,
     },

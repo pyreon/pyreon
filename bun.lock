@@ -3137,6 +3137,7 @@
         "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser-playwright": "^4.1.11",
         "sharp": "^0.35.3",
+        "typescript": "^6.0.3",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",

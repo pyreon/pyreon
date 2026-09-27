@@ -7,6 +7,11 @@
  * can fire at runtime. `pyreon info` DETECTS that skew; `pyreon upgrade` FIXES
  * it — rewriting the project's `package.json` ranges to a single target.
  *
+ * It also runs the VERSIONED CODEMODS (`./codemods`) the upgrade crosses:
+ * every codemod whose `introducedIn` lies in `(lowest declared version,
+ * target]`. They are semantics-preserving source migrations for breaking
+ * 0.x changes; a dry run lists the files each would change.
+ *
  * Dry-run by default (prints the plan); `--write` applies. The pure core
  * (`resolveTarget` / `computeUpgradePlan` / `rewriteDeps`) is exported +
  * fixture-tested; `upgrade()` handles flags + rendering + the file write.
@@ -14,6 +19,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { bold, colorEnabled, cyan, gray, green } from '@pyreon/ansi'
+import { type CodemodResult, runCodemods, selectCodemods } from './codemods'
 import { detectSkew, scanInstalledPyreon } from './info'
 
 export interface UpgradeChange {
@@ -136,6 +142,20 @@ export interface UpgradeOptions {
   json?: boolean
 }
 
+/** The lowest declared `@pyreon/*` version — where the upgrade starts from. */
+export function lowestDeclared(declared: Record<string, string>): string | null {
+  const vs = Object.values(declared)
+    .filter((r) => !r.includes(':'))
+    .map(cleanVersion)
+    .filter((v): v is string => v !== null)
+  if (vs.length === 0) return null
+  return vs.reduce((min, v) => (compareVersions(v, min) < 0 ? v : min))
+}
+
+function writeCodemods(cwd: string, results: CodemodResult[]): void {
+  for (const r of results) for (const f of r.files) writeFileSync(join(cwd, f.path), f.next)
+}
+
 /** `pyreon upgrade` entry. Returns an exit code (0 ok; 1 unresolvable target). */
 export function upgrade(options: UpgradeOptions = {}): number {
   const cwd = options.cwd ?? process.cwd()
@@ -165,18 +185,44 @@ export function upgrade(options: UpgradeOptions = {}): number {
   }
 
   const changes = computeUpgradePlan(declared, target, options.exact ?? false)
+  const from = lowestDeclared(declared)
+  const codemods = from === null ? [] : runCodemods(cwd, selectCodemods(from, target))
+  const pendingCodemods = codemods.filter((r) => r.files.length > 0)
 
   if (options.json) {
-    console.log(JSON.stringify({ ok: true, target, write: !!options.write, changes }, null, 2))
+    console.log(
+      JSON.stringify(
+        {
+          ok: true,
+          target,
+          write: !!options.write,
+          changes,
+          codemods: codemods.map((r) => ({ id: r.id, files: r.files.map((f) => f.path) })),
+        },
+        null,
+        2,
+      ),
+    )
     if (options.write && changes.length > 0 && pkg) {
       writeFileSync(pkgPath, `${JSON.stringify(rewriteDeps(pkg, changes), null, 2)}\n`)
     }
+    if (options.write) writeCodemods(cwd, pendingCodemods)
     return 0
   }
 
   const head = (s: string) => (c ? bold(s) : s)
   const muted = (s: string) => (c ? gray(s) : s)
   const skew = detectSkew(installed)
+
+  if (pendingCodemods.length > 0) {
+    console.log(`\n  ${head('codemods')} for the breaking changes between ${from} and ${target}:`)
+    for (const r of pendingCodemods) {
+      console.log(`    ${c ? cyan(r.id) : r.id}`)
+      for (const f of r.files) console.log(muted(`      ${f.path}`))
+    }
+    if (options.write) writeCodemods(cwd, pendingCodemods)
+    else console.log(muted('    (dry run — re-run with --write to apply)'))
+  }
 
   if (changes.length === 0) {
     const ok = c ? green('✓') : '✓'
