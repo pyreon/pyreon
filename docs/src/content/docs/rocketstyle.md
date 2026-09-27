@@ -212,7 +212,7 @@ const ThemedButton = rs({ name: 'ThemedButton', component: 'button' })
   }))
 ```
 
-The callback's third argument, `helpers`, carries the resolved mode: `{ mode, isDark, isLight, createElement }`. The callback receives the consumer's props as the first argument and the app theme as the second.
+The callback's third argument, `helpers`, carries the resolved mode plus a render helper: `{ render, mode, isDark, isLight }`. `helpers.render` is `@pyreon/ui-core`'s polymorphic content renderer (handles strings, VNodes, component functions, and render-prop functions uniformly) — rarely needed unless an attrs value must conditionally produce a VNode. The callback receives the consumer's props as the first argument and the app theme as the second.
 
 Every `.attrs()` value is a **default**, not a required prop — the consumer can always override it. The optional second argument configures the call:
 
@@ -440,6 +440,10 @@ import { Provider } from '@pyreon/rocketstyle'
 The rocketstyle `Provider`'s props are `{ theme, mode, inversed, provider, children }`. In most apps you'll use the higher-level `PyreonUI` provider from `@pyreon/ui-core` (which wraps theme + mode + config in one), and reach for rocketstyle's `Provider` only for fine-grained subtree overrides.
 :::
 
+:::warning{title="Two unrelated meanings of 'provider'"}
+`<Provider provider={CustomProvider}>` (a prop on the tree-level `Provider` component, default `CoreProvider` from `@pyreon/ui-core`) swaps the low-level context-provider implementation underneath it — a rare, advanced knob most apps never touch. This is **completely unrelated** to `.config({ provider: true })` on an individual rocketstyle component, which marks that component as exposing its pseudo-state to consumer descendants (see below). Don't confuse the two just because they share a name.
+:::
+
 For component-to-component context, `.config({ provider: true })` exposes a component's live pseudo-state to descendants, and `.config({ consumer })` reads a parent provider's pseudo-state into a child's props — used for compound components (e.g. a menu item reacting to its parent menu's hover).
 
 ## Integration with Styler
@@ -561,7 +565,7 @@ Every method returns a new `RocketStyleComponent` (immutable builder).
 | `.theme(cb)` | `(theme, mode, css)` |
 | `.states(cb)` / `.sizes(cb)` / `.variants(cb)` | `(theme, mode, css)` |
 | Transform-dimension value fn (`.modifiers`) | `(theme, appTheme, mode, css)` |
-| `.attrs(cb)` | `(props, theme, helpers)` — `helpers = { mode, isDark, isLight, createElement }` |
+| `.attrs(cb)` | `(props, theme, helpers)` — `helpers = { render, mode, isDark, isLight }` |
 | `.styles(cb)` | `(css)`; interpolation fns receive `{ $rocketstyle, $rocketstate }` |
 
 Here `mode` is the `mode(light, dark)` helper that returns the value matching the active theme mode.

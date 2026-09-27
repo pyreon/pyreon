@@ -10,6 +10,7 @@ import { createApp } from "./app";
 import { createISRHandler } from "./isr";
 import { createRequestPipeline, matchPattern, trimTrailingSlashes } from "./pipeline";
 import { collectRouteModes, resolveRenderModeForPath } from "./route-modes";
+import { withRouteOgMeta } from "./og-route";
 import { render404Page } from "./not-found";
 import type { RenderMode, RouteMiddlewareEntry, ZeroConfig } from "./types";
 
@@ -139,7 +140,12 @@ function readBuiltTemplate(): string | undefined {
  *
  * export default createServer({ routes, routeMiddleware, apiRoutes })
  */
-export function createServer(options: CreateServerOptions) {
+// The return type is annotated on purpose: the handler carries an internal
+// symbol-keyed tag (`PipelineTaggedHandler`), and leaving it inferred made
+// `export default createServer(...)` in a declaration-emitting app fail with
+// TS2883 ("cannot be named without a reference to PipelineTaggedHandler").
+// The tag is read by symbol at runtime (vite-plugin.ts), never by type.
+export function createServer(options: CreateServerOptions): (req: Request) => Promise<Response> {
 	const config = mergeServerConfig(
 		typeof __ZERO_SERVER_CONFIG__ !== "undefined" ? __ZERO_SERVER_CONFIG__ : undefined,
 		options.config,
@@ -202,7 +208,7 @@ export function createServer(options: CreateServerOptions) {
 		resolvedClientEntry = false;
 	}
 
-	const baseHandler = createHandler({
+	const baseHandler = withRouteOgMeta(createHandler({
 		App,
 		routes: options.routes,
 		middleware: allMiddleware,
@@ -217,7 +223,7 @@ export function createServer(options: CreateServerOptions) {
 		mode: config.ssr?.mode ?? (config.mode === "ssr" ? "stream" : "string"),
 		...(resolvedTemplate ? { template: resolvedTemplate } : {}),
 		...(resolvedClientEntry !== undefined ? { clientEntry: resolvedClientEntry } : {}),
-	});
+	}), options.routes, config.routeOg);
 
 	// A no-JS action post re-renders its page through a handler whose ONLY
 	// middleware restores the POST's own middleware results (locals,
@@ -226,14 +232,14 @@ export function createServer(options: CreateServerOptions) {
 	// Never an ISR-cached handler: a result page is per submission.
 	let actionRenderHandler: ((req: Request) => Promise<Response>) | null = null;
 	renderForAction = (req) =>
-		(actionRenderHandler ??= createHandler({
+		(actionRenderHandler ??= withRouteOgMeta(createHandler({
 			App,
 			routes: options.routes,
 			middleware: [createActionRerenderMiddleware()],
 			mode: config.ssr?.mode ?? (config.mode === "ssr" ? "stream" : "string"),
 			...(resolvedTemplate ? { template: resolvedTemplate } : {}),
 			...(resolvedClientEntry !== undefined ? { clientEntry: resolvedClientEntry } : {}),
-		}))(req);
+		}), options.routes, config.routeOg))(req);
 
 	// PR-S5: wire the render mode. `mode: 'isr'` was a typed-but-not-
 	// wired surface from inception — apps that set it got SSR behavior
@@ -251,7 +257,7 @@ export function createServer(options: CreateServerOptions) {
 		// streaming. Built lazily — only when a route actually declares
 		// 'isr' inside a streaming app.
 		() =>
-			createHandler({
+			withRouteOgMeta(createHandler({
 				App,
 				routes: options.routes,
 				middleware: allMiddleware,
@@ -260,7 +266,7 @@ export function createServer(options: CreateServerOptions) {
 				...(resolvedClientEntry !== undefined
 					? { clientEntry: resolvedClientEntry }
 					: {}),
-			}),
+			}), options.routes, config.routeOg),
 		isEndpoint,
 	);
 

@@ -21,13 +21,13 @@ describe('elementRef through a REAL mount and a REAL hook', () => {
     const panel = query<HTMLDivElement>(host, '[data-testid="panel"]')
     expect(panel, 'the ref wired the element').toBeTruthy()
 
-    // A mousedown INSIDE must not fire; the hook is reading through the same ref.
-    panel.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
-    expect(outside, 'inside mousedown ignored').toBe(0)
+    // A pointerdown INSIDE must not fire; the hook is reading through the same ref.
+    panel.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    expect(outside, 'inside pointerdown ignored').toBe(0)
 
-    // A mousedown OUTSIDE must fire — proving the hook actually resolved the node.
-    document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
-    expect(outside, 'outside mousedown fired').toBe(1)
+    // A pointerdown OUTSIDE must fire — proving the hook actually resolved the node.
+    document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    expect(outside, 'outside pointerdown fired').toBe(1)
 
     dispose()
     host.remove()

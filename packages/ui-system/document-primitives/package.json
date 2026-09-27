@@ -49,6 +49,7 @@
     "@pyreon/document": "workspace:^",
     "@pyreon/elements": "workspace:^",
     "@pyreon/rocketstyle": "workspace:^",
+    "@pyreon/ui-core": "workspace:^",
     "@pyreon/unistyle": "workspace:^"
   },
   "devDependencies": {

@@ -1,4 +1,4 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const Stage = el
   .attrs({
@@ -6,7 +6,7 @@ export const Stage = el
     contentAlignX: 'center',
     contentAlignY: 'center',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     position: 'relative',
     flex: '1',
     minHeight: '0',

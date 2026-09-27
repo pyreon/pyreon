@@ -8,7 +8,7 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
  * colour; an image pattern is named.
  */
 const OPTION = `
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return (
     <OptionChart option={{
@@ -39,7 +39,7 @@ describe.each(['swift', 'kotlin'] as const)('gradient colours on %s', (target) =
 
   it('a radial gradient lowers to the radial mark gradient with zero warnings, and compiles', () => {
     const r = transform(`
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart option={{ xAxis: { type: 'category', data: ['a'] }, yAxis: {}, series: [{ type: 'bar', itemStyle: { color: { type: 'radial', x: 0.5, y: 0.5, r: 0.5, colorStops: [{ offset: 0, color: '#111111' }, { offset: 1, color: '#222222' }] } }, data: [1] }] }} />
 }`, { target })
@@ -55,7 +55,7 @@ export function App() {
 
   it('an image fill crosses as an image pattern; a line stroke image is named', () => {
     const r = transform(`
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart option={{ xAxis: { type: 'category', data: ['a'] }, yAxis: {}, series: [{ type: 'bar', itemStyle: { color: { image: 'texture.png', repeat: 'repeat' } }, data: [1] }, { type: 'line', lineStyle: { color: { image: 'texture.png' } }, data: [2] }] }} />
 }`, { target })
@@ -69,7 +69,7 @@ export function App() {
 describe.each(['swift', 'kotlin'] as const)('grammar gradient on %s', (target) => {
   it('a PlotChart mark with a literal gradient option lowers the same SeriesGradient', () => {
     const r = transform(`
-import { PlotChart, bars, line } from '@pyreon/charts/plot'
+import { PlotChart, bars, line } from '@pyreon/charts/engine'
 export function App() {
   return <PlotChart data={[{ x: 'a', v: 1 }, { x: 'b', v: 2 }]} x={(d) => d.x} marks={[
     bars((d) => d.v, { gradient: { stops: [{ offset: 0, color: '#ff0000' }, { offset: 1, color: '#0000ff' }], direction: 'horizontal' } }),

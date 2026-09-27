@@ -1,6 +1,6 @@
 import type { Signal } from '@pyreon/reactivity'
 import { isServer, signal } from '@pyreon/reactivity'
-import { matchesComboWithKey, parseShortcut, splitShortcutList } from './parse'
+import { matchesComboWithKey, normalizeEventKey, parseShortcut, splitShortcutList } from './parse'
 import type { HotkeyEntry, HotkeyOptions, InputKind, KeyCombo } from './types'
 
 // ─── Per-target registry state ──────────────────────────────────────────────
@@ -75,7 +75,11 @@ function armSequenceTimeout(state: TargetState): void {
  * editable element. Computed ONCE per dispatch (identical for every entry).
  */
 function focusedInputKind(event: KeyboardEvent): InputKind | null {
-  const target = event.target as HTMLElement | null
+  // composedPath()[0], not `target`: a shadow root RETARGETS `target` to its
+  // host, so an <input> inside a web component read as a plain element and
+  // every single-key shortcut fired while the user typed into it.
+  const path = typeof event.composedPath === 'function' ? event.composedPath() : []
+  const target = (path[0] ?? event.target) as HTMLElement | null
   if (!target) return null
   const tag = target.tagName
   if (tag === 'INPUT') return 'input'
@@ -98,6 +102,7 @@ function allowedInInput(
 
 // ─── Dispatch ────────────────────────────────────────────────────────────────
 
+
 function isEnabled(entry: HotkeyEntry): boolean {
   const e = entry.options.enabled
   return typeof e === 'function' ? e() : e
@@ -114,10 +119,11 @@ function fire(entry: HotkeyEntry, event: KeyboardEvent, unregisterOnce: () => vo
 function makeDispatch(state: TargetState, eventType: 'keydown' | 'keyup') {
   return (raw: Event): void => {
     const event = raw as KeyboardEvent
+    const eventKey = normalizeEventKey(event)
+    if (eventKey === null) return
     const scopes = activeScopes.peek()
     // Per-dispatch constants hoisted out of all entry loops: the lower-cased
     // key and the focused-editable kind are identical for every entry.
-    const eventKey = event.key.toLowerCase()
     const inputKind = focusedInputKind(event)
 
     // ─── Stage 1 (keydown only): advance pending sequences ────────────────
@@ -451,6 +457,8 @@ function ensurePressedTracking(): void {
   pressedTrackingAttached = true
   pressedHandlers = {
     down: (e: KeyboardEvent) => {
+      // Guarded like dispatch: a key-less synthetic keydown must not throw.
+      if (typeof e.key !== 'string') return
       const k = e.key.toLowerCase()
       const cur = pressedKeys.peek()
       if (cur.has(k)) return
@@ -459,6 +467,7 @@ function ensurePressedTracking(): void {
       pressedKeys.set(next)
     },
     up: (e: KeyboardEvent) => {
+      if (typeof e.key !== 'string') return
       const k = e.key.toLowerCase()
       const cur = pressedKeys.peek()
       if (!cur.has(k)) return

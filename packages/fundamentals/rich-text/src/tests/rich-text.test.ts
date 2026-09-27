@@ -66,10 +66,11 @@ describe('createRichTextEditor (pre-mount, no TipTap)', () => {
     expect(editor.view()).toBeNull()
   })
 
-  it('wordCount is 0 and isActive is false before mount', () => {
+  it('wordCount reflects HTML content and isActive is false before mount', () => {
     const editor = createRichTextEditor({ content: '<p>two words</p>' })
-    // Pre-mount the engine is not loaded — counts/active fall back.
-    expect(editor.wordCount()).toBe(0)
+    // Pre-mount the engine is not loaded: counts come from the engine-free
+    // HTML parse (they used to read 0 for an HTML draft); isActive falls back.
+    expect(editor.wordCount()).toBe(2)
     expect(editor.isActive('bold')).toBe(false)
     expect(editor.isActive('heading', { level: 2 })).toBe(false)
   })

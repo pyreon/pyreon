@@ -50,7 +50,7 @@ struct PyreonFlowStateTests {
             selectionMode: "full", multiSelect: false, onlyRenderVisibleElements: true, snapToObjects: false,
             defaultEdgeType: "straight", connectionLineType: "step",
             defaultEdgeOptions: PyreonFlowDefaultEdgeOptions(type: "smoothstep", animated: true, interactionWidth: 44),
-            fitView: true, fitViewPadding: 0.2, autoHistory: false,
+            fitView: true, fitViewPadding: 0.2, autoHistory: false, historyLimit: 7.5,
             isValidConnection: { $0.source != $0.target },
             reducedMotion: false, deleteKeys: ["ForwardDelete"], multiSelectionKey: "ctrl",
             selectionKey: nil, zoomActivationKey: "meta", preventScrolling: false)
@@ -68,7 +68,7 @@ struct PyreonFlowStateTests {
         check(!parityConfigured.autoPanOnNodeDrag && !parityConfigured.autoPanOnConnect && parityConfigured.autoPanSpeed == 0.0, "Apple retains autoPanOnNodeDrag / autoPanOnConnect and clamps autoPanSpeed")
         check(configured.onlyRenderVisibleElements && !configured.snapToObjects && configured.defaultEdgeType == "straight" && configured.connectionLineType == "step", "Apple retains render and connection config")
         check(configured.defaultEdgeOptions == PyreonFlowDefaultEdgeOptions(type: "smoothstep", animated: true, interactionWidth: 44) && configured.defaultMarkerEnd == nil, "Apple retains edge defaults")
-        check(configured.fitViewOnLoad && configured.fitViewPadding == 0.2 && !configured.autoHistory && configured.reducedMotion == false, "Apple retains lifecycle config")
+        check(configured.fitViewOnLoad && configured.fitViewPadding == 0.2 && !configured.autoHistory && configured.historyLimit == 7.5 && configured.reducedMotion == false, "Apple retains lifecycle config")
         check(!configured.isValidConnection(PyreonFlowConnection(source: "same", target: "same")) && configured.deleteKeys == ["ForwardDelete"], "Apple retains validation and delete-key config")
         configured.minZoom = 0.75
         configured.pannable = false
@@ -1440,6 +1440,51 @@ struct PyreonFlowStateTests {
             check(f.selectedNodes().sorted() == [], "parity: with autoHistory on, the same removal is undoable — selected nodes")
             check(f.selectedEdges().sorted() == [], "parity: with autoHistory on, the same removal is undoable — selected edges")
             check(abs(f.viewport.x - 0.0) < 1e-6 && abs(f.viewport.y - 0.0) < 1e-6 && abs(f.viewport.zoom - 1.0) < 1e-6, "parity: with autoHistory on, the same removal is undoable — viewport")
+        }
+        do { // config: historyLimit 2 keeps only the last two undo checkpoints
+            let f = PyreonFlowState<NodeData>(nodes: [PyreonFlowNode(id: "1", position: PyreonXYPosition(x: 0.0, y: 0.0), data: NodeData(label: "1")), PyreonFlowNode(id: "2", position: PyreonXYPosition(x: 200.0, y: 120.0), data: NodeData(label: "2")), PyreonFlowNode(id: "3", position: PyreonXYPosition(x: 400.0, y: 0.0), data: NodeData(label: "3")), PyreonFlowNode(id: "4", position: PyreonXYPosition(x: 600.0, y: 120.0), data: NodeData(label: "4"))], edges: [PyreonFlowEdge(id: "e1", source: "1", target: "2"), PyreonFlowEdge(id: "e2", source: "2", target: "3"), PyreonFlowEdge(id: "e3", source: "3", target: "4")], searchText: { $0.label })
+            f.historyLimit = 2.0
+            f.removeNode("2")
+            f.removeNode("3")
+            f.removeNode("4")
+            f.undo()
+            f.undo()
+            f.undo()
+            check(parityNodes(f, [("1", 0.0, 0.0), ("3", 400.0, 0.0), ("4", 600.0, 120.0)]), "parity: config: historyLimit 2 keeps only the last two undo checkpoints — nodes")
+            check(parityEdges(f, [("e3", "3", "4")]), "parity: config: historyLimit 2 keeps only the last two undo checkpoints — edges")
+            check(f.selectedNodes().sorted() == [], "parity: config: historyLimit 2 keeps only the last two undo checkpoints — selected nodes")
+            check(f.selectedEdges().sorted() == [], "parity: config: historyLimit 2 keeps only the last two undo checkpoints — selected edges")
+            check(abs(f.viewport.x - 0.0) < 1e-6 && abs(f.viewport.y - 0.0) < 1e-6 && abs(f.viewport.zoom - 1.0) < 1e-6, "parity: config: historyLimit 2 keeps only the last two undo checkpoints — viewport")
+        }
+        do { // config: a fractional historyLimit is floored
+            let f = PyreonFlowState<NodeData>(nodes: [PyreonFlowNode(id: "1", position: PyreonXYPosition(x: 0.0, y: 0.0), data: NodeData(label: "1")), PyreonFlowNode(id: "2", position: PyreonXYPosition(x: 200.0, y: 120.0), data: NodeData(label: "2")), PyreonFlowNode(id: "3", position: PyreonXYPosition(x: 400.0, y: 0.0), data: NodeData(label: "3")), PyreonFlowNode(id: "4", position: PyreonXYPosition(x: 600.0, y: 120.0), data: NodeData(label: "4"))], edges: [PyreonFlowEdge(id: "e1", source: "1", target: "2"), PyreonFlowEdge(id: "e2", source: "2", target: "3"), PyreonFlowEdge(id: "e3", source: "3", target: "4")], searchText: { $0.label })
+            f.historyLimit = 2.9
+            f.removeNode("2")
+            f.removeNode("3")
+            f.removeNode("4")
+            f.undo()
+            f.undo()
+            f.undo()
+            check(parityNodes(f, [("1", 0.0, 0.0), ("3", 400.0, 0.0), ("4", 600.0, 120.0)]), "parity: config: a fractional historyLimit is floored — nodes")
+            check(parityEdges(f, [("e3", "3", "4")]), "parity: config: a fractional historyLimit is floored — edges")
+            check(f.selectedNodes().sorted() == [], "parity: config: a fractional historyLimit is floored — selected nodes")
+            check(f.selectedEdges().sorted() == [], "parity: config: a fractional historyLimit is floored — selected edges")
+            check(abs(f.viewport.x - 0.0) < 1e-6 && abs(f.viewport.y - 0.0) < 1e-6 && abs(f.viewport.zoom - 1.0) < 1e-6, "parity: config: a fractional historyLimit is floored — viewport")
+        }
+        do { // config: a non-positive historyLimit falls back to the default depth
+            let f = PyreonFlowState<NodeData>(nodes: [PyreonFlowNode(id: "1", position: PyreonXYPosition(x: 0.0, y: 0.0), data: NodeData(label: "1")), PyreonFlowNode(id: "2", position: PyreonXYPosition(x: 200.0, y: 120.0), data: NodeData(label: "2")), PyreonFlowNode(id: "3", position: PyreonXYPosition(x: 400.0, y: 0.0), data: NodeData(label: "3")), PyreonFlowNode(id: "4", position: PyreonXYPosition(x: 600.0, y: 120.0), data: NodeData(label: "4"))], edges: [PyreonFlowEdge(id: "e1", source: "1", target: "2"), PyreonFlowEdge(id: "e2", source: "2", target: "3"), PyreonFlowEdge(id: "e3", source: "3", target: "4")], searchText: { $0.label })
+            f.historyLimit = 0.0
+            f.removeNode("2")
+            f.removeNode("3")
+            f.removeNode("4")
+            f.undo()
+            f.undo()
+            f.undo()
+            check(parityNodes(f, [("1", 0.0, 0.0), ("2", 200.0, 120.0), ("3", 400.0, 0.0), ("4", 600.0, 120.0)]), "parity: config: a non-positive historyLimit falls back to the default depth — nodes")
+            check(parityEdges(f, [("e1", "1", "2"), ("e2", "2", "3"), ("e3", "3", "4")]), "parity: config: a non-positive historyLimit falls back to the default depth — edges")
+            check(f.selectedNodes().sorted() == [], "parity: config: a non-positive historyLimit falls back to the default depth — selected nodes")
+            check(f.selectedEdges().sorted() == [], "parity: config: a non-positive historyLimit falls back to the default depth — selected edges")
+            check(abs(f.viewport.x - 0.0) < 1e-6 && abs(f.viewport.y - 0.0) < 1e-6 && abs(f.viewport.zoom - 1.0) < 1e-6, "parity: config: a non-positive historyLimit falls back to the default depth — viewport")
         }
         do { // config: connectionRules gate a connection by the source and target node types
             let f = PyreonFlowState<NodeData>(nodes: [PyreonFlowNode(id: "in", type: "input", position: PyreonXYPosition(x: 0.0, y: 0.0), data: NodeData(label: "in")), PyreonFlowNode(id: "proc", type: "process", position: PyreonXYPosition(x: 200.0, y: 0.0), data: NodeData(label: "proc")), PyreonFlowNode(id: "out", type: "output", position: PyreonXYPosition(x: 400.0, y: 0.0), data: NodeData(label: "out")), PyreonFlowNode(id: "plain", position: PyreonXYPosition(x: 600.0, y: 0.0), data: NodeData(label: "plain"))], edges: [], searchText: { $0.label })

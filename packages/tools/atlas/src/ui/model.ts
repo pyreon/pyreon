@@ -5,7 +5,7 @@
  */
 import { h, type VNodeChildAtom } from '@pyreon/core'
 import { PermissionsProvider } from '@pyreon/permissions'
-import { computed, effect, isClient, signal, type Computed, type Effect, type Signal } from '@pyreon/reactivity'
+import { batch, computed, effect, isClient, signal, type Computed, type Effect, type Signal } from '@pyreon/reactivity'
 import type { A11yReport } from './a11y'
 import { analyzeA11y } from './a11y'
 import type { AddonTabId, BackgroundPreset, LocalePreset, PseudoId, ViewportPreset } from './addons'
@@ -26,11 +26,23 @@ import {
   pathBase,
   serializeUrlState,
   urlStateChanged,
+  type UrlDefaults,
   type UrlState,
 } from './url-state'
 import type { CatalogGroup, WorkbenchCatalog, WorkbenchComponent } from './catalog'
 import { buildSearchIndex, defaultValues, groupComponents } from './catalog'
-import { browseOrder, buildHierarchy, filterHierarchy, type HierarchyNode } from './hierarchy'
+import { captureDomActions } from './dom-actions'
+import { adoptBodyPortals } from './portal-adopt'
+import type { AtlasWrapperProps } from '../core/extension'
+import {
+  ancestorPaths,
+  browseOrder,
+  buildHierarchy,
+  filterHierarchy,
+  mergeOwners,
+  ownerPaths,
+  type HierarchyNode,
+} from './hierarchy'
 import type { BrandTheme, ThemeTokens } from './theme'
 import { THEMES, tokens } from './theme'
 
@@ -136,16 +148,66 @@ export interface WorkbenchModel {
    * after their parent, collapsed groups skipped) — what ↑↓ walks.
    */
   browseIds: Computed<string[]>
-  /** Collapsed group PATHS (default: everything expanded). */
+  /**
+   * Collapsed group PATHS as the user left them. Plain folders start
+   * expanded; a folder OWNED by a component (its part list) starts collapsed.
+   */
   collapsed: Signal<ReadonlySet<string>>
+  /**
+   * Is this folder collapsed ON SCREEN? While the sidebar filter is active
+   * every folder is open — a match hidden inside a collapsed part list read as
+   * "the filter found nothing".
+   */
+  isCollapsed: (path: string) => boolean
   toggleGroup: (path: string) => void
   noResults: Computed<boolean>
+  /** Components the sidebar filter currently matches (== `total` when unfiltered). */
+  matchCount: Computed<number>
+  /**
+   * The scenario the canvas is showing EXACTLY — set when one is applied,
+   * cleared by any edit, and `Default` when the component has no edits at all.
+   * `null` means "edited away from every scenario".
+   */
+  activeScenario: Computed<string | null>
+  /**
+   * Bumped after every preview render settles (the same observer that
+   * re-probes a11y). Anything that needs to know what the LAST render did —
+   * which permission keys it consulted — reads it to re-evaluate.
+   */
+  renderTick: Signal<number>
+  /** Narrow viewport (≤900px): the sidebar is a drawer and the panels a sheet. */
+  compact: Signal<boolean>
+  /** Compact-mode sidebar drawer. Not persisted — a drawer is transient. */
+  drawerOpen: Signal<boolean>
+  /** Compact-mode addon bottom sheet. Not persisted. */
+  sheetOpen: Signal<boolean>
   /** Live a11y verdict for the RENDERED preview (re-probed after each render). */
   a11y: Signal<A11yReport>
   /** True when the last render left the preview surface with no DOM at all. */
   previewEmpty: Signal<boolean>
   /** `ref` for the preview surface — attach it so the a11y checks can inspect the real DOM. */
   previewRef: (el: HTMLElement | null) => void
+  /**
+   * True while the visible preview holds an overlay the component PORTALED
+   * (a modal, a dialog, a drawer) — adopted from `document.body` into the
+   * preview so it renders there instead of over the workbench. The surface
+   * grows to give it room.
+   */
+  overlayOpen: Signal<boolean>
+  /**
+   * `ref` for any OTHER surface that renders the preview (the Docs page's live
+   * block) — adopts the component's portaled overlays into it, the way the
+   * canvas surface does.
+   */
+  overlayHostRef: (el: HTMLElement | null) => void
+  /**
+   * Which parts of the appearance the project's wrapper actually CONSUMED
+   * (`mode`, `brand`). A wrapped catalog whose wrapper never reads `brand`
+   * cannot vary by brand — the Theme Lab states that instead of tiling copies.
+   */
+  wrapperReads: Signal<{ mode: boolean; brand: boolean }>
+  /** True when a project wrapper renders every component (`WorkbenchCatalog.wrapped`). */
+  wrapped: boolean
   // actions
   setValue: (id: string, key: string, v: unknown) => void
   /**
@@ -165,7 +227,11 @@ export interface WorkbenchModel {
   search: (q: string) => string[]
   /** Fulltext hits with the matched-field reason — the ⌘K dialog's surface. */
   searchHits: (q: string) => import('./catalog').CatalogSearchHit[]
-  preview: () => VNodeChildAtom | VNodeChildAtom[]
+  /**
+   * Render the selected component. `appearance` overrides the workbench's mode
+   * and brand for this one render — the Theme Lab's tiles.
+   */
+  preview: (appearance?: { dark?: boolean; brandId?: string }) => VNodeChildAtom | VNodeChildAtom[]
   /** `ref` for the search `<input>` — attach in the top bar so ⌘K can focus it. */
   searchRef: (el: HTMLInputElement | null) => void
   /** Focus the search input (⌘K) via the captured ref — no DOM query. */
@@ -253,7 +319,15 @@ export function createModel(
   // used as an object KEY below. Narrowing it to an id the catalog already
   // contains means no attacker-chosen string ever names a property.
   const linkedComponent = catalog.components.find((c) => c.id === initial.c)
-  const selId = signal(linkedComponent?.id ?? catalog.components[0]?.id ?? '')
+  // The unfiltered tree, owners folded in. Built BEFORE the selection because
+  // the default selection is read off it.
+  const fullTree = mergeOwners(buildHierarchy(catalog.components))
+  // No link → the FIRST ROW THE SIDEBAR SHOWS, not `catalog.components[0]`.
+  // The two orders differ (a derived catalog lists nested folders first), and
+  // opening on a component three screens down the tree, with nothing
+  // highlighted where the eye starts, read as "nothing is selected".
+  const firstShown = browseOrder(fullTree, new Set())[0]
+  const selId = signal(linkedComponent?.id ?? firstShown ?? catalog.components[0]?.id ?? '')
 
   // The state a component OPENS on: its `Default` scenario's args, over the
   // control defaults.
@@ -355,30 +429,74 @@ export function createModel(
     const ids = visibleIds()
     return groups.map((g) => ({ ...g, items: g.items.filter((i) => ids.has(i.id)) })).filter((g) => g.items.length > 0)
   })
-  const fullTree = buildHierarchy(catalog.components)
-  const tree = computed(() => filterHierarchy(fullTree, visibleIds()))
-  // Collapsed rather than expanded state, so the default needs no
-  // initialisation pass: an unknown path is expanded.
-  const collapsed = signal<ReadonlySet<string>>(new Set())
+  const rawTree = buildHierarchy(catalog.components)
+  // Filter the RAW tree, then fold owners in — so an owner the filter hides
+  // leaves a plain folder behind rather than a row for a non-match.
+  const tree = computed(() => {
+    const ids = visibleIds()
+    return ids.size === total ? fullTree : mergeOwners(filterHierarchy(rawTree, ids))
+  })
+  // Collapsed rather than expanded state, so an unknown path is expanded.
+  // Part lists (owned folders) start collapsed: the tree opens as the list of
+  // COMPONENTS, and a part is one caret away — ~40 fewer rows to scan (and to
+  // mount) on a design-system-sized catalog.
+  const collapsed = signal<ReadonlySet<string>>(new Set(ownerPaths(fullTree)))
+  const filtering = computed(() => filter().trim() !== '')
+  const NONE: ReadonlySet<string> = new Set()
+  const shownCollapsed = computed(() => (filtering() ? NONE : collapsed()))
+  const isCollapsed = (path: string) => shownCollapsed().has(path)
   const toggleGroup = (path: string) => {
     const next = new Set(collapsed())
     if (next.has(path)) next.delete(path)
     else next.add(path)
     collapsed.set(next)
   }
+  // Reveal: whenever the selection changes (a link, ⌘K, ↑↓, a docs scenario
+  // link), open every folder above its row. Only on a CHANGE — collapsing the
+  // folder that holds the selection is a deliberate act and must stick.
+  const reveal = (id: string) => {
+    const need = ancestorPaths(fullTree, id).filter((p) => collapsed.peek().has(p))
+    if (need.length === 0) return
+    const next = new Set(collapsed.peek())
+    for (const p of need) next.delete(p)
+    collapsed.set(next)
+  }
+  reveal(selId.peek())
+  selId.subscribe(() => reveal(selId.peek()))
   const noResults = computed(() => tree().length === 0)
-  const browseIds = computed(() => browseOrder(tree(), collapsed()))
+  const matchCount = computed(() => visibleIds().size)
+  const browseIds = computed(() => browseOrder(tree(), shownCollapsed()))
 
+  // The scenario last APPLIED, per component. Any edit clears it — the canvas
+  // no longer shows the pinned state that scenario's verdict covered.
+  const applied = signal<Record<string, string>>({})
+  const clearApplied = (id: string) => {
+    if (!(id in applied.peek())) return
+    const next = { ...applied.peek() }
+    delete next[id]
+    applied.set(next)
+  }
   const setValue = (id: string, key: string, v: unknown) => {
     const cur = values()[id] ?? initialArgs(catalog.components.find((c) => c.id === id))
     values.set({ ...values(), [id]: { ...cur, [key]: v } })
+    clearApplied(id)
   }
   // Forget the edits; the component falls back to its opening scenario.
   const reset = () => {
     const next = { ...values() }
     delete next[selId()]
     values.set(next)
+    clearApplied(selId())
   }
+  const activeScenario = computed<string | null>(() => {
+    const id = selId()
+    const pinned = applied()[id]
+    if (pinned) return pinned
+    // No edits at all → the component is showing its opening state, which IS
+    // the `Default` scenario when it has one.
+    if (values()[id] !== undefined) return null
+    return sel()?.scenarios?.find((s) => s.name === 'Default')?.id ?? null
+  })
 
   const runPlay = async (compId: string, scenarioId: string) => {
     const comp = catalog.components.find((c) => c.id === compId)
@@ -409,14 +527,45 @@ export function createModel(
     const comp = catalog.components.find((c) => c.id === compId)
     const scenario = comp?.scenarios?.find((s) => s.id === scenarioId)
     if (!comp || !scenario) return
-    selId.set(compId)
-    // REPLACE the component's stored values with the scenario's args (not a
-    // merge — a scenario is a complete pinned state, and stale edits bleeding
-    // through would render something the verdict never covered). ALL of the
-    // args, not only the ones with an editable control: a `Tree` scenario is
-    // its `data`, and filtering to controls was how selecting it rendered an
-    // empty tree.
-    values.set({ ...values(), [compId]: { ...scenario.args } })
+    // One notification for the writes — the canvas, the controls and
+    // the sidebar's scenario marker all settle together.
+    batch(() => {
+      selId.set(compId)
+      // REPLACE the component's stored values with the scenario's args (not a
+      // merge — a scenario is a complete pinned state, and stale edits bleeding
+      // through would render something the verdict never covered). ALL of the
+      // args, not only the ones with an editable control: a `Tree` scenario is
+      // its `data`, and filtering to controls was how selecting it rendered an
+      // empty tree.
+      //
+      // EXCEPT the user's own words. A derived scenario pins the content SEED
+      // too (`state=danger` carries `children: "Button"`), so typing "Save" and
+      // then picking a state silently put "Button" back. A text control the user
+      // edited survives when the scenario does not VARY it — it carries the
+      // opening state's value, i.e. it is the seed, not the point of the state.
+      // A scenario that pins different content wins, and says so in Actions.
+      const next: Record<string, unknown> = { ...scenario.args }
+      const current = values()[compId]
+      if (current) {
+        const opening = initialArgs(comp)
+        const replaced: string[] = []
+        for (const ctrl of comp.controls) {
+          if (ctrl.type !== 'text') continue
+          const mine = current[ctrl.key]
+          if (typeof mine !== 'string') continue
+          const base = ctrl.key in opening ? opening[ctrl.key] : ctrl.default
+          if (mine === base) continue
+          const pinned = scenario.args[ctrl.key]
+          if (pinned === undefined || JSON.stringify(pinned) === JSON.stringify(base)) next[ctrl.key] = mine
+          else replaced.push(ctrl.key)
+        }
+        if (replaced.length > 0) {
+          logAction(`▶ ${scenario.name}`, `replaced your edit to ${replaced.join(', ')} with the scenario's`)
+        }
+      }
+      values.set({ ...values(), [compId]: next })
+      applied.set({ ...applied.peek(), [compId]: scenarioId })
+    })
   }
 
   let actionSeq = 0
@@ -431,6 +580,13 @@ export function createModel(
   const panelW = signal(prefs.panelW ?? 352)
   const sidebarOpen = signal(prefs.sidebarOpen ?? !narrow)
   const panelOpen = signal(prefs.panelOpen ?? !narrow)
+  // Compact layout is its own state, not the desktop flags reinterpreted: a
+  // desktop preference of "sidebar open" must not open a drawer over the
+  // canvas the moment the same workbench is viewed on a phone.
+  const compact = signal(narrow)
+  const drawerOpen = signal(false)
+  const sheetOpen = signal(false)
+  const renderTick = signal(0)
   effect(() => {
     writePrefs({
       brand: brandId(),
@@ -448,11 +604,54 @@ export function createModel(
   }
   const focusSearch = () => searchEl?.focus()
 
+  // What the project's wrapper CONSUMED of the appearance it was handed —
+  // noted when an accessor is CALLED, which is what consuming it means (a
+  // wrapper that forwards `props.mode` to its provider gets it called there;
+  // one that ignores `brand` never calls it). A wrapper that never reads
+  // `brand` cannot restyle per brand, and the Theme Lab must say so rather
+  // than tile identical cards.
+  //
+  // The write is deferred a microtask and happens only on the false→true
+  // edge: the call lands INSIDE a provider's render, and a synchronous write
+  // there would re-notify the Lab while it is mid-render.
+  const wrapperReads = signal<{ mode: boolean; brand: boolean }>({ mode: false, brand: false })
+  const noteRead = (key: 'mode' | 'brand') => {
+    if (wrapperReads.peek()[key]) return
+    queueMicrotask(() => {
+      const cur = wrapperReads.peek()
+      if (!cur[key]) wrapperReads.set({ ...cur, [key]: true })
+    })
+  }
+  /** An appearance to render under — the workbench's own, or a Lab tile's. */
+  interface Appearance {
+    dark?: boolean
+    brandId?: string
+  }
+  // Plain data (accessor-valued), so a wrapper layer may copy it freely.
+  const wrapperPropsFor = (over: Appearance): AtlasWrapperProps => {
+    const isDark = () => {
+      noteRead('mode')
+      return over.dark ?? dark()
+    }
+    return {
+      // ACCESSORS: a provider that takes one (`<PyreonUI mode>`) re-themes in
+      // place on a flip instead of the preview remounting and losing state.
+      mode: () => (isDark() ? 'dark' : 'light'),
+      dark: isDark,
+      brand: () => {
+        noteRead('brand')
+        const id = over.brandId ?? brandId()
+        const b = THEMES.find((t) => t.id === id) ?? THEMES[0]!
+        return { id: b.id, name: b.name, accent: b.accent }
+      },
+    }
+  }
+
   // context threaded to each component's render(): log interactions + write control values back
   // `pseudo` is read INSIDE the accessor so the preview re-renders when the
   // forced state flips; a catalog spreads it onto its root (`{...ctx.pseudo}`)
   // to opt into pseudo-state forcing.
-  const renderCtx = {
+  const makeRenderCtx = (appearance: Appearance) => ({
     logAction,
     setValue: (key: string, v: unknown) => setValue(selId(), key, v),
     get pseudo() {
@@ -470,7 +669,9 @@ export function createModel(
     get query() {
       return queryResult()
     },
-  }
+    wrapperProps: wrapperPropsFor(appearance),
+  })
+  const renderCtx = makeRenderCtx({})
   // The preview always renders inside a `PermissionsProvider` carrying the
   // ACTIVE role's recording instance. `ctx.can` covers a render that takes the
   // helper explicitly; the provider covers the idiomatic path — a component
@@ -478,13 +679,16 @@ export function createModel(
   // records consulted keys for scanned projects too, not just hand catalogs.
   // Read inside the accessor: a role flip re-renders the preview under the new
   // recording instance.
-  const preview = (): VNodeChildAtom | VNodeChildAtom[] => {
+  //
+  // `appearance` renders the same component under another mode / brand — the
+  // Theme Lab's tiles. Omitted, it is the workbench's own.
+  const preview = (appearance?: Appearance): VNodeChildAtom | VNodeChildAtom[] => {
     const entry = sel()
     if (!entry) return null
     return h(
       PermissionsProvider,
       { value: permissions().can },
-      entry.render(vals(), renderCtx) as VNodeChildAtom,
+      entry.render(vals(), appearance ? makeRenderCtx(appearance) : renderCtx) as VNodeChildAtom,
     )
   }
 
@@ -507,18 +711,23 @@ export function createModel(
   // canvas says so out loud; a blank stage next to a healthy sidebar read as
   // "the workbench is broken" when it was the component rendering nothing.
   const previewEmpty = signal(false)
-  // A component that PORTALS (a dialog, a drawer) leaves the surface empty
-  // while its DOM sits on `document.body` — the runtime brackets portaled
-  // content in `<!--portal-->…<!--/portal-->` markers, and one on the body is
-  // what says the render went somewhere rather than nowhere.
-  const portaled = () =>
-    isClient &&
-    [...document.body.childNodes].some((n) => n.nodeType === 8 && (n as Comment).data === 'portal')
+  // A component that PORTALS (a dialog, a drawer) is not empty: its overlay is
+  // ADOPTED into the surface (see ./portal-adopt), so it counts as the
+  // surface's own DOM. (This used to look for a portal marker on the body —
+  // which was also how an overlay covering the whole workbench passed as a
+  // healthy render.)
   const isEmpty = (el: HTMLElement) =>
-    el.childElementCount === 0 && (el.textContent ?? '').trim().length === 0 && !portaled()
+    el.childElementCount === 0 && (el.textContent ?? '').trim().length === 0
   let previewEl: HTMLElement | null = null
   let observer: MutationObserver | null = null
   let stopDir: Effect | null = null
+  let stopAdopt: (() => void) | null = null
+  let stopDomActions: (() => void) | null = null
+  // An ADOPTED portal bracket (see ./portal-adopt) sits among the host's
+  // direct children.
+  const overlayOpen = signal(false)
+  const hasAdoptedOverlay = (el: HTMLElement) =>
+    [...el.childNodes].some((n) => n.nodeType === 8 && (n as Comment).data === 'portal')
 
   /**
    * `ref` for the preview surface — attach it so the a11y checks can inspect the
@@ -540,10 +749,24 @@ export function createModel(
       observer = null
       stopDir?.dispose()
       stopDir = null
+      stopAdopt?.()
+      stopAdopt = null
+      stopDomActions?.()
+      stopDomActions = null
+      overlayOpen.set(false)
       return
     }
+    // Overlays the component portals to the body render ON the canvas — the
+    // surface is their containing block (see ./portal-adopt).
+    stopAdopt?.()
+    stopAdopt = adoptBodyPortals(el)
+    // Every interaction inside the preview reaches the Actions panel, declared
+    // handler or not — see ./dom-actions.
+    stopDomActions?.()
+    stopDomActions = captureDomActions(el, logAction)
     setA11y(analyzeA11y(el))
     previewEmpty.set(isEmpty(el))
+    overlayOpen.set(hasAdoptedOverlay(el))
     // Writing direction is applied IMPERATIVELY to the captured element rather
     // than as a `dir={…}` prop: an accessor-valued generic attribute is not
     // forwarded through rocketstyle → Element (it silently lands as no attribute
@@ -574,14 +797,39 @@ export function createModel(
       scheduled = true
       const run = () => {
         scheduled = false
-        if (!previewEl) return
-        setA11y(analyzeA11y(previewEl))
-        previewEmpty.set(isEmpty(previewEl))
+        const target = previewEl
+        if (!target) return
+        batch(() => {
+          setA11y(analyzeA11y(target))
+          previewEmpty.set(isEmpty(target))
+          overlayOpen.set(hasAdoptedOverlay(target))
+          renderTick.set(renderTick.peek() + 1)
+        })
       }
       if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run)
       else run()
     })
     observer.observe(el, { childList: true, subtree: true, attributes: true, characterData: true })
+  }
+
+  // The Docs page's live block is a second preview surface. It adopts overlays
+  // the same way, so a Dialog's docs page shows the dialog in its block rather
+  // than over the article. `overlayOpen` is shared with the canvas surface:
+  // the views are exclusive, so one flag says "the visible preview holds an
+  // overlay".
+  let stopHostAdopt: (() => void) | null = null
+  let hostObserver: MutationObserver | null = null
+  const overlayHostRef = (el: HTMLElement | null) => {
+    stopHostAdopt?.()
+    stopHostAdopt = null
+    hostObserver?.disconnect()
+    hostObserver = null
+    if (!el) return
+    stopHostAdopt = adoptBodyPortals(el)
+    overlayOpen.set(hasAdoptedOverlay(el))
+    if (typeof MutationObserver === 'undefined') return
+    hostObserver = new MutationObserver(() => overlayOpen.set(hasAdoptedOverlay(el)))
+    hostObserver.observe(el, { childList: true })
   }
 
   // Keep the URL in step with the view, so a reload restores it and a link
@@ -602,6 +850,14 @@ export function createModel(
     const loc = location
     const hist = history
     let lastWritten: UrlState = initial
+    // What the workbench opens on with NO parameters — the first preset of
+    // each per-project family — so a link states only what differs from it.
+    const urlDefaults: UrlDefaults = {
+      viewport: viewports[0]?.id ?? 'full',
+      background: backgrounds[0]?.id ?? 'theme',
+      locale: locales[0]?.id ?? 'en',
+      role: roles[0]?.id ?? 'anonymous',
+    }
     effect(() => {
       // Only the EDITS travel in the link — the keys that differ from the
       // opening scenario. The scenario itself is reconstructable from the
@@ -621,7 +877,7 @@ export function createModel(
         query: queryState(),
         role: permissionSet(),
       }
-      if (!urlStateChanged(lastWritten, next)) return
+      if (!urlStateChanged(lastWritten, next, urlDefaults)) return
       lastWritten = next
       // `nextQuery`, because both obvious names are taken in this scope:
       // `query` is the search-box signal and `search` is the search function.
@@ -638,7 +894,7 @@ export function createModel(
         forQuery = { ...next }
         delete forQuery.c
       }
-      const nextQuery = serializeUrlState(forQuery)
+      const nextQuery = serializeUrlState(forQuery, urlDefaults)
       if (hasRoutes) {
         // An ABSOLUTE path, not the bare `?query` below. That form resolves
         // against the current directory, so once the URL is `/atlas/button/`
@@ -656,10 +912,14 @@ export function createModel(
     brandId, dark, selId, query, filter, zoomIdx, view, addon, actions,
     viewport, background, pseudo, outline, measure, locale, pseudoLocale, permissionSet, permissions, queryState, queryResult,
     previewElement: () => previewEl,
+    overlayOpen,
+    overlayHostRef,
+    wrapperReads,
+    wrapped: catalog.wrapped === true,
     viewports, backgrounds, locales, roles, viewportPreset, backgroundPreset, dir,
-    brand, theme, sel, vals, visibleGroups, tree, browseIds, collapsed, toggleGroup, noResults, a11y, previewEmpty,
+    brand, theme, sel, vals, visibleGroups, tree, browseIds, collapsed, isCollapsed, toggleGroup, noResults, matchCount, activeScenario, renderTick, a11y, previewEmpty,
     setValue, selectScenario, runPlay, reset, logAction, clearActions, search, searchHits, preview, searchRef, focusSearch, previewRef,
-    searchOpen, sidebarW, panelW, sidebarOpen, panelOpen,
+    searchOpen, sidebarW, panelW, sidebarOpen, panelOpen, compact, drawerOpen, sheetOpen,
   }
 }
 

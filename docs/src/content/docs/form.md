@@ -43,7 +43,10 @@ The composable shape lives in the dedicated [Form fields pattern](/docs/patterns
 Use `useForm` to create a form with initial values, validators, and a submit handler.
 
 ```ts
+// @check
 import { useForm } from '@pyreon/form'
+
+declare function loginApi(values: unknown): Promise<void>
 
 const form = useForm({
   initialValues: { email: '', password: '', remember: false },

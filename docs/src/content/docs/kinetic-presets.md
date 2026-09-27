@@ -1,9 +1,9 @@
 ---
 title: Kinetic Presets
-description: Library of 90+ ready-made CSS transition presets and factories for enter/leave animations.
+description: Library of 122 ready-made CSS transition presets and factories for enter/leave animations.
 ---
 
-`@pyreon/kinetic-presets` provides a comprehensive collection of CSS transition presets for enter/leave animations. Each preset defines the styles and transitions for both the entering and leaving phases, making it easy to add polished motion to your UI. The library includes 90+ built-in presets, customizable factory functions, and composition utilities.
+`@pyreon/kinetic-presets` provides a comprehensive collection of CSS transition presets for enter/leave animations. Each preset defines the styles and transitions for both the entering and leaving phases, making it easy to add polished motion to your UI. The library includes 122 built-in presets, customizable factory functions, and composition utilities.
 
 <PackageBadge name="@pyreon/kinetic-presets" href="/docs/kinetic-presets" />
 
@@ -801,7 +801,7 @@ const preset = presets['fadeUp']
 
 // List all available preset names
 const allNames = Object.keys(presets)
-// ['fade', 'fadeUp', 'fadeDown', ...] (90+ entries)
+// ['fade', 'fadeUp', 'fadeDown', ...] (122 entries)
 
 // Dynamic preset selection
 function getPreset(name: string): Preset | undefined {
@@ -1165,7 +1165,7 @@ For lists with many items, consider:
 | `withEasing`   | `(preset: Preset, enterEasing: string, leaveEasing?: string) => Preset`   | Override transition easing              |
 | `withDelay`    | `(preset: Preset, enterDelayMs: number, leaveDelayMs?: number) => Preset` | Add transition delay                    |
 | `reverse`      | `(preset: Preset) => Preset`                                              | Swap enter/leave phases                 |
-| `presets`      | `Record<string, Preset>`                                                  | Map of all 90+ built-in presets by name |
+| `presets`      | `Record<string, Preset>`                                                  | Map of all 122 built-in presets by name |
 
 ## Types
 

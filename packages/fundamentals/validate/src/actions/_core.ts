@@ -1,7 +1,8 @@
 /**
  * Action builders — the small, shared kernel behind every tree-shakeable check
  * action in `@pyreon/validate/mini`. An ACTION is a `(schema) => schema` that
- * pushes ONE op onto the schema in place; it is byte-equivalent to the op the
+ * returns a NEW schema carrying ONE extra op (copy-on-write, like the chainable
+ * methods); it is byte-equivalent to the op the
  * corresponding chainable method pushes (parity-locked by
  * `tests/actions-parity.test.ts`). Because actions live in their own modules and
  * reference only the validators they need, importing `email` pulls the email
@@ -53,9 +54,7 @@ export function defineCheck<T>(
   return <S extends Schema<T>>(schema: S): S => {
     // Fresh op per application (each chainable method call likewise pushes a
     // new op object); the shared `validate` closure is safe to reuse.
-    schema._ops.push(attachCheck({ ...(op as object) } as Op, validate))
-    schema._invalidateCompile()
-    return schema
+    return schema._cloneWith(attachCheck({ ...(op as object) } as Op, validate))
   }
 }
 
@@ -65,8 +64,6 @@ export function defineCheck<T>(
  */
 export function defineTransform<T>(fn: (value: T) => T): Action<T> {
   return <S extends Schema<T>>(schema: S): S => {
-    schema._ops.push({ kind: 'transform', fn: fn as (v: unknown) => unknown })
-    schema._invalidateCompile()
-    return schema
+    return schema._cloneWith({ kind: 'transform', fn: fn as (v: unknown) => unknown })
   }
 }

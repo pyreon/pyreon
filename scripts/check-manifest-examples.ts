@@ -76,8 +76,9 @@ const CACHE_DIR = join(REPO_ROOT, '.cache', 'manifest-examples')
 //      an ambient app-typed value (`filter(users, u => u.active)` where
 //      `users` is untyped → `u` is `unknown`), cross-package component
 //      placeholders that collide with a DOM global (`Element`, `open`),
-//      an un-augmentable theme resolved as `unknown`, or an alt-JSX
-//      namespace (`@pyreon/document`'s DocNode runtime, not core's VNode).
+//      or an un-augmentable theme resolved as `unknown`. (@pyreon/document
+//      was here as "alt-JSX namespace"; its primitives now typecheck as core
+//      JSX, and removing the entry surfaced a real `<List items>` drift.)
 //      Their findings are NOT drift; the entry documents the limitation
 //      so the harness can be tightened later to re-enforce them.
 const NON_ENFORCED: Record<string, string> = {
@@ -86,7 +87,6 @@ const NON_ENFORCED: Record<string, string> = {
   //  the collection-op callback params no longer resolve to `unknown`; ENFORCED.)
   '@pyreon/styler': 'harness-limited: theme callback params resolve to `unknown` (no theme augmentation in the harness)',
   '@pyreon/attrs': 'harness-limited: per-method fragments use `Element` (a cross-package component) bare, colliding with the DOM `Element` global',
-  '@pyreon/document': 'harness-limited: examples use the DocNode JSX namespace, not core VNode; the harness compiles JSX via @pyreon/core',
   '@pyreon/server': 'harness-limited: loader-context example data is untyped → `unknown` property access',
   '@pyreon/permissions': 'harness-limited: predicate-context example data is untyped → `unknown` property access',
   '@pyreon/form': 'harness-limited: `register()` spread into a fully-typed input-attributes shape (aria accessor props)',

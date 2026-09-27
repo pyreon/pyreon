@@ -3,7 +3,7 @@ import { h } from './h'
 import type { LazyComponent } from './suspense'
 import type { ComponentFn, Props } from './types'
 
-export function lazy<P extends Props>(
+export function lazy<P extends object>(
   load: () => Promise<{ default: ComponentFn<P> }>,
 ): LazyComponent<P> {
   const loaded = signal<ComponentFn<P> | null>(null)

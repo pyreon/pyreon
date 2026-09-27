@@ -1,4 +1,4 @@
-import { band, bollinger, histogram, PlotChart, stackedArea, waterfall } from '@pyreon/charts/plot'
+import { Band, Bar, Bollinger, Chart, Histogram, StackedArea, Tooltip } from '@pyreon/charts'
 import { signal, type Signal } from '@pyreon/reactivity'
 
 /**
@@ -8,7 +8,7 @@ import { signal, type Signal } from '@pyreon/reactivity'
  * Each is here because it says something the single-channel marks cannot:
  * `band` is an interval (two bounds, no centre), `stackedArea` is shares over
  * time, `waterfall` is a running total, and `histogram` bins a raw sample
- * instead of plotting it. `bollinger` is the interval mark doing real work —
+ * instead of plotting it. `<Bollinger>` is the interval mark doing real work —
  * a rolling envelope whose bounds are computed from the series.
  *
  * `showValues` is on the band deliberately: it labels the HIGH edge, which is
@@ -82,57 +82,41 @@ export default function PlotIntervals(props: { shared?: Signal<number> }) {
 
       <figure style={{ margin: 0 }}>
         <figcaption>A forecast interval — two bounds, no centre value.</figcaption>
-        <PlotChart<Day>
-          data={() => days()}
-          x={(d) => d.d}
-          height={200}
-          title="Forecast range"
-          tooltip
-          marks={[band<Day>((d) => d.lo, (d) => d.hi, { label: 'Range', showValues: true })]}
-        />
+        <Chart<Day> data={() => days()} x="d" height={200} title="Forecast range">
+          <Band low="lo" high="hi" label="Range" showValues />
+          <Tooltip />
+        </Chart>
       </figure>
 
       <figure style={{ margin: 0 }}>
-        <figcaption>A rolling envelope: `bollinger` is a filled band plus its middle line.</figcaption>
-        <PlotChart<Day>
-          data={() => days()}
-          x={(d) => d.d}
-          height={200}
-          title="Actual against its envelope"
-          marks={[...bollinger<Day>((d) => d.actual, 3, 1.5, { label: 'σ' })]}
-        />
+        <figcaption>A rolling envelope: Bollinger bands are a filled band plus its middle line.</figcaption>
+        <Chart<Day> data={() => days()} x="d" height={200} title="Actual against its envelope">
+          <Bollinger<Day> y="actual" window={3} k={1.5} label="σ" />
+        </Chart>
       </figure>
 
       <figure style={{ margin: 0 }}>
         <figcaption>Shares over time — each area is filled between running totals.</figcaption>
-        <PlotChart<Split>
-          data={SPLITS}
-          x={(d) => d.q}
-          height={200}
-          title="Revenue by channel"
-          marks={[
-            stackedArea<Split>((d) => d.direct, { label: 'Direct' }),
-            stackedArea<Split>((d) => d.partner, { label: 'Partner' }),
-          ]}
-        />
+        <Chart<Split> data={SPLITS} x="q" height={200} title="Revenue by channel">
+          <StackedArea y="direct" label="Direct" />
+          <StackedArea y="partner" label="Partner" />
+        </Chart>
       </figure>
 
       <figure style={{ margin: 0 }}>
         <figcaption>A running total, each step measured from the last.</figcaption>
-        <PlotChart<Step>
-          data={STEPS}
-          x={(d) => d.name}
-          height={200}
-          title="Balance"
-          marks={[waterfall<Step>((d) => d.delta, { label: 'Change', showValues: true })]}
-        />
+        <Chart<Step> data={STEPS} x="name" height={200} title="Balance">
+          <Bar y="delta" waterfall label="Change" showValues />
+        </Chart>
       </figure>
 
       <figure style={{ margin: 0 }}>
         <figcaption>A raw sample, binned — the x axis is the bin, not the row.</figcaption>
-        {/* `histogram` returns the whole `{ data, x, marks }` bundle — it BINS
-            the sample, so the chart's rows are bins rather than the raw values. */}
-        <PlotChart height={200} title="Latency distribution" {...histogram(SAMPLE, (d: number) => d, { bins: 14, label: 'Requests' })} />
+        {/* `<Histogram>` BINS the sample, so the chart's rows become bins
+            rather than the raw values — it is the whole chart. */}
+        <Chart<number> data={SAMPLE} height={200} title="Latency distribution">
+          <Histogram<number> x={(d) => d} bins={14} label="Requests" />
+        </Chart>
       </figure>
     </div>
   )

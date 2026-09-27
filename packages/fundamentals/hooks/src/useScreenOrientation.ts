@@ -1,4 +1,5 @@
-import { isClient, onCleanup, signal } from '@pyreon/reactivity'
+import { isClient, signal } from '@pyreon/reactivity'
+import { onHookCleanup } from './lifecycle'
 
 /** Which way round the display currently is. */
 export type ScreenOrientation = 'portrait' | 'landscape'
@@ -68,7 +69,7 @@ export function useScreenOrientation(): OrientationState {
     }
     window.addEventListener('resize', update)
     window.addEventListener('orientationchange', update)
-    onCleanup(() => {
+    onHookCleanup(() => {
       window.removeEventListener('resize', update)
       window.removeEventListener('orientationchange', update)
     })

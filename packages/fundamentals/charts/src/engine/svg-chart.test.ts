@@ -73,7 +73,7 @@ describe('chartToSvg', () => {
     const free = chartToSvg({ data: DATA, marks: MARKS })
     const pinned = chartToSvg({ data: DATA, marks: MARKS, yDomain: { min: 0, max: 1000 } })
     expect(pinned).not.toBe(free)
-    expect(pinned).toContain('1000')
+    expect(pinned).toContain('1,000')
   })
 
   it('turns the chrome off', () => {
@@ -113,8 +113,8 @@ describe('chartToSvg — formatting', () => {
   it('formats the axis labels', () => {
     const plainSvg = chartToSvg({ data: BIG, marks: MARKS })
     const compactSvg = chartToSvg({ data: BIG, marks: MARKS, format: compact })
-    expect(plainSvg).toContain('3000000')
-    expect(compactSvg).not.toContain('3000000')
+    expect(plainSvg).toContain('3,000,000')
+    expect(compactSvg).not.toContain('3,000,000')
     expect(compactSvg).toMatch(/>\d+(\.\d+)?M</)
   })
 

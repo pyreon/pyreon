@@ -3,7 +3,8 @@ import { centerUnderPointer } from '@atlaskit/pragmatic-drag-and-drop/utils/cent
 import { pointerOutsideOfPreview } from '@atlaskit/pragmatic-drag-and-drop/utils/pointer-outside-of-preview'
 import { preserveOffsetOnSource } from '@atlaskit/pragmatic-drag-and-drop/utils/preserve-offset-on-source'
 import { setCustomNativeDragPreview } from '@atlaskit/pragmatic-drag-and-drop/utils/set-custom-native-drag-preview'
-import { isServer, onCleanup, signal } from '@pyreon/reactivity'
+import { isServer, signal } from '@pyreon/reactivity'
+import { bindElement } from './element-binding'
 import type { DragData, DragPreviewOptions, UseDraggableOptions, UseDraggableResult } from './types'
 
 /**
@@ -27,16 +28,16 @@ function resolvePreviewOffset(
 /**
  * Make an element draggable with signal-driven state.
  *
+ * Attach the returned `ref` to the element (works for elements that mount
+ * later or get swapped), or pass an `element` getter.
+ *
  * @example
  * ```tsx
- * let cardEl: HTMLElement | null = null
- *
- * const { isDragging } = useDraggable({
- *   element: () => cardEl,
+ * const { ref, isDragging } = useDraggable({
  *   data: { id: card.id, type: "card" },
  * })
  *
- * <div ref={(el) => cardEl = el} class={isDragging() ? "opacity-50" : ""}>
+ * <div ref={ref} class={isDragging() ? "opacity-50" : ""}>
  *   {card.title}
  * </div>
  * ```
@@ -44,35 +45,17 @@ function resolvePreviewOffset(
 export function useDraggable<T extends DragData = DragData>(
   options: UseDraggableOptions<T>,
 ): UseDraggableResult {
-  if (isServer) return { isDragging: () => false }
+  if (isServer) return { isDragging: () => false, ref: () => {} }
 
   const isDragging = signal(false)
-  let cleanup: (() => void) | undefined
-  let disposed = false
 
-  function setup() {
-    // The hook may have unmounted before this deferred (queueMicrotask) setup
-    // ran. onCleanup fired with `cleanup` still undefined (a no-op), so a
-    // registration created here would never be torn down — bail instead.
-    /* v8 ignore next — defensive disposed-during-setup guard; tested implicitly via lifecycle */
-    if (disposed) return
-    // Defensive re-setup teardown: `setup` is scheduled exactly once
-    // (`queueMicrotask(setup)`) and never re-invoked, so `cleanup` is always
-    // undefined here — this branch never fires in the current single-shot
-    // design. Kept so a future re-setup trigger (element-change re-registration)
-    // can't leak a double registration.
-    /* v8 ignore next — defensive re-setup teardown; unreachable with single-shot queueMicrotask */
-    if (cleanup) cleanup()
+  const resolveData = () =>
+    typeof options.data === 'function' ? (options.data as () => T)() : options.data
 
-    const el = options.element()
-    if (!el) return
-
-    const resolveData = () =>
-      typeof options.data === 'function' ? (options.data as () => T)() : options.data
-
+  function register(el: HTMLElement): () => void {
     const handle = options.handle?.()
     const preview = options.preview
-    cleanup = draggable({
+    return draggable({
       element: el,
       ...(handle ? { dragHandle: handle } : {}),
       // Custom native drag preview — thin pass-through to pdnd's
@@ -119,13 +102,7 @@ export function useDraggable<T extends DragData = DragData>(
     })
   }
 
-  // Defer setup to next microtask so refs are populated
-  queueMicrotask(setup)
+  const { ref } = bindElement('useDraggable', options.element, register)
 
-  onCleanup(() => {
-    disposed = true
-    if (cleanup) cleanup()
-  })
-
-  return { isDragging }
+  return { isDragging, ref }
 }

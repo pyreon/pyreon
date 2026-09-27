@@ -1,10 +1,11 @@
-import { groupedBars, PlotChart, stackedBars } from '@pyreon/charts/plot'
+import { Bar, Chart, Legend, Tooltip } from '@pyreon/charts'
 import { signal, type Signal } from '@pyreon/reactivity'
 
 /**
- * Gallery — the same three series as a stack or side by side. The mark list is
- * an accessor, so switching layout repaints the canvas; with `updateAnimation`
- * on (the default) a same-shape change tweens, a shape change snaps.
+ * Gallery — the same three series as a stack or side by side. `stack` and
+ * `group` are props on each `<Bar>`; reading a signal there makes the switch
+ * reactive, so it repaints the same canvas. With `updateAnimation` on (the
+ * default) a same-shape change tweens, a shape change snaps.
  * The `shared` signal counts switches.
  */
 interface Row {
@@ -25,14 +26,6 @@ const ROWS: Row[] = [
 export default function GalleryBars(props: { shared?: Signal<number> }) {
   const switches = props.shared ?? signal(0)
   const stacked = signal(true)
-  const marks = () => {
-    const bar = stacked() ? stackedBars : groupedBars
-    return [
-      bar((d: Row) => d.web, { label: 'Web' }),
-      bar((d: Row) => d.store, { label: 'Store' }),
-      bar((d: Row) => d.partner, { label: 'Partner' }),
-    ]
-  }
   return (
     <div class="example-col">
       <div class="example-row">
@@ -47,7 +40,13 @@ export default function GalleryBars(props: { shared?: Signal<number> }) {
         </button>
         <span>switches: {() => switches()}</span>
       </div>
-      <PlotChart<Row> data={ROWS} x={(d) => d.region} marks={marks()} showLegend tooltip height={280} title="Orders by channel" />
+      <Chart<Row> data={ROWS} x="region" height={280} title="Orders by channel">
+        <Bar y="web" label="Web" stack={stacked()} group={!stacked()} />
+        <Bar y="store" label="Store" stack={stacked()} group={!stacked()} />
+        <Bar y="partner" label="Partner" stack={stacked()} group={!stacked()} />
+        <Legend />
+        <Tooltip />
+      </Chart>
     </div>
   )
 }

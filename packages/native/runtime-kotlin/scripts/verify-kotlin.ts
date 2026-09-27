@@ -1280,6 +1280,9 @@ object PackageManager {
 `
 
 const tempDir = mkdtempSync(join(tmpdir(), 'pyreon-kotlin-runtime-verify-'))
+// Failure paths below call `process.exit(1)`, which ends the process without
+// running the `finally` at the bottom. An exit handler runs either way.
+process.on('exit', () => rmSync(tempDir, { recursive: true, force: true }))
 
 try {
   const composeRuntimePath = join(tempDir, 'ComposeRuntime.kt')

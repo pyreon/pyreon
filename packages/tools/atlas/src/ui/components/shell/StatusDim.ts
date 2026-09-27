@@ -1,9 +1,9 @@
-import { txt, type T } from '../../kit'
+import { txt } from '../../kit'
 
 export const StatusDim = txt
   .attrs({
     tag: 'span',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     color: t.border,
   }))

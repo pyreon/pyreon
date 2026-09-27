@@ -32,8 +32,10 @@
  * The user runs this deliberately, against a URL they typed, in a developer
  * tool — the trust model of `curl -o`, with more validation than `curl` does.
  */
+import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
+import { openApiVersionProblem } from '../input/openapi'
 import { parseSpecText } from '../input/yaml'
 
 // Built rather than written literally, matching `report.ts`: a raw ESC byte in
@@ -88,30 +90,74 @@ async function readCapped(res: Response): Promise<string | undefined> {
   return new TextDecoder().decode(joined)
 }
 
-/**
- * True when the parsed document actually claims to be an OpenAPI spec.
- *
- * "It parsed as YAML" is a much weaker statement than it sounds: an HTML error
- * page fails, but a plain-text one, a JSON error envelope, or somebody's CI
- * config all parse fine and would then be written over a working spec.
- */
-function looksLikeSpec(parsed: unknown): boolean {
-  if (parsed === null || typeof parsed !== 'object') return false
-  const doc = parsed as Record<string, unknown>
-  return typeof doc.openapi === 'string' || typeof doc.swagger === 'string'
-}
 
 /** How long to wait for a spec URL before giving up. */
 const PULL_TIMEOUT_MS = 30_000
 
+export interface PullOptions {
+  /**
+   * Request headers -- an `Authorization` for a spec behind auth. Values are
+   * never written anywhere: not to the cache, not to the output.
+   */
+  headers?: Record<string, string> | undefined
+  /**
+   * Directory for the conditional-request cache. When set, the response's
+   * `ETag` / `Last-Modified` is recorded against the destination, and the next
+   * pull sends `If-None-Match` / `If-Modified-Since` -- but ONLY when the file
+   * on disk is still byte-identical to what was fetched, so a spec edited
+   * locally is always re-downloaded rather than "confirmed unchanged".
+   */
+  cacheDir?: string | undefined
+  /** Colour the output. */
+  color?: boolean | undefined
+}
+
+interface CacheEntry {
+  url: string
+  sha256: string
+  etag?: string | undefined
+  lastModified?: string | undefined
+}
+
+function readCache(file: string | undefined): Record<string, CacheEntry> {
+  if (!file) return {}
+  try {
+    const parsed = JSON.parse(readFileSync(file, 'utf8')) as unknown
+    return parsed !== null && typeof parsed === 'object' ? (parsed as Record<string, CacheEntry>) : {}
+  } catch {
+    return {}
+  }
+}
+
+const sha256 = (text: string): string => createHash('sha256').update(text).digest('hex')
+
 /** Fetch `url` and write it to `dest`. Returns a process exit code. */
-export async function pullSpec(url: string, dest: string): Promise<number> {
+export async function pullSpec(url: string, dest: string, opts: PullOptions = {}): Promise<number> {
+  const dim = (s: string): string => (opts.color ? `${DIM}${s}${RESET}` : s)
+  const cacheFile = opts.cacheDir ? join(opts.cacheDir, 'pull-cache.json') : undefined
+  const cache = readCache(cacheFile)
+  let onDisk: string | undefined
+  try {
+    onDisk = readFileSync(dest, 'utf8')
+  } catch {
+    onDisk = undefined
+  }
+  const cached = cache[dest]
+  const conditional: Record<string, string> = {}
+  if (cached && cached.url === url && onDisk !== undefined && sha256(onDisk) === cached.sha256) {
+    if (cached.etag) conditional['if-none-match'] = cached.etag
+    if (cached.lastModified) conditional['if-modified-since'] = cached.lastModified
+  }
+
   let res: Response
   try {
     // A deadline, not just a catch. Without a signal a server that accepts the
     // connection and then never answers hangs this CLI forever, with no output
     // and nothing to interrupt — the failure mode `no-untimed-raw-fetch` names.
-    res = await fetch(url, { signal: AbortSignal.timeout(PULL_TIMEOUT_MS) })
+    res = await fetch(url, {
+      headers: { ...opts.headers, ...conditional },
+      signal: AbortSignal.timeout(PULL_TIMEOUT_MS),
+    })
   } catch (err) {
     const timedOut = err instanceof Error && err.name === 'TimeoutError'
     process.stderr.write(
@@ -121,8 +167,18 @@ export async function pullSpec(url: string, dest: string): Promise<number> {
     )
     return 1
   }
+  if (res.status === 304) {
+    process.stdout.write(`  spec unchanged  ${dest}  ${dim('304 Not Modified')}\n`)
+    return 0
+  }
   if (!res.ok) {
-    process.stderr.write(`[Pyreon] lathe: ${url} responded ${res.status} ${res.statusText}\n`)
+    const auth = res.status === 401 || res.status === 403
+    process.stderr.write(
+      `[Pyreon] lathe: ${url} responded ${res.status} ${res.statusText}\n` +
+        (auth
+          ? '  The spec is behind auth. Pass `--token <token>` (or set LATHE_TOKEN), or `--header "Name: value"`.\n'
+          : ''),
+    )
     return 1
   }
   const body = await readCapped(res)
@@ -142,32 +198,46 @@ export async function pullSpec(url: string, dest: string): Promise<number> {
     )
     return 1
   }
-  if (!looksLikeSpec(parsed)) {
-    process.stderr.write(
-      `[Pyreon] lathe: ${url} parsed, but carries no \`openapi\` or \`swagger\` version key,\n` +
-        '  so it is not an OpenAPI document. Nothing was written.\n',
-    )
+  // "It parsed as YAML" is a much weaker statement than it sounds: an HTML
+  // error page fails, but a plain-text one, a JSON error envelope, or somebody's
+  // CI config all parse fine and would then be written over a working spec. The
+  // rule is the one `generate` applies, so a spec `pull` accepts is one
+  // `generate` reads -- it used to accept Swagger 2, which generate then turned
+  // into an empty client.
+  const problem = openApiVersionProblem(parsed)
+  if (problem) {
+    process.stderr.write(`${problem.replace('[Pyreon] lathe: ', `[Pyreon] lathe: ${url}: `)}\n  Nothing was written.\n`)
     return 1
   }
 
   mkdirSync(dirname(dest), { recursive: true })
-  // Read WITHOUT an `existsSync` check first. The check-then-write pair is a
-  // time-of-check/time-of-use race (CodeQL `js/file-system-race`), and the
-  // existence test is redundant anyway: a missing file is just a read that
-  // throws ENOENT, which this already has to handle.
-  let previous: string | undefined
-  try {
-    previous = readFileSync(dest, 'utf8')
-  } catch {
-    previous = undefined
+  // The file was read WITHOUT an `existsSync` check first (above). The
+  // check-then-write pair is a time-of-check/time-of-use race (CodeQL
+  // `js/file-system-race`), and the existence test is redundant anyway: a
+  // missing file is just a read that throws ENOENT, which this handles.
+  const previous = onDisk
+  if (previous !== body) writeFileSync(dest, body, 'utf8')
+  // Recorded only once the bytes on disk are the bytes fetched, so a
+  // conditional request can never "confirm" a file the server never sent.
+  if (cacheFile) {
+    const etag = res.headers.get('etag') ?? undefined
+    const lastModified = res.headers.get('last-modified') ?? undefined
+    if (etag || lastModified) {
+      cache[dest] = { url, sha256: sha256(body), etag, lastModified }
+      try {
+        mkdirSync(dirname(cacheFile), { recursive: true })
+        writeFileSync(cacheFile, `${JSON.stringify(cache, null, 2)}\n`, 'utf8')
+      } catch {
+        // A cache that cannot be written costs one full download next time.
+      }
+    }
   }
   if (previous === body) {
     process.stdout.write(`  spec unchanged  ${dest}\n`)
     return 0
   }
-  writeFileSync(dest, body, 'utf8')
   process.stdout.write(
-    `  ${previous === undefined ? 'fetched' : 'updated'}  ${dest}  ${DIM}${body.length} bytes${RESET}\n` +
+    `  ${previous === undefined ? 'fetched' : 'updated'}  ${dest}  ${dim(`${body.length} bytes`)}\n` +
       '  Review the diff, then run `lathe generate`.\n',
   )
   return 0

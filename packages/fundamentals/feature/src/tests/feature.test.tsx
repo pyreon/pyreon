@@ -95,6 +95,8 @@ describe('extractFields', () => {
       type: 'string',
       optional: false,
       label: 'Email',
+      // `z.string().email()` is introspected so `<Field>` renders type=email.
+      format: 'email',
     })
     expect(fields[2]).toMatchObject({
       name: 'role',

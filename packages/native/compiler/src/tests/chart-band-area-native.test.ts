@@ -17,7 +17,7 @@ const read = (p: string): string => readFileSync(join(REPO, p), 'utf8')
 const CANVAS_SWIFT = 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonChartCanvas.swift'
 const ENGINE_SWIFT = 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonChartEngine.swift'
 
-const HEAD = `import { PlotChart, stackedArea, band, line } from '@pyreon/charts/plot'
+const HEAD = `import { PlotChart, stackedArea, band, line } from '@pyreon/charts/engine'
 interface Row { m: string; a: number; b: number; lo: number; hi: number; v: number }
 const ROWS: Row[] = [{ m: 'Jan', a: 3, b: 4, lo: 2, hi: 8, v: 5 }]
 export function App() {
@@ -64,15 +64,15 @@ describe('<PlotChart> band / stackedArea on native', () => {
   })
 
   it('the GRAMMAR forms desugar to the same marks the array form builds', () => {
-    // `<Plot><StackedArea/><Band/></Plot>` is the other spelling of the same spec.
+    // `<Chart><StackedArea/><Band/></Chart>` is the other spelling of the same spec.
     // `<Band>` is the one mark with no `y` — a region has two bounds and no
     // single value — so it needs its own desugar branch, and without it the
     // generic path rejected it as "needs a `y` channel".
-    const src = `import { Plot, StackedArea, Band } from '@pyreon/charts/plot'
+    const src = `import { Chart, StackedArea, Band } from '@pyreon/charts'
 interface Row { m: string; a: number; lo: number; hi: number }
 const ROWS: Row[] = [{ m: 'Jan', a: 3, lo: 1, hi: 5 }]
 export function App() {
-  return <Plot data={ROWS} x="m" height={200}><StackedArea y="a" /><Band low="lo" high="hi" /></Plot>
+  return <Chart data={ROWS} x="m" height={200}><StackedArea y="a" /><Band low="lo" high="hi" /></Chart>
 }
 `
     for (const target of ['swift', 'kotlin'] as const) {
@@ -84,11 +84,11 @@ export function App() {
   })
 
   it('a <Band> missing a bound is named, not reported as a missing `y`', () => {
-    const src = `import { Plot, Band } from '@pyreon/charts/plot'
+    const src = `import { Chart, Band } from '@pyreon/charts'
 interface Row { m: string; lo: number }
 const ROWS: Row[] = [{ m: 'Jan', lo: 1 }]
 export function App() {
-  return <Plot data={ROWS} x="m"><Band low="lo" /></Plot>
+  return <Chart data={ROWS} x="m"><Band low="lo" /></Chart>
 }
 `
     const r = transform(src, { target: 'swift' })

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
 import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
 
-const PIE = `import { OptionChart } from '@pyreon/charts/plot'
+const PIE = `import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart width={320} height={240} option={{
     title: { text: 'Share' }, legend: {}, tooltip: {},
@@ -12,12 +12,12 @@ export function App() {
   }} />
 }`
 
-const GAUGE = `import { OptionChart } from '@pyreon/charts/plot'
+const GAUGE = `import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart option={{ series: [{ type: 'gauge', min: 10, max: 90, detail: { show: false }, data: [{ value: 42 }] }] }} />
 }`
 
-const TIMELINE_PIE = `import { OptionChart } from '@pyreon/charts/plot'
+const TIMELINE_PIE = `import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart timelineIndex={1} option={{
     baseOption: {
@@ -32,7 +32,7 @@ export function App() {
   }} />
 }`
 
-const CARTESIAN = `import { OptionChart } from '@pyreon/charts/plot'
+const CARTESIAN = `import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart height={260} option={{
     title: { text: 'Quarterly' }, legend: {}, tooltip: {},
@@ -47,13 +47,13 @@ export function App() {
   }} />
 }`
 
-const PICTORIAL = `import { OptionChart } from '@pyreon/charts/plot'
+const PICTORIAL = `import { OptionChart } from '@pyreon/charts/option'
 export function App() { return <OptionChart option={{
   xAxis: { type: 'category', data: ['A', 'B'] }, yAxis: {},
   series: [{ type: 'pictorialBar', name: 'Units', symbol: 'diamond', symbolRepeat: 'fixed', data: [3, 5] }],
 }} /> }`
 
-const STATIC_FAMILIES = `import { OptionChart } from '@pyreon/charts/plot'
+const STATIC_FAMILIES = `import { OptionChart } from '@pyreon/charts/option'
 export function App() { return <>
   <OptionChart option={{ radar: { indicator: [{ name: 'Speed', max: 100 }, { name: 'Power', max: 100 }] }, legend: {}, series: [{ type: 'radar', areaStyle: { opacity: 0.4 }, data: [{ name: 'A', value: [80, 60] }] }] }} />
   <OptionChart option={{ xAxis: { data: ['Mon', 'Tue'] }, yAxis: {}, series: [{ type: 'candlestick', data: [[10, 12, 8, 14], [12, 11, 9, 15]] }] }} />
@@ -61,7 +61,7 @@ export function App() { return <>
   <OptionChart option={{ series: [{ type: 'funnel', sort: 'none', gap: 3, data: [{ name: 'Visit', value: 100 }, { name: 'Buy', value: 20 }] }] }} />
 </> }`
 
-const HIERARCHY_AND_NETWORK = `import { OptionChart } from '@pyreon/charts/plot'
+const HIERARCHY_AND_NETWORK = `import { OptionChart } from '@pyreon/charts/option'
 export function App() { return <>
   <OptionChart option={{ series: [{ type: 'treemap', label: { show: false }, data: [{ name: 'A', children: [{ name: 'A1', value: 3, itemStyle: { color: '#3366ff' } }] }] }] }} />
   <OptionChart option={{ series: [{ type: 'sunburst', radius: ['30%', '90%'], data: [{ name: 'A', children: [{ name: 'A1', value: 3 }] }] }] }} />
@@ -70,7 +70,7 @@ export function App() { return <>
   <OptionChart option={{ series: [{ type: 'graph', data: [{ id: 'a', name: 'Alpha', value: 2, symbolSize: 20 }, { id: 'b', name: 'Beta' }], links: [{ source: 'a', target: 'b', value: 3 }] }] }} />
 </> }`
 
-const CALENDAR = `import { OptionChart } from '@pyreon/charts/plot'
+const CALENDAR = `import { OptionChart } from '@pyreon/charts/option'
 export function App() { return <>
   <OptionChart option={{ calendar: { range: 2026, cellSize: 14, dayLabel: { show: false, firstDay: 1 }, monthLabel: { show: false }, itemStyle: { color: '#eeeeee', borderWidth: 2 } }, visualMap: { min: 0, max: 10, inRange: { color: ['#ffffff', '#008800'] } }, series: [{ type: 'heatmap', coordinateSystem: 'calendar', data: [['2026-01-03', 4], ['2026-06-12', 9]] }] }} />
   <OptionChart option={{ calendar: { range: ['2025-12-20', '2026-01-10'] }, series: [{ type: 'heatmap', coordinateSystem: 'calendar', data: [['2025-12-25', 7]] }] }} />
@@ -78,7 +78,7 @@ export function App() { return <>
   <OptionChart option={{ calendar: { range: '2027-03-04' }, series: [{ type: 'heatmap', coordinateSystem: 'calendar', data: [['2027-03-04', 6]] }] }} />
 </> }`
 
-const PARALLEL = `import { OptionChart } from '@pyreon/charts/plot'
+const PARALLEL = `import { OptionChart } from '@pyreon/charts/option'
 export function App() { return <OptionChart option={{
   parallelAxis: [
     { dim: 0, name: 'Score', min: 0, max: 10 },
@@ -87,7 +87,7 @@ export function App() { return <OptionChart option={{
   series: [{ type: 'parallel', lineStyle: { width: 3, opacity: 0.6, color: '#123456' }, data: [[4, 'low'], [9, 'high']] }],
 }} /> }`
 
-const RIVER = `import { OptionChart } from '@pyreon/charts/plot'
+const RIVER = `import { OptionChart } from '@pyreon/charts/option'
 export function App() { return <OptionChart option={{
   singleAxis: { type: 'time' },
   series: [{ type: 'themeRiver', label: { show: false }, data: [
@@ -96,7 +96,7 @@ export function App() { return <OptionChart option={{
   ] }],
 }} /> }`
 
-const POLAR = `import { OptionChart } from '@pyreon/charts/plot'
+const POLAR = `import { OptionChart } from '@pyreon/charts/option'
 export function App() { return <OptionChart option={{
   polar: { radius: ['20%', '80%'] },
   angleAxis: { type: 'category', data: ['North', 'East', 'South'], startAngle: 90, clockwise: false },
@@ -107,7 +107,7 @@ export function App() { return <OptionChart option={{
   ],
 }} /> }`
 
-const BOXPLOT = `import { OptionChart } from '@pyreon/charts/plot'
+const BOXPLOT = `import { OptionChart } from '@pyreon/charts/option'
 export function App() { return <OptionChart option={{
   xAxis: { type: 'category', data: ['A', 'B'] }, yAxis: {},
   series: [{ type: 'boxplot', itemStyle: { color: '#ddeeff', borderColor: '#112233' }, data: [
@@ -115,7 +115,7 @@ export function App() { return <OptionChart option={{
   ] }],
 }} /> }`
 
-const SINGLE_AXIS = `import { OptionChart } from '@pyreon/charts/plot'
+const SINGLE_AXIS = `import { OptionChart } from '@pyreon/charts/option'
 export function App() { return <OptionChart option={{
   singleAxis: { type: 'value', min: 0, max: 100, name: 'Score' },
   series: [{ type: 'effectScatter', coordinateSystem: 'singleAxis', symbolSize: 16, label: { show: true }, itemStyle: { color: '#336699' }, data: [[20, 2], [75, 8]] }],
@@ -258,9 +258,9 @@ describe('OptionChart family options lower to native hosts', () => {
   }
 
   it('names unsupported dynamic and cartesian option shapes', () => {
-    const dynamic = transform(`import { OptionChart } from '@pyreon/charts/plot'; export function App(p: { option: object }) { return <OptionChart option={p.option} /> }`, { target: 'swift' })
+    const dynamic = transform(`import { OptionChart } from '@pyreon/charts/option'; export function App(p: { option: object }) { return <OptionChart option={p.option} /> }`, { target: 'swift' })
     expect(dynamic.warnings.join('\n')).toContain('<OptionChart option>')
-    const line = transform(`import { OptionChart } from '@pyreon/charts/plot'; export function App() { return <OptionChart option={{ series: [{ type: 'line', data: [1, 2] }] }} /> }`, { target: 'kotlin' })
+    const line = transform(`import { OptionChart } from '@pyreon/charts/option'; export function App() { return <OptionChart option={{ series: [{ type: 'line', data: [1, 2] }] }} /> }`, { target: 'kotlin' })
     expect(line.warnings.join('\n')).toContain('option.xAxis.data')
   })
 

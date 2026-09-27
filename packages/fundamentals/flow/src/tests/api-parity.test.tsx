@@ -103,7 +103,7 @@ describe('flow API parity', () => {
     flow.dispose()
   })
 
-  it('addEdges normalises, dedupes, emits add changes + connect; setEdges/updateEdge/removeEdges', () => {
+  it('addEdges normalises, dedupes, emits add changes (not onConnect); setEdges/updateEdge/removeEdges', () => {
     const flow = make()
     const connect = vi.fn()
     const changes = vi.fn()
@@ -117,7 +117,8 @@ describe('flow API parity', () => {
     const ac = flow.getEdges()[2]!
     expect(ac.id).toBeTruthy()
     expect(ac.type).toBe('bezier')
-    expect(connect).toHaveBeenCalledTimes(1)
+    // onConnect is the user-gesture event — programmatic addEdges is observed via onEdgesChange.
+    expect(connect).not.toHaveBeenCalled()
     expect(changes).toHaveBeenLastCalledWith([{ type: 'add', edge: ac }])
     flow.updateEdge('ab', { label: 'hello' })
     expect(flow.getEdge('ab')!.label).toBe('hello')

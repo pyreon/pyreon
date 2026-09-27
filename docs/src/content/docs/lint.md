@@ -307,7 +307,7 @@ For Pyreon packages and libraries — the strongest preset.
 
 ### `best-practices`
 
-`recommended` **plus every opt-in best-practice rule enabled** at its declared severity. The opt-in rules (the `frontend`, `query`, `rx`, `i18n`, `storage` categories + `form`'s `no-signal-in-form-initial-values` + `router`'s `prefer-typed-search-params`) are **off in all other presets by design** — best practices are opinionated, so you opt in explicitly. Library-scoped opt-in rules still self-gate on your `package.json` dependencies even under `best-practices`, so you only see rules for libraries you actually use.
+`recommended` **plus every opt-in best-practice rule enabled** (`meta.optIn`) at its declared severity — **off in all other presets by design**, so you opt in explicitly. The mechanism is per-rule, not per-category: `query`, `rx`, `i18n`, `storage`, `http`, and `portable` are wholesale opt-in (every rule in the category), `frontend` is half opt-in (6 of its 12 rules ship on by default — see [Accessibility is on by default](#accessibility-is-on-by-default)), and a handful of individually opt-in rules sit inside otherwise-mandatory categories (`reactivity`, `jsx`, `performance`, `ssr`, `styling`, `security`, `web-perf`, `js` — marked `ᵒ` in [Categories at a glance](#categories-at-a-glance)). Library-scoped opt-in rules still self-gate on your `package.json` dependencies even under `best-practices`, so you only see rules for libraries you actually use.
 
 ### Opt-in best-practice rules
 
@@ -328,7 +328,7 @@ Per-rule config in your config file **always wins** over the preset — enable o
 
 #### Dependency auto-detection
 
-Library-scoped opt-in rules — `query`, `rx`, `i18n`, `storage`, form's `no-signal-in-form-initial-values`, router's `prefer-typed-search-params`, and `frontend`'s `prefer-zero-image` — only activate when the linted project actually declares the relevant `@pyreon/*` package in its `package.json` (`dependencies` / `devDependencies` / `peerDependencies` / `optionalDependencies`). A project that doesn't use `@pyreon/query` never sees `query-options-as-function` — zero config, zero noise. The check (`isProjectDependency`) walks up to the nearest `package.json` and is cached per manifest. Per-rule config still overrides if you want to force a rule on or off regardless of deps.
+Library-scoped opt-in rules — every rule in `query`, `rx`, `i18n`, `storage`, and `http`; `form`'s `no-signal-in-form-initial-values`; `router`'s `prefer-typed-search-params`; `ssr`'s `no-private-env-in-client`; and `frontend`'s `prefer-zero-image` / `no-discarded-optimize-fields` — only activate when the linted project actually declares the relevant `@pyreon/*` package in its `package.json` (`dependencies` / `devDependencies` / `peerDependencies` / `optionalDependencies`). A project that doesn't use `@pyreon/query` never sees `query-options-as-function` — zero config, zero noise. The check (`isProjectDependency`) walks up to the nearest `package.json` and is cached per manifest. Per-rule config still overrides if you want to force a rule on or off regardless of deps.
 
 ## Rules
 
@@ -391,13 +391,19 @@ What remains opt-in is deliberately a different class: **layout shift** (`img-re
 
 ### Rule groups
 
-Every rule belongs to one of four **groups** — the axis the 19 categories don't capture: *what knowledge does this rule require, and does it ship?*
+Every rule belongs to one of ten **groups** — the axis the 25 categories don't capture: *what knowledge does this rule require, where does the file run, and which platforms must it survive?*
 
 | group | rules | what it is |
 | --- | --- | --- |
-| `pyreon` | 50 | Framework semantics — reactivity, JSX, lifecycle, SSR/SSG. Nothing outside Pyreon can know these. |
-| `pkg` | 27 | Per-library. Each self-activates on a declared dependency, so you only see rules for libraries you use. |
+| `pyreon` | 52 | Framework semantics — reactivity, JSX, lifecycle, SSR/SSG. Nothing outside Pyreon can know these. |
+| `isomorphic` | 6 | Runs on BOTH sides — the hydration contract for a file that renders on server and client. |
+| `backend` | 7 | Server-role files — handlers, loaders, adapters. |
+| `web-perf` | 7 | Client-role files — main thread, teardown, network. |
+| `portable` | 6 | Must survive iOS + Android through PMTC. |
+| `security` | 3 | Exploitable shapes — script URLs, referrer leakage. |
 | `a11y` | 15 | Accessibility — standard markup plus Pyreon's own surfaces (toast, dialog, overlay, primitives). |
+| `pkg` | 27 | Per-library. Each self-activates on a declared dependency, so you only see rules for libraries you use. |
+| `js` | 3 | Language-level shapes oxlint cannot express on its own. |
 | `internal` | 6 | Encodes the Pyreon repository itself. **Never on in a shipped preset.** |
 
 Categories live underneath, so a query rule is `group: 'pkg'`, `category: 'query'`. Set a whole group in one line — applied after the preset and **before** per-rule entries, so an explicit rule always wins:
@@ -469,18 +475,18 @@ pyreon-lint --why-off pyreon/rx-prefer-pipe
 
 The dependency gate is checked relative to a file, so pass a path (`pyreon-lint --why-off <id> src/`) when you want that reason evaluated. An unknown id exits non-zero and suggests the near miss. Programmatic equivalent: `explainRuleState(id, { config, filePath })`.
 
-There are **132 rules across 25 categories**. Six of them are **monorepo-scoped** (`meta.scope: 'monorepo'`) — `no-circular-import`, `no-cross-layer-import`, `no-error-without-prefix`, `no-query-selector-cast-in-test`, `require-browser-smoke-test`, `vitest-config-uses-shared`. They encode the Pyreon repository's own conventions (its layer order, its private internal packages, its `[Pyreon]` error prefix) rather than anything about Pyreon-the-framework, so **every preset a consumer selects forces them off**, `best-practices` included. The Pyreon repo re-enables them by id in its own `.pyreonlintrc.json`, which keeps that dependency visible in config instead of hidden inside a shared preset. The `frontend`, `query`, `rx`, `i18n`, and `storage` categories (plus the two opt-in rules in `form` and `router`) are opt-in best-practice rules — off in the standard presets. Run `pyreon-lint --list` for the authoritative list with live severities.
+There are **132 rules across 25 categories**. Six of them are **monorepo-scoped** (`meta.scope: 'monorepo'`) — `no-circular-import`, `no-cross-layer-import`, `no-error-without-prefix`, `no-query-selector-cast-in-test`, `require-browser-smoke-test`, `vitest-config-uses-shared`. They encode the Pyreon repository's own conventions (its layer order, its private internal packages, its `[Pyreon]` error prefix) rather than anything about Pyreon-the-framework, so **every preset a consumer selects forces them off**, `best-practices` included. The Pyreon repo re-enables them by id in its own `.pyreonlintrc.json`, which keeps that dependency visible in config instead of hidden inside a shared preset. `query`, `rx`, `i18n`, `storage`, `http`, and `portable` are wholesale opt-in best-practice categories — off in the standard presets. `frontend` is mixed (6 of 12 on by default); the rest of the opt-in surface is individual rules scattered across otherwise-mandatory categories, marked `ᵒ` below. Run `pyreon-lint --list` for the authoritative list with live severities.
 
 ### Categories at a glance
 
 | Category          | Rules | Opt-in? | Purpose                                                             |
 | ----------------- | ----- | ------- | ------------------------------------------------------------------ |
-| `reactivity`      | 15    |         | Signal/effect/computed correctness — tracking, batching, leaks     |
-| `jsx`             | 11    |         | Pyreon JSX semantics — `class`/`for`, `<For>`/`by`, props, `<Show>`|
+| `reactivity`      | 16    |         | Signal/effect/computed correctness — tracking, batching, leaks     |
+| `jsx`             | 12    |         | Pyreon JSX semantics — `class`/`for`, `<For>`/`by`, props, `<Show>`|
 | `lifecycle`       | 6     |         | `onMount`/`effect` setup-vs-mount, cleanup, idempotent `init*`     |
-| `performance`     | 6     |         | Keyed lists, lazy imports, leak-prone timers                       |
-| `ssr`             | 4     |         | Browser globals, hydration mismatch, per-request state             |
-| `architecture`    | 10    |         | Import layering, dev gates, error prefixes, test/config contracts  |
+| `performance`     | 5     |         | Keyed lists, lazy imports, leak-prone timers                       |
+| `ssr`             | 5     | 1 of 5  | Browser globals, hydration mismatch, per-request state             |
+| `architecture`    | 11    |         | Import layering, dev gates, error prefixes, test/config contracts  |
 | `store`           | 3     |         | `defineStore` ids, mutation discipline, provider scope             |
 | `form`            | 4     | 1 of 4  | `useField`/`register`, validation, field arrays                    |
 | `styling`         | 5     |         | Inline style objects, dynamic `styled()`, theme/cx, rocketstyle `.attrs()` |
@@ -488,24 +494,31 @@ There are **132 rules across 25 categories**. Six of them are **monorepo-scoped*
 | `accessibility`   | 3     |         | Dialog / overlay / toast ARIA                                      |
 | `router`          | 5     | 1 of 5  | `<Link>` vs `<a>`, navigate-in-render, fallback, active state      |
 | `ssg`             | 3     |         | `@pyreon/zero` route exports (`getStaticPaths`, `revalidate`, `loader`) |
-| `frontend`        | 10    | ✅ all  | Accessibility + layout-shift (CLS) + asset optimization            |
-| `query`           | 1     | ✅      | `@pyreon/query` options-as-function                                |
+| `security`        | 3     | 1 of 3  | Exploitable shapes — reverse tabnabbing, `javascript:` URLs, unsanitized `innerHTML` |
+| `frontend`        | 12    | 6 of 12 | Accessibility + layout-shift (CLS) + asset optimization            |
+| `query`           | 2     | ✅ all  | `@pyreon/query` options-as-function, `queryFn` signal forwarding   |
 | `rx`              | 1     | ✅      | `@pyreon/rx` pipe composition                                      |
 | `i18n`            | 1     | ✅      | `@pyreon/i18n` `<Trans>` for rich JSX                              |
 | `storage`         | 1     | ✅      | `@pyreon/storage` `.set()` vs call-write                           |
+| `http`            | 2     | ✅ all  | `@pyreon/http` path encoding, fetch without a timeout signal       |
+| `isomorphic`      | 6     |         | Server/client render must agree — locale, timezone, ids, env branches, iteration order |
+| `backend`         | 7     |         | Server-role request handlers — blocking I/O, unvalidated input, shared mutable state, leaked secrets |
+| `web-perf`        | 7     | 1 of 7  | Client-role runtime perf — reflow, LCP hints, third-party scripts, passive listeners, rAF leaks |
+| `portable`        | 6     | ✅ all  | Must survive iOS + Android — PMTC subset, canonical primitives, `nativeCompat()` |
+| `js`              | 3     | 1 of 3  | Language shapes oxlint cannot express — swallowed errors, ESM `require()`, dropped error cause |
 
 Opt-in (`ᵒ`) rules below are off in `recommended`/`strict`/`app`/`lib` — enable via `best-practices` or per-rule config; library-scoped ones additionally auto-gate on `package.json` deps.
 
-### Reactivity (15)
+### Reactivity (16)
 
 | Rule                                  | Severity | Fixable | Description                                                                        |
-| ------------------------------------- | -------- | ------- | ---------------------------------------------------------------------------------- |
-| `pyreon/no-bare-signal-in-jsx`        | error    | yes     | `{count()}` won't be reactive — wrap in `() => count()`                            |
+| -------------------------------------- | -------- | ------- | ---------------------------------------------------------------------------------- |
+| `pyreon/no-bare-signal-in-jsx` ᵒ       | info     |         | `{count()}` won't be reactive — wrap in `() => count()`                            |
 | `pyreon/no-signal-in-loop`            | error    |         | `signal()` inside loops creates signals on every iteration                         |
 | `pyreon/no-signal-in-props`           | warn     |         | `<C x={sig()} />` captures the value once unless the compiler wraps it             |
 | `pyreon/no-async-effect`              | error    |         | `async` in `effect`/`renderEffect`/`computed` — reads after `await` aren't tracked |
 | `pyreon/no-context-destructure`       | warn     |         | Destructuring `useContext()` breaks reactivity when the provider uses getters      |
-| `pyreon/no-signal-call-write`         | error    |         | `sig(value)` does NOT write — use `sig.set(value)` / `sig.update(fn)`              |
+| `pyreon/no-signal-call-write`         | error    | yes     | `sig(value)` does NOT write — use `sig.set(value)` / `sig.update(fn)`              |
 | `pyreon/no-nested-effect`             | warn     |         | `effect()` inside `effect()` — use `computed()`                                    |
 | `pyreon/no-peek-in-tracked`           | error    |         | `.peek()` inside effect/computed bypasses tracking                                 |
 | `pyreon/no-unbatched-updates`         | warn     |         | 3+ `.set()` calls without `batch()`                                                |
@@ -515,8 +528,9 @@ Opt-in (`ᵒ`) rules below are off in `recommended`/`strict`/`app`/`lib` — ena
 | `pyreon/storage-signal-v-forwarding`  | error    |         | Signal-like wrapper callable missing `_v` forwarding — breaks the `_bindText` fast path |
 | `pyreon/no-iterate-children-without-resolve` | error |     | Iterating `props.children` at the VNode level (`cloneVNode`, `.map`/`.filter`, `.props`) must first unwrap a possible compiler accessor via `resolveChildren(…)` |
 | `pyreon/no-guard-only-signal-reads-in-effect` | info |    | Every reactive read in an `effect()` sits behind a non-reactive guard (`if (ref.current) { … }`) — the first run can short-circuit before any read, so the effect subscribes to nothing and never re-runs |
+| `pyreon/no-unguarded-async-signal-write` ᵒ | warn |     | An async function writes captured signal state after an `await` with no staleness guard — a slow earlier response resolves last and clobbers newer data (leak class F) |
 
-### JSX (11)
+### JSX (12)
 
 | Rule                            | Severity | Fixable | Description                                   |
 | ------------------------------- | -------- | ------- | --------------------------------------------- |
@@ -526,16 +540,17 @@ Opt-in (`ᵒ`) rules below are off in `recommended`/`strict`/`app`/`lib` — ena
 | `pyreon/no-props-destructure`   | error    |         | Destructuring props breaks reactivity         |
 | `pyreon/no-map-in-jsx`          | warn     |         | Use `<For>` instead of `.map()`               |
 | `pyreon/no-onchange`            | warn     | yes     | Use `onInput` not `onChange` on inputs        |
-| `pyreon/no-ternary-conditional` | warn     |         | Use `<Show>` instead of ternary               |
-| `pyreon/no-and-conditional`     | warn     |         | Use `<Show>` instead of `&&`                  |
+| `pyreon/no-ternary-conditional` ᵒ | warn   |         | Use `<Show>` instead of ternary               |
+| `pyreon/no-and-conditional` ᵒ   | warn     |         | Use `<Show>` instead of `&&`                  |
 | `pyreon/no-index-as-by`         | warn     |         | Index keys cause reconciliation bugs          |
 | `pyreon/no-missing-for-by`      | error    |         | `<For>` without `by` defeats keyed reconciliation |
 | `pyreon/no-children-access`     | info     |         | Raw `props.children` in renderer files        |
+| `pyreon/no-line-comment-in-jsx` | error    |         | A `//` line in JSX child position is not a comment — JSX has no line comments, so it renders as literal text on web and, through PMTC, on iOS and Android. Use `{/* … */}` |
 
 ### Lifecycle (6)
 
 | Rule                                    | Severity | Description                                                                       |
-| --------------------------------------- | -------- | --------------------------------------------------------------------------------- |
+| --------------------------------------- | -------- | ----------------------------------------------------------------------------------- |
 | `pyreon/no-missing-cleanup`             | warn     | `onMount` with timer/listener but no cleanup return                               |
 | `pyreon/no-mount-in-effect`             | warn     | `onMount()` inside `effect()` runs every re-execution                             |
 | `pyreon/no-effect-in-mount`             | info     | `effect()` inside `onMount()` is redundant                                        |
@@ -543,29 +558,30 @@ Opt-in (`ᵒ`) rules below are off in `recommended`/`strict`/`app`/`lib` — ena
 | `pyreon/no-imperative-effect-on-create` | warn     | `effect()` doing DOM/IO/timer work at component setup — move it into `onMount()`  |
 | `pyreon/init-fn-needs-idempotency`      | warn     | Exported `init*` fn called without a refcount/boolean guard registers effects N times |
 
-### Performance (6)
+### Performance (5)
 
 | Rule                                    | Severity | Description                                                            |
-| --------------------------------------- | -------- | ---------------------------------------------------------------------- |
+| --------------------------------------- | -------- | ------------------------------------------------------------------------ |
 | `pyreon/no-effect-in-for`               | warn     | `effect()` inside `<For>` creates N effects                            |
 | `pyreon/no-heavy-import-only-in-handler`| warn     | Heavy module imported statically but used only in a deferred scope — use a dynamic `import()` |
 | `pyreon/promise-race-needs-cleartimeout`| warn     | `Promise.race([work, setTimeout-reject])` without `clearTimeout` in `finally` leaks the timer |
 | `pyreon/no-eager-import`                | info     | Static import of heavy packages — use `lazy()`                         |
-| `pyreon/prefer-show-over-display`       | info     | Conditional `display` style — use `<Show>`                             |
+| `pyreon/prefer-show-over-display` ᵒ     | info     | Conditional `display` style — use `<Show>`                             |
 
-### SSR (4)
+### SSR (5)
 
-| Rule                            | Severity | Description                                                 |
-| ------------------------------- | -------- | ----------------------------------------------------------- |
-| `pyreon/no-window-in-ssr`       | error    | Browser globals outside `onMount`/typeof guard              |
-| `pyreon/no-mismatch-risk`       | warn     | `Date.now()`/`Math.random()` in render — hydration mismatch |
-| `pyreon/prefer-request-context` | warn     | Module-level state in SSR handlers                          |
-| `pyreon/prefer-isserver`        | warn     | Prefer `isServer`/`isClient` from `@pyreon/reactivity` over hand-rolled `typeof window`/`typeof document` |
+| Rule                                 | Severity | Fixable | Description                                                 |
+| -------------------------------------- | -------- | ------- | ----------------------------------------------------------- |
+| `pyreon/no-window-in-ssr`            | error    |         | Browser globals outside `onMount`/typeof guard              |
+| `pyreon/no-mismatch-risk`            | warn     |         | `Date.now()`/`Math.random()` in render — hydration mismatch |
+| `pyreon/prefer-request-context`      | warn     |         | Module-level state in SSR handlers                          |
+| `pyreon/prefer-isserver`             | warn     | yes     | Prefer `isServer`/`isClient` from `@pyreon/reactivity` over hand-rolled `typeof window`/`typeof document` |
+| `pyreon/no-private-env-in-client` ᵒ  | warn     |         | Raw `process.env.X` / `import.meta.env.X` reads in client-reachable `@pyreon/zero` code — use `publicEnv()` from `@pyreon/zero/env` with a `ZERO_PUBLIC_`-prefixed var (auto-gated on `@pyreon/zero`) |
 
-### Architecture (10)
+### Architecture (11)
 
 | Rule                                       | Severity | Fixable | Description                                                                |
-| ------------------------------------------ | -------- | ------- | -------------------------------------------------------------------------- |
+| -------------------------------------------- | -------- | ------- | ------------------------------------------------------------------------- |
 | `pyreon/no-circular-import`                | error    |         | Violates package dependency layer order                                    |
 | `pyreon/no-cross-layer-import`             | error    |         | Core importing from UI-system                                              |
 | `pyreon/dev-guard-warnings`                | error    |         | `console.warn` without a dev guard                                         |
@@ -576,11 +592,12 @@ Opt-in (`ᵒ`) rules below are off in `recommended`/`strict`/`app`/`lib` — ena
 | `pyreon/vitest-config-uses-shared`         | error    |         | Per-package vitest config must use `defineNodeConfig`/`defineBrowserConfig` |
 | `pyreon/no-deep-import`                     | warn     |         | Deep import into `@pyreon/*/src/` internals                                |
 | `pyreon/no-error-without-prefix`           | warn     | yes     | Error message without a `[Pyreon]` prefix                                  |
+| `pyreon/island-import-from-client`         | warn     |         | Import `island` from `@pyreon/server/client` (or `@pyreon/zero`), never the `@pyreon/server` barrel — the barrel drags `node:*` and the server singleton into client bundles |
 
 ### Store (3)
 
 | Rule                               | Severity | Description                                      |
-| ---------------------------------- | -------- | ------------------------------------------------ |
+| ------------------------------------ | -------- | ------------------------------------------------ |
 | `pyreon/no-duplicate-store-id`     | error    | Duplicate `defineStore()` IDs                    |
 | `pyreon/no-mutate-store-state`     | warn     | Direct `.set()` on store signals outside actions |
 | `pyreon/no-store-outside-provider` | warn     | Store hook in SSR without provider               |
@@ -588,7 +605,7 @@ Opt-in (`ᵒ`) rules below are off in `recommended`/`strict`/`app`/`lib` — ena
 ### Form (4)
 
 | Rule                                        | Severity | Description                                        |
-| ------------------------------------------- | -------- | -------------------------------------------------- |
+| ---------------------------------------------- | -------- | -------------------------------------------------- |
 | `pyreon/no-unregistered-field`              | warn     | `useField()` without `register()`                  |
 | `pyreon/no-submit-without-validation`       | warn     | `useForm({ onSubmit })` without validators         |
 | `pyreon/prefer-field-array`                 | info     | `signal([])` in form files — use `useFieldArray()` |
@@ -597,17 +614,17 @@ Opt-in (`ᵒ`) rules below are off in `recommended`/`strict`/`app`/`lib` — ena
 ### Styling (5)
 
 | Rule                               | Severity | Description                                        |
-| ---------------------------------- | -------- | -------------------------------------------------- |
+| ------------------------------------ | -------- | ------------------------------------------------- |
 | `pyreon/no-inline-style-object`    | warn     | Inline style object creates a new object each render |
 | `pyreon/no-dynamic-styled`         | warn     | `styled()` inside component body                   |
-| `pyreon/no-theme-outside-provider` | warn     | `useTheme()` without provider                      |
+| `pyreon/no-theme-outside-provider` ᵒ | warn   | `useTheme()` without provider                      |
 | `pyreon/prefer-cx`                 | info     | String concatenation for class names — use `cx()`  |
 | `pyreon/no-signal-read-in-attrs-callback` | warn | Signal/computed read inside a rocketstyle `.attrs()` callback — the callback runs once at setup, so the read captures a dead value (auto-gated on `@pyreon/rocketstyle`) |
 
 ### Hooks (3)
 
 | Rule                             | Severity | Description                                            |
-| -------------------------------- | -------- | ------------------------------------------------------ |
+| ---------------------------------- | -------- | ------------------------------------------------------ |
 | `pyreon/no-raw-addeventlistener` | info     | Use `useEventListener()` — auto-cleanup                |
 | `pyreon/no-raw-setinterval`      | info     | Use `onMount` with cleanup return                      |
 | `pyreon/no-raw-localstorage`     | info     | Use `useStorage()` — reactive, SSR-safe                |
@@ -615,7 +632,7 @@ Opt-in (`ᵒ`) rules below are off in `recommended`/`strict`/`app`/`lib` — ena
 ### Accessibility (3)
 
 | Rule                  | Severity | Description                                       |
-| --------------------- | -------- | ------------------------------------------------- |
+| ----------------------- | -------- | ------------------------------------------------- |
 | `pyreon/dialog-a11y`  | warn     | `<dialog>` without `aria-label`/`aria-labelledby` |
 | `pyreon/overlay-a11y` | warn     | `<Overlay>` without role/aria attributes          |
 | `pyreon/toast-a11y`   | warn     | Toast component without `role="alert"`            |
@@ -623,7 +640,7 @@ Opt-in (`ᵒ`) rules below are off in `recommended`/`strict`/`app`/`lib` — ena
 ### Router (5)
 
 | Rule                                      | Severity | Description                                          |
-| ----------------------------------------- | -------- | ---------------------------------------------------- |
+| -------------------------------------------- | -------- | ----------------------------------------------------- |
 | `pyreon/no-href-navigation`               | warn     | `<a href>` instead of `<Link>` in router apps        |
 | `pyreon/no-imperative-navigate-in-render` | error    | `navigate()` in component body causes infinite loops |
 | `pyreon/no-missing-fallback`              | warn     | Route config without a catch-all / 404 route         |
@@ -635,42 +652,55 @@ Opt-in (`ᵒ`) rules below are off in `recommended`/`strict`/`app`/`lib` — ena
 Route-scoped (`src/routes/`) rules for `@pyreon/zero` static-site generation.
 
 | Rule                                 | Severity | Description                                                                          |
-| ------------------------------------ | -------- | ------------------------------------------------------------------------------------ |
+| --------------------------------------- | -------- | ------------------------------------------------------------------------------------ |
 | `pyreon/revalidate-not-pure-literal` | error    | `export const revalidate` must be a numeric literal or `false` — non-literals are silently dropped from the build-time ISR manifest |
 | `pyreon/missing-get-static-paths`    | warn     | Dynamic route (`[id].tsx` / `[...slug].tsx`) without `export const getStaticPaths` — silently skipped by SSG auto-detect. App-mode-aware via the `appMode` option: `["warn", { "appMode": "ssr" }]` stays quiet for undeclared routes (they render per-request) and fires only on explicit `renderMode = 'ssg'` declarations |
 | `pyreon/invalid-loader-export`       | error    | `export const loader` is not callable — crashes the SSR runtime with `loader is not a function` |
 
-### Frontend (10) ᵒ
+### Security (3)
 
-Opt-in frontend best practices — accessibility + layout-shift (CLS) + asset optimization. All off in the standard presets.
+Exploitable shapes — a different question from "is this idiomatic Pyreon?", so this is its own group and teams gate on it separately.
 
-| Rule                              | Severity | Fixable | Description                                                                              |
-| --------------------------------- | -------- | ------- | ---------------------------------------------------------------------------------------- |
-| `pyreon/require-img-alt`          | error    |         | `<img>` without an `alt` attribute — required for a11y (`alt=""` for decorative is fine)  |
-| `pyreon/img-requires-dimensions`  | warn     |         | `<img>` without both `width` & `height` — causes layout shift (CLS); set intrinsic dimensions |
-| `pyreon/no-positive-tabindex`     | warn     | yes     | `tabIndex={n}` where n > 0 breaks natural tab order — use `0` (autofix) or `-1`           |
-| `pyreon/no-discarded-optimize-fields` | warn |        | A raw `<img src={x.src}>` that discards the rest of a `?optimize` descriptor (CLS + no responsive images) |
-| `pyreon/no-autofocus`             | warn     | yes     | `autoFocus` disorients screen-reader/keyboard users by moving focus on load (autofix removes it) |
-| `pyreon/no-redundant-role`        | warn     | yes     | An ARIA `role` that duplicates the element's implicit role (autofix removes it)           |
-| `pyreon/anchor-is-valid`          | warn     |         | `<a>` that isn't a valid link — missing `href`, or `href` is `""`/`#`/`javascript:`       |
-| `pyreon/heading-order`            | warn     |         | A skipped heading level (e.g. `<h1>` → `<h3>`) breaks the screen-reader outline           |
-| `pyreon/color-contrast`           | warn     |         | A low-contrast `color`/`background` literal-hex pair in a style object (below the WCAG AA `4.5:1` ratio)  |
-| `pyreon/prefer-zero-image`        | info     |         | Raw `<img>` in a `@pyreon/zero` project — prefer `<Image>` for lazy-load + srcset + blur (auto-gated on `@pyreon/zero`) |
+| Rule                                  | Severity | Fixable | Description                                                                                          |
+| ---------------------------------------- | -------- | ------- | ----------------------------------------------------------------------------------------------------- |
+| `pyreon/no-target-blank-without-rel`  | warn     | yes     | `target="_blank"` without `rel="noopener noreferrer"` — the destination receives the full referring URL, and in older browsers the opened page can navigate its opener |
+| `pyreon/no-script-url`                | error    |         | `javascript:`/`vbscript:` URLs execute in the page origin — use a `<button onClick>` for an action    |
+| `pyreon/no-unsanitized-inner-html` ᵒ  | warn     |         | `dangerouslySetInnerHTML={{ __html: X }}` where `X` is not a literal or the result of a sanitizer — Pyreon assigns `__html` raw, so an interpolated value is a direct XSS vector |
 
-### Query (1) ᵒ
+### Frontend (12)
+
+Accessibility, layout-shift (CLS) and asset-optimization checks. 6 of the 12 rules are **on by default** — unambiguous WCAG/CLS failures with an oxlint `correctness`-tier counterpart. The other 6 (marked `ᵒ`) are opt-in — enable via the `best-practices` preset or per-rule config; the `@pyreon/zero`/`@pyreon/primitives`-gated ones additionally auto-activate only in a project that depends on that package.
+
+| Rule                                                | Severity | Fixable | Description                                                                              |
+| ------------------------------------------------------ | -------- | ------- | ------------------------------------------------------------------------------------------ |
+| `pyreon/require-img-alt`                            | error    |         | `<img>` without an `alt` attribute — required for a11y (`alt=""` for decorative is fine)  |
+| `pyreon/img-requires-dimensions` ᵒ                  | warn     |         | `<img>` without both `width` & `height` — causes layout shift (CLS); set intrinsic dimensions |
+| `pyreon/no-positive-tabindex`                       | warn     | yes     | `tabIndex={n}` where n > 0 breaks natural tab order — use `0` (autofix) or `-1`           |
+| `pyreon/no-discarded-optimize-fields` ᵒ             | warn     |         | A raw `<img src={x.src}>` that discards the rest of a `?optimize` descriptor (CLS + no responsive images; auto-gated on `@pyreon/zero`) |
+| `pyreon/no-autofocus`                               | warn     | yes     | `autoFocus` disorients screen-reader/keyboard users by moving focus on load (autofix removes it) |
+| `pyreon/no-redundant-role`                          | warn     | yes     | An ARIA `role` that duplicates the element's implicit role (autofix removes it)           |
+| `pyreon/anchor-is-valid`                            | warn     |         | `<a>` that isn't a valid link — missing `href`, or `href` is `""`/`#`/`javascript:`       |
+| `pyreon/heading-order` ᵒ                            | warn     |         | A skipped heading level (e.g. `<h1>` → `<h3>`) breaks the screen-reader outline           |
+| `pyreon/color-contrast` ᵒ                           | warn     |         | A low-contrast `color`/`background` literal-hex pair in a style object (below the WCAG AA `4.5:1` ratio)  |
+| `pyreon/content-visibility-needs-intrinsic-size` ᵒ  | warn     |         | `content-visibility: auto` with no `contain-intrinsic-size` — the browser estimates the box then corrects it on render, shifting everything below (CLS) |
+| `pyreon/prefer-zero-image` ᵒ                        | info     |         | Raw `<img>` in a `@pyreon/zero` project — prefer `<Image>` for lazy-load + srcset + blur (auto-gated on `@pyreon/zero`) |
+| `pyreon/primitive-media-needs-label`                | error    |         | In `@pyreon/primitives` projects, every `<Image>`/`<Icon>` needs an `accessibilityLabel` (or `alt`/`aria-label`), or `accessibilityHidden` if decorative (auto-gated on `@pyreon/primitives`) |
+
+### Query (2) ᵒ
 
 Auto-gated on a `@pyreon/query` dependency.
 
 | Rule                               | Severity | Description                                                                                          |
-| ---------------------------------- | -------- | ---------------------------------------------------------------------------------------------------- |
+| ------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------- |
 | `pyreon/query-options-as-function` | error (**fixable**) | `useQuery`/`useInfiniteQuery`/`useQueries`/`useSuspenseQuery` with an options **object literal** — `--fix` wraps it in `() => ({ ... })` so `queryKey` tracks signals and refetches reactively (`useMutation` excluded). Also a proactive MCP `validate` detector (flagged before commit). |
+| `pyreon/query-fn-must-forward-signal` | warn  | A `queryFn` that performs a request must forward the `AbortSignal` it is given, or TanStack cancellation silently does nothing |
 
 ### Rx (1) ᵒ
 
 Auto-gated on a `@pyreon/rx` dependency.
 
 | Rule                    | Severity | Description                                                                                  |
-| ----------------------- | -------- | -------------------------------------------------------------------------------------------- |
+| ------------------------- | -------- | -------------------------------------------------------------------------------------------- |
 | `pyreon/rx-prefer-pipe` | info     | Nested rx transforms (`map(filter(src, …), …)`) — compose via `pipe(src, filter(…), map(…))` for a single computed instead of N |
 
 ### I18n (1) ᵒ
@@ -678,7 +708,7 @@ Auto-gated on a `@pyreon/rx` dependency.
 Auto-gated on a `@pyreon/i18n` dependency.
 
 | Rule                                    | Severity | Description                                                                                  |
-| --------------------------------------- | -------- | -------------------------------------------------------------------------------------------- |
+| ------------------------------------------ | -------- | -------------------------------------------------------------------------------------------- |
 | `pyreon/i18n-prefer-trans-for-rich-jsx` | info     | `{t('…')}` interleaved with JSX element siblings (rich content) — use `<Trans>` for safe JSX interpolation. Plain-text `{t('title')}` never fires (zero-FP) |
 
 ### Storage (1) ᵒ
@@ -686,8 +716,81 @@ Auto-gated on a `@pyreon/i18n` dependency.
 Auto-gated on a `@pyreon/storage` dependency.
 
 | Rule                             | Severity | Fixable | Description                                                                              |
-| -------------------------------- | -------- | ------- | ---------------------------------------------------------------------------------------- |
+| ----------------------------------- | -------- | ------- | ---------------------------------------------------------------------------------------- |
 | `pyreon/no-storage-write-as-call`| error    | yes     | Writing to a storage signal by calling it (`s(x)`) reads-and-discards — use `s.set(x)`/`s.update(fn)` (autofix to `.set`) |
+
+### HTTP (2) ᵒ
+
+Auto-gated on a `@pyreon/http` dependency.
+
+| Rule                                    | Severity | Description                                                                                          |
+| ------------------------------------------ | -------- | ------------------------------------------------------------------------------------------------------ |
+| `pyreon/no-unencoded-path-interpolation` | warn     | Interpolating a value into an HTTP path skips URL encoding — a value containing `/` escapes its segment. Use the `params` option |
+| `pyreon/no-untimed-raw-fetch`            | info     | A raw `fetch()` with no `signal` has no deadline — a server that never responds hangs the promise forever |
+
+### Isomorphic (6)
+
+A file that renders on both the server and the client needs its output to be identical on first render, or hydration mismatches.
+
+| Rule                                   | Severity | Description                                                                                  |
+| ----------------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `pyreon/no-locale-dependent-format`    | warn     | Locale-dependent formatting with no explicit locale differs between the server and the browser — the SSR HTML and the first client render disagree on ordinary-looking text |
+| `pyreon/no-timezone-dependent-date`    | warn     | Local-timezone date reads render differently on a UTC server and in the visitor's browser — the same expression produces different text on each side |
+| `pyreon/no-unstable-render-id`         | error    | A random value in an `id` / label-association attribute differs between the server and client render, so every pairing built from it breaks at hydration — use `createUniqueId()` |
+| `pyreon/no-node-builtin-in-component`  | error    | A static `node:` import in a file that renders JSX drags a Node builtin into the client bundle — the documented break is a failed resolve or a dead externalized chunk |
+| `pyreon/no-env-branch-in-render`       | warn     | An environment branch that decides rendered OUTPUT (rather than behaviour) makes the server tree and the first client tree disagree |
+| `pyreon/require-stable-iteration-order`| warn     | Rendering from `Object.keys()` / a `Set` relies on insertion order, which is stable within one process and not between two — the server and client can order the same data differently |
+
+### Backend (7)
+
+Server-role request-handler correctness — files that run once per request, on the server only.
+
+| Rule                                      | Severity | Description                                                                                  |
+| ---------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `pyreon/no-sync-fs-in-request-path`         | warn     | A synchronous fs/process call inside a server-side function blocks the event loop for every concurrent request. Module-scope boot-time reads are not flagged |
+| `pyreon/no-floating-promise-in-handler`     | warn     | A dropped promise in a server function is a dropped failure — the handler returns success while the rejection lands in a log as an unhandled rejection |
+| `pyreon/no-unvalidated-request-body`        | warn     | A request body read into a binding with nothing validating it — the type annotation asserts nothing at runtime, and the usual failure is a bad row rather than an exception |
+| `pyreon/no-await-in-loop-over-io`           | warn     | An awaited I/O call inside a loop runs N sequential round-trips where `Promise.all` would run one batch — on a request path that scales linearly with data nobody controls |
+| `pyreon/require-request-signal-forwarding`  | warn     | An outbound fetch that ignores the inbound request's abort signal keeps working after the client hangs up — a connection spent on a response nobody will read |
+| `pyreon/no-module-mutable-in-handler`       | error    | Request state written to a module-level binding is shared by every concurrent request — one request overwrites another between its own write and read, so a handler finishes using someone else's data |
+| `pyreon/no-secret-in-shared-module`         | error    | A non-public env var read from a file that also runs on the client — the bundler inlines the value, so the secret ships in the browser bundle without failing the build |
+
+### Web Perf (7)
+
+Client-role runtime performance — files that run in the browser, after hydration.
+
+| Rule                                       | Severity | Description                                                                                  |
+| ----------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `pyreon/no-close-before-handler-teardown` | warn     | `close()` before detaching a socket's handlers leaves a window where a buffered frame still fires into a disposed scope — null the handlers first, then close |
+| `pyreon/no-layout-thrash`                 | warn     | A layout read after a style write inside a loop forces one synchronous reflow per iteration — invisible at ten items, a frozen tab at a thousand |
+| `pyreon/require-abort-on-unmount`         | warn     | A fetch started in `onMount` with no `AbortController` keeps running after unmount — its `.then` writes into a disposed scope and retains the component until the response settles |
+| `pyreon/require-img-loading-hint` ᵒ       | info     | An `<img>` with no `loading` hint competes for bandwidth with on-screen content — the usual way LCP is delayed by images nobody has scrolled to |
+| `pyreon/no-blocking-third-party-script`   | warn     | A `<script src>` without `defer` or `async` blocks the HTML parser while a third-party domain you do not control is fetched and executed |
+| `pyreon/prefer-passive-listener`          | warn     | A scroll / wheel / touch listener without `{ passive: true }` forces the browser to wait for JS before scrolling — every frame of every scroll blocks on the main thread |
+| `pyreon/no-unbounded-raf-loop`            | warn     | A `requestAnimationFrame` whose id is discarded can never be cancelled — a self-scheduling callback then outlives its component, holding its whole closure |
+
+### Portable (6) ᵒ
+
+Opt-in — must survive iOS + Android through the Pyreon Multi-Target Compiler (PMTC). All off in the standard presets.
+
+| Rule                                        | Severity | Description                                                                                  |
+| ------------------------------------------------ | -------- | ---------------------------------------------------------------------------------------------- |
+| `pyreon/no-web-only-import-in-portable`      | error    | A web-only package imported from shared source that must reach iOS and Android — PMTC refuses it at build time; this refuses it at authoring time |
+| `pyreon/prefer-canonical-primitive`          | warn     | A raw DOM element in portable source — PMTC lowers only the canonical primitives, and a `<div>` has no SwiftUI or Compose counterpart to lower to |
+| `pyreon/require-native-compat-marker`        | warn     | A component using `provide()` / `onMount()` without `nativeCompat()` breaks under the compat JSX runtimes — its setup runs in the wrapper, not Pyreon's setup frame, and unit tests cannot see it |
+| `pyreon/no-css-in-js-in-portable`            | error    | CSS-in-JS in portable source — the styler stack emits real CSS into a real stylesheet, and neither native target has one |
+| `pyreon/no-out-of-subset-construct`          | warn     | A construct outside the PMTC subset (`enum`, `class`, `try`/`throw`, regex literal, `JSON.*`, computed key) in a file meant to reach iOS and Android — reported at authoring time rather than at the next native build |
+| `pyreon/no-platform-branch-without-fallback` | warn     | A `<Web>` / `<NativeIOS>` / `<NativeAndroid>` branch with no sibling for the other targets renders NOTHING there — a blank region on a device rather than an error in source |
+
+### JS (3)
+
+Language-level shapes oxlint cannot express — each needs project context (a package's `type` field) rather than AST-only reasoning.
+
+| Rule                                        | Severity | Description                                                                                  |
+| ------------------------------------------------ | -------- | ---------------------------------------------------------------------------------------------- |
+| `pyreon/no-catch-without-rethrow-or-report` ᵒ | warn     | A catch block that neither rethrows nor reports turns a failure into a mystery — the crash is a bug report, the swallow is a support ticket six months later |
+| `pyreon/no-require-in-esm`                  | error    | `require()` in a `"type": "module"` package throws at runtime — and Bun defines `require` in ESM, so a bun-run test suite cannot catch it |
+| `pyreon/require-error-cause`                | warn     | Re-throwing inside `catch` without `{ cause }` discards the original error — the surviving stack points at where you noticed, not where it broke |
 
 ## Notable Rules
 

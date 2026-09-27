@@ -6,13 +6,13 @@ import {
   type VerifyCheck,
   type VerifyVerdict,
 } from '../../core/types'
-import { emptyVerdict } from '../../plugins/registry'
 import {
-  buildVerifyReport,
-  formatCheckTally,
-  formatFailures,
-  formatNotRun,
-} from '../report'
+  emptyVerdict,
+  mountDisabledPlugin,
+  SKIP_REASON,
+  unmountableSkip,
+} from '../../plugins/registry'
+import { buildVerifyReport, formatCheckTally, formatFailures, formatNotRun } from '../report'
 
 const pass: VerifyCheck = { status: 'pass' }
 const fail = (...messages: string[]): VerifyCheck => ({
@@ -206,8 +206,54 @@ describe('formatNotRun', () => {
     expect(browser).toContain('atlas verify-browser')
   })
 
+  it('a bare skip names its default cause ONCE — no `not run: x — not run — …`', () => {
+    const report = buildVerifyReport([scenario('b--a', verdict({ a11y: pass }))])
+    const line = formatNotRun(report.tallies).find((l) => l.includes('interaction'))
+    expect(line).toBe('not run: interaction, ssrParity, leak — no plugin claimed this check')
+  })
+
+  it('trims the restated prefix a catalog written by an older version still carries', () => {
+    const legacy: VerifyCheck = {
+      status: 'skip',
+      findings: [finding('not-run', 'not run — no plugin claimed this check')],
+    }
+    const report = buildVerifyReport([
+      scenario(
+        'b--a',
+        verdict({ a11y: pass, interaction: legacy, leak: legacy, ssrParity: legacy }),
+      ),
+    ])
+    const line = formatNotRun(report.tallies).find((l) => l.includes('interaction'))
+    expect(line).toBe('not run: interaction, ssrParity, leak — no plugin claimed this check')
+  })
+
+  it('--no-mount: the mount-disabled plugin makes the line name the real cause', async () => {
+    const plugin = mountDisabledPlugin()
+    const claimed = (await plugin.verify!({} as never)) as Partial<VerifyVerdict>
+    const report = buildVerifyReport([scenario('b--a', verdict({ a11y: pass, ...claimed }))])
+    const line = formatNotRun(report.tallies).find((l) => l.includes('interaction'))
+    expect(line).toBe(`not run: interaction, ssrParity, leak — ${SKIP_REASON.mountDisabled}`)
+    expect(claimed.interaction?.findings?.[0]?.code).toBe('mount-disabled')
+  })
+
+  it('a module that failed to load names the load failure, not a missing plugin', () => {
+    const why = unmountableSkip({ loadError: 'could not import src/X.tsx: boom' })
+    const report = buildVerifyReport([
+      scenario('b--a', verdict({ a11y: pass, interaction: why, leak: why, ssrParity: why })),
+    ])
+    const line = formatNotRun(report.tallies).find((l) => l.includes('interaction'))
+    expect(line).toBe(
+      'not run: interaction, ssrParity, leak — module failed to load — could not import src/X.tsx: boom',
+    )
+    expect(why.findings?.[0]?.code).toBe('load-failed')
+    expect(unmountableSkip({}).findings?.[0]?.message).toContain('metadata only')
+  })
+
   it('says nothing when every check ran', () => {
-    const all = Object.fromEntries(CHECK_KEYS.map((k) => [k, pass])) as Record<CheckKey, VerifyCheck>
+    const all = Object.fromEntries(CHECK_KEYS.map((k) => [k, pass])) as Record<
+      CheckKey,
+      VerifyCheck
+    >
     expect(formatNotRun(buildVerifyReport([scenario('b--a', verdict(all))]).tallies)).toEqual([])
   })
 })

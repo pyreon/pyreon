@@ -1,4 +1,5 @@
-import { isClient, onCleanup } from '@pyreon/reactivity'
+import { isClient } from '@pyreon/reactivity'
+import { onHookCleanup } from './lifecycle'
 
 /**
  * The one web implementation behind `useCamera` / `useFilePicker` /
@@ -36,7 +37,7 @@ export function createFilePicker(
   /** Abort handles for picks whose sheet is still open. */
   const inFlight = new Set<() => void>()
 
-  onCleanup(() => {
+  onHookCleanup(() => {
     // Copy first: each abort deletes itself from the set.
     for (const abort of [...inFlight]) abort()
     inFlight.clear()

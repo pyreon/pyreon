@@ -1,4 +1,4 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const IconButton = el
   .attrs({
@@ -6,7 +6,7 @@ export const IconButton = el
     contentAlignX: 'center',
     contentAlignY: 'center',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     font: 'inherit',
     cursor: 'pointer',
     width: '32px',

@@ -15,7 +15,17 @@ import { Element } from '@pyreon/elements'
 import rocketstyle from '@pyreon/rocketstyle'
 import { makeItResponsive, styles } from '@pyreon/unistyle'
 
-export const rs = rocketstyle({ useBooleans: false })
+/**
+ * The tokens `atlas.config.ts` supplies as the theme. Bound on the factory with
+ * `withTheme<ChipTokens>()`, so every chain built from `rs` gets a typed,
+ * checked `t` — no global `ThemeDefault` augmentation, no cast.
+ */
+export interface ChipTokens {
+  accent: string
+  text: string
+}
+
+export const rs = rocketstyle({ useBooleans: false }).withTheme<ChipTokens>()
 
 export const chipBase = rs({ name: 'ChipBase', component: Element }).styles(
   (css) => css`

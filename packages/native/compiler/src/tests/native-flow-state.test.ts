@@ -14,7 +14,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { transform } from '../index'
-import { DROPPED_FLOW_COMPONENTS, HANDLED_FLOW_COMPONENT_PROPS, HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, HANDLED_FLOW_HOST_PROPS, HANDLED_FLOW_WEBVIEW_PROPS, LOWERED_FLOW_CONFIG_PROPERTIES, LOWERED_FLOW_METHODS, LOWERED_FLOW_PROPERTY_READS, LOWERED_FLOW_RUNTIME_EXPORTS, WEB_ONLY_FLOW_RUNTIME_EXPORTS } from '../flow-lowering'
+import { DROPPED_FLOW_COMPONENTS, HANDLED_FLOW_COMPONENT_PROPS, HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, HANDLED_FLOW_HOST_PROPS, HANDLED_FLOW_WEBVIEW_PROPS, LOWERED_FLOW_CONFIG_PROPERTIES, LOWERED_FLOW_METHODS, LOWERED_FLOW_PROPERTY_READS, LOWERED_FLOW_RUNTIME_EXPORTS, SWIFT_FLOW_STATE_INIT_LABELS, WEB_ONLY_FLOW_RUNTIME_EXPORTS } from '../flow-lowering'
 import {
   isKotlincAvailable,
   isSwiftcAvailable,
@@ -32,6 +32,34 @@ it('tracks every public mutable FlowConfig field in native lowering', () => {
     .filter((key) => key !== 'nodes' && key !== 'edges')
     .sort()
   expect([...LOWERED_FLOW_CONFIG_PROPERTIES.keys()].sort()).toEqual(publicKeys)
+})
+
+/** Top-level parameter labels of the first `init(` after `class PyreonFlowState`. */
+function swiftFlowInitLabels(source: string): string[] {
+  const start = source.indexOf('(', source.indexOf('init(', source.indexOf('class PyreonFlowState<T>'))) + 1
+  const labels: string[] = []
+  let depth = 0
+  let segment = ''
+  for (let i = start; i < source.length; i++) {
+    const ch = source[i]!
+    if (depth === 0 && ch === ')') { labels.push(segment); break }
+    if ('([{'.includes(ch)) depth++
+    if (')]}'.includes(ch)) depth--
+    if (depth === 0 && ch === ',') { labels.push(segment); segment = ''; continue }
+    segment += ch
+  }
+  return labels.map((seg) => seg.trim().split(':')[0]!.trim()).filter((label) => label.length > 0)
+}
+
+it('SWIFT_FLOW_STATE_INIT_LABELS mirrors the real Swift init and its stub, in order', () => {
+  // Swift rejects labelled arguments out of declaration order, and the emitter
+  // sorts by this list. A drift here is a compile failure in every app whose
+  // config combines the affected keys — the stub had `connectionRules` in a
+  // different slot than the runtime, so it could not catch the drift either.
+  const runtime = readFileSync(new URL('../../../../fundamentals/flow/native/swift/PyreonFlowState.swift', import.meta.url), 'utf8')
+  const stub = readFileSync(new URL('../swift-stubs.ts', import.meta.url), 'utf8')
+  expect(swiftFlowInitLabels(runtime)).toEqual([...SWIFT_FLOW_STATE_INIT_LABELS])
+  expect(swiftFlowInitLabels(stub)).toEqual([...SWIFT_FLOW_STATE_INIT_LABELS])
 })
 
 it('asserts every lowered mutable FlowConfig field in both native behaviour fixtures', () => {
@@ -1066,6 +1094,40 @@ describe('createFlow — v1 decline shapes (loud warning, not silent drop)', { t
         expect(warnings).not.toContain('`pushHistory`')
         expect(warnings).not.toContain('`undo`')
         expect(warnings).not.toContain('`redo`')
+      }
+    })
+
+    it('historyLimit lowers at construction and as a mutable config property, and compiles beside keys the Swift init orders differently', () => {
+      // The web engine bounds undo depth by `historyLimit` (default 50, floored,
+      // non-positive/non-finite → 50). Before this lowered, the key was dropped
+      // with a named warning and both native engines hardcoded 50.
+      const src = cfg(
+        "autoHistory: true, fitViewPadding: 0.2, historyLimit: 2, minZoom: 0.5, connectionRules: { a: { outputs: ['b'] } }, edgeInteractionWidth: 24, multiSelect: false,",
+        '<Button onPress={() => { flow.config.historyLimit = 5; flow.config.minZoom = 1; flow.config.historyLimit = flow.nodes().length; flow.undo() }}><Text>{flow.config.historyLimit}</Text></Button>',
+      )
+      const swift = transform(src, { target: 'swift' })
+      const kotlin = transform(src, { target: 'kotlin' })
+      expect(swift.code).toContain('historyLimit: 2')
+      expect(kotlin.code).toContain('historyLimit = 2.0')
+      expect(swift.code).toContain('flow.historyLimit = 5')
+      // A whole-number write to a Double-typed config property is a Kotlin Int
+      // ("assignment type mismatch"); the emitter coerces it on both targets.
+      expect(kotlin.code).toContain('flow.historyLimit = 5.0')
+      expect(kotlin.code).toContain('flow.minZoom = 1.0')
+      expect(kotlin.code).toMatch(/flow\.historyLimit = \(.+\)\.toDouble\(\)/)
+      expect(swift.code).toMatch(/flow\.historyLimit = Double\(.+\)/)
+      for (const result of [swift, kotlin]) {
+        const warnings = (result.warnings ?? []).join(' ')
+        expect(warnings).not.toContain('historyLimit')
+      }
+      if (isSwiftcAvailable()) expect(validateSwiftWithStubs(swift.code).ok).toBe(true)
+      if (isKotlincAvailable()) expect(validateKotlin(kotlin.code).ok).toBe(true)
+    })
+
+    it('a NON-literal historyLimit is named, not silently dropped', () => {
+      const src = cfg('historyLimit: Number(2),')
+      for (const target of ['swift', 'kotlin'] as const) {
+        expect((transform(src, { target }).warnings ?? []).join(' ')).toContain('`historyLimit (not a numeric literal)`')
       }
     })
 

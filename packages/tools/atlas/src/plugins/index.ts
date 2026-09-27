@@ -27,7 +27,14 @@ export type {
 export { defineAtlasPlugin } from './define'
 
 export type { PluginRegistry } from './registry'
-export { createPluginRegistry, emptyVerdict, SKIP_REASON, skipped } from './registry'
+export {
+  createPluginRegistry,
+  emptyVerdict,
+  mountDisabledPlugin,
+  SKIP_REASON,
+  skipped,
+  unmountableSkip,
+} from './registry'
 
 // scenario generation
 export type { VariantMatrixOptions } from './variant-matrix'

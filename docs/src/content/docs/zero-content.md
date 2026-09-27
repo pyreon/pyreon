@@ -223,7 +223,7 @@ Three more container directives compile to built-in components. The actual rende
 E = mc^2
 :::
 
-:::math inline
+:::math{inline}
 a^2 + b^2 = c^2
 :::
 
@@ -232,12 +232,12 @@ graph TD
   A --> B
 :::
 
-:::details Click to expand
+:::details[Click to expand]
 Hidden body content.
 :::
 ```
 
-`:::math` and `:::mermaid` extract their body **verbatim from the source** (so `^`, `\`, and `{}` survive markdown's inline processing). `:::math inline` renders inline instead of as a display block. `:::details Label` becomes a native `<details>` / `<summary>` with `Label` as the summary.
+`:::math` and `:::mermaid` extract their body **verbatim from the source** (so `^`, `\`, and `{}` survive markdown's inline processing). `:::math{inline}` renders inline instead of as a display block. `:::details[Label]` becomes a native `<details>` / `<summary>` with `Label` as the summary. The label must be bracketed and the modifier must be in braces — bare text after a directive name (`:::details Label`, `:::math inline`) is not valid directive syntax and would ship as literal text; the build warns when it sees one.
 
 ### GFM extras
 
@@ -629,9 +629,9 @@ The plugin surfaces non-fatal compile warnings via Vite (with a clickable, root-
 | `:::warning` / `note` / `danger` / `info` | `<Callout type="…">`                 |
 | `:::code-group` + `[label]` fences | `<CodeGroup labels={[…]}>`                  |
 | `:::math` … `:::`              | `<Math>…</Math>` (display)                       |
-| `:::math inline` … `:::`       | `<Math inline>…</Math>`                          |
+| `:::math{inline}` … `:::`      | `<Math inline>…</Math>`                          |
 | `:::mermaid` … `:::`           | `<Mermaid>…</Mermaid>`                           |
-| `:::details Label` … `:::`     | `<Details summary="Label">…</Details>`          |
+| `:::details[Label]` … `:::`    | `<Details summary="Label">…</Details>`          |
 | ` ```ts {1,3-5} filename=x showLineNumbers ` | `<CodeBlock …>` (Shiki HTML)      |
 
 ## Reference

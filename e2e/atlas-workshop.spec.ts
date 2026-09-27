@@ -208,7 +208,7 @@ test.describe('Atlas workshop — real-Chromium e2e', () => {
     // (c) zoom + scales the preview surface (`.sizes()` dimension). Poll the
     // transform — there's a `transition: transform .12s` so it settles a frame
     // after the label flips to 125%.
-    await page.getByRole('button', { name: '+', exact: true }).click()
+    await page.getByRole('button', { name: 'Zoom in', exact: true }).click()
     await expect(page.getByTestId('zoom-label')).toHaveText('125%')
     await expect
       .poll(() =>

@@ -6,4 +6,6 @@ export const CompName = txt
   })
   .theme(() => ({
     flex: '1',
+    minWidth: '0',
+    extendCss: 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
   }))

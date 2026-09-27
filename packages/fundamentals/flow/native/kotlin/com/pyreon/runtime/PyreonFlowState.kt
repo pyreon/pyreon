@@ -119,6 +119,11 @@ data class PyreonFlowResolvedMarkers(val start: PyreonFlowMarker?, val end: Pyre
 
 val pyreonFlowDefaultMarkerEnd = PyreonFlowMarker("arrowclosed")
 
+/** The effective undo depth for a `historyLimit` value — mirrors the web engine
+ *  (`flow.ts`): a positive finite number is floored, anything else means 50. */
+fun pyreonFlowHistoryLimitOf(value: Double): Int =
+    if (value > 0 && value.isFinite()) kotlin.math.floor(value).toInt() else 50
+
 fun pyreonResolveFlowMarker(marker: PyreonFlowMarker?): PyreonFlowMarker? = marker?.copy(color = marker.color ?: "#999999")
 
 private fun pyreonFlowMarkerNumber(value: Double): String = if (value % 1.0 == 0.0) value.toLong().toString() else value.toString()
@@ -754,6 +759,10 @@ class PyreonFlowState<T>(
     var fitViewOnLoad: Boolean = false,
     fitViewPadding: Double = 0.1,
     var autoHistory: Boolean = true,
+    /** Maximum undo checkpoints kept (default 50) — the web `historyLimit`. Stored
+     *  as written; a non-positive or non-finite value falls back to 50 and a
+     *  fraction is floored, exactly as the web engine reads it ([pyreonFlowHistoryLimitOf]). */
+    var historyLimit: Double = 50.0,
     var deleteKeys: List<String>? = listOf("Delete", "Backspace"),
     var multiSelectionKey: String? = "shift",
     var selectionKey: String? = "shift",
@@ -1012,7 +1021,9 @@ class PyreonFlowState<T>(
         if (mutationVersion == checkpointVersion) return
         checkpointVersion = mutationVersion
         undoStack.add(PyreonFlowHistorySnapshot(nodes.toList(), _edges.toList()))
-        if (undoStack.size > 50) undoStack.removeAt(0)
+        // Trim to the limit, not by one: a limit lowered at runtime drops the excess at once.
+        val limit = pyreonFlowHistoryLimitOf(historyLimit)
+        if (undoStack.size > limit) undoStack.subList(0, undoStack.size - limit).clear()
         redoStack.clear()
     }
     private fun restore(snapshot: PyreonFlowHistorySnapshot<T>) {

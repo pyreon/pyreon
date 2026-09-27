@@ -40,6 +40,47 @@ export interface ErrorPattern {
  */
 export const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // 0.52 made `@pyreon/charts`'s main entry the package's own engine and
+    // moved the ECharts wrapper to `/echarts`. An app still on the old paths
+    // hits one of two errors, neither naming the move: the bundler's missing
+    // export specifier (`/plot`, `/manual`, `/vite` no longer exist) or the
+    // type checker's missing member (`Plot`, `Tip`, `useChart`, … no longer
+    // come from the main entry). The fix is mechanical and automated.
+    pattern:
+      // Quotes as \x22 / \x27 escapes: a regex literal holding raw quote
+      // characters derails the lexical import scanners (loom's among them),
+      // which have no notion of a regex literal.
+      /(?:Missing \x22\.\/(plot|manual|vite)\x22 specifier in \x22@pyreon\/charts\x22 package|Module \x27\x22@pyreon\/charts(?:\/plot)?\x22\x27 has no exported member \x27(Plot|PlotProps|Tip|TipProps|useChart|EChartsOption|ComposeOption|getCore|connect|PieChart|FunnelChart|HeatmapChart|CandlestickChart|OptionChart|optionToSvg|chartToSvg|PlotChart)\x27)/,
+    diagnose: (m) => ({
+      cause:
+        "`@pyreon/charts` changed its entry points in 0.52: the main entry is now Pyreon's own engine (`<Chart>` with mark children, formerly `<Plot>` at `/plot`), the ECharts wrapper is `<EChart>` at `/echarts`, and the rest of the engine is split across `/option`, `/svg` and `/engine`. " +
+        (m[1] !== undefined ? '`@pyreon/charts/' + m[1] + '` no longer exists.' : '`' + m[2] + '` no longer comes from where this import asks for it.'),
+      fix: "Run `pyreon check --fix` (or the MCP `migrate_pyreon` tool): it rewrites every old `@pyreon/charts` import to the entry that exports each name and renames `Plot`→`Chart`, `Tip`→`Tooltip` and the wrapper's `Chart`→`EChart`. Then move `<Chart toolbox>` to a `<Toolbox>` child and `onSelectIndex` to `onSelect`.",
+      fixCode: `import { Chart, Line, Tooltip } from '@pyreon/charts'
+import { EChart } from '@pyreon/charts/echarts'`,
+    }),
+  },
+  {
+    // The light/dark mode moved out of `@pyreon/charts` into ONE framework-wide
+    // source (`useColorMode` / `<ColorModeProvider>` in @pyreon/core, which
+    // `<PyreonUI mode>` provides). An app on the old API hits one of two
+    // errors: `systemChartMode` is gone, or `mode` is no longer a
+    // `<ChartThemeProvider>` prop. Quotes as \x27 escapes (see above).
+    pattern:
+      /(?:has no exported member(?: named)? \x27systemChartMode\x27|does not provide an export named \x27systemChartMode\x27|Property \x27mode\x27 does not exist on type \x27IntrinsicAttributes & ChartThemeProviderProps\x27)/,
+    diagnose: () => ({
+      cause:
+        "The chart colour mode is now the framework-wide one: `useColorMode()` / `<ColorModeProvider mode>` from `@pyreon/core`, which `<PyreonUI mode>` provides. `systemChartMode()` moved there as `systemColorMode()`, and `<ChartThemeProvider>` no longer takes `mode` — charts, the UI system and every other component read the same mode.",
+      fix: 'Drop `mode` from `<ChartThemeProvider>`. In a UI-system app `<PyreonUI mode>` already sets it; otherwise wrap the charts in `<ColorModeProvider mode="dark">` (or an accessor). Replace `systemChartMode()` with `systemColorMode()` from `@pyreon/core`.',
+      fixCode: `import { ColorModeProvider } from '@pyreon/core'
+import { ChartThemeProvider } from '@pyreon/charts'
+
+<ColorModeProvider mode="dark">
+  <ChartThemeProvider theme={{ radius: 4 }}>{/* charts */}</ChartThemeProvider>
+</ColorModeProvider>`,
+    }),
+  },
+  {
     // `globalThis.__PYREON_ROUTER_LOADERS__` = false compiles the router's
     // loader engine out. @pyreon/zero defines it from its scan of src/routes,
     // so a loader on a route defined elsewhere is invisible to that decision;
@@ -1818,7 +1859,7 @@ const geometry = () => props.shape
   },
   {
     // A chart JSX component reached the native build unlowered. The radial
-    // components (`PieChart` / `GaugeChart` from `@pyreon/charts/plot`) DO
+    // components (`PieChart` / `GaugeChart` from `@pyreon/charts`) DO
     // lower — but only in the supported shape, and every decline path warns
     // by name at transform time (an `(d, index)` accessor, a missing
     // `data`/`value`/`label`/`value` prop). `PlotChart` and the rest of the

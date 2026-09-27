@@ -55,7 +55,7 @@ Project configs register it for the common tools: `.mcp.json` (Claude Code; appr
 
 - `packages/core/` (10): reactivity, core, compiler, runtime-dom, runtime-server, router, head, server, primitives, sized-map
 - `packages/fundamentals/` (27): a11y, store, state-tree, form, validation, validate, http, query, table, virtual, i18n, feature, charts, storage, hooks, hotkeys, permissions, machine, flow, code, rich-text, document, rx, toast, url-state, dnd, sync
-- `packages/tools/` (15 published): cli, config, lint, mcp, vite-plugin, typescript, storybook, atlas, loom, lathe, and the compat layers react-/preact-/vue-/solid-/svelte-compat; `devtools` is private
+- `packages/tools/` (16 published): cli, config, lint, mcp, vite-plugin, typescript, storybook, testing, atlas, loom, lathe, and the compat layers react-/preact-/vue-/solid-/svelte-compat; `devtools` is private
 - `packages/ui-system/` (11): ui-core, styler, unistyle, elements, attrs, rocketstyle, coolgrid, kinetic, kinetic-presets, connector-document, document-primitives
 - `packages/zero/` (6): zero, zero-cli, create-zero, create-multiplatform, meta, zero-content
 - `packages/native/` (6): native-compiler, native-cli, and the Swift/Kotlin runtime and router packages. The four runtime/router packages ship SOURCE (consumed by SwiftPM and Gradle from `node_modules`).
@@ -78,7 +78,7 @@ Each package's `src/manifest.ts` feeds `llms.txt`, `llms-full.txt`, the MCP API 
 
 - Coverage: 57 of 76 published packages have a manifest. The remaining 19 are EXPLICITLY EXEMPT build tooling or scaffolding with no consumable runtime API; the list is `NO_MANIFEST_EXEMPT` in `scripts/check-multiplatform-tier.ts`. Do not give them filler manifests.
 - Every manifest declares `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }` (rationale required for `web-only`).
-- MCP `validate` runs `detectReactPatterns` plus `detectPyreonPatterns`, which catches "using Pyreon wrong" mistakes — 18 detector codes today.
+- MCP `validate` runs `detectReactPatterns` plus `detectPyreonPatterns`, which catches "using Pyreon wrong" mistakes — 19 detector codes today.
 
 ## Core rules of the framework
 

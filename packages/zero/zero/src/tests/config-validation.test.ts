@@ -38,6 +38,15 @@ describe('zero() config validation', () => {
     expect(() => zeroPlugin({ moed: 'ssr' } as never)).toThrow(/\[Pyreon\] Invalid zero\(\) config/)
   })
 
+  it('rejects a non-object config and malformed adapter / base values', () => {
+    expect(() => validateZeroConfig(undefined)).not.toThrow()
+    expect(() => validateZeroConfig(null)).toThrow(/expects a config object — got null/)
+    expect(() => validateZeroConfig([])).toThrow(/expects a config object — got object/)
+    expect(() => validateZeroConfig({ adapter: 42 })).toThrow(/`adapter` must be an adapter name or an Adapter object/)
+    expect(() => validateZeroConfig({ adapter: { name: 'custom' } })).not.toThrow()
+    expect(() => validateZeroConfig({ base: 1 })).toThrow(/`base` must be a string/)
+  })
+
   it('didYouMean does not guess wildly', () => {
     expect(didYouMean('completelyUnrelated', ['mode', 'base'])).toBeUndefined()
   })

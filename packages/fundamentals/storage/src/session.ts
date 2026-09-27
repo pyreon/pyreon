@@ -1,6 +1,6 @@
 import { signal } from '@pyreon/reactivity'
 import { createStorageSignal } from './local'
-import { getEntry, retainEntry, setEntry } from './registry'
+import { getEntry, retainEntry, warnIfOptionsDiffer } from './registry'
 import type { StorageOptions, StorageSignal } from './types'
 import { deserialize, getWebStorage } from './utils'
 
@@ -36,6 +36,7 @@ export function useSessionStorage<T>(
   // went 1 → 0 on whichever consumer removed first.
   const existing = getEntry<T>('session', key)
   if (existing) {
+    warnIfOptionsDiffer('session', key, existing, defaultValue, options)
     retainEntry('session', key)
     return existing.signal
   }
@@ -53,9 +54,5 @@ export function useSessionStorage<T>(
   }
 
   const sig = signal<T>(initialValue)
-  const storageSig = createStorageSignal(sig, key, defaultValue, 'session', options)
-
-  setEntry('session', key, storageSig, defaultValue, options)
-
-  return storageSig
+  return createStorageSignal(sig, key, defaultValue, 'session', options)
 }

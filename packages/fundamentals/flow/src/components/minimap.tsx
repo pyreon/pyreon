@@ -159,6 +159,12 @@ export function MiniMap(props: MiniMapProps & { instance?: FlowInstance }): VNod
     if (moved) suppressClick = true
   }
 
+  // An OS-interrupted touch (`pointercancel`) never delivers the pointerup:
+  // drop the pan so a later move of the same pointer id doesn't keep panning.
+  const handlePointerCancel = (e: PointerEvent): void => {
+    if (panPointer && e.pointerId === panPointer.id) panPointer = null
+  }
+
   const handleWheel = (e: WheelEvent): void => {
     // The canvas's own wheel handler sits above us — one wheel, one zoom, and
     // a non-zoomable minimap swallows the wheel rather than zooming the
@@ -213,6 +219,7 @@ export function MiniMap(props: MiniMapProps & { instance?: FlowInstance }): VNod
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
       onWheel={handleWheel}
     >
       <svg

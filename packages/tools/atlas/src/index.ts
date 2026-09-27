@@ -12,7 +12,7 @@
  */
 import type { CatalogGraph, ComponentIntelligence, Scenario, VariantMatrix } from './core'
 import type { AtlasPlugin } from './plugins'
-import { createCatalogGraph } from './core'
+import { createCatalogGraph, qualifyIdentities } from './core'
 import { createPluginRegistry, recommendedPlugins } from './plugins'
 
 // NO singleton sentinel here, DELIBERATELY (the lint/mcp/cli tool-package
@@ -85,7 +85,10 @@ export function createAtlas(config: AtlasConfig = {}): Atlas {
   return {
     async build() {
       // 1. discover — every plugin contributes components
-      const found = await registry.runDiscover({ cwd })
+      // Identity is settled FIRST: a colliding name is qualified here, not at
+      // graph insertion, because focus, scenario ids and verdict keys are all
+      // derived from it before the graph ever sees the component.
+      const found = qualifyIdentities(await registry.runDiscover({ cwd }))
       // Narrowed BEFORE decorate/verify, not after: see `AtlasConfig.focus`.
       const discovered = config.focus ? [...config.focus(found)] : found
 

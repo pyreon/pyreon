@@ -1,34 +1,45 @@
 # @pyreon/charts
 
-Two charting engines, one package, one subpath each.
+Charts for Pyreon, on the web, iOS and Android.
 
-| Import | Engine | Use it when |
-| --- | --- | --- |
-| `@pyreon/charts` | Apache ECharts, bridged | You want ECharts' breadth — 20+ chart types, maps, sankey, candlestick — and you are on the web |
-| `@pyreon/charts/plot` | Pyreon's own | You want a small, tree-shakeable chart, server-rendered SVG, or a path to native |
+`<Chart>` takes your rows and marks as children. Channels are field names typed
+against the row, so a typo is a compile error when the chart and its marks
+know the row type (`<Chart<Row>>`, `<Bar<Row> y="revenue">`). Axes, palette, tooltip, an
+accessible data table and a spoken description come without configuration. The
+geometry is pure TypeScript over a flat draw list, so the same source paints a
+canvas in the browser, serializes to SVG on a server, and draws natively on iOS
+and Android.
 
-They are INDEPENDENT. Pulling a name from the default entry loads ECharts;
-`/plot` never does.
+| Import | What it is |
+| --- | --- |
+| `@pyreon/charts` | `<Chart>`, its marks, the family components, formatters, theme and linking. The stable surface. |
+| `@pyreon/charts/svg` | `chartToSvg` and every `*ToSvg`: SVG strings with no DOM, for SSR and export |
+| `@pyreon/charts/option` | `<OptionChart>`: an ECharts option object, drawn by this engine (no ECharts in the bundle) |
+| `@pyreon/charts/echarts` | `<EChart>` / `useChart`: a lazy-loaded wrapper around the real ECharts library |
+| `@pyreon/charts/engine` | Every layout, hit test and draw-list builder, and the array form `<PlotChart marks>`. Not covered by the stability promise |
 
-`@pyreon/charts` wraps Apache ECharts in a Pyreon-native shape: `<Chart options={() => ({...})}>` reads signals inside the options function, and the chart's `setOption` is called whenever the tracked dependencies change. Zero ECharts bytes ship until a chart actually renders — the bridge inspects your config, detects which chart types + components are needed (BarChart, GridComponent, TooltipComponent, …), and dynamically imports only those. ECharts is ~300KB+ if you import it whole; a typical bar-with-tooltip chart loads ~35KB gzipped. Ships three entries: main (auto-detection), `/manual` (explicit `use(...)` for absolute tree-shake control), and `/vite` (a `chartsViteAlias()` helper for the recurring tslib bundler bug).
+Only `@pyreon/charts/echarts` loads ECharts.
 
-## `@pyreon/charts/plot` — Pyreon's own engine
+## `<Chart>`
 
 ```tsx
-import { Axis, Bar, Legend, Line, Plot, Tip, currency } from '@pyreon/charts/plot'
+import { Axis, Bar, Legend, Line, Chart, Tooltip, currency } from '@pyreon/charts'
 
-<Plot<Row> data={rows} x="month">
+<Chart<Row> data={rows} x="month">
   <Bar y="revenue" label="Revenue" />
   <Line y="target" label="Target" />
   <Axis y format={currency('$')} />
-  <Tip /> <Legend />
-</Plot>
+  <Tooltip /> <Legend />
+</Chart>
 ```
 
-The same grammar covers the row-array families: `<Plot data={share}><Arc value="pct" label="browser" /></Plot>` is a pie or donut, `<Stage>` a funnel, `<Cell x y value>` a heatmap, `<Candle open high low close>` a candlestick — one family per plot, and `<Plot>` renders that host. `<Label text at="max" />` marks a datum, `<Rule x>` draws a vertical reference.
+The same grammar covers the row-array families: `<Chart data={share}><Arc value="pct" label="browser" /></Chart>` is a pie or donut, `<Stage>` a funnel, `<Cell x y value>` a heatmap, `<Candle open high low close>` a candlestick — one family per plot, and `<Chart>` renders that host. `<Label text at="max" />` marks a datum, `<Rule x>` draws a vertical reference.
 
-Channels are field names (typed `keyof Row`) or accessors; marks are children
-and draw in order; `<Rule>` / `<Axis>` / `<Tip>` / `<Legend>` / `<Zoom>` declare
+Channels are field names or accessors. `<Chart<Row>>` checks its own channels
+against the row; a mark checks its field names when it is given the row type
+too (`<Bar<Row> y="revenue">`), since JSX cannot pass a type argument from a
+parent to its children. Marks are children
+and draw in order; `<Rule>` / `<Axis>` / `<Tooltip>` / `<Legend>` / `<Zoom>` declare
 the rest as data. `color="region"` pivots long-format rows into one series per
 value. The `<PlotChart marks={[bars(…)]}>` array form is the same spec and stays
 supported; on native the compiler desugars one to the other.
@@ -40,17 +51,13 @@ is written in the PMTC subset — generated verbatim into the Swift and Kotlin
 runtimes (see [Native geometry](#native-geometry--the-plot-engine-on-iosandroid)).
 
 ```tsx
-import { PlotChart, bars, line } from '@pyreon/charts/plot'
+import { Bar, Chart, Legend, Line, Tooltip } from '@pyreon/charts'
 
-<PlotChart
-  data={() => sales()}
-  x={(d) => d.month}
-  marks={[bars((d) => d.revenue), line((d) => d.target)]}
-  showLegend
-  tooltip
-  title="Monthly revenue"
-  height={240}
-/>
+<Chart data={() => sales()} x="month" title="Monthly revenue" height={240}>
+  <Bar y="revenue" />
+  <Line y="target" />
+  <Tooltip /> <Legend />
+</Chart>
 ```
 
 **A chart family is an imported binding, not a string.** `PlotChart`,
@@ -68,19 +75,14 @@ Components: `PlotChart`, `PieChart` (donut via `innerRadius`), `GaugeChart`.
 ### Curves, annotations, bubbles, labels
 
 ```tsx
-import { PlotChart, line, area, bubble, smooth, step } from '@pyreon/charts/plot'
+import { Area, Chart, Dot, Rule, smooth } from '@pyreon/charts'
 
-<PlotChart
-  data={readings}
-  marks={[
-    area((d) => d.value, { curve: smooth }),
-    bubble((d) => d.price, (d) => d.volume),
-  ]}
-  annotations={[
-    { y: 100, label: 'Target' },
-    { yFrom: 40, yTo: 60 },       // a translucent band
-  ]}
-/>
+<Chart data={readings} x="day">
+  <Area y="value" curve={smooth} />
+  <Dot y="price" r="volume" />
+  <Rule y={100} label="Target" />
+  <Rule from={40} to={60} />   {/* a translucent band */}
+</Chart>
 ```
 
 A **curve** is an imported binding, like a mark — `smooth` (monotone cubic:
@@ -125,7 +127,9 @@ one number.
 ### Horizontal bars
 
 ```tsx
-<PlotChart data={teams} x={(d) => d.name} marks={[bars((d) => d.headcount)]} horizontal />
+<Chart data={teams} x="name" horizontal>
+  <Bar y="headcount" />
+</Chart>
 ```
 
 Categories move to the Y axis and bars grow rightward — and the left gutter
@@ -138,7 +142,7 @@ misleadingly.
 ### Heatmap
 
 ```tsx
-import { HeatmapChart } from '@pyreon/charts/plot'
+import { HeatmapChart } from '@pyreon/charts/engine'
 
 <HeatmapChart
   data={events}
@@ -176,10 +180,12 @@ standalone.
 
 One `ChartTheme` token map — `palette`, `background`, `surface`, `text`,
 `label`, `axis`, `grid`, `fontFamily`, `fontSize`, `titleSize`, `radius`,
-`enterMs`, `updateMs` — feeds every host. With no provider a chart follows
-`prefers-color-scheme`; `<ChartThemeProvider mode={useMode} theme={{ palette:
-palettes.okabeIto }}>` pins or tracks a mode for everything below it; the
-`theme` prop merges over that. `chartThemes.light` / `.dark` and the named
+`enterMs`, `updateMs` — feeds every host. The mode is the framework-wide
+colour mode (`<PyreonUI mode>`, or `<ColorModeProvider mode>` from
+`@pyreon/core`; with neither, the page's `color-scheme`, then the OS), so a
+chart under a dark `<PyreonUI>` is dark with no wiring. `<ChartThemeProvider
+theme={{ palette: palettes.okabeIto }} dark={{ … }}>` styles everything below
+it; the `theme` prop merges over that. `chartThemes.light` / `.dark` and the named
 `palettes` (`pyreon`, `pyreonDark`, `echarts6`, `echarts5`, `echartsDark`,
 `observable10`, `tableau10`, `okabeIto`, `tailwind`) are exported as data.
 
@@ -190,14 +196,16 @@ The 20 family hosts share one canvas host: `title` / `subtitle` /
 family's rich hit) and `onSelectIndex` (the engine's index — what the native
 tap reports) mean the same thing on every one of them. Bars round from
 `theme.radius` (3, away from the baseline; `radius: 0` for square).
-`<PlotChart maxPoints>` thins big series with LTTB while keeping marks aligned.
+`<Chart maxPoints>` thins big series with LTTB while keeping marks aligned.
 
 ### Formatting
 
 ```tsx
-import { PlotChart, bars, compact, currency } from '@pyreon/charts/plot'
+import { Bar, Chart, currency } from '@pyreon/charts'
 
-<PlotChart data={rows} marks={[bars((d) => d.revenue)]} format={currency('$')} />
+<Chart data={rows} x="month" format={currency('$')}>
+  <Bar y="revenue" />
+</Chart>
 ```
 
 One `format` covers the y-axis ticks, the tooltip values and the spoken
@@ -215,12 +223,10 @@ locale support.
 ### Time and continuous axes
 
 ```tsx
-<PlotChart
-  data={readings}
-  marks={[line((d) => d.value)]}
-  xValue={(d) => d.at}      // epoch ms, or any number
-  xTime                      // label with calendar steps
-/>
+<Chart data={readings} xValue="at">  {/* epoch ms, or any number */}
+  <Line y="value" />
+  <Axis x time />                     {/* label with calendar steps */}
+</Chart>
 ```
 
 Without `xValue` the points are spaced evenly by index. That is right for a
@@ -241,7 +247,8 @@ which is a different chart.
 The same command list renders to a string, with no DOM and no canvas:
 
 ```ts
-import { chartToSvg, bars } from '@pyreon/charts/plot'
+import { chartToSvg } from '@pyreon/charts/svg'
+import { bars } from '@pyreon/charts/engine'
 
 const svg = chartToSvg({
   data: rows,
@@ -269,7 +276,7 @@ hidden table beside the chart.
 
 ### Families, coordinates and the ECharts option facade
 
-Beyond bars, lines, points, pie, gauge, radar, candlestick and heatmap, `/plot` ships the full ECharts family set as tree-shakeable modules: **funnel, boxplot, treemap, sunburst, tree, sankey, graph** (seeded force / circular), **calendar, parallel, polar, single axis, theme river** and **map** (GeoJSON via `registerMap`, scatter + flight paths on geo). Each is a component (`<TreemapChart>`, `<SankeyChart>`, `<MapChart>`, …), a pure `layout` / `render` / `hit` trio and a server-safe `xToSvg`. Sankey, calendar and parallel coordinates take `orient="vertical"` — the horizontal layout reflected across the diagonal, on every target. Polar takes bar, line and scatter series (`kind: 'scatter'` draws the points alone, at `symbolSize / 2`).
+Beyond bars, lines, points, pie, gauge, radar, candlestick and heatmap, `@pyreon/charts` ships the full ECharts family set as tree-shakeable modules: **funnel, boxplot, treemap, sunburst, tree, sankey, graph** (seeded force / circular), **calendar, parallel, polar, single axis, theme river** and **map** (GeoJSON via `registerMap`, scatter + flight paths on geo). Each is a component (`<TreemapChart>`, `<SankeyChart>`, `<MapChart>`, …), a pure `layout` / `render` / `hit` trio and a server-safe `xToSvg`. Sankey, calendar and parallel coordinates take `orient="vertical"` — the horizontal layout reflected across the diagonal, on every target. Polar takes bar, line and scatter series (`kind: 'scatter'` draws the points alone, at `symbolSize / 2`).
 
 `optionToSvg` / `compileOption` accept an **ECharts-shaped option** — series, coordinates, `dataset` + transforms, `graphic`, `visualMap`, `custom` `renderItem`, `theme` and `locale` — and name every unmapped key in `warnings` instead of dropping it:
 
@@ -281,14 +288,16 @@ runs the same decimation at compile time against the option's static width
 the same datums on every target. Reactive updates take `setOption`'s own options on `<OptionChart optionUpdate>`: `notMerge`, `replaceMerge` (id-merge, drop what the update does not name), `lazyUpdate` and `silent` (accepted; the host already paints once per frame and emits nothing on apply).
 
 ```ts
-import { optionToSvg } from '@pyreon/charts/plot'
+import { optionToSvg } from '@pyreon/charts/option'
 const svg = optionToSvg({ xAxis: { data: ['Mon', 'Tue'] }, yAxis: {}, series: [{ type: 'bar', data: [120, 200] }] }, { theme: 'dark' })
 ```
 
 ### Interaction, linking, Gantt, sonification, the option host
 
 ```tsx
-import { PlotChart, GanttChart, OptionChart, createChartLink, sonifyValues, line, bars } from '@pyreon/charts/plot'
+import { GanttChart, createChartLink } from '@pyreon/charts'
+import { OptionChart } from '@pyreon/charts/option'
+import { PlotChart, sonifyValues, line, bars } from '@pyreon/charts/engine'
 
 const link = createChartLink() // ECharts `connect`: shared zoom window + crosshair datum
 <PlotChart data={price} x={(d) => d.t} marks={[line((d) => d.close)]} dataZoom navigator crosshair keyboard link={link}
@@ -307,31 +316,33 @@ const sound = sonifyValues(price.map((d) => d.close), { duration: 3000, link }) 
 
 ## Install
 
-The two engines install differently. For Pyreon's own engine (`@pyreon/charts/plot`, every target) nothing else is needed:
-
 ```bash
 bun add @pyreon/charts @pyreon/core @pyreon/reactivity
 ```
 
-For the ECharts bridge (the default `@pyreon/charts` entry and `@pyreon/charts/webview`), add `echarts` too:
+For the ECharts wrapper (`@pyreon/charts/echarts` and `@pyreon/charts/webview`), add `echarts` too. It is an OPTIONAL peer (`>=5.6.0`) that no other entry imports:
 
 ```bash
 bun add @pyreon/charts echarts @pyreon/core @pyreon/reactivity
 ```
 
-`echarts` is an OPTIONAL peer (`>=5.6.0`): `/plot` never imports it, so a plot-only app leaves it out. **With the bridge you must add the [tslib alias](#bundler-fix-tslib-alias) to your `vite.config.ts`** or the page throws on ECharts load. The same alias is needed for browser tests; see `vitest.browser.ts` / `tslibBrowserAlias()` in `@pyreon/test-utils` for the test-side variant.
+**With the ECharts wrapper you must add the [tslib alias](#bundler-fix-tslib-alias) to your `vite.config.ts`** or the page throws on ECharts load. The same alias is needed for browser tests; see `vitest.browser.ts` / `tslibBrowserAlias()` in `@pyreon/test-utils` for the test-side variant.
+
+## The ECharts wrapper — `@pyreon/charts/echarts`
+
+`<EChart options={() => ({...})}>` wraps Apache ECharts in a Pyreon-native shape: it reads signals inside the options function and calls the chart's `setOption` whenever the tracked dependencies change. Zero ECharts bytes ship until a chart actually renders: the wrapper inspects your config, detects which chart types and components are needed (BarChart, GridComponent, TooltipComponent, …), and dynamically imports only those. Two companion entries: `/echarts/manual` (explicit `use(...)` for absolute tree-shake control) and `/echarts/vite` (a `chartsViteAlias()` helper for the recurring tslib bundler bug).
 
 ## Quick start
 
 ```tsx
-import { Chart } from '@pyreon/charts'
+import { EChart } from '@pyreon/charts/echarts'
 import { signal } from '@pyreon/reactivity'
 
 function RevenueChart() {
   const revenue = signal([120, 200, 150, 80, 70, 110, 130])
 
   return (
-    <Chart
+    <EChart
       options={() => ({
         xAxis: { type: 'category', data: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul'] },
         yAxis: { type: 'value' },
@@ -356,12 +367,12 @@ Signal changes → chart updates automatically. No manual `setOption`, no manual
 6. `ResizeObserver` auto-resizes on container changes.
 7. On unmount, the chart is disposed and the observer disconnected.
 
-## `<Chart />`
+## `<EChart />`
 
 Component shorthand wrapping `useChart` — pass a reactive options function, get a rendered chart.
 
 ```tsx
-<Chart
+<EChart
   options={() => ({
     series: [{ type: 'pie', data: segments() }],
     legend: {},
@@ -403,7 +414,7 @@ leak-safe: changing a handler removes the old listener and binds the new one
 (no pile-up), and all listeners are removed on unmount.
 
 ```tsx
-<Chart
+<EChart
   options={() => ({ legend: {}, series: [{ type: 'pie', data: segments() }] })}
   onEvents={{
     legendselectchanged: (p) => console.log('toggled', p.name),
@@ -449,7 +460,7 @@ Returns `UseChartResult`:
 Strict typing per chart-type set via the generic param:
 
 ```ts
-import type { ComposeOption, BarSeriesOption, LineSeriesOption } from '@pyreon/charts'
+import type { ComposeOption, BarSeriesOption, LineSeriesOption } from '@pyreon/charts/echarts'
 type MyChartOption = ComposeOption<BarSeriesOption | LineSeriesOption>
 
 const chart = useChart<MyChartOption>(() => ({
@@ -457,19 +468,19 @@ const chart = useChart<MyChartOption>(() => ({
 }))
 ```
 
-## Manual registration — `@pyreon/charts/manual`
+## Manual registration — `@pyreon/charts/echarts/manual`
 
 For absolute bundle control. Explicitly register the modules you need; the bundler eliminates the rest. No dynamic imports, no `loading` flicker on first render.
 
 ```tsx
-import { useChart, Chart, use } from '@pyreon/charts/manual'
+import { useChart, EChart, use } from '@pyreon/charts/echarts/manual'
 import { BarChart, LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 
 use(BarChart, LineChart, GridComponent, TooltipComponent, CanvasRenderer)
 
-;<Chart
+;<EChart
   options={() => ({
     series: [{ type: 'bar', data: values() }],
   })}
@@ -489,12 +500,12 @@ TypeError: Cannot destructure property '__extends' of '__toESM(...).default' as 
 
 (Upstream: [microsoft/tslib#189](https://github.com/microsoft/tslib/issues/189).)
 
-**Fix via `@pyreon/charts/vite`:**
+**Fix via `@pyreon/charts/echarts/vite`:**
 
 ```ts
 // vite.config.ts
 import { defineConfig } from 'vite'
-import { chartsViteAlias } from '@pyreon/charts/vite'
+import { chartsViteAlias } from '@pyreon/charts/echarts/vite'
 
 export default defineConfig({
   resolve: {
@@ -523,7 +534,7 @@ by `examples/benchmark` → `bun run bench:charts-bundle` (one production
 An earlier version of this table quoted ~25–42 KB for the ECharts modules —
 those figures were never measured and were wrong by 4–5×.
 
-| Chart                          | `@pyreon/charts/plot` | ECharts 6, tree-shaken | ECharts 6, whole package |
+| Chart                          | `@pyreon/charts` | ECharts 6, tree-shaken | ECharts 6, whole package |
 | ------------------------------ | --------------------- | ---------------------- | ------------------------ |
 | Line                           | 40.9 KB (`PlotChart`) | 155.9 KB               | 361.1 KB                 |
 | Bar + line, tooltip, legend    | 40.9 KB (`PlotChart`) | 176.8 KB               | —                        |
@@ -540,7 +551,7 @@ Canvas renders the whole chart as one `<canvas>` element. SVG creates hundreds o
 
 ## Gotchas
 
-- **The tslib alias is mandatory** when consuming `@pyreon/charts` from a Vite app. Without it the page throws the moment any chart loads. Use `chartsViteAlias()` from `@pyreon/charts/vite`.
+- **The tslib alias is mandatory** when consuming `@pyreon/charts/echarts` from a Vite app. Without it the page throws the moment an ECharts chart loads. Use `chartsViteAlias()` from `@pyreon/charts/echarts/vite`.
 - **Options must be a function** `() => ({...})`. Signal reads inside the function track for `setOption` updates. A plain object captures values once and never updates.
 - **`loading` is `true` until the first chart renders** — show a placeholder, or accept a brief blank container. The manual entry skips this since modules are registered up-front.
 - **Option-function throws are captured into `error`** — they do NOT crash the component. Read `chart.error()` to surface them.
@@ -568,7 +579,7 @@ Protocol: per-impl **process isolation** (fresh `bun` child per impl ×3, pooled
 
 The one surface the two engines share with no DOM is "a spec in, an SVG string out": the plot engine's `renderSvg(renderChart(spec))` against ECharts' server-side renderer (`echarts.init(null, null, { ssr: true, renderer: 'svg' })` → `renderToSVGString()`), same rows, same 960×400 size, axes and grid on both sides, animation off.
 
-| Chart | `@pyreon/charts/plot` | ECharts 6.1 SSR | ratio |
+| Chart | `@pyreon/charts` | ECharts 6.1 SSR | ratio |
 | --- | --- | --- | --- |
 | bars, 1,000 rows | 1.40 ms | 6.89 ms | **4.9×** |
 | bars, 10,000 rows | 13.4 ms | 59.0 ms | **4.4×** |
@@ -609,7 +620,7 @@ See `examples/native-viz` for a full one-source bar + line + pie + flow app acro
 
 ## Native geometry — the plot engine on iOS/Android
 
-Every family in `@pyreon/charts/plot` — cartesian marks, pie/gauge, radar, candlestick, heatmap, funnel, treemap, sunburst, tree, sankey, graph, polar, theme river, calendar, gantt, parallel coordinates — has its geometry written in the PMTC native subset and BUNDLED into `PyreonChartEngine.swift` and `PyreonChartEngine.kt` by `packages/native/compiler/scripts/gen-chart-engine.ts`. The same TypeScript that lays out a chart on the web is what lays it out on a device: the generator compiles the engine sources through the real Pyreon compiler, and a drift test compiles the generated Swift and Kotlin with `swiftc` / `kotlinc` on every change, so the three targets cannot diverge silently.
+Every family in `@pyreon/charts` — cartesian marks, pie/gauge, radar, candlestick, heatmap, funnel, treemap, sunburst, tree, sankey, graph, polar, theme river, calendar, gantt, parallel coordinates — has its geometry written in the PMTC native subset and BUNDLED into `PyreonChartEngine.swift` and `PyreonChartEngine.kt` by `packages/native/compiler/scripts/gen-chart-engine.ts`. The same TypeScript that lays out a chart on the web is what lays it out on a device: the generator compiles the engine sources through the real Pyreon compiler, and a drift test compiles the generated Swift and Kotlin with `swiftc` / `kotlinc` on every change, so the three targets cannot diverge silently.
 
 What that buys you natively: `layoutX` / `renderX` / `hitXIndex` for every family, returning the same `DrawCmd[]` the web canvas and the server SVG execute — and, for the hosts whose props are plain data, the SAME JSX: `<SankeyChart>`, `<GraphChart>`, `<TreemapChart>`, `<SunburstChart>`, `<TreeChart>`, `<RiverChart>`, `<GanttChart>`, `<PolarChart>`, `<GaugeChart>` and — with their accessor bodies inlined into a map over the rows — `<FunnelChart>`, `<PieChart>`, `<RadarChart>`, `<CandlestickChart>` and `<HeatmapChart>` lower to `PyreonChartCanvas` (with `showLegend` / `showTitle` drawn natively through the crossed `renderLegend` / `renderTitle` and the runtime's `pyreonShiftCmds`; the last two through the shared engine frames `renderCandlestickChart` / `renderHeatChart`, which the web hosts paint with too, and a native text measurer `pyreonChartMeasure`) (a SwiftUI / Compose `Canvas` walking that draw list), sized by the container or by `width` / `height`, with the web host's own box arithmetic, `title` as the accessibility label and `data-testid` as the test identifier. A `<PlotChart>` lowers too: each inline mark call (`bars` / `stackedBars` / `groupedBars` / `line` / `area` / `points` with literal options) becomes a `Series` over its inlined accessor, the `ChartSpec` is built inline and `onSelect` taps the engine's `plotHitBars` (the same hit the web host now uses). A `bubble` mark, a `curve` option, the brush / navigator surfaces (`dataZoom` lowers to pinch + pan over the engine's fraction window), a record (`<CalendarChart values>`) and mixed rows (`<ParallelChart>`) warn by name on native — call the engine functions yourself there. Still web-only: gestures and `onSelect`, `sonifyValues`, the update tween and the ECharts option facade.
 

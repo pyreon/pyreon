@@ -53,7 +53,7 @@ export const SCENARIOS: ScenarioDef[] = [
   },
   {
     id: 'charts',
-    label: 'charts — @pyreon/charts/plot vs ECharts 6 (line, 1k / 100k points)',
+    label: 'charts — @pyreon/charts vs ECharts 6 (line, 1k / 100k points)',
     frameworks: CHARTS_FRAMEWORKS,
     run: runCharts,
   },

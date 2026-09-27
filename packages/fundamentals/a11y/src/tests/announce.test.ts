@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { announce, clearAnnouncements } from '../announce'
 
-const nextFrame = () =>
-  new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
+// announce() writes ~100ms after the call (see ANNOUNCE_DELAY_MS).
+const nextFrame = (): Promise<void> => new Promise<void>((r) => setTimeout(r, 150))
 
 function region(politeness: 'polite' | 'assertive') {
   return document.querySelector<HTMLElement>(`[data-pyreon-announcer="${politeness}"]`)
@@ -28,6 +28,7 @@ describe('announce', () => {
   it('reuses the same region across calls', async () => {
     announce('one')
     const first = region('polite')
+    await nextFrame()
     announce('two')
     expect(region('polite')).toBe(first)
     await nextFrame()
@@ -39,21 +40,22 @@ describe('announce', () => {
     const el = region('assertive')!
     expect(el.getAttribute('aria-live')).toBe('assertive')
     expect(el.getAttribute('role')).toBe('alert')
-    // polite + assertive are independent regions
-    expect(region('polite')).toBeNull()
+    // polite + assertive are independent regions (both exist up front, but
+    // the assertive message never lands in the polite one)
+    expect(region('polite')!.textContent).toBe('')
   })
 
   it('clears the message after clearAfter ms', async () => {
-    announce('temp', { clearAfter: 10 })
+    announce('temp', { clearAfter: 60 })
     await nextFrame()
     const el = region('polite')!
     expect(el.textContent).toBe('temp')
-    await new Promise((r) => setTimeout(r, 30))
+    await new Promise((r) => setTimeout(r, 100))
     expect(el.textContent).toBe('')
   })
 
   it('a stale clearAfter timer does not clear a newer message', async () => {
-    announce('old', { clearAfter: 50 })
+    announce('old', { clearAfter: 200 })
     await nextFrame()
     expect(region('polite')!.textContent).toBe('old')
     // A newer announcement replaces the text BEFORE the old timer fires —
@@ -61,7 +63,7 @@ describe('announce', () => {
     announce('new')
     await nextFrame()
     expect(region('polite')!.textContent).toBe('new')
-    await new Promise((r) => setTimeout(r, 120))
+    await new Promise((r) => setTimeout(r, 250))
     expect(region('polite')!.textContent).toBe('new')
   })
 
@@ -83,7 +85,9 @@ describe('announce', () => {
     announce('second')
     expect(region('polite')).not.toBeNull()
     await nextFrame()
-    expect(region('polite')!.textContent).toBe('second')
+    // 'first' was still queued (never written), so it is delivered with
+    // 'second' rather than dropped.
+    expect(region('polite')!.textContent).toBe('first second')
   })
 
   it('clearAnnouncements removes all regions', () => {

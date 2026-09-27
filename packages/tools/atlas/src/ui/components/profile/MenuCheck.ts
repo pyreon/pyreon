@@ -1,5 +1,5 @@
-import { txt, type T } from '../../kit'
+import { txt } from '../../kit'
 
 export const MenuCheck = txt
   .attrs({ tag: 'span' })
-  .theme((t: T) => ({ color: t.accent, fontSize: t.size.caption, flex: 'none' }))
+  .theme((t) => ({ color: t.accent, fontSize: t.size.caption, flex: 'none' }))

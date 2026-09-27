@@ -779,6 +779,23 @@ export interface ZeroConfig {
   og?: import('./og-image').OgImagePluginConfig
 
   /**
+   * Route-level OG images (`export const og` in a route file — a component
+   * rendering SVG JSX from params + loader data). No config is needed to
+   * enable them; this only tunes size and the absolute origin used for the
+   * build-time `og:image` URL. Requires the optional peer `sharp`.
+   */
+  routeOg?: import('./og-route-shared').RouteOgConfig
+
+  /**
+   * Progressive Web App: emits `manifest.webmanifest` (linked into every
+   * page) and a generated `sw.js` that precaches exactly the emitted
+   * hashed assets (+ prerendered pages under `mode: 'ssg'`), serves
+   * navigations network-first and hashed assets cache-first. Register it
+   * from the client with `registerServiceWorker()` (no-op in dev).
+   */
+  pwa?: import('./pwa').PwaConfig
+
+  /**
    * AI discoverability — auto-wires `aiPlugin` when a config is supplied
    * (llms.txt, llms-full.txt, /.well-known/ai-plugin.json, OpenAPI spec).
    * Same shape as `aiPlugin(config)`.
@@ -867,6 +884,8 @@ export interface RouteFileExports {
    * build-time-only concern that never reaches the runtime router.
    */
   hasRevalidate: boolean
+  /** Route declares `export const og` (a per-route OG image component). */
+  hasOg?: boolean
   /**
    * The route file's source reads request cookie / authorization state —
    * a `headers.get('cookie')` / `headers.get('authorization')` call

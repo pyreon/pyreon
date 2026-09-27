@@ -1,8 +1,8 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const ProfileMenu = el
   .attrs({ tag: 'div', contentDirection: 'rows', contentAlignX: 'block' })
-  .theme((t: T) => ({
+  .theme((t) => ({
     position: 'absolute', top: 'calc(100% + 8px)', right: '0', zIndex: '70',
     width: '224px', padding: '8px', borderRadius: t.radius.panel,
     background: t.surface, border: t.hairline,

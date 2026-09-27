@@ -46,6 +46,7 @@ describe('server branch — isServer truly true via resetModules + document dele
     const { useDraggable } = await import('../use-draggable')
     const result = useDraggable({ element: () => null, data: { id: '1' } })
     expect(result.isDragging()).toBe(false)
+    expect(() => result.ref(null)).not.toThrow()
   })
 
   it('useDroppable returns the inert server-branch isOver + overEdge', async () => {
@@ -53,6 +54,7 @@ describe('server branch — isServer truly true via resetModules + document dele
     const result = useDroppable({ element: () => null, onDrop: () => {} })
     expect(result.isOver()).toBe(false)
     expect(result.overEdge()).toBeNull()
+    expect(() => result.ref(null)).not.toThrow()
   })
 
   it('useFileDrop returns the inert server-branch isOver + isDraggingFiles', async () => {
@@ -60,6 +62,7 @@ describe('server branch — isServer truly true via resetModules + document dele
     const result = useFileDrop({ element: () => null, onDrop: () => {} })
     expect(result.isOver()).toBe(false)
     expect(result.isDraggingFiles()).toBe(false)
+    expect(() => result.ref(null)).not.toThrow()
   })
 
   it('useDragMonitor returns the inert server-branch isDragging + dragData', async () => {

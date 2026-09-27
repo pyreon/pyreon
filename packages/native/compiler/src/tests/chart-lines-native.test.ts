@@ -9,7 +9,7 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
  * engine redraws it every frame (held still under Reduce Motion by the runtime).
  */
 const app = (effect: string): string => `
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart option={{ xAxis: {}, yAxis: {}, series: [{ type: 'lines', lineStyle: { color: '#123456', width: 2 }${effect}, data: [{ coords: [[0, 0], [10, 10]] }, { coords: [[0, 10], [5, 5], [10, 0]] }] }] }} />
 }`

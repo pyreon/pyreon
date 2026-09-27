@@ -493,7 +493,7 @@ A table-**state** change (sort, filter, selection, column visibility) re-runs al
 (coarse — correct by default for cells that render state, e.g. a selection checkbox). An
 in-place **data** edit is the fine-grained path.
 
-:::caution Reorder-on-data-edit limitation
+:::warning[Reorder-on-data-edit limitation]
 A data edit that changes the **sort order** (editing the very column you're sorted by)
 updates every cell to the correct value but does **not** re-position the keyed rows until
 the next structure/state change. This is a pre-existing base-adapter limitation of the
@@ -568,7 +568,7 @@ The loop closes because the options function reads `sorting()`: the callback wri
 signal, `options()` re-runs, and `useTable`'s effect pushes the new `state` back into the
 table.
 
-:::caution A callback without `state` is a dead end
+:::warning[A callback without `state` is a dead end]
 If you supply `onSortingChange` but never feed `state.sorting` back, sorting will appear to
 do nothing — the table asked you to update the state and you never did. Either supply both,
 or supply neither and let the table own the slice internally.
@@ -1389,7 +1389,7 @@ const columns = [
 ]
 ```
 
-:::caution `getIsSomeRowsSelected()` changed meaning in v9
+:::warning[`getIsSomeRowsSelected()` changed meaning in v9]
 In v8 it meant "some but not all". In v9 it means **at least one**, including the
 all-selected case. Code written for v8 still compiles and still runs — it just shows the
 indeterminate mark when everything is selected. Pair it with `!getIsAllRowsSelected()` (or
@@ -1552,7 +1552,7 @@ The whole `getLeft*` / `getRight*` method family is now `getStart*` / `getEnd*` 
 `table.getStartHeaderGroups()`, `table.getEndLeafColumns()`, `row.getStartVisibleCells()`,
 and so on.
 
-:::caution Logical naming does not apply CSS
+:::warning[Logical naming does not apply CSS]
 `start` / `end` name a region; they do not set direction. Use logical CSS properties for
 sticky columns so the layout follows the writing direction:
 
@@ -2361,7 +2361,7 @@ every built-in. Import the individual `*_name` functions for a smaller bundle.
 - `CellContext`, `HeaderContext`, `Updater`, `OnChangeFn`
 - And many more
 
-:::caution Renamed types
+:::warning[Renamed types]
 `VisibilityState` → `ColumnVisibilityState`; `SortingFn` → `SortFn`; `TableOptionsResolved`
 is gone. Every core type now takes `TFeatures` as its first generic parameter.
 :::

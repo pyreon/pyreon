@@ -1,4 +1,5 @@
-import { onCleanup, signal } from '@pyreon/reactivity'
+import { signal } from '@pyreon/reactivity'
+import { onHookCleanup } from './lifecycle'
 
 export interface UseDialogResult {
   /** Whether the dialog is currently open. */
@@ -85,7 +86,7 @@ export function useDialog(options?: { onClose?: () => void }): UseDialogResult {
     el.addEventListener('close', closeHandler)
   }
 
-  onCleanup(() => {
+  onHookCleanup(() => {
     if (dialogEl && closeHandler) {
       dialogEl.removeEventListener('close', closeHandler)
     }

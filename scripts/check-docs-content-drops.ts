@@ -28,7 +28,14 @@ import { compileMarkdown } from '../packages/zero/zero-content/src/pipeline/pars
 
 /** A warning that means text the author wrote is absent from the output. */
 export function isContentDropWarning(warning: string): boolean {
-  return warning.includes('content was dropped') || warning.includes('Unknown callout directive')
+  return (
+    warning.includes('content was dropped') ||
+    warning.includes('Unknown callout directive') ||
+    // A directive opener that failed to parse ships as literal `:::name …`
+    // text — the author's callout is gone, replaced by syntax. This was
+    // outside the gate, so `table.md`'s five `:::caution Title` lines passed.
+    warning.includes('did not parse as a')
+  )
 }
 
 export interface DropFinding {

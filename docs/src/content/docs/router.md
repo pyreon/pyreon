@@ -1408,6 +1408,25 @@ function UsersError() {
 }
 ```
 
+**`LoaderData<L>` derives the type from the loader itself**, so you don't have to write and maintain a second, hand-typed annotation that can drift from what the loader actually returns:
+
+```ts
+import type { LoaderData } from '@pyreon/router'
+
+// routes/posts.tsx
+export const loader = async () => ({ posts: await fetchPosts() })
+
+function PostsPage() {
+  const data = useLoaderData<LoaderData<typeof loader>>()
+  // data: { posts: Post[] } — inferred from the loader's return type, not
+  // hand-annotated, so a change to the loader's shape is a type error at
+  // every consuming `useLoaderData<LoaderData<typeof loader>>()` call site
+  // instead of a silent runtime mismatch.
+}
+```
+
+`LoaderData<L>` is type-only (zero runtime bytes) — it unwraps an async loader's `Promise` return type (`L extends (...args: never[]) => infer R ? Awaited<R> : never`).
+
 ### LoaderContext
 
 ```ts

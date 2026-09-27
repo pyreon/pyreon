@@ -232,6 +232,18 @@ The hydration strategy is "walk-and-claim" -- it walks the VNode tree in paralle
 - **Fragments** are transparent -- children matched directly against DOM nodes.
 - **Portals** always remount into their target container.
 
+#### Reactive children ADOPT the server DOM, they don't rebuild it
+
+A **reactive child** — an accessor (`{() => cond() ? <A/> : <B/>}`), a component's sole child, a `<Show>`/`<Match>` branch, anything that can re-render a variable range of DOM — has a runtime-unknowable extent (zero nodes, one, or many), so SSR wraps its range in comment markers (`<!--$-->…<!--/$-->`). Older Pyreon versions used those markers only to find the range and **discard** it: hydration always mounted a fresh client-side tree and threw the server's DOM away.
+
+Both hydration paths for a reactive accessor — the marker-delimited range path and the sole-child path used when an accessor is the ONLY child of its element (whose tag boundary already delimits the extent, so SSR elides the markers entirely) — now **adopt** the server's existing nodes instead, exactly when the client's first render *agrees* with what the server produced. Concretely: if you reload a page whose reactive region rendered `<b>hello</b>` on the server and the client's first render also produces `<b>hello</b>`, hydration reuses that very DOM node rather than removing it and mounting a new one. The practical difference is real and observable:
+
+- Text a user typed into an uncontrolled input *before* the JS bundle finished loading is **not** wiped by hydration.
+- Focus and scroll position inside the adopted region are preserved.
+- Any DOM listener a non-Pyreon script attached to that region before hydration survives.
+
+**The client's first render is still the source of truth.** Adoption is an optimization that fires only when server and client agree — if the client's first render produces something DIFFERENT (or renders nothing, e.g. an accessor guarded by client-only state), the server's range is discarded and rebuilt exactly as before. You don't configure this; it's automatic and falls back safely. `_tpl()`-compiled component-root templates get the same treatment — a component whose entire output is one compiled template can adopt its SSR nodes rather than clone a fresh template instance.
+
 #### DOM Cursor Helpers
 
 During hydration, the walker skips comment nodes and whitespace-only text nodes to find "real" DOM nodes. This ensures that formatting whitespace in server-rendered HTML does not cause mismatches.
@@ -460,17 +472,16 @@ const productRow = createTemplate<Product>(
 The compiler-emitted template instantiation function. Parses the HTML once (cached globally), clones for each call, and runs the bind function to wire up dynamic parts. You do not call this directly -- the compiler generates `_tpl` calls automatically.
 
 ```ts
-// Compiler output example:
-_tpl('<div class="box"><span></span></div>', (__root) => {
-  const __e0 = __root.children[0]
-  const __d0 = _bind(() => {
-    __e0.textContent = text()
-  })
-  return () => {
-    __d0()
-  }
+// Compiler output example, for <div class="box"><span>{text()}</span></div>:
+_tpl('<div class="box"><span> </span></div>', (__root) => {
+  const __e0 = __root.firstElementChild
+  const __t1 = __e0.firstChild
+  const __d0 = _bindText(text, __t1)
+  return __d0
 })
 ```
+
+Note the template bakes a single space (`<span> </span>`) rather than an empty tag — that's what gives the sole dynamic text node an existing `firstChild` to bind to in the clone, instead of having to insert one. `_bindText` subscribes directly to the source (a signal or a plain function) and writes to the text node's `.data` — no intermediate `renderEffect` allocation. See [`@pyreon/compiler`'s Reactive Text Nodes](/docs/compiler#reactive-text-nodes) for the full set of binding shapes (sole dynamic text, fused mixed content, and mixed element/expression children each compile differently).
 
 #### How the Compiler Uses \_tpl
 
@@ -491,14 +502,11 @@ When the Pyreon compiler detects a static JSX element tree, it emits `_tpl(html,
 **After optimization (\_tpl):**
 
 ```ts
-_tpl('<div class="box"><span></span></div>', (__root) => {
-  const __e0 = __root.children[0] as HTMLElement
-  const __d0 = renderEffect(() => {
-    __e0.textContent = text()
-  })
-  return () => {
-    __d0()
-  }
+_tpl('<div class="box"><span> </span></div>', (__root) => {
+  const __e0 = __root.firstElementChild as HTMLElement
+  const __t1 = __e0.firstChild as Text
+  const __d0 = _bindText(text, __t1)
+  return __d0
 })
 ```
 
@@ -666,7 +674,12 @@ The `style` prop accepts a string or an object:
 })} />
 ```
 
-Object styles use `Object.assign(el.style, value)`, so only the specified properties are updated.
+Object styles are applied per-property via `el.style.setProperty(kebabKey, cssValue)` — **not** `Object.assign(el.style, value)`. This matters for two behaviors `Object.assign` can't give you:
+
+- **Stale-key removal.** The runtime tracks which property keys it wrote on the last pass (a `WeakMap<Element, Set<string>>`, so it dies with the element). If a key present in the *previous* style object is absent from the *new* one, it's explicitly `removeProperty`'d — the property doesn't just linger with its old value. `Object.assign` would leave it stale, since assignment only ever adds/overwrites.
+- **`null`/`undefined` per-property unset.** `style={{ background: active() ? 'red' : null }}` removes the `background` declaration entirely when `active()` is false. `String(null)` is the string `"null"`, an invalid CSS value the browser would otherwise silently ignore (leaving the *previous* value in place) — the runtime special-cases a nullish per-property value into `removeProperty` instead.
+
+Object keys are converted from camelCase to kebab-case (`fontSize` → `font-size`) before being set, except custom properties (`--my-var`), which pass through unchanged.
 
 **Auto-px for numeric values:** When a style property expects a length and you pass a number, Pyreon automatically appends `px`. This applies to properties like `width`, `height`, `padding`, `margin`, `fontSize`, `borderRadius`, `top`, `left`, etc. Properties that are unitless (like `opacity`, `zIndex`, `flex`, `lineHeight`) are left as-is.
 
@@ -690,12 +703,12 @@ Data attributes work like any other attribute:
 
 #### ARIA Attributes
 
-ARIA attributes are set as standard attributes:
+ARIA attributes are set as standard attributes. A boolean value is automatically rendered as the literal string `"true"`/`"false"` (see [Boolean Attributes](#boolean-attributes) above), so you can pass a boolean directly rather than manually `String()`-converting it:
 
 ```tsx
 <button
   aria-label={isOpen() ? 'Close menu' : 'Open menu'}
-  aria-expanded={() => String(isOpen())}
+  aria-expanded={() => isOpen()}
   aria-controls="nav-menu"
   role="button"
 />
@@ -703,20 +716,23 @@ ARIA attributes are set as standard attributes:
 
 #### Boolean Attributes
 
-Boolean values toggle attribute presence: `true` adds the attribute (empty string), `false` removes it:
+For ordinary HTML boolean attributes, a boolean value toggles attribute **presence**: `true` adds the attribute (empty string), `false` removes it:
 
 ```tsx
 <input
   disabled={isSubmitting()}
   readonly={() => !canEdit()}
-  checked={() => isSelected()}
   required
 />
 ```
 
+:::warning{title="ARIA boolean state is the ONE exception — it's a string enum, not presence"}
+`aria-*` attributes are string enums (`"true"` / `"false"` / `"mixed"`), not presence-based like HTML's own boolean attributes — so a boolean value passed to an `aria-*` prop is rendered as its literal string, `aria-checked={true}` → `aria-checked="true"`, **not** the presence-only `aria-checked=""` a plain boolean would otherwise produce. That distinction matters because `aria-checked=""` is an invalid ARIA value — assistive tech reads it as unchecked regardless of intent. This check runs before the generic boolean-presence branch, and the same normalization happens on the compiled-template path and in SSR, so hydration never disagrees on the value. `checked` itself (no `aria-` prefix) is a real HTML boolean/DOM property, not this exception — see [DOM Properties](#dom-properties) below.
+:::
+
 #### DOM Properties
 
-When a key exists as a property on the element (e.g., `value`, `checked`, `selected`), Pyreon sets the DOM property directly instead of using `setAttribute`. This ensures correct behavior for form elements:
+When a key exists as a property on the element (e.g., `value`, `checked`, `selected`), Pyreon generally sets the DOM property directly instead of using `setAttribute`. This ensures correct behavior for form elements:
 
 ```tsx
 <input
@@ -730,9 +746,17 @@ When a key exists as a property on the element (e.g., `value`, `checked`, `selec
 </select>
 ```
 
+Some important qualifications to "sets the property directly":
+
+- **`data-*` and `aria-*` are ALWAYS attribute semantics**, even when the tag happens to have a same-named JS property (custom elements in particular). Setting them as attributes keeps `getAttribute`/`dataset`/CSS attribute selectors/SSR-rendered HTML all in agreement.
+- **`value` on `<input>`/`<textarea>` also reflects `defaultValue` on the first write.** A property assignment alone (`el.value = x`) never updates the element's content attribute, but `form.reset()` restores from that attribute — so without this, a client-mounted page's `form.reset()` would clear a field that a *hydrated* page's `form.reset()` correctly restored, purely because SSR could only ever have emitted an attribute. Pyreon establishes `defaultValue` once (not on every keystroke of a controlled input, which would drag the reset target along with typing) so `form.reset()` behaves identically whether the page was hydrated or client-mounted.
+- **`<select value>` is a special case (works correctly, but the mechanics are worth knowing).** `<select>` has no `value` CONTENT attribute at all — the HTML parser ignores one if you write it — and the `.value` PROPERTY setter selects the matching `<option>`, so it can only work correctly once the `<option>` children exist. The compiler defers a select's `value` binding until AFTER its children are mounted (both statically and reactively), and SSR marks the matching `<option selected>` instead of emitting a dead `value=` attribute. You don't need to do anything differently — `<select value={choice()}>...</select>` just works — but if you're debugging a select that shows the wrong initial option, this ordering is usually why.
+- **A property that turns out to be read-only never crashes the mount.** A handful of DOM properties that look assignable are actually getter-only IDL accessors (`input.list`, `input.form`, `select.options`, `table.rows`, `video.buffered`, …). Pyreon tries the property assignment and falls back to `setAttribute` if it throws — so `<input list="my-datalist">` (an ordinary, documented prop) works correctly instead of crashing strict-mode code with "Cannot set property list which has only a getter".
+- **SVG and MathML elements always use `setAttribute`**, never property assignment — many of their properties (`SVGRectElement.x`, `SVGMarkerElement.refX`, …) are read-only `SVGAnimated*` accessors, so property assignment would throw for those elements categorically. This matches React, Vue, and Solid.
+
 #### URL Attribute Security
 
-Pyreon blocks `javascript:` and `data:` URIs in URL-bearing attributes (`href`, `src`, `action`, `formaction`, `poster`, `cite`, `data`). In development mode, a warning is logged:
+Pyreon blocks `javascript:` URIs (and `data:text/html`, script-bearing `data:image/svg+xml`, and similar executable `data:` payloads) in URL-bearing attributes — `href`, `src`, `action`, `formaction`, `poster`, `cite`, `data`, and SVG's `xlink:href` (checked under either the `xlink:href` or plain `href` spelling, and both `formaction`/`formAction` casings). This logic is shared verbatim between the client `h()` path, the compiled-template path, and SSR — one guard, so a URL that's blocked client-side can never sneak through as raw SSR HTML. In development mode, a warning is logged:
 
 ```tsx
 // This will be blocked:
@@ -744,6 +768,8 @@ Pyreon blocks `javascript:` and `data:` URIs in URL-bearing attributes (`href`, 
 <a href="/relative/path">Relative link</a>
 <img src="https://example.com/image.png" />
 ```
+
+`data:image/...` is a narrower, deliberate exception: on `src`/`poster` of an image-context tag (`<img>`, `<picture>`'s `<source>`, `<video poster>`, …) a raster `data:` URI, or an `image/svg+xml` one decoded and scanned for embedded `<script>`/event-handler content, is allowed through — this is what lets `@pyreon/zero`'s own `<Image>` blur/color placeholders (`data:image/webp;base64,…`) render at all. `data:text/html` and any other non-image `data:` scheme stay blocked everywhere.
 
 ### innerHTML and dangerouslySetInnerHTML
 
@@ -1472,7 +1498,7 @@ function StaggeredList() {
 
 ## SVG and MathML Namespace Support
 
-Pyreon automatically detects SVG and MathML elements and creates them with the correct namespace URI via `document.createElementNS()`. There are 67 recognized namespace tags:
+Pyreon automatically detects SVG and MathML elements and creates them with the correct namespace URI via `document.createElementNS()`. There are 72 recognized namespace tags (49 SVG + 23 MathML):
 
 ```tsx
 // SVG elements are created with the SVG namespace automatically:
@@ -1492,6 +1518,10 @@ Pyreon automatically detects SVG and MathML elements and creates them with the c
 ```
 
 No configuration is needed -- the runtime checks the tag name against a built-in set and selects the appropriate namespace. This includes all standard SVG elements (`svg`, `circle`, `path`, `rect`, `text`, `g`, `defs`, `use`, `clipPath`, `mask`, `filter`, `linearGradient`, `radialGradient`, etc.) and MathML elements (`math`, `mrow`, `mi`, `mo`, `mn`, `mfrac`, `msqrt`, `mtext`, etc.).
+
+:::note{title="The compiled _tpl() path handles SVG too, via a separate mechanism"}
+The description above is for `h()`/component-produced elements. When the compiler compiles a static DOM tree into `_tpl(html, bindFn)` (see [`@pyreon/compiler`'s template emission](/docs/compiler#pass-3-template-emission)), the template's HTML string is parsed via `<template>.innerHTML` — and the HTML parser only enters SVG foreign-content mode when it sees a literal `<svg>` tag. A template rooted at a BARE svg-namespace element with no `<svg>` wrapper (this happens when a `<svg>` parent has reactive `<For>` children, so it's not itself templatized, and each child `<g>`/`<path>` ends up as its OWN `_tpl` call) would otherwise clone inert `HTMLUnknownElement` nodes instead of real SVG. `_tpl()` detects this case and parses the HTML inside a synthetic `<svg>` wrapper before moving the children into the cached template, so this works correctly and needs no special handling on your part — but it's worth knowing that a `<g>`/`<path>`/etc. that never appears as a direct sibling of a literal `<svg>` in your JSX is the shape that exercises this path.
+:::
 
 ## Custom Elements
 
@@ -1533,19 +1563,16 @@ In production builds, duplicate `key` values in keyed lists emit a one-time cons
 
 ## Exports Summary
 
+**Hand-written-code API** — these are what you actually call:
+
 | Export                     | Description                                                                                                               |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `mount`                    | Mount a VNode tree into a container                                                                                       |
 | `render`                   | Alias for `mount`                                                                                                         |
 | `hydrateRoot`              | Hydrate server-rendered HTML                                                                                              |
-| `mountChild`               | Mount a single child node (internal)                                                                                      |
 | `createTemplate`           | Create a template-cloning factory                                                                                         |
-| `_tpl`                     | Compiler-emitted template instantiation                                                                                   |
-| `_bindText`                | Compiler-emitted text binding for simple signal identifiers. Falls back to `renderEffect` if the source lacks `.direct()` |
-| `_bindDirect`              | Compiler-emitted direct attribute binding. Falls back to `renderEffect` if the source lacks `.direct()`                   |
 | `applyProp`                | Apply a single prop to an element                                                                                         |
 | `applyProps`               | Apply all props to an element                                                                                             |
-| `cx`                       | Compose class names from strings, arrays, objects (re-exported from `@pyreon/core`)                                       |
 | `sanitizeHtml`             | Sanitize an HTML string                                                                                                   |
 | `setSanitizer`             | Set a custom HTML sanitizer                                                                                               |
 | `Transition`               | CSS enter/leave animation component                                                                                       |
@@ -1553,6 +1580,28 @@ In production builds, duplicate `key` values in keyed lists emit a one-time cons
 | `KeepAlive`                | Persistent component caching                                                                                              |
 | `enableHydrationWarnings`  | Enable hydration mismatch logging                                                                                         |
 | `disableHydrationWarnings` | Disable hydration mismatch logging                                                                                        |
+| `onHydrationMismatch`      | Register a structured hydration-mismatch telemetry callback                                                              |
+| `setupDelegation`          | Install the event-delegation root on a container (needed for a custom mount host, e.g. content mounted into a `<Portal>`) |
+| `nodesForElement`          | Look up the reactive bindings tracked against a given DOM element (devtools/debugging)                                   |
+
+`cx` (compose class names) is re-exported from `@pyreon/core`, not this package.
+
+**Compiler-facing API** — emitted by `@pyreon/compiler`'s generated code, not meant for hand-written calls, but documented here because you'll see them if you read compiled output or a stack trace. All are prefixed `_` by convention:
+
+| Export                                  | Description                                                                                                                                          |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `_tpl`                                  | Compiler-emitted template instantiation (`cloneNode` + run the bind function)                                                                      |
+| `bindPolymorphicText`                   | The general reactive text/subtree binding — handles a value that may be text, a VNode, an array, or `null`, upgrading in place if the shape changes |
+| `_bindText`                             | Compiler-emitted O(1) direct text binding for a signal/computed source (or a plain callable, via a slower fallback)                                 |
+| `_bindProp`                             | Compiler-emitted text binding for a bare `props.x` read — takes the O(1) direct path when the prop's getter carries `.direct`, else falls back      |
+| `_bindDirect`                           | Compiler-emitted direct attribute binding for a signal/computed source                                                                              |
+| `_setClass` / `_setStyle` / `_setAttr` / `_setValue` / `_setHtml` | The SAME normalizer functions `applyProp` uses internally, exported so the compiled template path applies values identically to the `h()` path (see [Reactive Props](#reactive-props) above and [`@pyreon/compiler`'s Dynamic Bindings in Templates](/docs/compiler#dynamic-bindings-in-templates)) |
+| `_setChild` / `_setChildAt`             | One-time (non-reactive) child content set, used for statically-captured values in a template bind function                                          |
+| `_textSlot`                             | Resolve (or, when hydrating, adopt) a text node over a template's `<!>` placeholder                                                                  |
+| `_mountSlot` / `_mountChild`            | Mount a reactive/absorbed child into a template's placeholder or hole                                                                               |
+| `_applyProps` / `_bindSpread`           | Apply a (static or reactive) prop spread on a template's root element, wiring `ref` in addition to what `applyProps` does                            |
+| `_rsCollapse` family                    | The `@pyreon/rocketstyle` build-time collapse variants                                                                                               |
+| `mountChild`                            | The general mount dispatcher these compiled helpers build on                                                                                        |
 
 ## Type Exports
 

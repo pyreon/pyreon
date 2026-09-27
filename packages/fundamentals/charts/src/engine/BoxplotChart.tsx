@@ -6,6 +6,7 @@ import type { CanvasHostProps } from './canvas-host'
 import { fiveNumber, hitBox } from './boxplot'
 import type { BoxplotOptions, FiveNumber } from './boxplot'
 import { boxplotFrame, renderBoxplotChart } from './boxplot-chart'
+import { groupThousands } from './format'
 import type { Formatter } from './format'
 import type { Double, MeasureText, Rect } from './types'
 
@@ -67,7 +68,7 @@ export function BoxplotChart<T>(props: BoxplotChartProps<T>): VNode {
     tooltip: (g, px, py) => {
       const r = g.rows[hitAt(g, px, py)]
       if (r === undefined) return null
-      const fmt = props.format ?? ((v: Double) => String(v))
+      const fmt = props.format ?? groupThousands
       return [g.categories[hitAt(g, px, py)] ?? '', `max ${fmt(r.max)}`, `q3 ${fmt(r.q3)}`, `median ${fmt(r.median)}`, `q1 ${fmt(r.q1)}`, `min ${fmt(r.min)}`]
     },
     a11y: (g) => ({

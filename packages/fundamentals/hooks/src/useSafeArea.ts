@@ -1,4 +1,5 @@
-import { isClient, onCleanup, signal } from '@pyreon/reactivity'
+import { isClient, signal } from '@pyreon/reactivity'
+import { onHookCleanup } from './lifecycle'
 
 /**
  * Insets, in CSS pixels, that content must avoid: notch / Dynamic Island,
@@ -97,7 +98,7 @@ export function useSafeArea(): () => SafeAreaInsets {
     // load-bearing one and orientation is belt-and-braces.
     window.addEventListener('resize', read)
     window.addEventListener('orientationchange', read)
-    onCleanup(() => {
+    onHookCleanup(() => {
       window.removeEventListener('resize', read)
       window.removeEventListener('orientationchange', read)
       probe.remove()

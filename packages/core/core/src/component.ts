@@ -1,11 +1,11 @@
 import { getCurrentHooks, setCurrentHooks } from './lifecycle'
-import type { ComponentFn, LifecycleHooks, Props, VNodeChild } from './types'
+import type { ComponentFn, LifecycleHooks, VNodeChild } from './types'
 
 /**
  * Identity wrapper — marks a function as a Pyreon component and preserves its type.
  * Useful for IDE tooling and future compiler optimisations.
  */
-export function defineComponent<P extends Props>(fn: ComponentFn<P>): ComponentFn<P> {
+export function defineComponent<P extends object>(fn: ComponentFn<P>): ComponentFn<P> {
   return fn
 }
 
@@ -15,7 +15,7 @@ export function defineComponent<P extends Props>(fn: ComponentFn<P>): ComponentF
  *
  * Called by the renderer — not intended for user code.
  */
-export function runWithHooks<P extends Props>(
+export function runWithHooks<P extends object>(
   fn: ComponentFn<P>,
   props: P,
 ): { vnode: VNodeChild; hooks: LifecycleHooks } {

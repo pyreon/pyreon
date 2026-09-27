@@ -207,3 +207,58 @@ describe('content seed for a TYPED component', () => {
     expect(contentOf('export function Spinner(props: { size: number }) { return null }')).toBeUndefined()
   })
 })
+
+describe('props-type shapes (audit 2026-09 — each was a silent drop)', () => {
+  const axesOf = (code: string): Record<string, readonly string[]> => {
+    const [component] = scanSource(code)
+    return Object.fromEntries((component?.axes ?? []).map((a) => [a.name, a.values]))
+  }
+
+  it('an `| undefined` / `| null` member keeps the union (exactOptionalPropertyTypes style)', () => {
+    const code = `export interface P { size?: 'sm' | 'md' | undefined; tone?: 'a' | 'b' | null; on?: boolean | undefined }
+      export function A(props: P) { return null }`
+    expect(axesOf(code)).toEqual({ size: ['sm', 'md'], tone: ['a', 'b'] })
+    expect(controlsOf(code).on).toBe('boolean')
+  })
+
+  it('quoted property names are props', () => {
+    const code = `export interface P { 'aria-label': string; label?: string }
+      export function B(props: P) { return null }`
+    expect(Object.keys(controlsOf(code))).toEqual(['aria-label', 'label'])
+  })
+
+  it('`interface P extends Base` inherits Base members (own members win)', () => {
+    const code = `interface Base { label: string; tone: 'a' | 'b' }
+      export interface P extends Base { extra?: boolean; tone: 'x' | 'y' }
+      export function C(props: P) { return null }`
+    expect(Object.keys(controlsOf(code)).sort()).toEqual(['extra', 'label', 'tone'])
+    expect(axesOf(code)).toEqual({ tone: ['x', 'y'] })
+  })
+
+  it('`type P = A & { … }` reads every member of the intersection', () => {
+    const code = `type Base = { label: string }
+      type P = Base & { tone?: 'a' | 'b' }
+      export function F(props: P) { return null }`
+    expect(Object.keys(controlsOf(code)).sort()).toEqual(['label', 'tone'])
+    expect(axesOf(code)).toEqual({ tone: ['a', 'b'] })
+  })
+
+  it('an inline intersection parameter type is read too', () => {
+    const code = `interface Base { label: string }
+      export function G(props: Base & { tone?: 'a' | 'b' }) { return null }`
+    expect(Object.keys(controlsOf(code)).sort()).toEqual(['label', 'tone'])
+  })
+
+  it('a cyclic extends chain terminates', () => {
+    const code = `interface A extends B { a: string }
+      interface B extends A { b: string }
+      export function H(props: A) { return null }`
+    expect(Object.keys(controlsOf(code)).sort()).toEqual(['a', 'b'])
+  })
+
+  it('`export const A = …, B = …` catalogues EVERY declarator', () => {
+    expect(
+      names('export const D = (props: { a: string }) => null, E = (props: { b: string }) => null'),
+    ).toEqual(['D', 'E'])
+  })
+})

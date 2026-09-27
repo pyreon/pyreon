@@ -17,47 +17,47 @@ import { chartChromeUnlowered, chartHostAnimates } from '../chart-hosts'
 import { transform } from '../index'
 import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
 
-const TREEMAP = `import { TreemapChart } from '@pyreon/charts/plot'
-import type { TreeNode } from '@pyreon/charts/plot'
+const TREEMAP = `import { TreemapChart } from '@pyreon/charts'
+import type { TreeNode } from '@pyreon/charts'
 const DATA: TreeNode[] = [{ name: 'src', children: [{ name: 'core', value: 50 }] }, { name: 'docs', value: 30 }]
 export function Files() {
   return <TreemapChart data={DATA} treemap={{ padding: 2 }} tooltip height={200} />
 }`
 
-const TREEMAP_PLAIN = `import { TreemapChart } from '@pyreon/charts/plot'
-import type { TreeNode } from '@pyreon/charts/plot'
+const TREEMAP_PLAIN = `import { TreemapChart } from '@pyreon/charts'
+import type { TreeNode } from '@pyreon/charts'
 const DATA: TreeNode[] = [{ name: 'docs', value: 30 }]
 export function Files() { return <TreemapChart data={DATA} height={200} /> }`
 
-const FUNNEL = `import { FunnelChart } from '@pyreon/charts/plot'
+const FUNNEL = `import { FunnelChart } from '@pyreon/charts/engine'
 interface S { label: string; v: number }
 const SL: S[] = [{ label: 'a', v: 3 }, { label: 'b', v: 1 }]
 export function Steps() {
   return <FunnelChart data={SL} value={(d: S) => d.v} label={(d: S) => d.label} width={240} height={200} />
 }`
 
-const PLOT = `import { PlotChart, bars } from '@pyreon/charts/plot'
+const PLOT = `import { PlotChart, bars } from '@pyreon/charts/engine'
 interface M { name: string; v: number }
 const ROWS: M[] = [{ name: 'a', v: 1 }, { name: 'b', v: 2 }]
 export function Sales() {
   return <PlotChart data={ROWS} x={(d: M) => d.name} marks={[bars((d: M) => d.v)]} height={200} />
 }`
 
-const HEAT = `import { HeatmapChart } from '@pyreon/charts/plot'
+const HEAT = `import { HeatmapChart } from '@pyreon/charts/engine'
 interface C { hour: string; d: string; n: number }
 const CELLS: C[] = [{ hour: '1', d: 'Mon', n: 2 }]
 export function Heat() {
   return <HeatmapChart data={CELLS} x={(d: C) => d.hour} y={(d: C) => d.d} value={(d: C) => d.n} width={240} height={160} />
 }`
 
-const TREE_OPTIONS = `import { TreeChart } from '@pyreon/charts/plot'
-import type { TreeNode } from '@pyreon/charts/plot'
+const TREE_OPTIONS = `import { TreeChart } from '@pyreon/charts'
+import type { TreeNode } from '@pyreon/charts'
 const DATA: TreeNode[] = [{ name: 'root', children: [{ name: 'a', value: 1 }] }]
 export function T() {
   return <TreeChart data={DATA} tree={{ symbolSize: 8 }} tooltip height={200} />
 }`
 
-const PIE = `import { PieChart } from '@pyreon/charts/plot'
+const PIE = `import { PieChart } from '@pyreon/charts/engine'
 interface S { label: string; v: number }
 const SL: S[] = [{ label: 'a', v: 3 }]
 export function Share() {

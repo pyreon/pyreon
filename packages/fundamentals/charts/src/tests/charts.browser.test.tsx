@@ -2,11 +2,11 @@ import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
 import { afterEach, describe, expect, it } from 'vitest'
-import { Chart } from '../chart-component'
+import { EChart } from '../chart-component'
 import { useChart } from '../use-chart'
 
 // Real-Chromium smoke for @pyreon/charts. Covers:
-//   - <Chart> mounts the wrapper div
+//   - <EChart> mounts the wrapper div
 //   - useChart signal surface (ref/instance/loading/error/resize)
 //   - errors land on .error signal instead of throwing
 //   - lazy-loads ECharts and renders a <canvas>
@@ -47,7 +47,7 @@ describe('charts in real browser', () => {
   it('Chart mounts a real div with supplied style and class', async () => {
     const options = () => ({ series: [{ type: 'bar' as const, data: [1, 2, 3] }] })
     const { container, unmount } = mountInBrowser(
-      h(Chart, { options, style: 'width: 400px; height: 300px', class: 'my-chart' }),
+      h(EChart, { options, style: 'width: 400px; height: 300px', class: 'my-chart' }),
     )
     const div = container.querySelector<HTMLDivElement>('div.my-chart')
     expect(div).not.toBeNull()
@@ -62,7 +62,7 @@ describe('charts in real browser', () => {
   it('ariaLabel presents the chart as a labeled role="img"', async () => {
     const options = () => ({ series: [{ type: 'bar' as const, data: [1, 2, 3] }] })
     const { container, unmount } = mountInBrowser(
-      h(Chart, {
+      h(EChart, {
         options,
         class: 'a11y-chart',
         ariaLabel: 'Bar chart: monthly revenue trending up',
@@ -121,7 +121,7 @@ describe('charts in real browser', () => {
       series: [{ data: [1, 2, 3], type: 'bar' as const }],
     })
     const { container, unmount } = mountInBrowser(
-      h(Chart, { options, style: 'width: 400px; height: 300px' }),
+      h(EChart, { options, style: 'width: 400px; height: 300px' }),
     )
 
     const ok = await waitFor(() => container.querySelector('canvas') !== null, 5000)
@@ -140,7 +140,7 @@ describe('charts in real browser', () => {
       series: [{ data: data(), type: 'line' as const }],
     })
     const { container, unmount } = mountInBrowser(
-      h(Chart, { options, style: 'width: 400px; height: 300px' }),
+      h(EChart, { options, style: 'width: 400px; height: 300px' }),
     )
     const ready = await waitFor(() => container.querySelector('canvas') !== null, 5000)
     expect(ready).toBe(true)
@@ -188,7 +188,7 @@ describe('charts in real browser', () => {
     let received: unknown = null
     let calls = 0
     const { unmount } = mountInBrowser(
-      h(Chart, {
+      h(EChart, {
         options,
         style: 'width: 400px; height: 300px',
         onInit: (inst: unknown) => {

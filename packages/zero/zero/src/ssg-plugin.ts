@@ -63,6 +63,16 @@ import {
   renderModulePreloadLinks,
 } from './ssg-modulepreload'
 import { ensureNoindexMeta } from './not-found'
+import {
+  absoluteOgUrl,
+  injectOgMeta,
+  OG_DEFAULT_HEIGHT,
+  OG_DEFAULT_WIDTH,
+  ogMetaTags,
+  rasterizeOgSvg,
+} from './og-route-shared'
+import { createHash } from 'node:crypto'
+import { writeServiceWorker } from './pwa'
 import type { ZeroConfig } from './types'
 
 // M2.3 — Server-side perf-harness counter sink (same shape as
@@ -141,7 +151,7 @@ import { h } from "@pyreon/core"
 import { renderWithHead } from "@pyreon/head/ssr"
 import { renderPage } from "@pyreon/server"
 import { runWithRequestContext } from "@pyreon/runtime-server"
-import { collectRouteModes, createApp, resolveRenderModeForPath } from "@pyreon/zero/server"
+import { collectRouteModes, createApp, renderOgSvgFromLoaded, resolveRenderModeForPath } from "@pyreon/zero/server"
 
 // Phase 2 — route-level render modes. The plugin filters/validates the
 // resolved path list through THESE exports so build-time mode decisions
@@ -223,12 +233,19 @@ export default async function renderPath(path, options) {
   if (result.kind === "redirect") {
     return { kind: "redirect", from: path, to: result.to, status: result.status }
   }
+  // Route OG images: render the leaf route's \`og\` export to SVG with the
+  // loader data THIS render already produced (loaders run once per path).
+  // Rasterization happens in the outer plugin (Node + sharp).
+  const ogSvg = options?.isNotFound === true
+    ? null
+    : await renderOgSvgFromLoaded(routes, path, router._loaderData)
   return {
     kind: "html",
     appHtml: result.appHtml,
     head: result.head,
     loaderScript: result.loaderScript,
     routeModules: result.routeModules,
+    ogSvg,
   }
 }
 
@@ -1246,6 +1263,9 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
   let assetsInlineLimit: BuildOptions['assetsInlineLimit']
   let assetsDir: string | undefined
   let resolvedBase: string = '/'
+  // Replaced in configResolved with Vite's logger (honours `logLevel`).
+  // oxlint-disable-next-line no-console
+  let logInfo: (msg: string) => void = (msg) => console.log(msg)
   // USER plugins captured from the OUTER build's resolved plugin chain.
   // Forwarded into the inner SSR sub-build so non-zero plugins (e.g.
   // @pyreon/zero-content's content() plugin which transforms .md →
@@ -1316,6 +1336,10 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       assetsInlineLimit = resolved.build.assetsInlineLimit
       assetsDir = resolved.build.assetsDir
       resolvedBase = resolved.base
+      // Informational build output goes through Vite's logger so it honours
+      // `logLevel` — a caller running `vite build --logLevel warn`, or a tool
+      // driving zero programmatically, must not get the progress narration.
+      logInfo = (msg) => resolved.logger.info(msg)
       // Capture the resolved plugin chain — `buildSsrBundle` filters
       // out the zero + pyreon plugins (which the inner build adds back
       // itself) and forwards everything else.
@@ -1466,6 +1490,8 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
               head: string
               loaderScript: string
               routeModules?: string[]
+              /** Route OG image SVG (leaf route declares `export const og`). */
+              ogSvg?: string | null
             }
           | { kind: 'redirect'; from: string; to: string; status: number }
         >
@@ -1649,6 +1675,21 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // (single-threaded mutations — same safety rationale as errors[]).
       const earlyHintHrefs = new Map<string, string[]>()
 
+      const ogWidth = config.routeOg?.width ?? OG_DEFAULT_WIDTH
+      const ogHeight = config.routeOg?.height ?? OG_DEFAULT_HEIGHT
+      const writeRouteOgImage = async (p: string, svg: string): Promise<string> => {
+        const png = await rasterizeOgSvg(svg, ogWidth, ogHeight)
+        const hash = createHash('sha256').update(png).digest('hex').slice(0, 10)
+        const slug = p.replace(/^\/+|\/+$/g, '').replace(/[^a-zA-Z0-9_-]+/g, '-') || 'index'
+        const dir = assetsDir ?? 'assets'
+        const rel = `${dir}/og/${slug}.${hash}.png`
+        const file = join(distDir, rel)
+        await mkdirOnce(dirname(file))
+        await writeFileAtomic(file, png)
+        const baseUrl = (config.base ?? '/').replace(/\/$/, '')
+        return ogMetaTags(absoluteOgUrl(`${baseUrl}/${rel}`, config.routeOg?.siteUrl), ogWidth, ogHeight)
+      }
+
       const renderOne = async (p: string): Promise<void> => {
         // M2.3 — emit `ssg.pathRender` per attempted render. Pair with
         // `ssg.pathWrite` / `ssg.pathRedirect` / `ssg.pathError` to see
@@ -1729,6 +1770,12 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           }
 
           let html = injectIntoTemplate(template, result)
+          // Route OG image: rasterize the SVG the entry rendered from the
+          // route's `og` export, write it as a content-hashed PNG, and point
+          // this page's og:image at it.
+          if (result.ogSvg) {
+            html = injectOgMeta(html, await writeRouteOgImage(p, result.ogSvg))
+          }
           // Phase 6 — opt-in page enhancements (pure injections; see
           // ssg-enhance.ts).
           const specMode = config.ssg?.speculationRules
@@ -2158,6 +2205,17 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // the internal `.zero-ssg-server` bundle. Other adapters ignore this dir.
       await rm(ssrOutDir, { recursive: true, force: true })
 
+      // PWA — the output is final (every page prerendered, internal SSR
+      // bundle removed), so the precache list is exactly what ships. Written
+      // BEFORE adapter.build so staging adapters copy the worker along.
+      if (config.pwa && config.mode === 'ssg') {
+        await writeServiceWorker(distDir, config.pwa, {
+          base: config.base ?? '/',
+          assetsDir: assetsDir ?? 'assets',
+          includeHtml: true,
+        })
+      }
+
       const adapter = resolveAdapter(config)
       let adapterFailed = false
       let adapterFailure: unknown
@@ -2194,8 +2252,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // shape mismatches: `[en: 100, de: 90, cs: 100]` flags that de had
       // 10 paths skipped relative to the others.
       const localeSummary = config.i18n ? buildLocaleSummary(writtenPaths, config.i18n) : ''
-      // oxlint-disable-next-line no-console
-      console.log(
+      logInfo(
         `[zero:ssg] Prerendered ${pages} page(s)${
           emitted404Count > 0
             ? emitted404Count === 1
@@ -2243,10 +2300,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         try {
           const tableMode = config._autoMode ? ('auto' as const) : config.mode
           const modeEntries = await collectFileRouteModes(routesDir, tableMode, config.routeRules)
-          for (const line of formatRouteModeTable(modeEntries, tableMode)) {
-            // oxlint-disable-next-line no-console
-            console.log(line)
-          }
+          for (const line of formatRouteModeTable(modeEntries, tableMode)) logInfo(line)
         } catch {
           /* table is informational only */
         }

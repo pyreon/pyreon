@@ -1,5 +1,5 @@
 import { query } from '@pyreon/test-utils'
-import { h } from '@pyreon/core'
+import { ColorModeProvider, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { dracula } from '@uiw/codemirror-theme-dracula'
@@ -870,6 +870,36 @@ describe('third-party theme interop', () => {
     // Dracula's background is #282a36 — proves the third-party theme's CSS
     // actually applied (not just "didn't crash").
     expect(getComputedStyle(cm).backgroundColor).toBe('rgb(40, 42, 54)')
+    unmount()
+  })
+})
+
+describe('<CodeEditor> and the app colour mode', () => {
+  it('an editor with no theme follows the app mode, live', async () => {
+    const m = signal<'light' | 'dark'>('dark')
+    const editor = createEditor({ value: 'x' })
+    const { unmount } = mountInBrowser(h(ColorModeProvider, { mode: () => m() }, h(CodeEditor, { instance: editor })))
+    await flush()
+    expect(editor.theme()).toBe('dark')
+    m.set('light')
+    await flush()
+    expect(editor.theme()).toBe('light')
+    unmount()
+  })
+
+  it('an explicit theme wins over the app mode', async () => {
+    const editor = createEditor({ value: 'x', theme: 'light' })
+    const { unmount } = mountInBrowser(h(ColorModeProvider, { mode: 'dark' }, h(CodeEditor, { instance: editor })))
+    await flush()
+    expect(editor.theme()).toBe('light')
+    unmount()
+  })
+
+  it('with no app mode the editor keeps its light default', async () => {
+    const editor = createEditor({ value: 'x' })
+    const { unmount } = mountInBrowser(h(CodeEditor, { instance: editor }))
+    await flush()
+    expect(editor.theme()).toBe('light')
     unmount()
   })
 })

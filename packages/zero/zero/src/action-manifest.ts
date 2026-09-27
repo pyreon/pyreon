@@ -18,6 +18,7 @@ import type { Dirent } from 'node:fs'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { collectActionIds } from './actions-transform'
+import { jsStringLiteral } from './codegen-literal'
 
 const SOURCE_RE = /\.[mc]?[jt]sx?$/
 const SKIP_FILE_RE = /\.(?:test|spec|stories)\.[mc]?[jt]sx?$|\.d\.[mc]?ts$/
@@ -82,7 +83,7 @@ export function generateActionManifest(root: string): { code: string; files: Set
   if (modules.size === 0) return { code: '', files }
   const entries = [...modules]
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([id, file]) => `  ${JSON.stringify(id)}: () => import(${JSON.stringify(file)})`)
+    .map(([id, file]) => `  ${jsStringLiteral(id)}: () => import(${jsStringLiteral(file)})`)
   const code = [
     `import { _registerActionModules } from "@pyreon/zero/actions"`,
     `_registerActionModules({`,

@@ -64,11 +64,11 @@ toast(<span>Saved to <strong>{name}</strong></span>)
 ```ts
 interface ToastOptions {
   type?: 'info' | 'success' | 'warning' | 'error'
-  duration?: number // ms, default 4000. Set 0 for persistent.
+  duration?: number // ms, default 4000. Set 0 (or Infinity) for persistent; values a timer can't hold are treated as persistent.
   description?: string | VNodeChild // secondary line under the message
   icon?: VNodeChild // leading icon
   dismissible?: boolean // shows × dismiss button, default true
-  action?: { label: string; onClick: () => void }
+  action?: { label: string; onClick: (ctx: { id: string; dismiss: () => void }) => void }
   onDismiss?: () => void // fires on manual or auto dismiss
 }
 ```
@@ -138,7 +138,7 @@ toast.remove() //    hard-remove every toast
 
 - **Swipe-to-dismiss / draggable toasts** (sonner, react-toastify) — a touch-gesture affordance; use `dismissible` + the `×` button, or an `action`.
 - **Collapsed stacking with hover-to-expand** (sonner's signature) — an opinionated visual; `max` controls how many render, newest-first.
-- **Per-toast `position`** — position is a `<Toaster>` prop; all toasts share the configured corner (mount two Toasters for two corners).
+- **Per-toast `position`** — position is a `<Toaster>` prop; all toasts share the configured corner. (Two Toasters do NOT give two corners — each renders every toast.)
 
 Fully custom toast content IS supported — `message`, `description`, and `icon` all accept any `VNodeChild`, so you render whatever markup you want inside the toast chrome.
 
@@ -155,9 +155,10 @@ afterEach(_reset)
 
 ## Gotchas
 
-- **Mount `<Toaster />` exactly once at the root** — multiple mounted Toasters each render the full queue, producing duplicates.
+- **Mount `<Toaster />` exactly once at the root** — multiple mounted Toasters each render the full queue, producing duplicates (a dev warning fires). A Toaster's `duration` default is restored when it unmounts.
+- **`toast()` is a no-op on the server** (with a dev warning): the store is process-wide, so a toast raised during SSR would leak into other requests. Raise toasts from event handlers or `onMount`.
 - **`toast.loading()` returns an ID with `duration: 0`** (persistent). You MUST call `toast.update(id, ...)` or `toast.dismiss(id)` — otherwise the loading toast stays forever.
-- **The action button does NOT auto-dismiss** the toast. Call `toast.dismiss(id)` inside your `onClick` if you want both behaviors.
+- **The action button does NOT auto-dismiss** the toast. `onClick` receives `{ id, dismiss }` — call `dismiss()` if you want both behaviors.
 - **Toasts above `max` are queued, not dropped** — when a visible toast dismisses, the next queued one slides in.
 - **`onDismiss` fires on manual dismiss AND auto-timeout** — there's no separate "auto-dismiss" callback. Compare with `duration === 0` upstream if you need to disambiguate.
 - **`<Toaster>` uses a Portal** — make sure your app has a mounted DOM root before any `toast()` call, or the queue accumulates until the Toaster mounts.

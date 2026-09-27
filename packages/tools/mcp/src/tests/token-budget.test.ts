@@ -146,8 +146,12 @@ describe('MCP token budgets', () => {
       const index = tok(await callText(client, 'get_anti_patterns', {}))
       const full = tok(await callText(client, 'get_anti_patterns', { full: true }))
       // The whole point: the common path must be a large fraction
-      // cheaper than the full dump. (Measured ≈76%; assert ≥60% so
-      // catalog shape changes don't make this brittle.)
+      // cheaper than the full dump. (Measured ≈76% at the time this PR
+      // landed, ≈87% now that the catalog has grown to 400+ entries and
+      // paginated — the ratio only gets BETTER as the catalog grows, since
+      // the index is O(entries) while full bodies are O(entries × body
+      // size); assert ≥60% so catalog shape changes don't make this
+      // brittle, and don't chase the exact live number here.)
       expect(1 - index / full).toBeGreaterThanOrEqual(0.6)
     })
   })

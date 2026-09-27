@@ -18,7 +18,7 @@
 //
 // End-user docs: `docs/src/content/docs/multiplatform.md`
 
-// ===== Type exports — all 16 canonical primitives =====
+// ===== Type exports — the canonical primitives + animation wrappers =====
 export type {
   AccessibilityProps,
   Align,
@@ -51,7 +51,12 @@ export type {
 export { init, resetPrimitivesConfig } from './config'
 export type { PrimitivesInitOptions } from './config'
 
-// ===== Web runtime exports — all 15 canonical primitives =====
+// ===== Web runtime exports — the 17 canonical primitives =====
+//
+// Stack … Modal below are the canonical set; the compiler's
+// `CANONICAL_PRIMITIVES` (packages/native/compiler/src/canonical-primitives.ts)
+// must list exactly these, and a test there fails if the two disagree. The
+// exports after `Modal` (animation, WebView, escape hatches) are not members.
 //
 // On native targets these imports are intercepted by the PMTC
 // compiler before the JSX call site reaches runtime — these

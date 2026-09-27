@@ -49,6 +49,8 @@ describe('runAxe — the real engine', () => {
         impact: 'critical',
         help: 'Buttons must have discernible text',
         target: 'button',
+        // The offending element's markup — a finding names WHICH element.
+        html: '<button></button>',
         nodes: 1,
       },
     ])
@@ -82,7 +84,10 @@ describe('runAxe — reporting what axe said', () => {
             id: 'button-name',
             impact: 'critical',
             help: 'Buttons must have discernible text',
-            nodes: [{ target: ['button'] }, { target: ['button.b'] }],
+            nodes: [
+              { target: ['button'], html: '<button   class="a">\n  </button>' },
+              { target: ['button.b'], html: '<button class="b"></button>' },
+            ],
           },
         ],
         incomplete: [],
@@ -94,6 +99,8 @@ describe('runAxe — reporting what axe said', () => {
         impact: 'critical',
         help: 'Buttons must have discernible text',
         target: 'button',
+        // The FIRST node's markup, whitespace collapsed.
+        html: '<button class="a"> </button>',
         nodes: 2,
       },
     ])

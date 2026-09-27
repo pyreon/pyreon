@@ -93,7 +93,7 @@ const dynamicStyles = css`
 
 ### Static Interpolations
 
-String and number interpolations are static -- they are resolved once and never re-evaluated:
+String and number interpolations are static -- their value never depends on props, so it's fixed for the life of the `CSSResult`. When a `css` result made entirely of static interpolations is nested inside another `css`/`styled` template (`` ${resetStyles} ``), the resolved text is memoized on first use and reused on every subsequent resolve instead of being recomputed:
 
 ```ts
 const color = 'red'
@@ -169,31 +169,40 @@ A `CSSResult` is lazy — call `.toString()` for the static form, or the exporte
 (To get an injected **class name** instead of a raw string, use `useCSS(result, props)`.)
 
 ```ts
-import { css, resolve } from '@pyreon/styler'
+// @check
+import { css } from '@pyreon/styler'
 
 const result = css`
   color: red;
   font-size: 14px;
 `
-const cssString = result.toString()
-// => "color: red; font-size: 14px;"
+const cssString: string = result.toString()
+// => "\n  color: red;\n  font-size: 14px;\n" — the RAW interpolated text,
+// whitespace and all. `.toString()` / `resolve()` do NOT normalize.
 ```
 
 With dynamic props:
 
 ```ts
-const result = css`
-  color: ${(props) => props.color};
+import { resolve } from '@pyreon/styler'
+
+const dynamicResult = css`
+  color: ${(props: { color: string }) => props.color};
 `
-const cssString = resolve(result.strings, result.values, { color: 'blue' })
-// => "color: blue;"
+const cssString2 = resolve(dynamicResult.strings, dynamicResult.values, { color: 'blue' })
+// => "\n  color: blue;\n"
 ```
 
-During resolution:
+`.toString()` / `resolve()` are intentionally the raw, un-normalized form — they're the primitive the rest of the package builds on. Every consumer that actually inserts CSS (`styled()`, `createGlobalStyle`, `keyframes`, `useCSS`) additionally passes the result through `normalizeCSS()` before hashing/inserting it, which is where comment-stripping and whitespace-collapsing happen (see [CSS Normalization](#css-normalization) below):
 
-- Comments (both `/* ... */` and `//` line comments) are stripped
-- Whitespace is collapsed (newlines, tabs, multiple spaces become single spaces)
-- URLs containing `://` are preserved correctly
+```ts
+// @check
+import { normalizeCSS, resolve } from '@pyreon/styler'
+
+const raw = resolve([`\n  color: red;\n  /* note */ font-size: 14px;\n`] as unknown as TemplateStringsArray, [], {})
+const normalized: string = normalizeCSS(raw)
+// => "color: red; font-size: 14px;"
+```
 
 ## `styled(tag, options?)`
 
@@ -296,12 +305,14 @@ When `as` is not provided, the original tag is used.
 
 By default, standard HTML attributes, event handlers (`on*`), `data-*`, and `aria-*` props are forwarded to the DOM element. Custom styling props (like `primary`, `variant`, `spacing`) are filtered out automatically to prevent invalid DOM attributes.
 
-The default forwarding set includes:
+The default forwarding set includes (~180 keys total, see `HTML_PROPS_LIST` in `forward.ts` for the exhaustive list):
 
-- Standard attributes: `id`, `class`, `style`, `title`, `role`, `tabIndex`, `href`, `src`, `alt`, `type`, `name`, `value`, `checked`, `disabled`, `readonly`, `placeholder`, `for`, `action`, `method`, `target`, `rel`, `width`, `height`, `min`, `max`, `step`, `pattern`, `required`, `autofocus`, `hidden`, `draggable`, `contentEditable`, `loading`, `ref`, `key`, `children`, and more
-- Event handlers: any prop starting with `on` (e.g., `onClick`, `onMouseEnter`)
+- Standard attributes: `id`, `class`/`className`, `style`, `title`, `role`, `tabIndex`, `href`, `src`, `alt`, `type`, `name`, `value`, `checked`, `disabled`, `readOnly`, `placeholder`, `for`/`htmlFor`, `action`, `method`, `target`, `rel`, `width`, `height`, `min`, `max`, `step`, `pattern`, `required`, `autoFocus`, `hidden`, `draggable`, `contentEditable`, `loading`, `dangerouslySetInnerHTML`, `ref`, `key`, and more
+- Event handlers: any prop starting with `on` **that appears in the allowlist** (e.g., `onClick`, `onMouseEnter`, `onInput`) — an unrecognized `on*` prop is still filtered out unless it's in `HTML_PROPS_LIST`
 - Data attributes: any prop starting with `data-`
 - ARIA attributes: any prop starting with `aria-`
+
+`children` is **not** part of this list — component children are extracted from `props.children` and passed through separately (as the element's rendered children), never as a spread-in prop, so they always reach the element regardless of `shouldForwardProp`.
 
 Override this behavior with the `shouldForwardProp` option:
 
@@ -327,6 +338,19 @@ const PureStyled = styled('div', {
 `
 // Only class is set, no other props forwarded
 ```
+
+### `layer` — CSS `@layer` wrapping
+
+`styled(tag, { layer })` wraps every rule this component generates in `@layer <name> { ... }`. This is how the framework's own UI layers avoid specificity wars: `@pyreon/elements` inserts its base layout rules under `layer: 'elements'`, and `@pyreon/rocketstyle` inserts theme rules under `layer: 'rocketstyle'` — the framework declares the cascade order once (`@layer elements, rocketstyle;`), so a rocketstyle theme rule always beats an Elements base rule regardless of source order or selector specificity.
+
+```ts
+const Panel = styled('div', { layer: 'app-base' })`
+  padding: 16px;
+`
+// Emits: @layer app-base { .pyr-xyz { padding: 16px; } }
+```
+
+`insertLayer` on `sheet.insert()` is the lower-level per-call equivalent (see below). The sheet feature-detects `@layer` support once, when it first mounts its `<style>` element (by attempting to insert an `@layer` ordering rule and catching the failure): on the **client**, if that probe fails (e.g. a very old browser, or happy-dom in tests), every later `layer` wrapper is omitted entirely and rules are inserted un-layered — an unsupported `@layer` block would otherwise have its whole body dropped by the parser, which is worse than no layering. On the **server** the `@layer` wrapper is always emitted (SSR output is served to real, `@layer`-capable browsers). See [`sheet.insertGlobal(css)`](#sheetinsertglobalcss) for the equivalent fallback in the global-CSS path.
 
 ### Class Merging
 
@@ -528,6 +552,51 @@ const Skeleton = styled('div')`
 `
 ```
 
+## `createGlobalStyle`
+
+Injects **unscoped** CSS — not wrapped in a generated class selector — for resets, `@font-face`, `:root` custom properties, and other document-level rules. It returns a `ComponentFn` you mount once, typically near the app root.
+
+```tsx
+import { createGlobalStyle } from '@pyreon/styler'
+
+const GlobalStyle = createGlobalStyle`
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    font-family: system-ui, sans-serif;
+  }
+
+  :root {
+    --primary: royalblue;
+  }
+`
+
+// Mount once, anywhere in the tree — it renders no DOM (always returns null).
+function App() {
+  return (
+    <>
+      <GlobalStyle />
+      <MainContent />
+    </>
+  )
+}
+```
+
+Like `styled()`, `createGlobalStyle` has a static fast path (CSS injected once, immediately, at creation time when there are no function interpolations) and a dynamic path (re-resolved on every render when an interpolation is a function, reading `theme` via `useTheme()`):
+
+```tsx
+const ThemedGlobalStyle = createGlobalStyle`
+  body {
+    background: ${(props) => props.theme?.colors?.background ?? '#fff'};
+  }
+`
+```
+
+The rendered component always returns `null` — `createGlobalStyle` exists purely for its injection side effect, so mount it once (mounting it multiple times re-injects the same rules, which the sheet's content-hash dedup makes a no-op).
+
 ## `sheet` (StyleSheet)
 
 The singleton stylesheet manager that handles all CSS injection. You rarely need to interact with it directly, but it is available for advanced use cases.
@@ -542,9 +611,9 @@ The `StyleSheet` class maintains:
 
 The sheet automatically detects whether it is running in a browser or server environment via `typeof document === 'undefined'`.
 
-### `sheet.insert(css)`
+### `sheet.insert(cssText, _unused?, insertLayer?)`
 
-Inserts a CSS rule and returns the generated class name. Rules are deduplicated -- inserting the same CSS twice returns the same class name without creating a duplicate rule.
+Inserts a CSS rule and returns the generated class name. Rules are deduplicated -- inserting the same CSS text (and the same `insertLayer`) twice returns the same class name without creating a duplicate rule.
 
 ```ts
 import { sheet } from '@pyreon/styler'
@@ -555,7 +624,12 @@ const className = sheet.insert('color: red; font-size: 14px;')
 // Same CSS returns same class (deduplication)
 const same = sheet.insert('color: red; font-size: 14px;')
 // same === className
+
+// Optional third argument wraps the rule in `@layer <name> { ... }`
+const layered = sheet.insert('color: blue;', undefined, 'app-base')
 ```
+
+The second positional parameter is reserved (historically `boost`) and does nothing today — always pass `undefined` or omit it, and use the third `insertLayer` argument (or `layer` in `StyledOptions`/`StyleSheetOptions`) if you need cascade control.
 
 The generated class name has the format `pyr-&#123;hash&#125;` where the hash is a base-36 FNV-1a hash of the CSS string.
 
@@ -563,15 +637,20 @@ The generated class name has the format `pyr-&#123;hash&#125;` where the hash is
 
 The sheet maintains a maximum cache size of 10,000 entries. When the cache exceeds this limit, the oldest 10% of entries are evicted. This prevents unbounded memory growth in long-running applications with highly dynamic styles.
 
-### `sheet.insertKeyframes(name, css)`
+### `sheet.insertKeyframes(name, body)`
 
-Inserts a `@keyframes` rule and returns the generated animation name. Used internally by the `keyframes` function.
+Inserts a `@keyframes` rule under the given `name` and returns `void` — unlike `sheet.insert()`, it does **not** generate the name for you; the caller (the `keyframes` tagged template) computes it first via `hash(body)` and passes it in. Deduplicated by `name`: calling it again with the same name is a no-op regardless of `body`.
 
 ```ts
-const animName = sheet.insertKeyframes('', 'from { opacity: 0; } to { opacity: 1; }')
-// => "pyr-kf-xyz789"
-// Injects: @keyframes pyr-kf-xyz789 { from { opacity: 0; } to { opacity: 1; } }
+import { hash, sheet } from '@pyreon/styler'
+
+const body = 'from { opacity: 0; } to { opacity: 1; }'
+const animName = `pyr-kf-${hash(body)}`
+sheet.insertKeyframes(animName, body)
+// Injects: @keyframes pyr-kf-<hash> { from { opacity: 0; } to { opacity: 1; } }
 ```
+
+In practice you rarely call this directly — use the `keyframes` tagged template above, which does exactly this and returns the resulting animation name as a `KeyframesResult` (stringifies to the name).
 
 ### `sheet.insertGlobal(css)`
 
@@ -601,11 +680,11 @@ browsers need a specificity/source-order strategy instead.
 
 ### `sheet.getStyleTag(nonce?)`
 
-Returns all accumulated rules as a `<style>` tag string for server-side rendering. Returns an empty (still-tagged) `<style>` if no rules have been inserted.
+Returns all accumulated rules as a `<style>` tag string for server-side rendering. Returns an empty (still-tagged) `<style>` if no rules have been inserted. Any literal `</style` sequence inside the accumulated CSS is escaped (`<\/style`) so a value that happens to contain it can't prematurely close the tag.
 
 ```ts
 const html = sheet.getStyleTag()
-// => '<style data-pyreon-styler>.pyr-abc123 { color: red; }@keyframes pyr-kf-xyz { ... }</style>'
+// => '<style data-pyreon-styler="">.pyr-abc123{color:red;font-size:14px;}@keyframes pyr-kf-xyz{...}</style>'
 ```
 
 #### CSP nonce (strict `style-src`)
@@ -624,15 +703,39 @@ const requestSheet = createSheet({ nonce: req.cspNonce })
 
 ### `sheet.reset()`
 
-Clears the entire cache, empties the SSR rules buffer, and removes the injected `<style>` element from the DOM. Useful for testing:
+Clears the dedup cache Maps and the SSR rules buffer. It does **not** remove any CSS rule already injected into a live `<style>` element on the client, nor the element itself — it's meant for the **server**, called between requests so a request's `getStyleTag()` only reflects rules inserted during that request:
 
 ```ts
 import { sheet } from '@pyreon/styler'
 
-afterEach(() => {
-  sheet.reset()
-})
+async function handleRequest(req, res) {
+  sheet.reset() // clear per-request accumulation before rendering
+  const html = await renderToString(<App />)
+  const styles = sheet.getStyleTag()
+  res.send(`<html><head>${styles}</head><body>${html}</body></html>`)
+}
 ```
+
+### `sheet.clearAll()` — full reset (client / HMR)
+
+Clears the same caches as `reset()` **and** deletes every live CSS rule from the mounted `<style>` element's `sheet.cssRules` (the `<style>` tag itself stays in the DOM, just emptied), and notifies internal subscribers so downstream component caches (e.g. `styled()`'s per-source-location component cache) invalidate too. This is what you want on the client for a full teardown — e.g. dev-time hot reload:
+
+```ts
+sheet.clearAll()
+// Every styled() component created before this call now produces a FRESH
+// class the next time it's used, and any stale CSS rules are gone from the DOM.
+```
+
+:::tip{title="Which one in `afterEach`?"}
+For test isolation, `sheet.reset()` (clear caches only) is enough in most vitest suites — a fresh happy-dom/jsdom document per test file means there's no persistent `<style>` element to worry about, and the package's own tests use it for the common case. Reach for `sheet.clearAll()` when the test actually asserts on live CSS rules in the DOM across multiple `it()` blocks sharing one document (real-Chromium browser tests, or any suite that reuses a single mounted `<style>` element) — it's the only one of the two that empties `sheet.cssRules`.
+:::
+
+### Other `sheet` methods
+
+- **`sheet.has(className)`** — `true` if `className` is already in the dedup cache (O(1)).
+- **`sheet.getStyleRules()`** — the raw array of accumulated SSR rule strings (advanced; most consumers want `getStyleTag()`).
+- **`sheet.cacheSize`** — number of distinct CSS rules currently cached (getter).
+- **`sheet.clearCache()`** — clears the dedup caches (including the `normalizeCSS` cache) without touching live DOM rules or the SSR request state; a middle ground between `reset()` and `clearAll()`, rarely needed directly.
 
 ## SSR (Server-Side Rendering)
 
@@ -652,9 +755,10 @@ const Button = styled('button')`
 
 // ... render your component tree ...
 
-// 2. Collect the generated styles
+// 2. Collect the generated styles (AFTER rendering — getStyleTag() only
+//    returns rules already inserted into the sheet)
 const styleTag = sheet.getStyleTag()
-// '<style data-pyreon-styler>.pyr-abc { background: royalblue; color: white; padding: 8px 16px; }</style>'
+// '<style data-pyreon-styler="">.pyr-abc{background:royalblue;color:white;padding:8px 16px;}</style>'
 
 // 3. Inject into your HTML template
 const html = `
@@ -677,10 +781,10 @@ For server environments handling multiple requests, reset the sheet between requ
 async function handleRequest(req, res) {
   sheet.reset()
 
-  // ... render app ...
-
-  const styles = sheet.getStyleTag()
+  // Render FIRST — this is what populates the sheet's SSR buffer.
   const html = await renderToString(<App />)
+  // THEN collect styles — getStyleTag() only returns rules already inserted.
+  const styles = sheet.getStyleTag()
 
   res.send(`<html><head>${styles}</head><body>${html}</body></html>`)
 }
@@ -691,13 +795,14 @@ async function handleRequest(req, res) {
 FNV-1a hash function that produces compact base-36 strings. Used internally for class name and animation name generation.
 
 ```ts
+// @check
 import { hash } from '@pyreon/styler'
 
-hash('color: red;') // => "1m3k5q7" (example)
-hash('display: flex;') // => "a2b3c4d" (example)
+const a: string = hash('color: red;') // => "1pvnhim"
+const b: string = hash('display: flex;') // => "1gsnvr5"
 ```
 
-The hash uses the standard FNV-1a algorithm with offset basis `2166136261` and prime `16777619`, then converts to base-36 for compact string representation.
+The hash uses the standard FNV-1a algorithm with offset basis `2166136261` (`HASH_INIT`) and prime `16777619`, then converts to base-36 for compact string representation. `hashUpdate(init, str)` / `hashFinalize(h)` expose the streaming form — `hashFinalize(hashUpdate(hashUpdate(HASH_INIT, 'ab'), 'cd'))` produces the same result as `hash('abcd')`, useful for hashing a value incrementally without concatenating it first.
 
 ### Deterministic Output
 
@@ -709,52 +814,34 @@ The hash is deterministic -- the same input always produces the same output. Thi
 
 ## Theming
 
-### `ThemeContext` and `useTheme`
+### Providing a theme: `provide(ThemeContext, ...)`
 
-Provide a theme object via Pyreon's context system and access it in any component.
+`ThemeContext` is a plain Pyreon `Context` object (`{ id, defaultValue }`) — **it has no `.Provider` component**, unlike React's context API. To provide a value for the current component's subtree, call `provide(ctx, value)` (from `@pyreon/core`) inside a component body:
 
 ```ts
-import { ThemeContext, useTheme } from '@pyreon/styler'
-import { h } from '@pyreon/core'
+import { ThemeContext } from '@pyreon/styler'
+import { provide } from '@pyreon/core'
 
-// Define your theme
 const theme = {
-  colors: {
-    primary: 'royalblue',
-    secondary: '#6c757d',
-    success: '#28a745',
-    danger: '#dc3545',
-    text: '#333',
-    background: '#fff',
-  },
-  spacing: {
-    xs: 4,
-    sm: 8,
-    md: 16,
-    lg: 24,
-    xl: 32,
-  },
-  radii: {
-    sm: 4,
-    md: 8,
-    lg: 16,
-    full: 9999,
-  },
-  fonts: {
-    body: 'system-ui, -apple-system, sapyr-serif',
-    mono: 'ui-monospace, monospace',
-  },
+  colors: { primary: 'royalblue', text: '#333', background: '#fff' },
+  spacing: { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 },
+  radii: { sm: 4, md: 8, lg: 16, full: 9999 },
+  fonts: { body: 'system-ui, sans-serif', mono: 'ui-monospace, monospace' },
 }
 
-// Provide the theme at the app root
-<ThemeContext.Provider value={theme}>
-  <App />
-</ThemeContext.Provider>
+function AppRoot(props) {
+  // ThemeContext is a ReactiveContext<Theme> — it expects an ACCESSOR
+  // (() => Theme), not the raw theme object.
+  provide(ThemeContext, () => theme)
+  return props.children
+}
 ```
+
+**In a real app, don't provide `ThemeContext` directly** — use `<PyreonUI theme={theme} mode="light">` from `@pyreon/ui-core` instead. `PyreonUI` provides `ThemeContext` (among other context layers), enriches the theme with responsive-breakpoint helpers, and wires the `theme` prop to update reactively when it changes. See the [styling and theming pattern](/docs/patterns/styler-theming) for the full picture. The styler package also ships a low-level, deprecated `ThemeProvider` component (`import { ThemeProvider } from '@pyreon/styler'`) equivalent to the `provide()` call above — it exists for backward compatibility and internal use; prefer `PyreonUI`.
 
 ### Accessing the Theme
 
-Use `useTheme()` inside any component within the provider tree:
+Use `useTheme()` inside any component within the provider tree — it reads the current theme value:
 
 ```ts
 function ThemedCard(props) {
@@ -769,13 +856,32 @@ function ThemedCard(props) {
 }
 ```
 
-:::tip{title="`useTheme()` vs `useThemeAccessor()`"}
-`ThemeContext` is a **reactive** context — whole-theme swaps (e.g. a runtime light/dark toggle that replaces the entire theme object) propagate to every `styled()` component automatically.
+### `useTheme()` vs `useThemeAccessor()`
 
-- **`useTheme()`** returns a `Theme` snapshot at call time. Use it for static reads in component-setup code (signal-init values, default props from theme tokens). This is the common case.
-- **`useThemeAccessor()`** returns the raw `() => Theme` accessor. Use it inside `effect()` / `computed()` callbacks when you need the effect to re-run on theme swap. `useTheme()` would capture the snapshot once on first run; `useThemeAccessor()()` re-reads on every effect invocation.
+`ThemeContext` is a **reactive** context (`createReactiveContext`) — the value flowing through it is an accessor `() => Theme`, not the theme itself.
 
-Inside `styled()` template interpolations the theme is already tracked via the styler's internal resolver — you don't need either hook explicitly there.
+- **`useTheme()`** calls the accessor and returns the resolved `Theme` **once**, at the moment you call it. Use it for one-shot reads in component-setup code (signal-init values, computing a default from a theme token). Calling it does **not** create a reactive subscription — if `useTheme()` is called at component setup (outside an `effect`/`computed`/JSX accessor), a later theme swap will not re-run that code.
+- **`useThemeAccessor()`** returns the raw `() => Theme` function itself, unresolved. Call the returned accessor *inside* a tracking scope (`effect()`, `computed()`, or a JSX accessor `{() => ...}`) to subscribe to theme changes — every time the provided theme changes, the tracking scope re-runs and re-reads the new value.
+
+```ts
+import { useThemeAccessor } from '@pyreon/styler'
+
+function LiveThemedText(props) {
+  const getTheme = useThemeAccessor()
+  // Reactive: the WHOLE `style` value is the accessor (not a function nested
+  // inside a plain object) — the runtime wraps a function-valued prop in a
+  // renderEffect and re-reads it on every theme change, producing a fresh
+  // plain object each run.
+  return <span style={() => ({ color: getTheme().colors.text })}>{props.children}</span>
+}
+```
+
+:::warning{title="Plain `styled()` components resolve their theme-derived CSS ONCE per mount"}
+Components run once in Pyreon, and a `styled()` component's dynamic-path CSS class is normally computed a single time at mount from whatever `useTheme()`-equivalent snapshot was current then — a later theme swap does **not** automatically re-resolve it, and there is no per-component `effect()` watching the theme.
+
+The one exception: when a `styled()` component is driven through `@pyreon/rocketstyle` or `@pyreon/elements` — which pass their own dimension/props objects as reactive **function accessors** (`$rocketstyle`, `$element`) — styler wraps the CSS resolution in a `computed()` that also tracks the theme accessor, so theme (and mode/dimension) changes DO re-resolve the class and swap it on the live element without remounting. This is what `<PyreonUI>` + rocketstyle-based UI components (`@pyreon/ui-components`) rely on for live light/dark switching.
+
+For a hand-written `styled()` component to pick up a live theme swap, remount its subtree — e.g. put it behind a reactive `<Show>`/JSX accessor keyed on the value that changed (see the [Dark Mode Example](#dark-mode-example) below), or wrap it with rocketstyle.
 :::
 
 ### Theme with Styled Components
@@ -867,10 +973,16 @@ const darkTheme = {
 function App() {
   const isDark = signal(false)
 
-  return () => (
-    <ThemeContext.Provider value={isDark() ? darkTheme : lightTheme}>
+  // Provide a REACTIVE accessor once, at setup — descendants that read it
+  // inside a tracked scope (useThemeAccessor(), or a rocketstyle/elements-
+  // driven styled() component) see the swap live without a remount.
+  provide(ThemeContext, () => (isDark() ? darkTheme : lightTheme))
+
+  return (
+    <div>
+      <button onClick={() => isDark.set(!isDark())}>Toggle theme</button>
       <MainContent />
-    </ThemeContext.Provider>
+    </div>
   )
 }
 ```
@@ -1191,38 +1303,101 @@ Since the sheet deduplicates by CSS content, identical CSS strings always resolv
 
 ## CSS Normalization
 
-All CSS processed by `resolve` goes through a single-pass normalization:
+Every caller that resolves a template (`styled()`, `createGlobalStyle`, `keyframes`, `useCSS`) passes the raw `resolve(...)` output through `normalizeCSS()` before hashing/inserting it. `resolve()` itself does not normalize — call it directly (e.g. via `CSSResult.toString()`) and you get the raw interpolated text, comments and all. `normalizeCSS` is a single-pass, memoized (`Map<string, string>`) scanner that:
 
-- **Block comments** (`/* ... */`) are stripped
-- **Line comments** (`//`) are stripped (but `://` in URLs is preserved)
-- **Newlines, tabs, carriage returns** are collapsed to single spaces
-- **Consecutive spaces** are collapsed to a single space
-- **Leading and trailing whitespace** is trimmed
+- Strips **block comments** (`/* ... */`)
+- Strips **line comments** (`//`), but preserves `://` inside URLs
+- Collapses **newlines, tabs, carriage returns** to single spaces
+- Collapses **consecutive spaces** to a single space
+- Trims **leading and trailing whitespace**
+- Drops redundant semicolons (e.g. after `{`, `}`, or another `;`)
 
-This ensures consistent hashing regardless of how the template is formatted.
+This ensures consistent hashing regardless of how the template is formatted — two templates differing only in whitespace/comments/formatting resolve to the same class name. `clearNormCache()` clears the memoization (used during HMR).
+
+## Advanced: `useCSS`, `buildProps`, `filterProps`
+
+These lower-level exports are what `styled()` itself is built on. Reach for them only when `styled()` doesn't fit — e.g. attaching computed styles to a plain element without a dedicated component, or building your own styled-like wrapper.
+
+### `useCSS(cssResult, props?, boost?)`
+
+Resolves a `css` template with the given props (merged with the current theme) and returns the generated class name — no component wrapper needed:
+
+```tsx
+import { css, useCSS } from '@pyreon/styler'
+
+const highlighted = css`
+  background: ${(p) => (p.active ? 'yellow' : 'transparent')};
+`
+
+function Row(props) {
+  const cls = useCSS(highlighted, { active: props.selected })
+  return <li class={cls}>{props.children}</li>
+}
+```
+
+`useCSS` reads `useTheme()` internally and merges it into the props object passed to the template's interpolation functions — it is **not** reactive on its own (same one-shot-per-call caveat as `useTheme()`); call it inside a reactive scope if you need it to re-resolve on prop/theme change.
+
+### `buildProps` and `filterProps`
+
+`filterProps(props)` returns a new object containing only the props styler would forward to a DOM element (HTML attributes, `data-*`, `aria-*` — the same allowlist `styled()` uses internally), stripping `$`-prefixed transient props and anything unrecognized. `buildProps(rawProps, generatedClassName, isDOM, customFilter?)` does the same filtering **plus** merges in a generated class name and wires up `ref` — it's the single-pass helper `styled()`'s render functions call internally. Both preserve getter-shaped reactive props (they copy property *descriptors*, not resolved values) so wrapping them around a signal-driven prop doesn't freeze it.
+
+```ts
+import { filterProps } from '@pyreon/styler'
+
+function PassthroughDiv(props) {
+  return <div {...filterProps(props)}>{props.children}</div>
+  // $variant, $size, etc. are stripped; id/class/onClick/data-*/aria-* pass through
+}
+```
+
+## Common Mistakes
+
+- **Reaching for `<ThemeContext.Provider value={...}>`.** `ThemeContext` is a plain Pyreon `Context` object, not a React-style context — there is no `.Provider` component. Use `provide(ThemeContext, () => theme)` (from `@pyreon/core`), or, in a real app, `<PyreonUI theme={theme}>` from `@pyreon/ui-core`. See [Theming](#theming) above.
+- **Expecting a live theme swap to re-color an already-mounted, hand-written `styled()` component.** It won't — see the caution box under [Theming](#theming). Only rocketstyle/`@pyreon/elements`-driven components (which pass their dimension props as reactive accessors) get automatic re-resolution; a plain `styled()` component's CSS is fixed once it mounts.
+- **Passing a second argument to `sheet.insert(cssText, boost)` expecting a specificity boost.** That parameter is a reserved no-op (`_unused`) kept only for call-site backward compatibility — it does nothing. Use the `layer` option (on `styled()` or as `sheet.insert()`'s third argument) if you need one rule to reliably beat another; see [`layer` — CSS `@layer` wrapping](#layer-css-layer-wrapping).
+- **Calling `sheet.reset()` on the client expecting it to remove already-injected CSS.** It only clears the internal dedup caches — any rule already in the live `<style>` element's `sheet.cssRules` stays there. `reset()` is for server request boundaries; use `sheet.clearAll()` on the client (e.g. for a full HMR-style wipe).
+- **Getting silently-wrong CSS from a theme-token expression and not noticing.** In development, every resolved CSS string is scanned for common footguns before insertion — a `NaN` (JS arithmetic on a CSS-variable token, e.g. `${(t) => t.spacing.sm * 2}` where `spacing.sm` is a `var(--...)` string), an `undefined`/`null` value (a theme-token path that doesn't exist), a malformed `var(--x)concat` (string concatenation instead of `calc()`/`color-mix()`), or `content-visibility: auto` without `contain-intrinsic-size` (a Cumulative Layout Shift footgun) all print a `[Pyreon] styler: ...` console warning naming the exact declaration. Watch for these when styles silently don't apply.
+- **Assuming `styled()`'s `on*` forwarding is a wildcard.** It's a fixed allowlist of ~40 specific handler names (`onClick`, `onInput`, `onMouseEnter`, ...), not "any prop starting with `on`" — an unrecognized custom `onXyz` prop is filtered out just like any other unknown prop. Use `shouldForwardProp` to allow it through.
+- **Augmenting `DefaultTheme` in your own app when a theme package (e.g. `@pyreon/ui-theme`) already does.** Two `declare module '@pyreon/styler' { interface DefaultTheme {...} }` blocks for different shapes fail with `TS2320` ("cannot simultaneously extend"). Only augment it once.
 
 ## API Reference
 
-| Export           | Type     | Description                                                      |
-| ---------------- | -------- | ---------------------------------------------------------------- |
-| `css`            | Function | Tagged template for lazy CSS representation                      |
-| `CSSResult`      | Type     | Lazy CSS result holding template strings and interpolated values |
-| `resolve`        | Function | Resolves template strings + values (+ props) into a CSS string  |
-| `hash`           | Function | FNV-1a hash producing base-36 class name suffixes                |
-| `keyframes`      | Function | Define `@keyframes` and return the animation name                |
-| `createGlobalStyle` | Function | Inject global (unscoped) CSS via a mounted component          |
-| `sheet`          | Object   | Singleton `StyleSheet` instance for CSS injection                |
-| `createSheet`    | Function | Isolated `StyleSheet` (per-request SSR, shadow DOM, CSP nonce)   |
-| `styled`         | Function | Create a styled component; `styled.div` etc. via Proxy shorthand |
-| `ThemeContext`   | Context  | Pyreon context for theme distribution                            |
-| `useTheme`       | Function | Access the current theme value                                   |
+Every runtime export from `@pyreon/styler`'s `index.ts` (type-only exports are listed separately under [Types](#types)):
+
+| Export             | Type     | Description                                                                 |
+| ------------------ | -------- | ---------------------------------------------------------------------------- |
+| `css`               | Function | Tagged template for lazy CSS representation                                  |
+| `resolve`           | Function | Resolves template strings + values (+ props) into a CSS string               |
+| `resolveValue`      | Function | Resolves a single `Interpolation` value (used internally by `resolve`)       |
+| `normalizeCSS`      | Function | Single-pass CSS normalizer (strip comments, collapse whitespace)             |
+| `clearNormCache`    | Function | Clears the `normalizeCSS` memoization cache (HMR use)                        |
+| `isDynamic`         | Function | `true` if an `Interpolation` value contains a function anywhere              |
+| `hash`              | Function | FNV-1a hash producing base-36 class name suffixes                            |
+| `hashUpdate`        | Function | Streaming FNV-1a — feed one string segment into a running hash state         |
+| `hashFinalize`      | Function | Finalize a streaming hash state into the base-36 string                      |
+| `HASH_INIT`         | Constant | FNV-1a offset basis, the starting state for `hashUpdate`                     |
+| `keyframes`         | Function | Define `@keyframes` and return the animation name                            |
+| `createGlobalStyle` | Function | Inject global (unscoped) CSS via a mounted component (always renders `null`) |
+| `sheet`             | Object   | Singleton `StyleSheet` instance for CSS injection                            |
+| `createSheet`       | Function | Isolated `StyleSheet` (per-request SSR, shadow DOM, CSP nonce)               |
+| `styled`            | Function | Create a styled component; `styled.div` etc. via Proxy shorthand             |
+| `defineTheme`       | Function | Identity helper for declaring theme tokens (typing + multiplatform hook)     |
+| `ThemeContext`       | Context  | Reactive Pyreon context (`() => Theme`) for theme distribution               |
+| `ThemeProvider`     | Component | `@deprecated` — low-level provider; prefer `<PyreonUI theme={...}>`         |
+| `useTheme`          | Function | Read the current theme **once**, at call time                                |
+| `useThemeAccessor`  | Function | Get the raw `() => Theme` accessor, for tracked reads inside reactive scopes |
+| `useCSS`            | Function | Resolve a `css` template + props to an injected class name (no component)   |
+| `buildProps`        | Function | Build final DOM/component props (class merge + ref + filtering) in one pass |
+| `filterProps`       | Function | Filter a props object down to forwardable HTML/data/aria attributes         |
 
 ## Types
 
-| Type              | Description                                                                                                            |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `Interpolation`   | Union of valid interpolation types: `string \| number \| boolean \| null \| undefined \| InterpolationFn \| CSSResult` |
-| `InterpolationFn` | `(props: Record<string, unknown>) => Interpolation`                                                                    |
-| `StyledOptions`   | Options for `styled()`, including `shouldForwardProp`                                                                  |
-| `StyleSheet`      | Type of the `sheet` singleton                                                                                          |
-| `DefaultTheme`    | Augmentable interface for theme typing                                                                                 |
+| Type                | Description                                                                                              |
+| ------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `CSSResult`          | Lazy CSS result holding template strings and interpolated values (returned by `css`)                        |
+| `Interpolation<P>`   | Union of valid interpolation types: `string \| number \| boolean \| null \| undefined \| CSSResult \| Interpolation<P>[] \| ((props: StyledProps<P>) => Interpolation<P>)` — the function form is not a separately-named export, just the last union member |
+| `StyledOptions`      | Options for `styled()`: `shouldForwardProp?: (prop: string) => boolean` and `layer?: string`               |
+| `StyledFunction`     | Type of the `styled` export itself (the callable + the `styled.<tag>` proxy properties)                     |
+| `StyleSheet`         | Type of the `sheet` singleton / a `createSheet()` instance                                                  |
+| `StyleSheetOptions`  | Options for `createSheet()`: `maxCacheSize?`, `layer?`, `nonce?`, `registerSSRFlush?`                        |
+| `DefaultTheme`       | Augmentable (empty by default) interface for theme typing — augment via `declare module '@pyreon/styler'`  |

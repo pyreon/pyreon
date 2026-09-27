@@ -28,12 +28,12 @@ export const Fragment: symbol = Symbol.for('Pyreon.Fragment')
 export const EMPTY_PROPS: Props = {} as Props
 
 /** Makes `children` optional in P (if present) so it can be passed as rest args to h(). */
-type PropsWithOptionalChildren<P extends Props> = Omit<P, 'children'> &
+type PropsWithOptionalChildren<P extends object> = Omit<P, 'children'> &
   ('children' extends keyof P ? { children?: P['children'] } : unknown)
 
 // Overload: component with typed props — children is optional in the props object
 // because it can be passed as rest args. Extra keys are allowed via `& Props`.
-export function h<P extends Props>(
+export function h<P extends object>(
   type: ComponentFn<P>,
   props: (PropsWithOptionalChildren<P> & Props) | null,
   ...children: VNodeChild[]
@@ -44,16 +44,17 @@ export function h(
   props: Props | null,
   ...children: VNodeChild[]
 ): VNode
-export function h<P extends Props>(
+export function h<P extends object>(
   type: string | ComponentFn<P> | symbol,
   props: P | null,
   ...children: VNodeChild[]
 ): VNode {
+  const p = (props ?? EMPTY_PROPS) as Props
   return {
     type: type as string | ComponentFn | symbol,
-    props: (props ?? EMPTY_PROPS) as Props,
+    props: p,
     children: normalizeChildren(children),
-    key: (props?.key as string | number | null) ?? null,
+    key: (p.key as string | number | null | undefined) ?? null,
   }
 }
 

@@ -3,7 +3,7 @@
 import type { VNode } from '@pyreon/core'
 import { canvasHost, shiftCmds } from './canvas-host'
 import type { CanvasHostProps } from './canvas-host'
-import { plain } from './format'
+import { groupThousands } from './format'
 import type { Formatter } from './format'
 import type { HeatGrid } from './heat'
 import { heatGridFrom, heatPlotFor, hitHeatChart, renderHeatChart } from './heat-chart'
@@ -88,7 +88,7 @@ export function HeatmapChart<T>(props: HeatmapChartProps<T>): VNode {
     tooltip: (g, px, py) => {
       const c = g.grid.cells[cellAt(g, px, py)]
       if (c === undefined) return null
-      const fmt = props.format ?? plain
+      const fmt = props.format ?? groupThousands
       return [`${g.grid.rows[c.row]!} \u00b7 ${g.grid.cols[c.col]!}: ${fmt(c.value)}`]
     },
     // ECharts' heatmap datum: [x, y, value].

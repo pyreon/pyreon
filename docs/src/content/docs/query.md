@@ -74,9 +74,12 @@ The journey numbers are the EXTREME case (the stress component reads ZERO result
 Wrap your app with `QueryClientProvider` to provide a `QueryClient` to all descendant components.
 
 ```tsx
+// @check
 import { defineComponent } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { QueryClient, QueryClientProvider } from '@pyreon/query'
+
+declare function MyApp(): JSX.Element
 
 const queryClient = new QueryClient()
 

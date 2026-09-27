@@ -25,7 +25,10 @@ import { type ModuleLoader, runtimeLoader } from './load'
 export interface AtlasConfig {
   /**
    * Wraps every mounted scenario — theme, router, i18n, a query client.
-   * Receives the scenario as `children`.
+   * Receives the scenario as `children`, and — in the workbench — the
+   * appearance to render it in (`mode`, `dark`, `brand` accessors; see
+   * `AtlasWrapperProps`). Forward `mode` to your theme provider or the dark
+   * workbench shows your components in their light mode.
    */
   wrapper?: ComponentRef
   /**
@@ -222,6 +225,15 @@ const CANDIDATES = ['atlas.config.tsx', 'atlas.config.ts', 'atlas.config.mjs', '
  * is the exact failure the shared file exists to reduce.
  */
 const SHARED_CANDIDATES = CONFIG_FILENAMES
+
+/**
+ * Every path a config could be loaded from under `root`, in lookup order —
+ * what `atlas dev` watches so an edit (or a config created mid-session)
+ * re-derives the catalog.
+ */
+export function configCandidatePaths(root: string): string[] {
+  return [...CANDIDATES, ...SHARED_CANDIDATES].map((name) => resolve(root, name))
+}
 
 export interface LoadedConfig {
   config: AtlasConfig

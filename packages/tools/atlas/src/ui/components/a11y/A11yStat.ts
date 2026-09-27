@@ -1,4 +1,4 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const A11yStat = el
   .attrs({
@@ -7,7 +7,7 @@ export const A11yStat = el
     contentAlignY: 'center',
     gap: 8,
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     fontSize: t.size.text,
     color: t.text,
   }))

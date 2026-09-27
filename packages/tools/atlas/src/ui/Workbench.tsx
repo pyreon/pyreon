@@ -9,9 +9,10 @@
  * shortcuts, and composes the region views (`./views/*`) inside the themed
  * `<PyreonUI>` + `<Shell>`. All chrome + state live in their own modules.
  */
-import { isServer, Show } from '@pyreon/core'
+import { isClient, isServer, Show } from '@pyreon/core'
 import { useEventListener } from '@pyreon/hooks'
 import { createGlobalStyle } from '@pyreon/styler'
+import { batch } from '@pyreon/reactivity'
 import { PyreonUI } from '@pyreon/ui-core'
 import type { WorkbenchCatalog } from './catalog'
 import * as C from './components'
@@ -32,17 +33,39 @@ export interface WorkbenchProps {
  * default `body { margin: 8px }` framed the 100vh shell with a white gap —
  * the workbench owns the whole page, so it owns the reset (same shape as
  * loom's mountObservatory GLOBAL_CSS).
+ *
+ * The focus ring sits in `@layer elements` — the LOWEST layer the styler
+ * emits into. Unlayered, it outranked every component rule (layered styles
+ * lose to unlayered ones regardless of specificity), so a component could
+ * never replace it: the ⌘K field drew a square outline through its rounded
+ * card no matter what its own styles said.
  */
 const GLOBAL_CSS = `
 @keyframes atlas-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+@keyframes atlas-fade{from{opacity:0}to{opacity:1}}
+@keyframes atlas-drawer{from{transform:translateX(-24px);opacity:.4}to{transform:none;opacity:1}}
+@keyframes atlas-sheet{from{transform:translateY(32px);opacity:.4}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;height:100%}
 body{-webkit-font-smoothing:antialiased}
-button:focus-visible,input:focus-visible{outline:2px solid #ff6b3d;outline-offset:2px}
+@layer elements{button:focus-visible,input:focus-visible,[role=tab]:focus-visible,[tabindex]:focus-visible{outline:2px solid #ff6b3d;outline-offset:2px}}
 ::-webkit-scrollbar{width:10px;height:10px}
 ::-webkit-scrollbar-thumb{background:rgba(120,128,150,.3);border-radius:20px;border:3px solid transparent;background-clip:content-box}
 `
 let globalInjected = false
+
+/** The compact-layout breakpoint — below it the side panels become overlays. */
+const COMPACT_QUERY = '(max-width: 900px)'
+
+/**
+ * Move focus INTO an overlay the moment it mounts, so keyboard and
+ * screen-reader users land in it rather than behind the scrim. Deferred a
+ * frame: the ref fires before the element is attached.
+ */
+const focusOnMount = (el: HTMLElement | null) => {
+  if (el && typeof requestAnimationFrame === 'function') requestAnimationFrame(() => el.focus())
+}
 
 export function Workbench(props: WorkbenchProps) {
   if (!globalInjected) {
@@ -67,6 +90,29 @@ export function Workbench(props: WorkbenchProps) {
   // it instead of scripting the DOM.
   ;(globalThis as Record<string, unknown>).__ATLAS_MODEL__ = m
 
+  // Compact layout follows the viewport LIVE — rotating a tablet, or dragging
+  // a desktop window narrow, switches between the sidebar/panel columns and
+  // the drawer/sheet. The model seeds the initial value synchronously (no
+  // desktop-layout flash on a phone); this keeps it current.
+  const compactQuery = isClient && typeof matchMedia === 'function' ? matchMedia(COMPACT_QUERY) : null
+  if (compactQuery) {
+    useEventListener(
+      'change',
+      (e: Event) => {
+        const next = (e as MediaQueryListEvent).matches
+        batch(() => {
+          m.compact.set(next)
+          if (!next) {
+            m.drawerOpen.set(false)
+            m.sheetOpen.set(false)
+          }
+        })
+      },
+      undefined,
+      () => compactQuery,
+    )
+  }
+
   // Global shortcuts: ⌘K focuses search, Escape clears it, ↑↓ browse components.
   // useEventListener is SSR-safe (isClient-guarded) + auto-cleans up on unmount.
   useEventListener('keydown', (e: KeyboardEvent) => {
@@ -81,6 +127,12 @@ export function Workbench(props: WorkbenchProps) {
     if (e.key === 'Escape' && m.searchOpen()) {
       m.searchOpen.set(false)
       m.query.set('')
+      return
+    }
+    // The compact overlays close on Escape like any other modal surface.
+    if (e.key === 'Escape' && (m.drawerOpen() || m.sheetOpen())) {
+      m.drawerOpen.set(false)
+      m.sheetOpen.set(false)
       return
     }
     if (e.key === 'Escape' && m.query()) m.query.set('')
@@ -152,7 +204,7 @@ export function Workbench(props: WorkbenchProps) {
       <C.Shell data-testid="atlas-shell">
         <TopBar model={m} />
         <C.Body>
-          <Show when={() => m.sidebarOpen()}>
+          <Show when={() => !m.compact() && m.sidebarOpen()}>
             <Sidebar model={m} />
             <C.ResizeHandle
               data-testid="resize-sidebar"
@@ -170,7 +222,7 @@ export function Workbench(props: WorkbenchProps) {
           <Show when={() => m.view() === 'canvas'}>
             <Canvas model={m} />
           </Show>
-          <Show when={() => m.view() === 'canvas' && m.panelOpen()}>
+          <Show when={() => !m.compact() && m.view() === 'canvas' && m.panelOpen()}>
             <C.ResizeHandle
               data-testid="resize-panel"
               role="separator"
@@ -192,13 +244,55 @@ export function Workbench(props: WorkbenchProps) {
             <LabView model={m} />
           </Show>
         </C.Body>
-        <C.StatusBar>
-          <C.StatusText>{() => `components/${m.selId()}`}</C.StatusText>
-          <C.StatusDim>·</C.StatusDim>
-          <C.StatusText>{() => `${m.brand().name} theme`}</C.StatusText>
-          <C.Spacer />
-          <C.StatusText>{`${m.total} components`}</C.StatusText>
-        </C.StatusBar>
+        {/* The path + catalog size. The render context (brand · mode · …) is
+            the canvas header's job; the bar used to repeat it. Hidden in the
+            compact layout, where 32px of repeated context is 4% of a phone. */}
+        <Show when={() => !m.compact()}>
+          <C.StatusBar>
+            <C.StatusText>{() => `components/${m.selId()}`}</C.StatusText>
+            <C.Spacer />
+            <C.StatusText>{`${m.total} components`}</C.StatusText>
+          </C.StatusBar>
+        </Show>
+
+        {/* Compact layout: the sidebar is a drawer and the addon panel a
+            bottom sheet, both OVER the canvas instead of squeezing it. */}
+        <Show when={() => m.compact() && m.drawerOpen()}>
+          <C.Scrim data-testid="drawer-scrim" onClick={() => m.drawerOpen.set(false)} />
+          <C.Drawer
+            data-testid="sidebar-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Components"
+            tabIndex={-1}
+            ref={focusOnMount}
+          >
+            <Sidebar model={m} />
+          </C.Drawer>
+        </Show>
+        <Show when={() => m.compact() && m.sheetOpen() && m.view() === 'canvas'}>
+          <C.Scrim data-testid="sheet-scrim" onClick={() => m.sheetOpen.set(false)} />
+          <C.Sheet
+            data-testid="panel-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Addon panels"
+            tabIndex={-1}
+            ref={focusOnMount}
+          >
+            <C.SheetHead>
+              <span>{() => m.sel()?.name ?? ''}</span>
+              <C.ZoomBtn
+                data-testid="sheet-close"
+                aria-label="Close panels"
+                onClick={() => m.sheetOpen.set(false)}
+              >
+                ✕
+              </C.ZoomBtn>
+            </C.SheetHead>
+            <AddonPanel model={m} />
+          </C.Sheet>
+        </Show>
       </C.Shell>
       <SearchDialog model={m} />
     </PyreonUI>

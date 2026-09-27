@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { type Dirent, readFileSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import type { Plugin } from 'vite'
 import type { ZeroConfig } from './types'
@@ -38,15 +38,28 @@ export function isSpaEverywhere(userConfig: ZeroConfig, appMode: string, routesD
     const mode = (rule as { renderMode?: string }).renderMode
     if (mode !== undefined && mode !== 'spa') return false
   }
-  if (!existsSync(routesDir)) return true
+  // Walk with `withFileTypes` rather than `existsSync` + `statSync` before
+  // each read: the entry type comes from the same `readdir` call, so there
+  // is no separate check that the file could change after (CodeQL
+  // js/file-system-race), and a missing routes dir is simply ENOENT.
   const stack = [routesDir]
   try {
     while (stack.length > 0) {
       const dir = stack.pop()!
-      for (const entry of readdirSync(dir)) {
-        const full = join(dir, entry)
-        if (statSync(full).isDirectory()) stack.push(full)
-        else if (/\.[mc]?[jt]sx?$/.test(entry) && readFileSync(full, 'utf-8').includes('renderMode')) {
+      let entries: Dirent[]
+      try {
+        entries = readdirSync(dir, { withFileTypes: true })
+      } catch (err) {
+        // No routes directory at all: nothing can declare a render mode.
+        if (dir === routesDir && (err as NodeJS.ErrnoException).code === 'ENOENT') return true
+        throw err
+      }
+      for (const entry of entries) {
+        const full = join(dir, entry.name)
+        if (entry.isDirectory()) stack.push(full)
+        // A symlink's target is unknown without a second stat — keep hydration.
+        else if (entry.isSymbolicLink()) return false
+        else if (/\.[mc]?[jt]sx?$/.test(entry.name) && readFileSync(full, 'utf-8').includes('renderMode')) {
           return false
         }
       }

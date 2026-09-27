@@ -7,86 +7,66 @@ import manifest from '../manifest'
 
 describe('gen-docs — charts snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/charts — Reactive ECharts bridge, plus Pyreon's own tree-shakeable engine with canvas and SVG backends. The package ships TWO independent engines. \`@pyreon/charts\` bridges ECharts — mature, enormous chart-type coverage, browser-only. \`@pyreon/charts/plot\` is Pyreon's own: pure-TypeScript geometry over a flat draw list, tree-shakeable by construction, with a canvas backend and a pure SVG backend that runs on a server. Import from ONE of them; pulling a name from the default entry drags ECharts back into a bundle that had dropped it."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/charts — Pyreon's own charting engine: marks as JSX children, typed channels, canvas and SVG, the same chart on the web, iOS and Android. \`@pyreon/charts\` is the stable surface: \`<Chart>\`, its marks, the family components, formatters, theme and linking. \`/svg\` renders charts to SVG strings with no DOM. \`/option\` draws an ECharts option object on this engine (\`<OptionChart>\`, \`optionToSvg\`). \`/echarts\` wraps the real ECharts library (\`<EChart>\`, \`useChart\`) and is the only entry that pulls ECharts in. \`/engine\` exports every layout, hit test and draw-list builder for building on the engine, and is not covered by the stability promise."`)
   })
 
   it('renders to llms-full.txt section', () => {
     expect(renderLlmsFullSection(manifest)).toMatchInlineSnapshot(`
-      "## @pyreon/charts — Two charting engines
+      "## @pyreon/charts — Charts on web, iOS and Android
 
-      Two independent charting engines behind two subpaths. \`@pyreon/charts/plot\` is Pyreon's OWN: pure-TypeScript geometry over a flat draw list, marks as imported bindings so tree-shaking is structural, a canvas backend, and a PURE SVG backend that renders on a server. \`@pyreon/charts\` is the ECharts bridge: zero ECharts bytes in your bundle until a chart actually renders — chart types and components are auto-detected from your options and dynamically imported on demand. Signal-driven options reactively update the chart when tracked signals change. \`useChart\` is the low-level hook with full control; \`<Chart />\` is the declarative component with event binding. Both auto-resize via ResizeObserver and clean up on unmount.
+      \`<Chart>\` takes your rows and marks as children — \`<Bar y="revenue">\`, \`<Line>\`, \`<Area>\`, \`<Dot>\`, \`<Arc>\` for a pie, \`<Stage>\` for a funnel. Channels are field names checked against the row — \`<Chart<Row>>\` checks its own, and a mark given the row type (\`<Bar<Row> y="revenue">\`) checks its own too; axes, palette, tooltip, an accessible data table and a spoken description come for free. The geometry is pure TypeScript over a flat draw list, which is what makes the same source render on canvas, as an SVG string on a server, and natively on iOS and Android (the draw list is generated into the Swift and Kotlin runtimes). Every mark and chart family is an imported binding, so a bundle carries only what it draws. Entries: \`@pyreon/charts\` (the stable surface), \`/svg\` (SSR and export), \`/option\` (\`<OptionChart>\`: an ECharts option object on this engine), \`/echarts\` (\`<EChart>\`, a wrapper around the real ECharts library, lazy-loaded) and \`/engine\` (every layout, hit test and draw-list builder; not covered by the stability promise).
 
       \`\`\`typescript
-      import { Chart, useChart, type EChartsOption, type ComposeOption, type BarSeriesOption, type LineSeriesOption } from '@pyreon/charts'
+      import { Arc, Axis, Bar, Chart, Legend, Line, Rule, Tooltip, currency } from '@pyreon/charts'
       import { signal } from '@pyreon/reactivity'
 
-      const months = signal(['Jan', 'Feb', 'Mar', 'Apr'])
-      const revenue = signal([100, 200, 150, 300])
+      interface Row { month: string; revenue: number; target: number }
+      const rows = signal<Row[]>([
+        { month: 'Jan', revenue: 120, target: 100 },
+        { month: 'Feb', revenue: 160, target: 140 },
+        { month: 'Mar', revenue: 150, target: 170 },
+      ])
 
-      // Declarative component — simplest usage
-      <Chart
-        options={() => ({
-          xAxis: { type: 'category', data: months() },
-          yAxis: { type: 'value' },
-          series: [{ type: 'bar', data: revenue() }],
-          tooltip: { trigger: 'axis' },
-        })}
-        style="height: 400px"
-        onClick={(params) => console.log('clicked:', params.name)}
-      />
+      // Marks are children; channels are field names, typed against Row.
+      <Chart data={rows} x="month" height={320}>
+        <Bar y="revenue" label="Revenue" />
+        <Line y="target" label="Target" />
+        <Rule y={130} label="Break-even" />
+        <Axis y format={currency('EUR')} />
+        <Tooltip />
+        <Legend position="bottom" />
+      </Chart>
 
-      // useChart hook — full control over instance lifecycle
-      const MyChart = () => {
-        const chart = useChart(() => ({
-          xAxis: { type: 'category', data: months() },
-          yAxis: { type: 'value' },
-          series: [
-            { type: 'bar', data: revenue() },
-            { type: 'line', data: revenue().map((v) => v * 1.1) },
-          ],
-        }))
+      // A family is a mark in the same grammar: this is a donut.
+      <Chart data={rows} height={240}>
+        <Arc value="revenue" label="month" innerRadius={0.6} />
+      </Chart>
 
-        return (
-          <div>
-            {chart.loading() ? 'Loading chart...' : null}
-            <div ref={chart.ref} style="height: 400px" />
-            <button onClick={() => chart.resize()}>Resize</button>
-          </div>
-        )
-      }
-
-      // Strict typed options — only bar + line allowed
-      type MyOption = ComposeOption<BarSeriesOption | LineSeriesOption>
-      const typedChart = useChart<MyOption>(() => ({
-        series: [{ type: 'bar', data: [1, 2, 3] }],  // only 'bar' | 'line' autocomplete
-      }))
-
-      // Manual entry for tree-shaking control:
-      // import { useChart, Chart } from '@pyreon/charts/manual'
-      // — you register ECharts components yourself
+      // Writing the signal repaints the canvas in place.
+      rows.set([...rows(), { month: 'Apr', revenue: 190, target: 180 }])
       \`\`\`
 
-      > **Two engines, two subpaths**: The package ships TWO independent engines. \`@pyreon/charts\` bridges ECharts — mature, enormous chart-type coverage, browser-only. \`@pyreon/charts/plot\` is Pyreon's own: pure-TypeScript geometry over a flat draw list, tree-shakeable by construction, with a canvas backend and a pure SVG backend that runs on a server. Import from ONE of them; pulling a name from the default entry drags ECharts back into a bundle that had dropped it.
+      > **Which entry**: \`@pyreon/charts\` is the stable surface: \`<Chart>\`, its marks, the family components, formatters, theme and linking. \`/svg\` renders charts to SVG strings with no DOM. \`/option\` draws an ECharts option object on this engine (\`<OptionChart>\`, \`optionToSvg\`). \`/echarts\` wraps the real ECharts library (\`<EChart>\`, \`useChart\`) and is the only entry that pulls ECharts in. \`/engine\` exports every layout, hit test and draw-list builder for building on the engine, and is not covered by the stability promise.
       >
-      > **tslib Vite alias**: ECharts imports \`tslib\` whose ESM \`./modules/index.js\` entry destructures named helpers from a \`__toESM(require_tslib())\` default — the helpers live as top-level vars on the CJS factory, so the destructure reads \`undefined\` and the page throws \`TypeError: Cannot destructure property "__extends"\` the moment ECharts loads. Use \`chartsViteAlias()\` from \`@pyreon/charts/vite\` in your \`vite.config.ts\` (\`resolve: { alias: { ...chartsViteAlias() } }\`); it resolves \`tslib\` to the flat-ESM \`tslib.es6.js\` across install layouts. Browser tests use \`tslibBrowserAlias()\` from the shared test config. Tracking upstream: microsoft/tslib#189.
+      > **<EChart>: tslib Vite alias**: ECharts imports \`tslib\` whose ESM \`./modules/index.js\` entry destructures named helpers from a \`__toESM(require_tslib())\` default — the helpers live as top-level vars on the CJS factory, so the destructure reads \`undefined\` and the page throws \`TypeError: Cannot destructure property "__extends"\` the moment ECharts loads. Use \`chartsViteAlias()\` from \`@pyreon/charts/echarts/vite\` in your \`vite.config.ts\` (\`resolve: { alias: { ...chartsViteAlias() } }\`); it resolves \`tslib\` to the flat-ESM \`tslib.es6.js\` across install layouts. Browser tests use \`tslibBrowserAlias()\` from the shared test config. Tracking upstream: microsoft/tslib#189.
       >
-      > **Note**: Options must be a FUNCTION \`() => EChartsOption\`, not a plain object. Signal reads inside the function are tracked — changing any tracked signal reactively updates the chart.
+      > **Note**: \`<EChart>\` / \`useChart\` options must be a FUNCTION \`() => EChartsOption\`, not a plain object. Signal reads inside the function are tracked — changing any tracked signal reactively updates the chart.
       >
-      > **Lazy loading**: ECharts modules are auto-detected from your options (series types, components) and dynamically imported. First render has an async loading phase — check \`loading()\` or \`<Chart>\` handles it internally. Zero ECharts bytes in your initial bundle.
+      > **<EChart>: lazy loading**: ECharts modules are auto-detected from your options (series types, components) and dynamically imported. First render has an async loading phase — check \`loading()\`, or \`<EChart>\` handles it internally. Zero ECharts bytes in your initial bundle.
       >
-      > **Manual entry**: \`@pyreon/charts/manual\` skips auto-detection — you register ECharts components yourself via \`use()\` for maximum tree-shaking control.
+      > **<EChart>: manual entry**: \`@pyreon/charts/echarts/manual\` skips auto-detection — you register ECharts components yourself via \`use()\` for maximum tree-shaking control.
       >
-      > **Events**: \`onEvents\` is the general handler map — any ECharts event by name (\`legendselectchanged\`, \`datazoom\`, \`brushselected\`, \`finished\`, …); each handler gets \`(params, instance)\`. \`onClick\`/\`onMouseover\`/\`onMouseout\` are shorthands merged in (they WIN on a key collision). Binding is leak-safe: a changed handler swaps the listener (no pile-up) and all are removed on unmount.
+      > **<EChart>: events**: \`onEvents\` is the general handler map — any ECharts event by name (\`legendselectchanged\`, \`datazoom\`, \`brushselected\`, \`finished\`, …); each handler gets \`(params, instance)\`. \`onClick\`/\`onMouseover\`/\`onMouseout\` are shorthands merged in (they WIN on a key collision). Binding is leak-safe: a changed handler swaps the listener (no pile-up) and all are removed on unmount.
       >
-      > **A non-finite value is a GAP, everywhere**: In \`@pyreon/charts/plot\`, NaN AND Infinity are gaps: they are dropped from every domain (\`extent\`, the auto axis, the parallel/calendar/boxplot/histogram domains), draw as nothing (a zero-height bar at the zero line, a break in a line, an absent parallel segment), are absent from the tooltip and the accessible table, and are silence in \`sonifyValues\`. \`makeTicks\` returns ZERO ticks for a non-finite BOUND rather than a thousand NaN labels. \`isFiniteNumber\` is the engine's predicate and is exported — it is written in the native subset (\`v === v && v - v === 0\`) because \`Number.isFinite\` has no lowering inside the crossing engine, and it is what a custom mark or family should use so its gaps match the built-ins'.
+      > **A non-finite value is a GAP, everywhere**: In \`@pyreon/charts\`, NaN AND Infinity are gaps: they are dropped from every domain (\`extent\`, the auto axis, the parallel/calendar/boxplot/histogram domains), draw as nothing (a zero-height bar at the zero line, a break in a line, an absent parallel segment), are absent from the tooltip and the accessible table, and are silence in \`sonifyValues\`. \`makeTicks\` returns ZERO ticks for a non-finite BOUND rather than a thousand NaN labels. \`isFiniteNumber\` is the engine's predicate and is exported — it is written in the native subset (\`v === v && v - v === 0\`) because \`Number.isFinite\` has no lowering inside the crossing engine, and it is what a custom mark or family should use so its gaps match the built-ins'.
       >
-      > **Theme is not reactive**: Reactive theme: pass \`theme\` as an ACCESSOR (\`() => (dark() ? 'dark' : null)\`) — a flip disposes + re-inits with the current option/group/events preserved (ECharts has no in-place swap; dispose+re-init is the mechanism, as in vue-echarts). A plain value stays static. For map charts, \`await getCore()\` then \`core.registerMap(...)\` BEFORE rendering a \`map\` series.
+      > **<EChart>: theme is not reactive**: Reactive theme: pass \`theme\` as an ACCESSOR (\`() => (dark() ? 'dark' : null)\`) — a flip disposes + re-inits with the current option/group/events preserved (ECharts has no in-place swap; dispose+re-init is the mechanism, as in vue-echarts). A plain value stays static. For map charts, \`await getCore()\` then \`core.registerMap(...)\` BEFORE rendering a \`map\` series.
       "
     `)
   })
 
   it('renders to MCP api-reference entries', () => {
     const record = renderApiReferenceEntries(manifest)
-    expect(Object.keys(record).length).toBe(20)
+    expect(Object.keys(record).length).toBe(21)
   })
 })

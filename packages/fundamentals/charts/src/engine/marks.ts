@@ -17,7 +17,7 @@ import type { SeriesGradient } from './gradient'
 import type { ChartPattern, Double, Pt } from './types'
 import { binLabel, binValues } from './bin'
 import type { Bin } from './bin'
-import { plain } from './format'
+import { groupThousands } from './format'
 import type { Formatter } from './format'
 
 /** Reads one numeric channel out of a datum. */
@@ -415,7 +415,7 @@ export function histogram<T>(rows: T[], x: Accessor<T>, options: HistogramOption
     values.push(Number.isFinite(v) ? v : Number.NaN)
   }
   const data = binValues(values, options.bins ?? 10)
-  const fmt = options.format ?? plain
+  const fmt = options.format ?? groupThousands
   const markOptions: MarkOptions = { label: options.label ?? 'Count' }
   if (options.color !== undefined) markOptions.color = options.color
   return {

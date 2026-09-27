@@ -8,5 +8,5 @@ export const SideHead = el
     contentAlignX: 'spaceBetween',
   })
   .theme(() => ({
-    padding: '16px 16px 8px',
+    padding: '16px 16px 12px',
   }))

@@ -92,11 +92,15 @@ The `loader` is a dynamic `import()`. It may resolve to a module with a `default
 
 | Option     | Type                 | Default    | Description                                                                                          |
 | ---------- | -------------------- | ---------- | ---------------------------------------------------------------------------------------------------- |
-| `name`     | `string`             | (required) | Unique island name. Must match the key in the client-side registry (manual `hydrateIslands` form). Two islands sharing a name is a foot-gun — see the [audit](#pyreon-doctor-check-islands). |
+| `name`     | `string`             | *auto-derived* | Unique island name. Must match the key in the client-side registry (manual `hydrateIslands` form). Two islands sharing a name is a foot-gun — see the [audit](#pyreon-doctor-check-islands). |
 | `hydrate`  | `HydrationStrategy`  | `'load'`   | When to hydrate on the client. See [the six strategies](#the-six-strategies).                        |
 | `prefetch` | `PrefetchStrategy`   | `'none'`   | Pre-warm the chunk before the hydration trigger fires. See [Prefetch hint](#prefetch-hint).          |
 
 The returned component carries an `IslandMeta` marker (`{ __island: true, name, hydrate, prefetch }`) so build tooling (the CLI scanner, MCP, the auto-registry) can detect islands without runtime introspection.
+
+:::note{title="name is optional under @pyreon/vite-plugin"}
+Under `@pyreon/vite-plugin` (`islands: true`, the default), a `const`-bound declaration doesn't need an explicit `name` — the plugin derives a collision-free one from the binding: `const Counter = island(…)` becomes `Counter$<fnv1a6(relPath)>`. The *same* derivation runs in three places (the transform, the auto-registry prescan, and the project scanner used by `pyreon doctor`), all sourced from one function in `@pyreon/compiler`, so the marker and the registry entry can never disagree. An explicit `name` always wins over the derived one. Pass one explicitly when you want a pretty identifier for the manual `hydrateIslands({ Name: loader })` form, or when building without the plugin — `island()` throws a `[Pyreon]`-prefixed error at call time if no name ever reaches it (no const binding to derive from, or no plugin in the pipeline).
+:::
 
 ## The six strategies
 
@@ -339,7 +343,7 @@ A `hydrateIslands({ X })` entry whose key doesn't exactly match an `island()` de
 
 `@pyreon/zero` re-exports `island` (from `@pyreon/server/client`), so a zero app declares islands with `import { island } from '@pyreon/zero'` and needs **no manual `hydrateIslands` wiring** — `startClient({ routes })` is enough.
 
-This works because zero islands are **self-hydrating**. A zero route is a reactive child of `RouterView`, so on the client the server-rendered route DOM is discarded and re-mounted (not hydrated in place). A one-shot external `hydrateIslandsAuto` scan would race that async route mount, and an inline async island render would throw with no Suspense boundary. So in a client context, `island()` renders only its `<pyreon-island>` marker, then on mount loads the chunk and mounts the component into the marker per its strategy — the island owns its own hydration lifecycle.
+This works because zero islands are **self-hydrating**, and that design is deliberately host-agnostic. A zero route is a reactive child of `RouterView` — today its server-rendered DOM is *adopted* in place rather than discarded and rebuilt, but the island doesn't depend on which one the host does. In a client context, `island()`'s vnode has **zero children**: it renders only its `<pyreon-island>` marker. A hydrating host therefore adopts the marker and never descends into it — the island's own `hydrateRoot` stays the only thing that ever touches its interior, on the mount path and the hydrate path alike. On mount, `onMount` loads the chunk and mounts the component into the marker per its strategy; a one-shot external `hydrateIslandsAuto` scan would race an async route mount, and an inline async island render would throw with no Suspense boundary — which is why the island owns its own hydration lifecycle instead of relying on either.
 
 The marker also captures its context owner synchronously at render time and re-establishes it at hydration time, so a component inside the island (e.g. a `rocketstyle` component reading the `PyreonUI` theme) resolves ancestor context correctly even though hydration is deferred.
 
@@ -367,6 +371,10 @@ The inverse pattern — a cacheable page with per-request **server**-rendered ho
 ## Foot-guns — caught by audits
 
 Pyreon ships static + runtime gates that catch the recurring island foot-guns at build time, not at runtime against a confused user.
+
+### Dev-server doctor-lite (automatic)
+
+Under `@pyreon/vite-plugin` with `islands: true` (the default), `vite dev` runs the same five-detector audit **once on server boot** — deferred 1 second off the startup path so it never delays first paint — and prints any findings as plain `console.warn` output naming `pyreon doctor --check-islands` for the full report. It's purely advisory: a failure inside the audit itself is swallowed, so a broken audit can never break `vite dev`. This closes the gap where a duplicate island name or a registry typo shipped an entire dev session unnoticed until someone ran `pyreon doctor` manually or hit CI.
 
 ### `pyreon doctor --check-islands`
 

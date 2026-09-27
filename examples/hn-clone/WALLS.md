@@ -464,7 +464,7 @@ but Pyreon's error boundary or the chart wrapper swallows it (related to W4).
 
 **Fix in my code**: added `chartsViteAlias()` to `vite.config.ts`:
 ```ts
-import { chartsViteAlias } from '@pyreon/charts/vite'
+import { chartsViteAlias } from '@pyreon/charts/echarts/vite'
 export default {
   resolve: { alias: { ...chartsViteAlias() } },
   plugins: [pyreon(), zero(...)],

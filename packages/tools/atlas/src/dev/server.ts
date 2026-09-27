@@ -17,6 +17,8 @@ import { discoverComponents } from '../discover'
 import { workspaceResolvePlugin } from '../discover/workspace-packages'
 import { collectEntries } from '../build/entries'
 import { runScan } from '../cli/run'
+import { configCandidatePaths } from '../discover/config'
+import { scanInChild } from './rescan'
 import type { ComponentIntelligence } from '../core'
 import { atlasDevPlugin, devHtml, type RpcMethod } from './plugin'
 import type { CatalogEntrySource } from './catalog-module'
@@ -59,6 +61,23 @@ const NO_VITE =
   '  Install it as a dev dependency:\n\n' +
   '    bun add -d vite @pyreon/vite-plugin\n\n' +
   '  `atlas scan` does not need Vite and keeps working without it.'
+
+/**
+ * What a save must touch to re-derive the catalog: the scan root, EVERY
+ * project directory (a monorepo's components live there, not under
+ * `<root>/src`), and every config-file candidate — including ones that do not
+ * exist yet, so creating `atlas.config.ts` mid-session is picked up too.
+ */
+export function watchTargets(
+  root: string,
+  scanRoot: string,
+  projects: readonly { dir: string }[] | undefined,
+): { dirs: string[]; files: string[] } {
+  return {
+    dirs: [...new Set([scanRoot, ...(projects ?? []).map((p) => p.dir)])],
+    files: configCandidatePaths(root),
+  }
+}
 
 export async function startDevServer(options: DevServerOptions = {}): Promise<DevServerHandle> {
   const root = resolve(options.cwd ?? '.')
@@ -213,10 +232,24 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
         scanRoot,
         entries,
         // The same scan the boot ran, on demand — see `AtlasDevPluginOptions.rescan`.
+        //
+        // In a CHILD process, not here: a second in-process scan mounts the
+        // catalog against the first one's leftover module state — measured 7×
+        // slower, with twenty false failures and +420 MB (see `./rescan`).
         rescan: async () => {
-          const scan = await runScan({ cwd: root, dir: scanDir, write: false })
-          return collectEntries(root, scan.graph.list())
+          const scan = await scanInChild({ cwd: root, dir: scanDir })
+          const nextProjects = scan.projects?.map((pr) => ({ name: pr.name, dir: resolve(root, pr.dir) }))
+          return {
+            entries: collectEntries(root, scan.components),
+            configPath: scan.configPath,
+            presets: scan.presets,
+            pages: scan.pages,
+            parts: scan.parts,
+            projects: nextProjects,
+            watch: watchTargets(root, scanRoot, nextProjects),
+          }
         },
+        watch: watchTargets(root, scanRoot, projects),
         // The config file PATH, not the loaded value: the wrapper must wrap
         // the preview in the BROWSER, so the generated module imports it there
         // (through the project's own plugin chain) rather than serializing a

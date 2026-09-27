@@ -19,7 +19,7 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
 // `{ x: 'a', y: 1.0 }` with `x={(d) => d.x}` and both toolchains rejected it
 // at the fixture line, which reads exactly like an emit failure until you look
 // at the line number.
-const SRC = `import { PlotChart, line } from '@pyreon/charts/plot'
+const SRC = `import { PlotChart, line } from '@pyreon/charts/engine'
 interface Row { m: string; v: number }
 const ROWS: Row[] = [{ m: 'Jan', v: 10 }, { m: 'Feb', v: 40 }]
 export function C() {

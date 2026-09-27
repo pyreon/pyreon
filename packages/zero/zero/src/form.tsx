@@ -23,7 +23,7 @@
  * `/posts?page=2&_action=…`), so loaders see it on the POST and re-render.
  */
 import type { Props, VNodeChild } from '@pyreon/core'
-import { splitProps } from '@pyreon/core'
+import { h, mergeProps, splitProps } from '@pyreon/core'
 import { batch, isServer, signal } from '@pyreon/reactivity'
 import type { Signal } from '@pyreon/reactivity'
 import { useRouter } from '@pyreon/router'
@@ -386,24 +386,29 @@ export function Form<T>(props: FormProps<T>): VNodeChild {
     }
   }
 
-  const formProps: Props = {
-    ...(rest as Props),
+  // `mergeProps`, not an object spread: a spread reads every getter on
+  // `rest` once, freezing any reactive attribute (`class={cls()}`) at its
+  // first value. Descriptors are copied, so those attributes stay live.
+  const formProps: Props = mergeProps(rest as Props, {
     method: 'post',
     // Reactive: a client-side query change updates the attribute. The
     // router's current path is `pathname + search` on both server (the
     // request URL) and client, so SSR and hydration agree.
     action: () => formActionSearch(id, currentPathOf(router)),
     onSubmit,
-  }
-  return (
-    <form {...formProps}>
-      {/* The server's result, for hydration. An ATTRIBUTE, not an inline
-          script: attribute escaping is the renderer's job, so no raw-HTML
-          sink; and a <template> is inert and never submitted. */}
-      {hydrated ? (
-        <template data-zero-action-result={id} data-value={JSON.stringify(hydrated)} />
-      ) : null}
-      {own.children}
-    </form>
+  })
+  // `h()` rather than `<form {...formProps}>`: a JSX spread is an object
+  // spread under a plain JSX runtime (tests, other bundlers), which would read
+  // the getters and freeze the reactive attributes `mergeProps` preserved.
+  return h(
+    'form',
+    formProps,
+    // The server's result, for hydration. An ATTRIBUTE, not an inline
+    // script: attribute escaping is the renderer's job, so no raw-HTML
+    // sink; and a <template> is inert and never submitted.
+    hydrated
+      ? h('template', { 'data-zero-action-result': id, 'data-value': JSON.stringify(hydrated) })
+      : null,
+    own.children,
   )
 }

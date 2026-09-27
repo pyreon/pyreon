@@ -65,6 +65,7 @@ import {
 } from './atlas'
 import packageJson from '../package.json' with { type: 'json' }
 import {
+  ANTI_PATTERN_CATEGORIES,
   type AntiPatternCategory,
   formatAntiPatterns,
   formatAntiPatternsIndex,
@@ -870,17 +871,15 @@ server.tool(
   server.tool(
     'get_anti_patterns',
     {
+      // Derived from ANTI_PATTERN_CATEGORIES (the same map `parseAntiPatterns`
+      // uses) rather than hand-listed — a hand-listed enum drifted silently:
+      // it shipped with only 8 of the 15 real categories (missing islands,
+      // ssr, ssg, bundling, build, ci, best-practices, library-api), so
+      // `{ category: 'islands' }` failed zod validation for the catalog's
+      // entire lifetime. See patterns-server.test.ts "accepts EVERY real
+      // category (zod enum parity with ANTI_PATTERN_CATEGORIES)".
       category: z
-        .enum([
-          'reactivity',
-          'jsx',
-          'context',
-          'architecture',
-          'testing',
-          'lifecycle',
-          'documentation',
-          'all',
-        ])
+        .enum([...ANTI_PATTERN_CATEGORIES, 'all'])
         .optional()
         .describe('Full bodies for one category. Omit for the compact index.'),
       name: z
@@ -890,7 +889,7 @@ server.tool(
       full: z
         .boolean()
         .optional()
-        .describe('Entire catalog (~14K tokens). Default is the compact index.'),
+        .describe('Entire catalog (many tens of thousands of tokens). Default is the compact index.'),
       page: z
         .number()
         .int()
@@ -928,7 +927,7 @@ server.tool(
       }
 
       // 3. real `category` slug → that category's full bodies. Unchanged
-      //    behaviour (~1.8K) — the existing filtered contract.
+      //    behaviour — the existing filtered contract.
       if (category && category !== 'all') {
         const cat = category as AntiPatternCategory
         return textResult(
@@ -939,8 +938,9 @@ server.tool(
         )
       }
 
-      // 4. default (no args, or category:'all') → compact index. ~1.5K
-      //    vs ~14K — the ≈90% cut on the common path.
+      // 4. default (no args, or category:'all') → compact index — density-
+      //    gated to stay materially smaller than the full dump (see
+      //    token-budget.test.ts for the live ratio).
       return textResult(formatAntiPatternsIndex(all, page ?? 1))
     },
   )

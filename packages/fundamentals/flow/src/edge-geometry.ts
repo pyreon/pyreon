@@ -88,7 +88,7 @@ export function computeEdgeGeometry(
   edge: FlowEdge,
   sourceNode: FlowNode<any>,
   targetNode: FlowNode<any>,
-  measured: Map<string, NodeMeasurement>,
+  measured: Pick<ReadonlyMap<string, NodeMeasurement>, 'get'>,
 ): EdgeGeometry {
   // Effective node boxes — explicit `node.width`/`height` (a deliberate
   // consumer override) → measured DOM size → 150×40 default (pre-measurement

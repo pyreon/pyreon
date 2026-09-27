@@ -8,7 +8,7 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
  * module draws them); percent strings and an unknown position are named.
  */
 const app = (series: string): string => `
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart option={{ xAxis: { type: 'category', data: ['a', 'b'] }, yAxis: {}, series: [${series}] }} />
 }`

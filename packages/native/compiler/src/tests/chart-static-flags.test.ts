@@ -10,7 +10,7 @@ import { transform } from '../index'
  * never warns (absence is the ordinary shape).
  */
 const plot = (attrs: string) => `
-import { PlotChart, bars } from '@pyreon/charts/plot'
+import { PlotChart, bars } from '@pyreon/charts/engine'
 export function App(props: { rows: { v: number }[]; zoom: boolean; morph: boolean }) {
   return <PlotChart data={props.rows} marks={[bars((d) => d.v)]} ${attrs} />
 }`

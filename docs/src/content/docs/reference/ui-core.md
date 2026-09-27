@@ -73,6 +73,18 @@ const InvertedSection = () => (
 | [`useRootSize`](#userootsize) | hook | Reads the styler theme root font size (default `16`) and returns it plus `pxToRem` / `remToPx` converters. |
 | [`useSpacing`](#usespacing) | hook | Returns a `spacing(multiplier)` function producing a px string. |
 | [`cssVariablesPrePaintScript`](#cssvariablesprepaintscript) | function | Build the blocking pre-paint script that sets the CSS-variables mode attribute on `document.documentElement` BEFORE firs |
+| [`init`](#init) | function | The escape hatch `<PyreonUI>` calls internally to configure the ui-system-wide `Configuration` singleton (`config.css`/` |
+| [`get / set / merge / pick / omit / isEmpty / isEqual`](#get-set-merge-pick-omit-isempty-isequal) | function | Zero-dependency object utilities the ui-system builds its HOC/prop pipelines on — `@pyreon/lodash` without the dependenc |
+| [`throttle`](#throttle) | function | Rate-limits `fn` to at most once per `wait` ms. |
+| [`compose`](#compose) | function | Right-to-left function composition — `compose(f, g, h)(x)` is `f(g(h(x)))`. |
+| [`resolveSlot`](#resolveslot) | function | Resolves a slot prop (`beforeContent`, `afterContent`, `content` — the pattern `@pyreon/elements`' Element/Text/List use |
+| [`isPyreonComponent`](#ispyreoncomponent) | function | Detects whether a function value is a Pyreon COMPONENT (framework-marked via `IS_ROCKETSTYLE`/`PYREON__COMPONENT`, or us |
+| [`render`](#render) | function | A flexible one-shot renderer used internally by the ui-system's content/slot props: primitives (string/number/boolean) a |
+| [`useStableValue`](#usestablevalue) | hook | Returns a referentially-stable version of `value` — the returned reference only changes when the new value is no longer  |
+| [`HTML_TAGS / HTML_TEXT_TAGS`](#html-tags-html-text-tags) | constant | The two tag allowlists `@pyreon/elements`' Element/Text bases dispatch on: `HTML_TAGS` is every recognized host tag (use |
+| [`getThemeEngine / setThemeEngine`](#getthemeengine-setthemeengine) | function | @internal — the registration seam that breaks the `ui-core ↔ unistyle` dependency cycle. |
+| [`resolveCssVariables`](#resolvecssvariables) | function | The single defaulted view of `config.cssVariables` — every CSS-variables-mode consumer (`<PyreonUI>`, rocketstyle's `mod |
+| [`hoistNonReactStatics`](#hoistnonreactstatics) | function | Copies non-framework static properties (walking the prototype chain) from `source` onto `target` — the Pyreon equivalent |
 
 ## API
 
@@ -235,8 +247,326 @@ import { cssVariablesPrePaintScript } from '@pyreon/ui-core'
 
 ---
 
+### init `function`
+
+```ts
+init(props: { css?, styled?, keyframes?, component?, textComponent?, createMediaQueries?, cssVariables?: boolean | CssVariablesConfig, styleExtraction?: boolean }): void
+```
+
+The escape hatch `<PyreonUI>` calls internally to configure the ui-system-wide `Configuration` singleton (`config.css`/`config.styled`/`config.keyframes`, the default host `component`/`textComponent` used by Element/Text when no `tag` is given, and the `cssVariables` / `styleExtraction` opt-ins). Call it yourself only when `<PyreonUI>` is not mounted — a test harness, an SSR entry that pre-warms config before the first render, or a bare `@pyreon/rocketstyle`-only setup. Every field is optional and merges onto the existing singleton; omitted fields keep their current value.
+
+**Example**
+
+```tsx
+import { init } from '@pyreon/ui-core'
+
+// Test setup with no <PyreonUI> in the tree:
+init({ cssVariables: true, styleExtraction: true })
+```
+
+**Common mistakes**
+
+- Calling `init()` AFTER the first render to flip `cssVariables`/`styleExtraction` — both are boot-time contracts; theme-resolution caches across the ui-system assume they never change mid-session
+- Calling it redundantly alongside `<PyreonUI>` — the provider already calls `init()` with its own props on every mount; a second manual call can race the provider's own config depending on mount order
+
+**See also:** `PyreonUI` · `config`
+
+---
+
+### get / set / merge / pick / omit / isEmpty / isEqual `function`
+
+```ts
+get(obj, path, default?) · set(obj, path, value) · merge(target, ...sources) · pick(obj, keys?) · omit(obj, keys?) · isEmpty(value) · isEqual(a, b)
+```
+
+Zero-dependency object utilities the ui-system builds its HOC/prop pipelines on — `@pyreon/lodash` without the dependency. `get`/`set` take a dot-or-bracket PATH string or a pre-split array (`"a.b[0].c"` or `["a","b",0,"c"]`) and both refuse `__proto__`/`prototype`/`constructor` segments (prototype-pollution guard). `pick`/`omit` copy own-property DESCRIPTORS, not values, so getter-shaped reactive props (`makeReactiveProps`' `_rp()` wrappers) survive the copy with their subscription intact — critical for any HOC that filters props before forwarding them. `merge` deep-merges plain objects (arrays and non-plain objects are replaced, not merged) and mutates+returns `target`. `isEqual` is a structural deep-equal (arrays + plain objects); `isEmpty` is true for `null`/`undefined`/non-objects/empty arrays/objects with no own keys.
+
+**Example**
+
+```tsx
+import { get, set, merge, pick, omit, isEqual } from '@pyreon/ui-core'
+
+get({ a: { b: [1, 2] } }, 'a.b[1]')        // 2
+get({}, 'missing.path', 'fallback')        // 'fallback'
+set({}, 'a.b', 1)                          // { a: { b: 1 } }
+merge({ a: 1 }, { b: 2 }, { a: 3 })        // { a: 3, b: 2 }
+pick({ a: 1, b: 2, c: 3 }, ['a', 'c'])     // { a: 1, c: 3 }
+omit({ a: 1, b: 2 }, ['a'])                // { b: 2 }
+isEqual({ x: [1] }, { x: [1] })            // true
+```
+
+**Common mistakes**
+
+- Reaching for a value-copying `{ ...obj }` / manual filter loop instead of `pick`/`omit` when the object may carry compiler-emitted reactive getter props — a plain spread reads the getter once and freezes the value; `pick`/`omit` preserve the getter
+- `merge` mutates its FIRST argument — pass `merge({}, base, overrides)` when you need an immutable result
+- `set` with a numeric-looking next key (`"a.0.b"`) creates an ARRAY at that segment, not an object — matches lodash `set` but can surprise a hand-rolled path builder
+- isEqual/isEmpty are NOT reactive — they compare snapshots at call time; wrap the comparison in a `computed()`/`effect()` if you need it to re-run on signal change
+
+**See also:** `useStableValue`
+
+---
+
+### throttle `function`
+
+```ts
+throttle(fn, wait?: number = 0, options?: { leading?: boolean; trailing?: boolean }): typeof fn & { cancel: () => void }
+```
+
+Rate-limits `fn` to at most once per `wait` ms. `leading` (default `true`) fires on the first call in a window; `trailing` (default `true`) schedules one final call with the most recent args if calls kept arriving during the window. The returned function carries a `.cancel()` that clears any pending trailing timer and drops buffered args (useful on component unmount).
+
+**Example**
+
+```tsx
+import { throttle } from '@pyreon/ui-core'
+
+const onScroll = throttle(() => updatePosition(), 100)
+window.addEventListener('scroll', onScroll)
+onMount(() => () => onScroll.cancel())
+```
+
+**Common mistakes**
+
+- Not calling `.cancel()` on unmount — a pending trailing call fires after the consumer is gone, writing to a signal nobody reads
+- Expecting `{ leading: false, trailing: false }` to still invoke `fn` — with BOTH off the call is dropped entirely; at least one must stay true
+
+---
+
+### compose `function`
+
+```ts
+compose<T extends ((arg: any) => any)[]>(...fns: T) => (value) => result
+```
+
+Right-to-left function composition — `compose(f, g, h)(x)` is `f(g(h(x)))`. Used internally to chain unary transforms (HOC wrappers, value pipelines); exported as a general-purpose utility.
+
+**Example**
+
+```tsx
+import { compose } from '@pyreon/ui-core'
+
+const shout = compose(
+  (s: string) => s + '!',
+  (s: string) => s.toUpperCase(),
+)
+shout('hi') // 'HI!'
+```
+
+**Common mistakes**
+
+- Expecting left-to-right (pipe) order — `compose` runs the LAST argument first; use it as `compose(outer, ..., inner)`
+
+---
+
+### resolveSlot `function`
+
+```ts
+resolveSlot(value: unknown): VNodeChildAtom | VNodeChildAtom[]
+```
+
+Resolves a slot prop (`beforeContent`, `afterContent`, `content` — the pattern `@pyreon/elements`' Element/Text/List use for their inject-a-node props) INSIDE a reactive accessor, so it must be called as `content={() => resolveSlot(value)}`. It discriminates a component-reference shorthand (`beforeContent={Header}` — mount via `h(Header, null)` so the component's own setup frame runs) from an inline reactive accessor (`content={() => <Icon name={signal()} />}` — call bare so its signal reads track in the enclosing effect). Both are functions at the `typeof` level; the discriminator is `isPyreonComponent()` under the hood.
+
+**Example**
+
+```tsx
+import { resolveSlot } from '@pyreon/ui-core'
+
+// Inside a component that accepts a slot prop:
+<div>{() => resolveSlot(props.beforeContent)}</div>
+```
+
+**Common mistakes**
+
+- Calling it OUTSIDE a reactive accessor — a slot value that reads a signal (`() => <Icon name={sig()} />`) needs the enclosing `() => resolveSlot(...)` to be the tracking scope, or the read never subscribes
+- Reaching for it directly instead of building on `@pyreon/elements`' Element/Text, which already wire this pattern for `beforeContent`/`afterContent`/`content` — most consumers never need to call it themselves
+
+**See also:** `isPyreonComponent` · `render`
+
+---
+
+### isPyreonComponent `function`
+
+```ts
+isPyreonComponent(value: unknown): boolean
+```
+
+Detects whether a function value is a Pyreon COMPONENT (framework-marked via `IS_ROCKETSTYLE`/`PYREON__COMPONENT`, or user-authored by convention — an explicit `displayName`, or a `.name` starting with an uppercase letter) as opposed to a bare reactive-accessor function (`() => <X/>`). Both shapes are functions at the `typeof` level, so a slot-resolver (`resolveSlot`) needs this to decide whether to mount via `h(Component, null)` (establishing the component's own setup frame — required for any HOC that reads `props`) or call the function bare (so its signal reads track in the enclosing effect).
+
+**Example**
+
+```tsx
+import { isPyreonComponent } from '@pyreon/ui-core'
+
+isPyreonComponent(MyButton)              // true — PascalCase name
+isPyreonComponent(() => <div/>)          // false — anonymous accessor
+isPyreonComponent(rocketstyle(Element))  // true — IS_ROCKETSTYLE marker
+```
+
+**Common mistakes**
+
+- Relying on it for a lowercase-named or camelCase helper function that returns JSX — the naming-convention tier only recognizes PascalCase or an explicit `displayName`; give the helper a `displayName` if it must be detected as a component
+
+**See also:** `resolveSlot`
+
+---
+
+### render `function`
+
+```ts
+render(content?: ComponentFn | string | VNodeChild | VNodeChild[] | ((props) => VNodeChild), attachProps?): VNodeChild
+```
+
+A flexible one-shot renderer used internally by the ui-system's content/slot props: primitives (string/number/boolean) and arrays pass through unchanged, a component function is mounted via `h(content, attachProps)`, a render-prop function is called with `attachProps`, and an already-built VNode passes through. `key` is stripped out of `attachProps` before mounting (it's a VNode reconciliation concept, not a component prop, and passing it through triggers a JSX runtime warning).
+
+**Example**
+
+```tsx
+import render from '@pyreon/ui-core'
+// (default export — most consumers reach it through resolveSlot instead)
+```
+
+**Common mistakes**
+
+- Calling it directly for a content prop that should be LIVE (reactive) — `render()` is a one-shot resolve; wrap the call in `() => render(...)` inside a reactive accessor, or prefer `resolveSlot()` which is built for exactly this
+
+**See also:** `resolveSlot`
+
+---
+
+### useStableValue `hook`
+
+```ts
+useStableValue<T>(value: T): T
+```
+
+Returns a referentially-stable version of `value` — the returned reference only changes when the new value is no longer deeply equal (`isEqual`) to the last one it returned. Backed by a signal held internally; useful for passing a freshly-constructed object/array literal (which would otherwise be a NEW reference every call) into something that memoizes on identity, without needing the caller to hoist the literal to module scope.
+
+**Example**
+
+```tsx
+import { useStableValue } from '@pyreon/ui-core'
+
+// options is a fresh object literal every call — useStableValue keeps
+// its IDENTITY stable across calls that produce a deep-equal result
+const options = useStableValue({ page: page(), size: 20 })
+```
+
+**Common mistakes**
+
+- Expecting it to be reactive — it returns a plain (non-accessor) value snapshotted at call time via `.peek()`; call `useStableValue` again on the next reactive re-run to get the latest stabilized value, don't cache the return across renders
+- Using it on huge or deeply-nested objects in a hot path — `isEqual` walks the whole structure on every call to decide whether to update
+
+**See also:** `get / set / merge / pick / omit / isEmpty / isEqual`
+
+---
+
+### HTML_TAGS / HTML_TEXT_TAGS `constant`
+
+```ts
+HTML_TAGS: readonly string[] · HTML_TEXT_TAGS: readonly string[]
+```
+
+The two tag allowlists `@pyreon/elements`' Element/Text bases dispatch on: `HTML_TAGS` is every recognized host tag (used to validate/narrow a `tag` prop), `HTML_TEXT_TAGS` is the subset of TEXT-flavored tags (`span`, `p`, `label`, `h1`-`h6`, …) Text defaults `component` to when no explicit tag is given.
+
+**Example**
+
+```tsx
+import { HTML_TAGS, HTML_TEXT_TAGS } from '@pyreon/ui-core'
+
+HTML_TAGS.includes('button')      // true
+HTML_TEXT_TAGS.includes('div')    // false — div is structural, not text
+```
+
+---
+
+### getThemeEngine / setThemeEngine `function`
+
+```ts
+getThemeEngine(): ThemeEngine · setThemeEngine(engine: ThemeEngine): void
+```
+
+@internal — the registration seam that breaks the `ui-core ↔ unistyle` dependency cycle. `@pyreon/unistyle` calls `setThemeEngine({ enrichTheme, themeToCssVars, cpseRewrite, responsiveStyles })` at module load (a side effect its `package.json` marks `sideEffects` for, so tree-shaking can't drop the registration); `<PyreonUI>` reads it lazily via `getThemeEngine()` at each use-site, never eagerly at setup. When unistyle is NOT in the module graph (a bare `@pyreon/rocketstyle`-only app), `getThemeEngine()` returns a minimal FALLBACK — identity `enrichTheme`, no CSS vars, no CPSE — and dev-warns ONCE, so `<PyreonUI>` degrades instead of crashing.
+
+**Example**
+
+```tsx
+// User code never calls this — it's how @pyreon/unistyle wires itself into
+// <PyreonUI> without ui-core depending on unistyle. Documented here because
+// "theme isn't enriched" / "no CSS variables" debugging starts here: import
+// "@pyreon/unistyle" somewhere in your app to register the real engine.
+```
+
+**Common mistakes**
+
+- Seeing an un-enriched theme (missing default breakpoints/spacing, no CSS variables) and not realizing `@pyreon/unistyle` was never imported — every styled `@pyreon` UI package except bare `@pyreon/rocketstyle` pulls it in transitively, but a minimal custom setup can miss it
+- Calling `setThemeEngine()` from app code — it is for a THEME ENGINE PACKAGE to register itself (the unistyle precedent); overwriting it from an app silently replaces every consumer's theme resolution
+
+**See also:** `PyreonUI`
+
+---
+
+### resolveCssVariables `function`
+
+```ts
+resolveCssVariables(): { enabled: boolean; prefix: string; attribute: string }
+```
+
+The single defaulted view of `config.cssVariables` — every CSS-variables-mode consumer (`<PyreonUI>`, rocketstyle's `mode(a, b)` pair factory) reads through this instead of re-deriving defaults from the raw `boolean | CssVariablesConfig` config value. Identity-memoized: re-resolves only when `config.cssVariables` is reassigned by `init()`, not on every call.
+
+**Example**
+
+```tsx
+import { resolveCssVariables } from '@pyreon/ui-core'
+
+const { enabled, prefix, attribute } = resolveCssVariables()
+// enabled: false by default; prefix: 'px'; attribute: 'data-theme'
+```
+
+**Common mistakes**
+
+- Reading `config.cssVariables` directly instead of `resolveCssVariables()` — the raw config value can be a bare `true`/`false` OR a `CssVariablesConfig` object; the raw form has no defaulted `prefix`/`attribute`
+
+**See also:** `init`
+
+---
+
+### hoistNonReactStatics `function`
+
+```ts
+hoistNonReactStatics<T, S>(target: T, source: S, excludeList?: Record<string, true>): T
+```
+
+Copies non-framework static properties (walking the prototype chain) from `source` onto `target` — the Pyreon equivalent of the `hoist-non-react-statics` package, simplified since Pyreon components are plain functions without React-specific statics (`contextType`, `propTypes`, …). Used by HOC factories (`@pyreon/attrs`, `@pyreon/rocketstyle`) so a wrapped component keeps the original's statics (`.meta`, custom attached properties) visible on the wrapper.
+
+**Example**
+
+```tsx
+import { hoistNonReactStatics } from '@pyreon/ui-core'
+
+const Original = Object.assign(
+  (props: { label: string }) => props.label,
+  { meta: { category: 'action' } },
+)
+function Wrapped(props: { label: string }) {
+  return Original(props)
+}
+// At runtime Wrapped now also carries Original's non-framework statics
+// (here, .meta) — the return value is typed T, so read the copied static
+// off the SOURCE's own shape (Object.assign, as above) when you need it typed.
+hoistNonReactStatics(Wrapped, Original)
+```
+
+**Common mistakes**
+
+- Reaching for it directly when writing an app-level HOC — `@pyreon/attrs`' `.compose()` already hoists statics for you; this is the low-level primitive it's built on
+
+**See also:** `compose`
+
+---
+
 ## Package-level notes
 
 > **Provider replacement:** The legacy split (separate theme / mode / config providers) is removed. `PyreonUI` is the only correct mount; calling `init()` directly is the escape hatch for SSR or test environments where the provider tree is unavailable.
 
 > **System-mode subscription:** `mode="system"` lazily creates a `matchMedia('(prefers-color-scheme: dark)')` subscription on first read; the listener stays alive for the document lifetime, so a single subscription handles every `useMode()` consumer.
+
+> **Deprecated internal Provider / context:** The package also exports a low-level `Provider` (default export) + `context` from `context.tsx` — an internal, `@deprecated`-tagged reactive-context provider `<PyreonUI>` no longer uses directly. It dev-warns on every mount. There is no reason to import it: use `<PyreonUI theme={theme}>` for the provider and `useMode()` / `useThemeValue()` for reads.

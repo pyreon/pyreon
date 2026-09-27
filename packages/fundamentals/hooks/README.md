@@ -68,7 +68,7 @@ function Modal(props: { open?: boolean; defaultOpen?: boolean; onOpenChange?: (v
 
 | Hook | Notes |
 |---|---|
-| `useEventListener(event, handler, options?, target?)` | Auto-cleanup listener. `target` getter defaults to `window`, resolved once at setup. |
+| `useEventListener(event, handler, options?, target?)` | Auto-cleanup listener. No `target` → `window`. A `target` (an `EventTarget` or a ref/getter) that is still `null` at setup is resolved again at mount; if it is still `null` nothing is bound and a dev warning fires — it never falls back to `window`. |
 | `useClickOutside(ref, handler)` | Click-outside dismissal |
 | `useFocus()` | `{ focused, props: { onFocus, onBlur } }` |
 | `useHover()` | `{ hovered, props: { onMouseEnter, onMouseLeave } }` |
@@ -87,7 +87,7 @@ function Modal(props: { open?: boolean; defaultOpen?: boolean; onOpenChange?: (v
 | Hook | Notes |
 |---|---|
 | `useBreakpoint()` | Theme-driven active-breakpoint flags |
-| `useMediaQuery(query)` | Raw CSS media-query escape hatch |
+| `useMediaQuery(query)` | Raw CSS media-query escape hatch. `query` may be a getter; a change re-subscribes. |
 | `useColorScheme()` | `Signal<'light' \| 'dark'>` from `prefers-color-scheme` |
 | `useSizeClass()` | `() => 'compact' \| 'regular'` horizontal size class (`min-width: 600px`); PMTC lowers to iOS `@Environment(\.horizontalSizeClass)` / Android `LocalConfiguration` width |
 | `useReducedMotion()` | `Signal<boolean>` from `prefers-reduced-motion` |
@@ -119,13 +119,13 @@ function Modal(props: { open?: boolean; defaultOpen?: boolean; onOpenChange?: (v
 | `useClipboard(opts?)` | `{ copy, copied, text }` — `copy` resolves `true`/`false`; `copied` auto-resets after `opts.timeout` (2s) |
 | `useHaptics()` | `{ impact, notification, selection }` — fire-and-forget device haptics; web `navigator.vibrate`, iOS/Android via PMTC (`@pyreon/native-*`). Coarser on web/Android than iOS |
 | `useShare()` | `{ text, url, textUrl, canShare }` — open the platform share sheet; web Web Share API, iOS `UIActivityViewController` / Android `Intent.ACTION_SEND` via PMTC. Android shares URLs as text |
-| `useLinking()` | `{ openUrl }` — open an external URL in the platform browser; web `window.open`, iOS `UIApplication.open` / Android `Intent.ACTION_VIEW` via PMTC |
+| `useLinking()` | `{ openUrl }` — open an external URL in the platform browser (http(s)/mailto/tel/relative only — `javascript:`/`data:` are refused); web `window.open`, iOS `UIApplication.open` / Android `Intent.ACTION_VIEW` via PMTC |
 | `useNotifications()` | `{ notify, requestPermission }` — post a LOCAL notification; web Notification API, iOS `UNUserNotificationCenter` / Android `NotificationManager` + channel via PMTC. Distinct from remote push (`usePush`) |
 | `useBiometrics()` | `{ authenticate, isAvailable }` — biometric gate; `authenticate(reason)` returns `Promise<boolean>` (the first async-result hook). iOS Face ID / Touch ID (`LAContext`), Android BiometricPrompt via PMTC; web feature-detects `PublicKeyCredential` and resolves `false` (a real WebAuthn assertion needs a server challenge) |
 | `useImagePicker()` | `{ pick, isAvailable }` — pick an image from the photo library; `pick()` returns `Promise<string \| null>` (a URI, or `null` when cancelled). iOS `PHPickerViewController`, Android Photo Picker (`PickVisualMedia`) via PMTC; web uses a hidden file input. Needs NO photo-library permission on either platform (both system pickers run out of process) |
 | `useFilePicker()` | `{ pick, isAvailable }` — pick a document/file (any type) from the device; `pick()` returns `Promise<string \| null>` (a URI, or `null` when cancelled). iOS `UIDocumentPickerViewController`, Android SAF `OpenDocument` via PMTC; web uses a hidden file input. The document sibling of `useImagePicker`. Needs NO storage permission (both system pickers run out of process) |
 | `useDialog(opts?)` | Native `<dialog>` wrapper — `open` signal + `show`/`showModal`/`close`/`toggle`/`ref` |
-| `useKeyboard(key, handler)` | Single-key listener |
+| `useKeyboard(key, handler, { ignoreInputs? })` | Single-key listener; `ignoreInputs: true` skips keys typed into editable fields |
 | `useOnline()` | `Signal<boolean>` from `navigator.onLine` |
 | `useAppState()` | `() => 'active' \| 'inactive' \| 'background'` — app lifecycle phase; mirrors SwiftUI `ScenePhase` / Android `ProcessLifecycleOwner` so one shared source reads the same value on web + iOS + Android. Reports `'active'` during SSR |
 | `useCrashReporter()` | `{ lastCrash, hadCrash, recordError, breadcrumb, clear, start }` — captures crashes (`window.onerror` + `unhandledrejection`), persists to `localStorage`, and rehydrates the previous session's report on `start()`. The vendor transport is app-wired via `setCrashTransport` |

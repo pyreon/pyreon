@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
 import { PlotChart } from './Chart'
-import { Bar, Plot } from './grammar'
+import { Bar, Chart } from './grammar'
 import { bars, waterfall } from './marks'
 import { paint } from './canvas-web'
 
@@ -82,10 +82,10 @@ describe('scales in a real browser', () => {
     const column = (c: HTMLCanvasElement) => inked(c, Math.round(110 * dpr), Math.round(170 * dpr), Math.round(20 * dpr), Math.round(150 * dpr))
     expect(column(log)).toBeGreaterThan(column(linear))
   })
-  it('<Plot facet> mounts a painted panel per value in the grid, each titled', async () => {
+  it('<Chart facet> mounts a painted panel per value in the grid, each titled', async () => {
     const data = rows.map((r, i) => ({ ...r, region: i % 2 === 0 ? 'eu' : 'us' }))
     const { container } = mountInBrowser(
-      h(Plot<(typeof data)[number]>, { data, x: 'label', facet: 'region', facetColumns: 2, height: 160, animate: false, children: h(Bar<(typeof data)[number]>, { y: 'v' }) }),
+      h(Chart<(typeof data)[number]>, { data, x: 'label', facet: 'region', facetColumns: 2, height: 160, animate: false, children: h(Bar<(typeof data)[number]>, { y: 'v' }) }),
     )
     await flush()
     await wait(40)

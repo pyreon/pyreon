@@ -49,12 +49,12 @@ interface ClaimCheck {
 }
 
 /**
- * The chart hosts `@pyreon/charts/plot` exports — every `XChart` VALUE export,
+ * The chart hosts `@pyreon/charts/engine` exports — every `XChart` VALUE export,
  * minus `OptionChart` (the ECharts-option facade, which draws through the
  * family hosts rather than being one).
  */
 const chartHostNames = (repoRoot: string): string[] => {
-  const plotPath = join(repoRoot, 'packages/fundamentals/charts/src/plot.ts')
+  const plotPath = join(repoRoot, 'packages/fundamentals/charts/src/engine.ts')
   if (!existsSync(plotPath)) return []
   const names = new Set<string>()
   for (const [, list] of readFileSync(plotPath, 'utf8').matchAll(/^export \{([^}]*)\} from/gm)) {
@@ -232,6 +232,24 @@ const countWebPrimitives = (repoRoot: string): number => {
   return readdirSync(dir).filter((f) => f.endsWith('.tsx') && f !== 'escape-hatch.tsx').length
 }
 
+/**
+ * The canonical multi-platform UI primitives — the members of the compiler's
+ * `CANONICAL_PRIMITIVES` Set in `packages/native/compiler/src/canonical-primitives.ts`.
+ *
+ * That Set is itself drift-locked against `@pyreon/primitives`' exports by
+ * `canonical-primitives-exports.test.ts`, so this count follows the package.
+ * The number is quoted across the docs, README, manifest and pattern guide,
+ * and had rotted into three disagreeing values at once ("15", "16", "18")
+ * while the package exported 17.
+ */
+const countCanonicalPrimitives = (repoRoot: string): number => {
+  const file = join(repoRoot, 'packages/native/compiler/src/canonical-primitives.ts')
+  if (!existsSync(file)) return 0
+  const m = /CANONICAL_PRIMITIVES = new Set\(\[([\s\S]*?)\]\)/.exec(readFileSync(file, 'utf8'))
+  if (!m) return 0
+  return [...m[1]!.matchAll(/^\s*'[A-Za-z]+',?\s*$/gm)].length
+}
+
 /** Packages carrying a `src/manifest.ts` — the docs pipeline's input set. */
 const countManifests = (repoRoot: string): number => {
   const pkgsDir = join(repoRoot, 'packages')
@@ -344,7 +362,7 @@ const checks: ClaimCheck[] = [
     claims: [
       {
         file: 'packages/fundamentals/charts/package.json',
-        pattern: /`@pyreon\/charts\/plot`: (\d+) chart families/,
+        pattern: /first-party engine \((\d+) chart families/,
       },
     ],
   },
@@ -358,7 +376,7 @@ const checks: ClaimCheck[] = [
         pattern: /The (\d+) family hosts share one canvas host/,
       },
       {
-        file: 'docs/src/content/docs/charts-plot.md',
+        file: 'docs/src/content/docs/charts.md',
         pattern: /drives all (\d+) family hosts through the same paths/,
       },
     ],
@@ -493,9 +511,49 @@ const checks: ClaimCheck[] = [
         file: 'packages/core/primitives/README.md',
         pattern: /All (\d+) have a real web implementation/,
       },
+    ],
+  },
+  {
+    name: 'canonical primitive count',
+    codeId: 'canonical-primitive-count',
+    actual: countCanonicalPrimitives,
+    claims: [
       {
         file: 'packages/core/primitives/README.md',
-        pattern: /(\d+) primitives; more when demanded/,
+        pattern: /(\d+) canonical primitives; more when demanded/,
+      },
+      {
+        file: 'packages/core/primitives/README.md',
+        pattern: /the \*\*(\d+)\*\* canonical UI primitives/,
+      },
+      {
+        file: 'packages/core/primitives/src/manifest.ts',
+        pattern: /(\d+) canonical (?:cross-platform UI )?primitives/,
+        all: true,
+      },
+      {
+        file: 'README.md',
+        pattern: /(\d+) canonical multi-platform primitives/,
+      },
+      {
+        file: 'docs/src/content/docs/primitives.md',
+        pattern: /(\d+) canonical primitives/,
+        all: true,
+      },
+      {
+        file: 'docs/src/content/docs/multiplatform.md',
+        pattern: /the (\d+) canonical primitives/,
+        all: true,
+      },
+      {
+        file: 'docs/src/content/docs/patterns/multiplatform.md',
+        pattern: /the (\d+) canonical primitives/,
+        all: true,
+      },
+      {
+        file: 'docs/src/content/docs/multiplatform-libraries.md',
+        pattern: /(\d+) canonical (?:UI )?primitives/,
+        all: true,
       },
     ],
   },

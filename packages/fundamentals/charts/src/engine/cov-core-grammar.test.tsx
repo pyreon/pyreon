@@ -1,6 +1,6 @@
 // The grammar's CHILD WALK and its prop forwarding: a `<Show>` / `<For>`
 // wrapping a mark, a child that is not a mark at all, the family marks' option
-// buckets, and the accessors `<Plot>` hands its host. Read through
+// buckets, and the accessors `<Chart>` hands its host. Read through
 // `makeReactiveProps`, which is what the mount pipeline does — so these assert
 // the value a host really sees.
 import { describe, expect, it, vi } from 'vitest'
@@ -18,12 +18,13 @@ import {
   Label,
   Legend,
   Line,
-  Plot,
+  Chart,
   Rule,
   Scale,
   Stage,
   StackedArea,
-  Tip,
+  Toolbox,
+  Tooltip,
   Zoom,
   resolveGrammar,
 } from './grammar'
@@ -151,9 +152,9 @@ describe('mark children → PlotChart props', () => {
     expect(t.props.yScale).toBeUndefined()
   })
 
-  it('<Tip format> installs the formatter; <Zoom inside={false}> withholds the in-plot zoom', () => {
+  it('<Tooltip format> installs the formatter; <Zoom inside={false}> withholds the in-plot zoom', () => {
     const fmt = () => 'x'
-    const g = resolve([h(Bar<Row>, { y: 'revenue' }), h(Tip, { format: fmt as never })])
+    const g = resolve([h(Bar<Row>, { y: 'revenue' }), h(Tooltip, { format: fmt as never })])
     expect(g.props.tooltip).toBe(true)
     expect(g.props.tooltipFormatter).toBe(fmt)
     const off = resolve([h(Bar<Row>, { y: 'revenue' }), h(Zoom, { inside: false })])
@@ -278,11 +279,11 @@ describe('long form — the pivot', () => {
   })
 })
 
-describe('<Plot> — the accessors it hands its host', () => {
+describe('<Chart> — the accessors it hands its host', () => {
   const readProps = (node: VNode): Record<string, unknown> => makeReactiveProps(node.props as Record<string, unknown>)
 
   it('the cartesian host receives the pivot rows and x when a colour channel splits them', () => {
-    const out = Plot<Row>({ data: ROWS, x: 'month', color: 'region', children: h(Bar<Row>, { y: 'revenue' }) } as never)
+    const out = Chart<Row>({ data: ROWS, x: 'month', color: 'region', children: h(Bar<Row>, { y: 'revenue' }) } as never)
     const node = (out as () => VNode)()
     const p = readProps(node)
     expect(Array.isArray(p['data'])).toBe(true)
@@ -290,44 +291,37 @@ describe('<Plot> — the accessors it hands its host', () => {
     expect(Array.isArray(p['marks'])).toBe(true)
     // Without a colour channel the host gets the ORIGINAL rows AND the plot's
     // own x channel (there is no pivot to supply one).
-    const wide = (Plot<Row>({ data: ROWS, x: 'month', children: h(Bar<Row>, { y: 'revenue' }) } as never) as () => VNode)()
+    const wide = (Chart<Row>({ data: ROWS, x: 'month', children: h(Bar<Row>, { y: 'revenue' }) } as never) as () => VNode)()
     expect(readProps(wide)['data']).toBe(ROWS)
     const wideX = readProps(wide)['x'] as (d: Row, i: number) => string
     expect(typeof wideX).toBe('function')
     expect(wideX(ROWS[0]!, 0)).toBe('Jan')
     // A function `data` prop is read on demand.
-    const lazy = (Plot<Row>({ data: () => ROWS, children: h(Bar<Row>, { y: 'revenue' }) } as never) as () => VNode)()
+    const lazy = (Chart<Row>({ data: () => ROWS, children: h(Bar<Row>, { y: 'revenue' }) } as never) as () => VNode)()
     expect(readProps(lazy)['data']).toEqual(ROWS)
     // No x channel at all leaves the host's x unset.
     expect(readProps(lazy)['x']).toBeUndefined()
   })
 
   it('a continuous xValue channel becomes an accessor, and is absent when unset', () => {
-    const withX = (Plot<Row>({ data: ROWS, xValue: 'size', children: h(Dot<Row>, { y: 'revenue' }) } as never) as () => VNode)()
+    const withX = (Chart<Row>({ data: ROWS, xValue: 'size', children: h(Dot<Row>, { y: 'revenue' }) } as never) as () => VNode)()
     expect(typeof readProps(withX)['xValue']).toBe('function')
-    const without = (Plot<Row>({ data: ROWS, children: h(Dot<Row>, { y: 'revenue' }) } as never) as () => VNode)()
+    const without = (Chart<Row>({ data: ROWS, children: h(Dot<Row>, { y: 'revenue' }) } as never) as () => VNode)()
     expect(readProps(without)['xValue']).toBeUndefined()
   })
 
-  it('onSelect and onSelectIndex compose into ONE host callback, and either alone passes through', () => {
+  it('onSelect reaches the plot host as its index callback, and is absent when unset', () => {
+    // <Chart> has ONE selection callback: `onSelect` with the drawn item's
+    // index, on every target. There is no `onSelectIndex` to merge.
     const a = vi.fn()
-    const b = vi.fn()
-    const both = (Plot<Row>({ data: ROWS, onSelect: a, onSelectIndex: b, children: h(Bar<Row>, { y: 'revenue' }) } as never) as () => VNode)()
-    const combined = readProps(both)['onSelect'] as (i: number) => void
-    combined(2)
-    expect(a).toHaveBeenCalledWith(2)
-    expect(b).toHaveBeenCalledWith(2)
-
-    const onlyA = (Plot<Row>({ data: ROWS, onSelect: a, children: h(Bar<Row>, { y: 'revenue' }) } as never) as () => VNode)()
-    expect(readProps(onlyA)['onSelect']).toBe(a)
-    const onlyB = (Plot<Row>({ data: ROWS, onSelectIndex: b, children: h(Bar<Row>, { y: 'revenue' }) } as never) as () => VNode)()
-    expect(readProps(onlyB)['onSelect']).toBe(b)
-    const neither = (Plot<Row>({ data: ROWS, children: h(Bar<Row>, { y: 'revenue' }) } as never) as () => VNode)()
+    const withA = (Chart<Row>({ data: ROWS, onSelect: a, children: h(Bar<Row>, { y: 'revenue' }) } as never) as () => VNode)()
+    expect(readProps(withA)['onSelect']).toBe(a)
+    const neither = (Chart<Row>({ data: ROWS, children: h(Bar<Row>, { y: 'revenue' }) } as never) as () => VNode)()
     expect(readProps(neither)['onSelect']).toBeUndefined()
   })
 
   it('a chart-level prop WINS over the same switch declared by a child', () => {
-    const node = (Plot<Row>({
+    const node = (Chart<Row>({
       data: ROWS,
       showLegend: false,
       children: [h(Bar<Row>, { y: 'revenue' }), h(Legend, {})],
@@ -335,15 +329,15 @@ describe('<Plot> — the accessors it hands its host', () => {
     // `false ?? childValue` keeps the chart's own answer.
     expect(readProps(node)['showLegend']).toBe(false)
     // Unset on the chart, the child's switch reaches the host.
-    const fromChild = (Plot<Row>({ data: ROWS, children: [h(Bar<Row>, { y: 'revenue' }), h(Legend, {})] } as never) as () => VNode)()
+    const fromChild = (Chart<Row>({ data: ROWS, children: [h(Bar<Row>, { y: 'revenue' }), h(Legend, {})] } as never) as () => VNode)()
     expect(readProps(fromChild)['showLegend']).toBe(true)
   })
 
   it('a funnel and a heatmap mark each route to their OWN host', () => {
-    const funnel = (Plot<Row>({ data: ROWS, children: h(Stage<Row>, { value: 'revenue', label: 'month' } as never) } as never) as () => VNode)()
+    const funnel = (Chart<Row>({ data: ROWS, children: h(Stage<Row>, { value: 'revenue', label: 'month' } as never) } as never) as () => VNode)()
     expect(typeof readProps(funnel)['value']).toBe('function')
     expect(readProps(funnel)['funnel']).toBeUndefined()
-    const heat = (Plot<Row>({ data: ROWS, children: h(Cell<Row>, { x: 'month', y: 'region', value: 'revenue' } as never) } as never) as () => VNode)()
+    const heat = (Chart<Row>({ data: ROWS, children: h(Cell<Row>, { x: 'month', y: 'region', value: 'revenue' } as never) } as never) as () => VNode)()
     const hp = readProps(heat)
     expect(typeof hp['x']).toBe('function')
     expect(typeof hp['y']).toBe('function')
@@ -351,13 +345,13 @@ describe('<Plot> — the accessors it hands its host', () => {
   })
 
   it('a family host takes a child-declared switch when the chart itself left it unset', () => {
-    const fromChild = (Plot<Row>({
+    const fromChild = (Chart<Row>({
       data: ROWS,
       children: [h(Arc<Row>, { value: 'revenue', label: 'month' } as never), h(Legend, {})],
     } as never) as () => VNode)()
     expect(readProps(fromChild)['showLegend']).toBe(true)
     // The chart's own answer wins when it has one.
-    const fromChart = (Plot<Row>({
+    const fromChart = (Chart<Row>({
       data: ROWS,
       showLegend: false,
       children: [h(Arc<Row>, { value: 'revenue', label: 'month' } as never), h(Legend, {})],
@@ -366,7 +360,7 @@ describe('<Plot> — the accessors it hands its host', () => {
   })
 
   it('a family mark routes to its OWN host, with the shared props and the mark\'s channels', () => {
-    const pie = (Plot<Row>({ data: ROWS, width: 300, height: 200, title: 'Share', children: h(Arc<Row>, { value: 'revenue', label: 'month' } as never) } as never) as () => VNode)()
+    const pie = (Chart<Row>({ data: ROWS, width: 300, height: 200, title: 'Share', children: h(Arc<Row>, { value: 'revenue', label: 'month' } as never) } as never) as () => VNode)()
     const p = readProps(pie)
     expect(p['width']).toBe(300)
     expect(p['title']).toBe('Share')
@@ -374,19 +368,19 @@ describe('<Plot> — the accessors it hands its host', () => {
     expect(Array.isArray(p['data'])).toBe(true)
     // The toolbox maps the plot's form to the family host's PNG-only switch.
     expect(p['toolbox']).toBeUndefined()
-    const withTb = (Plot<Row>({ data: ROWS, toolbox: { saveAsImage: 'svg' }, children: h(Arc<Row>, { value: 'revenue', label: 'month' } as never) } as never) as () => VNode)()
+    const withTb = (Chart<Row>({ data: ROWS, children: [h(Arc<Row>, { value: 'revenue', label: 'month' } as never), h(Toolbox, { saveAsImage: 'svg' })] } as never) as () => VNode)()
     expect(readProps(withTb)['toolbox']).toEqual({ saveAsImage: true })
-    const offTb = (Plot<Row>({ data: ROWS, toolbox: { saveAsImage: false }, children: h(Arc<Row>, { value: 'revenue', label: 'month' } as never) } as never) as () => VNode)()
+    const offTb = (Chart<Row>({ data: ROWS, children: [h(Arc<Row>, { value: 'revenue', label: 'month' } as never), h(Toolbox, { saveAsImage: false })] } as never) as () => VNode)()
     expect(readProps(offTb)['toolbox']).toEqual({ saveAsImage: false })
   })
 
   it('the CANDLESTICK host additionally gets the plot\'s x channel', () => {
-    const withX = (Plot<Row>({
+    const withX = (Chart<Row>({
       data: ROWS, x: 'month',
       children: h(Candle<Row>, { open: 'cost', high: 'revenue', low: 'cost', close: 'revenue' } as never),
     } as never) as () => VNode)()
     expect(typeof readProps(withX)['x']).toBe('function')
-    const withoutX = (Plot<Row>({
+    const withoutX = (Chart<Row>({
       data: ROWS,
       children: h(Candle<Row>, { open: 'cost', high: 'revenue', low: 'cost', close: 'revenue' } as never),
     } as never) as () => VNode)()
@@ -394,7 +388,7 @@ describe('<Plot> — the accessors it hands its host', () => {
   })
 
   it('a facet channel returns a GRID of panels, one per facet value, sharing ONE y domain', () => {
-    const grid = Plot<Row>({ data: ROWS, x: 'month', facet: 'region', facetColumns: 3, children: h(Bar<Row>, { y: 'revenue' }) } as never) as VNode
+    const grid = Chart<Row>({ data: ROWS, x: 'month', facet: 'region', facetColumns: 3, children: h(Bar<Row>, { y: 'revenue' }) } as never) as VNode
     expect(grid.type).toBe('div')
     expect(String((grid.props as { style: string }).style)).toContain('repeat(3,')
     // The panels are built by the child accessor, one per distinct facet value.
@@ -411,13 +405,13 @@ describe('<Plot> — the accessors it hands its host', () => {
     expect(p0['yDomain']).toEqual(p1['yDomain'])
     expect(p0['yDomain']).toBeDefined()
     // Default column count when none is given.
-    const twoCol = Plot<Row>({ data: ROWS, facet: 'region', children: h(Bar<Row>, { y: 'revenue' }) } as never) as VNode
+    const twoCol = Chart<Row>({ data: ROWS, facet: 'region', children: h(Bar<Row>, { y: 'revenue' }) } as never) as VNode
     expect(String((twoCol.props as { style: string }).style)).toContain('repeat(2,')
   })
 
   it('a facet grid gains and loses panels as the facet values change', () => {
     const rows = signal<Row[]>(ROWS)
-    const grid = Plot<Row>({ data: () => rows(), facet: 'region', children: h(Bar<Row>, { y: 'revenue' }) } as never) as VNode
+    const grid = Chart<Row>({ data: () => rows(), facet: 'region', children: h(Bar<Row>, { y: 'revenue' }) } as never) as VNode
     const panels = grid.children[0] as () => VNode[]
     expect(panels().map((n) => (n.props as { title: string }).title)).toEqual(['eu', 'us'])
     // A row set with a NEW value adds a panel …
@@ -433,7 +427,7 @@ describe('<Plot> — the accessors it hands its host', () => {
   })
 
   it('a faceted plot with a PINNED domain uses it, and one with nothing to scale shares none', () => {
-    const pinned = Plot<Row>({
+    const pinned = Chart<Row>({
       data: ROWS, facet: 'region',
       children: [h(Bar<Row>, { y: 'revenue' }), h(Axis, { y: true, domain: { min: 0, max: 99 } })],
     } as never) as VNode
@@ -442,17 +436,17 @@ describe('<Plot> — the accessors it hands its host', () => {
 
     // No marks at all: nothing to derive a shared domain from, and with no x
     // channel either the panel's x stays unset.
-    const empty = Plot<Row>({ data: ROWS, facet: 'region', children: null } as never) as VNode
+    const empty = Chart<Row>({ data: ROWS, facet: 'region', children: null } as never) as VNode
     const emptyPanel = readProps(((empty.children[0] as () => VNode[])())[0]!)
     expect(emptyPanel['yDomain']).toBeUndefined()
     expect(emptyPanel['x']).toBeUndefined()
     // A FAMILY mark has no cartesian domain either.
-    const family = Plot<Row>({ data: ROWS, facet: 'region', children: h(Arc<Row>, { value: 'revenue', label: 'month' } as never) } as never) as VNode
+    const family = Chart<Row>({ data: ROWS, facet: 'region', children: h(Arc<Row>, { value: 'revenue', label: 'month' } as never) } as never) as VNode
     expect(readProps(((family.children[0] as () => VNode[])())[0]!)['yDomain']).toBeUndefined()
   })
 
   it('a faceted LOG plot shares the decade window, and a long-format one facets its pivot', () => {
-    const log = Plot<Row>({
+    const log = Chart<Row>({
       data: ROWS, facet: 'region',
       children: [h(Bar<Row>, { y: 'revenue' }), h(Scale, { y: 'log' })],
     } as never) as VNode
@@ -460,7 +454,7 @@ describe('<Plot> — the accessors it hands its host', () => {
     expect(domain.min).toBeGreaterThan(0)
     expect(Math.log10(domain.min) % 1).toBe(0)
 
-    const long = Plot<Row>({ data: ROWS, x: 'month', color: 'region', facet: 'region', children: h(Bar<Row>, { y: 'revenue' }) } as never) as VNode
+    const long = Chart<Row>({ data: ROWS, x: 'month', color: 'region', facet: 'region', children: h(Bar<Row>, { y: 'revenue' }) } as never) as VNode
     const p = readProps(((long.children[0] as () => VNode[])())[0]!)
     // The panel reads the pivot's rows and its own x, not the raw rows.
     expect(typeof p['x']).toBe('function')

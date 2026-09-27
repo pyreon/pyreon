@@ -203,7 +203,10 @@ export function formatNotRun(tallies: readonly CheckTally[]): string[] {
   if (notRun.length === 0) return []
   const byReason = new Map<string, CheckKey[]>()
   for (const t of notRun) {
-    const reason = t.skipReason ?? 'not run — no plugin claimed this check'
+    // The line already starts `not run:`, so a reason that restates it (every
+    // catalog written before the reasons were reworded) is trimmed rather than
+    // printed as `not run: x — not run — …`.
+    const reason = (t.skipReason ?? 'no plugin claimed this check').replace(/^not run\s*[—-]\s*/, '')
     byReason.set(reason, [...(byReason.get(reason) ?? []), t.key])
   }
   return [...byReason.entries()].map(

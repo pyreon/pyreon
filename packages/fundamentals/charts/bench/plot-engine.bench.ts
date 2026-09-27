@@ -1,5 +1,5 @@
 /**
- * `@pyreon/charts/plot` — ENGINE throughput benchmark.
+ * `@pyreon/charts` — ENGINE throughput benchmark.
  *
  * The engine is pure geometry: `layoutChart` + `renderChart` turn a spec into a
  * flat `DrawCmd[]` with no DOM. This measures that path alone, at the sizes a

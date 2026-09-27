@@ -99,4 +99,13 @@ export const toastStyles = /* css */ `
 .pyreon-toast__dismiss:hover {
   color: #4b5563;
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .pyreon-toast {
+    transition: none;
+  }
+  .pyreon-toast--entering {
+    transform: none;
+  }
+}
 `

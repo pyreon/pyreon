@@ -1476,7 +1476,9 @@ describe('bun adapter — runtime contract', () => {
         expect(sw.status).toBe(200)
         expect(await sw.text()).toBe('console.log("service worker")')
         expect(sw.headers.get('cache-control')).not.toContain('immutable')
-        expect(sw.headers.get('cache-control')).toContain('max-age=3600')
+        // A service worker is the PWA update channel — it must revalidate on
+        // every navigation, not sit in the HTTP cache for an hour.
+        expect(sw.headers.get('cache-control')).toBe('public, max-age=0, must-revalidate')
         // GET / → SSR handler ("ok"), NOT the static template shell — same
         // SSR-mode contract as the node adapter.
         const root = await fetch(`http://127.0.0.1:${port}/`)
@@ -1778,7 +1780,9 @@ describe('node adapter — runtime contract', () => {
         expect(sw.status).toBe(200)
         expect(await sw.text()).toBe('console.log("service worker")')
         expect(sw.headers.get('cache-control')).not.toContain('immutable')
-        expect(sw.headers.get('cache-control')).toContain('max-age=3600')
+        // A service worker is the PWA update channel — it must revalidate on
+        // every navigation, not sit in the HTTP cache for an hour.
+        expect(sw.headers.get('cache-control')).toBe('public, max-age=0, must-revalidate')
       } finally {
         await stop()
         await cleanup()

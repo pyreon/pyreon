@@ -143,7 +143,7 @@ const SCENARIOS: { id: string; label: string; frameworks: string[] }[] = [
   },
   {
     id: 'charts',
-    label: 'charts — @pyreon/charts/plot vs ECharts 6 (line, 1k / 100k points, 800×400 canvas)',
+    label: 'charts — @pyreon/charts vs ECharts 6 (line, 1k / 100k points, 800×400 canvas)',
     frameworks: ['Pyreon (PlotChart)', 'Pyreon (OptionChart)', 'ECharts 6', 'Pyreon (PlotChart, no a11y table)'].filter((f) => (NARROW ? NARROW.includes(f) : true)),
   },
 ]

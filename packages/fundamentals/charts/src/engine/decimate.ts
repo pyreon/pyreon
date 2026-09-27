@@ -20,7 +20,7 @@ export { lttbIndices, minMaxBuckets }
  * Largest-Triangle-Three-Buckets over `Pt[]`.
  *
  * Kept on real `x` values rather than the point's position, because this is a
- * public export from `@pyreon/charts/plot` and a caller's `x` may be a
+ * public export from `@pyreon/charts` and a caller's `x` may be a
  * timestamp or a measurement — collapsing it to the index would silently change
  * what "largest triangle" means for unevenly spaced data. The chart's own path
  * passes evenly spaced rows and goes through {@link lttbIndices} directly with
