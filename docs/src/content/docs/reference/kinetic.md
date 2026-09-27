@@ -67,7 +67,7 @@ function App() {
   const items = signal([{ id: 1, text: 'One' }, { id: 2, text: 'Two' }])
   return (
     <div>
-      {/* show is a REACTIVE ACCESSOR, not a boolean */}
+      {/* show takes an accessor, a value, or nothing (absent = shown) */}
       <FadeBox show={() => visible()} onAfterEnter={() => console.warn('entered')}>
         <p>Fading content</p>
       </FadeBox>
@@ -100,6 +100,8 @@ const Reveal = kinetic('section').preset(slideUp)
 | [`presets`](#presets) | constant | The six built-in presets as one map — `fade`, `scaleIn`, `slideUp`, `slideDown`, `slideLeft`, `slideRight` — each also a |
 | [`useTransitionState`](#usetransitionstate) | hook | Low-level enter/leave state machine that powers the transition renderer — exported for building custom animated primitiv |
 | [`useAnimationEnd`](#useanimationend) | hook | Listens for `transitionend` / `animationend` on `ref.current` while `active()` is true and calls `onEnd` exactly once wh |
+| [`TransitionStage`](#transitionstage) | type | The four lifecycle stages `useTransitionState` moves through. |
+| [`TransitionStateResult`](#transitionstateresult) | type | What `useTransitionState` returns: the `stage` signal, a `ref` to attach to the transitioning element (it starts the `ap |
 | [`KineticComponent`](#kineticcomponent) | type | The value `kinetic(tag)` returns — a renderable component intersected with the chain methods. |
 | [`Preset`](#preset) | type | A plain object holding the style-form fields (`enterStyle`/`enterToStyle`/`enterTransition` + leave siblings) and/or the |
 | [`StyleTransitionProps`](#styletransitionprops) | type | Style-form transition definition (the zero-CSS path). |
@@ -114,7 +116,7 @@ const Reveal = kinetic('section').preset(slideUp)
 <Tag extends string>(tag: Tag) => KineticComponent<Tag, 'transition'>
 ```
 
-Create a renderable, chainable animated component in transition mode. Every chain method returns a NEW component (immutable) — define once at module scope and reuse. Style methods (`.enter`/`.enterTo`/`.enterTransition` + `leave` siblings) set inline-style phases; `.enterClass`/`.leaveClass({ active, from, to })` set class phases (Tailwind-friendly); `.preset(p)` spreads a `Preset`'s fields; `.on(callbacks)` attaches lifecycle callbacks; `.config(opts)` sets mode-scoped options. Mode switches: `.collapse(opts?)` (height 0 ↔ auto, measures `scrollHeight`), `.stagger({ interval?, reverseLeave? })` (sequenced children), `.group()` (keyed-list enter/exit, no `show` prop). Rendered props: `show: () => boolean` (reactive accessor; not in group mode), `appear` (default false), `timeout` (default 5000ms), mode extras (`unmount` transition-only default true, `transition` collapse-only default "height 300ms ease", `interval` stagger-only default 50, `reverseLeave` stagger-only), the four callbacks, plus any HTML attr — forwarded to the rendered tag with reactivity preserved.
+Create a renderable, chainable animated component in transition mode. Every chain method returns a NEW component (immutable) — define once at module scope and reuse. Style methods (`.enter`/`.enterTo`/`.enterTransition` + `leave` siblings) set inline-style phases; `.enterClass`/`.leaveClass({ active, from, to })` set class phases (Tailwind-friendly); `.preset(p)` spreads a `Preset`'s fields; `.on(callbacks)` attaches lifecycle callbacks; `.config(opts)` sets mode-scoped options. Mode switches: `.collapse(opts?)` (height 0 ↔ auto, measures `scrollHeight`), `.stagger({ interval?, reverseLeave? })` (sequenced children), `.group()` (keyed-list enter/exit, no `show` prop). Rendered props: `show` (not in group mode) — an accessor `() => boolean`, a boolean, or ABSENT (absent = always shown; use `appear` to animate the entrance). A compiled `show={visible()}` stays reactive because the compiler emits it as a live getter, and kinetic reads it per call rather than once at setup; `appear` (default false), `timeout` (default 5000ms), mode extras (`unmount` transition-only default true, `transition` collapse-only default "height 300ms ease", `interval` stagger-only default 50, `reverseLeave` stagger-only), the four callbacks, plus any HTML attr — forwarded to the rendered tag with reactivity preserved.
 
 **Parameters**
 
@@ -142,7 +144,8 @@ const AnimatedList = kinetic('ul').preset(fade).group()          // keyed list
 
 **Common mistakes**
 
-- Passing `show={visible()}` (a static boolean) — `show` is a reactive accessor `() => boolean`; kinetic subscribes to it and runs enter/leave on flips. Write `show={() => visible()}`
+- Expecting `show={true}` (a literal) or a value computed once at module scope to animate later — only a signal-derived value re-runs enter/leave; `show={visible()}`, `show={visible}` and `show={() => visible()}` are all live, a literal is not
+- Omitting `show` on a preset used as a plain entrance and expecting it to animate — absent `show` means always shown; add `appear` to run the enter animation on mount
 - Building `kinetic('div').preset(...)` inside a render body — chaining is immutable and re-creates the component on every call; define animated components once at module scope
 - Passing a `show` prop in group mode — group has NO `show`; visibility is driven by which keys are present in the children
 - Group-mode children without a unique `key` — the enter/exit diff is keyed; children without a key are skipped (no animation)
@@ -187,7 +190,7 @@ const SlideBox = kinetic('div').preset(presets.slideUp)   // map access for dyna
 ### useTransitionState `hook`
 
 ```ts
-(options: { show: () => boolean; appear?: boolean }) => TransitionStateResult
+(options: { show?: boolean | (() => boolean); appear?: boolean }) => TransitionStateResult
 ```
 
 Low-level enter/leave state machine that powers the transition renderer — exported for building custom animated primitives. Returns `stage` (a `Signal<TransitionStage>`: `hidden | entering | entered | leaving`), a `ref` callback to attach to the transitioning element (it triggers the `appear` animation once wired), a reactive `shouldMount()` accessor (false only while `hidden`), and `complete()` which advances `entering → entered` / `leaving → hidden`. Its signature type is exported as `UseTransitionState`.
@@ -196,7 +199,7 @@ Low-level enter/leave state machine that powers the transition renderer — expo
 
 | Parameter | Type | Description |
 | --- | --- | --- |
-| `options` | `{ show: () => boolean; appear?: boolean }` | Reactive visibility accessor plus `appear` (default false) to run the enter animation on initial mount. |
+| `options` | `{ show?: boolean \| (() => boolean); appear?: boolean }` | Visibility — an accessor, a boolean, or absent (absent = shown); read per call, so a getter-backed `options.show` stays live. Plus `appear` (default false) to run the enter animation on initial mount. |
 
 **Returns** `TransitionStateResult` — `{ stage, ref, shouldMount, complete }` — see the TransitionStateResult type.
 
@@ -258,6 +261,48 @@ useAnimationEnd({
 - Passing a static boolean for `active` — it is a reactive accessor; the listeners attach/detach as it flips
 
 **See also:** `useTransitionState`
+
+---
+
+### TransitionStage `type`
+
+```ts
+type TransitionStage = 'hidden' | 'entering' | 'entered' | 'leaving'
+```
+
+The four lifecycle stages `useTransitionState` moves through. `show` flipping true moves `hidden → entering`; `complete()` then settles it to `entered`. `show` flipping false moves to `leaving`; `complete()` settles it to `hidden`. Only `hidden` means "do not render".
+
+**Example**
+
+```tsx
+import type { TransitionStage } from '@pyreon/kinetic'
+
+const isAnimating = (s: TransitionStage) => s === 'entering' || s === 'leaving'
+```
+
+**See also:** `useTransitionState` · `TransitionStateResult`
+
+---
+
+### TransitionStateResult `type`
+
+```ts
+type TransitionStateResult = { stage: Signal<TransitionStage>; ref: Ref<HTMLElement> | ((node: HTMLElement | null) => void); shouldMount: () => boolean; complete: () => void }
+```
+
+What `useTransitionState` returns: the `stage` signal, a `ref` to attach to the transitioning element (it starts the `appear` animation once wired), a `shouldMount()` accessor (false only while `hidden`), and `complete()` to advance past `entering` / `leaving`.
+
+**Example**
+
+```tsx
+import type { TransitionStateResult } from '@pyreon/kinetic'
+
+function describe(t: TransitionStateResult): string {
+  return t.shouldMount() ? `mounted (${t.stage()})` : 'hidden'
+}
+```
+
+**See also:** `useTransitionState` · `TransitionStage`
 
 ---
 

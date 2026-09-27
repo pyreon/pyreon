@@ -992,6 +992,100 @@ type C = AccessorReturn<MaybeAccessor<boolean>>  // boolean`,
       ],
       seeAlso: ['MaybeAccessor', 'SignalValue'],
     },
+    {
+      name: 'registerSingleton',
+      kind: 'function',
+      signature: '(pkg: string, version: string, location: string) => void',
+      summary:
+        'Fail-loud detection of duplicate framework instances. Every `@pyreon/*` package with module-level state calls this once at the TOP of its own `src/index.ts` — `registerSingleton(name, version, import.meta.url)`, with `name`/`version` pulled from that package\'s own `package.json`. Bundlers can produce TWO instances of the same package (Vite bare-vs-entry resolver divergence, sub-dependency version mismatches, workspace + npm-published mixes), and each instance has its OWN module-level state, so a producer on instance A and a consumer reading instance B silently break every framework invariant. The FIRST registration for a package name records a marker; a SECOND with a DIFFERENT (query-string-normalized, so Vite HMR re-evals are allowed) module location triggers detection: `\'throw\'` (default — the loud failure), `\'warn\'` (log via `console.error` and continue), or `\'silent\'` (the escape hatch for browser extensions, micro-frontends, and nested SSR harnesses that legitimately dual-load). Controlled by the `PYREON_SINGLE_INSTANCE` env var.',
+      example: `// Top of any package's own src/index.ts:
+import { name as __pkgName, version as __pkgVersion } from '../package.json' with { type: 'json' }
+import { registerSingleton } from '@pyreon/reactivity'
+
+registerSingleton(__pkgName, __pkgVersion, import.meta.url)
+// ...rest of the package's exports`,
+      mistakes: [
+        'Hardcoding the version string literal instead of importing it from `package.json` — a release bump then leaves the sentinel reporting a stale version forever, defeating the diagnostic value of a version-skew report',
+        'Registering with a name/location that does not match how the package is actually imported — the location is what discriminates "same module, re-evaluated by HMR" from "genuinely two instances"; get it from `import.meta.url` at the top of the real entry module',
+        'Wrapping the call in a try/catch — it deliberately has none; swallowing the throw here hides the exact bug class it exists to surface',
+      ],
+      seeAlso: ['withSilent'],
+    },
+    {
+      name: 'defineCrossModuleState',
+      kind: 'function',
+      signature: '<T extends object>(key: string, init: () => T) => T',
+      summary:
+        'A globalThis-keyed singleton, for state that must be shared even across a genuine dual-instance situation (as opposed to `registerSingleton`, which DETECTS and warns about dual instances). `key` is looked up via `Symbol.for(key)` (a GLOBAL symbol registry entry — the same string always resolves to the same symbol, even across separately-loaded module instances). The FIRST call with a given key runs `init()` and stores the result on `globalThis`; every subsequent call with the same key — from ANY module instance — returns the IDENTICAL object reference. Re-exported from `@pyreon/core` for convenience.',
+      example: `import { defineCrossModuleState } from '@pyreon/reactivity'
+
+const registry = defineCrossModuleState('my-lib:widget-registry', () => new Map<string, unknown>())
+// Every module instance of "my-lib" that calls this with the SAME key shares the SAME Map.`,
+      mistakes: [
+        'Returning a primitive from `init()` — the constraint is `T extends object`; primitives cannot be mutated in place, so cross-instance updates would not propagate. Return a mutable object/Map/Set',
+        'Using a non-globally-unique `key` — `Symbol.for` is a GLOBAL registry, so a generic key like `\'state\'` can collide with an unrelated package doing the same thing; namespace your key (`\'my-lib:feature-name\'`)',
+        'Reaching for this as a substitute for `registerSingleton` — that function DETECTS and warns/throws on accidental dual-instancing (the bug you usually want surfaced); this one SILENTLY shares state across instances, which is only correct when dual-instancing is expected and harmless for this particular piece of state',
+      ],
+      seeAlso: ['registerSingleton'],
+    },
+    {
+      name: 'getContextOwner',
+      kind: 'function',
+      signature: '() => EffectScope | null',
+      summary:
+        'Read the currently active CONTEXT OWNER — the `EffectScope` that `@pyreon/core`\'s `provide()`/`useContext()` resolve against. Distinct from `getCurrentScope()`: the context owner tracks the COMPONENT TREE (set by the renderer at mount, mirroring parent→child structure), while `getCurrentScope()` tracks EFFECT NESTING. A component\'s `EffectScope` doubles as its context owner — `provide()` writes onto `scope._contexts`, and `useContext()` walks `scope._parent` up the owner chain. Framework primitives that defer mounting past the synchronous render frame (an island, a lazy boundary, a scheduled re-mount) must capture this at setup time and restore it with `runWithContextOwner` when they finally mount — otherwise `useContext()` inside the deferred content resolves against whatever owner happens to be active later, not the real ancestor chain.',
+      example: `// A primitive that defers mounting (simplified island shape):
+const owner = getContextOwner()   // capture while the real ancestor chain is active
+scheduleLater(() => {
+  runWithContextOwner(owner, () => hydrateRoot(el, Component))
+})`,
+      mistakes: [
+        'Assuming this returns the same thing as `getCurrentScope()` — it does not; one tracks context/component-tree ownership, the other tracks effect nesting. They usually coincide during synchronous mount and DIVERGE after a deferred/async boundary',
+        'Forgetting to capture this BEFORE an async gap (an `await import()`, a `setTimeout`) in code that will call `useContext()` later — by the time the deferred code runs, the owner active at capture time is gone unless you threaded it through `runWithContextOwner`',
+      ],
+      seeAlso: ['runWithContextOwner', 'setContextOwner', 'getCurrentScope'],
+    },
+    {
+      name: 'runWithContextOwner',
+      kind: 'function',
+      signature: '<T>(owner: EffectScope | null, fn: () => T) => T',
+      summary:
+        'Run `fn` with `owner` as the active context owner, then restore whatever was active before — the safe, try/finally-guarded way to temporarily swap the context owner (mirrors `scope.runInScope` for effect scopes). This is how a deferred boundary (an island\'s late hydration, `<Show>`/`<For>` mounting children) re-establishes the REAL ancestor chain for a mount that happens after the synchronous render frame — capture the owner with `getContextOwner()` while it is genuinely active, then wrap the later mount call in `runWithContextOwner(capturedOwner, () => …)` so `useContext()` inside it resolves against the right provider.',
+      example: `const owner = getContextOwner()
+onIdle(() => {
+  runWithContextOwner(owner, () => {
+    // useContext() calls inside this mount now resolve against the
+    // REAL ancestor chain captured above, not whatever owner (if any)
+    // happens to be active when the idle callback actually fires.
+    mountDeferredContent()
+  })
+})`,
+      mistakes: [
+        'Using `setContextOwner` + a manual restore instead of this — `runWithContextOwner` restores via try/finally even if `fn` throws; a hand-written set/restore pair leaks the owner on an exception',
+        'Capturing the owner too LATE — `getContextOwner()` must run while the real ancestor chain is genuinely active (synchronously, at setup), not inside the deferred callback itself',
+      ],
+      seeAlso: ['getContextOwner', 'setContextOwner'],
+    },
+    {
+      name: 'setContextOwner',
+      kind: 'function',
+      signature: '(owner: EffectScope | null) => EffectScope | null',
+      summary:
+        '**Low-level escape hatch** — directly set the active context owner, returning the PREVIOUS one (for a manual restore). Prefer `runWithContextOwner(owner, fn)`, which does the same swap with a try/finally-guaranteed restore; reach for this only when implementing a framework primitive that cannot express its owner-swap as a single synchronous `fn` call (mirrors the `setCurrentScope`/`runInScope` relationship for effect scopes one level up).',
+      example: `const prev = setContextOwner(myOwner)
+try {
+  doWork()
+} finally {
+  setContextOwner(prev)
+}
+// Prefer, when the swap fits a single call:
+runWithContextOwner(myOwner, () => doWork())`,
+      mistakes: [
+        'Forgetting to restore the previous owner (or restoring unconditionally instead of in a `finally`) — leaves subsequent `useContext()` calls resolving against the wrong ancestor chain until something else happens to reset it',
+        'Using this in ordinary application code instead of `runWithContextOwner` — this is a framework-primitive-authoring escape hatch, not a general-purpose API',
+      ],
+      seeAlso: ['runWithContextOwner', 'getContextOwner'],
+    },
   ],
   gotchas: [
     {

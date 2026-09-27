@@ -88,6 +88,7 @@ function useUser() {
 | [`renderPage`](#renderpage) | function | The ONE string-mode page-render pipeline — preload (lazy components + loaders, with `redirect()` catching) → render with |
 | [`island`](#island) | function | Wrap a lazily-loaded component in a `<pyreon-island>` boundary with a hydration strategy. |
 | [`serverIsland`](#serverisland) | function | The INVERSE of `island()`: a static (CDN/ISR/prerender-cacheable) page with per-request SERVER-rendered holes. |
+| [`activateServerIslands`](#activateserverislands) | function | The MANUAL document-scan activator for `<pyreon-server-island>` markers, for static / no-full-hydrate hosts that are NOT |
 | [`useRequestLocals`](#userequestlocals) | function | Read middleware `ctx.locals` inside components during SSR (and inside server-island fragments / server loaders). |
 | [`hydrateIslands`](#hydrateislands) | function | Client-side counterpart to `island()`. |
 | [`hydrateIslandsAuto`](#hydrateislandsauto) | function | Auto-discovered counterpart to `hydrateIslands()`. |
@@ -234,6 +235,36 @@ const CartBadge = serverIsland(() => import('../islands/CartBadge'), {
 - Expecting the fragment to hydrate interactivity — fragments are server-rendered HTML; composing a client island() INSIDE a server island is a documented follow-up, not v1
 - Rendering personalized data in the PAGE around the island — the page is the cacheable part; everything request-specific belongs inside the island
 - Two serverIsland() declarations with the same name — the endpoint serves the FIRST registration (dev-mode warns)
+
+**See also:** `activateServerIslands`
+
+---
+
+### activateServerIslands `function`
+
+```ts
+(base?: string) => () => void
+```
+
+The MANUAL document-scan activator for `<pyreon-server-island>` markers, for static / no-full-hydrate hosts that are NOT a `@pyreon/zero` app. Each marker normally SELF-ACTIVATES on mount (a `ref` fires `activateServerIslandElement`) — that is what wins the lazy-route timing race in a zero app, and `zero`'s `startClient` does NOT call this function. Call `activateServerIslands()` yourself only when server islands are embedded in a page with no client-side mount/hydrate cycle to trigger the per-marker self-activation (a plain static HTML page, a non-Pyreon host rendering Pyreon-produced markup). `base` prefixes the fragment-fetch URL when the app is deployed under a subpath. Returns a disposer that stops the scan's observer.
+
+**Example**
+
+```tsx
+// A static HTML page embedding server-island markup with no
+// Pyreon client mount cycle of its own:
+import { activateServerIslands } from '@pyreon/server/client'
+
+const stop = activateServerIslands('/my-app') // subpath deploy
+// stop() to tear down if the page unmounts / navigates away in an SPA shell
+```
+
+**Common mistakes**
+
+- Calling this in a `@pyreon/zero` app — `startClient` never calls it because each marker already self-activates on mount; calling it there is redundant (though harmless) work
+- Importing from `@pyreon/server` instead of `@pyreon/server/client` — like `island`, this is client-code and lives on the client-safe subpath
+
+**See also:** `serverIsland` · `island`
 
 ---
 

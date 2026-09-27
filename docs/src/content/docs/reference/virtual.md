@@ -92,6 +92,7 @@ const WindowList = () => {
 | --- | --- | --- |
 | [`useVirtualizer`](#usevirtualizer) | hook | Create an element-scoped virtualizer. |
 | [`useWindowVirtualizer`](#usewindowvirtualizer) | hook | Create a window-scoped virtualizer that uses the browser window as the scroll container. |
+| [`Virtualizer`](#virtualizer) | class | The `@tanstack/virtual-core` engine `useVirtualizer`/`useWindowVirtualizer` build on top of, re-exported for single-impo |
 
 ## API
 
@@ -161,6 +162,39 @@ const virtualizer = useWindowVirtualizer(() => ({
 - Forgetting to position items absolutely inside a relative container with the total height — items overlap or collapse
 
 **See also:** `useVirtualizer`
+
+---
+
+### Virtualizer `class`
+
+```ts
+class Virtualizer<TScrollElement, TItemElement> — plus config primitives: elementScroll, observeElementOffset, observeElementRect, windowScroll, observeWindowOffset, observeWindowRect, measureElement, defaultKeyExtractor, defaultRangeExtractor
+```
+
+The `@tanstack/virtual-core` engine `useVirtualizer`/`useWindowVirtualizer` build on top of, re-exported for single-import convenience and for the rare case of composing a CUSTOM adapter (a different framework's virtualizer, or a non-DOM scroll surface). `useVirtualizer` wires `elementScroll`/`observeElementOffset`/`observeElementRect` as its `scrollToFn`/`observeElementOffset`/`observeElementRect` options; `useWindowVirtualizer` wires the `window*` siblings instead — you almost never call these directly, they exist as the pluggable pieces TanStack's `VirtualizerOptions` accepts. `measureElement` is the DEFAULT dynamic-size measurer (`element.getBoundingClientRect()`-based); `defaultKeyExtractor` returns the item's index; `defaultRangeExtractor` computes the visible-plus-overscan index range from scroll offset. Reach for the raw `Virtualizer` class only when building your own reactive adapter from scratch — `useVirtualizer` already IS that adapter for Pyreon signals.
+
+**Example**
+
+```tsx
+// Advanced: composing a custom adapter (rare — useVirtualizer covers the normal case)
+import { Virtualizer, observeElementRect, observeElementOffset, elementScroll } from '@pyreon/virtual'
+
+const instance = new Virtualizer({
+  count: items.length,
+  getScrollElement: () => scrollEl,
+  estimateSize: () => 50,
+  observeElementRect,
+  observeElementOffset,
+  scrollToFn: elementScroll,
+})
+```
+
+**Common mistakes**
+
+- Reaching for the raw `Virtualizer` class in ordinary app code — `useVirtualizer`/`useWindowVirtualizer` already wrap it with Pyreon-signal-native return values; only bypass them when building a genuinely new adapter
+- Passing `measureElement` as a size ESTIMATE — it measures the ACTUAL rendered element (`getBoundingClientRect`), so it only makes sense once the element exists in the DOM; `estimateSize` is the pre-render guess
+
+**See also:** `useVirtualizer` · `useWindowVirtualizer`
 
 ---
 
