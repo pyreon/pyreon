@@ -158,7 +158,7 @@ export interface LatheSection {
   target?: 'web' | 'multiplatform'
   /**
    * Emitters to run: built-in names, and third-party plugins made with
-   * `definePlugin` (see {@link LathePlugin}). Built-ins run first, then
+   * `definePlugin` (see `LathePlugin`). Built-ins run first, then
    * plugins in the order listed. Built-ins bring along their required output
    * (`components` needs `queries`), and the report identifies additions.
    *
