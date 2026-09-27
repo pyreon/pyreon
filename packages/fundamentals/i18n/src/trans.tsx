@@ -42,6 +42,57 @@ import type { InterpolationValues } from './types'
 
 const TAG_RE = /<(\w+)>([^<]*)<\/\1>/g
 
+// Sentinels standing in for `<` / `>` inside INTERPOLATED values while the tag
+// parser runs. Unicode noncharacters (U+FDD0/U+FDD1) — permanently unassigned,
+// never valid in interchange text, so a real translation never contains them.
+const LT = '\uFDD0'
+const GT = '\uFDD1'
+const LT_RE = /\uFDD0/g
+const GT_RE = /\uFDD1/g
+
+// Option keys `t()` reads for resolution, not text: escaping them would change
+// which key is picked (`context`) or break pluralization (`count`), and
+// `defaultValue` is itself a TEMPLATE whose tags must stay live.
+const RESERVED_VALUE_KEYS = new Set(['count', 'context', 'defaultValue'])
+
+function escapeAngles(s: string): string {
+  return s.includes('<') || s.includes('>') ? s.replace(/</g, LT).replace(/>/g, GT) : s
+}
+
+function unescapeAngles(s: string): string {
+  return s.includes(LT) || s.includes(GT) ? s.replace(LT_RE, '<').replace(GT_RE, '>') : s
+}
+
+/**
+ * Neutralise every angle bracket a VALUE could contribute, so tag parsing only
+ * ever sees tags the TRANSLATION wrote. Objects are pre-serialized to the same
+ * JSON `interpolate` would produce, then escaped.
+ */
+function escapeValues(values: InterpolationValues | undefined): InterpolationValues | undefined {
+  if (!values) return values
+  let out: InterpolationValues | undefined
+  for (const key of Object.keys(values)) {
+    if (RESERVED_VALUE_KEYS.has(key)) continue
+    const v = values[key]
+    let escaped: string | undefined
+    if (typeof v === 'string') escaped = escapeAngles(v)
+    else if (typeof v === 'object' && v !== null && !(v instanceof Date)) {
+      try {
+        const json = JSON.stringify(v)
+        // Only replace the object when it could contribute a bracket — else it
+        // stays an object, so an inline format spec still receives the value.
+        if (json.includes('<') || json.includes('>')) escaped = escapeAngles(json)
+      } catch {
+        continue // leave it to interpolate's own not-serializable handling
+      }
+    }
+    if (escaped !== undefined && escaped !== v) {
+      out ??= { ...values }
+      out[key] = escaped
+    }
+  }
+  return out ?? values
+}
 interface RichPart {
   tag: string
   children: string
@@ -101,8 +152,10 @@ export interface TransProps extends Props {
  * Rich JSX interpolation component for translations.
  *
  * Allows embedding JSX components within translated strings using XML-like tags.
- * The `t` function resolves the translation and interpolates `{{values}}` first,
- * then `<tag>content</tag>` patterns are mapped to the provided components.
+ * Tags come ONLY from the translation: angle brackets inside interpolated
+ * `{{values}}` are neutralised before `<tag>content</tag>` patterns are mapped
+ * to the provided components, so a user-controlled value (a name, a comment)
+ * can never close one tag and open another — it renders as literal text.
  *
  * @example
  * // Translation: "You have <bold>{{count}}</bold> unread messages"
@@ -140,21 +193,27 @@ export function Trans(props: TransProps): VNodeChild {
   // The JSX-child accessor is a tracking scope, so `t()`'s `locale()` read
   // re-runs this on locale change.
   return () => {
-    const translated = t(props.i18nKey, props.values)
+    const components = props.components
+    if (!components) return t(props.i18nKey, props.values)
 
-    if (!props.components) return translated
-
+    // Interpolate with angle brackets in VALUES replaced by sentinels, parse
+    // tags, then restore the brackets inside each text segment. Interpolating
+    // first and parsing after (the old order) let a value such as
+    // `x</bold><link>…` become a real `link` component call.
+    const translated = t(props.i18nKey, escapeValues(props.values))
     const parts = parseRichText(translated)
 
     // If the result is a single plain string, return it directly
-    if (parts.length === 1 && typeof parts[0] === 'string') return parts[0]
+    if (parts.length === 1 && typeof parts[0] === 'string') return unescapeAngles(parts[0])
 
     const children = parts.map((part) => {
-      if (typeof part === 'string') return part
-      const component = props.components![part.tag]
+      if (typeof part === 'string') return unescapeAngles(part)
+      const text = unescapeAngles(part.children)
+      // OWN keys only — `components.toString` is inherited, not a component.
+      const component = Object.hasOwn(components, part.tag) ? components[part.tag] : undefined
       // Unmatched tags: render children as plain text (no raw HTML markup)
-      if (!component) return part.children
-      return component(part.children)
+      if (typeof component !== 'function') return text
+      return component(text)
     })
 
     return <>{children}</>

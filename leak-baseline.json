@@ -38,6 +38,6 @@
     "unbounded-cache::packages/tools/lint/src/utils/unknown-config.ts": 1,
     "unbounded-cache::packages/tools/vue-compat/src/index.ts": 1,
     "unbounded-cache::packages/ui-system/styler/src/styled.tsx": 1,
-    "unbounded-cache::packages/zero/zero/src/fs-router.ts": 2
+    "unbounded-cache::packages/zero/zero/src/fs-router.ts": 3
   }
 }

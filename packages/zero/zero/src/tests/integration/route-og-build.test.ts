@@ -15,6 +15,7 @@ import { cpSync, existsSync, readdirSync, readFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import sharp from 'sharp'
+import pyreon from '@pyreon/vite-plugin'
 import { build } from 'vite'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { zeroPlugin } from '../../vite-plugin'
@@ -48,7 +49,7 @@ beforeAll(async () => {
     root: FIXTURE,
     configFile: false,
     logLevel: 'error',
-    plugins: zeroPlugin({ mode: 'ssg', routeOg: { width: 600, height: 315, siteUrl: 'https://ex.test' } }),
+    plugins: [pyreon(), ...zeroPlugin({ mode: 'ssg', routeOg: { width: 600, height: 315, siteUrl: 'https://ex.test' } })],
     resolve: { conditions: ['bun'] },
     build: { outDir: 'dist', emptyOutDir: true },
   })

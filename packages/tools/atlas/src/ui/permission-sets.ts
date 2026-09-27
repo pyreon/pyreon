@@ -138,14 +138,19 @@ export function recordingPermissions(set: PermissionSet): RecordingPermissions {
     seed(key)
     return base.not(key, context)
   }
-  can.all = (...keys: string[]) => {
-    for (const key of keys) seed(key)
-    return base.all(...keys)
-  }
-  can.any = (...keys: string[]) => {
-    for (const key of keys) seed(key)
-    return base.any(...keys)
-  }
+  // Both call shapes: rest keys, or an array plus a context
+  // (`can.all(['a', 'b'], post)`). The array form's keys must be seeded too,
+  // or its checks bypass the role's policy exactly like an unwrapped helper.
+  const multiKeys = (args: unknown[]): string[] =>
+    Array.isArray(args[0]) ? (args[0] as string[]) : (args as string[])
+  can.all = ((...args: unknown[]) => {
+    for (const key of multiKeys(args)) seed(key)
+    return (base.all as (...a: unknown[]) => boolean)(...args)
+  }) as Permissions['all']
+  can.any = ((...args: unknown[]) => {
+    for (const key of multiKeys(args)) seed(key)
+    return (base.any as (...a: unknown[]) => boolean)(...args)
+  }) as Permissions['any']
   can.assert = (key: string, context?: unknown, message?: string) => {
     seed(key)
     return base.assert(key, context, message)

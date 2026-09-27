@@ -8,6 +8,7 @@
 import { cpSync, existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { join, relative, resolve, sep } from 'node:path'
+import pyreon from '@pyreon/vite-plugin'
 import { build } from 'vite'
 import { afterAll, describe, expect, it } from 'vitest'
 import { zeroPlugin } from '../../vite-plugin'
@@ -31,7 +32,7 @@ async function buildWith(cfg: ZeroConfig): Promise<void> {
     root: FIXTURE,
     configFile: false,
     logLevel: 'error',
-    plugins: zeroPlugin(cfg),
+    plugins: [pyreon(), ...zeroPlugin(cfg)],
     resolve: { conditions: ['bun'] },
     build: { outDir: OUT, emptyOutDir: true },
   })
