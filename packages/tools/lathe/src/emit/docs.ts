@@ -381,10 +381,6 @@ function streamUsage(
   ];
 }
 
-/** The generated hook's name, matching the client emitter's convention. */
-function hookName(op: IrOperation): string {
-  return hookOf(op) as string;
-}
 /** An argument literal shaped like the endpoint's own `EndpointArgs`. */
 function argsLiteral(op: IrOperation): string {
   const parts: string[] = [];
