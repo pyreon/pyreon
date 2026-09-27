@@ -13,6 +13,8 @@ The Pyreon Multi-Target Compiler (`packages/native/compiler`) emits SwiftUI and 
 1. **PMTC compiles a declarative TypeScript subset.** Outside it, the usual outcome is a named warning, not a silent drop. The live per-construct status is in `docs/src/content/docs/multiplatform.md`; do not copy the list here.
    - Lowered and typechecked on both toolchains: local object/array literals, destructuring, `Map`/`Set`, common control flow, template literals, optional chaining, fractional math, string/array methods, `JSON.stringify` (emitted structs are `Codable` / `@Serializable`).
    - A top-level object-shape `interface X { … }` becomes a struct/data class, like a `type X = { … }` alias (`parse.ts:tryStructFromInterface`).
+   - Optional narrowing: the branch a nil / truthiness test narrowed reads an unwrapped binding (Swift `if let` / `guard let` / `.map { } ??`; Kotlin binds signals, computeds and data-class `var` fields, which it cannot smart-cast). One classifier for both targets: `src/optional-narrowing.ts`.
+   - Render props, function-as-children and `VNodeChild` slots lower to a generic `@ViewBuilder` closure (the struct gains a `<XContent: View>` parameter) / a `@Composable` lambda; JSX-returning functions with annotated params become view functions (`src/render-slots.ts`). Swift cannot keep a render prop OPTIONAL (the generic has nothing to infer from), so that one warns.
    - Warned by name: `enum`, `class`, generic or `extends` interfaces, `try`/`throw`, `JSON.parse`, regex literals, JSX spread on a primitive, computed object keys, call-argument spreads.
    - Remaining gaps: generics in logic, and shapes outside the tested corpus.
 2. **Validation gates.**

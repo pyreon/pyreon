@@ -7,7 +7,7 @@ description: "Full-stack meta-framework: fs-routing, SSR/SSG/ISR/SPA, API routes
 
 > **Generated** from `zero`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [zero](/docs/zero).
 
-Pyreon's full-stack meta-framework. Single `zero({ mode, base, ssg, i18n })` plugin chooses rendering mode (`ssg` / `ssr` / `isr` / `spa`), wires file-system routing under `src/routes/`, and composes with seo / favicon / og-image / ai / i18n-routing / csp plugins. Per-route exports for `meta`, `getStaticPaths`, `revalidate`, `validateSearch`, `loader`, `renderMode` (per-route 'ssr' | 'ssg' | 'spa' | 'isr' hybrid rendering), plus `.server.{ts,tsx,js,jsx}` SIBLINGS exporting `serverLoader(ctx)` — server-only data loaders structurally excluded from the client bundle (client navigations fetch the whole chain's data in ONE request from `GET /_pyreon/data`; layouts cannot carry server loaders). `mode: 'ssr'` STREAMS by default (`ssr: { mode: 'string' }` opts back). Re-exports `island` + `serverIsland` (per-request server-rendered holes in cacheable pages). SSG delivery polish: `ssg.speculationRules`, `ssg.viewTransitions`, `ssg.cssMode: 'asset'`, `ssg.earlyHints`. ISR: tag-based invalidation (`isr.tagsForRequest` + `revalidateTag(tag)`) and a restart-surviving `createFsStore(dir)`. Deployment via per-platform adapters (Vercel / Cloudflare Pages / Netlify / Node / Bun / static). Built-in image / font / resource-hint primitives: bi-modal `<Image>` (a `?optimize` descriptor OR a runtime URL with required `width`+`height`) plus `<OptimizedImage>`, the `<NoOptimize>` subtree opt-out boundary, and `createImageRegistry()`; font preload via `usePreloadFont()` + the `?font` import (auto `@font-face` + hashed-URL descriptor); and `usePreconnect` / `useDnsPrefetch` / `usePreload` typed resource hints — all auto-wired through `zero({ image, font })`.
+Pyreon's full-stack meta-framework. Single `zero({ mode, base, ssg, i18n })` plugin chooses rendering mode (`ssg` / `ssr` / `isr` / `spa`), wires file-system routing under `src/routes/`, and composes with seo / favicon / og-image / ai / i18n-routing / csp plugins. Per-route exports for `meta`, `getStaticPaths`, `revalidate`, `validateSearch`, `loader`, `renderMode` (per-route 'ssr' | 'ssg' | 'spa' | 'isr' hybrid rendering), plus `.server.{ts,tsx,js,jsx}` SIBLINGS exporting `serverLoader(ctx)` — server-only data loaders structurally excluded from the client bundle (client navigations fetch the whole chain's data in ONE request from `GET /_pyreon/data`; layouts cannot carry server loaders). A `zero()` build renders `mode: 'ssr'` buffered by default (`resolveConfig` sets `ssr.mode: 'string'`); `ssr: { mode: 'stream' }` opts into streaming. (A hand-written `createServer({ config: { mode: 'ssr' } })` with no `ssr.mode` streams.) Re-exports `island` + `serverIsland` (per-request server-rendered holes in cacheable pages). SSG delivery polish: `ssg.speculationRules`, `ssg.viewTransitions`, `ssg.cssMode: 'asset'`, `ssg.earlyHints`. ISR: tag-based invalidation (`isr.tagsForRequest` + `revalidateTag(tag)`) and a restart-surviving `createFsStore(dir)`. Deployment via per-platform adapters (Vercel / Cloudflare Pages / Netlify / Node / Bun / static). Built-in image / font / resource-hint primitives: bi-modal `<Image>` (a `?optimize` descriptor OR a runtime URL with required `width`+`height`) plus `<OptimizedImage>`, the `<NoOptimize>` subtree opt-out boundary, and `createImageRegistry()`; font preload via `usePreloadFont()` + the `?font` import (auto `@font-face` + hashed-URL descriptor); and `usePreconnect` / `useDnsPrefetch` / `usePreload` typed resource hints — all auto-wired through `zero({ image, font })`.
 
 ## Multiplatform
 
@@ -93,6 +93,9 @@ export default function PostPage() { /* component body */ }
 | [`GetStaticPaths`](#getstaticpaths) | type | Per-route export type for dynamic-route enumeration at SSG build time (PR A of the SSG roadmap). |
 | [`Adapter`](#adapter) | type | Deployment adapter contract. |
 | [`createISRHandler`](#createisrhandler) | function | Runtime ISR — on-demand SSR caching with stale-while-revalidate. |
+| [`sessionMiddleware`](#sessionmiddleware) | function | Signed cookie sessions from `@pyreon/zero/session` (also re-exported by `@pyreon/zero/server`). |
+| [`createPreviewHandler`](#createpreviewhandler) | function | Preview / draft mode from the client-safe `@pyreon/zero/preview`. |
+| [`reportWebVitals`](#reportwebvitals) | function | Core Web Vitals from `@pyreon/zero/web-vitals` (standalone ~1.5 KB gz, import-budget-locked): LCP, CLS, INP, FCP, TTFB v |
 | [`ISRStore`](#isrstore) | type | The pluggable ISR cache backing. |
 | [`createMemoryStore`](#creatememorystore) | function | The default in-memory ISR store: insertion-order LRU capped at `maxEntries` (default 1000), with `get` bumping recency s |
 | [`createFsStore`](#createfsstore) | function | Filesystem-backed ISR store for self-hosted node/bun: cache entries (and the tag index) persist as JSON files under `dir |
@@ -146,7 +149,7 @@ export default function PostPage() { /* component body */ }
 function zero(config?: ZeroConfig): Plugin[] // default export of @pyreon/zero/server
 ```
 
-Top-level Vite plugin chain for @pyreon/zero. Single config object selects rendering mode (`'ssr' | 'ssg' | 'isr' | 'spa'`), subpath base (`base: '/blog/'`), SSG settings (paths, concurrency, onProgress, emit404, emitRedirects), i18n config (locales / defaultLocale / strategy), and deployment adapter. Returns `Plugin[]` because the SSG mode adds a companion `ssgPlugin()` automatically — Vite's plugins array natively flattens nested arrays so `plugins: [pyreon(), zero()]` works without spread.
+Top-level Vite plugin chain for @pyreon/zero. Single config object selects rendering mode (`'ssr' | 'ssg' | 'isr' | 'spa'`), subpath base (`base: '/blog/'`), SSG settings (paths, concurrency, workers — opt-in worker-thread prerender, onProgress, emit404, emitRedirects), i18n config (locales / defaultLocale / strategy), and deployment adapter. Returns `Plugin[]` because the SSG mode adds a companion `ssgPlugin()` automatically — Vite's plugins array natively flattens nested arrays so `plugins: [pyreon(), zero()]` works without spread.
 
 **Example**
 
@@ -384,6 +387,93 @@ app.post('/api/webhooks/posts-changed', async () => {
 - A throwing `tagsForRequest` never breaks caching — the entry is cached UNTAGGED (dev-mode warns)
 
 **See also:** `zero` · `Adapter` · `ISRStore` · `createMemoryStore`
+
+---
+
+### sessionMiddleware `function`
+
+```ts
+function sessionMiddleware(options: SessionOptions): Middleware  // + getSession(ctx | request | { request }), useSession(), requireUser(options)
+```
+
+Signed cookie sessions from `@pyreon/zero/session` (also re-exported by `@pyreon/zero/server`). The whole session lives in one HMAC-SHA256-signed cookie via Web Crypto, so it runs on Node, Bun, Deno and Cloudflare workerd. `secret` takes a string or an array (index 0 signs, all verify — key rotation). Defaults: HttpOnly, SameSite=Lax, Path=/, Secure except on http://localhost, 7-day maxAge enforced as a SIGNED expiry too, 4096-byte limit (throws). Tampered/expired cookies read as an empty session. Any read or write marks the response `Cache-Control: private, no-store` + `Vary: Cookie`, which createISRHandler refuses unconditionally — a per-user render can never be ISR-cached. `requireUser({ redirectTo? })` is route middleware answering 302 (with `?next=`) or 401.
+
+**Example**
+
+```tsx
+import { getSession, requireUser, sessionMiddleware } from '@pyreon/zero/session'
+
+createServer({ routes, middleware: [sessionMiddleware({ secret: process.env.SESSION_SECRET! })] })
+
+export const loader = ({ request }) => ({ userId: getSession({ request }).get('userId') ?? null })
+export const middleware = requireUser({ redirectTo: '/login' })
+```
+
+**Common mistakes**
+
+- Calling `getSession` without registering `sessionMiddleware` first — throws a [Pyreon] error naming the fix
+- Forgetting `await` on `set`/`update`/`unset`/`destroy` — writes re-sign asynchronously and the Set-Cookie lands only when the promise resolves
+- Storing large objects in the session — the signed cookie is capped at 4096 bytes; store an id and keep the data server-side
+- Rendering session values in a component — `useSession()` is `null` on the client (HttpOnly cookie), so hydration disagrees; pass the data through a loader
+- Touching the session inside a late Suspense boundary under `mode: 'stream'` — headers already left with the shell, so the response is not marked private and no cookie is set
+- Overriding `Cache-Control` to `public` after reading the session — the private marking is what keeps per-user HTML out of shared caches
+
+**See also:** `createISRHandler` · `createPreviewHandler`
+
+---
+
+### createPreviewHandler `function`
+
+```ts
+function createPreviewHandler(options: { secret; token; path?; maxAge? }): Middleware  // + previewMiddleware({ secret }), isPreview(request | ctx | { request })
+```
+
+Preview / draft mode from the client-safe `@pyreon/zero/preview`. `GET /api/preview?token=…&redirect=/path` (constant-time token check, same-origin redirect only) sets a signed HttpOnly preview cookie; `/api/preview/exit` clears it. `previewMiddleware` verifies the cookie, marks the response private, and makes `isPreview()` true. createISRHandler bypasses its cache for any request carrying the preview cookie — no HIT, never stored. `@pyreon/zero-content` `getCollection(name, { request })` includes `draft: true` entries for a verified preview request. SSG static files are unaffected (no server code runs for them).
+
+**Example**
+
+```tsx
+import { createPreviewHandler, isPreview, previewMiddleware } from '@pyreon/zero/preview'
+
+const secret = process.env.PREVIEW_SECRET!
+createServer({ routes, middleware: [createPreviewHandler({ secret, token: process.env.PREVIEW_TOKEN! }), previewMiddleware({ secret })] })
+
+export const loader = ({ request }) => getCollection('blog', { request })
+```
+
+**Common mistakes**
+
+- Registering `createPreviewHandler` without `previewMiddleware` — the cookie is set but nothing verifies it, so `isPreview()` stays false
+- Expecting preview to affect SSG pages — a prerendered file is served by the host without running server code
+- Reusing the signing secret as the URL token — keep them separate so the token (visible in CMS config) can rotate independently
+
+**See also:** `sessionMiddleware` · `createISRHandler`
+
+---
+
+### reportWebVitals `function`
+
+```ts
+function reportWebVitals(handler: (m: WebVitalMetric) => void, options?: { router?: RouterLike | false }): () => void  // + sendToBeacon(url), webVitalsEndpoint(path, onMetric)
+```
+
+Core Web Vitals from `@pyreon/zero/web-vitals` (standalone ~1.5 KB gz, import-budget-locked): LCP, CLS, INP, FCP, TTFB via PerformanceObserver, following the web-vitals library (activation-relative timings, session-window CLS, p98 INP with durationThreshold 40, LCP finalized on first input or hide). Deviation: on a client route change (active router's afterEach) CLS and INP are reported and reset per route with `navigationType: 'soft-navigation'`; LCP/FCP/TTFB are hard-load only. `sendToBeacon(url)` posts via navigator.sendBeacon; `webVitalsEndpoint(path, fn)` is the validating server middleware. No-op on the server.
+
+**Example**
+
+```tsx
+import { reportWebVitals, sendToBeacon } from '@pyreon/zero/web-vitals'
+
+reportWebVitals(sendToBeacon('/api/vitals'))
+```
+
+**Common mistakes**
+
+- Calling it before `startClient` — the default router is resolved at call time; call after, or pass `{ router }`
+- Expecting LCP per client route — browsers expose no stable soft-navigation LCP; only CLS/INP are per route
+- Expecting a metric immediately — LCP/CLS/INP report on first input / page hide / route change, like web-vitals
+
+**See also:** `zero`
 
 ---
 

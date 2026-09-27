@@ -4289,8 +4289,11 @@ fun hasX2Axis(spec: ChartSpec): Boolean {
   }
 
 fun resolveX2Domain(spec: ChartSpec): Domain {
-    if (spec.x2Domain != null) {
-      return (spec.x2Domain ?: Domain(min = 0.0, max = 1.0))
+    when (val x2Domain = spec.x2Domain) {
+      null -> {}
+      else -> {
+        return x2Domain
+      }
     }
     val all: MutableList<Double> = mutableListOf()
     for (s in spec.series) {
@@ -4597,7 +4600,7 @@ fun barColumns(spec: ChartSpec, band: Double): List<PyreonChartPt> {
     val cols = countToDouble(ids.length)
     val gapLength = (spec.barGap ?: NO_LENGTH)
     val gapPct = if (spec.barGap == null) 0.1 else (gapLength.value).toDouble() / (100.0).toDouble()
-    val catGap = if (spec.barCategoryGap == null) ((Math.max(35.0 - cols * 4.0, 15.0)).toDouble() / (100.0).toDouble()) * band else barPx(spec.barCategoryGap, band, 0.0)
+    val catGap = when (val barCategoryGap = spec.barCategoryGap) { null -> ((Math.max(35.0 - cols * 4.0, 15.0)).toDouble() / (100.0).toDouble()) * band else -> barPx(barCategoryGap, band, 0.0) }
     var remained = band
     var autoCount = cols
     for (q in 0 until ids.length) {
@@ -7100,8 +7103,11 @@ fun hitFunnelEc(stages: List<FunnelStage>, box: PyreonChartRect, cfg: FunnelEcCo
   }
 
 fun nodeValue(node: TreeNode): Double {
-    if (node.value != null) {
-      return (node.value ?: 0.0)
+    when (val value = node.value) {
+      null -> {}
+      else -> {
+        return value
+      }
     }
     var sum = 0.0
     val stack: MutableList<TreeNode> = mutableListOf()
@@ -10946,24 +10952,27 @@ fun layoutSingleAxis(axis: SingleAxisSpec, points: List<SingleAxisPoint>, box: P
       lo = 0.0
       hi = Math.max(0.0, ((axis.categories ?: listOf())).length * 1.0 - 1.0)
     } else {
-      if (axis.domain != null) {
-        val domain = (axis.domain ?: Domain(min = 0.0, max = 1.0))
-        lo = domain.min
-        hi = domain.max
-      } else {
-        lo = 999999999999999.0
-        hi = -999999999999999.0
-        for (p in points) {
-          if (p.x < lo) {
-            lo = p.x
+      when (val domainValue = axis.domain) {
+        null -> {
+          lo = 999999999999999.0
+          hi = -999999999999999.0
+          for (p in points) {
+            if (p.x < lo) {
+              lo = p.x
+            }
+            if (p.x > hi) {
+              hi = p.x
+            }
           }
-          if (p.x > hi) {
-            hi = p.x
+          if (lo == 999999999999999.0) {
+            lo = 0.0
+            hi = 1.0
           }
         }
-        if (lo == 999999999999999.0) {
-          lo = 0.0
-          hi = 1.0
+        else -> {
+          val domain = domainValue
+          lo = domain.min
+          hi = domain.max
         }
       }
     }
@@ -11013,8 +11022,11 @@ fun renderSingleAxis(layout: SingleAxisLayout, options: SingleAxisOptions? = nul
       out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = t.x, y = a.y), to = PyreonChartPt(x = t.x, y = a.y + 4.0), stroke = axisColor, width = 1.0))
       out.add(PyreonDrawCmd(kind = "text", fill = labelColor, text = t.label, at = PyreonChartPt(x = t.x, y = a.y + 8.0), size = fontSize, align = "middle", baseline = "top"))
     }
-    if (a.name != null) {
-      out.add(PyreonDrawCmd(kind = "text", fill = labelColor, text = a.name, at = PyreonChartPt(x = a.x1, y = a.y + fontSize * 2.2), size = fontSize, align = "end", baseline = "top"))
+    when (val name = a.name) {
+      null -> {}
+      else -> {
+        out.add(PyreonDrawCmd(kind = "text", fill = labelColor, text = name, at = PyreonChartPt(x = a.x1, y = a.y + fontSize * 2.2), size = fontSize, align = "end", baseline = "top"))
+      }
     }
     for (p in layout.points) {
       out.add(PyreonDrawCmd(kind = "circle", fill = p.color, center = p.at, radius = p.radius * progress))
@@ -11919,10 +11931,10 @@ fun treeTip(layout: TreeLayout, px: Double, py: Double, symbolSize: Double? = nu
       return listOf()
     }
     val n = layout.nodes[i]
-    if (n.value == null) {
+    val value = n.value ?: run {
       return listOf(n.name)
     }
-    return listOf(n.name, plain((n.value ?: 0.0)))
+    return listOf(n.name, plain(value))
   }
 
 fun riverTip(layout: RiverLayout, px: Double, py: Double, curve: String? = null): List<String> {
@@ -11962,10 +11974,10 @@ fun graphTip(layout: GraphLayout, px: Double, py: Double): List<String> {
       return listOf()
     }
     val n = layout.nodes[i]
-    if (n.value == null) {
+    val value = n.value ?: run {
       return listOf(n.name)
     }
-    return listOf(n.name, plain((n.value ?: 0.0)))
+    return listOf(n.name, plain(value))
   }
 
 fun ganttTip(layout: GanttLayout, px: Double, py: Double): List<String> {

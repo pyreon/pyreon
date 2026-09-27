@@ -28,18 +28,25 @@ const doc = (models: IrModel[]): IrDocument =>
 const model = (name: string, type: unknown): IrModel => ({ name, type }) as IrModel
 
 /**
- * Constraints live on the FIELD (`min` / `max`), not on the type — the
- * IR's `string` carries only `format` and `enum`. A fixture that put
- * `minLength` on the type would exercise the unconstrained path while
- * claiming to test the constrained one.
+ * Constraints live on the TYPE (`minLength` / `maximum`, …), which is where
+ * the input layer puts them so they apply to array items and alias models as
+ * well as object fields. `bounds` maps the short `min` / `max` onto the
+ * right keywords for the type's kind.
  */
 const obj = (
   fields: Array<[string, unknown, boolean?, { min?: number; max?: number }?]>,
 ) => ({
   kind: 'object',
-  fields: fields.map(([name, type, required = true, bounds = {}]) => ({
-    name, type, required, nullable: false, ...bounds,
-  })),
+  fields: fields.map(([name, type, required = true, bounds = {}]) => {
+    const t = type as { kind: string }
+    const withBounds =
+      t.kind === 'string'
+        ? { ...t, minLength: bounds.min, maxLength: bounds.max }
+        : t.kind === 'number'
+          ? { ...t, minimum: bounds.min, maximum: bounds.max }
+          : t
+    return { name, type: withBounds, required }
+  }),
 })
 
 // `emitFaker` returns a SourceFile builder, not text — `build(header)`
@@ -101,7 +108,7 @@ describe('constraints outrank realism', () => {
 
   it('picks an enum member, never an arbitrary string', () => {
     // An off-enum value fails the generated validator immediately.
-    const out = emit([model('U', obj([['status', { kind: 'string', enum: ['active', 'banned'] }]]))])
+    const out = emit([model('U', obj([['status', { kind: 'enum', values: ['active', 'banned'] }]]))])
     expect(out).toContain('active')
     expect(out).toContain('banned')
   })

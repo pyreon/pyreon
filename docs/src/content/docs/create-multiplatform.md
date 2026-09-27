@@ -23,6 +23,26 @@ npm run build:ios       # src/App.tsx → ios/generated/App.swift, then xcodegen
 npm run build:android   # src/App.tsx → android/.../generated/App.kt, then Gradle
 ```
 
+## CLI usage
+
+```text
+create-multiplatform <project-name> [--dir <path>]
+```
+
+| Arg | Description |
+| --- | --- |
+| `<project-name>` | Required. Also the directory scaffolded into unless `--dir` overrides it. Must be lowercase kebab-case (starts with a letter, letters/digits/hyphens only, no consecutive or trailing hyphens, 1-50 chars) — the name propagates into the Xcode project name and the Gradle module id, both stricter than an npm package name. An invalid name fails with a suggested fix. |
+| `--dir <path>` / `-d <path>` | Scaffold into a directory other than `<project-name>`. |
+| `--help` / `-h` | Print usage and exit 0. |
+
+```bash
+npx create-multiplatform my-app --dir ./apps/my-app
+```
+
+The target directory must not already exist and be non-empty — a `.git`-only directory is fine (the `mkdir my-app && cd my-app && npx create-multiplatform .` flow), but scaffolding refuses to overwrite a directory that already has real content in it.
+
+Scaffolded scripts, beyond `dev` / `build:ios` / `build:android`: `preview` (Vite preview), `lint` (`pyreon-lint .`, including the opt-in `portable` `@pyreon/lint` rule group scoped to `src/App.tsx` — it flags a shared-source construct PMTC can't lower to native, before a build tries and fails), `release:keystore` (generates a self-signed Android release keystore if absent), and `release:android` (ensures the keystore, then produces a signed, R8-minified release APK via `gradle assembleRelease`).
+
 ## What gets generated
 
 A project sharing **one canonical-primitive source** across three targets:

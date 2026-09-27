@@ -315,14 +315,18 @@ export function C() {
   {
     name: '@pyreon/core',
     mechanism: 'pmtc-lowers',
-    rationale: 'VNode/components + For/Show control flow lower to SwiftUI/Compose view trees.',
+    rationale:
+      'VNode/components + For/Show control flow lower to SwiftUI/Compose view trees; render props, function-as-children and `VNodeChild` slots lower to generic `@ViewBuilder` closures / `@Composable` lambdas.',
     snippet: `import { signal } from '@pyreon/reactivity'
 import { For, Show } from '@pyreon/core'
+import type { VNodeChild } from '@pyreon/core'
 import { Stack, Text } from '@pyreon/primitives'
+function Count(props: { children: (n: number) => VNodeChild }) { return props.children(3) }
+function Card(props: { title: string; children: VNodeChild }) { return <Stack><Text>{props.title}</Text>{props.children}</Stack> }
 export function C() {
   const items = signal<{ id: number; name: string }[]>([{ id: 1, name: 'a' }])
   const on = signal(true)
-  return (<Stack><Show when={on()}><Text>hi</Text></Show><For each={items} by={(i) => i.id}>{(i) => <Text>{i.name}</Text>}</For></Stack>)
+  return (<Stack><Show when={on()}><Text>hi</Text></Show><For each={items} by={(i) => i.id}>{(i) => <Text>{i.name}</Text>}</For><Count>{(n) => <Text>{n}</Text>}</Count><Card title="t"><Text>body</Text></Card></Stack>)
 }`,
   },
   {
