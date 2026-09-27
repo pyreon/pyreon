@@ -1140,7 +1140,7 @@ Paths passed on the command line are relative to the working directory.
 | `output` | `string` | `'./src/gen'` | Output directory. Relative to the config file, like `input`. |
 | `source` | `string` | — | Where `lathe pull` fetches the spec from: an http(s) URL, written to `input`. With `projects`, `lathe pull` pulls every project that sets one. |
 | `target` | `"web" \| "multiplatform"` | `'web'` | Which platforms the client is for: `web`, or `multiplatform`, which also emits native modules for iOS and Android and verifies they lower. |
-| `plugins` | `(PluginName \| LathePlugin)[]` | `['schemas', 'client', 'queries']` | Emitters to run: built-in names, and third-party plugins made with `definePlugin` (see {@link LathePlugin}). Built-ins run first, then plugins in the order listed. Built-ins bring along their required output (`components` needs `queries`), and the report identifies additions. |
+| `plugins` | `(PluginName \| LathePlugin)[]` | `['schemas', 'client', 'queries']` | Emitters to run: built-in names, and third-party plugins made with `definePlugin` (see `LathePlugin`). Built-ins run first, then plugins in the order listed. Built-ins bring along their required output (`components` needs `queries`), and the report identifies additions. |
 | `client` | `"pyreon" \| "fetch" \| "axios" \| "ky"` | `'pyreon'` | Which HTTP runtime the generated client is built on. |
 | `validator` | `"pyreon" \| "zod"` | `'pyreon'` | Which library the generated schemas are written in. |
 | `baseUrl` | `string` | the spec's `servers[0].url` | Overrides the spec's `servers[0].url` — must be an absolute literal to reach native. `configureApi({ baseUrl })` switches it at runtime. |
