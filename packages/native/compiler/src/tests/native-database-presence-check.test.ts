@@ -43,9 +43,12 @@ export function App() {
 }`
 
 describe('database.get presence check', () => {
-  it('Swift lowers to the `if let` binding, not a bare optional condition', () => {
+  // The body only branches on presence and never reads `found`, so it is a
+  // nil test; binding it would be an unused `let` (a swiftc warning). A body
+  // that READS it binds — see native-auth-rehydrate / native-optional-narrowing.
+  it('Swift lowers to a nil test, not a bare optional condition', () => {
     const out = transform(SRC, { target: 'swift' })
-    expect(out.code).toContain('if let found {')
+    expect(out.code).toContain('if found != nil {')
     // The broken emit — an optional used directly as a Bool.
     expect(out.code).not.toMatch(/if found \{/)
     expect(out.warnings).toEqual([])
