@@ -8,7 +8,7 @@ The goal: **one canonical Zero app** that demonstrates how every Pyreon package 
 
 ```bash
 cd examples/app-showcase
-bun run dev      # http://localhost:5173
+bun run dev      # http://localhost:3000 (zero's framework default; auto-increments if occupied)
 bun run build    # production build
 bun run preview  # serve the build
 ```
@@ -31,6 +31,8 @@ Each section lives under `src/routes/<section>/` and is registered in [src/secti
 | Invoice Builder | ✅ available   | `document` (PDF/DOCX/HTML/MD export), `store`, `reactivity`, `toast`         |
 | Resume Builder  | ✅ available   | `document-primitives` + `connector-document` round-trip, `store`, `toast`    |
 | Flow Editor     | ✅ available   | `flow` (canvas, custom nodes, layered auto-layout), `code` (JSON), `store`   |
+| Flow Feature Matrix | ✅ available | `flow` kitchen-sink — markers, virtualization, snapping, resize/toolbar, drag-to-connect, layout, undo/redo, queries |
+| Drag & Drop     | ✅ available   | `dnd` — sortable list, draggable card → drop zone, file drop with type filtering |
 
 The Todos source lives at [src/routes/todos/](src/routes/todos/) (route entry) and [src/sections/todos/](src/sections/todos/) (helpers, store).
 
@@ -68,8 +70,13 @@ examples/app-showcase/
 │   │   │   └── index.tsx    ← /invoice (document tree → PDF/DOCX/HTML/MD)
 │   │   ├── resume/
 │   │   │   └── index.tsx    ← /resume (document-primitives round-trip)
-│   │   └── flow/
-│   │       └── index.tsx    ← /flow (visual editor with bidirectional JSON sidebar)
+│   │   ├── flow/
+│   │   │   └── index.tsx    ← /flow (visual editor with bidirectional JSON sidebar)
+│   │   ├── flow-features/
+│   │   │   ├── index.tsx        ← /flow-features (kitchen-sink @pyreon/flow feature matrix)
+│   │   │   └── FeatureNode.tsx  ← shared custom node component (lives alongside the route, not under sections/)
+│   │   └── dnd/
+│   │       └── index.tsx    ← /dnd (sortable list, draggable→drop zone, file drop — @pyreon/dnd)
 │   └── sections/            ← per-section components, stores, helpers
 │       ├── todos/
 │       │   ├── TodoList.tsx
@@ -186,7 +193,7 @@ Sections are **fully isolated** — they have their own components, store, and (
 
 ## Why one app instead of many?
 
-Earlier this used to be three separate examples (`fundamentals-playground`, `playground`, `ssr-showcase`). Consolidating into one Zero app means:
+The original motivation was three separate, feature-scattered examples (`fundamentals-playground`, `playground`, `ssr-showcase`) — those three still exist as their own focused e2e/regression fixtures (see the root `bun run test:e2e` suite in CLAUDE.md), but `app-showcase` is the ADDITIONAL, consolidated app for demonstrating production-shaped composition. One Zero app means:
 
 - One package.json, one tsconfig, one vite config — less drift
 - Real apps host multiple feature areas (blog + dashboard + chat etc.) — this matches reality

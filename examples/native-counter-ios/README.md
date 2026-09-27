@@ -17,28 +17,48 @@ generated/Counter.swift  (compiler-emitted SwiftUI)
 ios/App.swift + ios/ContentView.swift  consumes the generated symbol
 ```
 
-## Status (PR 4 — Counter implementation + verified compile loop)
+## Status
 
 What's here:
 
 | File | Purpose |
 |---|---|
-| `src/Counter.tsx` | User-authored Pyreon source — **real counter** with `signal()`, label "Count: N", and Increment button |
+| `src/Counter.tsx` | User-authored Pyreon source — started as a minimal counter (PR 4); has since grown into a shared multi-feature device-proof fixture (see the note below) |
 | `ios/App.swift` | `@main` SwiftUI app entry point |
 | `ios/ContentView.swift` | Root view, bootstraps `Counter()` from `generated/` |
 | `ios/Info.plist` | Standard iOS bundle metadata |
 | `scripts/build.sh` | Drives the Pyreon → Swift compile loop |
+| `scripts/xcode-setup.sh` | Compiles the source + regenerates `PyreonCounter.xcodeproj` via xcodegen |
+| `project.yml` | xcodegen spec — the source of truth for the generated `.xcodeproj` |
 | `package.json` | Workspace member, runs `build.sh` via `bun run build` |
 | `.gitignore` | Generated outputs + Xcode artifacts not committed |
 
-What's NOT here yet:
-
-- **`.xcodeproj`** — Apple's project format is awkward to commit verbatim. A PR 4a follow-up will either commit a generated `.pbxproj` or wire up [`xcodegen`](https://github.com/yonaskolb/XcodeGen) to produce it from a YAML spec. Until then, manual Xcode setup is documented below.
-- **iOS simulator CI** — running this on Apple's simulator infrastructure needs Apple-hardware CI runners. Tracked separately.
+`.xcodeproj` generation (originally tracked as a "PR 4a follow-up" below) has
+since landed — it's driven by `xcodegen` + the committed `project.yml`, not
+committed directly (see "Open in Xcode" below for why). iOS simulator CI
+against real Apple-hardware runners is still tracked separately.
 
 ## What the counter does
 
-`src/Counter.tsx`:
+:::note
+This section originally described `src/Counter.tsx` as it was in PR 4 (PMTC
+Phase 0) — a minimal ~12-line counter. That file is now a **583-line shared
+device-proof fixture**: the PMTC team consolidated dozens of feature proofs
+(flow diagrams, animations, biometrics, i18n plurals, notifications, haptics,
+geolocation, rocketstyle dimension resolution, and more) into this one
+source rather than standing up a separate Xcode/Gradle project per feature.
+The counter proof is still IN there — `const count = signal<number>(0)`,
+a `<Text>Count: {count}</Text>`, and an `Increment` button that calls
+`count.set(count() + 1)` — it's just one slice of a much bigger tree now.
+The canonical vocabulary has also moved on: current source uses
+`@pyreon/primitives`' `Stack`/`Button onPress` (not the `VStack`/`onClick`
+shown in the old snippet below), and every file header comment explains what
+each proof demonstrates. Read `src/Counter.tsx` directly for the current,
+accurate source rather than trusting a frozen excerpt here.
+:::
+
+The historical (PR 4) shape, kept for context on what "Phase 0 success
+criterion 2" originally verified:
 
 ```tsx
 import { signal } from '@pyreon/reactivity'
@@ -54,22 +74,10 @@ export function Counter() {
 }
 ```
 
-Compiles to `generated/Counter.swift`:
-
-```swift
-#sourceLocation(file: "…/Counter.tsx", line: 1)
-struct Counter: View {
-  @State private var count: Int = 0
-  var body: some View {
-    VStack {
-      Text("Count: \(count)")
-      Button("Increment") { count = count + 1 }
-    }
-  }
-}
-```
-
-The emitted Swift is byte-for-byte indistinguishable from idiomatic SwiftUI written by hand. `swiftc -parse generated/Counter.swift` accepts it cleanly (verified).
+Which compiled to a `generated/Counter.swift` byte-for-byte indistinguishable
+from idiomatic hand-written SwiftUI. That claim still holds for the CURRENT,
+much larger source — `swiftc -parse` accepting the generated output cleanly
+is the same CI-verified guarantee, just over more surface area now.
 
 ## Run the compile loop now
 
@@ -128,7 +136,7 @@ If xcodegen isn't an option:
 
 - Pyreon TSX compiles cleanly via the CLI ✓
 - The generated Swift file passes `swiftc -parse` ✓
-- Output uses real SwiftUI primitives: `@State`, `VStack`, `Text(...)`, `Button(...) { ... }` — idiomatic SwiftUI ✓
+- Output uses real SwiftUI primitives: `@State`, `VStack`/`Stack`, `Text(...)`, `Button(...) { ... }` — idiomatic SwiftUI ✓
 - Increment semantics: `count.set(count() + 1)` becomes `count = count + 1` (SwiftUI's `@State` IS the assignment target) ✓
 - Compile is automated (one command) ✓
 - Xcode project is automated (xcodegen + project.yml) ✓
