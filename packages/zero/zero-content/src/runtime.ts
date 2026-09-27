@@ -1,3 +1,4 @@
+import { isPreview } from '@pyreon/zero/preview'
 import type {
   CollectionEntry,
   CollectionSchemas,
@@ -92,6 +93,12 @@ export function _getRegistry(): CollectionRegistry {
  */
 export interface GetCollectionOptions<TData = Record<string, unknown>> {
   includeDrafts?: boolean
+  /**
+   * The SSR request (a loader's `request`). When it is in verified preview
+   * mode (`previewMiddleware` from `@pyreon/zero/preview`), drafts are
+   * included even in production. An explicit `includeDrafts` still wins.
+   */
+  request?: Request | undefined
   filter?: (entry: CollectionEntry<TData>) => boolean
 }
 
@@ -132,6 +139,7 @@ export async function getCollection(
   // shows them so authors preview their work-in-progress freely.
   const includeDrafts =
     options?.includeDrafts
+    ?? (isPreview(options?.request) ? true : undefined)
     ?? (typeof process !== 'undefined'
       ? process.env['NODE_ENV'] !== 'production'
       : true)

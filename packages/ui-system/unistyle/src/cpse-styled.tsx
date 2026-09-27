@@ -136,6 +136,9 @@ export function cpseStyled(tag: string): ComponentFn<CpseStyledProps> {
         className = text.length > 0 ? sheet.insert(text) : ''
         classByShape.set(shapeKey, className)
       }
+      // A shape-cache hit skips `insert()`; mark the class used by the
+      // active SSR request (no-op on the client — see `sheet.markUsed`).
+      sheet.markUsed(className)
       return { className, vars }
     }
 
@@ -161,7 +164,10 @@ export function cpseStyled(tag: string): ComponentFn<CpseStyledProps> {
       className = text.length > 0 ? sheet.insert(text) : ''
       classByShape.set(shapeKey, className)
     }
-    return { className, vars }
+    // A shape-cache hit skips `insert()`; mark the class used by the
+      // active SSR request (no-op on the client — see `sheet.markUsed`).
+      sheet.markUsed(className)
+      return { className, vars }
   }
 
   return (props: CpseStyledProps): VNode => {
