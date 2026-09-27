@@ -14,8 +14,10 @@ the For's source signal first re-fired. **W23 is fixed in this PR**
 
 - Initial render — 4 default cards across 3 columns.
 - Add / delete / move cards (reactively reflected in DOM).
-- Multi-mutation sequences (the W23 bug shape) — verified by e2e: add 3 +
-  delete 3 + filter + reload all green.
+- Multi-mutation sequences (the W23 bug shape) — verified manually during the
+  audit: add 3 + delete 3 + filter + reload all green. (No automated e2e spec
+  is currently checked in for this example — `bun run test:e2e` at repo root
+  does not include a kanban suite.)
 - URL-synced + debounced search filter — every column filters its own
   state-tree-sourced card list.
 - Cross-tab persistence via `@pyreon/storage` (`localStorage`).
@@ -44,5 +46,5 @@ the For's source signal first re-fired. **W23 is fixed in this PR**
 ```bash
 cd examples/kanban
 bun run dev
-# open http://localhost:3001
+# open http://localhost:3000 (zero's framework default; auto-increments if occupied)
 ```
