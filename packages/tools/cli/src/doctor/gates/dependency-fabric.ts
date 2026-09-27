@@ -50,6 +50,28 @@ interface LoomReport {
 }
 
 /**
+ * The first line loom wrote to stderr when a scan exits non-zero, else the
+ * process error's own first line. Loom names the problem on stderr; the error
+ * message is only ever "Command failed: node …/loom.js scan …".
+ */
+export function loomFailureReason(err: unknown): string {
+  const stderr = (err as { stderr?: unknown })?.stderr
+  const text = typeof stderr === 'string' ? stderr : Buffer.isBuffer(stderr) ? stderr.toString('utf8') : ''
+  const line = text.split('\n').find((l) => l.trim() !== '')
+  if (line) return line.trim()
+  return `${(err as Error)?.message ?? String(err)}`.split('\n')[0] ?? ''
+}
+
+/**
+ * Loom's two empty-workspace refusals (`emptyWorkspaceMessage` in
+ * `@pyreon/loom`): a root that declares no `workspaces`, and `workspaces`
+ * globs that match nothing. Both mean the scan measured zero packages.
+ */
+export function isEmptyWorkspaceRefusal(reason: string): boolean {
+  return /declares no `workspaces`|globs match no packages/.test(reason)
+}
+
+/**
  * The project's OWN `@pyreon/loom` bin, or undefined.
  *
  * Resolution goes through the project's `node_modules`, never a global or a
@@ -114,14 +136,35 @@ export const runDependencyFabricGate = async (opts: {
     // `loom-report.json` behind in someone's repo as a side effect.
     const stdout = execFileSync('node', [bin, 'scan', opts.cwd, '--json', '--no-write'], {
       encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
+      // stderr is captured, not discarded: when loom refuses, its reason is
+      // the only useful part of the failure.
+      stdio: ['ignore', 'pipe', 'pipe'],
       maxBuffer: 64 * 1024 * 1024,
     })
     report = JSON.parse(stdout) as LoomReport
   } catch (err) {
-    // A scan that throws is loom telling us something real (not a workspace
-    // root, a malformed config). Surface it as ONE finding rather than
-    // pretending the fabric is clean — and never crash the whole audit.
+    const reason = loomFailureReason(err)
+    // loom refuses a workspace with no member packages rather than reporting
+    // a clean scan of nothing. For doctor that is an EMPTY SCAN — measured
+    // nothing, so skipped and excluded from the mean — not a defect in the
+    // project's dependencies, which a scored warning would claim.
+    if (isEmptyWorkspaceRefusal(reason)) {
+      return {
+        gate: 'dependency-fabric',
+        category: 'architecture',
+        findings: [],
+        meta: {
+          scanned: 0,
+          elapsedMs: Date.now() - start,
+          skipped: true,
+          emptyScan: true,
+          skipReason: `loom found no workspace packages to scan — ${reason}`,
+        },
+      }
+    }
+    // Any other refusal is loom telling us something real (no manifest, a
+    // malformed config). Surface it as ONE finding rather than pretending the
+    // fabric is clean — and never crash the whole audit.
     return {
       gate: 'dependency-fabric',
       category: 'architecture',
@@ -131,9 +174,7 @@ export const runDependencyFabricGate = async (opts: {
           severity: 'warning',
           code: 'dependency-fabric/scan-failed',
           gate: 'dependency-fabric',
-          message:
-            'loom scan could not analyze this workspace: ' +
-            `${(err as Error)?.message ?? String(err)}`.split('\n')[0],
+          message: `loom scan could not analyze this workspace: ${reason}`,
         },
       ],
       meta: { elapsedMs: Date.now() - start },
