@@ -40,7 +40,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 | [`useCSS`](#usecss) | hook | Resolves a `CSSResult` (from the `css` tagged template) to an injected class-name string inside a component. |
 | [`useTheme`](#usetheme) | hook | Returns the current theme as a SNAPSHOT at call time. |
 | [`useThemeAccessor`](#usethemeaccessor) | hook | Returns the raw `() => T` theme accessor (not a snapshot). |
-| [`ThemeProvider`](#themeprovider) | component | Low-level provider for the reactive `ThemeContext` — marked `@internal` / `@deprecated` in source in favour of `&lt;PyreonU |
+| [`ThemeProvider`](#themeprovider) | component | Provides a theme to the reactive `ThemeContext`. |
 | [`ThemeContext`](#themecontext) | constant | The reactive context backing the theme. |
 | [`createSheet`](#createsheet) | function | Creates an ISOLATED `StyleSheet` instance (its own FNV-1a dedup cache + rule registry) instead of the shared singleton ` |
 | [`StyleSheet`](#stylesheet) | class | The CSS injection engine: FNV-1a content hashing, a dedup cache (identical CSS → one rule), and SSR support (collect rul |

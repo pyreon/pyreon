@@ -101,7 +101,7 @@ const Badge = rsBadge({ name: 'Badge', component: 'span' })
 | [`.styles()`](#styles) | function | Raw-CSS escape hatch for what the dimension model can't express. |
 | [`.compose()`](#compose) | function | Wrap the component in named higher-order components. |
 | [`.statics()`](#statics) | function | Attach arbitrary static metadata. |
-| [`Provider`](#provider) | component | Low-level theme + mode provider for rocketstyle components. |
+| [`Provider`](#provider) | component | Tree-level theme + mode provider. |
 | [`context`](#context) | constant | The raw reactive context object backing `Provider` — RE-EXPORTED from `@pyreon/ui-core`, so it is the SAME context `&lt;Pyr |
 | [`isRocketComponent`](#isrocketcomponent) | function | Runtime type guard — `true` when a value was created by `rocketstyle()` (checks the own `IS_ROCKETSTYLE` marker). |
 | [`resolveTheme`](#resolvetheme) | function | Resolve a `$rocketstyle` value inside `styled()` / `.styles()` interpolation functions — handles both the function-acces |
@@ -115,7 +115,7 @@ const Badge = rsBadge({ name: 'Badge', component: 'span' })
 (config?: { dimensions?: Dimensions; useBooleans?: boolean }) => <C>({ name, component }: { name: string; component: C }) => RocketStyleComponent
 ```
 
-Factory initializer (default + named export). `rocketstyle(config?)` returns a component factory; call THAT with `{ name, component }` to get the chainable builder. `config.dimensions` overrides the dimension map; each key becomes a chain method and each propName a consumer prop. `config.useBooleans` switches dimension props from strings to boolean shorthands. Development mode reports missing factory inputs and reserved-key collisions with the conflicting keys and reserved set; production builds skip this validation.
+Factory initializer (default + named export). `rocketstyle(config?)` returns a component factory; call THAT with `{ name, component }` to get the chainable builder. `config.dimensions` overrides the dimension map (default: `states: "state"`, `sizes: "size"`, `variants: "variant"`, `multiple: { propName: "multiple", multi: true }`, `modifiers: { propName: "modifier", multi: true, transform: true }`) — each key becomes a chain method, each propName a consumer prop. `config.useBooleans` (default `false`) switches dimension props from strings (`state="primary"`) to boolean shorthands (`<Button primary />`). Development mode throws on missing `name`/`component`/`dimensions` and on reserved-key collisions, naming the conflicting keys and reserved set; production builds skip this validation.
 
 **Example**
 
