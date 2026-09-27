@@ -954,6 +954,193 @@ const status = signal<'idle' | 'unlocked' | 'denied'>('idle')
       ],
       seeAlso: ['useNotifications', 'useShare'],
     },
+    {
+      name: 'useGeolocation',
+      kind: 'hook',
+      signature:
+        '(options?: { enableHighAccuracy?: boolean; timeout?: number; maximumAge?: number }) => { latitude: number | null; longitude: number | null; accuracy: number | null; error: string | null; isTracking: boolean; start(): void; stop(): void }',
+      summary:
+        'Reactive device position, shared across web / iOS / Android — the web half of the hook PMTC has always lowered natively to `PyreonGeolocation`. Returned fields are GETTERS over signals (not plain values, so a component body reading `geo.latitude` re-reads on every access, matching the native `@Observable`/`mutableStateOf` container), and field NAMES mirror the native container exactly so one shared `.tsx` reads the same members on all three targets. `start()` begins `navigator.geolocation.watchPosition`; `stop()` clears it and also runs automatically on unmount. HONEST PLATFORM GAP: `start()` compiles on web and iOS only — Kotlin\'s native container needs a host closure argument (no default location transport), so `geo.start()` does not compile on Android; the reactive READS (`latitude`/`longitude`/`accuracy`) are shared on all three, only starting the watch is not.',
+      example: `const geo = useGeolocation({ enableHighAccuracy: true })
+<Stack>
+  <span>{geo.latitude ?? 'no fix yet'}</span>
+  <Button onPress={() => geo.start()}>Locate</Button>
+</Stack>`,
+      mistakes: [
+        'Calling `geo.start()` on Android in shared code without a `<NativeIOS>`/`<Web>` guard — the Kotlin container needs a registration closure the shared call site does not supply, so it will not compile there until the Android side grows a default transport',
+        'Destructuring `{ latitude }` at setup instead of reading `geo.latitude` inside JSX/an effect — the fields are getters over signals; destructuring captures the value ONCE and freezes it',
+        'Forgetting `stop()` is idempotent by design — calling it before `start()`, or twice, is always safe (it also runs automatically on unmount)',
+      ],
+      seeAlso: ['useMap', 'useWebSocket', 'useOnline'],
+    },
+    {
+      name: 'useMap',
+      kind: 'hook',
+      signature:
+        '() => { camera: PyreonMapCamera; markers: PyreonMapMarker[]; selectedMarkerId: string | null; selectedMarker: PyreonMapMarker | null; setCamera(c): void; moveTo(lat, lng, zoom?): void; setMarkers(m[]): void; addMarker(m): void; removeMarker(id): void; selectMarker(id): void }',
+      summary:
+        'Map STATE — camera, markers, selection — shared across web / iOS / Android, mirroring the native `PyreonMapState` container field-for-field. Deliberately NOT a renderer: the actual drawing is MapKit / the Android Maps SDK natively, and on web this hook imposes no mapping-library choice — feed `map.camera`/`map.markers` to Leaflet, MapLibre, Google Maps, or a plain `<svg>`. Semantics worth knowing: `addMarker` UPSERTS by id and preserves the existing list position; `removeMarker` clears the selection if the removed marker was selected; `moveTo` keeps the CURRENT zoom when `zoom` is omitted; `selectedMarker` is DERIVED from `selectedMarkerId`, never stored separately. There is no `error` field by design — the container performs no I/O and cannot fail.',
+      example: `const map = useMap()
+map.setCamera({ latitude: 51.5, longitude: -0.12, zoom: 12 })
+map.addMarker({ id: 'a', latitude: 51.5, longitude: -0.12, title: 'Here' })
+<Show when={() => map.selectedMarker}>{(m) => <span>{m.title}</span>}</Show>`,
+      mistakes: [
+        'Expecting this hook to render a map — it is pure state; wire `map.camera`/`map.markers` into your mapping library of choice (or MapKit/Android Maps natively)',
+        'Calling `moveTo(lat, lng, 0)` to reset zoom — `0` is a valid zoom value, not "unset"; omit the third argument entirely to keep the current zoom',
+        'Expecting an `error` field — none exists on any target; the container never performs I/O',
+      ],
+      seeAlso: ['useGeolocation'],
+    },
+    {
+      name: 'useWebSocket',
+      kind: 'hook',
+      signature:
+        '(url: string) => { lastMessage: string | null; messages: string[]; isConnected: boolean; error: string | null; connect(): void; send(text): void; close(): void }',
+      summary:
+        'A live TEXT socket, shared across web / iOS / Android, mirroring the native `PyreonWebSocket` container field-for-field (an implicit auto-connect-on-mount is synthesized on native; on web call `connect()` — or read `isConnected`/`lastMessage`, which start at their empty defaults). Getters over signals: `ws.isConnected` re-reads on every access rather than freezing at mount. HONEST LIMITS matching the native container exactly: TEXT frames only (a binary frame is silently ignored — the native side can never produce one); no automatic reconnect/backoff on any target; `messages` grows WITHOUT BOUND like the native `[String]` — a long-lived feed should read `lastMessage` and keep its own bounded history. `error` is a rendered STRING (not an `Error`) to match what the native optional-interpolation can produce.',
+      example: `const ws = useWebSocket('wss://example.com/chat')
+onMount(() => ws.connect())
+<Show when={() => ws.isConnected}><span>{ws.lastMessage}</span></Show>
+<Button onPress={() => ws.send('ping')}>Ping</Button>`,
+      mistakes: [
+        'Sending a binary payload (`ArrayBuffer`/`Blob`) — `send()` is TEXT-only; a binary frame received from the server is silently ignored rather than stringified',
+        'Rendering `ws.messages` directly for a long-lived feed — it grows without bound on every target; keep your own bounded history and read `lastMessage` for the latest',
+        'Expecting automatic reconnect after a drop — none exists on web OR native; wire your own retry against `ws.error`/`ws.isConnected`',
+      ],
+      seeAlso: ['useFetch', 'useOnline'],
+    },
+    {
+      name: 'useAuth',
+      kind: 'hook',
+      signature:
+        '<User>() => { status: "signedOut" | "signingIn" | "signedIn" | "error"; user: User | null; error: string | null; isAuthenticated: boolean; isSigningIn: boolean; beginSignIn(): void; signInSucceeded(user): void; signInFailed(failure): void; signOut(): void }',
+      summary:
+        'The device-proven auth-STATE container, shared across web / iOS / Android — mirrors the native `PyreonAuth<User>` field-for-field, including the exact `status` string spellings (`"signedOut"`/`"signingIn"`/`"signedIn"`/`"error"`) so `<Text>{auth.status}</Text>` renders identically on all three targets. Pure state machine — no I/O, no platform edge: the sign-in MECHANISM (an OAuth redirect, a POST, a biometric unlock) lives in your own code and drives the container through its explicit transitions. Non-obvious transition rules, each mirroring the native container line-for-line: `beginSignIn` keeps the PRIOR `user` (a token refresh while signed in must not blank the UI); `signInFailed` also keeps `user` (a failed refresh keeps the existing session visible); `signInSucceeded`/`beginSignIn`/`signOut` all clear `error`. Compose token persistence with `useSecureStorage` (store on `signInSucceeded`, clear on `signOut`).',
+      example: `const auth = useAuth<{ id: string; name: string }>()
+const signIn = async () => {
+  auth.beginSignIn()
+  try {
+    const user = await api.login()
+    auth.signInSucceeded(user)
+  } catch (err) {
+    auth.signInFailed(err)
+  }
+}
+<Show when={() => auth.isAuthenticated}><span>{() => \`Hi \${auth.user?.name}\`}</span></Show>`,
+      mistakes: [
+        'Assuming `user` is `null` while `status === "signingIn"` — it is not; a token refresh keeps the PRIOR user visible so the UI does not blank during re-auth',
+        'Treating `status === "error"` as terminal — `error` can also be set with `user` still populated (a failed refresh); check `isAuthenticated` for "does the app have a usable session", not the absence of an error',
+        'Reimplementing session persistence by hand — pair `signInSucceeded`/`signOut` with `useSecureStorage`, not `useStorage` (plaintext) or a module-level variable (lost on reload)',
+      ],
+      seeAlso: ['useSecureStorage', 'useBiometrics'],
+    },
+    {
+      name: 'usePush',
+      kind: 'hook',
+      signature:
+        '() => { token: string | null; lastNotification: PyreonPushNotification | null; notifications: PyreonPushNotification[]; isAuthorized: boolean; isRegistered: boolean; error: string | null; tokenReceived(t): void; notificationReceived(n): void; authorize(ok): void; fail(err): void; start(register): () => void; stop(): void }',
+      summary:
+        'Push-notification STATE + INJECTED REGISTRATION, shared across web / iOS / Android, mirroring the native `PyreonPushNotifications` container. The device token cannot arrive through anything the container owns — natively it lands in the AppDelegate/FirebaseMessagingService, on web it comes out of a service-worker `PushManager.subscribe()` flow your app orchestrates — so `start(register)` hands your app a set of handler thunks (`onToken`, `onAuthorization`, `onNotification`) that drive the pure transitions; your code wires the actual SDK/permission-prompt call. `start` is IDEMPOTENT (a second call while registered does not re-invoke `register`); `stop` is safe when never started and safe to call twice. Transition rules to know: `tokenReceived` clears `error`; `notificationReceived`/`authorize` do NOT touch it; `fail` keeps the prior `token`/`notifications` (stale-while-error).',
+      example: `const push = usePush()
+onMount(() => push.start((handlers) => {
+  Notification.requestPermission().then((p) => handlers.authorize(p === 'granted'))
+  // subscribe via your service worker, then: handlers.tokenReceived(subscription)
+  return () => {} // teardown
+}))
+<Show when={() => push.isAuthorized}><span>{push.lastNotification?.title}</span></Show>`,
+      mistakes: [
+        'Expecting `start()` to request permission or subscribe for you — it only wires the STATE transitions; the app supplies the real SDK calls inside the `register` callback',
+        'Calling `start(register)` a second time expecting it to re-register — it is idempotent while already registered; call `stop()` first if you genuinely need to re-run the registration flow',
+        'Reading `token` before `authorize(true)`/`tokenReceived` have fired — both start `null`/empty until your registration callback reports them',
+      ],
+      seeAlso: ['useNotifications', 'useAuth'],
+    },
+    {
+      name: 'usePayments',
+      kind: 'hook',
+      signature:
+        '() => { products: PyreonProduct[]; ownedProductIds: ReadonlySet<string>; purchasing: string | null; error: string | null; owns(id): boolean; productsLoaded(p[]): void; purchaseStarted(id): void; purchaseSucceeded(id): void; purchaseFailed(err): void; restored(ids): void; connect(actions): void; purchase(id): void; restore(): void }',
+      summary:
+        'In-app-purchase STATE + INJECTED STORE ACTIONS, shared across web / iOS / Android, mirroring the native `PyreonPayments` container. The purchase MECHANISM (StoreKit/Play Billing natively; Stripe/Paddle/the Payment Request API on web) is async and app-orchestrated — `connect(actions)` hands the container your `{ purchase, restore }` implementations, and `purchase(id)`/`restore()` route through them after entering the purchasing state. `purchase(id)` is a TOTAL no-op when not connected — it does not even enter the purchasing state. `connect` is idempotent (a second call while already connected is a no-op). `price` is a pre-formatted STRING (the store formats it per storefront) on every target.',
+      example: `const pay = usePayments()
+onMount(() => pay.connect({
+  purchase: (id) => store.buy(id).then(() => pay.purchaseSucceeded(id)).catch((e) => pay.purchaseFailed(e)),
+  restore: () => store.restorePurchases().then((ids) => pay.restored(ids)),
+}))
+<Button disabled={() => pay.owns('pro')} onPress={() => pay.purchase('pro')}>Buy Pro — {product.price}</Button>`,
+      mistakes: [
+        'Calling `purchase(id)` before `connect(actions)` — it is a total no-op (does not even set `purchasing`) rather than an error, so a missing `connect()` call silently does nothing',
+        'Assuming `purchaseSucceeded` clears `error` — it does not; only `productsLoaded`/`purchaseStarted`/`restored` clear it',
+        'Carrying `price` as a number and formatting it yourself — it is already a localized, pre-formatted string on every target; reformatting risks disagreeing with the storefront',
+      ],
+      seeAlso: ['useAuth', 'useSecureStorage'],
+    },
+    {
+      name: 'useDatabase',
+      kind: 'hook',
+      signature:
+        '() => { insert(collection, record): void; get(collection, id): PyreonRecord | null; all(collection): PyreonRecord[]; delete(collection, id): boolean; find(collection, field, equals): PyreonRecord[]; count(collection): number }',
+      summary:
+        'A tiny, SYNCHRONOUS document store, shared across web / iOS / Android, mirroring the native `PyreonDatabase` container (file-backed on both native targets — records survive relaunch). The API is synchronous because the native one is (`get` returns `PyreonRecord?`, not a promise) — that rules out IndexedDB for the web half, so `localStorage` backs it: synchronous, persistent across reloads, ~5 MB per origin. This is for small app-state record sets, NOT a real database: `find` is a linear scan (as it is natively), and every `PyreonRecord.fields` value is a STRING on every target (`[String: String]` natively) — serialize numbers/dates yourself.',
+      example: `const db = useDatabase()
+db.insert('notes', { id: '1', fields: { title: 'Hello', done: 'false' } })
+const notes = db.all('notes')
+const open = db.find('notes', 'done', 'false')`,
+      mistakes: [
+        'Storing a number or boolean directly in `fields` — every value is a STRING on every target (native `[String: String]`); serialize (`String(n)`) on write, parse on read',
+        'Expecting `get`/`find` to be async — the whole point is a SYNCHRONOUS API matching the native container; no `await`, no promise',
+        'Using this for a real dataset — it is `localStorage`-backed (~5 MB/origin) with a linear-scan `find`, meant for small app-state record sets, not a production database',
+      ],
+      seeAlso: ['useSecureStorage', 'useStorage (in @pyreon/storage)'],
+    },
+    {
+      name: 'useCrashReporter',
+      kind: 'hook',
+      signature:
+        '() => { lastCrash: string; hadCrash: boolean; recordError(message): void; breadcrumb(message): void; clear(): void; start(): void }',
+      summary:
+        'The web half of the cross-platform crash-reporter container (`PyreonCrashReporter` natively). Captures via `window.onerror` + `unhandledrejection`, persists to `localStorage` (the durable, cross-reload analogue of the native file/Keychain backing), and rehydrates the previous session\'s report on `start()`. `start()` installs the global-error hooks and is auto-called by the native emit on mount; on web call it once yourself (typically in `onMount`) — or skip it entirely if you only use `recordError` for manual capture. `breadcrumb(message)` maintains a ring buffer capped at 32 entries, attached to the next report. The vendor transport (actually uploading a report) is app-wired via `setCrashTransport`, mirroring the native transport registry — the hook itself only captures + persists, never fakes an upload. SSR-safe: every read returns the empty state and `start()` no-ops without `window`.',
+      example: `const crash = useCrashReporter()
+onMount(() => crash.start())
+<Show when={() => crash.hadCrash}>
+  <Banner onDismiss={() => crash.clear()}>We're sorry — the app crashed last time.</Banner>
+</Show>
+// Elsewhere, in a top-level catch:
+crash.recordError(String(err))`,
+      mistakes: [
+        'Forgetting to call `start()` on web — unlike native (auto-called by the emit), the web half needs an explicit `start()` call (typically in `onMount`) to install the global-error hooks and rehydrate',
+        'Expecting `recordError`/`breadcrumb` to upload anywhere — capture + persist is all this hook does; wire `setCrashTransport` separately to actually send reports',
+        'Calling `clear()` before the user has seen `hadCrash` — it wipes both the in-memory state AND the persisted entry, so the banner cannot be shown again after a reload',
+      ],
+      seeAlso: ['useOnline'],
+    },
+    {
+      name: 'useAppState',
+      kind: 'hook',
+      signature: '() => () => "active" | "background" | "inactive"',
+      summary:
+        'Reactive app lifecycle phase — returns an ACCESSOR (call it in a reactive scope: `state()`), mirroring the native lifecycle channels (SwiftUI `ScenePhase`/`UIApplication` notifications, Android `ProcessLifecycleOwner`) so one shared source reads the same value on web + iOS + Android. `"active"` = foreground and focused; `"inactive"` = visible but not focused (another window focused, or mid-transition); `"background"` = hidden (tab switched away, window minimized, app backgrounded). SSR-safe: reports `"active"` on the server. Driven by `visibilitychange`/`focus`/`blur` on web.',
+      example: `const state = useAppState()
+// Pause a live poll while the app isn't in the foreground:
+<Show when={() => state() === 'active'}><LivePoll /></Show>`,
+      mistakes: [
+        'Reading `useAppState()()` (calling the accessor eagerly at setup) instead of inside a reactive scope — the whole point is that JSX/`effect` re-reads it on every phase change',
+        'Treating `"inactive"` as equivalent to `"background"` — it is not; `"inactive"` means still VISIBLE but not focused, which matters for pausing input handling without also pausing rendering',
+      ],
+      seeAlso: ['useOnline', 'useDocumentVisibility'],
+    },
+    {
+      name: 'setCrashTransport',
+      kind: 'function',
+      signature: '(send: ((report: string) => void) | undefined) => void',
+      summary:
+        'Register (or clear, with `undefined`) the function that actually uploads a crash report string — the app-wired vendor transport for `useCrashReporter`, mirroring the native `PyreonCrashTransportRegistry`. `useCrashReporter` only captures + persists; nothing is ever sent anywhere until a transport is registered.',
+      example: `setCrashTransport((report) => fetch('/api/crashes', { method: 'POST', body: report }))`,
+      mistakes: [
+        'Never calling this and expecting `useCrashReporter` to upload reports on its own — capture/persist and transport are deliberately separate; without a registered transport, reports stay local only',
+      ],
+      seeAlso: ['useCrashReporter'],
+    },
   ],
   gotchas: [
     // First gotcha feeds the llms.txt teaser. Pick the most distinctive
