@@ -12,7 +12,7 @@
  * disk under `src/`.
  */
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
-import { schemaSource, writeTree } from './helpers/write-tree'
+import { writeTree } from './helpers/write-tree'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveConfig, type ValidatorName } from '../core/config'
