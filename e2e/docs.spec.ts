@@ -47,6 +47,37 @@ async function revealExamples(page: import('@playwright/test').Page): Promise<vo
 }
 
 test.describe('docs rendering', () => {
+  test('small-phone header fits and the docs drawer is operable', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 568 })
+    await page.goto('/docs/getting-started')
+    await page.waitForLoadState('networkidle')
+
+    const hamburger = page.locator('.docs-header__hamburger')
+    const drawer = page.locator('#docs-navigation-drawer')
+    await expect(hamburger).toBeVisible()
+    await expect(hamburger).toHaveAttribute('aria-expanded', 'false')
+    await expect(drawer).toBeHidden()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
+
+    await hamburger.click()
+    await expect(hamburger).toHaveAttribute('aria-expanded', 'true')
+    await expect(drawer).toBeInViewport()
+    await expect(page.locator('html')).toHaveClass(/docs-drawer-scroll-locked/)
+
+    await page.keyboard.press('Escape')
+    await expect(hamburger).toHaveAttribute('aria-expanded', 'false')
+    await expect(hamburger).toBeFocused()
+    await expect(page.locator('html')).not.toHaveClass(/docs-drawer-scroll-locked/)
+    await expect(drawer).toBeHidden()
+  })
+
+  test('landing page does not expose a non-functional hamburger', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 568 })
+    await page.goto('/')
+    await expect(page.locator('.docs-header__hamburger')).toHaveCount(0)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
+  })
+
   test('landing page renders the PyreonLanding component (real signal counter)', async ({
     page,
   }) => {
