@@ -160,7 +160,7 @@ describe('the surface is stable against changes that are not contract changes', 
     const fields = (names: string[]) =>
       renderType({
         kind: 'object',
-        fields: names.map((n) => ({ name: n, type: { kind: 'string' as const }, required: true, nullable: false })),
+        fields: names.map((n) => ({ name: n, type: { kind: 'string' as const }, required: true })),
       })
     expect(fields(['a', 'b'])).toBe(fields(['b', 'a']))
   })
@@ -197,11 +197,11 @@ describe('renderType is stable for every IR kind', () => {
   })
 
   it('sorts an enum, so reordering it is not reported as a change', () => {
-    const a = renderType({ kind: 'string', enum: ['b', 'a', 'c'] })
-    const b = renderType({ kind: 'string', enum: ['c', 'b', 'a'] })
+    const a = renderType({ kind: 'enum', values: ['b', 'a', 'c'] })
+    const b = renderType({ kind: 'enum', values: ['c', 'b', 'a'] })
     expect(a).toBe(b)
     // ...but a REMOVED member still is one.
-    expect(renderType({ kind: 'string', enum: ['a', 'b'] })).not.toBe(a)
+    expect(renderType({ kind: 'enum', values: ['a', 'b'] })).not.toBe(a)
   })
 
   it('renders arrays and refs by name', () => {

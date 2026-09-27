@@ -65,7 +65,7 @@ describe('createHttp — request building', () => {
     const api = createHttp({ transport })
 
     await expect(api.post('/x', { json: { a: 1 }, body: 'raw' })).rejects.toThrow(
-      /pass either `json` or `body`/,
+      /pass ONE of `json`, `form`, `multipart` or `body`/,
     )
   })
 

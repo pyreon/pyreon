@@ -1826,6 +1826,10 @@ const ENDPOINT_UNLOWERABLE_ARGS: ReadonlyMap<string, string> = new Map([
   ['signal', 'an AbortSignal has no analogue in the emitted fetch harness, which runs to completion'],
   ['timeout', 'PyreonHttpRequest carries no timeout field'],
   ['meta', 'per-call metadata is read by client middleware, which does not lower'],
+  ['form', 'a url-encoded form body is not lowered — the native request body is built only from `json`'],
+  ['multipart', 'PyreonHttpRequest carries a single string/Data body, with no multipart parts'],
+  ['body', 'a raw BodyInit (Blob, FormData, stream) has no native analogue'],
+  ['cookies', 'the native request has no cookie option — send a `Cookie` header through `headers`'],
 ])
 
 /**

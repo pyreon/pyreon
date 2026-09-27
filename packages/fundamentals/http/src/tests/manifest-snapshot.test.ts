@@ -25,6 +25,7 @@ describe('gen-docs — http snapshot', () => {
       'http/HttpMiddleware',
       'http/createHttp',
       'http/createMock',
+      'http/encodeForm',
       'http/endpoint',
       'http/retry',
       'http/runWithRequest',
@@ -33,7 +34,7 @@ describe('gen-docs — http snapshot', () => {
 
     // The entries an assistant is most likely to get wrong must carry
     // their mistakes list — that is the whole value of the MCP surface.
-    expect(record['http/createHttp']!.mistakes?.split('\n').length).toBe(6)
+    expect(record['http/createHttp']!.mistakes?.split('\n').length).toBe(8)
     expect(record['http/createHttp']!.mistakes).toContain('defaults')
     expect(record['http/retry']!.notes).toContain('compound')
     expect(record['http/runWithRequest']!.notes).toContain('AsyncLocalStorage')

@@ -240,3 +240,44 @@ components:
     }
   })
 })
+
+describe('non-string enums on the native path', () => {
+  // The native target narrows an enum to ONE scalar schema: PMTC has no literal
+  // union, so a numeric or boolean enum must become `number()` / `boolean()`
+  // -- and the TS type must agree, or the emitted module does not typecheck.
+  const spec = `
+openapi: 3.0.3
+info: { title: T, version: '1' }
+servers: [{ url: 'https://t.test/v1' }]
+paths:
+  /k:
+    get:
+      operationId: getK
+      tags: [k]
+      responses: { '200': { content: { application/json: { schema: { $ref: '#/components/schemas/K' } } } } }
+components:
+  schemas:
+    K:
+      type: object
+      required: [level, on]
+      properties:
+        level: { type: integer, enum: [1, 2, 3] }
+        on: { type: boolean, enum: [true, false] }
+`
+  const mod = generate(spec, resolveConfig({ input: 'x', target: 'multiplatform' })).files.find(
+    (f) => f.path === 'k.native.tsx',
+  )
+
+  it('narrows the schema and the type to the scalar', () => {
+    expect(mod?.contents).toMatch(/level: s\.number\(\)/)
+    expect(mod?.contents).toMatch(/on: s\.boolean\(\)/)
+    expect(mod?.contents).toMatch(/level: number/)
+    expect(mod?.contents).toMatch(/on: boolean/)
+  })
+
+  for (const target of ['swift', 'kotlin'] as const) {
+    it(`lowers to ${target} with no warnings`, () => {
+      expect(transform(mod!.contents, { target }).warnings).toEqual([])
+    })
+  }
+})

@@ -6,7 +6,7 @@ export default defineManifest({
   tagline:
     'OpenAPI in, typed Pyreon client out — schemas, endpoints, queries, mocks, faker factories, Markdown reference and Atlas scenarios, with a multiplatform mode that proves its own output lowers to Swift and Kotlin',
   description:
-    'Lathe reads an OpenAPI 3.x document and emits a client for the Pyreon stack: `@pyreon/validate` schemas, `@pyreon/http` endpoint declarations, `@pyreon/query` hooks, deterministic mock fixtures, and `@pyreon/atlas` scenarios derived from the spec\'s own enums and examples. The spec parser is first-party — a YAML reader scoped to the OpenAPI subset that REFUSES anchors, tags and tab indentation rather than mis-reading them — so there is no third-party spec dependency to trust. What separates it from a conventional generator is `target: \'multiplatform\'`: the native compiler (PMTC) lowers only a SUBSET of TypeScript and has no module graph, so it recognises a client, a schema and a call only when they share ONE file\'s top level. Hand-written code drifts out of that constantly; generated code need not, so Lathe emits a self-contained module per tag — a layout no human would maintain and exactly the one the compiler wants — then runs the real compiler over its own output and checks for the POSITIVE marker (`PyreonQuery<`, `PyreonZodSchema_`), because zero warnings is not evidence of lowering.',
+    'Lathe reads an OpenAPI 3.x document and emits a client for the Pyreon stack: `@pyreon/validate` schemas, `@pyreon/http` endpoint declarations, `@pyreon/query` hooks, deterministic mock fixtures, and `@pyreon/atlas` scenarios derived from the spec\'s own enums and examples. YAML is read as YAML 1.2 core through the `yaml` package, configured strictly: anchors and merge keys resolve, while duplicate keys, multi-document streams, custom tags and non-JSON values are REFUSED with a line number rather than producing a document the author did not write. What separates it from a conventional generator is `target: \'multiplatform\'`: the native compiler (PMTC) lowers only a SUBSET of TypeScript and has no module graph, so it recognises a client, a schema and a call only when they share ONE file\'s top level. Hand-written code drifts out of that constantly; generated code need not, so Lathe emits a self-contained module per tag — a layout no human would maintain and exactly the one the compiler wants — then runs the real compiler over its own output and checks for the POSITIVE marker (`PyreonQuery<`, `PyreonZodSchema_`), because zero warnings is not evidence of lowering.',
   category: 'universal',
   multiplatform: {
     tier: 'web-only',
@@ -14,9 +14,9 @@ export default defineManifest({
       'the code generator — build-time tooling that emits app code, not app runtime itself',
   },
   features: [
-    'First-party OpenAPI 3.x reader: JSON or YAML, local `$ref` resolution, `allOf` flattening through refs (the inheritance idiom), `oneOf`/`anyOf` with `discriminator`, 3.1 `type: [string, null]`, path-level parameters, and `{id}` → `:id` conversion to the `@pyreon/http` endpoint form',
-    'Own YAML parser scoped to the OpenAPI subset — block maps/sequences, flow collections, block scalars, quote-aware colon splitting (a URL value and a quoted key both contain one) — that REFUSES anchors, merge keys, explicit tags and tab indentation with a line number rather than producing a subtly wrong document',
-    'Loss is REPORTED, never silent: every spec feature the client does not honour becomes a `note` with a stable greppable `code`, an RFC 6901 JSON-pointer location, and a SEVERITY derived from the code (`NOTE_SEVERITY`) -- `loss` (header/cookie parameters, security schemes, response headers, typed error bodies, non-default serialization, `const`, `deprecated`, an optional body the call requires, a non-JSON media type, …) or `choice` (JSON over XML, the first tag, the summary over the description). The report leads with losses and summarises choices; the reference pages split them',
+    'OpenAPI 3.x reader: JSON or YAML, local `$ref` resolution, `allOf` flattening through refs (the inheritance idiom), `oneOf`/`anyOf` with `discriminator` (validated at generation — an implicit or non-object discriminator degrades to a plain union with a note instead of a module that throws at import), nullability in every spelling (3.0 `nullable`, 3.1 `type: [X, null]` / `anyOf: [X, {type: null}]`) on every node including component models, `enum`/`const` of any JSON scalar, constraints on the type itself (so they apply to array items and alias models), path-level parameters, and `{id}` → `:id` conversion to the `@pyreon/http` endpoint form',
+    'Strict YAML 1.2 reading via the `yaml` package — anchors, aliases and merge keys resolve; duplicate keys, multi-document streams, custom tags, recursive aliases and `.inf`/`.nan` are REFUSED with a line number rather than producing a subtly wrong document',
+    'Loss is REPORTED, never silent: every spec feature the client does not honour becomes a `note` with a stable greppable `code`, an RFC 6901 JSON-pointer location, and a SEVERITY derived from the code (`NOTE_SEVERITY`) -- `loss` (security schemes, response headers, typed error bodies, non-default serialization, a non-scalar `const`, a `$ref` cycle through references alone, `deprecated`, an optional body the call requires, a non-JSON media type, …) or `choice` (JSON over XML, the first tag, the summary over the description). The report leads with losses and summarises choices; the reference pages split them',
     'Refuses the wrong document before writing anything: Swagger 2 with the `swagger2openapi` conversion command, a file with no `openapi` key, an unsupported major. Every project is generated before any is written, so a refused spec leaves every output tree untouched',
     'A strict CLI: unknown flags, commands and values are errors with a did-you-mean (exit 2), `--dry-run` reports what would change, the config is found upward from the cwd with paths relative to the config FILE, errors go to stderr, colour respects TTY/`NO_COLOR`, and `--json` has ONE documented shape (`JsonReport`) for any project count. `lathe pull` supports `--token` / `--header`, conditional requests via ETag, and every project with a `source`',
     'Orphaned output is pruned: each run writes `lathe-manifest.json`, and the next `generate` removes files it no longer produces while `check` reports them stale -- only manifest-listed paths are ever removed',
@@ -66,7 +66,7 @@ lathe / Bookshelf 1.2.0
     {
       name: 'generate',
       kind: 'function',
-      signature: 'generate(specText: string, config: ResolvedConfig): GenerateResult',
+      signature: 'generate(specText: string, config: ResolvedConfig, options?: { sourceUrl?: string }): GenerateResult',
       summary:
         'The whole pipeline, pure: spec text in, file CONTENTS out. Touches no filesystem, which is what makes the generator testable without a temp directory and lets `lathe check` diff before writing. Returns the IR document, the generated files, and a per-operation `reach` map explaining in spec terms which operations can run natively and why the others cannot.',
       example: `import { generate, resolveConfig } from '@pyreon/lathe'
@@ -81,7 +81,7 @@ for (const [id, r] of reach) {
         'Passing a relative `baseUrl` (or omitting `servers` from the spec) and expecting native output — PMTC bakes the request URL at compile time, so a relative base makes EVERY operation web-only. The reach report names this, but only if you read it.',
         'Assuming the `.native.tsx` modules replace the web output. They are ADDITIVE: the web files are byte-identical whether the target is `web` or `multiplatform`.',
         'Editing generated files. Every file carries a DO-NOT-EDIT banner and is overwritten on the next run; change the spec or the emitter.',
-        'Expecting `s.enum` in native output. Enums do not lower, so the native path narrows them to `s.string()` — the constraint is genuinely lost there, which is why the two layouts are emitted separately rather than shared.',
+        'Expecting `s.enum` in native output. Enums do not lower, so the native path narrows them to their base scalar (`s.string()` / `s.number()`) — the constraint is genuinely lost there, which is why the two layouts are emitted separately rather than shared.',
       ],
     },
     {
@@ -133,9 +133,9 @@ if (worstVerdict(report) !== 'lowers') process.exitCode = 1`,
     {
       name: 'loadOpenApi',
       kind: 'function',
-      signature: 'loadOpenApi(source: string): { doc: IrDocument }',
+      signature: 'loadOpenApi(source: string, options?: { sourceUrl?: string }): { doc: IrDocument }',
       summary:
-        'Parses an OpenAPI 3.x document (JSON or YAML text) into the spec-agnostic IR. Every reduction the IR cannot represent is recorded in `doc.notes` with a stable code and a location, so a loss is reported once at the boundary instead of being rediscovered differently by each emitter. Deterministic: models and operations are sorted, so the same spec always produces the same IR.',
+        'Parses an OpenAPI 3.x document (JSON or YAML text) into the spec-agnostic IR. Every reduction the IR cannot represent is recorded in `doc.notes` with a stable code and a location, so a loss is reported once at the boundary instead of being rediscovered differently by each emitter. Deterministic: models and operations are sorted, so the same spec always produces the same IR. Pass `sourceUrl` (where the spec was fetched from) and a RELATIVE `servers[].url` is resolved against it, as OpenAPI specifies.',
       example: `import { loadOpenApi } from '@pyreon/lathe'
 
 const { doc } = loadOpenApi(await readFile('./openapi.yaml', 'utf8'))
@@ -143,8 +143,9 @@ console.log(doc.models.length, 'models', doc.operations.length, 'operations')
 for (const note of doc.notes) console.warn(note.code, note.at, note.message)`,
       mistakes: [
         'Ignoring `doc.notes`. A spec with a remote `$ref` or a non-JSON media type still produces output — with those pieces typed `unknown`. The note is the only signal. Filter on `noteSeverity(note) === \'loss\'` for the ones that change behaviour.',
+        'Reading `op.body` as a type. It is `{ mediaType, encoding, type }` — `encoding` (`json` / `form` / `multipart` / `text` / `binary`) decides the call argument (`json:` / `form:` / `multipart:` / `body:`), and a form body carries its per-field `fieldEncoding`.',
         'Passing a Swagger 2 document. It is refused (`openApiVersionProblem` names the `swagger2openapi` conversion) rather than read as an empty 3.x spec.',
-        'Expecting anchors or merge keys to work. The YAML reader refuses them by design with a line number, because silently ignoring an anchor produces a document that is wrong everywhere it was used.',
+        'Expecting a custom YAML tag (`!Ref`, `!include`) to be expanded. The reader refuses it with a line number instead of reading it as a plain string; resolve or bundle the spec first. Anchors, aliases and merge keys DO resolve.',
       ],
     },
     {

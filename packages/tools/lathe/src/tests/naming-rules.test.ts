@@ -7,7 +7,7 @@ import {
   pascal,
   propKey,
   typeIdent,
-  uniquifier,
+  assignNames,
   words,
 } from '../core/naming'
 
@@ -120,19 +120,27 @@ describe('operationIdFrom — deterministic when a spec omits operationId', () =
   })
 })
 
-describe('uniquifier', () => {
+describe('assignNames', () => {
   it('leaves the first occurrence alone and numbers the rest', () => {
-    const u = uniquifier()
-    expect([u('get'), u('get'), u('get')]).toEqual(['get', 'get2', 'get3'])
+    expect(assignNames(['get', 'get', 'get'], (x) => x)).toEqual(['get', 'get2', 'get3'])
   })
 
-  it('counts each name independently', () => {
-    const u = uniquifier()
-    expect([u('a'), u('b'), u('a')]).toEqual(['a', 'b', 'a2'])
+  it('never hands out a suffixed name that is already taken', () => {
+    // The old running counter: `User`, `User2`, `user` -> `User`, `User2`,
+    // `User2`. One `User2` then overwrote the other and a `$ref` to it bound
+    // to the wrong schema.
+    expect(assignNames(['User', 'User2', 'user'], typeIdent)).toEqual(['User', 'User2', 'User3'])
   })
 
-  it('is per-instance — two namespaces do not share a counter', () => {
-    expect(uniquifier()('x')).toBe(uniquifier()('x'))
+  it('reserves an EXACT raw name first, wherever it sorts', () => {
+    // `user` sorts after `User2`, but `User2` must keep its own name even if
+    // a derived one would otherwise have claimed it first.
+    expect(assignNames(['user', 'User', 'User2'], typeIdent)).toEqual(['User3', 'User', 'User2'])
+  })
+
+  it('is deterministic', () => {
+    const raws = ['a-b', 'a_b', 'aB', 'a b']
+    expect(assignNames(raws, typeIdent)).toEqual(assignNames(raws, typeIdent))
   })
 })
 

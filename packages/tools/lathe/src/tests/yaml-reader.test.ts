@@ -139,13 +139,22 @@ describe('document markers', () => {
     expect(y('---\na: 1')).toEqual({ a: 1 })
   })
 
-  it('stops at a SECOND document rather than merging it', () => {
-    // Merging would silently combine two specs into one.
-    expect(y('a: 1\n---\nb: 2')).toEqual({ a: 1 })
+  it('REFUSES a second document rather than merging or dropping it', () => {
+    // Merging would silently combine two specs into one; using only the
+    // first (what the old reader did) silently drops the second. A spec is
+    // exactly one document, so a stream of two is refused with its line.
+    let err: unknown
+    try { y('a: 1\n---\nb: 2') } catch (e) { err = e }
+    expect(err).toBeInstanceOf(YamlError)
+    expect((err as YamlError).line).toBe(2)
+    expect((err as Error).message).toContain('more than one YAML document')
   })
 
-  it('stops at the ... end marker', () => {
-    expect(y('a: 1\n...\nb: 2')).toEqual({ a: 1 })
+  it('ends the document at the ... marker', () => {
+    // `...` closes a document; what follows it starts another, so the
+    // same refusal applies rather than a silent truncation.
+    expect(y('a: 1\n...\n')).toEqual({ a: 1 })
+    expect(() => y('a: 1\n...\nb: 2')).toThrow(YamlError)
   })
 })
 
@@ -168,8 +177,16 @@ describe('flow collections', () => {
     expect(() => y('a: [1, 2] junk')).toThrow(YamlError)
   })
 
-  it('THROWS on a flow mapping missing its colon', () => {
-    expect(() => y('a: {x 1}')).toThrow(YamlError)
+  it('reads a flow-mapping entry without a colon as a key with a null value', () => {
+    // YAML 1.2 7.4.1: `{x 1}` is the single key "x 1" with an empty value.
+    // The old reader refused it, which is refusing a valid document.
+    expect(y('a: {x 1}')).toEqual({ a: { 'x 1': null } })
+  })
+
+  it('reads a multi-line flow collection', () => {
+    // An 80-column dumper wraps long flow sequences; the old reader threw.
+    expect(y('a: [x,\n  y]')).toEqual({ a: ['x', 'y'] })
+    expect(y('a: { x: 1,\n  y: 2 }')).toEqual({ a: { x: 1, y: 2 } })
   })
 })
 
@@ -209,8 +226,16 @@ describe('quoting interacts with comment stripping and flow parsing', () => {
 })
 
 describe('malformed structure is refused, not guessed at', () => {
-  it('refuses a sequence item indented past its parent', () => {
-    expect(() => y('a:\n  - x\n      - y')).toThrow(YamlError)
+  it('reads an over-indented line as a plain-scalar CONTINUATION', () => {
+    // YAML folds a more-indented line into the plain scalar above it, so
+    // `- x` + `      - y` is the one item "x - y". Real specs rely on the
+    // same rule for every description wrapped at 80 columns.
+    expect(y('a:\n  - x\n      - y')).toEqual({ a: ['x - y'] })
+  })
+
+  it('reads a nested sequence', () => {
+    // `- - 1`: DigitalOcean and GitHub examples use it; the old reader threw.
+    expect(y('a:\n  - - 1\n    - 2\n  - - 3')).toEqual({ a: [[1, 2], [3]] })
   })
 
   it('stops a mapping at a sibling sequence item', () => {
@@ -223,38 +248,59 @@ describe('malformed structure is refused, not guessed at', () => {
     expect(y('- a\n- b')).toEqual(['a', 'b'])
   })
 
-  it('REFUSES a document that is a bare scalar', () => {
-    // The reader is scoped to the OpenAPI subset, where the document is
-    // always a mapping. Accepting a scalar would push the failure down
-    // to `loadOpenApi`, which can only say "did not parse to an object"
-    // — no line number, no offending text.
-    let err: unknown
-    try { y('just a string') } catch (e) { err = e }
-    expect(err).toBeInstanceOf(YamlError)
-    expect(String((err as Error).message)).toContain("key: value")
-    expect(String((err as Error).message), 'and quotes what it found')
-      .toContain('just a string')
+  it('reads a document that is a bare scalar as that scalar', () => {
+    // A bare scalar is valid YAML. Deciding that it is not a SPEC is the
+    // OpenAPI layer's job, not the YAML reader's.
+    expect(y('just a string')).toBe('just a string')
   })
 })
 
 describe('what the reader REFUSES, by design', () => {
-  // Each of these is a real YAML feature outside lathe's subset. Skipping
-  // one produces a spec that parses into the WRONG shape — an anchor
-  // silently resolving to nothing means a schema generates as empty, and
-  // an empty schema validates nothing.
-  for (const [label, src] of [
-    ['an anchor', 'a: &anchor 1\nb: 1'],
-    ['an alias', 'a: 1\nb: *anchor'],
-    ['a merge key', 'a:\n  <<: *base\n  x: 1'],
-    ['an explicit tag', 'a: !!str 1'],
-  ] as Array<[string, string]>) {
-    it(`refuses ${label} with a line number`, () => {
+  // Each of these is VALID YAML that has no faithful JSON-shaped reading, or
+  // a construct whose meaning depends on something the reader cannot see.
+  // Producing SOME value would generate a client from a document the author
+  // did not write, so each throws with the line.
+  for (const [label, src, line] of [
+    ['a custom tag', 'a: 1\nb: !Ref x', 2],
+    ['a non-finite number', 'a: 1\nb: .inf', 2],
+    ['a recursive alias', 'a: &a\n  b: *a', 2],
+    ['a collection used as a key', 'a: 1\n? [x]\n: 2', 2],
+    ['a duplicate key', 'a: 1\na: 2', 2],
+  ] as Array<[string, string, number]>) {
+    it(`refuses ${label} with its line number`, () => {
       let err: unknown
       try { y(src) } catch (e) { err = e }
       expect(err, label).toBeInstanceOf(YamlError)
-      expect(String((err as Error).message), label).toMatch(/line \d+|:\d+/)
+      expect((err as YamlError).line, label).toBe(line)
+      expect(String((err as Error).message), label).toContain('[Pyreon]')
     })
   }
+
+  it('RESOLVES anchors, aliases and merge keys instead of refusing them', () => {
+    // The old reader refused these because it could not resolve them. They
+    // are valid YAML that hand-maintained specs use for shared blocks, and
+    // the reader now resolves them exactly -- refusing a correct document
+    // is not a safety property.
+    expect(y('base: &b {x: 1}\ncopy: *b\nmerged:\n  <<: *b\n  y: 2')).toEqual({
+      base: { x: 1 },
+      copy: { x: 1 },
+      merged: { x: 1, y: 2 },
+    })
+  })
+
+  it('accepts a YAML 1.2 CORE tag, which only restates a type', () => {
+    expect(y('a: !!str 1')).toEqual({ a: '1' })
+  })
+
+  it('bounds alias expansion (the "billion laughs" document)', () => {
+    const lines = ['a: &a [x, x, x, x, x, x, x, x, x, x]']
+    for (let i = 0; i < 8; i++) {
+      const prev = String.fromCharCode(97 + i)
+      const next = String.fromCharCode(98 + i)
+      lines.push(`${next}: &${next} [${Array(10).fill(`*${prev}`).join(', ')}]`)
+    }
+    expect(() => y(lines.join('\n'))).toThrow(YamlError)
+  })
 
   it('refuses TAB indentation', () => {
     // YAML forbids tabs. A reader that treats one as whitespace computes
@@ -274,7 +320,7 @@ describe('what the reader REFUSES, by design', () => {
     // The whole point of refusing rather than skipping: the author has
     // to be able to find it in a 4000-line spec.
     let err: unknown
-    try { y('openapi: 3.0.0\ninfo:\n  title: t\npaths:\n  /x: !!weird 1') } catch (e) { err = e }
-    expect(String((err as Error).message)).toMatch(/5|line/)
+    try { y('openapi: 3.0.0\ninfo:\n  title: t\npaths:\n  /x: !weird 1') } catch (e) { err = e }
+    expect((err as YamlError).line).toBe(5)
   })
 })
