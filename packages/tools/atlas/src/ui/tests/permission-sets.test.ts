@@ -85,6 +85,16 @@ describe('recording', () => {
     expect(viewer.denied()).toEqual(['posts.delete'])
   })
 
+  it('seeds the keys of the ARRAY form of can.all / can.any too', () => {
+    // `can.all(['a', 'b'], ctx)` is the context-bearing form. Its keys live in
+    // the first argument, so a wrapper that only walked rest keys would seed
+    // nothing and let the check fall through to the '*' default.
+    const viewer = recordingPermissions(permissionSetById('viewer'))
+    expect(viewer.can.all(['posts.read', 'posts.delete'])).toBe(false)
+    expect(viewer.can.any(['posts.read'], {})).toBe(true)
+    expect(viewer.consulted().sort()).toEqual(['posts.delete', 'posts.read'])
+  })
+
   it('forwards the rest of the Permissions surface', () => {
     // Dropping `can.not` / `can.all` would change the behaviour of the
     // component under test, which would make every verdict here worthless.

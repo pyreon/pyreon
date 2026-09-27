@@ -11,6 +11,20 @@ const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number)
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+/**
+ * A prototype-free record for the operators that build a keyed result from
+ * user data (groupBy/keyBy/countBy/mapValues). A plain `{}` accumulator reads
+ * inherited members as existing buckets — `groupBy` on a `'constructor'` key
+ * threw `group.push is not a function`, `countBy` produced
+ * `'function Object() …1'` — and treats a `'__proto__'` key as a PROTOTYPE
+ * write, so the bucket vanished and the result inherited from user data.
+ * `Object.create(null)` has no inherited members and makes `__proto__` an
+ * ordinary own key.
+ */
+function dict<V>(): Record<string, V> {
+  return Object.create(null) as Record<string, V>
+}
+
 function reactive<TIn, TOut>(
   source: TIn,
   fn: (val: any) => TOut,
@@ -99,7 +113,7 @@ export function groupBy<T>(source: T[], key: KeyOf<T>): Record<string, T[]>
 export function groupBy<T>(source: ReadableSignal<T[]> | T[], key: KeyOf<T>): any {
   const getKey = resolveKey(key)
   return reactive(source, (arr: T[]) => {
-    const result: Record<string, T[]> = {}
+    const result = dict<T[]>()
     for (const item of arr) {
       const k = String(getKey(item))
       let group = result[k]
@@ -122,7 +136,7 @@ export function keyBy<T>(source: T[], key: KeyOf<T>): Record<string, T>
 export function keyBy<T>(source: ReadableSignal<T[]> | T[], key: KeyOf<T>): any {
   const getKey = resolveKey(key)
   return reactive(source, (arr: T[]) => {
-    const result: Record<string, T> = {}
+    const result = dict<T>()
     for (const item of arr) result[String(getKey(item))] = item
     return result
   })
@@ -148,7 +162,7 @@ export function countBy<T>(source: T[], key: KeyOf<T>): Record<string, number>
 export function countBy<T>(source: ReadableSignal<T[]> | T[], key: KeyOf<T>): any {
   const getKey = resolveKey(key)
   return reactive(source, (arr: T[]) => {
-    const result: Record<string, number> = {}
+    const result = dict<number>()
     for (const item of arr) {
       const k = String(getKey(item))
       result[k] = (result[k] ?? 0) + 1
@@ -555,7 +569,7 @@ export function mapValues<T, U>(
   fn: (value: T, key: string) => U,
 ): any {
   return reactive(source, (obj: Record<string, T>) => {
-    const result: Record<string, U> = {}
+    const result = dict<U>()
     for (const key of Object.keys(obj)) result[key] = fn(obj[key] as T, key)
     return result
   })

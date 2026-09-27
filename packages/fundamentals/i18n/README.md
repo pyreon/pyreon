@@ -60,7 +60,7 @@ i18n.t('items', { count: 1 }) // '1 item' (fallback to en)
 | Option              | Type                                                      | Description                                              |
 | ------------------- | --------------------------------------------------------- | -------------------------------------------------------- |
 | `locale`            | `string`                                                  | Initial locale (e.g. `'en'`)                             |
-| `fallbackLocale`    | `string`                                                  | Locale to try when key is missing in active locale        |
+| `fallbackLocale`    | `string`                                                  | Locale to try when key is missing in active locale (after the BCP 47 step-down: `en-US` → `en` → fallback) |
 | `messages`          | `Record<string, TranslationDictionary>`                   | Static messages, keyed by locale                          |
 | `loader`            | `(locale, namespace) => Promise<TranslationDictionary?>`  | Async namespace loader                                    |
 | `defaultNamespace`  | `string`                                                  | Default namespace for `t()` (default: `'common'`)        |
