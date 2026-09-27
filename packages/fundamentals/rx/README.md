@@ -29,7 +29,7 @@ const top10 = rx.take(sorted, 10)
 const top10b = rx.pipe(
   users,
   (items) => items.filter((u) => u.active),
-  (items) => items.sort((a, b) => a.name.localeCompare(b.name)),
+  (items) => [...items].sort((a, b) => a.name.localeCompare(b.name)),
   (items) => items.slice(0, 10),
 )
 ```
@@ -87,7 +87,7 @@ The overload is picked from the input type at the call site — no separate func
 const result = rx.pipe(
   users,
   (items) => items.filter((u) => u.active),
-  (items) => items.sort((a, b) => a.createdAt - b.createdAt),
+  (items) => [...items].sort((a, b) => a.createdAt - b.createdAt),
   (items) => items.slice(0, 20),
 )
 // result: Computed<User[]>

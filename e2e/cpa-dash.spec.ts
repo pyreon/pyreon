@@ -156,23 +156,26 @@ test.describe('cpa-dash — runtime', () => {
     await expect(page.getByRole('heading', { level: 1 }).first()).toContainText('Sign in')
   })
 
-  test('POST to a 308 redirect returns the same status (HTTP method-preservation contract)', async ({ request }) => {
-    // The framework's job is to return the right STATUS — actual method
-    // preservation across the redirect is the browser's HTTP-spec
-    // responsibility (302/303 force GET; 307/308 keep the original
-    // method). This spec verifies the framework doesn't accidentally
-    // collapse a POST to a different status code than a GET would get
-    // for the same redirect, which would silently break method-preserving
-    // semantics in production.
+  test('a 308 loader redirect keeps its status; a POST to the page is 405 like production', async ({ request }) => {
+    // GET: the framework must return the redirect's OWN status (308, not
+    // the 307 default) — method preservation across the hop is then the
+    // browser's HTTP-spec responsibility.
     const getResponse = await request.get('/redirect-fixtures/permanent', {
       maxRedirects: 0,
     })
+    expect(getResponse.status()).toBe(308)
+    expect(getResponse.headers()['location']).toBe('/login')
+
+    // POST: this route exports no `action`, so a POST is not a page render.
+    // Production's handler answers 405 + Allow before any loader runs, and
+    // dev runs the same pipeline (`pageMethodResponse`). This spec used to
+    // assert the POST ALSO rendered the loader's 308 — a shape only the dev
+    // server ever produced, so it encoded dev/production divergence.
     const postResponse = await request.post('/redirect-fixtures/permanent', {
       maxRedirects: 0,
       data: 'x=1',
     })
-    expect(postResponse.status()).toBe(getResponse.status())
-    expect(postResponse.status()).toBe(308)
-    expect(postResponse.headers()['location']).toBe('/login')
+    expect(postResponse.status()).toBe(405)
+    expect(postResponse.headers()['allow']).toBe('GET, HEAD, OPTIONS')
   })
 })

@@ -104,10 +104,10 @@ The serializer/deserializer pair is inferred from the **type of the default valu
 
 | Default type     | URL string  | Read value        | Notes                                                       |
 | ---------------- | ----------- | ----------------- | ----------------------------------------------------------- |
-| `number`         | `"42"`      | `42`              | `Number(raw)`; falls back to the default if `NaN`           |
-| `boolean`        | `"true"`    | `true`            | Only the exact string `"true"` is `true`; anything else `false` |
+| `number`         | `"42"`      | `42`              | `Number(raw)`; falls back to the default if `NaN` or empty  |
+| `boolean`        | `"true"`    | `true`            | `"true"`/`"1"` → `true`, `"false"`/`"0"` → `false`; anything else → the default |
 | `string`         | `"hello"`   | `"hello"`         | Used verbatim                                               |
-| `string[]`       | `"a,b,c"`   | `['a', 'b', 'c']` | Comma-joined by default — see [Array Parameters](#array-parameters) |
+| array            | `"a,b,c"`   | `['a', 'b', 'c']` | Comma-joined by default (a `,` inside an element is escaped); element type inferred from the default's first element (`[0]` → numbers) — see [Array Parameters](#array-parameters) |
 | `object`         | `'{"a":1}'` | `{ a: 1 }`        | Auto `JSON.stringify` / `JSON.parse`                        |
 
 ```tsx

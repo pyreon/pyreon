@@ -177,6 +177,14 @@ export function parseArgs(argv: readonly string[]): CliArgs {
           out.compat = pickEnum(consumeValue(), COMPAT_VALUES, '--compat')
           break
         case 'pm':
+          // `--pm` universally means PACKAGE MANAGER; it used to alias
+          // `--packages` (the import strategy), so `--pm bun` failed with a
+          // meta|individual enum error. The package manager is whichever one
+          // ran `create` — there is nothing to select.
+          throw new Error(
+            '--pm is not a flag: the package manager is the one that ran `create` (npm/bun/pnpm/yarn create …). ' +
+              'For the import strategy use --packages meta|individual.',
+          )
         case 'packages':
         case 'package-strategy':
           out.packageStrategy = pickEnum(

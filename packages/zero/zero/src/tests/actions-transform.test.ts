@@ -88,3 +88,20 @@ describe('defineAction without the plugin', () => {
     expect(warn).not.toHaveBeenCalled()
   })
 })
+
+describe('collectActionIds (the build-time manifest)', () => {
+  it('yields exactly the ids the transform bakes in', async () => {
+    const { collectActionIds } = await import('../actions-transform')
+    const src = `import { defineAction } from '@pyreon/zero/actions'
+export const a = defineAction(async () => 1)
+export default defineAction(async () => 2)
+defineAction(async () => 3)
+`
+    const ids = collectActionIds(src, 'x.ts', 'src/x.ts')
+    const server = transformServerActions(src, 'x.ts', 'src/x.ts', true) ?? ''
+    const baked = [...server.matchAll(/"(action_[0-9a-f]{24})"/g)].map((m) => m[1])
+    expect(ids).toEqual(baked)
+    expect(ids).toEqual([actionId('src/x.ts', 'a'), actionId('src/x.ts', 'default'), actionId('src/x.ts', '$2')])
+    expect(collectActionIds('export const x = 1', 'y.ts', 'src/y.ts')).toEqual([])
+  })
+})

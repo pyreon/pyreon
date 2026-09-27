@@ -51,7 +51,9 @@ export async function build(root: string | undefined) {
   try {
     await runBuild(root)
   } catch (error) {
-    console.error('Build failed:', (error as Error).message)
+    // Keep the stack (and a Rolldown/Vite `frame`/`loc`): the message alone
+    // hid WHERE a build failed.
+    console.error('[Pyreon] Build failed:', error)
     process.exit(1)
   }
 }
