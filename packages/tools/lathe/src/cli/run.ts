@@ -17,11 +17,12 @@ import {
 } from '../core/config'
 import { ALL_CLIENTS } from '../emit/client-runtime'
 import { ALL_VALIDATORS } from '../emit/validator'
+import { formatFiles } from '../core/format'
 import { generate } from '../core/generate'
 import { noteSeverity, type IrNote, type IrNoteSeverity, type Reach } from '../core/ir'
 import { OUTPUT_MANIFEST, orphanedPaths } from '../core/output-manifest'
 import { diffCommittedSurface, type ApiSurface, type SurfaceChange } from '../core/surface'
-import { resolveTransform, verifyNative, worstVerdict } from '../verify/lower'
+import { resolveNativeCompiler, verifyNative, worstVerdict } from '../verify/lower'
 import { closest } from '../core/suggest'
 import { renderReport } from './report'
 
@@ -438,7 +439,7 @@ async function runChecked(
   // actually produced a native module. A `web` target has nothing for it to
   // verify, and importing it anyway cost every web run the module load of the
   // whole compiler (measured 0.25-0.5 s wall in isolation when installed).
-  let transform: Promise<Awaited<ReturnType<typeof resolveTransform>>> | undefined
+  let native: ReturnType<typeof resolveNativeCompiler> | undefined
   for (const config of projects) {
     if (!fs.exists(config.input)) {
       return fail(
@@ -446,7 +447,10 @@ async function runChecked(
       )
     }
     try {
-      generated.push({ config, result: generate(fs.read(config.input), config) })
+      const result = generate(fs.read(config.input), config)
+      // Formatted BEFORE the comparison below, so formatted output that was
+      // committed is current rather than stale, and `check` agrees with it.
+      generated.push({ config, result: { ...result, files: await formatFiles(result.files, config.format) } })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       // Name WHICH spec in a multi-project run; the error itself cannot know.
@@ -461,8 +465,9 @@ async function runChecked(
   const runs: RunOutcome[] = []
   for (const { config, result } of generated) {
     const needsNative = result.files.some((f) => f.path.endsWith('.native.tsx'))
-    if (needsNative) transform ??= resolveTransform()
-    const verify = verifyNative(result.files, needsNative ? await transform : undefined)
+    if (needsNative) native ??= resolveNativeCompiler()
+    const compiler = needsNative ? await native : undefined
+    const verify = verifyNative(result.files, compiler?.transform, compiler?.compile)
 
     // Read the PREVIOUS surface before the write loop overwrites it. This is
     // the only moment both versions exist, and it is what turns "your spec

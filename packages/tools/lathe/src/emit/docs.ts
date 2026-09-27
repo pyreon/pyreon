@@ -19,8 +19,9 @@
  * GitHub with nothing installed.
  */
 
+import { hasInput } from './operation-types'
 import { noteSeverity, type IrDocument, type IrOperation, type IrType, type Reach } from '../core/ir'
-import { propKey, typeIdent } from '../core/naming'
+import { hookOf, propKey } from '../core/naming'
 import { bodyArg, byTag, endpointSpec, isMutation, tagFile } from './client'
 import { tsType } from './schema'
 import type { GeneratedFile } from './writer'
@@ -42,6 +43,33 @@ export interface DocsOptions {
    * the reach column beside it was decided from a different one.
    */
   baseUrl: string
+  /**
+   * The module specifier a page's usage snippets import the generated client
+   * from (audit H1). Derived from the configured `output` — see
+   * {@link docsImportBase} — rather than hard-coded to `./gen`, which named a
+   * directory that does not exist under any non-default output.
+   */
+  importBase?: string | undefined
+}
+
+/**
+ * The import specifier for snippets, from the configured output directory.
+ *
+ * Written relative to `src/` when the output lives under it — the directory
+ * application code is written in, so `./src/gen` reads `./gen`, matching what
+ * a file at `src/main.ts` imports — and relative to the project root
+ * otherwise.
+ */
+export function docsImportBase(output: string): string {
+  let rel = output.replace(/\\/g, '/').replace(/^\.\//, '')
+  // Trailing slashes trimmed by index, not `/\/+$/` — an anchored-at-end `+`
+  // is retried from every `/` in a long run, which is quadratic on input a
+  // config controls.
+  let end = rel.length
+  while (end > 0 && rel[end - 1] === '/') end--
+  rel = rel.slice(0, end)
+  if (rel.startsWith('/')) return rel
+  return rel.startsWith('src/') ? `./${rel.slice('src/'.length)}` : `./${rel}`
 }
 
 /** Emit `docs/index.md` plus one page per tag. */
@@ -239,22 +267,27 @@ function usage(
 ): string[] {
   const file = tagFile(tag)
   const args = argsLiteral(op)
-  if (!opts.hasQueries) {
+  const base = opts.importBase ?? './gen'
+  const hook = hookOf(op)
+  // No queries plugin, or this operation's hook was turned off: the endpoint
+  // is the only generated symbol to show.
+  if (!opts.hasQueries || hook === undefined) {
     return [
-      `import { ${op.id} } from './gen/endpoints/${file}'`,
+      `import { ${op.id} } from '${base}/endpoints/${file}'`,
       '',
       `const data = await ${op.id}(${args})`,
     ]
   }
-  const hook = hookName(op)
   const lines = [
-    `import { ${hook} } from './gen/queries/${file}'`,
+    `import { ${hook} } from '${base}/queries/${file}'`,
     '',
   ]
   if (isMutation(op)) {
     lines.push(
       `const ${op.id} = ${hook}()`,
-      `${op.id}.mutate(${args || '{}'})`,
+      // A mutation that sends nothing takes NO variables (`void`); `{}` there
+      // is a type error in the reader's code.
+      `${op.id}.mutate(${hasInput(op) ? args || '{}' : ''})`,
     )
   } else {
     lines.push(
@@ -264,11 +297,6 @@ function usage(
     )
   }
   return lines
-}
-
-/** The generated hook's name, matching the client emitter's convention. */
-function hookName(op: IrOperation): string {
-  return `use${typeIdent(op.id)}`
 }
 
 /** An argument literal shaped like the endpoint's own `EndpointArgs`. */
@@ -293,7 +321,9 @@ function argsLiteral(op: IrOperation): string {
     const fields = required.map((p) => `${propKey(p.name)}: ${sample(p.type)}`)
     parts.push(`${arg}: { ${fields.join(', ')} }`)
   }
-  if (op.body) parts.push(`${bodyArg(op.body)}: /* … */ ${op.body.encoding === 'text' ? "''" : op.body.encoding === 'binary' ? 'new Blob()' : '{}'}`)
+  // An OPTIONAL body (`requestBody.required` absent) is left out, like an
+  // optional query parameter — the snippet shows what the types REQUIRE.
+  if (op.body?.required) parts.push(`${bodyArg(op.body)}: /* … */ ${op.body.encoding === 'text' ? "''" : op.body.encoding === 'binary' ? 'new Blob()' : '{}'}`)
   return parts.length > 0 ? `{ ${parts.join(', ')} }` : ''
 }
 

@@ -46,13 +46,13 @@ describe('native compiler resolution', () => {
   })
 
   it('is NOT imported for a web target', async () => {
-    const spy = vi.spyOn(lower, 'resolveTransform')
+    const spy = vi.spyOn(lower, 'resolveNativeCompiler')
     await run(argv, { input: 'a.yaml', output: 'out' }, memFs())
     expect(spy).not.toHaveBeenCalled()
   })
 
   it('is imported once for several multiplatform projects', async () => {
-    const spy = vi.spyOn(lower, 'resolveTransform').mockResolvedValue(undefined)
+    const spy = vi.spyOn(lower, 'resolveNativeCompiler').mockResolvedValue({ transform: undefined, compile: {} })
     await run(
       argv as never,
       {

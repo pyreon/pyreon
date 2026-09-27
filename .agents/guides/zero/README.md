@@ -132,4 +132,3 @@ Read before touching `packages/zero/**`, a build adapter, SSG/SSR/ISR output, or
 - i18n: the routes module calls `_registerI18nConfig`, so `useLocale()` derives the locale from the router path everywhere. Locale matching is case-insensitive and returns the configured spelling (`en-US`).
 - `zero({...})` is validated (`config-validation.ts`, key table `satisfies`-total over `ZeroConfig`); a missing `pyreon()` plugin is one error when the routes tree has JSX.
 - SSG redirect targets must be relative or `http(s):` (`assertSafeRedirectTarget`). The Vercel revalidate secret travels in `Authorization: Bearer`; `?secret=` still works with a one-time deprecation warning.
-

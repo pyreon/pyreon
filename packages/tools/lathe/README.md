@@ -397,6 +397,194 @@ const query = useGetBook(() => ({ params: { bookId: '…' } }))
 The reach column comes from the same analysis the CLI prints, so a page and a
 terminal cannot disagree about whether an operation runs on a phone.
 
+## Calling the API
+
+### Every call site is typed from the spec
+
+Each endpoint is declared with its input type, so a DIRECT call — a loader, a
+server route, a script — is as strict as a hook:
+
+```ts
+import { addPet, findPetsByStatus, getPetById } from './gen/endpoints/pet'
+
+await getPetById({ params: { petId: 1 } })
+await findPetsByStatus({ query: { status: 'sold', limit: maybeLimit } }) // limit?: number | undefined
+await addPet({ json: { name: 'Rex', photoUrls: [] } })
+
+getPetById({ params: { petId: 'x' } })          // ✗ petId is an integer
+findPetsByStatus({ query: { status: 'nope' } })  // ✗ not a value of the enum
+addPet()                                         // ✗ the body is required
+```
+
+Required exactly where the spec says (`requestBody.required` defaults to
+**false** in OpenAPI, so an unmarked body is optional), and
+`exactOptionalPropertyTypes`-correct, so a signal-derived value that might be
+`undefined` passes. An operation that sends nothing accepts no query or body at
+all. A body on `GET`/`HEAD` — which `fetch` refuses to send — is dropped with a
+`body-on-get` note.
+
+The hooks DERIVE their types from the endpoint (`Parameters<typeof op>[0]`,
+`Awaited<ReturnType<typeof op>>`) rather than re-rendering the spec, so a hook
+and a direct call can never disagree about a type.
+
+### Hook options are typed, and `select` changes the result
+
+```ts
+const pet = useGetPetById(() => ({ params: { petId: id() } }), () => ({ staleTime: 60_000 }))
+const count = useFindPetsByStatus(() => ({}), () => ({ select: (pets) => pets.length }))
+count.data() // number | undefined
+```
+
+A typo in an option is a compile error. Return `undefined` from the args
+accessor while the arguments are not ready — the query is disabled rather than
+fired with a placeholder.
+
+### Mutations invalidate what they change
+
+```ts
+const add = useAddPet({ onSuccess: (pet) => toast(`Added ${pet.name}`) })
+add.mutate({ json: { name: 'Rex', photoUrls: [] } })
+```
+
+By default a mutation invalidates every query at or below the collection it
+changes — `DELETE /pets/{id}` refetches `GET /pets`, `GET /pets/{id}` and
+`GET /pets/findByStatus`. Pass `invalidates` to replace the list, or `[]` to
+turn it off. For optimistic updates, `keys.ts` exports a helper typed from the
+endpoint that returns a rollback:
+
+```ts
+import { optimisticUpdate } from './gen'
+
+const rename = useUpdatePet({
+  onMutate: async (vars) => ({
+    rollback: await optimisticUpdate(client, getPetById, getPetById.key.prefix, (pet) =>
+      pet && { ...pet, name: vars.json.name }),
+  }),
+  onError: (_e, _v, ctx) => ctx?.rollback(),
+})
+```
+
+### Configure the client at runtime
+
+```ts
+import { auth, configureApi } from './gen'
+
+configureApi({
+  baseUrl: import.meta.env.VITE_API_URL,               // an environment switch
+  headers: () => ({ 'x-request-id': crypto.randomUUID() }),
+  use: [auth.petstoreAuth(() => session.token()), logger],
+  validate: import.meta.env.PROD ? 'warn' : 'strict',
+})
+```
+
+Every field is its own slot, read per request — endpoints bind to the client
+when they are declared, so nothing that varies is baked in. `installMocks()`
+answers through a SEPARATE slot, so it never removes your auth middleware. A
+key present with `undefined` resets that slot to its generated default.
+
+`auth` has one typed helper per `components.securitySchemes` entry: bearer
+(also OAuth2 / OpenID Connect, which reach the client as a bearer token), basic
+(UTF-8 safe), and API keys in a header, a query parameter or a cookie (the
+cookie form applies on the server — browsers forbid setting `Cookie`). A
+credential may be an accessor, re-read on every request.
+
+`validate` also has a config default — `lathe: { validate: 'warn' }` — for a
+backend that drifts: `'warn'` logs a mismatch and passes the body through,
+`'off'` skips validation (safe only for non-transforming schemas).
+
+The `fetch` / `axios` / `ky` clients export the SAME `configureApi` and `auth`.
+`use` takes each library's own extension shape — a fetch middleware
+`(request, next) => Promise<Response>`, an axios request interceptor
+`(config) => config`, a ky `beforeRequest` hook — so an interceptor written for
+that library elsewhere drops straight in, and `auth.*` returns that shape. A
+differential test runs all four clients against one server and asserts they
+send byte-identical requests. Mocks sit at the BOTTOM of every library — the
+fetch client's fetch, axios's `adapter`, ky's `fetch` option — so interceptors
+and auth run on a mocked request exactly as on a real one.
+
+### Serialization the spec states
+
+- **Query `style` / `explode`** — CSV (`form`, `explode: false`), space- and
+  pipe-delimited arrays, `deepObject` and exploded `form` objects are declared
+  on the endpoint (`queryStyle`), so the wire matches the spec on every client.
+- **Non-JSON responses** decode by media type: `text/*` and XML as a string,
+  `text/event-stream` / NDJSON as a `ReadableStream`, everything else (PDFs,
+  images, octet-stream) as a `Blob` — typed accordingly.
+- **Custom verbs** — a literal `:` in a path (`/v1/{name}:cancel`) is escaped,
+  so it is not read as a second parameter.
+- **Cache keys** are namespaced per generated client (the project name, else
+  the API's base URL), so two generated clients can share one `QueryClient`.
+
+### Mocks for tests
+
+Every fixture satisfies its own generated schema — values are chosen
+constraints-first (enum, pattern, length, range) and a spec `example` is used
+only when it conforms. Routes are anchored at the client's base URL and matched
+most-specific first, so `GET /pets?limit=5` is intercepted and `GET /users/me`
+is not answered by `/users/{id}`.
+
+```ts
+import { installMocks, mockCalls, mockOperation, resetMocks } from './gen/dev'
+
+beforeEach(installMocks)
+afterEach(resetMocks)
+
+it('shows the empty state', async () => {
+  mockOperation('findPetsByStatus', { json: [] })
+  // …
+})
+it('shows the error state', async () => {
+  mockOperation('getPetById', { status: 500, json: { message: 'down' }, delay: 50 })
+})
+```
+
+### Infinite queries, declared
+
+Pagination is never guessed — a spec does not say, in any standard way, which
+parameter advances a page or where the next value is, and a wrong guess loops
+or stops silently. Declare it per operation, in config or in the spec, and each
+declaration emits a typed `use<Op>Infinite` hook plus a pure
+`<op>InfiniteOptions` factory (for a loader's `prefetchInfiniteQuery`):
+
+```ts
+// pyreon.config.ts — keys are the generated operation names
+lathe: {
+  pagination: {
+    listCustomers: { kind: 'lastItem', param: 'starting_after', items: 'data', field: 'id', hasMore: 'has_more' },
+    listEvents:    { kind: 'cursor', param: 'cursor', next: 'meta.next_cursor' },
+    listRows:      { kind: 'offset', param: 'offset' },            // items default: the response itself
+    listPages:     { kind: 'page', param: 'page', items: 'results', initial: 1 },
+  },
+}
+```
+
+```yaml
+# or on the operation itself — same shape
+get:
+  operationId: listEvents
+  x-pyreon-pagination: { kind: cursor, param: cursor, next: meta.next_cursor }
+```
+
+```ts
+const customers = useListCustomersInfinite(() => ({ query: { limit: 20 } }))
+customers.data()?.pages          // typed pages
+customers.fetchNextPage()        // starting_after = the last customer's id
+customers.hasNextPage()          // false once `has_more` is false
+```
+
+| `kind` | next value | ends when |
+| --- | --- | --- |
+| `cursor` | `next` path in the page | it is null/empty, or `hasMore` is false |
+| `lastItem` | the last item's `field` (Stripe `starting_after`) | the page is empty, or `hasMore` is false |
+| `offset` | current + page length | the page is empty, or `hasMore` is false |
+| `page` | current + 1 | the page is empty, or `hasMore` is false |
+
+Each declaration is checked against the spec's own types before anything is
+emitted: the parameter must exist, every path must exist, `hasMore` must be a
+boolean and the next value's type must be one the parameter takes. A wrong
+config entry fails the run with the reason; a wrong spec extension is noted and
+skipped.
+
 ## Honest limits
 
 Real, current, and reported per-operation rather than papered over:
@@ -406,6 +594,8 @@ Real, current, and reported per-operation rather than papered over:
 | Schemas: string/number/boolean, nested objects, arrays, optional/nullable, min/max/email/url/uuid/regex | lowers |
 | `GET` with a typed JSON response, with or without path parameters | lowers — a path parameter becomes a prop of the data component |
 | `GET` with no content, or a non-JSON response | **web-only** — the web hook resolves to `unknown`, and there is no declared type for a native query to decode into, so no data component is emitted |
+| the generated data components (`<Op>Data`, a render prop returning an accessor, so it re-renders on the web) | lowers **only with a `@pyreon/native-compiler` that supports render props**. Against an older compiler, with `swiftc`/`kotlinc` installed, the verifier reports the module `BROKEN`, which is the honest answer |
+| an array / scalar / union MODEL | lowers — inlined at its use sites; PMTC synthesizes structs from object literals only |
 | `POST`/`PUT`/`PATCH`/`DELETE` | **web-only** — mutations are not recognised yet |
 | `enum` / `const` | narrowed to its base scalar (`string` / `number` / `boolean`) on the native path; the constraint is genuinely lost there |
 | a model field naming another model | **lowers under `validator: 'zod'`** (inlined); dropped under the default `s.*`, with a compiler warning |
@@ -435,6 +625,13 @@ repository root), or the one named by `--config`. Every key:
 | `baseUrl` | `servers[0].url` | must be an absolute literal to reach native |
 | `strictNative` | `false` | exit 1 when a native module does not lower |
 | `projects` | — | several specs in one run |
+| `operations` | — | per-operation `hook` (name or `false`), `responseValidation`, `pagination` |
+| `filters` | — | `include` / `exclude` operation matchers (tag, path glob, operationId, method) |
+| `patches` | — | RFC 6902 `add` / `replace` / `remove` corrections applied to the spec first |
+| `naming` | — | `operation` / `model` / `file` / `hook` rename functions |
+| `format` | — | `(code, path) => string \| Promise<string>`, run before write and before `check` |
+
+See [Customizing the output](#customizing-the-output) and [Your own plugins](#your-own-plugins).
 
 `@pyreon/config`'s `LatheSection` is the same type, held identical by a
 compile-time test, so `defineConfig` rejects a misspelt plugin.
@@ -639,6 +836,65 @@ a project that wants browsable data components without a workbench selects
 `target: 'multiplatform'` is additive on top of whichever of these you picked —
 it adds the native LAYOUT for `client`/`queries`, so asking for `schemas` alone
 gets you schemas alone on both targets.
+
+### Your own plugins
+
+`plugins` also takes plugins made with `definePlugin` — third-party emitters and
+document transforms, over the same IR and writer the built-ins use:
+
+```ts
+import { definePlugin, SourceFile } from '@pyreon/lathe'
+
+export const pathTable = definePlugin({
+  name: 'path-table',
+  emit({ doc }) {
+    const f = new SourceFile('extras/paths.ts')
+    for (const op of doc.operations) f.line(`export const ${op.id}Path = ${JSON.stringify(op.path)}`)
+    return [f]
+  },
+})
+
+// pyreon.config.ts
+export default { lathe: { input: './openapi.yaml', plugins: ['schemas', 'client', pathTable] } }
+```
+
+Hooks: `setup({ config })`, `transformDocument(doc, { config, note })` (return a
+modified copy — the document is frozen) and `emit({ doc, config, reach, files,
+banner })`. A throw names the plugin and the hook; each hook runs twice and must
+agree with itself, so a timestamp cannot make `lathe check` flap; plugin files
+are listed in the manifest (pruned when dropped), compared by `check`, passed
+to `format`, and may not collide with a built-in's path. `requires` turns on the
+built-ins a plugin's files import; `sideEffects: true` on a file lists it in the
+emitted `package.json`.
+
+### Customizing the output
+
+```ts
+lathe: {
+  input: './stripe.yaml',
+  // Generate a subset. Unreached models (and notes about them) go too.
+  filters: {
+    include: [{ tag: ['Customers', 'Charges'] }, { path: '/v1/refunds/**', method: 'get' }],
+    exclude: { operationId: '*Deprecated*' },
+  },
+  // Correct the spec before it is read — survives every `lathe pull`.
+  patches: [{ op: 'replace', path: '/components/schemas/Customer/properties/email/nullable', value: true }],
+  // Per operation: rename or drop the hook, set validation, declare paging.
+  operations: {
+    listCustomers: { hook: 'useCustomers', responseValidation: 'off' },
+    deleteCustomer: { hook: false },
+  },
+  // Rename what Lathe generates; each function gets Lathe's choice as `default`.
+  naming: { model: ({ default: name }) => `${name}Dto`, file: ({ default: stem }) => `${stem}-api` },
+  // Your formatter, applied before write AND before `check` compares.
+  format: (code, path) => prettier.format(code, { filepath: path }),
+}
+```
+
+Every one of these fails loudly rather than silently doing nothing: a filter
+matcher that selects no operation, a patch whose target moved, an
+`operations` key that names no operation, a name that is invalid or collides
+— each is an error that says which and suggests the nearest match.
 
 ### Several specs, several outputs
 

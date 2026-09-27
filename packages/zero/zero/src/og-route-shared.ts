@@ -117,4 +117,3 @@ export function absoluteOgUrl(href: string, siteUrl: string | undefined): string
   // so `base` is never applied twice.
   return siteUrl ? `${new URL(siteUrl).origin}${href}` : href
 }
-

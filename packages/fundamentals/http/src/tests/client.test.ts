@@ -399,3 +399,46 @@ describe('createHttp — body decoding', () => {
     expect(response.request.method).toBe('GET')
   })
 })
+
+describe('runtime-configurable baseUrl and validate', () => {
+  const ok = (body: string) => async (req: import('../types').HttpRequest) => ({
+    raw: new Response(body, { headers: { 'content-type': 'application/json' } }),
+    status: 200,
+    ok: true,
+    headers: new Headers({ 'content-type': 'application/json' }),
+    request: req,
+  })
+
+  it('an accessor baseUrl is read per request', async () => {
+    let base = 'https://one.test'
+    const urls: string[] = []
+    const api = createHttp({
+      baseUrl: () => base,
+      transport: async (req) => {
+        urls.push(req.url)
+        return ok('{}')(req)
+      },
+    })
+    await api.get('/x')
+    base = 'https://two.test/v2'
+    await api.get('/x')
+    expect(urls).toEqual(['https://one.test/x', 'https://two.test/v2/x'])
+  })
+
+  it('an accessor validate is read per request', async () => {
+    let mode: 'strict' | 'warn' = 'strict'
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const api = createHttp({ validate: () => mode, transport: ok('{"a":1}') })
+    const reject = (raw: unknown): { a: string } => {
+      if (typeof (raw as { a: unknown }).a !== 'string') throw new Error('a must be a string')
+      return raw as { a: string }
+    }
+    await expect(api.get('/x').json(reject)).rejects.toThrow()
+    mode = 'warn'
+    await expect(api.get('/x').json(reject)).resolves.toEqual({ a: 1 })
+    // `extend` inherits the accessor, and a static override replaces it.
+    await expect(api.extend({}).get('/x').json(reject)).resolves.toEqual({ a: 1 })
+    await expect(api.extend({ validate: 'strict' }).get('/x').json(reject)).rejects.toThrow()
+    warn.mockRestore()
+  })
+})

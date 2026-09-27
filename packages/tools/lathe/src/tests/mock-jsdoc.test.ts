@@ -29,7 +29,8 @@ for (const client of ['pyreon', 'fetch'] as const) {
     const named = [...comments.matchAll(/`([\w.]+)\(/g)].map((m) => m[1] as string)
     expect(named.length).toBeGreaterThan(0)
     const exported = new Set([...src.matchAll(/export (?:const|function) (\w+)/g)].map((m) => m[1]))
-    const provided = new Set(['mock', 'setDevTransport', 'createHttp'])
+    // The generated client's own exports, which mocks.ts imports.
+    const provided = new Set(['mock', 'setDevTransport', 'createHttp', 'configureApi', 'apiBaseUrl'])
     for (const call of named) {
       expect(exported.has(call) || provided.has(call), `\`${call}(\` is named but does not exist`).toBe(true)
     }
