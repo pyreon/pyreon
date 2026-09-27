@@ -41,11 +41,12 @@ export interface JobInfo {
   runner_name?: string | null
 }
 
-export type AggregateKind = 'install' | 'typecheck' | 'test' | 'e2e' | 'scaffold'
+export type AggregateKind = 'install' | 'preflight' | 'typecheck' | 'test' | 'e2e' | 'scaffold'
 
 /** Which aggregated family a job belongs to, or null when it is not aggregated. */
 export function aggregateKind(name: string): AggregateKind | null {
   if (name === 'Install') return 'install'
+  if (name === 'Fast Gates') return 'preflight'
   if (name.startsWith('typecheck')) return 'typecheck'
   // Case matters: `Test (browser)` / `Test (fallback)` are NOT test cells.
   if (name.startsWith('test (') || name === 'test') return 'test'
@@ -85,9 +86,14 @@ export function decideAggregate(
     lines.push(`Install did not succeed (${install.map((j) => j.conclusion).join(',') || 'missing'}) — cell selection is unknown`)
     ok = false
   }
+  const preflight = members.filter((j) => aggregateKind(j.name) === 'preflight')
+  if (preflight.length === 0 || preflight.some((j) => j.conclusion !== 'success')) {
+    lines.push(`Fast Gates did not succeed (${preflight.map((j) => j.conclusion).join(',') || 'missing'}) — expensive validation must not fan out`)
+    ok = false
+  }
   for (const j of members) {
     const kind = aggregateKind(j.name)
-    if (kind === 'install') continue
+    if (kind === 'install' || kind === 'preflight') continue
     const c = j.conclusion
     if (kind === 'e2e' && opts.e2eSelected) {
       if (c !== 'success') {

@@ -24,6 +24,7 @@
  *   bun run scripts/scaffold-smoke.ts             # all cells
  *   bun run scripts/scaffold-smoke.ts dashboard   # filter by cell name
  *   bun run scripts/scaffold-smoke.ts --keep      # don't delete cell dirs (debug)
+ *   bun run scripts/scaffold-smoke.ts --fail-fast # stop after first real failure
  */
 
 import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs'
@@ -827,6 +828,7 @@ async function runCell(cell: Cell, opts: { keep: boolean }): Promise<CellResult>
 async function main(): Promise<void> {
   const args = process.argv.slice(2)
   const keep = args.includes('--keep')
+  const failFast = args.includes('--fail-fast')
   const filters = args.filter((a) => !a.startsWith('--'))
 
   const cells =
@@ -842,7 +844,9 @@ async function main(): Promise<void> {
 
   const results: CellResult[] = []
   for (const cell of cells) {
-    results.push(await runCell(cell, { keep }))
+    const result = await runCell(cell, { keep })
+    results.push(result)
+    if (failFast && !result.ok) break
   }
 
   const failures = results.filter((r) => !r.ok)
