@@ -40,6 +40,25 @@ export interface ErrorPattern {
  */
 export const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // `analyzeValidate` marks a `@pyreon/validate` schema shape it cannot
+    // compile FAITHFULLY as an `unsupported` node, and the emitters throw on
+    // one. Some bails are option-dependent rather than method-dependent:
+    // `.email({ precision })` and `.url({ protocol })` change what the check
+    // ACCEPTS, and the compiled fast path enforces only the defaults, so a
+    // compiled build would reject input the runtime validator accepts. The
+    // vite-plugin checks `emittable` and leaves such a schema to the runtime;
+    // a direct caller of the emitters that skips that check hits this throw.
+    pattern: /\[Pyreon\] (?:emitValidator: cannot emit an unsupported node|emitSchemaSource: unsupported node) \(([^()]*)\)/,
+    diagnose: (m) => ({
+      cause: `The schema contains a shape the validate compiler cannot emit faithfully (\`${m[1]}\`), so \`analyzeValidate\` reported it as \`unsupported\`. Option-dependent formats bail on purpose: \`.email({ precision })\` and \`.url({ protocol })\` change what the check accepts, while the compiled check enforces only the default, so emitting it would reject input the runtime accepts.`,
+      fix: 'Check `info.emittable` from `analyzeValidate` before calling `emitValidator` / `emitSchemaSource`, and leave a non-emittable schema to the runtime validator — that is what `@pyreon/vite-plugin` does. The schema itself is correct; only the compiled fast path is skipped.',
+      fixCode: `for (const info of analyzeValidate(code, id)) {
+  if (!info.emittable) continue // runtime validator handles it
+  const verdict = emitValidator(info.node)
+}`,
+    }),
+  },
+  {
     // 0.52 made `@pyreon/charts`'s main entry the package's own engine and
     // moved the ECharts wrapper to `/echarts`. An app still on the old paths
     // hits one of two errors, neither naming the move: the bundler's missing

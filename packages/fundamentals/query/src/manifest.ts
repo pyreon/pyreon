@@ -169,9 +169,9 @@ const feed = useInfiniteQuery(() => ({
       name: 'useQuery',
       kind: 'hook',
       signature:
-        '<TQueryFnData, TError, TData = TQueryFnData, TKey>(options: () => QueryObserverOptions<...>) => UseQueryResult<TData, TError>',
+        '<TQueryFnData, TError, TData = TQueryFnData, TKey>(options: () => UseQueryOptions<TQueryFnData, TError, TData, TKey>) => UseQueryResult<TData, TError>',
       summary:
-        'Subscribe to a query with fine-grained reactive signals. `options` is a FUNCTION (not an object) so it can read Pyreon signals — when a tracked signal inside changes (e.g. a reactive queryKey), the observer re-evaluates options and refetches automatically. Returns one independent `Signal<T>` per observer field (`data`, `error`, `status`, `isPending`, `isLoading`, `isFetching`, `isError`, `isSuccess`) so templates only re-run for the exact fields they read. Internally wraps TanStack\'s `QueryObserver` and subscribes via `onUnmount`-guarded effect — the observer unsubscribes when the component unmounts.',
+        'Subscribe to a query with fine-grained reactive signals. Generic order matches TanStack (`TQueryFnData` is what `queryFn` resolves to, `TData` what `select` produces), so `select: (posts) => posts.length` types `data()` as `number` with no cast. `options` is a FUNCTION (not an object) so it can read Pyreon signals — when a tracked signal inside changes (e.g. a reactive queryKey), the observer re-evaluates options and refetches automatically. Returns one independent `Signal<T>` per observer field (`data`, `error`, `status`, `isPending`, `isLoading`, `isFetching`, `isError`, `isSuccess`) so templates only re-run for the exact fields they read. Internally wraps TanStack\'s `QueryObserver` and subscribes via `onUnmount`-guarded effect — the observer unsubscribes when the component unmounts.',
       example: `const userId = signal(1)
 const user = useQuery(() => ({
   queryKey: ['user', userId()],

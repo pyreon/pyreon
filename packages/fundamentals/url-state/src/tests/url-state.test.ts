@@ -606,11 +606,12 @@ describe('useUrlState', () => {
       expect(count()).toBe(0) // not NaN
     })
 
-    it('empty string coerces to 0 for number param', () => {
+    it('an EMPTY param falls back to the default, not 0', () => {
       setSearch('?count=')
       const count = useUrlState('count', 42)
-      // Number("") is 0, not NaN — this is valid coercion
-      expect(count()).toBe(0)
+      // `+''` is 0, which silently turned a cleared input into a real value.
+      // An empty param is absent, like `?count=abc` is invalid.
+      expect(count()).toBe(42)
     })
 
     it('parses valid numbers normally', () => {

@@ -43,6 +43,7 @@
 import { reachableModels } from './graph'
 import type { IrDocument, IrOperation, IrType } from './ir'
 import { collectRefNames } from './walk'
+import { byCodeUnit } from './order'
 
 /** One operation's observable contract. */
 export interface SurfaceOperation {
@@ -125,28 +126,23 @@ export function renderType(type: IrType | undefined, depth = 0): string {
       return [...type.options.map((o) => renderType(o, depth + 1))].sort().join(' | ')
     case 'object': {
       const fields = [...type.fields]
-        .sort((a, b) => byName(a.name, b.name))
+        .sort((a, b) => byCodeUnit(a.name, b.name))
         .map((f) => `${f.name}${f.required ? '' : '?'}: ${renderType(f.type, depth + 1)}`)
       return `{ ${fields.join('; ')} }`
     }
   }
 }
 
-/** Plain code-unit order: `localeCompare` made the committed file depend on the machine's locale. */
-function byName(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0
-}
-
 /** The members of an enum or union, `null` included, or undefined. */
 function membersOf(type: IrType): string[] | undefined {
   switch (type.kind) {
     case 'enum':
-      return type.values.map((v) => JSON.stringify(v)).sort(byName)
+      return type.values.map((v) => JSON.stringify(v)).sort(byCodeUnit)
     case 'union':
-      return type.options.map((o) => renderType(o)).sort(byName)
+      return type.options.map((o) => renderType(o)).sort(byCodeUnit)
     case 'nullable': {
       const inner = membersOf(type.inner) ?? [renderType(type.inner)]
-      return [...inner, 'null'].sort(byName)
+      return [...inner, 'null'].sort(byCodeUnit)
     }
     default:
       return undefined
@@ -167,7 +163,7 @@ function usageOf(doc: IrDocument): Record<string, SurfaceUsage> {
   const req = reachableModels(doc, requestRoots)
   const res = reachableModels(doc, responseRoots)
   const out: Record<string, SurfaceUsage> = {}
-  for (const m of [...doc.models].sort((a, b) => byName(a.name, b.name))) {
+  for (const m of [...doc.models].sort((a, b) => byCodeUnit(a.name, b.name))) {
     const r = req.has(m.name)
     const s = res.has(m.name)
     out[m.name] = r && s ? 'both' : r ? 'request' : s ? 'response' : 'unused'
@@ -178,15 +174,15 @@ function usageOf(doc: IrDocument): Record<string, SurfaceUsage> {
 /** Extract the comparable surface from a parsed document. */
 export function extractSurface(doc: IrDocument): ApiSurface {
   const operations: Record<string, SurfaceOperation> = {}
-  for (const op of [...doc.operations].sort((a, b) => byName(a.id, b.id))) {
+  for (const op of [...doc.operations].sort((a, b) => byCodeUnit(a.id, b.id))) {
     operations[op.id] = surfaceOf(op)
   }
   const models: Record<string, Record<string, string>> = {}
   const aliases: Record<string, SurfaceAlias> = {}
-  for (const m of [...doc.models].sort((a, b) => byName(a.name, b.name))) {
+  for (const m of [...doc.models].sort((a, b) => byCodeUnit(a.name, b.name))) {
     if (m.type.kind === 'object' && m.type.fields.length > 0) {
       const fields: Record<string, string> = {}
-      for (const f of [...m.type.fields].sort((a, b) => byName(a.name, b.name))) {
+      for (const f of [...m.type.fields].sort((a, b) => byCodeUnit(a.name, b.name))) {
         fields[f.name] = `${renderType(f.type)}${f.required ? '' : ' (optional)'}`
       }
       models[m.name] = fields
@@ -201,7 +197,7 @@ export function extractSurface(doc: IrDocument): ApiSurface {
 function surfaceOf(op: IrOperation): SurfaceOperation {
   const params: Record<string, string> = {}
   const requiredParams: string[] = []
-  for (const p of [...op.pathParams, ...op.queryParams].sort((a, b) => byName(a.name, b.name))) {
+  for (const p of [...op.pathParams, ...op.queryParams].sort((a, b) => byCodeUnit(a.name, b.name))) {
     params[p.name] = renderType(p.type)
     // A PATH param is required by construction — a URL cannot omit a segment —
     // whatever the spec marked it.
@@ -392,7 +388,7 @@ export function diffSurface(before: ApiSurface, after: ApiSurface): SurfaceChang
 
   // Breaking first, then by subject — the order someone reads it in.
   return changes.sort((a, b) =>
-    a.severity === b.severity ? byName(a.subject, b.subject) : a.severity === 'breaking' ? -1 : 1,
+    a.severity === b.severity ? byCodeUnit(a.subject, b.subject) : a.severity === 'breaking' ? -1 : 1,
   )
 }
 

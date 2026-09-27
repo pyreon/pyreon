@@ -187,22 +187,39 @@ export function renderReport(
       const tag =
         f.verdict === 'lowers'
           ? C.green('lowers')
-          : f.verdict === 'web-only'
-            ? C.yellow('web-only')
-            : C.red('BROKEN')
+          : f.verdict === 'partial'
+            ? C.yellow('partial')
+            : f.verdict === 'web-only'
+              ? C.yellow('web-only')
+              : C.red('BROKEN')
       const markers = f.markers.length > 0 ? C.dim(`  [${f.markers.join(' ')}]`) : ''
-      lines.push(`  ${tag} ${f.path} ${C.dim(f.target)}${markers}`)
+      const compiled =
+        f.compiled === undefined
+          ? ''
+          : 'skipped' in f.compiled
+            ? C.dim('  (not compiled)')
+            : f.compiled.ok
+              ? C.dim('  compiled')
+              : C.red('  does not compile')
+      lines.push(`  ${tag} ${f.path} ${C.dim(f.target)}${markers}${compiled}`)
       for (const l of f.leaked) {
         lines.push(
           `      ${C.red('leaked')} ${l} ${C.dim('emitted verbatim; the native build will not link')}`,
         )
       }
+      if (f.compiled && 'ok' in f.compiled) {
+        for (const e of f.compiled.errors.slice(0, 2)) lines.push(`      ${C.red('error')} ${truncate(e, 120)}`)
+      }
       // A BROKEN verdict's warnings are the diagnosis, so they are printed in
       // full: truncating one at 120 characters cut the actionable half
-      // ("Give it the shape you expect: …") off every one of them. A file that
-      // lowers or is web-only keeps the short form -- those are advisory.
+      // ("Give it the shape you expect: …") off every one of them.
       if (f.verdict === 'broken') {
         for (const w of f.warnings) lines.push(`      ${w}`)
+      } else if (f.declarations.length > 0) {
+        // Per DECLARATION (audit G2): which model lost what, not just "a warning".
+        for (const d of f.declarations.filter((x) => x.verdict !== 'lowers').slice(0, 5)) {
+          lines.push(`      ${C.yellow(d.verdict)} ${d.name}${C.dim(` — ${truncate(d.reasons[0] ?? '', 110)}`)}`)
+        }
       } else {
         for (const w of f.warnings.slice(0, 2)) lines.push(`      ${C.dim(truncate(w, 120))}`)
         if (f.warnings.length > 2) {

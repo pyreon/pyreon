@@ -110,7 +110,36 @@ export interface IrModel {
   name: string
   type: IrType
   doc?: string | undefined
+  /**
+   * Where the model came from in the input document. Present for a model the
+   * spec DECLARED (`components.schemas.<name>`); absent for one Lathe
+   * synthesized (a hoisted recursive schema, a request/response split).
+   */
+  source?: IrModelSource | undefined
 }
+
+/** A declared model's identity in the input document. */
+export interface IrModelSource {
+  /** The spec's own key, verbatim (`pet-owner`, not `PetOwner`). */
+  name: string
+  /** RFC 6901 pointer to the schema (`#/components/schemas/pet-owner`). */
+  at: string
+}
+
+/** An operation's identity in the input document. */
+export interface IrOperationSource {
+  /** The spec's `operationId`, verbatim; absent when Lathe derived one. */
+  operationId?: string | undefined
+  /** The spec's path, verbatim — OpenAPI form, `/pets/{petId}`. */
+  path: string
+  /** Every tag the spec gives the operation, in order (the IR `tag` is the first). */
+  tags: readonly string[]
+  /** RFC 6901 pointer to the operation (`#/paths/~1pets/get`). */
+  at: string
+}
+
+/** How strictly a generated client validates one response — see `LatheSection.responseValidation`. */
+export type IrValidateMode = 'strict' | 'warn' | 'off'
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'
 
@@ -119,6 +148,13 @@ export interface IrParam {
   type: IrType
   required: boolean
   doc?: string | undefined
+  /**
+   * OpenAPI serialization for a QUERY parameter, verbatim from the spec.
+   * Absent means the spec's default (`form`, exploded). Emitters decide what
+   * that means for the runtime they target.
+   */
+  style?: 'form' | 'spaceDelimited' | 'pipeDelimited' | 'deepObject' | undefined
+  explode?: boolean | undefined
 }
 
 /**
@@ -146,6 +182,11 @@ export interface IrBody {
   type: IrType
   /** `form` only: per-property serialization, when the spec declares any. */
   fieldEncoding?: Readonly<Record<string, IrFieldEncoding>> | undefined
+  /**
+   * `requestBody.required` — OpenAPI defaults it to FALSE, so a body the spec
+   * does not mark required is optional at the call site.
+   */
+  required: boolean
 }
 
 /** One API operation — the unit every emitter iterates. */
@@ -179,13 +220,85 @@ export interface IrOperation {
   body?: IrBody | undefined
   /** The 2xx response type. `undefined` means no content. */
   response?: IrType | undefined
+  /**
+   * The media type the response was read from, when it is NOT JSON
+   * (`text/plain`, `image/png`, `text/event-stream`). Absent for JSON and for
+   * no content. Decides how the client DECODES the body — see
+   * `core/media.ts`.
+   */
+  responseMedia?: string | undefined
+  /**
+   * How to page through this operation — declared, never guessed. From the
+   * `x-pyreon-pagination` spec extension or the `pagination` config entry.
+   */
+  pagination?: IrPagination | undefined
+  /** Where this operation came from in the input document. */
+  source?: IrOperationSource | undefined
+  /*
+   * OUTPUT DIRECTIVES. Not facts about the API but decisions about the code
+   * generated for it, set by the config (`operations`, `naming`) or by a
+   * plugin's `transformDocument`, and read by every emitter. Absent means the
+   * default, so an IR built by hand or by an older plugin behaves as before.
+   */
+  /**
+   * The name of this operation's query / mutation hook. `false` generates no
+   * hook at all (nor a preview component, nor a native data component); the
+   * endpoint is still emitted. Absent: `use<Id>`.
+   */
+  hook?: string | false | undefined
+  /** This operation's response validation, overriding the client-wide mode. */
+  validate?: IrValidateMode | undefined
+  /**
+   * The output GROUP — the file stem under `endpoints/` and `queries/`.
+   * Absent: derived from the tag (or, untagged, from the path).
+   */
+  group?: string | undefined
 }
+
+/**
+ * An EXPLICIT pagination declaration. Paths are dotted property paths into the
+ * response (`meta.next_cursor`); an empty path means the response itself.
+ *
+ * - `cursor`   — the next value is read from `next`; nullish/empty ends it.
+ * - `lastItem` — the next value is `items[last][field]` (Stripe's
+ *                `starting_after`); an empty page ends it.
+ * - `offset`   — the next value is the current one plus the page's length.
+ * - `page`     — the next value is the current one plus one.
+ *
+ * `hasMore`, when given, is a boolean path that ends paging when `false`.
+ */
+export type IrPagination =
+  | { kind: 'cursor'; param: string; next: string; hasMore?: string | undefined }
+  | { kind: 'lastItem'; param: string; items: string; field: string; hasMore?: string | undefined }
+  | { kind: 'offset'; param: string; items: string; hasMore?: string | undefined; initial?: number | undefined }
+  | { kind: 'page'; param: string; items: string; hasMore?: string | undefined; initial?: number | undefined }
+
+/**
+ * One `components.securitySchemes` entry, reduced to how a CLIENT applies it.
+ *
+ * `oauth2` and `openIdConnect` reduce to `bearer`: whatever flow obtained the
+ * token, a request carries it as `Authorization: Bearer …`, which is the only
+ * part a generated client participates in.
+ */
+export type IrSecurityScheme =
+  | { name: string; kind: 'bearer'; doc?: string | undefined }
+  | { name: string; kind: 'basic'; doc?: string | undefined }
+  | {
+      name: string
+      kind: 'apiKey'
+      in: 'header' | 'query' | 'cookie'
+      /** The header / query parameter / cookie NAME the key travels in. */
+      param: string
+      doc?: string | undefined
+    }
 
 export interface IrDocument {
   title: string
   version: string
   /** From `servers[0].url`; `''` when the spec declares none. */
   baseUrl: string
+  /** `components.securitySchemes`, in spec-key order. Absent when there are none. */
+  securitySchemes?: readonly IrSecurityScheme[] | undefined
   models: readonly IrModel[]
   operations: readonly IrOperation[]
   /**
@@ -205,7 +318,6 @@ export type IrNoteCode =
   | 'int64-precision'
   | 'missing-operation-id'
   | 'multiple-content-types'
-  | 'non-json-media-type'
   | 'no-servers'
   | 'unsupported-parameter'
   | 'parameter-serialization'
@@ -213,11 +325,14 @@ export type IrNoteCode =
   | 'response-headers'
   | 'error-responses'
   | 'other-success-responses'
-  | 'optional-request-body'
+  | 'body-on-get'
+  | 'invalid-pagination'
   | 'deprecated'
   | 'extra-tags'
   | 'description-dropped'
   | 'numeric-version'
+  /** Added by a third-party plugin's `transformDocument`. */
+  | 'plugin'
 
 /**
  * What a note means for the generated client.
@@ -247,7 +362,6 @@ export const NOTE_SEVERITY: Readonly<Record<IrNoteCode, IrNoteSeverity>> = {
   'int64-precision': 'loss',
   'missing-operation-id': 'choice',
   'multiple-content-types': 'choice',
-  'non-json-media-type': 'loss',
   'no-servers': 'loss',
   'unsupported-parameter': 'loss',
   'parameter-serialization': 'loss',
@@ -255,11 +369,14 @@ export const NOTE_SEVERITY: Readonly<Record<IrNoteCode, IrNoteSeverity>> = {
   'response-headers': 'loss',
   'error-responses': 'loss',
   'other-success-responses': 'loss',
-  'optional-request-body': 'loss',
+  'body-on-get': 'loss',
+  'invalid-pagination': 'loss',
   deprecated: 'loss',
   'extra-tags': 'choice',
   'description-dropped': 'choice',
   'numeric-version': 'choice',
+  // A plugin reports what IT could not honour; that is a loss by default.
+  plugin: 'loss',
 }
 
 /** The severity of a note, from its code. */

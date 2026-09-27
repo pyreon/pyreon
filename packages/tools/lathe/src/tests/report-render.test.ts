@@ -81,7 +81,7 @@ describe('never present a PARTIAL generation as a complete one', () => {
   it('renders a BROKEN verdict in words, not just colour', () => {
     const out = render(result(), {
       ran: true,
-      files: [{ path: 'a.swift', target: 'swift', verdict: 'broken', warnings: [], markers: [], leaked: [] }],
+      files: [{ path: 'a.swift', target: 'swift', verdict: 'broken', warnings: [], markers: [], leaked: [], declarations: [] }],
     })
     expect(out).toContain('BROKEN')
   })
@@ -92,7 +92,7 @@ describe('never present a PARTIAL generation as a complete one', () => {
     const long = `Declaration q: useQuery without a response type ${'x'.repeat(150)} THE-FIX-IS-HERE`
     const out = render(result(), {
       ran: true,
-      files: [{ path: 'a.native.tsx', target: 'swift', verdict: 'broken', warnings: [long, 'second', 'third'], markers: [], leaked: [] }],
+      files: [{ path: 'a.native.tsx', target: 'swift', verdict: 'broken', warnings: [long, 'second', 'third'], markers: [], leaked: [], declarations: [] }],
     })
     expect(out).toContain('THE-FIX-IS-HERE')
     expect(out).toContain('third')
@@ -110,7 +110,7 @@ describe('never present a PARTIAL generation as a complete one', () => {
           verdict: 'broken',
           warnings: [],
           markers: [],
-          leaked: ['useQuery', 'useFetch'],
+          leaked: ['useQuery', 'useFetch'], declarations: [],
         },
       ],
     })
@@ -122,7 +122,7 @@ describe('never present a PARTIAL generation as a complete one', () => {
   it('surfaces a web-only verdict distinctly from a passing one', () => {
     const out = render(result(), {
       ran: true,
-      files: [{ path: 'a.swift', target: 'swift', verdict: 'web-only', warnings: [], markers: [], leaked: [] }],
+      files: [{ path: 'a.swift', target: 'swift', verdict: 'web-only', warnings: [], markers: [], leaked: [], declarations: [] }],
     })
     expect(out).toContain('web-only')
   })
@@ -131,7 +131,7 @@ describe('never present a PARTIAL generation as a complete one', () => {
     const out = render(result(), {
       ran: true,
       files: [
-        { path: 'a.swift', target: 'swift', verdict: 'lowers', warnings: [], markers: ['PyreonQuery<'], leaked: [] },
+        { path: 'a.swift', target: 'swift', verdict: 'lowers', warnings: [], markers: ['PyreonQuery<'], leaked: [], declarations: [] },
       ],
     })
     expect(out).toContain('lowers')
@@ -269,3 +269,49 @@ describe('native reach — only under the multiplatform target', () => {
   })
 })
 
+
+describe('native verdict detail (audit G1/G2)', () => {
+  it('renders partial, compile status, compile errors and per-declaration losses', () => {
+    const out = render(result(), {
+      ran: true,
+      files: [
+        {
+          path: 'a.native.tsx',
+          target: 'swift',
+          verdict: 'broken',
+          warnings: [],
+          markers: [],
+          leaked: [],
+          declarations: [],
+          compiled: { ok: false, errors: ["invalid redeclaration of 'Pet'"] },
+        },
+        {
+          path: 'a.native.tsx',
+          target: 'kotlin',
+          verdict: 'partial',
+          warnings: ['null declaration `Pet`: field `tags` — dropping.'],
+          markers: ['PyreonQuery<'],
+          leaked: [],
+          declarations: [{ name: 'Pet', verdict: 'partial', reasons: ['field `tags` — dropping.'] }],
+          compiled: { ok: true, errors: [] },
+        },
+        {
+          path: 'b.native.tsx',
+          target: 'swift',
+          verdict: 'lowers',
+          warnings: [],
+          markers: ['PyreonQuery<'],
+          leaked: [],
+          declarations: [],
+          compiled: { skipped: 'swiftc not found' },
+        },
+      ],
+    })
+    expect(out).toContain('does not compile')
+    expect(out).toContain("error invalid redeclaration of 'Pet'")
+    expect(out).toContain('partial a.native.tsx kotlin')
+    expect(out).toContain('compiled')
+    expect(out).toContain('partial Pet')
+    expect(out).toContain('(not compiled)')
+  })
+})

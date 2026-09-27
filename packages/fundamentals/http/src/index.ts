@@ -73,15 +73,19 @@ export { createHttp, type HttpClient } from './client'
 
 export {
   defineEndpoint,
+  type BodyOf,
   type CallArgs,
   type Endpoint,
   type EndpointArgs,
+  type EndpointCallOptions,
+  type EndpointInput,
   type EndpointKey,
   type EndpointOptions,
   type EndpointSpec,
   type MutationOptionsLike,
   type PathParamNames,
   type QueryOptionsLike,
+  type ResponseKind,
   type ResponseOf,
 } from './endpoint'
 
@@ -119,7 +123,10 @@ export type {
   Next,
   ParseFn,
   PathParams,
+  QueryObject,
   QueryParams,
+  QueryScalar,
+  QueryStyle,
   QueryValue,
   RequestOptions,
   SchemaOutput,
