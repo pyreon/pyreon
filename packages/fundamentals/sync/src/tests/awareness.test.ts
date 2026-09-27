@@ -15,6 +15,7 @@ import { connectViaWebSocket } from '../crdt/yjs-ws-transport'
 import { REMOTE_ORIGIN } from '../crdt/types'
 import { MSG_AWARENESS, encodeSyncMessage } from '../crdt/ws-protocol'
 import { type SyncServer, createSyncServer } from '../server'
+import { waitFor as namedWaitFor } from './ws-wait'
 
 const WSImpl = WsClient as unknown as new (url: string) => WebSocket
 
@@ -117,9 +118,13 @@ describe('awareness — presence + cursors over the relay', () => {
       () => pa.dispose(),
       () => pb.dispose(),
     )
-    // Let A + B register their presence in the room.
-    await waitFor(() => pb.others().some((p) => p.state.name === 'Alice'))
-    await waitFor(() => pa.others().some((p) => p.state.name === 'Bob'))
+    // Let A + B register their presence in the room. Named + state-describing
+    // waits (shared `ws-wait` helper): this spec once timed out under heavy
+    // parallel load with only the bare `waitFor: timed out` to go on.
+    const peers = () =>
+      `a.others=${JSON.stringify(names(pa.others()))} b.others=${JSON.stringify(names(pb.others()))} ta.connected=${ta.connected} tb.connected=${tb.connected}`
+    await namedWaitFor('B to see Alice', () => pb.others().some((p) => p.state.name === 'Alice'), { describe: peers })
+    await namedWaitFor('A to see Bob', () => pa.others().some((p) => p.state.name === 'Bob'), { describe: peers })
 
     // C joins AFTER A + B are present — the relay sends C the room's current
     // awareness on connect, so C sees BOTH immediately (a stateless relay can't).
@@ -128,10 +133,14 @@ describe('awareness — presence + cursors over the relay', () => {
     const tc = connectViaWebSocket(c, url, { reconnect: false, WebSocketImpl: WSImpl })
     disposers.push(() => tc.disconnect(), () => pc.dispose())
 
-    await waitFor(() => {
-      const seen = pc.others().map((p) => p.state.name)
-      return seen.includes('Alice') && seen.includes('Bob')
-    })
+    await namedWaitFor(
+      'the late joiner C to see Alice AND Bob',
+      () => {
+        const seen = pc.others().map((p) => p.state.name)
+        return seen.includes('Alice') && seen.includes('Bob')
+      },
+      { describe: () => `c.others=${JSON.stringify(names(pc.others()))} tc.connected=${tc.connected} ${peers()}` },
+    )
     expect(names(pc.others())).toEqual(['Alice', 'Bob'])
     // And no phantom relay-self entry leaked into the join state.
     expect(pc.others().every((p) => p.state && typeof p.state.name === 'string')).toBe(true)

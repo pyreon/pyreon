@@ -23,6 +23,7 @@ export type {
   FormValues,
   NestValues,
   SchemaValidateFn,
+  SubmitOptions,
   UseFormOptions,
   ValidateFn,
   ValidationError,

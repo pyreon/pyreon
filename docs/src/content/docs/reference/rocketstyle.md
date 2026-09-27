@@ -115,7 +115,7 @@ const Badge = rsBadge({ name: 'Badge', component: 'span' })
 (config?: { dimensions?: Dimensions; useBooleans?: boolean }) => <C>({ name, component }: { name: string; component: C }) => RocketStyleComponent
 ```
 
-Factory initializer (default + named export). `rocketstyle(config?)` returns a component factory; call THAT with `{ name, component }` to get the chainable builder. `config.dimensions` overrides the dimension map (default: `states: "state"`, `sizes: "size"`, `variants: "variant"`, `multiple: { propName: "multiple", multi: true }`, `modifiers: { propName: "modifier", multi: true, transform: true }`) — each key becomes a chain method, each propName a consumer prop. `config.useBooleans` (default `false`) switches dimension props from strings (`state="primary"`) to boolean shorthands (`<Button primary />`). Dev mode throws on missing `name`/`component`/`dimensions` and on dimension names colliding with reserved keys.
+Factory initializer (default + named export). `rocketstyle(config?)` returns a component factory; call THAT with `{ name, component }` to get the chainable builder. `config.dimensions` overrides the dimension map (default: `states: "state"`, `sizes: "size"`, `variants: "variant"`, `multiple: { propName: "multiple", multi: true }`, `modifiers: { propName: "modifier", multi: true, transform: true }`) — each key becomes a chain method, each propName a consumer prop. `config.useBooleans` (default `false`) switches dimension props from strings (`state="primary"`) to boolean shorthands (`<Button primary />`). Dev mode throws on missing `name`/`component`/`dimensions` and on dimension names colliding with reserved keys (the error names the clashing key(s) and lists the reserved set).
 
 **Example**
 
@@ -467,7 +467,7 @@ Button.meta.category   // 'action'
 (props: TProvider) => VNodeChild
 ```
 
-Tree-level theme + mode provider. Props are `{ children, theme?, mode?, inversed?, provider? }` — `mode` is `"light" | "dark"`, `inversed: true` flips the resolved mode for the subtree, and values merge over any parent rocketstyle context. Most apps use the higher-level `<PyreonUI>` from `@pyreon/ui-core` (theme + mode + config in one) and reach for rocketstyle's `Provider` only for fine-grained subtree overrides. The raw context object backing it is exported as `context`.
+Tree-level theme + mode provider. Props are `{ children, theme?, mode?, inversed?, provider? }` — `mode` is `"light" | "dark"`, `inversed: true` flips the resolved mode for the subtree, and values merge over any parent rocketstyle context. It is REACTIVE: the parent context and its own props are read LAZILY (the provided value is getter-based), so `<Provider inversed>` follows a later parent mode flip and a signal-driven `theme={t()}` / `mode={m()}` stays live — no remount. Most apps use the higher-level `<PyreonUI>` from `@pyreon/ui-core` (theme + mode + config in one) and reach for rocketstyle's `Provider` only for fine-grained subtree overrides. The raw context object backing it is exported as `context`.
 
 **Example**
 
@@ -488,6 +488,7 @@ import { Provider } from '@pyreon/rocketstyle'
 
 - Passing a `value` prop (React-context muscle memory) — there is no `value`; `Provider` takes `theme` / `mode` / `inversed` directly
 - Mounting a fresh `Provider`/`PyreonUI` per view — the `_rsMemo` cache keys on theme identity, so per-view providers defeat cross-instance memoization; share ONE app-level provider
+- Expecting `inversed` to FORCE dark — it inverts whatever mode the parent resolves (light↔dark), and tracks that parent as it changes
 - Confusing this theme/mode provider with `.config({ provider: true })` — the latter is the component-to-component PSEUDO-STATE channel, unrelated to theming
 
 **See also:** `rocketstyle` · `.config()` · `@pyreon/ui-core`

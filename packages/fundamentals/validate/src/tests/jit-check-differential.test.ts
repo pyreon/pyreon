@@ -380,7 +380,9 @@ describe('verdict JIT — cache invalidation', () => {
     const sc = s.string()
     expect(sc.is('a')).toBe(true)
     const narrowed = sc.min(3)
-    expect(narrowed.is('a')).toBe(sc.parse('a').ok)
+    expect(narrowed.is('a')).toBe(narrowed.parse('a').ok)
+    // Copy-on-write: the receiver's verdict is untouched by the chain.
+    expect(sc.is('a')).toBe(true)
     expect(narrowed.is('abc')).toBe(true)
     expect(narrowed.is('a')).toBe(false)
   })
@@ -399,8 +401,9 @@ describe('verdict JIT — cache invalidation', () => {
     const leaf = s.string()
     const parent = s.object({ e: leaf })
     expect(parent.is({ e: 'x' })).toBe(parent.parse({ e: 'x' }).ok)
-    s.object({ e: leaf.email() }) // in-place chain mutates the SHARED leaf
+    s.object({ e: leaf.email() }) // copy-on-write: the SHARED leaf is untouched
     expect(parent.is({ e: 'x' })).toBe(parent.parse({ e: 'x' }).ok)
+    expect(parent.is({ e: 'x' })).toBe(true)
     expect(parent.is({ e: 'a@b.com' })).toBe(parent.parse({ e: 'a@b.com' }).ok)
   })
 

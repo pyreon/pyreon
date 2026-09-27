@@ -1179,6 +1179,8 @@ reset()
 console.log(store.count()) // 0
 ```
 
+With `subscribe()` listeners attached, a reset emits ONE `patch` mutation carrying every field it changed (not one notification per field).
+
 ### `dispose`
 
 Full teardown — runs plugin cleanups, unsubscribes all signal listeners, clears subscribers and action listeners, **stops the store's effect scope** (disposing every `computed`/`effect` created in setup or plugin bodies), and removes the store from the registry:
@@ -1189,6 +1191,8 @@ dispose()
 
 // Next call to useCounter() will re-run setup
 ```
+
+`dispose()` removes the registry entry only while it still belongs to THIS instance: a stale handle disposed after `resetStore(id)` and a re-create leaves the new, live store alone.
 
 Because setup runs inside a store-owned effect scope, `dispose()` is the ONE deterministic teardown point for everything the store created — no zombie effects keep firing on external signals afterwards.
 
@@ -1467,6 +1471,19 @@ function getRegistry(): Map<string, unknown> {
 
 With `AsyncLocalStorage`, each request's `als.run(new Map(), ...)` creates a new `Map` that is only visible within that async context. Two simultaneous requests each get their own store instances.
 
+### Keeping a store out of the page — `ssr: false`
+
+After an SSR render, every store in the request registry is serialized into the page as `window.__PYREON_STORE_STATE__` so the client can hydrate it. A store holding anything that must never reach the HTML — a session, an auth token, per-user server-only data — opts out at its definition:
+
+```ts
+const useSession = defineStore('session', () => ({ token: signal('') }), { ssr: false })
+
+// Schema stores take the same flag in their config:
+const useSecrets = defineStore('secrets', { schema: Secrets, initial, ssr: false })
+```
+
+An `ssr: false` store is never serialized, and on the client it ignores any incoming server snapshot, so it always starts from its own `setup()` values. `dehydrateStores(filter)` remains available for an app-wide filter.
+
 ## Debugging Stores
 
 ### Development Logging
@@ -1571,6 +1588,7 @@ Destroy all stores in the current registry. Useful for test teardown, HMR, and S
 Register a global plugin that runs when any store is first created.
 
 - **`plugin`** (`StorePlugin`) -- Function receiving the full `StoreApi`. May return a cleanup function that runs on that store's `dispose()`.
+- **Returns** `() => void` -- unregisters this plugin. Stores already created keep what it attached; stores created afterwards skip it. Idempotent.
 
 ### Re-exported from `@pyreon/reactivity`
 

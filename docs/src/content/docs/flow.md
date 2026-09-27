@@ -36,6 +36,7 @@ yarn add @pyreon/flow @pyreon/runtime-dom
 ## Quick Start
 
 ```tsx
+// @check
 import { createFlow, Flow, Background, MiniMap, Controls } from '@pyreon/flow'
 
 const flow = createFlow({

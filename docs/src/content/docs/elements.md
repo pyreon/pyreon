@@ -113,8 +113,51 @@ When only `children` is provided (no `beforeContent` or `afterContent`), the wra
 // No slots -- renders directly without span wrappers
 <Element tag="section" block={true}>Just content</Element>
 
-// Renders: <section style="display: flex; ...">Just content</section>
+// Renders: <section style="display: flex; flex-direction: column; ...">Just content</section>
 ```
+
+### Two axes: the content trio vs. the slot trio
+
+This is the part of Element that is easy to get wrong, because it has **two independent sets** of `direction`/`alignX`/`alignY` props, and which one actually wins depends on whether `beforeContent`/`afterContent` are present:
+
+- **`contentDirection` / `contentAlignX` / `contentAlignY`** control the layout of a **simple element** — one with no `beforeContent` or `afterContent` (the dominant case: a plain `<Element>` wrapping just `children`). `contentDirection` defaults to **`'rows'`** (a column), unlike the bare `direction` prop's `'inline'` default.
+- **`direction` / `alignX` / `alignY`** control the **slot axis** — how `beforeContent`, `children`, and `afterContent` are arranged relative to each other in a **compound element** (one WITH `beforeContent` and/or `afterContent`). This trio defaults to `direction: 'inline'`.
+
+**The critical part: on a simple element, `contentDirection`/`contentAlignX`/`contentAlignY` WIN over `direction`/`alignX`/`alignY`.** Because `contentDirection` always resolves to at least its default (`'rows'`), passing only `direction="inline"` on a simple element (no slots) has **no effect** — the resolved layout still comes from `contentDirection`, which you must set explicitly to change it:
+
+```ts
+// ❌ direction is silently ignored — no beforeContent/afterContent means
+// this is a SIMPLE element, and contentDirection (default 'rows') wins.
+<Element direction="inline">
+  <span>A</span>
+  <span>B</span>
+</Element>
+// → flex-direction: column (NOT row)
+
+// ✅ Use contentDirection on a simple element instead:
+<Element contentDirection="inline" contentAlignX="center" contentAlignY="center">
+  <span>A</span>
+  <span>B</span>
+</Element>
+// → flex-direction: row; justify-content: center; align-items: center;
+```
+
+Once you add `beforeContent` or `afterContent`, the element becomes **compound** and the roles flip: `direction`/`alignX`/`alignY` now govern the outer wrapper (the slot axis), and each slot's OWN internal alignment (when a slot itself holds multiple children) is controlled by a **third, per-slot** trio — `beforeContentDirection`/`beforeContentAlignX`/`beforeContentAlignY` and `afterContentDirection`/`afterContentAlignX`/`afterContentAlignY` (each defaulting to `direction: 'inline'`, same as the outer slot axis default).
+
+```ts
+<Element
+  beforeContent={<><Icon name="star" /><Icon name="bell" /></>}
+  beforeContentDirection="inline"   // the two icons lay out as a row inside the slot
+  beforeContentAlignY="center"
+  direction="inline"                // the OUTER [before][children][after] axis
+  alignY="center"
+  gap={8}
+>
+  Notifications
+</Element>
+```
+
+Three separate axes, three separate prop groups — `content*` (simple elements), the bare trio (the slot axis of a compound element), and `beforeContent*`/`afterContent*` (inside one slot). Mixing them up is the most common Element layout bug; when a layout looks unexpectedly stacked or unexpectedly row-like, check which of the three trios actually applies to that shape.
 
 ### Props
 
@@ -124,9 +167,14 @@ When only `children` is provided (no `beforeContent` or `afterContent`), the wra
 | `children`      | `VNodeChild`                                 | --                              | Main content slot. Takes priority as the center of the three-slot layout.                                                                                                   |
 | `beforeContent` | `VNodeChild`                                 | --                              | Content rendered before the main slot. Commonly used for icons, avatars, or leading visuals.                                                                                |
 | `afterContent`  | `VNodeChild`                                 | --                              | Content rendered after the main slot. Commonly used for badges, arrows, action buttons, or trailing metadata.                                                               |
-| `direction`     | `'inline' \| 'rows' \| 'reverseInline' \| 'reverseRows'` | `'inline'`             | Flex direction. `'inline'` → `flex-direction: row`, `'rows'` → `flex-direction: column`, `'reverseInline'` → `row-reverse`, `'reverseRows'` → `column-reverse`. Note `'row'` (without the trailing `s`) is NOT valid — use `'inline'`.                              |
-| `alignX`        | `'left' \| 'center' \| 'right'`              | --                              | Horizontal alignment. In `inline` direction, maps to `justify-content`. In `rows` direction, maps to `align-items`.                                                         |
-| `alignY`        | `'top' \| 'center' \| 'bottom'`              | `'center'` (inline) / -- (rows) | Vertical alignment. In `inline` direction, maps to `align-items` (defaults to `center`). In `rows` direction, maps to `justify-content`.                                    |
+| `direction`     | `'inline' \| 'rows' \| 'reverseInline' \| 'reverseRows'` | `'inline'`             | The **slot axis** on a compound element (`beforeContent`/`afterContent` present) — how `[before][children][after]` lay out relative to each other. `'inline'` → `flex-direction: row`, `'rows'` → `flex-direction: column`, `'reverseInline'` → `row-reverse`, `'reverseRows'` → `column-reverse`. Note `'row'` (without the trailing `s`) is NOT valid. **On a SIMPLE element (no slots) this prop has NO effect** — see [Two axes](#two-axes-the-content-trio-vs-the-slot-trio) below; use `contentDirection` instead. |
+| `alignX`        | `'left' \| 'center' \| 'right'`              | --                              | Slot-axis horizontal alignment (compound elements only — see above). In `inline` direction, maps to `justify-content`. In `rows` direction, maps to `align-items`.          |
+| `alignY`        | `'top' \| 'center' \| 'bottom'`              | `'center'` (inline) / -- (rows) | Slot-axis vertical alignment (compound elements only — see above). In `inline` direction, maps to `align-items` (defaults to `center`). In `rows` direction, maps to `justify-content`.                                    |
+| `contentDirection` | `'inline' \| 'rows' \| 'reverseInline' \| 'reverseRows'` | `'rows'`         | The layout axis on a **simple** element (no `beforeContent`/`afterContent`) — same values as `direction`, but this is the prop that actually governs a plain `<Element>{children}</Element>`. Defaults to `'rows'` (a column), unlike `direction`'s `'inline'` default. |
+| `contentAlignX` | `'left' \| 'center' \| 'right'`              | --                              | Simple-element horizontal alignment (the `contentDirection` counterpart of `alignX`).                                                                                        |
+| `contentAlignY` | `'top' \| 'center' \| 'bottom'`              | --                              | Simple-element vertical alignment (the `contentDirection` counterpart of `alignY`).                                                                                           |
+| `beforeContentDirection` / `beforeContentAlignX` / `beforeContentAlignY` | same as above | `'inline'` direction | On a compound element, controls the layout of MULTIPLE children **inside** the `beforeContent` slot itself (a separate axis from the outer `direction`).             |
+| `afterContentDirection` / `afterContentAlignX` / `afterContentAlignY` | same as above | `'inline'` direction | Same as the `beforeContent*` trio, for the `afterContent` slot.                                                                                                              |
 | `gap`           | `number`                                     | --                              | Gap between slots in pixels. Rendered as `gap: Npx` on the flex container.                                                                                                  |
 | `block`         | `boolean`                                    | `false`                         | When `true`, uses `display: flex` instead of `display: inline-flex`. Makes the element take full width of its parent.                                                       |
 | `equalCols`     | `boolean`                                    | `false`                         | When `true`, all three slots get `flex: 1; min-width: 0`, dividing the space equally instead of the default behavior where before/after shrink-wrap and the center expands. |
@@ -139,7 +187,7 @@ Element also passes through any valid HTML attributes: `id`, `role`, `tabindex`,
 
 ### Alignment Mapping
 
-Understanding how `alignX` and `alignY` map to CSS flex properties in each direction is important:
+Understanding how `alignX` and `alignY` map to CSS flex properties in each direction is important. The mapping below is the same for all three axes (`direction`/`alignX`/`alignY`, `contentDirection`/`contentAlignX`/`contentAlignY`, and `beforeContentDirection`/`afterContentDirection` + their align siblings) — only WHICH resolved `direction` value picks the row is different per the [Two axes](#two-axes-the-content-trio-vs-the-slot-trio) section above.
 
 **Inline direction** (`direction: 'inline'`, which is the default):
 

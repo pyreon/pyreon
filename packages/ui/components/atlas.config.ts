@@ -375,7 +375,17 @@ const scenarios = {
 
 export default {
   theme,
-  wrapper: (props: { children?: unknown }) => h(PyreonUI, { theme }, props.children),
+  /**
+   * `mode` is the workbench's appearance (the Theme Lab tile's, in the Lab) as
+   * an ACCESSOR — `<PyreonUI mode>` takes one and re-themes in place. Dropping
+   * it rendered every component in light mode on the dark workbench. It is
+   * absent under `atlas scan`, where PyreonUI falls back to its own default.
+   *
+   * `brand` is deliberately not read: this kit has one theme, and the Theme Lab
+   * notices and says so instead of tiling identical brand cards.
+   */
+  wrapper: (props: { children?: unknown; mode?: () => 'light' | 'dark' }) =>
+    h(PyreonUI, { theme, ...(props.mode ? { mode: props.mode } : {}) }, props.children),
   scenarios,
   /**
    * Overlays return `null` on the server, and a Node scan evaluates

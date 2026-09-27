@@ -103,5 +103,5 @@ if (unused.length > 0) {
 }
 
 console.log(
-  `[check-native-primitive-coverage] ✓ all ${primitives.length} canonical primitive(s) are built by a native example (${sources.length} source file(s) scanned)`,
+  `[check-native-primitive-coverage] ✓ all ${primitives.length} @pyreon/primitives component export(s) are built by a native example (${sources.length} source file(s) scanned)`,
 )

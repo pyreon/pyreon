@@ -1,13 +1,14 @@
 import { signal } from '@pyreon/reactivity'
 import * as Y from 'yjs'
 import {
+  type Awareness,
   applyAwarenessUpdate,
   encodeAwarenessUpdate,
   removeAwarenessStates,
 } from 'y-protocols/awareness'
 import { type DocTransportSyncState, registerDocTransport } from './doc-sync'
 import { REMOTE_ORIGIN } from './types'
-import { peekDocAwareness } from './yjs-awareness'
+import { onDocAwareness } from './yjs-awareness'
 import type { YjsCrdtDoc } from './yjs-adapter'
 import {
   MSG_AWARENESS,
@@ -67,7 +68,10 @@ export interface WebSocketTransport {
   /**
    * Resolves once {@link synced} first becomes `true` (or immediately if it
    * already is). Handy to `await transport.whenSynced()` before writing app-level
-   * defaults.
+   * defaults. REJECTS if the transport can never sync: the relay refused the
+   * connection (close code 4401 — `authorize` returned false), or
+   * {@link disconnect} was called first. A caller arriving after either is
+   * rejected immediately.
    */
   whenSynced(): Promise<void>
 }
@@ -155,6 +159,17 @@ export function connectViaWebSocket(
   }
   const detachSyncState = registerDocTransport(doc, syncState)
 
+  // Terminal state for `whenSynced()`: once set, the transport will never sync,
+  // so every pending AND future awaiter is rejected rather than left hanging.
+  let terminalError: Error | null = null
+  const syncWaiters = new Set<{ reject: (err: Error) => void }>()
+  const failSyncWaiters = (err: Error) => {
+    if (terminalError) return
+    terminalError = err
+    for (const w of syncWaiters) w.reject(err)
+    syncWaiters.clear()
+  }
+
   const onUpdate = (update: Uint8Array, origin: unknown) => {
     if (origin === REMOTE_ORIGIN) return
     if (ws && ws.readyState === 1 /* WebSocket.OPEN */) {
@@ -164,22 +179,33 @@ export function connectViaWebSocket(
   doc.yDoc.on('update', onUpdate)
 
   // Awareness (ephemeral presence) rides the SAME socket on a separate message
-  // type. Wired ONLY when the app opted in by creating a `syncedAwareness` for
-  // this doc (peek, don't create — doc-only apps pay nothing). Reuse the SHARED
-  // REMOTE_ORIGIN doc-update tag so a received awareness is applied but NOT
-  // re-sent by this OR a sibling transport — the cross-transport (WS↔Broadcast
-  // Channel) loop guard.
-  const aw = peekDocAwareness(doc)
-  const onAwarenessUpdate =
-    aw &&
-    (({ added, updated, removed }: AwarenessChange, origin: unknown) => {
-      if (origin === REMOTE_ORIGIN) return
-      if (ws && ws.readyState === 1) {
-        const changed = [...added, ...updated, ...removed]
-        ws.send(encodeSyncMessage(MSG_AWARENESS, encodeAwarenessUpdate(aw, changed)))
-      }
-    })
-  if (aw && onAwarenessUpdate) aw.on('update', onAwarenessUpdate)
+  // type. Wired ONLY when the app opts in by creating a `syncedAwareness` for
+  // this doc — whether BEFORE this transport connected or at any point AFTER
+  // (`onDocAwareness` waits without creating, so doc-only apps pay nothing).
+  // Reuse the SHARED REMOTE_ORIGIN doc-update tag so a received awareness is
+  // applied but NOT re-sent by this OR a sibling transport — the
+  // cross-transport (WS↔BroadcastChannel) loop guard.
+  let aw: Awareness | undefined
+  const onAwarenessUpdate = (
+    { added, updated, removed }: AwarenessChange,
+    origin: unknown,
+  ) => {
+    if (origin === REMOTE_ORIGIN || !aw) return
+    if (ws && ws.readyState === 1) {
+      const changed = [...added, ...updated, ...removed]
+      ws.send(encodeSyncMessage(MSG_AWARENESS, encodeAwarenessUpdate(aw, changed)))
+    }
+  }
+  const cancelAwarenessWait = onDocAwareness(doc, (created) => {
+    aw = created
+    created.on('update', onAwarenessUpdate)
+    // Created mid-connection: announce ourselves now. The relay answers a
+    // socket's FIRST presence with the room roster, so we also learn the peers
+    // whose presence arrived (and was dropped) before we had an awareness.
+    if (ws && ws.readyState === 1) {
+      ws.send(encodeSyncMessage(MSG_AWARENESS, encodeAwarenessUpdate(created, [created.clientID])))
+    }
+  })
 
   const scheduleReconnect = () => {
     attempt++
@@ -270,8 +296,16 @@ export function connectViaWebSocket(
       firstSyncPending = false
       syncedSig.set(false)
       options.onDisconnect?.()
-      // 4401 = the relay's `authorize` rejection. Terminal — don't hammer it.
-      if (event.code === 4401) closed = true
+      // 4401 = the relay's `authorize` rejection. Terminal — don't hammer it,
+      // and tell every `whenSynced()` awaiter instead of leaving it hanging.
+      if (event.code === 4401) {
+        closed = true
+        failSyncWaiters(
+          new Error(
+            '[Pyreon] connectViaWebSocket: the relay refused the connection (4401 unauthorized) — this transport will never sync. Check the token your `authorize` hook reads.',
+          ),
+        )
+      }
       if (!closed && reconnect) scheduleReconnect()
     }
     ws.onerror = () => {
@@ -287,19 +321,38 @@ export function connectViaWebSocket(
     },
     synced: () => syncedSig(),
     whenSynced() {
-      return new Promise<void>((resolve) => {
-        syncState.onSynced(resolve)
+      if (terminalError) return Promise.reject(terminalError)
+      return new Promise<void>((resolve, reject) => {
+        let settled = false
+        const waiter = {
+          reject: (err: Error) => {
+            off()
+            reject(err)
+          },
+        }
+        // Fires synchronously when already synced (then `off` is a no-op).
+        const off = syncState.onSynced(() => {
+          settled = true
+          syncWaiters.delete(waiter)
+          resolve()
+        })
+        if (settled) off()
+        else syncWaiters.add(waiter)
       })
     },
     disconnect() {
       closed = true
+      failSyncWaiters(
+        new Error('[Pyreon] connectViaWebSocket: the transport was disconnected before it synced.'),
+      )
+      cancelAwarenessWait()
       detachSyncState()
       if (reconnectTimer !== null) {
         clearTimeout(reconnectTimer)
         reconnectTimer = null
       }
       doc.yDoc.off('update', onUpdate)
-      if (aw && onAwarenessUpdate) {
+      if (aw) {
         // Announce our departure WHILE the socket is still open (the listener
         // is still attached, so the removal broadcasts), THEN detach. The
         // relay's socket-close cleanup is the real guarantee — this is the fast

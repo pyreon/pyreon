@@ -23,9 +23,9 @@ What lands in `dist/` depends on the mode:
 
 Configure the adapter in your zero config; it shapes the build for the target platform:
 
-```ts
-import { zero } from '@pyreon/zero'
-import { vercelAdapter } from '@pyreon/zero/server'
+```ts title="vite.config.ts"
+import pyreon from '@pyreon/vite-plugin'
+import zero, { vercelAdapter } from '@pyreon/zero/server'
 
 export default {
   plugins: [pyreon(), zero({ mode: 'ssr', adapter: vercelAdapter() })],
@@ -39,6 +39,10 @@ Available adapters:
 - **`netlifyAdapter()`** — Netlify Functions (`netlify.toml`).
 - **`nodeAdapter()`** / **`bunAdapter()`** — self-hosted; emits a runnable server (`node dist/index.js`).
 - **`staticAdapter()`** — plain static output (SSG/SPA).
+
+`adapter` also accepts a plain string instead of a constructed instance (`adapter: 'vercel'`) when you don't need to pass adapter-specific options.
+
+**Zero-config auto-detect.** Omit `adapter` entirely and the build detects the platform from its well-known build env vars (`VERCEL`, `NETLIFY`, `CF_PAGES`) and picks the matching adapter automatically — a plain `zero({ mode: 'ssr' })` just works on Vercel/Netlify/Cloudflare Pages with zero adapter config, logging `[Pyreon] Detected <platform> build environment — using the "<platform>" adapter` once. Local and self-hosted builds (no platform env var set) default to `'node'`. An explicit `adapter` always overrides detection.
 
 ## Static hosting (SSG)
 

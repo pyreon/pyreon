@@ -9,7 +9,7 @@
  * `unknown`); the fs wrapper lives in `./discover`.
  */
 import ts from 'typescript'
-import { collectImportedTypes, isPropsShaped } from './resolve-types'
+import { collectImportedTypes, findTypeDeclaration, isPropsShaped } from './resolve-types'
 import type { ComponentIntelligence, PropShape, PropType, VariantAxis } from '../core'
 import { inferControls } from '../core'
 
@@ -129,18 +129,19 @@ const MAX_TYPE_DEPTH = 8
 function collectMembers(
   node: PropsTypeNode,
   lookup: TypeLookup,
+  lookupBase?: BaseLookup,
   depth = 0,
   seen = new Set<ts.Node>(),
 ): ts.TypeElement[] {
   if (depth > MAX_TYPE_DEPTH || seen.has(node)) return []
   seen.add(node)
   const resolveName = (name: string): PropsTypeNode | undefined =>
-    findTypeInFile(node.getSourceFile(), name) ?? lookup(name)
+    findTypeInFile(node.getSourceFile(), name) ?? (lookupBase ? lookupBase(node, name) : lookup(name))
   const followRef = (ref: ts.TypeNode): ts.TypeElement[] => {
     const name = ts.isTypeReferenceNode(ref) && ts.isIdentifier(ref.typeName) ? ref.typeName.text : undefined
-    if (name === undefined) return collectMembers(ref, lookup, depth + 1, seen)
+    if (name === undefined) return collectMembers(ref, lookup, lookupBase, depth + 1, seen)
     const target = resolveName(name)
-    return target ? collectMembers(target, lookup, depth + 1, seen) : []
+    return target ? collectMembers(target, lookup, lookupBase, depth + 1, seen) : []
   }
 
   if (ts.isInterfaceDeclaration(node)) {
@@ -149,13 +150,13 @@ function collectMembers(
       for (const heritage of clause.types) {
         if (!ts.isIdentifier(heritage.expression)) continue
         const target = resolveName(heritage.expression.text)
-        if (target) inherited.push(...collectMembers(target, lookup, depth + 1, seen))
+        if (target) inherited.push(...collectMembers(target, lookup, lookupBase, depth + 1, seen))
       }
     }
     return [...inherited, ...node.members]
   }
   if (ts.isTypeLiteralNode(node)) return [...node.members]
-  if (ts.isParenthesizedTypeNode(node)) return collectMembers(node.type, lookup, depth + 1, seen)
+  if (ts.isParenthesizedTypeNode(node)) return collectMembers(node.type, lookup, lookupBase, depth + 1, seen)
   if (ts.isIntersectionTypeNode(node)) return node.types.flatMap(followRef)
   if (ts.isTypeReferenceNode(node)) return followRef(node)
   return []
@@ -255,6 +256,14 @@ function resolvePropsType(
   return undefined
 }
 
+/**
+ * Resolves a base type named in an `extends` / `&` of `node`, from the file
+ * `node` itself lives in. A props type imported from another file names bases
+ * that file imports, not ones the scanned component imports — so once a hop has
+ * crossed files, the scanned file's own lookup is the wrong one.
+ */
+export type BaseLookup = (node: PropsTypeNode, name: string) => PropsTypeNode | undefined
+
 /** Build a `ComponentIntelligence` from a name + its props type node. */
 function toComponent(
   name: string,
@@ -262,8 +271,9 @@ function toComponent(
   source: string,
   lookup: TypeLookup,
   fn?: ComponentFnNode,
+  lookupBase?: BaseLookup,
 ): ComponentIntelligence {
-  const shapes = membersToShapes(propsType ? collectMembers(propsType, lookup) : [])
+  const shapes = membersToShapes(propsType ? collectMembers(propsType, lookup, lookupBase) : [])
   if (fn) readBodyDefaults(fn, shapes)
   const controls = inferControls(shapes)
   const axes: VariantAxis[] = shapes
@@ -371,7 +381,12 @@ function propsFromTypeAnnotation(
 }
 
 /** Extract the components a top-level statement declares (zero or more). */
-function extractComponents(node: ts.Node, lookup: TypeLookup, source: string): ComponentIntelligence[] {
+function extractComponents(
+  node: ts.Node,
+  lookup: TypeLookup,
+  source: string,
+  lookupBase?: BaseLookup,
+): ComponentIntelligence[] {
   const isExported = (n: ts.Node): boolean =>
     ts.canHaveModifiers(n) && (ts.getModifiers(n) ?? []).some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
   const isDefault = (n: ts.Node): boolean =>
@@ -384,7 +399,7 @@ function extractComponents(node: ts.Node, lookup: TypeLookup, source: string): C
     // call it anyway.
     const name = node.name?.text ?? (isDefault(node) ? fileBaseName(source) : undefined)
     if (name && isPascal(name)) {
-      return [toComponent(name, resolvePropsType(node.parameters[0], lookup), source, lookup, node)]
+      return [toComponent(name, resolvePropsType(node.parameters[0], lookup), source, lookup, node, lookupBase)]
     }
   }
 
@@ -406,7 +421,7 @@ function extractComponents(node: ts.Node, lookup: TypeLookup, source: string): C
       // fallback, because a component that has both means the parameter.
       const props =
         resolvePropsType(fn.parameters[0], lookup) ?? propsFromTypeAnnotation(decl.type, lookup)
-      found.push(toComponent(decl.name.text, props, source, lookup, fn))
+      found.push(toComponent(decl.name.text, props, source, lookup, fn, lookupBase))
     }
     return found
   }
@@ -488,10 +503,19 @@ export function scanSource(
     return resolve(name, imported, fileName)
   }
 
+  // A base type is looked up from the file its DERIVED type lives in — which,
+  // once a hop has crossed into an imported file, is not this one.
+  const lookupBase: BaseLookup = (from, name) => {
+    const home = from.getSourceFile()
+    if (home === sf) return lookup(name)
+    // Reaching another file at all means a resolver took us there.
+    return findTypeDeclaration(home, name) ?? resolve?.(name, collectImportedTypes(home), home.fileName)
+  }
+
   // pass 2 — extract components
   const out: ComponentIntelligence[] = []
   sf.forEachChild((node) => {
-    out.push(...extractComponents(node, lookup, fileName))
+    out.push(...extractComponents(node, lookup, fileName, lookupBase))
   })
   return out
 }

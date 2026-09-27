@@ -1,6 +1,12 @@
-import { sanitizeHref, sanitizeImageSrc } from '../sanitize'
+import {
+  breakCodeFences,
+  markdownLinkDestination,
+  sanitizeCodeLanguage,
+  sanitizeHref,
+  sanitizeImageSrc,
+} from '../sanitize'
 import type { DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
-import { getTextContent, imagePlaceholderText, warnUnknownNodeType } from '../nodes'
+import { getInlineRuns, getTextContent, hasLinkRun, imagePlaceholderText, warnUnknownNodeType } from '../nodes'
 
 /**
  * Discord renderer — outputs embed JSON for Discord webhooks/bots.
@@ -9,6 +15,24 @@ import { getTextContent, imagePlaceholderText, warnUnknownNodeType } from '../no
 
 function resolveColumn(col: string | TableColumn): TableColumn {
   return typeof col === 'string' ? { header: col } : col
+}
+
+/**
+ * Escape user text for Discord markdown. Discord's parser removes a
+ * backslash before ANY non-alphanumeric character, so escaping the markup
+ * characters is invisible: emphasis (`*` `_` `~`), spoilers (`|`), code
+ * spans (`` ` ``), masked links (`[` `]` `(` `)`), mentions / timestamps
+ * (`<` `>`), plus line-start headings, quotes and list bullets.
+ */
+function discordEscape(text: string): string {
+  return text
+    .replace(/[\\`*_~|[\]()<>]/g, '\\$&')
+    .replace(/^(\s*)([#>+-])/gm, '$1\\$2')
+}
+
+/** `[label](dest)`, or just the label when the href was rejected. */
+function discordLink(label: string, href: string): string {
+  return href ? `[${label}](${markdownLinkDestination(href)})` : label
 }
 
 interface DiscordField {
@@ -66,12 +90,21 @@ function nodeToMarkdown(
       if (level === 1 && text === meta.title) {
         break
       }
-      content += `**${text}**\n\n`
+      content += `**${discordEscape(text)}**\n\n`
       break
     }
 
     case 'text': {
-      let text = getTextContent(node.children)
+      // Inline <Link> children keep their href as masked links (pre-fix
+      // the paragraph was flattened and the href silently dropped).
+      const runs = getInlineRuns(node.children)
+      let text = hasLinkRun(runs)
+        ? runs
+            .map((r) =>
+              r.href !== undefined ? discordLink(discordEscape(r.text), r.href) : discordEscape(r.text),
+            )
+            .join('')
+        : discordEscape(getTextContent(node.children))
       if (p.bold) text = `**${text}**`
       if (p.italic) text = `*${text}*`
       if (p.strikethrough) text = `~~${text}~~`
@@ -81,8 +114,8 @@ function nodeToMarkdown(
 
     case 'link': {
       const href = sanitizeHref(p.href as string)
-      const text = getTextContent(node.children)
-      content += `[${text}](${href})\n\n`
+      const text = discordEscape(getTextContent(node.children))
+      content += `${discordLink(text, href)}\n\n`
       break
     }
 
@@ -94,7 +127,7 @@ function nodeToMarkdown(
       // embedded; emit its alt/caption as placeholder text instead of
       // silently dropping it.
       if (src !== meta.imageUrl) {
-        content += `_${imagePlaceholderText(p)}_\n\n`
+        content += `_${discordEscape(imagePlaceholderText(p))}_\n\n`
       }
       break
     }
@@ -106,7 +139,7 @@ function nodeToMarkdown(
       // Use Discord embed fields for small tables
       if (columns.length <= 3 && rows.length <= 10) {
         for (const [colIdx, col] of columns.entries()) {
-          const values = rows.map((row) => String(row[colIdx] ?? '')).join('\n')
+          const values = rows.map((row) => discordEscape(String(row[colIdx] ?? ''))).join('\n')
           fields.push({
             name: col.header,
             value: values || '-',
@@ -118,7 +151,7 @@ function nodeToMarkdown(
         const header = columns.map((c) => c.header).join(' | ')
         const separator = columns.map(() => '---').join(' | ')
         const body = rows.map((row) => row.map((c) => String(c ?? '')).join(' | ')).join('\n')
-        content += `\`\`\`\n${header}\n${separator}\n${body}\n\`\`\`\n\n`
+        content += `\`\`\`\n${breakCodeFences(`${header}\n${separator}\n${body}`)}\n\`\`\`\n\n`
       }
       break
     }
@@ -129,7 +162,7 @@ function nodeToMarkdown(
         .filter((c): c is DocNode => typeof c !== 'string')
         .map((item, i) => {
           const prefix = ordered ? `${i + 1}.` : '•'
-          return `${prefix} ${getTextContent(item.children)}`
+          return `${prefix} ${discordEscape(getTextContent(item.children))}`
         })
         .join('\n')
       content += `${items}\n\n`
@@ -137,8 +170,8 @@ function nodeToMarkdown(
     }
 
     case 'code': {
-      const lang = (p.language as string) ?? ''
-      const text = getTextContent(node.children)
+      const lang = sanitizeCodeLanguage(p.language as string | undefined)
+      const text = breakCodeFences(getTextContent(node.children))
       content += `\`\`\`${lang}\n${text}\n\`\`\`\n\n`
       break
     }
@@ -150,13 +183,13 @@ function nodeToMarkdown(
 
     case 'button': {
       const href = sanitizeHref(p.href as string)
-      const text = getTextContent(node.children)
-      content += `[**${text}**](${href})\n\n`
+      const text = discordEscape(getTextContent(node.children))
+      content += `${discordLink(`**${text}**`, href)}\n\n`
       break
     }
 
     case 'quote': {
-      const text = getTextContent(node.children)
+      const text = discordEscape(getTextContent(node.children))
       content += `> ${text}\n\n`
       break
     }
@@ -169,7 +202,7 @@ function nodeToMarkdown(
     // An orphan list-item (outside a <List>) degrades to its text content
     // instead of silently dropping.
     case 'list-item':
-      content += `${getTextContent(node.children)}\n\n`
+      content += `${discordEscape(getTextContent(node.children))}\n\n`
       break
 
     default:
