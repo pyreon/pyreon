@@ -122,7 +122,7 @@ describe('gen-docs — hooks snapshot', () => {
     expect(Object.keys(record)).toContain('hooks/useSecureStorage')
     expect(Object.keys(record)).toContain('hooks/useWakeLock')
     expect(Object.keys(record)).toContain('hooks/useDeviceInfo')
-    expect(Object.keys(record).length).toBe(56)
+    expect(Object.keys(record).length).toBe(66)
     expect(Object.keys(record)).toContain('hooks/useSecureStorage')
     expect(Object.keys(record)).toContain('hooks/useWakeLock')
     expect(Object.keys(record)).toContain('hooks/useAudioRecorder')

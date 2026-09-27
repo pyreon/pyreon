@@ -154,6 +154,8 @@ if (!(await form.validate())) form.focusFirstError()
 | [`useFormState`](#useformstate) | hook | Computed summary of form-level state (`isValid`, `isDirty`, `isSubmitting`, `isValidating`, `submitCount`, `errors`). |
 | [`FormProvider`](#formprovider) | component | Provide a form via context so nested components can read it with `useFormContext<TValues>()` without prop-drilling. |
 | [`useFormContext`](#useformcontext) | hook | Read the nearest `FormProvider` form from context. |
+| [`Form`](#form) | component | A thin `<form>` wrapper that combines `FormProvider` (so descendants can call `useField`/`useFormContext` without prop-d |
+| [`Submit`](#submit) | component | A `<button type="submit">` that auto-disables while `form.isSubmitting()` is true OR the form is `disabled` — the button |
 | [`FormValues`](#formvalues) | type | Derive the `TValues` shape from a form — accepts BOTH the `useForm` RETURN (`FormState<V>`) and the `useForm` OPTIONS (` |
 | [`FieldNames`](#fieldnames) | type | The field-name union of a form. |
 | [`FieldValue`](#fieldvalue) | type | The value type of ONE field of a form, by field name — `FieldValue<typeof form, "age">` is `number`. |
@@ -364,6 +366,62 @@ const field = useField(form, 'email')
 - Omitting the `<TValues>` generic — TypeScript infers `FormState<Record<string, unknown>>` and `useField` field names lose type narrowing
 
 **See also:** `FormProvider` · `useForm`
+
+---
+
+### Form `component`
+
+```ts
+<TValues>(props: { of: FormState<TValues>; children?: VNodeChild; class?: string; disabled?: boolean | (() => boolean); readOnly?: boolean | (() => boolean) }) => VNodeChild
+```
+
+A thin `<form>` wrapper that combines `FormProvider` (so descendants can call `useField`/`useFormContext` without prop-drilling) with wiring `onSubmit={form.handleSubmit}` automatically — the two things every form's root element needs. `disabled`/`readOnly` accept either a plain boolean or a reactive accessor (`query.isFetching`, `mutation.isPending`) and sync into the form's own `disabled`/`readOnly` signals; form-LEVEL always takes priority over any field-level `disabled`/`readOnly` set individually. This is sugar over `FormProvider` + a hand-written `<form onSubmit={form.handleSubmit}>` — use `FormProvider` directly when you need a non-`<form>` root element or extra attributes `Form` does not forward.
+
+**Example**
+
+```tsx
+const form = useForm({ initialValues: { email: '' }, onSubmit: (values) => api.login(values) })
+
+<Form of={form} disabled={query.isFetching}>
+  <EmailInput />
+  <Submit>Login</Submit>
+</Form>
+```
+
+**Common mistakes**
+
+- Also manually wiring `onSubmit={form.handleSubmit}` on a nested `<form>` — `Form` already renders the `<form>` element and wires submit; do not nest another `<form>` inside it
+- Passing `disabled` as a plain boolean when it should track a query/mutation — pass the ACCESSOR (`query.isFetching`, not `query.isFetching()`) so it stays reactive; a plain `boolean` value is read once at the render that produced it
+- Expecting `Form`'s `class` prop to accept an array/object like the styler `class` convention — it is a plain optional string here
+
+**See also:** `FormProvider` · `Submit` · `useForm`
+
+---
+
+### Submit `component`
+
+```ts
+(props: { children?: VNodeChild; class?: string }) => VNodeChild
+```
+
+A `<button type="submit">` that auto-disables while `form.isSubmitting()` is true OR the form is `disabled` — the button-level half of the disabled-while-submitting pattern every form needs, without hand-wiring `disabled={() => form.isSubmitting() || form.disabled()}` yourself. MUST be rendered inside a `<Form>` or `<FormProvider>` (it reads the form via `useFormContext()`, which throws with no provider above it). Defaults its label to the text `"Submit"` when no children are passed.
+
+**Example**
+
+```tsx
+<Form of={form}>
+  <EmailInput />
+  <Submit>Sign in</Submit>
+</Form>
+```
+
+**Common mistakes**
+
+- Rendering `<Submit>` outside a `<Form>`/`<FormProvider>` tree — `useFormContext()` throws at dev time with no ancestor provider
+- Adding a manual `disabled={form.isSubmitting()}` on top of `<Submit>` — it already combines submitting AND form-disabled state; a hand-added check is redundant and can disagree during a form-level `disabled` toggle
+- Expecting `<Submit>` to run validation before submit — validation is `form.handleSubmit`'s job (wired by `<Form>`'s `onSubmit`); `<Submit>` only renders the button and its disabled state
+
+**See also:** `Form` · `useForm` · `useFormState`
 
 ---
 

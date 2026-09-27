@@ -31,6 +31,14 @@
  * the scaffolder's configs prefix them with the app's `dist/`.
  */
 
+/**
+ * Staging subdir (under `outDir`) where the SSR plugin writes the EDGE server
+ * bundle when an adapter needs one. Internal staging, not a deploy output:
+ * every adapter's client stage preserves it so it never lands in a public
+ * static dir.
+ */
+export const EDGE_SERVER_SUBDIR = 'server-edge'
+
 /** node adapter (`nodeAdapter`) — standalone `node:http` runner. */
 export const NODE_ADAPTER_OUTPUT = Object.freeze({
   /** Emitted runner: `node dist/index.js`. */
@@ -49,6 +57,20 @@ export const BUN_ADAPTER_OUTPUT = Object.freeze({
   serverDir: 'server',
 })
 
+/** deno adapter (`denoAdapter`) — `Deno.serve()` runner over the edge bundle. */
+export const DENO_ADAPTER_OUTPUT = Object.freeze({
+  /** Emitted runner: `deno run -A dist/main.js` (or `deno serve`-less Deploy entry). */
+  runnerEntry: 'main.js',
+  /** Staged clean copy of the client assets the runner serves. */
+  clientDir: 'client',
+  /**
+   * The runner imports the EDGE server bundle in place — the web-worker build
+   * with every dependency bundled and no `node:*` import (the SSR plugin
+   * writes it to `EDGE_SERVER_SUBDIR`). The Node bundle is not used.
+   */
+  serverDir: EDGE_SERVER_SUBDIR,
+})
+
 /** netlify adapter (`netlifyAdapter`) — Netlify Functions v2. */
 export const NETLIFY_ADAPTER_OUTPUT = Object.freeze({
   /** Static publish dir staged under outDir (SSR/ISR modes). */
@@ -59,6 +81,17 @@ export const NETLIFY_ADAPTER_OUTPUT = Object.freeze({
   functionName: 'ssr',
   /** Server-bundle dir inside functionsDir. */
   serverDir: '_server',
+  /**
+   * Edge Functions dir staged under outDir — emitted only when an edge
+   * function is (`netlifyAdapter({ edge: true })` or a route declaring
+   * `export const runtime = 'edge'`); `netlify.toml` then gains
+   * `edge_functions = "<this>"`.
+   */
+  edgeFunctionsDir: 'netlify/edge-functions',
+  /** The edge function: `<edgeFunctionsDir>/<name>/<name>.js`. */
+  edgeFunctionName: 'ssr-edge',
+  /** Scheduled-function filename prefix: `<functionsDir>/<prefix><slug>.mjs`. */
+  scheduledFunctionPrefix: 'cron-',
 })
 
 /** cloudflare adapter (`cloudflareAdapter`) — Cloudflare Pages + Functions. */
@@ -95,4 +128,11 @@ export const VERCEL_ADAPTER_OUTPUT = Object.freeze({
    * joined onto `projectRoot`, not `outDir`.
    */
   outputDir: '.vercel/output',
+  /** The default SSR function: `functions/ssr.func`, routed as `/ssr`. */
+  functionName: 'ssr',
+  /** Routes declaring `runtime = 'edge'` (Node default): `functions/ssr-edge.func`. */
+  edgeFunctionName: 'ssr-edge',
+  /** Routes declaring `runtime = 'nodejs'` under `vercelAdapter({ runtime: 'edge' })`. */
+  nodeFunctionName: 'ssr-node',
 })
+
