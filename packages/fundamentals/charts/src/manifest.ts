@@ -584,6 +584,26 @@ const sound = sonifyValues(closes, { duration: 3000, minHz: 220, maxHz: 880, lin
       ],
       seeAlso: ['EChart'],
     },
+    {
+      name: 'getCore / connect',
+      kind: 'function',
+      signature: "getCore() => Promise<typeof import('echarts/core')> · connect(groupId: string) => Promise<void>",
+      summary:
+        'Escape hatches for whatever `<EChart>`/`useChart` (from `@pyreon/charts/echarts`) do not model. `getCore()` lazily loads (and caches) the underlying `echarts/core` module — use it for `registerMap` (map charts), `registerTheme`, `getInstanceByDom`, or any raw ECharts API the wrapper does not expose; awaiting it is safe before any chart has mounted, since it triggers the same lazy load `<EChart>` does. `connect(groupId)` is a thin async wrapper over `echarts.connect` (awaits the core load first) — assign the SAME `group` id to each chart (the `group` option on `useChart`) and call `connect(groupId)` once to sync tooltips/dataZoom/actions across them.',
+      example: `import { connect, getCore, useChart } from '@pyreon/charts/echarts'
+
+const core = await getCore()
+core.registerMap('world', worldGeoJson)
+
+const a = useChart(optsA, { group: 'sales' })
+const b = useChart(optsB, { group: 'sales' })
+await connect('sales')`,
+      mistakes: [
+        'Calling `getCore()` repeatedly expecting a fresh import each time — it is cached after the first call; the promise resolves to the SAME module instance on every subsequent call',
+        'Registering a map/theme AFTER a chart using it has already mounted — `registerMap`/`registerTheme` must run before the chart that references the name renders, or ECharts falls back to its default',
+      ],
+      seeAlso: ['EChart', 'useChart'],
+    },
 
   ],
   gotchas: [

@@ -1515,6 +1515,7 @@ defineConfig({ adapter: 'vercel' }) // or adapter: vercelAdapter()
 | `vercel`     | `.vercel/output` (Build Output API v3)     | `.vercel/output/config.json` (static variant)          |
 | `cloudflare` | Cloudflare Pages + Workers                 | `_routes.json` static config                           |
 | `netlify`    | Netlify Functions (streaming)              | `netlify.toml` / static config                         |
+| `deno`       | `Deno.serve()` runner (`dist/main.js`) over the edge bundle | no-op                               |
 
 `vercel`/`cloudflare`/`netlify` also implement `Adapter.revalidate(path)` for build-time ISR — see [SSG → Build-time ISR](/docs/ssg#build-time-isr-per-route-revalidate). `static`/`node`/`bun` implement `revalidate` as a no-op.
 
@@ -1528,6 +1529,53 @@ When `mode: 'ssr'` or `mode: 'isr'` is set, the build pipeline also produces a s
 - Otherwise the plugin synthesizes the canonical entry `import { routes } from "virtual:zero/routes"; … export default createServer({ routes, routeMiddleware, apiRoutes })` automatically — no setup required.
 
 After the bundle lands the configured adapter's `build({ kind: 'ssr', … })` is invoked so platform adapters (vercel/cloudflare/netlify) can wrap it into a deployable serverless function. The recursive SSR sub-build uses `PYREON_ZERO_SSR_INNER_BUILD` as its env-flag gate (distinct from SSG's `PYREON_ZERO_SSG_INNER_BUILD`) so the two modes can never collide.
+
+### Edge runtimes and per-route `runtime`
+
+A route (page or API) can ask to run on an edge runtime:
+
+```ts
+// src/routes/geo.tsx
+export const runtime = 'edge' // or 'nodejs' (the default)
+```
+
+The build reads the declaration without executing the file (it must be a plain string literal) and splits routes into the right function per platform:
+
+| Adapter | Default | `runtime = 'edge'` routes | Whole app on the edge |
+| --- | --- | --- | --- |
+| `vercel` | Node function `functions/ssr.func` | `functions/ssr-edge.func` (`.vc-config.json` `runtime: "edge"`), routed before the catch-all | `vercelAdapter({ runtime: 'edge' })` — then `runtime = 'nodejs'` routes split out to `ssr-node.func` (`nodeRuntime`, default `nodejs22.x`) |
+| `netlify` | Node function `ssr` | edge function `netlify/edge-functions/ssr-edge/` with `config.pattern` per route | `netlifyAdapter({ edge: true })` — `runtime = 'nodejs'` routes go to `excludedPattern` and fall through to the Node function |
+| `deno` | — | — | always (`denoAdapter()`); a `runtime = 'nodejs'` route fails the build |
+| `cloudflare` | workerd | honoured as-is (everything already runs on workerd) | — |
+| `node` / `bun` / `static` | — | **build fails**, naming the files | — |
+
+When an edge function is needed the SSR plugin builds a second server bundle at `dist/server-edge/` for a web-worker runtime: every dependency is bundled, `@pyreon/zero/server` resolves to the tooling-free `@pyreon/zero/edge`, and every Node builtin becomes a stub that throws `[Pyreon] node:X is not available on the edge runtime` when *called* — the bundle contains no `node:*` import at all. The platform wrapper imports only `node:async_hooks` (for request context) and inlines the built HTML template, since edge runtimes have no filesystem. A `src/entry-server.ts` works on the edge as long as it imports only what `@pyreon/zero/edge` exports (`createServer`, `createApp`, `createISRHandler`, `createMemoryStore`, `compose`, `getContext`, `render404Page`).
+
+Hashed assets are always excluded from edge functions. On Netlify, edge functions run before static files, so a prerendered page under an edge route's pattern is rendered by the function.
+
+### Scheduled API routes
+
+An API route can declare a cron schedule; the platform calls it with `GET` on that schedule (UTC):
+
+```ts
+// src/routes/api/cleanup.ts
+export const schedule = '0 3 * * *' // 03:00 UTC daily
+
+export async function GET() {
+  await purgeExpiredSessions()
+  return Response.json({ ok: true })
+}
+```
+
+The schedule is validated at build time against the grammar every platform accepts — five numeric fields, `*`, `a-b`, `*/n`, `a-b/n` and comma lists; no `MON`/`JAN` names and no `@hourly` macros. It must be on a static (non-dynamic) API route that exports `GET`.
+
+| Adapter | Maps to |
+| --- | --- |
+| `vercel` | Build Output API `config.json` `crons` |
+| `netlify` | a scheduled function `netlify/functions/cron-<path>.mjs` (`config.schedule`) that calls the handler in-process |
+| `deno` | `Deno.cron` (native on Deno Deploy; locally needs `--unstable-cron` — the runner logs an error rather than skipping silently) |
+| `node` / `bun` | opt-in in-process scheduler: `nodeAdapter({ scheduler: true })`. Opt-in because N instances would each run every job. Without it a `schedule` export fails the build |
+| `cloudflare` | **build fails** — Pages has no cron triggers (they exist only on Workers); trigger the route from a separate Worker with a `[triggers] crons` entry |
 
 ## ISR Handler (runtime)
 
@@ -1727,6 +1775,76 @@ const server = createTestApiServer([{ pattern: '/api/posts', module: { GET: () =
 const res = await server.request('/api/posts')
 ```
 
+## Sessions, Preview Mode & Web Vitals
+
+### Signed cookie sessions (`@pyreon/zero/session`)
+
+```ts
+import { createServer } from '@pyreon/zero/server'
+import { getSession, requireUser, sessionMiddleware } from '@pyreon/zero/session'
+
+export default createServer({
+  routes,
+  middleware: [sessionMiddleware({ secret: [process.env.SESSION_SECRET!, process.env.OLD_SESSION_SECRET!] })],
+})
+
+// A loader (gets only `request`):
+export const loader = async ({ request }) => {
+  const session = getSession<{ userId?: string }>({ request })
+  return { userId: session.get('userId') ?? null }
+}
+
+// A login API route:
+await getSession(ctx).set('userId', user.id)
+
+// A protected layout (route middleware):
+export const middleware = requireUser({ redirectTo: '/login' }) // 302 to /login?next=…; omit → 401
+```
+
+- The whole session lives in one HMAC-SHA256-signed cookie (Web Crypto — Node, Bun, Deno and Cloudflare workerd). Each secret must be ≥ 32 characters; `secret[0]` signs and every entry verifies, so you rotate by prepending the new one.
+- Defaults: `HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` (dropped only for `http://localhost`), 7-day `maxAge` enforced both as `Max-Age` AND as a signed expiry. A tampered, expired or malformed cookie reads as an **empty** session. A write that would exceed 4096 bytes throws.
+- Reads are sync (`get`/`has`/`all`); writes are async (`set`/`update`/`unset`/`destroy`) because they re-sign.
+- **Privacy is automatic:** any response whose handling READ or WROTE the session gets `Cache-Control: private, no-store` + `Vary: Cookie`. `createISRHandler` refuses a `private` response unconditionally — even with a custom `cacheKey` — so a per-user page can never be cached or served to someone else. Requests that never touch the session stay cacheable.
+- `useSession()` works in components during SSR and returns `null` on the client (the cookie is `HttpOnly`); pass session-derived data through a loader.
+- In `mode: 'stream'` headers leave with the shell: touch the session in middleware or a loader, not inside a late Suspense boundary.
+
+### Preview / draft mode (`@pyreon/zero/preview`)
+
+```ts
+import { createPreviewHandler, isPreview, previewMiddleware } from '@pyreon/zero/preview'
+
+const secret = process.env.PREVIEW_SECRET!
+createServer({
+  routes,
+  middleware: [
+    // CMS preview URL: /api/preview?token=…&redirect=/blog/draft · exit: /api/preview/exit
+    createPreviewHandler({ secret, token: process.env.PREVIEW_TOKEN! }),
+    previewMiddleware({ secret }),
+  ],
+})
+
+export const loader = ({ request }) => getCollection('blog', { request }) // drafts included in preview
+```
+
+- The enable endpoint compares the token in constant time, sets a signed `HttpOnly` cookie (1 hour by default) and redirects to a same-origin path only.
+- `createISRHandler` skips its cache entirely for a request carrying the preview cookie — no HIT, and the draft render is never stored. `previewMiddleware` additionally marks verified preview responses `private`.
+- `isPreview(request | ctx | { request })` is true only for a verified cookie. `@pyreon/zero-content`'s `getCollection(name, { request })` includes `draft: true` entries for such requests (an explicit `includeDrafts` still wins).
+- Preview affects server-rendered responses only (SSR/ISR routes, and everything under `zero dev`). An SSG page is a static file — no server code runs for it.
+
+### Web Vitals (`@pyreon/zero/web-vitals`)
+
+```ts
+import { reportWebVitals, sendToBeacon, webVitalsEndpoint } from '@pyreon/zero/web-vitals'
+
+startClient({ routes })
+reportWebVitals(sendToBeacon('/api/vitals'))
+
+// server
+createServer({ routes, middleware: [webVitalsEndpoint('/api/vitals', (m) => log.info(m))] })
+```
+
+Reports LCP, CLS, INP, FCP and TTFB with `web-vitals`-library semantics (activation-relative timings, session-window CLS, p98 INP with `durationThreshold: 40`, LCP finalized on first input or hide). Each metric carries `value`, `delta`, `rating`, `id`, `path` and `navigationType`. **Deviation:** on a client-side route change (the active router's `afterEach`, or the `router` option) CLS and INP are reported and reset per route (`navigationType: 'soft-navigation'`); LCP, FCP and TTFB are reported for the initial hard load only. No attribution build, no bfcache re-reporting, no first-input fallback for browsers without `interactionId`.
+
 ## Subpath Exports
 
 | Import Path                | Exports                                                                              |
@@ -1756,6 +1874,9 @@ const res = await server.request('/api/posts')
 | `@pyreon/zero/og-image`    | `ogImagePlugin`, `ogImagePath`                                                        |
 | `@pyreon/zero/ai`          | `aiPlugin`, `inferJsonLd`, `generateLlmsTxt`, `generateLlmsFullTxt`                   |
 | `@pyreon/zero/i18n-routing`| `useLocale`, `setLocale`, `buildLocalePath`, `extractLocaleFromPath`                  |
+| `@pyreon/zero/session`    | `sessionMiddleware`, `getSession`, `useSession`, `requireUser`                        |
+| `@pyreon/zero/preview`    | `createPreviewHandler`, `previewMiddleware`, `isPreview`, `PREVIEW_COOKIE` (client-safe) |
+| `@pyreon/zero/web-vitals` | `reportWebVitals`, `sendToBeacon`, `webVitalsEndpoint`                                |
 | `@pyreon/zero/testing`     | Test helpers for middleware + API routes                                             |
 
 :::info

@@ -45,6 +45,33 @@ export function layout() {
     { equals: (a, b) => a === b },
   )
 
+  const setPageScrollLocked = (locked: boolean) => {
+    if (typeof document === 'undefined') return
+    document.documentElement.classList.toggle('docs-drawer-scroll-locked', locked)
+  }
+
+  const closeDrawer = (restoreFocus = false) => {
+    if (!drawerOpen()) return
+    drawerOpen.set(false)
+    setPageScrollLocked(false)
+    if (restoreFocus && typeof document !== 'undefined') {
+      requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>('.docs-header__hamburger')?.focus()
+      })
+    }
+  }
+
+  const toggleDrawer = () => {
+    const next = !drawerOpen()
+    drawerOpen.set(next)
+    setPageScrollLocked(next)
+    if (next && typeof document !== 'undefined') {
+      requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>('#docs-navigation-drawer a, #docs-navigation-drawer button')?.focus()
+      })
+    }
+  }
+
   // The header's search button can't directly call `useSearch()` to
   // toggle open, because `useSearch` is hook-shaped and creates a new
   // state instance per call. Instead, dispatch a synthetic Cmd+K (or
@@ -70,14 +97,42 @@ export function layout() {
   onMount(() => {
     if (typeof window === 'undefined') return undefined
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && drawerOpen()) drawerOpen.set(false)
+      if (e.key === 'Escape' && drawerOpen()) {
+        e.preventDefault()
+        closeDrawer(true)
+        return
+      }
+      if (e.key !== 'Tab' || !drawerOpen() || typeof document === 'undefined') return
+      const drawer = document.querySelector<HTMLElement>('#docs-navigation-drawer')
+      const hamburger = document.querySelector<HTMLElement>('.docs-header__hamburger')
+      const focusable = [hamburger, ...(drawer?.querySelectorAll<HTMLElement>('a, button') ?? [])].filter(
+        (element): element is HTMLElement => Boolean(element && element.offsetParent !== null),
+      )
+      if (focusable.length === 0) return
+      const first = focusable[0]!
+      const last = focusable[focusable.length - 1]!
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+    const onResize = () => {
+      if (window.innerWidth > 768) closeDrawer()
     }
     window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
+    window.addEventListener('resize', onResize)
+    return () => {
+      window.removeEventListener('keydown', handler)
+      window.removeEventListener('resize', onResize)
+    }
   })
 
   onUnmount(() => {
-    drawerOpen.set(false)
+    closeDrawer()
+    setPageScrollLocked(false)
   })
 
   return (
@@ -88,26 +143,28 @@ export function layout() {
     >
       <Header
         onOpenSearch={openSearch}
-        onHamburgerToggle={() => drawerOpen.set(!drawerOpen())}
+        onHamburgerToggle={toggleDrawer}
         drawerOpen={() => drawerOpen()}
+        showHamburger={() => isDocsPath()}
       />
 
       {() =>
         isDocsPath() ? (
           <>
             <aside
+              id="docs-navigation-drawer"
               class={() =>
                 drawerOpen()
                   ? 'docs-aside docs-aside--drawer-open'
                   : 'docs-aside'
               }
             >
-              <Sidebar onNavigate={() => drawerOpen.set(false)} />
+              <Sidebar onNavigate={() => closeDrawer()} />
             </aside>
             {/* Mobile backdrop — tap to close the drawer. */}
             <div
               class="docs-drawer-backdrop"
-              onClick={() => drawerOpen.set(false)}
+              onClick={() => closeDrawer(true)}
               aria-hidden="true"
             />
           </>

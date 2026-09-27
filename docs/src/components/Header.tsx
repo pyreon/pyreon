@@ -9,6 +9,8 @@ interface HeaderProps {
   onHamburgerToggle?: () => void
   /** Reactive accessor — drives the hamburger's aria-expanded state. */
   drawerOpen?: () => boolean
+  /** Only docs routes own a navigation drawer. */
+  showHamburger?: () => boolean
 }
 
 /**
@@ -154,17 +156,24 @@ export function Header(props: HeaderProps) {
             </svg>
           </a>
 
-          <button
-            type="button"
-            class="docs-header__hamburger"
-            onClick={() => props.onHamburgerToggle?.()}
-            aria-label="Toggle navigation"
-            aria-expanded={() => (drawerOpen() ? 'true' : 'false')}
-          >
-            <span />
-            <span />
-            <span />
-          </button>
+          {() =>
+            props.showHamburger?.() ? (
+              <button
+                type="button"
+                class="docs-header__hamburger"
+                onClick={() => props.onHamburgerToggle?.()}
+                aria-label={() =>
+                  drawerOpen() ? 'Close documentation navigation' : 'Open documentation navigation'
+                }
+                aria-controls="docs-navigation-drawer"
+                aria-expanded={() => (drawerOpen() ? 'true' : 'false')}
+              >
+                <span />
+                <span />
+                <span />
+              </button>
+            ) : null
+          }
         </div>
       </div>
     </header>

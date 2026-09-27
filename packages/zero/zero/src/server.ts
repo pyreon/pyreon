@@ -60,18 +60,28 @@ export {
 export {
 	BUN_ADAPTER_OUTPUT,
 	CLOUDFLARE_ADAPTER_OUTPUT,
+	DENO_ADAPTER_OUTPUT,
 	NETLIFY_ADAPTER_OUTPUT,
 	NODE_ADAPTER_OUTPUT,
 	VERCEL_ADAPTER_OUTPUT,
 	bunAdapter,
 	cloudflareAdapter,
+	denoAdapter,
 	netlifyAdapter,
 	nodeAdapter,
 	resolveAdapter,
 	staticAdapter,
 	vercelAdapter,
 } from "./adapters";
-export type { VercelAdapterOptions } from "./adapters";
+export type {
+	BunAdapterOptions,
+	DeployTargets,
+	NetlifyAdapterOptions,
+	NodeAdapterOptions,
+	RouteRuntime,
+	ScheduledRoute,
+	VercelAdapterOptions,
+} from "./adapters";
 
 // ─── 404 ────────────────────────────────────────────────────────────────────
 
@@ -138,3 +148,13 @@ export {
   lanAddresses,
   needsHostsFileEntry,
 } from "./https";
+
+// ─── Sessions (signed cookies) ──────────────────────────────────────────────
+
+export type { RequireUserOptions, Session, SessionOptions } from './session'
+export { getSession, requireUser, sessionMiddleware, useSession } from './session'
+
+// ─── Preview / draft mode ───────────────────────────────────────────────────
+
+export type { PreviewHandlerOptions, PreviewOptions } from './preview'
+export { PREVIEW_COOKIE, createPreviewHandler, isPreview, previewMiddleware } from './preview'
