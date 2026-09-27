@@ -13,6 +13,7 @@ import { rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import sharp from 'sharp'
+import pyreon from '@pyreon/vite-plugin'
 import { build } from 'vite'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { zeroPlugin } from '../../vite-plugin'
@@ -31,7 +32,7 @@ beforeAll(async () => {
     root: FIXTURE,
     configFile: false,
     logLevel: 'error',
-    plugins: zeroPlugin({ mode: 'ssr', routeOg: { width: 400, height: 210 } }),
+    plugins: [pyreon(), ...zeroPlugin({ mode: 'ssr', routeOg: { width: 400, height: 210 } })],
     resolve: { conditions: ['bun'] },
     build: { outDir: 'dist-ssr', emptyOutDir: true },
   })
