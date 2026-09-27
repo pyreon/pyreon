@@ -229,12 +229,12 @@ export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
   // Re-exported only when an operation declares typed error bodies: the
   // hooks import `EndpointError` from here, whichever client was generated.
   if (doc.operations.some((o) => (o.errors?.length ?? 0) > 0)) {
-    f.line()
+    f.line();
     f.doc(
       'What a generated call rejects with, typed by the status codes the spec',
       "declares: `err.matched === '404'` narrows `err.body` to that schema.",
-    )
-    f.line("export type { EndpointError, HttpErrorOf, RequestFailure } from '@pyreon/http'")
+    );
+    f.line("export type { EndpointError, HttpErrorOf, RequestFailure } from '@pyreon/http'");
   }
   return f
 }
@@ -662,7 +662,7 @@ export function emitWebEndpoints(
     for (const op of ops) {
       if (op.response && op.response.kind !== "unknown")
         schemaRefs(op.response, schemaImports);
-      for (const e of op.errors ?? []) schemaRefs(e.type, schemaImports)
+      for (const e of op.errors ?? []) schemaRefs(e.type, schemaImports);
       // A PARAMETER's schema can be a `$ref` too - GitHub's spec does this
       // heavily (`AlertNumber`, `CodeScanningRef`) - and so can a body.
       for (const p of [
@@ -1023,7 +1023,7 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
       f.import("@pyreon/query", "useMutation");
       f.importType("@pyreon/query", "MutationOptions");
     }
-    if (ops.some((o) => (o.errors?.length ?? 0) > 0)) f.importType(relativeSpecifier(path, CLIENT_FILE), 'EndpointError')
+    if (ops.some((o) => (o.errors?.length ?? 0) > 0)) f.importType(relativeSpecifier(path, CLIENT_FILE), 'EndpointError');
     if (ops.some((o) => o.pagination && !isMutation(o))) {
       f.import("@pyreon/query", "useInfiniteQuery");
       f.importType("@pyreon/query", "UseInfiniteQueryOptions");
@@ -1050,7 +1050,7 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
       const input = `Parameters<typeof ${op.id}>[0]`;
       // What `error()` holds: the endpoint's typed rejection when the spec
       // declares error bodies, `Error` otherwise.
-      const err = errorTypeOf(op)
+      const err = errorTypeOf(op);
       f.line()
       if (isMutation(op)) {
         const targets = invalidationTargets(op, queryOps);
