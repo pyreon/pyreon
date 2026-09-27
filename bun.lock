@@ -2310,6 +2310,7 @@
         "@pyreon/http": "workspace:^",
         "@pyreon/query": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/validate": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "vitest": "^4.1.11",
       },

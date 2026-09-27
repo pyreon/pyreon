@@ -76,13 +76,20 @@ export function generate(
   const has = (p: string): boolean => config.plugins.includes(p as never)
 
   if (has('types')) push(emitTypes(doc))
-  if (has('schemas')) push(emitSchemas(doc, { native: false, validator: config.validator }))
+  if (has('schemas')) for (const f of emitSchemas(doc, { native: false, validator: config.validator })) push(f)
   if (has('client')) {
-    push(emitClient(doc, { native, baseUrl: config.baseUrl, client: config.client }))
+    push(
+      emitClient(doc, {
+        native,
+        baseUrl: config.baseUrl,
+        client: config.client,
+        responseValidation: config.responseValidation,
+      }),
+    )
     for (const f of emitWebEndpoints(doc, config.validator)) push(f)
   }
   if (has('queries')) {
-    for (const f of emitWebQueries(doc)) push(f)
+    for (const f of emitWebQueries(doc, config.client)) push(f)
     push(emitKeys(doc))
   }
   if (has('mocks')) push(emitMocks(doc, config.client))

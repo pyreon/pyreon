@@ -16,6 +16,7 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { schemaSource, writeTree } from './write-tree'
 import { resolveConfig, type ValidatorName } from '../../core/config'
 import { generate } from '../../core/generate'
 import type { IrDocument } from '../../core/ir'
@@ -47,12 +48,15 @@ export async function loadGeneratedSchemas(
 ): Promise<LoadedSchemas> {
   const cfg = resolveConfig({ input: 'x', validator, plugins: ['schemas'] })
   const result = generate(spec, cfg)
-  const file = result.files.find((f) => f.path === 'schemas.ts')
+  const files = result.files.filter((f) => f.path === 'schemas.ts' || f.path.startsWith('schemas/'))
   const dir = join(ROOT, tag, validator)
   mkdirSync(dir, { recursive: true })
   created.add(join(ROOT, tag))
-  const source = file?.contents ?? ''
-  writeFileSync(join(dir, 'schemas.ts'), source || 'export {}\n')
+  // One module per model plus the `schemas.ts` barrel; `source` is every
+  // schema declaration as one text, for assertions about what they say.
+  const source = schemaSource(files)
+  if (files.length === 0) writeFileSync(join(dir, 'schemas.ts'), 'export {}\n')
+  else writeTree(dir, files)
   const mod = (await import(join(dir, 'schemas.ts'))) as Record<string, StdSchema>
   return { doc: result.doc, schemas: mod, source }
 }

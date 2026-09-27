@@ -12,6 +12,7 @@
  * runs turns every snapshot test into a flake.
  */
 
+import { modelIndex } from '../core/graph'
 import type { IrDocument, IrField, IrNumberType, IrOperation, IrStringType, IrType } from '../core/ir'
 import { byTag, CLIENT_FILE, endpointSpec, tagFile } from './client'
 import type { ClientName } from './client-runtime'
@@ -208,7 +209,7 @@ function fixture(
       return Array.from({ length: n }, (_, i) => fixture(type.items, doc, depth + 1, undefined, i + 1))
     }
     case 'ref': {
-      const model = doc.models.find((m) => m.name === type.name)
+      const model = modelIndex(doc).get(type.name)
       return model ? fixture(model.type, doc, depth + 1, undefined, index) : null
     }
     case 'union':

@@ -10,7 +10,15 @@
 import type { CheckOpts } from '../core/ops'
 import type { Action } from '../core/schema'
 import { resolveFormat } from '../core/registry'
-import { type EmailPrecision, URL_RE, UUID_RE, validateEmail } from '../primitives/string'
+import {
+  type EmailPrecision,
+  URI_RE,
+  URL_RE,
+  type UrlOpts,
+  UUID_RE,
+  uriWithProtocol,
+  validateEmail,
+} from '../primitives/string'
 import { defineCheck, defineTransform } from './_core'
 
 export type { EmailPrecision }
@@ -88,13 +96,27 @@ export const email = (opts?: CheckOpts & { precision?: EmailPrecision }): Action
   )
 }
 
-/** HTTP(S) URL. */
-export const url = (opts?: CheckOpts): Action<string> =>
-  defineCheck<string>(
-    { kind: 'check:string:url', opts },
-    (v) => typeof v !== 'string' || resolveFormat('url', (s: string) => URL_RE.test(s))(v),
-    { code: 'invalid_format', message: 'Invalid URL', key: 'validate.string.url' },
+/**
+ * A URL: `http:` / `https:` by default, or any RFC 3986 absolute URI whose
+ * scheme matches `protocol` -- the same option, and default, as the chain's
+ * `.url()` (see `UrlOpts`).
+ */
+export const url = (opts?: UrlOpts): Action<string> => {
+  const protocol = opts?.protocol
+  if (protocol === undefined) {
+    return defineCheck<string>(
+      { kind: 'check:string:url', opts },
+      (v) => typeof v !== 'string' || resolveFormat('url', (s: string) => URL_RE.test(s))(v),
+      { code: 'invalid_format', message: 'Invalid URL', key: 'validate.string.url' },
+    )
+  }
+  const scheme = uriWithProtocol(protocol)
+  return defineCheck<string>(
+    { kind: 'check:string:url', protocol, opts },
+    (v) => typeof v !== 'string' || (resolveFormat('uri', (s: string) => URI_RE.test(s))(v) && scheme(v)),
+    { code: 'invalid_format', message: 'Invalid URL', key: 'validate.string.url', params: { protocol: protocol.source } },
   )
+}
 
 /** UUID (v1–v5). */
 export const uuid = (opts?: CheckOpts): Action<string> =>

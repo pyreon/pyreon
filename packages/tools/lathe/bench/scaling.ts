@@ -22,9 +22,11 @@
  * input; running two shapes is what distinguishes "the code is superlinear"
  * from "my fixture is".
  *
- * Run: `bun bench/scaling.ts` (add `--json` for machine-readable output).
+ * Run: `bun run bench` (node, V8 -- the engine the shipped bin runs on) or
+ * `bun bench/scaling.ts` (JavaScriptCore). Add `--json` for machine-readable
+ * output. The banner names the engine; never quote a row without it.
  */
-import { resolveConfig } from '../src/core/config'
+import { ALL_PLUGINS, resolveConfig } from '../src/core/config'
 import { generate } from '../src/core/generate'
 import { loadOpenApi } from '../src/input/openapi'
 import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
@@ -40,7 +42,7 @@ function benchRuntimeBanner(): string {
   return `${engine} · ${process.platform}/${process.arch} · ${benchCpus()[0]?.model ?? 'unknown cpu'} · loadavg ${load}`
 }
 
-type Shape = 'chain' | 'shallow' | 'flat'
+type Shape = 'chain' | 'shallow' | 'flat' | 'dense' | 'hub'
 
 /**
  * `chain`   — each model refs the previous. A worst case for anything that
@@ -48,12 +50,22 @@ type Shape = 'chain' | 'shallow' | 'flat'
  * `shallow` — each model refs one of the first five. Wide and flat, which is
  *             what a real API looks like.
  * `flat`    — no refs at all. The floor.
+ * `dense`   — each model refs THREE others chosen by a fixed hash, so the
+ *             graph is full of cycles and one large strongly-connected
+ *             component forms -- the shape of Stripe's `expandable` graph, and
+ *             the one that made the faker plugin cubic. None of the three
+ *             shapes above contains a cycle at all.
+ * `hub`     — every model refs the same eight hub models, and the hubs ref
+ *             each other: high fan-in plus a small cycle, the shape of a spec
+ *             whose `User`/`Repository` is named everywhere (GitHub).
  */
 function bigSpec(models: number, shape: Shape): string {
   const comps: string[] = []
   for (let i = 0; i < models; i++) {
-    const target = shape === 'chain' ? (i > 0 ? i - 1 : -1) : shape === 'shallow' ? (i >= 5 ? i % 5 : -1) : -1
-    const ref = target >= 0 ? `\n        parent:\n          $ref: '#/components/schemas/M${target}'` : ''
+    const targets = refsOf(i, models, shape)
+    const ref = targets
+      .map((t, k) => `\n        ref${k}:\n          $ref: '#/components/schemas/M${t}'`)
+      .join('')
     comps.push(`    M${i}:
       type: object
       required: [id]
@@ -81,11 +93,27 @@ ${comps.join('\n')}
 `
 }
 
-const CONFIG = resolveConfig({
-  input: 'x.yaml',
-  output: 'out',
-  plugins: ['types', 'schemas', 'client', 'queries', 'mocks'],
-} as never)
+/** Which models `M{i}` references, per shape. Deterministic: no `Math.random`. */
+function refsOf(i: number, models: number, shape: Shape): number[] {
+  switch (shape) {
+    case 'chain':
+      return i > 0 ? [i - 1] : []
+    case 'shallow':
+      return i >= 5 ? [i % 5] : []
+    case 'flat':
+      return []
+    case 'dense':
+      // Three pseudo-random targets from a fixed LCG over the index.
+      return [1, 2, 3].map((k) => (i * 1103515245 + k * 12345) % models).filter((t) => t !== i)
+    case 'hub':
+      return i < 8 ? [(i + 1) % 8] : [0, 1, 2, 3, 4, 5, 6, 7]
+  }
+}
+
+// EVERY plugin. The previous bench left out `faker`, `components`, `atlas`
+// and `docs` -- and `faker` was the one plugin that was not linear.
+const CONFIG = resolveConfig({ input: 'x.yaml', output: 'out', plugins: [...ALL_PLUGINS] })
+const FAKER_ONLY = resolveConfig({ input: 'x.yaml', output: 'out', plugins: ['schemas', 'faker'] })
 
 const WARMUP = 5
 const TRIALS = 21
@@ -135,19 +163,32 @@ interface Row {
   models: number
   parse: { median: number; spread: number }
   gen: { median: number; spread: number }
+  faker: { median: number; spread: number }
+  /** Total bytes of every emitted file. Deterministic -- a count, not a timing. */
+  outputBytes: number
+  /** Process peak RSS after this row, in MB. A HIGH-WATER mark: monotonic. */
+  peakRssMb: number
 }
 
-const SIZES = [100, 200, 400, 800]
+// Up to 2,000 models: past GitHub (989) and Stripe (1,537), which is where a
+// super-linear pass stops being a curiosity.
+const SIZES = [125, 250, 500, 1000, 2000]
+const SHAPES: readonly Shape[] = ['chain', 'shallow', 'flat', 'dense', 'hub']
 const rows: Row[] = []
 
-for (const shape of ['chain', 'shallow', 'flat'] as const) {
+for (const shape of SHAPES) {
   for (const models of SIZES) {
     const src = bigSpec(models, shape)
+    const outputBytes = generate(src, CONFIG).files.reduce((n, f) => n + Buffer.byteLength(f.contents), 0)
     rows.push({
       shape,
       models,
       parse: measure(() => void loadOpenApi(src)),
       gen: measure(() => void generate(src, CONFIG)),
+      faker: measure(() => void generate(src, FAKER_ONLY)),
+      outputBytes,
+      // `maxRSS` is KB in both node and bun.
+      peakRssMb: Math.round(process.resourceUsage().maxRSS / 1024),
     })
   }
 }
@@ -166,7 +207,9 @@ if (process.argv.includes('--json')) {
       shape = r.shape
       console.log(`\n--- ${shape} ---`)
     }
-    console.log(`${String(r.models).padStart(4)} models | parse ${fmt(r.parse)} | generate ${fmt(r.gen)}`)
+    console.log(
+      `${String(r.models).padStart(4)} models | parse ${fmt(r.parse)} | generate(all) ${fmt(r.gen)} | schemas+faker ${fmt(r.faker)} | out ${(r.outputBytes / 1e6).toFixed(1)} MB | peak RSS ${r.peakRssMb} MB`,
+    )
   }
   // The scaling read, from a least-squares fit over ALL sizes rather than a
   // ratio of two endpoints. An endpoint ratio inherits the noise of exactly two
@@ -174,11 +217,12 @@ if (process.argv.includes('--json')) {
   // reports how well the line actually holds, which is the difference between
   // a measurement and a number.
   console.log('\nscaling (least-squares fit over all sizes):')
-  for (const s of ['chain', 'shallow', 'flat'] as const) {
+  for (const s of SHAPES) {
     const mine = rows.filter((r) => r.shape === s)
     for (const [label, pick] of [
       ['parse', (r: Row) => r.parse],
       ['generate', (r: Row) => r.gen],
+      ['faker', (r: Row) => r.faker],
     ] as const) {
       const pts = mine.map((r) => ({ x: Math.log(r.models), y: Math.log(pick(r).median) }))
       const { slope, r2 } = fit(pts)

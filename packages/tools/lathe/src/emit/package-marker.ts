@@ -1,24 +1,25 @@
 /**
  * The `package.json` marker emitted alongside the generated code.
  *
- * This is the single change that makes the generated client tree-shake, and
- * it is worth explaining because the obvious alternatives do not work.
+ * One of the two changes that make the generated client tree-shake (the other
+ * is the pure annotation on every emitted call), and worth explaining.
  *
  * A bundler retains a module-level CALL unless it can prove the call has no
  * side effects. `api.endpoint('GET /books', …)` and `s.object({ … })` are both
  * module-level calls, so importing one hook through a barrel that names every
  * tag retains every endpoint in the spec, and a fixture table named by that
  * same barrel lands in the page bundle as DATA. Measured with Vite 8 on a
- * 30-tag / 120-operation spec, importing a single hook:
+ * 30-tag / 120-operation spec, importing a single hook, BEFORE the pure
+ * annotations existed:
  *
  *   no marker      30,710 B (2,420 gz) — 120 endpoints, 120 fixtures
  *   with marker     5,748 B   (642 gz) — 4 endpoints, 0 fixtures
  *
- * `/* @__PURE__ *\/` on each declaration is the reflex and is nearly useless
- * here — measured 2,041 B -> 2,000 B, 2% — because the ARGUMENTS are
- * themselves calls (`s.string().uuid()`) that the bundler must still evaluate.
- * The `sideEffects` field answers the question at the level it is actually
- * asked: about the MODULE, not about one expression inside it.
+ * The marker answers the question at the level of the MODULE: an unreached
+ * module is dropped whole. The `/* @__PURE__ *\/` annotations on every emitted
+ * call answer it inside a module that IS reached. They are complementary --
+ * without the marker, a module like `keys.ts` (whose `op.key.prefix` reads a
+ * bundler must assume may run a getter) keeps every endpoint it names.
  *
  * It also removes a dependency on the consumer's own configuration. Without
  * this file the behaviour is decided by whether the APP's `package.json`

@@ -89,6 +89,7 @@ export function runPass(
   options: LathePluginOptions,
   root: string,
   mode: 'write' | 'check',
+  only?: string,
 ): LathePassResult {
   const abs = (p: string): string => (isAbsolute(p) ? p : resolve(root, p))
   const written: string[] = []
@@ -103,6 +104,9 @@ export function runPass(
   const generated: Array<{ out: string; result: ReturnType<typeof generate> }> = []
   for (const project of resolveProjects(options)) {
     const input = abs(project.input)
+    // `only`: a spec path. A change to one project's spec regenerates THAT
+    // project, not every project the config declares.
+    if (only !== undefined && input !== only) continue
     specs.push(input)
     // Read directly and treat a miss as absent, rather than `existsSync` then
     // read. The exists-check is redundant — a missing file is just a read that
@@ -284,7 +288,9 @@ export function lathe(options: LathePluginOptions = {}): LathePluginHost {
             specs = specPathsOf(effective, root)
             for (const spec of specs) server.watcher.add(spec)
           }
-          const pass = runPass(effective, root, 'write')
+          // A spec change regenerates the project that owns it; a config
+          // change can move every project, so it regenerates all of them.
+          const pass = runPass(effective, root, 'write', isConfig ? undefined : path)
           warnMissing(pass)
           log(passSummary(pass))
         })().catch((err: unknown) => {

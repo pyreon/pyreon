@@ -15,13 +15,15 @@
  * for the same hook reached through its own tag. 5.1x raw, 3.2x gzipped, and
  * a production bundle carrying a fixture table nobody asked for.
  *
- * The mechanism is worth stating because the obvious fix does not work.
  * `api.endpoint(...)` and `s.object({ ... })` are module-level CALLS, so a
- * bundler cannot prove them side-effect-free and retains every one the entry
- * reaches. Annotating them `/* @__PURE__ *\/` is the reflex and it is nearly
- * useless — measured 2,041 B -> 2,000 B, 2% — because the ARGUMENTS are
- * themselves calls (`s.string().uuid()`), which esbuild must still evaluate.
- * The lever is not purity, it is REACHABILITY: what the entry point names.
+ * bundler retains every one it cannot prove side-effect-free. Two things
+ * answer that, and both are needed: REACHABILITY (what an entry names -- this
+ * file, plus one schema module per model) and PURITY (`/* @__PURE__ *\/` on
+ * EVERY emitted call, arguments included, so an unused declaration inside a
+ * reached module is dropped). An early measurement annotated only the OUTER
+ * declaration, found 2%, and concluded purity was useless; annotated
+ * throughout it is the larger of the two levers -- see `emitSchemas` for the
+ * GitHub/Stripe numbers.
  *
  * So the entries mirror the dependency layering instead of flattening it:
  *
@@ -72,11 +74,12 @@ export function emitBarrel(doc: IrDocument, opts: EntryOptions): SourceFile {
     'The per-tag split is an emitter concern: a consumer should not have to',
     'know which tag an operation was filed under, or that tags exist.',
     '',
-    'Reaching for one hook here reaches every operation in the spec, because',
-    'an endpoint declaration is a module-level call a bundler must keep. On a',
-    '120-operation spec that measured 30.7 kB against 6.1 kB for the same hook',
-    "imported from its own tag. If that matters, import the tag: ",
-    "`import { useListBooks } from './gen/queries/books'`.",
+    'Importing one hook from here costs the same as importing it from its own',
+    'tag module: every declaration is annotated pure and the `package.json`',
+    'next to this file declares the output side-effect-free, so a bundler keeps',
+    'only what the hook reaches (measured on GitHub\'s spec with Vite 8: 2.8 kB',
+    'gzipped of generated code either way). A bundler that ignores both hints',
+    'keeps more through this file than through the tag.',
     '',
     'Fixtures and fake-data factories are NOT re-exported here -- they live in',
     '`./dev`, so a page bundle cannot reach them. Preview components are absent',

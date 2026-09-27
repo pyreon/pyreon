@@ -17,7 +17,7 @@
  * endpoints and the calls all in a single top level.
  */
 
-import { reachableModels, topoSortModels } from '../core/graph'
+import { deferredTargets, reachableModels, topoSortModels } from '../core/graph'
 import { childTypes, collectRefNames } from '../core/walk'
 import type { IrBody, IrDocument, IrOperation, IrParam, IrType } from '../core/ir'
 import { propKey, tagFile, typeIdent } from '../core/naming'
@@ -29,8 +29,9 @@ import {
   runtimeTransport,
   runtimeValidate,
   type ClientName,
+  type ResponseValidation,
 } from './client-runtime'
-import { schemaExpr, schemaSpecifier, tsType } from './schema'
+import { PURE, schemaExpr, schemaRefs, schemaSpecifier, schemaSpecifierFor, tsType } from './schema'
 import { dialectOf, type ValidatorName } from './validator'
 import { q, relativeSpecifier, SourceFile } from './writer'
 
@@ -42,6 +43,8 @@ export interface ClientOptions {
   client?: ClientName | undefined
   /** Which library the schemas are written in. Defaults to `pyreon`. */
   validator?: ValidatorName | undefined
+  /** Response validation mode. Defaults to `strict`. */
+  responseValidation?: ResponseValidation | undefined
 }
 
 export const CLIENT_FILE = 'client.ts'
@@ -92,6 +95,10 @@ export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
   f.line(`export const api = createHttp({`)
   f.line(`  baseUrl: ${q(baseUrlOf(doc, opts))},`)
   f.line(`  schema: standardSchema,`)
+  // Only when it differs from `@pyreon/http`'s own default, so the common
+  // output does not change.
+  const mode = opts.responseValidation ?? 'strict'
+  if (mode !== 'strict') f.line(`  validate: ${q(mode)},`)
   f.line(`  use: [(req, next) => (devTransport ? devTransport(req, next) : next(req))],`)
   f.line(`})`)
   return f
@@ -148,7 +155,7 @@ function emitAdapterClient(
   f.line()
   f.lines(...runtimePreamble())
   f.line()
-  f.lines(...runtimeValidate())
+  f.lines(...runtimeValidate(opts.responseValidation))
   f.line()
   f.lines(...runtimeTransport())
   f.line()
@@ -173,15 +180,77 @@ export function endpointSpec(op: IrOperation): string {
  *
  * Sorted so regeneration is byte-identical; `default` (untagged) sorts with
  * everything else rather than being special-cased to the front.
+ *
+ * An UNTAGGED operation is grouped by its path instead (see
+ * {@link pathGroup}). A spec with no tags at all -- Stripe's -- used to produce
+ * one `endpoints/default.ts` of 612 endpoints, so importing one hook reached
+ * an endpoint module of all of them. A path group whose file name matches a
+ * real tag's joins that tag rather than colliding with it on disk.
  */
 export function byTag(doc: IrDocument): Map<string, IrOperation[]> {
+  const cached = groupMemo.get(doc)
+  if (cached && cached.ops === doc.operations && cached.count === doc.operations.length) return cached.groups
+  const untagged = doc.operations.filter((op) => op.tag === UNTAGGED)
+  const common = commonStaticPrefix(untagged.map((op) => op.path))
+  const byFile = new Map<string, string>()
+  for (const op of doc.operations) if (op.tag !== UNTAGGED) byFile.set(tagFile(op.tag), op.tag)
+  const keyOf = (op: IrOperation): string => {
+    if (op.tag !== UNTAGGED) return op.tag
+    const group = pathGroup(op.path, common)
+    return byFile.get(tagFile(group)) ?? group
+  }
   const out = new Map<string, IrOperation[]>()
   for (const op of [...doc.operations].sort((a, b) => a.id.localeCompare(b.id))) {
-    const list = out.get(op.tag)
+    const key = keyOf(op)
+    const list = out.get(key)
     if (list) list.push(op)
-    else out.set(op.tag, [op])
+    else out.set(key, [op])
   }
-  return new Map([...out.entries()].sort(([a], [b]) => a.localeCompare(b)))
+  const groups = new Map([...out.entries()].sort(([a], [b]) => a.localeCompare(b)))
+  groupMemo.set(doc, { ops: doc.operations, count: doc.operations.length, groups })
+  return groups
+}
+
+/** The IR's tag for an operation the spec did not tag. */
+const UNTAGGED = 'default'
+
+const groupMemo = new WeakMap<IrDocument, { ops: IrDocument['operations']; count: number; groups: Map<string, IrOperation[]> }>()
+
+/** Static path segments: no `{param}` / `:param`, nothing empty. */
+function staticSegments(path: string): string[] {
+  return path.split('/').filter((s) => s.length > 0 && !s.startsWith('{') && !s.startsWith(':'))
+}
+
+/**
+ * The leading static segments EVERY untagged path shares -- `/v1` on Stripe,
+ * `/api/v2` elsewhere. Stripped before grouping, or every operation would land
+ * in one `v1` group, which is the problem being solved.
+ */
+function commonStaticPrefix(paths: readonly string[]): string[] {
+  if (paths.length === 0) return []
+  let prefix = staticSegments(paths[0] as string)
+  for (const p of paths.slice(1)) {
+    const segs = staticSegments(p)
+    let i = 0
+    while (i < prefix.length && i < segs.length && prefix[i] === segs[i]) i++
+    prefix = prefix.slice(0, i)
+  }
+  return prefix
+}
+
+/**
+ * The group of an untagged operation: its first static path segment after the
+ * shared prefix -- `/v1/customers/{id}/balance` -> `customers`. A path with no
+ * static segment left (`/`, `/{id}`) stays `default`.
+ *
+ * The prefix is not stripped from a path that IS the prefix (a spec whose only
+ * untagged path is `/v1/status`); that path is grouped by its own last segment
+ * rather than falling back to `default` for no reason.
+ */
+export function pathGroup(path: string, common: readonly string[]): string {
+  const segs = staticSegments(path)
+  const rest = segs.slice(common.length)
+  return rest[0] ?? segs[segs.length - 1] ?? UNTAGGED
 }
 
 /** The argument type for one operation's call site. */
@@ -231,11 +300,65 @@ export function bodyArg(body: IrBody): 'json' | 'form' | 'multipart' | 'body' {
 function bodyTs(body: IrBody, models: ReadonlyMap<string, IrType>): string {
   if (body.encoding === 'text') return 'string'
   if (body.encoding === 'binary') return 'Blob | ArrayBuffer'
-  // In a multipart body a `binary` string is a FILE. A model named by a ref
-  // renders its binary fields as `string` in `schemas.ts` (a response never
-  // carries a Blob), so a ref that reaches one is expanded here.
-  const t = body.encoding === 'multipart' ? expandFileRefs(body.type, models, new Set()) : body.type
-  return tsType(t, 0, false, false, body.encoding === 'multipart')
+  if (body.encoding === 'form' || body.encoding === 'multipart') {
+    // An ENCODED body is typed as what the encoder accepts. `@pyreon/http`
+    // (and the adapter runtime) take `Record<string, FormValue>` for `form`,
+    // whose object branch is an index signature -- and two things in a spec's
+    // body do not fit one: a model named by a ref (rendered as an `interface`,
+    // which has no implicit index signature) and a value of unknown shape
+    // (`unknown`). Stripe's form bodies carry both on almost every mutation,
+    // which was 250 type errors in its generated hooks. So refs are inlined
+    // and unknown becomes `FormValue` -- the precise shape, spelled so the
+    // encoder's type accepts it, with nothing loosened to `any`.
+    return tsType(
+      encodableBody(body.type, models, new Set()),
+      0,
+      false,
+      false,
+      body.encoding === 'multipart',
+      'Record<string, FormValue>',
+      'FormValue',
+    )
+  }
+  return tsType(expandFileRefs(body.type, models, new Set()), 0, false, false, false)
+}
+
+/**
+ * A form / multipart body with every model ref INLINED (see `bodyTs`).
+ *
+ * A ref that closes a cycle cannot be inlined -- there is no finite shape --
+ * and a form body cannot express recursion anyway, so it becomes an unknown
+ * value, i.e. any `FormValue`.
+ */
+function encodableBody(type: IrType, models: ReadonlyMap<string, IrType>, expanding: ReadonlySet<string>): IrType {
+  switch (type.kind) {
+    case 'ref': {
+      const target = models.get(type.name)
+      if (!target || expanding.has(type.name)) return { kind: 'unknown', reason: 'recursive form value' }
+      return encodableBody(target, models, new Set([...expanding, type.name]))
+    }
+    case 'array':
+      return { ...type, items: encodableBody(type.items, models, expanding) }
+    case 'nullable':
+      return { kind: 'nullable', inner: encodableBody(type.inner, models, expanding) }
+    case 'union':
+      return { ...type, options: type.options.map((o) => encodableBody(o, models, expanding)) }
+    case 'object':
+      return {
+        ...type,
+        fields: type.fields.map((f) => ({ ...f, type: encodableBody(f.type, models, expanding) })),
+        additional: type.additional ? encodableBody(type.additional, models, expanding) : undefined,
+      }
+    default:
+      return type
+  }
+}
+
+/** The body type whose model refs a generated file must import. */
+function bodyRefType(body: IrBody, models: ReadonlyMap<string, IrType>): IrType {
+  return body.encoding === 'form' || body.encoding === 'multipart'
+    ? encodableBody(body.type, models, new Set())
+    : expandFileRefs(body.type, models, new Set())
 }
 
 function hasBinary(type: IrType, models: ReadonlyMap<string, IrType>, seen: Set<string>): boolean {
@@ -312,8 +435,11 @@ export function emitWebEndpoints(
     // The response clause can name several models (an array of refs, a union),
     // so collect them structurally rather than taking a top-level name.
     const schemaImports = new Set<string>()
-    for (const op of ops) collectRefs(op.response, schemaImports)
-    if (schemaImports.size > 0) f.import(schemaSpecifier(path), ...schemaImports)
+    for (const op of ops) if (op.response && op.response.kind !== 'unknown') schemaRefs(op.response, schemaImports)
+    // Each from its OWN module, not the barrel: the barrel re-exports every
+    // model, and an edge to it is an edge to all of them for any bundler that
+    // does not honour the `sideEffects` marker.
+    for (const name of schemaImports) f.import(schemaSpecifierFor(path, name, doc), name)
 
     // Built once per operation. The previous form called `responseCfg` a second
     // time just to test the string for `s.`, which rebuilt every response
@@ -323,11 +449,18 @@ export function emitWebEndpoints(
     if (clauses.some((c) => c.includes(`${dialect.binding}.`))) {
       f.import(dialect.module, dialect.binding)
     }
+    // A discriminated union over named models casts through the schema types.
+    if (clauses.some((c) => c.includes(' as unknown as '))) {
+      if (dialect.schemaTypeImport) f.importType(dialect.schemaTypeImport.module, dialect.schemaTypeImport.name)
+      if (dialect.objectSchemaImport) f.importType(dialect.objectSchemaImport.module, dialect.objectSchemaImport.name)
+    }
 
     for (const [i, op] of ops.entries()) {
       f.line()
       f.doc(op.summary, `\`${endpointSpec(op)}\``)
-      f.line(`export const ${op.id} = api.endpoint(${q(endpointSpec(op))}${clauses[i] ?? ''})`)
+      // Pure, so an endpoint nothing imports is dropped from the bundle even
+      // though its tag module is reached (see `PURE`).
+      f.line(`export const ${op.id} = ${PURE}api.endpoint(${q(endpointSpec(op))}${clauses[i] ?? ''})`)
     }
     files.push(f)
   }
@@ -401,7 +534,7 @@ function queryResultType(op: IrOperation): string {
 }
 
 /** WEB layout: `queries.ts` — reactive hooks, one per operation. */
-export function emitWebQueries(doc: IrDocument): SourceFile[] {
+export function emitWebQueries(doc: IrDocument, client: ClientName = 'pyreon'): SourceFile[] {
   const files: SourceFile[] = []
   const modelTypes = new Map(doc.models.map((m) => [m.name, m.type]))
   for (const [tag, ops] of byTag(doc)) {
@@ -420,8 +553,9 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
     // consumer's repo and a confusing one, since nobody wrote the file.
     const typeImports = new Set<string>()
     for (const op of ops) {
-      if (isMutation(op)) collectRefs(op.body ? expandFileRefs(op.body.type, modelTypes, new Set()) : undefined, typeImports)
-      else collectRefs(op.response, typeImports)
+      // A query's data type is read off its ENDPOINT (below), so its response
+      // models are not named here -- only a mutation's body is.
+      if (isMutation(op)) collectRefs(op.body ? bodyRefType(op.body, modelTypes) : undefined, typeImports)
       // A PARAMETER's schema can be a `$ref` too - GitHub's spec does this
       // heavily (`AlertNumber`, `CodeScanningRef`). Collecting only the
       // response and body left those names used in the args type and never
@@ -433,8 +567,19 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
 
     for (const op of ops) {
       const args = argsType(op, modelTypes)
+      // An encoded body is typed through the encoder's own value type, which
+      // lives in `@pyreon/http` -- or in the generated adapter client.
+      if (args?.includes('FormValue')) {
+        f.importType(client === 'pyreon' ? '@pyreon/http' : relativeSpecifier(path, CLIENT_FILE), 'FormValue')
+      }
       const hook = `use${typeIdent(op.id)}`
-      const ret = queryResultType(op)
+      // The data type is the ENDPOINT's response type, not a second rendering
+      // of the IR. A separately rendered `tsType(response)` disagreed with the
+      // schema wherever the two spell a type differently -- `@pyreon/validate`
+      // infers an enum as `string` where the rendering said `'list'`, and an
+      // operation with no response is `unknown` on the endpoint and was `void`
+      // here. Stripe's generated queries carried 201 errors from it, GitHub's 38.
+      const ret = `Awaited<ReturnType<typeof ${op.id}>>`
       f.line()
       if (isMutation(op)) {
         // The variables type is the endpoint's own call args, so a caller
@@ -542,11 +687,7 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
     // TDZ ReferenceError there exactly as it is on the web. `s.lazy` does not
     // lower, so this costs the model its native path -- which the verifier
     // reports. Correct-and-web-only beats lowering-and-broken.
-    const defer = new Set(
-      [...backEdges]
-        .filter((e) => e.startsWith(`${model.name}|`))
-        .map((e) => e.slice(model.name.length + 1)),
-    )
+    const defer = deferredTargets(backEdges, model.name)
     const expr = schemaExpr(model.type, {
       native: true,
       defer,
