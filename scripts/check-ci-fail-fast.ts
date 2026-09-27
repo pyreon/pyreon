@@ -90,6 +90,13 @@ export function findCiFailFastViolations(workflow: string, aggregateScript: stri
     }
   }
 
+  const aggregateBody = jobs.get('test')
+  const aggregateNeeds =
+    'needs: [install, fast-gates, typecheck-cell, test-cell, e2e-suite, scaffold-smoke-cell]'
+  if (aggregateBody === undefined || !aggregateBody.includes(aggregateNeeds)) {
+    violations.push('Test aggregate must not occupy a runner while matrices execute')
+  }
+
   const workflowFailFastMarkers = [
     'first failing category: $category',
     'e2e suite failed::$suite',

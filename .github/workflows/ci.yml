@@ -1411,28 +1411,24 @@ jobs:
   # succeed, this is red regardless of which expensive cells were suppressed.
   test:
     name: Test
-    # Starts right after Install, watches Fast Gates first, then waits for every
-    # aggregated job (scripts/ci-aggregate.ts). As a job that
-    # `needs:` all four matrices it became ready LAST and queued behind every
-    # other PR: measured 2026-09-22, 56-78 min for a 3-second verdict once its
-    # dependencies had finished. Its OWN conclusion is the required `Test`
-    # check, so it needs only `actions: read`: no job in this workflow holds a
-    # token that can write checks (see the script header for why the faster
-    # "last cell posts Test" version was withdrawn).
+    # Becomes eligible only after preflight and every dynamic matrix reaches a
+    # terminal state. The previous API-polling shape started after Install and
+    # occupied a runner for the entire fan-out (hours under contention) merely
+    # to compute a three-second verdict. A little final queue latency is less
+    # damaging than withholding one of the org's 20 slots from healthy PRs.
+    # Its OWN conclusion is the required `Test` check, so it needs only
+    # `actions: read`: no job in this workflow holds a token that can write
+    # checks.
     #
     # `always()`: a failed Install or Fast Gates must still produce a red
     # `Test`, never a skipped-green one.
     #
-    # Re-runs: this job no longer `needs:` the cells, so re-running ONE cell
-    # by hand does not re-evaluate it — use "Re-run failed jobs" (a red
-    # `Test` is itself a failed job, so it is included) or re-run it too.
-    needs: install
+    # Re-runs: use "Re-run failed jobs" (a red Test is itself included) or
+    # explicitly re-run this job after re-running one matrix cell.
+    needs: [install, fast-gates, typecheck-cell, test-cell, e2e-suite, scaffold-smoke-cell]
     if: always()
     runs-on: ubuntu-latest
-    # Must outlast the slowest cell INCLUDING its queue wait (cells cap at 25
-    # min of runtime; a busy pool adds an hour or more). A timeout reports a
-    # cancelled — i.e. blocking, never green — `Test`.
-    timeout-minutes: 240
+    timeout-minutes: 10
     permissions:
       contents: read
       actions: read # list this run's jobs
@@ -1446,7 +1442,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
-      - name: Wait for typecheck / test / e2e / scaffold matrices, then decide
+      - name: Aggregate typecheck / test / e2e / scaffold matrices
         env:
           GITHUB_TOKEN: ${{ github.token }}
           E2E_SELECTED: ${{ needs.install.outputs.e2e-has }}

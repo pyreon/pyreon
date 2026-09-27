@@ -20,6 +20,9 @@ ${expensive.map((name) => `  ${name}:
 ${overrides[name] ?? `    needs: [install, fast-gates]
     if: \${{ needs.install.result == 'success' && needs.fast-gates.result == 'success' }}
 ${name.includes('cell') || name === 'e2e-suite' ? '    strategy:\n      fail-fast: true\n' : ''}`}`).join('\n')}
+  test:
+    needs: [install, fast-gates, typecheck-cell, test-cell, e2e-suite, scaffold-smoke-cell]
+    if: always()
   contract-markers:
     first failing category: $category
     e2e suite failed::$suite
@@ -59,6 +62,16 @@ describe('findCiFailFastViolations', () => {
     const bad = workflow().replace('scaffold-smoke.ts --fail-fast $MEMBERS', 'scaffold-smoke.ts $MEMBERS')
     expect(findCiFailFastViolations(bad, aggregate)).toContain(
       'missing within-cell fail-fast contract: scaffold-smoke.ts --fail-fast $MEMBERS',
+    )
+  })
+
+  it('rejects an aggregate that occupies a runner while matrices execute', () => {
+    const bad = workflow().replace(
+      'needs: [install, fast-gates, typecheck-cell, test-cell, e2e-suite, scaffold-smoke-cell]',
+      'needs: install',
+    )
+    expect(findCiFailFastViolations(bad, aggregate)).toContain(
+      'Test aggregate must not occupy a runner while matrices execute',
     )
   })
 })
