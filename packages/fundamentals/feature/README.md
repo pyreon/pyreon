@@ -96,7 +96,7 @@ function EditUser({ id }: { id: number }) {
 | `fields`                 | `FieldInfo[]`                 | Schema-introspected field metadata                           |
 | `queryKey(suffix?)`      | `QueryKey`                    | Namespaced query keys: `[name, ...]`                         |
 | `useList(opts?)`         | `UseQueryResult<TValues[]>`   | `GET /api` — list with optional pagination + params          |
-| `useById(id)`            | `UseQueryResult<TValues>`     | `GET /api/:id`                                               |
+| `useById(id \| () => id)` | `UseQueryResult<TValues>`     | `GET /api/:id`                                               |
 | `useSearch(term, opts?)` | `UseQueryResult<TValues[]>`   | `GET /api?q=…` — reactive signal term                        |
 | `useCreate()`            | `UseMutationResult`           | `POST /api`, auto-invalidates list on success                |
 | `useUpdate()`            | `UseMutationResult`           | `PUT /api/:id`, **optimistic update with rollback on error** |
@@ -126,7 +126,7 @@ const { data, isPending } = users.useList({ page, pageSize: 10 })
 
 ## Edit form (auto-fetch)
 
-`useForm({ mode: 'edit', id })` fetches the item by ID and populates the form. `isSubmitting` is `true` until the data lands.
+`useForm({ mode: 'edit', id })` fetches the item by ID (through the same query-cache entry `useById(id)` uses) and makes it the form's BASELINE — the loaded values are not dirty and are not validated until the user edits them. `isLoading()` (and `isSubmitting()`, which keeps `<Submit>` disabled) is `true` until the data lands. If the load fails, `loadError()` / `submitError()` carry the error, `onError` is called, the form is disabled, and submitting is refused — a blank form can never be PUT over the real record.
 
 ```tsx
 const form = users.useForm({
@@ -283,7 +283,7 @@ isError() && (
 - **`schema` is a real Zod (or Zod-compatible) schema**, not a runtime-string map. `TValues` is inferred via the `_output` field that Zod v3 and v4 both expose.
 - **`api` is a string base path**, not an object. RESTful URLs are derived: `GET /api`, `GET /api/:id`, `POST /api`, `PUT /api/:id`, `DELETE /api/:id`, `GET /api?q=…`.
 - **`useUpdate` does optimistic updates with rollback** — the cache reflects the new value immediately and rolls back on error. Useful by default; if you don't want this, write the mutation manually via `useMutation`.
-- **`useForm({ mode: 'edit', id })` triggers a fetch** — `isSubmitting` is `true` while loading. Skip the `id` (or pass `mode: 'create'`) to use the form for creation.
+- **`useForm({ mode: 'edit', id })` triggers a fetch** — `isLoading` (and `isSubmitting`) is `true` while loading; submitting is refused until it lands. Skip the `id` (or pass `mode: 'create'`) to use the form for creation.
 - **`reference(feature)` is a Zod-shaped schema** — it returns `string | number` runtime-validated values. Pass any `{ name: string }` (a Feature is one) — the metadata flows into the generated form / table renderers.
 - **Auto-generated `initialValues` use type defaults** — `string → ''`, `number → 0`, `boolean → false`, `enum → first value`. Override via `initialValues` if your schema has non-default defaults.
 

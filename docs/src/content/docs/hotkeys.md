@@ -65,7 +65,12 @@ Peer dependencies: `@pyreon/core`, `@pyreon/reactivity`.
 ## Quick Start
 
 ```tsx
+// @check
 import { useHotkey } from '@pyreon/hotkeys'
+
+declare function save(): void
+declare function undo(): void
+declare function redo(): void
 
 function Editor() {
   useHotkey('mod+s', (e) => {

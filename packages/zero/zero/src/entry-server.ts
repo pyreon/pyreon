@@ -12,6 +12,7 @@ import { createISRHandler } from "./isr";
 import { collectRouteModes, resolveRenderModeForPath } from "./route-modes";
 import { createServerIslandMiddleware } from "./server-islands-middleware";
 import { createDataEndpointMiddleware } from "./data-endpoint-middleware";
+import { createOgImageMiddleware, withRouteOgMeta } from "./og-route";
 import { render404Page } from "./not-found";
 import type { RenderMode, RouteMiddlewareEntry, ZeroConfig } from "./types";
 
@@ -310,6 +311,12 @@ export function createServer(options: CreateServerOptions) {
 	// unconditionally for the same lazy-registration reason.
 	allMiddleware.push(createDataEndpointMiddleware(options.routes));
 
+	// Route OG images for SSR/ISR routes (`GET /_zero/og/<path>.png`).
+	// Mounted unconditionally: `og` exports live in lazily-loaded route
+	// modules, so presence can't be known at createServer time. Unused, it
+	// costs one prefix check.
+	allMiddleware.push(createOgImageMiddleware(options.routes, config.routeOg));
+
 	// Server actions: same-origin CSRF baseline, `actions.corsOrigins` to opt
 	// in to cross-origin, `actions: false` to mount manually. Mounted
 	// unconditionally for the SAME lazy-registration reason as the two
@@ -380,7 +387,7 @@ export function createServer(options: CreateServerOptions) {
 		resolvedClientEntry = false;
 	}
 
-	const baseHandler = createHandler({
+	const baseHandler = withRouteOgMeta(createHandler({
 		App,
 		routes: options.routes,
 		middleware: allMiddleware,
@@ -399,7 +406,7 @@ export function createServer(options: CreateServerOptions) {
 		// base, but the handler built its own per-request router without it,
 		// so every page of a subpath deploy was a 404 in production.
 		...(config.base && config.base !== "/" ? { base: config.base } : {}),
-	});
+	}), options.routes, config.routeOg);
 
 	// PR-S5: wire the render mode. `mode: 'isr'` was a typed-but-not-
 	// wired surface from inception — apps that set it got SSR behavior
@@ -417,7 +424,7 @@ export function createServer(options: CreateServerOptions) {
 		// streaming. Built lazily — only when a route actually declares
 		// 'isr' inside a streaming app.
 		() =>
-			createHandler({
+			withRouteOgMeta(createHandler({
 				App,
 				routes: options.routes,
 				middleware: allMiddleware,
@@ -426,7 +433,10 @@ export function createServer(options: CreateServerOptions) {
 				...(resolvedClientEntry !== undefined
 					? { clientEntry: resolvedClientEntry }
 					: {}),
-			}),
+				// Same base routing as the page handler above — an ISR route
+				// under a subpath deploy must not 404 either.
+				...(config.base && config.base !== "/" ? { base: config.base } : {}),
+			}), options.routes, config.routeOg),
 		isEndpoint,
 	);
 

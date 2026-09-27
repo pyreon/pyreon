@@ -15,7 +15,20 @@ pyreon add @pyreon/atlas
 
 Or run it through the CLI front door with zero setup — `pyreon atlas <cmd>` delegates to the project-local install.
 
-## The four commands
+### `atlas init` — write the config the workspace already implies
+
+```bash
+pyreon atlas init
+# writes pyreon.config.ts (or prints it with --dry-run)
+```
+
+Atlas works with **zero config** — `atlas scan` / `atlas dev` need nothing at all in a plain component library. `atlas init` exists for the moment right after that: it detects your workspace's packages (a monorepo becomes `AtlasConfig.projects`), guesses a site title from the root `package.json` name, and writes a `pyreon.config.ts` with every optional field present but **commented out** — `wrapper`, `pages`, `scenarios`, `matrix`, `parts`, `browserOnly` — so the file documents its own options instead of you having to look them up. It writes no story files and there is no `--generate-stories`: components, controls, and scenarios stay derived from source.
+
+`--force` overwrites an existing config; `--dry-run` prints what would be written instead of writing it; `--title <text>` overrides the guessed site title.
+
+**This `pyreon.config.ts`'s `atlas:` section is a DIFFERENT, wider shape than the `AtlasConfig` type `@pyreon/atlas` exports for `createAtlas(...)`** — the file convention accepts `title` / `projects` / `pages` / `scenarios` / `wrapper` / `presets` / `theme` / `parts` / `browserOnly` / `ignore`, none of which are part of the programmatic `createAtlas()` options bag. See [Configuration](#configuration-atlasconfigts) below for the full field list.
+
+## The commands
 
 ### `atlas scan` — derive + verify the catalog
 
@@ -39,6 +52,18 @@ The scan discovers components (static TypeScript scan + rocketstyle runtime dete
 - **`atlas-agent-guide.md`** — the compact, prescriptive summary an AI assistant reads to know what exists, what's verified, and what's broken.
 
 A failing scenario is a **red exit** — wire `atlas scan` into CI and the catalog gates itself. `--no-mount` keeps the scan static: no component module is imported, so no component code executes (`pyreon.config.ts` is still loaded).
+
+### `atlas check` — validate a proposed usage
+
+```bash
+pyreon atlas check Button '{"state":"primry"}'
+# Button: 1 problem(s):
+#   · `state` must be one of `primary`, `secondary`, `danger` — got `primry` — did you mean `primary`?
+```
+
+Catches the value that **typechecks in JS but renders silently wrong** — a `select`-kind prop given a string outside its known options (`state="primry"`), an unknown prop name, or a value of the wrong TYPE for a control the catalog already knows the shape of. It reads the committed `atlas-catalog.json` rather than re-scanning — a check has to be instant, and it must agree with the answer the workbench and the agent guide just gave; a rescan here could disagree with the catalog an agent was handed moments earlier. Run `atlas scan` first (there is nothing to check against otherwise).
+
+The first positional is the **component name** (matching `atlas verify`), the second is a JSON object of props to validate; omit it to check nothing but still report any MISSING required props. `--cwd <dir>` picks the project directory. Exits non-zero on any finding — safe to wire into a pre-commit hook or a CI step that gates a generated-usage PR.
 
 ### `atlas verify` — re-check one component
 
@@ -266,6 +291,7 @@ export const presets = {
 
 - **`theme`** — your design tokens. This is what resolves rocketstyle `variant` / `size` axes: those chains are call expressions the static scanner can't see, so Atlas loads them and reads the dimensions — which requires the theme their callbacks dereference. Without it, rocketstyle components are still discovered but lose their axes.
 - **`wrapper`** — the providers your components genuinely need to mount (`PyreonUI`, a `PermissionsProvider`, …). Without it, provider-dependent scenarios honestly **fail** with `threw while mounted` — they are not quietly skipped.
+  In the workbench it also receives the **appearance** to render in — `mode` (`'light' | 'dark'`), `dark` and `brand` (`{ id, name, accent }`), each an **accessor** (`AtlasWrapperProps` from `@pyreon/atlas/core`). Forward `mode` to your provider — `h(PyreonUI, { theme, mode: props.mode }, props.children)` — or the dark workbench renders your components in their light mode. Map `props.brand().id` to one of your own themes to make the Theme Lab's brand tiles mean something; a wrapper that never reads `brand` makes the Lab show one tile per mode and say why, rather than tile identical cards. All three are absent under `atlas scan`, so treat a missing accessor as "use your default".
 - **`presets`** — per-project viewports, locales (RTL supported), and permission roles for the canvas toolbars. Each family replaces the shipped defaults; omitted families keep them.
 - **`scenarios`** — authored scenarios with `play` scripts (below). Authored entries win over generated ones with the same id. Args stay **live**: a render-prop child (`children: (state) => …`) or an `h()` tree written here reaches the canvas intact — the JSON catalog marks them as living in the config. An authored `Default` is the base every derived scenario is built on, so `size=medium` on a render-prop component is the authored composition at medium size, not an empty base.
 - **`matrix`** — how variant scenarios are derived from a component's axes. `'axes'` (default) fans one axis at a time (`Default` plus one scenario per axis value, the other axes at their defaults — `Σ|axis|`); `'full'` crosses every axis (`Π|axis|`) — opt in when the axes genuinely interact, knowing a `state × size × variant` component then carries 60+ scenarios.

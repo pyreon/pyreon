@@ -1,6 +1,6 @@
 import type { IncomingMessage, Server as HttpServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { type RawData, type WebSocket as WsSocket, WebSocketServer } from 'ws'
+import { type RawData, type ServerOptions, type WebSocket as WsSocket, WebSocketServer } from 'ws'
 import {
   Awareness,
   applyAwarenessUpdate,
@@ -61,8 +61,38 @@ export interface SyncServerOptions {
    * parsed from the URL. **Default: allow every connection** — suitable only for
    * local/dev; a real deployment MUST supply this.
    */
-  authorize?: (ctx: AuthorizeContext) => boolean | Promise<boolean>
+  authorize?: (ctx: AuthorizeContext) => AuthorizeResult | Promise<AuthorizeResult>
+  /**
+   * Liveness heartbeat, in ms. Every interval the relay pings each socket and
+   * TERMINATES one that did not answer the previous ping — a half-open
+   * connection (a suspended laptop, a dropped NAT mapping, a killed tab whose FIN
+   * never arrived) otherwise stays in its room forever: its presence never
+   * purges and the room is never GC'd. Default `30_000`; `0` disables.
+   */
+  heartbeatIntervalMs?: number
+  /**
+   * Largest inbound frame accepted, in bytes (the `ws` `maxPayload` option). A
+   * larger frame closes the socket with 1009. Default: `ws`'s own default
+   * (100 MiB) — lower it to bound the memory one client can make the relay
+   * allocate.
+   */
+  maxPayload?: number
+  /**
+   * Maximum number of live rooms. A connection that would OPEN a new room past
+   * the cap is closed with 1013 ("try again later"); joining an existing room is
+   * never capped. Default: unlimited. Bounds what a client can make the relay
+   * allocate by inventing room names.
+   */
+  maxRooms?: number
 }
+
+/**
+ * What {@link SyncServerOptions.authorize} may return. `true` / `'write'` = full
+ * access; `'read'` = a READ-ONLY client — it receives the document and live
+ * updates and may publish presence, but every document update it sends is
+ * dropped; `false` = reject (close 4401).
+ */
+export type AuthorizeResult = boolean | 'read' | 'write'
 
 export interface SyncServer {
   /** The actual listening port (resolved even when `port: 0` was requested). */
@@ -83,6 +113,44 @@ interface Room {
   // Which awareness clientIds each socket has announced — so a socket's states
   // can be removed when it disconnects (mirrors y-websocket's server).
   socketClients: Map<WsSocket, Set<number>>
+  // Reverse index: which socket OWNS each awareness clientId. First-come; held
+  // until that socket closes. A frame touching an id owned by ANOTHER socket is
+  // rejected, so a client cannot impersonate a peer's presence — nor, by being
+  // recorded as its owner, get that peer's presence purged when IT disconnects.
+  owners: Map<number, WsSocket>
+}
+
+/** Frames a socket may send before `authorize` resolves; past this it is closed. */
+const MAX_PENDING_FRAMES = 256
+
+/**
+ * Read the clientIds an encoded `y-protocols` awareness update touches, WITHOUT
+ * applying it (the ownership check has to run first). Format: `varUint count`,
+ * then per entry `varUint clientID, varUint clock, varString state`. Throws on a
+ * truncated / malformed payload.
+ */
+function awarenessClientIds(payload: Uint8Array): number[] {
+  let pos = 0
+  const varUint = (): number => {
+    let num = 0
+    let mult = 1
+    for (;;) {
+      const byte = payload[pos++]
+      if (byte === undefined || mult > 2 ** 49) throw new Error('[Pyreon] sync server: malformed awareness varUint')
+      num += (byte & 0x7f) * mult
+      if (byte < 0x80) return num
+      mult *= 0x80
+    }
+  }
+  const count = varUint()
+  const ids: number[] = []
+  for (let i = 0; i < count; i++) {
+    ids.push(varUint())
+    varUint() // clock
+    pos += varUint() // state string bytes
+    if (pos > payload.length) throw new Error('[Pyreon] sync server: truncated awareness update')
+  }
+  return ids
 }
 
 /** Normalize a `ws` RawData frame (Buffer | ArrayBuffer | Buffer[]) to a Uint8Array — synchronous so message order is preserved. */
@@ -110,6 +178,22 @@ function safeSend(socket: WsSocket, frame: Uint8Array): void {
     socket.send(frame)
   } catch {
     // Socket raced from OPEN → CLOSING between the check and the send — ignore.
+  }
+}
+
+/**
+ * Send `socket` the room's current presence roster. Excludes the relay's OWN
+ * clientId (a fresh Awareness carries an empty `{}` entry for its local client —
+ * the joiner would render a phantom presence for the relay itself) and the
+ * socket's own ids (it already has them).
+ */
+function sendRoster(r: Room, socket: WsSocket): void {
+  const own = r.socketClients.get(socket)
+  const present = [...r.awareness.getStates().keys()].filter(
+    (id) => id !== r.awareness.clientID && !own?.has(id),
+  )
+  if (present.length > 0) {
+    safeSend(socket, encodeSyncMessage(MSG_AWARENESS, encodeAwarenessUpdate(r.awareness, present)))
   }
 }
 
@@ -159,6 +243,7 @@ export function createSyncServer(options: SyncServerOptions): Promise<SyncServer
         clients: new Set(),
         awareness: new Awareness(doc),
         socketClients: new Map(),
+        owners: new Map(),
       }
       // The SINGLE place awareness is broadcast — covers both relayed client
       // updates AND `removeAwarenessStates` removals on disconnect. Record which
@@ -175,8 +260,14 @@ export function createSyncServer(options: SyncServerOptions): Promise<SyncServer
            local-write case the relay never broadcasts. Integration-only (e2e). */
         const owned = origin ? room.socketClients.get(origin as WsSocket) : undefined
         if (owned) {
-          for (const id of added) owned.add(id)
-          for (const id of updated) owned.add(id)
+          for (const id of added) {
+            owned.add(id)
+            room.owners.set(id, origin as WsSocket)
+          }
+          for (const id of updated) {
+            owned.add(id)
+            room.owners.set(id, origin as WsSocket)
+          }
         }
         const frame = encodeSyncMessage(MSG_AWARENESS, encodeAwarenessUpdate(room.awareness, changed))
         for (const c of room.clients) {
@@ -189,40 +280,238 @@ export function createSyncServer(options: SyncServerOptions): Promise<SyncServer
     return r
   }
 
-  const wss = options.server
-    ? new WebSocketServer({ server: options.server })
-    : new WebSocketServer(
-        options.host
-          ? /* v8 ignore next — `?? 0` ephemeral-port fallback (host set); tests pass a port. */
-            { port: options.port ?? 0, host: options.host }
-          : /* v8 ignore next — `?? 0` ephemeral-port fallback; tests pass an explicit port. */
-            { port: options.port ?? 0 },
-      )
+  const wssOptions: ServerOptions = options.server
+    ? { server: options.server }
+    : /* v8 ignore next — `?? 0` ephemeral-port fallback; tests pass an explicit port. */
+      { port: options.port ?? 0 }
+  if (options.host && !options.server) wssOptions.host = options.host
+  // Only forwarded when set, so the default stays `ws`'s own.
+  if (options.maxPayload !== undefined) wssOptions.maxPayload = options.maxPayload
+  const wss = new WebSocketServer(wssOptions)
+  const maxRooms = options.maxRooms ?? Number.POSITIVE_INFINITY
+
+  // Heartbeat: `alive` is cleared before each ping and set again by the pong; a
+  // socket still un-alive at the NEXT tick never answered and is terminated,
+  // which fires its `close` handler (room leave + presence purge). WeakMap-keyed
+  // by socket, so a closed socket's entry needs no eviction.
+  const alive = new WeakMap<WsSocket, boolean>()
+  const heartbeatMs = options.heartbeatIntervalMs ?? 30_000
+  const heartbeat =
+    heartbeatMs > 0
+      ? setInterval(() => {
+          for (const s of wss.clients) {
+            if (alive.get(s) === false) {
+              s.terminate()
+              continue
+            }
+            alive.set(s, false)
+            try {
+              s.ping()
+            } catch {
+              // socket raced to CLOSING between iteration and ping — its own
+              // close handler cleans up.
+            }
+          }
+        }, heartbeatMs)
+      : undefined
+  // Never keep the process alive just to ping.
+  heartbeat?.unref?.()
 
   wss.on('connection', (socket: WsSocket, req: IncomingMessage) => {
-    void (async () => {
-      /* v8 ignore next — `req.url ?? '/'`: the `ws` upgrade always sets req.url, so the
-         '/' fallback is defensive. */
-      const url = new URL(req.url ?? '/', 'http://localhost')
-      const room = url.pathname.replace(/^\/+/, '') || 'default'
-      const token = url.searchParams.get('token')
+    alive.set(socket, true)
+    socket.on('pong', () => alive.set(socket, true))
+    // A protocol violation on ONE socket (oversized frame past `maxPayload`, bad
+    // framing, a reset) is emitted as an `error` event. With no listener Node
+    // rethrows it and the whole relay dies; `ws` closes the socket right after,
+    // and the `close` handler below does the cleanup.
+    socket.on('error', () => {})
 
-      if (options.authorize) {
-        let ok = false
+    /* v8 ignore next — `req.url ?? '/'`: the `ws` upgrade always sets req.url, so the
+       '/' fallback is defensive. */
+    const url = new URL(req.url ?? '/', 'http://localhost')
+    const room = url.pathname.replace(/^\/+/, '') || 'default'
+    const token = url.searchParams.get('token')
+
+    // The client sends its state vector (and presence) the instant the socket
+    // OPENS — which, with an async `authorize`, is BEFORE the relay has decided
+    // anything. Listening only after `await authorize(...)` dropped those frames:
+    // the relay never answered the state vector, so the client's `synced` stayed
+    // false forever. So the listeners go on NOW and frames are BUFFERED until the
+    // verdict: replayed in order on allow, discarded on reject. The buffer is
+    // bounded — an unauthorized socket must not be able to make the relay hold
+    // unbounded memory while its credentials are being checked.
+    let pending: RawData[] | null = []
+    let joined: Room | null = null
+    let readOnly = false
+    let warnedReadOnly = false
+
+    const handleFrame = (r: Room, data: RawData): void => {
+      // Decode + apply defensively: a buggy or hostile client can send a
+      // garbage frame, and Yjs THROWS on a malformed update / state vector
+      // (even an empty one). An uncaught throw here propagates out of the `ws`
+      // message listener and crashes the whole relay — a one-frame DoS. Drop
+      // the bad frame instead, keeping every other client's room alive.
+      let type: number
+      let payload: Uint8Array
+      try {
+        ;({ type, payload } = decodeSyncMessage(rawToBytes(data)))
+      } catch {
+        return // unframable bytes
+      }
+
+      if (type === MSG_STATE_VECTOR) {
+        // Reply with exactly what this client is missing.
         try {
-          ok = await options.authorize({ room, token, req })
-        } catch {
-          ok = false
+          safeSend(socket, encodeSyncMessage(MSG_UPDATE, Y.encodeStateAsUpdate(r.doc, payload)))
+        } catch (err) {
+          if (IS_DEV) {
+            console.warn(
+              '[Pyreon] sync relay: dropped a malformed state vector from a client:',
+              err,
+            )
+          }
         }
-        if (!ok) {
-          socket.close(4401, 'unauthorized')
+        return
+      }
+
+      if (type === MSG_AWARENESS) {
+        // Ephemeral presence — NEVER applied to the room doc (not persisted).
+        // Apply to the room's Awareness (origin = this socket); its `update`
+        // handler records ownership + broadcasts to the OTHER clients. Drop a
+        // malformed frame rather than crash the relay (same DoS guard as docs).
+        try {
+          const ids = awarenessClientIds(payload)
+          // A socket may only speak for clientIds it owns (or new ones). Without
+          // this a client could overwrite a peer's cursor/name — and, recorded
+          // as that id's owner, get the peer's presence purged on ITS disconnect.
+          const firstPresence = r.socketClients.get(socket)!.size === 0
+          for (const id of ids) {
+            const owner = r.owners.get(id)
+            if (id === r.awareness.clientID || (owner !== undefined && owner !== socket)) {
+              if (IS_DEV) {
+                console.warn(
+                  `[Pyreon] sync relay: dropped an awareness update for clientId ${id}, which belongs to another connection.`,
+                )
+              }
+              return
+            }
+          }
+          applyAwarenessUpdate(r.awareness, payload, socket)
+          // A socket's FIRST presence means it just joined the presence channel —
+          // possibly long after connecting (presence created lazily), in which
+          // case it discarded the roster sent at connect. Send the roster now.
+          if (firstPresence) sendRoster(r, socket)
+        } catch (err) {
+          if (IS_DEV) {
+            console.warn('[Pyreon] sync relay: dropped a malformed awareness frame:', err)
+          }
+        }
+        return
+      }
+
+      // A read-only client receives, but its document updates never reach the
+      // room (so never a peer, nor a late joiner).
+      if (readOnly) {
+        if (IS_DEV && !warnedReadOnly) {
+          warnedReadOnly = true
+          console.warn(
+            `[Pyreon] sync relay: dropped document updates from a read-only client in room "${room}" (authorize returned 'read').`,
+          )
+        }
+        return
+      }
+
+      // Apply to the authoritative room doc. Only fan out to the OTHER clients
+      // if it actually applied — never propagate a frame that threw, or we'd
+      // crash every peer in turn.
+      try {
+        Y.applyUpdate(r.doc, payload)
+      } catch (err) {
+        if (IS_DEV) {
+          console.warn('[Pyreon] sync relay: dropped a malformed update from a client:', err)
+        }
+        return
+      }
+      const frame = encodeSyncMessage(MSG_UPDATE, payload)
+      for (const c of r.clients) {
+        if (c !== socket) safeSend(c, frame)
+      }
+    }
+
+    socket.on('message', (data: RawData) => {
+      if (pending) {
+        if (pending.length >= MAX_PENDING_FRAMES) {
+          pending = null
+          socket.close(1008, 'too many frames before authorization')
           return
         }
+        pending.push(data)
+        return
       }
+      if (joined) handleFrame(joined, data)
+    })
+
+    socket.on('close', () => {
+      pending = null
+      const r = joined
+      if (!r) return
+      joined = null
+      r.clients.delete(socket)
+      // Purge this socket's awareness states + broadcast the removal to the
+      // remaining clients (the `update` handler fans the removal out). This is
+      // the GUARANTEE that a vanished client's cursor/avatar disappears even on
+      // an unclean disconnect (crash / network drop) where the client couldn't
+      // announce its own departure.
+      const owned = r.socketClients.get(socket)
+      if (owned && owned.size > 0) {
+        // Every id in `owned` is owned by THIS socket: the ownership check
+        // rejects any frame naming an id another socket holds.
+        for (const id of owned) r.owners.delete(id)
+        try {
+          removeAwarenessStates(r.awareness, [...owned], 'disconnect')
+        } catch {
+          // awareness teardown raced room GC — nothing to remove
+        }
+      }
+      r.socketClients.delete(socket)
+      if (r.clients.size === 0) {
+        r.awareness.destroy()
+        rooms.delete(room)
+      }
+    })
+
+    void (async () => {
+      let access: AuthorizeResult = true
+      if (options.authorize) {
+        try {
+          access = await options.authorize({ room, token, req })
+        } catch {
+          access = false
+        }
+      }
+      // The socket closed (or was closed for flooding) while `authorize` ran —
+      // joining now would register a dead socket whose `close` already fired,
+      // leaking the room forever.
+      if (socket.readyState !== 1 /* OPEN */) {
+        pending = null
+        return
+      }
+      if (access !== true && access !== 'write' && access !== 'read') {
+        pending = null
+        socket.close(4401, 'unauthorized')
+        return
+      }
+      if (!rooms.has(room) && rooms.size >= maxRooms) {
+        pending = null
+        socket.close(1013, 'room limit reached')
+        return
+      }
+      readOnly = access === 'read'
 
       const r = getRoom(room)
       r.clients.add(socket)
       r.socketClients.set(socket, new Set())
+      joined = r
 
       // Kick off the SYMMETRIC sync handshake (the standard y-protocols shape):
       // send the room's state vector so the client replies with exactly the ops
@@ -236,101 +525,14 @@ export function createSyncServer(options: SyncServerOptions): Promise<SyncServer
       safeSend(socket, encodeSyncMessage(MSG_STATE_VECTOR, Y.encodeStateVector(r.doc)))
 
       // Send the room's CURRENT awareness so the joiner sees existing peers
-      // INSTANTLY. Exclude the relay's OWN clientId (a fresh Awareness carries an
-      // empty `{}` entry for its local client) — or the joiner would render a
-      // phantom presence for the relay itself.
-      const presentClients = [...r.awareness.getStates().keys()].filter(
-        (id) => id !== r.awareness.clientID,
-      )
-      if (presentClients.length > 0) {
-        safeSend(
-          socket,
-          encodeSyncMessage(MSG_AWARENESS, encodeAwarenessUpdate(r.awareness, presentClients)),
-        )
-      }
+      // INSTANTLY.
+      sendRoster(r, socket)
 
-      socket.on('message', (data: RawData) => {
-        // Decode + apply defensively: a buggy or hostile client can send a
-        // garbage frame, and Yjs THROWS on a malformed update / state vector
-        // (even an empty one). An uncaught throw here propagates out of the `ws`
-        // message listener and crashes the whole relay — a one-frame DoS. Drop
-        // the bad frame instead, keeping every other client's room alive.
-        let type: number
-        let payload: Uint8Array
-        try {
-          ;({ type, payload } = decodeSyncMessage(rawToBytes(data)))
-        } catch {
-          return // unframable bytes
-        }
-
-        if (type === MSG_STATE_VECTOR) {
-          // Reply with exactly what this client is missing.
-          try {
-            safeSend(socket, encodeSyncMessage(MSG_UPDATE, Y.encodeStateAsUpdate(r.doc, payload)))
-          } catch (err) {
-            if (IS_DEV) {
-              console.warn(
-                '[Pyreon] sync relay: dropped a malformed state vector from a client:',
-                err,
-              )
-            }
-          }
-          return
-        }
-
-        if (type === MSG_AWARENESS) {
-          // Ephemeral presence — NEVER applied to the room doc (not persisted).
-          // Apply to the room's Awareness (origin = this socket); its `update`
-          // handler records ownership + broadcasts to the OTHER clients. Drop a
-          // malformed frame rather than crash the relay (same DoS guard as docs).
-          try {
-            applyAwarenessUpdate(r.awareness, payload, socket)
-          } catch (err) {
-            if (IS_DEV) {
-              console.warn('[Pyreon] sync relay: dropped a malformed awareness frame:', err)
-            }
-          }
-          return
-        }
-
-        // Apply to the authoritative room doc. Only fan out to the OTHER clients
-        // if it actually applied — never propagate a frame that threw, or we'd
-        // crash every peer in turn.
-        try {
-          Y.applyUpdate(r.doc, payload)
-        } catch (err) {
-          if (IS_DEV) {
-            console.warn('[Pyreon] sync relay: dropped a malformed update from a client:', err)
-          }
-          return
-        }
-        const frame = encodeSyncMessage(MSG_UPDATE, payload)
-        for (const c of r.clients) {
-          if (c !== socket) safeSend(c, frame)
-        }
-      })
-
-      socket.on('close', () => {
-        r.clients.delete(socket)
-        // Purge this socket's awareness states + broadcast the removal to the
-        // remaining clients (the `update` handler fans the removal out). This is
-        // the GUARANTEE that a vanished client's cursor/avatar disappears even on
-        // an unclean disconnect (crash / network drop) where the client couldn't
-        // announce its own departure.
-        const owned = r.socketClients.get(socket)
-        if (owned && owned.size > 0) {
-          try {
-            removeAwarenessStates(r.awareness, [...owned], 'disconnect')
-          } catch {
-            // awareness teardown raced room GC — nothing to remove
-          }
-        }
-        r.socketClients.delete(socket)
-        if (r.clients.size === 0) {
-          r.awareness.destroy()
-          rooms.delete(room)
-        }
-      })
+      // Replay what arrived during `authorize`, in order.
+      const buffered = pending
+      pending = null
+      /* v8 ignore next — `pending` is only nulled on the paths that return above. */
+      for (const data of buffered ?? []) handleFrame(r, data)
     })()
   })
 
@@ -355,7 +557,10 @@ export function createSyncServer(options: SyncServerOptions): Promise<SyncServer
     // the http server, so we never close it — only the WebSocket layer.
     close: () =>
       new Promise<void>((res) => {
-        for (const r of rooms.values()) for (const c of r.clients) c.close()
+        if (heartbeat) clearInterval(heartbeat)
+        // Every socket, including ones still inside `authorize` (not yet in any
+        // room) — an unclosed connection would hold the listener open.
+        for (const c of wss.clients) c.close()
         wss.close(() => res())
       }),
   })

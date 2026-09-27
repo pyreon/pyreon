@@ -22,6 +22,8 @@ describe('gen-docs — unistyle snapshot', () => {
     expect(Object.keys(record).sort()).toEqual([
       'unistyle/alignContent',
       'unistyle/breakpoints',
+      'unistyle/cpseRewrite / cpseVarName / extractStyleVar',
+      'unistyle/cpseStyled',
       'unistyle/createMediaQueries',
       'unistyle/enrichTheme',
       'unistyle/extendCss',
@@ -31,6 +33,7 @@ describe('gen-docs — unistyle snapshot', () => {
       'unistyle/styles',
       'unistyle/themeToCssVars',
       'unistyle/value',
+      'unistyle/values',
     ])
   })
 

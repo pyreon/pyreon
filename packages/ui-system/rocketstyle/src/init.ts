@@ -91,14 +91,19 @@ const validateInit = (name: string, component: unknown, dimensions: Dimensions) 
   if (isEmpty(dimensions)) {
     errors.dimensions = 'Parameter `dimensions` is missing in params!'
   } else {
-    const definedDimensions = getKeys(dimensions)
-    const invalidDimension = ALL_RESERVED_KEYS.some((item) =>
-      definedDimensions.some((d) => d === item),
-    )
+    const definedDimensions = getKeys(dimensions) as string[]
+    const reserved: readonly string[] = ALL_RESERVED_KEYS
+    const clashing = definedDimensions.filter((d) => reserved.includes(d))
 
-    if (invalidDimension) {
-      errors.invalidDimensions = `Some of your \`dimensions\` is invalid and uses reserved static keys which are
-          ${defaultDimensions.toString()}`
+    // Name the OFFENDING keys and the actual RESERVED set. This message
+    // previously interpolated `defaultDimensions.toString()` — an object, so
+    // it rendered `[object Object]`, and it was the wrong list anyway: the
+    // default dimensions (`states`/`sizes`/…) are exactly the names a user is
+    // ALLOWED to declare, not the ones they must avoid.
+    if (clashing.length > 0) {
+      errors.invalidDimensions = `Dimension name(s) ${clashing
+        .map((d) => `\`${d}\``)
+        .join(', ')} are invalid: they collide with reserved rocketstyle keys. Reserved keys: ${reserved.join(', ')}`
     }
   }
 

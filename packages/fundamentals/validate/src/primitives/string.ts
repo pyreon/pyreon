@@ -122,8 +122,16 @@ export function validateEmail(value: string, precision: EmailPrecision = 'standa
   return true
 }
 
-export const URL_RE = /^https?:\/\/[^\s/$.?#].[^\s]*$/i
-export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+// http(s) only, by design: a `url()` field is almost always a link a UI will
+// render, and admitting arbitrary schemes would let `javascript:` / `data:`
+// through. The host needs at least ONE non-separator character (`https://a` is
+// a valid URL — the previous `[^…].` form demanded two).
+export const URL_RE = /^https?:\/\/[^\s/$.?#][^\s]*$/i
+// RFC 9562: versions 1–8 (v6/v7/v8 are current practice — v7 is the sortable
+// database-key default) with the RFC variant, plus the special nil and max
+// UUIDs. Mirrored verbatim in `@pyreon/compiler`'s `validate-emit.ts`.
+export const UUID_RE =
+  /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/i
 // Modern ID / encoding formats (match Zod 4 / Valibot leniency).
 // cuid2: lowercase alphanumeric, must start with a letter (the cuid2 spec).
 export const CUID2_RE = /^[a-z][0-9a-z]+$/
@@ -157,7 +165,6 @@ export const ISO_TIME_RE = /^\d{2}:\d{2}:\d{2}(?:\.\d+)?$/
 // client defaults the registry falls back to.
 
 const IPV4_RE = /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/
-const IPV6_RE = /^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^::(?:[0-9a-fA-F]{1,4}:){0,6}[0-9a-fA-F]{1,4}$|^(?:[0-9a-fA-F]{1,4}:){1,7}:$|^(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}$/
 const PHONE_SEP_RE = /[\s().-]/g
 const PHONE_E164_RE = /^\+?[1-9]\d{6,14}$/
 
@@ -166,14 +173,54 @@ export function validatePhone(value: string): boolean {
   return PHONE_E164_RE.test(value.replace(PHONE_SEP_RE, ''))
 }
 
-/** IPv4 or IPv6 (regex; sufficient on both client and server). */
+const IPV6_GROUP_RE = /^[0-9a-fA-F]{1,4}$/
+
+/**
+ * IPv6 (RFC 4291 text form) — a split-based parser rather than a regex. The
+ * previous alternation regex enumerated only four shapes and rejected ordinary
+ * compressed addresses (`2001:db8::1:2`, `fe80::1:2:3`) and every embedded-IPv4
+ * form (`::ffff:192.0.2.1`); a complete regex for the grammar is the
+ * variable-quantifier shape ReDoS scanners flag. Linear, allocation-light.
+ */
+export function isIPv6(value: string): boolean {
+  if (value.length < 2 || value.length > 45) return false
+  const lastColon = value.lastIndexOf(':')
+  if (lastColon === -1) return false
+  let groups = 8
+  let head = value
+  // Embedded IPv4 in the last 32 bits (`::ffff:192.0.2.1`) — counts as 2 groups.
+  if (value.indexOf('.', lastColon) !== -1) {
+    if (!IPV4_RE.test(value.slice(lastColon + 1))) return false
+    groups = 6
+    head = value.slice(0, lastColon + 1)
+    // Keep a trailing `::` (it IS the compression); drop a lone separator.
+    if (!head.endsWith('::')) head = head.slice(0, -1)
+  }
+  const dbl = head.indexOf('::')
+  if (dbl === -1) {
+    const parts = head.split(':')
+    if (parts.length !== groups) return false
+    for (const p of parts) if (!IPV6_GROUP_RE.test(p)) return false
+    return true
+  }
+  if (head.indexOf('::', dbl + 1) !== -1) return false // at most one `::`
+  const left = dbl === 0 ? [] : head.slice(0, dbl).split(':')
+  const right = dbl + 2 === head.length ? [] : head.slice(dbl + 2).split(':')
+  // `::` stands for at least one zero group.
+  if (left.length + right.length > groups - 1) return false
+  for (const p of left) if (!IPV6_GROUP_RE.test(p)) return false
+  for (const p of right) if (!IPV6_GROUP_RE.test(p)) return false
+  return true
+}
+
+/** IPv4 or IPv6 (sufficient on both client and server). */
 export function validateIp(value: string): boolean {
-  return IPV4_RE.test(value) || IPV6_RE.test(value)
+  return IPV4_RE.test(value) || isIPv6(value)
 }
 
 /**
  * CIDR — split on the LAST `/`, validate the address half against the vetted
- * `IPV4_RE`/`IPV6_RE` and the prefix half as an in-range integer (0–32 for v4,
+ * `IPV4_RE` / {@link isIPv6} and the prefix half as an in-range integer (0–32 for v4,
  * 0–128 for v6). Split-and-reuse avoids a new variable-quantifier IPv6 regex
  * (the ReDoS-prone shape CodeQL flags).
  */
@@ -185,7 +232,7 @@ export function isCidr(value: string): boolean {
   if (!/^\d{1,3}$/.test(prefixStr)) return false
   const prefix = Number(prefixStr)
   if (IPV4_RE.test(addr)) return prefix <= 32
-  if (IPV6_RE.test(addr)) return prefix <= 128
+  if (isIPv6(addr)) return prefix <= 128
   return false
 }
 
@@ -231,7 +278,7 @@ export class StringSchema extends SchemaBase<string> {
   // ─── Length checks ─────────────────────────────────────────────────
 
   min(n: number, opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:string:min', n, opts }, (value, ctx) => {
         if (typeof value !== 'string' || value.length >= n) return
         ctx.issues.push(
@@ -247,12 +294,10 @@ export class StringSchema extends SchemaBase<string> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   max(n: number, opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:string:max', n, opts }, (value, ctx) => {
         if (typeof value !== 'string' || value.length <= n) return
         ctx.issues.push(
@@ -268,12 +313,10 @@ export class StringSchema extends SchemaBase<string> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   length(n: number, opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:string:length', n, opts }, (value, ctx) => {
         if (typeof value !== 'string' || value.length === n) return
         ctx.issues.push(
@@ -289,8 +332,6 @@ export class StringSchema extends SchemaBase<string> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   nonEmpty(opts?: CheckOpts): this {
@@ -330,9 +371,7 @@ export class StringSchema extends SchemaBase<string> {
       ctx.issues.push(makeCheckIssue(code, message, key, params, fallback, ctx, opts))
     })
     ;(op as { _pred?: FormatValidator })._pred = resolve
-    this._ops.push(op)
-    this._invalidateCompile()
-    return this
+    return this._cloneWith(op)
   }
 
   regex(re: RegExp, opts?: CheckOpts): this {
@@ -354,9 +393,7 @@ export class StringSchema extends SchemaBase<string> {
     // call site, so the pure `re.test` is the valid-condition (closure runs
     // only on failure → no valid-path issue machinery).
     ;(op as { _pred?: FormatValidator })._pred = (value: string): boolean => re.test(value)
-    this._ops.push(op)
-    this._invalidateCompile()
-    return this
+    return this._cloneWith(op)
   }
 
   /**
@@ -670,7 +707,7 @@ export class StringSchema extends SchemaBase<string> {
   // ─── Substring checks ──────────────────────────────────────────────
 
   startsWith(s: string, opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:string:starts-with', s, opts }, (value, ctx) => {
         if (typeof value !== 'string' || value.startsWith(s)) return
         ctx.issues.push(
@@ -686,12 +723,10 @@ export class StringSchema extends SchemaBase<string> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   endsWith(s: string, opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:string:ends-with', s, opts }, (value, ctx) => {
         if (typeof value !== 'string' || value.endsWith(s)) return
         ctx.issues.push(
@@ -707,12 +742,10 @@ export class StringSchema extends SchemaBase<string> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   includes(s: string, opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:string:includes', s, opts }, (value, ctx) => {
         if (typeof value !== 'string' || value.includes(s)) return
         ctx.issues.push(
@@ -728,8 +761,6 @@ export class StringSchema extends SchemaBase<string> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   // ─── String transforms ─────────────────────────────────────────────
@@ -743,9 +774,7 @@ export class StringSchema extends SchemaBase<string> {
     // The non-string ternary arm is defensive — transforms run after the
     // type-check, so `v` is always a string here.
     /* v8 ignore next */
-    this._ops.push({ kind: 'transform', fn: (v) => (typeof v === 'string' ? v.toLowerCase() : v) })
-    this._invalidateCompile()
-    return this
+    return this._cloneWith({ kind: 'transform', fn: (v) => (typeof v === 'string' ? v.toLowerCase() : v) })
   }
 
   /** Uppercase the input. */
@@ -753,9 +782,7 @@ export class StringSchema extends SchemaBase<string> {
     // The non-string ternary arm is defensive — transforms run after the
     // type-check, so `v` is always a string here.
     /* v8 ignore next */
-    this._ops.push({ kind: 'transform', fn: (v) => (typeof v === 'string' ? v.toUpperCase() : v) })
-    this._invalidateCompile()
-    return this
+    return this._cloneWith({ kind: 'transform', fn: (v) => (typeof v === 'string' ? v.toUpperCase() : v) })
   }
 
   /** Trim whitespace from both ends. */
@@ -763,9 +790,7 @@ export class StringSchema extends SchemaBase<string> {
     // The non-string ternary arm is defensive — transforms run after the
     // type-check, so `v` is always a string here.
     /* v8 ignore next */
-    this._ops.push({ kind: 'transform', fn: (v) => (typeof v === 'string' ? v.trim() : v) })
-    this._invalidateCompile()
-    return this
+    return this._cloneWith({ kind: 'transform', fn: (v) => (typeof v === 'string' ? v.trim() : v) })
   }
 }
 

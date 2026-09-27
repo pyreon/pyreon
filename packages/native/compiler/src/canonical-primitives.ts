@@ -1,8 +1,11 @@
 // Canonical primitive emit table — shared by Swift + Kotlin emitters.
 //
-// `@pyreon/primitives` exports 16 semantic JSX primitives that are the
-// cross-platform UI vocabulary (Phase A landed types + 6 web impls).
-// Phase B (THIS) maps each primitive to its platform-native emit.
+// `@pyreon/primitives` exports the semantic JSX primitives that are the
+// cross-platform UI vocabulary; this file maps each to its platform-native
+// emit. The canonical set is `CANONICAL_PRIMITIVES` below — no count is
+// repeated in prose here, because every hand-written count in this repo has
+// rotted (15 vs 16 vs 17). `tests/canonical-primitives-exports.test.ts`
+// asserts the Set equals the package's UI-primitive exports.
 //
 // ## What this file is
 //
@@ -26,9 +29,16 @@
 //
 // ## Scope
 //
-// ALL 16 are wired end-to-end on both targets. 15 have a dedicated per-target
-// emit function; `Inline` deliberately shares `Stack`'s with a row default,
-// since the two differ only in axis.
+// EVERY member is wired end-to-end on both targets. Each has a dedicated
+// per-target emit function except `Inline`, which deliberately shares
+// `Stack`'s with a row default, since the two differ only in axis.
+//
+// Also exported by `@pyreon/primitives` but deliberately NOT members:
+// `Transition` / `TransitionGroup` (animation wrappers), `WebView` (a native
+// host for web content) and the `Web` / `NativeIOS` / `NativeAndroid` escape
+// hatches. Each has its own dedicated emitter and never reaches generic emit,
+// so the fell-through warning and the styled()/attrs()/rocketstyle() base
+// check (the Set's consumers) do not apply to them.
 //
 // This comment said "6 primitives wired ... the other 10 fall through to
 // generic emit" for long after that stopped being true, and it is the file the
@@ -46,9 +56,10 @@
  * use `isCanonicalPrimitive` to decide whether to route through canonical
  * emit before falling through to generic emit.
  *
- * 16 primitives total (matches `@pyreon/primitives` exports), every one of
- * which routes through a canonical per-target emit — 15 dedicated, plus
- * `Inline` on `Stack`'s with a row default.
+ * Equals the UI-primitive exports of `@pyreon/primitives` (drift-locked by
+ * `tests/canonical-primitives-exports.test.ts`). Every member routes through
+ * a canonical per-target emit — dedicated, except `Inline` on `Stack`'s with
+ * a row default.
  */
 export const CANONICAL_PRIMITIVES = new Set([
   // Layout (5)
@@ -57,10 +68,11 @@ export const CANONICAL_PRIMITIVES = new Set([
   'Layer',
   'Scroll',
   'Spacer',
-  // Content (5)
+  // Content (6)
   'Text',
   'Heading',
   'Image',
+  'Audio',
   'Video',
   'Icon',
   // Interaction (3)
@@ -96,11 +108,12 @@ export const SWIFT_NAMES: Record<string, string> = {
   Text: 'Text',
   Heading: 'Text', // .font(.largeTitle) at emit time
   Image: 'Image',
+  Audio: 'PyreonAudioPlayer', // non-visual runtime player (AVFoundation engine)
   Video: 'PyreonVideoPlayer',
   Icon: 'Image', // systemName: from `name` prop
   Button: 'Button',
   Press: 'Button', // no chrome — emits the trailing-closure-only form
-  Link: 'NavigationLink',
+  Link: 'PyreonLink', // pushes onto the native router (@pyreon/native-router-swift)
   Field: 'TextField', // SecureField when kind="password"
   Toggle: 'Toggle',
   Modal: 'Sheet', // .sheet(isPresented:) modifier-based
@@ -118,11 +131,12 @@ export const KOTLIN_NAMES: Record<string, string> = {
   Text: 'Text',
   Heading: 'Text', // style=MaterialTheme.typography... at emit time
   Image: 'AsyncImage',
+  Audio: 'PyreonAudioPlayer', // non-visual runtime player (Media3 engine)
   Video: 'PyreonVideoPlayer',
   Icon: 'Icon',
   Button: 'Button',
   Press: 'Box', // Modifier.clickable
-  Link: 'Box', // Modifier.clickable + nav controller
+  Link: 'PyreonLink', // wraps a Box(Modifier.clickable { navigate() }) (@pyreon/native-router-kotlin)
   Field: 'TextField',
   Toggle: 'Switch',
   Modal: 'Dialog',

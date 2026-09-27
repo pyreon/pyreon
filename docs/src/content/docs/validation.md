@@ -189,8 +189,11 @@ Because `@pyreon/validation` is the library-agnostic gate, there are two ways to
 Any schema exposing the `~standard` property can be passed **directly** -- the gate bridges it via `standardSchemaToValidator` under the hood:
 
 ```ts
+// @check
 import { z } from 'zod'
 import { useForm } from '@pyreon/form'
+
+declare function createAccount(values: unknown): Promise<void>
 
 const schema = z.object({
   email: z.string().email('Invalid email address'),
@@ -213,6 +216,7 @@ The same works for a raw `v.object(...)` (Valibot 1+), `type(...)` (ArkType 2+),
 `standardSchemaToValidator` is the core of the universal gate -- it converts any raw Standard Schema into the whole-object `SchemaValidateFn` (`(values) => per-key error record`) that `@pyreon/form` / `@pyreon/store` consume. This is exactly what `useForm` calls when you hand it a raw schema; call it yourself when you need the validator standalone:
 
 ```ts
+// @check
 import { z } from 'zod'
 import { standardSchemaToValidator } from '@pyreon/validation'
 

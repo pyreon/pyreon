@@ -136,7 +136,7 @@ describe('isSubmitted / isSubmitSuccessful', () => {
         throw new Error('boom')
       },
     })
-    await expect(form.handleSubmit()).rejects.toThrow('boom')
+    await expect(form.handleSubmit({ rethrow: true })).rejects.toThrow('boom')
     expect(form.isSubmitSuccessful()).toBe(false)
     expect(form.submitError()).toBeInstanceOf(Error)
   })

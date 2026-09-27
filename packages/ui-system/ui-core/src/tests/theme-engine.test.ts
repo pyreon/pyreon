@@ -30,6 +30,21 @@ describe('theme-engine registration seam', () => {
     expect(engine.responsiveStyles({ color: 'red' }, (x: unknown) => x)).toBeUndefined()
   })
 
+  it('warns about the fallback engine ONCE per module instance, not on every read', async () => {
+    vi.resetModules()
+    const te = await import('../theme-engine')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const first = te.getThemeEngine()
+      const second = te.getThemeEngine()
+      expect(second).toBe(first)
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(String(warn.mock.calls[0]?.[0])).toContain('fallback theme engine')
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
   it('setThemeEngine registers an engine that getThemeEngine returns', async () => {
     vi.resetModules()
     const te = await import('../theme-engine')

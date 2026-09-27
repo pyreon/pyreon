@@ -1,6 +1,6 @@
 import { onUnmount } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
-import { batch, effect } from '@pyreon/reactivity'
+import { batch } from '@pyreon/reactivity'
 import type {
   DefaultError,
   QueryKey,
@@ -10,6 +10,7 @@ import type {
 import { QueryObserver } from '@tanstack/query-core'
 import { subscribeWhenRestored, useIsRestoring } from './is-restoring'
 import { useQueryClient } from './query-client'
+import { observeOptions } from './observe-options'
 import { makeResultProto } from './result-proto'
 
 // Shared result prototype — getters live here (one allocation, module init)
@@ -66,8 +67,13 @@ export interface UseQueryResult<TData, TError = DefaultError> {
  * }))
  * // In template: () => query.data()?.name
  */
-export function useQuery<TData = unknown, TError = DefaultError, TKey extends QueryKey = QueryKey>(
-  options: () => QueryObserverOptions<TData, TError, TData, TData, TKey>,
+export function useQuery<
+  TQueryFnData = unknown,
+  TError = DefaultError,
+  TData = TQueryFnData,
+  TQueryKey extends QueryKey = QueryKey,
+>(
+  options: () => QueryObserverOptions<TQueryFnData, TError, TData, TQueryFnData, TQueryKey>,
 ): UseQueryResult<TData, TError> {
   // Mount-N baseline. Per-hook overhead is now: 1 observer alloc + 1 subscribe
   // + 1 setOptions effect — signals are lazy-allocated on first property
@@ -79,7 +85,11 @@ export function useQuery<TData = unknown, TError = DefaultError, TKey extends Qu
 
   const client = useQueryClient()
   const isRestoring = useIsRestoring()
-  const observer = new QueryObserver<TData, TError, TData, TData, TKey>(client, options())
+  const observer = observeOptions(
+    options,
+    (o) => new QueryObserver<TQueryFnData, TError, TData, TQueryFnData, TQueryKey>(client, o),
+    (obs, o) => obs.setOptions(o),
+  )
 
   // Lazy-allocated fine-grained signals. Each field starts as `undefined`;
   // first property access materializes the signal seeded with the observer's
@@ -122,12 +132,6 @@ export function useQuery<TData = unknown, TError = DefaultError, TKey extends Qu
       if (slots.isError) slots.isError.set(r.isError)
       if (slots.isSuccess) slots.isSuccess.set(r.isSuccess)
     })
-  })
-
-  // Track reactive options: when signals inside options() change, update the observer.
-  effect(() => {
-    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('query.setOptions')
-    observer.setOptions(options())
   })
 
   // Unsubscribe the observer on unmount (effect disposal is handled by EffectScope).

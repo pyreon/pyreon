@@ -26,7 +26,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative, sep } from 'node:path'
 import { atlasDevPlugin, builtinMethods, CATALOG_ID, ENTRY_ID, RPC_PATH } from '../plugin'
 
 let root: string
@@ -73,6 +73,31 @@ describe('the `source` RPC method', () => {
     const methods = builtinMethods({ root, components: [comp('Button', 'src/Button.tsx')] })
     const r = methods.source!({ component: 'Button' }) as { path: string }
     expect(r.path).toBe(join(root, 'src/Button.tsx'))
+  })
+
+  it('follows a BARREL re-export to the module that DEFINES the component', () => {
+    // A rocketstyle component is discovered through the package index (its own
+    // module exports it as `default`), and the Docs source block printed the
+    // whole barrel under the component's heading.
+    const barrel = write('src/index.ts', "export { default as Stack } from './components/Stack'\n")
+    const own = write('src/components/Stack/index.ts', 'const Stack = list.config({})\nexport default Stack\n')
+    const methods = builtinMethods({ root, components: [comp('Stack', barrel)] })
+    const r = methods.source!({ component: 'Stack' }) as { path: string; source: string }
+    expect(r.path).toBe(own)
+    expect(r.source).toContain('const Stack')
+  })
+
+  it('applies the root guard to the FOLLOWED path — a re-export may point anywhere', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'atlas-outside-'))
+    try {
+      writeFileSync(join(outside, 'secret.ts'), 'export const Stack = 1\n')
+      const rel = relative(join(root, 'src'), join(outside, 'secret')).split(sep).join('/')
+      const barrel = write('src/index.ts', `export { Stack } from './${rel}'\n`)
+      const methods = builtinMethods({ root, components: [comp('Stack', barrel)] })
+      expect(() => methods.source!({ component: 'Stack' })).toThrow(/outside the project root/)
+    } finally {
+      rmSync(outside, { recursive: true, force: true })
+    }
   })
 
   it('REFUSES a path outside the project root', () => {
