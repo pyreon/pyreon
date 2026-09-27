@@ -1,0 +1,8 @@
+import { defineConfig } from '@pyreon/config'
+
+// Atlas is already configured; init must add `lathe` and keep this intact.
+export default defineConfig({
+  atlas: {
+    title: 'My app',
+  },
+})

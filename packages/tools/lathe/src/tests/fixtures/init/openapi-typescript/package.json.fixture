@@ -1,0 +1,14 @@
+{
+  "name": "oat-app",
+  "private": true,
+  "scripts": {
+    "api:types": "openapi-typescript ./petstore.json -o ./src/lib/api/v1.d.ts"
+  },
+  "dependencies": {
+    "openapi-fetch": "^0.13.0",
+    "openapi-react-query": "^0.3.0"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.4.0"
+  }
+}

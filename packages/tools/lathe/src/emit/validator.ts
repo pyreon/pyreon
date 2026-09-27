@@ -98,18 +98,6 @@ export interface ValidatorDialect {
   /** What the library infers for an object schema with no fields. */
   emptyObjectType: string
   /**
-   * Does this library's `enum` widen its members to `string` in the inferred
-   * type? The written-out interface must say what the schema infers.
-   *
-   * `@pyreon/validate`'s does — `s.enum(['a','b'])` infers `string`, not
-   * `'a' | 'b'`. zod's preserves the literals. It matters only where the
-   * declared type is written OUT rather than inferred (the cyclic-schema
-   * annotation): declaring a narrower union than the schema actually produces
-   * is exactly the drift between declared type and runtime schema that
-   * generating both from one walk exists to prevent.
-   */
-  enumWidensToString: boolean
-  /**
    * Does inlining a `$ref` on the native path help?
    *
    * Only where nested objects lower. Inlining under `s.*` would trade one
@@ -134,7 +122,6 @@ export const DIALECTS: Readonly<Record<ValidatorName, ValidatorDialect>> = {
     // `s.string().url()` is http(s)-only by default; `protocol` opens it to
     // any RFC 3986 scheme, which is what OpenAPI's `uri` means.
     uriCheck: '.url({ protocol: /^[A-Za-z][A-Za-z0-9+.-]*$/ })',
-    enumWidensToString: true,
     inlineRefsOnNative: false,
   },
   zod: {
@@ -154,7 +141,6 @@ export const DIALECTS: Readonly<Record<ValidatorName, ValidatorDialect>> = {
     // `z.object({})` strips unknown keys and infers `Record<string, never>`.
     emptyObjectType: 'Record<string, never>',
     uriCheck: '.url()',
-    enumWidensToString: false,
     inlineRefsOnNative: true,
   },
 }

@@ -62,7 +62,7 @@ Project configs register it for the common tools: `.mcp.json` (Claude Code; appr
 - `packages/internals/` (private): test-utils, manifest, perf-harness, ansi, vitest-config, playwright-config, tsconfig
 - `packages/ui/` (private): ui-theme, ui-components, ui-primitives
 
-Plus `docs/` (the docs site, built on `@pyreon/zero` — 212 doc pages covering all packages) and `examples/`.
+Plus `docs/` (the docs site, built on `@pyreon/zero` — 216 doc pages covering all packages) and `examples/`.
 
 Notable package facts:
 

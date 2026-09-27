@@ -12,7 +12,8 @@ import type { IrDocument, IrField, IrLiteral, IrNumberType, IrStringType, IrType
 import { propKey, typeIdent } from '../core/naming'
 import { collectRefNames } from '../core/walk'
 import { dialectOf, type ValidatorName } from './validator'
-import { q, regexLiteral, relativeSpecifier, SourceFile } from './writer'
+import { fieldDoc, modelDoc } from './jsdoc'
+import { q, regexLiteral, relativeSpecifier, safeBlockComment, SourceFile } from './writer'
 
 export const SCHEMA_FILE = 'schemas.ts'
 
@@ -59,12 +60,9 @@ export interface SchemaExprOptions {
  * Render an IR type as a TypeScript type expression.
  *
  * `widenEnums` renders a STRING enum as `string` rather than as its literal
- * union. Two callers need it, for the same underlying reason — the declared
- * type must match what the runtime schema actually produces: the native path
- * narrows enums to their base scalar, and `@pyreon/validate`'s `s.enum` infers
- * `string` too. Declaring `'a' | 'b'` against either is a type the schema does
- * not enforce. Non-string enums are emitted as a union of `literal`s, which
- * both libraries infer exactly, so they only widen on the native path.
+ * union. Only the NATIVE path needs it: there enums narrow to their base
+ * scalar, so the schema really does accept any string. The web schemas keep
+ * the literal union (`s.enum([...] as const)`), and the web types must too.
  *
  * `emptyObject` is how an object with no fields and no `additionalProperties`
  * is spelled: what the schema library infers for `object({})`. zod strips
@@ -276,7 +274,7 @@ export function schemaExpr(type: IrType, opts: SchemaExprOptions, depth = 0): st
       const named = type.options.map((o, i) => o.kind === 'ref' && members[i] === o.name)
       if (!named.some(Boolean)) return `${c('discriminatedUnion')}(${q(type.discriminator)}, [${inner}])`
       const cast = members.map((m, i) => (named[i] ? `(${m} as unknown as ${dialect.objectSchemaRef})` : m))
-      return `(${c('discriminatedUnion')}(${q(type.discriminator)}, [${cast.join(', ')}]) as unknown as ${dialect.schemaTypeRef(tsType(type, depth, dialect.enumWidensToString, false, false, dialect.emptyObjectType))})`
+      return `(${c('discriminatedUnion')}(${q(type.discriminator)}, [${cast.join(', ')}]) as unknown as ${dialect.schemaTypeRef(tsType(type, depth, false, false, false, dialect.emptyObjectType))})`
     }
     case 'object': {
       if (type.fields.length === 0) {
@@ -364,7 +362,12 @@ function enumExpr(values: readonly IrLiteral[], b: string, native: boolean, p: s
   }
   const lit = (v: IrLiteral): string => (v === null ? `${p}${b}.null()` : `${p}${b}.literal(${typeof v === 'string' ? q(v) : String(v)})`)
   if (values.length === 1) return lit(values[0] as IrLiteral)
-  if (values.every((v) => typeof v === 'string')) return `${p}${b}.enum([${values.map((v) => q(v as string)).join(', ')}])`
+  // `as const`: `@pyreon/validate`'s `s.enum` infers `L[number]` from the
+  // array it is given, and a plain array literal widens to `string[]` — so the
+  // schema inferred `string` and the interface was written as `string` to
+  // match it. The tuple keeps the literal union on both (zod's `z.enum` takes
+  // it unchanged).
+  if (values.every((v) => typeof v === 'string')) return `${p}${b}.enum([${values.map((v) => q(v as string)).join(', ')}] as const)`
   return `${p}${b}.union([${values.map(lit).join(', ')}])`
 }
 
@@ -507,8 +510,8 @@ export function emitSchemas(
       // always inside one module, since a cycle is one component.
       const defer = deferredTargets(backEdges, name)
       f.line()
-      f.doc(model.doc)
-      f.line(typeDeclaration(model.name, model.type, dialect.enumWidensToString, dialect.emptyObjectType))
+      f.doc(...modelDoc(model))
+      f.line(typeDeclaration(model.name, model.type, dialect.emptyObjectType))
       const expr = schemaExpr(model.type, { ...opts, defer })
       if (dialect.objectSchemaImport && expr.includes(dialect.objectSchemaRef)) needsObjectType.value = true
       f.line(`export const ${model.name} = ${expr} as unknown as ${dialect.schemaTypeRef(model.name)}`)
@@ -527,8 +530,8 @@ export function emitSchemas(
   barrel.doc(
     `Every schema of ${doc.title} ${doc.version}.`,
     '',
-    'One module per model (a `$ref` cycle shares one), so a hook reaches only',
-    'the schemas its response actually names -- see `./schemas/`.',
+    'Each model is its own module under `./schemas/`, so importing one keeps',
+    'the rest out of the bundle.',
   )
   for (const mod of modules) barrel.line(`export * from '${relativeSpecifier(SCHEMA_FILE, mod.path)}'`)
   files.push(barrel)
@@ -634,6 +637,17 @@ export function schemaSpecifierFor(fromPath: string, model: string, doc: IrDocum
  * Mutual assignability, not one direction: a declared type WIDER than the
  * schema (an optional field the schema requires) is as much a lie as a
  * narrower one.
+ *
+ * And a SECOND comparison, against the spec itself: the interface must equal
+ * the type the SPEC describes, rendered straight from the IR with nothing
+ * widened. Schema-vs-interface alone cannot see a loss both sides share — an
+ * enum emitted as `s.enum(['a', 'b'])` inferred `string`, the interface was
+ * written as `string` to match, the two agreed perfectly, and `Pet.status`
+ * lost its literal union with every check green.
+ *
+ * ```ts
+ * export const Book$spec: Same<Book, { id: string; status?: 'a' | 'b' | undefined }> = true
+ * ```
  */
 export function emitSchemaAgreement(doc: IrDocument, validator: ValidatorName = 'pyreon'): SourceFile {
   const f = new SourceFile('schemas.agreement.ts')
@@ -656,6 +670,7 @@ export function emitSchemaAgreement(doc: IrDocument, validator: ValidatorName = 
     const expr = schemaExpr(model.type, { native: false, validator, defer: deferredTargets(backEdges, name) })
     f.line(`const ${name}$ = ${expr}`)
     f.line(`export const ${name}$agrees: Same<${infer(`${name}$`)}, ${name}> = true`)
+    f.line(`export const ${name}$spec: Same<${name}, ${tsType(model.type, 0, false, false, false, dialect.emptyObjectType)}> = true`)
   }
   return f
 }
@@ -669,7 +684,7 @@ export function emitTypes(doc: IrDocument): SourceFile {
   const byName = new Map(doc.models.map((m) => [m.name, m]))
   for (const model of order.map((n) => byName.get(n)).filter((m) => m !== undefined)) {
     f.line()
-    f.doc(model.doc)
+    f.doc(...modelDoc(model))
     f.line(typeDeclaration(model.name, model.type))
   }
   return f
@@ -688,13 +703,26 @@ export function emitTypes(doc: IrDocument): SourceFile {
 export function typeDeclaration(
   name: string,
   type: IrType,
-  widenEnums = false,
   emptyObject = 'Record<string, unknown>',
 ): string {
-  const rendered = tsType(type, 0, widenEnums, false, false, emptyObject)
-  return type.kind === 'object' && type.fields.length > 0 && !type.additional
-    ? `export interface ${name} ${rendered}`
-    : `export type ${name} = ${rendered}`
+  if (type.kind === 'object' && type.fields.length > 0 && !type.additional) {
+    // The interface body carries each field's description, example and
+    // `@deprecated`, so a hover on `pet.status` explains the field.
+    const body = type.fields.map((f) => {
+      const docs = fieldDoc(f)
+      const ts = tsType({ kind: 'object', fields: [f] }, 0, false, false, false, emptyObject)
+      const line = ts.slice(2, -2) // `{\n  x: T\n}` -> `  x: T`
+      if (!docs) return line
+      const comment =
+        docs.length === 1
+          ? [`  /** ${safeBlockComment(docs[0] as string)} */`]
+          : ['  /**', ...docs.flatMap((d) => safeBlockComment(d).split('\n')).map((d) => `   * ${d}`.trimEnd()), '   */']
+      return [...comment, line].join('\n')
+    })
+    return `export interface ${name} {\n${body.join('\n')}\n}`
+  }
+  const rendered = tsType(type, 0, false, false, false, emptyObject)
+  return `export type ${name} = ${rendered}`
 }
 
 /** Specifier another generated file uses to import the schema module. */

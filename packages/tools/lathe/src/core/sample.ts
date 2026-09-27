@@ -171,7 +171,7 @@ class PatternSampler {
 
   private quantify(atom: string): string {
     const c = this.src[this.i]
-    let min = 1
+    let min: number
     if (c === '*' || c === '?') {
       this.i++
       min = 0

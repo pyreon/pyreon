@@ -65,12 +65,12 @@ const file = (path: string): string => {
 }
 
 describe('atlas integration', () => {
-  it('previews exactly the operations that can render without invented input', () => {
-    // A path parameter or a REQUIRED query parameter would need a real value,
-    // and one the generator invents produces a preview that 404s -- worse than
-    // no preview, because it looks broken rather than absent.
+  it('previews every safe read — path and required query parameters included', () => {
+    // The preview requests with the spec's example values (or a deterministic
+    // sample) and the generated mocks answer any value, so a detail view like
+    // `getBook` renders instead of being absent. The mutation is not a read.
     const { doc } = loadOpenApi(SPEC)
-    expect(previewOperations(doc).map((o) => o.id)).toEqual(['listBooks'])
+    expect(previewOperations(doc).map((o) => o.id)).toEqual(['getBook', 'listBooks', 'search'])
   })
 
   it('scenario keys are the component names Atlas will actually discover', () => {
@@ -95,6 +95,10 @@ describe('atlas integration', () => {
     for (const state of ['loading', 'error', 'empty']) {
       expect(scenarios).toContain(`"force":"${state}"`)
     }
+    // `data` and `args` are real props too -- the "Data" scenario passes one.
+    expect(file('components.tsx')).toContain('data?: Awaited<ReturnType<typeof getBook>> | undefined')
+    expect(file('components.tsx')).toContain('args?: Parameters<typeof getBook>[0] | undefined')
+    expect(scenarios).toContain("{ name: 'Data', args: { data: ")
   })
 
   it('emits a wrapper that provides the client the previews need', () => {
@@ -126,10 +130,15 @@ info: { title: T, version: '1' }
 servers: [{ url: 'https://t.test' }]
 paths:
   /books/{id}:
-    get:
-      operationId: getBook
+    delete:
+      operationId: deleteBook
       tags: [books]
       parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { '204': { description: gone } }
+  /session:
+    get:
+      operationId: getSession
+      tags: [auth]
       responses: { '200': { content: { application/json: { schema: { type: string } } } } }
 `
     const out = generate(none, cfg)
@@ -156,7 +165,8 @@ describe('previews are independent of Atlas', () => {
     expect(src.toLowerCase()).not.toContain('atlas')
     // Imports only what it renders with.
     const imports = [...src.matchAll(/from '([^']+)'/g)].map((m) => m[1])
-    expect(imports.every((i) => i === '@pyreon/core' || i?.startsWith('./queries/'))).toBe(true)
+    // (plus the endpoints, whose TYPES name the `args` and `data` props).
+    expect(imports.every((i) => i === '@pyreon/core' || i?.startsWith('./queries/') || i?.startsWith('./endpoints/'))).toBe(true)
   })
 
   it('the dependency runs ONE way: atlas needs components, not the reverse', () => {

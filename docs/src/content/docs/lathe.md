@@ -22,7 +22,37 @@ pyreon add @pyreon/lathe
 `target: 'multiplatform'` verify its own output. `@faker-js/faker` is needed
 only for the `faker` plugin, `zod` only for `validator: 'zod'`.
 
-## Quick start
+## Getting started
+
+```bash
+npx lathe init
+```
+
+`lathe init` finds what the project generates from today — an orval,
+`@hey-api/openapi-ts` or kubb config, an `openapi-typescript` script, or a
+bare `openapi.yaml` / `openapi.json` — and:
+
+1. writes a `lathe` section into `pyreon.config.ts` (creating it, or adding one
+   entry to the one you have — a `lathe` section already there is never
+   replaced),
+2. maps every option it can and **lists every one it cannot**, with what to do
+   instead (an orval `mutator` becomes `configureApi({ use })`),
+3. adds `lathe:generate` and `lathe:check` scripts to `package.json`,
+4. prints the install command for what the generated code imports,
+5. runs the first `lathe generate`.
+
+It asks only on a terminal, and only when it has to (several candidates, or
+none). In CI or a scaffolder, `--yes` takes every default; `--from orval`
+skips detection; `--dry-run` writes nothing; `--json` prints one document. It
+never writes into a directory that holds another generator's files — the old
+client keeps working until your imports move.
+
+Coming from another generator? [orval](/docs/lathe-from-orval) ·
+[hey-api](/docs/lathe-from-hey-api) · [kubb](/docs/lathe-from-kubb) ·
+[openapi-fetch](/docs/lathe-from-openapi-fetch) map the client, hooks,
+mutations, mocks, auth and base URL one by one.
+
+By hand, the whole configuration is two keys:
 
 ```ts
 // pyreon.config.ts
@@ -229,6 +259,175 @@ lathe generate --plugins schemas,mocks    # ...and deterministic fixtures
 lathe generate --plugins docs             # just the Markdown reference
 ```
 
+### Writing your own plugin
+
+A plugin is an object made with `definePlugin`. It sees the same document every
+built-in emitter reads, and writes files with the same writer, so a new output
+(MSW handlers, an MCP tool table, a Postman collection) lives in your repo
+instead of a fork:
+
+```ts
+// lathe-path-table.ts
+import { definePlugin, SourceFile } from '@pyreon/lathe'
+
+export const pathTable = definePlugin({
+  name: 'path-table',
+  emit({ doc }) {
+    const f = new SourceFile('extras/paths.ts')
+    for (const op of doc.operations) f.line(`export const ${op.id}Path = ${JSON.stringify(op.path)}`)
+    return [f]
+  },
+})
+```
+
+```ts
+// pyreon.config.ts
+import { defineConfig } from '@pyreon/config'
+import { pathTable } from './lathe-path-table'
+
+export default defineConfig({
+  lathe: { input: './openapi.yaml', plugins: ['schemas', 'client', 'queries', pathTable] },
+})
+```
+
+| hook | runs | receives | returns |
+| --- | --- | --- | --- |
+| `setup(ctx)` | once per project, first | `{ config }` | nothing; throw to refuse the config |
+| `transformDocument(doc, ctx)` | after filters, naming and `operations`; in plugin order | the frozen document, `{ config, note }` | a modified copy, or nothing |
+| `emit(ctx)` | after every built-in emitter | `{ doc, config, reach, files, banner }` | `SourceFile`s or `{ path, contents, sideEffects? }` |
+
+`requires: ['queries']` turns on the built-ins whose output your files import.
+The IR types (`IrDocument`, `IrOperation`, `IrType`, …), the writer
+(`SourceFile`, `q`, `jsonLiteral`, `relativeSpecifier`) and the identifier
+rules (`ident`, `typeIdent`, `hookOf`, `tagFile`, `byTag`, `byCodeUnit`) are
+exported from `@pyreon/lathe` for plugin authors.
+
+Four guarantees hold for every plugin:
+
+- **Errors name it.** A throw inside a hook surfaces as
+  `plugin \`path-table\` failed in \`emit\`: …`.
+- **The document is immutable.** A hook gets a frozen document; writing to it
+  fails with a message saying to return a modified copy. A copy that leaves a
+  model reference dangling is refused, naming the plugin.
+- **Output is deterministic.** Each hook runs twice on the same input and must
+  agree with itself, so a timestamp or a random value cannot turn
+  `lathe check` red on the next machine. Files are sorted by path; sort any
+  list you emit with `byCodeUnit`, never `localeCompare`.
+- **Plugin files are ordinary output.** They are listed in
+  `lathe-manifest.json` (a file you stop emitting is pruned), compared by
+  `lathe check`, passed to `format`, and may not collide with a built-in's path.
+  A file that does something at import time returns `sideEffects: true`, which
+  lists it in the emitted `package.json`.
+
+Hooks are synchronous: generation is a function of the spec and the config.
+Anything a plugin needs from elsewhere is an option it takes when it is
+constructed, where the config shows it.
+
+## Customizing the output
+
+Five config keys shape what gets generated without touching the spec file.
+
+### Generate a subset (`filters`)
+
+```ts
+lathe: {
+  input: './stripe.yaml',
+  filters: {
+    include: [{ tag: ['Customers', 'Charges'] }, { path: '/v1/refunds/**', method: 'get' }],
+    exclude: { operationId: '*Deprecated*' },
+  },
+}
+```
+
+`include` keeps operations some matcher selects, then `exclude` drops any a
+matcher selects. Within a matcher every field must match; a field given as a
+list matches when any entry does. `tag` matches every tag the spec gives the
+operation (not only the first), `path` is a glob over the spec's `{param}`
+path (`*` within a segment, `**` across segments), `operationId` is a glob over
+the spec's id or the generated name, and `method` takes either case.
+
+Models only the dropped operations used are dropped with them, and so are the
+notes about both; `models: 'all'` keeps every model. A matcher that selects
+nothing is an error with a suggestion (`tag \`Customer\` -> \`Customers\`?`) —
+in `include` it would produce an empty client, in `exclude` it would generate
+the very operations it names.
+
+### Correct the spec (`patches`)
+
+```ts
+lathe: {
+  patches: [
+    // A note's own `at` can be pasted in as the path.
+    { op: 'add', path: '#/paths/~1health/get/operationId', value: 'checkHealth' },
+    { op: 'replace', path: '/components/schemas/Pet/properties/tag/nullable', value: true },
+    { op: 'remove', path: '/paths/~1internal~1debug' },
+  ],
+}
+```
+
+RFC 6902 `add` / `replace` / `remove` at an RFC 6901 pointer, applied in order
+to the parsed spec before anything reads it — so the correction survives every
+`lathe pull`. A patch whose target no longer exists fails the run and names the
+nearest key: the vendor changed the spec under it, and it needs another look.
+
+### Per-operation settings (`operations`)
+
+```ts
+lathe: {
+  operations: {
+    getPetById: { hook: 'usePet' },
+    deleteAccount: { hook: false },                 // endpoint only — no hook, preview or native component
+    listEvents: {
+      responseValidation: 'off',                   // this endpoint only
+      pagination: { kind: 'cursor', param: 'cursor', next: 'next' },
+    },
+  },
+}
+```
+
+Keys are the generated endpoint name or the spec's `operationId`. `pagination`
+is the same declaration the top-level `pagination` map takes — use one or the
+other for an operation; both at once is an error. `responseValidation`
+overrides the client-wide mode (and `configureApi({ validate })`) for that
+endpoint, on every client.
+
+### Rename things (`naming`)
+
+```ts
+lathe: {
+  naming: {
+    operation: ({ default: name, operationId }) => (operationId?.startsWith('v1') ? name.slice(2) : name),
+    model: ({ default: name }) => `${name}Dto`,
+    file: ({ default: stem }) => `${stem}-api`,
+    hook: ({ default: name, kind }) => (kind === 'mutation' ? false : name),
+  },
+}
+```
+
+Each function receives Lathe's own choice as `default`, so returning it keeps
+it. `model` rewrites every reference to the model. `file` renames the group
+under every layer (`endpoints/`, `queries/`, the native modules, the docs).
+`hook` may return `false` to generate none; an `operations.<id>.hook` wins over
+it. Every result is checked the way Lathe checks its own names — a valid
+identifier on every target, clear of the names the generated modules bind,
+and unique (file names case-insensitively) — and a collision names both sides.
+
+### Format the output (`format`)
+
+```ts
+import { format as prettier } from 'prettier'
+
+lathe: {
+  format: (code, path) => prettier(code, { filepath: path }),
+}
+```
+
+Applied to every generated file before it is written **and before `lathe
+check` compares**, so formatted output you committed is current rather than
+stale — in the CLI and the Vite plugin alike. It receives the path so the
+formatter can pick a parser (skip a file by returning `code` unchanged).
+`lathe-manifest.json` and `api-surface.json` are never passed.
+
 ## The HTTP client is selectable
 
 ```ts
@@ -395,14 +594,68 @@ changes and nothing catches it. `.all` matches every call of an endpoint;
 ## The workbench, generated
 
 `plugins: ['atlas']` emits three files that line up with each other:
-`components.tsx` (one browsable preview per read operation, whose variant axis
-is the data state — a real prop, so Atlas infers a control),
-`atlas.scenarios.ts` (keyed to those exact component names), and
-`atlas.wrapper.tsx` (a `QueryClientProvider` with the generated mocks
-installed, so every card renders with no server).
+`components.tsx` (one preview per safe read), `atlas.scenarios.ts` (keyed to
+those exact component names), and `atlas.wrapper.tsx` (a
+`QueryClientProvider` with the generated mocks installed, so every card
+renders with no server).
 
-Every preview gets the three states a live request will not produce on demand —
-loading, error, empty — which are the three a UI most often gets wrong.
+**Which operations get a preview.** Every `GET` with a JSON response —
+detail views with path parameters included (`getBook` requests with the spec's
+example values, and the mocks answer any id). Operations that handle a
+credential or a session (`login`, `logout`, `token`, `session`, a `password`
+parameter) are left out: a workbench calls its operations when it opens.
+
+**What a preview shows.** The response by its shape: a list of records is a
+table whose columns are the model's declared fields, one record a description
+list, anything else its value as text. Password, token and secret fields are
+never displayed.
+
+**Scenarios.** Each preview gets `Default` (the request, answered by the mocks),
+`Data` (fake data from the `faker` factories, seeded so a visual baseline does
+not flake — or the deterministic sample when `faker` is off), and the three
+states a live request will not produce on demand: `Loading`, `Error`, `Empty`.
+The props behind them — `args`, `data`, `force` — are real props, so Atlas
+builds controls for them.
+
+```ts
+// atlas.config.ts
+import { scenarios } from './src/gen/atlas.scenarios'
+import { wrapper } from './src/gen/atlas.wrapper'
+
+export default { scenarios, wrapper }
+```
+
+`atlas verify` and `atlas verify-browser` run against the generated previews
+like any other component.
+
+## Generated code documents itself
+
+Hovering a generated symbol shows the spec's own words: the operation's summary
+and description, one bullet per parameter (where it goes, whether it is
+optional, what it means), `@deprecated` when the spec says so, a `@see` link
+from `externalDocs`, and an `@example` you can paste — built from the spec's
+examples, or from the same deterministic sample the mocks return:
+
+```ts
+/**
+ * Find pet by ID.
+ *
+ * Returns a single pet.
+ *
+ * `GET /pet/:petId`
+ *
+ * Parameters:
+ * - `petId` (path) — ID of pet to return
+ *
+ * @example
+ * ```ts
+ * const result = await getPetById({ params: { petId: 1 } })
+ * ```
+ */
+```
+
+Model interfaces carry each field's description, example and `@deprecated`.
+Every generated file starts with the same two-line header and nothing else.
 
 ## Automation
 
@@ -602,7 +855,8 @@ declaration emits a typed `use<Op>Infinite` hook plus a pure
 `<op>InfiniteOptions` factory (for a loader's `prefetchInfiniteQuery`):
 
 ```ts
-// pyreon.config.ts — keys are the generated operation names
+// pyreon.config.ts — keys are the generated operation names (or the spec's
+// operationIds); `operations.<id>.pagination` takes the same shape
 lathe: {
   pagination: {
     listCustomers: { kind: 'lastItem', param: 'starting_after', items: 'data', field: 'id', hasMore: 'has_more' },
@@ -758,21 +1012,31 @@ Relative paths resolve against the directory of the **config file**, not the
 shell's working directory, so `lathe` behaves the same from any subdirectory.
 Paths passed on the command line are relative to the working directory.
 
+{/* gen:lathe-config:start */}
+{/* Generated from `LatheSection` in packages/tools/lathe/src/core/config.ts by
+    docs/scripts/gen-lathe-config.ts. Edit the type and its JSDoc, not this table. */}
+
 | key | type | default | meaning |
 | --- | --- | --- | --- |
-| `input` | `string` | — (required) | the OpenAPI 3.0/3.1 document, `.json` / `.yaml` / `.yml` |
-| `output` | `string` | `./src/gen` | directory the client is written to |
-| `source` | `string` | — | http(s) URL `lathe pull` fetches the spec from |
-| `target` | `'web' \| 'multiplatform'` | `'web'` | `multiplatform` also emits and verifies native modules |
-| `plugins` | plugin names | `['schemas', 'client', 'queries']` | see [Plugins](#plugins) |
-| `client` | `'pyreon' \| 'fetch' \| 'axios' \| 'ky'` | `'pyreon'` | HTTP runtime; only `pyreon` reaches native |
-| `validator` | `'pyreon' \| 'zod'` | `'pyreon'` | schema library; both reach native |
-| `baseUrl` | `string` | the spec's `servers[0].url` | must be an absolute literal to reach native |
-| `responseValidation` | `'strict' \| 'warn' \| 'off'` | `'strict'` | the web client's default response validation; `configureApi({ validate })` switches it at runtime |
-| `pagination` | `Record<operation, PaginationConfig>` | — | declared infinite queries; see [Infinite queries](#infinite-queries-declared) |
-| `streams` | `Record<operation, StreamConfig>` | — | declared SSE / NDJSON streams; see [Streams](#streams-server-sent-events-and-ndjson) |
-| `strictNative` | `boolean` | `false` | exit 1 when a native module does not lower |
-| `projects` | `{ name, input, ...any key above }[]` | — | several specs in one run; see [Several specs](#several-specs-one-pass) |
+| `input` | `string` | — | Path to the OpenAPI 3.x document (`.json`, `.yaml`, `.yml`). |
+| `output` | `string` | `'./src/gen'` | Output directory. Relative to the config file, like `input`. |
+| `source` | `string` | — | Where `lathe pull` fetches the spec from: an http(s) URL, written to `input`. With `projects`, `lathe pull` pulls every project that sets one. |
+| `target` | `"web" \| "multiplatform"` | `'web'` | Which platforms the client is for: `web`, or `multiplatform`, which also emits native modules for iOS and Android and verifies they lower. |
+| `plugins` | `(PluginName \| LathePlugin)[]` | `['schemas', 'client', 'queries']` | Emitters to run: built-in names, and third-party plugins made with `definePlugin` (see {@link LathePlugin}). Built-ins run first, then plugins in the order listed. Built-ins bring along their required output (`components` needs `queries`), and the report identifies additions. |
+| `client` | `"pyreon" \| "fetch" \| "axios" \| "ky"` | `'pyreon'` | Which HTTP runtime the generated client is built on. |
+| `validator` | `"pyreon" \| "zod"` | `'pyreon'` | Which library the generated schemas are written in. |
+| `baseUrl` | `string` | the spec's `servers[0].url` | Overrides the spec's `servers[0].url` — must be an absolute literal to reach native. `configureApi({ baseUrl })` switches it at runtime. |
+| `responseValidation` | `"strict" \| "warn" \| "off"` | `'strict'` | What the generated client does with a response that does not match its schema. `strict` (the default) rejects; `warn` logs and passes the raw body through, which is the usual choice in production when a backend may drift; `off` skips validation, which also skips its cost on large list responses. `configureApi({ validate })` switches it at runtime. |
+| `pagination` | `Record<string, PaginationConfig>` | — | How to page through operations, keyed by the GENERATED operation name (the `endpoints` export). Declared, never guessed — each entry emits a `use<Op>Infinite` hook and a `<op>InfiniteOptions` factory. Same shape as the `x-pyreon-pagination` spec extension, which a config entry overrides. |
+| `streams` | `Record<string, StreamConfig>` | — | Streaming responses, keyed by the GENERATED operation name. Each entry emits `<op>Stream` (an async iterator of validated events) and `use<Op>Stream` (signals). An operation whose 2xx response declares `text/event-stream` or an NDJSON media type gets both WITHOUT an entry; one here overrides what the spec says, or declares a stream the spec does not describe (an endpoint that streams when its body says `stream: true`). |
+| `operations` | `Record<string, LatheOperationSettings<PaginationConfig>>` | — | Per-operation settings, keyed by the generated endpoint name OR the spec's `operationId`. Each entry may rename the hook, turn it off, set the operation's own response validation, or declare its pagination (the same entry `pagination` takes — use one or the other for an operation). |
+| `filters` | `LatheFilters` | — | Generate a SUBSET of the spec. `include` keeps operations some matcher selects, then `exclude` drops any a matcher selects; models only the dropped operations used are dropped too (`models: 'all'` keeps them). A matcher that selects nothing is an error — it is almost always a typo. |
+| `patches` | `({ op: "add"; path: string; value: unknown; } \| { op: "replace"; path: string; value: unknown; } \| { op: "remove"; path: string; })[]` | — | Corrections applied to the spec BEFORE it is read — RFC 6902 `add` / `replace` / `remove` at an RFC 6901 pointer. A note's `at` (`#/paths/…`) can be pasted in as the path. A patch whose target no longer exists FAILS the run: the spec changed under it and it needs another look. |
+| `naming` | `LatheNaming` | — | Rename what Lathe generates. Each function receives Lathe's own choice as `default`, so returning it keeps it. Results are checked: an invalid name or two things mapped to one name is an error naming both. |
+| `format` | `(code: string, path: string) => string \| Promise<string>` | — | Format every generated source file before it is written AND before `lathe check` compares — so committed, formatted output is not reported stale. Receives the file's path so a formatter can pick its parser. Lathe's own bookkeeping (`lathe-manifest.json`, `api-surface.json`) is never passed. Must be deterministic, like everything else here. |
+| `strictNative` | `boolean` | `false` | Fail the run when a generated native module does not lower. |
+| `projects` | `{ name, input, …any key above }[]` | — | Several specs in one run, each with its own output and target. |
+{/* gen:lathe-config:end */}
 
 An unknown `plugins`, `client`, `validator` or `target` value is refused by
 name, with the known values listed.
@@ -780,6 +1044,7 @@ name, with the known values listed.
 ## Command line
 
 ```bash
+lathe init     [spec]          # set up pyreon.config.ts (see Getting started)
 lathe generate [spec]          # read the spec, write the client
 lathe check    [spec]          # generate in memory; exit 1 if anything is stale
 lathe pull     [url] [dest]    # fetch a remote spec (see below)
@@ -802,6 +1067,9 @@ lathe [spec]                   # same as lathe generate [spec]
 | `--json` | machine-readable output (shape below) |
 | `--watch`, `-w` | regenerate when a spec **or the config** changes |
 | `--color`, `--no-color` | force colour; by default only a TTY gets it, and `NO_COLOR` turns it off |
+| `--from <tool>` | `init`: migrate from `orval`, `hey-api`, `kubb`, `openapi-typescript` or `spec` instead of detecting |
+| `--yes`, `-y` | `init`: ask nothing, take every default |
+| `--no-generate` | `init`: write the config, skip the first generate |
 | `--version`, `-v` / `--help`, `-h` | |
 
 The config is the nearest `pyreon.config.*` found walking **up** from the
@@ -973,7 +1241,6 @@ a stable `code`, an RFC 6901 pointer into the spec, and a severity:
 | `body-on-get` | loss | a `GET` / `HEAD` request body — `fetch` refuses to send it, so it is dropped |
 | `invalid-pagination` | loss | an `x-pyreon-pagination` that does not fit the operation — ignored |
 | `invalid-stream` | loss | a stream whose generated name (`<op>Stream`) is already an operation — not generated |
-| `deprecated` | loss | the generated code carries no `@deprecated` marker |
 | `unsupported-const` | loss | a `const` whose value is not a JSON scalar — not enforced (a scalar `const` is) |
 | `unsupported-schema` / `unsupported-ref` | loss | a schema or `$ref` that reduces to `unknown`, or a degradation (a discriminator that cannot be proven, a contradictory `allOf`) |
 | `cyclic-ref` | loss | a `$ref` cycle through references alone, or the cyclic part of an `allOf` — contributes nothing |
@@ -981,10 +1248,10 @@ a stable `code`, an RFC 6901 pointer into the spec, and a severity:
 | `no-servers` | loss | no absolute base URL (none declared, relative, or a variable with no default), so nothing reaches native |
 | `multiple-content-types` | choice | JSON picked among several media types |
 | `extra-tags` | choice | grouped under the first tag only |
-| `description-dropped` | choice | the JSDoc carries the summary, not the description |
 | `missing-operation-id` | choice | a name derived from method + path |
 | `numeric-version` | choice | `info.version` was a YAML number |
 | `stream-event` | choice | how a streaming response's event type was read — or that it declared none |
+| `plugin` | loss | a third-party plugin reported something it could not honour (`ctx.note(...)` in `transformDocument`) |
 
 The terminal report lists the losses and summarises the choices; the generated
 reference pages split them into "Not represented" and "Choices made".
@@ -1001,9 +1268,11 @@ never touched. Commit the manifest with the rest of the output.
 ## Honest limits
 
 - **OpenAPI 3.0 and 3.1 only.** Swagger 2 is refused with the conversion command.
-- **Security schemes, response headers and error bodies are not generated** —
-  each is reported as a `loss` note. (Header and cookie parameters ARE: they are
-  typed `headers:` / `cookies:` call arguments.)
+- **Response headers and error bodies are not typed**, and a security scheme
+  other than bearer / OAuth2 / OpenID Connect / basic / API key (HTTP digest,
+  mutual TLS) gets no `auth` helper — each is reported as a `loss` note. (Header
+  and cookie parameters ARE generated: they are typed `headers:` / `cookies:`
+  call arguments.)
 - **A read with no typed JSON response** gets a web hook typed `unknown` and no
   native data component.
 - **Mutations are web-only on the native target.** PMTC recognises queries, not
@@ -1033,6 +1302,11 @@ never touched. Commit the manifest with the rest of the output.
 - **A mocked stream ends after its fixture events** — it never drops the
   connection by itself, so exercising a reconnect still needs a test that
   fails a request (`mockOperation(…, { error })`) or a real server.
+- **Plugin hooks are synchronous** and run twice each (the determinism check);
+  an expensive `emit` costs twice its work. `format` is the one asynchronous
+  hook.
+- **`--plugins` on the command line takes built-in names only**; plugins made
+  with `definePlugin` are configured in `pyreon.config.ts`.
 - A `$ref` **cycle** has no finite nesting, so the native schema names the
   target and the compiler drops that one field with a warning.
 
@@ -1055,9 +1329,33 @@ is optional, not a string enum, or claims a value another member claims. The
 model is emitted as a plain union, which accepts the same data. Make each tag a
 required `enum: [value]` to get the tagged form.
 
-**Requests fail with 401 against a client that compiled** — Lathe does not
-apply security schemes (the `unsupported-security` note says so). Add the
-credential in the transport: on the exported `instance` for `axios` / `ky`.
+**Requests fail with 401 against a client that compiled** — the client sends
+no credential until you give it one. For each `securitySchemes` entry the
+client exports a helper: `configureApi({ use: [auth.<scheme>(() => token())] })`.
+Anything else goes in `headers` (an accessor, read per request) or in
+middleware via `use`. An `unsupported-security` note names a scheme with no
+helper (HTTP digest, mutual TLS).
+
+**`lathe init` says it could not read the config** — the old tool's config is
+read as text, never executed, so a config built by a function call it cannot
+see into (`export default build(process.env)`) is not readable. Point init at
+the spec instead: `lathe init ./openapi.yaml`, then copy any options across by
+hand.
+
+**`lathe init` wrote to `./src/gen`, not the old output directory** — that
+directory still holds the old generator's files, and writing into it would
+overwrite some of them (every generator writes an `index.ts`). Move your
+imports to the new client, delete the old directory, then set `output` back.
+
+**`lathe init` left `pyreon.config.ts` untouched** — it already has a `lathe`
+section, which init never replaces. It printed the section it would have
+written; merge it by hand.
+
+**A preview you expected is missing from Atlas** — previews are generated for
+`GET` operations with a JSON response. A `POST`, a read with no body, and any
+operation that handles a credential or session (`login`, `logout`, `token`,
+`session`, a `password` parameter) are skipped on purpose: the workbench calls
+every preview's operation as soon as it opens.
 
 **The config seems ignored** — run `lathe generate --dry-run`: the report names
 the output directory it resolved. The config is found upward from the working

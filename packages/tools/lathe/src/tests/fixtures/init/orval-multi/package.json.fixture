@@ -1,0 +1,1 @@
+{ "name": "orval-multi", "private": true, "devDependencies": { "orval": "^7.10.0" } }

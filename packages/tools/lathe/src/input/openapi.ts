@@ -28,6 +28,7 @@ import type {
 } from '../core/ir'
 import { streamFormatOf } from '../core/media'
 import { assignNames, ident, modelIdent, operationIdent, operationIdFrom, tagFile } from '../core/naming'
+import { applyPatches, type LatheSpecPatch } from '../core/patch'
 import { splitByDirection } from './direction'
 import { parseSpecText } from './yaml'
 
@@ -47,6 +48,12 @@ export interface LoadOptions {
    * relative server stays relative and is reported.
    */
   sourceUrl?: string | undefined
+  /**
+   * Corrections applied to the parsed document before it is read — see
+   * `LatheSection.patches`. Applied before the version check, so a patch can
+   * repair the document's own `openapi` key.
+   */
+  patches?: readonly LatheSpecPatch[] | undefined
 }
 
 /** Parse a spec document (JSON or YAML text) into the IR. */
@@ -55,6 +62,7 @@ export function loadOpenApi(source: string, options: LoadOptions = {}): LoadResu
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('[Pyreon] lathe: spec did not parse to an object')
   }
+  applyPatches(raw as Record<string, unknown>, options.patches)
   const refusal = openApiVersionProblem(raw)
   if (refusal) throw new Error(refusal)
   return { doc: convert(raw as Json, options) }
@@ -117,7 +125,8 @@ function serverUrl(server: Json | undefined, at: string, ctx: Ctx, sourceUrl: st
   let url = str(server?.url)
   if (!url) return ''
   const vars = obj(server?.variables)
-  // `[^{}]`, not `[^}]`: a name holding `{` let the engine backtrack from every brace, quadratic on a long run of `{{`. A variable name has no braces.
+  // `[^{}]`, not `[^}]`: a name holding `{` let the engine backtrack from
+  // every brace, quadratic on a long run of `{{`. A variable name has no braces.
   url = url.replace(/\{([^{}]+)\}/g, (match, name: string) => {
     const def = obj(vars?.[name])?.default
     if (typeof def === 'string' || typeof def === 'number') return String(def)
@@ -199,6 +208,8 @@ function convert(spec: Json, options: LoadOptions = {}): IrDocument {
       name: ctx.modelNames.get(key) as string,
       type: modelType(key, ctx) ?? { kind: 'unknown', reason: 'cyclic model' },
       doc: str(schema.description) ?? str(schema.title),
+      deprecated: schema.deprecated === true ? true : undefined,
+      source: { name: key, at: ptr('components', 'schemas', key) },
     })
   }
 
@@ -515,13 +526,6 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
           continue
         }
         if (where === 'path' || where === 'query') noteSerialization(po, name, where, pAt, ctx)
-        if (po.deprecated === true) {
-          ctx.notes.push({
-            code: 'deprecated',
-            at: pAt,
-            message: `parameter \`${name}\` is deprecated, but the generated signature carries no \`@deprecated\` marker — call sites get no warning.`,
-          })
-        }
         target.push({
           // A PATH parameter's name must match the `:placeholder` the path was
           // rewritten to, so it takes the same per-path identifier -- they
@@ -534,6 +538,8 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
           // A path parameter is always required, whatever the spec claims.
           required: po.in === 'path' ? true : po.required === true,
           doc: str(po.description),
+          deprecated: po.deprecated === true ? true : undefined,
+          example: exampleOf(po, paramSchema(po)),
           ...(po.in === 'query' ? queryStyle(po) : {}),
         })
       }
@@ -549,6 +555,9 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
         path: toPyreonPath(rawPath, placeholderIds),
         tag: tagNames.get(str(arr(op.tags)[0]) ?? 'default') as string,
         summary: str(op.summary) ?? str(op.description),
+        description: str(op.summary) && str(op.description) !== str(op.summary) ? str(op.description) : undefined,
+        deprecated: op.deprecated === true ? true : undefined,
+        externalDocs: externalDocsOf(op.externalDocs),
         pathParams: withUndeclaredPathParams(pathParams, placeholders, placeholderIds),
         queryParams,
         headerParams,
@@ -556,6 +565,12 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
         body: bodyOf(method, op, at, ctx),
         ...responseOf(op, at, ctx),
         ...paginationOf(op['x-pyreon-pagination'], at, ctx),
+        source: {
+          ...(str(op.operationId) ? { operationId: str(op.operationId) } : {}),
+          path: rawPath,
+          tags: arr(op.tags).flatMap((t) => (typeof t === 'string' ? [t] : [])),
+          at,
+        },
       }
       ctx.opAt.set(irOp, at)
       ops.push(irOp)
@@ -566,7 +581,7 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
 
 /**
  * Notes for what an operation declares and the generated call does not carry:
- * extra tags, a dropped description, `deprecated`, and a security requirement.
+ * extra tags and a security requirement.
  */
 function noteOperation(op: Json, at: string, spec: Json, globalSecurity: boolean, ctx: Ctx): void {
   const tags = arr(op.tags).filter((t): t is string => typeof t === 'string' && t.length > 0)
@@ -575,20 +590,6 @@ function noteOperation(op: Json, at: string, spec: Json, globalSecurity: boolean
       code: 'extra-tags',
       at: sub(at, 'tags'),
       message: `grouped under its first tag \`${tags[0]}\` only; also tagged ${tags.slice(1).map((t) => `\`${t}\``).join(', ')}.`,
-    })
-  }
-  if (str(op.summary) && str(op.description)) {
-    ctx.notes.push({
-      code: 'description-dropped',
-      at: sub(at, 'description'),
-      message: 'the operation has both a summary and a description; the generated JSDoc carries the summary only.',
-    })
-  }
-  if (op.deprecated === true) {
-    ctx.notes.push({
-      code: 'deprecated',
-      at,
-      message: 'the operation is deprecated, but the generated endpoint and hook carry no `@deprecated` marker — call sites get no warning.',
     })
   }
   // An EXPLICIT operation-level requirement, or the document's global one.
@@ -879,6 +880,7 @@ function bodyOf(method: string, op: Json, at: string, ctx: Ctx): IrBody | undefi
   const schema = obj(media.schema)
   if (encoding === 'text') return { mediaType, encoding, required, type: { kind: 'string' } }
   if (encoding === 'binary') return { mediaType, encoding, required, type: { kind: 'string', format: 'binary' } }
+  const example = exampleOf(media, schema)
   const type = schema ? toType(schema, sub(where, 'content', mediaType, 'schema'), ctx) : { kind: 'unknown' as const, reason: 'no schema' }
   return {
     mediaType,
@@ -886,7 +888,57 @@ function bodyOf(method: string, op: Json, at: string, ctx: Ctx): IrBody | undefi
     required,
     type,
     fieldEncoding: encoding === 'form' ? fieldEncodingOf(obj(media.encoding)) : undefined,
+    ...(example !== undefined ? { example } : {}),
   }
+}
+
+/**
+ * The example a parameter or media type carries, in OpenAPI's precedence:
+ * its own `example`, then the first `examples` entry's inline `value`, then
+ * the schema's `example`. A `$ref`'d or `externalValue` example is skipped
+ * rather than fetched -- the generator reads one document.
+ *
+ * Only JSON values survive: the result is emitted into source (`@example`,
+ * preview args), and a YAML date or a function-typed value has no literal.
+ */
+function exampleOf(holder: Json, schema: Json | undefined): unknown {
+  if (holder.example !== undefined) return jsonValue(holder.example)
+  const examples = obj(holder.examples)
+  if (examples) {
+    for (const key of Object.keys(examples)) {
+      const entry = obj(examples[key])
+      if (entry && entry.$ref === undefined && entry.value !== undefined) return jsonValue(entry.value)
+    }
+  }
+  return schema?.example !== undefined ? jsonValue(schema.example) : undefined
+}
+
+/** `value` when it round-trips through JSON unchanged in kind, else `undefined`. */
+function jsonValue(value: unknown): unknown {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined
+  if (Array.isArray(value)) {
+    const items = value.map(jsonValue)
+    return items.some((v) => v === undefined) ? undefined : items
+  }
+  if (typeof value === 'object' && [Object.prototype, null].includes(Object.getPrototypeOf(value))) {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      const j = jsonValue(v)
+      if (j === undefined) return undefined
+      out[k] = j
+    }
+    return out
+  }
+  return undefined
+}
+
+/** `externalDocs` with an http(s) URL; anything else is not a link worth emitting. */
+function externalDocsOf(value: unknown): { url: string; description?: string | undefined } | undefined {
+  const ed = obj(value)
+  const url = ed ? str(ed.url) : undefined
+  if (!ed || !url || !/^https?:\/\//.test(url)) return undefined
+  return { url, description: str(ed.description) }
 }
 
 /** A form body's `encoding` map, reduced to style/explode per property. */
@@ -1478,19 +1530,13 @@ function fieldsOf(schema: Json, props: Json, at: string, ctx: Ctx): IrField[] {
   for (const key of Object.keys(props)) {
     const p = obj(props[key])
     if (!p) continue
-    if (p.deprecated === true) {
-      ctx.notes.push({
-        code: 'deprecated',
-        at: sub(at, 'properties', key),
-        message: `property \`${key}\` is deprecated, but the generated type carries no \`@deprecated\` marker.`,
-      })
-    }
     out.push({
       name: key,
       type: toType(p, sub(at, 'properties', key), ctx),
       required: required.has(key),
       doc: str(p.description) ?? str(p.title),
       example: p.example,
+      deprecated: p.deprecated === true ? true : undefined,
       readOnly: p.readOnly === true ? true : undefined,
       writeOnly: p.writeOnly === true ? true : undefined,
     })

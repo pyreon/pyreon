@@ -13,8 +13,12 @@
  * plausible-looking no-op.
  */
 
-import type { IrDocument } from '../core/ir'
+import type { IrDocument, IrOperation, IrType } from '../core/ir'
+import { pascal } from '../core/naming'
+import { sampleValue } from '../core/sample-value'
 import { FORCED_STATES, previewName, previewOperations } from './components'
+import { FAKER_FILE } from './faker'
+import { jsLiteral } from './jsdoc'
 import { jsonLiteral, q, relativeSpecifier, SourceFile } from './writer'
 
 export const ATLAS_FILE = 'atlas.scenarios.ts'
@@ -25,39 +29,53 @@ export const ATLAS_WRAPPER_FILE = 'atlas.wrapper.tsx'
  *
  * Shaped to drop straight into `atlas.config.ts`'s `scenarios` field, so
  * wiring it up is a spread rather than a migration.
+ *
+ * Five scenarios per preview: `Default` (the request, answered by the mocks),
+ * `Data` (realistic fake data passed through the preview's `data` prop), and
+ * the three forced states. `Data` uses the faker factories when the `faker`
+ * plugin ran — seeded, so a visual baseline does not flake — and otherwise the
+ * same deterministic sample the mocks return.
  */
-export function emitAtlasScenarios(doc: IrDocument): SourceFile {
+export function emitAtlasScenarios(doc: IrDocument, opts: { faker?: boolean } = {}): SourceFile {
   const f = new SourceFile(ATLAS_FILE)
   const ops = previewOperations(doc)
 
   f.line()
   f.doc(
-    `Atlas scenarios for ${doc.title}, derived from the spec.`,
+    `Atlas scenarios for ${doc.title}, one set per generated preview.`,
     '',
-    'Wire into `atlas.config.ts`:',
-    '',
+    '@example',
     '```ts',
+    '// atlas.config.ts',
     "import { scenarios } from './src/gen/atlas.scenarios'",
-    'export default { scenarios }',
+    "import { wrapper } from './src/gen/atlas.wrapper'",
+    'export default { scenarios, wrapper }',
     '```',
-    '',
-    'Every preview gets the three states a live request will not produce on',
-    'demand -- loading, error, empty -- which are the three a UI most often',
-    'gets wrong. They regenerate with the spec instead of drifting from it.',
   )
 
   if (ops.length === 0) {
     f.line('export const scenarios = {}')
     f.line()
-    f.doc('No previewable operations in this spec (all are mutations or take path params).')
+    f.doc('No previewable operations in this spec: previews are generated for GET operations with a JSON response.')
     return f
   }
 
+  const factories = new Set<string>()
+  const dataExprs = ops.map((op) => dataExpr(op, doc, opts.faker === true, factories))
+  if (factories.size > 0) {
+    f.import(relativeSpecifier(ATLAS_FILE, FAKER_FILE), 'seedFaker', ...factories)
+    f.line()
+    f.line('// A fixed seed, so the "Data" scenario renders the same values every run.')
+    f.line('seedFaker(1)')
+  }
+
+  f.line()
   f.line('export const scenarios = {')
-  for (const op of ops) {
+  for (const [i, op] of ops.entries()) {
     f.line(`  ${q(previewName(op))}: [`)
     // The live request first: the default view is the real thing.
     f.line(`    { name: 'Default', args: {} },`)
+    f.line(`    { name: 'Data', args: { data: ${dataExprs[i]} } },`)
     for (const state of FORCED_STATES) {
       f.line(`    { name: ${q(label(state))}, args: ${jsonLiteral({ force: state })} },`)
     }
@@ -65,6 +83,31 @@ export function emitAtlasScenarios(doc: IrDocument): SourceFile {
   }
   f.line('}')
   return f
+}
+
+/**
+ * The `data` a preview's "Data" scenario renders: a faker factory call for a
+ * named model (or a short list of them), else the deterministic sample.
+ */
+function dataExpr(op: IrOperation, doc: IrDocument, faker: boolean, factories: Set<string>): string {
+  const type = op.response as IrType
+  const named = (t: IrType): string | undefined =>
+    t.kind === 'ref' ? t.name : t.kind === 'nullable' ? named(t.inner) : undefined
+  if (faker) {
+    const one = named(type)
+    if (one) {
+      const fn = `create${pascal(one)}`
+      factories.add(fn)
+      return `${fn}()`
+    }
+    const inner = type.kind === 'array' ? named(type.items) : undefined
+    if (type.kind === 'array' && inner) {
+      const fn = `create${pascal(inner)}`
+      factories.add(fn)
+      return `Array.from({ length: 5 }, () => ${fn}())`
+    }
+  }
+  return jsLiteral(sampleValue(type, doc), 6, 30)
 }
 
 function label(state: string): string {
@@ -90,15 +133,9 @@ export function emitAtlasWrapper(doc: IrDocument): SourceFile {
 
   f.line()
   f.doc(
-    'Wrapper for the generated previews. Wire into `atlas.config.ts`:',
-    '',
-    '```ts',
-    "export { wrapper } from './src/gen/atlas.wrapper'",
-    '```',
-    '',
-    'Retries are OFF and gcTime is Infinity: a workbench wants the ERROR state',
-    'to appear immediately rather than after a retry budget, and a card that',
-    'refetches while you look at it is a card you cannot read.',
+    'Wraps every generated preview: a QueryClient, with the mock routes installed',
+    'so the previews render with no server. Queries never retry or refetch, so',
+    'an error shows at once and a card does not change while you read it.',
   )
   f.line('const client = new QueryClient({')
   f.line('  defaultOptions: { queries: { retry: false, gcTime: Infinity, staleTime: Infinity } },')
