@@ -141,7 +141,7 @@ Migrating from another framework? Pick `--compat react | vue | solid | preact` a
 | `--integrations` | CSV: `supabase,email` |
 | `--ai` | CSV: `mcp,claude,cursor,copilot,agents` |
 | `--compat` | `none` / `react` / `vue` / `solid` / `preact` |
-| `--packages` (alias `--pm`, `--package-strategy`) | `meta` / `individual` |
+| `--packages` (alias `--package-strategy`) | `meta` / `individual` |
 | `--lint` / `--no-lint` | toggle `@pyreon/lint` |
 | `--typed-routes` / `--no-typed-routes` | toggle typed routes (`<Link href>` autocomplete + typo rejection; default on) |
 | `--yes` | skip prompts, accept defaults (requires a positional project name) |

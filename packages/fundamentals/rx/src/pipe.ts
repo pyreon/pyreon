@@ -16,7 +16,7 @@ const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number)
  * const topRisks = rx.pipe(
  *   findings,
  *   (items) => items.filter(f => f.severity === "critical"),
- *   (items) => items.sort((a, b) => b.score - a.score),
+ *   (items) => [...items].sort((a, b) => b.score - a.score),
  *   (items) => items.slice(0, 10),
  * )
  * // topRisks() → reactive, type-safe

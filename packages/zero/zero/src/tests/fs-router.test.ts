@@ -696,14 +696,17 @@ describe('generateRouteModuleFromRoutes — with detected exports', () => {
 
   it('emits getStaticPaths on the route record in lazy mode (mixed branch)', () => {
     // Lazy/SSR mode + getStaticPaths-only export → mixed shape: lazy
-    // component + namespace import for the function-shaped export.
+    // component + a getStaticPaths THUNK over the same dynamic import (it is
+    // awaited at SSG time). A static namespace import would defeat the lazy
+    // split (INEFFECTIVE_DYNAMIC_IMPORT) — the invariant kept is "the record
+    // carries getStaticPaths", not the import shape.
     const routes = [
       makeRoute('posts/[id].tsx', { hasGetStaticPaths: true } as Partial<RouteFileExports>),
     ]
     const result = generateRouteModuleFromRoutes(routes, './routes')
     expect(result).toContain('lazy(() => import("./routes/posts/[id].tsx")')
-    expect(result).toContain('getStaticPaths:')
-    expect(result).toMatch(/import \* as _m\d+ from "\.\/routes\/posts\/\[id\]\.tsx"/)
+    expect(result).toContain('getStaticPaths: (...args) => import("./routes/posts/[id].tsx")')
+    expect(result).not.toMatch(/import \* as _m\d+ from "\.\/routes\/posts\/\[id\]\.tsx"/)
   })
 
   it('layout with no metadata only emits component import', () => {

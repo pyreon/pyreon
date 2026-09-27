@@ -26,7 +26,7 @@ export async function doctor(root: string | undefined, options: DoctorOptions) {
       process.exit(1)
     }
   } catch (error) {
-    console.error('Doctor failed:', (error as Error).message)
+    console.error('[Pyreon] Doctor failed:', error)
     process.exit(1)
   }
 }

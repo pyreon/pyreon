@@ -267,7 +267,7 @@ describe('vercel revalidate', () => {
     vi.unstubAllGlobals()
   })
 
-  it('URL-ENCODES the path and the secret', async () => {
+  it('URL-ENCODES the path; the secret goes in the Authorization header', async () => {
     // A path with a query or a token with a `&` would otherwise inject
     // extra parameters into the endpoint — at best it revalidates the
     // wrong page, at worst the secret is truncated and the call 403s.
@@ -276,9 +276,12 @@ describe('vercel revalidate', () => {
     const fetchMock = vi.fn(async () => ({ ok: true }) as Response)
     vi.stubGlobal('fetch', fetchMock)
     await vc.revalidate!('/blog/a b?x=1')
-    const url = String(fetchMock.mock.calls[0]![0])
+    const [input, init] = fetchMock.mock.calls[0]! as unknown as [string, RequestInit]
+    const url = String(input)
     expect(url).toContain(`path=${encodeURIComponent('/blog/a b?x=1')}`)
-    expect(url).toContain(`secret=${encodeURIComponent('a&b=c')}`)
+    // The secret travels in a header, never the URL.
+    expect(url).not.toContain('secret=')
+    expect(new Headers(init.headers).get('authorization')).toBe('Bearer a&b=c')
     vi.unstubAllGlobals()
   })
 
