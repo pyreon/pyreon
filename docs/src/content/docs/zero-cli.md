@@ -198,7 +198,7 @@ zero doctor ./apps/web     # check a project in a subdirectory
 ```
 
 :::note
-`zero doctor` exposes four flags: `--fix`, `--json`, `--ci`, `--full`. The richer audits some workflows reach for — cross-file island checks, SSG misconfiguration audits, test-environment parity — live on the framework-wide `pyreon doctor` binary in [`@pyreon/cli`](/docs/cli), and are **not** forwarded through `zero doctor`. Run `pyreon doctor --check-islands` / `--check-ssg` / `--audit-tests` for those.
+`zero doctor` exposes four flags: `--fix`, `--json`, `--ci`, `--full`. The richer controls `pyreon doctor` itself exposes — `--only`/`--skip` a specific gate, cross-file island checks, SSG misconfiguration audits, test-environment parity, `--roots` for non-standard layouts — live on the framework-wide `pyreon doctor` binary in [`@pyreon/cli`](/docs/cli), and are **not** forwarded through `zero doctor`. Run `pyreon doctor --check-islands` / `--check-ssg` / `--audit-tests` / `--only <gate>` for those.
 :::
 
 ### `zero context [root]`
@@ -278,7 +278,7 @@ The flags `zero` exposes are deliberately minimal — the per-invocation knobs t
 
 | Command | Positional | Flags | Purpose |
 | --- | --- | --- | --- |
-| `zero dev [root]` | `[root]` (dir, default `.`) | `--port <port>`, `--host [host]`, `--open`, `--routes` | Vite dev server + route table |
+| `zero dev [root]` (alias: `zero [root]`) | `[root]` (dir, default `.`) | `--port <port>`, `--host [host]`, `--open`, `--routes` | Vite dev server + route table |
 | `zero build [root]` | `[root]` | — | Production build (one `vite build`; the zero plugin owns client + SSR + prerender + adapter) |
 | `zero preview [root]` | `[root]` | `--port <port>`, `--host [host]` | Serve the built client bundle locally |
 | `zero doctor [root]` | `[root]` | `--fix`, `--json`, `--ci`, `--full` | Pyreon health gates |

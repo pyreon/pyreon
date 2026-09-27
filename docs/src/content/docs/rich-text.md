@@ -182,6 +182,8 @@ function Toolbar({ editor }: { editor: RichTextEditor }) {
 `isActive` re-derives on every edit and selection move, but only when **read inside a reactive scope**. Use `class={() => editor.isActive('bold') ? 'active' : ''}` (a thunk), not `class={editor.isActive('bold') ? …}` at component-body top level — the latter captures the value once and the highlight never updates.
 :::
 
+<Example file="./examples/rich-text/toolbar-and-word-count" title="Toolbar + word count — live" />
+
 ## Read-only toggle
 
 `editor.editable` is a writable signal — flip it to switch the live editor between editable and read-only at runtime.

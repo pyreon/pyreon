@@ -7,6 +7,8 @@ Read before touching `packages/zero/**`, a build adapter, SSG/SSR/ISR output, or
 ## SSG (`ssgPlugin`)
 
 - Per-route HTML is built by a nested Vite SSR sub-build. An env flag stops it re-triggering itself; pages render concurrently via `runWithConcurrency`, with progress through `ssg.onProgress`.
+- `ssg.workers` (opt-in, `ssg-worker-pool.ts`) renders on N worker threads that each import the same built SSG entry; only the renderer runs off-thread (template injection, writes, manifests stay on main). Byte-identical output depends on per-page CSS being order-independent — every page renders inside `runWithRequestContext`, which is a styler request scope (`sheet.markUsed` at cached-class render sites; module-level keyframes/static globals are ambient). Breaking that scope makes worker output differ from the single-thread build.
+- `ssg.cssMode: 'asset'` writes one content-addressed CSS file per DISTINCT page rule set (it used to write the first page's CSS and link it everywhere).
 - `getStaticPaths` enumerates dynamic routes (`[id].tsx`).
 - `_404.tsx` / `_not-found.tsx` → `dist/404.html`. It renders inside layout chrome: `findNotFoundFallback` builds the chain, loaders are skipped via `router.preload(path, _, { skipLoaders: true })`, and `noindex` is injected.
 - A loader-thrown `redirect()` → `dist/_redirects` (Netlify/Cloudflare) + `_redirects.json` (Vercel) + optional meta-refresh HTML.
@@ -88,6 +90,12 @@ Read before touching `packages/zero/**`, a build adapter, SSG/SSR/ISR output, or
 - `pyreon doctor --check-ssg` and the lint `ssg` category: `revalidate-not-pure-literal`, `missing-get-static-paths` (skips API routes and files without a default export), `invalid-loader-export`.
 - `bun run verify-modes` checks built artifacts.
 - E2E: `ssr-node`, `isr-node`, `ssg-*`. SSG suites serve `dist/` with `scripts/serve-ssg.ts`, never `vite preview` — its SPA fallback serves `index.html` for every path and hides missing per-route HTML.
+
+## Sessions, preview, web vitals
+
+- `@pyreon/zero/session`: HMAC-SHA256 signed cookie sessions (Web Crypto; rotation via secret array; tamper/expiry → empty). ANY session read/write calls `markPrivate(ctx.headers)` → `Cache-Control: private, no-store` + `Vary: Cookie`, which `isCacheable` in `isr.ts` refuses UNCONDITIONALLY (custom `cacheKey` included). Loaders reach the session through a `WeakMap<Request, Session>` (`getSession({ request })`). Stream mode: headers leave with the shell — touch the session before it.
+- `@pyreon/zero/preview` (client-safe): `createISRHandler` bypasses the cache on preview-cookie PRESENCE (verification is `previewMiddleware`'s job; a forged cookie buys nothing a query-string variant does not). zero-content `getCollection({ request })` includes drafts for a verified preview request. No effect on SSG static files.
+- `@pyreon/zero/web-vitals`: web-vitals semantics; CLS/INP flush+reset per client route via `router.afterEach`; LCP/FCP/TTFB hard-load only. Import budget `@pyreon/zero::web-vitals`. Real-Chromium test `src/tests/web-vitals.browser.test.ts`.
 
 ## Other features
 

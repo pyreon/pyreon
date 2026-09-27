@@ -1,6 +1,3 @@
-// @ts-nocheck — 1:1 port from a JS `<Playground>`. Strict-mode TS
-// would need a manual rewrite (signal shapes, possibly-null guards).
-// Renders + behaves correctly; type tightening is a follow-up.
 import { signal } from '@pyreon/reactivity'
 import { h } from '@pyreon/core'
 
@@ -21,7 +18,7 @@ export default function StateTreeHistoryUndo() {
   const history = signal([0])
   const cursor = signal(0) // index into history
 
-  const apply = (next: any) => {
+  const apply = (next: number) => {
     // Drop any redo branch when a new write comes in.
     history.update(hist => [...hist.slice(0, cursor() + 1), next])
     cursor.update(c => c + 1)
@@ -30,12 +27,12 @@ export default function StateTreeHistoryUndo() {
   const undo = () => {
     if (cursor() === 0) return
     cursor.update(c => c - 1)
-    value.set(history()[cursor()])
+    value.set(history()[cursor()]!) // cursor is always in-bounds: guarded above
   }
   const redo = () => {
     if (cursor() >= history().length - 1) return
     cursor.update(c => c + 1)
-    value.set(history()[cursor()])
+    value.set(history()[cursor()]!) // cursor is always in-bounds: guarded above
   }
 
   return h('div', { class: 'col' },
