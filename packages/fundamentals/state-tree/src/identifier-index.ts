@@ -35,14 +35,12 @@ const index = new WeakMap<object, Map<unknown, WeakRef<object>>>()
 
 /**
  * True iff `node` is still attached under `root` through the owned-children
- * graph. This deliberately does NOT use `getRoot`: `getRoot` follows the
- * `parent` pointer, which state-tree does NOT clear when a node is spliced out
- * of a container (an array `filter`/reassign) — so a detached node keeps a
- * stale `parent` and `getRoot` still returns the old root. `meta.children`, by
- * contrast, IS reconciled on detach (the container reconciler deletes removed
- * kids), so verifying `child ∈ parent.children` at every hop matches exactly
- * what the DFS would find: a removed node is no longer in its old parent's
- * children set → returns false → the caller falls back to the DFS.
+ * graph. A detached node's `parent` pointer is cleared by the container
+ * reconciler, but a node can also sit under a parent through a path this index
+ * must not trust blindly (a move between trees, a reference-only attachment), so
+ * the walk verifies `child ∈ parent.children` at every hop — exactly what the
+ * DFS would find. Any hop that fails returns false and the caller falls back to
+ * the authoritative DFS.
  */
 function isAttachedUnder(node: object, root: object): boolean {
   let cur: object = node

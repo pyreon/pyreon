@@ -78,25 +78,34 @@ export function formatErrorsByPath(
   t?: TFn,
   options: { joinWith?: string } = {},
 ): Record<string, string> {
-  const out: Record<string, string> = {}
+  // NULL-PROTOTYPE record: on a plain `{}`, `path in out` is true for every
+  // inherited name (`constructor`, `toString`, …) so a field with that name
+  // never got its error, and assigning `out['__proto__']` re-pointed the
+  // prototype instead of storing the message — the form then read the field
+  // as VALID. A null-prototype object has no inherited names and treats
+  // `__proto__` as an ordinary own key.
+  const out = Object.create(null) as Record<string, string>
   for (const issue of issues) {
     const path = stringifyPath(issue.path ?? [])
     const message = formatError(issue, t)
-    if (path in out && options.joinWith) {
-      out[path] = `${out[path]}${options.joinWith}${message}`
-    } else if (!(path in out)) {
-      out[path] = message
-    }
+    const existing = out[path]
+    if (existing === undefined) out[path] = message
+    else if (options.joinWith) out[path] = `${existing}${options.joinWith}${message}`
   }
   return out
 }
 
 /**
  * Adapt a `@pyreon/validate` schema into a `@pyreon/form` `schema` validator —
- * a `(values) => Record<field, errorMessage>` function. Runs `schema.safeParse`
- * and maps each issue's path to a per-field error via {@link formatErrorsByPath}
- * (so i18n keys resolve through `t` exactly like every other error). Valid input
- * → `{}` (no errors).
+ * a `(values) => Record<field, errorMessage>` function. Validates through the
+ * schema's Standard Schema entrypoint and maps each issue's path to a
+ * per-field error via {@link formatErrorsByPath} (so i18n keys resolve through
+ * `t` exactly like every other error). Valid input → `{}` (no errors).
+ *
+ * ASYNC schemas (an async `.refine` / `.transform`, or a registered
+ * `.serverCheck`) are supported: the validator then returns a `Promise` of the
+ * error record, which `@pyreon/form`'s `SchemaValidateFn` accepts. A sync
+ * schema keeps returning the record synchronously.
  *
  * Designed for a FLAT object schema (`s.object({ email, age })`) whose field
  * names match the form's fields — each issue path is a single segment that
@@ -111,10 +120,12 @@ export function formatErrorsByPath(
 export function toFormValidator<TValues>(
   schema: Schema<TValues>,
   t?: TFn,
-): (values: TValues) => Record<string, string> {
-  return (values: TValues): Record<string, string> => {
-    const r = schema.safeParse(values)
-    return r.ok ? {} : formatErrorsByPath(r.issues, t)
+): (values: TValues) => Record<string, string> | Promise<Record<string, string>> {
+  const toErrors = (r: { readonly issues?: ReadonlyArray<StandardSchemaIssue> | undefined }): Record<string, string> =>
+    r.issues ? formatErrorsByPath(r.issues, t) : {}
+  return (values: TValues) => {
+    const r = schema['~standard'].validate(values)
+    return r instanceof Promise ? r.then(toErrors) : toErrors(r)
   }
 }
 

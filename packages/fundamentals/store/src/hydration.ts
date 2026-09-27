@@ -36,11 +36,23 @@ interface HydratableStore {
 // pays ~nothing when SSR hydration isn't used.
 let _hydrationData: Record<string, Record<string, unknown>> | null = null
 
+// Stores declared `ssr: false` — never serialized into the page, never seeded
+// from a server snapshot. Keyed by the store's api OBJECT (not its id) so the
+// mark dies with the instance: a WeakSet has no eviction contract to get wrong.
+const _ssrExcluded = new WeakSet<object>()
+
+/** @internal — called by `defineStore` for a store declared `{ ssr: false }`. */
+export function markStoreSsrExcluded(api: object): void {
+  _ssrExcluded.add(api)
+}
+
 /**
  * Snapshot every active store's state into a plain, JSON-serializable object
  * keyed by store id — call on the SERVER after `renderToString` completes (the
  * per-request registry is still populated). Only signal-backed `state` is
  * captured; actions and computeds are excluded (they're not in `.state`).
+ *
+ * Stores defined with `{ ssr: false }` are always skipped.
  *
  * @param filter optional `(id) => boolean` to scope which stores are dehydrated
  *   — exclude server-only / sensitive stores from the client payload, e.g.
@@ -76,6 +88,10 @@ export function dehydrateStores(
   const registry = getRegistry()
   const out: Record<string, Record<string, unknown>> = {}
   for (const [id, api] of registry) {
+    // `ssr: false` stores (sessions, tokens, anything user-private) are never
+    // inlined into the HTML — the per-store opt-out the app-wide `filter`
+    // could only express from the server entry, far from the store itself.
+    if (_ssrExcluded.has(api as object)) continue
     if (filter && !filter(id)) continue
     // `.state` already returns a fresh snapshot object of the signal values.
     out[id] = (api as HydratableStore).state
@@ -101,9 +117,13 @@ export function hydrateStores(data: Record<string, Record<string, unknown>>): vo
   // Seed any already-created stores NOW, and drop them from the stash so a
   // later resetStore + re-create doesn't re-hydrate stale boot state.
   const registry = getRegistry()
-  for (const id in data) {
+  for (const id of Object.keys(data)) {
     const existing = registry.get(id) as HydratableStore | undefined
     if (existing) {
+      if (_ssrExcluded.has(existing)) {
+        delete _hydrationData[id]
+        continue
+      }
       existing.patch(data[id] as Record<string, unknown>)
       delete _hydrationData[id]
     }
@@ -117,8 +137,15 @@ export function hydrateStores(data: Record<string, Record<string, unknown>>): vo
  */
 export function consumeHydration(id: string, api: HydratableStore): void {
   if (_hydrationData === null) return
-  const seed = _hydrationData[id]
+  // OWN keys only: a bare `_hydrationData[id]` read resolved a store id like
+  // `valueOf` / `toString` to the Object.prototype METHOD, which `patch` then
+  // treated as a functional updater and threw on.
+  const seed = Object.hasOwn(_hydrationData, id) ? _hydrationData[id] : undefined
   if (seed === undefined) return
+  if (_ssrExcluded.has(api)) {
+    delete _hydrationData[id]
+    return
+  }
   api.patch(seed)
   // One-shot: a re-created store seeds from its own setup(), not stale state.
   delete _hydrationData[id]

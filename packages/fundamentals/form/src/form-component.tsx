@@ -79,7 +79,7 @@ export interface SubmitProps extends Props {
 }
 
 /**
- * Submit button that auto-disables while the form is submitting or disabled.
+ * Submit button that auto-disables while the form is validating, submitting, or disabled.
  * Must be inside a `<Form>` or `<FormProvider>`.
  */
 const Submit: ComponentFn<SubmitProps> = (props) => {
@@ -88,7 +88,10 @@ const Submit: ComponentFn<SubmitProps> = (props) => {
     'button',
     {
       type: 'submit',
-      disabled: () => form.isSubmitting() || form.disabled(),
+      // Disabled while VALIDATING too: `isSubmitting` only flips after async
+      // validation settles, so a slow async validator left the button live
+      // for a second click during exactly the window that double-submitted.
+      disabled: () => form.isSubmitting() || form.isValidating() || form.disabled(),
       class: props.class,
     },
     props.children ?? 'Submit',

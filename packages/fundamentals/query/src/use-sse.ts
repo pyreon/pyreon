@@ -1,12 +1,13 @@
 import { onUnmount } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
-import { batch, effect, signal } from '@pyreon/reactivity'
+import { batch, effect, isClient, signal } from '@pyreon/reactivity'
 import type { QueryClient } from '@tanstack/query-core'
 import { useQueryClient } from './query-client'
+import { computeReconnectDelay, DEFAULT_MAX_RECONNECT_DELAY } from './reconnect'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type SSEStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
+export type SSEStatus = 'connecting' | 'connected' | 'disconnected' | 'error' | 'failed'
 
 export interface UseSSEOptions<T = string> {
   /** EventSource URL — can be a signal for reactive URLs */
@@ -19,9 +20,15 @@ export interface UseSSEOptions<T = string> {
   enabled?: boolean | (() => boolean)
   /** Whether to automatically reconnect — default: true */
   reconnect?: boolean
-  /** Initial reconnect delay in ms — doubles on each retry, default: 1000 */
+  /** Initial reconnect delay in ms — doubles on each retry (jittered), default: 1000 */
   reconnectDelay?: number
-  /** Maximum reconnect attempts — default: 10, 0 = unlimited */
+  /** Ceiling for the reconnect delay in ms — default: 30000 */
+  maxReconnectDelay?: number
+  /**
+   * Maximum reconnect attempts — default: 10, 0 = unlimited. When they run
+   * out, `status()` becomes `'failed'`; a browser `online` event (or
+   * `reconnect()`) starts over.
+   */
   maxReconnectAttempts?: number
   /** Whether to send cookies with the request — default: false */
   withCredentials?: boolean
@@ -58,8 +65,11 @@ export interface UseSSEResult<T> {
   data: Signal<T | null>
   /** Current connection status */
   status: Signal<SSEStatus>
-  /** Last error event */
-  error: Signal<Event | null>
+  /**
+   * Last error: the connection's error `Event`, or the `Error` thrown by
+   * `parse` for a malformed message. Cleared by the next good message.
+   */
+  error: Signal<Event | Error | null>
   /** Last `id` field received from the server (per SSE spec) */
   lastEventId: () => string
   /** EventSource readyState: 0=CONNECTING, 1=OPEN, 2=CLOSED */
@@ -99,7 +109,7 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
   const queryClient = useQueryClient()
   const data = signal<T | null>(null)
   const status = signal<SSEStatus>('disconnected')
-  const error = signal<Event | null>(null)
+  const error = signal<Event | Error | null>(null)
   // Seed the lastEventId from `initialLastEventId` so consumers can resume
   // a stream across remount. EventSource has no API to set
   // a Last-Event-ID header on the FIRST connection — server cooperation
@@ -120,6 +130,7 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
   const reconnectEnabled = options.reconnect !== false
   const baseDelay = options.reconnectDelay ?? 1000
   const maxAttempts = options.maxReconnectAttempts ?? 10
+  const maxDelay = options.maxReconnectDelay ?? DEFAULT_MAX_RECONNECT_DELAY
   const eventNames = options.events
     ? Array.isArray(options.events)
       ? options.events
@@ -136,19 +147,39 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
   }
 
   function handleMessage(event: MessageEvent): void {
+    // Track lastEventId from the SSE spec
+    if (event.lastEventId !== undefined && event.lastEventId !== '') {
+      lastEventId.set(event.lastEventId)
+    }
+
+    let parsed: T
     try {
-      // Track lastEventId from the SSE spec
-      if (event.lastEventId !== undefined && event.lastEventId !== '') {
-        lastEventId.set(event.lastEventId)
+      parsed = options.parse ? options.parse(event.data as string) : (event.data as T)
+    } catch (err) {
+      // A malformed payload is a real, observable failure: surface it on
+      // `error()` (keeping the last good `data()`), instead of dropping it.
+      error.set(err instanceof Error ? err : new Error(String(err)))
+      if (process.env.NODE_ENV !== 'production') {
+        // oxlint-disable-next-line no-console
+        console.error('[Pyreon] useSSE: parse() threw for an incoming message:', err)
       }
-      const parsed = options.parse ? options.parse(event.data as string) : (event.data as T)
-      batch(() => {
-        data.set(parsed)
-        error.set(null)
-      })
+      return
+    }
+
+    batch(() => {
+      data.set(parsed)
+      error.set(null)
+    })
+
+    try {
       options.onMessage?.(parsed, queryClient)
-    } catch {
-      // Message handler errors should not crash the subscription
+    } catch (err) {
+      // A throwing handler must not take the stream down — but swallowing it
+      // silently hides real bugs. Report it in dev.
+      if (process.env.NODE_ENV !== 'production') {
+        // oxlint-disable-next-line no-console
+        console.error('[Pyreon] useSSE: the onMessage handler threw:', err)
+      }
     }
   }
 
@@ -261,9 +292,14 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
 
   function scheduleReconnect(): void {
     if (!reconnectEnabled) return
-    if (maxAttempts > 0 && reconnectAttempts >= maxAttempts) return
+    if (maxAttempts > 0 && reconnectAttempts >= maxAttempts) {
+      // Out of attempts: say so, distinctly from a transient 'error' /
+      // 'disconnected' that is about to be retried.
+      status.set('failed')
+      return
+    }
 
-    const delay = baseDelay * 2 ** reconnectAttempts
+    const delay = computeReconnectDelay(reconnectAttempts, baseDelay, maxDelay)
     reconnectAttempts++
 
     // Clear a prior pending timer before overwriting the handle (a rapid
@@ -310,8 +346,23 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
     connect()
   })
 
+  // Coming back online is the moment a dead connection is worth another try —
+  // including after attempts ran out ('failed'). A connection that is live, or
+  // one the caller closed on purpose, is left alone.
+  const onOnline = (): void => {
+    if (intentionalClose || !isEnabled()) return
+    const s = status.peek()
+    if (s === 'connected' || s === 'connecting') return
+    reconnectAttempts = 0
+    connect()
+  }
+  if (isClient) window.addEventListener('online', onOnline)
+
   // Cleanup on unmount
-  onUnmount(() => close())
+  onUnmount(() => {
+    if (isClient) window.removeEventListener('online', onOnline)
+    close()
+  })
 
   return {
     data,

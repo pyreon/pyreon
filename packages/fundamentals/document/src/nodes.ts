@@ -22,6 +22,7 @@ import type {
   TableProps,
   TextProps,
 } from './types'
+import { sanitizeHref } from './sanitize'
 
 // ─── Node Constructor ───────────────────────────────────────────────────────
 
@@ -193,7 +194,13 @@ export function getInlineRuns(children: DocChild[]): InlineRun[] {
     if (typeof c === 'string') {
       pushText(c)
     } else if (c.type === 'link' && typeof c.props.href === 'string') {
-      runs.push({ text: getTextContent(c.children), href: c.props.href })
+      // Sanitized HERE, once, for every inline-link consumer (pdf, docx,
+      // slack, telegram, whatsapp, …) — pdf and docx previously forwarded
+      // the raw href into a live link annotation. An href the allowlist
+      // rejects degrades the run to plain text rather than an empty link.
+      const href = sanitizeHref(c.props.href)
+      if (href) runs.push({ text: getTextContent(c.children), href })
+      else pushText(getTextContent(c.children))
     } else {
       pushText(getTextContent(c.children))
     }

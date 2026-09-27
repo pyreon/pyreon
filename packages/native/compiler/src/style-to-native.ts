@@ -12,7 +12,7 @@
 // of SwiftUI `.modifier()` / Jetpack-Compose `Modifier.x()` chain entries, so
 // iOS + Android stay in lockstep from ONE source. It is called from the single
 // cross-cutting modifier builder per target (`emitSwiftLayoutModifiers` /
-// `emitKotlinLayoutModifier`), reaching all 15 primitives through one insertion
+// `emitKotlinLayoutModifier`), reaching every canonical primitive through one insertion
 // point — mirroring how `AccessibilityProps` lowers.
 //
 // TWO shapes lower:

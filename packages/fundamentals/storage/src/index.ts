@@ -49,6 +49,7 @@ export type {
   AsyncStorageBackend,
   CookieOptions,
   IndexedDBOptions,
+  IndexedDBSignal,
   StorageBackend,
   StorageOptions,
   StorageSignal,

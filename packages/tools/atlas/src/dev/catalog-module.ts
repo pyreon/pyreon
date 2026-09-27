@@ -133,7 +133,14 @@ export function toWorkbenchControl(
     return { key: control.name, label, type: 'color', default: control.defaultValue ?? '#3b82f6', ...(control.required ? { required: true } : {}) }
   }
   // Everything else edits as text.
-  const fallback = typeof seeded === 'string' ? seeded : ''
+  //
+  // A string prop blanks to `''`. A prop whose type the scan could NOT read
+  // (`value?: string | string[]`, an options array, a labels object) keeps NO
+  // default: `''` was a fabricated value, handed to the component on every
+  // render — `TagsInput` received `value: ''`, became controlled with a string
+  // where it expects an array, and rendered an empty 36px box. Same rule as the
+  // number control above.
+  const fallback = typeof seeded === 'string' ? seeded : control.kind === 'unknown' ? undefined : ''
   return { key: control.name, label, type: 'text', default: control.defaultValue ?? fallback, ...(control.required ? { required: true } : {}) }
 }
 
@@ -406,8 +413,17 @@ export function generateCatalogModule(
     // `reduceRight` so the FIRST listed extension ends up outermost — the order
     // the equivalent JSX would be written by hand, which is the only ordering a
     // reader can predict without consulting docs.
-    lines.push('const __wrapAll = (__el) =>')
-    lines.push('  __layers.reduceRight((__acc, __ext) => h(__ext.wrap, {}, __acc), __el)')
+    //
+    // Each layer receives the render's APPEARANCE (`ctx.wrapperProps`: `mode`,
+    // `dark`, `brand` accessors — `AtlasWrapperProps`) beside its children.
+    // Passing `{}` was why the dark workbench rendered every component in its
+    // light mode and the Theme Lab tiled identical cards: the project's
+    // provider was never told which appearance to render. A fresh object per
+    // layer — `h` owns the props it is handed.
+    lines.push('const __wrapAll = (__el, __ctx) =>')
+    lines.push(
+      '  __layers.reduceRight((__acc, __ext) => h(__ext.wrap, { ...(__ctx?.wrapperProps ?? {}) }, __acc), __el)',
+    )
     lines.push('')
     // An AUTHORED scenario's args are read from the config module itself —
     // the same object the verify harness mounted — so a render-prop child or
@@ -423,6 +439,8 @@ export function generateCatalogModule(
   }
 
   lines.push('export const catalog = {')
+  // Whether a project provider wraps every render — the Theme Lab reads it.
+  if (options.configPath) lines.push('  wrapped: __layers.length > 0,')
   if (options.presets) lines.push(`  presets: ${JSON.stringify(options.presets)},`)
   lines.push('  components: [')
 
@@ -553,7 +571,7 @@ export function generateCatalogModule(
     lines.push(`        const { props: __p, children: __c } = __content(merged, h)`)
     if (options.configPath) {
       lines.push(`        const __el = h(__Perms, { value: ctx.can }, h(Comp, __p, ...__c))`)
-      lines.push(`        return __wrapAll(__el)`)
+      lines.push(`        return __wrapAll(__el, ctx)`)
     } else {
       lines.push(`        return h(Comp, __p, ...__c)`)
     }

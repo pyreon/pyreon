@@ -24,7 +24,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - keyframes`...` — returns the generated @keyframes animation-name string
 - createGlobalStyle`...` — returns a ComponentFn that injects global CSS when mounted
 - useCSS(template, props?, boost?) — resolve a CSSResult to a class name inside a component
-- Reactive theming — useTheme() snapshot vs useThemeAccessor() accessor; the theme is provided by &lt;PyreonUI&gt; (ThemeProvider is a low-level, non-merging fallback)
+- Reactive theming — useTheme() snapshot vs useThemeAccessor() accessor; ThemeProvider follows a changing `theme` prop, while most apps provide it through &lt;PyreonUI&gt;
 - Singleton StyleSheet (FNV-1a dedup, SSR) + createSheet() for isolated instances
 - buildProps / filterProps — $-transient + shouldForwardProp DOM prop forwarding (descriptor-preserving)
 
@@ -259,7 +259,7 @@ function Badge() {
 
 **Common mistakes**
 
-- Destructuring `const { colors } = useTheme()` and expecting it to update on a user-preference theme swap — the snapshot is captured once. Use `useThemeAccessor()` and read inside the reactive scope, or rely on `styled` templates (their resolver tracks the theme)
+- Destructuring `const { colors } = useTheme()` and expecting it to update on a user-preference theme swap — the snapshot is captured once. Use `useThemeAccessor()` and read inside the reactive scope, or rely on rocketstyle-backed components (their reactive resolver tracks the theme — a plain `styled()` with no reactive axis resolves once at mount)
 - Calling `useTheme()` at module scope — it must run during component setup where the context is available
 
 **See also:** `useThemeAccessor` · `ThemeProvider` · `styled`
@@ -299,7 +299,7 @@ effect(() => applyChartPalette(theme().colors)) // re-runs on theme swap
 ThemeProvider(props: { theme: Theme; children?: VNodeChild }): VNode | null
 ```
 
-Low-level provider for the reactive `ThemeContext` — marked `@internal` / `@deprecated` in source in favour of `<PyreonUI theme={…}>` from `@pyreon/ui-core`. It provides exactly the object it receives: no merge with a parent theme, no enrichment (breakpoints, CSS variables), and no ui-core context for rocketstyle components. The `theme` prop is read once at setup, so passing a different theme later does not update consumers — swap themes through `<PyreonUI>`, whose provided theme is reactive. `<PyreonUI>` provides `ThemeContext` itself rather than wrapping this component. Marked `nativeCompat` so it works inside `@pyreon/{react,preact,vue,solid}-compat` apps.
+Provides a theme to the reactive `ThemeContext`. The provided accessor reads `props.theme` LAZILY, so a signal-driven `theme={current()}` stays live: consumers that read the theme inside a tracking scope — `useThemeAccessor()` in an `effect` / `computed` / JSX thunk, and rocketstyle-backed components (whose reactive `$rocketstyle` axis tracks the theme) — follow a later `theme` change without a remount. A plain `styled()` component with no reactive axis resolves its class ONCE at mount (the static fast path), so it does not re-resolve on a swap. A nested provider REPLACES the theme for its subtree — there is no merge and no `(parent) => theme` function form. Marked `nativeCompat` so it works inside `@pyreon/{react,preact,vue,solid}-compat` apps.
 
 **Example**
 
@@ -314,9 +314,9 @@ import { ThemeProvider } from "@pyreon/styler"
 
 **Common mistakes**
 
-- Passing a function to extend the parent theme (`theme={(parent) => …}`) — there is no function form; the object is provided as-is. Read the parent with `useTheme()` and spread it yourself, or nest `<PyreonUI>` (it inherits the parent theme)
-- Expecting a signal-driven `theme={t()}` to swap the theme — the prop is read once at setup; use `<PyreonUI theme={…}>` for reactive theme swaps
-- Using it in an app that renders `<PyreonUI>` — PyreonUI already provides `ThemeContext` (enriched); a nested `ThemeProvider` replaces it with the raw object for that subtree
+- Expecting a nested provider to MERGE with its parent — it replaces the theme for its subtree. To extend, read the parent with `useTheme()` and spread it yourself: `theme={{ ...parent, colors: { ...parent.colors, accent: "#0a0" } }}` (there is no function `theme` form)
+- Expecting a plain `styled()` component (no rocketstyle, no reactive axis) to re-resolve when the `theme` prop changes — it resolves once at mount; read the theme through `useThemeAccessor()` inside a reactive scope, or use `<PyreonUI>` + rocketstyle components for live whole-theme swaps
+- Expecting most apps to mount this directly — `<PyreonUI>` wraps it; use `ThemeProvider` standalone only outside the `@pyreon/ui-core` provider
 
 **See also:** `useTheme` · `useThemeAccessor` · `ThemeContext`
 

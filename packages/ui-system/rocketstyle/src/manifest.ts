@@ -82,7 +82,7 @@ const Badge = rsBadge({ name: 'Badge', component: 'span' })
       signature:
         "(config?: { dimensions?: Dimensions; useBooleans?: boolean }) => <C>({ name, component }: { name: string; component: C }) => RocketStyleComponent",
       summary:
-        'Factory initializer (default + named export). `rocketstyle(config?)` returns a component factory; call THAT with `{ name, component }` to get the chainable builder. `config.dimensions` overrides the dimension map (default: `states: "state"`, `sizes: "size"`, `variants: "variant"`, `multiple: { propName: "multiple", multi: true }`, `modifiers: { propName: "modifier", multi: true, transform: true }`) — each key becomes a chain method, each propName a consumer prop. `config.useBooleans` (default `false`) switches dimension props from strings (`state="primary"`) to boolean shorthands (`<Button primary />`). In dev builds, CALLING the returned factory (`rs({ name, component })`) throws on a missing `name`/`component`/`dimensions` or on a dimension name that collides with a reserved key; production builds skip the validation.',
+        'Factory initializer (default + named export). `rocketstyle(config?)` returns a component factory; call THAT with `{ name, component }` to get the chainable builder. `config.dimensions` overrides the dimension map (default: `states: "state"`, `sizes: "size"`, `variants: "variant"`, `multiple: { propName: "multiple", multi: true }`, `modifiers: { propName: "modifier", multi: true, transform: true }`) — each key becomes a chain method, each propName a consumer prop. `config.useBooleans` (default `false`) switches dimension props from strings (`state="primary"`) to boolean shorthands (`<Button primary />`). Development mode throws on missing `name`/`component`/`dimensions` and on reserved-key collisions, naming the conflicting keys and reserved set; production builds skip this validation.',
       example: `import rocketstyle from '@pyreon/rocketstyle'
 
 const rs = rocketstyle()                       // useBooleans: false (default)
@@ -342,7 +342,7 @@ Button.meta.category   // 'action'
       signature:
         "(props: { children: VNodeChild; theme?: Theme; mode?: 'light' | 'dark'; inversed?: boolean; provider?: (props) => VNodeChild }) => VNodeChild",
       summary:
-        'Low-level theme + mode provider for rocketstyle components. It reads the surrounding ui-core `context` ONCE at setup, shallow-merges its own props over it (`theme` and `mode` fall back to the parent\'s), resolves the mode (`inversed: true` flips it; with no mode anywhere it is `"light"`), and hands `{ theme, mode, isDark, isLight, children }` to the `provider` component — by default `@pyreon/ui-core`\'s internal `Provider`, which writes the shared ui-core `context`. It writes ONLY that context: `styled()` components below it keep reading the outer styler `ThemeContext`. Prefer `<PyreonUI>` from `@pyreon/ui-core` for every case, including subtree overrides — it provides all three layers (styler, core, mode), accepts a reactive `mode`, and supports `inversed` for a nested section.',
+        'Tree-level theme + mode provider. Props are `{ children, theme?, mode?, inversed?, provider? }` — `mode` is `"light" | "dark"`, `inversed: true` flips the resolved mode for the subtree, and values merge over any parent rocketstyle context. It is REACTIVE: the parent context and its own props are read LAZILY (the provided value is getter-based), so `<Provider inversed>` follows a later parent mode flip and a signal-driven `theme={t()}` / `mode={m()}` stays live — no remount. Most apps use the higher-level `<PyreonUI>` from `@pyreon/ui-core` (theme + mode + config in one) and reach for rocketstyle\'s `Provider` only for fine-grained subtree overrides. The raw context object backing it is exported as `context`.',
       example: `import { Provider } from '@pyreon/rocketstyle'
 
 // A fixed theme + mode for rocketstyle components below
@@ -362,6 +362,7 @@ import { PyreonUI } from '@pyreon/ui-core'
         'Expecting `styled()` / `useTheme()` from `@pyreon/styler` to see the theme passed here — this Provider writes only the ui-core context that rocketstyle reads; `<PyreonUI>` writes both',
         'Being surprised by the dev warning `[Pyreon] CoreProvider is internal` — mounting this Provider delegates to ui-core\'s internal provider, which logs it in development; switch to `<PyreonUI>`',
         'Mounting a fresh `Provider`/`PyreonUI` per view — the `_rsMemo` cache keys on theme identity, so per-view providers defeat cross-instance memoization; share ONE app-level provider',
+        'Expecting `inversed` to FORCE dark — it inverts whatever mode the parent resolves (light↔dark), and tracks that parent as it changes',
         'Confusing this theme/mode provider with `.config({ provider: true })` — the latter is the component-to-component PSEUDO-STATE channel, unrelated to theming',
       ],
       seeAlso: ['rocketstyle', 'context', '@pyreon/ui-core'],

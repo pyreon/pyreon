@@ -63,8 +63,9 @@ describe('useStorage — cross-tab sync', () => {
     expect(theme()).toBe('light')
   })
 
-  it('ignores storage events with null key', () => {
+  it('a null-key event (localStorage.clear() in another tab) resets to default', () => {
     const theme = useStorage('theme', 'light')
+    theme.set('dark')
 
     window.dispatchEvent(
       Object.assign(new Event('storage'), {
