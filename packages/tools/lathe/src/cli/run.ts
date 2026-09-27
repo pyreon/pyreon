@@ -718,16 +718,16 @@ async function runChecked(
       );
     }
     try {
-      const text = fs.read(config.input)
+      const text = fs.read(config.input);
       const remoteDocuments =
         config.remoteRefs === 'fetch'
           ? await fetchRemoteParts(text, config.input, (id) => fs.read(id), config.remoteHeaders, remoteCacheDir(fs))
-          : undefined
+          : undefined;
       const result = generate(text, config, {
         location: config.input,
         readDocument: (id) => fs.read(id),
         remoteDocuments,
-      })
+      });
       // Formatted BEFORE the comparison below, so formatted output that was
       // committed is current rather than stale, and `check` agrees with it.
       generated.push({

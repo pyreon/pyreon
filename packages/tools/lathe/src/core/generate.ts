@@ -96,7 +96,7 @@ export function generate(
     ...options,
     patches: options.patches ?? config.patches,
   });
-  const documents = loaded.documents
+  const documents = loaded.documents;
   let doc = applyFilters(loaded.doc, config.filters);
   doc = applyNaming(doc, config.naming);
   doc = applyOperationSettings(doc, config.operations, config.naming?.hook);
@@ -134,7 +134,7 @@ export function generate(
       validator: config.validator,
     }))
       push(f);
-    pushMaybe(emitWebhooks(doc, config.validator))
+    pushMaybe(emitWebhooks(doc, config.validator));
   }
   if (has("client")) {
     push(
@@ -253,7 +253,7 @@ export function generate(
     // breaks the moment anything imports it as a module.
     contents: `${jsonLiteral(surface, 2)}\n`,
   });
-  return { doc, files, reach, surface, documents }
+  return { doc, files, reach, surface, documents };
 }
 
 /**
