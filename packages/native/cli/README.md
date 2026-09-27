@@ -23,7 +23,7 @@ pyreon-native wire      [--app=<dir>] [--android-out=<file>] [--ios-out=<dir>] [
 | `stage-web` | Stages a web bundle into the app so `<WebView src="…">` can load it from the app bundle — see [Multi-Platform (PMTC)](https://pyreon.dev/docs/multiplatform) for the WebView host. |
 | `wire` | Resolves an app's Pyreon native source roots (the base runtime/router + every co-located feature `native/swift`/`native/kotlin` directory) in a way that survives hoisting and non-flat installs, and writes the result where each platform's build reads it — see [Native Packages](https://pyreon.dev/docs/native-packages#why-four-of-them-ship-source) for the full mechanism. |
 
-Exit codes: `0` success, `1` usage error, `2` a compiler error on a source file.
+Exit codes: `0` success, `1` usage error, `2` the command failed — a compiler error on a source file for `build`/`check`, a failed copy for `assets`/`stage-web`, or, for `wire`, a package that declares native sources whose directory is missing.
 
 ## `check` is the one to reach for while authoring
 
