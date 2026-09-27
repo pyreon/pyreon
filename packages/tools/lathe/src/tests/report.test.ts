@@ -216,6 +216,7 @@ components:
           warnings: [],
           markers: ['PyreonQuery<'],
           leaked: [],
+          declarations: [],
         },
       ],
     })
@@ -235,6 +236,7 @@ components:
           warnings: ['endpoint getBook: something specific and actionable'],
           markers: [],
           leaked: ['useQuery('],
+          declarations: [],
         },
       ],
     })

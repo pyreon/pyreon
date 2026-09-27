@@ -3926,14 +3926,14 @@ function focusField(name: FieldNames<typeof form>) { /* … */ }`,
   },
 
   'query/useQuery': {
-    signature: '<TQueryFnData, TError, TData = TQueryFnData, TKey>(options: () => QueryObserverOptions<...>) => UseQueryResult<TData, TError>',
+    signature: '<TQueryFnData, TError, TData = TQueryFnData, TKey>(options: () => UseQueryOptions<TQueryFnData, TError, TData, TKey>) => UseQueryResult<TData, TError>',
     example: `const userId = signal(1)
 const user = useQuery(() => ({
   queryKey: ['user', userId()],
   queryFn: () => fetch(\`/api/users/\${userId()}\`).then((r) => r.json()),
 }))
 // user.data(), user.error(), user.isFetching() — each its own signal`,
-    notes: `Subscribe to a query with fine-grained reactive signals. \`options\` is a FUNCTION (not an object) so it can read Pyreon signals — when a tracked signal inside changes (e.g. a reactive queryKey), the observer re-evaluates options and refetches automatically. Returns one independent \`Signal<T>\` per observer field (\`data\`, \`error\`, \`status\`, \`isPending\`, \`isLoading\`, \`isFetching\`, \`isError\`, \`isSuccess\`) so templates only re-run for the exact fields they read. Internally wraps TanStack's \`QueryObserver\` and subscribes via \`onUnmount\`-guarded effect — the observer unsubscribes when the component unmounts. See also: useQueryClient, useMutation, useSuspenseQuery.`,
+    notes: `Subscribe to a query with fine-grained reactive signals. Generic order matches TanStack (\`TQueryFnData\` is what \`queryFn\` resolves to, \`TData\` what \`select\` produces), so \`select: (posts) => posts.length\` types \`data()\` as \`number\` with no cast. \`options\` is a FUNCTION (not an object) so it can read Pyreon signals — when a tracked signal inside changes (e.g. a reactive queryKey), the observer re-evaluates options and refetches automatically. Returns one independent \`Signal<T>\` per observer field (\`data\`, \`error\`, \`status\`, \`isPending\`, \`isLoading\`, \`isFetching\`, \`isError\`, \`isSuccess\`) so templates only re-run for the exact fields they read. Internally wraps TanStack's \`QueryObserver\` and subscribes via \`onUnmount\`-guarded effect — the observer unsubscribes when the component unmounts. See also: useQueryClient, useMutation, useSuspenseQuery.`,
     mistakes: `- Passing the options object directly instead of a function — loses reactive queryKey support; the observer never re-evaluates when signals change
 - Reading \`.data\` / \`.error\` / \`.isFetching\` as plain values — they are \`Signal<T>\`, call them: \`user.data()\`, \`user.isFetching()\`
 - Destructuring \`const { data } = useQuery(...)\` at setup and reading \`data\` later — captures the Signal reference once, which is fine, but storing \`data()\` at setup captures the initial VALUE and defeats reactivity
@@ -4262,13 +4262,13 @@ const user = await api.get('/users/1').json() // decoded body`,
   },
 
   'http/endpoint': {
-    signature: '(spec: `${HttpMethod} ${string}`, options?: { response?: Validator; headers?: HeadersInit; formEncoding?: Record<string, FormFieldEncoding>; timeout?: number | false }) => Endpoint',
+    signature: `<S, V, I = EndpointInput<path>, K = 'json'>(spec: \`\${HttpMethod} \${string}\`, options?: { response?: V; responseType?: K; queryStyle?; formEncoding?; keyScope?; headers?; timeout? }) => Endpoint<S, BodyOf<K, V>, I>`,
     example: `const getUser = api.endpoint('GET /users/:id', { response: UserSchema })
 
 await getUser({ params: { id: '1' } })
 const options = getUser.query({ params: { id: '1' } })
 console.log(options.queryKey)`,
-    notes: 'Declare a reusable endpoint. One declaration yields the callable, a stable structural cache key, and the response type — which is what stops queryKey and URL from drifting apart, the single biggest pain with axios plus TanStack Query. `params` is REQUIRED by the type system exactly when the path declares `:placeholders`, and its keys are extracted from the path literal, so a typo is a compile error. `.query(args)` emits `{ queryKey, queryFn }` with the AbortSignal already forwarded; `.mutation()` emits `{ mutationFn, invalidates }`.',
+    notes: `Declare a reusable endpoint. One declaration yields the callable, a stable structural cache key, and the response type — which is what stops queryKey and URL from drifting apart, the single biggest pain with axios plus TanStack Query. \`params\` is REQUIRED by the type system exactly when the path declares \`:placeholders\`, and its keys are extracted from the path literal, so a typo is a compile error. \`.query(args)\` emits \`{ queryKey, queryFn }\` with the AbortSignal already forwarded; \`.mutation()\` emits \`{ mutationFn, invalidates }\`. \`responseType\` (\`text\` / \`blob\` / \`arrayBuffer\` / \`stream\` / \`void\`) decodes non-JSON bodies and types the result accordingly; \`queryStyle\` states OpenAPI query serialization per key (\`form\` / \`spaceDelimited\` / \`pipeDelimited\` / \`deepObject\`, \`explode\`); \`keyScope\` namespaces the cache key; \`validate\` (\`strict\` / \`warn\` / \`off\`) overrides the client response-validation mode for that one endpoint (a per-request \`validate\` option does the same for a single call). The third generic \`I\` narrows what a call sends (\`api.endpoint<S, typeof Schema, { json: NewPet }>(…)\`) — how a generated client types \`query\` and \`json\` on direct calls. In a path, \`\\\\:\` is a literal colon (\`/v1/:name\\\\:cancel\`).`,
     mistakes: `- Hand-writing a \`queryKey\` next to an endpoint call. Use \`endpoint.query(...)\` so the key is derived from the same declaration as the URL.
 - Expecting \`mutationFn\` to receive an AbortSignal. TanStack gives mutations no context at all — pass one in the variables if the mutation must be cancellable.
 - Writing the spec without a method (\`"/users"\`). It must be \`"<METHOD> <path>"\`.
@@ -12196,7 +12196,7 @@ const config = resolveConfig({
 })
 
 const { files } = generate(specText, config)`,
-    notes: `Fills defaults and validates one project's settings, and is where the whole option surface lives: \`plugins\` (which emitters run), \`client\` (\`pyreon\` | \`fetch\` | \`axios\` | \`ky\`), \`validator\` (\`pyreon\` | \`zod\`), \`target\` (\`web\` | \`multiplatform\`), \`baseUrl\`, \`strictNative\` and \`responseValidation\` (\`strict\` | \`warn\` | \`off\`, what the web client does with a response that does not match its schema). A plugin selection is EXPANDED to cover what its output imports rather than refused -- asking for \`components\` gets \`queries\`, \`client\` and \`schemas\` too, and the CLI report says what came along. Use \`resolveProjects\` instead when the config may declare \`projects: [...]\`; it always returns a LIST, so a single-project config is a one-element list rather than a special case.`,
+    notes: `Fills defaults and validates one project's settings, and is where the whole option surface lives: \`plugins\` (which emitters run — built-in names and \`definePlugin\` plugins), \`filters\` / \`patches\` / \`operations\` / \`naming\` / \`format\` (author control over the subset, the spec, per-operation hooks and validation, generated names, and formatting), \`client\` (\`pyreon\` | \`fetch\` | \`axios\` | \`ky\`), \`validator\` (\`pyreon\` | \`zod\`), \`target\` (\`web\` | \`multiplatform\`), \`baseUrl\`, \`strictNative\` and \`responseValidation\` (\`strict\` | \`warn\` | \`off\`, what the web client does with a response that does not match its schema). A plugin selection is EXPANDED to cover what its output imports rather than refused -- asking for \`components\` gets \`queries\`, \`client\` and \`schemas\` too, and the CLI report says what came along. Use \`resolveProjects\` instead when the config may declare \`projects: [...]\`; it always returns a LIST, so a single-project config is a one-element list rather than a special case.`,
     mistakes: `- Expecting \`plugins: ['faker']\` to emit ONLY factories. It expands to include \`schemas\`, because the factories exist to produce data the schema accepts and are typed against the model types it exports.
 - Combining \`target: 'multiplatform'\` with a non-Pyreon \`client\`. It is REFUSED, not downgraded: PMTC lowers \`createHttp\` and \`api.endpoint(...)\` by name and cannot see through axios or ky, so native modules over one would lower to nothing -- the exact silent regression that target exists to catch.
 - Importing \`installMocks\`, \`mockRoutes\` or the faker factories from the generated \`index.ts\`. They are NOT there by design -- they live in \`./dev\`, so a page bundle has no import edge that could reach a fixture table or \`@faker-js/faker\`.
@@ -12204,16 +12204,52 @@ const { files } = generate(specText, config)`,
 - Setting \`plugins\` and expecting the generated \`package.json\` to change. The \`sideEffects\` marker is emitted unconditionally -- it is a statement ABOUT the output rather than a plugin's output -- and it names \`./atlas.wrapper.tsx\` only when \`atlas\` is selected, because that file alone has a module-scope side effect.`,
   },
 
+  'lathe/definePlugin': {
+    signature: 'definePlugin<P extends LathePlugin>(plugin: P): P  // LathePlugin = { name, requires?, setup?(ctx), transformDocument?(doc, ctx), emit?(ctx) }',
+    example: `import { definePlugin, SourceFile } from '@pyreon/lathe'
+
+export const pathTable = definePlugin({
+  name: 'path-table',
+  emit({ doc }) {
+    const f = new SourceFile('extras/paths.ts')
+    for (const op of doc.operations) f.line(\`export const \${op.id}Path = \${JSON.stringify(op.path)}\`)
+    return [f]
+  },
+})
+
+// pyreon.config.ts
+export default { lathe: { input: './openapi.yaml', plugins: ['schemas', 'client', pathTable] } }`,
+    notes: 'Declares a third-party Lathe plugin, listed in `plugins` beside the built-in names. `setup({ config })` runs once per project and may throw to refuse a config; `transformDocument(doc, { config, note })` rewrites the IR after `filters`, `naming` and `operations` (the argument is frozen — return a modified copy; `note()` reports a loss under code `plugin`); `emit({ doc, config, reach, files, banner })` runs after every built-in and returns `SourceFile`s (banner added) or `{ path, contents, sideEffects? }`. `requires` turns on the built-ins its files import. Failures are attributed (`plugin `x` failed in `emit`: …`), each hook runs twice to prove determinism, and plugin files are listed in the manifest, compared by `check`, formatted by `format`, and refused on a path collision. Hooks are synchronous; take anything external as a construction option.',
+    mistakes: `- Mutating the document in \`transformDocument\`. It is frozen and the write throws; return \`{ ...doc, operations: doc.operations.map(...) }\`.
+- Emitting anything that varies between runs — a date, a random id, a \`Set\` iterated in insertion order built from unordered input. Each hook runs twice and a disagreement is an error; sort with \`byCodeUnit\`, never \`localeCompare\` (locale-dependent across machines).
+- Passing a plain object instead of a \`definePlugin\` result. The config refuses it: a typo such as \`transform:\` for \`transformDocument:\` would otherwise be a hook that silently never runs.
+- Emitting to a path a built-in owns (\`client.ts\`, \`index.ts\`) or Lathe's own bookkeeping (\`lathe-manifest.json\`, \`api-surface.json\`, \`package.json\`). Emit under a directory of the plugin's own.
+- Renaming a model in a transform without rewriting every \`{ kind: 'ref' }\` to it. The document is refused, naming the dangling references — use the \`renameRefs\` walker, or \`naming.model\` in the config.`,
+  },
+
+  'lathe/formatFiles': {
+    signature: 'formatFiles(files: GeneratedFile[], format: ((code: string, path: string) => string | Promise<string>) | undefined): Promise<GeneratedFile[]>',
+    example: `import { format as prettier } from 'prettier'
+import { formatFiles, generate, resolveConfig } from '@pyreon/lathe'
+
+const config = resolveConfig({ input: './openapi.yaml', format: (code, path) => prettier(code, { filepath: path }) })
+const files = await formatFiles(generate(specText, config).files, config.format)`,
+    notes: `Applies the \`format\` config hook to generated files, preserving order, skipping Lathe's own bookkeeping (\`lathe-manifest.json\`, \`api-surface.json\`). The CLI and the Vite plugin call it after \`generate()\` and BEFORE both writing and \`check\`'s comparison, which is what keeps formatted, committed output from reading as stale. \`generate()\` itself stays synchronous and unformatted; call this when driving the pipeline programmatically.`,
+    mistakes: `- Formatting only on write. \`lathe check\` then compares Lathe's raw bytes with your formatted files and reports everything stale — the formatter must run before the comparison too, which the CLI and Vite plugin do.
+- A formatter that is not deterministic (plugin order, config read from the network). The output must regenerate byte-identically.`,
+  },
+
   'lathe/verifyNative': {
-    signature: 'verifyNative(files: GeneratedFile[], transform: TransformFn | undefined): VerifyReport',
-    example: `import { generate, resolveConfig, resolveTransform, verifyNative, worstVerdict } from '@pyreon/lathe'
+    signature: 'verifyNative(files: GeneratedFile[], transform: TransformFn | undefined, compile?: NativeCompilers): VerifyReport',
+    example: `import { generate, resolveConfig, resolveNativeCompiler, verifyNative, worstVerdict } from '@pyreon/lathe'
 
 const { files } = generate(specText, resolveConfig({ input: 'spec', target: 'multiplatform' }))
-const report = verifyNative(files, await resolveTransform())
+const { transform, compile } = await resolveNativeCompiler()
+const report = verifyNative(files, transform, compile)
 
 if (!report.ran) console.warn('not verified:', report.reason)
 if (worstVerdict(report) !== 'lowers') process.exitCode = 1`,
-    notes: 'Runs the real native compiler over the generated `.native.tsx` modules on both targets and returns a per-file verdict. The check is POSITIVE — it asserts the emitted Swift/Kotlin contains `PyreonQuery<` / `PyreonZodSchema_` and contains no leaked web-only symbol — because zero warnings is not evidence: a standalone hook wrapping `useQuery` produces no warnings and emits Swift that cannot find the symbol. Passing `undefined` for `transform` yields `ran: false` with a reason, never a pass.',
+    notes: `Runs the real native compiler over the generated \`.native.tsx\` modules on both targets and returns a per-file verdict. The check is POSITIVE — it asserts the emitted Swift/Kotlin contains \`PyreonQuery<\` / \`PyreonZodSchema_\` and contains no leaked web-only symbol — because zero warnings is not evidence: a standalone hook wrapping \`useQuery\` produces no warnings and emits Swift that cannot find the symbol. Passing \`undefined\` for \`transform\` yields \`ran: false\` with a reason, never a pass. Warnings are classified by CLASS per declaration (a verbatim reproduction is \`broken\`, a dropped field \`partial\`), identically for both targets; with \`compile\` (the project compiler's \`validateSwiftWithStubs\` / \`validateKotlin\`, as \`resolveNativeCompiler()\` returns them) each module is compiled too, and a compile error outranks every heuristic.`,
     mistakes: `- Reading \`warnings.length === 0\` as success. That is exactly the shape this function exists to catch — PMTC reproduces an unrecognised call verbatim and says nothing, so the native build fails later with "cannot find useQuery in scope".
 - Treating \`ran: false\` as a pass. A verification that could not run is not one that ran and succeeded; \`--strict-native\` fails on it deliberately.
 - Bundling a copy of \`@pyreon/native-compiler\` instead of resolving the project's. A verdict from a different compiler version than the one that will build the app is worse than no verdict.`,

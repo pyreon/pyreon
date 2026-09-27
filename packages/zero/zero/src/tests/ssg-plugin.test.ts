@@ -1924,4 +1924,3 @@ describe('mergeRedirectsFile', () => {
     expect(_internal.mergeRedirectsFile('', '/a  /b  302\n')).toBe('/a  /b  302\n')
   })
 })
-

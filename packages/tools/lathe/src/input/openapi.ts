@@ -19,11 +19,14 @@ import type {
   IrModel,
   IrNote,
   IrOperation,
+  IrPagination,
   IrParam,
+  IrSecurityScheme,
   IrType,
   StringFormat,
 } from '../core/ir'
-import { assignNames, ident, operationIdFrom, tagFile, typeIdent } from '../core/naming'
+import { assignNames, ident, modelIdent, operationIdent, operationIdFrom, tagFile } from '../core/naming'
+import { applyPatches, type LatheSpecPatch } from '../core/patch'
 import { splitByDirection } from './direction'
 import { parseSpecText } from './yaml'
 
@@ -43,6 +46,12 @@ export interface LoadOptions {
    * relative server stays relative and is reported.
    */
   sourceUrl?: string | undefined
+  /**
+   * Corrections applied to the parsed document before it is read — see
+   * `LatheSection.patches`. Applied before the version check, so a patch can
+   * repair the document's own `openapi` key.
+   */
+  patches?: readonly LatheSpecPatch[] | undefined
 }
 
 /** Parse a spec document (JSON or YAML text) into the IR. */
@@ -51,6 +60,7 @@ export function loadOpenApi(source: string, options: LoadOptions = {}): LoadResu
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('[Pyreon] lathe: spec did not parse to an object')
   }
+  applyPatches(raw as Record<string, unknown>, options.patches)
   const refusal = openApiVersionProblem(raw)
   if (refusal) throw new Error(refusal)
   return { doc: convert(raw as Json, options) }
@@ -181,7 +191,7 @@ function convert(spec: Json, options: LoadOptions = {}): IrDocument {
   // assigned in a stable order so regeneration is byte-identical.
   const schemas = obj(obj(spec.components)?.schemas) ?? {}
   const keys = Object.keys(schemas).sort()
-  const assigned = assignNames(keys, typeIdent)
+  const assigned = assignNames(keys, modelIdent)
   for (const [i, key] of keys.entries()) {
     const name = assigned[i] as string
     ctx.modelNames.set(key, name)
@@ -196,10 +206,13 @@ function convert(spec: Json, options: LoadOptions = {}): IrDocument {
       name: ctx.modelNames.get(key) as string,
       type: modelType(key, ctx) ?? { kind: 'unknown', reason: 'cyclic model' },
       doc: str(schema.description) ?? str(schema.title),
+      source: { name: key, at: ptr('components', 'schemas', key) },
     })
   }
 
-  noteSecurity(spec, ctx)
+  const securitySchemes = collectSecuritySchemes(spec, ctx)
+  ctx.appliedSecurity = new Set(securitySchemes.map((sc) => sc.name))
+  noteSecurity(spec, securitySchemes, ctx)
   const operations = collectOperations(spec, ctx)
   // Schemas reached through a non-component pointer that turned out to be
   // RECURSIVE were hoisted into named models while converting; they join the
@@ -220,6 +233,7 @@ function convert(spec: Json, options: LoadOptions = {}): IrDocument {
     title: str(info.title) ?? 'API',
     version: specVersion(info.version, notes),
     baseUrl,
+    ...(securitySchemes.length > 0 ? { securitySchemes } : {}),
     models,
     operations,
     notes,
@@ -351,6 +365,8 @@ function normalizeUnions(models: IrModel[], operations: IrOperation[], ctx: Ctx)
 
 interface Ctx {
   spec: Json
+  /** Security scheme names the generated client has a helper for. */
+  appliedSecurity?: ReadonlySet<string>
   notes: IrNote[]
   /** Spec schema key -> generated model name. */
   modelNames: Map<string, string>
@@ -409,7 +425,7 @@ function modelType(key: string, ctx: Ctx): IrType | undefined {
 
 /** A model name derived from `base` that is not yet in use. */
 function claimName(base: string, ctx: Ctx): string {
-  const root = typeIdent(base)
+  const root = modelIdent(base)
   let name = root
   for (let n = 2; ctx.taken.has(name); n++) name = `${root}${n}`
   ctx.taken.add(name)
@@ -434,7 +450,7 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
       tags.add(str(arr(op.tags)[0]) ?? 'default')
     }
   }
-  const ids = assignNames(rawIds, ident)
+  const ids = assignNames(rawIds, operationIdent)
   const tagNames = tagFileNames([...tags])
   const globalSecurity = spec.security !== undefined
   let next = 0
@@ -525,6 +541,7 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
           // A path parameter is always required, whatever the spec claims.
           required: po.in === 'path' ? true : po.required === true,
           doc: str(po.description),
+          ...(po.in === 'query' ? queryStyle(po) : {}),
         })
       }
       // Operation- and path-level `servers` override the document's (Box's
@@ -543,8 +560,15 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
         queryParams,
         headerParams,
         cookieParams,
-        body: bodyOf(op, at, ctx),
-        response: responseType(op, at, ctx),
+        body: bodyOf(method, op, at, ctx),
+        ...responseOf(op, at, ctx),
+        ...paginationOf(op['x-pyreon-pagination'], at, ctx),
+        source: {
+          ...(str(op.operationId) ? { operationId: str(op.operationId) } : {}),
+          path: rawPath,
+          tags: arr(op.tags).flatMap((t) => (typeof t === 'string' ? [t] : [])),
+          at,
+        },
       }
       ctx.opAt.set(irOp, at)
       ops.push(irOp)
@@ -584,12 +608,14 @@ function noteOperation(op: Json, at: string, spec: Json, globalSecurity: boolean
   // `security: []` on an operation opts out of the global requirement.
   const opSecurity = Array.isArray(op.security) ? op.security : undefined
   const required = opSecurity ?? (globalSecurity ? arr(spec.security) : [])
-  const schemes = [...new Set(required.flatMap((r) => Object.keys(obj(r) ?? {})))].sort()
+  const schemes = [...new Set(required.flatMap((r) => Object.keys(obj(r) ?? {})))]
+    .filter((n) => !ctx.appliedSecurity?.has(n))
+    .sort()
   if (schemes.length > 0 && opSecurity) {
     ctx.notes.push({
       code: 'unsupported-security',
       at: sub(at, 'security'),
-      message: `requires ${schemes.map((n) => `\`${n}\``).join(' or ')}, which the generated client does not send — the request fails authorization until you add the credential yourself.`,
+      message: `requires ${schemes.map((n) => `\`${n}\``).join(' or ')}, which the generated client has no helper for — add the credential with your own \`configureApi({ use })\` middleware.`,
     })
   }
 }
@@ -609,14 +635,18 @@ function noteSerialization(po: Json, name: string, where: 'path' | 'query', at: 
   const defaultStyle = where === 'path' ? 'simple' : 'form'
   const defaultExplode = where === 'query'
   const odd: string[] = []
-  if (style && style !== defaultStyle) odd.push(`style: ${style}`)
-  if (explode !== undefined && explode !== defaultExplode) odd.push(`explode: ${explode}`)
+  // A QUERY parameter's style/explode is HONOURED (the endpoint's
+  // `queryStyle`, audit B2), so only a style the client has no serializer for
+  // is a loss there. A path segment is always `simple`.
+  const honoured = where === 'query' && QUERY_STYLES.some((q) => q === (style ?? 'form'))
+  if (!honoured && style && style !== defaultStyle) odd.push(`style: ${style}`)
+  if (!honoured && explode !== undefined && explode !== defaultExplode) odd.push(`explode: ${explode}`)
   if (po.allowReserved === true) odd.push('allowReserved: true')
   if (odd.length === 0) return
   ctx.notes.push({
     code: 'parameter-serialization',
     at,
-    message: `${where} parameter \`${name}\` declares ${odd.join(', ')}; the generated client serializes the default (${defaultStyle}${where === 'query' ? ', explode' : ''}), which the server may not parse.`,
+    message: `${where} parameter \`${name}\` declares ${odd.join(', ')}; the generated client does not serialize that, which the server may not parse.`,
   })
 }
 
@@ -627,26 +657,101 @@ function noteSerialization(po: Json, name: string, where: 'path' | 'query', at: 
  * That is a loss worth leading with: every protected operation fails with a
  * 401 against a client that compiled cleanly.
  */
-function noteSecurity(spec: Json, ctx: Ctx): void {
-  const schemes = obj(obj(spec.components)?.securitySchemes) ?? {}
-  for (const name of Object.keys(schemes).sort()) {
-    const scheme = obj(schemes[name]) ?? {}
-    const kind = [str(scheme.type), str(scheme.scheme), str(scheme.in)].filter(Boolean).join(' ')
-    ctx.notes.push({
-      code: 'unsupported-security',
-      at: ptr('components', 'securitySchemes', name),
-      message: `security scheme \`${name}\`${kind ? ` (${kind})` : ''} is not applied — the generated client sends no credentials for it.`,
-    })
-  }
+function noteSecurity(spec: Json, supported: readonly IrSecurityScheme[], ctx: Ctx): void {
+  const applied = new Set(supported.map((sc) => sc.name))
   const global = arr(spec.security)
   const names = [...new Set(global.flatMap((r) => Object.keys(obj(r) ?? {})))].sort()
-  if (names.length > 0) {
+  const unapplied = names.filter((n) => !applied.has(n))
+  if (unapplied.length > 0) {
     ctx.notes.push({
       code: 'unsupported-security',
       at: '#/security',
-      message: `every operation requires ${names.map((n) => `\`${n}\``).join(' or ')} unless it opts out; the generated client sends no credentials, so those requests fail authorization until you add them yourself.`,
+      message: `every operation requires ${unapplied.map((n) => `\`${n}\``).join(' or ')} unless it opts out; the generated client has no helper for ${unapplied.length > 1 ? 'those schemes' : 'that scheme'}, so add the credential with your own \`configureApi({ use })\` middleware.`,
     })
   }
+}
+
+function collectSecuritySchemes(spec: Json, ctx: Ctx): IrSecurityScheme[] {
+  const schemes = obj(obj(spec.components)?.securitySchemes) ?? {}
+  const out: IrSecurityScheme[] = []
+  for (const key of Object.keys(schemes).sort()) {
+    const at = `#/components/securitySchemes/${key}`
+    const sc = obj(deref(schemes[key], at, ctx))
+    if (!sc) continue
+    const doc = str(sc.description)
+    const type = str(sc.type)
+    const scheme = str(sc.scheme)?.toLowerCase()
+    if (type === 'http' && scheme === 'basic') {
+      out.push({ name: key, kind: 'basic', doc })
+    } else if ((type === 'http' && scheme === 'bearer') || type === 'oauth2' || type === 'openIdConnect') {
+      out.push({ name: key, kind: 'bearer', doc })
+    } else if (type === 'apiKey' && (sc.in === 'header' || sc.in === 'query' || sc.in === 'cookie') && str(sc.name)) {
+      out.push({ name: key, kind: 'apiKey', in: sc.in, param: str(sc.name) as string, doc })
+    } else {
+      ctx.notes.push({
+        code: 'unsupported-security',
+        at,
+        message: `security scheme \`${key}\` (${type ?? 'no type'}${scheme ? ` ${scheme}` : ''}) has no generated helper — apply it with your own middleware via \`configureApi({ use })\`.`,
+      })
+    }
+  }
+  return out
+}
+
+/**
+ * The `x-pyreon-pagination` operation extension (audit E3) — the same shape
+ * as the `pagination` config entry. Malformed input is NOTED and ignored:
+ * a wrong pagination declaration produces a hook that loops or stops early,
+ * which is worse than no hook.
+ */
+function paginationOf(raw: unknown, at: string, ctx: Ctx): Pick<IrOperation, 'pagination'> {
+  if (raw === undefined) return {}
+  const parsed = parsePagination(raw)
+  if (typeof parsed === 'string') {
+    ctx.notes.push({ code: 'invalid-pagination', at: `${at}/x-pyreon-pagination`, message: parsed })
+    return {}
+  }
+  return { pagination: parsed }
+}
+
+/** Parse a pagination declaration, or return why it is invalid. */
+export function parsePagination(raw: unknown): IrPagination | string {
+  const o = obj(raw)
+  if (!o) return 'x-pyreon-pagination must be an object.'
+  const param = str(o.param)
+  if (!param) return 'pagination needs `param` — the query parameter that advances the page.'
+  const hasMore = str(o.hasMore)
+  const path = (v: unknown): string => (typeof v === 'string' ? v : '')
+  switch (o.kind) {
+    case 'cursor':
+      if (typeof o.next !== 'string') return 'cursor pagination needs `next` — the response path holding the next cursor.'
+      return { kind: 'cursor', param, next: o.next, hasMore }
+    case 'lastItem':
+      if (!str(o.field)) return 'lastItem pagination needs `field` — the item property that is the next cursor.'
+      return { kind: 'lastItem', param, items: path(o.items), field: str(o.field) as string, hasMore }
+    case 'offset':
+    case 'page':
+      return {
+        kind: o.kind,
+        param,
+        items: path(o.items),
+        hasMore,
+        initial: num(o.initial),
+      }
+    default:
+      return `pagination \`kind\` must be one of cursor, lastItem, offset, page (got ${JSON.stringify(o.kind)}).`
+  }
+}
+
+const QUERY_STYLES = ['form', 'spaceDelimited', 'pipeDelimited', 'deepObject'] as const
+
+/** A query parameter's `style` / `explode`, when the spec states them (audit B2). */
+function queryStyle(po: Json): Pick<IrParam, 'style' | 'explode'> {
+  const out: Pick<IrParam, 'style' | 'explode'> = {}
+  const style = QUERY_STYLES.find((s) => s === po.style)
+  if (style) out.style = style
+  if (typeof po.explode === 'boolean') out.explode = po.explode
+  return out
 }
 
 /**
@@ -670,9 +775,21 @@ function tagFileNames(raw: readonly string[]): Map<string, string> {
   return out
 }
 
-/** `/users/{id}` -> `/users/:id`, the shape `@pyreon/http` declares. */
+/**
+ * `/users/{id}` -> `/users/:id`, the shape `@pyreon/http` declares.
+ *
+ * A LITERAL colon in the spec path is escaped to `\\:` first (audit A11).
+ * `@pyreon/http` reads `:name` as a parameter anywhere in a segment, so a
+ * Google-style custom verb — `/v1/{name}:cancel` — otherwise declared a second
+ * parameter `cancel` the caller could never supply, and the request threw.
+ */
 function toPyreonPath(path: string, ids: ReadonlyMap<string, string>): string {
-  return path.replace(/\{([^}]+)\}/g, (_m, name: string) => `:${ids.get(name) ?? ident(name)}`)
+  // ONE pass over both tokens: a literal colon becomes the `\\:` escape and a
+  // `{name}` becomes `:name`. `@pyreon/http` has no other escape (a backslash
+  // is an ordinary path character there), so no other character needs one.
+  return path.replace(/\{([^{}]+)\}|:/g, (_m, name: string | undefined) =>
+    name === undefined ? '\\:' : `:${ids.get(name) ?? ident(name)}`,
+  )
 }
 
 /**
@@ -739,26 +856,31 @@ function encodingOf(mediaType: string): BodyEncoding {
 /** Preference order when a body offers several media types. */
 const ENCODING_RANK: Readonly<Record<BodyEncoding, number>> = { json: 0, form: 1, multipart: 2, text: 3, binary: 4 }
 
-function bodyOf(op: Json, at: string, ctx: Ctx): IrBody | undefined {
+/**
+ * The request body (audit A11b honours `required`). A body on GET / HEAD is
+ * DROPPED with a note: `fetch` rejects it outright (`Request with GET/HEAD
+ * method cannot have body`), so a call that satisfied the old type could not
+ * run — and Stripe alone declares 273 of them, each with an empty form body.
+ */
+function bodyOf(method: string, op: Json, at: string, ctx: Ctx): IrBody | undefined {
   const where = sub(at, 'requestBody')
   const rb = obj(deref(op.requestBody, where, ctx))
   if (!rb) return undefined
+  if (method === 'GET' || method === 'HEAD') {
+    ctx.notes.push({
+      code: 'body-on-get',
+      at: where,
+      message: `${method} declares a requestBody, which fetch refuses to send — the body is dropped from the generated call. Move the data to query parameters in the spec.`,
+    })
+    return undefined
+  }
+  const required = rb.required === true
   const content = obj(rb.content)
   if (!content) return undefined
   const keys = Object.keys(content)
   if (keys.length === 0) return undefined
   const mediaType = [...keys].sort((a, b) => ENCODING_RANK[encodingOf(a)] - ENCODING_RANK[encodingOf(b)])[0] as string
   const encoding = encodingOf(mediaType)
-  // `requestBody.required` defaults to FALSE in OpenAPI, and the generated body
-  // argument is required either way. A caller that wants to omit it gets a
-  // compile error for something the spec allows.
-  if (rb.required !== true) {
-    ctx.notes.push({
-      code: 'optional-request-body',
-      at: where,
-      message: 'the request body is optional in the spec (`required` is not `true`), but the generated body argument is required.',
-    })
-  }
   if (keys.length > 1) {
     ctx.notes.push({
       code: 'multiple-content-types',
@@ -768,12 +890,13 @@ function bodyOf(op: Json, at: string, ctx: Ctx): IrBody | undefined {
   }
   const media = obj(content[mediaType]) ?? {}
   const schema = obj(media.schema)
-  if (encoding === 'text') return { mediaType, encoding, type: { kind: 'string' } }
-  if (encoding === 'binary') return { mediaType, encoding, type: { kind: 'string', format: 'binary' } }
+  if (encoding === 'text') return { mediaType, encoding, required, type: { kind: 'string' } }
+  if (encoding === 'binary') return { mediaType, encoding, required, type: { kind: 'string', format: 'binary' } }
   const type = schema ? toType(schema, sub(where, 'content', mediaType, 'schema'), ctx) : { kind: 'unknown' as const, reason: 'no schema' }
   return {
     mediaType,
     encoding,
+    required,
     type,
     fieldEncoding: encoding === 'form' ? fieldEncodingOf(obj(media.encoding)) : undefined,
   }
@@ -794,9 +917,9 @@ function fieldEncodingOf(encoding: Json | undefined): Record<string, IrFieldEnco
   return Object.keys(out).length > 0 ? out : undefined
 }
 
-function responseType(op: Json, at: string, ctx: Ctx): IrType | undefined {
+function responseOf(op: Json, at: string, ctx: Ctx): Pick<IrOperation, 'response' | 'responseMedia'> {
   const responses = obj(op.responses)
-  if (!responses) return undefined
+  if (!responses) return {}
   const rAt = sub(at, 'responses')
   // First 2xx wins, numerically, so `200` beats `201` deterministically. A
   // `2XX` RANGE counts too, after the explicit codes (OpenAPI: an explicit
@@ -831,7 +954,7 @@ function responseType(op: Json, at: string, ctx: Ctx): IrType | undefined {
     })
   }
 
-  if (!chosen) return undefined
+  if (!chosen) return {}
   const cAt = sub(rAt, chosen)
   const res = obj(deref(responses[chosen], cAt, ctx))
   const headers = Object.keys(obj(res?.headers) ?? {}).sort()
@@ -843,7 +966,7 @@ function responseType(op: Json, at: string, ctx: Ctx): IrType | undefined {
     })
   }
   const content = obj(res?.content)
-  if (!content) return undefined
+  if (!content) return {}
   return pickResponseContent(content, cAt, ctx)
 }
 
@@ -854,18 +977,22 @@ function responseType(op: Json, at: string, ctx: Ctx): IrType | undefined {
  * client that silently decodes `text/csv` as JSON fails at runtime, far from
  * the spec line that caused it.
  */
-function pickResponseContent(content: Json, at: string, ctx: Ctx): IrType | undefined {
+function pickResponseContent(content: Json, at: string, ctx: Ctx): Pick<IrOperation, 'response' | 'responseMedia'> {
   const keys = Object.keys(content)
   const json = keys.find((k) => encodingOf(k) === 'json')
   if (!json) {
+    // A non-JSON response is not a LOSS (audit B4): the client decodes it as
+    // text, a Blob or a stream by media type. Noted only when a choice was made.
     const first = keys[0]
-    if (!first) return undefined
-    ctx.notes.push({
-      code: 'non-json-media-type',
-      at: sub(at, 'content'),
-      message: `no JSON media type (found ${keys.join(', ')}) — using \`${first}\` and typing it as unknown.`,
-    })
-    return { kind: 'unknown', reason: `media type ${first}` }
+    if (!first) return {}
+    if (keys.length > 1) {
+      ctx.notes.push({
+        code: 'multiple-content-types',
+        at: sub(at, 'content'),
+        message: `no JSON media type (found ${keys.join(', ')}) — the client decodes \`${first}\`.`,
+      })
+    }
+    return { response: { kind: 'unknown', reason: `media type ${first}` }, responseMedia: first }
   }
   if (keys.length > 1) {
     ctx.notes.push({
@@ -875,7 +1002,9 @@ function pickResponseContent(content: Json, at: string, ctx: Ctx): IrType | unde
     })
   }
   const schema = obj(obj(content[json])?.schema)
-  return schema ? toType(schema, sub(at, 'content', json, 'schema'), ctx) : { kind: 'unknown', reason: 'no schema' }
+  return {
+    response: schema ? toType(schema, sub(at, 'content', json, 'schema'), ctx) : { kind: 'unknown', reason: 'no schema' },
+  }
 }
 
 /** Resolve a local `$ref`. Remote refs are refused rather than fetched. */

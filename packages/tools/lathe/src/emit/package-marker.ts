@@ -51,8 +51,12 @@ const SIDE_EFFECTFUL = ['./atlas.wrapper.tsx']
  * silently reclassify the generated modules for anyone not on bundler
  * resolution.
  */
-export function emitPackageMarker(plugins: readonly string[]): GeneratedFile {
-  const effects = SIDE_EFFECTFUL.filter(() => plugins.includes('atlas'))
+export function emitPackageMarker(
+  plugins: readonly string[],
+  /** `./path` of third-party plugin files that declared `sideEffects: true`. */
+  extra: readonly string[] = [],
+): GeneratedFile {
+  const effects = [...SIDE_EFFECTFUL.filter(() => plugins.includes('atlas')), ...extra]
   return {
     path: PACKAGE_MARKER_FILE,
     contents: `${jsonLiteral(

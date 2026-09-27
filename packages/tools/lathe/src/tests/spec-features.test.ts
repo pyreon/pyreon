@@ -173,9 +173,10 @@ components:
   })
 
   it('the generated mutation takes the Input shape', () => {
+    // The input type is declared on the ENDPOINT; the hook derives it.
     const files = generate(SPEC, resolveConfig({ input: 'x' })).files
-    const queries = files.find((f) => f.path === 'queries/u.ts')?.contents ?? ''
-    expect(queries).toContain('json: UserInput')
+    const endpoints = files.find((f) => f.path === 'endpoints/u.ts')?.contents ?? ''
+    expect(endpoints).toContain('json?: UserInput | undefined')
   })
 
   for (const v of ['pyreon', 'zod'] as const) {
@@ -213,7 +214,7 @@ describe('servers', () => {
     expect(doc.operations.find((o) => o.id === 'upload')?.baseUrl).toBe('https://upload.box.test/api/2.0')
     expect(doc.operations.find((o) => o.id === 'list')?.baseUrl).toBeUndefined()
     const web = generate(src, resolveConfig({ input: 'x' })).files.find((f) => f.path === 'endpoints/f.ts')?.contents
-    expect(web).toContain("api.endpoint('POST https://upload.box.test/api/2.0/files/content'")
+    expect(web).toContain("('POST https://upload.box.test/api/2.0/files/content'")
     const native = generate(src, resolveConfig({ input: 'x', target: 'multiplatform' })).files.find((f) =>
       f.path.endsWith('.native.tsx'),
     )?.contents

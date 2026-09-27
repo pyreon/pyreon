@@ -64,3 +64,21 @@ describe('QueryError — error type of a query result', () => {
     expectTypeOf<QueryError<string>>().toEqualTypeOf<never>()
   })
 })
+
+describe('useQuery select generic', () => {
+  it('UseQueryOptions carries TQueryFnData and the selected TData separately', () => {
+    type O = import('../index').UseQueryOptions<Post[], Error, number>
+    expectTypeOf<NonNullable<O['select']>>().toEqualTypeOf<(data: Post[]) => number>()
+    expectTypeOf<ReturnType<typeof import('../index').useQuery<Post[], Error, number>>>().toEqualTypeOf<
+      UseQueryResult<number, Error>
+    >()
+  })
+})
+
+describe('UseInfiniteQueryOptions', () => {
+  it('types the page and the page param', () => {
+    type O = import('../index').UseInfiniteQueryOptions<Post[], Error, readonly unknown[], number>
+    expectTypeOf<O['initialPageParam']>().toEqualTypeOf<number>()
+    expectTypeOf<Parameters<O['getNextPageParam']>[0]>().toEqualTypeOf<Post[]>()
+  })
+})

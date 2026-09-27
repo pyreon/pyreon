@@ -68,7 +68,7 @@ export function createNewBook(overrides: Partial<NewBook> = {}): NewBook {
 }
 
 /** Depth-threaded builder for `Author`. */
-function buildAuthor(d: number, o: Partial<Author> = {}): Author {
+function buildAuthor(_d: number, o: Partial<Author> = {}): Author {
   return {
     id: faker.string.uuid(),
     name: faker.lorem.words({ min: 1, max: 3 }).slice(0, 120),
@@ -78,7 +78,7 @@ function buildAuthor(d: number, o: Partial<Author> = {}): Author {
 }
 
 /** Depth-threaded builder for `Book`. */
-function buildBook(d: number, o: Partial<Book> = {}): Book {
+function buildBook(_d: number, o: Partial<Book> = {}): Book {
   return {
     id: faker.string.uuid(),
     title: faker.lorem.words({ min: 1, max: 3 }),
@@ -91,7 +91,7 @@ function buildBook(d: number, o: Partial<Book> = {}): Book {
 }
 
 /** Depth-threaded builder for `Entity`. */
-function buildEntity(d: number, o: Partial<Entity> = {}): Entity {
+function buildEntity(_d: number, o: Partial<Entity> = {}): Entity {
   return {
     id: faker.string.uuid(),
     ...o,
@@ -99,7 +99,7 @@ function buildEntity(d: number, o: Partial<Entity> = {}): Entity {
 }
 
 /** Depth-threaded builder for `NewBook`. */
-function buildNewBook(d: number, o: Partial<NewBook> = {}): NewBook {
+function buildNewBook(_d: number, o: Partial<NewBook> = {}): NewBook {
   return {
     title: faker.lorem.words({ min: 1, max: 3 }),
     pages: faker.number.int({ min: 1, max: 1000 }),

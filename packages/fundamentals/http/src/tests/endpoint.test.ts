@@ -280,3 +280,64 @@ describe('mock', () => {
     expect(call.body).toBe('{"a":1}')
   })
 })
+
+describe('endpoint queryStyle', () => {
+  it('is applied to every call of the endpoint', async () => {
+    const urls: string[] = []
+    const api = createHttp({
+      baseUrl: 'https://a.test',
+      transport: async (req) => {
+        urls.push(req.url)
+        return {
+          raw: new Response('{}'),
+          status: 200,
+          ok: true,
+          headers: new Headers(),
+          request: req,
+        }
+      },
+    })
+    const search = api.endpoint('GET /search', {
+      queryStyle: { ids: { style: 'form', explode: false }, f: { style: 'deepObject' } },
+    })
+    await search({ query: { ids: [1, 2], f: { s: 'open' } } })
+    expect(decodeURIComponent(urls[0] ?? '')).toBe('https://a.test/search?ids=1,2&f[s]=open')
+  })
+})
+
+describe('endpoint response kinds and key scope', () => {
+  const answer = (body: BodyInit | null, type: string) =>
+    createHttp({
+      baseUrl: 'https://a.test',
+      transport: async (req) => ({
+        raw: new Response(body, { headers: { 'content-type': type } }),
+        status: 200,
+        ok: true,
+        headers: new Headers({ 'content-type': type }),
+        request: req,
+      }),
+    })
+
+  it('decodes text, blob, arrayBuffer, stream and void', async () => {
+    expect(await answer('plain text', 'text/plain').endpoint('GET /t', { responseType: 'text' })()).toBe('plain text')
+    const blob = await answer('abc', 'image/png').endpoint('GET /b', { responseType: 'blob' })()
+    expect(await blob.text()).toBe('abc')
+    const buf = await answer('ab', 'application/octet-stream').endpoint('GET /a', { responseType: 'arrayBuffer' })()
+    expect(buf.byteLength).toBe(2)
+    const stream = await answer('s1', 'text/event-stream').endpoint('GET /s', { responseType: 'stream' })()
+    expect(await new Response(stream).text()).toBe('s1')
+    expect(await answer('ignored', 'text/plain').endpoint('GET /v', { responseType: 'void' })()).toBeUndefined()
+    // JSON remains the default.
+    expect(await answer('{"a":1}', 'application/json').endpoint('GET /j')()).toEqual({ a: 1 })
+  })
+
+  it('a client keyScope namespaces every endpoint key; an endpoint may override it', () => {
+    const scoped = createHttp({ keyScope: 'billing' })
+    const ep = scoped.endpoint('GET /users/:id')
+    expect(ep.key.prefix).toEqual(['billing', 'GET', '/users/:id'])
+    expect(ep.key({ params: { id: 1 } })).toEqual(['billing', 'GET', '/users/:id', { params: { id: 1 } }])
+    expect(scoped.endpoint('GET /x', { keyScope: 'other' }).key.prefix).toEqual(['other', 'GET', '/x'])
+    expect(scoped.extend({ baseUrl: '/v2' }).endpoint('GET /x').key.prefix).toEqual(['billing', 'GET', '/x'])
+    expect(createHttp().endpoint('GET /x').key.prefix).toEqual(['GET', '/x'])
+  })
+})

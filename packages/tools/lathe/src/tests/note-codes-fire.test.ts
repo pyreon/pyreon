@@ -29,8 +29,15 @@ const get = (op: Record<string, unknown>) => ({
   paths: { '/x': { get: { operationId: 'x', responses: { 200: { content: json({ type: 'string' }) } }, ...op } } },
 })
 
+/**
+ * Codes the INPUT layer emits. `plugin` is excluded because no spec can make
+ * the loader produce it -- a plugin's `transformDocument` does, and
+ * `plugin-api.test.ts` proves it fires (and is quiet when no note is added).
+ */
+type LoaderCode = Exclude<IrNoteCode, 'plugin'>
+
 /** [fires, quiet] per code. */
-const CASES: Record<IrNoteCode, [Record<string, unknown>, Record<string, unknown>]> = {
+const CASES: Record<LoaderCode, [Record<string, unknown>, Record<string, unknown>]> = {
   'unsupported-schema': [
     { components: { schemas: { X: { type: 'frobnicate' } } } },
     { components: { schemas: { X: { type: 'string' } } } },
@@ -63,8 +70,14 @@ const CASES: Record<IrNoteCode, [Record<string, unknown>, Record<string, unknown
     get({ responses: { 200: { content: { ...json({ type: 'string' }), 'application/xml': {} } } } }),
     get({}),
   ],
-  'non-json-media-type': [
-    get({ responses: { 200: { content: { 'text/csv': { schema: { type: 'string' } } } } } }),
+  // A non-JSON response is decoded by media type now (audit B4) — a choice is
+  // noted only when several non-JSON types were on offer.
+  'body-on-get': [
+    get({ requestBody: { content: json({ type: 'object' }) } }),
+    { paths: { '/x': { post: { operationId: 'x', requestBody: { content: json({ type: 'string' }) }, responses: {} } } } },
+  ],
+  'invalid-pagination': [
+    get({ 'x-pyreon-pagination': { kind: 'cursor', param: 'cursor' } }),
     get({}),
   ],
   'no-servers': [{ servers: [] }, {}],
@@ -75,13 +88,15 @@ const CASES: Record<IrNoteCode, [Record<string, unknown>, Record<string, unknown
     get({ parameters: [{ name: 'payload', in: 'body', schema: { type: 'string' } }] }),
     get({ parameters: [{ name: 'X-Id', in: 'header', schema: { type: 'string' } }] }),
   ],
+  // A query style/explode is HONOURED (audit B2); a path style is not.
   'parameter-serialization': [
+    { paths: { '/x/{f}': { get: { operationId: 'x', parameters: [{ name: 'f', in: 'path', required: true, style: 'label', schema: { type: 'string' } }], responses: {} } } } },
     get({ parameters: [{ name: 'f', in: 'query', style: 'deepObject', schema: { type: 'object' } }] }),
-    get({ parameters: [{ name: 'f', in: 'query', style: 'form', explode: true, schema: { type: 'string' } }] }),
   ],
+  // A scheme with a generated `auth` helper loses nothing (dx D8).
   'unsupported-security': [
-    { components: { securitySchemes: { bearer: { type: 'http', scheme: 'bearer' } } } },
-    {},
+    { components: { securitySchemes: { d: { type: 'http', scheme: 'digest' } } } },
+    { components: { securitySchemes: { bearer: { type: 'http', scheme: 'bearer' } } }, security: [{ bearer: [] }] },
   ],
   'response-headers': [
     get({ responses: { 200: { headers: { 'X-Next': { schema: { type: 'string' } } }, content: json({ type: 'string' }) } } }),
@@ -96,10 +111,6 @@ const CASES: Record<IrNoteCode, [Record<string, unknown>, Record<string, unknown
     get({ responses: { 200: { content: json({ type: 'string' }) }, 202: { content: json({ type: 'object' }) } } }),
     get({ responses: { 200: { content: json({ type: 'string' }) }, 204: { description: 'none' } } }),
   ],
-  'optional-request-body': [
-    { paths: { '/x': { post: { operationId: 'x', requestBody: { content: json({ type: 'string' }) }, responses: {} } } } },
-    { paths: { '/x': { post: { operationId: 'x', requestBody: { required: true, content: json({ type: 'string' }) }, responses: {} } } } },
-  ],
   deprecated: [get({ deprecated: true }), get({ deprecated: false })],
   'extra-tags': [get({ tags: ['a', 'b'] }), get({ tags: ['a'] })],
   'description-dropped': [
@@ -111,10 +122,10 @@ const CASES: Record<IrNoteCode, [Record<string, unknown>, Record<string, unknown
 
 describe('every note code fires on its defect and not on the corrected form', () => {
   it('the table covers every code', () => {
-    expect(Object.keys(CASES).sort()).toEqual(Object.keys(NOTE_SEVERITY).sort())
+    expect([...Object.keys(CASES), 'plugin'].sort()).toEqual(Object.keys(NOTE_SEVERITY).sort())
   })
 
-  for (const [code, [fires, quiet]] of Object.entries(CASES) as Array<[IrNoteCode, (typeof CASES)[IrNoteCode]]>) {
+  for (const [code, [fires, quiet]] of Object.entries(CASES) as Array<[LoaderCode, (typeof CASES)[LoaderCode]]>) {
     it(`${code} — fires`, () => {
       expect(doc(fires).notes.map((n) => n.code)).toContain(code)
     })

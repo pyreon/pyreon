@@ -67,7 +67,7 @@ describe('generated native modules lower', () => {
       })
 
       it('emits a real schema struct with parse and constraint checks', () => {
-        expect(out.code).toContain('PyreonZodSchema_Book')
+        expect(out.code).toContain('PyreonZodSchema_book_schema')
         expect(out.code).toContain('PyreonSchemaError')
         // The `minLength: 2` from the spec must survive all the way through.
         expect(out.code).toMatch(/min length 2|minLength|count < 2/)

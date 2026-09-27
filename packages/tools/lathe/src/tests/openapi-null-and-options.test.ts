@@ -87,22 +87,24 @@ describe('parameter notes', () => {
   })
 })
 
+// Bearer / basic / apiKey have a generated `auth` helper (dx D8) and lose
+// nothing; a scheme with no helper is the loss these notes are about.
 describe('security notes', () => {
   it('an operation-level requirement is noted on the operation, with the scheme kind', () => {
-    const notes = op({ security: [{ k: [] }] }, { components: { securitySchemes: { k: { type: 'apiKey', in: 'header', name: 'X' } } } }).notes
+    const notes = op({ security: [{ k: [] }] }, { components: { securitySchemes: { k: { type: 'http', scheme: 'digest' } } } }).notes
     expect(notes.map((n) => n.message)).toEqual(
-      expect.arrayContaining([expect.stringContaining('(apiKey header)'), expect.stringContaining('requires `k`')]),
+      expect.arrayContaining([expect.stringContaining('(http digest)'), expect.stringContaining('requires `k`')]),
     )
   })
 
   it('`security: []` opts an operation out: only the global note remains', () => {
     const notes = op(
       { security: [] },
-      { security: [{ k: [] }], components: { securitySchemes: { k: { type: 'http', scheme: 'bearer' } } } },
+      { security: [{ k: [] }], components: { securitySchemes: { k: { type: 'http', scheme: 'digest' } } } },
     ).notes.filter((n) => n.code === 'unsupported-security')
     expect(notes.some((n) => n.message.startsWith('requires'))).toBe(false)
     expect(notes.map((n) => n.message)).toEqual(
-      expect.arrayContaining([expect.stringContaining('(http bearer)'), expect.stringContaining('every operation requires `k`')]),
+      expect.arrayContaining([expect.stringContaining('(http digest)'), expect.stringContaining('every operation requires `k`')]),
     )
   })
 })

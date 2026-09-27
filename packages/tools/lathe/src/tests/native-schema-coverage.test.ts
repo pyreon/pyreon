@@ -130,12 +130,12 @@ describe.skipIf(compiler() === null)('a cross-model $ref on the native path', ()
   it('zod INLINES it, so the referenced field survives to the struct', () => {
     const out = run(nativeModule('zod'))
     expect(out.warnings).toEqual([])
-    const book = out.code.split('struct PyreonZodSchema_Book:')[1]?.split('static func')[0] ?? ''
+    const book = out.code.split('struct PyreonZodSchema_book_schema:')[1]?.split('static func')[0] ?? ''
     // The field is present AND typed as the inlined nested struct — the whole
     // point. A struct that merely EXISTS proves nothing; the failure mode is a
     // struct that exists with a field missing.
     expect(book).toContain('var id: String')
-    expect(book).toContain('var author: PyreonZodSchema_Book_Author')
+    expect(book).toContain('var author: PyreonZodSchema_book_schema_Author')
   })
 
   it('s.* drops the field, and says so', () => {
@@ -144,7 +144,7 @@ describe.skipIf(compiler() === null)('a cross-model $ref on the native path', ()
     // fixes it makes this test fail rather than leaving the README stale.
     const out = run(nativeModule('pyreon'))
     expect(out.warnings.join(' ')).toMatch(/field `author`.*dropping/)
-    const book = out.code.split('struct PyreonZodSchema_Book:')[1]?.split('static func')[0] ?? ''
+    const book = out.code.split('struct PyreonZodSchema_book_schema:')[1]?.split('static func')[0] ?? ''
     expect(book).toContain('var id: String')
     expect(book).not.toContain('var author')
   })
@@ -166,7 +166,7 @@ describe.skipIf(compiler() === null)('a cross-model $ref on the native path', ()
         favourite: { $ref: '#/components/schemas/Book' }`,
     )
     const src = nativeModule('zod', cyclic)
-    expect(src).toContain('export const Book')
+    expect(src).toContain('export const book_schema')
     // Bounded output, not an exploded one.
     expect(src.length).toBeLessThan(20_000)
     expect(() => run(src)).not.toThrow()

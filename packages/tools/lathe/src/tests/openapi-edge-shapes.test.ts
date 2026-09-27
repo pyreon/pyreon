@@ -169,7 +169,7 @@ describe('media types and bodies', () => {
     ).doc.operations[0]
 
   it('a text body is a string; a body with no content or an empty content map is none', () => {
-    expect(op({ content: { 'text/plain': {} } })?.body).toEqual({ mediaType: 'text/plain', encoding: 'text', type: { kind: 'string' } })
+    expect(op({ content: { 'text/plain': {} } })?.body).toEqual({ mediaType: 'text/plain', encoding: 'text', required: false, type: { kind: 'string' } })
     expect(op({ description: 'no content' })?.body).toBeUndefined()
     expect(op({ content: {} })?.body).toBeUndefined()
   })
