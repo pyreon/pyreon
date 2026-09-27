@@ -1,12 +1,13 @@
 /** @jsxImportSource @pyreon/core */
-import { h, provide } from '@pyreon/core'
-import { mountInBrowser } from '@pyreon/test-utils/browser'
+import { _rp, h, provide } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
+import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { afterEach, describe, expect, it } from 'vitest'
 import { css } from '../css'
 import { keyframes } from '../keyframes'
 import { sheet } from '../sheet'
 import { styled } from '../styled'
-import { ThemeContext, ThemeProvider } from '../ThemeProvider'
+import { ThemeContext, ThemeProvider, useThemeAccessor } from '../ThemeProvider'
 
 // Real-Chromium smoke for @pyreon/styler.
 //
@@ -101,6 +102,31 @@ describe('@pyreon/styler in real browser', () => {
     )
     const el = container.querySelector<HTMLElement>('#t')!
     expect(getComputedStyle(el).color).toBe('rgb(128, 0, 128)')
+    unmount()
+  })
+
+  it('ThemeProvider follows a LATER theme prop change (reactive accessor, no remount)', async () => {
+    // A consumer tracking the theme through the reactive context — the
+    // `useThemeAccessor()` contract (effects/computeds/accessors).
+    const Consumer = () => {
+      const t = useThemeAccessor<{ color: string }>()
+      return h('div', { id: 'rt', style: () => `color: ${t().color}` }, () => t().color)
+    }
+    const theme = signal({ color: 'rgb(128, 0, 128)' })
+    // `_rp` is exactly what the compiler emits for `<ThemeProvider theme={theme()}>`;
+    // the mount pipeline turns it into a getter-backed prop.
+    const { container, unmount } = mountInBrowser(
+      h(ThemeProvider, { theme: _rp(() => theme()) as never }, h(Consumer, null)),
+    )
+    const el = container.querySelector<HTMLElement>('#rt')!
+    expect(el.textContent).toBe('rgb(128, 0, 128)')
+    expect(getComputedStyle(el).color).toBe('rgb(128, 0, 128)')
+    theme.set({ color: 'rgb(0, 128, 0)' })
+    await flush()
+    // Same element (no remount), new theme value.
+    expect(container.querySelector('#rt')).toBe(el)
+    expect(el.textContent).toBe('rgb(0, 128, 0)')
+    expect(getComputedStyle(el).color).toBe('rgb(0, 128, 0)')
     unmount()
   })
 

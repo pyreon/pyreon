@@ -29,8 +29,8 @@ The Pyreon Multi-Target Compiler (`packages/native/compiler`) emits SwiftUI and 
 - **L1** custom pure-logic hooks are fully shared.
 - **L2** service-backed hooks (`useStorage`, `useRouter`, `useFetch`, `usePermissions`, …) lower to native runtime classes.
 - **L3a** `@pyreon/primitives`: one canonical name per concept, `onPress` everywhere, tokens-first styling, no responsive props.
-  - Visual primitives: `Stack`, `Inline`, `Layer`, `Scroll`, `Spacer`, `Text`, `Heading`, `Image`, `Video`, `Icon`, `Button`, `Press`, `Link`, `Field`, `Toggle`, `Modal`.
-  - Also `Audio` (non-visual, no `controls` prop), `Transition`/`TransitionGroup`, and `WebView` (hosts a web-only component natively with a message bridge).
+  - The 17 canonical primitives: `Stack`, `Inline`, `Layer`, `Scroll`, `Spacer`, `Text`, `Heading`, `Image`, `Audio`, `Video`, `Icon`, `Button`, `Press`, `Link`, `Field`, `Toggle`, `Modal` (`Audio` is non-visual, no `controls` prop). The set is `CANONICAL_PRIMITIVES` in `canonical-primitives.ts`, drift-locked against the package exports.
+  - Also exported, outside the canonical set: `Transition`/`TransitionGroup`, and `WebView` (hosts a web-only component natively with a message bridge).
 - **L3b** `@pyreon/elements`: web-only, rocketstyle/styler-coupled.
 - **L4** escape hatches `<NativeIOS>`, `<NativeAndroid>`, `<Web>`.
 

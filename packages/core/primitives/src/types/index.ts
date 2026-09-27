@@ -1,4 +1,4 @@
-// Public type-only exports for all 16 canonical primitives.
+// Public type-only exports for the canonical primitives.
 //
 // Per-primitive implementations (web in src/web/) import from these.
 // iOS/Android targets: PMTC compiler intercepts JSX at compile-time

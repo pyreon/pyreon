@@ -1,0 +1,30 @@
+{
+  "format": 1,
+  "generator": "@pyreon/lathe",
+  "files": [
+    "api-surface.json",
+    "atlas.scenarios.ts",
+    "atlas.wrapper.tsx",
+    "authors.native.tsx",
+    "books.native.tsx",
+    "client.ts",
+    "components.tsx",
+    "dev.ts",
+    "docs/authors.md",
+    "docs/books.md",
+    "docs/index.md",
+    "docs/models.md",
+    "endpoints/authors.ts",
+    "endpoints/books.ts",
+    "endpoints/index.ts",
+    "faker.ts",
+    "index.ts",
+    "keys.ts",
+    "mocks.ts",
+    "package.json",
+    "queries/authors.ts",
+    "queries/books.ts",
+    "queries/index.ts",
+    "schemas.ts"
+  ]
+}

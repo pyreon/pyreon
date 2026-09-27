@@ -78,7 +78,7 @@ describe('gen-docs — query snapshot', () => {
           }
         },
       })
-      // sub.status() — 'connecting' | 'connected' | 'disconnected' | 'error'
+      // sub.status() — 'connecting' | 'connected' | 'disconnected' | 'error' | 'failed'
       // sub.send(data), sub.close(), sub.reconnect()
 
       // 5. useSSE — same pattern as useSubscription but read-only (no send).

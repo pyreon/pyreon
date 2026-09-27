@@ -1,4 +1,4 @@
-import { sanitizeHref, sanitizeImageSrc } from '../sanitize'
+import { breakCodeFences, sanitizeCodeLanguage, sanitizeHref, sanitizeImageSrc } from '../sanitize'
 import type { DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
 import { getInlineRuns, getTextContent, hasLinkRun, imagePlaceholderText, warnUnknownNodeType } from '../nodes'
 
@@ -28,6 +28,21 @@ interface SlackBlock {
  */
 function mrkdwnEscape(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+/**
+ * The URL half of Slack's `<url|label>` link token. Slack's contract is the
+ * same `& < >` entity-encoding as text; `|` additionally ends the URL, so
+ * it is percent-encoded. Without this a URL containing `>` closes the
+ * token early and whatever follows (`<!channel>`) is parsed as live markup.
+ */
+function slackUrl(url: string): string {
+  return mrkdwnEscape(url).replace(/\|/g, '%7C')
+}
+
+/** `<url|label>`, or just the (escaped) label when the href was rejected. */
+function slackLink(href: string, label: string): string {
+  return href ? `<${slackUrl(href)}|${label}>` : label
 }
 
 function mrkdwn(text: string): { type: 'mrkdwn'; text: string } {
@@ -70,7 +85,7 @@ function nodeToBlocks(node: DocNode): SlackBlock[] {
         for (const r of runs) {
           text +=
             r.href !== undefined
-              ? `<${sanitizeHref(r.href)}|${mrkdwnEscape(r.text)}>`
+              ? slackLink(r.href, mrkdwnEscape(r.text))
               : mrkdwnEscape(r.text)
         }
       } else {
@@ -93,7 +108,7 @@ function nodeToBlocks(node: DocNode): SlackBlock[] {
       const text = mrkdwnEscape(getTextContent(node.children))
       blocks.push({
         type: 'section',
-        text: mrkdwn(`<${href}|${text}>`),
+        text: mrkdwn(slackLink(href, text)),
       })
       break
     }
@@ -139,7 +154,7 @@ function nodeToBlocks(node: DocNode): SlackBlock[] {
 
       blocks.push({
         type: 'section',
-        text: mrkdwn(`\`\`\`\n${text}\n\`\`\``),
+        text: mrkdwn(`\`\`\`\n${breakCodeFences(text)}\n\`\`\``),
       })
       break
     }
@@ -170,8 +185,11 @@ function nodeToBlocks(node: DocNode): SlackBlock[] {
       break
 
     case 'code': {
-      const text = mrkdwnEscape(getTextContent(node.children))
-      const lang = (p.language as string) ?? ''
+      // Slack code blocks cannot be lengthened — break any ``` run in the
+      // content so it cannot close the block; restrict the language tag to
+      // characters that cannot end the fence line.
+      const text = breakCodeFences(mrkdwnEscape(getTextContent(node.children)))
+      const lang = sanitizeCodeLanguage(p.language as string | undefined)
       blocks.push({
         type: 'section',
         text: mrkdwn(`\`\`\`${lang}\n${text}\n\`\`\``),
@@ -191,6 +209,12 @@ function nodeToBlocks(node: DocNode): SlackBlock[] {
     case 'button': {
       const href = sanitizeHref(p.href as string)
       const text = getTextContent(node.children)
+      // A button element without a url is rejected by the Slack API — a
+      // rejected href degrades to the plain label.
+      if (!href) {
+        blocks.push({ type: 'section', text: mrkdwn(mrkdwnEscape(text)) })
+        break
+      }
       blocks.push({
         type: 'actions',
         elements: [

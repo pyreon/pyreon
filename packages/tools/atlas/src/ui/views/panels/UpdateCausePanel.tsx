@@ -110,13 +110,14 @@ export function registerUpdateCausePanel(): void {
                 <C.EnumWrap>
                   {() =>
                     candidates().map((c) => (
-                      <C.EnumBtn
+                      <C.NodeChip
                         data-testid={`why-node-${c.id}`}
+                        title={`${c.kind} #${c.id} — fired ${c.fires}×`}
                         state={() => (picked() === c.id ? 'active' : 'idle')}
                         onClick={() => pick(c.id)}
                       >
-                        {`${c.name} (${c.fires})`}
-                      </C.EnumBtn>
+                        {`${c.name} ×${c.fires}`}
+                      </C.NodeChip>
                     ))
                   }
                 </C.EnumWrap>
