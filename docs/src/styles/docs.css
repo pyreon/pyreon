@@ -1015,6 +1015,14 @@ html { scroll-behavior: smooth; }
   grid-template-columns: 1.05fr 1fr;
   gap: 28px;
 }
+.px-hero > *,
+.px-bench-grid > *,
+.px-zero-grid > *,
+.px-grid-2 > *,
+.px-grid-3 > *,
+.px-grid-4 > * {
+  min-width: 0;
+}
 .px-zero-grid .px-code {
   margin-top: 10px;
 }
@@ -1164,6 +1172,18 @@ a.px-footer-item:hover {
   .px-grid-3,
   .px-footer-grid {
     grid-template-columns: 1fr;
+  }
+  .px-mode {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .px-bench {
+    table-layout: fixed;
+    font-size: 11px;
+  }
+  .px-bench th,
+  .px-bench td {
+    overflow-wrap: anywhere;
   }
 }
 
@@ -2581,6 +2601,9 @@ a.px-footer-item:hover {
   gap: 2rem;
   padding: 1.5rem 2rem;
   align-items: start;
+  /* Wide syntax-token line boxes stay scrollable inside their code card,
+     but must not enlarge the page-level scroll area on narrow phones. */
+  overflow-x: clip;
 }
 /* The route component wraps the article + the right-rail Toc in a
    `<div class="docs-route">` so the matching `closeBundle` cleanup
@@ -3087,11 +3110,20 @@ a.px-footer-item:hover {
      copy button. */
   position: relative;
 }
+.code-block__pre {
+  /* Clip Shiki's intrinsically wide inline code at the card boundary.
+     The nested <pre> remains horizontally scrollable; without this
+     containment its line boxes enlarged the PAGE scroll width on a
+     320px phone even though the pre itself had overflow-x: auto. */
+  min-width: 0;
+  overflow-x: auto;
+}
 .code-block__pre > pre {
   /* The Shiki-rendered <pre> inside .code-block__pre. We want it
      edge-to-edge with the wrapper (margin collapsing handled by the
      wrapper). */
   margin: 0;
+  overflow: visible;
 }
 /* Language indicator in the top-right corner — matches VitePress's
    convention. Reads from the `data-lang` attribute the CodeBlock
