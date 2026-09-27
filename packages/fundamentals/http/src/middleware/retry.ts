@@ -13,7 +13,8 @@
  * off the request.
  */
 
-import { isAbortError } from '../errors'
+import { AbortError, isAbortError } from '../errors'
+import { discardBody, isReplayable } from './body'
 import type { HttpMethod, HttpMiddleware, HttpResponse } from '../types'
 
 /** Methods that are safe to replay. POST is excluded — it is not idempotent. */
@@ -94,7 +95,8 @@ export function retry(options: RetryOptions = {}): HttpMiddleware {
   const maxDelay = options.maxDelay ?? 30_000
 
   return async function retryMiddleware(request, next) {
-    if (limit <= 0 || !methods.includes(request.method)) return next()
+    // A one-shot (stream) body cannot be sent twice — see `isReplayable`.
+    if (limit <= 0 || !methods.includes(request.method) || !isReplayable(request)) return next()
 
     let attempt = 0
     for (;;) {
@@ -118,8 +120,14 @@ export function retry(options: RetryOptions = {}): HttpMiddleware {
       const after = respectRetryAfter
         ? parseRetryAfter(response.headers.get('retry-after'))
         : undefined
+      // This response is being replaced — release its connection NOW, not
+      // whenever GC collects the abandoned stream (undici pool exhaustion
+      // under a burst of retries against a failing upstream). Its body is
+      // gone after this, so a caller that aborts during the backoff gets
+      // the abort, not a response whose body can no longer be read.
+      await discardBody(response)
       await sleep(Math.min(after ?? backoff(attempt), maxDelay), request.signal)
-      if (request.signal?.aborted) return response
+      if (request.signal?.aborted) throw new AbortError(request)
     }
   }
 }

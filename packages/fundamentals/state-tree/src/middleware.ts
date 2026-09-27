@@ -93,7 +93,7 @@ export function runAction(
  */
 export function addMiddleware(instance: object, middleware: MiddlewareFn): () => void {
   const meta = instanceMeta.get(instance)
-  if (!meta) throw new Error('[@pyreon/state-tree] addMiddleware: not a model instance')
+  if (!meta) throw new Error('[Pyreon] state-tree addMiddleware: not a model instance')
   meta.middlewares.push(middleware)
   return () => {
     const idx = meta.middlewares.indexOf(middleware)

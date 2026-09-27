@@ -155,8 +155,10 @@ const ids = signal([1, 2, 3])
 const queries = useQueries(() =>
   ids().map((id) => ({ queryKey: ['user', id], queryFn: () => fetchUser(id) })),
 )
-// queries is an array of UseQueryResult
+// queries() is QueryObserverResult<User>[] — typed per entry from queryFn (or select)
 ```
+
+A tuple of queries gives a tuple of typed results. `select` inside `useQueries` needs its parameter annotated (`select: (u: User) => u.name`).
 
 ## `defineQueries({ a, b, c })`
 
@@ -173,7 +175,7 @@ queries.posts.data()
 
 ## `useSubscription(options)`
 
-Reactive WebSocket with auto-reconnect. `onMessage` receives the active `QueryClient` so pushes can directly invalidate cache. Exponential backoff (default 1s doubling, max 10 attempts). `url` and `enabled` may be signals.
+Reactive WebSocket with auto-reconnect. `onMessage` receives the active `QueryClient` so pushes can directly invalidate cache. Jittered exponential backoff (default 1s doubling, capped at `maxReconnectDelay` = 30s, max 10 attempts). When attempts run out `status()` becomes `'failed'`; a browser `online` event (or `reconnect()`) starts over. A throwing `onMessage` never drops the socket and is reported in dev. `url` and `enabled` may be signals.
 
 ```ts
 const sub = useSubscription({
@@ -190,7 +192,7 @@ const sub = useSubscription({
 
 ## `useSSE(options)`
 
-Server-Sent Events — same shape as `useSubscription`, read-only. `parse` deserializes each event; `events` filters named event types. `lastEventId()` updates on every incoming `id` field.
+Server-Sent Events — same shape as `useSubscription`, read-only. `parse` deserializes each event; `events` filters named event types. `lastEventId()` updates on every incoming `id` field. A `parse` failure surfaces on `error()` (keeping the last good `data()`); the same backoff, `'failed'` status and `online` recovery apply.
 
 ```ts
 const sse = useSSE({

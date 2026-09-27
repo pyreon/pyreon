@@ -1,12 +1,13 @@
 import { onUnmount } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
-import { batch, effect, signal } from '@pyreon/reactivity'
+import { batch, effect, isClient, signal } from '@pyreon/reactivity'
 import type { QueryClient } from '@tanstack/query-core'
 import { useQueryClient } from './query-client'
+import { computeReconnectDelay, DEFAULT_MAX_RECONNECT_DELAY } from './reconnect'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type SubscriptionStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
+export type SubscriptionStatus = 'connecting' | 'connected' | 'disconnected' | 'error' | 'failed'
 
 export interface UseSubscriptionOptions {
   /** WebSocket URL — can be a signal for reactive URLs */
@@ -23,9 +24,15 @@ export interface UseSubscriptionOptions {
   onError?: (event: Event) => void
   /** Whether to automatically reconnect — default: true */
   reconnect?: boolean
-  /** Initial reconnect delay in ms — doubles on each retry, default: 1000 */
+  /** Initial reconnect delay in ms — doubles on each retry (jittered), default: 1000 */
   reconnectDelay?: number
-  /** Maximum reconnect attempts — default: 10, 0 = unlimited */
+  /** Ceiling for the reconnect delay in ms — default: 30000 */
+  maxReconnectDelay?: number
+  /**
+   * Maximum reconnect attempts — default: 10, 0 = unlimited. When they run
+   * out, `status()` becomes `'failed'`; a browser `online` event (or
+   * `reconnect()`) starts over.
+   */
   maxReconnectAttempts?: number
   /** Whether the subscription is enabled — default: true */
   enabled?: boolean | (() => boolean)
@@ -78,6 +85,7 @@ export function useSubscription(options: UseSubscriptionOptions): UseSubscriptio
   const reconnectEnabled = options.reconnect !== false
   const baseDelay = options.reconnectDelay ?? 1000
   const maxAttempts = options.maxReconnectAttempts ?? 10
+  const maxDelay = options.maxReconnectDelay ?? DEFAULT_MAX_RECONNECT_DELAY
 
   function getUrl(): string {
     return typeof options.url === 'function' ? options.url() : options.url
@@ -144,8 +152,14 @@ export function useSubscription(options: UseSubscriptionOptions): UseSubscriptio
     ws.onmessage = (event) => {
       try {
         options.onMessage(event, queryClient)
-      } catch {
-        // Message handler errors should not crash the subscription
+      } catch (err) {
+        // A throwing handler must not take the socket down — but swallowing it
+        // silently hides real bugs (a JSON.parse on a malformed frame, a bad
+        // cache update). Report it in dev.
+        if (process.env.NODE_ENV !== 'production') {
+          // oxlint-disable-next-line no-console
+          console.error('[Pyreon] useSubscription: the onMessage handler threw:', err)
+        }
       }
     }
 
@@ -166,9 +180,14 @@ export function useSubscription(options: UseSubscriptionOptions): UseSubscriptio
 
   function scheduleReconnect(): void {
     if (!reconnectEnabled) return
-    if (maxAttempts > 0 && reconnectAttempts >= maxAttempts) return
+    if (maxAttempts > 0 && reconnectAttempts >= maxAttempts) {
+      // Out of attempts: say so, distinctly from a transient 'error' /
+      // 'disconnected' that is about to be retried.
+      status.set('failed')
+      return
+    }
 
-    const delay = baseDelay * 2 ** reconnectAttempts
+    const delay = computeReconnectDelay(reconnectAttempts, baseDelay, maxDelay)
     reconnectAttempts++
 
     // Clear a prior pending timer before overwriting the handle (a rapid
@@ -225,8 +244,23 @@ export function useSubscription(options: UseSubscriptionOptions): UseSubscriptio
     connect()
   })
 
+  // Coming back online is the moment a dead connection is worth another try —
+  // including after attempts ran out ('failed'). A connection that is live, or
+  // one the caller closed on purpose, is left alone.
+  const onOnline = (): void => {
+    if (intentionalClose || !isEnabled()) return
+    const s = status.peek()
+    if (s === 'connected' || s === 'connecting') return
+    reconnectAttempts = 0
+    connect()
+  }
+  if (isClient) window.addEventListener('online', onOnline)
+
   // Cleanup on unmount
-  onUnmount(() => close())
+  onUnmount(() => {
+    if (isClient) window.removeEventListener('online', onOnline)
+    close()
+  })
 
   return {
     status,

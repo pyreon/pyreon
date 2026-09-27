@@ -14,6 +14,7 @@ import type {
   FieldRegisterProps,
   FieldState,
   FormState,
+  SubmitOptions,
   UseFormOptions,
   ValidateFn,
   ValidationError,
@@ -25,6 +26,16 @@ import type {
 // Webpack, esbuild, Rollup, Parcel, and Bun all replace this at consumer
 // build time and tree-shake the counter call to zero in prod bundles.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
+/**
+ * Internal (NOT exported from the package entry): a signal on the form object
+ * that bumps whenever the registered field SET changes (`registerField` /
+ * `unregisterField`). `useWatch(form)` reads it so a watch-all computed
+ * re-derives its key list instead of snapshotting `Object.keys(form.fields)`
+ * once at creation (which silently omitted every later-registered field).
+ * Symbol-keyed so it adds no surface to the public `FormState` type.
+ */
+export const FIELDS_VERSION: unique symbol = Symbol.for('pyreon.form.fieldsVersion') as never
 
 /**
  * Match a schema-error record to a field, routing each key to the MOST-SPECIFIC
@@ -207,7 +218,7 @@ export interface UseFormFieldsOptions<TDefs extends readonly FieldDefinition<str
  * returns a message (`v.length < 3 ? 'too short' : ''`), and treating it as an
  * error produced a form that could never submit and never said why.
  */
-function isRealError(err: ValidationError): boolean {
+export function isRealError(err: ValidationError): boolean {
   return err !== undefined && err !== ''
 }
 
@@ -314,7 +325,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     const conflict = findPathAncestorConflict([...fieldNames])
     if (conflict) {
       console.warn(
-        `[@pyreon/form] Ambiguous field declaration: an object field "${conflict[0]}" AND a ` +
+        `[Pyreon] Ambiguous field declaration: an object field "${conflict[0]}" AND a ` +
           `dot-path leaf field "${conflict[1]}" are both declared. A schema/validator error keyed ` +
           `"${conflict[1]}" routes to the LEAF field "${conflict[1]}" (the object field "${conflict[0]}" ` +
           `no longer receives nested errors a leaf owns). Declare EITHER the object field (nested errors ` +
@@ -449,29 +460,51 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
    * they haven't visited yet would defeat the `touched`-gated display
    * convention every form library follows.
    */
-  const runSchemaForField = async (name: keyof TValues & string) => {
-    if (!schema) return
+  const runSchemaForField = async (name: keyof TValues & string): Promise<boolean> => {
+    /* v8 ignore next — every caller gates on `schema` first; defensive guard. */
+    if (!schema) return true
     // Monotonic counter (never a `+1` on the per-field slot) so a version
     // can't be reused across an unregister/re-register of the same name.
     schemaFieldVersions[name] = ++_versionCounter
     const v = schemaFieldVersions[name]
-    // Cast: `getSchemaInput` may return the NESTED runtime view (not literally
-    // `TValues`, which is the flat model) — the schema validates it
-    // structurally. Typed deep-path inference is deferred (#2209).
-    const result = await schema(getSchemaInput() as TValues)
-    // Discard stale result if a newer blur on the same field has fired.
-    if (disposed || schemaFieldVersions[name] !== v) return
+    let result: Record<string, ValidationError | undefined>
+    try {
+      // Cast: `getSchemaInput` may return the NESTED runtime view (not literally
+      // `TValues`, which is the flat model) — the schema validates it
+      // structurally. Typed deep-path inference is deferred (#2209).
+      result = (await schema(getSchemaInput() as TValues)) as Record<string, ValidationError | undefined>
+    } catch (err) {
+      // A THROWING schema used to be swallowed by a `.catch(() => {})` at every
+      // blur / change / trigger call site, so the field silently kept whatever
+      // error it had and nothing said the schema was broken until submit (and
+      // not even then if the user never submitted). Surface it the same way
+      // `validate()` does — as the form's `submitError` — plus a dev warning.
+      if (disposed || schemaFieldVersions[name] !== v) return false
+      submitError.set(err)
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn(
+          `[Pyreon] useForm: the schema threw while validating field "${name}". ` +
+            `The error is exposed as form.submitError(). A schema should return an error ` +
+            `record, not throw.`,
+          err,
+        )
+      }
+      return false
+    }
+    // Discard stale result if a newer blur on the same field has fired, or the
+    // field was reset / re-based meanwhile (both bump the version).
+    if (disposed || schemaFieldVersions[name] !== v) return true
     const field = fields[name]
     /* v8 ignore next — `name` always comes from the registered `fields` map; defensive guard. */
-    if (!field) return
+    if (!field) return true
     // Route to this field: exact match (a leaf `address.city` or top-level),
     // else the nested error whose nearest registered ancestor is `name` (an
     // object field `address` surfaces `address.city`). Passing `fieldNames`
     // applies the leaf-preference tie-break so an object field never claims a
     // key a registered leaf owns.
-    field.error.set(
-      matchSchemaErrorForField(result as Record<string, ValidationError | undefined>, name, fieldNames),
-    )
+    const own = matchSchemaErrorForField(result, name, fieldNames)
+    field.error.set(own)
+    return !isRealError(own)
   }
 
   // Clear all pending debounce timers
@@ -522,6 +555,8 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   // (selector + getter-backed summary in use-form-state.ts only reads
   // `summary.isValid` → reads `_invalidCount` → no field iteration).
   const _invalidCount = signal(0)
+  // Bumped when the registered field SET changes — see FIELDS_VERSION.
+  const _fieldsVersion = signal(0)
   const _dirtyCount = signal(0)
 
   // Per-field fine-grained signal allocation at form SETUP (useForm runs
@@ -678,6 +713,25 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
         }
       : runValidation
 
+    // The schema-only counterpart of `validateField`. Pre-fix, schema-validated
+    // fields ran the WHOLE-FORM schema on every keystroke regardless of
+    // `debounceMs` — the option silently applied only to per-field validators.
+    // Shares the SAME per-field timer slot, so a field never has two pending
+    // debounced runs, and `reset` / `trigger` / `validate` clear it alike.
+    const validateSchemaField = debounceMs
+      ? () => {
+          clearTimeout(debounceTimers[name])
+          const timer = setTimeout(() => {
+            allTimers.delete(timer)
+            void runSchemaForField(name)
+          }, debounceMs)
+          debounceTimers[name] = timer
+          allTimers.add(timer)
+        }
+      : () => {
+          void runSchemaForField(name)
+        }
+
     // Auto-validation is driven INLINE from `setValue` (the canonical value-
     // mutation path) — NOT a per-field `effect()`. The effect approach cost a
     // per-field EffectScope at setup (N effects, the dominant per-field
@@ -754,7 +808,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
           // schema still rejects (submittable invalid data). Fields WITH a
           // per-field validator keep `validateField` (validator precedence).
           if (schema && !fieldValidators[name]) {
-            runSchemaForField(name).catch(() => {})
+            validateSchemaField()
           } else {
             validateField(value)
           }
@@ -778,14 +832,21 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
           // not surprise the user with errors on fields they haven't
           // visited yet.
           if (schema && !fieldValidators[name]) {
-            runSchemaForField(name).catch(() => {
-              // Schema threw — swallowed here; submit's `validate()`
-              // surfaces the error properly via `submitError`.
-            })
+            // A throwing schema is surfaced as `submitError` inside
+            // runSchemaForField (it used to be swallowed right here).
+            validateSchemaField()
           }
         }
       },
       reset: () => {
+        // Invalidate every in-flight validation for this field. Without this a
+        // pending async validator (a "username taken" server check) resolved
+        // AFTER the reset and wrote its error onto the now-empty pristine
+        // field — its captured version was still current. Both version maps
+        // are bumped from the monotonic counter, so any result captured before
+        // this line is discarded by the `=== currentVersion` guards.
+        validationVersions[name] = ++_versionCounter
+        schemaFieldVersions[name] = ++_versionCounter
         // batch() so consumers reading multiple per-field signals
         // (e.g. a UI binding both error + dirty for "show validation
         // hint") get notified once per field-reset, not four times.
@@ -816,7 +877,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       // Same schema-only rule as setValue above: a validator-less field must
       // run the schema, not `validateField` (which would only clear).
       if (schema && !fieldValidators[name]) {
-        runSchemaForField(name).catch(() => {})
+        validateSchemaField()
       } else {
         validateField(valueSig.peek())
       }
@@ -978,7 +1039,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
               const first = schemaErrors[orphans[0]!]
               submitError.set(
                 new Error(
-                  `[@pyreon/form] Schema validation failed for key(s) matching no field: ${orphans.join(', ')}${
+                  `[Pyreon] Schema validation failed for key(s) matching no field: ${orphans.join(', ')}${
                     first ? ` — ${first}` : ''
                   }`,
                 ),
@@ -986,7 +1047,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
               if (process.env.NODE_ENV !== 'production') {
                 // oxlint-disable-next-line no-console
                 console.warn(
-                  `[@pyreon/form] Schema returned validation error(s) for key(s) that match no registered field: ${orphans.join(
+                  `[Pyreon] Schema returned validation error(s) for key(s) that match no registered field: ${orphans.join(
                     ', ',
                   )}. Registered fields: ${[...fieldNames].join(', ')}. The form is treated as INVALID so the ` +
                     `rejection is not silently dropped. For a nested schema, either declare the object as a field ` +
@@ -1024,11 +1085,12 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     const unknown = names.filter((name) => !fields[name])
     if (unknown.length > 0 && process.env.NODE_ENV !== 'production') {
       console.warn(
-        `[@pyreon/form] trigger(): unknown field(s) ${unknown.map((n) => `"${n}"`).join(', ')} — ` +
+        `[Pyreon] trigger(): unknown field(s) ${unknown.map((n) => `"${n}"`).join(', ')} — ` +
           `treated as INVALID. Available fields: ${fieldEntries.map(([n]) => n).join(', ')}.`,
       )
     }
     isValidating.set(true)
+    let schemaThrewOrFailed = false
     try {
       await Promise.all(
         names.map(async (name) => {
@@ -1041,25 +1103,33 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
           if (rv) await rv(fields[name].value.peek())
           else fields[name].error.set(undefined)
           // Schema-only fields (no per-field validator) get their schema error
-          // applied here too, mirroring blur-time `runSchemaForField`.
-          if (schema && !fieldValidators[name]) await runSchemaForField(name).catch(() => {})
+          // applied here too, mirroring blur-time `runSchemaForField`. A
+          // schema that THREW makes the trigger invalid (and sets submitError).
+          if (schema && !fieldValidators[name] && !(await runSchemaForField(name))) {
+            schemaThrewOrFailed = true
+          }
         }),
       )
+      if (schemaThrewOrFailed) return false
       // Unknown names count as INVALID (`fields[name] !== undefined` gate) —
-      // never silently valid.
+      // never silently valid. `''` is a VALID result (isRealError), not an error.
       return names.every(
-        (name) => fields[name] !== undefined && fields[name].error.peek() === undefined,
+        (name) => fields[name] !== undefined && !isRealError(fields[name].error.peek()),
       )
     } finally {
       isValidating.set(false)
     }
   }
 
-  const handleSubmit = async (e?: Event) => {
-    if (e && typeof e.preventDefault === 'function') {
-      e.preventDefault()
-    }
+  // The in-flight submit, shared by every concurrent `handleSubmit` call.
+  // Pre-fix there was no re-entrancy guard and `isSubmitting` only flipped
+  // AFTER async validation settled — so a double Enter (or a double click
+  // during a slow async validator) ran validation twice and called `onSubmit`
+  // TWICE (a duplicate POST). The guard is set synchronously, before
+  // `validate()`, so the second call joins the first instead.
+  let submitInFlight: Promise<{ threw: boolean; error?: unknown }> | null = null
 
+  const runSubmit = async (): Promise<{ threw: boolean; error?: unknown }> => {
     // Batch the submit-prep writes: submitError + submitCount + every
     // field.touched. Without batch(), each field's touched.set(true)
     // notifies every subscriber to that field separately — N field
@@ -1079,19 +1149,42 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       // Accessible error recovery — move focus to the first errored field
       // (unless opted out). react-hook-form's `shouldFocusError` default.
       if (focusOnError) focusFirstError()
-      return
+      return { threw: false }
     }
 
     isSubmitting.set(true)
     try {
       await onSubmit(getSubmitValues())
       isSubmitSuccessful.set(true)
+      return { threw: false }
     } catch (err) {
       submitError.set(err)
-      throw err
+      return { threw: true, error: err }
     } finally {
       isSubmitting.set(false)
     }
+  }
+
+  // `handleSubmit(event)` is what `<form onSubmit>` / `<Form>` call. An error
+  // thrown by `onSubmit` is CAPTURED in `submitError` and the returned promise
+  // RESOLVES — pre-fix it re-threw, and since nothing awaits an event
+  // handler's promise, every failed submit through `<Form>` became an
+  // unhandled rejection. Programmatic callers that want the rejection opt in
+  // with `handleSubmit({ rethrow: true })`.
+  const handleSubmit = async (eventOrOptions?: Event | SubmitOptions): Promise<void> => {
+    let rethrow = false
+    if (eventOrOptions && typeof (eventOrOptions as Event).preventDefault === 'function') {
+      ;(eventOrOptions as Event).preventDefault()
+    } else if (eventOrOptions) {
+      rethrow = (eventOrOptions as SubmitOptions).rethrow === true
+    }
+    if (!submitInFlight) {
+      submitInFlight = runSubmit().finally(() => {
+        submitInFlight = null
+      })
+    }
+    const outcome = await submitInFlight
+    if (rethrow && outcome.threw) throw outcome.error
   }
 
   const reset = (
@@ -1104,6 +1197,12 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     },
   ) => {
     clearAllTimers()
+    // Tell every in-flight validator to stop (the per-field version bumps in
+    // `field.reset` / `setInitialValues` already DISCARD their results; the
+    // abort lets a signal-aware validator stop doing the work). A fresh
+    // controller keeps the signal usable for validation after the reset.
+    abortController.abort()
+    abortController = new AbortController()
     // Snapshot any state the caller asked to preserve, BEFORE the reset wipes it.
     const keepErrors = resetOptions?.keepErrors ? { ...getErrors() } : undefined
     const keepTouched = resetOptions?.keepTouched ? { ...touchedFields() } : undefined
@@ -1148,7 +1247,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   const setFieldValue = <K extends keyof TValues>(field: K, value: TValues[K]) => {
     if (!fields[field]) {
       throw new Error(
-        `[@pyreon/form] Field "${String(field)}" does not exist. Available fields: ${fieldEntries.map(([n]) => n).join(', ')}. ` +
+        `[Pyreon] Field "${String(field)}" does not exist. Available fields: ${fieldEntries.map(([n]) => n).join(', ')}. ` +
           `Declare it in useForm({ initialValues }) (or the fields array) — @pyreon/form does not auto-register fields.`,
       )
     }
@@ -1158,7 +1257,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   const setFieldError = (field: keyof TValues, error: ValidationError) => {
     if (!fields[field]) {
       throw new Error(
-        `[@pyreon/form] Field "${String(field)}" does not exist. Available fields: ${fieldEntries.map(([n]) => n).join(', ')}. ` +
+        `[Pyreon] Field "${String(field)}" does not exist. Available fields: ${fieldEntries.map(([n]) => n).join(', ')}. ` +
           `Declare it in useForm({ initialValues }) (or the fields array) — @pyreon/form does not auto-register fields.`,
       )
     }
@@ -1217,7 +1316,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   const focusFirstError = (): void => {
     if (isServer) return
     for (const [name] of fieldEntries) {
-      if (fields[name].error.peek() === undefined) continue
+      if (!isRealError(fields[name].error.peek())) continue
       const id = _fieldIds.get(name)
       if (id === undefined) continue
       const el = document.getElementById(id)
@@ -1259,7 +1358,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     // API and was the one lookup that crashed cryptically on a typo.
     if (!fields[field]) {
       throw new Error(
-        `[@pyreon/form] register("${field}"): field "${field}" does not exist. ` +
+        `[Pyreon] register("${field}"): field "${field}" does not exist. ` +
           `Available fields: ${fieldEntries.map(([n]) => n).join(', ')}. ` +
           `Declare it in useForm({ initialValues }) (or the fields array), or add it at runtime via ` +
           `registerField("${field}", initialValue) — @pyreon/form does not auto-register fields.`,
@@ -1285,7 +1384,10 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
         fieldState.setValue(target.files as TValues[K])
       } else if (fieldOpts?.type === 'number') {
         const num = target.valueAsNumber
-        fieldState.setValue((Number.isNaN(num) ? target.value : num) as TValues[K])
+        // An empty or unparsable number input stores `undefined`, never the raw
+        // string — a `'' `/`'1e'` in a `number` field fails every numeric
+        // schema with a type error the user cannot see the cause of.
+        fieldState.setValue((Number.isNaN(num) ? undefined : num) as TValues[K])
       } else {
         fieldState.setValue(target.value as TValues[K])
       }
@@ -1308,10 +1410,10 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     const id = baseId(field)
     const errorId = errorIdOf(field)
     const ariaInvalid = computed<'true' | undefined>(() =>
-      fieldState.error() != null ? 'true' : undefined,
+      isRealError(fieldState.error()) ? 'true' : undefined,
     )
     const ariaDescribedby = computed<string | undefined>(() =>
-      fieldState.error() != null ? errorId : undefined,
+      isRealError(fieldState.error()) ? errorId : undefined,
     )
 
     if (fieldOpts?.type === 'checkbox') {
@@ -1394,7 +1496,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     }
     if (ignored.length > 0 && process.env.NODE_ENV !== 'production') {
       console.warn(
-        `[@pyreon/form] setInitialValues()/reset(values): key(s) ${ignored.map((k) => `"${k}"`).join(', ')} ` +
+        `[Pyreon] setInitialValues()/reset(values): key(s) ${ignored.map((k) => `"${k}"`).join(', ')} ` +
           `match no field — ignored. Available fields: ${fieldEntries.map(([n]) => n).join(', ')}.`,
       )
     }
@@ -1406,6 +1508,12 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     batch(() => {
       for (const [name] of fieldEntries) {
         if (name in newValues) {
+          // Re-basing a field invalidates any in-flight validation of its OLD
+          // value — same reasoning as `field.reset` (a late "taken" result
+          // must not land on the freshly-loaded value).
+          validationVersions[name] = ++_versionCounter
+          schemaFieldVersions[name] = ++_versionCounter
+          clearTimeout(debounceTimers[name])
           const val = (newValues as Record<string, unknown>)[name] as TValues[typeof name]
           fields[name].value.set(val)
           fields[name].error.set(undefined)
@@ -1439,7 +1547,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       const conflict = findPathAncestorConflict([...fieldNames])
       if (conflict) {
         console.warn(
-          `[@pyreon/form] registerField("${name}") creates an ambiguous field pair: an object field ` +
+          `[Pyreon] registerField("${name}") creates an ambiguous field pair: an object field ` +
             `"${conflict[0]}" AND a dot-path leaf field "${conflict[1]}" are both registered. A schema/` +
             `validator error keyed "${conflict[1]}" would surface on both — declare EITHER, not both.`,
         )
@@ -1448,6 +1556,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     ;(currentInitials as Record<string, unknown>)[name] = init
     createFieldState(key, init)
     _valuesEpoch++ // new field → invalidate the values() snapshot cache
+    _fieldsVersion.update((n) => n + 1)
   }
 
   const unregisterField = (name: string): void => {
@@ -1471,6 +1580,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     if (idx !== -1) fieldEntries.splice(idx, 1)
     fieldNames.delete(name)
     _valuesEpoch++ // field removed → invalidate the values() snapshot cache
+    _fieldsVersion.update((n) => n + 1)
   }
 
   // ── Reactive initialValues accessor watcher ───────��─────────────────
@@ -1490,7 +1600,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     })
   }
 
-  return {
+  const form = {
     fields,
     isSubmitting,
     isValidating,
@@ -1525,6 +1635,8 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     disabled: formDisabled,
     readOnly: formReadOnly,
   }
+  Object.defineProperty(form, FIELDS_VERSION, { value: _fieldsVersion })
+  return form
 }
 
 /** Deep structural equality with depth limit to guard against circular references. */
@@ -1535,6 +1647,29 @@ function structuredEqual(a: unknown, b: unknown, depth = 0): boolean {
   // Bail at depth 10 — treat as not equal to avoid infinite recursion
   if (depth > 10) return false
 
+  // Different prototypes are never equal (a Date vs `{}` both have zero own
+  // keys, so the generic walk below called them equal).
+  if (typeof a === 'object' && Object.getPrototypeOf(a) !== Object.getPrototypeOf(b)) return false
+
+  // Dates / Maps / Sets / Files keep their state in internal slots, not own
+  // enumerable keys — the generic key walk saw every Date as `{}` and called
+  // two different dates EQUAL, so a date field was never marked dirty.
+  if (a instanceof Date) return a.getTime() === (b as Date).getTime()
+  if (a instanceof Map) {
+    const bm = b as Map<unknown, unknown>
+    if (a.size !== bm.size) return false
+    for (const [k, v] of a) {
+      if (!bm.has(k) || !structuredEqual(v, bm.get(k), depth + 1)) return false
+    }
+    return true
+  }
+  if (a instanceof Set) {
+    const bs = b as Set<unknown>
+    if (a.size !== bs.size) return false
+    for (const v of a) if (!bs.has(v)) return false
+    return true
+  }
+
   if (Array.isArray(a) && Array.isArray(b)) {
     if (a.length !== b.length) return false
     for (let i = 0; i < a.length; i++) {
@@ -1544,6 +1679,11 @@ function structuredEqual(a: unknown, b: unknown, depth = 0): boolean {
   }
 
   if (typeof a === 'object' && typeof b === 'object') {
+    // Only PLAIN objects compare structurally. Any other class instance
+    // (File, Blob, RegExp, a user class) compares by identity — which already
+    // failed `Object.is` above — so a different File is dirty.
+    const proto = Object.getPrototypeOf(a)
+    if (proto !== Object.prototype && proto !== null) return false
     const aObj = a as Record<string, unknown>
     const bObj = b as Record<string, unknown>
     const aKeys = Object.keys(aObj)

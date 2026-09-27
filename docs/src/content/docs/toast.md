@@ -36,6 +36,7 @@ Peer dependency: `@pyreon/runtime-dom` — required because `<Toaster />` JSX em
 Two pieces: mount `<Toaster />` once, then call `toast()` anywhere.
 
 ```tsx
+// @check
 import { toast, Toaster } from '@pyreon/toast'
 
 function App() {

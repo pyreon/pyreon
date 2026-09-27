@@ -1,3 +1,4 @@
+import { sanitizeHref } from '../sanitize'
 import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
 
 function resolveColumn(col: string | TableColumn): TableColumn {
@@ -52,8 +53,13 @@ function renderNode(node: DocNode): string {
     case 'text':
       return `${renderChildren(node.children)}\n\n`
 
-    case 'link':
-      return `${renderChildren(node.children)} (${p.href})`
+    case 'link': {
+      // Plain text renders the URL for a human to read/copy — still only
+      // an allowlisted one; a rejected href degrades to the bare label.
+      const href = sanitizeHref(p.href as string)
+      const label = renderChildren(node.children)
+      return href ? `${label} (${href})` : label
+    }
 
     case 'image': {
       const alt = (p.alt as string) ?? 'Image'
@@ -121,8 +127,11 @@ function renderNode(node: DocNode): string {
     case 'spacer':
       return '\n'
 
-    case 'button':
-      return `[${renderChildren(node.children)}] → ${p.href}\n\n`
+    case 'button': {
+      const href = sanitizeHref(p.href as string)
+      const label = renderChildren(node.children)
+      return href ? `[${label}] → ${href}\n\n` : `[${label}]\n\n`
+    }
 
     case 'quote':
       return `  "${renderChildren(node.children)}"\n\n`

@@ -114,7 +114,7 @@ function renderNode(node: DocNode): string {
     }
 
     case 'link':
-      return `<a href="${esc(sanitizeHref(p.href as string))}" style="color:${sanitizeColor((p.color as string) ?? '#4f46e5')};text-decoration:underline" target="_blank">${renderChildren(node.children)}</a>`
+      return `<a href="${esc(sanitizeHref(p.href as string))}" style="color:${sanitizeColor((p.color as string) ?? '#4f46e5')};text-decoration:underline" target="_blank" rel="noopener noreferrer">${renderChildren(node.children)}</a>`
 
     case 'image': {
       const align = (p.align as string) ?? 'left'
@@ -208,7 +208,7 @@ function renderNode(node: DocNode): string {
       const align = cssDecl('text-align', (p.align as string) ?? 'left')
 
       // Bulletproof button — works in Outlook via VML, CSS everywhere else
-      return `<div style="${align}margin:12px 0"><!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${href}" style="height:44px;v-text-anchor:middle;width:200px" arcsize="10%" strokecolor="${bg}" fillcolor="${bg}"><w:anchorlock/><center style="color:${color};font-family:Arial,sans-serif;font-size:14px;font-weight:bold">${text}</center></v:roundrect><![endif]--><!--[if !mso]><!--><a href="${href}" style="display:inline-block;background-color:${bg};color:${color};padding:12px 24px;border-radius:${radius}px;text-decoration:none;font-weight:bold;font-size:14px;font-family:Arial,sans-serif" target="_blank">${text}</a><!--<![endif]--></div>`
+      return `<div style="${align}margin:12px 0"><!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${href}" style="height:44px;v-text-anchor:middle;width:200px" arcsize="10%" strokecolor="${bg}" fillcolor="${bg}"><w:anchorlock/><center style="color:${color};font-family:Arial,sans-serif;font-size:14px;font-weight:bold">${text}</center></v:roundrect><![endif]--><!--[if !mso]><!--><a href="${href}" style="display:inline-block;background-color:${bg};color:${color};padding:12px 24px;border-radius:${radius}px;text-decoration:none;font-weight:bold;font-size:14px;font-family:Arial,sans-serif" target="_blank" rel="noopener noreferrer">${text}</a><!--<![endif]--></div>`
     }
 
     case 'quote': {

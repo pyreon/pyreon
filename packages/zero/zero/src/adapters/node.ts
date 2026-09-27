@@ -77,6 +77,7 @@ try {
 
 const MIME_TYPES = {
   ".html": "text/html",
+  ".webmanifest": "application/manifest+json",
   ".js": "application/javascript",
   ".css": "text/css",
   ".json": "application/json",
@@ -148,12 +149,13 @@ const server = createServer(async (req, res) => {
         // EXTENSION would 1-year-immutable-cache a non-hashed root file like
         // public/sw.js or public/config.js — a deploy-poisoning bug (a stale
         // service worker becomes unevictable). HTML must always revalidate
-        // (prerendered pages change on every content edit).
+        // (prerendered pages change on every content edit), and so must a
+        // service worker + web manifest: the SW script is the update channel.
         res.writeHead(200, {
           "content-type": mime,
           "cache-control": url.pathname.startsWith(${JSON.stringify(assetPrefix)})
             ? "public, max-age=31536000, immutable"
-            : ext === ".html"
+            : ext === ".html" || /(^|\\/)sw\\.js$|\\.webmanifest$/.test(url.pathname)
               ? "public, max-age=0, must-revalidate"
               : "public, max-age=3600",
         })

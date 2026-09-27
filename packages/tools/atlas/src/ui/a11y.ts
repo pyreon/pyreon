@@ -183,3 +183,45 @@ export function analyzeA11y(surface: Element | null | undefined): A11yReport {
   const unknowns = checks.filter((c) => c.status === 'unknown').length
   return { checks, fails, warns, unknowns, passes: checks.length - fails - warns - unknowns }
 }
+
+/** The part of an axe run the summary needs — see `./axe`. */
+export interface AxeTally {
+  status: 'ready' | 'running' | 'done' | 'failed'
+  violations: readonly unknown[]
+  incomplete: number
+}
+
+export interface A11ySummary {
+  passes: number
+  warns: number
+  violations: number
+  unknowns: number
+  /** True when the axe run's findings are included in the counts. */
+  withAxe: boolean
+}
+
+/**
+ * The panel's summary strip, derived from BOTH result sets.
+ *
+ * The strip used to count only the four structural checks while the axe block
+ * below it counted axe's findings, so one panel read "0 violations" above
+ * "1 violation(s)" — two numbers for one question, contradicting each other.
+ * Once axe has run, its violations are violations and its `incomplete`
+ * ("needs review") items are warnings; before it has run, the strip is the
+ * structural checks alone and says so.
+ */
+export function summarizeA11y(report: A11yReport, axe: AxeTally): A11ySummary {
+  const withAxe = axe.status === 'done'
+  return {
+    passes: report.passes,
+    warns: report.warns + (withAxe ? axe.incomplete : 0),
+    violations: report.fails + (withAxe ? axe.violations.length : 0),
+    unknowns: report.unknowns,
+    withAxe,
+  }
+}
+
+/** `1 violation` / `2 violations` — the strip used a fixed plural. */
+export function plural(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`
+}

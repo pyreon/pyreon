@@ -188,6 +188,10 @@ public final class PyreonCrdtDoc {
     if ops.isEmpty { return }
     var changedByMap: [String: Set<String>] = [:]
     for op in ops {
+      // Untrusted wire data: a negative clock, or one past the JS safe-integer
+      // range (the TS engine's bound), is dropped — a huge clock would out-rank
+      // every future local write and `clock += 1` at Int.max traps.
+      if op.clock < 0 || op.clock > 9_007_199_254_740_991 { continue }
       if op.clock > clock { clock = op.clock }
       let local = maps[op.map]?[op.key]
       if let local = local, !remoteWins(local, op.clock, op.actor) { continue }

@@ -223,6 +223,13 @@ export function buildInnerBuildOptions(options: BuildSsrBundleOptions): BuildOpt
       output: {
         format: 'es',
         entryFileNames: options.outputFilename,
+        // An `.mjs` entry is chosen so Node loads it as ESM whatever the
+        // project's `package.json` says. Its chunks must follow, or every
+        // chunk import prints MODULE_TYPELESS_PACKAGE_JSON and tells the user
+        // to edit their own root manifest because of zero's temp bundle.
+        ...(options.outputFilename.endsWith('.mjs')
+          ? { chunkFileNames: `${options.assetsDir ?? 'assets'}/[name]-[hash].mjs` }
+          : {}),
       },
       external: [/^node:/],
     },
