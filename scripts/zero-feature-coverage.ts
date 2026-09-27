@@ -62,6 +62,7 @@ export const NON_FEATURE_SECTIONS: Record<string, string> = {
   'Where the certificate comes from': 'prose under HTTPS in Development',
   'Custom domains': 'prose under HTTPS in Development',
   Limits: 'prose under HTTPS in Development',
+  'Sessions, Preview Mode & Web Vitals': 'container of the session, preview, and web-vitals features',
   'Subpath Exports': 'index table of entry points',
   'Next Steps': 'links',
 }

@@ -6,7 +6,7 @@
     "Route Groups": "no example uses a (group)/_layout directory in a built app",
     "Virtual Modules": "exercised implicitly by every build; no test imports virtual:zero/* from user code",
     "Typed routes": "type-level unit tests only; no built example typechecks RouterLink against generated route types",
-    "Streaming by default (`mode: 'ssr'`)": "no e2e asserts an SSR page response is chunked / streamed",
+    "Streaming is opt-in (`ssr: { mode: 'stream' }`)": "no e2e asserts an SSR page response is chunked / streamed",
     "Delivery polish (SSG toggles)": "no verify-modes cell toggles these SSG options",
     "ISR: tag-based invalidation + filesystem store": "revalidateTag and createFsStore have no built-server test",
     "`<Link>` external links": "unit-tested only; no e2e asserts target/rel on a built page",
@@ -18,12 +18,17 @@
     "Image Processing": "no cell asserts the image plugin's generated variants",
     "Favicons": "no cell asserts generated favicon files",
     "Social-Share Images (og:image)": "no cell asserts generated og:image files",
+    "Per-route OG images from JSX": "no built app asserts route-level OG images are rendered and injected",
+    "Progressive Web App": "no built app asserts the generated manifest and service worker",
     "Server env — `validateEnv`": "unit-tested only",
     "Validating env with any schema (zod / valibot / `@pyreon/validate`)": "unit-tested only",
     "Fail the build on a missing public var — `zero({ env })`": "no cell asserts a failing build",
     "Other Build-Time Plugins": "no cell exercises these plugins",
     "Request Locals": "useRequestLocals has no built-server test",
     "Testing Utilities": "a test-helper API; exercised by unit tests, which is its real-world use",
+    "Signed cookie sessions (`@pyreon/zero/session`)": "unit-tested only; no built server exercises signed session cookies",
+    "Preview / draft mode (`@pyreon/zero/preview`)": "unit-tested only; no built server exercises preview-cookie cache bypass",
+    "Web Vitals (`@pyreon/zero/web-vitals`)": "unit-tested only; no built app reports vitals to an endpoint",
     "Router loaders are compiled out when unused": "covered by a real Vite build inside vitest (packages/zero/zero/src/tests/router-loaders-flag.test.ts), not by an e2e spec or verify-modes cell"
   }
 }
