@@ -19,8 +19,8 @@
  * So the output is PARSED, EXECUTED and validated against the schema the same
  * run emitted.
  */
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
-import { schemaSource, writeTree } from './helpers/write-tree'
+import { mkdirSync, rmSync } from 'node:fs'
+import { writeTree } from './helpers/write-tree'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseSync } from 'oxc-parser'
