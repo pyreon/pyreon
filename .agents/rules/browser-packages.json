@@ -34,6 +34,7 @@
     "@pyreon/hooks",
     "@pyreon/http",
     "@pyreon/test-utils",
-    "@pyreon/zero-content"
+    "@pyreon/zero-content",
+    "@pyreon/zero"
   ]
 }
