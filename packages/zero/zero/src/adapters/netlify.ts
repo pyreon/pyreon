@@ -1,7 +1,9 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
 import { assetUrlPrefix } from './cache-headers'
 import { NETLIFY_ADAPTER_OUTPUT } from './contract'
-import { stageClientThenServer } from './stage'
+import { patternToRegex } from './deploy-targets'
+import { EDGE_HANDLER_BODY, EDGE_INIT_FILE, renderEdgeInit } from './edge-wrapper'
+import { materialize, stageClientThenServer } from './stage'
 import { validateBuildInputs } from './validate'
 import { warnMissingEnv } from './warn-missing-env'
 
@@ -23,9 +25,21 @@ import { warnMissingEnv } from './warn-missing-env'
  * }
  * ```
  */
-export function netlifyAdapter(): Adapter {
+export interface NetlifyAdapterOptions {
+  /**
+   * Serve every route from a Netlify EDGE function (Deno) instead of the
+   * Node function. Routes declaring `export const runtime = 'nodejs'` are
+   * excluded from it and fall through to the Node function. Default `false`
+   * — per-route `export const runtime = 'edge'` still works without it.
+   */
+  edge?: boolean
+}
+
+export function netlifyAdapter(adapterOptions: NetlifyAdapterOptions = {}): Adapter {
+  const defaultEdge = adapterOptions.edge === true
   return {
     name: 'netlify',
+    capabilities: { edgeRoutes: true, edgeOnly: defaultEdge, nodeRoutes: true, schedules: true },
     async build(options: AdapterBuildOptions) {
       if (options.kind === 'ssg') {
         // PR J — SSG branch. Emit `netlify.toml` with `publish = "."`
@@ -53,7 +67,7 @@ export function netlifyAdapter(): Adapter {
         return
       }
       await validateBuildInputs(options)
-      const { writeFile, mkdir } = await import('node:fs/promises')
+      const { writeFile, mkdir, readFile } = await import('node:fs/promises')
       const { join } = await import('node:path')
 
       const outDir = options.outDir
@@ -103,6 +117,68 @@ export const config = {
         funcEntry,
       )
 
+      const deploy = options.deploy
+      const assetPrefix = assetUrlPrefix(options.config.base, options.assetsDir)
+
+      // Edge function — every route (`edge: true`, minus routes declaring
+      // `runtime = 'nodejs'`), or just the routes declaring `runtime = 'edge'`.
+      // Netlify runs edge functions BEFORE static files and Node functions, so
+      // hashed assets are always excluded.
+      const edgePatterns = defaultEdge
+        ? ['^/.*$']
+        : (deploy?.edgeRoutes ?? []).map((r) => patternToRegex(r.pattern))
+      const hasEdge = edgePatterns.length > 0
+      if (hasEdge) {
+        if (options.edgeServerEntry === undefined) {
+          throw new Error('[Pyreon] netlifyAdapter: an edge function was requested but no edge server bundle was built.')
+        }
+        const name = NETLIFY_ADAPTER_OUTPUT.edgeFunctionName
+        // A function in its own directory (`<name>/<name>.js`): Netlify treats
+        // every top-level file in the edge-functions dir as a function, so the
+        // bundle + init module must live beside the entry, not at the top.
+        const edgeDir = join(outDir, ...NETLIFY_ADAPTER_OUTPUT.edgeFunctionsDir.split('/'), name)
+        const edgeSrc = join(options.edgeServerEntry, '..')
+        await materialize(edgeSrc, edgeDir)
+        const template = await readFile(join(edgeSrc, 'template.html'), 'utf-8').catch(() => '')
+        await writeFile(join(edgeDir, EDGE_INIT_FILE), renderEdgeInit(template))
+        const excluded = [
+          `^${assetPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/.*$`,
+          ...(defaultEdge ? (deploy?.nodeRoutes ?? []).map((r) => patternToRegex(r.pattern)) : []),
+        ]
+        await writeFile(
+          join(edgeDir, `${name}.js`),
+          `import "./${EDGE_INIT_FILE}"
+import handler from "./entry-server.js"
+
+export default async function netlifyEdgeHandler(request) {
+${EDGE_HANDLER_BODY}
+}
+
+export const config = ${JSON.stringify({ pattern: edgePatterns, excludedPattern: excluded }, null, 2)}
+`,
+        )
+      }
+
+      // `export const schedule` on API routes → Netlify Scheduled Functions.
+      // Each one calls the SSR handler IN-PROCESS with a GET for the route's
+      // path (scheduled functions receive no request of their own); `URL` is
+      // the site URL Netlify sets in every function's environment.
+      for (const job of deploy?.schedules ?? []) {
+        const slug = job.path.replace(/^\/+/, '').replace(/[^\w-]+/g, '-') || 'root'
+        await writeFile(
+          join(functionsDir, `${NETLIFY_ADAPTER_OUTPUT.scheduledFunctionPrefix}${slug}.mjs`),
+          `import handler from "./${NETLIFY_ADAPTER_OUTPUT.serverDir}/entry-server.js"
+
+export default async function() {
+  const res = await handler(new Request(new URL(${JSON.stringify(job.path)}, process.env.URL ?? "http://localhost")))
+  if (!res.ok) console.error("[Pyreon] scheduled ${job.path} answered", res.status)
+}
+
+export const config = { schedule: ${JSON.stringify(job.schedule)} }
+`,
+        )
+      }
+
       // Generate netlify.toml (relative to outDir — informational for
       // direct `netlify deploy --dir=dist` flows; a scaffolded repo's
       // ROOT netlify.toml is what Netlify's builds actually read, and
@@ -112,9 +188,9 @@ export const config = {
 [build]
   publish = "${NETLIFY_ADAPTER_OUTPUT.publishDir}"
   functions = "${NETLIFY_ADAPTER_OUTPUT.functionsDir}"
-
+${hasEdge ? `  edge_functions = "${NETLIFY_ADAPTER_OUTPUT.edgeFunctionsDir}"\n` : ''}
 [[headers]]
-  for = "${assetUrlPrefix(options.config.base, options.assetsDir)}/*"
+  for = "${assetPrefix}/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 

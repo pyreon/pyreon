@@ -1,6 +1,8 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
 import { assetUrlPrefix } from './cache-headers'
 import { VERCEL_ADAPTER_OUTPUT } from './contract'
+import { patternToRegex } from './deploy-targets'
+import { EDGE_HANDLER_BODY, EDGE_INIT_FILE, renderEdgeInit } from './edge-wrapper'
 import { materialize, stageClientThenServer } from './stage'
 import { validateBuildInputs } from './validate'
 import { warnMissingEnv } from './warn-missing-env'
@@ -36,13 +38,29 @@ export interface VercelAdapterOptions {
    * and Vercel deprecates end-of-life runtimes. Set it explicitly to pin a
    * version your dependencies support.
    */
-  runtime?: `nodejs${number}.x`
+  runtime?: `nodejs${number}.x` | 'edge'
+  /**
+   * Node.js runtime for functions split out by `export const runtime =
+   * 'nodejs'` when `runtime: 'edge'` is the default. Default: `'nodejs22.x'`.
+   */
+  nodeRuntime?: `nodejs${number}.x`
+}
+
+/**
+ * The Build Output API `.vc-config.json` for an edge function. Vercel reads
+ * `entrypoint` (NOT `handler`) for `runtime: 'edge'`.
+ */
+function edgeVcConfig(): string {
+  return JSON.stringify({ runtime: 'edge', entrypoint: 'index.js' }, null, 2)
 }
 
 export function vercelAdapter(adapterOptions: VercelAdapterOptions = {}): Adapter {
   const runtime = adapterOptions.runtime ?? 'nodejs22.x'
+  const nodeRuntime = runtime === 'edge' ? (adapterOptions.nodeRuntime ?? 'nodejs22.x') : runtime
+  const defaultEdge = runtime === 'edge'
   return {
     name: 'vercel',
+    capabilities: { edgeRoutes: true, edgeOnly: defaultEdge, nodeRoutes: true, schedules: true },
     async build(options: AdapterBuildOptions) {
       if (options.kind === 'ssg') {
         // PR J — SSG branch. Emit a Vercel Build Output API v3 STATIC
@@ -82,12 +100,14 @@ export function vercelAdapter(adapterOptions: VercelAdapterOptions = {}): Adapte
         return
       }
       await validateBuildInputs(options)
-      const { writeFile, mkdir } = await import('node:fs/promises')
+      const { writeFile, mkdir, readFile } = await import('node:fs/promises')
       const { join } = await import('node:path')
 
       const vercelDir = join(options.projectRoot, ...VERCEL_ADAPTER_OUTPUT.outputDir.split('/'))
       const staticDir = join(vercelDir, 'static')
-      const funcDir = join(vercelDir, 'functions', 'ssr.func')
+      const functionsDir = join(vercelDir, 'functions')
+      const funcDir = join(functionsDir, `${VERCEL_ADAPTER_OUTPUT.functionName}.func`)
+      const deploy = options.deploy
 
       await mkdir(staticDir, { recursive: true })
       await mkdir(funcDir, { recursive: true })
@@ -100,23 +120,40 @@ export function vercelAdapter(adapterOptions: VercelAdapterOptions = {}): Adapte
       // into the public static/ dir.
       await stageClientThenServer(options, { clientDest: staticDir, serverDest: funcDir })
 
-      // Generate serverless function entry.
-      //
-      // Pre-fix the handler dynamically imported \`./entry-server.js\` on
-      // EVERY invocation. Node's module cache makes calls after the
-      // first one near-free, but the FIRST request on every fresh
-      // serverless instance (i.e. every cold start) paid the full
-      // module evaluation cost inside the request budget — observable
-      // as a TTFB spike on cold starts. Hoisting the import to module
-      // scope evaluates the SSR module once at function-init time,
-      // before the first request lands.
-      //
-      // Also surface SSR errors to Vercel function logs via
-      // \`console.error\` (mirrors the cloudflare + netlify fix). Pre-fix
-      // an unhandled SSR throw propagated to Vercel's launcher (which
-      // logs it generically); adding our own prefix makes the cause
-      // trivially greppable in the dashboard log stream.
-      const funcEntry = `
+      const edgeFunction = async (dir: string): Promise<void> => {
+        if (options.edgeServerEntry === undefined) {
+          throw new Error('[Pyreon] vercelAdapter: an edge function was requested but no edge server bundle was built.')
+        }
+        const edgeSrc = join(options.edgeServerEntry, '..')
+        await materialize(edgeSrc, dir)
+        const template = await readFile(join(edgeSrc, 'template.html'), 'utf-8').catch(() => '')
+        await writeFile(join(dir, EDGE_INIT_FILE), renderEdgeInit(template))
+        await writeFile(
+          join(dir, 'index.js'),
+          `import "./${EDGE_INIT_FILE}"
+import handler from "./entry-server.js"
+
+export default async function vercelEdgeHandler(request) {
+${EDGE_HANDLER_BODY}
+}
+`,
+        )
+        await writeFile(join(dir, '.vc-config.json'), edgeVcConfig())
+      }
+
+      const nodeFunction = async (dir: string): Promise<void> => {
+        // Pre-fix the handler dynamically imported \`./entry-server.js\` on
+        // EVERY invocation. Node's module cache makes calls after the
+        // first one near-free, but the FIRST request on every fresh
+        // serverless instance (i.e. every cold start) paid the full
+        // module evaluation cost inside the request budget — observable
+        // as a TTFB spike on cold starts. Hoisting the import to module
+        // scope evaluates the SSR module once at function-init time,
+        // before the first request lands.
+        //
+        // Also surface SSR errors to Vercel function logs via
+        // \`console.error\` (mirrors the cloudflare + netlify fix).
+        const funcEntry = `
 import handler from "./entry-server.js"
 
 export default async function vercelHandler(req) {
@@ -128,25 +165,45 @@ export default async function vercelHandler(req) {
   }
 }
 `.trimStart()
+        await writeFile(join(dir, 'index.js'), funcEntry)
+        await writeFile(
+          join(dir, '.vc-config.json'),
+          JSON.stringify({ runtime: nodeRuntime, handler: 'index.js', launcherType: 'Nodejs' }, null, 2),
+        )
+      }
 
-      await writeFile(join(funcDir, 'index.js'), funcEntry)
-
-      // Function config
-      await writeFile(
-        join(funcDir, '.vc-config.json'),
-        JSON.stringify(
-          {
-            runtime,
-            handler: 'index.js',
-            launcherType: 'Nodejs',
-          },
-          null,
-          2,
-        ),
-      )
+      // The default function serves every route; routes that declare the
+      // OTHER runtime get their own function, routed before the catch-all.
+      const splitRoutes: { pattern: string }[] = []
+      let splitName: string | undefined
+      if (defaultEdge) {
+        // The server bundle staged above is the NODE build — the edge
+        // function replaces it with the edge build.
+        const { rm } = await import('node:fs/promises')
+        await rm(funcDir, { recursive: true, force: true })
+        await edgeFunction(funcDir)
+        if (deploy && deploy.nodeRoutes.length > 0) {
+          splitName = VERCEL_ADAPTER_OUTPUT.nodeFunctionName
+          const nodeDir = join(functionsDir, `${splitName}.func`)
+          await materialize(join(options.serverEntry, '..'), nodeDir)
+          await nodeFunction(nodeDir)
+          splitRoutes.push(...deploy.nodeRoutes)
+        }
+      } else {
+        await nodeFunction(funcDir)
+        if (deploy && deploy.edgeRoutes.length > 0) {
+          splitName = VERCEL_ADAPTER_OUTPUT.edgeFunctionName
+          await edgeFunction(join(functionsDir, `${splitName}.func`))
+          splitRoutes.push(...deploy.edgeRoutes)
+        }
+      }
 
       // Vercel Build Output config
-      const config = {
+      const config: {
+        version: 3
+        routes: Record<string, unknown>[]
+        crons?: { path: string; schedule: string }[]
+      } = {
         version: 3,
         routes: [
           // Serve static assets directly (scoped to `<base><assetsDir>`).
@@ -156,9 +213,16 @@ export default async function vercelHandler(req) {
           },
           // Favicon and manifest
           { src: '/(favicon\\..*|site\\.webmanifest|robots\\.txt|sitemap\\.xml)', dest: '/$1' },
+          // Routes declaring the non-default runtime → their own function.
+          ...splitRoutes.map((r) => ({ src: patternToRegex(r.pattern), dest: `/${splitName}` })),
           // All other routes → SSR function
-          { src: '/(.*)', dest: '/ssr' },
+          { src: '/(.*)', dest: `/${VERCEL_ADAPTER_OUTPUT.functionName}` },
         ],
+      }
+      // `export const schedule` on API routes → Vercel Cron Jobs. Vercel
+      // calls each `path` with GET on the UTC schedule.
+      if (deploy && deploy.schedules.length > 0) {
+        config.crons = deploy.schedules.map((c) => ({ path: c.path, schedule: c.schedule }))
       }
 
       await writeFile(join(vercelDir, 'config.json'), JSON.stringify(config, null, 2))

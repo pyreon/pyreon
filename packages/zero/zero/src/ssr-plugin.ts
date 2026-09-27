@@ -57,6 +57,8 @@ import { copyFile, rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import type { BuildOptions, Plugin } from 'vite'
 import { resolveAdapter } from './adapters'
+import { collectDeployTargets } from './adapters/deploy-scan'
+import { checkDeployCapabilities, EDGE_SERVER_SUBDIR, needsEdgeBundle } from './adapters/deploy-targets'
 // Per-mode flag namespaces (shared module — single source of truth for
 // both plugins + `buildSsrBundle`; historically each plugin kept the
 // other's literal in sync BY COMMENT). The SSR plugin's recursive
@@ -269,7 +271,35 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
         }
       }
 
+      // Per-route deploy metadata (`export const runtime` / `schedule`).
+      // Read + validated BEFORE any bundle is built, and checked against
+      // what the adapter can deploy — an app that declares an edge route or
+      // a cron the target cannot run fails HERE, naming the file and the
+      // fix, rather than deploying and silently ignoring the declaration.
+      const adapter = resolveAdapter(config)
+      const deploy = await collectDeployTargets(join(root, 'src', 'routes'))
+      checkDeployCapabilities(adapter, deploy)
+      const edgeOutDir = join(distDir, EDGE_SERVER_SUBDIR)
+      const edgeServerEntry = needsEdgeBundle(adapter, deploy)
+        ? join(edgeOutDir, SSR_OUTPUT_FILENAME)
+        : undefined
+
       try {
+        if (edgeServerEntry !== undefined) {
+          await buildSsrBundle({
+            root,
+            entryPath,
+            outDir: edgeOutDir,
+            outputFilename: SSR_OUTPUT_FILENAME,
+            envFlag: SSR_BUILD_FLAG,
+            userConfig,
+            assetsInlineLimit,
+            assetsDir,
+            userPlugins,
+            base: resolvedBase,
+            edge: true,
+          })
+        }
         await buildSsrBundle({
           root,
           entryPath,
@@ -330,6 +360,9 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       // (the handler falls back to its defaults).
       try {
         await copyFile(indexHtmlPath, join(ssrOutDir, 'template.html'))
+        if (edgeServerEntry !== undefined) {
+          await copyFile(indexHtmlPath, join(edgeOutDir, 'template.html'))
+        }
       } catch (templateError) {
         // oxlint-disable-next-line no-console
         console.warn(
@@ -356,7 +389,6 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
         })
       }
 
-      const adapter = resolveAdapter(config)
       try {
         await adapter.build({
           kind: 'ssr',
@@ -369,6 +401,8 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
           projectRoot: root,
           config,
           assetsDir,
+          ...(edgeServerEntry !== undefined ? { edgeServerEntry } : {}),
+          deploy,
         })
       } catch (adapterError) {
         const cause
