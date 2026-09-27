@@ -8,8 +8,6 @@
  * - `\s` differs. JS: TAB, VT, FF, SP, NBSP, the Zs block, LF, CR, U+2028,
  *   U+2029 and U+FEFF. ICU's `\s` has no VT and no U+FEFF; Java's (without
  *   UNICODE_CHARACTER_CLASS) is ASCII only. So the JS set is written out.
- * - `.` differs. JS excludes LF, CR, U+2028, U+2029; ICU and Java also exclude
- *   U+0085. So `.` is written as the JS set's complement.
  * - `$` differs. JS (no `m` flag) matches only at the end; ICU and Java also
  *   match BEFORE a final line terminator, so `"https://x.io\n"` would pass on
  *   device. `\z` is the end in all three.
@@ -38,11 +36,8 @@ const JS_WS = [
   ...[0x2028, 0x2029, 0x202f, 0x205f, 0x3000, 0xfeff].map(u),
 ].join('')
 
-/** JavaScript's `.` without the `s` flag: anything but a line terminator. */
-const JS_DOT = `[^${[0x0a, 0x0d, 0x2028, 0x2029].map(u).join('')}]`
-
-/** `@pyreon/validate`'s `URL_RE` (`/^https?:\/\/[^\s/$.?#].[^\s]*$/i`). */
-export const HTTP_URL_PATTERN = String.raw`^[hH][tT][tT][pP][sS]?://[^${JS_WS}/$.?#]${JS_DOT}[^${JS_WS}]*\z`
+/** `@pyreon/validate`'s `URL_RE` (`/^https?:\/\/[^\s/$.?#][^\s]*$/i`). */
+export const HTTP_URL_PATTERN = String.raw`^[hH][tT][tT][pP][sS]?://[^${JS_WS}/$.?#][^${JS_WS}]*\z`
 
 /**
  * `@pyreon/validate`'s `URI_RE` (`/^([A-Za-z][A-Za-z0-9+.-]*):\S*$/`). The

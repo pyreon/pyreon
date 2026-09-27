@@ -14,7 +14,7 @@ import type { ZeroConfig } from './types'
  * the build can say so instead of quietly ignoring them.
  */
 export interface SerializedServerConfig {
-  value: Pick<ZeroConfig, 'mode' | 'base' | 'ssr' | 'isr' | 'routeRules' | 'i18n'>
+  value: Pick<ZeroConfig, 'mode' | 'base' | 'ssr' | 'isr' | 'routeRules' | 'i18n' | 'routeOg'>
   /** Config paths whose value is code and so cannot reach the server bundle. */
   dropped: string[]
 }
@@ -28,6 +28,7 @@ export function serializeServerConfig(config: ZeroConfig): SerializedServerConfi
   if (config.ssr !== undefined) value.ssr = { ...config.ssr }
   if (config.routeRules !== undefined) value.routeRules = JSON.parse(JSON.stringify(config.routeRules))
   if (config.i18n !== undefined) value.i18n = JSON.parse(JSON.stringify(config.i18n))
+  if (config.routeOg !== undefined) value.routeOg = { ...config.routeOg }
 
   if (config.isr !== undefined) {
     const { store, revalidateRequest, responseFilter, tagsForRequest, cacheKey, ...data } =

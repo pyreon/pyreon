@@ -120,8 +120,11 @@ export interface LatheSection {
    * verifies that those modules actually lower.
    */
   target?: 'web' | 'multiplatform'
-  /** Emitters to run. Default `['schemas', 'client', 'queries']`. */
-  plugins?: readonly LathePluginName[]
+  /**
+   * Emitters to run — built-in names and plugins made with `@pyreon/lathe`'s
+   * `definePlugin`. Default `['schemas', 'client', 'queries']`.
+   */
+  plugins?: readonly (LathePluginName | LathePluginObject)[]
   /** The generated client's HTTP runtime. Only `pyreon` reaches native. Default `pyreon`. */
   client?: 'pyreon' | 'fetch' | 'axios' | 'ky'
   /** The generated schemas' library. Default `pyreon` (`@pyreon/validate`). */
@@ -132,14 +135,20 @@ export interface LatheSection {
    * Declared pagination per generated operation name — emits `use<Op>Infinite`
    * hooks. See `@pyreon/lathe`'s `PaginationConfig`.
    */
-  pagination?: Readonly<
-    Record<
-      string,
-      | { kind: 'cursor'; param: string; next: string; hasMore?: string }
-      | { kind: 'lastItem'; param: string; items?: string; field: string; hasMore?: string }
-      | { kind: 'offset' | 'page'; param: string; items?: string; hasMore?: string; initial?: number }
-    >
-  >
+  pagination?: Readonly<Record<string, LathePaginationConfig>>
+  /**
+   * Per-operation settings keyed by endpoint name or `operationId`: `hook`
+   * (a name, or `false` for none), `responseValidation`, `pagination`.
+   */
+  operations?: Readonly<Record<string, LatheOperationSettings>>
+  /** Generate a subset: `include` / `exclude` operation matchers; `models: 'all'` keeps unreached models. */
+  filters?: LatheFilters
+  /** RFC 6902 `add` / `replace` / `remove` corrections applied to the spec before it is read. */
+  patches?: readonly LatheSpecPatch[]
+  /** Rename generated operations, models, files and hooks. */
+  naming?: LatheNaming
+  /** Format each generated source file before it is written and before `check` compares. */
+  format?: (code: string, path: string) => string | Promise<string>
   /** Exit non-zero when a generated native module does not lower. */
   strictNative?: boolean
   /**
@@ -156,6 +165,76 @@ export interface LatheProjectSection extends Omit<LatheSection, 'projects'> {
   name: string
   /** Required per project — there is no single top-level spec to fall back on. */
   input: string
+}
+
+/** One operation's pagination declaration — see `@pyreon/lathe`'s `PaginationConfig`. */
+export type LathePaginationConfig =
+  | { kind: 'cursor'; param: string; next: string; hasMore?: string }
+  | { kind: 'lastItem'; param: string; items?: string; field: string; hasMore?: string }
+  | { kind: 'offset' | 'page'; param: string; items?: string; hasMore?: string; initial?: number }
+
+/**
+ * A third-party Lathe plugin, as the config holds it. Its hooks' parameters
+ * are typed by `@pyreon/lathe` (`definePlugin`); this dependency-free copy
+ * only needs to ACCEPT one, which `never` parameters do for any hook.
+ */
+export interface LathePluginObject {
+  readonly name: string
+  readonly requires?: readonly LathePluginName[] | undefined
+  setup?(ctx: never): void
+  transformDocument?(doc: never, ctx: never): unknown
+  emit?(ctx: never): unknown
+}
+
+/** One operation's settings — see `@pyreon/lathe`'s `LatheSection.operations`. */
+export interface LatheOperationSettings {
+  hook?: string | false | undefined
+  responseValidation?: 'strict' | 'warn' | 'off' | undefined
+  pagination?: LathePaginationConfig | undefined
+}
+
+/** An HTTP method, either case. */
+export type LatheHttpMethod =
+  | 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'
+  | 'get' | 'post' | 'put' | 'patch' | 'delete' | 'head' | 'options'
+
+/** Which operations a filter selects — every field given must match. */
+export interface LatheOperationMatcher {
+  tag?: string | readonly string[] | undefined
+  path?: string | readonly string[] | undefined
+  operationId?: string | readonly string[] | undefined
+  method?: LatheHttpMethod | readonly LatheHttpMethod[] | undefined
+}
+
+/** See `@pyreon/lathe`'s `LatheSection.filters`. */
+export interface LatheFilters {
+  include?: LatheOperationMatcher | readonly LatheOperationMatcher[] | undefined
+  exclude?: LatheOperationMatcher | readonly LatheOperationMatcher[] | undefined
+  models?: 'reachable' | 'all' | undefined
+}
+
+/** One spec correction — see `@pyreon/lathe`'s `LatheSection.patches`. */
+export type LatheSpecPatch =
+  | { op: 'add'; path: string; value: unknown }
+  | { op: 'replace'; path: string; value: unknown }
+  | { op: 'remove'; path: string }
+
+/** See `@pyreon/lathe`'s `LatheSection.naming`. */
+export interface LatheNaming {
+  operation?:
+    | ((ctx: {
+        default: string
+        operationId: string | undefined
+        method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'
+        path: string
+        tags: readonly string[]
+      }) => string)
+    | undefined
+  model?: ((ctx: { default: string; name: string | undefined }) => string) | undefined
+  file?: ((ctx: { default: string; group: string }) => string) | undefined
+  hook?:
+    | ((ctx: { default: string; operation: string; kind: 'query' | 'mutation' }) => string | false)
+    | undefined
 }
 
 /** A Lathe emitter. */

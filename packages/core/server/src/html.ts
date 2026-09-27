@@ -108,11 +108,16 @@ export function buildClientEntryTag(clientEntry: string): string {
 export function buildScriptsFast(
   clientEntryTag: string,
   loaderData: Record<string, unknown> | null,
+  nonce?: string,
 ): string {
   if (loaderData && Object.keys(loaderData).length > 0) {
     // M2.2 — safe serializer (same contract as `buildScripts`).
     const json = stringifyLoaderData(loaderData)
-    return `<script>window.__PYREON_LOADER_DATA__=${json}</script>\n  ${clientEntryTag}`
+    // Same nonce the string-mode pipeline puts on this script — without it a
+    // strict `script-src 'nonce-…'` policy blocked loader data on streamed pages.
+    const safeNonce = nonce ? nonce.replace(/["'<>\s]/g, '') : ''
+    const nonceAttr = safeNonce ? ` nonce="${safeNonce}"` : ''
+    return `<script${nonceAttr}>window.__PYREON_LOADER_DATA__=${json}</script>\n  ${clientEntryTag}`
   }
   return clientEntryTag
 }

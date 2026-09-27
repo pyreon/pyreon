@@ -201,18 +201,32 @@ toJsonSchema(User)
 
 The contract, precisely: the document describes the **input shape** (`.transform()` emits its inner schema, `.pipe()` its source, `s.preprocess()` its target); `.refine()`/`.superRefine()`/`.serverCheck()` are runtime-only predicates and are structurally omitted; unrepresentable kinds (`s.date()`, `s.bigint()`, `s.map()`, `s.undefined()`, …) **throw** by default — pass `{ unrepresentable: 'any' }` to emit `{}` in their place (Zod 4's policy split). Cyclic `s.lazy()` schemas throw (no `$defs`/`$ref` graph in v1 — documented scope).
 
-## Why mutate-in-place?
+## Immutable schemas (copy-on-write)
 
-`withField()` mutates the original schema with a Symbol-keyed non-enumerable property. It does NOT clone.
+Every chainable method returns a **new** schema — `.min()`, `.email()`, `.refine()`, `.catch()`, `.field()`, the `@pyreon/validate/mini` actions and `pipe()` never mutate the schema they are called on. A base schema can therefore be shared and specialised freely:
 
-ArkType's `Type` instances are callable functions whose `~standard.validate` does `this(input)` — `this` must be the callable schema itself. A shallow clone (`Object.create()`) is not callable and breaks that contract. Symbol-keyed non-enumerable mutation is invisible to:
+```ts
+const name = s.string().min(1)
+const User = s.object({ name })
+const Admin = s.object({ name: name.max(3) }) // User still accepts 'abcdef'
+```
 
-- `JSON.stringify` (skips symbol keys)
-- `for…in` / `Object.keys` / `Object.entries`
-- Structured clone
-- Library-internal schema comparators
+`withField()` follows the same rule: it returns a new schema carrying the metadata and leaves its input untouched (a frozen schema is fine). A Pyreon `s` schema is cloned; any other Standard Schema (Zod / Valibot / ArkType) is wrapped in a transparent `Proxy` that answers only the metadata slot and forwards everything else — ArkType schemas stay callable. `withField(withField(base, { a }), { b })` merges both.
 
-…so the mutation is functionally hidden. Re-wrapping is the natural extension — `withField(base, { a })` then `withField(base, { b })` produces a schema with both `a` and `b` automatically.
+## Content-Security-Policy (jitless mode)
+
+The `s` runtime compiles schemas to specialised functions with `new Function`. Under a CSP without `'unsafe-eval'`, opt out once at startup:
+
+```ts
+import { configure } from '@pyreon/validate'
+configure({ jit: false })
+```
+
+Every schema then runs on the interpreted pipeline — same results, no code generation, no CSP violation reports. Without the call, the first refused compile (an `EvalError`) is remembered and every later schema skips the attempt, with one `[Pyreon]` dev warning.
+
+## `parse` / `safeParse` result shape
+
+`parse()` never throws and returns `{ ok: true, value } | { ok: false, issues }`; `safeParse()` is an alias with the **same** shape. It is *not* Zod's `{ success, data | error }` — code ported from Zod must read `ok` / `value` / `issues`. Use `parseOrThrow()` for throwing semantics.
 
 ## What this is NOT
 

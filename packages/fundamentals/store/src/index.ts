@@ -95,7 +95,7 @@ export {
 
 import { _notifyChange } from './devtools'
 import { getRegistry } from './registry'
-import { consumeHydration } from './hydration'
+import { consumeHydration, markStoreSsrExcluded } from './hydration'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -168,9 +168,40 @@ function isSignalLike(v: unknown): v is SignalLike {
 
 const _plugins: StorePlugin[] = []
 
-/** Register a global store plugin. Plugins run when a store is first created. */
-export function addStorePlugin(plugin: StorePlugin): void {
-  _plugins.push(plugin)
+/**
+ * Register a global store plugin. Plugins run when a store is first created.
+ * Returns a function that unregisters THIS registration (idempotent) — stores
+ * already created keep whatever the plugin attached; later stores skip it.
+ *
+ * @example
+ * const remove = addStorePlugin((api) => api.subscribe(log))
+ * remove() // e.g. in a test's afterEach, or on HMR dispose
+ */
+export function addStorePlugin(plugin: StorePlugin): () => void {
+  // Wrap so each registration has its own identity: removing one registration
+  // of a plugin added twice removes exactly that one (identity-based removal,
+  // never position-based — leak class A).
+  const entry: StorePlugin = (api) => plugin(api)
+  _plugins.push(entry)
+  return () => {
+    const i = _plugins.indexOf(entry)
+    if (i !== -1) _plugins.splice(i, 1)
+  }
+}
+
+/** Per-store options for the setup-function form of `defineStore`. */
+export interface StoreOptions {
+  /**
+   * Include this store in the SSR state payload (`window.__PYREON_STORE_STATE__`)
+   * and seed it from that payload on the client. Default `true`.
+   *
+   * Set `false` for anything that must never reach the HTML — a session,
+   * an auth token, per-user server-only data. Every store in the request
+   * registry is otherwise serialized into the page. An `ssr: false` store
+   * also ignores any incoming server snapshot, so a client-only store always
+   * starts from its own `setup()` values.
+   */
+  readonly ssr?: boolean
 }
 
 // ─── Schema-driven store types (Tier A.1 + A.2) ──────────────────────────────
@@ -225,6 +256,8 @@ export interface SchemaStoreConfig<S, U extends Record<string, unknown> = Record
    * Receives the schema issues + which operation failed.
    */
   readonly onValidationError?: (issues: SchemaIssue[], op: 'set' | 'patch' | 'init') => void
+  /** Include this store in the SSR state payload. Default `true` — see `StoreOptions.ssr`. */
+  readonly ssr?: boolean
 }
 
 /**
@@ -477,11 +510,13 @@ export function defineStore<S, U extends Record<string, unknown> = Record<string
 export function defineStore<T extends Record<string, unknown>>(
   id: string,
   setup: () => T,
+  options?: StoreOptions,
 ): () => StoreApi<T>
 
 export function defineStore(
   id: string,
   configOrSetup: unknown,
+  options?: StoreOptions,
 ): () => StoreApi<Record<string, unknown>> {
   // ── Schema-mode dispatch ────────────────────────────────────────────────
   // Discriminator: 2nd arg is an object with a `schema` field.
@@ -490,7 +525,7 @@ export function defineStore(
   }
 
   // ── Setup-fn mode (existing path, unchanged) ────────────────────────────
-  return defineSetupStore(id, configOrSetup as () => Record<string, unknown>)
+  return defineSetupStore(id, configOrSetup as () => Record<string, unknown>, options?.ssr !== false)
 }
 
 /**
@@ -596,7 +631,7 @@ function defineSchemaStore(
     }
 
     return { ...perFieldSignals, ...userResult }
-  })
+  }, config.ssr !== false)
 
   // ── Validated `set` + `patch` wrappers ──────────────────────────────────
   let cachedInner: StoreApi<Record<string, unknown>> | null = null
@@ -724,6 +759,7 @@ const _warnedRedefinedIds = new Set<string>()
 function defineSetupStore<T extends Record<string, unknown>>(
   id: string,
   setup: () => T,
+  ssr = true,
 ): () => StoreApi<T> {
   return function useStore(): StoreApi<T> {
     const registry = getRegistry()
@@ -1368,6 +1404,15 @@ function defineSetupStore<T extends Record<string, unknown>>(
       },
 
       reset() {
+        // With subscribers, route through the object-form `patch` so a
+        // multi-field reset emits ONE mutation (type 'patch') carrying every
+        // changed field — the plain batch below notified once PER field.
+        if (subscribers !== null && subscribers.size > 0) {
+          const initial: Record<string, unknown> = {}
+          for (let i = 0; i < signalKeys.length; i++) initial[signalKeys[i] as string] = initialVals[i]
+          api.patch(initial)
+          return
+        }
         batch(() => {
           for (let i = 0; i < signalKeys.length; i++) {
             ;(signalObjs[i] as SignalLike).set(initialVals[i])
@@ -1399,7 +1444,12 @@ function defineSetupStore<T extends Record<string, unknown>>(
         // inside setup() and plugin bodies (idempotent; see scope-ownership
         // regression tests).
         scope.stop()
-        getRegistry().delete(id)
+        // Identity-checked: after `resetStore(id)` + a re-create, the registry
+        // entry for `id` is a DIFFERENT, live store. A stale handle's
+        // `dispose()` must not evict it (the next `useStore()` would silently
+        // rebuild from setup and drop the live state).
+        const reg = getRegistry()
+        if (reg.get(id) === api) reg.delete(id)
       },
     }
 
@@ -1443,6 +1493,9 @@ function defineSetupStore<T extends Record<string, unknown>>(
       Object.defineProperty(api, '_setupFn', { value: setup, configurable: true })
     }
 
+    // Mark BEFORE `consumeHydration` so a client-only store ignores the server
+    // snapshot, and before any render can dehydrate it.
+    if (!ssr) markStoreSsrExcluded(api)
     registry.set(id, api)
     // Seed from server state if an SSR hydration snapshot is in flight (a single
     // null check when it isn't — see hydration.ts). Runs before any subscriber

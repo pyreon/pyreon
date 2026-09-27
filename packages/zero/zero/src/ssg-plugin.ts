@@ -63,6 +63,16 @@ import {
   renderModulePreloadLinks,
 } from './ssg-modulepreload'
 import { ensureNoindexMeta } from './not-found'
+import {
+  absoluteOgUrl,
+  injectOgMeta,
+  OG_DEFAULT_HEIGHT,
+  OG_DEFAULT_WIDTH,
+  ogMetaTags,
+  rasterizeOgSvg,
+} from './og-route-shared'
+import { createHash } from 'node:crypto'
+import { writeServiceWorker } from './pwa'
 import type { ZeroConfig } from './types'
 
 // M2.3 — Server-side perf-harness counter sink (same shape as
@@ -141,7 +151,7 @@ import { h } from "@pyreon/core"
 import { renderWithHead } from "@pyreon/head/ssr"
 import { renderPage } from "@pyreon/server"
 import { runWithRequestContext } from "@pyreon/runtime-server"
-import { collectRouteModes, createApp, resolveRenderModeForPath } from "@pyreon/zero/server"
+import { collectRouteModes, createApp, renderOgSvgFromLoaded, resolveRenderModeForPath } from "@pyreon/zero/server"
 
 // Phase 2 — route-level render modes. The plugin filters/validates the
 // resolved path list through THESE exports so build-time mode decisions
@@ -223,12 +233,19 @@ export default async function renderPath(path, options) {
   if (result.kind === "redirect") {
     return { kind: "redirect", from: path, to: result.to, status: result.status }
   }
+  // Route OG images: render the leaf route's \`og\` export to SVG with the
+  // loader data THIS render already produced (loaders run once per path).
+  // Rasterization happens in the outer plugin (Node + sharp).
+  const ogSvg = options?.isNotFound === true
+    ? null
+    : await renderOgSvgFromLoaded(routes, path, router._loaderData)
   return {
     kind: "html",
     appHtml: result.appHtml,
     head: result.head,
     loaderScript: result.loaderScript,
     routeModules: result.routeModules,
+    ogSvg,
   }
 }
 
@@ -510,6 +527,19 @@ async function autoDetectStaticPaths(
   const fileRoutes = i18n ? expandRoutesForLocales(baseRoutes, i18n) : baseRoutes
 
   const out: string[] = []
+  // Which route FILE produced each path. The dedup below exists for benign
+  // repeats from ONE route (a getStaticPaths returning a slug twice); two
+  // DIFFERENT files producing one URL is the collision `assertNoPathCollisions`
+  // guards — and deduping first had made that guard dead for every
+  // auto-detected path, so a static `posts/new.tsx` silently won over a
+  // `posts/[id].tsx` enumerating `new`.
+  const producers = new Map<string, Set<string>>()
+  const produce = (path: string, file: string): void => {
+    out.push(path)
+    let byFile = producers.get(path)
+    if (!byFile) producers.set(path, (byFile = new Set()))
+    byFile.add(file)
+  }
   const warnedDynamicFiles = new Set<string>()
   for (const r of fileRoutes) {
     if (r.isLayout || r.isError || r.isLoading || r.isNotFound) continue
@@ -518,7 +548,7 @@ async function autoDetectStaticPaths(
 
     // Static path — emit as-is.
     if (!/[:*]/.test(path)) {
-      out.push(path)
+      produce(path, r.filePath)
       continue
     }
 
@@ -549,7 +579,7 @@ async function autoDetectStaticPaths(
             `[Pyreon] getStaticPaths for "${path}" returned an entry without "params"`,
           )
         }
-        out.push(expandUrlPattern(path, entry.params))
+        produce(expandUrlPattern(path, entry.params), r.filePath)
       }
     } catch (error) {
       errors.push({ path, error })
@@ -561,6 +591,8 @@ async function autoDetectStaticPaths(
   // i18n route fan-out colliding — which otherwise renders the same
   // `dist/<path>/index.html` twice (wasted work + last-write race) and
   // feeds a duplicate `<url>` into the SSG→sitemap merge.
+  const collisions = [...producers].filter(([, byFile]) => byFile.size > 1).map(([p]) => p)
+  if (collisions.length > 0) throw new Error(formatPathCollisionError(collisions.sort()))
   const deduped = [...new Set(out)]
 
   // Always include "/" as a fallback if no static routes were found —
@@ -686,6 +718,15 @@ function detectPathCollisions(paths: readonly string[]): string[] {
     seen.add(p)
   }
   return [...duplicates].sort()
+}
+
+/**
+ * A `_redirects` file combining the app's own (from `public/`, already in
+ * dist) with the ones loaders produced at build time. The user's rules come
+ * first: static hosts apply the first matching rule.
+ */
+function mergeRedirectsFile(existing: string, generated: string): string {
+  return existing.trim() ? `${existing.trimEnd()}\n${generated}` : generated
 }
 
 /** Format a path-collision error message with actionable guidance. */
@@ -1427,6 +1468,8 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
               head: string
               loaderScript: string
               routeModules?: string[]
+              /** Route OG image SVG (leaf route declares `export const og`). */
+              ogSvg?: string | null
             }
           | { kind: 'redirect'; from: string; to: string; status: number }
         >
@@ -1610,6 +1653,21 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // (single-threaded mutations — same safety rationale as errors[]).
       const earlyHintHrefs = new Map<string, string[]>()
 
+      const ogWidth = config.routeOg?.width ?? OG_DEFAULT_WIDTH
+      const ogHeight = config.routeOg?.height ?? OG_DEFAULT_HEIGHT
+      const writeRouteOgImage = async (p: string, svg: string): Promise<string> => {
+        const png = await rasterizeOgSvg(svg, ogWidth, ogHeight)
+        const hash = createHash('sha256').update(png).digest('hex').slice(0, 10)
+        const slug = p.replace(/^\/+|\/+$/g, '').replace(/[^a-zA-Z0-9_-]+/g, '-') || 'index'
+        const dir = assetsDir ?? 'assets'
+        const rel = `${dir}/og/${slug}.${hash}.png`
+        const file = join(distDir, rel)
+        await mkdirOnce(dirname(file))
+        await writeFileAtomic(file, png)
+        const baseUrl = (config.base ?? '/').replace(/\/$/, '')
+        return ogMetaTags(absoluteOgUrl(`${baseUrl}/${rel}`, config.routeOg?.siteUrl), ogWidth, ogHeight)
+      }
+
       const renderOne = async (p: string): Promise<void> => {
         // M2.3 — emit `ssg.pathRender` per attempted render. Pair with
         // `ssg.pathWrite` / `ssg.pathRedirect` / `ssg.pathError` to see
@@ -1689,6 +1747,12 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           }
 
           let html = injectIntoTemplate(template, result)
+          // Route OG image: rasterize the SVG the entry rendered from the
+          // route's `og` export, write it as a content-hashed PNG, and point
+          // this page's og:image at it.
+          if (result.ogSvg) {
+            html = injectOgMeta(html, await writeRouteOgImage(p, result.ogSvg))
+          }
           // Phase 6 — opt-in page enhancements (pure injections; see
           // ssg-enhance.ts).
           const specMode = config.ssg?.speculationRules
@@ -2063,10 +2127,14 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       if (redirects.length > 0 && config.ssg?.emitRedirects !== false) {
         // M2.1 — atomic so an interrupted build doesn't leave a half-
         // written `_redirects` file that adapters / static hosts misparse.
-        await writeFileAtomic(
-          join(distDir, '_redirects'),
-          renderNetlifyRedirects(redirects),
-        )
+        // A `_redirects` the app ships in `public/` is already in dist (Vite
+        // copied it). Overwriting it silently dropped every hand-written
+        // rule the moment one loader threw `redirect()`. Keep the user's
+        // rules FIRST — hosts apply the first match.
+        const redirectsPath = join(distDir, '_redirects')
+        const existing = await readFile(redirectsPath, 'utf-8').catch(() => '')
+        const generated = renderNetlifyRedirects(redirects)
+        await writeFileAtomic(redirectsPath, mergeRedirectsFile(existing, generated))
         await writeFileAtomic(
           join(distDir, '_redirects.json'),
           renderVercelRedirectsJson(redirects),
@@ -2113,6 +2181,17 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // into `.vercel/output/static/`) copies only publishable output — never
       // the internal `.zero-ssg-server` bundle. Other adapters ignore this dir.
       await rm(ssrOutDir, { recursive: true, force: true })
+
+      // PWA — the output is final (every page prerendered, internal SSR
+      // bundle removed), so the precache list is exactly what ships. Written
+      // BEFORE adapter.build so staging adapters copy the worker along.
+      if (config.pwa && config.mode === 'ssg') {
+        await writeServiceWorker(distDir, config.pwa, {
+          base: config.base ?? '/',
+          assetsDir: assetsDir ?? 'assets',
+          includeHtml: true,
+        })
+      }
 
       const adapter = resolveAdapter(config)
       let adapterFailed = false
@@ -2245,6 +2324,7 @@ export const _internal = {
   resolvePaths,
   needsSpaFallbackShell,
   autoDetectStaticPaths,
+  mergeRedirectsFile,
   writeRouteOutputs,
   injectCanonical,
   joinBaseAndPath,

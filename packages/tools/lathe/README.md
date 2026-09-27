@@ -625,6 +625,13 @@ repository root), or the one named by `--config`. Every key:
 | `baseUrl` | `servers[0].url` | must be an absolute literal to reach native |
 | `strictNative` | `false` | exit 1 when a native module does not lower |
 | `projects` | — | several specs in one run |
+| `operations` | — | per-operation `hook` (name or `false`), `responseValidation`, `pagination` |
+| `filters` | — | `include` / `exclude` operation matchers (tag, path glob, operationId, method) |
+| `patches` | — | RFC 6902 `add` / `replace` / `remove` corrections applied to the spec first |
+| `naming` | — | `operation` / `model` / `file` / `hook` rename functions |
+| `format` | — | `(code, path) => string \| Promise<string>`, run before write and before `check` |
+
+See [Customizing the output](#customizing-the-output) and [Your own plugins](#your-own-plugins).
 
 `@pyreon/config`'s `LatheSection` is the same type, held identical by a
 compile-time test, so `defineConfig` rejects a misspelt plugin.
@@ -829,6 +836,65 @@ a project that wants browsable data components without a workbench selects
 `target: 'multiplatform'` is additive on top of whichever of these you picked —
 it adds the native LAYOUT for `client`/`queries`, so asking for `schemas` alone
 gets you schemas alone on both targets.
+
+### Your own plugins
+
+`plugins` also takes plugins made with `definePlugin` — third-party emitters and
+document transforms, over the same IR and writer the built-ins use:
+
+```ts
+import { definePlugin, SourceFile } from '@pyreon/lathe'
+
+export const pathTable = definePlugin({
+  name: 'path-table',
+  emit({ doc }) {
+    const f = new SourceFile('extras/paths.ts')
+    for (const op of doc.operations) f.line(`export const ${op.id}Path = ${JSON.stringify(op.path)}`)
+    return [f]
+  },
+})
+
+// pyreon.config.ts
+export default { lathe: { input: './openapi.yaml', plugins: ['schemas', 'client', pathTable] } }
+```
+
+Hooks: `setup({ config })`, `transformDocument(doc, { config, note })` (return a
+modified copy — the document is frozen) and `emit({ doc, config, reach, files,
+banner })`. A throw names the plugin and the hook; each hook runs twice and must
+agree with itself, so a timestamp cannot make `lathe check` flap; plugin files
+are listed in the manifest (pruned when dropped), compared by `check`, passed
+to `format`, and may not collide with a built-in's path. `requires` turns on the
+built-ins a plugin's files import; `sideEffects: true` on a file lists it in the
+emitted `package.json`.
+
+### Customizing the output
+
+```ts
+lathe: {
+  input: './stripe.yaml',
+  // Generate a subset. Unreached models (and notes about them) go too.
+  filters: {
+    include: [{ tag: ['Customers', 'Charges'] }, { path: '/v1/refunds/**', method: 'get' }],
+    exclude: { operationId: '*Deprecated*' },
+  },
+  // Correct the spec before it is read — survives every `lathe pull`.
+  patches: [{ op: 'replace', path: '/components/schemas/Customer/properties/email/nullable', value: true }],
+  // Per operation: rename or drop the hook, set validation, declare paging.
+  operations: {
+    listCustomers: { hook: 'useCustomers', responseValidation: 'off' },
+    deleteCustomer: { hook: false },
+  },
+  // Rename what Lathe generates; each function gets Lathe's choice as `default`.
+  naming: { model: ({ default: name }) => `${name}Dto`, file: ({ default: stem }) => `${stem}-api` },
+  // Your formatter, applied before write AND before `check` compares.
+  format: (code, path) => prettier.format(code, { filepath: path }),
+}
+```
+
+Every one of these fails loudly rather than silently doing nothing: a filter
+matcher that selects no operation, a patch whose target moved, an
+`operations` key that names no operation, a name that is invalid or collides
+— each is an error that says which and suggests the nearest match.
 
 ### Several specs, several outputs
 

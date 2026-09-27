@@ -62,7 +62,7 @@ function nodeToWidgets(node: DocNode): CardWidget[] {
       const href = sanitizeHref(p.href as string)
       const text = esc(getTextContent(node.children))
       widgets.push({
-        textParagraph: { text: `<a href="${esc(href)}">${text}</a>` },
+        textParagraph: { text: href ? `<a href="${esc(href)}">${text}</a>` : text },
       })
       break
     }
@@ -106,7 +106,7 @@ function nodeToWidgets(node: DocNode): CardWidget[] {
         .filter((c): c is DocNode => typeof c !== 'string')
         .map((item, i) => {
           const prefix = ordered ? `${i + 1}.` : '•'
-          return `${prefix} ${getTextContent(item.children)}`
+          return `${prefix} ${esc(getTextContent(item.children))}`
         })
         .join('\n')
       widgets.push({
@@ -137,6 +137,10 @@ function nodeToWidgets(node: DocNode): CardWidget[] {
     case 'button': {
       const href = sanitizeHref(p.href as string)
       const text = getTextContent(node.children)
+      if (!href) {
+        widgets.push({ textParagraph: { text: esc(text) } })
+        break
+      }
       widgets.push({
         buttonList: {
           buttons: [

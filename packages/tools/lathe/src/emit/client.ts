@@ -20,7 +20,7 @@
 import { deferredTargets, reachableModels, topoSortModels } from '../core/graph'
 import { collectRefNames } from '../core/walk'
 import type { IrDocument, IrOperation, IrType } from '../core/ir'
-import { assignNames, ident, propKey, tagFile, typeIdent } from '../core/naming'
+import { assignNames, hookOf, ident, propKey, tagFile, typeIdent } from '../core/naming'
 import { byCodeUnit } from '../core/order'
 import {
   CLIENT_PACKAGE,
@@ -411,6 +411,9 @@ export function byTag(doc: IrDocument): Map<string, IrOperation[]> {
   const byFile = new Map<string, string>()
   for (const op of doc.operations) if (op.tag !== UNTAGGED) byFile.set(tagFile(op.tag), op.tag)
   const keyOf = (op: IrOperation): string => {
+    // An explicit output group (`naming.file`, a plugin) wins; it is already
+    // a file stem, so `tagFile(group) === group`.
+    if (op.group !== undefined) return op.group
     if (op.tag !== UNTAGGED) return op.tag
     const group = pathGroup(op.path, common)
     return byFile.get(tagFile(group)) ?? group
@@ -484,7 +487,9 @@ export { bodyArg } from './operation-types'
  * asking this same predicate.
  */
 export function hasNativeDataComponent(op: IrOperation): boolean {
-  return !isMutation(op) && typedResponse(op) !== undefined
+  // `hook: false` turns off query generation for the operation on EVERY
+  // target — the native data component is that target's query hook.
+  return !isMutation(op) && op.hook !== false && typedResponse(op) !== undefined
 }
 
 /** Does this operation mutate? Decides query vs mutation binding. */
@@ -603,6 +608,11 @@ function endpointDecl(op: IrOperation, validator: ValidatorName, models: ModelTy
     }
   }
   if (kind !== undefined) entries.push(`responseType: ${q(kind)}`)
+  // Per-operation validation (`operations.<id>.responseValidation`). Only
+  // meaningful where there is a schema to validate against.
+  if (op.validate !== undefined && entries.some((e) => e.startsWith('response:'))) {
+    entries.push(`validate: ${q(op.validate)}`)
+  }
   const styles = op.queryParams.flatMap((p) => {
     const style = runtimeQueryStyle(p, models)
     return style ? [`${propKey(p.name)}: ${style}`] : []
@@ -755,11 +765,19 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
   // by its path, so `op.tag` is not the file.
   const groupOf = new Map<string, string>()
   for (const [group, list] of byTag(doc)) for (const o of list) groupOf.set(o.id, group)
-  for (const [tag, ops] of byTag(doc)) {
+  for (const [tag, all] of byTag(doc)) {
+    // Only operations that GET a hook: `operations.<id>.hook: false` (or a
+    // `naming.hook` returning `false`) keeps the endpoint and drops the hook.
+    const ops = all.filter((o) => hookOf(o) !== undefined)
+    if (ops.length === 0) continue
     const path = `queries/${tagFile(tag)}.ts`
     const f = new SourceFile(path)
     const epPath = `endpoints/${tagFile(tag)}.ts`
-    f.import(relativeSpecifier(path, epPath), ...ops.map((o) => o.id))
+    const local = new Set(ops.map((o) => o.id))
+    for (const op of ops.filter(isMutation)) {
+      for (const target of invalidationTargets(op, queryOps)) if (groupOf.get(target.id) === tag) local.add(target.id)
+    }
+    f.import(relativeSpecifier(path, epPath), ...local)
     const usesQuery = ops.some((o) => !isMutation(o))
     const usesMutation = ops.some((o) => isMutation(o))
     if (usesQuery) {
@@ -783,7 +801,7 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
     }
 
     for (const op of ops) {
-      const hook = `use${typeIdent(op.id)}`
+      const hook = hookOf(op) as string
       // Every type below is DERIVED from the endpoint declaration, never
       // re-rendered from the spec — the declaration is the one source.
       const data = `Awaited<ReturnType<typeof ${op.id}>>`

@@ -24,13 +24,13 @@ const doc = (content: string) =>
 
 describe('chat renderers escape user text (injection class)', () => {
   it('google-chat: literal < > & in user text are XML-escaped, not raw', async () => {
-    const out = (await render(doc('a < b & c > d'), 'google-chat' as never)) as string
+    const out = (await render(doc('a < b & c > d'), 'google-chat')) as string
     expect(out).not.toMatch(/a < b & c > d/)
     expect(out).toContain('a &lt; b &amp; c &gt; d')
   })
 
   it('google-chat: a crafted </text> style payload cannot break out of the card markup', async () => {
-    const out = (await render(doc('x<b>bold-injection</b>y'), 'google-chat' as never)) as string
+    const out = (await render(doc('x<b>bold-injection</b>y'), 'google-chat')) as string
     expect(out, 'tag chars from USER TEXT must be entity-escaped').not.toContain(
       '<b>bold-injection</b>',
     )
@@ -43,13 +43,13 @@ describe('chat renderers escape user text (injection class)', () => {
     // `<https://evil|login>` injects a fake link. The formatting toggles
     // (* _ ~) have NO escape syntax in mrkdwn — a documented platform
     // limitation, deliberately NOT "fixed" with zero-width-char hacks.
-    const out = JSON.stringify(await render(doc('ping <!channel> now'), 'slack' as never))
+    const out = JSON.stringify(await render(doc('ping <!channel> now'), 'slack'))
     expect(out).not.toContain('<!channel>')
     expect(out).toContain('&lt;!channel&gt;')
   })
 
   it('teams: user text with markup chars round-trips inside VALID Adaptive Card JSON', async () => {
-    const raw = (await render(doc('a < b & c'), 'teams' as never)) as string
+    const raw = (await render(doc('a < b & c'), 'teams')) as string
     // The output must stay structurally valid JSON with the user's literal
     // text intact — user content can never corrupt the card structure.
     const card = JSON.parse(raw) as Record<string, unknown>

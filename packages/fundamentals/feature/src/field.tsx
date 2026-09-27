@@ -41,11 +41,19 @@ export interface FieldProps<TValues extends Record<string, unknown>> {
 function inputTypeFor(info: FieldInfo): string {
   if (info.type === 'number') return 'number'
   if (info.type === 'date') return 'date'
-  // `email`/`url` are not distinguishable from `string` through duck-typed
-  // introspection, so text is the honest default — an author overrides via
-  // `type` rather than the component guessing from the field NAME, which would
-  // silently mistype a field called `emailVerified`.
+  // `email` / `url` come from the schema's own string FORMAT
+  // (`z.string().email()` / `z.email()`), never from the field NAME — guessing
+  // from the name would silently mistype a field called `emailVerified`.
+  if (info.format === 'email') return 'email'
+  if (info.format === 'url') return 'url'
   return 'text'
+}
+
+/** A Date (or ISO string) → the `yyyy-mm-dd` an `<input type="date">` shows. */
+function toDateInputValue(v: unknown): string {
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? '' : v.toISOString().slice(0, 10)
+  if (typeof v === 'string') return v.slice(0, 10)
+  return ''
 }
 
 /**
@@ -77,13 +85,56 @@ export function createFieldComponent<TValues extends Record<string, unknown>>(
     }
 
     const form = props.form as unknown as {
-      register: (n: string, o?: { type: 'checkbox' }) => Record<string, unknown>
+      register: (n: string, o?: { type: 'checkbox' | 'number' }) => Record<string, unknown>
       labelProps: (n: string) => Record<string, unknown>
       errorProps: (n: string) => Record<string, unknown>
-      fields: Record<string, { error: () => unknown; touched: () => boolean }>
+      fields: Record<
+        string,
+        {
+          error: () => unknown
+          touched: () => boolean
+          value: () => unknown
+          setValue: (v: unknown) => void
+        }
+      >
     }
-    const state = form.fields[info.name]
+    // Defined whenever we get past `form.register(name)` below, which throws
+    // the actionable unknown-field error first.
+    const state = form.fields[info.name]!
     const name = info.name
+    const inputType = props.type ?? inputTypeFor(info)
+    // Required is conveyed PROGRAMMATICALLY, not only by the visual " *" (which
+    // a screen reader reads as "star", if at all). `aria-required` rather than
+    // native `required`: the native attribute makes the BROWSER block the
+    // submit event with its own bubble, so the form's validation and error
+    // UI would never run.
+    const a11y = info.optional ? {} : { 'aria-required': 'true' }
+
+    // Bind the control so the VALUE TYPE matches the schema:
+    //  - number → `register(name, { type: 'number' })` (valueAsNumber). A plain
+    //    `register(name)` stored the input's string ("42"), and `z.number()`
+    //    rejected every submit.
+    //  - date → a Date. `z.date()` rejects the `yyyy-mm-dd` string the input
+    //    produces, so the value is converted in and out here.
+    const textBinding = (): Record<string, unknown> => {
+      if (inputType === 'number') {
+        return { ...form.register(name, { type: 'number' }), inputmode: 'decimal' }
+      }
+      if (inputType === 'date' && info.type === 'date') {
+        const base = form.register(name)
+        return {
+          ...base,
+          value: () => toDateInputValue(state.value()),
+          onInput: (e: Event) => {
+            const raw = (e.target as HTMLInputElement).value
+            // `new Date('yyyy-mm-dd')` is UTC midnight, and `toDateInputValue`
+            // reads it back in UTC — a stable round trip in every timezone.
+            state.setValue(raw ? new Date(raw) : undefined)
+          },
+        }
+      }
+      return form.register(name)
+    }
 
     const control =
       info.type === 'boolean'
@@ -97,6 +148,7 @@ export function createFieldComponent<TValues extends Record<string, unknown>>(
               'select',
               {
                 ...form.register(name),
+                ...a11y,
                 ...(props.inputClass !== undefined ? { class: props.inputClass } : {}),
               },
               (props.options ?? info.enumValues ?? []).map((v) =>
@@ -104,8 +156,9 @@ export function createFieldComponent<TValues extends Record<string, unknown>>(
               ),
             )
           : h('input', {
-              type: props.type ?? inputTypeFor(info),
-              ...form.register(name),
+              type: inputType,
+              ...textBinding(),
+              ...a11y,
               ...(props.placeholder !== undefined ? { placeholder: props.placeholder } : {}),
               ...(props.inputClass !== undefined ? { class: props.inputClass } : {}),
             })
@@ -126,8 +179,8 @@ export function createFieldComponent<TValues extends Record<string, unknown>>(
         // short-circuit while untouched and never subscribe to `error`, so a
         // validator writing after a submit click would not repaint.
         () => {
-          const touched = state?.touched() ?? false
-          const err = state?.error()
+          const touched = state.touched()
+          const err = state.error()
           return touched && err ? String(err) : ''
         },
       ),
