@@ -6,11 +6,11 @@
 // to change the output, change the spec or the emitter.
 
 import { api } from '../client'
-import { Author } from '../schemas'
+import { Author } from '../schemas/Author'
 import { s } from '@pyreon/validate'
 
 /**
  * Every author.
  * `GET /authors`
  */
-export const listAuthors = api.endpoint('GET /authors', { response: s.array(Author) })
+export const listAuthors = /* @__PURE__ */ api.endpoint('GET /authors', { response: /* @__PURE__ */ s.array(Author) })

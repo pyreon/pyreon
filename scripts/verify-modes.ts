@@ -160,7 +160,10 @@ function assertFileAbsent(path: string): void {
 /** Inverse content gate — NO file in `dir` (recursive) may contain `needle`. */
 function assertSomeFileInDirContains(dir: string, needle: string): void {
   if (!existsSync(dir)) throw new Error(`expected ${dir} to exist`)
-  for (const entry of readdirSync(dir, { withFileTypes: true, recursive: true })) {
+  for (const entry of readdirSync(dir, {
+    withFileTypes: true,
+    recursive: true,
+  })) {
     if (!entry.isFile()) continue
     if (readFileSync(join(entry.parentPath ?? dir, entry.name), 'utf-8').includes(needle)) return
   }
@@ -183,7 +186,9 @@ function assertFilesByteIdentical(a: string, b: string): void {
   const ba = readFileSync(a)
   const bb = readFileSync(b)
   if (!ba.equals(bb)) {
-    throw new Error(`expected ${a} and ${b} to be byte-identical (lengths ${ba.length} vs ${bb.length})`)
+    throw new Error(
+      `expected ${a} and ${b} to be byte-identical (lengths ${ba.length} vs ${bb.length})`,
+    )
   }
 }
 
@@ -212,7 +217,9 @@ function assertSsrFunctionRenders(
   const funcPath = join(distDir, funcRelPath)
   assertFileExists(funcPath)
   const invoker = join(REPO_ROOT, 'scripts', '_invoke-ssr-function.mjs')
-  const result = spawnSync('node', [invoker, funcPath, style], { encoding: 'utf-8' })
+  const result = spawnSync('node', [invoker, funcPath, style], {
+    encoding: 'utf-8',
+  })
   if (result.status !== 0) {
     throw new Error(
       `${funcRelPath}: emitted ${style} function failed to server-render.\n${result.stderr || result.stdout || '(no output)'}`,
@@ -221,7 +228,8 @@ function assertSsrFunctionRenders(
 }
 
 function throwIfProblems(label: string, problems: string[]): void {
-  if (problems.length > 0) throw new Error(`[${label}] adapter output is invalid:\n  ${problems.join('\n  ')}`)
+  if (problems.length > 0)
+    throw new Error(`[${label}] adapter output is invalid:\n  ${problems.join('\n  ')}`)
 }
 
 function assertFileDoesNotExist(path: string): void {
@@ -311,7 +319,8 @@ function assertDynProbeCollapsed(distDir: string): void {
   // backtick-quoted strings each CONTAINING a `pyr-` prefix.
   // The regular `_rsCollapse` emit takes only TWO class args
   // (light/dark); a 4-element class array is unique to `_rsCollapseDyn`.
-  const classArray = /\[`[^`]*pyr-[^`]*`,\s*`[^`]*pyr-[^`]*`,\s*`[^`]*pyr-[^`]*`,\s*`[^`]*pyr-[^`]*`\]/.test(src)
+  const classArray =
+    /\[`[^`]*pyr-[^`]*`,\s*`[^`]*pyr-[^`]*`,\s*`[^`]*pyr-[^`]*`,\s*`[^`]*pyr-[^`]*`\]/.test(src)
   // Value dispatcher — `()=>+!cond` is the minifier's canonical
   // transform of `() => (cond) ? 0 : 1` (both produce 0 for truthy
   // cond, 1 for falsy: `+!true=0, +!false=1`). The regular `_rsCollapse`
@@ -390,9 +399,7 @@ function assertDynProbeCollapsed(distDir: string): void {
 function assertCrossPackageButtonCollapsed(distDir: string): void {
   const assetsDir = join(distDir, 'assets')
   if (!existsSync(assetsDir)) throw new Error(`expected ${assetsDir} to exist`)
-  const buttonChunk = readdirSync(assetsDir).find(
-    (f) => /^button-[A-Za-z0-9_-]+\.js$/.test(f),
-  )
+  const buttonChunk = readdirSync(assetsDir).find((f) => /^button-[A-Za-z0-9_-]+\.js$/.test(f))
   if (!buttonChunk) {
     throw new Error(
       `expected a \`button-*.js\` route chunk under ${assetsDir} ` +
@@ -521,7 +528,11 @@ interface ChunkGraphSpec {
    * values. Identifier-renaming-resistant; filename basename is the
    * Vite-natural per-dynamic-import chunk shape.
    */
-  mustHaveChunks: { name: string; fingerprints: string[]; maxGzippedKb?: number }[]
+  mustHaveChunks: {
+    name: string
+    fingerprints: string[]
+    maxGzippedKb?: number
+  }[]
   /**
    * Strings that must NOT appear in ANY `dist/assets/*.js` chunk.
    * Use this to assert `hydrate: 'never'` islands genuinely ship zero
@@ -764,8 +775,16 @@ const MATRIX: Cell[] = [
       // handler-stripping transform is what keeps it out). Plus: no `node:*`
       // import in any client chunk.
       assertSomeFileInDirContains(join(dist, 'server'), 'ACTION_HANDLER_SENTINEL_z3k8')
+      assertFileContains(
+        join(dist, 'server', 'entry-server.js'),
+        'ACTION_SERVER_ONLY_SENTINEL_z4k1',
+      )
       assertClientClean(join(dist, 'client'), {
-        forbiddenSentinels: ['SERVER_ONLY_SENTINEL_q7x9', 'ACTION_HANDLER_SENTINEL_z3k8'],
+        forbiddenSentinels: [
+          'SERVER_ONLY_SENTINEL_q7x9',
+          'ACTION_HANDLER_SENTINEL_z3k8',
+          'ACTION_SERVER_ONLY_SENTINEL_z4k1',
+        ],
       })
     },
   },
@@ -780,27 +799,39 @@ const MATRIX: Cell[] = [
     base: '/sub/',
     smoke: async (dist) => {
       await withNodeServer(dist, async (origin) => {
-        const get = (p: string, init?: RequestInit) => fetch(origin + p, { redirect: 'manual', ...init })
+        const get = (p: string, init?: RequestInit) =>
+          fetch(origin + p, { redirect: 'manual', ...init })
         const about = await get('/sub/about')
         const html = await about.text()
         if (about.status !== 200 || !html.includes('about-page')) {
           throw new Error(`/sub/about: expected the about page, got ${about.status}`)
         }
-        if (!html.includes('href="/sub/about"')) throw new Error('/sub/about: links are not base-prefixed')
+        if (!html.includes('href="/sub/about"'))
+          throw new Error('/sub/about: links are not base-prefixed')
         const script = /src="(\/sub\/assets\/[^"]+\.js)"/.exec(html)?.[1]
         if (!script) throw new Error('/sub/about: no base-prefixed module script')
         const asset = await get(script)
-        if (asset.status !== 200 || !String(asset.headers.get('content-type')).includes('javascript')) {
-          throw new Error(`${script}: expected JavaScript, got ${asset.status} ${asset.headers.get('content-type')}`)
+        if (
+          asset.status !== 200 ||
+          !String(asset.headers.get('content-type')).includes('javascript')
+        ) {
+          throw new Error(
+            `${script}: expected JavaScript, got ${asset.status} ${asset.headers.get('content-type')}`,
+          )
         }
         const api = await get('/sub/api/posts')
-        if (api.status !== 200 || !String(api.headers.get('content-type')).includes('application/json')) {
+        if (
+          api.status !== 200 ||
+          !String(api.headers.get('content-type')).includes('application/json')
+        ) {
           throw new Error(`/sub/api/posts: expected JSON, got ${api.status}`)
         }
         const guarded = await get('/sub/_pyreon/data?path=/guarded')
-        if (guarded.status !== 401) throw new Error(`/sub/_pyreon/data?path=/guarded: expected 401, got ${guarded.status}`)
+        if (guarded.status !== 401)
+          throw new Error(`/sub/_pyreon/data?path=/guarded: expected 401, got ${guarded.status}`)
         const missing = await get('/sub/definitely-not-a-route')
-        if (missing.status !== 404) throw new Error(`unknown route under base: expected 404, got ${missing.status}`)
+        if (missing.status !== 404)
+          throw new Error(`unknown route under base: expected 404, got ${missing.status}`)
       })
     },
   },
@@ -853,8 +884,15 @@ const MATRIX: Cell[] = [
       // A4 — the Build Output API v3 contract (config.json routes, every
       // routed function exists, .vc-config.json runtime not past EOL) and
       // the function run from a copy OUTSIDE the repo, as Vercel uploads it.
-      throwIfProblems('vercel', vercelOutputProblems(join(exampleDir, '.vercel', 'output'), loadRuntimeEol()))
-      invokeIsolated(join(exampleDir, '.vercel', 'output', 'functions', 'ssr.func'), 'index.js', 'vercel')
+      throwIfProblems(
+        'vercel',
+        vercelOutputProblems(join(exampleDir, '.vercel', 'output'), loadRuntimeEol()),
+      )
+      invokeIsolated(
+        join(exampleDir, '.vercel', 'output', 'functions', 'ssr.func'),
+        'index.js',
+        'vercel',
+      )
     },
   },
   {
@@ -982,10 +1020,7 @@ const MATRIX: Cell[] = [
       // so the framework's auto-inject is what reaches dist.
       // Bisect-verifiable: stub `ensureNoindexMeta` in not-found.ts to
       // `return html` — this assertion fails.
-      assertFileContains(
-        join(dist, '404.html'),
-        '<meta name="robots" content="noindex, nofollow">',
-      )
+      assertFileContains(join(dist, '404.html'), '<meta name="robots" content="noindex, nofollow">')
     },
   },
   {
@@ -1234,9 +1269,7 @@ const MATRIX: Cell[] = [
       // testid baked into the vocab-completion route — proves the
       // Scroll/Modal/remote-Image primitives bundled on web
       if (!allBundled.includes('vocab-page')) {
-        throw new Error(
-          `[native-tasks-web × spa] expected bundle to contain testid "vocab-page"`,
-        )
+        throw new Error(`[native-tasks-web × spa] expected bundle to contain testid "vocab-page"`)
       }
       // testid baked into the Phase-2 lifecycle route — proves the
       // real Suspense/ErrorBoundary screen bundled on web
@@ -1451,14 +1484,10 @@ const MATRIX: Cell[] = [
       const fontHead = fontProbeHtml.slice(0, fontProbeHtml.indexOf('</head>'))
       // Both preloads present.
       if (!fontHead.includes('href="/fonts/display-bold.woff2"')) {
-        throw new Error(
-          `font-preload-probe: head missing preload for /fonts/display-bold.woff2`,
-        )
+        throw new Error(`font-preload-probe: head missing preload for /fonts/display-bold.woff2`)
       }
       if (!fontHead.includes('href="https://cdn.example.com/brand.woff2"')) {
-        throw new Error(
-          `font-preload-probe: head missing preload for cross-origin brand font`,
-        )
+        throw new Error(`font-preload-probe: head missing preload for cross-origin brand font`)
       }
       // rel + as attrs.
       if (!fontHead.includes('rel="preload"')) {
@@ -1476,13 +1505,10 @@ const MATRIX: Cell[] = [
       // crossorigin — CSS Fonts spec requires it. Without it the
       // browser double-fetches (preload + CORS refetch).
       if (!fontHead.includes('crossorigin="anonymous"')) {
-        throw new Error(
-          `font-preload-probe: preload missing crossorigin="anonymous"`,
-        )
+        throw new Error(`font-preload-probe: preload missing crossorigin="anonymous"`)
       }
       // Dedup contract: the duplicate href emits ONE preload, not two.
-      const displayBoldMatches =
-        fontHead.match(/href="\/fonts\/display-bold\.woff2"/g) ?? []
+      const displayBoldMatches = fontHead.match(/href="\/fonts\/display-bold\.woff2"/g) ?? []
       if (displayBoldMatches.length !== 1) {
         throw new Error(
           `font-preload-probe: dedup broken — found ${displayBoldMatches.length} preloads for the same href; expected 1`,
@@ -1867,24 +1893,15 @@ const MATRIX: Cell[] = [
       // Home — useHead({ title: 'Blog', meta: [{ name: 'description', … }] })
       assertFileContains(join(dist, 'index.html'), '<title>Blog</title>')
       assertFileContains(join(dist, 'index.html'), 'name="description"')
-      assertFileContains(
-        join(dist, 'index.html'),
-        'A statically-rendered Pyreon Zero blog.',
-      )
+      assertFileContains(join(dist, 'index.html'), 'A statically-rendered Pyreon Zero blog.')
 
       // About — distinct title + description (proves per-route resolution)
       assertFileContains(join(dist, 'about', 'index.html'), '<title>About</title>')
       assertFileContains(join(dist, 'about', 'index.html'), 'About this blog.')
 
       // Blog index — distinct title + description
-      assertFileContains(
-        join(dist, 'blog', 'index.html'),
-        '<title>All posts</title>',
-      )
-      assertFileContains(
-        join(dist, 'blog', 'index.html'),
-        'Every post on this blog, newest first.',
-      )
+      assertFileContains(join(dist, 'blog', 'index.html'), '<title>All posts</title>')
+      assertFileContains(join(dist, 'blog', 'index.html'), 'Every post on this blog, newest first.')
 
       // Dynamic [slug] — title + description + 3 OG tags PER prerendered
       // post. The OG-tag triplet is the killer assertion: it's the
@@ -1959,9 +1976,21 @@ const MATRIX: Cell[] = [
       // single-byte drift.
       assertChunkGraph(dist, {
         mustHaveChunks: [
-          { name: 'Counter', fingerprints: ['counter-inc', 'counter-value'], maxGzippedKb: 5 },
-          { name: 'IdleClock', fingerprints: ['idle-clock-time'], maxGzippedKb: 5 },
-          { name: 'VisibleComments', fingerprints: ['visible-comments-list'], maxGzippedKb: 5 },
+          {
+            name: 'Counter',
+            fingerprints: ['counter-inc', 'counter-value'],
+            maxGzippedKb: 5,
+          },
+          {
+            name: 'IdleClock',
+            fingerprints: ['idle-clock-time'],
+            maxGzippedKb: 5,
+          },
+          {
+            name: 'VisibleComments',
+            fingerprints: ['visible-comments-list'],
+            maxGzippedKb: 5,
+          },
           {
             name: 'MobileMenu',
             fingerprints: ['mobile-menu-toggle', 'mobile-menu-state'],

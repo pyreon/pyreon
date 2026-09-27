@@ -11,7 +11,7 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { resolveConfig, type ClientName } from '../../core/config'
+import { resolveConfig, type ClientName, type ResponseValidation } from '../../core/config'
 import { generate } from '../../core/generate'
 
 /** Every client that emits the generated endpoint runtime. `pyreon` does not. */
@@ -103,14 +103,19 @@ components:
  * is baked into `client.ts` as a literal, which is the whole reason it reaches
  * PMTC on the pyreon path, so it cannot be injected afterwards.
  */
-export function writeGenerated(client: ClientName, port = 0): string {
-  const dir = join(ROOT, `${client}-${port}`)
+export function writeGenerated(
+  client: ClientName,
+  port = 0,
+  responseValidation: ResponseValidation = 'strict',
+): string {
+  const dir = join(ROOT, `${client}-${port}${responseValidation === 'strict' ? '' : `-${responseValidation}`}`)
   rmSync(dir, { recursive: true, force: true })
   created.add(dir)
   const cfg = resolveConfig({
     input: 'x',
     client,
     plugins: ['schemas', 'client', 'mocks'],
+    responseValidation,
   })
   const { files } = generate(SPEC.replace('PORT', String(port)), cfg)
   for (const f of files) {

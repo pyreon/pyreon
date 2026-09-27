@@ -6,7 +6,8 @@
  * of the emitted route table, and the faker factory is imported, called many
  * times and validated against the schema emitted by the same run.
  */
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, rmSync } from 'node:fs'
+import { writeTree } from './helpers/write-tree'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveConfig } from '../core/config'
@@ -92,7 +93,7 @@ beforeAll(async () => {
   const dir = join(ROOT, 'pyreon')
   mkdirSync(dir, { recursive: true })
   const cfg = resolveConfig({ input: 'x', validator: 'pyreon', plugins: ['schemas', 'faker'] })
-  for (const f of generate(SPEC, cfg).files) if (f.path.endsWith('.ts')) writeFileSync(join(dir, f.path), f.contents)
+  writeTree(dir, generate(SPEC, cfg).files, (p) => p.endsWith('.ts'))
   ;({ createBounds, seedFaker } = (await import(join(dir, 'faker.ts'))) as {
     createBounds: typeof createBounds
     seedFaker: typeof seedFaker

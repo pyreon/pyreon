@@ -166,6 +166,21 @@ export const ZERO_FEATURE_COVERAGE: Record<string, Coverage> = {
     spec: 'e2e/production-truth.shared.ts',
     evidence: 'app middleware 401s a server-action POST before the handler runs',
   },
+  Submissions: {
+    kind: 'e2e',
+    spec: 'e2e/ssr-node.spec.ts',
+    evidence: 'with JavaScript: submits via fetch, no navigation, loaders revalidate',
+  },
+  'Calling an action directly': {
+    kind: 'e2e',
+    spec: 'e2e/production-truth.shared.ts',
+    evidence: 'server-action POST before the handler runs',
+  },
+  Security: {
+    kind: 'e2e',
+    spec: 'e2e/ssr-node.spec.ts',
+    evidence: 'a cross-origin form post is rejected before the handler runs',
+  },
   'API Routes': {
     kind: 'e2e',
     spec: 'e2e/ssr-node.spec.ts',
@@ -205,6 +220,16 @@ export const ZERO_FEATURE_COVERAGE: Record<string, Coverage> = {
     kind: 'e2e',
     spec: 'e2e/zero-islands.spec.ts',
     evidence: 'hydrates with no manual wiring',
+  },
+  'Dev runs the production request pipeline': {
+    kind: 'e2e',
+    spec: 'e2e/cpa-dash.spec.ts',
+    evidence: 'dev runs the same pipeline (`pageMethodResponse`)',
+  },
+  '`zero preview`': {
+    kind: 'e2e',
+    spec: 'packages/zero/cli/src/commands/preview.test.ts',
+    evidence: 'startRunner launches the runner on the requested PORT (shipped entry)',
   },
   'Base Path': {
     kind: 'e2e',

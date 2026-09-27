@@ -1,20 +1,18 @@
-import { readFileSync } from "node:fs";
-import type { ComponentFn } from "@pyreon/core";
-import type { RouteRecord } from "@pyreon/router";
-import type { Middleware, MiddlewareContext } from "@pyreon/server";
-import { createHandler } from "@pyreon/server";
-import type { CreateActionMiddlewareOptions } from "./actions";
-import { createActionMiddleware } from "./actions";
-import type { ApiRouteEntry } from "./api-routes";
-import { createApiMiddleware, matchApiRoute } from "./api-routes";
-import { createApp } from "./app";
-import { createISRHandler } from "./isr";
-import { collectRouteModes, resolveRenderModeForPath } from "./route-modes";
-import { createServerIslandMiddleware } from "./server-islands-middleware";
-import { createDataEndpointMiddleware } from "./data-endpoint-middleware";
-import { createOgImageMiddleware, withRouteOgMeta } from "./og-route";
-import { render404Page } from "./not-found";
-import type { RenderMode, RouteMiddlewareEntry, ZeroConfig } from "./types";
+import { readFileSync } from 'node:fs'
+import type { ComponentFn } from '@pyreon/core'
+import type { RouteRecord } from '@pyreon/router'
+import type { Middleware } from '@pyreon/server'
+import { createHandler } from '@pyreon/server'
+import type { CreateActionMiddlewareOptions } from './actions'
+import { createActionRerenderMiddleware } from './form-actions-server'
+import type { ApiRouteEntry } from './api-routes'
+import { createApp } from './app'
+import { createISRHandler } from './isr'
+import { createRequestPipeline, matchPattern, trimTrailingSlashes } from './pipeline'
+import { collectRouteModes, resolveRenderModeForPath } from './route-modes'
+import { withRouteOgMeta } from './og-route'
+import { render404Page } from './not-found'
+import type { RenderMode, RouteMiddlewareEntry, ZeroConfig } from './types'
 
 // PR-S5: drift gate. Every value in `RenderMode` must have an
 // explicit case in `wireRenderMode()` below. Adding `'edge'` to
@@ -23,54 +21,56 @@ import type { RenderMode, RouteMiddlewareEntry, ZeroConfig } from "./types";
 // class (D) at compile time. The test
 // `entry-server.test.ts:exhaustive RenderMode handling` is the runtime
 // regression lock for the same gate.
-type _AssertExhaustive<T extends never> = T;
+type _AssertExhaustive<T extends never> = T
+
+export { matchPattern, routingPathname } from './pipeline'
 
 // ─── Server entry factory ───────────────────────────────────────────────────
 
 export interface CreateServerOptions {
-	/** Route definitions. */
-	routes: RouteRecord[];
-	/** Zero config. */
-	config?: ZeroConfig;
-	/** Additional middleware. */
-	middleware?: Middleware[];
-	/** Per-route middleware from virtual:zero/route-middleware. */
-	routeMiddleware?: RouteMiddlewareEntry[];
-	/** API route entries from virtual:zero/api-routes. */
-	apiRoutes?: ApiRouteEntry[];
-	/**
-	 * HTML template override (must contain the `<!--pyreon-app-->` /
-	 * `<!--pyreon-head-->` / `<!--pyreon-scripts-->` placeholders).
-	 *
-	 * When omitted AND `clientEntry` is also omitted, `createServer`
-	 * auto-loads the built `dist/server/template.html` staged by the SSR
-	 * plugin (which carries the hashed client `<script>`) and sets
-	 * `clientEntry: false`. If you pass a BUILT template here that already
-	 * references the hashed entry, pair it with `clientEntry: false` so the
-	 * handler doesn't inject a second (dev) client script.
-	 */
-	template?: string;
-	/**
-	 * Client entry path (default `/src/entry-client.ts`). Pass `false` to
-	 * suppress the client-entry `<script>` entirely — use this when `template`
-	 * already carries the production hashed module script.
-	 */
-	clientEntry?: string | false;
-	/** Component to render when no route matches (from _404.tsx). */
-	notFoundComponent?: ComponentFn;
-	/**
-	 * Options forwarded to the auto-wired `createActionMiddleware`.
-	 *
-	 * PR-S2: `createServer` auto-wires server actions whenever any
-	 * `defineAction()` call has registered (detected via the module-level
-	 * registry). Use `actions: { corsOrigins: [...] }` to opt in to
-	 * cross-origin POSTs to `/_zero/actions/*`; without it, cross-origin
-	 * POSTs are rejected with HTTP 403 (CSRF baseline).
-	 *
-	 * Pass `actions: false` to disable the auto-wire entirely (e.g. when
-	 * mounting the middleware manually elsewhere in the chain).
-	 */
-	actions?: CreateActionMiddlewareOptions | false;
+  /** Route definitions. */
+  routes: RouteRecord[]
+  /** Zero config. */
+  config?: ZeroConfig
+  /** Additional middleware. */
+  middleware?: Middleware[]
+  /** Per-route middleware from virtual:zero/route-middleware. */
+  routeMiddleware?: RouteMiddlewareEntry[]
+  /** API route entries from virtual:zero/api-routes. */
+  apiRoutes?: ApiRouteEntry[]
+  /**
+   * HTML template override (must contain the `<!--pyreon-app-->` /
+   * `<!--pyreon-head-->` / `<!--pyreon-scripts-->` placeholders).
+   *
+   * When omitted AND `clientEntry` is also omitted, `createServer`
+   * auto-loads the built `dist/server/template.html` staged by the SSR
+   * plugin (which carries the hashed client `<script>`) and sets
+   * `clientEntry: false`. If you pass a BUILT template here that already
+   * references the hashed entry, pair it with `clientEntry: false` so the
+   * handler doesn't inject a second (dev) client script.
+   */
+  template?: string
+  /**
+   * Client entry path (default `/src/entry-client.ts`). Pass `false` to
+   * suppress the client-entry `<script>` entirely — use this when `template`
+   * already carries the production hashed module script.
+   */
+  clientEntry?: string | false
+  /** Component to render when no route matches (from _404.tsx). */
+  notFoundComponent?: ComponentFn
+  /**
+   * Options forwarded to the auto-wired `createActionMiddleware`.
+   *
+   * PR-S2: `createServer` auto-wires server actions whenever any
+   * `defineAction()` call has registered (detected via the module-level
+   * registry). Use `actions: { corsOrigins: [...] }` to opt in to
+   * cross-origin POSTs to `/_zero/actions/*`; without it, cross-origin
+   * POSTs are rejected with HTTP 403 (CSRF baseline).
+   *
+   * Pass `actions: false` to disable the auto-wire entirely (e.g. when
+   * mounting the middleware manually elsewhere in the chain).
+   */
+  actions?: CreateActionMiddlewareOptions | false
 }
 
 /**
@@ -82,136 +82,20 @@ export interface CreateServerOptions {
  * SSR at the wrong paths. Undefined outside a zero build (tests, custom
  * embeddings), where `options.config` alone applies.
  */
-declare const __ZERO_SERVER_CONFIG__: ZeroConfig | undefined;
+declare const __ZERO_SERVER_CONFIG__: ZeroConfig | undefined
 
 /** Built config first, then the entry's own `config` wins key by key. */
 export function mergeServerConfig(
-	built: ZeroConfig | undefined,
-	own: ZeroConfig | undefined,
+  built: ZeroConfig | undefined,
+  own: ZeroConfig | undefined,
 ): ZeroConfig {
-	if (!built) return own ?? {};
-	if (!own) return built;
-	const merged: ZeroConfig = { ...built, ...own };
-	if (built.isr || own.isr) merged.isr = { ...built.isr, ...own.isr } as NonNullable<ZeroConfig["isr"]>;
-	if (built.ssr || own.ssr) merged.ssr = { ...built.ssr, ...own.ssr };
-	return merged;
-}
-
-const DATA_ENDPOINT = "/_pyreon/data";
-
-/**
- * `base` without its trailing slashes. A loop, not `/\/+$/`: that regex backtracks
- * quadratically on a long run of `/`, and a linear strip costs nothing.
- */
-function trimTrailingSlashes(value: string): string {
-	let end = value.length;
-	while (end > 0 && value.charCodeAt(end - 1) === 47) end--;
-	return value.slice(0, end);
-}
-
-/** `pathname` with `config.base` removed when it is under it (else unchanged). */
-export function stripBase(pathname: string, config: ZeroConfig): string {
-	const base = config.base && config.base !== "/" ? trimTrailingSlashes(config.base) : "";
-	if (!base) return pathname;
-	if (pathname === base) return "/";
-	return pathname.startsWith(`${base}/`) ? pathname.slice(base.length) : pathname;
-}
-
-/**
- * The path a request's route middleware must be matched against.
- *
- * - The PATHNAME, never `ctx.path`: that carries the query string, and a
- *   segment-exact match on it let `/admin?x=1` skip `/admin`'s middleware.
- * - For the single-fetch data endpoint, the TARGET page's path: the endpoint
- *   runs that page's serverLoaders, so it must be gated by that page's
- *   middleware — otherwise `/_pyreon/data?path=/admin` handed out data the
- *   `/admin` middleware refuses, on every client-side navigation.
- * - With `base` and i18n prefixes removed, because route patterns carry
- *   neither (`/app/de/admin` is the `/admin` route).
- */
-export function routingPathname(url: URL, config: ZeroConfig): string {
-	// Base first: under `base: '/app/'` the data endpoint is `/app/_pyreon/data`,
-	// and checking for it BEFORE the strip missed it — so the target page's
-	// middleware never ran for a subpath deploy's client navigations.
-	let pathname = stripBase(url.pathname, config);
-	if (pathname === DATA_ENDPOINT) {
-		const target = url.searchParams.get("path");
-		if (target && target.startsWith("/")) {
-			pathname = stripBase(new URL(target, "http://pyreon.invalid").pathname, config);
-		}
-	}
-	const locales = config.i18n?.locales;
-	if (locales?.length) {
-		const first = pathname.split("/")[1] ?? "";
-		const hit = locales.find((l) => l.toLowerCase() === first.toLowerCase());
-		if (hit) pathname = pathname.slice(first.length + 1) || "/";
-	}
-	return pathname;
-}
-
-/**
- * Create a middleware that dispatches per-route middleware based on URL pattern matching.
- */
-function createRouteMiddlewareDispatcher(
-	entries: RouteMiddlewareEntry[],
-	config: ZeroConfig,
-): Middleware {
-	return async (ctx: MiddlewareContext) => {
-		const pathname = routingPathname(ctx.url, config);
-		for (const entry of entries) {
-			const hit = entry.patterns
-				? entry.patterns.some((p) => matchPattern(p, pathname))
-				: matchPattern(entry.pattern, pathname);
-			if (hit) {
-				const mw = Array.isArray(entry.middleware)
-					? entry.middleware
-					: [entry.middleware];
-				for (const fn of mw) {
-					const result = await fn(ctx);
-					if (result) return result;
-				}
-			}
-		}
-	};
-}
-
-/**
- * URL pattern matcher supporting :param and :param* segments.
- *
- * Rules:
- * - Static segments must match exactly
- * - `:param` matches a single path segment
- * - `:param*` matches all remaining segments (must be last, and path must
- *   have matched all preceding segments)
- * - Path length must match pattern length (unless catch-all)
- */
-export function matchPattern(pattern: string, path: string): boolean {
-	const patternParts = pattern.split("/").filter(Boolean);
-	const pathParts = path.split("/").filter(Boolean);
-
-	for (let i = 0; i < patternParts.length; i++) {
-		const pp = patternParts[i]!;
-
-		// Catch-all: matches remaining segments, but only if we've matched
-		// all preceding segments up to this point
-		if (pp.endsWith("*")) {
-			// All segments before the catch-all must have matched (we got here)
-			// and there must be at least one remaining path segment
-			return i <= pathParts.length;
-		}
-
-		// No more path segments to match against
-		if (i >= pathParts.length) return false;
-
-		// Dynamic segment matches any single segment
-		if (pp.startsWith(":")) continue;
-
-		// Static segment must match exactly
-		if (pp !== pathParts[i]) return false;
-	}
-
-	// All pattern parts consumed — path must also be fully consumed
-	return patternParts.length === pathParts.length;
+  if (!built) return own ?? {}
+  if (!own) return built
+  const merged: ZeroConfig = { ...built, ...own }
+  if (built.isr || own.isr)
+    merged.isr = { ...built.isr, ...own.isr } as NonNullable<ZeroConfig['isr']>
+  if (built.ssr || own.ssr) merged.ssr = { ...built.ssr, ...own.ssr }
+  return merged
 }
 
 /**
@@ -237,14 +121,13 @@ export function matchPattern(pattern: string, path: string): boolean {
  * no hydration in production.
  */
 function readBuiltTemplate(): string | undefined {
-	const injected = (globalThis as { __PYREON_SSR_TEMPLATE__?: unknown })
-		.__PYREON_SSR_TEMPLATE__;
-	if (typeof injected === "string" && injected.length > 0) return injected;
-	try {
-		return readFileSync(new URL("./template.html", import.meta.url), "utf-8");
-	} catch {
-		return undefined;
-	}
+  const injected = (globalThis as { __PYREON_SSR_TEMPLATE__?: unknown }).__PYREON_SSR_TEMPLATE__
+  if (typeof injected === 'string' && injected.length > 0) return injected
+  try {
+    return readFileSync(new URL('./template.html', import.meta.url), 'utf-8')
+  } catch {
+    return undefined
+  }
 }
 
 /**
@@ -257,237 +140,221 @@ function readBuiltTemplate(): string | undefined {
  *
  * export default createServer({ routes, routeMiddleware, apiRoutes })
  */
-export function createServer(options: CreateServerOptions) {
-	const config = mergeServerConfig(
-		typeof __ZERO_SERVER_CONFIG__ !== "undefined" ? __ZERO_SERVER_CONFIG__ : undefined,
-		options.config,
-	);
+// The return type is annotated on purpose: the handler carries an internal
+// symbol-keyed tag (`PipelineTaggedHandler`), and leaving it inferred made
+// `export default createServer(...)` in a declaration-emitting app fail with
+// TS2883 ("cannot be named without a reference to PipelineTaggedHandler").
+// The tag is read by symbol at runtime (vite-plugin.ts), never by type.
+export function createServer(options: CreateServerOptions): (req: Request) => Promise<Response> {
+  const config = mergeServerConfig(
+    typeof __ZERO_SERVER_CONFIG__ !== 'undefined' ? __ZERO_SERVER_CONFIG__ : undefined,
+    options.config,
+  )
 
-	// Order is a security property. App-wide middleware (auth gates, rate
-	// limits, CORS, security headers) and each route's own middleware run
-	// BEFORE every framework endpoint. They used to run last, so API routes,
-	// server actions, the data endpoint and island fragments all answered
-	// without any of it — the documented `rateLimitMiddleware({ include:
-	// ['/api/*'] })` never applied to /api, and route auth never protected
-	// loader data.
-	const allMiddleware: Middleware[] = [
-		...(config.middleware ?? []),
-		...(options.middleware ?? []),
-	];
-	if (options.routeMiddleware?.length) {
-		allMiddleware.push(
-			createRouteMiddlewareDispatcher(options.routeMiddleware, config),
-		);
-	}
+  let renderForAction: ((req: Request) => Promise<Response>) | null = null
+  // Order is a security property — see `createRequestPipeline`. Dev runs
+  // the SAME function (zero's dev middleware), so the two cannot drift.
+  const { middleware: allMiddleware, isEndpoint } = createRequestPipeline({
+    routes: options.routes,
+    config,
+    ...(options.middleware ? { middleware: options.middleware } : {}),
+    ...(options.routeMiddleware ? { routeMiddleware: options.routeMiddleware } : {}),
+    ...(options.apiRoutes ? { apiRoutes: options.apiRoutes } : {}),
+    ...(options.actions !== undefined ? { actions: options.actions } : {}),
+    // No-JS form posts re-render their page through a handler that does
+    // NOT run this pipeline again (assigned below).
+    renderActionPage: (req) => renderForAction!(req),
+  })
 
-	// Framework endpoints and API routes match base-less paths. Under `base`
-	// the browser calls `<base>/_pyreon/data` and `<base>/api/…`; present
-	// them base-stripped (an unprefixed request is left as is — a proxy may
-	// already have removed the prefix). The Request itself is untouched.
-	if (config.base && config.base !== "/") {
-		allMiddleware.push((ctx) => {
-			const stripped = stripBase(ctx.url.pathname, config);
-			if (stripped !== ctx.url.pathname) {
-				const next = new URL(ctx.url.href);
-				next.pathname = stripped;
-				ctx.url = next;
-			}
-		});
-	}
+  const { App } = createApp({
+    routes: options.routes,
+    routerMode: 'history',
+    // Forward zero's `base` to createRouter so RouterLinks render
+    // correctly prefixed hrefs during SSR — must match the value
+    // the client-side `startClient` reads from `__ZERO_BASE__` so
+    // hydration doesn't mismatch.
+    ...(config.base && config.base !== '/' ? { base: config.base } : {}),
+  })
 
-	if (options.apiRoutes?.length) {
-		allMiddleware.push(createApiMiddleware(options.apiRoutes));
-	}
+  // Production SSR template resolution (zero-config path): ONLY when the
+  // caller customized neither `template` nor `clientEntry` do we auto-load the
+  // built `dist/server/template.html` sibling — the SSR build copies the built
+  // client index.html there (see ssr-plugin.ts) and every deploy adapter
+  // copies the whole server dir, so it travels with entry-server.js to
+  // node/bun/vercel/netlify/cloudflare alike. That template carries the hashed
+  // client `<script>` + CSS `<link>` + injection placeholders, so we use it
+  // AND suppress the handler's client-entry injection below (the template
+  // already references the hashed entry). If the caller set EITHER option we
+  // leave both untouched — auto-loading alongside an explicit `clientEntry`
+  // would inject two module scripts. A missing template in the zero path is a
+  // build error the SSR plugin reports at build time (+ verify-modes and the
+  // ssr-node/isr-node e2e gate it); custom builds pass their own `template`
+  // (with `clientEntry: false` — see the option JSDoc). In dev / tests the
+  // sibling doesn't exist → undefined → the handler's defaults apply.
+  const autoTemplate =
+    !options.template && options.clientEntry === undefined ? readBuiltTemplate() : undefined
 
-	// Phase 4 — server-island fragment endpoint. Mounted UNCONDITIONALLY
-	// (one path-prefix check per request when unused): the registry fills at
-	// route-module evaluation, which is LAZY in zero — gating the mount on
-	// registry size at createServer time would miss every island declared in
-	// a route file (the registry is empty at boot; the middleware warms it
-	// on first fragment request — see server-islands-middleware.ts).
-	allMiddleware.push(createServerIslandMiddleware(options.routes));
+  // Prefer an explicit template; else the auto-resolved built one. `||` (not
+  // `??`) so an empty-string template falls back too — consistent with the
+  // truthy `!options.template` check above.
+  const resolvedTemplate = options.template || autoTemplate
+  // The auto-loaded built template already carries the hashed client
+  // <script>, so suppress the handler's injection. An explicit `clientEntry`
+  // (including `false`) always wins.
+  let resolvedClientEntry = options.clientEntry
+  if (resolvedClientEntry === undefined && autoTemplate) {
+    resolvedClientEntry = false
+  }
 
-	// Phase 5 — server-loader data endpoint (single-fetch). Mounted
-	// unconditionally for the same lazy-registration reason.
-	allMiddleware.push(createDataEndpointMiddleware(options.routes));
+  const baseHandler = withRouteOgMeta(
+    createHandler({
+      App,
+      routes: options.routes,
+      middleware: allMiddleware,
+      // `ssr.mode` decides. A zero build always sets it (resolveConfig
+      // defaults it to 'string'; `ssr: { mode: 'stream' }` opts into the
+      // streamed shell + out-of-order Suspense). The `mode: 'ssr'` fallback
+      // to streaming below only applies to hand-built configs that set no
+      // `ssr` at all. ISR apps stay buffered — the SWR cache stores complete
+      // Response bodies; caching a stream would either drain it (defeating
+      // streaming) or store nothing (defeating caching). PPR-shaped shell
+      // caching is the eventual resolution (analysis doc P1-B).
+      mode: config.ssr?.mode ?? (config.mode === 'ssr' ? 'stream' : 'string'),
+      ...(resolvedTemplate ? { template: resolvedTemplate } : {}),
+      ...(resolvedClientEntry !== undefined ? { clientEntry: resolvedClientEntry } : {}),
+      ...(config.base && config.base !== '/' ? { base: config.base } : {}),
+    }),
+    options.routes,
+    config.routeOg,
+  )
 
-	// Route OG images for SSR/ISR routes (`GET /_zero/og/<path>.png`).
-	// Mounted unconditionally: `og` exports live in lazily-loaded route
-	// modules, so presence can't be known at createServer time. Unused, it
-	// costs one prefix check.
-	allMiddleware.push(createOgImageMiddleware(options.routes, config.routeOg));
+  // A no-JS action post re-renders its page through a handler whose ONLY
+  // middleware restores the POST's own middleware results (locals,
+  // response headers) — the app and route middleware already ran for this
+  // request and must not run again (rate limiters would count it twice).
+  // Never an ISR-cached handler: a result page is per submission.
+  let actionRenderHandler: ((req: Request) => Promise<Response>) | null = null
+  renderForAction = (req) =>
+    (actionRenderHandler ??= withRouteOgMeta(
+      createHandler({
+        App,
+        routes: options.routes,
+        middleware: [createActionRerenderMiddleware()],
+        mode: config.ssr?.mode ?? (config.mode === 'ssr' ? 'stream' : 'string'),
+        ...(resolvedTemplate ? { template: resolvedTemplate } : {}),
+        ...(resolvedClientEntry !== undefined ? { clientEntry: resolvedClientEntry } : {}),
+        ...(config.base && config.base !== '/' ? { base: config.base } : {}),
+      }),
+      options.routes,
+      config.routeOg,
+    ))(req)
 
-	// Server actions: same-origin CSRF baseline, `actions.corsOrigins` to opt
-	// in to cross-origin, `actions: false` to mount manually. Mounted
-	// unconditionally for the SAME lazy-registration reason as the two
-	// endpoints above — `defineAction` in a lazily loaded route module has not
-	// run yet when createServer does, so a registry-size gate here left those
-	// actions without an endpoint at all. Unused, it costs one prefix check.
-	if (options.actions !== false) {
-		allMiddleware.push(
-			createActionMiddleware(
-				typeof options.actions === "object" ? options.actions : undefined,
-			),
-		);
-	}
+  // PR-S5: wire the render mode. `mode: 'isr'` was a typed-but-not-
+  // wired surface from inception — apps that set it got SSR behavior
+  // silently, with `config.isr` ignored and no signal pointing at the
+  // cause (Pattern D from the audit). The wireRenderMode helper makes
+  // the dispatch explicit + drift-tested.
+  const handler = wirePerRouteModes(
+    config.mode ?? 'ssr',
+    baseHandler,
+    config,
+    options.routes,
+    resolvedTemplate,
+    // Phase 4 — per-route ISR needs a BUFFERED handler: the SWR cache
+    // stores complete bodies, and `mode: 'ssr'` now defaults to
+    // streaming. Built lazily — only when a route actually declares
+    // 'isr' inside a streaming app.
+    () =>
+      withRouteOgMeta(
+        createHandler({
+          App,
+          routes: options.routes,
+          middleware: allMiddleware,
+          mode: 'string',
+          ...(resolvedTemplate ? { template: resolvedTemplate } : {}),
+          ...(resolvedClientEntry !== undefined ? { clientEntry: resolvedClientEntry } : {}),
+          ...(config.base && config.base !== '/' ? { base: config.base } : {}),
+        }),
+        options.routes,
+        config.routeOg,
+      ),
+    isEndpoint,
+  )
 
-	// Responses that are NOT page renders. ISR must never cache or relabel
-	// them: it used to wrap the whole chain, so API JSON was cached without
-	// opting in and replayed as `text/html` — a JSON API that echoes input
-	// became stored XSS.
-	const apiPatterns = (options.apiRoutes ?? []).map((r) => r.pattern);
-	const isEndpoint = (rawPathname: string): boolean => {
-		const pathname = stripBase(rawPathname, config);
-		return (
-			pathname.startsWith("/_pyreon/") ||
-			pathname.startsWith("/_zero/") ||
-			apiPatterns.some((p) => matchApiRoute(p, pathname) !== null)
-		);
-	};
+  // M1.2 — Runtime SSR 404 routes through the router (PR L5).
+  // When a URL doesn't match any leaf, @pyreon/router's resolveRoute
+  // walks up to the closest parent `notFoundComponent` and builds a
+  // synthetic chain `[...ancestorLayouts, syntheticLeaf]`. The handler
+  // renders that chain, producing 404 HTML INSIDE the layout's chrome,
+  // and reads `resolved.isNotFound` to set HTTP status 404. This
+  // replaces the pre-M1 URL-pattern wrapper that bypassed the router
+  // for unmatched URLs and rendered the not-found component standalone
+  // (no layout wrapping).
+  //
+  // `options.notFoundComponent` is a legacy fallback for apps that
+  // don't carry `_404.tsx` in their routes tree. When set AND the
+  // routes tree has no reachable `notFoundComponent`, we render the
+  // standalone shape as a final fallback. The canonical pattern is
+  // `_404.tsx` inside a `_layout.tsx` directory — that goes through
+  // PR L5's router-driven path and gets layout chrome for free.
+  if (!options.notFoundComponent) return withPipelineOptions(handler, options)
 
-	const { App } = createApp({
-		routes: options.routes,
-		routerMode: "history",
-		// Forward zero's `base` to createRouter so RouterLinks render
-		// correctly prefixed hrefs during SSR — must match the value
-		// the client-side `startClient` reads from `__ZERO_BASE__` so
-		// hydration doesn't mismatch.
-		...(config.base && config.base !== "/" ? { base: config.base } : {}),
-	});
+  const NotFound = options.notFoundComponent
+  const hasRouteTreeNotFound = routeTreeHasNotFound(options.routes)
 
-	// Production SSR template resolution (zero-config path): ONLY when the
-	// caller customized neither `template` nor `clientEntry` do we auto-load the
-	// built `dist/server/template.html` sibling — the SSR build copies the built
-	// client index.html there (see ssr-plugin.ts) and every deploy adapter
-	// copies the whole server dir, so it travels with entry-server.js to
-	// node/bun/vercel/netlify/cloudflare alike. That template carries the hashed
-	// client `<script>` + CSS `<link>` + injection placeholders, so we use it
-	// AND suppress the handler's client-entry injection below (the template
-	// already references the hashed entry). If the caller set EITHER option we
-	// leave both untouched — auto-loading alongside an explicit `clientEntry`
-	// would inject two module scripts. A missing template in the zero path is a
-	// build error the SSR plugin reports at build time (+ verify-modes and the
-	// ssr-node/isr-node e2e gate it); custom builds pass their own `template`
-	// (with `clientEntry: false` — see the option JSDoc). In dev / tests the
-	// sibling doesn't exist → undefined → the handler's defaults apply.
-	const autoTemplate =
-		!options.template && options.clientEntry === undefined
-			? readBuiltTemplate()
-			: undefined;
+  return withPipelineOptions(async (req: Request) => {
+    // Route-tree notFoundComponent present → handler handles 404 via
+    // resolveRoute's `isNotFound` fallback (PR L5). Skip the legacy
+    // wrapper entirely — handler.ts sets status 404 + renders layout
+    // chrome correctly.
+    if (hasRouteTreeNotFound) return handler(req)
 
-	// Prefer an explicit template; else the auto-resolved built one. `||` (not
-	// `??`) so an empty-string template falls back too — consistent with the
-	// truthy `!options.template` check above.
-	const resolvedTemplate = options.template || autoTemplate;
-	// The auto-loaded built template already carries the hashed client
-	// <script>, so suppress the handler's injection. An explicit `clientEntry`
-	// (including `false`) always wins.
-	let resolvedClientEntry = options.clientEntry;
-	if (resolvedClientEntry === undefined && autoTemplate) {
-		resolvedClientEntry = false;
-	}
+    // Legacy fallback: routes tree has no notFoundComponent but the
+    // caller passed `options.notFoundComponent`. Run the URL-pattern
+    // check + standalone render for backward compat.
+    const url = new URL(req.url)
+    const pathname = url.pathname
+    if (!routePatternsCache(options.routes).some((p) => matchPattern(p, pathname))) {
+      const fullHtml = await render404Page(NotFound, options.template)
+      return new Response(fullHtml, {
+        status: 404,
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      })
+    }
 
-	const baseHandler = withRouteOgMeta(createHandler({
-		App,
-		routes: options.routes,
-		middleware: allMiddleware,
-		// `ssr.mode` decides. A zero build always sets it (resolveConfig
-		// defaults it to 'string'; `ssr: { mode: 'stream' }` opts into the
-		// streamed shell + out-of-order Suspense). The `mode: 'ssr'` fallback
-		// to streaming below only applies to hand-built configs that set no
-		// `ssr` at all. ISR apps stay buffered — the SWR cache stores complete
-		// Response bodies; caching a stream would either drain it (defeating
-		// streaming) or store nothing (defeating caching). PPR-shaped shell
-		// caching is the eventual resolution (analysis doc P1-B).
-		mode: config.ssr?.mode ?? (config.mode === "ssr" ? "stream" : "string"),
-		...(resolvedTemplate ? { template: resolvedTemplate } : {}),
-		...(resolvedClientEntry !== undefined ? { clientEntry: resolvedClientEntry } : {}),
-		// Route `<base>/about` as `/about`. The App's router already had the
-		// base, but the handler built its own per-request router without it,
-		// so every page of a subpath deploy was a 404 in production.
-		...(config.base && config.base !== "/" ? { base: config.base } : {}),
-	}), options.routes, config.routeOg);
+    return handler(req)
+  }, options)
+}
 
-	// PR-S5: wire the render mode. `mode: 'isr'` was a typed-but-not-
-	// wired surface from inception — apps that set it got SSR behavior
-	// silently, with `config.isr` ignored and no signal pointing at the
-	// cause (Pattern D from the audit). The wireRenderMode helper makes
-	// the dispatch explicit + drift-tested.
-	const handler = wirePerRouteModes(
-		config.mode ?? "ssr",
-		baseHandler,
-		config,
-		options.routes,
-		resolvedTemplate,
-		// Phase 4 — per-route ISR needs a BUFFERED handler: the SWR cache
-		// stores complete bodies, and `mode: 'ssr'` now defaults to
-		// streaming. Built lazily — only when a route actually declares
-		// 'isr' inside a streaming app.
-		() =>
-			withRouteOgMeta(createHandler({
-				App,
-				routes: options.routes,
-				middleware: allMiddleware,
-				mode: "string",
-				...(resolvedTemplate ? { template: resolvedTemplate } : {}),
-				...(resolvedClientEntry !== undefined
-					? { clientEntry: resolvedClientEntry }
-					: {}),
-				// Same base routing as the page handler above — an ISR route
-				// under a subpath deploy must not 404 either.
-				...(config.base && config.base !== "/" ? { base: config.base } : {}),
-			}), options.routes, config.routeOg),
-		isEndpoint,
-	);
+/**
+ * The server entry's own pipeline inputs, readable by zero's dev middleware
+ * (which loads `src/entry-server.ts` through Vite and runs the SAME
+ * `createRequestPipeline` in front of its dev renderer). Without it the
+ * entry's `middleware` — CSP / security headers, auth — only ran in
+ * production.
+ * @internal
+ */
+export const PIPELINE_OPTIONS: unique symbol = Symbol.for('pyreon.zero.pipelineOptions') as never
 
-	// M1.2 — Runtime SSR 404 routes through the router (PR L5).
-	// When a URL doesn't match any leaf, @pyreon/router's resolveRoute
-	// walks up to the closest parent `notFoundComponent` and builds a
-	// synthetic chain `[...ancestorLayouts, syntheticLeaf]`. The handler
-	// renders that chain, producing 404 HTML INSIDE the layout's chrome,
-	// and reads `resolved.isNotFound` to set HTTP status 404. This
-	// replaces the pre-M1 URL-pattern wrapper that bypassed the router
-	// for unmatched URLs and rendered the not-found component standalone
-	// (no layout wrapping).
-	//
-	// `options.notFoundComponent` is a legacy fallback for apps that
-	// don't carry `_404.tsx` in their routes tree. When set AND the
-	// routes tree has no reachable `notFoundComponent`, we render the
-	// standalone shape as a final fallback. The canonical pattern is
-	// `_404.tsx` inside a `_layout.tsx` directory — that goes through
-	// PR L5's router-driven path and gets layout chrome for free.
-	if (!options.notFoundComponent) return handler;
+export type PipelineTaggedHandler = ((req: Request) => Promise<Response>) & {
+  [PIPELINE_OPTIONS]?: Pick<CreateServerOptions, 'middleware' | 'actions'>
+}
 
-	const NotFound = options.notFoundComponent;
-	const hasRouteTreeNotFound = routeTreeHasNotFound(options.routes);
-
-	return async (req: Request) => {
-		// Route-tree notFoundComponent present → handler handles 404 via
-		// resolveRoute's `isNotFound` fallback (PR L5). Skip the legacy
-		// wrapper entirely — handler.ts sets status 404 + renders layout
-		// chrome correctly.
-		if (hasRouteTreeNotFound) return handler(req);
-
-		// Legacy fallback: routes tree has no notFoundComponent but the
-		// caller passed `options.notFoundComponent`. Run the URL-pattern
-		// check + standalone render for backward compat.
-		const url = new URL(req.url);
-		const pathname = url.pathname;
-		if (!routePatternsCache(options.routes).some((p) => matchPattern(p, pathname))) {
-			const fullHtml = await render404Page(NotFound, options.template);
-			return new Response(fullHtml, {
-				status: 404,
-				headers: { "Content-Type": "text/html; charset=utf-8" },
-			});
-		}
-
-		return handler(req);
-	};
+function withPipelineOptions(
+  handler: (req: Request) => Promise<Response>,
+  options: CreateServerOptions,
+): PipelineTaggedHandler {
+  const tagged = handler as PipelineTaggedHandler
+  tagged[PIPELINE_OPTIONS] = {
+    ...(options.middleware ? { middleware: options.middleware } : {}),
+    ...(options.actions !== undefined ? { actions: options.actions } : {}),
+  }
+  return tagged
 }
 
 // ─── Render-mode dispatcher (PR-S5) ─────────────────────────────────────────
 
-type RequestHandler = (req: Request) => Promise<Response>;
+type RequestHandler = (req: Request) => Promise<Response>
 
 /**
  * Wrap the base SSR handler with the runtime layer for the configured
@@ -529,133 +396,125 @@ type RequestHandler = (req: Request) => Promise<Response>;
  * layout cascade, app default) so build and runtime can never disagree.
  */
 export function wirePerRouteModes(
-	appMode: RenderMode,
-	baseHandler: RequestHandler,
-	config: ZeroConfig,
-	routes: RouteRecord[],
-	builtTemplate: string | undefined,
-	makeBufferedHandler?: () => RequestHandler,
-	isEndpoint?: (pathname: string) => boolean,
+  appMode: RenderMode,
+  baseHandler: RequestHandler,
+  config: ZeroConfig,
+  routes: RouteRecord[],
+  builtTemplate: string | undefined,
+  makeBufferedHandler?: () => RequestHandler,
+  isEndpoint?: (pathname: string) => boolean,
 ): RequestHandler {
-	const entries = collectRouteModes(routes, appMode, config.routeRules);
-	const divergent = entries.some((e) => e.declared && e.mode !== appMode);
-	if (!divergent) return wireRenderMode(appMode, baseHandler, config, isEndpoint);
+  const entries = collectRouteModes(routes, appMode, config.routeRules)
+  const divergent = entries.some((e) => e.declared && e.mode !== appMode)
+  if (!divergent) return wireRenderMode(appMode, baseHandler, config, isEndpoint)
 
-	const needsIsr =
-		appMode === "isr" || entries.some((e) => e.declared && e.mode === "isr");
-	// The cached handler must produce BUFFERED responses (the SWR cache
-	// stores complete bodies). Under app mode 'isr' the base handler is
-	// already string-mode; under a streaming 'ssr' app, use the buffered
-	// factory the caller supplies. No factory (tests, custom embeddings) →
-	// fall back to the base handler (correct for string-mode bases).
-	const isrBase =
-		appMode === "isr" ? baseHandler : (makeBufferedHandler?.() ?? baseHandler);
-	const isrHandler = needsIsr
-		? createISRHandler(isrBase, config.isr ?? { revalidate: 60 })
-		: null;
+  const needsIsr = appMode === 'isr' || entries.some((e) => e.declared && e.mode === 'isr')
+  // The cached handler must produce BUFFERED responses (the SWR cache
+  // stores complete bodies). Under app mode 'isr' the base handler is
+  // already string-mode; under a streaming 'ssr' app, use the buffered
+  // factory the caller supplies. No factory (tests, custom embeddings) →
+  // fall back to the base handler (correct for string-mode bases).
+  const isrBase = appMode === 'isr' ? baseHandler : (makeBufferedHandler?.() ?? baseHandler)
+  const isrHandler = needsIsr ? createISRHandler(isrBase, config.isr ?? { revalidate: 60 }) : null
 
-	// CSR shell for 'spa' routes: the built template with the injection
-	// placeholders blanked. `startClient` sees no SSR content and takes the
-	// mount + run-loaders cold-start path (the documented SPA contract).
-	const spaShell = builtTemplate
-		? builtTemplate
-				.replace("<!--pyreon-head-->", "")
-				.replace("<!--pyreon-app-->", "")
-				.replace("<!--pyreon-scripts-->", "")
-		: undefined;
+  // CSR shell for 'spa' routes: the built template with the injection
+  // placeholders blanked. `startClient` sees no SSR content and takes the
+  // mount + run-loaders cold-start path (the documented SPA contract).
+  const spaShell = builtTemplate
+    ? builtTemplate
+        .replace('<!--pyreon-head-->', '')
+        .replace('<!--pyreon-app-->', '')
+        .replace('<!--pyreon-scripts-->', '')
+    : undefined
 
-	const basePrefix =
-		config.base && config.base !== "/" ? trimTrailingSlashes(config.base) : "";
-	return async (req: Request) => {
-		const url = new URL(req.url);
-		if (isEndpoint?.(url.pathname)) return baseHandler(req);
-		// Route patterns carry no base, so resolve on the base-stripped path —
-		// matching the un-stripped one resolved nothing under a `base`, and
-		// every declared per-route mode silently fell back to the app mode.
-		let routePath = url.pathname;
-		if (basePrefix) {
-			if (routePath === basePrefix) routePath = "/";
-			else if (routePath.startsWith(`${basePrefix}/`)) routePath = routePath.slice(basePrefix.length);
-		}
-		const mode = resolveRenderModeForPath(routes, routePath, appMode, config.routeRules);
-		if (mode === "spa" && spaShell !== undefined && req.method === "GET") {
-			return new Response(spaShell, {
-				status: 200,
-				headers: { "Content-Type": "text/html; charset=utf-8" },
-			});
-		}
-		if (mode === "isr" && isrHandler) return isrHandler(req);
-		return baseHandler(req);
-	};
+  const basePrefix = config.base && config.base !== '/' ? trimTrailingSlashes(config.base) : ''
+  return async (req: Request) => {
+    const url = new URL(req.url)
+    if (isEndpoint?.(url.pathname)) return baseHandler(req)
+    // Route patterns carry no base, so resolve on the base-stripped path —
+    // matching the un-stripped one resolved nothing under a `base`, and
+    // every declared per-route mode silently fell back to the app mode.
+    let routePath = url.pathname
+    if (basePrefix) {
+      if (routePath === basePrefix) routePath = '/'
+      else if (routePath.startsWith(`${basePrefix}/`))
+        routePath = routePath.slice(basePrefix.length)
+    }
+    const mode = resolveRenderModeForPath(routes, routePath, appMode, config.routeRules)
+    if (mode === 'spa' && spaShell !== undefined && req.method === 'GET') {
+      return new Response(spaShell, {
+        status: 200,
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      })
+    }
+    if (mode === 'isr' && isrHandler) return isrHandler(req)
+    return baseHandler(req)
+  }
 }
 
 export function wireRenderMode(
-	mode: RenderMode,
-	baseHandler: RequestHandler,
-	config: ZeroConfig,
-	isEndpoint?: (pathname: string) => boolean,
+  mode: RenderMode,
+  baseHandler: RequestHandler,
+  config: ZeroConfig,
+  isEndpoint?: (pathname: string) => boolean,
 ): RequestHandler {
-	switch (mode) {
-		case "isr": {
-			// PR-S5: default `revalidate: 60` if the user enabled ISR but
-			// didn't provide config.isr — beats silently falling back to
-			// SSR (which is what the pre-PR-S5 code did).
-			const isrConfig = config.isr ?? { revalidate: 60 };
-			const isr = createISRHandler(baseHandler, isrConfig);
-			if (!isEndpoint) return isr;
-			return (req) =>
-				isEndpoint(new URL(req.url).pathname) ? baseHandler(req) : isr(req);
-		}
-		case "ssr":
-		case "ssg":
-		case "spa":
-			return baseHandler;
-		default: {
-			// Exhaustiveness check: if a new RenderMode value is added to
-			// types.ts without a case here, this assertion fails typecheck
-			// (Type 'X' is not assignable to type 'never').
-			const _unreachable: _AssertExhaustive<typeof mode> = mode;
-			void _unreachable;
-			return baseHandler;
-		}
-	}
+  switch (mode) {
+    case 'isr': {
+      // PR-S5: default `revalidate: 60` if the user enabled ISR but
+      // didn't provide config.isr — beats silently falling back to
+      // SSR (which is what the pre-PR-S5 code did).
+      const isrConfig = config.isr ?? { revalidate: 60 }
+      const isr = createISRHandler(baseHandler, isrConfig)
+      if (!isEndpoint) return isr
+      return (req) => (isEndpoint(new URL(req.url).pathname) ? baseHandler(req) : isr(req))
+    }
+    case 'ssr':
+    case 'ssg':
+    case 'spa':
+      return baseHandler
+    default: {
+      // Exhaustiveness check: if a new RenderMode value is added to
+      // types.ts without a case here, this assertion fails typecheck
+      // (Type 'X' is not assignable to type 'never').
+      const _unreachable: _AssertExhaustive<typeof mode> = mode
+      void _unreachable
+      return baseHandler
+    }
+  }
 }
 
 /** Walk the route tree looking for any record with a `notFoundComponent`. */
 function routeTreeHasNotFound(routes: RouteRecord[]): boolean {
-	for (const r of routes) {
-		if (typeof (r as { notFoundComponent?: unknown }).notFoundComponent === "function") {
-			return true;
-		}
-		if (r.children && routeTreeHasNotFound(r.children as RouteRecord[])) {
-			return true;
-		}
-	}
-	return false;
+  for (const r of routes) {
+    if (typeof (r as { notFoundComponent?: unknown }).notFoundComponent === 'function') {
+      return true
+    }
+    if (r.children && routeTreeHasNotFound(r.children as RouteRecord[])) {
+      return true
+    }
+  }
+  return false
 }
 
 /** Lazy cache of flattened patterns — only computed if legacy fallback fires. */
-const _routePatternsCache = new WeakMap<RouteRecord[], string[]>();
+const _routePatternsCache = new WeakMap<RouteRecord[], string[]>()
 function routePatternsCache(routes: RouteRecord[]): string[] {
-	const cached = _routePatternsCache.get(routes);
-	if (cached) return cached;
-	const out = flattenRoutePatterns(routes);
-	_routePatternsCache.set(routes, out);
-	return out;
+  const cached = _routePatternsCache.get(routes)
+  if (cached) return cached
+  const out = flattenRoutePatterns(routes)
+  _routePatternsCache.set(routes, out)
+  return out
 }
 
 /** Extract all URL patterns from a nested route tree. */
-function flattenRoutePatterns(routes: RouteRecord[], prefix = ""): string[] {
-	const patterns: string[] = [];
-	for (const route of routes) {
-		const fullPath =
-			route.path === "/" && prefix ? prefix : `${prefix}${route.path}`;
-		patterns.push(fullPath);
-		if (route.children) {
-			patterns.push(
-				...flattenRoutePatterns(route.children as RouteRecord[], fullPath),
-			);
-		}
-	}
-	return patterns;
+function flattenRoutePatterns(routes: RouteRecord[], prefix = ''): string[] {
+  const patterns: string[] = []
+  for (const route of routes) {
+    const fullPath = route.path === '/' && prefix ? prefix : `${prefix}${route.path}`
+    patterns.push(fullPath)
+    if (route.children) {
+      patterns.push(...flattenRoutePatterns(route.children as RouteRecord[], fullPath))
+    }
+  }
+  return patterns
 }

@@ -9397,6 +9397,53 @@ const user = useRequestLocals().user as User | null`,
 - Calling with a type argument — the API is non-generic; cast the read instead`,
   },
 
+  'zero/defineAction': {
+    signature: 'function defineAction<T>(handler: (ctx: ActionContext) => T | Promise<T>): Action<T>',
+    example: `import { redirect } from '@pyreon/router'
+import { defineAction, fail, Form } from '@pyreon/zero/actions'
+
+export const action = defineAction(async ({ formData }) => {
+  const title = String(formData?.get('title') ?? '')
+  if (!title) return fail(422, { error: 'Title is required' })
+  throw redirect('/posts')
+})
+
+export default function NewPost() {
+  return (
+    <Form action={action}>
+      <input name="title" />
+      <button>Create</button>
+    </Form>
+  )
+}`,
+    notes: `Define a server action (import from \`@pyreon/zero/actions\`). Export it from a route as \`action\` and submit it with \`<Form action={action}>\` — it then works as a plain HTML form post WITHOUT JavaScript (the server runs it, then answers 303 for a \`redirect()\` or re-renders the page with the result) and is enhanced to \`fetch\` when JavaScript runs. The result is also a callable that POSTs JSON to \`/_zero/actions/<id>\`. zero's Vite plugin derives a stable id and strips the handler (and imports only it used) from the client bundle. Same-origin check + 1 MiB body limit (\`createServer({ actions: { corsOrigins, bodyLimit } })\`); runs after app and route middleware. See also: useSubmission, Form.`,
+    mistakes: `- Exporting a plain \`async function action()\` from a route — it is not a defineAction() result, so it is refused with a 500 AND its body would ship to the client; wrap it: \`export const action = defineAction(async (ctx) => …)\`
+- Returning an error object with status 200 for a validation failure — return \`fail(422, data)\` so the response carries the status and \`useSubmission().result()\` gets the data
+- Throwing an Error for a user-facing message — its message is replaced by "Internal server error" in production; use \`fail()\`
+- Using \`redirect()\` with a 307 expecting a re-POST — page form posts always answer 303 so the browser follows with a GET`,
+  },
+
+  'zero/Form': {
+    signature: 'function Form<T>(props: { action: Action<T>; revalidate?: boolean | readonly string[]; resetOnSuccess?: boolean; onSuccess?: (data: ActionData<T>) => void; children?: VNodeChild; [attr: string]: unknown }): VNodeChild',
+    example: `<Form action={action} revalidate={false} class="new-post">
+  <input name="title" required />
+  <button type="submit">Create</button>
+</Form>`,
+    notes: `A \`<form method="post">\` bound to a server action (\`@pyreon/zero/actions\`). Renders \`action="?<page query>&_action=<id>"\` — a query-only URL, so the POST targets the current page with base path, locale prefix and query intact, identically on server and client. With JavaScript it intercepts submit, sends the same request via \`fetch\`, updates \`useSubmission(action)\`, then on success re-runs the current route's loaders (\`revalidate\`, default \`true\`; \`false\` opts out; an array of loaderKey values invalidates only those) and resets its fields (\`resetOnSuccess\`). A \`redirect()\` navigates client-side. See also: defineAction, useSubmission.`,
+    mistakes: '- Forgetting `enctype="multipart/form-data"` for file inputs — attributes pass through to the <form>',
+  },
+
+  'zero/useSubmission': {
+    signature: 'function useSubmission<T>(action: Action<T>): Submission<T>',
+    example: `const sub = useSubmission(action)
+<button disabled={sub.pending()}>Save</button>
+<p>{() => sub.pending() ? \`Saving \${sub.input()?.get('title')}\` : ''}</p>
+<p>{() => sub.result()?.error ?? ''}</p>`,
+    notes: `Reactive state of an action's submissions (\`@pyreon/zero/actions\`): \`pending()\`, \`input()\` (the FormData in flight — render it optimistically), \`result()\` (return value or \`fail()\` data), \`status()\`, \`error()\`, plus \`submit(data, { revalidate })\` and \`reset()\`. Every call for the same action shares one state on the client. After a no-JS form post the server-rendered result is hydrated, so the page shows it with and without JavaScript. On the server the state is per request. See also: Form, defineAction.`,
+    mistakes: `- Reading \`sub.result()\` outside a reactive scope and expecting updates — read it in JSX \`{() => …}\` or an effect
+- Calling \`submit()\` during render — it throws on the server; call it from an event handler`,
+  },
+
   'zero/Link': {
     signature: '<Link href={path} prefetch="hover" activeClass={cls}>{children}</Link>',
     example: `import { Link } from '@pyreon/zero/link'
@@ -12149,7 +12196,7 @@ const config = resolveConfig({
 })
 
 const { files } = generate(specText, config)`,
-    notes: `Fills defaults and validates one project's settings, and is where the whole option surface lives: \`plugins\` (which emitters run), \`client\` (\`pyreon\` | \`fetch\` | \`axios\` | \`ky\`), \`validator\` (\`pyreon\` | \`zod\`), \`target\` (\`web\` | \`multiplatform\`), \`baseUrl\` and \`strictNative\`. A plugin selection is EXPANDED to cover what its output imports rather than refused -- asking for \`components\` gets \`queries\`, \`client\` and \`schemas\` too, and the CLI report says what came along. Use \`resolveProjects\` instead when the config may declare \`projects: [...]\`; it always returns a LIST, so a single-project config is a one-element list rather than a special case.`,
+    notes: `Fills defaults and validates one project's settings, and is where the whole option surface lives: \`plugins\` (which emitters run), \`client\` (\`pyreon\` | \`fetch\` | \`axios\` | \`ky\`), \`validator\` (\`pyreon\` | \`zod\`), \`target\` (\`web\` | \`multiplatform\`), \`baseUrl\`, \`strictNative\` and \`responseValidation\` (\`strict\` | \`warn\` | \`off\`, what the web client does with a response that does not match its schema). A plugin selection is EXPANDED to cover what its output imports rather than refused -- asking for \`components\` gets \`queries\`, \`client\` and \`schemas\` too, and the CLI report says what came along. Use \`resolveProjects\` instead when the config may declare \`projects: [...]\`; it always returns a LIST, so a single-project config is a one-element list rather than a special case.`,
     mistakes: `- Expecting \`plugins: ['faker']\` to emit ONLY factories. It expands to include \`schemas\`, because the factories exist to produce data the schema accepts and are typed against the model types it exports.
 - Combining \`target: 'multiplatform'\` with a non-Pyreon \`client\`. It is REFUSED, not downgraded: PMTC lowers \`createHttp\` and \`api.endpoint(...)\` by name and cannot see through axios or ky, so native modules over one would lower to nothing -- the exact silent regression that target exists to catch.
 - Importing \`installMocks\`, \`mockRoutes\` or the faker factories from the generated \`index.ts\`. They are NOT there by design -- they live in \`./dev\`, so a page bundle has no import edge that could reach a fixture table or \`@faker-js/faker\`.

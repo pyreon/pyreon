@@ -24,6 +24,7 @@
  * import, which is why it has its own spec.
  */
 import { build } from 'esbuild'
+import { writeTree } from './helpers/write-tree'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -102,7 +103,7 @@ async function bundleFrom(
     // first time round.
     if (path === 'package.json' && !withMarker) continue
     if (path.endsWith('.ts') || path === 'package.json') {
-      writeFileSync(join(dir, 'gen', path), contents)
+      writeTree(join(dir, 'gen'), [{ path, contents }])
     }
   }
   const entry = join(dir, 'entry.ts')
