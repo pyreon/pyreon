@@ -79,6 +79,30 @@ describe('rocketstyle factory', () => {
     }).toThrow('invalid')
   })
 
+  it('reserved-key error names the clashing key and the RESERVED set (not the default dimensions)', () => {
+    let message = ''
+    try {
+      rocketstyle({ dimensions: { attrs: 'attrs', theme: 'x', sizes: 'size' } as any })({
+        name: 'Test',
+        component: BaseComponent,
+      })
+    } catch (e) {
+      message = (e as Error).message
+    }
+    const { invalidDimensions } = JSON.parse(message) as { invalidDimensions: string }
+    // The offending keys are named…
+    expect(invalidDimensions).toContain('`attrs`')
+    expect(invalidDimensions).toContain('`theme`')
+    // …a legitimate sibling dimension is NOT…
+    expect(invalidDimensions).not.toContain('`sizes`')
+    // …and the reserved list is the real one (was `[object Object]`, the
+    // stringified DEFAULT dimensions object).
+    expect(invalidDimensions).not.toContain('[object Object]')
+    expect(invalidDimensions).toContain('Reserved keys: ')
+    expect(invalidDimensions).toContain('compose')
+    expect(invalidDimensions).toContain('styles')
+  })
+
   it('allows custom dimensions', () => {
     const Button = rocketstyle({
       dimensions: { colors: 'color', shapes: 'shape' },
