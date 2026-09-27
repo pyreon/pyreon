@@ -68,6 +68,18 @@ describe('analyzeValidate — IR extraction', () => {
     expect(analyzeValidate(`const X = s.object({ ok: s.string(), bad: s.custom() })`)[0]!.emittable).toBe(false)
   })
 
+  it('bails on a format option that changes what the check accepts', () => {
+    // The emitted `.url()` is http(s)-only and the emitted `.email()` is the
+    // default precision; emitting either for `protocol` / `precision` would
+    // make a compiled build reject what the runtime accepts.
+    expect(isEmittable(ir('s.string().url({ protocol: /^[a-z]+$/ })'))).toBe(false)
+    expect(isEmittable(ir("s.string().email({ precision: 'loose' })"))).toBe(false)
+    expect(isEmittable(ir('s.string().url(opts)'))).toBe(false) // unreadable -> bail
+    // A message-only option does not change the verdict: still emitted.
+    expect(isEmittable(ir("s.string().url({ message: 'bad link' })"))).toBe(true)
+    expect(isEmittable(ir('s.string().url()'))).toBe(true)
+  })
+
   it('ignores non-s expressions', () => {
     expect(analyzeValidate(`const x = foo.bar(); const y = 42`)).toHaveLength(0)
   })

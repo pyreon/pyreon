@@ -10,7 +10,8 @@
  * This EXECUTES the output for both validators, because the failure only
  * exists at module evaluation: the emitted text reads perfectly.
  */
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, rmSync } from 'node:fs'
+import { schemaSource, writeTree } from './helpers/write-tree'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveConfig } from '../core/config'
@@ -68,13 +69,13 @@ describe('an unprovable discriminator falls back to a plain union', () => {
     for (const validator of ['pyreon', 'zod'] as const) {
       it(`${label} (${validator}) — imports cleanly, validates, and says why`, async () => {
         const out = generate(src, resolveConfig({ input: 'x', validator, plugins: ['schemas'] }))
-        const file = out.files.find((f) => f.path === 'schemas.ts')
+        const file = { contents: schemaSource(out.files) }
         // Imported FIRST: the load-bearing failure is the throw at module
         // evaluation, and asserting the text first would hide it behind a
         // string mismatch.
         const dir = join(ROOT, `${label.replace(/\W+/g, '-')}-${validator}`)
         mkdirSync(dir, { recursive: true })
-        writeFileSync(join(dir, 'schemas.ts'), file?.contents ?? '')
+        writeTree(dir, out.files, (p) => p === 'schemas.ts' || p.startsWith('schemas/'))
         const mod = (await import(join(dir, 'schemas.ts'))) as Record<
           string,
           { '~standard': { validate: (v: unknown) => { issues?: readonly unknown[] } } }
@@ -94,7 +95,7 @@ describe('an unprovable discriminator falls back to a plain union', () => {
       '      required: [type]\n      properties: { type: { type: string, enum: [b] } }',
     )
     const out = generate(src, resolveConfig({ input: 'x', plugins: ['schemas'] }))
-    expect(out.files.find((f) => f.path === 'schemas.ts')?.contents).toContain(
+    expect(schemaSource(out.files)).toContain(
       "s.discriminatedUnion('type'",
     )
   })

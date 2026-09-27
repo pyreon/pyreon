@@ -151,6 +151,23 @@ function numArg(args: ts.NodeArray<ts.Expression>): number | null {
   return null
 }
 
+/**
+ * Could the options argument of a format check carry `key`, which changes what
+ * the check ACCEPTS (as opposed to its message)? Unknown is yes: an options
+ * value that is not an object literal -- an identifier, a spread -- cannot be
+ * read here, and a wrong verdict is worse than no compiled fast path.
+ */
+function changesFormat(args: ts.NodeArray<ts.Expression>, key: string): boolean {
+  const a = args[0]
+  if (!a) return false
+  if (!ts.isObjectLiteralExpression(a)) return true
+  return a.properties.some(
+    (p) =>
+      !ts.isPropertyAssignment(p) ||
+      (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name) ? p.name.text === key : true),
+  )
+}
+
 /** Extract a literal value (string / number / boolean) for `s.literal(...)`. */
 function literalArg(args: ts.NodeArray<ts.Expression>): string | number | boolean | undefined {
   const a = args[0]
@@ -186,9 +203,16 @@ function applyStringMethod(checks: StringCheck[], seg: ChainSegment): ValidateNo
       return null
     }
     case 'email':
+      // `precision` changes what `.email()` accepts; the emitted check is the
+      // default precision only, so any other would be enforced WRONGLY.
+      if (changesFormat(seg.args, 'precision')) return UNSUP('string.email with a precision option')
       checks.push({ kind: 'email' })
       return null
     case 'url':
+      // `protocol` turns `.url()` into an any-scheme URI check; the emitted
+      // one is http(s)-only, so a compiled build would reject what the runtime
+      // accepts. Bail to the runtime rather than emit it.
+      if (changesFormat(seg.args, 'protocol')) return UNSUP('string.url with a protocol option')
       checks.push({ kind: 'url' })
       return null
     case 'uuid':

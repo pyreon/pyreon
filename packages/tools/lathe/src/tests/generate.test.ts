@@ -60,14 +60,20 @@ describe('generate', () => {
     expect(paths.some((p) => p.endsWith('.native.tsx'))).toBe(false)
   })
 
-  it('renders schemas as a bare top-level `const` bound to an s.object literal', () => {
-    // This exact shape is what PMTC's recognizer requires. Wrapping it in a
-    // helper call or a `satisfies` compiles fine and silently un-lowers it.
-    const src = file(generate(SPEC, web), 'schemas.ts')
-    expect(src).toContain('export const Book = s.object({')
-    expect(src).toContain('id: s.string().uuid(),')
-    expect(src).toContain('title: s.string().min(1),')
-    expect(src).toContain("status: s.enum(['available', 'lost']).optional(),")
+  it('renders a web schema as its written-out type plus a pure, cast `s.object`', () => {
+    // One module per model; the barrel re-exports it. The call is annotated
+    // pure so an unused schema drops out of a bundle, and the const is cast to
+    // the interface's schema so consumers never re-infer it (see `emitSchemas`).
+    // The NATIVE shape -- a bare `s.object` literal, which is what PMTC's
+    // recognizer requires -- is asserted on the native module below.
+    expect(file(generate(SPEC, web), 'schemas.ts')).toContain("export * from './schemas/Book'")
+    const src = file(generate(SPEC, web), 'schemas/Book.ts')
+    expect(src).toContain('export interface Book {')
+    expect(src).toContain('export const Book = /* @__PURE__ */ s.object({')
+    expect(src).toContain('}) as unknown as Schema<Book>')
+    expect(src).toContain('id: /* @__PURE__ */ s.string().uuid(),')
+    expect(src).toContain('title: /* @__PURE__ */ s.string().min(1),')
+    expect(src).toContain("status: /* @__PURE__ */ s.enum(['available', 'lost']).optional(),")
   })
 
   it('puts the response generic on useQuery, not on .query()', () => {
@@ -77,7 +83,7 @@ describe('generate', () => {
     // The INVARIANT is where the generic sits, not the surrounding shape — the
     // options spread was added later and must not weaken this.
     const src = file(generate(SPEC, web), 'queries/books.ts')
-    expect(src).toContain('useQuery<Book[]>(')
+    expect(src).toContain('useQuery<Awaited<ReturnType<typeof listBooks>>>(')
     expect(src).not.toContain('.query<')
   })
 
@@ -143,7 +149,7 @@ describe('generate', () => {
     // the consumer's repo. The composite form needs `s` imported too.
     const src = file(generate(SPEC, web), 'endpoints/books.ts')
     expect(src).toContain("api.endpoint('GET /books/:id', { response: Book })")
-    expect(src).toContain("api.endpoint('GET /books', { response: s.array(Book) })")
+    expect(src).toContain("/* @__PURE__ */ api.endpoint('GET /books', { response: /* @__PURE__ */ s.array(Book) })")
     expect(src).toContain("import { s } from '@pyreon/validate'")
   })
 
@@ -194,7 +200,7 @@ describe('generate', () => {
   it('leaves a parameterless hook alone — nothing to be not-ready about', () => {
     const src = file(generate(SPEC, web), 'queries/books.ts')
     expect(src).toContain('export function useListBooks(options?: () => Record<string, unknown>) {')
-    expect(src).toContain('return useQuery<Book[]>(() => ({ ...listBooks.query(), ...options?.() }))')
+    expect(src).toContain('return useQuery<Awaited<ReturnType<typeof listBooks>>>(() => ({ ...listBooks.query(), ...options?.() }))')
   })
 
   it('reports per-operation reach with a reason', () => {
@@ -266,6 +272,7 @@ describe('generate', () => {
     const only = generate(SPEC, resolveConfig({ input: 'x', plugins: ['schemas'] }))
     expect(only.files.map((f) => f.path)).toContain('api-surface.json')
     expect(only.files.filter((f) => f.path.endsWith('.ts')).map((f) => f.path)).toEqual([
+      'schemas/Book.ts',
       'schemas.ts',
       'index.ts',
     ])
@@ -280,6 +287,7 @@ describe('generate', () => {
     // rather than through an exact file list that a non-emitter output moves.
     expect(schemasOnly.files.filter((f) => f.path.endsWith('.native.tsx'))).toEqual([])
     expect(schemasOnly.files.filter((f) => f.path.endsWith('.ts')).map((f) => f.path)).toEqual([
+      'schemas/Book.ts',
       'schemas.ts',
       'index.ts',
     ])

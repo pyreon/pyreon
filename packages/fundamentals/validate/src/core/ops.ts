@@ -48,7 +48,7 @@ export type StringCheckOp =
   | { kind: 'check:string:phone'; opts?: CheckOpts | undefined }
   | { kind: 'check:string:ip'; opts?: CheckOpts | undefined }
   | { kind: 'check:string:creditcard'; opts?: CheckOpts | undefined }
-  | { kind: 'check:string:url'; opts?: CheckOpts | undefined }
+  | { kind: 'check:string:url'; protocol?: RegExp | undefined; opts?: CheckOpts | undefined }
   | { kind: 'check:string:uuid'; opts?: CheckOpts | undefined }
   | { kind: 'check:string:cuid2'; opts?: CheckOpts | undefined }
   | { kind: 'check:string:ulid'; opts?: CheckOpts | undefined }

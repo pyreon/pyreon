@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { stripTs } from './helpers/strip-ts'
 import type { IrDocument, IrType } from '../core/ir'
 import { emitSchemas, refName, responseTypeName } from '../emit/schema'
 
@@ -42,7 +43,9 @@ const doc = (fields: Array<{ name: string; type: IrType; pattern?: string }>): I
 })
 
 const emitWith = (pattern: string): string =>
-  emitSchemas(doc([{ name: 'v', type: { kind: 'string' }, pattern }]), { native: false }).build('').contents
+  emitSchemas(doc([{ name: 'v', type: { kind: 'string' }, pattern }]), { native: false })
+    .map((f) => f.build('').contents)
+    .join('\n')
 
 const CR = String.fromCharCode(13)
 const LS = String.fromCharCode(0x2028)
@@ -59,10 +62,7 @@ const PS = String.fromCharCode(0x2029)
  * gone, not one constraint. So the assertion has to be "does this parse".
  */
 const compiles = (contents: string): void => {
-  const body = contents
-    .replace(/^import\s+.*$/gm, '')
-    .replace(/^export type .*$/gm, '')
-    .replace(/^export const /gm, 'const ')
+  const body = stripTs(contents)
   // eslint-disable-next-line no-new-func
   new Function('s', body)
 }
@@ -135,7 +135,9 @@ describe('pattern constraints — only portable regexes survive', () => {
     const out = emitSchemas(
       doc([{ name: 'n', type: { kind: 'number', integer: true }, pattern: '^[0-9]+$' }]),
       { native: false },
-    ).build('').contents
+    )
+      .map((f) => f.build('').contents)
+      .join('\n')
     expect(out).not.toContain('.regex(')
   })
 })
