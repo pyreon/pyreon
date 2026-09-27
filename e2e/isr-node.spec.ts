@@ -49,4 +49,50 @@ test.describe('ISR node deploy artifact', () => {
     await expect(page).toHaveURL(/\/about$/)
     expect(errors, errors.join('\n')).toHaveLength(0)
   })
+
+  // Route middleware is the documented auth hook. It must gate EVERY way to
+  // the page and its server data — not only a bare full-page GET.
+  test('route middleware gates the page, a query-string variant, and the data endpoint', async ({ page }) => {
+    for (const path of [
+      '/guarded',
+      '/guarded?x=1',
+      '/_pyreon/data?path=/guarded',
+      `/_pyreon/data?path=${encodeURIComponent('/guarded?x=1')}`,
+    ]) {
+      const res = await page.request.get(path)
+      expect(res.status(), path).toBe(401)
+      expect(await res.text(), path).not.toContain('GUARDED_SENTINEL_m4k2')
+    }
+    const ok = await page.request.get('/_pyreon/data?path=/guarded', {
+      headers: { 'x-demo-auth': 'let-me-in' },
+    })
+    expect(ok.status()).toBe(200)
+    expect(await ok.text()).toContain('GUARDED_SENTINEL_m4k2')
+  })
+
+  // The node runner used to drop request bodies, so every API POST arrived
+  // empty and `req.json()` threw.
+  test('an API POST reaches its handler with its body', async ({ page }) => {
+    const res = await page.request.post('/api/posts', {
+      data: { title: 'from e2e', body: 'body survives' },
+    })
+    expect(res.status()).toBe(201)
+    expect(await res.json()).toMatchObject({ title: 'from e2e', body: 'body survives' })
+  })
+
+  // `zero({ mode: 'isr' })` must reach the running server. Before the config
+  // was injected into the server build, this app rendered as plain SSR and
+  // the "same HTML twice" check above passed anyway.
+  test('the ISR cache is actually active (second request is a HIT)', async ({ page }) => {
+    await page.request.get('/about')
+    const second = await page.request.get('/about')
+    expect(second.headers()['x-isr-cache']).toBe('HIT')
+  })
+
+  // ISR caches page renders only: an API route stays live and keeps its type.
+  test('API routes are never ISR-cached and keep their content type', async ({ page }) => {
+    const res = await page.request.get('/api/posts')
+    expect(res.headers()['content-type']).toContain('application/json')
+    expect(res.headers()['x-isr-cache']).toBeUndefined()
+  })
 })

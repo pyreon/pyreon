@@ -62,7 +62,7 @@ export type ChartEventHandler = (params: ChartEventParams, instance: ECharts) =>
 // ─── Chart config ────────────────────────────────────────────────────────────
 
 /** An ECharts theme — 'dark', a registered theme name, or a theme object. */
-export type ChartTheme = string | Record<string, unknown>
+export type EChartTheme = string | Record<string, unknown>
 
 /**
  * Configuration for useChart.
@@ -79,7 +79,7 @@ export interface UseChartConfig {
    * (same as vue-echarts). The `instance` signal publishes the new instance,
    * so event bindings / loading overlay / consumers rebind automatically.
    */
-  theme?: ChartTheme | (() => ChartTheme | null | undefined)
+  theme?: EChartTheme | (() => EChartTheme | null | undefined)
   /** Renderer — 'canvas' (default, best performance) or 'svg' */
   renderer?: 'canvas' | 'svg'
   /** ECharts locale — 'EN' (default), 'ZH', etc. */
@@ -159,10 +159,10 @@ export interface UseChartResult {
 }
 
 /**
- * Props for the <Chart /> component.
+ * Props for the <EChart /> component.
  * Generic parameter narrows the option type for exact autocomplete.
  */
-export interface ChartProps<TOption extends EChartsOption = EChartsOption> extends Props {
+export interface EChartProps<TOption extends EChartsOption = EChartsOption> extends Props {
   /** Reactive ECharts option config — fully typed */
   options: () => TOption
   /**

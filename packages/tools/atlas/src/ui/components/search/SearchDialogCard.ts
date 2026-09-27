@@ -1,8 +1,8 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const SearchDialogCard = el
   .attrs({ tag: 'div', contentDirection: 'rows', contentAlignX: 'block' })
-  .theme((t: T) => ({
+  .theme((t) => ({
     width: 'min(560px,92vw)', marginTop: '12vh', maxHeight: '60vh',
     borderRadius: t.radius.modal, overflow: 'hidden',
     background: t.surface, border: t.hairline,

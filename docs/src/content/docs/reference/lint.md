@@ -68,6 +68,7 @@ const fileResult = lintFile('app.tsx', source, allRules, config, cache)
 | Symbol | Kind | Summary |
 | --- | --- | --- |
 | [`lint`](#lint) | function | 132 rules across 25 categories. |
+| [`lintAsync`](#lintasync) | function | Same options + same `LintResult` shape as `lint()`, but fans the file set out across a `worker_threads` pool for large r |
 | [`lintFile`](#lintfile) | function | Low-level single-file API. |
 | [`cli`](#cli) | function | CLI entry. |
 | [`no-process-dev-gate`](#no-process-dev-gate) | constant | The `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'` pattern works in vitest (Node, `process` i |
@@ -103,7 +104,36 @@ lint({
 })
 ```
 
-**See also:** `lintFile` · `getPreset` · `AstCache`
+**See also:** `lintFile` · `lintAsync` · `getPreset` · `AstCache`
+
+---
+
+### lintAsync `function`
+
+```ts
+lintAsync(options?: LintOptions): Promise<LintResult>
+```
+
+Same options + same `LintResult` shape as `lint()`, but fans the file set out across a `worker_threads` pool for large runs — byte-identical output to the sequential path either way (locked by a test that diffs both over the same corpus). Falls back to running `lint()` SEQUENTIALLY, in-process, whenever pooling would not help or cannot work: below `PARALLEL_FILE_THRESHOLD` (200 files — worker spin-up cost would dominate), when the resolved worker entry is a `.ts` source file (a dev/workspace layout — Node's ESM loader inside a worker thread cannot resolve its extensionless imports), or when the built worker entry is missing. `pyreon-lint`'s own CLI calls this, not `lint()`, so a large-repo CI run gets the pool automatically.
+
+**Example**
+
+```tsx
+import { lintAsync } from '@pyreon/lint'
+
+// Same call shape as lint() — awaits, and pools automatically above the
+// file-count threshold. Safe to always reach for this over lint() in an
+// async context; it only pays worker overhead when it is worth it.
+const result = await lintAsync({ paths: ['src/'], preset: 'recommended' })
+console.log(result.totalErrors, result.totalWarnings)
+```
+
+**Common mistakes**
+
+- Calling it from a SYNCHRONOUS context expecting the sequential fallback to be free — worker spin-up is skipped below the threshold, but the function is still `async`; use `lint()` directly in a sync caller
+- Assuming a large monorepo always pools — a dev/workspace checkout resolves the worker entry to a `.ts` file, which deliberately falls back to sequential (a built `lib/` is what enables pooling)
+
+**See also:** `lint` · `planRun`
 
 ---
 

@@ -1,16 +1,14 @@
-import { onMount, onUnmount } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
-import { batch, effect, signal } from '@pyreon/reactivity'
 import {
   observeWindowOffset,
   observeWindowRect,
   type VirtualItem,
-  Virtualizer,
+  type Virtualizer,
   type VirtualizerOptions,
   windowScroll,
 } from '@tanstack/virtual-core'
-import { deferDetachedMeasurement, guardDetachedSize } from './detached-measure'
-import { createItemRegistry, type VirtualItemMeasurement } from './item-registry'
+import type { VirtualItemMeasurement } from './item-registry'
+import { createReactiveVirtualizer } from './reactive-virtualizer'
 
 export type UseWindowVirtualizerOptions<TItemElement extends Element> = () => Omit<
   VirtualizerOptions<Window, TItemElement>,
@@ -47,66 +45,15 @@ export interface UseWindowVirtualizerResult<TItemElement extends Element> {
 export function useWindowVirtualizer<TItemElement extends Element>(
   options: UseWindowVirtualizerOptions<TItemElement>,
 ): UseWindowVirtualizerResult<TItemElement> {
-  const virtualItems = signal<VirtualItem[]>([])
-  const totalSize = signal(0)
-  const isScrolling = signal(false)
-  const registry = createItemRegistry()
-
-  const resolvedOptions: VirtualizerOptions<Window, TItemElement> = {
-    observeElementRect: observeWindowRect,
-    observeElementOffset: observeWindowOffset,
-    scrollToFn: windowScroll,
-    initialOffset: typeof document !== 'undefined' ? window.scrollY : 0,
-    getScrollElement: () => (typeof window !== 'undefined' ? window : (null as unknown as Window)),
-    ...options(),
-  }
-  resolvedOptions.measureElement = guardDetachedSize(resolvedOptions.measureElement)
-
-  // Store latest user options so onChange always reads the freshest reference
-  let latestUserOpts = options()
-
-  const instance = new Virtualizer<Window, TItemElement>(resolvedOptions)
-  deferDetachedMeasurement(instance)
-
-  const emit = (): void => {
-    batch(() => {
-      const items = instance.getVirtualItems()
-      virtualItems.set(items)
-      totalSize.set(instance.getTotalSize())
-      isScrolling.set(instance.isScrolling)
-      registry.sync(items)
-    })
-  }
-
-  const effectCleanup = effect(() => {
-    latestUserOpts = options()
-    instance.setOptions({
-      ...instance.options,
-      ...latestUserOpts,
-      measureElement: guardDetachedSize(latestUserOpts.measureElement),
-      onChange: (inst, sync) => {
-        emit()
-        // Read latest opts to avoid stale closure
-        latestUserOpts.onChange?.(inst, sync)
-      },
-    })
-
-    instance._willUpdate()
-    emit()
-  })
-
-  let mountCleanup: (() => void) | undefined
-  onMount(() => {
-    mountCleanup = instance._didMount()
-    instance._willUpdate()
-    emit()
-    return undefined
-  })
-
-  onUnmount(() => {
-    effectCleanup.dispose()
-    mountCleanup?.()
-  })
-
-  return { instance, virtualItems, totalSize, isScrolling, item: registry.item }
+  return createReactiveVirtualizer<Window, TItemElement>(
+    {
+      observeElementRect: observeWindowRect,
+      observeElementOffset: observeWindowOffset,
+      scrollToFn: windowScroll,
+      initialOffset: typeof document !== 'undefined' ? window.scrollY : 0,
+      getScrollElement: () => (typeof window !== 'undefined' ? window : (null as unknown as Window)),
+    },
+    options,
+    'useWindowVirtualizer',
+  )
 }

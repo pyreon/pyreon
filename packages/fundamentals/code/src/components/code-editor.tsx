@@ -1,4 +1,5 @@
-import { cx } from '@pyreon/core'
+import { cx, useProvidedColorMode } from '@pyreon/core'
+import { watch } from '@pyreon/reactivity'
 import type { VNodeChild } from '@pyreon/core'
 import type { CodeEditorProps, EditorInstance } from '../types'
 
@@ -19,6 +20,17 @@ import type { CodeEditorProps, EditorInstance } from '../types'
 export function CodeEditor(props: CodeEditorProps): VNodeChild {
   // Read through `props`: components run once, so destructuring would pin this
   // to the first instance if a caller ever swapped it.
+
+  // An editor created without a `theme` follows the app's colour mode
+  // (`<PyreonUI mode>` / `<ColorModeProvider mode>` from @pyreon/core) when the
+  // app set one; with none it keeps its light default. A sync INTO the
+  // editor's own writable signal (not a derived value), re-run only when the
+  // app's mode flips, and disposed with this component.
+  const appMode = useProvidedColorMode()
+  const followsApp = !(props.instance as EditorInstance & { _themeExplicit?: boolean })._themeExplicit
+  if (appMode !== undefined && followsApp) {
+    watch(appMode, (mode) => props.instance.theme.set(mode), { immediate: true })
+  }
 
   const containerRef = (el: Element | null) => {
     if (!el) return

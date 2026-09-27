@@ -1,9 +1,11 @@
 /**
  * `pyreon loom [args]` — the Loom dependency observatory, from the front door.
  *
- * A thin, dependency-free delegator to `@pyreon/loom`'s CLI (`loom scan` /
- * `loom dev`). Any args pass straight through, so `pyreon loom scan .` ≡
- * `loom scan .`.
+ * A thin, dependency-free delegator to `@pyreon/loom`'s CLI — `loom scan`
+ * (analyze the fabric, red exit on error findings), `loom dev` (serve the
+ * observatory UI) and `loom build` (prerender it to a static site). Any args
+ * pass straight through, so `pyreon loom scan .` ≡ `loom scan .`; run
+ * `pyreon loom --help` for loom's own flag list.
  *
  * Deliberately WITHOUT `@latest` (the `pyreon mcp` / `pyreon atlas`
  * precedent): `npx @pyreon/loom` prefers the project-local install, only
@@ -30,7 +32,8 @@ export function runLoom(opts: LoomOptions): number {
   }
   try {
     // Inherit stdio: `loom dev` owns the terminal for the life of the dev
-    // server; `loom scan` streams its findings + red-exit contract through.
+    // server; `loom scan` / `loom build` stream their output + exit code
+    // through.
     execFileSync('npx', npxArgs, { stdio: 'inherit' })
     return 0
   } catch (err) {

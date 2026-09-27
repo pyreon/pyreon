@@ -125,8 +125,9 @@ export function renderConfig(title: string, projects: readonly DetectedProject[]
 
   lines.push(
     '    // Wraps every rendered scenario — your theme, router, i18n, query client.',
-    '    // Uncomment and point at your real providers.',
-    '    // wrapper: ({ children }) => <AppProviders>{children}</AppProviders>,',
+    '    // Uncomment and point at your real providers. This file is plain .ts, so',
+    "    // use h() rather than JSX: import { h } from '@pyreon/core'",
+    '    // wrapper: ({ children }) => h(AppProviders, null, children),',
     '',
     '    // Per-component presentation. Display only: the real component name is',
     '    // never overridden, because it is what you import.',

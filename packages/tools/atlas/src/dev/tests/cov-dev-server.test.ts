@@ -233,13 +233,37 @@ describe('what the defaults are', () => {
     try {
       process.chdir(root)
       handle = await startDevServer()
-      expect(handle.url).toBe('http://localhost:5210/')
+      // 5210 is a preference, not a requirement: a second workbench (or any
+      // other process) holding it moves this one to the next free port. The
+      // URL reported is the one actually bound.
+      const port = Number(new URL(handle.url).port)
+      expect(port).toBeGreaterThanOrEqual(5210)
       expect(handle.components).toBe(1)
-      const html = await (await fetch('http://localhost:5210/')).text()
+      const html = await (await fetch(handle.url)).text()
       expect(html).toContain('<title>atlas</title>')
     } finally {
       await handle?.close()
       process.chdir(before)
+    }
+  }, 120_000)
+
+  it('moves to the next free port when the default is taken, and reports it', async () => {
+    const root = fixture()
+    const blocker = createServer()
+    // If something else already holds 5210 the listen fails; the default is
+    // taken either way, which is the case under test.
+    await new Promise<void>((done) => {
+      blocker.once('error', () => done())
+      blocker.listen(5210, () => done())
+    })
+    let handle: DevServerHandle | undefined
+    try {
+      handle = await startDevServer({ cwd: root })
+      expect(handle.url).not.toBe('http://localhost:5210/')
+      expect((await fetch(handle.url)).ok).toBe(true)
+    } finally {
+      await handle?.close()
+      await new Promise<void>((done) => blocker.close(() => done()))
     }
   }, 120_000)
 })

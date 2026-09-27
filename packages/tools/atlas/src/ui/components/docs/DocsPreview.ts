@@ -1,4 +1,4 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const DocsPreview = el
   .attrs({
@@ -6,10 +6,12 @@ export const DocsPreview = el
     contentAlignX: 'center',
     contentAlignY: 'center',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     borderRadius: t.radius.stage,
     border: t.hairline,
     background: t.surface,
     padding: '48px',
     marginBottom: '24px',
+    // Containing block for adopted overlays — see PreviewSurface.
+    contain: 'layout',
   }))

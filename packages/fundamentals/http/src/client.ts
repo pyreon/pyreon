@@ -10,6 +10,7 @@
  * same discipline `pyreon/prefer-request-context` enforces elsewhere.
  */
 
+import { encodeCookies, encodeForm, encodeMultipart } from './body'
 import { compose } from './chain'
 import {
   defineEndpoint,
@@ -19,11 +20,17 @@ import {
   type ResponseOf,
 } from './endpoint'
 import { AbortError, HttpError, TimeoutError, httpErrorFor, isAbortError } from './errors'
-import { createResponsePromise, type HttpResponsePromise, type ParseContext } from './response'
+import {
+  createResponsePromise,
+  type BodyLink,
+  type HttpResponsePromise,
+  type ParseContext,
+} from './response'
 import { resolveAgainstAmbientOrigin } from './request-context'
 import { linkSignals } from './signal'
 import { fetchTransport } from './transport'
 import type {
+  HeaderValues,
   HttpClientConfig,
   HttpMethod,
   HttpMiddleware,
@@ -91,7 +98,7 @@ function toResolved(config: HttpClientConfig, base?: ResolvedConfig): ResolvedCo
   }
 }
 
-function applyHeaderSource(target: Headers, source: HeadersInit): void {
+function applyHeaderSource(target: Headers, source: HeadersInit | HeaderValues): void {
   if (source instanceof Headers) {
     source.forEach((value, key) => {
       target.set(key, value)
@@ -111,20 +118,43 @@ function applyHeaderSource(target: Headers, source: HeadersInit): void {
   // same name/value validation + normalization the constructor would, so
   // this skips only the intermediate `Headers` allocation, not any check.
   for (const key of Object.keys(source)) {
-    target.set(key, (source as Record<string, string>)[key] as string)
+    const value = (source as HeaderValues)[key]
+    // An optional header left `undefined` is OMITTED. `Headers.set` would
+    // otherwise stringify it and send the literal text "undefined".
+    if (value === undefined || value === null) continue
+    target.set(key, typeof value === 'string' ? value : String(value))
   }
 }
 
 /** Encode the body and set `Content-Type` when the caller has not. */
 function buildBody(options: RequestOptions, headers: Headers): BodyInit | null {
+  const given = [
+    options.json !== undefined && 'json',
+    options.form !== undefined && 'form',
+    options.multipart !== undefined && 'multipart',
+    options.body !== undefined && options.body !== null && 'body',
+  ].filter((k): k is string => k !== false)
+  if (given.length > 1) {
+    throw new Error(
+      `[Pyreon] http: pass ONE of \`json\`, \`form\`, \`multipart\` or \`body\` — got ${given.map((k) => `\`${k}\``).join(' and ')}. Each is a different encoding of the same body.`,
+    )
+  }
+  if (options.cookies) {
+    const cookie = encodeCookies(options.cookies)
+    if (cookie) headers.set('cookie', headers.has('cookie') ? `${headers.get('cookie')}; ${cookie}` : cookie)
+  }
   if (options.json !== undefined) {
-    if (options.body !== undefined && options.body !== null) {
-      throw new Error(
-        '[Pyreon] http: pass either `json` or `body`, not both — `json` serializes for you.',
-      )
-    }
     if (!headers.has('content-type')) headers.set('content-type', 'application/json')
     return JSON.stringify(options.json)
+  }
+  if (options.form !== undefined) {
+    if (!headers.has('content-type')) headers.set('content-type', 'application/x-www-form-urlencoded')
+    return encodeForm(options.form, options.formEncoding).toString()
+  }
+  if (options.multipart !== undefined) {
+    // No Content-Type: the platform writes it WITH the boundary it chose. A
+    // caller-set `multipart/form-data` without a boundary breaks the body.
+    return encodeMultipart(options.multipart)
   }
   return options.body ?? null
 }
@@ -187,6 +217,38 @@ function fromResolved(resolved: ResolvedConfig): HttpClient {
     options: RequestOptions = {},
   ): HttpResponsePromise => {
     const folded = foldedState ?? fold()
+    const timeoutMs = options.timeout ?? resolved.timeout
+    // Built synchronously so a decoder called in the same tick
+    // (`api.get(x).json()`) can CLAIM the body before the headers arrive —
+    // see `BodyLink`. `link` itself is created inside `exec`.
+    let link: ReturnType<typeof linkSignals> | undefined
+    let httpRequest: HttpRequest | undefined
+    let claims = 0
+    let settled = false
+    let released = false
+    const releaseLink = (): void => {
+      if (released) return
+      released = true
+      link?.cleanup()
+    }
+    const bodyLink: BodyLink = {
+      get signal() {
+        return link?.signal
+      },
+      claim() {
+        claims++
+      },
+      release() {
+        claims--
+        if (claims <= 0 && settled) releaseLink()
+      },
+      abortError() {
+        return link?.timedOut()
+          ? new TimeoutError(typeof timeoutMs === 'number' ? timeoutMs : 0, httpRequest)
+          : new AbortError(httpRequest)
+      },
+    }
+
     const exec = (async (): Promise<HttpResponse> => {
       const headers = new Headers(folded.base)
       for (const source of folded.dynamic) {
@@ -201,10 +263,11 @@ function fromResolved(resolved: ResolvedConfig): HttpClient {
         buildUrl(resolved.baseUrl, path, options.params, options.query),
       )
 
-      const link = linkSignals(options.signal, options.timeout ?? resolved.timeout)
-      const httpRequest: HttpRequest = {
+      link = linkSignals(options.signal, timeoutMs)
+      const req: HttpRequest = {
         method,
         url,
+        baseUrl: resolved.baseUrl,
         headers,
         body,
         signal: link.signal,
@@ -217,43 +280,44 @@ function fromResolved(resolved: ResolvedConfig): HttpClient {
             ? {}
             : { ...resolved.meta },
       }
+      httpRequest = req
 
+      let ok = false
       try {
         // Never dispatch an already-cancelled request. `fetch` rejects
         // immediately on a pre-aborted signal, and a client that instead
         // performs the call would issue real traffic for work the caller
         // has already abandoned — the exact shape a rapidly-retyped
         // autocomplete produces.
-        if (link.signal?.aborted) throw new AbortError(httpRequest)
+        if (link.signal?.aborted) throw new AbortError(req)
 
-        const response = await dispatch(httpRequest)
+        const response = await dispatch(req)
         const shouldThrow = options.throwHttpErrors ?? resolved.throwHttpErrors
         if (shouldThrow && !response.ok) throw httpErrorFor(response)
+        ok = true
         return response
       } catch (cause) {
         // A timeout surfaces from the transport as an abort — re-label it,
         // because "timed out after 30000ms" and "the user navigated away"
         // demand opposite handling (retry vs. stay silent).
         if (link.timedOut() && isAbortError(cause)) {
-          throw new TimeoutError(
-            typeof (options.timeout ?? resolved.timeout) === 'number'
-              ? (options.timeout ?? resolved.timeout) as number
-              : 0,
-            httpRequest,
-          )
+          throw new TimeoutError(typeof timeoutMs === 'number' ? timeoutMs : 0, req)
         }
         if (isAbortError(cause) && !(cause instanceof AbortError)) {
-          throw new AbortError(httpRequest)
+          throw new AbortError(req)
         }
         throw cause
       } finally {
-        // Leak class I: the timeout timer AND the caller-signal listener
-        // are released on every path, success included.
-        link.cleanup()
+        // Leak classes I + D: the timeout timer AND the caller-signal
+        // listener are released on every path. The ONE deferral: a decoder
+        // has claimed the body, so the link must keep covering the body read
+        // (abort + timeout) — the decoder releases it when the read settles.
+        settled = true
+        if (!ok || claims <= 0) releaseLink()
       }
     })()
 
-    return createResponsePromise(exec, resolved.parse)
+    return createResponsePromise(exec, resolved.parse, bodyLink)
   }
 
   const client: HttpClient = {

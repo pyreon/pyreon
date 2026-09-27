@@ -942,6 +942,25 @@ cx(["a", ["b", { c: true }]])            // nested arrays
 - Assuming \`defaultValue\` still applies once \`value\` is supplied — controlled wins for the whole lifetime of the component`,
   },
 
+  'core/useColorMode': {
+    signature: `useColorMode(): () => 'light' | 'dark'  // + provideColorMode(mode), <ColorModeProvider mode>, systemColorMode()`,
+    example: `import { ColorModeProvider, useColorMode } from '@pyreon/core'
+
+const Badge = () => {
+  const mode = useColorMode()
+  return <span class={() => (mode() === 'dark' ? 'badge-dark' : 'badge-light')}>new</span>
+}
+
+<ColorModeProvider mode="dark">
+  <Badge />
+</ColorModeProvider>`,
+    notes: `The framework-wide light/dark mode, as an accessor — the ONE source every package reads, so \`<PyreonUI>\`, charts, flow and the code editor agree. Resolution, nearest first: a \`<ColorModeProvider mode>\` / \`provideColorMode(mode)\` above the component (\`<PyreonUI mode>\` calls it), else the page's scheme (the CSS \`color-scheme\` \`<html>\` declares, when it names exactly one — a site's own theme toggle), else \`prefers-color-scheme\`; light on the server. \`mode\` is \`'light'\`, \`'dark'\` or \`'system'\`, or an accessor over one. \`systemColorMode()\` is the page/OS half alone, a document-lifetime singleton. On native a literal \`mode\` is a compile-time scope; a reactive one follows the platform scheme. See also: createReactiveContext, provide.`,
+    mistakes: `- Calling \`useColorMode()()\` once at setup — it returns an ACCESSOR; read it inside JSX, an effect or a computed so a flip re-renders
+- Adding a separate mode prop to each library component — \`<PyreonUI mode>\` or \`<ColorModeProvider mode>\` sets it for everything below; a component that takes its own mode prop should treat it as an override of \`useColorMode()\`, not the source
+- Reading \`matchMedia('(prefers-color-scheme: dark)')\` directly — it ignores both an app's pinned mode and the page's declared \`color-scheme\`
+- Calling it outside component setup — it reads context, so outside a component it returns the system mode, not a provider's`,
+  },
+
   'core/splitProps': {
     signature: 'splitProps<T, K extends keyof T>(props: T, keys: K[]): [Pick<T, K>, Omit<T, K>]',
     example: `const Button = (props: { class?: string; onClick: () => void; children: VNodeChild }) => {
@@ -1097,7 +1116,8 @@ type Props = ExtractProps<typeof Iterator>
     example: '<Stack gap="md" align="center"><Text>a</Text><Text>b</Text></Stack>',
     notes: 'Primary layout container. Web → `<div style="display:flex;flex-direction:column|row">`; iOS → `VStack`/`HStack`; Android → `Column`/`Row`. Default `direction="column"`. `gap`/`padding` are theme-space tokens (number index OR "sm"|"md"|"lg"). See also: Inline, Layer, Scroll.',
     mistakes: `- Using \`<View>\` / \`<VStack>\` / \`<div>\` — the canonical name is \`<Stack>\` (one name, all platforms)
-- Expecting responsive props (breakpoint arrays) — not supported in v1; use @pyreon/elements for responsive web`,
+- Expecting responsive props (breakpoint arrays) — not supported in v1; use @pyreon/elements for responsive web
+- Relying on \`justify\` or \`wrap\` natively — both are IGNORED on iOS and Android (the compiler warns); use \`<Spacer />\` between children to distribute them`,
   },
 
   'primitives/Inline': {
@@ -1111,14 +1131,14 @@ type Props = ExtractProps<typeof Iterator>
   'primitives/Layer': {
     signature: '(props: { align?: Align; padding?: Space; children }) => VNode',
     example: '<Layer><Image src={hero} alt="" /><Text>overlaid caption</Text></Layer>',
-    notes: 'Stacked / overlay container. Web → `position:relative` + abs children; iOS → `ZStack`; Android → `Box`. Use for badges, overlays, layered composition. See also: Stack.',
+    notes: 'Stacked / overlay container. Web → `position:relative` single-cell grid (`align` → `place-items`); iOS → `ZStack`; Android → `Box`. Native children overlap automatically; on web, ordinary children flow into separate grid rows, so give the front child `position:absolute` to overlap. Use for badges, overlays, layered composition. See also: Stack.',
     mistakes: '- Using it for flow layout — Layer stacks children on the z-axis, not in a row/column',
   },
 
   'primitives/Scroll': {
-    signature: `(props: { direction?: 'vertical' | 'horizontal'; padding?: Space; children }) => VNode`,
+    signature: `(props: { axis?: 'vertical' | 'horizontal'; padding?: Space; children }) => VNode`,
     example: '<Scroll><Stack gap="md">{/* long content */}</Stack></Scroll>',
-    notes: 'Scrollable region. Web → `overflow:auto`; iOS → `ScrollView`; Android → `Column(verticalScroll)` / `Row(horizontalScroll)`. ⚠ Do not put a weighted `<Spacer>` inside a Scroll on Android (weight inside a scroll is invalid Compose). See also: Stack.',
+    notes: 'Scrollable region, vertical unless `axis="horizontal"`. Web → `overflow-y:auto` (or `overflow-x`); iOS → `ScrollView`; Android → `Column(verticalScroll)` / `Row(horizontalScroll)`. ⚠ Do not put a weighted `<Spacer>` inside a Scroll on Android (weight inside a scroll is invalid Compose). See also: Stack.',
     mistakes: '- Nesting a `<Spacer>` (weight) inside `<Scroll>` — invalid on Android Compose',
   },
 
@@ -1193,8 +1213,10 @@ type Props = ExtractProps<typeof Iterator>
   'primitives/Link': {
     signature: '(props: { to: string; external?: boolean; children }) => VNode',
     example: '<Link to="/profile">Profile</Link>',
-    notes: 'Navigation link. Web `<a>`; iOS/Android router-aware navigation. Integrates with `@pyreon/router` (`to` is a route path). `external` opens outside the app. See also: Button.',
-    mistakes: '- Hardcoding an href for internal routes — use `to` so it routes natively too',
+    notes: 'Navigation link. Web → a real `<a href>`; the package has NO router dependency, so call `init({ navigate })` once and plain left-clicks route through your handler (modifier-clicks stay with the browser; without `init` it is a full-page link). iOS/Android → `PyreonLink(to)`, which pushes `to` onto the native router (`@pyreon/native-router-swift` / `-kotlin`). `external` renders `target="_blank" rel="noopener noreferrer"` on web. See also: Button.',
+    mistakes: `- Hardcoding an href for internal routes — use \`to\` so it routes natively too
+- Relying on \`external\` natively — it is IGNORED on iOS and Android (the compiler warns) and the URL is pushed onto the in-app router; open websites with \`useLinking().openUrl(url)\`
+- Expecting SPA navigation on web without calling \`init({ navigate })\` — the link then does a full page load`,
   },
 
   'primitives/Field': {
@@ -1215,7 +1237,7 @@ type Props = ExtractProps<typeof Iterator>
   'primitives/Modal': {
     signature: '(props: { open: boolean | (() => boolean); onClose: () => void; children }) => VNode',
     example: '<Modal open={showSheet()} onClose={() => showSheet.set(false)}><Stack>{/* sheet body */}</Stack></Modal>',
-    notes: 'Modal/sheet. Web overlay; iOS `.sheet(isPresented:)`; Android `Dialog(onDismissRequest)`. Drive `open` with a signal; `onClose` fires on dismiss. See also: Layer.',
+    notes: 'Modal/sheet. Web → native `<dialog>` opened with `showModal()` (focus trap, backdrop, top layer); Escape and backdrop clicks call `onClose` instead of closing the dialog themselves, so `open` stays the source of truth. iOS `.sheet(isPresented:)`; Android `Dialog(onDismissRequest)`. Drive `open` with a signal; `onClose` fires on dismiss. See also: Layer.',
     mistakes: '- Forgetting `onClose` — needed so the platform dismiss gesture updates your signal',
   },
 
@@ -1270,7 +1292,7 @@ bar.onclick = () => host.emit(String(bar.dataset.id))`,
     example: `<Web>{/* web-only-rich: <Chart>, <Flow>, <Table> */}</Web>
 <NativeIOS>{/* Swift Charts, or a <WebView> embed */}</NativeIOS>
 <NativeAndroid>{/* Compose chart, or a <WebView> embed */}</NativeAndroid>`,
-    notes: `The Layer-4 per-platform escape hatch — one source carries a platform-specific subtree and exactly ONE branch renders per target. \`<Web>\` renders its children on WEB only (a layout-transparent Fragment, no wrapper element); \`<NativeIOS>\` / \`<NativeAndroid>\` render NOTHING on web (they return null — their children are emitted only on the iOS / Android target by PMTC). Reach for these for the rare genuinely-per-platform UI branch the 15 canonical primitives can't express (a web-only-rich chart/flow/table view vs a native equivalent or a \`<WebView>\` embed). See also: WebView, init / resetPrimitivesConfig, defineNativeModule / useNativeModule.`,
+    notes: `The Layer-4 per-platform escape hatch — one source carries a platform-specific subtree and exactly ONE branch renders per target. \`<Web>\` renders its children on WEB only (a layout-transparent Fragment, no wrapper element); \`<NativeIOS>\` / \`<NativeAndroid>\` render NOTHING on web (they return null — their children are emitted only on the iOS / Android target by PMTC). Reach for these for the rare genuinely-per-platform UI branch the canonical primitives can't express (a web-only-rich chart/flow/table view vs a native equivalent or a \`<WebView>\` embed). See also: WebView, init / resetPrimitivesConfig, defineNativeModule / useNativeModule.`,
     mistakes: `- Overusing them — defeats the one-source model; reach for them only when a target genuinely needs different UI.
 - Putting web-visible content in \`<NativeIOS>\` / \`<NativeAndroid>\` — both render NOTHING on web (they are no-ops there); only \`<Web>\` content reaches the browser.`,
   },
@@ -2360,7 +2382,7 @@ const html = await renderToString(<App />)`,
   },
 
   'runtime-server/renderToStream': {
-    signature: 'renderToStream(root: VNode | null, options?: { signal?: AbortSignal; suspenseTimeoutMs?: number }): ReadableStream<string>',
+    signature: 'renderToStream(root: VNode | null, options?: { signal?: AbortSignal; suspenseTimeoutMs?: number; nonce?: string }): ReadableStream<string>',
     example: `import { renderToStream } from "@pyreon/runtime-server"
 
 return new Response(renderToStream(<App />, {
@@ -2369,7 +2391,7 @@ return new Response(renderToStream(<App />, {
 }), {
   headers: { "content-type": "text/html" },
 })`,
-    notes: 'Render to a Web-standard `ReadableStream<string>` with true progressive flushing — synchronous subtrees enqueue immediately, async component boundaries are awaited in order. Suspense boundaries stream OUT OF ORDER: the fallback is emitted inline at once, and the resolved children arrive later as a `<template>` + a tiny inline swap `<script>` that replaces the placeholder client-side — without blocking the rest of the page. Each call gets its own isolated ALS context stack. A Suspense boundary that does not resolve within the per-boundary timeout (default 30_000 ms, configurable via `options.suspenseTimeoutMs`; pass `Infinity` to disable) leaves its fallback in place and a dev-mode warning fires; a boundary that throws also leaves the fallback (no swap script emitted). Pass `options.signal` (e.g. `Request.signal`) to abort pending Suspense work when the consumer disconnects. See also: renderToString.',
+    notes: `Render to a Web-standard \`ReadableStream<string>\` with true progressive flushing — synchronous subtrees enqueue immediately, async component boundaries are awaited in order. Suspense boundaries stream OUT OF ORDER: the fallback is emitted inline at once, and the resolved children arrive later as a \`<template>\` + a tiny inline swap \`<script>\` that replaces the placeholder client-side — without blocking the rest of the page. Each call gets its own isolated ALS context stack. A Suspense boundary that does not resolve within the per-boundary timeout (default 30_000 ms, configurable via \`options.suspenseTimeoutMs\`; pass \`Infinity\` to disable) leaves its fallback in place and a dev-mode warning fires; a boundary that throws also leaves the fallback (no swap script emitted). Pass \`options.signal\` (e.g. \`Request.signal\`) to abort pending Suspense work when the consumer disconnects. Pass \`options.nonce\` (the per-request CSP nonce) and every inline \`<script>\`/\`<style>\` the stream emits carries it, so a strict \`script-src 'nonce-…'\` policy admits the Suspense swaps; \`@pyreon/server\` forwards \`ctx.locals.cspNonce\` automatically. See also: renderToString.`,
     mistakes: `- Assuming Suspense children arrive in source order — they are swapped in as each boundary resolves; the fallback ships first, resolved content can arrive in any order
 - Expecting \`@pyreon/head\` tags registered inside a Suspense child to reach the document \`<head>\` — the head is flushed in the shell BEFORE any boundary resolves, so async-loaded data does not contribute to it
 - Treating a timed-out boundary as an error — by design the fallback simply stays; only a dev-mode \`console.warn\` signals it. Tune \`options.suspenseTimeoutMs\` to match your SLA (5_000–10_000 typical for user-facing apps; \`Infinity\` to disable entirely for export jobs / reports)
@@ -2937,15 +2959,15 @@ afterEach(() => resetAllHooks())   // else a mutation in one test leaks to the n
   // <gen-docs:api-reference:start @pyreon/validate>
 
   'validate/withField': {
-    signature: '<S extends StandardSchemaV1>(schema: S, meta: FieldMeta) => S',
+    signature: '<S extends StandardSchemaV1>(schema: S, meta: FieldMeta) => WithFieldMeta<S>',
     example: `const emailSchema = withField(z.string().email(), {
   label: 'Email address',
   placeholder: 'you@example.com',
   i18nLabel: 'auth.email.label',
   autoComplete: 'email',
 })`,
-    notes: `Attach Pyreon field metadata (label, hint, placeholder, i18n keys, autoFocus, autoComplete, defaultValue) to any Standard Schema. The returned schema is the SAME REFERENCE as the input — Pyreon mutates a Symbol-keyed non-enumerable slot in place, which is invisible to JSON serialization, for…in, Object.keys, and library-internal comparators. Mutation (instead of cloning) is required because ArkType's \`Type\` instances are callable functions whose \`~standard.validate\` does \`this(input)\` — a shallow clone would not be callable and would break that contract. Re-wrapping merges new metadata onto existing (later keys win). See also: getMeta, resolveMetaField, StandardSchemaV1.`,
-    mistakes: `- Expecting withField to return a NEW reference — it doesn't. The metadata mutation is in place. If you need an isolated copy, construct two separate schemas instead.
+    notes: `Attach Pyreon field metadata (label, hint, placeholder, i18n keys, autoFocus, autoComplete, defaultValue) to any Standard Schema. Returns a NEW schema carrying the metadata and never modifies its input (a frozen schema is fine), so two \`withField\` calls on one shared base keep separate labels. A Pyreon \`s\` schema is cloned (copy-on-write, like its chainable methods); any other Standard Schema is wrapped in a transparent Proxy that answers only the Symbol-keyed metadata slot and forwards everything else — \`.parse\`, \`~standard\`, and an ArkType schema's call signature keep working. Re-wrapping a wrapped schema merges (later keys win). See also: getMeta, resolveMetaField, StandardSchemaV1.`,
+    mistakes: `- Expecting withField to label the schema you PASSED — it returns a new one and leaves the input untouched. Use the RETURNED schema (\`const email = withField(base, …)\`); calling \`withField(base, …)\` for its side effect attaches nothing to \`base\`.
 - Adding \`i18nLabel\` without a corresponding \`label\` — without a translation provider (or when t echoes the key), there's no fallback. Always set both.
 - Storing schemas with metadata in JSON.stringify-d state and round-tripping — the metadata is Symbol-keyed and won't survive serialization. Re-attach on load.`,
   },
@@ -2976,7 +2998,7 @@ const label = meta?.label ?? humanize(fieldName)`,
     signature: `<S extends StandardSchemaV1>(
   schema: S,
   source: Signal<unknown> | (() => unknown),
-) => Computed<ParseResult>`,
+) => Computed<ParseResult<Output<S>>>`,
     example: `const $email = signal('')
 const $result = parseReactive(emailSchema, $email)
 
@@ -2987,7 +3009,7 @@ effect(() => {
 })
 
 $email.set('foo@bar.com')  // $result re-derives`,
-    notes: 'Reactively parse `source` through `schema`. Returns a `Computed<ParseResult>` that re-validates on every source change. Synchronous only — for schemas with async refinements (Zod `.refine(async)`, Valibot async pipe), use parseReactiveAsync (this sync variant surfaces an actionable issue if the schema returns a Promise). See also: parseReactiveAsync, watchValid, formatErrors.',
+    notes: `Reactively parse \`source\` through \`schema\`. Returns a \`Computed<ParseResult<Output<S>>>\` (typed by the schema's output) that re-validates on every source change. Synchronous only — for schemas with async refinements (Zod \`.refine(async)\`, Valibot async pipe), use parseReactiveAsync (this sync variant surfaces an actionable issue if the schema returns a Promise). See also: parseReactiveAsync, watchValid, formatErrors.`,
     mistakes: `- Using parseReactive on an async schema — it surfaces a clear "use parseReactiveAsync" issue rather than silently producing a Promise as the validation result.
 - Calling parseReactive on every render of a component — it allocates a Computed; cache it at component setup time (call once per signal-source pair).`,
   },
@@ -2996,7 +3018,7 @@ $email.set('foo@bar.com')  // $result re-derives`,
     signature: `<S extends StandardSchemaV1>(
   schema: S,
   source: Signal<unknown> | (() => unknown),
-) => Computed<Promise<ParseResult>>`,
+) => Computed<Promise<ParseResult<Output<S>>>>`,
     example: `const schema = z.string().refine(async (s) => await checkUnique(s))
 const $result = parseReactiveAsync(schema, $username)
 
@@ -3022,7 +3044,7 @@ watch($result, async (current) => {
 })
 
 onUnmount(stop)`,
-    notes: 'Subscribe to validity transitions. The callback fires only when validity flips (true→false or false→true), NOT on every error-message change — ideal for form-state hooks that care about "is this OK?" without re-rendering on every typo. Returns an unsubscribe function. Internally a `watch()` over `parseReactive`. See also: parseReactive.',
+    notes: 'Subscribe to validity transitions. The callback fires only when validity flips (true→false or false→true), NOT on every error-message change — ideal for form-state hooks that care about "is this OK?" without re-rendering on every typo. Returns an unsubscribe function. Async schemas report once the validation settles; a settle superseded by newer input is dropped, and a rejected validator counts as invalid. See also: parseReactive.',
   },
 
   'validate/formatError': {
@@ -3634,7 +3656,7 @@ function focusField(name: FieldNames<typeof form>) { /* … */ }`,
   },
 
   'query/useQuery': {
-    signature: '<TData, TError, TKey>(options: () => QueryObserverOptions<...>) => UseQueryResult<TData, TError>',
+    signature: '<TQueryFnData, TError, TData = TQueryFnData, TKey>(options: () => QueryObserverOptions<...>) => UseQueryResult<TData, TError>',
     example: `const userId = signal(1)
 const user = useQuery(() => ({
   queryKey: ['user', userId()],
@@ -3689,7 +3711,7 @@ const user = useQuery(() => ({
   },
 
   'query/useQueries': {
-    signature: '(queries: () => UseQueriesOptions[]) => Signal<QueryObserverResult[]>',
+    signature: '<const T extends readonly UseQueriesInput[]>(queries: () => T) => Signal<QueriesResults<T>>',
     example: `const results = useQueries(() =>
   userIds().map((id) => ({ queryKey: ['user', id], queryFn: () => fetchUser(id) })),
 )
@@ -3730,9 +3752,9 @@ usePrefetchQuery(() => ({ queryKey: ['user', id], queryFn: fetchUser }))
     }
   },
 })
-// sub.status() — 'connecting' | 'connected' | 'disconnected' | 'error'
+// sub.status() — 'connecting' | 'connected' | 'disconnected' | 'error' | 'failed'
 // sub.send(data), sub.close(), sub.reconnect()`,
-    notes: 'Reactive WebSocket with auto-reconnect and QueryClient cache integration. `onMessage` receives the active `QueryClient` so push updates can invalidate or directly patch cached queries in a single line. Exponential backoff on reconnect (default 1s doubling, max 10 attempts — configurable via `reconnectDelay` / `maxReconnectAttempts`). `url` and `enabled` may be signals for reactive connection management — changing the URL closes the old socket and opens a new one. Returns `status` (signal), `send(data)`, `close()`, `reconnect()`. See also: useSSE, useQuery.',
+    notes: `Reactive WebSocket with auto-reconnect and QueryClient cache integration. \`onMessage\` receives the active \`QueryClient\` so push updates can invalidate or directly patch cached queries in a single line. Jittered exponential backoff on reconnect (default 1s doubling, capped at \`maxReconnectDelay\` = 30s, max 10 attempts — configurable via \`reconnectDelay\` / \`maxReconnectDelay\` / \`maxReconnectAttempts\`); when attempts run out \`status()\` is \`'failed'\`, and a browser \`online\` event starts over. \`url\` and \`enabled\` may be signals for reactive connection management — changing the URL closes the old socket and opens a new one. Returns \`status\` (signal), \`send(data)\`, \`close()\`, \`reconnect()\`. See also: useSSE, useQuery.`,
     mistakes: `- \`onMessage\` runs on every frame the socket receives — debounce cache invalidations for high-frequency streams or you'll trigger N refetches per second
 - Storing data in a parallel signal instead of using \`queryClient.setQueryData\` inside \`onMessage\` — defeats the QueryClient cache; use \`setQueryData\` to push updates into the same cache that \`useQuery\` reads
 - Forgetting \`enabled: false\` on unmount-sensitive connections — the WebSocket stays open unless \`enabled\` is a signal that tracks component lifecycle or a reactive condition`,
@@ -3750,15 +3772,15 @@ usePrefetchQuery(() => ({ queryKey: ['user', id], queryFn: fetchUser }))
   },
 })
 // sse.data() — last parsed message
-// sse.status() — 'connecting' | 'connected' | 'disconnected' | 'error'
+// sse.status() — 'connecting' | 'connected' | 'disconnected' | 'error' | 'failed'
 // sse.lastEventId(), sse.readyState(), sse.close(), sse.reconnect()`,
-    notes: 'Reactive Server-Sent Events hook with QueryClient cache integration. Same pattern as `useSubscription` but read-only (no `send`). `parse` deserializes raw event data per message (e.g. `JSON.parse`); `events` filters named SSE event types (defaults to generic `message` events). Honours the SSE spec `id` field via `lastEventId()` so the browser includes `Last-Event-ID` on reconnect and the server can resume from the right offset. `onMessage` receives the `QueryClient` for cache invalidation. See also: useSubscription.',
+    notes: `Reactive Server-Sent Events hook with QueryClient cache integration. Same pattern as \`useSubscription\` but read-only (no \`send\`). \`parse\` deserializes raw event data per message (e.g. \`JSON.parse\`); \`events\` filters named SSE event types (defaults to generic \`message\` events). Honours the SSE spec \`id\` field via \`lastEventId()\` so the browser includes \`Last-Event-ID\` on reconnect and the server can resume from the right offset. \`onMessage\` receives the \`QueryClient\` for cache invalidation. A \`parse\` failure surfaces on \`error()\` (the last good \`data()\` is kept); a throwing \`onMessage\` is reported in dev. Same capped, jittered backoff + \`'failed'\` status + \`online\` recovery as \`useSubscription\`. See also: useSubscription.`,
     mistakes: `- Passing \`queryKey\` (TanStack v4 pattern) instead of using \`onMessage\` for cache integration — Pyreon's \`useSSE\` does NOT auto-update query cache; use \`queryClient.setQueryData\` or \`invalidateQueries\` inside \`onMessage\`
 - Omitting \`parse\` and expecting typed data — without \`parse\`, \`data()\` is \`string\` (raw event payload); pass \`parse: JSON.parse\` for auto-deserialization`,
   },
 
   'query/useSuspenseQuery': {
-    signature: '<TData, TError>(options: () => QueryObserverOptions<...>) => UseSuspenseQueryResult<TData, TError>',
+    signature: '<TQueryFnData, TError, TData = TQueryFnData, TKey>(options: () => QueryObserverOptions<...>) => UseSuspenseQueryResult<TData, TError>',
     example: `const user = useSuspenseQuery(() => ({ queryKey: ['user', id()], queryFn: fetchUser }))
 
 <QuerySuspense query={user} fallback={<Spinner />}>
@@ -3953,7 +3975,9 @@ const user = await api.get('/users/:id', { params: { id: '1' } }).json()`,
     mistakes: `- Reaching for \`api.defaults.headers.common.X = …\` (axios muscle memory). It does not exist — mutable shared defaults are the classic SSR cross-request leak. Use \`api.extend({ headers })\`, which returns a NEW client.
 - Passing \`baseURL\` (axios spelling). The option is \`baseUrl\`.
 - Expecting \`baseUrl\` to behave like \`new URL(path, base)\`. It is a plain PREFIX, so a leading slash does NOT discard the base path.
-- Passing both \`json\` and \`body\`. They are mutually exclusive — \`json\` serializes and sets Content-Type for you, and passing both throws rather than silently picking one.
+- Passing more than one of \`json\` / \`form\` / \`multipart\` / \`body\`. They are mutually exclusive encodings of the same body, and passing two throws rather than silently picking one.
+- Setting \`content-type: multipart/form-data\` yourself alongside \`multipart\`. The platform writes it WITH the boundary it generated; a hand-set value has no boundary and the server cannot parse the body.
+- Expecting \`cookies\` to reach the server from a browser. \`Cookie\` is a forbidden request header and \`fetch\` drops it silently — in the browser use \`credentials: "include"\`; \`cookies\` is for server-side and native callers.
 - Interpolating into the path (\`api.get(\`/users/\${id}\`)\`). That skips URL encoding, so an id containing "/" escapes its segment. Use \`{ params: { id } }\`.
 - Expecting retry by default. It is OFF, because it compounds with @pyreon/query’s own retry.`,
   },
@@ -3968,7 +3992,7 @@ const user = await api.get('/users/1').json() // decoded body`,
   },
 
   'http/endpoint': {
-    signature: '(spec: `${HttpMethod} ${string}`, options?: { response?: Validator }) => Endpoint',
+    signature: '(spec: `${HttpMethod} ${string}`, options?: { response?: Validator; headers?: HeadersInit; formEncoding?: Record<string, FormFieldEncoding>; timeout?: number | false }) => Endpoint',
     example: `const getUser = api.endpoint('GET /users/:id', { response: UserSchema })
 
 await getUser({ params: { id: '1' } })
@@ -3978,7 +4002,22 @@ console.log(options.queryKey)`,
     mistakes: `- Hand-writing a \`queryKey\` next to an endpoint call. Use \`endpoint.query(...)\` so the key is derived from the same declaration as the URL.
 - Expecting \`mutationFn\` to receive an AbortSignal. TanStack gives mutations no context at all — pass one in the variables if the mutation must be cancellable.
 - Writing the spec without a method (\`"/users"\`). It must be \`"<METHOD> <path>"\`.
-- Assuming \`invalidates\` takes strings. It takes ENDPOINTS, and resolves each to its key prefix.`,
+- Assuming \`invalidates\` takes strings. It takes ENDPOINTS, and resolves each to its key prefix.
+- Expecting a per-call \`headers\` to REPLACE the declared ones. They MERGE (per-call wins per key), so a declared \`content-type\` survives a call that adds an idempotency key.`,
+  },
+
+  'http/encodeForm': {
+    signature: '(fields: FormFields, encoding?: Record<string, { style?: "form" | "deepObject" | "spaceDelimited" | "pipeDelimited"; explode?: boolean }>) => URLSearchParams',
+    example: `import { encodeForm } from '@pyreon/http'
+
+const body = encodeForm(
+  { amount: 2000, metadata: { order: 'A1' } },
+  { metadata: { style: 'deepObject', explode: true } },
+)
+body.toString() // "amount=2000&metadata%5Border%5D=A1"`,
+    notes: `The \`application/x-www-form-urlencoded\` serializer behind the \`form\` request option, exported so a transport or a generated client can produce byte-identical bodies. Follows OpenAPI's Encoding Object: the default is \`form\` + \`explode\` (arrays repeat the key, an object spreads its properties), \`deepObject\` uses brackets recursively with indexed arrays (\`items[0][price]=…\`, the shape Stripe declares), and \`spaceDelimited\`/\`pipeDelimited\` join arrays. \`null\`/\`undefined\` entries are dropped rather than sent as text. Siblings \`encodeMultipart\` (FormData; \`Blob\` values become file parts, objects become JSON text parts) and \`encodeCookies\` (a \`Cookie\` header value) cover the other encodings.`,
+    mistakes: `- Expecting a nested object under the DEFAULT style to keep its nesting. OpenAPI's \`form\` style spreads one level; declare \`deepObject\` for nested fields (a deeper value falls back to brackets rather than \`[object Object]\`).
+- Building the body with \`new URLSearchParams(obj)\` instead. That stringifies nested values to \`[object Object]\` and sends \`null\` as the text "null".`,
   },
 
   'http/HttpMiddleware': {
@@ -4316,7 +4355,8 @@ effect(() => { if (idle()) showAwayBanner() })`,
 <body data-theme={() => scheme()} />`,
     notes: `Reactive OS color-scheme accessor — \`computed\` over \`(prefers-color-scheme: dark)\` (wraps \`useMediaQuery\`). Returns \`'dark'\` / \`'light'\`. See also: useMediaQuery, useReducedMotion.`,
     mistakes: `- Reads \`'light'\` on the first render / SSR regardless of OS preference — it inherits \`useMediaQuery\`'s seed-then-correct-on-mount behavior. Use a pre-paint script for a flash-free initial theme.
-- Returns an accessor — call \`scheme()\` to read.`,
+- Returns an accessor — call \`scheme()\` to read.
+- Using it to theme a component — it reads the OS ONLY, so it ignores the mode an app chose (\`<PyreonUI mode>\`, a zero theme toggle) and the page's declared \`color-scheme\`. Theme with \`useColorMode()\` from \`@pyreon/core\`, the framework-wide mode; keep this for code that genuinely wants the OS setting.`,
   },
 
   'hooks/useSizeClass': {
@@ -5074,16 +5114,25 @@ i18n.t('auth:errors.bad')   // ✓ namespaced — unchecked by design`,
   // <gen-docs:api-reference:start @pyreon/document>
 
   'document/render': {
-    signature: '(node: DocNode, format: OutputFormat, options?: RenderOptions) => Promise<RenderResult>',
-    example: `const pdf = await render(doc, 'pdf')            // Uint8Array
+    signature: '(node: DocNode | VNode, format: OutputFormat, options?: RenderOptions) => Promise<RenderResult>',
+    example: `const doc = (
+  <Document title="Report">
+    <Page>
+      <Heading>Summary</Heading>
+      {showNotes && <Text>Notes</Text>}
+    </Page>
+  </Document>
+)
+const pdf = await render(doc, 'pdf')            // Uint8Array
 const html = await render(doc, 'html')           // string
 const email = await render(doc, 'email')         // Outlook-safe HTML
 const md = await render(doc, 'md')               // Markdown string
 const slack = await render(doc, 'slack')          // Slack Block Kit JSON`,
-    notes: 'Render a document node tree to any supported format. Returns a string (HTML, Markdown, text, CSV, email, JSON, JSONL, Slack, Teams, etc.) or Uint8Array (PDF, DOCX, XLSX, PPTX) depending on the format. Heavy format renderers are lazy-loaded on first use. Supports 20 built-in formats plus custom renderers registered via `registerRenderer()`. The `json` format serializes the full DocNode tree (round-trippable — JSON.parse it back and render again); `jsonl` emits one content block per line for ingestion / chunking pipelines. See also: createDocument, Document, download, registerRenderer.',
+    notes: 'Render a document tree to any supported format. The input is a `DocNode` (primitives called directly, or `createDocument()`) OR a JSX / `h()` VNode tree of primitives — `render()` resolves the VNode tree first (components invoked, fragments flattened, `true`/`false`/`null`/`undefined` children dropped), so JSX, `h()` and direct calls produce identical output. Returns a string (HTML, Markdown, text, CSV, email, JSON, JSONL, Slack, Teams, etc.) or Uint8Array (PDF, DOCX, XLSX, PPTX) depending on the format. Heavy format renderers are lazy-loaded on first use. Supports 20 built-in formats plus custom renderers registered via `registerRenderer()`. The `json` format serializes the full DocNode tree (round-trippable — JSON.parse it back and render again); `jsonl` emits one content block per line for ingestion / chunking pipelines. See also: createDocument, Document, download, registerRenderer.',
     mistakes: `- Not awaiting the render call — render() is always async due to lazy-loaded format renderers
 - Expecting render("pdf") to return a string — PDF, DOCX, XLSX, PPTX return Uint8Array
-- Passing a VNode instead of a DocNode — render() expects the output of JSX primitives (Document, Page, etc.) or createDocument(), not arbitrary Pyreon VNodes`,
+- Putting a DOM element in a document tree (\`<div>\`, \`<p>\`, \`<span>\`) — a document tree may only contain @pyreon/document primitives, components that return them, strings and numbers; render() throws \`<div> is a DOM element, not a document primitive\`. Use \`<Section>\` / \`<Text>\` instead.
+- Expecting a signal-driven child to stay live — render() takes a one-shot snapshot: accessor children (\`{() => x()}\`) and reactive props are read ONCE at render time. Re-render to reflect new values.`,
   },
 
   'document/createDocument': {
@@ -5112,15 +5161,15 @@ await doc.toDocx()     // Word document`,
   </Document>
 )
 await render(doc, 'pdf')`,
-    notes: 'Root JSX primitive for document trees. Accepts `title`, `author`, `subject` as metadata props. Children should be `Page` elements (or other block-level primitives for single-page documents). The returned DocNode is passed to `render()` for output. See also: render, Page, createDocument.',
+    notes: 'Root primitive for document trees. Accepts `title`, `author`, `subject` as metadata props. Children should be `Page` elements (or other block-level primitives for single-page documents). Use it as JSX (`<Document>`), via `h(Document, props, ...children)`, or call it directly (`Document({ title, children })`) — all three render identically. Called directly it returns a `DocNode`; as JSX / `h()` it is a VNode that `render()` / `download()` resolve. See also: render, Page, createDocument.',
   },
 
   'document/download': {
-    signature: '(node: DocNode, filename: string, options?: RenderOptions) => Promise<void>',
+    signature: '(node: DocNode | VNode, filename: string, options?: RenderOptions) => Promise<void>',
     example: `await download(doc, 'report.pdf')   // renders 'pdf', downloads
 await download(doc, 'report.docx')  // renders 'docx', downloads
 await download(doc, 'tree.json')    // renders 'json', downloads`,
-    notes: 'Browser helper that renders a document node tree and triggers a file download in one call. The FILE EXTENSION on `filename` selects the format (`.pdf` → pdf, `.md` → markdown, `.json` → json, `.jsonl`/`.ndjson` → jsonl, etc.) — it renders internally, so you pass the DocNode, NOT already-rendered bytes. Creates a temporary Blob URL and clicks a hidden anchor. Browser-only — throws on the server. See also: render.',
+    notes: 'Browser helper that renders a document node tree and triggers a file download in one call. The FILE EXTENSION on `filename` selects the format (`.pdf` → pdf, `.md` → markdown, `.json` → json, `.jsonl`/`.ndjson` → jsonl, etc.) — it renders internally, so you pass the document tree (a DocNode or a JSX / `h()` tree), NOT already-rendered bytes. Creates a temporary Blob URL and clicks a hidden anchor. Browser-only — throws on the server. See also: render.',
     mistakes: `- Passing already-rendered bytes as the first arg — download() takes the DocNode and renders internally; the extension picks the format
 - Forgetting the file extension — download(doc, "report") throws; the extension is how the format is chosen
 - Calling it on the server — download() is browser-only and throws in Node`,
@@ -5159,9 +5208,10 @@ await download(doc, 'tree.json')    // renders 'json', downloads`,
   <ListItem>First</ListItem>
   <ListItem>Second</ListItem>
 </List>`,
-    notes: `A bulleted (default) or numbered list. \`List\` takes \`ordered\` (unordered when omitted — there is no applied default, undefined is falsy) and \`ListItem\` children. NOTE: the JSX \`<List items={[…]} />\` shorthand in the builder/examples is convenience sugar; the primitive itself nests \`ListItem\` children. \`ListItem\` DISCARDS every prop except \`children\` — it always renders { type: 'list-item', props: {}, children }. See also: Text.`,
+    notes: `A bulleted (default) or numbered list. \`List\` takes \`ordered\` (unordered when omitted — there is no applied default, undefined is falsy) and \`ListItem\` children. There is NO \`items\` prop on the primitive — nest \`ListItem\` children; only the builder's \`.list(items[])\` takes an array. \`ListItem\` DISCARDS every prop except \`children\` — it always renders { type: 'list-item', props: {}, children }. See also: Text.`,
     mistakes: `- Setting any prop other than \`children\` on \`ListItem\` (an id, a style) — it is silently dropped; the primitive hard-codes empty props.
-- Expecting \`ordered\` to have a truthy default — omitting it yields an UNORDERED list (undefined → falsy).`,
+- Expecting \`ordered\` to have a truthy default — omitting it yields an UNORDERED list (undefined → falsy).
+- Writing \`<List items={[…]} />\` — the primitive has no \`items\` prop (it is a type error, and at runtime the list renders EMPTY). Nest \`<ListItem>\` children, or use the builder \`.list([...])\`.`,
   },
 
   'document/Code': {
@@ -5192,8 +5242,8 @@ await download(doc, 'tree.json')    // renders 'json', downloads`,
   },
 
   'document/Page / Section / Row / Column / Divider / Spacer / Quote / PageBreak': {
-    signature: `Page({ size?: PageSize; orientation?: 'portrait' | 'landscape'; margin?: number | number[]; header?: DocNode; footer?: DocNode; children? }) · Section({ direction?: 'column' | 'row'; gap?; padding?; background?; borderRadius?; border?; children? }) · Row({ gap?: number; align?; children? }) · Column({ width?: number | string; align?; children? }) · Divider({ color?; thickness? }) · Spacer({ height: number }) · Quote({ borderColor?; children? }) · PageBreak()`,
-    example: `<Page size="A4" orientation="portrait">
+    signature: `Page({ size?: PageSize; orientation?: 'portrait' | 'landscape'; margin?: number | number[]; header?: DocNode | VNode; footer?: DocNode | VNode; children? }) · Section({ direction?: 'column' | 'row'; gap?; padding?; background?; borderRadius?; border?; children? }) · Row({ gap?: number; align?; children? }) · Column({ width?: number | string; align?; children? }) · Divider({ color?; thickness? }) · Spacer({ height: number }) · Quote({ borderColor?; children? }) · PageBreak()`,
+    example: `<Page size="A4" orientation="portrait" header={<Text size={9}>Acme — Confidential</Text>}>
   <Section gap={16}>
     <Heading>Title</Heading>
     <Spacer height={12} />
@@ -5202,7 +5252,7 @@ await download(doc, 'tree.json')    // renders 'json', downloads`,
   </Section>
   <PageBreak />
 </Page>`,
-    notes: `The structural / layout primitives. \`Page\` is a page boundary (\`size\` 'A4'|'A3'|'A5'|'letter'|'legal'|'tabloid', orientation, margins, optional \`header\`/\`footer\` DocNodes). \`Section\`/\`Row\`/\`Column\` are layout boxes (gap, align, padding, background). \`Divider\` is a horizontal rule (no children, all props optional — \`Divider()\` works bare). \`Spacer\` adds vertical space (\`height: number\` is REQUIRED). \`Quote\` is a blockquote (children). \`PageBreak()\` takes NO arguments — a hard break in PDF/DOCX, a visual rule in md/text/html, a no-op in per-slide PPTX. See also: Document, render.`,
+    notes: `The structural / layout primitives. \`Page\` is a page boundary (\`size\` 'A4'|'A3'|'A5'|'letter'|'legal'|'tabloid', orientation, margins, optional \`header\`/\`footer\` — a primitive given as JSX (\`header={<Text>…</Text>}\`) or a direct call, resolved when the Page is built; honoured by PDF/DOCX only). \`Section\`/\`Row\`/\`Column\` are layout boxes (gap, align, padding, background). \`Divider\` is a horizontal rule (no children, all props optional — \`Divider()\` works bare). \`Spacer\` adds vertical space (\`height: number\` is REQUIRED). \`Quote\` is a blockquote (children). \`PageBreak()\` takes NO arguments — a hard break in PDF/DOCX, a visual rule in md/text/html, a no-op in per-slide PPTX. See also: Document, render.`,
     mistakes: `- \`Spacer\` without \`height\` — it is the only required field on these primitives; omitting it is a type error.
 - Calling \`PageBreak({ ... })\` with props — it takes NO arguments and always emits empty props/children.
 - Expecting \`Column\` to enforce a parent \`Row\` (or \`Row\` to require \`Column\` children) — neither is enforced at runtime; children are typed \`unknown\` and just normalized.`,
@@ -5214,9 +5264,10 @@ await download(doc, 'tree.json')    // renders 'json', downloads`,
 
 registerRenderer('rtf', { render: async (node) => toRtf(node) })
 const rtf = await render(doc, 'rtf')`,
-    notes: `The extension + guard API. \`registerRenderer\` adds (or REPLACES) a format's renderer — pass a \`DocumentRenderer\` object ({ render(node, options?) }) or a lazy \`() => Promise<DocumentRenderer>\` loader (every built-in format is a lazy loader; the resolved renderer is cached back into the registry on first use). \`unregisterRenderer\` deletes a format (no-op if absent). \`isDocNode\` is a structural type guard. See also: render, createDocument.`,
+    notes: `The extension + guard API. \`registerRenderer\` adds (or REPLACES) a format's renderer — pass a \`DocumentRenderer\` object ({ render(node, options?) }) or a lazy \`() => Promise<DocumentRenderer>\` loader (every built-in format is a lazy loader; the resolved renderer is cached back into the registry on first use). \`unregisterRenderer\` deletes a format (no-op if absent). \`isDocNode\` checks for a DocNode: an object with a STRING \`type\`, \`props\`, \`children\`, and NO \`key\` — so a JSX / \`h()\` VNode (whose \`type\` is the primitive function and which carries a \`key\`) is NOT a DocNode, even though \`render()\` accepts one. See also: render, createDocument.`,
     mistakes: `- registerRenderer SILENTLY OVERWRITES an existing format (it is a bare Map.set, no guard) — re-registering \`html\` replaces the built-in renderer with no warning.
-- Trusting isDocNode to validate the tree — it only checks \`value\` is an object carrying \`type\`, \`props\`, and \`children\` keys; it does NOT verify \`type\` is a real node type or that the shapes are valid (a hand-rolled { type: 'x', props: 0, children: 0 } passes).
+- Trusting isDocNode to validate the tree — it only checks for a string \`type\`, \`props\` and \`children\` keys and no \`key\`; it does NOT verify \`type\` is a real node type or that the shapes are valid (a hand-rolled { type: 'x', props: 0, children: 0 } passes).
+- Using isDocNode to test JSX output — \`isDocNode(<Text>hi</Text>)\` is FALSE (it is a VNode); call the primitive directly (\`Text({ children: 'hi' })\`) when you need a DocNode value, or just pass the JSX to render().
 - Rendering to an unregistered format — render() rejects with [@pyreon/document] No renderer registered for format 'X'. Available: … (the message enumerates the currently-registered keys). The markdown key is 'md', not 'markdown'.`,
   },
   // <gen-docs:api-reference:end @pyreon/document>
@@ -5528,74 +5579,54 @@ for (const { id, position } of positioned) flow.updateNode(id, { position })`,
 
   // <gen-docs:api-reference:start @pyreon/charts>
 
-  'charts/useChart': {
-    signature: '<TOption extends EChartsOption = EChartsOption>(optionsFn: () => TOption, config?: UseChartConfig) => UseChartResult',
-    example: `const chart = useChart(() => ({
-  xAxis: { type: 'category', data: months() },
-  yAxis: { type: 'value' },
-  series: [{ type: 'bar', data: revenue() }],
-}))
-
-<div ref={chart.ref} style="height: 400px" />
-// chart.loading() — true until ECharts modules loaded + chart initialized
-// chart.instance() — raw ECharts instance for imperative API`,
-    notes: 'Create a reactive ECharts instance. Options are passed as a function — signal reads inside are tracked and the chart updates automatically when any tracked signal changes. Lazy-loads the required ECharts modules on first render (zero bytes until mount). Returns `ref` (bind to a container div), `instance` (Signal<ECharts | null>), `loading` (Signal<boolean>), `error` (Signal<Error | null>), and `resize()`. Auto-resizes via ResizeObserver (`autoresize: false | { throttle }` to opt out/throttle) and disposes on unmount. `theme` accepts an accessor for reactive swaps; `initOptions` passes through to `core.init`; warm mounts (modules cached) are synchronous. `getCore()`/`connect()` are exported for `registerMap`/`registerTheme`/linked charts. See also: Chart.',
-    mistakes: `- Forgetting to set a height on the container div — ECharts requires explicit dimensions, it does not auto-size to content
-- Passing options as a plain object instead of a function — signal reads are not tracked and the chart never updates
-- Reading chart.instance() immediately after useChart — the instance is null until the async module load completes; check chart.loading() first
-- Calling chart.resize() during SSR — useChart is browser-only; the hook no-ops safely on the server but resize is meaningless`,
-  },
-
   'charts/Chart': {
-    signature: '(props: ChartProps) => VNodeChild',
-    example: `<Chart
-  options={() => ({
-    legend: {},
-    series: [{ type: 'pie', data: [{ value: 60, name: 'A' }, { value: 40, name: 'B' }] }],
-  })}
-  style="height: 300px"
-  showLoading={isFetching()}
-  onEvents={{
-    legendselectchanged: (p) => console.log('toggled', p.name),
-    datazoom: (_p, instance) => syncOtherChart(instance.getOption()),
-  }}
-/>`,
-    notes: 'Declarative chart component that wraps `useChart` internally. Accepts `options` (reactive function), `style`/`class` for the container, and event handlers. `onEvents` binds ANY ECharts event by name (`legendselectchanged`, `datazoom`, `finished`, …), with `onClick`/`onMouseover`/`onMouseout` as shorthands — binding is leak-safe (handler changes swap listeners, all removed on unmount). `showLoading` reactively toggles the ECharts loading overlay. Renders a div with the chart — auto-resizes and cleans up on unmount. Simpler than useChart for most use cases. See also: useChart.',
-    mistakes: `- Missing style height on the Chart component — same as useChart, ECharts requires explicit container dimensions
-- Passing a static options object — wrap in \`() => ({...})\` so signal reads inside are tracked reactively
-- Using onClick/onMouseover/onMouseout for a non-mouse event — those are only shorthands; reach for the general \`onEvents\` map (e.g. \`onEvents={{ legendselectchanged: fn }}\`) for any other ECharts event
-- Passing \`theme\` as a plain VALUE and expecting runtime swaps — a value is applied once at init; pass an ACCESSOR (\`theme: () => (dark() ? 'dark' : null)\`) and a flip disposes + re-inits with the option, group, and events preserved
-- Relying on the default merge when data shrinks — a signal change that removes a series/point leaves the old one; pass \`notMerge\` or \`replaceMerge="series"\``,
-  },
-
-  'charts/Plot': {
-    signature: '<T>(props: PlotProps<T>) => VNode',
-    example: `import { Axis, Bar, Legend, Line, Plot, Tip, currency } from '@pyreon/charts/plot'
+    signature: '<T>(props: ChartProps<T>) => VNode',
+    example: `import { Axis, Bar, Chart, Legend, Line, Tooltip, currency } from '@pyreon/charts'
 
 interface Row { month: string; revenue: number; target: number }
 const rows: Row[] = [{ month: 'Jan', revenue: 3200, target: 3000 }, { month: 'Feb', revenue: 4100, target: 3400 }]
 
-<Plot<Row> data={rows} x="month" title="Revenue vs target" showTitle>
+<Chart<Row> data={rows} x="month" title="Revenue vs target" showTitle>
   <Bar y="revenue" label="Revenue" />
   <Line y="target" label="Target" />
   <Axis y format={currency('$')} />
-  <Tip />
+  <Tooltip />
   <Legend />
-</Plot>`,
-    notes: `The grammar — \`<Plot data x>\` with MARK CHILDREN (\`Plot\`, because the package's default entry already exports the ECharts bridge as \`<Chart>\`). Channels are FIELD NAMES typed against the row (\`y="revenue"\`) or accessors; marks are JSX children (\`<Bar y stack? group? waterfall?>\`, \`<Line y>\`, \`<Area y>\`, \`<Dot y r?>\` — \`r\` makes area-mapped bubbles; every cartesian mark takes \`errorLow\` / \`errorHigh\` channels for error bars) and draw in order; \`<Rule y | from to>\`, \`<Axis x|y|y2 format domain time hidden title labels scale>\`, \`<Scale y="log"|"time" x="time" normalize>\` (the log view, calendar labels, the 100% stack), \`<Histogram x bins>\` (bins the rows and draws one bar per bin — the whole plot, like the pivot), \`<Tip crosshair format>\`, \`<Legend toggle maxRows position>\`, \`<Zoom inside navigator presets link brush>\` and \`<Label text at series>\` (a datum-anchored point marker) declare annotations, axes, scales, the tooltip, the legend, every zoom surface and markers as data beside the marks. \`facet="region"\` renders small multiples — one titled panel per value in a \`facetColumns\` grid, every panel sharing the y domain; \`locale="de-DE"\` formats every number surface through Intl. The FAMILY marks cover the row-array hosts with the same grammar — \`<Arc value label color? innerRadius?>\` (pie / donut), \`<Stage value label color? sort? gap?>\` (funnel), \`<Cell x y value colors? gap?>\` (heatmap), \`<Candle open high low close upColor? downColor?>\` (candlestick, the plot's \`x\` labels the period) — one family per plot, and \`<Plot>\` renders that host instead of the cartesian plot (\`<Tip>\` / \`<Legend>\` / \`<Axis y format>\` still apply; a cartesian mark or \`<Zoom>\` beside one is reported and ignored). A \`<Show>\` around a mark adds/removes its series, and a \`<For each>\` (or a plain \`.map()\`) generates one per item — its render callback is resolved here, inside the resolving computed, so an accessor \`each\` tracks. A child that is not a mark renders nothing and says so in dev. \`color="region"\` switches to LONG format: one series per distinct value, categories from \`x\`, gaps where a (category, series) pair is absent, bars grouped unless \`stack\`. Marks are branded components \`<Plot>\` scans structurally (never invoked); it resolves them into the \`marks={[bars(…)]}\` props \`<PlotChart>\` takes, so the array form is the same spec — \`resolveGrammar\` is exported for that equivalence. Native: the compiler desugars \`<Plot>\` to \`<PlotChart marks>\` (byte-identical emit); the runtime \`color\` pivot warns by name and renders wide-format. See also: PlotChart, ChartThemeProvider.`,
-    mistakes: `- Passing \`marks={[…]}\` to \`<Plot>\` — the grammar takes marks as CHILDREN; the array form belongs to \`<PlotChart>\` (same spec, other spelling)
+</Chart>`,
+    notes: `The chart — \`<Chart data x>\` with MARK CHILDREN, from \`@pyreon/charts\`. Channels are FIELD NAMES (\`y="revenue"\`) or accessors — checked against the row when the chart and the mark are given its type (\`<Chart<Row>>\`, \`<Bar<Row> y>\`), since JSX cannot pass a type argument from a parent to its children; marks are JSX children (\`<Bar y stack? group? waterfall?>\`, \`<Line y>\`, \`<Area y>\`, \`<Dot y r?>\` — \`r\` makes area-mapped bubbles; every cartesian mark takes \`errorLow\` / \`errorHigh\` channels for error bars) and draw in order; \`<Rule y | from to>\`, \`<Axis x|y|y2 format domain time hidden title labels scale>\`, \`<Scale y="log"|"time" x="time" normalize>\` (the log view, calendar labels, the 100% stack), \`<Histogram x bins>\` (bins the rows and draws one bar per bin — the whole plot, like the pivot), \`<Tooltip crosshair format>\`, \`<Legend toggle maxRows position>\`, \`<Zoom inside navigator presets link brush>\`, \`<Toolbox saveAsImage restore magicType dataZoom dataView brush>\` and \`<Label text at series>\` (a datum-anchored point marker) declare annotations, axes, scales, the tooltip, the legend, every zoom surface, the tool strip and markers as data beside the marks. \`<Zoom>\` and \`<Toolbox>\` carry their implementations, and every cartesian mark carries the plot host, so \`<Chart>\` bundles only what its children use: a chart without \`<Toolbox>\` has no tool strip or SVG serializer in it, and a pie through \`<Arc>\` has no cartesian plot. \`facet="region"\` renders small multiples — one titled panel per value in a \`facetColumns\` grid, every panel sharing the y domain; \`locale="de-DE"\` formats every number surface through Intl. The FAMILY marks cover the row-array hosts with the same grammar — \`<Arc value label color? innerRadius?>\` (pie / donut), \`<Stage value label color? sort? gap?>\` (funnel), \`<Cell x y value colors? gap?>\` (heatmap), \`<Candle open high low close upColor? downColor?>\` (candlestick, the plot's \`x\` labels the period) — one family per chart, and \`<Chart>\` renders that host instead of the cartesian plot (\`<Tooltip>\` / \`<Legend>\` / \`<Axis y format>\` still apply; a cartesian mark or \`<Zoom>\` beside one is reported and ignored). A \`<Show>\` around a mark adds/removes its series, and a \`<For each>\` (or a plain \`.map()\`) generates one per item — its render callback is resolved here, inside the resolving computed, so an accessor \`each\` tracks. A child that is not a mark renders nothing and says so in dev. \`color="region"\` switches to LONG format: one series per distinct value, categories from \`x\`, gaps where a (category, series) pair is absent, bars grouped unless \`stack\`. Marks are branded components \`<Chart>\` scans structurally (never invoked); it resolves them into the \`marks={[bars(…)]}\` props \`<PlotChart>\` takes, so the array form is the same spec — \`resolveGrammar\` is exported for that equivalence. Native: the compiler desugars \`<Chart>\` to \`<PlotChart marks>\` (byte-identical emit); the runtime \`color\` pivot warns by name and renders wide-format. See also: PlotChart, ChartThemeProvider.`,
+    mistakes: `- Passing \`marks={[…]}\` to \`<Chart>\` — the grammar takes marks as CHILDREN; the array form belongs to \`<PlotChart>\` (same spec, other spelling)
+- Passing \`title\` and expecting it drawn — \`title\` names the chart for screen readers and the accessible table (like the HTML \`title\` attribute, it is not visible); add \`showTitle\` to draw it above the chart
+- Expecting \`<Bar y="revenu">\` to fail the build — a mark infers its row type from its own props, and JSX cannot pass \`<Chart<Row>>\`'s type argument down to it, so a field-name typo on a bare mark is not checked; write \`<Bar<Row> y="revenue">\` (or an accessor, \`y={(d: Row) => d.revenue}\`) where you want the check
 - Writing \`y={d.revenue}\` — a channel is a field NAME (\`y="revenue"\`) or an accessor (\`y={(d) => d.revenue}\`); a value is one number for every row
 - Expecting \`color="region"\` to colour bars by a per-row value — it is the long-format SPLIT (one series per distinct region); for a per-mark colour use \`color="#hex"\` on the mark
-- Rendering \`<Bar>\` outside a \`<Plot>\` — marks are branded descriptors the plot reads; alone they render nothing (and warn on native)
-- Putting a non-mark child (a \`<div>\`, your own wrapper component) inside \`<Plot>\` and expecting it to render — only mark components are read; anything else is ignored with a dev warning naming it
-- Two family marks in one \`<Plot>\` (\`<Arc>\` beside \`<Stage>\`), or a family mark beside \`<Bar>\` — one family per plot; the first family wins and the rest is reported, never merged
+- Rendering \`<Bar>\` outside a \`<Chart>\` — marks are branded descriptors the chart reads; alone they render nothing (and warn on native)
+- Putting a non-mark child (a \`<div>\`, your own wrapper component) inside \`<Chart>\` and expecting it to render — only mark components are read; anything else is ignored with a dev warning naming it
+- Two family marks in one \`<Chart>\` (\`<Arc>\` beside \`<Stage>\`), or a family mark beside \`<Bar>\` — one family per chart; the first family wins and the rest is reported, never merged
 - Conditionally including a mark with \`{cond && <Line …/>}\` written once at setup — wrap it in \`<Show when={() => cond()}>\` (or an accessor child) so the series follows the signal
 - Looking for a \`series\` array — layering IS the children; a combo chart is a \`<Bar>\` beside a \`<Line>\`, a second axis is \`<Line axis="right">\` + \`<Axis y2>\``,
   },
 
+  'charts/Sma': {
+    signature: '<T>(props: AverageProps<T>) => VNode | null  // also Ema; Trend (no window); Bollinger (window, k?)',
+    example: `import { Bollinger, Chart, Line, Sma } from '@pyreon/charts'
+
+interface Candle { day: string; close: number }
+const candles: Candle[] = [{ day: 'Mon', close: 101 }, { day: 'Tue', close: 104 }, { day: 'Wed', close: 102 }]
+
+<Chart<Candle> data={candles} x="day">
+  <Line y="close" label="Close" />
+  <Sma y="close" window={20} label="SMA 20" />
+  <Bollinger y="close" window={20} k={2} />
+</Chart>`,
+    notes: `The INDICATOR marks, from \`@pyreon/charts\`: \`<Sma y window>\` (simple moving average), \`<Ema y window>\` (exponential), \`<Trend y>\` (least-squares line) and \`<Bollinger y window k>\` (a filled envelope \`k\` standard deviations wide — 2 by default — plus its middle line). Each is DERIVED from its \`y\` series rather than read off each datum, so it layers beside the series it smooths like any other mark and takes the same \`label\` / \`color\` / \`width\` options; the leading \`window - 1\` points are gaps, not zeros. \`<Bollinger>\` resolves to TWO marks, a band and a line, labelled \`"<label> band"\` / \`"<label> middle"\`. Under a \`color\` pivot each series gets its own indicator over its own column. They are the array form's \`sma\` / \`ema\` / \`trend\` / \`...bollinger\` factories spelled as children, and lower to iOS and Android when \`window\` and \`k\` are numeric literals. See also: Chart, sma.`,
+    mistakes: `- Leaving out \`window\` on \`<Sma>\` / \`<Ema>\` / \`<Bollinger>\` — there is no default window; the mark is skipped with a dev warning
+- Expecting \`<Bollinger>\` to be one series — it is a filled band plus its middle line, two legend entries and two accessible-table columns
+- Passing a computed \`window\` in a native app — the window must be a numeric literal for the iOS and Android lowering, which bakes it into the emitted call`,
+  },
+
   'charts/PlotChart': {
     signature: '<T>(props: PlotChartProps<T>) => VNodeChild',
-    example: `import { PlotChart, bars, line } from '@pyreon/charts/plot'
+    example: `import { PlotChart, bars, line } from '@pyreon/charts/engine'
 import { signal } from '@pyreon/reactivity'
 
 interface Row { month: string; revenue: number; target: number }
@@ -5610,8 +5641,8 @@ const sales = signal<Row[]>([{ month: 'Jan', revenue: 120, target: 100 }])
   title="Monthly revenue"
   height={240}
 />`,
-    notes: `Pyreon's OWN charting engine, from the \`@pyreon/charts/plot\` subpath — no ECharts, no third-party engine. Marks are IMPORTED BINDINGS (\`bars\`, \`line\`, \`area\`, \`points\`, \`stackedBars\`, \`groupedBars\`, \`stackedArea\` (shares over time — areas filled between running totals), \`band(low, high)\` (a REGION between two channels: a confidence interval or min/max range, whose floor is the data rather than the axis an \`area\` closes to), \`waterfall\`, plus the \`histogram()\` spread over the crossing \`binValues\`), so tree-shaking is structural rather than a build flag: a bar chart never pulls the radial trigonometry, the decimation or the time scales. Geometry is pure TypeScript over plain data and the platform half is a short backend that walks a flat \`DrawCmd[]\`, which is why the same source is the path to native rendering. Renders to canvas with a device-pixel-ratio-correct surface; \`showLegend\`, \`tooltip\`, \`crosshair\` and a title are opt-in props, and width falls back to the container's own so a chart in a flexible column fills it. The legend is INTERACTIVE by default: clicking an entry toggles its series, the domain rescales to what is visible, and hidden entries render muted (\`legendToggle: false\` opts out). \`rtl\` lays the chart out right-to-left — implemented as a MIRROR of the finished draw list about the canvas centreline, so bands run from the right, the value axis moves to the right gutter and the legend's swatch sits right of its label, while every pointer is mirrored back before it is hit tested (a click still reports the category it landed on). Text is repositioned, never reversed. The mirror is a TWO-WAY seam: screen -> chart turns a pointer into chart space before a hit test, and chart -> screen (\`screenX\` / \`screenRectX\`) turns chart geometry back into DOM space before it reaches an overlay's \`style.left\` — the tooltip goes through the second half, and a custom host that positions a DOM overlay from chart geometry must too. \`saveAsImage\` serialises the MIRRORED list, so an SVG export is the chart on screen rather than its mirror image. It lowers to native through \`pyreonMirrorCmds\`, whose parity with the web mirror is asserted by executing all three implementations; every family host (treemap, sankey, …) takes \`rtl\` natively through the same mirror. See also: chartToSvg, PieChart.`,
-    mistakes: `- Importing from \`@pyreon/charts\` instead of \`@pyreon/charts/plot\` — the default entry is the ECharts bridge; the two engines are separate subpaths and mixing them pulls ECharts back into the bundle
+    notes: `The array form of \`<Chart>\`, from \`@pyreon/charts/engine\`: the same engine, with marks passed as a \`marks={[…]}\` array of imported factories instead of JSX children. \`<Chart>\` resolves its children into exactly these props. No ECharts, no third-party engine. Marks are IMPORTED BINDINGS (\`bars\`, \`line\`, \`area\`, \`points\`, \`stackedBars\`, \`groupedBars\`, \`stackedArea\` (shares over time — areas filled between running totals), \`band(low, high)\` (a REGION between two channels: a confidence interval or min/max range, whose floor is the data rather than the axis an \`area\` closes to), \`waterfall\`, plus the \`histogram()\` spread over the crossing \`binValues\`), so tree-shaking is structural rather than a build flag: a bar chart never pulls the radial trigonometry, the decimation or the time scales. Geometry is pure TypeScript over plain data and the platform half is a short backend that walks a flat \`DrawCmd[]\`, which is why the same source is the path to native rendering. Renders to canvas with a device-pixel-ratio-correct surface; \`showLegend\`, \`tooltip\`, \`crosshair\` and a title are opt-in props, and width falls back to the container's own so a chart in a flexible column fills it. The legend is INTERACTIVE by default: clicking an entry toggles its series, the domain rescales to what is visible, and hidden entries render muted (\`legendToggle: false\` opts out). \`rtl\` lays the chart out right-to-left — implemented as a MIRROR of the finished draw list about the canvas centreline, so bands run from the right, the value axis moves to the right gutter and the legend's swatch sits right of its label, while every pointer is mirrored back before it is hit tested (a click still reports the category it landed on). Text is repositioned, never reversed. The mirror is a TWO-WAY seam: screen -> chart turns a pointer into chart space before a hit test, and chart -> screen (\`screenX\` / \`screenRectX\`) turns chart geometry back into DOM space before it reaches an overlay's \`style.left\` — the tooltip goes through the second half, and a custom host that positions a DOM overlay from chart geometry must too. \`saveAsImage\` serialises the MIRRORED list, so an SVG export is the chart on screen rather than its mirror image. It lowers to native through \`pyreonMirrorCmds\`, whose parity with the web mirror is asserted by executing all three implementations; every family host (treemap, sankey, …) takes \`rtl\` natively through the same mirror. See also: chartToSvg, Arc.`,
+    mistakes: `- Reaching for \`<PlotChart>\` in app code — \`<Chart>\` with mark children is the stable API and resolves to the same props; \`/engine\` is outside the stability promise
 - Passing \`marks\` as a string type name — a mark is an imported FUNCTION, which is exactly what makes the unused ones droppable; there is no string-keyed registry to tree-shake around
 - Expecting two series to be told apart without a legend — colours come from a per-series palette, but \`showLegend\` is opt-in and a chart with neither legend nor tooltip is unlabelled
 - Reaching for \`tooltip\` on a static chart in a report — it installs pointer handlers and a DOM overlay, which is why it is off by default
@@ -5627,29 +5658,36 @@ const sales = signal<Row[]>([{ month: 'Jan', revenue: 120, target: 100 }])
   },
 
   'charts/ChartThemeProvider': {
-    signature: '(props: { mode?: ChartThemeMode | (() => ChartThemeMode); theme?: Partial<ChartTheme> | (() => Partial<ChartTheme> | undefined); children? }) => VNodeChild',
-    example: `import { ChartThemeProvider, PlotChart, bars, palettes } from '@pyreon/charts/plot'
+    signature: '(props: { theme?: Partial<ChartTheme> | (() => Partial<ChartTheme> | undefined); light?: Partial<ChartTheme>; dark?: Partial<ChartTheme>; children? }) => VNodeChild',
+    example: `import { ColorModeProvider } from '@pyreon/core'
+import { Bar, Chart, ChartThemeProvider, palettes } from '@pyreon/charts'
 import { signal } from '@pyreon/reactivity'
 
 interface Row { q: string; v: number }
 const rows: Row[] = [{ q: 'Q1', v: 3 }, { q: 'Q2', v: 5 }]
-const mode = signal<'light' | 'dark'>('dark') // or PyreonUI's useMode
+const dark = signal(true) // <PyreonUI mode> sets the mode in a UI-system app
 
-<ChartThemeProvider mode={() => mode()} theme={{ palette: palettes.okabeIto, radius: 4 }}>
-  <PlotChart data={rows} x={(d: Row) => d.q} marks={[bars((d: Row) => d.v)]} />
-</ChartThemeProvider>`,
-    notes: `Provides ONE theme to every \`/plot\` chart below it. \`ChartTheme\` is a token map — \`palette\` (series colours in draw order), \`background\`, \`surface\` (tooltip / pager cards), \`text\`, \`label\` (ticks, legend entries), \`axis\`, \`grid\`, \`fontFamily\`, \`fontSize\`, \`titleSize\`, \`radius\` (the bar corner marks fall back to), \`enterMs\` / \`updateMs\` — and every host, family, legend, title, tooltip and accessible description reads from it. With NO provider a chart follows the system colour scheme (\`chartThemes.light\` / \`chartThemes.dark\` by \`prefers-color-scheme\`, live); \`mode\` pins one or tracks the app's (\`mode={useMode}\` hands PyreonUI's reactive mode through); \`theme\` merges token overrides over the mode's theme; a host's own \`theme\` prop merges over all of it. \`palettes\` exports the named sets as data (\`pyreon\` — the default —, \`pyreonDark\`, \`echarts6\`, \`echarts5\`, \`echartsDark\`, \`observable10\`, \`tableau10\`, \`okabeIto\`, \`tailwind\`). On native the provider is transparent: theme each chart there (\`theme={chartThemes.dark}\` and \`palette: palettes.okabeIto\` resolve at compile time). See also: PlotChart, PieChart.`,
+<ColorModeProvider mode={() => (dark() ? 'dark' : 'light')}>
+  <ChartThemeProvider theme={{ palette: palettes.okabeIto, radius: 4 }} dark={{ background: '#0b1020' }}>
+    <Chart data={rows} x="q">
+      <Bar y="v" />
+    </Chart>
+  </ChartThemeProvider>
+</ColorModeProvider>`,
+    notes: `Provides ONE theme to every chart below it, in layers: the mode's built-in theme (or an outer provider's), then \`theme\` (both modes), then \`light\` or \`dark\` (only in that mode — a brand whose ground or palette differs by mode). The MODE is not a prop: it is the framework-wide colour mode (\`useColorMode\` from @pyreon/core), set by \`<PyreonUI mode>\` or \`<ColorModeProvider mode>\`, else the page's declared \`color-scheme\`, else \`prefers-color-scheme\`, live — so a chart below a dark \`<PyreonUI>\` is dark with no wiring, and the mode is applied where each chart sits (a mode set below a provider still picks its override). \`ChartTheme\` is a token map — \`palette\` (series colours in draw order), \`background\`, \`surface\` (tooltip / pager cards), \`text\`, \`label\` (ticks, legend entries), \`axis\`, \`grid\`, \`fontFamily\`, \`fontSize\`, \`titleSize\`, \`radius\` (the bar corner marks fall back to), \`enterMs\` / \`updateMs\` — and every host, family, legend, title, tooltip and accessible description reads from it. A host's own \`theme\` prop merges over all of it. \`palettes\` exports the named sets as data (\`pyreon\` — the default —, \`pyreonDark\`, \`echarts6\`, \`echarts5\`, \`echartsDark\`, \`observable10\`, \`tableau10\`, \`okabeIto\`, \`tailwind\`). On native a literal mode and the provider are compile-time scopes (\`theme={chartThemes.dark}\` and \`palette: palettes.okabeIto\` resolve at compile time). See also: PlotChart, Arc.`,
     mistakes: `- Hard-coding \`color\` on every mark to "theme" a dashboard — a mark with its own \`color\` keeps it forever; leave \`color\` off and set \`theme.palette\` once (the provider, or the \`theme\` prop)
 - Passing a hex list you maintain when a named set exists — \`palette: palettes.observable10\` is a reference the compiler also resolves on native; a copied list is a second copy to keep in sync
 - Expecting \`registerTheme\` themes to reach \`<PlotChart>\` — the registry feeds \`compileOption\` / \`<OptionChart>\`; the components resolve \`<ChartThemeProvider>\` → system scheme → \`theme\` prop
-- Wrapping charts in the provider on native and wondering why they stay light — the provider is transparent there (context does not cross); give each chart \`theme={chartThemes.dark}\`
+- Passing \`mode\` to \`<ChartThemeProvider>\` — the mode is the framework-wide colour mode now: set it with \`<PyreonUI mode>\` or \`<ColorModeProvider mode>\` from @pyreon/core, so charts, the UI system and every other component agree
+- Pinning a reactive colour mode in shared multiplatform source and expecting the native build to follow it — only a literal \`mode="light"\` / \`"dark"\` is a compile-time scope on native; a reactive one warns and the charts below follow the platform scheme
+- Branching on the mode inside \`theme={() => …}\` to vary one token by mode — use \`light={{ … }}\` / \`dark={{ … }}\`: they are plain data, so they lower on native, where an accessor cannot
 - Reading \`useChartTheme()\` once at setup — it returns an ACCESSOR; call it inside the effect that draws so a mode flip repaints
 - Building a full \`ChartTheme\` by hand from four fields — the type has thirteen required tokens now; start from \`chartThemes.light\` / \`.dark\` and spread overrides, or pass a \`Partial\` to \`theme\``,
   },
 
   'charts/BoxplotChart': {
     signature: '<T>(props: BoxplotChartProps<T>) => VNodeChild',
-    example: `import { BoxplotChart } from '@pyreon/charts/plot'
+    example: `import { BoxplotChart } from '@pyreon/charts'
 
 interface Group { name: string; samples: number[] }
 const groups: Group[] = [{ name: 'eu', samples: [12, 15, 14, 30, 11] }, { name: 'us', samples: [20, 22, 19, 25] }]
@@ -5662,14 +5700,14 @@ const groups: Group[] = [{ name: 'eu', samples: [12, 15, 14, 30, 11] }, { name: 
 
   'charts/sma': {
     signature: '<T>(y: Accessor<T>, window: number, options?: MarkOptions) => Mark<T>',
-    example: `import { PlotChart, line, sma, bollinger } from '@pyreon/charts/plot'
+    example: `import { PlotChart, line, sma, bollinger } from '@pyreon/charts/engine'
 
 interface Candle { t: number; close: number }
 const candles: Candle[] = [{ t: 1704067200000, close: 101 }, { t: 1704153600000, close: 104 }]
 
 // bollinger returns the band's marks as an ARRAY: spread it into marks.
 <PlotChart data={candles} xValue={(d: Candle) => d.t} xTime marks={[...bollinger((d: Candle) => d.close, 20), line((d: Candle) => d.close, { label: 'Close' }), sma((d: Candle) => d.close, 20, { label: 'SMA 20' })]} />`,
-    notes: `Indicator MARKS over a value accessor, for the finance and telemetry charts that draw a signal beside its smoothing: \`sma(y, window)\` (simple moving average), \`ema(y, window)\` (exponential), \`trend(y)\` (least-squares line) and \`bollinger(y, window, k?)\` (the ±k·σ envelope as a FILLED \`band\` plus its middle line, returned as an ARRAY of marks to spread into \`marks\` — two marks, not three lines: a band's bounds can be computed from the series via \`transform\`/\`transform2\`, which is the only shape a rolling window fits). Each is a mark like \`line\`, so it layers in the same \`marks={[…]}\` array, takes the same \`label\` / \`color\` / \`width\` options, and the leading \`window - 1\` points are gaps rather than zeros. The value forms \`smaValues\` / \`emaValues\` / \`stdevValues\` / \`trendValues\` are exported for hosts that need the numbers, and live in a separate crossing module so \`sma\` / \`ema\` / \`trend\` LOWER to iOS and Android (with a numeric-literal window), and \`bollinger\` does too — its array spread expands to the band and the middle line it names. See also: PlotChart, CandlestickChart.`,
+    notes: `Indicator MARKS over a value accessor, for the finance and telemetry charts that draw a signal beside its smoothing: \`sma(y, window)\` (simple moving average), \`ema(y, window)\` (exponential), \`trend(y)\` (least-squares line) and \`bollinger(y, window, k?)\` (the ±k·σ envelope as a FILLED \`band\` plus its middle line, returned as an ARRAY of marks to spread into \`marks\` — two marks, not three lines: a band's bounds can be computed from the series via \`transform\`/\`transform2\`, which is the only shape a rolling window fits). Each is a mark like \`line\`, so it layers in the same \`marks={[…]}\` array, takes the same \`label\` / \`color\` / \`width\` options, and the leading \`window - 1\` points are gaps rather than zeros. The value forms \`smaValues\` / \`emaValues\` / \`stdevValues\` / \`trendValues\` are exported for hosts that need the numbers, and live in a separate crossing module so \`sma\` / \`ema\` / \`trend\` LOWER to iOS and Android (with a numeric-literal window), and \`bollinger\` does too — its array spread expands to the band and the middle line it names. See also: PlotChart, Candle.`,
     mistakes: `- Pre-computing the average into the data and drawing it with \`line\` — the indicator mark re-derives on every data change and keeps the warm-up gap honest; a baked column silently freezes when the window changes
 - Reading the first \`window - 1\` points as missing data — they are gaps by design (no average exists yet); the engine draws the polyline from the first full window
 - Destructuring \`bollinger\`'s result as three lines — it is TWO marks now, a filled \`band\` and its middle line; index it, or spread it, but do not assume the arity
@@ -5678,7 +5716,8 @@ const candles: Candle[] = [{ t: 1704067200000, close: 101 }, { t: 1704153600000,
 
   'charts/chartToSvg': {
     signature: '<T>(options: ChartToSvgOptions<T>) => string',
-    example: `import { chartToSvg, bars } from '@pyreon/charts/plot'
+    example: `import { chartToSvg } from '@pyreon/charts/svg'
+import { bars } from '@pyreon/charts/engine'
 
 interface Row { month: string; revenue: number }
 const rows: Row[] = [{ month: 'Jan', revenue: 120 }]
@@ -5698,54 +5737,65 @@ const svg = chartToSvg({
 - Omitting \`theme\` on a themed app and expecting the export to match — a helper given no theme renders the LIGHT default, so a dark page ships a light-mode chart into its own markup; pass the same theme the host has`,
   },
 
-  'charts/PieChart': {
-    signature: '(props: PieChartProps) => VNodeChild',
-    example: `import { PieChart, GaugeChart } from '@pyreon/charts/plot'
+  'charts/Arc': {
+    signature: '<T>(props: ArcProps<T>) => VNode | null',
+    example: `import { Arc, Chart, GaugeChart, Legend, Tooltip } from '@pyreon/charts'
 import { signal } from '@pyreon/reactivity'
 
-interface Slice { name: string; amount: number }
-const slices = signal<Slice[]>([{ name: 'Direct', amount: 40 }])
+interface Share { name: string; amount: number }
+const shares = signal<Share[]>([{ name: 'Direct', amount: 40 }, { name: 'Search', amount: 35 }])
 const cpu = signal(42)
 
-<PieChart data={() => slices()} label={(d: Slice) => d.name} value={(d: Slice) => d.amount} innerRadius={0.6} />
+<Chart data={shares} height={240}>
+  <Arc value="amount" label="name" innerRadius={0.6} />
+  <Tooltip />
+  <Legend />
+</Chart>
 <GaugeChart value={() => cpu()} min={0} max={100} title="CPU" />`,
-    notes: 'Pie and donut from the same engine (`@pyreon/charts/plot`); `innerRadius` is what makes it a donut. `GaugeChart` is its sibling for a single value against a range. Both carry the same accessibility contract as `PlotChart` — a `role="img"` graphic with a derived description, `aria-describedby` its hidden data table, keyboard-walkable — because both are built on the shared canvas host every family is (`canvasHost`, exported: layout / render / hit / a11y in, chrome + pointer + keyboard + animation + table out). See also: PlotChart.',
+    notes: 'The pie and donut mark: `<Chart data><Arc value label /></Chart>`. `innerRadius` (0 to 1) makes it a donut; `color` is an optional per-slice channel, the theme palette otherwise. A family mark renders the pie host instead of the cartesian plot, so `<Tooltip>`, `<Legend>` and `<Axis y format>` apply and cartesian marks beside it are reported and ignored. `<Chart onSelect>` receives the slice index. The accessibility contract is the same as every chart: a `role="img"` graphic with a derived description, `aria-describedby` its hidden data table, keyboard-walkable. `<GaugeChart>` is the sibling for a single value against a range. See also: Chart, Stage.',
     mistakes: `- Using a pie for more than a handful of slices — angular area is hard to compare; the engine will draw it, which is not the same as it reading well
-- Omitting \`label\` and expecting a legend — the slice labels are what name the data`,
+- Putting \`<Bar>\` beside \`<Arc>\` — one family per chart; the cartesian mark is reported and ignored
+- Two family marks in one \`<Chart>\` (\`<Arc>\` beside \`<Stage>\`) — the first wins and the rest is reported, never merged`,
   },
 
-  'charts/CandlestickChart': {
-    signature: '<T>(props: CandlestickChartProps<T>) => VNodeChild',
-    example: `import { CandlestickChart } from '@pyreon/charts/plot'
+  'charts/Candle': {
+    signature: '<T>(props: CandleProps<T>) => VNode | null',
+    example: `import { Candle, Chart, Tooltip } from '@pyreon/charts'
 
-interface Bar { day: string; o: number; h: number; l: number; c: number }
-const bars: Bar[] = [{ day: 'Mon', o: 10, h: 20, l: 5, c: 15 }]
+interface Day { day: string; o: number; h: number; l: number; c: number }
+const days: Day[] = [{ day: 'Mon', o: 10, h: 20, l: 5, c: 15 }, { day: 'Tue', o: 15, h: 18, l: 9, c: 11 }]
 
-<CandlestickChart data={bars} open={(d: Bar) => d.o} high={(d: Bar) => d.h} low={(d: Bar) => d.l} close={(d: Bar) => d.c} x={(d: Bar) => d.day} />`,
-    notes: 'Candlestick chart from the plot engine (`@pyreon/charts/plot`) — open/high/low/close accessors per datum, direction encoded by color (close vs open; up green, down red by default, both overridable). `onSelect` fires with the candle index (the full COLUMN is the hit target — a wick is one pixel wide) and `tooltip` shows the hovered period OHLC. A doji (open == close) keeps a 1px body — flat trading is a fact, and a missing candle reads as missing data. The wick draws first so the body sits over it; the price domain is niced so the axis lands on readable ticks. Geometry (`renderCandles`, `ohlcExtent`) exported standalone. See also: PlotChart, HeatmapChart.',
-    mistakes: `- Feeding pre-sorted-descending periods and reading the chart right-to-left — periods render in DATA order, oldest first by convention; sort ascending
-- Expecting volume bars — volume is a second chart sharing the x axis, not a candle option; compose a \`PlotChart\` with \`bars\` below it
+<Chart data={days} x="day" height={260}>
+  <Candle open="o" high="h" low="l" close="c" />
+  <Tooltip />
+</Chart>`,
+    notes: `The candlestick mark: \`<Chart data x><Candle open high low close /></Chart>\`, one period per row, the chart's \`x\` labelling it. Direction is encoded by colour (close against open; up green, down red by default, \`upColor\` / \`downColor\` override). \`<Chart onSelect>\` receives the candle index; the whole COLUMN is the hit target, since a wick is one pixel wide. A doji (open equal to close) keeps a 1px body, because flat trading is a fact and a missing candle reads as missing data. The price domain is niced so the axis lands on readable ticks. See also: Chart, Cell.`,
+    mistakes: `- Feeding periods newest first and reading the chart right to left — periods render in DATA order, oldest first by convention; sort ascending
+- Expecting volume bars — volume is a second chart sharing the x axis, not a candle option
 - Aiming a click at the candle body — the hit target is the whole COLUMN, deliberately: a doji body is one pixel tall and selection must not be a game of skill`,
   },
 
-  'charts/HeatmapChart': {
-    signature: '<T>(props: HeatmapChartProps<T>) => VNodeChild',
-    example: `import { HeatmapChart } from '@pyreon/charts/plot'
+  'charts/Cell': {
+    signature: '<T>(props: CellProps<T>) => VNode | null',
+    example: `import { Cell, Chart, Tooltip } from '@pyreon/charts'
 
 interface Ev { day: string; hour: string; count: number }
-const events: Ev[] = [{ day: 'Mon', hour: '09', count: 12 }]
+const events: Ev[] = [{ day: 'Mon', hour: '09', count: 12 }, { day: 'Tue', hour: '09', count: 4 }]
 
-<HeatmapChart data={events} x={(d: Ev) => d.day} y={(d: Ev) => d.hour} value={(d: Ev) => d.count} />`,
-    notes: 'Heatmap from the plot engine (`@pyreon/charts/plot`): two categorical axes, a value per cell, color as the third channel. Category order is FIRST-SEEN (weekday names and funnel stages carry an order alphabetical sorting destroys); duplicate (x, y) observations SUM; absent cells are NOT drawn — absence and zero are different facts. The ramp is plain `#rrggbb` stops interpolated by hand-rolled math, so the same code lowers to native. The row gutter sizes itself from the widest row label, the same rule horizontal bars use. `onSelect` fires with the tapped CELL (its categories and aggregated value; null for a miss) and `tooltip` shows row · column: value — both speak in cells because duplicate observations SUM into one cell, so the cell is the unit on screen. See also: PlotChart, PieChart.',
+<Chart data={events} height={220}>
+  <Cell x="hour" y="day" value="count" />
+  <Tooltip />
+</Chart>`,
+    notes: 'The heatmap mark: `<Chart data><Cell x y value /></Chart>` — two categorical axes, a value per cell, colour as the third channel. Category order is FIRST-SEEN (weekday names carry an order alphabetical sorting destroys); duplicate (x, y) observations SUM; absent cells are NOT drawn, because absence and zero are different facts. `colors` is the ramp as `#rrggbb` stops, interpolated by hand-rolled math so the same code lowers to native. `<Chart onSelect>` receives the index of the tapped CELL, not of a row: duplicate observations sum into one cell, so the cell is the unit on screen. See also: Chart, Arc.',
     mistakes: `- Expecting alphabetically sorted axes — category order is first-seen from the data, which is what keeps Mon..Sun in week order; sort the DATA to sort the axes
 - Reading an undrawn cell as zero — absent cells are skipped, not painted cold; emit explicit zero observations when zero is a fact worth showing
-- Passing a color ramp as anything but \`#rrggbb\` stops — named colors and rgb() strings are not parsed; the hex restriction is what lets the ramp math lower to native
-- Expecting \`onSelect\` to fire a datum index — duplicate (x, y) observations SUM into one cell, so the callback speaks in cells: categories plus the aggregated value, or null for a miss (an undrawn cell is a miss too: absence is not selectable)`,
+- Passing a colour ramp as anything but \`#rrggbb\` stops — named colours and rgb() strings are not parsed; the hex restriction is what lets the ramp math lower to native
+- Using the \`onSelect\` index as a ROW index — it indexes cells, and duplicate (x, y) observations sum into one cell`,
   },
 
   'charts/RadarChart': {
     signature: '<T>(props: RadarChartProps<T>) => VNodeChild',
-    example: `import { RadarChart } from '@pyreon/charts/plot'
+    example: `import { RadarChart } from '@pyreon/charts'
 
 interface Player { name: string; speed: number; power: number; skill: number }
 const players: Player[] = [{ name: 'Ana', speed: 90, power: 40, skill: 80 }]
@@ -5757,7 +5807,7 @@ const players: Player[] = [{ name: 'Ana', speed: 90, power: 40, skill: 80 }]
   label={(d: Player) => d.name}
   showLegend
 />`,
-    notes: 'Radar (spider) chart from the plot engine (`@pyreon/charts/plot`) — one polygon per datum over shared spokes. Each axis normalises by its OWN max, so axes in different units (revenue beside a score out of 5) are comparable on one chart; a shared scale would flatten every small-range axis to the centre. Fewer than three axes draws nothing (no area to enclose). The fill is translucent (`fillAlpha`, default 0.25) with a full-strength outline, so overlapping polygons stay readable. Geometry (`renderRadar`, `radarPolygon`, `radarAngles`) exported standalone. See also: PlotChart, PieChart.',
+    notes: 'Radar (spider) chart from `@pyreon/charts` — one polygon per datum over shared spokes. Each axis normalises by its OWN max, so axes in different units (revenue beside a score out of 5) are comparable on one chart; a shared scale would flatten every small-range axis to the centre. Fewer than three axes draws nothing (no area to enclose). The fill is translucent (`fillAlpha`, default 0.25) with a full-strength outline, so overlapping polygons stay readable. Geometry (`renderRadar`, `radarPolygon`, `radarAngles`) exported standalone. See also: PlotChart, Arc.',
     mistakes: `- Comparing absolute magnitudes across axes — each spoke normalises by its own \`max\`, so polygon SHAPE compares profiles, not sizes; put same-unit series on a PlotChart when magnitude is the story
 - Passing \`values\` in a different order than \`axes\` — the two are index-aligned, and a swapped pair silently plots speed on the power spoke
 - More than a handful of polygons — overlapping fills become unreadable past 3-4 series; filter the data or facet into several charts`,
@@ -5765,8 +5815,8 @@ const players: Player[] = [{ name: 'Ana', speed: 90, power: 40, skill: 80 }]
 
   'charts/TreemapChart': {
     signature: '(props: TreemapChartProps) => VNode',
-    example: `import { TreemapChart, SunburstChart } from '@pyreon/charts/plot'
-import type { TreeNode } from '@pyreon/charts/plot'
+    example: `import { TreemapChart, SunburstChart } from '@pyreon/charts'
+import type { TreeNode } from '@pyreon/charts'
 
 const repo: TreeNode[] = [
   { name: 'src', children: [{ name: 'core', value: 50 }, { name: 'ui', value: 20 }] },
@@ -5784,8 +5834,8 @@ const repo: TreeNode[] = [
 
   'charts/MapChart': {
     signature: '(props: MapChartProps) => VNode',
-    example: `import { MapChart, geoShapes, registerMap } from '@pyreon/charts/plot'
-import type { GeoJson, GeoShape } from '@pyreon/charts/plot'
+    example: `import { MapChart, geoShapes, registerMap } from '@pyreon/charts'
+import type { GeoJson, GeoShape } from '@pyreon/charts'
 
 declare const euGeoJson: GeoJson
 registerMap('eu', euGeoJson)
@@ -5796,7 +5846,7 @@ registerMap('eu', euGeoJson)
 // geoShapes() reads GeoJSON, so project on the web or in a build step, not here.
 const euShapes: GeoShape[] = geoShapes(euGeoJson)
 <MapChart map={euShapes} values={{ DE: 83, FR: 68, PL: 38 }} height={360} onSelectIndex={(i) => console.log(i)} />`,
-    notes: `GeoJSON regions filled by value. \`map\` takes three shapes: a name registered once with \`registerMap(name, geojson)\` (ECharts' shape), a FeatureCollection directly, or already-projected \`GeoShape[]\` (what \`geoShapes(json)\` returns) — the third is the one that LOWERS TO NATIVE (a \`Polygon | MultiPolygon\` union puts one field at two array depths, which the native struct lowering refuses to merge; the two web-only shapes warn by name at compile time, and \`geoShapes\` itself reads GeoJSON so shared source passes a PRECOMPUTED const). \`layoutGeoShapes\` fits the rings into the box with aspect preserved and north up; \`renderGeo\` colours through the SAME ramp the heatmap uses so a \`visualMap\` strip cannot disagree with the map; \`hitGeoIndex\` is ring-accurate. \`renderGeoPoints\` / \`renderGeoPaths\` draw scatter, effectScatter halos and flight paths on top through \`layout.project\`. The other coordinate families follow the same pattern: \`<CalendarChart>\` (contribution grid, strict ISO dates), \`<ParallelChart>\`, \`<PolarChart>\` (radial or concentric bars, polar lines), \`<RiverChart>\` (silhouette streamgraph) and \`layoutSingleAxis\`. See also: TreemapChart, HeatmapChart.`,
+    notes: `GeoJSON regions filled by value. \`map\` takes three shapes: a name registered once with \`registerMap(name, geojson)\` (ECharts' shape), a FeatureCollection directly, or already-projected \`GeoShape[]\` (what \`geoShapes(json)\` returns) — the third is the one that LOWERS TO NATIVE (a \`Polygon | MultiPolygon\` union puts one field at two array depths, which the native struct lowering refuses to merge; the two web-only shapes warn by name at compile time, and \`geoShapes\` itself reads GeoJSON so shared source passes a PRECOMPUTED const). \`layoutGeoShapes\` fits the rings into the box with aspect preserved and north up; \`renderGeo\` colours through the SAME ramp the heatmap uses so a \`visualMap\` strip cannot disagree with the map; \`hitGeoIndex\` is ring-accurate. \`renderGeoPoints\` / \`renderGeoPaths\` draw scatter, effectScatter halos and flight paths on top through \`layout.project\`. The other coordinate families follow the same pattern: \`<CalendarChart>\` (contribution grid, strict ISO dates), \`<ParallelChart>\`, \`<PolarChart>\` (radial or concentric bars, polar lines), \`<RiverChart>\` (silhouette streamgraph) and \`layoutSingleAxis\`. See also: TreemapChart, Cell.`,
     mistakes: `- Keying \`values\` by a property the features do not carry — the region name comes from \`properties.name\` by default; pass \`options.nameProperty\` for ISO codes or ids
 - Expecting hole rings (lakes) to be cut out — only outer rings are drawn; a hole renders as part of its region
 - Passing coordinates in Mercator metres — \`projectLonLat\` takes DEGREES (lon, lat) and projects itself; pre-projected data double-projects
@@ -5806,8 +5856,9 @@ const euShapes: GeoShape[] = geoShapes(euGeoJson)
 
   'charts/optionToSvg': {
     signature: '(option: EChartsOption, opts?: OptionToSvgOptions) => string',
-    example: `import { optionToSvg, compileOption } from '@pyreon/charts/plot'
-import type { EChartsOption } from '@pyreon/charts/plot'
+    example: `import { optionToSvg } from '@pyreon/charts/option'
+import { compileOption } from '@pyreon/charts/engine'
+import type { EChartsOption } from '@pyreon/charts/option'
 
 declare const echartsOption: EChartsOption
 const svg = optionToSvg(
@@ -5826,8 +5877,8 @@ if (warnings.length > 0) console.warn(warnings.map((w) => w.code + ' @ ' + w.pat
 
   'charts/OptionChart': {
     signature: '(props: OptionChartProps) => VNode',
-    example: `import { OptionChart } from '@pyreon/charts/plot'
-import type { EChartsOption } from '@pyreon/charts/plot'
+    example: `import { OptionChart } from '@pyreon/charts/option'
+import type { EChartsOption } from '@pyreon/charts/option'
 import { signal } from '@pyreon/reactivity'
 
 const option = signal<EChartsOption>({ xAxis: { data: ['Mon', 'Tue'] }, yAxis: {}, series: [{ type: 'bar', data: [120, 200] }] })
@@ -5844,8 +5895,8 @@ const option = signal<EChartsOption>({ xAxis: { data: ['Mon', 'Tue'] }, yAxis: {
 
   'charts/GanttChart': {
     signature: '(props: GanttChartProps) => VNode',
-    example: `import { GanttChart } from '@pyreon/charts/plot'
-import type { GanttTask } from '@pyreon/charts/plot'
+    example: `import { GanttChart } from '@pyreon/charts'
+import type { GanttTask } from '@pyreon/charts'
 
 const tasks: GanttTask[] = [
   { id: 'design', name: 'Design', start: '2024-03-01', end: '2024-03-10', progress: 0.5, group: 'Phase 1' },
@@ -5863,7 +5914,8 @@ const tasks: GanttTask[] = [
 
   'charts/createChartHandle': {
     signature: '() => ChartHandle',
-    example: `import { PlotChart, createChartHandle, bars } from '@pyreon/charts/plot'
+    example: `import { createChartHandle } from '@pyreon/charts'
+import { PlotChart, bars } from '@pyreon/charts/engine'
 
 interface Row { k: string; v: number }
 declare const rows: Row[]
@@ -5881,7 +5933,8 @@ chart.dispatch({ type: 'restore' })`,
 
   'charts/createChartLink': {
     signature: '() => ChartLink',
-    example: `import { PlotChart, createChartLink, line, bars } from '@pyreon/charts/plot'
+    example: `import { createChartLink } from '@pyreon/charts'
+import { PlotChart, line, bars } from '@pyreon/charts/engine'
 
 interface Bar { t: string; close: number; volume: number }
 declare const price: Bar[]
@@ -5897,7 +5950,8 @@ const link = createChartLink()
 
   'charts/sonifyValues': {
     signature: '(values: number[], options?: SonifyOptions) => Sonification',
-    example: `import { sonifyValues, createChartLink } from '@pyreon/charts/plot'
+    example: `import { createChartLink } from '@pyreon/charts'
+import { sonifyValues } from '@pyreon/charts/engine'
 
 declare const closes: number[]
 const link = createChartLink()
@@ -5910,6 +5964,46 @@ const sound = sonifyValues(closes, { duration: 3000, minHz: 220, maxHz: 880, lin
 - Sonifying an unnormalised mix of series — the domain defaults to the finite min/max of THESE values; pass \`domain\` to compare two runs on one scale
 - Dropping the returned object — \`stop()\` is the only way to end early, and \`playing()\` is how a play button knows to toggle
 - Closing an \`options.context\` you passed in and expecting the hook to have done it — a supplied context is the caller's to close; only the one the hook constructs is closed on settle`,
+  },
+
+  'charts/EChart': {
+    signature: '(props: EChartProps) => VNodeChild',
+    example: `<EChart
+  options={() => ({
+    legend: {},
+    series: [{ type: 'pie', data: [{ value: 60, name: 'A' }, { value: 40, name: 'B' }] }],
+  })}
+  style="height: 300px"
+  showLoading={isFetching()}
+  onEvents={{
+    legendselectchanged: (p) => console.log('toggled', p.name),
+    datazoom: (_p, instance) => syncOtherChart(instance.getOption()),
+  }}
+/>`,
+    notes: 'From `@pyreon/charts/echarts`: a wrapper around the ECharts LIBRARY (not the Pyreon engine), lazy-loaded so ECharts costs nothing until it renders. Declarative chart component that wraps `useChart` internally. Accepts `options` (reactive function), `style`/`class` for the container, and event handlers. `onEvents` binds ANY ECharts event by name (`legendselectchanged`, `datazoom`, `finished`, …), with `onClick`/`onMouseover`/`onMouseout` as shorthands — binding is leak-safe (handler changes swap listeners, all removed on unmount). `showLoading` reactively toggles the ECharts loading overlay. Renders a div with the chart — auto-resizes and cleans up on unmount. Simpler than useChart for most use cases. See also: useChart, OptionChart.',
+    mistakes: `- Missing style height on \`<EChart>\` — same as useChart, ECharts requires explicit container dimensions
+- Passing a static options object — wrap in \`() => ({...})\` so signal reads inside are tracked reactively
+- Using onClick/onMouseover/onMouseout for a non-mouse event — those are only shorthands; reach for the general \`onEvents\` map (e.g. \`onEvents={{ legendselectchanged: fn }}\`) for any other ECharts event
+- Passing \`theme\` as a plain VALUE and expecting runtime swaps — a value is applied once at init; pass an ACCESSOR (\`theme: () => (dark() ? 'dark' : null)\`) and a flip disposes + re-inits with the option, group, and events preserved
+- Relying on the default merge when data shrinks — a signal change that removes a series/point leaves the old one; pass \`notMerge\` or \`replaceMerge="series"\``,
+  },
+
+  'charts/useChart': {
+    signature: '<TOption extends EChartsOption = EChartsOption>(optionsFn: () => TOption, config?: UseChartConfig) => UseChartResult',
+    example: `const chart = useChart(() => ({
+  xAxis: { type: 'category', data: months() },
+  yAxis: { type: 'value' },
+  series: [{ type: 'bar', data: revenue() }],
+}))
+
+<div ref={chart.ref} style="height: 400px" />
+// chart.loading() — true until ECharts modules loaded + chart initialized
+// chart.instance() — raw ECharts instance for imperative API`,
+    notes: 'From `@pyreon/charts/echarts`. Create a reactive ECharts instance. Options are passed as a function — signal reads inside are tracked and the chart updates automatically when any tracked signal changes. Lazy-loads the required ECharts modules on first render (zero bytes until mount). Returns `ref` (bind to a container div), `instance` (Signal<ECharts | null>), `loading` (Signal<boolean>), `error` (Signal<Error | null>), and `resize()`. Auto-resizes via ResizeObserver (`autoresize: false | { throttle }` to opt out/throttle) and disposes on unmount. `theme` accepts an accessor for reactive swaps; `initOptions` passes through to `core.init`; warm mounts (modules cached) are synchronous. `getCore()`/`connect()` are exported for `registerMap`/`registerTheme`/linked charts. See also: EChart.',
+    mistakes: `- Forgetting to set a height on the container div — ECharts requires explicit dimensions, it does not auto-size to content
+- Passing options as a plain object instead of a function — signal reads are not tracked and the chart never updates
+- Reading chart.instance() immediately after useChart — the instance is null until the async module load completes; check chart.loading() first
+- Calling chart.resize() during SSR — useChart is browser-only; the hook no-ops safely on the server but resize is meaningless`,
   },
   // <gen-docs:api-reference:end @pyreon/charts>
   // ═══════════════════════════════════════════════════════════════════════════
@@ -6473,7 +6567,21 @@ lint({
     "pyreon/no-window-in-ssr": { exemptPaths: ["src/foundation/"] },
   },
 })`,
-    notes: '132 rules across 25 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`. Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. `exemptPaths` is honoured CENTRALLY for every rule (the runner skips an exempt file before the rule runs), so it means the same thing everywhere rather than only in rules that opted in. Wrong-typed options surface on `result.configDiagnostics`, as does a `rules`/`groups`/`settings` key that names nothing — a mistyped rule id used to be silently ignored, which is indistinguishable from working. Uses `oxc-parser` with AST caching. See also: lintFile, getPreset, AstCache.',
+    notes: '132 rules across 25 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`. Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. `exemptPaths` is honoured CENTRALLY for every rule (the runner skips an exempt file before the rule runs), so it means the same thing everywhere rather than only in rules that opted in. Wrong-typed options surface on `result.configDiagnostics`, as does a `rules`/`groups`/`settings` key that names nothing — a mistyped rule id used to be silently ignored, which is indistinguishable from working. Uses `oxc-parser` with AST caching. See also: lintFile, lintAsync, getPreset, AstCache.',
+  },
+
+  'lint/lintAsync': {
+    signature: 'lintAsync(options?: LintOptions): Promise<LintResult>',
+    example: `import { lintAsync } from '@pyreon/lint'
+
+// Same call shape as lint() — awaits, and pools automatically above the
+// file-count threshold. Safe to always reach for this over lint() in an
+// async context; it only pays worker overhead when it is worth it.
+const result = await lintAsync({ paths: ['src/'], preset: 'recommended' })
+console.log(result.totalErrors, result.totalWarnings)`,
+    notes: `Same options + same \`LintResult\` shape as \`lint()\`, but fans the file set out across a \`worker_threads\` pool for large runs — byte-identical output to the sequential path either way (locked by a test that diffs both over the same corpus). Falls back to running \`lint()\` SEQUENTIALLY, in-process, whenever pooling would not help or cannot work: below \`PARALLEL_FILE_THRESHOLD\` (200 files — worker spin-up cost would dominate), when the resolved worker entry is a \`.ts\` source file (a dev/workspace layout — Node's ESM loader inside a worker thread cannot resolve its extensionless imports), or when the built worker entry is missing. \`pyreon-lint\`'s own CLI calls this, not \`lint()\`, so a large-repo CI run gets the pool automatically. See also: lint, planRun.`,
+    mistakes: `- Calling it from a SYNCHRONOUS context expecting the sequential fallback to be free — worker spin-up is skipped below the threshold, but the function is still \`async\`; use \`lint()\` directly in a sync caller
+- Assuming a large monorepo always pools — a dev/workspace checkout resolves the worker entry to a \`.ts\` file, which deliberately falls back to sequential (a built \`lib/\` is what enables pooling)`,
   },
 
   'lint/lintFile': {
@@ -6575,7 +6683,7 @@ get_api({ package: '@pyreon/router', symbol: 'useTypedSearchParams' })`,
     notes: `Look up any Pyreon API by \`package\` (e.g. \`"flow"\` or \`"@pyreon/flow"\`) and \`symbol\` (e.g. \`"createFlow"\`). Returns the canonical signature, example, foot-gun catalogue, and cross-references — drawn from \`api-reference.ts\`, which is regenerated from each package\\'s \`manifest.ts\`. The single agent-facing entry point for "what does this API do and how do I avoid the common mistakes." See also: validate, get_pattern.`,
     mistakes: `- Passing the package name with a typo or wrong scope — \`get_api({ package: "pyreon-flow", ... })\` returns nothing. Use \`"flow"\` or \`"@pyreon/flow"\`; the tool accepts both.
 - Expecting \`symbol\` to match a method on a returned instance (e.g. \`Posts.useList\`) — only TOP-LEVEL exports are in api-reference. Method-on-instance APIs are documented in the parent symbol's \`summary\` / \`example\`.
-- Treating a 404 as "the API doesn't exist" — it may exist but the package's manifest is not yet on the MCP pipeline (~33 of ~55 packages migrated). Check the docs page or source as a fallback when get_api returns empty.
+- Treating a 404 as "the API doesn't exist" — it may exist but the package's manifest is not yet on the MCP pipeline (57 of 76 published packages have one as of this writing — see AGENTS.md "Manifest-driven docs pipeline" for the live count). Check the docs page or source as a fallback when get_api returns empty.
 - Forgetting that \`summary\` may contain the answer to a follow-up question — read the full body before falling back to \`get_pattern\` / \`validate\` / source diving.`,
   },
 
@@ -6755,21 +6863,22 @@ get_dependency_fabric({ package: '@pyreon/router' })
 // → full canonical pattern body
 get_pattern({})
 // → [{ name: 'controllable-state', summary: '...' }, ...]`,
-    notes: 'Fetch a canonical "how do I do X" pattern body from `docs/patterns/`. 16 foundational patterns ship: `controllable-state`, `data-fetching`, `dev-warnings`, `dynamic-fields`, `event-listeners`, `form-fields`, `imperative-toasts`, `islands`, `keyed-lists`, `reactive-context`, `reactive-spread`, `routing-setup`, `signal-writes`, `ssr-safe-hooks`, `state-management`, `styler-theming`. Omit `name` to list available patterns. Drop a new `docs/patterns/<slug>.md` file to add one — picked up on next call. See also: get_anti_patterns.',
+    notes: `Fetch a canonical "how do I do X" pattern body from \`docs/src/content/docs/patterns/\` (the same files the docs site renders — one source, two surfaces). 17 foundational patterns ship: \`controllable-state\`, \`data-fetching\`, \`dev-warnings\`, \`dynamic-fields\`, \`event-listeners\`, \`form-fields\`, \`imperative-toasts\`, \`islands\`, \`keyed-lists\`, \`multiplatform\`, \`reactive-context\`, \`reactive-spread\`, \`routing-setup\`, \`signal-writes\`, \`ssr-safe-hooks\`, \`state-management\`, \`styler-theming\`. Omit \`name\` to list available patterns. Drop a new \`docs/src/content/docs/patterns/<slug>.md\` file to add one — picked up on next call (no code change, no bundling step in dev; \`scripts/copy-content.ts\` mirrors it into this package's bundled \`content/patterns/\` for the published \`bunx @pyreon/mcp\` consumer case at build time). See also: get_anti_patterns.`,
     mistakes: `- Passing a name in CamelCase or PascalCase — pattern names are kebab-case (\`controllable-state\`, not \`ControllableState\`). A wrong-case name 404s.
-- Expecting the pattern list to include every Pyreon idiom — \`get_pattern\` covers the 16 foundational shapes (data fetching, forms, signal writes, etc.). Specialized patterns (PMTC, native compat, devtools wiring) live elsewhere in the docs.
+- Expecting the pattern list to include every Pyreon idiom — \`get_pattern\` covers the 17 foundational shapes (data fetching, forms, signal writes, multiplatform, etc.). Specialized topics (PMTC internals, native compat shims, devtools wiring) live in the wider docs site, not as a \`get_pattern\` slug.
 - Confusing patterns with anti-patterns — \`get_pattern\` returns "how to do X correctly"; \`get_anti_patterns\` returns "what to avoid". They're complementary.`,
   },
 
   'mcp/get_anti_patterns': {
-    signature: `tool: get_anti_patterns({ category?: 'reactivity'|'jsx'|'context'|'architecture'|'testing'|'lifecycle'|'documentation'|'all'; name?: string; full?: boolean }) → string`,
+    signature: `tool: get_anti_patterns({ category?: 'reactivity'|'jsx'|'context'|'architecture'|'islands'|'ssr'|'ssg'|'bundling'|'testing'|'lifecycle'|'build'|'ci'|'best-practices'|'library-api'|'documentation'|'all'; name?: string; full?: boolean; page?: number }) → string`,
     example: `get_anti_patterns()
-// → compact index (~3.3K): titles + detector tags + one-line hooks
+// → compact index (paginated — "page 1 of 2" on this catalog's current size): titles + detector tags + one-line hooks
 get_anti_patterns({ name: 'Destructuring props' })  // → that entry's full body
 get_anti_patterns({ category: 'reactivity' })       // → full bodies, one category
-get_anti_patterns({ full: true })                   // → entire catalog (~14K)`,
-    notes: `Browse the anti-patterns catalog from \`.agents/rules/anti-patterns.md\`, token-frugal by default. **No args → a COMPACT INDEX** (one line per entry: title + \`[detector: <code>]\` tag + one-sentence hook; ≈3.3K tokens vs the ≈14K full dump — a ~76% cut on the common orient call). Drill in deliberately: \`{ name }\` → the single matching entry\\'s full body (cheapest); \`{ category }\` → full bodies for one category; \`{ full: true }\` → entire catalog (≈14K, explicit opt-in). The index keeps per-category \`## <Heading>\` markers so categories are still discoverable in one call; each \`[detector: <code>]\` tag pairs the entry with the live \`validate\` detector. See also: validate, get_pattern.`,
-    mistakes: `- Reaching for \`{ full: true }\` to "see the anti-patterns" — that is the ~14K dump. The no-arg index is the orient call; pull full bodies with \`{ name }\` once you know which entry matters
+get_anti_patterns({ category: 'islands' })          // → any of the 15 real categories works, not just the first 8
+get_anti_patterns({ full: true })                   // → entire catalog (tens of thousands of tokens)`,
+    notes: `Browse the anti-patterns catalog from \`.agents/rules/anti-patterns.md\`, token-frugal by default. **No args → a COMPACT INDEX** (one line per entry: title + \`[detector: <code>]\` tag + one-sentence hook), kept at least ~60% smaller than \`{ full: true }\` by a density gate rather than a pinned size (the catalog has grown past 400 entries and past a single page — the index is PAGINATED at 240 entries/page, footer names the next). Drill in deliberately: \`{ name }\` → the single matching entry\\'s full body (cheapest); \`{ category }\` → full bodies for one of the 15 real categories (\`reactivity\`, \`jsx\`, \`context\`, \`architecture\`, \`islands\`, \`ssr\`, \`ssg\`, \`bundling\`, \`testing\`, \`lifecycle\`, \`build\`, \`ci\`, \`best-practices\`, \`library-api\`, \`documentation\`); \`{ full: true }\` → the entire catalog (tens of thousands of tokens, explicit opt-in). The index keeps per-category \`## <Heading>\` markers so categories are still discoverable in one call; each \`[detector: <code>]\` tag pairs the entry with the live \`validate\` detector. See also: validate, get_pattern.`,
+    mistakes: `- Reaching for \`{ full: true }\` to "see the anti-patterns" — that is the multi-tens-of-thousands-of-token dump. The no-arg index is the orient call; pull full bodies with \`{ name }\` once you know which entry matters
 - Expecting no-arg to return full bodies — it returns the index (behaviour changed in the token-slim PR). Full bodies need \`{ name }\`, \`{ category }\`, or \`{ full: true }\``,
   },
 
@@ -6883,6 +6992,151 @@ const mode = useMode()
     mistakes: `- Placing it at end-of-body instead of <head> — it must run before first paint; an in-body script can flash on a streamed/large document
 - Using it without the ROOT PyreonUI under cssVariables — the script fixes the PRE-hydration paint; the root provider keeps documentElement in sync AFTER hydration. Both are needed
 - Expecting it to cover a hardcoded \`mode="dark"\` SSR app with no stored preference — the mode lives only in the app JSX; stamp \`<html data-theme="dark">\` server-side for that case`,
+  },
+
+  'ui-core/init': {
+    signature: 'init(props: { css?, styled?, keyframes?, component?, textComponent?, createMediaQueries?, cssVariables?: boolean | CssVariablesConfig, styleExtraction?: boolean }): void',
+    example: `import { init } from '@pyreon/ui-core'
+
+// Test setup with no <PyreonUI> in the tree:
+init({ cssVariables: true, styleExtraction: true })`,
+    notes: 'The escape hatch `<PyreonUI>` calls internally to configure the ui-system-wide `Configuration` singleton (`config.css`/`config.styled`/`config.keyframes`, the default host `component`/`textComponent` used by Element/Text when no `tag` is given, and the `cssVariables` / `styleExtraction` opt-ins). Call it yourself only when `<PyreonUI>` is not mounted — a test harness, an SSR entry that pre-warms config before the first render, or a bare `@pyreon/rocketstyle`-only setup. Every field is optional and merges onto the existing singleton; omitted fields keep their current value. See also: PyreonUI, config.',
+    mistakes: `- Calling \`init()\` AFTER the first render to flip \`cssVariables\`/\`styleExtraction\` — both are boot-time contracts; theme-resolution caches across the ui-system assume they never change mid-session
+- Calling it redundantly alongside \`<PyreonUI>\` — the provider already calls \`init()\` with its own props on every mount; a second manual call can race the provider's own config depending on mount order`,
+  },
+
+  'ui-core/get / set / merge / pick / omit / isEmpty / isEqual': {
+    signature: 'get(obj, path, default?) · set(obj, path, value) · merge(target, ...sources) · pick(obj, keys?) · omit(obj, keys?) · isEmpty(value) · isEqual(a, b)',
+    example: `import { get, set, merge, pick, omit, isEqual } from '@pyreon/ui-core'
+
+get({ a: { b: [1, 2] } }, 'a.b[1]')        // 2
+get({}, 'missing.path', 'fallback')        // 'fallback'
+set({}, 'a.b', 1)                          // { a: { b: 1 } }
+merge({ a: 1 }, { b: 2 }, { a: 3 })        // { a: 3, b: 2 }
+pick({ a: 1, b: 2, c: 3 }, ['a', 'c'])     // { a: 1, c: 3 }
+omit({ a: 1, b: 2 }, ['a'])                // { b: 2 }
+isEqual({ x: [1] }, { x: [1] })            // true`,
+    notes: `Zero-dependency object utilities the ui-system builds its HOC/prop pipelines on — \`@pyreon/lodash\` without the dependency. \`get\`/\`set\` take a dot-or-bracket PATH string or a pre-split array (\`"a.b[0].c"\` or \`["a","b",0,"c"]\`) and both refuse \`__proto__\`/\`prototype\`/\`constructor\` segments (prototype-pollution guard). \`pick\`/\`omit\` copy own-property DESCRIPTORS, not values, so getter-shaped reactive props (\`makeReactiveProps\`' \`_rp()\` wrappers) survive the copy with their subscription intact — critical for any HOC that filters props before forwarding them. \`merge\` deep-merges plain objects (arrays and non-plain objects are replaced, not merged) and mutates+returns \`target\`. \`isEqual\` is a structural deep-equal (arrays + plain objects); \`isEmpty\` is true for \`null\`/\`undefined\`/non-objects/empty arrays/objects with no own keys. See also: useStableValue.`,
+    mistakes: `- Reaching for a value-copying \`{ ...obj }\` / manual filter loop instead of \`pick\`/\`omit\` when the object may carry compiler-emitted reactive getter props — a plain spread reads the getter once and freezes the value; \`pick\`/\`omit\` preserve the getter
+- \`merge\` mutates its FIRST argument — pass \`merge({}, base, overrides)\` when you need an immutable result
+- \`set\` with a numeric-looking next key (\`"a.0.b"\`) creates an ARRAY at that segment, not an object — matches lodash \`set\` but can surprise a hand-rolled path builder
+- isEqual/isEmpty are NOT reactive — they compare snapshots at call time; wrap the comparison in a \`computed()\`/\`effect()\` if you need it to re-run on signal change`,
+  },
+
+  'ui-core/throttle': {
+    signature: 'throttle(fn, wait?: number = 0, options?: { leading?: boolean; trailing?: boolean }): typeof fn & { cancel: () => void }',
+    example: `import { throttle } from '@pyreon/ui-core'
+
+const onScroll = throttle(() => updatePosition(), 100)
+window.addEventListener('scroll', onScroll)
+onMount(() => () => onScroll.cancel())`,
+    notes: 'Rate-limits `fn` to at most once per `wait` ms. `leading` (default `true`) fires on the first call in a window; `trailing` (default `true`) schedules one final call with the most recent args if calls kept arriving during the window. The returned function carries a `.cancel()` that clears any pending trailing timer and drops buffered args (useful on component unmount).',
+    mistakes: `- Not calling \`.cancel()\` on unmount — a pending trailing call fires after the consumer is gone, writing to a signal nobody reads
+- Expecting \`{ leading: false, trailing: false }\` to still invoke \`fn\` — with BOTH off the call is dropped entirely; at least one must stay true`,
+  },
+
+  'ui-core/compose': {
+    signature: 'compose<T extends ((arg: any) => any)[]>(...fns: T) => (value) => result',
+    example: `import { compose } from '@pyreon/ui-core'
+
+const shout = compose(
+  (s: string) => s + '!',
+  (s: string) => s.toUpperCase(),
+)
+shout('hi') // 'HI!'`,
+    notes: 'Right-to-left function composition — `compose(f, g, h)(x)` is `f(g(h(x)))`. Used internally to chain unary transforms (HOC wrappers, value pipelines); exported as a general-purpose utility.',
+    mistakes: '- Expecting left-to-right (pipe) order — `compose` runs the LAST argument first; use it as `compose(outer, ..., inner)`',
+  },
+
+  'ui-core/resolveSlot': {
+    signature: 'resolveSlot(value: unknown): VNodeChildAtom | VNodeChildAtom[]',
+    example: `import { resolveSlot } from '@pyreon/ui-core'
+
+// Inside a component that accepts a slot prop:
+<div>{() => resolveSlot(props.beforeContent)}</div>`,
+    notes: `Resolves a slot prop (\`beforeContent\`, \`afterContent\`, \`content\` — the pattern \`@pyreon/elements\`' Element/Text/List use for their inject-a-node props) INSIDE a reactive accessor, so it must be called as \`content={() => resolveSlot(value)}\`. It discriminates a component-reference shorthand (\`beforeContent={Header}\` — mount via \`h(Header, null)\` so the component's own setup frame runs) from an inline reactive accessor (\`content={() => <Icon name={signal()} />}\` — call bare so its signal reads track in the enclosing effect). Both are functions at the \`typeof\` level; the discriminator is \`isPyreonComponent()\` under the hood. See also: isPyreonComponent, render.`,
+    mistakes: `- Calling it OUTSIDE a reactive accessor — a slot value that reads a signal (\`() => <Icon name={sig()} />\`) needs the enclosing \`() => resolveSlot(...)\` to be the tracking scope, or the read never subscribes
+- Reaching for it directly instead of building on \`@pyreon/elements\`' Element/Text, which already wire this pattern for \`beforeContent\`/\`afterContent\`/\`content\` — most consumers never need to call it themselves`,
+  },
+
+  'ui-core/isPyreonComponent': {
+    signature: 'isPyreonComponent(value: unknown): boolean',
+    example: `import { isPyreonComponent } from '@pyreon/ui-core'
+
+isPyreonComponent(MyButton)              // true — PascalCase name
+isPyreonComponent(() => <div/>)          // false — anonymous accessor
+isPyreonComponent(rocketstyle(Element))  // true — IS_ROCKETSTYLE marker`,
+    notes: `Detects whether a function value is a Pyreon COMPONENT (framework-marked via \`IS_ROCKETSTYLE\`/\`PYREON__COMPONENT\`, or user-authored by convention — an explicit \`displayName\`, or a \`.name\` starting with an uppercase letter) as opposed to a bare reactive-accessor function (\`() => <X/>\`). Both shapes are functions at the \`typeof\` level, so a slot-resolver (\`resolveSlot\`) needs this to decide whether to mount via \`h(Component, null)\` (establishing the component's own setup frame — required for any HOC that reads \`props\`) or call the function bare (so its signal reads track in the enclosing effect). See also: resolveSlot.`,
+    mistakes: '- Relying on it for a lowercase-named or camelCase helper function that returns JSX — the naming-convention tier only recognizes PascalCase or an explicit `displayName`; give the helper a `displayName` if it must be detected as a component',
+  },
+
+  'ui-core/render': {
+    signature: 'render(content?: ComponentFn | string | VNodeChild | VNodeChild[] | ((props) => VNodeChild), attachProps?): VNodeChild',
+    example: `import render from '@pyreon/ui-core'
+// (default export — most consumers reach it through resolveSlot instead)`,
+    notes: `A flexible one-shot renderer used internally by the ui-system's content/slot props: primitives (string/number/boolean) and arrays pass through unchanged, a component function is mounted via \`h(content, attachProps)\`, a render-prop function is called with \`attachProps\`, and an already-built VNode passes through. \`key\` is stripped out of \`attachProps\` before mounting (it's a VNode reconciliation concept, not a component prop, and passing it through triggers a JSX runtime warning). See also: resolveSlot.`,
+    mistakes: '- Calling it directly for a content prop that should be LIVE (reactive) — `render()` is a one-shot resolve; wrap the call in `() => render(...)` inside a reactive accessor, or prefer `resolveSlot()` which is built for exactly this',
+  },
+
+  'ui-core/useStableValue': {
+    signature: 'useStableValue<T>(value: T): T',
+    example: `import { useStableValue } from '@pyreon/ui-core'
+
+// options is a fresh object literal every call — useStableValue keeps
+// its IDENTITY stable across calls that produce a deep-equal result
+const options = useStableValue({ page: page(), size: 20 })`,
+    notes: 'Returns a referentially-stable version of `value` — the returned reference only changes when the new value is no longer deeply equal (`isEqual`) to the last one it returned. Backed by a signal held internally; useful for passing a freshly-constructed object/array literal (which would otherwise be a NEW reference every call) into something that memoizes on identity, without needing the caller to hoist the literal to module scope. See also: get / set / merge / pick / omit / isEmpty / isEqual.',
+    mistakes: `- Expecting it to be reactive — it returns a plain (non-accessor) value snapshotted at call time via \`.peek()\`; call \`useStableValue\` again on the next reactive re-run to get the latest stabilized value, don't cache the return across renders
+- Using it on huge or deeply-nested objects in a hot path — \`isEqual\` walks the whole structure on every call to decide whether to update`,
+  },
+
+  'ui-core/HTML_TAGS / HTML_TEXT_TAGS': {
+    signature: 'HTML_TAGS: readonly string[] · HTML_TEXT_TAGS: readonly string[]',
+    example: `import { HTML_TAGS, HTML_TEXT_TAGS } from '@pyreon/ui-core'
+
+HTML_TAGS.includes('button')      // true
+HTML_TEXT_TAGS.includes('div')    // false — div is structural, not text`,
+    notes: `The two tag allowlists \`@pyreon/elements\`' Element/Text bases dispatch on: \`HTML_TAGS\` is every recognized host tag (used to validate/narrow a \`tag\` prop), \`HTML_TEXT_TAGS\` is the subset of TEXT-flavored tags (\`span\`, \`p\`, \`label\`, \`h1\`-\`h6\`, …) Text defaults \`component\` to when no explicit tag is given.`,
+  },
+
+  'ui-core/getThemeEngine / setThemeEngine': {
+    signature: 'getThemeEngine(): ThemeEngine · setThemeEngine(engine: ThemeEngine): void',
+    example: `// User code never calls this — it's how @pyreon/unistyle wires itself into
+// <PyreonUI> without ui-core depending on unistyle. Documented here because
+// "theme isn't enriched" / "no CSS variables" debugging starts here: import
+// "@pyreon/unistyle" somewhere in your app to register the real engine.`,
+    notes: `@internal — the registration seam that breaks the \`ui-core ↔ unistyle\` dependency cycle. \`@pyreon/unistyle\` calls \`setThemeEngine({ enrichTheme, themeToCssVars, cpseRewrite, responsiveStyles })\` at module load (a side effect its \`package.json\` marks \`sideEffects\` for, so tree-shaking can't drop the registration); \`<PyreonUI>\` reads it lazily via \`getThemeEngine()\` at each use-site, never eagerly at setup. When unistyle is NOT in the module graph (a bare \`@pyreon/rocketstyle\`-only app), \`getThemeEngine()\` returns a minimal FALLBACK — identity \`enrichTheme\`, no CSS vars, no CPSE — and dev-warns ONCE, so \`<PyreonUI>\` degrades instead of crashing. See also: PyreonUI.`,
+    mistakes: `- Seeing an un-enriched theme (missing default breakpoints/spacing, no CSS variables) and not realizing \`@pyreon/unistyle\` was never imported — every styled \`@pyreon\` UI package except bare \`@pyreon/rocketstyle\` pulls it in transitively, but a minimal custom setup can miss it
+- Calling \`setThemeEngine()\` from app code — it is for a THEME ENGINE PACKAGE to register itself (the unistyle precedent); overwriting it from an app silently replaces every consumer's theme resolution`,
+  },
+
+  'ui-core/resolveCssVariables': {
+    signature: 'resolveCssVariables(): { enabled: boolean; prefix: string; attribute: string }',
+    example: `import { resolveCssVariables } from '@pyreon/ui-core'
+
+const { enabled, prefix, attribute } = resolveCssVariables()
+// enabled: false by default; prefix: 'px'; attribute: 'data-theme'`,
+    notes: `The single defaulted view of \`config.cssVariables\` — every CSS-variables-mode consumer (\`<PyreonUI>\`, rocketstyle's \`mode(a, b)\` pair factory) reads through this instead of re-deriving defaults from the raw \`boolean | CssVariablesConfig\` config value. Identity-memoized: re-resolves only when \`config.cssVariables\` is reassigned by \`init()\`, not on every call. See also: init.`,
+    mistakes: '- Reading `config.cssVariables` directly instead of `resolveCssVariables()` — the raw config value can be a bare `true`/`false` OR a `CssVariablesConfig` object; the raw form has no defaulted `prefix`/`attribute`',
+  },
+
+  'ui-core/hoistNonReactStatics': {
+    signature: 'hoistNonReactStatics<T, S>(target: T, source: S, excludeList?: Record<string, true>): T',
+    example: `import { hoistNonReactStatics } from '@pyreon/ui-core'
+
+const Original = Object.assign(
+  (props: { label: string }) => props.label,
+  { meta: { category: 'action' } },
+)
+function Wrapped(props: { label: string }) {
+  return Original(props)
+}
+// At runtime Wrapped now also carries Original's non-framework statics
+// (here, .meta) — the return value is typed T, so read the copied static
+// off the SOURCE's own shape (Object.assign, as above) when you need it typed.
+hoistNonReactStatics(Wrapped, Original)`,
+    notes: `Copies non-framework static properties (walking the prototype chain) from \`source\` onto \`target\` — the Pyreon equivalent of the \`hoist-non-react-statics\` package, simplified since Pyreon components are plain functions without React-specific statics (\`contextType\`, \`propTypes\`, …). Used by HOC factories (\`@pyreon/attrs\`, \`@pyreon/rocketstyle\`) so a wrapped component keeps the original's statics (\`.meta\`, custom attached properties) visible on the wrapper. See also: compose.`,
+    mistakes: `- Reaching for it directly when writing an app-level HOC — \`@pyreon/attrs\`' \`.compose()\` already hoists statics for you; this is the low-level primitive it's built on`,
   },
   // <gen-docs:api-reference:end @pyreon/ui-core>
 
@@ -7048,6 +7302,51 @@ resolveCssVarReferences('var(--px-missing, 1rem)', registry)           // '1rem'
     mistakes: `- Expecting calc() to be EVALUATED — only the var() references inside are inlined; a non-CSS target needing one number must evaluate the calc itself or avoid calc-composed values
 - Passing a registry from a DIFFERENT theme identity — registries are per themeToCssVars(theme) result; mixed registries resolve to wrong values`,
   },
+
+  'unistyle/values': {
+    signature: 'values(inputs: Array<string | number | null | undefined>, rootSize?: number, outputUnit?: string): string | number | null',
+    example: `import { values } from '@pyreon/unistyle'
+
+values([undefined, 24, 16])   // → '1.5rem' (first defined: 24 → converted)
+values([null, null, 8])       // → '0.5rem'`,
+    notes: `Companion to \`value()\` for a mobile-first FALLBACK CHAIN: picks the first non-nullish entry in \`inputs\` (left to right) and runs it through the same \`value()\` conversion. Built for a responsive-prop shape where a smaller breakpoint may be unset and should fall back to a larger one's already-resolved raw value, without the caller hand-writing the \`??\` chain. See also: value, stripUnit.`,
+    mistakes: '- Confusing this with `value()` (singular) — `value` converts ONE input; `values` selects the first defined item from a LIST, then converts it',
+  },
+
+  'unistyle/cpseRewrite / cpseVarName / extractStyleVar': {
+    signature: 'extractStyleVar(property, rawValue, rootSize?) → { rule, varName, varValue } · cpseVarName(property, breakpoint?) → string · cpseRewrite(frag, varsOut, breakpoint?) → string',
+    example: `import { extractStyleVar, cpseVarName, cpseRewrite } from '@pyreon/unistyle'
+
+extractStyleVar('gap', 36)
+// → { rule: 'gap:var(--u-1n2k4)', varName: '--u-1n2k4', varValue: '2.25rem' }
+
+cpseVarName('gap')            // '--u-1n2k4' — stable, shared across instances
+cpseVarName('gap', 'sm')      // '--u-1n2k4-sm' — per-breakpoint suffix
+
+const vars = {}
+cpseRewrite('gap: 2.25rem; margin: 1rem 2rem;', vars)
+// → 'gap:var(--u-1n2k4);margin:var(--u-8f3a1);'
+// vars → { '--u-1n2k4': '2.25rem', '--u-8f3a1': '1rem 2rem' }`,
+    notes: `The Custom-Property Style Extraction (CPSE) primitives — the machinery behind \`styleExtraction: true\` / \`cpseStyled\`. The thesis: decouple a style rule's IDENTITY from its VALUE. Instead of baking a value into the rule (\`gap: 2.25rem\` — a new rule + resolve per distinct value, cost O(distinct values)), emit a value-AGNOSTIC rule that reads a custom property (\`gap: var(--u-<hash>)\` — resolved ONCE per component definition) and deliver the value per-instance as an inline \`style="--u-<hash>: 2.25rem"\` — cost O(component definitions), and a signal-driven value updates for free (write the inline custom property, no re-resolve). \`extractStyleVar\` extracts ONE declaration; \`cpseVarName\` derives the stable hashed var name for a property (+ optional breakpoint suffix); \`cpseRewrite\` rewrites every FLAT \`prop: value;\` declaration in an already-resolved CSS fragment to its var form — a fragment with any structure (selectors, nesting, \`@media\`, \`url(...)\`) passes through UNCHANGED (conservative: correct-but-unextracted beats wrong). See also: cpseStyled, themeToCssVars.`,
+    mistakes: `- Calling these directly to style a component — reach for \`cpseStyled(tag)\` (the complete, opt-in vehicle) or \`<PyreonUI>\` \`init({ styleExtraction: true })\` instead; these are the low-level primitives they're built on
+- Expecting \`cpseRewrite\` to extract a declaration inside a selector / \`@media\` block / \`extendCss\` fragment — anything with structure (\`{\`, \`}\`, \`&\`, \`@\`, \`url(\`) is returned VERBATIM by design, since a flat-declaration rewrite would corrupt it
+- Reusing a \`varsOut\` object across unrelated fragments without clearing it — \`cpseRewrite\` only ADDS keys, so a stale entry from a previous call can silently linger`,
+  },
+
+  'unistyle/cpseStyled': {
+    signature: 'cpseStyled(tag: string): ComponentFn<{ styles?, rootSize?, breakpoints?, class?, ref?, children? }>',
+    example: `import { cpseStyled } from '@pyreon/unistyle'
+
+const Box = cpseStyled('div')
+
+<Box styles={{ gap: 24, padding: [8, 16] }} />
+// one shared class; gap/padding delivered as inline custom properties
+
+<Box styles={() => ({ gap: signal() })} />  // dynamic — updates the inline var only`,
+    notes: 'The complete, opt-in CPSE-backed styled primitive — pass a `styles` prop (static object, or `() => object` for signal-driven dynamic values) instead of a template literal. Per-definition, styling cost is FLAT in style-VALUE cardinality: the emitted class depends only on the declaration SHAPE (which properties, at which breakpoints), so N instances with N distinct values share ONE class and pay ONE resolve — the values themselves travel as per-instance inline custom properties. Supports responsive values as a mobile-first array (`padding={[8, 16]}`) or a breakpoint object (`padding={{ sm: 16 }}`), each breakpoint emitting its own suffixed var wrapped in a `@media` block. A dynamic (function) `styles` prop updates the inline vars via a `renderEffect` — the class itself never re-resolves. See also: cpseRewrite / cpseVarName / extractStyleVar.',
+    mistakes: `- Expecting \`styles\` to accept the same shorthand as a \`styled\` template literal — it takes unistyle-convention property keys (\`borderWidthTop\`, not \`borderTopWidth\`) in a flat object, not arbitrary CSS text
+- Mounting many DIFFERENT shapes (different property SETS) expecting the flat-cost guarantee — the win is per-SHAPE; a component whose author varies which properties are set per instance still resolves once per distinct shape`,
+  },
   // <gen-docs:api-reference:end @pyreon/unistyle>
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -7152,7 +7451,7 @@ function Badge() {
   return <span style={{ color: t.colors.primary }}>{/* … */}</span>
 }`,
     notes: 'Returns the current theme as a SNAPSHOT at call time. `ThemeContext` is a REACTIVE context — `useTheme()` reads it once, so the returned object is static unless the read happens inside a reactive scope. For values that must track whole-theme swaps inside an `effect` / `computed`, use `useThemeAccessor()` instead. See also: useThemeAccessor, ThemeProvider, styled.',
-    mistakes: `- Destructuring \`const { colors } = useTheme()\` and expecting it to update on a user-preference theme swap — the snapshot is captured once. Use \`useThemeAccessor()\` and read inside the reactive scope, or rely on \`styled\` templates (their resolver tracks the theme)
+    mistakes: `- Destructuring \`const { colors } = useTheme()\` and expecting it to update on a user-preference theme swap — the snapshot is captured once. Use \`useThemeAccessor()\` and read inside the reactive scope, or rely on rocketstyle-backed components (their reactive resolver tracks the theme — a plain \`styled()\` with no reactive axis resolves once at mount)
 - Calling \`useTheme()\` at module scope — it must run during component setup where the context is available`,
   },
 
@@ -7169,14 +7468,15 @@ effect(() => applyChartPalette(theme().colors)) // re-runs on theme swap`,
   },
 
   'styler/ThemeProvider': {
-    signature: 'ThemeProvider(props: { theme: Theme | ((parent: Theme) => Theme); children?: VNodeChild }): VNodeChild',
+    signature: 'ThemeProvider(props: { theme: Theme; children?: VNodeChild }): VNode | null',
     example: `import { ThemeProvider } from "@pyreon/styler"
 
 <ThemeProvider theme={{ colors: { primary: "#06f" } }}>
   <App />
 </ThemeProvider>`,
-    notes: 'Provides a theme to the reactive `ThemeContext`. Nested providers compose — a function `theme` receives the parent theme so subtrees can extend rather than replace. Because the context is reactive, swapping the `theme` prop re-resolves every `styled` / `useCSS` consumer below without remounting the tree. Marked `nativeCompat` so it works inside `@pyreon/{react,preact,vue,solid}-compat` apps. See also: useTheme, useThemeAccessor, ThemeContext.',
-    mistakes: `- Replacing the whole theme in a nested provider when you meant to extend — pass \`theme={(parent) => ({ ...parent, colors: { ...parent.colors, accent: "#0a0" } })}\`
+    notes: 'Provides a theme to the reactive `ThemeContext`. The provided accessor reads `props.theme` LAZILY, so a signal-driven `theme={current()}` stays live: consumers that read the theme inside a tracking scope — `useThemeAccessor()` in an `effect` / `computed` / JSX thunk, and rocketstyle-backed components (whose reactive `$rocketstyle` axis tracks the theme) — follow a later `theme` change without a remount. A plain `styled()` component with no reactive axis resolves its class ONCE at mount (the static fast path), so it does not re-resolve on a swap. A nested provider REPLACES the theme for its subtree — there is no merge and no `(parent) => theme` function form. Marked `nativeCompat` so it works inside `@pyreon/{react,preact,vue,solid}-compat` apps. See also: useTheme, useThemeAccessor, ThemeContext.',
+    mistakes: `- Expecting a nested provider to MERGE with its parent — it replaces the theme for its subtree. To extend, read the parent with \`useTheme()\` and spread it yourself: \`theme={{ ...parent, colors: { ...parent.colors, accent: "#0a0" } }}\` (there is no function \`theme\` form)
+- Expecting a plain \`styled()\` component (no rocketstyle, no reactive axis) to re-resolve when the \`theme\` prop changes — it resolves once at mount; read the theme through \`useThemeAccessor()\` inside a reactive scope, or use \`<PyreonUI>\` + rocketstyle components for live whole-theme swaps
 - Expecting most apps to mount this directly — \`<PyreonUI>\` wraps it; use \`ThemeProvider\` standalone only outside the \`@pyreon/ui-core\` provider`,
   },
 
@@ -7359,7 +7659,7 @@ init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the ho
     </ul>
   )}
 </Overlay>`,
-    notes: 'A positioned layer (dropdown / modal / tooltip / popover) with an optional backdrop, driven internally by `useOverlay`. It handles viewport flipping, ESC-to-close, click-outside, scroll tracking, and hover delay — do NOT reimplement any of that in a primitive; compose `Overlay` (or `useOverlay`) instead. Takes a `trigger` render prop (receives `{ ref, active, showContent, hideContent }` — attach `ref` to the anchor) and a content render prop as `children` (receives `{ ref, active, align, alignX, alignY, … }` — attach `ref` to the floating node); the content renders through `Portal` so the layer escapes overflow/stacking contexts. `align`/`alignX`/`alignY` reach the content as LIVE reactive props, so a viewport-edge flip re-styles the content in place without remounting it. See also: useOverlay, OverlayProvider, Portal.',
+    notes: 'A positioned layer (dropdown / modal / tooltip / popover) with an optional backdrop, driven internally by `useOverlay`. It handles viewport flipping, ESC-to-close, click-outside, scroll tracking, and hover delay — do NOT reimplement any of that in a primitive; compose `Overlay` (or `useOverlay`) instead. Takes a `trigger` render prop (receives `{ ref, active, showContent, hideContent }` — attach `ref` to the anchor) and a content render prop as `children` (receives `{ ref, active, align, alignX, alignY, … }` — attach `ref` to the floating node); the content renders through `Portal` so the layer escapes overflow/stacking contexts. `align`/`alignX`/`alignY` reach the content as LIVE reactive props, so a viewport-edge flip re-styles the content in place without remounting it. Both render-prop parameters are contextually typed, so inline `(t) => …` / `(c) => …` callbacks typecheck under strict TS with no annotation. See also: useOverlay, OverlayProvider, Portal.',
     mistakes: `- Hand-rolling positioning / flip / click-outside / ESC logic in a tooltip or dropdown primitive — \`useOverlay\` already owns all of it; reimplementing drifts from the shared behavior
 - Forgetting to attach the \`ref\` the trigger / content render props receive — without it the hook cannot measure, position, wire click-outside, or restore focus (the layer renders at the document origin)
 - Reading the rendered overlay as \`document.body.firstChild\` — it renders through \`Portal\` into a per-instance wrapper; traverse the wrapper, not body’s direct child`,
@@ -8328,6 +8628,38 @@ createISRHandler(handler, {
     signature: 'function aiPlugin(config?: AiPluginConfig): Plugin // server-only',
     example: 'plugins: [pyreon(), zero(), seoPlugin({ ... }), aiPlugin()]',
     notes: `AI integration plugin — generates \`llms.txt\`, \`llms-full.txt\`, and JSON-LD inference metadata at build time. Designed for sites that want to be AI-readable (search engines, model trainers, agentic crawlers). The generated files are themselves Pyreon's on-publish artifacts; the plugin runs \`inferJsonLd\` per route to extract structured data from \`meta\` exports. See also: seoPlugin, zero.`,
+  },
+
+  'zero/OgImage': {
+    signature: 'type OgImage<TData = unknown, TParams = Record<string, string>> = (ctx: { path: string; params: TParams; data: TData | undefined }) => VNodeChild // route file `export const og`',
+    example: `import type { OgImage } from '@pyreon/zero/server'
+
+export const og: OgImage<{ title: string }> = ({ data }) => (
+  <svg width="1200" height="630">
+    <rect width="1200" height="630" fill="#0b1020" />
+    <text x="80" y="330" font-size="72" fill="#fff">{data?.title}</text>
+  </svg>
+)`,
+    notes: 'Per-route Open Graph image from JSX. A page route exports `og` — a component rendering the card as SVG JSX from its params + loader data. SSG paths rasterize at BUILD time to a content-hashed PNG under `assets/og/` and get `og:image` (+ width/height, `twitter:card`) injected; SSR/ISR routes are served at request time from `/_zero/og/<path>.png` (CDN `s-maxage` + `stale-while-revalidate`) with an absolute `og:image` injected into the page. Referenced only from the server graph — never the client bundle. Rasterizer: the optional peer `sharp`. Size + absolute origin via `zero({ routeOg: { width, height, siteUrl } })`. See also: zero, seoPlugin.',
+    mistakes: `- Rendering HTML (\`<div>\`) instead of an \`<svg>\` root — sharp rasterizes SVG via librsvg, which does not lay out HTML or \`<foreignObject>\`; the build fails with a \`[Pyreon]\` error naming the fix
+- Omitting \`routeOg.siteUrl\` for SSG — most crawlers (Facebook, LinkedIn, Slack) need an ABSOLUTE og:image URL; without it the build-time tag is root-relative
+- Expecting \`vite dev\` to serve \`/_zero/og/…\` — the image is produced by the build / production server; preview with a build
+- Setting og:image via \`useHead\` AND exporting \`og\` — the explicit tag wins and nothing is injected`,
+  },
+
+  'zero/registerServiceWorker': {
+    signature: 'function registerServiceWorker(options?: { url?: string; scope?: string; onUpdate?: (activate: () => void) => void }): Promise<ServiceWorkerRegistration | null>',
+    example: `import { registerServiceWorker } from '@pyreon/zero'
+
+registerServiceWorker({
+  onUpdate: (activate) => {
+    if (confirm('A new version is available. Reload?')) activate()
+  },
+})`,
+    notes: `Registers the worker generated by \`zero({ pwa })\` (\`<base>sw.js\`, \`updateViaCache: 'none'\`). The worker precaches exactly the emitted hashed assets (+ prerendered pages under \`mode: 'ssg'\`), serves navigations network-first and hashed assets cache-first. New versions WAIT by default; \`onUpdate(activate)\` fires when one is installed so the app can ask, and \`activate()\` switches + reloads. Resolves \`null\` during SSR, outside production builds, and without service-worker support. See also: zero.`,
+    mistakes: `- Expecting it to register in \`vite dev\` — it no-ops outside production builds on purpose (a caching worker fights HMR)
+- Setting \`pwa.skipWaiting: true\` without understanding it swaps the asset cache under running tabs — prefer \`onUpdate\` + \`activate()\`
+- Serving \`sw.js\` with a long or immutable Cache-Control from a custom host — the worker script is the update channel; zero's adapters serve it must-revalidate`,
   },
 
   'zero/i18nRouting': {
@@ -9772,7 +10104,7 @@ const Button = rs({ name: 'Button', component: 'button' })
 const rsCustom = rocketstyle({
   dimensions: { tones: 'tone', decorations: { propName: 'decoration', multi: true } },
 })`,
-    notes: 'Factory initializer (default + named export). `rocketstyle(config?)` returns a component factory; call THAT with `{ name, component }` to get the chainable builder. `config.dimensions` overrides the dimension map (default: `states: "state"`, `sizes: "size"`, `variants: "variant"`, `multiple: { propName: "multiple", multi: true }`, `modifiers: { propName: "modifier", multi: true, transform: true }`) — each key becomes a chain method, each propName a consumer prop. `config.useBooleans` (default `false`) switches dimension props from strings (`state="primary"`) to boolean shorthands (`<Button primary />`). Dev mode throws on missing `name`/`component`/`dimensions` and on dimension names colliding with reserved keys. See also: Provider, isRocketComponent, @pyreon/attrs, @pyreon/styler.',
+    notes: 'Factory initializer (default + named export). `rocketstyle(config?)` returns a component factory; call THAT with `{ name, component }` to get the chainable builder. `config.dimensions` overrides the dimension map (default: `states: "state"`, `sizes: "size"`, `variants: "variant"`, `multiple: { propName: "multiple", multi: true }`, `modifiers: { propName: "modifier", multi: true, transform: true }`) — each key becomes a chain method, each propName a consumer prop. `config.useBooleans` (default `false`) switches dimension props from strings (`state="primary"`) to boolean shorthands (`<Button primary />`). Dev mode throws on missing `name`/`component`/`dimensions` and on dimension names colliding with reserved keys (the error names the clashing key(s) and lists the reserved set). See also: Provider, isRocketComponent, @pyreon/attrs, @pyreon/styler.',
     mistakes: `- Calling the factory with a tag string — \`rs('button')\` is not a valid form. The factory takes \`{ name, component }\` and BOTH are required (dev mode throws on a missing one)
 - Passing boolean shorthand props under the default \`useBooleans: false\` — \`<Button primary />\` is an UNKNOWN prop that silently does nothing; write \`<Button state="primary" />\` or opt into \`rocketstyle({ useBooleans: true })\`
 - Passing a function accessor to a dimension prop — \`state={() => expr}\` is the wrong shape; dimension props take plain string values (\`state={expr}\`) and the compiler handles reactivity via \`_rp()\` wrapping
@@ -9780,6 +10112,26 @@ const rsCustom = rocketstyle({
 - Calling a dimension method with the singular prop name — \`.state({...})\` is not a method; DEFINITION methods are plural (\`.states()\`), the consumer PROP is singular (\`state="primary"\`)
 - Mounting each rocketstyle-heavy view under its own theme provider — the \`_rsMemo\` dimension-prop memo is keyed by theme identity, so real apps need ONE shared \`<PyreonUI>\` provider for the memo to span component instances
 - Expecting the chain to mutate — every chain method returns a NEW component; \`Button.states({...})\` without assigning the return value does nothing to \`Button\``,
+  },
+
+  'rocketstyle/.withTheme()': {
+    signature: '<Tokens extends object>() => RocketstyleFactory<D, UB, ThemeShape<Tokens>>',
+    example: `import rocketstyle from '@pyreon/rocketstyle'
+import { Element } from '@pyreon/elements'
+
+interface Tokens { accent: string; surface: string }
+
+const rs = rocketstyle({ useBooleans: false }).withTheme<Tokens>()
+
+const Card = rs({ name: 'Card', component: Element })
+  .theme((t) => ({ backgroundColor: t.surface }))   // t: Tokens
+  .states((t) => ({ active: { color: t.accent } }))  // t: Tokens
+
+// .theme((t) => ({ color: t.nope }))  ❌ Property 'nope' does not exist`,
+    notes: 'Bind a theme TYPE to the factory `rocketstyle(config)` returns, so every `.theme()` and dimension callback built from it receives a typed, checked `t` — with no global `declare module "@pyreon/rocketstyle"` augmentation. Type-only: it returns the same factory at runtime. The provider still supplies the actual theme object; this states its shape. An `interface` works directly (it is normalized through `ThemeShape`, since an interface carries no implicit index signature). See also: rocketstyle, .theme(), .states() / .sizes() / .variants().',
+    mistakes: `- Augmenting \`ThemeDefault\` globally from a LIBRARY to type \`t\` — the augmentation declaration-merges with every other package's (e.g. \`@pyreon/ui-theme\`), so each \`t\` claims both shapes and reads that are \`undefined\` at runtime typecheck; bind the type on your own factory with \`.withTheme<Tokens>()\` instead (an APP may still augment \`ThemeDefault\` once, as \`@pyreon/ui-theme\` does)
+- Annotating the callback parameter (\`.theme((t: Tokens) => …)\`) instead of binding the factory — the annotation is now CHECKED against the bound theme, so on an unbound factory (\`t\` is \`{}\`) it is a type error; declare the shape once with \`.withTheme<Tokens>()\` and let \`t\` infer
+- Expecting \`.withTheme()\` to supply or validate the theme VALUE — it is compile-time only; the object comes from \`<PyreonUI theme>\` / rocketstyle \`Provider\`, and nothing checks at runtime that it matches \`Tokens\``,
   },
 
   'rocketstyle/.config()': {
@@ -9843,6 +10195,7 @@ const Anchor = Button.config({ component: 'a', name: 'Anchor' }).attrs({ href: '
 - Treating the second callback argument as a string — in \`.theme()\` and dimension callbacks \`mode\` is the \`mode(light, dark)\` HELPER function (\`backgroundColor: mode("#fff", "#333")\`), not \`"light" | "dark"\`; the resolved string form lives on \`.attrs()\` callbacks' \`helpers.mode\`
 - Using CSS-spec property order — rocketstyle themes use the unistyle convention (\`borderWidthTop\`, \`borderColorLeft\`), NOT \`borderTopWidth\` / \`borderLeftColor\`
 - Expecting \`:hover\` styles to apply only to interactive components — \`hover\` theme compiles to an UNCONDITIONAL \`:hover\` rule on every component that defines it; only \`cursor: pointer\` is gated on \`onClick\` / \`href\`
+- Annotating the callback parameter with a shape the theme does not have — every \`.theme()\` callback used to silently match the OBJECT arm (\`Partial<Record<string, unknown>>\` accepts any function), so \`(t: Anything) =>\` compiled unchecked; callbacks are now checked against the bound theme — bind it with \`.withTheme<Tokens>()\`
 - Passing unitless numbers to \`mode()\` under \`init({ cssVariables: true })\` — \`mode(8, 12)\` is emitted verbatim into the CSS var with no unit applied (dev warns); pass unit-complete values (\`mode("8px", "12px")\`)`,
   },
 
@@ -9950,9 +10303,10 @@ Button.meta.category   // 'action'
 <Provider inversed>
   <Card>Resolves mode() as the opposite mode</Card>
 </Provider>`,
-    notes: `Tree-level theme + mode provider. Props are \`{ children, theme?, mode?, inversed?, provider? }\` — \`mode\` is \`"light" | "dark"\`, \`inversed: true\` flips the resolved mode for the subtree, and values merge over any parent rocketstyle context. Most apps use the higher-level \`<PyreonUI>\` from \`@pyreon/ui-core\` (theme + mode + config in one) and reach for rocketstyle's \`Provider\` only for fine-grained subtree overrides. The raw context object backing it is exported as \`context\`. See also: rocketstyle, .config(), @pyreon/ui-core.`,
+    notes: `Tree-level theme + mode provider. Props are \`{ children, theme?, mode?, inversed?, provider? }\` — \`mode\` is \`"light" | "dark"\`, \`inversed: true\` flips the resolved mode for the subtree, and values merge over any parent rocketstyle context. It is REACTIVE: the parent context and its own props are read LAZILY (the provided value is getter-based), so \`<Provider inversed>\` follows a later parent mode flip and a signal-driven \`theme={t()}\` / \`mode={m()}\` stays live — no remount. Most apps use the higher-level \`<PyreonUI>\` from \`@pyreon/ui-core\` (theme + mode + config in one) and reach for rocketstyle's \`Provider\` only for fine-grained subtree overrides. The raw context object backing it is exported as \`context\`. See also: rocketstyle, .config(), @pyreon/ui-core.`,
     mistakes: `- Passing a \`value\` prop (React-context muscle memory) — there is no \`value\`; \`Provider\` takes \`theme\` / \`mode\` / \`inversed\` directly
 - Mounting a fresh \`Provider\`/\`PyreonUI\` per view — the \`_rsMemo\` cache keys on theme identity, so per-view providers defeat cross-instance memoization; share ONE app-level provider
+- Expecting \`inversed\` to FORCE dark — it inverts whatever mode the parent resolves (light↔dark), and tracks that parent as it changes
 - Confusing this theme/mode provider with \`.config({ provider: true })\` — the latter is the component-to-component PSEUDO-STATE channel, unrelated to theming`,
   },
 
@@ -10800,6 +11154,15 @@ loom dev: 142 package(s) → http://localhost:5230/`,
 - Reading graph depth as import distance — depth is LONGEST-path from the entry points (how far below the surface a package sits), hard-bounded at V−1; packages inside a cycle keep the depth their first visit found`,
   },
 
+  'loom/loom build': {
+    signature: 'loom build [dir] [--out=<dir>] [--base=<path>]',
+    example: `$ loom build . --out=dist/observatory
+loom: 142 package(s) → dist/observatory`,
+    notes: 'Prerenders the observatory to a STANDALONE STATIC SITE — one prerendered page per view (graph / matrix / cycles / impact / manifest table), so a specific view has its own shareable URL instead of living behind a client-side signal. Output goes to `<dir>/loom-dist` by default (`--out=<dir>` to change it); `--base=<path>` sets the public base path for a subdirectory deploy. Needs `vite` + `@pyreon/vite-plugin` + `@pyreon/zero` as dev dependencies — `loom scan` needs NONE of them, so a CI gate that only runs `scan` is unaffected. The five views + the scan report are baked into the build so the output also works opened directly from `file://`, with no server. See also: loom dev, loom scan.',
+    mistakes: `- Running \`loom build\` in a project without Vite installed — it names the exact install (\`vite @pyreon/vite-plugin @pyreon/zero\`) rather than failing with a bare module-resolution error
+- Expecting the static build to re-scan on reload like \`loom dev\` does — it is a SNAPSHOT of the workspace at build time; re-run \`loom build\` after dependency changes to refresh it`,
+  },
+
   'loom/buildReport': {
     signature: '(rootDir: string, options?: { noImports?: boolean }) => LoomReport',
     example: `import { buildReport } from '@pyreon/loom'
@@ -10816,7 +11179,7 @@ report.issues.filter((i) => i.severity === 'error')`,
   // <gen-docs:api-reference:start @pyreon/lathe>
 
   'lathe/generate': {
-    signature: 'generate(specText: string, config: ResolvedConfig): GenerateResult',
+    signature: 'generate(specText: string, config: ResolvedConfig, options?: { sourceUrl?: string }): GenerateResult',
     example: `import { generate, resolveConfig } from '@pyreon/lathe'
 
 const config = resolveConfig({ input: './openapi.yaml', target: 'multiplatform' })
@@ -10829,7 +11192,7 @@ for (const [id, r] of reach) {
     mistakes: `- Passing a relative \`baseUrl\` (or omitting \`servers\` from the spec) and expecting native output — PMTC bakes the request URL at compile time, so a relative base makes EVERY operation web-only. The reach report names this, but only if you read it.
 - Assuming the \`.native.tsx\` modules replace the web output. They are ADDITIVE: the web files are byte-identical whether the target is \`web\` or \`multiplatform\`.
 - Editing generated files. Every file carries a DO-NOT-EDIT banner and is overwritten on the next run; change the spec or the emitter.
-- Expecting \`s.enum\` in native output. Enums do not lower, so the native path narrows them to \`s.string()\` — the constraint is genuinely lost there, which is why the two layouts are emitted separately rather than shared.`,
+- Expecting \`s.enum\` in native output. Enums do not lower, so the native path narrows them to their base scalar (\`s.string()\` / \`s.number()\`) — the constraint is genuinely lost there, which is why the two layouts are emitted separately rather than shared.`,
   },
 
   'lathe/resolveConfig': {
@@ -10870,15 +11233,46 @@ if (worstVerdict(report) !== 'lowers') process.exitCode = 1`,
   },
 
   'lathe/loadOpenApi': {
-    signature: 'loadOpenApi(source: string): { doc: IrDocument }',
+    signature: 'loadOpenApi(source: string, options?: { sourceUrl?: string }): { doc: IrDocument }',
     example: `import { loadOpenApi } from '@pyreon/lathe'
 
 const { doc } = loadOpenApi(await readFile('./openapi.yaml', 'utf8'))
 console.log(doc.models.length, 'models', doc.operations.length, 'operations')
 for (const note of doc.notes) console.warn(note.code, note.at, note.message)`,
-    notes: 'Parses an OpenAPI 3.x document (JSON or YAML text) into the spec-agnostic IR. Every reduction the IR cannot represent is recorded in `doc.notes` with a stable code and a location, so a loss is reported once at the boundary instead of being rediscovered differently by each emitter. Deterministic: models and operations are sorted, so the same spec always produces the same IR.',
-    mistakes: `- Ignoring \`doc.notes\`. A spec with a remote \`$ref\` or a non-JSON media type still produces output — with those pieces typed \`unknown\`. The note is the only signal.
-- Expecting anchors or merge keys to work. The YAML reader refuses them by design with a line number, because silently ignoring an anchor produces a document that is wrong everywhere it was used.`,
+    notes: 'Parses an OpenAPI 3.x document (JSON or YAML text) into the spec-agnostic IR. Every reduction the IR cannot represent is recorded in `doc.notes` with a stable code and a location, so a loss is reported once at the boundary instead of being rediscovered differently by each emitter. Deterministic: models and operations are sorted, so the same spec always produces the same IR. Pass `sourceUrl` (where the spec was fetched from) and a RELATIVE `servers[].url` is resolved against it, as OpenAPI specifies.',
+    mistakes: `- Ignoring \`doc.notes\`. A spec with a remote \`$ref\` or a non-JSON media type still produces output — with those pieces typed \`unknown\`. The note is the only signal. Filter on \`noteSeverity(note) === 'loss'\` for the ones that change behaviour.
+- Reading \`op.body\` as a type. It is \`{ mediaType, encoding, type }\` — \`encoding\` (\`json\` / \`form\` / \`multipart\` / \`text\` / \`binary\`) decides the call argument (\`json:\` / \`form:\` / \`multipart:\` / \`body:\`), and a form body carries its per-field \`fieldEncoding\`.
+- Passing a Swagger 2 document. It is refused (\`openApiVersionProblem\` names the \`swagger2openapi\` conversion) rather than read as an empty 3.x spec.
+- Expecting a custom YAML tag (\`!Ref\`, \`!include\`) to be expanded. The reader refuses it with a line number instead of reading it as a plain string; resolve or bundle the spec first. Anchors, aliases and merge keys DO resolve.`,
+  },
+
+  'lathe/resolveProjects': {
+    signature: 'resolveProjects(section: LatheSection | undefined): ResolvedConfig[]',
+    example: `import { resolveProjects, generate } from '@pyreon/lathe'
+
+const projects = resolveProjects({
+  target: 'multiplatform',
+  projects: [
+    { name: 'billing', input: './billing.yaml', output: './src/gen/billing' },
+    { name: 'catalog', input: './catalog.yaml', output: './src/gen/catalog' },
+  ],
+})
+for (const config of projects) {
+  const { files } = generate(await readSpec(config), config)
+}`,
+    notes: 'The multi-spec sibling of `resolveConfig` — ALWAYS returns a list, so a config with no `projects` array resolves to a one-element list (the top-level config alone) rather than a special case the caller has to branch on. Each declared project inherits the top-level `target`/`plugins`/`client`/`validator` and may override any of them; a project without a unique `name` — the key the CLI report and error messages use — throws. See also: resolveConfig, generate.',
+    mistakes: `- Reaching for \`resolveConfig\` when the section MAY declare \`projects\` — it resolves only the top-level fields and silently ignores a \`projects\` array; \`resolveProjects\` is the one that fans it out
+- Passing a CLI \`--out\` alongside a \`projects\` config expecting it to apply to every project — it is REFUSED, since each project already declares its own \`output\``,
+  },
+
+  'lathe/resolveTransform / worstVerdict': {
+    signature: 'resolveTransform(): Promise<TransformFn | undefined> · worstVerdict(report: VerifyReport): "lowers" | "web-only" | "broken" | "skipped"',
+    example: `import { resolveTransform, verifyNative, worstVerdict } from '@pyreon/lathe'
+
+const report = verifyNative(files, await resolveTransform())
+if (worstVerdict(report) !== 'lowers') process.exitCode = 1`,
+    notes: `\`resolveTransform\` resolves the CONSUMING PROJECT's own \`@pyreon/native-compiler\` (dynamic \`import()\`, never bundled) — the \`transform\` fn \`verifyNative\` needs — and returns \`undefined\` when the package is not installed, so a verify call never silently substitutes a different compiler version than the one that will actually build the app. \`worstVerdict\` reduces a whole \`VerifyReport\` (one verdict per generated \`.native.tsx\` file) to a single exit-worthy answer: \`"broken"\` beats \`"web-only"\` beats \`"lowers"\`, and an un-run report (\`report.ran === false\`) is \`"skipped"\` — never conflated with a pass. See also: verifyNative.`,
+    mistakes: '- Checking `report.files.length` instead of `worstVerdict(report)` — a report with zero broken/web-only files can still be `"skipped"` (compiler absent), which is not the same as every file lowering',
   },
   // <gen-docs:api-reference:end @pyreon/lathe>
   // <gen-docs:api-reference:start @pyreon/atlas>
@@ -10901,6 +11295,20 @@ atlas: 2 failing scenario(s):
 - Expecting the leak check under plain \`node\` — it needs a GC hook (\`bun\`, or \`node --expose-gc\`); without one it reports skip, not pass
 - Expecting reactivityCoverage/snapshot verdicts from the scan — those are browser-only claims; run \`atlas verify-browser\` to earn them
 - Reading a \`--check\` run that reports FEWER failures as an improvement without looking at the ratchet line — fewer failures is exactly what losing a check produces, and only the diff distinguishes "fixed" from "no longer measured"`,
+  },
+
+  'atlas/atlas check': {
+    signature: `atlas check <Component> ['{"prop":"value"}'] [--cwd <dir>]`,
+    example: `$ atlas check Button '{"state":"primry"}'
+Button: 1 problem(s):
+  · \`state\` must be one of \`primary\`, \`secondary\`, \`danger\` — got \`primry\` — did you mean \`primary\`?
+
+$ atlas check Input
+Input: 1 problem(s):
+  · \`label\` is required and was not supplied  # omitted args → missing-required findings only`,
+    notes: `Validates a PROPOSED usage against the catalog's already-derived contract — catches the value that typechecks in JS but renders silently wrong (\`state="primry"\` against a select-kind prop whose real options are \`primary\`/\`secondary\`/\`danger\`), an unknown prop name, or a value of the wrong TYPE. Reads the COMMITTED \`atlas-catalog.json\` rather than re-scanning, deliberately: a check must be instant and must agree with the exact answer the workbench and agent guide already gave — a rescan here could silently disagree with the catalog an agent was handed moments earlier. Every unresolved prop / unmatched value gets a \`did you mean\` suggestion (edit-distance nearest match) for the same reason a typo'd component name does. Missing required props are reported when the args object omits them, even with no args at all. Exits non-zero on any finding, so it is safe to wire into a pre-commit hook or a CI step gating a generated-usage PR. See also: atlas scan, atlas verify.`,
+    mistakes: `- Running \`atlas check\` before ever running \`atlas scan\` — there is no catalog to check against, so it fails with "Run atlas scan first" rather than a usage verdict
+- Expecting \`atlas check\` to catch a REGRESSION since the last scan — it validates the ARGS you pass against the LAST-WRITTEN catalog; it does not itself re-derive anything, so a source change needs a fresh \`atlas scan\` before checking against it means anything`,
   },
 
   'atlas/atlas verify': {
@@ -10979,6 +11387,28 @@ const graph = await atlas.build()      // discover → decorate → verify → g
 graph.search('button')                 // Catalog Graph queries`,
     notes: 'The programmatic pipeline factory behind the CLI: `discover → decorate → verify → graph`, plugin-driven. The recommended preset bundles the built-in plugins (controls inference, variant matrix, mount/interaction/leak verification). Pass `preset: "none"` when you assemble the plugin list yourself — appending the recommended bundle on top of an explicit list runs duplicate plugins whose default verdicts can overwrite real ones. See also: atlas scan.',
     mistakes: '- Passing an explicit plugin list WITHOUT `preset: "none"` — the recommended bundle is appended a second time and a duplicate mount plugin’s empty-graph default verdict can overwrite the real one',
+  },
+
+  'atlas/defineAtlas': {
+    signature: 'defineAtlas(config: AtlasConfig): AtlasConfig',
+    example: `import { defineAtlas, createAtlas } from '@pyreon/atlas'
+
+const options = defineAtlas({ preset: 'recommended', matrix: 'axes' })
+const graph = await createAtlas(options).build()`,
+    notes: 'Identity helper for a typed `createAtlas(...)` options object — returns its argument unchanged, purely for editor DX (autocomplete + type-checking on `plugins` / `preset` / `baseArgs` / `matrix` / `cwd` / `focus`) when the object is built up in its own module instead of inlined at the `createAtlas()` call site. See also: createAtlas, AtlasConfig.projects (monorepo — one site, several packages).',
+    mistakes: `- Reaching for this to type \`atlas.config.ts\` / the \`pyreon.config.ts\` \`atlas:\` section — that file-level convention (\`title\`, \`projects\`, \`pages\`, \`scenarios\`, \`wrapper\`, \`presets\`, \`theme\`, \`parts\`, \`browserOnly\`, \`ignore\`) is a WIDER, separate shape the CLI loads dynamically; \`defineAtlas\`'s \`AtlasConfig\` is specifically the \`createAtlas()\` programmatic-API options bag and does not carry those fields`,
+  },
+
+  'atlas/atlas init': {
+    signature: 'atlas init [dir] [--force] [--dry-run] [--title <text>]',
+    example: `$ atlas init
+atlas init: wrote pyreon.config.ts (2 project(s) detected)
+
+$ atlas init --dry-run   # print instead of writing
+$ atlas init --force     # overwrite an existing config`,
+    notes: `Writes the config the workspace already implies — the ONE file you author by hand. Atlas works with zero config for a plain single-package library (\`atlas scan\` and \`atlas dev\` need nothing), but the first thing anyone wants to do after that is adjust a guess: rename a monorepo project group, drop an internal package, pin an order. \`atlas init\` detects the workspace's packages (populating \`AtlasConfig.projects\` for a monorepo), guesses a site \`title\` from the root \`package.json\` name, and writes \`pyreon.config.ts\` with every OTHER optional field present but commented out — \`wrapper\`, \`pages\`, \`scenarios\`, \`matrix\`, \`parts\`, \`browserOnly\` — so the file is self-documenting. Nothing regenerates it after; it is yours to edit. It writes no story files by design — components, controls and scenarios stay derived from source. See also: createAtlas, AtlasConfig.projects (monorepo — one site, several packages).`,
+    mistakes: `- Expecting \`atlas init\` to be required — it is a convenience for adjusting the auto-detected project list and documenting the optional fields; \`atlas scan\`/\`atlas dev\` work with no config file at all
+- Running it a second time expecting an incremental update — \`--force\` OVERWRITES the whole file; hand edits are lost unless you diff first`,
   },
 
   'atlas/AtlasConfig.projects (monorepo — one site, several packages)': {

@@ -32,6 +32,7 @@ registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
 // ─── Hooks ───────────────────────────────────────────────────────────────────
 
+export type { UseHotkeyOptions } from './use-hotkey'
 export { useHotkey } from './use-hotkey'
 export { useHotkeyScope } from './use-hotkey-scope'
 

@@ -187,7 +187,7 @@ const FadeBox = kinetic('div').preset(fade)
 const SlowSlide = kinetic('section').preset(slideUp).enterTransition('opacity 600ms ease, transform 600ms ease')
 ```
 
-Six presets ship from `@pyreon/kinetic` directly — `fade`, `scaleIn`, `slideUp`, `slideDown`, `slideLeft`, `slideRight` — plus the aggregate `presets` object (`presets.fade`, `presets.slideUp`, …). For the full library of parameterized factories and composition helpers, see [`@pyreon/kinetic-presets`](/docs/kinetic-presets) (120+ presets); a `@pyreon/kinetic-presets` factory result is just a `Preset` object you pass to `.preset(...)`.
+Six presets ship from `@pyreon/kinetic` directly — `fade`, `scaleIn`, `slideUp`, `slideDown`, `slideLeft`, `slideRight` — plus the aggregate `presets` object (`presets.fade`, `presets.slideUp`, …). For the full library of parameterized factories and composition helpers, see [`@pyreon/kinetic-presets`](/docs/kinetic-presets) (122 presets); a `@pyreon/kinetic-presets` factory result is just a `Preset` object you pass to `.preset(...)`.
 
 ```tsx
 import { kinetic } from '@pyreon/kinetic'

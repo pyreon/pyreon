@@ -172,6 +172,14 @@ export function syncedSignal<T>(options: SyncedSignalOptions<T>): SyncedSignal<T
   // that). `update` inherits this via wrapSignal's default (`set(fn(peek()))`).
   const facade = wrapSignal(base, {
     set: (v) => {
+      // Skip a write of the value the REAL map already holds. Yjs's `Y.Map.set`
+      // is not idempotent — an equal value still allocates a new item, emits an
+      // update, and ships a frame to every peer — so an app that re-sets the same
+      // value on every keystroke / effect run was paying a full sync round per
+      // call for a no-op. Only the real map counts: when the displayed value is a
+      // DEFAULT (or `initial`), an explicit `set` of that same value is a
+      // meaningful act — it promotes the default to real data — and must write.
+      if (map.has(key) && Object.is(map.get(key), v)) return
       doc.transact(() => map.set(key, v), LOCAL_ORIGIN)
     },
   }) as SyncedSignal<T>
@@ -183,9 +191,9 @@ export function syncedSignal<T>(options: SyncedSignalOptions<T>): SyncedSignal<T
     off()
     offDefaults()
   }
-  // Auto-dispose when created inside a reactive scope. A no-op outside one
-  // (onCleanup only registers against an active cleanup collector), so
-  // module-scope / component-body callers must call `.dispose()` themselves or
+  // Auto-dispose with the owner it was created in: an effect run, a component
+  // body (on unmount) or an `EffectScope.runInScope` (on stop). A no-op at
+  // module scope, so module-level callers must call `.dispose()` themselves or
   // use the `syncedStore` layer.
   onCleanup(facade.dispose)
 

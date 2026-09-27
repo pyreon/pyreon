@@ -1,5 +1,6 @@
-import { bars, ChartThemeProvider, line, palettes, PlotChart } from '@pyreon/charts/plot'
-import type { ChartThemeMode } from '@pyreon/charts/plot'
+import { ColorModeProvider } from '@pyreon/core'
+import type { ColorMode } from '@pyreon/core'
+import { Bar, Chart, ChartThemeProvider, Legend, Line, Tooltip, palettes } from '@pyreon/charts'
 import { signal, type Signal } from '@pyreon/reactivity'
 
 /**
@@ -32,7 +33,7 @@ type PaletteName = (typeof PALETTE_NAMES)[number]
 
 export default function PlotTheme(props: { shared?: Signal<number> }) {
   const flips = props.shared ?? signal(0)
-  const mode = signal<ChartThemeMode>('light')
+  const mode = signal<ColorMode>('light')
   const paletteName = signal<PaletteName>('pyreon')
 
   const flip = () => {
@@ -58,20 +59,21 @@ export default function PlotTheme(props: { shared?: Signal<number> }) {
       </div>
 
       {/*
-        The provider is the only place theming happens: `mode` is an accessor,
-        so a flip re-resolves the theme; `theme` carries the palette override.
+        The mode is the framework-wide colour mode (`<PyreonUI mode>` sets it
+        in an app); here a `<ColorModeProvider>` pins it for the demo. Its
+        `mode` is an accessor, so a flip re-resolves the theme. The chart
+        provider carries only the palette override.
       */}
-      <ChartThemeProvider mode={() => mode()} theme={() => ({ palette: [...palettes[paletteName()]] })}>
-        <PlotChart<Row>
-          data={ROWS}
-          x={(d) => d.q}
-          marks={[bars((d) => d.revenue, { label: 'Revenue' }), line((d) => d.cost, { label: 'Cost', width: 2 })]}
-          showLegend
-          tooltip
-          height={220}
-          animate={false}
-        />
-      </ChartThemeProvider>
+      <ColorModeProvider mode={() => mode()}>
+        <ChartThemeProvider theme={() => ({ palette: [...palettes[paletteName()]] })}>
+          <Chart<Row> data={ROWS} x="q" height={220} animate={false}>
+            <Bar y="revenue" label="Revenue" />
+            <Line y="cost" label="Cost" width={2} />
+            <Legend />
+            <Tooltip />
+          </Chart>
+        </ChartThemeProvider>
+      </ColorModeProvider>
     </div>
   )
 }

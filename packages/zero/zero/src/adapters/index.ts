@@ -15,6 +15,7 @@ export { netlifyAdapter } from './netlify'
 export { nodeAdapter } from './node'
 export { staticAdapter } from './static'
 export { vercelAdapter } from './vercel'
+export type { VercelAdapterOptions } from './vercel'
 
 import type { Adapter, ZeroConfig } from '../types'
 import { bunAdapter } from './bun'

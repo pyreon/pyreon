@@ -1,10 +1,10 @@
-import { el, type InputEl, type T } from '../../kit'
+import { el, type InputEl } from '../../kit'
 
 export const TextInput = el
   .attrs({
     tag: 'input',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     font: 'inherit',
     fontSize: t.size.input,
     width: '100%',
@@ -14,5 +14,5 @@ export const TextInput = el
     border: t.hairline,
     background: t.bg,
     color: t.text,
-    focus: { borderColor: t.accent },
+    focus: { borderColor: t.accent, boxShadow: `0 0 0 3px ${t.accentSoft}` },
   })) as unknown as InputEl

@@ -1,16 +1,14 @@
-import { onMount, onUnmount } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
-import { batch, effect, signal } from '@pyreon/reactivity'
 import {
   elementScroll,
   observeElementOffset,
   observeElementRect,
   type VirtualItem,
-  Virtualizer,
+  type Virtualizer,
   type VirtualizerOptions,
 } from '@tanstack/virtual-core'
-import { deferDetachedMeasurement, guardDetachedSize } from './detached-measure'
-import { createItemRegistry, type VirtualItemMeasurement } from './item-registry'
+import type { VirtualItemMeasurement } from './item-registry'
+import { createReactiveVirtualizer } from './reactive-virtualizer'
 
 export type UseVirtualizerOptions<
   TScrollElement extends Element,
@@ -68,69 +66,9 @@ export interface UseVirtualizerResult<
 export function useVirtualizer<TScrollElement extends Element, TItemElement extends Element>(
   options: UseVirtualizerOptions<TScrollElement, TItemElement>,
 ): UseVirtualizerResult<TScrollElement, TItemElement> {
-  const resolvedOptions: VirtualizerOptions<TScrollElement, TItemElement> = {
-    observeElementRect,
-    observeElementOffset,
-    scrollToFn: elementScroll,
-    ...options(),
-  }
-  resolvedOptions.measureElement = guardDetachedSize(resolvedOptions.measureElement)
-
-  const virtualItems = signal<VirtualItem[]>([])
-  const totalSize = signal(0)
-  const isScrolling = signal(false)
-  const registry = createItemRegistry()
-
-  // Store latest user options so onChange always reads the freshest reference
-  let latestUserOpts = options()
-
-  const instance = new Virtualizer<TScrollElement, TItemElement>(resolvedOptions)
-  deferDetachedMeasurement(instance)
-
-  // Single emission point: pull the instance's current state into all reactive
-  // surfaces (coarse signals + fine-grained per-index registry) in one batch.
-  const emit = (): void => {
-    batch(() => {
-      const items = instance.getVirtualItems()
-      virtualItems.set(items)
-      totalSize.set(instance.getTotalSize())
-      isScrolling.set(instance.isScrolling)
-      registry.sync(items)
-    })
-  }
-
-  // Track reactive options: when signals inside options() change, update the virtualizer.
-  const effectCleanup = effect(() => {
-    latestUserOpts = options()
-    instance.setOptions({
-      ...instance.options,
-      ...latestUserOpts,
-      measureElement: guardDetachedSize(latestUserOpts.measureElement),
-      onChange: (inst, sync) => {
-        emit()
-        // Read latest opts to avoid stale closure
-        latestUserOpts.onChange?.(inst, sync)
-      },
-    })
-
-    // After updating options, recalculate and re-emit
-    instance._willUpdate()
-    emit()
-  })
-
-  // Lifecycle: mount observers, clean up on unmount.
-  let mountCleanup: (() => void) | undefined
-  onMount(() => {
-    mountCleanup = instance._didMount()
-    instance._willUpdate()
-    emit()
-    return undefined
-  })
-
-  onUnmount(() => {
-    effectCleanup.dispose()
-    mountCleanup?.()
-  })
-
-  return { instance, virtualItems, totalSize, isScrolling, item: registry.item }
+  return createReactiveVirtualizer<TScrollElement, TItemElement>(
+    { observeElementRect, observeElementOffset, scrollToFn: elementScroll },
+    options,
+    'useVirtualizer',
+  )
 }

@@ -9,7 +9,7 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
  * each mark took the next slot by index, on every target.
  */
 const src = (marks: string): string => `
-import { PlotChart, area, line } from '@pyreon/charts/plot'
+import { PlotChart, area, line } from '@pyreon/charts/engine'
 const ROWS = [{ m: 'a', v: 1, t: 2 }, { m: 'b', v: 3, t: 4 }]
 export function App() {
   return <PlotChart data={ROWS} x={(d) => d.m} marks={[${marks}]} showLegend legendToggle />

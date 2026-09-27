@@ -18,7 +18,7 @@
  *
  * `PYREON_FUZZ_SEEDS` raises the seed count for a sweep (default 60 in CI).
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { computeEdgeGeometry } from '../edge-geometry'
 import { getEdgePath, getWaypointPath } from '../edges'
 import { createFlow } from '../flow'
@@ -191,8 +191,15 @@ describe('instance round-trips — random graphs + mutation scripts', () => {
       a.viewport.set({ x: seed, y: -seed, zoom: 0.5 + (seed % 7) * 0.25 })
       const json = a.toJSON()
       const b = createFlow()
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
       b.fromJSON(JSON.parse(JSON.stringify(json)))
-      expect(b.toJSON(), `seed ${seed}`).toEqual(json)
+      warn.mockRestore()
+      // The generator can emit duplicate edge ids, which `createFlow` accepts
+      // but `fromJSON` (untrusted input) normalizes to first-wins — so the
+      // round-trip reproduces the graph modulo that normalization.
+      const seen = new Set<string | undefined>()
+      const expected = { ...json, edges: json.edges.filter((e) => !seen.has(e.id) && !!seen.add(e.id)) }
+      expect(b.toJSON(), `seed ${seed}`).toEqual(expected)
       a.dispose()
       b.dispose()
     }

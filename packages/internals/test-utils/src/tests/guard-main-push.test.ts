@@ -41,10 +41,11 @@ beforeAll(() => {
 })
 
 /** Run the guard the way Claude Code does: hook JSON on stdin. */
-function decide(command: string): 'block' | 'allow' {
+function decide(command: string, env: NodeJS.ProcessEnv = process.env): 'block' | 'allow' {
   const out = execFileSync('bash', [GUARD], {
     input: JSON.stringify({ tool_input: { command } }),
     encoding: 'utf8',
+    env,
   })
   return (JSON.parse(out) as { decision?: string }).decision === 'block' ? 'block' : 'allow'
 }
@@ -67,6 +68,15 @@ describe('guard-main-push', () => {
   it('blocks a bare push from a checkout on main', () => {
     expect(decide(`git -C ${onMain} push`)).toBe('block')
     expect(decide(`git -C ${onMain} push origin`)).toBe('block')
+  })
+
+  it('reads the TARGET repo even when GIT_DIR points elsewhere', () => {
+    // Inside a git hook (this suite runs from pre-push), git exports GIT_DIR
+    // for the outer repo, and GIT_DIR overrides `-C`. The branch lookup then
+    // read the feature-branch checkout running the hook and allowed a bare
+    // push from main.
+    const env = { ...process.env, GIT_DIR: join(onFeature, '.git') }
+    expect(decide(`git -C ${onMain} push`, env)).toBe('block')
   })
 
   it('allows pushing another branch from a checkout on main', () => {

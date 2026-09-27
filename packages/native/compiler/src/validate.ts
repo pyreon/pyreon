@@ -482,7 +482,7 @@ export function _swiftInputPrelude(stripped: string, observation: string): strin
 }
 
 // ---------------------------------------------------------------------------
-// `@pyreon/charts/plot` hosts: an emitted `<SankeyChart>` names the GENERATED
+// `@pyreon/charts` hosts: an emitted `<SankeyChart>` names the GENERATED
 // engine (`layoutSankey` / `renderSankey` / the family structs) and the
 // runtime's `PyreonChartCanvas`. The engine is generated from the charts
 // sources, so a hand-written stub of it would be the drift-prone copy the

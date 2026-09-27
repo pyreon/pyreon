@@ -11,6 +11,7 @@ export type {
   Feature,
   FeatureConfig,
   FeatureFormOptions,
+  FeatureFormState,
   FeatureStore,
   FeatureTableOptions,
   FeatureTableResult,

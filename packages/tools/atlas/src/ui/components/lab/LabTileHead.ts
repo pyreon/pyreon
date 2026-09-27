@@ -1,4 +1,4 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const LabTileHead = el
   .attrs({
@@ -7,7 +7,7 @@ export const LabTileHead = el
     contentAlignY: 'center',
     contentAlignX: 'spaceBetween',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     width: '100%',
     padding: '8px 12px',
     background: t.chrome,

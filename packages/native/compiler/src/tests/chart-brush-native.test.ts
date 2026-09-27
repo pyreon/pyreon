@@ -18,7 +18,7 @@ describe.each(['swift', 'kotlin'] as const)('area brush on %s', (target) => {
   it('a PlotChart brush lowers every prop and tool, with the report', () => {
     const r = transform(`
 import { signal } from '@pyreon/reactivity'
-import { PlotChart, bars, line } from '@pyreon/charts/plot'
+import { PlotChart, bars, line } from '@pyreon/charts/engine'
 const ROWS = [{ a: 1, b: 3 }, { a: 2, b: 2 }, { a: 3, b: 1 }]
 export function App() {
   const picked = signal(0)
@@ -32,7 +32,7 @@ export function App() {
 
   it('a toolbox brush alone arms nothing until a tool is taken up', () => {
     const r = transform(`
-import { PlotChart, bars } from '@pyreon/charts/plot'
+import { PlotChart, bars } from '@pyreon/charts/engine'
 const ROWS = [{ a: 1 }, { a: 2 }]
 export function App() {
   return <PlotChart data={ROWS} marks={[bars((d) => d.a)]} height={200} toolbox={{ brush: ['rect', 'clear'] }} />
@@ -44,7 +44,7 @@ export function App() {
 
   it('non-literal brush props and an unknown tool warn by name', () => {
     const r = transform(`
-import { PlotChart, bars } from '@pyreon/charts/plot'
+import { PlotChart, bars } from '@pyreon/charts/engine'
 const ROWS = [{ a: 1 }]
 const kind = Math.random() > 0.5 ? 'rect' : 'lineX'
 export function App() {
@@ -57,7 +57,7 @@ export function App() {
   it('OptionChart option.brush + toolbox.feature.brush lower onto the plot host', () => {
     const r = transform(`
 import { signal } from '@pyreon/reactivity'
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   const picked = signal(0)
   return <OptionChart height={240} onBrushSelected={(s) => picked.set(s.length)} option={{

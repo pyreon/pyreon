@@ -98,6 +98,31 @@ useMutation(createUser.mutation({ invalidates: [listUsers] }))
 `:placeholders`**, and its keys come from the path literal — so
 `{ params: { userId } }` against `/users/:id` is a compile error.
 
+## Request bodies
+
+One option per encoding; they are mutually exclusive, and passing two throws.
+
+```ts
+api.post('/users', { json: { name: 'Ada' } })               // application/json
+api.post('/v1/customers', {                                  // x-www-form-urlencoded
+  form: { email: 'a@b.c', metadata: { plan: 'pro' } },
+  formEncoding: { metadata: { style: 'deepObject', explode: true } },
+})                                                           // email=a%40b.c&metadata%5Bplan%5D=pro
+api.post('/files', { multipart: { file, purpose: 'x' } })   // FormData; Blob/File = file part
+api.post('/raw', { body: bytes, headers: { 'content-type': 'application/octet-stream' } })
+```
+
+`form` follows OpenAPI's Encoding Object per field: the default `form` + `explode` repeats an array's key, `deepObject` writes brackets (`items[0][price]=…`, what Stripe declares), `spaceDelimited` / `pipeDelimited` join arrays. `null` / `undefined` fields are dropped, never sent as text. `encodeForm`, `encodeMultipart` and `encodeCookies` are exported for transports that need the same bytes.
+
+A header record may carry numbers, booleans and `undefined` — an `undefined` header is omitted rather than sent as `"undefined"`. `cookies: { session }` writes a `Cookie` header; a browser drops that header silently (it is forbidden from script), so there use `credentials: 'include'`. On an endpoint, declared `headers` and per-call `headers` MERGE, and `formEncoding` is declared once:
+
+```ts
+const createCustomer = api.endpoint('POST /v1/customers', {
+  formEncoding: { metadata: { style: 'deepObject', explode: true } },
+})
+await createCustomer({ form: { metadata: { plan: 'pro' } }, headers: { 'idempotency-key': key } })
+```
+
 ## Middleware
 
 ```ts
@@ -120,9 +145,10 @@ registry and no `eject()` handle to leak.
 
 | Concern | Default | Why |
 | --- | --- | --- |
-| timeout | **on**, 30s | `fetch` has none — a hung request otherwise hangs forever |
+| timeout | **on**, 30s — covers the body read too (`.json()` / `.text()`) | `fetch` has none — a hung request otherwise hangs forever |
 | retry | **off** | query already retries 3×; a client default of 3 makes one logical query **nine** requests |
-| dedupe | off | query already dedupes by key |
+| dedupe | off | query already dedupes by key. When on, `authorization` + `cookie` are part of the key, so two users never share a response |
+| `bearer` scope | the `baseUrl` origin | a path that is an absolute URL leaves `baseUrl`; the token does not follow it (`bearer(token, { crossOrigin: true })` opts in) |
 | throw on non-2xx | on | query needs a *rejected* promise to enter its error state |
 | credentials | `same-origin` | — |
 
@@ -142,6 +168,11 @@ RequestError                  base — catch this to cover everything
 
 `AbortError` is kept deliberately distinct: "the user navigated away" and
 "the API is down" demand opposite handling.
+
+Error **messages** carry the URL without its query string, fragment or
+userinfo — they end up in reporters and logs, and a query string is where
+signed-URL signatures and tokens live. The full URL is still on
+`error.request.url`.
 
 ## SSR
 

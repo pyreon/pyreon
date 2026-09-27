@@ -51,7 +51,7 @@ describe('log view', () => {
   it('the axis draws the decades as REAL values while the bars lay out through the view — a 1..1000 chart labels 1, 10, 100, 1000', () => {
     const cmds = renderChart(spec({ series: [series('bars', [1, 10, 100, 1000])], yScale: 'log' }), measure)
     const labels = texts(cmds).map((t) => t.text)
-    expect(labels).toEqual(expect.arrayContaining(['1', '10', '100', '1000']))
+    expect(labels).toEqual(expect.arrayContaining(['1', '10', '100', '1,000']))
     // Bars grow from the axis floor: the 1 bar sits ON the floor (zero height), each next one a decade taller.
     const rs = rects(cmds)
     expect(rs).toHaveLength(4)

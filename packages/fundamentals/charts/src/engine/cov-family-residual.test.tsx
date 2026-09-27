@@ -2,12 +2,13 @@
 // the sonification lifecycle (a second play, a stop before a play, a suspended
 // context), the extent scans whose seed hides the "lower than the first point"
 // case, and a handful of one-arm edges the ordinary fixtures never reach.
-import { h } from '@pyreon/core'
+import { ColorModeProvider, h } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ChartThemeProvider, chartThemes, systemChartMode, useChartTheme } from './theme'
+import { describe, expect, it } from 'vitest'
+import { ChartThemeProvider, chartThemes, useChartTheme } from './theme'
+import type { ChartTheme } from './render'
 import { sonifyValues } from './sonify'
 import { layoutGeoShapes, renderGeo } from './geo'
 import { geoShapes } from './geo-web'
@@ -32,84 +33,54 @@ describe('chart theme provider', () => {
   }
   // The probe hands its ACCESSOR back rather than a rendered value: the theme
   // is live, and a rendered string would be a snapshot of the first read.
-  let seen: (() => { label: string }) | null = null
+  let seen: (() => ChartTheme) | null = null
   const Probe = (): VNodeChild => {
-    seen = useChartTheme() as never
+    seen = useChartTheme()
     return h('span', {}, '')
   }
   const label = (): string => seen!().label
 
-  it('an explicit MODE replaces the inherited theme', () => {
+  it('the colour mode in scope picks the theme', () => {
     const el = host()
-    mount(h(ChartThemeProvider, { mode: 'dark' as const, children: h(Probe, {}) }) as never, el)
+    mount(h(ColorModeProvider, { mode: 'dark' as const, children: h(ChartThemeProvider, { children: h(Probe, {}) }) }) as never, el)
     expect(label()).toBe(chartThemes.dark.label)
   })
   it('a mode ACCESSOR is read live, so a flip re-resolves the theme', () => {
     const el = host()
     const mode = signal<'light' | 'dark'>('light')
-    mount(h(ChartThemeProvider, { mode: () => mode(), children: h(Probe, {}) }) as never, el)
+    mount(h(ColorModeProvider, { mode: () => mode(), children: h(ChartThemeProvider, { children: h(Probe, {}) }) }) as never, el)
     expect(label()).toBe(chartThemes.light.label)
     mode.set('dark')
     expect(label(), 'a value copy would pin the light label').toBe(chartThemes.dark.label)
   })
-  it('NO mode inherits the parent theme, and overrides merge over it', () => {
+  it('a nested provider inherits the parent theme, and its overrides merge over it', () => {
     const el = host()
     mount(
-      h(ChartThemeProvider, {
+      h(ColorModeProvider, {
         mode: 'dark' as const,
-        children: h(ChartThemeProvider, { theme: { label: '#abcdef' }, children: h(Probe, {}) }),
+        children: h(ChartThemeProvider, {
+          theme: { radius: 9 },
+          children: h(ChartThemeProvider, { theme: { label: '#abcdef' }, children: h(Probe, {}) }),
+        }),
       }) as never,
       el,
     )
     expect(label()).toBe('#abcdef')
+    expect(seen!().radius, "the outer provider's override survives").toBe(9)
+    expect(seen!().background, 'and the mode is the one in scope').toBe(chartThemes.dark.background)
   })
   it('a theme ACCESSOR is read live too, and may resolve to nothing', () => {
     const el = host()
     const over = signal<{ label?: string } | undefined>({ label: '#111111' })
-    mount(h(ChartThemeProvider, { mode: 'light' as const, theme: () => over(), children: h(Probe, {}) }) as never, el)
+    mount(h(ColorModeProvider, { mode: 'light' as const, children: h(ChartThemeProvider, { theme: () => over(), children: h(Probe, {}) }) }) as never, el)
     expect(label()).toBe('#111111')
     over.set(undefined)
     expect(label(), 'an undefined override falls back to the mode theme').toBe(chartThemes.light.label)
   })
 })
 
-describe('system colour scheme', () => {
-  const realMatchMedia = window.matchMedia
-  afterEach(() => {
-    if (realMatchMedia === undefined) delete (window as { matchMedia?: unknown }).matchMedia
-    else window.matchMedia = realMatchMedia
-  })
-
-  it('reads prefers-color-scheme and subscribes to changes', async () => {
-    let handler: ((e: { matches: boolean }) => void) | null = null
-    ;(window as unknown as { matchMedia: unknown }).matchMedia = () => ({
-      matches: true,
-      addEventListener: (_: string, fn: (e: { matches: boolean }) => void) => {
-        handler = fn
-      },
-    })
-    // A module singleton, so a FRESH module registry is the only way to see
-    // the construction path — the shared instance may already be built.
-    vi.resetModules()
-    const fresh = await import('./theme')
-    const mode = fresh.systemChartMode()
-    expect(mode()).toBe('dark')
-    expect(handler, 'the media query must be subscribed, not sampled once').not.toBeNull()
-    handler!({ matches: false })
-    expect(mode()).toBe('light')
-    handler!({ matches: true })
-    expect(mode(), 'and back again').toBe('dark')
-  })
-  it('falls back to light where matchMedia does not exist', async () => {
-    delete (window as { matchMedia?: unknown }).matchMedia
-    vi.resetModules()
-    const fresh = await import('./theme')
-    expect(fresh.systemChartMode()()).toBe('light')
-  })
-  it('the shared accessor is memoised', () => {
-    expect(systemChartMode()).toBe(systemChartMode())
-  })
-})
+// The system colour scheme itself (matchMedia, the page-declared scheme) moved
+// to @pyreon/core with `systemColorMode`, and is covered there.
 
 // ─── sonification lifecycle ──────────────────────────────────────────────────
 

@@ -51,9 +51,17 @@ Most apps that produce documents end up with N hand-maintained codepaths: an HTM
 `@pyreon/document` collapses that into a single **format-agnostic node tree** — a `DocNode` — and a `render(node, format)` call. The node tree knows nothing about pdfmake, exceljs, or Slack's Block Kit; each renderer walks the same tree and emits its target format. Change the template once; every format updates.
 
 ```tsx
+// @check
 import { Document, Page, Heading, Text, Table, render } from '@pyreon/document'
 
-function Invoice({ data }) {
+interface InvoiceData {
+  id: number
+  date: string
+  lineItems: string[][]
+}
+
+function Invoice(props: { data: InvoiceData }) {
+  const { data } = props // a document renders once — destructuring is fine here
   return (
     <Document title={`Invoice #${data.id}`}>
       <Page size="A4" margin={40}>
@@ -65,6 +73,7 @@ function Invoice({ data }) {
   )
 }
 
+const invoiceData: InvoiceData = { id: 42, date: '2026-09-25', lineItems: [['Widget', '2', '$20']] }
 const node = <Invoice data={invoiceData} />
 
 await render(node, 'pdf') // → Uint8Array (download / attach)
@@ -77,14 +86,15 @@ await render(node, 'slack') // → Slack Block Kit JSON string
 
 ## Two Authoring APIs
 
-There are two ways to build the same `DocNode` tree. They produce identical output — pick by ergonomics.
+There are two ways to build the same document tree — JSX primitives and the fluent builder. They produce identical output — pick by ergonomics.
 
 ### JSX primitives
 
-Best for **static-shaped documents and conditional layouts** — anything you'd naturally write as markup.
+Best for **static-shaped documents and conditional layouts** — anything you'd naturally write as markup. This is the primary way to write a document.
 
 ```tsx
-import { Document, Page, Heading, Text, Table, Divider, List, Code, render } from '@pyreon/document'
+// @check
+import { Document, Page, Heading, Text, Table, Divider, List, ListItem, Code, render } from '@pyreon/document'
 
 const report = (
   <Document title="Q4 Sales Report" author="Analytics Team">
@@ -101,7 +111,10 @@ const report = (
       />
       <Divider />
       <Heading level={2}>Notes</Heading>
-      <List items={['Record quarter for APAC', 'EU impacted by currency exchange']} />
+      <List>
+        <ListItem>Record quarter for APAC</ListItem>
+        <ListItem>EU impacted by currency exchange</ListItem>
+      </List>
       <Code language="sql">SELECT region, SUM(revenue) FROM sales GROUP BY region</Code>
     </Page>
   </Document>
@@ -109,6 +122,47 @@ const report = (
 
 const pdf = await render(report, 'pdf')
 ```
+
+### JSX, `h()`, or direct calls — the same tree
+
+The primitives are plain functions, so the same document can be written three ways, and all three render **byte-identically**:
+
+```tsx
+// @check
+import { h } from '@pyreon/core'
+import { Document, Page, Heading, Text, render } from '@pyreon/document'
+
+// 1. JSX
+const viaJsx = (
+  <Document title="Hello">
+    <Page>
+      <Heading>Title</Heading>
+      <Text>Body</Text>
+    </Page>
+  </Document>
+)
+
+// 2. h() — no JSX transform needed
+const viaH = h(Document, { title: 'Hello' }, h(Page, null, h(Heading, null, 'Title'), h(Text, null, 'Body')))
+
+// 3. Direct calls — returns a plain DocNode value
+const direct = Document({
+  title: 'Hello',
+  children: Page({ children: [Heading({ children: 'Title' }), Text({ children: 'Body' })] }),
+})
+
+const html = await render(viaJsx, 'html')
+// render(viaH, 'html') and render(direct, 'html') produce the same string.
+```
+
+What `render()` does with a JSX / `h()` tree:
+
+- **Components are called** — your own components that return primitives work anywhere a primitive does.
+- **Fragments are flattened**, and **`true` / `false` / `null` / `undefined` children render nothing**, so `{showNotes && <Text>…</Text>}` behaves exactly as it does in UI code.
+- **It is a one-shot snapshot.** A signal read in the tree (`{() => total()}`) is read once, when `render()` runs. To reflect new values, render again.
+- **Only document primitives are allowed.** A DOM element (`<div>`, `<p>`) inside a document tree throws `<div> is a DOM element, not a document primitive` — use `<Section>` and `<Text>` instead.
+
+Direct calls return a `DocNode` immediately, which is what `isDocNode()` checks for. JSX and `h()` return a VNode, so `isDocNode(<Text>hi</Text>)` is `false` — pass the JSX straight to `render()` / `download()` / `builder.add()` instead.
 
 ### Fluent builder
 
@@ -366,6 +420,10 @@ The most-used primitive. Columns accept either bare strings or `TableColumn` obj
 `<Document>` carries metadata used by the binary renderers (PDF/DOCX file properties). `<Page>` controls page geometry and per-page headers/footers.
 
 ```tsx
+// @check
+import { Column, Document, Heading, Page, PageBreak, Section, Text } from '@pyreon/document'
+
+const annual = (
 <Document title="Annual Report" author="Acme Corp" subject="FY2026" keywords={['finance', 'annual']} language="en">
   <Page
     size="A4"          // 'A4' | 'A3' | 'A5' | 'letter' | 'legal' | 'tabloid'
@@ -382,6 +440,7 @@ The most-used primitive. Columns accept either bare strings or `TableColumn` obj
     <Heading>Next page</Heading>
   </Page>
 </Document>
+)
 ```
 
 :::note
@@ -393,6 +452,9 @@ The most-used primitive. Columns accept either bare strings or `TableColumn` obj
 `render(doc, 'email')` emits **Outlook-safe, table-based HTML** — the conservative subset every email client (including Outlook's Word rendering engine) handles. `<Button>` becomes a bulletproof VML button so it renders correctly in Outlook as well as web/mobile clients.
 
 ```tsx
+// @check
+import { Button, Document, Heading, Page, Text, render } from '@pyreon/document'
+
 const html = await render(
   <Document title="Welcome">
     <Page>

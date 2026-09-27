@@ -111,6 +111,23 @@ describe('the emitted site', () => {
     expect(logs).toEqual([])
   }, 300_000)
 
+  it('builds for production and restores a caller who had NODE_ENV unset', async () => {
+    // `vite build` only sets production when NODE_ENV is unset, so the build
+    // forces it — and must hand the caller's environment back unchanged,
+    // including the was-unset case, or it leaks `production` into whatever
+    // runs next in the same process.
+    const root = fixture()
+    const prev = process.env.NODE_ENV
+    delete process.env.NODE_ENV
+    try {
+      await buildStatic({ cwd: root, out: 'dist' })
+      expect('NODE_ENV' in process.env).toBe(false)
+    } finally {
+      if (prev === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = prev
+    }
+  }, 300_000)
+
   it('rewrites assets for a subdirectory base and lets --title win over the config', async () => {
     const root = fixture({ config: CONFIG })
     const result = await buildStatic({ cwd: root, out: 'dist', base: '/repo/', title: 'From The Flag' })

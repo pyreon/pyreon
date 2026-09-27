@@ -247,7 +247,7 @@ describe('the contract callers rely on', () => {
 })
 
 describe('the public Pt[] wrapper', () => {
-  // `lttb` is what `@pyreon/charts/plot` exports and what a caller actually
+  // `lttb` is what `@pyreon/charts` exports and what a caller actually
   // holds. Everything above tests `lttbIndices`, which is the half that
   // crosses — so the wrapper was imported here and never used, and that unused
   // import was the visible end of two unasserted claims the file's own header

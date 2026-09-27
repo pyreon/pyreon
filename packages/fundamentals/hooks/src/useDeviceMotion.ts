@@ -1,6 +1,7 @@
-import { isClient, onCleanup, signal } from '@pyreon/reactivity'
+import { isClient, signal } from '@pyreon/reactivity'
 
 import { warnIfInsecureContext } from './secure-context'
+import { onHookCleanup } from './lifecycle'
 
 /** Three-axis reading. Units are m/s² for acceleration, deg/s for rotation. */
 export type Vec3 = { x: number; y: number; z: number }
@@ -74,7 +75,7 @@ export function useDeviceMotion(): DeviceMotionControls {
   if (isClient) {
     // A sensor left running past its view drains battery for a screen nobody
     // is looking at — the quiet cost of an unstopped listener here.
-    onCleanup(stop)
+    onHookCleanup(stop)
   }
 
   return {

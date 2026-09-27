@@ -181,18 +181,22 @@ describe('single-node drag fan-out (per-id computeds)', () => {
     expect(nodeRuns.n1! - runsBefore).toBe(5)
   })
 
-  it('removing an edge drops its geometry computed from the measurements subscriber set (sweep, no zombie)', () => {
+  it('removing an edge drops its geometry computed from its endpoint subscriber set (sweep, no zombie)', () => {
     const flow = buildFlow()
     mountCounted(flow)
 
+    // The edge geometry reads its endpoints through the per-id gates
+    // (`_nodeById`, and the per-id measurement gate — `measurements` itself is
+    // no longer read by geometry). n1 is e-move's UNMOVED endpoint, so its
+    // gate's subscriber set loses exactly the swept geometry computed.
     const subs = () =>
       (() => {
         // Two-tier tracking storage — count the inline slot too.
-        const h = accessInternal<{ _s1: unknown; _s: Set<unknown> | null }>(flow.measurements)
+        const h = accessInternal<{ _s1: unknown; _s: Set<unknown> | null }>(flow._nodeById('n1'))
         return (h._s1 != null ? 1 : 0) + (h._s?.size ?? 0)
       })()
     const before = subs()
-    expect(before).toBeGreaterThanOrEqual(3) // one geometry computed per edge
+    expect(before).toBeGreaterThanOrEqual(2) // n1's own thunks + e-move's geometry
 
     // A consumer-batched move + removal in ONE batch is the ordering that
     // dirty-marks e-move's geometry in the same drain that sweeps it — the

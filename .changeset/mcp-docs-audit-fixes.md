@@ -1,0 +1,5 @@
+---
+'@pyreon/mcp': patch
+---
+
+Fix `get_anti_patterns({ category })` rejecting 8 of the catalog's 15 real categories (`islands`, `ssr`, `ssg`, `bundling`, `build`, `ci`, `best-practices`, `library-api`) — the zod `category` enum was a hand-typed literal list that had drifted since inception and only ever accepted 8 of them, failing validation for every call with one of the other 7. The enum is now derived from `ANTI_PATTERN_CATEGORIES` (the same list `parseAntiPatterns` uses), so it cannot drift out of sync again. Also corrects a batch of stale prose across the manifest, README, and docs page: outdated tool/pattern/category counts, an out-of-date detector-code count (16 → 18), a `get_anti_patterns` example using the entry TITLE (`'props-destructured'`, which never matched) instead of the correct lookup value, stale `docs/patterns/` paths (now `docs/src/content/docs/patterns/`), and a docs "Exports summary" table listing six symbols that are not actually exported from the package's only module entry.

@@ -1318,7 +1318,7 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
     // chart-hosts.ts) — the web-only rationale is about the ECharts bridge at
     // the package root, and would be wrong for this import.
     const subpath = src.startsWith('@pyreon/') ? src.slice('@pyreon/'.length).split('/')[1] : undefined
-    const isWebviewBridgeImport = subpath === 'webview' || (pkg === '@pyreon/charts' && subpath === 'plot')
+    const isWebviewBridgeImport = subpath === 'webview' || (pkg === '@pyreon/charts' && subpath !== 'echarts')
     if (
       WEB_ONLY_PACKAGES.has(pkg) &&
       !UNLOWERED_PYREON_MODULES.has(pkg) &&
@@ -1826,6 +1826,10 @@ const ENDPOINT_UNLOWERABLE_ARGS: ReadonlyMap<string, string> = new Map([
   ['signal', 'an AbortSignal has no analogue in the emitted fetch harness, which runs to completion'],
   ['timeout', 'PyreonHttpRequest carries no timeout field'],
   ['meta', 'per-call metadata is read by client middleware, which does not lower'],
+  ['form', 'a url-encoded form body is not lowered — the native request body is built only from `json`'],
+  ['multipart', 'PyreonHttpRequest carries a single string/Data body, with no multipart parts'],
+  ['body', 'a raw BodyInit (Blob, FormData, stream) has no native analogue'],
+  ['cookies', 'the native request has no cookie option — send a `Cookie` header through `headers`'],
 ])
 
 /**
@@ -2458,7 +2462,7 @@ function collectToastNames(body: AnyNode[], ctx: ParseCtx): void {
  * every entry is genuinely handled, so this cannot rot into a lie.
  */
 export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
-  'useAppState', 'useAuth', 'useBiometrics', 'useClipboard', 'useColorScheme',
+  'useAppState', 'useAuth', 'useBiometrics', 'useClipboard', 'useColorMode', 'useColorScheme',
   'useCrashReporter',
   'useDatabase', 'useFetch', 'useFieldArray', 'useFilePicker', 'useForm', 'useGeolocation',
   'useHaptics', 'useHotkey', 'useImagePicker', 'useLinking', 'useLoaderData', 'useMap',
@@ -2696,7 +2700,7 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
       // through those same hosts; unsupported option families warn by path.
       // The ECharts-backed default export stays web.
       advice:
-        'Most `@pyreon/charts/plot` hosts lower to a native PyreonChartCanvas over the generated engine — PieChart/FunnelChart/GaugeChart/CandlestickChart/HeatmapChart/RadarChart/PlotChart/SankeyChart/GraphChart/TreemapChart/SunburstChart/TreeChart/RiverChart/GanttChart/PolarChart/CalendarChart/ParallelChart/BoxplotChart. MapChart lowers from a PRECOMPUTED `GeoShape[]` const — the map registry, raw GeoJSON and `geoShapes()` itself stay web and warn by name (project once on the web or in a build step). OptionChart lowers static pie, gauge, line, area, bar, and scatter options through the same native hosts and names unsupported option paths. The theme lowers per chart (`theme={chartThemes.dark}` / `theme={{ palette: palettes.okabeIto }}`) and `<ChartThemeProvider mode theme>` is a compile-time scope its chart children inherit (a literal `mode` / `theme`; a reactive mode cannot be read at compile time and warns); the ECharts-backed default export is web-only — keep it in a `<Web>` branch, or embed via the `/webview` bridge',
+        'Most `@pyreon/charts` hosts lower to a native PyreonChartCanvas over the generated engine — PieChart/FunnelChart/GaugeChart/CandlestickChart/HeatmapChart/RadarChart/PlotChart/SankeyChart/GraphChart/TreemapChart/SunburstChart/TreeChart/RiverChart/GanttChart/PolarChart/CalendarChart/ParallelChart/BoxplotChart. MapChart lowers from a PRECOMPUTED `GeoShape[]` const — the map registry, raw GeoJSON and `geoShapes()` itself stay web and warn by name (project once on the web or in a build step). OptionChart lowers static pie, gauge, line, area, bar, and scatter options through the same native hosts and names unsupported option paths. The theme lowers per chart (`theme={chartThemes.dark}` / `theme={{ palette: palettes.okabeIto }}`) and `<ChartThemeProvider mode theme>` is a compile-time scope its chart children inherit (a literal `mode` / `theme`; a reactive mode cannot be read at compile time and warns); the ECharts-backed default export is web-only — keep it in a `<Web>` branch, or embed via the `/webview` bridge',
       supported: new Set([
         // DERIVED from the registries that actually do the lowering, rather
         // than re-typed. The two disagreed the moment a host was added:
@@ -2720,19 +2724,20 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
         'createChartHandle',
         'chartThemes',
         'palettes',
-        // The grammar: <Plot> desugars to <PlotChart marks>; its mark/config children are consumed by that desugar.
-        'Plot',
+        // The grammar: <Chart> desugars to <PlotChart marks>; its mark/config children are consumed by that desugar.
+        'Chart',
         'Bar',
         'Line',
         'Area',
         'Dot',
         'Rule',
         'Axis',
-        'Tip',
+        'Tooltip',
         'Legend',
         'Zoom',
+        'Toolbox',
         'Label',
-        // The family marks: <Plot> with one of these desugars to the row-array host it names.
+        // The family marks: <Chart> with one of these desugars to the row-array host it names.
         'Arc',
         'Stage',
         'Cell',
@@ -2742,6 +2747,12 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
         // reshape is web-side) — neither is a missing symbol.
         'Scale',
         'Histogram',
+        // The indicator marks desugar to the array form's `sma` / `ema` /
+        // `trend` / `...bollinger` calls, which the emitters lower.
+        'Sma',
+        'Ema',
+        'Trend',
+        'Bollinger',
         'channel',
         // Mark + curve constructors consumed INLINE inside a `marks={[...]}`
         // array literal — the structural marks-array pass (chart-hosts.ts /
@@ -2945,7 +2956,7 @@ function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
     if (node.type !== 'ImportDeclaration') continue
     const src = node.source?.value
     if (typeof src !== 'string') continue
-    // ROOT-normalized lookup: `@pyreon/charts/plot` must match the
+    // ROOT-normalized lookup: `@pyreon/charts` must match the
     // `@pyreon/charts` entry — an exact-string get left every subpath
     // import SILENT (no symbol warn, and warnWebOnlyImports skips packages
     // that have an entry here, so nothing fired at all). The `/webview`
@@ -4418,7 +4429,7 @@ function parseDiscriminatedUnion(
     typeof discrArg.value !== 'string'
   ) {
     ctx.warnings.push(
-      `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() first arg must be a string literal field name — dropping.`,
+      `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() first arg must be a string literal field name — dropping.`,
     )
     return null
   }
@@ -4430,14 +4441,14 @@ function parseDiscriminatedUnion(
     variantsArg.type !== 'ArrayExpression'
   ) {
     ctx.warnings.push(
-      `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() second arg must be a literal array of ${prefix}.object() variants — dropping.`,
+      `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() second arg must be a literal array of ${prefix}.object() variants — dropping.`,
     )
     return null
   }
   const variantNodes = (variantsArg.elements as AnyNode[] | undefined) ?? []
   if (variantNodes.length === 0) {
     ctx.warnings.push(
-      `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() needs at least one variant — dropping.`,
+      `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() needs at least one variant — dropping.`,
     )
     return null
   }
@@ -4447,7 +4458,7 @@ function parseDiscriminatedUnion(
     const variantNode = variantNodes[i]!
     if (variantNode.type !== 'CallExpression') {
       ctx.warnings.push(
-        `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() variant ${i} is not a ${prefix}.object() call — dropping.`,
+        `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() variant ${i} is not a ${prefix}.object() call — dropping.`,
       )
       return null
     }
@@ -4456,7 +4467,7 @@ function parseDiscriminatedUnion(
     const literal = extractDiscriminatorLiteral(variantNode, discrField, prefix)
     if (literal === null) {
       ctx.warnings.push(
-        `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() variant ${i} doesn't expose ${prefix}.literal() at "${discrField}" — dropping.`,
+        `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() variant ${i} doesn't expose ${prefix}.literal() at "${discrField}" — dropping.`,
       )
       return null
     }
@@ -4471,7 +4482,7 @@ function parseDiscriminatedUnion(
     )
     if (!variantSchema) {
       ctx.warnings.push(
-        `${schemaFn} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() variant ${i} has an unparseable ${prefix}.object() shape — dropping.`,
+        `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() variant ${i} has an unparseable ${prefix}.object() shape — dropping.`,
       )
       return null
     }
@@ -4693,7 +4704,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
     // value should now be a CallExpression whose callee is `<prefix>.X`.
     if (!value || value.type !== 'CallExpression') {
       ctx.warnings.push(
-        `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` is not a ${prefix}.X() call — dropping.`,
+        `${schemaFn ?? prefix} declaration \`${bindingName}\`: field \`${fieldName}\` is not a ${prefix}.X() call — dropping.`,
       )
       continue
     }
@@ -4705,7 +4716,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
       baseCallee.property?.type !== 'Identifier'
     ) {
       ctx.warnings.push(
-        `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` has unsupported shape (expected ${prefix}.string/${prefix}.number/${prefix}.boolean) — dropping.`,
+        `${schemaFn ?? prefix} declaration \`${bindingName}\`: field \`${fieldName}\` has unsupported shape (expected ${prefix}.string/${prefix}.number/${prefix}.boolean) — dropping.`,
       )
       continue
     }
@@ -4758,7 +4769,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
       )
       if (!nested) {
         ctx.warnings.push(
-          `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` is a nested ${prefix}.object() but its shape isn't a literal — dropping field.`,
+          `${schemaFn ?? prefix} declaration \`${bindingName}\`: field \`${fieldName}\` is a nested ${prefix}.object() but its shape isn't a literal — dropping field.`,
         )
         continue
       }
@@ -4816,7 +4827,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
       }
       if (!innerType) {
         ctx.warnings.push(
-          `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` is z.array() with an unsupported inner type — supported: z.array(z.string/z.number/z.boolean) and z.array(z.object(...)). Dropping field.`,
+          `${schemaFn ?? prefix} declaration \`${bindingName}\`: field \`${fieldName}\` is ${prefix}.array() with an unsupported inner type — supported: ${prefix}.array(${prefix}.string/${prefix}.number/${prefix}.boolean) and ${prefix}.array(${prefix}.object(...)). Dropping field.`,
         )
         continue
       }
@@ -4835,7 +4846,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
       fields.push(entry)
     } else {
       ctx.warnings.push(
-        `${schemaFn} declaration \`${bindingName}\`: field \`${fieldName}\` uses unsupported ${prefix}.${method}() — supported: ${prefix}.string / ${prefix}.number / ${prefix}.boolean / ${prefix}.array / ${prefix}.object. Dropping field.`,
+        `${schemaFn ?? prefix} declaration \`${bindingName}\`: field \`${fieldName}\` uses unsupported ${prefix}.${method}() — supported: ${prefix}.string / ${prefix}.number / ${prefix}.boolean / ${prefix}.array / ${prefix}.object. Dropping field.`,
       )
     }
     void libraryDisplay
@@ -4843,7 +4854,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
 
   if (fields.length === 0) {
     ctx.warnings.push(
-      `${schemaFn} declaration \`${bindingName}\`: no recognized fields. Falling back to silent-drop.`,
+      `${schemaFn ?? prefix} declaration \`${bindingName}\`: no recognized fields. Falling back to silent-drop.`,
     )
     return null
   }
@@ -6936,6 +6947,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     'useAppState',
     'useCrashReporter',
     'useColorScheme',
+    'useColorMode',
     'useSizeClass',
     'useNetworkStatus',
     'useGeolocation',
@@ -8260,7 +8272,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // through unchanged (string arg) — the runtime container hands the URL
   // to the OS (iOS `UIApplication.shared.open`, Android
   // `Intent.ACTION_VIEW`). Like useShare, Android needs a Context.
-  // `const chart = createChartHandle()` from `@pyreon/charts/plot` → a
+  // `const chart = createChartHandle()` from `@pyreon/charts` → a
   // PyreonChartHandle: observable fields the bound PlotChart reads and writes,
   // and a `dispatch` that runs the crossing `applyChartAction` reducer.
   if (calleeName === 'createChartHandle') {
@@ -8308,7 +8320,11 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // needed — both SwiftUI (@Environment(\.colorScheme)) and Compose
   // (isSystemInDarkTheme()) ship the primitive. Emit returns the
   // same `"light" | "dark"` string shape the web hook uses.
-  if (calleeName === 'useColorScheme') {
+  // `useColorMode()` from @pyreon/core is the framework-wide mode; on native
+  // it reads the platform scheme exactly as `useColorScheme` does (a literal
+  // `<ColorModeProvider mode>` pins the CHART scope at compile time, but a
+  // component's own read is the platform's).
+  if (calleeName === 'useColorScheme' || calleeName === 'useColorMode') {
     return { kind: 'color-scheme', name }
   }
   // M2.2 — `const sizeClass = useSizeClass()` from `@pyreon/hooks`
@@ -9668,6 +9684,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   })()
   const fitView = literalBool(objProp(configArg, 'fitView'))
   const fitViewPadding = literalNumber(objProp(configArg, 'fitViewPadding'))
+  const historyLimit = literalNumber(objProp(configArg, 'historyLimit'))
   const connectionRules = (() => {
     if (connectionRulesNode === undefined) return undefined
     if (connectionRulesNode.type !== 'ObjectExpression') return null
@@ -9703,7 +9720,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (droppedEdgeFields.size > 0) {
     ctx.warnings.push(droppedFlowFieldsWarning(`${factory} declaration \`${name}\``, 'edge', [...droppedEdgeFields]))
   }
-  const HANDLED_FLOW_CONFIG_KEYS = new Set(['nodes', 'edges', 'minZoom', 'maxZoom', 'snapToGrid', 'snapGrid', 'nodeExtent', 'defaultMarkerEnd', 'connectionRules', 'isValidConnection', ...interactionBoolKeys, 'edgeInteractionWidth', 'connectionRadius', 'panOnScrollSpeed', 'deleteKeys', ...modifierKeys, 'defaultEdgeType', 'connectionLineType', 'selectionMode', 'connectionMode', 'autoPanSpeed', 'defaultEdgeOptions', 'fitView', 'fitViewPadding'])
+  const HANDLED_FLOW_CONFIG_KEYS = new Set(['nodes', 'edges', 'minZoom', 'maxZoom', 'snapToGrid', 'snapGrid', 'nodeExtent', 'defaultMarkerEnd', 'connectionRules', 'isValidConnection', ...interactionBoolKeys, 'edgeInteractionWidth', 'connectionRadius', 'panOnScrollSpeed', 'deleteKeys', ...modifierKeys, 'defaultEdgeType', 'connectionLineType', 'selectionMode', 'connectionMode', 'autoPanSpeed', 'defaultEdgeOptions', 'fitView', 'fitViewPadding', 'historyLimit'])
   const droppedKeys: string[] = []
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
@@ -9752,6 +9769,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (defaultEdgeOptions === null) droppedKeys.push('defaultEdgeOptions (not a supported literal edge-options object)')
   if (objProp(configArg, 'fitView') && fitView === undefined) droppedKeys.push('fitView (not a boolean literal)')
   if (objProp(configArg, 'fitViewPadding') && fitViewPadding === undefined) droppedKeys.push('fitViewPadding (not a numeric literal)')
+  if (objProp(configArg, 'historyLimit') && historyLimit === undefined) droppedKeys.push('historyLimit (not a numeric literal)')
   if (droppedKeys.length > 0) {
     ctx.warnings.push(
       `${factory} declaration \`${name}\`: ${droppedKeys.map((k) => `\`${k}\``).join(', ')} ` +
@@ -9789,6 +9807,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     ...(defaultEdgeOptions !== undefined && defaultEdgeOptions !== null ? { defaultEdgeOptions } : {}),
     ...(fitView !== undefined ? { fitView } : {}),
     ...(fitViewPadding !== undefined ? { fitViewPadding } : {}),
+    ...(historyLimit !== undefined ? { historyLimit } : {}),
     ...(connectionRules !== undefined && connectionRules !== null ? { connectionRules } : {}),
     ...(connectionValidator !== undefined ? { connectionValidator } : {}),
   }
@@ -12493,6 +12512,7 @@ function warnIfHookInsideRenderCallback(
     'useImagePicker',
     'useFilePicker',
     'useColorScheme',
+    'useColorMode',
     'useSizeClass',
     'usePermissions',
     'useOnline',

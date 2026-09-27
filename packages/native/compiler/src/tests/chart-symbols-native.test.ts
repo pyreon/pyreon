@@ -8,7 +8,7 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
  * symbols, and the radius (half the ECharts diameter).
  */
 const OPTION = `
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return (
     <OptionChart option={{
@@ -52,7 +52,7 @@ describe.each(['swift', 'kotlin'] as const)('series symbols on %s', (target) => 
 
   it('an unsupported symbol is named and drawn as a circle', () => {
     const r = transform(`
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart option={{ xAxis: { type: 'category', data: ['a'] }, yAxis: {}, series: [{ type: 'scatter', symbol: 'pin', data: [1] }] }} />
 }`, { target })

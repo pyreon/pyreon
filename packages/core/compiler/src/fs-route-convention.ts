@@ -93,14 +93,14 @@ export function apiFilePathToPattern(filePath: string): string {
     if (seg === 'index') continue
 
     // Catch-all: [...param]
-    const catchAll = seg.match(/^\[\.\.\.(\w+)\]$/)
+    const catchAll = seg.match(/^\[\.\.\.(\w[\w-]*)\]$/)
     if (catchAll) {
       urlSegments.push(`:${catchAll[1]}*`)
       continue
     }
 
     // Dynamic: [param]
-    const dynamic = seg.match(/^\[(\w+)\]$/)
+    const dynamic = seg.match(/^\[(\w[\w-]*)\]$/)
     if (dynamic) {
       urlSegments.push(`:${dynamic[1]}`)
       continue
@@ -140,14 +140,14 @@ export function filePathToUrlPath(filePath: string): string {
     if (seg === 'index') continue
 
     // Catch-all: [...param] → :param*
-    const catchAll = seg.match(/^\[\.\.\.(\w+)\]$/)
+    const catchAll = seg.match(/^\[\.\.\.(\w[\w-]*)\]$/)
     if (catchAll) {
       urlSegments.push(`:${catchAll[1]}*`)
       continue
     }
 
     // Dynamic: [param] → :param
-    const dynamic = seg.match(/^\[(\w+)\]$/)
+    const dynamic = seg.match(/^\[(\w[\w-]*)\]$/)
     if (dynamic) {
       urlSegments.push(`:${dynamic[1]}`)
       continue

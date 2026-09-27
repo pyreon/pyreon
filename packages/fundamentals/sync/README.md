@@ -184,6 +184,29 @@ const relay = await createSyncServer({
 })
 ```
 
+`authorize` may also return `'read'` for a **read-only** client: it receives the
+document, live updates and presence, and may publish its own presence, but every
+document update it sends is dropped at the relay. Frames a client sends while an
+async `authorize` is still pending are buffered and replayed once it resolves
+(discarded on reject). `whenSynced()` **rejects** on a 4401 refusal or after
+`disconnect()`, so an awaiter never hangs on a transport that cannot sync.
+
+Operational limits (all optional):
+
+```ts
+await createSyncServer({
+  port: 8787,
+  authorize,
+  heartbeatIntervalMs: 30_000, // default; ping each socket, terminate half-open ones. 0 = off
+  maxPayload: 16 * 1024 * 1024, // largest inbound frame (bytes) → 1009 past it. Default: ws's 100 MiB
+  maxRooms: 10_000,             // refuse a connection that would OPEN a room past the cap (1013)
+})
+```
+
+The relay also refuses an awareness (presence) update that names a clientId
+owned by another connection, so a client cannot overwrite a peer's cursor — or
+get the peer's presence purged when it disconnects.
+
 > **Omitting `authorize` makes an open relay.** Every connection is accepted, so
 > anyone who can reach the port joins any room and reads and rewrites its
 > document. That default exists for local development only, and

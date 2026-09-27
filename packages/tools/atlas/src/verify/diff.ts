@@ -201,6 +201,9 @@ export function summarizeDiff(diff: VerifyDiff): string {
     const parts = [
       failing > 0 ? `${failing} check(s) started failing` : '',
       lost > 0 ? `${lost} check(s) stopped running` : '',
+      // Counted as a regression below, so it must be named here too, or the
+      // verdict reads "REGRESSED — " with nothing after the dash.
+      diff.removed.length > 0 ? `${diff.removed.length} scenario(s) no longer present` : '',
     ].filter(Boolean)
     return `REGRESSED — ${parts.join(', ')}`
   }

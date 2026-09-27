@@ -18,7 +18,7 @@ const POSTS: Record<string, Post> = {
     id: 1,
     title: "Getting Started with Pyreon Zero",
     excerpt: "Learn how to build your first app.",
-    body: "Pyreon Zero makes it incredibly easy to build modern web applications. Start by creating a new project with `bun create zero my-app`, then drop your first route file into `src/routes/`. The file-based router automatically picks up new files and generates the route tree for you.\n\nEvery route can export a `loader` for server-side data fetching, a `guard` for navigation protection, and `meta` for SEO metadata. The component itself uses JSX with Pyreon's signal-based reactivity — no virtual DOM overhead, just surgical DOM updates.",
+    body: "Pyreon Zero makes it incredibly easy to build modern web applications. Start by creating a new project with `bun create @pyreon/zero my-app`, then drop your first route file into `src/routes/`. The file-based router automatically picks up new files and generates the route tree for you.\n\nEvery route can export a `loader` for server-side data fetching, a `guard` for navigation protection, and `meta` for SEO metadata. The component itself uses JSX with Pyreon's signal-based reactivity — no virtual DOM overhead, just surgical DOM updates.",
     author: "Zero Team",
     date: "2026-03-01",
   },

@@ -9,11 +9,16 @@
  * `unknown`); the fs wrapper lives in `./discover`.
  */
 import ts from 'typescript'
-import { collectImportedTypes } from './resolve-types'
+import { collectImportedTypes, findTypeDeclaration, isPropsShaped } from './resolve-types'
 import type { ComponentIntelligence, PropShape, PropType, VariantAxis } from '../core'
 import { inferControls } from '../core'
 
-type PropsTypeNode = ts.TypeLiteralNode | ts.InterfaceDeclaration
+/**
+ * A props type as written: an interface, or any type node an alias can name
+ * (a literal, an intersection, a reference to another props type). Members are
+ * read by `collectMembers`, which follows `extends` and `&`.
+ */
+type PropsTypeNode = ts.InterfaceDeclaration | ts.TypeNode
 
 /**
  * Resolve a props type by NAME — same-file first, then imported.
@@ -29,9 +34,25 @@ type ComponentFnNode = ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionEx
 
 const isPascal = (name: string): boolean => /^[A-Z]/.test(name)
 
+/**
+ * `undefined` / `null` members of a union carry no information about which
+ * VALUES a prop takes — they only say it may be absent, which `?` already
+ * records. Under `exactOptionalPropertyTypes` the idiomatic spelling of an
+ * optional prop is `size?: 'sm' | 'md' | undefined`, and treating the
+ * `undefined` member as "not a string literal" gave up on the whole union: the
+ * prop became `unknown` and its variant axis — every scenario it seeds —
+ * vanished from the catalog.
+ */
+function isNullish(member: ts.TypeNode): boolean {
+  if (member.kind === ts.SyntaxKind.UndefinedKeyword) return true
+  if (ts.isLiteralTypeNode(member) && member.literal.kind === ts.SyntaxKind.NullKeyword) return true
+  return false
+}
+
 /** Map a TS type node to Atlas's `PropType` (best-effort, syntactic). */
 function toPropType(type: ts.TypeNode | undefined): PropType {
   if (!type) return 'unknown'
+  if (ts.isParenthesizedTypeNode(type)) return toPropType(type.type)
   switch (type.kind) {
     case ts.SyntaxKind.StringKeyword:
       return 'string'
@@ -42,8 +63,11 @@ function toPropType(type: ts.TypeNode | undefined): PropType {
   }
   if (ts.isFunctionTypeNode(type)) return 'accessor'
   if (ts.isUnionTypeNode(type)) {
+    const members = type.types.filter((m) => !isNullish(m))
+    // `boolean | undefined` → boolean; `(() => void) | undefined` → accessor.
+    if (members.length === 1) return toPropType(members[0])
     const literals: string[] = []
-    for (const member of type.types) {
+    for (const member of members) {
       if (ts.isLiteralTypeNode(member) && ts.isStringLiteral(member.literal)) {
         literals.push(member.literal.text)
       } else {
@@ -55,17 +79,98 @@ function toPropType(type: ts.TypeNode | undefined): PropType {
   return 'unknown'
 }
 
-/** Read a props type's members into `PropShape[]`. */
-function membersToShapes(members: ts.NodeArray<ts.TypeElement>): PropShape[] {
-  const shapes: PropShape[] = []
+/**
+ * A property's name, when it is one a JSX attribute can spell.
+ *
+ * Quoted names are ordinary for props — `'aria-label': string`,
+ * `'data-testid'?: string` — and were skipped outright because only an
+ * identifier was accepted.
+ */
+function propertyName(name: ts.PropertyName | undefined): string | undefined {
+  if (!name) return undefined
+  if (ts.isIdentifier(name)) return name.text
+  if (ts.isStringLiteral(name) || ts.isNoSubstitutionTemplateLiteral(name)) return name.text
+  return undefined
+}
+
+/** Read a props type's members into `PropShape[]`. A later member of the same name wins. */
+function membersToShapes(members: readonly ts.TypeElement[]): PropShape[] {
+  const byName = new Map<string, PropShape>()
   for (const member of members) {
-    if (!ts.isPropertySignature(member) || !member.name || !ts.isIdentifier(member.name)) continue
+    if (!ts.isPropertySignature(member)) continue
+    const name = propertyName(member.name)
+    if (name === undefined) continue
     const optional = member.questionToken !== undefined
-    const shape: PropShape = { name: member.name.text, type: toPropType(member.type) }
+    const shape: PropShape = { name, type: toPropType(member.type) }
     if (optional) shape.optional = true
-    shapes.push(shape)
+    // Delete first so an override takes the OVERRIDER's position — an
+    // interface's own member restating an inherited one is the one to show.
+    byName.delete(name)
+    byName.set(name, shape)
   }
-  return shapes
+  return [...byName.values()]
+}
+
+/** How deep `extends` / `&` / alias chains are followed — bounds a cycle. */
+const MAX_TYPE_DEPTH = 8
+
+/**
+ * Every member a props type declares, including INHERITED ones.
+ *
+ * `interface P extends Base { … }` read only its own body, so every prop
+ * declared on `Base` was missing; `type P = A & { … }` is not a type literal,
+ * so it yielded nothing at all. Both are the ordinary way to share a prop set,
+ * so both are followed — through the SAME lookup a direct reference uses.
+ *
+ * An inherited name is first resolved in the declaring node's OWN file, then
+ * through the scanned file's lookup: an imported `interface Props extends
+ * Base` names a `Base` that lives beside it, not beside the component.
+ */
+function collectMembers(
+  node: PropsTypeNode,
+  lookup: TypeLookup,
+  lookupBase?: BaseLookup,
+  depth = 0,
+  seen = new Set<ts.Node>(),
+): ts.TypeElement[] {
+  if (depth > MAX_TYPE_DEPTH || seen.has(node)) return []
+  seen.add(node)
+  const resolveName = (name: string): PropsTypeNode | undefined =>
+    findTypeInFile(node.getSourceFile(), name) ?? (lookupBase ? lookupBase(node, name) : lookup(name))
+  const followRef = (ref: ts.TypeNode): ts.TypeElement[] => {
+    const name = ts.isTypeReferenceNode(ref) && ts.isIdentifier(ref.typeName) ? ref.typeName.text : undefined
+    if (name === undefined) return collectMembers(ref, lookup, lookupBase, depth + 1, seen)
+    const target = resolveName(name)
+    return target ? collectMembers(target, lookup, lookupBase, depth + 1, seen) : []
+  }
+
+  if (ts.isInterfaceDeclaration(node)) {
+    const inherited: ts.TypeElement[] = []
+    for (const clause of node.heritageClauses ?? []) {
+      for (const heritage of clause.types) {
+        if (!ts.isIdentifier(heritage.expression)) continue
+        const target = resolveName(heritage.expression.text)
+        if (target) inherited.push(...collectMembers(target, lookup, lookupBase, depth + 1, seen))
+      }
+    }
+    return [...inherited, ...node.members]
+  }
+  if (ts.isTypeLiteralNode(node)) return [...node.members]
+  if (ts.isParenthesizedTypeNode(node)) return collectMembers(node.type, lookup, lookupBase, depth + 1, seen)
+  if (ts.isIntersectionTypeNode(node)) return node.types.flatMap(followRef)
+  if (ts.isTypeReferenceNode(node)) return followRef(node)
+  return []
+}
+
+/** A props-shaped declaration in one source file, by name. */
+function findTypeInFile(sf: ts.SourceFile, name: string): PropsTypeNode | undefined {
+  let found: PropsTypeNode | undefined
+  sf.forEachChild((n) => {
+    if (found) return
+    if (ts.isInterfaceDeclaration(n) && n.name.text === name) found = n
+    else if (ts.isTypeAliasDeclaration(n) && n.name.text === name && isPropsShaped(n.type)) found = n.type
+  })
+  return found
 }
 
 /** A literal a default can be read from. Anything else is not a knowable default. */
@@ -142,26 +247,33 @@ function resolvePropsType(
 ): PropsTypeNode | undefined {
   const type = param?.type
   if (!type) return undefined
-  if (ts.isTypeLiteralNode(type)) return type
+  if (ts.isTypeLiteralNode(type) || ts.isIntersectionTypeNode(type) || ts.isParenthesizedTypeNode(type)) {
+    return type
+  }
   if (ts.isTypeReferenceNode(type) && ts.isIdentifier(type.typeName)) {
     return lookup(type.typeName.text)
   }
   return undefined
 }
 
+/**
+ * Resolves a base type named in an `extends` / `&` of `node`, from the file
+ * `node` itself lives in. A props type imported from another file names bases
+ * that file imports, not ones the scanned component imports — so once a hop has
+ * crossed files, the scanned file's own lookup is the wrong one.
+ */
+export type BaseLookup = (node: PropsTypeNode, name: string) => PropsTypeNode | undefined
+
 /** Build a `ComponentIntelligence` from a name + its props type node. */
 function toComponent(
   name: string,
   propsType: PropsTypeNode | undefined,
   source: string,
+  lookup: TypeLookup,
   fn?: ComponentFnNode,
+  lookupBase?: BaseLookup,
 ): ComponentIntelligence {
-  const members = propsType
-    ? ts.isInterfaceDeclaration(propsType)
-      ? propsType.members
-      : propsType.members
-    : ts.factory.createNodeArray<ts.TypeElement>([])
-  const shapes = membersToShapes(members)
+  const shapes = membersToShapes(propsType ? collectMembers(propsType, lookup, lookupBase) : [])
   if (fn) readBodyDefaults(fn, shapes)
   const controls = inferControls(shapes)
   const axes: VariantAxis[] = shapes
@@ -261,15 +373,20 @@ function propsFromTypeAnnotation(
   if (!type || !ts.isTypeReferenceNode(type)) return undefined
   const argument = type.typeArguments?.[0]
   if (!argument) return undefined
-  if (ts.isTypeLiteralNode(argument)) return argument
+  if (ts.isTypeLiteralNode(argument) || ts.isIntersectionTypeNode(argument)) return argument
   if (ts.isTypeReferenceNode(argument) && ts.isIdentifier(argument.typeName)) {
     return lookup(argument.typeName.text)
   }
   return undefined
 }
 
-/** Extract a component from a top-level statement, if it is one. */
-function extractComponent(node: ts.Node, lookup: TypeLookup, source: string): ComponentIntelligence | undefined {
+/** Extract the components a top-level statement declares (zero or more). */
+function extractComponents(
+  node: ts.Node,
+  lookup: TypeLookup,
+  source: string,
+  lookupBase?: BaseLookup,
+): ComponentIntelligence[] {
   const isExported = (n: ts.Node): boolean =>
     ts.canHaveModifiers(n) && (ts.getModifiers(n) ?? []).some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
   const isDefault = (n: ts.Node): boolean =>
@@ -282,14 +399,18 @@ function extractComponent(node: ts.Node, lookup: TypeLookup, source: string): Co
     // call it anyway.
     const name = node.name?.text ?? (isDefault(node) ? fileBaseName(source) : undefined)
     if (name && isPascal(name)) {
-      return toComponent(name, resolvePropsType(node.parameters[0], lookup), source, node)
+      return [toComponent(name, resolvePropsType(node.parameters[0], lookup), source, lookup, node, lookupBase)]
     }
   }
 
   // export const Button = (props: P) => …
   // export const Button: FC<P> = (props) => …
   // export const Button = memo(forwardRef((props: P, ref) => …))
+  //
+  // EVERY declarator: `export const A = …, B = …` declares two components, and
+  // returning on the first one catalogued A and silently dropped B.
   if (ts.isVariableStatement(node) && isExported(node)) {
+    const found: ComponentIntelligence[] = []
     for (const decl of node.declarationList.declarations) {
       if (!ts.isIdentifier(decl.name) || !isPascal(decl.name.text)) continue
       const init = decl.initializer
@@ -300,8 +421,9 @@ function extractComponent(node: ts.Node, lookup: TypeLookup, source: string): Co
       // fallback, because a component that has both means the parameter.
       const props =
         resolvePropsType(fn.parameters[0], lookup) ?? propsFromTypeAnnotation(decl.type, lookup)
-      return toComponent(decl.name.text, props, source, fn)
+      found.push(toComponent(decl.name.text, props, source, lookup, fn, lookupBase))
     }
+    return found
   }
 
   // export default Button   — a named function or const declared above.
@@ -310,10 +432,10 @@ function extractComponent(node: ts.Node, lookup: TypeLookup, source: string): Co
     // statement this walk visits on its own, so emitting would produce the
     // component twice under the same name. Handled by making the declaration
     // itself discoverable rather than by following the re-export.
-    return undefined
+    return []
   }
 
-  return undefined
+  return []
 }
 
 /**
@@ -361,11 +483,13 @@ export function scanSource(
   const kind = /\.tsx?$/.test(fileName) && !fileName.endsWith('.tsx') ? ts.ScriptKind.TS : ts.ScriptKind.TSX
   const sf = ts.createSourceFile(fileName, code, ts.ScriptTarget.Latest, true, kind)
 
-  // pass 1 — collect same-file interfaces + object type aliases
+  // pass 1 — collect same-file interfaces + type aliases. Every alias, not
+  // just object literals: `type P = Base & { … }` is a props type too, and
+  // `collectMembers` decides what it can read out of each shape.
   const types = new Map<string, PropsTypeNode>()
   sf.forEachChild((node) => {
     if (ts.isInterfaceDeclaration(node)) types.set(node.name.text, node)
-    else if (ts.isTypeAliasDeclaration(node) && ts.isTypeLiteralNode(node.type)) types.set(node.name.text, node.type)
+    else if (ts.isTypeAliasDeclaration(node) && isPropsShaped(node.type)) types.set(node.name.text, node.type)
   })
 
   // pass 1b — the types this file IMPORTS. Resolved lazily: a component whose
@@ -379,11 +503,19 @@ export function scanSource(
     return resolve(name, imported, fileName)
   }
 
+  // A base type is looked up from the file its DERIVED type lives in — which,
+  // once a hop has crossed into an imported file, is not this one.
+  const lookupBase: BaseLookup = (from, name) => {
+    const home = from.getSourceFile()
+    if (home === sf) return lookup(name)
+    // Reaching another file at all means a resolver took us there.
+    return findTypeDeclaration(home, name) ?? resolve?.(name, collectImportedTypes(home), home.fileName)
+  }
+
   // pass 2 — extract components
   const out: ComponentIntelligence[] = []
   sf.forEachChild((node) => {
-    const comp = extractComponent(node, lookup, fileName)
-    if (comp) out.push(comp)
+    out.push(...extractComponents(node, lookup, fileName, lookupBase))
   })
   return out
 }

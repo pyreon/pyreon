@@ -1,52 +1,55 @@
 # @pyreon/native-runtime-swift
 
-> **PRIVATE / EXPERIMENTAL.** SwiftPM package that compiler-emitted Swift code links against on iOS.
+> **EXPERIMENTAL.** The Swift Package Manager runtime that compiler-emitted SwiftUI code links against on iOS. Published to npm — see [Native Packages](https://pyreon.dev/docs/native-packages) for why a Swift package ships through npm and how a scaffolded Xcode project resolves it.
 
-## What lives here
+## Installation
 
-Four Swift source files under `Sources/PyreonRuntime/`:
+You don't install this directly. `@pyreon/create-multiplatform` (`pyreon new --native`) scaffolds a `package.json` dependency on it, and `pyreon-native wire --ios-out` symlinks the resolved install into the Xcode project's `PyreonPackages/` directory, where `project.yml` references it as a local SwiftPM package:
 
-| File | Purpose | Status |
-|---|---|---|
-| `PyreonTokens.swift` | Design-system token tables (spacing, colors, typography). Compiler emits the real table in PR 7a alongside this stub. | Stub |
-| `PyreonReactivity.swift` | Adapter helpers between Pyreon's `signal()`/`computed()`/`effect()` and SwiftUI's `@State`/computed properties/`.onChange(of:)`. **Intentionally near-empty** — SwiftUI's primitives ARE the reactive primitives; the compiler emits onto them directly. | Stub |
-| `PyreonViewModifier.swift` | `PyreonStylable` marker protocol for the styler emitter's output (PR 7b). | Stub |
-| `PyreonStorage.swift` | `@PyreonAppStorage<T: Codable>` property wrapper + `PyreonStorage.{read,write,remove,decodeOrDefault}` helpers. **Real implementation** — collapses the 14-line Codable-Data bridge the compiler currently emits inline to one line at the call site. | **Real** |
+```yaml
+packages:
+  PyreonRuntime:
+    path: PyreonPackages/native-runtime-swift
+```
 
-The first three carry the FUTURE API surface (namespace + placeholder symbol) so downstream PRs reference the right shape early without blocking on full implementation. `PyreonStorage.swift` is the first module with real, exercised behaviour — Codable-aware UserDefaults persistence.
+`import PyreonRuntime` in emitted (or hand-written) Swift then resolves against it. See [Native Packages](https://pyreon.dev/docs/native-packages#ios--resolved-symlinks-staged-sources) for the full wiring mechanism.
 
-## PyreonStorage — Codable @AppStorage in one line
+## What's here
 
-`@PyreonAppStorage` is a property wrapper that extends SwiftUI's `@AppStorage` to any `Codable` type. SwiftUI's stock `@AppStorage` only natively persists primitives (`String`, `Int`, `Double`, `Bool`, `URL`, `Data`, `RawRepresentable`). Codable arrays + structs need a hand-written Data bridge — 14 lines per slot. `@PyreonAppStorage` collapses it to one.
+Seven source files under `Sources/PyreonRuntime/`, plus their tests under `Tests/PyreonRuntimeTests/`:
+
+| File | What it is |
+|---|---|
+| `PyreonReactivity.swift` | A namespace for the FEW cases that need a small helper the compiler emits onto directly — SwiftUI's `@State` IS the reactive primitive Pyreon compiles onto, so there's no separate observable layer here. Deliberately kept small. |
+| `PyreonTokens.swift` | Namespace for compiler-generated design tokens (spacing, color, typography) from `@pyreon/ui-theme`. |
+| `PyreonViewModifier.swift` | `PyreonStylable` — a marker protocol the styler emitter's generated `ViewModifier` types conform to, so devtools can distinguish Pyreon-emitted style modifiers from hand-written ones without runtime reflection. |
+| `PyreonHttp.swift` | A real HTTP client: `PyreonHttpRequest` / `PyreonHttpResponse` builders (pure, unit-testable — no network), `PyreonHttp.send(_:)` (a real `URLSession` round trip), and `PyreonURL.encodePathParam` — a path-segment percent-encoder that matches JavaScript's `encodeURIComponent` exactly, so a `useQuery`/`useFetch` path parameter resolves to the same URL on web and iOS. |
+| `PyreonJSON.swift` | `PyreonJSON.encode(_:)` — the serialization helper PMTC emits for `<WebView data={signal}>`, encoding any `Encodable` value to the JSON string a hosted web page reads as `window.__pyreonData`. |
+| `PyreonChartCanvas.swift` | The hand-written SwiftUI `Canvas`-based renderer for Pyreon's native charts: the `PyreonDrawCmd` draw-list contract, a `Canvas` view that paints one, tween/mirror/transpose helpers for animated transitions between two draw lists, plus `PyreonPieChart`, `PyreonGaugeChart`, and image-export helpers. |
+| `PyreonChartEngine.swift` | **Generated**, not hand-written — a line-for-line Swift port of `@pyreon/charts`' pure-geometry TypeScript engine (64 modules: scales, layouts, the Sankey/Gantt/tree/geo/etc. algorithms), produced by `packages/native/compiler/scripts/gen-chart-engine.ts`. It computes the SAME `PyreonDrawCmd` draw list on iOS that the web engine computes in JS — one geometry implementation, ported rather than re-derived, so chart layout logic can't drift between platforms. |
+
+## Usage
+
+Hand-written Swift can use any of this directly — the compiler is the primary consumer, but nothing requires going through it:
 
 ```swift
 import PyreonRuntime
 
-struct Todo: Codable { var id: Int; var text: String; var done: Bool }
+// HTTP
+let res = try await PyreonHttp.send(.post("https://api.example.com/users", jsonBody: body))
+let user = try res.decode(User.self)
 
-struct TodoApp: View {
-    @PyreonAppStorage("todos") private var todos: [Todo] = []
-    // Same Binding<[Todo]> projection via $todos as @AppStorage.
-
-    var body: some View {
-        List(todos, id: \.id) { todo in
-            Text(todo.text)
-        }
-    }
-}
+// <WebView data={…}> bridge
+let json = PyreonJSON.encode(myCodableValue)
 ```
 
-Persistence: UserDefaults via `JSONEncoder`/`JSONDecoder`. Identical durability + sync semantics to stock `@AppStorage(Data)`. Failure semantics: silent fallback to default on decode failure, silent drop on encode failure — matches web `@pyreon/storage`'s localStorage behaviour for corruption + quota errors. For explicit error handling outside View contexts: `PyreonStorage.read(_:key:)` / `.write(_:key:)` throw on failure.
+## Not here: per-feature runtimes
 
-**Compiler interaction.** The PMTC compiler currently emits the verbose 14-line inline bridge for every `useStorage<T>('key', default)` source call (per G5 + the Phase 2 Codable-Data PR). The next compiler-emit pass simplification will detect that pattern and emit the one-liner `@PyreonAppStorage` form instead — same persistence, dramatically simpler emit. Until that emit change lands, this property wrapper is also usable by hand-written SwiftUI code; both shapes back onto the same UserDefaults key, so they're interchangeable per-callsite.
-
-## Smoke tests
-
-`Tests/PyreonRuntimeTests/PyreonRuntimeTests.swift` exercises every public symbol — proves the package builds, links, and tests cleanly. Real functional tests land per-feature alongside the implementations.
+`useStorage`, `useSecureStorage`, `useDatabase`, `useFieldArray`, camera/geolocation/bluetooth/…, `<Flow>`, `<Table>`, sync — none of that lives in this package. Each lives inside the `@pyreon/*` fundamentals package that owns the feature, under its own `native/swift/` directory (e.g. `packages/fundamentals/storage/native/swift/PyreonStorage.swift`), and is wired into the Xcode project by `pyreon-native wire` alongside this one. See [Native Packages](https://pyreon.dev/docs/native-packages) for why the split, and [PMTC Library Status & Authoring](https://pyreon.dev/docs/multiplatform-libraries) for which packages cross to native.
 
 ## Build / test locally
 
-Requires macOS with Xcode 15+ (Swift 5.9, iOS 17 target).
+Requires macOS with Xcode 15+ (Swift 5.9, iOS 17 deployment target).
 
 ```bash
 cd packages/native/runtime-swift
@@ -54,20 +57,9 @@ swift build
 swift test
 ```
 
-The npm scripts gracefully skip when `swift` isn't on PATH (Linux dev machines, CI runners without the Swift toolchain), so `bun run --filter='*' test` from the repo root doesn't break on cross-platform setups.
+The npm `test` script gracefully skips when `swift` isn't on `PATH` (Linux dev machines, CI runners without the Swift toolchain), so `bun run --filter='*' test` from the repo root doesn't break on cross-platform setups.
 
-## Why so empty?
+## What to read next
 
-Per the PMTC strategic plan ([`#764`](https://github.com/pyreon/pyreon/pull/764)) and the Phase 0 roadmap ([`#797`](https://github.com/pyreon/pyreon/pull/797)):
-
-> SwiftUI's `@State` IS the reactive primitive — Pyreon doesn't ship its own observable wrapper layer in production. The compiler emits onto SwiftUI's primitives directly. The runtime exists only for the FEW cases where the structural mapping needs a small helper (effect-with-dep-list tracking, signal-to-Combine bridging for legacy consumers).
-
-The Phase 0 risk register flags: if this package grows past ~500 LOC of Swift, that's a signal the compiler emit shape is wrong and we should regroup. **Current size: ~280 LOC** (~80 stubs + ~200 real PyreonStorage).
-
-## Phase 0 dependencies
-
-This package is the foundation for **PRs 2, 3, 4, 7a, 7b, 7c, 8** per the roadmap. Every PR that touches iOS output needs this package to exist.
-
-## Privacy
-
-Marked `"private": true`; not published to npm. Internal-only until PMTC reaches a state worth publishing.
+- [Native Packages](https://pyreon.dev/docs/native-packages) — this package's place among the other five, and how the Xcode/Gradle wiring actually works.
+- [Multi-Platform (PMTC)](https://pyreon.dev/docs/multiplatform) — the compiler that emits code against this runtime.

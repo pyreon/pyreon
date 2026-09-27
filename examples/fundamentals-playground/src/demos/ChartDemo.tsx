@@ -1,5 +1,5 @@
-import type { EChartsOption } from '@pyreon/charts'
-import { Chart } from '@pyreon/charts'
+import type { EChartsOption } from '@pyreon/charts/echarts'
+import { EChart } from '@pyreon/charts/echarts'
 import { computed, signal } from '@pyreon/reactivity'
 
 export function ChartDemo() {
@@ -100,7 +100,7 @@ export function ChartDemo() {
             </button>
           ))}
         </div>
-        <Chart options={() => barOptions()} style="height: 300px; width: 100%" />
+        <EChart options={() => barOptions()} style="height: 300px; width: 100%" />
         <div class="row" style="margin-top: 8px">
           <button
             type="button"
@@ -128,7 +128,7 @@ export function ChartDemo() {
       {/* Pie chart */}
       <div class="section">
         <h3>Donut Chart — Device Share</h3>
-        <Chart options={() => pieOptions()} style="height: 300px; width: 100%" />
+        <EChart options={() => pieOptions()} style="height: 300px; width: 100%" />
         <div class="row" style="margin-top: 8px">
           <button
             type="button"
@@ -150,7 +150,7 @@ export function ChartDemo() {
       {/* Gauge */}
       <div class="section">
         <h3>Gauge — Performance Score</h3>
-        <Chart options={() => gaugeOptions()} style="height: 250px; width: 100%" />
+        <EChart options={() => gaugeOptions()} style="height: 250px; width: 100%" />
         <div class="row" style="margin-top: 8px">
           <button
             type="button"
@@ -180,7 +180,7 @@ export function ChartDemo() {
       <div class="section">
         <h3>How It Works</h3>
         <p style="font-size: 13px; opacity: 0.7; line-height: 1.6">
-          <code>{'<Chart options={() => ({ ... })} />'}</code> auto-detects chart types (bar, pie,
+          <code>{'<EChart options={() => ({ ... })} />'}</code> auto-detects chart types (bar, pie,
           gauge, etc.) from your config and dynamically imports only the needed ECharts modules.
           Signal reads inside the options function trigger reactive updates — change data, change
           the chart. Canvas renderer by default, SVG optional via <code>renderer="svg"</code>.

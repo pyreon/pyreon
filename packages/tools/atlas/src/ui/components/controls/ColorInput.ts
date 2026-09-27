@@ -1,12 +1,12 @@
 /** Native color picker beside its hex readout. */
-import { el, type InputEl, type T } from '../../kit'
+import { el, type InputEl } from '../../kit'
 
 export const ColorInput = el
   .attrs({
     tag: 'input',
     type: 'color',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     width: '32px',
     height: '32px',
     padding: '0',

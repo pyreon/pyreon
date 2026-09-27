@@ -127,7 +127,7 @@ function MyComponent(props) {
   const label = name + '!'  // transitive — derived from props-derived const
 
   return <div>{label}</div>
-  // Compiler inlines to: _bind(() => { t.data = ((props.name ?? 'Anonymous') + '!') })
+  // Compiler inlines to: bindPolymorphicText(() => ((props.name ?? 'Anonymous') + '!'), textNode, root)
   // ✓ Updates when props.name changes
 }
 ```
@@ -335,17 +335,38 @@ won't react to `items` changing, and there's no keyed reconciliation. Reach for 
 for reactive, keyed lists; a bare `{arr}` is fine only for a static, one-shot list of
 elements.
 
-### Using ternary instead of `<Show>`
+### Prefer `<Show>` over a raw ternary for conditional mounting
 
 ```tsx
-// ✗ Both branches evaluated, no conditional mounting
+// This DOES work — the compiler sees a call expression (`isOpen()`) directly
+// in the condition and wraps the whole expression in an accessor, compiling
+// it to a reactive `_mountSlot(() => isOpen() ? <Modal /> : null, ...)`.
+// The Modal mounts/unmounts (with proper cleanup) as `isOpen` flips.
 <div>{isOpen() ? <Modal /> : null}</div>
 
-// ✓ Modal only mounts when isOpen is true
-<Show when={isOpen}>
+// Still prefer <Show> — it's explicit about intent and gives you `fallback`:
+<Show when={isOpen} fallback={<Placeholder />}>
   <Modal />
 </Show>
 ```
+
+The raw-ternary form stays reactive as long as the condition is evaluated
+*directly* in the JSX expression — a signal call, a props read, or (broadly)
+almost any function call all count. It silently goes static the moment the
+value is captured into a variable *before* the JSX — the same "read a signal
+to pass as a static value" trap documented [above](#reading-a-signal-to-pass-as-static-value):
+
+```tsx
+// ✗ `open` is a plain captured boolean by the time the ternary sees it —
+// no call, no props access — so the compiler can't tell it's derived from a
+// signal, and the ternary never re-runs.
+const open = isOpen()
+return <div>{open ? <Modal /> : null}</div>
+```
+
+`<Show>`'s `when` prop is unconditionally reactive (it accepts a signal or an
+accessor directly), so it has no equivalent failure mode — that's the real
+reason to prefer it, not that a raw ternary can't conditionally mount.
 
 ### Reading a signal to pass as static value
 

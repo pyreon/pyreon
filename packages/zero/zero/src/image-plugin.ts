@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
@@ -249,7 +250,6 @@ export function imagePlugin(config: ImagePluginConfig = {}): Plugin {
       : config.svg
 
   let root = ''
-  let outDir = ''
   let isBuild = false
 
   return {
@@ -258,7 +258,6 @@ export function imagePlugin(config: ImagePluginConfig = {}): Plugin {
 
     configResolved(resolvedConfig) {
       root = resolvedConfig.root
-      outDir = resolvedConfig.build.outDir
       isBuild = resolvedConfig.command === 'build'
     },
 
@@ -397,17 +396,17 @@ export default function SvgComponent(props) {
         return emitDescriptor(result)
       }
 
-      const processed = await processImage(absPath, {
+      const { image: processed, files } = await processImage(absPath, {
         widths: defaultWidths,
         formats: defaultFormats,
         qualityFor,
         placeholderStrategy,
         placeholderSize,
         outSubDir,
-        outDir: join(root, outDir),
+        cacheDir: join(root, 'node_modules', '.cache', 'pyreon-zero-images'),
       })
 
-      await emitProcessedSources(processed, outSubDir, this)
+      emitProcessedSources(processed, files, outSubDir, this)
       rebuildFormatSrcsets(processed, absPath)
 
       return emitDescriptor(processed)
@@ -443,17 +442,17 @@ async function loadDevImage(
   }
 }
 
-async function emitProcessedSources(
+function emitProcessedSources(
   processed: ProcessedImage,
+  files: Map<string, Uint8Array>,
   outSubDir: string,
   ctx: {
     emitFile: (f: { type: 'asset'; fileName: string; source: Uint8Array }) => void
   },
 ) {
   for (const source of processed.sources) {
-    const fileName = join(outSubDir, basename(source.src))
-    const content = await readFile(source.src)
-    ctx.emitFile({ type: 'asset', fileName, source: content })
+    const fileName = join(outSubDir, source.src)
+    ctx.emitFile({ type: 'asset', fileName, source: files.get(source.src)! })
     source.src = `/${fileName}`
   }
 }
@@ -487,71 +486,131 @@ interface ProcessOptions {
   placeholderStrategy: 'blur' | 'color' | 'none'
   placeholderSize: number
   outSubDir: string
-  outDir: string
+  /** Encoded variants persist here across builds, keyed by content. */
+  cacheDir: string
 }
 
-async function processImage(absPath: string, opts: ProcessOptions): Promise<ProcessedImage> {
-  const metadata = await getImageMetadata(absPath)
-  const ext = extname(absPath)
-  const name = basename(absPath, ext)
+/**
+ * Encode every requested variant of one image.
+ *
+ * - Variants encode CONCURRENTLY (sharp runs each on libvips' own thread
+ *   pool), where they used to run one after another.
+ * - Each variant is keyed by the source bytes plus width, format, quality and
+ *   the libvips version, and cached under `cacheDir`, so an unchanged image
+ *   costs a file read on the next build instead of a re-encode.
+ * - Output stays in memory and goes straight to `emitFile`; it is no longer
+ *   written into the output directory first and read back.
+ * - File names carry a content hash (`hero-1a2b3c4d-640.webp`). They are
+ *   served from `/assets/`, which every adapter marks `immutable`, so an
+ *   unhashed name kept a changed image stale for a year, and two `hero.jpg`
+ *   files in different folders overwrote each other.
+ * - Widths that clamp to the same value (a 800px source asked for 1024 and
+ *   1920) produce ONE variant, not duplicate files and srcset entries.
+ *
+ * @internal Exported for testing.
+ */
+export async function processImage(
+  absPath: string,
+  opts: ProcessOptions,
+): Promise<{ image: ProcessedImage; files: Map<string, Uint8Array> }> {
+  const input = await readFile(absPath)
+  const metadata = imageMetadataFromBuffer(input, extname(absPath))
+  const name = basename(absPath, extname(absPath))
+  const sharp = await loadSharp()
+  const encoderId = sharp ? `vips-${sharp.versions.vips}` : 'copy'
+  const inputHash = createHash('sha256').update(input).digest('hex')
+
+  const widths = [...new Set(opts.widths.map((w) => (metadata.width ? Math.min(w, metadata.width) : w)))]
+  // Formats first so sources stay grouped by format.
+  const jobs = opts.formats.flatMap((format) => widths.map((width) => ({ format, width })))
+
+  const encoded = await Promise.all(
+    jobs.map(async ({ format, width }) => {
+      const quality = opts.qualityFor(format)
+      const key = createHash('sha256')
+        .update(`${inputHash}|${width}|${format}|${quality}|${encoderId}`)
+        .digest('hex')
+      const bytes = await cachedEncode(opts.cacheDir, key, sharp !== null, () =>
+        encodeVariant(sharp, input, width, format, quality).catch((err: unknown) => {
+          // Same fallback as before (ship the original bytes), but no longer
+          // silent: a variant that failed to encode is named.
+          // oxlint-disable-next-line no-console
+          console.warn(
+            `[Pyreon] image: could not encode ${basename(absPath)} as ${format} at ${width}px, shipping the original: ${String(err)}`,
+          )
+          return input
+        }),
+      )
+      return { file: `${name}-${key.slice(0, 8)}-${width}.${format}`, width, format, bytes }
+    }),
+  )
+
+  const files = new Map<string, Uint8Array>()
   const sources: Array<{ src: string; width: number; format: string }> = []
-
-  // Ensure output directory exists
-  const processedDir = join(opts.outDir, opts.outSubDir)
-  if (!existsSync(processedDir)) {
-    await mkdir(processedDir, { recursive: true })
+  for (const e of encoded) {
+    files.set(e.file, e.bytes)
+    sources.push({ src: e.file, width: e.width, format: e.format })
   }
 
-  // Generate resized variants — iterate formats first so sources are grouped by format
-  for (const format of opts.formats) {
-    for (const targetWidth of opts.widths) {
-      // Don't upscale
-      const width = Math.min(targetWidth, metadata.width)
-      const outName = `${name}-${width}.${format}`
-      const outPath = join(processedDir, outName)
-
-      await resizeImage(absPath, outPath, width, format, opts.qualityFor(format))
-      sources.push({ src: outPath, width, format })
-    }
-  }
-
-  // Build per-format source sets for <picture>
-  const formatGroups = new Map<string, Array<{ src: string; width: number }>>()
-  for (const s of sources) {
-    let group = formatGroups.get(s.format)
-    if (!group) {
-      group = []
-      formatGroups.set(s.format, group)
-    }
-    group.push({ src: s.src, width: s.width })
-  }
-
-  const formats: FormatSource[] = [...formatGroups.entries()].map(([fmt, group]) => ({
-    type: `image/${fmt === 'jpeg' ? 'jpeg' : fmt}`,
-    srcset: group.map((s) => `${s.src} ${s.width}w`).join(', '),
-  }))
-
-  // Fallback: last format's srcset
-  const fallbackFormat = formats[formats.length - 1]
-  const fallbackSources = formatGroups.get([...formatGroups.keys()].pop()!)!
-
-  // Generate the placeholder per the configured strategy. Pre-fix this
-  // hard-coded `generateBlurPlaceholder`, so `placeholder: 'none'` was
-  // ignored in build mode and `'dominant-color'` never resolved anywhere.
+  // Pre-fix this hard-coded `generateBlurPlaceholder`, so `placeholder:
+  // 'none'` was ignored in build mode.
   const placeholder = await generatePlaceholder(
     absPath,
     opts.placeholderStrategy,
     opts.placeholderSize,
   )
 
+  // `src` / `srcset` / `formats` are rebuilt from the final URLs by
+  // `rebuildFormatSrcsets` once the files are emitted.
   return {
-    src: fallbackSources[fallbackSources.length - 1]?.src ?? absPath,
-    srcset: fallbackFormat?.srcset ?? '',
-    width: metadata.width,
-    height: metadata.height,
-    placeholder,
-    formats,
-    sources,
+    image: {
+      src: sources.at(-1)?.src ?? absPath,
+      srcset: '',
+      width: metadata.width,
+      height: metadata.height,
+      placeholder,
+      formats: [],
+      sources,
+    },
+    files,
+  }
+}
+
+async function cachedEncode(
+  cacheDir: string,
+  key: string,
+  cacheable: boolean,
+  encode: () => Promise<Uint8Array>,
+): Promise<Uint8Array> {
+  const path = join(cacheDir, `${key}.bin`)
+  if (cacheable) {
+    try {
+      return await readFile(path)
+    } catch {
+      // miss
+    }
+  }
+  const bytes = await encode()
+  if (cacheable) {
+    try {
+      await mkdir(cacheDir, { recursive: true })
+      await writeFile(path, bytes)
+    } catch {
+      // A read-only cache dir costs the next build a re-encode, nothing else.
+    }
+  }
+  return bytes
+}
+
+type Sharp = (typeof import('sharp'))['default']
+
+async function loadSharp(): Promise<Sharp | null> {
+  try {
+    const m = await import('sharp')
+    return (m.default ?? m) as Sharp
+  } catch {
+    warnSharpMissing()
+    return null
   }
 }
 
@@ -566,8 +625,11 @@ interface ImageMetadata {
  * Uses minimal binary header parsing — no external dependencies.
  */
 async function getImageMetadata(absPath: string): Promise<ImageMetadata> {
-  const buffer = await readFile(absPath)
-  const ext = extname(absPath).toLowerCase()
+  return imageMetadataFromBuffer(await readFile(absPath), extname(absPath))
+}
+
+function imageMetadataFromBuffer(buffer: Buffer, extension: string): ImageMetadata {
+  const ext = extension.toLowerCase()
 
   if (ext === '.png') {
     // PNG: width at bytes 16-19, height at 20-23 (big-endian)
@@ -642,44 +704,31 @@ export function parseWebPDimensions(buffer: Buffer): {
   return { width: 0, height: 0 }
 }
 
-/**
- * Resize an image using native platform capabilities.
- * Uses sharp if available, falls back to canvas API.
- */
-async function resizeImage(
-  input: string,
-  output: string,
+/** Resize + encode one variant; without sharp the original bytes pass through. */
+async function encodeVariant(
+  sharp: Sharp | null,
+  input: Buffer,
   width: number,
   format: ImageFormat,
   quality: number,
-): Promise<void> {
-  try {
-    // Try sharp (the standard Node.js image processing library)
-    const sharp = await import('sharp').then((m) => m.default ?? m)
-    let pipeline = sharp(input).resize(width)
-
-    switch (format) {
-      case 'webp':
-        pipeline = pipeline.webp({ quality })
-        break
-      case 'avif':
-        pipeline = pipeline.avif({ quality })
-        break
-      case 'jpeg':
-        pipeline = pipeline.jpeg({ quality, mozjpeg: true })
-        break
-      case 'png':
-        pipeline = pipeline.png({ compressionLevel: 9 })
-        break
-    }
-
-    await pipeline.toFile(output)
-  } catch {
-    // sharp not available — copy original as fallback
-    warnSharpMissing()
-    const content = await readFile(input)
-    await writeFile(output, content)
+): Promise<Uint8Array> {
+  if (!sharp) return input
+  let pipeline = sharp(input).resize(width)
+  switch (format) {
+    case 'webp':
+      pipeline = pipeline.webp({ quality })
+      break
+    case 'avif':
+      pipeline = pipeline.avif({ quality })
+      break
+    case 'jpeg':
+      pipeline = pipeline.jpeg({ quality, mozjpeg: true })
+      break
+    case 'png':
+      pipeline = pipeline.png({ compressionLevel: 9 })
+      break
   }
+  return pipeline.toBuffer()
 }
 
 /**

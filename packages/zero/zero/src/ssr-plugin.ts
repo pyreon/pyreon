@@ -74,7 +74,9 @@ import {
 import { resolveConfig } from './config'
 import { collectFileRouteModes } from './fs-router'
 import { formatRouteModeTable } from './route-modes'
+import { writeServiceWorker } from './pwa'
 import { buildSsrBundle, materializeEntry, renderSsrEntrySource } from './ssr-build-shared'
+import { serializeServerConfig } from './server-config'
 import type { ZeroConfig } from './types'
 
 /**
@@ -132,6 +134,9 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
   let assetsInlineLimit: BuildOptions['assetsInlineLimit']
   let assetsDir: string | undefined
   let resolvedBase: string = '/'
+  // Replaced in configResolved with Vite's logger (honours `logLevel`).
+  // oxlint-disable-next-line no-console
+  let logInfo: (msg: string) => void = (msg) => console.log(msg)
   // USER plugins captured for forwarding into the inner SSR sub-build.
   // See `ssg-plugin.ts` userPlugins doc + `buildSsrBundle`'s userPlugins
   // option for the filtering rules. Same propagation pattern keeps SSR
@@ -186,6 +191,8 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       root = resolved.root
       distDir = resolve(root, resolved.build.outDir)
       isSsrTargetBuild = Boolean(resolved.build.ssr)
+      // Informational output honours `logLevel` (see ssg-plugin).
+      logInfo = (msg) => resolved.logger.info(msg)
       assetsInlineLimit = resolved.build.assetsInlineLimit
       assetsDir = resolved.build.assetsDir
       resolvedBase = resolved.base
@@ -250,6 +257,16 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       // mode dispatch via `wireRenderMode` doesn't need it).
       if (!userEntryExists) {
         await materializeEntry(entryPath, renderSsrEntrySource({ kind: mode, locales: [] }))
+        // Code-valued options (`middleware`, a custom ISR store / cacheKey
+        // function, …) cannot be serialized into the generated entry. Say so,
+        // rather than ship a server that silently runs without them.
+        const { dropped } = serializeServerConfig(userConfig)
+        if (dropped.length > 0) {
+          console.warn(
+            `[Pyreon] zero({ ${dropped.join(', ')} }) is code, so it cannot reach the generated server entry and will NOT apply in production. ` +
+              'Create src/entry-server.ts and pass it to createServer({ config, middleware }) — see https://pyreon.dev/docs/zero#createserver.',
+          )
+        }
       }
 
       try {
@@ -328,6 +345,17 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       // `adapters/validate.ts`. Adapter throws are caught + reported
       // so a buggy adapter can't hide the successful SSR bundle from
       // CI; the bundle is still on disk at `serverEntry`.
+      // PWA — the client output is final; write the worker BEFORE the
+      // adapter stages it. SSR/ISR HTML is per-request, so only the hashed
+      // assets are precached (navigations are network-first at runtime).
+      if (config.pwa) {
+        await writeServiceWorker(clientOutDir, config.pwa, {
+          base: config.base ?? '/',
+          assetsDir: assetsDir ?? 'assets',
+          includeHtml: false,
+        })
+      }
+
       const adapter = resolveAdapter(config)
       try {
         await adapter.build({
@@ -362,8 +390,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
         }
       }
 
-      // oxlint-disable-next-line no-console
-      console.log(
+      logInfo(
         `[zero:ssr] Built ${serverEntry} [adapter: ${adapter.name}]${userEntryExists ? ' (using src/entry-server.ts)' : ' (synthetic entry)'}`,
       )
 
@@ -372,10 +399,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       try {
         const tableMode = config._autoMode ? ('auto' as const) : mode
         const modeEntries = await collectFileRouteModes(join(root, 'src', 'routes'), tableMode, config.routeRules)
-        for (const line of formatRouteModeTable(modeEntries, tableMode)) {
-          // oxlint-disable-next-line no-console
-          console.log(line)
-        }
+        for (const line of formatRouteModeTable(modeEntries, tableMode)) logInfo(line)
       } catch {
         /* table is informational only */
       }

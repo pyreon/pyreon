@@ -51,6 +51,61 @@ export type LensState =
  */
 interface StaticRpcHost {
   __ATLAS_STATIC_RPC__?: Record<string, Record<string, unknown>>
+  /** Where per-component answers are fetched from (see `splitBakedRpc`). */
+  __ATLAS_STATIC_RPC_URL__?: string
+}
+
+/**
+ * One fetch per file, shared by every panel that asks.
+ *
+ * Bounded by construction: the keys are the site's own `index.json` plus one
+ * file per component in it, and the map exists only on a static site. A FAILED
+ * fetch is evicted on settle, so a network hiccup is retried on the next ask
+ * instead of leaving that component's panel broken until reload.
+ */
+const staticFiles = new Map<string, Promise<Record<string, unknown> | undefined>>()
+
+function fetchStaticJson(url: string, fetchImpl: typeof fetch): Promise<Record<string, unknown> | undefined> {
+  let pending = staticFiles.get(url)
+  if (!pending) {
+    const request: Promise<Record<string, unknown> | undefined> = fetchImpl(url)
+      .then((res) => (res.ok ? (res.json() as Promise<Record<string, unknown>>) : undefined))
+      .catch(() => undefined)
+      .then((body) => {
+        if (body === undefined && staticFiles.get(url) === request) staticFiles.delete(url)
+        return body
+      })
+    pending = request
+    staticFiles.set(url, pending)
+  }
+  return pending
+}
+
+/**
+ * The per-component answer from a static site's `_atlas/rpc/` files.
+ *
+ * `undefined` when this is not a static site (the live channel answers);
+ * an error result when it is, because falling through to `/__atlas/rpc` on a
+ * static host can only fail, and with a misleading network message.
+ */
+export async function readBakedRpcFile(
+  method: string,
+  params: Record<string, unknown>,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ ok: true; result: unknown } | { ok: false; error: string } | undefined> {
+  const url = (globalThis as StaticRpcHost).__ATLAS_STATIC_RPC_URL__
+  const key = String(params.component ?? '')
+  if (!url || !key) return undefined
+  const index = await fetchStaticJson(`${url}index.json`, fetchImpl)
+  const file = index?.[key]
+  if (typeof file !== 'string') return { ok: false, error: `Not available on this site: nothing was baked for ${key}.` }
+  const entry = await fetchStaticJson(url + file, fetchImpl)
+  if (!entry || !(method in entry)) {
+    return { ok: false, error: `Not available on this site: ${method} was not baked for ${key}.` }
+  }
+  const value = entry[method]
+  const reason = bakedError(value)
+  return reason ? { ok: false, error: reason } : { ok: true, result: value }
 }
 
 /** A baked failure carries the REAL reason, not a network error about it. */
@@ -96,7 +151,7 @@ export async function callRpc(
   params: Record<string, unknown> = {},
   fetchImpl: typeof fetch = fetch,
 ): Promise<{ ok: true; result: unknown } | { ok: false; error: string }> {
-  const baked = readBakedRpc(method, params)
+  const baked = readBakedRpc(method, params) ?? (await readBakedRpcFile(method, params, fetchImpl))
   if (baked) return baked
 
   try {

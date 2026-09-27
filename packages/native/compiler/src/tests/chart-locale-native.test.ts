@@ -17,14 +17,15 @@ const read = (p: string) => readFileSync(join(REPO, p), 'utf8')
 const CANVAS_SWIFT = 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonChartCanvas.swift'
 const ENGINE_SWIFT = 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonChartEngine.swift'
 
-const SRC = `import { PlotChart, line } from '@pyreon/charts/plot'
+const SRC = `import { PlotChart, line } from '@pyreon/charts/engine'
 interface Row { at: number; value: number }
 const ROWS: Row[] = [{ at: 0, value: 1234.5 }]
 export function App() {
   return <PlotChart data={ROWS} xValue={(d) => d.at} xTime marks={[line((d) => d.value)]} locale="de-DE" height={200} />
 }`
 
-const EXPLICIT = `import { PlotChart, compact, line } from '@pyreon/charts/plot'
+const EXPLICIT = `import { compact } from '@pyreon/charts'
+import { PlotChart, line } from '@pyreon/charts/engine'
 interface Row { at: number; value: number }
 const ROWS: Row[] = [{ at: 0, value: 1234.5 }]
 export function App() {

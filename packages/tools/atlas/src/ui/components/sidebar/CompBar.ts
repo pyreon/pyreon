@@ -1,10 +1,10 @@
-import { dim, el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const CompBar = el
   .attrs({
     tag: 'span',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     width: '3px',
     height: '16px',
     borderRadius: t.radius.bar,
@@ -12,8 +12,8 @@ export const CompBar = el
     background: t.border,
   }))
   .states(
-    dim((t) => ({
+    (t) => ({
       active: { backgroundColor: t.accent },
       idle: {},
-    })),
+    }),
   )

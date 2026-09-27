@@ -1,5 +1,6 @@
 import { signal } from '@pyreon/reactivity'
 import { h } from '@pyreon/core'
+import { useEventListener } from '@pyreon/hooks'
 
 /**
  * Migrated from `<Playground>` — Live Breakpoint Detection.
@@ -8,18 +9,26 @@ import { h } from '@pyreon/core'
  * This is the same code as a real Pyreon component file: typechecked, lint-
  * covered, refactor-safe. See `<Example>` in docs/zero-content for the
  * inline-mount + signal-share contract.
+ *
+ * `@pyreon/unistyle` itself resolves breakpoints against the enriched theme
+ * (see the "Responsive Values" section on this page); this demo distills the
+ * same idea down to a bare `resize`-driven signal so the mechanics are
+ * visible without a theme/provider setup. `useEventListener` (not a raw
+ * `window.addEventListener`) removes the listener automatically on unmount —
+ * required here since `<Example>` mounts and unmounts this component as the
+ * reader scrolls the gallery.
  */
 export default function LiveBreakpointDetection() {
   const breakpoints = { xs: 0, sm: 576, md: 768, lg: 992, xl: 1200, xxl: 1400 }
   const width = signal(window.innerWidth)
 
-  const resolve = (w: any) => {
+  const resolve = (w: number) => {
     let name = 'xs'
     for (const [k, v] of Object.entries(breakpoints)) if (w >= v) name = k
     return name
   }
 
-  window.addEventListener('resize', () => width.set(window.innerWidth))
+  useEventListener('resize', () => width.set(window.innerWidth))
 
   const current = () => resolve(width())
 

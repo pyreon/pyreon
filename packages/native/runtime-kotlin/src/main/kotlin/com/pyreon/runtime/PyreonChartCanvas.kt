@@ -40,6 +40,10 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
@@ -757,7 +761,7 @@ fun PyreonChartCanvas(
 
 // ── Radial chart components ─────────────────────────────────────────────
 //
-// The native twins of `@pyreon/charts/plot`'s `<PieChart>` / `<GaugeChart>`.
+// The native twins of `@pyreon/charts`'s `<PieChart>` / `<GaugeChart>`.
 // PMTC lowers those JSX components to these composables; the geometry comes
 // from the GENERATED PyreonChartEngine (renderPie / renderGauge), so web and
 // native draw from the same byte-locked math. Defaults mirror the web
@@ -979,5 +983,44 @@ class PyreonChartHandle {
         if (next.areas != areas) areas = next.areas
         if (next.step != step) step = next.step
         if (next.playing != playing) playing = next.playing
+    }
+}
+
+
+/**
+ * One accessibility node per visible category over the plot — the native twin
+ * of the web host's hidden data table for TalkBack. A Compose Canvas is one
+ * node, so without these TalkBack can read the chart's one-paragraph
+ * description and nothing else. Each node sits over its category's column
+ * (its row, for a horizontal chart), so explore-by-touch finds the datum
+ * under the finger and a swipe walks the data in order; its label is the
+ * web table's row for that category ("Jan, Revenue 10, Target 8"), from the
+ * same `A11yInput` the description reads.
+ *
+ * The nodes carry semantics only — no pointer input — so taps still reach
+ * the canvas below them.
+ *
+ * `first` is the first visible row's index in the full data (a zoomed
+ * window); `mirrorWidth` > 0 mirrors the columns for a right-to-left chart,
+ * as the canvas mirrors its draw list.
+ */
+@Composable
+fun PyreonChartPoints(input: A11yInput, plot: PyreonChartRect, visible: Int, first: Int = 0, horizontal: Boolean = false, left: Double = 0.0, top: Double = 0.0, mirrorWidth: Double = -1.0) {
+    if (visible <= 0 || plot.w <= 0.0 || plot.h <= 0.0) return
+    val headers = chartTable(input, 0).headers
+    val total = chartRowCount(input)
+    val band = (if (horizontal) plot.h else plot.w) / visible
+    for (j in 0 until visible) {
+        val i = first + j
+        if (i >= total) break
+        val cells = chartTableRow(input, i)
+        val label = cells.mapIndexed { k, c -> if (k == 0 || k >= headers.size) c else "${headers[k]} $c" }.joinToString(", ")
+        var x = if (horizontal) plot.x else plot.x + band * j
+        val y = if (horizontal) plot.y + plot.h - band * (j + 1) else plot.y
+        val w = if (horizontal) plot.w else band
+        val h = if (horizontal) band else plot.h
+        x += left
+        if (mirrorWidth > 0.0) x = mirrorWidth - x - w
+        Box(Modifier.offset(x = x.dp, y = (y + top).dp).size(w.dp, h.dp).clearAndSetSemantics { contentDescription = label })
     }
 }

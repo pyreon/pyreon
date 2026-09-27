@@ -1,15 +1,15 @@
 # native-tasks-web — Tasks showcase on web
 
-> **PRIVATE / EXPERIMENTAL.** Web sibling of the canonical [`native-tasks`](../native-tasks/) Gap 5 scaffold from #1449. Renders the SAME `TasksApp.tsx` source via Pyreon's `runtime-dom` + the `@pyreon/primitives` web implementations.
+> **PRIVATE / EXPERIMENTAL.** Web sibling of the canonical [`native-tasks`](../native-tasks/) Gap 5 scaffold. Renders the SAME `TasksApp.tsx` source via Pyreon's `runtime-dom` + the `@pyreon/primitives` web implementations.
 
 ## Architecture
 
 ```text
 examples/native-tasks/src/TasksApp.tsx     ← canonical source (single file)
                           │
-                          ├─→ Web (THIS dir)         Vite + runtime-dom
-                          ├─→ iOS (follow-up)        XcodeGen + SwiftUI
-                          └─→ Android (follow-up)    Gradle + Compose
+                          ├─→ Web (THIS dir)                  Vite + runtime-dom
+                          ├─→ iOS (native-tasks-ios)          XcodeGen + SwiftUI
+                          └─→ Android (native-tasks-android)  Gradle + Compose
 ```
 
 Mirror of `native-todomvc-web` (Pyreon's Phase E3 reference for the three-targets-one-source pattern).
@@ -35,19 +35,19 @@ bun run preview  # preview the production bundle
 
 The dev server reloads on source edits to `../native-tasks/src/TasksApp.tsx` via Vite's HMR. Same source, instant feedback.
 
-## Dependency on #1449
+## Status
 
-This PR's `entry-client.tsx` imports from `../../native-tasks/src/TasksApp` — that directory lands in [#1449](https://github.com/pyreon/pyreon/pull/1449) (the canonical Gap 5 tasks scaffold). **This PR is sequenced AFTER #1449 merges.** Before #1449 lands the import fails with `Cannot find module '../../native-tasks/src/TasksApp'`.
+`entry-client.tsx` imports from `../../native-tasks/src/TasksApp`, which has
+landed, and both sibling hosts have landed too:
+[`native-tasks-ios`](../native-tasks-ios) (XcodeGen + XCUITest, CI-wired) and
+[`native-tasks-android`](../native-tasks-android) (Gradle + Espresso,
+CI-wired).
 
-When #1449 merges, this PR rebases cleanly (no source-level conflicts — different directories) and the import resolves to the real TasksApp.
+## What's still NOT in this PR
 
-## What's NOT in this PR
-
-- **iOS XcodeGen host shell** for native-tasks-ios — follow-up PR using the same template as `native-router-demo-ios` + the SPM PyreonRouter dep
-- **Android Gradle host shell** for native-tasks-android — follow-up PR using the same template as `native-router-demo-android` (#1455) + the source-set wiring for `@pyreon/native-router-kotlin`
 - **e2e (Playwright)** for the web showcase — could mirror `e2e/native-todomvc-web.spec.ts` if that fixture exists; otherwise a new fixture for the auth-gate + create-task flows
 - **CI integration via verify-modes matrix** — currently not gated; follow-up
 
 ## Audit status
 
-Closes the web half of Gap 5's host-shells follow-up. iOS + Android host shells + e2e remain queued.
+Closes the web half of Gap 5's host-shells follow-up.

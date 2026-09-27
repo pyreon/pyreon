@@ -16,7 +16,7 @@
  * against the same strict options the repo uses.
  */
 import ts from 'typescript'
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveConfig, type ClientName, type ValidatorName } from '../core/config'
@@ -48,6 +48,14 @@ paths:
       tags: [n]
       requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/Node' } } } }
       responses: { '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Node' } } } } }
+  /session/ping:
+    get:
+      # A CONTENT-LESS read: a 200 with only a description. Petstore 3's
+      # \`logoutUser\` is this shape, and it emitted \`useQuery<void>\` over an
+      # endpoint typed \`unknown\` -- the one hook in the file that did not compile.
+      operationId: ping
+      tags: [n]
+      responses: { '200': { description: ok } }
   /nodes/{id}:
     get:
       operationId: getNode
@@ -57,10 +65,83 @@ paths:
     delete:
       operationId: deleteNode
       tags: [n]
-      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: X-Dangerous, in: header, required: true, schema: { type: boolean } }
+        - { name: X-Trace, in: header, schema: { type: string } }
+        - { name: session, in: cookie, schema: { type: string } }
       responses: { '204': { description: gone } }
+  /charges:
+    post:
+      operationId: createCharge
+      tags: [n]
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount: { type: integer, multipleOf: 1 }
+                metadata: { type: object, additionalProperties: { type: string } }
+                expand: { type: array, items: { type: string }, uniqueItems: true }
+            encoding:
+              metadata: { style: deepObject, explode: true }
+              expand: { style: deepObject, explode: true }
+      responses: { '2XX': { content: { application/json; charset=utf-8: { schema: { $ref: '#/components/schemas/Charge' } } } } }
+  /files:
+    post:
+      operationId: uploadFile
+      tags: [n]
+      requestBody:
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/Upload' }
+      responses: { '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Meta' } } } } }
+  /blobs:
+    put:
+      operationId: putBlob
+      tags: [n]
+      requestBody: { content: { application/octet-stream: { schema: { type: string, format: binary } } } }
+      responses: { '204': { description: stored } }
 components:
   schemas:
+    Labels:
+      type: object
+      properties: { id: { type: string } }
+      additionalProperties: { type: integer }
+    Upload:
+      type: object
+      required: [file]
+      properties:
+        file: { type: string, format: binary }
+        purpose: { type: string, enum: [a, b] }
+    Charge:
+      type: object
+      required: [id, amount, status, kind]
+      properties:
+        id: { type: string }
+        amount: { type: number, multipleOf: 0.01, exclusiveMinimum: 0 }
+        status: { type: integer, enum: [1, 2, 3] }
+        kind: { const: charge }
+        refunded_by: { $ref: '#/components/schemas/NullableMeta' }
+        tags: { type: array, items: { type: string, maxLength: 8 }, minItems: 1 }
+    NullableMeta:
+      type: [object, 'null']
+      required: [at]
+      properties:
+        at: { type: string, format: date-time }
+    Shape:
+      oneOf: [{ $ref: '#/components/schemas/Circle' }, { $ref: '#/components/schemas/Square' }]
+      discriminator: { propertyName: shape_type }
+    Circle:
+      type: object
+      required: [shape_type, r]
+      properties: { shape_type: { const: circle }, r: { type: number } }
+    Square:
+      type: object
+      required: [shape_type, side]
+      properties: { shape_type: { type: string, enum: [square] }, side: { type: number } }
     Node:
       type: object
       required: [id, kind, children]
@@ -90,7 +171,12 @@ components:
  * is most of what is being tested. A virtual host would need its own resolver,
  * and a bug in that resolver is indistinguishable from a bug in the output.
  */
-function diagnose(client: ClientName, validator: ValidatorName): string[] {
+function diagnose(
+  client: ClientName,
+  validator: ValidatorName,
+  spec: string = SPEC,
+  label = `${client}-${validator}`,
+): string[] {
   const cfg = resolveConfig({
     input: 'x',
     client,
@@ -101,8 +187,11 @@ function diagnose(client: ClientName, validator: ValidatorName): string[] {
     // nowhere else.
     plugins: ['schemas', 'client', 'queries', 'mocks', 'faker'],
   })
-  const files = generate(SPEC, cfg).files.filter((f) => f.path.endsWith('.ts'))
-  const root = join(TC_ROOT, `${client}-${validator}`)
+  // `types.ts` is a SECOND rendering of every model (plain TS, no runtime);
+  // it is typechecked too, standalone, because nothing imports it.
+  const typesFile = generate(spec, resolveConfig({ input: 'x', plugins: ['types'] })).files.find((f) => f.path === 'types.ts')
+  const files = [...generate(spec, cfg).files, ...(typesFile ? [typesFile] : [])].filter((f) => f.path.endsWith('.ts'))
+  const root = join(TC_ROOT, label)
   rmSync(root, { recursive: true, force: true })
   for (const f of files) {
     const abs = join(root, f.path)
@@ -145,6 +234,26 @@ describe('generated output typechecks under strict TypeScript', () => {
         expect(errors, errors.join('\n')).toEqual([])
       })
     }
+  }
+})
+
+/**
+ * A REAL spec, not one written to exercise the emitter.
+ *
+ * Petstore 3 is the first spec nearly everyone points a generator at, and its
+ * output did not compile: `logoutUser` is a GET whose 200 carries no content.
+ * A hand-written fixture only contains the shapes its author thought of --
+ * which is exactly why this one is here verbatim (swagger-api/swagger-petstore,
+ * Apache-2.0).
+ */
+const PETSTORE3 = readFileSync(join(HERE, 'fixtures', 'petstore3.json'), 'utf8')
+
+describe('Petstore 3 output typechecks under strict TypeScript', () => {
+  for (const validator of VALIDATORS) {
+    it(`client=pyreon validator=${validator}`, () => {
+      const errors = diagnose('pyreon', validator, PETSTORE3, `petstore3-${validator}`)
+      expect(errors, errors.join('\n')).toEqual([])
+    })
   }
 })
 

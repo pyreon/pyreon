@@ -161,7 +161,7 @@ final class PyreonFinanceUITests: XCTestCase {
         signOutIfSignedIn(app)
     }
 
-    /// The chart crossing: `<PieChart>` from @pyreon/charts/plot lowered to
+    /// The chart crossing: `<PieChart>` from @pyreon/charts lowered to
     /// the runtime PyreonPieChart over the GENERATED engine — this asserts the
     /// chart ELEMENT is on the dashboard on a real Simulator (the geometry is
     /// execution-proven by PyreonChartEngineTests; this is the device half).
@@ -180,7 +180,7 @@ final class PyreonFinanceUITests: XCTestCase {
         )
         XCTAssertTrue(
             app.descendants(matching: .any)["spend-pie"].waitForExistence(timeout: 10),
-            "PieChart did not render — the @pyreon/charts/plot lowering or the "
+            "PieChart did not render — the @pyreon/charts lowering or the "
                 + "PyreonPieChart runtime view broke on-device"
         )
 

@@ -252,6 +252,39 @@ describe('ssgPlugin', () => {
   })
 
   describe('autoDetectStaticPaths with getStaticPaths', () => {
+    // The dedup exists for benign repeats from ONE route; it used to run
+    // BEFORE the collision guard, so a static route and a dynamic route
+    // producing the same URL never reached it and one page silently won.
+    it('throws when a static route and a getStaticPaths enumerate the same URL', async () => {
+      const f = makeFixture({
+        'index.tsx': 'export default () => null',
+        'posts/new.tsx': 'export default () => null',
+        'posts/[id].tsx': 'export default () => null',
+      })
+      try {
+        const registry = new Map([['/posts/:id', async () => [{ params: { id: 'new' } }, { params: { id: '1' } }]]])
+        await expect(_internal.autoDetectStaticPaths(f.routesDir, registry as any, [])).rejects.toThrow(
+          /SSG path collision[\s\S]*\/posts\/new/,
+        )
+      } finally {
+        f.cleanup()
+      }
+    })
+
+    it('still dedups a slug one route repeats', async () => {
+      const f = makeFixture({
+        'index.tsx': 'export default () => null',
+        'posts/[id].tsx': 'export default () => null',
+      })
+      try {
+        const registry = new Map([['/posts/:id', async () => [{ params: { id: '1' } }, { params: { id: '1' } }]]])
+        const paths = await _internal.autoDetectStaticPaths(f.routesDir, registry as any, [])
+        expect(paths.filter((p: string) => p === '/posts/1')).toHaveLength(1)
+      } finally {
+        f.cleanup()
+      }
+    })
+
     it('warns loudly for a dynamic route with no getStaticPaths (silent-missing-page fix)', async () => {
       const f = makeFixture({
         'index.tsx': 'export default () => null',
@@ -1878,3 +1911,17 @@ describe('SSG completeness warning — routeRules exemption (Tier-4)', () => {
     }
   })
 })
+
+describe('mergeRedirectsFile', () => {
+  // The build used to OVERWRITE dist/_redirects, silently dropping every rule
+  // the app shipped in public/_redirects once any loader threw redirect().
+  it("keeps the app's own rules first, then appends the generated ones", () => {
+    const merged = _internal.mergeRedirectsFile('/old  /new  301\n', '/a  /b  302\n')
+    expect(merged.indexOf('/old  /new  301')).toBeLessThan(merged.indexOf('/a  /b  302'))
+  })
+
+  it('is just the generated rules when the app ships none', () => {
+    expect(_internal.mergeRedirectsFile('', '/a  /b  302\n')).toBe('/a  /b  302\n')
+  })
+})
+

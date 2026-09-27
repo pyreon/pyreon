@@ -112,6 +112,29 @@ const factory = rocketstyle({
 const Button = factory({ name: 'Button', component: Element })
 ```
 
+### `factory.withTheme<Tokens>()` — typed theme callbacks
+
+Binds the theme TYPE every `.theme()` and dimension callback receives, so `t` is
+inferred and checked. It is type-only (it returns the same factory) and needs no
+global `declare module '@pyreon/rocketstyle'` augmentation — the right choice for
+a library, where a global augmentation would merge into every other package's
+theme type.
+
+```ts
+interface Tokens { accent: string; surface: string }
+
+const rs = rocketstyle({ useBooleans: false }).withTheme<Tokens>()
+
+const Card = rs({ name: 'Card', component: Element })
+  .theme((t) => ({ backgroundColor: t.surface }))  // t: Tokens
+  .states((t) => ({ active: { color: t.accent } }))
+// .theme((t) => ({ color: t.nope }))  ❌ Property 'nope' does not exist
+```
+
+Without it, `t` is the augmentable `ThemeDefault` (empty unless an app augments
+it). An annotation such as `(t: Tokens) =>` is checked against that, so bind the
+factory rather than annotating each callback.
+
 ### `.attrs(props | callback, options?)`
 
 Same as `@pyreon/attrs` — accumulate defaults, supports callback / priority / filter.
@@ -124,7 +147,8 @@ Base theme applied to every instance.
 .theme({ fontSize: 16, color: '#fff', hover: { opacity: 0.9 } })
 .theme((theme, mode, css) => ({
   fontSize: 16,
-  color: mode === 'dark' ? '#fff' : '#333',
+  // `mode` is a helper: mode(lightValue, darkValue)
+  color: mode('#333', '#fff'),
 }))
 ```
 

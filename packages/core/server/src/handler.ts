@@ -113,6 +113,26 @@ export interface HandlerOptions {
   suspenseTimeoutMs?: number
 }
 
+/**
+ * Global-registry symbol a runtime adapter sets on the `Request` it hands the
+ * handler, carrying the client's socket address. `createHandler` copies it to
+ * `ctx.locals.remoteAddress`, which rate limiting and logging key on. A
+ * `Symbol.for` key rather than an import so an adapter's generated runner can
+ * set it without bundling this package.
+ */
+export const REMOTE_ADDRESS: unique symbol = Symbol.for('pyreon.remoteAddress') as never
+
+/**
+ * Server errors are logged in EVERY environment. This is an operator signal,
+ * not a developer warning — gating it on NODE_ENV left production incidents
+ * (and attacker-triggered failures) with no log line at all. The client still
+ * only ever sees a generic body.
+ */
+function logServerError(what: string, path: string, err: unknown): void {
+  // oxlint-disable-next-line no-console
+  console.error(`[Pyreon] ${what}${path ? ` for ${path}` : ''}:`, err)
+}
+
 export function createHandler(options: HandlerOptions): (req: Request) => Promise<Response> {
   const {
     App,
@@ -144,10 +164,26 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
       headers: new Headers({ 'Content-Type': 'text/html; charset=utf-8' }),
       locals: {},
     }
+    // The client's socket address, when the runtime adapter supplied one
+    // (see `REMOTE_ADDRESS`). A header would be spoofable; this can only be
+    // set by code holding the Request before the handler sees it.
+    const remote = (req as unknown as Record<symbol, unknown>)[REMOTE_ADDRESS]
+    if (typeof remote === 'string' && remote) ctx.locals.remoteAddress = remote
 
-    for (const mw of middleware) {
-      const result = await mw(ctx)
-      if (result instanceof Response) return result
+    // A throwing middleware (an API route calling `req.json()` on a bad body,
+    // a failing auth lookup) must cost ONE request a 500, not take the
+    // process down: on Node an unhandled rejection from here exits the server.
+    try {
+      for (const mw of middleware) {
+        const result = await mw(ctx)
+        if (result instanceof Response) return result
+      }
+    } catch (err) {
+      logServerError('Middleware failed', path, err)
+      return new Response('Internal Server Error', {
+        status: 500,
+        headers: { 'Content-Type': 'text/plain' },
+      })
     }
 
     // ── PR-S6: HTTP method gating ───────────────────────────────────────────
@@ -217,6 +253,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
             suspenseTimeoutMs,
             streamStatus,
             method === 'HEAD',
+            typeof ctx.locals.cspNonce === 'string' ? ctx.locals.cspNonce : undefined,
           )
         } catch (err) {
           const info = getRedirectInfo(err)
@@ -226,9 +263,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
               headers: { Location: safeRedirectLocation(info.url) },
             })
           }
-          if (process.env.NODE_ENV !== 'production') {
-            console.error('[Pyreon Server] SSR render failed:', err)
-          }
+          logServerError('SSR render failed', path, err)
           return new Response('Internal Server Error', {
             status: 500,
             headers: { 'Content-Type': 'text/plain' },
@@ -283,9 +318,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
       }
       return new Response(fullHtml, { status: result.status, headers: ctx.headers })
     } catch (err) {
-      if (process.env.NODE_ENV !== 'production') {
-        console.error('[Pyreon Server] SSR render failed:', err)
-      }
+      logServerError('SSR render failed', path, err)
       return new Response('Internal Server Error', {
         status: 500,
         headers: { 'Content-Type': 'text/plain' },
@@ -319,9 +352,11 @@ async function renderStreamResponse(
   // body production entirely — saves the body-buffering cost and matches
   // the standard HTTP semantic.
   isHead: boolean = false,
+  // Per-request CSP nonce (`ctx.locals.cspNonce`), for every inline tag.
+  nonce?: string,
 ): Promise<Response> {
   const loaderData = serializeLoaderData(router as never)
-  const scripts = buildScriptsFast(clientEntryTag, loaderData)
+  const scripts = buildScriptsFast(clientEntryTag, loaderData, nonce)
 
   // Use pre-split parts: [before-head, between-head-app, between-app-scripts, after-scripts]
   const [p0, p1, p2, p3] = compiled.parts
@@ -334,9 +369,10 @@ async function renderStreamResponse(
   // ops-controlled per-boundary timeout. Both options are only
   // included when defined, so unconfigured deploys land on
   // renderToStream's defaults byte-identically.
-  const streamOptions: { signal?: AbortSignal; suspenseTimeoutMs?: number } = {}
+  const streamOptions: { signal?: AbortSignal; suspenseTimeoutMs?: number; nonce?: string } = {}
   if (signal !== undefined) streamOptions.signal = signal
   if (suspenseTimeoutMs !== undefined) streamOptions.suspenseTimeoutMs = suspenseTimeoutMs
+  if (nonce) streamOptions.nonce = nonce
   const appStream
     = Object.keys(streamOptions).length > 0
       ? renderToStream(app, streamOptions)
@@ -367,9 +403,7 @@ async function renderStreamResponse(
         // inline error script and close the body. Branch is intentionally
         // hard to exercise from tests without mocking `reader.read()`.
         /* v8 ignore start */
-        if (process.env.NODE_ENV !== 'production') {
-          console.error('[Pyreon Server] Stream render failed:', err)
-        }
+        logServerError('Stream render failed', '', err)
         push(`<script>console.error("[pyreon/server] Stream render failed")</script>`)
         push(shellTail)
         /* v8 ignore stop */

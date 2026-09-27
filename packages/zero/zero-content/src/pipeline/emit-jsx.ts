@@ -406,7 +406,9 @@ async function emitHeading(
 ): Promise<string> {
   const tag = `h${node.depth}`
   const text = mdastChildrenToText(node.children as Nodes[])
-  const baseSlug = slugify(text)
+  // A heading of only punctuation or emoji slugifies to '' — an `id=""` is no
+  // anchor at all, so give it a stable name the dedupe below can number.
+  const baseSlug = slugify(text) || 'section'
   // PR-J audit L7 — dedupe slugs by suffixing `-2`, `-3`, ... when a
   // page contains two headings sharing the same slugified text. Both
   // the heading's `id` attribute AND the captured `slug` field land
@@ -689,9 +691,13 @@ function mdastChildrenToText(nodes: Nodes[]): string {
  * @internal exported for testing
  */
 export function slugify(input: string): string {
+  // Letters, marks and digits of EVERY script survive (GitHub's rule). The old
+  // ASCII-only `\w` class emptied a CJK heading's id entirely and turned the
+  // Czech `Úvod` into `vod` — a slug that no longer matches the text.
   return input
+    .normalize('NFC')
     .toLowerCase()
-    .replace(/[^\w\s-]/g, '')
+    .replace(/[^\p{L}\p{M}\p{N}\s_-]/gu, '')
     .trim()
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')

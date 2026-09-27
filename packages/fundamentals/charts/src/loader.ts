@@ -123,7 +123,7 @@ export function _wrapTslibError(err: unknown): Error {
     const hint = new Error(
       `[@pyreon/charts] Failed to load ECharts because the tslib alias is missing. ` +
         `Add it to your vite.config:\n\n` +
-        `  import { chartsViteAlias } from '@pyreon/charts/vite'\n` +
+        `  import { chartsViteAlias } from '@pyreon/charts/echarts/vite'\n` +
         `  export default {\n` +
         `    resolve: { alias: { ...chartsViteAlias() } },\n` +
         `    // ...\n` +
@@ -316,7 +316,7 @@ export async function connect(groupId: string): Promise<void> {
  *
  * @example
  * ```ts
- * import { use } from '@pyreon/charts/manual'
+ * import { use } from '@pyreon/charts/echarts/manual'
  * import { BarChart } from 'echarts/charts'
  * import { GridComponent, TooltipComponent } from 'echarts/components'
  * import { CanvasRenderer } from 'echarts/renderers'

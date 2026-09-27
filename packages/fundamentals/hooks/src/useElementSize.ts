@@ -1,5 +1,5 @@
 import { onMount, onUnmount } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { effect, signal } from '@pyreon/reactivity'
 
 export interface Size {
   width: number
@@ -8,16 +8,19 @@ export interface Size {
 
 /**
  * Observe element dimensions reactively via ResizeObserver.
+ *
+ * The element getter is TRACKED from mount on, so an element that appears
+ * (or changes) after mount is measured — see `useIntersection`.
  */
 export function useElementSize(getEl: () => HTMLElement | null): () => Size {
   const size = signal<Size>({ width: 0, height: 0 })
-  let observer: ResizeObserver | undefined
+  const mounted = signal(false)
 
-  onMount(() => {
+  const watch = effect(() => {
+    if (!mounted()) return
     const el = getEl()
-    if (!el) return undefined
-
-    observer = new ResizeObserver(([entry]) => {
+    if (!el) return
+    const observer = new ResizeObserver(([entry]) => {
       if (!entry) return
       const { width, height } = entry.contentRect
       size.set({ width, height })
@@ -27,12 +30,14 @@ export function useElementSize(getEl: () => HTMLElement | null): () => Size {
     // Initial measurement
     const rect = el.getBoundingClientRect()
     size.set({ width: rect.width, height: rect.height })
-    return undefined
+    return () => observer.disconnect()
   })
 
-  onUnmount(() => {
-    observer?.disconnect()
+  onMount(() => {
+    mounted.set(true)
+    return undefined
   })
+  onUnmount(() => watch.dispose())
 
   return size
 }

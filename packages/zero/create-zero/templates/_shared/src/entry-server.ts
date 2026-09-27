@@ -1,5 +1,6 @@
 import { routes } from 'virtual:zero/routes'
 import { routeMiddleware } from 'virtual:zero/route-middleware'
+import { apiRoutes } from 'virtual:zero/api-routes'
 import { createServer } from '@pyreon/zero/server'
 import {
   cacheMiddleware,
@@ -10,6 +11,9 @@ import {
 export default createServer({
   routes,
   routeMiddleware,
+  // Without this, src/routes/api/* answered in dev and returned an empty
+  // HTML page in production.
+  apiRoutes,
   config: {
     ssr: { mode: '{{ssrMode}}' },
   },

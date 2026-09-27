@@ -20,15 +20,27 @@ import { warnMissingEnv } from './warn-missing-env'
  *
  * @example
  * ```ts
- * // zero.config.ts
- * import { defineConfig } from "@pyreon/zero/config"
+ * // vite.config.ts
+ * import zero, { vercelAdapter } from "@pyreon/zero/server"
  *
- * export default defineConfig({
- *   adapter: "vercel",
- * })
+ * export default {
+ *   plugins: [pyreon(), zero({ adapter: vercelAdapter({ runtime: "nodejs22.x" }) })],
+ * }
  * ```
  */
-export function vercelAdapter(): Adapter {
+export interface VercelAdapterOptions {
+  /**
+   * Node.js runtime for the SSR function. Default: `'nodejs22.x'`.
+   *
+   * Was hardcoded to `nodejs20.x`; Node 20 reached end of life in April 2026,
+   * and Vercel deprecates end-of-life runtimes. Set it explicitly to pin a
+   * version your dependencies support.
+   */
+  runtime?: `nodejs${number}.x`
+}
+
+export function vercelAdapter(adapterOptions: VercelAdapterOptions = {}): Adapter {
+  const runtime = adapterOptions.runtime ?? 'nodejs22.x'
   return {
     name: 'vercel',
     async build(options: AdapterBuildOptions) {
@@ -124,7 +136,7 @@ export default async function vercelHandler(req) {
         join(funcDir, '.vc-config.json'),
         JSON.stringify(
           {
-            runtime: 'nodejs20.x',
+            runtime,
             handler: 'index.js',
             launcherType: 'Nodejs',
           },

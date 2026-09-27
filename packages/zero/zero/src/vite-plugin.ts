@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
-import { isAbsolute, join } from 'node:path'
+import { isAbsolute, join, relative, sep } from 'node:path'
+import { transformServerActions } from './actions-transform'
 import { innerBuildFlagSet } from './build-flags'
 import { collectBuildStats, detectColorLevel, formatBuildSummary } from './build-summary'
 import { Readable } from 'node:stream'
@@ -58,6 +59,7 @@ import {
 	warnIsrAuthRisk,
 	generateRouteModuleFromRoutes,
 	resolveAutoModeSync,
+	routesDeclareLoadersSync,
 	scanRouteFiles,
 	scanRouteFilesWithExports,
 } from "./fs-router";
@@ -65,6 +67,7 @@ import { expandRoutesForLocales } from "./i18n-routing";
 import { writeRouteTypes } from "./route-types-gen";
 import { render404Page } from "./not-found";
 import { aiPlugin } from "./ai";
+import { pwaPlugin } from "./pwa";
 import { faviconPlugin } from "./favicon";
 import { fontPlugin } from "./font";
 import { fontImportPlugin } from "./font-import-plugin";
@@ -75,6 +78,8 @@ import { seoPlugin } from "./seo";
 import { ssgPlugin } from "./ssg-plugin";
 import { ssrPlugin } from "./ssr-plugin";
 import { themeScript } from "./theme";
+import { serializeServerConfig } from "./server-config";
+import { clientFlagsPlugin } from "./client-flags-plugin";
 import type { ZeroConfig } from "./types";
 
 import { withSilent } from "@pyreon/reactivity";
@@ -316,6 +321,19 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 			}
 		},
 
+		// Server actions: give every `defineAction()` a build-time id derived
+		// from its module path + binding, identical in the client and server
+		// bundles, and strip the handler from the client bundle. See
+		// `actions-transform.ts`.
+		transform(code, id, options) {
+			if (id.startsWith("\0") || !/\.[mc]?[jt]sx?(?:\?|$)/.test(id)) return null;
+			if (!code.includes("@pyreon/zero/actions")) return null;
+			const file = id.split("?")[0] as string;
+			const rel = relative(root, file).split(sep).join("/");
+			const out = transformServerActions(code, file, rel, options?.ssr === true);
+			return out === null ? null : { code: out, map: null };
+		},
+
 		async buildStart() {
 			// Typed routes (opt-in): generate src/pyreon-routes.d.ts once at
 			// build/dev start so `<Link href>` autocomplete is available.
@@ -359,9 +377,11 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 				if (html.includes(`src="${entry}"`)) return html;
 				if (html.includes(`src='${entry}'`)) return html;
 				const tag = `<script type="module" src="${entry}"></script>`;
+				// Replacer function: `entry` is user config and must not be
+				// read as a `$`-replacement pattern.
 				return html.replace(
 					'<!--pyreon-scripts-->',
-					`${tag}\n    <!--pyreon-scripts-->`,
+					() => `${tag}\n    <!--pyreon-scripts-->`,
 				);
 			},
 		},
@@ -738,6 +758,27 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 			// the SAME values so `publicEnv()` is hydration-consistent.
 			const publicEnvVars = loadPublicEnvVars(configEnv?.mode ?? 'production', cwd)
 
+			// Router loader flag (production builds only). `false` compiles the
+			// router's loader engine out of the bundle (~0.9–1 KB gz); `true` folds
+			// the router's own guard away. Defining it EITHER way is the point:
+			// left undefined, the guard stays as a runtime check. Dev never sets
+			// it, so adding a loader mid-session needs no restart. A value the
+			// user defined themselves always wins — it is the escape hatch for
+			// routes that live outside src/routes, which createApp checks for.
+			const userDefine = viteUserConfig.define ?? {}
+			const routerLoadersDefine: Record<string, string> =
+				configEnv?.command === "build" &&
+				!("globalThis.__PYREON_ROUTER_LOADERS__" in userDefine)
+					? {
+							"globalThis.__PYREON_ROUTER_LOADERS__": String(
+								routesDeclareLoadersSync(
+									`${isAbsolute(cwd) ? cwd : join(process.cwd(), cwd)}/src/routes`,
+									{ existsSync, readdirSync, readFileSync, statSync },
+								),
+							),
+						}
+					: {};
+
 			// Build-time gate: if the app declared `zero({ env })`, validate the
 			// PUBLIC env NOW — a missing/invalid declared var FAILS the build (warns
 			// in dev), catching "forgot to set ZERO_PUBLIC_X" before it ships to the
@@ -855,6 +896,13 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 					// Public env snapshot — inlined into client + SSR bundles so
 					// `publicEnv()` works in the browser. Only ZERO_PUBLIC_* vars.
 					__ZERO_PUBLIC_ENV__: JSON.stringify(publicEnvVars),
+					// The serializable part of this config, read by
+					// `createServer` in the production server bundle. The
+					// generated server entry cannot import vite.config.ts,
+					// so without it `mode: 'isr'`, `base`, `ssr.mode` and
+					// `routeRules` never reached the runtime.
+					__ZERO_SERVER_CONFIG__: JSON.stringify(serializeServerConfig(config).value),
+					...routerLoadersDefine,
 				},
 			};
 		},
@@ -877,7 +925,7 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 	// `configureServer` middleware). Each one internally no-ops when
 	// the mode doesn't match (defense-in-depth) but we omit them from
 	// the chain entirely for clarity — one less closeBundle to call.
-	const plugins: Plugin[] = [mainPlugin];
+	const plugins: Plugin[] = [mainPlugin, clientFlagsPlugin(userConfig, config.mode ?? "ssr")];
 	// Opt-in build perf advisor. Pushed BEFORE ssgPlugin so its closeBundle
 	// reads `dist/.vite/manifest.json` before the SSG plugin deletes it; in
 	// any mode where ssgPlugin joins the chain (ssg/ssr/isr) it defers
@@ -936,6 +984,7 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 	if (userConfig.seo) plugins.push(seoPlugin(userConfig.seo));
 	if (userConfig.og) plugins.push(ogImagePlugin(userConfig.og));
 	if (userConfig.ai) plugins.push(aiPlugin(userConfig.ai));
+	if (userConfig.pwa) plugins.push(pwaPlugin(userConfig.pwa, userConfig.mode, userConfig.base));
 
 	// Favicon: explicit config wins; `false` opts out entirely; OMITTED falls
 	// back to FILE-CONVENTION auto-detect (`src/favicon.svg` / `src/favicon.png`
@@ -984,6 +1033,10 @@ function buildSummaryPlugin(): Plugin {
 	let isServerBuild = false;
 	let startedAt = 0;
 	let resolvedOnce = false;
+	// The summary is info-level output: suppressed under `logLevel` warn /
+	// error / silent, like Vite's own build report.
+	// oxlint-disable-next-line no-console
+	let logInfo: (msg: string) => void = (msg) => console.log(msg);
 	return {
 		name: "pyreon-zero-build-summary",
 		apply: "build",
@@ -1000,6 +1053,7 @@ function buildSummaryPlugin(): Plugin {
 			outDir = cfg.build.outDir;
 			assetsDir = cfg.build.assetsDir;
 			isServerBuild = Boolean(cfg.build.ssr);
+			logInfo = (msg) => cfg.logger.info(msg);
 		},
 		buildStart() {
 			// First build only — inner sub-builds re-fire this on the reused
@@ -1019,10 +1073,7 @@ function buildSummaryPlugin(): Plugin {
 						color: detectColorLevel(),
 						elapsedMs: performance.now() - startedAt,
 					});
-					for (const line of lines) {
-						// oxlint-disable-next-line no-console
-						console.log(line);
-					}
+					for (const line of lines) logInfo(line);
 				} catch {
 					/* summary is informational only — never fail a finished build */
 				}
@@ -1340,10 +1391,15 @@ async function renderSsr(
 		server,
 		"@pyreon/server",
 	)) as unknown as typeof import("@pyreon/server");
+	// `@pyreon/zero/app` — just `createApp`. Loading `@pyreon/zero/server` here
+	// pulled the whole server package (vite plugins, SSG, ISR, fonts, OG
+	// images, zod, vite itself) into the dev SSR graph for one function:
+	// measured 141 modules against 68, plus a font-fallback warning in every
+	// dev session.
 	const appMod = (await ssrLoadModuleQuiet(
 		server,
-		"@pyreon/zero/server",
-	)) as unknown as typeof import("./server");
+		"@pyreon/zero/app",
+	)) as unknown as typeof import("./app");
 	const { App, router: routerInst } = appMod.createApp({
 		routes: routes as import("@pyreon/router").RouteRecord[],
 		routerMode: "history",
@@ -1377,11 +1433,29 @@ async function renderSsr(
 		return { kind: "redirect", to: result.to, status: result.status };
 	}
 
-	const html = template
-		.replace("<!--pyreon-head-->", result.head)
-		.replace("<!--pyreon-app-->", result.appHtml)
-		.replace("<!--pyreon-scripts-->", result.loaderScript);
+	// FUNCTION replacements — a string replacement interprets `$$` / `$&` /
+	// `$'` / `` $` `` inside the rendered page (see `fillDevTemplate`).
+	const html = fillDevTemplate(template, result);
 	return { kind: "html", html, status: result.status };
+}
+
+/**
+ * Fill the dev SSR template's three Pyreon placeholders with a rendered
+ * page. Uses replacer FUNCTIONS, never string replacements: with a string
+ * replacement `String.prototype.replace` interprets `$$`, `$&`, `` $` ``,
+ * `$'` and `$n` even for a literal search, so a page containing
+ * `cost $$5 and $' tail` rendered `$5` plus a copy of the template tail.
+ *
+ * @internal exported for tests
+ */
+export function fillDevTemplate(
+	template: string,
+	result: { head: string; appHtml: string; loaderScript: string },
+): string {
+	return template
+		.replace("<!--pyreon-head-->", () => result.head)
+		.replace("<!--pyreon-app-->", () => result.appHtml)
+		.replace("<!--pyreon-scripts-->", () => result.loaderScript);
 }
 
 /**

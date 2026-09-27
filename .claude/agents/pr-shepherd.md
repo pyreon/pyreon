@@ -33,6 +33,10 @@ and PR rules are in `AGENTS.md` ("Git") and `.agents/rules/workflow.md`.
   verify `pwd`.
 - Before rebasing an existing PR, confirm it is yours (`git worktree list`, the PR's
   `headRefOid`). Parallel sessions share this repo.
+- Once the PR has merged and its head equals the worktree's `HEAD`, remove the worktree
+  and its branch: `git worktree remove --force <dir> && git branch -D <branch>`. Skip
+  it while a process still runs inside it (`lsof -d cwd | grep <dir>`); another
+  session may be using it.
 
 ## Lockfile
 

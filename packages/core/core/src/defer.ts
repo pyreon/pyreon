@@ -2,7 +2,7 @@ import { effect, signal } from '@pyreon/reactivity'
 import { Fragment, h } from './h'
 import { onMount } from './lifecycle'
 import { createRef } from './ref'
-import type { ComponentFn, Props, VNode, VNodeChild, VNodeChildAccessor } from './types'
+import type { ComponentFn, VNode, VNodeChild, VNodeChildAccessor } from './types'
 
 // Dev-mode gate (bundler-agnostic, see pyreon/no-process-dev-gate).
 /**
@@ -10,7 +10,7 @@ import type { ComponentFn, Props, VNode, VNodeChild, VNodeChildAccessor } from '
  * contract — either an ES module with `default` export, OR a raw
  * `ComponentFn` returned directly (rare; covers re-export patterns).
  */
-type ChunkResult<P extends Props> = { default: ComponentFn<P> } | ComponentFn<P>
+type ChunkResult<P extends object> = { default: ComponentFn<P> } | ComponentFn<P>
 
 /**
  * Trigger discriminant. Exactly ONE shape is provided:
@@ -86,7 +86,7 @@ export function _setupVisibleTrigger(
   /* v8 ignore stop */
 }
 
-export type DeferProps<P extends Props> = DeferTrigger & {
+export type DeferProps<P extends object> = DeferTrigger & {
   /**
    * Dynamic import to lazy-load. The literal `import('./X')` is what
    * Rolldown / Vite see when emitting chunks — using a variable here
@@ -151,7 +151,7 @@ export type DeferProps<P extends Props> = DeferTrigger & {
  *   {Dashboard => <Dashboard />}
  * </Defer>
  */
-export function Defer<P extends Props>(props: DeferProps<P>): VNode {
+export function Defer<P extends object>(props: DeferProps<P>): VNode {
   const Loaded = signal<ComponentFn<P> | null>(null)
   const Failed = signal<Error | null>(null)
   // Module-scope flag prevents repeat fetches when the trigger condition

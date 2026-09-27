@@ -221,7 +221,7 @@ class FinanceInstrumentedTest {
         composeRule.onNodeWithTag("login-page").assertIsDisplayed()
     }
 
-    // The chart crossing: `<PieChart>` from @pyreon/charts/plot lowered to the
+    // The chart crossing: `<PieChart>` from @pyreon/charts lowered to the
     // runtime PyreonPieChart composable over the GENERATED engine — asserts the
     // chart NODE is on the dashboard on a real emulator (geometry is
     // execution-proven by the Swift engine tests + kotlinc typecheck; this is

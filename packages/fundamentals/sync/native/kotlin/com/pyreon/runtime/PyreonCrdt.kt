@@ -122,6 +122,10 @@ class PyreonCrdtDoc(val actor: String) {
         if (ops.isEmpty()) return
         val changedByMap = HashMap<String, MutableSet<String>>()
         for (op in ops) {
+            // Untrusted wire data: a negative clock is dropped, and so is
+            // Int.MAX_VALUE — adopting it would make the next local `clock++`
+            // wrap to a NEGATIVE stamp that every peer's register out-ranks.
+            if (op.clock < 0 || op.clock == Int.MAX_VALUE) continue
             if (op.clock > clock) clock = op.clock
             val local = maps[op.map]?.get(op.key)
             if (local != null && !remoteWins(local, op.clock, op.actor)) continue

@@ -32,6 +32,12 @@ describe('flow native parity fixture', () => {
     // undo ×2 restores the edge and the move; redo re-applies only the move.
     expect(history.edges.map((e) => e.id)).toEqual(['e1'])
     expect(history.nodes[0]).toEqual({ id: '1', x: 5, y: 5 })
+    // historyLimit: a limit of 2 (or 2.9, floored) leaves the first of three
+    // removals un-undoable; a non-positive limit means the default 50.
+    const ids = async (name: string) => (await expectationsOf(PARITY_SCENARIOS.find((s) => s.name === name)!)).nodes.map((n) => n.id)
+    expect(await ids('config: historyLimit 2 keeps only the last two undo checkpoints')).toEqual(['1', '3', '4'])
+    expect(await ids('config: a fractional historyLimit is floored')).toEqual(['1', '3', '4'])
+    expect(await ids('config: a non-positive historyLimit falls back to the default depth')).toEqual(['1', '2', '3', '4'])
   })
 
   it('both native fixtures carry the generated region byte-for-byte', async () => {

@@ -147,7 +147,7 @@ export const LOWERED_FLOW_CONFIG_PROPERTIES: ReadonlyMap<string, string> = new M
   ['disableKeyboardA11y', 'disableKeyboardA11y'], ['reducedMotion', 'reducedMotion'],
   ['nodesDeletable', 'nodesDeletable'], ['edgesDeletable', 'edgesDeletable'],
   ['isValidConnection', 'connectionValidator'], ['connectionRadius', 'connectionRadius'],
-  ['autoHistory', 'autoHistory'], ['multiSelect', 'multiSelect'], ['nodeExtent', 'nodeExtent'],
+  ['autoHistory', 'autoHistory'], ['historyLimit', 'historyLimit'], ['multiSelect', 'multiSelect'], ['nodeExtent', 'nodeExtent'],
   ['pannable', 'pannable'], ['zoomable', 'zoomable'], ['panOnDrag', 'panOnDrag'],
   ['panOnScroll', 'panOnScroll'], ['panOnScrollSpeed', 'panOnScrollSpeed'],
   ['zoomOnScroll', 'zoomOnScroll'], ['zoomOnPinch', 'zoomOnPinch'],
@@ -162,6 +162,41 @@ export const LOWERED_FLOW_CONFIG_PROPERTIES: ReadonlyMap<string, string> = new M
   ['fitViewPadding', 'fitViewPadding'], ['defaultMarkerEnd', 'defaultMarkerEnd'],
   ['onlyRenderVisibleElements', 'onlyRenderVisibleElements'],
 ])
+
+/**
+ * Public `FlowConfig` fields whose native property is a `Double` on both
+ * targets. A config WRITE of a whole number (`flow.config.historyLimit = 5`)
+ * is a Kotlin `Int` — "assignment type mismatch: actual type is 'Int', but
+ * 'Double' was expected" — so the emitters coerce the assigned value.
+ */
+export const DOUBLE_FLOW_CONFIG_PROPERTIES: ReadonlySet<string> = new Set([
+  'minZoom', 'maxZoom', 'snapGrid', 'connectionRadius', 'panOnScrollSpeed', 'autoPanSpeed',
+  'edgeInteractionWidth', 'fitViewPadding', 'historyLimit',
+])
+
+/**
+ * The labelled parameters of the Swift `PyreonFlowState.init`, IN DECLARATION
+ * ORDER. Swift rejects labelled arguments passed out of order ("argument 'x'
+ * must precede argument 'y'"), so the emitter sorts its construction arguments
+ * by this list rather than by the order its own code happens to push them —
+ * that order had drifted (`autoHistory` before `fitViewPadding`,
+ * `connectionRules` after `fitViewPadding`), so ordinary configs combining those
+ * keys did not compile. Kotlin passes named arguments, which may appear in any
+ * order. Locked against the real runtime AND the stub by
+ * `native-flow-state.test.ts`.
+ */
+export const SWIFT_FLOW_STATE_INIT_LABELS: readonly string[] = [
+  'nodes', 'edges', 'viewport', 'minZoom', 'maxZoom', 'snapToGrid', 'snapGrid', 'nodeExtent',
+  'connectionRules', 'defaultMarkerEnd', 'nodesDraggable', 'nodesConnectable', 'nodesSelectable',
+  'nodesFocusable', 'edgesFocusable', 'disableKeyboardA11y', 'nodesDeletable', 'edgesDeletable',
+  'edgesReconnectable', 'edgeInteractionWidth', 'connectionRadius', 'pannable', 'panOnDrag',
+  'panOnScroll', 'panOnScrollSpeed', 'zoomable', 'zoomOnScroll', 'zoomOnPinch', 'zoomOnDoubleClick',
+  'selectionOnDrag', 'selectionMode', 'connectionMode', 'elevateNodesOnSelect', 'elevateEdgesOnSelect',
+  'autoPanOnNodeDrag', 'autoPanOnConnect', 'autoPanSpeed', 'multiSelect', 'onlyRenderVisibleElements',
+  'snapToObjects', 'defaultEdgeType', 'connectionLineType', 'defaultEdgeOptions', 'fitView',
+  'fitViewPadding', 'autoHistory', 'historyLimit', 'isValidConnection', 'searchText', 'reducedMotion',
+  'deleteKeys', 'multiSelectionKey', 'selectionKey', 'zoomActivationKey', 'preventScrolling',
+]
 
 /** Methods `PyreonFlowState` implements on BOTH targets (v1 surface). */
 export const LOWERED_FLOW_METHODS: ReadonlySet<string> = new Set([

@@ -9,7 +9,7 @@ registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
 import type { TProvider } from './context/context'
 import Provider, { context } from './context/context'
-import type { Rocketstyle } from './init'
+import type { Rocketstyle, RocketstyleFactory, ThemeShape } from './init'
 import rocketstyle from './init'
 import type { IsRocketComponent } from './isRocketComponent'
 import isRocketComponent from './isRocketComponent'
@@ -33,7 +33,7 @@ import type {
   TDKP,
 } from './types/dimensions'
 import type { ComposeParam, GenericHoc } from './types/hoc'
-import type { IRocketStyleComponent, RocketStyleComponent } from './types/rocketstyle'
+import type { IRocketStyleComponent, RocketStyleComponent, ThemeObject } from './types/rocketstyle'
 import type { RocketStyleInterpolationProps, StylesCb, StylesDefault } from './types/styles'
 import type {
   ThemeCb,
@@ -71,6 +71,9 @@ export type {
   RocketStyleComponent,
   RocketStyleInterpolationProps,
   Rocketstyle,
+  RocketstyleFactory,
+  ThemeObject,
+  ThemeShape,
   StylesCb,
   StylesDefault,
   TDKP,

@@ -11,8 +11,8 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
 
 const CHORD = `import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
-import { ChordChart } from '@pyreon/charts/plot'
-import type { ChordLink, ChordNode } from '@pyreon/charts/plot'
+import { ChordChart } from '@pyreon/charts'
+import type { ChordLink, ChordNode } from '@pyreon/charts'
 export function Trade() {
   const nodes = signal<ChordNode[]>([{ name: 'EU' }, { name: 'US' }, { name: 'CN' }])
   const links = signal<ChordLink[]>([
@@ -55,7 +55,7 @@ describe('<ChordChart> lowers', () => {
 
   it('a missing links prop warns BY NAME rather than drawing an empty ring', () => {
     const r = transform(
-      `import { ChordChart } from '@pyreon/charts/plot'
+      `import { ChordChart } from '@pyreon/charts'
 export function C() { return <ChordChart animate={false} nodes={[]} /> }`,
       { target: 'swift' },
     )

@@ -28,6 +28,11 @@
       "import": "./lib/server.js",
       "types": "./lib/types/server.d.ts"
     },
+    "./app": {
+      "bun": "./src/app.ts",
+      "import": "./lib/app.js",
+      "types": "./lib/types/app.d.ts"
+    },
     "./client": {
       "bun": "./src/client.ts",
       "import": "./lib/client.js",
@@ -216,6 +221,7 @@
     "@pyreon/server": "workspace:^",
     "@pyreon/sized-map": "workspace:*",
     "@pyreon/vite-plugin": "workspace:^",
+    "oxc-parser": "^0.148.0",
     "vite": "^8.2.2"
   },
   "devDependencies": {

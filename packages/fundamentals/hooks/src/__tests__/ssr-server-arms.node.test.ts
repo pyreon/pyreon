@@ -49,7 +49,11 @@ describe('useFetch — SSR early return (!isClient)', () => {
     try {
       const r = useFetch<unknown>('/api/x')
       expect(calls).toEqual([])
-      expect(r.isPending()).toBe(false)
+      // PENDING on the server, because that is what the client's first
+      // render shows (it fires the request during setup). Reporting `false`
+      // here rendered the "loaded, empty" branch into the SSR HTML and the
+      // "loading" branch on the client — a guaranteed hydration mismatch.
+      expect(r.isPending()).toBe(true)
       expect(r.data()).toBeUndefined()
       // refetch is also a no-op on the server
       r.refetch()

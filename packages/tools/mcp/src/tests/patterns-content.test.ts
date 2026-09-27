@@ -26,10 +26,17 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = resolve(HERE, '../../../../../')
 
 // Must stay in sync with `PyreonDiagnosticCode` in
-// `packages/core/compiler/src/pyreon-intercept.ts`. Consistency with
-// that source is enforced by `detector-tag-consistency.test.ts` in
-// the compiler package — we hardcode it here to avoid a cross-package
-// runtime import that would complicate bundling.
+// `packages/core/compiler/src/pyreon-intercept.ts` — hardcoded here (a
+// third copy alongside the type itself and the compiler package's own
+// `detector-tag-consistency.test.ts::COMPILER_CODES`) to avoid a
+// cross-package runtime import that would complicate bundling. THIS
+// LIST IS NOT AUTO-CHECKED against the source type — nothing in either
+// package's test suite compares the two copies, so a new code added to
+// `pyreon-intercept.ts` silently leaves this Set stale until a pattern
+// happens to reference the new code in prose (drifted for
+// `accessor-uncalled-in-template`/`accessor-uncalled-in-condition`
+// until this comment was written). When you add a `PyreonDiagnosticCode`,
+// add it here too.
 const KNOWN_DETECTOR_CODES = new Set([
   'for-missing-by',
   'for-with-key',
@@ -47,6 +54,8 @@ const KNOWN_DETECTOR_CODES = new Set([
   'as-unknown-as-vnodechild',
   'island-never-with-registry-entry',
   'query-options-as-function',
+  'accessor-uncalled-in-template',
+  'accessor-uncalled-in-condition',
 ])
 
 describe('patterns content — structural shape', () => {

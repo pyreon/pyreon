@@ -925,6 +925,13 @@ class TasksAppInstrumentedTest {
         composeRule
             .onNodeWithTag("stats-bars")
             .assertContentDescriptionContains("Scores by subject", substring = true)
+        // Beyond the one-sentence description, each datum is its own TalkBack
+        // node (PyreonChartPoints) labelled with the web table's row, so a
+        // swipe walks the data and explore-by-touch finds the bar under the
+        // finger. Exact match: "art, Score 91" is the second subject's row.
+        composeRule
+            .onNodeWithContentDescription("art, Score 91", useUnmergedTree = true)
+            .assertExists()
         composeRule
             .onNodeWithTag("stats-bars")
             .assertContentDescriptionContains("3 categories", substring = true)
@@ -1131,9 +1138,26 @@ class TasksAppInstrumentedTest {
         for (tag in listOf(
             "gal-calendar", "gal-candlestick", "gal-gantt", "gal-graph", "gal-map",
             "gal-parallel", "gal-polar", "gal-river", "gal-sunburst", "gal-tree",
+            "gal-grammar-bars", "gal-grammar-pie",
         )) {
             composeRule.onNodeWithTag(tag).performScrollTo().assertIsDisplayed()
         }
+        // The stable `<Chart>` grammar on device. Its bars expose one TalkBack
+        // node per subject; a click at the centre of the "math" node lands on
+        // the first bar beneath it (the nodes take no pointer input), so the
+        // chart's `onSelect` reports 0 — which proves the node sits over its
+        // bar, the property explore-by-touch depends on.
+        composeRule.onNodeWithTag("gal-grammar-bars").performScrollTo()
+        composeRule
+            .onNodeWithContentDescription("math, Points 82", useUnmergedTree = true)
+            .assertExists()
+            .performClick()
+        waitForTagText("gal-grammar-pick", "0")
+        // The framework-wide colour mode: under <ColorModeProvider mode="dark"> a
+        // component's own useColorMode() reads "dark" whatever the device says
+        // (the emulator runs light), because the provider pins the
+        // configuration's night bit for its subtree.
+        composeRule.onNodeWithTag("gal-color-mode").performScrollTo().assertTextEquals("dark")
         // The map ROAMS: a horizontal drag pans it, so its pixels change.
         // Driven as a hand does, like the flow and dataZoom drags above: past the
         // touch slop first, then many small steps. One 400ms `swipe` intermittently

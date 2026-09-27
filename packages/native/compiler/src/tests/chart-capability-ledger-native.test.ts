@@ -14,7 +14,7 @@
  * score.
  */
 import { describe, expect, it } from 'vitest'
-import { CHART_CAPABILITIES } from '@pyreon/charts/plot'
+import { CHART_CAPABILITIES } from '@pyreon/charts/engine'
 import { ACCESSOR_CHART_HOSTS, CHART_CHROME_PROPS, CHART_HOSTS, FRAME_CHART_HOSTS, PLOT_UNLOWERED_PROPS, chartChromeUnlowered } from '../chart-hosts'
 
 /** Which ledger row each native-unlowered host prop belongs to. */

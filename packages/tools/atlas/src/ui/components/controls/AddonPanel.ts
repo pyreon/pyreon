@@ -1,4 +1,4 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const AddonPanel = el
   .attrs({
@@ -6,7 +6,7 @@ export const AddonPanel = el
     contentDirection: 'rows',
     contentAlignX: 'block',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     width: '352px',
     flex: 'none',
     minHeight: '0',

@@ -718,3 +718,23 @@ describe('conditional Kotlin imports — the useInterval / useTimeout lowering',
     )
   })
 })
+
+describe('conditional imports — a pinned colour mode', () => {
+  it('<ColorModeProvider mode> imports android.content.res.Configuration beside LocalConfiguration', () => {
+    const emitted = transform(
+      `import { Text } from '@pyreon/primitives'
+import { ColorModeProvider } from '@pyreon/core'
+export function App() { return <ColorModeProvider mode="dark"><Text>x</Text></ColorModeProvider> }`,
+      { target: 'kotlin' },
+    ).code
+    const imports = conditionalKotlinImports(emitted)
+    expect(imports).toContain('import android.content.res.Configuration')
+    expect(imports).toContain('import androidx.compose.ui.platform.LocalConfiguration')
+  })
+
+  it('an unpinned app imports neither', () => {
+    const emitted = transform(`import { Text } from '@pyreon/primitives'
+export function App() { return <Text>x</Text> }`, { target: 'kotlin' }).code
+    expect(conditionalKotlinImports(emitted)).not.toContain('android.content.res.Configuration')
+  })
+})

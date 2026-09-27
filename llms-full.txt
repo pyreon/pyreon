@@ -202,7 +202,7 @@ const Card = () => {
 
 ## @pyreon/primitives — Canonical Multiplatform Primitives
 
-The multiplatform UI vocabulary for Pyreon. ONE canonical name per concept (`<Stack>` not `<View>`/`<VStack>`/`<div>`; `onPress` everywhere, not `onClick` vs `action:`). Web renders real DOM via `@pyreon/runtime-dom`; on iOS/Android the PMTC compiler intercepts the JSX at build time and emits idiomatic SwiftUI / Compose (the import is a type-anchor on native). Tokens-first styling (`padding={4}`, `gap="md"`) resolves through the theme per target. No responsive props / animations in v1 — apps needing responsive web use `@pyreon/elements` directly. CRITICAL boundary for native: PMTC compiles your component SOURCE in a narrow declarative TS subset, NOT npm libraries — see `get_pattern({ name: "multiplatform" })` for the supported subset + the silent-failure cliff.
+The multiplatform UI vocabulary for Pyreon. ONE canonical name per concept (`<Stack>` not `<View>`/`<VStack>`/`<div>`; `onPress` everywhere, not `onClick` vs `action:`). Web renders real DOM via `@pyreon/runtime-dom`; on iOS/Android the PMTC compiler intercepts the JSX at build time and emits idiomatic SwiftUI / Compose (the import is a type-anchor on native). Tokens-first styling (`padding={4}`, `gap="md"`) resolves through the theme per target. No responsive props in v1 — apps needing responsive web use `@pyreon/elements` directly; animation is `<Transition>` / `<TransitionGroup>`. CRITICAL boundary for native: PMTC compiles your component SOURCE in a narrow declarative TS subset, NOT npm libraries — see `get_pattern({ name: "multiplatform" })` for the supported subset + the silent-failure cliff.
 
 ```typescript
 import { Stack, Inline, Text, Heading, Button, Field, Toggle } from '@pyreon/primitives'
@@ -1021,7 +1021,7 @@ const $sameResult = parseReactive(sameSchema, $email)
 
 > **Standard Schema is parse-only**: The protocol deliberately omits a metadata channel — that's the gap `withField` fills. The protocol also doesn't carry i18n keys — `formatErrors` adds that layer.
 >
-> **withField mutates in place**: ArkType's Type instances are callable functions whose `~standard.validate` does `this(input)` — `this` must be the callable schema itself. An Object.create() clone is not callable and breaks ArkType. Symbol-keyed non-enumerable mutation is invisible to JSON / for…in / Object.keys / library-internal comparators. Safe.
+> **Schemas are immutable (copy-on-write)**: Every chainable method (`.min()`, `.email()`, `.refine()`, `.field()`, …), every `/mini` action, `pipe()`, and `withField()` returns a NEW schema and never mutates its receiver — a shared base schema can be specialised freely without tightening its other users. Always use the RETURNED schema. Under a CSP without 'unsafe-eval', call `configure({ jit: false })` once at startup (the interpreter then runs every schema; results are identical).
 >
 > **Ships its own validator AND interops with others**: v1 ships Pyreon's own `s` validator runtime (chainable + function-comp, Standard Schema-native, opt-in by import). The DX helpers (`withField` / `parseReactive` / `formatErrors`) ALSO work on top of any other Standard Schema validator (Zod / Valibot / ArkType / typia) — backward-compatible. Use whichever; mix freely.
 >
@@ -1431,7 +1431,7 @@ const sub = useSubscription({
     }
   },
 })
-// sub.status() — 'connecting' | 'connected' | 'disconnected' | 'error'
+// sub.status() — 'connecting' | 'connected' | 'disconnected' | 'error' | 'failed'
 // sub.send(data), sub.close(), sub.reconnect()
 
 // 5. useSSE — same pattern as useSubscription but read-only (no send).
@@ -1632,7 +1632,7 @@ const Status = () => (
 Universal document rendering for Pyreon. One template, every output format: HTML, PDF, DOCX, XLSX, PPTX, email, Markdown, plain text, CSV, SVG, JSON, JSONL, Slack, Teams, Discord, Telegram, Notion, Confluence, WhatsApp, Google Chat. Heavy renderers are lazy-loaded — chunks (PDF ~3MB pdfmake + fonts, DOCX ~700KB, XLSX ~1.1MB, PPTX ~400KB) only load when invoked. The vendored architecture means one npm install covers every format; apps that never render to a heavy format never pay its chunk cost. Supports both JSX primitives and a fluent builder API.
 
 ```typescript
-import { Document, Page, Heading, Text, Table, Image, List, Code, Divider, render, createDocument, download } from '@pyreon/document'
+import { Document, Page, Heading, Text, Table, List, ListItem, Code, Divider, render, createDocument, download } from '@pyreon/document'
 
 // JSX primitives — compose a document tree
 const report = (
@@ -1650,7 +1650,10 @@ const report = (
       />
       <Divider />
       <Heading level={2}>Notes</Heading>
-      <List items={['Record quarter for APAC', 'EU impacted by currency exchange']} />
+      <List>
+        <ListItem>Record quarter for APAC</ListItem>
+        <ListItem>EU impacted by currency exchange</ListItem>
+      </List>
       <Code language="sql">SELECT region, SUM(revenue) FROM sales GROUP BY region</Code>
     </Page>
   </Document>
@@ -1667,8 +1670,8 @@ const slack = await render(report, 'slack')          // Slack Block Kit JSON
 const notion = await render(report, 'notion')        // Notion blocks
 const teams = await render(report, 'teams')          // Adaptive Card JSON
 
-// Browser download helper:
-download(pdf, 'report.pdf')
+// Browser download helper — pass the TREE; the extension picks the format:
+await download(report, 'report.pdf')
 
 // Builder API — alternative to JSX:
 const doc = createDocument({ title: 'Report' })
@@ -2083,75 +2086,55 @@ function Field() {
 }
 ```
 
-## @pyreon/charts — Two charting engines
+## @pyreon/charts — Charts on web, iOS and Android
 
-Two independent charting engines behind two subpaths. `@pyreon/charts/plot` is Pyreon's OWN: pure-TypeScript geometry over a flat draw list, marks as imported bindings so tree-shaking is structural, a canvas backend, and a PURE SVG backend that renders on a server. `@pyreon/charts` is the ECharts bridge: zero ECharts bytes in your bundle until a chart actually renders — chart types and components are auto-detected from your options and dynamically imported on demand. Signal-driven options reactively update the chart when tracked signals change. `useChart` is the low-level hook with full control; `<Chart />` is the declarative component with event binding. Both auto-resize via ResizeObserver and clean up on unmount.
+`<Chart>` takes your rows and marks as children — `<Bar y="revenue">`, `<Line>`, `<Area>`, `<Dot>`, `<Arc>` for a pie, `<Stage>` for a funnel. Channels are field names checked against the row — `<Chart<Row>>` checks its own, and a mark given the row type (`<Bar<Row> y="revenue">`) checks its own too; axes, palette, tooltip, an accessible data table and a spoken description come for free. The geometry is pure TypeScript over a flat draw list, which is what makes the same source render on canvas, as an SVG string on a server, and natively on iOS and Android (the draw list is generated into the Swift and Kotlin runtimes). Every mark and chart family is an imported binding, so a bundle carries only what it draws. Entries: `@pyreon/charts` (the stable surface), `/svg` (SSR and export), `/option` (`<OptionChart>`: an ECharts option object on this engine), `/echarts` (`<EChart>`, a wrapper around the real ECharts library, lazy-loaded) and `/engine` (every layout, hit test and draw-list builder; not covered by the stability promise).
 
 ```typescript
-import { Chart, useChart, type EChartsOption, type ComposeOption, type BarSeriesOption, type LineSeriesOption } from '@pyreon/charts'
+import { Arc, Axis, Bar, Chart, Legend, Line, Rule, Tooltip, currency } from '@pyreon/charts'
 import { signal } from '@pyreon/reactivity'
 
-const months = signal(['Jan', 'Feb', 'Mar', 'Apr'])
-const revenue = signal([100, 200, 150, 300])
+interface Row { month: string; revenue: number; target: number }
+const rows = signal<Row[]>([
+  { month: 'Jan', revenue: 120, target: 100 },
+  { month: 'Feb', revenue: 160, target: 140 },
+  { month: 'Mar', revenue: 150, target: 170 },
+])
 
-// Declarative component — simplest usage
-<Chart
-  options={() => ({
-    xAxis: { type: 'category', data: months() },
-    yAxis: { type: 'value' },
-    series: [{ type: 'bar', data: revenue() }],
-    tooltip: { trigger: 'axis' },
-  })}
-  style="height: 400px"
-  onClick={(params) => console.log('clicked:', params.name)}
-/>
+// Marks are children; channels are field names, typed against Row.
+<Chart data={rows} x="month" height={320}>
+  <Bar y="revenue" label="Revenue" />
+  <Line y="target" label="Target" />
+  <Rule y={130} label="Break-even" />
+  <Axis y format={currency('EUR')} />
+  <Tooltip />
+  <Legend position="bottom" />
+</Chart>
 
-// useChart hook — full control over instance lifecycle
-const MyChart = () => {
-  const chart = useChart(() => ({
-    xAxis: { type: 'category', data: months() },
-    yAxis: { type: 'value' },
-    series: [
-      { type: 'bar', data: revenue() },
-      { type: 'line', data: revenue().map((v) => v * 1.1) },
-    ],
-  }))
+// A family is a mark in the same grammar: this is a donut.
+<Chart data={rows} height={240}>
+  <Arc value="revenue" label="month" innerRadius={0.6} />
+</Chart>
 
-  return (
-    <div>
-      {chart.loading() ? 'Loading chart...' : null}
-      <div ref={chart.ref} style="height: 400px" />
-      <button onClick={() => chart.resize()}>Resize</button>
-    </div>
-  )
-}
-
-// Strict typed options — only bar + line allowed
-type MyOption = ComposeOption<BarSeriesOption | LineSeriesOption>
-const typedChart = useChart<MyOption>(() => ({
-  series: [{ type: 'bar', data: [1, 2, 3] }],  // only 'bar' | 'line' autocomplete
-}))
-
-// Manual entry for tree-shaking control:
-// import { useChart, Chart } from '@pyreon/charts/manual'
-// — you register ECharts components yourself
+// Writing the signal repaints the canvas in place.
+rows.set([...rows(), { month: 'Apr', revenue: 190, target: 180 }])
 ```
 
-> **Two engines, two subpaths**: The package ships TWO independent engines. `@pyreon/charts` bridges ECharts — mature, enormous chart-type coverage, browser-only. `@pyreon/charts/plot` is Pyreon's own: pure-TypeScript geometry over a flat draw list, tree-shakeable by construction, with a canvas backend and a pure SVG backend that runs on a server. Import from ONE of them; pulling a name from the default entry drags ECharts back into a bundle that had dropped it.
+> **Which entry**: `@pyreon/charts` is the stable surface: `<Chart>`, its marks, the family components, formatters, theme and linking. `/svg` renders charts to SVG strings with no DOM. `/option` draws an ECharts option object on this engine (`<OptionChart>`, `optionToSvg`). `/echarts` wraps the real ECharts library (`<EChart>`, `useChart`) and is the only entry that pulls ECharts in. `/engine` exports every layout, hit test and draw-list builder for building on the engine, and is not covered by the stability promise.
 >
-> **tslib Vite alias**: ECharts imports `tslib` whose ESM `./modules/index.js` entry destructures named helpers from a `__toESM(require_tslib())` default — the helpers live as top-level vars on the CJS factory, so the destructure reads `undefined` and the page throws `TypeError: Cannot destructure property "__extends"` the moment ECharts loads. Use `chartsViteAlias()` from `@pyreon/charts/vite` in your `vite.config.ts` (`resolve: { alias: { ...chartsViteAlias() } }`); it resolves `tslib` to the flat-ESM `tslib.es6.js` across install layouts. Browser tests use `tslibBrowserAlias()` from the shared test config. Tracking upstream: microsoft/tslib#189.
+> **<EChart>: tslib Vite alias**: ECharts imports `tslib` whose ESM `./modules/index.js` entry destructures named helpers from a `__toESM(require_tslib())` default — the helpers live as top-level vars on the CJS factory, so the destructure reads `undefined` and the page throws `TypeError: Cannot destructure property "__extends"` the moment ECharts loads. Use `chartsViteAlias()` from `@pyreon/charts/echarts/vite` in your `vite.config.ts` (`resolve: { alias: { ...chartsViteAlias() } }`); it resolves `tslib` to the flat-ESM `tslib.es6.js` across install layouts. Browser tests use `tslibBrowserAlias()` from the shared test config. Tracking upstream: microsoft/tslib#189.
 >
-> **Note**: Options must be a FUNCTION `() => EChartsOption`, not a plain object. Signal reads inside the function are tracked — changing any tracked signal reactively updates the chart.
+> **Note**: `<EChart>` / `useChart` options must be a FUNCTION `() => EChartsOption`, not a plain object. Signal reads inside the function are tracked — changing any tracked signal reactively updates the chart.
 >
-> **Lazy loading**: ECharts modules are auto-detected from your options (series types, components) and dynamically imported. First render has an async loading phase — check `loading()` or `<Chart>` handles it internally. Zero ECharts bytes in your initial bundle.
+> **<EChart>: lazy loading**: ECharts modules are auto-detected from your options (series types, components) and dynamically imported. First render has an async loading phase — check `loading()`, or `<EChart>` handles it internally. Zero ECharts bytes in your initial bundle.
 >
-> **Manual entry**: `@pyreon/charts/manual` skips auto-detection — you register ECharts components yourself via `use()` for maximum tree-shaking control.
+> **<EChart>: manual entry**: `@pyreon/charts/echarts/manual` skips auto-detection — you register ECharts components yourself via `use()` for maximum tree-shaking control.
 >
-> **Events**: `onEvents` is the general handler map — any ECharts event by name (`legendselectchanged`, `datazoom`, `brushselected`, `finished`, …); each handler gets `(params, instance)`. `onClick`/`onMouseover`/`onMouseout` are shorthands merged in (they WIN on a key collision). Binding is leak-safe: a changed handler swaps the listener (no pile-up) and all are removed on unmount.
+> **<EChart>: events**: `onEvents` is the general handler map — any ECharts event by name (`legendselectchanged`, `datazoom`, `brushselected`, `finished`, …); each handler gets `(params, instance)`. `onClick`/`onMouseover`/`onMouseout` are shorthands merged in (they WIN on a key collision). Binding is leak-safe: a changed handler swaps the listener (no pile-up) and all are removed on unmount.
 >
-> **A non-finite value is a GAP, everywhere**: In `@pyreon/charts/plot`, NaN AND Infinity are gaps: they are dropped from every domain (`extent`, the auto axis, the parallel/calendar/boxplot/histogram domains), draw as nothing (a zero-height bar at the zero line, a break in a line, an absent parallel segment), are absent from the tooltip and the accessible table, and are silence in `sonifyValues`. `makeTicks` returns ZERO ticks for a non-finite BOUND rather than a thousand NaN labels. `isFiniteNumber` is the engine's predicate and is exported — it is written in the native subset (`v === v && v - v === 0`) because `Number.isFinite` has no lowering inside the crossing engine, and it is what a custom mark or family should use so its gaps match the built-ins'.
+> **A non-finite value is a GAP, everywhere**: In `@pyreon/charts`, NaN AND Infinity are gaps: they are dropped from every domain (`extent`, the auto axis, the parallel/calendar/boxplot/histogram domains), draw as nothing (a zero-height bar at the zero line, a break in a line, an absent parallel segment), are absent from the tooltip and the accessible table, and are silence in `sonifyValues`. `makeTicks` returns ZERO ticks for a non-finite BOUND rather than a thousand NaN labels. `isFiniteNumber` is the engine's predicate and is exported — it is written in the native subset (`v === v && v - v === 0`) because `Number.isFinite` has no lowering inside the crossing engine, and it is what a custom mark or family should use so its gaps match the built-ins'.
 >
-> **Theme is not reactive**: Reactive theme: pass `theme` as an ACCESSOR (`() => (dark() ? 'dark' : null)`) — a flip disposes + re-inits with the current option/group/events preserved (ECharts has no in-place swap; dispose+re-init is the mechanism, as in vue-echarts). A plain value stays static. For map charts, `await getCore()` then `core.registerMap(...)` BEFORE rendering a `map` series.
+> **<EChart>: theme is not reactive**: Reactive theme: pass `theme` as an ACCESSOR (`() => (dark() ? 'dark' : null)`) — a flip disposes + re-inits with the current option/group/events preserved (ECharts has no in-place swap; dispose+re-init is the mechanism, as in vue-echarts). A plain value stays static. For map charts, `await getCore()` then `core.registerMap(...)` BEFORE rendering a `map` series.
 
 ## @pyreon/code — Code Editor
 
@@ -2728,6 +2711,8 @@ const InvertedSection = () => (
 > **Provider replacement**: The legacy split (separate theme / mode / config providers) is removed. `PyreonUI` is the only correct mount; calling `init()` directly is the escape hatch for SSR or test environments where the provider tree is unavailable.
 >
 > **System-mode subscription**: `mode="system"` lazily creates a `matchMedia('(prefers-color-scheme: dark)')` subscription on first read; the listener stays alive for the document lifetime, so a single subscription handles every `useMode()` consumer.
+>
+> **Deprecated internal Provider / context**: The package also exports a low-level `Provider` (default export) + `context` from `context.tsx` — an internal, `@deprecated`-tagged reactive-context provider `<PyreonUI>` no longer uses directly. It dev-warns on every mount. There is no reason to import it: use `<PyreonUI theme={theme}>` for the provider and `useMode()` / `useThemeValue()` for reads.
 
 ## @pyreon/styler — CSS-in-JS
 
@@ -2905,6 +2890,10 @@ const width = `calc(${vars.spacing.small} * ${vars.ratio.medium})` // proportion
 > **Single source for responsive semantics**: Every visual package (`elements`, `rocketstyle`, `coolgrid`, `kinetic`) reads breakpoints / spacing / unit conventions from this package. Override defaults via `enrichTheme()` once at the app root rather than per-component.
 >
 > **CSS property naming**: Unistyle uses property-first naming (`borderWidthTop`, `borderColorLeft`) rather than CSS-spec order (`borderTopWidth`, `borderLeftColor`). Stick to the unistyle convention when authoring components — the responsive transformer expects it.
+>
+> **Deprecated internal Provider / context**: The package exports a low-level `Provider` (default export) + `context` (re-exported from `@pyreon/ui-core`) that `<PyreonUI>` no longer calls directly — it is `@deprecated`-tagged and dev-warns on mount. There is no reason to import it: use `<PyreonUI theme={theme}>` instead.
+>
+> **Responsive-pipeline internals (normalizeTheme / sortBreakpoints / transformTheme)**: These three are re-exported for advanced consumers but are the internal steps `makeItResponsive()` already runs for you: `sortBreakpoints` orders breakpoint keys by their min-width, `normalizeTheme` expands a mobile-first array/breakpoint-object value into a per-breakpoint map (carrying forward the "null slot inherits the previous breakpoint" rule), `transformTheme` maps a normalized per-breakpoint theme through a `styles`-shaped callback. Reach for `makeItResponsive()` first; use these directly only when building a custom responsive pipeline outside the styled-component path.
 
 ## @pyreon/elements — Base Primitives
 
@@ -3008,10 +2997,10 @@ export default defineConfig({
 
 ## @pyreon/lathe — Spec-to-Client Generator
 
-Lathe reads an OpenAPI 3.x document and emits a client for the Pyreon stack: `@pyreon/validate` schemas, `@pyreon/http` endpoint declarations, `@pyreon/query` hooks, deterministic mock fixtures, and `@pyreon/atlas` scenarios derived from the spec's own enums and examples. The spec parser is first-party — a YAML reader scoped to the OpenAPI subset that REFUSES anchors, tags and tab indentation rather than mis-reading them — so there is no third-party spec dependency to trust. What separates it from a conventional generator is `target: 'multiplatform'`: the native compiler (PMTC) lowers only a SUBSET of TypeScript and has no module graph, so it recognises a client, a schema and a call only when they share ONE file's top level. Hand-written code drifts out of that constantly; generated code need not, so Lathe emits a self-contained module per tag — a layout no human would maintain and exactly the one the compiler wants — then runs the real compiler over its own output and checks for the POSITIVE marker (`PyreonQuery<`, `PyreonZodSchema_`), because zero warnings is not evidence of lowering.
+Lathe reads an OpenAPI 3.x document and emits a client for the Pyreon stack: `@pyreon/validate` schemas, `@pyreon/http` endpoint declarations, `@pyreon/query` hooks, deterministic mock fixtures, and `@pyreon/atlas` scenarios derived from the spec's own enums and examples. YAML is read as YAML 1.2 core through the `yaml` package, configured strictly: anchors and merge keys resolve, while duplicate keys, multi-document streams, custom tags and non-JSON values are REFUSED with a line number rather than producing a document the author did not write. What separates it from a conventional generator is `target: 'multiplatform'`: the native compiler (PMTC) lowers only a SUBSET of TypeScript and has no module graph, so it recognises a client, a schema and a call only when they share ONE file's top level. Hand-written code drifts out of that constantly; generated code need not, so Lathe emits a self-contained module per tag — a layout no human would maintain and exactly the one the compiler wants — then runs the real compiler over its own output and checks for the POSITIVE marker (`PyreonQuery<`, `PyreonZodSchema_`), because zero warnings is not evidence of lowering.
 
 ```typescript
-$ pyreon lathe generate ./openapi.yaml --target multiplatform
+$ npx lathe generate ./openapi.yaml --target multiplatform
 
 lathe / Bookshelf 1.2.0
   4 models  4 operations  target=multiplatform

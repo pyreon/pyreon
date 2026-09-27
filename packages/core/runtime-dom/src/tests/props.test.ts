@@ -365,10 +365,12 @@ describe('applyProp — innerHTML', () => {
     const el = document.createElement('div')
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     // Indirect: trigger by routing a function through `applyProp` for a
-    // key that DOESN'T have a special case — exercises the reactive path,
-    // which calls the accessor + passes the result. The accessor itself
-    // returning a function would surface the warning.
-    applyProp(el, 'innerHTML', () => () => '<em>nested</em>')
+    // key that DOESN'T have a special case — exercises the reactive path.
+    // `applyProp` resolves an accessor AND an accessor-returning-accessor (the
+    // compiler's inlined function-valued const — see
+    // nested-accessor-prop.test.tsx), so a THIRD level is what reaches
+    // `applyStaticProp` as a function now.
+    applyProp(el, 'innerHTML', () => () => () => '<em>nested</em>')
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('applyStaticProp received a function for "innerHTML"'),
     )

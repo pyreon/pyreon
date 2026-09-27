@@ -282,8 +282,14 @@ describe('nodes.ts — normalizeChildren edges via primitives', () => {
     expect(Text({ children: 42 as unknown as string }).children).toEqual(['42'])
   })
 
-  it('Text with boolean true → fallback String() arm', () => {
-    expect(Text({ children: true as unknown as string }).children).toEqual(['true'])
+  // `true` used to reach the String() fallback and render the text "true";
+  // JSX semantics say a boolean child renders nothing.
+  it('Text with boolean true → renders nothing (JSX semantics)', () => {
+    expect(Text({ children: true as unknown as string }).children).toEqual([])
+  })
+
+  it('Text with bigint → fallback String() arm', () => {
+    expect(Text({ children: 10n as unknown as string }).children).toEqual(['10'])
   })
 
   it('Text with plain object → throws', () => {

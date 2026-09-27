@@ -100,6 +100,12 @@ This:
 
 When `priority` is set but neither `srcset` nor `formats[]` is present (a fixed-size bare URL), the preload is **omitted** — `fetchpriority="high"` on the `<img>` alone is enough, and a bare-href preload would double-fetch.
 
+### Build output
+
+A production build writes each variant as `assets/img/<name>-<hash>-<width>.<format>`. The hash comes from the image's content and the encode settings, so a changed image gets a new URL: these files are served with year-long `immutable` caching, and an unhashed name would keep the old image in browsers' caches. It also means two `hero.png` files in different folders no longer overwrite each other.
+
+Variants of one image encode concurrently, and each encoded variant is cached in `node_modules/.cache/pyreon-zero-images/`, keyed by the source bytes, width, format, quality and libvips version. An unchanged image is read from that cache on the next build instead of being re-encoded. Delete the directory to force a full re-encode. Requested widths larger than the source are clamped to the source width, and widths that clamp to the same value produce one file.
+
 ## `createImageRegistry` — typed asset registries
 
 For icon sets / logo libraries / partner images where you want to reference assets by name:

@@ -147,7 +147,7 @@ describe('<PlotChart> — bubble / band / bollinger / error-bar / zoom declines'
     sw(
       `import { signal } from '@pyreon/reactivity'
 import { Stack } from '@pyreon/primitives'
-import { PlotChart, bars, line, points, band, bubble, bollinger, sma } from '@pyreon/charts/plot'
+import { PlotChart, bars, line, points, band, bubble, bollinger, sma } from '@pyreon/charts/engine'
 export function C() {
   const rows = signal<{ y: number; lo: number; hi: number }[]>([])
   return (<Stack><PlotChart data={rows()} marks={${marks}} ${extra} /></Stack>)
@@ -262,7 +262,7 @@ describe('accessor-prop hosts — <FunnelChart>', () => {
     sw(
       `import { signal } from '@pyreon/reactivity'
 import { Stack } from '@pyreon/primitives'
-import { FunnelChart } from '@pyreon/charts/plot'
+import { FunnelChart } from '@pyreon/charts/engine'
 export function C() {
   const rows = signal<{ v: number; n: string }[]>([])
   return (<Stack><FunnelChart ${attrs} /></Stack>)

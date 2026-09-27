@@ -39,10 +39,12 @@
 //     than stringified into something the native side could never produce.
 //   - No automatic reconnect or backoff. The native half has none either;
 //     adding it on one target only would make the targets disagree.
-//   - `messages` grows without bound, like `[String]` natively. A long-lived
-//     feed should read `lastMessage` and keep its own bounded history.
+//   - `messages` grows without bound by default, like `[String]` natively.
+//     A long-lived feed should pass `maxMessages` (web) or read `lastMessage`
+//     and keep its own bounded history.
 
-import { batch, isServer, onCleanup, signal } from '@pyreon/reactivity'
+import { batch, isServer, signal } from '@pyreon/reactivity'
+import { onHookCleanup } from './lifecycle'
 
 /** Live socket handle. Mirrors the native `PyreonWebSocket` container. */
 export interface UseWebSocketResult {
@@ -70,6 +72,13 @@ export interface UseWebSocketOptions {
    * make the identical source behave differently per target.
    */
   readonly autoConnect?: boolean
+  /**
+   * Keep only the newest N frames in `messages` (web). Default unbounded, to
+   * match the native `[String]`. Every frame copies the history into a new
+   * array, so an unbounded feed costs O(n) per message — O(n²) overall — and
+   * holds every frame ever received.
+   */
+  readonly maxMessages?: number
 }
 
 export function useWebSocket(
@@ -123,7 +132,9 @@ export function useWebSocket(
       const text = event.data
       batch(() => {
         lastMessage.set(text)
-        messages.set([...messages.peek(), text])
+        const next = [...messages.peek(), text]
+        const max = options.maxMessages
+        messages.set(max !== undefined && next.length > max ? next.slice(next.length - max) : next)
       })
     }
     ws.onerror = () => {
@@ -180,7 +191,7 @@ export function useWebSocket(
   if (options.autoConnect !== false) connect()
   // Sockets are the textbook leak: without this, a closed component keeps a
   // live connection and its handlers keep writing to signals nothing reads.
-  onCleanup(close)
+  onHookCleanup(close)
 
   return {
     get lastMessage() {

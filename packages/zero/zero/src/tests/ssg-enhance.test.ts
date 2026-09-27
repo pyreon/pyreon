@@ -115,7 +115,7 @@ describe('ISR — revalidateTag', () => {
     const handler = createISRHandler(
       async () => {
         renders++
-        return new Response('ok', { status: 200 })
+        return new Response('ok', { status: 200, headers: { 'content-type': 'text/html' } })
       },
       {
         revalidate: 3600,

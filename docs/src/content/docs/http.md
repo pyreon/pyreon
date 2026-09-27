@@ -18,7 +18,13 @@ pyreon add @pyreon/http
 ## Quick start
 
 ```ts
+// @check
 import { createHttp } from '@pyreon/http'
+
+interface User {
+  id: string
+  name: string
+}
 
 export const api = createHttp({ baseUrl: '/api' })
 
@@ -33,6 +39,31 @@ const user = await api.get('/users/1').json() // decoded body
 ```
 
 `.text()`, `.blob()`, `.arrayBuffer()`, `.formData()` and `.void()` work the same way. The request fires eagerly, so `.json()` never re-issues it.
+
+## Request bodies
+
+One option per encoding; they are mutually exclusive, and passing two throws.
+
+```ts
+api.post('/users', { json: { name: 'Ada' } })               // application/json
+api.post('/v1/customers', {                                  // x-www-form-urlencoded
+  form: { email: 'a@b.c', metadata: { plan: 'pro' } },
+  formEncoding: { metadata: { style: 'deepObject', explode: true } },
+})                                                           // email=a%40b.c&metadata%5Bplan%5D=pro
+api.post('/files', { multipart: { file, purpose: 'x' } })   // FormData; Blob/File = file part
+api.post('/raw', { body: bytes, headers: { 'content-type': 'application/octet-stream' } })
+```
+
+`form` follows OpenAPI's Encoding Object per field: the default `form` + `explode` repeats an array's key, `deepObject` writes brackets (`items[0][price]=…`, what Stripe declares), `spaceDelimited` / `pipeDelimited` join arrays. `null` / `undefined` fields are dropped, never sent as text. `encodeForm`, `encodeMultipart` and `encodeCookies` are exported for transports that need the same bytes.
+
+A header record may carry numbers, booleans and `undefined` — an `undefined` header is omitted rather than sent as `"undefined"`. `cookies: { session }` writes a `Cookie` header; a browser drops that header silently (it is forbidden from script), so there use `credentials: 'include'`. On an endpoint, declared `headers` and per-call `headers` MERGE, and `formEncoding` is declared once:
+
+```ts
+const createCustomer = api.endpoint('POST /v1/customers', {
+  formEncoding: { metadata: { style: 'deepObject', explode: true } },
+})
+await createCustomer({ form: { metadata: { plan: 'pro' } }, headers: { 'idempotency-key': key } })
+```
 
 ## Everything is optional
 
@@ -100,6 +131,10 @@ useMutation(createUser.mutation({ invalidates: [listUsers] }))
 ```
 
 `params` is **required by the type system exactly when the path declares `:placeholders`**, and its keys come from the path literal — so `{ params: { userId } }` against `/users/:id` is a compile error.
+
+<Example file="./examples/http/mocked-crud-endpoints" title="Endpoints — mocked GET + POST, schema-validated" />
+
+The live example above uses `@pyreon/http/mock` (see "Testing" below) so the page never makes a real network call — the endpoint declaration, the schema validation, and the `<For>`-rendered list are all real.
 
 `invalidates` takes **endpoints**, not stringly-typed keys.
 

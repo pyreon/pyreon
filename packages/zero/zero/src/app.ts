@@ -43,12 +43,38 @@ export interface CreateAppOptions {
   links?: LinkConfig
 }
 
+/** Does this record (or a descendant) declare loader data? */
+function declaresLoader(r: RouteRecord): boolean {
+  return (
+    !!r.loader ||
+    !!r.serverLoader ||
+    !!r.hasServerLoader ||
+    (!!r.children && r.children.some(declaresLoader))
+  )
+}
+
 /**
  * Create a full Zero app — assembles router, head provider, and root layout.
  *
  * Used internally by entry-server and entry-client.
  */
 export function createApp(options: CreateAppOptions) {
+  // zero's production build defines `globalThis.__PYREON_ROUTER_LOADERS__`
+  // from its scan of src/routes, and `false` compiles the router's loader
+  // engine out. A route defined OUTSIDE that scan (passed to startClient by
+  // hand) is invisible to it, so check the real table and fail at startup
+  // rather than render pages whose loader data is silently missing. With the
+  // define set, this folds away entirely in builds that kept loaders.
+  if (
+    (globalThis as { __PYREON_ROUTER_LOADERS__?: boolean }).__PYREON_ROUTER_LOADERS__ === false &&
+    options.routes.some(declaresLoader)
+  ) {
+    throw new Error(
+      '[Pyreon] A route declares a loader, but this build compiled route loaders out: ' +
+        "zero's scan of src/routes found none, and a route defined elsewhere is not visible to it. " +
+        "Add `define: { 'globalThis.__PYREON_ROUTER_LOADERS__': 'true' }` to your Vite config.",
+    )
+  }
   const router = createRouter({
     routes: options.routes,
     mode: options.routerMode ?? 'history',

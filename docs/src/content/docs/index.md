@@ -117,7 +117,7 @@ Specialized packages for rich application features.
 | Package                            | Description                                                     |
 | ---------------------------------- | --------------------------------------------------------------- |
 | [@pyreon/document](/docs/document) | Universal document rendering — one template, 14+ output formats |
-| [@pyreon/charts](/docs/charts)     | Lazy-loaded ECharts bridge, plus [its own plot engine](/docs/charts-plot) |
+| [@pyreon/charts](/docs/charts)     | Charts on web, iOS and Android, plus a [lazy ECharts wrapper](/docs/charts-echarts) |
 | [@pyreon/code](/docs/code)         | Reactive CodeMirror 6 code editor with signals                  |
 | [@pyreon/flow](/docs/flow)         | Reactive flow diagrams with signal-native nodes and auto-layout |
 | [@pyreon/feature](/docs/feature)   | Schema-driven CRUD primitives with auto-generated hooks         |

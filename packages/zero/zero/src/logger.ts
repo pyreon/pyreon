@@ -113,7 +113,7 @@ export function loggerMiddleware(config?: LoggerConfig): Middleware {
 
   return (ctx: MiddlewareContext) => {
     // Skip internal paths
-    if (skip.some((p) => ctx.path.startsWith(p))) return
+    if (skip.some((p) => ctx.url.pathname.startsWith(p))) return
 
     const start = performance.now()
 

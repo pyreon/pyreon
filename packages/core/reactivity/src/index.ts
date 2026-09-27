@@ -67,6 +67,9 @@ export type {
 export { clearReactiveTrace, getReactiveTrace } from './reactive-trace'
 export {
   _bind,
+  _enterCleanupFrame,
+  _exitCleanupFrame,
+  type CleanupFrameToken,
   type Effect,
   effect,
   onCleanup,

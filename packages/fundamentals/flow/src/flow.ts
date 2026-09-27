@@ -172,6 +172,7 @@ export function createFlow<TData = Record<string, unknown>>(
     sweepCache(nodeByIdCache, m)
     sweepCache(absPosCache, m)
     sweepCache(nodeSelectedCache, m)
+    sweepCache(measurementCache, m)
     return m
   })
   const edgeMap = computed(() => {
@@ -211,6 +212,7 @@ export function createFlow<TData = Record<string, unknown>>(
   const edgeGeometryCache = new Map<string, Computed<EdgeGeometry | null>>()
   const nodeSelectedCache = new Map<string, Computed<boolean>>()
   const edgeSelectedCache = new Map<string, Computed<boolean>>()
+  const measurementCache = new Map<string, Computed<NodeMeasurement | undefined>>()
 
   // Create a cache-owned computed DETACHED from the current EffectScope.
   // `computed()` registers its dispose on `getCurrentScope()` — correct for
@@ -342,6 +344,23 @@ export function createFlow<TData = Record<string, unknown>>(
     return c
   }
 
+  // Per-id measurement gate — the measurement twin of `_nodeById`. The
+  // `measurements` Map is mutated in place and `trigger()`ed, so a bare
+  // `measurements()` read in an edge's geometry re-derived EVERY edge whenever
+  // ANY node was measured (a 1,000-node first paint ran E full geometry passes
+  // per ResizeObserver delivery). `_setNodeMeasurement` stores a FRESH object
+  // per changed id and leaves every other entry's identity alone, so an
+  // `Object.is` gate re-notifies only the edges touching the measured node.
+  // Same detached creation + nodeMap sweep + dispose lifecycle as above.
+  const _measurementById = (id: string): Computed<NodeMeasurement | undefined> => {
+    let c = measurementCache.get(id)
+    if (!c) {
+      c = detachedComputed(() => computed(() => measurements().get(id), { equals: Object.is }))
+      measurementCache.set(id, c)
+    }
+    return c
+  }
+
   // Per-edge memoized geometry — ONE `computeEdgeGeometry` per change, shared
   // by every consuming thunk (path `d`, both markers, label, or a custom
   // edge's 6 accessor props; previously each consumer re-derived the whole
@@ -366,10 +385,14 @@ export function createFlow<TData = Record<string, unknown>>(
           const t = targetNode.parentId
             ? { ...targetNode, position: _absPositionById(targetNode.id)() }
             : targetNode
-          // Read `measurements()` reactively so the edge re-derives its path
-          // the moment a node's real rendered size lands (first-frame snap
-          // from the 150×40 fallback to the measured box → the edge connects).
-          return computeEdgeGeometry(e, s, t, measurements())
+          // Read the two ENDPOINT measurements reactively (through the per-id
+          // gate) so the edge re-derives its path the moment one of ITS nodes'
+          // real rendered size lands — and only then.
+          const sm = _measurementById(e.source)()
+          const tm = _measurementById(e.target)()
+          return computeEdgeGeometry(e, s, t, {
+            get: (nid) => (nid === e.source ? sm : nid === e.target ? tm : undefined),
+          })
         }),
       )
       edgeGeometryCache.set(id, c)
@@ -556,8 +579,39 @@ export function createFlow<TData = Record<string, unknown>>(
     })
   }
 
+  /**
+   * `ids` plus every sub-flow DESCENDANT (transitively, via `parentId`). A
+   * child holds a position RELATIVE to its parent, so removing the parent
+   * and keeping the child left an orphan pinned to the canvas origin with a
+   * dangling `parentId` — React Flow deletes the subtree, and so do we. The
+   * seen-set makes a (malformed) parent cycle terminate.
+   */
+  function withDescendants(ids: Iterable<string>): Set<string> {
+    const out = new Set(ids)
+    const list = nodes.peek()
+    if (out.size === 0 || !list.some((x) => x.parentId)) return out
+    const children = new Map<string, string[]>()
+    for (const x of list) {
+      if (!x.parentId) continue
+      const arr = children.get(x.parentId)
+      if (arr) arr.push(x.id)
+      else children.set(x.parentId, [x.id])
+    }
+    const queue = [...out]
+    while (queue.length > 0) {
+      const kids = children.get(queue.pop()!)
+      if (!kids) continue
+      for (const k of kids) {
+        if (out.has(k)) continue
+        out.add(k)
+        queue.push(k)
+      }
+    }
+    return out
+  }
+
   function removeNodes(ids: Iterable<string>): void {
-    const gone = new Set(ids)
+    const gone = withDescendants(ids)
     if (gone.size === 0) return
     const removedNodes = nodes.peek().filter((n) => gone.has(n.id))
     if (removedNodes.length === 0) return
@@ -580,7 +634,15 @@ export function createFlow<TData = Record<string, unknown>>(
   }
 
   function updateNode(id: string, update: Partial<FlowNode<TData>>): void {
-    nodes.update((nds) => nds.map((n) => (n.id === id ? { ...n, ...update } : n)))
+    // Patch the ONE index instead of `map`-ing every node through a closure,
+    // and write nothing for an unknown id (the map form still produced a fresh
+    // array, re-notifying every nodes() subscriber for a no-op).
+    const nds = nodes.peek()
+    const i = nds.findIndex((n) => n.id === id)
+    if (i === -1) return
+    const next = nds.slice()
+    next[i] = { ...nds[i]!, ...update }
+    nodes.set(next)
   }
 
   function updateNodeData(
@@ -618,7 +680,9 @@ export function createFlow<TData = Record<string, unknown>>(
   // ── Edge operations ──────────────────────────────────────────────────────
 
   function getEdge(id: string): FlowEdge | undefined {
-    return edges.peek().find((e) => e.id === id)
+    // O(1) through the id map (was an O(E) `find` on every reconnect /
+    // pointerup / keyboard path).
+    return untrack(() => edgeMap()).get(id)
   }
 
   function addEdge(edge: FlowEdge): void {
@@ -644,16 +708,11 @@ export function createFlow<TData = Record<string, unknown>>(
 
     checkpoint()
     edges.update((eds) => [...eds, newEdge])
+    // `onConnect` is NOT fired here: it is the USER-gesture event (a handle
+    // drag the renderer resolves — `_emit.connect`), matching React Flow and
+    // the native runtimes. Programmatic additions are observable through
+    // `onEdgesChange` ('add'), which is what this emits.
     emitEdgeChanges([{ type: 'add', edge: newEdge }])
-
-    // Notify connect listeners
-    const connection: Connection = {
-      source: edge.source,
-      target: edge.target,
-      ...(edge.sourceHandle != null ? { sourceHandle: edge.sourceHandle } : {}),
-      ...(edge.targetHandle != null ? { targetHandle: edge.targetHandle } : {}),
-    }
-    for (const cb of connectListeners) cb(connection)
   }
 
   function removeEdges(ids: Iterable<string>): void {
@@ -694,16 +753,8 @@ export function createFlow<TData = Record<string, unknown>>(
     if (fresh.length === 0) return
     checkpoint()
     edges.update((eds) => [...eds, ...fresh])
+    // No `onConnect` — see addEdge.
     emitEdgeChanges(fresh.map((edge) => ({ type: 'add', edge })))
-    for (const ne of fresh) {
-      const connection: Connection = {
-        source: ne.source,
-        target: ne.target,
-        ...(ne.sourceHandle != null ? { sourceHandle: ne.sourceHandle } : {}),
-        ...(ne.targetHandle != null ? { targetHandle: ne.targetHandle } : {}),
-      }
-      for (const cb of connectListeners) cb(connection)
-    }
   }
 
   function setEdges(next: FlowEdge[] | ((current: FlowEdge[]) => FlowEdge[])): void {
@@ -835,6 +886,8 @@ export function createFlow<TData = Record<string, unknown>>(
       }
     }
     if (nodeIdsToRemove.size === 0 && edgeIdsToRemove.size === 0) return
+    // A deleted parent takes its sub-flow subtree with it (see withDescendants).
+    for (const id of withDescendants(nodeIdsToRemove)) nodeIdsToRemove.add(id)
 
     const removedNodes = nodes.peek().filter((n) => nodeIdsToRemove.has(n.id))
     const removedEdges = edges.peek().filter(
@@ -1183,24 +1236,26 @@ export function createFlow<TData = Record<string, unknown>>(
 
   function paste(offset: XYPosition = { x: 50, y: 50 }): void {
     if (!clipboard) return
-    checkpoint()
 
     const idMap = new Map<string, string>()
-    const newNodes: FlowNode<TData>[] = []
+    for (const node of clipboard.nodes) idMap.set(node.id, `${node.id}-copy-${++_pasteCounter}`)
 
-    // Create new nodes with offset positions and new ids
-    for (const node of clipboard.nodes) {
-      const newId = `${node.id}-copy-${++_pasteCounter}`
-      idMap.set(node.id, newId)
-      newNodes.push({
+    // Sub-flow children hold RELATIVE positions: a child pasted together with
+    // its parent is re-parented onto the COPY and keeps its relative offset
+    // (the offset parent carries it). Only a node whose parent was NOT copied
+    // (a root, or a child copied alone — it stays inside the original parent)
+    // takes the paste offset itself.
+    const newNodes: FlowNode<TData>[] = clipboard.nodes.map((node) => {
+      const copiedParent = node.parentId ? idMap.get(node.parentId) : undefined
+      return {
         ...node,
-        id: newId,
-        position: {
-          x: node.position.x + offset.x,
-          y: node.position.y + offset.y,
-        },
-      })
-    }
+        id: idMap.get(node.id)!,
+        ...(copiedParent ? { parentId: copiedParent } : {}),
+        position: copiedParent
+          ? { ...node.position }
+          : { x: node.position.x + offset.x, y: node.position.y + offset.y },
+      }
+    })
 
     const newEdges: FlowEdge[] = clipboard.edges.map((e) => {
       const { id: _id, ...rest } = e
@@ -1214,9 +1269,12 @@ export function createFlow<TData = Record<string, unknown>>(
       }
     })
 
+    // ONE checkpoint + one write per collection (addNodes/addEdges) instead of
+    // a per-element addNode/addEdge loop.
     batch(() => {
-      for (const node of newNodes) addNode(node)
-      for (const edge of newEdges) addEdge(edge)
+      checkpoint()
+      addNodes(newNodes)
+      addEdges(newEdges)
 
       // Select pasted nodes
       selectedNodeIds.set(new Set(newNodes.map((n) => n.id)))
@@ -1228,7 +1286,15 @@ export function createFlow<TData = Record<string, unknown>>(
 
   const undoStack: Array<{ nodes: FlowNode<TData>[]; edges: FlowEdge[] }> = []
   const redoStack: Array<{ nodes: FlowNode<TData>[]; edges: FlowEdge[] }> = []
-  const maxHistory = 50
+  // Bounded undo depth — `historyLimit` (default 50). Each entry is a shallow
+  // (N+E)-reference snapshot; a non-positive / non-finite value falls back.
+  // Read at push time, like `autoHistory`, so a write to `flow.config` takes
+  // effect — the native `PyreonFlowState` engines expose it as a mutable
+  // property and apply the same clamp (`historyLimitOf` there).
+  const maxHistory = (): number => {
+    const limit = config.historyLimit
+    return typeof limit === 'number' && limit > 0 && Number.isFinite(limit) ? Math.floor(limit) : 50
+  }
 
   // History snapshots are SHALLOW array copies, not `structuredClone`. Every
   // write path in this package is immutable by discipline — drag / updateNode /
@@ -1254,7 +1320,9 @@ export function createFlow<TData = Record<string, unknown>>(
     if (mutationVersion === checkpointVersion) return
     checkpointVersion = mutationVersion
     undoStack.push(historySnapshot())
-    if (undoStack.length > maxHistory) undoStack.shift()
+    // Trim to the limit, not by one: a limit lowered at runtime drops the excess at once.
+    const limit = maxHistory()
+    if (undoStack.length > limit) undoStack.splice(0, undoStack.length - limit)
     redoStack.length = 0
   }
 
@@ -1785,9 +1853,16 @@ export function createFlow<TData = Record<string, unknown>>(
     edges: FlowEdge[]
     viewport: { x: number; y: number; zoom: number }
   } {
+    // One-level copies (node/edge objects + positions / waypoints), NOT
+    // `structuredClone`: node `data` may legitimately hold functions (a
+    // callback, a component) and structuredClone THREW `DataCloneError` on
+    // them — the same reason history snapshots are shallow. `data` is shared
+    // by reference; `JSON.stringify(toJSON())` drops non-serializable values.
     return {
-      nodes: structuredClone(nodes.peek()),
-      edges: structuredClone(edges.peek()),
+      nodes: nodes.peek().map((n) => ({ ...n, position: { ...n.position } })),
+      edges: edges.peek().map((e) =>
+        e.waypoints ? { ...e, waypoints: e.waypoints.map((p) => ({ ...p })) } : { ...e },
+      ),
       viewport: { ...viewport.peek() },
     }
   }
@@ -1797,17 +1872,50 @@ export function createFlow<TData = Record<string, unknown>>(
     edges: FlowEdge[]
     viewport?: { x: number; y: number; zoom: number }
   }): void {
+    // Imported data is untrusted: normalize it to the invariants every other
+    // write path maintains, instead of installing a graph that corrupts
+    // `nodeMap` (duplicate ids), draws nothing (dangling edges) or crashes
+    // `fitView` (a node without a position).
+    const seenNodes = new Set<string>()
+    const nextNodes: FlowNode<TData>[] = []
+    for (const node of Array.isArray(data?.nodes) ? data.nodes : []) {
+      if (seenNodes.has(node.id)) {
+        if (process.env.NODE_ENV !== 'production') console.warn(`[Pyreon] flow.fromJSON: duplicate node id "${node.id}" — only the first is kept.`)
+        continue
+      }
+      seenNodes.add(node.id)
+      const p = node.position
+      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+        if (process.env.NODE_ENV !== 'production') console.warn(`[Pyreon] flow.fromJSON: node "${node.id}" has no valid position — placed at { x: 0, y: 0 }.`)
+        nextNodes.push({ ...node, position: { x: 0, y: 0 } })
+      } else {
+        nextNodes.push(node)
+      }
+    }
+    const seenEdges = new Set<string>()
+    const nextEdges: FlowEdge[] = []
+    for (const raw of Array.isArray(data?.edges) ? data.edges : []) {
+      const e = normalizeEdge(raw)
+      if (seenEdges.has(e.id!)) {
+        if (process.env.NODE_ENV !== 'production') console.warn(`[Pyreon] flow.fromJSON: duplicate edge id "${e.id}" — only the first is kept.`)
+        continue
+      }
+      if (!seenNodes.has(e.source) || !seenNodes.has(e.target)) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(
+            `[Pyreon] flow.fromJSON: edge "${e.id}" references a missing node ("${e.source}" -> "${e.target}") — dropped.`,
+          )
+        }
+        continue
+      }
+      seenEdges.add(e.id!)
+      nextEdges.push(e)
+    }
     checkpoint()
     batch(() => {
-      nodes.set(data.nodes)
-      edges.set(
-        data.edges.map((e) => ({
-          ...e,
-          id: e.id ?? edgeId(e),
-          type: e.type ?? defaultEdgeType,
-        })),
-      )
-      if (data.viewport) viewport.set(data.viewport)
+      nodes.set(nextNodes)
+      edges.set(nextEdges)
+      if (data?.viewport) viewport.set(data.viewport)
       clearSelection()
     })
   }
@@ -1936,6 +2044,8 @@ export function createFlow<TData = Record<string, unknown>>(
     nodeSelectedCache.clear()
     for (const c of edgeSelectedCache.values()) disposeCached(c as Computed<unknown>)
     edgeSelectedCache.clear()
+    for (const c of measurementCache.values()) disposeCached(c as Computed<unknown>)
+    measurementCache.clear()
   }
 
   // ── Initial fitView ──────────────────────────────────────────────────────
@@ -2094,6 +2204,9 @@ export function createFlow<TData = Record<string, unknown>>(
     _fitViewConfigured: !!config.fitView,
     /** @internal — used by Flow component to emit events */
     _emit: {
+      connect: (connection: Connection) => {
+        for (const cb of connectListeners) cb(connection)
+      },
       nodeDragStart: (node: FlowNode<TData>) => {
         for (const cb of nodeDragStartListeners) cb(node)
       },

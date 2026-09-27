@@ -30,7 +30,7 @@ describe('round-tripping', () => {
   it('survives a full round trip', () => {
     const state = {
       c: 'button',
-      p: 'controls',
+      p: 'a11y',
       args: { label: 'Save', count: 3, on: true },
       viewport: 'tablet',
       locale: 'ar',
@@ -42,6 +42,38 @@ describe('round-tripping', () => {
     // A link nobody can read is a link nobody shares.
     const query = serializeUrlState({ c: 'button', viewport: 'full', background: 'theme', locale: 'en' })
     expect(query).toBe('c=button')
+  })
+
+  it('omits EVERY shipped default — the addon tab, brand and role included', () => {
+    // Regression: every link carried `?p=controls&brand=ember&role=anonymous`,
+    // restating what opening the workbench does anyway.
+    const query = serializeUrlState({
+      c: 'button',
+      p: 'controls',
+      brand: 'ember',
+      role: 'anonymous',
+      view: 'canvas',
+      query: 'success',
+      dark: true,
+      args: {},
+    })
+    expect(query).toBe('c=button')
+    // A non-default still travels.
+    expect(serializeUrlState({ p: 'a11y', brand: 'aurora', role: 'admin' })).toBe(
+      'p=a11y&brand=aurora&role=admin',
+    )
+  })
+
+  it('judges defaults against the PROJECT presets it is given', () => {
+    // A project whose first viewport is `kiosk` opens on kiosk — the link
+    // need not say so, while the shipped `full` now IS worth saying.
+    const defaults = { viewport: 'kiosk', role: 'viewer' }
+    expect(serializeUrlState({ viewport: 'kiosk', role: 'viewer' }, defaults)).toBe('')
+    expect(serializeUrlState({ viewport: 'full', role: 'anonymous' }, defaults)).toBe(
+      'viewport=full&role=anonymous',
+    )
+    // And the change check agrees with what is written.
+    expect(urlStateChanged({ viewport: 'kiosk' }, {}, defaults)).toBe(false)
   })
 
   it('writes `dark` only when it is off', () => {
@@ -227,5 +259,13 @@ describe('pathBase + componentUrl — the writing half', () => {
   it('degrades to the base for an empty id, never `//`', () => {
     expect(componentUrl('/atlas/', '', 'p=controls')).toBe('/atlas/?p=controls')
     expect(componentUrl('/atlas/', '', '')).toBe('/atlas/')
+  })
+})
+
+describe('dark against a project default of light', () => {
+  it('writes dark=1 when the project opens light, and nothing when it matches', () => {
+    expect(serializeUrlState({ dark: true }, { dark: false })).toBe('dark=1')
+    expect(serializeUrlState({ dark: false }, { dark: false })).toBe('')
+    expect(parseUrlState('dark=1').dark).toBe(true)
   })
 })

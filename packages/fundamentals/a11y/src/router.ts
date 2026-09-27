@@ -15,6 +15,7 @@
 // `@pyreon/i18n/core` split precedent).
 
 import { nativeCompat, onMount } from '@pyreon/core'
+import { isServer } from '@pyreon/reactivity'
 import { type ResolvedRoute, useRouter } from '@pyreon/router'
 import { announce, type A11yPoliteness, type AnnounceOptions } from './announce'
 
@@ -37,6 +38,31 @@ export interface RouteAnnouncerOptions {
    * (e.g. a deferred app shell).
    */
   announceInitial?: boolean
+}
+
+let doubleAnnounceChecked = false
+
+/**
+ * `<RouterView>` ships its own route announcer (on by default, opt out with
+ * `announceRouteChanges={false}`). Running this one beside it makes every
+ * navigation speak twice. The router's region is created lazily on its first
+ * announcement, so the check runs just after ours fires.
+ */
+function warnIfRouterAlsoAnnounces(): void {
+  if (process.env.NODE_ENV === 'production') return
+  if (isServer || doubleAnnounceChecked) return
+  // Checked once per page: the router announces every navigation, so if its
+  // region is absent after our first announcement it is switched off.
+  doubleAnnounceChecked = true
+  const doc = document
+  setTimeout(() => {
+    if (!doc.querySelector('[data-pyreon-route-announcer]')) return
+    if (process.env.NODE_ENV !== 'production') console.warn(
+      '[Pyreon] <RouteAnnouncer> / useRouteAnnouncer() is running alongside <RouterView>\'s built-in route announcer, ' +
+        'so every navigation is announced twice. Keep one: pass announceRouteChanges={false} to the root <RouterView>, ' +
+        'or drop <RouteAnnouncer>.',
+    )
+  }, 0)
 }
 
 /** Default announced string: the route's configured title, else the path. */
@@ -73,6 +99,7 @@ export function useRouteAnnouncer(options: RouteAnnouncerOptions = {}): void {
       const opts: AnnounceOptions = { politeness }
       if (clearAfter != null) opts.clearAfter = clearAfter
       announce(msg, opts)
+      warnIfRouterAlsoAnnounces()
     }
     if (announceInitial) fire(router.currentRoute(), null)
     return router.afterEach((to: ResolvedRoute, from: ResolvedRoute) => {

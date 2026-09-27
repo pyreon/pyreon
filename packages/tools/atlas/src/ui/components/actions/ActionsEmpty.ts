@@ -1,10 +1,10 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const ActionsEmpty = el
   .attrs({
     tag: 'div',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     textAlign: 'center',
     padding: '40px 12px',
     fontSize: t.size.input,

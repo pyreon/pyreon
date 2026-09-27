@@ -9,7 +9,7 @@
 import { createUniqueId, h } from '@pyreon/core'
 import { hydrateRoot, mount, onHydrationMismatch } from '@pyreon/runtime-dom'
 import { renderToString } from '@pyreon/runtime-server'
-import { checkSsrParity, describeMismatch, normalizeHtml } from '../ssr-parity'
+import { checkSsrParity, describeMismatch, normalizeHtml, ssrParityPlugin } from '../ssr-parity'
 import { ensureDom } from '../../verify/dom'
 import type { MountRuntime } from '../../verify/harness'
 
@@ -255,5 +255,19 @@ describe('checkSsrParity', () => {
 
     expect(verdict.status).toBe('fail')
     expect(open).toBe(0)
+  })
+})
+
+describe('framework warnings on the parity path (audit 2026-09)', () => {
+  it('reports a `[Pyreon]` warning the render/hydrate emitted as a finding on ssrParity', async () => {
+    const plugin = ssrParityPlugin({ runtime })
+    const component = (): unknown => h('a', { href: 'javascript:alert(1)' }, 'x')
+    const result = await plugin.verify!({
+      scenario: { id: 'probe--default', component: 'Probe', name: 'Default', args: {}, source: 'authored' },
+      component: { name: 'Probe', controls: [], axes: [], scenarios: [], tags: [], component: component as never },
+    })
+    const found = result.ssrParity?.findings?.find((f) => f.code === 'framework-warning')
+    expect(found?.message).toContain('rendered to a string and hydrated')
+    expect(found?.message).toContain('Blocked unsafe URL')
   })
 })

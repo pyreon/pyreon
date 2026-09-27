@@ -25,12 +25,12 @@ import type { IrDocument, IrOperation, IrType } from '../core/ir'
 
 const op = (over: Partial<IrOperation> = {}): IrOperation => ({
   id: 'getUser', tag: 'users', method: 'GET', path: '/users/{id}',
-  pathParams: [], queryParams: [],
+  pathParams: [], queryParams: [], headerParams: [], cookieParams: [],
   ...over,
 } as IrOperation)
 
 const param = (name: string, required = true, type: IrType = { kind: 'string' }) =>
-  ({ name, type, required, nullable: false })
+  ({ name, type, required })
 
 const doc = (over: Partial<IrDocument> = {}): IrDocument => ({
   title: 'My API', version: '1.2.3', baseUrl: 'https://spec.example.com',
@@ -147,7 +147,7 @@ describe('the usage snippet is copyable', () => {
         queryParams: [
           param('page', true, { kind: 'number', integer: true }),
           param('active', true, { kind: 'boolean' }),
-          param('status', true, { kind: 'string', enum: ['open', 'closed'] }),
+          param('status', true, { kind: 'enum', values: ['open', 'closed'] }),
         ],
       })],
     }))
@@ -199,6 +199,21 @@ describe('spec losses are reported on the page, not only in the CLI', () => {
       notes: [{ code: 'unsupported-ref', at: '#/x', message: 'a ref did not resolve' }],
     } as never))
     expect(out).toContain('a ref did not resolve')
+  })
+
+  it('keeps CHOICES out of the "Not represented" table', () => {
+    // "Used JSON over XML" is not something the client fails to do; listing
+    // it among the losses buries the ones that are.
+    const out = all(doc({
+      notes: [
+        { code: 'multiple-content-types', at: '#/c', message: 'picked json' },
+        { code: 'unsupported-parameter', at: '#/p', message: 'header dropped' },
+      ],
+    } as never))
+    const lost = out.slice(out.indexOf('## Not represented'), out.indexOf('## Choices made'))
+    expect(lost).toContain('header dropped')
+    expect(lost).not.toContain('picked json')
+    expect(out.slice(out.indexOf('## Choices made'))).toContain('picked json')
   })
 
   it('omits the section when nothing was dropped', () => {

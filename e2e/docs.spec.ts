@@ -626,7 +626,7 @@ test.describe('docs rendering', () => {
   })
 })
 
-test.describe('the charts-plot page mounts every mark it documents', () => {
+test.describe('the charts page mounts every mark it documents', () => {
   // The mark table and the prose are checked by gates; the DRAWING is not.
   // `band`, `stackedArea`, `waterfall`, `histogram` and `bollinger` were all
   // documented before anything rendered them, which is how the gaps this
@@ -642,7 +642,7 @@ test.describe('the charts-plot page mounts every mark it documents', () => {
       if (m.type() === 'error') errors.push(m.text())
     })
 
-    await page.goto('/docs/charts-plot')
+    await page.goto('/docs/charts')
     await page.waitForLoadState('networkidle')
     await revealExamples(page)
 
@@ -677,7 +677,7 @@ test.describe('the charts-plot page mounts every mark it documents', () => {
     // this to one of them would assert less than it appears to. Removing the
     // explicit band alone leaves it green — which is correct, because the
     // claim is about the FEATURE reaching the browser, not about one figure.
-    await page.goto('/docs/charts-plot')
+    await page.goto('/docs/charts')
     await page.waitForLoadState('networkidle')
     await revealExamples(page)
 

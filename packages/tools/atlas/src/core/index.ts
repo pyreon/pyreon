@@ -36,7 +36,7 @@ export { catalogReplacer, looksLikeVNode } from './serialize'
 export type { ContentBlocks, ContentShape, ContentSeed } from './content'
 export { CONTENT_KEYS, deriveContent, isContainer, isContentBlocks, isContentKey, materializeContent, PLACEHOLDER_IMAGE, seedArgs } from './content'
 
-export type { AtlasExtension } from './extension'
+export type { AtlasExtension, AtlasWrapperProps } from './extension'
 export {
   defineExtension,
   resolveExtensions,
@@ -48,4 +48,4 @@ export { editDistance, formatUsage, nearest, validateUsage } from './validate-us
 export type { ComponentIdentity } from './identity'
 export { ambiguousComponentMessage, componentKey, fileQualifierFor, pathQualifierFor, resolveComponent } from './identity'
 export type { CatalogGraph, SearchHit } from './graph'
-export { createCatalogGraph } from './graph'
+export { createCatalogGraph, qualifyIdentities } from './graph'

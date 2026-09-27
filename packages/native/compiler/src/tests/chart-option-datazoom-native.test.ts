@@ -15,7 +15,7 @@ describe.each(['swift', 'kotlin'] as const)('OptionChart dataZoom on %s', (targe
     if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(code)).toMatchObject({ ok: true })
   }
   const app = (dataZoom: string) => `
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart option={{ xAxis: { type: 'category', data: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] }, yAxis: {}, dataZoom: ${dataZoom}, series: [{ type: 'bar', data: [1, 2, 3, 4, 5, 6, 7, 80] }] }} height={260} />
 }`

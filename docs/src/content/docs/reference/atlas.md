@@ -24,7 +24,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - Machine-readable output: atlas-catalog.json + atlas-agent-guide.md, written for AI assistants as first-class consumers
 - Zero-config workbench (`atlas dev`): real Vite + the real Pyreon compiler, live control editors, canvas addons (viewport/background/zoom/measure/pseudo-states), axe-core a11y panel, autodocs, Actions log, Reactivity Lens
 - Browser verification (`atlas verify-browser`): reactive coverage measured on the page’s own devtools bridge + pixelmatch snapshot baselines, merged into the catalog
-- Authoring opt-in via atlas.config.ts: theme, wrapper, presets (viewports/locales/roles), authored scenarios with step-labelled `play` functions (args stay live — a render-prop child or an h() tree reaches the canvas intact, and an authored Default is the base of every derived scenario), `matrix` (axis fan by default, full cross-product opt-in), `parts` (a part renders inside its parent) and `browserOnly` (an overlay that returns null where isServer is true)
+- Authoring opt-in via atlas.config.ts: theme, wrapper (in the workbench it also receives each render’s appearance as `mode`/`dark`/`brand` accessors — forward `mode` to your provider or the dark workbench shows components in light mode), presets (viewports/locales/roles), authored scenarios with step-labelled `play` functions (args stay live — a render-prop child or an h() tree reaches the canvas intact, and an authored Default is the base of every derived scenario), `matrix` (axis fan by default, full cross-product opt-in), `parts` (a part renders inside its parent) and `browserOnly` (an overlay that returns null where isServer is true)
 - A scenario that mounts NO DOM fails the interaction check with `empty-render` — "mounts, clicks and unmounts without throwing" is true of an empty container, and this is the check that is not
 - Honest verdicts by construction: three states (verified/failing/unverified), red scan = red exit, partial browser coverage named per scenario
 
@@ -84,12 +84,15 @@ export const scenarios = {
 | Symbol | Kind | Summary |
 | --- | --- | --- |
 | [`atlas scan`](#atlas-scan) | function | Discover components (static TS scan + rocketstyle runtime detection), derive controls and variant scenarios, MOUNT each  |
+| [`atlas check`](#atlas-check) | function | Validates a PROPOSED usage against the catalog's already-derived contract — catches the value that typechecks in JS but  |
 | [`atlas verify`](#atlas-verify) | function | Re-check ONE component and report WHICH check failed and why — the write → verify → fix loop, for a person or an agent i |
 | [`VerifyFinding`](#verifyfinding) | type | One thing a verify check found — catalog `version: 2`. |
 | [`atlas dev`](#atlas-dev) | function | Boot the workbench: real Vite + the real Pyreon compiler over your source, a derived catalog in the sidebar (nested by d |
 | [`atlas build`](#atlas-build) | function | Compile the workbench into a STATIC, deployable site — the same derived catalog `atlas dev` serves, as plain files for P |
 | [`atlas verify-browser`](#atlas-verify-browser) | function | The browser half of verification, in real Chromium (playwright-core is an OPTIONAL peer — scan/dev work without it). |
 | [`createAtlas`](#createatlas) | function | The programmatic pipeline factory behind the CLI: `discover → decorate → verify → graph`, plugin-driven. |
+| [`defineAtlas`](#defineatlas) | function | Identity helper for a typed `createAtlas(...)` options object — returns its argument unchanged, purely for editor DX (au |
+| [`atlas init`](#atlas-init) | function | Writes the config the workspace already implies — the ONE file you author by hand. |
 | [`AtlasConfig.projects (monorepo — one site, several packages)`](#atlasconfig-projects-monorepo-one-site-several-packages) | type | Scan several packages into ONE catalog, each filed under its own `name` (the sidebar reads `Core/Forms/Button`). |
 | [`AtlasConfig.scenarios (authored scenarios + play)`](#atlasconfig-scenarios-authored-scenarios-play) | function | Authored scenarios in `atlas.config.ts`, keyed by component name. |
 
@@ -127,6 +130,35 @@ atlas: 2 failing scenario(s):
 - Reading a `--check` run that reports FEWER failures as an improvement without looking at the ratchet line — fewer failures is exactly what losing a check produces, and only the diff distinguishes "fixed" from "no longer measured"
 
 **See also:** `atlas verify` · `atlas verify-browser` · `createAtlas`
+
+---
+
+### atlas check `function`
+
+```ts
+atlas check <Component> ['{"prop":"value"}'] [--cwd <dir>]
+```
+
+Validates a PROPOSED usage against the catalog's already-derived contract — catches the value that typechecks in JS but renders silently wrong (`state="primry"` against a select-kind prop whose real options are `primary`/`secondary`/`danger`), an unknown prop name, or a value of the wrong TYPE. Reads the COMMITTED `atlas-catalog.json` rather than re-scanning, deliberately: a check must be instant and must agree with the exact answer the workbench and agent guide already gave — a rescan here could silently disagree with the catalog an agent was handed moments earlier. Every unresolved prop / unmatched value gets a `did you mean` suggestion (edit-distance nearest match) for the same reason a typo'd component name does. Missing required props are reported when the args object omits them, even with no args at all. Exits non-zero on any finding, so it is safe to wire into a pre-commit hook or a CI step gating a generated-usage PR.
+
+**Example**
+
+```tsx
+$ atlas check Button '{"state":"primry"}'
+Button: 1 problem(s):
+  · `state` must be one of `primary`, `secondary`, `danger` — got `primry` — did you mean `primary`?
+
+$ atlas check Input
+Input: 1 problem(s):
+  · `label` is required and was not supplied  # omitted args → missing-required findings only
+```
+
+**Common mistakes**
+
+- Running `atlas check` before ever running `atlas scan` — there is no catalog to check against, so it fails with "Run atlas scan first" rather than a usage verdict
+- Expecting `atlas check` to catch a REGRESSION since the last scan — it validates the ARGS you pass against the LAST-WRITTEN catalog; it does not itself re-derive anything, so a source change needs a fresh `atlas scan` before checking against it means anything
+
+**See also:** `atlas scan` · `atlas verify`
 
 ---
 
@@ -295,6 +327,58 @@ graph.search('button')                 // Catalog Graph queries
 - Passing an explicit plugin list WITHOUT `preset: "none"` — the recommended bundle is appended a second time and a duplicate mount plugin’s empty-graph default verdict can overwrite the real one
 
 **See also:** `atlas scan`
+
+---
+
+### defineAtlas `function`
+
+```ts
+defineAtlas(config: AtlasConfig): AtlasConfig
+```
+
+Identity helper for a typed `createAtlas(...)` options object — returns its argument unchanged, purely for editor DX (autocomplete + type-checking on `plugins` / `preset` / `baseArgs` / `matrix` / `cwd` / `focus`) when the object is built up in its own module instead of inlined at the `createAtlas()` call site.
+
+**Example**
+
+```tsx
+import { defineAtlas, createAtlas } from '@pyreon/atlas'
+
+const options = defineAtlas({ preset: 'recommended', matrix: 'axes' })
+const graph = await createAtlas(options).build()
+```
+
+**Common mistakes**
+
+- Reaching for this to type `atlas.config.ts` / the `pyreon.config.ts` `atlas:` section — that file-level convention (`title`, `projects`, `pages`, `scenarios`, `wrapper`, `presets`, `theme`, `parts`, `browserOnly`, `ignore`) is a WIDER, separate shape the CLI loads dynamically; `defineAtlas`'s `AtlasConfig` is specifically the `createAtlas()` programmatic-API options bag and does not carry those fields
+
+**See also:** `createAtlas` · `AtlasConfig.projects (monorepo — one site, several packages)`
+
+---
+
+### atlas init `function`
+
+```ts
+atlas init [dir] [--force] [--dry-run] [--title <text>]
+```
+
+Writes the config the workspace already implies — the ONE file you author by hand. Atlas works with zero config for a plain single-package library (`atlas scan` and `atlas dev` need nothing), but the first thing anyone wants to do after that is adjust a guess: rename a monorepo project group, drop an internal package, pin an order. `atlas init` detects the workspace's packages (populating `AtlasConfig.projects` for a monorepo), guesses a site `title` from the root `package.json` name, and writes `pyreon.config.ts` with every OTHER optional field present but commented out — `wrapper`, `pages`, `scenarios`, `matrix`, `parts`, `browserOnly` — so the file is self-documenting. Nothing regenerates it after; it is yours to edit. It writes no story files by design — components, controls and scenarios stay derived from source.
+
+**Example**
+
+```tsx
+$ atlas init
+atlas init: wrote pyreon.config.ts (2 project(s) detected)
+
+$ atlas init --dry-run   # print instead of writing
+$ atlas init --force     # overwrite an existing config
+```
+
+**Common mistakes**
+
+- Expecting `atlas init` to be required — it is a convenience for adjusting the auto-detected project list and documenting the optional fields; `atlas scan`/`atlas dev` work with no config file at all
+- Running it a second time expecting an incremental update — `--force` OVERWRITES the whole file; hand edits are lost unless you diff first
+
+**See also:** `createAtlas` · `AtlasConfig.projects (monorepo — one site, several packages)`
 
 ---
 

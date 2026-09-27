@@ -399,6 +399,16 @@ export function createISRHandler(
   function isCacheable(res: Response, req: Request): boolean {
     if (res.status < 200 || res.status >= 300) return false
     if (res.headers.has('set-cookie')) return false
+    // ISR caches PAGE renders. An API route, the data endpoint or a fragment
+    // answering a GET is not one — and caching it replayed JSON to every
+    // visitor (and, before the content type was preserved, as text/html,
+    // which turned an echoing JSON API into stored XSS).
+    const ct = res.headers.get('content-type')?.toLowerCase() ?? ''
+    if (!ct.startsWith('text/html')) return false
+    // A CSP nonce must be unique per response. Caching the page would replay
+    // one nonce to every visitor, and anyone who can read it can use it.
+    const csp = res.headers.get('content-security-policy') ?? ''
+    if (csp.includes("'nonce-")) return false
 
     // Cache-Control directives — case-insensitive directive matching.
     // The Vary spec uses comma-separated tokens; same for Cache-Control.
@@ -440,6 +450,13 @@ export function createISRHandler(
         }
         return false
       }
+
+      // Any other varying request header (Origin, Accept-Language, …) is not
+      // part of the key either, so one requester's variant — a CORS
+      // `Access-Control-Allow-Origin`, a language — would be replayed to all.
+      // Accept-Encoding is the harmless exception: the handler's body is
+      // uncompressed, and compression happens downstream per request.
+      if (varyTokens.some((t) => t !== '' && t !== 'accept-encoding')) return false
 
       // PR-S6 fail-safe: the request itself carried credentials and the
       // developer did not mark the response public. This is exactly the
@@ -652,6 +669,10 @@ export function createISRHandler(
         await recordTags(key, originalReq)
       }
     } catch (err) {
+      // An operator must be able to see a page that can no longer be
+      // re-rendered: it keeps serving stale content indefinitely otherwise.
+      // oxlint-disable-next-line no-console
+      console.error(`[Pyreon ISR] Revalidation of ${key} failed; serving the stale entry:`, err)
       // Revalidation failed / timed out — stale cache entry remains valid,
       // UNLESS the user opted into expire-on-timeout: then a TIMED-OUT
       // entry is dropped so the next request is a fresh miss instead of
@@ -705,8 +726,10 @@ export function createISRHandler(
       return new Response(entry.html, {
         status: 200,
         headers: {
-          ...entry.headers,
+          // The STORED content type wins; the default only covers entries a
+          // custom store saved without one.
           'content-type': 'text/html; charset=utf-8',
+          ...entry.headers,
           'x-isr-cache': age > revalidateMs ? 'STALE' : 'HIT',
           'x-isr-age': String(Math.round(age / 1000)),
         },
@@ -718,6 +741,62 @@ export function createISRHandler(
     // transient error / redirect / Set-Cookie response is passed
     // through verbatim with its ORIGINAL status + headers and is NOT
     // stored, so it can't be replayed as a 200 to later visitors.
+    // Concurrent cold misses for one key render ONCE (a deploy, a purge, a
+    // `revalidateAll` otherwise sends every waiting request to the origin at
+    // the same time). Followers reuse the leader's result only when it was
+    // cacheable — a shared result is by construction the same for everyone —
+    // and only when the request carries no credentials under the default
+    // key, the same rule that decides whether a render may be shared at all.
+    const coalescable =
+      hasCacheKey || !(req.headers.has('cookie') || req.headers.has('authorization'))
+    if (coalescable) {
+      const pending = inflight.get(key)
+      if (pending) {
+        const shared = await pending
+        if (shared) {
+          return new Response(shared.html, {
+            status: 200,
+            headers: { ...shared.headers, 'x-isr-cache': 'MISS' },
+          })
+        }
+        // Leader's render was not shareable — render our own.
+        return renderMiss(req, url, key)
+      }
+      let settle!: (v: MissSnapshot | null) => void
+      const promise = new Promise<MissSnapshot | null>((r) => {
+        settle = r
+      })
+      inflight.set(key, promise)
+      let shared: MissSnapshot | null = null
+      try {
+        const res = await renderMiss(req, url, key, (snap) => {
+          shared = snap
+        })
+        return res
+      } finally {
+        // Cleared on BOTH settle paths (leak class F): a thrown render must
+        // not strand followers or pin the key.
+        inflight.delete(key)
+        settle(shared)
+      }
+    }
+    return renderMiss(req, url, key)
+  }
+
+  type MissSnapshot = { html: string; headers: Record<string, string> }
+  const inflight = new Map<string, Promise<MissSnapshot | null>>()
+
+  async function renderMiss(
+    req: Request,
+    url: URL,
+    key: string,
+    onCached?: (snap: MissSnapshot) => void,
+  ): Promise<Response> {
+    // Epoch snapshot BEFORE rendering, as the revalidation path does: a
+    // `revalidateNow`/`revalidateAll` landing while this render runs must
+    // win, instead of the slow render re-populating the entry it cleared.
+    const startEpoch = _currentEpoch(key)
+    void url
     const rawRes = await handler(req)
 
     // PR-S4: apply responseFilter BEFORE consuming the body so the user
@@ -753,16 +832,15 @@ export function createISRHandler(
       })
     }
 
-    await store.set(key, { html, headers, timestamp: Date.now() })
-    await recordTags(key, req)
+    if (_currentEpoch(key) === startEpoch) {
+      await store.set(key, { html, headers, timestamp: Date.now() })
+      await recordTags(key, req)
+    }
+    onCached?.({ html, headers })
 
     return new Response(html, {
       status: 200,
-      headers: {
-        ...headers,
-        'content-type': 'text/html; charset=utf-8',
-        'x-isr-cache': 'MISS',
-      },
+      headers: { ...headers, 'x-isr-cache': 'MISS' },
     })
   }
 

@@ -33,7 +33,7 @@ export interface EditorConfig {
   value?: string
   /** Language for syntax highlighting — lazy-loaded */
   language?: EditorLanguage
-  /** Theme — 'light', 'dark', or a custom CodeMirror theme extension */
+  /** Theme — 'light', 'dark', or a custom CodeMirror theme extension. Absent: 'light', or the app's colour mode (`<PyreonUI mode>` / `<ColorModeProvider mode>`) when a mounted `<CodeEditor>` sits below one. */
   theme?: EditorTheme
   /** Show line numbers — default: true */
   lineNumbers?: boolean

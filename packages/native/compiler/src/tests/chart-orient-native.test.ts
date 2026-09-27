@@ -10,7 +10,7 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
  * tap is reflected before its hit.
  */
 const HOSTS = `
-import { SankeyChart, CalendarChart, ParallelChart } from '@pyreon/charts/plot'
+import { SankeyChart, CalendarChart, ParallelChart } from '@pyreon/charts'
 export function App(props: { orient: 'horizontal' | 'vertical'; onPick: (i: number) => void }) {
   return (
     <Stack>
@@ -42,7 +42,7 @@ describe.each(['swift', 'kotlin'] as const)('vertical orient on %s', (target) =>
 
   it('a reactive orient is named rather than lowered as horizontal silently', () => {
     const r = transform(`
-import { SankeyChart } from '@pyreon/charts/plot'
+import { SankeyChart } from '@pyreon/charts'
 export function App(props: { orient: 'horizontal' | 'vertical' }) {
   return <SankeyChart nodes={[{ name: 'a' }]} links={[]} orient={props.orient} />
 }`, { target })
@@ -52,7 +52,7 @@ export function App(props: { orient: 'horizontal' | 'vertical' }) {
 
   it("the option facade's spellings reach the hosts: series.orient, calendar.orient and parallel.layout", () => {
     const r = transform(`
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return (
     <Stack>

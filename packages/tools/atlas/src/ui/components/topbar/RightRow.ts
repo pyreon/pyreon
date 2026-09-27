@@ -10,4 +10,8 @@ export const RightRow = el
   })
   .theme(() => ({
     minWidth: '192px',
+    flex: 'none',
+    // The desktop min-width balances the brand column so the search trigger
+    // centres; the compact bar has no brand column to balance.
+    extendCss: '@media (max-width:900px){min-width:0;}',
   }))

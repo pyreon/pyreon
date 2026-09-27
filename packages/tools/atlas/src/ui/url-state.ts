@@ -166,23 +166,57 @@ export function editedArgs(
   return out
 }
 
-/** Encode state into a query string (no leading `?`). */
-export function serializeUrlState(state: UrlState): string {
+/**
+ * The state a link does NOT need to state — what the workbench opens on anyway.
+ *
+ * Every key is optional: an absent default falls back to the SHIPPED one
+ * (`SHIPPED_DEFAULTS`). The model passes the per-project ones it resolved
+ * (the first viewport / background / locale / role preset), because a project
+ * whose first viewport is `kiosk` opens on `kiosk`, and writing `?viewport=kiosk`
+ * into every one of its links would say nothing.
+ */
+export type UrlDefaults = Omit<UrlState, 'c' | 'args'>
+
+/** The workbench's own opening state, independent of any project preset. */
+export const SHIPPED_DEFAULTS: Required<UrlDefaults> = {
+  p: 'controls',
+  viewport: 'full',
+  background: 'theme',
+  locale: 'en',
+  brand: 'ember',
+  dark: true,
+  view: 'canvas',
+  pseudo: '',
+  query: 'success',
+  role: 'anonymous',
+}
+
+/**
+ * Encode state into a query string (no leading `?`).
+ *
+ * Only NON-default values are written. A link used to carry
+ * `?p=controls&brand=ember&role=anonymous` on every component — three
+ * parameters restating what opening the workbench does anyway, which made the
+ * one parameter that mattered (`?args=…`) hard to spot in a pasted URL.
+ */
+export function serializeUrlState(state: UrlState, defaults: UrlDefaults = {}): string {
+  const d = { ...SHIPPED_DEFAULTS, ...defaults }
   const params = new URLSearchParams()
+  const put = (key: keyof UrlDefaults, value: string | undefined) => {
+    if (value && value !== d[key]) params.set(key, value)
+  }
   if (state.c) params.set('c', state.c)
-  if (state.p) params.set('p', state.p)
-  if (state.viewport && state.viewport !== 'full') params.set('viewport', state.viewport)
-  if (state.background && state.background !== 'theme') params.set('background', state.background)
-  if (state.locale && state.locale !== 'en') params.set('locale', state.locale)
-  if (state.brand) params.set('brand', state.brand)
-  // `dark` is written only when FALSE: the workbench defaults to dark, so
-  // omitting the common case keeps a shared link readable.
-  if (state.dark === false) params.set('dark', '0')
-  // The canvas is the default view; the others are worth a link of their own.
-  if (state.view && state.view !== 'canvas') params.set('view', state.view)
-  if (state.pseudo) params.set('pseudo', state.pseudo)
-  if (state.query && state.query !== 'success') params.set('query', state.query)
-  if (state.role) params.set('role', state.role)
+  put('p', state.p)
+  put('viewport', state.viewport)
+  put('background', state.background)
+  put('locale', state.locale)
+  put('brand', state.brand)
+  // `dark` is a boolean with no empty form, so it is compared, not truth-tested.
+  if (state.dark !== undefined && state.dark !== d.dark) params.set('dark', state.dark ? '1' : '0')
+  put('view', state.view)
+  put('pseudo', state.pseudo)
+  put('query', state.query)
+  put('role', state.role)
   if (state.args && Object.keys(state.args).length > 0) {
     params.set(ARGS_KEY, JSON.stringify(state.args))
   }
@@ -248,6 +282,6 @@ export function parseUrlState(query: string): UrlState {
  * pushes a history entry — otherwise the back button would walk through every
  * keystroke in a text control.
  */
-export function urlStateChanged(a: UrlState, b: UrlState): boolean {
-  return serializeUrlState(a) !== serializeUrlState(b)
+export function urlStateChanged(a: UrlState, b: UrlState, defaults: UrlDefaults = {}): boolean {
+  return serializeUrlState(a, defaults) !== serializeUrlState(b, defaults)
 }

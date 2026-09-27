@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compileOption } from '@pyreon/charts/plot'
+import { compileOption } from '@pyreon/charts/engine'
 import { transform } from '../index'
 import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
 
@@ -14,7 +14,7 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
 const values = (n: number): number[] => Array.from({ length: n }, (_, i) => Math.round(Math.sin(i / 7) * 100) + (i % 13))
 const labels = (n: number): string[] => Array.from({ length: n }, (_, i) => 'c' + String(i))
 const app = (series: string, width = '', n = 200): string => `
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart${width} option={{ xAxis: { type: 'category', data: ${JSON.stringify(labels(n))} }, yAxis: {}, series: [${series}] }} />
 }`

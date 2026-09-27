@@ -6,10 +6,10 @@ interface ErrorPageProps {
    * The error caught by the route's error boundary. Always present when
    * rendered as a route `errorComponent` (the framework passes it).
    *
-   * In production builds, the error message + stack are hidden from the
-   * rendered output but the error IS still logged to `console.error` for
-   * ops visibility. In dev, both the rendered output AND console show
-   * the full stack — this lets you debug without bisecting routes.
+   * The error is always logged to the console. In development the message
+   * + stack are also rendered inline, so you can debug without bisecting
+   * routes; production renders only the generic message. Report production
+   * errors to your error tracker from here if you use one.
    */
   error?: unknown
 }
@@ -17,18 +17,18 @@ interface ErrorPageProps {
 export default function ErrorPage(props: ErrorPageProps = {}) {
   useHead({ title: "Something went wrong — Zero" })
 
-  // Surface the actual error to the browser devtools immediately so any
-  // `pageerror` listener / `console.error` subscriber sees it. Cheap;
-  // runs once per error boundary trip. Without this line, errors caught
-  // by the framework's boundary are invisible to dev tools.
-  if (props.error !== undefined && typeof console !== "undefined") {
+  // `process.env.NODE_ENV` is replaced at build time by every bundler, so
+  // this branch — and the details block below — is removed from production
+  // builds. Never render internals to public output.
+  const isDev = process.env.NODE_ENV !== "production"
+
+  // Log the caught error in EVERY environment: in production this is the
+  // only trace an operator gets. (The lint rule below guards library dev
+  // warnings; an app's error log is not one.)
+  if (props.error !== undefined) {
+    // pyreon-lint-ignore pyreon/dev-guard-warnings
     console.error("[Pyreon] route error boundary caught:", props.error)
   }
-
-  // In dev mode render the error message + stack inline so the user can
-  // debug without re-opening the browser console. In production we keep
-  // the generic message — never leak internals to public output.
-  const isDev = import.meta.env.DEV
   const err = props.error
   const message =
     err instanceof Error ? err.message : err !== undefined ? String(err) : null
@@ -56,9 +56,8 @@ export default function ErrorPage(props: ErrorPageProps = {}) {
             </pre>
           )}
           <p style="margin-top: var(--space-sm); font-size: 11px; color: var(--c-text-muted);">
-            This detail block only renders when <code>import.meta.env.DEV</code> is true.
-            Production builds hide the message + stack but still call{" "}
-            <code>console.error()</code>.
+            This detail block only renders in development. Production builds show
+            only the generic message above.
           </p>
         </details>
       )}

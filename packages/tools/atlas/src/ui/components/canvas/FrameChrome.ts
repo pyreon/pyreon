@@ -1,4 +1,4 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const FrameChrome = el
   .attrs({
@@ -7,7 +7,7 @@ export const FrameChrome = el
     contentAlignY: 'center',
     contentAlignX: 'spaceBetween',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     padding: '8px 16px',
     borderBottom: t.hairline,
     background: t.chrome,

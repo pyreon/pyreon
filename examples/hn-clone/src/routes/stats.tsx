@@ -1,4 +1,4 @@
-import { type EChartsOption, Chart } from '@pyreon/charts'
+import { type EChartsOption, EChart } from '@pyreon/charts/echarts'
 import { useQuery } from '@pyreon/query'
 import { useHead } from '@pyreon/head'
 import { useI18n } from '@pyreon/i18n'
@@ -172,19 +172,19 @@ export default function StatsPage() {
         ) : (
           <div class="stats-grid">
             <div class="chart-card">
-              <Chart options={() => domainBar()} style="height: 360px; width: 100%" />
+              <EChart options={() => domainBar()} style="height: 360px; width: 100%" />
             </div>
             <div class="chart-card">
-              <Chart options={() => userPie()} style="height: 360px; width: 100%" />
+              <EChart options={() => userPie()} style="height: 360px; width: 100%" />
             </div>
             <div class="chart-card">
-              <Chart
+              <EChart
                 options={() => pointsHistogram()}
                 style="height: 360px; width: 100%"
               />
             </div>
             <div class="chart-card">
-              <Chart
+              <EChart
                 options={() => pointsVsComments()}
                 style="height: 360px; width: 100%"
               />

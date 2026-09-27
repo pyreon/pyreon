@@ -25,12 +25,12 @@ import type { IrDocument, IrOperation, IrType } from '../core/ir'
 
 const num = (integer = false): IrType => ({ kind: 'number', integer })
 const field = (name: string, type: IrType, required = true) =>
-  ({ name, type, required, nullable: false })
+  ({ name, type, required })
 const obj = (fields: ReturnType<typeof field>[]): IrType =>
   ({ kind: 'object', fields }) as IrType
 
 const op = (id: string, tag: string): IrOperation =>
-  ({ id, tag, method: 'GET', path: `/${id}`, pathParams: [], queryParams: [] }) as IrOperation
+  ({ id, tag, method: 'GET', path: `/${id}`, pathParams: [], queryParams: [], headerParams: [], cookieParams: [] }) as IrOperation
 const doc = (operations: IrOperation[]): IrDocument =>
   ({ title: 'T', version: '1', baseUrl: '', models: [], operations, notes: [] }) as IrDocument
 
@@ -54,8 +54,8 @@ describe('tsType renders the spec as widely as the spec allows, and no wider', (
   it('renders an enum as a literal union, and widens it on request', () => {
     // The literal union is the point of generating types at all. The
     // widened form exists for positions where a literal cannot be used.
-    expect(tsType({ kind: 'string', enum: ['a', 'b'] })).toBe("'a' | 'b'")
-    expect(tsType({ kind: 'string', enum: ['a', 'b'] }, 0, true)).toBe('string')
+    expect(tsType({ kind: 'enum', values: ['a', 'b'] })).toBe("'a' | 'b'")
+    expect(tsType({ kind: 'enum', values: ['a', 'b'] }, 0, true)).toBe('string')
   })
 
   it('PARENTHESISES a union inside an array', () => {
@@ -106,7 +106,7 @@ describe('schemaExpr emits a validator, in the dialect asked for', () => {
       ['array', { kind: 'array', items: { kind: 'string' } }],
       ['object', obj([field('a', { kind: 'string' })])],
       ['ref', { kind: 'ref', name: 'User' }],
-      ['enum', { kind: 'string', enum: ['a', 'b'] }],
+      ['enum', { kind: 'enum', values: ['a', 'b'] }],
       ['union', { kind: 'union', options: [{ kind: 'string' }, num()] }],
     ] as Array<[string, IrType]>) {
       const out = expr(type)
@@ -118,7 +118,7 @@ describe('schemaExpr emits a validator, in the dialect asked for', () => {
   it('carries enum members into the validator', () => {
     // A validator that accepts any string for an enum field lets bad
     // data through at runtime, which is the one job it has.
-    const out = expr({ kind: 'string', enum: ['active', 'banned'] })
+    const out = expr({ kind: 'enum', values: ['active', 'banned'] })
     expect(out).toContain('active')
     expect(out).toContain('banned')
   })
@@ -179,7 +179,7 @@ describe('a model is emitted as an interface when it can be', () => {
       name: 'User',
       type: {
         kind: 'object',
-        fields: [{ name: 'id', type: { kind: 'string' }, required: true, nullable: false }],
+        fields: [{ name: 'id', type: { kind: 'string' }, required: true }],
       },
     } as never])
     expect(out).toContain('export interface User')
@@ -188,7 +188,7 @@ describe('a model is emitted as an interface when it can be', () => {
   it('uses `type` for a model that is NOT an object', () => {
     // `export interface X = string` is not valid TypeScript.
     const out = emitModels([
-      { name: 'Status', type: { kind: 'string', enum: ['a', 'b'] } } as never,
+      { name: 'Status', type: { kind: 'enum', values: ['a', 'b'] } } as never,
     ])
     expect(out).toContain('export type Status')
     expect(out).not.toContain('export interface Status')

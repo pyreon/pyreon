@@ -103,6 +103,7 @@
 import { detectPlain } from './plain'
 import { filterSuppressed } from './detector-suppression'
 import ts from 'typescript'
+import { planChartsImports } from './charts-migration'
 import { assertClassicTs } from './ts'
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -128,6 +129,7 @@ export type PyreonDiagnosticCode =
   | 'query-options-as-function'
   | 'accessor-uncalled-in-template'
   | 'accessor-uncalled-in-condition'
+  | 'charts-legacy-import'
 
 export interface PyreonDiagnostic {
   /** Machine-readable code for filtering + programmatic handling */
@@ -1494,6 +1496,27 @@ function visitNode(ctx: DetectContext, node: ts.Node): void {
   }
 }
 
+/**
+ * `charts-legacy-import`: an `@pyreon/charts` import the entry-point change
+ * broke — `/plot`, `/manual`, `/vite`, the ECharts wrapper's names from the
+ * main entry, `Plot` / `Tip`. File-level, because telling the old ECharts
+ * `<Chart options>` from the new grammar `<Chart>` needs the whole file.
+ */
+function detectChartsLegacyImports(ctx: DetectContext): void {
+  for (const plan of planChartsImports(ctx.sf)) {
+    const renamed = [...plan.renames].map(([a, b]) => `\`${a}\` → \`${b}\``).join(', ')
+    pushDiag(
+      ctx,
+      plan.node,
+      'charts-legacy-import',
+      `This \`@pyreon/charts\` import uses the old entry points. The main entry is now Pyreon's own engine (\`<Chart>\` with mark children, formerly \`<Plot>\` at \`/plot\`), the ECharts wrapper is \`<EChart>\` at \`@pyreon/charts/echarts\`, and the rest of the engine is split across \`/option\`, \`/svg\` and \`/engine\`.${renamed === '' ? '' : ` Renames: ${renamed}.`}`,
+      getNodeText(ctx, plan.node),
+      plan.replacement,
+      true,
+    )
+  }
+}
+
 function visit(ctx: DetectContext, node: ts.Node): void {
   ts.forEachChild(node, (child) => {
     visitNode(ctx, child)
@@ -1521,6 +1544,7 @@ export function detectPyreonPatterns(code: string, filename = 'input.tsx'): Pyre
     neverIslandNames: collectNeverIslandNames(sf),
   }
   visit(ctx, sf)
+  detectChartsLegacyImports(ctx)
   // Sort by (line, column) for stable ordering when multiple patterns fire.
   ctx.diagnostics.sort((a, b) => a.line - b.line || a.column - b.column)
   // …then drop what a `// pyreon-lint-ignore` above the line silenced. A
@@ -1533,6 +1557,8 @@ export function detectPyreonPatterns(code: string, filename = 'input.tsx'): Pyre
 /** Fast regex pre-filter — returns true if the code is worth a full AST walk. */
 export function hasPyreonPatterns(code: string): boolean {
   return (
+    // charts-legacy-import: any `@pyreon/charts` import (the planner decides).
+    code.includes('@pyreon/charts') ||
     /\bFor\b[^=]*\beach\s*=/.test(code) ||
     /\btypeof\s+process\b/.test(code) ||
     /\.theme\s*\(\s*\{\s*\}\s*\)/.test(code) ||

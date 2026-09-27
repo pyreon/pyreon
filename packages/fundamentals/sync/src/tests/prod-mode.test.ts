@@ -155,6 +155,54 @@ describe('production mode — malformed-frame drops are silent (dev-gate false s
       a.destroy()
     }
   })
+
+  it('the RELAY silently drops a spoofed awareness frame and a read-only client\'s update', async () => {
+    const { createSyncServer } = await import('../server')
+    const { MSG_AWARENESS, MSG_UPDATE, encodeSyncMessage } = await import('../crdt/ws-protocol')
+    const { Awareness, encodeAwarenessUpdate } = await import('y-protocols/awareness')
+    const Y = await import('yjs')
+    const server = await createSyncServer({
+      port: 0,
+      authorize: ({ token }) => (token === 'ro' ? 'read' : true),
+    })
+    const url = `ws://127.0.0.1:${server.port}/prod-spoof`
+    const open = async (u: string): Promise<WebSocket> => {
+      const ws = connect(WSImpl, u)
+      await new Promise<void>((res, rej) => {
+        ws.onopen = () => res()
+        ws.onerror = () => rej(new Error('failed to open'))
+      })
+      return ws
+    }
+    const s1 = await open(url)
+    const s2 = await open(`${url}?token=ro`)
+    try {
+      const doc = new Y.Doc()
+      const aw = new Awareness(doc)
+      aw.setLocalState({ name: 'x' })
+      const frame = encodeSyncMessage(MSG_AWARENESS, encodeAwarenessUpdate(aw, [aw.clientID]))
+      s1.send(frame) // s1 now owns the id
+      await sleep(80)
+      s2.send(frame) // s2 claims s1's id → dropped (silently in production)
+      doc.getMap('m').set('k', 'v')
+      s2.send(encodeSyncMessage(MSG_UPDATE, Y.encodeStateAsUpdate(doc))) // read-only → dropped
+      await sleep(150)
+      expect(warnSpy).not.toHaveBeenCalled()
+      aw.destroy()
+    } finally {
+      s1.close()
+      s2.close()
+      await server.close()
+    }
+  }, 30_000)
+
+  it('PyreonCrdtDoc.applyOps drops a malformed op without warning', async () => {
+    const { PyreonCrdtDoc } = await import('../crdt/pyreon-adapter')
+    const doc = new PyreonCrdtDoc('a')
+    doc.applyOps([{ map: 'm', key: 'k', value: 1, clock: Number.POSITIVE_INFINITY, actor: 'b' }])
+    expect(doc.encodeState()).toEqual([])
+    expect(warnSpy).not.toHaveBeenCalled()
+  })
 })
 
 // A raw `ws` client whose `.onopen=/.onclose=` surface matches what the relay

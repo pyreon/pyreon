@@ -101,11 +101,18 @@ const HTTP_METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HE
 export function createApiMiddleware(routes: ApiRouteEntry[]): Middleware {
   return async (ctx: MiddlewareContext) => {
     for (const route of routes) {
-      const params = matchApiRoute(route.pattern, ctx.path)
+      // PATHNAME, not `ctx.path`: that carries the query string, so
+      // `/api/posts?page=2` matched nothing and `/api/users/5?x=1` handed
+      // the handler `id = "5?x=1"`.
+      const params = matchApiRoute(route.pattern, ctx.url.pathname)
       if (!params) continue
 
       const method = ctx.req.method.toUpperCase() as HttpMethod
-      const handler = route.module[method]
+      // HEAD is GET without a body (RFC 9110 §9.3.2): serve it from the GET
+      // handler rather than 405 a route that plainly answers GET.
+      const handler =
+        route.module[method] ??
+        (method === 'HEAD' ? route.module.GET : undefined)
 
       if (!handler) {
         // Route matched but method not supported
@@ -158,16 +165,53 @@ export function generateApiRouteModule(files: string[], routesDir: string): stri
   const imports: string[] = []
   const entries: string[] = []
 
-  for (let i = 0; i < apiFiles.length; i++) {
+  // The dispatcher takes the FIRST matching entry, so emit order IS
+  // precedence. Directory-read order put `api/[...path].ts` ahead of every
+  // sibling and let `api/posts/[id].ts` capture `/api/posts/new`.
+  const ordered = apiFiles
+    .map((file) => ({ file, pattern: apiFilePathToPattern(file) }))
+    .sort((a, b) => compareApiRoutePatterns(a.pattern, b.pattern))
+
+  for (let i = 0; i < ordered.length; i++) {
     const name = `_api${i}`
-    const file = apiFiles[i]
-    if (!file) continue
+    const { file, pattern } = ordered[i]!
     const fullPath = `${routesDir}/${file}`
-    const pattern = apiFilePathToPattern(file)
 
     imports.push(`import * as ${name} from "${fullPath}"`)
     entries.push(`  { pattern: ${JSON.stringify(pattern)}, module: ${name} }`)
   }
 
   return [...imports, '', 'export const apiRoutes = [', entries.join(',\n'), ']'].join('\n')
+}
+
+/**
+ * Specificity rank of one pattern segment: a static segment beats a
+ * dynamic one, which beats a catch-all. Running out of segments (the pattern has no segment
+ * here) beats all three — `/api/a` must precede `/api/a/:rest*`, which a
+ * catch-all also matches with an empty remainder.
+ */
+function segmentRank(segment: string | undefined): number {
+  if (segment === undefined) return 0 // end of pattern
+  if (segment.startsWith(':')) return segment.endsWith('*') ? 3 : 2 // catch-all : dynamic
+  return 1 // static
+}
+
+/**
+ * Order two API route patterns most-specific first, comparing segment by
+ * segment from the left: the first position where their ranks differ
+ * decides (static > dynamic > catch-all > nothing-left counts as most
+ * specific). Patterns of identical shape fall back to lexical order so
+ * the emitted module is deterministic regardless of directory-read order.
+ *
+ * @internal exported for tests
+ */
+export function compareApiRoutePatterns(a: string, b: string): number {
+  const as = a.split('/').filter(Boolean)
+  const bs = b.split('/').filter(Boolean)
+  const n = Math.max(as.length, bs.length)
+  for (let i = 0; i < n; i++) {
+    const diff = segmentRank(as[i]) - segmentRank(bs[i])
+    if (diff !== 0) return diff
+  }
+  return a < b ? -1 : a > b ? 1 : 0
 }

@@ -79,12 +79,11 @@ describe('primitive and composite schemas reduce to their IR shape', () => {
     expect(typeOf({ type: 'boolean' })).toMatchObject({ kind: 'boolean' })
   })
 
-  it('reduces an enum of strings', () => {
-    // An enum stays a STRING carrying its members rather than becoming
-    // a separate kind — emitters that only understand `string` still
-    // produce something correct, just wider.
-    expect(typeOf({ type: 'string', enum: ['a', 'b'] })).toMatchObject({
-      kind: 'string', enum: ['a', 'b'],
+  it('reduces an enum of strings to its own kind', () => {
+    // NOT a `string` carrying its members: string constraints then attached
+    // to it and emitted `s.enum([…]).min(3)`, a TypeError at import.
+    expect(typeOf({ type: 'string', enum: ['a', 'b'], minLength: 3 })).toEqual({
+      kind: 'enum', values: ['a', 'b'],
     })
   })
 
@@ -121,8 +120,8 @@ describe('primitive and composite schemas reduce to their IR shape', () => {
       { type: 'object', properties: { a: { type: 'string', nullable: true } }, required: ['a'] },
       { type: 'object', properties: { a: { type: ['string', 'null'] } }, required: ['a'] },
     ]) {
-      const t = typeOf(schema) as unknown as { fields: Array<{ name: string; nullable?: boolean }> }
-      expect(t.fields[0]!.nullable, JSON.stringify(schema)).toBe(true)
+      const t = typeOf(schema) as unknown as { fields: Array<{ name: string; type: IrType }> }
+      expect(t.fields[0]!.type, JSON.stringify(schema)).toEqual({ kind: 'nullable', inner: { kind: 'string' } })
     }
   })
 

@@ -44,13 +44,13 @@ import { dateFormatter, numberFormatter } from './locale'
 import type { RichStyle } from './labels'
 import type { Annotation, ChartSpec, PointMarker, Series, SeriesExtra, BarLength } from './render'
 import { step, stepMiddle, stepStart } from './curve'
-import { plain } from './format'
+import { groupThousands, plain } from './format'
 import type { Formatter } from './format'
 import type { LegendEntry } from './legend'
 import { placeOptionLegend, readLegendLayout, readOptionLegend } from './option-legend'
 import { optionTitleCommands, readOptionTitle } from './option-title'
 import { optionGridInsets } from './option-grid'
-import { echartsNice, formatTick } from './scale'
+import { echartsNice } from './scale'
 import type { OptionTitle, TitleLink } from './option-title'
 import type { LegendPager, LegendSelectedMode, OptionLegendLayout } from './option-legend'
 import { measureApprox, renderSvg } from './svg'
@@ -1295,14 +1295,7 @@ function axisKeys(
  * by thousands (`addCommas`) — `1,500`, `-20`, `0.05`.
  */
 export function axisNumber(v: Double): string {
-  const text = formatTick(v)
-  const neg = text.startsWith('-')
-  const body = neg ? text.slice(1) : text
-  const dot = body.indexOf('.')
-  const int = dot < 0 ? body : body.slice(0, dot)
-  const frac = dot < 0 ? '' : body.slice(dot)
-  const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-  return (neg ? '-' : '') + grouped + frac
+  return groupThousands(v)
 }
 
 /** An ECharts length: a number of pixels, or a `'30%'` percent; undefined otherwise. */

@@ -70,7 +70,11 @@ const PORT = process.env.PORT ? Number(process.env.PORT) : ${port}
 
 Bun.serve({
   port: PORT,
-  async fetch(req) {
+  // Bun defaults to \`development: true\` unless NODE_ENV says otherwise, and
+  // its dev error page returns the error message and absolute server paths
+  // to the client. A production runner is never a development server.
+  development: false,
+  async fetch(req, server) {
     const url = new URL(req.url)
 
     // Try static files first (GET only).
@@ -136,12 +140,14 @@ Bun.serve({
           // Keying on the EXTENSION would 1-year-immutable-cache a non-hashed
           // root file like public/sw.js or public/config.js — a deploy-poisoning
           // bug (a stale service worker becomes unevictable). HTML must always
-          // revalidate (prerendered pages change on every content edit).
+          // revalidate (prerendered pages change on every content edit), and so
+          // must a service worker + web manifest: the SW script is the update
+          // channel — an hour of HTTP caching delays every PWA update.
           return new Response(file, {
             headers: {
               "cache-control": decoded.startsWith(${JSON.stringify(assetPrefix)})
                 ? "public, max-age=31536000, immutable"
-                : decoded.endsWith(".html")
+                : decoded.endsWith(".html") || /(^|\\/)sw\\.js$|\\.webmanifest$/.test(decoded)
                   ? "public, max-age=0, must-revalidate"
                   : "public, max-age=3600",
             },
@@ -150,8 +156,16 @@ Bun.serve({
       }
     }
 
-    // Fall through to SSR handler
-    return handler(req)
+    // Fall through to SSR handler. The client's socket address rides on the
+    // Request (read by @pyreon/server as ctx.locals.remoteAddress) for rate
+    // limiting and logging — never a header, which a client could forge.
+    req[Symbol.for("pyreon.remoteAddress")] = server.requestIP(req)?.address
+    try {
+      return await handler(req)
+    } catch (err) {
+      console.error("[Pyreon] Request failed:", req.method, url.pathname, err)
+      return new Response("Internal Server Error", { status: 500 })
+    }
   },
 })
 

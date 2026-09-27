@@ -3,7 +3,7 @@ import { signal } from '@pyreon/reactivity'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
 import type { ECharts } from 'echarts/core'
 import { afterEach, describe, expect, it } from 'vitest'
-import { Chart } from '../chart-component'
+import { EChart } from '../chart-component'
 import type { ChartEventParams } from '../types'
 
 // Real-Chromium coverage for the general event map (`onEvents`), the
@@ -42,7 +42,7 @@ describe('charts — onEvents + showLoading', () => {
       ],
     })
     const { unmount } = mountInBrowser(
-      h(Chart, {
+      h(EChart, {
         options,
         style: 'width:300px;height:220px',
         onInit: (i: ECharts) => {
@@ -73,7 +73,7 @@ describe('charts — onEvents + showLoading', () => {
       series: [{ type: 'pie' as const, data: [{ value: 1, name: 'X' }] }],
     })
     const { unmount } = mountInBrowser(
-      h(Chart, {
+      h(EChart, {
         options,
         style: 'width:300px;height:220px',
         onInit: (i: ECharts) => {
@@ -102,7 +102,7 @@ describe('charts — onEvents + showLoading', () => {
       series: [{ type: 'pie' as const, data: [{ value: 1, name: 'A' }] }],
     })
     const { unmount } = mountInBrowser(
-      h(Chart, {
+      h(EChart, {
         options,
         style: 'width:300px;height:220px',
         onInit: (i: ECharts) => {
@@ -152,7 +152,7 @@ describe('charts — onEvents + showLoading', () => {
       enumerable: true,
       configurable: true,
     })
-    const { unmount } = mountInBrowser(h(Chart, props))
+    const { unmount } = mountInBrowser(h(EChart, props))
     const ready = await waitFor(() => inst !== null, 5000)
     expect(ready).toBe(true)
 

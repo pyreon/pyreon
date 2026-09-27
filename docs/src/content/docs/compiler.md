@@ -89,15 +89,17 @@ The wrapping applies to both child expressions and prop values on DOM elements (
 
 ### The `shouldWrap` Decision Tree
 
-The compiler uses a precise set of rules to determine whether an expression needs reactive wrapping. The decision tree is:
+The compiler uses a precise set of rules (`isDynamic`/`shouldWrap` in `jsx.ts`) to determine whether an expression needs reactive wrapping. The decision tree is:
 
 1. **Is it an arrow function or function expression?** -- Skip. The user explicitly wrapped it or it is a callback.
 2. **Is it a static literal?** -- Skip. String literals, numeric literals, template literals without substitutions, `true`, `false`, `null`, and `undefined` have no reactive dependencies.
-3. **Does it contain a call expression?** -- Wrap it. Signal reads are always function calls (`count()`, `name()`). If the expression tree contains any `CallExpression` or `TaggedTemplateExpression`, it is treated as reactive.
-4. **Otherwise** -- Skip. Plain identifiers, object literals, array literals, and member accesses without calls are left as-is.
+3. **Does it contain a call expression?** -- Wrap it, **unless** the call is on a small allowlist of "pure static" globals (`Math.floor`, `Number.parseInt`, `JSON.stringify`, `Array.isArray`, `parseInt`, `encodeURIComponent`, `Date.now`, …) with only literal arguments — those are treated as one-time computations, not reactive dependencies. `String(...)`/`Number(...)`/`Boolean(...)` coercion calls are transparent: whether the call is dynamic depends only on whether their *argument* is (`String(row.id)` stays static, `String(count())` is dynamic). Every other call expression, and any `TaggedTemplateExpression`, is treated as reactive.
+4. **Is it a component-prop member access** (`props.x`, or a `const` derived from `props`/`splitProps` — see [Reactive Props Inlining](#reactive-props-inlining))? -- Wrap it. This is the case most people miss: `props.title` has **no call at all**, but it's still dynamic, because `props.title` is a live getter installed by `makeReactiveProps` — reading it once and caching the result would freeze it.
+5. **Is it a bare reference to a signal/computed identifier that hasn't been called yet** (`count` instead of `count()`)? -- Wrap it **and auto-call it** (see [Signal Auto-Call](#signal-auto-call) above).
+6. **Otherwise** -- Skip. Plain local identifiers, object/array literals, and member accesses on ordinary (non-props) variables are left as-is.
 
 ```tsx
-// ---- WRAPPED (contains function calls) ----
+// ---- WRAPPED ----
 <div>{count()}</div>                    // → {() => count()}
 <div>{a() ? "yes" : "no"}</div>        // → {() => a() ? "yes" : "no"}
 <div>{show() && <span />}</div>        // → {() => show() && <span />}
@@ -107,6 +109,11 @@ The compiler uses a precise set of rules to determine whether an expression need
 <div>{items().map(x => x)}</div>       // → {() => items().map(x => x)}
 <div>{store.getState().count}</div>    // → {() => store.getState().count}
 <div>{css`color: red`}</div>           // → {() => css`color: red`} (tagged template)
+<div>{count}</div>                     // → {() => count()} (bare signal, auto-called)
+
+function C(props) {
+  return <div>{props.title}</div>      // → props.title is dynamic even with NO call —
+}                                       //   it's a live getter, wrapped as a reactive text bind
 
 // ---- NOT WRAPPED (no reactive dependency) ----
 <div>{"literal"}</div>                  // Static string literal
@@ -115,32 +122,44 @@ The compiler uses a precise set of rules to determine whether an expression need
 <div>{null}</div>                       // Static null
 <div>{undefined}</div>                  // Static undefined
 <div>{`hello`}</div>                    // Template literal without substitutions
-<div>{title}</div>                      // Plain identifier (no call)
-<div>{a ? b : c}</div>                  // Ternary without calls
-<div>{show && <span />}</div>          // Logical expression without calls
+<div>{title}</div>                      // Plain identifier — NOT a props member, NOT a signal
+<div>{a ? b : c}</div>                  // Ternary without calls or props access
+<div>{show && <span />}</div>          // Logical expression without calls or props access
 <div>{{ color: "red" }}</div>           // Object literal without calls
 <div>{[1, 2, 3]}</div>                 // Array literal without calls
-<div>{obj.value}</div>                 // Member access without call
+<div>{obj.value}</div>                 // Member access on a plain (non-props) variable
 <div>{a + b}</div>                     // Binary expression without calls
+<div>{Math.floor(4.9)}</div>           // Pure-static call with literal args
 <div>{() => count()}</div>             // Already an arrow function
 <div>{function() { return x }}</div>   // Already a function expression
 <div>{(x: number) => x + 1}</div>     // Arrow function with params
 ```
 
+:::warning{title="A helper function call is conservatively treated as dynamic too"}
+Rule 3 is broader than "signal reads" suggests: **any** call expression that isn't on the pure-static allowlist is wrapped, not just direct signal calls. `<div>{someHelper()}</div>` wraps reactively even if `someHelper` is an ordinary function with no signal reads inside it — the compiler can't see through an arbitrary function body, so it conservatively assumes the call might be dynamic. The one shape that actually goes static is capturing a value into a plain `const`/`let` *before* the JSX and referencing that binding instead — see [Reactivity Rules → Reading a signal to pass as static value](/docs/reactivity-rules#reading-a-signal-to-pass-as-static-value).
+:::
+
 ### Component vs DOM Element Props
 
-Props on DOM elements (lowercase tags like `div`, `span`) are wrapped in reactive getters when they contain signal reads. Props on component elements (uppercase tags like `MyComp`) are **not** wrapped -- components receive plain values and manage reactivity internally:
+Both DOM elements (lowercase tags like `div`, `span`) and component elements (uppercase tags like `MyComp`) wrap dynamic props by the same `shouldWrap`/`isDynamic` test — a dynamic prop is **never left as a plain value on either kind of element**. What differs is the *shape* of the wrapping, because the two run through different reactivity plumbing:
+
+- A **DOM element** prop is wrapped in a bare arrow — `class={() => cls()}` — and applied by `renderEffect`/the template bind function directly against the element.
+- A **component** prop is wrapped in `_rp(() => expr)` (or the faster `_rpd(signal)` form when the value is a bare signal call with nothing else around it) — a marker the runtime's `makeReactiveProps` converts into a property **getter** on the props object the component receives. That's the mechanism behind "access `props.title`, don't destructure": the getter *is* the live binding.
 
 ```tsx
-// DOM element: props ARE wrapped
-<div class={cls()}>          // → class={() => cls()}
-<div title={getTitle()}>     // → title={() => getTitle()}
-<div data-id={getId()}>      // → data-id={() => getId()}
-<div aria-label={getLabel()}> // → aria-label={() => getLabel()}
+// DOM element: bare-arrow wrap
+<div class={cls()}>            // → class={() => cls()}
+<div title={getTitle()}>       // → title={() => getTitle()}
+<div data-id={getId()}>        // → data-id={() => getId()}
+<div aria-label={getLabel()}>  // → aria-label={() => getLabel()}
 
-// Component element: props are NOT wrapped
-<MyComponent value={count()} />  // → value={count()} (unchanged)
-<Button label={getText()} />     // → label={getText()} (unchanged)
+// Component element: _rp()/_rpd() getter-marker wrap — NOT left unchanged
+<MyComponent value={count()} />  // → value={_rpd(count)}         (bare signal call — fast path)
+<Button label={getText()} />     // → label={_rp(() => getText())} (general expression)
+
+// Static / already-function-valued props are still left alone on both:
+<MyComponent value="static" />           // unchanged — no reactive dependency
+<Button onClick={() => doThing()} />     // unchanged — already a function (and `on*` is never wrapped, see below)
 ```
 
 This distinction is made by checking the first character of the tag name. Uppercase tags are treated as components; lowercase tags as DOM elements.
@@ -176,14 +195,24 @@ Certain props are always excluded from wrapping regardless of their content:
 
 ### Spread Attributes
 
-Spread attributes (`&#123;...props&#125;`) are left unchanged by the compiler. They are not wrapped in reactive getters. If a spread coexists with other dynamic props, only the non-spread dynamic props are wrapped:
+Spread attributes on a **DOM element** are left unchanged by the compiler — reactivity for a DOM-element spread is handled entirely at the runtime layer (`_applyProps`/`_bindSpread`, see [DOM-element spread is fully first-class](/docs/reactivity-rules)), not at the JSX call site:
 
 ```tsx
 // Input
 <div {...props} class={cls()} />
 
-// Output — spread unchanged, dynamic class wrapped
+// Output — DOM spread unchanged, the co-existing dynamic `class` prop still wrapped
 <div {...props} class={() => cls()} />
+```
+
+Spread attributes on a **component**, by contrast, ARE rewritten — the compiler wraps the spread source in `_wrapSpread()` so the object's getter-shaped reactive props survive a plain object spread (`{...source}` in JS re-copies VALUES, which would collapse a compiler-emitted getter to a static snapshot at the spread's call time):
+
+```tsx
+// Input
+<MyComponent {...props} class={props.cls} />
+
+// Output — component spread wrapped with _wrapSpread(), class prop wrapped with _rp()
+<MyComponent {..._wrapSpread(props)} class={_rp(() => props.cls)} />
 ```
 
 ### Object and Array Literal Props
@@ -294,10 +323,11 @@ A JSX tree is eligible for template emission when:
 | Contains component (`<MyComp />`)              | No        | Components need runtime instantiation          |
 | Has spread attributes (`&#123;...props&#125;`) | No        | Spread requires dynamic prop application — handled by `_tpl()` + `_applyProps()` on root elements, `h()` otherwise |
 | Has `key` prop                                 | No        | Keyed elements need reconciliation metadata    |
-| Contains fragment child (`<>...</>`)           | No        | Fragment breaks DOM structure assumptions      |
-| Mixed element + expression children            | Yes       | `<!>` comment placeholder + `replaceChild` keeps positions exact |
-| Multiple expression children in same parent    | Yes       | One `<!>` placeholder + text node per expression |
-| Expression child containing nested JSX         | No        | Too complex for template codegen — falls back to `h()` |
+| Contains fragment child (`<>...</>`)           | Yes       | Fragments are transparently flattened into the parent's template — static or dynamic content inside makes no difference |
+| Mixed element + expression children            | Yes       | `<!>` comment placeholder + `_textSlot`/`_mountSlot` keeps positions exact |
+| Multiple expression children in same parent    | Yes       | Text-only runs fuse into ONE `_fuse(...)` binding; a run touching an element sibling gets one `<!>` placeholder per expression |
+| A ternary/logical expression whose branches are nested JSX (`{cond() ? <span/> : null}`) | Yes       | The condition routes through `_mountSlot`; the OUTER tree stays `_tpl()`-eligible — only the conditional's own subtree is unwrapped `h()`-style JSX |
+| A BARE (unconditional, not wrapped in a ternary/logical/arrow) nested JSX expression child (`{<span>{x()}</span>}`) | No        | Too complex for template codegen — the entire outer tree falls back to `h()` |
 
 ### What Gets Baked Into HTML
 
@@ -332,7 +362,7 @@ The compiler handles JSX-to-HTML attribute mapping automatically:
 
 Dynamic attributes and text content are handled by the bind function:
 
-**Reactive attributes** subscribe directly via `_bindDirect()`:
+**Reactive attributes** subscribe directly via `_bindDirect()`, delegating the actual DOM write to the **same normalizer functions the `h()`/runtime path uses** (`_setClass`, `_setStyle`, `_setAttr`) so a compiled attribute and a component-rendered one apply a value identically — this is a deliberate, load-bearing design point: a divergence here was a real historical bug class (see [Reactivity Rules](/docs/reactivity-rules) and the [anti-patterns catalog](https://github.com/pyreon/pyreon/blob/main/.agents/rules/anti-patterns.md) for the "compiler template fast-path value emit diverging from runtime applyProp normalization" writeup):
 
 ```tsx
 // Input
@@ -342,9 +372,7 @@ Dynamic attributes and text content are handled by the bind function:
 
 // Output bind function:
 ;(__root) => {
-  const __d0 = _bindDirect(cls, (v) => {
-    __root.className = v == null ? '' : String(v)
-  })
+  const __d0 = _bindDirect(cls, (v) => _setClass(__root, v))
   const __e0 = __root.firstElementChild
   const __t1 = __e0.firstChild
   const __d1 = _bindText(name, __t1)
@@ -355,7 +383,7 @@ Dynamic attributes and text content are handled by the bind function:
 }
 ```
 
-**One-time static expressions** (no calls, so not reactive) are set directly without `_bind()`:
+**One-time static expressions** (no calls, so not reactive) are set once via the runtime's `_setChild` helper, not `.textContent`:
 
 ```tsx
 // Input
@@ -366,7 +394,7 @@ Dynamic attributes and text content are handled by the bind function:
 // Output bind function:
 ;(__root) => {
   const __e0 = __root.firstElementChild
-  __e0.textContent = label
+  _setChild(__e0, label)
   return null
 }
 ```
@@ -407,9 +435,9 @@ The event name is the full-lowercased prop name (`onMouseEnter` → `"mouseenter
 
 ### Reactive Text Nodes
 
-For dynamic text content, the compiler binds a persistent `TextNode` and updates its `.data` property rather than setting `.textContent` on the parent. This avoids destroying and recreating the text node on every reactive update. Two shapes:
+For dynamic text content, the compiler binds a persistent `TextNode` and updates its `.data` property rather than setting `.textContent` on the parent. This avoids destroying and recreating the text node on every reactive update. There are three shapes, depending on the children of the element:
 
-**Sole dynamic text** (`<span>{name()}</span>`) — the template bakes a single space so the text node already exists in the clone; the bind function grabs it via `firstChild`:
+**Sole dynamic child, nothing else** (`<span>{name()}</span>`) — a SINGLE child that's an expression, no sibling text. The template bakes a single space so the text node already exists in the clone; the bind function grabs it via `firstChild` and calls `_bindText` directly on the signal for the O(1) fast path (no wrapping closure):
 
 ```tsx
 // template HTML: "<span> </span>"
@@ -417,12 +445,23 @@ const __t0 = __e0.firstChild
 const __d0 = _bindText(name, __t0)
 ```
 
-**Mixed content** (`<span>Count: {count()}</span>`) — the template bakes a `<!>` comment placeholder at the expression's position; the bind function creates the text node and `replaceChild`s it over the placeholder (never `appendChild` — positions stay exact):
+**Text mixed with one or more expressions, no element siblings — TEXT FUSION** (`<span>Count: {count()}</span>`, or `<span>{a()}{b()}</span>`, or `<span>Count: {count()} items</span>`) — this is the common case, and it's handled entirely differently from the sole-child case above: the compiler **fuses** every literal text run and expression into ONE combined accessor call, `_fuse(...)` from `@pyreon/core`, bound via `bindPolymorphicText` on a SINGLE text node. There's no `<!>` placeholder and no `replaceChild` — the whole run collapses to the template's usual "bake a single space" shape:
 
 ```tsx
-// template HTML: "<span>Count: <!></span>"
-const __t0 = document.createTextNode('')
-__e0.replaceChild(__t0, __e0.firstChild.nextSibling)
+// Input: <span>Count: {count()} items</span>
+// template HTML: "<span> </span>"  (same single-space bake as the sole-child case)
+const __t0 = __root.firstChild
+const __d0 = bindPolymorphicText(() => _fuse("Count: ", count(), " items"), __t0, __root)
+```
+
+`_fuse` joins the parts into a single string when every part is text-ish (`null`/`undefined`/`false` contribute nothing, everything else stringifies) — but the moment ANY part is a VNode/array/NativeItem/function, it returns the **parts array instead**, and `bindPolymorphicText` mounts that as a subtree. So `{sig()}` holding a VNode inside a fused run still mounts correctly; nothing gets coerced to `[object Object]`. Fusion is declined (falling back to the placeholder mechanism below) when a text run contains an HTML entity (`&nbsp;`, `&amp;`, …) — JSX decodes entities at parse time into the baked HTML string, but a fused run assigns `Text.data` directly, which never decodes anything, so the compiler bails rather than risk emitting the literal escaped text.
+
+**Text/expression mixed with an ELEMENT sibling** (`<div><span>1</span>{count()}</div>`) — fusion requires every child to be text or an expression; an element in the mix breaks that, so this falls back to the older placeholder mechanism: the template bakes a `<!>` comment at the expression's position, and the bind function resolves a real text node over it via the runtime's `_textSlot(parent, placeholder)` helper (which also knows how to adopt an already-hydrated server text node in place, rather than rebuilding it — see [Hydration](/docs/runtime-dom#hydration)):
+
+```tsx
+// template HTML: "<div><span>1</span><!></div>"
+const __p0 = __root.firstChild.nextSibling  // the <!> placeholder
+const __t0 = _textSlot(__root, __p0)
 const __d0 = _bindText(count, __t0)
 ```
 
@@ -436,12 +475,8 @@ _tpl('<div><span>static</span></div>', () => null)
 
 // Multiple dynamic parts → composed cleanup
 _tpl('...', (__root) => {
-  const __d0 = _bind(() => {
-    __root.className = cls()
-  })
-  const __d1 = _bind(() => {
-    __t0.data = name()
-  })
+  const __d0 = _bindDirect(cls, (v) => _setClass(__root, v))
+  const __d1 = _bindText(name, __t0)
   return () => {
     __d0()
     __d1()
@@ -500,13 +535,14 @@ The full list of recognized void elements: `area`, `base`, `br`, `col`, `embed`,
 
 ### Auto-Imported Runtime Helpers
 
-When template emission is used, the compiler automatically prepends import statements:
+When template emission is used, the compiler automatically prepends import statements for whichever helpers the emitted bind functions actually call — never more than that. There isn't one fixed set: a template with only a dynamic class emits `_bindDirect` + `_setClass`; one with a text-fusion run also emits `_fuse` from `@pyreon/core`; one with a bare `props.x` text child emits `_bindProp`. A representative (non-exhaustive) import for a template mixing several of these shapes:
 
 ```ts
-import { _tpl, _bindText, _bindDirect } from '@pyreon/runtime-dom'
+import { _fuse } from '@pyreon/core'
+import { _tpl, _bindText, _bindDirect, _bindProp, bindPolymorphicText, _setClass, _setChild } from '@pyreon/runtime-dom'
 ```
 
-These imports are only added when at least one `_tpl()` call is emitted (each helper only when used). The `usesTemplates` flag on the transform result indicates whether this happened.
+These imports are only added when at least one `_tpl()` call is emitted, and each helper only when used. The `usesTemplates` flag on the transform result indicates whether any template was emitted at all.
 
 ### Performance Benefits
 
@@ -515,15 +551,18 @@ Template emission provides significant performance improvements:
 - **`cloneNode(true)` is 5-10x faster** than sequential `createElement` + `setAttribute` calls
 - **Zero VNode, props-object, or children-array allocations** per instance
 - **Static attributes are baked into the HTML string** -- no runtime prop application needed
-- **Dynamic text uses `_bindText()` and dynamic attributes `_bindDirect()`** -- direct subscriptions for efficient reactive updates with automatic cleanup
+- **Direct subscriptions, not effects** -- `_bindText`/`_bindDirect`/`_bindProp` subscribe straight to a signal's O(1) direct-dispatch tier when the source allows it, skipping the `renderEffect` machinery entirely; only genuinely polymorphic/derived expressions fall back to the general `bindPolymorphicText` path
+- **Text fusion collapses multi-part text into ONE binding** -- `<span>Count: {count()} items</span>` is one `_fuse(...)` call and one text-node subscription, not a static-bake-plus-placeholder pair (see [Reactive Text Nodes](#reactive-text-nodes))
 - **Persistent `TextNode` reuse** avoids destroy/recreate overhead on text updates
 
 ### Real-World Template: Benchmark Row
 
-Here is a realistic benchmark-style table row showing all template features working together:
+Here is a realistic `<For>`-row-callback example (the shape `js-framework-benchmark`-style row components take) showing several template features working together — a dynamic class, a one-time-static prop read, and a reactive method-call text binding:
 
 ```tsx
-// Input
+// Input — row is a <For> render-callback param, NOT a component's props
+// (the compiler deliberately does not treat a <For> callback param as
+// reactive props — see Reactivity Rules)
 ;<tr class={cls()}>
   <td class="id">{String(row.id)}</td>
   <td>{row.label()}</td>
@@ -531,14 +570,12 @@ Here is a realistic benchmark-style table row showing all template features work
 
 // Output
 _tpl('<tr><td class="id"></td><td> </td></tr>', (__root) => {
-  const __d0 = _bindDirect(cls, (v) => {
-    __root.className = v == null ? '' : String(v)
-  })
   const __e0 = __root.firstElementChild
-  __e0.textContent = String(row.id) // pure call, no signal read — set once
-  const __e1 = __root.firstElementChild.nextElementSibling
+  const __e1 = __e0.nextElementSibling
   const __t2 = __e1.firstChild
-  const __d1 = _bindText(row.label, __t2, () => row.label())
+  const __d0 = _bindDirect(cls, (v) => _setClass(__root, v))
+  _setChild(__e0, String(row.id)) // row.id is a per-item value with no calls — set once
+  const __d1 = _bindText(row.label, __t2, undefined, row) // method call — bound with `row` as receiver
   return () => {
     __d0()
     __d1()
@@ -546,7 +583,11 @@ _tpl('<tr><td class="id"></td><td> </td></tr>', (__root) => {
 })
 ```
 
-Static class `"id"` is baked into the HTML. Dynamic class `cls()` and text children `String(row.id)` / `row.label()` use `_bind()`.
+Static class `"id"` is baked into the HTML. Dynamic class `cls()` binds via `_bindDirect` + `_setClass`. `row.label()` is a member-call, so `_bindText` takes a 4th `receiver` argument (`row`) instead of eagerly building a wrapping closure — the receiver-binding closure is only constructed lazily, on the binding's slow path, never per fire.
+
+:::note{title="This is a <For> callback — inside an ordinary component, row.id would be reactive"}
+If `row` were instead a destructured/direct reference to a *component's* `props` parameter (`function Row(row) { ... }`), `row.id` would be a **component-prop member access** — dynamic per rule 4 of the `shouldWrap` decision tree above — and `String(row.id)` would compile to a reactive `bindPolymorphicText(() => String(row.id), ...)` binding instead of a one-time `_setChild`. The `<For>` render-callback param is the one deliberate exception: it's the framework's per-row VALUE, not reactive props, so a plain per-item read stays a one-time set.
+:::
 
 ## Compiler Warnings
 
@@ -575,9 +616,26 @@ interface CompilerWarning {
   message: string
   line: number // 1-based line number
   column: number // 0-based column number
-  code: 'signal-call-in-jsx' | 'missing-key-on-for' | 'signal-in-static-prop'
+  code:
+    | 'signal-call-in-jsx'
+    | 'missing-key-on-for'
+    | 'signal-in-static-prop'
+    | 'circular-prop-derived'
+    | 'duplicate-jsx-attr'
+    | 'plain-mode'
 }
 ```
+
+Currently-emitted codes:
+
+| Code                   | When it fires                                                                                          |
+| ----------------------- | -------------------------------------------------------------------------------------------------------- |
+| `missing-key-on-for`    | A `<For>` with no `by` prop (see above).                                                                  |
+| `circular-prop-derived` | A prop-derived `const` chain that references itself (`const a = b + props.x; const b = a + 1`). The cyclic identifier keeps its captured value instead of being reactively inlined — restructure the chain or read `props.*` directly. |
+| `duplicate-jsx-attr`    | The same JSX attribute name written twice on one element (`<div id="a" id="b" />`). The later one wins (matches JS object-literal semantics), the earlier one is flagged as ignored. |
+| `plain-mode`            | Emitted by the [Plain Mode](/docs/plain-mode) pre-pass for a declined/unconvertible shape — prefixed with `[plain]` in the message. |
+
+`signal-call-in-jsx` and `signal-in-static-prop` are declared in the type but are not currently emitted by either backend — reserved for future diagnostics. Don't build tooling that assumes they fire today.
 
 ## API Reference
 
@@ -626,9 +684,17 @@ interface CompilerWarning {
   /** Source file column number (0-based) */
   column: number
   /** Warning code for filtering */
-  code: 'signal-call-in-jsx' | 'missing-key-on-for' | 'signal-in-static-prop'
+  code:
+    | 'signal-call-in-jsx'
+    | 'missing-key-on-for'
+    | 'signal-in-static-prop'
+    | 'circular-prop-derived'
+    | 'duplicate-jsx-attr'
+    | 'plain-mode'
 }
 ```
+
+See [Warning Types](#warning-types) above for what each currently-emitted code means.
 
 ## Complete Transform Rules Reference
 
@@ -656,10 +722,12 @@ interface CompilerWarning {
 | `<div>&#123;[1, 2]&#125;</div>`             | Unchanged                            | Array literal (no call)              |
 | `<div>&#123;a + b&#125;</div>`              | Unchanged                            | Binary expression (no call)          |
 | `<div>&#123;a ? b : c&#125;</div>`          | Unchanged                            | Ternary (no call)                    |
-| `<Comp :prop='expr()'>`                     | Unchanged                            | Component prop (not wrapped)         |
+| `<Comp :prop='expr()'>`                     | `prop={_rp(() => expr())}`           | Component prop — wrapped with a getter marker, NOT the same bare-arrow form DOM props get |
+| `<Comp :prop='sig()'>` (bare signal call)   | `prop={_rpd(sig)}`                   | Component prop, bare-signal fast path |
 | `<div>&#123;<span>text</span>&#125;</div>`  | Hoisted to module scope              | Static JSX child                     |
 | `<div><span>&#123;t()&#125;</span></div>`   | `_tpl(...)` call                     | Template-eligible tree (2+ elements) |
-| `<div &#123;...props&#125;>`                | Unchanged                            | Spread left as-is                    |
+| `<div &#123;...props&#125;>`                | Unchanged                            | DOM-element spread left as-is (handled by the runtime's `_applyProps`/`_bindSpread`, not the compiler) |
+| `<Comp &#123;...props&#125;>`               | `{..._wrapSpread(props)}`            | Component spread wrapped so getter-shaped reactive props survive the JS object spread |
 
 ## Integration with Vite Plugin
 
@@ -758,12 +826,12 @@ function Greeting(props) {
 // Compiler output (template mode):
 _tpl('<div> </div>', (__root) => {
   const __t0 = __root.firstChild
-  const __d0 = _bind(() => { __t0.data = (props.name ?? 'World') })
-  return () => { __d0() }
+  const __d0 = bindPolymorphicText(() => (props.name ?? 'World'), __t0, __root)
+  return __d0
 })
 ```
 
-The variable `x` is replaced with its original expression `(props.name ?? 'World')` inside the `_bind()`, so it re-evaluates whenever `props.name` changes.
+The variable `x` is replaced with its original expression `(props.name ?? 'World')` inside a reactive text binding, so it re-evaluates whenever `props.name` changes.
 
 ### Transitive Resolution
 
@@ -777,8 +845,8 @@ function Profile(props) {
   return <div>{upper}</div>
 }
 
-// Compiler inlines upper as:
-// ((((props.name)) + '!').toUpperCase())
+// Compiler inlines upper into a reactive text binding as:
+// bindPolymorphicText(() => (((props.name) + '!').toUpperCase()), textNode, root)
 // → fully reactive to props.name changes
 ```
 
@@ -846,12 +914,12 @@ const isSelected = createSelector(selectedId)
 
 // Compiles to (effect-free per-key fast path):
 const __d0 = isSelected.subscribe(row.id, (m) => {
-  __root.className = (m ? 'selected' : '')
+  _setClass(__root, m ? 'selected' : '')
 })
 
 // Instead of the default _bind(() => …) shape:
 const __d0 = _bind(() => {
-  __root.className = isSelected(row.id) ? 'selected' : ''
+  _setClass(__root, isSelected(row.id) ? 'selected' : '')
 })
 ```
 
@@ -905,29 +973,33 @@ Both the JS path and the Rust native binary implement all three detectors byte-f
 
 ## Pure Static Call Detection
 
-The compiler recognizes 40+ standard library functions as pure (side-effect-free). Expressions containing only pure calls are **not** wrapped in reactive getters, since they cannot contain signal reads:
+The compiler recognizes ~37 standard-library functions as "pure static" — a call to one of these, with only literal arguments, is treated as a one-time computation, not a reactive dependency:
 
 ```tsx
-// NOT wrapped — Math.round is pure:
+// NOT wrapped — Math.round with a literal arg is pure-static:
 <div>{Math.round(3.7)}</div>
 
-// NOT wrapped — JSON.stringify is pure:
-<span>{JSON.stringify(data)}</span>
-
-// NOT wrapped — Object.keys is pure:
-<ul>{Object.keys(config).length}</ul>
+// STILL wrapped — the ARGUMENT is dynamic, so the call is treated as
+// dynamic too (pure-static requires EVERY argument to be a literal):
+<div>{Math.round(price())}</div>
 
 // STILL wrapped — user function may contain signals:
 <div>{formatPrice(price())}</div>
 ```
 
-The full list of recognized pure functions includes:
+This is deliberately a small, curated allowlist, not a general purity inference — the compiler has no way to know whether an arbitrary function is side-effect-free, so it only special-cases global functions it can name explicitly:
 
-- **Math**: `abs`, `ceil`, `floor`, `round`, `max`, `min`, `pow`, `sqrt`, `log`, `random`, `sign`, `trunc`, `clz32`, `imul`, `fround`, `cbrt`, `hypot`, `log2`, `log10`, `log1p`, `expm1`, `cosh`, `sinh`, `tanh`, `acosh`, `asinh`, `atanh`
-- **JSON**: `stringify`, `parse`
-- **Object**: `keys`, `values`, `entries`, `assign`, `freeze`, `is`, `fromEntries`, `hasOwn`, `create`, `getPrototypeOf`
-- **Array**: `isArray`, `from`, `of`
-- **Other**: `String()`, `Number()`, `Boolean()`, `parseInt()`, `parseFloat()`, `isNaN()`, `isFinite()`, `encodeURIComponent()`, `decodeURIComponent()`
+- **Math**: `max`, `min`, `abs`, `floor`, `ceil`, `round`, `pow`, `sqrt`, `random`, `trunc`, `sign`
+- **Number**: `Number.parseInt`, `Number.parseFloat`, `Number.isNaN`, `Number.isFinite`
+- **Global**: `parseInt`, `parseFloat`, `isNaN`, `isFinite`
+- **String**: `String.fromCharCode`, `String.fromCodePoint`
+- **Object**: `Object.keys`, `Object.values`, `Object.entries`, `Object.assign`, `Object.freeze`, `Object.create`
+- **Array**: `Array.from`, `Array.isArray`, `Array.of`
+- **JSON**: `JSON.stringify`, `JSON.parse`
+- **URI encoding**: `encodeURIComponent`, `decodeURIComponent`, `encodeURI`, `decodeURI`
+- **Date**: `Date.now`
+
+A SEPARATE, narrower rule handles the three coercion globals — `String(...)`, `Number(...)`, `Boolean(...)` with exactly one non-spread argument. These aren't checked against the allowlist above; instead the call is **transparent**, and dynamism is decided entirely by the argument: `String(row.id)` stays static (the argument has no reactive dependency), `String(count())` is dynamic (the argument does), `String(props.x)` is dynamic (props access is always dynamic — see the `shouldWrap` decision tree above). This is why `String(row.id)` inside a `<For>` render-callback body can safely be a one-time set, while a naive "String() is always pure" rule would have missed the reactive case.
 
 ## Spread Props on Root Element
 
@@ -941,11 +1013,11 @@ When the root element of a template has spread attributes, the compiler now emit
 
 // Output — template cloning + _applyProps for spread:
 _tpl('<div><span> </span></div>', (__root) => {
-  _applyProps(__root, props)
   const __e0 = __root.firstElementChild
   const __t1 = __e0.firstChild
-  const __d0 = _bindText(text, __t1)
-  return () => { __d0() }
+  const __d0 = _applyProps(__root, props) // returns a disposer — captured like any other binding
+  const __d1 = _bindText(text, __t1)
+  return () => { __d0(); __d1() }
 })
 ```
 
@@ -965,27 +1037,27 @@ Expressions inside nested JSX within a child expression container are not indivi
 
 Fine-grained nested wrapping is planned for a future pass.
 
-### Fragment Children in Templates
+### Fragment Children — no longer a limitation
 
-Templates bail out when encountering fragment children, since fragments break the assumed DOM structure:
+**This used to bail out of template emission and no longer does.** A fragment is a transparent grouping construct (it has no DOM identity of its own), so the compiler flattens a fragment child directly into its parent — static or dynamic content inside it, either way — and still emits `_tpl()`:
 
 ```tsx
-// This will NOT use template emission:
+// Both of these emit _tpl() — the fragment is transparently flattened:
 <div><>text</></div>
-
-// This will use template emission:
-<div><span>text</span></div>
+<div><span>a</span><>{count()}</></div>
 ```
 
-### Mixed Element and Expression Children
+A fragment still bails template emission the same way anything else does: if it contains a **component** child (`<div><><Comp/></></div>`), the whole tree falls back to `h()` — that's the component rule (below), not a fragment-specific limitation.
 
-A parent element with both element children and expression children is not eligible for template emission, because `childNodes` indexing becomes unreliable:
+### Mixed Element and Expression Children — also no longer a limitation
+
+A parent element with both element children and expression children **is** eligible for template emission — the compiler bakes a `<!>` comment placeholder at the expression's position and resolves a real text/element node over it at bind time via `_textSlot`/`_mountSlot` (see [Reactive Text Nodes](#reactive-text-nodes) above), so `childNodes` indexing stays exact:
 
 ```tsx
-// NOT template-eligible (mixed element + expression children):
+// Template-eligible — <!> placeholder keeps sibling positions exact:
 <div><span />{text()}</div>
 
-// Template-eligible (expression-only children per parent):
+// Also template-eligible (expression-only children per parent):
 <div><span>{text()}</span></div>
 ```
 

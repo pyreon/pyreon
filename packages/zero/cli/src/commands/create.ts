@@ -1,61 +1,48 @@
-import { existsSync } from 'node:fs'
-import { cp, readFile, writeFile } from 'node:fs/promises'
-import { basename, join, resolve } from 'node:path'
+/**
+ * `zero create [name] [flags]` — scaffold a new Pyreon Zero project.
+ *
+ * Delegates to `@pyreon/create-zero` (a direct dependency of this package),
+ * the same scaffolder `bun create @pyreon/zero` runs, so there is exactly one
+ * scaffolding implementation and one set of templates. Every argument after
+ * `create` is forwarded verbatim — the project name, `--template`, `--yes`,
+ * `--help` — and create-zero owns the interactive prompts.
+ *
+ * This used to copy a `templates/default` directory that create-zero has not
+ * shipped for a long time, so the command always failed with
+ * "Template not found".
+ */
+import { spawnSync } from 'node:child_process'
+import { createRequire } from 'node:module'
+import { dirname, join } from 'node:path'
 
-export async function create(name: string | undefined) {
-  if (!name) {
-    console.error('Usage: zero create <project-name>')
-    process.exit(1)
+/** Absolute path to the installed create-zero bin script. */
+export function resolveCreateZeroBin(): string {
+  const require = createRequire(import.meta.url)
+  const pkgJson = require.resolve('@pyreon/create-zero/package.json')
+  return join(dirname(pkgJson), 'bin', 'create-zero.js')
+}
+
+/** The arguments that follow `create` on the command line. */
+export function argsAfterCreate(argv: readonly string[]): string[] {
+  const i = argv.indexOf('create')
+  return i === -1 ? [] : argv.slice(i + 1)
+}
+
+/**
+ * Run create-zero with `args`, inheriting stdio so its prompts work.
+ * Returns the scaffolder's exit code.
+ */
+export function runCreate(args: readonly string[]): number {
+  const result = spawnSync(process.execPath, [resolveCreateZeroBin(), ...args], {
+    stdio: 'inherit',
+  })
+  if (result.error) {
+    console.error(`[Pyreon] zero create: could not start @pyreon/create-zero: ${result.error.message}`)
+    return 1
   }
+  return result.status ?? 1
+}
 
-  const targetDir = resolve(process.cwd(), name)
-
-  if (existsSync(targetDir)) {
-    console.error(`Directory "${name}" already exists.`)
-    process.exit(1)
-  }
-
-  try {
-    // Resolve template directory relative to this package
-    const templateDir = resolve(
-      import.meta.dirname,
-      '../../node_modules/@pyreon/create-zero/templates/default',
-    )
-
-    // Fallback: try workspace resolution
-    let sourceDir = templateDir
-    if (!existsSync(sourceDir)) {
-      const altDir = resolve(import.meta.dirname, '../../../create-zero/templates/default')
-      if (existsSync(altDir)) {
-        sourceDir = altDir
-      } else {
-        console.error(
-          'Template not found. Install @pyreon/create-zero or use: bun create @pyreon/zero',
-        )
-        process.exit(1)
-      }
-    }
-
-    // Copy template
-    await cp(sourceDir, targetDir, { recursive: true })
-
-    // Update package.json with project name
-    const pkgPath = join(targetDir, 'package.json')
-    const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'))
-    pkg.name = basename(name)
-    await writeFile(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`)
-
-    // Create .gitignore (npm strips .gitignore from packages)
-    await writeFile(join(targetDir, '.gitignore'), 'node_modules\ndist\n.DS_Store\n*.local\n')
-
-    console.log(`\nCreated "${name}"!\n`)
-    console.log('Next steps:')
-    console.log(`  cd ${name}`)
-    console.log('  bun install')
-    console.log('  bun run dev')
-    console.log('')
-  } catch (error) {
-    console.error('Failed to create project:', (error as Error).message)
-    process.exit(1)
-  }
+export function create(): void {
+  process.exit(runCreate(argsAfterCreate(process.argv.slice(2))))
 }

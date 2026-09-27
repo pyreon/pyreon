@@ -14,7 +14,7 @@
  * dependencies on any specific validation library.
  */
 
-import { flattenIssuePath } from './utils'
+import { emptyErrors, flattenIssuePath } from './utils'
 import type {
   ParseResult,
   SchemaValidateFn,
@@ -51,7 +51,8 @@ export function standardSchemaToValidator<TValues extends Record<string, unknown
 ): SchemaValidateFn<TValues> {
   type Errors = Partial<Record<keyof TValues, ValidationError>>
   const toErrors = (result: unknown): Errors => {
-    const errors: Record<string, ValidationError> = {}
+    // Null-prototype record — see `emptyErrors` in ./utils.
+    const errors = emptyErrors<Record<string, unknown>>() as Record<string, ValidationError>
     if (
       result != null &&
       typeof result === 'object' &&
@@ -129,6 +130,18 @@ export type InferSchema<S> = S extends {
         // branch instead, so inference is UNIVERSAL across every schema lib.
         InferFromValidate<S>
     : InferFromValidate<S>
+
+/**
+ * A Standard Schema that exposes the OPTIONAL `~standard.types` phantom with an
+ * object output — the structural shape the adapter overloads
+ * (`valibotSchema` / `arktypeSchema`) use to infer the form's `TValues` from
+ * the schema itself. Valibot ≥1 and ArkType ≥2 both carry it.
+ */
+export interface StandardSchemaTyped {
+  readonly '~standard': {
+    readonly types?: { readonly output: Record<string, unknown> } | undefined
+  }
+}
 
 /**
  * Fallback inference: read the output type from a Standard Schema's `validate`

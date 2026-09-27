@@ -191,6 +191,37 @@ export function createCatalogGraph(initial: readonly ComponentIntelligence[] = [
   return graph
 }
 
+/**
+ * Give every component its FINAL identity before anything is derived from it.
+ *
+ * The graph qualifies a colliding name (`Card` → `Card@src/b`) — but only on
+ * insertion, which is the LAST pipeline step. Everything before it derived
+ * from the bare name: scenario ids (`card--default` for both Cards, so their
+ * verdicts collided in the ratchet's diff map, in the browser merge, and in
+ * `atlas-snapshots/card--default.png`), and `atlas verify Card`, where an
+ * exact KEY match on the first `Card` won silently while `atlas check`
+ * suggested a qualified key the lookup then refused.
+ *
+ * Runs the graph's own insertion rules (one qualification policy, not two)
+ * and returns the components in their ORIGINAL order with the qualifier set.
+ * A name that does not collide is returned unchanged — the same object — so a
+ * single-package catalog stays byte-identical.
+ */
+export function qualifyIdentities(
+  components: readonly ComponentIntelligence[],
+): ComponentIntelligence[] {
+  const graph = createCatalogGraph(components)
+  const byOrigin = new Map<string, ComponentIntelligence>()
+  const origin = (c: ComponentIntelligence): string => `${c.project ?? ''}/${c.name}@${c.source ?? ''}`
+  for (const c of graph.list()) if (c.pathQualifier !== undefined) byOrigin.set(origin(c), c)
+  if (byOrigin.size === 0) return [...components]
+  return components.map((c) => {
+    if (c.pathQualifier !== undefined) return c
+    const qualifier = byOrigin.get(origin(c))?.pathQualifier
+    return qualifier === undefined ? c : { ...c, pathQualifier: qualifier }
+  })
+}
+
 /** Rank components + scenarios against a free-text query (case-insensitive). */
 function searchCatalog(components: readonly ComponentIntelligence[], query: string): SearchHit[] {
   const q = query.trim().toLowerCase()

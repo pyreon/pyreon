@@ -1,9 +1,17 @@
 import type { VNodeChild, VNodeChildAtom } from '@pyreon/core'
-import { For, nativeCompat, Portal, Show } from '@pyreon/core'
+import { For, nativeCompat, onUnmount, Portal, Show } from '@pyreon/core'
 import { computed, effect, onCleanup } from '@pyreon/reactivity'
 import { setupDelegation } from '@pyreon/runtime-dom'
 import { toastStyles } from './styles'
-import { _pauseAll, _resumeAll, _setDefaultDuration, _toastMap, _toasts, toast } from './toast'
+import {
+  _getDefaultDuration,
+  _pauseAll,
+  _resumeAll,
+  _setDefaultDuration,
+  _toastMap,
+  _toasts,
+  toast,
+} from './toast'
 import type { Toast, ToasterProps, ToastPosition } from './types'
 
 // ─── Style injection ─────────────────────────────────────────────────────────
@@ -46,6 +54,13 @@ function getContainerStyle(position: ToastPosition, gap: number, offset: number)
 // ─── Toaster component ──────────────────────────────────────────────────────
 
 /**
+ * How many Toasters are mounted. The store is global, so every mounted
+ * Toaster renders EVERY toast — two Toasters show each toast twice, and each
+ * one's `duration` prop overwrites the other's default.
+ */
+let _mountedToasters = 0
+
+/**
  * Render component for toast notifications. Place once at your app root.
  *
  * @example
@@ -71,10 +86,34 @@ function Toaster(props?: ToasterProps): VNodeChild {
   // App-wide default auto-dismiss duration. The store is module-level (toasts
   // can be created before the Toaster mounts), so the Toaster writes the
   // default that `addToast` reads for toasts without their own `duration`.
-  if (props?.duration !== undefined) _setDefaultDuration(props.duration)
+  //
+  // Restored on unmount, so a Toaster that goes away (a route's layout, a
+  // test) does not leave its default applied to every later toast.
+  if (props?.duration !== undefined) {
+    const previous = _getDefaultDuration()
+    _setDefaultDuration(props.duration)
+    onUnmount(() => _setDefaultDuration(previous))
+  }
+
+  _mountedToasters++
+  onUnmount(() => {
+    _mountedToasters--
+  })
+  if (process.env.NODE_ENV !== 'production' && _mountedToasters > 1) {
+    console.warn(
+      `[Pyreon] ${_mountedToasters} <Toaster> components are mounted. The toast store is global, so every ` +
+        'toast renders once per Toaster (and each Toaster\'s `duration` overrides the others). Mount exactly one, at the app root.',
+    )
+  }
 
   injectStyles()
 
+  // Teardown goes through `onUnmount`, NOT `@pyreon/reactivity`'s
+  // `onCleanup`: the latter only registers inside an effect run, so at a root
+  // mount it was dropped (the host element, the visibilitychange listener and
+  // a 'hidden' pause hold all outlived the Toaster), and under a reactive
+  // boundary it fired whenever that boundary re-ran.
+  //
   // Portal HOST + event delegation.
   //
   // Toasts render OUTSIDE the app's mount container (a Portal into the body
@@ -91,7 +130,7 @@ function Toaster(props?: ToasterProps): VNodeChild {
   const host = document.createElement('div')
   document.body.appendChild(host)
   setupDelegation(host)
-  onCleanup(() => host.remove())
+  onUnmount(() => host.remove())
 
   // A backgrounded tab must not burn the auto-dismiss budget.
   //
@@ -114,12 +153,12 @@ function Toaster(props?: ToasterProps): VNodeChild {
   }
   syncVisibility()
   // The Toaster is the pause AUTHORITY for the toast stack, and this listener
-  // is document-scoped with its own onCleanup — the wrapper `useEventListener`
+  // is document-scoped with its own onUnmount — the wrapper `useEventListener`
   // would provide is exactly what is written here, and reaching for it would
   // add a @pyreon/hooks edge for one listener.
   // pyreon-lint-disable-next-line pyreon/no-raw-addeventlistener
   document.addEventListener('visibilitychange', syncVisibility)
-  onCleanup(() => {
+  onUnmount(() => {
     // pyreon-lint-disable-next-line pyreon/no-raw-addeventlistener
     document.removeEventListener('visibilitychange', syncVisibility)
     // Never strand a hold: unmounting while hidden would otherwise freeze the
@@ -264,7 +303,11 @@ function ToastItem(props: { id: string }): VNodeChild {
         </Show>
       </div>
       {action && (
-        <button type="button" class="pyreon-toast__action" onClick={action.onClick}>
+        <button
+          type="button"
+          class="pyreon-toast__action"
+          onClick={() => action.onClick({ id, dismiss: () => toast.dismiss(id) })}
+        >
           {action.label}
         </button>
       )}

@@ -100,7 +100,7 @@ describe('useSortable — screen-reader announcements (real live region)', () =>
     ul.remove()
   })
 
-  it('creates the keyboard-instructions node and links items via aria-describedby', () => {
+  it('creates the keyboard-instructions node OUTSIDE the list and links items via aria-describedby', () => {
     const items = signal([{ id: '1', name: 'Alice' }])
     const { containerRef, itemRef } = useSortable({
       items,
@@ -112,24 +112,73 @@ describe('useSortable — screen-reader announcements (real live region)', () =>
     document.body.appendChild(ul)
     containerRef(ul)
 
-    const instructions = queryOptional<HTMLElement>(ul, 
-      '[data-pyreon-sortable-instructions]',
-    )
-    expect(instructions).not.toBeNull()
-    // VALUE assertions — text + linkage, not mere existence.
-    expect(instructions!.textContent).toBe('Press Alt plus arrow keys to reorder')
+    // Not a child of the <ul> — a <div> there is invalid list content and
+    // breaks <For>'s owns-parent bulk clear.
+    expect(queryOptional<HTMLElement>(ul, '[data-pyreon-sortable-instructions]')).toBeNull()
 
     const li = document.createElement('li')
     itemRef('1')(li)
     ul.appendChild(li)
-    expect(li.getAttribute('aria-describedby')).toBe(instructions!.id)
+    const instructions = document.getElementById(li.getAttribute('aria-describedby')!)
+    expect(instructions).not.toBeNull()
+    // VALUE assertions — text + linkage, not mere existence.
+    expect(instructions!.hasAttribute('data-pyreon-sortable-instructions')).toBe(true)
+    expect(instructions!.textContent).toMatch(/^To reorder, press Space or Enter to pick up/)
 
-    // Visually hidden, but exposed to AT (no display:none / aria-hidden).
-    const style = getComputedStyle(instructions!)
+    // Visually hidden (the shared host clips it), but exposed to AT (no
+    // display:none / aria-hidden anywhere up the chain).
+    const host = instructions!.parentElement!
+    const style = getComputedStyle(host)
     expect(style.position).toBe('absolute')
     expect(style.width).toBe('1px')
+    expect(style.display).not.toBe('none')
+    expect(host.getAttribute('aria-hidden')).toBeNull()
     expect(instructions!.getAttribute('aria-hidden')).toBeNull()
 
+    containerRef(null)
+    expect(document.getElementById(instructions!.id)).toBeNull()
+    ul.remove()
+  })
+
+  it('keyboard pickup mode announces pick-up, move, and drop into the live region', async () => {
+    const items = signal([
+      { id: '1', name: 'Alice' },
+      { id: '2', name: 'Bob' },
+      { id: '3', name: 'Charlie' },
+    ])
+    const { containerRef, itemRef, activeId } = useSortable({
+      items,
+      by: (i) => i.id,
+      label: (i) => i.name,
+      onReorder: (next) => items.set(next),
+    })
+    const ul = document.createElement('ul')
+    document.body.appendChild(ul)
+    containerRef(ul)
+    const lis = items().map((it) => {
+      const li = document.createElement('li')
+      li.textContent = it.name
+      itemRef(it.id)(li)
+      ul.appendChild(li)
+      return li
+    })
+    const press = (key: string) =>
+      document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))
+
+    lis[0]!.focus()
+    press(' ')
+    expect(activeId()).toBe('1')
+    await waitForAnnouncement(
+      'Picked up Alice. Current position 1 of 3. Use the arrow keys to move, Space or Enter to drop, Escape to cancel.',
+    )
+    press('ArrowDown')
+    expect(items().map((i) => i.id)).toEqual(['2', '1', '3'])
+    await waitForAnnouncement('Moved Alice to position 2 of 3')
+    press('Enter')
+    expect(activeId()).toBeNull()
+    await waitForAnnouncement('Dropped Alice at position 2 of 3')
+
+    containerRef(null)
     ul.remove()
   })
 })

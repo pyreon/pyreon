@@ -106,6 +106,20 @@ describe('cli surface', () => {
     expect(out.join('')).toContain('loom <command>')
   })
 
+  // The help text is hand-written beside the dispatcher, so it can drift: it
+  // once listed scan + build and omitted `dev` entirely, with `--json` filed
+  // under build. Every command the dispatcher accepts must appear as a
+  // `    <cmd> [dir]` line.
+  it('--help lists every dispatched command', async () => {
+    capture()
+    await runCli(['--help'])
+    const help = out.join('')
+    for (const cmd of ['scan', 'dev', 'build']) expect(help).toMatch(new RegExp(`\\n    ${cmd} \\[dir\\]`))
+    // `--json` is a scan flag; build ignores it.
+    const buildBlock = help.slice(help.indexOf('    build [dir]'), help.indexOf('  loom --help'))
+    expect(buildBlock).not.toContain('--json')
+  })
+
   it('unknown commands are a red exit naming the command', async () => {
     capture()
     expect(await runCli(['frobnicate'])).toBe(1)

@@ -16,7 +16,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { useGeolocation } from '../useGeolocation'
 
 type WatchSuccess = (pos: { coords: { latitude: number; longitude: number; accuracy: number } }) => void
-type WatchError = (err: { message: string }) => void
+type WatchError = (err: { code: number; message: string }) => void
 
 /** Installs a controllable `navigator.geolocation`; returns the handles. */
 function installGeolocation() {
@@ -39,7 +39,7 @@ function installGeolocation() {
     clearWatch,
     emit: (latitude: number, longitude: number, accuracy = 5) =>
       success?.({ coords: { latitude, longitude, accuracy } }),
-    fail: (message: string) => failure?.({ message }),
+    fail: (message: string, code = 1) => failure?.({ code, message }),
     restore: () => {
       Object.defineProperty(globalThis, 'navigator', {
         value: original,
@@ -135,12 +135,15 @@ describe('useGeolocation (web)', () => {
     }
   })
 
-  it('after an error, start() can open a fresh watch', () => {
+  // A DENIAL ends the watch, so a retry opens a fresh one. (A TIMEOUT does
+  // NOT end it — see hooks-hardening.test.ts — so this used to be written
+  // with 'timeout', which encoded the orphaned-watch bug.)
+  it('after a denial, start() can open a fresh watch', () => {
     const g = installGeolocation()
     try {
       const geo = useGeolocation()
       geo.start()
-      g.fail('timeout')
+      g.fail('User denied Geolocation', 1)
       geo.start()
       expect(g.watchPosition).toHaveBeenCalledTimes(2)
       // The retry clears the stale error rather than leaving it visible.

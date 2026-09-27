@@ -1,3 +1,4 @@
+import { isClient } from "@pyreon/core"
 import { useHead } from "@pyreon/head"
 import type { MiddlewareContext } from "@pyreon/server"
 import type { LoaderContext } from "@pyreon/zero"
@@ -15,8 +16,8 @@ export const meta = {
  */
 export function guard() {
   // Simulate auth check — in a real app, check session/token
-  const isAuthenticated =
-    typeof window !== "undefined" && localStorage.getItem("zero-demo-auth") === "true"
+  // `isClient` guards the browser-only read: the guard also runs during SSR.
+  const isAuthenticated = isClient && localStorage.getItem("zero-demo-auth") === "true"
 
   if (!isAuthenticated) {
     return "/about" // Redirect unauthenticated users
@@ -106,6 +107,8 @@ export default function Dashboard() {
           type="button"
           class="btn btn-secondary"
           onClick={() => {
+            // Click handlers only run in the browser; the guard states it.
+            if (!isClient) return
             localStorage.removeItem("zero-demo-auth")
             window.location.href = "/about"
           }}

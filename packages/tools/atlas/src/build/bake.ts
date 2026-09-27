@@ -30,6 +30,8 @@
  * about a request that was never going to work — instead of the actual reason,
  * which is actionable.
  */
+import { createHash } from 'node:crypto'
+import { sep } from 'node:path'
 import type { RpcMethod } from '../dev/plugin'
 
 /**
@@ -139,3 +141,80 @@ export function bakedRpcScript(baked: BakedRpc): string {
   return `<script>globalThis.__ATLAS_STATIC_RPC__ = ${json}</script>`
 }
 
+
+/** Where the per-component answers live, relative to the site's base. */
+export const BAKED_RPC_DIR = '_atlas/rpc/'
+
+/** The split payload: what stays inline, and what is fetched on demand. */
+export interface SplitBakedRpc {
+  /** Answers with no component parameter. Small, so they stay in the page. */
+  inline: BakedRpc
+  /** `<file>.json` → `{ [method]: answer }` for one component. */
+  files: Map<string, Record<string, unknown>>
+  /** Component key → the file holding its answers. Written as `index.json`. */
+  index: Record<string, string>
+}
+
+/**
+ * Split the payload so each page carries only what it needs.
+ *
+ * Inlining everything put every component's source and Lens answer into the
+ * shell, and the shell is copied to every component page: 1.4 MB of inline
+ * script per page on `ui-components`, about 150 MB of HTML, none of it
+ * cacheable across pages. Per-component files are fetched once, when that
+ * component's panel asks, and cached by the browser like any asset.
+ *
+ * `root` is stripped from every string on the way out. The answers carry
+ * absolute file paths from the build machine, and a public deploy should not
+ * publish the author's directory layout.
+ */
+export function splitBakedRpc(baked: BakedRpc, root: string): SplitBakedRpc {
+  const inline: BakedRpc = {}
+  const byComponent = new Map<string, Record<string, unknown>>()
+  for (const [method, slot] of Object.entries(baked)) {
+    for (const [key, value] of Object.entries(slot)) {
+      const clean = relativizePaths(value, root)
+      if (key === '') {
+        ;(inline[method] ??= {})[key] = clean
+        continue
+      }
+      let entry = byComponent.get(key)
+      if (!entry) {
+        entry = {}
+        byComponent.set(key, entry)
+      }
+      entry[method] = clean
+    }
+  }
+  const files = new Map<string, Record<string, unknown>>()
+  const index: Record<string, string> = {}
+  for (const [key, entry] of byComponent) {
+    // Hashed rather than slugged: keys carry `/` (`Core/Button`) and case, and a
+    // file name derived from them would need its own escaping rules.
+    const file = `${createHash('sha256').update(key).digest('hex').slice(0, 16)}.json`
+    files.set(file, entry)
+    index[key] = file
+  }
+  return { inline, files, index }
+}
+
+/** Replace `<root>/` in every string, recursively, with a relative path. */
+export function relativizePaths<T>(value: T, root: string): T {
+  const prefix = root.endsWith(sep) ? root : root + sep
+  const walk = (v: unknown): unknown => {
+    if (typeof v === 'string') return v.includes(prefix) ? v.split(prefix).join('') : v
+    if (Array.isArray(v)) return v.map(walk)
+    if (v && typeof v === 'object') {
+      const out: Record<string, unknown> = {}
+      for (const [k, inner] of Object.entries(v)) out[k] = walk(inner)
+      return out
+    }
+    return v
+  }
+  return walk(value) as T
+}
+
+/** A tiny leading script telling the client where the per-component files are. */
+export function bakedRpcUrlScript(base: string): string {
+  return `<script>globalThis.__ATLAS_STATIC_RPC_URL__ = ${JSON.stringify(base + BAKED_RPC_DIR)}</script>`
+}

@@ -15,12 +15,12 @@ import { warnMissingEnv } from './warn-missing-env'
  *
  * @example
  * ```ts
- * // zero.config.ts
- * import { defineConfig } from "@pyreon/zero/config"
+ * // vite.config.ts
+ * import zero from "@pyreon/zero/server"
  *
- * export default defineConfig({
- *   adapter: "netlify",
- * })
+ * export default {
+ *   plugins: [pyreon(), zero({ adapter: "netlify" })],
+ * }
  * ```
  */
 export function netlifyAdapter(): Adapter {

@@ -40,7 +40,7 @@ import ts from 'typescript'
 import { type PackageMap, resolveWorkspaceSpecifier } from './workspace-packages'
 
 /** A props type node, as `scanSource` consumes it. */
-export type ResolvedTypeNode = ts.TypeLiteralNode | ts.InterfaceDeclaration
+export type ResolvedTypeNode = ts.InterfaceDeclaration | ts.TypeNode
 
 /** Extensions tried when a relative specifier carries none. */
 const EXTENSIONS = ['.ts', '.tsx', '.d.ts', '/index.ts', '/index.tsx', '/index.d.ts']
@@ -104,16 +104,25 @@ export function collectImportedTypes(sf: ts.SourceFile): ImportedTypes {
 }
 
 /** The named interface or object type alias declared in a parsed file. */
+/** An alias target the scan can read members out of (directly or by following it). */
+export function isPropsShaped(type: ts.TypeNode): boolean {
+  return (
+    ts.isTypeLiteralNode(type) ||
+    ts.isIntersectionTypeNode(type) ||
+    ts.isTypeReferenceNode(type) ||
+    (ts.isParenthesizedTypeNode(type) && isPropsShaped(type.type))
+  )
+}
+
 export function findTypeDeclaration(sf: ts.SourceFile, name: string): ResolvedTypeNode | undefined {
   let found: ResolvedTypeNode | undefined
   sf.forEachChild((node) => {
     if (found) return
     if (ts.isInterfaceDeclaration(node) && node.name.text === name) found = node
-    else if (
-      ts.isTypeAliasDeclaration(node) &&
-      node.name.text === name &&
-      ts.isTypeLiteralNode(node.type)
-    ) {
+    // Not only an object literal: `type Props = Base & { … }` is a props
+    // type, and the scan follows the intersection from here. A union / keyword
+    // alias still has no members to read, so it stays unresolved.
+    else if (ts.isTypeAliasDeclaration(node) && node.name.text === name && isPropsShaped(node.type)) {
       found = node.type
     }
   })

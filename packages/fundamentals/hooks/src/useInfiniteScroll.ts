@@ -1,4 +1,5 @@
-import { isServer, onCleanup, signal } from '@pyreon/reactivity'
+import { type Effect, effect, isServer, runUntracked, signal } from '@pyreon/reactivity'
+import { onHookCleanup } from './lifecycle'
 
 export interface UseInfiniteScrollOptions {
   /** Distance from bottom (px) to trigger load. Default: 100 */
@@ -28,7 +29,7 @@ export interface UseInfiniteScrollResult {
  * const loading = signal(false)
  * const hasMore = signal(true)
  *
- * const { ref } = useInfiniteScroll(() => {
+ * const { ref } = useInfiniteScroll(async () => {
  *   loading.set(true)
  *   const next = await fetchMore()
  *   items.update(prev => [...prev, ...next])
@@ -53,6 +54,23 @@ export function useInfiniteScroll(
   let observer: IntersectionObserver | null = null
   let sentinel: HTMLDivElement | null = null
   let containerEl: HTMLElement | null = null
+  let loadingWatch: Effect | null = null
+
+  // True while a promise returned by `onLoadMore` is pending. Without it an
+  // intersection callback arriving mid-load (a resize, a re-observe) started a
+  // second, concurrent load of the same page.
+  let inFlight = false
+
+  // An IntersectionObserver only reports CHANGES. When a page lands but does
+  // not fill the container, the sentinel is still visible — no change — so no
+  // further callback ever arrives and the list stalls after the first page.
+  // Re-observing asks for a fresh report of the current state.
+  const recheck = () => {
+    if (observer && sentinel && triggered.peek()) {
+      observer.unobserve(sentinel)
+      observer.observe(sentinel)
+    }
+  }
 
   const handleIntersect = (entries: IntersectionObserverEntry[]) => {
     const entry = entries[0]
@@ -61,9 +79,24 @@ export function useInfiniteScroll(
     triggered.set(entry.isIntersecting)
 
     if (entry.isIntersecting) {
+      if (inFlight) return
       if (options?.loading?.()) return
       if (options?.hasMore && !options.hasMore()) return
-      onLoadMore()
+      const result = onLoadMore()
+      if (result && typeof (result as Promise<void>).then === 'function') {
+        inFlight = true
+        void (result as Promise<void>).then(
+          () => {
+            inFlight = false
+            recheck()
+          },
+          () => {
+            // A failed load must not retry in a tight loop; the next real
+            // intersection change starts the next attempt.
+            inFlight = false
+          },
+        )
+      }
     }
   }
 
@@ -95,9 +128,23 @@ export function useInfiniteScroll(
       threshold: 0,
     })
     observer.observe(sentinel)
+
+    // A synchronous `onLoadMore` that drives a `loading` signal finishes when
+    // that signal returns to false — re-check then, for the same stall.
+    const loading = options?.loading
+    if (loading) {
+      let was = runUntracked(loading)
+      loadingWatch = effect(() => {
+        const now = loading()
+        if (was && !now) runUntracked(recheck)
+        was = now
+      })
+    }
   }
 
   const cleanup = () => {
+    loadingWatch?.dispose()
+    loadingWatch = null
     if (observer) {
       observer.disconnect()
       observer = null
@@ -113,7 +160,7 @@ export function useInfiniteScroll(
     else cleanup()
   }
 
-  onCleanup(cleanup)
+  onHookCleanup(cleanup)
 
   return { ref, triggered }
 }

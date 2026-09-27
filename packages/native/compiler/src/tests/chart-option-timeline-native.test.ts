@@ -17,7 +17,7 @@ describe.each(['swift', 'kotlin'] as const)('OptionChart timeline on %s', (targe
 
   it('every step lowers under a tappable, auto-playing strip', () => {
     const r = transform(`
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart option={${option}} height={260} data-testid="tl" />
 }`, { target })
@@ -33,7 +33,7 @@ export function App() {
 
   it('a pinned timelineIndex renders that one step, with no strip', () => {
     const r = transform(`
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart option={${option}} timelineIndex={2} height={260} />
 }`, { target })

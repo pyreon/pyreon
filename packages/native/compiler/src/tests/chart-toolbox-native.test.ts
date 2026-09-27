@@ -14,7 +14,7 @@ describe.each(['swift', 'kotlin'] as const)('PlotChart toolbox on %s', (target) 
     if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(code)).toMatchObject({ ok: true })
   }
   const app = (extra: string) => `
-import { PlotChart, bars } from '@pyreon/charts/plot'
+import { PlotChart, bars } from '@pyreon/charts/engine'
 const ROWS = [{ a: 1, b: 4 }, { a: 2, b: 3 }, { a: 3, b: 2 }, { a: 4, b: 1 }]
 export function App() {
   return <PlotChart data={ROWS} marks={[bars((d) => d.a), bars((d) => d.b)]} height={240} ${extra} />
@@ -41,7 +41,8 @@ export function App() {
     ['SankeyChart', `<SankeyChart nodes={[{ name: 'a' }, { name: 'b' }]} links={[{ source: 'a', target: 'b', value: 1 }]} height={200} toolbox={{ saveAsImage: true }} />`],
   ])('a family host (%s) draws the save button and shares or reports the image', (_tag, jsx) => {
     const r = transform(`
-import { PieChart, HeatmapChart, SankeyChart } from '@pyreon/charts/plot'
+import { SankeyChart } from '@pyreon/charts'
+import { PieChart, HeatmapChart } from '@pyreon/charts/engine'
 export function App() {
   return ${jsx}
 }`, { target })
@@ -53,7 +54,7 @@ export function App() {
 
   it('an OptionChart option.toolbox lowers onto the plot host through the web reader', () => {
     const r = transform(`
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart option={{ toolbox: { feature: { dataZoom: {}, magicType: { type: ['line', 'bar'] }, restore: {}, saveAsImage: {} } }, xAxis: { type: 'category', data: ['a', 'b', 'c'] }, yAxis: {}, series: [{ type: 'bar', data: [1, 2, 3] }] }} height={240} />
 }`, { target })
@@ -73,7 +74,7 @@ export function App() {
 describe('toolbox overlays stay reachable in the SwiftUI accessibility tree', () => {
   it('the data view is attached after the chart label, on a .contain host', () => {
     const r = transform(`
-import { PlotChart, bars } from '@pyreon/charts/plot'
+import { PlotChart, bars } from '@pyreon/charts/engine'
 const ROWS = [{ a: 1 }, { a: 2 }]
 export function App() {
   return <PlotChart data={ROWS} marks={[bars((d) => d.a)]} height={240} toolbox={{ dataView: true }} data-testid="tb" />
@@ -87,7 +88,7 @@ export function App() {
 
   it('the family save button sits in a .contain host', () => {
     const r = transform(`
-import { PieChart } from '@pyreon/charts/plot'
+import { PieChart } from '@pyreon/charts/engine'
 export function App() {
   return <PieChart data={[{ n: 'a', v: 1 }]} value={(d) => d.v} label={(d) => d.n} height={200} toolbox={{ saveAsImage: true }} />
 }`, { target: 'swift' })
