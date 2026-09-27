@@ -217,6 +217,16 @@ export const ZERO_FEATURE_COVERAGE: Record<string, Coverage> = {
     mode: 'ssr',
     evidence: "assertSsrFunctionRenders(dist, '_worker.js', 'cloudflare')",
   },
+  'Edge runtimes and per-route `runtime`': {
+    kind: 'e2e',
+    spec: 'packages/zero/zero/src/tests/integration/runtime-targets.test.ts',
+    evidence: 'per-route edge: ssr.func stays Node, ssr-edge.func is an edge function routed before the catch-all',
+  },
+  'Scheduled API routes': {
+    kind: 'e2e',
+    spec: 'packages/zero/zero/src/tests/integration/runtime-targets.test.ts',
+    evidence: 'per-route edge function + scheduled function; both run',
+  },
   'SSR/ISR build': {
     kind: 'e2e',
     spec: 'e2e/isr-node.spec.ts',
