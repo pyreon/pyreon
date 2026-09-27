@@ -1,5 +1,4 @@
 import lathe from '@pyreon/lathe/vite'
-import pyreonConfig from './pyreon.config'
 import pyreon from '@pyreon/vite-plugin'
 import { defineConfig, type Plugin } from 'vite'
 
@@ -86,12 +85,11 @@ export default defineConfig({
     // so the window in which the client can disagree with the spec is the time
     // between a save and the next request -- not however long it takes someone
     // to remember to run the CLI.
-    // The settings come from `pyreon.config.ts`, not a second copy of them.
-    // They used to be duplicated here, and the two drifted the moment a plugin
-    // was added to one: the CLI generated `faker.ts`, this plugin regenerated
-    // without it, and the build failed its own freshness check against output
-    // the CLI had just declared current.
-    lathe({ ...pyreonConfig.lathe, checkOnBuild: true }),
+    // The settings come from `pyreon.config.ts`, which the plugin reads itself
+    // -- the same file, found the same way, as the CLI. They used to be
+    // duplicated here (then spread in by hand), and the copies drifted the
+    // moment a plugin was added to one.
+    lathe({ checkOnBuild: true }),
     pyreon(),
     bookshelfApi(),
   ],
