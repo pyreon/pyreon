@@ -780,8 +780,14 @@ describe('vercelAdapter.revalidate', () => {
       // path arg, (c) include the secret token. Asserting all three in
       // one URL match keeps the assertion bisect-load-bearing for
       // every part of the URL builder.
+      // The secret travels in the Authorization header, NEVER the URL
+      // (a URL lands in access / proxy logs).
       expect(calls[0]?.url).toBe(
-        'https://my-app.vercel.app/api/_pyreon-revalidate?path=%2Fposts%2F42&secret=secret-token-123',
+        'https://my-app.vercel.app/api/_pyreon-revalidate?path=%2Fposts%2F42',
+      )
+      expect(calls[0]?.url).not.toContain('secret-token-123')
+      expect(new Headers(calls[0]?.init?.headers).get('authorization')).toBe(
+        'Bearer secret-token-123',
       )
       expect(calls[0]?.init?.method).toBe('POST')
     } finally {

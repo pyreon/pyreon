@@ -99,20 +99,50 @@ export function flexRenderCell<TFeatures extends TableFeatures, TData extends Ro
   //
   // Without a bridge (a table built directly with `constructTable`) the reads
   // stay TRACKED and are themselves the subscription — coarser, but correct.
+  //
+  // The LOOKUP is untracked; the RENDERER is not. A cell renderer that reads
+  // table state itself — `info.row.getIsSelected()`, `table.getState().x` —
+  // must subscribe to exactly that, or it froze at its first value (the row
+  // signal only moves on DATA edits, never on selection). Those reads are
+  // value-gated atom subscriptions, so they fire only when the slice the cell
+  // read actually changes. The one read the renderer makes on every cell —
+  // `info.getValue()` / `renderValue()` — is untracked on the context we hand
+  // it: the row signal already covers the value, and `getValue`'s memo reads
+  // the table options, which change on every data sync.
   const bridge = _getRowSignalBridge(table)
-  if (!bridge) return renderCell(table, rowId, columnId)
+  if (!bridge) {
+    const cell = lookupCellByColumnId(table, rowId, columnId)
+    return cell == null ? null : flexRender(cell.column.columnDef.cell, cell.getContext())
+  }
   bridge.rowSignal(rowId)()
-  return untrack(() => renderCell(table, rowId, columnId))
+  const found = untrack(() => {
+    const cell = lookupCellByColumnId(table, rowId, columnId)
+    return cell == null ? undefined : { cell, context: untrackedValueContext(cell.getContext()) }
+  })
+  if (found === undefined) return null
+  return flexRender(found.cell.column.columnDef.cell, found.context)
 }
 
-function renderCell<TFeatures extends TableFeatures, TData extends RowData>(
-  table: Table<TFeatures, TData>,
-  rowId: string,
-  columnId: string,
-): RenderedChild {
-  const cell = lookupCellByColumnId(table, rowId, columnId)
-  if (cell == null) return null
-  return flexRender(cell.column.columnDef.cell, cell.getContext())
+/** A cell context whose value readers do not subscribe (see `flexRenderCell`).
+ *  Same prototype + own properties as the original; only `getValue` and
+ *  `renderValue` (always present on a v9 cell context) are wrapped. */
+function untrackedValueContext<C extends { getValue: () => unknown; renderValue: () => unknown }>(
+  context: C,
+): C {
+  const wrapped = Object.create(Object.getPrototypeOf(context) as object) as C
+  Object.defineProperties(wrapped, Object.getOwnPropertyDescriptors(context))
+  const { getValue, renderValue } = context
+  const define = (name: 'getValue' | 'renderValue', fn: () => unknown): void => {
+    Object.defineProperty(wrapped, name, {
+      value: () => untrack(() => fn.call(context)),
+      configurable: true,
+      enumerable: true,
+      writable: true,
+    })
+  }
+  define('getValue', getValue)
+  define('renderValue', renderValue)
+  return wrapped
 }
 
 /** The row's cell for `columnId`, looked up FRESH (the captured row goes stale

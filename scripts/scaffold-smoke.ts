@@ -42,6 +42,12 @@ interface Cell {
   compat?: 'react' | 'vue' | 'solid' | 'preact'
   preset?: 'minimal' | 'standard' | 'dashboard' | 'full'
   /**
+   * `--mode`. Omitted → the template default. A `static` adapter needs an
+   * explicit `ssg` / `spa`: the scaffolder refuses a per-request SSR mode on
+   * a static host instead of silently shipping an app that cannot render.
+   */
+  mode?: 'ssr-stream' | 'ssr-string' | 'ssg' | 'spa' | 'isr'
+  /**
    * If true: scaffold into a fresh OS tmpdir and run `bun install` from
    * INSIDE the scaffolded project. Used by the `monorepo` template
    * because its own `workspaces` declaration would conflict with
@@ -156,6 +162,7 @@ const MATRIX: Cell[] = [
     name: 'cpa-smoke-app-static',
     template: 'app',
     adapter: 'static',
+    mode: 'ssg',
     smoke: (dir) => {
       assertDirNonEmpty(join(dir, 'dist'))
       assertFileContains(join(dir, 'README.md'), '# cpa-smoke-app-static')
@@ -392,6 +399,9 @@ function runScaffolder(cell: Cell, cwd: string): void {
   }
   if (cell.preset) {
     args.push('--preset', cell.preset)
+  }
+  if (cell.mode) {
+    args.push('--mode', cell.mode)
   }
 
   const result = spawnSync('bun', args, { cwd, stdio: 'inherit' })

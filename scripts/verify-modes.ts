@@ -746,6 +746,12 @@ const MATRIX: Cell[] = [
       // client chunk → this fails.
       assertFileContains(join(dist, 'server', 'entry-server.js'), 'SERVER_ONLY_SENTINEL_q7x9')
       assertNoFileInDirContains(join(dist, 'assets'), 'SERVER_ONLY_SENTINEL_q7x9')
+      // Server functions: the `/form-actions` route's `action` handler (and
+      // the guestbook module only it imports) must be stripped from the
+      // client — the client keeps an id-only stub (`_actionStub`). A
+      // regression in actions-transform lands the sentinel in a client chunk.
+      assertFileContains(join(dist, 'server', 'entry-server.js'), 'ACTION_SERVER_ONLY_SENTINEL_z4k1')
+      assertNoFileInDirContains(join(dist, 'assets'), 'ACTION_SERVER_ONLY_SENTINEL_z4k1')
     },
   },
   {

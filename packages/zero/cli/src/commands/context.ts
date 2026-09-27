@@ -13,7 +13,7 @@ export async function context(root: string | undefined, options: ContextOptions)
       outPath: options.out,
     })
   } catch (error) {
-    console.error('Context generation failed:', (error as Error).message)
+    console.error('[Pyreon] Context generation failed:', error)
     process.exit(1)
   }
 }

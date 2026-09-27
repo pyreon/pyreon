@@ -1,4 +1,4 @@
-import { isClient } from '@pyreon/reactivity'
+import { isClient, signal } from '@pyreon/reactivity'
 
 /** Read a search param from the current URL. Returns `null` if not present. */
 export function getParam(key: string): string | null {
@@ -65,10 +65,30 @@ export interface UrlRouter {
    * handed to it must be base-RELATIVE; `location.pathname` is not.
    */
   _base?: string
+  /**
+   * The router's reactive current route. When present, every live
+   * `useUrlState` signal re-reads its param after each navigation — so
+   * `router.push('/products?page=2')` or a `<RouterLink>` click updates the
+   * signal. Without it only `popstate` and url-state's own writes are seen,
+   * because a `pushState`/`replaceState` fires no event. `@pyreon/router`'s
+   * `useRouter()` exposes it, so `setUrlRouter(useRouter())` needs nothing
+   * more.
+   */
+  currentRoute?: () => unknown
 }
 
 /** Module-level router reference. Set via `setUrlRouter()`. */
 let _router: UrlRouter | null = null
+/**
+ * Reactive twin of `_router`, so a signal created BEFORE `setUrlRouter` still
+ * subscribes to the router's navigations once one is registered.
+ */
+const _routerSignal = signal<UrlRouter | null>(null)
+
+/** @internal Tracked read of the registered router (for subscriptions). */
+export function trackUrlRouter(): UrlRouter | null {
+  return _routerSignal()
+}
 
 /**
  * A router without `push` cannot honour `replace: false`. Say so ONCE rather
@@ -80,6 +100,7 @@ let _warnedNoPush = false
 /** Register a router to use for URL updates instead of the raw history API. */
 export function setUrlRouter(router: UrlRouter | null): void {
   _router = router
+  _routerSignal.set(router)
   // A different router deserves its own verdict — the previous one's missing
   // `push` says nothing about this one.
   _warnedNoPush = false
