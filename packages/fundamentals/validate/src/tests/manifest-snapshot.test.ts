@@ -18,8 +18,8 @@ describe('gen-docs — validate snapshot', () => {
     )
   })
 
-  it('has all 26 v1 API entries', () => {
-    expect(manifest.api).toHaveLength(26)
+  it('has all 27 v1 API entries', () => {
+    expect(manifest.api).toHaveLength(27)
     const names = manifest.api.map((a) => a.name)
     expect(names).toEqual([
       'withField',
@@ -31,6 +31,7 @@ describe('gen-docs — validate snapshot', () => {
       'formatError',
       'formatErrors',
       'formatErrorsByPath',
+      'toFormValidator',
       'toJsonSchema',
       'serverCheck',
       'registerServerCheck',

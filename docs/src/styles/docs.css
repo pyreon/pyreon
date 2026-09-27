@@ -1015,6 +1015,14 @@ html { scroll-behavior: smooth; }
   grid-template-columns: 1.05fr 1fr;
   gap: 28px;
 }
+.px-hero > *,
+.px-bench-grid > *,
+.px-zero-grid > *,
+.px-grid-2 > *,
+.px-grid-3 > *,
+.px-grid-4 > * {
+  min-width: 0;
+}
 .px-zero-grid .px-code {
   margin-top: 10px;
 }
@@ -1164,6 +1172,18 @@ a.px-footer-item:hover {
   .px-grid-3,
   .px-footer-grid {
     grid-template-columns: 1fr;
+  }
+  .px-mode {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .px-bench {
+    table-layout: fixed;
+    font-size: 11px;
+  }
+  .px-bench th,
+  .px-bench td {
+    overflow-wrap: anywhere;
   }
 }
 
@@ -2407,6 +2427,13 @@ a.px-footer-item:hover {
   border-radius: 1px;
   transition: transform 0.18s ease;
 }
+.docs-header__hamburger[aria-expanded='true'] span:nth-child(1) {
+  transform: translateY(6px) rotate(45deg);
+}
+.docs-header__hamburger[aria-expanded='true'] span:nth-child(2) { opacity: 0; }
+.docs-header__hamburger[aria-expanded='true'] span:nth-child(3) {
+  transform: translateY(-6px) rotate(-45deg);
+}
 .docs-header__hamburger:hover { background: var(--bg-well); }
 
 /* ── (D) Aside (sidebar container) ─────────────────────────────── */
@@ -2574,6 +2601,9 @@ a.px-footer-item:hover {
   gap: 2rem;
   padding: 1.5rem 2rem;
   align-items: start;
+  /* Wide syntax-token line boxes stay scrollable inside their code card,
+     but must not enlarge the page-level scroll area on narrow phones. */
+  overflow-x: clip;
 }
 /* The route component wraps the article + the right-rail Toc in a
    `<div class="docs-route">` so the matching `closeBundle` cleanup
@@ -2672,19 +2702,34 @@ a.px-footer-item:hover {
   .docs-header__search-label { display: none; }
   .docs-header__search-kbd { display: none; }
   .docs-header__hamburger { display: inline-flex; }
+  .docs-header__icon-link,
+  .docs-theme-toggle,
+  .docs-header__hamburger,
+  .docs-header__search-btn {
+    min-width: 40px;
+    min-height: 40px;
+  }
   .docs-aside {
     position: fixed;
     top: 56px;
     left: 0;
-    width: 280px;
+    width: min(320px, 88vw);
     height: calc(100vh - 56px);
+    height: calc(100dvh - 56px);
     background: var(--bg);
     border-right: 1px solid var(--hairline);
     transform: translateX(-100%);
-    transition: transform 0.22s ease;
+    visibility: hidden;
+    transition:
+      transform 0.22s ease,
+      visibility 0s linear 0.22s;
     z-index: 40;
   }
-  .docs-aside--drawer-open { transform: translateX(0); }
+  .docs-aside--drawer-open {
+    transform: translateX(0);
+    visibility: visible;
+    transition-delay: 0s;
+  }
   .docs-drawer-backdrop {
     position: fixed;
     inset: 56px 0 0 0;
@@ -2693,6 +2738,27 @@ a.px-footer-item:hover {
     display: none;
   }
   .docs-shell--drawer-open .docs-drawer-backdrop { display: block; }
+  html.docs-drawer-scroll-locked,
+  html.docs-drawer-scroll-locked body { overflow: hidden; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .docs-aside,
+  .docs-header__hamburger span { transition: none; }
+}
+
+@media (max-width: 420px) {
+  .docs-header__inner,
+  .docs-shell:has(.docs-aside) .docs-header__inner {
+    gap: 0.35rem;
+    padding-inline: 12px;
+  }
+  .docs-header__controls { gap: 0.15rem; }
+  .docs-header__icon-link { display: none; }
+}
+
+@media (max-width: 350px) {
+  .docs-brand__wordmark { display: none; }
 }
 
 /* ── (G) Search overlay (Cmd+K) ──────────────────────────────── */
@@ -3044,11 +3110,20 @@ a.px-footer-item:hover {
      copy button. */
   position: relative;
 }
+.code-block__pre {
+  /* Clip Shiki's intrinsically wide inline code at the card boundary.
+     The nested <pre> remains horizontally scrollable; without this
+     containment its line boxes enlarged the PAGE scroll width on a
+     320px phone even though the pre itself had overflow-x: auto. */
+  min-width: 0;
+  overflow-x: auto;
+}
 .code-block__pre > pre {
   /* The Shiki-rendered <pre> inside .code-block__pre. We want it
      edge-to-edge with the wrapper (margin collapsing handled by the
      wrapper). */
   margin: 0;
+  overflow: visible;
 }
 /* Language indicator in the top-right corner — matches VitePress's
    convention. Reads from the `data-lang` attribute the CodeBlock

@@ -1,4 +1,5 @@
 import { basename, join, relative, resolve, sep } from 'node:path'
+import { EDGE_SERVER_SUBDIR } from './contract'
 
 /**
  * Stage a built directory tree so its contents end up at `dest`, correctly
@@ -117,7 +118,7 @@ export async function stageClientThenServer(
 ): Promise<void> {
   const serverSrc = join(options.serverEntry, '..')
   await materialize(options.clientOutDir, layout.clientDest, {
-    preserve: [basename(serverSrc), ...(layout.preserve ?? [])],
+    preserve: [basename(serverSrc), EDGE_SERVER_SUBDIR, ...(layout.preserve ?? [])],
   })
   await materialize(serverSrc, layout.serverDest)
 }
