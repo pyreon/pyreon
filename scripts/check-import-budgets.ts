@@ -200,6 +200,15 @@ export const SCENARIOS: Scenario[] = [
     imports: ['useAuth'],
   },
   {
+    // reportWebVitals must stay a small standalone subpath: the observer
+    // logic only, nothing from zero's main entry or server modules.
+    id: '@pyreon/zero::web-vitals',
+    pkg: '@pyreon/zero',
+    dir: 'zero/zero',
+    entry: 'web-vitals.js',
+    imports: ['reportWebVitals'],
+  },
+  {
     id: '@pyreon/charts::plot-minimal',
     pkg: '@pyreon/charts',
     dir: 'fundamentals/charts',

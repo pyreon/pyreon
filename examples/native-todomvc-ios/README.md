@@ -23,17 +23,23 @@ This example is the SOURCE (`src/TodoApp.tsx`) that `pyreon-native build` consum
 
 ## Current state
 
-The compiler emits a **typecheck-clean** Swift translation. Working:
+The compiler emits a **typecheck-clean** Swift translation (per the banner
+above — Phase 2 closed on both platforms). The current `src/TodoApp.tsx`
+already exercises: `useStorage` (persistence), canonical `<Field
+value onChangeText>` two-way binding, `<Button onPress>`, `<Toggle>`,
+immutable array mutation (`todos.set([...todos(), x])` and the
+map-based partial-update idiom), the `Filter` union type used throughout the
+filter logic, and a `<TransitionGroup>`-wrapped animated keyed list — all
+compiling clean.
 
-- Component structure (`struct TodoApp: View`)
-- Signal declarations (`@State private var filter`, `draft`)
-- Static JSX layout (VStack, HStack, TextField, ForEach, Button)
-- Direct event handlers (`{ filter = "all" }`)
-- The TodoRow child component + prop forwarding
+<details>
+<summary>Historical: the Phase 1 gap table (all since closed)</summary>
 
-Not yet working (each tracked as a gap-closure PR in [`compile-baseline test`](../../packages/native/compiler/src/tests/todomvc-baseline.test.ts)):
+Not yet working, AS OF PHASE 1 (each was tracked as a gap-closure PR in
+[`compile-baseline test`](../../packages/native/compiler/src/tests/todomvc-baseline.test.ts)
+— kept here for context on what the compile-baseline arc actually closed):
 
-| Gap | Source pattern | What it needs |
+| Gap | Source pattern | What it needed |
 |---|---|---|
 | G1 | `<TextField value={draft} onInput={...}>` | Two-way binding emission: Swift `TextField("...", text: $draft)`, Kotlin direct mapping |
 | G2 | `onKeyDown={(e) => e.key === 'Enter' && fn()}` | Pattern-match → `.onSubmit { ... }` on Swift, `KeyboardActions(onDone)` on Kotlin |
@@ -42,13 +48,15 @@ Not yet working (each tracked as a gap-closure PR in [`compile-baseline test`](.
 | G5 | `useStorage<T>(key, default)` | `@AppStorage` on Swift, `DataStore` on Kotlin |
 | G6 | `type Filter = 'all' \| 'active' \| 'completed'` | Native enum emission (`enum Filter: String { case all, active, completed }`) |
 | G7 | `<TodoItem state={todo.done ? 'completed' : 'active'}>` | Hoist conditional dim expression to modifier call site |
-| G8 | URL-hash filter sync | `@pyreon/router-ios`/`-android` (Phase 3) |
+| G8 | URL-hash filter sync | `@pyreon/router-ios`/`-android` (Phase 3, still open — routing on native is a separate, ongoing arc) |
 
-Plus three parser-side gaps surfaced by the actual compile that the walkthrough didn't name:
+Plus three parser-side gaps surfaced by the actual compile:
 
-- **Parser-A** — BlockStatement arrow bodies (`const addTodo = () => { ... }`) — needed for all 4 mutation functions
+- **Parser-A** — BlockStatement arrow bodies (`const addTodo = () => { ... }`)
 - **Parser-B** — UnaryExpression in arrow bodies (`!t.done` in filter callbacks)
 - **Parser-C** — LogicalExpression (`a && b()` in the keyboard handler)
+
+</details>
 
 ## Run the compile baseline now
 

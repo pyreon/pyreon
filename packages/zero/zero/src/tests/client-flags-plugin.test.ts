@@ -7,7 +7,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { clientFlagsPlugin, isSpaEverywhere } from '../client-flags-plugin'
 
 const dirs: string[] = []
@@ -54,6 +54,23 @@ describe('isSpaEverywhere', () => {
   })
 })
 
+describe('isSpaEverywhere — edge inputs', () => {
+  it('is true when routeRules only restate spa (or set no mode) and the routes dir is absent', () => {
+    expect(
+      isSpaEverywhere(
+        { routeRules: { '/a/**': { renderMode: 'spa' }, '/b/**': {} } },
+        'spa',
+        join(tmpdir(), 'zero-client-flags-does-not-exist'),
+      ),
+    ).toBe(true)
+  })
+
+  it('ignores non-script files that mention renderMode', () => {
+    const root = project({ 'index.tsx': PAGE, 'notes.md': 'renderMode is documented here' })
+    expect(isSpaEverywhere({}, 'spa', join(root, 'src/routes'))).toBe(true)
+  })
+})
+
 describe('clientFlagsPlugin', () => {
   type ConfigHook = (c: object, e: { command: string; mode: string }) => { define?: Record<string, string> } | undefined
 
@@ -69,5 +86,17 @@ describe('clientFlagsPlugin', () => {
     const root = project({ 'index.tsx': PAGE })
     const spa = clientFlagsPlugin({}, 'spa').config as unknown as ConfigHook
     expect(spa({ root }, { command: 'serve', mode: 'development' })).toBeUndefined()
+  })
+
+  it('falls back to process.cwd() when the vite config has no root', () => {
+    const root = project({ 'index.tsx': PAGE })
+    const cwd = vi.spyOn(process, 'cwd').mockReturnValue(root)
+    try {
+      const spa = clientFlagsPlugin({}, 'spa').config as unknown as ConfigHook
+      expect(spa({}, { command: 'build', mode: 'production' })?.define?.__ZERO_HYDRATE__).toBe('false')
+      expect(cwd).toHaveBeenCalled()
+    } finally {
+      cwd.mockRestore()
+    }
   })
 })

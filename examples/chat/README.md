@@ -41,7 +41,7 @@ fixed in this PR. See [`WALLS.md`](./WALLS.md) for the full catalog.
 ```bash
 cd examples/chat
 bun run dev
-# open http://localhost:3001 → redirects to /channels/general
+# open http://localhost:3000 (zero's framework default; auto-increments if occupied) → redirects to /channels/general
 ```
 
 ## Architecture notes
