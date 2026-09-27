@@ -308,11 +308,14 @@ export default { AsyncLocalStorage }
       } catch {
         // Not importable in this Node — a default-only stub is still valid.
       }
-      const stub = (member: string) =>
-        `() => { throw new Error(${JSON.stringify(`[Pyreon] node:${mod}${member ? `.${member}` : ''} is not available on the edge runtime. Remove \`export const runtime = 'edge'\` from the route that reaches it (it will run on Node), or use a web API instead.`)}) }`
+      // Keep generated code independent of the requested module/member text.
+      // `names` is identifier-filtered above, but diagnostics do not need to
+      // carry any request-derived value into executable source.
+      const stub =
+        '() => { throw new Error("[Pyreon] A Node builtin is not available on the edge runtime. Remove `export const runtime = \'edge\'` from the route that reaches it (it will run on Node), or use a web API instead.") }'
       return [
-        ...names.map((n) => `export const ${n} = ${stub(n)}`),
-        `export default new Proxy({}, { get: (_t, k) => typeof k === "string" ? (${stub('')}) : undefined })`,
+        ...names.map((n) => `export const ${n} = ${stub}`),
+        `export default new Proxy({}, { get: (_t, k) => typeof k === "string" ? (${stub}) : undefined })`,
       ].join('\n')
     },
   }
