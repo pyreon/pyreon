@@ -2780,6 +2780,7 @@ effect(() => applyChartPalette(theme().colors)) // re-runs on theme swap
 
 import { ThemeProvider } from "@pyreon/styler"
 
+// Standalone styler use, outside any <PyreonUI>:
 <ThemeProvider theme={{ colors: { primary: "#06f" } }}>
   <App />
 </ThemeProvider>
@@ -2838,7 +2839,7 @@ import { init } from "@pyreon/ui-core"
 init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the hood
 ```
 
-> **css / keyframes return lazy values, not strings**: The `css` tagged template yields a `CSSResult` (resolved on use); `keyframes` stringifies to an animation NAME; `createGlobalStyle` returns a `ComponentFn` that must be MOUNTED. None of them inject CSS at call time — only on resolution/mount.
+> **css / keyframes return lazy values, not strings**: The `css` tagged template yields a `CSSResult` (resolved on use, never injected by itself); `keyframes` stringifies to an animation NAME and injects its `@keyframes` rule at CALL time; `createGlobalStyle` returns a `ComponentFn` — a fully static template injects at call time, a dynamic one when the component mounts.
 >
 > **Theme context is reactive**: `useTheme()` is a snapshot; `useThemeAccessor()` is the tracking accessor. `styled` / `useCSS` templates already track the theme through their resolver, so whole-theme swaps re-resolve CSS + swap class names WITHOUT remounting the VNode. Destructuring `useTheme()` and reading outside a reactive scope freezes the value.
 >
@@ -2900,9 +2901,16 @@ The structural layer every styled / rocketstyle component renders through. `Elem
 ```typescript
 import { Element } from "@pyreon/elements"
 
-<Element tag="section" direction="rows" gap="md" alignX="center">
+// SIMPLE element (no before/after slots) — the content* trio lays it out.
+// A numeric gap is converted to rem against the theme rootSize.
+<Element tag="section" block contentDirection="rows" contentAlignX="center" gap={16}>
   <Header />
   <Body />
+</Element>
+
+// COMPOUND element — the bare trio lays out the slots
+<Element direction="inline" alignY="center" gap={8} beforeContent={<Icon />}>
+  Label
 </Element>
 
 import { Text } from "@pyreon/elements"
@@ -2911,7 +2919,10 @@ import { Text } from "@pyreon/elements"
 
 import { List } from "@pyreon/elements"
 
-<List tag="ul" data={items()} component={(item) => <li>{item.name}</li>} />
+const items = [{ id: 1, name: "Ada" }, { id: 2, name: "Linus" }]
+
+// rootElement → a real <ul> container; without it only the <li>s render
+<List rootElement tag="ul" data={items} component={(p) => <li>{p.name}</li>} />
 
 import { Overlay } from "@pyreon/elements"
 
@@ -2946,9 +2957,15 @@ import { Portal } from "@pyreon/elements"
   <Modal />
 </Portal>
 
-import Iterator from "@pyreon/elements/helpers/Iterator"
+import { Iterator } from "@pyreon/elements"
 
-<Iterator data={users()} component={(u) => <Row user={u} />} />
+const users = [{ id: 1, name: "Ada" }, { id: 2, name: "Linus" }]
+
+// Object data — each entry's FIELDS are spread as the component's props
+<Iterator data={users} component={(u) => <span>{u.name}</span>} />
+
+// Primitive data — the value arrives as `children` (or under `valueName`)
+<Iterator data={["a", "b"]} valueName="label" component={(p) => <b>{p.label}</b>} />
 
 import { Util } from "@pyreon/elements"
 
@@ -2958,6 +2975,11 @@ import { Util } from "@pyreon/elements"
 </Util>
 
 import { Provider } from "@pyreon/elements"
+
+// Only outside <PyreonUI> — e.g. an isolated test or embed:
+<Provider theme={{ rootSize: 16, breakpoints: { xs: 0, md: 768 } }}>
+  <App />
+</Provider>
 ```
 
 > **Layout in attrs, not theme**: Element/Text/List layout props (`direction`, `alignX`, `alignY`, `gap`, `block`, `tag`) are primitive ATTRS — they target the inner flex wrapper. Colors / spacing / borders / shadows belong in the styler or rocketstyle `.theme()` layer. `direction` accepts `inline` / `rows` / `reverseInline` / `reverseRows` — `row` is invalid.
@@ -3663,7 +3685,7 @@ function App() {
   const items = signal([{ id: 1, text: 'One' }, { id: 2, text: 'Two' }])
   return (
     <div>
-      {/* show is a REACTIVE ACCESSOR, not a boolean */}
+      {/* show takes an accessor, a value, or nothing (absent = shown) */}
       <FadeBox show={() => visible()} onAfterEnter={() => console.warn('entered')}>
         <p>Fading content</p>
       </FadeBox>

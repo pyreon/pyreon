@@ -545,6 +545,103 @@ function PostsPage() {
       ],
       seeAlso: ['useLoaderData', 'RouteLoaderFn', 'ExtractParams'],
     },
+    {
+      name: 'getActiveRouter / setActiveRouter',
+      kind: 'function',
+      signature: 'getActiveRouter(): RouterInstance | null · setActiveRouter(router: RouterInstance | null): void',
+      summary:
+        "The module-level FALLBACK a hook resolves against when no `<RouterProvider>` context is above it. Every router hook (`useRouter`, `useRoute`, `RouterLink`'s internal resolution, …) reads `useContext(RouterContext) ?? _activeRouter` — the context wins when present, and `setActiveRouter(router)` (called once by app setup code — `createApp`/`startClient` in `@pyreon/zero`, or by hand in a non-JSX-provider app) supplies the fallback for code that runs OUTSIDE any component tree (a route loader, a plain utility module). `getActiveRouter()` reads the SAME resolution a hook would, without throwing when nothing is installed — useful for \"is a router active at all?\" checks in framework-adjacent code.",
+      example: `// App setup (once):
+setActiveRouter(router)
+
+// Later, from a plain (non-component) module:
+const router = getActiveRouter()
+if (router) router.push('/dashboard')`,
+      mistakes: [
+        'Calling `setActiveRouter` more than once per app expecting multiple active routers to coexist — it is a single module-level fallback slot; the LAST call wins. Multiple simultaneous routers need `<RouterProvider>` context scoping, not this',
+        'Reaching for `getActiveRouter()` inside an ordinary component instead of `useRouter()` — `useRouter()` throws a clear error with no router installed; `getActiveRouter()` silently returns `null`, which is right for library/framework code but usually wrong for app components (a silent `null` there reads as "nothing happened")',
+      ],
+      seeAlso: ['useRouter', 'RouterProvider', 'createRouter'],
+    },
+    {
+      name: 'classifyHref / toRouterPath',
+      kind: 'function',
+      signature:
+        "classifyHref(to: string, config?: LinkConfig) => 'internal' | 'external' | 'hash' | 'protocol' · toRouterPath(to: string) => string",
+      summary:
+        "The classification `<RouterLink>` uses internally to decide client-side-navigate vs plain-anchor-behavior, exported for building CUSTOM link components without re-deriving the logic. `classifyHref` returns `'internal'` (client-side router navigation), `'external'` (full browser navigation — a different origin, OR a protocol-relative/authority-delimiter-prefixed value like `//host`, `\\\\host` — all resolve to a HOST per the URL parser and are treated as external for safety), `'hash'` (`#section` same-page anchor), or `'protocol'` (`mailto:`/`tel:`/`sms:`/other scheme — plain `<a>`). Pure and SSR-safe (falls back to treating an origin-undecidable absolute URL as external when there's no `location`). `toRouterPath` strips an absolute same-origin URL down to a router-relative path (`https://example.com/about?x#y` → `/about?x#y`); a relative value passes through unchanged.",
+      example: `classifyHref('/about')                    // 'internal'
+classifyHref('https://other.com/x')       // 'external'
+classifyHref('#section')                  // 'hash'
+classifyHref('mailto:hi@example.com')     // 'protocol'
+toRouterPath('https://example.com/about?tab=1')  // '/about?tab=1'`,
+      mistakes: [
+        "Building a custom link component that only checks `to.startsWith('http')` — misses protocol-relative (`//host`) and other-scheme (`mailto:`) values, which need different handling (external navigation / plain anchor) than a router push",
+        'Assuming `classifyHref` decides based on a CLICK — it is a pure string classifier; the actual navigation choice (`preventDefault` + `router.push` vs letting the browser handle it) is the caller\'s job, exactly what `RouterLink` does with the result',
+      ],
+      seeAlso: ['RouterLink', 'LinkKind'],
+    },
+    {
+      name: 'classifyRedirectTarget / safeRedirectLocation',
+      kind: 'function',
+      signature:
+        "classifyRedirectTarget(target: string) => RedirectClass · safeRedirectLocation(target: string) => string",
+      summary:
+        "The open-redirect guard `redirect()` runs its target through. `classifyRedirectTarget` returns a `{ kind: 'internal' | 'external' | 'block', url }` verdict: a root-relative path or a genuine `http(s)://` URL passes as `'internal'`/`'external'`; anything that could trick the URL parser into resolving to an attacker-controlled host — a protocol-relative/authority-delimiter prefix (`//host`, `\\\\host`, `/\\host`, `\\/host`, all of which the parser reads as introducing a HOST exactly like `//host` does), or an explicit non-http(s) scheme (`javascript:`, `data:`, …) — is `'block'`ed to `/` (with a dev warning naming why). `safeRedirectLocation` is the convenience wrapper: `'block'` collapses to `/`, everything else passes through as a plain string. Exported for anyone building their OWN redirect helper outside `redirect()`/loaders (a webhook handler validating a `returnTo` query param, for instance).",
+      example: `safeRedirectLocation('/dashboard')           // '/dashboard'
+safeRedirectLocation('https://good.com/x')   // 'https://good.com/x' (external)
+safeRedirectLocation('//evil.com')           // '/' — blocked, dev-warns why
+safeRedirectLocation('javascript:alert(1)')  // '/' — blocked`,
+      mistakes: [
+        "Validating a redirect target with `target.startsWith('http')` or `!target.startsWith('//')` by hand instead of this — the authority-delimiter class (`\\\\host`, `/\\host`, `\\/host`) resolves to a host exactly like `//host` and is easy to miss when hand-rolling the check",
+        'Using `classifyRedirectTarget` result\'s `.url` directly for a `\'block\'` verdict — it is undefined for that kind; use `safeRedirectLocation` (which always returns a safe string) unless you specifically need to branch on WHY something was blocked',
+      ],
+      seeAlso: ['redirect', 'isRedirectError', 'getRedirectInfo'],
+    },
+    {
+      name: 'serializeLoaderData / stringifyLoaderData / hydrateLoaderData',
+      kind: 'function',
+      signature:
+        'serializeLoaderData(router: RouterInstance) => Record<string, unknown> · stringifyLoaderData(loaderData: Record<string, unknown>) => string · hydrateLoaderData(router: RouterInstance, serialized: Record<string, unknown>) => void',
+      summary:
+        "The SSR ⇄ client loader-data transit pipeline `@pyreon/server`/`@pyreon/zero` build on. Server side: `serializeLoaderData(router)` collects the matched chain's loader results into a plain object keyed by route path (a layout and its index page can share a path — the SECOND record at the same path gets a `path#1` suffix so neither clobbers the other); `stringifyLoaderData(data)` then turns that into a STRING ready to embed inside an inline `<script>` — it strips functions/symbols, throws a clear `[Pyreon] Loader returned circular reference at \"<path>\"` naming the offending key on a real cycle (a DAG with a SHARED reference, like two fields pointing at the same ORM instance, is NOT a cycle and serializes fine), and neutralizes the whole `<` character class plus U+2028/U+2029 so an adversarial loader value can never break out of the `<script>` boundary. Client side: `hydrateLoaderData(router, serialized)` — called once, BEFORE `mount()`, right after `createRouter()` — populates the router's internal loader-data map from the deserialized blob so the initial render uses the server-fetched data instead of re-running loaders.",
+      example: `// Server (SSR handler):
+await prefetchLoaderData(router, req.url)
+const json = stringifyLoaderData(serializeLoaderData(router))
+const html = \`...<script>window.__PYREON_LOADER_DATA__=\${json}</script>...\`
+
+// Client entry (before mount):
+const router = createRouter({ routes })
+hydrateLoaderData(router, window.__PYREON_LOADER_DATA__ ?? {})
+mount(h(App, null), document.getElementById('app')!)`,
+      mistakes: [
+        'Calling `JSON.stringify(serializeLoaderData(router))` directly instead of `stringifyLoaderData` — loses the circular-reference diagnostic (a bare `JSON.stringify` throws an opaque "Converting circular structure to JSON" naming no route) AND the `<script>`-context escaping (a loader value containing `</script>` or `<!--<script>` can corrupt the page)',
+        'Calling `hydrateLoaderData` AFTER `mount()` — it populates the loader-data map the FIRST render reads; called too late, the initial render re-fetches instead of using the server data',
+        "Returning a Mongo/Prisma model with back-references intact from a loader — that IS a genuine cycle, and `stringifyLoaderData` throws naming the exact key; strip back-references or return a plain serialized shape",
+      ],
+      seeAlso: ['useLoaderData', 'prefetchLoaderData'],
+    },
+    {
+      name: 'resolveRoute / buildPath / findRouteByName / parseQuery / parseQueryMulti / stringifyQuery',
+      kind: 'function',
+      signature:
+        'resolveRoute(rawPath, routes) => ResolvedRoute · buildPath(pattern, params) => string · findRouteByName(name, routes) => RouteRecord | null · parseQuery(qs) => Record<string, string> · parseQueryMulti(qs) => Record<string, string | string[]> · stringifyQuery(query) => string',
+      summary:
+        "Match utilities re-exported for SSR route pre-fetching and custom tooling that needs to match a path against a route TREE outside a live router instance (a build-time route inspector, a link-checker script, a test harness). `resolveRoute(rawPath, routes)` runs the SAME matcher `createRouter` uses internally (WHATWG-ordered: fragment split first, then query) and returns the full `ResolvedRoute` (matched chain, params, query, hash). `buildPath(pattern, params)` is the inverse — fills a route pattern's `:param`/`:param?`/`:splat*` placeholders from a params object (optional params omit their whole segment when absent; splat params are joined unencoded, since they legitimately contain `/`). `findRouteByName` does an O(n) recursive name search (prefer building a `Map` yourself for repeated lookups in a hot path — the router does this internally via `buildNameIndex`). `parseQuery`/`parseQueryMulti`/`stringifyQuery` are the query-string codec: `parseQuery` keeps the LAST value for a repeated key, `parseQueryMulti` collects repeats into an array, both drop a small denylist of dangerous keys (`__proto__` etc.) to keep the result prototype-pollution-safe.",
+      example: `import { resolveRoute, buildPath, parseQueryMulti } from '@pyreon/router'
+
+const resolved = resolveRoute('/user/42?tab=posts', routes)
+resolved.params.id      // '42'
+
+buildPath('/user/:id', { id: '42' })            // '/user/42'
+parseQueryMulti('color=red&color=blue')          // { color: ['red', 'blue'] }`,
+      mistakes: [
+        'Calling `resolveRoute` per-navigation in app code instead of using the router\'s own `push`/`useRoute()` — this is the low-level matcher for OFFLINE/tooling use; a live app already has a resolved route via the router instance',
+        'Using `parseQuery` when duplicate keys matter (`?tag=a&tag=b`) — it keeps only the LAST value per key; use `parseQueryMulti` to get an array',
+        'Calling `findRouteByName` in a hot path (per-render, per-navigation) — it is an O(n) recursive walk; the router itself uses a pre-built `Map` (`buildNameIndex`) for repeated lookups',
+      ],
+      seeAlso: ['createRouter', 'useRoute'],
+    },
   ],
   gotchas: [
     {

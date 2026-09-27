@@ -91,7 +91,7 @@ import { Provider, Container, Row, Col, theme } from '@pyreon/coolgrid'
 ### Container `component`
 
 ```ts
-(props: { columns?: ValueType; gap?: ValueType; gutter?: ValueType; padding?: ValueType; contentAlignX?: ContentAlignX; width?: ContainerWidth; component?: ComponentFn; css?: ExtraStyles }) => VNodeChild
+(props: { columns?: ValueType; size?: ValueType; gap?: ValueType; gutter?: ValueType; padding?: ValueType; contentAlignX?: ContentAlignX; colCss?: ExtraStyles; colComponent?: ComponentFn; rowCss?: ExtraStyles; rowComponent?: ComponentFn; width?: ContainerWidth; component?: ComponentFn; css?: ExtraStyles }) => VNodeChild
 ```
 
 Outermost grid boundary. Renders a centered flex column (`width: 100%`, auto horizontal margins) with a responsive `max-width` resolved from the `width` prop → `theme.grid.container` → `theme.coolgrid.container`, and provides the grid config (`columns`, `size`, `gap`, `padding`, `gutter`, `colCss`/`colComponent`, `rowCss`/`rowComponent`, `contentAlignX`) to descendant Row / Col via context. `ValueType` = `number | number[] | { [breakpoint]: number }` (responsive); `width` also accepts a function that receives the theme-resolved container-width record and returns the final `ContainerWidth`. `columns` defaults to the theme value (12 in the default theme).
@@ -258,6 +258,7 @@ import { PyreonUI } from '@pyreon/ui-core'
 - Wrapping a fresh `<Provider>` inside an app that already renders `<PyreonUI>` at the root — PyreonUI sets up the unistyle context already; only add a nested Provider to scope DIFFERENT breakpoints to a subtree
 - Expecting a nested `<Provider>` to inherit the outer Provider's overrides — context is per-Provider; the inner one starts fresh from its own `theme`
 - Reaching for `Provider` in new code — it is deprecated in favor of `PyreonUI` from `@pyreon/ui-core`
+- Being surprised by the dev warning `[Pyreon] CoreProvider is internal` — this Provider delegates to ui-core's internal provider, which logs it in development; `<PyreonUI>` does not
 
 **See also:** `theme` · `@pyreon/ui-core`
 

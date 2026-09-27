@@ -97,7 +97,7 @@ useHotkey('escape', () => closeModal(), { enableOnInputs: true })
 | [`getRegisteredHotkeys`](#getregisteredhotkeys) | function | Return a SNAPSHOT array of every registered hotkey — `{ shortcut, scope, description? }` per entry (`description` omitte |
 | [`trigger`](#trigger) | function | Programmatically fire the handlers bound to `shortcut` (window-target bindings), as if the user pressed it — command pal |
 | [`getPressedKeys / isKeyPressed`](#getpressedkeys-iskeypressed) | function | Live held-key introspection. |
-| [`parseShortcut / matchesCombo / formatCombo`](#parseshortcut-matchescombo-formatcombo) | function | The combo utilities. |
+| [`parseShortcut / matchesCombo / formatCombo / splitShortcutList`](#parseshortcut-matchescombo-formatcombo-splitshortcutlist) | function | The combo utilities. |
 
 ## API
 
@@ -315,13 +315,13 @@ if (isKeyPressed('shift')) extendSelection()
 
 ---
 
-### parseShortcut / matchesCombo / formatCombo `function`
+### parseShortcut / matchesCombo / formatCombo / splitShortcutList `function`
 
 ```ts
-parseShortcut(shortcut: string) => KeyCombo · matchesCombo(event: KeyboardEvent, combo: KeyCombo) => boolean · formatCombo(combo: KeyCombo) => string
+parseShortcut(shortcut: string) => KeyCombo · matchesCombo(event: KeyboardEvent, combo: KeyCombo) => boolean · formatCombo(combo: KeyCombo) => string · splitShortcutList(list: string) => string[]
 ```
 
-The combo utilities. `parseShortcut` turns a string (`'mod+shift+k'`) into a `KeyCombo` — lower-cased, `+`-split, with aliases (`esc`-&gt;`escape`, `del`-&gt;`delete`, `space`-&gt;space, `up`-&gt;`arrowup`, …) and `mod` resolving to META on Mac / CTRL elsewhere. `matchesCombo` tests a `KeyboardEvent` against a parsed combo. `formatCombo` renders a combo back to a display string (`Ctrl+Shift+K`; META shows as the `⌘` glyph on Mac).
+The combo utilities. `parseShortcut` turns a string (`'mod+shift+k'`) into a `KeyCombo` — lower-cased, `+`-split, with aliases (`esc`-&gt;`escape`, `del`-&gt;`delete`, `space`-&gt;space, `up`-&gt;`arrowup`, …) and `mod` resolving to META on Mac / CTRL elsewhere. `matchesCombo` tests a `KeyboardEvent` against a parsed combo. `formatCombo` renders a combo back to a display string (`Ctrl+Shift+K`; META shows as the `⌘` glyph on Mac). `splitShortcutList` splits a COMMA-separated list of shortcuts (`useHotkey`'s `'mod+s, mod+shift+s'`-style multi-binding syntax) into individual shortcut strings — correctly handling the comma KEY itself (`','`, `'ctrl+,'`, `'mod+comma'` all parse as one binding on the comma key, not a two-item split).
 
 **Example**
 

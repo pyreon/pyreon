@@ -91,6 +91,7 @@ title.dispose()      // detach observer (auto on onCleanup inside a scope)
 - Creating the synced signal BEFORE attaching the transport — the create-if-missing seed defers until first sync ONLY when a transport is already registered on the doc; created first, it seeds immediately (as if alone) and a fresh default can clobber a peer value on a clientId tie-break (#2380). Attach the transport (+ persistence) first
 - Storing an object/array and expecting per-field surgical updates — v1 is scalar (string/number/boolean); whole-value replace works but re-fires per replace. Use `syncedText`/`syncedList` for collaborative collections
 - Forgetting `.dispose()` for a module-scope synced signal that outlives any reactive scope (inside a scope it auto-disposes via onCleanup)
+- Assuming the `map` option is required — it defaults to the exported `DEFAULT_MAP` constant (`'pyreon'`) when omitted; pass an explicit `map` only when you need multiple independent maps in the same doc
 
 **See also:** `syncedStore` · `syncedText` · `syncedList`
 
@@ -242,6 +243,7 @@ sa.set(5) // sb() becomes 5
 
 - Using the fake adapter to test offline-reconnect convergence — it has no state-vector merge; use the Yjs adapter for that scenario
 - Shipping the fake adapter to production — it is a test double with no persistence or real conflict resolution
+- Constructing `new FakeCrdtAdapter()` per test when a single shared instance is fine — the package also exports `fakeAdapter`, a ready-made `CrdtAdapter` singleton (`export const fakeAdapter: CrdtAdapter = new FakeCrdtAdapter()`) for the common case of "I just need an adapter, not multiple isolated ones"
 
 **See also:** `connectFakeDocs` · `createYjsDoc`
 
