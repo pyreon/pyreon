@@ -84,7 +84,7 @@ export function cloudflareAdapter(): Adapter {
         return
       }
       await validateBuildInputs(options)
-      const { writeFile, mkdir, readFile } = await import('node:fs/promises')
+      const { writeFile, mkdir, readFile, readdir } = await import('node:fs/promises')
       const { join } = await import('node:path')
 
       const outDir = options.outDir
@@ -98,6 +98,36 @@ export function cloudflareAdapter(): Adapter {
         clientDest: outDir,
         serverDest: join(outDir, CLOUDFLARE_ADAPTER_OUTPUT.serverDir),
       })
+
+      // Rolldown emits this eager CommonJS bridge whenever ANY lazy server
+      // chunk contains CJS (notably optional `sharp` for route OG images):
+      //
+      //   createRequire(import.meta.url)
+      //
+      // In workerd `node:module` exists under `nodejs_compat`, but
+      // `import.meta.url` is undefined. The bridge therefore throws while the
+      // entry module evaluates, before the worker can handle a single request.
+      // Give the staged Cloudflare-only bridge a stable absolute anchor. An
+      // actually-used unavailable optional package still rejects inside its
+      // existing lazy import/catch with the package's actionable error.
+      const stagedServerDir = join(outDir, CLOUDFLARE_ADAPTER_OUTPUT.serverDir)
+      const anchorCreateRequire = async (dir: string): Promise<void> => {
+        for (const entry of await readdir(dir, { withFileTypes: true })) {
+          const path = join(dir, entry.name)
+          if (entry.isDirectory()) {
+            await anchorCreateRequire(path)
+            continue
+          }
+          if (!entry.isFile() || !/\.[cm]?js$/.test(entry.name)) continue
+          const source = await readFile(path, 'utf-8')
+          const anchored = source.replaceAll(
+            'createRequire(import.meta.url)',
+            'createRequire("file:///pyreon-worker/entry-server.js")',
+          )
+          if (anchored !== source) await writeFile(path, anchored)
+        }
+      }
+      await anchorCreateRequire(stagedServerDir)
 
       // Cloudflare runs in workerd, NOT Node — there is no filesystem, so the
       // server bundle's `readBuiltTemplate()` can't `readFileSync` the staged

@@ -154,6 +154,32 @@ describe('vercel adapter runtime option', () => {
 })
 
 describe('cloudflare adapter build', () => {
+  it('anchors Rolldown createRequire helpers when workerd has no import.meta.url', async () => {
+    await setupMockBuild()
+    await writeFile(
+      join(MOCK_SERVER, 'entry-server.js'),
+      'import { createRequire } from "node:module"\nconst req = createRequire(import.meta.url)\nexport default req',
+    )
+    await mkdir(join(MOCK_SERVER, 'assets'), { recursive: true })
+    await writeFile(join(MOCK_SERVER, 'assets', 'lazy.js'), 'const req = createRequire(import.meta.url)\nexport default req')
+    const outDir = join(TMP, 'cf-create-require-out')
+    await cloudflareAdapter().build({
+      kind: 'ssr',
+      serverEntry: join(MOCK_SERVER, 'entry-server.js'),
+      clientOutDir: MOCK_CLIENT,
+      outDir,
+      projectRoot: outDir,
+      config: {},
+    })
+
+    const staged = await readFile(join(outDir, '_server', 'entry-server.js'), 'utf-8')
+    expect(staged).not.toContain('createRequire(import.meta.url)')
+    expect(staged).toContain('createRequire("file:///pyreon-worker/entry-server.js")')
+    const lazy = await readFile(join(outDir, '_server', 'assets', 'lazy.js'), 'utf-8')
+    expect(lazy).not.toContain('createRequire(import.meta.url)')
+    await cleanup()
+  })
+
   it('generates Pages output structure', async () => {
     await setupMockBuild()
     const outDir = join(TMP, 'cf-out')
