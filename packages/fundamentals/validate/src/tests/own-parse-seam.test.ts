@@ -48,7 +48,15 @@ describe('own-property parse seam (pure JIT trees)', () => {
     const S = s.number().int()
     expect(S.parse(200).ok).toBe(true)
     expect(own(S)).toBe(true)
-    S.max(150) // mutates in place → _invalidateCompile
+    // Chaining is copy-on-write, so exercise the invalidation seam directly
+    // (it still guards any internal op-list change).
+    const derived = S.max(150)
+    expect(own(derived)).toBe(false)
+    expect(derived.parse(200).ok).toBe(false)
+    expect(own(S)).toBe(true)
+    expect(S.parse(200).ok).toBe(true)
+    S._ops = derived._ops
+    S._invalidateCompile()
     expect(own(S)).toBe(false)
     // The rebuilt tree must reject what the stale closure would have accepted.
     expect(S.parse(200).ok).toBe(false)

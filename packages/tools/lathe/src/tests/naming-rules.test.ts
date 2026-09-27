@@ -143,3 +143,13 @@ describe('assignNames', () => {
     expect(assignNames(raws, typeIdent)).toEqual(assignNames(raws, typeIdent))
   })
 })
+
+describe('kebab / typeIdent edge cases', () => {
+  it('kebab of a name with no word characters is `_`, not an empty filename', () => {
+    expect(kebab('---')).toBe('_')
+  })
+
+  it('typeIdent prefixes a leading digit rather than dropping it', () => {
+    expect(typeIdent('2fa')).toBe('_2fa')
+  })
+})

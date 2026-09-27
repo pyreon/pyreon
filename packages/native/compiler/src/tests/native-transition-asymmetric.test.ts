@@ -77,6 +77,24 @@ describe('asymmetric enter/leave timing', () => {
     expect(asym).not.toMatch(/\.animation\([^)]*, value: on\)/)
   })
 
+  it('Swift: asymmetric timing KEEPS the preset on both sides (was always a fade)', () => {
+    const out = transform(src('name="slideUp" enterDuration={200} leaveDuration={2500}'), { target: 'swift' })
+    expect(out.code).toContain('insertion: AnyTransition.move(edge: .bottom).combined(with: .opacity).animation(')
+    expect(out.code).toContain('removal: AnyTransition.move(edge: .bottom).combined(with: .opacity).animation(')
+    const scale = transform(src('name="scale" enterDuration={100}'), { target: 'swift' }).code
+    expect(scale).toContain('insertion: AnyTransition.scale.combined(with: .opacity).animation(')
+    // Android already honoured the preset — lock parity.
+    const kt = transform(src('name="slideUp" enterDuration={200}'), { target: 'kotlin' }).code
+    expect(kt).toContain('slideInVertically')
+  })
+
+  it.skipIf(!isSwiftUIAvailable())('the asymmetric PRESET emit typechecks (real SwiftUI SDK)', () => {
+    const r = validateSwiftTypecheck(
+      transform(src('name="slideUp" enterDuration={200} leaveDuration={2500}'), { target: 'swift' }).code,
+    )
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+
   it('a NON-LITERAL per-side duration warns and falls back', () => {
     const dyn = `import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'

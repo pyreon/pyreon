@@ -133,8 +133,11 @@ describe('sanitizeHref', () => {
     expect(sanitizeHref('data:text/html,<script>alert(1)</script>')).toBe('')
   })
 
-  it('allows data:image URIs', () => {
-    expect(sanitizeHref('data:image/png;base64,abc')).toBe('data:image/png;base64,abc')
+  it('rejects data: URIs as LINK destinations (allowlist: http/https/mailto/tel/relative)', () => {
+    // data:image stays valid as an IMAGE source (sanitizeImageSrc); as a
+    // link target it has no legitimate use and browsers block top-level
+    // data: navigation anyway.
+    expect(sanitizeHref('data:image/png;base64,abc')).toBe('')
   })
 })
 
@@ -252,10 +255,15 @@ describe('download', () => {
       click: clickSpy,
     } as any)
 
+    vi.useFakeTimers()
     await download(doc, 'file.html')
 
     expect(clickSpy).toHaveBeenCalled()
+    // revoked on a later task (see download.ts), not synchronously
+    expect(revokeSpy).not.toHaveBeenCalled()
+    vi.runAllTimers()
     expect(revokeSpy).toHaveBeenCalled()
+    vi.useRealTimers()
 
     urlSpy.mockRestore()
     revokeSpy.mockRestore()

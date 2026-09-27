@@ -274,9 +274,12 @@ describe('~standard memoization', () => {
     const a = schema['~standard']
     const b = schema['~standard']
     expect(a).toBe(b)
-    // still live after chained mutation (the closure re-resolves _getCompiled)
-    schema.max(4)
+    // Chaining is copy-on-write: the derived schema gets its OWN `~standard`
+    // (the memo closes over its receiver), and the receiver's stays put.
+    const derived = schema.max(4)
     expect(schema['~standard']).toBe(a)
-    expect(schema['~standard'].validate('toolong')).toHaveProperty('issues')
+    expect(derived['~standard']).not.toBe(a)
+    expect(derived['~standard'].validate('toolong')).toHaveProperty('issues')
+    expect(schema['~standard'].validate('toolong')).not.toHaveProperty('issues')
   })
 })

@@ -72,11 +72,22 @@ export function addDisposableDomains(domains: Iterable<string>): void {
   for (const d of domains) DISPOSABLE_DOMAINS.add(d.toLowerCase())
 }
 
-/** Whether `email`'s domain is a known disposable provider. */
+/**
+ * Whether `email`'s domain is a known disposable provider — or a SUBDOMAIN of
+ * one (`x@eu.mailinator.com`). Disposable providers routinely serve every
+ * subdomain, so an exact-match lookup is trivially bypassed. Suffix match on
+ * label boundaries only: `notmailinator.com` does not match `mailinator.com`.
+ */
 export function isDisposableEmail(email: string): boolean {
   const at = email.lastIndexOf('@')
   if (at === -1) return false
-  return DISPOSABLE_DOMAINS.has(email.slice(at + 1).toLowerCase())
+  let domain = email.slice(at + 1).toLowerCase()
+  for (;;) {
+    if (DISPOSABLE_DOMAINS.has(domain)) return true
+    const dot = domain.indexOf('.')
+    if (dot === -1) return false
+    domain = domain.slice(dot + 1)
+  }
 }
 
 /**

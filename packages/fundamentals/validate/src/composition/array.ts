@@ -58,7 +58,7 @@ export class ArraySchema<T> extends SchemaBase<T[]> {
   // ─── Length checks ─────────────────────────────────────────────────
 
   min(n: number, opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:array:min', n, opts }, (value, ctx) => {
         if (!Array.isArray(value) || value.length >= n) return
         ctx.issues.push(
@@ -74,12 +74,10 @@ export class ArraySchema<T> extends SchemaBase<T[]> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   max(n: number, opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:array:max', n, opts }, (value, ctx) => {
         if (!Array.isArray(value) || value.length <= n) return
         ctx.issues.push(
@@ -95,12 +93,10 @@ export class ArraySchema<T> extends SchemaBase<T[]> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   length(n: number, opts?: CheckOpts): this {
-    this._ops.push(
+    return this._cloneWith(
       attachCheck({ kind: 'check:array:length', n, opts }, (value, ctx) => {
         if (!Array.isArray(value) || value.length === n) return
         ctx.issues.push(
@@ -116,8 +112,6 @@ export class ArraySchema<T> extends SchemaBase<T[]> {
         )
       }),
     )
-    this._invalidateCompile()
-    return this
   }
 
   nonEmpty(opts?: CheckOpts): this {

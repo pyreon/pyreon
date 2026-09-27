@@ -8,6 +8,8 @@
  * files, or every regeneration is an unreviewable diff.
  */
 
+import type { IrOperation } from './ir'
+
 /** Reserved across TS + Swift + Kotlin, unioned. Suffix `_` on a collision. */
 const RESERVED = new Set([
   // TypeScript / JS
@@ -234,4 +236,15 @@ export function operationIdent(input: string): string {
 export function modelIdent(input: string): string {
   const out = typeIdent(input)
   return EMITTER_TYPES.has(out) ? `${out}Model` : out
+}
+
+/**
+ * The query / mutation hook an operation gets, or `undefined` when the config
+ * (or a plugin) turned it off. ONE derivation for every emitter that names a
+ * hook -- the queries module, the previews, the infinite hook and the docs --
+ * so a `naming.hook` rename can never reach some of them and not others.
+ */
+export function hookOf(op: IrOperation): string | undefined {
+  if (op.hook === false) return undefined
+  return op.hook ?? `use${typeIdent(op.id)}`
 }

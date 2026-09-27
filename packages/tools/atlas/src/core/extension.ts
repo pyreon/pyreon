@@ -36,6 +36,42 @@
  */
 import type { ComponentRef } from './types'
 
+/**
+ * The props a `wrapper` (or an extension's `wrap`) receives.
+ *
+ * `children` is the scenario. The rest is the workbench's RENDER CONTEXT, so a
+ * wrapper can hand it to the project's own provider — without it, the dark
+ * workbench rendered every component in its light mode and the Theme Lab
+ * showed eight identical cards:
+ *
+ * ```ts
+ * wrapper: (props: AtlasWrapperProps) =>
+ *   h(PyreonUI, { theme, mode: props.mode }, props.children)
+ * ```
+ *
+ * Each is an ACCESSOR, so a provider that accepts one (`<PyreonUI mode>` does)
+ * re-themes in place when the workbench's appearance flips, instead of the
+ * whole preview remounting and losing its state.
+ *
+ * All optional: `atlas scan` mounts scenarios headlessly, with no appearance
+ * to report, and passes `children` only. A wrapper must treat a missing
+ * accessor as "use your own default".
+ */
+export interface AtlasWrapperProps {
+  children?: unknown
+  /** `'light' | 'dark'` — the workbench appearance, or the Theme Lab tile's. */
+  mode?: () => 'light' | 'dark'
+  /** The same fact as a boolean, for providers that take `dark`. */
+  dark?: () => boolean
+  /**
+   * The workbench brand (Ember, Aurora, …). Map its `id` to one of your own
+   * themes to make the Theme Lab's brand tiles mean something; a wrapper that
+   * never reads it tells the Lab that brands do not apply, and the Lab says so
+   * rather than tiling identical cards.
+   */
+  brand?: () => { id: string; name: string; accent: string }
+}
+
 export interface AtlasExtension {
   /**
    * Identifies the extension in diagnostics and in the workbench's own listing.
@@ -46,7 +82,8 @@ export interface AtlasExtension {
    */
   name: string
   /**
-   * Wraps every rendered scenario. Receives the scenario as `children`.
+   * Wraps every rendered scenario. Receives the scenario as `children`, plus
+   * the workbench's appearance — see `AtlasWrapperProps`.
    *
    * Composed with the other extensions, never replacing them.
    */

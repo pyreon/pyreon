@@ -7,8 +7,9 @@ import { describe, expect, it } from 'vitest'
 import primitivesManifest from '../manifest'
 
 // Spot-check snapshot for @pyreon/primitives' manifest → generated docs.
-// The api[] is 17 entries (15 primitives + <WebView> + the <Web> escape
-// hatch group) of prose-dense MCP text, so a full inline snapshot would
+// The api[] covers the 17 canonical primitives, the two animation wrappers,
+// <WebView>, the <Web> escape-hatch group and the helper APIs — prose-dense
+// MCP text, so a full inline snapshot would
 // rot fast — instead assert the rendered SHAPE (bullet, section header,
 // every primitive present as a get_api entry). The CI `Docs Sync` job
 // locks byte-exact drift against the committed llms / api-reference.
@@ -17,7 +18,7 @@ describe('gen-docs — @pyreon/primitives snapshot', () => {
   it('renders the llms.txt bullet', () => {
     const line = renderLlmsTxtLine(primitivesManifest)
     expect(line.startsWith('- @pyreon/primitives — ')).toBe(true)
-    expect(line).toContain('16 cross-platform UI primitives')
+    expect(line).toContain('17 canonical cross-platform UI primitives')
     expect(line).toContain('WebView')
   })
 
@@ -28,13 +29,14 @@ describe('gen-docs — @pyreon/primitives snapshot', () => {
     expect(section).toContain('PMTC')
   })
 
-  it('exposes all 15 primitives + WebView + escape hatch as get_api entries', () => {
+  it('exposes all 17 canonical primitives + Transition/TransitionGroup + WebView + escape hatch as get_api entries', () => {
     const rendered = JSON.stringify(renderApiReferenceEntries(primitivesManifest))
     for (const name of [
       'Stack', 'Inline', 'Layer', 'Scroll', 'Spacer',
-      'Text', 'Heading', 'Image', 'Icon',
+      'Text', 'Heading', 'Image', 'Audio', 'Video', 'Icon',
       'Button', 'Press', 'Link',
       'Field', 'Toggle', 'Modal',
+      'Transition', 'TransitionGroup',
       'WebView', 'Web',
     ]) {
       expect(rendered).toContain(`primitives/${name}`)
