@@ -15,6 +15,8 @@ called.
 bun add @pyreon/primitives @pyreon/core @pyreon/reactivity @pyreon/runtime-dom
 ```
 
+<Example file="./examples/primitives/todo-app" title="Quick start — live" />
+
 ## What is in the package
 
 | Group | Components | Lowers natively via |

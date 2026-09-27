@@ -58,26 +58,16 @@ bun install
 - **Spec 2**: Click "Go to About" → about page renders; click "Back to Home" → home renders (round-trip)
 - **Spec 3**: Click "View user 42" → user page renders + `useParams()` populates `id="42"` (asserted via the rendered `Profile for user 42` text)
 
-## Limitations (this PR ships project files only)
+## Status
 
-The PMTC emit for the router demo references `data class UserPageParam` (synthesized from `params: { id: string }` prop annotation) — pre-#1453 the data class declaration was NOT emitted, so kotlinc fails `unresolved reference 'UserPageParam'`.
-
-**This PR DOES NOT add the CI wiring yet.** The Espresso test target lives in source but is not exercised by `.github/workflows/native-device.yml`. CI integration lands in a FOLLOW-UP PR after **#1453 merges** (which closes the synthetic-data-class emit bug).
-
-The scaffold ships now because:
-- The project structure mirrors `native-counter-android` exactly — proven template
-- The Espresso test code is structurally identical to the iOS XCUITest variant from #1452
-- The source-set wiring for router-kotlin is a documented pattern
-- All these pieces compose into a build-ready project as soon as #1453 unblocks the kotlinc step
-
-## CI wiring (follow-up PR after #1453)
-
-When #1453 merges, the follow-up PR adds 3 steps to `.github/workflows/native-device.yml`'s `android-build` job mirroring the counter-android pattern:
-
-1. Emit Kotlin via `scripts/build.sh`
-2. `gradle assembleDebug`
-3. Boot emulator + `gradle connectedCheck` (same `reactivecircus/android-emulator-runner@v2.37.0` SHA-pin)
+#1453 (the synthetic `data class UserPageParam` emit bug, synthesized from
+`params: { id: string }` prop annotation) has merged, and CI wiring has since
+landed too: `.github/workflows/native-device.yml`'s `android-build` job runs
+this directory's `scripts/build.sh` → `gradle assembleDebug` →
+`gradle connectedCheck` (Espresso on an emulator) whenever `ANDROID_APPS`
+includes `router-demo`, mirroring the `native-counter-android` pattern (same
+`reactivecircus/android-emulator-runner` action).
 
 ## Audit status
 
-Closes the Android router-demo half of Gap 5 (project files). The CI gate activation is sequenced behind #1453.
+Closes the Android router-demo half of Gap 5 (project files + CI gate).

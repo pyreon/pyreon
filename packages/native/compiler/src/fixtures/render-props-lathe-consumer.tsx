@@ -12,7 +12,9 @@ export function BookScreen(props: { bookId: string }) {
         {(book: Book | undefined) => <Text>{book?.title ?? 'Loading…'}</Text>}
       </GetBookData>
       <ListBooksData>
-        {(books: Book[] | undefined) => <Text>{`${books?.length ?? 0} books`}</Text>}
+        {(books: Book[] | undefined) =>
+          books === undefined ? <Text>Loading…</Text> : <Text>{`${books.length} books`}</Text>
+        }
       </ListBooksData>
     </Stack>
   )

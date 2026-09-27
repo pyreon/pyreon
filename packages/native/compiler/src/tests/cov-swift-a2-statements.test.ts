@@ -136,7 +136,9 @@ describe('`if` over an OPTIONAL — bind-and-narrow vs a bare nil test', () => {
     const { code } = sw(`    const t: string | undefined = props.tok
     if (t) { n.set(t.length) }
     if (t !== null) { n.set(t.length) }`, 'props: { tok?: string }')
-    expect(code.match(/if let t \{/g)).toHaveLength(2)
+    // The truthiness form also rejects '' (JS falsy) — a `!== null` test does not.
+    expect(code).toContain('if let t, !t.isEmpty {')
+    expect(code.match(/if let t \{/g)).toHaveLength(1)
     expect(code).toContain('n = t.utf16.count')
   })
 

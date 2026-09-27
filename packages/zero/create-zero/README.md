@@ -45,13 +45,14 @@ bun run dev
 
 ## Templates
 
-| Template | Default mode | What you get |
-|---|---|---|
-| `app` | SSR streaming | Counter, posts, layout, admin route group — the full-featured starter. |
-| `blog` | SSG (static) | TSX posts in `src/content/posts/`, RSS at `/rss.xml`, SEO-ready. |
-| `dashboard` | SSR streaming | SaaS shape: marketing landing → auth-gated `/app/*` (overview, users, invoices, settings) → invoice export demo using `@pyreon/document-primitives` (the same component tree renders in browser AND exports to PDF / email). |
+| Template | Default mode | Mode forced? | What you get |
+|---|---|---|---|
+| `app` | SSR streaming | no | Counter, posts, layout, admin route group — the full-featured starter. |
+| `blog` | SSG (static) | yes | TSX posts in `src/content/posts/`, an RSS feed, SEO-ready. Static-first — `node`/`bun` adapters are excluded. |
+| `dashboard` | SSR streaming | yes | SaaS shape: marketing landing → auth-gated `/app/*` (overview, users, invoices, settings) → invoice export demo using `@pyreon/document-primitives` (the same component tree renders in browser AND exports to PDF / email). Server-required — `static` is excluded. Preselects both backend integrations. |
+| `monorepo` | SSR streaming | no | Bun workspaces shell — `apps/web/` (a full `app`-shaped project) + `packages/ui/` + `packages/types/`, with a root `package.json` proxying `dev`/`build`/`preview` to the web app. |
 
-Force a template: `--template app | blog | dashboard`.
+Force a template: `--template app | blog | dashboard | monorepo`.
 
 ## Deployment adapters
 
@@ -66,11 +67,30 @@ Pick a target via `--adapter`. Each adapter writes the platform-specific deploy 
 | `bun` | `Dockerfile` (bun-based), `.dockerignore` |
 | `static` | — (`dist/` is the artefact) |
 
+`node`/`bun` skip the Dockerfile entirely under `--mode spa` — a SPA build has no server entry for the container's `CMD` to run, so shipping a Dockerfile there would crash the container at startup. Deploy a SPA to any static host, or pick the `static` adapter.
+
 ## Rendering modes
 
-`--mode ssr-stream | ssr-string | ssg | spa`
+`--mode ssr-stream | ssr-string | ssg | isr | spa`
 
-Maps to the `mode` + `ssr.mode` options on `@pyreon/zero`'s Vite plugin. `ssr-stream` is the default; `ssg` requires `getStaticPaths` on dynamic routes.
+Maps to the `mode` + `ssr.mode` options on `@pyreon/zero`'s Vite plugin. `ssr-stream` is the default; `ssg` requires `getStaticPaths` on dynamic routes; `isr` keeps a server-side SWR cache, so the `static` adapter is excluded from the deploy prompt whenever `isr` is selected (`--adapter static --mode isr` fails fast).
+
+## Feature presets
+
+22 fundamentals features (`store`, `query`, `forms`, `table`, `virtual`, `i18n`, `charts`, …) can be enabled per project. The interactive flow offers a preset shortcut first; picking `Custom` drops into a multiselect grouped into 8 categories.
+
+| Preset | Feature set | Mode | Adapter |
+|---|---|---|---|
+| `minimal` | (none) | `spa` | `static` |
+| `standard` | `store` + `query` + `forms` | `ssr-stream` | `vercel` |
+| `dashboard` | `standard` + `table` + `charts` | `ssr-stream` | `vercel` |
+| `full` | every feature (22) | `ssr-stream` | `vercel` |
+
+Per-feature `--with-<feature>` / `--no-<feature>` flags (e.g. `--with-i18n --no-forms`) compose on top of whichever base set is active — explicit `--features`, a `--preset`, or (under `--yes`) the template's default. `--no-X` wins over `--with-X` for the same feature; an unknown feature name in either is a hard error listing the known set. `--features <csv>` overrides `--preset` entirely.
+
+```bash
+npm create @pyreon/zero@latest my-app -- --preset standard --with-i18n --no-forms --yes
+```
 
 ## Backend integrations
 
@@ -111,19 +131,24 @@ Migrating from another framework? Pick `--compat react | vue | solid | preact` a
 | Flag | Values |
 |---|---|
 | `[name]` | Positional project name (first non-flag arg) |
-| `--template` | `app` / `blog` / `dashboard` |
+| `--template` | `app` / `blog` / `dashboard` / `monorepo` |
 | `--adapter` | `vercel` / `cloudflare` / `netlify` / `node` / `bun` / `static` |
-| `--mode` | `ssr-stream` / `ssr-string` / `ssg` / `spa` |
-| `--features` | CSV: `store,query,forms,table,virtual,i18n,charts,…` |
+| `--mode` | `ssr-stream` / `ssr-string` / `ssg` / `spa` / `isr` |
+| `--preset` | `minimal` / `standard` / `dashboard` / `full` (composes with `--with-X` / `--no-X`) |
+| `--features` | CSV: `store,query,forms,table,virtual,i18n,charts,…` — overrides `--preset` entirely, not validated |
+| `--with-<feature>` | atomic add, e.g. `--with-store --with-i18n` (errors on an unknown feature) |
+| `--no-<feature>` | atomic remove, e.g. `--no-forms` (wins over `--with-` for the same feature) |
 | `--integrations` | CSV: `supabase,email` |
 | `--ai` | CSV: `mcp,claude,cursor,copilot,agents` |
 | `--compat` | `none` / `react` / `vue` / `solid` / `preact` |
 | `--packages` (alias `--pm`, `--package-strategy`) | `meta` / `individual` |
 | `--lint` / `--no-lint` | toggle `@pyreon/lint` |
-| `--yes` | skip prompts, accept defaults |
+| `--typed-routes` / `--no-typed-routes` | toggle typed routes (`<Link href>` autocomplete + typo rejection; default on) |
+| `--yes` | skip prompts, accept defaults (requires a positional project name) |
+| `--install` / `--no-install` | accepted no-ops — the scaffolder never installs; it prints the install command as a next step |
 | `--help` / `-h` | show usage |
 
-Flag values accept both `--flag value` and `--flag=value` forms. Invalid enum values exit with a clear error.
+Flag values accept both `--flag value` and `--flag=value` forms. Invalid enum values, an unknown flag, or an extra positional argument exit with a clear, non-zero-exit-code error.
 
 ## Documentation
 
