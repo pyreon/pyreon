@@ -356,8 +356,8 @@ function fromResolved(resolved: ResolvedConfig): HttpClient {
       options.validate !== undefined
         ? { validate: options.validate, schema: resolved.parse.schema }
         : resolved.validateSource
-            ? { validate: resolved.validateSource(), schema: resolved.parse.schema }
-            : resolved.parse
+           ? { validate: resolved.validateSource(), schema: resolved.parse.schema }
+           : resolved.parse
     return createResponsePromise(exec, parse, bodyLink)
   }
 
