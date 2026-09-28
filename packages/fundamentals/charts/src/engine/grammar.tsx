@@ -40,6 +40,10 @@ import type { ToolboxConfig } from './toolbox-config'
 import type { AxisLabelMode, PlotChartProps } from './Chart'
 import { PieChart } from './PieChart'
 import { FunnelChart } from './FunnelChart'
+import type { VisualMapSpec } from './visual-map'
+import type { VisualMapSelection } from './visual-map-host'
+import type { CandlestickZoom } from './CandlestickChart'
+import type { ZoomWindow } from './zoom'
 import { HeatmapChart } from './HeatmapChart'
 import { CandlestickChart } from './CandlestickChart'
 import type { CandleOptions } from './candlestick'
@@ -219,6 +223,14 @@ export interface CellProps<T> {
   /** The colour ramp, low to high. */
   colors?: string[]
   gap?: Double
+  /**
+   * A value → colour legend beside the grid. `visualMap` alone derives it
+   * from the data and the ramp, with draggable handles; `visualMap={visualMap({ … })}`
+   * sets every part. Cells outside the selected range take the inactive colour.
+   */
+  visualMap?: VisualMapSpec | true
+  /** Fired as the legend's selection changes. */
+  onVisualMapChange?: (selection: VisualMapSelection) => void
 }
 /** A candlestick: one period per row; the plot's `x` channel labels it. */
 export interface CandleProps<T> extends CandleOptions {
@@ -238,6 +250,10 @@ export interface ZoomProps {
   link?: ChartLink
   /** Range brush; reports a global inclusive index range. */
   brush?: (range: { start: number; end: number } | null) => void
+  /** The window the chart opens on, as fractions of the rows: `{ start: 0.5, end: 1 }` shows the latest half. */
+  window?: ZoomWindow
+  /** Fix the span: the window pans but never zooms. */
+  lock?: boolean
 }
 /**
  * The tool strip: save-as-image, restore, magic type (switch line and bar,
@@ -522,6 +538,17 @@ const warnGrammar = (m: string): void => {
   if (process.env.NODE_ENV !== 'production') console.warn(`[Pyreon] <Chart>: ${m}`)
 }
 
+/** The `<Zoom>` child's settings as a candlestick's zoom; absent without one. */
+function candleZoom<T>(p: Partial<PlotChartProps<T>>): CandlestickZoom | undefined {
+  if (p.dataZoom !== true && p.navigator !== true) return undefined
+  return {
+    inside: p.dataZoom === true,
+    slider: p.navigator === true,
+    ...(p.initialZoom !== undefined ? { window: p.initialZoom } : {}),
+    ...(p.zoomLimits?.lock === true ? { lock: true } : {}),
+  }
+}
+
 /** A family mark's props with every channel turned into an accessor. */
 function familyProps<T>(name: string, p: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
@@ -661,6 +688,8 @@ export function resolveGrammar<T>(rows: T[], chart: ChartProps<T>, children: VNo
         if (z.inside !== false) props.dataZoom = true
         if (z.navigator === true) props.navigator = true
         if (z.presets !== undefined) props.zoomPresets = z.presets
+        if (z.window !== undefined) props.initialZoom = z.window
+        if (z.lock === true) props.zoomLimits = { lock: true }
         if (z.link !== undefined) props.link = z.link
         if (z.brush !== undefined) {
           props.brush = true
@@ -825,7 +854,12 @@ export function Chart<T>(props: ChartProps<T>): VNodeChild {
       const tb = (resolved().props as Record<string, unknown>).toolbox as ToolboxConfig | undefined
       return tb === undefined ? undefined : { saveAsImage: tb.saveAsImage !== undefined && tb.saveAsImage !== false }
     })
-    if (kind === 'candlestick') p.x = reactiveProp(() => (props.x === undefined ? undefined : channel<T, string>(props.x)))
+    if (kind === 'candlestick') {
+      p.x = reactiveProp(() => (props.x === undefined ? undefined : channel<T, string>(props.x)))
+      // `<Zoom>` beside `<Candle>` is the candlestick's own zoom: the same
+      // window, navigator and lock the plot takes.
+      p.zoom = reactiveProp(() => candleZoom(resolved().props as Partial<PlotChartProps<T>>))
+    }
     const own = resolved().family!.props
     for (const key of Object.keys(own)) p[key] = reactiveProp(() => resolved().family?.props[key])
     return h(resolved().family!.component as unknown as (p: Record<string, unknown>) => VNode, p)

@@ -1063,6 +1063,10 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
         if (presets !== undefined) attrs.push({ kind: 'attr', name: 'zoomPresets', value: presets })
         const link = attrOf(child, 'link')
         if (link !== undefined) attrs.push({ kind: 'attr', name: 'link', value: link })
+        // The opening window and the lock map to the plot's own props.
+        const win = attrOf(child, 'window')
+        if (win !== undefined) attrs.push({ kind: 'attr', name: 'initialZoom', value: win })
+        if (flagOn(child, 'lock')) attrs.push({ kind: 'attr', name: 'zoomLimits', value: { kind: 'object', fields: [{ name: 'lock', value: lit(true) }] } })
         const brush = attrOf(child, 'brush')
         if (brush !== undefined) {
           attrs.push({ kind: 'attr', name: 'brush', value: lit(true) })
@@ -2023,6 +2027,10 @@ export function chartVisualMap(
   tag: string,
 ): { strip: string; lo: string; hi: string; selected: string } | null {
   if (expr === undefined) return null
+  if (expr.kind === 'literal' && expr.value === true) {
+    warn(`<${tag} visualMap>: the derived legend reads the data's extent at runtime, which native bakes at compile time — pass \`visualMap({ domain: [lo, hi] })\`; the chart renders without the strip.`)
+    return null
+  }
   const literal = literalOf(expr, resolve)
   const built = literal?.kind === 'call' && literal.callee.kind === 'identifier' && literal.callee.name === 'visualMap' && literal.args.length === 1
   const v = literal === undefined ? undefined : irToValue(built && literal.kind === 'call' ? literal.args[0] : literal, resolve)

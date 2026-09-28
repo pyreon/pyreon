@@ -2,7 +2,7 @@
 // in its own colour, spread apart so no two overlap.
 import { describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
-import { Area, Bar, Legend, Line, resolveGrammar } from './grammar'
+import { Area, Bar, Legend, Line, Zoom, resolveGrammar } from './grammar'
 import { defaultTheme, renderChart, spreadLabels } from './render'
 import type { ChartSpec, Series } from './render'
 import { measureApprox } from './svg'
@@ -70,5 +70,16 @@ describe('<Legend direct />', () => {
     const g = resolveGrammar<Row>(ROWS, { data: ROWS, x: 'm' }, [h(Line, { y: 'rev', label: 'Revenue' }), h(Area, { y: 'cost' }), h(Bar, { y: 'rev' }), h(Legend, { direct: true })])
     expect(g.props.endLabels).toBe(true)
     expect(g.props.showLegend).toBeUndefined()
+  })
+})
+
+describe('<Zoom window lock>', () => {
+  interface Row { m: string; v: number }
+  const ROWS: Row[] = [{ m: 'a', v: 1 }]
+  it('opens the plot on the window and locks its span', () => {
+    const g = resolveGrammar<Row>(ROWS, { data: ROWS, x: 'm' }, [h(Line, { y: 'v' }), h(Zoom, { window: { start: 0.5, end: 1 }, lock: true })])
+    expect(g.props.initialZoom).toEqual({ start: 0.5, end: 1 })
+    expect(g.props.zoomLimits).toEqual({ lock: true })
+    expect(g.props.dataZoom).toBe(true)
   })
 })
