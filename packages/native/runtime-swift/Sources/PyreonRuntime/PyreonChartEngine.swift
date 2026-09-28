@@ -3416,14 +3416,51 @@ public func gradientSolid(_ g: PyreonChartGradient, _ fallback: String) -> Strin
   }
 
 public func plain(_ v: Double) -> String {
+    if !(v == v) {
+      return "NaN"
+    }
+    if v - v != 0.0 {
+      return v > 0.0 ? "Infinity" : "-Infinity"
+    }
+    let mag = abs(v)
+    if Double(mag) < 1e-12 {
+      return "0"
+    }
+    if Double(mag) >= 1000000000000000.0 || Double(mag) < 0.0001 {
+      return exponential(v)
+    }
     let r = ((Double(v)) + 0.5).rounded(.down)
     if abs(v - r) < 0.000001 {
       return "\(pyreonNumberString(r))"
     }
-    return "\(pyreonNumberString(((Double(v * 1000.0)) + 0.5).rounded(.down) / 1000.0))"
+    var places = 3.0
+    if Double(mag) < 0.01 {
+      places = ceil(Double(-log10(Double(mag)))) + 2.0
+    }
+    let mul = pow(Double(10.0), Double(places))
+    return "\(pyreonNumberString(((Double(v * mul)) + 0.5).rounded(.down) / mul))"
   }
 
-public func groupThousands(_ v: Double) -> String { groupDigits(plain(v)) }
+public func exponential(_ v: Double) -> String {
+    let mag = abs(v)
+    var e = floor(Double(log10(Double(mag))))
+    var m = ((Double((Double(mag) / pow(Double(10.0), Double(e))) * 1000.0)) + 0.5).rounded(.down) / 1000.0
+    if m >= 10.0 {
+      m = m / 10.0
+      e = e + 1.0
+    }
+    let sign = v < 0.0 ? "-" : ""
+    let mant = abs(m - ((Double(m)) + 0.5).rounded(.down)) < 1e-7 ? "\(pyreonNumberString(((Double(m)) + 0.5).rounded(.down)))" : "\(pyreonNumberString(m))"
+    return "\(sign)\(mant)e\(pyreonNumberString(((Double(e)) + 0.5).rounded(.down)))"
+  }
+
+public func groupThousands(_ v: Double) -> String {
+    let s = plain(v)
+    if (s.range(of: "e").map { s.distance(from: s.startIndex, to: $0.lowerBound) } ?? -1) >= 0 || s == "NaN" {
+      return s
+    }
+    return groupDigits(s)
+  }
 
 public func groupDigits(_ s: String) -> String {
     let neg = s.utf16.count > 0 && String(Array(s)[0]) == "-"
@@ -3638,7 +3675,6 @@ public func niceDomain(_ d: Domain, _ targetCount: Double) -> Domain {
 public func isFiniteNumber(_ v: Double) -> Bool { v == v && v - v == 0.0 }
 
 public func makeTicks(_ d: Domain, _ r0: Double, _ r1: Double, _ count: Double, _ format: ((Double) -> String)? = nil) -> [Tick] {
-    let fmt = (format ?? groupThousands)
     var out: [Tick] = []
     if count <= 0.0 {
       return out
@@ -3648,11 +3684,13 @@ public func makeTicks(_ d: Domain, _ r0: Double, _ r1: Double, _ count: Double, 
     }
     let span = d.max - d.min
     if span <= 0.0 {
-      out.append(Tick(value: d.min, pos: scaleLinear(d, r0, r1, d.min), label: fmt(d.min)))
+      let one = (format ?? groupThousands)
+      out.append(Tick(value: d.min, pos: scaleLinear(d, r0, r1, d.min), label: one(d.min)))
       return out
     }
     let fixed = (d.step ?? 0.0)
     let step = fixed > 0.0 ? fixed : niceStep(span / count)
+    let fmt = (format ?? ({ x in formatTickStep(x, step) }))
     let first = ceil(Double(d.min / step)) * step
     let eps = step * 0.000001
     if fixed > 0.0 && first > d.min + eps {
@@ -3676,12 +3714,22 @@ public func makeTicks(_ d: Domain, _ r0: Double, _ r1: Double, _ count: Double, 
     return out
   }
 
-public func formatTick(_ v: Double) -> String {
-    let r = ((Double(v)) + 0.5).rounded(.down)
-    if abs(v - r) < 0.000001 {
-      return "\(pyreonNumberString(r))"
+public func formatTick(_ v: Double) -> String { plain(v) }
+
+public func formatTickStep(_ v: Double, _ step: Double) -> String {
+    let p = stepPrecision(step)
+    if p <= 3.0 {
+      return groupThousands(v)
     }
-    return "\(pyreonNumberString(((Double(v * 1000.0)) + 0.5).rounded(.down) / 1000.0))"
+    let snapped = roundTo(v, p)
+    let mag = abs(snapped)
+    if Double(mag) < step * 0.000001 {
+      return "0"
+    }
+    if Double(mag) < 0.0001 {
+      return plain(snapped)
+    }
+    return "\(snapped)"
   }
 
 public func extent(_ values: [Double]) -> Domain {
@@ -3709,6 +3757,19 @@ public func extent(_ values: [Double]) -> Domain {
       return Domain(min: 0.0, max: 1.0)
     }
     return Domain(min: lo, max: hi)
+  }
+
+public func stepPrecision(_ step: Double) -> Double {
+    if !(step > 0.0) {
+      return 0.0
+    }
+    let e = floor(Double(log10(Double(step))))
+    return e >= 0.0 ? 0.0 : -e + 1.0
+  }
+
+public func roundTo(_ v: Double, _ digits: Double) -> Double {
+    let k = pow(Double(10.0), Double(digits))
+    return floor(Double(v * k + 0.5)) / k
   }
 
 public func scaleLog(_ d: Domain, _ r0: Double, _ r1: Double, _ v: Double) -> Double {
@@ -3756,8 +3817,49 @@ public func timeTicks(_ d: Domain, _ r0: Double, _ r1: Double, _ target: Double,
       }
     }
     let fmt = (format ?? ({ x in formatTime(x, step) }))
-    let first = ceil(Double(d.min / step)) * step
     let limit = 200
+    if step >= DAY * 28.0 {
+      var months = 1.0
+      if step >= DAY * 365.0 {
+        let years = ideal / (DAY * 365.2425)
+        var ys = 1.0
+        if years > 1.0 {
+          ys = 1.0
+          while ys < years {
+            if ys * 2.0 >= years {
+              ys = ys * 2.0
+            } else {
+              if ys * 5.0 >= years {
+                ys = ys * 5.0
+              } else {
+                ys = ys * 10.0
+              }
+            }
+          }
+        }
+        months = ys * 12.0
+      } else {
+        if step >= DAY * 90.0 {
+          months = 3.0
+        }
+      }
+      var mi = monthIndexOf(d.min)
+      if monthStartMs(mi) < d.min {
+        mi = mi + 1.0
+      }
+      mi = ceil(Double(Double(mi) / Double(months))) * months
+      var k = 0.0
+      while k < 200.0 {
+        let v = monthStartMs(mi + months * k)
+        if v > d.max {
+          break
+        }
+        out.append(Tick(value: v, pos: scaleLinear(d, r0, r1, v), label: fmt(v)))
+        k = k + 1.0
+      }
+      return out
+    }
+    let first = ceil(Double(d.min / step)) * step
     var i = 0
     while i < limit {
       let v = first + step * Double(i)
@@ -3768,6 +3870,31 @@ public func timeTicks(_ d: Domain, _ r0: Double, _ r1: Double, _ target: Double,
       i = i + 1
     }
     return out
+  }
+
+public func monthIndexOf(_ ms: Double) -> Double {
+    let days = floor(Double(ms / 86400000.0))
+    let z = days + 719468.0
+    let era = floor(Double(z / 146097.0))
+    let doe = z - era * 146097.0
+    let yoe = floor(Double((doe - floor(Double(doe / 1460.0)) + floor(Double(doe / 36524.0)) - floor(Double(doe / 146096.0))) / 365.0))
+    let doy = doe - (365.0 * yoe + floor(Double(yoe / 4.0)) - floor(Double(yoe / 100.0)))
+    let mp = floor(Double((5.0 * doy + 2.0) / 153.0))
+    let month = mp < 10.0 ? mp + 3.0 : mp - 9.0
+    let year = (month <= 2.0 ? 1.0 : 0.0) + yoe + era * 400.0
+    return year * 12.0 + (month - 1.0)
+  }
+
+public func monthStartMs(_ mi: Double) -> Double {
+    let year0 = floor(Double(mi / 12.0))
+    let month = mi - year0 * 12.0 + 1.0
+    let y = month <= 2.0 ? year0 - 1.0 : year0
+    let era = floor(Double(y / 400.0))
+    let yoe = y - era * 400.0
+    let mp = month > 2.0 ? month - 3.0 : month + 9.0
+    let doy = floor(Double((153.0 * mp + 2.0) / 5.0))
+    let doe = yoe * 365.0 + floor(Double(yoe / 4.0)) - floor(Double(yoe / 100.0)) + doy
+    return (era * 146097.0 + doe - 719468.0) * 86400000.0
   }
 
 public func formatTime(_ ms: Double, _ step: Double) -> String {

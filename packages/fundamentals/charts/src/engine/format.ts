@@ -8,11 +8,43 @@ import type { Double } from './types'
 
 export type Formatter = (value: Double) => string
 
-/** Trims float noise; the engine's default. */
+/**
+ * Trims float noise; the engine's default.
+ *
+ * Integers print as integers and ordinary fractions keep three decimals — but
+ * the decimals GROW for small magnitudes so data like 0.00012 does not
+ * collapse to "0" (every tick and tooltip of a small-valued chart used to read
+ * the same), and values outside 1e-4..1e15 use exponent notation (`1.5e-7`,
+ * `2e21`) rather than a runaway digit string.
+ */
 export function plain(v: Double): string {
+  if (!(v === v)) return 'NaN'
+  if (v - v !== 0.0) return v > 0.0 ? 'Infinity' : '-Infinity'
+  const mag = Math.abs(v)
+  // Below 1e-12 is float noise (0.1 + 0.2 - 0.3), not data.
+  if (mag < 0.000000000001) return '0'
+  if (mag >= 1000000000000000.0 || mag < 0.0001) return exponential(v)
   const r = Math.round(v)
   if (Math.abs(v - r) < 0.000001) return `${r}`
-  return `${Math.round(v * 1000.0) / 1000.0}`
+  // Three decimals, more below 0.01 so ~3 significant digits survive.
+  let places = 3.0
+  if (mag < 0.01) places = Math.ceil(-Math.log10(mag)) + 2.0
+  const mul = Math.pow(10.0, places)
+  return `${Math.round(v * mul) / mul}`
+}
+
+/** Exponent notation with a 3-decimal mantissa — the same text on every target. */
+function exponential(v: Double): string {
+  const mag = Math.abs(v)
+  let e = Math.floor(Math.log10(mag))
+  let m = Math.round((mag / Math.pow(10.0, e)) * 1000.0) / 1000.0
+  if (m >= 10.0) {
+    m = m / 10.0
+    e = e + 1.0
+  }
+  const sign = v < 0.0 ? '-' : ''
+  const mant = Math.abs(m - Math.round(m)) < 0.0000001 ? `${Math.round(m)}` : `${m}`
+  return `${sign}${mant}e${Math.round(e)}`
 }
 
 /**
@@ -21,7 +53,11 @@ export function plain(v: Double): string {
  * rather than a regex, so it lowers through PMTC.
  */
 export function groupThousands(v: Double): string {
-  return groupDigits(plain(v))
+  const s = plain(v)
+  // Exponent notation has no integer part to group (`1e21` used to become
+  // `1,e+2,1`).
+  if (s.indexOf('e') >= 0 || s === 'NaN') return s
+  return groupDigits(s)
 }
 
 /** Group the integer part of an already-formatted number by thousands. */

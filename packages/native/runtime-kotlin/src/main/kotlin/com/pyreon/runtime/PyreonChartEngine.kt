@@ -788,14 +788,51 @@ fun gradientSolid(g: PyreonChartGradient, fallback: String): String {
   }
 
 fun plain(v: Double): String {
+    if (!(v == v)) {
+      return "NaN"
+    }
+    if (v - v != 0.0) {
+      return if (v > 0.0) "Infinity" else "-Infinity"
+    }
+    val mag = Math.abs(v)
+    if (mag < 1e-12) {
+      return "0"
+    }
+    if (mag >= 1000000000000000.0 || mag < 0.0001) {
+      return exponential(v)
+    }
     val r = Math.round(v)
     if (Math.abs(v - r) < 0.000001) {
       return "${pyreonNumberString(r)}"
     }
-    return "${pyreonNumberString((Math.round(v * 1000.0)).toDouble() / (1000.0).toDouble())}"
+    var places = 3.0
+    if (mag < 0.01) {
+      places = Math.ceil(-Math.log10((mag).toDouble())) + 2.0
+    }
+    val mul = Math.pow((10.0).toDouble(), (places).toDouble())
+    return "${pyreonNumberString((Math.round(v * mul)).toDouble() / (mul).toDouble())}"
   }
 
-fun groupThousands(v: Double): String = groupDigits(plain(v))
+fun exponential(v: Double): String {
+    val mag = Math.abs(v)
+    var e = Math.floor(Math.log10((mag).toDouble()))
+    var m = (Math.round(((mag).toDouble() / (Math.pow((10.0).toDouble(), (e).toDouble())).toDouble()) * 1000.0)).toDouble() / (1000.0).toDouble()
+    if (m >= 10.0) {
+      m = (m).toDouble() / (10.0).toDouble()
+      e = e + 1.0
+    }
+    val sign = if (v < 0.0) "-" else ""
+    val mant = if (Math.abs(m - Math.round(m)) < 1e-7) "${pyreonNumberString(Math.round(m))}" else "${pyreonNumberString(m)}"
+    return "${sign}${mant}e${pyreonNumberString(Math.round(e))}"
+  }
+
+fun groupThousands(v: Double): String {
+    val s = plain(v)
+    if (s.indexOf("e") >= 0 || s == "NaN") {
+      return s
+    }
+    return groupDigits(s)
+  }
 
 fun groupDigits(s: String): String {
     val neg = s.length > 0 && s[0].toString() == "-"
@@ -1010,7 +1047,6 @@ fun niceDomain(d: Domain, targetCount: Double): Domain {
 fun isFiniteNumber(v: Double): Boolean = v == v && v - v == 0.0
 
 fun makeTicks(d: Domain, r0: Double, r1: Double, count: Double, format: ((Double) -> String)? = null): List<Tick> {
-    val fmt = (format ?: ::groupThousands)
     val out: MutableList<Tick> = mutableListOf()
     if (count <= 0.0) {
       return out
@@ -1020,11 +1056,13 @@ fun makeTicks(d: Domain, r0: Double, r1: Double, count: Double, format: ((Double
     }
     val span = d.max - d.min
     if (span <= 0.0) {
-      out.add(Tick(value = d.min, pos = scaleLinear(d, r0, r1, d.min), label = fmt(d.min)))
+      val one = (format ?: ::groupThousands)
+      out.add(Tick(value = d.min, pos = scaleLinear(d, r0, r1, d.min), label = one(d.min)))
       return out
     }
     val fixed = (d.step ?: 0.0)
     val step = if (fixed > 0.0) fixed else niceStep((span).toDouble() / (count).toDouble())
+    val fmt = (format ?: ({ x -> formatTickStep(x, step) }))
     val first = Math.ceil((d.min).toDouble() / (step).toDouble()) * step
     val eps = step * 0.000001
     if (fixed > 0.0 && first > d.min + eps) {
@@ -1048,12 +1086,22 @@ fun makeTicks(d: Domain, r0: Double, r1: Double, count: Double, format: ((Double
     return out
   }
 
-fun formatTick(v: Double): String {
-    val r = Math.round(v)
-    if (Math.abs(v - r) < 0.000001) {
-      return "${pyreonNumberString(r)}"
+fun formatTick(v: Double): String = plain(v)
+
+fun formatTickStep(v: Double, step: Double): String {
+    val p = stepPrecision(step)
+    if (p <= 3.0) {
+      return groupThousands(v)
     }
-    return "${pyreonNumberString((Math.round(v * 1000.0)).toDouble() / (1000.0).toDouble())}"
+    val snapped = roundTo(v, p)
+    val mag = Math.abs(snapped)
+    if (mag < step * 0.000001) {
+      return "0"
+    }
+    if (mag < 0.0001) {
+      return plain(snapped)
+    }
+    return "${snapped}"
   }
 
 fun extent(values: List<Double>): Domain {
@@ -1081,6 +1129,19 @@ fun extent(values: List<Double>): Domain {
       return Domain(min = 0.0, max = 1.0)
     }
     return Domain(min = lo, max = hi)
+  }
+
+fun stepPrecision(step: Double): Double {
+    if (!(step > 0.0)) {
+      return 0.0
+    }
+    val e = Math.floor(Math.log10((step).toDouble()))
+    return if (e >= 0.0) 0.0 else -e + 1.0
+  }
+
+fun roundTo(v: Double, digits: Double): Double {
+    val k = Math.pow((10.0).toDouble(), (digits).toDouble())
+    return (Math.floor(v * k + 0.5)).toDouble() / (k).toDouble()
   }
 
 fun scaleLog(d: Domain, r0: Double, r1: Double, v: Double): Double {
@@ -1128,8 +1189,49 @@ fun timeTicks(d: Domain, r0: Double, r1: Double, target: Double, format: ((Doubl
       }
     }
     val fmt = (format ?: ({ x -> formatTime(x, step) }))
-    val first = Math.ceil((d.min).toDouble() / (step).toDouble()) * step
     val limit = 200
+    if (step >= DAY * 28.0) {
+      var months = 1.0
+      if (step >= DAY * 365.0) {
+        val years = (ideal).toDouble() / ((DAY * 365.2425)).toDouble()
+        var ys = 1.0
+        if (years > 1.0) {
+          ys = 1.0
+          while (ys < years) {
+            if (ys * 2.0 >= years) {
+              ys = ys * 2.0
+            } else {
+              if (ys * 5.0 >= years) {
+                ys = ys * 5.0
+              } else {
+                ys = ys * 10.0
+              }
+            }
+          }
+        }
+        months = ys * 12.0
+      } else {
+        if (step >= DAY * 90.0) {
+          months = 3.0
+        }
+      }
+      var mi = monthIndexOf(d.min)
+      if (monthStartMs(mi) < d.min) {
+        mi = mi + 1.0
+      }
+      mi = Math.ceil(((mi).toDouble() / (months).toDouble()).toDouble()) * months
+      var k = 0.0
+      while (k < 200.0) {
+        val v = monthStartMs(mi + months * k)
+        if (v > d.max) {
+          break
+        }
+        out.add(Tick(value = v, pos = scaleLinear(d, r0, r1, v), label = fmt(v)))
+        k = k + 1.0
+      }
+      return out
+    }
+    val first = Math.ceil((d.min).toDouble() / (step).toDouble()) * step
     var i = 0
     while (i < limit) {
       val v = first + step * i
@@ -1140,6 +1242,31 @@ fun timeTicks(d: Domain, r0: Double, r1: Double, target: Double, format: ((Doubl
       i = i + 1
     }
     return out
+  }
+
+fun monthIndexOf(ms: Double): Double {
+    val days = Math.floor((ms).toDouble() / (86400000.0).toDouble())
+    val z = days + 719468.0
+    val era = Math.floor((z).toDouble() / (146097.0).toDouble())
+    val doe = z - era * 146097.0
+    val yoe = Math.floor(((doe - Math.floor((doe).toDouble() / (1460.0).toDouble()) + Math.floor((doe).toDouble() / (36524.0).toDouble()) - Math.floor((doe).toDouble() / (146096.0).toDouble()))).toDouble() / (365.0).toDouble())
+    val doy = doe - (365.0 * yoe + Math.floor((yoe).toDouble() / (4.0).toDouble()) - Math.floor((yoe).toDouble() / (100.0).toDouble()))
+    val mp = Math.floor(((5.0 * doy + 2.0)).toDouble() / (153.0).toDouble())
+    val month = if (mp < 10.0) mp + 3.0 else mp - 9.0
+    val year = (if (month <= 2.0) 1.0 else 0.0) + yoe + era * 400.0
+    return year * 12.0 + (month - 1.0)
+  }
+
+fun monthStartMs(mi: Double): Double {
+    val year0 = Math.floor((mi).toDouble() / (12.0).toDouble())
+    val month = mi - year0 * 12.0 + 1.0
+    val y = if (month <= 2.0) year0 - 1.0 else year0
+    val era = Math.floor((y).toDouble() / (400.0).toDouble())
+    val yoe = y - era * 400.0
+    val mp = if (month > 2.0) month - 3.0 else month + 9.0
+    val doy = Math.floor(((153.0 * mp + 2.0)).toDouble() / (5.0).toDouble())
+    val doe = yoe * 365.0 + Math.floor((yoe).toDouble() / (4.0).toDouble()) - Math.floor((yoe).toDouble() / (100.0).toDouble()) + doy
+    return (era * 146097.0 + doe - 719468.0) * 86400000.0
   }
 
 fun formatTime(ms: Double, step: Double): String {

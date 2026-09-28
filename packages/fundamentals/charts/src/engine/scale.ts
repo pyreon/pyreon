@@ -1,6 +1,6 @@
 // Scales and ticks — the arithmetic every mark sits on.
 
-import { groupThousands } from './format'
+import { groupThousands, plain } from './format'
 import type { Formatter } from './format'
 import type { Domain, Tick, Double } from './types'
 
@@ -77,9 +77,6 @@ export function makeTicks(
   count: Double,
   format?: Formatter,
 ): Tick[] {
-  // ECharts labels a value axis with `addCommas` (IntervalScale.getLabel), so
-  // the default groups thousands: 60,000 rather than 60000.
-  const fmt = format ?? groupThousands
   const out: Tick[] = []
   if (count <= 0.0) return out
   // A non-finite bound has no ticks: the loop below would step NaN 1000
@@ -88,11 +85,16 @@ export function makeTicks(
   if (!isFiniteNumber(d.min) || !isFiniteNumber(d.max)) return out
   const span = d.max - d.min
   if (span <= 0.0) {
-    out.push({ value: d.min, pos: scaleLinear(d, r0, r1, d.min), label: fmt(d.min) })
+    const one = format ?? groupThousands
+    out.push({ value: d.min, pos: scaleLinear(d, r0, r1, d.min), label: one(d.min) })
     return out
   }
   const fixed = d.step ?? 0.0
   const step = fixed > 0.0 ? fixed : niceStep(span / count)
+  // The default label groups thousands (60,000) and carries as many decimals
+  // as the STEP needs: with a fixed three, a 0.0002-step axis read
+  // "0, 0, 0, 0.001, …".
+  const fmt = format ?? ((x: Double): string => formatTickStep(x, step))
   const first = Math.ceil(d.min / step) * step
   // With a fixed step (ECharts' interval) a bound that is not a multiple of it
   // is a tick of its own, as ECharts draws a pinned `min` / `max`.
@@ -117,9 +119,24 @@ export function makeTicks(
  * leaves behind — a tick computed as 0.30000000000000004 must read "0.3".
  */
 export function formatTick(v: Double): string {
-  const r = Math.round(v)
-  if (Math.abs(v - r) < 0.000001) return `${r}`
-  return `${Math.round(v * 1000.0) / 1000.0}`
+  return plain(v)
+}
+
+/**
+ * A tick label at the precision `step` needs — `formatTick` for ordinary
+ * steps, the step's own decimals below 0.001 (snapped, so float noise from
+ * `first + step * i` never leaks into the label), exponent notation past the
+ * range a decimal string reads well in.
+ */
+export function formatTickStep(v: Double, step: Double): string {
+  const p = stepPrecision(step)
+  // Ordinary steps group thousands, as a value axis reads (60,000).
+  if (p <= 3.0) return groupThousands(v)
+  const snapped = roundTo(v, p)
+  const mag = Math.abs(snapped)
+  if (mag < step * 0.000001) return '0'
+  if (mag < 0.0001) return plain(snapped)
+  return `${snapped}`
 }
 
 /** The min/max of the FINITE values of a series, or a unit domain when there are none (empty, or all NaN/Infinity). */
@@ -140,4 +157,17 @@ export function extent(values: Double[]): Domain {
   }
   if (!seen) return { min: 0.0, max: 1.0 }
   return { min: lo, max: hi }
+}
+
+/** The decimals a step needs (ECharts' `getIntervalPrecision`, simplified to the step's own digits). */
+export function stepPrecision(step: Double): Double {
+  if (!(step > 0.0)) return 0.0
+  const e = Math.floor(Math.log10(step))
+  return e >= 0.0 ? 0.0 : -e + 1.0
+}
+
+/** `v` rounded to `digits` decimals. */
+export function roundTo(v: Double, digits: Double): Double {
+  const k = Math.pow(10.0, digits)
+  return Math.floor(v * k + 0.5) / k
 }

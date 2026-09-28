@@ -37,7 +37,19 @@ export function safeTooltipStyle(style: string): string {
     const value = decl.slice(i + 1).trim()
     if (!STYLE_PROPS.has(prop)) continue
     const lower = value.toLowerCase()
-    if (lower.includes('url(') || lower.includes('expression(') || lower.includes('javascript:')) continue
+    // A backslash is a CSS ESCAPE: `u\\72l(` is `url(` to the CSS parser but
+    // not to a substring check, so any escaped value is refused outright.
+    // `image-set(` / `-webkit-image-set(` / `src(` load URLs without the
+    // literal `url(` token. No presentational value needs any of these.
+    if (
+      lower.includes('\\') ||
+      lower.includes('url(') ||
+      lower.includes('image-set(') ||
+      lower.includes('src(') ||
+      lower.includes('expression(') ||
+      lower.includes('javascript:')
+    )
+      continue
     out.push(`${prop}:${value}`)
   }
   return out.join(';')

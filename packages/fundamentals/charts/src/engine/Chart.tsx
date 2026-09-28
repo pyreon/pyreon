@@ -9,6 +9,7 @@ import { createUniqueId, h } from '@pyreon/core'
 import { a11yTableNode, A11Y_TABLE_MAX, shiftCmds } from './canvas-host'
 import type { LegendPosition } from './canvas-host'
 import { lttbIndices, minMaxBuckets } from './decimate-values'
+import { warnOnce } from './dev-warn'
 import { resolveChartTheme, tooltipStyle, useChartTheme } from './theme'
 import type { VNode } from '@pyreon/core'
 import { batch, effect, isClient, signal, untrack } from '@pyreon/reactivity'
@@ -439,6 +440,27 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   const band = (): BandFeature | undefined => features.zoom ?? features.toolbox
   let canvas: HTMLCanvasElement | null = null
   let sizeObserver: ResizeObserver | null = null
+  // A devicePixelRatio change (browser zoom, dragging the window to another
+  // display) leaves the CSS width untouched, so the ResizeObserver never
+  // fires and the backing store stays at the old ratio — a soft (or
+  // oversized) chart. `matchMedia` on the CURRENT ratio fires exactly once
+  // when it stops matching; re-arm on the new ratio each time.
+  let dprQuery: MediaQueryList | null = null
+  const onDprChange = (): void => {
+    stopDprWatch()
+    draw()
+    watchDpr()
+  }
+  const stopDprWatch = (): void => {
+    dprQuery?.removeEventListener('change', onDprChange)
+    dprQuery = null
+  }
+  const watchDpr = (): void => {
+    if (typeof matchMedia !== 'function' || typeof globalThis.devicePixelRatio !== 'number') return
+    stopDprWatch()
+    dprQuery = matchMedia(`(resolution: ${globalThis.devicePixelRatio}dppx)`)
+    dprQuery.addEventListener('change', onDprChange)
+  }
 
   // Entrance progress. Starts at 1 (fully drawn) and only ever dips for the
   // ONE tween on first data: SSR output, `chartToSvg`, and every later
@@ -579,6 +601,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   let tweenT = 1.0
   let tweenFrame = 0.0
   const keyboardOn = props.keyboard !== false
+  const legendKeysOn = (): boolean => props.showLegend === true && props.legendToggle !== false
   const startTween = (): void => {
     if (typeof requestAnimationFrame !== 'function') {
       tweenT = 1.0
@@ -752,14 +775,28 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   const globalOf = (visibleIndex: number, off: number): number => (lastKeep === null ? visibleIndex : (lastKeep[visibleIndex] ?? visibleIndex)) + off
   const decimateRows = (rows: T[]): number[] | null => {
     const max = props.maxPoints
-    if (max === undefined || max < 3 || rows.length <= max) return null
-    const first = props.marks[0]
-    if (first === undefined) return null
-    // `lttbIndices` with no `xs` treats the index as x — which is what this is,
-    // rows being evenly spaced — so there is no `{x, y}` object per row and no
-    // `.x` read back out afterwards.
-    const keep = lttbIndices([], rows.map((d, i) => first.y(d, i)), max)
-    return keep.length === 0 ? null : keep
+    if (max === undefined) return null
+    if (max < 3) {
+      warnOnce('maxPoints', `maxPoints=${max} is below 3, the smallest LTTB can keep (first, last, one interior point) — decimation is off.`)
+      return null
+    }
+    if (rows.length <= max) return null
+    const marks = props.marks
+    if (marks.length === 0) return null
+    // Every mark gets its share of the budget and the kept rows are the
+    // UNION: LTTB over only the first mark dropped the peaks of every other
+    // series (a spike in series 2 simply vanished at 50k rows).
+    const per = Math.max(3, Math.floor(max / marks.length))
+    // A real x (time or numeric `xValue`) is LTTB's x — the index is only
+    // right for evenly spaced rows.
+    const xAcc = props.xValue
+    const xs = xAcc === undefined ? [] : rows.map((d, i) => xAcc(d, i))
+    const keepSet = new Set<number>()
+    for (const m of marks) {
+      for (const k of lttbIndices(xs, rows.map((d, i) => Number(m.y(d, i))), per)) keepSet.add(k)
+    }
+    if (keepSet.size === 0 || keepSet.size >= rows.length) return null
+    return [...keepSet].sort((a, b) => a - b)
   }
 
   // The number formatter every surface shares: the explicit `format`, else
@@ -776,6 +813,14 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
 
   const buildSpec = (allRows: T[], w: Double, hgt: Double): ChartSpec => {
     const inner = buildSpecInner(allRows, w, hgt)
+    if (props.yScale === 'log' && process.env.NODE_ENV !== 'production') {
+      for (const sr of inner.series) {
+        if (sr.values.some((v) => v <= 0)) {
+          warnOnce('log', `yScale="log" with values ≤ 0 (series "${sr.label}") — a log axis cannot place them; they are clamped to the axis floor. Filter them out or use a linear scale.`)
+          break
+        }
+      }
+    }
     const withStates = features.toolbox === undefined ? inner : features.toolbox.applyMagicType(inner, magicKind(), magicStack())
     const built = seriesMode ? applySeriesSelection(withStates, selectedSeries()) : withStates
     // The handle's `legendInverseSelect` flips over the series the chart drew.
@@ -1146,6 +1191,21 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     else if (key === 'ArrowDown') moveSeries(1)
     else if (key === 'Home') moveFocus(0, 0)
     else if (key === 'End') moveFocus(0, viewRows(readData()).length - 1)
+    else if (legendKeysOn() && key.length === 1 && key >= '1' && key <= '9') {
+      // The legend is painted on the canvas — no DOM button to Tab to — so
+      // the digit keys toggle legend entry N, and the change is announced.
+      const labels = props.marks.map((m, k) => markLabel(m, k))
+      const distinct = [...new Set(labels)]
+      const entry = Number(key) - 1
+      if (entry >= distinct.length) return
+      const next = legendToggleGroup(hiddenSeries(), labels, entry)
+      const target = distinct[entry]!
+      const nowHidden = labels.every((l, j) => l !== target || next.includes(j))
+      batch(() => {
+        hiddenSeries.set(next)
+        announce.set(`${target} ${nowHidden ? 'hidden' : 'shown'}`)
+      })
+    }
     else if (key === 'Enter' || key === ' ') {
       const idx = focusIdx()
       if (idx >= 0) pickDatum(idx + viewRange(readData()).from)
@@ -1685,7 +1745,16 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       const ly = ev.clientY - r0.top
       const i = legendHitIndex(legendBoxes, lx, ly)
       if (i >= 0) {
-        hiddenSeries.set(legendToggleGroup(hiddenSeries(), props.marks.map((m, k) => markLabel(m, k)), i))
+        const labels = props.marks.map((m, k) => markLabel(m, k))
+        const next = legendToggleGroup(hiddenSeries(), labels, i)
+        const target = [...new Set(labels)][i]
+        batch(() => {
+          hiddenSeries.set(next)
+          if (target !== undefined && keyboardOn) {
+            const nowHidden = labels.every((l, j) => l !== target || next.includes(j))
+            announce.set(`${target} ${nowHidden ? 'hidden' : 'shown'}`)
+          }
+        })
         return
       }
     }
@@ -1773,6 +1842,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       canvas = el
       sizeObserver?.disconnect()
       sizeObserver = null
+      stopDprWatch()
       if (el === null) {
         // Unmounted mid-animation: no frame may keep the closure alive.
         if (typeof cancelAnimationFrame === 'function') {
@@ -1808,6 +1878,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
         draw()
       })
       sizeObserver.observe(box)
+      watchDpr()
     },
     onClick: handleClick,
     // Stable, reactive hooks for consumers and tests: the zoom window and the
@@ -1897,7 +1968,9 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   // The toolbox data view: the chart's table, visible, over the canvas, with its own close button.
   const dataViewNode = (): VNode | null => {
     if (!dataView()) return null
-    const t = chartTable(a11yInput())
+    // Capped like the accessible table: an uncapped 50k-row chart built a
+    // 50k-row DOM table on every open.
+    const t = chartTable(a11yInput(), A11Y_TABLE_MAX)
     return h(
       'div',
       {
