@@ -1,7 +1,4 @@
-// The grammar — `<Chart>` with MARK CHILDREN, the package's main entry. (It was
-// `<Chart>` while the main entry exported the ECharts bridge as `<Chart>`; that
-// bridge now lives at `@pyreon/charts/echarts` as `<EChart>`, so one name
-// means one component.)
+// The grammar — `<Chart>` with MARK CHILDREN, the package's main entry.
 //
 //   <Chart data={rows} x="month">
 //     <Bar y="revenue" label="Revenue" />

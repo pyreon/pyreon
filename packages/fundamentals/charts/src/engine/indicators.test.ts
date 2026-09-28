@@ -3,7 +3,6 @@ import { bollinger, ema, emaValues, sma, smaValues, stdevValues, trend, trendVal
 import { line, resolveMarks } from './marks'
 import { defaultTheme, renderChart, resolveYDomain } from './render'
 import type { ChartSpec, Series } from './render'
-import { compileOption } from './option'
 import type { Double } from './types'
 
 const measure = (t: string, _s: Double): Double => t.length * 7.0
@@ -78,12 +77,5 @@ describe('gaps (NaN) in the engine', () => {
     const d = resolveYDomain(spec([S({ values: [10, NaN, 20] })]))
     expect(Number.isFinite(d.min) && Number.isFinite(d.max)).toBe(true)
     expect(d.max).toBeGreaterThanOrEqual(20)
-  })
-  it('the option facade maps null and "-" data to gaps, silently', () => {
-    const c = compileOption({ xAxis: { data: ['a', 'b', 'c'] }, yAxis: {}, series: [{ type: 'line', data: [1, null, '-'] }, { type: 'line', data: [{ value: null }] }] })
-    expect(c.warnings).toEqual([])
-    expect(c.spec.series[0]!.values[1]).toBeNaN()
-    expect(c.spec.series[0]!.values[2]).toBeNaN()
-    expect(c.spec.series[1]!.values[0]).toBeNaN()
   })
 })

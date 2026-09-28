@@ -220,8 +220,8 @@ export interface TooltipView {
 /**
  * The item under the pointer, described the way ECharts describes it to a
  * tooltip formatter. A family reports it through its spec's `item` hook so the
- * option facade can apply the option's own `tooltip`, `cursor` and `silent` to
- * any family without knowing its geometry.
+ * host's `itemTooltip`, `itemCursor` and `itemSilent` props apply to any family
+ * without knowing its geometry.
  */
 export interface HostItem {
   /** The series the item belongs to; 0 for a family that draws one series. */
@@ -314,8 +314,7 @@ export interface CanvasHostProps {
   /**
    * Rewrite the tooltip for the item under the pointer: the family's own
    * lines come in, a box (or null for none) goes out. Only a family that
-   * reports items (its spec's `item` hook) calls it; `<OptionChart>` uses it to
-   * apply the option's `tooltip` component to every family.
+   * reports items (its spec's `item` hook) calls it.
    */
   itemTooltip?: ((item: HostItem, lines: string[], press: boolean) => string[] | TooltipView | null) | undefined
   /** The CSS cursor over an item; absent keeps the family's own. */
@@ -344,8 +343,8 @@ export interface CanvasHostSpec<L> {
    * Whether this layout draws a continuous effect (a `lines` trail) that
    * `render` reads from `time`. While true, the host runs a frame clock —
    * stopped under `prefers-reduced-motion`, where time holds at 0 and the
-   * chart is still. (It is not the entrance: an option chart's `animate` is
-   * off, and a trail is the chart's content, not its arrival.)
+   * chart is still. (It is not the entrance: a trail is the chart's content,
+   * not its arrival.)
    */
   effectClock?: ((layout: L) => boolean) | undefined
   /**
@@ -874,8 +873,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     if (drawn !== null) return drawn.layout
     const el = canvas
     // Before the canvas lands, the chart's own `width` (else 300): laying out at a
-    // width the chart does not have described the wrong geometry AND made an
-    // option chart compile its option a second time for it.
+    // width the chart does not have described the wrong geometry.
     const w = el === null ? (props.width ?? 300) : drawWidth(el, props.width)
     const hgt = props.height ?? spec.defaultHeight
     const measure: MeasureText = (text, size) => text.length * size * 0.6

@@ -51,7 +51,6 @@ android {
                 srcDir("../../../packages/fundamentals/store/native/kotlin")
                 srcDir("../../../packages/fundamentals/storage/native/kotlin")
                 srcDir("../../../packages/fundamentals/query/native/kotlin")
-                srcDir("../../../packages/fundamentals/charts/native/kotlin")
                 srcDir("../../../packages/core/sized-map/native/kotlin")
             }
         }

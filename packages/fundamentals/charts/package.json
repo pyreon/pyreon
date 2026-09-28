@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/charts",
   "version": "0.51.0",
-  "description": "Charts for Pyreon on the web, iOS and Android: <Chart> with mark children over a first-party engine (21 chart families, one flat draw list), plus a lazy-loaded ECharts wrapper at /echarts",
+  "description": "Charts for Pyreon on the web, iOS and Android: <Chart> with mark children over a first-party engine (21 chart families, one flat draw list), canvas and SVG, tree-shakeable marks",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/charts#readme",
   "bugs": {
@@ -32,36 +32,6 @@
       "bun": "./src/svg.ts",
       "import": "./lib/svg.js",
       "types": "./lib/types/svg.d.ts"
-    },
-    "./option": {
-      "bun": "./src/option.ts",
-      "import": "./lib/option.js",
-      "types": "./lib/types/option.d.ts"
-    },
-    "./echarts": {
-      "bun": "./src/echarts.ts",
-      "import": "./lib/echarts.js",
-      "types": "./lib/types/echarts.d.ts"
-    },
-    "./echarts/manual": {
-      "bun": "./src/echarts/manual.ts",
-      "import": "./lib/echarts/manual.js",
-      "types": "./lib/types/echarts/manual.d.ts"
-    },
-    "./echarts/vite": {
-      "bun": "./src/echarts/vite.ts",
-      "import": "./lib/echarts/vite.js",
-      "types": "./lib/types/echarts/vite.d.ts"
-    },
-    "./webview": {
-      "bun": "./src/webview.ts",
-      "import": "./lib/webview.js",
-      "types": "./lib/types/webview.d.ts"
-    },
-    "./option-layer": {
-      "bun": "./src/option-layer.ts",
-      "import": "./lib/option-layer.js",
-      "types": "./lib/types/option-layer.d.ts"
     }
   },
   "files": [
@@ -69,30 +39,20 @@
     "!lib/analysis",
     "src",
     "README.md",
-    "LICENSE",
-    "native/swift",
-    "native/kotlin"
+    "LICENSE"
   ],
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "test:browser": "vitest run --config ./vitest.browser.config.ts",
-    "bench": "NODE_ENV=production bun bench/wrapper-overhead.bench.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
-    "bench:engine": "NODE_ENV=production bun bench/plot-engine.bench.ts",
-    "gen:contract": "bun scripts/gen-echarts-contract.ts"
+    "bench:engine": "NODE_ENV=production bun bench/plot-engine.bench.ts"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^",
-    "echarts": ">=5.6.0"
-  },
-  "peerDependenciesMeta": {
-    "echarts": {
-      "optional": true
-    }
+    "@pyreon/reactivity": "workspace:^"
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
@@ -103,10 +63,7 @@
     "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^4.1.11",
     "echarts": "^6.1.0",
-    "echarts-for-react": "^3.0.6",
     "happy-dom": "^20.11.6",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
     "typescript": "^6.0.3"
   },
   "publishConfig": {
@@ -114,13 +71,5 @@
   },
   "dependencies": {
     "@pyreon/primitives": "workspace:^"
-  },
-  "pyreon": {
-    "native": {
-      "swift": "native/swift",
-      "kotlin": "native/kotlin",
-      "kotlinServices": {},
-      "kotlinSdkOnly": ["PyreonChartWebView.kt"]
-    }
   }
 }

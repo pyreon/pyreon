@@ -93,21 +93,6 @@ export type ChartThemeLayer = (mode: ColorMode) => ChartTheme
 export const ChartThemeContext = createContext<ChartThemeLayer | null>(null)
 
 /**
- * The theme an EXPLICIT `<ChartThemeProvider>` above this component provides,
- * as an accessor, or `null` when none does.
- *
- * `<OptionChart>` needs the difference: a bare option chart keeps ECharts'
- * default (light) look, as ECharts itself ignores the OS scheme, while a
- * provider the app put there must win.
- */
-export function useProvidedChartTheme(): (() => ChartTheme) | null {
-  const layer = useContext(ChartThemeContext)
-  if (layer === null) return null
-  const mode = useColorMode()
-  return () => layer(mode())
-}
-
-/**
  * The theme in scope, as an accessor — read it inside an effect to track a
  * mode flip. With no provider it is the built-in theme for the colour mode in
  * scope, so a chart below `<PyreonUI mode="dark">` is dark with no wiring.

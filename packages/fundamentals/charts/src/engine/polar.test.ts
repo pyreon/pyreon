@@ -3,7 +3,6 @@ import { layoutPolar, renderPolar } from './polar'
 import { hitPolar } from './polar-hit'
 import { polarToSvg } from './family-svg'
 import type { PolarSeries } from './polar'
-import { compileFamily, familyToSvg, isFamilyOption } from './option-family'
 
 const TAU = Math.PI * 2
 const box = { x: 0, y: 0, w: 400, h: 400 }
@@ -98,41 +97,6 @@ describe('polar render + hit', () => {
   })
 })
 
-describe('polar option mapping', () => {
-  it('bar + line on coordinateSystem polar lower angle/radius axes, startAngle, stack and radius', () => {
-    const option = {
-      polar: { radius: ['20%', '80%'] },
-      angleAxis: { type: 'category', data: ['a', 'b', 'c'], startAngle: 90, clockwise: false },
-      radiusAxis: { max: 10 },
-      series: [
-        { type: 'bar', coordinateSystem: 'polar', stack: 's', data: [1, 2, 3] },
-        { type: 'bar', coordinateSystem: 'polar', stack: 's', data: [1, 1, 1], itemStyle: { color: '#123456' } },
-        { type: 'line', coordinateSystem: 'polar', data: [2, 2, 2] },
-      ],
-    }
-    expect(isFamilyOption(option)).toBe(true)
-    const f = compileFamily(option)!
-    if (f.plan.kind !== 'polar') throw new Error('kind')
-    expect(f.plan.axes.categories).toEqual(['a', 'b', 'c'])
-    expect(f.plan.axes.categoryOn).toBe('angle')
-    expect(f.plan.axes.clockwise).toBe(false)
-    expect(f.plan.axes.startAngle).toBeCloseTo(-Math.PI / 2, 9)
-    expect(f.plan.axes.valueDomain).toEqual({ min: 0, max: 10 })
-    expect(f.plan.series).toHaveLength(3)
-    expect(f.plan.series[1]).toMatchObject({ kind: 'bar', stack: 's', color: '#123456' })
-    expect(f.plan.series[2]!.kind).toBe('line')
-    expect(f.plan.polar.innerRatio).toBeCloseTo(0.25, 9)
-    expect(f.warnings).toEqual([])
-    expect(familyToSvg(f.plan)).toContain('<polygon')
-    const radial = compileFamily({ radiusAxis: { type: 'category', data: ['x', 'y'] }, angleAxis: { max: 5 }, series: [{ type: 'bar', coordinateSystem: 'polar', data: [1, 2] }] })!
-    if (radial.plan.kind !== 'polar') throw new Error('kind')
-    expect(radial.plan.axes.categoryOn).toBe('radius')
-    expect(radial.plan.axes.valueDomain).toEqual({ min: 0, max: 5 })
-    // A series type with no polar geometry warns; scatter has one (see below).
-    const bad = compileFamily({ angleAxis: { type: 'category', data: ['a'] }, series: [{ type: 'bar', coordinateSystem: 'polar', data: [1] }, { type: 'gauge', coordinateSystem: 'polar', data: [1] }] })!
-    expect(bad.warnings.map((w) => w.code)).toContain('series-type-unsupported')
-  })
-})
 
 describe('polar scatter series', () => {
   it('lays out points like a line but renders circles only, at the symbol radius, on both category axes', () => {
@@ -154,17 +118,4 @@ describe('polar scatter series', () => {
     }
   })
 
-  it('the facade maps polar scatter and effectScatter, symbolSize as a diameter, with no warning', () => {
-    const f = compileFamily({ angleAxis: { type: 'category', data: ['a', 'b'] }, radiusAxis: {}, series: [
-      { type: 'scatter', coordinateSystem: 'polar', symbolSize: 10, data: [1, 2] },
-      { type: 'effectScatter', coordinateSystem: 'polar', data: [2, 1] },
-      { type: 'line', coordinateSystem: 'polar', symbolSize: 8, data: [1, 1] },
-      { type: 'bar', coordinateSystem: 'polar', symbolSize: 8, data: [1, 1] },
-      { type: 'gauge', coordinateSystem: 'polar', data: [1, 1] },
-    ] })!
-    if (f.plan.kind !== 'polar') throw new Error('kind')
-    expect(f.warnings.map((w) => w.code + '@' + w.path)).toEqual(['series-type-unsupported@series[4].type'])
-    expect(f.plan.series.map((s) => [s.kind, s.radius])).toEqual([['scatter', 5], ['scatter', undefined], ['line', 4], ['bar', undefined]])
-    expect(familyToSvg(f.plan)).toContain('<circle')
-  })
 })

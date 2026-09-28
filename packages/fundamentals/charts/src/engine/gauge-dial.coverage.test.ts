@@ -1,6 +1,5 @@
 /**
- * The dial's drawing branches the ECharts differential and option-gauge.test.ts
- * leave untouched: label rotation modes, the empty/over-range colour stops,
+ * The dial's drawing branches: label rotation modes, the empty/over-range colour stops,
  * a degenerate range, the auto colours, each element turned off, the detail
  * box's explicit height, the anchor's placement and border, and the
  * non-overlapping progress rings.
@@ -8,7 +7,7 @@
 import { describe, expect, it } from 'vitest'
 import { dialColor, dialLen, iconPoints, pointerPoints, renderDial } from './gauge-dial'
 import type { DialSpec } from './gauge-dial'
-import { readGaugeDial } from './option-gauge'
+import { gaugeDial } from './dial'
 import type { DrawCmd } from './types'
 
 type TextCmd = Extract<DrawCmd, { kind: 'text' }>
@@ -24,7 +23,7 @@ const circles = (cmds: DrawCmd[]): CircleCmd[] => cmds.filter((c): c is CircleCm
 
 /** A default dial with one datum, coloured '#00f' by the palette. */
 function spec(over: Partial<DialSpec> = {}, value = 50): DialSpec {
-  return { ...readGaugeDial({ data: [{ value, name: 'n' }] }, ['#00f']), ...over }
+  return { ...gaugeDial({ data: [{ value, name: 'n', color: '#00f' }] }), ...over }
 }
 
 describe('dialColor edges', () => {
@@ -42,16 +41,6 @@ describe('dialColor edges', () => {
 })
 
 describe('renderDial label rotation', () => {
-  it('upright labels pick their baseline and alignment from where they sit on the dial', () => {
-    // Value 50 on the default 225°→-45° dial sits straight up: the label hangs below the top.
-    const top = texts(renderDial(spec(), at, 100)).find((t) => t.text === '50')!
-    expect(top).toMatchObject({ baseline: 'top', align: 'middle' })
-    expect(top.rotate).toBeUndefined()
-    // A dial starting at the bottom (ECharts 270°) puts its first label at the bottom.
-    const bottom = readGaugeDial({ startAngle: 270, endAngle: -90 }, [])
-    const zero = texts(renderDial(bottom, at, 100)).find((t) => t.text === '0')!
-    expect(zero.baseline).toBe('bottom')
-  })
 
   it('radial labels turn with the dial, flipping past a quarter turn', () => {
     const cmds = renderDial(spec({ labelRotate: 'radial' }), at, 100)
@@ -61,12 +50,6 @@ describe('renderDial label rotation', () => {
     expect(zero).toMatchObject({ align: 'middle', baseline: 'middle' })
   })
 
-  it('a radial label within the first quarter turn is not flipped', () => {
-    // ECharts startAngle -300 → canvas +300°: rot = -300° + 360° = 60°, under 90°.
-    const d = readGaugeDial({ startAngle: -300, endAngle: -330, axisLabel: { rotate: 'radial' } }, [])
-    const zero = texts(renderDial(d, at, 100)).find((t) => t.text === '0')!
-    expect(zero.rotate).toBeCloseTo(-60, 6)
-  })
 
   it('tangential and fixed rotations', () => {
     const tan = texts(renderDial(spec({ labelRotate: 'tangential' }), at, 100)).find((t) => t.text === '0')!
@@ -218,15 +201,6 @@ describe('renderDial pointer and progress', () => {
     expect(reach(free)).toBeGreaterThan(reach(clipped))
   })
 
-  it('non-overlapping progress arcs step inward, one ring per value', () => {
-    const d = { ...readGaugeDial({ progress: { show: true, overlap: false }, data: [{ value: 40 }, { value: 70 }] }, ['#a00', '#0a0']), lineShow: false, pointerShow: false, splitShow: false, tickShow: false, labelShow: false, detailShow: false }
-    const arcs = polygons(renderDial(d, at, 100))
-    expect(arcs.map((a) => a.fill)).toEqual(['#a00', '#0a0'])
-    const outer = (p: PolygonCmd): number => Math.max(...p.points.map((q) => Math.hypot(q.x - at.x, q.y - at.y)))
-    // lineWidth 10 split between two values: the second ring starts 5px in.
-    expect(outer(arcs[0]!)).toBeCloseTo(100, 6)
-    expect(outer(arcs[1]!)).toBeCloseTo(95, 6)
-  })
 })
 
 describe('pointerPoints and iconPoints', () => {

@@ -2,18 +2,14 @@
 '@pyreon/charts': minor
 ---
 
-**Breaking:** `@pyreon/charts` is now Pyreon's own chart engine, with `<Chart>` as the main component. The ECharts wrapper moves to `@pyreon/charts/echarts`.
+**Breaking:** `@pyreon/charts` is now Pyreon's own chart engine, and the ECharts wrapper that 0.51 shipped is removed.
 
-| Before | After |
-| --- | --- |
-| `import { Chart, useChart } from '@pyreon/charts'` (ECharts) | `import { EChart, useChart } from '@pyreon/charts/echarts'` |
-| `ChartProps`, `ChartTheme` (ECharts types) | `EChartProps`, `EChartTheme` from `@pyreon/charts/echarts` |
-| `@pyreon/charts/manual`, `@pyreon/charts/vite` | `@pyreon/charts/echarts/manual`, `@pyreon/charts/echarts/vite` |
-| `import { Plot, … } from '@pyreon/charts/plot'` | `import { Chart, … } from '@pyreon/charts'` (`Plot` is renamed `Chart`, `PlotProps` → `ChartProps`) |
-| `OptionChart`, `optionToSvg` from `/plot` | `@pyreon/charts/option` |
-| `chartToSvg` and the `*ToSvg` family from `/plot` | `@pyreon/charts/svg` |
-| everything else from `/plot` (`PlotChart`, mark factories, layouts, hit tests) | `@pyreon/charts/engine` |
+In 0.51 the package wrapped the ECharts library: `<Chart options>`, `useChart`, and the `/manual`, `/vite` and `/webview` (`ChartWebView`) entries. 0.52 replaces all of it. `<Chart>` is now the engine's component, composed from mark children over your own rows (`<Chart data={rows}><Bar y="revenue" /></Chart>`), and the wrapper is not moved to another entry — it is gone. There are no aliases.
 
-`@pyreon/charts/plot` is removed; there are no aliases. The main entry is a curated surface: `<Chart>` and its marks, the family components, formatters, theme and linking, plus the data types those take. `/engine` exports the rest and is outside the stability promise.
+- `.` — `<Chart>` and its marks, the family components (`GaugeChart`, `RadarChart`, `TreemapChart`, `SankeyChart`, …), formatters, theme and linking, plus the data types those take.
+- `/svg` — `chartToSvg` and the `*ToSvg` family, server-safe.
+- `/engine` — layouts, hit tests, `PlotChart` and the rest of the engine; outside the stability promise.
 
-On native, the compiler treats the main entry, `/engine`, `/option` and `/svg` as the engine, and `<Chart>` desugars as `<Plot>` did. `/echarts` is the only web-only entry. The package's multiplatform tier moves from `web-only` to `shared`.
+`echarts` is no longer a peer dependency, and the `tslib` Vite alias (`chartsViteAlias`) is no longer needed. There is no mechanical translation from an ECharts option to marks; `pyreon check` flags code still importing the 0.51 wrapper and names what to move to.
+
+On native, the compiler treats the main entry, `/engine` and `/svg` as the engine. The package's multiplatform tier moves from `web-only` to `shared`.

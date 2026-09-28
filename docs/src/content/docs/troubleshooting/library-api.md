@@ -7,10 +7,10 @@ description: "Common library api-shape mistakes in Pyreon and how to fix them."
 
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
-### Importing `@pyreon/charts` through a pre-0.52 entry point
+### Importing `@pyreon/charts`'s removed ECharts wrapper
 
-The main entry is now the engine (`<Chart>` with mark children, formerly `<Plot>` at `/plot`), and the ECharts wrapper is `<EChart>` at `/echarts`, with `/manual` and `/vite` under it. `<Chart options={…}>` from the root is the old wrapper and no longer type-checks.
-  - `pyreon check --fix` rewrites each import to the entry that exports the name now, and renames `Plot`→`Chart`, `Tip`→`Tooltip` and the wrapper's `Chart`→`EChart` at every reference.
+0.51's `<Chart options>`, `useChart`, `/manual`, `/vite` and `/webview` are gone — 0.52's `@pyreon/charts` is Pyreon's own engine, `<Chart>` with rows and mark children.
+  - There is no codemod: an ECharts option has no mechanical translation to marks. `pyreon check` flags every such import; rewrite each series as a mark and delete the tslib Vite alias.
   - The wrapper is told apart from the grammar by an `options` attribute or a wrapper-only name in the same import.
 
 **Detected by:** `charts-legacy-import` — surfaced by `@pyreon/lint` / `pyreon doctor` / MCP `validate`.

@@ -23,8 +23,8 @@ import type { RadarAxis } from './radar'
 import { ohlcExtent, renderCandles } from './candlestick'
 import type { CandleOptions, Ohlc } from './candlestick'
 import { buildHeatGrid, renderHeat } from './heat'
-import { renderFunnel, renderFunnelEc } from './funnel'
-import { layoutTreemap, renderTreemapEc, treemapEcCells, treemapGround, renderTreemap } from './treemap'
+import { renderFunnel } from './funnel'
+import { layoutTreemap, renderTreemap } from './treemap'
 import type { TreeNode, TreemapOptions } from './treemap'
 import { layoutSunburst, renderSunburst, treeDepth } from './sunburst'
 import type { SunburstOptions } from './sunburst'
@@ -49,8 +49,7 @@ import { parallelRows } from './parallel-web'
 import type { ParallelRow } from './parallel-web'
 import type { CalendarOptions } from './calendar'
 import { calendarValues } from './calendar-web'
-import type { FunnelEcConfig, FunnelOptions, FunnelStage } from './funnel'
-import type { TreemapEc } from './option-treemap'
+import type { FunnelOptions, FunnelStage } from './funnel'
 import type { HeatGrid } from './heat'
 import { computeLayout } from './layout'
 import { niceDomain } from './scale'
@@ -63,7 +62,7 @@ import type { Formatter } from './format'
 import { measureApprox, renderSvg } from './svg'
 import type { SvgOptions } from './svg'
 import type { Double, DrawCmd, MeasureText, Pt, Rect } from './types'
-import { themedDial } from './option-gauge'
+import { themedDial } from './dial'
 
 /**
  * The legend options the CANVAS host builds (`canvas-host.tsx`) — same fields,
@@ -222,9 +221,9 @@ export interface GaugeToSvgOptions {
   title?: string
   description?: string
   svg?: Omit<SvgOptions, 'title' | 'description'>
-  /** ECharts' gauge, as `<GaugeChart dial>`; the half-circle track without it. */
+  /** A full dial (`gaugeDial()`), as `<GaugeChart dial>`; the half-circle track without it. */
   dial?: DialSpec | undefined
-  /** The square the dial fills (ECharts' center and radius); the whole image without it. */
+  /** The square the dial fills; the whole image without it. */
   frame?: Rect | undefined
 }
 
@@ -575,10 +574,6 @@ export interface FunnelToSvgOptions<T> {
   width?: Double
   height?: Double
   funnel?: FunnelOptions
-  /** ECharts' own funnel, laid out in `frame` (the whole image without one); replaces `funnel`'s layout. */
-  echarts?: FunnelEcConfig
-  /** The series box, in image pixels. */
-  frame?: Rect
   measure?: MeasureText
   /** Chart theme; the canvas host reads the same fields. */
   theme?: Partial<ChartTheme>
@@ -599,10 +594,7 @@ export function funnelToSvg<T>(options: FunnelToSvgOptions<T>): string {
     color: options.color !== undefined ? options.color(d, i) : paletteAt(options.palette ?? t.palette, i),
   }))
   const pad = 8.0
-  const cmds =
-    options.echarts !== undefined
-      ? renderFunnelEc(stages, options.frame ?? { x: 0.0, y: 0.0, w: width, h: height }, options.echarts, 1.0, t.background)
-      : renderFunnel(stages, { x: pad, y: pad, w: width - pad * 2.0, h: height - pad * 2.0 }, options.funnel)
+  const cmds = renderFunnel(stages, { x: pad, y: pad, w: width - pad * 2.0, h: height - pad * 2.0 }, options.funnel)
   void (options.measure ?? measureApprox())
   const description =
     options.description ??
@@ -623,10 +615,6 @@ export interface TreemapToSvgOptions {
   width?: Double
   height?: Double
   treemap?: TreemapOptions
-  /** ECharts' own treemap, laid out in `frame` (the whole image without one); replaces `treemap`'s layout. */
-  echarts?: TreemapEc
-  /** The series box, in image pixels. */
-  frame?: Rect
   measure?: MeasureText
   /** Chart theme; the canvas host reads the same fields. */
   theme?: Partial<ChartTheme>
@@ -640,13 +628,8 @@ export function treemapToSvg(options: TreemapToSvgOptions): string {
   const t = themeOf(options.theme)
   const width = options.width ?? 640.0
   const height = options.height ?? 400.0
-  const ec = options.echarts
-  const box = options.frame ?? { x: 0.0, y: 0.0, w: width, h: height }
-  const cells = ec !== undefined ? treemapEcCells(ec.root, box, ec.cfg, t.palette) : layoutTreemap(options.data, { x: 0.0, y: 0.0, w: width, h: height }, { palette: t.palette, ...options.treemap })
-  const cmds =
-    ec !== undefined
-      ? renderTreemapEc(cells, box, treemapGround(ec.borderColor, t.background ?? ''), ec.labelColor, ec.fontSize, ec.showLabels, 1.0, options.measure ?? measureApprox())
-      : renderTreemap(cells, { palette: t.palette, ...options.treemap }, options.measure ?? measureApprox())
+  const cells = layoutTreemap(options.data, { x: 0.0, y: 0.0, w: width, h: height }, { palette: t.palette, ...options.treemap })
+  const cmds = renderTreemap(cells, { palette: t.palette, ...options.treemap }, options.measure ?? measureApprox())
   const leaves = cells.filter((c) => c.leaf)
   const description =
     options.description ??

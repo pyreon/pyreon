@@ -103,7 +103,7 @@
 import { detectPlain } from './plain'
 import { filterSuppressed } from './detector-suppression'
 import ts from 'typescript'
-import { planChartsImports } from './charts-migration'
+import { findChartsLegacyImports } from './charts-migration'
 import { assertClassicTs } from './ts'
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1497,22 +1497,23 @@ function visitNode(ctx: DetectContext, node: ts.Node): void {
 }
 
 /**
- * `charts-legacy-import`: an `@pyreon/charts` import the entry-point change
- * broke — `/plot`, `/manual`, `/vite`, the ECharts wrapper's names from the
- * main entry, `Plot` / `Tip`. File-level, because telling the old ECharts
- * `<Chart options>` from the new grammar `<Chart>` needs the whole file.
+ * `charts-legacy-import`: an `@pyreon/charts` import that still targets the
+ * 0.51 ECharts wrapper, which 0.52 removed — `/manual`, `/vite`, `/webview`,
+ * wrapper-only names like `useChart`, or `<Chart options>`. File-level,
+ * because telling the old `<Chart options>` from the new grammar `<Chart>`
+ * needs the whole file. Not fixable: an ECharts option has no mechanical
+ * translation to marks.
  */
 function detectChartsLegacyImports(ctx: DetectContext): void {
-  for (const plan of planChartsImports(ctx.sf)) {
-    const renamed = [...plan.renames].map(([a, b]) => `\`${a}\` → \`${b}\``).join(', ')
+  for (const hit of findChartsLegacyImports(ctx.sf)) {
     pushDiag(
       ctx,
-      plan.node,
+      hit.node,
       'charts-legacy-import',
-      `This \`@pyreon/charts\` import uses the old entry points. The main entry is now Pyreon's own engine (\`<Chart>\` with mark children, formerly \`<Plot>\` at \`/plot\`), the ECharts wrapper is \`<EChart>\` at \`@pyreon/charts/echarts\`, and the rest of the engine is split across \`/option\`, \`/svg\` and \`/engine\`.${renamed === '' ? '' : ` Renames: ${renamed}.`}`,
-      getNodeText(ctx, plan.node),
-      plan.replacement,
-      true,
+      `This \`@pyreon/charts\` import targets the ECharts wrapper, which 0.52 removed (${hit.reason}). \`@pyreon/charts\` is now Pyreon's own engine: \`<Chart>\` takes your rows and marks as children, so rewrite the chart's option as marks — \`series: [{ type: 'bar' }]\` becomes \`<Bar y="…" />\`, \`tooltip\` becomes \`<Tooltip />\`. The \`/vite\` tslib alias is no longer needed; delete it.`,
+      getNodeText(ctx, hit.node),
+      `import { Bar, Chart, Tooltip } from '@pyreon/charts'\n// <Chart data={rows} x="month"><Bar y="revenue" /><Tooltip /></Chart>`,
+      false,
     )
   }
 }

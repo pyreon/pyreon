@@ -20,8 +20,6 @@
  *
  * This is the curated, stable surface. Other entries:
  * - `@pyreon/charts/svg` — `chartToSvg` and the family serializers, for SSR and export.
- * - `@pyreon/charts/option` — `<OptionChart>`: an ECharts option object drawn by this engine.
- * - `@pyreon/charts/echarts` — `<EChart>`, a wrapper around the real ECharts library.
  * - `@pyreon/charts/engine` — every layout, hit test and draw-list builder; not covered by the stability promise.
  */
 
@@ -52,6 +50,9 @@ export type { ChordChartProps } from './engine/ChordChart'
 export { GanttChart } from './engine/GanttChart'
 export type { GanttChartProps } from './engine/GanttChart'
 export { GaugeChart } from './engine/PieChart'
+export { gaugeDial } from './engine/dial'
+export type { GaugeDialOptions, GaugeDialValue } from './engine/dial'
+export type { DialSpec } from './engine/gauge-dial'
 export type { GaugeChartProps } from './engine/PieChart'
 export { GraphChart } from './engine/GraphChart'
 export type { GraphChartProps } from './engine/GraphChart'
@@ -100,6 +101,9 @@ export type { SingleAxisOptions, SingleAxisPoint } from './engine/single-axis'
 export type { SunburstOptions } from './engine/sunburst'
 export type { TreeOptions } from './engine/tree'
 export type { BrushRange } from './engine/brush'
+export { visualMap } from './engine/visual-map'
+export type { VisualMapOptions, VisualMapPiece, VisualMapSpec } from './engine/visual-map'
+export type { CandlestickZoom } from './engine/CandlestickChart'
 export type { ZoomWindow } from './engine/zoom'
 export type { Double } from './engine/types'
 
