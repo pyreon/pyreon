@@ -130,6 +130,9 @@ public struct PyreonSseParser {
         self.id = lastEventId
     }
 
+    /// An event has `data` but has not been dispatched yet.
+    public var hasPendingEvent: Bool { !data.isEmpty }
+
     /// Feed one line; returns the event it dispatched, if any.
     public mutating func line(_ bytes: [UInt8]) -> PyreonSseMessage? {
         if bytes.isEmpty {
@@ -268,6 +271,9 @@ public enum PyreonStreamError: Error, Equatable {
     case parse(line: Int, text: String)
     /// The request URL could not be parsed.
     case invalidURL(String)
+    /// The body ended in the middle of an event — see `drive` for why this is
+    /// read as a dropped connection rather than a clean end.
+    case truncated
 }
 
 public enum PyreonStreamPolicy {
@@ -278,6 +284,7 @@ public enum PyreonStreamPolicy {
         switch e {
         case .badStatus(let s): return s == 408 || s == 429 || s >= 500
         case .decode, .parse, .invalidURL: return false
+        case .truncated: return true
         }
     }
 
@@ -553,6 +560,18 @@ public final class PyreonStream<E> {
                     // An unterminated SSE event is DISCARDED (the spec's rule);
                     // an unterminated NDJSON line is still a value.
                     if !sse, let tail = splitter.finish() { try handle(tail) }
+                    // URLSession reports a chunked body cut off by a GRACEFUL
+                    // close (FIN, no terminating chunk) as a clean end — fetch
+                    // and HttpURLConnection both report it as an error, which is
+                    // what makes the web reconnect. The only trace left here is
+                    // an event half-built when the bytes stopped, so read that
+                    // as the dropped connection it almost always is. Measured on
+                    // a local server: FIN mid-event → clean end, RST → -1005.
+                    // A cut landing exactly on an event boundary stays
+                    // indistinguishable from a clean end (a disclosed limit).
+                    if sse, splitter.finish() != nil || parser.hasPendingEvent {
+                        throw PyreonStreamError.truncated
+                    }
                     ended = true
                 }
             } catch {
