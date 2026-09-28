@@ -203,19 +203,7 @@ jobs:
             exit 0
           fi
 
-          # 2. Exactly ONE contract comment after two Comment steps, and its
-          #    stored body is the report behind the marker.
-          ids=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
-            --jq '.[] | select(.body | startswith("<!-- lathe-contract -->")) | .id')
-          count=$(printf '%s\n' "$ids" | grep -c . || true)
-          [ "$count" = 1 ] || fail "expected exactly one contract comment, found $count ($ids)"
-          gh api "repos/$GITHUB_REPOSITORY/issues/comments/$ids" --jq .body > "$RUNNER_TEMP/stored.md"
-          [ "$(cat "$RUNNER_TEMP/stored.md")" = "$(cat comment.md)" ] || {
-            diff comment.md "$RUNNER_TEMP/stored.md" || true
-            fail "the stored comment is not the report"
-          }
-
-          # 3. No other comment was overwritten or removed. (Not "byte-identical":
+          # 2. No other comment was overwritten or removed. (Not "byte-identical":
           #    other workflows legitimately edit their own sticky comments while
           #    this job runs. An overwrite by this job carries the report.)
           gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
@@ -228,6 +216,18 @@ jobs:
           [ -z "$clobbered" ] || fail "comment(s) $clobbered now hold the contract report without the marker — another comment was overwritten"
           sentinel=$(gh api "repos/$GITHUB_REPOSITORY/issues/comments/$SENTINEL_ID" --jq .body)
           [ "$sentinel" = "$SENTINEL" ] || fail "the sentinel comment (the token's last comment) was overwritten: $sentinel"
+
+          # 3. Exactly ONE contract comment after two Comment steps, and its
+          #    stored body is the report behind the marker.
+          ids=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- lathe-contract -->")) | .id')
+          count=$(printf '%s\n' "$ids" | grep -c . || true)
+          [ "$count" = 1 ] || fail "expected exactly one contract comment, found $count ($ids)"
+          gh api "repos/$GITHUB_REPOSITORY/issues/comments/$ids" --jq .body > "$RUNNER_TEMP/stored.md"
+          [ "$(cat "$RUNNER_TEMP/stored.md")" = "$(cat comment.md)" ] || {
+            diff comment.md "$RUNNER_TEMP/stored.md" || true
+            fail "the stored comment is not the report"
+          }
           echo "verified: exit $CODE, one contract comment ($ids), $(grep -c . "$RUNNER_TEMP/others-before.txt" || true) other comment(s) intact"
 
       - name: Fail on a breaking change
