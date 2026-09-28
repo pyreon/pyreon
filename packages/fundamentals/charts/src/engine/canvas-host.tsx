@@ -41,6 +41,8 @@ const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 export const A11Y_TABLE_MAX = 1000
 /** Rows per `<tbody>` block of the accessible table (see `a11yTableNode`). */
 const TABLE_CHUNK = 50
+/** Above this many rows the accessible table fills after the first paint (see `a11yTableNode`). */
+const DEFER_ROWS = 200
 const OFFSCREEN = 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0;margin:-1px;padding:0'
 
 /** Make `parent` hold exactly `n` `tag` children, reusing the ones it has; returns them. */
@@ -73,6 +75,14 @@ function setCell(el: Element, text: string): void {
  */
 export function a11yTableNode(read: () => A11yTable, id: string, title: () => string): VNode {
   const host = signal<HTMLTableElement | null>(null)
+  // A LARGE table is filled after the chart's first paint, not before it. At
+  // 1k rows its layout was ~9ms of a ~10.5ms first frame — the reason a plain
+  // line chart painted several times later than uPlot's. A screen reader
+  // reaches it a frame later; a sighted user sees the chart that much sooner.
+  // Up to DEFER_ROWS it is filled at mount as before: that layout is under
+  // ~2ms, not worth a frame of delay. (A server render ships it filled either
+  // way — `tableHtml`.)
+  const ready = signal(false)
   // What each body cell last held, so an unchanged cell costs a string compare
   // and no DOM read or write.
   let shown: string[][] = []
@@ -80,6 +90,7 @@ export function a11yTableNode(read: () => A11yTable, id: string, title: () => st
     const el = host()
     if (el === null) return
     const t = read()
+    if (t.rows.length > DEFER_ROWS && !ready()) return
     const doc = el.ownerDocument
     let caption = el.caption
     if (caption === null) caption = el.createCaption()
@@ -143,7 +154,19 @@ export function a11yTableNode(read: () => A11yTable, id: string, title: () => st
   // re-parsed) and the effect above keeps it current from there. On a pure
   // client mount the payload is empty and the effect builds it, as before.
   const html = isServer ? tableHtml(read(), title()) : ''
-  return h('div', { style: `${OFFSCREEN};contain:strict` }, h('table', { id, style: 'table-layout:fixed;width:1px', dangerouslySetInnerHTML: { __html: html }, ref: (el: HTMLTableElement | null) => host.set(el) }))
+  return h('div', { style: `${OFFSCREEN};contain:strict` }, h('table', { id, style: 'table-layout:fixed;width:1px', dangerouslySetInnerHTML: { __html: html }, ref: (el: HTMLTableElement | null) => {
+    host.set(el)
+    if (el !== null && !ready.peek()) afterPaint(() => ready.set(true))
+  } }))
+}
+
+/** Run `fn` after the next frame has painted: rAF runs BEFORE paint, so the timeout inside it lands after. */
+function afterPaint(fn: () => void): void {
+  if (typeof requestAnimationFrame !== 'function') {
+    fn()
+    return
+  }
+  requestAnimationFrame(() => setTimeout(fn, 0))
 }
 
 const escHtml = (v: string): string => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')

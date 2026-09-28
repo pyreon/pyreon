@@ -861,20 +861,28 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     /** The GLOBAL row index behind visible row `i`. */
     const gi = (i: number): number => (keep === null ? i : keep[i]!) + off
     builtKeys = props.by === undefined ? null : rows.map((d, i) => props.by!(d, gi(i)))
-    return {
-    width: w,
-    height: hgt,
-    // Accessors receive the GLOBAL index — an accessor keyed on position
-    // (striping, ids) must not see its data renumbered by a zoom.
-    series: hideHidden(resolveMarks(rows, props.marks.map((m) => ({
+    // A frame over EVERY row (no zoom, no decimation) resolves exactly what
+    // the accessible description and table resolve, so both read one memo
+    // instead of walking every row through every accessor twice (measured:
+    // 26% of mount JS at 1M points). A zoomed or thinned frame resolves its
+    // own subset, with accessors seeing GLOBAL indices.
+    const full = rows === allRows ? resolveFull(allRows) : null
+    const resolved = full !== null ? full.series : resolveMarks(rows, props.marks.map((m) => ({
       ...m,
       // magicType: a line/bar switch retypes the INDEPENDENT marks only —
       // stacked/grouped/points keep their geometry (a stack is not a line).
       kind: m.kind,
       y: (d: T, i: number) => m.y(d, gi(i)),
       ...(m.r !== undefined ? { r: (d: T, i: number) => m.r!(d, gi(i)) } : {}),
-    })), theme().palette)),
-    categories: resolveCategories(rows, props.x === undefined ? undefined : (d, i) => props.x!(d, gi(i))),
+    })), theme().palette)
+    const resolvedCats = full !== null ? full.categories : resolveCategories(rows, props.x === undefined ? undefined : (d, i) => props.x!(d, gi(i)))
+    return {
+    width: w,
+    height: hgt,
+    // Accessors receive the GLOBAL index — an accessor keyed on position
+    // (striping, ids) must not see its data renumbered by a zoom.
+    series: hideHidden(resolved),
+    categories: resolvedCats,
     theme: theme(),
     showXAxis: props.showXAxis ?? true,
     showYAxis: props.showYAxis ?? true,
@@ -1831,20 +1839,31 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   // The a11y input is read by the description, the table and every keystroke;
   // resolving the marks over all rows each time was a full O(N) pass per read.
   // Memoized on the inputs' identity — a new rows array or marks array is a new pass.
+  let lastFull: { rows: T[]; marks: Mark<T>[]; x: ((d: T, i: number) => string) | undefined; palette: readonly string[]; series: Series[]; categories: string[] } | null = null
+  /** Every row through every mark, memoized on the inputs that decide it. */
+  const resolveFull = (rows: T[]): { series: Series[]; categories: string[] } => {
+    const palette = theme().palette
+    const m = lastFull
+    if (m !== null && m.rows === rows && m.marks === props.marks && m.x === props.x && m.palette === palette) return m
+    const next = { rows, marks: props.marks, x: props.x, palette, series: resolveMarks(rows, props.marks, palette), categories: resolveCategories(rows, props.x) }
+    lastFull = next
+    return next
+  }
   let a11yMemo: { rows: T[]; marks: Mark<T>[]; labels: string[] | undefined; format: Formatter | undefined; title: string | undefined; input: A11yInput } | null = null
   const a11yInput = (): A11yInput => {
     const rows = readData()
     const m = a11yMemo
     const fmtNow = resolvedFormat()
     if (m !== null && m.rows === rows && m.marks === props.marks && m.labels === props.seriesLabels && m.format === fmtNow && m.title === props.title) return m.input
-    const resolved = resolveMarks(rows, props.marks)
+    const full = resolveFull(rows)
+    const resolved = full.series
     const input: A11yInput = {
       title: props.title,
       // The spoken description says the same numbers the axis shows. A chart
       // whose axis reads "$3.2K" and whose description reads "3204.55" is one
       // chart to a sighted reader and another to a screen-reader user.
       format: fmtNow,
-      categories: resolveCategories(rows, props.x),
+      categories: full.categories,
       series: resolved.map((s, i) => ({
         // The mark's own label (`line(y, { label })`, `<Line label>`) — what the
         // legend and tooltip show. It used to fall straight to "Series N", so a
