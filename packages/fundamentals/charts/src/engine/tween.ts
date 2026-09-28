@@ -48,3 +48,38 @@ export function tweenValues(from: Double[][], to: Double[][], t: Double): Double
     })
   })
 }
+
+/** Series kinds whose datum has a length from a baseline, so an entering row can GROW from zero. */
+function growsFromBaseline(kind: string): boolean {
+  return kind === 'bars' || kind === 'stacked' || kind === 'grouped' || kind === 'area' || kind === 'stackedArea' || kind === 'waterfall'
+}
+
+/**
+ * The previous frame's values realigned to the NEW rows by key, so a keyed
+ * update tweens each row from ITS OWN old value — D3's data join.
+ *
+ * Matched by position instead, a sliding window (drop the oldest row, append
+ * a new one) animates every bar toward its neighbour's value, and a row
+ * inserted at the front shifts the whole chart through a wrong intermediate
+ * state. A row with no old counterpart ENTERS: bars and areas grow from 0, a
+ * line or point appears in place (a gap on the `from` side snaps in).
+ */
+export function alignByKey(from: Double[][], fromKeys: string[], toKeys: string[], kinds: string[]): Double[][] {
+  const index = new Map<string, number>()
+  for (let i = 0; i < fromKeys.length; i++) if (!index.has(fromKeys[i]!)) index.set(fromKeys[i]!, i)
+  return kinds.map((kind, s) => {
+    const prev = from[s] ?? []
+    const enter = growsFromBaseline(kind) ? 0.0 : Number.NaN
+    return toKeys.map((k) => {
+      const j = index.get(k)
+      return j === undefined || j >= prev.length ? enter : prev[j]!
+    })
+  })
+}
+
+/** True when two key lists are identical, in order. */
+export function sameKeys(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false
+  return true
+}

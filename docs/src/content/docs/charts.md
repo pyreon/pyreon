@@ -80,6 +80,8 @@ without an indicator mark does not bundle the indicator arithmetic. `<Chart>`
 with one `<Line>` is about 44.1 KB gzipped; a pie through `<Arc>` about
 24.7 KB. CI import budgets lock both.
 
+`<Chart by="id">` gives rows an identity for update animation, like `<For by>`: a data change tweens each row from its own previous value and new rows grow in from the baseline. Without it rows are matched by position, so a sliding window (drop the oldest, append the newest) animates every bar toward its neighbour's value. Native hosts match by position and warn.
+
 `<Chart color="region">` switches to **long format**: every `y` mark becomes
 one series per distinct `region`, categories come from `x`, a missing
 (category, series) pair is a gap, and bars group side by side unless `stack`.

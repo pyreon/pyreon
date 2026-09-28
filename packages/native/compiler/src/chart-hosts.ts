@@ -859,6 +859,7 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   const markers: ExprIR[] = []
   for (const a of e.attrs) {
     if (a.kind === 'attr' && (a.name === 'x' || a.name === 'xValue')) attrs.push({ kind: 'attr', name: a.name, value: channelArrow(a.value) })
+    else if (a.kind === 'attr' && a.name === 'by') warn('<Chart by>: keyed update animation is not lowered on native — a data change still tweens there, but rows are matched by position.')
     else if (a.kind === 'attr' && a.name === 'color') warn('<Chart color>: the long-format pivot is resolved on the web at runtime and is not lowered on native; the chart renders wide-format (one mark, one series).')
     else attrs.push(a)
   }

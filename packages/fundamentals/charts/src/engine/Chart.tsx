@@ -17,7 +17,7 @@ import { canvasMeasure, canvasSizeAttrs, paint, prepareCanvas } from './canvas-w
 import { placeLegend } from './legend'
 import type { LegendPager } from './legend'
 import { renderTitle } from './title'
-import { easeOutCubic, sameShape, sameValues, tweenValues } from './tween'
+import { alignByKey, easeOutCubic, sameKeys, sameShape, sameValues, tweenValues } from './tween'
 import { cmdsEqual, universalTweenCmds } from './cmd-tween'
 import type { ToolboxConfig, ToolboxTool } from './toolbox-config'
 import { placeTooltip, tooltipAt, tooltipLines } from './tooltip'
@@ -266,6 +266,13 @@ export interface PlotChartProps<T> {
    * in domain units, which is a different chart.
    */
   xValue?: (d: T, index: number) => Double
+  /**
+   * Row identity for update animation (`<For by>`'s convention — JSX reserves
+   * `key`). With it a data change tweens each row from its OWN previous value
+   * and a new row grows in, so a sliding window or an insertion animates what
+   * actually changed. Without it rows are matched by position.
+   */
+  by?: (d: T, index: number) => string
   /**
    * Label the x axis with calendar steps rather than the numeric ladder. Only
    * meaningful with `xValue` returning epoch milliseconds.
@@ -597,6 +604,9 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   const presetBoxesJson = signal('[]')
   // Update tween: the previous frame's values, the running t, and its frame.
   let lastValues: Double[][] | null = null
+  /** The row keys (`by`) behind `lastValues`, and behind the spec being built. */
+  let lastKeys: string[] | null = null
+  let builtKeys: string[] | null = null
   let tweenFrom: Double[][] | null = null
   let tweenT = 1.0
   let tweenFrame = 0.0
@@ -631,8 +641,19 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   const tweened = (spec: ChartSpec): ChartSpec => {
     const cur = spec.series.map((x) => x.values)
     shapeChangedThisFrame = false
+    const keys = builtKeys
     if (tweenT >= 1.0 || tweenFrom === null) {
       const enabled = props.updateAnimation !== false && !prefersReducedMotion() && entrance >= 1.0 && (props.updateDuration ?? theme().updateMs) > 0.0
+      // Keyed: realign the previous values to the new rows, so the shape
+      // always matches and each row tweens from its own old value.
+      if (enabled && lastValues !== null && keys !== null && lastKeys !== null && lastValues.length === cur.length && !sameKeys(lastKeys, keys)) {
+        tweenFrom = alignByKey(lastValues, lastKeys, keys, spec.series.map((x) => x.kind))
+        lastValues = cur
+        lastKeys = keys
+        startTween()
+        return { ...spec, series: spec.series.map((x, i) => ({ ...x, values: tweenValues(tweenFrom!, cur, 0.0)[i]! })) }
+      }
+      lastKeys = keys
       if (enabled && lastValues !== null && sameShape(lastValues, cur) && !sameValues(lastValues, cur)) {
         tweenFrom = lastValues
         lastValues = cur
@@ -838,6 +859,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const rows = keep === null ? visible : keep.map((i) => visible[i]!)
     /** The GLOBAL row index behind visible row `i`. */
     const gi = (i: number): number => (keep === null ? i : keep[i]!) + off
+    builtKeys = props.by === undefined ? null : rows.map((d, i) => props.by!(d, gi(i)))
     return {
     width: w,
     height: hgt,

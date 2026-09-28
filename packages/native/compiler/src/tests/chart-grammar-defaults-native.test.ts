@@ -125,3 +125,18 @@ export function C() { return <Chart data={ROWS} x="m"><Line y="a" /><Axis y tick
     if (!k.skipped) expect(k.ok, k.error).toBe(true)
   })
 })
+
+describe('<Chart by> on native', () => {
+  it('warns by name that keyed matching is web-only, and still lowers the chart', () => {
+    const src = `import { Bar, Chart } from '@pyreon/charts'
+interface Row { id: string; v: number }
+const ROWS: Row[] = [{ id: 'a', v: 1 }]
+export function C() { return <Chart data={ROWS} x="id" by="id"><Bar y="v" /></Chart> }
+`
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(src, { target })
+      expect(r.warnings.join('\n')).toContain('<Chart by>')
+      expect(r.code).toContain('PyreonChartCanvas')
+    }
+  })
+})

@@ -465,6 +465,13 @@ export interface ChartProps<T> {
   x?: Channel<T, string>
   /** The continuous x channel (spacing follows the values). */
   xValue?: Channel<T>
+  /**
+   * Row identity for update animation (a field name or accessor, like
+   * `<For by>`). A data change then tweens each row from its own previous
+   * value and new rows grow in; without it rows are matched by position, so a
+   * sliding window animates every bar toward its neighbour's value.
+   */
+  by?: Channel<T, string>
   /** Long-format split: one series per distinct value of this channel, for every `y` mark. */
   color?: Channel<T, string>
   width?: Double
@@ -884,6 +891,12 @@ export function Chart<T>(props: ChartProps<T>): VNodeChild {
       return props.x === undefined ? undefined : channel<T, string>(props.x)
     }),
     xValue: reactiveProp(() => (props.xValue === undefined ? undefined : channel<T, Double>(props.xValue))),
+    // Long format pivots rows into categories, which are already the identity.
+    by: reactiveProp(() => {
+      const r = resolved()
+      if (r.pivot !== null) return r.pivot.x
+      return props.by === undefined ? undefined : channel<T, string>(props.by)
+    }),
   }
   // Every `<PlotChart>` prop a child can set, forwarded as an accessor; the chart's own props win when both are given.
   const forwarded = ['format', 'xFormat', 'xTime', 'showXAxis', 'showYAxis', 'yDomain', 'y2Format', 'y2Domain', 'tooltip', 'crosshair', 'tooltipFormatter', 'showLegend', 'endLabels', 'xTicks', 'yTicks', 'legendToggle', 'legendMaxRows', 'legendPosition', 'dataZoom', 'navigator', 'initialZoom', 'zoomLimits', 'zoomPresets', 'link', 'brush', 'onBrush', 'annotations', 'markers', 'toolbox', 'xTitle', 'yTitle', 'y2Title', 'xLabels', 'yScale', 'yTime', 'stackNormalize'] as const
