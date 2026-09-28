@@ -66,3 +66,42 @@ export function C() { return <Chart data={ROWS} x="m"><Line y="a" /><Zoom window
     }
   })
 })
+
+describe('date(pattern) on native', () => {
+  const dsrc = `import { Axis, Chart, Line, date } from '@pyreon/charts'
+interface Row { t: number; a: number }
+const ROWS: Row[] = [{ t: 1709251200000, a: 1 }, { t: 1711929600000, a: 3 }]
+export function C() { return <Chart data={ROWS} xValue="t"><Line y="a" /><Axis x time format={date('MMM YYYY')} /></Chart> }
+`
+  it('lowers as a call into the generated engine and compiles on both targets', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(dsrc, { target })
+      expect(r.warnings).toEqual([])
+      expect(r.code).toContain('date("MMM YYYY")')
+    }
+    const s = validateSwiftWithStubs(transform(dsrc, { target: 'swift' }).code)
+    if (!s.skipped) expect(s.ok, s.error).toBe(true)
+    const k = validateKotlin(transform(dsrc, { target: 'kotlin' }).code)
+    if (!k.skipped) expect(k.ok, k.error).toBe(true)
+  })
+})
+
+describe('a numeric x field as categories', () => {
+  // The web stringifies a numeric category implicitly; \`[String]\` on iOS
+  // rejected it outright ("cannot convert value of type 'Int' to closure result
+  // type 'String'"), so the chart did not build.
+  const nsrc = `import { Chart, Line } from '@pyreon/charts'
+interface Row { year: number; a: number }
+const ROWS: Row[] = [{ year: 2023, a: 1 }, { year: 2024, a: 3 }]
+export function C() { return <Chart data={ROWS} x="year"><Line y="a" /></Chart> }
+`
+  it('coerces each category through pyreonChartString and compiles on both targets', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      expect(transform(nsrc, { target }).code).toContain('pyreonChartString(pyreonD.year)')
+    }
+    const s = validateSwiftWithStubs(transform(nsrc, { target: 'swift' }).code)
+    if (!s.skipped) expect(s.ok, s.error).toBe(true)
+    const k = validateKotlin(transform(nsrc, { target: 'kotlin' }).code)
+    if (!k.skipped) expect(k.ok, k.error).toBe(true)
+  })
+})

@@ -178,6 +178,17 @@ import type {
 let _enumNames: Set<string> = new Set()
 
 /**
+ * One template-literal interpoland. A Double goes through the runtime's
+ * `pyreonNumberString`, because Kotlin interpolation prints a whole-valued
+ * Double as `7.0` where JavaScript's `String(number)` prints `7`.
+ */
+function kotlinTemplatePart(expr: ExprIR, indent: number): string {
+  const emitted = emitKotlinExpr(expr, indent)
+  const t = inferType(expr, _kotlinExprInferCtx)
+  return t.kind === 'number' && t.float === true ? `pyreonNumberString(${emitted})` : emitted
+}
+
+/**
  * The enum name an expression's INFERRED type names, or undefined.
  * Mirror of the Swift helper — see `enumTypeOfExpr` in emit-swift.ts.
  */
@@ -7014,7 +7025,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       let s = '"'
       for (let i = 0; i < e.quasis.length; i++) {
         s += escapeKotlinStringSegment(e.quasis[i] ?? '')
-        if (i < e.exprs.length) s += `\${${emitKotlinExpr(e.exprs[i]!, indent)}}`
+        if (i < e.exprs.length) s += `\${${kotlinTemplatePart(e.exprs[i]!, indent)}}`
       }
       return s + '"'
     }
@@ -8321,7 +8332,7 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
       const t = childExpr
       for (let i = 0; i < t.quasis.length; i++) {
         parts.push(escapeKotlinStringSegment(t.quasis[i] ?? ''))
-        if (i < t.exprs.length) parts.push(`\${${emitKotlinExpr(t.exprs[i]!, indent)}}`)
+        if (i < t.exprs.length) parts.push(`\${${kotlinTemplatePart(t.exprs[i]!, indent)}}`)
       }
     } else {
       // A CALL to a JSX-returning helper reaches `<Text>{row("a")}</Text>`
@@ -8354,9 +8365,12 @@ function kotlinInterpSegment(e: ExprIR, indent: number): string {
   // inferType also fixes optional inference (an arrow's type is never optional).
   const expr = resolveAccessorChild(e)
   const emitted = emitKotlinExpr(expr, indent)
-  if (typeIsOptional(inferType(expr, _kotlinExprInferCtx))) {
+  const t = inferType(expr, _kotlinExprInferCtx)
+  if (typeIsOptional(t)) {
     return `\${${emitted} ?: ""}`
   }
+  // A Double prints as JavaScript does (`7`, not `7.0`) — see kotlinTemplatePart.
+  if (t.kind === 'number' && t.float === true) return `\${pyreonNumberString(${emitted})}`
   return `\${${emitted}}`
 }
 
@@ -12362,7 +12376,7 @@ function emitKotlinCandlestickHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
     fields.push(`${f} = (${acc}).toDouble()`)
   }
   const lets = [`val pyreonCandles: List<Ohlc> = ${data}.mapIndexed { pyreonI, pyreonD -> Ohlc(${fields.join(', ')}) }`]
-  const catsM = kotlinChartMap(e, tag, data, 'x', (b) => b, indent)
+  const catsM = kotlinChartMap(e, tag, data, 'x', (b) => `pyreonChartString(${b})`, indent)
   if (catsM === 'unsupported') return 'Box {}'
   lets.push(`val pyreonCats: List<String> = ${catsM ?? 'listOf<String>()'}`)
   lets.push(`val pyreonTheme: ChartTheme = ${kotlinChartTheme(e, tag)}`)
@@ -12394,7 +12408,7 @@ function emitKotlinBoxplotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
     return 'Box {}'
   }
   const lets = [`val pyreonBoxes: List<FiveNumber> = ${rowsM}`]
-  const catsM = kotlinChartMap(e, tag, data, 'x', (b) => b, indent)
+  const catsM = kotlinChartMap(e, tag, data, 'x', (b) => `pyreonChartString(${b})`, indent)
   if (catsM === 'unsupported') return 'Box {}'
   lets.push(`val pyreonCats: List<String> = ${catsM ?? 'listOf<String>()'}`)
   lets.push(`val pyreonTheme: ChartTheme = ${kotlinChartTheme(e, tag)}`)
@@ -12892,8 +12906,9 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   if (xAcc !== undefined) {
     const body = kotlinAccessorExpr(xAcc, tag, 'x', indent)
     if (body === 'unsupported') return 'Box {}'
-    lets.push(`val pyreonCats: List<String> = ${kotlinPlotRowMap(rows, body, windowed, decimated)}`)
-    if (fullA11y) lets.push(`val pyreonA11yCats: List<String> = ${kotlinPlotRowMap(data, body, false)}`)
+    const cat = `pyreonChartString(${body})`
+    lets.push(`val pyreonCats: List<String> = ${kotlinPlotRowMap(rows, cat, windowed, decimated)}`)
+    if (fullA11y) lets.push(`val pyreonA11yCats: List<String> = ${kotlinPlotRowMap(data, cat, false)}`)
   } else {
     lets.push('val pyreonCats: List<String> = listOf<String>()')
     if (fullA11y) lets.push('val pyreonA11yCats: List<String> = listOf<String>()')

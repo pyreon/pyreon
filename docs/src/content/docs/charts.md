@@ -69,8 +69,8 @@ around a mark adds and removes its series like any other Pyreon child.
 | `<Label text at? series? />` | A datum-anchored label: at the series' `max` / `min`, or at an index. |
 | `<Axis y format domain />` `<Axis x time hidden />` `<Axis y2 … />` | Axis formatting and domains. |
 | `<Tooltip crosshair? format? />` | The pointer tooltip. |
-| `<Legend toggle? maxRows? />` | The legend (click toggles series). |
-| `<Zoom inside? navigator? presets? link? brush? />` | Pinch/wheel zoom and drag pan, the slider strip, preset buttons, cross-chart linking, the range brush. |
+| `<Legend toggle? maxRows? direct? />` | The legend (click toggles series). `direct` labels each line at its last point instead, in the series colour, nudging labels apart when they collide. |
+| `<Zoom inside? navigator? presets? link? brush? window? lock? />` | Pinch/wheel zoom and drag pan, the slider strip, preset buttons, cross-chart linking, the range brush. `window={{ start, end }}` (fractions) is the opening view; `lock` pins its span. |
 | `<Toolbox saveAsImage? restore? magicType? dataZoom? dataView? brush? />` | The tool strip: save as SVG or PNG, restore, switch line and bar or stacked and tiled, a box-select zoom, a data table view, the area brushes. |
 
 The interaction children carry their own code: a chart without `<Zoom>` does
@@ -92,7 +92,7 @@ cartesian plot:
 | --- | --- | --- |
 | `<Arc value label color? innerRadius? />` | A pie (`innerRadius={0}`) or donut. | one slice per row |
 | `<Stage value label color? sort? gap? />` | A funnel, descending by default. | one stage per row |
-| `<Cell x y value colors? gap? />` | A heatmap; duplicate `(x, y)` cells sum. | one observation per row |
+| `<Cell x y value colors? gap? visualMap? />` | A heatmap; duplicate `(x, y)` cells sum. `visualMap` adds a continuous legend over the data's extent in the theme ramp; `visualMap({ domain })` pins it. | one observation per row |
 | `<Candle open high low close upColor? downColor? />` | A candlestick; the plot's `x` labels each period. | one period per row |
 
 ```tsx
@@ -115,8 +115,10 @@ export const BrowserShare = () => (
 )
 ```
 
-`<Tooltip>`, `<Legend>` and `<Axis y format>` apply to a family host too; a
-cartesian mark or `<Zoom>` beside a family mark is reported and ignored.
+`<Tooltip>`, `<Legend>` and `<Axis y format>` apply to a family host too, and
+`<Zoom window lock>` opens a `<Candle>` chart's navigator on that window. Any
+other cartesian mark or `<Zoom>` prop beside a family mark is reported and
+ignored.
 
 <Example file="./examples/charts/plot-grammar" title="The grammar — marks as children, a Show around one" />
 
@@ -248,7 +250,10 @@ export const Curves = () => (
   values, which is a correctness feature: readings on Jan 1, Jan 2 and Mar 1
   drawn evenly spaced would claim the first gap equals the second.
 - **Time axis** — add `xTime` when `xValue` returns epoch milliseconds to get
-  calendar tick labels; override with `xFormat`.
+  calendar tick labels; override with `xFormat`. `date(pattern)` builds that
+  formatter in UTC, identically on the web, iOS and Android —
+  `<Axis x time format={date('MMM YYYY')} />`, tokens `YYYY` `YY` `MMMM` `MMM`
+  `MM` `M` `DD` `D` `HH` `H` `mm` `ss`, `[text]` printed as written.
 - **Horizontal bars** — `horizontal` flips the frame (categories on Y, bars
   growing rightward). Bar-family marks only; the left gutter sizes itself from
   the widest category label, which is the reason horizontal bars exist.
@@ -546,6 +551,11 @@ export const Themed = () => (
   </ColorModeProvider>
 )
 ```
+
+The default palette is chosen by measurement, not taste: every colour clears
+3:1 against the background (WCAG 1.4.11, light and dark), the first four
+series stay distinguishable under deuteranopia and protanopia, and a series
+keeps its hue when the mode flips. A test asserts all three.
 
 `palettes` exports the named sets as data — `pyreon` (the default),
 `pyreonDark`, `echarts6`, `echarts5`, `echartsDark`, `observable10`,

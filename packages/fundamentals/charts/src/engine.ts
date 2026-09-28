@@ -95,7 +95,7 @@ export type { TooltipOptions } from './engine/chrome'
 export type { TooltipContent, TooltipRow } from './engine/tooltip'
 
 // Formatting
-export { compact, currency, fixed, percent, plain } from './engine/format'
+export { compact, currency, date, fixed, formatDate, percent, plain } from './engine/format'
 export type { Formatter } from './engine/format'
 
 // Accessibility

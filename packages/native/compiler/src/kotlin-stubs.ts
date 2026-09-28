@@ -1151,6 +1151,9 @@ object PyreonURL {
   @JvmStatic fun encodePathParam(value: Long): String = ""
   @JvmStatic fun encodePathParam(value: Double): String = ""
 }
+// pyreonNumberString — JS \`String(number)\`, which every Double-typed
+// template interpoland lowers through. Mirrors the real signature.
+fun pyreonNumberString(value: Number): String = ""
 
 // kotlinx.coroutines surface the emitted fetch harness drives —
 // withContext(Dispatchers.IO) { ... } around the blocking URL read.
@@ -2504,6 +2507,10 @@ fun pyreonTransposeCmds(cmds: List<PyreonDrawCmd>): List<PyreonDrawCmd> = cmds
 fun pyreonMirrorCmds(cmds: List<PyreonDrawCmd>, width: Double): List<PyreonDrawCmd> = cmds
 fun pyreonChartDouble(v: Double): Double = v
 fun pyreonChartDouble(v: Int): Double = v.toDouble()
+fun pyreonChartString(v: String): String = v
+fun pyreonChartString(v: Double): String = ""
+fun pyreonChartString(v: Int): String = ""
+fun pyreonChartString(v: Long): String = ""
 fun pyreonLocaleNumberFormatter(tag: String): (Double) -> String = { it.toString() }
 fun pyreonLocaleDateFormatter(tag: String): (Double) -> String = { it.toString() }
 fun pyreonChartDataUrl(cmds: List<PyreonDrawCmd>, width: Double, height: Double, density: Float): String = ""

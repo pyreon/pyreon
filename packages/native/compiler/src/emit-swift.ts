@@ -3633,6 +3633,19 @@ function syncedSignalSwiftType(scalar: 'string' | 'double' | 'bool'): string {
  * unchanged; anything else is interpolated (total, and identical to the
  * `String(describing:)` result for the scalar keys this accepts).
  */
+/**
+ * One template-literal interpoland. A Double goes through the runtime's
+ * `pyreonNumberString`, because Swift interpolation prints a whole-valued
+ * Double as `7.0` where JavaScript's `String(number)` prints `7` — every axis
+ * tick, counter and label built from arithmetic would otherwise read
+ * differently on iOS than on the web.
+ */
+function swiftTemplatePart(expr: ExprIR, indent: number): string {
+  const emitted = emitSwiftExpr(expr, indent)
+  const t = inferType(expr, _activeInferCtx)
+  return t.kind === 'number' && t.float === true ? `pyreonNumberString(${emitted})` : emitted
+}
+
 function swiftSortKeyExpr(d: Extract<DeclIR, { kind: 'sortable' }>): string {
   const emitted = emitSwiftExpr(d.keyBody, 10)
   const t = inferType(d.keyBody, _activeInferCtx)
@@ -8442,7 +8455,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       let s = '"'
       for (let i = 0; i < e.quasis.length; i++) {
         s += escapeSwiftStringSegment(e.quasis[i] ?? '')
-        if (i < e.exprs.length) s += `\\(${emitSwiftExpr(e.exprs[i]!, indent)})`
+        if (i < e.exprs.length) s += `\\(${swiftTemplatePart(e.exprs[i]!, indent)})`
       }
       return s + '"'
     }
@@ -9779,9 +9792,12 @@ function swiftInterpSegment(e: ExprIR, indent: number): string {
   // would never fire for an arrow-wrapped optional.
   const expr = resolveAccessorChild(e)
   const emitted = emitSwiftExpr(expr, indent)
-  if (typeIsOptional(inferType(expr, _activeInferCtx))) {
+  const t = inferType(expr, _activeInferCtx)
+  if (typeIsOptional(t)) {
     return `\\((${emitted}).map { "\\($0)" } ?? "")`
   }
+  // A Double prints as JavaScript does (`7`, not `7.0`) — see swiftTemplatePart.
+  if (t.kind === 'number' && t.float === true) return `\\(pyreonNumberString(${emitted}))`
   return `\\(${emitted})`
 }
 
@@ -9808,7 +9824,7 @@ function emitSwiftTextCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       const t = childExpr
       for (let i = 0; i < t.quasis.length; i++) {
         parts.push(escapeSwiftStringSegment(t.quasis[i] ?? ''))
-        if (i < t.exprs.length) parts.push(`\\(${emitSwiftExpr(t.exprs[i]!, indent)})`)
+        if (i < t.exprs.length) parts.push(`\\(${swiftTemplatePart(t.exprs[i]!, indent)})`)
       }
     } else {
       // A CALL to a JSX-returning helper reaches `<Text>{row("a")}</Text>`
@@ -14578,7 +14594,7 @@ function emitSwiftCandlestickHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, i
     fields.push(`${f}: pyreonChartDouble(${acc})`)
   }
   const lets = [`let pyreonCandles: [Ohlc] = ${data}.enumerated().map { (pyreonI, pyreonD) in Ohlc(${fields.join(', ')}) }`]
-  const catsM = swiftChartMap(e, tag, data, 'x', (b) => b, indent)
+  const catsM = swiftChartMap(e, tag, data, 'x', (b) => `pyreonChartString(${b})`, indent)
   if (catsM === 'unsupported') return 'EmptyView()'
   lets.push(`let pyreonCats: [String] = ${catsM ?? '[]'}`)
   const theme = swiftChartTheme(e, tag)
@@ -14614,7 +14630,7 @@ function emitSwiftBoxplotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
     return 'EmptyView()'
   }
   const lets = [`let pyreonBoxes: [FiveNumber] = ${rowsM}`]
-  const catsM = swiftChartMap(e, tag, data, 'x', (b) => b, indent)
+  const catsM = swiftChartMap(e, tag, data, 'x', (b) => `pyreonChartString(${b})`, indent)
   if (catsM === 'unsupported') return 'EmptyView()'
   lets.push(`let pyreonCats: [String] = ${catsM ?? '[]'}`)
   lets.push(`let pyreonTheme: ChartTheme = ${swiftChartTheme(e, tag)}`)
@@ -15123,8 +15139,9 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   if (xAcc !== undefined) {
     const body = swiftAccessorExpr(xAcc, tag, 'x', indent)
     if (body === 'unsupported') return 'EmptyView()'
-    lets.push(`let pyreonCats: [String] = ${swiftPlotRowMap(rows, body, 'String', windowed, decimated)}`)
-    if (fullA11y) lets.push(`let pyreonA11yCats: [String] = ${swiftPlotRowMap(data, body, 'String', false)}`)
+    const cat = `pyreonChartString(${body})`
+    lets.push(`let pyreonCats: [String] = ${swiftPlotRowMap(rows, cat, 'String', windowed, decimated)}`)
+    if (fullA11y) lets.push(`let pyreonA11yCats: [String] = ${swiftPlotRowMap(data, cat, 'String', false)}`)
   } else {
     lets.push('let pyreonCats: [String] = []')
     if (fullA11y) lets.push('let pyreonA11yCats: [String] = []')

@@ -182,6 +182,13 @@ public func pyreonChartMeasure(_ text: String, _ size: Double) -> Double {
 public func pyreonChartDouble(_ v: Double) -> Double { v }
 public func pyreonChartDouble(_ v: Int) -> Double { Double(v) }
 
+/// A category label from an accessor-mapped field. A String passes through; a
+/// number prints as JavaScript's `String(number)` does — the web stringifies a
+/// numeric category implicitly, and `[String]` otherwise rejects it outright.
+public func pyreonChartString(_ v: String) -> String { v }
+public func pyreonChartString(_ v: Double) -> String { pyreonNumberString(v) }
+public func pyreonChartString(_ v: Int) -> String { String(v) }
+
 /// Locale-aware chart formatters matching the web host's `Intl` defaults:
 /// grouped numbers with at most two fraction digits, and a short month/day.
 /// They are factories so each chart owns its formatter; Foundation formatter

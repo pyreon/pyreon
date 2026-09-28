@@ -2852,6 +2852,7 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
         // mark constructors above.
         'compact',
         'currency',
+        'date',
         'fixed',
         'percent',
         'plain',
@@ -5505,9 +5506,16 @@ function refineReduceSeedFloats(
   }
 }
 
-/** A numeric literal with a fractional value (`12.5`, not `12`). */
+/**
+ * A numeric literal that can only be a Double: a fractional value (`12.5`,
+ * not `12`), or a whole one outside the 32-bit range. The second half matters
+ * because Kotlin's `Int` is 32-bit — an epoch-millisecond timestamp
+ * (`1709251200000`), which is how time-series data is written, typed its field
+ * `Int` and kotlinc rejected the literal. JavaScript has one number type, so
+ * Double is the faithful reading.
+ */
 function isFractionalLiteral(e: ExprIR): boolean {
-  return e.kind === 'literal' && typeof e.value === 'number' && !Number.isInteger(e.value)
+  return e.kind === 'literal' && typeof e.value === 'number' && (!Number.isInteger(e.value) || Math.abs(e.value) > 2147483647)
 }
 
 /**

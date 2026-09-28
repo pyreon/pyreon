@@ -328,7 +328,22 @@ export function _resetObservationCache(): void {
  * if the same function produces both the key and the file.
  */
 export function _swiftTypecheckPreamble(source: string): string {
-  return source.includes('import SwiftUI') ? '' : 'import SwiftUI\nimport Foundation\n\n'
+  const imports = source.includes('import SwiftUI') ? '' : 'import SwiftUI\nimport Foundation\n\n'
+  return imports + swiftNumberRuntime(source)
+}
+
+/**
+ * The real `PyreonNumber.swift`, when the source calls `pyreonNumberString`
+ * without declaring it. Every Double-typed template interpoland lowers
+ * through it — including the generated chart engine's — so a typecheck
+ * against real SwiftUI needs it linked like the runtime would. The real file,
+ * not a stub, so its behaviour is the one type-checked. Part of the
+ * preamble, and therefore of the verdict-cache key.
+ */
+function swiftNumberRuntime(source: string): string {
+  if (!source.includes('pyreonNumberString(') || source.includes('func pyreonNumberString')) return ''
+  const file = readIfPresent(join(NATIVE_PACKAGES_DIR, 'runtime-swift/Sources/PyreonRuntime/PyreonNumber.swift'))
+  return file === undefined ? '' : `${file.replace(/^import Foundation\n/m, '')}\n`
 }
 
 export function validateSwiftTypecheck(source: string): ValidationResult {

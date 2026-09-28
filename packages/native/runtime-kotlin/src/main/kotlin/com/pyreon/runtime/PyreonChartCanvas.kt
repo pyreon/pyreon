@@ -222,6 +222,20 @@ fun pyreonChartDouble(v: Double): Double = v
 
 fun pyreonChartDouble(v: Int): Double = v.toDouble()
 
+/**
+ * A category label from an accessor-mapped field. A String passes through; a
+ * number prints as JavaScript's `String(number)` does. The Swift twin exists
+ * because `[String]` rejects a number outright; here it keeps the label from
+ * reading `1.7E12`.
+ */
+fun pyreonChartString(v: String): String = v
+
+fun pyreonChartString(v: Double): String = pyreonNumberString(v)
+
+fun pyreonChartString(v: Int): String = v.toString()
+
+fun pyreonChartString(v: Long): String = v.toString()
+
 /** Locale-aware chart formatters matching the web host's `Intl` defaults. */
 fun pyreonLocaleNumberFormatter(tag: String): (Double) -> String {
     val locale = Locale.forLanguageTag(tag).takeIf { it.language.isNotEmpty() } ?: Locale.ENGLISH

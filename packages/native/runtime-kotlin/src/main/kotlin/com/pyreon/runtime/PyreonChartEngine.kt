@@ -390,6 +390,10 @@ private val DARK_PALETTE: List<String> = listOf("#7b9bff", "#ffc44d", "#4adbc0",
 
 private val NO_GRADIENT: SeriesGradient = SeriesGradient(stops = listOf())
 
+private val MONTH_NAMES: List<String> = listOf("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+
+private val DAY_MS = 86400000.0
+
 private val MINUTE = 60000.0
 
 private val HOUR = MINUTE * 60.0
@@ -782,9 +786,9 @@ fun gradientSolid(g: PyreonChartGradient, fallback: String): String {
 fun plain(v: Double): String {
     val r = Math.round(v)
     if (Math.abs(v - r) < 0.000001) {
-      return "${r}"
+      return "${pyreonNumberString(r)}"
     }
-    return "${(Math.round(v * 1000.0)).toDouble() / (1000.0).toDouble()}"
+    return "${pyreonNumberString((Math.round(v * 1000.0)).toDouble() / (1000.0).toDouble())}"
   }
 
 fun groupThousands(v: Double): String = groupDigits(plain(v))
@@ -823,7 +827,7 @@ fun compact(v: Double): String {
 
 fun trim(v: Double): String {
     val r = (Math.round(v * 10.0)).toDouble() / (10.0).toDouble()
-    return if (((r) % 1.0 == 0.0)) "${Math.round(r)}" else "${r}"
+    return if (((r) % 1.0 == 0.0)) "${pyreonNumberString(Math.round(r))}" else "${pyreonNumberString(r)}"
   }
 
 fun fixed(places: Int): (Double) -> String {
@@ -832,9 +836,9 @@ fun fixed(places: Int): (Double) -> String {
     return fun(v: Double): String {
       val r = (Math.round(v * mul)).toDouble() / (mul).toDouble()
       if (p == 0) {
-        return "${Math.round(r)}"
+        return "${pyreonNumberString(Math.round(r))}"
       }
-      val s = "${r}"
+      val s = "${pyreonNumberString(r)}"
       val dot = s.indexOf(".")
       if (dot < 0) {
         return "${s}.${"0".repeat(p)}"
@@ -853,6 +857,111 @@ fun percent(places: Int = 0): (Double) -> String {
     val f = fixed(places)
     return { v -> "${f(v * 100.0)}%" }
   }
+
+fun padded(v: Double, width: Int): String {
+    val s = "${pyreonNumberString(Math.round(v))}"
+    return if (s.length >= width) s else "${"0".repeat(width - s.length)}${s}"
+  }
+
+fun formatDate(ms: Double, pattern: String): String {
+    if (!(ms - ms == 0.0)) {
+      return ""
+    }
+    val days = Math.floor((ms).toDouble() / (DAY_MS).toDouble())
+    val inDay = ms - days * DAY_MS
+    val z = days + 719468.0
+    val era = Math.floor((z).toDouble() / (146097.0).toDouble())
+    val doe = z - era * 146097.0
+    val yoe = Math.floor(((doe - Math.floor((doe).toDouble() / (1460.0).toDouble()) + Math.floor((doe).toDouble() / (36524.0).toDouble()) - Math.floor((doe).toDouble() / (146096.0).toDouble()))).toDouble() / (365.0).toDouble())
+    val doy = doe - (365.0 * yoe + Math.floor((yoe).toDouble() / (4.0).toDouble()) - Math.floor((yoe).toDouble() / (100.0).toDouble()))
+    val mp = Math.floor(((5.0 * doy + 2.0)).toDouble() / (153.0).toDouble())
+    val day = doy - Math.floor(((153.0 * mp + 2.0)).toDouble() / (5.0).toDouble()) + 1.0
+    val month = if (mp < 10.0) mp + 3.0 else mp - 9.0
+    val year = (if (month <= 2.0) 1.0 else 0.0) + yoe + era * 400.0
+    val hour = Math.floor((inDay).toDouble() / (3600000.0).toDouble())
+    val minute = Math.floor(((inDay - hour * 3600000.0)).toDouble() / (60000.0).toDouble())
+    val second = Math.floor(((inDay - hour * 3600000.0 - minute * 60000.0)).toDouble() / (1000.0).toDouble())
+    val name = MONTH_NAMES[(Math.round(month) - 1).toInt()]
+    var out = ""
+    var i = 0
+    while (i < pattern.length) {
+      val c = pattern.substring(i, i + 1)
+      if (c == "[") {
+        var end = i + 1
+        while (end < pattern.length && pattern.substring(end, end + 1) != "]") {
+          end = end + 1
+        }
+        out = out + pattern.substring(i + 1, end)
+        i = end + 1
+      } else {
+        if (pattern.substring(i, i + 4) == "YYYY") {
+          out = out + padded(year, 4)
+          i = i + 4
+        } else {
+          if (pattern.substring(i, i + 2) == "YY") {
+            out = out + padded(year - Math.floor((year).toDouble() / (100.0).toDouble()) * 100.0, 2)
+            i = i + 2
+          } else {
+            if (pattern.substring(i, i + 4) == "MMMM") {
+              out = out + name
+              i = i + 4
+            } else {
+              if (pattern.substring(i, i + 3) == "MMM") {
+                out = out + name.substring(0, 3)
+                i = i + 3
+              } else {
+                if (pattern.substring(i, i + 2) == "MM") {
+                  out = out + padded(month, 2)
+                  i = i + 2
+                } else {
+                  if (c == "M") {
+                    out = out + padded(month, 1)
+                    i = i + 1
+                  } else {
+                    if (pattern.substring(i, i + 2) == "DD") {
+                      out = out + padded(day, 2)
+                      i = i + 2
+                    } else {
+                      if (c == "D") {
+                        out = out + padded(day, 1)
+                        i = i + 1
+                      } else {
+                        if (pattern.substring(i, i + 2) == "HH") {
+                          out = out + padded(hour, 2)
+                          i = i + 2
+                        } else {
+                          if (c == "H") {
+                            out = out + padded(hour, 1)
+                            i = i + 1
+                          } else {
+                            if (pattern.substring(i, i + 2) == "mm") {
+                              out = out + padded(minute, 2)
+                              i = i + 2
+                            } else {
+                              if (pattern.substring(i, i + 2) == "ss") {
+                                out = out + padded(second, 2)
+                                i = i + 2
+                              } else {
+                                out = out + c
+                                i = i + 1
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    return out
+  }
+
+fun date(pattern: String): (Double) -> String = { v -> formatDate(v, pattern) }
 
 fun scaleLinear(d: Domain, r0: Double, r1: Double, v: Double): Double {
     val span = d.max - d.min
@@ -938,9 +1047,9 @@ fun makeTicks(d: Domain, r0: Double, r1: Double, count: Double, format: ((Double
 fun formatTick(v: Double): String {
     val r = Math.round(v)
     if (Math.abs(v - r) < 0.000001) {
-      return "${r}"
+      return "${pyreonNumberString(r)}"
     }
-    return "${(Math.round(v * 1000.0)).toDouble() / (1000.0).toDouble()}"
+    return "${pyreonNumberString((Math.round(v * 1000.0)).toDouble() / (1000.0).toDouble())}"
   }
 
 fun extent(values: List<Double>): Domain {
@@ -1030,7 +1139,7 @@ fun timeTicks(d: Domain, r0: Double, r1: Double, target: Double, format: ((Doubl
   }
 
 fun formatTime(ms: Double, step: Double): String {
-    val p2 = { n: Double -> (if (n < 10) "0${kotlin.math.truncate((n).toDouble())}" else "${kotlin.math.truncate((n).toDouble())}") }
+    val p2 = { n: Double -> (if (n < 10) "0${pyreonNumberString(kotlin.math.truncate((n).toDouble()))}" else "${pyreonNumberString(kotlin.math.truncate((n).toDouble()))}") }
     val dayMs = 86400000.0
     val days = Math.floor((ms).toDouble() / (dayMs).toDouble())
     val msOfDay = ms - days * dayMs
@@ -1048,10 +1157,10 @@ fun formatTime(ms: Double, step: Double): String {
     val minutes = Math.floor(((msOfDay - hours * 3600000.0)).toDouble() / (60000.0).toDouble())
     val seconds = Math.floor(((msOfDay - hours * 3600000.0 - minutes * 60000.0)).toDouble() / (1000.0).toDouble())
     if (step >= DAY * 300.0) {
-      return "${kotlin.math.truncate((year).toDouble())}"
+      return "${pyreonNumberString(kotlin.math.truncate((year).toDouble()))}"
     }
     if (step >= DAY * 25.0) {
-      return "${kotlin.math.truncate((year).toDouble())}-${p2(month)}"
+      return "${pyreonNumberString(kotlin.math.truncate((year).toDouble()))}-${p2(month)}"
     }
     if (step >= DAY) {
       return "${p2(month)}-${p2(day)}"
@@ -1283,7 +1392,7 @@ fun renderPie(slices: List<Slice>, box: PyreonChartRect, opts: PieOptions): List
           continue
         }
         val at = pointOnCircle(center, ((radius + inner)).toDouble() / (2.0).toDouble(), a.mid)
-        out.add(PyreonDrawCmd(kind = "text", fill = opts.labelColor, text = "${Math.round(a.fraction * 100.0)}%", at = at, size = opts.fontSize, align = "middle", baseline = "middle"))
+        out.add(PyreonDrawCmd(kind = "text", fill = opts.labelColor, text = "${pyreonNumberString(Math.round(a.fraction * 100.0))}%", at = at, size = opts.fontSize, align = "middle", baseline = "middle"))
       }
     }
     return out
@@ -1877,7 +1986,7 @@ fun renderRadar(axes: List<RadarAxis>, series: List<RadarSeries>, box: PyreonCha
 fun withAlpha(color: String, alpha: Double): String {
     val a = Math.max(0.0, Math.min(1.0, alpha))
     if (color.startsWith("rgb(") && color.endsWith(")")) {
-      return "rgba(${color.drop(4).take(maxOf(0, (color.length - 1) - (4)))}, ${a})"
+      return "rgba(${color.drop(4).take(maxOf(0, (color.length - 1) - (4)))}, ${pyreonNumberString(a)})"
     }
     if (!color.startsWith("#")) {
       return color
@@ -1898,10 +2007,10 @@ fun withAlpha(color: String, alpha: Double): String {
     val pair = { at: Double -> code(hex[(at).toInt()].code.toDouble()) * 16.0 + code(hex[(at + 1).toInt()].code.toDouble()) }
     val single = { at: Double -> code(hex[(at).toInt()].code.toDouble()) * 17.0 }
     if (hex.length == 3) {
-      return "rgba(${single(0.0)}, ${single(1.0)}, ${single(2.0)}, ${a})"
+      return "rgba(${single(0.0)}, ${single(1.0)}, ${single(2.0)}, ${pyreonNumberString(a)})"
     }
     if (hex.length == 6) {
-      return "rgba(${pair(0.0)}, ${pair(2.0)}, ${pair(4.0)}, ${a})"
+      return "rgba(${pair(0.0)}, ${pair(2.0)}, ${pair(4.0)}, ${pyreonNumberString(a)})"
     }
     return color
   }
@@ -4271,7 +4380,7 @@ fun rampColor(stops: List<String>, t: Double): String {
     if (n == 1 || t <= 0.0) {
       val s0 = stops[0]
       val o0 = heatHashOffset(s0)
-      return "rgb(${Math.round(heatChannel(s0, o0))}, ${Math.round(heatChannel(s0, o0 + 2))}, ${Math.round(heatChannel(s0, o0 + 4))})"
+      return "rgb(${pyreonNumberString(Math.round(heatChannel(s0, o0)))}, ${pyreonNumberString(Math.round(heatChannel(s0, o0 + 2)))}, ${pyreonNumberString(Math.round(heatChannel(s0, o0 + 4)))})"
     }
     val clamped = if (t >= 1.0) 1.0 else t
     var spanF = 0.0
@@ -4298,7 +4407,7 @@ fun rampColor(stops: List<String>, t: Double): String {
     val r = heatChannel(a, oa) + (heatChannel(b, ob) - heatChannel(a, oa)) * frac
     val g = heatChannel(a, oa + 2) + (heatChannel(b, ob + 2) - heatChannel(a, oa + 2)) * frac
     val bl = heatChannel(a, oa + 4) + (heatChannel(b, ob + 4) - heatChannel(a, oa + 4)) * frac
-    return "rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(bl)})"
+    return "rgb(${pyreonNumberString(Math.round(r))}, ${pyreonNumberString(Math.round(g))}, ${pyreonNumberString(Math.round(bl))})"
   }
 
 fun visualOutside(v: Double, inRange: Domain?, outBands: List<Double>?): Boolean {
@@ -4987,7 +5096,7 @@ fun tintHex(hex: String, t: Double): String {
     val r = Math.round(hexPair(hex, 1) + (255.0 - hexPair(hex, 1)) * t)
     val g = Math.round(hexPair(hex, 3) + (255.0 - hexPair(hex, 3)) * t)
     val b = Math.round(hexPair(hex, 5) + (255.0 - hexPair(hex, 5)) * t)
-    return "rgb(${r}, ${g}, ${b})"
+    return "rgb(${pyreonNumberString(r)}, ${pyreonNumberString(g)}, ${pyreonNumberString(b)})"
   }
 
 fun approxTextWidth(text: String, fontSize: Double): Double {
@@ -6347,7 +6456,7 @@ fun sankeyRgba(hex: String, alpha: Double): String {
     val r = hexDigit(hex[(1).toInt()].code.toDouble()) * 16.0 + hexDigit(hex[(2).toInt()].code.toDouble())
     val g = hexDigit(hex[(3).toInt()].code.toDouble()) * 16.0 + hexDigit(hex[(4).toInt()].code.toDouble())
     val b = hexDigit(hex[(5).toInt()].code.toDouble()) * 16.0 + hexDigit(hex[(6).toInt()].code.toDouble())
-    return "rgba(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}, ${alpha})"
+    return "rgba(${pyreonNumberString(Math.round(r))}, ${pyreonNumberString(Math.round(g))}, ${pyreonNumberString(Math.round(b))}, ${alpha})"
   }
 
 fun sankeyIndexOf(nodes: List<SankeyNode>, name: String): Int {
@@ -7090,7 +7199,7 @@ fun formatIsoDays(days: Double): String {
     val mp = if (c.month < 10.0) "0" else ""
     val dp = if (c.day < 10.0) "0" else ""
     val yp = if (c.year < 1000.0) (if (c.year < 100.0) (if (c.year < 10.0) "000" else "00") else "0") else ""
-    return "${yp}${Math.round(c.year)}-${mp}${Math.round(c.month)}-${dp}${Math.round(c.day)}"
+    return "${yp}${pyreonNumberString(Math.round(c.year))}-${mp}${pyreonNumberString(Math.round(c.month))}-${dp}${pyreonNumberString(Math.round(c.day))}"
   }
 
 fun layoutCalendar(start: String, end: String, box: PyreonChartRect, options: CalendarOptions? = null): CalendarLayout {
@@ -7830,8 +7939,8 @@ fun ganttTicks(lo: Double, hi: Double, unit: String): List<GanttTick> {
       if (t >= lo) {
         val c = civilFromDays(t)
         val q = Math.floor(((c.month - 1.0)).toDouble() / (3.0).toDouble()) + 1.0
-        val year = "${Math.round((c.year).toDouble())}"
-        val label = if (unit == "day" || unit == "week") "${Math.round((c.day).toDouble())} ${ganttMonthName(c.month)}" else if (unit == "month") (if (sameYear) ganttMonthName(c.month) else "${ganttMonthName(c.month)} ${year}") else if (unit == "quarter") "Q${Math.round((q).toDouble())} ${year}" else year
+        val year = "${pyreonNumberString(Math.round((c.year).toDouble()))}"
+        val label = if (unit == "day" || unit == "week") "${pyreonNumberString(Math.round((c.day).toDouble()))} ${ganttMonthName(c.month)}" else if (unit == "month") (if (sameYear) ganttMonthName(c.month) else "${ganttMonthName(c.month)} ${year}") else if (unit == "quarter") "Q${pyreonNumberString(Math.round((q).toDouble()))} ${year}" else year
         out.add(GanttTick(at = t, x = 0.0, label = label))
       }
       t = ganttNextTick(t, unit)

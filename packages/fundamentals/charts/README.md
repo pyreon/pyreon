@@ -42,7 +42,9 @@ nothing, tree-shakes and lowers to iOS and Android unchanged — and every
 `<RowBar y="revenue">` is checked, with `y={(d) => d.revenue}` typed without an
 annotation. Marks are children
 and draw in order; `<Rule>` / `<Axis>` / `<Tooltip>` / `<Legend>` / `<Zoom>` declare
-the rest as data. `color="region"` pivots long-format rows into one series per
+the rest as data — `<Legend direct />` labels each line at its end instead of a
+legend box, `<Zoom window={{ start: 0.5, end: 1 }} lock />` opens zoomed with a
+fixed span, `<Cell visualMap />` adds a continuous colour legend. `color="region"` pivots long-format rows into one series per
 value. The `<PlotChart marks={[bars(…)]}>` array form is the same spec and stays
 supported; on native the compiler desugars one to the other.
 
@@ -203,7 +205,7 @@ One `format` covers the y-axis ticks, the tooltip values and the spoken
 description. One rather than one per surface, because an axis reading `$3.2K`
 beside a tooltip reading `3204.55` for the same point reads as a bug. Ships
 `plain` (the default) and `compact` as formatters, and `currency(symbol)`,
-`percent()` and `fixed(places)` as factories that return one; any
+`percent()`, `fixed(places)` and `date(pattern)` as factories that return one; any
 `(v: number) => string` works.
 
 The formatters are hand-rolled rather than `Intl.NumberFormat`, because this
@@ -225,6 +227,12 @@ categorical axis and **wrong for an irregular series**: readings on Jan 1, Jan 2
 and Mar 1 drawn at even thirds claim the first gap equals the second, which is
 the chart stating something false about the data. `xValue` places each point by
 its own value and derives the domain from them.
+
+`date(pattern)` formats those labels, in UTC so a tick never moves with the
+reader's timezone: `<Axis x time format={date('MMM YYYY')} />`. Tokens are
+`YYYY` `YY` `MMMM` `MMM` `MM` `M` `DD` `D` `HH` `H` `mm` `ss`, and `[text]` is
+printed as written. It is plain engine code, so iOS and Android print the same
+labels; for the reader's own locale and timezone, pass `locale` instead.
 
 `xTime` picks the tick labels from calendar units — a day of data ticks hourly,
 a year of it monthly — because the nice-number ladder that labels a numeric axis

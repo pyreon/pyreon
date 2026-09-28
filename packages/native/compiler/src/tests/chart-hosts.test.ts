@@ -326,7 +326,7 @@ describe('chart hosts — cartesian-frame hosts (Candlestick / Heatmap) and Rada
     const r = transform(FRAMES, { target: 'swift' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('let pyreonCandles: [Ohlc] = BARS.enumerated().map { (pyreonI, pyreonD) in Ohlc(open: pyreonChartDouble(pyreonD.o), high: pyreonChartDouble(pyreonD.h), low: pyreonChartDouble(pyreonD.l), close: pyreonChartDouble(pyreonD.c)) }')
-    expect(r.code).toContain('let pyreonCats: [String] = BARS.enumerated().map { (pyreonI, pyreonD) in pyreonD.day }')
+    expect(r.code).toContain('let pyreonCats: [String] = BARS.enumerated().map { (pyreonI, pyreonD) in pyreonChartString(pyreonD.day) }')
     expect(r.code).toContain(
       'renderCandlestickChart(pyreonCandles, Double(pyreonGeo.size.width), 180.0, pyreonCats, pyreonTheme, nil, pyreonChartMeasure)',
     )
@@ -439,7 +439,7 @@ describe('chart hosts — <PlotChart marks> (the cartesian family)', () => {
     expect(r.code).toContain(
       'let pyreonSeries: [Series] = [Series(kind: "bars", values: pyreonValues0, color: "#0f766e", width: 2.0, radius: 3.0, label: "Revenue", showValues: false), Series(kind: "line", values: pyreonValues1, color: "#c88100", width: 3.0, radius: 3.0, label: "Cost", showValues: false)]',
     )
-    expect(r.code).toContain('let pyreonCats: [String] = MONTHS.enumerated().map { (pyreonI, pyreonD) in pyreonD.name }')
+    expect(r.code).toContain('let pyreonCats: [String] = MONTHS.enumerated().map { (pyreonI, pyreonD) in pyreonChartString(pyreonD.name) }')
     expect(r.code).toContain(
       `let pyreonSpec: ChartSpec = ChartSpec(width: Double(pyreonGeo.size.width), height: 180.0, series: pyreonSeries, categories: pyreonCats, theme: ${swiftThemeLiteral()}, showXAxis: true, showYAxis: true, showGrid: false, annotations: GOAL)`,
     )
@@ -737,7 +737,7 @@ describe('chart hosts — <PlotChart dataZoom> as pinch + pan over a fraction wi
     expect(r.code).toContain('let pyreonRange: SliceRange = sliceRange(pyreonZoom, DAYS.count)')
     expect(r.code).toContain('let pyreonSourceRows = Array(DAYS[pyreonRange.from..<pyreonRange.to])')
     expect(r.code).toContain('let pyreonValues1: [Double] = pyreonSourceRows.enumerated().map { (pyreonJ, pyreonD) -> Double in let pyreonI = pyreonJ + pyreonRange.from; return pyreonChartDouble(pyreonD.avg + pyreonI) }')
-    expect(r.code).toContain('let pyreonCats: [String] = pyreonSourceRows.enumerated().map { (_, pyreonD) -> String in pyreonD.label }')
+    expect(r.code).toContain('let pyreonCats: [String] = pyreonSourceRows.enumerated().map { (_, pyreonD) -> String in pyreonChartString(pyreonD.label) }')
     expect(r.code).toContain('.simultaneousGesture(MagnificationGesture().onChanged { pyreonScale in pyreonZoom = zoomWindow(pyreonZoomAnchor, 1.0 / Double(pyreonScale), 0.5) }.onEnded { _ in pyreonZoomAnchor = pyreonZoom })')
     expect(r.code).toContain('.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonDragG in pyreonZoom = panWindow(pyreonZoomAnchor, -Double(pyreonDragG.translation.width) / Double(pyreonGeo.size.width)) }.onEnded { pyreonDragG in pyreonZoomAnchor = pyreonZoom })')
     expect(r.code).toContain('let i = { () -> Int in let pyreonHit = plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), Double(pyreonTap.location.y)); return pyreonHit < 0 ? -1 : pyreonHit + pyreonRange.from }()')

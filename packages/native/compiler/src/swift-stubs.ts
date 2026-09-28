@@ -1811,6 +1811,10 @@ public enum PyreonURL {
   public static func encodePathParam(_ value: Int) -> String { "" }
   public static func encodePathParam(_ value: Double) -> String { "" }
 }
+// pyreonNumberString — JS \`String(number)\`, which every Double-typed
+// template interpoland lowers through. Mirrors the real overload pair.
+public func pyreonNumberString(_ v: Double) -> String { "" }
+public func pyreonNumberString(_ v: Int) -> String { "" }
 public final class PyreonDatabase {
   public init() {}
   public func insert(_ collection: String, _ record: PyreonRecord) {}

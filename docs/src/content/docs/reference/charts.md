@@ -26,7 +26,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - Accessible by default: a hidden data table, a spoken description, keyboard focus
 - Canvas in the browser, SVG strings on a server (`@pyreon/charts/svg`), and native canvases on iOS and Android from the same source
 - Tree-shaking by construction: each mark and family is an imported binding, locked by CI import budgets
-- Theme tokens (`chartThemes`, `palettes`, `<ChartThemeProvider>`), formatters (`currency`, `percent`, `compact`), linked charts (`createChartLink`)
+- Theme tokens (`chartThemes`, `palettes`, `<ChartThemeProvider>`), formatters (`currency`, `percent`, `compact`, `date`), linked charts (`createChartLink`)
 
 ## Complete example
 
@@ -115,7 +115,7 @@ const rows: Row[] = [{ month: 'Jan', revenue: 3200, target: 3000 }, { month: 'Fe
 
 - Passing `marks={[…]}` to `<Chart>` — the grammar takes marks as CHILDREN; the array form belongs to `<PlotChart>` (same spec, other spelling)
 - Passing `title` and expecting it drawn — `title` names the chart for screen readers and the accessible table (like the HTML `title` attribute, it is not visible); add `showTitle` to draw it above the chart
-- Expecting `<Bar y="revenu">` to fail the build — a mark infers its row type from its own props, and JSX cannot pass `<Chart<Row>>`'s type argument down to it, so a field-name typo on a bare mark is not checked; write `<Bar<Row> y="revenue">` (or an accessor, `y={(d: Row) => d.revenue}`) where you want the check
+- Expecting `<Bar y="revenu">` to fail the build — a mark infers its row type from its own props, and JSX cannot pass `<Chart<Row>>`'s type argument down to it, so a field-name typo on a bare mark is not checked; declare typed marks once per row type — `const RowBar = Bar<Row>` (a TypeScript instantiation expression: it compiles to `Bar` itself, tree-shakes, and lowers to native unchanged) — and every `<RowBar y>` is checked, its accessors typed without annotation
 - Writing `y={d.revenue}` — a channel is a field NAME (`y="revenue"`) or an accessor (`y={(d) => d.revenue}`); a value is one number for every row
 - Expecting `color="region"` to colour bars by a per-row value — it is the long-format SPLIT (one series per distinct region); for a per-mark colour use `color="#hex"` on the mark
 - Rendering `<Bar>` outside a `<Chart>` — marks are branded descriptors the chart reads; alone they render nothing (and warn on native)
@@ -199,7 +199,7 @@ const sales = signal<Row[]>([{ month: 'Jan', revenue: 120, target: 100 }])
 - Animating in the host with CSS or rAF hacks — the engine takes `progress` (0..1) and returns that frame pure; `<PlotChart>` already tweens it on first paint and respects `prefers-reduced-motion`
 - Adding `line` or `points` marks to a `horizontal` chart and wondering where they went — the horizontal frame is bar-family only (a horizontal line chart is a transposed coordinate system, a different chart), so non-bar marks are skipped
 - Spacing an irregular time series by index — without `xValue` the points sit at even thirds whatever their timestamps, so the chart claims gaps that are not there; pass `xValue={(d) => d.at}` and `xTime` for calendar tick labels
-- Leaving `format` unset on a money or percentage chart — the default prints the raw number, so a revenue axis reads `3200000`; `currency`, `percent`, `compact` and `fixed` ship in the same subpath and one `format` covers the axis, the tooltip and the spoken description at once
+- Leaving `format` unset on a money or percentage chart — the default prints the raw number, so a revenue axis reads `3200000`; `currency`, `percent`, `compact`, `fixed` and `date` ship in the same subpath and one `format` covers the axis, the tooltip and the spoken description at once
 - Reading a rescaled axis as a data change after a legend toggle — hiding a dominant series RESCALES the domain to the visible ones (that is the point: it is how you read the small series); the accessible table still carries every series
 - Expecting `crosshair` on a `horizontal` chart — the pointer sweeps rows there and a vertical rule would mislead, so it is a documented no-op; the tooltip still works
 - Painting a 100k-point series without `maxPoints` — every point becomes a command on every repaint; `maxPoints={1000}` thins the visible slice with LTTB (marks stay aligned, hits report the GLOBAL row index) and the picture is the same to the eye. It draws exactly `maxPoints` DISTINCT rows as of 0.52; before that the last bucket collided with the pinned final row and one slot was wasted on a duplicate.

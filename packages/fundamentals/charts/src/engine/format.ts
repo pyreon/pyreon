@@ -90,3 +90,105 @@ export function percent(places: number = 0): Formatter {
   const f = fixed(places)
   return (v: Double): string => `${f(v * 100.0)}%`
 }
+
+const MONTH_NAMES: string[] = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+const DAY_MS = 86400000.0
+
+/** A non-negative whole number, left-padded with zeros to `width` digits. */
+function padded(v: Double, width: number): string {
+  const s = `${Math.round(v)}`
+  return s.length >= width ? s : `${'0'.repeat(width - s.length)}${s}`
+}
+
+/**
+ * Epoch milliseconds printed through a pattern, in UTC, the same on the web,
+ * iOS and Android: `YYYY` `YY` year, `MMMM` `MMM` `MM` `M` month, `DD` `D`
+ * day, `HH` `H` hour, `mm` minute, `ss` second. Text in `[brackets]` is
+ * printed as written; anything else is copied through. A non-finite value
+ * prints nothing.
+ *
+ * UTC by design: a chart's tick labels must not move with the viewer's
+ * timezone, and the pattern is the same on every target. For the reader's
+ * own locale and timezone, pass `locale` to the chart instead.
+ */
+export function formatDate(ms: Double, pattern: string): string {
+  // NaN and ±Infinity are the values for which `x - x` is not zero; there is
+  // no `Number.isFinite` / `Infinity` in the native subset.
+  if (!(ms - ms === 0.0)) return ''
+  const days = Math.floor(ms / DAY_MS)
+  const inDay = ms - days * DAY_MS
+  // Howard Hinnant's civil_from_days (as `civilFromDays` in calendar.ts).
+  const z = days + 719468.0
+  const era = Math.floor(z / 146097.0)
+  const doe = z - era * 146097.0
+  const yoe = Math.floor((doe - Math.floor(doe / 1460.0) + Math.floor(doe / 36524.0) - Math.floor(doe / 146096.0)) / 365.0)
+  const doy = doe - (365.0 * yoe + Math.floor(yoe / 4.0) - Math.floor(yoe / 100.0))
+  const mp = Math.floor((5.0 * doy + 2.0) / 153.0)
+  const day = doy - Math.floor((153.0 * mp + 2.0) / 5.0) + 1.0
+  const month = mp < 10.0 ? mp + 3.0 : mp - 9.0
+  const year = (month <= 2.0 ? 1.0 : 0.0) + yoe + era * 400.0
+  const hour = Math.floor(inDay / 3600000.0)
+  const minute = Math.floor((inDay - hour * 3600000.0) / 60000.0)
+  const second = Math.floor((inDay - hour * 3600000.0 - minute * 60000.0) / 1000.0)
+  const name = MONTH_NAMES[Math.round(month) - 1]!
+  let out = ''
+  let i = 0
+  while (i < pattern.length) {
+    const c = pattern.substring(i, i + 1)
+    if (c === '[') {
+      let end = i + 1
+      while (end < pattern.length && pattern.substring(end, end + 1) !== ']') end = end + 1
+      out = out + pattern.substring(i + 1, end)
+      i = end + 1
+    } else if (pattern.substring(i, i + 4) === 'YYYY') {
+      out = out + padded(year, 4)
+      i = i + 4
+    } else if (pattern.substring(i, i + 2) === 'YY') {
+      out = out + padded(year - Math.floor(year / 100.0) * 100.0, 2)
+      i = i + 2
+    } else if (pattern.substring(i, i + 4) === 'MMMM') {
+      out = out + name
+      i = i + 4
+    } else if (pattern.substring(i, i + 3) === 'MMM') {
+      out = out + name.substring(0, 3)
+      i = i + 3
+    } else if (pattern.substring(i, i + 2) === 'MM') {
+      out = out + padded(month, 2)
+      i = i + 2
+    } else if (c === 'M') {
+      out = out + padded(month, 1)
+      i = i + 1
+    } else if (pattern.substring(i, i + 2) === 'DD') {
+      out = out + padded(day, 2)
+      i = i + 2
+    } else if (c === 'D') {
+      out = out + padded(day, 1)
+      i = i + 1
+    } else if (pattern.substring(i, i + 2) === 'HH') {
+      out = out + padded(hour, 2)
+      i = i + 2
+    } else if (c === 'H') {
+      out = out + padded(hour, 1)
+      i = i + 1
+    } else if (pattern.substring(i, i + 2) === 'mm') {
+      out = out + padded(minute, 2)
+      i = i + 2
+    } else if (pattern.substring(i, i + 2) === 'ss') {
+      out = out + padded(second, 2)
+      i = i + 2
+    } else {
+      out = out + c
+      i = i + 1
+    }
+  }
+  return out
+}
+
+/**
+ * A date formatter over epoch milliseconds: `date('MMM YYYY')(ms)` is
+ * "Mar 2024". Pass it as the time axis's `format` and the axis, tooltip and
+ * accessible table all print it — see `formatDate` for the tokens.
+ */
+export function date(pattern: string): Formatter {
+  return (v: Double): string => formatDate(v, pattern)
+}
