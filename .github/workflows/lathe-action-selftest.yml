@@ -17,7 +17,8 @@ name: Lathe Action Self-Test
 # What it proves on every run: the diff's exit code agrees with the report's
 # breaking count; the comment GitHub stores is byte-for-byte the report plus
 # the marker; running the Comment step TWICE leaves exactly one contract
-# comment; and no other comment on the PR was overwritten (the
+# comment; and no other comment on the PR — including a sentinel it plants as
+# the token's last comment — was overwritten (the
 # `gh pr comment --edit-last` bug, which overwrote bundle-size-diff's comment).
 # A BREAKING change to the bookshelf spec fails the job — that is the Action's
 # contract, dogfooded on its own consumer.
@@ -103,16 +104,24 @@ jobs:
           bun run --filter=@pyreon/config build
           bun run --filter=@pyreon/lathe build
 
-      - name: Snapshot the other comments
+      # The token's LAST comment before the Comment step is exactly what
+      # `gh pr comment --edit-last` would overwrite. Plant one, so "no other
+      # comment is touched" is asserted on every run, not only on PRs that
+      # happen to carry another bot's comment. Deleted again below.
+      - name: Plant a sentinel comment
         if: github.event.pull_request.head.repo.full_name == github.repository
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
+          SENTINEL: 'lathe self-test sentinel, run ${{ github.run_id }}: must survive the contract comment unchanged'
         run: |
           set -o pipefail
           gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
             --jq '.[] | select(.body | startswith("<!-- lathe-contract -->") | not) | .id' \
             > "$RUNNER_TEMP/others-before.txt"
+          id=$(gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -f body="$SENTINEL" --jq .id)
+          echo "SENTINEL_ID=$id" >> "$GITHUB_ENV"
+          echo "$id" >> "$RUNNER_TEMP/others-before.txt"
 
       # ── The documented Action, verbatim (see the drift lock above) ─────────
       - name: Diff the contract
@@ -174,6 +183,7 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           CODE: ${{ steps.diff.outputs.code }}
           CAN_COMMENT: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          SENTINEL: 'lathe self-test sentinel, run ${{ github.run_id }}: must survive the contract comment unchanged'
         run: |
           set -eo pipefail
           fail() { echo "::error::$1"; exit 1; }
@@ -216,8 +226,16 @@ jobs:
           clobbered=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
             --jq '.[] | select((.body | startswith("<!-- lathe-contract -->") | not) and (.body | contains("### API contract: "))) | .id')
           [ -z "$clobbered" ] || fail "comment(s) $clobbered now hold the contract report without the marker — another comment was overwritten"
+          sentinel=$(gh api "repos/$GITHUB_REPOSITORY/issues/comments/$SENTINEL_ID" --jq .body)
+          [ "$sentinel" = "$SENTINEL" ] || fail "the sentinel comment (the token's last comment) was overwritten: $sentinel"
           echo "verified: exit $CODE, one contract comment ($ids), $(grep -c . "$RUNNER_TEMP/others-before.txt" || true) other comment(s) intact"
 
       - name: Fail on a breaking change
         if: steps.diff.outputs.code != '0'
         run: exit ${{ steps.diff.outputs.code }}
+
+      - name: Remove the sentinel comment
+        if: always() && env.SENTINEL_ID != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X DELETE "repos/$GITHUB_REPOSITORY/issues/comments/$SENTINEL_ID" || echo "::warning::could not delete sentinel comment $SENTINEL_ID"
