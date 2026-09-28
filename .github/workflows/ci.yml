@@ -44,6 +44,10 @@ on:
 # - merge_group  → unique queue ref per attempt, cancel:false → each merge-queue run completes (the queue requires it).
 # - pull_request → per-PR ref, cancel:true → newest commit on the PR wins (unchanged).
 #
+# Keep the `&& true || false` ternary below. A bare `${{ … == 'pull_request' }}`
+# interpolates to the STRING "false", which the runner's concurrency engine was
+# observed to treat as truthy: every push:main run cancelled at the pending stage
+# and ran no jobs. The ternary yields a JSON-native boolean.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' && true || false }}
@@ -360,7 +364,12 @@ jobs:
           # contention the cells serialise through the queue anyway and the
           # split just multiplies the fixed cost. See scripts/ci-batch.ts.
           NAMES=$(echo "$SUITES" | jq -c '[.[].name]')
-          MATRIX=$(bun run scripts/ci-batch.ts --profile=e2e --items="$NAMES" --max=4)
+          # Same fail-closed rule as the other matrices: a batcher error runs
+          # every selected suite unbatched instead of failing Install outright.
+          if ! MATRIX=$(bun run scripts/ci-batch.ts --profile=e2e --items="$NAMES" --max=4); then
+            echo "ci-batch failed for e2e — falling back to unbatched"
+            MATRIX=$(echo "$NAMES" | jq -c 'map({name: ., members: .})')
+          fi
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
           if [ "$MATRIX" = "[]" ]; then
             echo "has=false" >> "$GITHUB_OUTPUT"

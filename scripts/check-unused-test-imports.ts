@@ -35,6 +35,12 @@ function importBindings(source: ts.SourceFile): ts.Identifier[] {
 /** Find import bindings with no symbol reference outside their declaration. */
 export function findUnusedTestImports(files: readonly string[]): UnusedImport[] {
   if (files.length === 0) return []
+  // Binding, not type-checking: whether an import is referenced is decided by
+  // the file's own scopes, so nothing outside it needs to load. `noResolve` +
+  // `noLib` + `types: []` skip module resolution, lib.d.ts and @types — which
+  // took this gate from ~30s CPU (107s wall under load) to a few seconds over
+  // ~3,400 test files. An unresolved module still yields an alias symbol per
+  // import binding, which is all the reference walk below compares against.
   const program = ts.createProgram({
     rootNames: [...files],
     options: {
@@ -44,8 +50,11 @@ export function findUnusedTestImports(files: readonly string[]): UnusedImport[] 
       module: ts.ModuleKind.ESNext,
       moduleResolution: ts.ModuleResolutionKind.Bundler,
       noEmit: true,
+      noLib: true,
+      noResolve: true,
       skipLibCheck: true,
       target: ts.ScriptTarget.ESNext,
+      types: [],
     },
   })
   const checker = program.getTypeChecker()
@@ -68,7 +77,9 @@ export function findUnusedTestImports(files: readonly string[]): UnusedImport[] 
     const used = new Set<ts.Symbol>()
     const visit = (node: ts.Node): void => {
       if (ts.isImportDeclaration(node)) return
-      if (ts.isIdentifier(node)) {
+      // Only an identifier spelled like an import binding can reference one;
+      // skipping the rest avoids a checker lookup for nearly every identifier.
+      if (ts.isIdentifier(node) && wantedByName.has(node.text)) {
         if (ts.isExportSpecifier(node.parent)) {
           const local = node.parent.propertyName ?? node.parent.name
           const imported = node === local ? wantedByName.get(node.text) : undefined
