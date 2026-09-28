@@ -17,8 +17,8 @@
 export type IrType =
   | IrStringType
   | IrNumberType
-  | { kind: 'boolean' }
-  | { kind: 'null' }
+  | { kind: "boolean" }
+  | { kind: "null" }
   /**
    * A closed set of JSON values: an `enum`, or a `const` (one value). Its own
    * kind rather than a flag on `string`, for two reasons found on real specs:
@@ -26,21 +26,25 @@ export type IrType =
    * TypeError at import that killed DigitalOcean's whole schema module -- and
    * a NON-string enum (`[1, 2]`, `['a', 1, null]`) had nowhere to go.
    */
-  | { kind: 'enum'; values: readonly IrLiteral[] }
+  | { kind: "enum"; values: readonly IrLiteral[] }
   /** Anything the input could not narrow. Emitters render `unknown`. */
-  | { kind: 'unknown'; reason: string }
+  | { kind: "unknown"; reason: string }
   | IrArrayType
-  | { kind: 'object'; fields: readonly IrField[]; additional?: IrType | undefined }
-  /** A named model defined elsewhere in {@link IrDocument.models}. */
-  | { kind: 'ref'; name: string }
   | {
-      kind: 'union'
-      options: readonly IrType[]
+      kind: "object";
+      fields: readonly IrField[];
+      additional?: IrType | undefined;
+    }
+  /** A named model defined elsewhere in {@link IrDocument.models}. */
+  | { kind: "ref"; name: string }
+  | {
+      kind: "union";
+      options: readonly IrType[];
       /**
        * The discriminating property's WIRE name (`pet_type`, not `petType`) --
        * it is a key in the payload, not an identifier in the output.
        */
-      discriminator?: string | undefined
+      discriminator?: string | undefined;
     }
   /**
    * `inner`, or `null`.
@@ -51,123 +55,126 @@ export type IrType =
    * GitHub spells every nullable relation) was dropped, and the generated
    * client rejected valid `200` responses with `Expected object, received null`.
    */
-  | { kind: 'nullable'; inner: IrType }
+  | { kind: "nullable"; inner: IrType };
 
 /** A JSON scalar an `enum` / `const` can hold. */
-export type IrLiteral = string | number | boolean | null
+export type IrLiteral = string | number | boolean | null;
 
 export interface IrStringType {
-  kind: 'string'
-  format?: StringFormat | undefined
-  minLength?: number | undefined
-  maxLength?: number | undefined
-  pattern?: string | undefined
+  kind: "string";
+  format?: StringFormat | undefined;
+  minLength?: number | undefined;
+  maxLength?: number | undefined;
+  pattern?: string | undefined;
 }
 
 export interface IrNumberType {
-  kind: 'number'
-  integer: boolean
-  minimum?: number | undefined
-  maximum?: number | undefined
+  kind: "number";
+  integer: boolean;
+  minimum?: number | undefined;
+  maximum?: number | undefined;
   /** Strict bounds. 3.0's boolean form is normalized to these numbers. */
-  exclusiveMinimum?: number | undefined
-  exclusiveMaximum?: number | undefined
-  multipleOf?: number | undefined
+  exclusiveMinimum?: number | undefined;
+  exclusiveMaximum?: number | undefined;
+  multipleOf?: number | undefined;
 }
 
 export interface IrArrayType {
-  kind: 'array'
-  items: IrType
-  minItems?: number | undefined
-  maxItems?: number | undefined
-  uniqueItems?: boolean | undefined
+  kind: "array";
+  items: IrType;
+  minItems?: number | undefined;
+  maxItems?: number | undefined;
+  uniqueItems?: boolean | undefined;
 }
 
 /** Formats Lathe understands. Anything else degrades to a plain string. */
-export type StringFormat = 'email' | 'uri' | 'uuid' | 'date' | 'date-time' | 'binary'
+export type StringFormat =
+  "email" | "uri" | "uuid" | "date" | "date-time" | "binary";
 
 export interface IrField {
-  name: string
+  name: string;
   /** Nullability lives on the type (`kind: 'nullable'`), like everywhere else. */
-  type: IrType
-  required: boolean
+  type: IrType;
+  required: boolean;
   /** From the spec's `description`/`title` — becomes `withField` metadata. */
-  doc?: string | undefined
+  doc?: string | undefined;
   /** Spec `example`, used by the mock emitter and rendered into JSDoc. */
-  example?: unknown
+  example?: unknown;
   /**
    * Server-assigned (`readOnly`) / client-only (`writeOnly`). The input layer
    * uses these to derive the REQUEST and RESPONSE shapes of a model; by the
    * time emitters see the document, a request type carries no readOnly field
    * and a response type no writeOnly one.
    */
-  readOnly?: boolean | undefined
-  writeOnly?: boolean | undefined
+  readOnly?: boolean | undefined;
+  writeOnly?: boolean | undefined;
   /** `deprecated: true` in the spec — rendered as a `@deprecated` JSDoc tag. */
-  deprecated?: boolean | undefined
+  deprecated?: boolean | undefined;
 }
 
 /** A named top-level model — one generated schema + one generated type. */
 export interface IrModel {
-  name: string
-  type: IrType
-  doc?: string | undefined
+  name: string;
+  type: IrType;
+  doc?: string | undefined;
   /** `deprecated: true` on the component schema. */
-  deprecated?: boolean | undefined
+  deprecated?: boolean | undefined;
   /**
    * Where the model came from in the input document. Present for a model the
    * spec DECLARED (`components.schemas.<name>`); absent for one Lathe
    * synthesized (a hoisted recursive schema, a request/response split).
    */
-  source?: IrModelSource | undefined
+  source?: IrModelSource | undefined;
 }
 
 /** A declared model's identity in the input document. */
 export interface IrModelSource {
   /** The spec's own key, verbatim (`pet-owner`, not `PetOwner`). */
-  name: string
+  name: string;
   /** RFC 6901 pointer to the schema (`#/components/schemas/pet-owner`). */
-  at: string
+  at: string;
 }
 
 /** An operation's identity in the input document. */
 export interface IrOperationSource {
   /** The spec's `operationId`, verbatim; absent when Lathe derived one. */
-  operationId?: string | undefined
+  operationId?: string | undefined;
   /** The spec's path, verbatim — OpenAPI form, `/pets/{petId}`. */
-  path: string
+  path: string;
   /** Every tag the spec gives the operation, in order (the IR `tag` is the first). */
-  tags: readonly string[]
+  tags: readonly string[];
   /** RFC 6901 pointer to the operation (`#/paths/~1pets/get`). */
-  at: string
+  at: string;
 }
 
 /** How strictly a generated client validates one response — see `LatheSection.responseValidation`. */
-export type IrValidateMode = 'strict' | 'warn' | 'off'
+export type IrValidateMode = "strict" | "warn" | "off";
 
-export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'
+export type HttpMethod =
+  "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 
 export interface IrParam {
-  name: string
-  type: IrType
-  required: boolean
-  doc?: string | undefined
+  name: string;
+  type: IrType;
+  required: boolean;
+  doc?: string | undefined;
   /** `deprecated: true` on the parameter. */
-  deprecated?: boolean | undefined
+  deprecated?: boolean | undefined;
   /**
    * The spec's example value — the parameter's own `example`, the first of its
    * `examples`, or its schema's `example`. Rendered into the generated
    * `@example` and used as a preview argument, so it is only kept when it is
    * a JSON value; whether it satisfies the type is the consumer's check.
    */
-  example?: unknown
+  example?: unknown;
   /**
    * OpenAPI serialization for a QUERY parameter, verbatim from the spec.
    * Absent means the spec's default (`form`, exploded). Emitters decide what
    * that means for the runtime they target.
    */
-  style?: 'form' | 'spaceDelimited' | 'pipeDelimited' | 'deepObject' | undefined
-  explode?: boolean | undefined
+  style?:
+    "form" | "spaceDelimited" | "pipeDelimited" | "deepObject" | undefined;
+  explode?: boolean | undefined;
 }
 
 /**
@@ -176,91 +183,99 @@ export interface IrParam {
  * The IR used to carry only a TYPE, so every body went out as `json:` -- and
  * Stripe (611 of 612 mutations) and Twilio accept only form encoding.
  */
-export type BodyEncoding = 'json' | 'form' | 'multipart' | 'text' | 'binary'
+export type BodyEncoding = "json" | "form" | "multipart" | "text" | "binary";
 
 /** One property's serialization in a form body — OpenAPI's Encoding Object. */
 export interface IrFieldEncoding {
-  style?: 'form' | 'deepObject' | 'spaceDelimited' | 'pipeDelimited' | undefined
-  explode?: boolean | undefined
+  style?:
+    "form" | "deepObject" | "spaceDelimited" | "pipeDelimited" | undefined;
+  explode?: boolean | undefined;
 }
 
 export interface IrBody {
   /** The chosen media type, verbatim (`application/x-www-form-urlencoded`). */
-  mediaType: string
-  encoding: BodyEncoding
+  mediaType: string;
+  encoding: BodyEncoding;
   /**
    * The body's shape. For `text` a string; for `binary` a `binary`-format
    * string (the emitters render it as a Blob in request position).
    */
-  type: IrType
+  type: IrType;
   /** `form` only: per-property serialization, when the spec declares any. */
-  fieldEncoding?: Readonly<Record<string, IrFieldEncoding>> | undefined
+  fieldEncoding?: Readonly<Record<string, IrFieldEncoding>> | undefined;
   /**
    * `requestBody.required` — OpenAPI defaults it to FALSE, so a body the spec
    * does not mark required is optional at the call site.
    */
-  required: boolean
+  required: boolean;
   /** The media type's `example`, or the first of its `examples`. */
-  example?: unknown
+  example?: unknown;
 }
 
 /** One API operation — the unit every emitter iterates. */
 export interface IrOperation {
   /** Stable, unique, already a valid identifier (`getUserById`). */
-  id: string
-  method: HttpMethod
+  id: string;
+  method: HttpMethod;
   /** Pyreon-shaped path: `/users/:id`, NOT OpenAPI's `/users/{id}`. */
-  path: string
+  path: string;
   /**
    * The operation's OWN server, when its operation- or path-level `servers`
    * differ from the document's. Absolute; a config `baseUrl` does not
    * override it.
    */
-  baseUrl?: string | undefined
+  baseUrl?: string | undefined;
   /** Grouping key from the spec's first tag; `default` when untagged. */
-  tag: string
+  tag: string;
   /**
    * One-line headline: the spec's `summary`, else its `description`.
    */
-  summary?: string | undefined
+  summary?: string | undefined;
   /**
    * The spec's `description`, when it adds something to `summary` (present
    * and different). Rendered as the body of the generated JSDoc.
    */
-  description?: string | undefined
+  description?: string | undefined;
   /** `deprecated: true` on the operation. */
-  deprecated?: boolean | undefined
+  deprecated?: boolean | undefined;
   /** The operation's `externalDocs`, when it has a URL. */
-  externalDocs?: { url: string; description?: string | undefined } | undefined
-  pathParams: readonly IrParam[]
-  queryParams: readonly IrParam[]
+  externalDocs?: { url: string; description?: string | undefined } | undefined;
+  pathParams: readonly IrParam[];
+  queryParams: readonly IrParam[];
   /**
    * Header parameters, keyed by their wire name. `Accept`, `Content-Type` and
    * `Authorization` are never here: OpenAPI says a header parameter with one
    * of those names SHALL be ignored (the client and the security scheme own
    * them).
    */
-  headerParams: readonly IrParam[]
+  headerParams: readonly IrParam[];
   /** Cookie parameters, keyed by their wire name. */
-  cookieParams: readonly IrParam[]
+  cookieParams: readonly IrParam[];
   /** Request body, when the operation takes one. */
-  body?: IrBody | undefined
+  body?: IrBody | undefined;
   /** The 2xx response type. `undefined` means no content. */
-  response?: IrType | undefined
+  response?: IrType | undefined;
   /**
    * The media type the response was read from, when it is NOT JSON
    * (`text/plain`, `image/png`, `text/event-stream`). Absent for JSON and for
    * no content. Decides how the client DECODES the body — see
    * `core/media.ts`.
    */
-  responseMedia?: string | undefined
+  responseMedia?: string | undefined;
+  /**
+   * The operation also (or only) answers as a STREAM of events — Server-Sent
+   * Events or NDJSON. Read from a streaming media type in the 2xx response, or
+   * declared with the `streams` config. Emitted as `<op>Stream` (an async
+   * iterator of validated events) and `use<Op>Stream` (signals).
+   */
+  stream?: IrStream | undefined;
   /**
    * How to page through this operation — declared, never guessed. From the
    * `x-pyreon-pagination` spec extension or the `pagination` config entry.
    */
-  pagination?: IrPagination | undefined
+  pagination?: IrPagination | undefined;
   /** Where this operation came from in the input document. */
-  source?: IrOperationSource | undefined
+  source?: IrOperationSource | undefined;
   /*
    * OUTPUT DIRECTIVES. Not facts about the API but decisions about the code
    * generated for it, set by the config (`operations`, `naming`) or by a
@@ -272,14 +287,31 @@ export interface IrOperation {
    * hook at all (nor a preview component, nor a native data component); the
    * endpoint is still emitted. Absent: `use<Id>`.
    */
-  hook?: string | false | undefined
+  hook?: string | false | undefined;
   /** This operation's response validation, overriding the client-wide mode. */
-  validate?: IrValidateMode | undefined
+  validate?: IrValidateMode | undefined;
   /**
    * The output GROUP — the file stem under `endpoints/` and `queries/`.
    * Absent: derived from the tag (or, untagged, from the path).
    */
-  group?: string | undefined
+  group?: string | undefined;
+}
+
+/**
+ * A streaming response, described by what ONE event carries.
+ *
+ * `event` is the type of an SSE event's `data` (JSON-decoded unless `data` is
+ * `text`) or of one NDJSON line. OpenAPI 3.2's `itemSchema` states it
+ * directly; before 3.2 the media type's `schema` is read as the event type,
+ * which is how streaming APIs have described themselves in practice.
+ */
+export interface IrStream {
+  format: "sse" | "ndjson";
+  /** The media type the stream is requested with (`Accept`). */
+  media: string;
+  event: IrType;
+  /** SSE only: `text` passes each event's `data` through as a string. */
+  data: "json" | "text";
 }
 
 /**
@@ -295,10 +327,33 @@ export interface IrOperation {
  * `hasMore`, when given, is a boolean path that ends paging when `false`.
  */
 export type IrPagination =
-  | { kind: 'cursor'; param: string; next: string; hasMore?: string | undefined }
-  | { kind: 'lastItem'; param: string; items: string; field: string; hasMore?: string | undefined }
-  | { kind: 'offset'; param: string; items: string; hasMore?: string | undefined; initial?: number | undefined }
-  | { kind: 'page'; param: string; items: string; hasMore?: string | undefined; initial?: number | undefined }
+  | {
+      kind: "cursor";
+      param: string;
+      next: string;
+      hasMore?: string | undefined;
+    }
+  | {
+      kind: "lastItem";
+      param: string;
+      items: string;
+      field: string;
+      hasMore?: string | undefined;
+    }
+  | {
+      kind: "offset";
+      param: string;
+      items: string;
+      hasMore?: string | undefined;
+      initial?: number | undefined;
+    }
+  | {
+      kind: "page";
+      param: string;
+      items: string;
+      hasMore?: string | undefined;
+      initial?: number | undefined;
+    };
 
 /**
  * One `components.securitySchemes` entry, reduced to how a CLIENT applies it.
@@ -308,56 +363,58 @@ export type IrPagination =
  * part a generated client participates in.
  */
 export type IrSecurityScheme =
-  | { name: string; kind: 'bearer'; doc?: string | undefined }
-  | { name: string; kind: 'basic'; doc?: string | undefined }
+  | { name: string; kind: "bearer"; doc?: string | undefined }
+  | { name: string; kind: "basic"; doc?: string | undefined }
   | {
-      name: string
-      kind: 'apiKey'
-      in: 'header' | 'query' | 'cookie'
+      name: string;
+      kind: "apiKey";
+      in: "header" | "query" | "cookie";
       /** The header / query parameter / cookie NAME the key travels in. */
-      param: string
-      doc?: string | undefined
-    }
+      param: string;
+      doc?: string | undefined;
+    };
 
 export interface IrDocument {
-  title: string
-  version: string
+  title: string;
+  version: string;
   /** From `servers[0].url`; `''` when the spec declares none. */
-  baseUrl: string
+  baseUrl: string;
   /** `components.securitySchemes`, in spec-key order. Absent when there are none. */
-  securitySchemes?: readonly IrSecurityScheme[] | undefined
-  models: readonly IrModel[]
-  operations: readonly IrOperation[]
+  securitySchemes?: readonly IrSecurityScheme[] | undefined;
+  models: readonly IrModel[];
+  operations: readonly IrOperation[];
   /**
    * Everything the input layer dropped, with a reason. Surfaced by the CLI and
    * counted by the gate — a spec feature Lathe cannot represent is a REPORTED
    * loss, never a silent one.
    */
-  notes: readonly IrNote[]
+  notes: readonly IrNote[];
 }
 
 /** Stable, greppable class of a {@link IrNote}. */
 export type IrNoteCode =
-  | 'unsupported-schema'
-  | 'unsupported-ref'
-  | 'cyclic-ref'
-  | 'unsupported-const'
-  | 'int64-precision'
-  | 'missing-operation-id'
-  | 'multiple-content-types'
-  | 'no-servers'
-  | 'unsupported-parameter'
-  | 'parameter-serialization'
-  | 'unsupported-security'
-  | 'response-headers'
-  | 'error-responses'
-  | 'other-success-responses'
-  | 'body-on-get'
-  | 'invalid-pagination'
-  | 'extra-tags'
-  | 'numeric-version'
+  | "unsupported-schema"
+  | "unsupported-ref"
+  | "cyclic-ref"
+  | "unsupported-const"
+  | "int64-precision"
+  | "missing-operation-id"
+  | "multiple-content-types"
+  | "no-servers"
+  | "unsupported-parameter"
+  | "parameter-serialization"
+  | "unsupported-security"
+  | "response-headers"
+  | "error-responses"
+  | "other-success-responses"
+  | "body-on-get"
+  | "invalid-pagination"
+  | "extra-tags"
+  | "numeric-version"
+  | "stream-event"
+  | "invalid-stream"
   /** Added by a third-party plugin's `transformDocument`. */
-  | 'plugin'
+  | "plugin";
 
 /**
  * What a note means for the generated client.
@@ -373,51 +430,55 @@ export type IrNoteCode =
  * losses: Petstore 3 produced 17 notes and 16 were "picked JSON over XML",
  * which buried the one real loss under a wall of benign ones.
  */
-export type IrNoteSeverity = 'loss' | 'choice'
+export type IrNoteSeverity = "loss" | "choice";
 
 /**
  * Severity per code. A `Record` over the code union, so a new code cannot be
  * added without deciding which kind it is -- the compiler refuses the map.
  */
 export const NOTE_SEVERITY: Readonly<Record<IrNoteCode, IrNoteSeverity>> = {
-  'unsupported-schema': 'loss',
-  'unsupported-ref': 'loss',
-  'cyclic-ref': 'loss',
-  'unsupported-const': 'loss',
-  'int64-precision': 'loss',
-  'missing-operation-id': 'choice',
-  'multiple-content-types': 'choice',
-  'no-servers': 'loss',
-  'unsupported-parameter': 'loss',
-  'parameter-serialization': 'loss',
-  'unsupported-security': 'loss',
-  'response-headers': 'loss',
-  'error-responses': 'loss',
-  'other-success-responses': 'loss',
-  'body-on-get': 'loss',
-  'invalid-pagination': 'loss',
-  'extra-tags': 'choice',
-  'numeric-version': 'choice',
+  "unsupported-schema": "loss",
+  "unsupported-ref": "loss",
+  "cyclic-ref": "loss",
+  "unsupported-const": "loss",
+  "int64-precision": "loss",
+  "missing-operation-id": "choice",
+  "multiple-content-types": "choice",
+  "no-servers": "loss",
+  "unsupported-parameter": "loss",
+  "parameter-serialization": "loss",
+  "unsupported-security": "loss",
+  "response-headers": "loss",
+  "error-responses": "loss",
+  "other-success-responses": "loss",
+  "body-on-get": "loss",
+  "invalid-pagination": "loss",
+  "extra-tags": "choice",
+  "numeric-version": "choice",
+  // How a streaming response's event type was read — which schema, or that
+  // none was declared (events then arrive as `unknown`).
+  "stream-event": "choice",
+  "invalid-stream": "loss",
   // A plugin reports what IT could not honour; that is a loss by default.
-  plugin: 'loss',
-}
+  plugin: "loss",
+};
 
 /** The severity of a note, from its code. */
-export function noteSeverity(note: Pick<IrNote, 'code'>): IrNoteSeverity {
-  return NOTE_SEVERITY[note.code]
+export function noteSeverity(note: Pick<IrNote, "code">): IrNoteSeverity {
+  return NOTE_SEVERITY[note.code];
 }
 
 export interface IrNote {
   /** Stable, greppable class an agent or a gate can branch on. */
-  code: IrNoteCode
-  message: string
+  code: IrNoteCode;
+  message: string;
   /**
    * RFC 6901 JSON pointer into the source document (`#/paths/~1pets/get`).
    * `/` and `~` inside a segment are escaped, so the pointer resolves -- a raw
    * path key used to produce `#/paths//pets/get`, which points nowhere.
    */
-  at: string
+  at: string;
 }
 
 /** Where an operation can run once generated. Decided by {@link verify}. */
-export type Reach = 'web+native' | 'web-only'
+export type Reach = "web+native" | "web-only";

@@ -9,7 +9,13 @@
       "params": {},
       "requiredParams": [],
       "body": "json NewBook",
-      "response": "Book"
+      "response": "Book",
+      "summary": "Add a book.",
+      "module": "books",
+      "symbols": [
+        "createBook",
+        "useCreateBook"
+      ]
     },
     "getBook": {
       "id": "getBook",
@@ -21,7 +27,13 @@
       "requiredParams": [
         "bookId"
       ],
-      "response": "Book"
+      "response": "Book",
+      "summary": "One book by id.",
+      "module": "books",
+      "symbols": [
+        "getBook",
+        "useGetBook"
+      ]
     },
     "listAuthors": {
       "id": "listAuthors",
@@ -31,7 +43,13 @@
         "limit": "integer"
       },
       "requiredParams": [],
-      "response": "Author[]"
+      "response": "Author[]",
+      "summary": "Every author.",
+      "module": "authors",
+      "symbols": [
+        "listAuthors",
+        "useListAuthors"
+      ]
     },
     "listBooks": {
       "id": "listBooks",
@@ -39,7 +57,13 @@
       "path": "/books",
       "params": {},
       "requiredParams": [],
-      "response": "Book[]"
+      "response": "Book[]",
+      "summary": "Every book in the catalogue.",
+      "module": "books",
+      "symbols": [
+        "listBooks",
+        "useListBooks"
+      ]
     }
   },
   "models": {

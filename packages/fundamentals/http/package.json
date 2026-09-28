@@ -48,6 +48,11 @@
       "import": "./lib/server.js",
       "types": "./lib/types/server.d.ts"
     },
+    "./stream": {
+      "bun": "./src/stream.ts",
+      "import": "./lib/stream.js",
+      "types": "./lib/types/stream.d.ts"
+    },
     "./package.json": "./package.json"
   },
   "files": [

@@ -87,6 +87,14 @@ export {
 export type { SSEStatus, UseSSEOptions, UseSSEResult } from './use-sse'
 export { useSSE } from './use-sse'
 export type {
+  StreamSource,
+  StreamSourceContext,
+  StreamState,
+  UseStreamOptions,
+  UseStreamResult,
+} from './use-stream'
+export { useStream } from './use-stream'
+export type {
   SubscriptionStatus,
   UseSubscriptionOptions,
   UseSubscriptionResult,

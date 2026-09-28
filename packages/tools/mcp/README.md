@@ -2,7 +2,7 @@
 
 MCP server for AI-assisted Pyreon development — API reference, validation, migration, project audits.
 
-`@pyreon/mcp` is a Model Context Protocol server that gives AI coding assistants (Claude Code, Cursor, Windsurf, etc.) direct access to Pyreon's API reference + foot-gun catalogue + project audits. **21 tools** span discovery (`mcp_overview`), API lookup (`get_api`), static validation (`validate`, `explain_reactivity`), codemods (`migrate_react`, `migrate_pyreon`), error diagnosis (`diagnose`, `explain_error`), project introspection (`get_routes`, `get_components`), content navigation (`get_content_collection`, `get_content_entry`), proactive docs (`get_pattern`, `get_anti_patterns`, `get_changelog`), project-wide audits (`audit_test_environment`, `audit_islands`, `get_browser_smoke_status`), and workspace / component-catalog verification (`get_dependency_fabric`, `get_atlas_catalog`, `get_atlas_component`). Token-frugal by default: `get_anti_patterns` returns a compact index — kept at least ~60% smaller than the full catalogue by a density gate, not a pinned size (see `src/tests/token-budget.test.ts`).
+`@pyreon/mcp` is a Model Context Protocol server that gives AI coding assistants (Claude Code, Cursor, Windsurf, etc.) direct access to Pyreon's API reference + foot-gun catalogue + project audits. **24 tools** span discovery (`mcp_overview`), API lookup (`get_api`), static validation (`validate`, `explain_reactivity`), codemods (`migrate_react`, `migrate_pyreon`), error diagnosis (`diagnose`, `explain_error`), project introspection (`get_routes`, `get_components`), content navigation (`get_content_collection`, `get_content_entry`), proactive docs (`get_pattern`, `get_anti_patterns`, `get_changelog`), project-wide audits (`audit_test_environment`, `audit_islands`, `get_browser_smoke_status`), workspace / component-catalog verification (`get_dependency_fabric`, `get_atlas_catalog`, `get_atlas_component`), and the project's generated API client (`get_api_client`, `get_api_operation`, `explain_api_diff`). Token-frugal by default: `get_anti_patterns` returns a compact index — kept at least ~60% smaller than the full catalogue by a density gate, not a pinned size (see `src/tests/token-budget.test.ts`).
 
 ## Install
 
@@ -85,6 +85,9 @@ bunx @pyreon/mcp     # starts stdio MCP server
 | `get_dependency_fabric`      | The `loom scan` workspace dependency graph — cycles, blast radius, gating findings                            |
 | `get_atlas_catalog`          | The `atlas scan` verified component catalog — real props, allowed values, scenario verification counts       |
 | `get_atlas_component`        | One catalogued component's exact prop values, reactive props, and a verified-or-labelled-unverified example  |
+| `get_api_client`             | The `lathe generate` API client — every operation with its generated symbols, grouped by module, and models  |
+| `get_api_operation`          | One generated operation's typed signature, the models it names, and example calls                            |
+| `explain_api_diff`           | The client-contract diff between two specs / surfaces / git revisions — breaking first, with what to check   |
 
 ## Consumer usage (`bunx @pyreon/mcp`)
 
@@ -209,6 +212,16 @@ get_atlas_component({ name: 'Button' })       // one component's exact prop valu
 
 Serves the `atlas-catalog.json` an `atlas scan` writes. Each catalog line carries THREE scenario counts — verified / failing / unverified — because most Atlas checks are still stubs; a catalogued component is not automatically a checked one. `get_atlas_component` labels an example `(UNVERIFIED …)` when nothing has actually checked it, rather than presenting it as correct. Missing catalog → instructions to run `atlas scan`, not a guessed answer.
 
+### `get_api_client` / `get_api_operation` / `explain_api_diff`
+
+```ts
+get_api_client({})                                                  // every generated operation + its symbols, and the models
+get_api_operation({ operation: 'getOrder' })                        // typed signature + endpoint / hook / stream calls
+explain_api_diff({ before: 'main:openapi.yaml', after: 'openapi.yaml' }) // breaking first, with what to check
+```
+
+Serve the `api-surface.json` a `lathe generate` writes beside the generated client, so answers describe the code the agent will import. `explain_api_diff` runs `@pyreon/lathe`'s own contract classifier (the one `lathe diff` / `lathe check` use), so the two can never disagree about what is breaking. No generated client → instructions to run `lathe generate`.
+
 ## Programmatic API
 
 The package is primarily a binary (`pyreon-mcp`); the main entry exports no runtime symbols (it boots the server on import via `main()`). `createServer()` is exported for embedding — build a `McpServer` and connect it to any transport (the test suite uses this with `InMemoryTransport` instead of stdio). For the static analysis directly, `@pyreon/mcp` re-uses `@pyreon/compiler`'s `detectReactPatterns` / `detectPyreonPatterns` / `detectNativePatterns` / `migrateReactCode` / `migratePyreonCode` / `diagnoseError` / `auditIslands` + `formatIslandAudit` / `auditTestEnvironment` + `formatTestAudit` / `auditSsg` — import from `@pyreon/compiler` directly if you want the raw detector output instead of the MCP text formatting.
@@ -219,7 +232,7 @@ The package is primarily a binary (`pyreon-mcp`); the main entry exports no runt
 - **`validate` is reactive**, `get_pattern` + `get_anti_patterns` are **proactive** — call them BEFORE writing.
 - **`get_api` only covers packages on the manifest/MCP pipeline.** 57 of 76 published packages have a `manifest.ts` today (see AGENTS.md "Manifest-driven docs pipeline" for the live count); un-migrated packages are absent from the surface (NOT a 404 — they're simply missing).
 - **`get_routes` / `get_components`** require running inside a Pyreon project root (they scan the filesystem).
-- **`get_dependency_fabric` / `get_atlas_catalog` / `get_atlas_component`** read build ARTIFACTS (`loom-report.json` / `atlas-catalog.json`), not the live source. Run `loom scan` / `atlas scan` first, or the tool returns setup instructions instead of an invented answer.
+- **`get_dependency_fabric` / `get_atlas_catalog` / `get_atlas_component` / `get_api_client` / `get_api_operation`** read build ARTIFACTS (`loom-report.json` / `atlas-catalog.json` / `api-surface.json`), not the live source. Run `loom scan` / `atlas scan` / `lathe generate` first, or the tool returns setup instructions instead of an invented answer.
 
 ## Documentation
 
