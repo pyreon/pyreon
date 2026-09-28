@@ -8,6 +8,7 @@
 // SwiftUI's @State is a var, not a method).
 
 import { onMount } from '@pyreon/core'
+import type { VNodeChild } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { defineStore } from '@pyreon/store'
 import {
@@ -123,6 +124,16 @@ function NativeFlowNode(props: NodeComponentProps<NativeFlowData>) {
       <NodeResizer minWidth={80} minHeight={44} />
     </Stack>
   )
+}
+
+// Render-prop device proof. `Tally` takes a REQUIRED function-as-children
+// render prop and an OPTIONAL view slot. On iOS the optional slot is an
+// optional closure plus per-subset initializers (the omitted one pinned to
+// `EmptyView`); on Android a nullable composable lambda. The callbacks below
+// are BLOCK-bodied — a `const` plus an early `if … return` — which lower to
+// view-builder statements on both targets.
+function Tally(props: { count: number; children: (n: number) => unknown; footer?: VNodeChild }) {
+  return <Stack>{props.children(props.count)}{props.footer}</Stack>
 }
 
 export function Counter() {
@@ -577,6 +588,16 @@ export function Counter() {
       <Button data-testid="native-flow-animate-zoom" onPress={() => nativeFlow.setViewport({ zoom: 0.5 }, { duration: 3000 })}>Zoom native out slowly</Button>
       <Button data-testid="native-flow-allow-motion" onPress={() => { nativeFlow.config.reducedMotion = false }}>Allow native motion</Button>
       <Button data-testid="native-flow-animate-zoom-back" onPress={() => nativeFlow.setViewport({ zoom: 1 }, { duration: 3000 })}>Zoom native back slowly</Button>
+      <Tally count={count()}>
+        {(n) => {
+          const doubled = n * 2
+          if (n > 2) return <Text data-testid="rp-block">{`rp big ${doubled}`}</Text>
+          return <Text data-testid="rp-block">{`rp small ${doubled}`}</Text>
+        }}
+      </Tally>
+      <Tally count={count()} footer={<Text data-testid="rp-footer">{'rp footer filled'}</Text>}>
+        {(n) => <Text data-testid="rp-plain">{`rp plain ${n}`}</Text>}
+      </Tally>
     </Stack>
     </Scroll>
   )
