@@ -92,7 +92,7 @@ components:
       allOf:
         - $ref: '#/components/schemas/Entity'
         - type: object
-          required: [title]
+          required: [title, status]
           properties:
             title:
               type: string
