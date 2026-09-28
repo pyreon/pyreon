@@ -1441,7 +1441,7 @@ export function emitNativeModules(
           ? "headers: c.headers"
           : `headers: { ...c.headers, accept: ${q(s.media)} }`,
       ].join(", ");
-      const opts = [
+      const streamOpts = [
         ...(s.format === "sse" && s.data === "text" ? ["data: 'text'"] : []),
         "signal: ctx.signal",
         "onStatus: ctx.onStatus",
@@ -1460,7 +1460,7 @@ export function emitNativeModules(
       );
       f.line(`export function ${name}(props: { ${propsType} }) {`);
       f.line(`  const s = useStream<${item}>((ctx) =>`);
-      f.line(`    ${open}((c) => ${op.id}({ ${epArgs} }), { ${opts} }),`);
+      f.line(`    ${open}((c) => ${op.id}({ ${epArgs} }), { ${streamOpts} }),`);
       f.line("  )");
       // An ACCESSOR, for the same reason the data component returns one: the
       // body runs once, and `events()` must be re-read as events arrive.

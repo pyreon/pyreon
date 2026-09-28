@@ -103,7 +103,7 @@ fun testLoopReconnectsWithLastEventId() {
     s.startSse(
         PyreonStreamRequest(url = "http://x/events", headers = mapOf("Authorization" to "Bearer t", "accept" to "ignored")),
         PyreonSseOptions(reconnect = PyreonStreamReconnect(attempts = 3, delay = 5, maxDelay = 50, onEnd = true)),
-        t,
+        transport = t,
     ) { PyreonSseEvent(it.type, it.data, it.id) }
     awaitStatus(s, "error")
     check((s.error.value as? PyreonStreamError.BadStatus)?.status == 401) { "ended on the scripted 401: ${s.error.value}" }
@@ -121,7 +121,7 @@ fun testLoopReconnectsWithLastEventId() {
 fun testLoopGivesUpOnNonRetryable() {
     val t = Scripted(listOf(401 to ""))
     val s = PyreonStream<PyreonSseEvent<String>>()
-    s.startSse(PyreonStreamRequest(url = "http://x"), PyreonSseOptions(), t) { PyreonSseEvent(it.type, it.data, it.id) }
+    s.startSse(PyreonStreamRequest(url = "http://x"), PyreonSseOptions(), transport = t) { PyreonSseEvent(it.type, it.data, it.id) }
     awaitStatus(s, "error")
     val e = s.error.value
     check(e is PyreonStreamError.BadStatus && e.status == 401) { "401 is terminal: $e" }
