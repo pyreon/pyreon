@@ -177,6 +177,10 @@ const GATES: Gate[] = [
     name: 'check-ci-job-timeouts',
     cmd: 'bun scripts/check-ci-job-timeouts.ts',
   },
+  {
+    name: 'check-ci-fail-fast',
+    cmd: 'bun scripts/check-ci-fail-fast.ts',
+  },
   // Shell has no hoisting, and `bash -n` cannot see it — the script is
   // syntactically valid and the failure is ordering. A helper defined below an
   // EARLY-EXIT branch is a path no pull request exercises, so it stays green on
