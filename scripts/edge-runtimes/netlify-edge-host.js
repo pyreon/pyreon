@@ -36,7 +36,9 @@ async function serveStatic(pathname) {
       const body = await Deno.readFile(file)
       const ext = p.slice(p.lastIndexOf('.'))
       return new Response(body, { headers: { 'content-type': MIME[ext] ?? 'application/octet-stream', 'x-served-by': 'netlify-static' } })
-    } catch {}
+    } catch {
+      // Not in the publish dir — try the next candidate.
+    }
   }
   return undefined
 }
