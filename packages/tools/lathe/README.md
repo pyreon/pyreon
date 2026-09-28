@@ -630,7 +630,9 @@ middleware and mocks all apply — unlike `EventSource`), every event honours
 and `Last-Event-ID`. A non-GET stream is not reconnected by default (that
 would repeat the request). Under `installMocks()` it answers a real stream —
 three fixture events with ids, resuming after `Last-Event-ID` — and an
-operation offering JSON too is mocked by `Accept`, so both calls work. Built on `@pyreon/http/stream` and
+operation offering JSON too is mocked by `Accept`, so both calls work.
+`mockOperation(id, { dropAfter: n })` fails each connection after `n` events,
+so reconnect-and-resume runs against the mocks too. Built on `@pyreon/http/stream` and
 `@pyreon/query`'s `useStream`, for every `client`.
 
 ```ts
@@ -1079,7 +1081,7 @@ The input layer resolves a spec's semantics once, so no emitter rediscovers them
 - **Swagger 2.0** — converted to 3.0 first (`definitions`, body / `formData` parameters, `produces` / `consumes`, `securityDefinitions`, `host` + `basePath` + `schemes`, `x-nullable`, `collectionFormat`); what 3.0 cannot spell is a `swagger2-lossy` note. Kubernetes' spec generates output that typechecks.
 - **Multi-file specs** — a `$ref` into another file (JSON or YAML) is resolved against the spec's own path and bundled: schemas become named models (stable names, cycles across files closed), everything else is inlined. `generate` stays offline by default; `remoteRefs: 'fetch'` (credentials per origin via `remoteHeaders`, ETag-cached, a failed fetch fails the run) or `lathe pull` bundles remote parts. DigitalOcean's 2,954-file source gives the same models and operations as Redocly's bundle.
 - **Error responses** — each operation's `4xx` / `5xx` / `4XX` / `default` JSON bodies are its endpoint's `errors`. A rejection's `body` is validated and `matched` names the key it passed, so `err.matched === '404'` narrows `err.body`; hooks carry `EndpointError<typeof op>` as their error type.
-- **Webhooks and callbacks** — `webhooks.ts`: a schema per payload (`webhookSchemas`) and `WebhookHandler<name>` typed from it. No endpoint or hook — the API sends these.
+- **Webhooks and callbacks** — `webhooks.ts`: a schema per payload (`webhookSchemas`), `WebhookHandler<name>` typed from it, `validateWebhook`, a framework-agnostic `webhookHandler(handlers, { verify, event })` (`Request` → `Response`, a zero API route as-is: verify → parse by media type → method → validate → dispatch), and `callbackUrl(name, ctx)` evaluating a callback's OpenAPI runtime expression. No endpoint or hook — the API sends these.
 
 ## Contract changes
 

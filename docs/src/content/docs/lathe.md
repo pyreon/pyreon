@@ -827,19 +827,52 @@ still untyped, with an `error-responses` note.
 ### Webhooks and callbacks
 
 3.1 `webhooks` and operation `callbacks` are requests the API SENDS, so they get
-no endpoint or hook. With the `schemas` plugin they produce `webhooks.ts` — a
-schema per payload, and a handler type inferred from it:
+no endpoint or hook. With the `schemas` plugin they produce `webhooks.ts`: a
+schema per payload, a handler type inferred from it, and the receiving side —
+a fetch-style handler (`Request` in, `Response` out), which is also the shape
+of a `@pyreon/zero` API route:
 
 ```ts
-import { webhookSchemas, type WebhookHandler } from './gen'
+// src/routes/api/hooks.ts
+import { webhookHandler } from '../../gen'
 
-const onNewPet: WebhookHandler<'newPet'> = (pet) => console.log(pet.name)
-
-app.post('/hooks/new-pet', async (req) => {
-  const result = await webhookSchemas.newPet['~standard'].validate(await req.json())
-  if (!result.issues) await onNewPet(result.value)
-})
+export const POST = webhookHandler(
+  {
+    newPet: async (pet) => { await db.pets.insert(pet) },
+    'subscribe.onEvent': (event) => console.log(event.kind),
+  },
+  {
+    // Which webhook this request is — from a header, or the parsed body.
+    event: (request) => (request.headers.get('x-event') === 'pet' ? 'newPet' : 'subscribe.onEvent'),
+    // Checked BEFORE the body is parsed, over the exact bytes received.
+    verify: ({ request, bytes }) => verifySignature(request.headers.get('x-signature'), bytes),
+  },
+)
 ```
+
+The handler verifies, parses the body as its declared media type (JSON, a form,
+text, multipart), picks the event, checks the method, validates the payload
+against the emitted schema and dispatches — answering `401` / `400` / `404` /
+`405` (with `Allow`) / `422` (with the issues) or `204`, or the handler's own
+`Response`. One handler needs no `event`; several do. Signature checking is a
+hook on purpose: every sender signs differently (GitHub, Stripe and Slack each
+their own way), and a guessed scheme is a false sense of security.
+`validateWebhook(name, body)` runs a schema on its own.
+
+A callback's URL is an OpenAPI runtime expression; `callbackUrl` evaluates it
+against the request that registered the callback:
+
+```ts
+import { callbackUrl } from '../../gen'
+
+const target = callbackUrl('subscribe.onEvent', { request: { body: await req.json() } })
+// '{$request.body#/callbackUrl}' -> 'https://client.example/cb'
+```
+
+The full grammar is supported — `$url`, `$method`, `$statusCode`, and
+`$request.` / `$response.` with `header.<name>` (case-insensitive),
+`query.<name>`, `path.<name>` and `body#/json/pointer`, alone or embedded in a
+template. An expression that resolves to nothing throws, naming it.
 
 A callback is keyed `<operationId>.<callbackName>`; an entry with several
 methods gets `.post` / `.put` suffixes.
@@ -1069,6 +1102,12 @@ runs against the mocks too. For an operation offering JSON **and** a stream the
 mock picks by the request's `Accept`: `<op>Stream` gets the stream, the plain
 call gets the JSON fixture. Override either with `mockOperation('createChat', …)`
 or `mockOperation('createChatStream', …)`.
+
+To exercise reconnection, tell a stream mock to drop: `mockOperation('roomEvents',
+{ dropAfter: 1 })` delivers one event per connection and then fails it the way a
+lost network does. A GET SSE stream reconnects, sends `Last-Event-ID`, and the
+mock answers with the events after it, so every event still arrives once. An
+NDJSON stream has no resume id, so the drop reaches the reader as an error.
 
 When the spec does not say an operation streams — an endpoint that streams
 when its body says `stream: true` — declare it:
@@ -1405,8 +1444,8 @@ never touched. Commit the manifest with the rest of the output.
   disk is reported by default; `remoteRefs: 'fetch'` or `lathe pull` bundles it. Names of hoisted
   schemas are stable per target, but a new collision can renumber a
   `<name>2` model.
-- **Webhooks and callbacks are types and schemas only** — Lathe generates no
-  server route or signature verification for them.
+- **Webhook signatures are a hook, not built in** — `webhookHandler` calls your
+  `verify`; it does not know any vendor's signing scheme.
 - A security scheme other than bearer / OAuth2 / OpenID Connect / basic / API
   key (HTTP digest, mutual TLS) gets no `auth` helper and is reported as a loss.
 - **A read with no typed JSON response** gets a web hook typed `unknown` and no
@@ -1434,10 +1473,8 @@ never touched. Commit the manifest with the rest of the output.
   zero-dependency subpath) — the one place an axios / ky / fetch client depends
   on `@pyreon/http`, and only when the spec has a streaming operation. On axios,
   a stream request uses axios's `fetch` adapter: its default adapter returns a
-  Node `Readable` on the server and cannot stream at all in a browser.
-- **A mocked stream ends after its fixture events** — it never drops the
-  connection by itself, so exercising a reconnect still needs a test that
-  fails a request (`mockOperation(…, { error })`) or a real server.
+  Node `Readable` on the server and cannot stream at all in a browser. That
+  path is tested against node's `fetch` and in real Chromium.
 - **Plugin hooks are synchronous** and run twice each (the determinism check);
   an expensive `emit` costs twice its work. `format` is the one asynchronous
   hook.
