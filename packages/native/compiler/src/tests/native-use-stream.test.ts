@@ -145,6 +145,18 @@ describe('useStream lowers to the native stream runtime', () => {
     )
   })
 
+  it('a non-default Accept (`{ ...c.headers, accept }`) lowers as the stream\'s Accept', () => {
+    const src = NDJSON.replace('headers: c.headers', "headers: { ...c.headers, accept: 'application/jsonl' }")
+    const sw = swift(src)
+    const kt = kotlin(src)
+    expect(sw.warnings).toEqual([])
+    expect(kt.warnings).toEqual([])
+    expect(sw.code).toContain(', accept: "application/jsonl", decode:')
+    expect(kt.code).toContain(', accept = "application/jsonl") {')
+    // The literal is the stream's Accept, not a second request header.
+    expect(sw.code).not.toContain('headers: ["accept"')
+  })
+
   for (const [label, src] of [
     ['SSE', SSE],
     ['text', TEXT],
