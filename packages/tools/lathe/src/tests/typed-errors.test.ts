@@ -68,7 +68,11 @@ describe('the IR carries typed error responses', () => {
     expect(notes[0]?.message).not.toContain('`410`')
   })
 
-  it('a `default` read as the SUCCESS response is not repeated as an error', () => {
+  // `default` describes EVERY status the spec does not list. With no 2xx beside
+  // it, it is read as the success response AND carried through as the typed
+  // error body -- a 500 under it has that shape too. (It used to be dropped
+  // from the errors, leaving every rejection's `body` untyped.)
+  it('a `default` read as the SUCCESS response is carried through as the typed error too', () => {
     const only = loadOpenApi(
       JSON.stringify({
         openapi: '3.0.3',
@@ -77,7 +81,7 @@ describe('the IR carries typed error responses', () => {
       }),
     ).doc.operations[0]
     expect(only?.response).toEqual({ kind: 'string' })
-    expect(only?.errors).toBeUndefined()
+    expect(only?.errors).toEqual([{ status: 'default', type: { kind: 'string' } }])
   })
 })
 

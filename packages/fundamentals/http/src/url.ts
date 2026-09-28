@@ -108,7 +108,7 @@ function scalars(values: readonly (Scalar | null | undefined)[]): string[] {
   return out
 }
 
-const DELIMITER = { form: ',', spaceDelimited: ' ', pipeDelimited: '|' } as const
+const DELIMITER = { form: ',', spaceDelimited: ' ', pipeDelimited: '|', tabDelimited: '\t' } as const
 
 function appendStyled(
   search: URLSearchParams,

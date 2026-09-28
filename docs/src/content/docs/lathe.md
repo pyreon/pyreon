@@ -125,7 +125,9 @@ nested sequences every YAML dumper writes all read correctly. Anchors, aliases
 and merge keys are resolved. What the reader **refuses**, with a line number,
 is everything that would otherwise produce a document the author did not
 write: duplicate keys, a multi-document stream, custom tags (`!Ref`), a
-recursive alias, `.inf` / `.nan`, and tab indentation.
+recursive alias, `.inf` / `.nan`, and tab indentation. A JSON spec with a
+duplicate key still parses (every JSON reader keeps the last one), and each
+duplicate is reported as a `duplicate-key` note pointing at it.
 
 ### What the reader represents
 
@@ -141,8 +143,10 @@ The input layer resolves a spec's semantics once, so no emitter rediscovers them
 - **Parameters** — header and cookie parameters are typed call arguments; an operation-level parameter overrides a path-level one; an undeclared path placeholder is synthesized.
 - **Servers** — variables take their `default`; an operation- or path-level server travels with its operation (on native, as its own literal-base client); a relative server is reported, and `lathe pull` prints the absolute URL it resolves to.
 - **Names** — models, operation ids, path placeholders and tag files that normalize to one identifier are disambiguated deterministically; nothing is dropped.
-- **Error responses** — every `4xx` / `5xx` / `4XX` / `default` JSON body is typed per operation (see [Typed errors](#typed-errors)).
+- **Error responses** — every `4xx` / `5xx` / `4XX` / `default` JSON body is typed per operation (see [Typed errors](#typed-errors)). A `default` with no 2xx beside it is both the success type and the typed error body.
 - **Webhooks and callbacks** — typed as payload schemas and handler types (see [Webhooks and callbacks](#webhooks-and-callbacks)).
+- **Path items by `$ref`** — a path, webhook or callback whose path item is a `$ref` (3.1 `components.pathItems`, or one shared between paths) is followed; fields beside the `$ref` win. A `trace` operation is reported (`unsupported-method`): the Fetch standard forbids the method, so no generated call could send it.
+- **Examples by `$ref`** — an `examples` entry that references `components.examples` (or another file) is resolved before its `value` becomes the `@example` and the preview argument.
 
 ### Swagger 2.0 is up-converted
 
@@ -153,9 +157,12 @@ parameters (a file field makes the body `multipart`), `produces` / `consumes`,
 scheme comes from the URL the spec was pulled from), `x-nullable`,
 `type: file`, `collectionFormat` → `style` / `explode` (an array with no
 `collectionFormat` is `csv`, Swagger 2's default), responses and string
-discriminators. What 3.0 cannot spell is a `swagger2-lossy` note:
-`collectionFormat: tsv`, per-operation `schemes` that exclude the client's
-scheme, an unknown security type. Kubernetes' 1,202-operation spec generates
+discriminators. A query or form `collectionFormat: tsv` is carried as
+`tabDelimited` (a tab-joined value, which `@pyreon/http` and the generated
+runtime both serialize), and per-operation `schemes` that exclude the client's
+scheme become that operation's own servers, on the document's host. What 3.0
+cannot spell is a `swagger2-lossy` note: `tsv` on a header or path parameter,
+per-operation `schemes` naming no usable scheme, an unknown security type. Kubernetes' 1,202-operation spec generates
 output that typechecks with every plugin. Swagger 1.x is refused.
 
 ### Specs split across files
@@ -1371,6 +1378,8 @@ a stable `code`, an RFC 6901 pointer into the spec, and a severity:
 | `unsupported-const` | loss | a `const` whose value is not a JSON scalar — not enforced (a scalar `const` is) |
 | `unsupported-schema` / `unsupported-ref` | loss | a schema or `$ref` that reduces to `unknown` — including a `$ref` into a file that could not be read, or a remote one at generate time — or a degradation (a discriminator that cannot be proven, a contradictory `allOf`) |
 | `cyclic-ref` | loss | a `$ref` cycle through references alone, the cyclic part of an `allOf`, or a path item / response that includes itself across files — contributes nothing |
+| `duplicate-key` | loss | a JSON spec writes a key twice in one object — `JSON.parse` keeps the last, so the first definition is gone (a YAML spec with a duplicate key is refused outright) |
+| `unsupported-method` | loss | a `trace` operation — the Fetch standard forbids the method, so `fetch` throws before sending it; no call is generated |
 | `int64-precision` | loss | one note for every `format: int64` number — `JSON.parse` rounds past 2^53 − 1 before validation, so no generated type (bigint or string) can recover the value; typed as `number` |
 | `no-servers` | loss | no absolute base URL (none declared, relative, or a variable with no default), so nothing reaches native |
 | `multiple-content-types` | choice | JSON picked among several media types |
@@ -1381,7 +1390,7 @@ a stable `code`, an RFC 6901 pointer into the spec, and a severity:
 | `plugin` | loss | a third-party plugin reported something it could not honour (`ctx.note(...)` in `transformDocument`) |
 | `swagger2-converted` | choice | the input was Swagger 2.0 and was up-converted to OpenAPI 3.0; other notes point into the converted document |
 | `webhooks` | choice | the spec declares webhooks / callbacks — requests the API sends; typed as payload schemas and `WebhookHandler` types in `webhooks.ts`, never as client calls |
-| `swagger2-lossy` | loss | a Swagger 2 construct 3.0 cannot spell (`collectionFormat: tsv`, per-operation `schemes`, an unknown security type), or a missing `schemes` assumed `https` |
+| `swagger2-lossy` | loss | a Swagger 2 construct 3.0 cannot spell (`collectionFormat: tsv` on a header or path parameter, per-operation `schemes` naming no usable scheme, an unknown security type), or a missing `schemes` assumed `https` — a query/form `tsv` is carried as a tab-joined value and per-operation `schemes` as per-operation servers |
 
 The terminal report lists the losses and summarises the choices; the generated
 reference pages split them into "Not represented" and "Choices made".

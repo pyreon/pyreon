@@ -1060,7 +1060,9 @@ it did open. Anchors, aliases and merge keys are now resolved. Refused, with a
 line number: duplicate keys, a multi-document stream, custom tags (`!Ref`), a
 recursive alias, `.inf` / `.nan`, a collection used as a key, and tab
 indentation — each would otherwise produce a document the author did not
-write. A UTF-8 BOM is accepted on both the JSON and the YAML path.
+write. A UTF-8 BOM is accepted on both the JSON and the YAML path. JSON keeps
+the last of two duplicate keys, as every JSON reader does, and Lathe reports
+each one as a `duplicate-key` note.
 
 ## What the reader represents
 
@@ -1076,7 +1078,8 @@ The input layer resolves a spec's semantics once, so no emitter rediscovers them
 - **Parameters** — header and cookie parameters are typed call arguments; an operation-level parameter overrides a path-level one; an undeclared path placeholder is synthesized.
 - **Servers** — variables take their `default`; an operation- or path-level server travels with its operation (on native, as its own literal-base client); a relative server is reported, and `lathe pull` prints the absolute URL it resolves to.
 - **Names** — models, operation ids, path placeholders and tag files that normalize to one identifier are disambiguated deterministically; nothing is dropped.
-- **Swagger 2.0** — converted to 3.0 first (`definitions`, body / `formData` parameters, `produces` / `consumes`, `securityDefinitions`, `host` + `basePath` + `schemes`, `x-nullable`, `collectionFormat`); what 3.0 cannot spell is a `swagger2-lossy` note. Kubernetes' spec generates output that typechecks.
+- **Swagger 2.0** — converted to 3.0 first (`definitions`, body / `formData` parameters, `produces` / `consumes`, `securityDefinitions`, `host` + `basePath` + `schemes`, per-operation `schemes` as per-operation servers, `x-nullable`, `collectionFormat` — a query/form `tsv` as a tab-joined `tabDelimited` value); what 3.0 cannot spell is a `swagger2-lossy` note.
+- **`$ref`'d path items and examples** — followed. A `trace` operation is reported, since `fetch` refuses the method. A JSON spec's duplicate keys are reported (`duplicate-key`); YAML refuses them. Kubernetes' spec generates output that typechecks.
 - **Multi-file specs** — a `$ref` into another file (JSON or YAML) is resolved against the spec's own path and bundled: schemas become named models (stable names, cycles across files closed), everything else is inlined. `generate` stays offline by default; `remoteRefs: 'fetch'` (credentials per origin via `remoteHeaders`, ETag-cached, a failed fetch fails the run) or `lathe pull` bundles remote parts. DigitalOcean's 2,954-file source gives the same models and operations as Redocly's bundle.
 - **Error responses** — each operation's `4xx` / `5xx` / `4XX` / `default` JSON bodies are its endpoint's `errors`. A rejection's `body` is validated and `matched` names the key it passed, so `err.matched === '404'` narrows `err.body`; hooks carry `EndpointError<typeof op>` as their error type.
 - **Webhooks and callbacks** — `webhooks.ts`: a schema per payload (`webhookSchemas`) and `WebhookHandler<name>` typed from it. No endpoint or hook — the API sends these.
