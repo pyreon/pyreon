@@ -372,10 +372,9 @@ jobs:
       - name: Detect scaffold-relevant changes
         id: scaffold
         run: |
-          # The seven scaffold cells, packed into 3 batches (see ci-batch.ts
-          # for why a cell is not free: each one was its own runner — six
-          # queue entries + six setups for ~6 min of work apiece, and under
-          # slot contention the six serialised anyway). `emit` writes BOTH
+          # All seven scaffold fixtures currently fit on one runner after
+          # removing repeated root bootstrap. The adaptive batcher can grow
+          # to three batches if the measured workload grows. `emit` writes BOTH
           # outputs on every exit path so the cell job can never see a
           # `has=true` with an empty matrix.
           CELLS='["cpa-smoke-app-vercel","cpa-smoke-app-static","cpa-smoke-blog-cloudflare","cpa-smoke-dashboard-vercel-full","cpa-smoke-dashboard-node-supabase","cpa-smoke-app-node","cpa-smoke-monorepo-vercel"]'

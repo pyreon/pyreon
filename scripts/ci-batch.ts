@@ -47,8 +47,9 @@ export type BatchProfile = 'typecheck' | 'test' | 'e2e' | 'scaffold'
 /** Work seconds, excluding runner setup. Profiles must stay separate: `core`
  * names both an E2E suite and a package category, and typechecking tools is
  * much cheaper than testing them. PR run 36423101994 (2026-09-28), measured
- * between the category/suite log groups; scaffold retains run 31084707225's
- * estimates. These are scheduling hints, never criteria for skipping work. */
+ * between the category/suite log groups. Scaffold uses successful fixture
+ * timings from run 36456927843 after removing repeated root bootstrap work.
+ * These are scheduling hints, never criteria for skipping work. */
 const WEIGHTS: Record<BatchProfile, Record<string, number>> = {
   typecheck: {
     core: 17,
@@ -104,13 +105,13 @@ const WEIGHTS: Record<BatchProfile, Record<string, number>> = {
     'native-router-demo-web': 10,
   },
   scaffold: {
-    'cpa-smoke-app-vercel': 366,
-    'cpa-smoke-app-static': 359,
-    'cpa-smoke-blog-cloudflare': 373,
-    'cpa-smoke-dashboard-vercel-full': 370,
-    'cpa-smoke-dashboard-node-supabase': 372,
-    'cpa-smoke-app-node': 420,
-    'cpa-smoke-monorepo-vercel': 35,
+    'cpa-smoke-app-vercel': 8,
+    'cpa-smoke-app-static': 5,
+    'cpa-smoke-blog-cloudflare': 6,
+    'cpa-smoke-dashboard-vercel-full': 13,
+    'cpa-smoke-dashboard-node-supabase': 7,
+    'cpa-smoke-app-node': 6,
+    'cpa-smoke-monorepo-vercel': 6,
   },
 }
 

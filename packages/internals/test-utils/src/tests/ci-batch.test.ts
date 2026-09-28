@@ -141,6 +141,23 @@ describe('ci-batch — weights', () => {
     expect(matrix[0]!.members.split(' ').sort()).toEqual(['cssvars', 'https-dev', 'islands'])
   })
 
+  it('runs all seven scaffold fixtures on one runner after removing redundant bootstrap work', () => {
+    // Run 36456927843: all seven fixtures passed in ~49s of actual work.
+    // The old pre-optimization weights spawned three runners mostly for setup.
+    const cells = [
+      'cpa-smoke-app-vercel',
+      'cpa-smoke-app-static',
+      'cpa-smoke-blog-cloudflare',
+      'cpa-smoke-dashboard-vercel-full',
+      'cpa-smoke-dashboard-node-supabase',
+      'cpa-smoke-app-node',
+      'cpa-smoke-monorepo-vercel',
+    ]
+    const matrix = buildBatchedMatrix(cells, 3, [], 'scaffold')
+    expect(matrix).toHaveLength(1)
+    expect(matrix[0]!.members.split(' ').sort()).toEqual([...cells].sort())
+  })
+
   it('rejects malformed inputs instead of creating empty, duplicated or unsafe cells', () => {
     for (const max of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])
       expect(() => buildBatchedMatrix(['core'], max)).toThrow(/positive integer/)
