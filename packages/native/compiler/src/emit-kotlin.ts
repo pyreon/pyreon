@@ -12951,8 +12951,9 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     `showXAxis = ${bool('showXAxis', true)}`,
     `showYAxis = ${bool('showYAxis', true)}`,
     `showGrid = ${bool('showGrid', true)}`,
+    ...(readStaticAttrKotlin(e, 'endLabels') === true ? ['endLabels = true'] : []),
   ]
-  // Mirror of the Swift emitter — ChartSpec field 9, before `yFormat`.
+  // Mirror of the Swift emitter — ChartSpec field 10, before `yFormat`.
   const yDom = chartAttrExprKotlin(e, 'yDomain')
   if (yDom !== undefined) specArgs.push(`yDomain = ${emitKotlinExpr(yDom, indent)}`)
   const yFormat = kotlinChartFormatter(e, 'format', indent) ?? (locale === undefined ? undefined : 'pyreonLocaleNumberFormatter(pyreonLocale)')

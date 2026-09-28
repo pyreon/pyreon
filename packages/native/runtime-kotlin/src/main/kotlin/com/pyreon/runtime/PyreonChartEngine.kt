@@ -64,7 +64,7 @@ data class Gutters(var left: Double, var right: Double, var top: Double, var bot
 
 data class PlotLayout(var plot: PyreonChartRect, var xTicks: List<Tick>, var yTicks: List<Tick>, var y2Ticks: List<Tick>, var xDomainUsed: Domain, var xLabelRotate: Double, var xLabelEvery: Int, var yLabelEvery: Int, var gutters: Gutters)
 
-data class LayoutConfig(var width: Double, var height: Double, var xDomain: Domain, var yDomain: Domain, var categories: List<String>, var fontSize: Double, var xTickCount: Double, var yTickCount: Double, var showXAxis: Boolean, var showYAxis: Boolean, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var xTime: Boolean? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var horizontal: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var yLog: Boolean? = null, var yLogMin: Double? = null, var yLogMax: Double? = null, var yTime: Boolean? = null, var xLabels: String? = null)
+data class LayoutConfig(var width: Double, var height: Double, var xDomain: Domain, var yDomain: Domain, var categories: List<String>, var fontSize: Double, var xTickCount: Double, var yTickCount: Double, var showXAxis: Boolean, var showYAxis: Boolean, var rightReserve: Double? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var xTime: Boolean? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var horizontal: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var yLog: Boolean? = null, var yLogMin: Double? = null, var yLogMax: Double? = null, var yTime: Boolean? = null, var xLabels: String? = null)
 
 data class LabelSample(var widest: Double, var need: Double)
 
@@ -98,7 +98,7 @@ data class ChartTheme(var palette: List<String>, var background: String, var sur
 
 data class Emphasis(var highlight: Int, var selected: List<Int>)
 
-data class ChartSpec(var width: Double, var height: Double, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null)
+data class ChartSpec(var width: Double, var height: Double, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var endLabels: Boolean? = null, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null)
 
 data class ExtentSpan(var seen: Boolean, var lo: Double, var hi: Double)
 
@@ -384,9 +384,9 @@ data class Bin(var x0: Double, var x1: Double, var count: Double)
 
 private val DEG = (kotlin.math.PI).toDouble() / (180.0).toDouble()
 
-private val DEFAULT_PALETTE: List<String> = listOf("#4f7df3", "#f97362", "#22c3a6", "#a66cff", "#ffb020", "#2fb7e8", "#f45fa3", "#7bc950", "#8892a6", "#c47a3d")
+private val DEFAULT_PALETTE: List<String> = listOf("#4f7df3", "#c88100", "#1ca28a", "#179dcd", "#c47a3d", "#8892a6", "#f4589f", "#f85f4c", "#5aa232", "#a66cff")
 
-private val DARK_PALETTE: List<String> = listOf("#7b9bff", "#ff8f7e", "#4adbc0", "#bd93ff", "#ffc44d", "#5dcbf2", "#ff80be", "#9ad870", "#a3acbd", "#d8955e")
+private val DARK_PALETTE: List<String> = listOf("#7b9bff", "#ffc44d", "#4adbc0", "#5dcbf2", "#d8955e", "#a3acbd", "#ff80be", "#ff8f7e", "#9ad870", "#bd93ff")
 
 private val NO_GRADIENT: SeriesGradient = SeriesGradient(stops = listOf())
 
@@ -411,6 +411,8 @@ private val POLYGON_CIRCLE_SIDES = 24
 private val AREA_MARK_OPACITY = 0.3
 
 private val defaultTheme: ChartTheme = ChartTheme(palette = DEFAULT_PALETTE, background = "", surface = "#ffffff", text = "#1f2937", label = "#5a6b7a", axis = "#8496a5", grid = "rgba(132,150,165,0.18)", positive = "#15803d", negative = "#b42318", muted = "#e2e8f0", ramp = listOf("#eff6ff", "#93c5fd", "#3b82f6", "#1e40af"), fontFamily = "", fontSize = 11.0, titleSize = 15.0, radius = 3.0, enterMs = 700.0, updateMs = 350.0)
+
+private val END_LABEL_GAP = 6.0
 
 private val HEAT_RAMP = listOf("#eff6ff", "#93c5fd", "#3b82f6", "#1e40af")
 
@@ -1959,7 +1961,7 @@ fun computeLayout(cfg: LayoutConfig, measure: (String, Double) -> Double): PlotL
     }
     val y2TitleH = if (hasY2 && cfg.y2Title != null && cfg.y2Title != "") titleH else 0.0
     val left = yBand
-    val right = (if (hasY2) widest2 + labelGap + tickLen else padRight) + y2TitleH
+    val right = (if (hasY2) widest2 + labelGap + tickLen else padRight) + y2TitleH + ((cfg.rightReserve ?: 0.0))
     val provisionalW = Math.max(0.0, cfg.width - left - right)
     val mode = (cfg.xLabels ?: "auto")
     var rotate = 0.0
@@ -3178,8 +3180,57 @@ fun layoutChart(raw: ChartSpec, measure: (String, Double) -> Double): PlotLayout
     val n = seriesMaxLength(spec.series)
     val isLog = raw.yScale == "log"
     val lb = if (isLog) logBounds(raw) else Domain(min = 1.0, max = 10.0)
-    val cfg = LayoutConfig(width = spec.width, height = spec.height, xDomain = if (((spec.xValues ?: listOf())).length > 0) extent((spec.xValues ?: listOf())) else Domain(min = 0.0, max = if (n > 1) (n - 1).toDouble() else 1.0), yDomain = resolveYDomain(spec), categories = spec.categories, fontSize = spec.theme.fontSize, xTickCount = 5.0, yTickCount = 5.0, showXAxis = spec.showXAxis, showYAxis = spec.showYAxis, yFormat = (spec.yFormat ?: (if (raw.stackNormalize == true) percent(0) else null)), xFormat = spec.xFormat, xTime = spec.xTime == true, y2Domain = if (hasRightAxis(spec)) resolveY2Domain(spec) else null, y2Format = spec.y2Format, horizontal = spec.horizontal == true, xTitle = spec.xTitle, yTitle = spec.yTitle, y2Title = spec.y2Title, yLog = isLog, yLogMin = lb.min, yLogMax = lb.max, yTime = spec.yTime == true, xLabels = spec.xLabels)
+    val cfg = LayoutConfig(width = spec.width, height = spec.height, xDomain = if (((spec.xValues ?: listOf())).length > 0) extent((spec.xValues ?: listOf())) else Domain(min = 0.0, max = if (n > 1) (n - 1).toDouble() else 1.0), yDomain = resolveYDomain(spec), categories = spec.categories, fontSize = spec.theme.fontSize, xTickCount = 5.0, yTickCount = 5.0, showXAxis = spec.showXAxis, showYAxis = spec.showYAxis, rightReserve = endLabelReserve(spec, measure), yFormat = (spec.yFormat ?: (if (raw.stackNormalize == true) percent(0) else null)), xFormat = spec.xFormat, xTime = spec.xTime == true, y2Domain = if (hasRightAxis(spec)) resolveY2Domain(spec) else null, y2Format = spec.y2Format, horizontal = spec.horizontal == true, xTitle = spec.xTitle, yTitle = spec.yTitle, y2Title = spec.y2Title, yLog = isLog, yLogMin = lb.min, yLogMax = lb.max, yTime = spec.yTime == true, xLabels = spec.xLabels)
     return computeLayout(cfg, measure)
+  }
+
+fun hasEndLabel(spec: ChartSpec, s: Series): Boolean = spec.endLabels == true && spec.horizontal != true && (s.kind == "line" || s.kind == "area") && s.label != ""
+
+fun endLabelReserve(spec: ChartSpec, measure: (String, Double) -> Double): Double {
+    var widest = 0.0
+    for (s in spec.series) {
+      if (!hasEndLabel(spec, s)) {
+        continue
+      }
+      val w = measure(s.label, spec.theme.fontSize)
+      if (w > widest) {
+        widest = w
+      }
+    }
+    return if (widest > 0.0) widest + END_LABEL_GAP else 0.0
+  }
+
+fun spreadLabels(ys: List<Double>, gap: Double, top: Double, bottom: Double): List<Double> {
+    val n = ys.length
+    val order: MutableList<Int> = mutableListOf()
+    for (i in 0 until n) {
+      order.add(i)
+    }
+    order.sortWith(Comparator { a, b -> (ys[a] - ys[b]).compareTo(0.0) })
+    val placed: MutableList<Double> = mutableListOf()
+    for (i in 0 until n) {
+      placed.add(ys[i])
+    }
+    for (k in 1 until n) {
+      val prev = placed[order[k - 1]]
+      if (placed[order[k]] < prev + gap) {
+        placed[order[k]] = prev + gap
+      }
+    }
+    if (n > 0) {
+      val over = placed[order[n - 1]] - bottom
+      if (over > 0.0) {
+        for (k in 0 until n) {
+          placed[order[k]] = placed[order[k]] - over
+        }
+      }
+      for (k in 0 until n) {
+        if (placed[order[k]] < top) {
+          placed[order[k]] = top
+        }
+      }
+    }
+    return placed
   }
 
 fun categoryXPixel(spec: ChartSpec, xDomain: Domain, plot: PyreonChartRect, v: Double): Double {
@@ -3457,6 +3508,9 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
         }
       }
     }
+    val endYs: MutableList<Double> = mutableListOf()
+    val endTexts: MutableList<String> = mutableListOf()
+    val endColors: MutableList<String> = mutableListOf()
     for (sIdx in 0 until spec.series.length) {
       val s = spec.series[sIdx]
       if (s.kind == "stacked" || s.kind == "grouped" || s.kind == "stackedArea") {
@@ -3666,6 +3720,20 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
           out.add(valueLabel(fmtP(v), PyreonChartPt(x = labelPts[i].x, y = labelPts[i].y - (s.radius + 5.0)), "middle", "bottom", t))
         }
       }
+      if (hasEndLabel(spec, s) && progress >= 1.0) {
+        val endPts = place(s.values)
+        var last = -1
+        for (i in 0 until endPts.length) {
+          if (isFiniteValue(s.values[i])) {
+            last = i
+          }
+        }
+        if (last >= 0) {
+          endYs.add(endPts[last].y)
+          endTexts.add(s.label)
+          endColors.add(s.color)
+        }
+      }
       val eLow = (s.errLow ?: listOf())
       val eHigh = (s.errHigh ?: listOf())
       if (eLow.length > 0 && eHigh.length > 0 && progress >= 1.0 && s.kind != "waterfall") {
@@ -3693,6 +3761,12 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
           out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = cx - cap, y = yLo), to = PyreonChartPt(x = cx + cap, y = yLo), stroke = t.text, width = 1.0))
           out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = cx - cap, y = yHi), to = PyreonChartPt(x = cx + cap, y = yHi), stroke = t.text, width = 1.0))
         }
+      }
+    }
+    if (endYs.length > 0) {
+      val spread = spreadLabels(endYs, t.fontSize + 2.0, plot.y + (t.fontSize).toDouble() / (2.0).toDouble(), plot.y + plot.h - (t.fontSize).toDouble() / (2.0).toDouble())
+      for (i in 0 until spread.length) {
+        out.add(PyreonDrawCmd(kind = "text", fill = endColors[i], text = endTexts[i], at = PyreonChartPt(x = plot.x + plot.w + END_LABEL_GAP, y = spread[i]), size = t.fontSize, align = "start", baseline = "middle"))
       }
     }
     val markers = (spec.markers ?: listOf())

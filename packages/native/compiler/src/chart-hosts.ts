@@ -19,7 +19,7 @@
 // BY NAME (`UNLOWERED_CHART_HOSTS`) rather than falling through to the generic
 // component emit, which would name a SwiftUI/Compose view that does not exist.
 
-import { visualMap, visualStripOf } from '@pyreon/charts/engine'
+import { DEFAULT_PALETTE, palettes, visualMap, visualStripOf } from '@pyreon/charts/engine'
 import type { VisualMapOptions, VisualMapSpec } from '@pyreon/charts/engine'
 import type { AttrIR, ExprIR } from './types'
 import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
@@ -1034,6 +1034,12 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
         break
       }
       case 'Legend': {
+        // `<Legend direct />` names each line at its end instead of a legend box.
+        const direct = attrOf(child, 'direct')
+        if (direct?.kind === 'literal' && direct.value === true) {
+          attrs.push({ kind: 'attr', name: 'endLabels', value: lit(true) })
+          break
+        }
         attrs.push({ kind: 'attr', name: 'showLegend', value: lit(true) })
         const toggle = attrOf(child, 'toggle')
         if (toggle !== undefined) attrs.push({ kind: 'attr', name: 'legendToggle', value: toggle })
@@ -1275,7 +1281,7 @@ export const ACCESSOR_CHART_HOSTS: Readonly<Record<string, AccessorHostSpec>> = 
  * `@pyreon/charts`'s `defaultTheme` is locked by `chart-theme-default.test.ts`.
  */
 export const CHART_THEME_DEFAULT = {
-  palette: ['#4f7df3', '#f97362', '#22c3a6', '#a66cff', '#ffb020', '#2fb7e8', '#f45fa3', '#7bc950', '#8892a6', '#c47a3d'],
+  palette: DEFAULT_PALETTE,
   background: '',
   surface: '#ffffff',
   text: '#1f2937',
@@ -1297,19 +1303,9 @@ export const CHART_THEME_DEFAULT = {
 /**
  * The named palettes `@pyreon/charts` exports as `palettes.*`, so a theme
  * literal may say `palette: palettes.okabeIto` and lower to the resolved list.
- * Drift-locked against theme.ts by `chart-theme-default.test.ts`.
+ * Imported from the engine, so it cannot drift.
  */
-export const NAMED_PALETTES: Readonly<Record<string, readonly string[]>> = {
-  pyreon: CHART_THEME_DEFAULT.palette,
-  pyreonDark: ['#7b9bff', '#ff8f7e', '#4adbc0', '#bd93ff', '#ffc44d', '#5dcbf2', '#ff80be', '#9ad870', '#a3acbd', '#d8955e'],
-  echarts6: ['#5070dd', '#b6d634', '#505372', '#ff994d', '#0ca8df', '#ffd10a', '#fb628b', '#785db0', '#3fbe95'],
-  echarts5: ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de', '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc'],
-  echartsDark: ['#4992ff', '#7cffb2', '#fddd60', '#ff6e76', '#58d9f9', '#05c091', '#ff8a45', '#8d48e3', '#dd79ff'],
-  observable10: ['#4269d0', '#efb118', '#ff725c', '#6cc5b0', '#3ca951', '#ff8ab7', '#a463f2', '#97bbf5', '#9c6b4e', '#9498a0'],
-  tableau10: ['#4e79a7', '#f28e2c', '#e15759', '#76b7b2', '#59a14f', '#edc949', '#af7aa1', '#ff9da7', '#9c755f', '#bab0ab'],
-  okabeIto: ['#e69f00', '#56b4e9', '#009e73', '#f0e442', '#0072b2', '#d55e00', '#cc79a7', '#000000'],
-  tailwind: ['#3b82f6', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#06b6d4', '#f97316', '#84cc16'],
-}
+export const NAMED_PALETTES: Readonly<Record<string, readonly string[]>> = palettes
 
 /** `chartThemes.light` / `chartThemes.dark` as emitted field text — `theme={chartThemes.dark}` lowers to the whole map. */
 export const CHART_THEMES: Readonly<Record<'light' | 'dark', Readonly<Record<keyof typeof CHART_THEME_DEFAULT, string | readonly string[]>>>> = {

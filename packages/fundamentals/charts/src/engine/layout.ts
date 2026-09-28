@@ -55,6 +55,8 @@ export interface LayoutConfig {
   yTickCount: Double
   showXAxis: boolean
   showYAxis: boolean
+  /** Extra right gutter the chart reserves beyond the axis, e.g. for direct labels. */
+  rightReserve?: Double | undefined
   /**
    * Tick label formatting, per axis.
    *
@@ -184,7 +186,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   }
   const y2TitleH = hasY2 && cfg.y2Title !== undefined && cfg.y2Title !== '' ? titleH : 0.0
   const left = yBand
-  const right = (hasY2 ? widest2 + labelGap + tickLen : padRight) + y2TitleH
+  const right = (hasY2 ? widest2 + labelGap + tickLen : padRight) + y2TitleH + (cfg.rightReserve ?? 0.0)
 
   // The x labels get the room that is left. Whether they FIT decides the
   // bottom gutter — a rotated label needs its slant's height — so the

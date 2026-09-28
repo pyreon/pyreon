@@ -65,6 +65,8 @@ export interface PlotChartProps<T> {
   onSelectIndex?: (index: number) => void
   /** Draw a legend, using each mark's `label`. */
   showLegend?: boolean
+  /** Name each line and area at its last point instead of in a legend box (`<Legend direct />`). */
+  endLabels?: boolean
   /** Where the legend sits; `top` by default. `left`/`right` stack the entries beside the plot. */
   legendPosition?: LegendPosition
   /**
@@ -804,6 +806,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     showXAxis: props.showXAxis ?? true,
     showYAxis: props.showYAxis ?? true,
     showGrid: props.showGrid ?? true,
+    endLabels: props.endLabels === true,
     yFormat: resolvedFormat(),
     xFormat: resolvedXFormat(),
     ...(props.xTime === true ? { xTime: true } : {}),

@@ -174,6 +174,12 @@ export interface LegendProps {
   maxRows?: number
   /** Where the legend sits; `top` by default. */
   position?: LegendPosition
+  /**
+   * Name each line and area at its last point, in its own colour, instead of
+   * in a legend box — the reader never looks away from the data. Best with a
+   * handful of lines; bars and points keep the legend box.
+   */
+  direct?: boolean
 }
 /**
  * A datum-anchored label — the engine's point marker (ECharts' markPoint).
@@ -632,6 +638,10 @@ export function resolveGrammar<T>(rows: T[], chart: ChartProps<T>, children: VNo
       }
       case 'Legend': {
         const l = p as LegendProps
+        if (l.direct === true) {
+          props.endLabels = true
+          break
+        }
         props.showLegend = true
         if (l.toggle === false) props.legendToggle = false
         if (l.maxRows !== undefined) props.legendMaxRows = l.maxRows
@@ -834,7 +844,7 @@ export function Chart<T>(props: ChartProps<T>): VNodeChild {
     xValue: reactiveProp(() => (props.xValue === undefined ? undefined : channel<T, Double>(props.xValue))),
   }
   // Every `<PlotChart>` prop a child can set, forwarded as an accessor; the chart's own props win when both are given.
-  const forwarded = ['format', 'xFormat', 'xTime', 'showXAxis', 'showYAxis', 'yDomain', 'y2Format', 'y2Domain', 'tooltip', 'crosshair', 'tooltipFormatter', 'showLegend', 'legendToggle', 'legendMaxRows', 'legendPosition', 'dataZoom', 'navigator', 'initialZoom', 'zoomLimits', 'zoomPresets', 'link', 'brush', 'onBrush', 'annotations', 'markers', 'toolbox', 'xTitle', 'yTitle', 'y2Title', 'xLabels', 'yScale', 'yTime', 'stackNormalize'] as const
+  const forwarded = ['format', 'xFormat', 'xTime', 'showXAxis', 'showYAxis', 'yDomain', 'y2Format', 'y2Domain', 'tooltip', 'crosshair', 'tooltipFormatter', 'showLegend', 'endLabels', 'legendToggle', 'legendMaxRows', 'legendPosition', 'dataZoom', 'navigator', 'initialZoom', 'zoomLimits', 'zoomPresets', 'link', 'brush', 'onBrush', 'annotations', 'markers', 'toolbox', 'xTitle', 'yTitle', 'y2Title', 'xLabels', 'yScale', 'yTime', 'stackNormalize'] as const
   for (const key of forwarded) plotProps[key] = reactiveProp(() => (props as unknown as Record<string, unknown>)[key] ?? (resolved().props as Record<string, unknown>)[key])
   // Every other `<PlotChart>` prop, the events/actions model included — the grammar reaches the whole host.
   for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'showGrid', 'horizontal', 'animate', 'updateAnimation', 'updateDuration', 'universalTransition', 'maxPoints', 'keyboard', 'accessibleTable', 'class', 'handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'onZoom', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'seriesLabels', 'onSaveImage', 'locale'] as const) {

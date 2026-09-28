@@ -15185,7 +15185,9 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
     `showYAxis: ${bool('showYAxis', true)}`,
     `showGrid: ${bool('showGrid', true)}`,
   ]
-  // `yDomain` is ChartSpec field 9, so it goes here — BEFORE `yFormat` — and
+  // Direct labels (`<Legend direct />`) — ChartSpec field 8, right after showGrid.
+  if (readStaticAttr(e, 'endLabels') === true) specArgs.push('endLabels: true')
+  // `yDomain` is ChartSpec field 10, so it goes here — BEFORE `yFormat` — and
   // the position is read off the generated struct rather than restated, since
   // Swift's memberwise init takes its arguments in declaration order. Its
   // sibling `y2Domain` has lowered as a one-liner all along; this one was in

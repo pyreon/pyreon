@@ -437,7 +437,7 @@ describe('chart hosts — <PlotChart marks> (the cartesian family)', () => {
     expect(r.code).toContain('let pyreonValues0: [Double] = MONTHS.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(pyreonD.revenue) }')
     expect(r.code).toContain('let pyreonValues1: [Double] = MONTHS.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(pyreonD.cost) }')
     expect(r.code).toContain(
-      'let pyreonSeries: [Series] = [Series(kind: "bars", values: pyreonValues0, color: "#0f766e", width: 2.0, radius: 3.0, label: "Revenue", showValues: false), Series(kind: "line", values: pyreonValues1, color: "#f97362", width: 3.0, radius: 3.0, label: "Cost", showValues: false)]',
+      'let pyreonSeries: [Series] = [Series(kind: "bars", values: pyreonValues0, color: "#0f766e", width: 2.0, radius: 3.0, label: "Revenue", showValues: false), Series(kind: "line", values: pyreonValues1, color: "#c88100", width: 3.0, radius: 3.0, label: "Cost", showValues: false)]',
     )
     expect(r.code).toContain('let pyreonCats: [String] = MONTHS.enumerated().map { (pyreonI, pyreonD) in pyreonD.name }')
     expect(r.code).toContain(
@@ -462,7 +462,7 @@ describe('chart hosts — <PlotChart marks> (the cartesian family)', () => {
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('val pyreonValues0: List<Double> = MONTHS.mapIndexed { pyreonI, pyreonD -> (pyreonD.revenue).toDouble() }')
     expect(r.code).toContain(
-      'val pyreonSeries: List<Series> = listOf(Series(kind = "bars", values = pyreonValues0, color = "#0f766e", width = 2.0, radius = 3.0, label = "Revenue", showValues = false), Series(kind = "line", values = pyreonValues1, color = "#f97362", width = 3.0, radius = 3.0, label = "Cost", showValues = false))',
+      'val pyreonSeries: List<Series> = listOf(Series(kind = "bars", values = pyreonValues0, color = "#0f766e", width = 2.0, radius = 3.0, label = "Revenue", showValues = false), Series(kind = "line", values = pyreonValues1, color = "#c88100", width = 3.0, radius = 3.0, label = "Cost", showValues = false))',
     )
     expect(r.code).toContain(
       `val pyreonSpec: ChartSpec = ChartSpec(width = pyreonW, height = 180.0, series = pyreonSeries, categories = pyreonCats, theme = ${kotlinThemeLiteral()}, showXAxis = true, showYAxis = true, showGrid = false, annotations = GOAL)`,
@@ -606,7 +606,7 @@ describe('chart hosts — theme overrides, formatters and bubble marks', () => {
     // report the datum, not the pixel radius it was drawn at.
     expect(r.code).toContain('let pyreonRRaw1: [Double] = CITIES.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(pyreonD.area) }')
     expect(r.code).toContain('let pyreonRadii1: [Double] = bubbleRadii(pyreonRRaw1, 4.0, 20.0)')
-    expect(r.code).toContain('Series(kind: "points", values: pyreonValues1, color: "#f97362", width: 2.0, radius: 3.0, label: "Area", showValues: false, rValues: pyreonRRaw1, radii: pyreonRadii1, axis: "right")')
+    expect(r.code).toContain('Series(kind: "points", values: pyreonValues1, color: "#c88100", width: 2.0, radius: 3.0, label: "Area", showValues: false, rValues: pyreonRRaw1, radii: pyreonRadii1, axis: "right")')
     expect(r.code).toContain(`let pyreonTheme: ChartTheme = ${swiftThemeLiteral({ grid: '"#eeeeee"' })}`)
     expect(r.code).toContain('renderCandlestickChart(pyreonCandles, Double(pyreonGeo.size.width), 160.0, pyreonCats, pyreonTheme, nil, pyreonChartMeasure)')
   })
@@ -616,7 +616,7 @@ describe('chart hosts — theme overrides, formatters and bubble marks', () => {
     expect(r.code).toContain(`theme = ${kotlinThemeLiteral({ label: '"#222222"', fontSize: '12.0' })}, showXAxis = true, showYAxis = true, showGrid = true, yFormat = ::compact, xFormat = fixed(1), y2Format = { v -> plain(v) + "%" })`)
     expect(r.code).toContain('val pyreonRRaw1: List<Double> = CITIES.mapIndexed { pyreonI, pyreonD -> (pyreonD.area).toDouble() }')
     expect(r.code).toContain('val pyreonRadii1: List<Double> = bubbleRadii(pyreonRRaw1, 4.0, 20.0)')
-    expect(r.code).toContain('Series(kind = "points", values = pyreonValues1, color = "#f97362", width = 2.0, radius = 3.0, label = "Area", showValues = false, rValues = pyreonRRaw1, radii = pyreonRadii1, axis = "right")')
+    expect(r.code).toContain('Series(kind = "points", values = pyreonValues1, color = "#c88100", width = 2.0, radius = 3.0, label = "Area", showValues = false, rValues = pyreonRRaw1, radii = pyreonRadii1, axis = "right")')
     expect(r.code).toContain(`val pyreonTheme: ChartTheme = ${kotlinThemeLiteral({ grid: '"#eeeeee"' })}`)
   })
   it('a theme palette colours every mark with no `color` on both targets, and a bad palette warns BY NAME', () => {

@@ -360,6 +360,7 @@ public struct LayoutConfig {
   public var yTickCount: Double
   public var showXAxis: Bool
   public var showYAxis: Bool
+  public var rightReserve: Double? = nil
   public var yFormat: ((Double) -> String)? = nil
   public var xFormat: ((Double) -> String)? = nil
   public var xTime: Bool? = nil
@@ -374,7 +375,7 @@ public struct LayoutConfig {
   public var yLogMax: Double? = nil
   public var yTime: Bool? = nil
   public var xLabels: String? = nil
-  public init(width: Double, height: Double, xDomain: Domain, yDomain: Domain, categories: [String], fontSize: Double, xTickCount: Double, yTickCount: Double, showXAxis: Bool, showYAxis: Bool, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, xTime: Bool? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, horizontal: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, yLog: Bool? = nil, yLogMin: Double? = nil, yLogMax: Double? = nil, yTime: Bool? = nil, xLabels: String? = nil) {
+  public init(width: Double, height: Double, xDomain: Domain, yDomain: Domain, categories: [String], fontSize: Double, xTickCount: Double, yTickCount: Double, showXAxis: Bool, showYAxis: Bool, rightReserve: Double? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, xTime: Bool? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, horizontal: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, yLog: Bool? = nil, yLogMin: Double? = nil, yLogMax: Double? = nil, yTime: Bool? = nil, xLabels: String? = nil) {
     self.width = width
     self.height = height
     self.xDomain = xDomain
@@ -385,6 +386,7 @@ public struct LayoutConfig {
     self.yTickCount = yTickCount
     self.showXAxis = showXAxis
     self.showYAxis = showYAxis
+    self.rightReserve = rightReserve
     self.yFormat = yFormat
     self.xFormat = xFormat
     self.xTime = xTime
@@ -817,6 +819,7 @@ public struct ChartSpec {
   public var showXAxis: Bool
   public var showYAxis: Bool
   public var showGrid: Bool
+  public var endLabels: Bool? = nil
   public var yDomain: Domain? = nil
   public var yFormat: ((Double) -> String)? = nil
   public var xFormat: ((Double) -> String)? = nil
@@ -836,7 +839,7 @@ public struct ChartSpec {
   public var yTitle: String? = nil
   public var y2Title: String? = nil
   public var xLabels: String? = nil
-  public init(width: Double, height: Double, series: [Series], categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil) {
+  public init(width: Double, height: Double, series: [Series], categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, endLabels: Bool? = nil, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil) {
     self.width = width
     self.height = height
     self.series = series
@@ -845,6 +848,7 @@ public struct ChartSpec {
     self.showXAxis = showXAxis
     self.showYAxis = showYAxis
     self.showGrid = showGrid
+    self.endLabels = endLabels
     self.yDomain = yDomain
     self.yFormat = yFormat
     self.xFormat = xFormat
@@ -3004,9 +3008,9 @@ public struct Bin: Codable {
 
 private let DEG = Double.pi / 180.0
 
-private let DEFAULT_PALETTE: [String] = ["#4f7df3", "#f97362", "#22c3a6", "#a66cff", "#ffb020", "#2fb7e8", "#f45fa3", "#7bc950", "#8892a6", "#c47a3d"]
+private let DEFAULT_PALETTE: [String] = ["#4f7df3", "#c88100", "#1ca28a", "#179dcd", "#c47a3d", "#8892a6", "#f4589f", "#f85f4c", "#5aa232", "#a66cff"]
 
-private let DARK_PALETTE: [String] = ["#7b9bff", "#ff8f7e", "#4adbc0", "#bd93ff", "#ffc44d", "#5dcbf2", "#ff80be", "#9ad870", "#a3acbd", "#d8955e"]
+private let DARK_PALETTE: [String] = ["#7b9bff", "#ffc44d", "#4adbc0", "#5dcbf2", "#d8955e", "#a3acbd", "#ff80be", "#ff8f7e", "#9ad870", "#bd93ff"]
 
 private let NO_GRADIENT: SeriesGradient = SeriesGradient(stops: [])
 
@@ -3031,6 +3035,8 @@ private let POLYGON_CIRCLE_SIDES = 24
 private let AREA_MARK_OPACITY = 0.3
 
 private let defaultTheme: ChartTheme = ChartTheme(palette: DEFAULT_PALETTE, background: "", surface: "#ffffff", text: "#1f2937", label: "#5a6b7a", axis: "#8496a5", grid: "rgba(132,150,165,0.18)", positive: "#15803d", negative: "#b42318", muted: "#e2e8f0", ramp: ["#eff6ff", "#93c5fd", "#3b82f6", "#1e40af"], fontFamily: "", fontSize: 11.0, titleSize: 15.0, radius: 3.0, enterMs: 700.0, updateMs: 350.0)
+
+private let END_LABEL_GAP = 6.0
 
 private let HEAT_RAMP = ["#eff6ff", "#93c5fd", "#3b82f6", "#1e40af"]
 
@@ -4579,7 +4585,7 @@ public func computeLayout(_ cfg: LayoutConfig, _ measure: (String, Double) -> Do
     }
     let y2TitleH = hasY2 && cfg.y2Title != nil && cfg.y2Title != "" ? titleH : 0.0
     let left = yBand
-    let right = (hasY2 ? widest2 + labelGap + tickLen : padRight) + y2TitleH
+    let right = (hasY2 ? widest2 + labelGap + tickLen : padRight) + y2TitleH + ((cfg.rightReserve ?? 0.0))
     let provisionalW = max(0.0, cfg.width - left - right)
     let mode = (cfg.xLabels ?? "auto")
     var rotate = 0.0
@@ -5798,8 +5804,57 @@ public func layoutChart(_ raw: ChartSpec, _ measure: (String, Double) -> Double)
     let n = seriesMaxLength(spec.series)
     let isLog = raw.yScale == "log"
     let lb = isLog ? logBounds(raw) : Domain(min: 1.0, max: 10.0)
-    let cfg = LayoutConfig(width: spec.width, height: spec.height, xDomain: ((spec.xValues ?? [])).count > 0 ? extent((spec.xValues ?? [])) : Domain(min: 0.0, max: n > 1 ? Double(n - 1) : 1.0), yDomain: resolveYDomain(spec), categories: spec.categories, fontSize: spec.theme.fontSize, xTickCount: 5.0, yTickCount: 5.0, showXAxis: spec.showXAxis, showYAxis: spec.showYAxis, yFormat: (spec.yFormat ?? (raw.stackNormalize == true ? percent(0) : nil)), xFormat: spec.xFormat, xTime: spec.xTime == true, y2Domain: hasRightAxis(spec) ? resolveY2Domain(spec) : nil, y2Format: spec.y2Format, horizontal: spec.horizontal == true, xTitle: spec.xTitle, yTitle: spec.yTitle, y2Title: spec.y2Title, yLog: isLog, yLogMin: lb.min, yLogMax: lb.max, yTime: spec.yTime == true, xLabels: spec.xLabels)
+    let cfg = LayoutConfig(width: spec.width, height: spec.height, xDomain: ((spec.xValues ?? [])).count > 0 ? extent((spec.xValues ?? [])) : Domain(min: 0.0, max: n > 1 ? Double(n - 1) : 1.0), yDomain: resolveYDomain(spec), categories: spec.categories, fontSize: spec.theme.fontSize, xTickCount: 5.0, yTickCount: 5.0, showXAxis: spec.showXAxis, showYAxis: spec.showYAxis, rightReserve: endLabelReserve(spec, measure), yFormat: (spec.yFormat ?? (raw.stackNormalize == true ? percent(0) : nil)), xFormat: spec.xFormat, xTime: spec.xTime == true, y2Domain: hasRightAxis(spec) ? resolveY2Domain(spec) : nil, y2Format: spec.y2Format, horizontal: spec.horizontal == true, xTitle: spec.xTitle, yTitle: spec.yTitle, y2Title: spec.y2Title, yLog: isLog, yLogMin: lb.min, yLogMax: lb.max, yTime: spec.yTime == true, xLabels: spec.xLabels)
     return computeLayout(cfg, measure)
+  }
+
+public func hasEndLabel(_ spec: ChartSpec, _ s: Series) -> Bool { spec.endLabels == true && spec.horizontal != true && (s.kind == "line" || s.kind == "area") && s.label != "" }
+
+public func endLabelReserve(_ spec: ChartSpec, _ measure: (String, Double) -> Double) -> Double {
+    var widest = 0.0
+    for s in spec.series {
+      if !hasEndLabel(spec, s) {
+        continue
+      }
+      let w = measure(s.label, spec.theme.fontSize)
+      if w > widest {
+        widest = w
+      }
+    }
+    return widest > 0.0 ? widest + END_LABEL_GAP : 0.0
+  }
+
+public func spreadLabels(_ ys: [Double], _ gap: Double, _ top: Double, _ bottom: Double) -> [Double] {
+    let n = ys.count
+    var order: [Int] = []
+    for i in 0..<n {
+      order.append(i)
+    }
+    order.sort(by: { a, b in (ys[a] - ys[b]) < 0 })
+    var placed: [Double] = []
+    for i in 0..<n {
+      placed.append(ys[i])
+    }
+    for k in 1..<n {
+      let prev = placed[order[k - 1]]
+      if placed[order[k]] < prev + gap {
+        placed[order[k]] = prev + gap
+      }
+    }
+    if n > 0 {
+      let over = placed[order[n - 1]] - bottom
+      if over > 0.0 {
+        for k in 0..<n {
+          placed[order[k]] = placed[order[k]] - over
+        }
+      }
+      for k in 0..<n {
+        if placed[order[k]] < top {
+          placed[order[k]] = top
+        }
+      }
+    }
+    return placed
   }
 
 public func categoryXPixel(_ spec: ChartSpec, _ xDomain: Domain, _ plot: PyreonChartRect, _ v: Double) -> Double {
@@ -6077,6 +6132,9 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
         }
       }
     }
+    var endYs: [Double] = []
+    var endTexts: [String] = []
+    var endColors: [String] = []
     for sIdx in 0..<spec.series.count {
       let s = spec.series[sIdx]
       if s.kind == "stacked" || s.kind == "grouped" || s.kind == "stackedArea" {
@@ -6286,6 +6344,20 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           out.append(valueLabel(fmtP(v), PyreonChartPt(x: labelPts[i].x, y: labelPts[i].y - (s.radius + 5.0)), "middle", "bottom", t))
         }
       }
+      if hasEndLabel(spec, s) && progress >= 1.0 {
+        let endPts = place(s.values)
+        var last = -1
+        for i in 0..<endPts.count {
+          if isFiniteValue(s.values[i]) {
+            last = i
+          }
+        }
+        if last >= 0 {
+          endYs.append(endPts[last].y)
+          endTexts.append(s.label)
+          endColors.append(s.color)
+        }
+      }
       let eLow = (s.errLow ?? [])
       let eHigh = (s.errHigh ?? [])
       if eLow.count > 0 && eHigh.count > 0 && progress >= 1.0 && s.kind != "waterfall" {
@@ -6313,6 +6385,12 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: cx - cap, y: yLo), to: PyreonChartPt(x: cx + cap, y: yLo), stroke: t.text, width: 1.0))
           out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: cx - cap, y: yHi), to: PyreonChartPt(x: cx + cap, y: yHi), stroke: t.text, width: 1.0))
         }
+      }
+    }
+    if endYs.count > 0 {
+      let spread = spreadLabels(endYs, t.fontSize + 2.0, plot.y + t.fontSize / 2.0, plot.y + plot.h - t.fontSize / 2.0)
+      for i in 0..<spread.count {
+        out.append(PyreonDrawCmd(kind: "text", fill: endColors[i], text: endTexts[i], at: PyreonChartPt(x: plot.x + plot.w + END_LABEL_GAP, y: spread[i]), size: t.fontSize, align: "start", baseline: "middle"))
       }
     }
     let markers = (spec.markers ?? [])

@@ -245,6 +245,12 @@ export interface ChartSpec {
   showXAxis: boolean
   showYAxis: boolean
   showGrid: boolean
+  /**
+   * Direct labels: each line and area is named at its last point, in its own
+   * colour, instead of in a legend box — the reader's eye never leaves the
+   * data. The plot gives up the right gutter the widest name needs.
+   */
+  endLabels?: boolean | undefined
   /** Pins the y domain; when absent it is derived from the data. */
   yDomain?: Domain | undefined
   /** Tick label formatting, per axis. See `LayoutConfig` for why it matters. */
@@ -701,8 +707,52 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
     yLogMax: lb.max,
     yTime: spec.yTime === true,
     xLabels: spec.xLabels,
+    rightReserve: endLabelReserve(spec, measure),
   }
   return computeLayout(cfg, measure)
+}
+
+/** The gap between a line's last point and its direct label. */
+const END_LABEL_GAP = 6.0
+
+/** Whether a series carries a direct label: a named line or area on a vertical chart. */
+function hasEndLabel(spec: ChartSpec, s: Series): boolean {
+  return spec.endLabels === true && spec.horizontal !== true && (s.kind === 'line' || s.kind === 'area') && s.label !== ''
+}
+
+/** The right gutter direct labels need: the widest name plus its gap; 0 without them. */
+function endLabelReserve(spec: ChartSpec, measure: MeasureText): Double {
+  let widest = 0.0
+  for (const s of spec.series) {
+    if (!hasEndLabel(spec, s)) continue
+    const w = measure(s.label, spec.theme.fontSize)
+    if (w > widest) widest = w
+  }
+  return widest > 0.0 ? widest + END_LABEL_GAP : 0.0
+}
+
+/**
+ * Spread direct labels apart: in y order, each sits at least `gap` below the
+ * one above it, then the whole column moves up if it ran past `bottom` and is
+ * clamped at `top`. Labels move the least distance that keeps them legible.
+ */
+export function spreadLabels(ys: Double[], gap: Double, top: Double, bottom: Double): Double[] {
+  const n = ys.length
+  const order: number[] = []
+  for (let i = 0; i < n; i++) order.push(i)
+  order.sort((a, b) => ys[a]! - ys[b]!)
+  const placed: Double[] = []
+  for (let i = 0; i < n; i++) placed.push(ys[i]!)
+  for (let k = 1; k < n; k++) {
+    const prev = placed[order[k - 1]!]!
+    if (placed[order[k]!]! < prev + gap) placed[order[k]!] = prev + gap
+  }
+  if (n > 0) {
+    const over = placed[order[n - 1]!]! - bottom
+    if (over > 0.0) for (let k = 0; k < n; k++) placed[order[k]!] = placed[order[k]!]! - over
+    for (let k = 0; k < n; k++) if (placed[order[k]!]! < top) placed[order[k]!] = top
+  }
+  return placed
 }
 
 /**
@@ -1117,6 +1167,11 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     }
   }
 
+  // Direct labels, collected while the series draw and placed once every
+  // series' last point is known, so they can be spread apart as a column.
+  const endYs: Double[] = []
+  const endTexts: string[] = []
+  const endColors: string[] = []
   for (let sIdx = 0; sIdx < spec.series.length; sIdx++) {
     const s = spec.series[sIdx]!
     if (s.kind === 'stacked' || s.kind === 'grouped' || s.kind === 'stackedArea') continue
@@ -1367,6 +1422,17 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       }
     }
 
+    if (hasEndLabel(spec, s) && progress >= 1.0) {
+      const endPts = place(s.values)
+      let last = -1
+      for (let i = 0; i < endPts.length; i++) if (isFiniteValue(s.values[i]!)) last = i
+      if (last >= 0) {
+        endYs.push(endPts[last]!.y)
+        endTexts.push(s.label)
+        endColors.push(s.color)
+      }
+    }
+
     // Error bars: a whisker through each datum's centre from its low bound
     // to its high one, capped, once the entrance has settled — a whisker
     // growing with its bar would misstate the bounds along the way. Bars
@@ -1397,6 +1463,13 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     }
   }
 
+
+  if (endYs.length > 0) {
+    const spread = spreadLabels(endYs, t.fontSize + 2.0, plot.y + t.fontSize / 2.0, plot.y + plot.h - t.fontSize / 2.0)
+    for (let i = 0; i < spread.length; i++) {
+      out.push({ kind: 'text', text: endTexts[i]!, at: { x: plot.x + plot.w + END_LABEL_GAP, y: spread[i]! }, fill: endColors[i]!, size: t.fontSize, align: 'start', baseline: 'middle' })
+    }
+  }
 
   // Point markers draw OVER the series (painter's order — a marker buried
   // under an area fill marks nothing) and UNDER the axis labels.
