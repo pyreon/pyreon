@@ -6,6 +6,9 @@ import { fetchRevenueByCategory } from './data/api'
 import type { Datum } from './data/types'
 import { ChartCard, ChartFallback, ChartTitle } from './styled'
 
+// A typed mark: `Bar` with its row type fixed, so `d` below is a Datum.
+const CategoryBar = Bar<Datum>
+
 const thousands = (value: number): string => `$${(value / 1000).toFixed(0)}K`
 
 /** Bar chart of revenue per category. */
@@ -31,7 +34,7 @@ export function CategoryChart() {
         if (!data) return <ChartFallback>Loading chart…</ChartFallback>
         return (
           <Chart<Datum> data={data} x={(d) => d[0]} height={220} theme={chartTheme}>
-            <Bar<Datum> y={(d) => d[1]} label="Revenue" />
+            <CategoryBar y={(d) => d[1]} label="Revenue" />
             <Axis y format={thousands} />
             <Tooltip />
           </Chart>

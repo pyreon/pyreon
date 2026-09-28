@@ -6,7 +6,8 @@ description: "@pyreon/charts — charts on Pyreon's own engine: marks as JSX chi
 `@pyreon/charts` is Pyreon's **own chart engine**. You write `<Chart>` with your
 rows and put marks inside it as children. Channels are field names, typed
 against the row, so a typo is a compile error when the chart and its marks
-know the row type (`<Chart<Row>>`, `<Bar<Row> y="revenue">`). Axes, palette, tooltip, an
+know the row type (`<Chart<Row>>`, and `const RowBar = Bar<Row>` declared once
+for the marks). Axes, palette, tooltip, an
 accessible data table and a spoken description come without configuration.
 
 It has zero runtime dependencies: geometry is computed in pure TypeScript into

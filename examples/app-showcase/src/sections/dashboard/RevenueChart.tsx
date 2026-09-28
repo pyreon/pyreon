@@ -6,6 +6,9 @@ import { fetchRevenueByDay } from './data/api'
 import type { Datum } from './data/types'
 import { ChartCard, ChartFallback, ChartTitle } from './styled'
 
+// A typed mark: `Area` with its row type fixed, so `d` below is a Datum.
+const DayArea = Area<Datum>
+
 const thousands = (value: number): string => `$${(value / 1000).toFixed(0)}K`
 
 /**
@@ -36,7 +39,7 @@ export function RevenueChart() {
         if (!data) return <ChartFallback>Loading chart…</ChartFallback>
         return (
           <Chart<Datum> data={data} x={(d) => d[0].slice(5)} height={220} theme={chartTheme}>
-            <Area<Datum> y={(d) => d[1]} label="Revenue" curve={smooth} />
+            <DayArea y={(d) => d[1]} label="Revenue" curve={smooth} />
             <Axis y format={thousands} />
             <Tooltip />
           </Chart>

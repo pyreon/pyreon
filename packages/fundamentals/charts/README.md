@@ -35,8 +35,12 @@ The same grammar covers the row-array families: `<Chart data={share}><Arc value=
 
 Channels are field names or accessors. `<Chart<Row>>` checks its own channels
 against the row; a mark checks its field names when it is given the row type
-too (`<Bar<Row> y="revenue">`), since JSX cannot pass a type argument from a
-parent to its children. Marks are children
+too, since JSX cannot pass a type argument from a parent to its children.
+Declare the typed marks once per row type — `const RowBar = Bar<Row>` is a
+TypeScript instantiation expression that compiles to `Bar` itself, so it costs
+nothing, tree-shakes and lowers to iOS and Android unchanged — and every
+`<RowBar y="revenue">` is checked, with `y={(d) => d.revenue}` typed without an
+annotation. Marks are children
 and draw in order; `<Rule>` / `<Axis>` / `<Tooltip>` / `<Legend>` / `<Zoom>` declare
 the rest as data. `color="region"` pivots long-format rows into one series per
 value. The `<PlotChart marks={[bars(…)]}>` array form is the same spec and stays

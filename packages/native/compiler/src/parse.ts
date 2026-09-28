@@ -167,6 +167,12 @@ interface ParseCtx {
   /** Local names bound to the `kinetic` import (supports `as` renaming). */
   kineticImportNames: Set<string>
   /**
+   * `const RevenueBar = Bar<Row>` — a TypeScript instantiation expression that
+   * only fixes a component's type argument. It compiles to the component
+   * itself, so the alias is a TAG rename: `<RevenueBar>` lowers as `<Bar>`.
+   */
+  typedComponentAliases: Map<string, string>
+  /**
    * Set while parsing a component whose tree used a PRESET-bearing kinetic
    * binding, so the component gets one synthesized mount flag. One per
    * component, not per binding: every kinetic box in a component enters on the
@@ -409,6 +415,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     toastNames: new Set(),
     kineticFactoryNames: new Map(),
     kineticImportNames: new Set(),
+    typedComponentAliases: new Map(),
     kineticMountPending: false,
     kineticPresetImports: new Map(),
     validateSchemaNames: new Set(),
@@ -507,6 +514,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // to PyreonToast. Handles renamed imports (`import { toast as notify }`).
   collectToastNames(ast.program.body as AnyNode[], ctx)
   collectKineticFactoryNames(ast.program.body as AnyNode[], ctx)
+  collectTypedComponentAliases(ast.program.body as AnyNode[], ctx)
   collectValidateSchemaNames(ast.program.body as AnyNode[], ctx)
   collectFieldMetaLowered(ast.program.body as AnyNode[], ctx)
   collectRxImportedNames(ast.program.body as AnyNode[], ctx)
@@ -725,6 +733,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     // The pre-pass has already recorded the name and warned; `<Box>` lowers to
     // a plain container.
     if (isKineticFactoryNode(node, ctx)) continue
+    if (isTypedAliasNode(node, ctx)) continue
     // Phase 2 follow-up: module-level mutable / immutable bindings.
     // `let nextId = 1`, `const APP_VERSION = '1.0.0'` etc. Closes the
     // TodoMVC `nextId undefined` typecheck blocker by emitting these
@@ -2255,6 +2264,33 @@ function isHttpMetadataNode(node: AnyNode, ctx: ParseCtx): boolean {
  * order wrong here would emit an unresolved tag for exactly one file layout —
  * the kind of bug that reproduces on nobody's machine.
  */
+/** The component an instantiation expression names: `Bar<Row>` → `'Bar'`, following an alias of an alias. */
+function instantiatedComponent(init: AnyNode | undefined, ctx: ParseCtx): string | undefined {
+  if (init?.type !== 'TSInstantiationExpression') return undefined
+  const base = init.expression as AnyNode | undefined
+  if (base?.type !== 'Identifier' || typeof base.name !== 'string') return undefined
+  return ctx.typedComponentAliases.get(base.name) ?? base.name
+}
+
+function collectTypedComponentAliases(body: AnyNode[], ctx: ParseCtx): void {
+  for (const node of body) {
+    for (const d of topLevelDeclarators(node)) {
+      const name = d.id?.name as string | undefined
+      const target = instantiatedComponent(d.init as AnyNode | undefined, ctx)
+      if (typeof name === 'string' && target !== undefined) ctx.typedComponentAliases.set(name, target)
+    }
+  }
+}
+
+function isTypedAliasNode(node: AnyNode, ctx: ParseCtx): boolean {
+  const decls = topLevelDeclarators(node)
+  if (decls.length === 0) return false
+  return decls.every((d) => {
+    const n = d.id?.name as string | undefined
+    return typeof n === 'string' && ctx.typedComponentAliases.has(n)
+  })
+}
+
 function isKineticFactoryNode(node: AnyNode, ctx: ParseCtx): boolean {
   const decls = topLevelDeclarators(node)
   if (decls.length === 0) return false
@@ -5868,6 +5904,7 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     // here rather than sharing the parent's.
     kineticFactoryNames: new Map(),
     kineticImportNames: new Set(),
+    typedComponentAliases: new Map(),
     kineticMountPending: false,
     kineticPresetImports: new Map(),
     validateSchemaNames: new Set(),
@@ -12501,6 +12538,7 @@ function parseJsxElement(node: AnyNode, ctx: ParseCtx): ExprIR {
   else if (tagNode.type === 'JSXMemberExpression') {
     tag = `${tagNode.object.name}.${tagNode.property.name}`
   }
+  tag = ctx.typedComponentAliases.get(tag) ?? tag
 
   const attrs: AttrIR[] = []
   for (const attr of opening.attributes as AnyNode[]) {
