@@ -11,9 +11,15 @@ Read before adding or changing a workflow, job, required check, or cache key.
 ## Design rules
 
 - A gate that takes seconds is a step, not a job. A new job needs a written reason it cannot be a step.
-- Keep the graph two levels deep (plus the one aggregator).
+- Keep the graph shallow: Install, then Fast Gates, then expensive fan-out
+  (plus the one aggregator). The extra preflight edge is intentional: it keeps
+  expensive runners idle until cheap deterministic checks prove the commit is
+  worth testing.
 - Every gate step inside `Fast Gates` / `Build` runs with `if: ${{ !cancelled() }}`, so one push reports every red gate.
 - Matrices and decide outputs are fail-closed. A detection error runs the full set, because a skipped required check reports success to branch protection.
+- Expensive matrices use `fail-fast: true`, and sequential batches stop on the
+  first real failure. Preserve diagnostics/upload/cache steps with
+  `if: always()` rather than continuing expensive test work after red.
 - Two deciders that gate the same downstream job must classify every path identically (`scripts/affected.ts` vs the e2e decide; `scripts/native-surface-touched.ts` feeds both native decides).
 - Never rename a required job. To retire one, drop its name from both protection authorities before deleting the job. Never add a required name casually: it hangs every open PR on "Expected" until that PR's next push.
 - One artifact ⇒ one cache key prefix ⇒ one writer. Duplicate writers fill the 10 GB actions cache and evict the small entries every PR needs.
@@ -25,14 +31,16 @@ Read before adding or changing a workflow, job, required check, or cache key.
 | Level | Job | Contents |
 | --- | --- | --- |
 | 1 | `Install` | install → decide → build `lib/`. Outputs `code`, `affected`, and the batched `typecheck-` / `test-` / `e2e-` / `scaffold-matrix` lists. |
-| 2 | `Fast Gates` | Every lib-free gate: lint, ratchets, docs sync, manifests, export entries, release readiness, doc examples, dependency audit, secrets scan, PR-targets-main. |
-| 2 | `Build` | Every lib-needing gate: examples build, verify-modes, bundle + import budgets, distribution, bin liveness, coverage floor + changed packages, the Rust-binary equivalence run. |
-| 2 | `typecheck (…)`, `test (…)`, `e2e (…)`, `Scaffold Smoke (…)` | Dynamic cells, packed by `scripts/ci-batch.ts` (LPT by measured weight). |
-| 2 | `Test (browser)`, `Release Build`, `bootstrap-exit-codes` | |
-| 3 | `Test` | The single aggregator over all four matrices (`scripts/ci-aggregate.ts`). |
+| 2 | `Fast Gates` | Every lib-free gate: lint, ratchets, docs sync, manifests, export entries, release readiness, doc examples, dependency audit, secrets scan, PR-targets-main. Cheap gates collect all diagnostics. |
+| 3 | `Build` | Every lib-needing gate: examples build, verify-modes, bundle + import budgets, distribution, bin liveness, coverage floor + changed packages, the Rust-binary equivalence run. |
+| 3 | `typecheck (…)`, `test (…)`, `e2e (…)`, `Scaffold Smoke (…)` | Dynamic cells, packed by `scripts/ci-batch.ts` (LPT by measured weight). Sibling cells cancel after the first failure. |
+| 3 | `Test (browser)`, `Release Build`, `bootstrap-exit-codes` | |
+| aggregate | `Test` | The single fail-closed aggregator over Install, Fast Gates, and all four matrices (`scripts/ci-aggregate.ts`). It depends on every member so it consumes a runner only for the final verdict. |
 
 - Lib-free vs lib-needing: typecheck, lint and vitest resolve `@pyreon/*` to `src` through the `bun` condition and do not need `lib/`. Exceptions are tests that assert on `lib/` bytes or boot a nested Vite SSR build. A new lib-needing gate goes in `Build`; a lib-free one in `Fast Gates`.
 - `scripts/affected.ts` computes the per-PR package filter. A root-file change escalates to `--filter=*`.
+- `scripts/check-ci-fail-fast.ts` statically prevents an expensive job from
+  bypassing Fast Gates or a matrix from disabling cancellation.
 - `ci-main.yml` runs `Coverage (Full)` and `Coverage (Native)` on push to main and in the merge queue.
 
 ## Other workflows

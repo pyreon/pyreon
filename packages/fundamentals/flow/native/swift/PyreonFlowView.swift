@@ -1098,7 +1098,10 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             .frame(width: diameter, height: diameter)
             .frame(width: hitSize, height: hitSize)
             .contentShape(SwiftUI.Rectangle())
-            .gesture(connectionGesture(handle))
+            // Handles live inside app-level ScrollViews in generated apps.
+            // A regular gesture loses diagonal drags to the parent scroll
+            // gesture before the pointer reaches the target handle.
+            .highPriorityGesture(connectionGesture(handle))
             .accessibilityLabel(Text(label))
             .accessibilityAddTraits(.isButton)
             .accessibilityHidden(state.disableKeyboardA11y)

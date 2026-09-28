@@ -191,6 +191,32 @@ class TasksAppInstrumentedTest {
     }
 
     /**
+     * Wait for a lazily mounted chart to produce its first non-background frame.
+     * Scrolling a chart on screen schedules its canvas draw; Compose becoming idle
+     * does not mean that draw has reached the captured layer yet.
+     */
+    private fun waitForChartPaint(tag: String, chart: SemanticsNodeInteraction): android.graphics.Bitmap {
+        fun paintedPixels(b: android.graphics.Bitmap): Int {
+            val bg = b.getPixel(0, 0)
+            var painted = 0
+            for (y in 0 until b.height) for (x in 0 until b.width) {
+                if (b.getPixel(x, y) != bg) painted++
+            }
+            return painted
+        }
+
+        try {
+            composeRule.waitUntil(10_000) {
+                paintedPixels(chart.captureToImage().asAndroidBitmap()) > 100
+            }
+        } catch (e: Throwable) {
+            val shot = chart.captureToImage().asAndroidBitmap()
+            throw AssertionError("$tag did not paint within 10s (${paintSummary(shot)}; ${nodePlace(tag)})", e)
+        }
+        return chart.captureToImage().asAndroidBitmap()
+    }
+
+    /**
      * One pixel row of a capture as runs of colour ("x0-x1 #aarrggbb"), for a
      * failure message: where a strip, a handle or a gap actually sits on the row a
      * gesture pressed, rather than where the test assumed it would be.
@@ -1164,7 +1190,7 @@ class TasksAppInstrumentedTest {
         // never started `detectTransformGestures` (the gallery's vertical scroll
         // competes for the same touch), failing unrelated PRs with "did not pan".
         val roamMap = centred("gal-map")
-        val mapBefore = roamMap.captureToImage().asAndroidBitmap()
+        val mapBefore = waitForChartPaint("gal-map", roamMap)
         roamMap.performTouchInput {
             down(Offset(width * 0.3f, height * 0.5f))
             moveBy(Offset(24f * flowDensity, 0f))
@@ -1189,7 +1215,7 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("gal-decal").performScrollTo().assertIsDisplayed()
         // The calculable visualMap: dragging its high handle (bottom-left strip) left greys the hottest cells.
         val visualMap = centred("gal-visualmap")
-        val vmBefore = visualMap.captureToImage().asAndroidBitmap()
+        val vmBefore = waitForChartPaint("gal-visualmap", visualMap)
         // Driven as a hand does (past the touch slop, then small steps), like the map
         // and dataZoom drags: one 600ms `swipe` intermittently never moved the handle
         // ("grey pixels: 0" on #3558). Same 79dp leftward drag of the high handle.

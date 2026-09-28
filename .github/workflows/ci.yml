@@ -74,13 +74,22 @@ permissions:
 # takes seconds is a STEP, never a job.
 #
 #   level 1   Install            install + decide + lib/ (one job, one failure semantics)
-#   level 2   Fast Gates         every lib-free gate (lint, docs, manifests, policy, secrets)
-#             Build              every lib-needing gate (examples, modes, budgets, coverage, rust)
+#   level 2   Fast Gates         every cheap/lib-free gate (lint, docs, policy, secrets)
+#   level 3   Build              every lib-needing gate (examples, modes, budgets, coverage, rust)
 #             typecheck / test / e2e / scaffold cells   dynamic, batched by ci-batch.ts
 #             Test (browser)     vitest --browser (Playwright)
 #             Release Build      the literal next-release build + pack rehearsal
 #             bootstrap-exit-codes                      only when bootstrap.ts changed
-#   level 3   Test               ONE aggregator for all four matrices
+#             Test               live aggregator for preflight + all four matrices
+#
+# Fail-fast is intentionally TWO-LAYERED:
+#   1. Fast Gates finishes before any expensive level-3 runner is eligible.
+#      A lint/docs/policy failure therefore spends one cheap runner, not the
+#      full matrix plus browser/release/scaffold capacity.
+#   2. Each expensive matrix uses fail-fast:true. Once a real cell fails,
+#      queued/running siblings are cancelled so their slots go to another PR.
+# Fast Gates itself still runs every named step: those checks are cheap and a
+# single push should report the complete preflight repair list.
 #   main only Coverage (Full), Benchmark
 #
 # Required contexts (both authorities — classic protection AND ruleset
@@ -114,8 +123,10 @@ jobs:
   # beats three jobs across two levels, even though lib-free jobs now wait a
   # couple of minutes longer for the build. The decide work is seconds of
   # git + bun and needs nothing from node_modules; it runs after the install
-  # only so this job has one failure semantics: if Install fails, every
-  # dependent's fail-closed clause fires and the FULL set runs, loudly.
+  # only so this job has one failure semantics. If Install fails, the required
+  # Test aggregate reports that failure and expensive dependents stay idle;
+  # launching a full fallback fleet from an already-doomed install consumed
+  # the exact capacity needed by healthy PRs.
   #
   # Outputs — all fail-closed (a detection error means "run everything",
   # because a skipped required check reports SUCCESS to branch protection):
@@ -374,13 +385,13 @@ jobs:
       - name: Detect scaffold-relevant changes
         id: scaffold
         run: |
-          # The six scaffold cells, packed into 3 batches (see ci-batch.ts
+          # The seven scaffold cells, packed into 3 batches (see ci-batch.ts
           # for why a cell is not free: each one was its own runner — six
           # queue entries + six setups for ~6 min of work apiece, and under
           # slot contention the six serialised anyway). `emit` writes BOTH
           # outputs on every exit path so the cell job can never see a
           # `has=true` with an empty matrix.
-          CELLS='["cpa-smoke-app-vercel","cpa-smoke-app-static","cpa-smoke-blog-cloudflare","cpa-smoke-dashboard-vercel-full","cpa-smoke-dashboard-node-supabase","cpa-smoke-monorepo-vercel"]'
+          CELLS='["cpa-smoke-app-vercel","cpa-smoke-app-static","cpa-smoke-blog-cloudflare","cpa-smoke-dashboard-vercel-full","cpa-smoke-dashboard-node-supabase","cpa-smoke-app-node","cpa-smoke-monorepo-vercel"]'
           emit() {
             echo "has=$1" >> "$GITHUB_OUTPUT"
             if [ "$1" = "true" ]; then
@@ -791,16 +802,17 @@ jobs:
     # Pre-change all 9 cells booted a runner on every PR and most self-skipped
     # via an empty filter (~30–60s of queue+checkout+setup per no-op). The
     # `typecheck` aggregator treats a skipped/empty matrix as a pass.
-    # Fail-closed twice over: if `changes` failed, the failure() arm runs the
-    # cells AND the `|| full-list` matrix fallback spawns every category.
+    # Fail-closed selection: an internal batching/detection error falls back to
+    # every category. A failed Install itself does NOT launch cells; the Test
+    # aggregate reports Install red without spending the matrix capacity.
     # `examples` is a pseudo-category (affected.ts maps it to the top-level
     # examples/ dir) — example type regressions were invisible to CI before it.
-    needs: install
-    if: ${{ (success() && needs.install.outputs.typecheck-has == 'true') || (failure() && needs.install.result != 'success') }}
+    needs: [install, fast-gates]
+    if: ${{ needs.install.result == 'success' && needs.fast-gates.result == 'success' && needs.install.outputs.typecheck-has == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         include: ${{ fromJSON(needs.install.outputs.typecheck-matrix || '[{"name":"all","members":"core fundamentals internals native tools ui ui-system zero examples"}]') }}
     steps:
@@ -864,10 +876,10 @@ jobs:
         env:
           MEMBERS: ${{ matrix.members }}
         run: |
-          # A cell runs a BATCH of categories sequentially. No `set -e`: one
-          # failing category must not hide the ones behind it, so failures are
-          # collected and reported together at the end.
-          FAILED=""
+          # A cell runs a BATCH of categories sequentially. Stop at the first
+          # real failure: the remaining categories will run on the next push,
+          # while this runner and fail-fast-cancelled sibling cells return to
+          # the shared pool immediately.
           for category in $MEMBERS; do
           echo "::group::typecheck — $category"
           # Recompute the filter per-cell with --category narrowing.
@@ -918,14 +930,13 @@ jobs:
           # apps, now covered by the `examples` cell). --sequential keeps
           # per-cell peak memory at one tsc at a time.
           # shellcheck disable=SC2086
-          bun run $FILTER --sequential typecheck || FAILED="$FAILED $category"
+          if ! bun run $FILTER --sequential typecheck; then
+            echo "::error title=typecheck batch failed::first failing category: $category"
+            exit 1
+          fi
           set +f
           echo "::endgroup::"
           done
-          if [ -n "$FAILED" ]; then
-            echo "::error title=typecheck batch failed::category(ies):$FAILED"
-            exit 1
-          fi
 
       # Save on main only — see the restore step's rationale. `if: always()` so
       # a cell that FAILED still contributes its cache: the packages that
@@ -966,7 +977,8 @@ jobs:
     # decide steps use the same affected.ts (anti-patterns.md /
     # docs/patterns/** → @pyreon/mcp → the `tools` cell spawns and runs its
     # parser test). The `Test` aggregator treats a skipped/empty matrix as a
-    # pass and is fail-closed on an Install failure.
+  # pass. Install/Fast Gates failures are reported by the required Test
+  # aggregate while this expensive matrix stays idle.
     # NO cost-gate edge (2026-09). The 2026-07 pass dropped the `typecheck`
     # edge (four queue rounds before a test started) and kept `lint` as a
     # cheap gate; with Lint now a step of Fast Gates, gating on it would
@@ -977,8 +989,8 @@ jobs:
     # blocked by the required Fast Gates / Test checks regardless, so the
     # only cost is some wasted runner time on a doomed
     # run — cheaper than taxing every green run with two extra queue rounds.
-    needs: install
-    if: ${{ (success() && needs.install.outputs.test-has == 'true') || (failure() && needs.install.result != 'success') }}
+    needs: [install, fast-gates]
+    if: ${{ needs.install.result == 'success' && needs.fast-gates.result == 'success' && needs.install.outputs.test-has == 'true' }}
     runs-on: ubuntu-latest
     # `@pyreon/native-compiler` is NOT run here. It lives in ONE job:
     # native-validate.yml's required `Validate emitted Swift + Kotlin`
@@ -1002,10 +1014,10 @@ jobs:
     # (~1-6 min) and independent of the compile-verdict store.
     timeout-minutes: ${{ startsWith(matrix.name, 'native') && 25 || 20 }}
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         # Dynamic (see typecheck-cell): only affected categories spawn;
-        # `|| full-list` fallback keeps a `changes` failure fail-closed.
+    # `|| full-list` fallback keeps an internal matrix-output error fail-closed.
         include: ${{ fromJSON(needs.install.outputs.test-matrix || '[{"name":"native-rest","members":"native-rest"},{"name":"batch-a","members":"core fundamentals internals"},{"name":"batch-b","members":"tools ui ui-system zero"}]') }}
     steps:
       # Pin Node — vitest's `#!/usr/bin/env node` shebang means tests
@@ -1061,9 +1073,9 @@ jobs:
           PYREON_REQUIRE_BUILT_LIB: '1'
           MEMBERS: ${{ matrix.members }}
         run: |
-          # A cell runs a BATCH of categories sequentially. No `set -e` around
-          # the loop: one failing category must not hide the ones behind it.
-          BATCH_FAILED=""
+          # A cell runs a BATCH of categories sequentially. Stop after the
+          # first real failure so a broken commit releases shared capacity.
+          # The cache-save step below still runs via `if: always()`.
           for category in $MEMBERS; do
           echo "::group::test — $category"
           # Most cells map 1:1 onto `packages/<category>/`. `native-rest` is a
@@ -1130,14 +1142,13 @@ jobs:
             echo "(no matching packages have a 'test' script — treating as no-op)"
             EXIT=0
           fi
-          [ $EXIT -ne 0 ] && BATCH_FAILED="$BATCH_FAILED $category"
+          if [ $EXIT -ne 0 ]; then
+            echo "::error title=test batch failed::first failing category: $category"
+            exit 1
+          fi
           set +f
           echo "::endgroup::"
           done
-          if [ -n "$BATCH_FAILED" ]; then
-            echo "::error title=test batch failed::category(ies):$BATCH_FAILED"
-            exit 1
-          fi
 
       # Save the verdict store from EVERY run, PRs included. It was main-only
       # (the "save on main only" rule that exists for the 1 GB tarball
@@ -1172,9 +1183,10 @@ jobs:
   #    changes can affect (scripts/e2e-affected.ts). push:main and
   #    merge_group always run ALL — the gate protecting main never
   #    trusts the narrowing; false-negatives are the only real danger.
-  #  • `e2e-suite` is a `fail-fast: false` matrix — every suite is its
-  #    own parallel job + own check. One suite's flake/failure cannot
-  #    skip or cancel another. Wall-clock ≈ the slowest single suite.
+  #  • `e2e-suite` is a `fail-fast: true` matrix. A real failure has already
+  #    exhausted that suite's configured retries; cancelling sibling batches
+  #    then releases their runner slots instead of spending them on a commit
+  #    that cannot merge.
   #  • Every playwright*.config.ts uses `retries: process.env.CI ? 2 : 0`
   #    so a flaky spec self-heals within its job (3 attempts); a real
   #    bug fails all 3. Local stays 0 for honest, fast feedback.
@@ -1186,12 +1198,11 @@ jobs:
     name: e2e (${{ matrix.name }})
     # e2e suites boot example apps via `vite preview` / `vite build`, which
     # resolve @pyreon/* via the node condition → lib/ (built by Install,
-    # which also selects the suites). Fail-closed: a failed Install leaves
-    # e2e-has empty → suites skip → the `Test` AGGREGATOR fails (it requires
-    # install.result == success), so the check goes red, never
-    # green-via-skip.
-    needs: install
-    if: needs.install.outputs.e2e-has == 'true'
+    # which also selects the suites). Install/Fast Gates failures keep these
+    # expensive suites idle; the `Test` aggregate includes both prerequisites
+    # and fails red, never green-via-skip.
+    needs: [install, fast-gates]
+    if: ${{ needs.install.result == 'success' && needs.fast-gates.result == 'success' && needs.install.outputs.e2e-has == 'true' }}
     runs-on: ubuntu-latest
     # A cell runs a BATCH of suites now, so the cap covers the batch, not one
     # suite. Full serial e2e is ~8-20 min across every suite; at 4 batches the
@@ -1199,7 +1210,7 @@ jobs:
     # runner without letting a genuine hang sit for an hour.
     timeout-minutes: 25
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         include: ${{ fromJSON(needs.install.outputs.e2e-matrix || '[]') }}
     steps:
@@ -1261,16 +1272,14 @@ jobs:
         # its own `bun run`, so behaviour per suite is unchanged — only the
         # number of RUNNERS changed.
         #
-        # Deliberately NO `set -e`: a failing suite must not abort the rest of
-        # the batch, or one red suite would mask every suite behind it (the
-        # isolation the per-suite matrix was originally introduced to get). We
-        # collect failures and fail the job at the end with all of them named.
+        # Stop the batch at its first failing suite. Playwright already retries
+        # individual specs twice, so continuing after a confirmed failure only
+        # occupies a scarce runner on a commit that cannot merge.
         env:
           MEMBERS: ${{ matrix.members }}
         run: |
           set -o pipefail
           : > /tmp/e2e-out.txt
-          FAILED=""
           for suite in $MEMBERS; do
             script=$(bun run scripts/e2e-affected.ts --scripts-for="$suite")
             echo "::group::e2e suite — $suite ($script)"
@@ -1278,14 +1287,10 @@ jobs:
               echo "✓ $suite"
             else
               echo "::error title=e2e suite failed::$suite"
-              FAILED="$FAILED $suite"
+              exit 1
             fi
             echo "::endgroup::"
           done
-          if [ -n "$FAILED" ]; then
-            echo "::error title=e2e batch failed::suite(s):$FAILED"
-            exit 1
-          fi
       - name: Surface flaky specs (passed only on retry)
         # `retries: 2` means a flaky spec self-heals → the job is green
         # and the flake is INVISIBLE. That hides a degrading spec. This
@@ -1356,14 +1361,14 @@ jobs:
     name: Scaffold Smoke (${{ matrix.name }})
     # Each cell runs `bun install` + `vite build` of the scaffolded app, which
     # resolves @pyreon/* via the node condition → lib/ (built by Install).
-    needs: install
-    if: ${{ needs.install.outputs.scaffold-has == 'true' }}
+    needs: [install, fast-gates]
+    if: ${{ needs.install.result == 'success' && needs.fast-gates.result == 'success' && needs.install.outputs.scaffold-has == 'true' }}
     runs-on: ubuntu-latest
     # Three cells of ~6 min in one batch, plus setup. Derived, not guessed:
     # measured cells run 222-373s; the heaviest LPT bin is 3 × ~370s.
     timeout-minutes: 25
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         # Batched by Install's decide step — `[{name, members}]`, same shape
         # as the e2e matrix. `members` is the space-separated cell list.
@@ -1381,13 +1386,31 @@ jobs:
           path: ~/.bun/install/cache
           key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-install-cache-${{ runner.os }}-
+      # `cpa-smoke-app-node` drives the built server in real Chromium (the
+      # hydration check) and fails if no browser can launch — install it
+      # only for the batch that carries that cell.
+      - name: Restore Playwright browsers (hydration cell)
+        if: ${{ contains(matrix.members, 'cpa-smoke-app-node') }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: playwright-chromium-${{ runner.os }}-
+      - name: Install Playwright Chromium (hydration cell)
+        if: ${{ contains(matrix.members, 'cpa-smoke-app-node') }}
+        run: |
+          # Same bounded apt handling as the e2e jobs (see "Install Playwright
+          # Chromium" there): OS deps are best-effort, the browser is required.
+          sudo grep -rlZ packages.microsoft.com /etc/apt/sources.list.d/ 2>/dev/null | sudo xargs -0 -r rm -f || true
+          timeout 240 bunx playwright install-deps chromium || echo "::warning::playwright install-deps timed out or failed — relying on the runner's preinstalled Chromium libs"
+          bunx playwright install chromium
       # scaffold-smoke.ts accepts positional cell filters and runs the
       # matches sequentially:
       #   `bun scripts/scaffold-smoke.ts cpa-smoke-app-vercel cpa-smoke-app-static`
       - name: Run scaffold-smoke batch — ${{ matrix.name }}
         env:
           MEMBERS: ${{ matrix.members }}
-        run: bun scripts/scaffold-smoke.ts $MEMBERS
+        run: bun scripts/scaffold-smoke.ts --fail-fast $MEMBERS
 
   # ── Test: the ONE aggregator for every dynamic matrix ────────────────────
   # Branch protection pins a stable name; matrix cells have dynamic names.
@@ -1402,32 +1425,28 @@ jobs:
   #   skipped  the matrix was `if:`-gated off — nothing affected — a PASS
   #   e2e is special: the decide said RUN but the matrix did not succeed is a
   #   contradiction (#2978's shape) and reads as red, never green-via-skip.
-  # Fail-closed on Install: if the decide job did not succeed, cell selection
-  # is unknown and this is red regardless of what did run.
+  # Fail-closed on both prerequisites: if Install or Fast Gates did not
+  # succeed, this is red regardless of which expensive cells were suppressed.
   test:
     name: Test
-    # Starts right after Install — ALONGSIDE the cells, not after them — and
-    # waits for every aggregated job (scripts/ci-aggregate.ts). As a job that
-    # `needs:` all four matrices it became ready LAST and queued behind every
-    # other PR: measured 2026-09-22, 56-78 min for a 3-second verdict once its
-    # dependencies had finished. Its OWN conclusion is the required `Test`
-    # check, so it needs only `actions: read`: no job in this workflow holds a
-    # token that can write checks (see the script header for why the faster
-    # "last cell posts Test" version was withdrawn).
+    # Becomes eligible only after preflight and every dynamic matrix reaches a
+    # terminal state. The previous API-polling shape started after Install and
+    # occupied a runner for the entire fan-out (hours under contention) merely
+    # to compute a three-second verdict. A little final queue latency is less
+    # damaging than withholding one of the org's 20 slots from healthy PRs.
+    # Its OWN conclusion is the required `Test` check, so it needs only
+    # `actions: read`: no job in this workflow holds a token that can write
+    # checks.
     #
-    # `always()`: a failed Install must still produce a red `Test`, never a
-    # skipped-green one.
+    # `always()`: a failed Install or Fast Gates must still produce a red
+    # `Test`, never a skipped-green one.
     #
-    # Re-runs: this job no longer `needs:` the cells, so re-running ONE cell
-    # by hand does not re-evaluate it — use "Re-run failed jobs" (a red
-    # `Test` is itself a failed job, so it is included) or re-run it too.
-    needs: install
+    # Re-runs: use "Re-run failed jobs" (a red Test is itself included) or
+    # explicitly re-run this job after re-running one matrix cell.
+    needs: [install, fast-gates, typecheck-cell, test-cell, e2e-suite, scaffold-smoke-cell]
     if: always()
     runs-on: ubuntu-latest
-    # Must outlast the slowest cell INCLUDING its queue wait (cells cap at 25
-    # min of runtime; a busy pool adds an hour or more). A timeout reports a
-    # cancelled — i.e. blocking, never green — `Test`.
-    timeout-minutes: 240
+    timeout-minutes: 10
     permissions:
       contents: read
       actions: read # list this run's jobs
@@ -1441,7 +1460,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
-      - name: Wait for typecheck / test / e2e / scaffold matrices, then decide
+      - name: Aggregate typecheck / test / e2e / scaffold matrices
         env:
           GITHUB_TOKEN: ${{ github.token }}
           E2E_SELECTED: ${{ needs.install.outputs.e2e-has }}
@@ -1449,8 +1468,8 @@ jobs:
 
   build:
     name: Build
-    needs: install
-    if: ${{ (success() && needs.install.outputs.code == 'true') || (failure() && needs.install.result != 'success') }}
+    needs: [install, fast-gates]
+    if: ${{ needs.install.result == 'success' && needs.fast-gates.result == 'success' && needs.install.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     # Derived from the measured steps (2026-09-01): examples build 70s +
     # verify-modes 90s + budgets 55s + distribution 25s + bin-liveness 30s +
@@ -1479,8 +1498,21 @@ jobs:
           bun run --filter='./examples/*' build
       # `vite build` every example × mode cell and assert the RENDERED content
       # (not just a green build) — the typed-but-unimplemented backstop.
+      # A4: the cloudflare cell serves its output under workerd via
+      # `wrangler pages dev`. Pinned, installed outside the workspace so it
+      # never enters bun.lock; PYREON_REQUIRE_WORKERD turns the local
+      # "no wrangler" skip into a failure here (fail-closed).
+      - name: Install wrangler (workerd) for Verify Modes
+        id: wrangler
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: |
+          npm install --prefix "$RUNNER_TEMP/wrangler" --no-audit --no-fund wrangler@4.138.0
+          echo "bin=$RUNNER_TEMP/wrangler/node_modules/.bin/wrangler" >> "$GITHUB_OUTPUT"
       - name: Verify Modes
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        env:
+          PYREON_WRANGLER: ${{ steps.wrangler.outputs.bin }}
+          PYREON_REQUIRE_WORKERD: '1'
         run: bun run verify-modes
       # ── package contracts against the built lib/ ────────────────────────
       - name: Check Bundle Budgets
@@ -1613,9 +1645,10 @@ jobs:
     # Same risk class as `test-cell`: any browser test that asserts on built
     # artifacts (lib/) needs the lib/ Install built — restored via
     # setup-pyreon rather than audited per test. Skips entirely on a
-    # docs-only PR (`code == false`); fail-closed on an Install failure.
-    needs: install
-    if: ${{ (success() && needs.install.outputs.code == 'true') || (failure() && needs.install.result != 'success') }}
+    # docs-only PR (`code == false`). Install/Fast Gates failures are surfaced
+    # by required checks without starting this browser runner.
+    needs: [install, fast-gates]
+    if: ${{ needs.install.result == 'success' && needs.fast-gates.result == 'success' && needs.install.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -1675,8 +1708,8 @@ jobs:
 
   release-build:
     name: Release Build
-    needs: install
-    if: ${{ (success() && needs.install.outputs.code == 'true') || (failure() && needs.install.result != 'success') }}
+    needs: [install, fast-gates]
+    if: ${{ needs.install.result == 'success' && needs.fast-gates.result == 'success' && needs.install.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -1706,10 +1739,11 @@ jobs:
     # Relevance is decided in Install — this job used to boot a runner on
     # EVERY PR (checkout + setup + node 24, ~21–31s) just to conclude "not
     # relevant, skip" ~99% of the time. Now the job itself skips (no runner)
-    # unless bootstrap.ts / the test / the workflow changed. Fail-closed: a
-    # failed Install runs it.
-    needs: install
-    if: ${{ (success() && needs.install.outputs.bootstrap-exit-codes == 'true') || (failure() && needs.install.result != 'success') }}
+    # unless bootstrap.ts / the test / the workflow changed. A failed Install
+    # or Fast Gates blocks it; the required Test aggregate
+    # reports that failure without spending another runner.
+    needs: [install, fast-gates]
+    if: ${{ needs.install.result == 'success' && needs.fast-gates.result == 'success' && needs.install.outputs.bootstrap-exit-codes == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -1721,4 +1755,3 @@ jobs:
       - name: Run bootstrap-exit-codes
         run: |
           bun run --filter='@pyreon/test-utils' test src/tests/bootstrap-exit-codes.test.ts
-

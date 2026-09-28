@@ -34,6 +34,15 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
+import { assertClientClean, assertRouteBudgets } from './zero-app-checks'
+import {
+  assertRunsUnderWorkerd,
+  invokeIsolated,
+  loadRuntimeEol,
+  withNodeServer,
+  netlifyOutputProblems,
+  vercelOutputProblems,
+} from './zero-adapter-runtimes'
 
 type Mode = 'ssr' | 'ssg' | 'spa' | 'isr' | 'auto'
 
@@ -149,16 +158,16 @@ function assertFileAbsent(path: string): void {
 }
 
 /** Inverse content gate — NO file in `dir` (recursive) may contain `needle`. */
-function assertNoFileInDirContains(dir: string, needle: string): void {
-  if (!existsSync(dir)) return
-  for (const entry of readdirSync(dir, { withFileTypes: true, recursive: true })) {
+function assertSomeFileInDirContains(dir: string, needle: string): void {
+  if (!existsSync(dir)) throw new Error(`expected ${dir} to exist`)
+  for (const entry of readdirSync(dir, {
+    withFileTypes: true,
+    recursive: true,
+  })) {
     if (!entry.isFile()) continue
-    const full = join(entry.parentPath ?? dir, entry.name)
-    const content = readFileSync(full, 'utf-8')
-    if (content.includes(needle)) {
-      throw new Error(`expected NO file under ${dir} to contain "${needle}" — found in ${full}`)
-    }
+    if (readFileSync(join(entry.parentPath ?? dir, entry.name), 'utf-8').includes(needle)) return
   }
+  throw new Error(`expected SOME file under ${dir} to contain "${needle}" — none did`)
 }
 
 function assertFileContains(path: string, needle: string): void {
@@ -177,7 +186,9 @@ function assertFilesByteIdentical(a: string, b: string): void {
   const ba = readFileSync(a)
   const bb = readFileSync(b)
   if (!ba.equals(bb)) {
-    throw new Error(`expected ${a} and ${b} to be byte-identical (lengths ${ba.length} vs ${bb.length})`)
+    throw new Error(
+      `expected ${a} and ${b} to be byte-identical (lengths ${ba.length} vs ${bb.length})`,
+    )
   }
 }
 
@@ -206,12 +217,19 @@ function assertSsrFunctionRenders(
   const funcPath = join(distDir, funcRelPath)
   assertFileExists(funcPath)
   const invoker = join(REPO_ROOT, 'scripts', '_invoke-ssr-function.mjs')
-  const result = spawnSync('node', [invoker, funcPath, style], { encoding: 'utf-8' })
+  const result = spawnSync('node', [invoker, funcPath, style], {
+    encoding: 'utf-8',
+  })
   if (result.status !== 0) {
     throw new Error(
       `${funcRelPath}: emitted ${style} function failed to server-render.\n${result.stderr || result.stdout || '(no output)'}`,
     )
   }
+}
+
+function throwIfProblems(label: string, problems: string[]): void {
+  if (problems.length > 0)
+    throw new Error(`[${label}] adapter output is invalid:\n  ${problems.join('\n  ')}`)
 }
 
 function assertFileDoesNotExist(path: string): void {
@@ -301,7 +319,8 @@ function assertDynProbeCollapsed(distDir: string): void {
   // backtick-quoted strings each CONTAINING a `pyr-` prefix.
   // The regular `_rsCollapse` emit takes only TWO class args
   // (light/dark); a 4-element class array is unique to `_rsCollapseDyn`.
-  const classArray = /\[`[^`]*pyr-[^`]*`,\s*`[^`]*pyr-[^`]*`,\s*`[^`]*pyr-[^`]*`,\s*`[^`]*pyr-[^`]*`\]/.test(src)
+  const classArray =
+    /\[`[^`]*pyr-[^`]*`,\s*`[^`]*pyr-[^`]*`,\s*`[^`]*pyr-[^`]*`,\s*`[^`]*pyr-[^`]*`\]/.test(src)
   // Value dispatcher — `()=>+!cond` is the minifier's canonical
   // transform of `() => (cond) ? 0 : 1` (both produce 0 for truthy
   // cond, 1 for falsy: `+!true=0, +!false=1`). The regular `_rsCollapse`
@@ -380,9 +399,7 @@ function assertDynProbeCollapsed(distDir: string): void {
 function assertCrossPackageButtonCollapsed(distDir: string): void {
   const assetsDir = join(distDir, 'assets')
   if (!existsSync(assetsDir)) throw new Error(`expected ${assetsDir} to exist`)
-  const buttonChunk = readdirSync(assetsDir).find(
-    (f) => /^button-[A-Za-z0-9_-]+\.js$/.test(f),
-  )
+  const buttonChunk = readdirSync(assetsDir).find((f) => /^button-[A-Za-z0-9_-]+\.js$/.test(f))
   if (!buttonChunk) {
     throw new Error(
       `expected a \`button-*.js\` route chunk under ${assetsDir} ` +
@@ -511,7 +528,11 @@ interface ChunkGraphSpec {
    * values. Identifier-renaming-resistant; filename basename is the
    * Vite-natural per-dynamic-import chunk shape.
    */
-  mustHaveChunks: { name: string; fingerprints: string[]; maxGzippedKb?: number }[]
+  mustHaveChunks: {
+    name: string
+    fingerprints: string[]
+    maxGzippedKb?: number
+  }[]
   /**
    * Strings that must NOT appear in ANY `dist/assets/*.js` chunk.
    * Use this to assert `hydrate: 'never'` islands genuinely ship zero
@@ -745,13 +766,73 @@ const MATRIX: Cell[] = [
       // `serverLoaders: true` unconditionally) → the sentinel lands in a
       // client chunk → this fails.
       assertFileContains(join(dist, 'server', 'entry-server.js'), 'SERVER_ONLY_SENTINEL_q7x9')
-      assertNoFileInDirContains(join(dist, 'assets'), 'SERVER_ONLY_SENTINEL_q7x9')
-      // Server functions: the `/form-actions` route's `action` handler (and
-      // the guestbook module only it imports) must be stripped from the
-      // client — the client keeps an id-only stub (`_actionStub`). A
-      // regression in actions-transform lands the sentinel in a client chunk.
-      assertFileContains(join(dist, 'server', 'entry-server.js'), 'ACTION_SERVER_ONLY_SENTINEL_z4k1')
-      assertNoFileInDirContains(join(dist, 'assets'), 'ACTION_SERVER_ONLY_SENTINEL_z4k1')
+      // A5 — the client leak check walks `dist/client`, the tree the node
+      // adapter DEPLOYS (the previous check walked the flat `dist/assets`
+      // copy and silently returned if it was absent). `assertClientClean`
+      // refuses a missing or JS-less directory rather than passing.
+      // Sentinels: the `.server.ts` loader and a server ACTION handler
+      // (`src/features/probe-action.ts`, imported by a client route, so the
+      // handler-stripping transform is what keeps it out). Plus: no `node:*`
+      // import in any client chunk.
+      assertSomeFileInDirContains(join(dist, 'server'), 'ACTION_HANDLER_SENTINEL_z3k8')
+      assertFileContains(
+        join(dist, 'server', 'entry-server.js'),
+        'ACTION_SERVER_ONLY_SENTINEL_z4k1',
+      )
+      assertClientClean(join(dist, 'client'), {
+        forbiddenSentinels: [
+          'SERVER_ONLY_SENTINEL_q7x9',
+          'ACTION_HANDLER_SENTINEL_z3k8',
+          'ACTION_SERVER_ONLY_SENTINEL_z4k1',
+        ],
+      })
+    },
+  },
+  {
+    // A1 — a SUBPATH deploy on the node adapter's real server. Every page of a
+    // `base` app used to 404 in production (the handler routed the prefixed
+    // path), its assets were served as HTML (static lookup ignored base),
+    // and the base-prefixed data endpoint skipped the target page's
+    // middleware. Boots `dist/index.js` and asserts all of it over HTTP.
+    example: 'ssr-showcase',
+    mode: 'ssr',
+    base: '/sub/',
+    smoke: async (dist) => {
+      await withNodeServer(dist, async (origin) => {
+        const get = (p: string, init?: RequestInit) =>
+          fetch(origin + p, { redirect: 'manual', ...init })
+        const about = await get('/sub/about')
+        const html = await about.text()
+        if (about.status !== 200 || !html.includes('about-page')) {
+          throw new Error(`/sub/about: expected the about page, got ${about.status}`)
+        }
+        if (!html.includes('href="/sub/about"'))
+          throw new Error('/sub/about: links are not base-prefixed')
+        const script = /src="(\/sub\/assets\/[^"]+\.js)"/.exec(html)?.[1]
+        if (!script) throw new Error('/sub/about: no base-prefixed module script')
+        const asset = await get(script)
+        if (
+          asset.status !== 200 ||
+          !String(asset.headers.get('content-type')).includes('javascript')
+        ) {
+          throw new Error(
+            `${script}: expected JavaScript, got ${asset.status} ${asset.headers.get('content-type')}`,
+          )
+        }
+        const api = await get('/sub/api/posts')
+        if (
+          api.status !== 200 ||
+          !String(api.headers.get('content-type')).includes('application/json')
+        ) {
+          throw new Error(`/sub/api/posts: expected JSON, got ${api.status}`)
+        }
+        const guarded = await get('/sub/_pyreon/data?path=/guarded')
+        if (guarded.status !== 401)
+          throw new Error(`/sub/_pyreon/data?path=/guarded: expected 401, got ${guarded.status}`)
+        const missing = await get('/sub/definitely-not-a-route')
+        if (missing.status !== 404)
+          throw new Error(`unknown route under base: expected 404, got ${missing.status}`)
+      })
     },
   },
   {
@@ -800,6 +881,18 @@ const MATRIX: Cell[] = [
         join('.vercel', 'output', 'functions', 'ssr.func', 'index.js'),
         'vercel',
       )
+      // A4 — the Build Output API v3 contract (config.json routes, every
+      // routed function exists, .vc-config.json runtime not past EOL) and
+      // the function run from a copy OUTSIDE the repo, as Vercel uploads it.
+      throwIfProblems(
+        'vercel',
+        vercelOutputProblems(join(exampleDir, '.vercel', 'output'), loadRuntimeEol()),
+      )
+      invokeIsolated(
+        join(exampleDir, '.vercel', 'output', 'functions', 'ssr.func'),
+        'index.js',
+        'vercel',
+      )
     },
   },
   {
@@ -810,18 +903,27 @@ const MATRIX: Cell[] = [
       assertFileExists(join(dist, 'netlify.toml'))
       assertFileContains(join(dist, 'publish', 'index.html'), '<!--pyreon-app-->')
       assertSsrFunctionRenders(dist, join('netlify', 'functions', 'ssr.mjs'), 'netlify')
+      // A4 — netlify.toml parses and every redirect target function exists
+      // with a default export; the functions dir run outside the repo.
+      throwIfProblems('netlify', netlifyOutputProblems(dist))
+      invokeIsolated(join(dist, 'netlify'), join('functions', 'ssr.mjs'), 'netlify')
     },
   },
   {
     example: 'ssr-showcase',
     mode: 'ssr',
     adapter: 'cloudflare',
-    smoke: (dist) => {
+    smoke: async (dist) => {
       assertFileExists(join(dist, '_routes.json'))
       assertFileExists(join(dist, '_worker.js'))
       // Cloudflare serves the client flat at the root.
       assertFileContains(join(dist, 'index.html'), '<!--pyreon-app-->')
       assertSsrFunctionRenders(dist, '_worker.js', 'cloudflare')
+      // A4 — outside the repo, then under workerd itself (wrangler pages
+      // dev + the scaffold's wrangler.toml). CI sets PYREON_REQUIRE_WORKERD;
+      // locally a missing wrangler is a loud skip.
+      invokeIsolated(dist, '_worker.js', 'cloudflare')
+      await assertRunsUnderWorkerd(dist)
     },
   },
   {
@@ -839,6 +941,22 @@ const MATRIX: Cell[] = [
       assertFileContains(aboutPath, 'Pyreon is a signal-based UI framework')
       // Cleanup of the temporary SSR sub-build dir
       assertFileDoesNotExist(join(dist, '.zero-ssg-server'))
+      // A5 — per-route first-load JS (entry + modulepreloads + their static
+      // import closure, gzipped) against `scripts/zero-app-budgets.json`,
+      // and no server code in the static output.
+      assertRouteBudgets(
+        'ssr-showcase',
+        dist,
+        {
+          '/': homePath,
+          '/about': aboutPath,
+          '/island-demo': join(dist, 'island-demo', 'index.html'),
+        },
+        join(REPO_ROOT, 'scripts', 'zero-app-budgets.json'),
+      )
+      assertClientClean(dist, {
+        forbiddenSentinels: ['SERVER_ONLY_SENTINEL_q7x9', 'ACTION_HANDLER_SENTINEL_z3k8'],
+      })
       // Styler CSS flush regression: about.ts uses a `styled('span')` so
       // its SSG render populates `@pyreon/styler`'s `sheet.ssrBuffer`.
       // Pre-fix, prerendered HTML carried styler-generated class names
@@ -902,10 +1020,7 @@ const MATRIX: Cell[] = [
       // so the framework's auto-inject is what reaches dist.
       // Bisect-verifiable: stub `ensureNoindexMeta` in not-found.ts to
       // `return html` — this assertion fails.
-      assertFileContains(
-        join(dist, '404.html'),
-        '<meta name="robots" content="noindex, nofollow">',
-      )
+      assertFileContains(join(dist, '404.html'), '<meta name="robots" content="noindex, nofollow">')
     },
   },
   {
@@ -1154,9 +1269,7 @@ const MATRIX: Cell[] = [
       // testid baked into the vocab-completion route — proves the
       // Scroll/Modal/remote-Image primitives bundled on web
       if (!allBundled.includes('vocab-page')) {
-        throw new Error(
-          `[native-tasks-web × spa] expected bundle to contain testid "vocab-page"`,
-        )
+        throw new Error(`[native-tasks-web × spa] expected bundle to contain testid "vocab-page"`)
       }
       // testid baked into the Phase-2 lifecycle route — proves the
       // real Suspense/ErrorBoundary screen bundled on web
@@ -1371,14 +1484,10 @@ const MATRIX: Cell[] = [
       const fontHead = fontProbeHtml.slice(0, fontProbeHtml.indexOf('</head>'))
       // Both preloads present.
       if (!fontHead.includes('href="/fonts/display-bold.woff2"')) {
-        throw new Error(
-          `font-preload-probe: head missing preload for /fonts/display-bold.woff2`,
-        )
+        throw new Error(`font-preload-probe: head missing preload for /fonts/display-bold.woff2`)
       }
       if (!fontHead.includes('href="https://cdn.example.com/brand.woff2"')) {
-        throw new Error(
-          `font-preload-probe: head missing preload for cross-origin brand font`,
-        )
+        throw new Error(`font-preload-probe: head missing preload for cross-origin brand font`)
       }
       // rel + as attrs.
       if (!fontHead.includes('rel="preload"')) {
@@ -1396,13 +1505,10 @@ const MATRIX: Cell[] = [
       // crossorigin — CSS Fonts spec requires it. Without it the
       // browser double-fetches (preload + CORS refetch).
       if (!fontHead.includes('crossorigin="anonymous"')) {
-        throw new Error(
-          `font-preload-probe: preload missing crossorigin="anonymous"`,
-        )
+        throw new Error(`font-preload-probe: preload missing crossorigin="anonymous"`)
       }
       // Dedup contract: the duplicate href emits ONE preload, not two.
-      const displayBoldMatches =
-        fontHead.match(/href="\/fonts\/display-bold\.woff2"/g) ?? []
+      const displayBoldMatches = fontHead.match(/href="\/fonts\/display-bold\.woff2"/g) ?? []
       if (displayBoldMatches.length !== 1) {
         throw new Error(
           `font-preload-probe: dedup broken — found ${displayBoldMatches.length} preloads for the same href; expected 1`,
@@ -1787,24 +1893,15 @@ const MATRIX: Cell[] = [
       // Home — useHead({ title: 'Blog', meta: [{ name: 'description', … }] })
       assertFileContains(join(dist, 'index.html'), '<title>Blog</title>')
       assertFileContains(join(dist, 'index.html'), 'name="description"')
-      assertFileContains(
-        join(dist, 'index.html'),
-        'A statically-rendered Pyreon Zero blog.',
-      )
+      assertFileContains(join(dist, 'index.html'), 'A statically-rendered Pyreon Zero blog.')
 
       // About — distinct title + description (proves per-route resolution)
       assertFileContains(join(dist, 'about', 'index.html'), '<title>About</title>')
       assertFileContains(join(dist, 'about', 'index.html'), 'About this blog.')
 
       // Blog index — distinct title + description
-      assertFileContains(
-        join(dist, 'blog', 'index.html'),
-        '<title>All posts</title>',
-      )
-      assertFileContains(
-        join(dist, 'blog', 'index.html'),
-        'Every post on this blog, newest first.',
-      )
+      assertFileContains(join(dist, 'blog', 'index.html'), '<title>All posts</title>')
+      assertFileContains(join(dist, 'blog', 'index.html'), 'Every post on this blog, newest first.')
 
       // Dynamic [slug] — title + description + 3 OG tags PER prerendered
       // post. The OG-tag triplet is the killer assertion: it's the
@@ -1879,9 +1976,21 @@ const MATRIX: Cell[] = [
       // single-byte drift.
       assertChunkGraph(dist, {
         mustHaveChunks: [
-          { name: 'Counter', fingerprints: ['counter-inc', 'counter-value'], maxGzippedKb: 5 },
-          { name: 'IdleClock', fingerprints: ['idle-clock-time'], maxGzippedKb: 5 },
-          { name: 'VisibleComments', fingerprints: ['visible-comments-list'], maxGzippedKb: 5 },
+          {
+            name: 'Counter',
+            fingerprints: ['counter-inc', 'counter-value'],
+            maxGzippedKb: 5,
+          },
+          {
+            name: 'IdleClock',
+            fingerprints: ['idle-clock-time'],
+            maxGzippedKb: 5,
+          },
+          {
+            name: 'VisibleComments',
+            fingerprints: ['visible-comments-list'],
+            maxGzippedKb: 5,
+          },
           {
             name: 'MobileMenu',
             fingerprints: ['mobile-menu-toggle', 'mobile-menu-state'],
@@ -1955,7 +2064,8 @@ const VERIFY_CONFIG_NAME = 'vite.config.verify.ts'
 
 function cellId(c: Cell): string {
   const adapter = c.adapter && c.adapter !== 'node' ? ` (${c.adapter})` : ''
-  return `${c.example} × ${c.mode}${adapter}`
+  const base = c.base && c.base !== '/' ? ` base=${c.base}` : ''
+  return `${c.example} × ${c.mode}${adapter}${base}`
 }
 
 function configSourceFor(cell: Cell): string {

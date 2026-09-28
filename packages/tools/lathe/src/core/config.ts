@@ -560,7 +560,7 @@ export function resolveConfig(
   if (remoteRefs !== 'off' && remoteRefs !== 'fetch') {
     throw new Error(`[Pyreon] lathe: unknown remoteRefs \`${String(remoteRefs)}\`. Known: off, fetch.`)
   }
-  const target = section?.target ?? 'web'
+  const target = section?.target ?? "web";
   // Validated like the others: a config typo (`target: 'native'`) used to be
   // treated as `web` by every `=== 'multiplatform'` check downstream, so the
   // native modules the author asked for were silently never generated.

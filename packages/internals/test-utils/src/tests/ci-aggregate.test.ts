@@ -11,6 +11,7 @@ const running = (name: string): JobInfo => ({ name, status: 'in_progress', concl
 describe('aggregateKind', () => {
   it('classifies the aggregated families and nothing else', () => {
     expect(aggregateKind('Install')).toBe('install')
+    expect(aggregateKind('Fast Gates')).toBe('preflight')
     expect(aggregateKind('typecheck (core+tools)')).toBe('typecheck')
     expect(aggregateKind('test (batch-a)')).toBe('test')
     expect(aggregateKind('e2e (core+5 more)')).toBe('e2e')
@@ -25,32 +26,37 @@ describe('aggregateKind', () => {
 describe('decideAggregate', () => {
   const self = { ...done('test (batch-b)') }
   it('does not post while another aggregated job is still running', () => {
-    const v = decideAggregate([done('Install'), running('e2e (core)'), self, done('Build')], self, { e2eSelected: true })
+    const v = decideAggregate([done('Install'), done('Fast Gates'), running('e2e (core)'), self, done('Build')], self, { e2eSelected: true })
     expect(v.last).toBe(false)
   })
   it('ignores non-aggregated jobs that are still running', () => {
-    const v = decideAggregate([done('Install'), self, running('Test (browser)'), running('Release Build')], self, { e2eSelected: false })
+    const v = decideAggregate([done('Install'), done('Fast Gates'), self, running('Test (browser)'), running('Release Build')], self, { e2eSelected: false })
     expect(v).toMatchObject({ last: true, ok: true })
   })
   it('passes when everything succeeded or was skipped', () => {
-    const v = decideAggregate([done('Install'), done('typecheck (core)'), done('e2e (x)', 'skipped'), self], self, { e2eSelected: false })
+    const v = decideAggregate([done('Install'), done('Fast Gates'), done('typecheck (core)'), done('e2e (x)', 'skipped'), self], self, { e2eSelected: false })
     expect(v).toMatchObject({ last: true, ok: true })
   })
   it('fails on a failed or cancelled cell — including this job itself', () => {
-    expect(decideAggregate([done('Install'), done('typecheck (core)', 'failure'), self], self, { e2eSelected: false }).ok).toBe(false)
-    expect(decideAggregate([done('Install'), done('Scaffold Smoke (a)', 'cancelled'), self], self, { e2eSelected: false }).ok).toBe(false)
+    expect(decideAggregate([done('Install'), done('Fast Gates'), done('typecheck (core)', 'failure'), self], self, { e2eSelected: false }).ok).toBe(false)
+    expect(decideAggregate([done('Install'), done('Fast Gates'), done('Scaffold Smoke (a)', 'cancelled'), self], self, { e2eSelected: false }).ok).toBe(false)
     const failedSelf = done('test (batch-b)', 'failure')
-    expect(decideAggregate([done('Install'), failedSelf], failedSelf, { e2eSelected: false }).ok).toBe(false)
+    expect(decideAggregate([done('Install'), done('Fast Gates'), failedSelf], failedSelf, { e2eSelected: false }).ok).toBe(false)
   })
   it('fails when Install did not succeed', () => {
-    expect(decideAggregate([done('Install', 'failure'), self], self, { e2eSelected: false }).ok).toBe(false)
+    expect(decideAggregate([done('Install', 'failure'), done('Fast Gates', 'skipped'), self], self, { e2eSelected: false }).ok).toBe(false)
+  })
+  it('waits for Fast Gates and fails closed if preflight is missing or red', () => {
+    expect(decideAggregate([done('Install'), running('Fast Gates'), self], self, { e2eSelected: false }).last).toBe(false)
+    expect(decideAggregate([done('Install'), self], self, { e2eSelected: false }).ok).toBe(false)
+    expect(decideAggregate([done('Install'), done('Fast Gates', 'failure'), self], self, { e2eSelected: false }).ok).toBe(false)
   })
   it('requires SUCCESS (not skip) from selected e2e suites, and at least one', () => {
-    expect(decideAggregate([done('Install'), done('e2e (x)', 'skipped'), self], self, { e2eSelected: true }).ok).toBe(false)
-    expect(decideAggregate([done('Install'), self], self, { e2eSelected: true }).ok).toBe(false)
-    expect(decideAggregate([done('Install'), done('e2e (x)'), self], self, { e2eSelected: true }).ok).toBe(true)
+    expect(decideAggregate([done('Install'), done('Fast Gates'), done('e2e (x)', 'skipped'), self], self, { e2eSelected: true }).ok).toBe(false)
+    expect(decideAggregate([done('Install'), done('Fast Gates'), self], self, { e2eSelected: true }).ok).toBe(false)
+    expect(decideAggregate([done('Install'), done('Fast Gates'), done('e2e (x)'), self], self, { e2eSelected: true }).ok).toBe(true)
   })
   it('in --force mode (no self) decides over the finished set', () => {
-    expect(decideAggregate([done('Install'), done('test (a)')], null, { e2eSelected: false })).toMatchObject({ last: true, ok: true })
+    expect(decideAggregate([done('Install'), done('Fast Gates'), done('test (a)')], null, { e2eSelected: false })).toMatchObject({ last: true, ok: true })
   })
 })
