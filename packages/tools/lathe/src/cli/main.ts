@@ -122,12 +122,22 @@ export async function main(
     exists: (p) => realFs.exists(abs(p)),
     mkdirp: (p) => realFs.mkdirp(abs(p)),
     remove: (p) => realFs.remove(abs(p)),
-  };
-  let section = loaded.section;
-  const once = async (): Promise<number> =>
-    emit(await run(argv, section, scoped));
-  const code = await once();
-  if (!argv.watch || argv.command !== "generate" || argv.dryRun) return code;
+    resolve: abs,
+  }
+  let section = loaded.section
+  // Set once the watcher exists: every document a run READ -- the spec and
+  // any file it `$ref`s -- is watched, so editing a split spec's part
+  // regenerates just like editing its root.
+  let watchDocuments: ((documents: readonly string[]) => void) | undefined
+  let lastDocuments: readonly string[] = []
+  const once = async (): Promise<number> => {
+    const result = await run(argv, section, scoped)
+    lastDocuments = result.documents ?? []
+    watchDocuments?.(lastDocuments)
+    return emit(result)
+  }
+  const code = await once()
+  if (!argv.watch || argv.command !== 'generate' || argv.dryRun) return code
 
   // Watch the SPECS and the CONFIG, not the output: regenerating on our own
   // writes would loop. Editors write via rename as often as they write in
@@ -183,9 +193,14 @@ export async function main(
     }, 60);
   };
 
-  const specs = specPaths(section, argv, cwd);
-  if (specs.length === 0 && !loaded.file) return code;
-  for (const spec of specs) watchFile(spec, rerun);
+  const specs = specPaths(section, argv, cwd)
+  if (specs.length === 0 && !loaded.file) return code
+  for (const spec of specs) watchFile(spec, rerun)
+  watchDocuments = (documents) => {
+    for (const d of documents) if (!/^https?:\/\//i.test(d)) watchFile(abs(d), rerun)
+  }
+  // The first run happened before the watcher existed; watch what it read.
+  watchDocuments(lastDocuments)
   if (loaded.file) {
     watchFile(loaded.file, () => {
       reloadConfig = true;

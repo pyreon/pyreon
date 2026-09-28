@@ -49,6 +49,7 @@ import {
 import { SOURCE_TOOLS } from "./init/init";
 import type { SourceTool } from "./init/migrate";
 import { renderReport } from "./report";
+import { fetchRemoteParts } from './remote-refs'
 
 export interface Argv {
   command: "generate" | "check" | "pull" | "diff" | "init" | "help" | "version";
@@ -428,6 +429,13 @@ export interface Fs {
    * library caller need not provide git.
    */
   gitShow?(rev: string, path: string): string | undefined;
+  /**
+   * The ABSOLUTE path of `path` -- where a file outside this abstraction (the
+   * remote-document cache, written by `lathe pull`'s code) must go so it lands
+   * in the project, not in the process's working directory. Absent for an
+   * in-memory fs, which then gets no cache.
+   */
+  resolve?(path: string): string
 }
 
 export interface RunResult {
@@ -441,6 +449,11 @@ export interface RunResult {
    * to `$GITHUB_STEP_SUMMARY` when the runner provides one.
    */
   summary?: string | undefined;
+  /**
+   * Every spec document a generating run read -- the input plus any file it
+   * `$ref`s -- so `--watch` regenerates on an edit to any of them.
+   */
+  documents?: string[] | undefined
 }
 
 export const HELP = `lathe - generate Pyreon clients from an OpenAPI 3.x spec
@@ -705,7 +718,16 @@ async function runChecked(
       );
     }
     try {
-      const result = generate(fs.read(config.input), config);
+      const text = fs.read(config.input);
+      const remoteDocuments =
+        config.remoteRefs === 'fetch'
+          ? await fetchRemoteParts(text, config.input, (id) => fs.read(id), config.remoteHeaders, remoteCacheDir(fs))
+          : undefined;
+      const result = generate(text, config, {
+        location: config.input,
+        readDocument: (id) => fs.read(id),
+        remoteDocuments,
+      });
       // Formatted BEFORE the comparison below, so formatted output that was
       // committed is current rather than stale, and `check` agrees with it.
       generated.push({
@@ -872,7 +894,7 @@ function report(runs: RunOutcome[], argv: Argv): RunResult {
         }),
       ),
     };
-    return { code, stdout: `${JSON.stringify(doc, null, 2)}\n`, stderr: "" };
+    return { code, stdout: `${JSON.stringify(doc, null, 2)}\n`, stderr: '', documents: documentsOf(runs) }
   }
 
   let stdout = "";
@@ -913,7 +935,16 @@ function report(runs: RunOutcome[], argv: Argv): RunResult {
       stdout += "\n  DRY RUN: nothing would change.\n";
     }
   }
-  return { code, stdout, stderr: "" };
+  return { code, stdout, stderr: '', documents: documentsOf(runs) }
+}
+
+/** `lathe pull`'s cache directory, when there is a `node_modules` to hold it. */
+function remoteCacheDir(fs: Fs): string | undefined {
+  return fs.resolve && fs.exists('node_modules') ? fs.resolve(fs.join('node_modules', '.cache', 'lathe')) : undefined
+}
+
+function documentsOf(runs: ReadonlyArray<{ result: { documents: readonly string[] } }>): string[] {
+  return [...new Set(runs.flatMap((r) => r.result.documents))]
 }
 
 function exitCode(

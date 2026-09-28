@@ -40,15 +40,15 @@ describe('$ref resolution', () => {
   })
 
   it('REPORTS a remote ref instead of silently emitting nothing', () => {
-    // Lathe reads one document and never fetches. Dropping the ref quietly
-    // would produce a client whose response type is `unknown` with no
-    // indication why.
+    // Generation never fetches (a bare string has no location to resolve
+    // against either). Dropping the ref quietly would produce a client whose
+    // response type is `unknown` with no indication why.
     const { doc } = loadOpenApi(withBook(`{ $ref: 'https://other/spec.yaml#/X' }`))
     const note = doc.notes.find((n) => n.code === 'unsupported-ref')
     expect(note, 'a remote ref must be reported').toBeDefined()
-    expect(note?.message).toContain('never fetches')
+    expect(note?.message).toContain('points into another document')
     // and it says what to do about it
-    expect(note?.message).toContain('Bundle the spec first')
+    expect(note?.message).toContain('lathe pull')
   })
 
   it('REPORTS a ref that does not resolve', () => {

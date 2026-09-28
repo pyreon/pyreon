@@ -12238,7 +12238,7 @@ report.issues.filter((i) => i.severity === 'error')`,
   // <gen-docs:api-reference:start @pyreon/lathe>
 
   'lathe/generate': {
-    signature: 'generate(specText: string, config: ResolvedConfig, options?: { sourceUrl?: string }): GenerateResult',
+    signature: 'generate(specText: string, config: ResolvedConfig, options?: { sourceUrl?: string; location?: string; readDocument?: (id: string) => string }): GenerateResult',
     example: `import { generate, resolveConfig } from '@pyreon/lathe'
 
 const config = resolveConfig({ input: './openapi.yaml', target: 'multiplatform' })
@@ -12247,7 +12247,7 @@ const { doc, files, reach } = generate(specText, config)
 for (const [id, r] of reach) {
   if (r.reach === 'web-only') console.warn(id, r.reason)
 }`,
-    notes: 'The whole pipeline, pure: spec text in, file CONTENTS out. Touches no filesystem, which is what makes the generator testable without a temp directory and lets `lathe check` diff before writing. Returns the IR document, the generated files, and a per-operation `reach` map explaining in spec terms which operations can run natively and why the others cannot.',
+    notes: 'The whole pipeline, pure: spec text in, file CONTENTS out. Touches no filesystem, which is what makes the generator testable without a temp directory and lets `lathe check` diff before writing. Returns the IR document, generated files, every input document read, and a per-operation `reach` map explaining in spec terms which operations can run natively and why the others cannot. Pass `location` and `readDocument` to resolve and bundle cross-file `$ref`s.',
     mistakes: `- Passing a relative \`baseUrl\` (or omitting \`servers\` from the spec) and expecting native output — PMTC bakes the request URL at compile time, so a relative base makes EVERY operation web-only. The reach report names this, but only if you read it.
 - Assuming the \`.native.tsx\` modules replace the web output. They are ADDITIVE: the web files are byte-identical whether the target is \`web\` or \`multiplatform\`.
 - Editing generated files. Every file carries a DO-NOT-EDIT banner and is overwritten on the next run; change the spec or the emitter.
@@ -12343,16 +12343,17 @@ if (diff.breaking > 0) console.log(renderContractDiff(diff, 'markdown'))`,
   },
 
   'lathe/loadOpenApi': {
-    signature: 'loadOpenApi(source: string, options?: { sourceUrl?: string }): { doc: IrDocument }',
+    signature: 'loadOpenApi(source: string, options?: { sourceUrl?: string; location?: string; readDocument?: (id: string) => string }): { doc: IrDocument; documents: string[] }',
     example: `import { loadOpenApi } from '@pyreon/lathe'
 
 const { doc } = loadOpenApi(await readFile('./openapi.yaml', 'utf8'))
 console.log(doc.models.length, 'models', doc.operations.length, 'operations')
 for (const note of doc.notes) console.warn(note.code, note.at, note.message)`,
-    notes: 'Parses an OpenAPI 3.x document (JSON or YAML text) into the spec-agnostic IR. Every reduction the IR cannot represent is recorded in `doc.notes` with a stable code and a location, so a loss is reported once at the boundary instead of being rediscovered differently by each emitter. Deterministic: models and operations are sorted, so the same spec always produces the same IR. Pass `sourceUrl` (where the spec was fetched from) and a RELATIVE `servers[].url` is resolved against it, as OpenAPI specifies.',
-    mistakes: `- Ignoring \`doc.notes\`. A spec with a remote \`$ref\` or a non-JSON media type still produces output — with those pieces typed \`unknown\`. The note is the only signal. Filter on \`noteSeverity(note) === 'loss'\` for the ones that change behaviour.
+    notes: 'Parses OpenAPI 3.x or Swagger 2.0 (JSON or YAML text) into the spec-agnostic IR. Every reduction the IR cannot represent is recorded in `doc.notes` with a stable code and a location. Deterministic: models and operations are sorted. Pass `sourceUrl` to resolve a relative server URL. With `location` and `readDocument`, cross-file `$ref`s are resolved and bundled; schemas are hoisted into named models and other values are inlined. Operations carry typed error bodies, while OpenAPI 3.1 webhooks and callbacks land in `doc.webhooks`.',
+    mistakes: `- Calling it with only the text of a split spec. Without \`location\` and \`readDocument\`, relative cross-file references cannot be resolved. Remote references are never fetched here; \`lathe pull\` bundles them.
+- Ignoring \`doc.notes\`. A spec with a remote \`$ref\` or a non-JSON media type still produces output — with those pieces typed \`unknown\`. The note is the only signal. Filter on \`noteSeverity(note) === 'loss'\` for the ones that change behaviour.
 - Reading \`op.body\` as a type. It is \`{ mediaType, encoding, type }\` — \`encoding\` (\`json\` / \`form\` / \`multipart\` / \`text\` / \`binary\`) decides the call argument (\`json:\` / \`form:\` / \`multipart:\` / \`body:\`), and a form body carries its per-field \`fieldEncoding\`.
-- Passing a Swagger 2 document. It is refused (\`openApiVersionProblem\` names the \`swagger2openapi\` conversion) rather than read as an empty 3.x spec.
+- Reading pointers in Swagger 2 notes against the original file. The document is up-converted first, so a pointer under \`#/components/schemas\` may have originated under \`#/definitions\`. Swagger 1.x is refused.
 - Expecting a custom YAML tag (\`!Ref\`, \`!include\`) to be expanded. The reader refuses it with a line number instead of reading it as a plain string; resolve or bundle the spec first. Anchors, aliases and merge keys DO resolve.`,
   },
 

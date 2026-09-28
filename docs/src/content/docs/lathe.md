@@ -141,6 +141,62 @@ The input layer resolves a spec's semantics once, so no emitter rediscovers them
 - **Parameters** — header and cookie parameters are typed call arguments; an operation-level parameter overrides a path-level one; an undeclared path placeholder is synthesized.
 - **Servers** — variables take their `default`; an operation- or path-level server travels with its operation (on native, as its own literal-base client); a relative server is reported, and `lathe pull` prints the absolute URL it resolves to.
 - **Names** — models, operation ids, path placeholders and tag files that normalize to one identifier are disambiguated deterministically; nothing is dropped.
+- **Error responses** — every `4xx` / `5xx` / `4XX` / `default` JSON body is typed per operation (see [Typed errors](#typed-errors)).
+- **Webhooks and callbacks** — typed as payload schemas and handler types (see [Webhooks and callbacks](#webhooks-and-callbacks)).
+
+### Swagger 2.0 is up-converted
+
+A `swagger: "2.0"` document is converted to OpenAPI 3.0 in process before it is
+read, following `swagger2openapi`'s mapping: `definitions`, body and `formData`
+parameters (a file field makes the body `multipart`), `produces` / `consumes`,
+`securityDefinitions`, `host` + `basePath` + `schemes` (https first; a missing
+scheme comes from the URL the spec was pulled from), `x-nullable`,
+`type: file`, `collectionFormat` → `style` / `explode` (an array with no
+`collectionFormat` is `csv`, Swagger 2's default), responses and string
+discriminators. What 3.0 cannot spell is a `swagger2-lossy` note:
+`collectionFormat: tsv`, per-operation `schemes` that exclude the client's
+scheme, an unknown security type. Kubernetes' 1,202-operation spec generates
+output that typechecks with every plugin. Swagger 1.x is refused.
+
+### Specs split across files
+
+A `$ref` into another document — `$ref: '../models/pet.yaml'`,
+`$ref: 'parameters.yml#/droplet_id'`, JSON or YAML, relative or absolute — is
+resolved against the spec's own file and the documents are bundled into one
+before generation:
+
+- A target in a **schema** position becomes a model named after it (the
+  pointer's last segment, else the file name; a collision is qualified by the
+  file — `pages_pagination` — before it is numbered). Two references to one file
+  are one model, and a cycle across files closes like one inside a file.
+- A root component that is only a reference (`Droplet: { $ref: models/droplet.yml }`)
+  keeps its own name.
+- Path items, operations, parameters, responses and headers from other files
+  are inlined.
+- An unreadable file or an inline self-inclusion is a note; `example` / `enum`
+  / `default` values are data and never rewritten.
+
+`generate` reads files, not the network, by default: a remote `$ref` is
+reported, and `lathe pull` (below) bundles it. `remoteRefs: 'fetch'` lets
+`generate` download the remote parts of a spec on disk itself, with the same
+rules as `pull` — each part conditional on its own `ETag`, credentials from
+`remoteHeaders` sent only to their origin, and a part that cannot be fetched
+failing the run instead of becoming `unknown`:
+
+```ts
+export default {
+  lathe: {
+    input: './openapi.yaml',
+    remoteRefs: 'fetch',
+    remoteHeaders: { 'https://specs.internal.test': { Authorization: `Bearer ${process.env.SPEC_TOKEN}` } },
+  },
+}
+```
+
+Opting in makes the output depend on those servers, so a `check` in CI needs
+network access to them. `--watch` and the Vite plugin regenerate when
+any referenced file changes. DigitalOcean's own 2,954-file description
+produces the same 1,151 models and 715 operations as Redocly's bundle of it.
 
 ## Entry points mirror the dependency graph
 
@@ -735,6 +791,59 @@ The hooks DERIVE their types from the endpoint (`Parameters<typeof op>[0]`,
 `Awaited<ReturnType<typeof op>>`) rather than re-rendering the spec, so a hook
 and a direct call can never disagree about a type.
 
+### Typed errors
+
+Every `4xx` / `5xx` / `4XX` / `default` response with a JSON body is declared on
+its endpoint (`errors: { 404: NotFound, default: Problem }`). A failed call
+rejects with an `HttpError` whose `body` has been validated against the most
+specific match — exact status, then range, then `default` — and whose
+`matched` names the key it passed:
+
+```ts
+import type { EndpointError } from './gen/client'
+
+const pet = useGetPetById(() => ({ params: { petId: id() } }))
+const err = pet.error() // EndpointError<typeof getPetById> | null
+if (err?.matched === '404') show(err.body.message) // NotFound
+else if (err?.matched === 'default') report(err.body.code) // Problem
+
+getPetById({ params: { petId: 1 } }).catch((e: EndpointError<typeof getPetById>) => …)
+```
+
+Declared errors are part of the contract `api-surface.json` records: removing a
+key or changing its body is **breaking** (a branch narrowing on it stops
+running, or reads the old shape); adding one is additive — except when a `4XX`
+or `default` already covered that status, which re-routes those responses to
+the new key and is breaking too.
+
+A body that fails its schema is still the same HTTP failure, with `matched`
+undefined and the raw body — replacing it with a schema error would hide what
+the server said. A network failure, a timeout or a cancellation has no
+`matched`, so the union narrows cleanly. Query, mutation and infinite hooks all
+carry the type, on every client (`fetch`, `axios` and `ky` throw a
+`LatheHttpError` of the same shape). Only an error body that is not JSON is
+still untyped, with an `error-responses` note.
+
+### Webhooks and callbacks
+
+3.1 `webhooks` and operation `callbacks` are requests the API SENDS, so they get
+no endpoint or hook. With the `schemas` plugin they produce `webhooks.ts` — a
+schema per payload, and a handler type inferred from it:
+
+```ts
+import { webhookSchemas, type WebhookHandler } from './gen'
+
+const onNewPet: WebhookHandler<'newPet'> = (pet) => console.log(pet.name)
+
+app.post('/hooks/new-pet', async (req) => {
+  const result = await webhookSchemas.newPet['~standard'].validate(await req.json())
+  if (!result.issues) await onNewPet(result.value)
+})
+```
+
+A callback is keyed `<operationId>.<callbackName>`; an entry with several
+methods gets `.post` / `.put` suffixes.
+
 ### Hook options are typed, and `select` changes the result
 
 ```ts
@@ -844,6 +953,15 @@ it('shows the empty state', async () => {
 it('shows the error state', async () => {
   mockOperation('getPetById', { status: 500, json: { message: 'down' }, delay: 50 })
 })
+```
+
+An error `status` with no body of its own answers with the operation's
+declared error fixture (exact status, then range, then `default`) — schema-valid,
+so the generated client's `err.matched` branch is the one the test drives:
+
+```ts
+mockOperation('getPetById', { status: 404 }) // body from the spec's 404 schema
+// pet.error()?.matched === '404'
 ```
 
 ### Infinite queries, declared
@@ -1027,6 +1145,8 @@ Paths passed on the command line are relative to the working directory.
 | `validator` | `"pyreon" \| "zod"` | `'pyreon'` | Which library the generated schemas are written in. |
 | `baseUrl` | `string` | the spec's `servers[0].url` | Overrides the spec's `servers[0].url` — must be an absolute literal to reach native. `configureApi({ baseUrl })` switches it at runtime. |
 | `responseValidation` | `"strict" \| "warn" \| "off"` | `'strict'` | What the generated client does with a response that does not match its schema. `strict` (the default) rejects; `warn` logs and passes the raw body through, which is the usual choice in production when a backend may drift; `off` skips validation, which also skips its cost on large list responses. `configureApi({ validate })` switches it at runtime. |
+| `remoteRefs` | `"fetch" \| "off"` | — | What `generate` does with a `$ref` into a REMOTE document (an http(s) URL) in a spec on disk. `off` (the default) keeps generation offline and deterministic: the ref is reported and typed `unknown` -- `lathe pull` a remote spec to bundle it instead. `fetch` downloads every remote part with the same rules as `lathe pull`: a per-document ETag cache under `node_modules/.cache/lathe`, credentials from `remoteHeaders` for their own origin only, and a failed fetch fails the run rather than silently typing that part `unknown`. |
+| `remoteHeaders` | `Record<string, Readonly<Record<string, string>>>` | — | Headers for `remoteRefs: 'fetch'`, keyed by ORIGIN: each set is sent only to documents on that origin, so a spec that references another host never receives your credential. |
 | `pagination` | `Record<string, PaginationConfig>` | — | How to page through operations, keyed by the GENERATED operation name (the `endpoints` export). Declared, never guessed — each entry emits a `use<Op>Infinite` hook and a `<op>InfiniteOptions` factory. Same shape as the `x-pyreon-pagination` spec extension, which a config entry overrides. |
 | `streams` | `Record<string, StreamConfig>` | — | Streaming responses, keyed by the GENERATED operation name. Each entry emits `<op>Stream` (an async iterator of validated events) and `use<Op>Stream` (signals). An operation whose 2xx response declares `text/event-stream` or an NDJSON media type gets both WITHOUT an entry; one here overrides what the spec says, or declares a stream the spec does not describe (an endpoint that streams when its body says `stream: true`). |
 | `operations` | `Record<string, LatheOperationSettings<PaginationConfig>>` | — | Per-operation settings, keyed by the generated endpoint name OR the spec's `operationId`. Each entry may rename the hook, turn it off, set the operation's own response validation, or declare its pagination (the same entry `pagination` takes — use one or the other for an operation). |
@@ -1213,12 +1333,19 @@ lathe pull --header "X-Api-Key: $KEY"                      # any header, repeata
 ```
 
 `$LATHE_TOKEN` is used when `--token` is not given. Nothing is written unless
-the response is an OpenAPI 3.x document — an error page, a login redirect,
-Swagger 2 and oversized bodies are all refused. The response's `ETag` /
+the response is an OpenAPI 3.x or Swagger 2.0 document — an error page, a login
+redirect and oversized bodies are all refused. The response's `ETag` /
 `Last-Modified` is kept under `node_modules/.cache/lathe`, and the next pull is
 a conditional request — but only while the file on disk is still exactly what
 was fetched, so a local edit is always re-downloaded rather than "confirmed
 unchanged".
+
+A spec that `$ref`s other documents is fetched WHOLE: every referenced document
+is downloaded, each with its own conditional request (the root spec included —
+its body is cached beside the parts), and one bundled spec is
+written (JSON for a `.json` destination, YAML otherwise). `--header` /
+`--token` are sent to the spec's own origin only — never to another host a
+`$ref` names. If any referenced document cannot be fetched, nothing is written.
 
 ## Losses and choices
 
@@ -1232,18 +1359,18 @@ a stable `code`, an RFC 6901 pointer into the spec, and a severity:
 
 | code | severity | what it means |
 | --- | --- | --- |
-| `unsupported-parameter` | loss | a parameter in a location 3.x does not define (`body`, `formData`) — not part of the generated call |
+| `unsupported-parameter` | loss | a parameter in a location OpenAPI does not define — not part of the generated call (Swagger 2 `body` / `formData` parameters are converted to a request body) |
 | `unsupported-security` | loss | a security scheme with no generated `auth` helper (HTTP digest, mutual TLS…), or a requirement naming one |
 | `response-headers` | loss | response headers are not exposed; the call resolves to the body |
-| `error-responses` | loss | 4xx/5xx bodies are not typed; a failure rejects with an `unknown` body |
+| `error-responses` | loss | a 4xx/5xx body that is not JSON (or has no schema) is not typed; the rejection's `body` is `unknown` for that status |
 | `other-success-responses` | loss | only the first 2xx is typed |
 | `parameter-serialization` | loss | a path `style` other than `simple`, or `allowReserved` — query `style` / `explode` are honoured |
 | `body-on-get` | loss | a `GET` / `HEAD` request body — `fetch` refuses to send it, so it is dropped |
 | `invalid-pagination` | loss | an `x-pyreon-pagination` that does not fit the operation — ignored |
 | `invalid-stream` | loss | a stream whose generated name (`<op>Stream`) is already an operation — not generated |
 | `unsupported-const` | loss | a `const` whose value is not a JSON scalar — not enforced (a scalar `const` is) |
-| `unsupported-schema` / `unsupported-ref` | loss | a schema or `$ref` that reduces to `unknown`, or a degradation (a discriminator that cannot be proven, a contradictory `allOf`) |
-| `cyclic-ref` | loss | a `$ref` cycle through references alone, or the cyclic part of an `allOf` — contributes nothing |
+| `unsupported-schema` / `unsupported-ref` | loss | a schema or `$ref` that reduces to `unknown` — including a `$ref` into a file that could not be read, or a remote one at generate time — or a degradation (a discriminator that cannot be proven, a contradictory `allOf`) |
+| `cyclic-ref` | loss | a `$ref` cycle through references alone, the cyclic part of an `allOf`, or a path item / response that includes itself across files — contributes nothing |
 | `int64-precision` | loss | one note for every `format: int64` number — `JSON.parse` rounds past 2^53 − 1 before validation, so no generated type (bigint or string) can recover the value; typed as `number` |
 | `no-servers` | loss | no absolute base URL (none declared, relative, or a variable with no default), so nothing reaches native |
 | `multiple-content-types` | choice | JSON picked among several media types |
@@ -1252,6 +1379,9 @@ a stable `code`, an RFC 6901 pointer into the spec, and a severity:
 | `numeric-version` | choice | `info.version` was a YAML number |
 | `stream-event` | choice | how a streaming response's event type was read — or that it declared none |
 | `plugin` | loss | a third-party plugin reported something it could not honour (`ctx.note(...)` in `transformDocument`) |
+| `swagger2-converted` | choice | the input was Swagger 2.0 and was up-converted to OpenAPI 3.0; other notes point into the converted document |
+| `webhooks` | choice | the spec declares webhooks / callbacks — requests the API sends; typed as payload schemas and `WebhookHandler` types in `webhooks.ts`, never as client calls |
+| `swagger2-lossy` | loss | a Swagger 2 construct 3.0 cannot spell (`collectionFormat: tsv`, per-operation `schemes`, an unknown security type), or a missing `schemes` assumed `https` |
 
 The terminal report lists the losses and summarises the choices; the generated
 reference pages split them into "Not represented" and "Choices made".
@@ -1267,12 +1397,18 @@ never touched. Commit the manifest with the rest of the output.
 
 ## Honest limits
 
-- **OpenAPI 3.0 and 3.1 only.** Swagger 2 is refused with the conversion command.
-- **Response headers and error bodies are not typed**, and a security scheme
-  other than bearer / OAuth2 / OpenID Connect / basic / API key (HTTP digest,
-  mutual TLS) gets no `auth` helper — each is reported as a `loss` note. (Header
-  and cookie parameters ARE generated: they are typed `headers:` / `cookies:`
-  call arguments.)
+- **OpenAPI 3.0, 3.1 and Swagger 2.0.** Swagger 1.x is refused.
+- **Response headers are not generated** — reported as a `loss` note. (Header
+  and cookie parameters ARE: they are typed `headers:` / `cookies:` call
+  arguments.) A NON-JSON error body stays untyped.
+- **`generate` does not fetch unless told to.** A remote `$ref` in a spec on
+  disk is reported by default; `remoteRefs: 'fetch'` or `lathe pull` bundles it. Names of hoisted
+  schemas are stable per target, but a new collision can renumber a
+  `<name>2` model.
+- **Webhooks and callbacks are types and schemas only** — Lathe generates no
+  server route or signature verification for them.
+- A security scheme other than bearer / OAuth2 / OpenID Connect / basic / API
+  key (HTTP digest, mutual TLS) gets no `auth` helper and is reported as a loss.
 - **A read with no typed JSON response** gets a web hook typed `unknown` and no
   native data component.
 - **Mutations are web-only on the native target.** PMTC recognises queries, not
@@ -1312,9 +1448,13 @@ never touched. Commit the manifest with the rest of the output.
 
 ## Troubleshooting
 
-**`this is a Swagger 2.0 document, and Lathe reads OpenAPI 3.x`** — convert it
-first: `npx swagger2openapi swagger.json -o openapi.json`. Reading Swagger 2 as
-3.x would produce an empty client.
+**`this is a Swagger 1.2 document`** — only Swagger 2.0 is up-converted. Convert
+a 1.x description to 2.0 or OpenAPI 3 first.
+
+**A `$ref` to another file is `unknown`** — the spec was generated from a
+string with no location (the programmatic `loadOpenApi(text)`), or the ref is
+remote. Generate from the spec FILE, or `lathe pull` a remote spec so its parts
+are bundled.
 
 **`this document has no openapi version key`** — `input` points at something
 that is not an API description. Nothing was written.

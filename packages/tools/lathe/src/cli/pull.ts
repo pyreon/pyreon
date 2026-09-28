@@ -35,6 +35,8 @@
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { stringify } from 'yaml'
+import { bundle, collectDocumentsAsync, referencedDocuments, type ReadOutcome } from '../input/bundle'
 import { openApiVersionProblem } from '../input/openapi'
 import { parseSpecText } from '../input/yaml'
 
@@ -122,6 +124,13 @@ interface CacheEntry {
   sha256: string
   etag?: string | undefined
   lastModified?: string | undefined
+  /**
+   * The destination holds a BUNDLE of several fetched documents, so its bytes
+   * are not the root's and the root's validators say nothing about them:
+   * the root is re-fetched and each referenced document is conditional on
+   * its own entry.
+   */
+  bundled?: boolean | undefined
 }
 
 function readCache(file: string | undefined): Record<string, CacheEntry> {
@@ -150,10 +159,17 @@ export async function pullSpec(url: string, dest: string, opts: PullOptions = {}
   }
   const cached = cache[dest]
   const conditional: Record<string, string> = {}
-  if (cached && cached.url === url && onDisk !== undefined && sha256(onDisk) === cached.sha256) {
-    if (cached.etag) conditional['if-none-match'] = cached.etag
-    if (cached.lastModified) conditional['if-modified-since'] = cached.lastModified
-  }
+  const unedited = cached !== undefined && cached.url === url && onDisk !== undefined && sha256(onDisk) === cached.sha256
+  // A BUNDLED destination is not the root's bytes, so its validators live on
+  // the root's own document-cache entry, with the body kept beside it: a 304
+  // is answered from that body and the bundle is rebuilt from it (each part
+  // conditional on its own entry), rather than "confirmed" wholesale -- a
+  // referenced part can change while the root does not.
+  const rootEntry = cache[`doc:${url}`]
+  const rootCachedBody = unedited && cached?.bundled && rootEntry ? readCachedBody(cacheFile, url, rootEntry) : undefined
+  const validators = cached?.bundled ? (rootCachedBody !== undefined ? rootEntry : undefined) : unedited ? cached : undefined
+  if (validators?.etag) conditional['if-none-match'] = validators.etag
+  if (validators?.lastModified) conditional['if-modified-since'] = validators.lastModified
 
   let res: Response
   try {
@@ -173,11 +189,11 @@ export async function pullSpec(url: string, dest: string, opts: PullOptions = {}
     )
     return 1
   }
-  if (res.status === 304) {
+  if (res.status === 304 && rootCachedBody === undefined) {
     write(`  spec unchanged  ${dest}  ${dim('304 Not Modified')}\n`)
     return 0
   }
-  if (!res.ok) {
+  if (!res.ok && res.status !== 304) {
     const auth = res.status === 401 || res.status === 403
     process.stderr.write(
       `[Pyreon] lathe: ${url} responded ${res.status} ${res.statusText}\n` +
@@ -187,7 +203,7 @@ export async function pullSpec(url: string, dest: string, opts: PullOptions = {}
     )
     return 1
   }
-  const body = await readCapped(res)
+  const body = res.status === 304 ? rootCachedBody : await readCapped(res)
   if (body === undefined) {
     process.stderr.write(
       `[Pyreon] lathe: ${url} returned more than ${MAX_BYTES / 1024 / 1024} MB, so nothing was written.\n`,
@@ -216,38 +232,164 @@ export async function pullSpec(url: string, dest: string, opts: PullOptions = {}
     return 1
   }
 
+  // A spec split across files: fetch every document it references -- with the
+  // same headers and per-document ETag cache -- and write ONE bundled
+  // document, so `generate` stays offline and deterministic.
+  let written = body
+  let bundledCount = 0
+  const refs = referencedDocuments(parsed, url)
+  if (refs.length > 0) {
+    const rootOrigin = new URL(url).origin
+    const read = documentFetcher(cache, cacheFile, (id) => (new URL(id).origin === rootOrigin ? opts.headers : undefined))
+    const docs = await collectDocumentsAsync(parsed, url, read)
+    const failed = [...docs].filter((entry): entry is [string, { error: string }] => 'error' in entry[1])
+    if (failed.length > 0) {
+      process.stderr.write(
+        `[Pyreon] lathe: ${url} references ${failed.length} document(s) that could not be fetched, so nothing was written:\n` +
+          failed.map(([id, o]) => `  ${id}: ${o.error}`).join('\n') +
+          '\n',
+      )
+      return 1
+    }
+    const bundled = bundle(url, docs)
+    written = /\.json$/i.test(dest) ? `${JSON.stringify(bundled.doc, null, 2)}\n` : stringify(bundled.doc, { lineWidth: 0 })
+    bundledCount = bundled.documents.length
+  }
+
   mkdirSync(dirname(dest), { recursive: true })
   // The file was read WITHOUT an `existsSync` check first (above). The
   // check-then-write pair is a time-of-check/time-of-use race (CodeQL
   // `js/file-system-race`), and the existence test is redundant anyway: a
   // missing file is just a read that throws ENOENT, which this handles.
   const previous = onDisk
-  if (previous !== body) writeFileSync(dest, body, 'utf8')
+  if (previous !== written) writeFileSync(dest, written, 'utf8')
   // Recorded only once the bytes on disk are the bytes fetched, so a
   // conditional request can never "confirm" a file the server never sent.
   if (cacheFile) {
     const etag = res.headers.get('etag') ?? undefined
     const lastModified = res.headers.get('last-modified') ?? undefined
-    if (etag || lastModified) {
-      cache[dest] = { url, sha256: sha256(body), etag, lastModified }
-      try {
-        mkdirSync(dirname(cacheFile), { recursive: true })
-        writeFileSync(cacheFile, `${JSON.stringify(cache, null, 2)}\n`, 'utf8')
-      } catch {
-        // A cache that cannot be written costs one full download next time.
-      }
+    if (bundledCount > 0) {
+      cache[dest] = { url, sha256: sha256(written), bundled: true }
+      if (res.status !== 304 && (etag || lastModified)) storeBody(cacheFile, cache, url, body, etag, lastModified)
     }
+    else if (etag || lastModified) cache[dest] = { url, sha256: sha256(body), etag, lastModified }
+    writeCache(cacheFile, cache)
   }
-  if (previous === body) {
-    write(`  spec unchanged  ${dest}\n`)
+  const bundledNote = bundledCount > 0 ? `, bundled from ${bundledCount} documents` : ''
+  if (previous === written) {
+    write(`  spec unchanged  ${dest}${dim(bundledNote)}\n`)
     return 0
   }
   write(
-    `  ${previous === undefined ? 'fetched' : 'updated'}  ${dest}  ${dim(`${body.length} bytes`)}\n` +
+    `  ${previous === undefined ? 'fetched' : 'updated'}  ${dest}  ${dim(`${written.length} bytes${bundledNote}`)}\n` +
       '  Review the diff, then run `lathe generate`.\n' +
       relativeServerAdvice(parsed, url),
   )
   return 0
+}
+
+function writeCache(cacheFile: string, cache: Record<string, CacheEntry>): void {
+  try {
+    mkdirSync(dirname(cacheFile), { recursive: true })
+    writeFileSync(cacheFile, `${JSON.stringify(cache, null, 2)}\n`, 'utf8')
+  } catch {
+    // A cache that cannot be written costs one full download next time.
+  }
+}
+
+/** The cached body of a fetched document, when it is still the bytes recorded. */
+function readCachedBody(cacheFile: string | undefined, id: string, entry: CacheEntry): string | undefined {
+  if (!cacheFile) return undefined
+  try {
+    const text = readFileSync(join(dirname(cacheFile), 'docs', sha256(id)), 'utf8')
+    return sha256(text) === entry.sha256 ? text : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** Keep a fetched document's body and validators, for the next conditional request. */
+function storeBody(
+  cacheFile: string,
+  cache: Record<string, CacheEntry>,
+  id: string,
+  text: string,
+  etag: string | undefined,
+  lastModified: string | undefined,
+): void {
+  try {
+    const file = join(dirname(cacheFile), 'docs', sha256(id))
+    mkdirSync(dirname(file), { recursive: true })
+    writeFileSync(file, text, 'utf8')
+    cache[`doc:${id}`] = { url: id, sha256: sha256(text), etag, lastModified }
+  } catch {
+    // Uncached: the next run downloads it again.
+  }
+}
+
+/**
+ * A reader for the documents a spec references, for bundling -- shared by
+ * `lathe pull` and by `generate` with `remoteRefs: 'fetch'`.
+ *
+ * `headersFor(id)` decides which credentials a document receives. Both callers
+ * scope them to an ORIGIN: a spec can reference any URL, and forwarding a
+ * credential to wherever its `$ref`s point would hand the token to a third
+ * party the user never named.
+ *
+ * Each document is conditional on its own cache entry (`docs/<sha256 of the
+ * url>` beside the index), so a `304` is answered from disk. A non-http id --
+ * a `file://` in a downloaded spec -- is refused: remote content never makes
+ * this read the local disk.
+ */
+export function documentFetcher(
+  cache: Record<string, CacheEntry>,
+  cacheFile: string | undefined,
+  headersFor: (id: string) => Record<string, string> | undefined,
+): (id: string) => Promise<ReadOutcome> {
+  return async (id) => {
+    if (!/^https?:\/\//i.test(id)) {
+      return { error: 'a remote spec can only reference other http(s) documents, not local files.' }
+    }
+    const entry = cache[`doc:${id}`]
+    const cachedBody = entry ? readCachedBody(cacheFile, id, entry) : undefined
+    const conditional: Record<string, string> = {}
+    if (entry && cachedBody !== undefined) {
+      if (entry.etag) conditional['if-none-match'] = entry.etag
+      if (entry.lastModified) conditional['if-modified-since'] = entry.lastModified
+    }
+    let res: Response
+    try {
+      res = await fetch(id, { headers: { ...headersFor(id), ...conditional }, signal: AbortSignal.timeout(PULL_TIMEOUT_MS) })
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) }
+    }
+    let text: string | undefined
+    if (res.status === 304 && cachedBody !== undefined) text = cachedBody
+    else if (!res.ok) return { error: `responded ${res.status} ${res.statusText}` }
+    else {
+      text = await readCapped(res)
+      if (text === undefined) return { error: `larger than ${MAX_BYTES / 1024 / 1024} MB` }
+      const etag = res.headers.get('etag') ?? undefined
+      const lastModified = res.headers.get('last-modified') ?? undefined
+      if (cacheFile && (etag || lastModified)) storeBody(cacheFile, cache, id, text, etag, lastModified)
+    }
+    try {
+      return { doc: parseSpecText(text) }
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+}
+
+/** The document cache index under `cacheDir`, and a function persisting it. */
+export function documentCache(cacheDir: string | undefined): {
+  cache: Record<string, CacheEntry>
+  cacheFile: string | undefined
+  save(): void
+} {
+  const cacheFile = cacheDir ? join(cacheDir, 'pull-cache.json') : undefined
+  const cache = readCache(cacheFile)
+  return { cache, cacheFile, save: () => (cacheFile ? writeCache(cacheFile, cache) : undefined) }
 }
 
 /**

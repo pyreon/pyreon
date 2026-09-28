@@ -36,6 +36,8 @@ interface Generated {
   createBook: Endpoint
   deleteBook: Endpoint
   installMocks: () => void
+  mockOperation: (id: string, o: Record<string, unknown>) => () => void
+  resetMocks: () => void
   setDevTransport: (t: unknown) => void
   LatheHttpError: new (...args: never[]) => Error
 }
@@ -47,6 +49,8 @@ const recorded: Recorded[] = []
 let failWith: number | null = null
 /** Set per-test to make EVERY response fail — used to count retries. */
 let alwaysFailWith: number | null = null
+/** The JSON body a `failWith` response carries. */
+let failBody: unknown = { message: 'nope' }
 
 const BOOK = { id: 'b1', title: 'Dune', pages: 412 }
 
@@ -67,7 +71,7 @@ beforeAll(async () => {
         const status = failWith
         failWith = null
         res.writeHead(status, { 'content-type': 'application/json' })
-        res.end(JSON.stringify({ message: 'nope' }))
+        res.end(JSON.stringify(failBody))
         return
       }
       const path = (req.url ?? '').split('?')[0] ?? ''
@@ -95,6 +99,7 @@ beforeEach(() => {
   recorded.length = 0
   failWith = null
   alwaysFailWith = null
+  failBody = { message: 'nope' }
 })
 
 async function load(
@@ -107,7 +112,11 @@ async function load(
     LatheHttpError: new (...args: never[]) => Error
   }
   const endpoints = (await import(join(dir, 'endpoints', 'books.ts'))) as Record<string, Endpoint>
-  const mocks = (await import(join(dir, 'mocks.ts'))) as { installMocks: () => void }
+  const mocks = (await import(join(dir, 'mocks.ts'))) as {
+    installMocks: () => void
+    mockOperation: (id: string, o: Record<string, unknown>) => () => void
+    resetMocks: () => void
+  }
   // `import()` is cached per path and the generated client holds its dev
   // transport at MODULE scope, so a test that installs mocks would otherwise
   // leak them into every test after it — which reads as "the request was never
@@ -173,6 +182,48 @@ for (const client of ADAPTER_CLIENTS) {
       expect(err, `${client} should reject on 404`).toBeInstanceOf(gen.LatheHttpError)
       expect((err as { status: number }).status).toBe(404)
       expect((err as { body: unknown }).body).toEqual({ message: 'nope' })
+    })
+
+    it('validates a declared ERROR body and records which key it matched', async () => {
+      // `listBooks` declares `404: Problem` and a `default` of `{ code }`.
+      // Every adapter normalises to the same shape `@pyreon/http` throws, so
+      // `matched` narrows `body` whichever client was generated.
+      const gen = await load(client)
+      const rejected = (): Promise<{ status: number; matched: unknown; body: unknown }> =>
+        gen.listBooks().then(
+          () => {
+            throw new Error('expected a rejection')
+          },
+          (e: { status: number; matched: unknown; body: unknown }) => e,
+        )
+      failWith = 404
+      expect(await rejected()).toMatchObject({ status: 404, matched: '404', body: { message: 'nope' } })
+      failWith = 409
+      failBody = { code: 7 }
+      expect(await rejected()).toMatchObject({ status: 409, matched: 'default', body: { code: 7 } })
+      // A body that fails its schema stays the same HTTP failure, unmatched.
+      failWith = 409
+      failBody = { message: 'nope' }
+      const unmatched = await rejected()
+      expect(unmatched).toBeInstanceOf(gen.LatheHttpError)
+      expect([unmatched.status, unmatched.matched, unmatched.body]).toEqual([409, undefined, { message: 'nope' }])
+    })
+
+    it('a mocked error status answers with the declared, schema-valid error body', async () => {
+      const gen = await load(client)
+      gen.installMocks()
+      try {
+        gen.mockOperation('listBooks', { status: 404 })
+        const err = await gen.listBooks().then(
+          () => null,
+          (e: { status: number; matched: unknown; body: unknown }) => e,
+        )
+        expect(err).toMatchObject({ status: 404, matched: '404', body: { message: expect.any(String) } })
+        expect(recorded).toHaveLength(0)
+      } finally {
+        gen.resetMocks()
+        gen.setDevTransport(null)
+      }
     })
 
     it('validates the response against the generated schema', async () => {

@@ -50,7 +50,10 @@ paths:
       operationId: createNode
       tags: [n]
       requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/Node' } } } }
-      responses: { '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Node' } } } } }
+      responses:
+        '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Node' } } } }
+        # A typed error on a MUTATION: its hook's options carry the error type.
+        '4XX': { content: { application/json: { schema: { type: object, properties: { field: { type: string } } } } } }
   /session/ping:
     get:
       # A CONTENT-LESS read: a 200 with only a description. Petstore 3's
@@ -64,7 +67,10 @@ paths:
       operationId: getNode
       tags: [n]
       parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
-      responses: { '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Node' } } } } }
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Node' } } } }
+        '404': { content: { application/json: { schema: { $ref: '#/components/schemas/Problem' } } } }
+        default: { content: { application/json: { schema: { type: object, required: [code], properties: { code: { type: integer } } } } } }
     delete:
       operationId: deleteNode
       tags: [n]
@@ -163,6 +169,47 @@ components:
       properties:
         at: { type: string, format: date-time }
         by: { $ref: '#/components/schemas/Node' }
+    Problem:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+`
+
+/**
+ * A CONSUMER of the typed errors, compiled with the output: `matched` must
+ * narrow `body` to each declared schema through a hook's `error()` and a
+ * direct call's rejection, for every client. The emitted types alone could
+ * compile while this -- the reason they exist -- did not.
+ */
+const ERROR_USAGE = `
+import type { EndpointError } from './client'
+import { createNode, getNode } from './endpoints/n'
+import { useCreateNode, useGetNode } from './queries/n'
+
+export function describe(err: EndpointError<typeof getNode> | null): string {
+  if (err?.matched === '404') return err.body.message
+  if (err?.matched === 'default') return String(err.body.code)
+  return err?.message ?? ''
+}
+
+export function fromHook(): string {
+  return describe(useGetNode(() => ({ params: { id: '1' } })).error())
+}
+
+export function fromMutation(): string | undefined {
+  const err = useCreateNode().error()
+  return err?.matched === '4XX' ? err.body.field : undefined
+}
+
+export function fromCall(): Promise<string | undefined> {
+  return getNode({ params: { id: '1' } }).then(
+    (n) => n.id,
+    (e: EndpointError<typeof getNode>) => describe(e),
+  )
+}
+
+export const unused = createNode
 `
 
 /**
@@ -204,6 +251,7 @@ function diagnose(
   if (plugins.includes('schemas')) {
     files.push(emitSchemaAgreement(result.doc, validator).build(banner(result.doc.title, result.doc.version)))
   }
+  if (spec === SPEC && plugins.includes('queries')) files.push({ path: 'error-usage.ts', contents: ERROR_USAGE })
   const root = join(TC_ROOT, label)
   rmSync(root, { recursive: true, force: true })
   for (const f of files) {

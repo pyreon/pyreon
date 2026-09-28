@@ -235,6 +235,33 @@ export interface LatheSection {
    */
   responseValidation?: ResponseValidation;
   /**
+   * What `generate` does with a `$ref` into a REMOTE document (an http(s) URL)
+   * in a spec on disk. `off` (the default) keeps generation offline and
+   * deterministic: the ref is reported and typed `unknown` -- `lathe pull` a
+   * remote spec to bundle it instead. `fetch` downloads every remote part with
+   * the same rules as `lathe pull`: a per-document ETag cache under
+   * `node_modules/.cache/lathe`, credentials from `remoteHeaders` for their
+   * own origin only, and a failed fetch fails the run rather than silently
+   * typing that part `unknown`.
+   *
+   * @example
+   * ```ts
+   * export default { lathe: { input: './openapi.yaml', remoteRefs: 'fetch' } }
+   * ```
+   */
+  remoteRefs?: 'off' | 'fetch'
+  /**
+   * Headers for `remoteRefs: 'fetch'`, keyed by ORIGIN: each set is sent only
+   * to documents on that origin, so a spec that references another host never
+   * receives your credential.
+   *
+   * @example
+   * ```ts
+   * remoteHeaders: { 'https://specs.internal.test': { Authorization: `Bearer ${process.env.SPEC_TOKEN}` } }
+   * ```
+   */
+  remoteHeaders?: Readonly<Record<string, Readonly<Record<string, string>>>>
+  /**
    * How to page through operations, keyed by the GENERATED operation name
    * (the `endpoints` export). Declared, never guessed — each entry emits a
    * `use<Op>Infinite` hook and a `<op>InfiniteOptions` factory. Same shape as
@@ -395,14 +422,14 @@ export interface ResolvedConfig {
    * silently -- a file set larger than the one you selected is confusing
    * exactly once, and only if nobody says why.
    */
-  requestedPlugins: readonly PluginName[];
-  input: string;
-  output: string;
-  target: "web" | "multiplatform";
-  plugins: readonly PluginName[];
-  client: ClientName;
-  validator: ValidatorName;
-  baseUrl?: string | undefined;
+  requestedPlugins: readonly PluginName[]
+  input: string
+  output: string
+  target: 'web' | 'multiplatform'
+  plugins: readonly PluginName[]
+  client: ClientName
+  validator: ValidatorName
+  baseUrl?: string | undefined
   pagination?: Readonly<Record<string, PaginationConfig>> | undefined;
   streams?: Readonly<Record<string, StreamConfig>> | undefined;
   strictNative: boolean;
@@ -415,7 +442,9 @@ export interface ResolvedConfig {
   filters?: LatheFilters | undefined;
   patches?: readonly LatheSpecPatch[] | undefined;
   naming?: LatheNaming | undefined;
-  format?: LatheFormatter | undefined;
+  format?: LatheFormatter | undefined
+  remoteRefs: 'off' | 'fetch'
+  remoteHeaders?: Readonly<Record<string, Readonly<Record<string, string>>>> | undefined
 }
 
 /**
@@ -527,6 +556,10 @@ export function resolveConfig(
       `[Pyreon] lathe: unknown responseValidation \`${String(responseValidation)}\`. Known: ${ALL_RESPONSE_VALIDATION.join(", ")}.`,
     );
   }
+  const remoteRefs = section?.remoteRefs ?? 'off'
+  if (remoteRefs !== 'off' && remoteRefs !== 'fetch') {
+    throw new Error(`[Pyreon] lathe: unknown remoteRefs \`${String(remoteRefs)}\`. Known: off, fetch.`)
+  }
   const target = section?.target ?? "web";
   // Validated like the others: a config typo (`target: 'native'`) used to be
   // treated as `web` by every `=== 'multiplatform'` check downstream, so the
@@ -568,5 +601,7 @@ export function resolveConfig(
     patches: section?.patches,
     naming: section?.naming,
     format: section?.format,
-  };
+    remoteRefs,
+    remoteHeaders: section?.remoteHeaders,
+  }
 }

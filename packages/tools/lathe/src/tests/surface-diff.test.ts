@@ -283,3 +283,40 @@ describe('the surface renders types as stable, readable strings', () => {
     expect(surface().version).toBe(2)
   })
 })
+
+describe('typed error bodies', () => {
+  const str: IrType = { kind: 'string' }
+  const int: IrType = { kind: 'number', integer: true }
+  const withErrors = (errors: Record<string, IrType>) => ({
+    operations: [op({ errors: Object.entries(errors).map(([status, type]) => ({ status, type })) })],
+  })
+
+  it('records them in the surface, keyed by status', () => {
+    expect(surface(withErrors({ '404': str, default: int })).operations.getUser?.errors).toEqual({ '404': 'string', default: 'integer' })
+    expect(surface({ operations: [op()] }).operations.getUser?.errors).toBeUndefined()
+  })
+
+  it('a REMOVED key is breaking: the branch narrowing on it never runs', () => {
+    const cs = diff(withErrors({ '404': str, default: int }), withErrors({ default: int }))
+    expect(breaking(cs)).toEqual(['error-removed'])
+    expect(cs[0]?.subject).toBe('getUser.errors.404')
+  })
+
+  it('a CHANGED body is breaking', () => {
+    expect(breaking(diff(withErrors({ '404': str }), withErrors({ '404': int })))).toEqual(['error-changed'])
+  })
+
+  it('an ADDED key is additive, unless a range or `default` already covered it', () => {
+    const fresh = diff(withErrors({ '500': str }), withErrors({ '500': str, '404': int }))
+    expect(fresh.map((c) => [c.code, c.severity])).toEqual([['error-added', 'additive']])
+    for (const covering of ['default', '4XX']) {
+      const rerouted = diff(withErrors({ [covering]: str }), withErrors({ [covering]: str, '404': int }))
+      expect(rerouted.map((c) => [c.code, c.severity])).toEqual([['error-added', 'breaking']])
+      expect(rerouted[0]?.detail).toContain(`instead of '${covering}'`)
+    }
+  })
+
+  it('a baseline written before errors were recorded is not diffed for them', () => {
+    expect(diff({ operations: [op()] }, withErrors({ '404': str }))).toEqual([])
+  })
+})

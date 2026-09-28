@@ -76,6 +76,12 @@ export interface SurfaceOperation {
    * the MCP server name them so a reader knows which code to look at.
    */
   symbols?: readonly string[] | undefined
+  /**
+   * Declared error bodies: `errors` key (`404`, `4XX`, `default`) → rendered
+   * type. Present only when the operation declares any, so a surface written
+   * before errors were recorded reads as "not recorded", not as "none".
+   */
+  errors?: Record<string, string> | undefined
 }
 
 /** Where a model is reachable from: a request, a response, both, or neither. */
@@ -182,6 +188,7 @@ function usageOf(doc: IrDocument): Record<string, SurfaceUsage> {
     collectRefNames(op.response, responseRoots)
     // A streamed event is RECEIVED exactly like a response body.
     collectRefNames(op.stream?.event, responseRoots)
+    for (const e of op.errors ?? []) collectRefNames(e.type, responseRoots)
   }
   const req = reachableModels(doc, requestRoots)
   const res = reachableModels(doc, responseRoots)
@@ -247,6 +254,9 @@ function surfaceOf(op: IrOperation): SurfaceOperation {
     out.stream = `${op.stream.format} ${op.stream.format === 'sse' && op.stream.data === 'text' ? 'string' : renderType(op.stream.event)}`
   }
   if (op.summary !== undefined) out.summary = op.summary
+  if (op.errors && op.errors.length > 0) {
+    out.errors = Object.fromEntries(op.errors.map((e) => [e.status, renderType(e.type)]))
+  }
   return out
 }
 
@@ -279,6 +289,9 @@ export interface SurfaceChange {
     | 'model-type-changed'
     | 'member-removed'
     | 'member-added'
+    | 'error-removed'
+    | 'error-changed'
+    | 'error-added'
   /** What moved — an operation id or `Model.field`. */
   subject: string
   detail: string
@@ -351,6 +364,7 @@ export function diffSurface(before: ApiSurface, after: ApiSurface): SurfaceChang
       add('breaking', 'stream-changed', id, `stream ${was.stream} → ${now.stream}`)
     }
   }
+  diffErrors(before, after, add)
   for (const id of Object.keys(after.operations)) {
     if (before.operations[id] === undefined) {
       const now = after.operations[id] as SurfaceOperation
@@ -443,6 +457,66 @@ export function diffSurface(before: ApiSurface, after: ApiSurface): SurfaceChang
   return changes.sort((a, b) =>
     a.severity === b.severity ? byCodeUnit(a.subject, b.subject) : a.severity === 'breaking' ? -1 : 1,
   )
+}
+
+/** Does an `errors` key cover `status` (an exact code, or a range / `default` that includes it)? */
+function covers(key: string, status: string): boolean {
+  if (key === 'default') return true
+  if (/^[1-5]XX$/i.test(key)) return /^\d{3}$/.test(status) && key[0] === status[0]
+  return false
+}
+
+/**
+ * Typed error bodies, from the CLIENT's side. A generated caller narrows on
+ * `err.matched === '<key>'`, so the KEY is part of the contract, not just the
+ * body's shape:
+ *
+ *   - a key REMOVED is breaking: the branch that narrowed on it never runs
+ *     again, and those bodies arrive untyped;
+ *   - a key's body CHANGED is breaking, like a response change: the branch
+ *     reads fields of the old shape;
+ *   - a key ADDED is additive -- unless a range or `default` already covered
+ *     its status. Then those responses are re-routed AWAY from the key the
+ *     client narrows on (`matched` was `'default'` for a 404, and is now
+ *     `'404'`), which is breaking.
+ *
+ * A baseline written before errors were recorded (no operation carries
+ * `errors`) is not diffed for them: every declared error would read as added.
+ */
+function diffErrors(
+  before: ApiSurface,
+  after: ApiSurface,
+  add: (severity: SurfaceChange['severity'], code: SurfaceChange['code'], subject: string, detail: string) => void,
+): void {
+  if (!Object.values(before.operations).some((o) => o.errors !== undefined)) return
+  for (const [id, was] of Object.entries(before.operations)) {
+    const now = after.operations[id]
+    if (!now) continue
+    const w = was.errors ?? {}
+    const n = now.errors ?? {}
+    for (const [key, type] of Object.entries(w)) {
+      const nowType = n[key]
+      if (nowType === undefined) {
+        add('breaking', 'error-removed', `${id}.errors.${key}`, `\`matched === '${key}'\` no longer occurs; the body (${type}) arrives untyped`)
+      } else if (nowType !== type) {
+        add('breaking', 'error-changed', `${id}.errors.${key}`, `${type} → ${nowType}`)
+      }
+    }
+    for (const [key, type] of Object.entries(n)) {
+      if (w[key] !== undefined) continue
+      const covering = Object.keys(w).filter((k) => k !== key && n[k] !== undefined && covers(k, key))
+      if (covering.length > 0) {
+        add(
+          'breaking',
+          'error-added',
+          `${id}.errors.${key}`,
+          `${type}; ${key} responses now match '${key}' instead of ${covering.map((k) => `'${k}'`).join(' / ')}`,
+        )
+      } else {
+        add('additive', 'error-added', `${id}.errors.${key}`, type)
+      }
+    }
+  }
 }
 
 /**

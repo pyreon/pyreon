@@ -23,9 +23,9 @@ detection. Migration guides:
 [kubb](https://pyreon.dev/docs/lathe-from-kubb) ·
 [openapi-fetch](https://pyreon.dev/docs/lathe-from-openapi-fetch).
 
-OpenAPI 3.0 and 3.1. A Swagger 2 document is refused with the conversion
-command (`npx swagger2openapi`), and a file that is not a spec at all is refused
-before anything is written. `@pyreon/native-compiler` is an optional peer (it
+OpenAPI 3.0 and 3.1, and Swagger 2.0 (up-converted in process). A spec split
+across files is bundled from its `$ref`s. A file that is not a spec at all is
+refused before anything is written. `@pyreon/native-compiler` is an optional peer (it
 verifies `target: 'multiplatform'` output); `@faker-js/faker` is needed only for
 the `faker` plugin, `zod` only for `validator: 'zod'`.
 
@@ -1015,9 +1015,15 @@ lathe pull --token "$TOKEN" --header "X-Team: core"        # a spec behind auth
 ```
 
 `$LATHE_TOKEN` is used when `--token` is absent. Nothing is written unless the
-response is an OpenAPI 3.x document. `ETag` / `Last-Modified` are kept under
-`node_modules/.cache/lathe` and sent back as a conditional request — only while
-the file on disk is still exactly what was fetched.
+response is an OpenAPI 3.x or Swagger 2.0 document. `ETag` / `Last-Modified` are
+kept under `node_modules/.cache/lathe` and sent back as a conditional request —
+only while the file on disk is still exactly what was fetched.
+
+A spec that `$ref`s other documents is fetched whole — the root and each
+referenced document with its own conditional request — and written as ONE
+bundled spec. The auth
+headers go to the spec's own origin only, never to another host a `$ref` names;
+if any part cannot be fetched, nothing is written.
 
 ### Generated code documents itself
 
@@ -1032,8 +1038,8 @@ field's description and example. Each file opens with one two-line header.
 ### Losses and choices
 
 Every spec feature the client does not honour is a note with a stable `code`,
-an RFC 6901 pointer and a severity: `loss` (security schemes, response
-headers, error bodies, non-default serialization, a non-scalar `const`,
+an RFC 6901 pointer and a severity: `loss` (response headers, a non-JSON
+error body, non-default serialization, a non-scalar `const`,
 `deprecated`, an optional body the generated call requires, …) or `choice`
 (JSON picked over XML, the first tag, the summary over the description). The
 report leads with the losses and summarises the choices.
@@ -1070,6 +1076,10 @@ The input layer resolves a spec's semantics once, so no emitter rediscovers them
 - **Parameters** — header and cookie parameters are typed call arguments; an operation-level parameter overrides a path-level one; an undeclared path placeholder is synthesized.
 - **Servers** — variables take their `default`; an operation- or path-level server travels with its operation (on native, as its own literal-base client); a relative server is reported, and `lathe pull` prints the absolute URL it resolves to.
 - **Names** — models, operation ids, path placeholders and tag files that normalize to one identifier are disambiguated deterministically; nothing is dropped.
+- **Swagger 2.0** — converted to 3.0 first (`definitions`, body / `formData` parameters, `produces` / `consumes`, `securityDefinitions`, `host` + `basePath` + `schemes`, `x-nullable`, `collectionFormat`); what 3.0 cannot spell is a `swagger2-lossy` note. Kubernetes' spec generates output that typechecks.
+- **Multi-file specs** — a `$ref` into another file (JSON or YAML) is resolved against the spec's own path and bundled: schemas become named models (stable names, cycles across files closed), everything else is inlined. `generate` stays offline by default; `remoteRefs: 'fetch'` (credentials per origin via `remoteHeaders`, ETag-cached, a failed fetch fails the run) or `lathe pull` bundles remote parts. DigitalOcean's 2,954-file source gives the same models and operations as Redocly's bundle.
+- **Error responses** — each operation's `4xx` / `5xx` / `4XX` / `default` JSON bodies are its endpoint's `errors`. A rejection's `body` is validated and `matched` names the key it passed, so `err.matched === '404'` narrows `err.body`; hooks carry `EndpointError<typeof op>` as their error type.
+- **Webhooks and callbacks** — `webhooks.ts`: a schema per payload (`webhookSchemas`) and `WebhookHandler<name>` typed from it. No endpoint or hook — the API sends these.
 
 ## Contract changes
 
@@ -1101,6 +1111,9 @@ server's:
 | request param added as required | breaking | existing calls omit it |
 | request param removed | additive | the request still goes out; the server ignores it |
 | operation removed or moved | breaking | the call site no longer resolves |
+| error key removed (`404` no longer declared) | breaking | the branch narrowing on `err.matched === '404'` never runs; the body arrives untyped |
+| error body changed | breaking | that branch reads fields of the old shape |
+| error key added | additive | a new branch to narrow on — **breaking** when a `4XX` or `default` already covered the status, because those responses now match the new key instead of the one the client narrows on |
 
 `--fail-on-breaking` exits non-zero when any breaking change is present. Pair it
 with `generate` rather than `check`: the baseline moves when output is written,

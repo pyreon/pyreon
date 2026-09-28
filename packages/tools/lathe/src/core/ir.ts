@@ -256,6 +256,14 @@ export interface IrOperation {
   /** The 2xx response type. `undefined` means no content. */
   response?: IrType | undefined;
   /**
+   * Typed ERROR responses: every `4xx` / `5xx` / `4XX` / `default` response
+   * with a JSON body, in status-key order (exact codes, then ranges, then
+   * `default`). Emitted as the endpoint's `errors` schemas, so a rejection's
+   * `body` is validated and typed by status. A `default` chosen as the
+   * SUCCESS response (no 2xx declared) is not repeated here.
+   */
+  errors?: readonly IrErrorResponse[] | undefined
+  /**
    * The media type the response was read from, when it is NOT JSON
    * (`text/plain`, `image/png`, `text/event-stream`). Absent for JSON and for
    * no content. Decides how the client DECODES the body — see
@@ -312,6 +320,13 @@ export interface IrStream {
   event: IrType;
   /** SSE only: `text` passes each event's `data` through as a string. */
   data: "json" | "text";
+}
+
+/** One typed error response. */
+export interface IrErrorResponse {
+  /** The spec's response key, verbatim in meaning: `'404'`, `'4XX'` or `'default'`. */
+  status: string
+  type: IrType
 }
 
 /**
@@ -374,15 +389,40 @@ export type IrSecurityScheme =
       doc?: string | undefined;
     };
 
+/**
+ * A request the API SENDS rather than receives: a 3.1 `webhooks` entry, or an
+ * operation's `callbacks` entry. A client never makes these calls -- a server
+ * the user runs receives them -- so they are not operations; what a
+ * generator can usefully give is the PAYLOAD's type and schema.
+ */
+export interface IrWebhook {
+  kind: 'webhook' | 'callback'
+  /**
+   * Unique key: the webhook's name, or `<operationId>.<callbackName>`; a
+   * method is appended (`.post`) only when one entry declares several.
+   */
+  name: string
+  method: HttpMethod
+  /** A callback's URL expression, verbatim (`{$request.body#/callbackUrl}`). */
+  expression?: string | undefined
+  summary?: string | undefined
+  /** The body the API sends. Absent when the request carries none. */
+  payload?: IrType | undefined
+  /** The payload's media type, when there is one. */
+  mediaType?: string | undefined
+}
+
 export interface IrDocument {
   title: string;
   version: string;
   /** From `servers[0].url`; `''` when the spec declares none. */
   baseUrl: string;
   /** `components.securitySchemes`, in spec-key order. Absent when there are none. */
-  securitySchemes?: readonly IrSecurityScheme[] | undefined;
-  models: readonly IrModel[];
-  operations: readonly IrOperation[];
+  securitySchemes?: readonly IrSecurityScheme[] | undefined
+  models: readonly IrModel[]
+  operations: readonly IrOperation[]
+  /** Webhooks and callbacks, in document order. Absent when there are none. */
+  webhooks?: readonly IrWebhook[] | undefined
   /**
    * Everything the input layer dropped, with a reason. Surfaced by the CLI and
    * counted by the gate — a spec feature Lathe cannot represent is a REPORTED
@@ -393,28 +433,31 @@ export interface IrDocument {
 
 /** Stable, greppable class of a {@link IrNote}. */
 export type IrNoteCode =
-  | "unsupported-schema"
-  | "unsupported-ref"
-  | "cyclic-ref"
-  | "unsupported-const"
-  | "int64-precision"
-  | "missing-operation-id"
-  | "multiple-content-types"
-  | "no-servers"
-  | "unsupported-parameter"
-  | "parameter-serialization"
-  | "unsupported-security"
-  | "response-headers"
-  | "error-responses"
-  | "other-success-responses"
-  | "body-on-get"
-  | "invalid-pagination"
-  | "extra-tags"
-  | "numeric-version"
-  | "stream-event"
-  | "invalid-stream"
+  | 'unsupported-schema'
+  | 'unsupported-ref'
+  | 'cyclic-ref'
+  | 'unsupported-const'
+  | 'int64-precision'
+  | 'missing-operation-id'
+  | 'multiple-content-types'
+  | 'no-servers'
+  | 'unsupported-parameter'
+  | 'parameter-serialization'
+  | 'unsupported-security'
+  | 'response-headers'
+  | 'error-responses'
+  | 'other-success-responses'
+  | 'body-on-get'
+  | 'invalid-pagination'
+  | 'extra-tags'
+  | 'numeric-version'
+  | 'stream-event'
+  | 'invalid-stream'
   /** Added by a third-party plugin's `transformDocument`. */
-  | "plugin";
+  | 'plugin'
+  | 'swagger2-converted'
+  | 'swagger2-lossy'
+  | 'webhooks'
 
 /**
  * What a note means for the generated client.
@@ -437,31 +480,36 @@ export type IrNoteSeverity = "loss" | "choice";
  * added without deciding which kind it is -- the compiler refuses the map.
  */
 export const NOTE_SEVERITY: Readonly<Record<IrNoteCode, IrNoteSeverity>> = {
-  "unsupported-schema": "loss",
-  "unsupported-ref": "loss",
-  "cyclic-ref": "loss",
-  "unsupported-const": "loss",
-  "int64-precision": "loss",
-  "missing-operation-id": "choice",
-  "multiple-content-types": "choice",
-  "no-servers": "loss",
-  "unsupported-parameter": "loss",
-  "parameter-serialization": "loss",
-  "unsupported-security": "loss",
-  "response-headers": "loss",
-  "error-responses": "loss",
-  "other-success-responses": "loss",
-  "body-on-get": "loss",
-  "invalid-pagination": "loss",
-  "extra-tags": "choice",
-  "numeric-version": "choice",
+  'unsupported-schema': 'loss',
+  'unsupported-ref': 'loss',
+  'cyclic-ref': 'loss',
+  'unsupported-const': 'loss',
+  'int64-precision': 'loss',
+  'missing-operation-id': 'choice',
+  'multiple-content-types': 'choice',
+  'no-servers': 'loss',
+  'unsupported-parameter': 'loss',
+  'parameter-serialization': 'loss',
+  'unsupported-security': 'loss',
+  'response-headers': 'loss',
+  'error-responses': 'loss',
+  'other-success-responses': 'loss',
+  'body-on-get': 'loss',
+  'invalid-pagination': 'loss',
+  'extra-tags': 'choice',
+  'numeric-version': 'choice',
   // How a streaming response's event type was read — which schema, or that
   // none was declared (events then arrive as `unknown`).
-  "stream-event": "choice",
-  "invalid-stream": "loss",
+  'stream-event': 'choice',
+  'invalid-stream': 'loss',
   // A plugin reports what IT could not honour; that is a loss by default.
-  plugin: "loss",
-};
+  plugin: 'loss',
+  // The conversion itself loses nothing; `swagger2-lossy` names what it did.
+  'swagger2-converted': 'choice',
+  'swagger2-lossy': 'loss',
+  // Typed (payload schemas + handler types); not a call the CLIENT makes.
+  webhooks: 'choice',
+}
 
 /** The severity of a note, from its code. */
 export function noteSeverity(note: Pick<IrNote, "code">): IrNoteSeverity {

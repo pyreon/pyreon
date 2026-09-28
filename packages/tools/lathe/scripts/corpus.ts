@@ -35,7 +35,8 @@ for (const file of readdirSync(dir).filter((f) => /\.(json|ya?ml)$/.test(f)).sor
   for (const validator of ['pyreon', 'zod'] as const) {
     const started = Date.now()
     try {
-      const result = generate(text, resolveConfig({ input: 'x', validator }))
+      const path = resolve(dir, file)
+      const result = generate(text, resolveConfig({ input: 'x', validator }), { location: path, readDocument: (id) => readFileSync(id, 'utf8') })
       const schemas = result.files.find((f) => f.path === 'schemas.ts')?.contents ?? 'export {}\n'
       const target = join(OUT, file.replace(/\W/g, '_'), validator)
       mkdirSync(target, { recursive: true })

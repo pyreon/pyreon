@@ -11,8 +11,16 @@
  * and two consumers of the same promise share one network call.
  */
 
-import { ParseError, ResponseValidationError, describeRequest } from './errors'
+import {
+  type HttpError,
+  ParseError,
+  ResponseValidationError,
+  describeRequest,
+  httpErrorFor,
+  isAbortError,
+} from './errors'
 import type {
+  ErrorSchemas,
   HttpResponse,
   ParseFn,
   SchemaResolver,
@@ -175,6 +183,121 @@ export function applyValidator(
       return raw
     }
     throw new ResponseValidationError(cause, raw, response.request)
+  }
+}
+
+/**
+ * Read a clone's text under the request signal. Same reasoning as
+ * `readUnderSignal`: a mock / custom transport's body is not wired to the
+ * request signal, so without the race a hung error body outlives the
+ * caller's `abort()` and the `timeout`. Rejects with a DOM-shaped
+ * `AbortError`, which the client re-labels as `AbortError`/`TimeoutError`.
+ */
+function readCloneUnderSignal(response: HttpResponse, signal: AbortSignal | undefined): Promise<string> {
+  const clone = response.raw.clone()
+  if (!signal) return clone.text()
+  const aborted = (): Error => Object.assign(new Error('The error-body read was aborted.'), { name: 'AbortError' })
+  if (signal.aborted) {
+    void clone.body?.cancel().catch(noop)
+    return Promise.reject(aborted())
+  }
+  return new Promise<string>((resolve, reject) => {
+    const onAbort = (): void => {
+      void clone.body?.cancel().catch(noop)
+      reject(aborted())
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+    clone.text().then(
+      (text) => {
+        signal.removeEventListener('abort', onAbort)
+        resolve(text)
+      },
+      (error: unknown) => {
+        signal.removeEventListener('abort', onAbort)
+        reject(signal.aborted ? aborted() : error)
+      },
+    )
+  })
+}
+
+/**
+ * Read an error response's body without consuming it: parsed JSON when it
+ * parses, the text otherwise, `undefined` when empty or unreadable (a body
+ * cut off by the request's own timeout included). Reads a CLONE, so the
+ * caller can still read `error.response.raw`.
+ */
+async function readErrorBody(
+  response: HttpResponse,
+  signal: AbortSignal | undefined,
+): Promise<unknown> {
+  if (isBodyless(response.status)) return undefined
+  let text: string
+  try {
+    text = await readCloneUnderSignal(response, signal)
+  } catch (cause) {
+    // An abort / timeout during the read is NOT "unreadable": it is the
+    // request being cancelled, and the client reports it as such.
+    if (isAbortError(cause)) throw cause
+    return undefined
+  }
+  if (text.length === 0) return undefined
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    return text
+  }
+}
+
+/**
+ * The declared error schema for a status: the exact code, then its range
+ * (`4XX`, either case), then `default`. `undefined` when none applies.
+ */
+export function errorSchemaFor(
+  errors: ErrorSchemas,
+  status: number,
+): [key: string, validator: Validator<unknown>] | undefined {
+  const exact = String(status)
+  const range = `${exact.charAt(0)}XX`
+  for (const key of [exact, range, range.toLowerCase(), 'default']) {
+    const v = errors[key]
+    if (v !== undefined) return [key, v]
+  }
+  return undefined
+}
+
+/**
+ * The {@link HttpError} a non-2xx response throws, with its body decoded and,
+ * when the request declared `errors`, validated against the matching schema.
+ *
+ * A body that fails its schema is NOT turned into a `ResponseValidationError`:
+ * the caller's question is "what did the server say went wrong", and replacing
+ * the HTTP failure with a schema failure would hide it. It stays an
+ * `HttpError` with `matched: undefined` and the raw body -- and `'warn'` logs.
+ */
+export async function buildHttpError(
+  response: HttpResponse,
+  errors: ErrorSchemas | undefined,
+  ctx: ParseContext,
+  signal?: AbortSignal | undefined,
+): Promise<HttpError> {
+  const body = await readErrorBody(response, signal)
+  const match = errors ? errorSchemaFor(errors, response.status) : undefined
+  if (match === undefined) return httpErrorFor(response, body)
+  const [key, validator] = match
+  if (ctx.validate === 'off') return httpErrorFor(response, body, key)
+  const parse = resolveValidator(validator, ctx)
+  try {
+    return httpErrorFor(response, parse(body), key)
+  } catch (cause) {
+    if (ctx.validate === 'warn') {
+      // Same reasoning as `applyValidator`: 'warn' exists for production.
+      // pyreon-lint-disable-next-line pyreon/dev-guard-warnings
+      console.warn(
+        `[Pyreon] http: the ${response.status} body from ${describeRequest(response.request)} ` +
+          `did not match its declared \`${key}\` error schema — \`matched\` is undefined. ${cause instanceof Error ? cause.message : String(cause)}`,
+      )
+    }
+    return httpErrorFor(response, body)
   }
 }
 

@@ -88,6 +88,12 @@ export type QueryParams = Record<string, QueryValue>
 export type ValidateMode = 'strict' | 'warn' | 'off'
 
 /**
+ * Error-body validators by status key: an exact status (`404`, `'404'`), a
+ * range (`'4XX'`, `'5XX'`) or `'default'`. See `RequestOptions.errors`.
+ */
+export type ErrorSchemas = Readonly<Record<string | number, Validator<unknown>>>
+
+/**
  * A plain parse function — the Tier-1 validation primitive.
  *
  * Any `(raw: unknown) => T` fits: a hand-written type guard, a
@@ -310,6 +316,15 @@ export interface RequestOptions {
    * on every call, or one whose server is known to drift.
    */
   validate?: ValidateMode | undefined
+  /**
+   * Schemas for ERROR bodies, keyed by status (`404`), range (`'4XX'`) or
+   * `'default'` -- OpenAPI's response keys. The thrown {@link HttpError}'s
+   * `body` is validated against the most specific match (exact, then range,
+   * then `default`) under the client's `validate` mode, and `matched` says
+   * whether it passed. A body that does not match is never an exception of
+   * its own: the HTTP failure is what the caller needs to see.
+   */
+  errors?: ErrorSchemas | undefined
   /** Per-request middleware data. */
   meta?: Record<string, unknown> | undefined
 }

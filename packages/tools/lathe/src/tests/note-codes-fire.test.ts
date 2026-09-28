@@ -102,10 +102,11 @@ const CASES: Record<LoaderCode, [Record<string, unknown>, Record<string, unknown
     get({ responses: { 200: { headers: { 'X-Next': { schema: { type: 'string' } } }, content: json({ type: 'string' }) } } }),
     get({}),
   ],
+  // A JSON error body is TYPED (the endpoint's `errors`); only one that
+  // cannot be -- not JSON, or no schema -- is a loss.
   'error-responses': [
+    get({ responses: { 200: { content: json({ type: 'string' }) }, 404: { content: { 'text/html': { schema: { type: 'string' } } } } } }),
     get({ responses: { 200: { content: json({ type: 'string' }) }, 404: { content: json({ type: 'object' }) } } }),
-    // An error status with NO body loses nothing -- there is nothing to type.
-    get({ responses: { 200: { content: json({ type: 'string' }) }, 404: { description: 'gone' } } }),
   ],
   'other-success-responses': [
     get({ responses: { 200: { content: json({ type: 'string' }) }, 202: { content: json({ type: 'object' }) } } }),
@@ -143,6 +144,29 @@ const CASES: Record<LoaderCode, [Record<string, unknown>, Record<string, unknown
       },
     },
   ],
+  // A Swagger 2 document is up-converted; the `openapi` key the helper adds is
+  // not read once `swagger` identifies the document.
+  'swagger2-converted': [{ swagger: '2.0', host: 't.test', schemes: ['https'] }, {}],
+  webhooks: [
+    { webhooks: { ping: { post: { requestBody: { content: { 'application/json': { schema: { type: 'string' } } } } } } } },
+    {},
+  ],
+  'swagger2-lossy': [
+    { swagger: '2.0', host: 't.test', schemes: ['https'], paths: swaggerArrayQuery('tsv') },
+    { swagger: '2.0', host: 't.test', schemes: ['https'], paths: swaggerArrayQuery('csv') },
+  ],
+}
+
+function swaggerArrayQuery(collectionFormat: string): Record<string, unknown> {
+  return {
+    '/x': {
+      get: {
+        operationId: 'x',
+        parameters: [{ in: 'query', name: 'a', type: 'array', items: { type: 'string' }, collectionFormat }],
+        responses: { 200: { description: 'ok' } },
+      },
+    },
+  }
 }
 
 describe('every note code fires on its defect and not on the corrected form', () => {

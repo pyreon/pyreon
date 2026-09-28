@@ -31,6 +31,7 @@ import { emitMocks } from "../emit/mock";
 import { emitPackageMarker } from "../emit/package-marker";
 import { isStreamOnly, streamHookName, streamName } from "../emit/stream";
 import { emitSchemas, emitTypes } from "../emit/schema";
+import { emitWebhooks } from '../emit/webhooks'
 import { banner, jsonLiteral, type GeneratedFile } from "../emit/writer";
 import type { ResolvedConfig } from "./config";
 import type { IrDocument, IrNote, IrOperation, Reach } from "./ir";
@@ -70,6 +71,12 @@ export interface GenerateResult {
    * with the new spec and with nothing the app was written for.
    */
   surface: ApiSurface;
+  /** Every spec document read, root first — used by watch mode. */
+  /**
+   * Every document the spec was read from, root first -- more than one for a
+   * spec that `$ref`s other files. Watchers regenerate when any changes.
+   */
+  documents: string[]
 }
 
 /** Run the pipeline over a spec document's text. */
@@ -89,6 +96,7 @@ export function generate(
     ...options,
     patches: options.patches ?? config.patches,
   });
+  const documents = loaded.documents;
   let doc = applyFilters(loaded.doc, config.filters);
   doc = applyNaming(doc, config.naming);
   doc = applyOperationSettings(doc, config.operations, config.naming?.hook);
@@ -120,12 +128,14 @@ export function generate(
   const has = (p: string): boolean => config.plugins.includes(p as never);
 
   if (has("types")) push(emitTypes(doc));
-  if (has("schemas"))
+  if (has("schemas")) {
     for (const f of emitSchemas(doc, {
       native: false,
       validator: config.validator,
     }))
       push(f);
+    pushMaybe(emitWebhooks(doc, config.validator));
+  }
   if (has("client")) {
     push(
       emitClient(doc, {
@@ -243,7 +253,7 @@ export function generate(
     // breaks the moment anything imports it as a module.
     contents: `${jsonLiteral(surface, 2)}\n`,
   });
-  return { doc, files, reach, surface };
+  return { doc, files, reach, surface, documents };
 }
 
 /**

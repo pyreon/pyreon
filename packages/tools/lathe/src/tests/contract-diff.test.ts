@@ -89,11 +89,16 @@ describe('reading either side', () => {
 
   it.each([
     ['{"version":1,"operations":{},"models":{}}', /API surface of version 1; this Lathe reads version 2/],
-    ['{"swagger":"2.0","info":{}}', /^\[Pyreon\] lathe diff: `x`: this is a Swagger 2\.0 document/],
     ['[1,2', /is not JSON or YAML/],
     ['{"info":{}}', /no `openapi` version key/],
   ])('refuses %s with the file named', (text, message) => {
     expect(() => readContractSide(text, 'x')).toThrow(message)
+  })
+
+  it('reads a Swagger 2 document through the same conversion as generation', () => {
+    const side = readContractSide('{"swagger":"2.0","info":{"title":"Legacy","version":"1"},"paths":{}}', 'x')
+    expect(side.source).toBe('spec')
+    expect(side.surface.title).toBe('Legacy')
   })
 })
 

@@ -13,6 +13,7 @@ import type {
   HttpMethod,
   IrBody,
   IrDocument,
+  IrErrorResponse,
   IrField,
   IrFieldEncoding,
   IrLiteral,
@@ -24,12 +25,15 @@ import type {
   IrSecurityScheme,
   IrStream,
   IrType,
+  IrWebhook,
   StringFormat,
 } from '../core/ir'
 import { streamFormatOf } from '../core/media'
 import { assignNames, ident, modelIdent, operationIdent, operationIdFrom, tagFile } from '../core/naming'
 import { applyPatches, type LatheSpecPatch } from '../core/patch'
+import { bundle, collectDocuments, isRemote, referencedDocuments, type ReadOutcome } from './bundle'
 import { splitByDirection } from './direction'
+import { isSwagger2, upgradeSwagger2 } from './swagger2'
 import { parseSpecText } from './yaml'
 
 type Json = Record<string, unknown>
@@ -39,6 +43,11 @@ const FORMATS: readonly StringFormat[] = ['email', 'uri', 'uuid', 'date', 'date-
 
 export interface LoadResult {
   doc: IrDocument
+  /**
+   * Every document the spec was read from, root first -- more than one when
+   * it `$ref`s other files. A watcher regenerates when any of them changes.
+   */
+  documents: string[]
 }
 
 export interface LoadOptions {
@@ -54,6 +63,26 @@ export interface LoadOptions {
    * repair the document's own `openapi` key.
    */
   patches?: readonly LatheSpecPatch[] | undefined
+  /**
+   * Where the spec document lives -- a file path or an http(s) URL. With
+   * {@link LoadOptions.readDocument}, a `$ref` into ANOTHER document is
+   * resolved against it and the documents are bundled into one (see
+   * `bundle.ts`). Without it, a cross-document `$ref` is reported and typed
+   * `unknown`, as a single-document reader must.
+   */
+  location?: string | undefined
+  /**
+   * Read a referenced document's TEXT by id (a normalized file path). Called
+   * only for documents on disk: a remote `$ref` is fetched by `lathe pull`,
+   * which bundles it, so generation stays offline and deterministic.
+   */
+  readDocument?: ((id: string) => string) | undefined
+  /**
+   * REMOTE documents already fetched (`remoteRefs: 'fetch'`), by URL. Without
+   * it a remote `$ref` is reported, never fetched: this reader is synchronous
+   * and offline.
+   */
+  remoteDocuments?: ReadonlyMap<string, ReadOutcome> | undefined
 }
 
 /** Parse a spec document (JSON or YAML text) into the IR. */
@@ -63,9 +92,46 @@ export function loadOpenApi(source: string, options: LoadOptions = {}): LoadResu
     throw new Error('[Pyreon] lathe: spec did not parse to an object')
   }
   applyPatches(raw as Record<string, unknown>, options.patches)
+  const { location: specAt, readDocument } = options
+  // Refused BEFORE reading any other file: a document that is not a spec at
+  // all should not make lathe go looking for the files it names.
   const refusal = openApiVersionProblem(raw)
   if (refusal) throw new Error(refusal)
-  return { doc: convert(raw as Json, options) }
+  if (specAt !== undefined && readDocument !== undefined && referencedDocuments(raw, specAt).length > 0) {
+    const docs = collectDocuments(raw, specAt, (id) => {
+      const fetched = options.remoteDocuments?.get(id)
+      if (fetched) return fetched
+      if (isRemote(id)) {
+        return {
+          error:
+            "a remote document is not fetched at generate time. Set `remoteRefs: 'fetch'` in the config, or run `lathe pull <spec-url>`, which fetches every referenced document (with the same `--header` / `--token`) and writes one bundled spec.",
+        }
+      }
+      try {
+        return { doc: parseSpecText(readDocument(id)) }
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) }
+      }
+    })
+    const bundled = bundle(specAt, docs)
+    return { doc: loadParsed(bundled.doc, options, bundled.notes), documents: bundled.documents }
+  }
+  return { doc: loadParsed(raw as Json, options), documents: specAt !== undefined ? [specAt] : [] }
+}
+
+/**
+ * Convert an already-parsed spec document to the IR. A Swagger 2.0 document is
+ * up-converted to OpenAPI 3.0 first (see `swagger2.ts`); anything else that is
+ * not OpenAPI 3.x is refused.
+ */
+export function loadParsed(raw: Json, options: LoadOptions = {}, preNotes: readonly IrNote[] = []): IrDocument {
+  const refusal = openApiVersionProblem(raw)
+  if (refusal) throw new Error(refusal)
+  if (isSwagger2(raw)) {
+    const upgraded = upgradeSwagger2(raw, options.sourceUrl)
+    return convert(upgraded.doc, options, [...preNotes, ...upgraded.notes])
+  }
+  return convert(raw, options, preNotes)
 }
 
 /**
@@ -85,12 +151,14 @@ export function loadOpenApi(source: string, options: LoadOptions = {}): LoadResu
 export function openApiVersionProblem(doc: unknown): string | undefined {
   const d = obj(doc)
   if (!d) return '[Pyreon] lathe: the spec did not parse to an object.'
+  // Swagger 2.0 is up-converted in process (`swagger2.ts`). Any OTHER
+  // `swagger` version (1.x) has an unrelated layout and is refused.
   if (d.swagger !== undefined) {
+    if (isSwagger2(d)) return undefined
     return (
-      `[Pyreon] lathe: this is a Swagger ${String(d.swagger)} document, and Lathe reads OpenAPI 3.x.\n` +
-      '  Swagger 2 keeps models in `definitions` and request bodies in `in: body` parameters,\n' +
-      '  so reading it as 3.x would produce an empty client. Convert it first, then generate:\n' +
-      '    npx swagger2openapi swagger.json -o openapi.json'
+      `[Pyreon] lathe: this is a Swagger ${String(d.swagger)} document. Lathe reads OpenAPI 3.x and Swagger 2.0.\n` +
+      '  Nothing was generated and the output directory was not touched.\n' +
+      '  Convert it to Swagger 2.0 or OpenAPI 3 first (e.g. with the swagger-converter tools), then generate.'
     )
   }
   // A YAML `openapi: 3.0` (unquoted) reads as the NUMBER 3, which is still a
@@ -154,8 +222,8 @@ function serverUrl(server: Json | undefined, at: string, ctx: Ctx, sourceUrl: st
   return stripTrailingSlash(url)
 }
 
-function convert(spec: Json, options: LoadOptions = {}): IrDocument {
-  const notes: IrNote[] = []
+function convert(spec: Json, options: LoadOptions = {}, preNotes: readonly IrNote[] = []): IrDocument {
+  const notes: IrNote[] = [...preNotes]
   const ctx: Ctx = {
     spec,
     notes,
@@ -172,6 +240,7 @@ function convert(spec: Json, options: LoadOptions = {}): IrDocument {
     sourceUrl: undefined,
     opAt: new Map(),
     int64At: new Set(),
+    callbacks: [],
   }
 
   const info = obj(spec.info) ?? {}
@@ -218,6 +287,7 @@ function convert(spec: Json, options: LoadOptions = {}): IrDocument {
   noteSecurity(spec, securitySchemes, ctx)
   const operations = collectOperations(spec, ctx)
   dropClashingStreams(operations, ctx)
+  const webhooks = [...collectWebhooks(spec, ctx), ...ctx.callbacks]
   // Schemas reached through a non-component pointer that turned out to be
   // RECURSIVE were hoisted into named models while converting; they join the
   // document here, after every conversion that could add one.
@@ -225,13 +295,20 @@ function convert(spec: Json, options: LoadOptions = {}): IrDocument {
 
   // readOnly / writeOnly: request and response shapes of one model. Before the
   // union pass, so a discriminator is validated against the final shapes.
-  splitByDirection(models, operations, (base) => claimName(base, ctx))
+  splitByDirection(models, operations, (base) => claimName(base, ctx), webhooks)
 
   // Post-pass: two union shapes a real spec produces that the emitted schema
   // DSL cannot express. Runs here, after models exist, because deciding either
   // one needs to resolve `$ref`s.
-  normalizeUnions(models, operations, ctx)
+  normalizeUnions(models, operations, ctx, webhooks)
   noteInt64(ctx)
+  if (webhooks.length > 0) {
+    notes.push({
+      code: 'webhooks',
+      at: spec.webhooks !== undefined ? '#/webhooks' : '#/paths',
+      message: `${webhooks.length} webhook/callback request(s) the API SENDS — typed as payload schemas and handler types in \`webhooks.ts\` (with the \`schemas\` plugin). The client never makes these calls; the server that receives them uses the types.`,
+    })
+  }
 
   return {
     title: str(info.title) ?? 'API',
@@ -240,8 +317,51 @@ function convert(spec: Json, options: LoadOptions = {}): IrDocument {
     ...(securitySchemes.length > 0 ? { securitySchemes } : {}),
     models,
     operations,
+    ...(webhooks.length > 0 ? { webhooks } : {}),
     notes,
   }
+}
+
+/**
+ * 3.1 `webhooks`: requests the API sends to a URL the user registered. Each
+ * path item method becomes one {@link IrWebhook} carrying its payload -- the
+ * same `requestBody` reading an operation gets, so a form or text payload is
+ * typed the same way.
+ */
+function collectWebhooks(spec: Json, ctx: Ctx): IrWebhook[] {
+  const out: IrWebhook[] = []
+  const hooks = obj(spec.webhooks) ?? {}
+  for (const name of Object.keys(hooks).sort()) {
+    const at = ptr('webhooks', name)
+    const item = obj(deref(hooks[name], at, ctx))
+    if (item) out.push(...webhookEntries('webhook', name, item, at, undefined, ctx))
+  }
+  return out
+}
+
+/** The requests one webhook / callback path item declares. */
+function webhookEntries(
+  kind: IrWebhook['kind'],
+  name: string,
+  item: Json,
+  at: string,
+  expression: string | undefined,
+  ctx: Ctx,
+): IrWebhook[] {
+  const methods = METHODS.filter((m) => obj(item[m.toLowerCase()]) !== undefined)
+  return methods.map((method) => {
+    const op = obj(item[method.toLowerCase()]) as Json
+    const mAt = sub(at, method.toLowerCase())
+    const body = bodyOf(method, op, mAt, ctx)
+    return {
+      kind,
+      name: methods.length > 1 ? `${name}.${method.toLowerCase()}` : name,
+      method,
+      ...(expression !== undefined ? { expression } : {}),
+      summary: str(op.summary) ?? str(op.description),
+      ...(body ? { payload: body.type, mediaType: body.mediaType } : {}),
+    }
+  })
 }
 
 /**
@@ -262,7 +382,7 @@ function convert(spec: Json, options: LoadOptions = {}): IrDocument {
  *    a plain union (which still validates every member correctly) with a note
  *    naming the reason, instead of shipping a module that throws on import.
  */
-function normalizeUnions(models: IrModel[], operations: IrOperation[], ctx: Ctx): void {
+function normalizeUnions(models: IrModel[], operations: IrOperation[], ctx: Ctx, webhooks: IrWebhook[] = []): void {
   const byName = new Map(models.map((m) => [m.name, m]))
   /** The object a union member resolves to, following refs; cycle-safe. */
   const objectOf = (t: IrType): Extract<IrType, { kind: 'object' }> | undefined => {
@@ -359,12 +479,14 @@ function normalizeUnions(models: IrModel[], operations: IrOperation[], ctx: Ctx)
   for (const op of operations) {
     const at = ctx.opAt.get(op) ?? ptr('paths', op.path, op.method.toLowerCase())
     if (op.response) op.response = walk(op.response, at)
+    if (op.errors) op.errors = op.errors.map((e) => ({ ...e, type: walk(e.type, at) as IrType }))
     if (op.body) op.body = { ...op.body, type: walk(op.body.type, at) as IrType }
     op.headerParams = op.headerParams.map((p) => ({ ...p, type: walk(p.type, at) as IrType }))
     op.cookieParams = op.cookieParams.map((p) => ({ ...p, type: walk(p.type, at) as IrType }))
     op.pathParams = op.pathParams.map((p) => ({ ...p, type: walk(p.type, at) as IrType }))
     op.queryParams = op.queryParams.map((p) => ({ ...p, type: walk(p.type, at) as IrType }))
   }
+  for (const w of webhooks) if (w.payload) w.payload = walk(w.payload, '#/webhooks') as IrType
 }
 
 interface Ctx {
@@ -402,6 +524,8 @@ interface Ctx {
   opAt: Map<IrOperation, string>
   /** Pointers of every `format: int64` number, for one aggregated note. */
   int64At: Set<string>
+  /** Callbacks met while collecting operations, in document order. */
+  callbacks: IrWebhook[]
 }
 
 /**
@@ -574,6 +698,17 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
       }
       ctx.opAt.set(irOp, at)
       ops.push(irOp)
+      // `callbacks`: requests the API sends back while (or after) handling
+      // this one, to a URL the call supplied.
+      const callbacks = obj(op.callbacks) ?? {}
+      for (const cbName of Object.keys(callbacks).sort()) {
+        const cAt = sub(at, 'callbacks', cbName)
+        const cb = obj(deref(callbacks[cbName], cAt, ctx)) ?? {}
+        for (const expression of Object.keys(cb)) {
+          const cbItem = obj(deref(cb[expression], sub(cAt, expression), ctx))
+          if (cbItem) ctx.callbacks.push(...webhookEntries('callback', `${id}.${cbName}`, cbItem, sub(cAt, expression), expression, ctx))
+        }
+      }
     }
   }
   return ops
@@ -956,7 +1091,7 @@ function fieldEncodingOf(encoding: Json | undefined): Record<string, IrFieldEnco
   return Object.keys(out).length > 0 ? out : undefined
 }
 
-function responseOf(op: Json, at: string, ctx: Ctx): Pick<IrOperation, 'response' | 'responseMedia' | 'stream'> {
+function responseOf(op: Json, at: string, ctx: Ctx): Pick<IrOperation, 'response' | 'responseMedia' | 'stream' | 'errors'> {
   const responses = obj(op.responses)
   if (!responses) return {}
   const rAt = sub(at, 'responses')
@@ -969,9 +1104,7 @@ function responseOf(op: Json, at: string, ctx: Ctx): Pick<IrOperation, 'response
   const ok = successes[0]
   const chosen = ok ?? (responses.default !== undefined ? 'default' : undefined)
 
-  // What the typed result does NOT carry. Each is a response the spec
-  // describes and the generated call cannot surface: a different success
-  // shape, or an error body that reaches the caller as an untyped rejection.
+  // What the typed result does NOT carry: a different success shape.
   const withBody = (k: string): boolean => Object.keys(obj(obj(deref(responses[k], sub(rAt, k), ctx))?.content) ?? {}).length > 0
   const others = successes.slice(1).filter(withBody)
   if (others.length > 0) {
@@ -981,19 +1114,10 @@ function responseOf(op: Json, at: string, ctx: Ctx): Pick<IrOperation, 'response
       message: `only \`${ok}\` is typed; the ${others.map((k) => `\`${k}\``).join(', ')} response${others.length > 1 ? 's are' : ' is'} decoded as if ${others.length > 1 ? 'they were' : 'it were'} \`${ok}\`.`,
     })
   }
-  const errors = keys
-    .filter((k) => k !== chosen && (/^[45](\d\d|XX)$/i.test(k) || k === 'default'))
-    .filter(withBody)
-    .sort()
-  if (errors.length > 0) {
-    ctx.notes.push({
-      code: 'error-responses',
-      at: rAt,
-      message: `error response${errors.length > 1 ? 's' : ''} ${errors.map((k) => `\`${k}\``).join(', ')} ${errors.length > 1 ? 'are' : 'is'} not typed — a failed call rejects with an error whose body is \`unknown\`.`,
-    })
-  }
+  const errors = errorResponsesOf(responses, chosen, rAt, ctx)
 
-  if (!chosen) return {}
+  const typedErrors = errors.length > 0 ? { errors } : {}
+  if (!chosen) return typedErrors
   const cAt = sub(rAt, chosen)
   const res = obj(deref(responses[chosen], cAt, ctx))
   const headers = Object.keys(obj(res?.headers) ?? {}).sort()
@@ -1005,8 +1129,45 @@ function responseOf(op: Json, at: string, ctx: Ctx): Pick<IrOperation, 'response
     })
   }
   const content = obj(res?.content)
-  if (!content) return {}
-  return pickResponseContent(content, cAt, ctx)
+  if (!content) return typedErrors
+  return { ...pickResponseContent(content, cAt, ctx), ...typedErrors }
+}
+
+/**
+ * The TYPED error responses of an operation: every `4xx`/`5xx` code, `4XX`/
+ * `5XX` range and `default` with a JSON body, in the order a client matches
+ * them (exact codes, ranges, `default`). One whose body is not JSON, or has no
+ * schema, cannot be validated or typed -- that is the loss the
+ * `error-responses` note reports. `chosen` (a `default` read as the success
+ * response) is not an error.
+ */
+function errorResponsesOf(responses: Json, chosen: string | undefined, rAt: string, ctx: Ctx): IrErrorResponse[] {
+  const rank = (k: string): number => (/^\d{3}$/.test(k) ? 0 : k === 'default' ? 2 : 1)
+  const keys = Object.keys(responses)
+    .filter((k) => k !== chosen && (/^[45](\d\d|XX)$/i.test(k) || k === 'default'))
+    .sort((a, b) => rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0))
+  const out: IrErrorResponse[] = []
+  const untyped: string[] = []
+  for (const key of keys) {
+    const eAt = sub(rAt, key)
+    const content = obj(obj(deref(responses[key], eAt, ctx))?.content)
+    if (!content || Object.keys(content).length === 0) continue
+    const json = Object.keys(content).find((k) => encodingOf(k) === 'json')
+    const schema = json ? obj(obj(content[json])?.schema) : undefined
+    if (!json || !schema) {
+      untyped.push(key)
+      continue
+    }
+    out.push({ status: key === 'default' ? key : key.toUpperCase(), type: toType(schema, sub(eAt, 'content', json, 'schema'), ctx) })
+  }
+  if (untyped.length > 0) {
+    ctx.notes.push({
+      code: 'error-responses',
+      at: rAt,
+      message: `error response${untyped.length > 1 ? 's' : ''} ${untyped.map((k) => `\`${k}\``).join(', ')} ${untyped.length > 1 ? 'have' : 'has'} no JSON schema, so ${untyped.length > 1 ? 'their bodies are' : 'its body is'} not typed — the rejection's \`body\` is \`unknown\` for ${untyped.length > 1 ? 'those statuses' : 'that status'}.`,
+    })
+  }
+  return out
 }
 
 /**
@@ -1147,7 +1308,7 @@ function deref(node: unknown, at: string, ctx: Ctx): unknown {
     ctx.notes.push({
       code: 'unsupported-ref',
       at,
-      message: `remote $ref \`${ref}\` is not resolved — Lathe reads one document and never fetches. Bundle the spec first.`,
+      message: `\`$ref\` \`${ref}\` points into another document, which was not read — generate from the spec FILE (so relative refs resolve), or \`lathe pull\` a remote spec, which bundles every document it references.`,
     })
     return { }
   }

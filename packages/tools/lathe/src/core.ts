@@ -10,6 +10,7 @@ export type {
   IrArrayType,
   IrBody,
   IrDocument,
+  IrErrorResponse,
   IrField,
   IrFieldEncoding,
   IrLiteral,
@@ -28,6 +29,7 @@ export type {
   IrStringType,
   IrType,
   IrValidateMode,
+  IrWebhook,
   Reach,
   StringFormat,
 } from "./core/ir";

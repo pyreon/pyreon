@@ -24,6 +24,8 @@ import { OUTPUT_MANIFEST, orphanedPaths } from '../core/output-manifest'
 import { diffCommittedSurface, type SurfaceChange } from '../core/surface'
 import { loadConfig } from '../cli/config-file'
 import { closest } from '../core/suggest'
+import type { ReadOutcome } from '../input/bundle'
+import { fetchRemoteParts } from '../cli/remote-refs'
 
 /** The subset of Vite's plugin surface this needs, so vite is not a dependency. */
 export interface LathePluginHost {
@@ -65,6 +67,11 @@ export interface LathePassResult {
   missing: string[]
   /** Each generated project's result and contract changes, for the summary. */
   projects: Array<{ result: GenerateResult; changes: SurfaceChange[] }>
+  /**
+   * Every OTHER document a spec `$ref`s, mapped to that spec: an edit to a
+   * split spec's part regenerates the project that owns it.
+   */
+  documents: Map<string, string>
 }
 
 /**
@@ -91,6 +98,8 @@ export async function runPass(
   root: string,
   mode: 'write' | 'check',
   only?: string,
+  /** Remote parts fetched for `remoteRefs: 'fetch'`, by absolute spec path. */
+  remote?: ReadonlyMap<string, ReadonlyMap<string, ReadOutcome>>,
 ): Promise<LathePassResult> {
   const abs = (p: string): string => (isAbsolute(p) ? p : resolve(root, p))
   const written: string[] = []
@@ -99,6 +108,7 @@ export async function runPass(
   const removed: string[] = []
   const missing: string[] = []
   const projects: Array<{ result: GenerateResult; changes: SurfaceChange[] }> = []
+  const documents = new Map<string, string>()
 
   // Generate every project before writing any, as the CLI does: a refused
   // spec must leave every output tree untouched, not half of them.
@@ -120,7 +130,14 @@ export async function runPass(
       missing.push(input)
       continue
     }
-    const result = generate(source, project)
+    const result = generate(source, project, {
+      location: input,
+      readDocument: (id) => readFileSync(id, 'utf8'),
+      remoteDocuments: remote?.get(input),
+    })
+    for (const d of result.documents) {
+      if (d !== input && !/^https?:\/\//i.test(d)) documents.set(d, input)
+    }
     // Formatted before comparing, exactly as the CLI does, so the two never
     // disagree about whether committed output is stale.
     generated.push({ out: abs(project.output), result: { ...result, files: await formatFiles(result.files, project.format) } })
@@ -128,7 +145,10 @@ export async function runPass(
   for (const { out, result } of generated) {
     // Read before the writes below replace it: afterwards only the new
     // surface exists, and the diff is what makes a contract change visible.
-    const changes = diffCommittedSurface(readFileOrUndefined(join(out, 'api-surface.json')), result.surface)
+    const changes = diffCommittedSurface(
+      readFileOrUndefined(join(out, 'api-surface.json')),
+      result.surface,
+    )
     const orphans = orphanedPaths(
       readFileOrUndefined(join(out, OUTPUT_MANIFEST)),
       result.files.map((f) => f.path),
@@ -160,7 +180,7 @@ export async function runPass(
     }
     projects.push({ result, changes })
   }
-  return { written, stale, specs, removed, missing, projects }
+  return { written, stale, specs, removed, missing, projects, documents }
 }
 
 /** Absolute spec paths a set of options reads, WITHOUT generating anything. */
@@ -242,7 +262,10 @@ export function lathe(options: LathePluginOptions = {}): LathePluginHost {
   let configFile: string | undefined
   let effective: LathePluginOptions = options
 
-  const merge = (section: LatheSection | undefined): LathePluginOptions => ({ ...section, ...options })
+  const merge = (section: LatheSection | undefined): LathePluginOptions => ({
+    ...section,
+    ...options,
+  })
   const log = (lines: readonly string[]): void => {
     // eslint-disable-next-line no-console
     for (const l of lines) console.log(l)
@@ -250,6 +273,42 @@ export function lathe(options: LathePluginOptions = {}): LathePluginHost {
   const warnMissing = (pass: LathePassResult): void => {
     // eslint-disable-next-line no-console
     for (const m of pass.missing) console.warn(missingSpecMessage(m))
+  }
+
+  // `remoteRefs: 'fetch'`: remote parts are downloaded once per build start
+  // (and on a config edit) -- a local edit regenerates from them without
+  // re-fetching.
+  const remote = new Map<string, ReadonlyMap<string, ReadOutcome>>()
+  const fetchRemote = async (): Promise<void> => {
+    remote.clear()
+    const cacheDir = join(root, 'node_modules', '.cache', 'lathe')
+    for (const project of resolveProjects(effective)) {
+      if (project.remoteRefs !== 'fetch') continue
+      const input = isAbsolute(project.input) ? project.input : resolve(root, project.input)
+      const source = readFileOrUndefined(input)
+      if (source === undefined) continue
+      remote.set(
+        input,
+        await fetchRemoteParts(
+          source,
+          input,
+          (id) => readFileSync(id, 'utf8'),
+          project.remoteHeaders,
+          cacheDir,
+        ),
+      )
+    }
+  }
+
+  // Referenced documents (a split spec's parts) -> the spec that owns them.
+  // Filled by every pass; watched once the dev server exists.
+  const owners = new Map<string, string>()
+  let watcher: { add(path: string): unknown } | undefined
+  const track = (pass: LathePassResult): void => {
+    for (const [doc, spec] of pass.documents) {
+      if (!owners.has(doc)) watcher?.add(doc)
+      owners.set(doc, spec)
+    }
   }
 
   return {
@@ -262,27 +321,39 @@ export function lathe(options: LathePluginOptions = {}): LathePluginHost {
       effective = merge(loaded.section)
     },
     async buildStart() {
-      const mode = command === 'build' && effective.checkOnBuild === true ? 'check' : 'write'
-      const pass = await runPass(effective, root, mode)
-      if (pass.stale.length > 0) {
-        // A build error, not a warning. Generated output that disagrees with
-        // its spec compiles and then fails against the real server.
-        throw new Error(
-          `[Pyreon] lathe: ${pass.stale.length} generated file(s) are stale against the spec:\n` +
-            `${pass.stale.map((f) => `  ${f}`).join('\n')}\n` +
-            'Run `lathe generate` and commit the result.',
-        )
+      const generateNow = async (): Promise<void> => {
+        const mode = command === 'build' && effective.checkOnBuild === true ? 'check' : 'write'
+        const pass = await runPass(effective, root, mode, undefined, remote)
+        track(pass)
+        if (pass.stale.length > 0) {
+          // A build error, not a warning. Generated output that disagrees with
+          // its spec compiles and then fails against the real server.
+          throw new Error(
+            `[Pyreon] lathe: ${pass.stale.length} generated file(s) are stale against the spec:\n` +
+              `${pass.stale.map((f) => `  ${f}`).join('\n')}\n` +
+              'Run `lathe generate` and commit the result.',
+          )
+        }
+        warnMissing(pass)
+        log(passSummary(pass))
       }
-      warnMissing(pass)
-      log(passSummary(pass))
+      // Synchronous unless a project fetches remote parts: the generation must
+      // have run before Vite resolves anything, and an async hook for the
+      // common offline case would only add a tick.
+      if (!resolveProjects(effective).some((p) => p.remoteRefs === 'fetch')) return generateNow()
+      return fetchRemote().then(generateNow)
     },
     configureServer(server) {
       if (effective.watch === false) return
       let specs = specPathsOf(effective, root)
       for (const spec of specs) server.watcher.add(spec)
       if (configFile) server.watcher.add(configFile)
-      server.watcher.on('change', (path) => {
-        const isConfig = path === configFile
+      watcher = server.watcher
+      for (const doc of owners.keys()) server.watcher.add(doc)
+      server.watcher.on('change', (changed) => {
+        const isConfig = changed === configFile
+        // A referenced document stands in for the spec that owns it.
+        const path = owners.get(changed) ?? changed
         if (!isConfig && !specs.includes(path)) return
         void (async () => {
           if (isConfig && configFile) {
@@ -294,7 +365,9 @@ export function lathe(options: LathePluginOptions = {}): LathePluginHost {
           }
           // A spec change regenerates the project that owns it; a config
           // change can move every project, so it regenerates all of them.
-          const pass = await runPass(effective, root, 'write', isConfig ? undefined : path)
+          if (isConfig) await fetchRemote()
+          const pass = await runPass(effective, root, 'write', isConfig ? undefined : path, remote)
+          track(pass)
           warnMissing(pass)
           log(passSummary(pass))
         })().catch((err: unknown) => {
