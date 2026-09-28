@@ -53,6 +53,118 @@ Activity by weekday and hour, one `<Cell>` per observation.
 
 <Example file="./examples/charts/gallery-heatmap" title="Heatmap" />
 
+## Direct labels
+
+`<Legend direct />` names each line at its last point, in the line's own
+colour, instead of in a legend box.
+
+<Example file="./examples/charts/gallery-direct-labels" title="Direct labels" />
+
+## A keyed sliding window
+
+"Vary" drops the oldest bar and appends a new one. `by="t"` gives each row an
+identity, so every bar tweens from its own previous value; without it, rows
+match by position and each bar animates toward its neighbour's value.
+
+<Example file="./examples/charts/gallery-sliding-window" title="Sliding window" />
+
+## A time axis
+
+`xValue` places each point at its epoch-ms timestamp, so uneven gaps between
+samples stay uneven on screen. `<Axis x time>` picks calendar ticks and
+`date('MMM YYYY')` labels them.
+
+<Example file="./examples/charts/gallery-time-axis" title="Time axis" />
+
+## A funnel
+
+One `<Stage>` per row, drawn largest first.
+
+<Example file="./examples/charts/gallery-funnel" title="Funnel" />
+
+## A boxplot
+
+`BoxplotChart` takes raw samples per category and computes the quartiles,
+whiskers and outliers itself. (Pass `summary` instead when you already have
+the five numbers.)
+
+<Example file="./examples/charts/gallery-boxplot" title="Boxplot" />
+
+## A calendar
+
+One cell per day, keyed by ISO date, between `start` and `end`.
+
+<Example file="./examples/charts/gallery-calendar" title="Calendar" />
+
+## A chord diagram
+
+Flows between a set of nodes, each ribbon as wide as its value at both ends.
+
+<Example file="./examples/charts/gallery-chord" title="Chord" />
+
+## A Gantt chart
+
+Tasks grouped into lanes, with progress, dependency elbows and a milestone.
+
+<Example file="./examples/charts/gallery-gantt" title="Gantt" />
+
+## A network graph
+
+Nodes on a circle, sized by value and coloured by category. `layout` also
+takes `'force'`, or `'none'` for positions you supply.
+
+<Example file="./examples/charts/gallery-graph" title="Graph" />
+
+## Parallel coordinates
+
+One polyline per row across several axes; an axis can be categorical.
+
+<Example file="./examples/charts/gallery-parallel" title="Parallel coordinates" />
+
+## A polar chart
+
+Bars and a line on polar axes, the categories around the angle.
+
+<Example file="./examples/charts/gallery-polar" title="Polar" />
+
+## A river
+
+A streamgraph: layers stacked around a centre line.
+
+<Example file="./examples/charts/gallery-river" title="River" />
+
+## A Sankey diagram
+
+Flows from sources through intermediate nodes to outcomes, each link as wide
+as its value.
+
+<Example file="./examples/charts/gallery-sankey" title="Sankey" />
+
+## A sunburst
+
+A hierarchy as rings; a parent without a value is the sum of its children.
+
+<Example file="./examples/charts/gallery-sunburst" title="Sunburst" />
+
+## A tree
+
+The same kind of hierarchy drawn as nodes and links, left to right.
+
+<Example file="./examples/charts/gallery-tree" title="Tree" />
+
+## A treemap
+
+Each leaf a rectangle with area proportional to its value, nested inside its
+parent.
+
+<Example file="./examples/charts/gallery-treemap" title="Treemap" />
+
+## A single axis
+
+Points along one axis, sized by a second value.
+
+<Example file="./examples/charts/gallery-single-axis" title="Single axis" />
+
 ## A gauge driven by a signal
 
 `gaugeDial()` builds the full dial; writing the signal repaints it.

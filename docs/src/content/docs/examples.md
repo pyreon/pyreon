@@ -1,23 +1,11 @@
 ---
 title: "Examples"
-description: "A gallery of 90 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
+description: "A gallery of 98 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
 ---
 
 # Examples
 
-Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 90 examples across 42 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
-
-## A11y
-
-### Save Button Live Region
-
-<Example file="./examples/a11y/save-button-live-region" />
-
-## Attrs
-
-### Button Variant Chain
-
-<Example file="./examples/attrs/button-variant-chain" />
+Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 98 examples across 33 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
 
 ## Charts
 
@@ -29,17 +17,45 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 
 <Example file="./examples/charts/gallery-bars" />
 
+### Gallery Boxplot
+
+<Example file="./examples/charts/gallery-boxplot" />
+
+### Gallery Calendar
+
+<Example file="./examples/charts/gallery-calendar" />
+
 ### Gallery Candlestick
 
 <Example file="./examples/charts/gallery-candlestick" />
+
+### Gallery Chord
+
+<Example file="./examples/charts/gallery-chord" />
+
+### Gallery Direct Labels
+
+<Example file="./examples/charts/gallery-direct-labels" />
 
 ### Gallery Donut
 
 <Example file="./examples/charts/gallery-donut" />
 
+### Gallery Funnel
+
+<Example file="./examples/charts/gallery-funnel" />
+
+### Gallery Gantt
+
+<Example file="./examples/charts/gallery-gantt" />
+
 ### Gallery Gauge
 
 <Example file="./examples/charts/gallery-gauge" />
+
+### Gallery Graph
+
+<Example file="./examples/charts/gallery-graph" />
 
 ### Gallery Heatmap
 
@@ -49,13 +65,53 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 
 <Example file="./examples/charts/gallery-horizontal" />
 
+### Gallery Parallel
+
+<Example file="./examples/charts/gallery-parallel" />
+
+### Gallery Polar
+
+<Example file="./examples/charts/gallery-polar" />
+
 ### Gallery Radar
 
 <Example file="./examples/charts/gallery-radar" />
 
+### Gallery River
+
+<Example file="./examples/charts/gallery-river" />
+
+### Gallery Sankey
+
+<Example file="./examples/charts/gallery-sankey" />
+
+### Gallery Single Axis
+
+<Example file="./examples/charts/gallery-single-axis" />
+
+### Gallery Sliding Window
+
+<Example file="./examples/charts/gallery-sliding-window" />
+
 ### Gallery Stream
 
 <Example file="./examples/charts/gallery-stream" />
+
+### Gallery Sunburst
+
+<Example file="./examples/charts/gallery-sunburst" />
+
+### Gallery Time Axis
+
+<Example file="./examples/charts/gallery-time-axis" />
+
+### Gallery Tree
+
+<Example file="./examples/charts/gallery-tree" />
+
+### Gallery Treemap
+
+<Example file="./examples/charts/gallery-treemap" />
 
 ### Gallery Trend
 
@@ -76,12 +132,6 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 ### Plot Theme
 
 <Example file="./examples/charts/plot-theme" />
-
-## Code
-
-### Reactive Code Editor
-
-<Example file="./examples/code/reactive-code-editor" />
 
 ## Coolgrid
 
@@ -163,12 +213,6 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 
 <Example file="./examples/form/field-validation-error-gating-on-blur" />
 
-## Head
-
-### Live Title And Meta Preview
-
-<Example file="./examples/head/live-title-and-meta-preview" />
-
 ## Hooks
 
 ### Useclickoutside Dismiss Panel
@@ -208,12 +252,6 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 ### Hotkeys Move Dot
 
 <Example file="./examples/hotkeys/hotkeys-move-dot" />
-
-## Http
-
-### Mocked Crud Endpoints
-
-<Example file="./examples/http/mocked-crud-endpoints" />
 
 ## i18n
 
@@ -255,12 +293,6 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 
 <Example file="./examples/permissions/wildcard-grant-tiles" />
 
-## Primitives
-
-### Todo App
-
-<Example file="./examples/primitives/todo-app" />
-
 ## Query
 
 ### Usequery Fetch Cache By Key
@@ -280,18 +312,6 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 ### Signals Read Write React
 
 <Example file="./examples/reactivity/signals-read-write-react" />
-
-## Rich Text
-
-### Toolbar And Word Count
-
-<Example file="./examples/rich-text/toolbar-and-word-count" />
-
-## Rocketstyle
-
-### Multi Dimensional Button
-
-<Example file="./examples/rocketstyle/multi-dimensional-button" />
 
 ## Router
 
@@ -432,12 +452,6 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 ### Url Synced State
 
 <Example file="./examples/url-state/url-synced-state" />
-
-## Validate
-
-### Reactive Parse With Field Metadata
-
-<Example file="./examples/validate/reactive-parse-with-field-metadata" />
 
 ## Validation
 
