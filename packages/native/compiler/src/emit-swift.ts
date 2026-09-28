@@ -141,9 +141,13 @@ import {
   isRenderArrow,
   isViewShaped,
   moduleViewHelpers,
+  narrowViewBlock,
   optionalSlotSwiftWarning,
+  planViewBlock,
   propRefName,
   slotPropsOf,
+  viewBlockExprs,
+  type ViewBlock,
   unlowerableRenderValueWarning,
   viewHelperFromDecl,
   viewHelperFromModuleDecl,
@@ -5064,6 +5068,56 @@ function emitSwiftViewHelper(h: ViewHelper, visibility: 'private' | 'internal', 
   return `@ViewBuilder ${vis}func ${swiftIdent(h.name)}(${params}) -> some View {\n${' '.repeat(indent + 2)}${body}\n${' '.repeat(indent)}}`
 }
 
+/**
+ * A planned BLOCK-bodied view (see `planViewBlock`) as view-builder lines,
+ * each padded to `indent`: `const` → `let`, an early-return branch → `if` /
+ * `if let` (the branch the test narrowed reads an unwrapped binding), a
+ * `return view` → the view. SwiftUI's result builders take local declarations
+ * and conditionals directly, so this is a statement-for-statement lowering.
+ */
+function emitSwiftViewBlock(b: ViewBlock, indent: number): string[] {
+  const pad = ' '.repeat(indent)
+  switch (b.kind) {
+    case 'empty':
+      return [`${pad}EmptyView()`]
+    case 'view':
+      return [`${pad}${emitSwiftChild({ kind: 'expr', expr: unparenExpr(b.expr) }, indent)}`]
+    case 'let': {
+      const line = `${pad}${emitSwiftStatement(b.stmt, indent)}`
+      const t = b.stmt.declaredType ?? inferType(b.stmt.expr, _exprInferCtx)
+      return [line, ...withSwiftLocals([[b.stmt.name, t.kind === 'unknown' ? undefined : t]], () => emitSwiftViewBlock(b.rest, indent))]
+    }
+    case 'if': {
+      const inner = (x: ViewBlock): string => emitSwiftViewBlock(x, indent + 2).join('\n')
+      const tail = (other: ViewBlock): string => (other.kind === 'empty' ? `\n${pad}}` : `\n${pad}} else {\n${inner(other)}\n${pad}}`)
+      const n = narrowingFor(b.cond, _exprInferCtx, _activePropsParamName)
+      if (n !== null) {
+        const present = n.presentWhenTrue ? b.then : b.otherwise
+        const other = n.presentWhenTrue ? b.otherwise : b.then
+        const readers = viewBlockExprs(present)
+        if (readers.some((r) => readsSubject(r, n.subject))) {
+          const binder = binderName(n.subject, [...readers, ...viewBlockExprs(other)])
+          const rewritten = narrowViewBlock(present, n.subject, binder)
+          if (rewritten !== null) {
+            const body = withSwiftLocals([[binder, n.unwrapped]], () => inner(rewritten))
+            return [`${pad}if ${swiftBindClause(n, binder, indent)} {\n${body}${tail(other)}`]
+          }
+          warnUnnarrowable(n, indent)
+        }
+      }
+      const cond = swiftCondition(b.cond, (x) => emitSwiftExpr(x, indent))
+      return [`${pad}if ${cond} {\n${inner(b.then)}${tail(b.otherwise)}`]
+    }
+  }
+}
+
+/** A zero-parameter arrow with a plannable block body — a block-bodied reactive-accessor return. */
+function swiftAccessorViewBlock(e: ExprIR): ViewBlock | null {
+  const x = unparenExpr(e)
+  if (x.kind !== 'arrow' || x.params.length > 0 || x.stmts === undefined || x.stmts.length === 0) return null
+  return planViewBlock(x.stmts)
+}
+
 /** The slot of the component being emitted that `e` references, if any. */
 function activeSlotRef(e: ExprIR): SlotProp | undefined {
   const name = propRefName(e, _activePropsParamName)
@@ -5112,7 +5166,8 @@ function emitSwiftSlotArg(
   const base = ' '.repeat(indent)
   const pad = ' '.repeat(indent + 2)
   if (x.kind === 'arrow') {
-    if (x.stmts !== undefined && x.stmts.length > 0) {
+    const block = x.stmts !== undefined && x.stmts.length > 0 ? planViewBlock(x.stmts) : undefined
+    if (block === null) {
       const w = blockBodiedRenderCallbackWarning(where)
       if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
       const arity = slot?.params.length ?? x.params.length
@@ -5123,11 +5178,15 @@ function emitSwiftSlotArg(
     const arity = Math.max(slot?.params.length ?? 0, x.params.length)
     const names = Array.from({ length: arity }, (_, i) => x.params[i] ?? '_')
     const types = names.map((_, i) => slot?.params[i] ?? x.paramTypes?.[i])
-    const body = withSwiftLocals(
-      names.map((n, i) => [n, types[i]] as const).filter(([n]) => n !== '_'),
-      () => emitSwiftChild({ kind: 'expr', expr: unparenExpr(x.body) }, indent + 2),
-    )
     const head = arity === 0 ? '{' : `{ ${names.map((n) => (n === '_' ? '_' : swiftIdent(n))).join(', ')} in`
+    const params = names.map((n, i) => [n, types[i]] as const).filter(([n]) => n !== '_')
+    if (block !== undefined) {
+      // A block body: its `const`s and early returns become the closure's
+      // view-builder statements (the slot parameter is `@ViewBuilder`).
+      const lines = withSwiftLocals(params, () => emitSwiftViewBlock(block, indent + 2))
+      return `${head}\n${lines.join('\n')}\n${base}}`
+    }
+    const body = withSwiftLocals(params, () => emitSwiftChild({ kind: 'expr', expr: unparenExpr(x.body) }, indent + 2))
     return `${head}\n${pad}${body}\n${base}}`
   }
   // Forwarding the enclosing component's own render prop: same closure type.
@@ -13480,6 +13539,14 @@ function emitSwiftReturnExpr(expr: ExprIR, indent: number): string {
   }
   const slotUse = emitSwiftSlotUse(expr, indent)
   if (slotUse !== null) return slotUse
+  // `return () => { const t = …; return <X t/> }` — a block-bodied reactive
+  // accessor. `body` re-runs on every state change, so the block IS the view;
+  // `Group` keeps the root ONE view, so modifiers appended after it (`.task`,
+  // `.onAppear`) attach to the whole thing rather than its last statement.
+  const block = swiftAccessorViewBlock(expr)
+  if (block !== null) {
+    return `Group {\n${emitSwiftViewBlock(block, indent + 2).join('\n')}\n${' '.repeat(indent)}}`
+  }
   if (
     expr.kind === 'ternary' &&
     (swiftExprProducesView(expr.then) || swiftExprProducesView(expr.otherwise))

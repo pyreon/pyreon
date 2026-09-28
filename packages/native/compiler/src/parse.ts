@@ -41,7 +41,7 @@ import { isCanonicalPrimitive } from './canonical-primitives'
 import { parseRocketstyleDefn } from './rocketstyle-native'
 import { parseAttrsDefn } from './attrs-native'
 import { collectDeclaredTypeNames, liftInlineObjectStructs } from './inline-object-structs'
-import { liftSlotParamStructs } from './render-slots'
+import { liftSlotParamStructs, planViewBlock } from './render-slots'
 import {
   DEFAULT_THEME,
   mergeTheme,
@@ -6043,15 +6043,19 @@ function liftedAliasType(
  * compile. The render-prop data component makes it load-bearing: the only
  * shape that stays live on the web is `return () => props.children(q.data())`.
  *
- * A BLOCK-bodied accessor (several statements) has no single view to unwrap
- * and is named rather than emitted broken.
+ * A BLOCK-bodied accessor is kept as the arrow when its statements have a
+ * view-builder shape (`planViewBlock`) — the emitters lower it at the root —
+ * and is named rather than emitted broken otherwise.
  */
 function unwrapAccessorReturn(e: ExprIR, component: string, ctx: ParseCtx): ExprIR {
   const x = e.kind === 'paren' ? e.inner : e
   if (x.kind !== 'arrow' || x.params.length > 0 || x.async === true) return e
   if (x.stmts !== undefined && x.stmts.length > 0) {
+    // A block the view builders can lower (`const`s, early-return branches, a
+    // final `return`) stays an arrow: each emitter lowers it at the root.
+    if (planViewBlock(x.stmts) !== null) return x
     ctx.warnings.push(
-      `Component ${component}: it returns a reactive accessor with a BLOCK body (\`return () => { …; return <…/> }\`), which has no native lowering — native views re-render on state change without an accessor, but only a single expression can become the view. Return the expression directly (\`return () => cond ? <A/> : <B/>\`), or compute the intermediate values with \`computed\`.`,
+      `Component ${component}: it returns a reactive accessor whose BLOCK body (\`return () => { …; return <…/> }\`) has no native lowering — native views re-render on state change without an accessor, and a view builder takes \`const\` declarations, early \`if (…) return …\` branches and a final \`return\`, but this body has something else (an assignment, a loop, a mutable local or an expression statement). Move that work into a \`computed\`.`,
     )
     return { kind: 'literal', value: null }
   }

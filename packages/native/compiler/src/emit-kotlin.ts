@@ -132,9 +132,13 @@ import {
   isRenderArrow,
   isViewShaped,
   moduleViewHelpers,
+  narrowViewBlock,
+  planViewBlock,
   propRefName,
   slotPropsOf,
   unlowerableRenderValueWarning,
+  viewBlockExprs,
+  type ViewBlock,
   viewHelperFromDecl,
   viewHelperFromModuleDecl,
   type SlotProp,
@@ -2607,7 +2611,7 @@ function emitKotlinComponent(c: ComponentIR): string {
       return false
     })
     if (usable.length === 0) {
-      lines.push(`  ${emitKotlinSlotUse(c.returnExpr, 2) ?? emitKotlinExpr(c.returnExpr, 2)}`)
+      lines.push(emitKotlinRoot(c.returnExpr, 2))
     } else {
       const branches = usable
         .map((d) => {
@@ -2635,7 +2639,7 @@ function emitKotlinComponent(c: ComponentIR): string {
       lines.push(`        false`)
       lines.push(`      }`)
       lines.push(`  ) {`)
-      lines.push(`    ${emitKotlinSlotUse(c.returnExpr, 4) ?? emitKotlinExpr(c.returnExpr, 4)}`)
+      lines.push(emitKotlinRoot(c.returnExpr, 4))
       lines.push(`  }`)
     }
   }
@@ -4206,6 +4210,76 @@ function emitKotlinViewHelper(h: ViewHelper, visibility: string, indent: number,
   return `@Composable\n${' '.repeat(indent)}${visibility}fun ${kotlinIdent(h.name)}(${params}) {\n${' '.repeat(indent + 2)}${body}\n${' '.repeat(indent)}}`
 }
 
+/**
+ * The component's root view, padded to `indent`. A block-bodied reactive
+ * accessor (`return () => { const t = …; return <X/> }`) lowers to its
+ * statements — a composable re-runs on every state change, so the block IS
+ * the body.
+ */
+function emitKotlinRoot(expr: ExprIR, indent: number): string {
+  const block = kotlinAccessorViewBlock(expr)
+  if (block !== null) return emitKotlinViewBlock(block, indent).join('\n')
+  return `${' '.repeat(indent)}${emitKotlinSlotUse(expr, indent) ?? emitKotlinExpr(expr, indent)}`
+}
+
+/**
+ * A planned BLOCK-bodied view as composable statements — twin of emit-swift's
+ * `emitSwiftViewBlock`. A composable lambda takes statements natively, so
+ * `const` → `val`, an early-return branch → `if` / `else`, a `return view` →
+ * the view, and `return null` → nothing. A branch an optional test narrowed
+ * binds the subject to a local `val` first when kotlinc cannot smart-cast it.
+ */
+function emitKotlinViewBlock(b: ViewBlock, indent: number): string[] {
+  const pad = ' '.repeat(indent)
+  switch (b.kind) {
+    case 'empty':
+      return []
+    case 'view':
+      return [`${pad}${emitKotlinChild({ kind: 'expr', expr: unparenExpr(b.expr) }, indent)}`]
+    case 'let': {
+      const ctx: KotlinCtx = { synthesizedDataClasses: [], componentName: '' }
+      const line = `${pad}${emitKotlinStatement(b.stmt, indent, ctx)}`
+      const t = b.stmt.declaredType ?? inferType(b.stmt.expr, _kotlinExprInferCtx)
+      return [line, ...withKotlinLocals([[b.stmt.name, t.kind === 'unknown' ? undefined : t]], () => emitKotlinViewBlock(b.rest, indent))]
+    }
+    case 'if': {
+      // An empty arm is an empty block — `return null` renders nothing.
+      const inner = (x: ViewBlock): string => {
+        const lines = emitKotlinViewBlock(x, indent + 2)
+        return lines.length === 0 ? `\n${pad}` : `\n${lines.join('\n')}\n${pad}`
+      }
+      const branches = (cond: string, then: ViewBlock, other: ViewBlock): string => {
+        const head = `${pad}if (${cond}) {${inner(then)}}`
+        return other.kind === 'empty' ? head : `${head} else {${inner(other)}}`
+      }
+      const probe = narrowingFor(b.cond, _kotlinExprInferCtx, _activePropsParamName)
+      if (probe !== null) {
+        const present = probe.presentWhenTrue ? b.then : b.otherwise
+        const other = probe.presentWhenTrue ? b.otherwise : b.then
+        const plan = planKotlinNarrowing(b.cond, viewBlockExprs(present))
+        if (plan !== null) {
+          const binder = binderName(plan.n.subject, [...viewBlockExprs(present), ...viewBlockExprs(other)])
+          const rewritten = narrowViewBlock(present, plan.n.subject, binder)
+          if (rewritten !== null) {
+            const bound = `${pad}val ${kotlinIdent(binder)} = ${kotlinBoundSubject(plan.n, indent)}`
+            const body = withKotlinLocals([[binder, plan.n.unwrapped]], () => branches(`${kotlinIdent(binder)} != null`, rewritten, other))
+            return [bound, body]
+          }
+          warnUnnarrowableKotlin(plan.n, indent)
+        }
+      }
+      return [branches(kotlinCondition(b.cond, (x) => emitKotlinExpr(x, indent)), b.then, b.otherwise)]
+    }
+  }
+}
+
+/** A zero-parameter arrow with a plannable block body — a block-bodied reactive-accessor return. */
+function kotlinAccessorViewBlock(e: ExprIR): ViewBlock | null {
+  const x = unparenExpr(e)
+  if (x.kind !== 'arrow' || x.params.length > 0 || x.stmts === undefined || x.stmts.length === 0) return null
+  return planViewBlock(x.stmts)
+}
+
 function activeSlotRefKotlin(e: ExprIR): SlotProp | undefined {
   const name = propRefName(e, _activePropsParamName)
   return name === null ? undefined : _activeSlotsKotlin.get(name)
@@ -4254,16 +4328,19 @@ function emitKotlinSlotArg(
     const arity = Math.max(slot?.params.length ?? 0, x.params.length)
     const names = Array.from({ length: arity }, (_, i) => x.params[i] ?? '_')
     const head = arity === 0 ? '{' : `{ ${names.map((n) => (n === '_' ? '_' : kotlinIdent(n))).join(', ')} ->`
-    if (x.stmts !== undefined && x.stmts.length > 0) {
+    const block = x.stmts !== undefined && x.stmts.length > 0 ? planViewBlock(x.stmts) : undefined
+    if (block === null) {
       const w = blockBodiedRenderCallbackWarning(where)
       if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
       return `${head} }`
     }
     const types = names.map((_, i) => slot?.params[i] ?? x.paramTypes?.[i])
-    const body = withKotlinLocals(
-      names.map((n, i) => [n, types[i]] as const).filter(([n]) => n !== '_'),
-      () => emitKotlinChild({ kind: 'expr', expr: unparenExpr(x.body) }, indent + 2),
-    )
+    const params = names.map((n, i) => [n, types[i]] as const).filter(([n]) => n !== '_')
+    if (block !== undefined) {
+      const lines = withKotlinLocals(params, () => emitKotlinViewBlock(block, indent + 2))
+      return `${head}\n${lines.join('\n')}\n${base}}`
+    }
+    const body = withKotlinLocals(params, () => emitKotlinChild({ kind: 'expr', expr: unparenExpr(x.body) }, indent + 2))
     return `${head}\n${pad}${body}\n${base}}`
   }
   const forwarded = activeSlotRefKotlin(x)
