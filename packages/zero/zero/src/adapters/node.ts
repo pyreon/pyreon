@@ -2,6 +2,7 @@ import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../t
 import { NODE_ADAPTER_OUTPUT } from './contract'
 import { SCHEDULER_RUNTIME, serializeJobs } from './cron'
 import { stageClientThenServer } from './stage'
+import { STATIC_MIME_TYPES } from './mime'
 import { validateBuildInputs } from './validate'
 
 /**
@@ -95,19 +96,7 @@ try {
   if (parsed && Array.isArray(parsed.paths)) prerenderedPaths = new Set(parsed.paths)
 } catch {}
 
-const MIME_TYPES = {
-  ".html": "text/html",
-  ".webmanifest": "application/manifest+json",
-  ".js": "application/javascript",
-  ".css": "text/css",
-  ".json": "application/json",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".svg": "image/svg+xml",
-  ".woff2": "font/woff2",
-  ".woff": "font/woff",
-  ".ico": "image/x-icon",
-}
+const MIME_TYPES = ${JSON.stringify(STATIC_MIME_TYPES)}
 
 // The request's real origin. Server actions compare the browser's \`Origin\`
 // header against it (CSRF baseline), so a hardcoded "http://localhost" made
