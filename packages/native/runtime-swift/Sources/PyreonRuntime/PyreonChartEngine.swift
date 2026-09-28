@@ -6500,8 +6500,11 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           }
         } else {
           if s.kind == "line" {
-            for run in splitRuns(s.values, place) {
-              let pts = m4Pixels(reveal(curveFn(run)))
+            let direct = s.curve == nil && xs.count == 0 ? m4CategoryPoints(s.values, plot, sDomain) : []
+            let useDirect = direct.count > 0
+            let runs = useDirect ? [direct] : splitRuns(s.values, place)
+            for run in runs {
+              let pts = useDirect ? reveal(run) : m4Pixels(reveal(curveFn(run)))
               if pts.count > 1 {
                 out.append(PyreonDrawCmd(kind: "polyline", stroke: s.color, width: s.width, dash: s.dash, points: pts))
               }
@@ -13727,6 +13730,65 @@ public func m4Pixels(_ pts: [PyreonChartPt], _ perPx: Double = 2.0) -> [PyreonCh
       }
       if last != first && last != a {
         out.append(pts[last])
+      }
+      i = j
+    }
+    return out
+  }
+
+public func bandCenter(_ x: Double, _ band: Double, _ k: Int) -> Double { x + band * Double(k) + band / 2.0 }
+
+public func m4CategoryPoints(_ values: [Double], _ plot: PyreonChartRect, _ dom: Domain, _ perPx: Double = 2.0) -> [PyreonChartPt] {
+    var out: [PyreonChartPt] = []
+    let n = values.count
+    if n < 8 {
+      return out
+    }
+    let band = plot.w / Double(n)
+    let span = (bandCenter(plot.x, band, (n - 1))) - (plot.x + band / 2.0)
+    if !(Double(n) > span * perPx * 4.0 + 8.0) {
+      return out
+    }
+    for i in 0..<n {
+      let v = values[i]
+      if !(v - v == 0.0) {
+        return out
+      }
+    }
+    let top = plot.y + plot.h
+    var i = 0
+    while i < n {
+      let col = floor(Double((bandCenter(plot.x, band, i)) * perPx))
+      let first = i
+      var lo = i
+      var hi = i
+      var loY = scaleLinear(dom, top, plot.y, values[i])
+      var hiY = loY
+      var j = i
+      while j < n && floor(Double((bandCenter(plot.x, band, j)) * perPx)) == col {
+        let y = scaleLinear(dom, top, plot.y, values[j])
+        if y < loY {
+          lo = j
+          loY = y
+        }
+        if y > hiY {
+          hi = j
+          hiY = y
+        }
+        j = j + 1
+      }
+      let last = j - 1
+      let a = lo < hi ? lo : hi
+      let b = lo < hi ? hi : lo
+      out.append(PyreonChartPt(x: bandCenter(plot.x, band, first), y: scaleLinear(dom, top, plot.y, values[first])))
+      if a != first {
+        out.append(PyreonChartPt(x: bandCenter(plot.x, band, a), y: scaleLinear(dom, top, plot.y, values[a])))
+      }
+      if b != a && b != last {
+        out.append(PyreonChartPt(x: bandCenter(plot.x, band, b), y: scaleLinear(dom, top, plot.y, values[b])))
+      }
+      if last != first && last != a {
+        out.append(PyreonChartPt(x: bandCenter(plot.x, band, last), y: scaleLinear(dom, top, plot.y, values[last])))
       }
       i = j
     }

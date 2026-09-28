@@ -1,7 +1,7 @@
 // Marks → draw commands. The whole chart, as plain data.
 
 import { computeLayout, valueTickTarget, layoutBars, layoutBarsH, layoutSeriesPoints, layoutSeriesPointsAt, layoutSeriesPointsH } from './layout'
-import { m4Pixels } from './decimate-values'
+import { m4CategoryPoints, m4Pixels } from './decimate-values'
 import { DEFAULT_PALETTE } from './palette'
 import { layoutGroupedBars, layoutGroupedBarsH, layoutStackLevels, layoutStackLevelsH, layoutWaterfall, normalizeStack, stackLevels, stackLevelsExtent, waterfallExtent } from './stack'
 import type { StackLevels, StackSegment } from './stack'
@@ -1306,9 +1306,15 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     } else if (s.kind === 'line') {
       // A non-finite value is a GAP: the line breaks into runs rather than
       // drawing a zero.
-      for (const run of splitRuns(s.values, place)) {
+      // A dense category line with the default curve reduces straight from its
+      // values (identical output, no per-datum point objects); anything else
+      // places, then reduces.
+      const direct: Pt[] = s.curve === undefined && xs.length === 0 ? m4CategoryPoints(s.values, plot, sDomain) : []
+      const useDirect = direct.length > 0
+      const runs: Pt[][] = useDirect ? [direct] : splitRuns(s.values, place)
+      for (const run of runs) {
         // M4: more points than pixel columns draw the same pixels from four per column.
-        const pts = m4Pixels(reveal(curveFn(run)))
+        const pts = useDirect ? reveal(run) : m4Pixels(reveal(curveFn(run)))
         if (pts.length > 1) out.push({ kind: 'polyline', points: pts, stroke: s.color, width: s.width, dash: s.dash })
       }
       // A line shows its datum symbols only when asked (ECharts' showSymbol):
