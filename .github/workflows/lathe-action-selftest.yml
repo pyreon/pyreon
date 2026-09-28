@@ -144,17 +144,7 @@ jobs:
           set -o pipefail
           marker='<!-- lathe-contract -->'
           { echo "$marker"; cat contract.md; } > comment.md
-          for attempt in 1 2 3; do
-            id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
-              --jq '.[] | select(.body | startswith("<!-- lathe-contract -->")) | .id' | head -n 1) &&
-              if [ -n "$id" ]; then
-                gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@comment.md > /dev/null
-              else
-                gh pr comment "$PR" --body-file comment.md
-              fi && exit 0
-            sleep $((attempt * 5))
-          done
-          echo "::warning::could not post the contract comment; the report is in the job summary"
+          gh pr comment "$PR" --body-file contract.md --edit-last --create-if-none
       # ── Self-test only: the same step again — a push to an open PR ─────────
       - name: Comment (a second push)
         if: steps.diff.outputs.code != '2' && github.event.pull_request.head.repo.full_name == github.repository
@@ -165,17 +155,7 @@ jobs:
           set -o pipefail
           marker='<!-- lathe-contract -->'
           { echo "$marker"; cat contract.md; } > comment.md
-          for attempt in 1 2 3; do
-            id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
-              --jq '.[] | select(.body | startswith("<!-- lathe-contract -->")) | .id' | head -n 1) &&
-              if [ -n "$id" ]; then
-                gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@comment.md > /dev/null
-              else
-                gh pr comment "$PR" --body-file comment.md
-              fi && exit 0
-            sleep $((attempt * 5))
-          done
-          echo "::warning::could not post the contract comment; the report is in the job summary"
+          gh pr comment "$PR" --body-file contract.md --edit-last --create-if-none
 
       - name: Verify the real outputs
         env:
