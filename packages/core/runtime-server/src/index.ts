@@ -1071,8 +1071,14 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
         // closes promptly without us racing it.
         if (ctx.signal?.aborted) return
 
-        // Escape </template> in buffered content to prevent early close + XSS
-        const content = buf.join('').replace(/<\/template/gi, '<\\/template')
+        // Escape </template> in buffered content to prevent early close + XSS.
+        // Bracketed with the SAME `<!--$-->…<!--/$-->` range markers the string
+        // renderer emits for `<Suspense>`'s reactive accessor, so once `__NS` has
+        // swapped the fallback out the DOM is byte-identical to a string render
+        // and hydration ADOPTS it. Without them the client found no range and
+        // rebuilt the boundary — and an async child was duplicated beside the
+        // server copy.
+        const content = `<!--$-->${buf.join('').replace(/<\/template/gi, '<\\/template')}<!--/$-->`
 
         // Flush styler CSS collected while resolving this boundary — emit the
         // `<style>` BEFORE the `<template>` so the rules apply before `__NS`

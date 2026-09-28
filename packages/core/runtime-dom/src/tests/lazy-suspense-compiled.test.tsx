@@ -71,7 +71,7 @@ describe('lazy() inside Suspense — compiled SSR path', () => {
       const Page = compile(ssrTemplate, makeLazy())
       const html = await read(renderToStream(h(Page as never, { who: 'c' })))
       expect(html).toContain('<p class="fb">loading</p>')
-      expect(html).toMatch(/<template id="pyreon-t-0"><p class="q">quote:c<\/p><\/template>/)
+      expect(html).toMatch(/<template id="pyreon-t-0"><!--\$--><p class="q">quote:c<\/p><!--\/\$--><\/template>/)
     })
 
     it(`string: renders the lazy content, not the fallback (ssrTemplate=${ssrTemplate})`, async () => {

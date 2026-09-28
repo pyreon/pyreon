@@ -38,7 +38,7 @@ describe('lazy() — renderToStream', () => {
       ),
     )
     expect(html).toContain('<div id="pyreon-s-0"><i>fb</i></div>')
-    expect(html).toMatch(/<template id="pyreon-t-0"><p class="q">quote:a<\/p><\/template>/)
+    expect(html).toMatch(/<template id="pyreon-t-0"><!--\$--><p class="q">quote:a<\/p><!--\/\$--><\/template>/)
     // The fallback is flushed BEFORE the resolved content.
     expect(html.indexOf('<i>fb</i>')).toBeLessThan(html.indexOf('quote:a'))
   })
@@ -50,7 +50,7 @@ describe('lazy() — renderToStream', () => {
         h(Suspense, { fallback: h('i', null, 'fb') }, h('section', null, h(Lazy, { who: 'n' }))),
       ),
     )
-    expect(html).toMatch(/<template id="pyreon-t-0"><section><p class="q">quote:n<\/p><\/section><\/template>/)
+    expect(html).toMatch(/<template id="pyreon-t-0"><!--\$--><section><p class="q">quote:n<\/p><\/section><!--\/\$--><\/template>/)
   })
 
   it('a lazy that FAILS to load keeps the fallback (no swap)', async () => {
