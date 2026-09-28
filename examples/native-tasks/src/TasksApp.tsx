@@ -90,9 +90,16 @@ import {
   SunburstChart,
   TreeChart,
   TreemapChart,
+  Axis,
+  Cell,
   Chart,
+  Legend,
+  Line,
   Tooltip,
+  Zoom,
   createChartHandle,
+  date,
+  visualMap,
 } from '@pyreon/charts'
 import { CandlestickChart, FunnelChart, HeatmapChart, PieChart, PlotChart, bars, bollinger, line, sma } from '@pyreon/charts/engine'
 import type {
@@ -746,6 +753,41 @@ interface ScoreRow {
   subject: string
   score: number
 }
+// Two series for `<Legend direct />` (each line named at its last point).
+interface TrendRow {
+  m: string
+  a: number
+  b: number
+}
+const TREND_ROWS: TrendRow[] = [
+  { m: 'Jan', a: 12, b: 8 },
+  { m: 'Feb', a: 15, b: 11 },
+  { m: 'Mar', a: 14, b: 16 },
+  { m: 'Apr', a: 19, b: 15 },
+]
+// Epoch-ms readings for a `date()`-formatted time axis.
+interface Reading {
+  at: number
+  v: number
+}
+const READINGS: Reading[] = [
+  { at: 1704067200000, v: 3 },
+  { at: 1709251200000, v: 5 },
+  { at: 1714521600000, v: 4 },
+  { at: 1719792000000, v: 7 },
+]
+// A small grid for `<Cell>` with a pinned visual map.
+interface HeatObs {
+  d: string
+  h: string
+  n: number
+}
+const HEAT_OBS: HeatObs[] = [
+  { d: 'Mon', h: '09', n: 2 },
+  { d: 'Mon', h: '12', n: 7 },
+  { d: 'Tue', h: '09', n: 5 },
+  { d: 'Tue', h: '12', n: 1 },
+]
 const SCORE_ROWS: ScoreRow[] = [
   { subject: 'math', score: 82 },
   { subject: 'art', score: 91 },
@@ -1090,6 +1132,22 @@ function GalleryPage() {
         <Text data-testid="gal-grammar-pick">{String(grammarPick())}</Text>
         <Chart data={SCORE_ROWS} height={200} data-testid="gal-grammar-pie">
           <Arc value="score" label="subject" innerRadius={0.5} />
+        </Chart>
+        <Chart data={TREND_ROWS} x="m" height={180} data-testid="gal-direct-labels">
+          <Line y="a" label="North" />
+          <Line y="b" label="South" />
+          <Legend direct />
+        </Chart>
+        <Chart data={READINGS} xValue="at" height={160} data-testid="gal-date-axis">
+          <Line y="v" label="Reading" />
+          <Axis x time format={date('MMM YYYY')} />
+        </Chart>
+        <Chart data={TREND_ROWS} x="m" height={160} data-testid="gal-zoom-window">
+          <Bar y="a" label="North" />
+          <Zoom window={{ start: 0.5, end: 1 }} lock />
+        </Chart>
+        <Chart data={HEAT_OBS} height={160} data-testid="gal-cell-visualmap">
+          <Cell x="d" y="h" value="n" visualMap={visualMap({ domain: [0, 8] })} />
         </Chart>
         <ColorModeProvider mode="dark">
           <ModeProbe />

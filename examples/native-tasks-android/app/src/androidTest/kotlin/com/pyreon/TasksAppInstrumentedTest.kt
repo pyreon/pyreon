@@ -1142,6 +1142,7 @@ class TasksAppInstrumentedTest {
             "gal-calendar", "gal-candlestick", "gal-gantt", "gal-graph", "gal-map",
             "gal-parallel", "gal-polar", "gal-river", "gal-sunburst", "gal-tree",
             "gal-grammar-bars", "gal-grammar-pie",
+            "gal-direct-labels", "gal-date-axis", "gal-zoom-window", "gal-cell-visualmap",
         )) {
             composeRule.onNodeWithTag(tag).performScrollTo().assertIsDisplayed()
         }

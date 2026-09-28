@@ -1019,6 +1019,7 @@ final class PyreonTasksUITests: XCTestCase {
             "gal-calendar", "gal-candlestick", "gal-gantt", "gal-graph", "gal-map",
             "gal-parallel", "gal-polar", "gal-river", "gal-sunburst", "gal-tree",
             "gal-grammar-bars", "gal-grammar-pie",
+            "gal-direct-labels", "gal-date-axis", "gal-zoom-window", "gal-cell-visualmap",
         ] {
             let canvas = app.descendants(matching: .any).matching(identifier: id).firstMatch
             // Scrolled into view first: ten charts do not fit on a phone, and
