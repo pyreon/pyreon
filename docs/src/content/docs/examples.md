@@ -1,11 +1,23 @@
 ---
 title: "Examples"
-description: "A gallery of 98 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
+description: "A gallery of 107 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
 ---
 
 # Examples
 
-Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 98 examples across 33 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
+Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 107 examples across 42 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
+
+## A11y
+
+### Save Button Live Region
+
+<Example file="./examples/a11y/save-button-live-region" />
+
+## Attrs
+
+### Button Variant Chain
+
+<Example file="./examples/attrs/button-variant-chain" />
 
 ## Charts
 
@@ -133,6 +145,12 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 
 <Example file="./examples/charts/plot-theme" />
 
+## Code
+
+### Reactive Code Editor
+
+<Example file="./examples/code/reactive-code-editor" />
+
 ## Coolgrid
 
 ### 12 Column Responsive Grid
@@ -213,6 +231,12 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 
 <Example file="./examples/form/field-validation-error-gating-on-blur" />
 
+## Head
+
+### Live Title And Meta Preview
+
+<Example file="./examples/head/live-title-and-meta-preview" />
+
 ## Hooks
 
 ### Useclickoutside Dismiss Panel
@@ -252,6 +276,12 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 ### Hotkeys Move Dot
 
 <Example file="./examples/hotkeys/hotkeys-move-dot" />
+
+## Http
+
+### Mocked Crud Endpoints
+
+<Example file="./examples/http/mocked-crud-endpoints" />
 
 ## i18n
 
@@ -293,6 +323,12 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 
 <Example file="./examples/permissions/wildcard-grant-tiles" />
 
+## Primitives
+
+### Todo App
+
+<Example file="./examples/primitives/todo-app" />
+
 ## Query
 
 ### Usequery Fetch Cache By Key
@@ -312,6 +348,18 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 ### Signals Read Write React
 
 <Example file="./examples/reactivity/signals-read-write-react" />
+
+## Rich Text
+
+### Toolbar And Word Count
+
+<Example file="./examples/rich-text/toolbar-and-word-count" />
+
+## Rocketstyle
+
+### Multi Dimensional Button
+
+<Example file="./examples/rocketstyle/multi-dimensional-button" />
 
 ## Router
 
@@ -452,6 +500,12 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 ### Url Synced State
 
 <Example file="./examples/url-state/url-synced-state" />
+
+## Validate
+
+### Reactive Parse With Field Metadata
+
+<Example file="./examples/validate/reactive-parse-with-field-metadata" />
 
 ## Validation
 
