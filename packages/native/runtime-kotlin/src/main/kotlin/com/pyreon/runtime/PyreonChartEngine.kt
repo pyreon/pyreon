@@ -98,7 +98,7 @@ data class ChartTheme(var palette: List<String>, var background: String, var sur
 
 data class Emphasis(var highlight: Int, var selected: List<Int>)
 
-data class ChartSpec(var width: Double, var height: Double, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var endLabels: Boolean? = null, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null)
+data class ChartSpec(var width: Double, var height: Double, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var endLabels: Boolean? = null, var xTicks: Double? = null, var yTicks: Double? = null, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null)
 
 data class ExtentSpan(var seen: Boolean, var lo: Double, var hi: Double)
 
@@ -409,6 +409,10 @@ private val DEFAULT_ARCS: ArcConfig = ArcConfig(start = START, sweep = TAU, cloc
 private val PIE_LABEL_DEFAULTS: PieLabelOptions = PieLabelOptions(position = "outside", texts = listOf(), fontSize = 12.0, color = "", line = true, lineColor = "", leg1 = 15.0, leg2 = 30.0, distance = 5.0, avoidOverlap = true, minTurnAngle = 90.0, maxSurfaceAngle = 90.0, minAngle = 0.0, overflow = "truncate", bleedMargin = -1.0, alignTo = "none", edgeDistance = 0.0, edgePercent = 0.25, rotate = "", rotateDegrees = 0.0)
 
 private val RADAR_START = (-kotlin.math.PI).toDouble() / (2.0).toDouble()
+
+private val Y_TICK_SPACING = 40.0
+
+private val X_TICK_SPACING = 80.0
 
 private val POLYGON_CIRCLE_SIDES = 24
 
@@ -2041,16 +2045,29 @@ fun hitRadarIndex(axes: List<RadarAxis>, series: List<RadarSeries>, box: PyreonC
     return hit
   }
 
+fun autoTickCount(extent: Double, spacing: Double): Double {
+    val n = Math.floor((extent).toDouble() / (spacing).toDouble() + 0.5)
+    return if (n < 2.0) 2.0 else if (n > 10.0) 10.0 else n
+  }
+
+fun valueTickTarget(width: Double, height: Double, fontSize: Double, horizontal: Boolean): Double {
+    if (horizontal) {
+      return autoTickCount(width - 80.0, X_TICK_SPACING)
+    }
+    return autoTickCount(height - 8.0 - (fontSize + 10.0), Y_TICK_SPACING)
+  }
+
 fun computeLayout(cfg: LayoutConfig, measure: (String, Double) -> Double): PlotLayout {
     val padTop = 8.0
     val padRight = 12.0
     val labelGap = 6.0
     val tickLen = 4.0
+    val yCount = if (cfg.yTickCount > 0.0) cfg.yTickCount else valueTickTarget(cfg.width, cfg.height, cfg.fontSize, cfg.horizontal == true)
     val titleH = cfg.fontSize + labelGap
     val isLog = cfg.yLog == true
     val logMin = (cfg.yLogMin ?: 1.0)
     val logMax = (cfg.yLogMax ?: 10.0)
-    val valueTicksY = { r0: Double, r1: Double -> if (isLog) logViewTicks(logMin, logMax, r0, r1, cfg.yFormat) else if (cfg.yTime == true) timeTicks(cfg.yDomain, r0, r1, cfg.yTickCount, cfg.yFormat) else makeTicks(cfg.yDomain, r0, r1, cfg.yTickCount, cfg.yFormat) }
+    val valueTicksY = { r0: Double, r1: Double -> if (isLog) logViewTicks(logMin, logMax, r0, r1, cfg.yFormat) else if (cfg.yTime == true) timeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) else makeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) }
     val provisionalLabels = if (cfg.horizontal == true) if (cfg.showYAxis) cfg.categories else listOf() else if (cfg.showYAxis) valueTicksY(cfg.height, 0.0).map({ t -> t.label }) else listOf()
     val yProvisional = labelSample(provisionalLabels, cfg.fontSize, 0.0, measure)
     val widest = yProvisional.widest
@@ -2061,7 +2078,7 @@ fun computeLayout(cfg: LayoutConfig, measure: (String, Double) -> Double): PlotL
     val hasY2 = cfg.y2Domain != null && cfg.horizontal != true && cfg.showYAxis
     var widest2 = 0.0
     if (hasY2) {
-      for (label in makeTicks(y2dom, cfg.height, 0.0, cfg.yTickCount, cfg.y2Format).map({ t -> t.label })) {
+      for (label in makeTicks(y2dom, cfg.height, 0.0, yCount, cfg.y2Format).map({ t -> t.label })) {
         val w = measure(label, cfg.fontSize)
         if (w > widest2) {
           widest2 = w
@@ -2072,12 +2089,13 @@ fun computeLayout(cfg: LayoutConfig, measure: (String, Double) -> Double): PlotL
     val left = yBand
     val right = (if (hasY2) widest2 + labelGap + tickLen else padRight) + y2TitleH + ((cfg.rightReserve ?: 0.0))
     val provisionalW = Math.max(0.0, cfg.width - left - right)
+    val xCount = if (cfg.xTickCount > 0.0) cfg.xTickCount else autoTickCount(provisionalW, X_TICK_SPACING)
     val mode = (cfg.xLabels ?: "auto")
     var rotate = 0.0
     var every = 1
     var slantH = 0.0
     if (cfg.showXAxis && cfg.horizontal != true) {
-      val xLabels = if (cfg.categories.length > 0) cfg.categories else (if (cfg.xTime == true) timeTicks(cfg.xDomain, 0.0, provisionalW, cfg.xTickCount, cfg.xFormat) else makeTicks(cfg.xDomain, 0.0, provisionalW, cfg.xTickCount, cfg.xFormat)).map({ t -> t.label })
+      val xLabels = if (cfg.categories.length > 0) cfg.categories else (if (cfg.xTime == true) timeTicks(cfg.xDomain, 0.0, provisionalW, xCount, cfg.xFormat) else makeTicks(cfg.xDomain, 0.0, provisionalW, xCount, cfg.xFormat)).map({ t -> t.label })
       val xSample = labelSample(xLabels, cfg.fontSize, labelGap, measure)
       val need = xSample.need
       val widestX = xSample.widest
@@ -2105,7 +2123,7 @@ fun computeLayout(cfg: LayoutConfig, measure: (String, Double) -> Double): PlotL
     val plot = PyreonChartRect(x = left, y = padTop, w = Math.max(0.0, cfg.width - left - right), h = Math.max(0.0, cfg.height - padTop - bottom))
     if (cfg.horizontal == true) {
       val yTicks = if (cfg.showYAxis) bandTicksY(cfg.categories, plot) else listOf()
-      val xTicks = if (cfg.showXAxis) makeTicks(cfg.yDomain, plot.x, plot.x + plot.w, cfg.yTickCount, cfg.yFormat) else listOf()
+      val xTicks = if (cfg.showXAxis) makeTicks(cfg.yDomain, plot.x, plot.x + plot.w, yCount, cfg.yFormat) else listOf()
       var yEvery = 1
       val nCat = cfg.categories.length
       if (nCat > 0 && plot.h > 0.0) {
@@ -2118,8 +2136,8 @@ fun computeLayout(cfg: LayoutConfig, measure: (String, Double) -> Double): PlotL
       return PlotLayout(plot = plot, xTicks = xTicks, yTicks = yTicks, y2Ticks = listOf(), xDomainUsed = cfg.xDomain, xLabelRotate = 0.0, xLabelEvery = 1, yLabelEvery = yEvery, gutters = gutters)
     }
     val yTicks = if (cfg.showYAxis) valueTicksY(plot.y + plot.h, plot.y) else listOf()
-    val xTicks = if (cfg.showXAxis) if (cfg.categories.length > 0) bandTicks(cfg.categories, plot) else if (cfg.xTime == true) timeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount, cfg.xFormat) else makeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount, cfg.xFormat) else listOf()
-    val y2Ticks = if (hasY2) makeTicks(y2dom, plot.y + plot.h, plot.y, cfg.yTickCount, cfg.y2Format) else listOf()
+    val xTicks = if (cfg.showXAxis) if (cfg.categories.length > 0) bandTicks(cfg.categories, plot) else if (cfg.xTime == true) timeTicks(cfg.xDomain, plot.x, plot.x + plot.w, xCount, cfg.xFormat) else makeTicks(cfg.xDomain, plot.x, plot.x + plot.w, xCount, cfg.xFormat) else listOf()
+    val y2Ticks = if (hasY2) makeTicks(y2dom, plot.y + plot.h, plot.y, yCount, cfg.y2Format) else listOf()
     return PlotLayout(plot = plot, xTicks = xTicks, yTicks = yTicks, y2Ticks = y2Ticks, xDomainUsed = cfg.xDomain, xLabelRotate = rotate, xLabelEvery = every, yLabelEvery = 1, gutters = gutters)
   }
 
@@ -3087,7 +3105,7 @@ fun emphasisOutline(r: PyreonChartRect, level: Int, stroke: String): PyreonDrawC
 
 fun resolveYDomain(spec: ChartSpec): Domain = (spec.yDomain ?: pinDomain(spec, leftAxisSeries(spec)))
 
-fun resolveY2Domain(spec: ChartSpec): Domain = (spec.y2Domain ?: niceDomain(rawExtentOver(rightAxisSeries(spec)), 5.0))
+fun resolveY2Domain(spec: ChartSpec): Domain = (spec.y2Domain ?: niceDomain(rawExtentOver(rightAxisSeries(spec)), valueTicks(spec)))
 
 fun logBounds(spec: ChartSpec): Domain {
     val pinned = (spec.yDomain ?: Domain(min = 0.0, max = 0.0))
@@ -3207,8 +3225,10 @@ fun rightAxisSeries(spec: ChartSpec): List<Series> = spec.series.filter({ s -> s
 
 fun pinDomain(spec: ChartSpec, series: List<Series>): Domain {
     val raw = rawExtentOver(series)
-    return niceDomain(raw, 5.0)
+    return niceDomain(raw, valueTicks(spec))
   }
+
+fun valueTicks(spec: ChartSpec): Double = (spec.yTicks ?: valueTickTarget(spec.width, spec.height, spec.theme.fontSize, spec.horizontal == true))
 
 fun rawExtentOver(series: List<Series>): Domain {
     val stacked = series.filter({ s -> s.kind == "stacked" || s.kind == "stackedArea" })
@@ -3289,7 +3309,7 @@ fun layoutChart(raw: ChartSpec, measure: (String, Double) -> Double): PlotLayout
     val n = seriesMaxLength(spec.series)
     val isLog = raw.yScale == "log"
     val lb = if (isLog) logBounds(raw) else Domain(min = 1.0, max = 10.0)
-    val cfg = LayoutConfig(width = spec.width, height = spec.height, xDomain = if (((spec.xValues ?: listOf())).length > 0) extent((spec.xValues ?: listOf())) else Domain(min = 0.0, max = if (n > 1) (n - 1).toDouble() else 1.0), yDomain = resolveYDomain(spec), categories = spec.categories, fontSize = spec.theme.fontSize, xTickCount = 5.0, yTickCount = 5.0, showXAxis = spec.showXAxis, showYAxis = spec.showYAxis, rightReserve = endLabelReserve(spec, measure), yFormat = (spec.yFormat ?: (if (raw.stackNormalize == true) percent(0) else null)), xFormat = spec.xFormat, xTime = spec.xTime == true, y2Domain = if (hasRightAxis(spec)) resolveY2Domain(spec) else null, y2Format = spec.y2Format, horizontal = spec.horizontal == true, xTitle = spec.xTitle, yTitle = spec.yTitle, y2Title = spec.y2Title, yLog = isLog, yLogMin = lb.min, yLogMax = lb.max, yTime = spec.yTime == true, xLabels = spec.xLabels)
+    val cfg = LayoutConfig(width = spec.width, height = spec.height, xDomain = if (((spec.xValues ?: listOf())).length > 0) extent((spec.xValues ?: listOf())) else Domain(min = 0.0, max = if (n > 1) (n - 1).toDouble() else 1.0), yDomain = resolveYDomain(spec), categories = spec.categories, fontSize = spec.theme.fontSize, xTickCount = (spec.xTicks ?: 0.0), yTickCount = valueTicks(spec), showXAxis = spec.showXAxis, showYAxis = spec.showYAxis, rightReserve = endLabelReserve(spec, measure), yFormat = (spec.yFormat ?: (if (raw.stackNormalize == true) percent(0) else null)), xFormat = spec.xFormat, xTime = spec.xTime == true, y2Domain = if (hasRightAxis(spec)) resolveY2Domain(spec) else null, y2Format = spec.y2Format, horizontal = spec.horizontal == true, xTitle = spec.xTitle, yTitle = spec.yTitle, y2Title = spec.y2Title, yLog = isLog, yLogMin = lb.min, yLogMax = lb.max, yTime = spec.yTime == true, xLabels = spec.xLabels)
     return computeLayout(cfg, measure)
   }
 
@@ -8555,9 +8575,10 @@ fun hitSingleAxis(layout: SingleAxisLayout, px: Double, py: Double): Int {
   }
 
 fun candlestickFrame(candles: List<Ohlc>, w: Double, h: Double, categories: List<String>, fontSize: Double, measure: (String, Double) -> Double): CandlestickFrame {
-    val domain = niceDomain(ohlcExtent(candles), 5.0)
+    val ticks = valueTickTarget(w, h, fontSize, false)
+    val domain = niceDomain(ohlcExtent(candles), ticks)
     val n = candles.length
-    val cfg = LayoutConfig(width = w, height = h, xDomain = Domain(min = 0.0, max = if (n > 1) (n - 1).toDouble() else 1.0), yDomain = domain, categories = categories, fontSize = fontSize, xTickCount = 5.0, yTickCount = 5.0, showXAxis = true, showYAxis = true)
+    val cfg = LayoutConfig(width = w, height = h, xDomain = Domain(min = 0.0, max = if (n > 1) (n - 1).toDouble() else 1.0), yDomain = domain, categories = categories, fontSize = fontSize, xTickCount = 0.0, yTickCount = ticks, showXAxis = true, showYAxis = true)
     val layout = computeLayout(cfg, measure)
     return CandlestickFrame(candles = candles, domain = domain, layout = layout)
   }
@@ -8742,8 +8763,9 @@ fun hitBox(count: Int, plot: PyreonChartRect, px: Double, py: Double): Int {
   }
 
 fun boxplotFrame(rows: List<FiveNumber>, width: Double, height: Double, categories: List<String>, fontSize: Double, measure: (String, Double) -> Double, format: ((Double) -> String)? = null): BoxplotFrame {
-    val domain = niceDomain(boxplotExtent(rows), 5.0)
-    val cfg = LayoutConfig(width = width, height = height, xDomain = Domain(min = 0.0, max = if (rows.length > 1) (rows.length - 1).toDouble() else 1.0), yDomain = domain, categories = categories, fontSize = fontSize, xTickCount = 5.0, yTickCount = 5.0, showXAxis = true, showYAxis = true, yFormat = format)
+    val ticks = valueTickTarget(width, height, fontSize, false)
+    val domain = niceDomain(boxplotExtent(rows), ticks)
+    val cfg = LayoutConfig(width = width, height = height, xDomain = Domain(min = 0.0, max = if (rows.length > 1) (rows.length - 1).toDouble() else 1.0), yDomain = domain, categories = categories, fontSize = fontSize, xTickCount = 0.0, yTickCount = ticks, showXAxis = true, showYAxis = true, yFormat = format)
     return BoxplotFrame(domain = domain, layout = computeLayout(cfg, measure))
   }
 

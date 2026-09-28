@@ -15204,6 +15204,11 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   ]
   // Direct labels (`<Legend direct />`) — ChartSpec field 8, right after showGrid.
   if (readStaticAttr(e, 'endLabels') === true) specArgs.push('endLabels: true')
+  // Tick targets: static numbers only (the count is layout, decided before a frame).
+  for (const k of ['xTicks', 'yTicks'] as const) {
+    const v = readStaticAttr(e, k)
+    if (typeof v === 'number') specArgs.push(`${k}: ${Number.isInteger(v) ? `${v}.0` : v}`)
+  }
   // `yDomain` is ChartSpec field 10, so it goes here — BEFORE `yFormat` — and
   // the position is read off the generated struct rather than restated, since
   // Swift's memberwise init takes its arguments in declaration order. Its

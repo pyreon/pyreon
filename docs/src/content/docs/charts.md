@@ -67,7 +67,7 @@ around a mark adds and removes its series like any other Pyreon child.
 | `<Bar y stack? group? />` `<Line y />` `<Area y />` `<Dot y r? />` | The marks. `stack` / `group` combine bars; `r` turns dots into area-mapped bubbles. |
 | `<Rule y label? />` `<Rule from to />` `<Rule x />` | A reference line (horizontal, or vertical at a continuous x) or band. |
 | `<Label text at? series? />` | A datum-anchored label: at the series' `max` / `min`, or at an index. |
-| `<Axis y format domain />` `<Axis x time hidden />` `<Axis y2 … />` | Axis formatting and domains. |
+| `<Axis y format domain ticks />` `<Axis x time hidden ticks />` `<Axis y2 … />` | Axis formatting and domains. Tick density follows the chart's size — about one value tick per 40px of height, one x tick per 80px of width — and the domain is rounded to the same step, so the axis always ends on a label. `ticks={n}` pins the target. |
 | `<Tooltip crosshair? format? />` | The pointer tooltip. |
 | `<Legend toggle? maxRows? direct? />` | The legend (click toggles series). `direct` labels each line at its last point instead, in the series colour, nudging labels apart when they collide. |
 | `<Zoom inside? navigator? presets? link? brush? window? lock? />` | Pinch/wheel zoom and drag pan, the slider strip, preset buttons, cross-chart linking, the range brush. `window={{ start, end }}` (fractions) is the opening view; `lock` pins its span. |

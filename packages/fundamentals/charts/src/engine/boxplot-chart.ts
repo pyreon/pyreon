@@ -6,7 +6,7 @@
 import { boxplotExtent, hitBox, renderBoxplot } from './boxplot'
 import type { BoxplotOptions, FiveNumber } from './boxplot'
 import type { Formatter } from './format'
-import { computeLayout } from './layout'
+import { computeLayout, valueTickTarget } from './layout'
 import type { LayoutConfig, PlotLayout } from './layout'
 import type { ChartTheme } from './render'
 import { niceDomain } from './scale'
@@ -23,7 +23,8 @@ export interface BoxplotFrame {
  * empty = a numeric x axis (the boxes are still one band each).
  */
 export function boxplotFrame(rows: FiveNumber[], width: Double, height: Double, categories: string[], fontSize: Double, measure: MeasureText, format?: Formatter): BoxplotFrame {
-  const domain = niceDomain(boxplotExtent(rows), 5.0)
+  const ticks = valueTickTarget(width, height, fontSize, false)
+  const domain = niceDomain(boxplotExtent(rows), ticks)
   const cfg: LayoutConfig = {
     width,
     height,
@@ -31,8 +32,8 @@ export function boxplotFrame(rows: FiveNumber[], width: Double, height: Double, 
     yDomain: domain,
     categories,
     fontSize,
-    xTickCount: 5.0,
-    yTickCount: 5.0,
+    xTickCount: 0.0,
+    yTickCount: ticks,
     showXAxis: true,
     showYAxis: true,
     yFormat: format,

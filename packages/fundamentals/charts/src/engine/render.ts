@@ -1,6 +1,6 @@
 // Marks → draw commands. The whole chart, as plain data.
 
-import { computeLayout, layoutBars, layoutBarsH, layoutSeriesPoints, layoutSeriesPointsAt, layoutSeriesPointsH } from './layout'
+import { computeLayout, valueTickTarget, layoutBars, layoutBarsH, layoutSeriesPoints, layoutSeriesPointsAt, layoutSeriesPointsH } from './layout'
 import { DEFAULT_PALETTE } from './palette'
 import { layoutGroupedBars, layoutGroupedBarsH, layoutStackLevels, layoutStackLevelsH, layoutWaterfall, normalizeStack, stackLevels, stackLevelsExtent, waterfallExtent } from './stack'
 import type { StackLevels, StackSegment } from './stack'
@@ -251,6 +251,13 @@ export interface ChartSpec {
    * data. The plot gives up the right gutter the widest name needs.
    */
   endLabels?: boolean | undefined
+  /**
+   * Target tick counts for the x / y (value) axis. Unset, the count follows
+   * the chart's size — about one y tick per 40px and one x tick per 80px — so a
+   * phone-width chart is not crowded and a tall one is not sparse.
+   */
+  xTicks?: Double | undefined
+  yTicks?: Double | undefined
   /** Pins the y domain; when absent it is derived from the data. */
   yDomain?: Domain | undefined
   /** Tick label formatting, per axis. See `LayoutConfig` for why it matters. */
@@ -438,7 +445,7 @@ export function resolveYDomain(spec: ChartSpec): Domain {
  * it anyway.
  */
 export function resolveY2Domain(spec: ChartSpec): Domain {
-  return spec.y2Domain ?? niceDomain(rawExtentOver(rightAxisSeries(spec)), 5.0)
+  return spec.y2Domain ?? niceDomain(rawExtentOver(rightAxisSeries(spec)), valueTicks(spec))
 }
 
 /**
@@ -578,7 +585,12 @@ function rightAxisSeries(spec: ChartSpec): Series[] {
  */
 function pinDomain(spec: ChartSpec, series: Series[]): Domain {
   const raw = rawExtentOver(series)
-  return niceDomain(raw, 5.0)
+  return niceDomain(raw, valueTicks(spec))
+}
+
+/** The value-axis tick target: the author's `yTicks`, else sized to the chart (`valueTickTarget`). */
+export function valueTicks(spec: ChartSpec): Double {
+  return spec.yTicks ?? valueTickTarget(spec.width, spec.height, spec.theme.fontSize, spec.horizontal === true)
 }
 
 /** The un-niced extent a set of series spans: stack totals, waterfall running totals, band floors and error bars; zero included for bars and areas. */
@@ -681,8 +693,8 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
     yDomain: resolveYDomain(spec),
     categories: spec.categories,
     fontSize: spec.theme.fontSize,
-    xTickCount: 5.0,
-    yTickCount: 5.0,
+    xTickCount: spec.xTicks ?? 0.0,
+    yTickCount: valueTicks(spec),
     showXAxis: spec.showXAxis,
     showYAxis: spec.showYAxis,
     // Assigned rather than conditionally SPREAD. `...(cond ? { k } : {})` is

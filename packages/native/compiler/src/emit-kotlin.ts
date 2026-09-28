@@ -12967,6 +12967,10 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     `showYAxis = ${bool('showYAxis', true)}`,
     `showGrid = ${bool('showGrid', true)}`,
     ...(readStaticAttrKotlin(e, 'endLabels') === true ? ['endLabels = true'] : []),
+    ...(['xTicks', 'yTicks'] as const).flatMap((k) => {
+      const v = readStaticAttrKotlin(e, k)
+      return typeof v === 'number' ? [`${k} = ${Number.isInteger(v) ? `${v}.0` : v}`] : []
+    }),
   ]
   // Mirror of the Swift emitter — ChartSpec field 10, before `yFormat`.
   const yDom = chartAttrExprKotlin(e, 'yDomain')

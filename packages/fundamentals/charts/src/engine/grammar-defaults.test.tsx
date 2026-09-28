@@ -2,7 +2,7 @@
 // in its own colour, spread apart so no two overlap.
 import { describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
-import { Area, Bar, Legend, Line, Zoom, resolveGrammar } from './grammar'
+import { Area, Axis, Bar, Legend, Line, Zoom, resolveGrammar } from './grammar'
 import { defaultTheme, renderChart, spreadLabels } from './render'
 import type { ChartSpec, Series } from './render'
 import { measureApprox } from './svg'
@@ -81,5 +81,14 @@ describe('<Zoom window lock>', () => {
     expect(g.props.initialZoom).toEqual({ start: 0.5, end: 1 })
     expect(g.props.zoomLimits).toEqual({ lock: true })
     expect(g.props.dataZoom).toBe(true)
+  })
+})
+
+describe('<Axis ticks>', () => {
+  it('sets the x / y tick targets on the resolved props', () => {
+    const rows = [{ m: 'Jan', v: 1 }]
+    const r = resolveGrammar<{ m: string; v: number }>(rows, { data: rows, x: 'm' }, [h(Line, { y: 'v' }), h(Axis, { y: true, ticks: 4 }), h(Axis, { x: true, ticks: 3 })])
+    expect(r.props.yTicks).toBe(4)
+    expect(r.props.xTicks).toBe(3)
   })
 })

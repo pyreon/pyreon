@@ -820,6 +820,8 @@ public struct ChartSpec {
   public var showYAxis: Bool
   public var showGrid: Bool
   public var endLabels: Bool? = nil
+  public var xTicks: Double? = nil
+  public var yTicks: Double? = nil
   public var yDomain: Domain? = nil
   public var yFormat: ((Double) -> String)? = nil
   public var xFormat: ((Double) -> String)? = nil
@@ -839,7 +841,7 @@ public struct ChartSpec {
   public var yTitle: String? = nil
   public var y2Title: String? = nil
   public var xLabels: String? = nil
-  public init(width: Double, height: Double, series: [Series], categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, endLabels: Bool? = nil, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil) {
+  public init(width: Double, height: Double, series: [Series], categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, endLabels: Bool? = nil, xTicks: Double? = nil, yTicks: Double? = nil, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil) {
     self.width = width
     self.height = height
     self.series = series
@@ -849,6 +851,8 @@ public struct ChartSpec {
     self.showYAxis = showYAxis
     self.showGrid = showGrid
     self.endLabels = endLabels
+    self.xTicks = xTicks
+    self.yTicks = yTicks
     self.yDomain = yDomain
     self.yFormat = yFormat
     self.xFormat = xFormat
@@ -3034,6 +3038,10 @@ private let PIE_LABEL_DEFAULTS: PieLabelOptions = PieLabelOptions(position: "out
 
 private let RADAR_START = -Double.pi / 2.0
 
+private let Y_TICK_SPACING = 40.0
+
+private let X_TICK_SPACING = 80.0
+
 private let POLYGON_CIRCLE_SIDES = 24
 
 private let AREA_MARK_OPACITY = 0.3
@@ -4665,16 +4673,29 @@ public func hitRadarIndex(_ axes: [RadarAxis], _ series: [RadarSeries], _ box: P
     return hit
   }
 
+public func autoTickCount(_ extent: Double, _ spacing: Double) -> Double {
+    let n = floor(Double(extent / spacing + 0.5))
+    return n < 2.0 ? 2.0 : n > 10.0 ? 10.0 : n
+  }
+
+public func valueTickTarget(_ width: Double, _ height: Double, _ fontSize: Double, _ horizontal: Bool) -> Double {
+    if horizontal {
+      return autoTickCount(width - 80.0, X_TICK_SPACING)
+    }
+    return autoTickCount(height - 8.0 - (fontSize + 10.0), Y_TICK_SPACING)
+  }
+
 public func computeLayout(_ cfg: LayoutConfig, _ measure: (String, Double) -> Double) -> PlotLayout {
     let padTop = 8.0
     let padRight = 12.0
     let labelGap = 6.0
     let tickLen = 4.0
+    let yCount = cfg.yTickCount > 0.0 ? cfg.yTickCount : valueTickTarget(cfg.width, cfg.height, cfg.fontSize, cfg.horizontal == true)
     let titleH = cfg.fontSize + labelGap
     let isLog = cfg.yLog == true
     let logMin = (cfg.yLogMin ?? 1.0)
     let logMax = (cfg.yLogMax ?? 10.0)
-    let valueTicksY = { (r0: Double, r1: Double) in isLog ? logViewTicks(logMin, logMax, r0, r1, cfg.yFormat) : cfg.yTime == true ? timeTicks(cfg.yDomain, r0, r1, cfg.yTickCount, cfg.yFormat) : makeTicks(cfg.yDomain, r0, r1, cfg.yTickCount, cfg.yFormat) }
+    let valueTicksY = { (r0: Double, r1: Double) in isLog ? logViewTicks(logMin, logMax, r0, r1, cfg.yFormat) : cfg.yTime == true ? timeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) : makeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) }
     let provisionalLabels = cfg.horizontal == true ? cfg.showYAxis ? cfg.categories : [] : cfg.showYAxis ? valueTicksY(cfg.height, 0.0).map({ t in t.label }) : []
     let yProvisional = labelSample(provisionalLabels, cfg.fontSize, 0.0, measure)
     let widest = yProvisional.widest
@@ -4685,7 +4706,7 @@ public func computeLayout(_ cfg: LayoutConfig, _ measure: (String, Double) -> Do
     let hasY2 = cfg.y2Domain != nil && cfg.horizontal != true && cfg.showYAxis
     var widest2 = 0.0
     if hasY2 {
-      for label in makeTicks(y2dom, cfg.height, 0.0, cfg.yTickCount, cfg.y2Format).map({ t in t.label }) {
+      for label in makeTicks(y2dom, cfg.height, 0.0, yCount, cfg.y2Format).map({ t in t.label }) {
         let w = measure(label, cfg.fontSize)
         if w > widest2 {
           widest2 = w
@@ -4696,12 +4717,13 @@ public func computeLayout(_ cfg: LayoutConfig, _ measure: (String, Double) -> Do
     let left = yBand
     let right = (hasY2 ? widest2 + labelGap + tickLen : padRight) + y2TitleH + ((cfg.rightReserve ?? 0.0))
     let provisionalW = max(0.0, cfg.width - left - right)
+    let xCount = cfg.xTickCount > 0.0 ? cfg.xTickCount : autoTickCount(provisionalW, X_TICK_SPACING)
     let mode = (cfg.xLabels ?? "auto")
     var rotate = 0.0
     var every = 1
     var slantH = 0.0
     if cfg.showXAxis && cfg.horizontal != true {
-      let xLabels = cfg.categories.count > 0 ? cfg.categories : (cfg.xTime == true ? timeTicks(cfg.xDomain, 0.0, provisionalW, cfg.xTickCount, cfg.xFormat) : makeTicks(cfg.xDomain, 0.0, provisionalW, cfg.xTickCount, cfg.xFormat)).map({ t in t.label })
+      let xLabels = cfg.categories.count > 0 ? cfg.categories : (cfg.xTime == true ? timeTicks(cfg.xDomain, 0.0, provisionalW, xCount, cfg.xFormat) : makeTicks(cfg.xDomain, 0.0, provisionalW, xCount, cfg.xFormat)).map({ t in t.label })
       let xSample = labelSample(xLabels, cfg.fontSize, labelGap, measure)
       let need = xSample.need
       let widestX = xSample.widest
@@ -4729,7 +4751,7 @@ public func computeLayout(_ cfg: LayoutConfig, _ measure: (String, Double) -> Do
     let plot = PyreonChartRect(x: left, y: padTop, w: max(0.0, cfg.width - left - right), h: max(0.0, cfg.height - padTop - bottom))
     if cfg.horizontal == true {
       let yTicks = cfg.showYAxis ? bandTicksY(cfg.categories, plot) : []
-      let xTicks = cfg.showXAxis ? makeTicks(cfg.yDomain, plot.x, plot.x + plot.w, cfg.yTickCount, cfg.yFormat) : []
+      let xTicks = cfg.showXAxis ? makeTicks(cfg.yDomain, plot.x, plot.x + plot.w, yCount, cfg.yFormat) : []
       var yEvery = 1
       let nCat = cfg.categories.count
       if nCat > 0 && plot.h > 0.0 {
@@ -4742,8 +4764,8 @@ public func computeLayout(_ cfg: LayoutConfig, _ measure: (String, Double) -> Do
       return PlotLayout(plot: plot, xTicks: xTicks, yTicks: yTicks, y2Ticks: [], xDomainUsed: cfg.xDomain, xLabelRotate: 0.0, xLabelEvery: 1, yLabelEvery: yEvery, gutters: gutters)
     }
     let yTicks = cfg.showYAxis ? valueTicksY(plot.y + plot.h, plot.y) : []
-    let xTicks = cfg.showXAxis ? cfg.categories.count > 0 ? bandTicks(cfg.categories, plot) : cfg.xTime == true ? timeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount, cfg.xFormat) : makeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount, cfg.xFormat) : []
-    let y2Ticks = hasY2 ? makeTicks(y2dom, plot.y + plot.h, plot.y, cfg.yTickCount, cfg.y2Format) : []
+    let xTicks = cfg.showXAxis ? cfg.categories.count > 0 ? bandTicks(cfg.categories, plot) : cfg.xTime == true ? timeTicks(cfg.xDomain, plot.x, plot.x + plot.w, xCount, cfg.xFormat) : makeTicks(cfg.xDomain, plot.x, plot.x + plot.w, xCount, cfg.xFormat) : []
+    let y2Ticks = hasY2 ? makeTicks(y2dom, plot.y + plot.h, plot.y, yCount, cfg.y2Format) : []
     return PlotLayout(plot: plot, xTicks: xTicks, yTicks: yTicks, y2Ticks: y2Ticks, xDomainUsed: cfg.xDomain, xLabelRotate: rotate, xLabelEvery: every, yLabelEvery: 1, gutters: gutters)
   }
 
@@ -5711,7 +5733,7 @@ public func emphasisOutline(_ r: PyreonChartRect, _ level: Int, _ stroke: String
 
 public func resolveYDomain(_ spec: ChartSpec) -> Domain { (spec.yDomain ?? pinDomain(spec, leftAxisSeries(spec))) }
 
-public func resolveY2Domain(_ spec: ChartSpec) -> Domain { (spec.y2Domain ?? niceDomain(rawExtentOver(rightAxisSeries(spec)), 5.0)) }
+public func resolveY2Domain(_ spec: ChartSpec) -> Domain { (spec.y2Domain ?? niceDomain(rawExtentOver(rightAxisSeries(spec)), valueTicks(spec))) }
 
 public func logBounds(_ spec: ChartSpec) -> Domain {
     let pinned = (spec.yDomain ?? Domain(min: 0.0, max: 0.0))
@@ -5831,8 +5853,10 @@ public func rightAxisSeries(_ spec: ChartSpec) -> [Series] { spec.series.filter(
 
 public func pinDomain(_ spec: ChartSpec, _ series: [Series]) -> Domain {
     let raw = rawExtentOver(series)
-    return niceDomain(raw, 5.0)
+    return niceDomain(raw, valueTicks(spec))
   }
+
+public func valueTicks(_ spec: ChartSpec) -> Double { (spec.yTicks ?? valueTickTarget(spec.width, spec.height, spec.theme.fontSize, spec.horizontal == true)) }
 
 public func rawExtentOver(_ series: [Series]) -> Domain {
     let stacked = series.filter({ s in s.kind == "stacked" || s.kind == "stackedArea" })
@@ -5913,7 +5937,7 @@ public func layoutChart(_ raw: ChartSpec, _ measure: (String, Double) -> Double)
     let n = seriesMaxLength(spec.series)
     let isLog = raw.yScale == "log"
     let lb = isLog ? logBounds(raw) : Domain(min: 1.0, max: 10.0)
-    let cfg = LayoutConfig(width: spec.width, height: spec.height, xDomain: ((spec.xValues ?? [])).count > 0 ? extent((spec.xValues ?? [])) : Domain(min: 0.0, max: n > 1 ? Double(n - 1) : 1.0), yDomain: resolveYDomain(spec), categories: spec.categories, fontSize: spec.theme.fontSize, xTickCount: 5.0, yTickCount: 5.0, showXAxis: spec.showXAxis, showYAxis: spec.showYAxis, rightReserve: endLabelReserve(spec, measure), yFormat: (spec.yFormat ?? (raw.stackNormalize == true ? percent(0) : nil)), xFormat: spec.xFormat, xTime: spec.xTime == true, y2Domain: hasRightAxis(spec) ? resolveY2Domain(spec) : nil, y2Format: spec.y2Format, horizontal: spec.horizontal == true, xTitle: spec.xTitle, yTitle: spec.yTitle, y2Title: spec.y2Title, yLog: isLog, yLogMin: lb.min, yLogMax: lb.max, yTime: spec.yTime == true, xLabels: spec.xLabels)
+    let cfg = LayoutConfig(width: spec.width, height: spec.height, xDomain: ((spec.xValues ?? [])).count > 0 ? extent((spec.xValues ?? [])) : Domain(min: 0.0, max: n > 1 ? Double(n - 1) : 1.0), yDomain: resolveYDomain(spec), categories: spec.categories, fontSize: spec.theme.fontSize, xTickCount: (spec.xTicks ?? 0.0), yTickCount: valueTicks(spec), showXAxis: spec.showXAxis, showYAxis: spec.showYAxis, rightReserve: endLabelReserve(spec, measure), yFormat: (spec.yFormat ?? (raw.stackNormalize == true ? percent(0) : nil)), xFormat: spec.xFormat, xTime: spec.xTime == true, y2Domain: hasRightAxis(spec) ? resolveY2Domain(spec) : nil, y2Format: spec.y2Format, horizontal: spec.horizontal == true, xTitle: spec.xTitle, yTitle: spec.yTitle, y2Title: spec.y2Title, yLog: isLog, yLogMin: lb.min, yLogMax: lb.max, yTime: spec.yTime == true, xLabels: spec.xLabels)
     return computeLayout(cfg, measure)
   }
 
@@ -11170,9 +11194,10 @@ public func hitSingleAxis(_ layout: SingleAxisLayout, _ px: Double, _ py: Double
   }
 
 public func candlestickFrame(_ candles: [Ohlc], _ w: Double, _ h: Double, _ categories: [String], _ fontSize: Double, _ measure: (String, Double) -> Double) -> CandlestickFrame {
-    let domain = niceDomain(ohlcExtent(candles), 5.0)
+    let ticks = valueTickTarget(w, h, fontSize, false)
+    let domain = niceDomain(ohlcExtent(candles), ticks)
     let n = candles.count
-    let cfg = LayoutConfig(width: w, height: h, xDomain: Domain(min: 0.0, max: n > 1 ? Double(n - 1) : 1.0), yDomain: domain, categories: categories, fontSize: fontSize, xTickCount: 5.0, yTickCount: 5.0, showXAxis: true, showYAxis: true)
+    let cfg = LayoutConfig(width: w, height: h, xDomain: Domain(min: 0.0, max: n > 1 ? Double(n - 1) : 1.0), yDomain: domain, categories: categories, fontSize: fontSize, xTickCount: 0.0, yTickCount: ticks, showXAxis: true, showYAxis: true)
     let layout = computeLayout(cfg, measure)
     return CandlestickFrame(candles: candles, domain: domain, layout: layout)
   }
@@ -11357,8 +11382,9 @@ public func hitBox(_ count: Int, _ plot: PyreonChartRect, _ px: Double, _ py: Do
   }
 
 public func boxplotFrame(_ rows: [FiveNumber], _ width: Double, _ height: Double, _ categories: [String], _ fontSize: Double, _ measure: (String, Double) -> Double, _ format: ((Double) -> String)? = nil) -> BoxplotFrame {
-    let domain = niceDomain(boxplotExtent(rows), 5.0)
-    let cfg = LayoutConfig(width: width, height: height, xDomain: Domain(min: 0.0, max: rows.count > 1 ? Double(rows.count - 1) : 1.0), yDomain: domain, categories: categories, fontSize: fontSize, xTickCount: 5.0, yTickCount: 5.0, showXAxis: true, showYAxis: true, yFormat: format)
+    let ticks = valueTickTarget(width, height, fontSize, false)
+    let domain = niceDomain(boxplotExtent(rows), ticks)
+    let cfg = LayoutConfig(width: width, height: height, xDomain: Domain(min: 0.0, max: rows.count > 1 ? Double(rows.count - 1) : 1.0), yDomain: domain, categories: categories, fontSize: fontSize, xTickCount: 0.0, yTickCount: ticks, showXAxis: true, showYAxis: true, yFormat: format)
     return BoxplotFrame(domain: domain, layout: computeLayout(cfg, measure))
   }
 

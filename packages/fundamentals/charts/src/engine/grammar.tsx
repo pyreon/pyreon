@@ -133,6 +133,12 @@ export interface AxisProps {
   domain?: Domain
   /** x or y: the tick labels are calendar steps (epoch-ms values). */
   time?: boolean
+  /**
+   * x or y: the target tick count. Unset, it follows the chart's size (about
+   * one y tick per 40px, one x tick per 80px); the nice step decides the exact
+   * number.
+   */
+  ticks?: number
   /** Hide the axis. */
   hidden?: boolean
   /** A title in its own line outside the tick labels. */
@@ -628,6 +634,7 @@ export function resolveGrammar<T>(rows: T[], chart: ChartProps<T>, children: VNo
         if (a.x === true) {
           if (a.format !== undefined) props.xFormat = a.format
           if (a.time === true) props.xTime = true
+          if (a.ticks !== undefined) props.xTicks = a.ticks
           if (a.hidden === true) props.showXAxis = false
           if (a.title !== undefined) props.xTitle = a.title
           if (a.labels !== undefined) props.xLabels = a.labels
@@ -638,6 +645,7 @@ export function resolveGrammar<T>(rows: T[], chart: ChartProps<T>, children: VNo
         } else {
           if (a.format !== undefined) props.format = a.format
           if (a.domain !== undefined) props.yDomain = a.domain
+          if (a.ticks !== undefined) props.yTicks = a.ticks
           if (a.hidden === true) props.showYAxis = false
           if (a.title !== undefined) props.yTitle = a.title
           if (a.time === true) props.yTime = true
@@ -878,7 +886,7 @@ export function Chart<T>(props: ChartProps<T>): VNodeChild {
     xValue: reactiveProp(() => (props.xValue === undefined ? undefined : channel<T, Double>(props.xValue))),
   }
   // Every `<PlotChart>` prop a child can set, forwarded as an accessor; the chart's own props win when both are given.
-  const forwarded = ['format', 'xFormat', 'xTime', 'showXAxis', 'showYAxis', 'yDomain', 'y2Format', 'y2Domain', 'tooltip', 'crosshair', 'tooltipFormatter', 'showLegend', 'endLabels', 'legendToggle', 'legendMaxRows', 'legendPosition', 'dataZoom', 'navigator', 'initialZoom', 'zoomLimits', 'zoomPresets', 'link', 'brush', 'onBrush', 'annotations', 'markers', 'toolbox', 'xTitle', 'yTitle', 'y2Title', 'xLabels', 'yScale', 'yTime', 'stackNormalize'] as const
+  const forwarded = ['format', 'xFormat', 'xTime', 'showXAxis', 'showYAxis', 'yDomain', 'y2Format', 'y2Domain', 'tooltip', 'crosshair', 'tooltipFormatter', 'showLegend', 'endLabels', 'xTicks', 'yTicks', 'legendToggle', 'legendMaxRows', 'legendPosition', 'dataZoom', 'navigator', 'initialZoom', 'zoomLimits', 'zoomPresets', 'link', 'brush', 'onBrush', 'annotations', 'markers', 'toolbox', 'xTitle', 'yTitle', 'y2Title', 'xLabels', 'yScale', 'yTime', 'stackNormalize'] as const
   for (const key of forwarded) plotProps[key] = reactiveProp(() => (props as unknown as Record<string, unknown>)[key] ?? (resolved().props as Record<string, unknown>)[key])
   // Every other `<PlotChart>` prop, the events/actions model included — the grammar reaches the whole host.
   for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'showGrid', 'horizontal', 'animate', 'updateAnimation', 'updateDuration', 'universalTransition', 'maxPoints', 'keyboard', 'accessibleTable', 'class', 'handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'onZoom', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'seriesLabels', 'onSaveImage', 'locale'] as const) {

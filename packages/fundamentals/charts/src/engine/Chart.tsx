@@ -67,6 +67,9 @@ export interface PlotChartProps<T> {
   showLegend?: boolean
   /** Name each line and area at its last point instead of in a legend box (`<Legend direct />`). */
   endLabels?: boolean
+  /** Target tick counts (see `<Axis ticks>`); unset, sized to the chart. */
+  xTicks?: number
+  yTicks?: number
   /** Where the legend sits; `top` by default. `left`/`right` stack the entries beside the plot. */
   legendPosition?: LegendPosition
   /**
@@ -807,6 +810,8 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     showYAxis: props.showYAxis ?? true,
     showGrid: props.showGrid ?? true,
     endLabels: props.endLabels === true,
+    ...(props.xTicks !== undefined ? { xTicks: props.xTicks } : {}),
+    ...(props.yTicks !== undefined ? { yTicks: props.yTicks } : {}),
     yFormat: resolvedFormat(),
     xFormat: resolvedXFormat(),
     ...(props.xTime === true ? { xTime: true } : {}),

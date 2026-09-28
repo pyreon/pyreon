@@ -105,3 +105,23 @@ export function C() { return <Chart data={ROWS} x="year"><Line y="a" /></Chart> 
     if (!k.skipped) expect(k.ok, k.error).toBe(true)
   })
 })
+
+describe('<Axis ticks> on native', () => {
+  const tsrc = `import { Axis, Chart, Line } from '@pyreon/charts'
+interface Row { m: string; a: number }
+const ROWS: Row[] = [{ m: 'Jan', a: 1 }, { m: 'Feb', a: 3 }]
+export function C() { return <Chart data={ROWS} x="m"><Line y="a" /><Axis y ticks={4} /><Axis x ticks={3} /></Chart> }
+`
+  it('lowers both tick targets into the spec and compiles on both targets', () => {
+    const sw = transform(tsrc, { target: 'swift' })
+    expect(sw.warnings).toEqual([])
+    expect(sw.code).toContain('xTicks: 3.0, yTicks: 4.0')
+    const kt = transform(tsrc, { target: 'kotlin' })
+    expect(kt.code).toContain('xTicks = 3.0')
+    expect(kt.code).toContain('yTicks = 4.0')
+    const s = validateSwiftWithStubs(sw.code)
+    if (!s.skipped) expect(s.ok, s.error).toBe(true)
+    const k = validateKotlin(kt.code)
+    if (!k.skipped) expect(k.ok, k.error).toBe(true)
+  })
+})

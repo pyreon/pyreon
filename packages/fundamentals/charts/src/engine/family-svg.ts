@@ -51,7 +51,7 @@ import type { CalendarOptions } from './calendar'
 import { calendarValues } from './calendar-web'
 import type { FunnelOptions, FunnelStage } from './funnel'
 import type { HeatGrid } from './heat'
-import { computeLayout } from './layout'
+import { computeLayout, valueTickTarget } from './layout'
 import { niceDomain } from './scale'
 import { defaultTheme } from './render'
 import type { ChartTheme } from './render'
@@ -378,7 +378,8 @@ export function candlestickToSvg<T>(options: CandlestickToSvgOptions<T>): string
     low: options.low(d, i),
     close: options.close(d, i),
   }))
-  const domain = niceDomain(ohlcExtent(candles), 5.0)
+  const ticks = valueTickTarget(width, height, t.fontSize, false)
+  const domain = niceDomain(ohlcExtent(candles), ticks)
   const measure = options.measure ?? measureApprox()
   const l = computeLayout(
     {
@@ -388,8 +389,8 @@ export function candlestickToSvg<T>(options: CandlestickToSvgOptions<T>): string
       yDomain: domain,
       categories: options.x !== undefined ? rows.map((d, i) => options.x!(d, i)) : [],
       fontSize: t.fontSize,
-      xTickCount: 5.0,
-      yTickCount: 5.0,
+      xTickCount: 0.0,
+      yTickCount: ticks,
       showXAxis: true,
       showYAxis: true,
       yFormat: options.format,

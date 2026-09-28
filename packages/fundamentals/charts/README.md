@@ -44,7 +44,7 @@ annotation. Marks are children
 and draw in order; `<Rule>` / `<Axis>` / `<Tooltip>` / `<Legend>` / `<Zoom>` declare
 the rest as data — `<Legend direct />` labels each line at its end instead of a
 legend box, `<Zoom window={{ start: 0.5, end: 1 }} lock />` opens zoomed with a
-fixed span, `<Cell visualMap />` adds a continuous colour legend. `color="region"` pivots long-format rows into one series per
+fixed span, `<Cell visualMap />` adds a continuous colour legend. Tick density follows the chart's size, so a phone-width chart is not crowded and a dashboard is not sparse; `<Axis y ticks={4} />` pins it. `color="region"` pivots long-format rows into one series per
 value. The `<PlotChart marks={[bars(…)]}>` array form is the same spec and stays
 supported; on native the compiler desugars one to the other.
 

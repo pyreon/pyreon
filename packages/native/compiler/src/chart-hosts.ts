@@ -965,6 +965,8 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
         if (flagOn(child, 'x')) {
           if (format !== undefined) attrs.push({ kind: 'attr', name: 'xFormat', value: format })
           if (flagOn(child, 'time')) attrs.push({ kind: 'attr', name: 'xTime', value: lit(true) })
+          const xTicks = attrOf(child, 'ticks')
+          if (xTicks !== undefined) attrs.push({ kind: 'attr', name: 'xTicks', value: xTicks })
           if (flagOn(child, 'hidden')) attrs.push({ kind: 'attr', name: 'showXAxis', value: lit(false) })
           if (title !== undefined) attrs.push({ kind: 'attr', name: 'xTitle', value: title })
           const labels = attrOf(child, 'labels')
@@ -975,6 +977,8 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
           if (title !== undefined) attrs.push({ kind: 'attr', name: 'y2Title', value: title })
         } else {
           if (format !== undefined) attrs.push({ kind: 'attr', name: 'format', value: format })
+          const yTicks = attrOf(child, 'ticks')
+          if (yTicks !== undefined) attrs.push({ kind: 'attr', name: 'yTicks', value: yTicks })
           if (flagOn(child, 'hidden')) attrs.push({ kind: 'attr', name: 'showYAxis', value: lit(false) })
           if (title !== undefined) attrs.push({ kind: 'attr', name: 'yTitle', value: title })
           if (flagOn(child, 'time')) attrs.push({ kind: 'attr', name: 'yTime', value: lit(true) })

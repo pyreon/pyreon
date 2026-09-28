@@ -50,7 +50,11 @@ export interface LayoutConfig {
   /** Category labels for a band x-axis; empty for a numeric one. */
   categories: string[]
   fontSize: Double
-  /** Target tick counts; the nice-step algorithm decides the actual number. */
+  /**
+   * Target tick counts; the nice-step algorithm decides the actual number.
+   * `0` sizes the count from the chart's pixel size (`valueTickTarget` /
+   * `autoTickCount`).
+   */
   xTickCount: Double
   yTickCount: Double
   showXAxis: boolean
@@ -129,11 +133,43 @@ export interface LayoutConfig {
  * measurement cannot happen during drawing. Each backend answers it from its
  * own font metrics.
  */
+/** Pixels between y ticks, and between x ticks (whose labels are wider), that the auto count aims for. */
+const Y_TICK_SPACING = 40.0
+const X_TICK_SPACING = 80.0
+
+/**
+ * A tick count for an axis `extent` pixels long: one tick per `spacing`
+ * pixels, clamped to 2–10. Observable Plot sizes ticks the same way; a fixed
+ * count is crowded on a phone and sparse on a dashboard.
+ */
+export function autoTickCount(extent: Double, spacing: Double): Double {
+  // floor(x + 0.5), not Math.round: Kotlin's Math.round returns a Long.
+  const n = Math.floor(extent / spacing + 0.5)
+  return n < 2.0 ? 2.0 : n > 10.0 ? 10.0 : n
+}
+
+/**
+ * The value-axis tick target for a chart of this size — the count its domain
+ * is niced to AND its ticks are drawn at. The two must agree: a domain niced
+ * to one step and ticked at another ends on an unlabelled bound (a 0–8 axis
+ * labelled `0, 5`). Vertical charts size it from the plot height the gutters
+ * leave; a horizontal chart's value axis runs along x, so it sizes from the
+ * width less a typical category gutter.
+ */
+export function valueTickTarget(width: Double, height: Double, fontSize: Double, horizontal: boolean): Double {
+  if (horizontal) return autoTickCount(width - 80.0, X_TICK_SPACING)
+  return autoTickCount(height - 8.0 - (fontSize + 10.0), Y_TICK_SPACING)
+}
+
 export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayout {
   const padTop = 8.0
   const padRight = 12.0
   const labelGap = 6.0
   const tickLen = 4.0
+  // Tick density follows the chart's size (see `valueTickTarget`); decided
+  // once so the gutter-sizing pass, the final pass and the domain's nicing
+  // all use the same step.
+  const yCount = cfg.yTickCount > 0.0 ? cfg.yTickCount : valueTickTarget(cfg.width, cfg.height, cfg.fontSize, cfg.horizontal === true)
   const titleH = cfg.fontSize + labelGap
   const isLog = cfg.yLog === true
   const logMin = cfg.yLogMin ?? 1.0
@@ -147,8 +183,8 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
     isLog
       ? logViewTicks(logMin, logMax, r0, r1, cfg.yFormat)
       : cfg.yTime === true
-        ? timeTicks(cfg.yDomain, r0, r1, cfg.yTickCount, cfg.yFormat)
-        : makeTicks(cfg.yDomain, r0, r1, cfg.yTickCount, cfg.yFormat)
+        ? timeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat)
+        : makeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat)
 
   // Provisional y-side labels, purely to size the left gutter. Vertical
   // charts measure VALUE labels there; a horizontal chart puts CATEGORIES on
@@ -179,7 +215,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   const hasY2 = cfg.y2Domain !== undefined && cfg.horizontal !== true && cfg.showYAxis
   let widest2 = 0.0
   if (hasY2) {
-    for (const label of makeTicks(y2dom, cfg.height, 0.0, cfg.yTickCount, cfg.y2Format).map((t) => t.label)) {
+    for (const label of makeTicks(y2dom, cfg.height, 0.0, yCount, cfg.y2Format).map((t) => t.label)) {
       const w = measure(label, cfg.fontSize)
       if (w > widest2) widest2 = w
     }
@@ -193,6 +229,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   // labels are provisionally laid out over the width the plot will have,
   // measured, and the mode is chosen before the plot rect exists.
   const provisionalW = Math.max(0.0, cfg.width - left - right)
+  const xCount = cfg.xTickCount > 0.0 ? cfg.xTickCount : autoTickCount(provisionalW, X_TICK_SPACING)
   const mode = cfg.xLabels ?? 'auto'
   let rotate = 0.0
   let every = 1
@@ -201,8 +238,8 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
     const xLabels = cfg.categories.length > 0
       ? cfg.categories
       : (cfg.xTime === true
-          ? timeTicks(cfg.xDomain, 0.0, provisionalW, cfg.xTickCount, cfg.xFormat)
-          : makeTicks(cfg.xDomain, 0.0, provisionalW, cfg.xTickCount, cfg.xFormat)).map((t) => t.label)
+          ? timeTicks(cfg.xDomain, 0.0, provisionalW, xCount, cfg.xFormat)
+          : makeTicks(cfg.xDomain, 0.0, provisionalW, xCount, cfg.xFormat)).map((t) => t.label)
     const xSample = labelSample(xLabels, cfg.fontSize, labelGap, measure)
     const need = xSample.need
     const widestX = xSample.widest
@@ -239,7 +276,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
     // keeps its "$3.2K" labels without re-wiring anything.
     const yTicks = cfg.showYAxis ? bandTicksY(cfg.categories, plot) : []
     const xTicks = cfg.showXAxis
-      ? makeTicks(cfg.yDomain, plot.x, plot.x + plot.w, cfg.yTickCount, cfg.yFormat)
+      ? makeTicks(cfg.yDomain, plot.x, plot.x + plot.w, yCount, cfg.yFormat)
       : []
     // Category bands too narrow for a line of text draw every k-th label.
     let yEvery = 1
@@ -260,12 +297,12 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
     ? cfg.categories.length > 0
       ? bandTicks(cfg.categories, plot)
       : cfg.xTime === true
-        ? timeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount, cfg.xFormat)
-        : makeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount, cfg.xFormat)
+        ? timeTicks(cfg.xDomain, plot.x, plot.x + plot.w, xCount, cfg.xFormat)
+        : makeTicks(cfg.xDomain, plot.x, plot.x + plot.w, xCount, cfg.xFormat)
     : []
 
   const y2Ticks = hasY2
-    ? makeTicks(y2dom, plot.y + plot.h, plot.y, cfg.yTickCount, cfg.y2Format)
+    ? makeTicks(y2dom, plot.y + plot.h, plot.y, yCount, cfg.y2Format)
     : []
 
   return { plot, xTicks, yTicks, y2Ticks, xDomainUsed: cfg.xDomain, xLabelRotate: rotate, xLabelEvery: every, yLabelEvery: 1, gutters }
