@@ -29,8 +29,9 @@ npx lathe init
 ```
 
 `lathe init` finds what the project generates from today — an orval,
-`@hey-api/openapi-ts` or kubb config, an `openapi-typescript` script, or a
-bare `openapi.yaml` / `openapi.json` — and:
+`@hey-api/openapi-ts` or kubb config, an orval or `openapi-ts` run from flags
+alone in a `package.json` script (`orval --input spec.yaml --output src/api.ts`),
+an `openapi-typescript` script, or a bare `openapi.yaml` / `openapi.json` — and:
 
 1. writes a `lathe` section into `pyreon.config.ts` (creating it, or adding one
    entry to the one you have — a `lathe` section already there is never
@@ -313,7 +314,15 @@ plugins: components (+schemas, +client, +queries - required by them)
 lathe generate --plugins schemas          # just schemas + types
 lathe generate --plugins schemas,mocks    # ...and deterministic fixtures
 lathe generate --plugins docs             # just the Markdown reference
+lathe generate --plugins schemas,./lathe-path-table.ts,lathe-plugin-msw   # + third-party plugins
 ```
+
+A `--plugins` entry that is not a built-in name is a plugin MODULE: a path,
+resolved from the working directory, or a package, resolved through
+`node_modules` (honouring its `exports`) the way a config file's own `import`
+would be. Its default export is a plugin, an array of plugins, or a function
+returning one. A name that is neither a built-in nor loadable is a usage error
+with a did-you-mean (`querys` → `queries`).
 
 ### Writing your own plugin
 
@@ -346,9 +355,9 @@ export default defineConfig({
 })
 ```
 
-| hook | runs | receives | returns |
+| hook | runs | receives | returns (or a promise of it) |
 | --- | --- | --- | --- |
-| `setup(ctx)` | once per project, first | `{ config }` | nothing; throw to refuse the config |
+| `setup(ctx)` | once per project, first | `{ config }` | nothing; throw (or reject) to refuse the config |
 | `transformDocument(doc, ctx)` | after filters, naming and `operations`; in plugin order | the frozen document, `{ config, note }` | a modified copy, or nothing |
 | `emit(ctx)` | after every built-in emitter | `{ doc, config, reach, files, banner }` | `SourceFile`s or `{ path, contents, sideEffects? }` |
 
@@ -375,9 +384,13 @@ Four guarantees hold for every plugin:
   A file that does something at import time returns `sideEffects: true`, which
   lists it in the emitted `package.json`.
 
-Hooks are synchronous: generation is a function of the spec and the config.
-Anything a plugin needs from elsewhere is an option it takes when it is
-constructed, where the config shows it.
+Any hook may be `async` — read a template, ask a formatter, load a registry.
+The CLI and the Vite plugin run the pipeline with `generateAsync()`, which
+awaits each hook; the determinism check still runs every hook twice, the second
+time only after the first has settled, so an async hook is compared against
+itself rather than raced. `generate()` stays synchronous for programmatic use
+and refuses a hook that returns a promise, naming the plugin. Output is
+byte-identical whichever runs it.
 
 ## Customizing the output
 
@@ -1438,11 +1451,8 @@ never touched. Commit the manifest with the rest of the output.
 - **A mocked stream ends after its fixture events** — it never drops the
   connection by itself, so exercising a reconnect still needs a test that
   fails a request (`mockOperation(…, { error })`) or a real server.
-- **Plugin hooks are synchronous** and run twice each (the determinism check);
-  an expensive `emit` costs twice its work. `format` is the one asynchronous
-  hook.
-- **`--plugins` on the command line takes built-in names only**; plugins made
-  with `definePlugin` are configured in `pyreon.config.ts`.
+- **Plugin hooks run twice each** (the determinism check), sequentially, so an
+  expensive or slow async `emit` costs twice its work.
 - A `$ref` **cycle** has no finite nesting, so the native schema names the
   target and the compiler drops that one field with a warning.
 

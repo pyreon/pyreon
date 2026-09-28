@@ -18,7 +18,7 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import type { LatheSection } from '../core/config'
 import { resolveProjects } from '../core/config'
 import { formatFiles } from '../core/format'
-import { generate, type GenerateResult } from '../core/generate'
+import { generateAsync, type GenerateResult } from '../core/generate'
 import { noteSeverity } from '../core/ir'
 import { OUTPUT_MANIFEST, orphanedPaths } from '../core/output-manifest'
 import { diffCommittedSurface, type SurfaceChange } from '../core/surface'
@@ -112,7 +112,7 @@ export async function runPass(
 
   // Generate every project before writing any, as the CLI does: a refused
   // spec must leave every output tree untouched, not half of them.
-  const generated: Array<{ out: string; result: ReturnType<typeof generate> }> = []
+  const generated: Array<{ out: string; result: GenerateResult }> = []
   for (const project of resolveProjects(options)) {
     const input = abs(project.input)
     // `only`: a spec path. A change to one project's spec regenerates THAT
@@ -130,7 +130,7 @@ export async function runPass(
       missing.push(input)
       continue
     }
-    const result = generate(source, project, {
+    const result = await generateAsync(source, project, {
       location: input,
       readDocument: (id) => readFileSync(id, 'utf8'),
       remoteDocuments: remote?.get(input),

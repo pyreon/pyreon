@@ -39,6 +39,7 @@ export {
   definePlugin,
   isLathePlugin,
   type LathePlugin,
+  type MaybePromise,
   type LathePluginEmitContext,
   type LathePluginFile,
   type LathePluginSetupContext,
@@ -103,6 +104,7 @@ export {
 } from "./core/config";
 export {
   generate,
+  generateAsync,
   surfaceMetadata,
   type GenerateResult,
   type GeneratedFile,

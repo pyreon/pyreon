@@ -10,7 +10,8 @@ npx lathe init                  # set up pyreon.config.ts, scripts, first genera
 ```
 
 `lathe init` detects what the project generates from today — an orval,
-`@hey-api/openapi-ts` or kubb config, an `openapi-typescript` script, or a bare
+`@hey-api/openapi-ts` or kubb config (or an orval / `openapi-ts` run from flags
+alone in a `package.json` script), an `openapi-typescript` script, or a bare
 `openapi.*` file — writes a `lathe` section into `pyreon.config.ts` (creating
 it, or adding one entry; an existing `lathe` section is never replaced), maps
 every option it can and names every one it cannot with what to do instead,
@@ -920,7 +921,15 @@ agree with itself, so a timestamp cannot make `lathe check` flap; plugin files
 are listed in the manifest (pruned when dropped), compared by `check`, passed
 to `format`, and may not collide with a built-in's path. `requires` turns on the
 built-ins a plugin's files import; `sideEffects: true` on a file lists it in the
-emitted `package.json`.
+emitted `package.json`. Any hook may be `async`: the CLI and the Vite plugin run
+`generateAsync()`, which awaits it (still twice, sequentially); `generate()`
+stays synchronous and refuses a promise by the plugin's name.
+
+On the command line, `--plugins schemas,./my-plugin.ts,lathe-plugin-msw` loads
+every non-built-in name as a plugin module — a path from the working directory
+or a package through `node_modules` — whose default export is a plugin, an
+array of them, or a function returning one. A name that is neither is a usage
+error with a did-you-mean.
 
 ### Customizing the output
 

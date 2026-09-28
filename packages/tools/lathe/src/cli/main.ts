@@ -22,6 +22,7 @@ import { version as LATHE_VERSION } from "../../package.json" with { type: "json
 import type { LatheSection } from "../core/config";
 import { findConfigFile, loadConfig, type LoadedConfig } from "./config-file";
 import { renderInitReport, runInit, type InitFs } from "./init/init";
+import { importFromCwd } from "./plugin-modules";
 import { pullSpec } from "./pull";
 import { shouldColor } from "./report";
 import { parseArgv, run, type Argv, type Fs } from "./run";
@@ -123,6 +124,9 @@ export async function main(
     mkdirp: (p) => realFs.mkdirp(abs(p)),
     remove: (p) => realFs.remove(abs(p)),
     resolve: abs,
+    // `--plugins ./x.ts` / `--plugins some-package`, resolved from the cwd the
+    // way a config file's own import would be.
+    importModule: (spec) => importFromCwd(spec, cwd),
   }
   let section = loaded.section
   // Set once the watcher exists: every document a run READ -- the spec and
