@@ -1,9 +1,13 @@
-import { Suspense } from '@pyreon/core'
+import { type ComponentFn, Suspense } from '@pyreon/core'
 
-async function SlowQuote() {
+async function SlowQuoteImpl() {
   await new Promise((resolve) => setTimeout(resolve, 50))
   return <blockquote data-testid="streamed-quote">EDGE_STREAMED_SENTINEL</blockquote>
 }
+// An async component is valid at SSR time (the stream renderer awaits it
+// inside the Suspense boundary) but is not a `ComponentFn` by type — the same
+// cast runtime-server's own streaming suites use.
+const SlowQuote = SlowQuoteImpl as unknown as ComponentFn
 
 /**
  * Streamed route — the app runs `ssr: { mode: 'stream' }`, so the shell

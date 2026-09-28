@@ -56,6 +56,9 @@ const WEIGHTS: Record<string, number> = {
   'ssg-subpath': 18,
   'ssr-node': 25,
   'isr-node': 25,
+  // Not yet measured in CI: installs wrangler/deno/edge-runtime (~40s),
+  // builds the example four times, then ~55s of specs locally.
+  'edge-runtimes': 150,
   'zero-hmr': 20,
   'zero-islands': 20,
   'app-showcase': 40,
