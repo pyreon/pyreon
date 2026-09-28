@@ -17,7 +17,7 @@
 
 import { createUniqueId, h, onUnmount } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
-import { batch, effect, isClient, signal } from '@pyreon/reactivity'
+import { batch, effect, isClient, isServer, signal } from '@pyreon/reactivity'
 import { chartRowCount, chartTable, chartTableRow, describeChart } from './a11y'
 import type { A11yInput, A11yTable } from './a11y'
 import { canvasMeasure, canvasSizeAttrs, paint, prepareCanvas, trackChartImages } from './canvas-web'
@@ -135,7 +135,31 @@ export function a11yTableNode(read: () => A11yTable, id: string, title: () => st
   // every row to size its columns — ~6ms for 1,000 rows on each forced layout,
   // several times the chart's own draw. Containment and fixed layout change
   // nothing in the accessibility tree, which is the table's only reader.
-  return h('div', { style: `${OFFSCREEN};contain:strict` }, h('table', { id, style: 'table-layout:fixed;width:1px', ref: (el: HTMLTableElement | null) => host.set(el) }))
+  // The rows are built through the DOM on the client, so a server render used
+  // to ship an EMPTY table: a crawler, a no-JS reader, or anyone before
+  // hydration got the chart's name and none of its numbers. The server now
+  // writes the same structure as markup; hydration adopts it as-is (a
+  // `dangerouslySetInnerHTML` element's server children are trusted, never
+  // re-parsed) and the effect above keeps it current from there. On a pure
+  // client mount the payload is empty and the effect builds it, as before.
+  const html = isServer ? tableHtml(read(), title()) : ''
+  return h('div', { style: `${OFFSCREEN};contain:strict` }, h('table', { id, style: 'table-layout:fixed;width:1px', dangerouslySetInnerHTML: { __html: html }, ref: (el: HTMLTableElement | null) => host.set(el) }))
+}
+
+const escHtml = (v: string): string => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+/** The accessible table as markup, in the same caption / thead / chunked-tbody shape the client builds, so hydration adopts it cell for cell. */
+export function tableHtml(t: A11yTable, title: string): string {
+  const caption = title + (t.rows.length < t.total ? ` (first ${t.rows.length} of ${t.total} rows)` : '')
+  let out = `<caption>${escHtml(caption)}</caption><thead><tr>${t.headers.map((x) => `<th scope="col">${escHtml(x)}</th>`).join('')}</tr></thead>`
+  for (let k = 0; k * TABLE_CHUNK < t.rows.length; k++) {
+    out += '<tbody>'
+    for (const row of t.rows.slice(k * TABLE_CHUNK, (k + 1) * TABLE_CHUNK)) {
+      out += '<tr>' + row.map((c, i) => (i === 0 ? `<th scope="row">${escHtml(c)}</th>` : `<td>${escHtml(c)}</td>`)).join('') + '</tr>'
+    }
+    out += '</tbody>'
+  }
+  return out
 }
 
 /** The crossing chrome functions return an EMPTY list for a miss; the host's tooltip contract says `null`. */
