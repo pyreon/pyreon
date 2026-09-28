@@ -23,7 +23,14 @@ import { registerSingleton } from '@pyreon/reactivity'
 registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
 import { AsyncLocalStorage } from 'node:async_hooks'
-import type { ClassValue, ComponentFn, ForProps, VNode, VNodeChild } from '@pyreon/core'
+import type {
+  ClassValue,
+  ComponentFn,
+  ForProps,
+  LazyComponent,
+  VNode,
+  VNodeChild,
+} from '@pyreon/core'
 import {
   cx,
   ForSymbol,
@@ -765,6 +772,11 @@ async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): 
   // `renderWithHead` reads them).
   const stackLenBefore = getContextStackLength()
   try {
+    // A `lazy()` whose chunk has not landed renders as NOTHING — wait for it,
+    // exactly as an async component is awaited. Inside a Suspense boundary this
+    // runs in the boundary's own async resolution, after the fallback flushed.
+    const pending = pendingLazy(vnode.type)
+    if (pending) await pending
     const { vnode: output } = runWithHooks(vnode.type as ComponentFn, mergeChildrenIntoProps(vnode))
     // Async components: emit sentinel markers around the resolved output so the
     // client hydrate can find the SSR DOM range for the still-pending Promise and
@@ -1285,8 +1297,15 @@ function renderComponent(vnode: VNode & { type: ComponentFn }): MaybeAsync {
   // `useHead({ title })` removes its head entries there, which would wipe the
   // store before `renderWithHead` reads it. SSR has no real unmount phase;
   // `provide()`'s frame cleanup is the only SSR-visible side effect.
+  const props = mergeChildrenIntoProps(vnode)
+  // A still-loading `lazy()` — as the component itself, or as the direct child
+  // of a `<Suspense>` (whose own accessor would otherwise pick the fallback) —
+  // is WAITED for, the same contract as an async component: the rendered HTML
+  // carries the real content the client adopts once its chunk has loaded.
+  const pending = pendingLazy(vnode.type) ?? (vnode.type === Suspense ? suspenseChildPending(props) : null)
+  if (pending) return pending.then(() => renderComponent(vnode))
   const stackLenBefore = getContextStackLength()
-  const { vnode: output } = runWithHooks(vnode.type, mergeChildrenIntoProps(vnode))
+  const { vnode: output } = runWithHooks(vnode.type, props)
 
   // Async component — await the promise, bracketing the resolved HTML with
   // `<!--$pas-->`/`<!--$pae-->` sentinels so the client hydrate can locate the
@@ -2611,6 +2630,27 @@ function escapeHtml(str: string): string {
  * Visible end-to-end through the fundamentals NavItem layout — see
  * `e2e/fundamentals/playground.spec.ts`.
  */
+/**
+ * The settle promise of a `lazy()` component whose chunk has not landed yet,
+ * or `null`. Keys on the `__loading` / `__load` protocol rather than on
+ * `lazy`'s identity so any lazy implementing it (compat layers included) is
+ * awaited; a lazy that reports loading but offers no `__load` cannot be waited
+ * for, so it keeps rendering as before (the Suspense fallback on the server).
+ */
+function pendingLazy(type: unknown): Promise<void> | null {
+  const lazyType = type as Partial<LazyComponent>
+  if (typeof lazyType.__load !== 'function' || typeof lazyType.__loading !== 'function') return null
+  return lazyType.__loading() ? lazyType.__load() : null
+}
+
+/** A `<Suspense>`'s direct child, resolved the way `Suspense` itself does, if it is a loading lazy. */
+function suspenseChildPending(props: Record<string, unknown>): Promise<void> | null {
+  const ch = props.children
+  const child = typeof ch === 'function' ? (ch as () => unknown)() : ch
+  if (child == null || typeof child !== 'object' || Array.isArray(child)) return null
+  return pendingLazy((child as VNode).type)
+}
+
 function mergeChildrenIntoProps(vnode: VNode): Record<string, unknown> {
   const raw =
     vnode.children.length > 0 && (vnode.props as Record<string, unknown>).children === undefined
