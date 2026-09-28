@@ -23,14 +23,14 @@ export function pluginsFromModule(mod: unknown, spec: string): LathePlugin[] {
     const found = fromValue(value)
     if (found) return found
     throw new Error(
-      `\`${spec}\`'s default export is not a Lathe plugin. Export \`definePlugin({ name, … })\`, an array of them, or a function returning one.`,
+      `[Pyreon] lathe: \`${spec}\`'s default export is not a Lathe plugin. Export \`definePlugin({ name, … })\`, an array of them, or a function returning one.`,
     )
   }
   const named = Object.entries(m).filter(([, v]) => isLathePlugin(v))
   if (named.length === 1) return [named[0]?.[1] as LathePlugin]
   throw new Error(
     named.length === 0
-      ? `\`${spec}\` exports no Lathe plugin. Make one with \`definePlugin\` and export it as the default.`
-      : `\`${spec}\` exports several plugins (${named.map(([k]) => k).join(', ')}) and no default — name one as the default export, or list them from a config file.`,
+      ? `[Pyreon] lathe: \`${spec}\` exports no Lathe plugin. Make one with \`definePlugin\` and export it as the default.`
+      : `[Pyreon] lathe: \`${spec}\` exports several plugins (${named.map(([k]) => k).join(', ')}) and no default — name one as the default export, or list them from a config file.`,
   )
 }

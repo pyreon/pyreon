@@ -31,7 +31,7 @@ export function isPathSpecifier(spec: string): boolean {
 export function resolveModuleSpecifier(spec: string, cwd: string): string {
   if (isPathSpecifier(spec)) {
     const full = resolve(cwd, spec)
-    if (!existsSync(full)) throw new Error(`no file at ${full}`)
+    if (!existsSync(full)) throw new Error(`[Pyreon] lathe: no file at ${full}`)
     return full
   }
   const { name, subpath } = splitBare(spec)
@@ -41,7 +41,7 @@ export function resolveModuleSpecifier(spec: string, cwd: string): string {
     if (existsSync(manifest)) return entryOf(pkgDir, manifest, subpath, spec)
     if (dirname(dir) === dir) break
   }
-  throw new Error(`no package \`${name}\` in any node_modules from ${cwd} upward`)
+  throw new Error(`[Pyreon] lathe: no package \`${name}\` in any node_modules from ${cwd} upward`)
 }
 
 /** `@scope/pkg/sub` -> `{ name: '@scope/pkg', subpath: './sub' }`. */
@@ -61,7 +61,7 @@ function entryOf(pkgDir: string, manifest: string, subpath: string, spec: string
   }
   if (pkg.exports !== undefined) {
     const target = exportTarget(pkg.exports, subpath)
-    if (target === undefined) throw new Error(`\`${spec}\` is not exported by its package.json \`exports\``)
+    if (target === undefined) throw new Error(`[Pyreon] lathe: \`${spec}\` is not exported by its package.json \`exports\``)
     return join(pkgDir, target)
   }
   if (subpath !== '.') return withExtension(join(pkgDir, subpath))

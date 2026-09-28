@@ -618,6 +618,9 @@ async function loadCliPlugins(
   fs: Fs,
 ): Promise<Array<PluginName | LathePlugin> | string> {
   const out: Array<PluginName | LathePlugin> = [];
+  // The loaders' own errors carry the prefix; `fail` adds it once more.
+  const bare = (err: unknown): string =>
+    (err instanceof Error ? err.message : String(err)).replace(/^\[Pyreon\] lathe: /, "");
   for (const name of names) {
     if ((ALL_PLUGINS as readonly string[]).includes(name)) {
       out.push(name as PluginName);
@@ -632,12 +635,12 @@ async function loadCliPlugins(
     try {
       mod = await fs.importModule(name);
     } catch (err) {
-      return `${unknown}, and it could not be loaded as a plugin module: ${err instanceof Error ? err.message : String(err)}. A third-party plugin is a path (\`./my-plugin.ts\`) or a package name whose default export is made with \`definePlugin\`. Built-ins: ${ALL_PLUGINS.join(", ")}.`;
+      return `${unknown}, and it could not be loaded as a plugin module: ${bare(err)}. A third-party plugin is a path (\`./my-plugin.ts\`) or a package name whose default export is made with \`definePlugin\`. Built-ins: ${ALL_PLUGINS.join(", ")}.`;
     }
     try {
       out.push(...pluginsFromModule(mod, name));
     } catch (err) {
-      return err instanceof Error ? err.message : String(err);
+      return bare(err);
     }
   }
   return out;
