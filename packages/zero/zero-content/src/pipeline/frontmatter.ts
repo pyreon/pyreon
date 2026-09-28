@@ -98,6 +98,7 @@ export function parseFrontmatter(source: string): Frontmatter {
 // containing one, while `yaml` accepts them inside quoted scalars and hands
 // the raw byte through to the page — a NUL or ESC in a `<title>`. Keep the
 // refusal, with a location, rather than inherit the leniency.
+// oxlint-disable-next-line no-control-regex -- matching control characters is the point
 const CONTROL_CHARACTER = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/
 
 function rejectControlCharacters(block: string): void {

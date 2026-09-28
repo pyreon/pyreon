@@ -36,7 +36,7 @@ export function isCancel(value: unknown): value is Cancel {
 // ─── IO ─────────────────────────────────────────────────────────────────────
 
 export interface PromptInput {
-  isTTY?: boolean
+  isTTY?: boolean | undefined
   setRawMode?: (mode: boolean) => unknown
   setEncoding(encoding: BufferEncoding): unknown
   on(event: 'data', listener: (chunk: string) => void): unknown
@@ -48,8 +48,8 @@ export interface PromptInput {
 }
 
 export interface PromptOutput {
-  isTTY?: boolean
-  columns?: number
+  isTTY?: boolean | undefined
+  columns?: number | undefined
   write(text: string): unknown
 }
 
