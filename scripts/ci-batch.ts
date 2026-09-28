@@ -29,7 +29,7 @@
  * job count is a cost borne repo-wide, not just by the PR that spends it.
  *
  * Batching keeps the isolation that matters (a batch still reports its own
- * check, `fail-fast: false` still stops one batch killing another, each
+ * check, matrix fail-fast cancels siblings after a real failure, and each
  * member still runs as its own process) while cutting the fixed per-cell cost
  * by the batch factor.
  *
@@ -42,63 +42,93 @@
  * runs. Every input item appears in exactly one batch, which is asserted.
  */
 
-/** Measured wall-seconds per cell (run 31023199747 + prior runs), used only
- *  to balance batches. Unknown items fall back to DEFAULT_WEIGHT. */
-const WEIGHTS: Record<string, number> = {
-  // ── e2e suites ──
-  core: 89,
-  'ui-regression': 30,
-  islands: 14,
-  'collab-board': 25,
-  cssvars: 8,
-  'ssg-i18n-prefix': 20,
-  'ssg-i18n': 20,
-  'ssg-subpath': 18,
-  'ssr-node': 25,
-  'isr-node': 25,
-  'zero-hmr': 20,
-  'zero-islands': 20,
-  'app-showcase': 40,
-  compat: 35,
-  'sync-yjs-demo': 20,
-  'sync-ws-relay': 30,
-  'perf-dashboard': 20,
-  // ── typecheck categories ──
-  examples: 222,
-  fundamentals: 94,
-  tools: 80,
-  'ui-system': 64,
-  zero: 56,
-  internals: 30,
-  native: 40,
-  ui: 30,
-  // ── test categories ──
-  // `native-rest` is `--isolate`d (its verdict cache keys on the cell name),
-  // so `buildBatchedMatrix` never reads its weight; listed so the table tells
-  // the truth. The native-compiler suite no longer runs in ci.yml at all —
-  // it lives in native-validate.yml's single `Validate emitted Swift + Kotlin`
-  // job (see ci.yml's test-cell comment for why sixteen shards never worked).
-  'native-rest': 332,
-  // ── scaffold-smoke cells (run 31084707225; a scaffolded app's cold
-  //    `bun install` + `vite build` — monorepo-vercel auto-skips on a
-  //    version-ahead workspace, hence the outlier) ──
-  'cpa-smoke-app-vercel': 366,
-  'cpa-smoke-app-static': 359,
-  'cpa-smoke-blog-cloudflare': 373,
-  'cpa-smoke-dashboard-vercel-full': 370,
-  'cpa-smoke-dashboard-node-supabase': 372,
-  // Not yet measured in CI: build + typecheck + doctor + built-server +
-  // Chromium; sized like the other flat cells plus the browser install.
-  'cpa-smoke-app-node': 420,
-  'cpa-smoke-monorepo-vercel': 35,
+export type BatchProfile = 'typecheck' | 'test' | 'e2e' | 'scaffold'
+
+/** Work seconds, excluding runner setup. Profiles must stay separate: `core`
+ * names both an E2E suite and a package category, and typechecking tools is
+ * much cheaper than testing them. PR run 36423101994 (2026-09-28), measured
+ * between the category/suite log groups; scaffold retains run 31084707225's
+ * estimates. These are scheduling hints, never criteria for skipping work. */
+const WEIGHTS: Record<BatchProfile, Record<string, number>> = {
+  typecheck: {
+    core: 17,
+    fundamentals: 28,
+    internals: 11,
+    native: 6,
+    tools: 39,
+    ui: 4,
+    'ui-system': 11,
+    zero: 13,
+    examples: 64,
+  },
+  test: {
+    core: 129,
+    fundamentals: 164,
+    internals: 59,
+    'native-rest': 48,
+    tools: 302,
+    ui: 29,
+    'ui-system': 41,
+    zero: 126,
+  },
+  e2e: {
+    core: 98,
+    docs: 137,
+    'ui-regression': 29,
+    islands: 12,
+    'collab-board': 16,
+    cssvars: 10,
+    'ssg-i18n-prefix': 5,
+    'ssg-i18n': 6,
+    'ssg-subpath': 6,
+    'ssr-node': 13,
+    'isr-node': 7,
+    'zero-hmr': 10,
+    'zero-islands': 7,
+    'app-showcase': 38,
+    compat: 24,
+    'sync-yjs-demo': 10,
+    'sync-ws-relay': 8,
+    'perf-dashboard': 9,
+    'atlas-build': 16,
+    'atlas-verify-browser': 45,
+    'atlas-ui-components': 46,
+    'atlas-dev': 47,
+    'atlas-workshop': 62,
+    'loom-dev': 47,
+    lathe: 8,
+    'https-dev': 2,
+    cpa: 44,
+    'native-tasks-web': 19,
+    'native-todomvc-web': 8,
+    'native-router-demo-web': 10,
+  },
+  scaffold: {
+    'cpa-smoke-app-vercel': 366,
+    'cpa-smoke-app-static': 359,
+    'cpa-smoke-blog-cloudflare': 373,
+    'cpa-smoke-dashboard-vercel-full': 370,
+    'cpa-smoke-dashboard-node-supabase': 372,
+    'cpa-smoke-app-node': 420,
+    'cpa-smoke-monorepo-vercel': 35,
+  },
 }
 
 /** Cells with no measured weight — mid-range so an unknown never dominates
  *  nor disappears into a batch. */
 export const DEFAULT_WEIGHT = 45
 
-export function weightOf(name: string): number {
-  return WEIGHTS[name] ?? DEFAULT_WEIGHT
+// Avoid a runner per tiny category on narrow PRs. This only caps fan-out;
+// all selected members still execute. Full runs retain the configured caps.
+const MIN_BATCH_WORK: Record<BatchProfile, number> = {
+  typecheck: 60,
+  test: 180,
+  e2e: 120,
+  scaffold: 300,
+}
+
+export function weightOf(name: string, profile: BatchProfile = 'e2e'): number {
+  return WEIGHTS[profile][name] ?? DEFAULT_WEIGHT
 }
 
 /**
@@ -111,8 +141,13 @@ export function weightOf(name: string): number {
  *
  * Fewer items than batches simply yields fewer batches (never empty ones).
  */
-export function batchByWeight(items: readonly string[], maxBatches: number): string[][] {
-  if (maxBatches < 1) throw new Error('[ci-batch] maxBatches must be >= 1')
+export function batchByWeight(
+  items: readonly string[],
+  maxBatches: number,
+  profile: BatchProfile = 'e2e',
+): string[][] {
+  if (!Number.isInteger(maxBatches) || maxBatches < 1)
+    throw new Error('[ci-batch] maxBatches must be a positive integer')
   if (items.length === 0) return []
   const n = Math.min(maxBatches, items.length)
   const bins: { weight: number; items: string[] }[] = Array.from({ length: n }, () => ({
@@ -121,12 +156,14 @@ export function batchByWeight(items: readonly string[], maxBatches: number): str
   }))
   // Sort by weight desc, then name, so the packing is stable across runs —
   // a matrix that reshuffles per run would defeat check-name continuity.
-  const sorted = [...items].sort((a, b) => weightOf(b) - weightOf(a) || a.localeCompare(b))
+  const sorted = [...items].sort(
+    (a, b) => weightOf(b, profile) - weightOf(a, profile) || a.localeCompare(b),
+  )
   for (const item of sorted) {
     let lightest = bins[0]!
     for (const bin of bins) if (bin.weight < lightest.weight) lightest = bin
     lightest.items.push(item)
-    lightest.weight += weightOf(item)
+    lightest.weight += weightOf(item, profile)
   }
   // Keep each batch's members in stable name order for readable logs.
   return bins.map((b) => b.items.sort((a, c) => a.localeCompare(c))).filter((b) => b.length > 0)
@@ -158,21 +195,32 @@ export function toMatrix(batches: readonly (readonly string[])[]): BatchEntry[] 
 /**
  * Batch, then emit the matrix — the one call sites use.
  *
- * `isolate` names cells that must stay in a batch of their own. That is not a
- * performance knob: the `native-*` test cells key a compile-verdict cache on
- * their own category (`native-verdicts-ci-<os>-<category>-…`), and the three
- * cells derive DISJOINT verdict sets. Merging one into a mixed batch would
- * make its cache key ambiguous and silently turn every lookup into a miss —
- * so isolation here preserves correctness of a cache, not speed.
+ * `isolate` remains available for work that really requires a separate
+ * runner. Native-rest no longer needs it: its single cache writer is selected
+ * by batch membership and uses a category key independent of the batch name.
  */
 export function buildBatchedMatrix(
   items: readonly string[],
   maxBatches: number,
   isolate: readonly string[] = [],
+  profile: BatchProfile = 'e2e',
 ): BatchEntry[] {
+  if (
+    !Array.isArray(items) ||
+    items.some((i) => typeof i !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(i))
+  )
+    throw new Error('[ci-batch] items must be an array of safe cell names')
+  if (new Set(items).size !== items.length) throw new Error('[ci-batch] duplicate input cells')
   const isolated = items.filter((i) => isolate.includes(i))
   const batchable = items.filter((i) => !isolate.includes(i))
-  const batches = [...batchByWeight(batchable, maxBatches), ...isolated.map((i) => [i])]
+  if (!Number.isInteger(maxBatches) || maxBatches < 1)
+    throw new Error('[ci-batch] maxBatches must be a positive integer')
+  const totalWeight = batchable.reduce((total, item) => total + weightOf(item, profile), 0)
+  const usefulBatches = Math.min(
+    maxBatches,
+    Math.max(1, Math.ceil(totalWeight / MIN_BATCH_WORK[profile])),
+  )
+  const batches = [...batchByWeight(batchable, usefulBatches, profile), ...isolated.map((i) => [i])]
   // Invariant: batching NEVER drops or duplicates an item. A silently-lost
   // cell is a silently-skipped check, which is the one failure mode this
   // whole file must not introduce.
@@ -187,13 +235,18 @@ export function buildBatchedMatrix(
 }
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
-// bun scripts/ci-batch.ts --items='["a","b","c"]' --max=4 [--isolate=x,y]
+// bun scripts/ci-batch.ts --profile=test --items='["core","tools"]' --max=3
 if (import.meta.main) {
   const arg = (k: string): string | undefined =>
     process.argv.find((a) => a.startsWith(`--${k}=`))?.slice(k.length + 3)
   const raw = arg('items') ?? '[]'
   const max = Number(arg('max') ?? '4')
   const isolate = (arg('isolate') ?? '').split(',').filter(Boolean)
+  const profile = arg('profile') ?? 'e2e'
+  if (!Object.hasOwn(WEIGHTS, profile)) {
+    console.error(`[ci-batch] unknown profile: ${profile}`)
+    process.exit(1)
+  }
   let items: string[]
   try {
     items = JSON.parse(raw) as string[]
@@ -203,5 +256,5 @@ if (import.meta.main) {
     process.exit(1)
   }
   // oxlint-disable-next-line no-console
-  console.log(JSON.stringify(buildBatchedMatrix(items, max, isolate)))
+  console.log(JSON.stringify(buildBatchedMatrix(items, max, isolate, profile as BatchProfile)))
 }

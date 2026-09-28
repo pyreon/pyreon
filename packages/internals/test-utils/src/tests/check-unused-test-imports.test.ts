@@ -22,7 +22,7 @@ describe('findUnusedTestImports', () => {
   it('finds unused default, named, aliased, namespace and type imports', () => {
     const file = fixture(`
       import defaultThing from 'typescript'
-      import { aggregateKind as used, decideAggregate as unused, reproductionCommand as alias } from '../scripts/ci-aggregate'
+      import { aggregateKind as used, decideNeeds as unused, reproductionCommand as alias } from '../scripts/ci-aggregate'
       import * as namespace from '../scripts/ci-flake-report'
       import type { JobInfo as UsedType, Verdict as UnusedType } from '../scripts/ci-aggregate'
       import './side-effect'

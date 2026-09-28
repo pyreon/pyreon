@@ -24,7 +24,8 @@ Read before adding or changing a workflow, job, required check, or cache key.
 - Never rename a required job. To retire one, drop its name from both protection authorities before deleting the job. Never add a required name casually: it hangs every open PR on "Expected" until that PR's next push.
 - One artifact ⇒ one cache key prefix ⇒ one writer. Duplicate writers fill the 10 GB actions cache and evict the small entries every PR needs.
 - Small content-addressed stores (the native compile-verdict store) are saved from every run, because main's push runs are frequently cancelled.
-- When adding a matrix cell, ask whether it needs its own runner or just its own step. Default: a step. Cells that key a cache on their own category (the `native-*` test cells) go in `scripts/ci-batch.ts`'s `--isolate` list.
+- When adding a matrix cell, ask whether it needs its own runner or just its own step. Default: a step. Select cache ownership by membership and key the cache by its stable category, never by a batch name that changes with packing. `native-rest` has exactly one cache writer even when it shares a runner.
+- All PR selectors in `ci.yml` use `CI_BASE`, the event's immutable base SHA. Do not fetch a moving base independently in each cell: selection and execution must use the same diff while main advances.
 
 ## `ci.yml` jobs
 
@@ -38,7 +39,9 @@ Read before adding or changing a workflow, job, required check, or cache key.
 | aggregate | `Test` | The single fail-closed aggregator over Install, Fast Gates, and all four matrices (`scripts/ci-aggregate.ts`). It depends on every member so it consumes a runner only for the final verdict. |
 
 - Lib-free vs lib-needing: typecheck, lint and vitest resolve `@pyreon/*` to `src` through the `bun` condition and do not need `lib/`. Exceptions are tests that assert on `lib/` bytes or boot a nested Vite SSR build. A new lib-needing gate goes in `Build`; a lib-free one in `Fast Gates`.
-- `scripts/affected.ts` computes the per-PR package filter. A root-file change escalates to `--filter=*`.
+- `scripts/affected.ts` computes the per-PR package filter. Root configuration, workflow and shared-action changes escalate to `--filter=*`; E2E and scaffold selectors also cover shared actions.
+- `scripts/ci-batch.ts` uses separate `typecheck`, `test`, `e2e`, and `scaffold` profiles. A suite name is not a global cost: `core` E2E and core package tests are different workloads. The profile records measurement provenance. Unknown members still run with a default weight. Small selected workloads use fewer runners; full-run caps remain 3 typecheck, 3 test, 4 E2E, and 3 scaffold batches.
+- `Test` validates `toJSON(needs)` after its dependencies finish. Install and Fast Gates must succeed; each selected matrix must succeed; only explicitly unselected matrices may skip. Missing, malformed, or contradictory selection outputs fail. Healthy runs make no jobs-API calls. Failed runs request job links once, with a ten-second total deadline; unavailable or stale API data cannot change the failed verdict.
 - `scripts/check-ci-fail-fast.ts` statically prevents an expensive job from
   bypassing Fast Gates or a matrix from disabling cancellation.
 - `ci-main.yml` runs `Coverage (Full)` and `Coverage (Native)` on push to main and in the merge queue.
@@ -65,6 +68,8 @@ Branch protection pins 15 required contexts in two authorities that must stay id
 
 ## Caches
 
+- Downstream `node_modules` restores use the exact lockfile key only. A broad prefix downloads a tree the clean-install fallback must immediately discard to avoid stale peer resolution. The bun tarball cache still uses a prefix safely. The setup action exposes whether it already restored tarballs so scaffold jobs do not download the same store twice.
+- Scaffold CI restores this commit's libraries through setup-pyreon, then sets `PYREON_BOOTSTRAP_SKIP=1` for the smoke step. Each temporary app otherwise changes `bun.lock`, invalidates bootstrap's global hash, and rebuilds every package again. This skips only the root bootstrap; generated-app installs, dependency lifecycle scripts, builds and smoke assertions still run. Local scaffold runs keep the default bootstrap behavior.
 - `bun-install-cache-<os>-<lockhash>`: `Install` saves it on main. A PR whose `bun.lock` differs from the base saves its own; everyone else only restores.
 - The macOS native lanes restore and save the content-addressed verdict store, like their Linux twin.
 
@@ -99,6 +104,8 @@ Branch protection pins 15 required contexts in two authorities that must stay id
 
 - Queue vs work per job: `gh api repos/pyreon/pyreon/actions/runs/<id>/jobs`. Exclude `conclusion == "skipped"`. `started_at − created_at` is queue; `completed_at − started_at` is work.
 - A wall clock far above summed work, with queue in the hundreds of minutes, is slot starvation.
+- Compare work separately from setup and queue time. Per-category and per-suite log groups delimit the work used to refresh `ci-batch.ts` profiles. Replaying old timings through new packing estimates balance; it is not a measured speedup. Validate with the next complete CI run and retain all selected work and the existing runner caps.
+- Refresh profiles when timings drift. Do not automatically learn weights from partial or failed runs, and never use a timing estimate to decide whether a test runs.
 
 ## Bootstrap env vars
 
