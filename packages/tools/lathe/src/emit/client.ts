@@ -236,7 +236,7 @@ export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
     );
     f.line("export type { EndpointError, HttpErrorOf, RequestFailure } from '@pyreon/http'");
   }
-  return f
+  return f;
 }
 
 /**
@@ -1051,7 +1051,7 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
       // What `error()` holds: the endpoint's typed rejection when the spec
       // declares error bodies, `Error` otherwise.
       const err = errorTypeOf(op);
-      f.line()
+      f.line();
       if (isMutation(op)) {
         const targets = invalidationTargets(op, queryOps);
         const vars = hasInput(op) ? input : "void";
