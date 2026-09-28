@@ -8,12 +8,15 @@
  * git repository whose `main` holds the base spec, with the PR's spec in the
  * working tree. The `${{ … }}` expressions and `if:` conditions are evaluated
  * the way the runner would for the cases that matter; `bunx lathe` runs this
- * package's SOURCE entry, and `gh` is a stub that records its arguments and
- * the comment body. What cannot run here is the hosted part: checkout,
- * setup-bun, `bun install`, and the real GitHub API.
+ * package's SOURCE entry, and `gh` is a stub backed by a directory of
+ * comments (one file per comment id). What cannot run here is the hosted part:
+ * checkout, setup-bun, `bun install`, the real GitHub API and the real `jq`
+ * filter — `.github/workflows/lathe-action-selftest.yml` runs the SAME step
+ * scripts on a hosted runner against a real pull request, and the last spec
+ * here holds the two copies identical.
  */
 import { execFileSync, spawnSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { parse } from 'yaml'
@@ -67,12 +70,27 @@ interface Run {
   code: string | undefined
   ran: string[]
   exit: number
-  ghArgs: string | undefined
-  commentBody: string | undefined
+  /** Every `gh` invocation, one per line. */
+  ghLog: string
+  /** The PR's comments after the job, by id. */
+  comments: Record<string, string>
+  summary: string
+  stdout: string
+}
+
+const MARKER = '<!-- lathe-contract -->'
+
+interface RunOptions {
+  /** Comments already on the PR, by id. */
+  comments?: Record<string, string>
+  /** The PR comes from a fork — its token is read-only. */
+  fork?: boolean
+  /** Every `gh` call fails, as during a GitHub API outage. */
+  ghDown?: boolean
 }
 
 /** Run the workflow's shell steps for a PR whose spec is `head`, against a `main` holding `base`. */
-function runWorkflow(base: string, head: string | null): Run {
+function runWorkflow(base: string, head: string | null, opts: RunOptions = {}): Run {
   const dir = mkdtempSync(join(tmpdir(), 'lathe-action-'))
   roots.push(dir)
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_') && !k.startsWith('GITHUB_')))
@@ -93,12 +111,46 @@ function runWorkflow(base: string, head: string | null): Run {
   mkdirSync(bin)
   writeFileSync(join(bin, 'entry.ts'), `import { main } from ${JSON.stringify(MAIN)}\nprocess.exitCode = await main(process.argv.slice(2), process.cwd())\n`)
   writeFileSync(join(bin, 'bunx'), `#!/bin/sh\n[ "$1" = lathe ] || exit 99\nshift\nexec bun ${JSON.stringify(join(bin, 'entry.ts'))} "$@"\n`)
+  // The stub `gh` answers the calls the Comment step makes: list the
+  // PR's comments (returning the ids whose body starts with the marker — the
+  // step's `--jq` filter), PATCH one (`-F body=@file`), and `pr comment`.
   writeFileSync(
     join(bin, 'gh'),
-    '#!/bin/sh\nprintf "%s " "$@" > "$GH_LOG"\nwhile [ $# -gt 0 ]; do if [ "$1" = --body-file ]; then cp "$2" "$GH_BODY"; fi; shift; done\n[ -n "$GH_TOKEN" ] || exit 4\n',
+    [
+      '#!/bin/sh',
+      'echo "$*" >> "$GH_LOG"',
+      '[ -n "$GH_TOKEN" ] || exit 4',
+      '[ -z "$GH_DOWN" ] || exit 1',
+      'if [ "$1" = api ] && [ "$2" = -X ]; then',
+      '  id=${4##*/}',
+      '  for a; do case $a in body=@*) cp "${a#body=@}" "$GH_COMMENTS/$id";; esac; done',
+      '  exit 0',
+      'fi',
+      'if [ "$1" = api ]; then',
+      `  for f in $(ls "$GH_COMMENTS" | sort -n); do head -n 1 "$GH_COMMENTS/$f" | grep -qxF ${JSON.stringify(MARKER)} && echo "$f"; done`,
+      '  exit 0',
+      'fi',
+      'if [ "$1" = pr ] && [ "$2" = comment ]; then',
+      '  id=$((1000 + $(ls "$GH_COMMENTS" | wc -l)))',
+      // `--edit-last` edits the token's most recent comment, whoever's job wrote it.
+      '  case " $* " in *" --edit-last "*) last=$(ls "$GH_COMMENTS" | sort -n | tail -n 1); [ -n "$last" ] && id=$last;; esac',
+      '  while [ $# -gt 0 ]; do [ "$1" = --body-file ] && cp "$2" "$GH_COMMENTS/$id"; shift; done',
+      '  exit 0',
+      'fi',
+      'exit 5',
+      '',
+    ].join('\n'),
   )
+  // The retry back-off, without the wait.
+  writeFileSync(join(bin, 'sleep'), '#!/bin/sh\necho "sleep $1" >> "$GH_LOG"\n')
   chmodSync(join(bin, 'bunx'), 0o755)
   chmodSync(join(bin, 'gh'), 0o755)
+  chmodSync(join(bin, 'sleep'), 0o755)
+  const commentsDir = join(dir, '.comments')
+  mkdirSync(commentsDir)
+  for (const [id, body] of Object.entries(opts.comments ?? {})) writeFileSync(join(commentsDir, id), body)
+  const summaryFile = join(dir, '.summary')
+  writeFileSync(summaryFile, '')
 
   const output = join(dir, '.github_output')
   writeFileSync(output, '')
@@ -114,21 +166,35 @@ function runWorkflow(base: string, head: string | null): Run {
       if (e === 'github.base_ref') return 'main'
       if (e === 'github.event.pull_request.number') return '42'
       if (e === 'github.token') return 'tok'
+      if (e === 'github.repository') return 'acme/shop'
+      if (e === 'github.event.pull_request.head.repo.full_name') return opts.fork ? 'someone/shop' : 'acme/shop'
       const out = /^steps\.diff\.outputs\.(\w+)$/.exec(e)
       if (out) return outputs()[out[1] as string] ?? ''
       throw new Error(`unhandled expression ${e}`)
     })
-  /** `steps.diff.outputs.code != '0'` — the only condition shape the workflow uses. */
-  const condition = (c: string): boolean => {
-    const m = /^steps\.diff\.outputs\.(\w+) (!=|==) '([^']*)'$/.exec(c.trim())
-    if (!m) throw new Error(`unhandled condition ${c}`)
-    const value = outputs()[m[1] as string] ?? ''
-    return m[2] === '!=' ? value !== m[3] : value === m[3]
-  }
+  /**
+   * The condition shapes the workflow uses: `steps.diff.outputs.X op 'v'` and
+   * `<github expr> == <github expr>`, joined by `&&`.
+   */
+  const condition = (c: string): boolean =>
+    c.split('&&').every((clause) => {
+      const m = /^(\S+) (!=|==) (\S+)$/.exec(clause.trim())
+      if (!m) throw new Error(`unhandled condition ${c}`)
+      const side = (x: string): string => {
+        const lit = /^'([^']*)'$/.exec(x)
+        if (lit) return lit[1] as string
+        const out = /^steps\.diff\.outputs\.(\w+)$/.exec(x)
+        if (out) return outputs()[out[1] as string] ?? ''
+        return expr(`\${{ ${x} }}`)
+      }
+      const [l, r] = [side(m[1] as string), side(m[3] as string)]
+      return m[2] === '!=' ? l !== r : l === r
+    })
 
   const steps = Object.values(workflow().jobs)[0]?.steps ?? []
   const ran: string[] = []
   let exit = 0
+  let stdout = ''
   for (const step of steps) {
     // Hosted setup — checkout (simulated above), setup-bun, install.
     if (step.uses || !step.run || /bun install/.test(step.run)) continue
@@ -140,16 +206,30 @@ function runWorkflow(base: string, head: string | null): Run {
       ...env,
       PATH: `${bin}:${process.env.PATH}`,
       GITHUB_OUTPUT: output,
-      GH_LOG: join(dir, '.gh-args'),
-      GH_BODY: join(dir, '.gh-body'),
+      GITHUB_REPOSITORY: 'acme/shop',
+      GITHUB_STEP_SUMMARY: summaryFile,
+      GH_LOG: join(dir, '.gh-log'),
+      GH_COMMENTS: commentsDir,
+      ...(opts.ghDown ? { GH_DOWN: '1' } : {}),
     }
     for (const [k, v] of Object.entries(step.env ?? {})) stepEnv[k] = expr(v)
     const r = spawnSync('bash', ['-e', '-c', expr(step.run)], { cwd: dir, env: stepEnv, encoding: 'utf8' })
+    stdout += r.stdout
     exit = r.status ?? 1
   }
-  const read = (f: string) => (existsSync(join(dir, f)) ? readFileSync(join(dir, f), 'utf8') : undefined)
-  return { code: outputs().code, ran, exit, ghArgs: read('.gh-args'), commentBody: read('.gh-body') }
+  const log = join(dir, '.gh-log')
+  return {
+    code: outputs().code,
+    ran,
+    exit,
+    ghLog: existsSync(log) ? readFileSync(log, 'utf8') : '',
+    comments: Object.fromEntries(readdirSync(commentsDir).map((id) => [id, readFileSync(join(commentsDir, id), 'utf8')])),
+    summary: readFileSync(summaryFile, 'utf8'),
+    stdout,
+  }
 }
+
+const STEPS = ['Diff the contract', 'Summary', 'Comment']
 
 describe('the docs GitHub Action', () => {
   it('is triggered by the spec, and may write PR comments', () => {
@@ -161,33 +241,69 @@ describe('the docs GitHub Action', () => {
   it('a breaking change: comments the Markdown report, then fails the job', () => {
     const r = runWorkflow(SPEC(['name', 'tag']), SPEC(['name']))
     expect(r.code).toBe('1')
-    expect(r.ran).toEqual(['Diff the contract', 'Comment', 'Fail on a breaking change'])
+    expect(r.ran).toEqual([...STEPS, 'Fail on a breaking change'])
     expect(r.exit).toBe(1)
-    expect(r.ghArgs).toBe('pr comment 42 --body-file contract.md --edit-last --create-if-none ')
-    expect(r.commentBody).toContain('### API contract: 1 breaking, 0 additive')
-    expect(r.commentBody).toContain('| `field-now-optional` | `Pet.tag` | required → optional | `getPet`, `useGetPet` (pets) |')
+    const bodies = Object.values(r.comments)
+    expect(bodies).toHaveLength(1)
+    expect(bodies[0]?.startsWith(`${MARKER}\n### API contract: 1 breaking, 0 additive`)).toBe(true)
+    expect(bodies[0]).toContain('| `field-now-optional` | `Pet.tag` | required → optional | `getPet`, `useGetPet` (pets) |')
+    // The report is in the job summary as well — where a fork PR reads it.
+    expect(r.summary).toContain('### API contract: 1 breaking, 0 additive')
   }, 60_000)
 
   it('an additive change: comments and passes', () => {
     const r = runWorkflow(SPEC(['name']), SPEC(['name']).replace('"tag":', '"age":{"type":"integer"},"tag":'))
     expect(r.code).toBe('0')
-    expect(r.ran).toEqual(['Diff the contract', 'Comment'])
+    expect(r.ran).toEqual(STEPS)
     expect(r.exit).toBe(0)
-    expect(r.commentBody).toContain('0 breaking, 1 additive')
+    expect(Object.values(r.comments)[0]).toContain('0 breaking, 1 additive')
   }, 60_000)
 
   it('no contract change: comments that nothing moved, and passes', () => {
     const r = runWorkflow(SPEC(['name']), SPEC(['name']))
     expect(r.code).toBe('0')
     expect(r.exit).toBe(0)
-    expect(r.commentBody).toContain('Nothing a generated client depends on moved.')
+    expect(Object.values(r.comments)[0]).toContain('Nothing a generated client depends on moved.')
   }, 60_000)
 
   it('an unreadable input (exit 2): no empty comment, and the job fails with 2', () => {
     const r = runWorkflow(SPEC(['name']), null)
     expect(r.code).toBe('2')
     expect(r.ran).toEqual(['Diff the contract', 'Fail on a breaking change'])
-    expect(r.ghArgs).toBeUndefined()
+    expect(r.ghLog).toBe('')
+    expect(r.comments).toEqual({})
     expect(r.exit).toBe(2)
+  }, 60_000)
+
+  // `gh pr comment --edit-last` edits whichever comment the workflow token wrote
+  // LAST — in a repository with any other bot comment (a bundle-size report,
+  // a coverage table), that is the other job's comment, which it overwrote.
+  it("updates its own comment on a re-run and never touches another bot's", () => {
+    const other = '### Bundle size\n| pkg | delta |'
+    const r = runWorkflow(SPEC(['name', 'tag']), SPEC(['name']), {
+      comments: { '7': `${MARKER}\n### API contract: stale`, '9': other },
+    })
+    expect(Object.keys(r.comments).sort()).toEqual(['7', '9'])
+    expect(r.comments['9']).toBe(other)
+    expect(r.comments['7']).toContain('1 breaking, 0 additive')
+    expect(r.ghLog).toContain('api -X PATCH repos/acme/shop/issues/comments/7 -F body=@comment.md')
+    expect(r.ghLog).not.toContain('pr comment')
+  }, 60_000)
+
+  it('a fork PR (read-only token): no comment attempted, the report is in the summary', () => {
+    const r = runWorkflow(SPEC(['name', 'tag']), SPEC(['name']), { fork: true })
+    expect(r.ran).toEqual(['Diff the contract', 'Summary', 'Fail on a breaking change'])
+    expect(r.ghLog).toBe('')
+    expect(r.summary).toContain('1 breaking, 0 additive')
+    expect(r.exit).toBe(1)
+  }, 60_000)
+
+  // The check reports the CONTRACT: a GitHub API outage while commenting is a
+  // warning after three attempts, never a red check on a compatible change.
+  it('a failing comment post is retried, then downgraded to a warning', () => {
+    const r = runWorkflow(SPEC(['name']), SPEC(['name']), { ghDown: true })
+    expect(r.exit).toBe(0)
+    expect(r.ghLog.match(/^sleep /gm)).toHaveLength(3)
+    expect(r.stdout).toContain('::warning::could not post the contract comment')
   }, 60_000)
 })
