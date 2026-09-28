@@ -2822,10 +2822,11 @@ function emitKotlinStreamHarness(d: Extract<DeclIR, { kind: 'stream' }>, ctx: Ko
     )
     const payload = d.sseText ? 'm.data' : `PyreonFetchJson.decodeFromString<${data}>(m.data)`
     out.push(
-      `    ${name}.startSse(${request}, PyreonSseOptions(${opts.join(', ')})) { m -> PyreonSseEvent(m.type, ${payload}, m.id) }`,
+      `    ${name}.startSse(${request}, PyreonSseOptions(${opts.join(', ')})${d.accept !== undefined ? `, accept = ${kotlinStr(d.accept)}` : ''}) { m -> PyreonSseEvent(m.type, ${payload}, m.id) }`,
     )
   } else {
-    out.push(`    ${name}.startNdjson(${request}) { line -> PyreonFetchJson.decodeFromString<${data}>(line) }`)
+    const accept = d.accept !== undefined ? `, accept = ${kotlinStr(d.accept)}` : ''
+    out.push(`    ${name}.startNdjson(${request}${accept}) { line -> PyreonFetchJson.decodeFromString<${data}>(line) }`)
   }
   out.push(`    onDispose { ${name}.stop() }`)
   out.push(`  }`)

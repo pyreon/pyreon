@@ -401,11 +401,12 @@ public class PyreonStream<E>(public val maxEvents: Int = 1000) {
     public fun startSse(
         request: PyreonStreamRequest,
         options: PyreonSseOptions = PyreonSseOptions(),
+        accept: String = "text/event-stream",
         transport: PyreonStreamTransport = PyreonStreamHttpTransport,
         decode: (PyreonSseMessage) -> E,
     ) {
         val allowed = options.events?.toSet()
-        start(request, "text/event-stream", true, options.reconnect, options.lastEventId, transport, { msg ->
+        start(request, accept, true, options.reconnect, options.lastEventId, transport, { msg ->
             if (allowed != null && msg.type !in allowed) {
                 null
             } else {

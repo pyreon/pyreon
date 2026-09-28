@@ -740,6 +740,8 @@ export type DeclIR =
       urlExpr?: ExprIR
       method: string
       headers?: Record<string, string>
+      /** A non-default `Accept` (`application/jsonl`); absent = the format's default. */
+      accept?: string
       /** The literal request body (`json` on the endpoint call). */
       requestBody?: string
       /** SSE: only these event types. */

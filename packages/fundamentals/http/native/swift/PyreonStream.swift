@@ -431,6 +431,7 @@ public final class PyreonStream<E> {
     public func runSse(
         _ request: PyreonStreamRequest,
         options: PyreonSseOptions = PyreonSseOptions(),
+        accept: String = "text/event-stream",
         session: URLSession = .shared,
         decode: @escaping (PyreonSseMessage) throws -> E
     ) async {
@@ -438,7 +439,7 @@ public final class PyreonStream<E> {
         await supervise { [self] in
             await self.drive(
                 request,
-                accept: "text/event-stream",
+                accept: accept,
                 sse: true,
                 policy: options.reconnect,
                 lastEventId: options.lastEventId,

@@ -3428,9 +3428,11 @@ function emitSwiftStreamHarness(d: Extract<DeclIR, { kind: 'stream' }>): string[
         : `reconnect: PyreonStreamReconnect(attempts: ${d.reconnect.attempts}, delay: ${d.reconnect.delay}, maxDelay: ${d.reconnect.maxDelay}, onEnd: ${d.reconnect.onEnd})`,
     )
     const decode = d.sseText ? 'PyreonStreamDecode.sseText()' : `PyreonStreamDecode.sseJSON(${data}.self)`
-    out.push(`        await ${name}.runSse(${request}, options: PyreonSseOptions(${opts.join(', ')}), decode: ${decode})`)
+    const accept = d.accept !== undefined ? `, accept: ${swiftStr(d.accept)}` : ''
+    out.push(`        await ${name}.runSse(${request}, options: PyreonSseOptions(${opts.join(', ')})${accept}, decode: ${decode})`)
   } else {
-    out.push(`        await ${name}.runNdjson(${request}, decode: PyreonStreamDecode.ndjson(${data}.self))`)
+    const accept = d.accept !== undefined ? `, accept: ${swiftStr(d.accept)}` : ''
+    out.push(`        await ${name}.runNdjson(${request}${accept}, decode: PyreonStreamDecode.ndjson(${data}.self))`)
   }
   out.push(`      }`)
   return out

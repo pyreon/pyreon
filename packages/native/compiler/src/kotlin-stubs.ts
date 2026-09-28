@@ -1139,7 +1139,7 @@ class PyreonStream<E>(val maxEvents: Int = 1000) {
   fun abort() {}
   fun restart() {}
   fun stop() {}
-  fun startSse(request: PyreonStreamRequest, options: PyreonSseOptions = PyreonSseOptions(), decode: (PyreonSseMessage) -> E) {}
+  fun startSse(request: PyreonStreamRequest, options: PyreonSseOptions = PyreonSseOptions(), accept: String = "text/event-stream", decode: (PyreonSseMessage) -> E) {}
   fun startNdjson(request: PyreonStreamRequest, accept: String = "application/x-ndjson", decode: (String) -> E) {}
 }
 

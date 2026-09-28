@@ -8807,11 +8807,31 @@ function tryUseStreamDecl(init: AnyNode, name: string, ctx: ParseCtx): DeclIR | 
   // `signal` is how the web cancels; natively the stream is cancelled by the
   // view's lifecycle. `headers: c.headers` is how the web adds `accept` /
   // `last-event-id`; the native runtime adds both itself.
-  const kept = ((epArg?.properties as AnyNode[] | undefined) ?? []).filter((p) => {
+  // `headers: { ...c.headers, accept: 'application/jsonl' }` — the stream's
+  // own headers plus literal extras (a generated client names a non-default
+  // stream media type this way). The spread is the runtime's job; the literal
+  // props lower, and `accept` becomes the stream's Accept.
+  let accept: string | undefined
+  const kept = ((epArg?.properties as AnyNode[] | undefined) ?? []).flatMap((p): AnyNode[] => {
     const k = propName(p)
-    if (k === 'signal') return false
-    if (k === 'headers' && isMemberRead(p.value as AnyNode | undefined, cParam, 'headers')) return false
-    return true
+    if (k === 'signal') return []
+    const v = p.value as AnyNode | undefined
+    if (k === 'headers' && isMemberRead(v, cParam, 'headers')) return []
+    if (k === 'headers' && v?.type === 'ObjectExpression') {
+      const props = (v.properties as AnyNode[] | undefined) ?? []
+      const rest = props.filter(
+        (hp) => !(hp.type === 'SpreadElement' && isMemberRead(hp.argument as AnyNode | undefined, cParam, 'headers')),
+      )
+      if (rest.length === props.length) return [p]
+      const literal = rest.filter((hp) => {
+        if (propName(hp)?.toLowerCase() !== 'accept') return true
+        const a = literalScalar(hp.value as AnyNode | undefined)
+        if (typeof a === 'string') accept = a
+        return typeof a !== 'string'
+      })
+      return literal.length > 0 ? [{ ...p, value: { ...v, properties: literal } } as AnyNode] : []
+    }
+    return [p]
   })
   const filtered = epArg !== undefined ? ({ ...epArg, properties: kept } as AnyNode) : undefined
   const resolved = resolveEndpointParts(epName, filtered, ctx, true, true)
@@ -8949,6 +8969,7 @@ function tryUseStreamDecl(init: AnyNode, name: string, ctx: ParseCtx): DeclIR | 
     ...(resolved.urlExpr !== undefined ? { urlExpr: resolved.urlExpr } : {}),
     method: resolved.method,
     ...(resolved.headers !== undefined ? { headers: resolved.headers } : {}),
+    ...(accept !== undefined ? { accept } : {}),
     ...(resolved.body !== undefined ? { requestBody: resolved.body } : {}),
     ...(events !== undefined ? { events } : {}),
     ...(lastEventId !== undefined ? { lastEventId } : {}),
