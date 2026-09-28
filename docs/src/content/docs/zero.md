@@ -1606,6 +1606,10 @@ When an edge function is needed the SSR plugin builds a second server bundle at 
 
 Hashed assets are always excluded from edge functions. On Netlify, edge functions run before static files, so a prerendered page under an edge route's pattern is rendered by the function.
 
+Files in `public/` (and anything a plugin writes beside them) are enumerated at build time and served as files on every platform: Netlify Edge excludes each one from the edge function by exact path, Vercel routes each one to `static/` ahead of the SSR catch-all, and Cloudflare excludes them in `_routes.json` (up to its 100-rule limit) with the worker handing any it still receives to `env.ASSETS`. HTML files are not in that list — their routing follows the render mode.
+
+These artifacts are run in their real runtimes by the `edge-runtimes` e2e suite (`bun run test:e2e:edge-runtimes`): Deno for `denoAdapter` and Netlify Edge, Vercel's Edge Runtime for `vercelAdapter({ runtime: 'edge' })`, and `wrangler pages dev` (workerd) for Cloudflare.
+
 ### Scheduled API routes
 
 An API route can declare a cron schedule; the platform calls it with `GET` on that schedule (UTC):
