@@ -60,7 +60,9 @@
     "!lib/analysis",
     "src",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "native/swift",
+    "native/kotlin"
   ],
   "scripts": {
     "bench:http": "NODE_ENV=production bun bench/http-bench.ts",
@@ -105,5 +107,11 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "pyreon": {
+    "native": {
+      "swift": "native/swift",
+      "kotlin": "native/kotlin"
+    }
   }
 }
