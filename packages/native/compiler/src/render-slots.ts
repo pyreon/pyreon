@@ -422,14 +422,16 @@ export function unlowerableRenderValueWarning(where: string): string {
   )
 }
 
-/** Swift only — an optional render slot has no spelling that keeps the generic inferable. */
-export function optionalSlotSwiftWarning(component: string, prop: string): string {
+/**
+ * Swift only — an optional render slot that could not get its per-subset
+ * initializers (`reason`), so it is emitted REQUIRED.
+ */
+export function optionalSlotSwiftWarning(component: string, prop: string, reason: string): string {
   return (
-    `${component}: the render prop \`${prop}\` is OPTIONAL. On iOS a render prop is a generic ` +
-    `\`@ViewBuilder\` closure whose view type is inferred from the caller's closure, and a caller that ` +
-    `omits it leaves nothing to infer it from — so it is emitted as REQUIRED, and a call site that ` +
-    `leaves it out does not compile. Make it required, or give the omitting callers an explicit empty ` +
-    `callback. (Android keeps it optional.)`
+    `${component}: the render prop \`${prop}\` is OPTIONAL, and on iOS an optional render prop needs one ` +
+    `initializer per combination of provided slots — here ${reason}. It is emitted as REQUIRED, so a ` +
+    `call site that leaves it out does not compile. Make it required, or give the omitting callers an ` +
+    `explicit empty callback. (Android keeps it optional.)`
   )
 }
 
