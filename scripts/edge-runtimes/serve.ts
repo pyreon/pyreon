@@ -46,6 +46,9 @@ const commands: Record<Runtime, [string, string[]]> = {
 const [cmd, args] = commands[runtime]
 const child = spawn(cmd, args, {
   stdio: 'inherit',
+  // wrangler keeps its local state in `<cwd>/.wrangler` — keep it in the
+  // (git-ignored) example rather than wherever Playwright was started.
+  cwd: example,
   env: { ...process.env, PORT: port, WRANGLER_SEND_METRICS: 'false', CI: '1' },
 })
 for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, () => child.kill(sig))
