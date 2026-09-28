@@ -45,9 +45,8 @@ export function resolveThresholds(
 ): CoverageThresholds {
   const base = category
     ? CATEGORY_DEFAULTS[category]
-    : // `@vitus-labs/tools-vitest`'s own 90/90/90/90 default — preserved
-      // when no category is supplied (back-compat for the 6 configs that
-      // currently skip createVitestConfig).
+    : // The 90/90/90/90 default `@vitus-labs/tools-vitest` used to supply,
+      // preserved when no category is given.
       { statements: 90, branches: 90, functions: 90, lines: 90 }
   return { ...base, ...override }
 }
