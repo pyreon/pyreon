@@ -114,6 +114,7 @@
     "check-doc-claims": "bun scripts/check-doc-claims.ts",
     "check-leak-ratchet": "bun scripts/check-leak-ratchet.ts",
     "check-lint-ratchet": "bun scripts/check-lint-ratchet.ts",
+    "check-unused-test-imports": "bun scripts/check-unused-test-imports.ts",
     "check-manifest-depth": "bun scripts/check-manifest-depth.ts",
     "check-multiplatform-tier": "bun scripts/check-multiplatform-tier.ts",
     "check-manifest-examples": "bun scripts/check-manifest-examples.ts",
