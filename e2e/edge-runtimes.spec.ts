@@ -56,6 +56,33 @@ test.describe('edge runtime deploy artifact', () => {
     expect(res.headers().location).toBe('/posts/2')
   })
 
+  test('a server loader runs in-process for SSR and through the data endpoint', async ({ request }) => {
+    const headers = { cookie: 'probe=1' }
+    const html = await (await request.get('/secret', { headers })).text()
+    expect(html).toContain('<p data-testid="secret-value">EDGE_SERVER_ONLY_SENTINEL</p>')
+    expect(html).toContain('<p data-testid="cookie-flag">yes</p>')
+    const data = await request.get('/_pyreon/data?path=/secret', { headers })
+    expect(data.status()).toBe(200)
+    expect(JSON.stringify(await data.json())).toContain('EDGE_SERVER_ONLY_SENTINEL')
+  })
+
+  test('route middleware guards the page AND its data endpoint', async ({ request }) => {
+    const headers = { 'x-edge-auth': 'deny' }
+    expect((await request.get('/secret', { headers })).status()).toBe(401)
+    expect((await request.get('/_pyreon/data?path=/secret', { headers })).status()).toBe(401)
+  })
+
+  test('an unknown path renders _404 with status 404', async ({ request }) => {
+    const res = await request.get('/definitely-not-a-route')
+    expect(res.status()).toBe(404)
+    expect(await res.text()).toContain('EDGE_NOT_FOUND_SENTINEL')
+  })
+
+  test('a throwing loader answers 500 and the runtime keeps serving', async ({ request }) => {
+    expect((await request.get('/boom')).status()).toBe(500)
+    expect((await request.get('/')).status()).toBe(200)
+  })
+
   test('a streamed route flushes the fallback before the resolved boundary', async ({ request }) => {
     const html = await (await request.get('/stream')).text()
     const fallback = html.indexOf('data-testid="stream-fallback"')
@@ -106,6 +133,9 @@ test.describe('edge runtime deploy artifact', () => {
     // Client-side navigation runs the loader in the browser.
     await page.getByTestId('nav-post').click()
     await expect(page.getByTestId('post-title')).toHaveText('EDGE_POST_ONE')
+    // A server loader on client navigation: single-fetched from /_pyreon/data.
+    await page.getByTestId('nav-secret').click()
+    await expect(page.getByTestId('secret-value')).toHaveText('EDGE_SERVER_ONLY_SENTINEL')
     expect(errors).toEqual([])
   })
 })

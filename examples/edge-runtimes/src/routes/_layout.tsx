@@ -9,6 +9,7 @@ export function layout(_props: Props) {
         <RouterLink to="/" data-testid="nav-home">Home</RouterLink>
         <RouterLink to="/posts/1" data-testid="nav-post">Post 1</RouterLink>
         <RouterLink to="/stream" data-testid="nav-stream">Stream</RouterLink>
+        <RouterLink to="/secret" data-testid="nav-secret">Secret</RouterLink>
       </nav>
       <main>
         <RouterView />
