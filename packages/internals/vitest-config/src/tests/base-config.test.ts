@@ -11,6 +11,13 @@
 import { configDefaults } from 'vitest/config'
 import { createBaseConfig } from '../base.ts'
 
+/** The coverage exclude list, asserting the block exists rather than casting past it. */
+function coverageExclude(cfg: ReturnType<typeof createBaseConfig>): string[] {
+  const coverage = cfg.test?.coverage as { exclude?: string[] } | undefined
+  expect(coverage?.exclude).toBeDefined()
+  return coverage!.exclude!
+}
+
 const T = { statements: 91, branches: 82, functions: 73, lines: 64 }
 
 describe('createBaseConfig', () => {
@@ -42,7 +49,7 @@ describe('createBaseConfig', () => {
     })
     expect(cfg.test?.environment).toBe('happy-dom')
     expect(cfg.test?.setupFiles).toEqual(['./src/tests/setup.ts'])
-    expect((cfg.test?.coverage as { exclude: string[] }).exclude.at(-1)).toBe('src/gen/**')
+    expect(coverageExclude(cfg).at(-1)).toBe('src/gen/**')
   })
 
   it('omits setupFiles entirely when none are given (exactOptionalPropertyTypes)', () => {
@@ -51,8 +58,8 @@ describe('createBaseConfig', () => {
 
   it('does not share its default arrays across calls', () => {
     const a = createBaseConfig({ environment: 'node', coverageThresholds: T })
-    ;(a.test?.coverage as { exclude: string[] }).exclude.push('mutated')
+    coverageExclude(a).push('mutated')
     const b = createBaseConfig({ environment: 'node', coverageThresholds: T })
-    expect((b.test?.coverage as { exclude: string[] }).exclude).not.toContain('mutated')
+    expect(coverageExclude(b)).not.toContain('mutated')
   })
 })
