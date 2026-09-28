@@ -13186,6 +13186,7 @@ public func describeChart(_ input: A11yInput) -> String {
         continue
       }
       let dir = last > first ? "rising" : last < first ? "falling" : "flat"
+      let pct = first > 0.0 && dir != "flat" ? " \(percentChange(first, last))" : ""
       let at = { (i: Int) in i < input.categories.count ? " at \(input.categories[i])" : "" }
       let other = (s.values2 ?? [])
       if other.count > 0 {
@@ -13210,13 +13211,37 @@ public func describeChart(_ input: A11yInput) -> String {
           oseen = oseen + 1
         }
         if oseen > 0 {
-          parts.append("\(s.label), \(s.kind): upper bound \(dir) from \(fmt(first)) to \(fmt(last)), " + "ranging \(fmt(lo))\(at(loAt)) to \(fmt(hi))\(at(hiAt)); " + "lower bound ranging \(fmt(olo)) to \(fmt(ohi)).")
+          parts.append("\(s.label), \(s.kind): upper bound \(dir)\(pct) from \(fmt(first)) to \(fmt(last)), " + "ranging \(fmt(lo))\(at(loAt)) to \(fmt(hi))\(at(hiAt)); " + "lower bound ranging \(fmt(olo)) to \(fmt(ohi)).")
           continue
         }
       }
-      parts.append("\(s.label), \(s.kind): \(dir) from \(fmt(first)) to \(fmt(last)), " + "ranging \(fmt(lo))\(at(loAt)) to \(fmt(hi))\(at(hiAt)).")
+      parts.append("\(s.label), \(s.kind): \(dir)\(pct) from \(fmt(first)) to \(fmt(last)), " + "ranging \(fmt(lo))\(at(loAt)) to \(fmt(hi))\(at(hiAt)).")
     }
     return { (s: String, f: String, r: String) -> String in s.replacingOccurrences(of: f, with: r, options: [], range: s.range(of: f)) }(parts.joined(separator: " "), " .", ".")
+  }
+
+public func percentChange(_ first: Double, _ last: Double) -> String {
+    let ratio = last / first
+    if ratio >= 2.0 {
+      return "\(pyreonNumberString(floor(Double(ratio * 10.0 + 0.5)) / 10.0))×"
+    }
+    let p = floor(Double(abs(ratio - 1.0) * 100.0 + 0.5))
+    return "\(pyreonNumberString(p))%"
+  }
+
+public func describeDatum(_ input: A11yInput, _ series: Int, _ index: Int) -> String {
+    if series < 0 || series >= input.series.count {
+      return ""
+    }
+    let s = input.series[series]
+    if index < 0 || index >= s.values.count {
+      return ""
+    }
+    let fmt = (input.format ?? groupThousands)
+    let v = s.values[index]
+    let value = v != v ? "no value" : fmt(v)
+    let at = index < input.categories.count ? " at \(input.categories[index])" : ""
+    return "\(s.label): \(value)\(at), \(index + 1) of \(s.values.count)"
   }
 
 public func withError(_ fmt: (Double) -> String, _ v: Double, _ s: A11ySeries, _ i: Int) -> String {

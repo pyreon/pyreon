@@ -10567,6 +10567,7 @@ fun describeChart(input: A11yInput): String {
         continue
       }
       val dir = if (last > first) "rising" else if (last < first) "falling" else "flat"
+      val pct = if (first > 0.0 && dir != "flat") " ${percentChange(first, last)}" else ""
       val at = { i: Int -> if (i < input.categories.length) " at ${input.categories[i]}" else "" }
       val other = (s.values2 ?: listOf())
       if (other.length > 0) {
@@ -10591,13 +10592,37 @@ fun describeChart(input: A11yInput): String {
           oseen = oseen + 1
         }
         if (oseen > 0) {
-          parts.add("${s.label}, ${s.kind}: upper bound ${dir} from ${fmt(first)} to ${fmt(last)}, " + "ranging ${fmt(lo)}${at(loAt)} to ${fmt(hi)}${at(hiAt)}; " + "lower bound ranging ${fmt(olo)} to ${fmt(ohi)}.")
+          parts.add("${s.label}, ${s.kind}: upper bound ${dir}${pct} from ${fmt(first)} to ${fmt(last)}, " + "ranging ${fmt(lo)}${at(loAt)} to ${fmt(hi)}${at(hiAt)}; " + "lower bound ranging ${fmt(olo)} to ${fmt(ohi)}.")
           continue
         }
       }
-      parts.add("${s.label}, ${s.kind}: ${dir} from ${fmt(first)} to ${fmt(last)}, " + "ranging ${fmt(lo)}${at(loAt)} to ${fmt(hi)}${at(hiAt)}.")
+      parts.add("${s.label}, ${s.kind}: ${dir}${pct} from ${fmt(first)} to ${fmt(last)}, " + "ranging ${fmt(lo)}${at(loAt)} to ${fmt(hi)}${at(hiAt)}.")
     }
     return parts.joinToString(" ").replaceFirst(" .", ".")
+  }
+
+fun percentChange(first: Double, last: Double): String {
+    val ratio = (last).toDouble() / (first).toDouble()
+    if (ratio >= 2.0) {
+      return "${pyreonNumberString((Math.floor(ratio * 10.0 + 0.5)).toDouble() / (10.0).toDouble())}×"
+    }
+    val p = Math.floor(Math.abs(ratio - 1.0) * 100.0 + 0.5)
+    return "${pyreonNumberString(p)}%"
+  }
+
+fun describeDatum(input: A11yInput, series: Int, index: Int): String {
+    if (series < 0 || series >= input.series.length) {
+      return ""
+    }
+    val s = input.series[series]
+    if (index < 0 || index >= s.values.length) {
+      return ""
+    }
+    val fmt = (input.format ?: ::groupThousands)
+    val v = s.values[index]
+    val value = if (v != v) "no value" else fmt(v)
+    val at = if (index < input.categories.length) " at ${input.categories[index]}" else ""
+    return "${s.label}: ${value}${at}, ${index + 1} of ${s.values.length}"
   }
 
 fun withError(fmt: (Double) -> String, v: Double, s: A11ySeries, i: Int): String {

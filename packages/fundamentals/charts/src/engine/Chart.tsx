@@ -31,7 +31,7 @@ import { scaleLinear } from './scale'
 import { markLabel, resolveCategories, resolveMarks } from './marks'
 import { plotHitBarsIn, plotHitIndexIn, plotHitSeriesIn } from './plot-hit'
 import type { Mark } from './marks'
-import { chartRowCount, chartTable, chartTableRow, describeChart } from './a11y'
+import { chartRowCount, chartTable, chartTableRow, describeChart, describeDatum } from './a11y'
 import type { A11yInput } from './a11y'
 import type { BrushArea } from './brush-area'
 import { hideHiddenSeries, legendEntriesGrouped, legendHitIndex, legendToggleGroup, pagerHit, pinSelection } from './legend-toggle'
@@ -182,9 +182,9 @@ export interface PlotChartProps<T> {
   /** The datums inside the brush, per series, in GLOBAL row indices; empty lists when cleared. */
   onBrushSelected?: (selected: { seriesIndex: number; dataIndex: number[] }[]) => void
   /**
-   * Keyboard navigation: the canvas becomes focusable; Left/Right (and
-   * Up/Down) move a focus datum, Home/End jump, Enter/Space select (through
-   * `onSelect`), Escape clears. The focused datum is announced in a polite
+   * Keyboard navigation: the canvas becomes focusable; Left/Right move a
+   * focus datum, Up/Down step through the series (then back to all of them),
+   * Home/End jump, Enter/Space select (through `onSelect`), Escape clears. The focused datum is announced in a polite
    * live region and drawn with a focus ring. Default on; `false` disables.
    */
   keyboard?: boolean
@@ -566,6 +566,8 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   const navJson = signal('null')
   // Keyboard focus datum (LOCAL index into the visible rows); -1 = none.
   const focusIdx = signal(-1)
+  /** The series Up/Down picked for the announcement; -1 announces the whole row. */
+  const focusSeries = signal(-1)
   // What the live region says about the focused datum.
   const announce = signal('')
   // Preset button hit rects from the LAST draw, in canvas pixels.
@@ -1091,8 +1093,32 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     batch(() => {
       focusIdx.set(next)
       hoverIdx.set(next)
-      announce.set(row === undefined ? '' : row.join(', '))
+      announce.set(announcementFor(input, g, row))
     })
+  }
+
+  /** The live-region text for global row `g`: the focused series' datum, else the whole row. */
+  const announcementFor = (input: A11yInput, g: number, row: string[] | undefined): string => {
+    const fs = focusSeries()
+    if (fs >= 0) return describeDatum(input, fs, g)
+    return row === undefined ? '' : row.join(', ')
+  }
+
+  /**
+   * Up/Down step through the series (then back to "all"), so a reader can
+   * follow one line across the chart instead of hearing every series at every
+   * point — Highcharts' keyboard model.
+   */
+  const moveSeries = (delta: number): void => {
+    const input = a11yInput()
+    const n = input.series.length
+    if (n === 0) return
+    let next = focusSeries() + delta
+    if (next >= n) next = -1
+    if (next < -1) next = n - 1
+    focusSeries.set(next)
+    if (focusIdx() < 0) moveFocus(0, 0)
+    else moveFocus(0)
   }
 
   /** A datum was picked (click or keyboard): pin it per `selectedMode`, then report the pick. */
@@ -1114,8 +1140,10 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
 
   const handleKeyDown = (ev: KeyboardEvent): void => {
     const key = ev.key
-    if (key === 'ArrowRight' || key === 'ArrowUp') moveFocus(1)
-    else if (key === 'ArrowLeft' || key === 'ArrowDown') moveFocus(-1)
+    if (key === 'ArrowRight') moveFocus(1)
+    else if (key === 'ArrowLeft') moveFocus(-1)
+    else if (key === 'ArrowUp') moveSeries(-1)
+    else if (key === 'ArrowDown') moveSeries(1)
     else if (key === 'Home') moveFocus(0, 0)
     else if (key === 'End') moveFocus(0, viewRows(readData()).length - 1)
     else if (key === 'Enter' || key === ' ') {
@@ -1124,6 +1152,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     } else if (key === 'Escape') {
       batch(() => {
         focusIdx.set(-1)
+        focusSeries.set(-1)
         hoverIdx.set(-1)
         announce.set('')
       })
@@ -1710,7 +1739,10 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       format: fmtNow,
       categories: resolveCategories(rows, props.x),
       series: resolved.map((s, i) => ({
-        label: props.seriesLabels?.[i] ?? `Series ${i + 1}`,
+        // The mark's own label (`line(y, { label })`, `<Line label>`) — what the
+        // legend and tooltip show. It used to fall straight to "Series N", so a
+        // screen reader heard names no sighted reader ever saw.
+        label: props.seriesLabels?.[i] ?? s.label,
         values: s.values,
         kind: s.kind,
         // A band's low edge. Mapping field by field is how it went missing:

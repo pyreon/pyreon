@@ -121,6 +121,11 @@ export function describeChart(input: A11yInput): string {
       continue
     }
     const dir = last > first ? 'rising' : last < first ? 'falling' : 'flat'
+    // How much, not just which way: "rising" describes a 2% drift and a 3×
+    // climb identically. The change is stated relative to the first value,
+    // and only where that is meaningful (a zero or negative start has no
+    // honest percentage).
+    const pct = first > 0.0 && dir !== 'flat' ? ` ${percentChange(first, last)}` : ''
     const at = (i: number): string =>
       i < input.categories.length ? ` at ${input.categories[i]!}` : ''
     // A two-channel series names the channel it is describing and adds the
@@ -149,7 +154,7 @@ export function describeChart(input: A11yInput): string {
       }
       if (oseen > 0) {
         parts.push(
-          `${s.label}, ${s.kind}: upper bound ${dir} from ${fmt(first)} to ${fmt(last)}, ` +
+          `${s.label}, ${s.kind}: upper bound ${dir}${pct} from ${fmt(first)} to ${fmt(last)}, ` +
             `ranging ${fmt(lo)}${at(loAt)} to ${fmt(hi)}${at(hiAt)}; ` +
             `lower bound ranging ${fmt(olo)} to ${fmt(ohi)}.`,
         )
@@ -157,11 +162,37 @@ export function describeChart(input: A11yInput): string {
       }
     }
     parts.push(
-      `${s.label}, ${s.kind}: ${dir} from ${fmt(first)} to ${fmt(last)}, ` +
+      `${s.label}, ${s.kind}: ${dir}${pct} from ${fmt(first)} to ${fmt(last)}, ` +
         `ranging ${fmt(lo)}${at(loAt)} to ${fmt(hi)}${at(hiAt)}.`,
     )
   }
   return parts.join(' ').replace(' .', '.')
+}
+
+/**
+ * `45%`, `3.2×`: the size of a change from `first` to `last` (both positive
+ * start). Past doubling a multiple reads better than a four-digit percentage.
+ */
+export function percentChange(first: Double, last: Double): string {
+  const ratio = last / first
+  if (ratio >= 2.0) return `${Math.floor(ratio * 10.0 + 0.5) / 10.0}×`
+  const p = Math.floor(Math.abs(ratio - 1.0) * 100.0 + 0.5)
+  return `${p}%`
+}
+
+/**
+ * One datum of one series, for a keyboard focus that has picked a series:
+ * `Revenue: 3,200 at Mar, 3 of 12`. A gap reads as `no value`.
+ */
+export function describeDatum(input: A11yInput, series: number, index: number): string {
+  if (series < 0 || series >= input.series.length) return ''
+  const s = input.series[series]!
+  if (index < 0 || index >= s.values.length) return ''
+  const fmt = input.format ?? groupThousands
+  const v = s.values[index]!
+  const value = v !== v ? 'no value' : fmt(v)
+  const at = index < input.categories.length ? ` at ${input.categories[index]!}` : ''
+  return `${s.label}: ${value}${at}, ${index + 1} of ${s.values.length}`
 }
 
 export interface A11yTable {
