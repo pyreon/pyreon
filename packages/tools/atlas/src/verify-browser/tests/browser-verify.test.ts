@@ -1,6 +1,6 @@
 /**
  * Unit half of the browser verify runner: the verdict-merge derivation and the
- * pixel-diff ratio logic. The browser half (real Chromium, real coverage
+ * snapshot comparison. The browser half (real Chromium, real coverage
  * bridge, real screenshots) is proven by the subprocess e2e in
  * `e2e/atlas-verify-browser.spec.ts` — these tests pin the pure rules so a
  * refactor can't silently drift `ok`/`checked` away from the pipeline's
@@ -12,12 +12,13 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { VerifyVerdict } from '../../core'
 import {
+  comparePngs,
   countSnapshots,
-  diffPngs,
   mergeBrowserVerdict,
   snapshotScenario,
   writeAtomic,
 } from '../runner'
+import { decodePng, encodePng } from '../png'
 
 const PASS = { status: 'pass' } as const
 const FAIL = { status: 'fail', findings: [{ code: 'mount-threw' as const, message: 'boom' }] } as const
@@ -112,44 +113,48 @@ describe('mergeBrowserVerdict', () => {
   })
 })
 
-describe('diffPngs', () => {
-  const png = (width: number, height: number, data = Buffer.alloc(0)) => ({ width, height, data })
+/** A solid-colour RGBA PNG, optionally with one pixel recoloured. */
+function solidPng(w: number, h: number, rgb: [number, number, number], odd?: { at: number; rgb: [number, number, number] }): Buffer {
+  const data = Buffer.alloc(w * h * 4)
+  for (let i = 0; i < w * h; i++) {
+    const c = odd && odd.at === i ? odd.rgb : rgb
+    data[i * 4] = c[0]
+    data[i * 4 + 1] = c[1]
+    data[i * 4 + 2] = c[2]
+    data[i * 4 + 3] = 255
+  }
+  return encodePng(w, h, data)
+}
 
-  it('returns the differing-pixel fraction from pixelmatch', () => {
-    const deps = {
-      PNG: { sync: { read: () => png(10, 10) } },
-      pixelmatch: () => 25,
-    }
-    expect(diffPngs(Buffer.alloc(0), Buffer.alloc(0), deps)).toBe(0.25)
+describe('comparePngs', () => {
+  it('returns the differing-pixel fraction', () => {
+    // A 10x10 white image with one black pixel far from any slope: 1 of 100.
+    const a = solidPng(10, 10, [255, 255, 255])
+    const b = solidPng(10, 10, [255, 255, 255], { at: 55, rgb: [0, 0, 0] })
+    expect(comparePngs(a, b).ratio).toBe(0.01)
   })
 
-  it('dimension mismatch is a total diff (1), not a crash inside pixelmatch', () => {
-    let calls = 0
-    const reads = [png(10, 10), png(12, 10)]
-    const deps = {
-      PNG: { sync: { read: () => reads[calls++]! } },
-      pixelmatch: () => {
-        throw new Error('pixelmatch must not run on mismatched dimensions')
-      },
-    }
-    expect(diffPngs(Buffer.alloc(0), Buffer.alloc(0), deps)).toBe(1)
+  it('dimension mismatch is a total diff (1) with no diff image, not a crash inside the diff', () => {
+    const result = comparePngs(solidPng(10, 10, [0, 0, 0]), solidPng(12, 10, [0, 0, 0]))
+    expect(result).toEqual({ ratio: 1, diffPng: null })
   })
 
   it('identical images diff to 0', () => {
-    const deps = {
-      PNG: { sync: { read: () => png(4, 4) } },
-      pixelmatch: () => 0,
-    }
-    expect(diffPngs(Buffer.alloc(0), Buffer.alloc(0), deps)).toBe(0)
+    expect(comparePngs(solidPng(4, 4, [9, 9, 9]), solidPng(4, 4, [9, 9, 9])).ratio).toBe(0)
+  })
+
+  it('the diff image marks exactly the differing pixel red', () => {
+    const { diffPng } = comparePngs(
+      solidPng(3, 3, [255, 255, 255]),
+      solidPng(3, 3, [255, 255, 255], { at: 4, rgb: [0, 0, 0] }),
+    )
+    const img = decodePng(diffPng!)
+    const red = [...Array(9).keys()].filter((i) => img.data[i * 4] === 255 && img.data[i * 4 + 1] === 0)
+    expect(red).toEqual([4])
   })
 })
 
 describe('snapshotScenario + countSnapshots', () => {
-  const deps = {
-    PNG: { sync: { read: () => ({ width: 1, height: 1, data: Buffer.alloc(4) }) } },
-    pixelmatch: () => 0,
-  }
-
   it('a THROWN screenshot is a failure the summary counts (not "0 visual diffs")', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'atlas-snap-'))
     const page = {
@@ -163,7 +168,6 @@ describe('snapshotScenario + countSnapshots', () => {
       snapshotDir: dir,
       maxRatio: 0.01,
       updateSnapshots: false,
-      deps,
     })
     expect(outcome.snapshot.status).toBe('fail')
     expect(outcome.snapshot.findings?.[0]?.code).toBe('snapshot-failed')
@@ -177,11 +181,27 @@ describe('snapshotScenario + countSnapshots', () => {
       snapshotDir: dir,
       maxRatio: 0.01,
       updateSnapshots: false,
-      deps,
     })
     expect(outcome.snapshot.status).toBe('pass')
     expect(readFileSync(join(dir, 'card--default.png'), 'utf8')).toBe('png')
     expect(countSnapshots([outcome])).toEqual({ created: 1, failed: 0 })
+  })
+
+  it('a real visual diff fails and writes the actual AND a diff image beside the baseline', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'atlas-snap-'))
+    writeFileSync(join(dir, 'card--default.png'), solidPng(4, 4, [255, 255, 255]))
+    const shot = solidPng(4, 4, [0, 0, 0])
+    const page = { locator: () => ({ screenshot: async () => shot }) }
+    const outcome = await snapshotScenario(page, 'card--default', {
+      snapshotDir: dir,
+      maxRatio: 0.01,
+      updateSnapshots: false,
+    })
+    expect(outcome.snapshot.status).toBe('fail')
+    expect(outcome.snapshot.findings?.[0]?.message).toMatch(/diff image to .*card--default\.diff\.png/)
+    expect(readFileSync(join(dir, 'card--default.actual.png')).equals(shot)).toBe(true)
+    expect(decodePng(readFileSync(join(dir, 'card--default.diff.png'))).width).toBe(4)
+    expect(countSnapshots([outcome])).toEqual({ created: 0, failed: 1 })
   })
 })
 
