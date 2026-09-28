@@ -80,7 +80,7 @@ without an indicator mark does not bundle the indicator arithmetic. `<Chart>`
 with one `<Line>` is about 44.1 KB gzipped; a pie through `<Arc>` about
 24.7 KB. CI import budgets lock both.
 
-`<Chart by="id">` gives rows an identity for update animation, like `<For by>`: a data change tweens each row from its own previous value and new rows grow in from the baseline. Without it rows are matched by position, so a sliding window (drop the oldest, append the newest) animates every bar toward its neighbour's value. Native hosts match by position and warn.
+`<Chart by="id">` gives rows an identity for update animation, like `<For by>`, with D3's data join: on a bar or line chart a surviving row slides from its old slot to its new one, a new row grows in from the baseline in its slot, and a removed row shrinks out in its old slot. Other chart kinds tween each row from its own previous value. Without `by` rows are matched by position, so a sliding window (drop the oldest, append the newest) animates every bar toward its neighbour's value. Native hosts match by position and warn.
 
 `<Chart color="region">` switches to **long format**: every `y` mark becomes
 one series per distinct `region`, categories come from `x`, a missing

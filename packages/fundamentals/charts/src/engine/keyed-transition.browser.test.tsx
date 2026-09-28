@@ -1,68 +1,76 @@
-// A keyed sliding window: each surviving bar starts its tween from ITS OWN
-// previous value, so mid-tween it already stands at its final height; matched
-// by position it would start from its left neighbour's value.
+// `<PlotChart by>` morphs geometry by key, driven frame by frame here through
+// a stepped requestAnimationFrame. Midway through a sliding window the
+// survivors are BETWEEN slots — over the gap between two bars — which only a
+// sliding morph produces; the unkeyed control never paints there.
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { PlotChart } from './Chart'
 import { bars } from './marks'
+import { defaultTheme, layoutChart } from './render'
 
 interface Row { id: string; v: number }
+const W = 300
+const H = 200
 
-/** Height in px of the painted bar in column `col` of `n` (non-background pixels). */
-function barHeight(c: HTMLCanvasElement, col: number, n: number): number {
-  const ctx = c.getContext('2d')!
-  const x = Math.floor(((col + 0.5) / n) * c.width * 0.8 + c.width * 0.15)
-  const { data } = ctx.getImageData(x, 0, 1, c.height)
-  let h = 0
-  for (let y = 0; y < c.height; y++) {
-    const i = y * 4
-    if (data[i + 2]! > 150 && data[i]! < 120) h++ // the blue bar fill
-  }
-  return h
+const realRaf = globalThis.requestAnimationFrame
+let queue: FrameRequestCallback[] = []
+function stepRaf(): void {
+  globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => { queue.push(cb); return queue.length }) as typeof requestAnimationFrame
+}
+function frameAt(ms: number): void {
+  const q = queue
+  queue = []
+  for (const cb of q) cb(ms)
+}
+afterEach(() => { globalThis.requestAnimationFrame = realRaf; queue = [] })
+
+const blueAt = (c: HTMLCanvasElement, x: number, y: number): boolean => {
+  const dpr = c.width / W
+  const d = c.getContext('2d')!.getImageData(Math.round(x * dpr), Math.round(y * dpr), 1, 1).data
+  return d[2]! > 150 && d[0]! < 120
 }
 
-async function midTweenVsSettled(by: boolean): Promise<[number, number]> {
-  const rows = signal<Row[]>([{ id: 'a', v: 1 }, { id: 'b', v: 2 }, { id: 'c', v: 3 }])
+async function run(by: boolean): Promise<{ midGap: boolean; startCol0: boolean }> {
+  const rows = signal<Row[]>([{ id: 'a', v: 4 }, { id: 'b', v: 8 }, { id: 'c', v: 6 }])
   const { container, unmount } = mountInBrowser(
     h(PlotChart<Row>, {
-      data: () => rows(),
-      x: (d: Row) => d.id,
-      ...(by ? { by: (d: Row) => d.id } : {}),
+      data: () => rows(), x: (d: Row) => d.id, ...(by ? { by: (d: Row) => d.id } : {}),
       marks: [bars((d: Row) => d.v, { color: '#2060ff' })],
-      yDomain: { min: 0, max: 10 },
-      width: 300,
-      height: 200,
-      animate: false,
-      showGrid: false,
-      updateDuration: 60_000,
+      yDomain: { min: 0, max: 10 }, width: W, height: H, animate: false, showGrid: false, updateDuration: 1000,
     }),
   )
   await flush()
   const c = container.querySelector('canvas')!
-  rows.set([{ id: 'b', v: 2 }, { id: 'c', v: 3 }, { id: 'd', v: 10 }])
-  await flush()
-  const mid = barHeight(c, 0, 3)
+  // The plot the chart lays out, to find the gap between slot 0 and slot 1.
+  const l = layoutChart({ width: W, height: H, series: [{ kind: 'bars', values: [8, 6, 9], color: '', label: '', width: 2, radius: 3 }], categories: ['b', 'c', 'd'], theme: defaultTheme, showXAxis: true, showYAxis: true, showGrid: false, yDomain: { min: 0, max: 10 } }, (t, s) => t.length * s * 0.6)
+  const band = l.plot.w / 3
+  const gapX = l.plot.x + band
+  const lowY = l.plot.y + l.plot.h - 3
+  stepRaf()
+  rows.set([{ id: 'b', v: 8 }, { id: 'c', v: 6 }, { id: 'd', v: 9 }])
+  // Not flush(): it waits on the requestAnimationFrame this test now steps.
+  await new Promise((r) => setTimeout(r, 20))
+  frameAt(0)
+  frameAt(0)
+  const startCol0 = blueAt(c, l.plot.x + band / 2, lowY)
+  // ~200ms of 1000 is ~50% after the ease-out: survivors half way between slots.
+  frameAt(200)
+  const midGap = blueAt(c, gapX, lowY)
+  frameAt(2000)
   unmount()
-  // The settled frame of the same data, drawn without animation.
-  const { container: c2, unmount: u2 } = mountInBrowser(
-    h(PlotChart<Row>, { data: rows(), x: (d: Row) => d.id, marks: [bars((d: Row) => d.v, { color: '#2060ff' })], yDomain: { min: 0, max: 10 }, width: 300, height: 200, animate: false, showGrid: false }),
-  )
-  await flush()
-  const settled = barHeight(c2.querySelector('canvas')!, 0, 3)
-  u2()
-  return [mid, settled]
+  return { midGap, startCol0 }
 }
 
-describe('<PlotChart by>', () => {
-  it('keyed: the surviving first bar is already at its own height mid-tween', async () => {
-    const [mid, settled] = await midTweenVsSettled(true)
-    expect(settled).toBeGreaterThan(0)
-    expect(Math.abs(mid - settled)).toBeLessThanOrEqual(1)
+describe('<PlotChart by> morphs geometry by key', () => {
+  it('keyed: midway, a survivor is sliding across the gap between slots', async () => {
+    const r = await run(true)
+    expect(r.startCol0, 'the first frame still shows the old slot-0 bar').toBe(true)
+    expect(r.midGap).toBe(true)
   })
-  it('unkeyed (control): the same bar starts from its neighbour\'s value, visibly shorter', async () => {
-    const [mid, settled] = await midTweenVsSettled(false)
-    expect(settled - mid).toBeGreaterThan(5)
+  it('unkeyed (control): bars tween in place, nothing crosses the gap', async () => {
+    const r = await run(false)
+    expect(r.midGap).toBe(false)
   })
 })

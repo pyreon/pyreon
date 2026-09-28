@@ -14,6 +14,8 @@ import { resolveChartTheme, tooltipStyle, useChartTheme } from './theme'
 import type { VNode } from '@pyreon/core'
 import { batch, effect, isClient, isServer, signal, untrack } from '@pyreon/reactivity'
 import { getFrameSerializer } from './frame-seam'
+import { canKeyMorph, keyedGeometry, keyedMorphCmds, maskForMorph } from './keyed-morph'
+import type { KeyedGeo } from './keyed-morph'
 import { canvasMeasure, canvasSizeAttrs, paint, prepareCanvas } from './canvas-web'
 import { placeLegend } from './legend'
 import type { LegendPager } from './legend'
@@ -608,6 +610,10 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   /** The row keys (`by`) behind `lastValues`, and behind the spec being built. */
   let lastKeys: string[] | null = null
   let builtKeys: string[] | null = null
+  // Keyed GEOMETRY morph (`keyed-morph.ts`): the last settled frame's bar /
+  // line geometry by key, and the frame a running morph starts from.
+  let geoSnap: KeyedGeo[] | null = null
+  let morphFrom: KeyedGeo[] | null = null
   let tweenFrom: Double[][] | null = null
   let tweenT = 1.0
   let tweenFrame = 0.0
@@ -648,6 +654,14 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       // Keyed: realign the previous values to the new rows, so the shape
       // always matches and each row tweens from its own old value.
       if (enabled && lastValues !== null && keys !== null && lastKeys !== null && lastValues.length === cur.length && !sameKeys(lastKeys, keys)) {
+        // Morphable (plain bars / lines): slide, grow in and shrink out by key.
+        if (geoSnap !== null && canKeyMorph(spec)) {
+          morphFrom = geoSnap
+          lastValues = cur
+          lastKeys = keys
+          startTween()
+          return spec
+        }
         tweenFrom = alignByKey(lastValues, lastKeys, keys, spec.series.map((x) => x.kind))
         lastValues = cur
         lastKeys = keys
@@ -1079,7 +1093,16 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const tba = features.toolbox
     const spec = tba === undefined ? built : tba.applyBrushSelection(built, tba.brushOnlySeries(tba.brushSelection(built, l, areasNow), props.brushSeriesIndex ?? []), areasNow.length > 0, props.outOfBrushOpacity ?? 0.1)
     frameCache = { spec, layout: l, w, hgt }
-    const cmds = coreCmdsFor(renderChartIn(spec, measure, l))
+    const morphing = morphFrom !== null && tweenT < 1.0 && builtKeys !== null && canKeyMorph(spec)
+    const plotCmds = morphing
+      ? [...renderChartIn(maskForMorph(spec), measure, l), ...keyedMorphCmds(morphFrom!, keyedGeometry(spec, l, builtKeys!), easeOutCubic(tweenT))]
+      : renderChartIn(spec, measure, l)
+    if (!morphing) {
+      morphFrom = null
+      // Only a keyed chart pays for the snapshot.
+      geoSnap = props.by !== undefined && builtKeys !== null && canKeyMorph(spec) ? keyedGeometry(spec, l, builtKeys) : null
+    }
+    const cmds = coreCmdsFor(plotCmds)
     const navCmds = shiftCmds(navigatorCmds(rows, pw, hgt - presetH - navH - legendBottom, navH), legendLeft, 0.0)
     if (navRect !== null && legendLeft !== 0.0) navRect = { ...navRect, x: navRect.x + legendLeft }
     const navStr = JSON.stringify(navRect)
