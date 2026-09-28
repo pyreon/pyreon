@@ -1,6 +1,7 @@
 // Marks → draw commands. The whole chart, as plain data.
 
 import { computeLayout, valueTickTarget, layoutBars, layoutBarsH, layoutSeriesPoints, layoutSeriesPointsAt, layoutSeriesPointsH } from './layout'
+import { m4Pixels } from './decimate-values'
 import { DEFAULT_PALETTE } from './palette'
 import { layoutGroupedBars, layoutGroupedBarsH, layoutStackLevels, layoutStackLevelsH, layoutWaterfall, normalizeStack, stackLevels, stackLevelsExtent, waterfallExtent } from './stack'
 import type { StackLevels, StackSegment } from './stack'
@@ -1306,7 +1307,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       // A non-finite value is a GAP: the line breaks into runs rather than
       // drawing a zero.
       for (const run of splitRuns(s.values, place)) {
-        const pts = reveal(curveFn(run))
+        // M4: more points than pixel columns draw the same pixels from four per column.
+        const pts = m4Pixels(reveal(curveFn(run)))
         if (pts.length > 1) out.push({ kind: 'polyline', points: pts, stroke: s.color, width: s.width, dash: s.dash })
       }
       // A line shows its datum symbols only when asked (ECharts' showSymbol):

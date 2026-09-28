@@ -18,7 +18,7 @@
 // previous formulation produced `for j in avgStart..<avgEnd` with Double bounds
 // and `values[start]` with a Double subscript, neither of which compiles.)
 
-import type { Double } from './types'
+import type { Double, Pt } from './types'
 
 /**
  * The bucket edges of a decimation pass: `edge(i) = floor(i * span / count)` for
@@ -195,6 +195,51 @@ export function minMaxBuckets(values: Double[], buckets: number): Double[] {
     // Emit in the order they occur so the line does not zig-zag backwards.
     out.push(lo)
     out.push(hi)
+  }
+  return out
+}
+
+/**
+ * M4 over already-placed polyline points: per column keep the first, the
+ * lowest, the highest and the last point, in drawing order. Columns are
+ * `1 / perPx` CSS pixels wide — half a pixel by default, so a 2× display's
+ * device pixels each get their own column.
+ *
+ * A line with more points than pixels cannot show them — a 1,000,000-point
+ * series on an 800px plot draws 1,250 segments per column on top of each
+ * other. Keeping those four per column draws the SAME pixels (every vertical
+ * extent and every column-to-column join survives) from at most 4 × width
+ * points (8 × width at the default resolution), which is what uPlot does. Points must run left to right; anything
+ * else (a horizontal chart, a scatter) is returned untouched, as is a line
+ * already sparse enough.
+ */
+export function m4Pixels(pts: Pt[], perPx: Double = 2.0): Pt[] {
+  const n = pts.length
+  if (n < 8) return pts
+  const span = pts[n - 1]!.x - pts[0]!.x
+  if (!(n > span * perPx * 4.0 + 8.0)) return pts
+  for (let i = 1; i < n; i++) if (pts[i]!.x < pts[i - 1]!.x) return pts
+  const out: Pt[] = []
+  let i = 0
+  while (i < n) {
+    const col = Math.floor(pts[i]!.x * perPx)
+    const first = i
+    let lo = i
+    let hi = i
+    let j = i
+    while (j < n && Math.floor(pts[j]!.x * perPx) === col) {
+      if (pts[j]!.y < pts[lo]!.y) lo = j
+      if (pts[j]!.y > pts[hi]!.y) hi = j
+      j = j + 1
+    }
+    const last = j - 1
+    out.push(pts[first]!)
+    const a = lo < hi ? lo : hi
+    const b = lo < hi ? hi : lo
+    if (a !== first) out.push(pts[a]!)
+    if (b !== a && b !== last) out.push(pts[b]!)
+    if (last !== first && last !== a) out.push(pts[last]!)
+    i = j
   }
   return out
 }

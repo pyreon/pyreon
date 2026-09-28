@@ -6501,7 +6501,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
         } else {
           if s.kind == "line" {
             for run in splitRuns(s.values, place) {
-              let pts = reveal(curveFn(run))
+              let pts = m4Pixels(reveal(curveFn(run)))
               if pts.count > 1 {
                 out.append(PyreonDrawCmd(kind: "polyline", stroke: s.color, width: s.width, dash: s.dash, points: pts))
               }
@@ -13680,6 +13680,55 @@ public func minMaxBuckets(_ values: [Double], _ buckets: Int) -> [Double] {
       }
       out.append(lo)
       out.append(hi)
+    }
+    return out
+  }
+
+public func m4Pixels(_ pts: [PyreonChartPt], _ perPx: Double = 2.0) -> [PyreonChartPt] {
+    let n = pts.count
+    if n < 8 {
+      return pts
+    }
+    let span = pts[n - 1].x - pts[0].x
+    if !(Double(n) > span * perPx * 4.0 + 8.0) {
+      return pts
+    }
+    for i in 1..<n {
+      if pts[i].x < pts[i - 1].x {
+        return pts
+      }
+    }
+    var out: [PyreonChartPt] = []
+    var i = 0
+    while i < n {
+      let col = floor(Double(pts[i].x * perPx))
+      let first = i
+      var lo = i
+      var hi = i
+      var j = i
+      while j < n && floor(Double(pts[j].x * perPx)) == col {
+        if pts[j].y < pts[lo].y {
+          lo = j
+        }
+        if pts[j].y > pts[hi].y {
+          hi = j
+        }
+        j = j + 1
+      }
+      let last = j - 1
+      out.append(pts[first])
+      let a = lo < hi ? lo : hi
+      let b = lo < hi ? hi : lo
+      if a != first {
+        out.append(pts[a])
+      }
+      if b != a && b != last {
+        out.append(pts[b])
+      }
+      if last != first && last != a {
+        out.append(pts[last])
+      }
+      i = j
     }
     return out
   }

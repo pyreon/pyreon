@@ -3873,7 +3873,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
         } else {
           if (s.kind == "line") {
             for (run in splitRuns(s.values, place)) {
-              val pts = reveal(curveFn(run))
+              val pts = m4Pixels(reveal(curveFn(run)))
               if (pts.length > 1) {
                 out.add(PyreonDrawCmd(kind = "polyline", stroke = s.color, width = s.width, dash = s.dash, points = pts))
               }
@@ -11061,6 +11061,55 @@ fun minMaxBuckets(values: List<Double>, buckets: Int): List<Double> {
       }
       out.add(lo)
       out.add(hi)
+    }
+    return out
+  }
+
+fun m4Pixels(pts: List<PyreonChartPt>, perPx: Double = 2.0): List<PyreonChartPt> {
+    val n = pts.length
+    if (n < 8) {
+      return pts
+    }
+    val span = pts[n - 1].x - pts[0].x
+    if (!(n > span * perPx * 4.0 + 8.0)) {
+      return pts
+    }
+    for (i in 1 until n) {
+      if (pts[i].x < pts[i - 1].x) {
+        return pts
+      }
+    }
+    val out: MutableList<PyreonChartPt> = mutableListOf()
+    var i = 0
+    while (i < n) {
+      val col = Math.floor(pts[i].x * perPx)
+      val first = i
+      var lo = i
+      var hi = i
+      var j = i
+      while (j < n && Math.floor(pts[j].x * perPx) == col) {
+        if (pts[j].y < pts[lo].y) {
+          lo = j
+        }
+        if (pts[j].y > pts[hi].y) {
+          hi = j
+        }
+        j = j + 1
+      }
+      val last = j - 1
+      out.add(pts[first])
+      val a = if (lo < hi) lo else hi
+      val b = if (lo < hi) hi else lo
+      if (a != first) {
+        out.add(pts[a])
+      }
+      if (b != a && b != last) {
+        out.add(pts[b])
+      }
+      if (last != first && last != a) {
+        out.add(pts[last])
+      }
+      i = j
     }
     return out
   }
