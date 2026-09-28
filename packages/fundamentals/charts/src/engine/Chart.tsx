@@ -12,7 +12,8 @@ import { lttbIndices, minMaxBuckets } from './decimate-values'
 import { warnOnce } from './dev-warn'
 import { resolveChartTheme, tooltipStyle, useChartTheme } from './theme'
 import type { VNode } from '@pyreon/core'
-import { batch, effect, isClient, signal, untrack } from '@pyreon/reactivity'
+import { batch, effect, isClient, isServer, signal, untrack } from '@pyreon/reactivity'
+import { getFrameSerializer } from './frame-seam'
 import { canvasMeasure, canvasSizeAttrs, paint, prepareCanvas } from './canvas-web'
 import { placeLegend } from './legend'
 import type { LegendPager } from './legend'
@@ -42,7 +43,7 @@ import type { BandFeature, PlotFeatures } from './plot-features'
 import type { ZoomWindow } from './zoom'
 import type { ChartHandle, ChartLink } from './link'
 import type { Formatter } from './format'
-import type { Domain, DrawCmd, Double, Rect } from './types'
+import type { Domain, DrawCmd, Double, MeasureText, Rect } from './types'
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 
@@ -917,7 +918,23 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const hgt = props.height ?? 200
     const ctx = prepareCanvas(el, w, hgt, theme().background)
     if (ctx === null) return
-    const measure = canvasMeasure(ctx, FONT)
+    const painted = frameAt(w, hgt, canvasMeasure(ctx, FONT))
+    paint(ctx, painted, w, hgt, FONT)
+    canvasPainted = true
+    // The server's first-frame SVG stood in for the canvas until now.
+    if (ssrFrame !== null) {
+      ssrFrame.remove()
+      ssrFrame = null
+    }
+    if (props.onRendered !== undefined) untrack(() => props.onRendered!())
+  }
+
+  /**
+   * The whole frame as a draw list — title, legend, plot, overlays — at a
+   * size. Pure of the canvas: the draw paints it, and a server render
+   * serializes it as the first-frame SVG.
+   */
+  const frameAt = (w: number, hgt: number, measure: MeasureText): DrawCmd[] => {
     const rows = readData()
 
     // Title block first, then the legend, then the plot in what is left. Each
@@ -1078,8 +1095,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     lastFrame = painted
     lastW = w
     lastH = hgt
-    paint(ctx, painted, w, hgt, FONT)
-    if (props.onRendered !== undefined) untrack(() => props.onRendered!())
+    return painted
   }
 
   // The navigator's series over ALL rows, resolved once per data change (the
@@ -1848,6 +1864,38 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     return input
   }
 
+  // The server's first frame: the chart as SVG in the HTML, so an SSR / SSG
+  // page shows the chart before any script runs rather than an empty box.
+  // Needs the serializer `@pyreon/charts/svg` registers (see `frame-seam.ts`).
+  // Hydration adopts it untouched (a `dangerouslySetInnerHTML` element's
+  // server children are trusted), and the first canvas paint removes it. On
+  // a client mount it is an empty element removed the same way.
+  let ssrFrame: Element | null = null
+  // The canvas can paint before this sibling's ref fires; then the ref removes it.
+  let canvasPainted = false
+  const serverFrameSvg = (): string => {
+    // A width the server cannot measure: the explicit one, else a typical
+    // column; the SVG then scales to the container, so the first frame is
+    // the chart at a plausible size rather than at the page's real one.
+    const ser = getFrameSerializer()
+    if (ser === null) return ''
+    const w = props.width ?? 600
+    const hgt = props.height ?? 200
+    const svg = ser.svg(frameAt(w, hgt, ser.measure()), w, hgt, { fontFamily: FONT, idPrefix: `${tableId}-frame` })
+    return props.width === undefined ? svg.replace(`width="${w}"`, 'width="100%"') : svg
+  }
+  const ssrFrameNode = h('div', {
+    'data-pyreon-chart-frame': '',
+    'aria-hidden': 'true',
+    style: 'position:absolute;inset:0;pointer-events:none',
+    dangerouslySetInnerHTML: { __html: isServer ? serverFrameSvg() : '' },
+    ref: (el: Element | null) => {
+      if (el === null) return
+      if (canvasPainted) el.remove()
+      else ssrFrame = el
+    },
+  })
+
   const canvasNode = h('canvas', {
     class: props.class,
     // `img` + a label is what makes the canvas announce as a single described
@@ -2025,6 +2073,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     'div',
     { style: 'position:relative' },
     canvasNode,
+    ssrFrameNode,
     dataViewNode,
     ...(props.tooltip === true ? [tooltipNode()] : []),
     ...(keyboardOn ? [liveNode()] : []),

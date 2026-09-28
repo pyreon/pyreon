@@ -145,3 +145,13 @@ describe('prepareCanvas', () => {
     expect(sets).toBe(1)
   })
 })
+
+describe('the server first-frame placeholder', () => {
+  it('is gone once the canvas has painted', async () => {
+    const { container } = mountInBrowser(() =>
+      PlotChart<{ v: number }>({ data: [{ v: 1 }, { v: 2 }], marks: [bars((d) => d.v)], width: 200, height: 100, animate: false }),
+    )
+    await flush()
+    expect(container.querySelector('[data-pyreon-chart-frame]')).toBeNull()
+  })
+})

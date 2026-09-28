@@ -26,7 +26,7 @@ The package has three entries:
 | Entry | For |
 | --- | --- |
 | `@pyreon/charts` | `<Chart>`, its marks, the family components, formatters, theme and linking. The stable surface. |
-| `@pyreon/charts/svg` | `chartToSvg` and every `*ToSvg`: charts as SVG strings with no DOM, for SSR and export. |
+| `@pyreon/charts/svg` | `chartToSvg` and every `*ToSvg`: charts as SVG strings with no DOM, for SSR and export. Imported on a server, it also makes every `<Chart>` ship its first frame as SVG in the SSR / SSG HTML. |
 | `@pyreon/charts/engine` | Every layout, hit test and draw-list builder, and the array form `<PlotChart marks>`. Not covered by the stability promise. |
 
 <PackageBadge name="@pyreon/charts" href="/docs/charts" />
@@ -446,7 +446,16 @@ the description reads:
 ## Server-side SVG
 
 `chartToSvg` builds the same chart as a pure SVG string — no DOM, no canvas —
-so it runs in SSR, SSG, an API route, or an email pipeline:
+so it runs in SSR, SSG, an API route, or an email pipeline. A server-rendered
+`<Chart>` always ships its accessible data table in the HTML; import
+`@pyreon/charts/svg` in the server entry (`import '@pyreon/charts/svg'`) and it
+also ships the chart's first frame as SVG, so the page shows the chart before
+any script runs. Hydration adopts that SVG and the first canvas paint replaces
+it. It is a server import on purpose: the serializer is about 2 KB gzipped that
+no browser bundle needs. A chart with no `width` draws its server frame at
+600px and scales it to the container.
+
+The same serializer, called directly:
 
 ```ts
 // @check

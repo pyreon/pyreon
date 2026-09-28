@@ -13,7 +13,10 @@
     "directory": "packages/fundamentals/charts"
   },
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/svg.ts",
+    "./lib/svg.js"
+  ],
   "main": "./lib/index.js",
   "module": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
