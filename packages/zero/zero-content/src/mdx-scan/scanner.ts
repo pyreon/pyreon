@@ -1,6 +1,5 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
-import fg from 'fast-glob'
 
 // ─── src/mdx convention scanner ───────────────────────────────────────────
 //
@@ -77,12 +76,7 @@ export async function scanMdxDir(dir: string): Promise<ScanResult> {
     return { components: [], duplicates: [], files: [] }
   }
   if (!stat.isDirectory()) return { components: [], duplicates: [], files: [] }
-  const entries = await fg(['**/*.{ts,tsx,js,jsx}'], {
-    cwd: dir,
-    absolute: true,
-    dot: false,
-    onlyFiles: true,
-  })
+  const entries = await findSourceFiles(dir)
 
   const byName = new Map<string, ScannedComponent[]>()
   const files: string[] = []
@@ -116,6 +110,65 @@ export async function scanMdxDir(dir: string): Promise<ScanResult> {
   components.sort((a, b) => a.name.localeCompare(b.name))
   duplicates.sort((a, b) => a.name.localeCompare(b.name))
   return { components, duplicates, files: files.sort() }
+}
+
+const SOURCE_FILE = /\.(?:ts|tsx|js|jsx)$/
+
+/**
+ * Every `.ts` / `.tsx` / `.js` / `.jsx` file under `dir`, recursively, as
+ * absolute forward-slash paths in sorted order.
+ *
+ * First-party replacement for the `fast-glob` call this used
+ * (`**\/*.{ts,tsx,js,jsx}` with `dot: false`, `onlyFiles`, `absolute`),
+ * matching its semantics: dot-prefixed files AND directories are skipped,
+ * symlinks are followed (a symlinked directory is walked, a symlinked file
+ * is included), a broken symlink is ignored, and paths use `/` on every
+ * platform — they are spliced into `import` specifiers. Two things are
+ * stricter than fast-glob: the result is SORTED (fast-glob's order is
+ * unspecified, and the first file wins a duplicate component name, so the
+ * winner is now deterministic), and a symlink that points back at one of
+ * its own ancestors (a cycle) is not followed.
+ */
+export async function findSourceFiles(dir: string): Promise<string[]> {
+  const out: string[] = []
+  // Real paths of the directories on the CURRENT descent path — a cycle
+  // guard only. Two separate links to one directory are both walked, as
+  // fast-glob did, so a component reachable twice still reports as a
+  // duplicate instead of being silently deduplicated.
+  const ancestors: string[] = []
+  const walk = async (current: string): Promise<void> => {
+    let real: string
+    try {
+      real = await fs.realpath(current)
+    } catch {
+      return
+    }
+    if (ancestors.includes(real)) return
+    ancestors.push(real)
+    const entries = await fs.readdir(current, { withFileTypes: true })
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue
+      const full = path.join(current, entry.name)
+      let isDir = entry.isDirectory()
+      let isFile = entry.isFile()
+      if (entry.isSymbolicLink()) {
+        try {
+          const target = await fs.stat(full)
+          isDir = target.isDirectory()
+          isFile = target.isFile()
+        } catch {
+          continue // broken link
+        }
+      }
+      if (isDir) await walk(full)
+      else if (isFile && SOURCE_FILE.test(entry.name)) {
+        out.push(path.resolve(full).split(path.sep).join('/'))
+      }
+    }
+    ancestors.pop()
+  }
+  await walk(dir)
+  return out.sort()
 }
 
 /**
