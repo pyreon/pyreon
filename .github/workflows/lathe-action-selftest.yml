@@ -1,0 +1,223 @@
+name: Lathe Action Self-Test
+
+# Runs the `lathe diff` GitHub Action documented in
+# docs/src/content/docs/lathe.md on a HOSTED runner, against a REAL pull
+# request: real `actions/checkout` history, real setup-bun, the real `gh` and
+# GitHub API. `docs-action.test.ts` executes the same step scripts locally with
+# `gh` stubbed — this is the half that cannot run there. The spec under test is
+# `examples/lathe-bookshelf/openapi.yaml`, the repo's own Lathe consumer, and
+# the steps run from its SUBDIRECTORY (a monorepo package's spec is the common
+# layout, and `<rev>:<path>` must resolve against the working directory).
+#
+# Drift lock: the `Diff the contract` / `Summary` / `Comment` / `Fail on a
+# breaking change` steps below must stay IDENTICAL to the docs' (one
+# substitution: `github.base_ref || 'main'`, so workflow_dispatch has a base).
+# `docs-action.test.ts` asserts it — edit the docs, then copy here.
+#
+# What it proves on every run: the diff's exit code agrees with the report's
+# breaking count; the comment GitHub stores is byte-for-byte the report plus
+# the marker; running the Comment step TWICE leaves exactly one contract
+# comment; and no other comment on the PR was overwritten (the
+# `gh pr comment --edit-last` bug, which overwrote bundle-size-diff's comment).
+# A BREAKING change to the bookshelf spec fails the job — that is the Action's
+# contract, dogfooded on its own consumer.
+#
+# Advisory, not a required check.
+
+on:
+  # Path scoping is a JOB-level decide, not a trigger `paths:` filter: a
+  # filtered-out PR creates no check run at all, which deadlocks a required
+  # check if this is ever promoted.
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lathe-action-selftest-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Lathe Action (decide)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      # The PR merge commit and its first parent, the base tip.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+      - id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Fail-CLOSED: a diff that cannot be computed runs the self-test.
+          if ! files=$(git diff --name-only HEAD^1 HEAD); then
+            echo "::warning::could not compute the changed files; running the self-test"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if printf '%s\n' "$files" | grep -qE '^(packages/tools/lathe/|packages/tools/config/|packages/core/reactivity/|examples/lathe-bookshelf/|docs/src/content/docs/lathe\.md$|\.github/workflows/lathe-action-selftest\.yml$|\.bun-version$)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  contract:
+    name: Lathe Action Self-Test
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+    defaults:
+      run:
+        working-directory: examples/lathe-bookshelf
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the base revision must be readable
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+      - name: Install
+        working-directory: .
+        env:
+          PYREON_BOOTSTRAP_SKIP: '1'
+        run: bun install --frozen-lockfile
+      # `bunx lathe` runs the PUBLISHED bin (bin/lathe.js → lib/cli.js) — the
+      # thing a consumer runs — so lathe and its runtime deps need a lib/.
+      - name: Build lathe
+        working-directory: .
+        run: |
+          bun run --filter=@pyreon/reactivity build
+          bun run --filter=@pyreon/config build
+          bun run --filter=@pyreon/lathe build
+
+      - name: Snapshot the other comments
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -o pipefail
+          gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- lathe-contract -->") | not) | .id' \
+            > "$RUNNER_TEMP/others-before.txt"
+
+      # ── The documented Action, verbatim (see the drift lock above) ─────────
+      - name: Diff the contract
+        id: diff
+        run: |
+          set +e
+          bunx lathe diff "origin/${{ github.base_ref || 'main' }}:openapi.yaml" openapi.yaml \
+            --format markdown --fail-on-breaking > contract.md
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+      - name: Summary
+        if: steps.diff.outputs.code != '2'   # 2 = an input could not be read; there is no report
+        run: cat contract.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Comment
+        # A fork's pull request gets a read-only token: its report is the job summary.
+        if: steps.diff.outputs.code != '2' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -o pipefail
+          marker='<!-- lathe-contract -->'
+          { echo "$marker"; cat contract.md; } > comment.md
+          for attempt in 1 2 3; do
+            id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+              --jq '.[] | select(.body | startswith("<!-- lathe-contract -->")) | .id' | head -n 1) &&
+              if [ -n "$id" ]; then
+                gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@comment.md > /dev/null
+              else
+                gh pr comment "$PR" --body-file comment.md
+              fi && exit 0
+            sleep $((attempt * 5))
+          done
+          echo "::warning::could not post the contract comment; the report is in the job summary"
+      # ── Self-test only: the same step again — a push to an open PR ─────────
+      - name: Comment (a second push)
+        if: steps.diff.outputs.code != '2' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -o pipefail
+          marker='<!-- lathe-contract -->'
+          { echo "$marker"; cat contract.md; } > comment.md
+          for attempt in 1 2 3; do
+            id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+              --jq '.[] | select(.body | startswith("<!-- lathe-contract -->")) | .id' | head -n 1) &&
+              if [ -n "$id" ]; then
+                gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@comment.md > /dev/null
+              else
+                gh pr comment "$PR" --body-file comment.md
+              fi && exit 0
+            sleep $((attempt * 5))
+          done
+          echo "::warning::could not post the contract comment; the report is in the job summary"
+
+      - name: Verify the real outputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          CODE: ${{ steps.diff.outputs.code }}
+          CAN_COMMENT: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          set -eo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+
+          # 1. The exit code agrees with the report it wrote.
+          case "$CODE" in 0|1) ;; *) cat contract.md || true; fail "lathe diff exited $CODE: an input could not be read (base: origin/${{ github.base_ref || 'main' }})";; esac
+          header=$(head -n 1 contract.md)
+          echo "report: $header (exit $CODE)"
+          case "$header" in '### API contract: '*) ;; *) fail "not a contract report: $header";; esac
+          breaking=$(printf '%s' "$header" | sed -nE 's/.*: ([0-9]+) breaking.*/\1/p')
+          want=0
+          if [ -n "$breaking" ] && [ "$breaking" -gt 0 ]; then want=1; fi
+          [ "$CODE" = "$want" ] || fail "exit $CODE for a report with ${breaking:-0} breaking change(s); expected $want"
+
+          if [ "$CAN_COMMENT" != true ]; then
+            echo "no PR comment on this event (dispatch or fork) — report and exit code verified"
+            exit 0
+          fi
+
+          # 2. Exactly ONE contract comment after two Comment steps, and its
+          #    stored body is the report behind the marker.
+          ids=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- lathe-contract -->")) | .id')
+          count=$(printf '%s\n' "$ids" | grep -c . || true)
+          [ "$count" = 1 ] || fail "expected exactly one contract comment, found $count ($ids)"
+          gh api "repos/$GITHUB_REPOSITORY/issues/comments/$ids" --jq .body > "$RUNNER_TEMP/stored.md"
+          [ "$(cat "$RUNNER_TEMP/stored.md")" = "$(cat comment.md)" ] || {
+            diff comment.md "$RUNNER_TEMP/stored.md" || true
+            fail "the stored comment is not the report"
+          }
+
+          # 3. No other comment was overwritten or removed. (Not "byte-identical":
+          #    other workflows legitimately edit their own sticky comments while
+          #    this job runs. An overwrite by this job carries the report.)
+          gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- lathe-contract -->") | not) | .id' \
+            > "$RUNNER_TEMP/others-after.txt"
+          missing=$(comm -23 <(sort "$RUNNER_TEMP/others-before.txt") <(sort "$RUNNER_TEMP/others-after.txt"))
+          [ -z "$missing" ] || fail "comment(s) $missing disappeared while the contract comment was posted"
+          clobbered=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+            --jq '.[] | select((.body | startswith("<!-- lathe-contract -->") | not) and (.body | contains("### API contract: "))) | .id')
+          [ -z "$clobbered" ] || fail "comment(s) $clobbered now hold the contract report without the marker — another comment was overwritten"
+          echo "verified: exit $CODE, one contract comment ($ids), $(grep -c . "$RUNNER_TEMP/others-before.txt" || true) other comment(s) intact"
+
+      - name: Fail on a breaking change
+        if: steps.diff.outputs.code != '0'
+        run: exit ${{ steps.diff.outputs.code }}

@@ -23,10 +23,12 @@ import { parse } from 'yaml'
 
 const REPO = resolve(__dirname, '..', '..', '..', '..', '..')
 const DOC = join(REPO, 'docs', 'src', 'content', 'docs', 'lathe.md')
+const SELF_TEST = join(REPO, '.github', 'workflows', 'lathe-action-selftest.yml')
 const MAIN = resolve(__dirname, '..', 'cli', 'main.ts')
 
 interface Step {
   name?: string
+  id?: string
   uses?: string
   run?: string
   if?: string
@@ -306,4 +308,24 @@ describe('the docs GitHub Action', () => {
     expect(r.ghLog.match(/^sleep /gm)).toHaveLength(3)
     expect(r.stdout).toContain('::warning::could not post the contract comment')
   }, 60_000)
+
+  // The hosted-runner half: `lathe-action-selftest.yml` runs these step scripts
+  // against a real pull request. It is only evidence about the docs while the
+  // two copies are the same text.
+  it('the self-test workflow runs the documented steps verbatim', () => {
+    const doc = Object.values(workflow().jobs)[0]?.steps ?? []
+    const self = (parse(readFileSync(SELF_TEST, 'utf8')) as { jobs: { contract: { steps: Step[] } } }).jobs.contract.steps
+    // workflow_dispatch has no base ref; the self-test falls back to main.
+    const norm = (x: unknown) => JSON.stringify(x ?? null).replaceAll("github.base_ref || 'main'", 'github.base_ref')
+    const shape = (st: Step) => norm({ run: st.run, if: st.if, env: st.env })
+    const byName = (name: string) => self.filter((st) => st.name === name || st.name?.startsWith(`${name} (`))
+    for (const name of ['Diff the contract', 'Summary', 'Comment', 'Fail on a breaking change']) {
+      const want = doc.find((st) => st.name === name)
+      expect(want, `docs step ${name}`).toBeDefined()
+      const copies = byName(name)
+      expect(copies.length, `self-test copies of ${name}`).toBeGreaterThan(0)
+      for (const got of copies) expect(shape(got), `self-test step ${got.name}`).toBe(shape(want as Step))
+    }
+    expect(self.find((st) => st.name === 'Diff the contract')?.id).toBe('diff')
+  })
 })
