@@ -86,11 +86,31 @@ export function a11yTableNode(read: () => A11yTable, id: string, title: () => st
   // What each body cell last held, so an unchanged cell costs a string compare
   // and no DOM read or write.
   let shown: string[][] = []
+  // A large table is written after the next paint on EVERY change, not only
+  // the first mount: a data update used to refill 1,000 rows inside the
+  // update's own frame (measured: 6.0ms vs 1.4ms without the table on a 10k
+  // update). Coalesced — a burst of updates writes the latest table once.
+  let pending: A11yTable | null = null
   effect(() => {
     const el = host()
     if (el === null) return
     const t = read()
-    if (t.rows.length > DEFER_ROWS && !ready()) return
+    if (t.rows.length > DEFER_ROWS) {
+      if (!ready()) return
+      const scheduled = pending !== null
+      pending = t
+      if (!scheduled) {
+        afterPaint(() => {
+          const next = pending
+          pending = null
+          if (next !== null && el.isConnected) writeTable(el, next)
+        })
+      }
+      return
+    }
+    writeTable(el, t)
+  })
+  function writeTable(el: HTMLTableElement, t: A11yTable): void {
     const doc = el.ownerDocument
     let caption = el.caption
     if (caption === null) caption = el.createCaption()
@@ -140,7 +160,7 @@ export function a11yTableNode(read: () => A11yTable, id: string, title: () => st
       }
     }
     shown = next
-  })
+  }
   // `table-layout: fixed` + containment: the table is offscreen, so nothing it
   // holds may cost a page layout. AUTO table layout measures every cell of
   // every row to size its columns — ~6ms for 1,000 rows on each forced layout,

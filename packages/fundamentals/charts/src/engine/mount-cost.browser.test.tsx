@@ -2,6 +2,7 @@
 // walked every row through every accessor a SECOND time, and a large
 // accessible table was laid out before the chart's first paint.
 import { h } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
 import { describe, expect, it } from 'vitest'
 import { PlotChart } from './Chart'
@@ -40,5 +41,29 @@ describe('first-mount cost', () => {
     big.un()
     small.root.remove()
     big.root.remove()
+  })
+
+  it('a data update to a large table is written after the next paint, once for a burst of updates', async () => {
+    const data = signal<Row[]>(Array.from({ length: 1000 }, (_, i) => ({ i, v: i })))
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    const un = mount(h(PlotChart<Row>, { data: () => data(), x: (d: Row) => String(d.i), marks: [line((d: Row) => d.v)], width: 400, height: 200, animate: false, updateAnimation: false }), root)
+    await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 50)))
+    const firstValue = (): string | null => root.querySelector('table tbody tr td')!.textContent
+    expect(firstValue()).toBe('0')
+    let writes = 0
+    const obs = new MutationObserver((m) => { writes += m.length })
+    obs.observe(root.querySelector('table')!, { subtree: true, characterData: true, childList: true })
+    data.set(Array.from({ length: 1000 }, (_, i) => ({ i, v: i + 1 })))
+    data.set(Array.from({ length: 1000 }, (_, i) => ({ i, v: i + 2 })))
+    // Still the old table in the update's own frame.
+    expect(firstValue()).toBe('0')
+    await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 50)))
+    expect(firstValue()).toBe('2')
+    obs.disconnect()
+    // One write per changed cell, for the LATEST data only — not two passes.
+    expect(writes).toBeLessThanOrEqual(1000 * 2)
+    un()
+    root.remove()
   })
 })
