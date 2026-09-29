@@ -87,9 +87,10 @@ const cloudflare: AdapterGen = {
  *
  *   - SSR/ISR: client → `dist/publish`, function `ssr.mjs` →
  *     `dist/netlify/functions` (see `NETLIFY_ADAPTER_OUTPUT` in
- *     `@pyreon/zero`), redirect everything to `/.netlify/functions/ssr`
- *     (static files still win — `force` defaults to false, and the
- *     function declares `preferStatic`).
+ *     `@pyreon/zero`). No redirect: the function routes itself via its
+ *     `config.path` (`/*`, with `preferStatic` so static files still win),
+ *     and a function with a custom path is unreachable at
+ *     `/.netlify/functions/<name>` — a rewrite there is dead config.
  *   - SSG: the prerendered site IS `dist` (per-route HTML + the
  *     ssgPlugin's `_redirects`); no functions.
  *   - SPA: `dist` + the standard SPA fallback rewrite.
@@ -135,12 +136,7 @@ ${assetHeaders}
   directory = "dist/netlify/functions"
   node_bundler = "esbuild"
 
-${assetHeaders}
-[[redirects]]
-  from = "/*"
-  to = "/.netlify/functions/ssr"
-  status = 200
-`
+${assetHeaders}`
 }
 
 const netlify: AdapterGen = {
