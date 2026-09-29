@@ -188,9 +188,8 @@ describe('two schema-bearing modules, compiled together through the real compile
       expect(files.filter((f) => f.path.endsWith('.native.tsx')).length).toBe(2)
     })
 
-    it.runIf(isSwiftcAvailable() || isKotlincAvailable())(
-      `${validator}: every module set compiles`,
-      () => {
+    describe.skipIf(!isSwiftcAvailable() && !isKotlincAvailable())('swiftc / kotlinc', () => {
+      it(`${validator}: every module set compiles`, () => {
         const r = verifyNative(files, transform, compile)
         expect(r.modules?.length).toBe(2)
         for (const m of r.modules ?? []) {
@@ -198,8 +197,7 @@ describe('two schema-bearing modules, compiled together through the real compile
           expect(m.compiled.errors, m.target).toEqual([])
           expect(m.compiled.ok, m.target).toBe(true)
         }
-      },
-      600_000,
-    )
+      }, 600_000)
+    })
   }
 })
