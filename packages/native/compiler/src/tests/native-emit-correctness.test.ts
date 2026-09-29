@@ -58,7 +58,7 @@ export function C() { return <Stack><Text>{String(M["a"] ?? 0)}</Text></Stack> }
     const sw = transform(src, { target: 'swift' })
     expect(sw.code).toContain('private let M: [String: Int] = ["a": 1]')
     const kt = transform(src, { target: 'kotlin' })
-    expect(kt.code).toContain('private val M: MutableMap<String, Int> = mutableMapOf("a" to 1)')
+    expect(kt.code).toContain('private val M: MutableMap<String, Long> = mutableMapOf("a" to 1L)')
     expect(sw.warnings).toEqual([])
     expect(kt.warnings).toEqual([])
   })

@@ -97,7 +97,7 @@ describe('signal-decl annotation agrees with the synthesized struct value', () =
       app(`  const items = signal([{ id: 2 + 3, name: "hi" }])`),
       { target: 'kotlin' },
     ).code
-    expect(out).toContain('var items by remember { mutableStateOf(listOf(__Obj0(id = 2 + 3, name = "hi"))) }')
+    expect(out).toContain('var items by remember { mutableStateOf(listOf(__Obj0(id = 2L + 3L, name = "hi"))) }')
   })
 
   it.runIf(isSwiftUIAvailable())(

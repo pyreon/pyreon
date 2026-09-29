@@ -26,15 +26,18 @@ package com.pyreon.runtime
 
 import androidx.compose.runtime.mutableStateListOf
 
+// Indices, lengths and keys are `Long`: the compiler lowers a TS integer
+// `number` to Kotlin `Long` (Swift `Int` is 64-bit), so the API a lowered
+// call site reaches must take the same width.
 /** One keyed row. [key] is stable across mutations (never reused). */
 public data class PyreonFieldArrayItem(
-    public val key: Int,
+    public val key: Long,
     public val value: String,
 )
 
 /** Observable dynamic-list container — the Compose half of `useFieldArray`. */
 public class PyreonFieldArray(initial: List<String> = emptyList()) {
-    private var nextKey: Int = 0
+    private var nextKey: Long = 0L
 
     /** Reactive keyed rows — render with `items(array.items, key = { it.key })`.
      * A SnapshotStateList, so structural mutations recompose readers. */
@@ -45,7 +48,7 @@ public class PyreonFieldArray(initial: List<String> = emptyList()) {
     }
 
     /** Number of rows (reactive through [items]). */
-    public val length: Int get() = items.size
+    public val length: Long get() = items.size.toLong()
 
     private fun makeItem(value: String): PyreonFieldArrayItem =
         PyreonFieldArrayItem(key = nextKey++, value = value)
@@ -61,37 +64,37 @@ public class PyreonFieldArray(initial: List<String> = emptyList()) {
     }
 
     /** Insert a row at [index] (clamped to bounds — splice semantics). */
-    public fun insert(index: Int, value: String) {
-        val at = index.coerceIn(0, items.size)
+    public fun insert(index: Long, value: String) {
+        val at = index.coerceIn(0L, items.size.toLong()).toInt()
         items.add(at, makeItem(value))
     }
 
     /** Remove the row at [index]. Out-of-bounds is a no-op, never a crash. */
-    public fun remove(index: Int) {
-        if (index !in items.indices) return
-        items.removeAt(index)
+    public fun remove(index: Long) {
+        if (index !in items.indices.toLongRange()) return
+        items.removeAt(index.toInt())
     }
 
     /** Update the value at [index], KEEPING its key (row identity — and
      * focus — survives the edit). Out-of-bounds is a no-op. */
-    public fun update(index: Int, value: String) {
-        if (index !in items.indices) return
-        items[index] = items[index].copy(value = value)
+    public fun update(index: Long, value: String) {
+        if (index !in items.indices.toLongRange()) return
+        items[index.toInt()] = items[index.toInt()].copy(value = value)
     }
 
     /** Move a row from one index to another. Invalid indices are a no-op. */
-    public fun move(from: Int, to: Int) {
-        if (from !in items.indices || to !in items.indices) return
-        val item = items.removeAt(from)
-        items.add(to, item)
+    public fun move(from: Long, to: Long) {
+        if (from !in items.indices.toLongRange() || to !in items.indices.toLongRange()) return
+        val item = items.removeAt(from.toInt())
+        items.add(to.toInt(), item)
     }
 
     /** Swap two rows by index. Invalid indices are a no-op. */
-    public fun swap(indexA: Int, indexB: Int) {
-        if (indexA !in items.indices || indexB !in items.indices) return
-        val a = items[indexA]
-        items[indexA] = items[indexB]
-        items[indexB] = a
+    public fun swap(indexA: Long, indexB: Long) {
+        if (indexA !in items.indices.toLongRange() || indexB !in items.indices.toLongRange()) return
+        val a = items[indexA.toInt()]
+        items[indexA.toInt()] = items[indexB.toInt()]
+        items[indexB.toInt()] = a
     }
 
     /** Replace ALL rows — every row gets a FRESH key (replace is a new
@@ -104,3 +107,5 @@ public class PyreonFieldArray(initial: List<String> = emptyList()) {
     /** All current values as a plain list (submit-handler shape). */
     public fun values(): List<String> = items.map { it.value }
 }
+
+private fun IntRange.toLongRange(): LongRange = first.toLong()..last.toLong()

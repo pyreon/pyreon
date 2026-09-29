@@ -221,6 +221,7 @@ fun pyreonShiftCmdsXY(cmds: List<PyreonDrawCmd>, dx: Double, dy: Double): List<P
 fun pyreonChartDouble(v: Double): Double = v
 
 fun pyreonChartDouble(v: Int): Double = v.toDouble()
+fun pyreonChartDouble(v: Long): Double = v.toDouble()
 
 /** Locale-aware chart formatters matching the web host's `Intl` defaults. */
 fun pyreonLocaleNumberFormatter(tag: String): (Double) -> String {
@@ -961,13 +962,13 @@ fun pyreonShareChartImage(context: android.content.Context, cmds: List<PyreonDra
 // function — and writes back only what changed.
 class PyreonChartHandle {
     var zoom by mutableStateOf(ZoomWindow(start = 0.0, end = 1.0))
-    var hover by mutableStateOf(-1)
-    var selected by mutableStateOf(listOf<Int>())
-    var hidden by mutableStateOf(listOf<Int>())
-    var seriesCount by mutableStateOf(0)
+    var hover by mutableStateOf(-1L)
+    var selected by mutableStateOf(listOf<Long>())
+    var hidden by mutableStateOf(listOf<Long>())
+    var seriesCount by mutableStateOf(0L)
     var brushType by mutableStateOf("")
     var areas by mutableStateOf(listOf<BrushArea>())
-    var step by mutableStateOf(-1)
+    var step by mutableStateOf(-1L)
     var playing by mutableStateOf(false)
 
     fun dispatch(action: ChartActionInput) {

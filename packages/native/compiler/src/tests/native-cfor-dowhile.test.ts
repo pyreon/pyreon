@@ -61,8 +61,8 @@ describe('canonical C-style count-loops lower to native ranges', () => {
 
   it('Kotlin: until / .. / step forms', () => {
     const out = transform(CANONICAL, { target: 'kotlin' })
-    expect(out.code).toContain('for (i in 0 until 5) {')
-    expect(out.code).toContain('for (j in 1..3) {')
+    expect(out.code).toContain('for (i in 0L until 5L) {')
+    expect(out.code).toContain('for (j in 1L..3L) {')
     expect(out.code).toContain('for (k in 0 until 10 step 2) {')
     expect(out.code).toContain('for (m in 0 until items.length) {')
     expect(out.warnings ?? []).toEqual([])

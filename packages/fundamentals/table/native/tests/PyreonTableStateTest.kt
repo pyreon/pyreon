@@ -13,7 +13,7 @@ private fun check(cond: Boolean, msg: String) {
     if (!cond) throw AssertionError("PyreonTableStateTest: $msg")
 }
 
-private fun makeTable(rows: List<Row>, pageSize: Int = 0): PyreonTableState<Row> =
+private fun makeTable(rows: List<Row>, pageSize: Long = 0L): PyreonTableState<Row> =
     PyreonTableState(
         dataProvider = { rows },
         columns = listOf(

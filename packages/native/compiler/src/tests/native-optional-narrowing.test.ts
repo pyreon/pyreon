@@ -122,7 +122,7 @@ export function App() { return <View book={{ title: 'a' }} /> }`
     // truthiness on a string also rejects '' — JS falsy
     expect(sw).toContain('if let note = b.note, !note.isEmpty {')
     const kt = kotlin(src).code
-    expect(kt).toContain('when (val tags = book.tags) { null -> 0 else -> tags.length }')
+    expect(kt).toContain('when (val tags = book.tags) { null -> 0L else -> tags.length }')
     expect(kt).toContain('when (val note = b.note?.takeIf { it.isNotEmpty() }) {')
   })
 
@@ -135,7 +135,7 @@ export function App() { return <View book={{ title: 'a' }} /> }`
   return <Text>{tagCount({ title: 'a' })}</Text>
 }`
     expect(swift(src).code).toContain('guard let tags = b.tags else {\n      return 0\n    }\n    return tags.count')
-    expect(kotlin(src).code).toContain('val tags = b.tags ?: run {\n      return 0\n    }\n    return tags.length')
+    expect(kotlin(src).code).toContain('val tags = b.tags ?: run {\n      return 0L\n    }\n    return tags.length')
   })
 
   it('a binder that would shadow a name the branch already uses gets a suffix', () => {

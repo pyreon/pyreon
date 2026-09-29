@@ -115,7 +115,7 @@ describe('Parser-A — const arrow function as DeclIR.function', () => {
       { target: 'kotlin' },
     )
     expect(out.warnings).toEqual([])
-    expect(out.code).toContain('fun addOne(n: Int): Int = n + 1')
+    expect(out.code).toContain('fun addOne(n: Long): Long = n + 1L')
   })
 })
 
@@ -205,7 +205,7 @@ describe('Bonus — ConditionalExpression (ternary)', () => {
       { target: 'kotlin' },
     )
     expect(out.warnings).toEqual([])
-    expect(out.code).toContain('if (cond) 1 else 2')
+    expect(out.code).toContain('if (cond) 1L else 2L')
   })
 })
 

@@ -33,7 +33,7 @@ describe('Kotlin expr: Math lowerings', () => {
     const out = kt(`  const a = computed(() => Math.sqrt(n()))
   const b = computed(() => Math.pow(n(), 2))`).code
     expect(out).toContain('Math.sqrt((n).toDouble())')
-    expect(out).toContain('Math.pow((n).toDouble(), (2).toDouble())')
+    expect(out).toContain('Math.pow((n).toDouble(), (2L).toDouble())')
   })
 
   it('sign/trunc/log2 remap to kotlin.math (they are not on java.lang.Math at all)', () => {
@@ -47,10 +47,10 @@ describe('Kotlin expr: Math lowerings', () => {
 
   it('max/min with MIXED Int+Double coerces the Int side; a same-kind pair is left alone', () => {
     const mixed = kt(`  const a = computed(() => Math.max(2, Math.ceil(dn())))`).code
-    expect(mixed).toContain('Math.max((2).toDouble(), Math.ceil(dn))')
+    expect(mixed).toContain('Math.max((2L).toDouble(), Math.ceil(dn))')
     // both Int → no coercion (the generic emit already validates)
     const same = kt(`  const a = computed(() => Math.max(2, 3))`).code
-    expect(same).toContain('Math.max(2, 3)')
+    expect(same).toContain('Math.max(2L, 3L)')
   })
 
   it('max/min SPREAD picks the sentinel from the element type (Int.MIN_VALUE vs -Infinity)', () => {
@@ -58,7 +58,7 @@ describe('Kotlin expr: Math lowerings', () => {
   const b = computed(() => Math.min(...xs()))
   const c = computed(() => Math.max(...ds()))
   const d = computed(() => Math.min(...ds()))`).code
-    expect(out).toContain('(xs.maxOrNull() ?: Int.MIN_VALUE)')
+    expect(out).toContain('(xs.maxOrNull() ?: Long.MIN_VALUE)')
     expect(out).toContain('(xs.minOrNull() ?: Int.MAX_VALUE)')
     expect(out).toContain('(ds.maxOrNull() ?: Double.NEGATIVE_INFINITY)')
     expect(out).toContain('(ds.minOrNull() ?: Double.POSITIVE_INFINITY)')
@@ -99,11 +99,11 @@ describe('Kotlin expr: Boolean(x) truthiness lowering', () => {
   const d = computed(() => Boolean(opt()))
   const e = computed(() => Boolean(optn()))`).code
     expect(out).toContain('val a by remember { derivedStateOf { flag } }')
-    expect(out).toContain('(n != 0)')
+    expect(out).toContain('(n != 0L)')
     expect(out).toContain('(name).isNotEmpty()')
     // optional string / number check the INNER value — JS Boolean(undefined) is false
     expect(out).toContain('(opt ?: "").isNotEmpty()')
-    expect(out).toContain('((optn ?: 0) != 0)')
+    expect(out).toContain('((optn ?: 0L) != 0L)')
   })
 
   it('an unresolvable arg keeps the raw call AND warns (never a silent wrong truthiness)', () => {
@@ -125,8 +125,8 @@ describe('Kotlin expr: `!` / `!!` truthiness (the unary case)', () => {
   const f = computed(() => !!flag())
   const g = computed(() => !opt())
   const h = computed(() => !!opt())`).code
-    expect(out).toContain('(n == 0)')
-    expect(out).toContain('(n != 0)')
+    expect(out).toContain('(n == 0L)')
+    expect(out).toContain('(n != 0L)')
     expect(out).toContain('(name).isEmpty()')
     expect(out).toContain('(name).isNotEmpty()')
     expect(out).toContain('val e by remember { derivedStateOf { !flag } }')
@@ -176,7 +176,7 @@ describe('Kotlin expr: Array statics', () => {
     const out = kt(`  const a = computed(() => Array.from(xs()))
   const b = computed(() => Array.from({ length: 3 }, (_, i) => i * 2))`).code
     expect(out).toContain('(xs).toList()')
-    expect(out).toContain('(0 until 3).map')
+    expect(out).toContain('(0 until 3L).map')
   })
 })
 
@@ -194,6 +194,6 @@ describe('Kotlin expr: bitwise operators are INFIX functions, not symbols', () =
     expect(out).toContain('n shl 1')
     expect(out).toContain('n shr 1')
     // infix binds looser than arithmetic — the compound side keeps its parens
-    expect(out).toContain('n and (n + 1)')
+    expect(out).toContain('n and (n + 1L)')
   })
 })

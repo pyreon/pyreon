@@ -43,7 +43,7 @@ export const itemSchema = valibotSchema(
     const r = transform(src, { target: 'kotlin' })
     expect(r.code).toContain('data class PyreonZodSchema_itemSchema(')
     expect(r.code).toContain('var id: String = "",')
-    expect(r.code).toContain('var qty: Int = 0,')
+    expect(r.code).toContain('var qty: Long = 0,')
   })
 
   it('Valibot modifier chains unwrap to base v.X()', () => {

@@ -3008,10 +3008,19 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     // v2 (form-binding arc) — validators as Kotlin lambdas; "" = valid.
     if (d.validators !== undefined && d.validators.length > 0) {
       const entries = d.validators
-        .map(
-          (v) =>
-            `${kotlinStr(v.key)} to { ${kotlinIdent(v.param)}: String -> ${emitKotlinExpr(v.body, 0)} }`,
-        )
+        .map((v) => {
+          // The lambda's parameter is declared `String`, so a `.length` in the
+          // body is Kotlin's Int and must widen like any other string length
+          // — bind the type for the body's inference, then release it.
+          const prior = _kotlinExprInferCtx.locals.get(v.param)
+          _kotlinExprInferCtx.locals.set(v.param, { kind: 'string' })
+          try {
+            return `${kotlinStr(v.key)} to { ${kotlinIdent(v.param)}: String -> ${emitKotlinExpr(v.body, 0)} }`
+          } finally {
+            if (prior === undefined) _kotlinExprInferCtx.locals.delete(v.param)
+            else _kotlinExprInferCtx.locals.set(v.param, prior)
+          }
+        })
         .join(', ')
       parts.push(`validators = mapOf(${entries})`)
     }
@@ -5164,7 +5173,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           _emitWarnings.push(`<${e.callee.object.name}.dispatch>: native needs an inline action object with a literal \`type\` ({ type: 'select', index: 2 }); the call is skipped.`)
           return 'Unit'
         }
-        const int = (x: ExprIR | undefined): string => (x === undefined ? '-1' : `(${emitKotlinExpr(x, indent)}).toInt()`)
+        const int = (x: ExprIR | undefined): string => (x === undefined ? '-1L' : `(${emitKotlinExpr(x, indent)}).toLong()`)
         const dbl = (x: ExprIR | undefined, d: string): string => (x === undefined ? d : `(${emitKotlinExpr(x, indent)}).toDouble()`)
         const areas = f.areas === undefined ? 'listOf()' : withExpectedTypeKotlin({ kind: 'array', element: { kind: 'typeRef', name: 'BrushArea', args: [] } }, () => emitKotlinExpr(f.areas!, indent))
         return `${kotlinIdent(e.callee.object.name)}.dispatch(ChartActionInput(type = ${emitKotlinExpr(f.type!, indent)}, index = ${int(f.index)}, series = ${int(f.series)}, start = ${dbl(f.start, '0.0')}, end = ${dbl(f.end, '1.0')}, brushType = ${f.brushType === undefined ? '""' : emitKotlinExpr(f.brushType, indent)}, areas = ${areas}, playing = ${f.playing === undefined ? 'false' : emitKotlinExpr(f.playing, indent)}))`
@@ -5483,8 +5492,8 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               ? 'Double.NEGATIVE_INFINITY'
               : 'Double.POSITIVE_INFINITY'
             : isMax
-              ? 'Int.MIN_VALUE'
-              : 'Int.MAX_VALUE'
+              ? 'Long.MIN_VALUE'
+              : 'Long.MAX_VALUE'
           return `(${arrStr}.${isMax ? 'maxOrNull' : 'minOrNull'}() ?: ${sentinel})`
         }
         const fn = e.callee.property
@@ -5777,7 +5786,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         const field = kotlinIdent(binding)
         const m = e.callee.property
         const arg = e.args.length > 0 ? emitKotlinExpr(e.args[0]!, indent) : undefined
-        const clamp = (x: string): string => clampExpr(x, info.bounds, 'minOf', 'maxOf')
+        const clamp = (x: string): string => clampExpr(x, info.bounds, 'minOf', 'maxOf', 'L')
         if (info.hook === 'useToggle') {
           if (m === 'value') return field
           if (m === 'toggle') return `${field} = !${field}`
@@ -5785,10 +5794,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           if (m === 'setFalse') return `${field} = false`
         } else {
           if (m === 'count') return field
-          if (m === 'inc') return `${field} = ${clamp(`${field} + ${arg ?? '1'}`)}`
-          if (m === 'dec') return `${field} = ${clamp(`${field} - ${arg ?? '1'}`)}`
-          if (m === 'set') return `${field} = ${clamp(arg ?? '0')}`
-          if (m === 'reset') return `${field} = ${clamp(String(_pureStateInitialKotlin.get(binding) ?? 0))}`
+          if (m === 'inc') return `${field} = ${clamp(`${field} + ${arg ?? '1L'}`)}`
+          if (m === 'dec') return `${field} = ${clamp(`${field} - ${arg ?? '1L'}`)}`
+          if (m === 'set') return `${field} = ${clamp(arg ?? '0L')}`
+          if (m === 'reset') return `${field} = ${clamp(((n: number) => (Number.isInteger(n) ? `${n}L` : String(n)))(_pureStateInitialKotlin.get(binding) ?? 0))}`
         }
       }
       // Mirror of the Swift clipboard rewrite. Kotlin's `copied` is a
@@ -12126,7 +12135,7 @@ function emitKotlinChartTimeline(e: Extract<ExprIR, { kind: 'jsx-element' }>, in
   const ms = typeof interval === 'number' && interval > 0 ? Math.round(interval) : 2000
   const pad = ' '.repeat(indent + 2)
   const children = e.children.flatMap((c) => (c.kind === 'expr' && c.expr.kind === 'jsx-element' ? [c.expr] : []))
-  const branches = children.map((c, i) => `${pad}  ${i} -> {\n${pad}    ${emitKotlinChartHost(c, indent + 4)}\n${pad}  }\n`).join('')
+  const branches = children.map((c, i) => `${pad}  ${i}L -> {\n${pad}    ${emitKotlinChartHost(c, indent + 4)}\n${pad}  }\n`).join('')
   const onChange = e.attrs.find((a) => a.kind === 'event' && a.name === 'timelinechange')
   const idAttr = readStaticAttrKotlin(e, 'data-testid')
   const tag = typeof idAttr === 'string' ? `.testTag(${JSON.stringify(idAttr)})` : ''
@@ -12137,7 +12146,7 @@ function emitKotlinChartTimeline(e: Extract<ExprIR, { kind: 'jsx-element' }>, in
     `val pyreonHit = timelineHit(pyreonTlStrip${k}, ${box}, (pyreonT.x / pyreonTlDensity).toDouble(), (pyreonT.y / pyreonTlDensity).toDouble()); ` +
     `if (pyreonHit.kind == 2.0) { ${playing} = !${playing} } else if (pyreonHit.kind > 0.0) { ${playing} = false; ` +
     `val pyreonNext = if (pyreonHit.kind == 1.0) pyreonHit.index else timelineAdvance(pyreonTlStrip${k}, ${step}.toDouble(), if (pyreonHit.kind == 3.0) -1.0 else 1.0, true); ` +
-    `if (pyreonNext >= 0.0) ${step} = pyreonNext.toInt() } }`
+    `if (pyreonNext >= 0.0) ${step} = pyreonNext.toLong() } }`
   // A handle (`timelineChange` / `timelinePlayChange`) owns the step and play state: the locals delegate
   // to its fields, seeded once from the option (its -1 step means "the option's own").
   const handleAttr = chartAttrExprKotlin(e, 'handle')
@@ -12147,14 +12156,14 @@ function emitKotlinChartTimeline(e: Extract<ExprIR, { kind: 'jsx-element' }>, in
   const lines = [
     `run {`,
     ...(handle === undefined
-      ? [`${pad}var ${step} by remember { mutableStateOf(${curN}) }`, `${pad}var ${playing} by remember { mutableStateOf(${autoPlay}) }`]
+      ? [`${pad}var ${step} by remember { mutableStateOf(${curN}L) }`, `${pad}var ${playing} by remember { mutableStateOf(${autoPlay}) }`]
       : [
-          `${pad}remember { if (${handle}.step < 0) { ${handle}.step = ${curN}; ${handle}.playing = ${autoPlay} }; true }`,
+          `${pad}remember { if (${handle}.step < 0) { ${handle}.step = ${curN}L; ${handle}.playing = ${autoPlay} }; true }`,
           `${pad}var ${step} by ${handle}::step`,
           `${pad}var ${playing} by ${handle}::playing`,
         ]),
     `${pad}val pyreonTlStrip${k}: TimelineStrip = ${strip}`,
-    `${pad}LaunchedEffect(${playing}) { while (${playing}) { delay(${ms}L); if (!${playing}) break; val pyreonNext = timelineTick(pyreonTlStrip${k}, ${step}.toDouble()); if (pyreonNext < 0.0) ${playing} = false else ${step} = pyreonNext.toInt() } }`,
+    `${pad}LaunchedEffect(${playing}) { while (${playing}) { delay(${ms}L); if (!${playing}) break; val pyreonNext = timelineTick(pyreonTlStrip${k}, ${step}.toDouble()); if (pyreonNext < 0.0) ${playing} = false else ${step} = pyreonNext.toLong() } }`,
   ]
   if (onChange?.kind === 'event') {
     // Like the web: a change is reported, the opening step is not.
@@ -12162,7 +12171,7 @@ function emitKotlinChartTimeline(e: Extract<ExprIR, { kind: 'jsx-element' }>, in
     lines.push(`${pad}LaunchedEffect(${step}) { if (pyreonTlSeen${k}.value) { ${kotlinChartSelectBody(onChange.handler, step, indent)} } else pyreonTlSeen${k}.value = true }`)
   }
   lines.push(
-    `${pad}Column(modifier = Modifier.fillMaxWidth()${tag}.semantics { stateDescription = if (${step} < ${labels}.size) ${labels}[${step}] else "" }) {`,
+    `${pad}Column(modifier = Modifier.fillMaxWidth()${tag}.semantics { stateDescription = if (${step} < ${labels}.size) ${labels}[${step}.toInt()] else "" }) {`,
     `${pad}  when (${step}) {`,
     `${branches}${pad}    else -> {}`,
     `${pad}  }`,
@@ -12638,7 +12647,7 @@ function emitKotlinBoxplotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined
   const W = hasWidth ? kotlinChartDouble(e, 'width', 300, indent) : 'pyreonW'
   const cmds = `renderBoxplotChart(pyreonBoxes, ${W}, ${H}, pyreonCats, pyreonTheme, ${options}, ::pyreonChartMeasure${kotlinChartAnimating(e, tag) ? ', null, pyreonEntrance' : ''})`
-  return kotlinFrameHostLets(e, lets, cmds, (x, y) => `hitBoxplotChart(pyreonBoxes.size, ${W}, ${H}, pyreonCats, pyreonTheme.fontSize, ::pyreonChartMeasure, ${x}, ${y}, pyreonBoxes)`, W, H, hasWidth, indent)
+  return kotlinFrameHostLets(e, lets, cmds, (x, y) => `hitBoxplotChart(pyreonBoxes.size.toLong(), ${W}, ${H}, pyreonCats, pyreonTheme.fontSize, ::pyreonChartMeasure, ${x}, ${y}, pyreonBoxes)`, W, H, hasWidth, indent)
 }
 
 function emitKotlinHeatmapHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
@@ -13000,8 +13009,8 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   const lets: string[] = []
   if (windowed) {
     lets.push(`var pyreonZoom by remember { mutableStateOf(${zoomCfgK.initial ?? 'ZoomWindow(start = 0.0, end = 1.0)'}) }`)
-    lets.push(`val pyreonRange: SliceRange = sliceRange(pyreonZoom, ${data}.size)`)
-    lets.push(`val pyreonSourceRows = ${data}.subList(pyreonRange.from, pyreonRange.to)`)
+    lets.push(`val pyreonRange: SliceRange = sliceRange(pyreonZoom, ${data}.size.toLong())`)
+    lets.push(`val pyreonSourceRows = ${data}.subList(pyreonRange.from.toInt(), pyreonRange.to.toInt())`)
     // `onZoom` — one effect keyed on the window state covers pinch, pan, a
     // preset tap and the navigator alike, as the web's single observer does.
     const onZoom = e.attrs.find((a) => a.kind === 'event' && a.name === 'zoom')
@@ -13221,7 +13230,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   if (themed) lets.push(`val pyreonTheme: ChartTheme = ${theme}`)
   if (presets !== undefined) {
     lets.push(`val pyreonPresets: List<ZoomPreset> = listOf(${presets.join(', ')})`)
-    lets.push(`val pyreonPresetStrip: PresetLayout = renderPresets(pyreonPresets, ${data}.size, pyreonZoom, PyreonChartRect(0.0, 0.0, ${W}, ${H}), PresetOptions(fontSize = 11.0, padX = 8.0, padY = 3.0, gap = 6.0, inset = 8.0, activeFill = pyreonTheme.axis, idleFill = pyreonTheme.grid, activeText = "#ffffff", idleText = pyreonTheme.label), ::pyreonChartMeasure)`)
+    lets.push(`val pyreonPresetStrip: PresetLayout = renderPresets(pyreonPresets, ${data}.size.toLong(), pyreonZoom, PyreonChartRect(0.0, 0.0, ${W}, ${H}), PresetOptions(fontSize = 11.0, padX = 8.0, padY = 3.0, gap = 6.0, inset = 8.0, activeFill = pyreonTheme.axis, idleFill = pyreonTheme.grid, activeText = "#ffffff", idleText = pyreonTheme.label), ::pyreonChartMeasure)`)
   }
   const belowNav = presets === undefined ? '' : ' - pyreonPresetStrip.height'
   // ECharts' slider box: the strip lives in the grid's bottom margin, the plot keeps its rect.
@@ -13232,7 +13241,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     // Without this the native navigator resolved and drew EVERY row on every
     // frame — the same defect the web host had before `minMaxBuckets` was
     // wired there, and worse here because the target has less headroom.
-    lets.push(`val pyreonNavValues: List<Double> = minMaxBuckets(${navValues}, maxOf(1, (${W} / 2.0).toInt()))`)
+    lets.push(`val pyreonNavValues: List<Double> = minMaxBuckets(${navValues}, maxOf(1L, (${W} / 2.0).toLong()))`)
     if (sliderBox === null) lets.push(`val pyreonNavigator: NavigatorLayout = renderNavigator(pyreonNavValues, pyreonSeries[0].color, pyreonZoom, PyreonChartRect(0.0, 0.0, ${W}, ${H}${belowNav}), pyreonTheme.grid)`)
   }
   const bool = (name: string, fallback: boolean): string => {
@@ -13278,11 +13287,11 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   if (kotlinChartAnimating(e, 'PlotChart')) specArgs.push('progress = pyreonEntrance')
   if (pinning || handle !== undefined) {
     const selected = decimated
-      ? `pyreonSelected.mapNotNull { pyreonGlobal -> pyreonKeep.indexOf(pyreonGlobal${windowed ? ' - pyreonRange.from' : ''}).takeIf { it >= 0 } }`
+      ? `pyreonSelected.mapNotNull { pyreonGlobal -> pyreonKeep.indexOf(pyreonGlobal${windowed ? ' - pyreonRange.from' : ''}).takeIf { it >= 0 }?.toLong() }`
       : windowed
         ? `pyreonSelected.map { it - pyreonRange.from }.filter { it >= 0 && it < ${rows}.size }`
         : 'pyreonSelected'
-    specArgs.push(`emphasis = Emphasis(highlight = ${handle === undefined ? '-1' : 'pyreonHover'}, selected = ${selected})`)
+    specArgs.push(`emphasis = Emphasis(highlight = ${handle === undefined ? '-1L' : 'pyreonHover'}, selected = ${selected})`)
   }
   // The batch-2 spec switches: a literal each, straight onto the spec.
   for (const p of PLOT_SPEC_LITERAL_PROPS) {
@@ -13341,7 +13350,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   if (brushing) {
     lets.push('val pyreonPlot: PyreonChartRect = layoutChart(pyreonSpec, ::pyreonChartMeasure).plot')
     lets.push(
-      `val pyreonBrushCmds: List<PyreonDrawCmd> = if (pyreonBrushA >= 0.0) renderBrushBand(pyreonPlot, minOf(pyreonBrushA, pyreonBrushB), maxOf(pyreonBrushA, pyreonBrushB), pyreonSpec.theme.axis) else if (pyreonBrushStart >= 0) run { val pyreonBand = brushBand(pyreonPlot, BrushRange(start = pyreonBrushStart, end = pyreonBrushEnd), ${win}, ${data}.size); if (pyreonBand.visible) renderBrushBand(pyreonPlot, pyreonBand.lo, pyreonBand.hi, pyreonSpec.theme.axis) else listOf() } else listOf()`,
+      `val pyreonBrushCmds: List<PyreonDrawCmd> = if (pyreonBrushA >= 0.0) renderBrushBand(pyreonPlot, minOf(pyreonBrushA, pyreonBrushB), maxOf(pyreonBrushA, pyreonBrushB), pyreonSpec.theme.axis) else if (pyreonBrushStart >= 0) run { val pyreonBand = brushBand(pyreonPlot, BrushRange(start = pyreonBrushStart, end = pyreonBrushEnd), ${win}, ${data}.size.toLong()); if (pyreonBand.visible) renderBrushBand(pyreonPlot, pyreonBand.lo, pyreonBand.hi, pyreonSpec.theme.axis) else listOf() } else listOf()`,
     )
   }
   const extraCmds = `${navigating ? ' + pyreonNavigator.cmds' : ''}${presets === undefined ? '' : ' + pyreonPresetStrip.cmds'}${kotlinGraphicCmds(e)}${toolbox === null ? '' : ' + pyreonToolbox.cmds'}`
@@ -13378,17 +13387,17 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   const localHit = (x: string, y: string): string => `plotHitBars(pyreonSpec, ::pyreonChartMeasure, ${x}, ${chrome.top === '0.0' ? y : `${y} - pyreonTop`})`
   const hit = (x: string, y: string): string => {
     const local = tooltip ? 'pyreonLocal' : 'pyreonHit'
-    const mapped = decimated ? `pyreonKeep[${local}]` : local
+    const mapped = decimated ? `pyreonKeep[${local}.toInt()]` : local
     const global = windowed ? `${mapped} + pyreonRange.from` : mapped
-    if (tooltip) return `(if (${local} < 0) -1 else ${global})`
+    if (tooltip) return `(if (${local} < 0) -1L else ${global})`
     if (!windowed && !decimated) return localHit(x, y)
-    return `run { val pyreonHit = ${localHit(x, y)}; if (pyreonHit < 0) -1 else ${global} }`
+    return `run { val pyreonHit = ${localHit(x, y)}; if (pyreonHit < 0) -1L else ${global} }`
   }
   // `onBrushSelected`: the areas' datums per series, each index GLOBAL (the window's and decimation's mapping, as a tap's).
   const onAreaSel = chartEventHandler(e, 'brushselected')
   const areaReport = (areasExpr: string): string => {
     if (onAreaSel === undefined) return ''
-    const mapped = decimated ? 'pyreonKeep[categoryIndex(pyreonSpec, pyreonV)]' : 'categoryIndex(pyreonSpec, pyreonV)'
+    const mapped = decimated ? 'pyreonKeep[categoryIndex(pyreonSpec, pyreonV).toInt()]' : 'categoryIndex(pyreonSpec, pyreonV)'
     const global = windowed ? `${mapped} + pyreonRange.from` : mapped
     return `; ${kotlinChartSelectBody(onAreaSel, `${area.only.length === 0 ? '' : 'brushOnlySeries('}brushSelection(pyreonSpec, layoutChart(pyreonSpec, ::pyreonChartMeasure), ${areasExpr})${area.only.length === 0 ? '' : `, listOf(${area.only.map((x) => `${x}.0`).join(', ')}))`}.map { pyreonS -> BrushSeriesSelection(seriesIndex = pyreonS.seriesIndex, dataIndex = pyreonS.dataIndex.map { pyreonV -> ${global} }) }`, indent)}`
   }
@@ -13407,7 +13416,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     const namedList = `listOf(${tipCells.named.map((b) => String(b)).join(', ')})`
     tipLines = tipCells.trigger === 'axis'
       ? `tooltipAxisCells(pyreonLocal, pyreonCats, pyreonSeries.map { ${tipSeries('it')} }, ${namedList})`
-      : `run { val pyreonSer = plotHitSeriesIn(pyreonSpec, layoutChart(pyreonSpec, ::pyreonChartMeasure), ${plotX}, ${tapYExpr}, 14.0); val pyreonNamed: List<Boolean> = ${namedList}; if (pyreonSer < 0 || pyreonSer >= pyreonSeries.size) listOf() else tooltipItemCells(pyreonLocal, pyreonCats, ${tipSeries('pyreonSeries[pyreonSer]')}, pyreonSer < pyreonNamed.size && pyreonNamed[pyreonSer]) }`
+      : `run { val pyreonSer = plotHitSeriesIn(pyreonSpec, layoutChart(pyreonSpec, ::pyreonChartMeasure), ${plotX}, ${tapYExpr}, 14.0).toInt(); val pyreonNamed: List<Boolean> = ${namedList}; if (pyreonSer < 0 || pyreonSer >= pyreonSeries.size) listOf() else tooltipItemCells(pyreonLocal, pyreonCats, ${tipSeries('pyreonSeries[pyreonSer]')}, pyreonSer < pyreonNamed.size && pyreonNamed[pyreonSer]) }`
   }
   let tap = ''
   // `pinning` joins the gate: a chart with ONLY `selectedMode` has no other
@@ -13490,8 +13499,8 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
       )
     }
     if (presets !== undefined) {
-      decls.push(`val pyreonPreset = presetHit(pyreonPresetStrip.boxes, ${tapX}, ${tapYExpr})`)
-      branches.push(`if (pyreonPreset >= 0) { pyreonZoom = ${lim(`presetWindow(pyreonPresets[pyreonPreset].count, ${data}.size)`)} }`)
+      decls.push(`val pyreonPreset = presetHit(pyreonPresetStrip.boxes, ${tapX}, ${tapYExpr}).toInt()`)
+      branches.push(`if (pyreonPreset >= 0) { pyreonZoom = ${lim(`presetWindow(pyreonPresets[pyreonPreset].count, ${data}.size.toLong())`)} }`)
     }
     if (area.on) {
       // A tap over the plot clears a single-mode brush, as a click does on the web.
@@ -13525,10 +13534,10 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   }
   if (toolbox?.dataZoom === true) {
     // The box zoom: while the tool is on, a drag over the plot selects the rows to zoom to (keyed so the lambda sees the current window and plot).
-    tap += `.pointerInput(pyreonZoomSelect, pyreonZoom, pyreonPlot) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); if (pyreonZoomSelect) { pyreonSelA = (pyreonDown.position.x / pyreonDensity).toDouble(); pyreonSelB = pyreonSelA; drag(pyreonDown.id) { pyreonChange -> val pyreonStep = pyreonChange.positionChange(); pyreonChange.consume(); pyreonSelB = pyreonSelB + (pyreonStep.x / pyreonDensity).toDouble() }; if (kotlin.math.abs(pyreonSelB - pyreonSelA) >= 3.0) { val pyreonRows: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, pyreonSelA, pyreonSelB, pyreonZoom, ${data}.size); pyreonZoomHistory = pyreonZoomHistory + pyreonZoom; pyreonZoom = ${lim(`windowOfRows(pyreonRows.start, pyreonRows.end, ${data}.size)`)} }; pyreonSelA = -1.0; pyreonSelB = -1.0 } } }`
+    tap += `.pointerInput(pyreonZoomSelect, pyreonZoom, pyreonPlot) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); if (pyreonZoomSelect) { pyreonSelA = (pyreonDown.position.x / pyreonDensity).toDouble(); pyreonSelB = pyreonSelA; drag(pyreonDown.id) { pyreonChange -> val pyreonStep = pyreonChange.positionChange(); pyreonChange.consume(); pyreonSelB = pyreonSelB + (pyreonStep.x / pyreonDensity).toDouble() }; if (kotlin.math.abs(pyreonSelB - pyreonSelA) >= 3.0) { val pyreonRows: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, pyreonSelA, pyreonSelB, pyreonZoom, ${data}.size.toLong()); pyreonZoomHistory = pyreonZoomHistory + pyreonZoom; pyreonZoom = ${lim(`windowOfRows(pyreonRows.start, pyreonRows.end, ${data}.size.toLong())`)} }; pyreonSelA = -1.0; pyreonSelB = -1.0 } } }`
   }
   if (brushing) {
-    tap += `.pointerInput(Unit) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); pyreonBrushA = (pyreonDown.position.x / pyreonDensity).toDouble(); pyreonBrushB = pyreonBrushA; drag(pyreonDown.id) { pyreonChange -> val pyreonStep = pyreonChange.positionChange(); pyreonChange.consume(); pyreonBrushB = pyreonBrushB + (pyreonStep.x / pyreonDensity).toDouble() }; val pyreonSel: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, pyreonBrushA, pyreonBrushB, ${win}, ${data}.size); pyreonBrushStart = pyreonSel.start; pyreonBrushEnd = pyreonSel.end; pyreonBrushA = -1.0; pyreonBrushB = -1.0${onBrush === undefined ? '' : `; ${onBrush}(pyreonSel)`} } }`
+    tap += `.pointerInput(Unit) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); pyreonBrushA = (pyreonDown.position.x / pyreonDensity).toDouble(); pyreonBrushB = pyreonBrushA; drag(pyreonDown.id) { pyreonChange -> val pyreonStep = pyreonChange.positionChange(); pyreonChange.consume(); pyreonBrushB = pyreonBrushB + (pyreonStep.x / pyreonDensity).toDouble() }; val pyreonSel: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, pyreonBrushA, pyreonBrushB, ${win}, ${data}.size.toLong()); pyreonBrushStart = pyreonSel.start; pyreonBrushEnd = pyreonSel.end; pyreonBrushA = -1.0; pyreonBrushB = -1.0${onBrush === undefined ? '' : `; ${onBrush}(pyreonSel)`} } }`
   }
   // Both drag surfaces classify the gesture from the DOWN point, so they are
   // written as `awaitEachGesture { awaitFirstDown(); drag(id) { … } }` rather
@@ -13576,7 +13585,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   // a decimated or continuous-x chart keeps the description alone.
   const pointsOverlay = decimated || xValueAcc !== undefined
     ? undefined
-    : `PyreonChartPoints(${describe.slice('describeChart('.length, -1)}, layoutChart(pyreonSpec, ::pyreonChartMeasure).plot, pyreonCats.size, ${windowed ? 'pyreonRange.from' : '0'}, ${horizontal}, ${chrome.left}, ${chrome.top}, ${readStaticAttrKotlin(e, 'rtl') === true ? W : '-1.0'})`
+    : `PyreonChartPoints(${describe.slice('describeChart('.length, -1)}, layoutChart(pyreonSpec, ::pyreonChartMeasure).plot, pyreonCats.size, ${windowed ? 'pyreonRange.from.toInt()' : '0'}, ${horizontal}, ${chrome.left}, ${chrome.top}, ${readStaticAttrKotlin(e, 'rtl') === true ? W : '-1.0'})`
   const overlays = [pointsOverlay, overlay, dataViewOverlay].filter((o): o is string => o !== undefined)
   return kotlinFrameHostWithDensity(e, lets, cmds, tap, W, H, hasWidth, indent, windowed || tap !== '' || toolbox !== null, overlays.length === 0 ? undefined : overlays.join('\n'), describe)
 }

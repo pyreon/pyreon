@@ -291,7 +291,7 @@ export function App() {
   return (<Stack><Press onPress={() => n.set(1)}><Text>tap</Text></Press></Stack>)
 }`)
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('Box(modifier = Modifier.clickable(onClick = { n = 1 })) {')
+    expect(r.code).toContain('Box(modifier = Modifier.clickable(onClick = { n = 1L })) {')
     expect(r.code).toContain('Text(text = "tap")')
   })
 

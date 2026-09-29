@@ -52,7 +52,7 @@ describe('Inferred array element types', () => {
 
   it('Kotlin: typed lists; Double promotes whole numbers (15 → 15.0)', () => {
     const out = transform(SRC, { target: 'kotlin' }).code
-    expect(out).toContain('listOf(1, 2, 3)')
+    expect(out).toContain('listOf(1L, 2L, 3L)')
     expect(out).toContain('listOf(12.5, 8.3)')
     expect(out).toContain('listOf(12.5, 8.3, 15.0)')
     expect(out).toContain('listOf("x", "y")')

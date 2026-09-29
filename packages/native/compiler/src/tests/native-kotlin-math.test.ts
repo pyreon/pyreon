@@ -35,20 +35,20 @@ const kt = (expr: string) => transform(app(expr), { target: 'kotlin' }).code
 
 describe('Kotlin Math.* Double-domain coercion', () => {
   it('coerces args for java.lang.Math Double-domain fns', () => {
-    expect(kt('Math.sqrt(16)')).toContain('Math.sqrt((16).toDouble())')
-    expect(kt('Math.pow(2, 3)')).toContain('Math.pow((2).toDouble(), (3).toDouble())')
+    expect(kt('Math.sqrt(16)')).toContain('Math.sqrt((16L).toDouble())')
+    expect(kt('Math.pow(2, 3)')).toContain('Math.pow((2L).toDouble(), (3L).toDouble())')
     expect(kt('Math.hypot(3, 4)')).toContain('Math.hypot((3).toDouble(), (4).toDouble())')
     expect(kt('Math.sin(1)')).toContain('Math.sin((1).toDouble())')
   })
 
   it('remaps non-java fns to kotlin.math (sign / trunc / log2)', () => {
-    expect(kt('Math.sign(-3)')).toContain('kotlin.math.sign((-3).toDouble())')
+    expect(kt('Math.sign(-3)')).toContain('kotlin.math.sign((-3L).toDouble())')
     expect(kt('Math.trunc(3.7)')).toContain('kotlin.math.truncate((3.7).toDouble())')
-    expect(kt('Math.log2(8)')).toContain('kotlin.math.log2((8).toDouble())')
+    expect(kt('Math.log2(8)')).toContain('kotlin.math.log2((8L).toDouble())')
   })
 
   it('leaves Int-friendly fns + floor/ceil as passthrough (no coercion)', () => {
-    expect(kt('Math.abs(-5)')).toContain('Math.abs(-5)')
+    expect(kt('Math.abs(-5L)')).toContain('Math.abs(-5)')
     expect(kt('Math.max(1, 2)')).toContain('Math.max(1, 2)')
     expect(kt('Math.floor(3.7)')).toContain('Math.floor(3.7)')
   })

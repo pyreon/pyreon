@@ -50,7 +50,7 @@ describe('JS .fill / .at → native idiom', () => {
 
   it('Kotlin: fill → List(n){v}; at → getOrNull with negative-index resolve', () => {
     const out = transform(SRC(COMPUTEDS), { target: 'kotlin' }).code
-    expect(out).toContain('List(n) { 0 }')
+    expect(out).toContain('List((n).toInt()) { 0L }')
     expect(out).toContain('ids.getOrNull(if ((0) < 0) ids.size + (0) else (0))')
     expect(out).toContain('ids.size + (-1)')
     expect(out).not.toContain('.fill(')

@@ -1033,7 +1033,7 @@ describe('createFlow — v1 decline shapes (loud warning, not silent drop)', { t
     expect(swift.code).toContain('var label: String? = nil')
     expect(swift.code).toContain('var count: Int? = nil')
     expect(kotlin.code).toContain('var label: String? = null')
-    expect(kotlin.code).toContain('var count: Int? = null')
+    expect(kotlin.code).toContain('var count: Long? = null')
     expect(validateSwiftWithStubs(swift.code).ok).toBe(true)
     expect(validateKotlin(kotlin.code).ok).toBe(true)
   })
@@ -1375,7 +1375,7 @@ export function C() {
         expect(validateSwiftWithStubs(result.code).ok).toBe(true)
       } else {
         expect(result.code).toContain('flow.setViewport(PyreonFlowViewport(x = 1.0, y = 2.0, zoom = 3.0))')
-        expect(result.code).toContain('flow.setViewport { viewport -> PyreonFlowViewport(x = viewport.x + 4, y = viewport.y, zoom = viewport.zoom) }')
+        expect(result.code).toContain('flow.setViewport { viewport -> PyreonFlowViewport(x = viewport.x + 4L, y = viewport.y, zoom = viewport.zoom) }')
         expect(result.code).toContain('flow.replaceContainerSize(PyreonFlowContainerSize(width = 640.0, height = 480.0))')
         const validation = validateKotlin(result.code)
         expect(validation.ok, validation.error ?? '').toBe(true)
@@ -1680,7 +1680,7 @@ export function C() {
         expect(validateSwiftWithStubs(result.code).ok).toBe(true)
       } else {
         expect(result.code).toContain('waypoints = listOf(PyreonXYPosition(4.0, 5.0))')
-        expect(result.code).toContain('flow.addEdgeWaypoint("e1", PyreonXYPosition(1.0, 2.0), -1)')
+        expect(result.code).toContain('flow.addEdgeWaypoint("e1", PyreonXYPosition(1.0, 2.0), -1L)')
         expect(result.code).toContain('flow.reconnectEdge("e1", target = "2", targetHandle = "in")')
         expect(validateKotlin(result.code).ok).toBe(true)
       }

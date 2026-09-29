@@ -1550,24 +1550,24 @@ class PyreonTableColumn<T>(val id: String, val accessor: (T) -> PyreonCell)
 class PyreonTableState<T>(
   dataProvider: () -> List<T>,
   columns: List<PyreonTableColumn<T>> = emptyList(),
-  pageSize: Int = 0,
-  rowId: ((T, Int) -> String)? = null,
+  pageSize: Long = 0L,
+  rowId: ((T, Long) -> String)? = null,
   filterFn: ((T, String, List<PyreonTableColumn<T>>) -> Boolean)? = null,
 ) {
   fun rows(): List<T> = emptyList()
-  fun pageCount(): Int = 1
-  fun filteredCount(): Int = 0
+  fun pageCount(): Long = 1L
+  fun filteredCount(): Long = 0L
   fun selectedIds(): List<String> = emptyList()
   fun toggleSort(c: String) {}
   fun setFilter(q: String) {}
-  fun setPage(i: Int) {}
+  fun setPage(i: Long) {}
   fun nextPage() {}
   fun prevPage() {}
   fun isSelected(id: String): Boolean = false
   fun toggleSelected(id: String) {}
   fun clearSelection() {}
-  fun rowId(row: T, index: Int): String = ""
-  val page: Int get() = 0
+  fun rowId(row: T, index: Long): String = ""
+  val page: Long get() = 0L
   val sortColumn: String? get() = null
   val sortDirection: String get() = "asc"
   val filterValue: String get() = ""
@@ -2388,17 +2388,17 @@ class PyreonSecureStorage(backend: PyreonSecureBackend) {
 
 // PyreonFieldArray — dynamic form lists, mirrored exactly (items/length are
 // properties; a paren-keeping emit must fail).
-data class PyreonFieldArrayItem(val key: Int, val value: String)
+data class PyreonFieldArrayItem(val key: Long, val value: String)
 class PyreonFieldArray(initial: List<String> = emptyList()) {
   val items: List<PyreonFieldArrayItem> = emptyList()
-  val length: Int get() = 0
+  val length: Long get() = 0L
   fun append(value: String) {}
   fun prepend(value: String) {}
-  fun insert(index: Int, value: String) {}
-  fun remove(index: Int) {}
-  fun update(index: Int, value: String) {}
-  fun move(from: Int, to: Int) {}
-  fun swap(indexA: Int, indexB: Int) {}
+  fun insert(index: Long, value: String) {}
+  fun remove(index: Long) {}
+  fun update(index: Long, value: String) {}
+  fun move(from: Long, to: Long) {}
+  fun swap(indexA: Long, indexB: Long) {}
   fun replace(values: List<String>) {}
   fun values(): List<String> = emptyList()
 }
@@ -2511,19 +2511,20 @@ fun pyreonTransposeCmds(cmds: List<PyreonDrawCmd>): List<PyreonDrawCmd> = cmds
 fun pyreonMirrorCmds(cmds: List<PyreonDrawCmd>, width: Double): List<PyreonDrawCmd> = cmds
 fun pyreonChartDouble(v: Double): Double = v
 fun pyreonChartDouble(v: Int): Double = v.toDouble()
+fun pyreonChartDouble(v: Long): Double = v.toDouble()
 fun pyreonLocaleNumberFormatter(tag: String): (Double) -> String = { it.toString() }
 fun pyreonLocaleDateFormatter(tag: String): (Double) -> String = { it.toString() }
 fun pyreonChartDataUrl(cmds: List<PyreonDrawCmd>, width: Double, height: Double, density: Float): String = ""
 fun pyreonShareChartImage(context: Context, cmds: List<PyreonDrawCmd>, width: Double, height: Double, density: Float, name: String) {}
 class PyreonChartHandle {
   var zoom: ZoomWindow = ZoomWindow(start = 0.0, end = 1.0)
-  var hover: Int = -1
-  var selected: List<Int> = listOf()
-  var hidden: List<Int> = listOf()
-  var seriesCount: Int = 0
+  var hover: Long = -1L
+  var selected: List<Long> = listOf()
+  var hidden: List<Long> = listOf()
+  var seriesCount: Long = 0L
   var brushType: String = ""
   var areas: List<BrushArea> = listOf()
-  var step: Int = -1
+  var step: Long = -1L
   var playing: Boolean = false
   fun dispatch(action: ChartActionInput) {}
 }
