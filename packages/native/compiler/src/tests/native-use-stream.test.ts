@@ -158,7 +158,7 @@ describe('useStream lowers to the native stream runtime', () => {
 
   it('Kotlin: a DisposableEffect keyed on the runtime URL + restart tick, stopped on dispose', () => {
     const code = kotlin(SSE).code
-    expect(code).toContain('val s = remember { PyreonStream<PyreonSseEvent<LogLine>>(maxEvents = 200) }')
+    expect(code).toContain('val s = remember { PyreonStream<PyreonSseEvent<LogLine>>(maxEvents = 200, main = PyreonStreamMain) }')
     expect(code).toContain(
       'DisposableEffect("${"https://api.example.com/logs/${PyreonURL.encodePathParam(room)}/tail"}#${s.restartTick.value}")',
     )
@@ -310,17 +310,28 @@ describe('useStream emit compiles against the REAL runtime source', () => {
     const runtime = readFileSync(RUNTIME_KOTLIN, 'utf8')
       .replace(/^package .*$/m, '')
       .replace(/^import androidx\.compose\.runtime\..*$/gm, '')
+    // The emit hands the container `PyreonStreamMain`, which lives beside it in
+    // PyreonStreamAndroid.kt — real too, against a two-type `android.os` mirror.
+    const android = readFileSync(RUNTIME_KOTLIN.replace('PyreonStream.kt', 'PyreonStreamAndroid.kt'), 'utf8').replace(
+      /^package .*$/m,
+      '',
+    )
     const dir = mkdtempSync(join(tmpdir(), 'pyreon-stream-real-kotlin-'))
     try {
       writeFileSync(join(dir, 'Stubs.kt'), stubs)
       writeFileSync(join(dir, 'PyreonStream.kt'), runtime)
+      writeFileSync(join(dir, 'PyreonStreamAndroid.kt'), android)
+      writeFileSync(
+        join(dir, 'AndroidOs.kt'),
+        'package android.os\nclass Looper { companion object { fun getMainLooper(): Looper = Looper() } }\nclass Handler(looper: Looper) { fun post(r: Runnable): Boolean = true }\n',
+      )
       const inputs = [SSE, TEXT, NDJSON, GATED, NDJSON_ON_EVENT].map((src, i) => {
         const code = kotlin(src).code.replace(/\bFeed\b/g, `Feed${i}`).replace(/\bLogLine\b/g, `LogLine${i}`)
         const p = join(dir, `App${i}.kt`)
         writeFileSync(p, code)
         return p
       })
-      execFileSync('kotlinc', ['-nowarn', '-d', join(dir, 'out'), join(dir, 'Stubs.kt'), join(dir, 'PyreonStream.kt'), ...inputs], {
+      execFileSync('kotlinc', ['-nowarn', '-d', join(dir, 'out'), join(dir, 'Stubs.kt'), join(dir, 'PyreonStream.kt'), join(dir, 'PyreonStreamAndroid.kt'), join(dir, 'AndroidOs.kt'), ...inputs], {
         stdio: 'pipe',
         encoding: 'utf8',
       })

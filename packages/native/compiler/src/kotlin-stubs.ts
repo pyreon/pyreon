@@ -1127,7 +1127,11 @@ data class PyreonStreamReconnect(val attempts: Int = 5, val delay: Long = 1000, 
 data class PyreonSseOptions(val events: List<String>? = null, val lastEventId: String? = null, val reconnect: PyreonStreamReconnect? = PyreonStreamReconnect())
 data class PyreonStreamRequest(val method: String = "GET", val url: String, val headers: Map<String, String> = emptyMap(), val body: String? = null)
 data class PyreonSseEvent<T>(val type: String, val data: T, val id: String)
-class PyreonStream<E>(val maxEvents: Int = 1000) {
+// The main-looper executor (PyreonStreamAndroid.kt) the emit hands the container.
+object PyreonStreamMain : java.util.concurrent.Executor {
+  override fun execute(command: Runnable) {}
+}
+class PyreonStream<E>(val maxEvents: Int = 1000, main: java.util.concurrent.Executor = java.util.concurrent.Executor { it.run() }) {
   val events: MutableState<List<E>> = mutableStateOf(emptyList())
   val latest: MutableState<E?> = mutableStateOf(null)
   val status: MutableState<String> = mutableStateOf("idle")

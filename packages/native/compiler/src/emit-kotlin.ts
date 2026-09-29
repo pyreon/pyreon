@@ -3109,8 +3109,11 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   }
   // `const s = useStream(…)` → a remembered PyreonStream; the
   // `DisposableEffect` that starts and stops it is emitted with the harnesses.
+  // `main = PyreonStreamMain` puts every state write and `onEvent` call on the
+  // main looper, where the web runs the whole hook — the loop itself reads on
+  // its own thread, and without this `onEvent` ran there.
   if (d.kind === 'stream') {
-    return `val ${kotlinIdent(d.name)} = remember { PyreonStream<${kotlinType(d.itemType, ctx)}>(maxEvents = ${d.maxEvents}) }`
+    return `val ${kotlinIdent(d.name)} = remember { PyreonStream<${kotlinType(d.itemType, ctx)}>(maxEvents = ${d.maxEvents}, main = PyreonStreamMain) }`
   }
   if (d.kind === 'database') {
     _databaseNames.add(d.name)
