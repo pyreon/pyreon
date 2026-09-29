@@ -572,7 +572,15 @@ fun pyreonKeyedTweenChartCommands(from: List<PyreonDrawCmd>, to: List<PyreonDraw
     val chrome = pyreonTweenChartCommands(from.filter { it.key == null && it.pointKeys == null }, to.filter { it.key == null && it.pointKeys == null }, progress)
     val bars = LinkedHashMap<String, MutableList<PyreonDrawCmd>>()
     for (c in from) { val k = c.key; if (c.kind == "rect" && k != null) bars.getOrPut(k) { mutableListOf() }.add(c) }
-    val lines = from.filter { it.kind == "polyline" && it.pointKeys != null }
+    // Every old keyed point, by series (the polyline's `key`, its label) then row.
+    val linePoints = HashMap<String, HashMap<String, PyreonChartPt>>()
+    for (c in from) {
+        val keys = c.pointKeys ?: continue
+        val pts = c.points ?: continue
+        if (c.kind != "polyline") continue
+        val series = linePoints.getOrPut(c.key ?: "") { HashMap() }
+        for (i in keys.indices) if (i < pts.size) series[keys[i]] = pts[i]
+    }
     val targetCount = HashMap<String, Int>()
     for (c in to) { val k = c.key; if (c.kind == "rect" && k != null) targetCount[k] = (targetCount[k] ?: 0) + 1 }
     val exiting = ArrayList<PyreonDrawCmd>()
@@ -585,7 +593,6 @@ fun pyreonKeyedTweenChartCommands(from: List<PyreonDrawCmd>, to: List<PyreonDraw
     val out = ArrayList<PyreonDrawCmd>()
     var chromeAt = 0
     val seen = HashMap<String, Int>()
-    var lineAt = 0
     var placedExits = false
     for (c in to) {
         if (c.key == null && c.pointKeys == null) {
@@ -594,16 +601,12 @@ fun pyreonKeyedTweenChartCommands(from: List<PyreonDrawCmd>, to: List<PyreonDraw
             continue
         }
         if (!placedExits) { out.addAll(exiting); placedExits = true }
+        // A keyed value label waits for the tween to land, as the web morph hides it.
+        if (c.kind == "text") continue
         val keys = c.pointKeys
         val pts = c.points
         if (c.kind == "polyline" && keys != null && pts != null) {
-            val old = lines.getOrNull(lineAt)
-            val oldKeys = old?.pointKeys
-            val oldPts = old?.points
-            lineAt++
-            if (oldKeys == null || oldPts == null) { out.add(c); continue }
-            val at = HashMap<String, PyreonChartPt>()
-            for (i in oldKeys.indices) if (i < oldPts.size) at[oldKeys[i]] = oldPts[i]
+            val at = linePoints[c.key ?: ""] ?: HashMap()
             out.add(c.copy(points = pts.indices.map { i ->
                 val o = if (i < keys.size) at[keys[i]] else null
                 if (o == null) pts[i] else pyreonChartMixPoint(o, pts[i], progress)

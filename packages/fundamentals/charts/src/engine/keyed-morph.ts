@@ -144,15 +144,22 @@ export function keyedMorphCmds(from: KeyedGeo[], to: KeyedGeo[], e: Double): Dra
     const b = to[s]!
     const a = from[s]
     if (b.kind === 'line') {
-      const pts: Pt[] = []
+      // A gap (a row with no finite value) breaks the line into runs, exactly
+      // as the renderer does — bridging it mid-morph would draw a segment
+      // across the gap that snaps away when the morph lands.
+      const runs: Pt[][] = [[]]
       for (const k of b.keys) {
         const p = b.points.get(k)
-        if (p === undefined) continue
+        if (p === undefined) {
+          if (runs[runs.length - 1]!.length > 0) runs.push([])
+          continue
+        }
         const old = a?.points.get(k)
-        pts.push(old === undefined ? p : { x: mix(old.x, p.x, e), y: mix(old.y, p.y, e) })
+        runs[runs.length - 1]!.push(old === undefined ? p : { x: mix(old.x, p.x, e), y: mix(old.y, p.y, e) })
       }
-      const shaped = b.series.curve === undefined ? pts : b.series.curve(pts)
-      if (shaped.length > 1) {
+      for (const run of runs) {
+        const shaped = b.series.curve === undefined ? run : b.series.curve(run)
+        if (shaped.length < 2) continue
         out.push(b.series.dash === undefined
           ? { kind: 'polyline', points: shaped, stroke: b.series.color, width: b.series.width }
           : { kind: 'polyline', points: shaped, stroke: b.series.color, width: b.series.width, dash: b.series.dash })

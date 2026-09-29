@@ -77,8 +77,7 @@ describe('ChartSpec.rowKeys tags the draw list', () => {
   it('a line tags one key per point only when its points are its rows one-to-one', () => {
     const lineOf = (sp: ChartSpec) => draw(sp).find((c): c is Extract<DrawCmd, { kind: 'polyline' }> => c.kind === 'polyline')!
     expect(lineOf(spec([s('line', [1, 2, 3])], { rowKeys: ['a', 'b', 'c'] })).pointKeys).toEqual(['a', 'b', 'c'])
-    // A gap splits the line into runs: no row-to-point correspondence to key.
-    expect(lineOf(spec([s('line', [1, Number.NaN, 3, 4])], { categories: ['a', 'b', 'c', 'd'], rowKeys: ['a', 'b', 'c', 'd'] })).pointKeys).toBeUndefined()
+    // (the gapped case is its own spec below)
     // A curve adds points.
     expect(lineOf(spec([{ ...s('line', [1, 2, 3]), curve: (p) => [...p, p[p.length - 1]!] }], { rowKeys: ['a', 'b', 'c'] })).pointKeys).toBeUndefined()
   })
@@ -86,5 +85,24 @@ describe('ChartSpec.rowKeys tags the draw list', () => {
   it('keys cover only the rows rowKeys names', () => {
     const bars = keyed(draw(spec([s('bars', [1, 2, 3])], { rowKeys: ['a', 'b'] })))
     expect(bars.map((c) => c.key)).toEqual(['a', 'b'])
+  })
+
+  it('a gapped line keys each run with its own rows, and the series label names the runs', () => {
+    const sp = spec([s('line', [1, Number.NaN, 3, 4], '#0a0')], { categories: ['a', 'b', 'c', 'd'], rowKeys: ['a', 'b', 'c', 'd'] })
+    const lines = draw(sp).filter((c): c is Extract<DrawCmd, { kind: 'polyline' }> => c.kind === 'polyline')
+    // `a` alone is a one-point run and draws no line; `c, d` is the other run.
+    expect(lines.map((l) => l.pointKeys)).toEqual([['c', 'd']])
+    expect(lines[0]!.key).toBe('#0a0')
+  })
+
+  it('every value label of a keyed chart carries its row key', () => {
+    const texts = (sp: ChartSpec) => draw(sp).filter((c): c is Extract<DrawCmd, { kind: 'text' }> => c.kind === 'text' && c.key !== undefined)
+    const withValues = (kind: Series['kind']): Series => ({ ...s(kind, [1, 2, 3]), showValues: true })
+    expect(texts(spec([withValues('bars')], { rowKeys: ['a', 'b', 'c'] })).map((c) => c.key)).toEqual(['a', 'b', 'c'])
+    expect(texts(spec([withValues('bars')], { horizontal: true, rowKeys: ['a', 'b', 'c'] })).map((c) => c.key)).toEqual(['a', 'b', 'c'])
+    expect(texts(spec([withValues('stacked'), withValues('stacked')], { rowKeys: ['a', 'b', 'c'] })).map((c) => c.key).sort()).toEqual(['a', 'a', 'b', 'b', 'c', 'c'])
+    expect(texts(spec([withValues('line')], { rowKeys: ['a', 'b', 'c'] })).map((c) => c.key)).toEqual(['a', 'b', 'c'])
+    // Unkeyed: no label carries a key.
+    expect(texts(spec([withValues('bars')]))).toEqual([])
   })
 })

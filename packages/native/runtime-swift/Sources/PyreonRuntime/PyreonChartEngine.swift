@@ -5808,6 +5808,16 @@ public func themeCorners(_ radius: Double, _ positive: Bool, _ horizontal: Bool)
 
 public func valueLabel(_ text: String, _ at: PyreonChartPt, _ align: String, _ baseline: String, _ t: ChartTheme) -> PyreonDrawCmd { PyreonDrawCmd(kind: "text", fill: t.label, text: text, at: at, size: t.fontSize, align: align, baseline: baseline) }
 
+public func keyedLabel(_ key: String, _ cmd: PyreonDrawCmd) -> PyreonDrawCmd {
+    switch cmd.kind {
+      case "text":
+        return { var c = cmd; c.key = key; return c }()
+      default:
+        break
+    }
+    return cmd
+  }
+
 public func emphasisLevel(_ spec: ChartSpec, _ index: Int) -> Int {
     let e = (spec.emphasis ?? Emphasis(highlight: -1, selected: []))
     for sel in e.selected {
@@ -6357,7 +6367,8 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           out.append(emphasisOutline(rS, lvlS, t.label))
         }
         if stackedSeries[seg.seriesIndex].showValues == true && progress >= 1.0 {
-          out.append(valueLabel(fmtS(seg.value), PyreonChartPt(x: rS.x + Double(rS.w) / 2.0, y: rS.y + Double(rS.h) / 2.0), "middle", "middle", t))
+          let labS = valueLabel(fmtS(seg.value), PyreonChartPt(x: rS.x + Double(rS.w) / 2.0, y: rS.y + Double(rS.h) / 2.0), "middle", "middle", t)
+          out.append(seg.datumIndex < rowKeys.count ? keyedLabel(rowKeys[seg.datumIndex], labS) : labS)
         }
       }
     }
@@ -6375,7 +6386,8 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           out.append(emphasisOutline(rG, lvlG, t.label))
         }
         if groupedSeries[seg.seriesIndex].showValues == true && progress >= 1.0 {
-          out.append(valueLabel(fmtG(seg.value), PyreonChartPt(x: rG.x + Double(rG.w) / 2.0, y: seg.value < 0.0 ? rG.y + rG.h + 4.0 : rG.y - 4.0), "middle", seg.value < 0.0 ? "top" : "bottom", t))
+          let labG = valueLabel(fmtG(seg.value), PyreonChartPt(x: rG.x + Double(rG.w) / 2.0, y: seg.value < 0.0 ? rG.y + rG.h + 4.0 : rG.y - 4.0), "middle", seg.value < 0.0 ? "top" : "bottom", t)
+          out.append(seg.datumIndex < rowKeys.count ? keyedLabel(rowKeys[seg.datumIndex], labG) : labG)
         }
       }
     }
@@ -6413,7 +6425,8 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
               if !isFiniteValue(v) {
                 continue
               }
-              out.append(valueLabel(fmtA(v), PyreonChartPt(x: upper[i].x, y: Double((upper[i].y + lower[i].y)) / 2.0), "middle", "middle", t))
+              let labA = valueLabel(fmtA(v), PyreonChartPt(x: upper[i].x, y: Double((upper[i].y + lower[i].y)) / 2.0), "middle", "middle", t)
+              out.append(i < rowKeys.count ? keyedLabel(rowKeys[i], labA) : labA)
             }
           }
         }
@@ -6465,7 +6478,8 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
             if !isFiniteValue(v) {
               continue
             }
-            out.append(valueLabel(fmt(v), PyreonChartPt(x: v < 0.0 ? r.x - 4.0 : r.x + r.w + 4.0, y: r.y + Double(r.h) / 2.0), v < 0.0 ? "end" : "start", "middle", t))
+            let labH = valueLabel(fmt(v), PyreonChartPt(x: v < 0.0 ? r.x - 4.0 : r.x + r.w + 4.0, y: r.y + Double(r.h) / 2.0), v < 0.0 ? "end" : "start", "middle", t)
+            out.append(i < rowKeys.count ? keyedLabel(rowKeys[i], labH) : labH)
           }
         }
         continue
@@ -6499,7 +6513,8 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
             if !isFiniteValue(v) {
               continue
             }
-            out.append(valueLabel(fmt(v), PyreonChartPt(x: r.x + Double(r.w) / 2.0, y: v < 0.0 ? r.y + r.h + 4.0 : r.y - 4.0), "middle", v < 0.0 ? "top" : "bottom", t))
+            let labV = valueLabel(fmt(v), PyreonChartPt(x: r.x + Double(r.w) / 2.0, y: v < 0.0 ? r.y + r.h + 4.0 : r.y - 4.0), "middle", v < 0.0 ? "top" : "bottom", t)
+            out.append(i < rowKeys.count ? keyedLabel(rowKeys[i], labV) : labV)
           }
         }
       } else {
@@ -6524,7 +6539,8 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
             if s.showValues == true && progress >= 1.0 {
               let fmt = (spec.yFormat ?? plain)
               let v = printed(sIdx, st.datumIndex)
-              out.append(valueLabel(fmt(v), PyreonChartPt(x: st.rect.x + Double(st.rect.w) / 2.0, y: v < 0.0 ? st.rect.y + st.rect.h + 4.0 : st.rect.y - 4.0), "middle", v < 0.0 ? "top" : "bottom", t))
+              let labW = valueLabel(fmt(v), PyreonChartPt(x: st.rect.x + Double(st.rect.w) / 2.0, y: v < 0.0 ? st.rect.y + st.rect.h + 4.0 : st.rect.y - 4.0), "middle", v < 0.0 ? "top" : "bottom", t)
+              out.append(st.datumIndex < rowKeys.count ? keyedLabel(rowKeys[st.datumIndex], labW) : labW)
             }
           }
         } else {
@@ -6532,11 +6548,25 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
             let direct = s.curve == nil && xs.count == 0 ? m4CategoryPoints(s.values, plot, sDomain) : []
             let useDirect = direct.count > 0
             let runs = useDirect ? [direct] : splitRuns(s.values, place)
+            let keyedLine = rowKeys.count == s.values.count && s.curve == nil
+            var runFrom = 0
             for run in runs {
+              while runFrom < s.values.count && !isFiniteValue(s.values[runFrom]) {
+                runFrom = runFrom + 1
+              }
+              var runKeys: [String] = []
+              if keyedLine {
+                for k in 0..<run.count {
+                  if runFrom + k < rowKeys.count {
+                    runKeys.append(rowKeys[runFrom + k])
+                  }
+                }
+              }
+              runFrom = runFrom + run.count
               let pts = useDirect ? reveal(run) : m4Pixels(reveal(curveFn(run)))
               if pts.count > 1 {
-                let oneToOne = rowKeys.count == s.values.count && runs.count == 1 && pts.count == s.values.count && s.curve == nil
-                out.append(oneToOne ? PyreonDrawCmd(kind: "polyline", stroke: s.color, width: s.width, dash: s.dash, points: pts, pointKeys: rowKeys) : PyreonDrawCmd(kind: "polyline", stroke: s.color, width: s.width, dash: s.dash, points: pts))
+                let oneToOne = keyedLine && runKeys.count == pts.count
+                out.append(oneToOne ? PyreonDrawCmd(kind: "polyline", key: s.label, stroke: s.color, width: s.width, dash: s.dash, points: pts, pointKeys: runKeys) : PyreonDrawCmd(kind: "polyline", stroke: s.color, width: s.width, dash: s.dash, points: pts))
               }
             }
             let lineSymbol = (s.symbol ?? "circle")
@@ -6634,7 +6664,8 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           if !isFiniteValue(v) {
             continue
           }
-          out.append(valueLabel(fmtP(v), PyreonChartPt(x: labelPts[i].x, y: labelPts[i].y - (s.radius + 5.0)), "middle", "bottom", t))
+          let labP = valueLabel(fmtP(v), PyreonChartPt(x: labelPts[i].x, y: labelPts[i].y - (s.radius + 5.0)), "middle", "bottom", t)
+          out.append(i < rowKeys.count ? keyedLabel(rowKeys[i], labP) : labP)
         }
       }
       if hasEndLabel(spec, s) && progress >= 1.0 {

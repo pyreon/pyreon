@@ -3178,6 +3178,15 @@ fun themeCorners(radius: Double, positive: Boolean, horizontal: Boolean): List<D
 
 fun valueLabel(text: String, at: PyreonChartPt, align: String, baseline: String, t: ChartTheme): PyreonDrawCmd = PyreonDrawCmd(kind = "text", fill = t.label, text = text, at = at, size = t.fontSize, align = align, baseline = baseline)
 
+fun keyedLabel(key: String, cmd: PyreonDrawCmd): PyreonDrawCmd {
+    when (cmd.kind) {
+      "text" -> {
+        return cmd.copy(key = key)
+      }
+    }
+    return cmd
+  }
+
 fun emphasisLevel(spec: ChartSpec, index: Int): Int {
     val e = (spec.emphasis ?: Emphasis(highlight = -1, selected = listOf()))
     for (sel in e.selected) {
@@ -3726,7 +3735,8 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
           out.add(emphasisOutline(rS, lvlS, t.label))
         }
         if (stackedSeries[seg.seriesIndex].showValues == true && progress >= 1.0) {
-          out.add(valueLabel(fmtS(seg.value), PyreonChartPt(x = rS.x + (rS.w).toDouble() / (2.0).toDouble(), y = rS.y + (rS.h).toDouble() / (2.0).toDouble()), "middle", "middle", t))
+          val labS = valueLabel(fmtS(seg.value), PyreonChartPt(x = rS.x + (rS.w).toDouble() / (2.0).toDouble(), y = rS.y + (rS.h).toDouble() / (2.0).toDouble()), "middle", "middle", t)
+          out.add(if (seg.datumIndex < rowKeys.length) keyedLabel(rowKeys[seg.datumIndex], labS) else labS)
         }
       }
     }
@@ -3744,7 +3754,8 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
           out.add(emphasisOutline(rG, lvlG, t.label))
         }
         if (groupedSeries[seg.seriesIndex].showValues == true && progress >= 1.0) {
-          out.add(valueLabel(fmtG(seg.value), PyreonChartPt(x = rG.x + (rG.w).toDouble() / (2.0).toDouble(), y = if (seg.value < 0.0) rG.y + rG.h + 4.0 else rG.y - 4.0), "middle", if (seg.value < 0.0) "top" else "bottom", t))
+          val labG = valueLabel(fmtG(seg.value), PyreonChartPt(x = rG.x + (rG.w).toDouble() / (2.0).toDouble(), y = if (seg.value < 0.0) rG.y + rG.h + 4.0 else rG.y - 4.0), "middle", if (seg.value < 0.0) "top" else "bottom", t)
+          out.add(if (seg.datumIndex < rowKeys.length) keyedLabel(rowKeys[seg.datumIndex], labG) else labG)
         }
       }
     }
@@ -3782,7 +3793,8 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
               if (!isFiniteValue(v)) {
                 continue
               }
-              out.add(valueLabel(fmtA(v), PyreonChartPt(x = upper[i].x, y = ((upper[i].y + lower[i].y)).toDouble() / (2.0).toDouble()), "middle", "middle", t))
+              val labA = valueLabel(fmtA(v), PyreonChartPt(x = upper[i].x, y = ((upper[i].y + lower[i].y)).toDouble() / (2.0).toDouble()), "middle", "middle", t)
+              out.add(if (i < rowKeys.length) keyedLabel(rowKeys[i], labA) else labA)
             }
           }
         }
@@ -3834,7 +3846,8 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
             if (!isFiniteValue(v)) {
               continue
             }
-            out.add(valueLabel(fmt(v), PyreonChartPt(x = if (v < 0.0) r.x - 4.0 else r.x + r.w + 4.0, y = r.y + (r.h).toDouble() / (2.0).toDouble()), if (v < 0.0) "end" else "start", "middle", t))
+            val labH = valueLabel(fmt(v), PyreonChartPt(x = if (v < 0.0) r.x - 4.0 else r.x + r.w + 4.0, y = r.y + (r.h).toDouble() / (2.0).toDouble()), if (v < 0.0) "end" else "start", "middle", t)
+            out.add(if (i < rowKeys.length) keyedLabel(rowKeys[i], labH) else labH)
           }
         }
         continue
@@ -3868,7 +3881,8 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
             if (!isFiniteValue(v)) {
               continue
             }
-            out.add(valueLabel(fmt(v), PyreonChartPt(x = r.x + (r.w).toDouble() / (2.0).toDouble(), y = if (v < 0.0) r.y + r.h + 4.0 else r.y - 4.0), "middle", if (v < 0.0) "top" else "bottom", t))
+            val labV = valueLabel(fmt(v), PyreonChartPt(x = r.x + (r.w).toDouble() / (2.0).toDouble(), y = if (v < 0.0) r.y + r.h + 4.0 else r.y - 4.0), "middle", if (v < 0.0) "top" else "bottom", t)
+            out.add(if (i < rowKeys.length) keyedLabel(rowKeys[i], labV) else labV)
           }
         }
       } else {
@@ -3893,7 +3907,8 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
             if (s.showValues == true && progress >= 1.0) {
               val fmt = (spec.yFormat ?: ::plain)
               val v = printed(sIdx, st.datumIndex)
-              out.add(valueLabel(fmt(v), PyreonChartPt(x = st.rect.x + (st.rect.w).toDouble() / (2.0).toDouble(), y = if (v < 0.0) st.rect.y + st.rect.h + 4.0 else st.rect.y - 4.0), "middle", if (v < 0.0) "top" else "bottom", t))
+              val labW = valueLabel(fmt(v), PyreonChartPt(x = st.rect.x + (st.rect.w).toDouble() / (2.0).toDouble(), y = if (v < 0.0) st.rect.y + st.rect.h + 4.0 else st.rect.y - 4.0), "middle", if (v < 0.0) "top" else "bottom", t)
+              out.add(if (st.datumIndex < rowKeys.length) keyedLabel(rowKeys[st.datumIndex], labW) else labW)
             }
           }
         } else {
@@ -3901,11 +3916,25 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
             val direct = if (s.curve == null && xs.length == 0) m4CategoryPoints(s.values, plot, sDomain) else listOf()
             val useDirect = direct.length > 0
             val runs = if (useDirect) listOf(direct) else splitRuns(s.values, place)
+            val keyedLine = rowKeys.length == s.values.length && s.curve == null
+            var runFrom = 0
             for (run in runs) {
+              while (runFrom < s.values.length && !isFiniteValue(s.values[runFrom])) {
+                runFrom = runFrom + 1
+              }
+              val runKeys: MutableList<String> = mutableListOf()
+              if (keyedLine) {
+                for (k in 0 until run.length) {
+                  if (runFrom + k < rowKeys.length) {
+                    runKeys.add(rowKeys[runFrom + k])
+                  }
+                }
+              }
+              runFrom = runFrom + run.length
               val pts = if (useDirect) reveal(run) else m4Pixels(reveal(curveFn(run)))
               if (pts.length > 1) {
-                val oneToOne = rowKeys.length == s.values.length && runs.length == 1 && pts.length == s.values.length && s.curve == null
-                out.add(if (oneToOne) PyreonDrawCmd(kind = "polyline", stroke = s.color, width = s.width, dash = s.dash, points = pts, pointKeys = rowKeys) else PyreonDrawCmd(kind = "polyline", stroke = s.color, width = s.width, dash = s.dash, points = pts))
+                val oneToOne = keyedLine && runKeys.length == pts.length
+                out.add(if (oneToOne) PyreonDrawCmd(kind = "polyline", key = s.label, stroke = s.color, width = s.width, dash = s.dash, points = pts, pointKeys = runKeys) else PyreonDrawCmd(kind = "polyline", stroke = s.color, width = s.width, dash = s.dash, points = pts))
               }
             }
             val lineSymbol = (s.symbol ?: "circle")
@@ -4003,7 +4032,8 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
           if (!isFiniteValue(v)) {
             continue
           }
-          out.add(valueLabel(fmtP(v), PyreonChartPt(x = labelPts[i].x, y = labelPts[i].y - (s.radius + 5.0)), "middle", "bottom", t))
+          val labP = valueLabel(fmtP(v), PyreonChartPt(x = labelPts[i].x, y = labelPts[i].y - (s.radius + 5.0)), "middle", "bottom", t)
+          out.add(if (i < rowKeys.length) keyedLabel(rowKeys[i], labP) else labP)
         }
       }
       if (hasEndLabel(spec, s) && progress >= 1.0) {

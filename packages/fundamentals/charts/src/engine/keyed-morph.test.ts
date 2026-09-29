@@ -135,4 +135,15 @@ describe('keyed morph uses the renderer\'s own geometry in every frame', () => {
     expect(morphMatches(geo, { ...spec, series: [{ ...bars([1, 2, 3]), kind: 'line' }] })).toBe(false)
     expect(morphMatches(geo, { ...spec, series: [bars([1]), bars([2])] })).toBe(false)
   })
+
+  it('a gapped line breaks at the gap mid-morph instead of bridging it', () => {
+    const line = (values: number[]): Series => ({ kind: 'line', values, color: '#0a0', label: 'l', width: 2, radius: 3 })
+    const four = ['a', 'b', 'c', 'd']
+    const from = base([line([1, 2, 3, 4])], { categories: four })
+    const to = base([line([2, 1, Number.NaN, 3])], { categories: four })
+    const polys = keyedMorphCmds(keyedGeometry(from, layoutChart(from, measure), four), keyedGeometry(to, layoutChart(to, measure), four), 0.5).filter((c) => c.kind === 'polyline')
+    expect(polys).toHaveLength(1)
+    expect((polys[0] as { points: unknown[] }).points).toHaveLength(2)
+  })
 })
+

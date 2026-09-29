@@ -633,15 +633,23 @@ public func pyreonChartCommandsAreKeyed(_ cmds: [PyreonDrawCmd]) -> Bool {
 /// in each list) slides from its old rect to its new one, an entering bar grows
 /// from its `enter` rect (its zero-side edge), and a bar whose key left the data
 /// shrinks into its own `enter` rect; exiting bars paint first so the survivors
-/// slide over them. A keyed line matches its points by key: a surviving point
-/// moves, a new one appears at its place. Everything unkeyed (grid, axes,
-/// labels) tweens by position as before.
+/// slide over them. A keyed line matches its points by key within its series,
+/// across runs a gap splits: a surviving point moves, a new one appears at its
+/// place. A keyed value label is hidden until the tween lands, as on the web.
+/// Everything unkeyed (grid, axes, labels) tweens by position as before.
 public func pyreonKeyedTweenChartCommands(_ from: [PyreonDrawCmd], _ to: [PyreonDrawCmd], _ progress: Double) -> [PyreonDrawCmd] {
     if progress >= 1.0 { return to }
     let chrome = pyreonTweenChartCommands(from.filter { $0.key == nil && $0.pointKeys == nil }, to.filter { $0.key == nil && $0.pointKeys == nil }, progress)
     var bars: [String: [PyreonDrawCmd]] = [:]
     for c in from where c.kind == "rect" && c.key != nil { bars[c.key!, default: []].append(c) }
-    let lines = from.filter { $0.kind == "polyline" && $0.pointKeys != nil }
+    // Every old keyed point, by series (the polyline's `key`, its label) then row:
+    // a line split by gaps matches a point across runs that opened or closed.
+    var linePoints: [String: [String: PyreonChartPt]] = [:]
+    for c in from where c.kind == "polyline" {
+        guard let keys = c.pointKeys, let pts = c.points else { continue }
+        let series = c.key ?? ""
+        for (i, k) in keys.enumerated() where i < pts.count { linePoints[series, default: [:]][k] = pts[i] }
+    }
     var targetCount: [String: Int] = [:]
     for c in to where c.kind == "rect" && c.key != nil { targetCount[c.key!, default: 0] += 1 }
     var exiting: [PyreonDrawCmd] = []
@@ -655,7 +663,6 @@ public func pyreonKeyedTweenChartCommands(_ from: [PyreonDrawCmd], _ to: [Pyreon
     var out: [PyreonDrawCmd] = []
     var chromeAt = 0
     var seen: [String: Int] = [:]
-    var lineAt = 0
     var placedExits = false
     for c in to {
         if c.key == nil && c.pointKeys == nil {
@@ -664,17 +671,15 @@ public func pyreonKeyedTweenChartCommands(_ from: [PyreonDrawCmd], _ to: [Pyreon
             continue
         }
         if !placedExits { out.append(contentsOf: exiting); placedExits = true }
+        // A keyed value label waits for the tween to land, as the web morph hides it.
+        if c.kind == "text" { continue }
         if c.kind == "polyline", let keys = c.pointKeys, let pts = c.points {
             var m = c
-            if lineAt < lines.count, let oldKeys = lines[lineAt].pointKeys, let oldPts = lines[lineAt].points {
-                var at: [String: PyreonChartPt] = [:]
-                for (i, k) in oldKeys.enumerated() where i < oldPts.count { at[k] = oldPts[i] }
-                m.points = pts.indices.map { i in
-                    guard i < keys.count, let o = at[keys[i]] else { return pts[i] }
-                    return pyreonChartMixPoint(o, pts[i], progress)
-                }
+            let at = linePoints[c.key ?? ""] ?? [:]
+            m.points = pts.indices.map { i in
+                guard i < keys.count, let o = at[keys[i]] else { return pts[i] }
+                return pyreonChartMixPoint(o, pts[i], progress)
             }
-            lineAt += 1
             out.append(m)
             continue
         }

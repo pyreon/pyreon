@@ -382,6 +382,15 @@ function valueLabel(text: string, at: Pt, align: 'start' | 'middle' | 'end', bas
   return { kind: 'text', text, at, fill: t.label, size: t.fontSize, align, baseline }
 }
 
+/** A value label tagged with its row key (a keyed spec only), so a keyed tween can hide it mid-morph as the web does. */
+function keyedLabel(key: string, cmd: DrawCmd): DrawCmd {
+  switch (cmd.kind) {
+    case 'text':
+      return { ...cmd, key }
+  }
+  return cmd
+}
+
 /** 0 = plain, 1 = highlighted (a hover or a dispatched `highlight`), 2 = selected. */
 export function emphasisLevel(spec: ChartSpec, index: number): number {
   const e: Emphasis = spec.emphasis ?? { highlight: -1, selected: [] }
@@ -1151,7 +1160,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       // own, not the running total, and there is no outside edge to hang it
       // from that would not collide with the segment above.
       if (stackedSeries[seg.seriesIndex]!.showValues === true && progress >= 1.0) {
-        out.push(valueLabel(fmtS(seg.value), { x: rS.x + rS.w / 2.0, y: rS.y + rS.h / 2.0 }, 'middle', 'middle', t))
+        const labS = valueLabel(fmtS(seg.value), { x: rS.x + rS.w / 2.0, y: rS.y + rS.h / 2.0 }, 'middle', 'middle', t)
+        out.push(seg.datumIndex < rowKeys.length ? keyedLabel(rowKeys[seg.datumIndex]!, labS) : labS)
       }
     }
   }
@@ -1171,7 +1181,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       // A grouped bar has a free outer edge, so it labels OUTSIDE like a
       // plain bar — above a positive one, below a negative one.
       if (groupedSeries[seg.seriesIndex]!.showValues === true && progress >= 1.0) {
-        out.push(valueLabel(fmtG(seg.value), { x: rG.x + rG.w / 2.0, y: seg.value < 0.0 ? rG.y + rG.h + 4.0 : rG.y - 4.0 }, 'middle', seg.value < 0.0 ? 'top' : 'bottom', t))
+        const labG = valueLabel(fmtG(seg.value), { x: rG.x + rG.w / 2.0, y: seg.value < 0.0 ? rG.y + rG.h + 4.0 : rG.y - 4.0 }, 'middle', seg.value < 0.0 ? 'top' : 'bottom', t)
+        out.push(seg.datumIndex < rowKeys.length ? keyedLabel(rowKeys[seg.datumIndex]!, labG) : labG)
       }
     }
   }
@@ -1212,7 +1223,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           for (let i = 0; i < upper.length; i++) {
             const v = i < sA.values.length ? sA.values[i]! : 0.0 / 0.0
             if (!isFiniteValue(v)) continue
-            out.push(valueLabel(fmtA(v), { x: upper[i]!.x, y: (upper[i]!.y + lower[i]!.y) / 2.0 }, 'middle', 'middle', t))
+            const labA = valueLabel(fmtA(v), { x: upper[i]!.x, y: (upper[i]!.y + lower[i]!.y) / 2.0 }, 'middle', 'middle', t)
+            out.push(i < rowKeys.length ? keyedLabel(rowKeys[i]!, labA) : labA)
           }
         }
       }
@@ -1281,7 +1293,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           if (!isFiniteValue(v)) continue
           // The label sits just past the bar's far end — right of a positive
           // bar, left of a negative one.
-          out.push(valueLabel(fmt(v), { x: v < 0.0 ? r.x - 4.0 : r.x + r.w + 4.0, y: r.y + r.h / 2.0 }, v < 0.0 ? 'end' : 'start', 'middle', t))
+          const labH = valueLabel(fmt(v), { x: v < 0.0 ? r.x - 4.0 : r.x + r.w + 4.0, y: r.y + r.h / 2.0 }, v < 0.0 ? 'end' : 'start', 'middle', t)
+          out.push(i < rowKeys.length ? keyedLabel(rowKeys[i]!, labH) : labH)
         }
       }
       continue
@@ -1315,7 +1328,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           if (!isFiniteValue(v)) continue
           // A negative bar hangs below the zero line, so its label goes under
           // its bottom edge — above the top would sit ON the zero line.
-          out.push(valueLabel(fmt(v), { x: r.x + r.w / 2.0, y: v < 0.0 ? r.y + r.h + 4.0 : r.y - 4.0 }, 'middle', v < 0.0 ? 'top' : 'bottom', t))
+          const labV = valueLabel(fmt(v), { x: r.x + r.w / 2.0, y: v < 0.0 ? r.y + r.h + 4.0 : r.y - 4.0 }, 'middle', v < 0.0 ? 'top' : 'bottom', t)
+          out.push(i < rowKeys.length ? keyedLabel(rowKeys[i]!, labV) : labV)
         }
       }
     } else if (s.kind === 'waterfall') {
@@ -1341,7 +1355,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         if (s.showValues === true && progress >= 1.0) {
           const fmt = spec.yFormat ?? plain
           const v = printed(sIdx, st.datumIndex)
-          out.push(valueLabel(fmt(v), { x: st.rect.x + st.rect.w / 2.0, y: v < 0.0 ? st.rect.y + st.rect.h + 4.0 : st.rect.y - 4.0 }, 'middle', v < 0.0 ? 'top' : 'bottom', t))
+          const labW = valueLabel(fmt(v), { x: st.rect.x + st.rect.w / 2.0, y: v < 0.0 ? st.rect.y + st.rect.h + 4.0 : st.rect.y - 4.0 }, 'middle', v < 0.0 ? 'top' : 'bottom', t)
+          out.push(st.datumIndex < rowKeys.length ? keyedLabel(rowKeys[st.datumIndex]!, labW) : labW)
         }
       }
     } else if (s.kind === 'line') {
@@ -1353,14 +1368,27 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       const direct: Pt[] = s.curve === undefined && xs.length === 0 ? m4CategoryPoints(s.values, plot, sDomain) : []
       const useDirect = direct.length > 0
       const runs: Pt[][] = useDirect ? [direct] : splitRuns(s.values, place)
+      // Each run is a maximal stretch of finite values, so the rows it draws
+      // are the next finite one onward: that is how a keyed run names them.
+      const keyedLine = rowKeys.length === s.values.length && s.curve === undefined
+      let runFrom = 0
       for (const run of runs) {
+        while (runFrom < s.values.length && !isFiniteValue(s.values[runFrom]!)) runFrom = runFrom + 1
+        const runKeys: string[] = []
+        if (keyedLine) {
+          for (let k = 0; k < run.length; k++) {
+            if (runFrom + k < rowKeys.length) runKeys.push(rowKeys[runFrom + k]!)
+          }
+        }
+        runFrom = runFrom + run.length
         // M4: more points than pixel columns draw the same pixels from four per column.
         const pts = useDirect ? reveal(run) : m4Pixels(reveal(curveFn(run)))
         if (pts.length > 1) {
-          // Keyed only when the drawn points ARE the rows, one to one: a gap
-          // splits the line, M4 drops points, a curve adds them.
-          const oneToOne = rowKeys.length === s.values.length && runs.length === 1 && pts.length === s.values.length && s.curve === undefined
-          out.push(oneToOne ? { kind: 'polyline', points: pts, pointKeys: rowKeys, stroke: s.color, width: s.width, dash: s.dash } : { kind: 'polyline', points: pts, stroke: s.color, width: s.width, dash: s.dash })
+          // Keyed only when the drawn points ARE the run's rows, one to one
+          // (M4 drops points, a curve adds them). The series label keys the
+          // runs, so a point matches its row across a gap that opened or closed.
+          const oneToOne = keyedLine && runKeys.length === pts.length
+          out.push(oneToOne ? { kind: 'polyline', points: pts, pointKeys: runKeys, stroke: s.color, width: s.width, dash: s.dash, key: s.label } : { kind: 'polyline', points: pts, stroke: s.color, width: s.width, dash: s.dash })
         }
       }
       // A line shows its datum symbols only when asked (ECharts' showSymbol):
@@ -1484,7 +1512,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         // A gap has no value to print — same rule as the bars. The label sits
         // above the point, clear of a dot of the series' own radius.
         if (!isFiniteValue(v)) continue
-        out.push(valueLabel(fmtP(v), { x: labelPts[i]!.x, y: labelPts[i]!.y - (s.radius + 5.0) }, 'middle', 'bottom', t))
+        const labP = valueLabel(fmtP(v), { x: labelPts[i]!.x, y: labelPts[i]!.y - (s.radius + 5.0) }, 'middle', 'bottom', t)
+        out.push(i < rowKeys.length ? keyedLabel(rowKeys[i]!, labP) : labP)
       }
     }
 

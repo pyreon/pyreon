@@ -175,6 +175,8 @@ export type DrawCmd =
       points: Pt[]
       /** One row key per point — set only when the spec carries `rowKeys` and the line's points are its rows one-to-one. */
       pointKeys?: string[] | undefined
+      /** The series a keyed run belongs to (its label), so a line split by gaps matches its points across runs. Set with `pointKeys`. */
+      key?: string | undefined
       stroke: string
       width: Double
       dash?: Double[] | undefined
@@ -204,6 +206,8 @@ export type DrawCmd =
       stroke?: string | undefined
       /** The halo's width in px (ECharts' `textBorderWidth`, 2 by default). */
       strokeWidth?: Double | undefined
+      /** The row key of a keyed chart's value label: a host tweening by key hides it until the tween lands, as the web morph does. */
+      key?: string | undefined
     }
   /**
    * Clip every following command to `rect` until the matching `unclip` — a
