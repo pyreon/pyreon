@@ -342,11 +342,19 @@ describe('netlify adapter build', () => {
     const toml = await readFile(join(outDir, 'netlify.toml'), 'utf-8')
     expect(toml).toContain('[build]')
     expect(toml).toContain('publish = "publish"')
+    // The function is routed by its own `config.path`; a custom-path
+    // function is unreachable at `/.netlify/functions/<name>`, so a
+    // redirect there would be dead config.
+    expect(toml).not.toContain('/.netlify/functions/')
+    expect(toml).not.toContain('[[redirects]]')
 
     // Verify function is ESM with v2 format
     const func = await readFile(join(outDir, 'netlify', 'functions', 'ssr.mjs'), 'utf-8')
     expect(func).toContain('export default')
     expect(func).toContain('export const config')
+    // …and carries the routing the toml no longer does.
+    expect(func).toContain('path: "/*"')
+    expect(func).toContain('preferStatic: true')
 
     // Production crashes must surface to Netlify Function logs. Pre-fix
     // the `catch (err) { return 500 }` block swallowed `err` entirely.

@@ -12,7 +12,9 @@ export default {
   // without one. Skipping them keeps the report about the previews.
   // `main.tsx` mounts the app at module scope, so importing it in a Node scan
   // throws on `document` -- it is an entry point, not a catalog entry.
-  ignore: ['.native.tsx', 'src/main.tsx'],
+  // Patterns match paths RELATIVE TO the scanned `src/`, so this is
+  // `main.tsx`: `src/main.tsx` matched nothing and the scan loaded the file.
+  ignore: ['.native.tsx', 'main.tsx'],
   scenarios,
   wrapper,
 }

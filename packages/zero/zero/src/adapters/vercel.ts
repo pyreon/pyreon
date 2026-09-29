@@ -4,6 +4,7 @@ import { VERCEL_ADAPTER_OUTPUT } from './contract'
 import { patternToRegex } from './deploy-targets'
 import { EDGE_HANDLER_BODY, EDGE_INIT_FILE, renderEdgeInit } from './edge-wrapper'
 import { materialize, stageClientThenServer } from './stage'
+import { escapeRegExp, listStaticFiles } from './static-files'
 import { validateBuildInputs } from './validate'
 import { warnMissingEnv } from './warn-missing-env'
 
@@ -198,6 +199,8 @@ export default async function vercelHandler(req) {
         }
       }
 
+      const staticFiles = await listStaticFiles(staticDir, { assetsDir: options.assetsDir })
+
       // Vercel Build Output config
       const config: {
         version: 3
@@ -213,6 +216,12 @@ export default async function vercelHandler(req) {
           },
           // Favicon and manifest
           { src: '/(favicon\\..*|site\\.webmanifest|robots\\.txt|sitemap\\.xml)', dest: '/$1' },
+          // Every other file in `static/` (the user's `public/`): without a
+          // route it falls to the catch-all below and the SSR function answers
+          // it with an HTML page.
+          ...(staticFiles.length > 0
+            ? [{ src: `/(${staticFiles.map((p) => escapeRegExp(p.slice(1))).join('|')})`, dest: '/$1' }]
+            : []),
           // Routes declaring the non-default runtime → their own function.
           ...splitRoutes.map((r) => ({ src: patternToRegex(r.pattern), dest: `/${splitName}` })),
           // All other routes → SSR function

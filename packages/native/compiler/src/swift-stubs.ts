@@ -69,6 +69,9 @@ public protocol View { associatedtype Body: View; @ViewBuilder var body: Self.Bo
 extension View where Body == Never { public var body: Never { fatalError() } }
 extension Never: View { public typealias Body = Never }
 public struct EmptyView: View { public init() {}; public typealias Body = Never }
+// SwiftUI's own conformance: an optional view renders nothing when nil. The
+// emit leans on it for an OPTIONAL render prop invoked as \`render?(item)\`.
+extension Optional: View where Wrapped: View { public typealias Body = Never }
 public struct AnyStubView: View { public init() {}; public typealias Body = Never }
 public struct AnyView: View { public init<V: View>(_ view: V) {}; public typealias Body = Never }
 

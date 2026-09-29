@@ -351,10 +351,12 @@ class CounterInstrumentedTest {
         composeRule.onAllNodesWithTag("native-flow-custom-line").assertCountEquals(0)
         composeRule.onNodeWithTag("native-flow-custom-line-mounts").assertTextEquals("0")
         // Mostly sideways, ending just below the End node: a vertical drag is a
-        // page scroll on both platforms before any handle sees it. The hold must
-        // stay clear of the canvas's 40dp auto-pan band: held inside it, the
-        // graph pans every frame (as on the web) and Compose never idles, so the
-        // mid-drag assertion times out. It used to hold 39.3dp from the bottom.
+        // page scroll on both platforms before any handle sees it. The hold
+        // stays clear of the canvas's 40dp auto-pan band: the example now sets
+        // `autoPanOnConnect: false` (see Counter.tsx), but held inside the band
+        // with auto-pan on, the graph pans every frame (as on the web) and
+        // Compose never idles, so the mid-drag assertion times out. It used to
+        // hold 39.3dp from the bottom.
         val holdDown = run {
             val canvas = flowCanvas.fetchSemanticsNode().boundsInRoot
             val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
@@ -1070,5 +1072,28 @@ class CounterInstrumentedTest {
                 lm.removeTestProvider(LocationManager.GPS_PROVIDER)
             } catch (_: Exception) {}
         }
+    }
+
+    // Render props on-device — the Android half of the iOS
+    // `test_renderPropsRenderAndTrackState`. `Tally` (shared Counter.tsx) takes
+    // a REQUIRED function-as-children render prop and an OPTIONAL `footer`
+    // view slot, and is rendered twice at the bottom of the page: once with a
+    // BLOCK-bodied callback and no footer, once with an expression callback and
+    // the footer. Exactly ONE footer must exist (the omitted nullable lambda
+    // renders nothing), and the callbacks must re-run with the parent's state,
+    // the block's early-return branch flipping when `count` crosses 2.
+    // `assertExists` rather than `assertIsDisplayed`: the rows sit below the
+    // fold, and the scroll column composes them regardless.
+    @Test
+    fun renderPropsRenderAndTrackState() {
+        composeRule.onNodeWithTag("rp-block").assertExists().assertTextEquals("rp small 0")
+        composeRule.onNodeWithTag("rp-plain").assertTextEquals("rp plain 0")
+        composeRule.onAllNodesWithTag("rp-footer").assertCountEquals(1)
+
+        repeat(3) { composeRule.onNodeWithText("Increment").performClick() }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("rp-block").assertTextEquals("rp big 6")
+        composeRule.onNodeWithTag("rp-plain").assertTextEquals("rp plain 3")
     }
 }
