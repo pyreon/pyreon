@@ -93,6 +93,17 @@ export type QueryParams = Record<string, QueryValue>
 export type ValidateMode = 'strict' | 'warn' | 'off'
 
 /**
+ * How a client turns JSON text into values and back — `JSON.parse` /
+ * `JSON.stringify` by default. `@pyreon/http/json`'s `losslessJson` decodes an
+ * integer past 2^53 - 1 as a `bigint` (and encodes one back as a JSON number),
+ * which is what an OpenAPI `format: int64` id needs to survive the round trip.
+ */
+export interface JsonCodec {
+  parse(text: string): unknown
+  stringify(value: unknown): string
+}
+
+/**
  * Error-body validators by status key: an exact status (`404`, `'404'`), a
  * range (`'4XX'`, `'5XX'`) or `'default'`. See `RequestOptions.errors`.
  */
@@ -400,4 +411,11 @@ export interface HttpClientConfig
    * another are the SAME cache entry.
    */
   keyScope?: string | undefined
+  /**
+   * How JSON bodies are decoded and encoded — response bodies (`.json()`,
+   * error bodies) and request `json`. Defaults to `JSON.parse` /
+   * `JSON.stringify`. Pass `losslessJson` from `@pyreon/http/json` to keep an
+   * integer past 2^53 - 1 exact as a `bigint` instead of rounding it.
+   */
+  json?: JsonCodec | undefined
 }

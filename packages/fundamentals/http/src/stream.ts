@@ -202,14 +202,17 @@ export class StreamParseError extends Error {
  * for await (const row of readNdjson(response.body)) rows.push(row)
  * ```
  */
-export async function* readNdjson(stream: ReadableStream<Uint8Array>): AsyncGenerator<unknown> {
+export async function* readNdjson(
+  stream: ReadableStream<Uint8Array>,
+  parseJson: (text: string) => unknown = JSON.parse,
+): AsyncGenerator<unknown> {
   let n = 0
   for await (const { line } of readLines(stream)) {
     n++
     if (line.trim() === '') continue
     let value: unknown
     try {
-      value = JSON.parse(line)
+      value = parseJson(line)
     } catch (cause) {
       throw new StreamParseError(n, line, cause)
     }
@@ -312,6 +315,12 @@ interface BaseOptions<T> {
    * string, for an SSE stream read with `data: 'text'`).
    */
   parse?: StreamParse<T> | undefined
+  /**
+   * How each payload's JSON text is decoded, BEFORE `parse`. Defaults to
+   * `JSON.parse`; `parseJsonLossless` from `@pyreon/http/json` keeps an
+   * integer past 2^53 - 1 exact as a `bigint`.
+   */
+  parseJson?: ((text: string) => unknown) | undefined
   /** Stop the stream from outside, in addition to `close()` and `break`. */
   signal?: AbortSignal | undefined
   /** Called on every status change — what `useStream` renders from. */
@@ -588,7 +597,7 @@ export function openEventStream<T = unknown>(
         let value: unknown = msg.data
         if (!asText) {
           try {
-            value = JSON.parse(msg.data)
+            value = options.parseJson ? options.parseJson(msg.data) : JSON.parse(msg.data)
           } catch (cause) {
             throw new StreamEventError(msg.data, cause)
           }
@@ -624,7 +633,7 @@ export function openNdjsonStream<T = unknown>(
     accept: 'application/x-ndjson',
     policy: null,
     async *read(body, state) {
-      for await (const value of readNdjson(body)) {
+      for await (const value of readNdjson(body, options.parseJson)) {
         state.received = true
         yield await decodePayload(value, options.parse)
       }
