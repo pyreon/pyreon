@@ -20,7 +20,7 @@ import { rectCmd } from './corners'
 import { seriesGradient } from './gradient'
 import { layoutSeriesPoints } from './layout'
 import type { PlotLayout } from './layout'
-import { barsLaid, barsLaidH, geometrySpec, hasRightAxis, logBounds, resolveY2Domain, resolveYDomain, seriesDomain, setLaid, setLaidH, stateFill, themeCorners } from './render'
+import { barsLaid, barsLaidH, geometrySpec, growEdgeRect, hasRightAxis, logBounds, resolveY2Domain, resolveYDomain, seriesDomain, setLaid, setLaidH, stateFill, themeCorners } from './render'
 import type { ChartSpec, Series } from './render'
 import { scaleLinear } from './scale'
 import type { Domain, DrawCmd, Double, Pt, Rect } from './types'
@@ -39,6 +39,8 @@ export interface KeyedGeo {
   points: Map<string, Pt>
   /** The pixel of the value axis' zero (or its floor) — y when vertical, x when horizontal. Bars grow from and shrink to it. */
   baseline: Double
+  /** The value domain this series scales against — what `growEdgeRect` collapses its bars toward. */
+  dom: Domain
   /** The plot, for gradients laid across it. */
   plot: Rect
   /** The theme corner radius, for bars that take the theme's rounding. */
@@ -114,25 +116,11 @@ export function keyedGeometry(raw: ChartSpec, l: PlotLayout, keys: string[]): Ke
         index.set(keys[i]!, i)
       }
     }
-    return { kind, series: s, horizontal, keys, rects, index, points, baseline: zeroPixel(dom, plot, horizontal), plot, radius: spec.theme.radius }
+    return { kind, series: s, horizontal, keys, rects, index, points, baseline: zeroPixel(dom, plot, horizontal), dom, plot, radius: spec.theme.radius }
   })
 }
 
 const mix = (a: Double, b: Double, e: Double): Double => a + (b - a) * e
-
-/**
- * A bar collapsed onto the edge it grows from — where an entering bar starts
- * and an exiting bar ends. That is the edge nearer the zero line: a positive
- * bar's foot, a negative bar's head, a stacked segment's own base.
- */
-function flat(r: Rect, baseline: Double, horizontal: boolean): Rect {
-  if (horizontal) {
-    const x = r.x >= baseline - 0.5 ? r.x : r.x + r.w
-    return { x, y: r.y, w: 0.0, h: r.h }
-  }
-  const y = r.y + r.h <= baseline + 0.5 ? r.y + r.h : r.y
-  return { x: r.x, y, w: r.w, h: 0.0 }
-}
 
 function mixRect(a: Rect, b: Rect, e: Double): Rect {
   return { x: mix(a.x, b.x, e), y: mix(a.y, b.y, e), w: mix(a.w, b.w, e), h: mix(a.h, b.h, e) }
@@ -175,14 +163,14 @@ export function keyedMorphCmds(from: KeyedGeo[], to: KeyedGeo[], e: Double): Dra
     if (a !== undefined) {
       for (const k of a.keys) {
         const r = a.rects.get(k)
-        if (r !== undefined && !b.rects.has(k)) out.push(barCmd(b, mixRect(r, flat(r, a.baseline, a.horizontal), e), -1))
+        if (r !== undefined && !b.rects.has(k)) out.push(barCmd(b, mixRect(r, growEdgeRect(r, a.dom, a.plot, a.horizontal), e), -1))
       }
     }
     for (const k of b.keys) {
       const r = b.rects.get(k)
       if (r === undefined) continue
       const old = a?.rects.get(k)
-      out.push(barCmd(b, mixRect(old ?? flat(r, b.baseline, b.horizontal), r, e), b.index.get(k) ?? -1))
+      out.push(barCmd(b, mixRect(old ?? growEdgeRect(r, b.dom, b.plot, b.horizontal), r, e), b.index.get(k) ?? -1))
     }
   }
   return out

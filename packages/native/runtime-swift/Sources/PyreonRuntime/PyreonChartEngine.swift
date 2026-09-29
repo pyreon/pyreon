@@ -841,7 +841,8 @@ public struct ChartSpec {
   public var yTitle: String? = nil
   public var y2Title: String? = nil
   public var xLabels: String? = nil
-  public init(width: Double, height: Double, series: [Series], categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, endLabels: Bool? = nil, xTicks: Double? = nil, yTicks: Double? = nil, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil) {
+  public var rowKeys: [String]? = nil
+  public init(width: Double, height: Double, series: [Series], categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, endLabels: Bool? = nil, xTicks: Double? = nil, yTicks: Double? = nil, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, rowKeys: [String]? = nil) {
     self.width = width
     self.height = height
     self.series = series
@@ -872,6 +873,7 @@ public struct ChartSpec {
     self.yTitle = yTitle
     self.y2Title = y2Title
     self.xLabels = xLabels
+    self.rowKeys = rowKeys
   }
 }
 
@@ -6172,6 +6174,28 @@ public func setLaidH(_ spec: ChartSpec, _ kind: String, _ plot: PyreonChartRect,
     return kind == "stacked" ? layoutStackLevelsH(levelsOf(idx.map({ k in spec.series[k] })), values, plot, dom, 0.25) : layoutGroupedBarsH(values, plot, dom, 0.25)
   }
 
+public func growEdgeRect(_ r: PyreonChartRect, _ dom: Domain, _ plot: PyreonChartRect, _ horizontal: Bool) -> PyreonChartRect {
+    let zero = dom.min <= 0.0 && dom.max >= 0.0 ? 0.0 : dom.min > 0.0 ? dom.min : dom.max
+    if horizontal {
+      let zx = scaleLinear(dom, plot.x, plot.x + plot.w, zero)
+      let ex = r.x >= zx - 0.5 ? r.x : r.x + r.w
+      return PyreonChartRect(x: ex, y: r.y, w: 0.0, h: r.h)
+    }
+    let zy = scaleLinear(dom, plot.y + plot.h, plot.y, zero)
+    let ey = r.y + r.h <= zy + 0.5 ? r.y + r.h : r.y
+    return PyreonChartRect(x: r.x, y: ey, w: r.w, h: 0.0)
+  }
+
+public func keyedBar(_ key: String, _ enter: PyreonChartRect, _ cmd: PyreonDrawCmd) -> PyreonDrawCmd {
+    switch cmd.kind {
+      case "rect":
+        return { var c = cmd; c.key = key; c.enter = enter; return c }()
+      default:
+        break
+    }
+    return cmd
+  }
+
 public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double) -> [PyreonDrawCmd] { renderChartIn(spec, measure, layoutChart(spec, measure)) }
 
 public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Double, _ l: PlotLayout) -> [PyreonDrawCmd] {
@@ -6183,6 +6207,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
     let plot = l.plot
     let t = spec.theme
     var out: [PyreonDrawCmd] = []
+    let rowKeys = (spec.rowKeys ?? [])
     let rawProgress = (spec.progress ?? 1.0)
     let progress = rawProgress < 0.0 ? 0.0 : rawProgress > 1.0 ? 1.0 : rawProgress
     let growRect = { (r: PyreonChartRect, dom: Domain) in
@@ -6325,7 +6350,8 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
       for seg in stackSegs {
         let rS = growRect(seg.rect, yDomain)
         let gS = seriesGradient(stackedSeries[seg.seriesIndex].gradient, plot)
-        out.append(rectCmd(rS, stateFill(stackedSeries[seg.seriesIndex], seg.datumIndex, stackedSeries[seg.seriesIndex].color), stackedSeries[seg.seriesIndex].corners, gS.stops.count == 0 ? nil : gS, stackedSeries[seg.seriesIndex].pattern))
+        let cmdS = rectCmd(rS, stateFill(stackedSeries[seg.seriesIndex], seg.datumIndex, stackedSeries[seg.seriesIndex].color), stackedSeries[seg.seriesIndex].corners, gS.stops.count == 0 ? nil : gS, stackedSeries[seg.seriesIndex].pattern)
+        out.append(seg.datumIndex < rowKeys.count ? keyedBar(rowKeys[seg.datumIndex], growEdgeRect(seg.rect, yDomain, plot, spec.horizontal == true), cmdS) : cmdS)
         let lvlS = seriesEmphasisLevel(spec, stackedSeries[seg.seriesIndex], seg.datumIndex)
         if lvlS > 0 {
           out.append(emphasisOutline(rS, lvlS, t.label))
@@ -6342,7 +6368,8 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
       for seg in groupSegs {
         let rG = growRect(seg.rect, yDomain)
         let gG = seriesGradient(groupedSeries[seg.seriesIndex].gradient, plot)
-        out.append(rectCmd(rG, stateFill(groupedSeries[seg.seriesIndex], seg.datumIndex, groupedSeries[seg.seriesIndex].color), groupedSeries[seg.seriesIndex].corners, gG.stops.count == 0 ? nil : gG, groupedSeries[seg.seriesIndex].pattern))
+        let cmdG = rectCmd(rG, stateFill(groupedSeries[seg.seriesIndex], seg.datumIndex, groupedSeries[seg.seriesIndex].color), groupedSeries[seg.seriesIndex].corners, gG.stops.count == 0 ? nil : gG, groupedSeries[seg.seriesIndex].pattern)
+        out.append(seg.datumIndex < rowKeys.count ? keyedBar(rowKeys[seg.datumIndex], growEdgeRect(seg.rect, yDomain, plot, spec.horizontal == true), cmdG) : cmdG)
         let lvlG = seriesEmphasisLevel(spec, groupedSeries[seg.seriesIndex], seg.datumIndex)
         if lvlG > 0 {
           out.append(emphasisOutline(rG, lvlG, t.label))
@@ -6416,7 +6443,8 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           let grown = growRectH(r)
           let fillH = stateFill(s, ri, s.color)
           if s.symbol == nil {
-            out.append(rectCmd(grown, fillH, (s.corners ?? themeCorners(spec.theme.radius, ((s.values[ri] ?? 0.0)) >= 0.0, true)), sGrad, s.pattern))
+            let cmdH = rectCmd(grown, fillH, (s.corners ?? themeCorners(spec.theme.radius, ((s.values[ri] ?? 0.0)) >= 0.0, true)), sGrad, s.pattern)
+            out.append(ri < rowKeys.count ? keyedBar(rowKeys[ri], growEdgeRect(r, yDomain, plot, true), cmdH) : cmdH)
           } else {
             for c in pictorialCommands(pictorialBar(s, grown, true, fillH)) {
               out.append(c)
@@ -6449,7 +6477,8 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           let grown = growRect(r, sDomain)
           let fillV = stateFill(s, ri, s.color)
           if s.symbol == nil {
-            out.append(rectCmd(grown, fillV, (s.corners ?? themeCorners(spec.theme.radius, ((s.values[ri] ?? 0.0)) >= 0.0, false)), sGrad, s.pattern))
+            let cmdV = rectCmd(grown, fillV, (s.corners ?? themeCorners(spec.theme.radius, ((s.values[ri] ?? 0.0)) >= 0.0, false)), sGrad, s.pattern)
+            out.append(ri < rowKeys.count ? keyedBar(rowKeys[ri], growEdgeRect(r, sDomain, plot, false), cmdV) : cmdV)
           } else {
             for c in pictorialCommands(pictorialBar(s, grown, false, fillV)) {
               out.append(c)
@@ -6506,7 +6535,8 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
             for run in runs {
               let pts = useDirect ? reveal(run) : m4Pixels(reveal(curveFn(run)))
               if pts.count > 1 {
-                out.append(PyreonDrawCmd(kind: "polyline", stroke: s.color, width: s.width, dash: s.dash, points: pts))
+                let oneToOne = rowKeys.count == s.values.count && runs.count == 1 && pts.count == s.values.count && s.curve == nil
+                out.append(oneToOne ? PyreonDrawCmd(kind: "polyline", stroke: s.color, width: s.width, dash: s.dash, points: pts, pointKeys: rowKeys) : PyreonDrawCmd(kind: "polyline", stroke: s.color, width: s.width, dash: s.dash, points: pts))
               }
             }
             let lineSymbol = (s.symbol ?? "circle")

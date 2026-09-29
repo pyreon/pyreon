@@ -158,9 +158,27 @@ export type DrawCmd =
       grad?: ChartGradient | undefined
       /** Paint a repeating overlay clipped to the shape. */
       pattern?: ChartPattern | undefined
+      /**
+       * The row key this bar belongs to — set only when the spec carries
+       * `rowKeys` (a keyed `<Chart by>` on native). A host that tweens draw
+       * lists matches keyed commands by key, the n-th command with a key in
+       * the old list to the n-th with it in the new, so a row slides between
+       * slots instead of being matched by position. Absent serializes as before.
+       */
+      key?: string | undefined
+      /** Where this bar grows from and shrinks to: the rect collapsed onto its zero-side edge (`growEdgeRect`). Set with `key`. */
+      enter?: Rect | undefined
     }
   | { kind: 'line'; from: Pt; to: Pt; stroke: string; width: Double; dash?: Double[] | undefined }
-  | { kind: 'polyline'; points: Pt[]; stroke: string; width: Double; dash?: Double[] | undefined }
+  | {
+      kind: 'polyline'
+      points: Pt[]
+      /** One row key per point — set only when the spec carries `rowKeys` and the line's points are its rows one-to-one. */
+      pointKeys?: string[] | undefined
+      stroke: string
+      width: Double
+      dash?: Double[] | undefined
+    }
   | { kind: 'polygon'; points: Pt[]; fill: string; grad?: ChartGradient | undefined; pattern?: ChartPattern | undefined }
   | { kind: 'circle'; center: Pt; radius: Double; fill: string }
   | {

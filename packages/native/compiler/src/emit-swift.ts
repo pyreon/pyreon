@@ -15406,6 +15406,16 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
     lets.push('let pyreonCats: [String] = []')
     if (fullA11y) lets.push('let pyreonA11yCats: [String] = []')
   }
+  // `by`: one key per drawn row, mapped over the SAME rows (window and
+  // decimation included) as the values, so key i names value i.
+  const byAcc = chartAttrExpr(e, 'by')
+  let keyed = false
+  if (byAcc !== undefined) {
+    const body = swiftAccessorExpr(byAcc, tag, 'by', indent)
+    if (body === 'unsupported') return 'EmptyView()'
+    lets.push(`let pyreonRowKeys: [String] = ${swiftPlotRowMap(rows, `pyreonChartString(${body})`, 'String', windowed, decimated)}`)
+    keyed = true
+  }
   const xValueAcc = chartAttrExpr(e, 'xValue')
   if (xValueAcc !== undefined) {
     const body = swiftAccessorExpr(xValueAcc, tag, 'xValue', indent)
@@ -15531,6 +15541,8 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   }
   late.sort((a, b) => a.at - b.at)
   for (const l of late) specArgs.push(l.arg)
+  // The struct's LAST field, so it goes last.
+  if (keyed) specArgs.push('rowKeys: pyreonRowKeys')
   // magicType rewrites the series kinds on every render, as the web host does.
   const magicBuilt = toolbox?.magic === true ? `applyMagicType(ChartSpec(${specArgs.join(', ')}), pyreonMagicKind, pyreonMagicStack)` : `ChartSpec(${specArgs.join(', ')})`
   // `selectedMode: 'series'` tints every datum of the series a tap pins — applied before the brush, which

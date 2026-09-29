@@ -541,14 +541,23 @@ export function swiftChartAugmentation(source: string): string {
   return viewStubs + '\n' + types + '\n' + engine.replace(SWIFT_STUBBED_IMPORTS, '')
 }
 
+/**
+ * The `data class Pyreon…(…)` declarations of the Kotlin chart canvas, verbatim.
+ * Comments are stripped first: the match ends at the first `)`, so a doc
+ * comment with a parenthesis in it would cut a class short mid-parameter-list.
+ */
+export function kotlinCanvasDataClasses(canvas: string): string[] {
+  const code = canvas.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+  return [...code.matchAll(/data class Pyreon\w+\([^)]*\)/g)].map((m) => m[0])
+}
+
 /** The Kotlin stub text a chart-host emit needs beyond the Compose bundle; `''` when no host is present. */
 export function kotlinChartAugmentation(source: string): string {
   if (!CHART_HOST_MARK.test(source)) return ''
   const canvas = readIfPresent(join(NATIVE_PACKAGES_DIR, 'runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonChartCanvas.kt'))
   const engine = readIfPresent(join(NATIVE_PACKAGES_DIR, 'runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonChartEngine.kt'))
   if (canvas === undefined || engine === undefined) return KOTLIN_CHART_VIEW_STUBS
-  const decls: string[] = []
-  for (const m of canvas.matchAll(/data class Pyreon\w+\([^)]*\)/g)) decls.push(m[0])
+  const decls = kotlinCanvasDataClasses(canvas)
   const body = engine
     .split('\n')
     .filter((l) => !l.startsWith('package '))

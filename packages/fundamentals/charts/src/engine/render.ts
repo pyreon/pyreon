@@ -329,6 +329,14 @@ export interface ChartSpec {
   y2Title?: string | undefined
   /** How the x tick labels react to running out of room — see `LayoutConfig.xLabels`. */
   xLabels?: 'auto' | 'rotate' | 'thin' | 'all' | undefined
+  /**
+   * One key per row (`<Chart by>`), aligned with the series values. When set,
+   * every plain / stacked / grouped bar command carries its row's `key` and
+   * `enter` rect, and a line whose points are its rows one-to-one carries
+   * `pointKeys` — what a native host needs to morph a data change by key.
+   * Absent (the web, and every unkeyed chart) draws byte-identically.
+   */
+  rowKeys?: string[] | undefined
 }
 
 /**
@@ -831,6 +839,33 @@ export function setLaidH(spec: ChartSpec, kind: string, plot: Rect, dom: Domain)
   return kind === 'stacked' ? layoutStackLevelsH(levelsOf(idx.map((k) => spec.series[k]!)), values, plot, dom, 0.25) : layoutGroupedBarsH(values, plot, dom, 0.25)
 }
 
+/**
+ * A bar collapsed onto the edge it grows from — where an entering bar starts
+ * and an exiting bar ends in a keyed morph. That is the edge nearer the value
+ * axis' zero (or its floor/ceiling when zero is outside the domain): a
+ * positive bar's foot, a negative bar's head, a stacked segment's own base.
+ */
+export function growEdgeRect(r: Rect, dom: Domain, plot: Rect, horizontal: boolean): Rect {
+  const zero = dom.min <= 0.0 && dom.max >= 0.0 ? 0.0 : dom.min > 0.0 ? dom.min : dom.max
+  if (horizontal) {
+    const zx = scaleLinear(dom, plot.x, plot.x + plot.w, zero)
+    const ex = r.x >= zx - 0.5 ? r.x : r.x + r.w
+    return { x: ex, y: r.y, w: 0.0, h: r.h }
+  }
+  const zy = scaleLinear(dom, plot.y + plot.h, plot.y, zero)
+  const ey = r.y + r.h <= zy + 0.5 ? r.y + r.h : r.y
+  return { x: r.x, y: ey, w: r.w, h: 0.0 }
+}
+
+/** A bar command tagged with its row key and grow-from rect (a keyed spec only). */
+function keyedBar(key: string, enter: Rect, cmd: DrawCmd): DrawCmd {
+  switch (cmd.kind) {
+    case 'rect':
+      return { ...cmd, key, enter }
+  }
+  return cmd
+}
+
 export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
   return renderChartIn(spec, measure, layoutChart(spec, measure))
 }
@@ -863,6 +898,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   const plot = l.plot
   const t = spec.theme
   const out: DrawCmd[] = []
+  // Empty unless keyed: a bar or line tags its commands only for a row this covers.
+  const rowKeys: string[] = spec.rowKeys ?? []
   // `?? 1.0` FIRST, then clamp a non-optional. Swift does not narrow an
   // optional through a ternary chain, so the coalesce-then-clamp idiom is
   // what compiles on native — and it reads better on web too.
@@ -1106,7 +1143,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     for (const seg of stackSegs) {
       const rS = growRect(seg.rect, yDomain)
       const gS = seriesGradient(stackedSeries[seg.seriesIndex]!.gradient, plot)
-      out.push(rectCmd(rS, stateFill(stackedSeries[seg.seriesIndex]!, seg.datumIndex, stackedSeries[seg.seriesIndex]!.color), stackedSeries[seg.seriesIndex]!.corners, gS.stops.length === 0 ? undefined : gS, stackedSeries[seg.seriesIndex]!.pattern))
+      const cmdS = rectCmd(rS, stateFill(stackedSeries[seg.seriesIndex]!, seg.datumIndex, stackedSeries[seg.seriesIndex]!.color), stackedSeries[seg.seriesIndex]!.corners, gS.stops.length === 0 ? undefined : gS, stackedSeries[seg.seriesIndex]!.pattern)
+      out.push(seg.datumIndex < rowKeys.length ? keyedBar(rowKeys[seg.datumIndex]!, growEdgeRect(seg.rect, yDomain, plot, spec.horizontal === true), cmdS) : cmdS)
       const lvlS = seriesEmphasisLevel(spec, stackedSeries[seg.seriesIndex]!, seg.datumIndex)
       if (lvlS > 0) out.push(emphasisOutline(rS, lvlS, t.label))
       // A stacked segment labels INSIDE itself: its value is the segment's
@@ -1126,7 +1164,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     for (const seg of groupSegs) {
       const rG = growRect(seg.rect, yDomain)
       const gG = seriesGradient(groupedSeries[seg.seriesIndex]!.gradient, plot)
-      out.push(rectCmd(rG, stateFill(groupedSeries[seg.seriesIndex]!, seg.datumIndex, groupedSeries[seg.seriesIndex]!.color), groupedSeries[seg.seriesIndex]!.corners, gG.stops.length === 0 ? undefined : gG, groupedSeries[seg.seriesIndex]!.pattern))
+      const cmdG = rectCmd(rG, stateFill(groupedSeries[seg.seriesIndex]!, seg.datumIndex, groupedSeries[seg.seriesIndex]!.color), groupedSeries[seg.seriesIndex]!.corners, gG.stops.length === 0 ? undefined : gG, groupedSeries[seg.seriesIndex]!.pattern)
+      out.push(seg.datumIndex < rowKeys.length ? keyedBar(rowKeys[seg.datumIndex]!, growEdgeRect(seg.rect, yDomain, plot, spec.horizontal === true), cmdG) : cmdG)
       const lvlG = seriesEmphasisLevel(spec, groupedSeries[seg.seriesIndex]!, seg.datumIndex)
       if (lvlG > 0) out.push(emphasisOutline(rG, lvlG, t.label))
       // A grouped bar has a free outer edge, so it labels OUTSIDE like a
@@ -1223,7 +1262,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           /* v8 ignore next — `(s.values[ri] ?? 0.0)` is unreachable: `ri` indexes
              rects built FROM `s.values`, so the read is always in range. Native
              needs the unwrap; the web cannot reach it. */
-          out.push(rectCmd(grown, fillH, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, true), sGrad, s.pattern))
+          const cmdH = rectCmd(grown, fillH, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, true), sGrad, s.pattern)
+          out.push(ri < rowKeys.length ? keyedBar(rowKeys[ri]!, growEdgeRect(r, yDomain, plot, true), cmdH) : cmdH)
         } else {
           for (const c of pictorialCommands(pictorialBar(s, grown, true, fillH))) out.push(c)
         }
@@ -1257,7 +1297,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           /* v8 ignore next — `(s.values[ri] ?? 0.0)` is unreachable: `ri` indexes
              rects built FROM `s.values`, so the read is always in range. Native
              needs the unwrap; the web cannot reach it. */
-          out.push(rectCmd(grown, fillV, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, false), sGrad, s.pattern))
+          const cmdV = rectCmd(grown, fillV, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, false), sGrad, s.pattern)
+          out.push(ri < rowKeys.length ? keyedBar(rowKeys[ri]!, growEdgeRect(r, sDomain, plot, false), cmdV) : cmdV)
         } else {
           for (const c of pictorialCommands(pictorialBar(s, grown, false, fillV))) out.push(c)
         }
@@ -1315,7 +1356,12 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       for (const run of runs) {
         // M4: more points than pixel columns draw the same pixels from four per column.
         const pts = useDirect ? reveal(run) : m4Pixels(reveal(curveFn(run)))
-        if (pts.length > 1) out.push({ kind: 'polyline', points: pts, stroke: s.color, width: s.width, dash: s.dash })
+        if (pts.length > 1) {
+          // Keyed only when the drawn points ARE the rows, one to one: a gap
+          // splits the line, M4 drops points, a curve adds them.
+          const oneToOne = rowKeys.length === s.values.length && runs.length === 1 && pts.length === s.values.length && s.curve === undefined
+          out.push(oneToOne ? { kind: 'polyline', points: pts, pointKeys: rowKeys, stroke: s.color, width: s.width, dash: s.dash } : { kind: 'polyline', points: pts, stroke: s.color, width: s.width, dash: s.dash })
+        }
       }
       // A line shows its datum symbols only when asked (ECharts' showSymbol):
       // one symbol per finite datum, at the line's own radius, over the line.
