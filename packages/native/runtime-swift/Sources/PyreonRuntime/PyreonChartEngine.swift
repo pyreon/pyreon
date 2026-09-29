@@ -16867,6 +16867,6 @@ public func binValues(_ values: [Double], _ count: Double) -> [Bin] {
 
 public func binLabel(_ b: Bin) -> String { "\(plain(b.x0))–\(plain(b.x1))" }
 
-public func pyreonNumString(_ v: Double) -> String {
+private func pyreonNumString(_ v: Double) -> String {
     v.rounded() == v && v.magnitude < 1e15 ? String(Int(v)) : String(v)
 }

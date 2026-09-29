@@ -713,9 +713,14 @@ function collectLayoutComponentNamesKotlin(components: ComponentIR[]): Set<strin
  */
 let _emitWarnings: string[] = []
 
-// JS-faithful `String(double)` — see the Swift twin. Emitted once when used.
+// JS-faithful `String(double)` — see the Swift twin's doc comment for why
+// this is `private` (file-scoped) rather than the bare top-level default:
+// the checked-in chart engine emits the SAME idiom under the SAME name, and
+// in a real app both land in one module — `private` lets each file repeat
+// the declaration without an "invalid redeclaration" the moment they're
+// compiled together.
 let _needsKotlinNumString = false
-const KOTLIN_NUM_STRING = `fun pyreonNumString(v: Double): String =
+const KOTLIN_NUM_STRING = `private fun pyreonNumString(v: Double): String =
     if (v == Math.rint(v) && Math.abs(v) < 1e15) v.toLong().toString() else v.toString()`
 /**
  * Module-level `const X = <string|number|boolean literal>` bindings,

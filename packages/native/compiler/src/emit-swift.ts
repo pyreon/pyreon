@@ -11088,8 +11088,18 @@ let _needsSwiftKeepAliveWrapper = false
 // a user-visible parity break in every numeric label once the Math.floor
 // family became Double-returning. Emitted once, only when used (the
 // PyreonUrlStateDouble.set formatter, extracted).
+//
+// `private`, not the bare default (module-visible `internal`): the checked-in
+// chart engine (packages/native/runtime-swift/…/PyreonChartEngine.swift) also
+// needs this exact idiom and emits its OWN copy the same way — in a real app
+// both land in one module, and an `internal`/bare top-level `func` collides
+// ("invalid redeclaration") the moment BOTH files are compiled together,
+// which is exactly what happens whenever a chart-using app has any other
+// component doing `String(someDouble)`. `private` at file scope is legal to
+// repeat identically across sibling files in Swift, so each file's own copy
+// stays self-contained without ever colliding with the engine's.
 let _needsSwiftNumString = false
-const SWIFT_NUM_STRING = `func pyreonNumString(_ v: Double) -> String {
+const SWIFT_NUM_STRING = `private func pyreonNumString(_ v: Double) -> String {
     v.rounded() == v && v.magnitude < 1e15 ? String(Int(v)) : String(v)
 }`
 
