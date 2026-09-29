@@ -457,7 +457,7 @@ export function Counter() {
       <Button data-testid="probe-wake" onPress={() => wake.request()}>Keep awake</Button>
       <Text data-testid="probe-wake-state">Awake: {wake.active() ? 'on' : 'off'}</Text>
       <Button data-testid="probe-motion" onPress={() => motion.start()}>Start motion</Button>
-      <Text data-testid="probe-motion-state">Motion: {motion.active() ? 'on' : 'off'} {motion.acceleration().z > 1.0 ? 'sampled' : 'idle'}</Text>
+      <Text data-testid="probe-motion-state">Motion: {motion.active() ? 'on' : 'off'} {motion.acceleration().x * motion.acceleration().x + motion.acceleration().y * motion.acceleration().y + motion.acceleration().z * motion.acceleration().z > 1.0 ? 'sampled' : 'idle'}</Text>
       <Button data-testid="probe-speak" onPress={() => speech.speak('hello')}>Speak</Button>
       <Text data-testid="probe-speech-state">Speech: {speech.supported() ? 'supported' : 'unsupported'}</Text>
       <Button data-testid="probe-record" onPress={() => recorder.start()}>Record</Button>

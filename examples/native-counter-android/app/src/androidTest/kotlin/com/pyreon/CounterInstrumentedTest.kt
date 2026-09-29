@@ -742,6 +742,85 @@ class CounterInstrumentedTest {
         }
     }
 
+    // Platform-probe hooks (useDeviceInfo / useWakeLock / useDeviceMotion /
+    // useSpeech / useAudioRecorder / useBluetooth). Their engines
+    // (`AndroidDeviceProbe`, `AndroidScreenKeeper`, `AndroidMotionSource`,
+    // `AndroidSpeechSynth`, `AndroidRecordingEngine`,
+    // `AndroidBluetoothScanner`) were named by the emit and defined nowhere on
+    // a real build, so this whole app did not compile. Reaching these tests at
+    // all proves they resolve; each assertion proves the engine reads or drives
+    // the LIVE platform rather than a baked value.
+    @Test
+    fun deviceInfoProbeReadsTheLivePlatform() {
+        composeRule.onNodeWithTag("probe-info").performScrollTo()
+            .assertTextEquals("Info: android touch")
+    }
+
+    // The platform half, not just the state: FLAG_KEEP_SCREEN_ON on the
+    // Activity's own window is what keeps a real screen lit.
+    @Test
+    fun wakeLockSetsAndClearsTheWindowFlag() {
+        fun flagged(): Boolean {
+            var f = false
+            composeRule.activityRule.scenario.onActivity {
+                f = it.window.attributes.flags and
+                    android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON != 0
+            }
+            return f
+        }
+        composeRule.onNodeWithTag("probe-wake").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("Awake: on").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) { flagged() }
+    }
+
+    // Accelerometer samples flow through SensorManager into Compose state.
+    // The emulator's virtual accelerometer reports gravity on whichever axis is
+    // up (y when upright, x in landscape, z face-up), so the row tests the
+    // vector's magnitude: it can only exceed 1 if a real SensorEvent arrived.
+    @Test
+    fun deviceMotionDeliversSensorSamples() {
+        composeRule.onNodeWithTag("probe-motion").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 20_000) {
+            composeRule.onAllNodesWithText("Motion: on sampled").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    // TextToSpeech initialises asynchronously; a speak before it is ready is
+    // held, and an engine-less device must report unsupported rather than
+    // crash. Either way the tap must not throw and the row must settle.
+    @Test
+    fun speechSynthInitialisesAndSpeaks() {
+        composeRule.onNodeWithTag("probe-speak").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            composeRule.onAllNodesWithText("Speech: supported").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    // Recording needs RECORD_AUDIO. Granted here through the shell; the engine
+    // must then start a real MediaRecorder and the state must flip.
+    @Test
+    fun audioRecorderStartsOnceMicrophoneIsGranted() {
+        val instr = InstrumentationRegistry.getInstrumentation()
+        instr.uiAutomation
+            .executeShellCommand("pm grant ${instr.targetContext.packageName} android.permission.RECORD_AUDIO")
+            .close()
+        composeRule.onNodeWithTag("probe-record").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            composeRule.onAllNodesWithText("Recording: on").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    // The emulator has no BLE adapter: the hook must say so and stay idle, and
+    // a scan attempt must land in the error channel rather than throw.
+    @Test
+    fun bluetoothReportsUnavailableAndStaysIdle() {
+        composeRule.onNodeWithTag("probe-scan").performScrollTo().performClick()
+        composeRule.onNodeWithTag("probe-bt-state").performScrollTo()
+            .assertTextEquals("Bluetooth: unavailable idle")
+    }
+
     // FFI escape hatch (useNativeModule) asserted in the REAL Compose
     // semantics tree — the Android half of the iOS
     // `test_userDefinedNativeModuleRunsOnDevice`. The shared Counter.tsx has
