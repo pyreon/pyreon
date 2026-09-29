@@ -2073,28 +2073,30 @@ class PyreonDeviceInfo(probe: DeviceProbe) {
   val screen: PyreonDeviceScreen get() = PyreonDeviceScreen(0.0, 0.0, 1.0)
 }
 
-// PyreonSafeArea / PyreonScreenOrientation + the app-supplied probes.
+// PyreonSafeArea / PyreonScreenOrientation + the REAL probes (declared in
+// hooks/native/kotlin/.../PyreonSafeAreaAndroid.kt — the stub mirrors their
+// constructor type, Context, not a looser Any? that would mask a bad arg).
 data class PyreonSafeAreaInsets(val top: Double, val right: Double, val bottom: Double, val left: Double) {
   companion object { val zero = PyreonSafeAreaInsets(0.0, 0.0, 0.0, 0.0) }
 }
 interface SafeAreaProbe { val insets: PyreonSafeAreaInsets }
-class AndroidSafeAreaProbe(ctx: Any?) : SafeAreaProbe {
-  override val insets: PyreonSafeAreaInsets = PyreonSafeAreaInsets.zero
+class AndroidSafeAreaProbe(context: Context) : SafeAreaProbe {
+  override val insets: PyreonSafeAreaInsets get() = PyreonSafeAreaInsets.zero
 }
-class PyreonSafeArea(probe: SafeAreaProbe) {
-  val insets: PyreonSafeAreaInsets get() = PyreonSafeAreaInsets.zero
+class PyreonSafeArea(private val probe: SafeAreaProbe) {
+  val insets: PyreonSafeAreaInsets get() = probe.insets
 }
 interface OrientationProbe {
   val type: String
   val angle: Int
 }
-class AndroidOrientationProbe(ctx: Any?) : OrientationProbe {
-  override val type: String = "portrait"
-  override val angle: Int = 0
+class AndroidOrientationProbe(context: Context) : OrientationProbe {
+  override val type: String get() = "portrait"
+  override val angle: Int get() = 0
 }
-class PyreonScreenOrientation(probe: OrientationProbe) {
-  val type: String get() = "portrait"
-  val angle: Int get() = 0
+class PyreonScreenOrientation(private val probe: OrientationProbe) {
+  val type: String get() = probe.type
+  val angle: Int get() = probe.angle
 }
 // PyreonAudioPlayer + the app-supplied Media3 engine the emit names.
 interface AudioEngine {
