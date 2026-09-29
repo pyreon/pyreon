@@ -111,7 +111,16 @@
   "pyreon": {
     "native": {
       "swift": "native/swift",
-      "kotlin": "native/kotlin"
+      "kotlin": "native/kotlin",
+      "kotlinServices": {
+        "PyreonStream": [
+          "PyreonStream.kt"
+        ],
+        "PyreonStreamAndroid": [
+          "PyreonStream.kt",
+          "PyreonStreamAndroid.kt"
+        ]
+      }
     }
   }
 }

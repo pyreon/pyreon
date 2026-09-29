@@ -934,6 +934,23 @@ public class Handler(looper: Looper) {
 }
 `
 
+// android.os for the STREAM service — EXACTLY what PyreonStreamAndroid.kt
+// touches: a main-looper Handler whose `post` carries every observable write
+// of the stream loop off the reader thread. Its own mirror, per the rule above.
+const ANDROID_OS_STREAM_HANDLER_STUBS = `package android.os
+
+public class Looper {
+  public companion object {
+    public fun getMainLooper(): Looper = Looper()
+  }
+}
+
+public class Handler(looper: Looper) {
+  @Suppress("UNUSED_PARAMETER")
+  public fun post(r: Runnable): Boolean = true
+}
+`
+
 // android.os for the CONNECTIVITY service — EXACTLY what
 // PyreonNetworkStatusAndroid.kt touches: a main-looper Handler used for (a)
 // the registerNetworkCallback delivery thread and (b) the reconciliation
@@ -1394,6 +1411,10 @@ try {
     // The transport hops every listener callback to the main looper.
     writeFileSync(join(tempDir, 'AndroidOsHandler.kt'), ANDROID_OS_HANDLER_STUBS, 'utf8')
   }
+  if (SERVICE === 'PyreonStreamAndroid') {
+    // The executor the emit hands the stream container: the main looper.
+    writeFileSync(join(tempDir, 'AndroidOsHandler.kt'), ANDROID_OS_STREAM_HANDLER_STUBS, 'utf8')
+  }
   if (SERVICE === 'PyreonRateLimit') {
     // The scheduler hops the user's body to the main looper before running it.
     writeFileSync(join(tempDir, 'AndroidOsHandler.kt'), ANDROID_OS_RATELIMIT_HANDLER_STUBS, 'utf8')
@@ -1664,7 +1685,9 @@ try {
   // The rate-limit scheduler hops the debounced body to the main looper, so its
   // compile needs the Handler mirror written above.
   const rateLimitStubs =
-    SERVICE === 'PyreonRateLimit' ? [join(tempDir, 'AndroidOsHandler.kt')] : []
+    SERVICE === 'PyreonRateLimit' || SERVICE === 'PyreonStreamAndroid'
+      ? [join(tempDir, 'AndroidOsHandler.kt')]
+      : []
   const notifStubs = SERVICE === 'PyreonNotifications' ? [notifAppPath, notifContentPath, notifOsPath, notifRPath, notifCorePath] : []
   // The OkHttp transport is an EXTENSION over the core container — its
   // compile needs the sibling PyreonWebSocket.kt source + the okhttp3 stubs.
