@@ -760,6 +760,7 @@ const cell = (u: User) => <Text>{u.name}</Text>
   return <Stack>
     <Row render={((u) => <Text>{u.name}</Text>)} empty={hello} />
     <Row render={(u) => { const n = u.name; return <Text>{n}</Text> }} empty={() => { return <Text>x</Text> }} />
+    <Row render={(u) => { console.log(u); return <Text>{u.name}</Text> }} empty={<Text>y</Text>} />
     <Row render={cell} empty={<Text>bare</Text>} />
     <Row render={(u) => <Text>{u.name}</Text>} empty={42} />
   </Stack>
@@ -773,9 +774,14 @@ export function B(props: { render: (u: User, i: number) => VNodeChild; empty: ()
     expect(r.code).toContain('empty: { hello() })')
   })
 
-  it('a BLOCK-bodied render callback emits an empty view of the right arity and is named', () => {
+  // #3717 lowers a block body that is `const` declarations + a final `return`
+  // (the second Row above) into the builder; only a body with a statement a
+  // view builder cannot hold (the `console.log` Row) still degrades to an
+  // empty view of the right arity, and is named.
+  it('a lowerable BLOCK-bodied render callback lowers; an unlowerable one emits an empty view of the right arity and is named', () => {
+    expect(r.code).toContain('let n = u.name')
     expect(r.code).toContain('Row(render: { _, _ in EmptyView() }')
-    expect(r.warnings.some((w) => w.startsWith('<Row render={…}>: a render callback with a BLOCK body'))).toBe(true)
+    expect(r.warnings.some((w) => w.startsWith("<Row render={…}>: this render callback's BLOCK body"))).toBe(true)
   })
 
   // Regression (fixed here): a view helper taking FEWER parameters than the

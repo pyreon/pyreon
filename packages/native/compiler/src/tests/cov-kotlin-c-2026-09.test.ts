@@ -767,7 +767,8 @@ export function App() {
   it('a block-bodied render callback and a non-view value are NAMED', () => {
     expect(r.code).toContain('row = { u -> }')
     const w = r.warnings.join('\n')
-    expect(w).toContain('<Card row={…}>: a render callback with a BLOCK body')
+    expect(w).toContain("<Card row={…}>: this render callback's BLOCK body")
+    expect(w).toContain('is not lowered to native')
     expect(w).toContain('<Card footer={…}>: this render prop is not an inline arrow')
     expect(r.code).toContain('Card(footer = 42,')
   })

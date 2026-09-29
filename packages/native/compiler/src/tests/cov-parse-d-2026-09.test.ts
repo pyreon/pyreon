@@ -535,11 +535,14 @@ describe('parse.ts — object literals and misc top-level recognizers', () => {
     expect(r.warnings.join('\n')).toContain('A numeric object key (`{ 1: … }`) is not supported')
   })
 
-  it('defineFeature colliding with a same-named ENUM type alias warns', () => {
+  // #3717 (value-type-namespaces.ts) renames the VALUE (`Todo` -> `TodoValue`)
+  // instead of warning, so the value/type pair compiles warning-free.
+  it('defineFeature colliding with a same-named ENUM type alias is disambiguated, not warned', () => {
     const r = swift(
       `${PRIM}import { defineFeature } from '@pyreon/feature'\ntype Todo = 'a' | 'b'\nconst Todo = defineFeature({ name: 'todo', schema: { id: 'string' } })\nexport function App(){ return <Text>x</Text> }`,
     )
-    expect(r.warnings.join('\n')).toContain('defineFeature declaration `Todo`: a type of the same name is declared')
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('TodoValue')
   })
 
   it('styled(): an empty declaration value is skipped, the rest lowers', () => {
