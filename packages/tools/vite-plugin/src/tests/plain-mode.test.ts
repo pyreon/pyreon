@@ -324,3 +324,22 @@ export const Doc = () => <Code>Use effect() for side effects and signal() for st
     expect(out).toContain('Use effect() for side effects and signal() for state.')
   })
 })
+
+describe('HMR state preservation for plain modules', () => {
+  it('a module-level `let x = state(…)` is HMR-preserved exactly like a classic signal (serve mode)', async () => {
+    const plugin = pyreonPlugin()
+    ;(plugin.config as unknown as ConfigHook)({ root }, { command: 'serve' })
+    await runBuildStart(plugin)
+    const src = `'use plain'
+import { state } from '@pyreon/core/plain'
+let count = state(0)
+export const View = () => <button onClick={() => { count++ }}>{count}</button>
+`
+    const id = writeFile('src/HmrPlain.tsx', src)
+    const out = (await runTransform(plugin, src, id))!.code
+    // the pre-pass lowered the marker BEFORE HMR injection saw the module, so
+    // the signal is registered under its name and survives a hot update
+    expect(out).toMatch(/const count = __hmr_signal\([^,]+, "count", signal, 0\)/)
+    expect(out).not.toContain('state(')
+  })
+})

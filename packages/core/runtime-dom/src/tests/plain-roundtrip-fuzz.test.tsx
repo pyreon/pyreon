@@ -103,6 +103,20 @@ function generate(seed: number): Program {
       ]),
     )
   }
+  // SHADOWING: a parameter / local / nested declaration reusing a signal's
+  // name. The inner name is NOT the signal — a codemod or pre-pass that
+  // resolves scope wrongly rewrites it, and the rendered value changes.
+  const shadowed = pick(r, signals)
+  decls.push(
+    pick(r, [
+      `const shadowFn = (${shadowed}) => ${shadowed}() + 100`,
+      `const shadowFn = (f) => { const ${shadowed} = f; return ${shadowed}() + 100 }`,
+      `const shadowFn = (f) => { function ${shadowed}() { return f() + 100 } return ${shadowed}() }`,
+      `const shadowFn = (f) => [f].map((${shadowed}) => ${shadowed}() + 100)[0]`,
+      `const shadowFn = (f) => { try { throw f } catch (${shadowed}) { return ${shadowed}() + 100 } }`,
+    ]),
+  )
+  children.push(`<i>{shadowFn(() => ${readables[0]})}</i>`)
   const title = pick(r, readables)
   const view = `export function View() {\n  return <div title={${title}}>${children.join('|')}</div>\n}`
 

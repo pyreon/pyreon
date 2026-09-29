@@ -126,22 +126,39 @@ const int = (r: () => number, lo: number, hi: number): number => lo + Math.floor
 
 function generate(seed: number): string {
   const r = rng(seed)
-  const lines: string[] = [`'use plain'`, `import { state, derived, effect } from '@pyreon/core/plain'`]
+  // Marker imports are sometimes ALIASED — the pre-pass resolves markers by
+  // their local name, and the codemod emits `plainState`-style aliases.
+  const aliased = r() > 0.8
+  const S = aliased ? 'plainState' : 'state'
+  const D = aliased ? 'plainDerived' : 'derived'
+  const SO = aliased ? 'plainSignalOf' : 'signalOf'
+  const lines: string[] = [
+    `'use plain'`,
+    aliased
+      ? `import { state as plainState, derived as plainDerived, effect, signalOf as plainSignalOf } from '@pyreon/core/plain'`
+      : `import { state, derived, effect, signalOf } from '@pyreon/core/plain'`,
+  ]
   const scalars: string[] = []
   const stores: string[] = []
   for (let i = 0; i < int(r, 1, 3); i++) {
     const name = `s${i}`
     if (r() > 0.5) {
-      lines.push(`let ${name} = state(${int(r, 0, 9)})`)
+      lines.push(`let ${name} = ${S}(${int(r, 0, 9)})`)
       scalars.push(name)
     } else {
-      lines.push(`let ${name} = state({ n: ${int(r, 0, 9)}, tag: 'x' })`)
+      lines.push(`let ${name} = ${S}({ n: ${int(r, 0, 9)}, tag: 'x' })`)
       stores.push(name)
     }
   }
   if (r() > 0.6) {
-    lines.push(`let raw0 = state.raw({ big: ${r() > 0.5} })`)
+    lines.push(`let raw0 = ${S}.raw({ big: ${r() > 0.5} })`)
   }
+  // Adopted library signals (state.from / derived.from).
+  if (r() > 0.6) {
+    lines.push(`let ext0 = ${S}.from(useExternal())`)
+    scalars.push('ext0')
+  }
+  if (r() > 0.7) lines.push(`const ro0 = ${D}.from(lib.total)`)
   const readables = [...scalars, ...stores.map((s) => `${s}.n`)]
   if (readables.length === 0) readables.push('0')
   for (let i = 0; i < int(r, 0, 2); i++) {
@@ -150,7 +167,7 @@ function generate(seed: number): string {
       `${pick(r, readables)} * 2`,
       `${pick(r, readables)} > 3 ? ${pick(r, readables)} : -1`,
     ])
-    lines.push(r() > 0.5 ? `const d${i} = derived(${body})` : `const d${i} = derived(() => ${body})`)
+    lines.push(r() > 0.5 ? `const d${i} = ${D}(${body})` : `const d${i} = ${D}(() => ${body})`)
     readables.push(`d${i}`)
   }
   // mutators
@@ -178,6 +195,34 @@ function generate(seed: number): string {
     )
     m++
   }
+  // Identity uses (signalOf) in every position the codemod emits them.
+  const bindings = [...scalars, ...stores]
+  if (bindings.length > 0 && r() > 0.4) {
+    const b = pick(r, bindings)
+    lines.push(
+      pick(r, [
+        `register(${SO}(${b}))`,
+        `export const box = { ${b}: ${SO}(${b}), other: 1 }`,
+        `use({ items: ${SO}<typeof ${b}>(${b}), by: (x) => x })`,
+        `export const sub = () => ${SO}(${b}).subscribe(() => {})`,
+        `export default ${SO}(${b})`,
+      ]),
+    )
+  }
+  // Destructuring assignment onto state (swap, defaults, rest, nesting, stores).
+  if (scalars.length >= 2 && r() > 0.4) {
+    const [a, b] = [scalars[0]!, scalars[1]!]
+    lines.push(
+      pick(r, [
+        `export const sw = () => { [${a}, ${b}] = [${b}, ${a}] }`,
+        `export const df = (x) => { [${a}, ${b} = ${a}] = x }`,
+        `export const rs = (x) => ([${a}, ...rest0] = x)`,
+        `export const ob = (x) => { ;({ p: ${a}, q: { r: ${b} = 1 } } = x) }`,
+        `export const ex = (x) => take([${a}, ${b}] = x)`,
+      ]),
+    )
+  }
+  if (stores.length > 0 && r() > 0.6) lines.push(`export const ld = (x) => { ;({ ${stores[0]} } = x) }`)
   // effect with branch/await/nested-fn shapes
   if (r() > 0.3) {
     const a = pick(r, readables)
@@ -200,7 +245,14 @@ function generate(seed: number): string {
       pick(r, [`{${v}}`, `<span>{${v}}</span>`, `{${v} > 2 ? 'hi' : 'lo'}`, `<b data-v={${v}}>x</b>`]),
     )
   }
-  const propsShape = pick(r, ['({ label })', "({ label, size = 'm' })", '(props)'])
+  const propsShape = pick(r, [
+    '({ label })',
+    "({ label, size = 'm' })",
+    '(props)',
+    '({ label, ...rest })',
+    '({ label, user: { name, age = 1 } })',
+    '({ label, user: { name }, ...rest })',
+  ])
   const early = r() > 0.6 && scalars.length > 0 ? `  if (${scalars[0]} > 99) return <p>max</p>\n` : ''
   lines.push(
     `export function View${propsShape} {\n${early}  return <div title={${title}}>${children.join('|')}</div>\n}`,
@@ -212,9 +264,33 @@ const SEEDS = Math.max(1, Number((process.env as Record<string, string | undefin
 
 describeNative(`plain pre-pass fuzz equivalence (${SEEDS} seeds)`, () => {
   it('every seed is byte-identical across implementations', () => {
+    // Anti-vacuity: a fuzz only covers what its grammar GENERATES. Count each
+    // feature across the run and require it to appear — an edit that stops
+    // generating a shape fails here instead of silently shrinking coverage.
+    const FEATURES: Record<string, RegExp> = {
+      'deep state': /= (?:plainState|state)\(\{/,
+      'state.raw': /\.raw\(/,
+      'state.from': /(?:State|state)\.from\(/,
+      'derived.from': /(?:Derived|derived)\.from\(/,
+      signalOf: /ignalOf(?:<[^>]*>)?\(/,
+      'signalOf type argument': /ignalOf<typeof/,
+      'aliased markers': /as plainState/,
+      'destructuring assignment': /\] = \[|\] = x|\} = x\)/,
+      'destructuring default': /\[\w+, \w+ = \w+\] = x/,
+      'props rest': /\.\.\.rest \}\)/,
+      'nested props': /user: \{/,
+      'total-tracking effect': /effect\(/,
+      'reactive early return': /return <p>max<\/p>/,
+    }
+    const seen = new Map<string, number>()
     for (let seed = 1; seed <= SEEDS; seed++) {
       const code = generate(seed)
+      for (const [name, re] of Object.entries(FEATURES)) if (re.test(code)) seen.set(name, (seen.get(name) ?? 0) + 1)
       compare(code, `fuzz-${seed}.tsx`)
+    }
+    const floor = Math.max(1, Math.floor(SEEDS * 0.01))
+    for (const name of Object.keys(FEATURES)) {
+      expect(seen.get(name) ?? 0, `fuzz grammar never generated: ${name}`).toBeGreaterThanOrEqual(floor)
     }
   })
 })
