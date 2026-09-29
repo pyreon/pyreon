@@ -76,7 +76,7 @@ describe('browser-engines selection', () => {
 
   it('the real repo opts in the packages this PR measured green in all three engines', () => {
     expect(discoverEngineSuites()).toEqual(
-      expect.arrayContaining(['@pyreon/http', '@pyreon/router', '@pyreon/styler']),
+      expect.arrayContaining(['@pyreon/http', '@pyreon/router', '@pyreon/runtime-dom', '@pyreon/styler']),
     )
   })
 })

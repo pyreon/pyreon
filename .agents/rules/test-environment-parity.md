@@ -124,7 +124,7 @@ export default defineBrowserConfig(playwright(), {
 })
 ```
 
-plus `"test:browser:engines": "vitest run --config ./vitest.browser.engines.config.ts"`. `scripts/browser-engines.ts` discovers every package declaring that script; `Test (browser)` installs WebKit + Firefox and runs the AFFECTED ones after its Chromium pass (fail-closed: an unreadable affected verdict runs them all). Opt in only after the suite is green in all three engines locally (`bunx playwright install webkit firefox`) — a Chromium-only premise in a test is a test bug to fix, not an engine to skip. Opted in today: `@pyreon/http`, `@pyreon/router`, `@pyreon/styler`.
+plus `"test:browser:engines": "vitest run --config ./vitest.browser.engines.config.ts"`. `scripts/browser-engines.ts` discovers every package declaring that script; `Test (browser)` installs WebKit + Firefox and runs the AFFECTED ones after its Chromium pass (fail-closed: an unreadable affected verdict runs them all). Opt in only after the suite is green in all three engines locally (`bunx playwright install webkit firefox`) — a Chromium-only premise in a test is a test bug to fix, not an engine to skip. Opted in today: `@pyreon/http`, `@pyreon/router`, `@pyreon/runtime-dom`, `@pyreon/styler`.
 
 ## Real-app regression gate (ui-showcase)
 
