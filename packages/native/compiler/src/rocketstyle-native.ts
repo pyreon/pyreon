@@ -233,7 +233,13 @@ function objectExprToStyleObject(
   const dropped: string[] = []
   if (obj && obj.type === 'ObjectExpression') {
     for (const p of (obj.properties as AnyNode[]) ?? []) {
-      if ((p.type !== 'Property' && p.type !== 'ObjectProperty') || p.computed) continue
+      if (p.type !== 'Property' && p.type !== 'ObjectProperty') continue
+      // A computed key (`{ [k]: v }`) is only known at runtime — name it in the
+      // dropped list rather than skip it silently.
+      if (p.computed && typeof p.key?.value !== 'string') {
+        dropped.push('[computed key]')
+        continue
+      }
       const key = p.key?.name ?? p.key?.value
       if (typeof key !== 'string') continue
       const v = unwrap(p.value)
