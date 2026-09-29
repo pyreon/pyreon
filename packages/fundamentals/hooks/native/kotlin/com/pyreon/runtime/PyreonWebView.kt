@@ -67,6 +67,35 @@ import java.lang.ref.WeakReference
 import org.json.JSONObject
 
 /**
+ * Process-wide rendering override for every [PyreonWebView].
+ *
+ * `softwareLayer = false` (the default) leaves each WebView on the platform's
+ * hardware-accelerated path, which is what a real device should use.
+ *
+ * `true` puts each WebView created AFTER the assignment on a software layer
+ * (`View.LAYER_TYPE_SOFTWARE`). It exists for GPU-less environments,
+ * specifically the SwiftShader-rendered Android emulator that CI runs on.
+ * There, a screen holding several hardware-drawn WebViews intermittently
+ * renders the WHOLE window blank. It is not only the WebViews that go
+ * blank: every Compose sibling does too, and PixelCopy and UiAutomation
+ * screenshots of the entire window both read pure white while the semantics
+ * tree still reports every node as displayed. Measured on an API 33
+ * `google_apis` emulator
+ * (`-gpu swiftshader_indirect`, the CI configuration): 5 of 10 fresh-boot runs
+ * of the tasks gallery failed on hardware WebViews; 0 of 10 failed with this
+ * flag set. `-gpu swangle_indirect` did not help (2 of 4 failed).
+ *
+ * Assign it before the screen that creates the WebViews is composed, e.g.
+ * in an instrumented test's `@Before`. It is a plain field, like
+ * `PyreonToast.defaultDurationMillis`, not Compose state, so it does not
+ * re-layer WebViews that already exist.
+ */
+object PyreonWebViewRendering {
+    @JvmStatic
+    var softwareLayer: Boolean = false
+}
+
+/**
  * Host an Android [WebView] in Compose. Supply [html] (inline HTML) OR
  * [src] (a local `assets/` file name — preferred, policy-safe — or a
  * remote `http(s)` URL); [html] wins if both are set. [data] is an
@@ -114,6 +143,9 @@ fun PyreonWebView(
                     android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                 )
                 state.webView = WeakReference(this)
+                if (PyreonWebViewRendering.softwareLayer) {
+                    setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
+                }
                 @Suppress("SetJavaScriptEnabled")
                 settings.javaScriptEnabled = true
                 // Reverse bridge — the page's `window.pyreonPostMessage(s)`

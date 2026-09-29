@@ -5,6 +5,7 @@
 package com.pyreon.runtime
 
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.mutableStateOf
 
 public data class PyreonVec3(val x: Double, val y: Double, val z: Double) {
@@ -20,7 +21,7 @@ public interface MotionSource {
     public fun end()
 }
 
-public class PyreonDeviceMotion(private val source: MotionSource) {
+public class PyreonDeviceMotion(private val source: MotionSource) : RememberObserver {
     public val active: MutableState<Boolean> = mutableStateOf(false)
     public val acceleration: MutableState<PyreonVec3> = mutableStateOf(PyreonVec3.zero)
     public val rotation: MutableState<PyreonVec3> = mutableStateOf(PyreonVec3.zero)
@@ -43,4 +44,9 @@ public class PyreonDeviceMotion(private val source: MotionSource) {
         source.end()
         active.value = false
     }
+
+    // A sensor left running past its screen drains battery for nobody.
+    override fun onRemembered() {}
+    override fun onForgotten() = stop()
+    override fun onAbandoned() = stop()
 }
