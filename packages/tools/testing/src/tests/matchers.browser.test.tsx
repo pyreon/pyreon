@@ -35,7 +35,10 @@ describe('@pyreon/testing — jest-dom matchers (real browser)', () => {
     expect(() => expect(detached).toBeInTheDocument()).toThrow()
 
     expect(link).toHaveTextContent('Go home')
-    expect(link).toHaveTextContent(/go/i)
+    // vitest 5's browser-mode `toHaveTextContent` is an EXACT string match (the
+    // regex/substring form moved to its `toMatchTextContent`, which our jest-dom
+    // typings don't declare), so the regex case asserts on the text directly.
+    expect(link.textContent).toMatch(/go/i)
     expect(() => expect(link).toHaveTextContent('nope')).toThrow()
 
     expect(link).toHaveAttribute('href', '/x')
