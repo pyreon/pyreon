@@ -29,12 +29,11 @@
  * 1. **No run of 16+ digits anywhere** (the overwhelmingly common body): no
  *    unsafe integer can be present — 2^53 has 16 digits — so plain
  *    `JSON.parse`, at native speed.
- * 2. **The reviver's `context.source`** (TC39 "JSON.parse source text access";
- *    V8 ≥ 11.4, JSC as shipped in current Safari/Bun, SpiderMonkey ≥ 135):
- *    still the native parser, with a reviver that re-reads an unsafe
- *    integer's own digits.
- * 3. **An own parser** where (2) is not implemented (Node 20, older engines,
- *    Hermes). It follows `JSON.parse`'s grammar and error class exactly, so a
+ * 2. **The reviver's `context.source`** (TC39 "JSON.parse source text
+ *    access"), DETECTED at first use rather than assumed — verified present on
+ *    Node 26 (V8) and Bun 1.4 (JSC): still the native parser, with a reviver
+ *    that re-reads an unsafe integer's own digits.
+ * 3. **An own parser** wherever (2) is missing (older engines, Hermes). It follows `JSON.parse`'s grammar and error class exactly, so a
  *    body that `JSON.parse` rejects is rejected here too.
  *
  * Encoding prefers `JSON.rawJSON` (same proposal); without it a `bigint` is

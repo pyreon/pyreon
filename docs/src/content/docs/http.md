@@ -148,9 +148,9 @@ inherits it. Streams take the decoder as `parseJson: parseJsonLossless`, and
 
 The digits are recovered from the source text, portably: plain `JSON.parse`
 when no 16-digit run is present (the common body — no unsafe integer is
-possible), the reviver's `context.source` where the engine passes it (current
-V8, JSC and SpiderMonkey), and an own strict parser elsewhere (Node 20, Hermes)
-— which rejects exactly what `JSON.parse` rejects. Because only an unsafe
+possible), the reviver's `context.source` where the engine passes it
+(detected at first use; verified on Node 26 and Bun 1.4), and an own strict
+parser everywhere else (older engines, Hermes) — which rejects exactly what `JSON.parse` rejects. Because only an unsafe
 integer becomes a `bigint`, a field that is ALWAYS a bigint needs a schema
 that widens the rest; `@pyreon/lathe`'s `int64: 'bigint'` generates exactly
 that.

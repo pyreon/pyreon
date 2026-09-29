@@ -9,7 +9,7 @@
  * the precedent for `buildUrl`; this is the same idea for JSON.
  *
  * Both parse layers are compared, not just the one this engine picks: the own
- * parser only runs where `context.source` is missing (Node 20, Hermes), so it
+ * parser only runs where `context.source` is missing (older engines, Hermes), so it
  * is forced here — for the emitted copy by hiding `context` from the FIRST
  * parse, which is when it memoizes the detection.
  */

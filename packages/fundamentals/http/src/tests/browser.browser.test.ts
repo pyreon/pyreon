@@ -136,3 +136,23 @@ describe('real Chromium — schema validation', () => {
     )
   })
 })
+
+describe('real Chromium — lossless JSON', () => {
+  it('the engine passes `context.source`, and a real response round-trips an int64 exactly', async () => {
+    // The layer the codec picks here is the fast native one; the own parser
+    // is covered in Node by forcing it (`json-lossless.test.ts`).
+    const { losslessJson, parseJsonLossless } = await import('../json')
+    let seen: string | undefined
+    ;(JSON.parse as (t: string, r: (k: string, v: unknown, c?: { source?: string }) => unknown) => unknown)('7', (_k, v, c) => {
+      seen = c?.source
+      return v
+    })
+    expect(seen).toBe('7')
+    expect(parseJsonLossless('{"id":9007199254740993}')).toEqual({ id: 9007199254740993n })
+
+    const { middleware } = createMock([{ method: 'POST', path: '/echo', body: (call) => String(call.body) }])
+    const api = createHttp({ use: [middleware], json: losslessJson })
+    const back = await api.post('/echo', { json: { id: 9007199254740993n } }).json()
+    expect(back).toEqual({ id: 9007199254740993n })
+  })
+})

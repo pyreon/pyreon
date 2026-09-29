@@ -4,7 +4,7 @@
  * The codec has three parse layers (plain `JSON.parse`, the reviver's
  * `context.source`, an own parser) and two encode layers (`JSON.rawJSON`, a
  * verified placeholder). Every layer is forced here, because the one a test
- * machine picks by detection is NOT the one every consumer gets: Node 20 has
+ * machine picks by detection is NOT the one every consumer gets: an older engine has
  * neither proposal, and a layer only reachable on an old engine is a layer no
  * suite would otherwise run.
  */

@@ -9,4 +9,4 @@ Lossless JSON for 64-bit integers. `JSON.parse` rounds an integer past 2^53 - 1 
 - `@pyreon/http/mock` writes a `bigint` fixture as JSON number text (it threw before).
 - `FormScalar` admits `bigint` — a form / multipart / cookie value is sent as its digits (the runtime already stringified it; only the type refused it).
 
-The decoder reads digits from the source text portably: plain `JSON.parse` when no 16-digit run is present, the reviver's `context.source` where the engine passes it, and an own strict parser elsewhere (Node 20, Hermes) that rejects exactly what `JSON.parse` rejects.
+The decoder reads digits from the source text portably: plain `JSON.parse` when no 16-digit run is present, the reviver's `context.source` where the engine passes it, and an own strict parser wherever the engine lacks it that rejects exactly what `JSON.parse` rejects.
