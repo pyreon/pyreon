@@ -1263,12 +1263,14 @@ describe('defineAsyncComponent', () => {
     expect(AsyncComp.__loading()).toBe(false)
   })
 
-  it('returns null while loading', () => {
+  it('renders nothing while loading (no loadingComponent)', () => {
     const AsyncComp = defineAsyncComponent(
       () => new Promise<{ default: ComponentFn }>(() => {}), // never resolves
     )
-    const result = AsyncComp({})
-    expect(result).toBeNull()
+    const c = document.createElement('div')
+    const dispose = mount(h(AsyncComp, {}), c)
+    expect(c.textContent).toBe('')
+    dispose()
   })
 
   it('throws error on load failure', async () => {

@@ -21,7 +21,7 @@ describe('SizedMap lowering', () => {
       'PyreonSizedMap<String, Int>(maxEntries: 5)',
     )
     expect(transform(src, { target: 'kotlin' }).code).toContain(
-      'PyreonSizedMap<String, Int>(maxEntries = 5)',
+      'PyreonSizedMap<String, Long>(maxEntries = 5L)',
     )
   })
 
@@ -59,6 +59,6 @@ export function C(){ const m = new SizedMap({ maxEntries: 5 }); return (<Stack /
     const src = `import { SizedMap as Bounded } from '@pyreon/sized-map'
 import { Stack } from '@pyreon/primitives'
 export function C(){ const m = new Bounded<string, number>({ maxEntries: 3 }); return (<Stack />) }`
-    expect(transform(src, { target: 'kotlin' }).code).toContain('PyreonSizedMap<String, Int>')
+    expect(transform(src, { target: 'kotlin' }).code).toContain('PyreonSizedMap<String, Long>')
   })
 })

@@ -140,7 +140,7 @@ export function GetBookPreview(props: GetBookPreviewProps) {
       <Show when={() => !pending()} fallback={<p data-state="loading">Loading…</p>}>
         <Show when={() => !failed()} fallback={<p data-state="error">Request failed.</p>}>
           <Show when={() => value() !== undefined && value() !== null} fallback={<p data-state="empty">No results.</p>}>
-            <PreviewRecord value={value} fields={['id', 'title', 'status', 'pages', 'subtitle', 'tags']} />
+            <PreviewRecord value={value} fields={['id', 'title', 'status', 'pages', 'rating', 'subtitle', 'tags']} />
           </Show>
         </Show>
       </Show>
@@ -171,7 +171,7 @@ export function ListBooksPreview(props: ListBooksPreviewProps) {
       <Show when={() => !pending()} fallback={<p data-state="loading">Loading…</p>}>
         <Show when={() => !failed()} fallback={<p data-state="error">Request failed.</p>}>
           <Show when={() => { const v = value(); return Array.isArray(v) && v.length > 0 }} fallback={<p data-state="empty">No results.</p>}>
-            <PreviewTable rows={() => { const v = value(); return Array.isArray(v) ? v : [] }} columns={['id', 'title', 'status', 'pages', 'subtitle', 'tags']} />
+            <PreviewTable rows={() => { const v = value(); return Array.isArray(v) ? v : [] }} columns={['id', 'title', 'status', 'pages', 'rating', 'subtitle']} />
           </Show>
         </Show>
       </Show>

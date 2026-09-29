@@ -69,7 +69,7 @@ describe('parse.ts — lowerUtilityType: lowered forms', () => {
     const s = swift(fnWithParams('o: NoInfer<number>, n: Record<string, number>'))
     expect(sigLine(s.code)).toContain('_ o: Int, _ n: [String: Int]')
     const k = kotlin(fnWithParams('n: Record<string, number>'))
-    expect(sigLine(k.code)).toContain('n: MutableMap<String, Int>')
+    expect(sigLine(k.code)).toContain('n: MutableMap<String, Long>')
   })
 })
 
@@ -281,7 +281,7 @@ describe('parse.ts — parseArrowParams: parameter shapes', () => {
 
   it('an un-annotated defaulted param crosses with its default', () => {
     const r = kotlin(`${PRIM}const f = (x = 2): number => x * 2\nexport function App(){ return <Text>{f()}</Text> }`)
-    expect(r.code).toMatch(/fun f\(x: \w+ = 2\): Int/)
+    expect(r.code).toMatch(/fun f\(x: \w+ = 2L\): Long/)
   })
 
   it('an un-annotated destructured param still synthesizes its placeholder', () => {
@@ -309,7 +309,7 @@ describe('parse.ts — parseExpr: rare expression arms', () => {
 
   it('`[] as Foo` (non-array cast) keeps the bare empty array; `x satisfies T` is transparent', () => {
     const r = kotlin(comp('const h = [] as Foo\n const i = [1] satisfies number[]'))
-    expect(r.code).toContain('val i = listOf(1)')
+    expect(r.code).toContain('val i = listOf(1L)')
     expect(r.code).not.toContain('emptyList<')
   })
 
@@ -346,7 +346,7 @@ describe('parse.ts — parseExpr: rare expression arms', () => {
 
   it('a scalar-seeded Set lowers (the positive control)', () => {
     const r = kotlin(comp('const s = new Set([1, 2])'))
-    expect(r.code).toContain('val s = (listOf(1, 2)).toMutableSet()')
+    expect(r.code).toContain('val s = (listOf(1L, 2L)).toMutableSet()')
   })
 
   it('a toast duration / announce politeness given as an IDENTIFIER is not baked in', () => {
@@ -575,9 +575,9 @@ describe('parse.ts — refineReduceSeedFloats: sources it cannot resolve', () =>
     const r = kotlin(
       `${PRIM}import { signal } from '@pyreon/reactivity'\nexport function App(){ const a = signal<Foo[]>([]); const n = signal<number[]>([1]); return <>hello<Text>{String(a().reduce((acc, x) => acc + x.p, 0))}{n().reduce((acc, x) => acc + x, 0)}{String(mystery.reduce((acc, x) => acc + x, 0))}</Text></> }`,
     )
-    expect(r.code).toContain('a.fold(0, { acc, x -> acc + x.p })')
-    expect(r.code).toContain('n.fold(0, { acc, x -> acc + x })')
-    expect(r.code).toContain('mystery.fold(0, { acc, x -> acc + x })')
+    expect(r.code).toContain('a.fold(0L, { acc, x -> acc + x.p })')
+    expect(r.code).toContain('n.fold(0L, { acc, x -> acc + x })')
+    expect(r.code).toContain('mystery.fold(0L, { acc, x -> acc + x })')
     expect(r.code).not.toContain('fold(0.0')
   })
 

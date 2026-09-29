@@ -29,7 +29,7 @@ describe('Array.prototype.reduce(reducer, initial) method-call emit', () => {
 
   it('Kotlin: reduce(cb, init) → fold(init, cb)', () => {
     const out = transform(SRC('xs().reduce((s, x) => s + x, 0)'), { target: 'kotlin' }).code
-    expect(out).toContain('fold(0, { s, x -> s + x })')
+    expect(out).toContain('fold(0L, { s, x -> s + x })')
     // Kotlin reduce takes no initial — the 2-arg method form must NOT
     // emit as `.reduce(...)`.
     expect(out).not.toContain('.reduce(')

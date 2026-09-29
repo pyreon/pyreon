@@ -42,7 +42,7 @@ describe('component-props param destructuring', () => {
   it('Kotlin: destructured props become composable params', () => {
     const out = transform(SRC, { target: 'kotlin' }).code
     expect(out).toContain('label: String')
-    expect(out).toContain('count: Int')
+    expect(out).toContain('count: Long')
   })
 
   it.skipIf(!isSwiftcAvailable())('emitted Swift parses on real swiftc', () => {

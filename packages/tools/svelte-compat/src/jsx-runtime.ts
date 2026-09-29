@@ -220,11 +220,17 @@ function wrapCompatComponent(solidComponent: Function): ComponentFn {
     }
   }) as unknown as ComponentFn
 
-  // Forward __loading from lazy components so Pyreon's Suspense can detect them
-  if ('__loading' in solidComponent) {
-    ;(wrapped as unknown as Record<string, unknown>).__loading = (
-      solidComponent as unknown as Record<string, unknown>
-    ).__loading
+  // Forward the lazy protocol from a lazy component that reaches this wrapper
+  // (e.g. `@pyreon/core`'s own `lazy()` — the compat `lazy()` is marked native
+  // and never gets here): `__loading` lets `<Suspense>` pick its fallback,
+  // `__load` lets the SSR renderers WAIT for the chunk instead of rendering
+  // nothing. Forwarding one without the other half-breaks the protocol.
+  for (const key of ['__loading', '__load'] as const) {
+    if (key in solidComponent) {
+      ;(wrapped as unknown as Record<string, unknown>)[key] = (
+        solidComponent as unknown as Record<string, unknown>
+      )[key]
+    }
   }
 
   _wrapperCache.set(solidComponent, wrapped)

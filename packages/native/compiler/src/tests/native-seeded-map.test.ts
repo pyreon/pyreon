@@ -39,7 +39,7 @@ describe('seeded new Map([[k,v],…]) → native dict literal', () => {
   it('Kotlin: emits mutableMapOf(k to v), no warning', () => {
     const r = transform(MAP, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('mutableMapOf("apple" to 3, "pear" to 2)')
+    expect(r.code).toContain('mutableMapOf("apple" to 3L, "pear" to 2L)')
   })
 
   it('a non-pair element still WARNS (conservative)', () => {

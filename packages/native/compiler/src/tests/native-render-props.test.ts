@@ -73,7 +73,7 @@ describe('the receiving component', () => {
     const src = `function Row(props: { cell: (n: number) => VNodeChild }) { return <Stack /> }
 export function App() { return <Row cell={(n) => <Text>{n}</Text>} /> }`
     expect(swift(src).code).toContain('@ViewBuilder let cell: (Int) -> CellContent')
-    expect(kotlin(src).code).toContain('cell: @Composable (Int) -> Unit')
+    expect(kotlin(src).code).toContain('cell: @Composable (Long) -> Unit')
   })
 
   it('a function prop returning a VALUE is not a slot', () => {
@@ -82,7 +82,7 @@ export function App() { return <Price format={(n) => String(n)} /> }`
     const sw = swift(src).code
     expect(sw).toContain('let format: (Int) -> String')
     expect(sw).not.toContain('@ViewBuilder')
-    expect(kotlin(src).code).toContain('format: (Int) -> String')
+    expect(kotlin(src).code).toContain('format: (Long) -> String')
   })
 
   it('an unknown-return function prop the body never renders is not a slot', () => {
@@ -199,7 +199,7 @@ export function App() { return <Picker render={(it) => <Text>{it.title}</Text>} 
     expect(sw).toContain('render(PickerRenderItem(title: "x", rank: 1))')
     const kt = kotlin(src).code
     expect(kt).toContain('data class PickerRenderItem(')
-    expect(kt).toContain('render(PickerRenderItem(title = "x", rank = 1))')
+    expect(kt).toContain('render(PickerRenderItem(title = "x", rank = 1L))')
   })
 
   it('the same shape in two components is one struct (TS is structural)', () => {
@@ -243,8 +243,8 @@ export function App() { return <Opt render={(n) => <Text>{n}</Text>} /> }`
     expect(sw.code).toContain('render?(1)')
     const kt = kotlin(src)
     expect(kt.warnings).toEqual([])
-    expect(kt.code).toContain('render: (@Composable (Int) -> Unit)? = null')
-    expect(kt.code).toContain('render?.invoke(1)')
+    expect(kt.code).toContain('render: (@Composable (Long) -> Unit)? = null')
+    expect(kt.code).toContain('render?.invoke(1L)')
   })
 })
 
@@ -295,7 +295,7 @@ describe('a JSX function called in view position renders (was an EmptyView)', ()
     expect(sw.code).toContain('      row(User(name: "a", age: 1))')
     const kt = kotlin(src)
     expect(kt.warnings).toEqual([])
-    expect(kt.code).toContain('    row(User(name = "a", age = 1))')
+    expect(kt.code).toContain('    row(User(name = "a", age = 1L))')
   })
 })
 

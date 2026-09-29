@@ -125,7 +125,7 @@ export function App() { return <Many a={<Text>a</Text>} b={<Text>b</Text>} c={<T
 }
 export function App() { return <Stack><Card title="a" /><Pass /></Stack> }`)
     expect(warnings).toEqual([])
-    expect(code).toContain('footer: (@Composable (Int) -> Unit)? = null')
+    expect(code).toContain('footer: (@Composable (Long) -> Unit)? = null')
     expect(code).toContain('header?.invoke()')
     expect(code).toContain('Card(title = "p", footer = footer)')
   })
@@ -161,7 +161,7 @@ describe('block-bodied render callbacks', () => {
   it('Kotlin: locals become `val`s, a lambda parameter smart-casts', () => {
     const { code, warnings } = kotlin(src)
     expect(warnings).toEqual([])
-    expect(code).toContain('UserData(children = { u ->\n      val n = (u?.name ?: "-")\n      val k = n.length\n      Text(')
+    expect(code).toContain('UserData(children = { u ->\n      val n = (u?.name ?: "-")\n      val k = n.length.toLong()\n      Text(')
     expect(code).toContain('      if (u == null) {\n        Text(text = "none")\n      } else {\n        val label = "${u.name} (${u.age})"')
   })
 
@@ -204,7 +204,7 @@ describe('block-bodied reactive-accessor return', () => {
   it('Kotlin: the block is the composable body', () => {
     const { code, warnings } = kotlin(src)
     expect(warnings).toEqual([])
-    expect(code).toContain('  val t = s + 1\n  if (t > 3) {\n    Text(text = "big")\n  } else {')
+    expect(code).toContain('  val t = s + 1L\n  if (t > 3L) {\n    Text(text = "big")\n  } else {')
   })
 
   it('a render prop invoked from a block accessor makes the prop a slot', () => {

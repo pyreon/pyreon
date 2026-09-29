@@ -68,7 +68,7 @@ describe('optional CALL `fn?.()` — lowers on both targets (the last optional s
   })
   it('Kotlin: the same value → `fmt?.invoke(5)`', () => {
     const rk = transform(VALUE, { target: 'kotlin' })
-    expect(rk.code).toContain('fmt?.invoke(5)')
+    expect(rk.code).toContain('fmt?.invoke(5L)')
     expect(rk.warnings).toHaveLength(0)
   })
   it('neither target emits the old "index/call" warn-fallback for optional call', () => {

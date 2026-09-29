@@ -142,7 +142,7 @@ class PyreonSortableState<T>(
         if (from < 0) return false
         val to = (from + slots).coerceIn(0, current.size - 1)
         if (to == from) return false
-        onReorderFn(moveIndex(current, from, to))
+        onReorderFn(moveIndex(current, from.toLong(), to.toLong()))
         return true
     }
 
@@ -179,7 +179,7 @@ class PyreonSortableState<T>(
         } else {
             if (dropIndex <= dragIndex) dropIndex else dropIndex - 1
         }
-        return moveIndex(current, dragIndex, rawInsert)
+        return moveIndex(current, dragIndex.toLong(), rawInsert.toLong())
     }
 
     companion object {
@@ -188,10 +188,10 @@ class PyreonSortableState<T>(
          * index in the list WITHOUT the moved element. The single mutation
          * primitive every platform routes through.
          */
-        fun <T> moveIndex(list: List<T>, from: Int, to: Int): List<T> {
+        fun <T> moveIndex(list: List<T>, from: Long, to: Long): List<T> {
             val out = list.toMutableList()
-            val moved = out.removeAt(from)
-            out.add(to.coerceIn(0, out.size), moved)
+            val moved = out.removeAt(from.toInt())
+            out.add(to.coerceIn(0L, out.size.toLong()).toInt(), moved)
             return out
         }
     }
