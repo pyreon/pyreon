@@ -21,7 +21,7 @@ import { normalizeCSS, resolve } from '../resolve'
 import { styled } from '../styled'
 
 const bench = (name: string, fn: BenchFn): void => {
-  it(name, async ({ bench: run }) => {
+  it(`${name}`, async ({ bench: run }) => {
     await run(name, fn).run()
   })
 }
