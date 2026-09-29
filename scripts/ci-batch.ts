@@ -84,6 +84,9 @@ const WEIGHTS: Record<BatchProfile, Record<string, number>> = {
     'ssg-subpath': 6,
     'ssr-node': 13,
     'isr-node': 7,
+    // Not yet measured in CI: installs wrangler/deno/edge-runtime (~40s),
+    // builds the example four times, then ~55s of specs locally.
+    'edge-runtimes': 150,
     'zero-hmr': 10,
     'zero-islands': 7,
     'app-showcase': 38,
