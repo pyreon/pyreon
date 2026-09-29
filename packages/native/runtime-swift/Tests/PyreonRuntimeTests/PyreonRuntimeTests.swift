@@ -132,19 +132,6 @@ final class PyreonRuntimeTests: XCTestCase {
         XCTAssertEqual(try jsonRes.decode(User.self), User(id: 7, name: "x"))
     }
 
-}
-
-/// Tiny mutable-reference-type flag so a `@Sendable` `onChange` closure
-/// (Swift 6 mode) can mutate it. Reference-type mutation through a
-/// closure-captured `let` binding is Sendable-clean. Used only by the
-/// `IsMonitoringIsNotObservable` / `IsOnlineIsObservable` test pair
-/// where var-capture would trip `#SendableClosureCaptures` warnings.
-/// Marked `@unchecked Sendable` because `Bool` IS Sendable; the class
-/// wrapper is the only thing that needs the brand. Tests run
-/// single-threaded so atomicity is not a concern.
-final class ObservationFlag: @unchecked Sendable {
-    var fired: Bool = false
-
 
     /// The shared schema types every emitted schema struct throws / returns.
     /// Declared once in the runtime so two schema-bearing modules in one
@@ -163,4 +150,16 @@ final class ObservationFlag: @unchecked Sendable {
         XCTAssertFalse(bad.success)
         XCTAssertNil(bad.data)
     }
+}
+
+/// Tiny mutable-reference-type flag so a `@Sendable` `onChange` closure
+/// (Swift 6 mode) can mutate it. Reference-type mutation through a
+/// closure-captured `let` binding is Sendable-clean. Used only by the
+/// `IsMonitoringIsNotObservable` / `IsOnlineIsObservable` test pair
+/// where var-capture would trip `#SendableClosureCaptures` warnings.
+/// Marked `@unchecked Sendable` because `Bool` IS Sendable; the class
+/// wrapper is the only thing that needs the brand. Tests run
+/// single-threaded so atomicity is not a concern.
+final class ObservationFlag: @unchecked Sendable {
+    var fired: Bool = false
 }
