@@ -6,6 +6,7 @@
 package com.pyreon.runtime
 
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.mutableStateOf
 
 /** One device seen during a scan. */
@@ -32,7 +33,7 @@ public interface BluetoothScanner {
 }
 
 /** Reactive Bluetooth discovery — the Compose half of `useBluetooth`. */
-public class PyreonBluetooth(private val scanner: BluetoothScanner) {
+public class PyreonBluetooth(private val scanner: BluetoothScanner) : RememberObserver {
     public val scanning: MutableState<Boolean> = mutableStateOf(false)
     public val devices: MutableState<List<PyreonBluetoothDevice>> = mutableStateOf(emptyList())
     public val error: MutableState<String> = mutableStateOf("")
@@ -70,4 +71,11 @@ public class PyreonBluetooth(private val scanner: BluetoothScanner) {
         scanning.value = false
         scanner.stopScan()
     }
+
+    // Compose calls these when the hook enters/leaves composition (it is
+    // `remember`ed by the emit). A scan left running past its screen keeps the
+    // radio busy for nobody.
+    override fun onRemembered() {}
+    override fun onForgotten() = stopScan()
+    override fun onAbandoned() = stopScan()
 }

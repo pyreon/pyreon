@@ -182,7 +182,9 @@
         ]
       },
       "kotlinSdkOnly": [
-        "PyreonWebView.kt"
+        "PyreonWebView.kt",
+        "PyreonSafeAreaAndroid.kt",
+        "PyreonDeviceProbesAndroid.kt"
       ]
     }
   },
