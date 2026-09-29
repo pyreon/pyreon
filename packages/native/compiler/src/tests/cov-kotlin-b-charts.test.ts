@@ -43,7 +43,7 @@ describe('the accessor hosts — <PieChart> / <FunnelChart>', () => {
       'PieChart',
       `<PieChart data={ROWS} value={(d) => d.v} label={(d) => d.n} onSelect={() => k.set(1)} />`,
     ).replace('return <Stack>', 'const k = signal(0); return <Stack>'))
-    expect(noParam.code).toMatch(/detectTapGestures \{ pyreonTap -> \(\{ k = 1 \}\)\(\) \}/)
+    expect(noParam.code).toMatch(/detectTapGestures \{ pyreonTap -> \(\{ k = 1L \}\)\(\) \}/)
 
     const byRef = kotlin(app(
       'PieChart',

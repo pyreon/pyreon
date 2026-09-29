@@ -135,13 +135,13 @@ export function App() {
   it('a known binding expands through the TARGET\'s prop list; an object literal expands its own fields', () => {
     const code = kotlin(SPREAD).code
     expect(code).toContain('Row(label = base.label, n = base.n)')
-    expect(code).toContain('Row(label = "lit", n = 2)')
+    expect(code).toContain('Row(label = "lit", n = 2L)')
   })
 
   it('an EXPLICIT attribute wins over the spread rather than being emitted twice', () => {
     // A duplicate named argument is a Kotlin compile error, so the explicit
     // name has to suppress the spread's copy.
-    expect(kotlin(SPREAD).code).toContain('Row(label = base.label, n = 9)')
+    expect(kotlin(SPREAD).code).toContain('Row(label = base.label, n = 9L)')
   })
 
   it('a spread the emitter cannot expand is named, not silently dropped', () => {

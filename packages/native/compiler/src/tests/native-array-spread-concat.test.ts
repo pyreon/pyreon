@@ -60,13 +60,13 @@ describe('P1 — array-spread concat (multi-spread + parens) lowers correctly', 
     expect(code).not.toContain('a + listOf(b)')
   })
   it('Kotlin: `[...a, 9]` is parenthesised → `(a + listOf(9))`', () => {
-    expect(kt(`[...a(), 9].length`)).toContain('(a + listOf(9))')
+    expect(kt(`[...a(), 9].length`)).toContain('(a + listOf(9L))')
   })
 
   // No-spread control — must stay a plain literal (no concat / parens).
   it('Swift/Kotlin: a no-spread `[9, 10]` stays a plain literal', () => {
     expect(sw(`[9, 10].length`)).toContain('[9, 10]')
-    expect(kt(`[9, 10].length`)).toContain('listOf(9, 10)')
+    expect(kt(`[9, 10].length`)).toContain('listOf(9L, 10L)')
   })
 
   // Real proof: multi-spread + a method chain on the literal COMPILE.

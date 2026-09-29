@@ -72,6 +72,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.pyreon.runtime.PyreonToast
+import com.pyreon.runtime.PyreonWebViewRendering
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -117,6 +118,29 @@ class TasksAppInstrumentedTest {
         // 1ms keeps the goal (no multi-second `delay` for `waitForIdle` to sit
         // behind) without leaving anything on screen.
         PyreonToast.defaultDurationMillis = 1
+    }
+
+    /**
+     * Draw the hosted WebViews on a software layer for this run.
+     *
+     * The gallery composes three hardware-accelerated flow WebViews below its
+     * charts. On the SwiftShader emulator CI uses, that intermittently leaves
+     * the WHOLE window unpainted. Every chart capture then reads pure white
+     * ("gal-datazoom showed no red bar", "gal-map did not paint",
+     * "gal-visualmap did not paint", "roaming map did not pan … 0 px painted").
+     * A capture of the root and a UiAutomation screenshot are white too, so
+     * no single chart host is at fault, and a longer wait does not help: the
+     * window stayed white for the full 10s every time.
+     *
+     * Measured locally on an API 33 pixel_6 emulator with fresh boots: 5 of 10
+     * runs failed with hardware WebViews, 0 of 10 with this flag. The flow
+     * WebView assertions later in this test still pass, because the page and
+     * its bridge do not depend on the layer type. See
+     * `PyreonWebViewRendering`.
+     */
+    @Before
+    fun softwareWebViewsOnTheEmulator() {
+        PyreonWebViewRendering.softwareLayer = true
     }
 
     /**

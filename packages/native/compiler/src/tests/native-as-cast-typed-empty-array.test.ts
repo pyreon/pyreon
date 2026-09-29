@@ -65,7 +65,7 @@ describe('P1 — TS `as` cast + typed-empty-array seed', () => {
     expect(sw(arrReduce)).not.toContain('reduce("",')
   })
   it('Kotlin: `[] as number[]` reduce seed → `emptyList<Int>()` (not `""`)', () => {
-    expect(kt(arrReduce)).toContain('emptyList<Int>()')
+    expect(kt(arrReduce)).toContain('emptyList<Long>()')
     expect(kt(arrReduce)).not.toContain('fold("",')
   })
   it('Swift: `computed(() => [] as number[])` infers `[Int]` and emits `[Int]()`', () => {

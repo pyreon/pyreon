@@ -42,12 +42,11 @@ describe('a comparator over a DOUBLE column returns an Int sign on Kotlin', () =
     expect(kt('price')).toContain('.compareTo(0.0)')
   })
 
-  // The gate: an Int comparator must be BYTE-IDENTICAL to before. The sign
-  // conversion is correct there too, but emitting it would be noise, and this
-  // spec is what keeps the change from quietly applying everywhere.
-  it('an INT column keeps the raw difference, unchanged', () => {
-    expect(kt('id')).toContain('Comparator { a, b -> a.id - b.id }')
-    expect(kt('id')).not.toContain('compareTo')
+  // An INTEGER column is a Long on Kotlin (a TS integer is 64-bit, like
+  // Swift's Int), and `Comparator.compare` returns Int — so its difference
+  // takes the sign conversion too, with a Long zero.
+  it('an INT column converts its Long difference via compareTo(0L)', () => {
+    expect(kt('id')).toContain('Comparator { a, b -> (a.id - b.id).compareTo(0L) }')
   })
 
   // Swift is unaffected in both directions — it converts to a Bool, so the

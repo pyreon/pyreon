@@ -26,7 +26,7 @@ describe('Pyreon → Kotlin emit', () => {
   it('01 — stateless component', () => {
     expect(emit('01-stateless.tsx')).toMatchInlineSnapshot(`
       "// Pyreon TS-compat extensions
-      private val <T> List<T>.length: Int get() = size
+      private val <T> List<T>.length: Long get() = size.toLong()
 
       @Composable
       fun Greeting() {
@@ -38,11 +38,11 @@ describe('Pyreon → Kotlin emit', () => {
   it('02 — single signal', () => {
     expect(emit('02-signal.tsx')).toMatchInlineSnapshot(`
       "// Pyreon TS-compat extensions
-      private val <T> List<T>.length: Int get() = size
+      private val <T> List<T>.length: Long get() = size.toLong()
 
       @Composable
       fun Counter() {
-        var count by remember { mutableStateOf(0) }
+        var count by remember { mutableStateOf(0L) }
         Text(text = "\${count}")
       }"
     `)
@@ -51,12 +51,12 @@ describe('Pyreon → Kotlin emit', () => {
   it('03 — computed value', () => {
     expect(emit('03-computed.tsx')).toMatchInlineSnapshot(`
       "// Pyreon TS-compat extensions
-      private val <T> List<T>.length: Int get() = size
+      private val <T> List<T>.length: Long get() = size.toLong()
 
       @Composable
       fun Doubled() {
-        var count by remember { mutableStateOf(0) }
-        val doubled by remember { derivedStateOf { count * 2 } }
+        var count by remember { mutableStateOf(0L) }
+        val doubled by remember { derivedStateOf { count * 2L } }
         Text(text = "\${doubled}")
       }"
     `)
@@ -65,12 +65,12 @@ describe('Pyreon → Kotlin emit', () => {
   it('04 — event handler', () => {
     expect(emit('04-event.tsx')).toMatchInlineSnapshot(`
       "// Pyreon TS-compat extensions
-      private val <T> List<T>.length: Int get() = size
+      private val <T> List<T>.length: Long get() = size.toLong()
 
       @Composable
       fun Increment() {
-        var count by remember { mutableStateOf(0) }
-        Button(onClick = { count = count + 1 }) {
+        var count by remember { mutableStateOf(0L) }
+        Button(onClick = { count = count + 1L }) {
           Text("Increment")
         }
       }"
@@ -80,12 +80,12 @@ describe('Pyreon → Kotlin emit', () => {
   it('05 — multi-signal + dependent computed', () => {
     expect(emit('05-multi-signal.tsx')).toMatchInlineSnapshot(`
       "// Pyreon TS-compat extensions
-      private val <T> List<T>.length: Int get() = size
+      private val <T> List<T>.length: Long get() = size.toLong()
 
       @Composable
       fun Sum() {
-        var a by remember { mutableStateOf(1) }
-        var b by remember { mutableStateOf(2) }
+        var a by remember { mutableStateOf(1L) }
+        var b by remember { mutableStateOf(2L) }
         val total by remember { derivedStateOf { a + b } }
         Text(text = "\${total}")
       }"
@@ -95,10 +95,10 @@ describe('Pyreon → Kotlin emit', () => {
   it('06 — <For> keyed list', () => {
     expect(emit('06-for.tsx')).toMatchInlineSnapshot(`
       "// Pyreon TS-compat extensions
-      private val <T> List<T>.length: Int get() = size
+      private val <T> List<T>.length: Long get() = size.toLong()
 
       @Serializable
-      data class TodoListItem(val id: Int, val label: String)
+      data class TodoListItem(val id: Long, val label: String)
 
       @Composable
       fun TodoList() {
@@ -115,7 +115,7 @@ describe('Pyreon → Kotlin emit', () => {
   it('07 — <Show> conditional', () => {
     expect(emit('07-show.tsx')).toMatchInlineSnapshot(`
       "// Pyreon TS-compat extensions
-      private val <T> List<T>.length: Int get() = size
+      private val <T> List<T>.length: Long get() = size.toLong()
 
       @Composable
       fun Toggle() {
@@ -135,7 +135,7 @@ describe('Pyreon → Kotlin emit', () => {
     // both targets produce idiomatic per-platform computed code.
     expect(emit('08-string-computed.tsx')).toMatchInlineSnapshot(`
       "// Pyreon TS-compat extensions
-      private val <T> List<T>.length: Int get() = size
+      private val <T> List<T>.length: Long get() = size.toLong()
 
       @Composable
       fun Greeting() {
@@ -152,7 +152,7 @@ describe('Pyreon → Kotlin emit', () => {
     // params. Member accesses `props.title` rewrite to bare `title`.
     expect(emit('09-props.tsx')).toMatchInlineSnapshot(`
       "// Pyreon TS-compat extensions
-      private val <T> List<T>.length: Int get() = size
+      private val <T> List<T>.length: Long get() = size.toLong()
 
       @Composable
       fun Card(title: String, description: String) {
@@ -169,7 +169,7 @@ describe('Pyreon → Kotlin emit', () => {
     // lock: future PRs shouldn't accidentally break this shape.
     expect(emit('10-multi-component.tsx')).toMatchInlineSnapshot(`
       "// Pyreon TS-compat extensions
-      private val <T> List<T>.length: Int get() = size
+      private val <T> List<T>.length: Long get() = size.toLong()
 
       @Composable
       fun Card(title: String) {

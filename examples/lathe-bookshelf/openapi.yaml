@@ -104,6 +104,11 @@ components:
               enum: [available, borrowed, lost]
               description: Circulation state.
             pages: { type: integer, minimum: 1 }
+            rating:
+              type: number
+              minimum: 0
+              maximum: 5
+              description: Average reader rating — fractional (4.5), so native must decode it as a Double.
             subtitle: { type: string, nullable: true }
             tags:
               type: array

@@ -104,7 +104,7 @@ describe('P1 — Kotlin lambda/collection lowerings', () => {
   }
   export function P() { return <Text>{String(steps(1.0))}</Text> }
 `)
-    expect(r.code).toContain('Math.max((2).toDouble()')
+    expect(r.code).toContain('Math.max((2L).toDouble()')
   })
 
   it('a count-loop counter coerces into Double fields; a Double bound wraps toInt', () => {
