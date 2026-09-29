@@ -13,7 +13,7 @@ and Android.
 | Import | What it is |
 | --- | --- |
 | `@pyreon/charts` | `<Chart>`, its marks, the family components, formatters, theme and linking. The stable surface. |
-| `@pyreon/charts/svg` | `chartToSvg` and every `*ToSvg`: SVG strings with no DOM, for SSR and export. Imported on a server, it also makes every `<Chart>` ship its first frame as SVG in the SSR / SSG HTML |
+| `@pyreon/charts/svg` | `chartToSvg` and every `*ToSvg`: SVG strings with no DOM, for SSR and export. Imported on a server, it also makes every `<Chart>` and every family chart (`<PieChart>`, `<TreemapChart>`, `<SankeyChart>`, …) ship its first frame as SVG in the SSR / SSG HTML |
 | `@pyreon/charts/engine` | Every layout, hit test and draw-list builder, and the array form `<PlotChart marks>`. Not covered by the stability promise |
 
 No entry depends on a third-party charting library.

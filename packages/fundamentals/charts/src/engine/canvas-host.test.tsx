@@ -56,15 +56,20 @@ function mounted(node: ReturnType<typeof h>) {
 }
 
 describe('canvasHost', () => {
-  it('renders canvas + hidden table by default, bare canvas with accessibleTable=false, and a tooltip node only when asked', () => {
+  it('renders canvas + hidden table by default, no table with accessibleTable=false, and a tooltip node only when asked', () => {
     const a = mounted(host({ title: 'T' }).node)
     expect(a.root.querySelector('canvas')).not.toBeNull()
     expect(a.root.querySelector('table caption')!.textContent).toBe('T')
     expect(a.root.querySelector('[data-pyreon-chart-tooltip]')).toBeNull()
     a.dispose()
-    // No table, no keyboard live region, no tooltip: nothing to wrap — the canvas is the node.
+    // No table, no keyboard live region, no tooltip: the canvas in its wrapper, which
+    // also holds the server first-frame placeholder (it must be in the client
+    // tree too, or a hydrated page would mismatch against the server's)…
     const b = mounted(host({ accessibleTable: false, keyboard: false }).node)
-    expect(b.root.firstElementChild!.tagName).toBe('CANVAS')
+    expect(b.root.querySelector('table')).toBeNull()
+    expect(b.root.querySelector('[role="status"]')).toBeNull()
+    // …which the first canvas paint (here, at mount) has already removed.
+    expect([...b.root.firstElementChild!.children].map((e) => e.tagName)).toEqual(['CANVAS'])
     b.dispose()
     const c = mounted(host({ tooltip: true, accessibleTable: false }).node)
     expect(c.root.querySelector('[data-pyreon-chart-tooltip]')).not.toBeNull()
