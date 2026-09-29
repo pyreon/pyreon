@@ -16,8 +16,9 @@
  * Falls back to mountChild() whenever DOM structure doesn't match the VNode.
  */
 
-import type { ComponentFn, RefProp, VNode, VNodeChild } from '@pyreon/core'
+import type { ComponentFn, LazyComponent, RefProp, VNode, VNodeChild } from '@pyreon/core'
 import {
+  _setSuspenseHydrating,
   dispatchToErrorBoundary,
   ForSymbol,
   Fragment,
@@ -30,6 +31,7 @@ import {
   effectScope,
   getContextOwner,
   runUntracked,
+  runWithContextOwner,
   setContextOwner,
   setCurrentScope,
 } from '@pyreon/reactivity'
@@ -1438,6 +1440,116 @@ function hydrateChildren(
 
 // ─── Component hydration ──────────────────────────────────────────────────────
 
+/**
+ * Enter/leave a synchronous hydration walk. Two flags move together: the
+ * renderer's own (`_tpl` defers its build so compiled regions adopt at their
+ * cursor) and core's (`<Suspense>` renders its child, not its fallback, over
+ * server content). Returns the previous state for the caller to RESTORE —
+ * never reset to a constant: walks nest (islands, deferred lazy ranges).
+ */
+function setHydrating(v: boolean): boolean {
+  _setSuspenseHydrating(v)
+  return _setHydrationActive(v)
+}
+
+/**
+ * The settle promise of a lazy component whose content is not available yet,
+ * or `null`. Keyed on the lazy PROTOCOL (`__load` plus `__pending`, defaulting
+ * to `__loading`) rather than on `lazy`'s identity, so the compat lazies and
+ * `defineAsyncComponent` are covered by the same code path the SSR renderers
+ * use to wait for them.
+ */
+function pendingLazyContent(type: unknown): Promise<void> | null {
+  if (typeof type !== 'function') return null
+  const lazy = type as Partial<LazyComponent>
+  if (typeof lazy.__load !== 'function') return null
+  const pending = lazy.__pending ?? lazy.__loading
+  return typeof pending === 'function' && pending() ? lazy.__load() : null
+}
+
+/** The `<!--/$-->` closing the range opened by `open`, depth-aware (accessors nest). */
+function findRangeClose(open: Comment): Comment | null {
+  let depth = 0
+  for (let n: ChildNode | null = open.nextSibling; n; n = n.nextSibling) {
+    if (n.nodeType !== Node.COMMENT_NODE) continue
+    const d = (n as Comment).data
+    if (d === '$') depth++
+    else if (d === '/$') {
+      if (depth === 0) return n as Comment
+      depth--
+    }
+  }
+  return null
+}
+
+/**
+ * HYDRATION OF A STILL-LOADING LAZY — keep the server's nodes, hydrate them
+ * when the chunk lands.
+ *
+ * The server waits for every lazy (`__load`) before rendering it, so its HTML
+ * carries the real content, bracketed `<!--$-->…<!--/$-->` by the lazy's
+ * reactive output. On the client the chunk may not have landed when the walk
+ * reaches it. Running the component now renders NOTHING, which drops the range
+ * and rebuilds it later: identity, focus and typed input lost, and a visible
+ * flash. So this does not run it at all. It advances the parent's cursor past
+ * the range (the server nodes stay exactly where they are), and once `__load()`
+ * settles it hydrates the component against that range — within the context
+ * OWNER captured here, so `useContext()` resolves the same providers it would
+ * have during the walk (the technique deferred island hydration uses).
+ *
+ * This is NOT the "keep the range and adopt when content appears later"
+ * variant `adoptReactiveRange` rejects: that one cannot tell "not ready yet"
+ * from "renders nothing". Here the lazy protocol IS that oracle — a component
+ * reporting `__loading()` has, by contract, content still to come.
+ *
+ * Whatever the eventual render does not claim (a failed chunk, a divergent
+ * render) is swept, so a failure costs the adoption and never leaves dead
+ * server DOM standing.
+ */
+function hydrateDeferredLazy(
+  vnode: VNode,
+  open: Comment,
+  close: Comment,
+  settled: Promise<void>,
+  anchor: Node | null,
+  path: string,
+): [Cleanup, ChildNode | null] {
+  const owner = getContextOwner()
+  let cancelled = false
+  let inner: Cleanup | null = null
+  settled.then(() => {
+    const parent = open.parentNode
+    if (cancelled || parent === null) return
+    const prev = setHydrating(true)
+    try {
+      runWithContextOwner(owner, () => {
+        ;[inner] = hydrateComponent(vnode, open, parent, anchor, `${path}:lazy`)
+      })
+    } finally {
+      setHydrating(prev)
+    }
+    // A successful adoption consumes both markers; one still standing means
+    // the render did not claim the range. Drop it rather than leave server
+    // nodes with no bindings behind.
+    if (open.parentNode !== null) {
+      let n: ChildNode | null = open
+      while (n) {
+        const nx: ChildNode | null = n === close ? null : n.nextSibling
+        n.remove()
+        n = nx
+      }
+    }
+  })
+  const after = close.nextSibling
+  return [
+    () => {
+      cancelled = true
+      inner?.()
+    },
+    after ? firstReal(after) : null,
+  ]
+}
+
 function hydrateComponent(
   vnode: VNode,
   domNode: ChildNode | null,
@@ -1445,6 +1557,14 @@ function hydrateComponent(
   anchor: Node | null,
   path = 'root',
 ): [Cleanup, ChildNode | null] {
+  // A lazy whose content has not loaded, over a server range for it: keep the
+  // range and hydrate it when the chunk lands (see `hydrateDeferredLazy`).
+  const settled = pendingLazyContent(vnode.type)
+  if (settled !== null && domNode?.nodeType === Node.COMMENT_NODE && (domNode as Comment).data === '$') {
+    const close = findRangeClose(domNode as Comment)
+    if (close !== null) return hydrateDeferredLazy(vnode, domNode as Comment, close, settled, anchor, path)
+  }
+
   // Owner chain — mirrors mount.ts so `useContext()` resolves up the tree
   // during hydration too. Owner stays `scope` through `runWithHooks` +
   // `hydrateChild` + onMount, restored to `prevOwner` on every exit.
@@ -1671,7 +1791,7 @@ export function hydrateRoot(container: Element, vnode: VNodeChild): () => void {
   // walk, a test hydrating from a mount effect). Scoped to the SYNCHRONOUS
   // walk only: async-component continuations run after this frame and keep
   // the eager (armed-or-clone) behavior.
-  const prevHydrationActive = _setHydrationActive(true)
+  const prevHydrationActive = setHydrating(true)
   try {
     const [cleanup, residual] = hydrateChild(vnode, firstChild, container, null)
     // ROOT BOUNDARY SWEEP — the container's end is the extent, exactly as a
@@ -1681,6 +1801,6 @@ export function hydrateRoot(container: Element, vnode: VNodeChild): () => void {
     if (vnode != null && vnode !== false) sweepUnclaimed(container, residual)
     return cleanup
   } finally {
-    _setHydrationActive(prevHydrationActive)
+    setHydrating(prevHydrationActive)
   }
 }
