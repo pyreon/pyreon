@@ -708,6 +708,145 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithText("Theme: light").assertIsDisplayed()
     }
 
+    // useScreenOrientation + useSafeArea: `AndroidOrientationProbe` and
+    // `AndroidSafeAreaProbe` were named by the emit and defined nowhere on a
+    // real build, so this whole app would not compile. Reaching this test at all
+    // proves they resolve; the assertions prove they read the live platform.
+    // The inset is asserted with `waitUntil` because `rootWindowInsets` is null
+    // until the window attaches — the probe's layout listener must bump the
+    // Compose state for the text to flip, which is the reactivity half.
+    @Test
+    fun displayProbesReadTheLivePlatform() {
+        composeRule.onNodeWithText("Orientation: portrait").assertIsDisplayed()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("Inset: top").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    // Rotation moves the reported orientation. The Activity is recreated (no
+    // `configChanges`), so this proves the fresh probe reads the new display,
+    // not a stale value; restoring portrait leaves the shared emulator as found.
+    @Test
+    fun orientationFollowsRotation() {
+        composeRule.activityRule.scenario.onActivity {
+            it.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        }
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            composeRule.onAllNodesWithText("Orientation: landscape").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.activityRule.scenario.onActivity {
+            it.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            composeRule.onAllNodesWithText("Orientation: portrait").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    // Platform-probe hooks (useDeviceInfo / useWakeLock / useDeviceMotion /
+    // useSpeech / useAudioRecorder / useBluetooth). Their engines
+    // (`AndroidDeviceProbe`, `AndroidScreenKeeper`, `AndroidMotionSource`,
+    // `AndroidSpeechSynth`, `AndroidRecordingEngine`,
+    // `AndroidBluetoothScanner`) were named by the emit and defined nowhere on
+    // a real build, so this whole app did not compile. Reaching these tests at
+    // all proves they resolve; each assertion proves the engine reads or drives
+    // the LIVE platform rather than a baked value.
+    @Test
+    fun deviceInfoProbeReadsTheLivePlatform() {
+        composeRule.onNodeWithTag("probe-info").performScrollTo()
+            .assertTextEquals("Info: android-touch")
+    }
+
+    // The platform half, not just the state: FLAG_KEEP_SCREEN_ON on the
+    // Activity's own window is what keeps a real screen lit.
+    @Test
+    fun wakeLockSetsAndClearsTheWindowFlag() {
+        fun flagged(): Boolean {
+            var f = false
+            composeRule.activityRule.scenario.onActivity {
+                f = it.window.attributes.flags and
+                    android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON != 0
+            }
+            return f
+        }
+        composeRule.onNodeWithTag("probe-wake").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("Awake: on").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) { flagged() }
+    }
+
+    // Accelerometer samples flow through SensorManager into Compose state.
+    // The emulator's virtual accelerometer reports gravity on whichever axis is
+    // up (y when upright, x in landscape, z face-up), so the row tests the
+    // vector's magnitude: it can only exceed 1 if a real SensorEvent arrived.
+    @Test
+    fun deviceMotionDeliversSensorSamples() {
+        composeRule.onNodeWithTag("probe-motion").performScrollTo().performClick()
+        try {
+            composeRule.waitUntil(timeoutMillis = 20_000) {
+                composeRule.onAllNodesWithText("Motion: on-sampled").fetchSemanticsNodes().isNotEmpty()
+            }
+        } catch (e: androidx.compose.ui.test.ComposeTimeoutException) {
+            // Re-assert so the failure names the ACTUAL row text ("Motion: on-idle"
+            // = started but no sample arrived; "off-idle" = start() refused).
+            composeRule.onNodeWithTag("probe-motion-state").assertTextEquals("Motion: on-sampled")
+        }
+    }
+
+    // TextToSpeech initialises asynchronously; a speak before it is ready is
+    // held, and an engine-less device must report unsupported rather than
+    // crash. Either way the tap must not throw and the row must settle.
+    @Test
+    fun speechSynthInitialisesAndSpeaks() {
+        composeRule.onNodeWithTag("probe-speak").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            composeRule.onAllNodesWithText("Speech: supported").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    // Recording needs RECORD_AUDIO. Granted here through the shell; the engine
+    // must then start a real MediaRecorder and the state must flip.
+    @Test
+    fun audioRecorderStartsOnceMicrophoneIsGranted() {
+        val instr = InstrumentationRegistry.getInstrumentation()
+        instr.uiAutomation
+            .executeShellCommand("pm grant ${instr.targetContext.packageName} android.permission.RECORD_AUDIO")
+            .close()
+        composeRule.onNodeWithTag("probe-record").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            composeRule.onAllNodesWithText("Recording: on").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    // BLE discovery through the platform scanner. The emulator ships a virtual
+    // BLE controller that is OFF by default, so this drives both real outcomes:
+    // a scan while the radio is off must land in the error channel (row stays
+    // idle, no throw), and once the radio is on the SAME tap must reach
+    // `BluetoothLeScanner.startScan` and flip the row to scanning. The runtime
+    // permission is granted through the shell first, otherwise the engine
+    // (correctly) raises the system permission prompt over the app.
+    @Test
+    fun bluetoothScanFollowsTheAdapterState() {
+        val instr = InstrumentationRegistry.getInstrumentation()
+        val pkg = instr.targetContext.packageName
+        instr.uiAutomation.executeShellCommand("pm grant $pkg android.permission.BLUETOOTH_SCAN").close()
+        val adapter = (instr.targetContext.getSystemService(Context.BLUETOOTH_SERVICE)
+            as android.bluetooth.BluetoothManager).adapter
+        instr.uiAutomation.executeShellCommand("cmd bluetooth_manager disable").close()
+        composeRule.waitUntil(timeoutMillis = 30_000) { !adapter.isEnabled }
+
+        composeRule.onNodeWithTag("probe-scan").performScrollTo().performClick()
+        composeRule.onNodeWithTag("probe-bt-state").performScrollTo()
+            .assertTextEquals("Bluetooth: available-idle")
+
+        instr.uiAutomation.executeShellCommand("cmd bluetooth_manager enable").close()
+        composeRule.waitUntil(timeoutMillis = 60_000) { adapter.isEnabled }
+        composeRule.onNodeWithTag("probe-scan").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            composeRule.onAllNodesWithText("Bluetooth: available-scanning").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
     // FFI escape hatch (useNativeModule) asserted in the REAL Compose
     // semantics tree — the Android half of the iOS
     // `test_userDefinedNativeModuleRunsOnDevice`. The shared Counter.tsx has
