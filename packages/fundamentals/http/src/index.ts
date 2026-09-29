@@ -124,6 +124,7 @@ export type {
   HttpMiddleware,
   HttpRequest,
   HttpResponse,
+  JsonCodec,
   Next,
   ParseFn,
   PathParams,

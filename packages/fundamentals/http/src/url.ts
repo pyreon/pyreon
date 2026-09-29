@@ -100,7 +100,7 @@ export function buildQuery(
   return out ? `?${out}` : ''
 }
 
-type Scalar = string | number | boolean
+type Scalar = string | number | bigint | boolean
 
 function scalars(values: readonly (Scalar | null | undefined)[]): string[] {
   const out: string[] = []
@@ -163,4 +163,34 @@ export function buildUrl(
   const qs = buildQuery(query, styles)
   if (!qs) return joined
   return joined.includes('?') ? `${joined}&${qs.slice(1)}` : `${joined}${qs}`
+}
+
+/**
+ * A key scope with every `bigint` replaced by its decimal digits.
+ *
+ * A query key is HASHED — `@pyreon/query` (TanStack) runs it through
+ * `JSON.stringify`, which THROWS on a `bigint` — and serialized for SSR
+ * hydration, so an int64 path/query parameter would otherwise make the whole
+ * query fail before it fetched. The digits are exactly what the URL carries,
+ * so `{ id: 5n }` and `{ id: '5' }` share a cache entry: they are the same
+ * request. Allocates only when a bigint is present; params are one level deep
+ * and a query value at most an array or a flat object (`QueryValue`).
+ */
+export function keySafeScope(record: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
+  let out: Record<string, unknown> | undefined
+  for (const k of Object.keys(record)) {
+    const v = record[k]
+    const safe = keySafeValue(v)
+    if (safe !== v) (out ??= { ...record })[k] = safe
+  }
+  return out ?? record
+}
+
+function keySafeValue(v: unknown): unknown {
+  if (typeof v === 'bigint') return v.toString()
+  if (Array.isArray(v)) {
+    return v.some((x) => typeof x === 'bigint') ? v.map((x) => (typeof x === 'bigint' ? x.toString() : x)) : v
+  }
+  if (v !== null && typeof v === 'object') return keySafeScope(v as Record<string, unknown>)
+  return v
 }
