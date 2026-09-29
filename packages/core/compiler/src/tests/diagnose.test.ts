@@ -36,6 +36,16 @@ describe('diagnoseError (browser-safe error catalog)', () => {
     }
   })
 
+  it('diagnoses a streamed Suspense boundary whose child threw (incl. a failed lazy() import)', () => {
+    // The exact line runtime-server logs (dev) when a boundary child throws.
+    const r = diagnoseError(
+      '[Pyreon SSR] Suspense boundary caught an error — fallback will remain: Error: chunk 404',
+    )
+    expect(r).not.toBeNull()
+    expect(r!.cause).toContain('lazy()')
+    expect(r!.fix).toContain('renderToString')
+  })
+
   it('diagnoses a VNode array rendered as "[object Object]"', () => {
     for (const symptom of [
       '[object Object],[object Object]',
