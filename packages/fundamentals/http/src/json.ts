@@ -97,7 +97,7 @@ export function parseJsonLossless(text: string): unknown {
   if (hasSourceText()) {
     return (JSON.parse as (text: string, reviver: SourceReviver) => unknown)(text, reviveUnsafeIntegers)
   }
-  return new Parser(text).document()
+  return new Parser(text).parseDocument()
 }
 
 /**
@@ -115,7 +115,7 @@ class Parser {
 
   constructor(private readonly s: string) {}
 
-  document(): unknown {
+  parseDocument(): unknown {
     this.ws()
     const value = this.value()
     this.ws()
