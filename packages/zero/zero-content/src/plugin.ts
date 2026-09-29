@@ -200,6 +200,15 @@ export interface SeoEmitOptions {
 //   - `virtual:zero-content/collections` — runtime registry that
 //     `getCollection` / `getEntry` read from. Uses `import.meta.glob`
 //     to lazy-load each collection's entries.
+/**
+ * The frontmatter reader `content()` compiles every page with — split the
+ * leading `---` block from the body and parse it (YAML by default, `---json`
+ * supported). Exported so tools that EMIT pages for a content collection
+ * (e.g. `@pyreon/lathe`'s docs plugin) can assert their output against the
+ * exact reader that will consume it, instead of a stand-in parser.
+ */
+export { parseFrontmatter, type Frontmatter } from './pipeline/frontmatter'
+
 export const VIRTUAL_COMPONENTS_ID = 'virtual:zero-content/components'
 const RESOLVED_VIRTUAL_COMPONENTS_ID = '\0' + VIRTUAL_COMPONENTS_ID
 export const VIRTUAL_COLLECTIONS_ID = 'virtual:zero-content/collections'

@@ -632,6 +632,24 @@ export function hasNativeDataComponent(op: IrOperation): boolean {
   );
 }
 
+/**
+ * Does this operation get a native STREAM COMPONENT?
+ *
+ * A stream-only `GET` whose events have a declared type — or an SSE stream
+ * read as `data: 'text'`, whose payload is the raw string. PMTC lowers
+ * `useStream` over `@pyreon/http/stream` to the native stream runtime and
+ * decodes each event INTO a declared type, so an untyped event has nothing to
+ * decode into. A non-GET stream stays web for the same reason a mutation does:
+ * its body is a runtime value the native lowering cannot bake. The reach
+ * analysis in `core/generate.ts` asks this same predicate.
+ */
+export function hasNativeStreamComponent(op: IrOperation): boolean {
+  const s = op.stream;
+  if (!s || !isStreamOnly(op) || op.method !== "GET" || op.hook === false) return false;
+  if (s.format === "sse" && s.data === "text") return true;
+  return s.event.kind !== "unknown";
+}
+
 /** Does this operation mutate? Decides query vs mutation binding. */
 export function isMutation(op: IrOperation): boolean {
   return op.method !== "GET" && op.method !== "HEAD" && op.method !== "OPTIONS";
@@ -874,8 +892,7 @@ function responseCfg(
 ): string {
   const response = typedResponse(op);
   if (!response) return "";
-  const refBinding = native ? nativeSchemaBinding : undefined;
-  return `, { response: ${schemaExpr(response, { native, validator, models, refBinding })} }`;
+  return `, { response: ${schemaExpr(response, { native, validator, models })} }`;
 }
 
 /**
@@ -915,20 +932,6 @@ function nativeTs(
     return /[|&]/.test(inner) ? `(${inner})[]` : `${inner}[]`;
   }
   return tsType(type, 0, true);
-}
-
-/**
- * A model's schema BINDING in a native module (audit G6).
- *
- * Not the model's name: TypeScript keeps `const Pet` and `type Pet` in
- * separate namespaces, Swift and Kotlin do not — PMTC turned the pair into
- * `let Pet` + `struct Pet` (`invalid redeclaration`) and `val Pet` +
- * `data class Pet` (`conflicting declarations`), so no native module with a
- * model compiled on either target. `pet_schema` cannot collide: `ident()`
- * never emits an inner underscore and model names are PascalCase.
- */
-export function nativeSchemaBinding(model: string): string {
-  return `${model.charAt(0).toLowerCase()}${model.slice(1)}_schema`;
 }
 
 /**
@@ -1208,7 +1211,6 @@ export function emitNativeModules(
       defer,
       validator: dialect.name,
       models: modelTypes,
-      refBinding: nativeSchemaBinding,
     });
     // zod is recognised ONLY inside `@pyreon/validation`'s `zodSchema(...)` —
     // the recognizer keys on that distinctive wrapper call rather than on the
@@ -1224,10 +1226,36 @@ export function emitNativeModules(
     const f = new SourceFile(path);
     f.import("@pyreon/http", "createHttp");
     f.import("@pyreon/http/schema", "standardSchema");
-    f.import(dialect.module, dialect.binding);
-    if (dialect.nativeWrap)
-      f.import(dialect.nativeWrap.module, dialect.nativeWrap.fn);
+    // The validator binding only when something in this module names it. A
+    // tag whose operations are all streams declares no schema, and an unused
+    // `s` import is not harmless here: PMTC warns on it by name ("has NO
+    // native lowering"), which the verifier reads as the module failing.
+    const directRefs = new Set<string>();
+    for (const op of ops) {
+      collectRefs(op.response, directRefs);
+      collectRefs(op.body?.type, directRefs);
+      if (hasNativeStreamComponent(op)) collectRefs(op.stream?.event, directRefs);
+    }
+    const namesSchema =
+      ops.some((op) => !hasNativeStreamComponent(op) && typedResponse(op) !== undefined) ||
+      [...reachableModels(doc, directRefs)].some(
+        (m) => doc.models.find((x) => x.name === m)?.type.kind === "object",
+      );
+    if (namesSchema) {
+      f.import(dialect.module, dialect.binding);
+      if (dialect.nativeWrap)
+        f.import(dialect.nativeWrap.module, dialect.nativeWrap.fn);
+    }
     if (ops.some(hasNativeDataComponent)) f.import("@pyreon/query", "useQuery");
+    const streamOps = ops.filter(hasNativeStreamComponent);
+    if (streamOps.length > 0) {
+      f.import("@pyreon/query", "useStream");
+      const openers = new Set(
+        streamOps.map((o) => (o.stream?.format === "ndjson" ? "openNdjsonStream" : "openEventStream")),
+      );
+      f.import("@pyreon/http/stream", ...[...openers].sort());
+      if (streamOps.some((o) => o.stream?.format === "sse")) f.importType("@pyreon/http/stream", "SseEvent");
+    }
 
     f.line();
     f.doc(
@@ -1265,6 +1293,7 @@ export function emitNativeModules(
     for (const op of ops) {
       collectRefs(op.response, direct);
       collectRefs(op.body?.type, direct);
+      if (hasNativeStreamComponent(op)) collectRefs(op.stream?.event, direct);
     }
     const needed = reachableModels(doc, direct);
     const byName = new Map(doc.models.map((m) => [m.name, m]));
@@ -1276,9 +1305,15 @@ export function emitNativeModules(
       // Only OBJECT models get a schema binding; every other kind is inlined
       // where it is used (audit G5 — see `schemaExpr`). The TYPE is declared
       // for every model: the data components name it.
+      //
+      // The binding shares the model's NAME, exactly as on the web. TypeScript
+      // keeps `const Pet` and `type Pet` in separate namespaces; Swift and
+      // Kotlin do not, and PMTC resolves the pair itself — the TYPE keeps the
+      // name (it is what a fetch decodes into), the value becomes `PetValue`
+      // in the emitted file. (Before PMTC did that, this was `pet_schema`.)
       if (model.type.kind === "object") {
         f.line(
-          `export const ${nativeSchemaBinding(model.name)} = ${nativeSchema.get(model.name) ?? `${dialect.binding}.object({})`}`,
+          `export const ${model.name} = ${nativeSchema.get(model.name) ?? `${dialect.binding}.object({})`}`,
         );
       }
       // A STRUCTURAL type, not `Infer<typeof X>`. `Infer` would be an
@@ -1294,8 +1329,13 @@ export function emitNativeModules(
       f.line();
       f.doc(...operationDoc(op, doc, "native"));
       const client = op.baseUrl ? (clientOf.get(op.baseUrl) as string) : "api";
+      // A streamed endpoint hands back the raw body on the web — the same
+      // declaration the web layout's `<op>Stream` builds on.
+      const cfg = hasNativeStreamComponent(op)
+        ? ", { responseType: 'stream' }"
+        : responseCfg(op, true, dialect.name, modelTypes);
       f.line(
-        `export const ${op.id} = ${client}.endpoint(${q(`${op.method} ${op.path}`)}${responseCfg(op, true, dialect.name, modelTypes)})`,
+        `export const ${op.id} = ${client}.endpoint(${q(`${op.method} ${op.path}`)}${cfg})`,
       );
     }
 
@@ -1351,6 +1391,70 @@ export function emitNativeModules(
       // in a tracked scope, and PMTC lowers it to the same render-prop view.
       // (`q.data` is a SIGNAL; it is still CALLED inside the accessor.)
       f.line("  return () => props.children(q.data())");
+      f.line("}");
+    }
+
+    // Stream components — the `useStream` shape PMTC lowers to the native
+    // stream runtime: SSE or NDJSON with the web's reconnect + Last-Event-ID
+    // semantics, keyed on the URL so a new path param reopens the stream.
+    for (const op of streamOps) {
+      const s = op.stream as NonNullable<IrOperation["stream"]>;
+      let data =
+        s.format === "sse" && s.data === "text" ? "string" : nativeTs(s.event, modelTypes);
+      // An INLINE object event is named once. Written twice (the hook's type
+      // argument and the render prop's parameter), PMTC synthesizes a struct
+      // per occurrence on Kotlin and the two do not unify — measured:
+      // `List<…Data>` passed where `List<…ChildrenEventsItem>` was expected.
+      if (s.event.kind === "object" && data !== "string") {
+        const alias = `${typeIdent(op.id)}Event`;
+        f.line();
+        f.line(`export type ${alias} = ${data}`);
+        data = alias;
+      }
+      const item = s.format === "sse" ? `SseEvent<${data}>` : data;
+      const name = `${typeIdent(op.id)}Stream`;
+      const params = op.pathParams;
+      const propsType = [
+        ...params.map((p) => `${p.name}: ${tsType(p.type)}`),
+        // `readonly`: the web hook's `events()` is a readonly array. PMTC
+        // lowers `readonly T[]` exactly like `T[]`.
+        `children: (events: readonly ${/[|&]/.test(item) ? `(${item})` : item}[]) => unknown`,
+      ].join("; ");
+      const epArgs = [
+        ...(params.length
+          ? [`params: { ${params.map((p) => `${p.name}: props.${p.name}`).join(", ")} }`]
+          : []),
+        "signal: c.signal",
+        // The spec's own media type when it is not the format's default, so
+        // a server negotiating on `Accept` sees its own (the web does this too).
+        (s.format === "sse" ? "text/event-stream" : "application/x-ndjson") === s.media
+          ? "headers: c.headers"
+          : `headers: { ...c.headers, accept: ${q(s.media)} }`,
+      ].join(", ");
+      const streamOpts = [
+        ...(s.format === "sse" && s.data === "text" ? ["data: 'text'"] : []),
+        "signal: ctx.signal",
+        "onStatus: ctx.onStatus",
+      ].join(", ");
+      const open = s.format === "sse" ? "openEventStream" : "openNdjsonStream";
+      f.line();
+      f.doc(
+        `Streams \`${endpointSpec(op)}\` (${s.format === "sse" ? "Server-Sent Events" : "NDJSON"}) and renders every event received so far through \`children\`.`,
+        "",
+        s.format === "sse"
+          ? "A dropped connection is retried with backoff, resuming with `Last-Event-ID`."
+          : "NDJSON has no resume id, so a failure ends the stream.",
+        ...(params.length
+          ? [`Reopens the stream when ${params.map((p) => `\`${p.name}\``).join(", ")} ${params.length === 1 ? "changes" : "change"}.`]
+          : []),
+      );
+      f.line(`export function ${name}(props: { ${propsType} }) {`);
+      f.line(`  const s = useStream<${item}>((ctx) =>`);
+      f.line(`    ${open}((c) => ${op.id}({ ${epArgs} }), { ${streamOpts} }),`);
+      f.line("  )");
+      // An ACCESSOR, for the same reason the data component returns one: the
+      // body runs once, and `events()` must be re-read as events arrive.
+      f.line("  return () => props.children(s.events())");
       f.line("}");
     }
     files.push(f);

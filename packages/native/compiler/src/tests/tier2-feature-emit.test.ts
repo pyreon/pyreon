@@ -136,8 +136,9 @@ export function App() { return <Stack><Text>x</Text></Stack> }
  * Kotlin share one namespace for types and values, so a file declaring both
  * `const Todo = defineFeature(...)` and `interface Todo` fails on EITHER form
  * (`invalid redeclaration of 'Todo'` / `conflicting declarations`, measured for
- * both). The compiler warns by name for that shape rather than emitting the
- * collision, and the spec below pins the warning.
+ * both). The compiler used to warn by name for that shape; it now renames the
+ * VALUE (`Todo` → `TodoValue`, references included — value-type-namespaces.ts),
+ * so the pair compiles, and the spec below pins that.
  */
 const USED_SRC = `
 import { Text, Stack } from '@pyreon/primitives'
@@ -213,12 +214,24 @@ describe.runIf(isKotlincAvailable())('@pyreon/feature — Kotlin compiles', () =
 
 })
 
-describe('@pyreon/feature — a same-named type is DECLINED, not shipped broken', () => {
-  it('warns by name on both targets instead of emitting a redeclaration', () => {
+describe('@pyreon/feature — a same-named type is DISAMBIGUATED, not shipped broken', () => {
+  it('renames the value binding and its references on both targets, warning-free', () => {
     for (const target of ['swift', 'kotlin'] as const) {
-      const w = transform(COLLIDE_SRC, { target }).warnings ?? []
-      expect(w.some((m) => m.includes('Todo') && m.includes('same name'))).toBe(true)
+      const out = transform(COLLIDE_SRC, { target })
+      expect(out.warnings ?? []).toEqual([])
+      expect(out.code).toContain(target === 'swift' ? 'let TodoValue = PyreonFeature_TodoValue.self' : 'val TodoValue = PyreonFeature_TodoValue')
+      expect(out.code).toContain('TodoValue.name')
     }
+  })
+
+  it.runIf(isSwiftcAvailable())('Swift: the colliding pair compiles', async () => {
+    const r = await validateSwiftWithStubs(transform(COLLIDE_SRC, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+
+  it.runIf(isKotlincAvailable())('Kotlin: the colliding pair compiles', async () => {
+    const r = await validateKotlin(transform(COLLIDE_SRC, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
   })
 
   it('the ordinary case stays warning-free', () => {

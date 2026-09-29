@@ -28,7 +28,8 @@
 
 import { exprContainsJsx } from './expr-utils'
 import { liftInlineObjectStructs } from './inline-object-structs'
-import type { ComponentIR, DeclIR, ExprIR, ModuleDeclIR, StructIR, TypeIR } from './types'
+import { exits, narrowExpr } from './optional-narrowing'
+import type { ComponentIR, DeclIR, ExprIR, ModuleDeclIR, StatementIR, StructIR, TypeIR } from './types'
 
 /**
  * Type names that mean "a view". `VNodeChild` is Pyreon's; the others are
@@ -122,7 +123,13 @@ function viewInvokedProps(c: ComponentIR): Set<string> {
         visit(x.right)
         return
       case 'arrow':
-        // `return () => …` — the reactive-accessor return shape.
+        // `return () => …` — the reactive-accessor return shape, and its
+        // block-bodied form, whose view is every `return` it can reach.
+        if (x.stmts !== undefined && x.stmts.length > 0) {
+          const plan = planViewBlock(x.stmts)
+          if (plan !== null) for (const v of viewBlockViews(plan)) visit(v)
+          return
+        }
         if (x.body !== undefined) visit(x.body)
         return
       case 'jsx-element':
@@ -253,17 +260,155 @@ export function moduleViewHelpers(moduleDecls: readonly ModuleDeclIR[]): Map<str
 export function isRenderArrow(e: ExprIR): e is Extract<ExprIR, { kind: 'arrow' }> {
   const x = unparen(e)
   if (x.kind !== 'arrow') return false
-  if (x.stmts !== undefined && x.stmts.length > 0) return x.stmts.some((s) => s.kind === 'return' && s.expr !== undefined && exprContainsJsx(s.expr))
+  if (x.stmts !== undefined && x.stmts.length > 0) return returnsJsx(x.stmts)
   return isViewShaped(x.body)
 }
 
-/** The named warning for a block-bodied render callback. Same text on both targets. */
+/** Does any `return` reachable in `stmts` (through nested `if`s) build JSX? */
+function returnsJsx(stmts: readonly StatementIR[]): boolean {
+  return stmts.some(
+    (s) =>
+      (s.kind === 'return' && s.expr !== undefined && exprContainsJsx(s.expr)) ||
+      (s.kind === 'if' && (returnsJsx(s.then) || (s.elseBody !== undefined && returnsJsx(s.elseBody)))),
+  )
+}
+
+/**
+ * A BLOCK-bodied view — `(u) => { const n = u.name; if (!n) return <Empty/>; return <Text>{n}</Text> }`,
+ * or the same body under a reactive accessor — as a tree both targets can
+ * lower into their own view builder.
+ *
+ * A view builder is not a function body: it takes DECLARATIONS and
+ * CONDITIONALS, and its "result" is the views its branches produce, with no
+ * `return`. So a statement list lowers exactly when it has that shape —
+ *
+ *   - `const x = …`                       → a local (`let` / `val`),
+ *   - `if (c) return A` then the rest     → `if c { A } else { rest }`,
+ *   - `if (c) { … return A } else { … return B }` → the same, both arms planned,
+ *   - a final `return view`               → the view (`return null` → nothing).
+ *
+ * Anything else — an assignment, a loop, a mutable local, a side-effecting
+ * expression statement, an `if` that falls through — has no view-builder
+ * spelling and returns null, and the caller names it.
+ */
+export type ViewBlock =
+  | { kind: 'let'; stmt: Extract<StatementIR, { kind: 'let' }>; rest: ViewBlock }
+  | { kind: 'if'; cond: ExprIR; then: ViewBlock; otherwise: ViewBlock }
+  | { kind: 'view'; expr: ExprIR }
+  | { kind: 'empty' }
+
+export function planViewBlock(stmts: readonly StatementIR[]): ViewBlock | null {
+  const [s, ...rest] = stmts
+  if (s === undefined) return { kind: 'empty' }
+  switch (s.kind) {
+    case 'let': {
+      if (s.mutable === true || s.methodMutated === true) return null
+      const r = planViewBlock(rest)
+      return r === null ? null : { kind: 'let', stmt: s, rest: r }
+    }
+    case 'return': {
+      if (s.expr === undefined) return { kind: 'empty' }
+      const e = unparen(s.expr)
+      if (e.kind === 'literal' && e.value == null) return { kind: 'empty' }
+      return { kind: 'view', expr: s.expr }
+    }
+    case 'if': {
+      if (!exits(s.then)) return null
+      const then = planViewBlock(s.then)
+      if (then === null) return null
+      if (s.elseBody !== undefined) {
+        if (!exits(s.elseBody)) return null
+        const otherwise = planViewBlock(s.elseBody)
+        return otherwise === null ? null : { kind: 'if', cond: s.cond, then, otherwise }
+      }
+      const otherwise = planViewBlock(rest)
+      return otherwise === null ? null : { kind: 'if', cond: s.cond, then, otherwise }
+    }
+    default:
+      return null
+  }
+}
+
+/** The views a block can produce (its leaves). */
+export function viewBlockViews(b: ViewBlock): ExprIR[] {
+  switch (b.kind) {
+    case 'let':
+      return viewBlockViews(b.rest)
+    case 'if':
+      return [...viewBlockViews(b.then), ...viewBlockViews(b.otherwise)]
+    case 'view':
+      return [b.expr]
+    case 'empty':
+      return []
+  }
+}
+
+/** Every expression a block reads — for "does it read X" and binder naming. */
+export function viewBlockExprs(b: ViewBlock): ExprIR[] {
+  switch (b.kind) {
+    case 'let':
+      return [b.stmt.expr, ...viewBlockExprs(b.rest)]
+    case 'if':
+      return [b.cond, ...viewBlockExprs(b.then), ...viewBlockExprs(b.otherwise)]
+    case 'view':
+      return [b.expr]
+    case 'empty':
+      return []
+  }
+}
+
+/** Names the block declares — a narrowing binder must not collide with one. */
+export function viewBlockLocals(b: ViewBlock): string[] {
+  switch (b.kind) {
+    case 'let':
+      return [b.stmt.name, ...viewBlockLocals(b.rest)]
+    case 'if':
+      return [...viewBlockLocals(b.then), ...viewBlockLocals(b.otherwise)]
+    default:
+      return []
+  }
+}
+
+/**
+ * `b` with every read of `subject` replaced by `binder` — the branch an
+ * optional test narrowed. Null when any expression cannot be rewritten, or
+ * when the block declares a local of the binder's name (it would shadow it).
+ */
+export function narrowViewBlock(b: ViewBlock, subject: ExprIR, binder: string): ViewBlock | null {
+  if (viewBlockLocals(b).includes(binder)) return null
+  const go = (x: ViewBlock): ViewBlock | null => {
+    switch (x.kind) {
+      case 'let': {
+        const expr = narrowExpr(x.stmt.expr, subject, binder)
+        const rest = go(x.rest)
+        return expr === null || rest === null ? null : { kind: 'let', stmt: { ...x.stmt, expr }, rest }
+      }
+      case 'if': {
+        const cond = narrowExpr(x.cond, subject, binder)
+        const then = go(x.then)
+        const otherwise = go(x.otherwise)
+        return cond === null || then === null || otherwise === null ? null : { kind: 'if', cond, then, otherwise }
+      }
+      case 'view': {
+        const expr = narrowExpr(x.expr, subject, binder)
+        return expr === null ? null : { kind: 'view', expr }
+      }
+      case 'empty':
+        return x
+    }
+  }
+  return go(b)
+}
+
+/** The named warning for a block-bodied render callback that has no view-builder shape. Same text on both targets. */
 export function blockBodiedRenderCallbackWarning(where: string): string {
   return (
-    `${where}: a render callback with a BLOCK body (\`(x) => { …; return <…/> }\`) is not lowered ` +
-    `to native — a view builder takes one expression, not statements. An empty view is emitted in its ` +
-    `place. Use an expression body (\`(x) => <…/>\`), and move any derivation into the receiving ` +
-    `component or a \`computed\`.`
+    `${where}: this render callback's BLOCK body (\`(x) => { …; return <…/> }\`) is not lowered to native. ` +
+    `A view builder takes declarations and conditionals, not statements, so a block body lowers only when ` +
+    `it is \`const\` declarations, early \`if (…) return …\` branches and a final \`return\` — this one has ` +
+    `something else (an assignment, a loop, a mutable local, an expression statement, or an \`if\` that ` +
+    `falls through). An empty view is emitted in its place. Move that work into a \`computed\` or the ` +
+    `receiving component.`
   )
 }
 
@@ -277,14 +422,16 @@ export function unlowerableRenderValueWarning(where: string): string {
   )
 }
 
-/** Swift only — an optional render slot has no spelling that keeps the generic inferable. */
-export function optionalSlotSwiftWarning(component: string, prop: string): string {
+/**
+ * Swift only — an optional render slot that could not get its per-subset
+ * initializers (`reason`), so it is emitted REQUIRED.
+ */
+export function optionalSlotSwiftWarning(component: string, prop: string, reason: string): string {
   return (
-    `${component}: the render prop \`${prop}\` is OPTIONAL. On iOS a render prop is a generic ` +
-    `\`@ViewBuilder\` closure whose view type is inferred from the caller's closure, and a caller that ` +
-    `omits it leaves nothing to infer it from — so it is emitted as REQUIRED, and a call site that ` +
-    `leaves it out does not compile. Make it required, or give the omitting callers an explicit empty ` +
-    `callback. (Android keeps it optional.)`
+    `${component}: the render prop \`${prop}\` is OPTIONAL, and on iOS an optional render prop needs one ` +
+    `initializer per combination of provided slots — here ${reason}. It is emitted as REQUIRED, so a ` +
+    `call site that leaves it out does not compile. Make it required, or give the omitting callers an ` +
+    `explicit empty callback. (Android keeps it optional.)`
   )
 }
 

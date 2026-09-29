@@ -660,7 +660,7 @@ Catches render errors thrown by descendant components. The `fallback` receives t
 lazy(loader: () => Promise<{ default: ComponentFn }>, options?: LazyOptions): LazyComponent
 ```
 
-Wrap a dynamic import for code splitting. Returns a component that integrates with `Suspense` — the parent Suspense boundary shows its fallback until the import resolves. The loaded component is cached after first resolution.
+Wrap a dynamic import for code splitting. Returns a component that integrates with `Suspense` — the parent Suspense boundary shows its fallback until the import resolves. The loaded component is cached after first resolution. On the SERVER a still-loading lazy is WAITED for like an async component: `renderToStream` resolves it inside the Suspense boundary after flushing the fallback, and `renderToString` renders the loaded content. The client adopts that HTML only if its chunk has also loaded before hydration, so preload it first (zero's `startClient` does this for route components).
 
 **Example**
 

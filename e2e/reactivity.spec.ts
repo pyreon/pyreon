@@ -4,10 +4,11 @@
  */
 
 import { expect, test } from '@playwright/test'
+import { waitForHydration } from './hydration-barrier'
 
 async function setupPyreon(page: import('@playwright/test').Page) {
   await page.goto('/')
-  await page.waitForSelector('#layout', { timeout: 10_000 })
+  await waitForHydration(page)
 }
 
 test.describe('Reactivity E2E', () => {
