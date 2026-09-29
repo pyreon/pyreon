@@ -4,8 +4,8 @@
  * flag parsing in `args.ts`.
  *
  * The interactive branch (priority 4 — preset prompt + grouped
- * multiselect) is NOT tested here; it's only reachable when stdin is a
- * TTY and would require a clack mock. Tests cover the three
+ * multiselect) is NOT tested here; `run-prompts.test.ts` drives it with a
+ * mocked prompt module. Tests here cover the three
  * non-interactive priorities (explicit --features wins, --preset sets a
  * starting point, --yes falls back to template default), plus the
  * --with-X / --no-X composition that overlays every priority.

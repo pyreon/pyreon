@@ -132,9 +132,13 @@ import {
   isRenderArrow,
   isViewShaped,
   moduleViewHelpers,
+  narrowViewBlock,
+  planViewBlock,
   propRefName,
   slotPropsOf,
   unlowerableRenderValueWarning,
+  viewBlockExprs,
+  type ViewBlock,
   viewHelperFromDecl,
   viewHelperFromModuleDecl,
   type SlotProp,
@@ -548,6 +552,8 @@ let _crashNames: Set<string> = new Set()
  */
 let _geoNames: Set<string> = new Set()
 let _wsNames: Set<string> = new Set()
+/** `useStream` decl names — `s.events()` / `s.status()` read `.value`. */
+let _streamNames: Set<string> = new Set()
 
 /**
  * Is `obj.prop` a Phase-5 native-container reactive field backed by a Compose
@@ -561,6 +567,7 @@ function isContainerMutableStateField(obj: string, p: string): boolean {
     (_geoNames.has(obj) &&
       ['latitude', 'longitude', 'accuracy', 'isAuthorized', 'error'].includes(p)) ||
     (_wsNames.has(obj) && ['lastMessage', 'messages', 'isConnected', 'error'].includes(p)) ||
+    (_streamNames.has(obj) && ['events', 'latest', 'status', 'error'].includes(p)) ||
     (_pushNames.has(obj) &&
       ['token', 'lastNotification', 'notifications', 'isAuthorized', 'error'].includes(p)) ||
     (_payNames.has(obj) && ['products', 'ownedProductIds', 'purchasing', 'error'].includes(p)) ||
@@ -2183,6 +2190,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _crashNames = new Set()
   _geoNames = new Set()
   _wsNames = new Set()
+  _streamNames = new Set()
   _pushNames = new Set()
   _payNames = new Set()
   _mapNames = new Set()
@@ -2267,6 +2275,7 @@ function emitKotlinComponent(c: ComponentIR): string {
     // Phase 5: native data/services hook decl names (for the .value rewrite).
     if (d.kind === 'geolocation') _geoNames.add(d.name)
     if (d.kind === 'websocket') _wsNames.add(d.name)
+    if (d.kind === 'stream') _streamNames.add(d.name)
     if (d.kind === 'push') _pushNames.add(d.name)
     if (d.kind === 'payments') _payNames.add(d.name)
     if (d.kind === 'map') _mapNames.add(d.name)
@@ -2580,6 +2589,15 @@ function emitKotlinComponent(c: ComponentIR): string {
     lines.push(`    }`)
     lines.push(`  }`)
   }
+  // useStream: a `DisposableEffect` per decl, KEYED on the request URL plus
+  // the restart tick — a runtime `:param` or `restart()` re-keys it, which
+  // stops the old stream and opens a fresh one (the web's reactive-source
+  // semantic). The connection runs on the runtime's own thread; `onDispose`
+  // closes it, which is the only thing that ends a blocking socket read.
+  for (const d of c.decls) {
+    if (d.kind !== 'stream') continue
+    lines.push(...emitKotlinStreamHarness(d, ctx))
+  }
   // While emitting a layout's body, its `<RouterView />` emits `content()`.
   _emittingLayoutComponentKotlin = isLayout
   // M4.5: capture the composable-top insertion point (after decls + the
@@ -2607,7 +2625,7 @@ function emitKotlinComponent(c: ComponentIR): string {
       return false
     })
     if (usable.length === 0) {
-      lines.push(`  ${emitKotlinSlotUse(c.returnExpr, 2) ?? emitKotlinExpr(c.returnExpr, 2)}`)
+      lines.push(emitKotlinRoot(c.returnExpr, 2))
     } else {
       const branches = usable
         .map((d) => {
@@ -2635,7 +2653,7 @@ function emitKotlinComponent(c: ComponentIR): string {
       lines.push(`        false`)
       lines.push(`      }`)
       lines.push(`  ) {`)
-      lines.push(`    ${emitKotlinSlotUse(c.returnExpr, 4) ?? emitKotlinExpr(c.returnExpr, 4)}`)
+      lines.push(emitKotlinRoot(c.returnExpr, 4))
       lines.push(`  }`)
     }
   }
@@ -2670,6 +2688,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _crashNames = new Set()
   _geoNames = new Set()
   _wsNames = new Set()
+  _streamNames = new Set()
   _pushNames = new Set()
   _payNames = new Set()
   _mapNames = new Set()
@@ -2778,6 +2797,44 @@ function syncedInitialKotlin(
   if (scalar === 'bool') return value ? 'true' : 'false'
   // A Double literal so `PyreonSyncedSignal<Double>` is inferred (JS number).
   return Number.isInteger(value as number) ? `${value}.0` : String(value)
+}
+
+/** The `DisposableEffect` that runs one `useStream` decl. */
+function emitKotlinStreamHarness(d: Extract<DeclIR, { kind: 'stream' }>, ctx: KotlinCtx): string[] {
+  const name = kotlinIdent(d.name)
+  const url = d.urlExpr !== undefined ? emitKotlinExpr(d.urlExpr, 0) : kotlinStr(d.url)
+  const req = [`method = ${kotlinStr(d.method)}`, `url = ${url}`]
+  if (d.headers) {
+    req.push(
+      `headers = mapOf(${Object.entries(d.headers)
+        .map(([k, v]) => `${kotlinStr(k)} to ${kotlinStr(v)}`)
+        .join(', ')})`,
+    )
+  }
+  if (d.requestBody !== undefined) req.push(`body = ${kotlinStr(d.requestBody)}`)
+  const request = `PyreonStreamRequest(${req.join(', ')})`
+  const data = kotlinType(d.dataType, ctx)
+  const out = [`  DisposableEffect("\${${url}}#\${${name}.restartTick.value}") {`]
+  if (d.format === 'sse') {
+    const opts: string[] = []
+    if (d.events) opts.push(`events = listOf(${d.events.map((e) => kotlinStr(e)).join(', ')})`)
+    if (d.lastEventId !== undefined) opts.push(`lastEventId = ${kotlinStr(d.lastEventId)}`)
+    opts.push(
+      d.reconnect === null
+        ? 'reconnect = null'
+        : `reconnect = PyreonStreamReconnect(attempts = ${d.reconnect.attempts}, delay = ${d.reconnect.delay}L, maxDelay = ${d.reconnect.maxDelay}L, onEnd = ${d.reconnect.onEnd})`,
+    )
+    const payload = d.sseText ? 'm.data' : `PyreonFetchJson.decodeFromString<${data}>(m.data)`
+    out.push(
+      `    ${name}.startSse(${request}, PyreonSseOptions(${opts.join(', ')})${d.accept !== undefined ? `, accept = ${kotlinStr(d.accept)}` : ''}) { m -> PyreonSseEvent(m.type, ${payload}, m.id) }`,
+    )
+  } else {
+    const accept = d.accept !== undefined ? `, accept = ${kotlinStr(d.accept)}` : ''
+    out.push(`    ${name}.startNdjson(${request}${accept}) { line -> PyreonFetchJson.decodeFromString<${data}>(line) }`)
+  }
+  out.push(`    onDispose { ${name}.stop() }`)
+  out.push(`  }`)
+  return out
 }
 
 function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
@@ -3028,6 +3085,11 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   }
   if (d.kind === 'websocket') {
     return `val ${kotlinIdent(d.name)} = remember { PyreonWebSocket() }`
+  }
+  // `const s = useStream(…)` → a remembered PyreonStream; the
+  // `DisposableEffect` that starts and stops it is emitted with the harnesses.
+  if (d.kind === 'stream') {
+    return `val ${kotlinIdent(d.name)} = remember { PyreonStream<${kotlinType(d.itemType, ctx)}>(maxEvents = ${d.maxEvents}) }`
   }
   if (d.kind === 'database') {
     _databaseNames.add(d.name)
@@ -4206,6 +4268,76 @@ function emitKotlinViewHelper(h: ViewHelper, visibility: string, indent: number,
   return `@Composable\n${' '.repeat(indent)}${visibility}fun ${kotlinIdent(h.name)}(${params}) {\n${' '.repeat(indent + 2)}${body}\n${' '.repeat(indent)}}`
 }
 
+/**
+ * The component's root view, padded to `indent`. A block-bodied reactive
+ * accessor (`return () => { const t = …; return <X/> }`) lowers to its
+ * statements — a composable re-runs on every state change, so the block IS
+ * the body.
+ */
+function emitKotlinRoot(expr: ExprIR, indent: number): string {
+  const block = kotlinAccessorViewBlock(expr)
+  if (block !== null) return emitKotlinViewBlock(block, indent).join('\n')
+  return `${' '.repeat(indent)}${emitKotlinSlotUse(expr, indent) ?? emitKotlinExpr(expr, indent)}`
+}
+
+/**
+ * A planned BLOCK-bodied view as composable statements — twin of emit-swift's
+ * `emitSwiftViewBlock`. A composable lambda takes statements natively, so
+ * `const` → `val`, an early-return branch → `if` / `else`, a `return view` →
+ * the view, and `return null` → nothing. A branch an optional test narrowed
+ * binds the subject to a local `val` first when kotlinc cannot smart-cast it.
+ */
+function emitKotlinViewBlock(b: ViewBlock, indent: number): string[] {
+  const pad = ' '.repeat(indent)
+  switch (b.kind) {
+    case 'empty':
+      return []
+    case 'view':
+      return [`${pad}${emitKotlinChild({ kind: 'expr', expr: unparenExpr(b.expr) }, indent)}`]
+    case 'let': {
+      const ctx: KotlinCtx = { synthesizedDataClasses: [], componentName: '' }
+      const line = `${pad}${emitKotlinStatement(b.stmt, indent, ctx)}`
+      const t = b.stmt.declaredType ?? inferType(b.stmt.expr, _kotlinExprInferCtx)
+      return [line, ...withKotlinLocals([[b.stmt.name, t.kind === 'unknown' ? undefined : t]], () => emitKotlinViewBlock(b.rest, indent))]
+    }
+    case 'if': {
+      // An empty arm is an empty block — `return null` renders nothing.
+      const inner = (x: ViewBlock): string => {
+        const lines = emitKotlinViewBlock(x, indent + 2)
+        return lines.length === 0 ? `\n${pad}` : `\n${lines.join('\n')}\n${pad}`
+      }
+      const branches = (cond: string, then: ViewBlock, other: ViewBlock): string => {
+        const head = `${pad}if (${cond}) {${inner(then)}}`
+        return other.kind === 'empty' ? head : `${head} else {${inner(other)}}`
+      }
+      const probe = narrowingFor(b.cond, _kotlinExprInferCtx, _activePropsParamName)
+      if (probe !== null) {
+        const present = probe.presentWhenTrue ? b.then : b.otherwise
+        const other = probe.presentWhenTrue ? b.otherwise : b.then
+        const plan = planKotlinNarrowing(b.cond, viewBlockExprs(present))
+        if (plan !== null) {
+          const binder = binderName(plan.n.subject, [...viewBlockExprs(present), ...viewBlockExprs(other)])
+          const rewritten = narrowViewBlock(present, plan.n.subject, binder)
+          if (rewritten !== null) {
+            const bound = `${pad}val ${kotlinIdent(binder)} = ${kotlinBoundSubject(plan.n, indent)}`
+            const body = withKotlinLocals([[binder, plan.n.unwrapped]], () => branches(`${kotlinIdent(binder)} != null`, rewritten, other))
+            return [bound, body]
+          }
+          warnUnnarrowableKotlin(plan.n, indent)
+        }
+      }
+      return [branches(kotlinCondition(b.cond, (x) => emitKotlinExpr(x, indent)), b.then, b.otherwise)]
+    }
+  }
+}
+
+/** A zero-parameter arrow with a plannable block body — a block-bodied reactive-accessor return. */
+function kotlinAccessorViewBlock(e: ExprIR): ViewBlock | null {
+  const x = unparenExpr(e)
+  if (x.kind !== 'arrow' || x.params.length > 0 || x.stmts === undefined || x.stmts.length === 0) return null
+  return planViewBlock(x.stmts)
+}
+
 function activeSlotRefKotlin(e: ExprIR): SlotProp | undefined {
   const name = propRefName(e, _activePropsParamName)
   return name === null ? undefined : _activeSlotsKotlin.get(name)
@@ -4254,16 +4386,19 @@ function emitKotlinSlotArg(
     const arity = Math.max(slot?.params.length ?? 0, x.params.length)
     const names = Array.from({ length: arity }, (_, i) => x.params[i] ?? '_')
     const head = arity === 0 ? '{' : `{ ${names.map((n) => (n === '_' ? '_' : kotlinIdent(n))).join(', ')} ->`
-    if (x.stmts !== undefined && x.stmts.length > 0) {
+    const block = x.stmts !== undefined && x.stmts.length > 0 ? planViewBlock(x.stmts) : undefined
+    if (block === null) {
       const w = blockBodiedRenderCallbackWarning(where)
       if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
       return `${head} }`
     }
     const types = names.map((_, i) => slot?.params[i] ?? x.paramTypes?.[i])
-    const body = withKotlinLocals(
-      names.map((n, i) => [n, types[i]] as const).filter(([n]) => n !== '_'),
-      () => emitKotlinChild({ kind: 'expr', expr: unparenExpr(x.body) }, indent + 2),
-    )
+    const params = names.map((n, i) => [n, types[i]] as const).filter(([n]) => n !== '_')
+    if (block !== undefined) {
+      const lines = withKotlinLocals(params, () => emitKotlinViewBlock(block, indent + 2))
+      return `${head}\n${lines.join('\n')}\n${base}}`
+    }
+    const body = withKotlinLocals(params, () => emitKotlinChild({ kind: 'expr', expr: unparenExpr(x.body) }, indent + 2))
     return `${head}\n${pad}${body}\n${base}}`
   }
   const forwarded = activeSlotRefKotlin(x)
@@ -4829,6 +4964,11 @@ export function kotlinType(t: TypeIR, ctx?: KotlinCtx, signalName?: string): str
       // on Android — `kotlin.Error` is a narrower subclass the runtime never
       // declares.
       if (t.name === 'Error' && t.args.length === 0 && !_declaredStructs.some((st) => st.name === 'Error')) return 'Throwable'
+      // `SseEvent<T>` (`@pyreon/http/stream`) is the native stream runtime's
+      // `PyreonSseEvent<T>` — same three fields, same meaning.
+      if (t.name === 'SseEvent' && t.args.length === 1) {
+        return `PyreonSseEvent<${kotlinType(t.args[0]!, ctx, signalName)}>`
+      }
       if (t.args.length === 0) return t.name
       return `${t.name}<${t.args.map((a) => kotlinType(a, ctx, signalName)).join(', ')}>`
     }

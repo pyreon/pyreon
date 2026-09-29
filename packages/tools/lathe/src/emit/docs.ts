@@ -121,8 +121,8 @@ function frontmatter(title: string, description: string): string[] {
  * Doubling the quote (`""`) is the CSV and SINGLE-quoted-YAML convention, and
  * it is wrong here: inside double quotes YAML escapes with a BACKSLASH, so a
  * doubled quote closes the scalar and starts another one. `title: """x"""`
- * does not parse as `"x"` — gray-matter, which is what actually reads these
- * pages, rejects the document outright. A title containing a quote took the
+ * does not parse as `"x"` — the frontmatter reader `@pyreon/zero-content`
+ * compiles these pages with rejects the document outright. A title containing a quote took the
  * whole page down.
  *
  * Backslash first, for the same reason `mdCell` below does it: escaping only
@@ -131,8 +131,8 @@ function frontmatter(title: string, description: string): string[] {
  *
  * The control characters go the way they go in every other emitted context:
  * OUT. A double-quoted YAML scalar has no escape available for them at this
- * layer, and js-yaml -- which is what gray-matter reads these pages with --
- * REFUSES the whole document on one, naming a line and column in a file the
+ * layer, and the YAML reader (js-yaml when this was written, `yaml` in
+ * `@pyreon/zero-content` now) REFUSES the whole document on one, naming a line and column in a file the
  * author never wrote. NUL, BEL and ESC each took a page down; DEL and NEL
  * parsed but were silently dropped, so escaping them would buy nothing a strip
  * does not. TAB is legal and stays.
