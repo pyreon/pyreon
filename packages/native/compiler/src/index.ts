@@ -6,6 +6,7 @@
 import { emitKotlin } from './emit-kotlin'
 import { emitSwift } from './emit-swift'
 import { parsePyreon } from './parse'
+import { moduleTag, withSynthStructSuffix } from './expr-utils'
 import { CHART_ENGINE_DECLARED_NAMES, CHART_ENGINE_STRUCTS } from './chart-engine-structs'
 import type { EmitOptions, TransformResult } from './types'
 
@@ -61,6 +62,13 @@ function chartEngineShadowWarnings(parsed: ReturnType<typeof parsePyreon>): stri
 }
 
 export function transform(source: string, options: EmitOptions): TransformResult {
+  // A caller that names the module is building several of them into one
+  // target, so the synthesized structs must not share names across files.
+  const suffix = options.filename === undefined ? '' : `_${moduleTag(source)}`
+  return withSynthStructSuffix(suffix, () => transformModule(source, options))
+}
+
+function transformModule(source: string, options: EmitOptions): TransformResult {
   const parsed = parsePyreon(source, options.filename)
   const usesChartEngine = CHART_PLOT_IMPORT.test(source)
   const structs = usesChartEngine ? [...parsed.structs, ...CHART_ENGINE_STRUCTS] : parsed.structs

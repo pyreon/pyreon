@@ -71,6 +71,7 @@ import {
   isNullableType,
   optionalSpreadWarning,
   schemaInputNeedsConversion,
+  synthStructName,
 } from './expr-utils'
 import {
   nilCoalesceTernary,
@@ -4266,7 +4267,7 @@ function emitSwiftDecl(
           const base: TypeIR = distinct.length === 1 ? distinct[0]! : { kind: 'union', branches: distinct }
           return { name, type: values.length < dataRows.length ? { kind: 'union', branches: [base, { kind: 'undefined' }] } as TypeIR : base }
         })
-        const name = `__Obj${_synthExprStructs.length}`
+        const name = synthStructName(_synthExprStructs.length)
         _synthExprStructs.push({ name, fields })
         inferredRowType = { kind: 'typeRef', name, args: [] }
         rowType = name
