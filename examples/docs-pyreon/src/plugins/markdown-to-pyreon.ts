@@ -35,8 +35,8 @@ import type { Plugin } from 'vite'
 // use below needs the aliased type import.
 import MarkdownIt from 'markdown-it'
 import type { MarkdownIt as MarkdownItInstance } from 'markdown-it'
-import anchor from 'markdown-it-anchor'
 import { createHighlighter, type Highlighter } from 'shiki'
+import { headingAnchors } from './heading-anchors'
 
 interface Heading {
   level: number
@@ -202,16 +202,11 @@ async function buildMd(id: string, src: string): Promise<BuiltMd> {
     },
   })
 
-  md.use(anchor, {
-    permalink: anchor.permalink.linkAfterHeader({
-      style: 'aria-describedby',
-      symbol: '#',
-      class: 'h-anchor',
-    }),
-    slugify(s) {
-      return slugify(s)
-    },
-    callback(token, info) {
+  md.use(headingAnchors, {
+    slugify,
+    className: 'h-anchor',
+    symbol: '#',
+    onHeading(token, info) {
       const lvl = Number(token.tag.slice(1))
       if (lvl >= 2 && lvl <= 3) {
         headings.push({ level: lvl, text: info.title, id: info.slug })

@@ -29,6 +29,17 @@ ships, so nothing copyleft reaches a production bundle. `@pyreon/flow` used to
 depend on `elkjs` (EPL-2.0) for graph layout and now ships its own engine, so
 that entry is gone rather than merely lazy.
 
+## Code derived from permissively-licensed projects
+
+Some Pyreon source files reproduce an algorithm from another project closely
+enough to carry its notice. They are not dependencies — nothing is installed —
+so the notice travels in the file itself, as a `/*! … */` comment that bundlers
+preserve in the built output.
+
+| Pyreon file | Derived from | Licence |
+| --- | --- | --- |
+| `packages/tools/atlas/src/verify-browser/pixel-diff.ts` | [`pixelmatch`](https://github.com/mapbox/pixelmatch) 7.2.0 — YIQ colour metric and anti-aliasing detector, reproduced so snapshot verdicts stay byte-identical after the dependency was removed | ISC, © 2025 Mapbox |
+
 ## Keeping this accurate
 
 `bun scripts/check-license-coverage.ts` scans every runtime dependency of every

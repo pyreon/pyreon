@@ -114,15 +114,61 @@ export function findCiFailFastViolations(workflow: string, aggregateScript: stri
   return violations
 }
 
+/** Scheduling optimizations must preserve selection and single-writer caches. */
+export function findCiSchedulingViolations(workflow: string, setupAction: string): string[] {
+  const code = workflow
+    .split('\n')
+    .filter((line) => !/^\s*#/.test(line))
+    .join('\n')
+  const jobs = new Map(parseJobBlocks(code).map((job) => [job.name, job.body]))
+  const errors: string[] = []
+  if (
+    !code.includes('CI_BASE: ${{ github.event.pull_request.base.sha }}') ||
+    code.includes('origin/${{ github.base_ref }}')
+  )
+    errors.push('all PR selectors must share the immutable event base SHA')
+  const install = jobs.get('install') ?? ''
+  const scaffold = jobs.get('scaffold-smoke-cell') ?? ''
+  if (
+    !scaffold.includes("PYREON_BOOTSTRAP_SKIP: '1'") ||
+    !scaffold.includes('uses: ./.github/actions/setup-pyreon') ||
+    scaffold.includes("restore-bootstrap: 'false'")
+  )
+    errors.push('scaffold must restore lib/ once and skip rebuilding it for temporary workspaces')
+  for (const profile of ['--profile="$prefix"', '--profile=e2e', '--profile=scaffold']) {
+    if (!install.includes(profile)) errors.push(`missing workload-specific batching: ${profile}`)
+  }
+  const tests = jobs.get('test-cell') ?? ''
+  if (
+    tests.includes('native-verdicts-ci-${{ runner.os }}-${{ matrix.name }}') ||
+    !tests.includes("if: contains(matrix.members, 'native-rest')") ||
+    !tests.includes("if: always() && contains(matrix.members, 'native-rest')")
+  )
+    errors.push('native-rest cache ownership must follow membership, not batch name')
+  if (!(jobs.get('test') ?? '').includes('NEEDS_JSON: ${{ toJSON(needs) }}'))
+    errors.push('Test must validate scheduler results and selection outputs')
+  if (/restore-keys:\s*node-modules-/m.test(setupAction))
+    errors.push('node_modules must not download a stale prefix tree that fallback discards')
+  return errors
+}
+
 if (import.meta.main) {
   const root = join(import.meta.dirname, '..')
   const workflow = readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8')
   const aggregate = readFileSync(join(root, 'scripts/ci-aggregate.ts'), 'utf8')
-  const violations = findCiFailFastViolations(workflow, aggregate)
+  const setup = readFileSync(join(root, '.github/actions/setup-pyreon/action.yml'), 'utf8')
+  const violations = [
+    ...findCiFailFastViolations(workflow, aggregate),
+    ...findCiSchedulingViolations(workflow, setup),
+  ]
   if (violations.length > 0) {
-    console.error('[check-ci-fail-fast] FAILED — expensive CI can bypass preflight or ignore matrix fail-fast:')
+    console.error(
+      '[check-ci-fail-fast] FAILED — expensive CI can bypass preflight or ignore matrix fail-fast:',
+    )
     for (const violation of violations) console.error(`  - ${violation}`)
     process.exit(1)
   }
-  console.log(`[check-ci-fail-fast] ✓ ${EXPENSIVE_JOBS.length} expensive jobs wait for preflight; ${MATRIX_JOBS.length} matrices fail fast`)
+  console.log(
+    `[check-ci-fail-fast] ✓ ${EXPENSIVE_JOBS.length} expensive jobs wait for preflight; ${MATRIX_JOBS.length} matrices fail fast`,
+  )
 }

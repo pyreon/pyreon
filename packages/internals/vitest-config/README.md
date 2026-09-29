@@ -74,7 +74,7 @@ The helper executes ONE canonical merge order, immune to per-package drift:
 ```
 mergeConfig(
   sharedConfig,                     // aliases + bun condition + retry + timeout
-  createVitestConfig({              // category coverage + globals + environment
+  createBaseConfig({                // category coverage + globals + environment (src/base.ts)
     environment, setupFiles, coverageExclude, coverageThresholds,
   }),
 )
