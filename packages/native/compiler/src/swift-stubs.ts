@@ -1805,15 +1805,15 @@ public struct PyreonUrlStateInt {
     public func callAsFunction() -> Int {
         guard let raw = router?.query[key] else { return defaultValue }
         let n = pyreonUrlNumber(raw, Double(defaultValue))
-        // A binding declared with an integer default is Int on both targets
-        // (the repo-wide inferTypeFromInitial rule), so a fractional or
-        // out-of-range value has no representation — fall back to the default,
-        // the same answer the web gives for a value it cannot read.
+        // A binding declared with an integer default is a 64-bit integer on
+        // both targets (Swift Int and Kotlin Long), so a fractional value has
+        // no representation — fall back to the default, the same answer the
+        // web gives for a value it cannot read.
         //
-        // The bound is Kotlin's 32-bit Int, not Swift's 64-bit one, so both
-        // targets accept the same set: one shared source must not read
-        // ?page=3000000000 as a number on iOS and the default on Android.
-        guard n.rounded() == n, n >= -2147483648, n <= 2147483647 else { return defaultValue }
+        // The bound is the JS safe-integer range on BOTH targets, so one
+        // shared source reads the same set: ?page=3000000000 is a number
+        // everywhere, the way the web's Number(raw) reads it.
+        guard n.rounded() == n, n >= -9007199254740991, n <= 9007199254740991 else { return defaultValue }
         return Int(n)
     }
     public func set(_ value: Int) { router?.setQueryParam(key, String(value)) }

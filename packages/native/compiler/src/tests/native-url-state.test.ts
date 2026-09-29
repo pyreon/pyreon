@@ -245,12 +245,12 @@ export function C() { const o = useUrlState('o', -3); return (<Stack><Text>{\`\$
   // 32-bit). Both bound the accepted set to the JS safe-integer range, the
   // way the web's Number(raw) reads it.
   it('accepts the same integer range on both targets', () => {
-    expect(transform(TYPED_SRC, { target: 'swift' }).code).toContain(
-      'n >= -9007199254740991, n <= 9007199254740991',
-    )
-    const kotlin = transform(TYPED_SRC, { target: 'kotlin' }).code
-    expect(kotlin).toContain('n < -9007199254740991.0 || n > 9007199254740991.0')
-    expect(kotlin).toContain('return n.toLong()')
+    // The bound lives in the co-located runtime now (see the file header
+    // above these classes moved OUT of per-file emission), not in the
+    // per-call-site transform() output.
+    expect(RUNTIME_SWIFT).toContain('n >= -9007199254740991, n <= 9007199254740991')
+    expect(RUNTIME_KOTLIN).toContain('n < -9007199254740991.0 || n > 9007199254740991.0')
+    expect(RUNTIME_KOTLIN).toContain('return n.toLong()')
   })
 
   // The number helper is shared by Int and Double — declared once per runtime.

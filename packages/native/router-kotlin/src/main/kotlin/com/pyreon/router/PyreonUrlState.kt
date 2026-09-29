@@ -66,22 +66,23 @@ private fun pyreonUrlNumber(raw: String, fallback: Double): Double {
     return if (v.isNaN()) fallback else v
 }
 
-/** Int-valued search parameter. See `pyreonUrlNumber` for the decode. */
+/** Long-valued search parameter. See `pyreonUrlNumber` for the decode. */
 class PyreonUrlStateInt(
     private val router: PyreonRouter?,
     private val key: String,
-    private val defaultValue: Int,
+    private val defaultValue: Long,
 ) {
-    operator fun invoke(): Int {
+    operator fun invoke(): Long {
         val raw = router?.query?.value?.get(key) ?: return defaultValue
         val n = pyreonUrlNumber(raw, defaultValue.toDouble())
-        // An integer-defaulted binding is Int on both targets, so a fractional
-        // or out-of-range value has no representation — fall back to the
+        // An integer-defaulted binding is a 64-bit integer on both targets, so
+        // a fractional value has no representation — fall back to the
         // default, the same answer the web gives for a value it cannot read.
-        if (n != Math.floor(n) || n < Int.MIN_VALUE.toDouble() || n > Int.MAX_VALUE.toDouble()) return defaultValue
-        return n.toInt()
+        // Bounded to the JS safe-integer range, identically to the Swift twin.
+        if (n != Math.floor(n) || n < -9007199254740991.0 || n > 9007199254740991.0) return defaultValue
+        return n.toLong()
     }
-    fun set(value: Int) { router?.setQueryParam(key, value.toString()) }
+    fun set(value: Long) { router?.setQueryParam(key, value.toString()) }
     fun clear() { router?.setQueryParam(key, null) }
 }
 
