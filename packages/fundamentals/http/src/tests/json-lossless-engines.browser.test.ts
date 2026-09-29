@@ -169,3 +169,15 @@ describe('lossless JSON — every layer this engine can run agrees', () => {
     }
   })
 })
+
+// THROWAWAY negative control for PR #3736 — reverted in the next commit.
+// Fails ONLY in WebKit (Playwright WebKit's UA carries `Version/` + `Safari/`
+// and no `Chrome/`/`Firefox/`), proving the CI engines step runs WebKit and
+// that a failure there reds `Test (browser)`.
+describe('negative control (throwaway)', () => {
+  it('is not WebKit', () => {
+    const ua = navigator.userAgent
+    const isWebKit = /Version\/[\d.]+.*Safari\//.test(ua) && !/Chrome\/|Firefox\//.test(ua)
+    expect(isWebKit, ua).toBe(false)
+  })
+})
