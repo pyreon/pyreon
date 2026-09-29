@@ -794,7 +794,7 @@ export function categoryPoints(values: Double[], plot: Rect, dom: Domain): Pt[] 
 }
 
 /** `layoutBars` for series `k`. */
-function barsLaid(spec: ChartSpec, k: number, plot: Rect, dom: Domain): Rect[] {
+export function barsLaid(spec: ChartSpec, k: number, plot: Rect, dom: Domain): Rect[] {
   return layoutBars(spec.series[k]!.values, plot, dom, 0.25)
 }
 
@@ -813,19 +813,19 @@ function levelsOf(series: Series[]): StackLevels {
 }
 
 /** `layoutStackLevels` / `layoutGroupedBars` for a kind. */
-function setLaid(spec: ChartSpec, kind: string, plot: Rect, dom: Domain): StackSegment[] {
+export function setLaid(spec: ChartSpec, kind: string, plot: Rect, dom: Domain): StackSegment[] {
   const idx = indicesOf(spec, kind)
   const values = idx.map((k) => spec.series[k]!.values)
   return kind === 'stacked' ? layoutStackLevels(levelsOf(idx.map((k) => spec.series[k]!)), values, plot, dom, 0.25) : layoutGroupedBars(values, plot, dom, 0.25)
 }
 
 /** `layoutBarsH` for series `k`. */
-function barsLaidH(spec: ChartSpec, k: number, plot: Rect, dom: Domain): Rect[] {
+export function barsLaidH(spec: ChartSpec, k: number, plot: Rect, dom: Domain): Rect[] {
   return layoutBarsH(spec.series[k]!.values, plot, dom, 0.25)
 }
 
 /** `layoutStackLevelsH` / `layoutGroupedBarsH` for a kind. */
-function setLaidH(spec: ChartSpec, kind: string, plot: Rect, dom: Domain): StackSegment[] {
+export function setLaidH(spec: ChartSpec, kind: string, plot: Rect, dom: Domain): StackSegment[] {
   const idx = indicesOf(spec, kind)
   const values = idx.map((k) => spec.series[k]!.values)
   return kind === 'stacked' ? layoutStackLevelsH(levelsOf(idx.map((k) => spec.series[k]!)), values, plot, dom, 0.25) : layoutGroupedBarsH(values, plot, dom, 0.25)
