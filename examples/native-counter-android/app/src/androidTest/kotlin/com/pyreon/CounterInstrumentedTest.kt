@@ -708,6 +708,40 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithText("Theme: light").assertIsDisplayed()
     }
 
+    // useScreenOrientation + useSafeArea: `AndroidOrientationProbe` and
+    // `AndroidSafeAreaProbe` were named by the emit and defined nowhere on a
+    // real build, so this whole app would not compile. Reaching this test at all
+    // proves they resolve; the assertions prove they read the live platform.
+    // The inset is asserted with `waitUntil` because `rootWindowInsets` is null
+    // until the window attaches — the probe's layout listener must bump the
+    // Compose state for the text to flip, which is the reactivity half.
+    @Test
+    fun displayProbesReadTheLivePlatform() {
+        composeRule.onNodeWithText("Orientation: portrait").assertIsDisplayed()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("Inset: top").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    // Rotation moves the reported orientation. The Activity is recreated (no
+    // `configChanges`), so this proves the fresh probe reads the new display,
+    // not a stale value; restoring portrait leaves the shared emulator as found.
+    @Test
+    fun orientationFollowsRotation() {
+        composeRule.activityRule.scenario.onActivity {
+            it.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        }
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            composeRule.onAllNodesWithText("Orientation: landscape").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.activityRule.scenario.onActivity {
+            it.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            composeRule.onAllNodesWithText("Orientation: portrait").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
     // FFI escape hatch (useNativeModule) asserted in the REAL Compose
     // semantics tree — the Android half of the iOS
     // `test_userDefinedNativeModuleRunsOnDevice`. The shared Counter.tsx has

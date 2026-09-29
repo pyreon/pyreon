@@ -23,6 +23,8 @@ import {
   useSizeClass,
   useColorScheme,
   useDatabase,
+  useSafeArea,
+  useScreenOrientation,
 } from '@pyreon/hooks'
 import { createI18n } from '@pyreon/i18n/core'
 import { createMachine } from '@pyreon/machine'
@@ -320,6 +322,16 @@ export function Counter() {
   // (proven locally), so the read reflects the REAL system appearance rather
   // than a baked constant (a constant would show the same value in both).
   const colorScheme = useColorScheme()
+  // Display probes — orientation type + the top safe-area inset. Native: iOS
+  // `PyreonScreenOrientation(probe: UIKitOrientationProbe())` /
+  // `PyreonSafeArea(probe: UIKitSafeAreaProbe())`, Android the
+  // `Android*Probe(ctx)` twins (`PyreonSafeAreaAndroid.kt`). Both classes were
+  // named by the emit and defined NOWHERE on device builds, so any app using
+  // either hook failed to compile; this is the build-time proof that they
+  // resolve. Observable + differentiating: a portrait phone reports
+  // `Orientation: portrait`, and the status bar makes the top inset positive.
+  const orientation = useScreenOrientation()
+  const safeArea = useSafeArea()
   // FFI escape-hatch proof — a native module the APP provides, not the
   // framework. `DeviceInfo` is NOT a Pyreon hook and never will be: it lowers
   // to `DeviceInfo()` (iOS, `ios/DeviceInfo.swift`) / `DeviceInfo(ctx)`
@@ -420,6 +432,8 @@ export function Counter() {
       </StatusBadge>
       <Text>Size: {sizeClass}</Text>
       <Text>Theme: {colorScheme}</Text>
+      <Text>Orientation: {orientation.type()}</Text>
+      <Text>Inset: {safeArea().top > 0 ? 'top' : 'none'}</Text>
       {/* FFI device proof — the value comes from the app's OWN platform class
           (iOS returns "iOS", Android returns "Android"), so the rendered text
           proves a user-defined native module was constructed and called. */}
