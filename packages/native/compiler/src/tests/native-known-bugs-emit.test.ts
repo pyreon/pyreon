@@ -125,7 +125,7 @@ describe('2a. positioned searches lower faithfully instead of re-emitting the we
     expect(rhs(sw.code, 'c')).toContain('min(max(0, 5), __pyRecv.count)')
   })
   it('Kotlin: List.indexOf has no fromIndex — subList + offset; String.indexOf(s, i) IS JS', () => {
-    expect(rhs(kt.code, 'a')).toContain('__pyRecv.subList(__pyFrom, __pyRecv.size).indexOf(2)')
+    expect(rhs(kt.code, 'a')).toContain('__pyRecv.subList(__pyFrom, __pyRecv.size).indexOf(2L)')
     expect(rhs(kt.code, 'c')).toBe('s.indexOf("o", 5)')
   })
   it('Kotlin: startsWith clamps a negative position (Kotlin returns false for one)', () => {
@@ -168,8 +168,8 @@ describe('2b. arguments JS itself ignores are dropped (and named), never re-emit
   })
   it('Kotlin lowers the core arity', () => {
     expect(rhs(kt.code, 'h')).toBe('s.uppercase()')
-    expect(rhs(kt.code, 'i')).toBe('xs.filter({ x -> x > 1 })')
-    expect(rhs(kt.code, 'j')).toBe('xs.mapIndexed({ k, x -> x + k })')
+    expect(rhs(kt.code, 'i')).toBe('xs.filter({ x -> x > 1L })')
+    expect(rhs(kt.code, 'j')).toBe('xs.mapIndexed({ pyreonIdx, x -> val k = pyreonIdx.toLong(); x + k })')
   })
   it('names each dropped argument on both targets', () => {
     for (const w of [sw.warnings, kt.warnings]) {

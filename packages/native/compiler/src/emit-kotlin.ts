@@ -6778,7 +6778,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               return `${obj}${objDot}contains(${argExprs[0]!})`
             }
             if (e.args.length === 2) {
-              const lowered = kotlinPositionedSearch('includes', recvKind, e, obj, objDot, argExprs)
+              const lowered = kotlinPositionedSearch('includes', recvKind, e, obj, objDot, argExprs, indent)
               if (lowered !== null) return lowered
             }
             break
@@ -6797,7 +6797,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           case 'lastIndexOf':
             if (e.args.length === 1) return kotlinLongOf(`${obj}${objDot}${prop}(${argExprs[0]!})`)
             if (prop === 'indexOf' && e.args.length === 2) {
-              const lowered = kotlinPositionedSearch(prop, recvKind, e, obj, objDot, argExprs)
+              const lowered = kotlinPositionedSearch(prop, recvKind, e, obj, objDot, argExprs, indent)
               if (lowered !== null) return lowered
             }
             break
@@ -6805,7 +6805,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           case 'endsWith':
           case 'split':
             if (e.args.length === 2) {
-              const lowered = kotlinPositionedSearch(prop, recvKind, e, obj, objDot, argExprs)
+              const lowered = kotlinPositionedSearch(prop, recvKind, e, obj, objDot, argExprs, indent)
               if (lowered !== null) return lowered
             }
             break
@@ -7060,9 +7060,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             // through verbatim.
             const tsT = inferType(e.callee.object, _kotlinExprInferCtx)
             if (e.args.length === 1 && tsT.kind === 'number' && tsT.float !== true) {
-              const rT = inferType(e.args[0]!, _kotlinExprInferCtx)
-              const r = rT.kind === 'number' && rT.float === true ? `(${argExprs[0]!}).toInt()` : argExprs[0]!
-              return `${obj}${objDot}toString(${r})`
+              // The radix is a Kotlin `Int` parameter — narrow the same way
+              // `kotlinIntArg` narrows every other Int-typed position (a TS
+              // integer is Long by default now; see KOTLIN_INT).
+              return `${obj}${objDot}toString(${kotlinIntArg(e.args[0]!, indent)})`
             }
             break
           }
@@ -9040,14 +9041,18 @@ function kotlinPositionedSearch(
   obj: string,
   objDot: string,
   argExprs: readonly string[],
+  indent: number,
 ): string | null {
   if (e.callee.kind !== 'member' || objDot !== '.') return null
   if (recvKind !== 'array' && recvKind !== 'string') return null
   const recvT = inferType(e.callee.object, _kotlinExprInferCtx)
   if (recvT.kind === 'union' && recvT.branches.some((b) => b.kind === 'null' || b.kind === 'undefined')) return null
   const x = argExprs[0]!
-  const posT = inferType(e.args[1]!, _kotlinExprInferCtx)
-  const pos = posT.kind === 'number' && posT.float === true ? `(${argExprs[1]!}).toInt()` : argExprs[1]!
+  // Every use of `pos` below is a Kotlin `Int` position — `String.indexOf`'s
+  // startIndex, `drop`/`take`'s count, `List.take`'s limit. A TS integer is
+  // Long by default now (see KOTLIN_INT), so this narrows exactly here,
+  // matching `kotlinIntArg`'s own bare-literal-vs-`.toInt()` split.
+  const pos = kotlinIntArg(e.args[1]!, indent)
   if (recvKind === 'array') {
     if (method !== 'indexOf' && method !== 'includes') return null
     const from = `val __pyRecv = ${obj}; val __pyPos = ${pos}; val __pyFrom = if (__pyPos < 0) maxOf(0, __pyRecv.size + __pyPos) else minOf(__pyPos, __pyRecv.size)`
