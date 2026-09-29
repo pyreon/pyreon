@@ -28,6 +28,7 @@
  *   bun run scripts/verify-modes.ts             # all cells
  *   bun run scripts/verify-modes.ts ssr-showcase  # only ssr-showcase cells
  *   bun run scripts/verify-modes.ts --only ssg     # only ssg-mode cells
+ *   bun run scripts/verify-modes.ts ssr-showcase --adapter netlify  # one adapter cell
  */
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
@@ -213,17 +214,28 @@ function assertSsrFunctionRenders(
   distDir: string,
   funcRelPath: string,
   style: 'vercel' | 'netlify' | 'cloudflare' | 'node',
+  urlPath = '/posts',
+  pageMarker?: string,
 ): void {
   const funcPath = join(distDir, funcRelPath)
   assertFileExists(funcPath)
   const invoker = join(REPO_ROOT, 'scripts', '_invoke-ssr-function.mjs')
-  const result = spawnSync('node', [invoker, funcPath, style], {
+  const argv = [invoker, funcPath, style, urlPath, ...(pageMarker ? [pageMarker] : [])]
+  const result = spawnSync('node', argv, {
     encoding: 'utf-8',
   })
   if (result.status !== 0) {
     throw new Error(
-      `${funcRelPath}: emitted ${style} function failed to server-render.\n${result.stderr || result.stdout || '(no output)'}`,
+      `${funcRelPath}: emitted ${style} function failed to server-render ${urlPath}.\n${result.stderr || result.stdout || '(no output)'}`,
     )
+  }
+}
+
+/** The client build's hashed entry chunk is published under `assetsDir`. */
+function assertHashedClientEntryPublished(assetsDir: string): void {
+  if (!existsSync(assetsDir)) throw new Error(`expected ${assetsDir} to exist`)
+  if (!readdirSync(assetsDir).some((f) => /^index-[\w.-]+\.js$/.test(f))) {
+    throw new Error(`expected a hashed index-*.js client entry under ${assetsDir}`)
   }
 }
 
@@ -901,8 +913,28 @@ const MATRIX: Cell[] = [
     adapter: 'netlify',
     smoke: (dist) => {
       assertFileExists(join(dist, 'netlify.toml'))
-      assertFileContains(join(dist, 'publish', 'index.html'), '<!--pyreon-app-->')
+      // The ssr function is `preferStatic: true`, so ANY static file Netlify
+      // finds for a path wins over it. `/` resolves to `publish/index.html`,
+      // and the client build's `index.html` is the SSR TEMPLATE with its
+      // `<!--pyreon-app-->` slot still empty — publishing it served the
+      // unrendered shell for `/`. The corrected contract: no unrendered
+      // template in the publish dir (ssr-showcase does not prerender `/`, so
+      // no root index.html at all), while the static assets ARE published.
+      assertFileDoesNotExist(join(dist, 'publish', 'index.html'))
+      assertHashedClientEntryPublished(join(dist, 'publish', 'assets'))
+      // The function inlines the BUILT template (hashed client entry) before it
+      // imports the server bundle, so it still hydrates once Netlify bundles it
+      // into a single module and `import.meta.url` no longer sits beside
+      // `template.html`.
+      const ssrFunc = join(dist, 'netlify', 'functions', 'ssr.mjs')
+      assertFileContains(ssrFunc, '__PYREON_SSR_TEMPLATE__')
+      assertFileDoesNotContain(ssrFunc, '/src/entry-client.ts')
+      if (!/\/assets\/index-[\w.-]+\.js/.test(readFileSync(ssrFunc, 'utf-8'))) {
+        throw new Error(`expected ${ssrFunc} to embed the hashed client entry`)
+      }
       assertSsrFunctionRenders(dist, join('netlify', 'functions', 'ssr.mjs'), 'netlify')
+      // `/` is exactly the path the shadowing hid — it must reach SSR too.
+      assertSsrFunctionRenders(dist, join('netlify', 'functions', 'ssr.mjs'), 'netlify', '/', 'home-page')
       // A4 — netlify.toml parses and every redirect target function exists
       // with a default export; the functions dir run outside the repo.
       throwIfProblems('netlify', netlifyOutputProblems(dist))
@@ -2193,12 +2225,14 @@ async function runCell(cell: Cell): Promise<CellResult> {
 
 // ─── CLI ────────────────────────────────────────────────────────────────────
 
-function parseArgs(argv: string[]): { example?: string; mode?: Mode } {
-  const args: { example?: string; mode?: Mode } = {}
+function parseArgs(argv: string[]): { example?: string; mode?: Mode; adapter?: string } {
+  const args: { example?: string; mode?: Mode; adapter?: string } = {}
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--only' && argv[i + 1]) {
       args.mode = argv[++i] as Mode
+    } else if (a === '--adapter' && argv[i + 1]) {
+      args.adapter = argv[++i]
     } else if (!a?.startsWith('--')) {
       args.example = a
     }
@@ -2209,12 +2243,15 @@ function parseArgs(argv: string[]): { example?: string; mode?: Mode } {
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2))
   const cells = MATRIX.filter(
-    (c) => (!args.example || c.example === args.example) && (!args.mode || c.mode === args.mode),
+    (c) =>
+      (!args.example || c.example === args.example) &&
+      (!args.mode || c.mode === args.mode) &&
+      (!args.adapter || c.adapter === args.adapter),
   )
 
   if (cells.length === 0) {
     console.error(
-      `[verify-modes] no cells match filter (example=${args.example ?? '*'}, mode=${args.mode ?? '*'})`,
+      `[verify-modes] no cells match filter (example=${args.example ?? '*'}, mode=${args.mode ?? '*'}, adapter=${args.adapter ?? '*'})`,
     )
     process.exit(2)
   }
