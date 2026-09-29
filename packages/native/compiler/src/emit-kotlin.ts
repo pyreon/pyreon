@@ -552,6 +552,8 @@ let _crashNames: Set<string> = new Set()
  */
 let _geoNames: Set<string> = new Set()
 let _wsNames: Set<string> = new Set()
+/** `useStream` decl names — `s.events()` / `s.status()` read `.value`. */
+let _streamNames: Set<string> = new Set()
 
 /**
  * Is `obj.prop` a Phase-5 native-container reactive field backed by a Compose
@@ -565,6 +567,7 @@ function isContainerMutableStateField(obj: string, p: string): boolean {
     (_geoNames.has(obj) &&
       ['latitude', 'longitude', 'accuracy', 'isAuthorized', 'error'].includes(p)) ||
     (_wsNames.has(obj) && ['lastMessage', 'messages', 'isConnected', 'error'].includes(p)) ||
+    (_streamNames.has(obj) && ['events', 'latest', 'status', 'error'].includes(p)) ||
     (_pushNames.has(obj) &&
       ['token', 'lastNotification', 'notifications', 'isAuthorized', 'error'].includes(p)) ||
     (_payNames.has(obj) && ['products', 'ownedProductIds', 'purchasing', 'error'].includes(p)) ||
@@ -2187,6 +2190,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _crashNames = new Set()
   _geoNames = new Set()
   _wsNames = new Set()
+  _streamNames = new Set()
   _pushNames = new Set()
   _payNames = new Set()
   _mapNames = new Set()
@@ -2271,6 +2275,7 @@ function emitKotlinComponent(c: ComponentIR): string {
     // Phase 5: native data/services hook decl names (for the .value rewrite).
     if (d.kind === 'geolocation') _geoNames.add(d.name)
     if (d.kind === 'websocket') _wsNames.add(d.name)
+    if (d.kind === 'stream') _streamNames.add(d.name)
     if (d.kind === 'push') _pushNames.add(d.name)
     if (d.kind === 'payments') _payNames.add(d.name)
     if (d.kind === 'map') _mapNames.add(d.name)
@@ -2584,6 +2589,15 @@ function emitKotlinComponent(c: ComponentIR): string {
     lines.push(`    }`)
     lines.push(`  }`)
   }
+  // useStream: a `DisposableEffect` per decl, KEYED on the request URL plus
+  // the restart tick — a runtime `:param` or `restart()` re-keys it, which
+  // stops the old stream and opens a fresh one (the web's reactive-source
+  // semantic). The connection runs on the runtime's own thread; `onDispose`
+  // closes it, which is the only thing that ends a blocking socket read.
+  for (const d of c.decls) {
+    if (d.kind !== 'stream') continue
+    lines.push(...emitKotlinStreamHarness(d, ctx))
+  }
   // While emitting a layout's body, its `<RouterView />` emits `content()`.
   _emittingLayoutComponentKotlin = isLayout
   // M4.5: capture the composable-top insertion point (after decls + the
@@ -2674,6 +2688,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _crashNames = new Set()
   _geoNames = new Set()
   _wsNames = new Set()
+  _streamNames = new Set()
   _pushNames = new Set()
   _payNames = new Set()
   _mapNames = new Set()
@@ -2782,6 +2797,44 @@ function syncedInitialKotlin(
   if (scalar === 'bool') return value ? 'true' : 'false'
   // A Double literal so `PyreonSyncedSignal<Double>` is inferred (JS number).
   return Number.isInteger(value as number) ? `${value}.0` : String(value)
+}
+
+/** The `DisposableEffect` that runs one `useStream` decl. */
+function emitKotlinStreamHarness(d: Extract<DeclIR, { kind: 'stream' }>, ctx: KotlinCtx): string[] {
+  const name = kotlinIdent(d.name)
+  const url = d.urlExpr !== undefined ? emitKotlinExpr(d.urlExpr, 0) : kotlinStr(d.url)
+  const req = [`method = ${kotlinStr(d.method)}`, `url = ${url}`]
+  if (d.headers) {
+    req.push(
+      `headers = mapOf(${Object.entries(d.headers)
+        .map(([k, v]) => `${kotlinStr(k)} to ${kotlinStr(v)}`)
+        .join(', ')})`,
+    )
+  }
+  if (d.requestBody !== undefined) req.push(`body = ${kotlinStr(d.requestBody)}`)
+  const request = `PyreonStreamRequest(${req.join(', ')})`
+  const data = kotlinType(d.dataType, ctx)
+  const out = [`  DisposableEffect("\${${url}}#\${${name}.restartTick.value}") {`]
+  if (d.format === 'sse') {
+    const opts: string[] = []
+    if (d.events) opts.push(`events = listOf(${d.events.map((e) => kotlinStr(e)).join(', ')})`)
+    if (d.lastEventId !== undefined) opts.push(`lastEventId = ${kotlinStr(d.lastEventId)}`)
+    opts.push(
+      d.reconnect === null
+        ? 'reconnect = null'
+        : `reconnect = PyreonStreamReconnect(attempts = ${d.reconnect.attempts}, delay = ${d.reconnect.delay}L, maxDelay = ${d.reconnect.maxDelay}L, onEnd = ${d.reconnect.onEnd})`,
+    )
+    const payload = d.sseText ? 'm.data' : `PyreonFetchJson.decodeFromString<${data}>(m.data)`
+    out.push(
+      `    ${name}.startSse(${request}, PyreonSseOptions(${opts.join(', ')})${d.accept !== undefined ? `, accept = ${kotlinStr(d.accept)}` : ''}) { m -> PyreonSseEvent(m.type, ${payload}, m.id) }`,
+    )
+  } else {
+    const accept = d.accept !== undefined ? `, accept = ${kotlinStr(d.accept)}` : ''
+    out.push(`    ${name}.startNdjson(${request}${accept}) { line -> PyreonFetchJson.decodeFromString<${data}>(line) }`)
+  }
+  out.push(`    onDispose { ${name}.stop() }`)
+  out.push(`  }`)
+  return out
 }
 
 function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
@@ -3032,6 +3085,11 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   }
   if (d.kind === 'websocket') {
     return `val ${kotlinIdent(d.name)} = remember { PyreonWebSocket() }`
+  }
+  // `const s = useStream(…)` → a remembered PyreonStream; the
+  // `DisposableEffect` that starts and stops it is emitted with the harnesses.
+  if (d.kind === 'stream') {
+    return `val ${kotlinIdent(d.name)} = remember { PyreonStream<${kotlinType(d.itemType, ctx)}>(maxEvents = ${d.maxEvents}) }`
   }
   if (d.kind === 'database') {
     _databaseNames.add(d.name)
@@ -4906,6 +4964,11 @@ export function kotlinType(t: TypeIR, ctx?: KotlinCtx, signalName?: string): str
       // on Android — `kotlin.Error` is a narrower subclass the runtime never
       // declares.
       if (t.name === 'Error' && t.args.length === 0 && !_declaredStructs.some((st) => st.name === 'Error')) return 'Throwable'
+      // `SseEvent<T>` (`@pyreon/http/stream`) is the native stream runtime's
+      // `PyreonSseEvent<T>` — same three fields, same meaning.
+      if (t.name === 'SseEvent' && t.args.length === 1) {
+        return `PyreonSseEvent<${kotlinType(t.args[0]!, ctx, signalName)}>`
+      }
       if (t.args.length === 0) return t.name
       return `${t.name}<${t.args.map((a) => kotlinType(a, ctx, signalName)).join(', ')}>`
     }

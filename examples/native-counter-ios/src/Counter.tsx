@@ -155,6 +155,17 @@ export function Counter() {
     // animates, so "instant" cannot be mistaken for "animation unsupported".
     reducedMotion: true,
     fitView: true,
+    // The device suites' connect drag runs End.out -> Start.in, and fitView
+    // puts both handles INSIDE the canvas's 40pt auto-pan band on a phone
+    // (measured on an iPhone 17 Pro: 33.4pt and 33.6pt from the edges). With
+    // auto-pan on, the graph pans under the held pointer at both ends while
+    // XCUITest's drop point is fixed before the gesture starts, so whether the
+    // release lands within the 6pt drop radius depended on how many auto-pan
+    // frames ran: a timing race that failed on CI and passed locally. No suite
+    // asserts auto-pan, and no viewport frees both handles here (clearing the
+    // band needs zoom < 0.84, where the 44pt resizer targets cover the handle
+    // centre), so the fixture opts out of the one behaviour it does not test.
+    autoPanOnConnect: false,
   })
   const nativeFlowEdgeCount = computed(() => nativeFlow.edges().length)
   // `colorMode` is reactive: the suites toggle it and count the web's dark

@@ -15,7 +15,7 @@ Pyreon adapter for TanStack Query. Fine-grained signals per observer field (data
 
 wraps TanStack Query (a JS runtime cache), so the full client — QueryClient config, devtools, infinite/suspense queries — stays web; `useQuery` itself lowers to the PyreonQuery runtime
 
-**What crosses natively:** PyreonQuery — `useQuery` (key + fetcher, loading/error/data state)
+**What crosses natively:** PyreonQuery — `useQuery` (key + fetcher, loading/error/data state); PyreonStream — `useStream` over `openEventStream` / `openNdjsonStream` (SSE + NDJSON, reconnect with Last-Event-ID)
 
 See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
 
@@ -485,7 +485,7 @@ const sse = useSSE({
 <T>(source: (ctx: StreamSourceContext) => AsyncIterable<T> | undefined, options?: UseStreamOptions<T>) => UseStreamResult<T>
 ```
 
-Any async-iterable stream as signals — typically `openEventStream` / `openNdjsonStream` from `@pyreon/http/stream`, so unlike `useSSE` (which wraps `EventSource`) the stream can be a POST with auth headers, validated per event, and mocked. `events()` (bounded by `maxEvents`, default 1000), `latest()`, `status()` (`idle` / `connecting` / `open` / `reconnecting` / `closed` / `error`), `error()`, `abort()`, `restart()`. The source runs TRACKED: a signal it reads re-opens the stream when it changes — the previous request is aborted and a generation guard drops its late events. Return `undefined` to hold it idle; unmount aborts. Pass `ctx.onStatus` through for the finer states.
+Any async-iterable stream as signals — typically `openEventStream` / `openNdjsonStream` from `@pyreon/http/stream`, so unlike `useSSE` (which wraps `EventSource`) the stream can be a POST with auth headers, validated per event, and mocked. `events()` (bounded by `maxEvents`, default 1000), `latest()`, `status()` (`idle` / `connecting` / `open` / `reconnecting` / `closed` / `error`), `error()`, `abort()`, `restart()`. The source runs TRACKED: a signal it reads re-opens the stream when it changes — the previous request is aborted and a generation guard drops its late events. Return `undefined` to hold it idle; unmount aborts. Pass `ctx.onStatus` through for the finer states. On iOS and Android the documented shape — `(ctx) => openEventStream((c) => endpoint({ …, signal: c.signal, headers: c.headers }), { signal: ctx.signal, onStatus: ctx.onStatus })` over a same-file `@pyreon/http` endpoint, typed `useStream<SseEvent<T>>` (or `openNdjsonStream` with `useStream<T>`) — lowers to the native `PyreonStream` runtime with the same parser, reconnect and `Last-Event-ID` semantics; `enabled` / `onEvent` keep it web, and `parse` is ignored natively (each payload is decoded into the declared type instead).
 
 **Example**
 

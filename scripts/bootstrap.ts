@@ -90,8 +90,7 @@ const HASH_SCHEME_VERSION = 'v1'
  * Global salt: invalidates ALL package hashes on a shared dep / tooling /
  * TS-config change. Inputs:
  *   - bun.lock — third-party dep versions (some are BUNDLED into lib) AND
- *     the build-tool version (vl_rolldown_build, the TS-config preset
- *     `@vitus-labs/tools-typescript` the root tsconfig extends).
+ *     the build-tool version (vl_rolldown_build).
  *   - root tsconfig.json — every package tsconfig extends it; its compiler
  *     options (jsx, isolatedModules, exactOptionalPropertyTypes, …) shape
  *     the built output. A change here must rebuild everything.

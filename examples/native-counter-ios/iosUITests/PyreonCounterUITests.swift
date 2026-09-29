@@ -307,6 +307,14 @@ final class PyreonCounterUITests: XCTestCase {
         XCTAssertEqual(edgeCount.label, "1", "releasing over empty canvas must not connect")
         XCTAssertTrue(waitForLabel(customLineMounts, "1", timeout: 5), "connectionLine={NativeConnectionLine} did not mount while dragging a source handle (label after drag: \(mountsAfterEmptyDrag); connect starts: \(app.staticTexts["native-flow-connect-starts"].firstMatch.label))")
         XCTAssertTrue(customLineSeenMidDrag, "connectionLine={NativeConnectionLine} was not in the accessibility tree mid-drag")
+        // The drop point below is resolved ONCE, before the gesture starts, and
+        // both handles sit inside the canvas's 40pt auto-pan band. With auto-pan
+        // on the graph moved under the held pointer (viewport x 16 -> 13 locally,
+        // further on slower CI runners) and the release missed the 6pt drop
+        // radius by however many frames ran. The fixture sets
+        // `autoPanOnConnect: false`; this proves the drag no longer moves the
+        // viewport, so a regression fails here instead of flaking.
+        let viewportXBeforeConnect = app.staticTexts["native-flow-viewport-x"].firstMatch.label
         sourceGrab.press(
             forDuration: 0.3,
             thenDragTo: target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)),
@@ -315,6 +323,7 @@ final class PyreonCounterUITests: XCTestCase {
         )
         let connected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "2"), object: edgeCount)
         XCTAssertEqual(XCTWaiter().wait(for: [connected], timeout: 5), .completed, "connecting the rendered handles did not add an edge")
+        XCTAssertEqual(app.staticTexts["native-flow-viewport-x"].firstMatch.label, viewportXBeforeConnect, "the connect drag panned the viewport: its drop point was resolved before the pan, so the release races the 6pt drop radius")
         XCTAssertTrue(waitForLabel(customLineMounts, "2", timeout: 5), "the custom connection line did not mount again for the real connect (label: \(customLineMounts.label))")
 
         let size = app.staticTexts["native-flow-start-size"].firstMatch
