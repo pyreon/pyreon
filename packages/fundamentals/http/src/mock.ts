@@ -15,6 +15,7 @@
  */
 
 import type { HttpMethod, HttpMiddleware, HttpRequest } from './types'
+import { stringifyJsonLossless } from './json'
 import { toHttpResponse } from './transport'
 
 /** One stubbed exchange. */
@@ -150,7 +151,9 @@ export function createMock(routes: readonly MockRoute[]): MockHandle {
     const headers = new Headers(route.headers)
     let body: string | null = null
     if (route.json !== undefined) {
-      body = JSON.stringify(route.json)
+      // Lossless: a `bigint` fixture (an int64 id) is written as JSON number
+      // text rather than throwing; any other value is exactly `JSON.stringify`.
+      body = stringifyJsonLossless(route.json)
       if (!headers.has('content-type')) headers.set('content-type', 'application/json')
     } else if (route.body !== undefined) {
       body = typeof route.body === 'function' ? route.body(call) : route.body
