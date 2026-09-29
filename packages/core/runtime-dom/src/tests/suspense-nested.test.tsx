@@ -12,6 +12,7 @@ import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { ErrorBoundary, h, lazy, onMount, Show, Suspense } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
+import { query } from '@pyreon/test-utils'
 import { disableHydrationWarnings, hydrateRoot, mount } from '../index'
 
 const tick = (ms = 0) => new Promise<void>((r) => setTimeout(r, ms))
@@ -133,7 +134,7 @@ describe('<Suspense> — a NESTED async descendant', () => {
       h(Suspense, { fallback: fb() }, h('form', null, h('input', { class: 'in' }), h(Show, { when: () => show() }, h(Lazy, null)))),
       c,
     )
-    const input = c.querySelector('input.in') as HTMLInputElement
+    const input = query<HTMLInputElement>(c, 'input.in')
     input.value = 'typed'
     expect(visible(c, '.fb')).toBeNull()
 
