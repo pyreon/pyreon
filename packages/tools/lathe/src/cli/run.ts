@@ -18,7 +18,7 @@ import {
 import { ALL_CLIENTS } from "../emit/client-runtime";
 import { ALL_VALIDATORS } from "../emit/validator";
 import { formatFiles } from "../core/format";
-import { generate } from "../core/generate";
+import { generateAsync, type GenerateResult } from "../core/generate";
 import {
   noteSeverity,
   type IrNote,
@@ -49,6 +49,8 @@ import {
 import { SOURCE_TOOLS } from "./init/init";
 import type { SourceTool } from "./init/migrate";
 import { renderReport } from "./report";
+import { pluginsFromModule } from "./plugin-exports";
+import type { LathePlugin } from "../core/plugin";
 import { fetchRemoteParts } from './remote-refs'
 
 export interface Argv {
@@ -66,7 +68,11 @@ export interface Argv {
   dest?: string | undefined;
   output?: string | undefined;
   target?: "web" | "multiplatform" | undefined;
-  plugins?: readonly PluginName[] | undefined;
+  /**
+   * Built-in names, and third-party plugin module specifiers (`./x.ts`,
+   * `lathe-plugin-msw`) that `run` resolves through `Fs.importModule`.
+   */
+  plugins?: readonly string[] | undefined;
   client?: ClientName | undefined;
   validator?: ValidatorName | undefined;
   baseUrl?: string | undefined;
@@ -265,21 +271,14 @@ export function parseArgv(args: readonly string[]): Argv {
       case "--validator":
         out.validator = oneOf(name, value as string, ALL_VALIDATORS);
         break;
-      case "--plugins": {
-        const list = (value as string)
+      case "--plugins":
+        // A name that is not a built-in is a third-party plugin MODULE; it is
+        // loaded (and refused, with a did-you-mean, if it cannot be) by `run`.
+        out.plugins = (value as string)
           .split(",")
           .map((s) => s.trim())
           .filter(Boolean);
-        const bad = list.filter(
-          (pl) => !(ALL_PLUGINS as readonly string[]).includes(pl),
-        );
-        for (const b of bad)
-          out.errors.push(
-            `unknown plugin \`${b}\`.${hint(b, ALL_PLUGINS)} Known: ${ALL_PLUGINS.join(", ")}.`,
-          );
-        if (bad.length === 0) out.plugins = list as PluginName[];
         break;
-      }
       case "--config":
         out.config = value;
         break;
@@ -429,6 +428,12 @@ export interface Fs {
    * library caller need not provide git.
    */
   gitShow?(rev: string, path: string): string | undefined;
+  /**
+   * Import a third-party plugin module named on the command line, resolved
+   * from the working directory. Absent for an in-memory fs, which can then
+   * run built-in plugins only.
+   */
+  importModule?(specifier: string): Promise<unknown>;
   /**
    * The ABSOLUTE path of `path` -- where a file outside this abstraction (the
    * remote-document cache, written by `lathe pull`'s code) must go so it lands
@@ -589,11 +594,56 @@ export async function run(
       "[Pyreon] lathe: `init` runs through the `lathe` bin (`main`), not `run`.",
     );
   }
+  let plugins: Array<PluginName | LathePlugin> | undefined;
+  if (argv.plugins) {
+    const loaded = await loadCliPlugins(argv.plugins, fs);
+    if (typeof loaded === "string") return fail(`[Pyreon] lathe: ${loaded}\n  Run \`lathe --help\` for usage.`, 2);
+    plugins = loaded;
+  }
   try {
-    return await runChecked(argv, section, fs, fail);
+    return await runChecked(argv, section, fs, fail, plugins);
   } catch (err) {
     return fail(err instanceof Error ? err.message : String(err));
   }
+}
+
+/**
+ * `--plugins`, resolved: built-in names as they are, every other entry
+ * imported as a plugin module. Returns the error to report instead when one
+ * cannot be loaded -- a typo of a built-in gets a did-you-mean, since that is
+ * far likelier than a package of that name.
+ */
+async function loadCliPlugins(
+  names: readonly string[],
+  fs: Fs,
+): Promise<Array<PluginName | LathePlugin> | string> {
+  const out: Array<PluginName | LathePlugin> = [];
+  // The loaders' own errors carry the prefix; `fail` adds it once more.
+  const bare = (err: unknown): string =>
+    (err instanceof Error ? err.message : String(err)).replace(/^\[Pyreon\] lathe: /, "");
+  for (const name of names) {
+    if ((ALL_PLUGINS as readonly string[]).includes(name)) {
+      out.push(name as PluginName);
+      continue;
+    }
+    const best = closest(name, ALL_PLUGINS);
+    const unknown = `unknown plugin \`${name}\` — not a built-in${best ? ` (did you mean \`${best}\`?)` : ""}`;
+    if (!fs.importModule) {
+      return `${unknown}. Known: ${ALL_PLUGINS.join(", ")}.`;
+    }
+    let mod: unknown;
+    try {
+      mod = await fs.importModule(name);
+    } catch (err) {
+      return `${unknown}, and it could not be loaded as a plugin module: ${bare(err)}. A third-party plugin is a path (\`./my-plugin.ts\`) or a package name whose default export is made with \`definePlugin\`. Built-ins: ${ALL_PLUGINS.join(", ")}.`;
+    }
+    try {
+      out.push(...pluginsFromModule(mod, name));
+    } catch (err) {
+      return bare(err);
+    }
+  }
+  return out;
 }
 
 /**
@@ -672,13 +722,14 @@ async function runChecked(
   section: LatheSection | undefined,
   fs: Fs,
   fail: (message: string, code?: number) => RunResult,
+  plugins: Array<PluginName | LathePlugin> | undefined,
 ): Promise<RunResult> {
   const merged: LatheSection = {
     ...section,
     ...(argv.input ? { input: argv.input } : {}),
     ...(argv.output ? { output: argv.output } : {}),
     ...(argv.target ? { target: argv.target } : {}),
-    ...(argv.plugins ? { plugins: argv.plugins } : {}),
+    ...(plugins ? { plugins } : {}),
     ...(argv.client ? { client: argv.client } : {}),
     ...(argv.validator ? { validator: argv.validator } : {}),
     ...(argv.baseUrl ? { baseUrl: argv.baseUrl } : {}),
@@ -704,7 +755,7 @@ async function runChecked(
   // leaving a monorepo half-regenerated against a run that failed.
   const generated: Array<{
     config: ResolvedConfig;
-    result: ReturnType<typeof generate>;
+    result: GenerateResult;
   }> = [];
   // The project's native compiler, resolved at most ONCE and only when a run
   // actually produced a native module. A `web` target has nothing for it to
@@ -723,7 +774,7 @@ async function runChecked(
         config.remoteRefs === 'fetch'
           ? await fetchRemoteParts(text, config.input, (id) => fs.read(id), config.remoteHeaders, remoteCacheDir(fs))
           : undefined;
-      const result = generate(text, config, {
+      const result = await generateAsync(text, config, {
         location: config.input,
         readDocument: (id) => fs.read(id),
         remoteDocuments,
@@ -833,7 +884,7 @@ async function runChecked(
 
 interface RunOutcome {
   config: ResolvedConfig;
-  result: ReturnType<typeof generate>;
+  result: GenerateResult;
   verify: ReturnType<typeof verifyNative>;
   wrote: number;
   stale: string[];
