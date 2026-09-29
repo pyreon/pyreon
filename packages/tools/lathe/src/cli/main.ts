@@ -90,7 +90,17 @@ export async function main(
         const env = Object.fromEntries(
           Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")),
         );
-        const r = spawnSync("git", ["show", `${rev}:${path}`], {
+        // `git show <rev>:<path>` reads `<path>` from the REPOSITORY ROOT, but
+        // the other side of the diff (and a user's intuition) is relative to
+        // the working directory. From a subdirectory — a monorepo package, a
+        // workflow step with `working-directory` — `main:openapi.yaml` would
+        // silently read the root's spec (a wrong diff) or nothing. A `./`
+        // prefix makes git resolve it against `cwd`, like the on-disk side.
+        const rel =
+          path.startsWith("./") || path.startsWith("../") || path.startsWith("/")
+            ? path
+            : `./${path}`;
+        const r = spawnSync("git", ["show", `${rev}:${rel}`], {
           cwd,
           env,
           encoding: "utf8",

@@ -1299,21 +1299,48 @@ jobs:
           bunx lathe diff "origin/${{ github.base_ref }}:openapi.yaml" openapi.yaml \
             --format markdown --fail-on-breaking > contract.md
           echo "code=$?" >> "$GITHUB_OUTPUT"
-      - name: Comment
+      - name: Summary
         if: steps.diff.outputs.code != '2'   # 2 = an input could not be read; there is no report
-        env: { GH_TOKEN: '${{ github.token }}' }
-        run: gh pr comment ${{ github.event.pull_request.number }} --body-file contract.md --edit-last --create-if-none
+        run: cat contract.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Comment
+        # A fork's pull request gets a read-only token: its report is the job summary.
+        if: steps.diff.outputs.code != '2' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -o pipefail
+          marker='<!-- lathe-contract -->'
+          { echo "$marker"; cat contract.md; } > comment.md
+          for attempt in 1 2 3; do
+            id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+              --jq '.[] | select(.body | startswith("<!-- lathe-contract -->")) | .id' | head -n 1) &&
+              if [ -n "$id" ]; then
+                gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@comment.md > /dev/null
+              else
+                gh pr comment "$PR" --body-file comment.md
+              fi && exit 0
+            sleep $((attempt * 5))
+          done
+          echo "::warning::could not post the contract comment; the report is in the job summary"
       - name: Fail on a breaking change
         if: steps.diff.outputs.code != '0'
         run: exit ${{ steps.diff.outputs.code }}
 ```
 
-`--edit-last --create-if-none` (checked against gh 2.96; older gh lacks `--create-if-none`) keeps ONE contract comment per PR,
-updated on each push — note it edits the workflow token's last comment, so give
-this job its own token if other jobs comment as `github-actions` too. The
-workflow's shell logic (the step script, the exit-code routing and the comment
-body) is executed against a real git repository by `docs-action.test.ts` in
-`@pyreon/lathe`, with `gh` stubbed.
+The comment is found by the hidden `<!-- lathe-contract -->` marker it starts
+with, so there is ONE contract comment per PR, updated on each push — and no
+other bot comment is ever touched (`gh pr comment --edit-last` would edit
+whichever comment the workflow token wrote last, which in most repositories is
+some other job's). The report always lands in the job summary too; a pull
+request from a fork gets a read-only token, so it gets the summary and no
+comment. A comment that cannot be posted after three attempts is a warning, not
+a failed check: the check reports the CONTRACT, not GitHub's API. The step
+scripts are executed against a real git repository by `docs-action.test.ts` in
+`@pyreon/lathe` with `gh` stubbed, and this repository runs them on a hosted
+runner against a real pull request (`lathe-action-selftest.yml`), from a
+subdirectory — `<rev>:<path>` is resolved relative to the working directory,
+like the on-disk side.
 
 `--format github` in a plain `run:` step is the no-comment alternative: the
 annotations land on the PR's checks and the table in the job summary.
