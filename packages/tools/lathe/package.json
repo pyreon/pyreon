@@ -77,9 +77,9 @@
     "@pyreon/vitest-config": "workspace:*",
     "@pyreon/zero-content": "workspace:*",
     "axios": "^1.20.0",
-    "happy-dom": "^20.11.6",
+    "happy-dom": "^20.14.5",
     "ky": "^2.1.0",
-    "oxc-parser": "^0.148.0",
+    "oxc-parser": "^0.152.0",
     "zod": "^4.6.5"
   },
   "dependencies": {

@@ -50,7 +50,7 @@
   "devDependencies": {
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "vite": "^8.2.2"
+    "vite": "^8.3.1"
   },
   "publishConfig": {
     "access": "public"
