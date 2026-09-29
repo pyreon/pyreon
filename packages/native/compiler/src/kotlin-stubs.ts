@@ -1529,7 +1529,7 @@ private fun pyreonUrlNumber(raw: String, fallback: Double): Double {
     return if (v.isNaN()) fallback else v
 }
 
-/** Int-valued search parameter. See \`pyreonUrlNumber\` for the decode. */
+/** Long-valued search parameter. See \`pyreonUrlNumber\` for the decode. */
 class PyreonUrlStateInt(
     private val router: PyreonRouter?,
     private val key: String,
