@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { dateFormatter, getLocale, numberFormatter, registerLocale } from './locale'
-import { defaultTheme } from './render'
 
 const opt = { xAxis: { data: ['a', 'b'] }, yAxis: {}, series: [{ type: 'bar', data: [1, 2] }, { type: 'line', data: [2, 1] }] }
 
