@@ -163,7 +163,7 @@ export function emitStreamFunctions(f: SourceFile, ops: readonly IrOperation[], 
         parse = `parse: streamEvent(${s.event.name}), `
       } else {
         const binding = `${op.id}$event`
-        f.line(`const ${binding} = ${schemaExpr(s.event, { native: false, validator: opts.validator })}`)
+        f.line(`const ${binding} = ${schemaExpr(s.event, { native: false, validator: opts.validator, lossless: usesBigInt(opts.doc) })}`)
         parse = `parse: streamEvent(${binding}), `
       }
     }

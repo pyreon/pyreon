@@ -83,7 +83,7 @@ components:
         id: { type: integer, format: int64 }
         small: { type: integer, format: int64 }
         amount: { type: number, format: double }
-        refs: { type: array, items: { type: integer, format: int64 } }
+        refs: { type: array, uniqueItems: true, items: { type: integer, format: int64 } }
         parent: { type: integer, format: int64, nullable: true }
         account: { $ref: '#/components/schemas/Account' }
 `

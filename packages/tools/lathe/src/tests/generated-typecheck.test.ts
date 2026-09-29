@@ -591,7 +591,7 @@ components:
         id: { type: integer, format: int64, example: 42 }
         amount: { type: number, format: double }
         count: { type: integer }
-        refs: { type: array, items: { type: integer, format: int64 } }
+        refs: { type: array, uniqueItems: true, items: { type: integer, format: int64 } }
         parent: { type: [integer, 'null'], format: int64 }
         limits: { type: object, additionalProperties: { type: integer, format: int64 } }
         bounded: { type: integer, format: int64, minimum: 1, exclusiveMaximum: 1000, multipleOf: 3 }

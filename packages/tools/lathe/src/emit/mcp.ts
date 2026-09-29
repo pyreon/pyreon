@@ -26,6 +26,7 @@
  * tool is never a mystery.
  */
 import type { IrDocument, IrOperation, IrType } from '../core/ir'
+import { usesBigInt } from '../core/walk'
 import { byTag, endpointSpec, isMutation, tagFile } from './client'
 import { isStreamOnly } from './stream'
 import { jsonLiteral, relativeSpecifier, SourceFile } from './writer'
@@ -211,7 +212,10 @@ export function emitMcpTools(doc: IrDocument): SourceFile {
     '  const tool = tools.find((t) => t.name === req.params.name)',
     "  if (!tool) throw new Error(`unknown tool ${req.params.name}`)",
     "  const result = await tool.call(req.params.arguments ?? {})",
-    "  return { content: [{ type: 'text', text: JSON.stringify(result ?? null) }] }",
+    // `int64: 'bigint'`: a result can hold a bigint, which `JSON.stringify` throws on.
+    usesBigInt(doc)
+      ? "  return { content: [{ type: 'text', text: JSON.stringify(result ?? null, (_k, v) => (typeof v === 'bigint' ? v.toString() : v)) }] }"
+      : "  return { content: [{ type: 'text', text: JSON.stringify(result ?? null) }] }",
     '})',
     '```',
   )

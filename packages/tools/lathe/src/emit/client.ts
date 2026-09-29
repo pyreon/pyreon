@@ -701,7 +701,8 @@ export function emitWebEndpoints(
         f.importType(schemaSpecifierFor(path, name, doc), name);
     }
 
-    const decls = ops.map((op) => endpointDecl(op, validator, models));
+    const lossless = usesBigInt(doc);
+    const decls = ops.map((op) => endpointDecl(op, validator, models, false, lossless));
     // An encoded body is typed through the encoder's own value type.
     if (decls.some((d) => d.generics.includes("FormValue"))) {
       f.importType(
@@ -745,7 +746,7 @@ export function emitWebEndpoints(
       validator,
       streamDecl: (op) => ({
         spec: endpointSpec(op),
-        ...endpointDecl(op, validator, models, true),
+        ...endpointDecl(op, validator, models, true, lossless),
       }),
     });
     files.push(f);
@@ -783,6 +784,7 @@ function endpointDecl(
   validator: ValidatorName,
   models: ModelTypes,
   asStream = false,
+  lossless = false,
 ): EndpointDecl {
   const entries: string[] = [];
   // `asStream`: the raw-body twin of a JSON endpoint, which `<op>Stream`
@@ -791,7 +793,7 @@ function endpointDecl(
   let responseConst: string | undefined;
   let v = "undefined";
   if (!asStream && op.response && op.response.kind !== "unknown") {
-    const expr = schemaExpr(op.response, { native: false, validator });
+    const expr = schemaExpr(op.response, { native: false, validator, lossless });
     if (op.response.kind === "ref") {
       entries.push(`response: ${op.response.name}`);
       v = `typeof ${op.response.name}`;
@@ -826,7 +828,7 @@ function endpointDecl(
       binding = e.type.name
     } else {
       binding = `${op.id}$error${e.status === 'default' ? 'Default' : e.status}`
-      errorConsts.push(`const ${binding} = ${schemaExpr(e.type, { native: false, validator })}`)
+      errorConsts.push(`const ${binding} = ${schemaExpr(e.type, { native: false, validator, lossless })}`)
     }
     errorEntries.push(`${key}: ${binding}`)
     errorTypes.push(`${key}: typeof ${binding}`)

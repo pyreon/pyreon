@@ -1212,6 +1212,7 @@ Paths passed on the command line are relative to the working directory.
 | `validator` | `"pyreon" \| "zod"` | `'pyreon'` | Which library the generated schemas are written in. |
 | `baseUrl` | `string` | the spec's `servers[0].url` | Overrides the spec's `servers[0].url` — must be an absolute literal to reach native. `configureApi({ baseUrl })` switches it at runtime. |
 | `responseValidation` | `"strict" \| "warn" \| "off"` | `'strict'` | What the generated client does with a response that does not match its schema. `strict` (the default) rejects; `warn` logs and passes the raw body through, which is the usual choice in production when a backend may drift; `off` skips validation, which also skips its cost on large list responses. `configureApi({ validate })` switches it at runtime. |
+| `int64` | `"number" \| "bigint"` | `'number'` | How an OpenAPI `format: int64` integer is generated. |
 | `remoteRefs` | `"fetch" \| "off"` | — | What `generate` does with a `$ref` into a REMOTE document (an http(s) URL) in a spec on disk. `off` (the default) keeps generation offline and deterministic: the ref is reported and typed `unknown` -- `lathe pull` a remote spec to bundle it instead. `fetch` downloads every remote part with the same rules as `lathe pull`: a per-document ETag cache under `node_modules/.cache/lathe`, credentials from `remoteHeaders` for their own origin only, and a failed fetch fails the run rather than silently typing that part `unknown`. |
 | `remoteHeaders` | `Record<string, Readonly<Record<string, string>>>` | — | Headers for `remoteRefs: 'fetch'`, keyed by ORIGIN: each set is sent only to documents on that origin, so a spec that references another host never receives your credential. |
 | `pagination` | `Record<string, PaginationConfig>` | — | How to page through operations, keyed by the GENERATED operation name (the `endpoints` export). Declared, never guessed — each entry emits a `use<Op>Infinite` hook and a `<op>InfiniteOptions` factory. Same shape as the `x-pyreon-pagination` spec extension, which a config entry overrides. |
@@ -1225,7 +1226,7 @@ Paths passed on the command line are relative to the working directory.
 | `projects` | `{ name, input, …any key above }[]` | — | Several specs in one run, each with its own output and target. |
 {/* gen:lathe-config:end */}
 
-An unknown `plugins`, `client`, `validator` or `target` value is refused by
+An unknown `plugins`, `client`, `validator`, `target` or `int64` value is refused by
 name, with the known values listed.
 
 ## Command line

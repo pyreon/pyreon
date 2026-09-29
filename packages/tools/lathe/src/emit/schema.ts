@@ -10,7 +10,7 @@
 import { deferredTargets, modelDependencies, modelIndex, stronglyConnected, topoSortModels } from '../core/graph'
 import type { IrBigIntType, IrDocument, IrField, IrLiteral, IrNumberType, IrStringType, IrType } from '../core/ir'
 import { propKey, typeIdent } from '../core/naming'
-import { collectRefNames } from '../core/walk'
+import { collectRefNames, usesBigInt } from '../core/walk'
 import { dialectOf, type ValidatorName } from './validator'
 import { fieldDoc, modelDoc } from './jsdoc'
 import { q, regexLiteral, relativeSpecifier, safeBlockComment, SourceFile } from './writer'
@@ -54,6 +54,13 @@ export interface SchemaExprOptions {
    * represented, and saying so beats emitting a bounded lie.
    */
   expanding?: ReadonlySet<string> | undefined
+  /**
+   * The document was read under `int64: 'bigint'`, so a validated value can
+   * hold a bigint anywhere -- including behind a ref this walk does not
+   * follow. The one place that matters is `uniqueItems`, whose check keys
+   * items by `JSON.stringify`, which throws on a bigint.
+   */
+  lossless?: boolean | undefined
 }
 
 /**
@@ -264,7 +271,10 @@ export function schemaExpr(type: IrType, opts: SchemaExprOptions, depth = 0): st
       // their JSON text, which is exact for scalars (the dominant case) and
       // for objects serialized in a consistent key order.
       if (type.uniqueItems) {
-        expr += `.refine((a) => new Set(a.map((v) => JSON.stringify(v))).size === a.length, { message: 'items must be unique' })`
+        const key = opts.lossless
+          ? "JSON.stringify(v, (_k, x: unknown) => (typeof x === 'bigint' ? `${x}n` : x))"
+          : 'JSON.stringify(v)'
+        expr += `.refine((a) => new Set(a.map((v) => ${key})).size === a.length, { message: 'items must be unique' })`
       }
       return expr
     }
@@ -561,7 +571,7 @@ export function emitSchemas(
       f.line()
       f.doc(...modelDoc(model))
       f.line(typeDeclaration(model.name, model.type, dialect.emptyObjectType))
-      const expr = schemaExpr(model.type, { ...opts, defer })
+      const expr = schemaExpr(model.type, { ...opts, defer, lossless: usesBigInt(doc) })
       if (dialect.objectSchemaImport && expr.includes(dialect.objectSchemaRef)) needsObjectType.value = true
       f.line(`export const ${model.name} = ${expr} as unknown as ${dialect.schemaTypeRef(model.name)}`)
     }
@@ -716,7 +726,7 @@ export function emitSchemaAgreement(doc: IrDocument, validator: ValidatorName = 
   for (const name of order) {
     const model = byName.get(name)
     if (!model) continue
-    const expr = schemaExpr(model.type, { native: false, validator, defer: deferredTargets(backEdges, name) })
+    const expr = schemaExpr(model.type, { native: false, validator, defer: deferredTargets(backEdges, name), lossless: usesBigInt(doc) })
     f.line(`const ${name}$ = ${expr}`)
     f.line(`export const ${name}$agrees: Same<${infer(`${name}$`)}, ${name}> = true`)
     f.line(`export const ${name}$spec: Same<${name}, ${tsType(model.type, 0, false, false, false, dialect.emptyObjectType)}> = true`)
