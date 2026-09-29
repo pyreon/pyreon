@@ -25,6 +25,7 @@ import type { ComponentFn, Props, VNodeChild } from '@pyreon/core'
 import {
   createContext,
   Fragment,
+  nativeCompat,
   onMount,
   onUnmount,
   onUpdate,
@@ -50,7 +51,7 @@ import {
   Transition as PyreonTransition,
   TransitionGroup as PyreonTransitionGroup,
 } from '@pyreon/runtime-dom'
-import { getCurrentCtx, getHookIndex } from './jsx-runtime'
+import { getCurrentCtx, getHookIndex, toCompatComponent } from './jsx-runtime'
 
 // ─── Internal symbols ─────────────────────────────────────────────────────────
 
@@ -1040,10 +1041,18 @@ export function defineComponent<P extends Props = Props>(
 
 /**
  * Defines an async component that lazily loads on first use.
- * Supports both a bare loader function and an options object with
- * loadingComponent, errorComponent, delay, and timeout.
+ * Accepts a bare loader function or an options object with `loader`.
  *
- * Returns a ComponentFn with a `__loading` property for Suspense integration.
+ * Implements `@pyreon/core`'s lazy protocol: `__loading()` drives
+ * `<Suspense>`'s fallback, and `__load()` resolves once the chunk has settled
+ * (loaded or failed — it never rejects), which the SSR renderers await so a
+ * still-loading chunk renders its content instead of nothing. The result is
+ * marked `nativeCompat` so `jsx()` does not wrap it (a wrapper would hide both
+ * members), and the loaded component is mounted the way `jsx()` would mount it.
+ *
+ * NOTE: `loadingComponent` / `errorComponent` / `delay` / `timeout` are
+ * accepted for source compatibility but not implemented — use `<Suspense>`'s
+ * `fallback` and an `<ErrorBoundary>` instead.
  */
 export function defineAsyncComponent<P extends Props = Props>(
   loader:
@@ -1055,19 +1064,23 @@ export function defineAsyncComponent<P extends Props = Props>(
         delay?: number
         timeout?: number
       },
-): ComponentFn<P> & { __loading: () => boolean } {
+): ComponentFn<P> & { __loading: () => boolean; __load: () => Promise<void> } {
   const load = typeof loader === 'function' ? loader : loader.loader
 
   const loaded = signal<ComponentFn<P> | null>(null)
   const error = signal<Error | null>(null)
-  let promise: Promise<unknown> | null = null
+  let promise: Promise<void> | null = null
 
-  const startLoad = () => {
-    if (promise) return
-    promise = load().then(
-      (mod) => loaded.set(mod.default),
-      (err) => error.set(err instanceof Error ? err : new Error(String(err))),
-    )
+  // Settles, never rejects: a failed load is surfaced by the next render
+  // throwing, exactly like core's `lazy()`.
+  const startLoad = (): Promise<void> => {
+    if (!promise) {
+      promise = load().then(
+        (mod) => loaded.set(toCompatComponent(mod.default)),
+        (err) => error.set(err instanceof Error ? err : new Error(String(err))),
+      )
+    }
+    return promise
   }
 
   const AsyncComp = ((props: P) => {
@@ -1075,17 +1088,17 @@ export function defineAsyncComponent<P extends Props = Props>(
     const err = error()
     if (err) throw err
     const comp = loaded()
-    if (!comp) return null
-    return comp(props)
-  }) as ComponentFn<P> & { __loading: () => boolean }
+    return comp ? pyreonH(comp as ComponentFn, props as Props) : null
+  }) as ComponentFn<P> & { __loading: () => boolean; __load: () => Promise<void> }
 
   AsyncComp.__loading = () => {
     const isLoading = loaded() === null && error() === null
     if (isLoading) startLoad()
     return isLoading
   }
+  AsyncComp.__load = startLoad
 
-  return AsyncComp
+  return nativeCompat(AsyncComp)
 }
 
 // ─── h ────────────────────────────────────────────────────────────────────────
@@ -1553,17 +1566,25 @@ export function TransitionGroup<T = unknown>(props: {
  *   )
  * }
  */
-export function Suspense(props: {
+function VueSuspense(props: {
   fallback?: VNodeChild
   /** Accepted for Vue compatibility — ignored (no timeout phase). */
   timeout?: number
   children?: VNodeChild
 }): VNodeChild {
-  return PyreonSuspense({
+  // Render core's Suspense as a CHILD vnode rather than calling it: the SSR
+  // renderers recognise a boundary by `vnode.type === Suspense` (core's), both
+  // to stream it and to wait for a still-loading lazy child. Called directly,
+  // the boundary's type was this function and a pending
+  // `defineAsyncComponent` rendered the fallback on the server forever.
+  return pyreonH(PyreonSuspense, {
     fallback: props.fallback ?? null,
     children: props.children ?? null,
   })
 }
+// Native so `jsx()` does not wrap it — the boundary has no Vue-style render
+// semantics, and wrapping only adds a compat render frame around it.
+export const Suspense = /* @__PURE__ */ nativeCompat(VueSuspense)
 
 // ─── getCurrentInstance / useSlots / useAttrs ────────────────────────────────
 
