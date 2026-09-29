@@ -7,11 +7,12 @@
  */
 
 import { expect, test } from "@playwright/test"
+import { waitForHydration } from "./hydration-barrier"
 
 // Inject benchmark harness into the page using window.__pyreon
 async function setupBench(page: import("@playwright/test").Page) {
   await page.goto("/")
-  await page.waitForSelector("#layout", { timeout: 10_000 })
+  await waitForHydration(page)
 
   // Inject the benchmark app into the DOM
   await page.evaluate(() => {

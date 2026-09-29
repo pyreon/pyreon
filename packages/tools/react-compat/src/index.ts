@@ -15,11 +15,12 @@
 export type { Props, VNode, VNodeChild } from '@pyreon/core'
 export { Fragment, h as createElement, h, createRef } from '@pyreon/core'
 
-import type { Context, VNode, VNodeChild } from '@pyreon/core'
+import type { ComponentFn, Context, LazyComponent, VNode, VNodeChild } from '@pyreon/core'
 import {
   createContext as pyreonCreateContext,
   ErrorBoundary,
   h,
+  lazy as coreLazy,
   nativeCompat,
   Portal,
   provide as pyreonProvide,
@@ -29,7 +30,7 @@ import {
 } from '@pyreon/core'
 import { batch, isServer } from '@pyreon/reactivity'
 import type { EffectEntry } from './jsx-runtime'
-import { getCurrentCtx, getHookIndex } from './jsx-runtime'
+import { getCurrentCtx, getHookIndex, toCompatComponent } from './jsx-runtime'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -459,7 +460,29 @@ export function createPortal(children: VNodeChild, target: Element): VNodeChild 
 
 // ─── Suspense / lazy / ErrorBoundary ─────────────────────────────────────────
 
-export { lazy } from '@pyreon/core'
+/**
+ * React-compatible `lazy()` — `@pyreon/core`'s `lazy()`, with two compat fixes:
+ *
+ * 1. The loaded component is mounted the way `jsx()` would mount it (wrapped
+ *    in a render frame unless marked `nativeCompat`). Core's `lazy()` mounts
+ *    the raw component, so a React-style component using hooks threw
+ *    "Hook called outside of a component render".
+ * 2. The lazy itself is marked `nativeCompat`, so `jsx()` does not wrap it. A
+ *    wrapped lazy hides the `__loading` / `__load` protocol behind the wrapper:
+ *    `<Suspense>` never showed its fallback, and the SSR renderers could not
+ *    see a still-loading chunk to wait for, rendering nothing.
+ *
+ * @example
+ * const Page = lazy(() => import('./Page'))
+ * <Suspense fallback={<Spinner />}><Page /></Suspense>
+ */
+export function lazy<P extends object>(
+  load: () => Promise<{ default: ComponentFn<P> }>,
+): LazyComponent<P> {
+  return nativeCompat(
+    coreLazy<P>(() => load().then((m) => ({ default: toCompatComponent(m.default) }))),
+  )
+}
 export { ErrorBoundary, Suspense }
 
 // ─── forwardRef ─────────────────────────────────────────────────────────────

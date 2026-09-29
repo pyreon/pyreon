@@ -28,6 +28,7 @@ import {
   For,
   Match,
   nativeCompat,
+  h as pyreonH,
   Portal as PyreonPortal,
   createContext as pyreonCreateContext,
   onMount as pyreonOnMount,
@@ -53,7 +54,7 @@ import {
   setCurrentScope,
 } from '@pyreon/reactivity'
 import { hydrateRoot, mount as pyreonMount } from '@pyreon/runtime-dom'
-import { getCurrentCtx, getHookIndex } from './jsx-runtime'
+import { getCurrentCtx, getHookIndex, toCompatComponent } from './jsx-runtime'
 
 // Dev-mode counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
@@ -488,6 +489,18 @@ export function children(fn: () => VNodeChild): () => VNodeChild {
 
 // ─── lazy ────────────────────────────────────────────────────────────────────
 
+/**
+ * Solid-compatible `lazy()`. Loading starts on first use (first render, first
+ * `<Suspense>` check, or `preload()`), not at definition — Solid's semantics.
+ *
+ * Implements the same lazy protocol as `@pyreon/core`'s `lazy()`:
+ * `__loading()` drives `<Suspense>`'s fallback, and `__load()` resolves once the
+ * chunk has settled (loaded or failed — it never rejects), which the SSR
+ * renderers await so a still-loading chunk renders its content instead of
+ * nothing. The lazy is marked `nativeCompat` so `jsx()` does not wrap it — a
+ * wrapper would hide both members — and the loaded component is mounted the
+ * way `jsx()` would mount it.
+ */
 export function lazy<P extends Props>(
   loader: () => Promise<{ default: ComponentFn<P> }>,
 ): LazyComponent<P> & { preload: () => Promise<{ default: ComponentFn<P> }> } {
@@ -499,7 +512,7 @@ export function lazy<P extends Props>(
     if (!promise) {
       promise = loader()
         .then((mod) => {
-          loaded.set(mod.default)
+          loaded.set(toCompatComponent(mod.default))
           return mod
         })
         .catch((err) => {
@@ -512,26 +525,29 @@ export function lazy<P extends Props>(
     return promise
   }
 
-  // Uses Pyreon's __loading protocol — Suspense checks this to show fallback.
-  // __loading() triggers load() on first call so loading starts when Suspense
-  // first encounters the component (not at module load time, not on first render).
   const LazyComp = ((props: P) => {
     const err = error()
     if (err) throw err
     const comp = loaded()
-    if (!comp) return null
-    return comp(props)
+    return comp ? pyreonH(comp as ComponentFn, props as Props) : null
   }) as LazyComponent<P> & { preload: () => Promise<{ default: ComponentFn<P> }> }
 
+  // __loading() triggers load() on first call so loading starts when Suspense
+  // first encounters the component (not at module load time, not on first render).
   LazyComp.__loading = () => {
     const isLoading = loaded() === null && error() === null
     if (isLoading) load()
     return isLoading
   }
+  // Settles, never rejects: a failed load is surfaced by the next render
+  // throwing, exactly like core's `lazy()`.
+  LazyComp.__load = () => load().then(noopSettle, noopSettle)
   LazyComp.preload = load
 
-  return LazyComp
+  return nativeCompat(LazyComp)
 }
+
+function noopSettle(): void {}
 
 // ─── createContext / useContext ───────────────────────────────────────────────
 
