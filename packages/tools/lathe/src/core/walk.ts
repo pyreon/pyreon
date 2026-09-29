@@ -10,7 +10,7 @@
  * initialization` at import -- on Twilio, OpenAI and DigitalOcean at once.
  * The `never` check below makes a new kind a compile error here instead.
  */
-import type { IrOperation, IrType } from './ir'
+import type { IrDocument, IrOperation, IrType } from './ir'
 
 export function childTypes(type: IrType): readonly IrType[] {
   switch (type.kind) {
@@ -24,6 +24,7 @@ export function childTypes(type: IrType): readonly IrType[] {
       return type.additional ? [...type.fields.map((f) => f.type), type.additional] : type.fields.map((f) => f.type)
     case 'string':
     case 'number':
+    case 'bigint':
     case 'boolean':
     case 'null':
     case 'enum':
@@ -77,6 +78,7 @@ export function renameRefs(type: IrType, rename: (name: string) => string): IrTy
       }
     case 'string':
     case 'number':
+    case 'bigint':
     case 'boolean':
     case 'null':
     case 'enum':
@@ -87,4 +89,49 @@ export function renameRefs(type: IrType, rename: (name: string) => string): IrTy
       return exhaustive
     }
   }
+}
+
+/**
+ * Every ROOT type a document carries: models, each operation's parameters,
+ * body, response, error bodies and stream events, and webhook payloads.
+ */
+export function documentTypes(doc: IrDocument): IrType[] {
+  const out: IrType[] = doc.models.map((m) => m.type)
+  for (const op of doc.operations) {
+    out.push(...operationTypes(op))
+    for (const e of op.errors ?? []) out.push(e.type)
+    if (op.stream) out.push(op.stream.event)
+  }
+  for (const w of doc.webhooks ?? []) if (w.payload) out.push(w.payload)
+  return out
+}
+
+/** Visit `type` and every type nested in it (refs are not followed). */
+export function visitTypes(type: IrType, visit: (t: IrType) => void): void {
+  visit(type)
+  for (const c of childTypes(type)) visitTypes(c, visit)
+}
+
+const bigintMemo = new WeakMap<IrDocument, boolean>()
+
+/**
+ * Does the document carry a `bigint` anywhere -- i.e. was it read under
+ * `int64: 'bigint'` from a spec that has a `format: int64`?
+ *
+ * The one question every emitter asks before emitting the lossless JSON codec
+ * and its `bigint`-aware helpers. `false` for every document read in the
+ * default mode, which is what keeps that mode's output byte-identical.
+ */
+export function usesBigInt(doc: IrDocument): boolean {
+  const hit = bigintMemo.get(doc)
+  if (hit !== undefined) return hit
+  let found = false
+  for (const root of documentTypes(doc)) {
+    visitTypes(root, (t) => {
+      if (t.kind === 'bigint') found = true
+    })
+    if (found) break
+  }
+  bigintMemo.set(doc, found)
+  return found
 }

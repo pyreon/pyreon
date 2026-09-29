@@ -8,7 +8,7 @@
  */
 
 import { deferredTargets, modelDependencies, modelIndex, stronglyConnected, topoSortModels } from '../core/graph'
-import type { IrDocument, IrField, IrLiteral, IrNumberType, IrStringType, IrType } from '../core/ir'
+import type { IrBigIntType, IrDocument, IrField, IrLiteral, IrNumberType, IrStringType, IrType } from '../core/ir'
 import { propKey, typeIdent } from '../core/naming'
 import { collectRefNames } from '../core/walk'
 import { dialectOf, type ValidatorName } from './validator'
@@ -91,6 +91,10 @@ export function tsType(
       return enumTs(type.values, widenEnums, native)
     case 'number':
       return 'number'
+    // Native decodes into typed structs and PMTC has no bigint: the native
+    // schema keeps `number().int()` (see `schemaExpr`), so its type must too.
+    case 'bigint':
+      return native ? 'number' : 'bigint'
     case 'boolean':
       return 'boolean'
     case 'null':
@@ -206,8 +210,16 @@ export function schemaExpr(type: IrType, opts: SchemaExprOptions, depth = 0): st
       return stringExpr(type, b, p, dialect.uriCheck)
     case 'enum':
       return enumExpr(type.values, b, opts.native, p)
-    case 'number':
-      return numberExpr(type, b, opts.native, p)
+    case 'number': {
+      const expr = numberExpr(type, b, opts.native, p)
+      // Under `int64: 'bigint'` the lossless decoder hands ANY integer past
+      // 2^53 - 1 over as a bigint, including in a plain number field; it is
+      // read back as the number `JSON.parse` would have produced. Web only:
+      // native decodes its own JSON.
+      return type.acceptsBigInt && !opts.native ? `${c('preprocess')}(${BIGINT_TO_NUMBER}, ${expr})` : expr
+    }
+    case 'bigint':
+      return bigintExpr(type, b, opts.native, p)
     case 'boolean':
       return `${c('boolean')}()`
     case 'null':
@@ -328,6 +340,43 @@ function stringExpr(type: IrStringType, b: string, p: string, uriCheck: string):
   if (type.maxLength !== undefined) expr += `.max(${type.maxLength})`
   if (type.pattern && portableRegex(type.pattern)) expr += `.regex(${regexLiteral(type.pattern)})`
   return expr
+}
+
+/**
+ * A plain number field's `preprocess` step under `int64: 'bigint'`. A bigint
+ * only reaches one when the value is past 2^53 - 1, where `Number(v)` is
+ * exactly the rounding `JSON.parse` applies -- so the field sees what it would
+ * have seen without the lossless decoder.
+ */
+const BIGINT_TO_NUMBER = "(v) => (typeof v === 'bigint' ? Number(v) : v)"
+
+/**
+ * An int64 field's `preprocess` step. The lossless decoder leaves a SAFE
+ * integer as a number (it has no schema to consult), so one is widened here;
+ * anything else -- a fraction, a string -- is left for the `bigint` check to
+ * reject.
+ */
+const INTEGER_TO_BIGINT = "(v) => (typeof v === 'number' && Number.isInteger(v) ? BigInt(v) : v)"
+
+/**
+ * A `format: int64` integer under `int64: 'bigint'`.
+ *
+ * Web: `preprocess(widen, bigint())` with the bounds as bigint literals, which
+ * both `@pyreon/validate` and zod spell `.min(5n)`. Native: the platform
+ * integer PMTC lowers, exactly what the default mode emits there -- PMTC has
+ * no bigint, and `generate` reports the difference (`int64-native`).
+ */
+function bigintExpr(type: IrBigIntType, b: string, native: boolean, p: string): string {
+  if (native) {
+    return numberExpr({ kind: 'number', integer: true, minimum: type.minimum, maximum: type.maximum }, b, true, p)
+  }
+  let inner = `${p}${b}.bigint()`
+  if (type.minimum !== undefined) inner += `.min(${type.minimum}n)`
+  if (type.maximum !== undefined) inner += `.max(${type.maximum}n)`
+  if (type.exclusiveMinimum !== undefined) inner += `.gt(${type.exclusiveMinimum}n)`
+  if (type.exclusiveMaximum !== undefined) inner += `.lt(${type.exclusiveMaximum}n)`
+  if (type.multipleOf !== undefined && type.multipleOf > 0) inner += `.multipleOf(${type.multipleOf}n)`
+  return `${p}${b}.preprocess(${INTEGER_TO_BIGINT}, ${inner})`
 }
 
 function numberExpr(type: IrNumberType, b: string, native: boolean, p: string): string {

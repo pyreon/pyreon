@@ -22,7 +22,7 @@ import {
   reachableModels,
   topoSortModels,
 } from "../core/graph";
-import { collectRefNames } from "../core/walk";
+import { collectRefNames, usesBigInt } from "../core/walk";
 import type { IrDocument, IrOperation, IrType } from "../core/ir";
 import {
   assignNames,
@@ -37,6 +37,7 @@ import {
   CLIENT_PACKAGE,
   runtimeEndpoint,
   runtimeError,
+  runtimeJsonCodec,
   runtimePreamble,
   runtimeTransport,
   runtimeValidate,
@@ -109,6 +110,10 @@ export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
     ...(hasStreams(doc) ? ["ResponseOf"] : []),
   );
   f.import("@pyreon/http/schema", "standardSchema");
+  // `int64: 'bigint'`: JSON is decoded from its SOURCE TEXT, so an int64 past
+  // 2^53 - 1 is a bigint rather than a silently rounded number.
+  const lossless = usesBigInt(doc);
+  if (lossless) f.import("@pyreon/http/json", "losslessJson");
   f.line();
   f.doc(
     "Runtime settings for the client — see {@link configureApi}.",
@@ -208,6 +213,7 @@ export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
   f.line("  baseUrl: () => settings.baseUrl,");
   if (opts.keyScope) f.line(`  keyScope: ${q(opts.keyScope)},`);
   f.line("  schema: standardSchema,");
+  if (lossless) f.line("  json: losslessJson,");
   f.line("  validate: () => settings.validate,");
   f.line("  headers: () => {");
   f.line("    const h = settings.headers");
@@ -438,6 +444,8 @@ function emitAdapterClient(
 ): SourceFile {
   const f = new SourceFile(CLIENT_FILE);
   const pkg = CLIENT_PACKAGE[client];
+  // `int64: 'bigint'`: the client decodes and encodes JSON losslessly.
+  const lossless = usesBigInt(doc);
   if (client === "axios") {
     f.importDefault("axios", "axios");
     f.import("axios", "AxiosError");
@@ -467,18 +475,25 @@ function emitAdapterClient(
   } else if (client === "ky") {
     // One permanent hook that runs the `configureApi({ use })` slot, so the
     // slot can change at runtime without re-creating the instance.
+    // `parseJson` is what ky decodes an ERROR body with (`error.data`).
     f.line(
-      "export const instance: KyInstance = ky.create({ fetch: kyTransport, hooks: { beforeRequest: [runInterceptors] } })",
+      lossless
+        ? "export const instance: KyInstance = ky.create({ fetch: kyTransport, hooks: { beforeRequest: [runInterceptors] }, parseJson: parseJsonLossless })"
+        : "export const instance: KyInstance = ky.create({ fetch: kyTransport, hooks: { beforeRequest: [runInterceptors] } })",
     );
   }
   if (client !== "fetch") f.line();
   f.lines(...runtimeError());
   f.line();
-  f.lines(...runtimePreamble());
+  f.lines(...runtimePreamble(lossless));
   f.line();
   f.lines(...runtimeValidate());
   f.line();
-  f.lines(...runtimeTransport(client));
+  if (lossless) {
+    f.lines(...runtimeJsonCodec());
+    f.line();
+  }
+  f.lines(...runtimeTransport(client, lossless));
   f.line();
   f.lines(
     ...runtimeEndpoint(
@@ -486,6 +501,7 @@ function emitAdapterClient(
       baseUrlOf(doc, opts),
       opts.keyScope,
       opts.responseValidation,
+      lossless,
     ),
   );
   emitAuthHelpers(f, doc, client);

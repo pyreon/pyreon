@@ -16,7 +16,7 @@
 import { modelIndex } from '../core/graph'
 import type { IrDocument, IrOperation, IrParam, IrType } from '../core/ir'
 import { propKey, typeIdent } from '../core/naming'
-import { conforms } from '../core/sample'
+import { asGeneratedValue, conforms } from '../core/sample'
 import { sampleValue } from '../core/sample-value'
 import { bodyArg, hasInput } from './operation-types'
 
@@ -51,7 +51,7 @@ export function sampleArgs(op: IrOperation, doc: IrDocument): Record<string, unk
     const example = op.body.example
     out[bodyArg(op.body)] =
       example !== undefined && conforms(example, op.body.type, (n) => modelIndex(doc).get(n)?.type)
-        ? example
+        ? asGeneratedValue(example, op.body.type, (n) => modelIndex(doc).get(n)?.type)
         : sampleValue(op.body.type, doc)
   }
   return out
@@ -59,7 +59,9 @@ export function sampleArgs(op: IrOperation, doc: IrDocument): Record<string, unk
 
 /** A parameter's example when it satisfies the type, else a derived sample. */
 function paramValue(p: IrParam, doc: IrDocument): unknown {
-  if (p.example !== undefined && conforms(p.example, p.type, (n) => modelIndex(doc).get(n)?.type)) return p.example
+  if (p.example !== undefined && conforms(p.example, p.type, (n) => modelIndex(doc).get(n)?.type)) {
+    return asGeneratedValue(p.example, p.type, (n) => modelIndex(doc).get(n)?.type)
+  }
   return sampleValue(p.type, doc)
 }
 
@@ -70,7 +72,9 @@ function pathValue(v: unknown): unknown {
 
 /** Headers and cookies are scalars. */
 function scalarValue(v: unknown): unknown {
-  return v === null || ['string', 'number', 'boolean'].includes(typeof v) ? v : JSON.stringify(v)
+  // A bigint (an int64 under `int64: 'bigint'`) travels as its digits.
+  if (typeof v === 'bigint') return String(v)
+  return v === null || ['string', 'number', 'boolean'].includes(typeof v) ? v : jsonText(v)
 }
 
 /**
@@ -79,12 +83,19 @@ function scalarValue(v: unknown): unknown {
  * caller serializes it), so the sample is serialized the same way.
  */
 function queryValue(v: unknown): unknown {
+  // An int64 query parameter is typed `string` (see `queryParamTs`): its digits.
+  if (typeof v === 'bigint') return String(v)
   const scalar = (x: unknown): boolean => x === null || ['string', 'number', 'boolean'].includes(typeof x)
   if (scalar(v)) return v
-  if (Array.isArray(v)) return v.every(scalar) ? v : JSON.stringify(v)
+  if (Array.isArray(v)) return v.every(scalar) ? v : jsonText(v)
   if (typeof v === 'object' && Object.values(v as object).every((x) => scalar(x) || (Array.isArray(x) && x.every(scalar))))
     return v
-  return JSON.stringify(v)
+  return jsonText(v)
+}
+
+/** `JSON.stringify`, with a bigint written as its digits instead of throwing. */
+function jsonText(v: unknown): string {
+  return JSON.stringify(v, (_k, x: unknown) => (typeof x === 'bigint' ? x.toString() : x))
 }
 
 /**
@@ -112,6 +123,7 @@ function flatLiteral(value: unknown): string {
   if (value === null || value === undefined) return 'null'
   if (typeof value === 'string') return quote(value)
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (typeof value === 'bigint') return `${value}n`
   if (Array.isArray(value)) return `[${value.map(flatLiteral).join(', ')}]`
   const entries = Object.entries(value as Record<string, unknown>)
   return entries.length === 0 ? '{}' : `{ ${entries.map(([k, v]) => `${propKey(k)}: ${flatLiteral(v)}`).join(', ')} }`

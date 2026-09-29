@@ -17,8 +17,10 @@ import type {
   IrField,
   IrFieldEncoding,
   IrLiteral,
+  IrBigIntType,
   IrModel,
   IrNote,
+  IrNumberType,
   IrOperation,
   IrPagination,
   IrParam,
@@ -29,6 +31,7 @@ import type {
   StringFormat,
 } from '../core/ir'
 import { streamFormatOf } from '../core/media'
+import { documentTypes, usesBigInt, visitTypes } from '../core/walk'
 import { assignNames, ident, modelIdent, operationIdent, operationIdFrom, tagFile } from '../core/naming'
 import { applyPatches, type LatheSpecPatch } from '../core/patch'
 import { bundle, collectDocuments, isRemote, referencedDocuments, type ReadOutcome } from './bundle'
@@ -84,6 +87,13 @@ export interface LoadOptions {
    * and offline.
    */
   remoteDocuments?: ReadonlyMap<string, ReadOutcome> | undefined
+  /**
+   * How `format: int64` is generated — see `LatheSection.int64`. `number` (the
+   * default) reads it as a plain number and reports the precision loss;
+   * `bigint` reads it as {@link IrBigIntType} and marks every other number as
+   * accepting the `bigint` the lossless decoder can hand it.
+   */
+  int64?: 'number' | 'bigint' | undefined
 }
 
 /** Parse a spec document (JSON or YAML text) into the IR. */
@@ -263,6 +273,7 @@ function convert(spec: Json, options: LoadOptions = {}, preNotes: readonly IrNot
     sourceUrl: undefined,
     opAt: new Map(),
     int64At: new Set(),
+    int64: options.int64 ?? 'number',
     callbacks: [],
   }
 
@@ -333,7 +344,7 @@ function convert(spec: Json, options: LoadOptions = {}, preNotes: readonly IrNot
     })
   }
 
-  return {
+  const doc: IrDocument = {
     title: str(info.title) ?? 'API',
     version: specVersion(info.version, notes),
     baseUrl,
@@ -342,6 +353,31 @@ function convert(spec: Json, options: LoadOptions = {}, preNotes: readonly IrNot
     operations,
     ...(webhooks.length > 0 ? { webhooks } : {}),
     notes,
+  }
+  if (ctx.int64 === 'bigint') markAcceptsBigInt(doc)
+  return doc
+}
+
+/**
+ * Under `int64: 'bigint'`, mark every NON-int64 number as accepting a bigint.
+ *
+ * The lossless decoder cannot tell an int64 field from any other: it reads
+ * EVERY integer past 2^53 - 1 as a bigint, because that is the only moment the
+ * digits exist. So a plain `number` field (a `double` a server wrote as
+ * `100000000000000000000`) has to take the bigint back as the double
+ * `JSON.parse` would have produced. Done once, after conversion, and only when
+ * the document actually holds an int64 -- otherwise no decoder is installed and
+ * the output stays exactly the default mode's.
+ *
+ * Mutates in place: the types were created by this conversion and nothing has
+ * seen them yet.
+ */
+function markAcceptsBigInt(doc: IrDocument): void {
+  if (!usesBigInt(doc)) return
+  for (const root of documentTypes(doc)) {
+    visitTypes(root, (t) => {
+      if (t.kind === 'number') t.acceptsBigInt = true
+    })
   }
 }
 
@@ -547,6 +583,8 @@ interface Ctx {
   opAt: Map<IrOperation, string>
   /** Pointers of every `format: int64` number, for one aggregated note. */
   int64At: Set<string>
+  /** `LoadOptions.int64`, defaulted. */
+  int64: 'number' | 'bigint'
   /** Callbacks met while collecting operations, in document order. */
   callbacks: IrWebhook[]
 }
@@ -1563,7 +1601,10 @@ function toTypeNonNull(schema: Json, at: string, ctx: Ctx): IrType {
       return stringType(schema)
     case 'integer':
     case 'number':
-      if (schema.format === 'int64') ctx.int64At.add(at)
+      if (schema.format === 'int64') {
+        ctx.int64At.add(at)
+        if (ctx.int64 === 'bigint') return bigintType(schema)
+      }
       return numberType(schema, t === 'integer')
     case 'boolean':
       return { kind: 'boolean' }
@@ -1726,18 +1767,44 @@ function stringType(schema: Json): IrType {
  * otherwise bury every other loss under hundreds of identical lines.
  */
 function noteInt64(ctx: Ctx): void {
-  if (ctx.int64At.size === 0) return
+  // Under `int64: 'bigint'` the value is decoded from its source text and
+  // carried as a bigint, so nothing is rounded and there is nothing to report.
+  if (ctx.int64At.size === 0 || ctx.int64 === 'bigint') return
   const all = [...ctx.int64At]
   const first = all[0] as string
   const more = all.length > 1 ? ` (and ${all.length - 1} more)` : ''
   ctx.notes.push({
     code: 'int64-precision',
     at: first,
-    message: `${all.length} \`format: int64\` number${all.length === 1 ? '' : 's'}${more} — JSON.parse rounds any value past 2^53 - 1 (9007199254740991) before validation runs, so such values arrive silently rounded. Typed as \`number\`; a \`bigint\` or string mapping would validate an already-wrong value. If the API can exceed that range, have it send the value as a string.`,
+    message: `${all.length} \`format: int64\` number${all.length === 1 ? '' : 's'}${more} — JSON.parse rounds any value past 2^53 - 1 (9007199254740991) before validation runs, so such values arrive silently rounded. Typed as \`number\`. Set \`int64: 'bigint'\` to decode them losslessly as \`bigint\` (web), or have the API send the value as a string.`,
   })
 }
 
-function numberType(schema: Json, integer: boolean): IrType {
+/**
+ * A `format: int64` integer under `int64: 'bigint'`.
+ *
+ * The same bounds as {@link numberType}, with one extra rule: a bound past
+ * 2^53 - 1 was ROUNDED when the spec text itself was parsed (the spec is JSON
+ * or YAML, read into doubles like any other), so enforcing it would enforce
+ * the wrong number -- `maximum: 9223372036854775807` reads as 2^63, which
+ * admits a value one past the real bound. Such a bound is dropped; at that
+ * magnitude it only restates the int64 range anyway.
+ */
+function bigintType(schema: Json): IrBigIntType {
+  const n = numberType(schema, true)
+  const exact = (v: number | undefined): number | undefined =>
+    v !== undefined && Number.isSafeInteger(v) ? v : undefined
+  return {
+    kind: 'bigint',
+    minimum: exact(n.minimum),
+    maximum: exact(n.maximum),
+    exclusiveMinimum: exact(n.exclusiveMinimum),
+    exclusiveMaximum: exact(n.exclusiveMaximum),
+    multipleOf: exact(n.multipleOf),
+  }
+}
+
+function numberType(schema: Json, integer: boolean): IrNumberType {
   // 3.0 spells a strict bound as `minimum: 5, exclusiveMinimum: true`; 3.1 as
   // `exclusiveMinimum: 5`. Both normalize to the number. Reading the 3.0 form
   // as an inclusive `minimum` (what happened before) accepted the bound itself.
@@ -1969,7 +2036,7 @@ function mergeObjects(
 function refineType(a: IrType, b: IrType): IrType {
   if (a.kind === 'unknown') return b
   if (b.kind === 'unknown') return a
-  if (a.kind === 'enum' && (b.kind === 'string' || b.kind === 'number' || b.kind === 'boolean')) return a
+  if (a.kind === 'enum' && (b.kind === 'string' || b.kind === 'number' || b.kind === 'bigint' || b.kind === 'boolean')) return a
   if (b.kind === 'enum') return b
   if (a.kind === 'string' && b.kind === 'string') {
     return {
@@ -1978,6 +2045,19 @@ function refineType(a: IrType, b: IrType): IrType {
       minLength: maxOf(a.minLength, b.minLength),
       maxLength: minOf(a.maxLength, b.maxLength),
       pattern: b.pattern ?? a.pattern,
+    }
+  }
+  // An int64 refined by a plain integer (or the reverse) is still an int64:
+  // the other declaration only adds bounds.
+  if ((a.kind === 'bigint' || a.kind === 'number') && (b.kind === 'bigint' || b.kind === 'number') && (a.kind === 'bigint' || b.kind === 'bigint')) {
+    const exact = (v: number | undefined): number | undefined => (v !== undefined && Number.isSafeInteger(v) ? v : undefined)
+    return {
+      kind: 'bigint',
+      minimum: exact(maxOf(a.minimum, b.minimum)),
+      maximum: exact(minOf(a.maximum, b.maximum)),
+      exclusiveMinimum: exact(maxOf(a.exclusiveMinimum, b.exclusiveMinimum)),
+      exclusiveMaximum: exact(minOf(a.exclusiveMaximum, b.exclusiveMaximum)),
+      multipleOf: exact(b.multipleOf ?? a.multipleOf),
     }
   }
   if (a.kind === 'number' && b.kind === 'number') {
@@ -1989,6 +2069,7 @@ function refineType(a: IrType, b: IrType): IrType {
       exclusiveMinimum: maxOf(a.exclusiveMinimum, b.exclusiveMinimum),
       exclusiveMaximum: minOf(a.exclusiveMaximum, b.exclusiveMaximum),
       multipleOf: b.multipleOf ?? a.multipleOf,
+      ...(a.acceptsBigInt || b.acceptsBigInt ? { acceptsBigInt: true as const } : {}),
     }
   }
   return b

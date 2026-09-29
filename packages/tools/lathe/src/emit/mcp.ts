@@ -59,6 +59,17 @@ export function toJsonSchema(type: IrType, models: ReadonlyMap<string, IrType>, 
       if (type.multipleOf !== undefined) out.multipleOf = type.multipleOf
       return out
     }
+    // An int64 the model sends as a JSON number; the tool's input is decoded
+    // by the MCP runtime, not by the client, so this is advisory for the model.
+    case 'bigint': {
+      const out: JsonSchema = { type: 'integer', format: 'int64' }
+      if (type.minimum !== undefined) out.minimum = type.minimum
+      if (type.maximum !== undefined) out.maximum = type.maximum
+      if (type.exclusiveMinimum !== undefined) out.exclusiveMinimum = type.exclusiveMinimum
+      if (type.exclusiveMaximum !== undefined) out.exclusiveMaximum = type.exclusiveMaximum
+      if (type.multipleOf !== undefined) out.multipleOf = type.multipleOf
+      return out
+    }
     case 'boolean':
       return { type: 'boolean' }
     case 'null':
