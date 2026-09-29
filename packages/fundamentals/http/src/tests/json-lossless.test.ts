@@ -253,3 +253,50 @@ describe('streams take the lossless decoder', () => {
     expect(out).toEqual([{ id: 9007199254740993n }])
   })
 })
+
+describe('own parser matches JSON.parse on every rejection and escape', () => {
+  // Each body carries a 16-digit run so it bypasses the plain-JSON.parse
+  // layer and reaches the parser under test.
+  const PAD = `[${UNSAFE},`
+  const REJECTED = [
+    `${PAD}tru]`,
+    `${PAD}{1:2}]`,
+    `${PAD}{"a" 1}]`,
+    `${PAD}{"a":1 "b":2}]`,
+    `${PAD}1 2]`,
+    `${PAD}"abc`,
+    `${PAD}"a\u0001b"]`,
+    `${PAD}"\\u12G4"]`,
+    `${PAD}"\\x"]`,
+    `${PAD}-]`,
+    `${PAD}-a]`,
+    `${PAD}1.]`,
+    `${PAD}1e]`,
+    `${PAD}1e+]`,
+    `${PAD}@]`,
+    PAD,
+    `${PAD}1] x`,
+  ]
+
+  for (const body of REJECTED) {
+    it(`rejects ${JSON.stringify(body)} like JSON.parse`, () => {
+      _setSourceTextSupport(false)
+      expect(() => JSON.parse(body)).toThrow(SyntaxError)
+      expect(() => parseJsonLossless(body)).toThrow(SyntaxError)
+    })
+  }
+
+  it('decodes every escape exactly as JSON.parse does', () => {
+    _setSourceTextSupport(false)
+    const body = `[${UNSAFE}, "q\\"b\\\\s\\/f\\bf\\ff\\nn\\rr\\tt\\u00e9\\u20AC"]`
+    const parsed = parseJsonLossless(body) as [bigint, string]
+    expect(parsed[0]).toBe(BigInt(UNSAFE))
+    expect(parsed[1]).toBe((JSON.parse(body) as [number, string])[1])
+  })
+
+  it('parses exponent and fraction forms as numbers', () => {
+    _setSourceTextSupport(false)
+    expect(parseJsonLossless(`[${UNSAFE}, 1.5e+3, -2E-2, 0]`)).toEqual([BigInt(UNSAFE), 1500, -0.02, 0])
+  })
+})
+
