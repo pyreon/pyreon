@@ -86,7 +86,7 @@ export default { plugins: [pyreon({ compat: 'vue' })] }
 This is a **runtime** shim. It covers what code imports at runtime — the same boundary `@pyreon/solid-compat` draws around Solid's compiler.
 
 - ✅ Composition API — `ref`, `computed`, `reactive`, `watch`, lifecycle, `provide` / `inject`, `effectScope`
-- ✅ `defineComponent` (typed) + `defineAsyncComponent`
+- ✅ `defineComponent` (typed) + `defineAsyncComponent` (incl. `loadingComponent` / `errorComponent` / `delay` / `timeout` / `suspensible` / `onError`, Vue 3 semantics; the server always waits for the load)
 - ✅ `createApp(component, props)` — mount via `.mount(selector)`
 - ✅ Built-in components — `Teleport`, `KeepAlive`, `Transition`
 - ❌ `.vue` Single-File Component compiler

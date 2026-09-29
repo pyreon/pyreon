@@ -543,7 +543,7 @@ describe('buildArraySpreadConcat — spread positions and the parenthesisation r
 
   it('Kotlin joins with the same algorithm, its own literal wrapper', () => {
     expect(kt(`  const a = computed(() => [...xs(), 9].length)`)).toContain(
-      '(xs + listOf(9)).length',
+      '(xs + listOf(9L)).length',
     )
   })
 })
@@ -669,7 +669,7 @@ ${body}
     expect(helper(body)).not.toContain('var acc = 0.0')
     expect(helper(body)).toContain('-> Int')
     expect(helper(body, 'kotlin')).toContain('var acc = 0')
-    expect(helper(body, 'kotlin')).toContain(': Int')
+    expect(helper(body, 'kotlin')).toContain(': Long')
   })
 
   it('Kotlin widens the same shape', () => {

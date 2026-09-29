@@ -40,7 +40,7 @@ describe('Array.prototype.sort(comparator) emit', () => {
     const out = transform(SRC('[...rows()].sort((a, b) => b.revenue - a.revenue)'), {
       target: 'kotlin',
     }).code
-    expect(out).toContain('.sortedWith(Comparator { a, b -> b.revenue - a.revenue })')
+    expect(out).toContain('.sortedWith(Comparator { a, b -> (b.revenue - a.revenue).compareTo(0L) })')
     expect(out).not.toMatch(/\.sort\(\{/)
   })
 })

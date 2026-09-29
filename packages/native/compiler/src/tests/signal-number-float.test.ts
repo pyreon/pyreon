@@ -65,8 +65,8 @@ describe('Double-aware signal number types — explicit-generic refinement', () 
     expect(out).toContain('mutableStateOf(12.5)')
     expect(out).toContain('listOf(12.5, 8.3)')
     expect(out).toContain('listOf(12.5, 8.3, 15.0)')
-    expect(out).toContain('mutableStateOf(7)')
-    expect(out).toContain('listOf(1, 2, 3)')
+    expect(out).toContain('mutableStateOf(7L)')
+    expect(out).toContain('listOf(1L, 2L, 3L)')
   })
 
   // Baseline well-formedness on the real toolchains. NOTE these are NOT
