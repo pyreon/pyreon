@@ -25,6 +25,12 @@ import {
   useDatabase,
   useSafeArea,
   useScreenOrientation,
+  useDeviceInfo,
+  useWakeLock,
+  useDeviceMotion,
+  useSpeech,
+  useAudioRecorder,
+  useBluetooth,
 } from '@pyreon/hooks'
 import { createI18n } from '@pyreon/i18n/core'
 import { createMachine } from '@pyreon/machine'
@@ -332,6 +338,19 @@ export function Counter() {
   // `Orientation: portrait`, and the status bar makes the top inset positive.
   const orientation = useScreenOrientation()
   const safeArea = useSafeArea()
+  // Platform-probe hooks. Each lowers to a runtime class constructed with an
+  // engine the emit NAMES — iOS `UIKitDeviceProbe` / `UIKitIdleTimer` /
+  // `CoreMotionSource` / `AVSpeechSynth` / `AVFoundationRecordingEngine` /
+  // `CoreBluetoothScanner`, Android `Android*` twins (`PyreonDeviceProbesAndroid.kt`).
+  // Those engines existed only in the validation stubs, so an app using any
+  // of these hooks could not build; this block is the build-time proof that
+  // they resolve, and the device gates assert the observable state below.
+  const deviceInfo = useDeviceInfo()
+  const wake = useWakeLock()
+  const motion = useDeviceMotion()
+  const speech = useSpeech()
+  const recorder = useAudioRecorder()
+  const bt = useBluetooth()
   // FFI escape-hatch proof — a native module the APP provides, not the
   // framework. `DeviceInfo` is NOT a Pyreon hook and never will be: it lowers
   // to `DeviceInfo()` (iOS, `ios/DeviceInfo.swift`) / `DeviceInfo(ctx)`
@@ -434,6 +453,17 @@ export function Counter() {
       <Text>Theme: {colorScheme}</Text>
       <Text>Orientation: {orientation.type()}</Text>
       <Text>Inset: {safeArea().top > 0 ? 'top' : 'none'}</Text>
+      <Text data-testid="probe-info">Info: {deviceInfo.platform()} {deviceInfo.isTouch() ? 'touch' : 'no-touch'}</Text>
+      <Button data-testid="probe-wake" onPress={() => wake.request()}>Keep awake</Button>
+      <Text data-testid="probe-wake-state">Awake: {wake.active() ? 'on' : 'off'}</Text>
+      <Button data-testid="probe-motion" onPress={() => motion.start()}>Start motion</Button>
+      <Text data-testid="probe-motion-state">Motion: {motion.active() ? 'on' : 'off'} {motion.acceleration().z > 1.0 ? 'sampled' : 'idle'}</Text>
+      <Button data-testid="probe-speak" onPress={() => speech.speak('hello')}>Speak</Button>
+      <Text data-testid="probe-speech-state">Speech: {speech.supported() ? 'supported' : 'unsupported'}</Text>
+      <Button data-testid="probe-record" onPress={() => recorder.start()}>Record</Button>
+      <Text data-testid="probe-record-state">Recording: {recorder.recording() ? 'on' : 'off'}</Text>
+      <Button data-testid="probe-scan" onPress={() => bt.scan()}>Scan</Button>
+      <Text data-testid="probe-bt-state">Bluetooth: {bt.available() ? 'available' : 'unavailable'} {bt.scanning() ? 'scanning' : 'idle'}</Text>
       {/* FFI device proof — the value comes from the app's OWN platform class
           (iOS returns "iOS", Android returns "Android"), so the rendered text
           proves a user-defined native module was constructed and called. */}

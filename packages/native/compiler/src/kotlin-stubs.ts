@@ -158,6 +158,14 @@ val LocalConfiguration: ProvidableCompositionLocal<Configuration> = compositionL
 // the real SDK rejects (a superset stub is itself a masking source). The
 // composition local hands out an internal concrete instance instead.
 abstract class Context
+// androidx.compose.runtime.RememberObserver - Compose calls these on a remembered
+// object as it enters/leaves composition; the hook state classes use it to
+// release their engine.
+interface RememberObserver {
+  fun onRemembered()
+  fun onForgotten()
+  fun onAbandoned()
+}
 private object StubContext : Context()
 object LocalContext {
   val current: Context
@@ -2029,12 +2037,15 @@ interface BluetoothScanner {
   fun startScan(onDevice: (PyreonBluetoothDevice) -> Unit, onError: (String) -> Unit)
   fun stopScan()
 }
-class AndroidBluetoothScanner(ctx: Any?) : BluetoothScanner {
+class AndroidBluetoothScanner(context: Context) : BluetoothScanner {
   override val isAvailable: Boolean = false
   override fun startScan(onDevice: (PyreonBluetoothDevice) -> Unit, onError: (String) -> Unit) {}
   override fun stopScan() {}
 }
-class PyreonBluetooth(scanner: BluetoothScanner) {
+class PyreonBluetooth(scanner: BluetoothScanner) : RememberObserver {
+  override fun onRemembered() {}
+  override fun onForgotten() {}
+  override fun onAbandoned() {}
   val scanning: MutableState<Boolean> = mutableStateOf(false)
   val devices: MutableState<List<PyreonBluetoothDevice>> = mutableStateOf(listOf())
   val error: MutableState<String> = mutableStateOf("")
@@ -2047,7 +2058,7 @@ interface ScreenKeeper {
   val isSupported: Boolean
   fun setKeepScreenOn(on: Boolean)
 }
-class AndroidScreenKeeper(ctx: Any?) : ScreenKeeper {
+class AndroidScreenKeeper(context: Context) : ScreenKeeper {
   override val isSupported: Boolean = false
   override fun setKeepScreenOn(on: Boolean) {}
 }
@@ -2059,7 +2070,7 @@ interface DeviceProbe {
   val isTouch: Boolean
   val screen: PyreonDeviceScreen
 }
-class AndroidDeviceProbe(ctx: Any?) : DeviceProbe {
+class AndroidDeviceProbe(context: Context) : DeviceProbe {
   override val model: String = ""
   override val osVersion: String = ""
   override val isTouch: Boolean = false
@@ -2141,13 +2152,16 @@ interface RecordingEngine {
   fun end(): String?
   fun release()
 }
-class AndroidRecordingEngine(ctx: Any?) : RecordingEngine {
+class AndroidRecordingEngine(context: Context) : RecordingEngine {
   override val isAvailable: Boolean = false
   override fun begin(): Boolean = false
   override fun end(): String? = null
   override fun release() {}
 }
-class PyreonAudioRecorder(engine: RecordingEngine) {
+class PyreonAudioRecorder(engine: RecordingEngine) : RememberObserver {
+  override fun onRemembered() {}
+  override fun onForgotten() {}
+  override fun onAbandoned() {}
   val recording: MutableState<Boolean> = mutableStateOf(false)
   val error: MutableState<String> = mutableStateOf("")
   val supported: Boolean = false
@@ -2172,12 +2186,16 @@ interface SpeechSynth {
   fun speak(text: String)
   fun cancel()
 }
-class AndroidSpeechSynth(ctx: Any?) : SpeechSynth {
+class AndroidSpeechSynth(context: Context) : SpeechSynth, AutoCloseable {
+  override fun close() {}
   override val isAvailable: Boolean = false
   override fun speak(text: String) {}
   override fun cancel() {}
 }
-class PyreonSpeech(synth: SpeechSynth) {
+class PyreonSpeech(synth: SpeechSynth) : RememberObserver {
+  override fun onRemembered() {}
+  override fun onForgotten() {}
+  override fun onAbandoned() {}
   val speaking: MutableState<Boolean> = mutableStateOf(false)
   val supported: Boolean = false
   fun speak(text: String): Boolean = false
@@ -2193,12 +2211,15 @@ interface MotionSource {
   fun begin(onSample: (PyreonVec3, PyreonVec3) -> Unit): Boolean
   fun end()
 }
-class AndroidMotionSource(ctx: Any?) : MotionSource {
+class AndroidMotionSource(context: Context) : MotionSource {
   override val isAvailable: Boolean = false
   override fun begin(onSample: (PyreonVec3, PyreonVec3) -> Unit): Boolean = false
   override fun end() {}
 }
-class PyreonDeviceMotion(source: MotionSource) {
+class PyreonDeviceMotion(source: MotionSource) : RememberObserver {
+  override fun onRemembered() {}
+  override fun onForgotten() {}
+  override fun onAbandoned() {}
   val active: MutableState<Boolean> = mutableStateOf(false)
   val acceleration: MutableState<PyreonVec3> = mutableStateOf(PyreonVec3.zero)
   val rotation: MutableState<PyreonVec3> = mutableStateOf(PyreonVec3.zero)
@@ -2207,7 +2228,10 @@ class PyreonDeviceMotion(source: MotionSource) {
   fun stop() {}
 }
 
-class PyreonWakeLock(keeper: ScreenKeeper) {
+class PyreonWakeLock(keeper: ScreenKeeper) : RememberObserver {
+  override fun onRemembered() {}
+  override fun onForgotten() {}
+  override fun onAbandoned() {}
   val active: MutableState<Boolean> = mutableStateOf(false)
   val supported: Boolean = false
   fun request(): Boolean = false

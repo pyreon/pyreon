@@ -87,14 +87,7 @@ const runtimeSources = (): string[] => {
  */
 const KNOWN_PHANTOM_PROBES: Record<'.swift' | '.kt', string[]> = {
   '.swift': ['UIKitCameraPresenter', 'UIKitDeviceProbe', 'UIKitIdleTimer'],
-  '.kt': [
-    'AndroidBluetoothScanner',
-    'AndroidDeviceProbe',
-    'AndroidMotionSource',
-    'AndroidRecordingEngine',
-    'AndroidScreenKeeper',
-    'AndroidSpeechSynth',
-  ],
+  '.kt': [],
 }
 
 describe('every Pyreon type the emit names exists in the real runtime', () => {
