@@ -1,37 +1,13 @@
 #!/usr/bin/env bun
 /**
- * The required `Test` check: waits for every aggregated job, then decides.
+ * The required `Test` check: summarizes every aggregated job, then decides.
  *
- * ## Why it WAITS instead of being scheduled last
- *
- * `Test` used to be a job that `needs:` every matrix — three seconds of shell
- * that became READY last, so on a busy free-plan pool it queued behind
- * everything other PRs had enqueued: measured 2026-09-22, 56-78 min AFTER its
- * dependencies had finished. So the job now `needs: install` only, starts
- * alongside the cells, and polls this run's job list until every aggregated
- * job is complete. It still reports its OWN conclusion as the check, so it
- * needs nothing beyond `actions: read`.
- *
- * ## Why not "the last cell posts `Test`" (the version this replaced)
- *
- * That shipped first (#3573) and was faster still, but it gave every cell
- * `checks: write` — and cells run repo tests and npm dependencies. A token
- * that can create check runs can create ANY check name bound to the
- * github-actions app, i.e. nearly every required check (`Build`, `Install`,
- * `Fast Gates`, the device lanes…). A compromised dependency executing in a
- * test cell could then forge merge-gating checks, where before it could at
- * most fake its own job's result. OpenSSF Scorecard flagged all six grants
- * (TokenPermissionsID); least privilege wins over the remaining minutes.
- *
- * ## Poll budget
- *
- * GITHUB_TOKEN is limited to 1,000 API requests/hour PER REPOSITORY, shared by
- * every workflow. One request per poll (`per_page=100` covers the run's ~30
- * jobs), every 90 s: ~40/hour per in-flight run.
- *
- * The rules are the old aggregator's, unchanged: Install must succeed; every
- * other aggregated job must be success or skipped; when e2e suites were
- * selected, the e2e jobs must SUCCEED.
+ * The workflow schedules this job after every dynamic matrix is terminal, so
+ * it consumes no runner while useful work is running. GitHub's `needs`
+ * results determine the verdict, including matrix failure/cancellation.
+ * Every selected matrix must succeed, and every selection must be valid.
+ * The jobs API is used only to enrich failures with individual job URLs;
+ * healthy runs make no requests and no run polls for API propagation.
  */
 
 export interface JobInfo {
@@ -39,6 +15,7 @@ export interface JobInfo {
   status: string // queued | in_progress | completed | waiting | pending
   conclusion: string | null
   runner_name?: string | null
+  html_url?: string | null
 }
 
 export type AggregateKind = 'install' | 'preflight' | 'typecheck' | 'test' | 'e2e' | 'scaffold'
@@ -56,61 +33,136 @@ export function aggregateKind(name: string): AggregateKind | null {
 }
 
 export interface Verdict {
-  /** False when another aggregated job is still unfinished — do not post. */
-  last: boolean
   ok: boolean
   lines: string[]
 }
 
-/**
- * Decide from the run's job list. `self` is the job running this script (it is
- * still `in_progress` while doing so); pass null from a job outside the set.
- */
-export function decideAggregate(
-  jobs: readonly JobInfo[],
-  self: JobInfo | null,
-  opts: { e2eSelected: boolean },
-): Verdict {
-  const members = jobs.filter((j) => aggregateKind(j.name) !== null)
-  const others = members.filter((j) => j !== self)
-  const pending = others.filter((j) => j.status !== 'completed')
+export function reproductionCommand(name: string): string | null {
+  switch (aggregateKind(name)) {
+    case 'preflight':
+      return 'bun run validate-fast'
+    case 'typecheck':
+      return 'bun run typecheck'
+    case 'test':
+      return 'bun run test'
+    case 'e2e': {
+      const suite = /^e2e \(([a-zA-Z0-9_-]+)\)$/.exec(name)?.[1]
+      if (suite === 'core') return 'bun run test:e2e'
+      if (suite === 'atlas-workshop') return 'bun run test:e2e:atlas'
+      if (suite === 'atlas-verify-browser') return 'bun run test:e2e:atlas-verify'
+      if (suite === 'loom-dev') return 'bun run test:e2e:loom'
+      return suite ? `bun run test:e2e:${suite}` : 'open the job log for the failing suite command'
+    }
+    case 'scaffold':
+      return 'bun run scaffold-smoke'
+    case 'install':
+      return 'bun install --frozen-lockfile'
+    default:
+      return null
+  }
+}
+
+function failedJobLine(job: JobInfo): string {
+  const log = job.html_url ? ` — job log: ${job.html_url}` : ''
+  const command = reproductionCommand(job.name)
+  const repro = command ? ` — local: \`${command}\`` : ''
+  return `${job.name}: ${job.conclusion ?? job.status}${log}${repro}`
+}
+
+/** Encode untrusted API text before putting it in a GitHub workflow command. */
+export function workflowCommandValue(value: string): string {
+  return value.replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A')
+}
+
+const MATRIX_NEEDS = [
+  ['typecheck-cell', 'typecheck'],
+  ['test-cell', 'test'],
+  ['e2e-suite', 'e2e'],
+  ['scaffold-smoke-cell', 'scaffold'],
+] as const
+
+function record(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {}
+}
+
+/** Validate the actual scheduler results, not an eventually consistent jobs
+ * listing. Missing output is an error, never permission to skip validation. */
+export function decideNeeds(input: unknown): Verdict {
+  const needs = record(input)
   const lines: string[] = []
-  if (pending.length > 0) {
-    return { last: false, ok: false, lines: pending.map((j) => `still running: ${j.name} (${j.status})`) }
+  for (const [id, label] of [
+    ['install', 'Install'],
+    ['fast-gates', 'Fast Gates'],
+  ] as const) {
+    const result = record(needs[id]).result
+    if (result !== 'success') lines.push(`${label}: ${String(result ?? 'missing')} — must succeed`)
   }
-  // `self` has not reported a conclusion yet; the step runs with `always()`,
-  // so its job's own outcome is passed in as SELF_OUTCOME by the caller.
-  let ok = true
-  const install = members.filter((j) => aggregateKind(j.name) === 'install')
-  if (install.length === 0 || install.some((j) => j.conclusion !== 'success')) {
-    lines.push(`Install did not succeed (${install.map((j) => j.conclusion).join(',') || 'missing'}) — cell selection is unknown`)
-    ok = false
-  }
-  const preflight = members.filter((j) => aggregateKind(j.name) === 'preflight')
-  if (preflight.length === 0 || preflight.some((j) => j.conclusion !== 'success')) {
-    lines.push(`Fast Gates did not succeed (${preflight.map((j) => j.conclusion).join(',') || 'missing'}) — expensive validation must not fan out`)
-    ok = false
-  }
-  for (const j of members) {
-    const kind = aggregateKind(j.name)
-    if (kind === 'install' || kind === 'preflight') continue
-    const c = j.conclusion
-    if (kind === 'e2e' && opts.e2eSelected) {
-      if (c !== 'success') {
-        lines.push(`${j.name}: ${c} — e2e suites were selected, so they must succeed`)
-        ok = false
-      }
-    } else if (c !== 'success' && c !== 'skipped') {
-      lines.push(`${j.name}: ${c}`)
-      ok = false
+  if (lines.length) return { ok: false, lines }
+
+  const outputs = record(record(needs.install).outputs)
+  for (const [id, family] of MATRIX_NEEDS) {
+    const selected = outputs[`${family}-has`]
+    let matrix: unknown
+    try {
+      matrix = JSON.parse(String(outputs[`${family}-matrix`]))
+    } catch {
+      matrix = null
+    }
+    const validMatrix =
+      Array.isArray(matrix) &&
+      matrix.every((entry) => {
+        const item = record(entry)
+        return (
+          typeof item.name === 'string' &&
+          item.name.length > 0 &&
+          typeof item.members === 'string' &&
+          /^[a-zA-Z0-9_-]+(?: [a-zA-Z0-9_-]+)*$/.test(item.members)
+        )
+      })
+    if (
+      (selected !== 'true' && selected !== 'false') ||
+      !validMatrix ||
+      (selected === 'true') !== (Array.isArray(matrix) && matrix.length > 0)
+    ) {
+      lines.push(`${family}: invalid or contradictory selection outputs`)
+      continue
+    }
+    const result = record(needs[id]).result
+    if (result !== 'success' && !(selected === 'false' && result === 'skipped')) {
+      lines.push(
+        `${family}: ${String(result ?? 'missing')} — ${selected === 'true' ? 'selected matrix must succeed' : 'only an unselected matrix may skip'}`,
+      )
     }
   }
-  if (opts.e2eSelected && !members.some((j) => aggregateKind(j.name) === 'e2e')) {
-    lines.push('e2e suites were selected but no e2e job ran')
-    ok = false
+  return {
+    ok: lines.length === 0,
+    lines: lines.length
+      ? lines
+      : ['Preflight and all selected matrices passed; unselected matrices were correctly skipped.'],
   }
-  if (ok) lines.push(`All ${members.length} aggregated jobs passed (or were correctly skipped).`)
-  return { last: true, ok, lines }
+}
+
+/** An API outage cannot change the scheduler's verdict in either direction. */
+export async function aggregateWithDiagnostics(
+  needs: unknown,
+  loadJobs: () => Promise<JobInfo[]>,
+): Promise<Verdict> {
+  const verdict = decideNeeds(needs)
+  if (verdict.ok) return verdict
+  try {
+    const jobs = await loadJobs()
+    for (const job of jobs) {
+      if (aggregateKind(job.name) && job.conclusion !== 'success' && job.conclusion !== 'skipped')
+        verdict.lines.push(failedJobLine(job))
+    }
+  } catch {
+    verdict.lines.push(
+      'Detailed job links unavailable — dependency results still require failure. Open this run for logs.',
+    )
+  }
+  return verdict
 }
 
 async function gh(path: string, init: RequestInit = {}): Promise<Response> {
@@ -123,14 +175,20 @@ async function gh(path: string, init: RequestInit = {}): Promise<Response> {
       ...(init.headers as Record<string, string> | undefined),
     },
   })
-  if (!res.ok) throw new Error(`${init.method ?? 'GET'} ${path} → ${res.status} ${await res.text()}`)
+  if (!res.ok)
+    throw new Error(`${init.method ?? 'GET'} ${path} → ${res.status} ${await res.text()}`)
   return res
 }
 
 async function listJobs(repo: string, runId: string): Promise<JobInfo[]> {
   const out: JobInfo[] = []
+  // One deadline for the entire optional diagnostic lookup, including pages.
+  const signal = AbortSignal.timeout(10_000)
   for (let page = 1; page < 20; page++) {
-    const res = await gh(`/repos/${repo}/actions/runs/${runId}/jobs?filter=latest&per_page=100&page=${page}`)
+    const res = await gh(
+      `/repos/${repo}/actions/runs/${runId}/jobs?filter=latest&per_page=100&page=${page}`,
+      { signal },
+    )
     const body = (await res.json()) as { jobs: JobInfo[]; total_count: number }
     out.push(...body.jobs)
     if (out.length >= body.total_count || body.jobs.length === 0) break
@@ -138,54 +196,30 @@ async function listJobs(repo: string, runId: string): Promise<JobInfo[]> {
   return out
 }
 
-const POLL_MS = 90_000
-
 async function main(): Promise<number> {
   const env = (k: string): string => {
     const v = process.env[k]
     if (!v) throw new Error(`[ci-aggregate] missing env ${k}`)
     return v
   }
-  const repo = env('GITHUB_REPOSITORY')
-  const runId = env('GITHUB_RUN_ID')
-  const e2eSelected = process.env.E2E_SELECTED === 'true'
-  let lastPending = ''
-  let apiFailures = 0
-  for (;;) {
-    let jobs: JobInfo[]
-    try {
-      jobs = await listJobs(repo, runId)
-      apiFailures = 0
-    } catch (err) {
-      // A transient 5xx must not turn a green run red; five in a row (~7 min)
-      // is an outage, and then failing closed is right.
-      if (++apiFailures >= 5) throw err
-      console.log(`::warning::[ci-aggregate] listing jobs failed (${apiFailures}/5): ${String(err)}`)
-      await new Promise((r) => setTimeout(r, POLL_MS))
-      continue
-    }
-    const v = decideAggregate(jobs, null, { e2eSelected })
-    if (v.last) {
-      for (const l of v.lines) console.log('  ' + l)
-      console.log(`[ci-aggregate] Test = ${v.ok ? 'success' : 'failure'}`)
-      return v.ok ? 0 : 1
-    }
-    const pending = v.lines.join('\n')
-    if (pending !== lastPending) {
-      console.log(`[ci-aggregate] waiting (${new Date().toISOString()}):\n  ${v.lines.join('\n  ')}`)
-      lastPending = pending
-    }
-    await new Promise((r) => setTimeout(r, POLL_MS))
+  const v = await aggregateWithDiagnostics(JSON.parse(env('NEEDS_JSON')), () =>
+    listJobs(env('GITHUB_REPOSITORY'), env('GITHUB_RUN_ID')),
+  )
+  for (const line of v.lines) {
+    console.log(
+      v.ok ? `  ${line}` : `::error title=Aggregated CI failure::${workflowCommandValue(line)}`,
+    )
   }
+  console.log(`[ci-aggregate] Test = ${v.ok ? 'success' : 'failure'}`)
+  return v.ok ? 0 : 1
 }
 
 if (import.meta.main) {
   main().then(
     (code) => process.exit(code),
     (err) => {
-      // An API error must FAIL the check (fail-closed): a green `Test` that
-      // never saw the cells would be the worst outcome.
-      console.log(`::error::[ci-aggregate] ${String(err)}`)
+      // Missing/malformed scheduler data must never produce a green verdict.
+      console.log(`::error::[ci-aggregate] ${workflowCommandValue(String(err))}`)
       process.exit(1)
     },
   )
