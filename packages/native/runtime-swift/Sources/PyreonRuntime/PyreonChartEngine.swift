@@ -7257,7 +7257,7 @@ public func brushLikeAnchors(_ spec: ChartSpec, _ s: Series, _ sIdx: Int, _ plot
     var out: [PyreonChartPt] = []
     if s.kind == "bars" || s.kind == "waterfall" {
       for r in barsForIn(spec, sIdx, plot) {
-        out.append(PyreonChartPt(x: r.x + Double(r.w) / 2.0, y: r.w < 0.0 ? -1000000.0 : r.y))
+        out.append(PyreonChartPt(x: r.x + r.w / 2.0, y: r.w < 0.0 ? -1000000.0 : r.y))
       }
       return out
     }
@@ -7433,15 +7433,15 @@ public func geometrySpec(_ raw: ChartSpec) -> ChartSpec {
         if isLog && !seriesOnRightAxis(s, spec) && !onExtraAxis(s, spec) {
           var values: [Double] = []
           for v in s.values {
-            values.append(v > 0.0 ? log10(Double(Double(v) / Double(lb.min))) : (0.0 / 0.0))
+            values.append(v > 0.0 ? log10(Double(v / Double(lb.min))) : (0.0 / 0.0))
           }
           var lows: [Double] = []
           var highs: [Double] = []
           for v in (s.errLow ?? []) {
-            lows.append(v > 0.0 ? log10(Double(Double(v) / Double(lb.min))) : (0.0 / 0.0))
+            lows.append(v > 0.0 ? log10(Double(v / Double(lb.min))) : (0.0 / 0.0))
           }
           for v in (s.errHigh ?? []) {
-            highs.append(v > 0.0 ? log10(Double(Double(v) / Double(lb.min))) : (0.0 / 0.0))
+            highs.append(v > 0.0 ? log10(Double(v / Double(lb.min))) : (0.0 / 0.0))
           }
           series.append({ var c = s; c.values = values; c.errLow = s.errLow == nil ? nil : lows; c.errHigh = s.errHigh == nil ? nil : highs; return c }())
         } else {
@@ -8739,7 +8739,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
         var centres: [Double] = []
         if s.kind == "bars" {
           for r in barsLaid(spec, sIdx, plot, sDomain) {
-            centres.append(r.x + Double(r.w) / 2.0)
+            centres.append(r.x + r.w / 2.0)
           }
         } else {
           for p in place(s.values) {
@@ -9123,9 +9123,9 @@ public func markerAnchor(_ spec: ChartSpec, _ seriesIdx: Double, _ idx: Int, _ p
         continue
       }
       if flipped {
-        out.append(PyreonChartPt(x: seg.rect.x + seg.rect.w, y: seg.rect.y + Double(seg.rect.h) / 2.0))
+        out.append(PyreonChartPt(x: seg.rect.x + seg.rect.w, y: seg.rect.y + seg.rect.h / 2.0))
       } else {
-        out.append(PyreonChartPt(x: seg.rect.x + Double(seg.rect.w) / 2.0, y: seg.rect.y))
+        out.append(PyreonChartPt(x: seg.rect.x + seg.rect.w / 2.0, y: seg.rect.y))
       }
     }
     return out
@@ -9961,7 +9961,7 @@ public func renderFunnel(_ stages: [FunnelStage], _ plot: PyreonChartRect, _ opt
       let cxBottom = align == "left" ? plot.x + Double(bw) / 2.0 : align == "right" ? plot.x + plot.w - Double(bw) / 2.0 : g.centerX
       out.append(PyreonDrawCmd(kind: "polygon", fill: s.color, points: [PyreonChartPt(x: cxTop - Double(tw) / 2.0, y: g.top), PyreonChartPt(x: cxTop + Double(tw) / 2.0, y: g.top), PyreonChartPt(x: cxBottom + Double(bw) / 2.0, y: g.bottom), PyreonChartPt(x: cxBottom - Double(bw) / 2.0, y: g.bottom)]))
       if showLabels && progress >= 1.0 {
-        out.append(PyreonDrawCmd(kind: "text", fill: labelColor, text: s.label, at: PyreonChartPt(x: cxTop, y: Double((g.top + g.bottom)) / 2.0), size: fontSize, align: "middle", baseline: "middle"))
+        out.append(PyreonDrawCmd(kind: "text", fill: labelColor, text: s.label, at: PyreonChartPt(x: cxTop, y: (g.top + g.bottom) / 2.0), size: fontSize, align: "middle", baseline: "middle"))
       }
     }
     return out
@@ -9972,7 +9972,7 @@ public func hitFunnel(_ stages: [FunnelStage], _ plot: PyreonChartRect, _ px: Do
       if py < g.top || py > g.bottom {
         continue
       }
-      let t = g.bottom <= g.top ? 0.0 : (py - g.top) / Double((g.bottom - g.top))
+      let t = g.bottom <= g.top ? 0.0 : (py - g.top) / (g.bottom - g.top)
       let w = g.topWidth + (g.bottomWidth - g.topWidth) * t
       if px >= g.centerX - Double(w) / 2.0 && px <= g.centerX + Double(w) / 2.0 {
         return g.index
@@ -10296,8 +10296,8 @@ public func renderFunnelEc(_ stages: [FunnelStage], _ box: PyreonChartRect, _ cf
       var cx = 0.0
       var cy = 0.0
       for q in pc.points {
-        cx = cx + Double(q.x) / 4.0
-        cy = cy + Double(q.y) / 4.0
+        cx = cx + q.x / 4.0
+        cy = cy + q.y / 4.0
       }
       var pts: [PyreonChartPt] = []
       for q in pc.points {
@@ -10619,8 +10619,8 @@ public func renderTreemap(_ cells: [TreemapCell], _ options: TreemapOptions? = n
     for c in cells {
       let w = c.rect.w * progress
       let h = c.rect.h * progress
-      let x = c.rect.x + Double((c.rect.w - w)) / 2.0
-      let y = c.rect.y + Double((c.rect.h - h)) / 2.0
+      let x = c.rect.x + (c.rect.w - w) / 2.0
+      let y = c.rect.y + (c.rect.h - h) / 2.0
       var depthF = 0.0
       for d in 0..<c.depth {
         depthF = depthF + 1.0
@@ -10893,7 +10893,7 @@ public func renderTreemapEc(_ cells: [TreemapCell], _ box: PyreonChartRect, _ bo
       }
       let w = c.rect.w * p
       let h = c.rect.h * p
-      out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: c.rect.x + Double((c.rect.w - w)) / 2.0, y: c.rect.y + Double((c.rect.h - h)) / 2.0, w: w, h: h), fill: c.color))
+      out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: c.rect.x + (c.rect.w - w) / 2.0, y: c.rect.y + (c.rect.h - h) / 2.0, w: w, h: h), fill: c.color))
     }
     if !showLabels || p < 1.0 {
       return out
@@ -10906,7 +10906,7 @@ public func renderTreemapEc(_ cells: [TreemapCell], _ box: PyreonChartRect, _ bo
       if text == "" {
         continue
       }
-      out.append(PyreonDrawCmd(kind: "text", fill: labelColor, text: text, at: PyreonChartPt(x: c.rect.x + Double(c.rect.w) / 2.0, y: c.rect.y + Double(c.rect.h) / 2.0), size: fontSize, align: "middle", baseline: "middle"))
+      out.append(PyreonDrawCmd(kind: "text", fill: labelColor, text: text, at: PyreonChartPt(x: c.rect.x + c.rect.w / 2.0, y: c.rect.y + c.rect.h / 2.0), size: fontSize, align: "middle", baseline: "middle"))
     }
     return out
   }
@@ -11057,11 +11057,11 @@ public func renderSunburst(_ arcs: [SunburstArc], _ center: PyreonChartPt, _ opt
       let fill = a.leaf ? a.color : tintHex(a.color, tintT > 0.5 ? 0.5 : tintT)
       out.append(PyreonDrawCmd(kind: "polygon", fill: fill, points: arcPolygon(center, a.outerR, a.innerR, a.start, end)))
       if showLabels && progress >= 1.0 {
-        let midR = Double((a.innerR + a.outerR)) / 2.0
+        let midR = (a.innerR + a.outerR) / 2.0
         let chord = midR * (a.end - a.start)
         let tw = m(a.name, fontSize)
         if chord >= tw + 4.0 && a.outerR - a.innerR >= fontSize + 4.0 {
-          let mid = Double((a.start + a.end)) / 2.0
+          let mid = (a.start + a.end) / 2.0
           out.append(PyreonDrawCmd(kind: "text", fill: labelColor, text: a.name, at: PyreonChartPt(x: center.x + cos(Double(mid)) * midR, y: center.y + sin(Double(mid)) * midR), size: fontSize, align: "middle", baseline: "middle"))
         }
       }
@@ -11396,7 +11396,7 @@ public func layoutRiver(_ series: [RiverSeries], _ box: PyreonChartRect, _ optio
     let zeroBase = options?.baseline == "zero"
     var base: [Double] = []
     for t in totals {
-      base.append(zeroBase ? 0.0 : Double(-t) / 2.0)
+      base.append(zeroBase ? 0.0 : -t / 2.0)
     }
     var lo = 0.0
     var hi = 1.0
@@ -12565,7 +12565,7 @@ public func renderSankey(_ layout: SankeyLayout, _ options: SankeyOptions? = nil
         continue
       }
       let last = nd.depth == maxDepth
-      out.append(PyreonDrawCmd(kind: "text", fill: labelColor, text: nd.name, at: PyreonChartPt(x: last ? nd.rect.x - 4.0 : nd.rect.x + nd.rect.w + 4.0, y: nd.rect.y + Double(nd.rect.h) / 2.0), size: fontSize, align: last ? "end" : "start", baseline: "middle"))
+      out.append(PyreonDrawCmd(kind: "text", fill: labelColor, text: nd.name, at: PyreonChartPt(x: last ? nd.rect.x - 4.0 : nd.rect.x + nd.rect.w + 4.0, y: nd.rect.y + nd.rect.h / 2.0), size: fontSize, align: last ? "end" : "start", baseline: "middle"))
     }
     return out
   }
@@ -13853,14 +13853,14 @@ public func layoutGantt(_ tasks: [GanttTask], _ box: PyreonChartRect, _ options:
         let fx = from.rect.x + from.rect.w
         let fy = from.rect.y + Double(from.rect.h) / 2.0
         let tx = row.rect.x
-        let ty = row.rect.y + Double(row.rect.h) / 2.0
+        let ty = row.rect.y + row.rect.h / 2.0
         var points: [PyreonChartPt] = []
         points.append(PyreonChartPt(x: fx, y: fy))
         if fx + 8.0 <= tx {
           points.append(PyreonChartPt(x: fx + 8.0, y: fy))
           points.append(PyreonChartPt(x: fx + 8.0, y: ty))
         } else {
-          let above = ty - Double(row.rect.h) / 2.0 - 2.0
+          let above = ty - row.rect.h / 2.0 - 2.0
           points.append(PyreonChartPt(x: fx + 8.0, y: fy))
           points.append(PyreonChartPt(x: fx + 8.0, y: above))
           points.append(PyreonChartPt(x: tx - 8.0, y: above))
@@ -14238,7 +14238,7 @@ public func layoutSingleAxis(_ axis: SingleAxisSpec, _ points: [SingleAxisPoint]
     } else {
       var index = 0
       for v in niceTicks(lo, hi, 6) {
-        ticks.append(SingleAxisTick(x: px(v), label: String(v), index: index))
+        ticks.append(SingleAxisTick(x: px(v), label: pyreonNumString(v), index: index))
         index += 1
       }
     }
@@ -15421,7 +15421,7 @@ public func bubbleRadii(_ raw: [Double], _ minR: Double, _ maxR: Double) -> [Dou
     }
     var out: [Double] = []
     for c in clean {
-      out.append(hi == 0.0 ? minR : minR + sqrt(Double(Double(c) / hi)) * (maxR - minR))
+      out.append(hi == 0.0 ? minR : minR + sqrt(Double(c / hi)) * (maxR - minR))
     }
     return out
   }
@@ -16139,7 +16139,7 @@ public func brushDatumPoints(_ raw: ChartSpec, _ l: PlotLayout, _ k: Int) -> [Py
     let yDomain = resolveYDomain(spec)
     if s.kind == "bars" || s.kind == "waterfall" {
       for r in barsForIn(raw, k, plot) {
-        out.append(PyreonChartPt(x: r.x + Double(r.w) / 2.0, y: r.w < 0.0 ? -1000000.0 : r.y + Double(r.h) / 2.0))
+        out.append(PyreonChartPt(x: r.x + r.w / 2.0, y: r.w < 0.0 ? -1000000.0 : r.y + r.h / 2.0))
       }
       return out
     }
@@ -16866,3 +16866,7 @@ public func binValues(_ values: [Double], _ count: Double) -> [Bin] {
   }
 
 public func binLabel(_ b: Bin) -> String { "\(plain(b.x0))–\(plain(b.x1))" }
+
+public func pyreonNumString(_ v: Double) -> String {
+    v.rounded() == v && v.magnitude < 1e15 ? String(Int(v)) : String(v)
+}

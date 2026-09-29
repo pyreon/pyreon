@@ -5787,6 +5787,10 @@ function isFractionalLiteral(e: ExprIR): boolean {
  */
 function isFractionalEvidence(e: ExprIR, ctx: InferenceCtx): boolean {
   if (isFractionalLiteral(e)) return true
+  // A bare integer-valued literal (`3.0`) is NOT evidence even when it carries
+  // the float marker: `signal(3.0)` staying Int is the documented literal
+  // boundary (double-numeric-type.test.ts). Only a computed expression is typed.
+  if (e.kind === 'literal') return false
   const t = inferType(e, ctx)
   return t.kind === 'number' && t.float === true
 }
