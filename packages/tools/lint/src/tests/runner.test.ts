@@ -68,8 +68,8 @@ function lintWithRuleEnabled(ruleId: string, source: string, filePath?: string) 
 // ── Rule Metadata ───────────────────────────────────────────────────────────
 
 describe('Rule metadata', () => {
-  it('should have 132 rules', () => {
-    expect(allRules.length).toBe(132)
+  it('should have 133 rules', () => {
+    expect(allRules.length).toBe(133)
   })
 
   it('should have unique rule IDs', () => {
@@ -122,7 +122,7 @@ describe('Rule metadata', () => {
     for (const rule of allRules) {
       counts[rule.meta.category] = (counts[rule.meta.category] ?? 0) + 1
     }
-    expect(counts.reactivity).toBe(16)
+    expect(counts.reactivity).toBe(17)
     // +1: no-line-comment-in-jsx — a `//` line in child position is JSXText
     // and RENDERS, on web and (through PMTC) on iOS and Android.
     expect(counts.jsx).toBe(12)
@@ -158,7 +158,7 @@ describe('Rule metadata', () => {
     expect(counts.portable).toBe(6)
     expect(counts.js).toBe(3)
     const total = Object.values(counts).reduce((a, b) => a + b, 0)
-    expect(total).toBe(132)
+    expect(total).toBe(133)
   })
 })
 
@@ -2099,7 +2099,7 @@ describe('Ignore filter', () => {
 describe('Presets', () => {
   it('recommended should include all rules (opt-in ones forced off)', () => {
     const config = getPreset('recommended')
-    expect(Object.keys(config.rules).length).toBe(132)
+    expect(Object.keys(config.rules).length).toBe(133)
     // Opt-in best-practice rules are present as keys but disabled.
     for (const rule of allRules) {
       if (rule.meta.optIn === true) {

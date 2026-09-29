@@ -6,6 +6,7 @@
 '@pyreon/native-compiler': patch
 '@pyreon/create-zero': patch
 '@pyreon/cli': patch
+'@pyreon/lint': minor
 ---
 
 Plain Mode is now production-ready: write reactive code as plain JavaScript (`let count = state(0)`, `count++`, `{count}`) and the compiler emits fine-grained signals.
@@ -26,4 +27,9 @@ Plain Mode is now production-ready: write reactive code as plain JavaScript (`le
   Across this repo's 883 example files: 86 declined before, 0 now.
 - **Native compiler.** Plain Mode's `void (…)` tracking hints lower to the plain value. Before, a derived value with a conditional read emitted an empty string on iOS and Android. The emit is now deterministic: name counters are reset per file, where they used to drift with whatever the process compiled first.
 - **Vite plugin fix.** Dev mode's source-location injection no longer rewrites the text `effect()` or `signal()` inside JSX (for example, prose in a `<Code>` demo) into a broken call. Each match is now confirmed against the AST.
+- **Plain Mode safety net.**
+  - New `pyreon/plain-mode-footgun` lint rule (on in `recommended`). It reports every Plain Mode compile-time warning, such as mutating shallow state or writing to a `derived` value, as an error in the editor and CI. Before, these only printed in the Vite terminal while the app was silently wrong.
+  - Reactivity lint rules that opt into `meta.plainLowered` also check plain files, by linting their compiled form and reporting at the source line: `no-signal-in-loop`, `no-nested-effect`, `no-unguarded-async-signal-write` and `no-unbatched-updates`. Without this, plain files were invisible to them.
+  - `detectPyreonPatterns`, which backs MCP `validate`, `pyreon check` and doctor, gains a `plain-mode` code for the same warnings.
+  - The "did not compile" runtime error now names the usual cause: a test runner without the `pyreon()` plugin.
 - **Scaffold.** The `create-zero` counter page is written in Plain Mode.

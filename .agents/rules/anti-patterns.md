@@ -1,6 +1,6 @@
 # Anti-Patterns
 
-Known mistakes and their fixes, grouped by area. `detectPyreonPatterns` in `@pyreon/compiler` (`packages/core/compiler/src/pyreon-intercept.ts`) flags 19 of the patterns below statically: an entry tagged `[detector: <code>]` is reported by `pyreon check` and the MCP `validate` tool. Untagged entries need scope, type or runtime information a syntax walk cannot get, so only reading this file catches them. `packages/core/compiler/src/tests/detector-tag-consistency.test.ts` keeps tags and diagnostic codes in sync.
+Known mistakes and their fixes, grouped by area. `detectPyreonPatterns` in `@pyreon/compiler` (`packages/core/compiler/src/pyreon-intercept.ts`) flags 20 of the patterns below statically: an entry tagged `[detector: <code>]` is reported by `pyreon check` and the MCP `validate` tool. Untagged entries need scope, type or runtime information a syntax walk cannot get, so only reading this file catches them. `packages/core/compiler/src/tests/detector-tag-consistency.test.ts` keeps tags and diagnostic codes in sync.
 
 This file is also the source of the MCP `get_anti_patterns` tool and the docs site's troubleshooting pages, so keep its format: `## Category` headings, one `- **Title**` bullet per entry, and a detector tag on the entry's first line.
 
@@ -98,6 +98,8 @@ This file is also the source of the MCP `get_anti_patterns` tool and the docs si
   - Read inside the returned accessor from the live holder: `() => normalize(holder.x)`, as `<Show>` does with `callWhen(props.when)`. A helper that takes `props.x` instead of `props` has already lost the getter.
   - `show={isOpen}` lowers to an `_rp` getter; tests that only pass `show={() => sig()}` cannot see this. Test with an `_rp`-branded prop plus the accessor form as control.
   - Code: `kinetic/src/show-accessor.ts:showAccessorFrom`. Tests: `kinetic/src/__tests__/show-reactive-prop.test.tsx`, `kinetic.browser.test.tsx`.
+
+- **A Plain Mode line the compiler cannot give its apparent meaning** `[detector: plain-mode]`: mutating a property of SHALLOW plain state (`state.raw` / a non-literal initializer), assigning to a `derived` value or a prop, a `signalOf(x)` whose `x` is not a plain binding. The pre-pass compiles these but only WARNS in the Vite terminal, and the running app is silently wrong (a mutation that notifies nobody). **Fix**: replace shallow state wholesale (`cfg = { ...cfg, open: true }`) or use a literal initializer for deep state; lift writes to the owner. The same warnings surface in the editor via the `pyreon/plain-mode-footgun` lint rule and in `validate` / `pyreon check` via this detector — all three read the pre-pass itself, so they cannot disagree with the build. Plain files are also covered by the classic reactivity lint rules that opt into `meta.plainLowered` (they run on the file's compiled form).
 
 ## JSX Mistakes
 

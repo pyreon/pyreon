@@ -891,3 +891,22 @@ describe('project-wide Plain Mode (force) + the `use classic` opt-out', () => {
     expect(transformJSX(COMPONENT, 'c.tsx').code).toContain('Card({ title })')
   })
 })
+
+describe('detectPyreonPatterns reports Plain Mode footguns (validate / pyreon check / doctor)', () => {
+  it('a shallow-state mutation is a `plain-mode` finding at its line', async () => {
+    const { detectPyreonPatterns } = await import('../pyreon-intercept')
+    const src = `'use plain'\nimport { state } from '@pyreon/core/plain'\nlet cfg = state.raw({ open: false })\nexport const t = () => { cfg.open = true }\n`
+    const d = detectPyreonPatterns(src, 'x.tsx').filter((x) => x.code === 'plain-mode')
+    expect(d).toHaveLength(1)
+    expect(d[0]!.line).toBe(4)
+    expect(d[0]!.message).toContain('does not notify subscribers')
+  })
+
+  it('correct plain code and classic code produce no plain-mode findings', async () => {
+    const { detectPyreonPatterns } = await import('../pyreon-intercept')
+    const ok = `'use plain'\nimport { state } from '@pyreon/core/plain'\nlet cfg = state({ open: false })\nexport const t = () => { cfg.open = true }\n`
+    expect(detectPyreonPatterns(ok, 'x.tsx').filter((x) => x.code === 'plain-mode')).toEqual([])
+    const classic = `import { signal } from '@pyreon/reactivity'\nconst c = signal({ open: false })\nexport const t = () => { c().open = true }\n`
+    expect(detectPyreonPatterns(classic, 'x.tsx').filter((x) => x.code === 'plain-mode')).toEqual([])
+  })
+})

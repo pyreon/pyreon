@@ -134,6 +134,18 @@ All three compile to the bare signal — no wrapper, no copy. For an API that ta
 - **Rest inside a nested props pattern, computed props keys, and a default on a nested props object** — they have no live form; take `props` and read directly.
 - **Assigning to `derived`, to props, or to imported state** (directly or through destructuring).
 
+These are compiler warnings, printed in the Vite terminal. The
+`pyreon/plain-mode-footgun` lint rule (on in `recommended`) reports each one in
+your editor and fails CI on it; set its `projectWide: true` option if you use
+`pyreon({ plain: true })`. MCP `validate` and `pyreon check` report them too
+(code `plain-mode`). All three read the compiler's own pre-pass, so they can
+never disagree with the build.
+
+The classic reactivity lint rules keep protecting plain files as well:
+`no-signal-in-loop`, `no-nested-effect`, `no-unguarded-async-signal-write` and
+`no-unbatched-updates` check a plain file's compiled form and report at the
+source line.
+
 ## If the compiler did not run
 
 The markers throw at runtime with the fix — a plain module that reaches `state()` uncompiled means the `pyreon()` Vite plugin is missing or the file bypassed it. Silent degradation would render a non-reactive page that looks right on first paint, which is worse than an error.

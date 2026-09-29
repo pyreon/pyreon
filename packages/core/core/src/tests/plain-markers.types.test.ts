@@ -25,5 +25,7 @@ describe('plain marker types', () => {
     expect(() => signalOf(1)).toThrow(/signalOf\(\) from '@pyreon\/core\/plain' reached the runtime/)
     expect(() => state.from(null as never)).toThrow(/state\.from\(\)/)
     expect(() => derived.from(() => 1)).toThrow(/derived\.from\(\)/)
+    // the usual cause is a test runner without the plugin — the message says so
+    expect(() => state(0)).toThrow(/vitest needs the same plugin/)
   })
 })

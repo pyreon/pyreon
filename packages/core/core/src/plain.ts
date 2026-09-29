@@ -35,7 +35,10 @@ function notCompiled(name: string): Error {
     `[Pyreon] ${name}() from '@pyreon/core/plain' reached the runtime — this file was not ` +
       `processed by the Pyreon compiler. Plain Mode is a compile-time dialect: add the ` +
       `pyreon() plugin from '@pyreon/vite-plugin' to your vite config (and make sure this ` +
-      `file matches its transform filter). Nothing from '@pyreon/core/plain' works without it.`,
+      `file matches its transform filter). In a TEST RUNNER this is the usual cause: vitest ` +
+      `needs the same plugin in vitest.config's \`plugins\` — a generic JSX setting ` +
+      `(esbuild/oxc \`jsx: 'automatic'\`) compiles the JSX but not Plain Mode. ` +
+      `Nothing from '@pyreon/core/plain' works without it.`,
   )
 }
 
