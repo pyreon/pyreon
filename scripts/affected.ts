@@ -86,6 +86,8 @@ export function isRootFile(path: string): boolean {
   if (path === '.bun-version') return true
   if (/^tsconfig.*\.json$/.test(path)) return true
   if (path.startsWith('.github/workflows/')) return true
+  // Shared setup actions can change the runtime/dependency tree of every cell.
+  if (path.startsWith('.github/actions/')) return true
   // NOTE: `scripts/` is deliberately NOT a root file. Scripts are standalone
   // tooling — they don't touch package SOURCE, so package tests are unaffected.
   // A script change can only break a test via @pyreon/test-utils (which

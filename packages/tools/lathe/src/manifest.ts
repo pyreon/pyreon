@@ -97,6 +97,29 @@ for (const [id, r] of reach) {
       ],
     },
     {
+      name: "generateAsync",
+      kind: "function",
+      signature:
+        "generateAsync(specText: string, config: ResolvedConfig, options?: LoadOptions): Promise<GenerateResult>",
+      summary:
+        "`generate`, awaiting plugin hooks that return promises — what the CLI and the Vite plugin run. The pipeline is written once and driven either way, so the output is byte-identical to `generate()` for the same spec, config and plugins. Each hook still runs twice for the determinism check, the second call only after the first has settled, and a rejection is attributed to the plugin and hook exactly like a throw.",
+      example: `import { definePlugin, generateAsync, resolveConfig } from '@pyreon/lathe'
+
+const banner = definePlugin({
+  name: 'banner-file',
+  async emit({ doc }) {
+    const text = await Promise.resolve(doc.title)
+    return [{ path: 'extras/title.txt', contents: text + '\\n' }]
+  },
+})
+
+const { files } = await generateAsync(specText, resolveConfig({ input: './openapi.yaml', plugins: ['schemas', banner] }))`,
+      mistakes: [
+        "Calling `generate()` with an async plugin. It refuses the promise by the plugin's name rather than awaiting it — use `generateAsync()`.",
+        "Starting work in an async hook that depends on WHEN it runs (a clock, a counter, a network call). Each hook runs twice and the two results must agree, or generation fails naming the plugin.",
+      ],
+    },
+    {
       name: "resolveConfig",
       kind: "function",
       signature:
@@ -129,7 +152,7 @@ const { files } = generate(specText, config)`,
       signature:
         "definePlugin<P extends LathePlugin>(plugin: P): P  // LathePlugin = { name, requires?, setup?(ctx), transformDocument?(doc, ctx), emit?(ctx) }",
       summary:
-        "Declares a third-party Lathe plugin, listed in `plugins` beside the built-in names. `setup({ config })` runs once per project and may throw to refuse a config; `transformDocument(doc, { config, note })` rewrites the IR after `filters`, `naming` and `operations` (the argument is frozen — return a modified copy; `note()` reports a loss under code `plugin`); `emit({ doc, config, reach, files, banner })` runs after every built-in and returns `SourceFile`s (banner added) or `{ path, contents, sideEffects? }`. `requires` turns on the built-ins its files import. Failures are attributed (`plugin `x` failed in `emit`: …`), each hook runs twice to prove determinism, and plugin files are listed in the manifest, compared by `check`, formatted by `format`, and refused on a path collision. Hooks are synchronous; take anything external as a construction option.",
+        "Declares a third-party Lathe plugin, listed in `plugins` beside the built-in names. `setup({ config })` runs once per project and may throw to refuse a config; `transformDocument(doc, { config, note })` rewrites the IR after `filters`, `naming` and `operations` (the argument is frozen — return a modified copy; `note()` reports a loss under code `plugin`); `emit({ doc, config, reach, files, banner })` runs after every built-in and returns `SourceFile`s (banner added) or `{ path, contents, sideEffects? }`. `requires` turns on the built-ins its files import. Failures are attributed (`plugin `x` failed in `emit`: …`), each hook runs twice to prove determinism, and plugin files are listed in the manifest, compared by `check`, formatted by `format`, and refused on a path collision. Any hook may return a promise: `generateAsync()` (what the CLI and the Vite plugin run) awaits it, still running each hook twice sequentially for the determinism check, and `generate()` refuses a promise naming the plugin. On the CLI, `--plugins schemas,./x.ts,some-package` loads every non-built-in name as a plugin module resolved from the cwd.",
       example: `import { definePlugin, SourceFile } from '@pyreon/lathe'
 
 export const pathTable = definePlugin({
@@ -157,7 +180,7 @@ export default { lathe: { input: './openapi.yaml', plugins: ['schemas', 'client'
       signature:
         "formatFiles(files: GeneratedFile[], format: ((code: string, path: string) => string | Promise<string>) | undefined): Promise<GeneratedFile[]>",
       summary:
-        "Applies the `format` config hook to generated files, preserving order, skipping Lathe's own bookkeeping (`lathe-manifest.json`, `api-surface.json`). The CLI and the Vite plugin call it after `generate()` and BEFORE both writing and `check`'s comparison, which is what keeps formatted, committed output from reading as stale. `generate()` itself stays synchronous and unformatted; call this when driving the pipeline programmatically.",
+        "Applies the `format` config hook to generated files, preserving order, skipping Lathe's own bookkeeping (`lathe-manifest.json`, `api-surface.json`). The CLI and the Vite plugin call it after `generateAsync()` and BEFORE both writing and `check`'s comparison, which is what keeps formatted, committed output from reading as stale. `generate()` itself stays synchronous and unformatted; call this when driving the pipeline programmatically.",
       example: `import { format as prettier } from 'prettier'
 import { formatFiles, generate, resolveConfig } from '@pyreon/lathe'
 
