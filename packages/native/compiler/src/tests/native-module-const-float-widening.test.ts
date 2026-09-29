@@ -153,7 +153,7 @@ export function A() {
   return <Stack><Text>{String(scale(2))}</Text></Stack>
 }`,
     swift: ['func scale(_ x: Int) -> Double'],
-    kotlin: ['fun scale(x: Int): Double'],
+    kotlin: ['fun scale(x: Long): Double'],
   },
   'a component arrow returning a product with a file-scope Double': {
     src: `const RATE = 0.5
@@ -200,14 +200,14 @@ export function A() {
   const total = computed(() => items().reduce((s, m) => s + m.qty * STEP, 0))
   return <Stack><Text>{String(x() + total())}</Text><Button onPress={() => x.set(x() + STEP)}>go</Button></Stack>
 }`
-  it('keeps every declaration Int on both targets', () => {
+  it('keeps every declaration Int on Swift, Long on Kotlin (the default, not float-widened)', () => {
     const swift = transform(src, { target: 'swift' }).code
     const kotlin = transform(src, { target: 'kotlin' }).code
     expect(swift).toContain('@State private var x: Int = 0')
     expect(swift).toContain('var qty: Int')
     expect(swift).toContain('items.reduce(0,')
-    expect(kotlin).toContain('mutableStateOf(0)')
-    expect(kotlin).toContain('var qty: Int')
-    expect(kotlin).toContain('items.fold(0,')
+    expect(kotlin).toContain('mutableStateOf(0L)')
+    expect(kotlin).toContain('var qty: Long')
+    expect(kotlin).toContain('items.fold(0L,')
   })
 })
