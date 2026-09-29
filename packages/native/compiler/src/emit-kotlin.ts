@@ -13008,13 +13008,13 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     if (onZoom?.kind === 'event') lets.push(`LaunchedEffect(pyreonZoom) { ${kotlinChartSelectBody(onZoom.handler, 'pyreonZoom', indent)} }`)
   }
   if (navigating) {
-    lets.push('var pyreonNavKind by remember { mutableStateOf(0) }')
+    lets.push('var pyreonNavKind by remember { mutableStateOf(0L) }')
     lets.push('var pyreonNavAnchor by remember { mutableStateOf(ZoomWindow(start = 0.0, end = 1.0)) }')
     lets.push('var pyreonNavDx by remember { mutableStateOf(0.0) }')
   }
   if (brushing) {
-    lets.push('var pyreonBrushStart by remember { mutableStateOf(-1) }')
-    lets.push('var pyreonBrushEnd by remember { mutableStateOf(-1) }')
+    lets.push('var pyreonBrushStart by remember { mutableStateOf(-1L) }')
+    lets.push('var pyreonBrushEnd by remember { mutableStateOf(-1L) }')
     lets.push('var pyreonBrushA by remember { mutableStateOf(-1.0) }')
     lets.push('var pyreonBrushB by remember { mutableStateOf(-1.0) }')
   }
@@ -13038,7 +13038,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     lets.push('var pyreonAreas by remember { mutableStateOf(listOf<BrushArea>()) }')
     lets.push('var pyreonAreaLive by remember { mutableStateOf<BrushArea?>(null) }')
   }
-  if (legend.hiding) lets.push('var pyreonHidden by remember { mutableStateOf(listOf<Int>()) }')
+  if (legend.hiding) lets.push('var pyreonHidden by remember { mutableStateOf(listOf<Long>()) }')
   // The handle's `legendInverseSelect` flips over the series this chart draws.
   if (handle !== undefined) lets.push(`LaunchedEffect(Unit) { ${handle}.seriesCount = ${marksV.elements.length} }`)
   // `selectedMode` — the Swift half's twin. A TAP pins a datum, which is the
@@ -13051,8 +13051,8 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   const pinning = pinMode === 'single' || pinMode === 'multiple'
   // `selectedMode: 'series'` pins the WHOLE series a tap lands on — its own host-local state (no handle vocabulary yet).
   const seriesPinning = pinMode === 'series'
-  if (seriesPinning) lets.push('var pyreonSelectedSeries by remember { mutableStateOf(listOf<Int>()) }')
-  if (pinning || handle !== undefined) lets.push('var pyreonSelected by remember { mutableStateOf(listOf<Int>()) }')
+  if (seriesPinning) lets.push('var pyreonSelectedSeries by remember { mutableStateOf(listOf<Long>()) }')
+  if (pinning || handle !== undefined) lets.push('var pyreonSelected by remember { mutableStateOf(listOf<Long>()) }')
   if (legend.paging) lets.push('var pyreonLegendPage by remember { mutableStateOf(0.0) }')
   const maxPoints = chartAttrExprKotlin(e, 'maxPoints')
   const fullA11y = windowed || maxPoints !== undefined
@@ -13108,11 +13108,11 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     const body = kotlinAccessorExpr(y, tag, `mark ${k + 1}`, indent)
     if (body === 'unsupported') return 'Box {}'
     if (k === 0 && maxPoints !== undefined) {
-      const max = `(${emitKotlinExpr(maxPoints, indent)}).toInt()`
-      lets.push(`val pyreonMaxPoints: Int = ${max}`)
+      const max = `(${emitKotlinExpr(maxPoints, indent)}).toLong()`
+      lets.push(`val pyreonMaxPoints: Long = ${max}`)
       lets.push(`val pyreonDecimateValues: List<Double> = ${kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed)}`)
-      lets.push(`val pyreonKeep: List<Int> = if (pyreonMaxPoints >= 3 && ${rows}.size > pyreonMaxPoints) lttbIndices(listOf(), pyreonDecimateValues, pyreonMaxPoints) else ${rows}.indices.toList()`)
-      lets.push(`val pyreonRows = pyreonKeep.map { ${rows}[it] }`)
+      lets.push(`val pyreonKeep: List<Long> = if (pyreonMaxPoints >= 3 && ${rows}.size > pyreonMaxPoints) lttbIndices(listOf(), pyreonDecimateValues, pyreonMaxPoints) else ${rows}.indices.map { it.toLong() }`)
+      lets.push(`val pyreonRows = pyreonKeep.map { ${rows}[it.toInt()] }`)
       rows = 'pyreonRows'
       decimated = true
     }
@@ -13443,7 +13443,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
         toolbox.dataZoom ? 'pyreonZoomSelect = false; pyreonZoomHistory = listOf()' : '',
         toolbox.dataView ? 'pyreonDataView = false' : '',
         legend.toggling ? 'pyreonHidden = listOf()' : '',
-        brushing ? 'pyreonBrushStart = -1; pyreonBrushEnd = -1' : '',
+        brushing ? 'pyreonBrushStart = -1L; pyreonBrushEnd = -1L' : '',
         area.on ? `pyreonAreaType = ${JSON.stringify(area.initial)}; pyreonAreaKeep = ${area.keep}; pyreonAreas = listOf()${areaReport('listOf()')}` : '',
       ].filter((x) => x !== '')
       acts.push(`"restore" -> { ${reset.join('; ')} }`)
@@ -13498,7 +13498,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
       branches.push(`if (pyreonAreaType != "" && !pyreonAreaKeep && pyreonAreas.isNotEmpty()) { pyreonAreas = listOf()${areaReport('listOf()')} }`)
     }
     if (brushing) {
-      branches.push(`if (pyreonBrushStart >= 0) { pyreonBrushStart = -1; pyreonBrushEnd = -1${onBrush === undefined ? '' : `; ${onBrush}(null)`} }`)
+      branches.push(`if (pyreonBrushStart >= 0) { pyreonBrushStart = -1L; pyreonBrushEnd = -1L${onBrush === undefined ? '' : `; ${onBrush}(null)`} }`)
     }
     const body = branches.length === 0 ? select : `${decls.length === 0 ? '' : `${decls.join('; ')}; `}${branches.join(' else ')}${select === '' ? '' : ` else { ${select} }`}`
     // The tap lambda closes over composition-scoped VALS (the spec, the slice
@@ -13552,7 +13552,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   // on every step — the window then never moves, and the fifth device run
   // showed exactly that (a post-drag tap still reported the un-zoomed index).
   const overlay = navigating
-    ? `Box(modifier = Modifier.fillMaxWidth()${sliderBox !== null ? '.offset(y = (pyreonNavigator.strip.y - 8.0).dp).height((pyreonNavigator.strip.h + 12.0).dp)' : `.offset(y = ((${H})${below}).dp).height((pyreonNavigator.height).dp)`}.pointerInput(Unit) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); pyreonNavAnchor = pyreonZoom; pyreonNavDx = 0.0; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, (pyreonDown.position.x / pyreonDensity).toDouble()); drag(pyreonDown.id) { pyreonChange -> val pyreonStep = pyreonChange.positionChange(); pyreonChange.consume(); pyreonNavDx = pyreonNavDx + (pyreonStep.x / pyreonDensity).toDouble(); pyreonZoom = ${lim('navigatorDrag(pyreonNavKind, pyreonNavAnchor, pyreonNavDx / pyreonNavigator.strip.w)')} }; pyreonNavKind = 0 } })`
+    ? `Box(modifier = Modifier.fillMaxWidth()${sliderBox !== null ? '.offset(y = (pyreonNavigator.strip.y - 8.0).dp).height((pyreonNavigator.strip.h + 12.0).dp)' : `.offset(y = ((${H})${below}).dp).height((pyreonNavigator.height).dp)`}.pointerInput(Unit) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); pyreonNavAnchor = pyreonZoom; pyreonNavDx = 0.0; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, (pyreonDown.position.x / pyreonDensity).toDouble()); drag(pyreonDown.id) { pyreonChange -> val pyreonStep = pyreonChange.positionChange(); pyreonChange.consume(); pyreonNavDx = pyreonNavDx + (pyreonStep.x / pyreonDensity).toDouble(); pyreonZoom = ${lim('navigatorDrag(pyreonNavKind, pyreonNavAnchor, pyreonNavDx / pyreonNavigator.strip.w)')} }; pyreonNavKind = 0L } })`
     : undefined
   // The data description always uses every source row and mark, independent
   // of paint-only zoom, thinning and legend visibility (mirror of Swift/web).
