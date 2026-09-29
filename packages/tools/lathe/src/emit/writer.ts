@@ -306,9 +306,33 @@ export function banner(specTitle: string, specVersion: string): string {
  * here it breaks the emitted module.
  */
 export function jsonLiteral(value: unknown, indent?: number): string {
-  return JSON.stringify(value, null, indent)
+  return withBigIntLiterals(value, (v) => JSON.stringify(v, null, indent))
     .replace(/\u2028/g, '\\u2028')
     .replace(/\u2029/g, '\\u2029')
+}
+
+/**
+ * Render with `render`, writing each `bigint` as a JS bigint literal (`42n`).
+ *
+ * A fixture under `int64: 'bigint'` holds bigints, and `JSON.stringify` throws
+ * on one. Each is swapped for a placeholder string carrying a marker no value
+ * in the fixture contains, then the quoted placeholder is replaced by the
+ * literal. A value with no bigint is rendered untouched, which is what keeps
+ * the default mode's output byte-identical.
+ */
+function withBigIntLiterals(value: unknown, render: (v: unknown) => string): string {
+  if (!containsBigInt(value, 0)) return render(value)
+  let marker = '__lathe_bigint__'
+  const plain = JSON.stringify(value, (_k, v: unknown) => (typeof v === 'bigint' ? v.toString() : v))
+  while (plain.includes(marker)) marker = `_${marker}_`
+  const swapped = JSON.parse(JSON.stringify(value, (_k, v: unknown) => (typeof v === 'bigint' ? `${marker}${v}` : v))) as unknown
+  return render(swapped).replace(new RegExp(`"${marker}(-?\\d+)"`, 'g'), '$1n')
+}
+
+function containsBigInt(value: unknown, depth: number): boolean {
+  if (typeof value === 'bigint') return true
+  if (value === null || typeof value !== 'object' || depth > 64) return false
+  return Object.values(value as Record<string, unknown>).some((v) => containsBigInt(v, depth + 1))
 }
 
 /**

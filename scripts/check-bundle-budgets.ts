@@ -626,6 +626,21 @@ export function headroomIsSufficient(measured: number, budget: number, onGating:
   return budget - worstCase >= requiredHeadroom(worstCase)
 }
 
+/**
+ * Is this budget THIN — under budget here, but without the headroom to stay
+ * under on the gating machine?
+ *
+ * The loop used to re-derive this as `headroom >= 0 && headroom < required`,
+ * which let a NEGATIVE worst-case headroom through: this machine measures
+ * under the budget, the inflated gating figure does not — the most at-risk
+ * budget of all, reported as nothing. Found on `@pyreon/http` (5935 B locally
+ * against 6000, ~6000.3 B in CI). One predicate, used by the loop and tested.
+ * A budget this machine already exceeds is a violation, not thin.
+ */
+export function isThinHeadroom(measured: number, budget: number, onGating: boolean): boolean {
+  return measured <= budget && !headroomIsSufficient(measured, budget, onGating)
+}
+
 /** The minimum headroom a budget needs to be measurable on both platforms. */
 export function requiredHeadroom(measured: number): number {
   return Math.max(GZIP_PLATFORM_VARIANCE_FLOOR_BYTES, measured * GZIP_PLATFORM_VARIANCE)
@@ -1125,7 +1140,7 @@ async function main(): Promise<void> {
     const worstCase = onGating ? r.gzip : r.gzip * (1 + GZIP_PLATFORM_DELTA)
     const headroom = budget - worstCase
     const required = requiredHeadroom(worstCase)
-    if (headroom >= 0 && headroom < required) {
+    if (isThinHeadroom(r.gzip, budget, onGating)) {
       const entry = { name: r.name, current: r.gzip, budget, headroom, required }
       if (grandfathered.has(r.name)) thinKnown.push(entry)
       else thinNew.push(entry)
