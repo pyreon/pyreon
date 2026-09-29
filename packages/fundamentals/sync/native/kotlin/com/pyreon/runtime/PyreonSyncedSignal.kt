@@ -49,6 +49,7 @@ private fun anyToScalar(value: Any?): PyreonScalar = when (value) {
     is String -> PyreonScalar.Str(value)
     is Double -> PyreonScalar.Num(value)
     is Int -> PyreonScalar.Num(value.toDouble())
+    is Long -> PyreonScalar.Num(value.toDouble())
     is Boolean -> PyreonScalar.Bool(value)
     else -> throw IllegalArgumentException("PyreonSyncedSignal: unsupported value type $value")
 }
@@ -58,6 +59,7 @@ private fun anyToScalar(value: Any?): PyreonScalar = when (value) {
 private fun <T> scalarToValue(scalar: PyreonScalar, sample: T): T? = when (sample) {
     is String -> (scalar as? PyreonScalar.Str)?.v as? T
     is Double -> (scalar as? PyreonScalar.Num)?.v as? T
+    is Long -> (scalar as? PyreonScalar.Num)?.v?.toLong() as? T
     is Boolean -> (scalar as? PyreonScalar.Bool)?.v as? T
     else -> null
 }

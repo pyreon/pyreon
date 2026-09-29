@@ -21,7 +21,7 @@ describe('SizedMap lowering', () => {
       'PyreonSizedMap<String, Int>(maxEntries: 5)',
     )
     expect(transform(src, { target: 'kotlin' }).code).toContain(
-      'PyreonSizedMap<String, Long>(maxEntries = 5)',
+      'PyreonSizedMap<String, Long>(maxEntries = 5L)',
     )
   })
 

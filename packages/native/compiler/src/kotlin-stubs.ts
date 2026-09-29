@@ -596,8 +596,8 @@ class KeyEvent(
 // The Swift stub gained this earlier; the Kotlin one never did, so a snippet
 // using SizedMap compiled on one target and not the other. Signature copied
 // from the shipped class: maxEntries required, lru defaulted.
-class PyreonSizedMap<K, V>(maxEntries: Int, private val lru: Boolean = false) {
-  val size: Int get() = 0
+class PyreonSizedMap<K, V>(maxEntries: Long, private val lru: Boolean = false) {
+  val size: Long get() = 0L
   fun get(key: K): V? = null
   fun set(key: K, value: V) {}
   fun delete(key: K): Boolean = false
@@ -1123,11 +1123,11 @@ class PyreonQuery<T>(queryKey: String, val staleMillis: Long = 0) {
 // \`delay\`/\`maxDelay\` are Long and \`retry\` is Long? — as in the runtime. The
 // optional \`transport\` parameter is omitted: the emit never passes it.
 data class PyreonSseMessage(val type: String, val data: String, val id: String, val retry: Long?)
-data class PyreonStreamReconnect(val attempts: Int = 5, val delay: Long = 1000, val maxDelay: Long = 30_000, val onEnd: Boolean = false)
+data class PyreonStreamReconnect(val attempts: Long = 5L, val delay: Long = 1000, val maxDelay: Long = 30_000, val onEnd: Boolean = false)
 data class PyreonSseOptions(val events: List<String>? = null, val lastEventId: String? = null, val reconnect: PyreonStreamReconnect? = PyreonStreamReconnect())
 data class PyreonStreamRequest(val method: String = "GET", val url: String, val headers: Map<String, String> = emptyMap(), val body: String? = null)
 data class PyreonSseEvent<T>(val type: String, val data: T, val id: String)
-class PyreonStream<E>(val maxEvents: Int = 1000) {
+class PyreonStream<E>(val maxEvents: Long = 1000L) {
   val events: MutableState<List<E>> = mutableStateOf(emptyList())
   val latest: MutableState<E?> = mutableStateOf(null)
   val status: MutableState<String> = mutableStateOf("idle")
@@ -1534,6 +1534,7 @@ class PyreonCrdtMap {
   fun keys(): List<String> = emptyList()
   fun set(key: String, value: PyreonScalar) {}
   fun set(key: String, value: String) {}
+  fun set(key: String, value: Long) {}
   fun set(key: String, value: Int) {}
   fun set(key: String, value: Double) {}
   fun set(key: String, value: Boolean) {}
@@ -1625,7 +1626,7 @@ class PyreonSortableState<T>(
   val overKey: String? get() = null
   val currentEdge: PyreonDropEdge? get() = null
   companion object {
-    fun <T> moveIndex(list: List<T>, from: Int, to: Int): List<T> = list
+    fun <T> moveIndex(list: List<T>, from: Long, to: Long): List<T> = list
   }
 }
 
@@ -2086,15 +2087,15 @@ class PyreonSafeArea(probe: SafeAreaProbe) {
 }
 interface OrientationProbe {
   val type: String
-  val angle: Int
+  val angle: Long
 }
 class AndroidOrientationProbe(ctx: Any?) : OrientationProbe {
   override val type: String = "portrait"
-  override val angle: Int = 0
+  override val angle: Long = 0L
 }
 class PyreonScreenOrientation(probe: OrientationProbe) {
   val type: String get() = "portrait"
-  val angle: Int get() = 0
+  val angle: Long get() = 0L
 }
 // PyreonAudioPlayer + the app-supplied Media3 engine the emit names.
 interface AudioEngine {
@@ -2218,19 +2219,19 @@ fun <T> compositionLocalOf(f: () -> T): ProvidableCompositionLocal<T> = Providab
 infix fun <T> ProvidableCompositionLocal<T>.provides(v: T): Pair<ProvidableCompositionLocal<T>, T> = Pair(this, v)
 fun CompositionLocalProvider(vararg pairs: Pair<*, *>, content: @Composable () -> Unit) { content() }
 interface PyreonScheduler {
-  fun schedule(milliseconds: Int, work: () -> Unit): Int
+  fun schedule(milliseconds: Long, work: () -> Unit): Int
   fun cancel(token: Int)
 }
 class PyreonTaskScheduler : PyreonScheduler {
-  override fun schedule(milliseconds: Int, work: () -> Unit): Int = 0
+  override fun schedule(milliseconds: Long, work: () -> Unit): Int = 0
   override fun cancel(token: Int) {}
 }
-class PyreonDebounced<A>(delayMs: Int, scheduler: PyreonScheduler, action: (A) -> Unit) {
+class PyreonDebounced<A>(delayMs: Long, scheduler: PyreonScheduler, action: (A) -> Unit) {
   operator fun invoke(arg: A) {}
   fun cancel() {}
   fun flush() {}
 }
-class PyreonThrottled<A>(waitMs: Int, scheduler: PyreonScheduler, action: (A) -> Unit) {
+class PyreonThrottled<A>(waitMs: Long, scheduler: PyreonScheduler, action: (A) -> Unit) {
   operator fun invoke(arg: A) {}
   fun cancel() {}
 }
@@ -2290,6 +2291,7 @@ fun rememberPyreonAppState(): PyreonAppState = PyreonAppState()
 data class PyreonToastItem(val id: String, val message: String, val type: String)
 object PyreonToast {
   val toasts: MutableState<List<PyreonToastItem>> = mutableStateOf(emptyList())
+  var maxToasts: Long = 50L
   fun add(message: String, type: String = "info", durationMillis: Long? = null): String = ""
   fun dismiss(id: String) {}
   fun clear() {}

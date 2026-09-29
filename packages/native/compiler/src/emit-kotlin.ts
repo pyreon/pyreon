@@ -2883,7 +2883,7 @@ function emitKotlinStreamHarness(d: Extract<DeclIR, { kind: 'stream' }>, ctx: Ko
     opts.push(
       d.reconnect === null
         ? 'reconnect = null'
-        : `reconnect = PyreonStreamReconnect(attempts = ${d.reconnect.attempts}, delay = ${d.reconnect.delay}L, maxDelay = ${d.reconnect.maxDelay}L, onEnd = ${d.reconnect.onEnd})`,
+        : `reconnect = PyreonStreamReconnect(attempts = ${d.reconnect.attempts}L, delay = ${d.reconnect.delay}L, maxDelay = ${d.reconnect.maxDelay}L, onEnd = ${d.reconnect.onEnd})`,
     )
     const payload = d.sseText ? 'm.data' : `PyreonFetchJson.decodeFromString<${data}>(m.data)`
     out.push(
@@ -2916,7 +2916,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     const argType = p0 === undefined ? 'Unit' : kotlinType(p0.type)
     const argName = p0 === undefined ? '_' : kotlinIdent(p0.name)
     const body = d.fn.body.map((st) => emitKotlinStatement(st, 4, ctx)).join('; ')
-    return `val ${kotlinIdent(d.name)} = remember { ${cls}<${argType}>(${d.delayMs}, PyreonTaskScheduler()) { ${argName} -> ${body} } }`
+    return `val ${kotlinIdent(d.name)} = remember { ${cls}<${argType}>(${d.delayMs}L, PyreonTaskScheduler()) { ${argName} -> ${body} } }`
   }
   // Phase 5b: a plain value const → a composable-body `val` (captures-once).
   if (d.kind === 'value') {
@@ -3159,7 +3159,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // `const s = useStream(…)` → a remembered PyreonStream; the
   // `DisposableEffect` that starts and stops it is emitted with the harnesses.
   if (d.kind === 'stream') {
-    return `val ${kotlinIdent(d.name)} = remember { PyreonStream<${kotlinType(d.itemType, ctx)}>(maxEvents = ${d.maxEvents}) }`
+    return `val ${kotlinIdent(d.name)} = remember { PyreonStream<${kotlinType(d.itemType, ctx)}>(maxEvents = ${d.maxEvents}L) }`
   }
   if (d.kind === 'database') {
     _databaseNames.add(d.name)
@@ -7532,7 +7532,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
     case 'new-sized-map': {
       // Mirror of the Swift emit; Kotlin spells named arguments with `=`.
       const lru = e.lru ? ', lru = true' : ''
-      return `PyreonSizedMap<${kotlinType(e.keyType)}, ${kotlinType(e.valueType)}>(maxEntries = ${e.maxEntries}${lru})`
+      return `PyreonSizedMap<${kotlinType(e.keyType)}, ${kotlinType(e.valueType)}>(maxEntries = ${e.maxEntries}L${lru})`
     }
     case 'new-collection': {
       // Mirror of the Swift emit. `val` is fine on Kotlin (the reference is
