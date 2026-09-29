@@ -1581,4 +1581,38 @@ final class PyreonCounterUITests: XCTestCase {
         )
     }
 
+    // Render props on-device. The shared Counter.tsx declares
+    // `Tally(props: { count; children: (n) => unknown; footer?: VNodeChild })`
+    // and renders it twice at the bottom of the page: once with a BLOCK-bodied
+    // children callback (`const doubled = n * 2; if (n > 2) return …; return …`)
+    // and NO footer, once with an expression callback AND the optional footer.
+    //
+    // What only a device proves: (1) the omitted optional slot really renders
+    // nothing (the `EmptyView`-pinned initializer, not a crash or a stray
+    // view) — exactly ONE `rp-footer` exists; (2) the render prop is LIVE — it
+    // re-runs with the parent's state, and the block's early-return branch
+    // flips when `count` crosses 2.
+    func test_renderPropsRenderAndTrackState() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let block = app.staticTexts["rp-block"]
+        XCTAssertTrue(block.waitForExistence(timeout: 30), "The block-bodied render callback rendered nothing")
+        XCTAssertEqual(block.label, "rp small 0")
+        XCTAssertEqual(app.staticTexts["rp-plain"].label, "rp plain 0")
+        XCTAssertEqual(
+            app.staticTexts.matching(identifier: "rp-footer").count, 1,
+            "The optional footer slot rendered for a caller that omitted it (or not at all for the one that passed it)"
+        )
+
+        let increment = app.buttons["Increment"]
+        for _ in 0..<3 { increment.tap() }
+
+        XCTAssertTrue(
+            app.staticTexts["rp big 6"].waitForExistence(timeout: 10),
+            "The render prop did not re-run with the parent's state, or the block's early-return branch did not flip"
+        )
+        XCTAssertEqual(app.staticTexts["rp-plain"].label, "rp plain 3")
+    }
+
 }

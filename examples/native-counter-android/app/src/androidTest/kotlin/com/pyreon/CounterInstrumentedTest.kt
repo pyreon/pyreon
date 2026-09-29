@@ -1071,4 +1071,27 @@ class CounterInstrumentedTest {
             } catch (_: Exception) {}
         }
     }
+
+    // Render props on-device — the Android half of the iOS
+    // `test_renderPropsRenderAndTrackState`. `Tally` (shared Counter.tsx) takes
+    // a REQUIRED function-as-children render prop and an OPTIONAL `footer`
+    // view slot, and is rendered twice at the bottom of the page: once with a
+    // BLOCK-bodied callback and no footer, once with an expression callback and
+    // the footer. Exactly ONE footer must exist (the omitted nullable lambda
+    // renders nothing), and the callbacks must re-run with the parent's state,
+    // the block's early-return branch flipping when `count` crosses 2.
+    // `assertExists` rather than `assertIsDisplayed`: the rows sit below the
+    // fold, and the scroll column composes them regardless.
+    @Test
+    fun renderPropsRenderAndTrackState() {
+        composeRule.onNodeWithTag("rp-block").assertExists().assertTextEquals("rp small 0")
+        composeRule.onNodeWithTag("rp-plain").assertTextEquals("rp plain 0")
+        composeRule.onAllNodesWithTag("rp-footer").assertCountEquals(1)
+
+        repeat(3) { composeRule.onNodeWithText("Increment").performClick() }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("rp-block").assertTextEquals("rp big 6")
+        composeRule.onNodeWithTag("rp-plain").assertTextEquals("rp plain 3")
+    }
 }

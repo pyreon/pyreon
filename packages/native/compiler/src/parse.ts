@@ -41,7 +41,8 @@ import { isCanonicalPrimitive } from './canonical-primitives'
 import { parseRocketstyleDefn } from './rocketstyle-native'
 import { parseAttrsDefn } from './attrs-native'
 import { collectDeclaredTypeNames, liftInlineObjectStructs } from './inline-object-structs'
-import { liftSlotParamStructs } from './render-slots'
+import { liftSlotParamStructs, planViewBlock } from './render-slots'
+import { disambiguateValueTypeNames } from './value-type-namespaces'
 import {
   DEFAULT_THEME,
   mergeTheme,
@@ -819,28 +820,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // top-level `const X = s.object(...)` still emits first.
   for (const inline of ctx.inlineSchemas) zodSchemas.push(inline)
 
-  // A feature emits an alias under the SOURCE binding name so `Todo.name`
-  // resolves. Swift and Kotlin do NOT separate the type and value namespaces
-  // the way TypeScript does, so if the same file also declares a TYPE of that
-  // name the two collide — `invalid redeclaration of 'Todo'` / `conflicting
-  // declarations`, in a generated file the author never wrote. Neither alias
-  // form escapes it (a `typealias` and a value binding collide identically;
-  // both were measured). Say so by name instead of shipping the collision.
-  for (const f of features) {
-    const clash =
-      structs.some((st) => st.name === f.bindingName) ||
-      enums.some((en) => en.name === f.bindingName)
-    if (clash) {
-      ctx.warnings.push(
-        `defineFeature declaration \`${f.bindingName}\`: a type of the same name is declared in this file. ` +
-          `Swift and Kotlin share one namespace for types and values, so the emitted alias collides with it ` +
-          `and the native build fails on a redeclaration. Rename one of them (e.g. the feature binding to ` +
-          `\`${f.bindingName}Feature\`).`,
-      )
-    }
-  }
-
-  return {
+  const result: ParseResult = {
     components,
     enums,
     structs,
@@ -857,6 +837,12 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     helperFns: ctx.helperFns,
     warnings: ctx.warnings,
   }
+  // `const Pet = …` beside `type Pet = …` is two namespaces in TypeScript and
+  // one on native — the value is renamed so the pair compiles (a feature's
+  // alias, a schema binding and a plain const alike). See
+  // value-type-namespaces.ts.
+  disambiguateValueTypeNames(result)
+  return result
 }
 
 /**
@@ -6165,15 +6151,19 @@ function liftedAliasType(
  * compile. The render-prop data component makes it load-bearing: the only
  * shape that stays live on the web is `return () => props.children(q.data())`.
  *
- * A BLOCK-bodied accessor (several statements) has no single view to unwrap
- * and is named rather than emitted broken.
+ * A BLOCK-bodied accessor is kept as the arrow when its statements have a
+ * view-builder shape (`planViewBlock`) — the emitters lower it at the root —
+ * and is named rather than emitted broken otherwise.
  */
 function unwrapAccessorReturn(e: ExprIR, component: string, ctx: ParseCtx): ExprIR {
   const x = e.kind === 'paren' ? e.inner : e
   if (x.kind !== 'arrow' || x.params.length > 0 || x.async === true) return e
   if (x.stmts !== undefined && x.stmts.length > 0) {
+    // A block the view builders can lower (`const`s, early-return branches, a
+    // final `return`) stays an arrow: each emitter lowers it at the root.
+    if (planViewBlock(x.stmts) !== null) return x
     ctx.warnings.push(
-      `Component ${component}: it returns a reactive accessor with a BLOCK body (\`return () => { …; return <…/> }\`), which has no native lowering — native views re-render on state change without an accessor, but only a single expression can become the view. Return the expression directly (\`return () => cond ? <A/> : <B/>\`), or compute the intermediate values with \`computed\`.`,
+      `Component ${component}: it returns a reactive accessor whose BLOCK body (\`return () => { …; return <…/> }\`) has no native lowering — native views re-render on state change without an accessor, and a view builder takes \`const\` declarations, early \`if (…) return …\` branches and a final \`return\`, but this body has something else (an assignment, a loop, a mutable local or an expression statement). Move that work into a \`computed\`.`,
     )
     return { kind: 'literal', value: null }
   }
