@@ -239,7 +239,7 @@ export function App() { return <Opt render={(n) => <Text>{n}</Text>} /> }`
     const kt = kotlin(src)
     expect(kt.warnings).toEqual([])
     expect(kt.code).toContain('render: (@Composable (Long) -> Unit)? = null')
-    expect(kt.code).toContain('render?.invoke(1)')
+    expect(kt.code).toContain('render?.invoke(1L)')
   })
 })
 

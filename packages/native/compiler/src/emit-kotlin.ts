@@ -5986,11 +5986,15 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         }
         if (member === 'addEdgeWaypoint' && e.args.length >= 2) {
           const point = kotlinFlowPositionLiteral(e.args[1]!)
-          if (point !== null) return `${kotlinIdent(flowName)}.addEdgeWaypoint(${emitKotlinExpr(e.args[0]!, indent)}, ${point}${e.args.length === 3 ? `, ${emitKotlinExpr(e.args[2]!, indent)}` : ''})`
+          if (point !== null) return `${kotlinIdent(flowName)}.addEdgeWaypoint(${emitKotlinExpr(e.args[0]!, indent)}, ${point}${e.args.length === 3 ? `, ${kotlinIntArg(e.args[2]!, indent)}` : ''})`
+        }
+        // The waypoint index is a Kotlin `Int` API position (a TS integer is Long).
+        if (member === 'removeEdgeWaypoint' && e.args.length === 2) {
+          return `${kotlinIdent(flowName)}.removeEdgeWaypoint(${emitKotlinExpr(e.args[0]!, indent)}, ${kotlinIntArg(e.args[1]!, indent)})`
         }
         if (member === 'updateEdgeWaypoint' && e.args.length === 3) {
           const point = kotlinFlowPositionLiteral(e.args[2]!)
-          if (point !== null) return `${kotlinIdent(flowName)}.updateEdgeWaypoint(${emitKotlinExpr(e.args[0]!, indent)}, ${emitKotlinExpr(e.args[1]!, indent)}, ${point})`
+          if (point !== null) return `${kotlinIdent(flowName)}.updateEdgeWaypoint(${emitKotlinExpr(e.args[0]!, indent)}, ${kotlinIntArg(e.args[1]!, indent)}, ${point})`
         }
         if (member === 'reconnectEdge' && e.args.length === 2) {
           const args = kotlinFlowReconnectLiteral(e.args[1]!)
@@ -7050,7 +7054,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // `String.length` is Kotlin's 32-bit Int; a TS integer is Long (see
       // KOTLIN_INT). A List's `.length` is the TS-compat extension, already
       // Long. The optional form keeps the `?.` (`s?.length?.toLong()`).
-      if (e.property === 'length' && inferType(e.object, _kotlinExprInferCtx).kind === 'string') {
+      if (e.property === 'length' && unwrapOptionalType(inferType(e.object, _kotlinExprInferCtx)).kind === 'string') {
         return `${emitKotlinExpr(e.object, indent)}${dot}length${dot === '?.' ? '?.' : '.'}toLong()`
       }
       return `${emitKotlinExpr(e.object, indent)}${dot}${kotlinIdent(e.property)}`

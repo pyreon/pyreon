@@ -622,7 +622,7 @@ describe('chart hosts — theme overrides, formatters and bubble marks', () => {
   it('Kotlin: the same, with a bare formatter as a function reference', () => {
     const r = transform(PROPS, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain(`theme = ${kotlinThemeLiteral({ label: '"#222222"', fontSize: '12.0' })}, showXAxis = true, showYAxis = true, showGrid = true, yFormat = ::compact, xFormat = fixed(1), y2Format = { v -> plain(v) + "%" })`)
+    expect(r.code).toContain(`theme = ${kotlinThemeLiteral({ label: '"#222222"', fontSize: '12.0' })}, showXAxis = true, showYAxis = true, showGrid = true, yFormat = ::compact, xFormat = fixed(1L), y2Format = { v -> plain(v) + "%" })`)
     expect(r.code).toContain('val pyreonRRaw1: List<Double> = CITIES.mapIndexed { pyreonI, pyreonD -> (pyreonD.area).toDouble() }')
     expect(r.code).toContain('val pyreonRadii1: List<Double> = bubbleRadii(pyreonRRaw1, 4.0, 20.0)')
     expect(r.code).toContain('Series(kind = "points", values = pyreonValues1, color = "#f97362", width = 2.0, radius = 3.0, label = "Area", showValues = false, rValues = pyreonRRaw1, radii = pyreonRadii1, axis = "right")')
@@ -756,10 +756,10 @@ describe('chart hosts — <PlotChart dataZoom> as pinch + pan over a fraction wi
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('var pyreonZoom by remember { mutableStateOf(ZoomWindow(start = 0.0, end = 1.0)) }')
     expect(r.code).toContain('val pyreonRange: SliceRange = sliceRange(pyreonZoom, DAYS.size.toLong())')
-    expect(r.code).toContain('val pyreonSourceRows = DAYS.subList(pyreonRange.from, pyreonRange.to)')
+    expect(r.code).toContain('val pyreonSourceRows = DAYS.subList(pyreonRange.from.toInt(), pyreonRange.to.toInt())')
     expect(r.code).toContain('val pyreonValues1: List<Double> = pyreonSourceRows.mapIndexed { pyreonJ, pyreonD -> val pyreonI = pyreonJ + pyreonRange.from; (pyreonD.avg + pyreonI).toDouble() }')
     expect(r.code).toContain('.pointerInput(Unit) { detectTransformGestures { _, pyreonPan, pyreonZoomBy, _ -> pyreonZoom = panWindow(zoomWindow(pyreonZoom, 1.0 / pyreonZoomBy.toDouble(), 0.5), -(pyreonPan.x / pyreonDensity).toDouble() / pyreonW) } }')
-    expect(r.code).toContain('run { val pyreonHit = plotHitBars(pyreonSpec, ::pyreonChartMeasure, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble()); if (pyreonHit < 0) -1 else pyreonHit + pyreonRange.from }')
+    expect(r.code).toContain('run { val pyreonHit = plotHitBars(pyreonSpec, ::pyreonChartMeasure, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble()); if (pyreonHit < 0) -1L else pyreonHit + pyreonRange.from }')
   })
   it('without dataZoom the plot host emits exactly what it did before (no state, no slice, no gestures)', () => {
     const r = transform(PLOT, { target: 'swift' })
@@ -846,7 +846,7 @@ describe('chart hosts — <PlotChart zoomPresets> as the engine-laid-out preset 
     )
     expect(r.code).toContain('height = 200.0 - pyreonPresetStrip.height')
     expect(r.code).toContain(
-      'val pyreonPreset = presetHit(pyreonPresetStrip.boxes, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble()); if (pyreonPreset >= 0) { pyreonZoom = presetWindow(pyreonPresets[pyreonPreset].count, DAYS.size) } else {',
+      'val pyreonPreset = presetHit(pyreonPresetStrip.boxes, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble()).toInt(); if (pyreonPreset >= 0) { pyreonZoom = presetWindow(pyreonPresets[pyreonPreset].count, DAYS.size.toLong()) } else {',
     )
     expect(r.code).not.toContain('detectTransformGestures')
   })
@@ -1065,13 +1065,13 @@ describe('chart hosts — <PlotChart navigator> as the engine-laid-out slider st
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('var pyreonNavKind by remember { mutableStateOf(0L) }')
     expect(r.code).toContain('var pyreonNavAnchor by remember { mutableStateOf(ZoomWindow(start = 0.0, end = 1.0)) }')
-    expect(r.code).toContain('val pyreonNavValues: List<Double> = minMaxBuckets(DAYS.mapIndexed { pyreonI, pyreonD -> (pyreonD.hits).toDouble() }, maxOf(1, (pyreonW / 2.0).toInt()))')
+    expect(r.code).toContain('val pyreonNavValues: List<Double> = minMaxBuckets(DAYS.mapIndexed { pyreonI, pyreonD -> (pyreonD.hits).toDouble() }, maxOf(1L, (pyreonW / 2.0).toLong()))')
     expect(r.code).toContain('val pyreonNavigator: NavigatorLayout = renderNavigator(pyreonNavValues, pyreonSeries[0].color, pyreonZoom, PyreonChartRect(0.0, 0.0, pyreonW, 240.0), pyreonTheme.grid)')
     expect(r.code).toContain('height = 240.0 - pyreonNavigator.height')
     expect(r.code).toContain('Box(modifier = Modifier.fillMaxWidth().height((240.0).dp)')
     expect(r.code).toContain('PyreonChartCanvas(cmds = renderChart(pyreonSpec, ::pyreonChartMeasure) + pyreonNavigator.cmds, modifier = Modifier.fillMaxSize().pointerInput(pyreonSpec, pyreonZoom) { detectTapGestures {')
     expect(r.code).toContain(
-      'Box(modifier = Modifier.fillMaxWidth().offset(y = ((240.0) - pyreonNavigator.height).dp).height((pyreonNavigator.height).dp).pointerInput(Unit) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); pyreonNavAnchor = pyreonZoom; pyreonNavDx = 0.0; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, (pyreonDown.position.x / pyreonDensity).toDouble()); drag(pyreonDown.id) { pyreonChange -> val pyreonStep = pyreonChange.positionChange(); pyreonChange.consume(); pyreonNavDx = pyreonNavDx + (pyreonStep.x / pyreonDensity).toDouble(); pyreonZoom = navigatorDrag(pyreonNavKind, pyreonNavAnchor, pyreonNavDx / pyreonNavigator.strip.w) }; pyreonNavKind = 0 } })',
+      'Box(modifier = Modifier.fillMaxWidth().offset(y = ((240.0) - pyreonNavigator.height).dp).height((pyreonNavigator.height).dp).pointerInput(Unit) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); pyreonNavAnchor = pyreonZoom; pyreonNavDx = 0.0; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, (pyreonDown.position.x / pyreonDensity).toDouble()); drag(pyreonDown.id) { pyreonChange -> val pyreonStep = pyreonChange.positionChange(); pyreonChange.consume(); pyreonNavDx = pyreonNavDx + (pyreonStep.x / pyreonDensity).toDouble(); pyreonZoom = navigatorDrag(pyreonNavKind, pyreonNavAnchor, pyreonNavDx / pyreonNavigator.strip.w) }; pyreonNavKind = 0L } })',
     )
   })
   it('with presets too, the navigator sits ABOVE the preset strip and the plot gives up both', () => {
@@ -1184,9 +1184,9 @@ describe('chart hosts — <PlotChart brush onBrush> as a plain drag over the eng
     expect(r.code).toContain('var pyreonBrushStart by remember { mutableStateOf(-1L) }')
     expect(r.code).toContain('val pyreonPlot: PyreonChartRect = layoutChart(pyreonSpec, ::pyreonChartMeasure).plot')
     expect(r.code).toContain('renderChart(pyreonSpec, ::pyreonChartMeasure) + pyreonBrushCmds')
-    expect(r.code).toContain('if (pyreonBrushStart >= 0) { pyreonBrushStart = -1; pyreonBrushEnd = -1; onBrush(null) } else {')
+    expect(r.code).toContain('if (pyreonBrushStart >= 0) { pyreonBrushStart = -1L; pyreonBrushEnd = -1L; onBrush(null) } else {')
     expect(r.code).toContain(
-      '.pointerInput(Unit) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); pyreonBrushA = (pyreonDown.position.x / pyreonDensity).toDouble(); pyreonBrushB = pyreonBrushA; drag(pyreonDown.id) { pyreonChange -> val pyreonStep = pyreonChange.positionChange(); pyreonChange.consume(); pyreonBrushB = pyreonBrushB + (pyreonStep.x / pyreonDensity).toDouble() }; val pyreonSel: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, pyreonBrushA, pyreonBrushB, ZoomWindow(start = 0.0, end = 1.0), DAYS.size); pyreonBrushStart = pyreonSel.start; pyreonBrushEnd = pyreonSel.end; pyreonBrushA = -1.0; pyreonBrushB = -1.0; onBrush(pyreonSel) } }',
+      '.pointerInput(Unit) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); pyreonBrushA = (pyreonDown.position.x / pyreonDensity).toDouble(); pyreonBrushB = pyreonBrushA; drag(pyreonDown.id) { pyreonChange -> val pyreonStep = pyreonChange.positionChange(); pyreonChange.consume(); pyreonBrushB = pyreonBrushB + (pyreonStep.x / pyreonDensity).toDouble() }; val pyreonSel: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, pyreonBrushA, pyreonBrushB, ZoomWindow(start = 0.0, end = 1.0), DAYS.size.toLong()); pyreonBrushStart = pyreonSel.start; pyreonBrushEnd = pyreonSel.end; pyreonBrushA = -1.0; pyreonBrushB = -1.0; onBrush(pyreonSel) } }',
     )
     expect(r.code).toContain('fun onBrush(r: BrushRange?) {\n    if (r == null) {')
   })

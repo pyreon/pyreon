@@ -173,8 +173,8 @@ export function App() {
   it('an empty-body message handler becomes a truly empty lambda, and a zero-param one gets the `_` binder', () => {
     const got = find(WV, 'PyreonWebView')
     expect(got[1]).toBe('PyreonWebView(html = "<b>x</b>", onMessage = { _ -> })')
-    expect(got[2]).toBe('PyreonWebView(html = "<b>y</b>", onMessage = { m -> n = 1 })')
-    expect(got[3]).toBe('PyreonWebView(html = "<b>z</b>", onMessage = { _ -> n = 2 })')
+    expect(got[2]).toBe('PyreonWebView(html = "<b>y</b>", onMessage = { m -> n = 1L })')
+    expect(got[3]).toBe('PyreonWebView(html = "<b>z</b>", onMessage = { _ -> n = 2L })')
   })
 
   it('a DYNAMIC src, and an accessor-arrow html, both reach the host unwrapped', () => {

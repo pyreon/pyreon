@@ -44,7 +44,7 @@ describe('native chart data for screen readers', () => {
 
   it('Android: a zoomed chart labels its visible rows from the full data', () => {
     const code = transform(zoomed, { target: 'kotlin' }).code
-    expect(code).toMatch(/PyreonChartPoints\(A11yInput\([^\n]*categories = pyreonA11yCats[^\n]*pyreonCats\.size, pyreonRange\.from,/)
+    expect(code).toMatch(/PyreonChartPoints\(A11yInput\([^\n]*categories = pyreonA11yCats[^\n]*pyreonCats\.size, pyreonRange\.from\.toInt\(\),/)
   })
 
   it('Android: decimated and continuous-x charts keep the description only (no evenly spaced columns)', () => {

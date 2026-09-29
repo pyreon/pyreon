@@ -89,7 +89,7 @@ describe('the decimation arithmetic crosses', () => {
     expect(r.code).toContain('lttbIndices(listOf(), pyreonDecimateValues, pyreonMaxPoints)')
     expect(r.code).toContain('val pyreonRows = pyreonKeep.map { pyreonSourceRows[it.toInt()] }')
     expect(r.code).toContain('val pyreonI = pyreonKeep[pyreonJ] + pyreonRange.from')
-    expect(r.code).toContain('pyreonKeep[pyreonHit] + pyreonRange.from')
+    expect(r.code).toContain('pyreonKeep[pyreonHit.toInt()] + pyreonRange.from')
     expect(r.code).toContain('pyreonKeep.indexOf(pyreonGlobal - pyreonRange.from)')
   })
 

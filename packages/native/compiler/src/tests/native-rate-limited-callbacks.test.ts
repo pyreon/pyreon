@@ -54,8 +54,8 @@ describe('each binding becomes its runtime instance', () => {
   it('call sites and the handle both survive', () => {
     for (const target of ['swift', 'kotlin'] as const) {
       const out = transform(APP, { target }).code
-      expect(out).toContain('save(1)')
-      expect(out).toContain('scroll(2)')
+      expect(out).toContain(target === 'kotlin' ? 'save(1L)' : 'save(1)')
+      expect(out).toContain(target === 'kotlin' ? 'scroll(2L)' : 'scroll(2)')
       // The whole reason these need a runtime rather than a .task.
       expect(out).toContain('save.cancel()')
     }

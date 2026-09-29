@@ -37,12 +37,12 @@ function App() {
   it('useCounter: inc/dec default to 1, and the literal clamp is baked into every mutation', () => {
     const out = kt(`c.inc(); c.inc(2); c.dec(); c.dec(3); c.set(5); c.reset()`)
     expect(out).toContain('c = minOf(maxOf(c + 1L, 0L), 10L)')
-    expect(out).toContain('c = minOf(maxOf(c + 2L, 0), 10)')
-    expect(out).toContain('c = minOf(maxOf(c - 1, 0), 10)')
-    expect(out).toContain('c = minOf(maxOf(c - 3, 0), 10)')
-    expect(out).toContain('c = minOf(maxOf(5, 0), 10)')
+    expect(out).toContain('c = minOf(maxOf(c + 2L, 0L), 10L)')
+    expect(out).toContain('c = minOf(maxOf(c - 1L, 0L), 10L)')
+    expect(out).toContain('c = minOf(maxOf(c - 3L, 0L), 10L)')
+    expect(out).toContain('c = minOf(maxOf(5L, 0L), 10L)')
     // reset goes back to the INITIAL value the hook was created with
-    expect(out).toContain('c = minOf(maxOf(1, 0), 10)')
+    expect(out).toContain('c = minOf(maxOf(1L, 0L), 10L)')
     // the read drops its parens too
     expect(out).toContain('(c).toString()')
   })

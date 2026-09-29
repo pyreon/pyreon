@@ -1680,7 +1680,7 @@ export function C() {
         expect(validateSwiftWithStubs(result.code).ok).toBe(true)
       } else {
         expect(result.code).toContain('waypoints = listOf(PyreonXYPosition(4.0, 5.0))')
-        expect(result.code).toContain('flow.addEdgeWaypoint("e1", PyreonXYPosition(1.0, 2.0), -1L)')
+        expect(result.code).toContain('flow.addEdgeWaypoint("e1", PyreonXYPosition(1.0, 2.0), -1)')
         expect(result.code).toContain('flow.reconnectEdge("e1", target = "2", targetHandle = "in")')
         expect(validateKotlin(result.code).ok).toBe(true)
       }

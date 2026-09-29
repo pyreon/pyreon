@@ -63,8 +63,8 @@ describe('canonical C-style count-loops lower to native ranges', () => {
     const out = transform(CANONICAL, { target: 'kotlin' })
     expect(out.code).toContain('for (i in 0L until 5L) {')
     expect(out.code).toContain('for (j in 1L..3L) {')
-    expect(out.code).toContain('for (k in 0 until 10 step 2) {')
-    expect(out.code).toContain('for (m in 0 until items.length) {')
+    expect(out.code).toContain('for (k in 0L until 10L step 2L) {')
+    expect(out.code).toContain('for (m in 0L until items.length) {')
     expect(out.warnings ?? []).toEqual([])
   })
 
@@ -123,7 +123,7 @@ describe('do…while lowers directly', () => {
 
   it('Kotlin: do { } while ( )', () => {
     const out = transform(DOWHILE, { target: 'kotlin' })
-    expect(out.code).toMatch(/do \{\n\s+k = k \+ 1\n\s+\} while \(k < 3\)/)
+    expect(out.code).toMatch(/do \{\n\s+k = k \+ 1L?\n\s+\} while \(k < 3L?\)/)
     expect(out.warnings ?? []).toEqual([])
   })
 })

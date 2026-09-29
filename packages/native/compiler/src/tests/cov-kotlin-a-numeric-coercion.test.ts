@@ -59,7 +59,7 @@ describe('Kotlin expr: Math lowerings', () => {
   const c = computed(() => Math.max(...ds()))
   const d = computed(() => Math.min(...ds()))`).code
     expect(out).toContain('(xs.maxOrNull() ?: Long.MIN_VALUE)')
-    expect(out).toContain('(xs.minOrNull() ?: Int.MAX_VALUE)')
+    expect(out).toContain('(xs.minOrNull() ?: Long.MAX_VALUE)')
     expect(out).toContain('(ds.maxOrNull() ?: Double.NEGATIVE_INFINITY)')
     expect(out).toContain('(ds.minOrNull() ?: Double.POSITIVE_INFINITY)')
   })

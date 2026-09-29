@@ -119,7 +119,7 @@ ${body}
     )).code
     expect(out).toContain('xs.any({ v -> v > 1L })')
     expect(out).toContain('xs.all({ v -> v > 1L })')
-    expect(out).toContain('xs.map({ 1 })')
+    expect(out).toContain('xs.map({ 1L })')
   })
 
   it('a JSX FRAGMENT lowers to a Column (Compose has no transparent group node)', () => {
