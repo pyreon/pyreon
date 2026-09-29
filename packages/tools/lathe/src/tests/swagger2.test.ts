@@ -194,9 +194,10 @@ describe('parameters', () => {
     expect(op(withArray(undefined), 'x').queryParams[0]).toMatchObject({ style: 'form', explode: false })
   })
 
-  it('reports `tsv`, which OpenAPI 3 cannot spell', () => {
+  it('carries a query `tsv` as `tabDelimited` (OpenAPI 3 has no spelling for it), and reports nothing', () => {
     const doc = withArray('tsv')
-    expect(doc.notes.find((n) => n.code === 'swagger2-lossy')?.message).toContain('tsv')
+    expect(op(doc, 'x').queryParams[0]).toMatchObject({ style: 'tabDelimited', explode: false })
+    expect(doc.notes.some((n) => n.code === 'swagger2-lossy')).toBe(false)
   })
 
   it('moves type / format / enum / bounds into `schema`', () => {
@@ -240,13 +241,23 @@ describe('responses and security', () => {
     ])
   })
 
-  it('per-operation schemes are a loss ONLY when they exclude the scheme the client uses', () => {
+  it('per-operation schemes that exclude the client scheme become that operation\'s servers, on the same host', () => {
     const spec = (schemes: string[]) => ({
+      basePath: '/v2',
       schemes: ['https'],
       paths: { '/x': { get: { operationId: 'x', schemes, responses: ok } } },
     })
-    expect(load(spec(['https'])).notes.some((n) => n.code === 'swagger2-lossy')).toBe(false)
-    expect(load(spec(['http'])).notes.some((n) => n.code === 'swagger2-lossy')).toBe(true)
+    // Restating the client's own scheme changes nothing (Kubernetes does it 1,202 times).
+    expect(op(load(spec(['https'])), 'x').baseUrl).toBeUndefined()
+    const http = load(spec(['http']))
+    expect(op(http, 'x').baseUrl).toBe('http://api.test/v2')
+    expect(http.notes.some((n) => n.code === 'swagger2-lossy')).toBe(false)
+    // https first, as for the document's own servers.
+    expect(op(load(spec(['http', 'wss'])), 'x').baseUrl).toBe('http://api.test/v2')
+    // Nothing a client can use: reported, and the document servers stay.
+    const odd = load(spec(['ftp']))
+    expect(op(odd, 'x').baseUrl).toBeUndefined()
+    expect(odd.notes.find((n) => n.code === 'swagger2-lossy')?.at).toBe('#/paths/~1x/get/schemes')
   })
 })
 

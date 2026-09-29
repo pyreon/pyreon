@@ -8,7 +8,7 @@
  * GitHub annotation a newline cannot cut short).
  */
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { contractDiff, readContractSide, renderContractDiff } from '../core/contract'
@@ -273,6 +273,41 @@ describe('the CLI', () => {
       write.mockRestore()
       if (prevSummary === undefined) delete process.env.GITHUB_STEP_SUMMARY
       else process.env.GITHUB_STEP_SUMMARY = prevSummary
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  // From a subdirectory (a monorepo package, a workflow step with
+  // `working-directory`), `<rev>:<path>` must mean the same file as the
+  // on-disk side — not the repository root's file of the same name, which
+  // `git show` reads by default and which turned the diff into a comparison of
+  // two unrelated specs.
+  it('resolves `<rev>:<path>` relative to the working directory, like the on-disk side', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'lathe-diff-sub-'))
+    const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')))
+    const git = (...args: string[]) => execFileSync('git', ['-C', dir, ...args], { env, stdio: 'pipe' })
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    try {
+      git('init', '-q')
+      git('config', 'user.email', 't@t.test')
+      git('config', 'user.name', 't')
+      mkdirSync(join(dir, 'api'))
+      // The ROOT holds an unrelated spec with the same name — the one a
+      // root-relative read picks up.
+      writeFileSync(join(dir, 'openapi.json'), AFTER)
+      writeFileSync(join(dir, 'api', 'openapi.json'), BEFORE)
+      git('add', '.')
+      git('commit', '-q', '-m', 'v1')
+      const sub = join(dir, 'api')
+      // Unchanged in the subdirectory: nothing moved, exit 0.
+      expect(await main(['diff', 'HEAD:openapi.json', 'openapi.json', '--fail-on-breaking'], sub)).toBe(0)
+      writeFileSync(join(sub, 'openapi.json'), AFTER)
+      expect(await main(['diff', 'HEAD:openapi.json', 'openapi.json', '--fail-on-breaking'], sub)).toBe(1)
+      // An explicit `./` or `../` is honoured as written.
+      expect(await main(['diff', 'HEAD:./openapi.json', 'openapi.json', '--fail-on-breaking'], sub)).toBe(1)
+      expect(await main(['diff', 'HEAD:../openapi.json', 'openapi.json', '--fail-on-breaking'], sub)).toBe(0)
+    } finally {
+      write.mockRestore()
       rmSync(dir, { recursive: true, force: true })
     }
   })

@@ -18,12 +18,25 @@
  * behavior for some package — block the PR, do not flip the configs.
  */
 
-import { createVitestConfig } from '@vitus-labs/tools-vitest'
 import { mergeConfig } from 'vite'
 import { describe, expect, it } from 'vitest'
 import { defineNodeConfig } from '../node.ts'
 import { CATEGORY_DEFAULTS } from '../thresholds.ts'
 import { nodeExcludeBrowserTests, sharedConfig } from '../internals.ts'
+import { createBaseConfig } from '../base.ts'
+
+/**
+ * The legacy shapes called `@vitus-labs/tools-vitest`'s `createVitestConfig`,
+ * whose defaults now live in `createBaseConfig` (pinned value for value by
+ * `base-config.test.ts`). This keeps the legacy CALL SHAPE so the merge-order
+ * comparisons below still read as the migration they document.
+ */
+function createVitestConfig(opts: { environment?: 'node' | 'happy-dom' } = {}) {
+  return createBaseConfig({
+    environment: opts.environment ?? 'node',
+    coverageThresholds: { statements: 90, branches: 90, functions: 90, lines: 90 },
+  })
+}
 
 describe('defineNodeConfig — equivalence vs legacy merge patterns', () => {
   it('matches pattern 1: mergeConfig(sharedConfig, createVitestConfig())', () => {

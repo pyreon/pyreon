@@ -25,10 +25,14 @@
  *     compared by `lathe check`, formatted by `format`, and guarded against
  *     path collisions with the built-ins.
  *
- * Hooks are SYNCHRONOUS on purpose. Generation is a pure function of the spec
- * and the config; anything asynchronous (a network call, a file read) is input
- * the plugin should take as an OPTION at construction, where it is visible in
- * the config, rather than a hidden dependency of every run.
+ * Hooks MAY be asynchronous -- a plugin that reads a template file, asks a
+ * formatter, or loads a schema registry returns a promise. The runners are
+ * written ONCE, as generators that `yield` each hook's return value; the
+ * asynchronous driver ({@link runAsync}, behind `generateAsync()` -- what the
+ * CLI and the Vite plugin call) awaits it, and the synchronous driver
+ * ({@link runSync}, behind `generate()`) refuses a promise with the plugin's
+ * name. Determinism is unchanged: each hook still runs twice, the second call
+ * only after the first has SETTLED, and the two results must agree.
  */
 
 import type { GeneratedFile } from '../emit/writer'
@@ -95,15 +99,86 @@ export interface LathePlugin {
    * on automatically, exactly like a built-in's own requirements.
    */
   readonly requires?: readonly PluginName[] | undefined
-  /** Once per project, before anything is generated. Throw to refuse a config. */
-  setup?(ctx: LathePluginSetupContext): void
+  /**
+   * Once per project, before anything is generated. Throw (or reject) to
+   * refuse a config.
+   */
+  setup?(ctx: LathePluginSetupContext): MaybePromise<void>
   /**
    * Rewrite the document before any emitter reads it. Return a modified COPY
    * (the argument is frozen), or nothing to leave it unchanged.
    */
-  transformDocument?(doc: IrDocument, ctx: LathePluginTransformContext): IrDocument | undefined | void
+  transformDocument?(
+    doc: IrDocument,
+    ctx: LathePluginTransformContext,
+  ): MaybePromise<IrDocument | undefined | void>
   /** Emit files. Runs after every built-in emitter. */
-  emit?(ctx: LathePluginEmitContext): readonly LathePluginFile[] | undefined | void
+  emit?(ctx: LathePluginEmitContext): MaybePromise<readonly LathePluginFile[] | undefined | void>
+}
+
+/** A value, or a promise of one — what every plugin hook may return. */
+export type MaybePromise<T> = T | PromiseLike<T>
+
+/**
+ * What a pipeline step yields: one hook's return value, and whose it was.
+ * The driver hands back the SETTLED value (or throws the rejection into the
+ * generator), so the runner reads the same whether the hook was sync or async.
+ */
+export interface HookCall {
+  readonly value: unknown
+  readonly plugin: string
+  readonly hook: string
+}
+
+/** A pipeline written once and driven synchronously or asynchronously. */
+export type Pipeline<T> = Generator<HookCall, T, unknown>
+
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+  return (
+    value !== null &&
+    (typeof value === 'object' || typeof value === 'function') &&
+    typeof (value as { then?: unknown }).then === 'function'
+  )
+}
+
+/**
+ * Drive a pipeline with no event-loop turn. A hook that returns a promise is
+ * refused, naming the plugin: `generate()` is synchronous, and awaiting is
+ * what `generateAsync()` is for. The rejected promise is observed so it
+ * cannot surface later as an unhandled rejection.
+ */
+export function runSync<T>(pipeline: Pipeline<T>): T {
+  let step = pipeline.next()
+  while (!step.done) {
+    const { value, plugin, hook } = step.value
+    if (isThenable(value)) {
+      Promise.resolve(value).then(undefined, () => undefined)
+      step = pipeline.throw(
+        new Error(
+          `[Pyreon] lathe: plugin \`${plugin}\` returned a promise from \`${hook}\`, and \`generate()\` is synchronous. Call \`generateAsync()\` (the CLI and the Vite plugin already do).`,
+        ),
+      )
+      continue
+    }
+    step = pipeline.next(value)
+  }
+  return step.value
+}
+
+/** Drive a pipeline, awaiting every hook's result. */
+export async function runAsync<T>(pipeline: Pipeline<T>): Promise<T> {
+  let step = pipeline.next()
+  while (!step.done) {
+    let settled: unknown
+    try {
+      settled = await step.value.value
+    } catch (err) {
+      step = pipeline.throw(err)
+      continue
+    }
+    step = pipeline.next(settled)
+  }
+  return step.value
 }
 
 /** The symbol {@link definePlugin} stamps, so a config entry is known to be a plugin. */
@@ -194,15 +269,32 @@ function fingerprint(value: unknown): string {
   return JSON.stringify(value) ?? 'undefined'
 }
 
+/**
+ * Call one hook and yield its result to the driver. A synchronous throw and a
+ * rejection are attributed the same way.
+ */
+function* call(plugin: LathePlugin, hook: string, invoke: () => unknown): Pipeline<unknown> {
+  let value: unknown
+  try {
+    value = invoke()
+  } catch (err) {
+    throw attribute(plugin, hook, err)
+  }
+  try {
+    return yield { value, plugin: plugin.name, hook }
+  } catch (err) {
+    // The sync driver's "use generateAsync()" refusal is already attributed.
+    if (err instanceof Error && err.message.startsWith(`[Pyreon] lathe: plugin \`${plugin.name}\` returned a promise`)) throw err
+    throw attribute(plugin, hook, err)
+  }
+}
+
 /** Run every plugin's `setup`. */
-export function runSetup(plugins: readonly LathePlugin[], config: ResolvedConfig): void {
+export function* runSetup(plugins: readonly LathePlugin[], config: ResolvedConfig): Pipeline<void> {
   for (const plugin of plugins) {
-    if (!plugin.setup) continue
-    try {
-      plugin.setup({ config })
-    } catch (err) {
-      throw attribute(plugin, 'setup', err)
-    }
+    const hook = plugin.setup
+    if (!hook) continue
+    yield* call(plugin, 'setup', () => hook.call(plugin, { config }))
   }
 }
 
@@ -210,12 +302,17 @@ export function runSetup(plugins: readonly LathePlugin[], config: ResolvedConfig
  * Run every plugin's `transformDocument`, in declaration order. The input is
  * frozen; the result is validated and frozen before the next plugin sees it.
  */
-export function runTransforms(doc: IrDocument, plugins: readonly LathePlugin[], config: ResolvedConfig): IrDocument {
+export function* runTransforms(
+  doc: IrDocument,
+  plugins: readonly LathePlugin[],
+  config: ResolvedConfig,
+): Pipeline<IrDocument> {
   let current = deepFreeze(doc)
   for (const plugin of plugins) {
     const hook = plugin.transformDocument
     if (!hook) continue
-    const once = (): { doc: IrDocument; notes: IrNote[] } => {
+    const input = current
+    const once = function* (): Pipeline<{ doc: IrDocument; notes: IrNote[] }> {
       const notes: IrNote[] = []
       const ctx: LathePluginTransformContext = {
         config,
@@ -223,21 +320,20 @@ export function runTransforms(doc: IrDocument, plugins: readonly LathePlugin[], 
           notes.push({ code: 'plugin', message: `[${plugin.name}] ${message}`, at })
         },
       }
-      let out: IrDocument | undefined | void
-      try {
-        out = hook.call(plugin, current, ctx)
-      } catch (err) {
-        throw attribute(plugin, 'transformDocument', err)
-      }
+      const out = (yield* call(plugin as LathePlugin, 'transformDocument', () =>
+        hook.call(plugin, input, ctx),
+      )) as IrDocument | undefined | void
       if (out !== undefined && (out === null || typeof out !== 'object')) {
         throw new Error(
           `[Pyreon] lathe: plugin \`${plugin.name}\`: \`transformDocument\` must return a document or nothing; got ${out === null ? 'null' : typeof out}.`,
         )
       }
-      return { doc: out ?? current, notes }
+      return { doc: out ?? input, notes }
     }
-    const first = once()
-    const second = once()
+    // The second run starts only after the first has SETTLED, so an async
+    // hook is compared against itself, not raced against itself.
+    const first = yield* once()
+    const second = yield* once()
     if (fingerprint(first.doc) !== fingerprint(second.doc) || fingerprint(first.notes) !== fingerprint(second.notes)) {
       throw new Error(
         `[Pyreon] lathe: plugin \`${plugin.name}\`: \`transformDocument\` returned different documents for the same input. ` +
@@ -272,24 +368,21 @@ export interface PluginFiles {
  * Run every plugin's `emit`, after the built-ins. Each plugin's files are
  * sorted by path, so the order a plugin returns them in cannot move anything.
  */
-export function runEmits(
+export function* runEmits(
   plugins: readonly LathePlugin[],
   base: Omit<LathePluginEmitContext, 'files'>,
   builtIn: readonly GeneratedFile[],
-): PluginFiles {
+): Pipeline<PluginFiles> {
   const all: GeneratedFile[] = []
   const sideEffects: string[] = []
   const owner = new Map<string, string>(builtIn.map((f) => [f.path.toLowerCase(), 'the built-in emitters']))
   for (const plugin of plugins) {
     const hook = plugin.emit
     if (!hook) continue
-    const once = (): Array<{ file: GeneratedFile; sideEffects: boolean }> => {
-      let out: readonly LathePluginFile[] | undefined | void
-      try {
-        out = hook.call(plugin, { ...base, files: [...builtIn, ...all] })
-      } catch (err) {
-        throw attribute(plugin, 'emit', err)
-      }
+    const once = function* (): Pipeline<Array<{ file: GeneratedFile; sideEffects: boolean }>> {
+      const out = (yield* call(plugin as LathePlugin, 'emit', () =>
+        hook.call(plugin, { ...base, files: [...builtIn, ...all] }),
+      )) as readonly LathePluginFile[] | undefined | void
       if (out === undefined) return []
       if (!Array.isArray(out)) {
         throw new Error(`[Pyreon] lathe: plugin \`${plugin.name}\`: \`emit\` must return an array of files or nothing.`)
@@ -309,10 +402,11 @@ export function runEmits(
         return { file: { path: f.path, contents: f.contents }, sideEffects: f.sideEffects === true }
       })
     }
-    const key = (list: ReturnType<typeof once>): string =>
+    const key = (list: ReadonlyArray<{ file: GeneratedFile; sideEffects: boolean }>): string =>
       fingerprint(list.map((e) => [e.file.path, e.file.contents, e.sideEffects]).sort())
-    const first = once()
-    if (key(first) !== key(once())) {
+    const first = yield* once()
+    const second = yield* once()
+    if (key(first) !== key(second)) {
       throw new Error(
         `[Pyreon] lathe: plugin \`${plugin.name}\`: \`emit\` produced different files for the same input. ` +
           'Generation must be deterministic — `lathe check` compares output byte-for-byte. Look for a timestamp, a random value, or an unordered iteration.',

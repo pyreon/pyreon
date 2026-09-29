@@ -8,7 +8,6 @@
  * rules exist to prevent. Balance is a performance nicety; conservation is
  * correctness.
  */
-import { describe, expect, it } from 'vitest'
 import {
   batchByWeight,
   buildBatchedMatrix,
@@ -18,10 +17,23 @@ import {
 } from '../../../../../scripts/ci-batch'
 
 const E2E_SUITES = [
-  'core', 'ui-regression', 'cssvars', 'compat', 'app-showcase', 'islands',
-  'sync-yjs-demo', 'sync-ws-relay', 'collab-board', 'zero-islands',
-  'ssg-subpath', 'ssg-i18n', 'ssg-i18n-prefix', 'ssr-node', 'isr-node',
-  'zero-hmr', 'perf-dashboard',
+  'core',
+  'ui-regression',
+  'cssvars',
+  'compat',
+  'app-showcase',
+  'islands',
+  'sync-yjs-demo',
+  'sync-ws-relay',
+  'collab-board',
+  'zero-islands',
+  'ssg-subpath',
+  'ssg-i18n',
+  'ssg-i18n-prefix',
+  'ssr-node',
+  'isr-node',
+  'zero-hmr',
+  'perf-dashboard',
 ]
 
 describe('ci-batch — conservation (the load-bearing property)', () => {
@@ -76,13 +88,13 @@ describe('ci-batch — balance', () => {
   })
 
   it('isolates a dominant cell instead of stacking work on top of it', () => {
-    // `native-rest` (332s) dwarfs its peers; LPT must not pile extras onto it
+    // `tools` dwarfs its peers; LPT must not pile extras onto it
     // while lighter batches idle.
     const cells = ['native-rest', 'core', 'tools', 'zero', 'ui', 'internals']
-    const batches = batchByWeight(cells, 3)
-    const heavy = batches.find((b) => b.includes('native-rest'))!
-    const heavyTotal = heavy.reduce((s, i) => s + weightOf(i), 0)
-    const serial = cells.reduce((s, i) => s + weightOf(i), 0)
+    const batches = batchByWeight(cells, 3, 'test')
+    const heavy = batches.find((b) => b.includes('tools'))!
+    const heavyTotal = heavy.reduce((s, i) => s + weightOf(i, 'test'), 0)
+    const serial = cells.reduce((s, i) => s + weightOf(i, 'test'), 0)
     expect(heavyTotal).toBeLessThan(serial * 0.75)
   })
 
@@ -94,6 +106,65 @@ describe('ci-batch — balance', () => {
 })
 
 describe('ci-batch — weights', () => {
+  it('separates identically named work in different pipelines', () => {
+    expect(weightOf('core', 'typecheck')).not.toBe(weightOf('core', 'test'))
+    expect(weightOf('core', 'test')).not.toBe(weightOf('core', 'e2e'))
+    expect(weightOf('tools', 'test')).toBeGreaterThan(weightOf('tools', 'typecheck') * 5)
+  })
+
+  it('balances the measured full test workload on the existing three runners', () => {
+    // Independent measurement fixture: seconds between category log groups
+    // in run 36423101994. Previously the longest bin held 519s of this work.
+    const measured: Record<string, number> = {
+      core: 129,
+      fundamentals: 164,
+      internals: 59,
+      'native-rest': 48,
+      tools: 302,
+      ui: 29,
+      'ui-system': 41,
+      zero: 126,
+    }
+    const matrix = buildBatchedMatrix(Object.keys(measured), 3, [], 'test')
+    expect(matrix).toHaveLength(3)
+    const loads = matrix.map((b) => b.members.split(' ').reduce((n, m) => n + measured[m]!, 0))
+    expect(Math.max(...loads)).toBeLessThanOrEqual(320)
+    const members = matrix.flatMap((b) => b.members.split(' '))
+    expect(members.sort()).toEqual(Object.keys(measured).sort())
+    // A membership-selected native cache still has exactly one writer.
+    expect(matrix.filter((b) => b.members.split(' ').includes('native-rest'))).toHaveLength(1)
+  })
+
+  it('packs small PRs into one runner while preserving every selected member', () => {
+    const matrix = buildBatchedMatrix(['cssvars', 'islands', 'https-dev'], 4, [], 'e2e')
+    expect(matrix).toHaveLength(1)
+    expect(matrix[0]!.members.split(' ').sort()).toEqual(['cssvars', 'https-dev', 'islands'])
+  })
+
+  it('runs all seven scaffold fixtures on one runner after removing redundant bootstrap work', () => {
+    // Run 36456927843: all seven fixtures passed in ~49s of actual work.
+    // The old pre-optimization weights spawned three runners mostly for setup.
+    const cells = [
+      'cpa-smoke-app-vercel',
+      'cpa-smoke-app-static',
+      'cpa-smoke-blog-cloudflare',
+      'cpa-smoke-dashboard-vercel-full',
+      'cpa-smoke-dashboard-node-supabase',
+      'cpa-smoke-app-node',
+      'cpa-smoke-monorepo-vercel',
+    ]
+    const matrix = buildBatchedMatrix(cells, 3, [], 'scaffold')
+    expect(matrix).toHaveLength(1)
+    expect(matrix[0]!.members.split(' ').sort()).toEqual([...cells].sort())
+  })
+
+  it('rejects malformed inputs instead of creating empty, duplicated or unsafe cells', () => {
+    for (const max of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])
+      expect(() => buildBatchedMatrix(['core'], max)).toThrow(/positive integer/)
+    expect(() => buildBatchedMatrix(['core', 'core'], 3)).toThrow(/duplicate/)
+    expect(() => buildBatchedMatrix(['core;exit'], 3)).toThrow(/safe cell names/)
+  })
+
   it('falls back to DEFAULT_WEIGHT for an unmeasured cell', () => {
     expect(weightOf('a-suite-nobody-measured')).toBe(DEFAULT_WEIGHT)
   })
@@ -108,8 +179,16 @@ describe('ci-batch — weights', () => {
 
 describe('ci-batch — isolate (protects the native verdict cache)', () => {
   const TEST_CATS = [
-    'core', 'fundamentals', 'internals', 'native-compiler-1',
-    'native-compiler-2', 'native-rest', 'tools', 'ui', 'ui-system', 'zero',
+    'core',
+    'fundamentals',
+    'internals',
+    'native-compiler-1',
+    'native-compiler-2',
+    'native-rest',
+    'tools',
+    'ui',
+    'ui-system',
+    'zero',
   ]
   const NATIVE = ['native-compiler-1', 'native-compiler-2', 'native-rest']
 
@@ -140,7 +219,14 @@ describe('ci-batch — matrix shape', () => {
   })
 
   it('truncates a name that would be unreadable in the checks list', () => {
-    const many = ['aaaaaaaaaa', 'bbbbbbbbbb', 'cccccccccc', 'dddddddddd', 'eeeeeeeeee', 'ffffffffff']
+    const many = [
+      'aaaaaaaaaa',
+      'bbbbbbbbbb',
+      'cccccccccc',
+      'dddddddddd',
+      'eeeeeeeeee',
+      'ffffffffff',
+    ]
     const [entry] = toMatrix([many])
     expect(entry!.name.length).toBeLessThanOrEqual(48)
     expect(entry!.name).toContain('more')
