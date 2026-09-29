@@ -4,6 +4,7 @@ import { NETLIFY_ADAPTER_OUTPUT } from './contract'
 import { patternToRegex } from './deploy-targets'
 import { EDGE_HANDLER_BODY, EDGE_INIT_FILE, renderEdgeInit } from './edge-wrapper'
 import { materialize, stageClientThenServer } from './stage'
+import { escapeRegExp, listStaticFiles } from './static-files'
 import { validateBuildInputs } from './validate'
 import { warnMissingEnv } from './warn-missing-env'
 
@@ -141,8 +142,13 @@ export const config = {
         await materialize(edgeSrc, edgeDir)
         const template = await readFile(join(edgeSrc, 'template.html'), 'utf-8').catch(() => '')
         await writeFile(join(edgeDir, EDGE_INIT_FILE), renderEdgeInit(template))
+        // Netlify runs edge functions BEFORE static files, so every file in the
+        // publish dir must be excluded by name — otherwise `/robots.txt`,
+        // `/humans.txt`, … are answered by the SSR function as an HTML page.
+        const staticFiles = await listStaticFiles(publishDir, { assetsDir: options.assetsDir })
         const excluded = [
-          `^${assetPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/.*$`,
+          `^${escapeRegExp(assetPrefix)}/.*$`,
+          ...staticFiles.map((path) => `^${escapeRegExp(path)}$`),
           ...(defaultEdge ? (deploy?.nodeRoutes ?? []).map((r) => patternToRegex(r.pattern)) : []),
         ]
         await writeFile(
