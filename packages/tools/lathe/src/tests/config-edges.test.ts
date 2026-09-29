@@ -3,7 +3,7 @@
  * message. A config entry is the user's explicit instruction, so a wrong one
  * must FAIL with the reason and never be applied halfway.
  */
-import type { LatheFilters } from '../core/config'
+import type { LatheFilters } from '../core/select'
 import { applyNaming, applyOperationSettings } from '../core/customize'
 import { applyFilters } from '../core/select'
 import { loadOpenApi } from '../input/openapi'
