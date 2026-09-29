@@ -336,8 +336,21 @@ interface ParseCtx {
        * `useQuery`, whose native harness decodes one JSON body.
        */
       responseType?: string
+      /**
+       * The declaration's `response` schema when it names a same-module schema
+       * binding — `{ response: book_schema }` or `{ response: s.array(book_schema) }`.
+       * Evidence for the decode type's number fields: see
+       * `refineStructFloatsFromResponseSchemas`.
+       */
+      responseSchema?: { binding: string; array: boolean }
     }
   >
+  /**
+   * Decode sites: a hook's type argument paired with the endpoint whose
+   * response it decodes (`useQuery<Book>(() => getBook.query())`). Read by
+   * `refineStructFloatsFromResponseSchemas` after the structs are built.
+   */
+  responseDecodes: { type: TypeIR; endpoint: string }[]
   /**
    * Schemas SYNTHESIZED from inline `s.object({ … }).safeParse(x)` expressions
    * encountered while parsing component bodies. Merged into the top-level
@@ -449,6 +462,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     streamOpeners: new Map(),
     streamOpenersAllLowered: false,
     endpointDefs: new Map(),
+    responseDecodes: [],
     inlineSchemas: [],
     inlineSchemaByShape: new Map(),
     inlineSchemaCounter: 0,
@@ -1554,6 +1568,26 @@ function topLevelDeclarators(node: AnyNode): AnyNode[] {
 
 /** Read the value node of a non-computed property `<name>` off an
  * ObjectExpression, or undefined. */
+/**
+ * An endpoint declaration's `response` value, when it names a schema BINDING
+ * of this module: `book_schema` or `<prefix>.array(book_schema)`. Anything
+ * else (an inline object, a call chain) yields `undefined` — no evidence.
+ */
+function readResponseSchemaRef(node: AnyNode | undefined): { binding: string; array: boolean } | undefined {
+  const v = unwrapTypeLayers(node) as AnyNode | undefined
+  if (v?.type === 'Identifier') return { binding: v.name as string, array: false }
+  if (
+    v?.type === 'CallExpression' &&
+    v.callee?.type === 'MemberExpression' &&
+    v.callee.property?.type === 'Identifier' &&
+    v.callee.property.name === 'array'
+  ) {
+    const inner = unwrapTypeLayers((v.arguments as AnyNode[] | undefined)?.[0]) as AnyNode | undefined
+    if (inner?.type === 'Identifier') return { binding: inner.name as string, array: true }
+  }
+  return undefined
+}
+
 function readObjectProp(obj: AnyNode | undefined, name: string): AnyNode | undefined {
   if (obj?.type !== 'ObjectExpression') return undefined
   for (const prop of (obj.properties as AnyNode[] | undefined) ?? []) {
@@ -2018,6 +2052,7 @@ function collectEndpointDefs(body: AnyNode[], ctx: ParseCtx): void {
       // once on the endpoint was dropped from every native request in silence.
       const declUnlowerable: string[] = []
       let responseType: string | undefined
+      let responseSchema: { binding: string; array: boolean } | undefined
       const optsArg = init.arguments?.[1] as AnyNode | undefined
       const declHeaders = readLiteralHeaders(readObjectProp(optsArg, 'headers'), (what) =>
         declUnlowerable.push(what),
@@ -2031,7 +2066,11 @@ function collectEndpointDefs(body: AnyNode[], ctx: ParseCtx): void {
           continue
         }
         const key = propName(prop)
-        if (key === undefined || key === 'headers' || key === 'response') continue
+        if (key === 'response') {
+          responseSchema = readResponseSchemaRef(prop.value as AnyNode | undefined)
+          continue
+        }
+        if (key === undefined || key === 'headers') continue
         if (key === 'responseType') {
           const v = literalScalar(prop.value as AnyNode | undefined)
           // `'json'` is the default and `'stream'` is consumed by useStream;
@@ -2057,6 +2096,7 @@ function collectEndpointDefs(body: AnyNode[], ctx: ParseCtx): void {
         declHeaders,
         declUnlowerable,
         ...(responseType !== undefined ? { responseType } : {}),
+        ...(responseSchema !== undefined ? { responseSchema } : {}),
       })
     }
   }
@@ -4431,8 +4471,9 @@ function extractTypeAndConstraints(
   ctx: ParseCtx,
   /** `@pyreon/validate`'s `s` DSL, whose `.url()` differs from zod's. */
   pyreonValidate: boolean,
-): { method: string; constraints: ZodFieldConstraints } | null {
+): { method: string; constraints: ZodFieldConstraints; integer: boolean } | null {
   const constraints: ZodFieldConstraints = {}
+  let integer = false
   let cursor: AnyNode | undefined = expr
   while (cursor && cursor.type === 'CallExpression') {
     const callee = cursor.callee as AnyNode | undefined
@@ -4470,6 +4511,8 @@ function extractTypeAndConstraints(
       } else if (modName === 'regex') {
         const r = tryPortableRegexLiteral(firstArg, `schema element .regex()`, ctx)
         if (r) constraints.regex = r
+      } else if (modName === 'int') {
+        integer = true
       }
       // `.optional()` / `.nullable()` are deliberately NOT recognized
       // here — they apply at the field level, not to inner elements.
@@ -4491,6 +4534,7 @@ function extractTypeAndConstraints(
   return {
     method: baseCallee.property.name as string,
     constraints,
+    integer,
   }
 }
 
@@ -4829,6 +4873,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
     // v2.2 — also collect `.optional()` / `.nullable()` flags.
     const constraints: ZodFieldConstraints = {}
     let optional = false
+    let integer = false
     let value = unwrapTypeLayers(prop.value as AnyNode | undefined) as AnyNode | undefined
     // First pass — collect modifiers from outermost call inward.
     let cursor: AnyNode | undefined = value
@@ -4873,6 +4918,10 @@ function tryNamespacedSchemaDefnFromTopLevel(
           // nullable on native. parse() returns nil instead of throwing
           // when missing.
           optional = true
+        } else if (modName === 'int') {
+          // `number().int()` — the ONLY spelling that promises a whole
+          // number. A bare `number()` accepts `1.5`.
+          integer = true
         }
         cursor = callee.object as AnyNode
         continue
@@ -4910,6 +4959,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
       const entry: ZodSchemaDefnIR['fields'][number] = { name: fieldName, type: 'number' }
       if (hasConstraints) entry.constraints = constraints
       if (optional) entry.optional = true
+      if (integer) entry.integer = true
       fields.push(entry)
     } else if (method === 'boolean') {
       const entry: ZodSchemaDefnIR['fields'][number] = { name: fieldName, type: 'boolean' }
@@ -5017,6 +5067,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
       if (inner && Object.keys(inner.constraints).length > 0) {
         arrayType.elementConstraints = inner.constraints
       }
+      if (inner?.integer === true && innerType === 'number') arrayType.elementInteger = true
       const entry: ZodSchemaDefnIR['fields'][number] = {
         name: fieldName,
         type: arrayType,
@@ -5999,6 +6050,7 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     streamOpeners: new Map(),
     streamOpenersAllLowered: false,
     endpointDefs: new Map(),
+    responseDecodes: [],
     inlineSchemas: [],
     inlineSchemaByShape: new Map(),
     inlineSchemaCounter: 0,
