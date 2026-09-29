@@ -120,6 +120,17 @@ targets:
         NSLocationWhenInUseUsageDescription: >-
           Pyreon's counter sample reads your location to demonstrate the
           shared useGeolocation hook across web, iOS and Android.
+        # Platform-probe hooks: without a usage string iOS terminates the app
+        # the moment it touches the microphone / camera / Bluetooth radio.
+        NSMicrophoneUsageDescription: >-
+          Pyreon's counter sample records audio to demonstrate the shared
+          useAudioRecorder hook.
+        NSCameraUsageDescription: >-
+          Pyreon's counter sample opens the camera to demonstrate the shared
+          useCamera hook.
+        NSBluetoothAlwaysUsageDescription: >-
+          Pyreon's counter sample scans for nearby devices to demonstrate the
+          shared useBluetooth hook.
         # iOS 13+ SceneDelegate manifest. SwiftUI-only apps still need
         # this (the @main App protocol uses the Scene API internally).
         UIApplicationSceneManifest:

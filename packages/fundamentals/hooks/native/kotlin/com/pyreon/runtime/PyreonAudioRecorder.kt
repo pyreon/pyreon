@@ -5,6 +5,7 @@
 package com.pyreon.runtime
 
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.mutableStateOf
 
 /** The platform half of recording. Swapped for a fake in tests. */
@@ -21,7 +22,7 @@ public interface RecordingEngine {
     public fun release()
 }
 
-public class PyreonAudioRecorder(private val engine: RecordingEngine) {
+public class PyreonAudioRecorder(private val engine: RecordingEngine) : RememberObserver {
     public val recording: MutableState<Boolean> = mutableStateOf(false)
     public val error: MutableState<String> = mutableStateOf("")
 
@@ -49,4 +50,9 @@ public class PyreonAudioRecorder(private val engine: RecordingEngine) {
         engine.release()
         return url
     }
+
+    // A recording outliving its screen keeps the OS microphone indicator lit.
+    override fun onRemembered() {}
+    override fun onForgotten() { stop(); engine.release() }
+    override fun onAbandoned() { stop(); engine.release() }
 }
