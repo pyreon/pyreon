@@ -34,6 +34,7 @@
  * model the way a `NewPetPayload` per webhook could.
  */
 import type { IrDocument } from '../core/ir'
+import { usesBigInt } from '../core/walk'
 import { type ValidatorName } from '../core/config'
 import { schemaExpr, schemaRefs, schemaSpecifierFor } from './schema'
 import { dialectOf } from './validator'
@@ -51,7 +52,7 @@ export function emitWebhooks(doc: IrDocument, validator: ValidatorName): SourceF
   for (const w of hooks) if (w.payload) schemaRefs(w.payload, refs)
   for (const name of [...refs].sort()) f.import(schemaSpecifierFor(WEBHOOKS_FILE, name, doc), name)
   const withPayload = hooks.filter((w) => w.payload !== undefined)
-  const exprs = withPayload.map((w) => schemaExpr(w.payload as NonNullable<typeof w.payload>, { native: false, validator }))
+  const exprs = withPayload.map((w) => schemaExpr(w.payload as NonNullable<typeof w.payload>, { native: false, validator, lossless: usesBigInt(doc) }))
   if (exprs.some((e) => new RegExp(`\\b${dialect.binding}\\.`).test(e))) f.import(dialect.module, dialect.binding)
   const infer = (t: string): string => (dialect.typeHelper ? `${dialect.typeHelper.name}<${t}>` : `${dialect.binding}.infer<${t}>`)
   if (dialect.typeHelper) f.importType(dialect.typeHelper.module, dialect.typeHelper.name)

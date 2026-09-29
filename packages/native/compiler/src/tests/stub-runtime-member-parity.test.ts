@@ -132,7 +132,6 @@ const KNOWN_NARROW: Record<'swift' | 'kotlin', ReadonlySet<string>> = {
     'PyreonQuery.staleSeconds',
     'PyreonToast.defaultDuration',
     'PyreonToast.defaultDurationMillis',
-    'PyreonToast.maxToasts',
     'PyreonToast.remove',
     'PyreonWebSocket.closed',
     'PyreonWebSocket.connect',

@@ -47,15 +47,15 @@ describe('each binding becomes its runtime instance', () => {
 
   it('Kotlin mirrors it, with the default scheduler', () => {
     const out = transform(APP, { target: 'kotlin' }).code
-    expect(out).toContain('PyreonDebounced<Int>(300, PyreonTaskScheduler())')
-    expect(out).toContain('PyreonThrottled<Int>(100, PyreonTaskScheduler())')
+    expect(out).toContain('PyreonDebounced<Long>(300L, PyreonTaskScheduler())')
+    expect(out).toContain('PyreonThrottled<Long>(100L, PyreonTaskScheduler())')
   })
 
   it('call sites and the handle both survive', () => {
     for (const target of ['swift', 'kotlin'] as const) {
       const out = transform(APP, { target }).code
-      expect(out).toContain('save(1)')
-      expect(out).toContain('scroll(2)')
+      expect(out).toContain(target === 'kotlin' ? 'save(1L)' : 'save(1)')
+      expect(out).toContain(target === 'kotlin' ? 'scroll(2L)' : 'scroll(2)')
       // The whole reason these need a runtime rather than a .task.
       expect(out).toContain('save.cancel()')
     }

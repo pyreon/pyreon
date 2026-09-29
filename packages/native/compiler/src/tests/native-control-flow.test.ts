@@ -63,7 +63,7 @@ describe('control-flow statement lowering', () => {
       { target: 'kotlin' },
     ).code
     expect(out).toContain('for (it in items) {')
-    expect(out).toContain('while (count > 0) {')
+    expect(out).toContain('while (count > 0L) {')
     expect(out).toContain('when (status) {')
     expect(out).toContain('"active" ->')
     expect(out).toContain('"idle", "paused" ->')

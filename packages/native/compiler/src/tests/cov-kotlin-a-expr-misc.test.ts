@@ -70,7 +70,7 @@ export function App() {
     expect(out).toContain('${PyreonModel_cart.total}')
     expect(out).toContain('${PyreonModel_cart.doubled}')
     // the action is a real method — parens preserved, args forwarded
-    expect(out).toContain('PyreonModel_cart.add(3)')
+    expect(out).toContain('PyreonModel_cart.add(3L)')
   })
 })
 
@@ -117,9 +117,9 @@ ${body}
   const c = computed(() => xs().map(() => 1))`,
       `String(a()) + String(b()) + String(c().length)`,
     )).code
-    expect(out).toContain('xs.any({ v -> v > 1 })')
-    expect(out).toContain('xs.all({ v -> v > 1 })')
-    expect(out).toContain('xs.map({ 1 })')
+    expect(out).toContain('xs.any({ v -> v > 1L })')
+    expect(out).toContain('xs.all({ v -> v > 1L })')
+    expect(out).toContain('xs.map({ 1L })')
   })
 
   it('a JSX FRAGMENT lowers to a Column (Compose has no transparent group node)', () => {
@@ -144,7 +144,7 @@ export function App() {
   const a = computed(() => Array.from({ length: 3 }, (i, j) => j * 2))
   return (<Stack><Text>{i() + String(a().length)}</Text></Stack>)
 }`).code
-    expect(out).toContain('(0 until 3).map({ j -> j * 2 })')
+    expect(out).toContain('(0 until 3L).map({ j -> j * 2L })')
     // the outer `i` is untouched by the loop-param registration
     expect(out).toContain('"${i + (a.length).toString()}"')
   })

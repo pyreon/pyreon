@@ -39,7 +39,7 @@ describe('M2.3 <Press onLongPress> gesture emit', () => {
 
   it('Kotlin emits combinedClickable(onClick, onLongClick)', () => {
     const out = transform(SRC, { target: 'kotlin' })
-    expect(out.code).toContain('.combinedClickable(onClick = {}, onLongClick = { count = 0 })')
+    expect(out.code).toContain('.combinedClickable(onClick = {}, onLongClick = { count = 0L })')
     expect(out.warnings).toEqual([])
   })
 
@@ -70,6 +70,6 @@ export function App() {
     expect(sw.code).toContain('Button(action: { n = n + 1 })')
     expect(sw.code).toContain('.simultaneousGesture(LongPressGesture')
     const kt = transform(both, { target: 'kotlin' })
-    expect(kt.code).toContain('.combinedClickable(onClick = { n = n + 1 }, onLongClick = { n = 0 })')
+    expect(kt.code).toContain('.combinedClickable(onClick = { n = n + 1L }, onLongClick = { n = 0L })')
   })
 })

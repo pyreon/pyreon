@@ -44,7 +44,7 @@ function placeholders(path: string): string[] {
  * `?: T | undefined`, so a caller may pass a value that MIGHT be undefined —
  * the natural shape of a signal-derived argument.
  */
-export function inputType(op: IrOperation, models: ModelTypes): string {
+export function inputType(op: IrOperation, models: ModelTypes, lossless = false): string {
   const parts: string[] = []
   // A placeholder the spec forgot to declare is still REQUIRED by the path
   // (`@pyreon/http` types `params` from the path literal), so it is typed
@@ -67,7 +67,15 @@ export function inputType(op: IrOperation, models: ModelTypes): string {
     parts.push(list.some((p) => p.required) ? `${name}: ${type}` : `${name}?: (${type}) | undefined`)
   }
   record('query', op.queryParams, (p) => queryParamTs(p, models))
-  record('headers', op.headerParams, (p) => headerParamTs(p, models), 'Record<string, string | number | boolean | null | undefined>')
+  // The OPEN rest of a header record must admit a bigint too under
+  // `int64: 'bigint'`: it is intersected with the declared keys, so a rest
+  // without it would silently narrow a declared int64 header back to `number`.
+  record(
+    'headers',
+    op.headerParams,
+    (p) => headerParamTs(p, models),
+    `Record<string, string | number${lossless ? ' | bigint' : ''} | boolean | null | undefined>`,
+  )
   record('cookies', op.cookieParams, (p) => headerParamTs(p, models))
   if (op.body) {
     const t = bodyTs(op.body, models)
@@ -85,11 +93,44 @@ export function inputType(op: IrOperation, models: ModelTypes): string {
  */
 function pathParamTs(p: IrParam, models: ModelTypes): string {
   const t = resolve(p.type, models)
+  if (t.kind === 'bigint') return BIGINT_PARAM
   const ok =
     t.kind === 'string' ||
     t.kind === 'number' ||
     (t.kind === 'enum' && t.values.every((v) => typeof v === 'string' || typeof v === 'number'))
   return ok ? tsType(p.type) : 'string | number'
+}
+
+/**
+ * An int64 PARAMETER under `int64: 'bigint'`. The runtime writes a bigint as
+ * its exact digits, and the value a caller has in hand for "this record again"
+ * is the bigint the lossless decoder produced -- so the parameter accepts it,
+ * and a plain number for the literal a caller types (`{ id: 5 }`).
+ */
+const BIGINT_PARAM = 'bigint | number'
+
+/** `type` with every int64 (`bigint`) accepting a number too -- see {@link BIGINT_PARAM}. */
+function widenBigint(type: IrType, models: ModelTypes): IrType {
+  switch (type.kind) {
+    case 'bigint':
+      return { kind: 'union', options: [type, { kind: 'number', integer: true }] }
+    case 'ref': {
+      // A named int64 alias (`Id: { type: integer, format: int64 }`) resolves
+      // to the bigint it names; any other model keeps its name.
+      const target = resolve(type, models)
+      return target.kind === 'bigint' ? widenBigint(target, models) : type
+    }
+    case 'nullable':
+      return { kind: 'nullable', inner: widenBigint(type.inner, models) }
+    case 'array':
+      return { ...type, items: widenBigint(type.items, models) }
+    case 'union':
+      return { ...type, options: type.options.map((o) => widenBigint(o, models)) }
+    case 'object':
+      return { ...type, fields: type.fields.map((f) => ({ ...f, type: widenBigint(f.type, models) })) }
+    default:
+      return type
+  }
 }
 
 /**
@@ -103,12 +144,12 @@ function queryParamTs(p: IrParam, models: ModelTypes): string {
   // An object MODEL is an `interface`, which has no implicit index signature
   // and so is not a query-object value; its shape is inlined instead.
   const t = resolve(p.type, models)
-  return t.kind === 'object' && p.type.kind === 'ref' ? tsType(t) : tsType(p.type)
+  return tsType(widenBigint(t.kind === 'object' && p.type.kind === 'ref' ? t : p.type, models))
 }
 
 /** A header or cookie value: a scalar only — anything else widens to `string`. */
 function headerParamTs(p: IrParam, models: ModelTypes): string {
-  return scalar(p.type, models) ? tsType(p.type) : 'string'
+  return scalar(p.type, models) ? tsType(widenBigint(p.type, models)) : 'string'
 }
 
 function sendable(type: IrType, models: ModelTypes, depth: number): boolean {
@@ -116,6 +157,7 @@ function sendable(type: IrType, models: ModelTypes, depth: number): boolean {
   switch (t.kind) {
     case 'string':
     case 'number':
+    case 'bigint':
     case 'boolean':
     case 'null':
     case 'enum':
@@ -141,7 +183,7 @@ function scalar(type: IrType, models: ModelTypes): boolean {
   const t = resolve(type, models)
   if (t.kind === 'nullable') return scalar(t.inner, models)
   const k = t.kind
-  return k === 'string' || k === 'number' || k === 'boolean' || k === 'enum'
+  return k === 'string' || k === 'number' || k === 'bigint' || k === 'boolean' || k === 'enum'
 }
 
 export function resolve(type: IrType, models: ModelTypes, depth = 0): IrType {
