@@ -39,7 +39,7 @@
  *                            manifest edits leave the docs-site reference,
  *                            troubleshooting and examples pages stale)
  *
- * 36 gates, ~4-8s warm on an unloaded machine. The point is: catch ALL the
+ * 51 gates, ~4-15s warm on an unloaded machine. The point is: catch ALL the
  * cheap-to-detect failures locally with ONE command before pushing.
  *
  * That number is worth keeping honest, because it is what decides whether
@@ -78,6 +78,9 @@ interface Gate {
 
 const GATES: Gate[] = [
   { name: 'lint', cmd: 'bun run lint' },
+  // Tests intentionally permit unused callback/fixture parameters, but unused
+  // imports are almost always review churn. Keep that narrower invariant hard.
+  { name: 'check-unused-test-imports', cmd: 'bun scripts/check-unused-test-imports.ts' },
   { name: 'check-lint-ratchet', cmd: 'bun scripts/check-lint-ratchet.ts' },
   { name: 'check-leak-ratchet', cmd: 'bun scripts/check-leak-ratchet.ts' },
   // Every feature documented in zero.md has an e2e spec or verify-modes cell,

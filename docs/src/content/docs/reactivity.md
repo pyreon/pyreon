@@ -389,10 +389,10 @@ const outer = effect(() => {
 
 ### Effect Cleanup
 
-Use `onCleanup` from `@pyreon/core` inside an effect to register a cleanup function. The cleanup runs before each re-execution and on final disposal:
+`onCleanup` (from `@pyreon/reactivity`) registers a cleanup with whatever currently **owns** the code you are in. Inside an effect, the cleanup runs before each re-execution and on final disposal:
 
 ```ts
-import { onCleanup } from '@pyreon/core'
+import { onCleanup } from '@pyreon/reactivity'
 
 effect(() => {
   const q = query()
@@ -402,6 +402,31 @@ effect(() => {
   onCleanup(() => controller.abort()) // runs before next re-execution
 })
 ```
+
+`onCleanup` is not limited to effects. Who runs the cleanup depends on where you call it:
+
+| Called in | Runs when |
+| --- | --- |
+| an `effect()` body | before the effect re-runs, and when it is disposed |
+| a component body (setup) | when **that** component unmounts |
+| `onMount(() => …)` or `scope.runInScope(…)` | when the owning scope stops (i.e. on unmount) |
+| a `renderEffect()` body | `renderEffect` has no collector — the cleanup goes to the enclosing owner, usually the component |
+| plain module code (no owner) | never — there is nothing to attach it to |
+
+So a component can clean up a timer without wrapping it in an effect:
+
+```tsx
+import { onCleanup, signal } from '@pyreon/reactivity'
+
+function Clock() {
+  const now = signal(Date.now())
+  const id = setInterval(() => now.set(Date.now()), 1000)
+  onCleanup(() => clearInterval(id)) // runs when <Clock> unmounts
+  return <time>{() => new Date(now()).toLocaleTimeString()}</time>
+}
+```
+
+A component's cleanup belongs to the component, not to the `<For>` or `<Show>` that rendered it: re-rendering a list does not run the cleanups of rows that are still on screen.
 
 Alternatively, use `watch` when you need old/new values along with cleanup:
 

@@ -1,0 +1,5425 @@
+{
+ "generatedBy": "pixelmatch@7.2.0 + pngjs@7.0.0",
+ "real": [
+  {
+   "name": "text-shift",
+   "width": 177,
+   "height": 33,
+   "colorTypes": [
+    2,
+    2
+   ],
+   "decodedSha": [
+    "da48472b7b058685a6755d046ba1ca1e689463cc1f13bd3aecaf7ad89ad5a50e",
+    "59869f4d9210a9f8647cca66d2da400464b3715dcad73d139cdc59d87ad524cb"
+   ],
+   "results": [
+    {
+     "opts": {
+      "threshold": 0.1
+     },
+     "count": 370,
+     "diffSha": "112f3382af7b62048edaf3de1c3481c412eae81701dfb066c3fb36a1ed5adcdb"
+    },
+    {
+     "opts": {
+      "threshold": 0
+     },
+     "count": 410,
+     "diffSha": "c1c4d6087890f148c5f82eb66654c283cd0c3817d2efb9bc6a7dbe5a236b983e"
+    },
+    {
+     "opts": {
+      "threshold": 0.5,
+      "includeAA": true
+     },
+     "count": 316,
+     "diffSha": "cd05f90f8b959d1c3d415e05ff9750142ac05c30fc5f69c7906af1f1e6ee1722"
+    },
+    {
+     "opts": {
+      "threshold": 0.05,
+      "checkerboard": false,
+      "alpha": 0.5
+     },
+     "count": 384,
+     "diffSha": "9af8c7edf22ae749fa5614bf16538312ce29e28a7cfedd7b1d8422c2f81c0dd4"
+    },
+    {
+     "opts": {
+      "threshold": 0.1,
+      "diffMask": true,
+      "diffColor": [
+       0,
+       128,
+       255
+      ],
+      "diffColorAlt": [
+       200,
+       0,
+       200
+      ],
+      "aaColor": [
+       0,
+       255,
+       0
+      ]
+     },
+     "count": 370,
+     "diffSha": "fa8f1fd7cd8c964d14dc515d3bda8e35fce74d91ef6d25d67e536b4a8ed2f122"
+    }
+   ]
+  },
+  {
+   "name": "subpixel-text",
+   "width": 176,
+   "height": 33,
+   "colorTypes": [
+    2,
+    2
+   ],
+   "decodedSha": [
+    "16b670011fae21497a87b5eda77e9b60577e254e70e2e5bbede7888d77d889ef",
+    "5b58ce262a1e55061fa37324060b1a2c0f1f319676a5fff18b032edfd2c9f425"
+   ],
+   "results": [
+    {
+     "opts": {
+      "threshold": 0.1
+     },
+     "count": 319,
+     "diffSha": "65b2308e2a68aa27c9aa7915838db8345a595e26002d54ea8a833fdba4d2f35f"
+    },
+    {
+     "opts": {
+      "threshold": 0
+     },
+     "count": 370,
+     "diffSha": "62412bfd30b163068bf4b9fbfb293dbf6d0f3ba789edd019d87e48063be866ad"
+    },
+    {
+     "opts": {
+      "threshold": 0.5,
+      "includeAA": true
+     },
+     "count": 325,
+     "diffSha": "5f4f758a06ed5ba14b9801904364061af5330e3202f72b8178b7ed95b13d0a82"
+    },
+    {
+     "opts": {
+      "threshold": 0.05,
+      "checkerboard": false,
+      "alpha": 0.5
+     },
+     "count": 342,
+     "diffSha": "53fc1e3f384a7ac98cdfb640f088f60d9457080056dce447db163ca05bdcbb11"
+    },
+    {
+     "opts": {
+      "threshold": 0.1,
+      "diffMask": true,
+      "diffColor": [
+       0,
+       128,
+       255
+      ],
+      "diffColorAlt": [
+       200,
+       0,
+       200
+      ],
+      "aaColor": [
+       0,
+       255,
+       0
+      ]
+     },
+     "count": 319,
+     "diffSha": "1416a7d010e134def2c75c1c425d8d8006f230996b350cbc83cfd4e4ca8fd773"
+    }
+   ]
+  },
+  {
+   "name": "color-change",
+   "width": 176,
+   "height": 43,
+   "colorTypes": [
+    2,
+    2
+   ],
+   "decodedSha": [
+    "3381444732c394ab67384d1fde88dac5d614c09e437ae70567956919e838b1d9",
+    "9b3604d76ccbd0238980e2b145803efa9aa0296b8feebdbc6155293a70a9f670"
+   ],
+   "results": [
+    {
+     "opts": {
+      "threshold": 0.1
+     },
+     "count": 0,
+     "diffSha": "92a22c4439ffe694065ae7d915c6fef8a6016fde8b44cb4dd5d0942ad6a750cf"
+    },
+    {
+     "opts": {
+      "threshold": 0
+     },
+     "count": 1151,
+     "diffSha": "7c36702611f9435d3b9763ef4082aeabb32a7b9dfc3d8bcc5dc34ff6138a9e89"
+    },
+    {
+     "opts": {
+      "threshold": 0.5,
+      "includeAA": true
+     },
+     "count": 0,
+     "diffSha": "92a22c4439ffe694065ae7d915c6fef8a6016fde8b44cb4dd5d0942ad6a750cf"
+    },
+    {
+     "opts": {
+      "threshold": 0.05,
+      "checkerboard": false,
+      "alpha": 0.5
+     },
+     "count": 1104,
+     "diffSha": "30719da6bccbd4753de95738049a03bd17bd8b681d812a4573f8fb6ca855e9ea"
+    },
+    {
+     "opts": {
+      "threshold": 0.1,
+      "diffMask": true,
+      "diffColor": [
+       0,
+       128,
+       255
+      ],
+      "diffColorAlt": [
+       200,
+       0,
+       200
+      ],
+      "aaColor": [
+       0,
+       255,
+       0
+      ]
+     },
+     "count": 0,
+     "diffSha": "e3b4aa9b0866fdb84d45478ce7be91f09ea4d33abf594111782a18bc11e8fbac"
+    }
+   ]
+  },
+  {
+   "name": "layout-change",
+   "width": 176,
+   "height": 67,
+   "colorTypes": [
+    2,
+    2
+   ],
+   "decodedSha": [
+    "a754d5e32a69eed425802439c02f86976d513697edc998eb4b98c1d4d8a586bf",
+    "6370dfefa13cde3fd3b1edcdb1e65ab8b49f16d743364c5c8ee374884fef9301"
+   ],
+   "results": [
+    {
+     "opts": {
+      "threshold": 0.1
+     },
+     "count": 95,
+     "diffSha": "9d73202db8ad67f05623850a751e36cfcfe782e23aec1b46f583f2ea610d1c9f"
+    },
+    {
+     "opts": {
+      "threshold": 0
+     },
+     "count": 100,
+     "diffSha": "940c0b05a081c50396ff4c7cf0db829b9665f1287296065e34483c72b1ba131b"
+    },
+    {
+     "opts": {
+      "threshold": 0.5,
+      "includeAA": true
+     },
+     "count": 103,
+     "diffSha": "9d9c29cab6fe58ed8d03cbbb578a1deb062e7441e98b3d10f92cef1ffe89d340"
+    },
+    {
+     "opts": {
+      "threshold": 0.05,
+      "checkerboard": false,
+      "alpha": 0.5
+     },
+     "count": 97,
+     "diffSha": "2dc8e2aeddf986e6c908501c0266b2465f5968ae0d2da88ecc58b8cca3fea47e"
+    },
+    {
+     "opts": {
+      "threshold": 0.1,
+      "diffMask": true,
+      "diffColor": [
+       0,
+       128,
+       255
+      ],
+      "diffColorAlt": [
+       200,
+       0,
+       200
+      ],
+      "aaColor": [
+       0,
+       255,
+       0
+      ]
+     },
+     "count": 95,
+     "diffSha": "da5eb7ddf8c1eee3f9bd5d116bad599a166951938912b10e580b23ffaf173164"
+    }
+   ]
+  },
+  {
+   "name": "identical",
+   "width": 176,
+   "height": 33,
+   "colorTypes": [
+    2,
+    2
+   ],
+   "decodedSha": [
+    "ae4dc4de00e90849c18300b7f32617a0a27539543d43ac3ae9b690ef97b6a6a9",
+    "ae4dc4de00e90849c18300b7f32617a0a27539543d43ac3ae9b690ef97b6a6a9"
+   ],
+   "results": [
+    {
+     "opts": {
+      "threshold": 0.1
+     },
+     "count": 0,
+     "diffSha": "5511ff2505b4e9418b3efedbc01c88cb371791c9fa148dcd9810565cb65494c5"
+    },
+    {
+     "opts": {
+      "threshold": 0
+     },
+     "count": 0,
+     "diffSha": "5511ff2505b4e9418b3efedbc01c88cb371791c9fa148dcd9810565cb65494c5"
+    },
+    {
+     "opts": {
+      "threshold": 0.5,
+      "includeAA": true
+     },
+     "count": 0,
+     "diffSha": "5511ff2505b4e9418b3efedbc01c88cb371791c9fa148dcd9810565cb65494c5"
+    },
+    {
+     "opts": {
+      "threshold": 0.05,
+      "checkerboard": false,
+      "alpha": 0.5
+     },
+     "count": 0,
+     "diffSha": "c90452838a7d57f2e1f7e2e4f0e0051882095323414669b3a61ffb2cb9151acf"
+    },
+    {
+     "opts": {
+      "threshold": 0.1,
+      "diffMask": true,
+      "diffColor": [
+       0,
+       128,
+       255
+      ],
+      "diffColorAlt": [
+       200,
+       0,
+       200
+      ],
+      "aaColor": [
+       0,
+       255,
+       0
+      ]
+     },
+     "count": 0,
+     "diffSha": "85bc17b683cdaa476521ebcf747f37ed6f6b3730cb6482b072f9707a68a5d367"
+    }
+   ]
+  },
+  {
+   "name": "circle-aa",
+   "width": 176,
+   "height": 56,
+   "colorTypes": [
+    2,
+    2
+   ],
+   "decodedSha": [
+    "94f85af3664a88f089db6a6ae6c86c7696bc2a3f3b935df2dcbddb37445fe439",
+    "4c762994bf5b2b8e9e528441db7eb6c8fa24bb43a2c6fff00ee9c8f974e27bf3"
+   ],
+   "results": [
+    {
+     "opts": {
+      "threshold": 0.1
+     },
+     "count": 0,
+     "diffSha": "a87843d69e7aaed3e707c45be246b2e1fbc421d5641233ea30dbe7d30424d746"
+    },
+    {
+     "opts": {
+      "threshold": 0
+     },
+     "count": 0,
+     "diffSha": "e60fdd8276df8bac06e32c463a0a13d2265adcce5de8881d9da0d9e1bdc76ebd"
+    },
+    {
+     "opts": {
+      "threshold": 0.5,
+      "includeAA": true
+     },
+     "count": 0,
+     "diffSha": "079606d2fadaef66d5d94d08e946ed6675f62c77e30e8108978ccea3a727625d"
+    },
+    {
+     "opts": {
+      "threshold": 0.05,
+      "checkerboard": false,
+      "alpha": 0.5
+     },
+     "count": 0,
+     "diffSha": "5ac3066b2c7ef3fa1618ffa75ee31058e05c2aaffa58d7291442c98497b0fa1a"
+    },
+    {
+     "opts": {
+      "threshold": 0.1,
+      "diffMask": true,
+      "diffColor": [
+       0,
+       128,
+       255
+      ],
+      "diffColorAlt": [
+       200,
+       0,
+       200
+      ],
+      "aaColor": [
+       0,
+       255,
+       0
+      ]
+     },
+     "count": 0,
+     "diffSha": "87e0ae0d3dfded1149ef5a27f13677e82bd9066899102820a1b1e438b53c6df5"
+    }
+   ]
+  },
+  {
+   "name": "translucent",
+   "width": 176,
+   "height": 33,
+   "colorTypes": [
+    6,
+    6
+   ],
+   "decodedSha": [
+    "9d0367a7739addd4bd30e1d78424f3401b447587aecfd945a24d7a284944acb0",
+    "359a56b314c559760700ae2e48a08e9f20a251f921bd80a8da6559a82b5954ed"
+   ],
+   "results": [
+    {
+     "opts": {
+      "threshold": 0.1
+     },
+     "count": 0,
+     "diffSha": "c3fd77d07c73d4c1c974ba9c31262f5fe49613bfc6d3ffd9a843bf8c35cd6046"
+    },
+    {
+     "opts": {
+      "threshold": 0
+     },
+     "count": 5408,
+     "diffSha": "f714d5c783ec742b5f94a402a91f03f3b76d340270992f5f9adaa6cc76e63eb2"
+    },
+    {
+     "opts": {
+      "threshold": 0.5,
+      "includeAA": true
+     },
+     "count": 0,
+     "diffSha": "c3fd77d07c73d4c1c974ba9c31262f5fe49613bfc6d3ffd9a843bf8c35cd6046"
+    },
+    {
+     "opts": {
+      "threshold": 0.05,
+      "checkerboard": false,
+      "alpha": 0.5
+     },
+     "count": 5314,
+     "diffSha": "6cf0d5587a58634bcb3557dc978a2b38bd472b73c8c091e1f69376db693783ca"
+    },
+    {
+     "opts": {
+      "threshold": 0.1,
+      "diffMask": true,
+      "diffColor": [
+       0,
+       128,
+       255
+      ],
+      "diffColorAlt": [
+       200,
+       0,
+       200
+      ],
+      "aaColor": [
+       0,
+       255,
+       0
+      ]
+     },
+     "count": 0,
+     "diffSha": "85bc17b683cdaa476521ebcf747f37ed6f6b3730cb6482b072f9707a68a5d367"
+    }
+   ]
+  },
+  {
+   "name": "dark-on-light",
+   "width": 176,
+   "height": 33,
+   "colorTypes": [
+    2,
+    2
+   ],
+   "decodedSha": [
+    "2a69e281c692d763a1052e14e1d650fe921b025e98e84256cafaa552089b969e",
+    "3c6baac4e7e8fa2d25e704cdaf01ec6f5160a9b348cfa94041d59a713625983c"
+   ],
+   "results": [
+    {
+     "opts": {
+      "threshold": 0.1
+     },
+     "count": 233,
+     "diffSha": "ad13edbf32ba994db4fbfc3c9e2d2e619186f9d099484090b86562d06c79707e"
+    },
+    {
+     "opts": {
+      "threshold": 0
+     },
+     "count": 284,
+     "diffSha": "ff6c9e862380e3266f2a7b571c1afaacd602e0f0c67881b9336b9649758e77cc"
+    },
+    {
+     "opts": {
+      "threshold": 0.5,
+      "includeAA": true
+     },
+     "count": 101,
+     "diffSha": "049341c12f65224e21cde18fb57e1231a558f8e43b8bddc1b9118e1313f7f273"
+    },
+    {
+     "opts": {
+      "threshold": 0.05,
+      "checkerboard": false,
+      "alpha": 0.5
+     },
+     "count": 252,
+     "diffSha": "26eaea4b4e38743607effe25229dc3f59365bb37e629e5bec8da5823ba8f606f"
+    },
+    {
+     "opts": {
+      "threshold": 0.1,
+      "diffMask": true,
+      "diffColor": [
+       0,
+       128,
+       255
+      ],
+      "diffColorAlt": [
+       200,
+       0,
+       200
+      ],
+      "aaColor": [
+       0,
+       255,
+       0
+      ]
+     },
+     "count": 233,
+     "diffSha": "3f8c2467d53b08de47ea91fdcff766be64df77a2c5147b6a986cb4a9a344baae"
+    }
+   ]
+  }
+ ],
+ "synthetic": [
+  {
+   "seed": 1,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 51,
+   "diffSha": "159879384ea3cb4ab98182c8a2704ae935b6d59df6298ed0db925ec620f67866"
+  },
+  {
+   "seed": 2,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 1,
+   "diffSha": "7afc2987a67af637e47571955fcd3863471609289edae1eead900591adec9f75"
+  },
+  {
+   "seed": 3,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 29,
+   "diffSha": "0dea2b7b98ba458b1ec103737773ed20d6d88fa6043134f15e5ec38828311474"
+  },
+  {
+   "seed": 4,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 50,
+   "diffSha": "47a8af219805ea6aea7c0c6c52e59e6f37a792c546fda41bbda4e84126e4d913"
+  },
+  {
+   "seed": 5,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 29,
+   "diffSha": "b4a2630f9410457ec2923a8fbbc3cfb15364a05c1db1771cd259e87ed1276e49"
+  },
+  {
+   "seed": 6,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 0,
+   "diffSha": "965236835809e66542eb66f4cfb0d45ee47e55f5e2ef2c7d6917de0faae3e2ad"
+  },
+  {
+   "seed": 7,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "c97fdcdd09e4bbf3626336c80064b384304ac5d1edb99a04c0fe1e0fd56d8d65"
+  },
+  {
+   "seed": 8,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 37,
+   "diffSha": "548bb8cd9e647cce3d42c4d5b3424dd41306e6e30e26878a5787edb497163710"
+  },
+  {
+   "seed": 9,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 0,
+   "diffSha": "52a3e0804d93dc525ec3c67ef8ac5b01756ecf0513e36f3c19435e4c82cb5d29"
+  },
+  {
+   "seed": 10,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 29,
+   "diffSha": "e1d7b276e61ff08b333dd00a59ed471b014117e79821a29bcd33919525452204"
+  },
+  {
+   "seed": 11,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 49,
+   "diffSha": "a3cc869007b9fcadfa689dc3512fb906c0fd855bebc1eeec27687e99819b6542"
+  },
+  {
+   "seed": 12,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "bdf4b1e852357a3bee7742a8e676332d69cd02a89a9e03e0875065e2060f40a3"
+  },
+  {
+   "seed": 13,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 0,
+   "diffSha": "d1e59ac3cb5de9adb52f64a3356cbcbec4a4391a9b5e32e444a3c67263827fee"
+  },
+  {
+   "seed": 14,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 13,
+   "diffSha": "edd0bd1769e1602e2fe9f9e0b37a49dd06d46677d0270513aa256d184506034d"
+  },
+  {
+   "seed": 15,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 30,
+   "diffSha": "35c46e44be761a9e11233ca0d0e84cf2b9cd1d0f3c148c7e47e98b7b361e1b92"
+  },
+  {
+   "seed": 16,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 33,
+   "diffSha": "df05f016abc6f0f8af1ee4b116d07c495f359f7e8cad5dc68a86300043e689e5"
+  },
+  {
+   "seed": 17,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 2,
+   "diffSha": "f3cc3c8ba66313a3c721c6c2f114f15a0837764658547fcd1390b2193bc637f1"
+  },
+  {
+   "seed": 18,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 11,
+   "diffSha": "35309dc7b347d1dd184ee77a283a4fcd85d29f84f8f2199f67b9afc8c80c988d"
+  },
+  {
+   "seed": 19,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 13,
+   "diffSha": "04f1d313a3df262a269dd0e33bc4ce5cd26ff8f8b6914807e1b991860c525b85"
+  },
+  {
+   "seed": 20,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 4,
+   "diffSha": "f52857d2a5a2111685db1a52976e4bd8eb4e6a3a7fd423424592734496a7ab3e"
+  },
+  {
+   "seed": 21,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 0,
+   "diffSha": "d2b2d98f5ffca04f77b57eabaf7d1d018e11b31d4b90f4a0586f46c43b32b45b"
+  },
+  {
+   "seed": 22,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "3febe9fc741c050596b13a14ff89cd4f55652d136b00f833bcf360debe7ac846"
+  },
+  {
+   "seed": 23,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 5,
+   "diffSha": "3a2d9391c18eed2fbb11bb388c33e446892df06ac4421c3a7f5cb35b93feda2d"
+  },
+  {
+   "seed": 24,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 6,
+   "diffSha": "39cd0e652777120a8c679c1750961632eff322257949d905c692e20e870798ea"
+  },
+  {
+   "seed": 25,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 23,
+   "diffSha": "4e4d8a6250b337f66066f12294a7cd97860079413c5f6728ad996e8ed93d43aa"
+  },
+  {
+   "seed": 26,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 2,
+   "diffSha": "a5b9c753b6ab280796575943159af3490c2d83a089c70c1751acdb921671c91e"
+  },
+  {
+   "seed": 27,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 2,
+   "diffSha": "421984ab417f439b7f375127dae33884ee8fa9c4e8624610be743d5d70aeea52"
+  },
+  {
+   "seed": 28,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 4,
+   "diffSha": "82940a5a7887eb641130c238ccecacf9049650cd46183fb81762f702b06fae3b"
+  },
+  {
+   "seed": 29,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 23,
+   "diffSha": "55e5154270c2427e4f77caa4fba00423c6f3b71a48ea9854dd7b57e13361e6bf"
+  },
+  {
+   "seed": 30,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 2,
+   "diffSha": "9e3efc578f64d5f49f065ae9b80897d3e8bb2a9ae2bd0b5c94b9c6b0de8a9877"
+  },
+  {
+   "seed": 31,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 0,
+   "diffSha": "2fa43f942159bfaf07378fae894d00ae4061180e0434c81275b0e19ca7a0ccd0"
+  },
+  {
+   "seed": 32,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 1,
+   "diffSha": "619c25812f79be7f21896ffe97e644471c3390f2ba1b6a9a93efce6ca6b33bee"
+  },
+  {
+   "seed": 33,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 43,
+   "diffSha": "826b38f8046d53e7b84e33e59063b0848fe8dc743b5bc71092e5970e5deeff51"
+  },
+  {
+   "seed": 34,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 0,
+   "diffSha": "38723a2e5e8a17aa7950dc008209944e898f69a7bd10a23c839d341e935fd5ca"
+  },
+  {
+   "seed": 35,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 12,
+   "diffSha": "89f35b4b723fff0624e3f1df9d0d9706721cfd7687d5efec42e8ccc2b05b415e"
+  },
+  {
+   "seed": 36,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 4,
+   "diffSha": "054287b1c873d97a7e763a308b34b6c3b79c239db1d8b973dbc82c6434f60d39"
+  },
+  {
+   "seed": 37,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 10,
+   "diffSha": "476ccabaa56bc97e4e9f61f19d95253b89a8997264767817f72cdfc5452c37d3"
+  },
+  {
+   "seed": 38,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 0,
+   "diffSha": "2b7d9c41d610f3c0bbc8387d2139b613ee80eab9383d42d58df3fef2410237dd"
+  },
+  {
+   "seed": 39,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 23,
+   "diffSha": "d821471fb6d13c1712745515809abe66a952bd6a34cde88f828a02a902a1926d"
+  },
+  {
+   "seed": 40,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 5,
+   "diffSha": "5fe00a3a87ca9826f5d2525dddd961d8de40946447fea799e0eba6b283e565c7"
+  },
+  {
+   "seed": 41,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 69,
+   "diffSha": "d0da7c4ba9c400432f7c416eb1aa821715af779d10623bd1054a56e37b0c9f1b"
+  },
+  {
+   "seed": 42,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "ec905c64ec9a9f4b221af608e8c7d1f00d79aa3c0109b912f08e4b831cbee41a"
+  },
+  {
+   "seed": 43,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 9,
+   "diffSha": "f1948e7a71847226af5649156d4b196a2b414183a937e84f0518e5710ab2ec23"
+  },
+  {
+   "seed": 44,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 16,
+   "diffSha": "88b4c7da117e9475892c895b117242f7bc039177f00c704463a1277a74591c49"
+  },
+  {
+   "seed": 45,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 4,
+   "diffSha": "5dce7d05e52d1cdb63dc5e551aee17a17155c0dd031637447d7337bd12ce601f"
+  },
+  {
+   "seed": 46,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 31,
+   "diffSha": "83de85ff3abb1575a5fe26bf8b283429e059c5d1d55e969bd36d239915834c58"
+  },
+  {
+   "seed": 47,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "440b3a88e1d9e02c1dcb2cb65c458ca4b5e9c6c9a59afdca9a6ef5c4439c16f9"
+  },
+  {
+   "seed": 48,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 52,
+   "diffSha": "cb1fcc6352cdf6c27d9916e5d8d4d079c199e7925114d0702ac977a4d9226c39"
+  },
+  {
+   "seed": 49,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 17,
+   "diffSha": "ebd31ef6c3bfa2f4e85d4d22b3e221216a336b5c96813060a97600325e5b8559"
+  },
+  {
+   "seed": 50,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 3,
+   "diffSha": "58ce81614d35394c39085f8623ed5af76da67b2188115099e21f5e3b3af3bd07"
+  },
+  {
+   "seed": 51,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 47,
+   "diffSha": "41a6eb33befb9ef225b787f912ecb0b5909fdb8efc45f1a5329a94f1d16b885b"
+  },
+  {
+   "seed": 52,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 1,
+   "diffSha": "330b6347f278f56a4eca0aa916542f391240c62b46cb3525647414ac40237198"
+  },
+  {
+   "seed": 53,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 46,
+   "diffSha": "c8678053781d21ffec455473bf0bedc02f5bd40eaf9cc7bc6ebed53b5520c0a9"
+  },
+  {
+   "seed": 54,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 4,
+   "diffSha": "8efd5c8fe419377db98682c331a6afdb6446d6c973eb2ffd608ba08c1dc2b0bb"
+  },
+  {
+   "seed": 55,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 6,
+   "diffSha": "20b65f3fa526a04106bae9cfb8324845afedc5410cfa279cfc606e7d3634816b"
+  },
+  {
+   "seed": 56,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 3,
+   "diffSha": "fcb8873b39ba31ef1564efa36010d4bc0930fd52741ab88c40b2e03fd83045ac"
+  },
+  {
+   "seed": 57,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 7,
+   "diffSha": "b8e2067492b672f8f3b561b8d850eaa3d946dbb983100df33a55b19d4b852549"
+  },
+  {
+   "seed": 58,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 0,
+   "diffSha": "8652844179f6acb25ca2dafb1973629608907dd3a2c40335c1a753f3dcb7379c"
+  },
+  {
+   "seed": 59,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 1,
+   "diffSha": "e89935f9f39fc7d908887421dca8189a2a19f676e9e71f19229de44d742e01ef"
+  },
+  {
+   "seed": 60,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 22,
+   "diffSha": "7ce94a04ee4a434d3d268b4b765b4fa22b95ab2dd694093f6d48e2e2244d9f49"
+  },
+  {
+   "seed": 61,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 3,
+   "diffSha": "57ab1da35fac51cec52a8c833f22d321b0a4705f6659e8f126dfd859284d04d1"
+  },
+  {
+   "seed": 62,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "a410d460a04a858dcdc68152c588cd84609a4603fa5db161cc678eae00ab72f9"
+  },
+  {
+   "seed": 63,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 2,
+   "diffSha": "2f25ef115958f48a7f2d4b598e2574a4c9c6f34567816a6741db78bf2240b460"
+  },
+  {
+   "seed": 64,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 0,
+   "diffSha": "6bed6ecd7fb8a2ef5778c39309a072b28fd839f212be56b3537c590866129ce7"
+  },
+  {
+   "seed": 65,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 0,
+   "diffSha": "dcb40e939a160ab68bf7c5907800d743ba556a34989a467fe52e68fafd5a2af6"
+  },
+  {
+   "seed": 66,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 0,
+   "diffSha": "b3cacf576c5ee9df9d1f6ffdea71dde9350292c82adea15a0af2e63ad65de393"
+  },
+  {
+   "seed": 67,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 2,
+   "diffSha": "1f3b2345faf7df228ab93664229dfa7d1b8ac26e445ff6f755f0b0fd74d0b809"
+  },
+  {
+   "seed": 68,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 3,
+   "diffSha": "5251424622f7047536638c9c8714d6c9606315dbfbf57b756b12816700a86a9e"
+  },
+  {
+   "seed": 69,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 33,
+   "diffSha": "cf7e987153731225362a95d6c12bce7b1873e0ab0ed843c357813fb44f0cfc7f"
+  },
+  {
+   "seed": 70,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 16,
+   "diffSha": "691f787bd397d113913150ea651ac82d257dc181e820a1d6e06ff5797fbfb696"
+  },
+  {
+   "seed": 71,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 59,
+   "diffSha": "d38cc9002715c6d919ab8db1fe3c033264980b610e0cada4980eb9c93e151d89"
+  },
+  {
+   "seed": 72,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "4bfac59a3b138722f6afffcc74e2b7cc1bfda0f03fb8e217365ca5c39cca00e2"
+  },
+  {
+   "seed": 73,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 51,
+   "diffSha": "0f35d5e5a8c8efee7e2bf41098eb1636df33df2cfc026582d13270e7af3b65db"
+  },
+  {
+   "seed": 74,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 11,
+   "diffSha": "424b13a0f4aba763cf3912b2b3027ce4b7a52d3ec4b7b5e60eb62c74a4444164"
+  },
+  {
+   "seed": 75,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 12,
+   "diffSha": "44bf975718f50a97446727aa4d90b71f495d7403705b43396df77e0571bcf2b3"
+  },
+  {
+   "seed": 76,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 0,
+   "diffSha": "b5008be81a8bc15cb60abae86963c21f4127cdec3f200ddb9aa2988ba84e0c83"
+  },
+  {
+   "seed": 77,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 3,
+   "diffSha": "d1c500fc4f0cdd92e31498e34d15d1dd5425f50241f0e9fbee437d466b972123"
+  },
+  {
+   "seed": 78,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 9,
+   "diffSha": "6cffd9f3079728c081b7f953f54da8f7519e9d8b7bdcc90fc5f67e61b62d7083"
+  },
+  {
+   "seed": 79,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 36,
+   "diffSha": "670843be9f5f7d23fe38aafca71b7a674e1bde9a3d79790867761cbe5e2063e3"
+  },
+  {
+   "seed": 80,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 18,
+   "diffSha": "d3c1a9c9b92fa85db479d78fd8b7d8ed7c92af60408e9f55212bbeca256ef349"
+  },
+  {
+   "seed": 81,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 119,
+   "diffSha": "b60a1ccdf41c8d85cce18418cd8df67b998e03c834362aebf2406a60674100ea"
+  },
+  {
+   "seed": 82,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 4,
+   "diffSha": "1b9ae8b7123f28c852a257d33abd5fcb65744ca54b7e14d0c4f8bb8ec076dc72"
+  },
+  {
+   "seed": 83,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 22,
+   "diffSha": "049ea1e5a783200ee0215ff3179df5a15739062c42535fe51ea6fe9c1adff664"
+  },
+  {
+   "seed": 84,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 10,
+   "diffSha": "d53ba8e17f025cf807c64144456136fbed9be3536d9df011fb8b96350c35da85"
+  },
+  {
+   "seed": 85,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 52,
+   "diffSha": "f5837388bf72a5e293f2b8804388b5e51bcd602f437145268bd184c8cde66739"
+  },
+  {
+   "seed": 86,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 1,
+   "diffSha": "19a3a5703a9114cc81c2e821700f73dadec40305d4a0577e20bdd34b5b7c99e1"
+  },
+  {
+   "seed": 87,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 5,
+   "diffSha": "0c861758012c2477cbb62171916a125afe48e6c078ee360ad92ae67fa7c42afb"
+  },
+  {
+   "seed": 88,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 11,
+   "diffSha": "2358381d0a7921b3cdb43c729830b251ccd1daacf1b13660a4a943638f03fa15"
+  },
+  {
+   "seed": 89,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 40,
+   "diffSha": "e1bd1ba370550d5fcb7be45db749fd01550348842ca9763b343e8fa4e4180534"
+  },
+  {
+   "seed": 90,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 2,
+   "diffSha": "d42daa2949a35d3ee9769707636e28937d047e35891bb335ef237f11a90dc286"
+  },
+  {
+   "seed": 91,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 8,
+   "diffSha": "5499a75fc245d7d3f9815e7796a2669dd69edf3a5f24ee6ddb790d97e096d3c1"
+  },
+  {
+   "seed": 92,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 1,
+   "diffSha": "e080e2a618526964b82ea35eeafdf495d2f9dffd1c0e67b256885de1664ca96f"
+  },
+  {
+   "seed": 93,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 85,
+   "diffSha": "d3f27861e47517f1cd63488163b903c61f7344f32544aa17fb599b45cc63c4e8"
+  },
+  {
+   "seed": 94,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 11,
+   "diffSha": "f9984bf12c459d1527fe13be29e0c92e8f014fa3ad29a3290dfc90334b7bbd89"
+  },
+  {
+   "seed": 95,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 19,
+   "diffSha": "2dcc7d97b63e0404f0a1fcccc544524b08bd10c96a26595d47e7556333615d27"
+  },
+  {
+   "seed": 96,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 15,
+   "diffSha": "b8a0880c442ab6159bb6e7cb6c1f2096dfee489628ec1b2a4bb4d64229f63800"
+  },
+  {
+   "seed": 97,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "1523ba5dcad65f2211a52164f87ced39d092a2eb7ea4d2753ab70c0dfa0d9f09"
+  },
+  {
+   "seed": 98,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 2,
+   "diffSha": "bbfc9723fa6de866115ba2b11a189b734fa6a17bf3b2343b884b0a4a8718915d"
+  },
+  {
+   "seed": 99,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 11,
+   "diffSha": "b667d11a823c6b77870e0a02432d3255fd378b504dc6e7eb53ecdcfb2efdb363"
+  },
+  {
+   "seed": 100,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 7,
+   "diffSha": "632503f9fc9d4deb288bd2665c44c90d33e2263284f5445d887106fa48422e56"
+  },
+  {
+   "seed": 101,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 0,
+   "diffSha": "7a2834175f9b231587709be4575783f8ccbdf498ed952842c299539e70083494"
+  },
+  {
+   "seed": 102,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "2c001c7525940d20a4e606fa01091f1c14a3e777bed88db3afaac8b2caff05a1"
+  },
+  {
+   "seed": 103,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 26,
+   "diffSha": "228d70d062b45c404fd441352ba5da7c0da760cf713cf6fce633bd7ac1945233"
+  },
+  {
+   "seed": 104,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 4,
+   "diffSha": "a13b2502d62ff92c14840225fc8486da475075d22bfba502d0c510c9bd5b8025"
+  },
+  {
+   "seed": 105,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 4,
+   "diffSha": "33fce11a5867829429d2c4ca05c650568bb3aa19579aab3586b413a1929fbb11"
+  },
+  {
+   "seed": 106,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 9,
+   "diffSha": "573e2960cb3faf8ae7fdc7fbd447aa2bf0d4a7c2e27f43364bfac29623c9fed5"
+  },
+  {
+   "seed": 107,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 1,
+   "diffSha": "328094691f1fe7924e70cdb5f3830771c428d6caf0e86de3d34e2b660fa5b3b6"
+  },
+  {
+   "seed": 108,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 21,
+   "diffSha": "2d76d6901ab3933dd74bc8b6ba4c74340fba6853ba8706e611975f0652ed598a"
+  },
+  {
+   "seed": 109,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 1,
+   "diffSha": "de65616488eb440cd3f12255e8cd257745f98b7858e1f90d2235d4dc0793193c"
+  },
+  {
+   "seed": 110,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 16,
+   "diffSha": "37220160109712c6c5d45b4ad8151b3ff531799aa63dbb0f78c1f85c92d3d120"
+  },
+  {
+   "seed": 111,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 4,
+   "diffSha": "4609fbdc8e3fc503f23ee0d1d42687c7a270c2409a09801def6f5e55209884fd"
+  },
+  {
+   "seed": 112,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 6,
+   "diffSha": "2d93a213da643077ea8c3be73a072bb179affef3cf8f925509b2e83814666525"
+  },
+  {
+   "seed": 113,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 1,
+   "diffSha": "4460f436a4dbca7a22eabd45829dff6275ff47ccdf89987201348d8c45a96f43"
+  },
+  {
+   "seed": 114,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 8,
+   "diffSha": "b0018d0eeb10f7ce9d9bd6e9ecafc816590eb55a088f98ec64f698dd1a9e5960"
+  },
+  {
+   "seed": 115,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 29,
+   "diffSha": "db65ba76c348b97bcdf5f0d786ac93675e791bc6926c9a8a9dd7a8158d86df01"
+  },
+  {
+   "seed": 116,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 49,
+   "diffSha": "4cc96a417a070538f4e41606f957d7f4be5a0f10424c4afb44232e4e060d2165"
+  },
+  {
+   "seed": 117,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "ef8ae9fc96e98502af72594a60d75735056e485ba25d6430e02b794e6b0eceb1"
+  },
+  {
+   "seed": 118,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 10,
+   "diffSha": "a99afbbe7d06c92a64187f0d4cb98b38c0460cd414c1b37beb9bd68281ab8c7c"
+  },
+  {
+   "seed": 119,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 13,
+   "diffSha": "111dc0ec5c0988742f981a98dee9b3342997c81f6f3e0f4528652e026d911169"
+  },
+  {
+   "seed": 120,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 24,
+   "diffSha": "2bf709e9792b9780c23ffed0a1f2bacc533470180b773a0fd1656825061cb8fe"
+  },
+  {
+   "seed": 121,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 86,
+   "diffSha": "89b2aede6287e2d72298784c50481d6df18421597be167e94764f1d84f0eaaa1"
+  },
+  {
+   "seed": 122,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "3dda72b9985ba813a5d6aa079fa533c8230cd10a3670dbc200f3b79b7ed68627"
+  },
+  {
+   "seed": 123,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 3,
+   "diffSha": "f4ae3871be13e5886357cecc73cf7ab4ce0035ba0f288ffca61768cc9279426f"
+  },
+  {
+   "seed": 124,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 8,
+   "diffSha": "141bc196b9c7a3e688d747ccc7c8238116f2033b4397d4b0a802eb4b63ff915e"
+  },
+  {
+   "seed": 125,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 3,
+   "diffSha": "e86941695f03c6bb659ad6b49d29a8e9232c650a1680be78e35e72562c28546f"
+  },
+  {
+   "seed": 126,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 22,
+   "diffSha": "478de055b1501dbda82dad7fc46c17c6758804a2567ab4799279d34f1c8f83fe"
+  },
+  {
+   "seed": 127,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 1,
+   "diffSha": "a1344ad0c28de5c954845abe1176914a63fc7818a5e72f731bf748385b8d171d"
+  },
+  {
+   "seed": 128,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 31,
+   "diffSha": "ad8cd3ae4479a389b7f81b5c0095c96a2e2bf578bc983ab431b25e1ed1023a82"
+  },
+  {
+   "seed": 129,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 9,
+   "diffSha": "3c767de0f706c20b35837e2ec10d03a6c3e18136df0483a99e90cf34321202d6"
+  },
+  {
+   "seed": 130,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 13,
+   "diffSha": "1cc3da08a3c48fce462c19da2c19e2ee569a5c5bf98b786cc57024e164050b0d"
+  },
+  {
+   "seed": 131,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 39,
+   "diffSha": "1475275c1173eab4ebd411f01af6d0d20d9419c11659e27051e9b0492da8d1b4"
+  },
+  {
+   "seed": 132,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 1,
+   "diffSha": "d501c3be1fd540d0c64a6919e2a4762dc77177f9d71949195eacf4d7cbac1b0b"
+  },
+  {
+   "seed": 133,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 0,
+   "diffSha": "fd412f92425cb1695ca7d302d501be24090f3dc390355e30d5276120c4fc0270"
+  },
+  {
+   "seed": 134,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 6,
+   "diffSha": "8b4ddc26f42eb5bda0187f1948315aa1159af73fe358694ec4b477db884981c4"
+  },
+  {
+   "seed": 135,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 21,
+   "diffSha": "b242d17e3e3d981de19ee250c388d57ffb8acc8ce0981e88558e945c98498b35"
+  },
+  {
+   "seed": 136,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 36,
+   "diffSha": "f266005ac4378b5fbe3cbc5097e65f98cba1b8a05b97da8a3067b88232505901"
+  },
+  {
+   "seed": 137,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 1,
+   "diffSha": "2362db509f6b36a38a51de9304e282be8ba2c9b33280f67067ce08508b01509e"
+  },
+  {
+   "seed": 138,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 1,
+   "diffSha": "58b5f228fcdbc129e5bc57a9f35352df1779ee26a77fdbd27278e4608c3f537f"
+  },
+  {
+   "seed": 139,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 27,
+   "diffSha": "26bd8b157c14b86160658e2f139364eeacb0e1af930c498ab7a3f5682d806719"
+  },
+  {
+   "seed": 140,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 14,
+   "diffSha": "320b22636776b84f1d494cfa3ef91e40b557119e08c88201435f3b8e03c4d74f"
+  },
+  {
+   "seed": 141,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 14,
+   "diffSha": "b430e94fd2ca04d927134bc0f9104b46a17205d72eb0697ea661b8f19497e2d0"
+  },
+  {
+   "seed": 142,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 1,
+   "diffSha": "0da453520371e033c27c70449a5962e0bc55d00397ed585dceb975336fa75d70"
+  },
+  {
+   "seed": 143,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 24,
+   "diffSha": "a4e5e069612a337c64b531d7701b187641dbef791de9804331645ead7d2569ef"
+  },
+  {
+   "seed": 144,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 11,
+   "diffSha": "4d6db43df15111bea76bc04d5e98672a7accd3df92adc73133619fe89af643b7"
+  },
+  {
+   "seed": 145,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 7,
+   "diffSha": "2f9f2c351cadc5433b7b0902cde5460921073229deaade4be032dddccc9ea776"
+  },
+  {
+   "seed": 146,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 9,
+   "diffSha": "022c622826c131a2adf3ba6f19f7857aa41734c42cf8cb9a7f23459199344680"
+  },
+  {
+   "seed": 147,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "128d0f53cf13f830db35685ea0378fba2c8dcfed5acea62023d35e32fbf4cfa8"
+  },
+  {
+   "seed": 148,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 29,
+   "diffSha": "b38c9142fc9cd610dab9577bf87b9ae42045ae7e2ebd05d20e251d65f450af0f"
+  },
+  {
+   "seed": 149,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 2,
+   "diffSha": "a2fa245eb87f61dd8c79fded96d72471dfcaaea24bde43b21d4d60a606371cbb"
+  },
+  {
+   "seed": 150,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 4,
+   "diffSha": "c80032578bc8a354db90e585e1d036089f0b90aec0106c8413371b2aec507270"
+  },
+  {
+   "seed": 151,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 0,
+   "diffSha": "4da208ce411deddbe1c2ecd8d277398efa3703f874e38e9fddf6e5fec392687e"
+  },
+  {
+   "seed": 152,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 2,
+   "diffSha": "23fd1c9a385a4b55a519e11b01b3dcc5c26e477c94b5e117d53a9b1be9cdea1f"
+  },
+  {
+   "seed": 153,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 43,
+   "diffSha": "11eb95d3e7f42accd71b6e0be773221356befd32ecd4da02a3e06b69422c9229"
+  },
+  {
+   "seed": 154,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 3,
+   "diffSha": "a81558124f05614648db53bbf281345cbb02385ec948e628ebed6a32ece82af9"
+  },
+  {
+   "seed": 155,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 4,
+   "diffSha": "4dc97d423991dea68c3193dfab4409de25fb7044793c41cf92d9cf54d7068f81"
+  },
+  {
+   "seed": 156,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 4,
+   "diffSha": "dce8689e7a1683caa199ea8dc03e6039b3b2a8439ddba2f9c54213dea65ceeb6"
+  },
+  {
+   "seed": 157,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "358c61ca7a553fabe7804bb45ae25af3194fd443a42849979abf5b17bfaaccdc"
+  },
+  {
+   "seed": 158,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 0,
+   "diffSha": "a2a6a35c467eab10d1da3a11033b8232e489ef39f7a9a6d022a0e55ef9845c53"
+  },
+  {
+   "seed": 159,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 32,
+   "diffSha": "c8d0a841b5812b005ca5ee90baa6dbd8e3857ce4f889c1d17fcd65b40ecba5c7"
+  },
+  {
+   "seed": 160,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 3,
+   "diffSha": "1663f921327b04524ee122e0567e1afa0d6fc37690023dad2c32c2a0015db8c0"
+  },
+  {
+   "seed": 161,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 78,
+   "diffSha": "5e97b19e13ad44b56266df8cbd723ef3050da3f094507d340c62bf392af58bf7"
+  },
+  {
+   "seed": 162,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "093d6bacba6fc9431e62a7e05a9e6996493d07afaec87591e8718e95ca6ea6b0"
+  },
+  {
+   "seed": 163,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 17,
+   "diffSha": "89f1b2462bb2b7c6a3cb2ae457976126046b5fc45d333c37c1c80e821c4a038c"
+  },
+  {
+   "seed": 164,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 15,
+   "diffSha": "438fc3927cfc822d5a06569ff90dcf1773e6658261c8a05f2c028315bffea976"
+  },
+  {
+   "seed": 165,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 24,
+   "diffSha": "9706eb008ee806480cbf2bc78cb68fd23ef3e4771fcd1549e94d964d7ce7957d"
+  },
+  {
+   "seed": 166,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 18,
+   "diffSha": "37c3dad961743dcbb746bb9bfe5674b8324e283294e8efae813a6b9a473ffecf"
+  },
+  {
+   "seed": 167,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 4,
+   "diffSha": "d331c09d24fb19d682b9a5d58e219a725db33c84b0ce467636effdc8ceb699a0"
+  },
+  {
+   "seed": 168,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 0,
+   "diffSha": "9efe66ce444235704bd574e113703cd03d84b8887bbc1866913a361f3f8a5af9"
+  },
+  {
+   "seed": 169,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 62,
+   "diffSha": "fb76d38f65080697064e593aae2dacd41cbdd545631c0272c76e75112403acb9"
+  },
+  {
+   "seed": 170,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 2,
+   "diffSha": "6f6fab5777981b0c87bef1dfc4a3173b43f544f76a7bb9bc269943e7bea5e44c"
+  },
+  {
+   "seed": 171,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 22,
+   "diffSha": "b5c4c546de09a4481548af1d2a85760764d8ad7106658ea3f76fd81780c1f1e0"
+  },
+  {
+   "seed": 172,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 14,
+   "diffSha": "c19b202cee731b95652c5ffab473d8ae9569a6d00e968d3be38475ebf5d5fb64"
+  },
+  {
+   "seed": 173,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 14,
+   "diffSha": "d2283ce952c6997889eba225be66e1661b0bd3fc6417191c27ce8686be85f0d2"
+  },
+  {
+   "seed": 174,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 25,
+   "diffSha": "5172fd625e3e83c7fca64a15152b4abc07705510209acf44a3b79ae887d13748"
+  },
+  {
+   "seed": 175,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 1,
+   "diffSha": "592ae996c4c04f857b2d4f52aa603224794df7812ef33c6c9c74011da38c44a3"
+  },
+  {
+   "seed": 176,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 48,
+   "diffSha": "9c5a3634b183980b058d9b957502d6d0ac1fca390683ff9d6bff04177bd7668b"
+  },
+  {
+   "seed": 177,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 2,
+   "diffSha": "50d74f7d6277cae7cc3551f8dbdcd57c0d8fe94c0f06bdbe36261875446b81e6"
+  },
+  {
+   "seed": 178,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 26,
+   "diffSha": "bdc4fd29a374a3111948a0244d3da1c9d3360c32c1b0a7e21dde923f626fb988"
+  },
+  {
+   "seed": 179,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 2,
+   "diffSha": "a28ca91b3965c27fd3a34d408b4b1aa17c3025f7be1b6d909aed84db074ec89d"
+  },
+  {
+   "seed": 180,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 51,
+   "diffSha": "63e26d5eebd8a9392b968bb749c0a3fc2578c0f937f106d81fcaa8a09e753432"
+  },
+  {
+   "seed": 181,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 7,
+   "diffSha": "2370fa5a4fd785c8696cc13a15880f14ccb118ddde1e83a89eb6ee28745dd772"
+  },
+  {
+   "seed": 182,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "8ccbb3fc980fa2ccd506c0a403d295284202272d347ad21f318712e2f7abc58a"
+  },
+  {
+   "seed": 183,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 1,
+   "diffSha": "5b8ffe70358dbb1a1aa5a1b87f3e82c26656003484ea3ec53b36ceec89c5c742"
+  },
+  {
+   "seed": 184,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 0,
+   "diffSha": "6bed6ecd7fb8a2ef5778c39309a072b28fd839f212be56b3537c590866129ce7"
+  },
+  {
+   "seed": 185,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 6,
+   "diffSha": "10a52b9c436313759bb695214ef42938969d6bd1ddb4f6ba1f0c7db3d5cf9cc2"
+  },
+  {
+   "seed": 186,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 9,
+   "diffSha": "c98d58c2b08496bb1fcb2014d457fad7dbf8f2396949a8f425739bdd7bf1ef0c"
+  },
+  {
+   "seed": 187,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "23da46f133afa4c24214ad19efc6fcb4d94f590b11d024f4b3cec45aae57ee3c"
+  },
+  {
+   "seed": 188,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 17,
+   "diffSha": "33d867bda7b913fc3611027ab75f14e29adfc752dbf821de9c1b79507149e001"
+  },
+  {
+   "seed": 189,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 5,
+   "diffSha": "137112950b8704760bba7a0607f314922517c2e200b7cb8755751e38636734c2"
+  },
+  {
+   "seed": 190,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 4,
+   "diffSha": "3a258e6648daf8fab83ee23b450df9297c66747dc0888b5fe3a82d9c5f1f3ed1"
+  },
+  {
+   "seed": 191,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 2,
+   "diffSha": "3da47f79eddd3001e7cfd2901b03142c17e027ea888552bdf073a1add002b990"
+  },
+  {
+   "seed": 192,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 3,
+   "diffSha": "c443a62b803fd7bb1869589f9e4d9d0b4da9c4a1f9e3d5fc7899fb2ca5ba80ff"
+  },
+  {
+   "seed": 193,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 2,
+   "diffSha": "1c57e85a393ebbcb557e26f10b6fe31d9b0919a1923c639f4c50a78c9df2054f"
+  },
+  {
+   "seed": 194,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 0,
+   "diffSha": "627f6149015f853f26db2f3dffba1b7c30b3b74b87c5cfb9f346c1616e3636d0"
+  },
+  {
+   "seed": 195,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 0,
+   "diffSha": "b98956fb6b3760d192104dd9e39d12d0d87bc414b4ce3dce0d91259a9850965c"
+  },
+  {
+   "seed": 196,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 30,
+   "diffSha": "19966c5c27b9348d307fbb36b120c968e87778aeeb88f3ca55aec495d1324d19"
+  },
+  {
+   "seed": 197,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "70f9c057c49d1e52809a0f99b8c45f37f36930ec82131f917ed10ad9df5b70cd"
+  },
+  {
+   "seed": 198,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 23,
+   "diffSha": "44036fe1b34e62e7ad99857ee6cac30fdcfe360fd35adf5f4ea0d9bd2434d375"
+  },
+  {
+   "seed": 199,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 2,
+   "diffSha": "b63da80705bfa1e3739b6047e4722c67514a5d31f46e4fac6d5d8654231ea032"
+  },
+  {
+   "seed": 200,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 2,
+   "diffSha": "bcdeab88df62c77f8a653fcff75577f8276fdb3815d307ac77f81fc92dca234b"
+  },
+  {
+   "seed": 201,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 17,
+   "diffSha": "fea8b793bc4e3a1af2f9d7daf4d45a7e6da7d532357dec3a50e013e87bfcefc0"
+  },
+  {
+   "seed": 202,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "c1d17c5fd073b29c41a4694c5f32f6c034c4fa35fff5b80d9173a96137094d6a"
+  },
+  {
+   "seed": 203,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 11,
+   "diffSha": "88ad7c9005858c2fa1bdf7485916b8ae2ea2bd7a3ab9c26afa8aa936e7914a5d"
+  },
+  {
+   "seed": 204,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 27,
+   "diffSha": "ffa89152efafb15cf5e9c90381d3f6ef9f98f24525b1903e3135a134df7b78d4"
+  },
+  {
+   "seed": 205,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 21,
+   "diffSha": "b728895c162beabf4496eeb1babf05b87d8d993673ebcfe8e196e9d6e6d48423"
+  },
+  {
+   "seed": 206,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 25,
+   "diffSha": "cf775c36228330993fe723586014477264529dd0e9ac860188166c13341bf3d2"
+  },
+  {
+   "seed": 207,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 3,
+   "diffSha": "6e66e0a3140d8f2588279bedfe2abbae7e7bed134ebc380b49d389b14f9c4cf4"
+  },
+  {
+   "seed": 208,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 25,
+   "diffSha": "cab1b5af44eab7e4ccc8aff7ad6adb7e7002ff31a69eec24857e212486073dc1"
+  },
+  {
+   "seed": 209,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 41,
+   "diffSha": "9d696c3bf17a1410997de7eeb721572c0548c265089e801820d6182d11da07db"
+  },
+  {
+   "seed": 210,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 17,
+   "diffSha": "92ef8243581f0cab08ae8eff8685fbf8a5a5d6c90b5acc1e51dbe1c591be4f53"
+  },
+  {
+   "seed": 211,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 36,
+   "diffSha": "1519dc35eaae4e708ffb407e2b50aa0b08d21b0d00f10328ac08d24c620ceeda"
+  },
+  {
+   "seed": 212,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 2,
+   "diffSha": "6bdcf690dedff73ea89f23c686479a746614041648bdef947ba777f0e8d352bf"
+  },
+  {
+   "seed": 213,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 27,
+   "diffSha": "29991f84a723059576f14643c2474c3f5626c29d04033ad020b57f3c8dedd208"
+  },
+  {
+   "seed": 214,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 1,
+   "diffSha": "a8010286334d0d7b40df5c66f44c54c90406c4509337485b15742c5d90718b03"
+  },
+  {
+   "seed": 215,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 7,
+   "diffSha": "c51f0316d1cf0d859df9fb964f192b0c1f0ab176b6d85ef8903160343e8464ef"
+  },
+  {
+   "seed": 216,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 33,
+   "diffSha": "d4085f3f54e876a2ba773410f237337be66890b4a4d6fa6dc1968886601b28bf"
+  },
+  {
+   "seed": 217,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 3,
+   "diffSha": "15cc1882e40aa559914ace8997b45b1de10352c774c51c4e0cc2d85b9b7aeb72"
+  },
+  {
+   "seed": 218,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 6,
+   "diffSha": "ac627311c7e69b735830cda1a5e2143f0414721b6a46abec7101e9e97a96fd3b"
+  },
+  {
+   "seed": 219,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 0,
+   "diffSha": "5143e23147bfac51c54586986c429d702b87f5dffb2cc307ddb1b54a0b082250"
+  },
+  {
+   "seed": 220,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 10,
+   "diffSha": "289f9c6eb7fc38c2a73054f8e8b9ab988c4d1d04dfa3377d004dc938ac74fb7e"
+  },
+  {
+   "seed": 221,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 84,
+   "diffSha": "3f721bdf1926ac9c38f252f7a4f21ce6d73223878ff4d84f0ba15395d6a313ad"
+  },
+  {
+   "seed": 222,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "338a67c51f8bad3d25a175d4b4e1adb4e16ecac44e91fa2865d7347c12280f61"
+  },
+  {
+   "seed": 223,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 35,
+   "diffSha": "03ebaf68fa31f0fc98cd624d87634d7c1d00bf7b6ad23e17425bda77fdc0dec5"
+  },
+  {
+   "seed": 224,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 15,
+   "diffSha": "f274f26fb7d51f276ff2852a01dad93712bd8157918f6883385fcf5d0a7f192f"
+  },
+  {
+   "seed": 225,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 11,
+   "diffSha": "ba5afda83f79b5e08e5b96abb51e4e460dc80ead039bfe47a7777091d1519d99"
+  },
+  {
+   "seed": 226,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 8,
+   "diffSha": "4ac6974406f418756db8bbdc3aebec91c74b14ed5c59bb68edc160b1ef54853a"
+  },
+  {
+   "seed": 227,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 6,
+   "diffSha": "e9b4bcc964b7c1540fc9d931fb2bdaa71e73de9baf5c636928074a46ef9a8897"
+  },
+  {
+   "seed": 228,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 0,
+   "diffSha": "730446ce335452d2ec0c59b36e7b4582f08bd1d7d9de7010f4f1d3ded2cc99b2"
+  },
+  {
+   "seed": 229,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 43,
+   "diffSha": "66e1b544b0e7d157829b13baa209ee5f25b8109d8bb9ee10c1958fac56457f64"
+  },
+  {
+   "seed": 230,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 3,
+   "diffSha": "1187fcaf2f0671a2f89dfcbdd0357017302d9baeb23aca439d494bf5cb031971"
+  },
+  {
+   "seed": 231,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 21,
+   "diffSha": "416fd655364adf3422e12200b3a718c7f36b6db9630ac0aebf20a1625e4b3feb"
+  },
+  {
+   "seed": 232,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 2,
+   "diffSha": "9e1ee729f862c762646e668ec955c2f4c1412c48cbddb4d4e5011cf9762373e3"
+  },
+  {
+   "seed": 233,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 0,
+   "diffSha": "feacab9189872d1ab3f8d879a68e395d8e68651cca6f81b8353485a8e8ce1bc6"
+  },
+  {
+   "seed": 234,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 11,
+   "diffSha": "3402c503f818af646ce8b09373f8a87b9eeb6df9909ae643f69963bc9edae125"
+  },
+  {
+   "seed": 235,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 23,
+   "diffSha": "721466d91f489a80281d7d5fb7f58bf1af4b698a3c2a9195d1281b13b015e1b0"
+  },
+  {
+   "seed": 236,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 0,
+   "diffSha": "58e39b8e0598d8729f3c9c3aa8ffac1d71c6c593e8004aba2a505010d5c46d60"
+  },
+  {
+   "seed": 237,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 1,
+   "diffSha": "f1aa3353e0201a3f08e10bc059d67418cfbb185318d28e9fd181a59a67196645"
+  },
+  {
+   "seed": 238,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 0,
+   "diffSha": "e6d240a34fe0afee374beb6a9c27f6f713c7c6a095b2614de54a25ef92bae203"
+  },
+  {
+   "seed": 239,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 5,
+   "diffSha": "3ac9800990bf503de27fb14dc810ba56ee10583215492c6f01fbcc02708a860d"
+  },
+  {
+   "seed": 240,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 55,
+   "diffSha": "5ed3456fed924eedddd2383688e791d1c427c788d1e50e097aa3b8e638bc079a"
+  },
+  {
+   "seed": 241,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 1,
+   "diffSha": "9b434f0ee72d243c6a3f5d7294aed59e73922d023620a091cae59e763c494d39"
+  },
+  {
+   "seed": 242,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 2,
+   "diffSha": "c98b81ce5c773c23d34f8df86ea819606d714988c9c56462e94bb037988337a2"
+  },
+  {
+   "seed": 243,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 13,
+   "diffSha": "91589269b87fcf7aab65b59bc2884e83b286826425bcfe14297a4a4ca1f14bfc"
+  },
+  {
+   "seed": 244,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 39,
+   "diffSha": "b3e06cc80849056e508eb2dd13cecd915350ae5c2c087b501d2177130d277251"
+  },
+  {
+   "seed": 245,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 0,
+   "diffSha": "45f8a181970ee383ddc435488a7225616d2a58e05d162b65283a7e415f640703"
+  },
+  {
+   "seed": 246,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 11,
+   "diffSha": "c8f86e95d8a7034a2c5a4942e4481259dcc948b267a20e1d8912a94749f360ae"
+  },
+  {
+   "seed": 247,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "0fa909cf7b4438e4149f512d3dfa25a89fe42e373447bd47e5bf4b277c1c33e0"
+  },
+  {
+   "seed": 248,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 13,
+   "diffSha": "e2984be28760ae94fa3780822b017ced26040e6af696db8373244eb41357b903"
+  },
+  {
+   "seed": 249,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 16,
+   "diffSha": "6cabfc3cd822ca810468e298103f6b94c4c56d9e73be864acd7b2f6dda3f12b2"
+  },
+  {
+   "seed": 250,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 4,
+   "diffSha": "04ee07e1bbdd3cd3e5e4d325de98812e1f08aa4ad2c2c430d8cc3a152b316692"
+  },
+  {
+   "seed": 251,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 16,
+   "diffSha": "e347ef4184383f21f06fe74684d3e4a9a70286b4c398c3d033ef97e54f8b0344"
+  },
+  {
+   "seed": 252,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "e79ae7da5d29da1e4b9e5765773d174b88c03619ce519a1c6af44d4fa3c9dc9a"
+  },
+  {
+   "seed": 253,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 17,
+   "diffSha": "5012f3ef078471f82d4e6fff2c2f533147e6d5cf2175fb8ab36ab5012e0845fa"
+  },
+  {
+   "seed": 254,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 10,
+   "diffSha": "e41ee4f69e33d572adb838407c943b70652a378bf14f29e85ced8bb14be15bd4"
+  },
+  {
+   "seed": 255,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 2,
+   "diffSha": "384f01cf4a452c2119d776989c6ab8beeb67fa65d8b985b4d427ff6b674100ce"
+  },
+  {
+   "seed": 256,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 42,
+   "diffSha": "4db8451691d68c6a6e2c9a2429b16ce786f93730290a12dd74a426707b30cd93"
+  },
+  {
+   "seed": 257,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 3,
+   "diffSha": "8a6e185792ca7d7241c0b8848d5407410a4fb498c523d6f585561da921790a5f"
+  },
+  {
+   "seed": 258,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 11,
+   "diffSha": "d97865039f1234bcf8816d18708a107520075a1bf1a622efb944abcb43fc6048"
+  },
+  {
+   "seed": 259,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 0,
+   "diffSha": "6eb69e26de2a26eda48af77d4cec893aa0cf4748a64cbefcfe11a22c1e680ad9"
+  },
+  {
+   "seed": 260,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 1,
+   "diffSha": "dd19f17227b15b890a2f40fd4e9b9243344d979b0a0bfa0b51e6e461bb8511fd"
+  },
+  {
+   "seed": 261,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 6,
+   "diffSha": "c6e3893140d7e59d1d9981b1064b44ebf0f88cd315be5fbd5365833a8d5a162c"
+  },
+  {
+   "seed": 262,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "69347c03101f29b21568a3e8924824462e8f0775c7a930be2df3087f54e199dd"
+  },
+  {
+   "seed": 263,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 9,
+   "diffSha": "e95a19850bd957988ac9048d877108d9a35861931e7dae05ff87d7e5d67eccbe"
+  },
+  {
+   "seed": 264,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 44,
+   "diffSha": "983fef8a7e61962742abb57cdc5e101b8f8915c5659706dcc5188ba7e2520523"
+  },
+  {
+   "seed": 265,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 3,
+   "diffSha": "9880e5dfd7de080625bfdb05d40ffae46f50f177a23ca47610cc9c2b5693e16f"
+  },
+  {
+   "seed": 266,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 38,
+   "diffSha": "0fc7fc16b050dc1ab56baa6d0a899ae1693e8a1df0d4c0d2d201f4160fcefd32"
+  },
+  {
+   "seed": 267,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 1,
+   "diffSha": "fa8b3153cbe1919f7fc5342708dc1ee970dcff38da2afd60ee5b11733ac4705d"
+  },
+  {
+   "seed": 268,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 73,
+   "diffSha": "69ba3101bfae24806b82a5f79a365de65bd634ae1c30e40508be18382ade9df1"
+  },
+  {
+   "seed": 269,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 0,
+   "diffSha": "6edd9f6f9cc92cded36e6c4a580933f9c9f1b90562b46903b806f21902a1a54f"
+  },
+  {
+   "seed": 270,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 6,
+   "diffSha": "375c7fc53f978b37e13a204642bff3c898dd4a61d0314351abe550db1578ca1f"
+  },
+  {
+   "seed": 271,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 7,
+   "diffSha": "9ef6270d560fff1bb11857840edd56e487584e138d215547706b045ed67dfe53"
+  },
+  {
+   "seed": 272,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 4,
+   "diffSha": "63cc157da590c9a0119559eb6db838a533cbae61bab4f45d5cf697726092e049"
+  },
+  {
+   "seed": 273,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 6,
+   "diffSha": "2933e1d23c984f6cac013f820c721a55a4fcca1e0216d0d173fba51b8ec23a7c"
+  },
+  {
+   "seed": 274,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 7,
+   "diffSha": "eb33437589fcb7b93fa154d61dcd0c5e0c8af9a493d049d29ed30984f7008b69"
+  },
+  {
+   "seed": 275,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 56,
+   "diffSha": "24b0402001704da2302cf44c6300e924fc60798237a8e6d4d77324074803fa4f"
+  },
+  {
+   "seed": 276,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 55,
+   "diffSha": "d179faa96a74a91f18920360a662ee92656309355691d32d6704c34ed3c10a3d"
+  },
+  {
+   "seed": 277,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "a3909adb91b0c0f46edebd5dae7c3ede4e8763d424459993baf4f7354061f0bc"
+  },
+  {
+   "seed": 278,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 45,
+   "diffSha": "ec4d00d40e1126ae5677c1bc8e105783704aad9dfdd3dcb6d6fa0d4be93c5cbd"
+  },
+  {
+   "seed": 279,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 80,
+   "diffSha": "5c39a17818c37476a0e7a939bb51f9da2b7b0260fd33318af6d0d8e8efe3ff92"
+  },
+  {
+   "seed": 280,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 1,
+   "diffSha": "e47592be506dfe527e8d530027b90d03b8f37b979a5a20265bff9f866504dacc"
+  },
+  {
+   "seed": 281,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 17,
+   "diffSha": "0f8398e1044ad3272dc838826a7c11fedc65099055b8bd5726ae1e308a942605"
+  },
+  {
+   "seed": 282,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 3,
+   "diffSha": "c5618371627f61c360774ee1d3ba7ae07419ef1f3e8f436cf90ee6ed763acf16"
+  },
+  {
+   "seed": 283,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 9,
+   "diffSha": "fcf7e5f7029cea8c0c9fb7a11cfee3bfff2f179d0b55df23e52e59127fb9df39"
+  },
+  {
+   "seed": 284,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 3,
+   "diffSha": "802b1ed93eb631ae220ac37e1d2c9a30beb189cd8acd0688b965dafd73c0428e"
+  },
+  {
+   "seed": 285,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 3,
+   "diffSha": "cb12566311ff0ee23a7bfe1749ee5a58847c97ca1e11ac86f5ad160eeadee98e"
+  },
+  {
+   "seed": 286,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 67,
+   "diffSha": "833d0ad7516318f72f60194659f8f92f81a467a973b2b9baf6ac2d902f8a8861"
+  },
+  {
+   "seed": 287,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "e52c2cb81bae5a4bd5080c26527acc497181b9e0d5930489e10f3b525aaf3d0e"
+  },
+  {
+   "seed": 288,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 10,
+   "diffSha": "f6ad790ebb9918655e4aefb56992eca46e5f796e0894978f912b022e6c8b4d6d"
+  },
+  {
+   "seed": 289,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 5,
+   "diffSha": "dd4ce6b123668cd6b5f23cafb2bf0f42853caf3e004d90620c06c702497fe250"
+  },
+  {
+   "seed": 290,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 23,
+   "diffSha": "f9ca054096fe94138c8b3ab94cf7c96aed8a87e623b8e9b239c54f1f901f0d96"
+  },
+  {
+   "seed": 291,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 107,
+   "diffSha": "546ffca4a38078d6dabf406e37fbbc128fdb9923bdf373f5714764e4e1e0def5"
+  },
+  {
+   "seed": 292,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "0fb7418a496ee9bfb135bb45f3923db35baa185408211d6c674ef040ac380c9f"
+  },
+  {
+   "seed": 293,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 23,
+   "diffSha": "311b5c27a19051880b75b05c0dc01e57e6dc95f9a210d3ee9bab487650bcb40e"
+  },
+  {
+   "seed": 294,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 4,
+   "diffSha": "292f1df6daeda7067c227998c6052176c3de8d9a399f1b65df4643118cf6c51b"
+  },
+  {
+   "seed": 295,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 19,
+   "diffSha": "22beaff390751729d21ebe28b851df3c078e693114d8ae5be86495fa83cad5e9"
+  },
+  {
+   "seed": 296,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 12,
+   "diffSha": "ba6e835bced1202d2255428c2b8cf816ba875f701636c8f582bdbf2084ead1bd"
+  },
+  {
+   "seed": 297,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "18bba00c38be7f8b036c3c8fb5152b17b0d218c30b1a5ce25054485bb30ec889"
+  },
+  {
+   "seed": 298,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 3,
+   "diffSha": "3f22f2464079a0d71836ff855f0ed9870451a41f94f2dc3c1d8b0f9f3b1db7ac"
+  },
+  {
+   "seed": 299,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 7,
+   "diffSha": "383e2afc8c93e0fc21a2d2d54cb683e81821beae63b68a1741d50d5c4cf1d1bc"
+  },
+  {
+   "seed": 300,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 18,
+   "diffSha": "2cb1595dfdc4494d2244d0ed4a2ea52dd58d99ef82e9dab61522dbf891a457c9"
+  },
+  {
+   "seed": 301,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 29,
+   "diffSha": "5c4a3240d4041c80c8f2814ae779337b87219def2a7dde5a2f11d729196693dc"
+  },
+  {
+   "seed": 302,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "35d6b1b37771ae9850b6988e0348156f32687a5e69b491e4a595b1eedec4041a"
+  },
+  {
+   "seed": 303,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 9,
+   "diffSha": "d884616076cf96a62248e519c78a65432ed4bd6841d2af244729389928e61096"
+  },
+  {
+   "seed": 304,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 13,
+   "diffSha": "17fd9372f48dadc1adcd2a0aa69638795db779a195176180c8ddd269d9cdafbb"
+  },
+  {
+   "seed": 305,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 8,
+   "diffSha": "f1fcb33a7a1fae7aea442eb6a3fb8c1e1c97c251d410159dc6d976da56556c77"
+  },
+  {
+   "seed": 306,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 9,
+   "diffSha": "2535b0aa9fee28c4083fdcd328200a89e666a37e8588b0da6edf131b2ba39c1f"
+  },
+  {
+   "seed": 307,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 2,
+   "diffSha": "f1d6bf95e4e1a84bb30b9045bb1ad1429d5e4de4fbbe6da62f547fd8a473fa31"
+  },
+  {
+   "seed": 308,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 6,
+   "diffSha": "66fcbc79c765f1ea3978f50b464633b660d833c5acfbe35f9f05a4e4c50c7c13"
+  },
+  {
+   "seed": 309,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 5,
+   "diffSha": "d3ea2d9742b4209f50cb5c593080ae5279f831fd17c6e7def6844a918d0a8dca"
+  },
+  {
+   "seed": 310,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 6,
+   "diffSha": "10fd83827c0c4e1b89a000ec86b8fcf195168e81dc34eb651c09ac9651ce95e8"
+  },
+  {
+   "seed": 311,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 31,
+   "diffSha": "c9b7db0ca8072bb6bb37f7443d39d13d40abc1a7716d8b402d24f917612ac324"
+  },
+  {
+   "seed": 312,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "dd4210854910ce0fbe5a8610f81f81590db0d61be38f5d9328737b09b5dda020"
+  },
+  {
+   "seed": 313,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 9,
+   "diffSha": "a60cc320c12b03920a2fc1f8a805d9af6fcaa1a4b46db4c9b79c8f43c91400dc"
+  },
+  {
+   "seed": 314,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 0,
+   "diffSha": "2b63efc11f049529eb9b9876a5396ba3a5af8b73f813836efd844c114bb29834"
+  },
+  {
+   "seed": 315,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 12,
+   "diffSha": "00d76ab50b97b9770745f527ac5d3f8e3fd86ec3ea1ba5d266cb5550c35a36ce"
+  },
+  {
+   "seed": 316,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 17,
+   "diffSha": "fc6747624c4ebe6800a369d7252bd3e9dd052496bbdd0d69d6a7b620b1b3e67b"
+  },
+  {
+   "seed": 317,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 1,
+   "diffSha": "bcbe6695f584a103e0c62c43ecbe3c7e844fa51a5e092f03f18824cbd7699d24"
+  },
+  {
+   "seed": 318,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 22,
+   "diffSha": "f38513b434c39d34d0f1974afcecff67bb191f9a64c5c6c80a49322ab719dbee"
+  },
+  {
+   "seed": 319,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 20,
+   "diffSha": "63fa7c8123a036401c76000821f5bc80c939ff69c39e6235ecbb2be8618e7244"
+  },
+  {
+   "seed": 320,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 6,
+   "diffSha": "05461455cde42ec12886f11f93f0bae9a1f34b2b21ec93670ba83810a2d4823b"
+  },
+  {
+   "seed": 321,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 0,
+   "diffSha": "bd918be35cd143889978726f63e4b3fa44c743013b1b544633ee131b681c0619"
+  },
+  {
+   "seed": 322,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 3,
+   "diffSha": "24b951227366e8798e7775bca5bb61459f58e6064612bab264fee858fc4bf701"
+  },
+  {
+   "seed": 323,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 15,
+   "diffSha": "09ad3bb0fb4ebcaa89618d041e38442a7509ada4748df051351177732939b313"
+  },
+  {
+   "seed": 324,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 6,
+   "diffSha": "ff8efa1c8a2834dbc1b18b1c8abbd33981acc6fab93de9c55408fd2f23185c64"
+  },
+  {
+   "seed": 325,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 2,
+   "diffSha": "164e6df3762b9d2f0e9fd36d77e5a1a86e07c9c27c5bf4cbd3be97c621767a91"
+  },
+  {
+   "seed": 326,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 12,
+   "diffSha": "8b87a7ee544bb4f47c3ddba258214810764d87e996a06d78de51103c0c664838"
+  },
+  {
+   "seed": 327,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "2e5195e60d5512b9aa2572426a508e2970e500b3ba2cbdc29839378f2c2971de"
+  },
+  {
+   "seed": 328,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 36,
+   "diffSha": "23aebbb338cd3050101cdf4be2754631b6feba82160ba8c522c1f0ab5e0c7c3e"
+  },
+  {
+   "seed": 329,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 16,
+   "diffSha": "3024d3e986c36d76cd95ba7e1a314345c2a0f7eae0b4cffc106b7e7f32318878"
+  },
+  {
+   "seed": 330,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 6,
+   "diffSha": "6ad0d6bf79629a62c45ef37df6b8214decacaf6c36e84fc1206fddc6cd21381f"
+  },
+  {
+   "seed": 331,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 5,
+   "diffSha": "8f3780e9e77d34e2387acb8d1b4ac87cbeb784b616c05f90e4b22ee59e2e5725"
+  },
+  {
+   "seed": 332,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 8,
+   "diffSha": "4a13f9d97a0b31ef4f172894c2e294a019d64a53f9b8dbc969f5162b2d22fe0f"
+  },
+  {
+   "seed": 333,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 6,
+   "diffSha": "7d050731d62957b66766aca5427cc03cfbe115555fd08e337568e447d124c8bf"
+  },
+  {
+   "seed": 334,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 4,
+   "diffSha": "07f2f6ee8de455dea99d995dc2a439ebb6578132779de8c7bf4f9a4a7139d4e0"
+  },
+  {
+   "seed": 335,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 4,
+   "diffSha": "3e814687c618aa0ee61f314a97bf27cd9ed083f1c06300fd495e7b53a0304289"
+  },
+  {
+   "seed": 336,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 21,
+   "diffSha": "ec6243e43f55ccc52133891a5f31f20c2622b2a46fd825b9e0a45748ee6cc6b1"
+  },
+  {
+   "seed": 337,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 5,
+   "diffSha": "e91f8cfcdc0cf085e38047a5956d1910f8aa75186c5e6e9dddc1c1fec534b82a"
+  },
+  {
+   "seed": 338,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 6,
+   "diffSha": "e919e80475388dd66200752abd544c3b6518741fe23d9adb19898b0569a5d1a9"
+  },
+  {
+   "seed": 339,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 15,
+   "diffSha": "cf60c5bee0f38fe62dd9daf55d58131f2127b8487a2701ea957ed87ed8b8dcf4"
+  },
+  {
+   "seed": 340,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 2,
+   "diffSha": "6b3b63a0c2d20bdd17d87def76bbc98862e2e40caf223e7b661b863fc25b8b5a"
+  },
+  {
+   "seed": 341,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 38,
+   "diffSha": "4a6f25905d4e60017bf586692c7bab7db61a707743dd7a57f34ac1202d97724b"
+  },
+  {
+   "seed": 342,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "a07630291c1d49538df082d25706cdb9b2a77573e074725fbb225b82eccabde0"
+  },
+  {
+   "seed": 343,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 9,
+   "diffSha": "3b5f5f202c4167c1450a98e64904dbc407e94d3b4d39bca3746ea95096be1edd"
+  },
+  {
+   "seed": 344,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 3,
+   "diffSha": "9b08547ad706e82f1d266c5be41fba435170edd00f6287c6a6adee540c73b32e"
+  },
+  {
+   "seed": 345,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 11,
+   "diffSha": "6438eed9d7fedd5a3537256f0fa9d96130f7acb176a845dad694d50d93c90fdc"
+  },
+  {
+   "seed": 346,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 31,
+   "diffSha": "2461835c1e709a4aa4cbbccd1c54621b6211b55460c8145eb62c40c18598fff4"
+  },
+  {
+   "seed": 347,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "55e3913d0634e0bba7abf46f270e8d754edee208d9e0661eef2eb3d12844285a"
+  },
+  {
+   "seed": 348,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 9,
+   "diffSha": "6b5a5c48c610469c070c97271135481b7317a68f1f206b994c864cbcc75aeefb"
+  },
+  {
+   "seed": 349,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 0,
+   "diffSha": "c76903cde8580d1c809ac5352aab33af5a310ad05126294d66e06db880c463ed"
+  },
+  {
+   "seed": 350,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 6,
+   "diffSha": "5c0170f1fb4c095556db69a18140c097e06cde3b36370f065f320adafdae10bc"
+  },
+  {
+   "seed": 351,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 4,
+   "diffSha": "0dc9c68a9e1b86c495874c40f5ea495aaee7f3fe5a4fe73ca66ef3af2220b806"
+  },
+  {
+   "seed": 352,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 1,
+   "diffSha": "e3da68e895a8c8962d344c736b47d0cec47d3864d4bce9949d4fcd95adcf8ccf"
+  },
+  {
+   "seed": 353,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 10,
+   "diffSha": "558c7db0bcd78ef2cbcd33b9838262cbe44b03a971dfb02f429cfbfac7bae856"
+  },
+  {
+   "seed": 354,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 17,
+   "diffSha": "bfaeb345fb71a08a581da7e91f0e1e762f8a471e6d3f9c0d91612c29090e3264"
+  },
+  {
+   "seed": 355,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 0,
+   "diffSha": "be23c1906ab51ee24260bf086d7095408bf43ed57e16e90d8bdf51ac811ff83d"
+  },
+  {
+   "seed": 356,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 9,
+   "diffSha": "eb5c3b6976317103cb2e625cf2b05b4e9143d78f7b16a213341f413e474617a7"
+  },
+  {
+   "seed": 357,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 1,
+   "diffSha": "dbf56bc6b27653fd7c68271c59ca258e3f69445640b1f7e76f587f09565ff6be"
+  },
+  {
+   "seed": 358,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 3,
+   "diffSha": "508bcc526a2a03d9411d02fbceffde5678127dab0385b3a1ebdf32b6c083525e"
+  },
+  {
+   "seed": 359,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 10,
+   "diffSha": "3b978bd56749119657bb9da7bf8d3e5df1662cfd940b195328f9dfae57210e06"
+  },
+  {
+   "seed": 360,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 2,
+   "diffSha": "e96c85fe43f45dd9f45d3a5ee42cc6a160ff6525e1d1c1d33e0259e82e026bee"
+  },
+  {
+   "seed": 361,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 34,
+   "diffSha": "2ef3412ba3c0dd27edb0f2e51a06b1d33053038d2908f5ead42e4043f2787a98"
+  },
+  {
+   "seed": 362,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "193455a2badd1e6d9cf68e59f6cbf5f988a5e07586e595fdfc87c7ed5168921f"
+  },
+  {
+   "seed": 363,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 20,
+   "diffSha": "2c7703b8cc3ee8c8cf141c08c1717eb89ad69f8e6efb1881fd1c0848d5981bd7"
+  },
+  {
+   "seed": 364,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 4,
+   "diffSha": "eb3b50d83a29c3a68cd8ae9efdb6fcbac65b8adfab2235e15b81bc30f16914db"
+  },
+  {
+   "seed": 365,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 30,
+   "diffSha": "f16a5126f23ed74f5be72f4fe9b9448e5da37cb7983c226028ab9152a911526f"
+  },
+  {
+   "seed": 366,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 35,
+   "diffSha": "fc53e080ed3ec6d16dabb52acaf6614657452ba54e120cbb01232ebb11a540ce"
+  },
+  {
+   "seed": 367,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "114bfa6c14774a515c094ef6abd1cb80e45c947bf8a0ab4598d18470e7eb80ea"
+  },
+  {
+   "seed": 368,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 28,
+   "diffSha": "67fb939745bc14d06ae3dc860edec5483297c06ace780847364664ac2a68fd93"
+  },
+  {
+   "seed": 369,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 21,
+   "diffSha": "d92abda0676bd41978a76ef00a094edc56278f193f6f1a7be5a765e9f3206ea5"
+  },
+  {
+   "seed": 370,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 8,
+   "diffSha": "3a32c5f71a7f456ba58733346ccddaf4cf631d3a027533d88024e6986f3be5ae"
+  },
+  {
+   "seed": 371,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 13,
+   "diffSha": "fcdf7ac5736fa7b4d54f3fa43da6ebf3a6aea7a33d2cc32081be4d7d04c48cf7"
+  },
+  {
+   "seed": 372,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 2,
+   "diffSha": "6b094a5810c28a7ca8be55281f3eec6d223fc019d44753ccbf0af22b1d82ccf3"
+  },
+  {
+   "seed": 373,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 20,
+   "diffSha": "afdfb9d7ed23189cddd3a47cd39d1e0f28ae7e9e4a9906bcf9554a204d9341a2"
+  },
+  {
+   "seed": 374,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 21,
+   "diffSha": "c5c42a3b542d6c85771fa8d928f3e0f4af0e7e708ced5ac846c038e9d4ef42bd"
+  },
+  {
+   "seed": 375,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 3,
+   "diffSha": "80f6f6588c99ad648235fd93ab71bce16a358178e8acb0cb008e61010863bad7"
+  },
+  {
+   "seed": 376,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 0,
+   "diffSha": "e4552dafdb0d8d04784af4832aa1a85e552a1bcdaedad7b5b59a93360094e723"
+  },
+  {
+   "seed": 377,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 1,
+   "diffSha": "7375a670426e7b38cf7991e1698fda25be4e816d1a90b6247d57769b9c36455c"
+  },
+  {
+   "seed": 378,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 58,
+   "diffSha": "f86e60e9b694577384c938e7e04f18cf9b0bdadbc4fe617d2754e45c025ae103"
+  },
+  {
+   "seed": 379,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 5,
+   "diffSha": "1840db2844e0c6da2d6904ef6f33631610436d4cb92e1fac9fb00fc7cfe0eb97"
+  },
+  {
+   "seed": 380,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 1,
+   "diffSha": "8e989c85eb64a83e22ea16663ca0d5de0202f95fbad635f51b1e3d7263f89234"
+  },
+  {
+   "seed": 381,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 23,
+   "diffSha": "0800c3686f02e6ac84447497b68e69f511a46309fc2320d4a0e28303836301cc"
+  },
+  {
+   "seed": 382,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "76af98ca2f4e309ed86b91f9b5c3cfc5a9be3af426b0fd2e12c08bb041ddde2c"
+  },
+  {
+   "seed": 383,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 6,
+   "diffSha": "f4fdf0c82bd34ea4c97dc633dd5dd51fbdaebebc41d6b14ceb4edf743cb2f492"
+  },
+  {
+   "seed": 384,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 20,
+   "diffSha": "0e3112a04fc3bbe7c0bc2bc1df3b1b6fc627691c37220602c89cc26215fff8ea"
+  },
+  {
+   "seed": 385,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 11,
+   "diffSha": "8c98255106843d8b9c150b42eaeb272ca731c0796c767846aaa7827d94984ad1"
+  },
+  {
+   "seed": 386,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 42,
+   "diffSha": "73768350d6cbc46c275c7af613e6321279e94363b39d25b15392d0032898aec1"
+  },
+  {
+   "seed": 387,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 0,
+   "diffSha": "2924653f63191185f8d69ef8e04ce47b5e412f84ae5b3f6c767e0b89c1e7d93e"
+  },
+  {
+   "seed": 388,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 0,
+   "diffSha": "3e71c45ef98c66132021d55ba06b19f87aae2b6691768520b5ebb79577fc3133"
+  },
+  {
+   "seed": 389,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 7,
+   "diffSha": "d56f4c5f9cccab1c5862494a388b346bce4ecda0e5e94e59468af638233ece85"
+  },
+  {
+   "seed": 390,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 0,
+   "diffSha": "241f246a71df996ad8a30f2bb65701f958f1238b9dc99e03516edf182600e9f0"
+  },
+  {
+   "seed": 391,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 13,
+   "diffSha": "0e5c094ae580775fde41a77acfc6e1f67bf483069f14a04aab0e98908747ad23"
+  },
+  {
+   "seed": 392,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 1,
+   "diffSha": "701a9c9706ff86d2a7e05c60c8636c9286ef46414274dee14fa4f63df586fabe"
+  },
+  {
+   "seed": 393,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 10,
+   "diffSha": "fd05b5a1a045651cb9b2a9b822301b797382c8d93d32cc710ca49c13fdcc63da"
+  },
+  {
+   "seed": 394,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 5,
+   "diffSha": "f54c729f888c691b929dad72835ef2d8df741ad85d98c8b53e65c0c8fdab9da6"
+  },
+  {
+   "seed": 395,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 10,
+   "diffSha": "73b8bff5deeaf97d92c5926a1f6f1fbe8cfbf28ed81e7b00be5c36f3a9c5dccf"
+  },
+  {
+   "seed": 396,
+   "opts": {
+    "threshold": 0
+   },
+   "count": 72,
+   "diffSha": "6513f9385ca04b03621045117cfe4bf979300a18812b0c761a1185dca41bdb35"
+  },
+  {
+   "seed": 397,
+   "opts": {
+    "threshold": 0.5,
+    "includeAA": true
+   },
+   "count": 1,
+   "diffSha": "d5233be1b32bf01b7e6f662c90efcd256e3a3a0d92fb6c75d806edee6f325b00"
+  },
+  {
+   "seed": 398,
+   "opts": {
+    "threshold": 0.05,
+    "checkerboard": false,
+    "alpha": 0.5
+   },
+   "count": 0,
+   "diffSha": "48d34e050f87a983c80d2eb6006c1b8f47ced042da85659f47418e47958e2837"
+  },
+  {
+   "seed": 399,
+   "opts": {
+    "threshold": 0.1,
+    "diffMask": true,
+    "diffColor": [
+     0,
+     128,
+     255
+    ],
+    "diffColorAlt": [
+     200,
+     0,
+     200
+    ],
+    "aaColor": [
+     0,
+     255,
+     0
+    ]
+   },
+   "count": 9,
+   "diffSha": "4ea962c8b04a3ef12c021a617819ef173940fccfddfe44626799dc35e450026e"
+  },
+  {
+   "seed": 400,
+   "opts": {
+    "threshold": 0.1
+   },
+   "count": 5,
+   "diffSha": "37e90ef2e157a71f42febf21096072982063d7a4292a86561aeb6f3b7c07b470"
+  }
+ ],
+ "decode": [
+  {
+   "name": "codec-ct0-f0.png",
+   "width": 13,
+   "height": 9,
+   "decodedSha": "55f022e710a34a0b324ab8171d6dd0adbea80432db04b1359903e4ef794ecc03"
+  },
+  {
+   "name": "codec-ct0-f1.png",
+   "width": 13,
+   "height": 9,
+   "decodedSha": "55f022e710a34a0b324ab8171d6dd0adbea80432db04b1359903e4ef794ecc03"
+  },
+  {
+   "name": "codec-ct0-f2.png",
+   "width": 13,
+   "height": 9,
+   "decodedSha": "55f022e710a34a0b324ab8171d6dd0adbea80432db04b1359903e4ef794ecc03"
+  },
+  {
+   "name": "codec-ct0-f3.png",
+   "width": 13,
+   "height": 9,
+   "decodedSha": "55f022e710a34a0b324ab8171d6dd0adbea80432db04b1359903e4ef794ecc03"
+  },
+  {
+   "name": "codec-ct0-f4.png",
+   "width": 13,
+   "height": 9,
+   "decodedSha": "55f022e710a34a0b324ab8171d6dd0adbea80432db04b1359903e4ef794ecc03"
+  },
+  {
+   "name": "codec-ct0-fadaptive.png",
+   "width": 13,
+   "height": 9,
+   "decodedSha": "55f022e710a34a0b324ab8171d6dd0adbea80432db04b1359903e4ef794ecc03"
+  },
+  {
+   "name": "codec-ct2-f0.png",
+   "width": 13,
+   "height": 9,
+   "decodedSha": "2339adba4639f7c008fa9eaf2005811169c057e6d4f27255e14c5775e46fc9de"
+  },
+  {
+   "name": "codec-ct2-f1.png",
+   "width": 13,
+   "height": 9,
+   "decodedSha": "2339adba4639f7c008fa9eaf2005811169c057e6d4f27255e14c5775e46fc9de"
+  },
+  {
+   "name": "codec-ct2-f2.png",
+   "width": 13,
+   "height": 9,
+   "decodedSha": "2339adba4639f7c008fa9eaf2005811169c057e6d4f27255e14c5775e46fc9de"
+  },
+  {
+   "name": "codec-ct2-f3.png",
+   "width": 13,
+   "height": 9,
+   "decodedSha": "2339adba4639f7c008fa9eaf2005811169c057e6d4f27255e14c5775e46fc9de"
+  },
+  {
+   "name": "codec-ct2-f4.png",
+   "width": 13,
+   "height": 9,
+   "decodedSha": "2339adba4639f7c008fa9eaf2005811169c057e6d4f27255e14c5775e46fc9de"
+  },
+  {
+   "name": "codec-ct2-fadaptive.png",
+   "width": 13,
+   "height": 9,
+   "decodedSha": "2339adba4639f7c008fa9eaf2005811169c057e6d4f27255e14c5775e46fc9de"
+  },
+  {
+   "name": "codec-ct4-f0.png",
+   "width": 13,
+   "height": 9,
+   "decodedSha": "8bd97da066bafa813e62a20bb70f4d394ad7fc485ae3648350e04a85083a6bc2"
+  },
+  {
+   "name": "codec-ct4-f1.png",
+   "width": 13,
+   "height": 9,
+   "decodedSha": "8bd97da066bafa813e62a20bb70f4d394ad7fc485ae3648350e04a85083a6bc2"
+  },
+  {
+   "name": "codec-ct4-f2.png",
+   "width": 13,
+   "height": 9,
+   "decodedSha": "8bd97da066bafa813e62a20bb70f4d394ad7fc485ae3648350e04a85083a6bc2"
+  },
+  {
+   "name": "codec-ct4-f3.png",
+   "width": 13,
+   "height": 9,
+   "decodedSha": "8bd97da066bafa813e62a20bb70f4d394ad7fc485ae3648350e04a85083a6bc2"
+  },
+  {
+   "name": "codec-ct4-f4.png",
+   "width": 13,
+   "height": 9,
+   "decodedSha": "8bd97da066bafa813e62a20bb70f4d394ad7fc485ae3648350e04a85083a6bc2"
+  },
+  {
+   "name": "codec-ct4-fadaptive.png",
+   "width": 13,
+   "height": 9,
+   "decodedSha": "8bd97da066bafa813e62a20bb70f4d394ad7fc485ae3648350e04a85083a6bc2"
+  },
+  {
+   "name": "codec-ct6-f0.png",
+   "width": 13,
+   "height": 9,
+   "decodedSha": "b0a46923b0d7327aeccbf90dfaa651e27b119cecd5626c55e4049efbf8785eba"
+  },
+  {
+   "name": "codec-ct6-f1.png",
+   "width": 13,
+   "height": 9,
+   "decodedSha": "b0a46923b0d7327aeccbf90dfaa651e27b119cecd5626c55e4049efbf8785eba"
+  },
+  {
+   "name": "codec-ct6-f2.png",
+   "width": 13,
+   "height": 9,
+   "decodedSha": "b0a46923b0d7327aeccbf90dfaa651e27b119cecd5626c55e4049efbf8785eba"
+  },
+  {
+   "name": "codec-ct6-f3.png",
+   "width": 13,
+   "height": 9,
+   "decodedSha": "b0a46923b0d7327aeccbf90dfaa651e27b119cecd5626c55e4049efbf8785eba"
+  },
+  {
+   "name": "codec-ct6-f4.png",
+   "width": 13,
+   "height": 9,
+   "decodedSha": "b0a46923b0d7327aeccbf90dfaa651e27b119cecd5626c55e4049efbf8785eba"
+  },
+  {
+   "name": "codec-ct6-fadaptive.png",
+   "width": 13,
+   "height": 9,
+   "decodedSha": "b0a46923b0d7327aeccbf90dfaa651e27b119cecd5626c55e4049efbf8785eba"
+  }
+ ]
+}

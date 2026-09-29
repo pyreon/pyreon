@@ -173,7 +173,7 @@ export interface IrParam {
    * that means for the runtime they target.
    */
   style?:
-    "form" | "spaceDelimited" | "pipeDelimited" | "deepObject" | undefined;
+    "form" | "spaceDelimited" | "pipeDelimited" | "tabDelimited" | "deepObject" | undefined;
   explode?: boolean | undefined;
 }
 
@@ -188,7 +188,7 @@ export type BodyEncoding = "json" | "form" | "multipart" | "text" | "binary";
 /** One property's serialization in a form body — OpenAPI's Encoding Object. */
 export interface IrFieldEncoding {
   style?:
-    "form" | "deepObject" | "spaceDelimited" | "pipeDelimited" | undefined;
+    "form" | "deepObject" | "spaceDelimited" | "pipeDelimited" | "tabDelimited" | undefined;
   explode?: boolean | undefined;
 }
 
@@ -435,6 +435,8 @@ export interface IrDocument {
 export type IrNoteCode =
   | 'unsupported-schema'
   | 'unsupported-ref'
+  | 'duplicate-key'
+  | 'unsupported-method'
   | 'cyclic-ref'
   | 'unsupported-const'
   | 'int64-precision'
@@ -482,6 +484,11 @@ export type IrNoteSeverity = "loss" | "choice";
 export const NOTE_SEVERITY: Readonly<Record<IrNoteCode, IrNoteSeverity>> = {
   'unsupported-schema': 'loss',
   'unsupported-ref': 'loss',
+  // A JSON object with a key written twice: `JSON.parse` keeps the LAST, so
+  // whatever the first said (a whole schema, a response) is gone.
+  'duplicate-key': 'loss',
+  // An operation on a method `fetch` refuses to send (`trace`).
+  'unsupported-method': 'loss',
   'cyclic-ref': 'loss',
   'unsupported-const': 'loss',
   'int64-precision': 'loss',
