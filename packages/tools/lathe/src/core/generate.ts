@@ -20,6 +20,7 @@ import {
   emitClient,
   emitNativeModules,
   hasNativeDataComponent,
+  hasNativeStreamComponent,
   emitWebEndpoints,
   emitWebQueries,
 } from "../emit/client";
@@ -593,10 +594,16 @@ function decide(
     };
   }
   if (isStreamOnly(op)) {
+    // A stream lowers through `useStream` to the native stream runtime, and is
+    // decoded INTO its declared event type -- asked of the emitter, so the
+    // report and the native layout agree about which streams get a component.
+    if (hasNativeStreamComponent(op)) return { reach: "web+native" };
     return {
       reach: "web-only",
       reason:
-        "a streaming response (SSE / NDJSON) -- PMTC has no streaming lowering, so streams are web-only.",
+        op.hook === false
+          ? "its hook is turned off (`operations.<id>.hook: false`, `naming.hook` or a plugin), so no native stream component is generated."
+          : "a streaming response (SSE / NDJSON) with no declared event type -- a native stream decodes each event into a declared type, so there is nothing to lower it to. Declare one with `lathe: { streams: { <op>: { event: 'Model' } } }` (or `data: 'text'` for raw SSE).",
     };
   }
   if (op.hook === false) {

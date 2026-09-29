@@ -35,6 +35,14 @@ export const noWindowInSsr: Rule = {
     // Same root cause as `inTypeofExpr`: the previous `parent.type ===
     // 'MemberExpression'` check was inert (oxc visitor doesn't pass parent).
     const skipPropertyNodes = new WeakSet<any>()
+    // A non-computed member KEY names a member; it is never a reference to a
+    // global. Shared by object properties and every class-member node type.
+    const skipMemberKey = (node: any): void => {
+      if (!node.computed && node.key?.type === 'Identifier') skipPropertyNodes.add(node.key)
+    }
+    const skipLabel = (node: any): void => {
+      if (node.label?.type === 'Identifier') skipPropertyNodes.add(node.label)
+    }
     // Identifiers inside TypeScript type-position nodes (`let x: Window`,
     // `interface X { y: Document }`, `type T = Navigator`, generics, etc.)
     // are type references — they're erased at compile time. Track via depth
@@ -507,6 +515,7 @@ export const noWindowInSsr: Rule = {
       // — equivalent to `this.isSSR = …` set at construction time. Keyed
       // as `this.<name>` so method-body `if (this.isSSR)` guards resolve.
       PropertyDefinition(node: any) {
+        skipMemberKey(node)
         if (node.computed || node.static) return
         if (node.key?.type !== 'Identifier') return
         const polarity = typeofCapturePolarity(node.value)
@@ -654,9 +663,32 @@ export const noWindowInSsr: Rule = {
         }
       },
       Property(node: any) {
-        // `{ document: 1 }` — `document` is a key, not a global ref.
-        if (!node.computed && node.key?.type === 'Identifier') {
-          skipPropertyNodes.add(node.key)
+        // `{ document: 1 }` / `{ document() {} }` — a key, not a global ref.
+        skipMemberKey(node)
+      },
+      // Class members: `class B { document() {} }`, `get window()`,
+      // `navigator = 1`, `accessor location`, and their `abstract` twins. The
+      // KEY is a member name; only a COMPUTED key (`[document.title]()`) is
+      // an evaluated expression, and `skipMemberKey` leaves that one alone.
+      MethodDefinition: skipMemberKey,
+      AccessorProperty: skipMemberKey,
+      TSAbstractMethodDefinition: skipMemberKey,
+      TSAbstractPropertyDefinition: skipMemberKey,
+      TSAbstractAccessorProperty: skipMemberKey,
+      // `enum Target { document }` — the member NAME is declared, not read.
+      TSEnumMember(node: any) {
+        if (node.id?.type === 'Identifier') skipPropertyNodes.add(node.id)
+      },
+      // `document: for (;;) { break document }` — labels live in their own
+      // namespace and never resolve to a global.
+      LabeledStatement: skipLabel,
+      BreakStatement: skipLabel,
+      ContinueStatement: skipLabel,
+      // `export { doc as document }` — the EXPORTED name is a module-interface
+      // name. The LOCAL side is a real reference and stays checked.
+      ExportSpecifier(node: any) {
+        if (node.exported?.type === 'Identifier' && node.exported !== node.local) {
+          skipPropertyNodes.add(node.exported)
         }
       },
       ImportDeclaration(node: any) {
