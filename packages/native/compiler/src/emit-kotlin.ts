@@ -2315,7 +2315,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   }
   // Write-site float widening — mirror of the Swift emitter's call; see
   // infer-type.ts:widenFloatSignals. Idempotent (safe if Swift ran first).
-  widenFloatSignals(c, _kotlinStoreDefs, _kotlinStructDefs)
+  widenFloatSignals(c, _kotlinStoreDefs, _kotlinStructDefs, _moduleConstTypes)
   // Synthesize the implicit auto-connect-on-mount for useWebSocket(url)
   // decls with no explicit .connect() — reuses the on-mount harness +
   // connect url-threading. Mutates c.decls (idempotent).

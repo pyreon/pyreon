@@ -2678,7 +2678,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // Write-site float widening BEFORE the ctx build — a signal whose writes
   // are fractional (`start.set(Date.now())`) must DECLARE Double. Mutates
   // the decls in place (idempotent). See infer-type.ts:widenFloatSignals.
-  widenFloatSignals(c, _storeDefs, _structDefs)
+  widenFloatSignals(c, _storeDefs, _structDefs, _moduleConstTypes)
   // Synthesize the implicit auto-connect-on-mount for useWebSocket(url)
   // decls with no explicit .connect() — reuses the on-mount harness +
   // connect url-threading. Mutates c.decls (idempotent).

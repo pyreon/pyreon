@@ -11,7 +11,7 @@ import { warnUnlowerdCrdtMembers } from './parse-crdt-surface'
 import { parseSync } from 'oxc-parser'
 import { detectPlain, transformPlain } from '@pyreon/compiler/plain'
 import {
-  typeIsOptional, buildInferenceCtx, inferReturnType, inferType, type InferenceCtx } from './infer-type'
+  typeIsOptional, buildInferenceCtx, buildModuleConstTypes, inferReturnType, inferType, moduleConstType, type InferenceCtx } from './infer-type'
 import { parseHotkeyCombo } from './hotkey-combo'
 import type {
   AttrIR,
@@ -783,12 +783,36 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     ),
   )
 
+  // ─── Float refinement ────────────────────────────────────────────────
+  // JS has ONE number type; PMTC splits Int / Double. Every pass below turns
+  // fractional EVIDENCE into a Double declaration, and every one of them must
+  // be able to see a FILE-SCOPE binding as evidence: `const RATE = 0.5` above
+  // the component is how a rate / factor / fixture is written in nearly every
+  // app. Before this they each built an inference context with no
+  // `moduleConsts`, so RATE read `unknown` and the same source compiled with
+  // RATE inside the component and failed with it one line above — on both
+  // targets. `moduleConstsNow()` is the one place that context is derived.
+  //
+  // File-scope bindings refine FIRST, in source order, so a later binding
+  // (`const HALF: number = RATE / 2`) and every component pass see them
+  // already widened.
+  const helperReturnSeed = new Map(ctx.helperFns.map((h) => [h.name, h.returnType] as const))
+  refineModuleDeclFloats(moduleDecls, structs, helperReturnSeed)
+  // Rebuilt between passes rather than once: a struct field flipped to Double
+  // by the pass below changes what an un-annotated `const P = ITEMS[0].price`
+  // types as.
+  const moduleConstsNow = (): Map<string, TypeIR> =>
+    buildModuleConstTypes(moduleDecls, structs, helperReturnSeed)
+  let moduleConsts = moduleConstsNow()
+  const componentCtx = (c: ComponentIR): InferenceCtx =>
+    buildInferenceCtx(c.decls, stores, structs, c.props, c.propsParamName, helperReturnSeed, moduleConsts)
+
   // Double-type follow-up: a `type X = { rate: number }` annotation can't
   // express whether a field is fractional, so the struct field defaults
   // to Int. Refine it to Double when a signal/const initializer assigns a
-  // fractional literal to that field — additive (only ever flips
+  // fractional value to that field — additive (only ever flips
   // number→float, never the reverse, so integer structs are untouched).
-  refineStructFloatsFromInitializers(structs, components, moduleDecls)
+  refineStructFloatsFromInitializers(structs, components, moduleDecls, componentCtx, moduleConsts)
 
   // Same evidence as the pass above, for the shape that has no StructIR to
   // attach it to: an inline object generic (`signal<{ price: number }[]>([{
@@ -801,21 +825,23 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // and ONLY Kotlin failed, because a Swift `reduce(0, …)` literal coerces to
   // Double while Kotlin's binds Int strictly. A one-target failure from a
   // pass-ordering mistake is exactly why both toolchains gate this.
-  refineInlineObjectFloats(components)
+  refineInlineObjectFloats(components, componentCtx)
+
+  moduleConsts = moduleConstsNow()
 
   // Double-type follow-up: a `reduce` over a Double column lowers to an
   // Int `0` seed, which swiftc/kotlinc reject against Double accumulation.
   // Flag the seed literal Double when the reducer accumulates a fractional
-  // field — additive (only flips an integer seed when proven Double).
-  refineReduceSeedFloats(components, structs, stores)
+  // value — additive (only flips an integer seed when proven Double).
+  refineReduceSeedFloats(components, structs, componentCtx)
 
   // Double-type follow-up: an EXPLICIT `signal<number>(12.5)` /
   // `signal<number[]>([12.5, …])` generic bypasses inferTypeFromInitial
-  // (which only runs when there's no generic), so a fractional literal
+  // (which only runs when there's no generic), so a fractional initializer
   // mis-emits as `Int = 12.5` / `[Int] = [12.5]` (invalid Swift/Kotlin).
-  // Refine the signal's number type to Double from its fractional literal
-  // initializer — additive (only flips number→float on a fractional).
-  refineSignalNumberFloats(components, moduleDecls)
+  // Refine the signal's number type to Double from its fractional
+  // initializer — additive (only flips number→float on fractional evidence).
+  refineSignalNumberFloats(components, componentCtx)
 
 
   // Shape-A follow-up: a top-level helper function declared WITHOUT a return
@@ -825,7 +851,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // type — dropping the v1 annotation requirement. Runs after all structs are
   // built (a helper param/return can reference a declared struct). A body whose
   // type still can't be determined is warned + dropped (never a broken emit).
-  refineHelperReturns(ctx.helperFns, structs, ctx.warnings)
+  refineHelperReturns(ctx.helperFns, structs, ctx.warnings, moduleConsts)
 
   // Standalone-validation: emit any schema SYNTHESIZED from an inline
   // `s.object({ … }).safeParse(x)` expression (collected in `parseExpr`)
@@ -5470,28 +5496,32 @@ function refineStructFloatsFromInitializers(
   structs: StructIR[],
   components: ComponentIR[],
   moduleDecls: readonly ModuleDeclIR[],
+  componentCtx: (c: ComponentIR) => InferenceCtx,
+  moduleConsts: Map<string, TypeIR>,
 ): void {
   if (structs.length === 0) return
   const byName = new Map(structs.map((s) => [s.name, s]))
-  const refine = (type: TypeIR, initial: ExprIR): void => {
+  const refine = (type: TypeIR, initial: ExprIR, ctx: InferenceCtx): void => {
     const structName = structNameOfType(type)
     if (structName === undefined) return
     const struct = byName.get(structName)
     if (struct === undefined) return
-    refineFieldsFromObjectLiterals(struct.fields, collectObjectLiterals(initial))
+    refineFieldsFromObjectLiterals(struct.fields, collectObjectLiterals(initial), ctx)
   }
   for (const c of components) {
+    const ctx = componentCtx(c)
     for (const d of c.decls) {
       if (d.kind !== 'signal') continue
-      refine(d.type, d.initial)
+      refine(d.type, d.initial, ctx)
     }
   }
+  const moduleCtx = buildInferenceCtx([], [], structs, [], undefined, undefined, moduleConsts)
   // The MODULE-level spelling of the same evidence — `const BARS: B[] = [{ l: 0.5 }]`
   // beside `interface B { l: number }` is how fixture data is written in
   // nearly every doc and example; the signal-only pass left `l` an Int and
   // kotlinc rejected the literal (a one-spelling fix, the class this repo
   // keeps re-learning).
-  for (const d of moduleDecls) refine(d.type, d.initial)
+  for (const d of moduleDecls) refine(d.type, d.initial, moduleCtx)
 }
 
 /**
@@ -5517,13 +5547,17 @@ function refineStructFloatsFromInitializers(
  * when there is no other evidence. It must not override evidence, and the
  * initializer beside it is evidence.
  */
-function refineInlineObjectFloats(components: ComponentIR[]): void {
+function refineInlineObjectFloats(
+  components: ComponentIR[],
+  componentCtx: (c: ComponentIR) => InferenceCtx,
+): void {
   for (const c of components) {
+    const ctx = componentCtx(c)
     for (const d of c.decls) {
       if (d.kind !== 'signal') continue
       const elem = d.type.kind === 'array' ? d.type.element : d.type
       if (elem.kind !== 'object') continue
-      refineFieldsFromObjectLiterals(elem.fields, collectObjectLiterals(d.initial))
+      refineFieldsFromObjectLiterals(elem.fields, collectObjectLiterals(d.initial), ctx)
     }
   }
 }
@@ -5542,6 +5576,7 @@ function refineInlineObjectFloats(components: ComponentIR[]): void {
 function refineFieldsFromObjectLiterals(
   fields: { name: string; type: TypeIR }[],
   objects: Extract<ExprIR, { kind: 'object' }>[],
+  ctx: InferenceCtx,
 ): void {
   if (objects.length === 0) return
   for (const field of fields) {
@@ -5549,7 +5584,7 @@ function refineFieldsFromObjectLiterals(
     const values = objects
       .map((o) => o.fields.find((f) => f.name === field.name)?.value)
       .filter((v): v is ExprIR => v !== undefined)
-    if (!values.some(isFractionalLiteral)) continue
+    if (!values.some((v) => isFractionalEvidence(v, ctx))) continue
     field.type = { kind: 'number', float: true }
     for (const v of values) {
       if (v.kind === 'literal' && typeof v.value === 'number' && Number.isInteger(v.value)) {
@@ -5656,7 +5691,7 @@ function forEachExpr(e: ExprIR, visit: (n: ExprIR) => void): void {
 function refineReduceSeedFloats(
   components: ComponentIR[],
   structs: StructIR[],
-  storeDefs: StoreDefnIR[],
+  componentCtx: (c: ComponentIR) => InferenceCtx,
 ): void {
   // NO `structs.length === 0` bail. The pass used to return immediately when
   // the file declared no NAMED struct — but a component whose data is typed
@@ -5673,7 +5708,7 @@ function refineReduceSeedFloats(
     return s === undefined ? undefined : { kind: 'object', fields: s.fields }
   }
   for (const c of components) {
-    const ctx = buildInferenceCtx(c.decls, storeDefs)
+    const ctx = componentCtx(c)
     const visit = (e: ExprIR): void => {
       // Match BOTH the array-method reduce (`xs.reduce(cb, seed)`) and the
       // rx-namespace reduce (`rx.reduce(xs, cb, seed)` → rx-call). Each
@@ -5744,6 +5779,19 @@ function isFractionalLiteral(e: ExprIR): boolean {
 }
 
 /**
+ * Fractional EVIDENCE for a Double refinement: a fractional literal, or any
+ * expression that infers `number & float` in `ctx` — `RATE` over a file-scope
+ * `const RATE = 0.5`, `P * 2` over a component const. The literal-only test
+ * was the whole reason a Double reached these passes only when written INLINE.
+ * Still additive: an expression that cannot be typed is not evidence.
+ */
+function isFractionalEvidence(e: ExprIR, ctx: InferenceCtx): boolean {
+  if (isFractionalLiteral(e)) return true
+  const t = inferType(e, ctx)
+  return t.kind === 'number' && t.float === true
+}
+
+/**
  * Double-type follow-up — refine a signal's EXPLICIT `number` / `number[]`
  * generic to Double when its literal initializer is fractional.
  *
@@ -5765,23 +5813,78 @@ function isFractionalLiteral(e: ExprIR): boolean {
  * `{ kind:'number', float:true }` on fractional-literal evidence; integer
  * signals and arrays are never touched (zero regression).
  */
-function refineSignalNumberFloats(components: ComponentIR[], moduleDecls: readonly ModuleDeclIR[] = []): void {
+function refineSignalNumberFloats(
+  components: ComponentIR[],
+  componentCtx: (c: ComponentIR) => InferenceCtx,
+): void {
   for (const c of components) {
+    const ctx = componentCtx(c)
     for (const d of c.decls) {
-      if (d.kind === 'signal') refineNumberBindingFromLiteral(d)
+      if (d.kind !== 'signal') continue
+      refineNumberBindingFromEvidence(d, ctx)
+      seedSignalTypeFromNumberBinding(d, ctx)
     }
   }
-  // The FILE-SCOPE spelling of the same evidence: `const RATE: number = 0.5`
-  // emitted `let RATE: Int = 0.5` / `val RATE: Int = 0.5`, which neither
-  // target accepts. An un-annotated binding carries `unknown` and is emitted
-  // without an annotation, so it was never affected.
-  for (const d of moduleDecls) refineNumberBindingFromLiteral(d)
 }
 
-/** Flip a `number` / `number[]` annotation to Double on a fractional literal initializer. */
-function refineNumberBindingFromLiteral(d: { type: TypeIR; initial: ExprIR }): void {
-  // Scalar `signal<number>(12.5)` / `const x: number = 12.5`.
-  if (d.type.kind === 'number' && d.type.float !== true && isFractionalLiteral(d.initial)) {
+/**
+ * An UN-annotated `signal(RATE)` seeded straight from a numeric binding gets
+ * that binding's type.
+ *
+ * `inferTypeFromInitial` types only literals, so `signal(RATE)` over a
+ * file-scope `const RATE = 0.5` stayed `unknown` and emitted without an
+ * annotation. Each target then inferred Double from RATE on its own, which is
+ * right for the declaration — and wrong for every WRITE, because the emitters
+ * render `x.set(2)` from the signal's IR type: Kotlin emitted
+ * `mutableStateOf(RATE)` and then assigned it `2`, an Int into a Double state
+ * (`assignment type mismatch`). Swift happened to coerce the literal.
+ *
+ * Deliberately narrow — a bare identifier (optionally negated) only. For one,
+ * the IR type IS the native type by construction: the binding it names is
+ * declared from the same inference. A general expression (`n / 2`,
+ * `Math.floor(x)`) can infer differently from what the target computes, and
+ * annotating the declaration with the inferred type would turn a compiling
+ * untyped `@State` into a type error.
+ */
+function seedSignalTypeFromNumberBinding(
+  d: Extract<DeclIR, { kind: 'signal' }>,
+  ctx: InferenceCtx,
+): void {
+  if (d.type.kind !== 'unknown') return
+  let e = d.initial
+  if (e.kind === 'unary' && (e.op === '-' || e.op === '+')) e = e.argument
+  if (e.kind !== 'identifier') return
+  const t = inferType(e, ctx)
+  if (t.kind === 'number') d.type = t.float === true ? { kind: 'number', float: true } : { kind: 'number' }
+}
+
+/**
+ * The FILE-SCOPE spelling of the same evidence: `const RATE: number = 0.5`
+ * emitted `let RATE: Int = 0.5` / `val RATE: Int = 0.5`, which neither target
+ * accepts — and so did `const HALF: number = RATE / 2`, where the evidence is
+ * another file-scope binding rather than a literal. Walked in SOURCE ORDER
+ * against the bindings already typed above it, which is what lets `HALF` see
+ * `RATE`. An un-annotated binding carries `unknown` and is emitted without an
+ * annotation, so it is only ever evidence here, never refined.
+ */
+function refineModuleDeclFloats(
+  moduleDecls: readonly ModuleDeclIR[],
+  structs: StructIR[],
+  helperReturns: Map<string, TypeIR>,
+): void {
+  const seen = new Map<string, TypeIR>()
+  const ctx = buildInferenceCtx([], [], structs, [], undefined, helperReturns, seen)
+  for (const md of moduleDecls) {
+    refineNumberBindingFromEvidence(md, ctx)
+    const t = moduleConstType(md, ctx)
+    if (t !== undefined) seen.set(md.name, t)
+  }
+}
+
+/** Flip a `number` / `number[]` annotation to Double on fractional evidence in its initializer. */
+function refineNumberBindingFromEvidence(d: { type: TypeIR; initial: ExprIR }, ctx: InferenceCtx): void {
+  // Scalar `signal<number>(12.5)` / `const x: number = RATE * 2`.
+  if (d.type.kind === 'number' && d.type.float !== true && isFractionalEvidence(d.initial, ctx)) {
     d.type = { kind: 'number', float: true }
     return
   }
@@ -5791,7 +5894,7 @@ function refineNumberBindingFromLiteral(d: { type: TypeIR; initial: ExprIR }): v
     d.type.element.kind === 'number' &&
     d.type.element.float !== true &&
     d.initial.kind === 'array' &&
-    d.initial.elements.some(isFractionalLiteral)
+    d.initial.elements.some((el) => isFractionalEvidence(el, ctx))
   ) {
     d.type = { kind: 'array', element: { kind: 'number', float: true } }
     for (const el of d.initial.elements) {
@@ -7014,11 +7117,14 @@ function refineHelperReturns(
   helperFns: Extract<DeclIR, { kind: 'function' }>[],
   structs: StructIR[],
   warnings: string[],
+  moduleConsts: Map<string, TypeIR>,
 ): void {
   if (helperFns.length === 0) return
   // Structs available so a typed-struct param / return resolves; no
-  // signals/computeds (a pure helper reads only its own params).
-  const ctx = buildInferenceCtx([], [], structs)
+  // signals/computeds (a pure helper reads only its own params and the file's
+  // top-level bindings — `x * RATE` must see RATE, or it types Int and the
+  // emitted signature rejects its own Double body).
+  const ctx = buildInferenceCtx([], [], structs, [], undefined, undefined, moduleConsts)
   for (let i = helperFns.length - 1; i >= 0; i--) {
     const h = helperFns[i]!
     // Infer from the body when the return is UNKNOWN (no annotation), OR when

@@ -174,19 +174,28 @@ export function buildModuleConstTypes(
   const out = new Map<string, TypeIR>()
   const ctx = buildInferenceCtx([], [], structDefs, [], undefined, helperReturns, out)
   for (const md of moduleDecls) {
-    if (md.type.kind !== 'unknown') {
-      out.set(md.name, md.type)
-      continue
-    }
-    // `new SizedMap<K, V>(…)` infers as a `map` for its READS, but the native
-    // value is a `PyreonSizedMap` class, not a dictionary: seeding it as a map
-    // re-spells `seen.size` as `.count`, which the class does not have. Left
-    // `unknown`, as before, so its own member surface is emitted verbatim.
-    if (md.initial.kind === 'new-sized-map') continue
-    const t = inferType(md.initial, ctx)
-    if (isSeedableModuleType(t)) out.set(md.name, t)
+    const t = moduleConstType(md, ctx)
+    if (t !== undefined) out.set(md.name, t)
   }
   return out
+}
+
+/**
+ * The type ONE file-scope binding contributes to `moduleConsts`, inferred
+ * against `ctx` (whose `moduleConsts` holds the bindings above it). Exported
+ * so a caller that must act on each binding BEFORE the next one is typed —
+ * parse-stage float refinement, where `const B: number = A * 2` has to see
+ * `A` already widened — walks the same rule instead of a copy of it.
+ */
+export function moduleConstType(md: ModuleDeclIR, ctx: InferenceCtx): TypeIR | undefined {
+  if (md.type.kind !== 'unknown') return md.type
+  // `new SizedMap<K, V>(…)` infers as a `map` for its READS, but the native
+  // value is a `PyreonSizedMap` class, not a dictionary: seeding it as a map
+  // re-spells `seen.size` as `.count`, which the class does not have. Left
+  // `unknown`, as before, so its own member surface is emitted verbatim.
+  if (md.initial.kind === 'new-sized-map') return undefined
+  const t = inferType(md.initial, ctx)
+  return isSeedableModuleType(t) ? t : undefined
 }
 
 /**
@@ -316,10 +325,15 @@ export function widenFloatSignals(
   c: ComponentIR,
   storeDefs: StoreDefnIR[] = [],
   structDefs: StructIR[] = [],
+  // File-scope binding types. Without them `x.set(x() + RATE)` over a
+  // file-scope `const RATE = 0.5` read RATE as `unknown`, the write never
+  // proved fractional, and `x` stayed an Int receiving a Double on both
+  // targets — while the same source with RATE inside the component widened.
+  moduleConsts?: Map<string, TypeIR> | undefined,
 ): void {
   const maxPasses = 8
   for (let pass = 0; pass < maxPasses; pass++) {
-    const ctx = buildInferenceCtx(c.decls, storeDefs, structDefs)
+    const ctx = buildInferenceCtx(c.decls, storeDefs, structDefs, [], undefined, undefined, moduleConsts)
     const candidates = new Map<string, Extract<DeclIR, { kind: 'signal' }>>()
     for (const d of c.decls) {
       if (d.kind === 'signal' && d.type.kind === 'number' && d.type.float !== true) {
@@ -631,6 +645,9 @@ export function buildInferenceCtx(
         // `useApp().store.remaining()` resolves it like a field.
         if (s.computeds !== undefined && s.computeds.length > 0) {
           const storeCtx: InferenceCtx = {
+            // A store computed over a file-scope const reads it like any other
+            // body does.
+            moduleConsts,
             signals: new Map(s.fields.map((f) => [f.name, f.type])),
             computeds: new Map(),
             valueConsts: new Map(),
@@ -783,16 +800,17 @@ export function inferReturnType(
   body: StatementIR[],
   ctx: InferenceCtx,
 ): TypeIR {
+  // SPREAD, never a hand-written field list. The list predated `props`,
+  // `helperReturns` and `moduleConsts` and silently dropped all three, so a
+  // helper returning `n() * RATE` over a FILE-SCOPE `const RATE = 0.5` typed
+  // `Int` (RATE read `unknown`) while the identical body over a component
+  // const typed `Double` — `private func m() -> Int { Double(n) * RATE }`,
+  // which neither toolchain accepts. Only the two maps this function WRITES
+  // are copied.
   const scratch: InferenceCtx = {
-    signals: ctx.signals,
-    computeds: ctx.computeds,
-    valueConsts: ctx.valueConsts,
+    ...ctx,
     locals: new Map(ctx.locals),
     objectLocals: new Map(ctx.objectLocals),
-    fetches: ctx.fetches,
-    services: ctx.services,
-    stores: ctx.stores,
-    structs: ctx.structs,
   }
   for (const p of params) scratch.locals.set(p.name, p.type)
   const ret = findFirstReturnExpr(body, scratch)
