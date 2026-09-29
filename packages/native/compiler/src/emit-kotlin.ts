@@ -64,6 +64,7 @@ import {
   jsxInStringifiedChildWarning,
   isNullableType,
   optionalSpreadWarning,
+  schemaInputNeedsConversion,
 } from './expr-utils'
 import {
   nilCoalesceTernary,
@@ -5138,7 +5139,23 @@ function emitKotlinDynamicValue(e: ExprIR, indent: number): string {
     const elems = e.elements.map((el) => emitKotlinDynamicValue(el, indent)).join(', ')
     return `listOf<Any?>(${elems})`
   }
+  // A typed value (data class, inline object, or a collection of them)
+  // nested in a literal: the schema reads plain values, so it goes through
+  // its own serializer. A scalar is already one.
+  if (schemaInputNeedsConversion(inferType(e, _kotlinExprInferCtx))) {
+    return `pyreonSchemaValue(${emitKotlinExpr(e, indent)})`
+  }
   return emitKotlinExpr(e, indent)
+}
+
+/**
+ * The argument of a lowered `safeParse` (see the Swift twin). An object
+ * LITERAL is already the map the schema reads; anything else is a typed
+ * value, converted by `pyreonSchemaInput` through its own serializer.
+ */
+function emitKotlinSchemaInput(e: ExprIR, indent: number): string {
+  if (e.kind === 'object' && (!e.spreads || e.spreads.length === 0)) return emitKotlinDynamicValue(e, indent)
+  return `pyreonSchemaInput(${emitKotlinExpr(e, indent)})`
 }
 
 function emitKotlinExpr(e: ExprIR, indent: number): string {
@@ -5191,7 +5208,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // `PyreonZodSchema_<name>.safeParseResult(<x-as-map>)`, returning
       // `PyreonParseResult<T>` — a wrapping `.success` / `.data` composes over
       // it. The argument lowers to a `Map<String, Any?>` (never a data class).
-      return `PyreonZodSchema_${e.schemaName}.safeParseResult(${emitKotlinDynamicValue(e.arg, indent)})`
+      return `PyreonZodSchema_${e.schemaName}.safeParseResult(${emitKotlinSchemaInput(e.arg, indent)})`
     }
     case 'json-stringify':
       // `JSON.stringify(x)` → kotlinx-serialization. The value is @Serializable

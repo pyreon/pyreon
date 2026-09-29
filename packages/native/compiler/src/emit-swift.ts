@@ -70,6 +70,7 @@ import {
   jsxInStringifiedChildWarning,
   isNullableType,
   optionalSpreadWarning,
+  schemaInputNeedsConversion,
 } from './expr-utils'
 import {
   nilCoalesceTernary,
@@ -6217,7 +6218,26 @@ function emitSwiftDynamicValue(e: ExprIR, indent: number): string {
     const elems = e.elements.map((el) => emitSwiftDynamicValue(el, indent)).join(', ')
     return `[${elems}]`
   }
+  // A typed value (struct, inline object, or a collection of them) nested in
+  // a literal: the schema reads plain values, so it goes through its own
+  // Codable encoding. A scalar is already one.
+  if (schemaInputNeedsConversion(inferType(e, _activeInferCtx))) {
+    return `pyreonSchemaValue(${emitSwiftExpr(e, indent)})`
+  }
   return emitSwiftExpr(e, indent)
+}
+
+/**
+ * The argument of a lowered `safeParse`. An object LITERAL is already the
+ * dictionary the schema reads. Anything else — a variable, a signal read, a
+ * call — holds a typed value (`Pet.safeParse(pet())`), which used to be
+ * passed as-is and did not compile; `pyreonSchemaInput` converts it through
+ * the value's own Codable encoding (and passes an existing dictionary
+ * through untouched).
+ */
+function emitSwiftSchemaInput(e: ExprIR, indent: number): string {
+  if (e.kind === 'object' && (!e.spreads || e.spreads.length === 0)) return emitSwiftDynamicValue(e, indent)
+  return `pyreonSchemaInput(${emitSwiftExpr(e, indent)})`
 }
 
 function emitSwiftExpr(e: ExprIR, indent: number): string {
@@ -6273,7 +6293,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // returns `PyreonParseResult<Self>` — a wrapping `.success` / `.data`
       // member access composes over this. The argument is emitted as a
       // dynamic `[String: Any]` dictionary (never a synthesized struct).
-      return `PyreonZodSchema_${e.schemaName}.safeParseResult(${emitSwiftDynamicValue(e.arg, indent)})`
+      return `PyreonZodSchema_${e.schemaName}.safeParseResult(${emitSwiftSchemaInput(e.arg, indent)})`
     }
     case 'json-stringify':
       // `JSON.stringify(x)` → serialize an Encodable value. `try!` is safe: a

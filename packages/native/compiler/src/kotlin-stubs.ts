@@ -1024,6 +1024,13 @@ sealed class PyreonSchemaError(message: String) : Exception(message) {
 
 data class PyreonParseResult<T>(val success: Boolean, val data: T?)
 
+// Signatures mirror PyreonSchema.kt (schema-stub-parity.test.ts checks them).
+@Suppress("UNUSED_PARAMETER")
+inline fun <reified T> pyreonSchemaInput(value: T): Map<String, Any?> = emptyMap()
+fun pyreonSchemaInput(value: Map<String, Any?>): Map<String, Any?> = value
+@Suppress("UNUSED_PARAMETER")
+inline fun <reified T> pyreonSchemaValue(value: T): Any? = null
+
 // useNavigate / useParams / useLoaderData — router hooks that PMTC
 // emits when source code uses \`const navigate = useNavigate()\` /
 // \`const params = useParams()\` / \`const data = useLoaderData<T>()\`.

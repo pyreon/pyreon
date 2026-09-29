@@ -42,4 +42,23 @@ describe('schema stubs are byte-for-byte copies of the runtime', () => {
   it.each(['sealed class PyreonSchemaError', 'data class PyreonParseResult'])('Kotlin %s', (head) => {
     expect(block(KOTLIN_COMPOSE_STUBS, head)).toBe(block(kotlin, head))
   })
+
+  // The conversion helpers are stubbed as SIGNATURES (their bodies need a real
+  // encoder); each stub signature must match a runtime declaration exactly.
+  const signatures = (text: string, re: RegExp): string[] =>
+    [...text.matchAll(re)].map((m) => m[0].replace(/\s+/g, ' ').trim())
+
+  it('Swift conversion helpers', () => {
+    const re = /public func pyreonSchema\w+[^{]*/g
+    const stub = signatures(SWIFT_UI_STUBS, re)
+    expect(stub.length).toBe(3)
+    expect(stub.filter((sig) => !signatures(swift, re).includes(sig))).toEqual([])
+  })
+
+  it('Kotlin conversion helpers', () => {
+    const re = /(?:inline )?fun (?:<reified T> )?pyreonSchema\w+\([^)]*\): [^=\n{]+/g
+    const stub = signatures(KOTLIN_COMPOSE_STUBS, re)
+    expect(stub.length).toBe(3)
+    expect(stub.filter((sig) => !signatures(kotlin, re).includes(sig))).toEqual([])
+  })
 })

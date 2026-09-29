@@ -1618,6 +1618,10 @@ public struct PyreonParseResult<T> {
         self.data = data
     }
 }
+// Signatures mirror PyreonSchema.swift (schema-stub-parity.test.ts checks them).
+public func pyreonSchemaInput<T: Encodable>(_ value: T) -> [String: Any] { [:] }
+public func pyreonSchemaInput(_ value: [String: Any]) -> [String: Any] { value }
+public func pyreonSchemaValue<T: Encodable>(_ value: T) -> Any { value }
 public struct PyreonWebView: View {
   // Emit shapes: (src:data:onMessage:), (html:), (html:data:onMessage:) — all
   // params optional so every shape resolves; arg TYPES stay faithful.

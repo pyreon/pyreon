@@ -1387,3 +1387,31 @@ export function isNumericLiteralOrNegation(x: ExprIR): boolean {
   if (x.kind === 'literal') return typeof x.value === 'number' || typeof x.value === 'string'
   return x.kind === 'unary' && (x.op === '-' || x.op === '+') && x.argument.kind === 'literal' && typeof x.argument.value === 'number'
 }
+
+/**
+ * Does a value of type `t` need converting before a schema can read it?
+ *
+ * An emitted schema's `parse` reads plain values — a dictionary for an
+ * object, native scalars for fields. A scalar already is one; a struct, an
+ * inline object, or a collection that holds either is a typed value, and is
+ * routed through the runtime's `pyreonSchemaValue` (Codable / @Serializable
+ * → plain JSON values). An `unknown` type is NOT converted: the conversion
+ * only compiles for an encodable value, and guessing would turn code that
+ * compiles into code that does not.
+ */
+export function schemaInputNeedsConversion(t: TypeIR): boolean {
+  switch (t.kind) {
+    case 'typeRef':
+    case 'object':
+      return true
+    case 'array':
+    case 'set':
+      return schemaInputNeedsConversion(t.element)
+    case 'map':
+      return schemaInputNeedsConversion(t.value)
+    case 'union':
+      return t.branches.some(schemaInputNeedsConversion)
+    default:
+      return false
+  }
+}
