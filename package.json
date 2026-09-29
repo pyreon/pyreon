@@ -152,8 +152,6 @@
     "@vitest/browser": "^4.1.11",
     "@vitest/coverage-v8": "^4.1.11",
     "@vitus-labs/tools-rolldown": "^2.7.1",
-    "@vitus-labs/tools-typescript": "^2.7.1",
-    "@vitus-labs/tools-vitest": "^2.7.1",
     "arktype": "^2.2.3",
     "babel-preset-solid": "^1.9.15",
     "esbuild": "^0.28.2",
