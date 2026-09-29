@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
-import * as p from '@clack/prompts'
+import * as p from './ui'
 import type { CliArgs } from './args'
 import {
   type AdapterId,
@@ -398,7 +398,7 @@ export async function resolveFeatures(
   }
 
   // Grouped multiselect — features visually grouped by category for
-  // discoverability. clack's `groupMultiselect` renders the section
+  // discoverability. `groupMultiselect` renders the section
   // headings inline so the user doesn't drown in a 22-option flat list.
   const grouped = buildGroupedFeatureOptions()
 
@@ -422,7 +422,7 @@ export async function resolveFeatures(
  * `Cannot read properties of undefined (reading 'label')` (the 0.33.0 custom-
  * features bug: `state-tree` / `coolgrid` were categorised but undefined).
  * Pure + exported so the integrity test exercises it directly, and a drift now
- * fails loudly here naming the offending feature instead of deep in clack.
+ * fails loudly here naming the offending feature instead of deep in the prompt UI.
  */
 export function buildGroupedFeatureOptions(): Record<
   string,

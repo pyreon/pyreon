@@ -344,7 +344,7 @@ function narrowStmt(
         if (tests.some((t) => t === null) || body === null) return null
         cases.push({ tests: tests as ExprIR[], body })
       }
-      return { ...s, cases }
+      return { ...s, discriminant, cases }
     }
   }
 }
