@@ -29,7 +29,7 @@ export function App() {
   return (<Stack><Press onPress={run}><Text>{String(xs().length)}</Text></Press></Stack>)
 }`).code
     expect(out).toContain('val i = "outer"')
-    expect(out).toContain('(0 until 3).map({ i -> i * 2 })')
+    expect(out).toContain('(0 until 3L).map({ i -> i * 2L })')
     // `i.length` after both shadows unwind still resolves against the String
     expect(out).toContain('i.length')
   })
@@ -43,8 +43,8 @@ function outer(v: number): number {
 }
 function inner(w: string): number { return w.length }
 export function App() { const q = signal<number>(1); return (<Stack><Text>{String(outer(q()) + inner('a'))}</Text></Stack>) }`).code
-    expect(out).toContain('fun inner(w: String): Int = w.length')
-    expect(out).toContain('fun outer(v: Int): Int {')
+    expect(out).toContain('fun inner(w: String): Long = w.length.toLong()')
+    expect(out).toContain('fun outer(v: Long): Long {')
   })
 })
 
@@ -177,7 +177,7 @@ export function App() {
   return (<Stack><Press onPress={run}><Text>{String(xs().length)}</Text></Press></Stack>)
 }`
     // the neighbouring shape — no outer binding of that name — is correct
-    expect(kt(src('')).code).toContain('xs.map({ i -> i + 1 })')
+    expect(kt(src('')).code).toContain('xs.map({ i -> i + 1L })')
     // Swift is correct with OR without the outer local
     expect(transform(src(`const i = 'outer'`), { target: 'swift' }).code).toContain(
       'xs.map({ i in i + 1 })',
@@ -202,7 +202,7 @@ export function App() {
   }
   return (<Stack><Press onPress={run}><Text>{String(n())}</Text></Press></Stack>)
 }`).code
-    expect(out).toContain('val inner = fun(w: String): Int {')
+    expect(out).toContain('val inner = fun(w: String): Long {')
     expect(out).toContain('val q = w.length')
     // the outer Int `w` still adds as an Int after the String param unwinds
     expect(out).toContain('n = inner("abc") + w')

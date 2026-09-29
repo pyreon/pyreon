@@ -246,7 +246,7 @@ export type StreamItem<S> = S extends AsyncIterable<infer E> ? E : never
  * ```
  */
 export function streamHeaders(
-  base: HeadersInit | Readonly<Record<string, string | number | boolean | null | undefined>> | undefined,
+  base: HeadersInit | Readonly<Record<string, string | number | bigint | boolean | null | undefined>> | undefined,
   extra: Readonly<Record<string, string>>,
 ): Record<string, string> {
   const out: Record<string, string> = {}

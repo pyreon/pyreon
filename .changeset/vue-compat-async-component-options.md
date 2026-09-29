@@ -1,0 +1,5 @@
+---
+'@pyreon/vue-compat': minor
+---
+
+`defineAsyncComponent` now implements its options form with Vue 3 semantics instead of accepting and ignoring it: `loadingComponent` (shown after `delay`, default 200ms), `errorComponent` (rendered with `{ error }`), `timeout` (a pending load becomes an error; a later load still wins), `suspensible` (default `true` — the direct-child `<Suspense>` takes over; `false` renders its own loading state), and `onError(error, retry, fail, attempts)`. A loader may resolve to the component itself or to a module. On the server the load is always awaited — for a non-suspensible component too, as in Vue — and `delay` / `timeout` are never scheduled; on the client their timers are cleared when the load settles or the instance unmounts. Behaviour change: a load failure with no `errorComponent` that happens after mount is now thrown to the nearest `<ErrorBoundary>` (previously the mounted component silently kept rendering nothing), and a still-loading component returns a reactive accessor from its setup rather than `null`.

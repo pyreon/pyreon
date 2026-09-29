@@ -18,8 +18,11 @@ import type { FormFieldEncoding, FormFields, FormScalar, MultipartFields } from 
 /** HTTP methods the client can issue. Mirrors zero's `HttpMethod`. */
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'
 
-/** A single query-string value. */
-export type QueryScalar = string | number | boolean
+/**
+ * A single query-string value. A `bigint` (an int64 id, what
+ * `@pyreon/http/json` decodes one as) is sent as its exact decimal digits.
+ */
+export type QueryScalar = string | number | bigint | boolean
 
 /**
  * A query parameter that is an OBJECT — serialized with bracket keys
@@ -66,13 +69,18 @@ export interface QueryStyle {
 }
 
 /**
- * A header record whose values need not be strings yet. Numbers and booleans
- * are stringified; `null` / `undefined` omit the header.
+ * A header record whose values need not be strings yet. Numbers, bigints and
+ * booleans are stringified (a bigint as its exact digits); `null` / `undefined`
+ * omit the header.
  */
-export type HeaderValues = Record<string, string | number | boolean | null | undefined>
+export type HeaderValues = Record<string, string | number | bigint | boolean | null | undefined>
 
-/** Path parameters substituted into a `:name` placeholder. */
-export type PathParams = Record<string, string | number>
+/**
+ * Path parameters substituted into a `:name` placeholder. A `bigint` is written
+ * as its exact decimal digits, so an int64 id read through `@pyreon/http/json`
+ * can be passed straight back without a lossy `Number(…)`.
+ */
+export type PathParams = Record<string, string | number | bigint>
 
 /** Query-string parameters. */
 export type QueryParams = Record<string, QueryValue>

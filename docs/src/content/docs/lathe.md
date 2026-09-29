@@ -601,9 +601,11 @@ Three things to know:
   for an operation whose response carries an int64 — is refused. Switching it
   off at runtime with `configureApi({ validate: 'off' })` leaves small int64
   values as numbers.
-- **Parameters travel as text.** A path, query or header parameter of int64
-  type is typed `string | number` (path) or `string` (query, header): pass a
-  large id as its digits.
+- **Parameters take the bigint back.** A path, query, header or cookie
+  parameter of int64 type is typed `bigint | number`, so the id the client
+  decoded goes straight back out (`getEntry({ params: { id: entry.id } })`) —
+  written as its exact digits, never through a lossy `Number(…)`. A cache key
+  carries those digits too (hashing a bigint throws).
 - **Web only.** PMTC has no bigint, so the native modules keep the platform
   integer — Swift `Int` (64-bit, exact) and Kotlin `Int` (32-bit) — and an
   `int64-native` note says so.

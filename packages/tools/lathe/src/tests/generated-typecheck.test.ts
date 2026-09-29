@@ -254,6 +254,11 @@ function diagnose(
     files.push(emitSchemaAgreement(result.doc, validator).build(banner(result.doc.title, result.doc.version)))
   }
   if (spec === SPEC && plugins.includes('queries')) files.push({ path: 'error-usage.ts', contents: ERROR_USAGE })
+  // An int64 id the client decoded (a bigint) must be accepted straight back
+  // as a path / query / header parameter -- and a plain number literal too.
+  if (spec === INT64 && int64 === 'bigint' && plugins.includes('client')) {
+    files.push({ path: 'bigint-params-usage.ts', contents: BIGINT_PARAMS_USAGE })
+  }
   const root = join(TC_ROOT, label)
   rmSync(root, { recursive: true, force: true })
   for (const f of files) {
@@ -602,6 +607,16 @@ components:
         - { type: object, required: [type, n], properties: { type: { const: a }, n: { type: integer, format: int64 } } }
         - { type: object, required: [type], properties: { type: { const: b } } }
       discriminator: { propertyName: type }
+`
+
+const BIGINT_PARAMS_USAGE = `import { getEntry } from './endpoints/e'
+
+export async function again(): Promise<void> {
+  const entry = await getEntry({ params: { id: 1n } })
+  await getEntry({ params: { id: entry.id }, query: { after: entry.id }, headers: { 'X-Tenant': 9007199254740993n } })
+  await getEntry({ params: { id: 5 }, query: { after: 6 }, headers: { 'X-Tenant': 7 } })
+  void getEntry.key({ params: { id: entry.id } })
+}
 `
 
 describe("int64: 'bigint' output typechecks under strict TypeScript", () => {

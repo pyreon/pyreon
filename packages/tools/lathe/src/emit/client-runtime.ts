@@ -78,6 +78,10 @@ export function reachesNative(client: ClientName): boolean {
 
 /** Shared preamble: types and helpers every generated adapter needs. */
 export function runtimePreamble(lossless = false): string[] {
+  // `int64: 'bigint'`: an int64 id is a bigint, and it goes back OUT as a path /
+  // query / header / cookie parameter as its exact digits -- the same widening
+  // `@pyreon/http`'s parameter types carry.
+  const big = lossless ? ' | bigint' : ''
   return [
     'export type EndpointKey = readonly unknown[]',
     '',
@@ -88,7 +92,7 @@ export function runtimePreamble(lossless = false): string[] {
     ' * DROPPED rather than serialized as the strings `"undefined"` / `"null"`,',
     ' * and arrays repeat the key.',
     ' */',
-    'export type QueryScalar = string | number | boolean',
+    `export type QueryScalar = string | number${big} | boolean`,
     '',
     '/** An object query parameter — bracket keys unless a `QueryStyle` says otherwise. */',
     'export interface QueryObject {',
@@ -105,7 +109,7 @@ export function runtimePreamble(lossless = false): string[] {
     '',
     '/** What a call SENDS. An endpoint may be declared with a narrower input. */',
     'export interface EndpointInput {',
-    '  params?: Record<string, string | number> | undefined',
+    `  params?: Record<string, string | number${big}> | undefined`,
     '  query?: Record<string, QueryValue> | undefined',
     '  json?: unknown',
     '  form?: Record<string, FormValue> | undefined',
@@ -116,9 +120,9 @@ export function runtimePreamble(lossless = false): string[] {
     '/** Per-call options every endpoint accepts, whatever its input type. */',
     'export interface EndpointCallOptions {',
     '  /** `undefined` / `null` values are OMITTED, not sent as text. */',
-    '  headers?: Record<string, string | number | boolean | null | undefined> | undefined',
+    `  headers?: Record<string, string | number${big} | boolean | null | undefined> | undefined`,
     '  /** Sent as a `Cookie` header (server-side; a browser drops it). */',
-    '  cookies?: Record<string, string | number | boolean | null | undefined> | undefined',
+    `  cookies?: Record<string, string | number${big} | boolean | null | undefined> | undefined`,
     '  signal?: AbortSignal | undefined',
     '}',
     '',
@@ -147,7 +151,7 @@ export function runtimePreamble(lossless = false): string[] {
     '   * `client` setting and fail under another, which is the divergence this',
     '   * whole seam exists to prevent.',
     '   */',
-    '  params?: Record<string, string | number>',
+    `  params?: Record<string, string | number${big}>`,
     '  query?: Record<string, QueryValue>',
     '  /** `json`, `form`, `multipart` and `body` are mutually exclusive encodings. */',
     '  json?: unknown',
@@ -158,9 +162,9 @@ export function runtimePreamble(lossless = false): string[] {
     '  /** A raw body, sent as-is. */',
     '  body?: Blob | ArrayBuffer | string',
     '  /** `undefined` / `null` values are OMITTED, not sent as text. */',
-    '  headers?: Record<string, string | number | boolean | null | undefined>',
+    `  headers?: Record<string, string | number${big} | boolean | null | undefined>`,
     '  /** Sent as a `Cookie` header (server-side; a browser drops it). */',
-    '  cookies?: Record<string, string | number | boolean | null | undefined>',
+    `  cookies?: Record<string, string | number${big} | boolean | null | undefined>`,
     '  signal?: AbortSignal',
     '}',
     '',
@@ -381,7 +385,7 @@ export function runtimePreamble(lossless = false): string[] {
     '  return joined.includes("?") ? `${joined}&${qs.slice(1)}` : `${joined}${qs}`',
     '}',
     '',
-    ...runtimeBodyEncoders(),
+    ...runtimeBodyEncoders(lossless),
   ]
 }
 
@@ -392,7 +396,8 @@ export function runtimePreamble(lossless = false): string[] {
  * encoding per `client` setting would make the same spec send a different
  * request body depending on a config flag.
  */
-function runtimeBodyEncoders(): string[] {
+function runtimeBodyEncoders(lossless = false): string[] {
+  const big = lossless ? ' | bigint' : ''
   return [
     'function formScalar(v: FormValue): string | undefined {',
     '  if (v === null || v === undefined) return undefined',
@@ -484,7 +489,7 @@ function runtimeBodyEncoders(): string[] {
     '}',
     '',
     '/** A `Cookie` header value. Nullish entries omitted, values percent-encoded. */',
-    'export function encodeCookies(cookies: Readonly<Record<string, string | number | boolean | null | undefined>>): string {',
+    `export function encodeCookies(cookies: Readonly<Record<string, string | number${big} | boolean | null | undefined>>): string {`,
     '  const parts: string[] = []',
     '  for (const key of Object.keys(cookies)) {',
     '    const v = cookies[key]',
@@ -1067,6 +1072,7 @@ export function runtimeEndpoint(
     'function isEmpty(v: Record<string, unknown> | undefined): boolean {',
     '  return v === undefined || Object.keys(v).length === 0',
     '}',
+    ...(lossless ? runtimeKeySafe() : []),
     '',
     'export const api = {',
     '  /**',
@@ -1107,8 +1113,15 @@ export function runtimeEndpoint(
     '    const buildKey = (args?: EndpointArgs): EndpointKey => {',
     '      if (isEmpty(args?.params) && isEmpty(args?.query)) return prefix',
     '      const scope: Record<string, unknown> = {}',
-    '      if (!isEmpty(args?.params)) scope.params = args?.params',
-    '      if (!isEmpty(args?.query)) scope.query = args?.query',
+    ...(lossless
+      ? [
+          '      if (args?.params !== undefined && !isEmpty(args.params)) scope.params = keySafeScope(args.params)',
+          '      if (args?.query !== undefined && !isEmpty(args.query)) scope.query = keySafeScope(args.query)',
+        ]
+      : [
+          '      if (!isEmpty(args?.params)) scope.params = args?.params',
+          '      if (!isEmpty(args?.query)) scope.query = args?.query',
+        ]),
     '      return [...prefix, scope]',
     '    }',
     '',
@@ -1121,7 +1134,7 @@ export function runtimeEndpoint(
     '      // Declared headers, then configured ones, then per-call ones (per-call',
     '      // wins); nullish values are omitted rather than sent as "undefined".',
     '      const headers: Record<string, string> = {}',
-    '      const put = (h: Record<string, string | number | boolean | null | undefined> | undefined): void => {',
+    `      const put = (h: Record<string, string | number${lossless ? ' | bigint' : ''} | boolean | null | undefined> | undefined): void => {`,
     '        if (!h) return',
     '        for (const k of Object.keys(h)) {',
     '          const v = h[k]',
@@ -1200,6 +1213,38 @@ export function runtimeEndpoint(
  * passes it, an own strict parser elsewhere. A bigint is encoded as JSON
  * NUMBER text (`JSON.rawJSON`, or a counted placeholder swap).
  */
+/**
+ * `@pyreon/http`'s `keySafeScope`, ported: a cache key with every `bigint`
+ * replaced by its digits. `@pyreon/query` hashes a key with `JSON.stringify`,
+ * which throws on a bigint -- so without this an int64 path / query parameter
+ * made the generated hook fail before it fetched. Emitted only under
+ * `int64: 'bigint'`, the one mode a bigint can reach a key in.
+ */
+function runtimeKeySafe(): string[] {
+  return [
+    '',
+    '/** A key scope with every `bigint` replaced by its digits (hashing a bigint throws). */',
+    'function keySafeScope(record: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {',
+    '  let out: Record<string, unknown> | undefined',
+    '  for (const k of Object.keys(record)) {',
+    '    const v = record[k]',
+    '    const safe = keySafeValue(v)',
+    '    if (safe !== v) (out ??= { ...record })[k] = safe',
+    '  }',
+    '  return out ?? record',
+    '}',
+    '',
+    'function keySafeValue(v: unknown): unknown {',
+    '  if (typeof v === "bigint") return v.toString()',
+    '  if (Array.isArray(v)) {',
+    '    return v.some((x) => typeof x === "bigint") ? v.map((x) => (typeof x === "bigint" ? x.toString() : x)) : v',
+    '  }',
+    '  if (v !== null && typeof v === "object") return keySafeScope(v as Record<string, unknown>)',
+    '  return v',
+    '}',
+  ]
+}
+
 export function runtimeJsonCodec(): string[] {
   return [
     'type SourceReviver = (key: string, value: unknown, context?: { source?: string }) => unknown',

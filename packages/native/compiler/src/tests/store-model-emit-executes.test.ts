@@ -169,9 +169,9 @@ describe('the EMITTED store actually holds state (not just typechecks)', () => {
     const decl = extractDecl(code, /^object PyreonStore_counter\b/)
     const out = runKotlin(
       [
-        '  check(PyreonStore_counter.count == 0) { "initial value lost" }',
+        '  check(PyreonStore_counter.count == 0L) { "initial value lost" }',
         '  PyreonStore_counter.count = 5',
-        '  check(PyreonStore_counter.count == 5) { "write did not persist" }',
+        '  check(PyreonStore_counter.count == 5L) { "write did not persist" }',
         '  println("OK")',
       ].join('\n'),
       decl,
@@ -203,9 +203,9 @@ describe('the EMITTED model actually holds state (not just typechecks)', () => {
     const decl = extractDecl(code, /^object PyreonModel_settings\b/)
     const out = runKotlin(
       [
-        '  check(PyreonModel_settings.pageSize == 20) { "declared default lost" }',
+        '  check(PyreonModel_settings.pageSize == 20L) { "declared default lost" }',
         '  PyreonModel_settings.pageSize = 50',
-        '  check(PyreonModel_settings.pageSize == 50) { "write did not persist" }',
+        '  check(PyreonModel_settings.pageSize == 50L) { "write did not persist" }',
         '  println("OK")',
       ].join('\n'),
       decl,

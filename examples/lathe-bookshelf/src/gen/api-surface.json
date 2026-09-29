@@ -75,6 +75,7 @@
     "Book": {
       "id": "uuid",
       "pages": "integer (optional)",
+      "rating": "number (optional)",
       "status": "enum(\"available\"|\"borrowed\"|\"lost\")",
       "subtitle": "string | null (optional)",
       "tags": "string[] (optional)",

@@ -228,16 +228,18 @@ export function C() { const n = useUrlState('n', 0); return (<Stack><Text>{\`\${
     expect(code).toContain('pyreonUrlNumber')
   })
 
-  // Swift's Int is 64-bit and Kotlin's is 32-bit, so a range guard written
-  // per-target would ACCEPT ?page=3000000000 on iOS and fall back to the
-  // default on Android — one shared source, two answers. Both are pinned to
-  // the narrower (32-bit) bound so the accepted set is identical.
+  // Swift's Int and Kotlin's Long are both 64-bit, so a shared source reads the
+  // same integers on both targets: ?page=3000000000 is a number on iOS AND on
+  // Android (it used to fall back to the default on Android, whose Int is
+  // 32-bit). Both bound the accepted set to the JS safe-integer range, the
+  // way the web's Number(raw) reads it.
   it('accepts the same integer range on both targets', () => {
     expect(transform(TYPED_SRC, { target: 'swift' }).code).toContain(
-      'n >= -2147483648, n <= 2147483647',
+      'n >= -9007199254740991, n <= 9007199254740991',
     )
     const kotlin = transform(TYPED_SRC, { target: 'kotlin' }).code
-    expect(kotlin).toContain('n < Int.MIN_VALUE.toDouble() || n > Int.MAX_VALUE.toDouble()')
+    expect(kotlin).toContain('n < -9007199254740991.0 || n > 9007199254740991.0')
+    expect(kotlin).toContain('return n.toLong()')
   })
 
   // The number helper is shared by Int and Double — emitted once, not twice.

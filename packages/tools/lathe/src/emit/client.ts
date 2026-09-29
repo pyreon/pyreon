@@ -880,7 +880,7 @@ function endpointDecl(
   // `E` (the error schemas' types) is the fifth type parameter, so a typed
   // error needs the kind spelled out even when it is the default `json`.
   const errorsGeneric = errorTypes.length > 0 ? [q(kind ?? 'json'), `{ ${errorTypes.join('; ')} }`] : kind ? [q(kind)] : []
-  const generics = `<${[q(endpointSpec(op)), v, inputType(op, models), ...errorsGeneric].join(', ')}>`
+  const generics = `<${[q(endpointSpec(op)), v, inputType(op, models, lossless), ...errorsGeneric].join(', ')}>`
   const config = entries.length > 0 ? `, { ${entries.join(', ')} }` : ''
   const consts = [...(responseConst ? [responseConst] : []), ...errorConsts]
   const constText = consts.join('\n')

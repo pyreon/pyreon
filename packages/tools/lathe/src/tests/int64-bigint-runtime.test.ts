@@ -20,6 +20,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { hashKey } from '@pyreon/query'
 import { resolveConfig, type ClientName, type ValidatorName } from '../core/config'
 import { generate } from '../core/generate'
 
@@ -41,6 +42,9 @@ paths:
       tags: [entries]
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: after, in: query, schema: { type: integer, format: int64 } }
+        - { name: ids, in: query, schema: { type: array, items: { type: integer, format: int64 } } }
+        - { name: X-Tenant, in: header, schema: { type: integer, format: int64 } }
       responses:
         '200':
           content:
@@ -94,6 +98,8 @@ const ENTRY_TEXT = `{"id":${BIG},"small":7,"amount":100000000000000000000,"refs"
 let server: Server
 let port = 0
 const received: string[] = []
+/** Each request's URL and `x-tenant` header, exactly as the server read them. */
+const requests: Array<{ url: string; tenant: string | undefined }> = []
 
 beforeAll(async () => {
   server = createServer((req, res) => {
@@ -103,6 +109,8 @@ beforeAll(async () => {
     })
     req.on('end', () => {
       received.push(body)
+      const tenant = req.headers['x-tenant']
+      requests.push({ url: req.url ?? '', tenant: Array.isArray(tenant) ? tenant.join(',') : tenant })
       res.writeHead(200, { 'content-type': 'application/json' })
       const path = (req.url ?? '').split('?')[0]
       // A POST is echoed BYTE FOR BYTE: whatever the client encoded is what
@@ -125,9 +133,12 @@ afterAll(async () => {
 
 beforeEach(() => {
   received.length = 0
+  requests.length = 0
 })
 
-type Call = (args?: Record<string, unknown>) => Promise<unknown>
+type Call = ((args?: Record<string, unknown>) => Promise<unknown>) & {
+  key: (args?: Record<string, unknown>) => readonly unknown[]
+}
 
 async function load(client: ClientName, validator: ValidatorName): Promise<Record<string, Call>> {
   const dir = join(ROOT, `int64-${client}-${validator}-${port}`)
@@ -163,6 +174,30 @@ for (const client of CLIENTS) {
         // The double is a NUMBER — the lossless decoder handed it over as a
         // bigint, and its schema read it back as JSON.parse would have.
         expect(typeof entry.amount).toBe('number')
+      })
+
+      it('sends bigint path, query and header parameters as their exact digits', async () => {
+        const { getEntry } = await load(client, validator)
+        // The id the client itself decoded goes straight back out -- no
+        // lossy `Number(…)` in between.
+        const entry = (await (getEntry as Call)({ params: { id: BIG } })) as { id: bigint }
+        expect(entry.id).toBe(9007199254740993n)
+        await (getEntry as Call)({
+          params: { id: entry.id },
+          query: { after: 9223372036854775807n, ids: [entry.id, 2n] },
+          headers: { 'X-Tenant': 18014398509481985n },
+        })
+        expect(requests[1]).toEqual({
+          url: '/v1/entries/9007199254740993?after=9223372036854775807&ids=9007199254740993&ids=2',
+          tenant: '18014398509481985',
+        })
+      })
+
+      it('a cache key holding a bigint hashes (query keys go through JSON.stringify)', async () => {
+        const { getEntry } = await load(client, validator)
+        const key = (getEntry as Call).key({ params: { id: 9007199254740993n }, query: { ids: [2n] } })
+        expect(() => hashKey(key)).not.toThrow()
+        expect(key.at(-1)).toEqual({ params: { id: '9007199254740993' }, query: { ids: ['2'] } })
       })
 
       it('decodes a top-level int64 response', async () => {

@@ -169,14 +169,14 @@ export function C() { const w = signal(300); return <Stack>${jsx}</Stack> }`
 
     const dyn = kotlin(radar(`<RadarChart data={SS} axes={AX} values={(d) => d.vals} rings={w()} showLabels={w() > 1} />`)).code
     expect(dyn).toContain('RadarOptions(rings = w,')
-    expect(dyn).toContain('showLabels = w > 1)')
+    expect(dyn).toContain('showLabels = w > 1L)')
   })
 
   it('an accessor-arrow height and a dynamic width both reach the layout unwrapped', () => {
     // `height={() => 300}` is the accessor spelling; a Kotlin lambda in that
     // position would render its toString rather than a number.
     const code = kotlin(radar(`<RadarChart data={SS} axes={AX} values={(d) => d.vals} height={() => 300} width={w()} />`)).code
-    expect(code).toContain('(300).toDouble()')
+    expect(code).toContain('(300L).toDouble()')
     expect(code).toContain('(w).toDouble()')
     expect(code).not.toContain('val pyreonW = maxWidth.value.toDouble()')
   })
