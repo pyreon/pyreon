@@ -291,13 +291,39 @@ describe('scaffold-smoke isUnpublishedSubpathBuildFailure', () => {
   // tarball for that same version number predates. Rolldown/Vite's
   // resolver fails at build time instead. Real signature from the
   // `@pyreon/core/plain` incident (2026-09-29).
-  const REAL_CI_ERROR = `[rolldown:vite-resolve] plugin \`rolldown:vite-resolve\` threw an error
-Caused by:
-    "./plain" is not exported under the conditions ["bun", "bun", "import"] from package @pyreon/core (see exports field in @pyreon/core/package.json)`
+  //
+  // CRITICAL: the resolver names the package by the ABSOLUTE PATH it
+  // resolved to, not the bare specifier — a real (non-workspace-linked)
+  // npm install has no symlink to shorten it. A first cut of this
+  // classifier matched only `from package @pyreon/[\w.-]+` and never fired
+  // in CI as a result (same commit, same error, "0 skipped") — this
+  // fixture is the exact string reproduced locally via
+  // `bun scripts/scaffold-smoke.ts monorepo-vercel`, prefixed the way
+  // bun's `--filter='web'` proxy actually prefixes every line ("web
+  // build: "), so a regression back to the bare-specifier-only match
+  // fails this spec, not just a synthetic one.
+  const REAL_CI_ERROR = `web build: Build failed: Build failed with 1 error:
+web build:
+web build: [31m[rolldown:vite-resolve] [0mplugin \`rolldown:vite-resolve\` threw an error
+web build:
+web build: Caused by:
+web build:     "./plain" is not exported under the conditions ["bun", "bun", "import"] from package /private/var/folders/f2/n4tl5c1x69xfrw2dg3xvm_r80000gn/T/cpa-smoke-9zzNJM/cpa-smoke-monorepo-vercel/apps/web/node_modules/@pyreon/core (see exports field in /private/var/folders/f2/n4tl5c1x69xfrw2dg3xvm_r80000gn/T/cpa-smoke-9zzNJM/cpa-smoke-monorepo-vercel/apps/web/node_modules/@pyreon/core/package.json)
+web build:
+web build: Exited with code 1`
 
-  it('matches the exact error from the @pyreon/core/plain incident when the subpath IS declared locally', () => {
+  it('matches the EXACT reproduced CI signature (absolute node_modules path, "web build:" prefixes) when the subpath IS declared locally', () => {
     expect(
       isUnpublishedSubpathBuildFailure(REAL_CI_ERROR, {
+        readLocalExports: () => ({ './plain': { bun: './src/plain.ts' } }),
+      }),
+    ).toBe(true)
+  })
+
+  it('also matches the bare-specifier form (workspace-linked / a shorter resolver message)', () => {
+    const bareForm =
+      '"./plain" is not exported under the conditions ["bun", "bun", "import"] from package @pyreon/core (see exports field in @pyreon/core/package.json)'
+    expect(
+      isUnpublishedSubpathBuildFailure(bareForm, {
         readLocalExports: () => ({ './plain': { bun: './src/plain.ts' } }),
       }),
     ).toBe(true)
@@ -319,12 +345,32 @@ Caused by:
     ).toBe(false)
   })
 
-  it('ignores external (non-@pyreon) packages', () => {
+  it('ignores external (non-@pyreon) packages, including a plain bare name with no path', () => {
     const external =
       '"./foo" is not exported under the conditions ["import"] from package left-pad'
     expect(
       isUnpublishedSubpathBuildFailure(external, {
         readLocalExports: () => ({ './foo': {} }),
+      }),
+    ).toBe(false)
+  })
+
+  it('ignores an external package even resolved to an absolute node_modules path', () => {
+    const external =
+      '"./foo" is not exported under the conditions ["import"] from package /tmp/proj/node_modules/left-pad (see exports field in /tmp/proj/node_modules/left-pad/package.json)'
+    expect(
+      isUnpublishedSubpathBuildFailure(external, {
+        readLocalExports: () => ({ './foo': {} }),
+      }),
+    ).toBe(false)
+  })
+
+  it('extracts the correct package identity when resolved to an absolute node_modules path with a bogus subpath — a real bug, not lag', () => {
+    const bogus =
+      '"./nonexistent-xyz" is not exported under the conditions ["bun"] from package /tmp/proj/apps/web/node_modules/@pyreon/core (see exports field in /tmp/proj/apps/web/node_modules/@pyreon/core/package.json)'
+    expect(
+      isUnpublishedSubpathBuildFailure(bogus, {
+        readLocalExports: () => ({ '.': {}, './jsx-runtime': {}, './plain': {} }),
       }),
     ).toBe(false)
   })

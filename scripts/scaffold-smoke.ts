@@ -677,8 +677,11 @@ export class ReleaseInFlightError extends Error {}
  * `exports` subpath was added) and npm's tarball for that same version
  * number predates it. Rolldown/Vite's resolver then fails at BUILD time:
  * `"./plain" is not exported under the conditions [...] from package
- * @pyreon/core`. The 0.51.0 incident that motivated the install-time
- * check is the same root cause; this is its build-time manifestation.
+ * /tmp/.../apps/web/node_modules/@pyreon/core` — note the resolver names
+ * the package by the absolute path it resolved to (a real npm install has
+ * no workspace symlink to shorten it), not the bare specifier. The 0.51.0
+ * incident that motivated the install-time check is the same root cause;
+ * this is its build-time manifestation.
  *
  * Discriminated from a genuine misconfiguration (a real missing/typo'd
  * export) by confirming the subpath IS declared in the local workspace's
@@ -693,14 +696,24 @@ export function isUnpublishedSubpathBuildFailure(
   output: string,
   deps: UnpublishedSubpathDeps = {},
 ): boolean {
+  // Rolldown/Vite's resolver names the package by whatever it resolved TO,
+  // not the bare specifier — for a real (non-workspace-linked) npm install
+  // that's an ABSOLUTE PATH ending in `node_modules/@pyreon/<name>`:
+  //   from package /tmp/.../apps/web/node_modules/@pyreon/core (see …)
+  // A bare `@pyreon/core` is also accepted (belt-and-braces for whatever
+  // other resolver/phrasing might emit the short form) — either way, the
+  // package identity is the trailing `@pyreon/<name>` segment of whatever
+  // token follows "from package ".
   const match =
-    /"([^"]+)" is not exported under the conditions \[[^\]]*\] from package (@pyreon\/[\w.-]+)/.exec(
-      output,
-    )
+    /"([^"]+)" is not exported under the conditions \[[^\]]*\] from package (\S+)/.exec(output)
   if (!match) return false
   const subpath = match[1]
-  const pkgName = match[2]
-  if (subpath === undefined || pkgName === undefined) return false
+  const rawPackageToken = match[2]
+  if (subpath === undefined || rawPackageToken === undefined) return false
+  const pkgMatch = /(@pyreon\/[\w.-]+)$/.exec(rawPackageToken)
+  if (!pkgMatch) return false
+  const pkgName = pkgMatch[1]
+  if (pkgName === undefined) return false
   const readExports = deps.readLocalExports ?? readLocalPackageExports
   // Never let a classifier crash replace the real build error with an
   // opaque one — same discipline as isReleaseInFlightInstallFailure.
