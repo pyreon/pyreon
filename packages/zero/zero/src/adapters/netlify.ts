@@ -4,6 +4,7 @@ import { NETLIFY_ADAPTER_OUTPUT } from './contract'
 import { patternToRegex } from './deploy-targets'
 import { EDGE_HANDLER_BODY, EDGE_INIT_FILE, renderEdgeInit } from './edge-wrapper'
 import { materialize, stageClientThenServer } from './stage'
+import { escapeRegExp, listStaticFiles } from './static-files'
 import { validateBuildInputs } from './validate'
 import { warnMissingEnv } from './warn-missing-env'
 
@@ -34,6 +35,23 @@ export interface NetlifyAdapterOptions {
    */
   edge?: boolean
 }
+
+/**
+ * Remove a staged `index.html` that is still the unrendered SSR template (its
+ * `<!--pyreon-app-->` placeholder unfilled), so a static-first platform cannot
+ * serve the empty shell for `/`. A missing file, or a prerendered page, is left
+ * alone. Exported for the adapter's unit test.
+ */
+export async function dropUnrenderedTemplate(indexPath: string): Promise<boolean> {
+  const { readFile, rm } = await import('node:fs/promises')
+  const html = await readFile(indexPath, 'utf-8').catch(() => null)
+  if (html === null || !html.includes(SSR_APP_PLACEHOLDER)) return false
+  await rm(indexPath)
+  return true
+}
+
+/** The SSR template's app slot — present only while the page is unrendered. */
+const SSR_APP_PLACEHOLDER = '<!--pyreon-app-->'
 
 export function netlifyAdapter(adapterOptions: NetlifyAdapterOptions = {}): Adapter {
   const defaultEdge = adapterOptions.edge === true
@@ -88,9 +106,43 @@ export function netlifyAdapter(adapterOptions: NetlifyAdapterOptions = {}): Adap
         preserve: ['netlify'],
       })
 
+      // `publish/index.html` is the client build's `index.html` — the SSR
+      // TEMPLATE, with its `<!--pyreon-app-->` placeholder still unfilled. The
+      // function below is declared `preferStatic: true`, and Netlify then lets
+      // any existing static file win over the function ("To let static assets on
+      // the CDN win when they exist, set `preferStatic: true`"). A request for
+      // `/` resolves to `index.html`, so the root page shipped the EMPTY shell
+      // instead of reaching SSR (reproduced under `netlify dev`: `/` → the raw
+      // template, `/about` → SSR). The non-forced `[[redirects]]` rule has the
+      // same shadowing. The node/bun adapters avoid it by never mapping `/` to
+      // `index.html`; here the file itself has to go. A prerendered `/` (hybrid
+      // `renderMode = 'ssg'`) has its placeholder filled, so it is kept and
+      // keeps being served statically.
+      await dropUnrenderedTemplate(join(publishDir, 'index.html'))
+
       // Generate Netlify Function (v2 format — ESM, Web-standard Request/Response).
+      // When Netlify BUNDLES the function into one module (`netlify dev` does;
+      // production does with `node_bundler = "esbuild"`), the server bundle's
+      // `new URL('./template.html', import.meta.url)` no longer points beside
+      // `template.html`. The read fails and SSR falls back to the default
+      // template with the DEV client entry, so the page never hydrates
+      // (reproduced under `netlify dev`: `/src/entry-client.ts` in the HTML).
+      // Inline the built template the way Cloudflare does: set the global in
+      // the function module ITSELF, then DYNAMIC-import the server bundle, so
+      // the assignment runs before the bundle's module body reads it. A
+      // separate side-effect-only `import "./init.js"` is NOT safe here: a
+      // bundler drops it when the deploy's package.json declares
+      // `sideEffects: false` (verified with esbuild) — the entry module's own
+      // statements can never be dropped.
+      const nodeTemplate = await readFile(
+        join(options.serverEntry, '..', 'template.html'),
+        'utf-8',
+      ).catch(() => '')
+      const serverImports = `globalThis.__PYREON_SSR_TEMPLATE__ = ${JSON.stringify(nodeTemplate)}
+const { default: handler } = await import("./${NETLIFY_ADAPTER_OUTPUT.serverDir}/entry-server.js")`
+
       const funcEntry = `
-import handler from "./${NETLIFY_ADAPTER_OUTPUT.serverDir}/entry-server.js"
+${serverImports}
 
 export default async function(req, context) {
   try {
@@ -141,8 +193,13 @@ export const config = {
         await materialize(edgeSrc, edgeDir)
         const template = await readFile(join(edgeSrc, 'template.html'), 'utf-8').catch(() => '')
         await writeFile(join(edgeDir, EDGE_INIT_FILE), renderEdgeInit(template))
+        // Netlify runs edge functions BEFORE static files, so every file in the
+        // publish dir must be excluded by name — otherwise `/robots.txt`,
+        // `/humans.txt`, … are answered by the SSR function as an HTML page.
+        const staticFiles = await listStaticFiles(publishDir, { assetsDir: options.assetsDir })
         const excluded = [
-          `^${assetPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/.*$`,
+          `^${escapeRegExp(assetPrefix)}/.*$`,
+          ...staticFiles.map((path) => `^${escapeRegExp(path)}$`),
           ...(defaultEdge ? (deploy?.nodeRoutes ?? []).map((r) => patternToRegex(r.pattern)) : []),
         ]
         await writeFile(
@@ -167,7 +224,7 @@ export const config = ${JSON.stringify({ pattern: edgePatterns, excludedPattern:
         const slug = job.path.replace(/^\/+/, '').replace(/[^\w-]+/g, '-') || 'root'
         await writeFile(
           join(functionsDir, `${NETLIFY_ADAPTER_OUTPUT.scheduledFunctionPrefix}${slug}.mjs`),
-          `import handler from "./${NETLIFY_ADAPTER_OUTPUT.serverDir}/entry-server.js"
+          `${serverImports}
 
 export default async function() {
   const res = await handler(new Request(new URL(${JSON.stringify(job.path)}, process.env.URL ?? "http://localhost")))
@@ -184,6 +241,14 @@ export const config = { schedule: ${JSON.stringify(job.schedule)} }
       // ROOT netlify.toml is what Netlify's builds actually read, and
       // `@pyreon/create-zero` generates it from the same
       // NETLIFY_ADAPTER_OUTPUT contract, dist-prefixed).
+      //
+      // NO `[[redirects]]` to the function: it routes ITSELF through
+      // `config.path` above. Netlify: "When you set a custom `path`, the
+      // function is only available at that path — not at the default
+      // `/.netlify/functions/<name>` URL", so a rewrite to that URL points
+      // at nothing (verified under `netlify dev`: it answers 404
+      // "Function not found" with or without the rule). Dead config that
+      // reads as the routing mechanism is worse than none.
       const toml = `
 [build]
   publish = "${NETLIFY_ADAPTER_OUTPUT.publishDir}"
@@ -193,11 +258,6 @@ ${hasEdge ? `  edge_functions = "${NETLIFY_ADAPTER_OUTPUT.edgeFunctionsDir}"\n` 
   for = "${assetPrefix}/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
-
-[[redirects]]
-  from = "/*"
-  to = "/.netlify/functions/${NETLIFY_ADAPTER_OUTPUT.functionName}"
-  status = 200
 `.trimStart()
 
       await writeFile(join(outDir, 'netlify.toml'), toml)

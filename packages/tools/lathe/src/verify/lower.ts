@@ -70,6 +70,7 @@ export interface VerifyReport {
 /** Emitted-source markers that prove a real lowering happened. */
 const MARKERS: readonly string[] = [
   'PyreonQuery<',
+  'PyreonStream<',
   'PyreonFetch<',
   'PyreonHttpRequest(',
   'PyreonZodSchema_',
@@ -93,6 +94,9 @@ const LEAKS: readonly string[] = [
   'z.array(',
   'zodSchema(',
   'useFetch(',
+  'useStream(',
+  'openEventStream(',
+  'openNdjsonStream(',
 ]
 
 /**
@@ -269,8 +273,10 @@ function decide(markers: string[], leaked: string[], warnings: string[], source:
   // query is not penalised for lacking a query marker.
   const wantsSchema = /\b[sz]\.object\(/.test(source)
   const wantsQuery = source.includes('useQuery')
+  const wantsStream = source.includes('useStream')
   if (wantsSchema && !markers.some((m) => m.startsWith('PyreonZodSchema_'))) return 'web-only'
   if (wantsQuery && !markers.some((m) => m === 'PyreonQuery<')) return 'web-only'
+  if (wantsStream && !markers.some((m) => m === 'PyreonStream<')) return 'web-only'
   if (markers.length === 0) return warnings.length > 0 ? 'web-only' : 'broken'
   return 'lowers'
 }

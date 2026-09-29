@@ -6,6 +6,13 @@ import type { Props, VNode, VNodeChild } from './types'
 /** Internal marker attached to lazy()-wrapped components */
 export type LazyComponent<P extends object = Props> = ((props: P) => VNodeChild) & {
   __loading: () => boolean
+  /**
+   * Resolves once the chunk has settled (loaded or failed; never rejects).
+   * Optional: `@pyreon/core`'s `lazy()` provides it, and the SSR renderers use
+   * it to WAIT for a still-loading lazy instead of rendering it as nothing.
+   * A lazy without it keeps the fallback on the server.
+   */
+  __load?: () => Promise<void>
 }
 
 /**

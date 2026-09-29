@@ -77,7 +77,11 @@ export const NETLIFY_ADAPTER_OUTPUT = Object.freeze({
   publishDir: 'publish',
   /** Functions dir staged under outDir (`ssr.mjs` + `_server/`). */
   functionsDir: 'netlify/functions',
-  /** The SSR function's name — redirects target `/.netlify/functions/<name>`. */
+  /**
+   * The SSR function's name (`<name>.mjs`). It is routed by its own
+   * `config.path` (`/*`), NOT by a redirect — a function with a custom path
+   * is unreachable at `/.netlify/functions/<name>`.
+   */
   functionName: 'ssr',
   /** Server-bundle dir inside functionsDir. */
   serverDir: '_server',

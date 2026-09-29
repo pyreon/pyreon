@@ -77,11 +77,12 @@ OpenAPI 3.x in; `@pyreon/validate` schemas, `@pyreon/http` endpoints, `@pyreon/q
 ### `target: 'multiplatform'`
 
 - PMTC sees one file's top level, so the native target emits one self-contained module per tag.
-- It runs the real native compiler over its output and asserts the positive markers (`PyreonQuery<`, `PyreonZodSchema_`) and no leaked web-only symbols. Zero warnings is not evidence. A `does NOT compile` warning counts as broken; an absent compiler skips loudly.
+- It runs the real native compiler over its output and asserts the positive markers (`PyreonQuery<`, `PyreonStream<`, `PyreonZodSchema_`) and no leaked web-only symbols. Zero warnings is not evidence. A `does NOT compile` warning counts as broken; an absent compiler skips loudly.
 - Per-operation reach is reported in spec terms (`lathe/src/core/generate.ts`):
   - a relative or missing `baseUrl` makes every operation `web-only` (PMTC bakes the request URL at compile time);
   - non-GET operations are `web-only` (PMTC does not lower mutations);
-  - GET operations with path parameters reach native — the param becomes a component prop and lowers through `useQuery`.
+  - GET operations with path parameters reach native — the param becomes a component prop and lowers through `useQuery`;
+  - a stream-only GET (SSE / NDJSON) with a typed event, or SSE read as text, reaches native through a generated `<Op>Stream` component (`useStream` over `@pyreon/http/stream` → the native `PyreonStream` runtime); an untyped stream stays `web-only` and names the missing event type. The reach report and the emitter ask ONE predicate (`hasNativeStreamComponent`).
 - A non-Pyreon `--client` with `target: 'multiplatform'` is refused.
 
 ## `@pyreon/loom` — dependency observatory

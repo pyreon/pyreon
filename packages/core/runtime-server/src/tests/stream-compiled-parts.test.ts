@@ -175,7 +175,7 @@ describe('renderToStream — Suspense with no children and no timeout', () => {
       )
     ).join('')
     expect(html).toContain('<div id="pyreon-s-0"><i>fb</i></div>')
-    expect(html).toContain('<template id="pyreon-t-0"></template>')
+    expect(html).toContain('<template id="pyreon-t-0"><!--$--><!--/$--></template>')
     expect(html).toContain('__NS("pyreon-s-0","pyreon-t-0")')
   })
 })
