@@ -5797,7 +5797,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           if (m === 'inc') return `${field} = ${clamp(`${field} + ${arg ?? '1L'}`)}`
           if (m === 'dec') return `${field} = ${clamp(`${field} - ${arg ?? '1L'}`)}`
           if (m === 'set') return `${field} = ${clamp(arg ?? '0L')}`
-          if (m === 'reset') return `${field} = ${clamp(((n: number) => (Number.isInteger(n) ? `${n}L` : String(n)))(_pureStateInitialKotlin.get(binding) ?? 0))}`
+          if (m === 'reset') return `${field} = ${clamp(((n: number | boolean) => (typeof n === 'number' && Number.isInteger(n) ? `${n}L` : String(n)))(_pureStateInitialKotlin.get(binding) ?? 0))}`
         }
       }
       // Mirror of the Swift clipboard rewrite. Kotlin's `copied` is a

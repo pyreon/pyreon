@@ -53,19 +53,19 @@ fun main() {
     val f = makeTable(seed, pageSize = 2)
     f.setPage(1)
     f.setFilter("a")
-    check(f.page == 0, "filter resets page")
-    check(f.filteredCount() == 3, "filtered count")
+    check(f.page == 0L, "filter resets page")
+    check(f.filteredCount() == 3L, "filtered count")
 
     // 4. Pagination slices + clamps.
     val p = makeTable(seed, pageSize = 2)
-    check(p.pageCount() == 2, "page count")
+    check(p.pageCount() == 2L, "page count")
     check(p.rows().map { it.id } == listOf(1, 2), "page 0")
     p.nextPage()
     check(p.rows().map { it.id } == listOf(3, 4), "page 1")
     p.nextPage()
-    check(p.page == 1, "page clamps high")
+    check(p.page == 1L, "page clamps high")
     p.setPage(-5)
-    check(p.page == 0, "page clamps low")
+    check(p.page == 0L, "page clamps low")
 
     // 6. A shrinking data source never leaves the reader on a blank page.
     //    `setFilter` resets to page 0, but nothing else does — so a page that
@@ -85,12 +85,12 @@ fun main() {
     check(d.rows().map { it.id } == listOf(5, 6), "page 2 before the shrink")
 
     live = live.take(4) // 3 pages -> 2
-    check(d.pageCount() == 2, "page count after the shrink")
-    check(d.page == 1, "page clamped to the last page after a shrink")
+    check(d.pageCount() == 2L, "page count after the shrink")
+    check(d.page == 1L, "page clamped to the last page after a shrink")
     check(d.rows().map { it.id } == listOf(3, 4), "the page went blank after a shrink")
 
     live = emptyList()
-    check(d.page == 0, "page settles at 0 when the data empties")
+    check(d.page == 0L, "page settles at 0 when the data empties")
     check(d.rows().isEmpty(), "no rows when the data empties")
 
     // 5. Selection toggles by rowId.
