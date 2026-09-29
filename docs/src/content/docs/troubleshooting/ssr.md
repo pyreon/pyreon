@@ -13,6 +13,12 @@ A lazy nested inside the content never triggered the fallback. The naive fix —
 
 ---
 
+### [FIXED, 2026-09] A hydration cursor that doubles as the insert anchor goes stale once range adoption consumes it
+
+`hydrateMountHole` passes the hole's cursor as BOTH `domNode` and `anchor`. A trailing `<Suspense>` absorbed into `_mountChild` (`templatizeComponentChildren`, default-on) had no `next`, so it inserted its `/suspense` end marker before `anchor` — the `<!--$-->` its own range adoption had just removed → `NotFoundError`, the component failed to hydrate and its content vanished. Rule: after a walk that may REMOVE nodes, re-validate any reference before using it as an insertion point; `anchor` is only an end delimiter while it is a LATER live sibling (`anchor !== domNode && anchor.parentNode === parent`), else append (a hole is trailing). Found only by the playground e2e. Reference: `runtime-dom/src/hydrate.ts:hydrateComponent` + `tests/suspense-mount-hole-hydrate.test.tsx` (bisect-verified).
+
+---
+
 ### [FIXED, 2026-09] A still-loading `lazy()` rebuilt its server range at hydration, and a boundary that SUBSCRIBES to its child's loading state remounts it on load.
 
 The server waits for every lazy, so its HTML holds real content; the client chunk usually has not landed when `hydrateRoot` runs. The lazy's first client render was nothing, so the range was discarded (identity, focus, typed input lost) — and a bare core `lazy()` never rendered at all afterwards, because its wrapper read `loaded()` once in a component body. Two layers had to change. (1) The lazy PROTOCOL is the oracle a generic accessor lacks: a type with `__load` reporting pending (`__pending ?? __loading`) over a `<!--$-->` range is not run; the range is skipped and hydrated once `__load()` settles, inside the context owner captured at the walk (`hydrate.ts:hydrateDeferredLazy`). The lazy's output became an ACCESSOR to give it that range on the server. (2) `<Suspense>` must render the child during a walk AND not read `__loading()` there — a tracked read re-runs the accessor on load and REMOUNTS the child over the nodes it just adopted; a VNode is not identity-skipped by `mountReactive`. **Rule: a reactive parent of a deferred-hydration child must not subscribe to the state the deferral waits on.** Locked by `runtime-dom/src/tests/lazy-hydration-deferred*.tsx`, the lazy arm of `hydration-parity-fuzz.test.tsx`, and a real-Chromium typed-input spec (all bisect-verified).
