@@ -34,6 +34,7 @@ import {
   h as pyreonH,
   Suspense as PyreonSuspense,
   removeContextFrame,
+  SuspenseBoundaryContext,
   useContext,
 } from '@pyreon/core'
 import {
@@ -1196,6 +1197,12 @@ export function defineAsyncComponent<P extends Props = Props>(
       if (errorComponent) return pyreonH(errorComponent, { error: early })
       throw early
     }
+
+    // A suspensible component below a `<Suspense>` — at any depth, not only as
+    // its direct child — makes that boundary show its fallback until the load
+    // settles, as Vue's does. Its own loading state is then hidden with the
+    // rest of the boundary's content.
+    if (suspensible) useContext(SuspenseBoundaryContext)?.register(settled)
 
     // Still loading, and not held back by a `<Suspense>`: this instance shows
     // its own loading state. Timers are per instance, as in Vue, and client-only

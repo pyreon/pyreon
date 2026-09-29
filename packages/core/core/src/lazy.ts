@@ -1,6 +1,7 @@
 import { signal } from '@pyreon/reactivity'
 import { h } from './h'
-import type { LazyComponent } from './suspense'
+import { useContext } from './context'
+import { type LazyComponent, SuspenseBoundaryContext } from './suspense'
 import type { ComponentFn, Props, VNodeChild } from './types'
 
 /**
@@ -35,6 +36,10 @@ export function lazy<P extends object>(
     // component that throws while rendering.
     const err = error()
     if (err) throw err
+    // Still loading below a `<Suspense>`: register with the NEAREST boundary,
+    // wherever it is above — not only as its direct child — so it shows its
+    // fallback until this chunk lands (the React / Vue model).
+    if (loaded() === null) useContext(SuspenseBoundaryContext)?.register(settled)
     // Otherwise render REACTIVELY. A component body runs once, so reading
     // `loaded()` here (as this used to) rendered a lazy mounted while its chunk
     // was loading as nothing FOREVER — only a `<Suspense>` re-running its own
