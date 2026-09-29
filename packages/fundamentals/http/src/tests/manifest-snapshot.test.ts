@@ -33,6 +33,7 @@ describe('gen-docs — http snapshot', () => {
       'http/encodeForm',
       'http/endpoint',
       'http/getAmbientRequest',
+      'http/losslessJson',
       'http/openEventStream',
       'http/retry',
       'http/runWithRequest',

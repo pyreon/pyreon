@@ -21,6 +21,7 @@
 
 import type { HttpClient } from './client'
 import type { EndpointKey, QueryOptionsLike } from './endpoint'
+import { keySafeScope } from './url'
 import type { RequestOptions, Validator } from './types'
 
 /** Options for {@link toQueryOptions}. */
@@ -46,8 +47,8 @@ export function toQueryOptions<T = unknown>(
   const { queryKey, response, ...requestOptions } = options
 
   const scope: Record<string, unknown> = {}
-  if (requestOptions.params) scope.params = requestOptions.params
-  if (requestOptions.query) scope.query = requestOptions.query
+  if (requestOptions.params) scope.params = keySafeScope(requestOptions.params)
+  if (requestOptions.query) scope.query = keySafeScope(requestOptions.query)
 
   return {
     queryKey:

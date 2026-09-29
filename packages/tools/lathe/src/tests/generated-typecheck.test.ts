@@ -227,11 +227,13 @@ function diagnose(
   spec: string = SPEC,
   plugins: PluginName[] = ['schemas', 'client', 'queries', 'mocks', 'faker'],
   label = `${client}-${validator}`,
+  int64: 'number' | 'bigint' = 'number',
 ): string[] {
   const cfg = resolveConfig({
     input: 'x',
     client,
     validator,
+    int64,
     // `faker` is in the matrix because its factories are the one emitter
     // whose output is typed against ANOTHER emitter's output -- the model types
     // from `schemas.ts` -- so a mismatch between the two shows up here and
@@ -243,7 +245,7 @@ function diagnose(
   // it is typechecked too, standalone, because nothing imports it.
   const typesFile = plugins.includes('types')
     ? undefined
-    : generate(spec, resolveConfig({ input: 'x', plugins: ['types'] })).files.find((f) => f.path === 'types.ts')
+    : generate(spec, resolveConfig({ input: 'x', plugins: ['types'], int64 })).files.find((f) => f.path === 'types.ts')
   const files = [...result.files, ...(typesFile ? [typesFile] : [])].filter((f) => /\.tsx?$/.test(f.path))
   // The interfaces in `schemas.ts` are written out, and the schema consts are
   // cast to them -- so nothing in the OUTPUT relates the two. This file does,
@@ -252,6 +254,11 @@ function diagnose(
     files.push(emitSchemaAgreement(result.doc, validator).build(banner(result.doc.title, result.doc.version)))
   }
   if (spec === SPEC && plugins.includes('queries')) files.push({ path: 'error-usage.ts', contents: ERROR_USAGE })
+  // An int64 id the client decoded (a bigint) must be accepted straight back
+  // as a path / query / header parameter -- and a plain number literal too.
+  if (spec === INT64 && int64 === 'bigint' && plugins.includes('client')) {
+    files.push({ path: 'bigint-params-usage.ts', contents: BIGINT_PARAMS_USAGE })
+  }
   const root = join(TC_ROOT, label)
   rmSync(root, { recursive: true, force: true })
   for (const f of files) {
@@ -499,6 +506,131 @@ describe('Petstore 3 output typechecks under strict TypeScript', () => {
   for (const validator of VALIDATORS) {
     it(`client=pyreon validator=${validator}`, () => {
       const errors = diagnose('pyreon', validator, PETSTORE3, undefined, `petstore3-${validator}`)
+      expect(errors, errors.join('\n')).toEqual([])
+    })
+  }
+})
+
+/**
+ * `int64: 'bigint'` — every plugin, every client, every schema library.
+ *
+ * The mode touches every emitter at once: the schemas (`preprocess` into a
+ * `bigint()` with bigint-literal bounds), the client (the lossless codec, and
+ * for an adapter a whole emitted copy of it), fixtures (bigint literals), the
+ * faker factories, streams, form bodies and webhooks. Each of those is a place
+ * a `bigint` can meet a type that only admits `number`, so the int64 appears in
+ * every position the spec grammar allows one.
+ */
+const INT64 = `
+openapi: 3.1.0
+info: { title: Ledger, version: '1' }
+servers: [{ url: 'https://api.test/v1' }]
+paths:
+  /entries/{id}:
+    get:
+      operationId: getEntry
+      tags: [e]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: after, in: query, schema: { type: integer, format: int64 } }
+        - { name: X-Tenant, in: header, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Entry' } } } }
+        '404': { content: { application/json: { schema: { type: object, required: [id], properties: { id: { type: integer, format: int64 } } } } } }
+  /entries:
+    post:
+      operationId: createEntry
+      tags: [e]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/Entry' } } } }
+      responses: { '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Entry' } } } } }
+  /ledger:
+    get:
+      operationId: getBalance
+      tags: [e]
+      responses: { '200': { content: { application/json: { schema: { type: integer, format: int64, minimum: 0 } } } } }
+  /charges:
+    post:
+      operationId: charge
+      tags: [e]
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount: { type: integer, format: int64 }
+                meta: { type: object, properties: { order: { type: integer, format: int64 } } }
+            encoding: { meta: { style: deepObject, explode: true } }
+      responses: { '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Entry' } } } } }
+  /files:
+    post:
+      operationId: upload
+      tags: [e]
+      requestBody:
+        content:
+          multipart/form-data:
+            schema: { type: object, required: [file], properties: { file: { type: string, format: binary }, size: { type: integer, format: int64 } } }
+      responses: { '204': { description: ok } }
+  /feed:
+    get:
+      operationId: feed
+      tags: [e]
+      responses: { '200': { content: { text/event-stream: { schema: { $ref: '#/components/schemas/Entry' } } } } }
+  /export:
+    get:
+      operationId: exportRows
+      tags: [e]
+      responses: { '200': { content: { application/x-ndjson: { schema: { $ref: '#/components/schemas/Entry' } } } } }
+webhooks:
+  settled:
+    post:
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/Entry' } } } }
+      responses: { '200': { description: ok } }
+components:
+  schemas:
+    Entry:
+      type: object
+      required: [id, amount]
+      properties:
+        id: { type: integer, format: int64, example: 42 }
+        amount: { type: number, format: double }
+        count: { type: integer }
+        refs: { type: array, uniqueItems: true, items: { type: integer, format: int64 } }
+        parent: { type: [integer, 'null'], format: int64 }
+        limits: { type: object, additionalProperties: { type: integer, format: int64 } }
+        bounded: { type: integer, format: int64, minimum: 1, exclusiveMaximum: 1000, multipleOf: 3 }
+        next: { $ref: '#/components/schemas/Entry' }
+        kind: { $ref: '#/components/schemas/Kind' }
+    Kind:
+      oneOf:
+        - { type: object, required: [type, n], properties: { type: { const: a }, n: { type: integer, format: int64 } } }
+        - { type: object, required: [type], properties: { type: { const: b } } }
+      discriminator: { propertyName: type }
+`
+
+const BIGINT_PARAMS_USAGE = `import { getEntry } from './endpoints/e'
+
+export async function again(): Promise<void> {
+  const entry = await getEntry({ params: { id: 1n } })
+  await getEntry({ params: { id: entry.id }, query: { after: entry.id }, headers: { 'X-Tenant': 9007199254740993n } })
+  await getEntry({ params: { id: 5 }, query: { after: 6 }, headers: { 'X-Tenant': 7 } })
+  void getEntry.key({ params: { id: entry.id } })
+}
+`
+
+describe("int64: 'bigint' output typechecks under strict TypeScript", () => {
+  for (const client of CLIENTS) {
+    for (const validator of VALIDATORS) {
+      it(`client=${client} validator=${validator} (every plugin)`, () => {
+        const errors = diagnose(client, validator, INT64, [...ALL_PLUGINS], `int64-${client}-${validator}`, 'bigint')
+        expect(errors, errors.join('\n')).toEqual([])
+      })
+    }
+  }
+  for (const validator of VALIDATORS) {
+    it(`Petstore 3 (int64 ids), validator=${validator}`, () => {
+      const errors = diagnose('pyreon', validator, PETSTORE3, [...ALL_PLUGINS], `petstore3-int64-${validator}`, 'bigint')
       expect(errors, errors.join('\n')).toEqual([])
     })
   }

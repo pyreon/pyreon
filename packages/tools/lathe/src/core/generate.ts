@@ -36,7 +36,8 @@ import { emitSchemas, emitTypes } from "../emit/schema";
 import { emitWebhooks } from '../emit/webhooks'
 import { banner, jsonLiteral, type GeneratedFile } from "../emit/writer";
 import type { ResolvedConfig } from "./config";
-import type { IrDocument, IrNote, IrOperation, Reach } from "./ir";
+import type { IrDocument, IrNote, IrOperation, IrType, Reach } from "./ir";
+import { usesBigInt, visitTypes } from "./walk";
 import {
   loadOpenApi,
   parsePagination,
@@ -128,6 +129,7 @@ function* pipeline(
   const loaded = loadOpenApi(specText, {
     ...options,
     patches: options.patches ?? config.patches,
+    int64: options.int64 ?? config.int64,
   });
   const documents = loaded.documents;
   let doc = applyFilters(loaded.doc, config.filters);
@@ -135,6 +137,8 @@ function* pipeline(
   doc = applyOperationSettings(doc, config.operations, config.naming?.hook);
   applyPagination(doc, config);
   applyStreams(doc, config);
+  assertInt64Validation(doc);
+  if (config.target === "multiplatform") noteInt64Native(doc);
   // Frozen from here on, with or without plugins: every emitter reads, none
   // writes, and a plugin is held to the same rule.
   doc = yield* runTransforms(doc, plugins, config);
@@ -356,6 +360,55 @@ function applyPagination(doc: IrDocument, config: ResolvedConfig): void {
     });
     op.pagination = undefined;
   }
+}
+
+/**
+ * Under `int64: 'bigint'`, refuse an operation whose response validation is
+ * `off` when its response carries an int64 -- the per-operation twin of the
+ * config-level refusal in `resolveConfig`. Validation is what widens a SMALL
+ * int64 to a bigint; skipped, the field holds a number under a bigint type.
+ */
+function assertInt64Validation(doc: IrDocument): void {
+  if (!usesBigInt(doc)) return;
+  const models = new Map(doc.models.map((m) => [m.name, m.type]));
+  for (const op of doc.operations) {
+    if (op.validate !== "off" || !op.response) continue;
+    if (!reachesBigInt(op.response, models, new Set())) continue;
+    throw new Error(
+      `[Pyreon] lathe: \`${op.id}\` turns response validation off, but its response carries an int64 and \`int64: 'bigint'\` is set — ` +
+        "validation is what turns a small int64 into a bigint. Use `'warn'` for that operation instead.",
+    );
+  }
+}
+
+function reachesBigInt(type: IrType, models: ReadonlyMap<string, IrType>, seen: Set<string>): boolean {
+  let found = false;
+  visitTypes(type, (t) => {
+    if (t.kind === "bigint") found = true;
+    else if (t.kind === "ref" && !seen.has(t.name)) {
+      seen.add(t.name);
+      const target = models.get(t.name);
+      if (target && reachesBigInt(target, models, seen)) found = true;
+    }
+  });
+  return found;
+}
+
+/**
+ * `int64: 'bigint'` stops at the web. PMTC has no bigint type, so the native
+ * modules keep the `number().int()` schema the default mode emits, and each
+ * platform decodes it as its own integer. Reported, never silent: the two
+ * targets hold different types for the same field.
+ */
+function noteInt64Native(doc: IrDocument): void {
+  if (!usesBigInt(doc)) return;
+  (doc.notes as IrNote[]).push({
+    code: "int64-native",
+    at: "#/components/schemas",
+    message:
+      "`int64: 'bigint'` is web-only: PMTC has no bigint type, so the native modules decode `format: int64` as the platform integer PMTC lowers `number().int()` to — " +
+      "Swift `Int` (64-bit, exact) and Kotlin `Int` (32-bit: a value past 2147483647 fails to decode on Android). The web client holds a `bigint` for the same field.",
+  });
 }
 
 /**
