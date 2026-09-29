@@ -759,7 +759,7 @@ final class PyreonCounterUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.staticTexts["Info: ios touch"].waitForExistence(timeout: 30),
+            app.staticTexts["Info: ios-touch"].waitForExistence(timeout: 30),
             "useDeviceInfo did not read the live platform / touch capability"
         )
 
@@ -782,13 +782,13 @@ final class PyreonCounterUITests: XCTestCase {
         motion.tap()
         // No motion hardware in the Simulator: start() reports false and the
         // row stays inactive (a crash or a fabricated sample would not).
-        XCTAssertTrue(app.staticTexts["Motion: off idle"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["Motion: off-idle"].waitForExistence(timeout: 15))
 
         let scan = app.buttons["probe-scan"]
         bringFullyOnScreen(scan, in: app)
         scan.tap()
         XCTAssertTrue(
-            app.staticTexts["Bluetooth: unavailable idle"].waitForExistence(timeout: 20),
+            app.staticTexts["Bluetooth: unavailable-idle"].waitForExistence(timeout: 20),
             "useBluetooth did not report the Simulator's missing radio"
         )
     }

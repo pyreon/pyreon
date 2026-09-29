@@ -345,6 +345,9 @@ export function Counter() {
   // Those engines existed only in the validation stubs, so an app using any
   // of these hooks could not build; this block is the build-time proof that
   // they resolve, and the device gates assert the observable state below.
+  // NB the `-` separators: a single space between two `{expr}` containers on one
+  // JSX line is dropped by the PMTC parse (`parseJsxChild` discards a
+  // whitespace-only text child), so `{a} {b}` emits `"\(a)\(b)"`.
   const deviceInfo = useDeviceInfo()
   const wake = useWakeLock()
   const motion = useDeviceMotion()
@@ -453,17 +456,6 @@ export function Counter() {
       <Text>Theme: {colorScheme}</Text>
       <Text>Orientation: {orientation.type()}</Text>
       <Text>Inset: {safeArea().top > 0 ? 'top' : 'none'}</Text>
-      <Text data-testid="probe-info">Info: {deviceInfo.platform()} {deviceInfo.isTouch() ? 'touch' : 'no-touch'}</Text>
-      <Button data-testid="probe-wake" onPress={() => wake.request()}>Keep awake</Button>
-      <Text data-testid="probe-wake-state">Awake: {wake.active() ? 'on' : 'off'}</Text>
-      <Button data-testid="probe-motion" onPress={() => motion.start()}>Start motion</Button>
-      <Text data-testid="probe-motion-state">Motion: {motion.active() ? 'on' : 'off'} {motion.acceleration().x * motion.acceleration().x + motion.acceleration().y * motion.acceleration().y + motion.acceleration().z * motion.acceleration().z > 1.0 ? 'sampled' : 'idle'}</Text>
-      <Button data-testid="probe-speak" onPress={() => speech.speak('hello')}>Speak</Button>
-      <Text data-testid="probe-speech-state">Speech: {speech.supported() ? 'supported' : 'unsupported'}</Text>
-      <Button data-testid="probe-record" onPress={() => recorder.start()}>Record</Button>
-      <Text data-testid="probe-record-state">Recording: {recorder.recording() ? 'on' : 'off'}</Text>
-      <Button data-testid="probe-scan" onPress={() => bt.scan()}>Scan</Button>
-      <Text data-testid="probe-bt-state">Bluetooth: {bt.available() ? 'available' : 'unavailable'} {bt.scanning() ? 'scanning' : 'idle'}</Text>
       {/* FFI device proof — the value comes from the app's OWN platform class
           (iOS returns "iOS", Android returns "Android"), so the rendered text
           proves a user-defined native module was constructed and called. */}
@@ -653,6 +645,20 @@ export function Counter() {
       <Tally count={count()} footer={<Text data-testid="rp-footer">{'rp footer filled'}</Text>}>
         {(n) => <Text data-testid="rp-plain">{`rp plain ${n}`}</Text>}
       </Tally>
+      {/* Platform-probe rows, LAST on the page on purpose (see the F3 note above):
+          rows added higher up push controls the other device tests click without
+          scrolling below the fold. The probe tests scroll to what they need. */}
+      <Text data-testid="probe-info">Info: {deviceInfo.platform()}-{deviceInfo.isTouch() ? 'touch' : 'no-touch'}</Text>
+      <Button data-testid="probe-wake" onPress={() => wake.request()}>Keep awake</Button>
+      <Text data-testid="probe-wake-state">Awake: {wake.active() ? 'on' : 'off'}</Text>
+      <Button data-testid="probe-motion" onPress={() => motion.start()}>Start motion</Button>
+      <Text data-testid="probe-motion-state">Motion: {motion.active() ? 'on' : 'off'}-{motion.acceleration().x * motion.acceleration().x + motion.acceleration().y * motion.acceleration().y + motion.acceleration().z * motion.acceleration().z > 1.0 ? 'sampled' : 'idle'}</Text>
+      <Button data-testid="probe-speak" onPress={() => speech.speak('hello')}>Speak</Button>
+      <Text data-testid="probe-speech-state">Speech: {speech.supported() ? 'supported' : 'unsupported'}</Text>
+      <Button data-testid="probe-record" onPress={() => recorder.start()}>Record</Button>
+      <Text data-testid="probe-record-state">Recording: {recorder.recording() ? 'on' : 'off'}</Text>
+      <Button data-testid="probe-scan" onPress={() => bt.scan()}>Scan</Button>
+      <Text data-testid="probe-bt-state">Bluetooth: {bt.available() ? 'available' : 'unavailable'}-{bt.scanning() ? 'scanning' : 'idle'}</Text>
     </Stack>
     </Scroll>
   )

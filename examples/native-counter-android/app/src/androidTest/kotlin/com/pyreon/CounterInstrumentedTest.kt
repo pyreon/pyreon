@@ -753,7 +753,7 @@ class CounterInstrumentedTest {
     @Test
     fun deviceInfoProbeReadsTheLivePlatform() {
         composeRule.onNodeWithTag("probe-info").performScrollTo()
-            .assertTextEquals("Info: android touch")
+            .assertTextEquals("Info: android-touch")
     }
 
     // The platform half, not just the state: FLAG_KEEP_SCREEN_ON on the
@@ -782,8 +782,14 @@ class CounterInstrumentedTest {
     @Test
     fun deviceMotionDeliversSensorSamples() {
         composeRule.onNodeWithTag("probe-motion").performScrollTo().performClick()
-        composeRule.waitUntil(timeoutMillis = 20_000) {
-            composeRule.onAllNodesWithText("Motion: on sampled").fetchSemanticsNodes().isNotEmpty()
+        try {
+            composeRule.waitUntil(timeoutMillis = 20_000) {
+                composeRule.onAllNodesWithText("Motion: on-sampled").fetchSemanticsNodes().isNotEmpty()
+            }
+        } catch (e: androidx.compose.ui.test.ComposeTimeoutException) {
+            // Re-assert so the failure names the ACTUAL row text ("Motion: on-idle"
+            // = started but no sample arrived; "off-idle" = start() refused).
+            composeRule.onNodeWithTag("probe-motion-state").assertTextEquals("Motion: on-sampled")
         }
     }
 
@@ -812,13 +818,33 @@ class CounterInstrumentedTest {
         }
     }
 
-    // The emulator has no BLE adapter: the hook must say so and stay idle, and
-    // a scan attempt must land in the error channel rather than throw.
+    // BLE discovery through the platform scanner. The emulator ships a virtual
+    // BLE controller that is OFF by default, so this drives both real outcomes:
+    // a scan while the radio is off must land in the error channel (row stays
+    // idle, no throw), and once the radio is on the SAME tap must reach
+    // `BluetoothLeScanner.startScan` and flip the row to scanning. The runtime
+    // permission is granted through the shell first, otherwise the engine
+    // (correctly) raises the system permission prompt over the app.
     @Test
-    fun bluetoothReportsUnavailableAndStaysIdle() {
+    fun bluetoothScanFollowsTheAdapterState() {
+        val instr = InstrumentationRegistry.getInstrumentation()
+        val pkg = instr.targetContext.packageName
+        instr.uiAutomation.executeShellCommand("pm grant $pkg android.permission.BLUETOOTH_SCAN").close()
+        val adapter = (instr.targetContext.getSystemService(Context.BLUETOOTH_SERVICE)
+            as android.bluetooth.BluetoothManager).adapter
+        instr.uiAutomation.executeShellCommand("cmd bluetooth_manager disable").close()
+        composeRule.waitUntil(timeoutMillis = 30_000) { !adapter.isEnabled }
+
         composeRule.onNodeWithTag("probe-scan").performScrollTo().performClick()
         composeRule.onNodeWithTag("probe-bt-state").performScrollTo()
-            .assertTextEquals("Bluetooth: unavailable idle")
+            .assertTextEquals("Bluetooth: available-idle")
+
+        instr.uiAutomation.executeShellCommand("cmd bluetooth_manager enable").close()
+        composeRule.waitUntil(timeoutMillis = 60_000) { adapter.isEnabled }
+        composeRule.onNodeWithTag("probe-scan").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            composeRule.onAllNodesWithText("Bluetooth: available-scanning").fetchSemanticsNodes().isNotEmpty()
+        }
     }
 
     // FFI escape hatch (useNativeModule) asserted in the REAL Compose
