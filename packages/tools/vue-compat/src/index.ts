@@ -21,10 +21,11 @@
  *             `import { ref, computed, watch } from "@pyreon/vue-compat"`
  */
 
-import type { ComponentFn, Props, VNodeChild } from '@pyreon/core'
+import type { ComponentFn, Props, VNode, VNodeChild } from '@pyreon/core'
 import {
   createContext,
   Fragment,
+  nativeCompat,
   onMount,
   onUnmount,
   onUpdate,
@@ -42,6 +43,7 @@ import {
   computed as pyreonComputed,
   nextTick as pyreonNextTick,
   type Signal,
+  isServer,
   signal,
 } from '@pyreon/reactivity'
 import {
@@ -50,7 +52,7 @@ import {
   Transition as PyreonTransition,
   TransitionGroup as PyreonTransitionGroup,
 } from '@pyreon/runtime-dom'
-import { getCurrentCtx, getHookIndex } from './jsx-runtime'
+import { getCurrentCtx, getHookIndex, toCompatComponent } from './jsx-runtime'
 
 // ─── Internal symbols ─────────────────────────────────────────────────────────
 
@@ -1038,54 +1040,205 @@ export function defineComponent<P extends Props = Props>(
 
 // ─── defineAsyncComponent ───────────────────────────────────────────────────
 
+/** What an async loader may resolve to — an ES module or the component itself, as in Vue. */
+export type AsyncComponentLoader<P extends Props = Props> = () => Promise<
+  ComponentFn<P> | { default: ComponentFn<P> }
+>
+
+/** Vue 3's `defineAsyncComponent` options object. */
+export interface AsyncComponentOptions<P extends Props = Props> {
+  loader: AsyncComponentLoader<P>
+  /** Rendered while loading, once `delay` has elapsed. Ignored while a `<Suspense>` controls the component. */
+  loadingComponent?: ComponentFn
+  /** Rendered with `{ error }` when the load fails or times out. Without one, the error is thrown to the nearest `<ErrorBoundary>`. */
+  errorComponent?: ComponentFn<{ error: Error }>
+  /** Milliseconds before `loadingComponent` is shown. Default `200`, as in Vue. */
+  delay?: number
+  /** Milliseconds after which a still-pending load becomes an error. Default: no timeout. */
+  timeout?: number
+  /**
+   * `false` opts out of `<Suspense>` control: the component renders its own
+   * `loadingComponent` / `errorComponent` even as the direct child of a
+   * `<Suspense>`. Default `true`.
+   */
+  suspensible?: boolean
+  /**
+   * Called when the loader rejects. Call `retry()` to load again, or `fail()`
+   * to give up; `attempts` counts the attempts so far (the first is `1`).
+   */
+  onError?: (error: Error, retry: () => void, fail: () => void, attempts: number) => void
+}
+
+/** The lazy-protocol members `defineAsyncComponent` adds (see `@pyreon/core`'s `lazy()`). */
+export type AsyncComponent<P extends Props = Props> = ComponentFn<P> & {
+  __loading: () => boolean
+  __load: () => Promise<void>
+}
+
+const toError = (err: unknown): Error => (err instanceof Error ? err : new Error(String(err)))
+
+/** Mounted where a failed async component stood: its setup throws, so the error reaches the nearest `<ErrorBoundary>` exactly like any component that throws while mounting. */
+const AsyncComponentError = nativeCompat((props: { error: Error }): VNodeChild => {
+  throw props.error
+})
+
 /**
- * Defines an async component that lazily loads on first use.
- * Supports both a bare loader function and an options object with
- * loadingComponent, errorComponent, delay, and timeout.
+ * Defines an async component that lazily loads on first use — Vue 3's
+ * `defineAsyncComponent`, including every option of its options form
+ * (`loadingComponent`, `errorComponent`, `delay`, `timeout`, `suspensible`,
+ * `onError`).
  *
- * Returns a ComponentFn with a `__loading` property for Suspense integration.
+ * **`<Suspense>`.** A suspensible component (the default) implements
+ * `@pyreon/core`'s lazy protocol: `__loading()` drives `<Suspense>`'s fallback
+ * and `__load()` settles once the load has settled. Pyreon's `<Suspense>`
+ * tracks its DIRECT child, so that is the case in which the boundary takes
+ * over and the loading/error/delay/timeout options are ignored, as in Vue. An
+ * async component anywhere else renders its own loading and error states.
+ *
+ * **SSR.** The server always waits for the load and renders the real content
+ * (or `errorComponent`) — for a non-suspensible component too, since Vue's
+ * server renderer also awaits every async component regardless of
+ * `suspensible`. `delay` and `timeout` are client-only, as in Vue.
+ *
+ * **Errors.** A rejected load goes to `onError` first (which may `retry()`),
+ * then renders `errorComponent` with `{ error }`, or — without one — is thrown
+ * to the nearest `<ErrorBoundary>`. A failed load stays failed for the
+ * definition: later mounts render the same error rather than loading again
+ * (Vue retries on the next mount); use `onError`'s `retry` to recover.
+ * A load that finishes AFTER its `timeout` still replaces the error with the
+ * component, as in Vue.
  */
 export function defineAsyncComponent<P extends Props = Props>(
-  loader:
-    | (() => Promise<{ default: ComponentFn<P> }>)
-    | {
-        loader: () => Promise<{ default: ComponentFn<P> }>
-        loadingComponent?: ComponentFn
-        errorComponent?: ComponentFn
-        delay?: number
-        timeout?: number
-      },
-): ComponentFn<P> & { __loading: () => boolean } {
-  const load = typeof loader === 'function' ? loader : loader.loader
+  source: AsyncComponentLoader<P> | AsyncComponentOptions<P>,
+): AsyncComponent<P> {
+  const opts: AsyncComponentOptions<P> = typeof source === 'function' ? { loader: source } : source
+  const { loader, delay = 200, timeout, suspensible = true, onError: userOnError } = opts
+  // Converted ONCE: `jsx()` would wrap a framework-style component the same way,
+  // and doing it per render would mint a new wrapper each time.
+  const loadingComponent = opts.loadingComponent ? toCompatComponent(opts.loadingComponent) : null
+  const errorComponent = opts.errorComponent
+    ? toCompatComponent(opts.errorComponent as ComponentFn)
+    : null
 
-  const loaded = signal<ComponentFn<P> | null>(null)
-  const error = signal<Error | null>(null)
-  let promise: Promise<unknown> | null = null
+  // Definition-level, like Vue's `resolvedComp` / `pendingRequest`: every
+  // instance shares one request and one resolved component.
+  const resolved = signal<ComponentFn | null>(null)
+  const failed = signal<Error | null>(null)
+  let pendingRequest: Promise<ComponentFn> | null = null
+  let settle: Promise<void> | null = null
+  let retries = 0
 
-  const startLoad = () => {
-    if (promise) return
-    promise = load().then(
-      (mod) => loaded.set(mod.default),
-      (err) => error.set(err instanceof Error ? err : new Error(String(err))),
-    )
+  const retry = (): Promise<ComponentFn> => {
+    retries++
+    pendingRequest = null
+    return request()
   }
 
-  const AsyncComp = ((props: P) => {
-    startLoad()
-    const err = error()
-    if (err) throw err
-    const comp = loaded()
-    if (!comp) return null
-    return comp(props)
-  }) as ComponentFn<P> & { __loading: () => boolean }
+  // Vue's `load()`: a rejection goes to `onError`, whose `retry` swaps in a new
+  // request that this one then resolves with.
+  const request = (): Promise<ComponentFn> => {
+    if (pendingRequest) return pendingRequest
+    const thisRequest: Promise<ComponentFn> = (pendingRequest = loader()
+      .catch((raw: unknown) => {
+        const err = toError(raw)
+        if (!userOnError) throw err
+        return new Promise<ComponentFn<P> | { default: ComponentFn<P> }>((resolve, reject) => {
+          userOnError(
+            err,
+            () => resolve(retry() as Promise<ComponentFn<P>>),
+            () => reject(err),
+            retries + 1,
+          )
+        })
+      })
+      .then((mod): ComponentFn | Promise<ComponentFn> => {
+        if (thisRequest !== pendingRequest && pendingRequest) return pendingRequest
+        const comp = typeof mod === 'function' ? mod : mod?.default
+        if (typeof comp !== 'function') {
+          throw new Error(
+            `[Pyreon] defineAsyncComponent: the loader resolved to ${String(comp)}, not a component. ` +
+              'Resolve to a component, or to a module whose `default` export is one.',
+          )
+        }
+        return comp as ComponentFn
+      }))
+    return thisRequest
+  }
+
+  // Settles, never rejects — the `__load` contract the SSR renderers await.
+  const startLoad = (): Promise<void> => {
+    if (!settle) {
+      settle = request().then(
+        (comp) => resolved.set(toCompatComponent(comp)),
+        (err: unknown) => failed.set(toError(err)),
+      )
+    }
+    return settle
+  }
+
+  const renderError = (error: Error): VNode =>
+    errorComponent
+      ? pyreonH(errorComponent, { error })
+      : pyreonH(AsyncComponentError as ComponentFn, { error })
+
+  const AsyncComp = ((props: P): VNodeChild => {
+    const settled = startLoad()
+    const ready = resolved.peek()
+    if (ready) return pyreonH(ready, props as Props)
+    const early = failed.peek()
+    // Kept as a setup-time throw so a `<Suspense>`-controlled failure behaves
+    // exactly like core's `lazy()` (the boundary's error path, SSR included).
+    if (early) {
+      if (errorComponent) return pyreonH(errorComponent, { error: early })
+      throw early
+    }
+
+    // Still loading, and not held back by a `<Suspense>`: this instance shows
+    // its own loading state. Timers are per instance, as in Vue, and client-only
+    // (the server has already waited on `__load`).
+    const delayed = signal(!isServer && delay > 0)
+    const timedOut = signal<Error | null>(null)
+    let delayTimer: ReturnType<typeof setTimeout> | undefined
+    let timeoutTimer: ReturnType<typeof setTimeout> | undefined
+    const clearTimers = () => {
+      clearTimeout(delayTimer)
+      clearTimeout(timeoutTimer)
+      delayTimer = timeoutTimer = undefined
+    }
+    if (!isServer) {
+      if (delay > 0) delayTimer = setTimeout(() => delayed.set(false), delay)
+      if (timeout != null) {
+        timeoutTimer = setTimeout(() => {
+          if (resolved.peek() === null && failed.peek() === null) {
+            timedOut.set(new Error(`Async component timed out after ${timeout}ms.`))
+          }
+        }, timeout)
+      }
+      // Leak class I: a settled load must not leave its timers (and the
+      // closures they hold) pending; nor must an unmount.
+      settled.then(clearTimers)
+      onUnmount(clearTimers)
+    }
+
+    return (): VNode | null => {
+      const comp = resolved()
+      if (comp) return pyreonH(comp, props as Props)
+      const error = failed() ?? timedOut()
+      if (error) return renderError(error)
+      return loadingComponent && !delayed() ? pyreonH(loadingComponent, null) : null
+    }
+  }) as AsyncComponent<P>
 
   AsyncComp.__loading = () => {
-    const isLoading = loaded() === null && error() === null
+    const isLoading = resolved() === null && failed() === null
     if (isLoading) startLoad()
-    return isLoading
+    // A non-suspensible component must not put a client `<Suspense>` into its
+    // fallback — it renders its own loading state. The server still waits.
+    return isLoading && (suspensible || isServer)
   }
+  AsyncComp.__load = startLoad
 
-  return AsyncComp
+  return nativeCompat(AsyncComp)
 }
 
 // ─── h ────────────────────────────────────────────────────────────────────────
@@ -1553,17 +1706,25 @@ export function TransitionGroup<T = unknown>(props: {
  *   )
  * }
  */
-export function Suspense(props: {
+function VueSuspense(props: {
   fallback?: VNodeChild
   /** Accepted for Vue compatibility — ignored (no timeout phase). */
   timeout?: number
   children?: VNodeChild
 }): VNodeChild {
-  return PyreonSuspense({
+  // Render core's Suspense as a CHILD vnode rather than calling it: the SSR
+  // renderers recognise a boundary by `vnode.type === Suspense` (core's), both
+  // to stream it and to wait for a still-loading lazy child. Called directly,
+  // the boundary's type was this function and a pending
+  // `defineAsyncComponent` rendered the fallback on the server forever.
+  return pyreonH(PyreonSuspense, {
     fallback: props.fallback ?? null,
     children: props.children ?? null,
   })
 }
+// Native so `jsx()` does not wrap it — the boundary has no Vue-style render
+// semantics, and wrapping only adds a compat render frame around it.
+export const Suspense = /* @__PURE__ */ nativeCompat(VueSuspense)
 
 // ─── getCurrentInstance / useSlots / useAttrs ────────────────────────────────
 

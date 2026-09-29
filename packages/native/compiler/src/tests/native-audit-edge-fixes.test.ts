@@ -73,7 +73,7 @@ describe('audit edge fixes — Math coercion / unary literal / i++ / array destr
   it('UNARY: negative/positive literal signals infer the number type (not Any)', () => {
     expect(transform(wrap(`const n=signal(-5); const s=computed(()=>n()+1)`), { target: 'swift' }).code).toContain('var n: Int = -5')
     expect(transform(wrap(`const p=signal(-9.5); const s=computed(()=>p()*2)`), { target: 'swift' }).code).toContain('var p: Double = -9.5')
-    expect(transform(wrap(`const n=signal(-5); const s=computed(()=>n()+1)`), { target: 'kotlin' }).code).toContain('mutableStateOf(-5)')
+    expect(transform(wrap(`const n=signal(-5); const s=computed(()=>n()+1)`), { target: 'kotlin' }).code).toContain('mutableStateOf(-5L)')
   })
 
   it('GAP-2: bare i++ STATEMENT emits `i += 1` (not the value-position IIFE) and promotes i to var', () => {

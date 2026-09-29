@@ -1945,6 +1945,11 @@ export type ZodFieldType =
         | { kind: 'object'; schemaName: string }
       /** v3 — applies to PRIMITIVE element types only. */
       elementConstraints?: ZodFieldConstraints
+      /**
+       * The element is `number().int()`. Absent means a plain `number()`,
+       * which accepts a fraction — see the field-level `integer`.
+       */
+      elementInteger?: boolean
     }
 
 export interface ZodSchemaDefnIR {
@@ -1962,6 +1967,13 @@ export interface ZodSchemaDefnIR {
      * (not throw) when the field is missing.
      */
     optional?: boolean
+    /**
+     * `.int()` is in the modifier chain. Absent on a `number()` field means
+     * the schema accepts a FRACTION (`1.5`), which is the evidence
+     * `refineStructFloatsFromResponseSchemas` uses to type a decode struct's
+     * matching field Double rather than PMTC's `number` → Int default.
+     */
+    integer?: boolean
   }[]
   /**
    * Gap 4 v3.2 — auxiliary schemas synthesized while parsing this

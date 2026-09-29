@@ -52,6 +52,6 @@ describe('Double struct fields — initializer value-refinement', () => {
   it('Kotlin: growth → Double field; revenue stays Int', () => {
     const out = transform(SRC, { target: 'kotlin' }).code
     expect(out).toContain('growth: Double')
-    expect(out).toContain('revenue: Int')
+    expect(out).toContain('revenue: Long')
   })
 })

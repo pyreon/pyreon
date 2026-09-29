@@ -11,29 +11,29 @@ package com.pyreon.runtime
 
 fun testFieldArrayInitialAndAppendKeys() {
     val arr = PyreonFieldArray(listOf("a", "b"))
-    check(arr.length == 2) { "initial length" }
+    check(arr.length == 2L) { "initial length" }
     check(arr.values() == listOf("a", "b")) { "initial values" }
-    check(arr.items[0].key == 0 && arr.items[1].key == 1) { "initial keys 0,1" }
+    check(arr.items[0].key == 0L && arr.items[1].key == 1L) { "initial keys 0,1" }
     arr.append("c")
-    check(arr.items[2].key == 2) { "append continues the key sequence" }
+    check(arr.items[2].key == 2L) { "append continues the key sequence" }
 }
 
 fun testFieldArrayRemoveKeepsSurvivorKeys() {
     val arr = PyreonFieldArray(listOf("a", "b", "c"))
     arr.remove(1)
     check(arr.values() == listOf("a", "c")) { "b removed" }
-    check(arr.items[0].key == 0 && arr.items[1].key == 2) {
+    check(arr.items[0].key == 0L && arr.items[1].key == 2L) {
         "survivor keys UNCHANGED (0,2) — re-keying would destroy row identity"
     }
     arr.append("d")
-    check(arr.items[2].key == 3) { "keys are never reused after a removal" }
+    check(arr.items[2].key == 3L) { "keys are never reused after a removal" }
 }
 
 fun testFieldArrayUpdateKeepsKey() {
     val arr = PyreonFieldArray(listOf("a"))
     arr.update(0, "edited")
     check(arr.values() == listOf("edited")) { "value updated" }
-    check(arr.items[0].key == 0) { "update keeps the row's key" }
+    check(arr.items[0].key == 0L) { "update keeps the row's key" }
 }
 
 fun testFieldArrayPrependInsertClamped() {

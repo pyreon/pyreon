@@ -73,7 +73,7 @@ describe('P1 — Map/Set vocabulary (both targets)', () => {
   })
   it('Kotlin: the same lowers to mutableMapOf + subscript writes + .size', () => {
     const rk = transform(ACCUM, { target: 'kotlin' })
-    expect(rk.code).toContain('mutableMapOf<String, Int>()')
+    expect(rk.code).toContain('mutableMapOf<String, Long>()')
     expect(rk.code).toContain('m["a"] = 1')
     expect(rk.warnings).toHaveLength(0)
   })

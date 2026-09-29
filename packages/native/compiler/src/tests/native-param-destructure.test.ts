@@ -68,7 +68,7 @@ describe('destructured parameter lowering', () => {
       { target: 'kotlin' },
     ).code
     expect(sw).toContain('private func dist(_ __p0: Point) -> Int {')
-    expect(kt).toContain('fun dist(__p0: Point): Int {')
+    expect(kt).toContain('fun dist(__p0: Point): Long {')
   })
 
   it('renamed keys alias to the synthetic param field', () => {

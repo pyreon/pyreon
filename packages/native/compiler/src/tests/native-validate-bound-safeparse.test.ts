@@ -66,7 +66,7 @@ describe('`Binding.safeParse(x)` on a file-scope @pyreon/validate schema', () =>
     const { code, warnings } = transform(BOUND, { target: 'kotlin' })
     expect(warnings).toEqual([])
     expect(code).toContain(
-      'PyreonZodSchema_Pet.safeParseResult(mapOf<String, Any?>("name" to "x", "age" to 3)).success',
+      'PyreonZodSchema_Pet.safeParseResult(mapOf<String, Any?>("name" to "x", "age" to 3L)).success',
     )
     expect(code).toContain('fun safeParseResult(input: Map<String, Any?>): PyreonParseResult<PyreonZodSchema_Pet>')
     expect(code).not.toMatch(/\bPet\.safeParse\(/)

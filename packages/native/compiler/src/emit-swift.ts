@@ -1042,7 +1042,6 @@ const SWIFT_URL_STATE_TYPES: Record<
   boolean: 'PyreonUrlStateBool',
 }
 
-
 export function emitSwift(
   components: ComponentIR[],
   enums: EnumIR[] = [],
