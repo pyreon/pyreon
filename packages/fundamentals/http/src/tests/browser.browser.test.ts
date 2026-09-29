@@ -1,5 +1,6 @@
 /**
- * Real Chromium.
+ * A real browser — Chromium under `test:browser`, and WebKit + Firefox as
+ * well under `test:browser:engines`.
  *
  * Every other suite runs in Node or happy-dom. A browser is where this
  * client actually ships, and it differs in ways that matter: `fetch` is the
@@ -20,7 +21,7 @@ import { createMock } from '../mock'
 import { getAmbientRequest } from '../request-context'
 import { standardSchema } from '../schema'
 
-describe('real Chromium — platform primitives', () => {
+describe('real browser — platform primitives', () => {
   it('runs the whole pipeline against the browser fetch', async () => {
     // `/package.json` is served by the vitest dev server from the package
     // root — a real request over the real network stack.
@@ -55,7 +56,7 @@ describe('real Chromium — platform primitives', () => {
   })
 })
 
-describe('real Chromium — cancellation', () => {
+describe('real browser — cancellation', () => {
   it('aborts an in-flight request through the browser AbortController', async () => {
     const api = createHttp({ use: [createMock([{ path: '/slow', delay: 300, json: {} }]).middleware] })
     const controller = new AbortController()
@@ -72,7 +73,7 @@ describe('real Chromium — cancellation', () => {
   })
 })
 
-describe('real Chromium — middleware', () => {
+describe('real browser — middleware', () => {
   it('retries against a real browser response', async () => {
     let calls = 0
     const api = createHttp({
@@ -124,7 +125,7 @@ describe('real Chromium — middleware', () => {
   })
 })
 
-describe('real Chromium — schema validation', () => {
+describe('real browser — schema validation', () => {
   it('validates and rejects with the browser JSON parser', async () => {
     const api = createHttp({
       use: [createMock([{ path: '/bad', json: { id: 42 } }]).middleware],
@@ -137,7 +138,7 @@ describe('real Chromium — schema validation', () => {
   })
 })
 
-describe('real Chromium — lossless JSON', () => {
+describe('real browser — lossless JSON', () => {
   it('the engine passes `context.source`, and a real response round-trips an int64 exactly', async () => {
     // The layer the codec picks here is the fast native one; the own parser
     // is covered in Node by forcing it (`json-lossless.test.ts`).
