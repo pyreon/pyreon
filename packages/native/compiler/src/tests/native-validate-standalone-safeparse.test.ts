@@ -43,7 +43,8 @@ describe('@pyreon/validate standalone `.safeParse().success` lowering', () => {
     expect(code).toContain('var n: Int')
     expect(code).toContain('guard let nVal = input["n"] as? Int else {')
     // The web-faithful result shape + the call it lowers to.
-    expect(code).toContain('struct PyreonParseResult<T>')
+    // The result type is the runtime's (`PyreonSchema.swift`), never per file.
+    expect(code).not.toMatch(/struct PyreonParseResult\b/)
     expect(code).toContain('static func safeParseResult(_ input: [String: Any]) -> PyreonParseResult<Self>')
     expect(code).toContain('PyreonZodSchema_Inline0.safeParseResult(["n": 1] as [String: Any]).success')
     // An INLINE schema has NO module-scope instance binding.
@@ -57,7 +58,7 @@ describe('@pyreon/validate standalone `.safeParse().success` lowering', () => {
     expect(warnings.filter((w) => w.includes('@pyreon/validate'))).toHaveLength(0)
     expect(code).toContain('data class PyreonZodSchema_Inline0')
     expect(code).toContain('var n: Int')
-    expect(code).toContain('data class PyreonParseResult<T>(val success: Boolean, val data: T?)')
+    expect(code).not.toMatch(/data class PyreonParseResult\b/)
     expect(code).toContain('fun safeParseResult(input: Map<String, Any?>): PyreonParseResult<PyreonZodSchema_Inline0>')
     expect(code).toContain('PyreonZodSchema_Inline0.safeParseResult(mapOf<String, Any?>("n" to 1)).success')
     expect(code).not.toContain('val Inline0 = PyreonZodSchema_Inline0()')
