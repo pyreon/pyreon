@@ -51,7 +51,7 @@ describe('arrow-accessor text child unwraps (no closure interpolation)', () => {
 
   it('multi-signal + ternary arrow bodies unwrap on both backends', () => {
     expect(swiftText('{() => sig() + 1}')).toContain('\\(sig + 1)')
-    expect(kotlinText('{() => sig() + 1}')).toContain('${sig + 1}')
+    expect(kotlinText('{() => sig() + 1}')).toContain('${sig + 1L}')
     expect(swiftText('{() => (sig() > 0 ? "a" : "b")}')).toContain('sig > 0 ? "a" : "b"')
     expect(swiftText('{() => (sig() > 0 ? "a" : "b")}')).not.toMatch(/\\\(\{/)
     expect(kotlinText('{() => (sig() > 0 ? "a" : "b")}')).not.toMatch(/\$\{\{/)

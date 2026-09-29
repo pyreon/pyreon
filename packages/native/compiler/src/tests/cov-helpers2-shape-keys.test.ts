@@ -92,7 +92,7 @@ export function App() {
 
   it('Kotlin keys identically — the serialization is BACKEND-NEUTRAL by design', () => {
     const out = kt(twoTypes('number', 'Double', '1', '1.5'))
-    expect(out).toContain('A(k = "a", f = 1)')
+    expect(out).toContain('A(k = "a", f = 1L)')
     expect(out).toContain('B(k = "b", f = 1.5)')
   })
 })
@@ -253,7 +253,7 @@ export function App() {
   const v = computed(() => (n() + 1) & 3)
   return (<Stack><Text>{v()}</Text></Stack>)
 }`)
-    expect(out).toContain('(n + 1)')
+    expect(out).toContain('(n + 1L)')
     expect(out).toContain('and')
   })
 })

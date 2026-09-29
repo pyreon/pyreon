@@ -53,7 +53,7 @@ describe('JS Number() / parseInt / parseFloat → native idiom + precise type', 
   it('Kotlin: Number→toDoubleOrNull; parseInt→toIntOrNull', () => {
     const out = transform(SRC(COMPUTEDS), { target: 'kotlin' }).code
     expect(out).toContain('(s).toDoubleOrNull() ?: 0.0')
-    expect(out).toContain('(s).toIntOrNull() ?: 0')
+    expect(out).toContain('(s).toLongOrNull() ?: 0L')
     expect(out).not.toContain('Number(s)')
   })
 

@@ -260,7 +260,7 @@ export function TagsDemo() {
     expect(r.code).not.toContain('tags.items()')
     expect(r.code).not.toContain('item.value()')
     expect(r.code).toContain('tags.append("new")')
-    expect(r.code).toContain('tags.move(0, 1)')
+    expect(r.code).toContain('tags.move(0L, 1L)')
   })
 
   it('a non-literal initial warns + drops (the useWebSocket literal rule)', () => {

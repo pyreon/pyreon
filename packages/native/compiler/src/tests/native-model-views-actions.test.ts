@@ -80,7 +80,7 @@ describe('a chained model lowers instead of emitting itself verbatim', () => {
   it('Kotlin: views are reactive getters, actions are funs', () => {
     const out = code('kotlin')
     expect(out).toContain('val doubled get() = total * 2')
-    expect(out).toContain('fun add(n: Int)')
+    expect(out).toContain('fun add(n: Long)')
     expect(out).toContain('total = total + n')
   })
 
@@ -119,7 +119,7 @@ describe('a state field is a signal: reads drop parens, actions keep them', () =
     const out = code('kotlin')
     expect(out).toContain('Text(text = "${PyreonModel_cart.total}")')
     expect(out).toContain('Text(text = "${PyreonModel_cart.doubled}")')
-    expect(out).toContain('PyreonModel_cart.add(3)')
+    expect(out).toContain('PyreonModel_cart.add(3L)')
     expect(out).toContain('PyreonModel_cart.reset()')
   })
 
@@ -148,7 +148,7 @@ describe('the state seed types the field', () => {
 
   it('an integer seed is untouched — the widening is additive', () => {
     expect(seeded('0', 'swift')).toContain('var total: Int = 0')
-    expect(seeded('0', 'kotlin')).toContain('mutableStateOf(0)')
+    expect(seeded('0', 'kotlin')).toContain('mutableStateOf(0L)')
   })
 })
 

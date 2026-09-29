@@ -73,7 +73,7 @@ describe('one code, runs everywhere — realistic canonical TodoMVC app', () => 
   it('OBJ-KOTLIN: "add an item" object literal → a named data-class ctor (not an invalid tuple)', () => {
     const out = transform(APP, { target: 'kotlin' }).code
     // the new `{ id: 3, text, done: false }` reuses the synthesized struct
-    expect(out).toMatch(/__Obj\d+\(id = 3, text = text, done = false\)/)
+    expect(out).toMatch(/__Obj\d+\(id = 3L, text = text, done = false\)/)
     expect(out).not.toMatch(/listOf\(\(id = 3/) // not the invalid bare named-args "tuple"
   })
 

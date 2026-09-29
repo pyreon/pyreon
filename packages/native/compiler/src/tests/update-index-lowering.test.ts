@@ -133,7 +133,7 @@ describe('index expressions', () => {
 
   it('Kotlin: xs[i] emits subscript syntax (was xs.undefined)', () => {
     const out = transform(INDEX_APP, { target: 'kotlin' }).code
-    expect(out).toContain('tasks[tasks.length - 1].id')
+    expect(out).toContain('tasks[(tasks.length - 1L).toInt()].id')
     expect(out).not.toContain('.undefined')
   })
 })

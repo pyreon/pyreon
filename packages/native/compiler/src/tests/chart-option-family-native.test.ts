@@ -214,7 +214,7 @@ describe('OptionChart family options lower to native hosts', () => {
       expect(r.code).not.toContain('OptionChart(')
       expect(r.code).toContain('renderParallel')
       for (const value of ['Score', 'Band', 'low', 'high', '#123456']) expect(r.code).toContain(`"${value}"`)
-      expect(r.code).toContain(target === 'swift' ? 'lineWidth: Double(3)' : 'lineWidth = (3).toDouble()')
+      expect(r.code).toContain(target === 'swift' ? 'lineWidth: Double(3)' : 'lineWidth = (3L).toDouble()')
       expect(r.code).toContain(target === 'swift' ? 'lineOpacity: 0.6' : 'lineOpacity = 0.6')
     })
 

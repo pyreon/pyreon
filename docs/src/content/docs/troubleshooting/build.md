@@ -282,6 +282,12 @@ The `validate-kotlin` loop concatenates `kotlin-stubs.ts` into the compiled file
 
 ---
 
+### `RememberObserver` is delivered only to the object `remember` RETURNS.
+
+The Compose emit writes `remember { PyreonSafeArea(AndroidSafeAreaProbe(ctx)) }`, so Compose notifies the `PyreonSafeArea`, never the probe inside it: a probe implementing `RememberObserver` to (un)register a platform listener has `onRemembered` called NEVER, and stays invisible because reads are read-through. Put lifecycle-bearing state on the class the emit remembers (the hook state classes `PyreonWakeLock`/`PyreonAudioRecorder`/`PyreonSpeech`/`PyreonDeviceMotion`/`PyreonBluetooth` implement it and stop/release their engine, so a recording, scan, sensor or wake lock does not outlive its screen — the iOS twin gets this from `deinit`), or have the inner object attach lazily from its own reads and hang cleanup on the platform object it observes (`AndroidSafeAreaProbe`/`AndroidOrientationProbe` watch the window's view tree). Device-proven by the counter instrumented tests (rotation flips the orientation text; a wake lock sets `FLAG_KEEP_SCREEN_ON`).
+
+---
+
 ### Every tag in an enumerated family must be claimed by exactly one table.
 
 Put a new member in the decline table by default, never in no table. `isChartHostTag` once missed `MapChart`, so it fell through to the generic component emit and produced a symbol that exists on no target. Check a per-class policy against each member's actual capability: a "tooltip lowers everywhere" policy was false for Parallel, and rich-hit `onSelect` vanished on hosts whose tap matched only `selectindex`. Reference: `packages/native/compiler/src/chart-hosts.ts` (`UNLOWERED_CHART_HOSTS`, `chartChromeUnlowered`, `chartRichSelectWarning`); lock `native/compiler/src/tests/chart-native-parity.test.ts`.
