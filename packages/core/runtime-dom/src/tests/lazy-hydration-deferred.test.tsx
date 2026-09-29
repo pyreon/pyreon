@@ -33,7 +33,7 @@ import { disableHydrationWarnings, hydrateRoot } from '../index'
 
 const tick = (ms = 0) => new Promise<void>((r) => setTimeout(r, ms))
 
-type Mod<P> = { default: ComponentFn<P> }
+type Mod<P extends object> = { default: ComponentFn<P> }
 
 /** A lazy whose chunk lands only when the test says so. */
 function controlled<P extends object>(comp: ComponentFn<P>) {

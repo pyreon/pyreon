@@ -177,7 +177,7 @@ describe('SSR ↔ hydration parity fuzz — a still-loading lazy', () => {
 
       const SA = makeSignals(sigSpecs)
       let land!: () => void
-      const clientLazy = lazy<object>(() => new Promise((res) => (land = () => res({ default: bodyOf(SA) }))))
+      const clientLazy = lazy(() => new Promise<{ default: ComponentFn }>((res) => (land = () => res({ default: bodyOf(SA) }))))
       const cA = document.createElement('div')
       document.body.appendChild(cA)
       cA.innerHTML = html
