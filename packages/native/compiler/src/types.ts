@@ -712,6 +712,46 @@ export type DeclIR =
    */
   | { kind: 'value'; name: string; expr: ExprIR; /** The declaration's annotation, when written — it steers an object/array literal to its named struct. */ type?: TypeIR }
   | { kind: 'geolocation'; name: string }
+  /**
+   * `useStream((ctx) => openEventStream(…) | openNdjsonStream(…))` — SSE or
+   * NDJSON over the native stream runtime (`PyreonStream`, co-located in
+   * `@pyreon/http/native`), with the web's reconnect + `Last-Event-ID`
+   * semantics. The request resolves exactly like an endpoint `useQuery`
+   * (`url` / `urlExpr` / `method` / `headers` / `body`), and the harness is
+   * KEYED on the URL, so a runtime `:param` reopens the stream when it changes.
+   *
+   *   Swift  → @State private var s = PyreonStream<Item>(maxEvents: N)
+   *            + `.task(id: "\(url)#\(s.restartTick)") { await s.runSse(…) }`
+   *   Kotlin → val s = remember { PyreonStream<Item>(maxEvents = N) }
+   *            + `DisposableEffect("…#…") { s.startSse(…); onDispose { s.stop() } }`
+   *
+   * `itemType` is what `events()` holds — `SseEvent<T>` for SSE, `T` for
+   * NDJSON; `dataType` is the decoded payload `T`.
+   */
+  | {
+      kind: 'stream'
+      name: string
+      format: 'sse' | 'ndjson'
+      itemType: TypeIR
+      dataType: TypeIR
+      /** SSE read with `data: 'text'` — the payload is the raw `data` string. */
+      sseText: boolean
+      url: string
+      urlExpr?: ExprIR
+      method: string
+      headers?: Record<string, string>
+      /** A non-default `Accept` (`application/jsonl`); absent = the format's default. */
+      accept?: string
+      /** The literal request body (`json` on the endpoint call). */
+      requestBody?: string
+      /** SSE: only these event types. */
+      events?: string[]
+      /** SSE: resume from this id on the first request. */
+      lastEventId?: string
+      /** SSE reconnect policy; `null` = `reconnect: false` (always null for NDJSON). */
+      reconnect: { attempts: number; delay: number; maxDelay: number; onEnd: boolean } | null
+      maxEvents: number
+    }
   | { kind: 'websocket'; name: string; url: string }
   | { kind: 'database'; name: string }
   | { kind: 'secureStorage'; name: string }

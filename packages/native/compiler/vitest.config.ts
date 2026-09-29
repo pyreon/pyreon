@@ -28,7 +28,7 @@ import { defineNodeConfig } from '@pyreon/vitest-config'
 // Raise these as tests land; never lower them to absorb a regression.
 export default defineNodeConfig({
   category: 'internals',
-  coverageThresholds: { statements: 95, branches: 92, functions: 94, lines: 96 },
+  coverageThresholds: { statements: 96, branches: 94, functions: 95, lines: 97 },
   // The warm-compiler process manager: its happy path is driven by every
   // kotlinc-validating spec and its parity locked by kotlin-daemon.test.ts,
   // but most of its branches are ENVIRONMENT outcomes — no java, no
