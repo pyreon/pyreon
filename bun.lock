@@ -2558,6 +2558,7 @@
       "version": "0.51.0",
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.11.6",
+        "@pyreon/runtime-server": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
@@ -2575,6 +2576,7 @@
       "version": "0.51.0",
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.11.6",
+        "@pyreon/runtime-server": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
@@ -2592,6 +2594,7 @@
       "version": "0.51.0",
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.11.6",
+        "@pyreon/runtime-server": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
@@ -2626,6 +2629,7 @@
       "version": "0.51.0",
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.11.6",
+        "@pyreon/runtime-server": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
@@ -2719,6 +2723,7 @@
       "version": "0.51.0",
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.11.6",
+        "@pyreon/runtime-server": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
