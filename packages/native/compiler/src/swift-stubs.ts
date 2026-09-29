@@ -1600,6 +1600,24 @@ public struct PyreonLink<Label: View>: View {
   public typealias Body = Never
 }
 public enum PyreonJSON { public static func encode<T>(_ value: T) -> String { "" } }
+// PyreonSchema — copied VERBATIM from runtime-swift's PyreonSchema.swift
+// (schema-stub-parity.test.ts asserts it byte-for-byte). Every emitted schema
+// throws / returns these; they live in the runtime so two schema-bearing
+// files in one target cannot both declare them.
+public enum PyreonSchemaError: Error {
+    case missingOrWrongType(field: String, expected: String)
+    case constraintViolation(field: String, rule: String)
+    case unknown
+}
+public struct PyreonParseResult<T> {
+    public let success: Bool
+    public let data: T?
+
+    public init(success: Bool, data: T?) {
+        self.success = success
+        self.data = data
+    }
+}
 public struct PyreonWebView: View {
   // Emit shapes: (src:data:onMessage:), (html:), (html:data:onMessage:) — all
   // params optional so every shape resolves; arg TYPES stay faithful.

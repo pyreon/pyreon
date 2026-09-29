@@ -998,12 +998,10 @@ export function emitKotlin(
     const names = zs.fields.filter((f) => f.type === 'string').map((f) => f.name)
     if (names.length > 0) _zodStringFieldsKotlin.set(zs.bindingName, names)
   }
-  // Emit the shared PyreonSchemaError sealed class once if any
-  // schemas are present.
-  if (zodSchemas.length > 0) parts.push(KOTLIN_SCHEMA_ERROR)
-  // Standalone-validation: the web-faithful result shape, once, when any
-  // schema was validated inline (`s.object({ … }).safeParse(x)`).
-  if (zodSchemas.some((zs) => zs.emitSafeParseResult)) parts.push(KOTLIN_PARSE_RESULT)
+  // `PyreonSchemaError` and `PyreonParseResult` — what every schema throws
+  // and returns — live in the runtime (`PyreonSchema.kt`), NOT in this file.
+  // Emitted per file they collided: two schema-bearing files in one Gradle
+  // source set are one package, and each declared the same sealed class.
   // Emit each PyreonUrlState* helper once, and only the ones actually bound —
   // a string-only file emits byte-identically to before the typed variants
   // existed. The number helper is shared by the Int and Double forms.
@@ -1926,20 +1924,6 @@ const KOTLIN_URL_STATE_TYPES: Record<
   double: 'PyreonUrlStateDouble',
   boolean: 'PyreonUrlStateBool',
 }
-
-const KOTLIN_SCHEMA_ERROR = `sealed class PyreonSchemaError(message: String) : Exception(message) {
-    data class MissingOrWrongType(val field: String, val expected: String) :
-        PyreonSchemaError("Field '$field' missing or wrong type (expected $expected)")
-    data class ConstraintViolation(val field: String, val rule: String) :
-        PyreonSchemaError("Field '$field' violated constraint '$rule'")
-}`
-
-/**
- * Standalone-validation: the web-faithful `{ success, data }` result shape
- * `s.object({ … }).safeParse(x)` returns. Emitted once per file when any
- * schema has `emitSafeParseResult`. Mirrors the Swift `PyreonParseResult`.
- */
-const KOTLIN_PARSE_RESULT = `data class PyreonParseResult<T>(val success: Boolean, val data: T?)`
 
 /** Emit a Kotlin `enum class X { a, b, c }`. */
 function emitKotlinEnum(e: EnumIR): string {

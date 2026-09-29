@@ -1011,6 +1011,19 @@ object PyreonJson {
     inline fun <reified T> encode(value: T): String = ""
 }
 
+// PyreonSchema — copied VERBATIM from runtime-kotlin's PyreonSchema.kt
+// (schema-stub-parity.test.ts asserts it byte-for-byte). Every emitted schema
+// throws / returns these; they live in the runtime so two schema-bearing
+// files in one source set cannot both declare them.
+sealed class PyreonSchemaError(message: String) : Exception(message) {
+    data class MissingOrWrongType(val field: String, val expected: String) :
+        PyreonSchemaError("Field '$field' missing or wrong type (expected $expected)")
+    data class ConstraintViolation(val field: String, val rule: String) :
+        PyreonSchemaError("Field '$field' violated constraint '$rule'")
+}
+
+data class PyreonParseResult<T>(val success: Boolean, val data: T?)
+
 // useNavigate / useParams / useLoaderData — router hooks that PMTC
 // emits when source code uses \`const navigate = useNavigate()\` /
 // \`const params = useParams()\` / \`const data = useLoaderData<T>()\`.

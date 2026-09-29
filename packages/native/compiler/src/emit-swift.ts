@@ -1031,8 +1031,7 @@ export function _pushSwiftEmitWarning(msg: string): void {
  * Deliberately a tiny value type rather than a co-located runtime package: it
  * needs the ACTIVE router, which the emit already injects for router hooks, so
  * a standalone runtime would have to import PyreonRouter and stop being
- * self-contained. Inline keeps the dependency pointing the right way — the same
- * reason `PyreonSchemaError` is emitted rather than shipped.
+ * self-contained. Inline keeps the dependency pointing the right way.
  *
  * `callAsFunction` is what preserves the web call shape: `q()` reads and
  * `q.set(v)` writes, so shared source does not fork per target.
@@ -1479,17 +1478,15 @@ export function emitSwift(
   // module-scope const exposing initialValues + name.
   for (const f of features) parts.push(emitSwiftFeature(f))
   // Gap 4 follow-up — Zod / Valibot / ArkType schema structs.
-  // Emit the shared PyreonSchemaError enum BEFORE the schemas if
-  // any are present (the per-schema .parse() / .safeParse() refer to it).
+  // `PyreonSchemaError` and `PyreonParseResult` — what every schema throws
+  // and returns — live in the runtime (`PyreonSchema.swift`), NOT in this
+  // file. Emitted per file they collided: two schema-bearing files in one
+  // Xcode target each declared the enum → `invalid redeclaration`.
   _zodStringFieldsSwift = new Map()
   for (const zs of zodSchemas) {
     const names = zs.fields.filter((f) => f.type === 'string').map((f) => f.name)
     if (names.length > 0) _zodStringFieldsSwift.set(zs.bindingName, names)
   }
-  if (zodSchemas.length > 0) parts.push(SWIFT_SCHEMA_ERROR)
-  // Standalone-validation: the web-faithful result shape, once, when any
-  // schema was validated inline (`s.object({ … }).safeParse(x)`).
-  if (zodSchemas.some((zs) => zs.emitSafeParseResult)) parts.push(SWIFT_PARSE_RESULT)
   // Emit each PyreonUrlState* helper once, and only the ones actually bound —
   // a string-only file emits byte-identically to before the typed variants
   // existed. The number helper is shared by the Int and Double forms.
@@ -2332,26 +2329,6 @@ function emitSwiftZodSchema(zs: ZodSchemaDefnIR): string {
   }
   return lines.join('\n')
 }
-
-/**
- * Gap 4 v2 — emitted once at module scope when any schema is
- * present. Single error enum shared across all schemas in a file.
- */
-const SWIFT_SCHEMA_ERROR = `enum PyreonSchemaError: Error {
-    case missingOrWrongType(field: String, expected: String)
-    case constraintViolation(field: String, rule: String)
-    case unknown
-}`
-
-/**
- * Standalone-validation: the web-faithful `{ success, data }` result shape
- * that `s.object({ … }).safeParse(x)` returns. Emitted once per file when any
- * schema has `emitSafeParseResult`. Mirrors the Kotlin `PyreonParseResult`.
- */
-const SWIFT_PARSE_RESULT = `struct PyreonParseResult<T> {
-    let success: Bool
-    let data: T?
-}`
 
 /**
  * Emit a Swift `enum X: String { case a, b, c }`. The `: String` raw-
