@@ -113,6 +113,19 @@ Tests run in real Chromium via `@vitest/browser` + Playwright.
 
 The root `bun run test:browser` runs every package's `test:browser`; CI runs it in the `Test (browser)` job. Reference: `packages/internals/test-utils/src/browser/sanity.browser.test.ts`.
 
+### Opting into WebKit + Firefox
+
+Chromium is not the only engine users run. When a package's correctness depends on ENGINE behaviour (a JSON.parse reviver's `context.source`, which `on*` handlers an engine compiles, `history`/`popstate` timing, which at-rules `insertRule` accepts), add a second config and script — that is the whole opt-in:
+
+```ts
+// vitest.browser.engines.config.ts — instances are CONCATENATED onto Chromium
+export default defineBrowserConfig(playwright(), {
+  test: { browser: { instances: [{ browser: 'webkit' }, { browser: 'firefox' }] } },
+})
+```
+
+plus `"test:browser:engines": "vitest run --config ./vitest.browser.engines.config.ts"`. `scripts/browser-engines.ts` discovers every package declaring that script; `Test (browser)` installs WebKit + Firefox and runs the AFFECTED ones after its Chromium pass (fail-closed: an unreadable affected verdict runs them all). Opt in only after the suite is green in all three engines locally (`bunx playwright install webkit firefox`) — a Chromium-only premise in a test is a test bug to fix, not an engine to skip. Opted in today: `@pyreon/http`, `@pyreon/router`, `@pyreon/styler`.
+
 ## Real-app regression gate (ui-showcase)
 
 Browser smoke tests cover one package in isolation. Most real-world regressions land in cross-package shapes — the rocketstyle `attrs()` HOC moving props through styler, unistyle, elements and runtime-dom with real signals and hydration. Those five packages (`runtime-dom`, `styler`, `rocketstyle`, `elements`, `unistyle`) produce a disproportionate share of `fix:` commits.
