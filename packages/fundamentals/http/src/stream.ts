@@ -49,7 +49,11 @@ async function* readLines(
   stream: ReadableStream<Uint8Array>,
 ): AsyncGenerator<{ line: string; final: boolean }> {
   const reader = stream.getReader()
-  const decoder = new TextDecoder()
+  // `ignoreBOM: true` keeps the decoder from consuming a BOM itself, so the
+  // strip below is the ONLY one. With the default, the decoder ate the first
+  // BOM and the check below ate a second — a stream opening with two lost a
+  // content character, where the spec strips exactly one.
+  const decoder = new TextDecoder('utf-8', { ignoreBOM: true })
   let buffer = ''
   // A `\r` that ended the previous chunk: its line is already yielded, and a
   // `\n` opening the next chunk belongs to it rather than ending an empty line.
@@ -65,6 +69,11 @@ async function* readLines(
         if (text.charCodeAt(0) === 0xfeff) text = text.slice(1)
         first = false
       }
+      // A chunk that decodes to NOTHING (an empty chunk, or the first bytes of
+      // a split character) must leave a pending CR pending — resetting it here
+      // made the `\n` that follows read as a second terminator, i.e. a blank
+      // line, which in SSE dispatches the event early.
+      if (text.length === 0) continue
       if (pendingCr && text.startsWith('\n')) text = text.slice(1)
       pendingCr = false
       buffer += text

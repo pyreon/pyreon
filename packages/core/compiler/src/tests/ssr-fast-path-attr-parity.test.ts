@@ -37,6 +37,19 @@ describe('SSR fast path — attribute parity with renderProp', () => {
     }
   })
 
+  test('WebKit-only handler names are dropped by both backends', () => {
+    // Chromium does not expose these, so the Chromium-run vocabulary ratchet
+    // never listed them; WebKit compiles them into inline handlers. Covers the
+    // JS set AND the sorted Rust slice (binary_search) — a name inserted out of
+    // order would silently miss in the native backend only.
+    for (const name of ['onbeforeload', 'onorientationchange', 'onwebkitneedkey', 'onwebkitmouseforcedown']) {
+      for (const code of both(`const A = <div ${name}="alert(1)" data-x={v}>x</div>`)) {
+        expect(code, name).toContain('_ssr(')
+        expect(code, name).not.toContain(name)
+      }
+    }
+  })
+
   test('a literal aria-*={false} bakes aria-*="false"', () => {
     for (const code of both(`const A = <div aria-hidden={false} hidden={false}>x</div>`)) {
       expect(code).toContain('aria-hidden=\\"false\\"')

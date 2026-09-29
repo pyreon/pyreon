@@ -1,0 +1,31 @@
+{
+  "name": "@pyreon/example-edge-runtimes",
+  "version": "0.50.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:all": "bun run build:deno && bun run build:netlify && bun run build:vercel && bun run build:cloudflare",
+    "build:deno": "vite build --config vite.config.deno.ts",
+    "build:netlify": "vite build --config vite.config.netlify.ts",
+    "build:vercel": "vite build --config vite.config.vercel.ts",
+    "build:cloudflare": "vite build --config vite.config.cloudflare.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint ."
+  },
+  "dependencies": {
+    "@pyreon/core": "workspace:*",
+    "@pyreon/head": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/router": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/zero": "workspace:*"
+  },
+  "devDependencies": {
+    "@pyreon/tsconfig": "workspace:*",
+    "@pyreon/vite-plugin": "workspace:*",
+    "@types/bun": "^1.3.14",
+    "typescript": "^6.0.3",
+    "vite": "^8.2.2"
+  }
+}

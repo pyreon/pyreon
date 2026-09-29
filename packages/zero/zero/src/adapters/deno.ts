@@ -2,6 +2,7 @@ import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../t
 import { DENO_ADAPTER_OUTPUT } from './contract'
 import { EDGE_INIT_FILE, renderEdgeInit } from './edge-wrapper'
 import { stageClientThenServer } from './stage'
+import { STATIC_MIME_TYPES } from './mime'
 import { validateBuildInputs } from './validate'
 
 /**
@@ -71,18 +72,7 @@ import handler from "./${DENO_ADAPTER_OUTPUT.serverDir}/entry-server.js"
 
 const clientDir = new URL("./${DENO_ADAPTER_OUTPUT.clientDir}/", import.meta.url)
 
-const MIME_TYPES = {
-  ".html": "text/html",
-  ".js": "application/javascript",
-  ".css": "text/css",
-  ".json": "application/json",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".svg": "image/svg+xml",
-  ".woff2": "font/woff2",
-  ".woff": "font/woff",
-  ".ico": "image/x-icon",
-}
+const MIME_TYPES = ${JSON.stringify(STATIC_MIME_TYPES)}
 
 async function serveStatic(url) {
   const path = decodeURIComponent(url.pathname)
