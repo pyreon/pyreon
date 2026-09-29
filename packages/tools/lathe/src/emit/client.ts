@@ -874,8 +874,7 @@ function responseCfg(
 ): string {
   const response = typedResponse(op);
   if (!response) return "";
-  const refBinding = native ? nativeSchemaBinding : undefined;
-  return `, { response: ${schemaExpr(response, { native, validator, models, refBinding })} }`;
+  return `, { response: ${schemaExpr(response, { native, validator, models })} }`;
 }
 
 /**
@@ -915,20 +914,6 @@ function nativeTs(
     return /[|&]/.test(inner) ? `(${inner})[]` : `${inner}[]`;
   }
   return tsType(type, 0, true);
-}
-
-/**
- * A model's schema BINDING in a native module (audit G6).
- *
- * Not the model's name: TypeScript keeps `const Pet` and `type Pet` in
- * separate namespaces, Swift and Kotlin do not — PMTC turned the pair into
- * `let Pet` + `struct Pet` (`invalid redeclaration`) and `val Pet` +
- * `data class Pet` (`conflicting declarations`), so no native module with a
- * model compiled on either target. `pet_schema` cannot collide: `ident()`
- * never emits an inner underscore and model names are PascalCase.
- */
-export function nativeSchemaBinding(model: string): string {
-  return `${model.charAt(0).toLowerCase()}${model.slice(1)}_schema`;
 }
 
 /**
@@ -1208,7 +1193,6 @@ export function emitNativeModules(
       defer,
       validator: dialect.name,
       models: modelTypes,
-      refBinding: nativeSchemaBinding,
     });
     // zod is recognised ONLY inside `@pyreon/validation`'s `zodSchema(...)` —
     // the recognizer keys on that distinctive wrapper call rather than on the
@@ -1276,9 +1260,15 @@ export function emitNativeModules(
       // Only OBJECT models get a schema binding; every other kind is inlined
       // where it is used (audit G5 — see `schemaExpr`). The TYPE is declared
       // for every model: the data components name it.
+      //
+      // The binding shares the model's NAME, exactly as on the web. TypeScript
+      // keeps `const Pet` and `type Pet` in separate namespaces; Swift and
+      // Kotlin do not, and PMTC resolves the pair itself — the TYPE keeps the
+      // name (it is what a fetch decodes into), the value becomes `PetValue`
+      // in the emitted file. (Before PMTC did that, this was `pet_schema`.)
       if (model.type.kind === "object") {
         f.line(
-          `export const ${nativeSchemaBinding(model.name)} = ${nativeSchema.get(model.name) ?? `${dialect.binding}.object({})`}`,
+          `export const ${model.name} = ${nativeSchema.get(model.name) ?? `${dialect.binding}.object({})`}`,
         );
       }
       // A STRUCTURAL type, not `Infer<typeof X>`. `Infer` would be an
