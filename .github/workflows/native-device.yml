@@ -626,6 +626,19 @@ jobs:
           # errors "expecting done" — so keep BOTH fixture polls single-line.
           i=0; while ! curl -fsS http://127.0.0.1:8787/quotes.json >/dev/null 2>&1; do i=$((i+1)); [ "$i" -ge 30 ] && { echo "fixture server FAILED to start within 30s"; cat /tmp/fixture-server.log 2>/dev/null || true; exit 1; }; sleep 1; done; echo "fixture server OK (ready after ${i}s)"
 
+      # useStream device proof: the /streams screen reads SSE + NDJSON from
+      # a scripted loopback server (examples/native-tasks/scripts/
+      # stream-server.ts). Its /sse drops the socket mid-event so the app
+      # must reconnect with Last-Event-ID. 8791: 8787 is the fixture server,
+      # 8790 the router-demo ws echo. Same file-redirect + readiness-poll
+      # discipline as the fixture server above.
+      - name: Start stream server (port 8791)
+        if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' tasks ')
+        run: |
+          nohup bun "$GITHUB_WORKSPACE/examples/native-tasks/scripts/stream-server.ts" > /tmp/stream-server.log 2>&1 &
+          disown
+          i=0; while ! curl -fsS http://127.0.0.1:8791/health >/dev/null 2>&1; do i=$((i+1)); [ "$i" -ge 30 ] && { echo "stream server FAILED to start within 30s"; cat /tmp/stream-server.log 2>/dev/null || true; exit 1; }; sleep 1; done; echo "stream server OK (ready after ${i}s)"
+
       - name: Emit + xcodegen + UITest — native-tasks-ios
         if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' tasks ')
         working-directory: examples/native-tasks-ios
@@ -1163,6 +1176,10 @@ jobs:
             # breaks ("expecting done"). Poll up to 30s, fail loudly on timeout.
             i=0; while ! curl -fsS http://127.0.0.1:8787/quotes.json >/dev/null 2>&1; do i=$((i+1)); [ "$i" -ge 30 ] && { echo "fixture server FAILED to start within 30s"; cat /tmp/fixture-server.log 2>/dev/null || true; exit 1; }; sleep 1; done; echo "fixture server OK (ready after ${i}s)"
             adb reverse tcp:8787 tcp:8787
+            # useStream device proof (see the iOS job's stream-server step).
+            nohup bun "$GITHUB_WORKSPACE/examples/native-tasks/scripts/stream-server.ts" > /tmp/stream-server.log 2>&1 &
+            i=0; while ! curl -fsS http://127.0.0.1:8791/health >/dev/null 2>&1; do i=$((i+1)); [ "$i" -ge 30 ] && { echo "stream server FAILED to start within 30s"; cat /tmp/stream-server.log 2>/dev/null || true; exit 1; }; sleep 1; done; echo "stream server OK (ready after ${i}s)"
+            adb reverse tcp:8791 tcp:8791
             gradle connectedCheck --stacktrace
             adb -s emulator-5554 emu kill || true; sleep 5; pkill -9 -f '[q]emu-system' || true
 
@@ -1191,6 +1208,7 @@ jobs:
           path: |
             examples/native-*-android/app/build/reports/androidTests/
             /tmp/fixture-server.log
+            /tmp/stream-server.log
           retention-days: 14
           if-no-files-found: ignore
 

@@ -47,12 +47,13 @@
 // - **Store computeds/methods in the setup body** — store v1 lowers
 //   signals; derived state lives in component-level `computed` for now.
 
-import { QueryClient, QueryClientProvider, useQuery } from '@pyreon/query'
+import { QueryClient, QueryClientProvider, useQuery, useStream } from '@pyreon/query'
 import { model } from '@pyreon/state-tree'
 import { filter as filter_rx, map } from '@pyreon/rx'
 import { SizedMap } from '@pyreon/sized-map'
 import { usePermissions } from '@pyreon/permissions'
 import { createHttp } from '@pyreon/http'
+import { openEventStream, openNdjsonStream, type SseEvent } from '@pyreon/http/stream'
 import { syncedSignal, PyreonCrdtDoc } from '@pyreon/sync'
 import { useSortable } from '@pyreon/dnd'
 import { PyreonUI } from '@pyreon/ui-core'
@@ -133,6 +134,22 @@ import { FlowWebView, type FlowWebViewGraph } from '@pyreon/flow/webview'
 
 type Task = { id: number; title: string; done: boolean }
 type Quote = { id: number; text: string; author: string }
+
+// The streams screen's payload: `n` counts events, `resumed` is the
+// `Last-Event-ID` the SERVER saw on the connection that delivered it, so a
+// reconnect that forgot to resume is visible in the rendered log.
+interface StreamTick {
+  n: number
+  resumed: string
+}
+
+// scripts/stream-server.ts: /sse drops the connection half-way through event 3
+// and finishes on the resumed connection; /ndjson sends three rows and ends.
+// 8791 on the same loopback host as the quotes fixture — the Android job
+// `adb reverse`s it, so this one literal works on every target.
+const streams = createHttp({ baseUrl: 'http://127.0.0.1:8791' })
+const tickFeed = streams.endpoint('GET /sse', { responseType: 'stream' })
+const tickRows = streams.endpoint('GET /ndjson', { responseType: 'stream' })
 
 // Module-scope monotonic id — same shape as TodoMVC's `nextId`.
 let nextTaskId = 3
@@ -306,6 +323,9 @@ function TasksPage() {
           </Button>
           <Button onPress={() => navigate('/toolkit')} data-testid="tasks-toolkit">
             Toolkit
+          </Button>
+          <Button onPress={() => navigate('/streams')} data-testid="tasks-streams">
+            Streams
           </Button>
           <Button onPress={logout} data-testid="tasks-logout">
             Logout
@@ -662,6 +682,51 @@ function VocabScreen() {
           </Button>
         </Stack>
       </Modal>
+    </Stack>
+  )
+}
+
+function StreamsScreen() {
+  const navigate = useNavigate()
+  // SSE with the web's reconnect semantics: the server drops mid-event, and
+  // the resumed connection must carry `Last-Event-ID: 2` (the server echoes it
+  // into `resumed`). Opens on mount.
+  const sse = useStream<SseEvent<StreamTick>>((ctx) =>
+    openEventStream((c) => tickFeed({ signal: c.signal, headers: c.headers }), {
+      signal: ctx.signal,
+      onStatus: ctx.onStatus,
+    }),
+  )
+  const sseLog = computed(() =>
+    sse
+      .events()
+      .map((e) => `${e.id}:${e.data.n}@${e.data.resumed}`)
+      .join(','),
+  )
+  // NDJSON gated by `enabled` — it must sit `idle` until the button flips it —
+  // with `onEvent` summing each row as it lands.
+  const rowsOn = signal(false)
+  const rowSum = signal(0)
+  const rows = useStream<StreamTick>(
+    (ctx) =>
+      openNdjsonStream((c) => tickRows({ signal: c.signal, headers: c.headers }), {
+        signal: ctx.signal,
+        onStatus: ctx.onStatus,
+      }),
+    { enabled: () => rowsOn(), onEvent: (row) => rowSum.set(rowSum() + row.n) },
+  )
+  return (
+    <Stack gap={3} padding={4} data-testid="streams-page">
+      <Text data-testid="sse-status">{sse.status()}</Text>
+      <Text data-testid="sse-log">{sseLog()}</Text>
+      <Text data-testid="nd-status">{rows.status()}</Text>
+      <Text data-testid="nd-sum">{`${rowSum()}`}</Text>
+      <Button onPress={() => rowsOn.set(true)} data-testid="nd-start">
+        Start rows
+      </Button>
+      <Button onPress={() => navigate('/tasks')} data-testid="streams-back">
+        Back to tasks
+      </Button>
     </Stack>
   )
 }
@@ -1883,6 +1948,11 @@ export function TasksApp() {
       {
         path: '/toolkit',
         component: ToolkitScreen,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/streams',
+        component: StreamsScreen,
         beforeEnter: () => useApp().store.isAuthed(),
       },
       {

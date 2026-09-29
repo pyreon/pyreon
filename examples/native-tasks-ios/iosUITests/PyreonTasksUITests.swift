@@ -300,6 +300,59 @@ final class PyreonTasksUITests: XCTestCase {
         return toolkitPage
     }
 
+    /// useStream, device-proven over a REAL local server
+    /// (examples/native-tasks/scripts/stream-server.ts on 127.0.0.1:8791).
+    ///
+    /// SSE: the server destroys the socket half-way through event 3; the app
+    /// must reconnect with `Last-Event-ID: 2`, which the server echoes into
+    /// each payload's `resumed`, so the rendered log is the proof — `3:3@2`
+    /// exists only if the resume header reached the server. Dropping the
+    /// reconnect leaves `1:1@,2:2@` and `error`; forgetting the id renders
+    /// `@` with no `2` after it.
+    ///
+    /// NDJSON: gated by `enabled` (must read `idle` until the button flips it)
+    /// with `onEvent` summing the rows (1+2+3). An `enabled` dropped on the
+    /// floor would open on mount and read `closed` before the tap.
+    func test_streamsReconnectWithLastEventIdAndGatedNdjson() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let username = app.textFields["login-username"].firstMatch
+        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        username.tap()
+        username.typeText("abcde")
+        dismissKeyboard(app)
+        app.buttons["login-submit"].firstMatch.tap()
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+
+        let nav = app.buttons["tasks-streams"].firstMatch
+        XCTAssertTrue(nav.waitForExistence(timeout: 15), "Streams button missing on tasks page")
+        tapAfterScrolling(nav, in: app)
+        XCTAssertTrue(app.otherElements["streams-page"].firstMatch.waitForExistence(timeout: 15), "Streams page did not render")
+
+        // `enabled: () => rowsOn()` is false at mount: nothing may open.
+        let ndStatus = app.staticTexts["nd-status"].firstMatch
+        XCTAssertTrue(waitForLabel(ndStatus, "idle", timeout: 10), "gated NDJSON stream is not idle before the tap: '\(ndStatus.label)'")
+
+        let log = app.staticTexts["sse-log"].firstMatch
+        let sseStatus = app.staticTexts["sse-status"].firstMatch
+        let expectedLog = "1:1@,2:2@,3:3@2,4:4@2"
+        if !waitForLabel(log, expectedLog, timeout: 30) {
+            print("DIAG-STREAMS:\n\(app.debugDescription)")
+        }
+        XCTAssertEqual(log.label, expectedLog, "SSE did not reconnect with Last-Event-ID after the mid-event drop (status: '\(sseStatus.label)')")
+        XCTAssertTrue(waitForLabel(sseStatus, "closed", timeout: 10), "SSE did not close after the resumed connection ended: '\(sseStatus.label)'")
+        // Still idle after the SSE finished — the gate is not a timer.
+        XCTAssertEqual(ndStatus.label, "idle", "gated NDJSON stream opened without its enabled flag")
+
+        tapAfterScrolling(app.buttons["nd-start"].firstMatch, in: app)
+        let sum = app.staticTexts["nd-sum"].firstMatch
+        XCTAssertTrue(waitForLabel(sum, "6", timeout: 20), "onEvent did not run once per NDJSON row (sum: '\(sum.label)', status: '\(ndStatus.label)')")
+        XCTAssertTrue(waitForLabel(ndStatus, "closed", timeout: 10), "NDJSON did not close after its rows: '\(ndStatus.label)'")
+
+        tapAfterScrolling(app.buttons["streams-back"].firstMatch, in: app)
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 15), "streams-back did not return to tasks")
+    }
+
     /// Crash reporting, device-proven in the only way that means anything: a
     /// REAL process restart.
     ///
