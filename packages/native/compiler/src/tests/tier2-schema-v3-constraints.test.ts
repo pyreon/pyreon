@@ -280,7 +280,7 @@ export const userSchema = zodSchema(z.object({
     expect(kotlin.code).toContain('java.util.UUID.fromString(idVal)')
     expect(kotlin.code).toContain('nameVal.length < 2')
     expect(kotlin.code).toContain('nameVal.length > 50')
-    expect(kotlin.code).toContain('var age: Int? = null')
+    expect(kotlin.code).toContain('var age: Long? = null')
     expect(kotlin.code).toContain('ageVal != null')
     expect(kotlin.code).toContain('var emails: List<String>')
     expect(kotlin.code).toContain('for (emailsElement in emailsVal)')

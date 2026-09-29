@@ -62,7 +62,7 @@ describe('nullable-struct narrowing through null compares', () => {
   })
   it('Kotlin: the compares stay compares — a val param smart-casts', () => {
     expect(kotlin.code).toContain('if (r == null) {\n      sel = ""\n    } else {\n      sel = (r.start).toString() + "-" + (r.end).toString()\n    }')
-    expect(kotlin.code).toContain('if (r != null) {\n      count = r.end - r.start + 1\n    }')
+    expect(kotlin.code).toContain('if (r != null) {\n      count = r.end - r.start + 1L\n    }')
     expect(kotlin.code).toContain('if (r == null) "none" else (r.start).toString()')
   })
   it.skipIf(!isSwiftcAvailable())('swiftc accepts every shape', () => {

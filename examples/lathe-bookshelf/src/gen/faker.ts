@@ -81,6 +81,7 @@ function buildBook(_d: number, o: Partial<Book> = {}): Book {
     title: faker.lorem.words({ min: 1, max: 3 }),
     status: faker.helpers.arrayElement(['available', 'borrowed', 'lost'] as const),
     pages: faker.number.int({ min: 1, max: 1000 }),
+    rating: faker.number.float({ min: 0, max: 5 }),
     subtitle: faker.lorem.word(),
     tags: faker.helpers.multiple(() => faker.lorem.word(), { count: { min: 1, max: 3 } }),
     ...o,

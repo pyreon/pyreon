@@ -22,7 +22,7 @@ describe('struct float refinement — a module-level const initializer is eviden
     expect(s.code).toContain('var o: Int')
     const k = transform(SRC, { target: 'kotlin' })
     expect(k.code).toContain('var l: Double')
-    expect(k.code).toContain('var o: Int')
+    expect(k.code).toContain('var o: Long')
   })
   it.skipIf(!isKotlincAvailable())('kotlinc accepts the module (it rejected the Double literal against an Int field before)', () => {
     const r = validateKotlin(transform(SRC, { target: 'kotlin' }).code)

@@ -59,7 +59,7 @@ describe('interface props types resolve like alias props types', () => {
   it('declares the parameters on Kotlin', () => {
     const { code, warnings } = kotlin(IFACE_COMPONENT)
     expect(code).toContain('title: String')
-    expect(code).toContain('count: Int')
+    expect(code).toContain('count: Long')
     expect(warnings).toEqual([])
   })
 

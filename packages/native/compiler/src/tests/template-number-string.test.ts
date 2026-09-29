@@ -24,7 +24,9 @@ describe('template literals print numbers as JavaScript does', () => {
 
   it('Kotlin: the same', () => {
     const r = transform(src, { target: 'kotlin' })
-    expect(r.code).toContain('${pyreonNumberString(price * 2)}')
+    // The integer literal `2` is Long on Kotlin (see `KOTLIN_INT`), so it
+    // carries the `L` suffix here just as it does everywhere else.
+    expect(r.code).toContain('${pyreonNumberString(price * 2L)}')
     expect(r.code).not.toContain('pyreonNumberString(count')
   })
 

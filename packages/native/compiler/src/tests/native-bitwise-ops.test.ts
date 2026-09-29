@@ -76,7 +76,7 @@ describe('bitwise operators', () => {
     // JS: `a & b + 1` === `a & (b + 1)` (`+` binds tighter than `&`).
     const body = `  const m = computed(() => a() & b() + 1)`
     expect(transform(app(body), { target: 'swift' }).code).toContain('a & (b + 1)')
-    expect(transform(app(body), { target: 'kotlin' }).code).toContain('a and (b + 1)')
+    expect(transform(app(body), { target: 'kotlin' }).code).toContain('a and (b + 1L)')
   })
 
   it('still warn-falls-back for `>>>` (unsigned shift — deliberately unsupported)', () => {

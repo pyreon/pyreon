@@ -63,11 +63,11 @@ describe('an integer-seeded accumulator widens when written a Double', () => {
 
   // Additive, in both directions — an integer column must be untouched. This is
   // what keeps the pass from widening every accumulator in every app.
-  it('an INT accumulation stays Int on both targets', () => {
+  it('an INT accumulation stays an integer on both targets (Swift Int, Kotlin Long)', () => {
     expect(find('swift', 'id', 'var acc')).toBe('var acc = 0')
     expect(find('swift', 'id', 'func total')).toContain('-> Int')
-    expect(find('kotlin', 'id', 'var acc')).toBe('var acc = 0')
-    expect(find('kotlin', 'id', 'fun total')).toContain(': Int')
+    expect(find('kotlin', 'id', 'var acc')).toBe('var acc = 0L')
+    expect(find('kotlin', 'id', 'fun total')).toContain(': Long')
   })
 })
 

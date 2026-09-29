@@ -1298,6 +1298,23 @@ items.set([1, 5, 3])  // remove 2 & 4, add 5 in the middle`,
     }),
   },
   {
+    // The compat hook-context error. Its residual shape after the compat
+    // `lazy()` fix: a `lazy` imported from `@pyreon/core` (not the compat
+    // package) mounts its loaded component RAW, outside the compat render
+    // frame, so the component's first hook throws this.
+    pattern: /Hook called outside of a component render/,
+    diagnose: () => ({
+      cause:
+        'A React/Preact/Vue/Solid-style hook ran outside the compat render frame. Inside a compat app this usually means the component was mounted by something that does not go through the compat `jsx()` — most often a `lazy()` imported from `@pyreon/core` instead of the compat package, which mounts the loaded component RAW.',
+      fix: 'Import `lazy` from the compat package (`@pyreon/react-compat`, `@pyreon/preact-compat`, `@pyreon/solid-compat`) or use `defineAsyncComponent` from `@pyreon/vue-compat`. Those mount the loaded component the way `jsx()` would, and expose the `__loading`/`__load` protocol so `<Suspense>` shows its fallback and the SSR renderers wait for the chunk.',
+      fixCode: `// WRONG in a compat app — the loaded component is mounted raw:
+import { lazy } from '@pyreon/core'
+// RIGHT:
+import { lazy } from '@pyreon/react-compat'
+const Page = lazy(() => import('./Page'))`,
+    }),
+  },
+  {
     pattern: /Hydration mismatch/,
     diagnose: () => ({
       cause: "Server-rendered HTML doesn't match client-rendered output.",

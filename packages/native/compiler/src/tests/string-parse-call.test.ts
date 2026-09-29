@@ -45,7 +45,7 @@ describe('parseInt / parseFloat globals', () => {
   })
   it('Kotlin: parseInt → toIntOrNull ?: 0; parseFloat → toDoubleOrNull ?: 0.0', () => {
     expect(transform(SRC("parseInt('42')"), { target: 'kotlin' }).code).toContain(
-      '(("42").toIntOrNull() ?: 0)',
+      '(("42").toLongOrNull() ?: 0L)',
     )
     expect(transform(SRC("parseFloat('3.14')"), { target: 'kotlin' }).code).toContain(
       '(("3.14").toDoubleOrNull() ?: 0.0)',

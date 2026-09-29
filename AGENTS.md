@@ -84,7 +84,7 @@ Each package's `src/manifest.ts` feeds `llms.txt`, `llms-full.txt`, the MCP API 
 
 ### Workspace resolution
 
-Each `package.json` exports `"bun": "./src/index.ts"` and the root tsconfig sets `customConditions: ["bun"]`, so tests and typecheck read source. Vite's config bundler uses the `node` condition, which points at `lib/`. `bun install` builds every package whose source changed (content-hashed in `.bootstrap-cache.json`). If an example build fails with `MISSING_EXPORT` or missing files after a source edit, run `bun scripts/bootstrap.ts`. A running dev server does not see edits to `@pyreon/vite-plugin` or `@pyreon/zero` until their `lib/` is rebuilt.
+Each `package.json` exports `"bun": "./src/index.ts"` and the root tsconfig sets `customConditions: ["bun"]`, so tests and typecheck read source. Vite's config bundler uses the `node` condition, which points at `lib/`. `bun install` builds every package whose source changed (source AND `lib/` content-hashed in `.bootstrap-cache.json`, so an out-of-band per-package build is detected too). If an example build fails with `MISSING_EXPORT` or missing files after a source edit, run `bun scripts/bootstrap.ts`. A running dev server does not see edits to `@pyreon/vite-plugin` or `@pyreon/zero` until their `lib/` is rebuilt.
 
 ### Components run once
 

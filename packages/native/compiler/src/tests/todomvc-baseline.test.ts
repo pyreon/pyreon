@@ -358,7 +358,7 @@ describe('TodoMVC gap-tracking baseline', () => {
     // parallel to Swift's `: Codable` — enables JSON round-trip + the
     // Compose `Saver` glue for `rememberSaveable<List<Todo>>`.
     const out = transform(source, { target: 'kotlin' })
-    expect(out.code).toMatch(/@Serializable\s*\ndata class Todo\(var id: Int, var text: String, var done: Boolean\)/)
+    expect(out.code).toMatch(/@Serializable\s*\ndata class Todo\(var id: Long, var text: String, var done: Boolean\)/)
   })
 
   it('Phase 2 — array-literal object whose fields match a known struct emits as struct initializer on Swift', () => {
@@ -431,7 +431,7 @@ describe('TodoMVC gap-tracking baseline', () => {
     //   .some(p)       → .any(p)
     //   .filter / .map / .forEach pass through unchanged
     const out = transform(source, { target: 'kotlin' })
-    expect(out.code).toContain('private val <T> List<T>.length: Int get() = size')
+    expect(out.code).toContain('private val <T> List<T>.length: Long get() = size.toLong()')
     expect(out.code).toContain('todos.any({ t -> t.done })')
     // No leftover .some — would compile-error on List<Todo>.
     expect(out.code).not.toContain('.some(')

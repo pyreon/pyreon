@@ -70,7 +70,7 @@ describe('P1 — String(x) / Boolean(x) constructor-as-value', () => {
   })
   it('Kotlin: `Boolean(number)` lowers to `(x != 0)` (no raw Boolean call)', () => {
     const code = kt(N(`  const out = computed(() => Boolean(n()))`))
-    expect(code).toContain('derivedStateOf { (n != 0) }')
+    expect(code).toContain('derivedStateOf { (n != 0L) }')
     expect(code).not.toContain('Boolean(')
   })
 
