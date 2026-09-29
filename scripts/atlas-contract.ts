@@ -2,8 +2,8 @@
  * Pure renderers for the derived component contract.
  *
  * Split from `check-atlas-guide.ts` so importing them costs NOTHING: that file
- * reaches `runScan`, which reaches all of Atlas, which needs `pngjs` types —
- * and a unit test for a string renderer has no business declaring those. The
+ * reaches `runScan`, which reaches all of Atlas — and a unit test for a string
+ * renderer has no business pulling that type graph in. The
  * gate imports these; so does the test; neither pulls the other's weight.
  */
 

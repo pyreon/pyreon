@@ -49,14 +49,19 @@ export type QueryValue = QueryScalar | null | undefined | readonly QueryScalar[]
  * | `form`, `explode: false` | `k=1,2` | `k=a,1,b,2` |
  * | `spaceDelimited`, `explode: false` | `k=1 2` | — |
  * | `pipeDelimited`, `explode: false` | `k=1\|2` | — |
+ * | `tabDelimited`, `explode: false` | `k=1%092` | — |
  * | `deepObject` | — | `k[a]=1&k[b]=2` |
+ *
+ * `tabDelimited` is not an OpenAPI 3 style: it is Swagger 2's
+ * `collectionFormat: tsv`, which 3.0 cannot spell, kept so a converted spec
+ * still sends what its server parses.
  *
  * `explode` defaults to `true`, as in OpenAPI. The delimiter is
  * form-encoded like every other character (`%2C`), which servers decode
  * before splitting.
  */
 export interface QueryStyle {
-  style?: 'form' | 'spaceDelimited' | 'pipeDelimited' | 'deepObject' | undefined
+  style?: 'form' | 'spaceDelimited' | 'pipeDelimited' | 'tabDelimited' | 'deepObject' | undefined
   explode?: boolean | undefined
 }
 
