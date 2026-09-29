@@ -43,7 +43,8 @@
  */
 import { renderToString } from '@pyreon/runtime-server'
 import { disableHydrationWarnings, hydrateRoot, mount, onHydrationMismatch } from '../index'
-import { For, Fragment, h } from '@pyreon/core'
+import { For, Fragment, Suspense, h, lazy } from '@pyreon/core'
+import type { ComponentFn } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import {
   KNOWN_ATTR_PARITY_DIVERGENCES,
@@ -137,6 +138,82 @@ describe('SSR ↔ hydration parity fuzz', () => {
       if (failures.length >= 5) break
     }
 
+    expect(failures, failures.join('\n')).toEqual([])
+  })
+})
+
+describe('SSR ↔ hydration parity fuzz — a still-loading lazy', () => {
+  // Every seeded subtree becomes the body of a `lazy()` (half of them inside a
+  // `<Suspense>`). The server loaded its chunk; the client's has NOT landed
+  // when `hydrateRoot` runs, which is the case hydration now defers. Oracles:
+  //   L1  no mismatch reported, and every server element still in the DOM
+  //       while the chunk is loading;
+  //   L2  after it lands, the DOM equals a fresh client mount of the same tree,
+  //       and EVERY server element is still the one on screen (identity kept);
+  //   L3  after a signal flip, equal to the client mount and to ground truth.
+  const SEEDS = Math.max(1, Number((process.env as Record<string, string | undefined>).PYREON_FUZZ_SEEDS) || 300)
+  const TIMEOUT_MS = Math.max(20_000, SEEDS * 20)
+
+  it(`${SEEDS} seeded lazy-wrapped trees keep their server DOM and converge`, { timeout: TIMEOUT_MS }, async () => {
+    disableHydrationWarnings()
+    const failures: string[] = []
+    for (let seed = 1; seed <= SEEDS; seed++) {
+      const r = mulberry32(seed)
+      const sigSpecs: SigSpec[] = []
+      const inner: Spec = genSpec(r, 0, sigSpecs)
+      const sibling: Spec = genSpec(r, 1, sigSpecs)
+      const inSuspense = r() < 0.5
+      const tree = (L: ComponentFn, S: SigInst[]) =>
+        h(
+          'main',
+          null,
+          inSuspense ? h(Suspense, { fallback: h('i', { class: 'fb' }, 'loading') }, h(L, null)) : h(L, null),
+          toVNode(sibling, S) as never,
+        )
+      const bodyOf = (S: SigInst[]): ComponentFn => () => h('section', { class: 'lz' }, toVNode(inner, S) as never)
+
+      const SS = makeSignals(sigSpecs)
+      const html = await renderToString(tree(lazy(() => Promise.resolve({ default: bodyOf(SS) })), SS) as never)
+
+      const SA = makeSignals(sigSpecs)
+      let land!: () => void
+      const clientLazy = lazy<object>(() => new Promise((res) => (land = () => res({ default: bodyOf(SA) }))))
+      const cA = document.createElement('div')
+      document.body.appendChild(cA)
+      cA.innerHTML = html
+      const serverEls = [...cA.querySelectorAll('*')]
+      const serverSection = cA.querySelector('section.lz')
+      const mismatches: string[] = []
+      const off = onHydrationMismatch((ctx) => mismatches.push(`${ctx.type}@${ctx.path}`))
+      const cleanupA = hydrateRoot(cA, tree(clientLazy, SA) as never)
+      off()
+      if (mismatches.length > 0) failures.push(`seed=${seed} L1: ${mismatches[0]}`)
+      else if (cA.querySelector('section.lz') !== serverSection) failures.push(`seed=${seed} L1: server range dropped while loading`)
+      land()
+      await new Promise((res) => setTimeout(res, 0))
+
+      const SB = makeSignals(sigSpecs)
+      const loadedB = lazy(() => Promise.resolve({ default: bodyOf(SB) }))
+      await new Promise((res) => setTimeout(res, 0))
+      const cB = document.createElement('div')
+      document.body.appendChild(cB)
+      const cleanupB = mount(tree(loadedB, SB) as never, cB)
+
+      if (cmp(cA.innerHTML) !== cmp(cB.innerHTML)) failures.push(`seed=${seed} L2 divergence`)
+      else {
+        const live = new Set(cA.querySelectorAll('*'))
+        const lost = serverEls.filter((el) => !live.has(el)).length
+        if (lost > 0) failures.push(`seed=${seed} L2: ${lost}/${serverEls.length} server elements rebuilt`)
+        flip(sigSpecs, SA)
+        flip(sigSpecs, SB)
+        if (cmp(cA.innerHTML) !== cmp(cB.innerHTML)) failures.push(`seed=${seed} L3 post-flip divergence`)
+      }
+      cleanupA()
+      cleanupB()
+      cA.remove()
+      cB.remove()
+      if (failures.length >= 5) break
+    }
     expect(failures, failures.join('\n')).toEqual([])
   })
 })
