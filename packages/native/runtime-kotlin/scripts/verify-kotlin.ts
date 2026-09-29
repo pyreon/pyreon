@@ -289,6 +289,9 @@ class JsonBuilder {
   var ignoreUnknownKeys: Boolean = false
   var isLenient: Boolean = false
   var encodeDefaults: Boolean = false
+  // PyreonJson.stringify writes NaN / Infinity as tokens, then maps them to
+  // JS's null, rather than letting the encode throw.
+  var allowSpecialFloatingPointValues: Boolean = false
 }
 
 @Suppress("UNUSED_PARAMETER", "FunctionName")
