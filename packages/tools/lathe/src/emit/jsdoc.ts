@@ -65,16 +65,19 @@ function paramValue(p: IrParam, doc: IrDocument): unknown {
   return sampleValue(p.type, doc)
 }
 
-/** A path segment is `string | number` on the endpoint; anything else is stringified. */
+/**
+ * A path segment is `string | number` on the endpoint (`bigint | number` for an
+ * int64 under `int64: 'bigint'`, rendered `42n`); anything else is stringified.
+ */
 function pathValue(v: unknown): unknown {
-  return typeof v === 'string' || typeof v === 'number' ? v : String(v)
+  return typeof v === 'string' || typeof v === 'number' || typeof v === 'bigint' ? v : String(v)
 }
 
 /** Headers and cookies are scalars. */
 function scalarValue(v: unknown): unknown {
-  // A bigint (an int64 under `int64: 'bigint'`) travels as its digits.
-  if (typeof v === 'bigint') return String(v)
-  return v === null || ['string', 'number', 'boolean'].includes(typeof v) ? v : jsonText(v)
+  // A bigint (an int64 under `int64: 'bigint'`) is typed `bigint | number` on
+  // the endpoint and stays a bigint literal here.
+  return v === null || ['string', 'number', 'bigint', 'boolean'].includes(typeof v) ? v : jsonText(v)
 }
 
 /**
@@ -83,9 +86,8 @@ function scalarValue(v: unknown): unknown {
  * caller serializes it), so the sample is serialized the same way.
  */
 function queryValue(v: unknown): unknown {
-  // An int64 query parameter is typed `string` (see `queryParamTs`): its digits.
-  if (typeof v === 'bigint') return String(v)
-  const scalar = (x: unknown): boolean => x === null || ['string', 'number', 'boolean'].includes(typeof x)
+  // An int64 query parameter is typed `bigint | number` (see `queryParamTs`).
+  const scalar = (x: unknown): boolean => x === null || ['string', 'number', 'bigint', 'boolean'].includes(typeof x)
   if (scalar(v)) return v
   if (Array.isArray(v)) return v.every(scalar) ? v : jsonText(v)
   if (typeof v === 'object' && Object.values(v as object).every((x) => scalar(x) || (Array.isArray(x) && x.every(scalar))))

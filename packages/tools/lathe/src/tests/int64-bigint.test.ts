@@ -174,9 +174,9 @@ describe('what each emitter writes', () => {
     expect(file(run({ int64: 'bigint', client: 'axios' }).files, 'client.ts')).toContain('transformResponse: [(d: unknown) => d]')
   })
 
-  it('a path parameter of int64 type is sent as its digits (typed string | number)', () => {
+  it('an int64 path parameter accepts the bigint the client decoded (typed bigint | number)', () => {
     const out = file(run({ int64: 'bigint' }).files, 'endpoints/e.ts')
-    expect(out).toContain('params: { id: string | number }')
+    expect(out).toContain('params: { id: bigint | number }')
   })
 
   it('mock fixtures and faker factories produce bigints', () => {
