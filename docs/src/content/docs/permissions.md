@@ -392,7 +392,7 @@ function AdminPanel() {
 }
 ```
 
-`usePermissions()` throws `[Pyreon] usePermissions() must be used within <PermissionsProvider>.` if no provider is mounted above it — so a missing provider fails loudly rather than silently denying everything.
+`usePermissions()` throws `[Pyreon] usePermissions() must be used within <PermissionsProvider>.` if no provider is mounted above it — so a missing provider fails loudly rather than silently denying everything. On the native targets (iOS/Android) the same mistake cannot throw — a bare `usePermissions()` reads the environment/CompositionLocal default, which is a deny-all set — so that default is a distinguished instance: the first check against it prints a once-per-process `[Pyreon] usePermissions() was read with no <PermissionsProvider> above it` warning (Swift: DEBUG builds only; Kotlin: the runtime library cannot see the app's `BuildConfig`, so it writes once to `System.err`/logcat). An explicit `usePermissions([])` never warns — it states an intent.
 
 :::tip[SSR: build a fresh instance per request]
 On the server, create a new `createPermissions(...)` instance per request from that request's session, and provide it via `<PermissionsProvider>`. A module-level singleton would leak one user's permissions across concurrent requests.

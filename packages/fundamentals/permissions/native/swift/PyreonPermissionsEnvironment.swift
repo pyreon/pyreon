@@ -22,7 +22,9 @@
 // So it lives here, beside `PyreonPermissions`, declared once.
 //
 // An unprovided environment is an EMPTY set — a deny, which is the safe
-// default for an authorization check.
+// default for an authorization check. It is a DISTINGUISHED empty set
+// (`makeUnprovided()`): in DEBUG builds the first check against it prints a
+// once-per-process warning naming the missing provider.
 //
 // The validation stubs carry a byte-for-byte copy
 // (`@pyreon/native-compiler` swift-stubs.ts); `runtime-stub-parity.test.ts`
@@ -34,7 +36,7 @@ import SwiftUI
 
 @available(iOS 17.0, macOS 14.0, *)
 private struct PyreonPermissionsKey: EnvironmentKey {
-    static let defaultValue = PyreonPermissions()
+    static let defaultValue = PyreonPermissions.makeUnprovided()
 }
 
 @available(iOS 17.0, macOS 14.0, *)

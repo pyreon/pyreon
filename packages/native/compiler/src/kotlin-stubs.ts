@@ -2388,6 +2388,8 @@ class PyreonThrottled<A>(waitMs: Long, scheduler: PyreonScheduler, action: (A) -
   fun cancel() {}
 }
 class PyreonPermissions(granted: Set<String> = emptySet()) {
+  companion object { fun unprovided(): PyreonPermissions = PyreonPermissions() }
+  val isUnprovidedFallback: Boolean = false
   val granted: MutableState<Set<String>> = mutableStateOf(granted)
   fun can(key: String): Boolean {
     if (granted.value.contains(key)) return true
@@ -2406,7 +2408,7 @@ class PyreonPermissions(granted: Set<String> = emptySet()) {
   fun revoke(key: String) {}
 }
 // BEGIN runtime mirror: fundamentals/permissions/native/kotlin/com/pyreon/runtime/PyreonPermissionsLocal.kt
-val LocalPyreonPermissions: ProvidableCompositionLocal<PyreonPermissions> = compositionLocalOf { PyreonPermissions() }
+val LocalPyreonPermissions: ProvidableCompositionLocal<PyreonPermissions> = compositionLocalOf { PyreonPermissions.unprovided() }
 // END runtime mirror
 
 // PyreonNetworkStatus — mirror of @pyreon/native-runtime-kotlin's
