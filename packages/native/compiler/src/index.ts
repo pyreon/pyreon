@@ -19,7 +19,11 @@ export {
   // most of all — needs to prove its output COMPILES, and `validateSwift` is
   // parse-only while `validateSwiftTypecheck` needs a real Apple SDK.
   validateSwiftWithStubs,
+  // Several emitted files as ONE module — the only gate that can see a
+  // cross-file collision (two files both declaring the same type).
+  validateSwiftFilesWithStubs,
   validateKotlin,
+  validateKotlinFiles,
   isSwiftcAvailable,
   isSwiftUIAvailable,
   isKotlincAvailable,
