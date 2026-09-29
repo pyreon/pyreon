@@ -214,11 +214,17 @@ function wrapCompatComponent(solidComponent: Function): ComponentFn {
     }
   }) as unknown as ComponentFn
 
-  // Forward __loading from lazy components so Pyreon's Suspense can detect them
-  if ('__loading' in solidComponent) {
-    ;(wrapped as unknown as Record<string, unknown>).__loading = (
-      solidComponent as unknown as Record<string, unknown>
-    ).__loading
+  // Forward the lazy protocol from a lazy component that reaches this wrapper
+  // (e.g. `@pyreon/core`'s own `lazy()` — the compat `lazy()` is marked native
+  // and never gets here): `__loading` lets `<Suspense>` pick its fallback,
+  // `__load` lets the SSR renderers WAIT for the chunk instead of rendering
+  // nothing. Forwarding one without the other half-breaks the protocol.
+  for (const key of ['__loading', '__load'] as const) {
+    if (key in solidComponent) {
+      ;(wrapped as unknown as Record<string, unknown>)[key] = (
+        solidComponent as unknown as Record<string, unknown>
+      )[key]
+    }
   }
 
   _wrapperCache.set(solidComponent, wrapped)
@@ -257,6 +263,20 @@ function resolveChildInstance(): ChildInstance | undefined {
   const instance = createChildInstance()
   parentCtx.hooks[idx] = instance
   return instance
+}
+
+/**
+ * The component a compat `lazy()` should mount once its chunk resolves: the
+ * compat wrapper for a framework-style component (so hooks run inside a render
+ * frame), or the component itself when it is marked `nativeCompat`. Exactly
+ * the choice `jsx()` makes — a lazy's loaded component must get the same
+ * treatment it would have got written as JSX, or its hooks throw
+ * "Hook called outside of a component render".
+ */
+export function toCompatComponent<P extends object>(component: ComponentFn<P>): ComponentFn<P> {
+  return isNativeCompat(component)
+    ? component
+    : (wrapCompatComponent(component) as unknown as ComponentFn<P>)
 }
 
 // ─── JSX functions ───────────────────────────────────────────────────────────
