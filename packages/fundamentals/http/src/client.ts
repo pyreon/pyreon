@@ -60,6 +60,8 @@ interface ResolvedConfig {
   throwHttpErrors: boolean
   meta: Record<string, unknown>
   parse: ParseContext
+  /** The request-body JSON encoder — `JSON.stringify` unless a codec was configured. */
+  stringifyJson: ((value: unknown) => string) | undefined
   /** Set when `validate` is an accessor — read per request instead of once. */
   validateSource: (() => ValidateMode) | undefined
   keyScope: string | undefined
@@ -95,6 +97,8 @@ const DEFAULT_TIMEOUT = 30_000
 type PathOfSpec<S extends string> = S extends `${string} ${infer P}` ? P : never
 
 function toResolved(config: HttpClientConfig, base?: ResolvedConfig): ResolvedConfig {
+  // Called through the codec object, so a codec written as a class keeps `this`.
+  const codec = config.json
   const headerSources = [...(base?.headerSources ?? [])]
   if (config.headers) headerSources.push(config.headers)
 
@@ -112,7 +116,9 @@ function toResolved(config: HttpClientConfig, base?: ResolvedConfig): ResolvedCo
       validate:
         typeof config.validate === 'string' ? config.validate : (base?.parse.validate ?? 'strict'),
       schema: config.schema ?? base?.parse.schema,
+      parseJson: codec ? (text: string) => codec.parse(text) : base?.parse.parseJson,
     },
+    stringifyJson: codec ? (value: unknown) => codec.stringify(value) : base?.stringifyJson,
     validateSource:
       typeof config.validate === 'function'
         ? config.validate
@@ -151,7 +157,11 @@ function applyHeaderSource(target: Headers, source: HeadersInit | HeaderValues):
 }
 
 /** Encode the body and set `Content-Type` when the caller has not. */
-function buildBody(options: RequestOptions, headers: Headers): BodyInit | null {
+function buildBody(
+  options: RequestOptions,
+  headers: Headers,
+  stringifyJson: ((value: unknown) => string) | undefined,
+): BodyInit | null {
   const given = [
     options.json !== undefined && 'json',
     options.form !== undefined && 'form',
@@ -169,7 +179,7 @@ function buildBody(options: RequestOptions, headers: Headers): BodyInit | null {
   }
   if (options.json !== undefined) {
     if (!headers.has('content-type')) headers.set('content-type', 'application/json')
-    return JSON.stringify(options.json)
+    return stringifyJson ? stringifyJson(options.json) : JSON.stringify(options.json)
   }
   if (options.form !== undefined) {
     if (!headers.has('content-type')) headers.set('content-type', 'application/x-www-form-urlencoded')
@@ -279,9 +289,9 @@ function fromResolved(resolved: ResolvedConfig): HttpClient {
     // A per-request `validate` wins over both.
     const parse =
       options.validate !== undefined
-        ? { validate: options.validate, schema: resolved.parse.schema }
+        ? { validate: options.validate, schema: resolved.parse.schema, parseJson: resolved.parse.parseJson }
         : resolved.validateSource
-          ? { validate: resolved.validateSource(), schema: resolved.parse.schema }
+          ? { validate: resolved.validateSource(), schema: resolved.parse.schema, parseJson: resolved.parse.parseJson }
           : resolved.parse
     const exec = (async (): Promise<HttpResponse> => {
       const headers = new Headers(folded.base)
@@ -289,7 +299,7 @@ function fromResolved(resolved: ResolvedConfig): HttpClient {
         applyHeaderSource(headers, typeof source === 'function' ? source() : source)
       }
       if (options.headers) applyHeaderSource(headers, options.headers)
-      const body = buildBody(options, headers)
+      const body = buildBody(options, headers, resolved.stringifyJson)
       // On the server a root-relative URL has no origin and `fetch`
       // rejects; resolve it against the inbound request when one is in
       // scope. A no-op in the browser, where the document supplies it.
