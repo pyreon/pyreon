@@ -1739,7 +1739,16 @@ function hydrateComponent(
     nextDom = next
     if (boundaryStart !== null) {
       const boundaryEnd = document.createComment('/suspense')
-      parent.insertBefore(boundaryEnd, next ?? anchor)
+      // The range ends at `next`. With no `next` the walk consumed everything
+      // to the parent's end, and `anchor` only delimits that end while it is
+      // still a LATER live sibling. `hydrateMountHole` passes the hole's cursor
+      // as both `domNode` AND `anchor` — for a trailing hole that is the node
+      // the walk just started at (and range adoption may have REMOVED it), so
+      // inserting before it either throws `NotFoundError` or lands the end
+      // marker ahead of the content. Append in that case: a hole is trailing.
+      const endRef =
+        next ?? (anchor !== null && anchor !== domNode && anchor.parentNode === parent ? anchor : null)
+      parent.insertBefore(boundaryEnd, endRef)
       const boundary = useContext(SuspenseBoundaryContext)
       const detach =
         boundary !== null
