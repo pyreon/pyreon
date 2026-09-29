@@ -36,7 +36,7 @@ export async function listStaticFiles(
 ): Promise<string[]> {
   const { readdir } = await import('node:fs/promises')
   const { join } = await import('node:path')
-  const assets = `${(options.assetsDir && options.assetsDir.length > 0 ? options.assetsDir : 'assets').replace(/^\/+|\/+$/g, '')}/`
+  const assets = `${trimSlashes(options.assetsDir && options.assetsDir.length > 0 ? options.assetsDir : 'assets')}/`
   const skip = new Set(options.skip ?? [])
   const out: string[] = []
 
@@ -59,6 +59,24 @@ export async function listStaticFiles(
   }
   await walk(dir, '')
   return out.sort()
+}
+
+/**
+ * Strip every leading and trailing `/` — `'//assets/'` → `'assets'`.
+ *
+ * An index scan, deliberately not `replace(/^\/+|\/+$/g, '')`: the `\/+$`
+ * alternative is retried from every `/` in a run that is not at the end of
+ * the string, so a value made of many slashes followed by anything else costs
+ * O(n²) (CodeQL `js/polynomial-redos`). `assetsDir` is user config, and this
+ * runs at build time, so it is not an attack surface — but a linear scan is
+ * also simply the clearer statement of what is meant.
+ */
+export function trimSlashes(value: string): string {
+  let start = 0
+  let end = value.length
+  while (start < end && value.charCodeAt(start) === 47) start++
+  while (end > start && value.charCodeAt(end - 1) === 47) end--
+  return value.slice(start, end)
 }
 
 /** Escape a string for literal use inside a `RegExp` source. */
