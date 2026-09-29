@@ -229,7 +229,7 @@ pyreon atlas verify-browser .
 Two of the five checks are claims only a real browser can make. This command boots the workbench headlessly (playwright-core is an **optional** peer — `scan`/`dev` work without it), drives every scenario through the workbench model, and:
 
 - measures **reactive coverage** on the page's own devtools bridge — the same reactivity instance your components run on — reporting how many reactive nodes the scenario created and which never re-fired;
-- captures a **visual snapshot** of the preview and compares it against a per-scenario baseline (pixelmatch, tolerance-based). First run creates baselines; later runs fail on real diffs and write an `.actual.png` beside the baseline. `--update-snapshots` re-baselines.
+- captures a **visual snapshot** of the preview and compares it against a per-scenario baseline (a perceptual YIQ comparison that forgives anti-aliasing). First run creates baselines; later runs fail on real diffs and write an `.actual.png` beside the baseline, plus a `.diff.png` with the differing pixels in red. `--update-snapshots` re-baselines.
 
 Both verdicts merge back into `atlas-catalog.json`. Baselines are machine-specific (font antialiasing) — keep `atlas-snapshots/` gitignored and let each environment create its own.
 

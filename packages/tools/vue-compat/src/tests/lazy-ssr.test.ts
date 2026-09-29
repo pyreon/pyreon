@@ -11,7 +11,6 @@
  * the renderers recognise.
  */
 import type { ComponentFn } from '@pyreon/core'
-import { h } from '@pyreon/core'
 import { disableHydrationWarnings, hydrateRoot, mount } from '@pyreon/runtime-dom'
 import { renderToStream, renderToString } from '@pyreon/runtime-server'
 import { defineAsyncComponent, ref, Suspense } from '../index'

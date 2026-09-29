@@ -72,7 +72,6 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@types/ws": "^8.18.1",
-    "@vitus-labs/tools-lint": "^2.7.1",
     "bun-types": "^1.3.14",
     "ws": "^8.21.3"
   },

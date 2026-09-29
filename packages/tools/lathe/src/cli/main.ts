@@ -22,6 +22,7 @@ import { version as LATHE_VERSION } from "../../package.json" with { type: "json
 import type { LatheSection } from "../core/config";
 import { findConfigFile, loadConfig, type LoadedConfig } from "./config-file";
 import { renderInitReport, runInit, type InitFs } from "./init/init";
+import { importFromCwd } from "./plugin-modules";
 import { pullSpec } from "./pull";
 import { shouldColor } from "./report";
 import { parseArgv, run, type Argv, type Fs } from "./run";
@@ -90,7 +91,17 @@ export async function main(
         const env = Object.fromEntries(
           Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")),
         );
-        const r = spawnSync("git", ["show", `${rev}:${path}`], {
+        // `git show <rev>:<path>` reads `<path>` from the REPOSITORY ROOT, but
+        // the other side of the diff (and a user's intuition) is relative to
+        // the working directory. From a subdirectory — a monorepo package, a
+        // workflow step with `working-directory` — `main:openapi.yaml` would
+        // silently read the root's spec (a wrong diff) or nothing. A `./`
+        // prefix makes git resolve it against `cwd`, like the on-disk side.
+        const rel =
+          path.startsWith("./") || path.startsWith("../") || path.startsWith("/")
+            ? path
+            : `./${path}`;
+        const r = spawnSync("git", ["show", `${rev}:${rel}`], {
           cwd,
           env,
           encoding: "utf8",
@@ -123,6 +134,9 @@ export async function main(
     mkdirp: (p) => realFs.mkdirp(abs(p)),
     remove: (p) => realFs.remove(abs(p)),
     resolve: abs,
+    // `--plugins ./x.ts` / `--plugins some-package`, resolved from the cwd the
+    // way a config file's own import would be.
+    importModule: (spec) => importFromCwd(spec, cwd),
   }
   let section = loaded.section
   // Set once the watcher exists: every document a run READ -- the spec and
