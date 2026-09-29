@@ -158,6 +158,7 @@
       {
         "exemptPaths": [
           "packages/zero/cli/",
+          "packages/zero/create-zero/src/",
           "packages/zero/zero/src/adapters/",
           "packages/zero/zero/src/ssg-plugin.ts",
           "packages/zero/zero/src/ssr-build-shared.ts",
