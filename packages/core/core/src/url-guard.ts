@@ -93,40 +93,45 @@ export function isUrlAttr(key: string): boolean {
  *
  * A hand-maintained list of a moving target rots, so it is RATCHETED rather
  * than trusted: `event-handler-vocabulary.browser.test.tsx` enumerates every
- * `on*` IDL handler a real Chromium exposes on HTML, SVG and Window prototypes
- * and fails if any is missing here. A new browser handler reds that gate
- * instead of silently becoming an unguarded sink.
+ * `on*` IDL handler a real engine exposes on HTML, SVG and Window prototypes
+ * and fails if any is missing here. It runs in Chromium, WebKit AND Firefox
+ * (`test:browser:engines`) — Chromium alone missed ten WebKit-only names
+ * (`onbeforeload`, `onorientationchange`, `onwebkit*`). A new browser handler
+ * reds that gate instead of silently becoming an unguarded sink.
  */
 export const EVENT_HANDLER_ATTRS = new Set([
   'onabort', 'onactivate', 'onafterprint', 'onanimationcancel', 'onanimationend',
   'onanimationiteration', 'onanimationstart', 'onappinstalled', 'onauxclick', 'onbeforecopy',
-  'onbeforecut', 'onbeforeinput', 'onbeforeinstallprompt', 'onbeforematch', 'onbeforepaste',
-  'onbeforeprint', 'onbeforetoggle', 'onbeforeunload', 'onbeforexrselect', 'onbegin', 'onblur',
-  'oncancel', 'oncanplay', 'oncanplaythrough', 'onchange', 'onclick', 'onclose', 'oncommand',
-  'oncontentvisibilityautostatechange', 'oncontextlost', 'oncontextmenu', 'oncontextrestored',
-  'oncopy', 'oncuechange', 'oncut', 'ondblclick', 'ondevicemotion', 'ondeviceorientation',
-  'ondeviceorientationabsolute', 'ondrag', 'ondragend', 'ondragenter', 'ondragexit', 'ondragleave',
-  'ondragover', 'ondragstart', 'ondrop', 'ondurationchange', 'onemptied', 'onencrypted', 'onend',
-  'onended', 'onenterpictureinpicture', 'onerror', 'onfocus', 'onfocusin', 'onfocusout',
-  'onformdata', 'onfullscreenchange', 'onfullscreenerror', 'ongamepadconnected',
-  'ongamepaddisconnected', 'ongotpointercapture', 'onhashchange', 'oninput', 'oninvalid',
-  'onkeydown', 'onkeypress', 'onkeyup', 'onlanguagechange', 'onleavepictureinpicture', 'onload',
-  'onloadeddata', 'onloadedmetadata', 'onloadstart', 'onlostpointercapture', 'onmessage',
+  'onbeforecut', 'onbeforeinput', 'onbeforeinstallprompt', 'onbeforeload', 'onbeforematch',
+  'onbeforepaste', 'onbeforeprint', 'onbeforetoggle', 'onbeforeunload', 'onbeforexrselect',
+  'onbegin', 'onblur', 'oncancel', 'oncanplay', 'oncanplaythrough', 'onchange', 'onclick',
+  'onclose', 'oncommand', 'oncontentvisibilityautostatechange', 'oncontextlost', 'oncontextmenu',
+  'oncontextrestored', 'oncopy', 'oncuechange', 'oncut', 'ondblclick', 'ondevicemotion',
+  'ondeviceorientation', 'ondeviceorientationabsolute', 'ondrag', 'ondragend', 'ondragenter',
+  'ondragexit', 'ondragleave', 'ondragover', 'ondragstart', 'ondrop', 'ondurationchange',
+  'onemptied', 'onencrypted', 'onend', 'onended', 'onenterpictureinpicture', 'onerror', 'onfocus',
+  'onfocusin', 'onfocusout', 'onformdata', 'onfullscreenchange', 'onfullscreenerror',
+  'ongamepadconnected', 'ongamepaddisconnected', 'ongotpointercapture', 'onhashchange', 'oninput',
+  'oninvalid', 'onkeydown', 'onkeypress', 'onkeyup', 'onlanguagechange', 'onleavepictureinpicture',
+  'onload', 'onloadeddata', 'onloadedmetadata', 'onloadstart', 'onlostpointercapture', 'onmessage',
   'onmessageerror', 'onmousedown', 'onmouseenter', 'onmouseleave', 'onmousemove', 'onmouseout',
   'onmouseover', 'onmouseup', 'onmousewheel', 'onmozfullscreenchange', 'onmozfullscreenerror',
-  'onoffline', 'ononline', 'onoverflow', 'onpagehide', 'onpagereveal', 'onpageshow', 'onpageswap',
-  'onpaste', 'onpause', 'onplay', 'onplaying', 'onpointercancel', 'onpointerdown',
-  'onpointerenter', 'onpointerleave', 'onpointermove', 'onpointerout', 'onpointerover',
-  'onpointerrawupdate', 'onpointerup', 'onpopstate', 'onprogress', 'onratechange',
+  'onoffline', 'ononline', 'onorientationchange', 'onoverflow', 'onpagehide', 'onpagereveal',
+  'onpageshow', 'onpageswap', 'onpaste', 'onpause', 'onplay', 'onplaying', 'onpointercancel',
+  'onpointerdown', 'onpointerenter', 'onpointerleave', 'onpointermove', 'onpointerout',
+  'onpointerover', 'onpointerrawupdate', 'onpointerup', 'onpopstate', 'onprogress', 'onratechange',
   'onrejectionhandled', 'onrepeat', 'onreset', 'onresize', 'onscroll', 'onscrollend',
-  'onscrollsnapchange', 'onscrollsnapchanging', 'onsearch', 'onsecuritypolicyviolation',
-  'onseeked', 'onseeking', 'onselect', 'onselectionchange', 'onselectstart', 'onslotchange',
-  'onstalled', 'onstorage', 'onsubmit', 'onsuspend', 'ontimeupdate', 'ontoggle', 'ontouchcancel',
-  'ontouchend', 'ontouchmove', 'ontouchstart', 'ontransitioncancel', 'ontransitionend',
-  'ontransitionrun', 'ontransitionstart', 'onunderflow', 'onunhandledrejection', 'onunload',
-  'onvolumechange', 'onwaiting', 'onwaitingforkey', 'onwebkitanimationend',
-  'onwebkitanimationiteration', 'onwebkitanimationstart', 'onwebkitfullscreenchange',
-  'onwebkitfullscreenerror', 'onwebkittransitionend', 'onwheel', 'onzoom',
+  'onscrollsnapchange', 'onscrollsnapchanging', 'onsearch', 'onsecuritypolicyviolation', 'onseeked',
+  'onseeking', 'onselect', 'onselectionchange', 'onselectstart', 'onslotchange', 'onstalled',
+  'onstorage', 'onsubmit', 'onsuspend', 'ontimeupdate', 'ontoggle', 'ontouchcancel', 'ontouchend',
+  'ontouchmove', 'ontouchstart', 'ontransitioncancel', 'ontransitionend', 'ontransitionrun',
+  'ontransitionstart', 'onunderflow', 'onunhandledrejection', 'onunload', 'onvolumechange',
+  'onwaiting', 'onwaitingforkey', 'onwebkitanimationend', 'onwebkitanimationiteration',
+  'onwebkitanimationstart', 'onwebkitcurrentplaybacktargetiswirelesschanged',
+  'onwebkitfullscreenchange', 'onwebkitfullscreenerror', 'onwebkitmouseforcechanged',
+  'onwebkitmouseforcedown', 'onwebkitmouseforceup', 'onwebkitmouseforcewillbegin',
+  'onwebkitneedkey', 'onwebkitplaybacktargetavailabilitychanged', 'onwebkitpresentationmodechanged',
+  'onwebkittransitionend', 'onwheel', 'onzoom',
 ])
 
 /**
