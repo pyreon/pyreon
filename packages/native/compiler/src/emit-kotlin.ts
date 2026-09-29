@@ -6790,7 +6790,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               return `${obj}${objDot}contains(${argExprs[0]!})`
             }
             if (e.args.length === 2) {
-              const lowered = kotlinPositionedSearch('includes', recvKind, e, obj, objDot, argExprs)
+              const lowered = kotlinPositionedSearch('includes', recvKind, e, obj, objDot, argExprs, indent)
               if (lowered !== null) return lowered
             }
             break
