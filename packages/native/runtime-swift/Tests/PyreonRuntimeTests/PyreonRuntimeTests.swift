@@ -146,4 +146,21 @@ final class ObservationFlag: @unchecked Sendable {
     var fired: Bool = false
 
 
+    /// The shared schema types every emitted schema struct throws / returns.
+    /// Declared once in the runtime so two schema-bearing modules in one
+    /// target cannot both declare them.
+    func testPyreonSchemaTypes() throws {
+        let e: Error = PyreonSchemaError.constraintViolation(field: "name", rule: "min length 2")
+        guard case let PyreonSchemaError.constraintViolation(field, rule)? = e as? PyreonSchemaError else {
+            return XCTFail("expected constraintViolation")
+        }
+        XCTAssertEqual(field, "name")
+        XCTAssertEqual(rule, "min length 2")
+        let ok = PyreonParseResult(success: true, data: 3)
+        XCTAssertTrue(ok.success)
+        XCTAssertEqual(ok.data, 3)
+        let bad = PyreonParseResult<Int>(success: false, data: nil)
+        XCTAssertFalse(bad.success)
+        XCTAssertNil(bad.data)
+    }
 }
