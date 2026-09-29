@@ -10662,9 +10662,18 @@ function parseStatementBlock(block: AnyNode, ctx: ParseCtx): StatementIR[] {
     // declarator through the single-decl path so every binding shape it
     // already supports (incl. value inference) carries over verbatim.
     if (stmt.type === 'VariableDeclaration' && ((stmt.declarations as AnyNode[])?.length ?? 0) > 1) {
+      // Each declarator re-enters THIS block walker (not bare parseStatement),
+      // so a destructured declarator (`const n = 1, { b } = o`) takes the same
+      // expansion / warning a lone `const { b } = o` does. Routed through
+      // parseStatement it had no `.name` and was dropped with NO warning,
+      // leaving every later read of `b` undeclared.
       for (const d of stmt.declarations as AnyNode[]) {
-        const single = parseStatement({ ...stmt, declarations: [d] }, ctx)
-        if (single) out.push(single)
+        out.push(
+          ...parseStatementBlock(
+            { type: 'BlockStatement', body: [{ ...stmt, declarations: [d] }] },
+            ctx,
+          ),
+        )
       }
       continue
     }
@@ -11049,7 +11058,15 @@ function parseStatement(node: AnyNode, ctx: ParseCtx): StatementIR | null {
       }
       const d = declarators[0]!
       const declName = d.id?.name as string | undefined
-      if (!declName) return null
+      if (!declName) {
+        // A destructuring declaration reaching here came from a position the
+        // block walker's destructure expansion does not see — an un-braced
+        // `if`/`else`/loop body or a `switch` case. It was dropped silently.
+        ctx.warnings.push(
+          `A destructuring declaration outside a braced block (e.g. an un-braced \`if\` body or a \`switch\` case) is not lowered to native and was dropped — wrap the body in \`{ … }\` so it can be expanded, or bind the fields explicitly.`,
+        )
+        return null
+      }
       const ann = (d.id as AnyNode | undefined)?.typeAnnotation?.typeAnnotation as
         | AnyNode
         | undefined
@@ -11573,8 +11590,14 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
       let name = '(unresolved-typeRef)'
       if (nameNode?.type === 'Identifier') name = nameNode.name as string
       else if (nameNode?.type === 'TSQualifiedName') {
-        // namespaced like `Foo.Bar` — keep as-is for now
-        name = `${nameNode.left?.name ?? ''}.${nameNode.right?.name ?? ''}`
+        // namespaced like `Foo.Bar` — keep as-is for now. The LEFT side is
+        // itself a TSQualifiedName for a deeper path (`A.B.C`), which has no
+        // `.name` — reading it flat rendered `.C`. Walk it.
+        const qualified = (q: AnyNode | undefined): string =>
+          q?.type === 'TSQualifiedName'
+            ? `${qualified(q.left)}.${q.right?.name ?? ''}`
+            : ((q?.name as string | undefined) ?? '')
+        name = qualified(nameNode)
       }
       const params = node.typeArguments?.params as AnyNode[] | undefined
       const args = params ? params.map((p) => parseTypeAnnotation(p, ctx)) : []
@@ -12219,6 +12242,13 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           })
         } else if (p.type === 'SpreadElement') {
           spreads.push(parseExpr(p.argument, ctx))
+        } else {
+          // What is left is a NUMERIC-literal key (`{ 1: 'a' }`) — neither an
+          // identifier nor a string. It was dropped with no signal, the same
+          // silent-drop the string-literal key above used to be.
+          ctx.warnings.push(
+            `[${locOf(p, ctx)}] A numeric object key (\`{ 1: … }\`) is not supported in native (PMTC) — a struct/data-class field needs an identifier name, so the entry was dropped. Use a named key, or build a dictionary with \`new Map()\`.`,
+          )
         }
       }
       // An EMPTY object literal has no native lowering and produced no
@@ -12757,6 +12787,16 @@ function parseJsxAttr(node: AnyNode, ctx: ParseCtx): AttrIR | null {
     return { kind: 'spread', argument: parseExpr(node.argument, ctx) }
   }
   if (node.type !== 'JSXAttribute' || !node.name?.name) return null
+  // A NAMESPACED attribute (`xml:lang`, `xlink:href`) is a `JSXNamespacedName`
+  // whose `.name` is a node, not a string — read as one it crashed the whole
+  // transform (`rawName.startsWith is not a function`). Neither target has an
+  // attribute namespace, so it is dropped BY NAME rather than guessed at.
+  if (node.name.type === 'JSXNamespacedName') {
+    ctx.warnings.push(
+      `[${locOf(node, ctx)}] Namespaced JSX attribute \`${node.name.namespace?.name ?? '?'}:${node.name.name?.name ?? '?'}\` is not supported in native (PMTC) — it has no native equivalent and was dropped.`,
+    )
+    return null
+  }
   const rawName = node.name.name as string
   const value = node.value
 
@@ -12805,6 +12845,13 @@ function parseJsxChild(node: AnyNode, ctx: ParseCtx): ChildIR | null {
   }
   if (node.type === 'JSXElement' || node.type === 'JSXFragment') {
     return { kind: 'expr', expr: parseExpr(node, ctx) }
+  }
+  // `{...items}` as a CHILD (a `JSXSpreadChild`) — the only other child kind
+  // oxc produces. It was dropped with no signal; say so by name.
+  if (node.type === 'JSXSpreadChild') {
+    ctx.warnings.push(
+      `[${locOf(node, ctx)}] A spread JSX child (\`{...items}\`) is not supported in native (PMTC) — it was dropped. Render the list with <For each={items}>.`,
+    )
   }
   return null
 }

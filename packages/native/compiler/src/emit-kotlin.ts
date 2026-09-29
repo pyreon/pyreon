@@ -4410,6 +4410,11 @@ function kotlinCondition(e: ExprIR, emit: (x: ExprIR) => string): string {
       const neg = t.truth === 'string' ? 'isEmpty()' : 'toDouble() == 0.0'
       return t.presentWhenTrue ? `${x} != null && ${x}.${test}` : `${x} == null || ${x}.${neg}`
     }
+    // A number test is itself a comparison, so the safe-call form
+    // `x?.toDouble() != 0.0 == true` parses as `(null != 0.0) == true` and
+    // reads an ABSENT value as truthy. Coalesce to 0 first (JS
+    // `Boolean(undefined)` = `Boolean(0)` = false) — Swift's `(x ?? 0) != 0`.
+    if (t.truth === 'number') return t.presentWhenTrue ? `(${x}?.toDouble() ?: 0.0) != 0.0` : `(${x}?.toDouble() ?: 0.0) == 0.0`
     return t.presentWhenTrue ? `${x}?.${test} == true` : `${x}?.${test} != true`
   }
   const c = classifyOptionalCondition(e, _kotlinExprInferCtx)
@@ -12770,10 +12775,17 @@ function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex
         continue
       }
       if (spec.kind === 'rich') {
-        if (v.kind !== 'array') return 'unsupported'
+        // Every other decline in this loop NAMES the field; these two used to
+        // return bare, so a non-literal `labelRich` made the whole chart an
+        // empty Box() with no warning at all (mirror of the Swift twin).
+        const richDecline = (): 'unsupported' => {
+          _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`${spec.name}\` must be an array of { name, color?, fontSize? } object literals on native; emitting an empty Box().`)
+          return 'unsupported'
+        }
+        if (v.kind !== 'array') return richDecline()
         const styles: string[] = []
         for (const r of v.elements) {
-          if (r.kind !== 'object') return 'unsupported'
+          if (r.kind !== 'object') return richDecline()
           const rf = new Map(r.fields.map((field) => [field.name, field.value]))
           const text = (name: string): string => {
             const raw = rf.get(name)
