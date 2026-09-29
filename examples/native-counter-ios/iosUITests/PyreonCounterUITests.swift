@@ -743,6 +743,56 @@ final class PyreonCounterUITests: XCTestCase {
         )
     }
 
+    // Platform-probe hooks (useDeviceInfo / useWakeLock / useSpeech /
+    // useBluetooth / useDeviceMotion). Their engines (`UIKitDeviceProbe`,
+    // `UIKitIdleTimer`, `AVSpeechSynth`, `CoreBluetoothScanner`,
+    // `CoreMotionSource`) were named by the emit and defined nowhere on a real
+    // build, so this app did not compile; reaching this test proves they
+    // resolve, and each assertion proves the engine drives the live platform.
+    // The Simulator has no radio and no motion hardware, so those two rows
+    // assert the honest "unavailable" outcome rather than a reading.
+    // `useAudioRecorder` / `useCamera` are compile-proven only here: a
+    // microphone/camera permission alert is a system modal the harness cannot
+    // dismiss reliably.
+    func test_platformProbeHooksDriveTheLiveDevice() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.staticTexts["Info: ios touch"].waitForExistence(timeout: 30),
+            "useDeviceInfo did not read the live platform / touch capability"
+        )
+
+        let wake = app.buttons["probe-wake"]
+        XCTAssertTrue(wake.waitForExistence(timeout: 30))
+        bringFullyOnScreen(wake, in: app)
+        wake.tap()
+        XCTAssertTrue(
+            app.staticTexts["Awake: on"].waitForExistence(timeout: 15),
+            "useWakeLock did not hold the idle timer"
+        )
+
+        let speak = app.buttons["probe-speak"]
+        bringFullyOnScreen(speak, in: app)
+        speak.tap()
+        XCTAssertTrue(app.staticTexts["Speech: supported"].waitForExistence(timeout: 15))
+
+        let motion = app.buttons["probe-motion"]
+        bringFullyOnScreen(motion, in: app)
+        motion.tap()
+        // No motion hardware in the Simulator: start() reports false and the
+        // row stays inactive (a crash or a fabricated sample would not).
+        XCTAssertTrue(app.staticTexts["Motion: off idle"].waitForExistence(timeout: 15))
+
+        let scan = app.buttons["probe-scan"]
+        bringFullyOnScreen(scan, in: app)
+        scan.tap()
+        XCTAssertTrue(
+            app.staticTexts["Bluetooth: unavailable idle"].waitForExistence(timeout: 20),
+            "useBluetooth did not report the Simulator's missing radio"
+        )
+    }
+
     // A11y — the cross-platform AccessibilityProps vocab asserted in the REAL
     // iOS accessibility tree (the first DEVICE assertion of an emit that has
     // only ever been R2/compile-proven). The shared Counter.tsx has
