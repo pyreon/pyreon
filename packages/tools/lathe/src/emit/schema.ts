@@ -37,15 +37,6 @@ export interface SchemaExprOptions {
    */
   models?: ReadonlyMap<string, IrType> | undefined
   /**
-   * The BINDING a named model's schema has, when it is not the model's name.
-   *
-   * The native modules name each schema const differently from its type
-   * (audit G6): TypeScript keeps values and types in separate namespaces, but
-   * Swift and Kotlin do not, so `const Pet` beside `type Pet` became
-   * `let Pet` beside `struct Pet` — `invalid redeclaration` on both targets.
-   */
-  refBinding?: ((name: string) => string) | undefined
-  /**
    * Refs currently being inlined, so a `$ref` CYCLE terminates.
    *
    * A cycle cannot be inlined at all — there is no finite nesting for it — so
@@ -259,8 +250,7 @@ export function schemaExpr(type: IrType, opts: SchemaExprOptions, depth = 0): st
       // A back edge closes a `$ref` cycle. `const` is not hoisted, so naming
       // the target directly here is a TDZ ReferenceError at import; `lazy`
       // defers the read to first use, which is exactly what a cycle needs.
-      const binding = opts.refBinding ? opts.refBinding(type.name) : type.name
-      return opts.defer?.has(type.name) === true ? `${c('lazy')}(() => ${binding})` : binding
+      return opts.defer?.has(type.name) === true ? `${c('lazy')}(() => ${type.name})` : type.name
     }
     case 'array': {
       let expr = `${c('array')}(${schemaExpr(type.items, opts, depth + 1)})`
