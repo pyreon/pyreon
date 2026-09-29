@@ -63,7 +63,7 @@ describe('<PlotChart selectedMode> lowers', () => {
   it('Kotlin: the same shape over remembered state', () => {
     const r = transform(MULTI, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('var pyreonSelected by remember { mutableStateOf(listOf<Int>()) }')
+    expect(r.code).toContain('var pyreonSelected by remember { mutableStateOf(listOf<Long>()) }')
     expect(r.code).toContain('val pyreonNextSel = pinSelection(pyreonSelected, pyreonPick, true)')
     expect(r.code).toContain('pyreonSelected = pyreonNextSel')
   })
@@ -79,7 +79,7 @@ describe('<PlotChart selectedMode> lowers', () => {
     // State nobody renders from is a chart that pins invisibly. `emphasis` is
     // what the engine reads to draw the outline.
     expect(transform(MULTI, { target: 'swift' }).code).toContain('emphasis: Emphasis(highlight: -1, selected: pyreonSelected)')
-    expect(transform(MULTI, { target: 'kotlin' }).code).toContain('emphasis = Emphasis(highlight = -1, selected = pyreonSelected)')
+    expect(transform(MULTI, { target: 'kotlin' }).code).toContain('emphasis = Emphasis(highlight = -1L, selected = pyreonSelected)')
   })
 
   it('a chart with ONLY selectedMode still installs a tap', () => {

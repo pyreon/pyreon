@@ -35,7 +35,7 @@ describe('Kotlin statements: let declarations', () => {
 
   it('an EMPTY literal keeps the declared annotation (nothing else states the type)', () => {
     expect(kt(`    const empty: number[] = []
-    n.set(empty.length)`)).toContain('val empty: List<Int> = listOf()')
+    n.set(empty.length)`)).toContain('val empty: List<Long> = listOf()')
   })
 
   it('a MUTATED empty array needs the mutable pair; a non-empty one infers from its elements', () => {
@@ -45,9 +45,9 @@ describe('Kotlin statements: let declarations', () => {
     seeded.push(3)
     n.set(acc.length + seeded.length)`)
     // `List` has no `add`, and `listOf()` is immutable — `val` still correct
-    expect(out).toContain('val acc: MutableList<Int> = mutableListOf()')
+    expect(out).toContain('val acc: MutableList<Long> = mutableListOf()')
     // element type comes from the elements, so no annotation
-    expect(out).toContain('val seeded = mutableListOf(1, 2)')
+    expect(out).toContain('val seeded = mutableListOf(1L, 2L)')
   })
 })
 
@@ -70,7 +70,7 @@ describe('Kotlin statements: labelled loops', () => {
     n.set(i)`)
     expect(out).toContain('outer@ while (')
     expect(out).toContain('break@outer')
-    expect(out).toContain('loopy@ for (x in listOf(1, 2, 3))')
+    expect(out).toContain('loopy@ for (x in listOf(1L, 2L, 3L))')
     expect(out).toContain('continue@loopy')
   })
 
@@ -89,34 +89,34 @@ describe('Kotlin statements: for-range rounding when a bound is a Double', () =>
     const out = kt(`    for (let i = 0; i < lim(); i++) { n.set(i) }
     for (let i = 0; i <= lim(); i++) { n.set(i) }`)
     // JS `i < n` trips ceil(n) times for fractional n
-    expect(out).toContain('for (i in 0 until Math.ceil(lim).toInt())')
-    expect(out).toContain('for (i in 0..Math.floor(lim).toInt())')
+    expect(out).toContain('for (i in 0L until Math.ceil(lim).toInt())')
+    expect(out).toContain('for (i in 0L..Math.floor(lim).toInt())')
   })
 
   it('DESCENDING: `i >= n` bottoms at ceil(n); `i > n` at floor(n)+1 (downTo is inclusive-only)', () => {
     const out = kt(`    for (let i = 5; i >= lim(); i--) { n.set(i) }
     for (let i = 5; i > lim(); i--) { n.set(i) }`)
-    expect(out).toContain('5 downTo Math.ceil(lim).toInt()')
-    expect(out).toContain('5 downTo (Math.floor(lim).toInt() + 1)')
+    expect(out).toContain('5L downTo Math.ceil(lim).toInt()')
+    expect(out).toContain('5L downTo (Math.floor(lim).toInt() + 1)')
   })
 
   it('a Double FROM bound walks as an Int: floor when descending, ceil when ascending', () => {
     const out = kt(`    for (let i = lim(); i >= 0; i--) { n.set(i) }
     for (let i = lim(); i < 9; i++) { n.set(i) }`)
     expect(out).toContain('Math.floor(lim).toInt() downTo 0')
-    expect(out).toContain('for (i in Math.ceil(lim).toInt() until 9)')
+    expect(out).toContain('for (i in Math.ceil(lim).toInt() until 9L)')
   })
 
   it('an INT bound is left alone, and a literal step > 1 appends `step K`', () => {
     const out = kt(`    for (let i = 0; i < 10; i += 2) { n.set(i) }`)
-    expect(out).toContain('for (i in 0 until 10 step 2)')
+    expect(out).toContain('for (i in 0L until 10L step 2L)')
     expect(out).not.toContain('Math.ceil(10)')
   })
 })
 
 describe('Kotlin statements: do-while and switch', () => {
   it('do-while keeps its post-condition', () => {
-    expect(kt(`    do { n.set(n() + 1) } while (n() < 3)`)).toContain('} while (n < 3)')
+    expect(kt(`    do { n.set(n() + 1) } while (n() < 3)`)).toContain('} while (n < 3L)')
   })
 
   it('a switch becomes `when`, and an EMPTY case body emits `{}` rather than a blank block', () => {
@@ -132,9 +132,9 @@ describe('Kotlin statements: do-while and switch', () => {
         n.set(0)
     }`)
     expect(out).toContain('when (i) {')
-    expect(out).toContain('1 -> {}')
+    expect(out).toContain('1L -> {}')
     // multi-test case labels are comma-joined
-    expect(out).toContain('2, 3 -> {')
+    expect(out).toContain('2L, 3L -> {')
     expect(out).toContain('else -> {')
   })
 })

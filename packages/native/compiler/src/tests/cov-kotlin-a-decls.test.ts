@@ -55,7 +55,7 @@ export function App() {
 
   it('string[] / number[] / boolean[] keep their element type rather than degrading to Any', () => {
     expect(kt(SORT('string[]', `['a']`)).code).toContain('PyreonSortableState<String>')
-    expect(kt(SORT('number[]', `[1]`)).code).toContain('PyreonSortableState<Int>')
+    expect(kt(SORT('number[]', `[1]`)).code).toContain('PyreonSortableState<Long>')
     expect(kt(SORT('boolean[]', `[true]`)).code).toContain('PyreonSortableState<Boolean>')
   })
 })
@@ -71,9 +71,9 @@ export function App() {
 
   it('a 0-param callback becomes <Unit> with an `_` binder; a typed param keeps its name and type', () => {
     const zero = kt(RL(`const dc = useDebouncedCallback(() => { n.set(1) }, 300)`)).code
-    expect(zero).toContain('PyreonDebounced<Unit>(300, PyreonTaskScheduler()) { _ ->')
+    expect(zero).toContain('PyreonDebounced<Unit>(300L, PyreonTaskScheduler()) { _ ->')
     const typed = kt(RL(`const tc = useThrottledCallback((v: number) => { n.set(v) }, 100)`)).code
-    expect(typed).toContain('PyreonThrottled<Int>(100, PyreonTaskScheduler()) { v ->')
+    expect(typed).toContain('PyreonThrottled<Long>(100L, PyreonTaskScheduler()) { v ->')
   })
 })
 
@@ -96,7 +96,7 @@ ${decls}
       `s1() + String(s2()) + String(s3()) + s4()`,
     )).code
     expect(out).toContain('var s1 by rememberSaveable { mutableStateOf("a") }')
-    expect(out).toContain('var s2 by rememberSaveable { mutableStateOf(1) }')
+    expect(out).toContain('var s2 by rememberSaveable { mutableStateOf(1L) }')
     expect(out).toContain('var s3 by rememberSaveable { mutableStateOf(true) }')
     // a known enum is Bundle-friendly via its name
     expect(out).toContain('var s4 by rememberSaveable { mutableStateOf(Mode.light) }')

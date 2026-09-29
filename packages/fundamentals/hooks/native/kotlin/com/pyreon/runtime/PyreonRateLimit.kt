@@ -14,7 +14,7 @@ package com.pyreon.runtime
 /** The delay half of a rate limiter, injected so the machines are testable. */
 public interface PyreonScheduler {
     /** Run [work] after [milliseconds] unless cancelled; returns a token. */
-    public fun schedule(milliseconds: Int, work: () -> Unit): Int
+    public fun schedule(milliseconds: Long, work: () -> Unit): Int
     public fun cancel(token: Int)
 }
 
@@ -33,7 +33,7 @@ public class PyreonTaskScheduler : PyreonScheduler {
     private val tasks = HashMap<Int, java.util.TimerTask>()
     private val main = android.os.Handler(android.os.Looper.getMainLooper())
 
-    override fun schedule(milliseconds: Int, work: () -> Unit): Int {
+    override fun schedule(milliseconds: Long, work: () -> Unit): Int {
         val token = synchronized(lock) { ++next }
         val task = object : java.util.TimerTask() {
             override fun run() {
@@ -60,7 +60,7 @@ public class PyreonTaskScheduler : PyreonScheduler {
             }
         }
         synchronized(lock) { tasks[token] = task }
-        SHARED_TIMER.schedule(task, milliseconds.toLong())
+        SHARED_TIMER.schedule(task, milliseconds)
         return token
     }
 
@@ -95,7 +95,7 @@ public class PyreonTaskScheduler : PyreonScheduler {
  * anything else BY NAME rather than silently dropping arguments.
  */
 public class PyreonDebounced<A>(
-    private val delayMs: Int,
+    private val delayMs: Long,
     private val scheduler: PyreonScheduler,
     private val action: (A) -> Unit,
 ) {
@@ -147,7 +147,7 @@ public class PyreonDebounced<A>(
  *                    lastCallTime update does
  */
 public class PyreonThrottled<A>(
-    private val waitMs: Int,
+    private val waitMs: Long,
     private val scheduler: PyreonScheduler,
     private val action: (A) -> Unit,
 ) {

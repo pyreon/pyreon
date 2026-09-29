@@ -53,7 +53,7 @@ describe('a mixed Int/Double ternary unifies to Double on both targets', () => {
   })
 
   it('Kotlin: the Int branch is coerced .toDouble()', () => {
-    expect(outLine('kotlin', LIT)).toContain('(1).toDouble()')
+    expect(outLine('kotlin', LIT)).toContain('(1L).toDouble()')
   })
 
   it('Swift: a NON-literal Int branch is coerced Double(...)', () => {
