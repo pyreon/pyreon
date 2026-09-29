@@ -1363,6 +1363,23 @@ function App() {
 
 The `Suspense` component checks if a child VNode's type has a `__loading()` signal that returns `true`. While loading, the fallback is displayed; once the module resolves, the actual component renders.
 
+#### Async descendants at any depth
+
+A `lazy()` component (or an `async function` component) does not have to be the *direct* child. Anywhere below a `<Suspense>`, a still-loading one registers with the **nearest** boundary, which shows its fallback until every registered load has settled — the React / Vue model.
+
+```tsx
+<Suspense fallback={<Spinner />}>
+  <Layout>
+    <Sidebar />
+    <LazyChart />   {/* suspends the boundary from inside Layout */}
+  </Layout>
+</Suspense>
+```
+
+While it waits, the boundary's content stays **mounted off-screen** (moved into a detached fragment, not torn down), so `Layout` and `Sidebar` keep their DOM and state, and their setup and `onMount` run once. This also applies after the boundary first resolved: a descendant that starts loading later (a `<Show>` flipping to a lazy component) brings the fallback back, and the content returns with its state intact — a field the user typed into keeps its text. Focus inside the content is lost while it is off-screen.
+
+An inner `<Suspense>` catches its own descendants; the outer one is not affected. Hydration never shows a fallback over server-rendered content: the server already waited for every lazy, and the still-loading ones keep their server nodes until their chunk lands.
+
 ### ErrorBoundary
 
 Catches errors thrown by child components and renders a fallback UI instead of crashing the entire tree. Also reports caught errors to any registered telemetry handlers.

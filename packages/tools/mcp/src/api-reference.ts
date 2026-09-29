@@ -940,7 +940,7 @@ declare const todos: AsyncLike<{ id: number; title: string }[]>
 <Suspense fallback={<div>Loading...</div>}>
   <LazyPage />
 </Suspense>`,
-    notes: 'Async boundary that shows `fallback` while any `lazy()` component or async child inside is loading. SSR mode streams the fallback immediately and swaps in the resolved content when ready (30s timeout). Nested Suspense boundaries are independent — an inner boundary resolving does not affect the outer. See also: lazy, ErrorBoundary.',
+    notes: `Async boundary that shows \`fallback\` while any \`lazy()\` component or async component inside is loading — at ANY depth: a still-loading descendant registers with the NEAREST boundary through context. While it waits, the content stays mounted off-screen (not torn down), so the descendant's ancestors keep their DOM and state and set up once; a descendant that starts loading after the boundary resolved brings the fallback back the same way. SSR mode streams the fallback immediately and swaps in the resolved content when ready (30s timeout); hydration never shows the fallback over server content. Nested Suspense boundaries are independent — an inner boundary resolving does not affect the outer. See also: lazy, ErrorBoundary.`,
   },
 
   'core/ErrorBoundary': {
