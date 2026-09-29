@@ -6332,11 +6332,13 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       return `PyreonZodSchema_${e.schemaName}.safeParseResult(${emitSwiftDynamicValue(e.arg, indent)})`
     }
     case 'json-stringify':
-      // `JSON.stringify(x)` → serialize an Encodable value. `try!` is safe: a
-      // Codable value never throws on encode (only a non-conforming type would,
-      // which the type checker rejects first). Falls back to "" if UTF-8 decode
-      // somehow fails (it cannot for JSONEncoder output) so the type stays String.
-      return `(String(data: try! JSONEncoder().encode(${emitSwiftExpr(e.arg, indent)}), encoding: .utf8) ?? "")`
+      // `JSON.stringify(x)` → the runtime's web-identical serializer. Not
+      // `JSONEncoder`: the bytes leave the device (a request body, a cache key)
+      // and JSONEncoder differs from the web in key ORDER, `/` → `\/`, and
+      // NaN (throws where JS writes `null`). `PyreonJSON.stringify` keeps the
+      // order the struct encodes in — declaration order, i.e. the source
+      // literal's — and writes every leaf the way ECMAScript does.
+      return `PyreonJSON.stringify(${emitSwiftExpr(e.arg, indent)})`
     case 'call': {
       if (e.callee.kind === 'member' && e.callee.property === 'dispatch' && e.callee.object.kind === 'identifier' && _chartHandleNames.has(e.callee.object.name)) {
         const f = chartActionFields(e.args[0])

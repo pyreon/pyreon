@@ -5234,12 +5234,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       return `PyreonZodSchema_${e.schemaName}.safeParseResult(${emitKotlinDynamicValue(e.arg, indent)})`
     }
     case 'json-stringify':
-      // `JSON.stringify(x)` → kotlinx-serialization. The value is @Serializable
-      // (emitted structs) or a serializable builtin; `Json.encodeToString`
-      // resolves the serializer via the reified type. The real device build
-      // needs `import kotlinx.serialization.encodeToString` (added by the CLI's
-      // conditionalKotlinImports); the kotlinc stub fakes it as a Json member.
-      return `Json.encodeToString(${emitKotlinExpr(e.arg, indent)})`
+      // `JSON.stringify(x)` → the runtime's web-identical serializer. kotlinx
+      // keeps declaration order (the source literal's), but writes a whole
+      // Double as `1.0`, exponents as `1.0E21`, and throws on NaN — so the
+      // bytes that leave the device would differ from the web's.
+      // `PyreonJson.stringify` rewrites those leaves into ECMAScript form.
+      return `PyreonJson.stringify(${emitKotlinExpr(e.arg, indent)})`
     case 'call': {
       if (e.callee.kind === 'member' && e.callee.property === 'dispatch' && e.callee.object.kind === 'identifier' && _chartHandleNamesKotlin.has(e.callee.object.name)) {
         const f = chartActionFields(e.args[0])

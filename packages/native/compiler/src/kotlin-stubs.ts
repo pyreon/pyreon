@@ -1009,6 +1009,9 @@ fun pyreonDispatchFlowWebViewMessage(message: String, onSelect: ((PyreonFlowWebV
 object PyreonJson {
     @Suppress("UNUSED_PARAMETER")
     inline fun <reified T> encode(value: T): String = ""
+    // JSON.stringify(x) lowers here (web-identical bytes).
+    @Suppress("UNUSED_PARAMETER")
+    inline fun <reified T> stringify(value: T): String = ""
 }
 
 // useNavigate / useParams / useLoaderData — router hooks that PMTC

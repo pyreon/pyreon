@@ -213,11 +213,11 @@ describe('useStream lowers to the native stream runtime', () => {
   it('a RUNTIME json body is serialized per run, keyed, and sends content-type', () => {
     const sw = swift(GATED).code
     expect(sw).toContain('struct __Obj0: Codable')
-    expect(sw).toContain('body: Data((String(data: try! JSONEncoder().encode(__Obj0(prompt: prompt)), encoding: .utf8) ?? "").utf8)')
+    expect(sw).toContain('body: Data(PyreonJSON.stringify(__Obj0(prompt: prompt)).utf8)')
     expect(sw).toContain('headers: ["content-type": "application/json"]')
     const kt = kotlin(GATED).code
-    expect(kt).toContain('body = Json.encodeToString(__Obj0(prompt = prompt))')
-    expect(kt).toContain('#${Json.encodeToString(__Obj0(prompt = prompt))}")')
+    expect(kt).toContain('body = PyreonJson.stringify(__Obj0(prompt = prompt))')
+    expect(kt).toContain('#${PyreonJson.stringify(__Obj0(prompt = prompt))}")')
   })
 
   it('a plain stream\'s harness is unchanged by the new options (no gate, no callback)', () => {
@@ -284,10 +284,12 @@ describe('useStream emit compiles against the REAL runtime source', () => {
       })
       // PyreonURL lives in the core runtime; the stream emit's runtime :param uses it.
       const core = join(__dirname, '../../../runtime-swift/Sources/PyreonRuntime/PyreonHttp.swift')
+      // The runtime json body goes through PyreonJSON.stringify.
+      const json = join(__dirname, '../../../runtime-swift/Sources/PyreonRuntime/PyreonJSON.swift')
       const sdk = execFileSync('xcrun', ['--sdk', 'iphonesimulator', '--show-sdk-path'], { encoding: 'utf8' }).trim()
       execFileSync(
         'xcrun',
-        ['--sdk', 'iphonesimulator', 'swiftc', '-typecheck', '-target', 'arm64-apple-ios17.0-simulator', '-sdk', sdk, ...files, RUNTIME_SWIFT, core],
+        ['--sdk', 'iphonesimulator', 'swiftc', '-typecheck', '-target', 'arm64-apple-ios17.0-simulator', '-sdk', sdk, ...files, RUNTIME_SWIFT, core, json],
         { stdio: 'pipe', encoding: 'utf8' },
       )
     } catch (err) {

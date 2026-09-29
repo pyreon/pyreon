@@ -1599,7 +1599,11 @@ public struct PyreonLink<Label: View>: View {
   public init(_ to: String, @ViewBuilder label: () -> Label) {}
   public typealias Body = Never
 }
-public enum PyreonJSON { public static func encode<T>(_ value: T) -> String { "" } }
+public enum PyreonJSON {
+  public static func encode<T>(_ value: T) -> String { "" }
+  // JSON.stringify(x) lowers here. Encodable, as in the runtime.
+  public static func stringify<T: Encodable>(_ value: T) -> String { "" }
+}
 public struct PyreonWebView: View {
   // Emit shapes: (src:data:onMessage:), (html:), (html:data:onMessage:) — all
   // params optional so every shape resolves; arg TYPES stay faithful.
