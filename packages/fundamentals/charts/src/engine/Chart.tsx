@@ -462,14 +462,18 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     watchDpr()
   }
   const stopDprWatch = (): void => {
-    dprQuery?.removeEventListener('change', onDprChange)
+    if (dprQuery) dprQuery.onchange = null
     dprQuery = null
   }
   const watchDpr = (): void => {
-    if (typeof matchMedia !== 'function' || typeof globalThis.devicePixelRatio !== 'number') return
+    if (typeof matchMedia !== 'function') return
+    if (typeof globalThis.devicePixelRatio !== 'number') return
     stopDprWatch()
     dprQuery = matchMedia(`(resolution: ${globalThis.devicePixelRatio}dppx)`)
-    dprQuery.addEventListener('change', onDprChange)
+    // The handler PROPERTY, not `addEventListener`: this query object is ours
+    // alone and is replaced on every re-arm, so its one slot is the whole
+    // subscription — `stopDprWatch` clears it, no listener bookkeeping.
+    dprQuery.onchange = onDprChange
   }
 
   // Entrance progress. Starts at 1 (fully drawn) and only ever dips for the
