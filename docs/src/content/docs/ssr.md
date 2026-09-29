@@ -562,7 +562,7 @@ Cloudflare runs in **workerd, not Node**, so two requirements apply:
 
 ### Netlify
 
-`adapter: 'netlify'` stages the client to `dist/publish/`, the SSR bundle to `dist/netlify/functions/_server/`, and emits the function entry `netlify/functions/ssr.mjs` (Functions v2 — Web-standard `Request`/`Response`, `preferStatic: true`) plus a `netlify.toml` routing `/*` to the function. Deploy with `netlify deploy`.
+`adapter: 'netlify'` stages the client to `dist/publish/`, the SSR bundle to `dist/netlify/functions/_server/`, and emits the function entry `netlify/functions/ssr.mjs` (Functions v2 — Web-standard `Request`/`Response`), which routes itself with `config = { path: "/*", preferStatic: true }` so static files still win. The emitted `netlify.toml` sets the publish and functions directories and the asset cache headers; it carries no redirect to the function, because Netlify makes a function with a custom `path` unreachable at `/.netlify/functions/<name>`. Deploy with `netlify deploy`.
 
 ```ts title="vite.config.ts"
 import { netlifyAdapter } from '@pyreon/zero/server'

@@ -8,6 +8,7 @@
 // SwiftUI's @State is a var, not a method).
 
 import { onMount } from '@pyreon/core'
+import type { VNodeChild } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { defineStore } from '@pyreon/store'
 import {
@@ -125,6 +126,16 @@ function NativeFlowNode(props: NodeComponentProps<NativeFlowData>) {
   )
 }
 
+// Render-prop device proof. `Tally` takes a REQUIRED function-as-children
+// render prop and an OPTIONAL view slot. On iOS the optional slot is an
+// optional closure plus per-subset initializers (the omitted one pinned to
+// `EmptyView`); on Android a nullable composable lambda. The callbacks below
+// are BLOCK-bodied — a `const` plus an early `if … return` — which lower to
+// view-builder statements on both targets.
+function Tally(props: { count: number; children: (n: number) => unknown; footer?: VNodeChild }) {
+  return <Stack>{props.children(props.count)}{props.footer}</Stack>
+}
+
 export function Counter() {
   const count = signal<number>(0)
   // Direct native Flow device proof. This is intentionally NOT the /webview
@@ -144,6 +155,17 @@ export function Counter() {
     // animates, so "instant" cannot be mistaken for "animation unsupported".
     reducedMotion: true,
     fitView: true,
+    // The device suites' connect drag runs End.out -> Start.in, and fitView
+    // puts both handles INSIDE the canvas's 40pt auto-pan band on a phone
+    // (measured on an iPhone 17 Pro: 33.4pt and 33.6pt from the edges). With
+    // auto-pan on, the graph pans under the held pointer at both ends while
+    // XCUITest's drop point is fixed before the gesture starts, so whether the
+    // release lands within the 6pt drop radius depended on how many auto-pan
+    // frames ran: a timing race that failed on CI and passed locally. No suite
+    // asserts auto-pan, and no viewport frees both handles here (clearing the
+    // band needs zoom < 0.84, where the 44pt resizer targets cover the handle
+    // centre), so the fixture opts out of the one behaviour it does not test.
+    autoPanOnConnect: false,
   })
   const nativeFlowEdgeCount = computed(() => nativeFlow.edges().length)
   // `colorMode` is reactive: the suites toggle it and count the web's dark
@@ -577,6 +599,16 @@ export function Counter() {
       <Button data-testid="native-flow-animate-zoom" onPress={() => nativeFlow.setViewport({ zoom: 0.5 }, { duration: 3000 })}>Zoom native out slowly</Button>
       <Button data-testid="native-flow-allow-motion" onPress={() => { nativeFlow.config.reducedMotion = false }}>Allow native motion</Button>
       <Button data-testid="native-flow-animate-zoom-back" onPress={() => nativeFlow.setViewport({ zoom: 1 }, { duration: 3000 })}>Zoom native back slowly</Button>
+      <Tally count={count()}>
+        {(n) => {
+          const doubled = n * 2
+          if (n > 2) return <Text data-testid="rp-block">{`rp big ${doubled}`}</Text>
+          return <Text data-testid="rp-block">{`rp small ${doubled}`}</Text>
+        }}
+      </Tally>
+      <Tally count={count()} footer={<Text data-testid="rp-footer">{'rp footer filled'}</Text>}>
+        {(n) => <Text data-testid="rp-plain">{`rp plain ${n}`}</Text>}
+      </Tally>
     </Stack>
     </Scroll>
   )

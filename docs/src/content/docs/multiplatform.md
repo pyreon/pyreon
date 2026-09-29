@@ -1265,15 +1265,36 @@ value after the signal changes), while the native targets re-run the body
 and update. Write `return () => props.children(q.data())` — live on the web,
 identical emit on native.
 
-Named, never emitted broken: a block-bodied render callback
-(`(x) => { …; return <…/> }`), a render-prop value PMTC cannot see into
-(`render={pick()}`), a block-bodied accessor return, and — Swift only — an
-OPTIONAL render prop (a caller that omits it leaves the generic view type
-uninferable; Android keeps it optional). Verification: R2 — `swiftc` and
-`kotlinc` against the stubs, plus a real-iOS-SDK typecheck with the real
-runtime linked in (`native-render-props.test.ts`, including the lathe
-bookshelf data components consumed from another module); no device
-assertion yet.
+**Optional render props** (`footer?: (n: number) => VNodeChild`,
+`header?: VNodeChild`) lower on both targets. Compose takes a nullable
+composable lambda defaulted to `null`. SwiftUI stores an optional closure
+(`let footer: ((Int) -> FooterContent)?`, invoked `footer?(n)`) and gets one
+initializer per combination of provided slots, the omitted ones pinned to
+`EmptyView` by a constrained extension — SwiftUI's own idiom for a defaulted
+view parameter, and what lets a caller that omits the slot compile (the
+generic has nothing else to infer from). A presence test narrows to the
+unwrapped closure (`if let footer { footer(n) }`), and forwarding the slot
+(`footer={props.footer}`) splits the call on presence. Past three optional
+slots in one component (eight initializers) Swift falls back to REQUIRED
+and says so.
+
+**Block-bodied render callbacks and accessor returns** lower when the block
+is a view-builder shape: `const` declarations, early `if (…) return …`
+branches (an optional test narrows the rest: `if let` on Swift, a smart
+cast or a bound `val` on Kotlin) and a final `return` (`return null` renders
+nothing). `(u) => { if (!u) return <Empty/>; const n = u.name; return <Text>{n}</Text> }`
+becomes a closure of `if let u { let n = u.name; Text(…) } else { Empty() }`
+/ `if (u == null) { Empty() } else { val n = u.name; Text(…) }`.
+
+Named, never emitted broken: a block body with anything a view builder
+cannot take (an assignment, a loop, a reassigned local, an expression
+statement, an `if` that falls through), and a render-prop value PMTC cannot
+see into (`render={pick()}`). Verification: R2 — `swiftc` and `kotlinc`
+against the stubs, plus a real-iOS-SDK typecheck
+(`native-render-props.test.ts` with the real runtime linked in, including
+the lathe bookshelf data components consumed from another module;
+`native-render-props-optional-block.test.ts` for the optional and
+block-bodied shapes); no device assertion yet.
 
 **Module scope**: `let`/`const` primitives (non-reactive on native),
 type aliases, the recognized factory calls. Module-scope `signal()` is

@@ -1,7 +1,8 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
 import { assetUrlPrefix, writeAssetCacheHeaders } from './cache-headers'
-import { CLOUDFLARE_ADAPTER_OUTPUT } from './contract'
+import { CLOUDFLARE_ADAPTER_OUTPUT, EDGE_SERVER_SUBDIR } from './contract'
 import { stageClientThenServer } from './stage'
+import { listStaticFiles } from './static-files'
 import { validateBuildInputs } from './validate'
 import { warnMissingEnv } from './warn-missing-env'
 
@@ -43,6 +44,9 @@ import { warnMissingEnv } from './warn-missing-env'
  * }
  * ```
  */
+/** Cloudflare Pages' cap on `_routes.json` include + exclude rules. */
+const CLOUDFLARE_ROUTES_RULE_LIMIT = 100
+
 export function cloudflareAdapter(): Adapter {
   return {
     name: 'cloudflare',
@@ -88,7 +92,7 @@ export function cloudflareAdapter(): Adapter {
       }
       await validateBuildInputs(options)
       const { writeFile, mkdir, readFile, readdir } = await import('node:fs/promises')
-      const { join } = await import('node:path')
+      const { basename, dirname, join } = await import('node:path')
 
       const outDir = options.outDir
       const assetPrefix = assetUrlPrefix(options.config.base, options.assetsDir)
@@ -113,6 +117,17 @@ export function cloudflareAdapter(): Adapter {
       // Give the staged Cloudflare-only bridge a stable absolute anchor. An
       // actually-used unavailable optional package still rejects inside its
       // existing lazy import/catch with the package's actionable error.
+      // Files from `public/` (and plugin output beside it). With a `_worker.js`,
+      // Pages serves a static file ONLY when `_routes.json` excludes its path
+      // or the worker hands it to `env.ASSETS` — anything else reaches the SSR
+      // handler and comes back as an HTML page. Excluded below as far as the
+      // 100-rule `_routes.json` limit allows; the worker serves ALL of them
+      // from `env.ASSETS`, so an overflow is still served correctly.
+      const staticFiles = await listStaticFiles(outDir, {
+        assetsDir: options.assetsDir,
+        skip: [basename(dirname(options.serverEntry)), EDGE_SERVER_SUBDIR],
+      })
+
       const stagedServerDir = join(outDir, CLOUDFLARE_ADAPTER_OUTPUT.serverDir)
       const anchorCreateRequire = async (dir: string): Promise<void> => {
         for (const entry of await readdir(dir, { withFileTypes: true })) {
@@ -162,8 +177,18 @@ globalThis.__PYREON_SSR_TEMPLATE__ = ${JSON.stringify(builtTemplate)}
 
 const { default: handler } = await import("./${CLOUDFLARE_ADAPTER_OUTPUT.serverDir}/entry-server.js")
 
+// Files from \`public/\` — served from the Pages asset store, never rendered.
+const STATIC_FILES = new Set(${JSON.stringify(staticFiles)})
+
 export default {
   async fetch(request, env, ctx) {
+    if (
+      env?.ASSETS &&
+      (request.method === "GET" || request.method === "HEAD") &&
+      STATIC_FILES.has(new URL(request.url).pathname)
+    ) {
+      return env.ASSETS.fetch(request)
+    }
     try {
       return await handler(request)
     } catch (err) {
@@ -207,18 +232,21 @@ export default {
       } catch {
         // No hybrid prerender pass ran — nothing to exclude.
       }
-      const routesConfig = {
-        version: 1,
-        include: ['/*'],
-        exclude: [
-          `${assetPrefix}/*`,
-          '/favicon.*',
-          '/site.webmanifest',
-          '/robots.txt',
-          '/sitemap.xml',
-          ...prerenderedExcludes,
-        ],
+      const exclude = [
+        `${assetPrefix}/*`,
+        '/favicon.*',
+        '/site.webmanifest',
+        '/robots.txt',
+        '/sitemap.xml',
+        ...prerenderedExcludes,
+      ]
+      // Cloudflare rejects a `_routes.json` with more than 100 include+exclude
+      // rules; files past the limit are still served, by the worker (above).
+      for (const path of staticFiles) {
+        if (1 + exclude.length >= CLOUDFLARE_ROUTES_RULE_LIMIT) break
+        if (!exclude.includes(path)) exclude.push(path)
       }
+      const routesConfig = { version: 1, include: ['/*'], exclude }
 
       await writeFile(
         join(outDir, CLOUDFLARE_ADAPTER_OUTPUT.routesFile),

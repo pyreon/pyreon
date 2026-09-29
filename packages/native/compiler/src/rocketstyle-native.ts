@@ -135,7 +135,8 @@ function readCurriedPrimitive(head: AnyNode | undefined): string | null {
   if (!cfg || cfg.type !== 'ObjectExpression') return null
   for (const p of (cfg.properties as AnyNode[]) ?? []) {
     if (p.type !== 'Property' && p.type !== 'ObjectProperty') continue
-    if (p.key?.name === 'component' || p.key?.value === 'component') {
+    // A COMPUTED key (`{ [component]: X }`) names whatever `component` holds at runtime, not "component".
+    if ((!p.computed && p.key?.name === 'component') || p.key?.value === 'component') {
       const v = unwrap(p.value)
       if (v?.type === 'Identifier') return v.name as string
       if (v?.type === 'Literal' && typeof v.value === 'string') return v.value as string

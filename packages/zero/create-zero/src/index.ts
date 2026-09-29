@@ -1,4 +1,4 @@
-import * as p from '@clack/prompts'
+import * as p from './ui'
 import { type CliArgs, helpText, parseArgs } from './args'
 import { runPrompts } from './prompts'
 import { scaffold } from './scaffold'
