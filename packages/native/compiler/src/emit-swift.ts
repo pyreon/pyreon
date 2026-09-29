@@ -5322,11 +5322,16 @@ function emitSwiftSlotArg(
   if (forwarded !== undefined) return swiftIdent(forwarded.name)
   if (x.kind === 'identifier' && _viewHelpersSwift.has(x.name)) {
     const h = _viewHelpersSwift.get(x.name)!
-    const arity = h.params.length
-    const args = Array.from({ length: arity }, (_, i) => `a${i}`)
+    // The closure must name every parameter the SLOT passes, even when the
+    // helper takes fewer (JS ignores the extra arguments) — the same padding
+    // the inline-arrow branch above does. `{ a0 in cell(a0) }` handed to a
+    // `(User, Int) -> C` slot is a swiftc arity error.
+    const arity = Math.max(slot?.params.length ?? 0, h.params.length)
+    const args = Array.from({ length: arity }, (_, i) => (i < h.params.length ? `a${i}` : '_'))
+    const callArgs = args.filter((a) => a !== '_')
     return arity === 0
       ? `{ ${swiftIdent(h.name)}() }`
-      : `{ ${args.join(', ')} in ${swiftIdent(h.name)}(${args.join(', ')}) }`
+      : `{ ${args.join(', ')} in ${swiftIdent(h.name)}(${callArgs.join(', ')}) }`
   }
   if (isViewShaped(x) || swiftCallRendersView(x)) {
     return `{\n${pad}${emitSwiftChild({ kind: 'expr', expr: x }, indent + 2)}\n${base}}`
@@ -15249,10 +15254,17 @@ function swiftMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex:
         continue
       }
       if (spec.kind === 'rich') {
-        if (v.kind !== 'array') return 'unsupported'
+        // Every other decline in this loop NAMES the field; these two used to
+        // return bare, so a non-literal `labelRich` made the whole chart an
+        // EmptyView() with no warning at all.
+        const richDecline = (): 'unsupported' => {
+          _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`${spec.name}\` must be an array of { name, color?, fontSize? } object literals on native; emitting an EmptyView().`)
+          return 'unsupported'
+        }
+        if (v.kind !== 'array') return richDecline()
         const styles: string[] = []
         for (const r of v.elements) {
-          if (r.kind !== 'object') return 'unsupported'
+          if (r.kind !== 'object') return richDecline()
           const rf = new Map(r.fields.map((field) => [field.name, field.value]))
           const text = (name: string): string => {
             const raw = rf.get(name)
