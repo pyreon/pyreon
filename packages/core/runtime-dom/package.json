@@ -51,6 +51,7 @@
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "test:browser": "vitest run --config ./vitest.browser.config.ts",
+    "test:browser:engines": "vitest run --config ./vitest.browser.engines.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
     "prepublishOnly": "bun run build"
