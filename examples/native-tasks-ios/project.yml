@@ -45,6 +45,7 @@ targets:
       - path: ../../packages/fundamentals/i18n/native/swift
       - path: ../../packages/fundamentals/permissions/native/swift
       - path: ../../packages/fundamentals/query/native/swift
+      - path: ../../packages/fundamentals/http/native/swift
       - path: ../../packages/fundamentals/storage/native/swift
       - path: ../../packages/fundamentals/hooks/native/swift
       # Added with the ToolkitScreen — the Swift mirror of the Gradle srcDir

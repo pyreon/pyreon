@@ -1110,6 +1110,32 @@ class PyreonQuery<T>(queryKey: String, val staleMillis: Long = 0) {
   fun refetch() {}
 }
 
+// PyreonStream — mirror of @pyreon/http/native/kotlin/.../PyreonStream.kt, the
+// surface a \`useStream\` decl emits: MutableState result fields (read
+// \`.value\`), \`restartTick\` the DisposableEffect keys on, and start/stop.
+// \`delay\`/\`maxDelay\` are Long and \`retry\` is Long? — as in the runtime. The
+// optional \`transport\` parameter is omitted: the emit never passes it.
+data class PyreonSseMessage(val type: String, val data: String, val id: String, val retry: Long?)
+data class PyreonStreamReconnect(val attempts: Int = 5, val delay: Long = 1000, val maxDelay: Long = 30_000, val onEnd: Boolean = false)
+data class PyreonSseOptions(val events: List<String>? = null, val lastEventId: String? = null, val reconnect: PyreonStreamReconnect? = PyreonStreamReconnect())
+data class PyreonStreamRequest(val method: String = "GET", val url: String, val headers: Map<String, String> = emptyMap(), val body: String? = null)
+data class PyreonSseEvent<T>(val type: String, val data: T, val id: String)
+class PyreonStream<E>(val maxEvents: Int = 1000) {
+  val events: MutableState<List<E>> = mutableStateOf(emptyList())
+  val latest: MutableState<E?> = mutableStateOf(null)
+  val status: MutableState<String> = mutableStateOf("idle")
+  val error: MutableState<Throwable?> = mutableStateOf(null)
+  val restartTick: MutableState<Int> = mutableStateOf(0)
+  fun begin() {}
+  fun push(event: E) {}
+  fun fail(failure: Throwable) {}
+  fun abort() {}
+  fun restart() {}
+  fun stop() {}
+  fun startSse(request: PyreonStreamRequest, options: PyreonSseOptions = PyreonSseOptions(), accept: String = "text/event-stream", decode: (PyreonSseMessage) -> E) {}
+  fun startNdjson(request: PyreonStreamRequest, accept: String = "application/x-ndjson", decode: (String) -> E) {}
+}
+
 // PyreonHttp — what a \`useFetch(url, { method, headers, body })\` decl emits.
 // Mirrors the REAL PyreonHttp.kt surface exactly (a superset stub masks):
 // \`isOk\` is lower-k here where Swift's is \`isOK\`, \`body\` is a non-null

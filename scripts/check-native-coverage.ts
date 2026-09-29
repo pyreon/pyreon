@@ -659,16 +659,20 @@ export function C() { return (<Stack><Text>{cache.size}</Text></Stack>) }`,
     name: '@pyreon/http',
     mechanism: 'partial',
     rationale:
-      'the CLIENT (middleware, interceptors, streaming) stays web, but same-file endpoint calls DO lower: createHttp({ baseUrl }) + api.endpoint(…) resolve through useFetch/useQuery to native PyreonFetch/PyreonQuery. Verified zero-warning on both targets; literal params only.',
+      'the CLIENT (middleware, interceptors) stays web, but same-file endpoint calls DO lower: createHttp({ baseUrl }) + api.endpoint(…) resolve through useFetch/useQuery to native PyreonFetch/PyreonQuery, and useStream over openEventStream/openNdjsonStream to the co-located PyreonStream runtime (SSE + NDJSON, reconnect with Last-Event-ID). Verified zero-warning on both targets; the snippet exercises BOTH so the real-runtime batch compiles each.',
     snippet: `import { createHttp } from '@pyreon/http'
+import { openEventStream, type SseEvent } from '@pyreon/http/stream'
 import { useFetch } from '@pyreon/hooks'
+import { useStream } from '@pyreon/query'
 import { Stack, Text } from '@pyreon/primitives'
 interface User { id: number; name: string }
 const api = createHttp({ baseUrl: 'https://api.example.com' })
 const getUser = api.endpoint('GET /users/:id')
+const feed = api.endpoint('GET /users/:id/feed', { responseType: 'stream' })
 export function C() {
   const req = useFetch<User>(getUser({ params: { id: '1' } }))
-  return (<Stack><Text>{req.data}</Text></Stack>)
+  const live = useStream<SseEvent<User>>((ctx) => openEventStream((c) => feed({ params: { id: '1' }, signal: c.signal, headers: c.headers }), { signal: ctx.signal, onStatus: ctx.onStatus }))
+  return (<Stack><Text>{req.data}</Text><Text>{live.latest()?.data.name ?? ''}</Text></Stack>)
 }`,
   },
   {

@@ -760,7 +760,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     layout: (a, t) => `layoutSingleAxis(${a.data[0]}, ${a.data[1]}, ${box00(a, t)}, ${a.options})`,
     render: (l, a) => `renderSingleAxis(${l}, ${a.options})`,
     hit: (l, x, y) => `hitSingleAxis(${l}, ${x}, ${y})`,
-    adapt: { axis: singleAxisSpecAdapter },
+    adapt: { axis: singleAxisSpecAdapter, points: literalStructArrayAdapter('points', 'SingleAxisPoint', ['x'], ['size', 'name', 'color']) }, // typed rows: a bare `{ x }` literal otherwise synthesizes an anonymous struct the engine's [SingleAxisPoint] rejects
   },
 }
 

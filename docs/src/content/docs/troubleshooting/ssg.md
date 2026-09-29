@@ -13,6 +13,12 @@ description: "Common ssg / e2e test-server mistakes in Pyreon and how to fix the
 
 ---
 
+### Routing a deploy's static files by a hardcoded NAME LIST — every other `public/` file is shadowed by SSR
+
+The Vercel/Netlify/Cloudflare adapters carved out `/favicon.*`, `/robots.txt`, `/sitemap.xml`, `/site.webmanifest` and sent everything else to the SSR function, so `humans.txt`, `og.png`, `/.well-known/…` came back as a server-rendered HTML page, status 200; on Netlify Edge (which runs BEFORE static files) even `robots.txt` did. Unit tests could not see it — routing is the PLATFORM's, and a Node-invoked adapter test never routes. Fix: enumerate the client output at build time (`adapters/static-files.ts:listStaticFiles`) and route each file to the static layer; the edge has no filesystem, so a runtime existence check is not an option. Caught by running the artifacts in Deno, Vercel's Edge Runtime and workerd (`e2e/edge-runtimes.spec.ts`); locked by `public-static-files.test.ts` (bisect-verified per adapter).
+
+---
+
 ### `immutable` cache keyed on file extension
 
 `Cache-Control: public, max-age=31536000, immutable` is safe only for content-hashed files, which Vite emits under `<base><build.assetsDir>` (default `/assets/`). Keying on `.js`/`.css` makes a non-hashed root file such as `public/sw.js` unevictable. Adapters mark immutable only under the asset prefix (`assetUrlPrefix` in `packages/zero/zero/src/adapters/cache-headers.ts`); `*.html` gets `max-age=0, must-revalidate`; everything else a short revalidatable default. Reference: `packages/zero/zero/src/adapters/{node,bun}.ts`; locked by the spawn-and-curl specs in `adapters.test.ts` (`/assets/*.js` immutable, `/sw.js` not).

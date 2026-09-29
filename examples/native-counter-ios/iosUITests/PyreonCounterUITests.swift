@@ -307,6 +307,14 @@ final class PyreonCounterUITests: XCTestCase {
         XCTAssertEqual(edgeCount.label, "1", "releasing over empty canvas must not connect")
         XCTAssertTrue(waitForLabel(customLineMounts, "1", timeout: 5), "connectionLine={NativeConnectionLine} did not mount while dragging a source handle (label after drag: \(mountsAfterEmptyDrag); connect starts: \(app.staticTexts["native-flow-connect-starts"].firstMatch.label))")
         XCTAssertTrue(customLineSeenMidDrag, "connectionLine={NativeConnectionLine} was not in the accessibility tree mid-drag")
+        // The drop point below is resolved ONCE, before the gesture starts, and
+        // both handles sit inside the canvas's 40pt auto-pan band. With auto-pan
+        // on the graph moved under the held pointer (viewport x 16 -> 13 locally,
+        // further on slower CI runners) and the release missed the 6pt drop
+        // radius by however many frames ran. The fixture sets
+        // `autoPanOnConnect: false`; this proves the drag no longer moves the
+        // viewport, so a regression fails here instead of flaking.
+        let viewportXBeforeConnect = app.staticTexts["native-flow-viewport-x"].firstMatch.label
         sourceGrab.press(
             forDuration: 0.3,
             thenDragTo: target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)),
@@ -315,6 +323,7 @@ final class PyreonCounterUITests: XCTestCase {
         )
         let connected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "2"), object: edgeCount)
         XCTAssertEqual(XCTWaiter().wait(for: [connected], timeout: 5), .completed, "connecting the rendered handles did not add an edge")
+        XCTAssertEqual(app.staticTexts["native-flow-viewport-x"].firstMatch.label, viewportXBeforeConnect, "the connect drag panned the viewport: its drop point was resolved before the pan, so the release races the 6pt drop radius")
         XCTAssertTrue(waitForLabel(customLineMounts, "2", timeout: 5), "the custom connection line did not mount again for the real connect (label: \(customLineMounts.label))")
 
         let size = app.staticTexts["native-flow-start-size"].firstMatch
@@ -1579,6 +1588,40 @@ final class PyreonCounterUITests: XCTestCase {
             "Scroll child not individually queryable — `.combine` would "
                 + "collapse it into the container"
         )
+    }
+
+    // Render props on-device. The shared Counter.tsx declares
+    // `Tally(props: { count; children: (n) => unknown; footer?: VNodeChild })`
+    // and renders it twice at the bottom of the page: once with a BLOCK-bodied
+    // children callback (`const doubled = n * 2; if (n > 2) return …; return …`)
+    // and NO footer, once with an expression callback AND the optional footer.
+    //
+    // What only a device proves: (1) the omitted optional slot really renders
+    // nothing (the `EmptyView`-pinned initializer, not a crash or a stray
+    // view) — exactly ONE `rp-footer` exists; (2) the render prop is LIVE — it
+    // re-runs with the parent's state, and the block's early-return branch
+    // flips when `count` crosses 2.
+    func test_renderPropsRenderAndTrackState() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let block = app.staticTexts["rp-block"]
+        XCTAssertTrue(block.waitForExistence(timeout: 30), "The block-bodied render callback rendered nothing")
+        XCTAssertEqual(block.label, "rp small 0")
+        XCTAssertEqual(app.staticTexts["rp-plain"].label, "rp plain 0")
+        XCTAssertEqual(
+            app.staticTexts.matching(identifier: "rp-footer").count, 1,
+            "The optional footer slot rendered for a caller that omitted it (or not at all for the one that passed it)"
+        )
+
+        let increment = app.buttons["Increment"]
+        for _ in 0..<3 { increment.tap() }
+
+        XCTAssertTrue(
+            app.staticTexts["rp big 6"].waitForExistence(timeout: 10),
+            "The render prop did not re-run with the parent's state, or the block's early-return branch did not flip"
+        )
+        XCTAssertEqual(app.staticTexts["rp-plain"].label, "rp plain 3")
     }
 
 }
