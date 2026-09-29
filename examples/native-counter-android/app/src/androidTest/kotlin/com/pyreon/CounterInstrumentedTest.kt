@@ -575,7 +575,7 @@ class CounterInstrumentedTest {
         val coldReader = PyreonDatabase(composeRule.activity.applicationContext)
         val onDisk = coldReader.count("notes")
 
-        if (onDisk != before + 1) {
+        if (onDisk != (before + 1).toLong()) {
             throw AssertionError(
                 "A freshly-constructed PyreonDatabase over the app's filesDir saw " +
                     "$onDisk records, expected ${before + 1}. The UI reported the write, " +
