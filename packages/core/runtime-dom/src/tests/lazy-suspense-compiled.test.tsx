@@ -37,8 +37,28 @@ const Quote: ComponentFn<{ who: string }> = (p) => h('p', { class: 'q' }, `quote
 const makeLazy = () =>
   lazy<{ who: string }>(() => new Promise((r) => setTimeout(() => r({ default: Quote }), 20)))
 
-function compile(ssrTemplate: boolean, Lazy: unknown): (p: { who: string }) => unknown {
-  const out = transformJSX_JS(SRC, 'page.tsx', { ssr: true, ssrTemplate })
+// The `examples/playground` /primitives shape: the Suspense child is an ACCESSOR
+// that renders a plain ELEMENT until a flag flips. With `ssrTemplate` that
+// element lowers to `_ssr(...)`, a RawHtml object with no `type` — the Suspense
+// wait-for-lazy probe must treat it as "not a lazy", not crash on it.
+const SRC_ELEMENT_CHILD = `
+function Node(props) {
+  return (
+    <div class="page">
+      <Suspense fallback={<p class="fb">loading</p>}>
+        {() => (props.show ? <Lazy who={props.who} /> : <p class="idle">idle</p>)}
+      </Suspense>
+    </div>
+  )
+}
+`
+
+function compile(
+  ssrTemplate: boolean,
+  Lazy: unknown,
+  src: string = SRC,
+): (p: { who: string; show?: boolean }) => unknown {
+  const out = transformJSX_JS(src, 'page.tsx', { ssr: true, ssrTemplate })
   const lowered = transformSync(out.code.replace(/^import\s+.*$/gm, ''), {
     loader: 'jsx',
     jsxFactory: 'h',
@@ -89,5 +109,29 @@ describe('lazy() inside Suspense — compiled SSR path', () => {
     const cs = await read(renderToStream(h(compile(true, makeLazy()) as never, { who: 'e' })))
     const ps = await read(renderToStream(h(compile(false, makeLazy()) as never, { who: 'e' })))
     expect(cs).toBe(ps)
+  })
+
+  describe('an ELEMENT (not a lazy) as the Suspense child', () => {
+    for (const ssrTemplate of [true, false]) {
+      it(`string: renders the element, no crash (ssrTemplate=${ssrTemplate})`, async () => {
+        const Page = compile(ssrTemplate, makeLazy(), SRC_ELEMENT_CHILD)
+        const html = await renderToString(h(Page as never, { who: 'f', show: false }))
+        expect(html).toContain('<p class="idle">idle</p>')
+        expect(html).not.toContain('loading')
+      })
+
+      it(`stream: renders the element, no crash (ssrTemplate=${ssrTemplate})`, async () => {
+        const Page = compile(ssrTemplate, makeLazy(), SRC_ELEMENT_CHILD)
+        const html = await read(renderToStream(h(Page as never, { who: 'g', show: false })))
+        expect(html).toContain('<p class="idle">idle</p>')
+      })
+
+      it(`string: the same accessor still WAITS once it yields the lazy (ssrTemplate=${ssrTemplate})`, async () => {
+        const Page = compile(ssrTemplate, makeLazy(), SRC_ELEMENT_CHILD)
+        const html = await renderToString(h(Page as never, { who: 'h', show: true }))
+        expect(html).toContain('quote:h')
+        expect(html).not.toContain('loading')
+      })
+    }
   })
 })
