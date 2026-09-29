@@ -313,7 +313,7 @@ A TS `number` has no Int/Double distinction; default to Int only when nothing el
 
 ### Widen every spelling of a float accumulator.
 
-A fractional value accumulated into an integer-seeded binding appears as a signal (`widenFloatSignals`), a `reduce` seed (`refineReduceSeedFloats`) and a local (`let acc = 0; for (…) acc += it.price`, `widenFloatLocals` in `infer-type.ts`). `0.0` is `Number.isInteger`, so a user cannot spell a Double seed. When you add an IR marker (the literal `float` flag), make every consumer read it; `inferType` must honour `expr.float` or the emitted return type stays `Int`. Lock: `native/compiler/src/tests/native-accumulator-float-seed.test.ts`.
+A fractional value accumulated into an integer-seeded binding appears as a signal (`widenFloatSignals`), a `reduce` seed (`refineReduceSeedFloats`) and a local (`let acc = 0; for (…) acc += it.price`, `widenFloatLocals` in `infer-type.ts`). `0.0` is `Number.isInteger`, so a user cannot spell a Double seed. When you add an IR marker (the literal `float` flag), make every consumer read it; `inferType` must honour `expr.float` or the emitted return type stays `Int`. Lock: `native/compiler/src/tests/native-accumulator-float-seed.test.ts`. Every such pass must also be able to SEE the evidence wherever it is declared: each built its own inference context without `moduleConsts`, so a file-scope `const RATE = 0.5` was never fractional and the same source failed with the const one line above the component. Derive a pass's context from one factory (`componentCtx` in `parse.ts`) and never hand-copy a context's fields (`inferReturnType` dropped three). Lock: `native-module-const-float-widening.test.ts`.
 
 ---
 
