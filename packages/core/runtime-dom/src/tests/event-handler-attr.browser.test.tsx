@@ -89,15 +89,21 @@ describe('event-handler attributes never reach the DOM (real Chromium)', () => {
     }
   })
 
-  it('vendor-legacy onmousewheel (Chromium compiles it) is refused on both client paths', () => {
-    const btn = document.createElement('button')
-    document.body.append(btn)
-    expect('onmousewheel' in btn, 'premise: Chromium defines the handler').toBe(true)
-    applyProps(btn, { onmousewheel: 'window.__pwnG = 1' } as never)
-    expect(btn.getAttribute('onmousewheel')).toBeNull()
-    _setAttr(btn, 'onmousewheel', 'window.__pwnG = 1')
-    expect(btn.getAttribute('onmousewheel')).toBeNull()
-  })
+  // Engine-conditional by nature: the client asks the ELEMENT which names are
+  // handlers, so on an engine that does not compile `onmousewheel` (Firefox)
+  // the attribute is inert and writing it is correct — there is nothing to
+  // refuse. The premise used to be asserted, which failed the whole spec there.
+  it.runIf('onmousewheel' in document.createElement('button'))(
+    'vendor-legacy onmousewheel is refused on both client paths where the engine compiles it',
+    () => {
+      const btn = document.createElement('button')
+      document.body.append(btn)
+      applyProps(btn, { onmousewheel: 'window.__pwnG = 1' } as never)
+      expect(btn.getAttribute('onmousewheel')).toBeNull()
+      _setAttr(btn, 'onmousewheel', 'window.__pwnG = 1')
+      expect(btn.getAttribute('onmousewheel')).toBeNull()
+    },
+  )
 
   it('MathML elements are guarded too (their interface defines the global handlers)', () => {
     const mi = document.createElementNS('http://www.w3.org/1998/Math/MathML', 'mi')
