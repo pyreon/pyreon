@@ -1335,7 +1335,31 @@ setup() {
 
 **Difference from Vue:** Vue resolves `<Suspense>` against any `async setup()` in the subtree and supports `@resolve` / `@pending` / `@fallback` events plus the `timeout` prop. Pyreon's `Suspense` resolves against components carrying a `__loading` accessor (the output of `defineAsyncComponent`), **not** an arbitrary `async setup()`. The events and `timeout` prop are accepted for typechecking but **ignored**.
 
-On the server, `renderToString` and `renderToStream` wait for a `defineAsyncComponent` whose chunk has not loaded yet, so the HTML carries the real content (not the fallback) and hydration adopts it. `defineAsyncComponent`'s `loadingComponent` / `errorComponent` / `delay` / `timeout` options are likewise accepted but not implemented — use `<Suspense>`'s `fallback` and an `<ErrorBoundary>`.
+On the server, `renderToString` and `renderToStream` wait for a `defineAsyncComponent` whose chunk has not loaded yet, so the HTML carries the real content (not the fallback) and hydration adopts it.
+
+#### `defineAsyncComponent` options
+
+The options form is implemented with Vue 3 semantics:
+
+```tsx
+const AsyncChart = defineAsyncComponent({
+  loader: () => import('./Chart'),       // a module with `default`, or the component itself
+  loadingComponent: Spinner,             // shown once `delay` has elapsed
+  errorComponent: LoadFailed,            // receives `{ error }`
+  delay: 200,                            // default 200ms, as in Vue
+  timeout: 5000,                         // a still-pending load becomes an error
+  suspensible: true,                     // default: a parent <Suspense> takes over
+  onError(error, retry, fail, attempts) {
+    if (attempts <= 3) retry()
+    else fail()
+  },
+})
+```
+
+- **`suspensible`** (default `true`): as the direct child of a `<Suspense>`, the boundary's `fallback` shows and the loading/error/delay/timeout options are ignored, as in Vue. `suspensible: false` renders the component's own `loadingComponent` even there. **Difference from Vue:** Pyreon's `<Suspense>` tracks its *direct* child, so an async component nested deeper than that renders its own loading/error states instead of deferring to the boundary.
+- **Errors**: a rejected load goes to `onError` first (which may `retry()`), then renders `errorComponent`, or — without one — is thrown to the nearest `<ErrorBoundary>`. A load that lands after its `timeout` still replaces the error with the component, as in Vue. **Difference from Vue:** a failed load stays failed for that definition; Vue retries on the next mount, here use `onError`'s `retry`.
+- **SSR**: the server always waits for the load and renders the component (or `errorComponent`) — for a `suspensible: false` component too, because Vue's server renderer also awaits every async component. `delay` and `timeout` are client-only and never scheduled on the server.
+- **Timers** (`delay`, `timeout`) are per mounted instance and are cleared when the load settles or the component unmounts.
 
 ### Component Instance & Slots
 
