@@ -71,7 +71,7 @@ const port = chrome.runtime.connect({ name: `pyreon-panel-${tabId}` })
 // PxDevChrome shows `pyreon devtools · localhost:5173 · /app/cart`).
 chrome.devtools.inspectedWindow.eval(
   'location.host + location.pathname',
-  (result: unknown) => {
+  (result: unknown, _exceptionInfo?: unknown) => {
     if (typeof result === 'string' && result) {
       titlebarCaption.textContent = `pyreon devtools · ${result}`
     }
