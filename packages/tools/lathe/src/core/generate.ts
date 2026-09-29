@@ -534,6 +534,16 @@ function decide(
   //
   // Left as a comment rather than deleted because the reason it USED to be
   // here is the reason the generated native layout looks the way it does.
+  if (op.method !== "GET" && isStreamOnly(op)) {
+    // Not the mutation reason: PMTC DOES lower a hand-written non-GET stream
+    // (`enabled` as the trigger, a runtime `json` body serialized per run).
+    // What is missing is the GENERATED surface — every generated native
+    // component opens on mount and takes only params as props.
+    return {
+      reach: "web-only",
+      reason: `a \`${op.method}\` stream is started by the user with a body, and Lathe's generated native components open on mount with params as their only props -- there is no generated surface for a trigger and a body yet. PMTC lowers a hand-written one: \`useStream(src, { enabled: () => sent() })\` with a runtime \`json\` body.`,
+    };
+  }
   if (op.method !== "GET") {
     return {
       reach: "web-only",

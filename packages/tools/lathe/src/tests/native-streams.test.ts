@@ -40,8 +40,32 @@ describe('stream operations reach native', () => {
     expect(out.reach.get('roomEvents')).toEqual({ reach: 'web+native' })
     expect(out.reach.get('exportRows')).toEqual({ reach: 'web+native' })
     expect(out.reach.get('tailLog')).toEqual({ reach: 'web+native' })
-    // A POST stream stays web — its body is a runtime value (the mutation rule).
+    // A POST (here a dual JSON + stream response) stays web — its JSON form
+    // is a mutation, which PMTC does not lower.
     expect(out.reach.get('createChat')?.reach).toBe('web-only')
+  })
+
+  it('a STREAM-ONLY POST names the missing generated surface, not the mutation rule', () => {
+    // PMTC lowers a hand-written gated POST stream (`enabled` + a runtime
+    // `json` body); what Lathe lacks is a generated trigger/body surface, and
+    // "mutations are not lowered" would send a reader the wrong way.
+    const spec = JSON.stringify({
+      openapi: '3.1.0',
+      info: { title: 't', version: '1' },
+      servers: [{ url: 'https://api.example.com' }],
+      paths: {
+        '/complete': {
+          post: {
+            operationId: 'complete',
+            requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { prompt: { type: 'string' } } } } } },
+            responses: { '200': { content: { 'text/event-stream': { itemSchema: { type: 'object', properties: { data: { type: 'string' } } } } } } },
+          },
+        },
+      },
+    })
+    const r = generate(spec, resolveConfig({ input: 'x', target: 'multiplatform' }))
+    expect(r.reach.get('complete')?.reach).toBe('web-only')
+    expect(r.reach.get('complete')?.reason).toContain('no generated surface for a trigger and a body')
   })
 
   it('emits a stream component per such operation', () => {
