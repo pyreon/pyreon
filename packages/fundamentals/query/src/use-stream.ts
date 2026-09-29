@@ -1,6 +1,6 @@
 import { onUnmount } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
-import { batch, effect, signal, untrack } from '@pyreon/reactivity'
+import { batch, effect, signal } from '@pyreon/reactivity'
 import type { QueryClient } from '@tanstack/query-core'
 import { useQueryClient } from './query-client'
 
@@ -26,9 +26,12 @@ export interface StreamSourceContext {
 
 /**
  * Opens the stream. Called inside a tracking scope, so a signal read here
- * re-starts the stream when it changes. Return `undefined` while the inputs
- * are not ready — the hook stays `idle` instead of opening a half-formed
- * request.
+ * re-starts the stream when it changes. The returned iterable's FIRST step
+ * (its creation and first `next()`, up to the first `await`) runs in the same
+ * scope — which is where `openEventStream`'s `connect` runs — so a prop or
+ * signal read inside `connect` for the first connection is tracked too.
+ * Return `undefined` while the inputs are not ready — the hook stays `idle`
+ * instead of opening a half-formed request.
  */
 export type StreamSource<T> = (ctx: StreamSourceContext) => AsyncIterable<T> | undefined
 
@@ -152,12 +155,17 @@ export function useStream<T>(
       error.set(undefined)
       status.set('connecting')
     })
-    // Untracked: the iterator's first step runs synchronously, and whatever
-    // it reads (a transport's settings, a stored id) is not an input of THIS
-    // stream — only the source call above is.
-    untrack(() => {
-      void consume(iterable, gen)
-    })
+    // TRACKED, like the source call above. `consume` is async, so the
+    // iterator's creation and its FIRST `next()` run synchronously right here,
+    // inside the effect — and for `openEventStream` / `openNdjsonStream` that
+    // first step is where `connect` runs. The documented shape reads its
+    // inputs there (`(c) => ep({ params: { room: props.room }, … })`), so those
+    // reads ARE this stream's inputs: a change must abort this request and
+    // open a new one, exactly as the native harness does (its key carries the
+    // URL and the body). Everything after the first `await` — later events,
+    // reconnection attempts — runs outside the effect and tracks nothing, so
+    // a reconnect simply reads the current value.
+    void consume(iterable, gen)
   }
 
   effect(() => {
