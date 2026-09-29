@@ -9,8 +9,9 @@ import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 /**
  * A decoded model's `number` fields follow the endpoint's RESPONSE SCHEMA.
  *
- * A TS `number` carries no int/float distinction, so PMTC types it `Int` by
- * default. For a model DECODED from a response that is wrong whenever the
+ * A TS `number` carries no int/float distinction, so PMTC types it `Long` by
+ * default (Kotlin's Int is 32-bit; a TS `number` routinely isn't). For a
+ * model DECODED from a response that is wrong whenever the
  * wire value can be fractional: `JSONDecoder` and kotlinx both REJECT `4.5`
  * for an `Int`, so the native app failed to decode a payload the web parsed.
  * Every Lathe-generated model with an OpenAPI `type: number` field hit this —
@@ -81,15 +82,15 @@ describe('decode struct number fields follow the response schema', () => {
     expect(swiftStruct(r.code, 'Shelf')).toContain('var weight: Double')
   })
 
-  it('Kotlin: s.number() → Double, s.number().int() → Int (fields, arrays, nested)', () => {
+  it('Kotlin: s.number() → Double, s.number().int() → Long (fields, arrays, nested)', () => {
     const r = transform(SINGLE, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
     const book = kotlinClass(r.code, 'Book')
     expect(book).toContain('var rating: Double? = null')
     expect(book).toContain('var price: Double')
     expect(book).toContain('var scores: List<Double>')
-    expect(book).toContain('var pages: Int? = null')
-    expect(book).toContain('var counts: List<Int>')
+    expect(book).toContain('var pages: Long? = null')
+    expect(book).toContain('var counts: List<Long>')
     expect(kotlinClass(r.code, 'Shelf')).toContain('var weight: Double')
   })
 
@@ -99,10 +100,10 @@ describe('decode struct number fields follow the response schema', () => {
     expect(kotlinClass(transform(src, { target: 'kotlin' }).code, 'Book')).toContain('var price: Double')
   })
 
-  it('a struct with NO response-schema evidence keeps the Int default (additive only)', () => {
+  it('a struct with NO response-schema evidence keeps the Long default (additive only)', () => {
     const src = SINGLE.replace(", { response: book_schema })", ')')
     const r = transform(src, { target: 'kotlin' })
-    expect(kotlinClass(r.code, 'Book')).toContain('var price: Int')
+    expect(kotlinClass(r.code, 'Book')).toContain('var price: Long')
   })
 })
 

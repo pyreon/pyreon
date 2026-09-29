@@ -3,6 +3,11 @@
 // data is written — typed its field Int and kotlinc rejected the literal
 // ("actual type is 'Long', but 'Int' was expected"). JavaScript has one
 // number type; Double is the faithful reading.
+//
+// Kotlin whole-number fields now default to Long, not Int (finishing the
+// Int-to-Long pass across the emitter's runtime APIs — a Kotlin Int is
+// 32-bit, and a TS `number` field routinely carries something that isn't,
+// timestamps included), so a small integer field like `n` below is Long too.
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
 import { validateKotlin, validateSwiftWithStubs } from '../validate'
@@ -14,10 +19,10 @@ export function C() { return <Text>{READINGS.length}</Text> }
 `
 
 describe('an integer literal beyond Int32 is a Double', () => {
-  it('Kotlin: the field is Double and the literal carries .0; small integers stay Int', () => {
+  it('Kotlin: the field is Double and the literal carries .0; a small integer field is Long', () => {
     const r = transform(src, { target: 'kotlin' })
-    expect(r.code).toContain('data class Reading(var at: Double, var n: Int)')
-    expect(r.code).toContain('Reading(at = 1709251200000.0, n = 1)')
+    expect(r.code).toContain('data class Reading(var at: Double, var n: Long)')
+    expect(r.code).toContain('Reading(at = 1709251200000.0, n = 1L)')
   })
 
   it('Swift: the same field type, so one source means one model on both targets', () => {

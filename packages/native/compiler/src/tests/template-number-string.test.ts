@@ -24,7 +24,10 @@ describe('template literals print numbers as JavaScript does', () => {
 
   it('Kotlin: the same', () => {
     const r = transform(src, { target: 'kotlin' })
-    expect(r.code).toContain('${pyreonNumberString(price * 2)}')
+    // Kotlin whole-number literals default to Long (the Int-to-Long pass),
+    // so the multiplier carries the `L` suffix — still not routed through
+    // pyreonNumberString, which is Double-only.
+    expect(r.code).toContain('${pyreonNumberString(price * 2L)}')
     expect(r.code).not.toContain('pyreonNumberString(count')
   })
 
