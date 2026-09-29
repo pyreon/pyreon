@@ -178,6 +178,11 @@ export function buildModuleConstTypes(
       out.set(md.name, md.type)
       continue
     }
+    // `new SizedMap<K, V>(…)` infers as a `map` for its READS, but the native
+    // value is a `PyreonSizedMap` class, not a dictionary: seeding it as a map
+    // re-spells `seen.size` as `.count`, which the class does not have. Left
+    // `unknown`, as before, so its own member surface is emitted verbatim.
+    if (md.initial.kind === 'new-sized-map') continue
     const t = inferType(md.initial, ctx)
     if (isSeedableModuleType(t)) out.set(md.name, t)
   }

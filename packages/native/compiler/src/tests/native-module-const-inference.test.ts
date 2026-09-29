@@ -94,6 +94,24 @@ export function A() {
     expect(swift(src).code).toContain('private var y: Int {')
   })
 
+  // Found by native-examples-compile (native-tasks): typed as a map, a
+  // file-scope SizedMap's `.size` became `.count` — PyreonSizedMap has none.
+  it('a file-scope SizedMap keeps its own `.size` (it is a class, not a dictionary)', () => {
+    const src = `import { Stack, Text } from '@pyreon/primitives'
+import { SizedMap } from '@pyreon/sized-map'
+const seen = new SizedMap<string, number>({ maxEntries: 8 })
+export function A() {
+  return <Stack><Text>{String(seen.size)}</Text></Stack>
+}
+`
+    const code = swift(src).code
+    expect(code).not.toContain('seen.count')
+    if (isSwiftcAvailable()) {
+      const v = validateSwiftWithStubs(code)
+      expect(v.ok, v.error).toBe(true)
+    }
+  }, 240_000)
+
   it('a file-scope OBJECT literal stays untyped (its value is a synthesized struct, not a tuple)', () => {
     const src = `import { Stack, Text } from '@pyreon/primitives'
 import { computed } from '@pyreon/reactivity'
