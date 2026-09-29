@@ -769,7 +769,7 @@ export function App() {
     const w = r.warnings.join('\n')
     expect(w).toContain("<Card row={…}>: this render callback's BLOCK body")
     expect(w).toContain('<Card footer={…}>: this render prop is not an inline arrow')
-    expect(r.code).toContain('Card(footer = 42,')
+    expect(r.code).toContain('Card(footer = 42L,')
   })
 })
 
