@@ -16,7 +16,7 @@ import { kotlinType } from '../emit-kotlin'
 import type { TypeIR } from '../types'
 
 describe('swiftType — primitive types', () => {
-  it('number → Int', () => {
+  it('number → Long', () => {
     expect(swiftType({ kind: 'number' })).toBe('Int')
   })
   it('string → String', () => {
@@ -119,8 +119,8 @@ describe('swiftType — typeRef', () => {
 })
 
 describe('kotlinType — primitive types', () => {
-  it('number → Int', () => {
-    expect(kotlinType({ kind: 'number' })).toBe('Int')
+  it('number → Long', () => {
+    expect(kotlinType({ kind: 'number' })).toBe('Long')
   })
   it('string → String', () => {
     expect(kotlinType({ kind: 'string' })).toBe('String')
@@ -132,7 +132,7 @@ describe('kotlinType — primitive types', () => {
 
 describe('kotlinType — collection types', () => {
   it('array of number → List<Int>', () => {
-    expect(kotlinType({ kind: 'array', element: { kind: 'number' } })).toBe('List<Int>')
+    expect(kotlinType({ kind: 'array', element: { kind: 'number' } })).toBe('List<Long>')
   })
   it('nested array of string → List<List<String>>', () => {
     expect(
@@ -159,7 +159,7 @@ describe('kotlinType — nullable + union types', () => {
         kind: 'union',
         branches: [{ kind: 'number' }, { kind: 'undefined' }],
       }),
-    ).toBe('Int?')
+    ).toBe('Long?')
   })
   it('mixed-type union → Any', () => {
     expect(
@@ -192,7 +192,7 @@ describe('kotlinType — typeRef', () => {
         name: 'Maybe',
         args: [{ kind: 'number' }],
       }),
-    ).toBe('Maybe<Int>')
+    ).toBe('Maybe<Long>')
   })
 })
 
@@ -252,7 +252,7 @@ describe('kotlinType — function types (roadmap PR 5b)', () => {
         params: [{ name: 'x', type: { kind: 'number' } }],
         returnType: { kind: 'boolean' },
       }),
-    ).toBe('(Int) -> Boolean')
+    ).toBe('(Long) -> Boolean')
   })
   it('two-arg → String', () => {
     expect(
@@ -264,7 +264,7 @@ describe('kotlinType — function types (roadmap PR 5b)', () => {
         ],
         returnType: { kind: 'string' },
       }),
-    ).toBe('(Int, String) -> String')
+    ).toBe('(Long, String) -> String')
   })
 })
 

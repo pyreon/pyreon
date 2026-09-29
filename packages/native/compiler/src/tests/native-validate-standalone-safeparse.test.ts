@@ -56,10 +56,10 @@ describe('@pyreon/validate standalone `.safeParse().success` lowering', () => {
     const { code, warnings } = transform(SCALAR, { target: 'kotlin' })
     expect(warnings.filter((w) => w.includes('@pyreon/validate'))).toHaveLength(0)
     expect(code).toContain('data class PyreonZodSchema_Inline0')
-    expect(code).toContain('var n: Int')
+    expect(code).toContain('var n: Long')
     expect(code).toContain('data class PyreonParseResult<T>(val success: Boolean, val data: T?)')
     expect(code).toContain('fun safeParseResult(input: Map<String, Any?>): PyreonParseResult<PyreonZodSchema_Inline0>')
-    expect(code).toContain('PyreonZodSchema_Inline0.safeParseResult(mapOf<String, Any?>("n" to 1)).success')
+    expect(code).toContain('PyreonZodSchema_Inline0.safeParseResult(mapOf<String, Any?>("n" to 1L)).success')
     expect(code).not.toContain('val Inline0 = PyreonZodSchema_Inline0()')
   })
 

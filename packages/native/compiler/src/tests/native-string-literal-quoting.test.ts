@@ -104,8 +104,8 @@ describe('identifiers that are not identifiers', () => {
   })
   it('Kotlin struct fields and named arguments are backticked on BOTH declaration paths', () => {
     const c = code('kotlin')
-    expect(c).toContain('data class AppO(val `my-key`: Int, val `class`: Int, val plain: String)')
-    expect(c).toContain('__Obj0(`my-key` = 1, `class` = 4, plain = "x")')
+    expect(c).toContain('data class AppO(val `my-key`: Long, val `class`: Long, val plain: String)')
+    expect(c).toContain('__Obj0(`my-key` = 1L, `class` = 4L, plain = "x")')
     expect(c).not.toMatch(/\bmy-key: Int/)
   })
 })
@@ -113,7 +113,7 @@ describe('identifiers that are not identifiers', () => {
 describe('parseInt radix and JS-faithful Double → string', () => {
   it('honours the radix on both targets', () => {
     expect(line('swift', 'var n')).toContain('Int(hex, radix: 16) ?? 0')
-    expect(line('kotlin', 'val n')).toContain('toIntOrNull(16) ?: 0')
+    expect(line('kotlin', 'val n')).toContain('toLongOrNull(16) ?: 0L')
   })
   it('a Double concat operand goes through pyreonNumString (`250`, not `250.0`)', () => {
     expect(line('swift', 'var pct')).toContain('"pct=" + pyreonNumString(')

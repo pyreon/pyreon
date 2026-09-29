@@ -79,7 +79,7 @@ describe('P1 — array-method 2-param (index) callback lowers (was a silent mis-
   it('Kotlin: `.map((x,i))` → `mapIndexed { i, x -> … }` (index-first)', () => {
     const code = kt(mapIdx)
     expect(code).toContain('.mapIndexed(')
-    expect(code).toContain('i, x ->')
+    expect(code).toContain('pyreonIdx, x -> val i = pyreonIdx.toLong()')
   })
   it('Swift: multi-statement `.forEach((x,i) => { … })` emits EVERY statement (no silent drop)', () => {
     const code = sw(forEachMulti)

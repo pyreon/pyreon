@@ -75,7 +75,7 @@ describe('an integer coordinate expression reaches the Double position', () => {
   })
 
   it('Kotlin converts it with toDouble()', () => {
-    expect(out('kotlin').code).toContain('PyreonXYPosition((col * 200).toDouble(), (row * 100).toDouble())')
+    expect(out('kotlin').code).toContain('PyreonXYPosition((col * 200L).toDouble(), (row * 100L).toDouble())')
   })
 })
 

@@ -59,7 +59,7 @@ function label(flag: boolean, n: number): string {
   it('is declared as a var on Kotlin', () => {
     const { code } = transform(SRC, { target: 'kotlin' })
     expect(code).toContain('var out: String')
-    expect(code).toContain('var count: Int')
+    expect(code).toContain('var count: Long')
   })
 
   it('compiles — the assignments now have something to assign to', () => {

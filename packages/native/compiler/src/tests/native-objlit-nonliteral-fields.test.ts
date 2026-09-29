@@ -68,7 +68,7 @@ describe('object literal with non-literal scalar fields → struct synthesis', (
       { target: 'kotlin' },
     ).code
     // Inferred field types (count→Int, label→String).
-    expect(out).toMatch(/data class __Obj0\(var id: Int, var name: String\)/)
+    expect(out).toMatch(/data class __Obj0\(var id: Long, var name: String\)/)
     expect(out).toContain('__Obj0(id = count, name = label)')
   })
 
