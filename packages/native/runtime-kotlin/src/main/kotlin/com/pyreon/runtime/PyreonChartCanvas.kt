@@ -1014,7 +1014,7 @@ fun PyreonChartPoints(input: A11yInput, plot: PyreonChartRect, visible: Int, fir
     for (j in 0 until visible) {
         val i = first + j
         if (i >= total) break
-        val cells = chartTableRow(input, i)
+        val cells = chartTableRow(input, i.toLong())
         val label = cells.mapIndexed { k, c -> if (k == 0 || k >= headers.size) c else "${headers[k]} $c" }.joinToString(", ")
         var x = if (horizontal) plot.x else plot.x + band * j
         val y = if (horizontal) plot.y + plot.h - band * (j + 1) else plot.y
