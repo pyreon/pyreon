@@ -135,7 +135,7 @@ const WEBHOOK_RUNTIME: readonly string[] = [
   'export async function validateWebhook<K extends keyof WebhookPayloads>(name: K, body: unknown): Promise<WebhookValidation<K>> {',
   '  const schemas: Readonly<Record<string, StandardLike | undefined>> = webhookSchemas',
   '  const schema = schemas[name]',
-  '  if (!schema) return { ok: true, value: undefined as WebhookPayloads[K] }',
+  '  if (!schema) return { ok: true, value: undefined as unknown as WebhookPayloads[K] }',
   '  const result = await schema["~standard"].validate(body)',
   '  return result.issues ? { ok: false, issues: result.issues } : { ok: true, value: result.value as WebhookPayloads[K] }',
   '}',
