@@ -1,4 +1,4 @@
-import { visit } from 'unist-util-visit'
+import { visit } from '../visit'
 import type { Code, Root } from 'mdast'
 import type { ContainerDirective } from 'mdast-util-directive'
 

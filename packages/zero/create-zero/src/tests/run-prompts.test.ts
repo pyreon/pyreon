@@ -2,15 +2,15 @@
  * Interactive prompt-flow coverage — the path `--yes` can never reach.
  *
  * The 0.33.0 crash (`Cannot read properties of undefined (reading 'label')`)
- * happened on the INTERACTIVE "Custom — pick features one by one" path, which
- * clack only runs against a real TTY (piped input doesn't drive it). So we mock
- * `@clack/prompts` and drive the real `runPrompts` / `resolveFeatures` end to
+ * happened on the INTERACTIVE "Custom — pick features one by one" path. We mock
+ * the prompt module (`../ui`, which replaced `@clack/prompts`) and drive the
+ * real `runPrompts` / `resolveFeatures` end to
  * end — exercising `buildGroupedFeatureOptions` (the exact crash site) without
  * a TTY. A drift between FEATURE_CATEGORIES and FEATURES fails these tests.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// ── clack mock: message-routed returns so call ORDER doesn't matter ────────
+// ── prompt mock: message-routed returns so call ORDER doesn't matter ────────
 // Shared mutable state must be `vi.hoisted` because `vi.mock` is hoisted above
 // the module body — a plain `const` would be uninitialised inside the factory.
 const h = vi.hoisted(() => {
@@ -36,7 +36,7 @@ const h = vi.hoisted(() => {
 
 const { selectReturns, multiselectReturns, state } = h
 
-vi.mock('@clack/prompts', () => ({
+vi.mock('../ui', () => ({
   intro: vi.fn(),
   outro: vi.fn(),
   note: vi.fn(),
@@ -182,7 +182,7 @@ describe('resolveFeatures — interactive branches in isolation', () => {
 
 describe('runPrompts — isr mode + typed routes (zero-modes-dx N)', () => {
   it('isr filters the static adapter from the deploy select; typedRoutes confirm lands in config', async () => {
-    const p = await import('@clack/prompts')
+    const p = await import('../ui')
     ;(p.select as ReturnType<typeof vi.fn>).mockClear()
     Object.assign(selectReturns, {
       Template: 'app',

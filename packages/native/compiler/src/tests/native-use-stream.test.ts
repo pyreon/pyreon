@@ -1,0 +1,317 @@
+import { execFileSync } from 'node:child_process'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, expect, it } from 'vitest'
+import { transform } from '../index'
+import { KOTLIN_COMPOSE_STUBS } from '../kotlin-stubs'
+import {
+  isKotlincAvailable,
+  isSwiftcAvailable,
+  isSwiftUIAvailable,
+  validateKotlin,
+  validateSwiftWithStubs,
+} from '../validate'
+
+/**
+ * `useStream` over `@pyreon/http/stream` — SSE and NDJSON — lowers to the
+ * native stream runtime (`PyreonStream`, co-located in `@pyreon/http/native`).
+ *
+ * Before this, both hooks named "has NO native lowering" and a generated
+ * client reported every stream-only operation `web-only`. The runtime's WIRE
+ * parity with the web is proven by execution in
+ * `native-stream-parser-parity.test.ts`; this file locks the LOWERING: what
+ * the emit calls, that it compiles against the stubs AND the real runtime
+ * source, and that every shape it cannot honour says so by name.
+ */
+
+const swift = (s: string) => transform(s, { target: 'swift' })
+const kotlin = (s: string) => transform(s, { target: 'kotlin' })
+
+const app = (body: string, extra = ''): string => `
+import { createHttp } from '@pyreon/http'
+import { openEventStream, openNdjsonStream, type SseEvent } from '@pyreon/http/stream'
+import { useStream } from '@pyreon/query'
+import { Stack, Text, Button } from '@pyreon/primitives'
+interface LogLine { message: string; level: string }
+const api = createHttp({ baseUrl: 'https://api.example.com' })
+const tail = api.endpoint('GET /logs/:room/tail', { responseType: 'stream' })
+const complete = api.endpoint('POST /complete', { responseType: 'stream' })
+const rows = api.endpoint('GET /export', { responseType: 'stream' })
+${extra}
+export function Feed(props: { room: string }) {
+  ${body}
+}
+`
+
+const SSE = app(`
+  const s = useStream<SseEvent<LogLine>>((ctx) =>
+    openEventStream((c) => tail({ params: { room: props.room }, signal: c.signal, headers: c.headers }), {
+      signal: ctx.signal,
+      onStatus: ctx.onStatus,
+      events: ['log'],
+      lastEventId: '42',
+    }),
+    { maxEvents: 200 },
+  )
+  return (
+    <Stack>
+      <Text>{s.status()}</Text>
+      <Text>{s.latest()?.data.message ?? ''}</Text>
+      <Text>{\`\${s.events().length}\`}</Text>
+      <Button onPress={() => s.restart()}>again</Button>
+      <Button onPress={() => s.abort()}>stop</Button>
+    </Stack>
+  )`)
+
+const TEXT = app(`
+  const s = useStream((ctx) =>
+    openEventStream((c) => complete({ json: { prompt: 'hi' }, signal: c.signal, headers: c.headers }), {
+      data: 'text',
+      reconnect: false,
+      signal: ctx.signal,
+      onStatus: ctx.onStatus,
+    }),
+  )
+  return <Stack><Text>{s.latest()?.data ?? ''}</Text></Stack>`)
+
+const NDJSON = app(`
+  const s = useStream<LogLine>((ctx) =>
+    openNdjsonStream((c) => rows({ query: { since: 5 }, signal: c.signal, headers: c.headers }), {
+      signal: ctx.signal,
+      onStatus: ctx.onStatus,
+    }),
+  )
+  return <Stack><Text>{s.latest()?.message ?? ''}</Text></Stack>`)
+
+describe('useStream lowers to the native stream runtime', () => {
+  for (const [label, src] of [
+    ['SSE (typed, filtered, resumed, runtime :param)', SSE],
+    ['SSE text over POST', TEXT],
+    ['NDJSON', NDJSON],
+  ] as const) {
+    it(`${label}: zero warnings on both targets`, () => {
+      expect(swift(src).warnings).toEqual([])
+      expect(kotlin(src).warnings).toEqual([])
+    })
+  }
+
+  it('Swift: a PyreonStream keyed on the runtime URL + restart tick', () => {
+    const code = swift(SSE).code
+    expect(code).toContain('@State private var s = PyreonStream<PyreonSseEvent<LogLine>>(maxEvents: 200)')
+    // Keyed on the interpolated URL, so a new room REOPENS the stream.
+    expect(code).toContain(
+      '.task(id: "\\("https://api.example.com/logs/\\(PyreonURL.encodePathParam(room))/tail")#\\(s.restartTick)")',
+    )
+    expect(code).toContain('options: PyreonSseOptions(events: ["log"], lastEventId: "42", reconnect: PyreonStreamReconnect(attempts: 5, delay: 1000, maxDelay: 30000, onEnd: false))')
+    expect(code).toContain('decode: PyreonStreamDecode.sseJSON(LogLine.self)')
+    // Result reads are properties; abort/restart stay calls.
+    expect(code).toContain('s.status')
+    expect(code).not.toContain('s.status()')
+    expect(code).toContain('s.restart()')
+    // A `.task` needs a stable-identity host (device-found; see the ZStack note).
+    expect(code).toContain('ZStack {')
+  })
+
+  it('Kotlin: a DisposableEffect keyed on the runtime URL + restart tick, stopped on dispose', () => {
+    const code = kotlin(SSE).code
+    expect(code).toContain('val s = remember { PyreonStream<PyreonSseEvent<LogLine>>(maxEvents = 200) }')
+    expect(code).toContain(
+      'DisposableEffect("${"https://api.example.com/logs/${PyreonURL.encodePathParam(room)}/tail"}#${s.restartTick.value}")',
+    )
+    expect(code).toContain('PyreonSseEvent(m.type, PyreonFetchJson.decodeFromString<LogLine>(m.data), m.id)')
+    expect(code).toContain('onDispose { s.stop() }')
+    expect(code).toContain('s.status.value')
+  })
+
+  it('POST with a json body, text payloads, no reconnect', () => {
+    const s = swift(TEXT).code
+    expect(s).toContain('PyreonStream<PyreonSseEvent<String>>')
+    expect(s).toContain('method: "POST"')
+    expect(s).toContain('body: Data("{\\"prompt\\":\\"hi\\"}".utf8)')
+    expect(s).toContain('reconnect: nil')
+    expect(s).toContain('decode: PyreonStreamDecode.sseText()')
+    const k = kotlin(TEXT).code
+    expect(k).toContain('reconnect = null')
+    expect(k).toContain('PyreonSseEvent(m.type, m.data, m.id)')
+  })
+
+  it('NDJSON decodes each line into the item type', () => {
+    expect(swift(NDJSON).code).toContain(
+      'await s.runNdjson(PyreonStreamRequest(method: "GET", url: "https://api.example.com/export?since=5"), decode: PyreonStreamDecode.ndjson(LogLine.self))',
+    )
+    expect(kotlin(NDJSON).code).toContain(
+      's.startNdjson(PyreonStreamRequest(method = "GET", url = "https://api.example.com/export?since=5")) { line -> PyreonFetchJson.decodeFromString<LogLine>(line) }',
+    )
+  })
+
+  it('a non-default Accept (`{ ...c.headers, accept }`) lowers as the stream\'s Accept', () => {
+    const src = NDJSON.replace('headers: c.headers', "headers: { ...c.headers, accept: 'application/jsonl' }")
+    const sw = swift(src)
+    const kt = kotlin(src)
+    expect(sw.warnings).toEqual([])
+    expect(kt.warnings).toEqual([])
+    expect(sw.code).toContain(', accept: "application/jsonl", decode:')
+    expect(kt.code).toContain(', accept = "application/jsonl") {')
+    // The literal is the stream's Accept, not a second request header.
+    expect(sw.code).not.toContain('headers: ["accept"')
+  })
+
+  for (const [label, src] of [
+    ['SSE', SSE],
+    ['text', TEXT],
+    ['NDJSON', NDJSON],
+  ] as const) {
+    it.skipIf(!isSwiftcAvailable())(`${label}: swiftc accepts the emit (stubs)`, () => {
+      const res = validateSwiftWithStubs(swift(src).code)
+      expect(res.error ?? '').toBe('')
+      expect(res.ok).toBe(true)
+    })
+    it.skipIf(!isKotlincAvailable())(`${label}: kotlinc accepts the emit (stubs)`, () => {
+      const res = validateKotlin(kotlin(src).code)
+      expect(res.error ?? '').toBe('')
+      expect(res.ok).toBe(true)
+    })
+  }
+})
+
+/**
+ * The stub gates above can only prove the emit agrees with the STUB. These
+ * compile it against the file that SHIPS — the class `emitted-runtime-types-
+ * exist` / `real-runtime-typecheck` exist for (`<Audio>` passed every stub gate
+ * referencing types that existed nowhere else).
+ */
+describe('useStream emit compiles against the REAL runtime source', () => {
+  const RUNTIME_SWIFT = join(__dirname, '../../../../fundamentals/http/native/swift/PyreonStream.swift')
+  const RUNTIME_KOTLIN = join(
+    __dirname,
+    '../../../../fundamentals/http/native/kotlin/com/pyreon/runtime/PyreonStream.kt',
+  )
+
+  it.skipIf(!isSwiftUIAvailable())('Swift: real SDK + real PyreonStream.swift', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pyreon-stream-real-swift-'))
+    try {
+      const files = [SSE, TEXT, NDJSON].map((src, i) => {
+        // One module: rename the shared names apart.
+        const code = swift(src).code.replace(/\bFeed\b/g, `Feed${i}`).replace(/\bLogLine\b/g, `LogLine${i}`)
+        const p = join(dir, `App${i}.swift`)
+        writeFileSync(p, `import SwiftUI\nimport Foundation\n${code}`)
+        return p
+      })
+      // PyreonURL lives in the core runtime; the stream emit's runtime :param uses it.
+      const core = join(__dirname, '../../../runtime-swift/Sources/PyreonRuntime/PyreonHttp.swift')
+      const sdk = execFileSync('xcrun', ['--sdk', 'iphonesimulator', '--show-sdk-path'], { encoding: 'utf8' }).trim()
+      execFileSync(
+        'xcrun',
+        ['--sdk', 'iphonesimulator', 'swiftc', '-typecheck', '-target', 'arm64-apple-ios17.0-simulator', '-sdk', sdk, ...files, RUNTIME_SWIFT, core],
+        { stdio: 'pipe', encoding: 'utf8' },
+      )
+    } catch (err) {
+      const e = err as { stderr?: string }
+      expect.fail(`swiftc failed against the real runtime:\n${(e.stderr ?? String(err)).split('\n').filter((l) => l.includes('error:')).slice(0, 10).join('\n')}`)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }, 300_000)
+
+  it.skipIf(!isKotlincAvailable())('Kotlin: real PyreonStream.kt in place of its stub', () => {
+    // The stub block is REPLACED by the shipped file (package / imports
+    // stripped into the stubs' default package), so a signature the stub
+    // got wrong fails here even though every stub gate passes.
+    const start = KOTLIN_COMPOSE_STUBS.indexOf('// PyreonStream — mirror of')
+    const end = KOTLIN_COMPOSE_STUBS.indexOf('// PyreonHttp — what a', start)
+    expect(start).toBeGreaterThan(-1)
+    expect(end).toBeGreaterThan(start)
+    const stubs = KOTLIN_COMPOSE_STUBS.slice(0, start) + KOTLIN_COMPOSE_STUBS.slice(end)
+    const runtime = readFileSync(RUNTIME_KOTLIN, 'utf8')
+      .replace(/^package .*$/m, '')
+      .replace(/^import androidx\.compose\.runtime\..*$/gm, '')
+    const dir = mkdtempSync(join(tmpdir(), 'pyreon-stream-real-kotlin-'))
+    try {
+      writeFileSync(join(dir, 'Stubs.kt'), stubs)
+      writeFileSync(join(dir, 'PyreonStream.kt'), runtime)
+      const inputs = [SSE, TEXT, NDJSON].map((src, i) => {
+        const code = kotlin(src).code.replace(/\bFeed\b/g, `Feed${i}`).replace(/\bLogLine\b/g, `LogLine${i}`)
+        const p = join(dir, `App${i}.kt`)
+        writeFileSync(p, code)
+        return p
+      })
+      execFileSync('kotlinc', ['-nowarn', '-d', join(dir, 'out'), join(dir, 'Stubs.kt'), join(dir, 'PyreonStream.kt'), ...inputs], {
+        stdio: 'pipe',
+        encoding: 'utf8',
+      })
+    } catch (err) {
+      const e = err as { stderr?: string }
+      expect.fail(`kotlinc failed against the real runtime:\n${(e.stderr ?? String(err)).split('\n').filter((l) => l.includes('error:')).slice(0, 10).join('\n')}`)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }, 600_000)
+})
+
+describe('useStream — every shape that cannot lower says so', () => {
+  it('an untyped stream bails by name (there is nothing to decode into)', () => {
+    const r = swift(
+      app(`
+  const s = useStream((ctx) => openEventStream((c) => tail({ params: { room: props.room }, signal: c.signal, headers: c.headers }), { signal: ctx.signal, onStatus: ctx.onStatus }))
+  return <Text>{s.status()}</Text>`),
+    )
+    expect(r.warnings.some((w) => w.includes('useStream needs the event payload type'))).toBe(true)
+  })
+
+  it('a fetch transport bails by name', () => {
+    const r = kotlin(
+      app(`
+  const s = useStream<SseEvent<LogLine>>((ctx) => openEventStream(async (c) => (await fetch('/x', { signal: c.signal })).body, { signal: ctx.signal }))
+  return <Text>{s.status()}</Text>`),
+    )
+    expect(r.warnings.some((w) => w.includes('connects through a same-file `@pyreon/http` endpoint'))).toBe(true)
+  })
+
+  it('`enabled` bails — dropping it would change what the stream does', () => {
+    const r = swift(
+      app(`
+  const s = useStream<SseEvent<LogLine>>((ctx) => openEventStream((c) => tail({ params: { room: props.room }, signal: c.signal, headers: c.headers }), { signal: ctx.signal }), { enabled: false })
+  return <Text>{s.status()}</Text>`),
+    )
+    expect(r.warnings.some((w) => w.includes('option `enabled` has no native lowering'))).toBe(true)
+  })
+
+  it('`parse` is named as ignored, and the stream still lowers', () => {
+    const r = swift(
+      app(`
+  const s = useStream<SseEvent<LogLine>>((ctx) => openEventStream((c) => tail({ params: { room: props.room }, signal: c.signal, headers: c.headers }), { signal: ctx.signal, onStatus: ctx.onStatus, parse: (v) => v as LogLine }))
+  return <Text>{s.status()}</Text>`),
+    )
+    expect(r.warnings.filter((w) => w.includes('option `parse` is IGNORED'))).toHaveLength(1)
+    expect(r.code).toContain('PyreonStream<PyreonSseEvent<LogLine>>')
+  })
+
+  it('an opener used OUTSIDE useStream keeps the import warning', () => {
+    const r = swift(
+      app(
+        `
+  const s = useStream<SseEvent<LogLine>>((ctx) => openEventStream((c) => tail({ params: { room: props.room }, signal: c.signal, headers: c.headers }), { signal: ctx.signal, onStatus: ctx.onStatus }))
+  return <Text>{s.status()}</Text>`,
+        `const loose = () => openEventStream((c) => tail({ params: { room: 'x' }, signal: c.signal }))`,
+      ),
+    )
+    expect(r.warnings.some((w) => w.startsWith('openEventStream (from @pyreon/http/stream) has NO native lowering'))).toBe(true)
+  })
+
+  it('a stream endpoint consumed by useQuery is refused — its body is not one JSON value', () => {
+    const r = swift(`
+import { createHttp } from '@pyreon/http'
+import { useQuery } from '@pyreon/query'
+import { Text } from '@pyreon/primitives'
+interface L { message: string }
+const api = createHttp({ baseUrl: 'https://api.example.com' })
+const tail = api.endpoint('GET /tail', { responseType: 'stream' })
+export function C() {
+  const q = useQuery<L>(() => tail.query())
+  return <Text>{q.data()?.message ?? ''}</Text>
+}
+`)
+    expect(r.warnings.some((w) => w.includes("declared `responseType: 'stream'`"))).toBe(true)
+  })
+})

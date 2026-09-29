@@ -2,6 +2,11 @@ import { h } from '@pyreon/core'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
 import { describe, expect, it } from 'vitest'
 import { applyProp } from '../props'
+// Register the default sanitizer explicitly. Without this the file passed in
+// Chromium only because an EARLIER file in the same browser session had
+// imported it; in WebKit the order differs and `innerHTML` threw "needs a
+// sanitizer". A test must not depend on another file's side effects.
+import '../sanitizer'
 
 // Real-Chromium lock for the SVG-sanitizer fix (downstream report, 2026-07).
 // happy-dom's DOMParser round-trips SVG well enough for the unit tests, but

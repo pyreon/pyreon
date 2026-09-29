@@ -13,16 +13,23 @@ import { describe, expect, it } from 'vitest'
 import { NOTE_SEVERITY, type IrNoteCode } from '../core/ir'
 import { loadOpenApi, ptr } from '../input/openapi'
 
-const doc = (extra: Record<string, unknown>) =>
+/** A fixture: extra top-level fields, or raw JSON text (for what an object cannot hold, like a duplicate key). */
+type Fixture = Record<string, unknown> | string
+
+const doc = (extra: Fixture) =>
   loadOpenApi(
-    JSON.stringify({
-      openapi: '3.1.0',
-      info: { title: 'T', version: '1' },
-      servers: [{ url: 'https://t.test' }],
-      paths: {},
-      ...extra,
-    }),
+    typeof extra === 'string'
+      ? extra
+      : JSON.stringify({
+          openapi: '3.1.0',
+          info: { title: 'T', version: '1' },
+          servers: [{ url: 'https://t.test' }],
+          paths: {},
+          ...extra,
+        }),
   ).doc
+
+const HEAD = '"openapi":"3.1.0","info":{"title":"T","version":"1"},"servers":[{"url":"https://t.test"}],"paths":{}'
 
 const json = (schema: unknown) => ({ 'application/json': { schema } })
 const get = (op: Record<string, unknown>) => ({
@@ -37,7 +44,17 @@ const get = (op: Record<string, unknown>) => ({
 type LoaderCode = Exclude<IrNoteCode, 'plugin'>
 
 /** [fires, quiet] per code. */
-const CASES: Record<LoaderCode, [Record<string, unknown>, Record<string, unknown>]> = {
+const CASES: Record<LoaderCode, [Fixture, Fixture]> = {
+  // JSON.parse keeps the last of two same-named keys; the first is reported.
+  'duplicate-key': [
+    `{${HEAD},"components":{"schemas":{"A":{"type":"string"},"A":{"type":"number"}}}}`,
+    `{${HEAD},"components":{"schemas":{"A":{"type":"string"},"B":{"type":"number"}}}}`,
+  ],
+  // `fetch` refuses TRACE, so the operation is reported, not generated.
+  'unsupported-method': [
+    { paths: { '/x': { trace: { operationId: 't', responses: {} } } } },
+    { paths: { '/x': { get: { operationId: 't', responses: {} } } } },
+  ],
   'unsupported-schema': [
     { components: { schemas: { X: { type: 'frobnicate' } } } },
     { components: { schemas: { X: { type: 'string' } } } },
@@ -151,18 +168,20 @@ const CASES: Record<LoaderCode, [Record<string, unknown>, Record<string, unknown
     { webhooks: { ping: { post: { requestBody: { content: { 'application/json': { schema: { type: 'string' } } } } } } } },
     {},
   ],
+  // `tsv` is carried (as `tabDelimited`) for a query; a HEADER has one 3.0
+  // serialization, so there it is still a loss.
   'swagger2-lossy': [
+    { swagger: '2.0', host: 't.test', schemes: ['https'], paths: swaggerArrayQuery('tsv', 'header') },
     { swagger: '2.0', host: 't.test', schemes: ['https'], paths: swaggerArrayQuery('tsv') },
-    { swagger: '2.0', host: 't.test', schemes: ['https'], paths: swaggerArrayQuery('csv') },
   ],
 }
 
-function swaggerArrayQuery(collectionFormat: string): Record<string, unknown> {
+function swaggerArrayQuery(collectionFormat: string, where = 'query'): Record<string, unknown> {
   return {
     '/x': {
       get: {
         operationId: 'x',
-        parameters: [{ in: 'query', name: 'a', type: 'array', items: { type: 'string' }, collectionFormat }],
+        parameters: [{ in: where, name: 'a', type: 'array', items: { type: 'string' }, collectionFormat }],
         responses: { 200: { description: 'ok' } },
       },
     },

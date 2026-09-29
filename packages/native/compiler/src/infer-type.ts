@@ -75,6 +75,12 @@ export interface InferenceCtx {
    * ForEach over it failed to typecheck.
    */
   fetches: Map<string, TypeIR>
+  /**
+   * `useStream` decl name → its ITEM type (`SseEvent<T>` or the NDJSON `T`).
+   * `s.events()` is an array of it, `s.latest()` an optional one, `s.status()`
+   * a string. Optional so the many ctx literals need not construct it.
+   */
+  streams?: Map<string, TypeIR> | undefined
   /** Service-container binding name → decl kind (`geo` → `geolocation`). */
   services: Map<string, string>
   /**
@@ -531,6 +537,9 @@ export function buildInferenceCtx(
     ),
     fetches: new Map(
       decls.flatMap((d) => (d.kind === 'fetch' ? [[d.name, d.type] as const] : [])),
+    ),
+    streams: new Map(
+      decls.flatMap((d) => (d.kind === 'stream' ? [[d.name, d.itemType] as const] : [])),
     ),
     // Service-container binding -> decl kind, so a member read on one can be
     // typed against SERVICE_OPTIONAL_FIELDS above.
@@ -1628,6 +1637,26 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
           return { kind: 'union', branches: [ERROR_OBJECT, { kind: 'undefined' }] }
         }
       }
+      // useStream result reads — `s.events()` / `s.latest()` / `s.status()` /
+      // `s.error()`. `latest` and `error` are optional on every layer.
+      if (
+        expr.args.length === 0 &&
+        expr.callee.kind === 'member' &&
+        expr.callee.object.kind === 'identifier' &&
+        ctx.streams?.has(expr.callee.object.name) === true
+      ) {
+        const item = ctx.streams.get(expr.callee.object.name)!
+        switch (expr.callee.property) {
+          case 'events':
+            return { kind: 'array', element: item }
+          case 'latest':
+            return { kind: 'union', branches: [item, { kind: 'undefined' }] }
+          case 'status':
+            return { kind: 'string' }
+          case 'error':
+            return { kind: 'union', branches: [ERROR_OBJECT, { kind: 'undefined' }] }
+        }
+      }
       // Store-read chain: `useApp().store.tasks()` — zero-arg call on a
       // field of `.store` on a zero-arg store-hook call. Resolves to
       // the store field's declared type so method chains over store
@@ -1976,6 +2005,11 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // instead of `[Any]` — the dominant real-app shape. Without it the
       // member read returned `unknown` and the `.map` element collapsed.
       if (objType.kind === 'typeRef') {
+        // `ev.data` / `ev.type` / `ev.id` on an `SseEvent<T>` stream item.
+        if (objType.name === 'SseEvent' && objType.args.length === 1 && !ctx.structs.has('SseEvent')) {
+          if (expr.property === 'data') return objType.args[0]!
+          if (expr.property === 'type' || expr.property === 'id') return { kind: 'string' }
+        }
         const field = ctx.structs.get(objType.name)?.get(expr.property)
         if (field) return field
       }

@@ -130,6 +130,8 @@ Signal ~152 B, effect ~930 B, computed ~913 B (≈6× a signal — prefer plain 
 - Call `mergeChildrenIntoProps(vnode)` before `runWithHooks`. `runWithRequestContext(fn)` isolates context and store state per request; both renderers inherit an active request context.
 - `renderPage()` (`@pyreon/server`) is the one string-mode page pipeline, used by `createHandler`, SSG prerender and zero dev SSR.
 - Resolve lazy route components before rendering with `router.preload(path, req)`, not loaders-only `prefetchLoaderData`; an unresolved `lazy()` route renders blank.
+- A still-loading `@pyreon/core` `lazy()` is WAITED for, like an async component, through its `__load()` settle promise: the stream resolves it inside its Suspense boundary after the fallback flushed; the string renderer awaits it (and, for a `<Suspense>` whose direct child is one, before `Suspense`'s own accessor would pick the fallback). A lazy without `__load` (solid-compat's and vue-compat's own implementations) still renders as nothing until loaded; react/preact-compat re-export core's.
+- A streamed Suspense swap template is bracketed `<!--$-->…<!--/$-->` — the same range the string renderer emits for `Suspense`'s accessor — so the swapped-in DOM equals a string render and hydration adopts it.
 - `renderToStream` calls `globalThis.__PYREON_STYLER_FLUSH__()` after the shell and in each Suspense boundary so content arrives styled.
 - Boolean `aria-*` renders `"true"`/`"false"`. `UNSAFE_URL_RE` (`@pyreon/core` `url-guard.ts`, shared) drops `javascript:`/`data:` URLs except `data:image/*` on image elements.
 - `<For>` emits per-item key markers `<!--k:KEY-->` (URL-encoded, `-` → `%2D`).

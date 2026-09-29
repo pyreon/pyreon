@@ -189,6 +189,10 @@ const EXCLUDED: ReadonlyMap<string, string> = new Map([
       'stub. Failing here is correct behaviour, not a defect.',
   ],
   [
+    'useStream',
+    'needs module-scope companions this one-hook template cannot express (a `createHttp` client, an endpoint, the `@pyreon/http/stream` opener) — type-checked on both targets, against the stubs AND the real runtime source, in native-use-stream.test.ts.',
+  ],
+  [
     'useLoaderData',
     'already warns — a documented, disclosed gap rather than a silent one.',
   ],

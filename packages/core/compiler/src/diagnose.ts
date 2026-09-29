@@ -1649,7 +1649,7 @@ const html = renderToString(<App />).replace('<!--x-->', head)
 // RIGHT — correct for both the sync and the async-promoted path
 const html = (await renderToString(<App />)).replace('<!--x-->', head)`,
       related:
-        'Same for `renderToStream`. If you need a hard guarantee that a tree stays on the fast synchronous path, keep `async function` components out of it and use `lazy(() => import(...))` + `<Suspense>` instead — that streams through the Suspense boundary rather than promoting the whole subtree. The framework-owned page pipeline (`renderPage` in `@pyreon/server`) already awaits correctly; this bites hand-rolled SSR handlers and test/bench harnesses.',
+        'Same for `renderToStream`. A `lazy()` component whose chunk has not loaded yet is WAITED for exactly like an async component, so it promotes the subtree too; under `renderToStream` a lazy inside `<Suspense>` resolves inside the boundary without holding up the shell. If you need a hard guarantee that a tree stays on the fast synchronous path, keep `async function` components out of it and preload lazy chunks before rendering (`router.preload`). The framework-owned page pipeline (`renderPage` in `@pyreon/server`) already awaits correctly; this bites hand-rolled SSR handlers and test/bench harnesses.',
     }),
   },
   {
@@ -2057,6 +2057,23 @@ for (const m of code.matchAll(/^import\\s*\\{([^}]*)\\}/gm))
       fix: 'Look at the first per-path error for the original stack. Remove `process.exit()` from code that runs during render, make module top-level code safe to evaluate once per worker, or build without `ssg.workers` to confirm the page renders on the main thread.',
       fixCode: `// vite.config.ts — rule out the worker model first
 zero({ mode: 'ssg', ssg: { workers: 1 } })`,
+    }),
+  },
+  {
+    // A streamed boundary whose child THREW. Its fallback stays and no swap is
+    // emitted. Since the server began waiting for still-loading `lazy()`
+    // chunks, a chunk that fails to load (a stale hashed filename after a
+    // deploy, a 404, a network error) lands HERE instead of the boundary
+    // silently swapping in nothing — the residual footgun of that change.
+    pattern: /Suspense boundary caught an error — fallback will remain/,
+    diagnose: () => ({
+      cause:
+        'A child of a streamed `<Suspense>` threw while the server was resolving it, so the boundary keeps its fallback and emits no swap. A `lazy()` component whose chunk FAILED to load lands here too: the server waits for a still-loading lazy chunk, and a rejected import is rethrown by the lazy component on render.',
+      fix: 'Read the error logged right after this line — it is the original throw. For a failed `lazy()` import, check the chunk path the server resolves (a stale hashed filename after a deploy, a missing file in the server bundle). Under `renderToString` the same throw rejects the whole render instead of keeping a fallback.',
+      fixCode: `// The boundary keeps its fallback when the child throws:
+<Suspense fallback={<Spinner />}>
+  <Page />   {/* lazy(() => import('./Page')) — its import rejected */}
+</Suspense>`,
     }),
   },
   {

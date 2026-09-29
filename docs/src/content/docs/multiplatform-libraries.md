@@ -537,7 +537,7 @@ the machine-checked contract.
 | `@pyreon/feature` | CRUD composite over query/form/store/validation. The RUNTIME half stays web — the generated hooks (useList / useById / useCreate / useUpdate / useDelete / useSearch), the network fetcher, and validator/form integration all lower only when every dependency does. The DECLARATION half already crosses (see nativeFrontend) |
 | `@pyreon/head` | document `<head>` management — no equivalent surface exists on iOS/Android |
 | `@pyreon/hotkeys` | keyboard-shortcut layer over DOM KeyboardEvent. The REGISTRY half (registerHotkey / scopes / conflict reporting) is web; the `useHotkey` authoring hook lowers — see nativeFrontend |
-| `@pyreon/http` | universal web/node HTTP client (WHATWG fetch); the transport (middleware, interceptors, streaming) stays web — native networking is the PyreonFetch/PyreonHttp runtime layer |
+| `@pyreon/http` | universal web/node HTTP client (WHATWG fetch); the transport (middleware, interceptors) stays web — native networking is the PyreonFetch/PyreonHttp runtime layer, plus the co-located PyreonStream runtime for SSE / NDJSON |
 | `@pyreon/kinetic` | CSS-transition animation engine (classes + rAF over real CSSOM). The CLASS/style machinery is web; the PRESET vocabulary crosses — see nativeFrontend |
 | `@pyreon/kinetic-presets` | preset pack for the kinetic CSS engine; the presets whose motion exists in the native vocabulary cross — see nativeFrontend |
 | `@pyreon/lathe` | the code generator — build-time tooling that emits app code, not app runtime itself |

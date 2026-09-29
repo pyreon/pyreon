@@ -287,6 +287,21 @@ const SUITES: Suite[] = [
     triggers: [...ROUTER_CORE, 'examples/ssr-showcase/', 'e2e/isr-node.spec.ts'],
   },
   {
+    // Edge deploy artifacts (Deno, Netlify Edge on Deno, Vercel Edge Runtime,
+    // Cloudflare workerd) RUN in their real runtimes — the classes a
+    // Node-invoked adapter unit test cannot see (no filesystem, no `process`,
+    // no `import.meta.url`, platform routing). Installs the pinned runtimes
+    // itself (`scripts/edge-runtimes/tools.ts`), outside the lockfile.
+    name: 'edge-runtimes',
+    script: 'test:e2e:edge-runtimes',
+    triggers: [
+      ...ROUTER_CORE,
+      'examples/edge-runtimes/',
+      'scripts/edge-runtimes/',
+      'e2e/edge-runtimes.spec.ts',
+    ],
+  },
+  {
     name: 'zero-hmr',
     script: 'test:e2e:zero-hmr',
     triggers: [
@@ -484,6 +499,7 @@ export function forcesFullRun(path: string): boolean {
   if (/^vitest\.[^/]*\.ts$/.test(path)) return true
   if (path === '.bun-version') return true
   if (path.startsWith('.github/workflows/')) return true
+  if (path.startsWith('.github/actions/')) return true
   // The size-budget DATA files are the one exception under `scripts/`: no e2e
   // spec, e2e config, example build, or served page reads them — only the
   // budget gates do. Measured 2026-09-23 over one week of PRs: 83 of the 124
