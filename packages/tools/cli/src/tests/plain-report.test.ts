@@ -59,10 +59,10 @@ export const inc = () => { count.set(count() + 1) }
 export const read = () => dbl()
 `
 
-/** A `wrapSignal` facade the codemod declines — it cannot preserve semantics. */
-const DECLINED = `import { signal, wrapSignal } from '@pyreon/reactivity'
+/** Calls the signal WITH an argument — no plain form, so the codemod declines. */
+const DECLINED = `import { signal } from '@pyreon/reactivity'
 const wrapped = signal(2)
-export const w = wrapSignal(wrapped, { set: () => {} })
+export const w = () => wrapped(5)
 `
 
 /** Already migrated. */
@@ -70,10 +70,10 @@ const PLAIN_FILE = `'use plain'
 export const a = 1
 `
 
-/** Declines with `member-access` — a different code from DECLINED's. */
+/** Declines with `set-result-used` — a different code from DECLINED's. */
 const DECLINED_OTHER = `import { signal } from '@pyreon/reactivity'
 const s = signal(1)
-export const u = s.subscribe(() => {})
+export const u = take(s.set(2))
 `
 
 /** No reactive bindings at all. */

@@ -47,10 +47,12 @@ const dbl = computed(() => count() * 2)
 export const inc = () => { count.set(count() + 1) }
 export const read = () => dbl()
 `
-const MIXED = `import { signal, wrapSignal } from '@pyreon/reactivity'
+// \`wrapped(5)\` calls the signal WITH an argument — no plain form, so that
+// binding declines while \`ok\` converts.
+const MIXED = `import { signal } from '@pyreon/reactivity'
 const ok = signal(1)
 const wrapped = signal(2)
-export const w = wrapSignal(wrapped, { set: () => {} })
+export const w = () => wrapped(5)
 export const r = () => ok()
 `
 const PLAIN_FILE = `'use plain'
@@ -103,7 +105,7 @@ describe('--write', () => {
     const partial = readFileSync(mixed, 'utf8')
     expect(partial).toContain(`let ok = state(1)`)
     expect(partial).toContain(`const wrapped = signal(2)`)
-    expect(partial).toContain(`import { signal, wrapSignal } from '@pyreon/reactivity'`)
+    expect(partial).toContain(`import { signal } from '@pyreon/reactivity'`)
   })
 
   it('is idempotent — a second --write run reports already-plain and rewrites nothing', async () => {

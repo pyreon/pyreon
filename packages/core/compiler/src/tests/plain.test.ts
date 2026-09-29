@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { detectPlain, transformPlain } from '../plain'
-import { transformJSX_JS } from '../jsx'
+import { transformJSX, transformJSX_JS } from '../jsx'
 
 const P = (code: string, knownSignals?: string[]) =>
   transformPlain(code, 'test.tsx', knownSignals ? { knownSignals } : {})
@@ -223,9 +223,16 @@ describe('writes', () => {
     expect(r.code).toContain(`signal(makeConfig())`)
   })
 
-  it('destructuring assignment onto state warns', () => {
+  it('destructuring assignment onto state writes each target through its signal', () => {
     const r = P(`${HEADER}let a = state(0)\n;({ a } = foo())\n`)!
-    expect(r.warnings.some((w) => w.message.includes('destructuring assignment'))).toBe(true)
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('({ a: __plainD0_0 } = __plainDv0); a.set(__plainD0_0); return __plainDv0 })(foo())')
+    expect(r.code).toContain('let __plainD0_0 = a.peek()')
+  })
+
+  it('destructuring onto a derived value warns (read-only)', () => {
+    const r = P(`${HEADER}let a = state(0)\nconst d = derived(a)\n;[d] = [1]\n`)!
+    expect(r.warnings.some((w) => w.message.includes('derived values are read-only'))).toBe(true)
   })
 })
 
@@ -457,11 +464,20 @@ describe('component props', () => {
     expect(r.code).toContain(`{props.a}`)
   })
 
-  it('rest / nested patterns bail with a warning and stay untouched', () => {
+  it('a top-level rest becomes a descriptor-copying splitProps (stays reactive)', () => {
     const src = `${HEADER}export function B({ a, ...rest }) { return <i {...rest}>{a}</i> }\n`
     const r = P(src)!
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain(`B(props) { const rest = __plainSplitProps(props, ['a'])[1];`)
+    expect(r.code).toContain(`import { splitProps as __plainSplitProps } from '@pyreon/core'`)
+    expect(r.code).toContain(`{props.a}`)
+  })
+
+  it('a rest INSIDE a nested pattern still bails (no faithful live form)', () => {
+    const src = `${HEADER}export function B({ o: { a, ...rest } }) { return <i>{a}</i> }\n`
+    const r = P(src)!
     expect(r.warnings.some((w) => w.message.includes('complex props destructuring'))).toBe(true)
-    expect(r.code).toContain(`{ a, ...rest }`)
+    expect(r.code).toContain(`{ o: { a, ...rest } }`)
   })
 
   it('uses __props when the body already binds `props`', () => {
@@ -779,7 +795,10 @@ export function C({ a }, extra) { return <i>{a}{extra}</i> }
 export function D(props) { const { a: { b } } = props; return <i>{b}</i> }\n`
     const r = transformPlain(src, 't.tsx')!
     const complex = r.warnings.filter((w) => w.message.includes('complex props destructuring'))
-    expect(complex.length).toBeGreaterThanOrEqual(3)
+    // Only the COMPUTED key stays complex — nested patterns now read live paths.
+    expect(complex.length).toBe(1)
+    expect(r.code).toContain(`B(props) { return <i>{props.pos.x}</i> }`)
+    expect(r.code).toContain(`return <i>{props.a.b}</i>`)
     // C is SIMPLE with a second param — the rewrite fires and `extra` shadows.
     expect(r.code).toContain(`C(props, extra)`)
     expect(r.code).toContain(`{props.a}{extra}`)
@@ -843,5 +862,32 @@ describe('effect total tracking — scope discipline (round 2)', () => {
     )!
     expect(r.code).toContain(`s()?.items?.[0]?.id`)
     expect(r.code).not.toMatch(/void \([^;]*s\(\)\.items/)
+  })
+})
+
+describe('project-wide Plain Mode (force) + the `use classic` opt-out', () => {
+  const COMPONENT = `export function Card({ title }) { return <h1>{title}</h1> }\n`
+
+  it('a marker-less module is NOT plain by default', () => {
+    expect(transformPlain(COMPONENT, 'c.tsx')).toBeNull()
+  })
+
+  it('force: true rewrites it (props destructuring stays live)', () => {
+    const r = transformPlain(COMPONENT, 'c.tsx', { force: true })!
+    expect(r.code).toContain('Card(props) { return <h1>{props.title}</h1> }')
+  })
+
+  it("'use classic' opts a forced module out, byte-untouched", () => {
+    const src = `'use classic'\n${COMPONENT}`
+    expect(transformPlain(src, 'c.tsx', { force: true })).toBeNull()
+  })
+
+  it('transformJSX({ plain: true }) routes marker-less modules through the pre-pass', () => {
+    // forced: the param becomes `props` and the text binds LIVE to props.title
+    const out = transformJSX(COMPONENT, 'c.tsx', { plain: true }).code
+    expect(out).toContain('Card(props)')
+    expect(out).toContain('_bindProp(props, "title"')
+    // default: the destructured snapshot stays (classic semantics)
+    expect(transformJSX(COMPONENT, 'c.tsx').code).toContain('Card({ title })')
   })
 })

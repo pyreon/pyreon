@@ -270,3 +270,38 @@ export function App() { return <div>{count}{double}</div> }`
     expect(result!.code).not.toContain('state(0')
   })
 })
+
+describe('pyreon({ plain: true }) — project-wide Plain Mode', () => {
+  const CARD = `export function Card({ title }) { return <h1>{title}</h1> }\n`
+
+  it('compiles a marker-less APP component as plain (props destructuring is live)', async () => {
+    const plugin = bootstrap({ plain: true })
+    await runBuildStart(plugin)
+    const id = writeFile('src/Card.tsx', CARD)
+    const out = (await runTransform(plugin, CARD, id))!.code
+    expect(out).toContain('Card(props)')
+  })
+
+  it('leaves the same component classic when the option is off', async () => {
+    const plugin = bootstrap()
+    await runBuildStart(plugin)
+    const id = writeFile('src/Card.tsx', CARD)
+    expect((await runTransform(plugin, CARD, id))!.code).toContain('Card({ title })')
+  })
+
+  it("respects a per-file 'use classic' opt-out", async () => {
+    const plugin = bootstrap({ plain: true })
+    await runBuildStart(plugin)
+    const src = `'use classic'\n${CARD}`
+    const id = writeFile('src/Legacy.tsx', src)
+    expect((await runTransform(plugin, src, id))!.code).toContain('Card({ title })')
+  })
+
+  it('never forces third-party node_modules code', async () => {
+    const plugin = bootstrap({ plain: true, include: [/\.tsx$/] })
+    await runBuildStart(plugin)
+    const id = writeFile('node_modules/some-lib/Card.tsx', CARD)
+    const out = await runTransform(plugin, CARD, id)
+    expect(out?.code ?? CARD).not.toContain('Card(props)')
+  })
+})

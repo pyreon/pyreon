@@ -737,6 +737,8 @@ export function emitKotlin(
   attrsComponents: AttrsComponentIR[] = [],
   aliasImports: Map<string, { source: string; imported: string }> = new Map(),
 ): { code: string; warnings: string[] } {
+  // Per-FILE counter — see the matching reset in emitSwift.
+  _kotlinTimelineSeq = 0
   _emitWarnings = []
   _needsKotlinNumString = false
   // Per-FILE hook-binding-name sets. They are populated by the pre-pass

@@ -96,6 +96,24 @@ export interface PyreonPluginApi {
 
 export interface PyreonPluginOptions {
   /**
+   * Project-wide Plain Mode. Every app module (anything outside
+   * `node_modules`) is compiled as plain JavaScript reactivity — no
+   * `'use plain'` directive needed. Importing a marker (`state`, `derived`,
+   * `signalOf`) already activates a single file; this option additionally
+   * makes props destructuring (`function Card({ title })`) and reactive early
+   * returns live in EVERY component. A module can opt out with a
+   * `'use classic'` directive. Classic `signal()` code keeps working unchanged
+   * in a plain project — the pre-pass only rewrites plain bindings.
+   *
+   * @default false
+   * @example
+   * ```ts
+   * export default defineConfig({ plugins: [pyreon({ plain: true })] })
+   * ```
+   */
+  plain?: boolean
+
+  /**
    * Restrict which modules the JSX transform runs on (the Vite-plugin
    * `createFilter` convention — picomatch globs, regexes, or arrays).
    * Default: every JSX-bearing module EXCEPT `node_modules`, where only
@@ -1450,6 +1468,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
         ...(ssrTemplate ? { ssrTemplate: true } : {}),
         ...(templatizeComponentChildren ? { templatizeComponentChildren: true } : {}),
         knownSignals,
+        ...(options?.plain === true && !id.includes('/node_modules/') ? { plain: true } : {}),
         ...(collapseRocketstyle ? { collapseRocketstyle } : {}),
       })
       // Surface compiler warnings in the terminal
