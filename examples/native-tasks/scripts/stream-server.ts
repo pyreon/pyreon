@@ -29,6 +29,16 @@ const port = Number(process.env.PYREON_STREAM_PORT ?? 8791)
 
 const server = createServer((req, res) => {
   const path = (req.url ?? '/').split('?')[0]
+  // CORS, so the WEB build of the same source (a Vite origin) can read the
+  // streams too: `Last-Event-ID` is not a CORS-safelisted header, so a resumed
+  // request is preflighted.
+  res.setHeader('access-control-allow-origin', '*')
+  res.setHeader('access-control-allow-headers', 'accept, last-event-id, content-type')
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204)
+    res.end()
+    return
+  }
   if (path === '/health') {
     res.writeHead(200, { 'content-type': 'text/plain' })
     res.end('ok')
