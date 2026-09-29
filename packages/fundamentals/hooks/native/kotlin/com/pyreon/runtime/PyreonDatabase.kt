@@ -415,5 +415,7 @@ public class PyreonDatabase(private val backend: PyreonDatabaseBackend) {
         backend.find(collection, field, value)
 
     /** Number of records in [collection]. */
-    public fun count(collection: String): Int = backend.all(collection).size
+    // Long, not Int: a TS `number` count is 64-bit on both targets (Swift
+    // `Int`), and the compiler lowers a TS integer to Kotlin `Long`.
+    public fun count(collection: String): Long = backend.all(collection).size.toLong()
 }

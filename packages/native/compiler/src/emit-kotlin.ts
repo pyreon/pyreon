@@ -452,6 +452,11 @@ function kotlinListIndex(obj: ExprIR, index: ExprIR, indent: number): string {
   return kotlinIntArg(index, indent)
 }
 
+/** The zero of a numeric type, spelled so Kotlin's `==` accepts it (no implicit Int→Long/Double). */
+function kotlinZero(t: TypeIR): string {
+  return t.kind === 'number' && t.float === true ? '0.0' : '0L'
+}
+
 /** Widen the `Int` a Kotlin API returns (`size`, `length`, `indexOf`) to the `Long` a TS integer is. */
 function kotlinLongOf(raw: string): string {
   return `${raw}.toLong()`
@@ -5618,11 +5623,11 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         const t = inferType(e.args[0]!, _kotlinExprInferCtx)
         const arg = emitKotlinExpr(e.args[0]!, indent)
         if (t.kind === 'boolean') return arg
-        if (t.kind === 'number') return `(${arg} != 0)`
+        if (t.kind === 'number') return `(${arg} != ${kotlinZero(t)})`
         if (t.kind === 'string') return `(${arg}).isNotEmpty()`
         if (typeIsOptional(t)) {
           const inner = unwrapOptionalType(t)
-          if (inner.kind === 'number') return `((${arg} ?: 0) != 0)`
+          if (inner.kind === 'number') return `((${arg} ?: ${kotlinZero(inner)}) != ${kotlinZero(inner)})`
           if (inner.kind === 'string') return `(${arg} ?: "").isNotEmpty()`
           return `(${arg} != null)`
         }
@@ -7174,7 +7179,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         const target = isDoubleNeg ? (inner as { argument: ExprIR }).argument : inner
         const tT = inferType(target, _kotlinExprInferCtx)
         const tStr = emitKotlinExpr(target, indent)
-        if (tT.kind === 'number') return isDoubleNeg ? `(${tStr} != 0)` : `(${tStr} == 0)`
+        if (tT.kind === 'number') return isDoubleNeg ? `(${tStr} != ${kotlinZero(tT)})` : `(${tStr} == ${kotlinZero(tT)})`
         if (tT.kind === 'string') return isDoubleNeg ? `(${tStr}).isNotEmpty()` : `(${tStr}).isEmpty()`
         if (tT.kind === 'boolean') return isDoubleNeg ? tStr : `!${emitKotlinExpr(inner, indent)}`
         if (typeIsOptional(tT)) return isDoubleNeg ? `(${tStr} != null)` : `(${tStr} == null)`
@@ -10034,7 +10039,9 @@ function kotlinImageDim(
   if (typeof stat === 'number') return `${stat}.dp`
   const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
   if (attr !== undefined && attr.kind === 'attr' && attr.value.kind !== 'literal') {
-    return `(${emitKotlinExpr(attr.value, 0)}).dp`
+    // `.toDouble()`: Compose has `Int.dp`/`Double.dp` but no `Long.dp`, and a
+    // TS integer is a Long (see KOTLIN_INT). Identity on a Double.
+    return `(${emitKotlinExpr(attr.value, 0)}).toDouble().dp`
   }
   return undefined
 }

@@ -23,7 +23,7 @@ fun testDbUpsert() {
     db.insert("todos", PyreonRecord("1", mapOf("done" to "false")))
     db.insert("todos", PyreonRecord("1", mapOf("done" to "true")))
     check(db.get("todos", "1")?.fields?.get("done") == "true") { "insert upserts by id" }
-    check(db.count("todos") == 1) { "upsert doesn't duplicate" }
+    check(db.count("todos") == 1L) { "upsert doesn't duplicate" }
 }
 
 fun testDbAllPreservesInsertionOrder() {
@@ -40,10 +40,10 @@ fun testDbAllPreservesInsertionOrder() {
 fun testDbDelete() {
     val db = PyreonDatabase(InMemoryDatabaseBackend())
     db.insert("todos", PyreonRecord("1"))
-    check(db.count("todos") == 1) { "one record" }
+    check(db.count("todos") == 1L) { "one record" }
     check(db.delete("todos", "1")) { "delete returns true" }
     check(db.get("todos", "1") == null) { "deleted record gone" }
-    check(db.count("todos") == 0) { "count back to zero" }
+    check(db.count("todos") == 0L) { "count back to zero" }
 }
 
 fun testDbDeleteAbsentIsIdempotent() {
@@ -66,8 +66,8 @@ fun testDbCollectionsAreIsolated() {
     val db = PyreonDatabase(InMemoryDatabaseBackend())
     db.insert("todos", PyreonRecord("1"))
     db.insert("notes", PyreonRecord("1"))
-    check(db.count("todos") == 1) { "todos has 1" }
-    check(db.count("notes") == 1) { "notes has 1 (same id, different collection)" }
+    check(db.count("todos") == 1L) { "todos has 1" }
+    check(db.count("notes") == 1L) { "notes has 1 (same id, different collection)" }
     db.delete("todos", "1")
     check(db.get("todos", "1") == null) { "todos record deleted" }
     check(db.get("notes", "1") != null) { "notes record isolated from todos delete" }

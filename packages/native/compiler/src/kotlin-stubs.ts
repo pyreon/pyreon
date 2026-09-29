@@ -2370,7 +2370,7 @@ class PyreonDatabase(backend: PyreonDatabaseBackend) {
   fun all(collection: String): List<PyreonRecord> = emptyList()
   fun delete(collection: String, id: String): Boolean = true
   fun find(collection: String, field: String, value: String): List<PyreonRecord> = emptyList()
-  fun count(collection: String): Int = 0
+  fun count(collection: String): Long = 0L
 }
 
 // PyreonSecureStorage — the secret store, mirrored key-first (the runtime's
