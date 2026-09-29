@@ -13741,7 +13741,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   // a decimated or continuous-x chart keeps the description alone.
   const pointsOverlay = decimated || xValueAcc !== undefined
     ? undefined
-    : `PyreonChartPoints(${describe.slice('describeChart('.length, -1)}, layoutChart(pyreonSpec, ::pyreonChartMeasure).plot, pyreonCats.size, ${windowed ? 'pyreonRange.from.toInt()' : '0'}, ${horizontal}, ${chrome.left}, ${chrome.top}, ${readStaticAttrKotlin(e, 'rtl') === true ? W : '-1.0'})`
+    : `PyreonChartPoints(${describe.slice('describeChart('.length, -1)}, layoutChart(pyreonSpec, ::pyreonChartMeasure).plot, pyreonCats.size.toLong(), ${windowed ? 'pyreonRange.from' : '0L'}, ${horizontal}, ${chrome.left}, ${chrome.top}, ${readStaticAttrKotlin(e, 'rtl') === true ? W : '-1.0'})`
   const overlays = [pointsOverlay, overlay, dataViewOverlay].filter((o): o is string => o !== undefined)
   return kotlinFrameHostWithDensity(e, lets, cmds, tap, W, H, hasWidth, indent, windowed || tap !== '' || toolbox !== null, overlays.length === 0 ? undefined : overlays.join('\n'), describe)
 }

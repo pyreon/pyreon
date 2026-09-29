@@ -2526,7 +2526,7 @@ fun PyreonChartCanvas(cmds: List<PyreonDrawCmd>, modifier: Modifier = Modifier, 
 fun PyreonChartEntrance(durationMs: Double, content: @Composable (Double) -> Unit) { content(1.0) }
 @Composable
 @Suppress("UNUSED_PARAMETER")
-fun PyreonChartPoints(input: A11yInput, plot: PyreonChartRect, visible: Int, first: Int = 0, horizontal: Boolean = false, left: Double = 0.0, top: Double = 0.0, mirrorWidth: Double = -1.0) {}
+fun PyreonChartPoints(input: A11yInput, plot: PyreonChartRect, visible: Long, first: Long = 0L, horizontal: Boolean = false, left: Double = 0.0, top: Double = 0.0, mirrorWidth: Double = -1.0) {}
 @Composable
 fun PyreonChartClock(content: @Composable (Double) -> Unit) { content(0.0) }
 fun pyreonChartMeasure(text: String, size: Double): Double = text.length * size * 0.6
