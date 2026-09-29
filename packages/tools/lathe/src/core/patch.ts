@@ -69,7 +69,11 @@ export function applyPatches(spec: Record<string, unknown>, patches: readonly La
   patches.forEach((patch, i) => {
     const where = `patches[${i}]`
     const fail = (why: string): never => {
-      throw new Error(`[Pyreon] lathe: \`${where}\` (${patch.op} \`${patch.path}\`): ${why}`)
+      // `patch` itself may be what is wrong (a `null` entry in the list), so
+      // the label must not read through it.
+      const label =
+        patch !== null && typeof patch === 'object' ? ` (${String(patch.op)} \`${String(patch.path)}\`)` : ''
+      throw new Error(`[Pyreon] lathe: \`${where}\`${label}: ${why}`)
     }
     if (patch === null || typeof patch !== 'object') fail('must be an object like `{ op, path, value }`.')
     if (patch.op !== 'add' && patch.op !== 'replace' && patch.op !== 'remove') {

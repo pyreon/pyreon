@@ -7,10 +7,12 @@
  * stable ids, then add a `test()` block here that drives it. Same pattern.
  */
 import { expect, test } from '@playwright/test'
+import { waitForHydration } from './hydration-barrier'
 
 test.describe('Reactive primitives e2e', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/primitives')
+    await waitForHydration(page)
     await expect(page.locator('#primitives-page')).toBeVisible()
   })
 

@@ -259,7 +259,8 @@ const FIXTURES: Record<string, Fixture> = {
   'pyreon/no-window-in-ssr': {
     file: 'src/a.tsx',
     bad: `export function C() { const w = window.innerWidth; return <div>{w}</div> }`,
-    good: `${CORE}export function C() { onMount(() => { console.log(window.innerWidth) }); return <div /> }`,
+    // The class member is NAMED `document` — a member name, not the global.
+    good: `${CORE}class Doc { document() { return 1 } }\nexport function C() { onMount(() => { console.log(window.innerWidth) }); return <div>{new Doc().document()}</div> }`,
   },
   'pyreon/no-mismatch-risk': {
     file: 'src/a.tsx',

@@ -41,6 +41,28 @@ describe('a lowercase on* prop never reaches the server-rendered HTML', () => {
     })
   }
 
+  // WebKit-only handler names. Chromium does not expose them, so the
+  // Chromium-run vocabulary ratchet never saw them; WebKit compiles every one
+  // as an inline handler, so SSR serializing them was script execution for
+  // Safari users. Found by running `event-handler-vocabulary.browser.test.tsx`
+  // in WebKit.
+  for (const name of [
+    'onbeforeload',
+    'onorientationchange',
+    'onwebkitcurrentplaybacktargetiswirelesschanged',
+    'onwebkitmouseforcechanged',
+    'onwebkitmouseforcedown',
+    'onwebkitmouseforceup',
+    'onwebkitmouseforcewillbegin',
+    'onwebkitneedkey',
+    'onwebkitplaybacktargetavailabilitychanged',
+    'onwebkitpresentationmodechanged',
+  ]) {
+    it(`drops the WebKit-only ${name}`, async () => {
+      expect(await render(h('div', { [name]: 'alert(1)' }))).toBe('<div></div>')
+    })
+  }
+
   it('drops it on a void element too', async () => {
     expect(await render(h('img', { src: 'x', onerror: 'alert(1)' }))).toBe('<img src="x" />')
   })

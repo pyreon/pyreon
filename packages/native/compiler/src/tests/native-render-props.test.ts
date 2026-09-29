@@ -214,12 +214,14 @@ export function App() { return <B render={(it) => <Text>{it.title}</Text>} /> }`
 })
 
 describe('shapes that do not lower are NAMED', () => {
-  it('a block-bodied render callback', () => {
+  it('a block-bodied render callback a view builder cannot take', () => {
+    // `const`s and early returns LOWER (native-render-props-optional-block
+    // .test.ts); a reassigned local has no view-builder spelling.
     const src = `${DATA}export function App() {
-  return <UserData>{(u) => { const n = u?.name ?? '-'; return <Text>{n}</Text> }}</UserData>
+  return <UserData>{(u) => { let n = u?.name ?? '-'; n = n + '!'; return <Text>{n}</Text> }}</UserData>
 }`
     for (const out of [swift(src), kotlin(src)]) {
-      expect(out.warnings.join('\n')).toContain('a render callback with a BLOCK body')
+      expect(out.warnings.join('\n')).toContain("this render callback's BLOCK body")
     }
     expect(swift(src).code).toContain('UserData(children: { _ in EmptyView() })')
   })
@@ -232,10 +234,13 @@ export function App() { return <UserData children={pick()} /> }`
     }
   })
 
-  it('Swift: an OPTIONAL render prop (Kotlin keeps it optional)', () => {
+  it('an OPTIONAL render prop lowers on both targets', () => {
     const src = `function Opt(props: { render?: (n: number) => VNodeChild }) { return <Stack>{props.render?.(1)}</Stack> }
 export function App() { return <Opt render={(n) => <Text>{n}</Text>} /> }`
-    expect(swift(src).warnings.join('\n')).toContain('the render prop `render` is OPTIONAL')
+    const sw = swift(src)
+    expect(sw.warnings).toEqual([])
+    expect(sw.code).toContain('  let render: ((Int) -> RenderContent)?')
+    expect(sw.code).toContain('render?(1)')
     const kt = kotlin(src)
     expect(kt.warnings).toEqual([])
     expect(kt.code).toContain('render: (@Composable (Long) -> Unit)? = null')
@@ -270,11 +275,11 @@ export function App() { const s = signal(1); return () => (s() > 0 ? <Text>a</Te
     expect(swift(src).code).toContain('if s > 0 {')
   })
 
-  it('a BLOCK-bodied accessor is named, not emitted as a closure', () => {
+  it('a BLOCK-bodied accessor a view builder cannot take is named, not emitted as a closure', () => {
     const src = `import { signal } from '@pyreon/reactivity'
-export function App() { const s = signal(1); return () => { const t = s() + 1; return <Text>{t}</Text> } }`
+export function App() { const s = signal(1); return () => { let t = s(); t = t + 1; return <Text>{t}</Text> } }`
     const out = swift(src)
-    expect(out.warnings.join('\n')).toContain('returns a reactive accessor with a BLOCK body')
+    expect(out.warnings.join('\n')).toContain('returns a reactive accessor whose BLOCK body')
     expect(out.code).toContain('EmptyView()')
   })
 })
