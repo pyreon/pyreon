@@ -2009,6 +2009,43 @@ function arrowReturnedCall(arrow: AnyNode | undefined): AnyNode | undefined {
   return body?.type === 'CallExpression' ? body : undefined
 }
 
+/** An arrow / function expression node. */
+function isFunctionNode(n: AnyNode | undefined): boolean {
+  return n?.type === 'ArrowFunctionExpression' || n?.type === 'FunctionExpression'
+}
+
+/** The expression a zero-arg accessor returns — concise body or a lone `return`. */
+function arrowExprBody(arrow: AnyNode | undefined): AnyNode | undefined {
+  if (!isFunctionNode(arrow) || ((arrow!.params as AnyNode[] | undefined)?.length ?? 0) > 0) return undefined
+  const body = arrow!.body as AnyNode | undefined
+  if (body?.type !== 'BlockStatement') return body
+  const stmts = (body.body as AnyNode[] | undefined) ?? []
+  return stmts.length === 1 && stmts[0]?.type === 'ReturnStatement' ? (stmts[0].argument as AnyNode | undefined) : undefined
+}
+
+/** Does `name` appear as an identifier anywhere under `node`? (Conservative: shadowing counts as a use.) */
+function identifierReferenced(node: AnyNode | undefined, name: string): boolean {
+  let found = false
+  const visit = (n: unknown): void => {
+    if (found || n === null || typeof n !== 'object') return
+    if (Array.isArray(n)) {
+      for (const x of n) visit(x)
+      return
+    }
+    const a = n as AnyNode
+    if (a.type === 'Identifier' && a.name === name) {
+      found = true
+      return
+    }
+    for (const key of Object.keys(a)) {
+      if (key === 'parent' || key === 'loc' || key === 'range') continue
+      visit((a as Record<string, unknown>)[key])
+    }
+  }
+  visit(node)
+  return found
+}
+
 /** `useStream(<arrow>)`'s source call — the opener call its arrow returns. */
 function streamSourceCall(arrow: AnyNode | undefined): AnyNode | undefined {
   return arrowReturnedCall(arrow)
@@ -8891,10 +8928,19 @@ function tryUseStreamDecl(init: AnyNode, name: string, ctx: ParseCtx): DeclIR | 
   // stream media type this way). The spread is the runtime's job; the literal
   // props lower, and `accept` becomes the stream's Accept.
   let accept: string | undefined
+  // A RUNTIME `json` body — the common POST-stream shape (`json: { prompt:
+  // prompt() }`). The endpoint resolver only bakes a LITERAL body (and sends
+  // none otherwise), so it is taken out here and serialized per run through
+  // the `JSON.stringify` lowering instead.
+  let requestBodyExpr: ExprIR | undefined
   const kept = ((epArg?.properties as AnyNode[] | undefined) ?? []).flatMap((p): AnyNode[] => {
     const k = propName(p)
     if (k === 'signal') return []
     const v = p.value as AnyNode | undefined
+    if (k === 'json' && v !== undefined && !isNullishLiteral(v) && readJsonLiteral(v) === undefined) {
+      requestBodyExpr = { kind: 'json-stringify', arg: parseExpr(v, ctx) }
+      return []
+    }
     if (k === 'headers' && isMemberRead(v, cParam, 'headers')) return []
     if (k === 'headers' && v?.type === 'ObjectExpression') {
       const props = (v.properties as AnyNode[] | undefined) ?? []
@@ -8915,6 +8961,12 @@ function tryUseStreamDecl(init: AnyNode, name: string, ctx: ParseCtx): DeclIR | 
   const filtered = epArg !== undefined ? ({ ...epArg, properties: kept } as AnyNode) : undefined
   const resolved = resolveEndpointParts(epName, filtered, ctx, true, true)
   if (!resolved) return null
+  let reqHeaders = resolved.headers
+  if (requestBodyExpr !== undefined && !Object.keys(reqHeaders ?? {}).some((k) => k.toLowerCase() === 'content-type')) {
+    // The web's `json` sets this unless the caller declared one (see the
+    // literal-body branch of the endpoint resolver).
+    reqHeaders = { ...(reqHeaders ?? {}), 'content-type': 'application/json' }
+  }
 
   let sseText = false
   let events: string[] | undefined
@@ -8996,15 +9048,46 @@ function tryUseStreamDecl(init: AnyNode, name: string, ctx: ParseCtx): DeclIR | 
   }
 
   let maxEvents = 1000
+  let enabled: ExprIR | undefined
+  let onEventNode: AnyNode | undefined
   const hookOpts = init.arguments?.[1] as AnyNode | undefined
   if (hookOpts !== undefined) {
     if (hookOpts.type !== 'ObjectExpression') return bail('needs its options to be an object literal.')
     for (const p of (hookOpts.properties as AnyNode[] | undefined) ?? []) {
       const k = propName(p)
-      const v = literalScalar(p.value as AnyNode | undefined)
+      const node = unwrapTypeLayers(p.value as AnyNode | undefined)
+      const v = literalScalar(node)
       if (k === 'maxEvents' && typeof v === 'number') maxEvents = v
-      else if (k === 'enabled' || k === 'onEvent') {
-        return bail(`option \`${k}\` has no native lowering, and dropping it would change what the stream does.`)
+      else if (k === 'enabled') {
+        // `enabled: true | false | () => expr | expr` — the web reads it
+        // TRACKED on every run (`typeof enabled === 'function' ? enabled() :
+        // enabled`), so the accessor's BODY is the value, and a literal
+        // `true` is the default.
+        if (v === true) continue
+        if (v === false) {
+          enabled = { kind: 'literal', value: false }
+          continue
+        }
+        const expr = arrowExprBody(node) ?? (isFunctionNode(node) ? undefined : node)
+        if (expr === undefined) {
+          return bail('needs `enabled` to be a boolean, an expression, or an accessor returning one (`() => ready()`).')
+        }
+        enabled = parseExpr(expr, ctx)
+      } else if (k === 'onEvent') {
+        if (!isFunctionNode(node)) {
+          return bail('needs `onEvent` to be an inline function — `(event) => { … }` — to lower as the per-event callback.')
+        }
+        const params = (node!.params as AnyNode[] | undefined) ?? []
+        const second = params[1]?.type === 'Identifier' ? (params[1].name as string) : undefined
+        if (params.length > 2 || (params[1] !== undefined && second === undefined)) {
+          return bail('`onEvent` takes `(event, queryClient)` — no other shape lowers.')
+        }
+        if (second !== undefined && identifierReferenced(node!.body as AnyNode, second)) {
+          return bail(
+            `\`onEvent\` uses its second argument (\`${second}\`, the QueryClient) — native queries are self-contained PyreonQuery containers with no shared client to write into, so this callback cannot mean the same thing there.`,
+          )
+        }
+        onEventNode = node
       } else {
         ignored(`option \`${k ?? '…'}\``, 'not part of the lowered stream surface')
       }
@@ -9037,6 +9120,18 @@ function tryUseStreamDecl(init: AnyNode, name: string, ctx: ParseCtx): DeclIR | 
     }
     dataType = itemType
   }
+  let onEvent: { param: string; body: StatementIR[] } | undefined
+  if (onEventNode !== undefined) {
+    const p0 = ((onEventNode.params as AnyNode[] | undefined) ?? [])[0]
+    const param = p0?.type === 'Identifier' ? (p0.name as string) : '_'
+    if (p0 !== undefined && p0.type !== 'Identifier') {
+      return bail('needs `onEvent`\'s event parameter to be a plain name — `(event) => …`.')
+    }
+    const body = onEventNode.body as AnyNode
+    const stmts: StatementIR[] =
+      body.type === 'BlockStatement' ? parseStatementBlock(body, ctx) : [{ kind: 'expr', expr: parseExpr(body, ctx) }]
+    onEvent = { param, body: stmts }
+  }
   return {
     kind: 'stream',
     name,
@@ -9047,9 +9142,12 @@ function tryUseStreamDecl(init: AnyNode, name: string, ctx: ParseCtx): DeclIR | 
     url: resolved.url,
     ...(resolved.urlExpr !== undefined ? { urlExpr: resolved.urlExpr } : {}),
     method: resolved.method,
-    ...(resolved.headers !== undefined ? { headers: resolved.headers } : {}),
+    ...(reqHeaders !== undefined ? { headers: reqHeaders } : {}),
     ...(accept !== undefined ? { accept } : {}),
     ...(resolved.body !== undefined ? { requestBody: resolved.body } : {}),
+    ...(requestBodyExpr !== undefined ? { requestBodyExpr } : {}),
+    ...(enabled !== undefined ? { enabled } : {}),
+    ...(onEvent !== undefined ? { onEvent } : {}),
     ...(events !== undefined ? { events } : {}),
     ...(lastEventId !== undefined ? { lastEventId } : {}),
     reconnect,

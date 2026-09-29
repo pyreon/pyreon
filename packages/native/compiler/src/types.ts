@@ -751,6 +751,21 @@ export type DeclIR =
       /** SSE reconnect policy; `null` = `reconnect: false` (always null for NDJSON). */
       reconnect: { attempts: number; delay: number; maxDelay: number; onEnd: boolean } | null
       maxEvents: number
+      /**
+       * A RUNTIME `json` body (`json: { prompt: prompt() }`) — serialized per
+       * run with the `JSON.stringify` lowering and part of the harness key, so
+       * a change re-opens the stream exactly as the web's tracked source does.
+       * Absent when the body is a literal (`requestBody`) or there is none.
+       */
+      requestBodyExpr?: ExprIR
+      /**
+       * `useStream(src, { enabled })` — the stream runs only while this is
+       * true. Part of the harness key; a false value stops the stream and
+       * reads `idle`, keeping the events received (the web's disabled branch).
+       */
+      enabled?: ExprIR
+      /** `useStream(src, { onEvent: (ev) => … })` — runs after each event lands. */
+      onEvent?: { param: string; body: StatementIR[] }
     }
   | { kind: 'websocket'; name: string; url: string }
   | { kind: 'database'; name: string }

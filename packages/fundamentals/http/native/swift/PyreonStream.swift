@@ -424,6 +424,18 @@ public final class PyreonStream<E> {
         restartTick += 1
     }
 
+    /// `enabled` turned false: stop the running stream and read `idle`,
+    /// keeping the events already received — the web hook's disabled branch
+    /// (`stop(); status.set('idle')`). A no-op after `abort()`, exactly as the
+    /// web effect returns before reading `enabled` once aborted.
+    public func idle() {
+        if aborted { return }
+        generation += 1
+        current?.cancel()
+        current = nil
+        status = "idle"
+    }
+
     // MARK: Connection loop
 
     /// Run an SSE stream until it closes, fails, or the calling task is cancelled.
@@ -433,6 +445,7 @@ public final class PyreonStream<E> {
         options: PyreonSseOptions = PyreonSseOptions(),
         accept: String = "text/event-stream",
         session: URLSession = .shared,
+        onEvent: ((E) -> Void)? = nil,
         decode: @escaping (PyreonSseMessage) throws -> E
     ) async {
         let allowed = options.events.map(Set.init)
@@ -444,6 +457,7 @@ public final class PyreonStream<E> {
                 policy: options.reconnect,
                 lastEventId: options.lastEventId,
                 session: session,
+                onEvent: onEvent,
                 onSse: { msg in
                     if let allowed, !allowed.contains(msg.type) { return nil }
                     return try decode(msg)
@@ -459,6 +473,7 @@ public final class PyreonStream<E> {
         _ request: PyreonStreamRequest,
         accept: String = "application/x-ndjson",
         session: URLSession = .shared,
+        onEvent: ((E) -> Void)? = nil,
         decode: @escaping (String) throws -> E
     ) async {
         await supervise { [self] in
@@ -469,6 +484,7 @@ public final class PyreonStream<E> {
                 policy: nil,
                 lastEventId: nil,
                 session: session,
+                onEvent: onEvent,
                 onSse: nil,
                 onLine: { line, text in
                     do { return try decode(text) } catch {
@@ -501,6 +517,7 @@ public final class PyreonStream<E> {
         policy: PyreonStreamReconnect?,
         lastEventId initialId: String?,
         session: URLSession,
+        onEvent: ((E) -> Void)?,
         onSse: ((PyreonSseMessage) throws -> E?)?,
         onLine: ((Int, String) throws -> E)?
     ) async {
@@ -550,8 +567,13 @@ public final class PyreonStream<E> {
                             guard let event = try onSse(msg) else { return }
                             failures = 0
                             self.push(event)
+                            // After the state write, like the web's
+                            // `options.onEvent?.(event, queryClient)`.
+                            onEvent?(event)
                         } else if let onLine, let hit = lines.line(line) {
-                            self.push(try onLine(hit.0, hit.1))
+                            let event = try onLine(hit.0, hit.1)
+                            self.push(event)
+                            onEvent?(event)
                         }
                     }
                     for try await byte in bytes {
