@@ -10,8 +10,7 @@
  * even express.
  */
 import { afterEach, describe, it } from 'vitest'
-import { state } from '@pyreon/core/plain'
-import { effect, __resetReactiveDevtoolsForTesting } from '@pyreon/reactivity'
+import { effect, signal, __resetReactiveDevtoolsForTesting } from '@pyreon/reactivity'
 import { expectEffect, expectSignal } from '@pyreon/testing'
 import { useCounter } from '../demos/StoreDemo'
 
@@ -34,7 +33,7 @@ describe('StoreDemo reactivity — @pyreon/testing reactive matchers', () => {
 
   it('an effect tracking `count` re-runs on increment but NOT on an unrelated write', () => {
     const { store } = useCounter()
-    let unrelated = state(0)
+    const unrelated = signal(0)
 
     const e = effect(() => {
       store.count()
@@ -44,7 +43,7 @@ describe('StoreDemo reactivity — @pyreon/testing reactive matchers', () => {
     expectEffect(e).toReRunWhen(() => store.increment())
     // … and — the fine-grained guarantee — NOT when something unrelated changes.
     // A whole-component re-render model cannot assert this.
-    expectEffect(e).notToReRunWhen(() => { unrelated = 99 })
+    expectEffect(e).notToReRunWhen(() => unrelated.set(99))
 
     e.dispose()
   })

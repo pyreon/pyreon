@@ -120,3 +120,24 @@ describe('--write', () => {
     expect(readFileSync(p, 'utf8')).toBe(once)
   })
 })
+
+describe('test files', () => {
+  it('are skipped by default when walking — and counted', async () => {
+    write('src/store.ts', CLASSIC)
+    const t = write('src/tests/store.test.ts', CLASSIC)
+    const code = await plain(opts({ json: true, write: true }))
+    expect(code).toBe(0)
+    const parsed = JSON.parse(logs.join('\n')) as { summary: Record<string, number> }
+    expect(parsed.summary.skippedTests).toBe(1)
+    expect(readFileSync(t, 'utf8')).toBe(CLASSIC) // never rewritten
+  })
+
+  it('are converted with --include-tests, or when named explicitly', async () => {
+    const t = write('src/a.spec.ts', CLASSIC)
+    await plain(opts({ write: true, includeTests: true }))
+    expect(readFileSync(t, 'utf8')).toContain('state(0)')
+    const u = write('src/b.test.ts', CLASSIC)
+    await plain(opts({ write: true, paths: [u] }))
+    expect(readFileSync(u, 'utf8')).toContain('state(0)')
+  })
+})

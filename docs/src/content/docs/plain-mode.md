@@ -147,6 +147,12 @@ pyreon plain            # per-file readiness: converts fully / partial / decline
 pyreon plain --write    # apply the classic → plain codemod in place
 ```
 
+Test and spec files are **skipped by default**: Plain Mode only works in files
+the Pyreon compiler processes, and test runners are often configured without
+the `pyreon()` plugin, where a converted test would throw the markers'
+"did not compile" error. Pass `--include-tests` when your test runner uses the
+plugin; a test file named explicitly on the command line is always included.
+
 Safety is per-binding: a binding converts only when **every** reference has a
 plain form, and the output always compiles back to the original classic code.
 
