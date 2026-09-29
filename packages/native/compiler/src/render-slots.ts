@@ -400,7 +400,18 @@ export function narrowViewBlock(b: ViewBlock, subject: ExprIR, binder: string): 
   return go(b)
 }
 
-/** The named warning for a block-bodied render callback that has no view-builder shape. Same text on both targets. */
+/** The named warning for a `<For>` row callback whose BLOCK body has no view-builder shape. Same text on both targets. */
+export function forBlockBodyWarning(): string {
+  return (
+    `<For>: this row callback's BLOCK body (\`(x) => { …; return <…/> }\`) is not lowered to native. A block body ` +
+    `lowers only when it is \`const\` declarations, early \`if (…) return …\` branches and a final \`return\` — ` +
+    `this one has something else (an assignment, a loop, a mutable local, an expression statement, or an \`if\` ` +
+    `that falls through). An empty row is emitted in its place. Move that work into a \`computed\`, or render ` +
+    `the row through a component.`
+  )
+}
+
+/** The named warning for a block-bodied render callback. Same text on both targets. */
 export function blockBodiedRenderCallbackWarning(where: string): string {
   return (
     `${where}: this render callback's BLOCK body (\`(x) => { …; return <…/> }\`) is not lowered to native. ` +

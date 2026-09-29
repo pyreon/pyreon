@@ -27,6 +27,17 @@ import {
   flowRectLiteralFields,
   NODE_RESIZER_FOREIGN_NODE_WARNING,
   nodeResizerTargetsAnotherNode,
+  classifyFlowPathMember,
+  unloweredFlowLiteralWarning,
+  unsupportedFlowOptionsWarning,
+  flowLayoutOptionsDroppedWarning,
+  FLOW_LAYOUT_OPTION_KEYS,
+  droppedNodeToolbarWarning,
+  addEdgeDropWarnings,
+  FLOW_MARKER_LITERAL_SHAPE,
+  droppedFlowEdgePatchWarning,
+  unifyFlowDataRows,
+  flowDataConflictWarning,
 } from './flow-lowering'
 import { planFlowSvg, type FlowSvgNumber } from './flow-svg'
 import { lowerFlowPlainElement } from './flow-dom'
@@ -56,6 +67,7 @@ import {
   explainUntypeableField,
   synthLiteralStructName,
   synthTypedStructName,
+  namedInlineParamType,
   isNumericLiteralOrNegation,
   classifyDynamicStylingAttr,
   classifySortableRef,
@@ -141,6 +153,7 @@ import {
   isRenderArrow,
   isViewShaped,
   moduleViewHelpers,
+  forBlockBodyWarning,
   narrowViewBlock,
   optionalSlotSwiftWarning,
   planViewBlock,
@@ -164,6 +177,7 @@ import {
   structuralPropDynamicWarning,
   unloweredPropWarning,
 } from './unlowered-props'
+import { ignoredTrailingArgs, methodReceiverKind, type MethodReceiver, uncoveredMethodShapeWarning } from './method-shapes'
 import type {
   AttrIR,
   ChildIR,
@@ -326,8 +340,18 @@ type StaticFlowNodeToolbar = {
   contentComponent: string
 }
 let _flowComponentToolbars: Map<string, StaticFlowNodeToolbar[]> = new Map()
+/**
+ * The exact `<NodeToolbar>` elements the up-front extraction lowered. The
+ * element emitter decides per TOOLBAR, not per component: a node component
+ * with one static toolbar and one inside a conditional lowers the first and
+ * must still name the second as dropped. Keyed by IR node (one transform's
+ * lifetime), so a WeakSet — nothing to reset or evict.
+ */
+const _extractedFlowToolbars: WeakSet<ExprIR> = new WeakSet()
 /** Components a `<Flow>` in this file renders nodes/edges/the connection line with; `<svg>` lowers only inside these. */
 let _flowRendererComponents: Set<string> = new Set()
+/** The `<Flow nodeTypes>` renderers only (a `<NodeToolbar>` lowers nowhere else). */
+let _flowNodeRendererComponents: Set<string> = new Set()
 let _flowComponentsWithInvalidToolbars: Set<string> = new Set()
 let _activeComponentName = ''
 
@@ -945,6 +969,86 @@ function numericFloatness(e: ExprIR): 'double' | 'int' | 'other' {
   return t.float === true ? 'double' : 'int'
 }
 
+/**
+ * The positioned-search forms of a JS method — `indexOf` / `includes` with a
+ * `fromIndex`, `startsWith` with a `position`, `endsWith` with an
+ * `endPosition`, and `split` with a `limit` — as an immediately-applied
+ * closure, so the receiver and the position are each evaluated ONCE and the
+ * JS clamping rules can be spelled out:
+ *
+ *   - an ARRAY `fromIndex` counts from the end when negative, clamped to 0;
+ *   - a STRING position is clamped to `[0, length]` (JS ToIntegerOrInfinity +
+ *     clamp), so a negative one searches from the start;
+ *   - a negative `split` limit means "no limit" (JS ToUint32 wraps it).
+ *
+ * The searched-for value is emitted inline, in its native call, so it keeps
+ * the contextual typing the 1-argument forms rely on (`firstIndex(of: 1)` on a
+ * `[Double]`). Null — the caller names the shape — when the receiver is
+ * optional (the closure would bind an optional) or of an unknown kind.
+ */
+function swiftPositionedSearch(
+  method: 'indexOf' | 'includes' | 'startsWith' | 'endsWith' | 'split',
+  recvKind: MethodReceiver | undefined,
+  e: Extract<ExprIR, { kind: 'call' }>,
+  argExprs: readonly string[],
+): string | null {
+  if (e.callee.kind !== 'member' || e.callee.optional === true) return null
+  if (recvKind !== 'array' && recvKind !== 'string') return null
+  if (typeIsOptional(inferType(e.callee.object, _activeInferCtx))) return null
+  const obj = emitSwiftExpr(e.callee.object, 0)
+  const x = argExprs[0]!
+  const posArg = e.args[1]!
+  const pos = isFloatTypeIR(inferType(posArg, _activeInferCtx)) ? `Int(${argExprs[1]!})` : argExprs[1]!
+  if (recvKind === 'array') {
+    if (method !== 'indexOf' && method !== 'includes') return null
+    const found = method === 'indexOf' ? `__pyRecv[__pyFrom...].firstIndex(of: ${x}) ?? -1` : `__pyRecv[__pyFrom...].contains(${x})`
+    return (
+      `{ () -> ${method === 'indexOf' ? 'Int' : 'Bool'} in let __pyRecv = ${obj}; let __pyPos = ${pos}; ` +
+      `let __pyFrom = __pyPos < 0 ? max(0, __pyRecv.count + __pyPos) : min(__pyPos, __pyRecv.count); return ${found} }()`
+    )
+  }
+  switch (method) {
+    case 'indexOf':
+      return (
+        `{ () -> Int in let __pyRecv = ${obj}; let __pyFrom = min(max(0, ${pos}), __pyRecv.count); ` +
+        `return __pyRecv.range(of: ${x}, range: __pyRecv.index(__pyRecv.startIndex, offsetBy: __pyFrom)..<__pyRecv.endIndex)` +
+        `.map { __pyRecv.distance(from: __pyRecv.startIndex, to: $0.lowerBound) } ?? -1 }()`
+      )
+    case 'includes':
+      return (
+        `{ () -> Bool in let __pyRecv = ${obj}; let __pyFrom = min(max(0, ${pos}), __pyRecv.count); ` +
+        `return __pyRecv[__pyRecv.index(__pyRecv.startIndex, offsetBy: __pyFrom)...].contains(${x}) }()`
+      )
+    case 'startsWith':
+      return `{ () -> Bool in let __pyRecv = ${obj}; return __pyRecv.dropFirst(max(0, ${pos})).hasPrefix(${x}) }()`
+    case 'endsWith':
+      return `{ () -> Bool in let __pyRecv = ${obj}; return __pyRecv.prefix(max(0, ${pos})).hasSuffix(${x}) }()`
+    case 'split':
+      return (
+        `{ () -> [String] in let __pyParts = ${obj}.components(separatedBy: ${x}); let __pyLimit = ${pos}; ` +
+        `return __pyLimit < 0 ? __pyParts : Array(__pyParts.prefix(__pyLimit)) }()`
+      )
+  }
+}
+
+/**
+ * A helper function's PARAMETER type: an inline object shape names the struct
+ * its call-site literal resolves to (see `namedInlineParamType`) instead of the
+ * context-free tuple `swiftType` falls back to.
+ */
+function swiftParamType(t: TypeIR): string {
+  return swiftType(
+    namedInlineParamType(
+      t,
+      (fields) =>
+        _structTypedKeyToName.get(structShapeKey(fields)) ??
+        _structFieldsToName.get(fields.map((f) => f.name).sort().join(',')),
+      _synthExprStructs,
+      _synthExprStructKeys,
+    ),
+  )
+}
+
 /** number+float OR the source-spelled `Double`/`Float` alias typeRef. */
 function isFloatTypeIR(t: TypeIR): boolean {
   return (
@@ -1272,6 +1376,7 @@ export function emitSwift(
     if (!md.mutable) _moduleConstExprs.set(md.name, md.initial)
   }
   _flowRendererComponents = collectFlowRendererComponents(components, (name) => _moduleConstExprs.get(name))
+  _flowNodeRendererComponents = collectFlowRendererComponents(components, (name) => _moduleConstExprs.get(name), 'nodeTypes')
   _enumNames = new Set(enums.map((e) => e.name))
   _structFieldsToName = new Map()
   _structTypedKeyToName = new Map()
@@ -1308,6 +1413,7 @@ export function emitSwift(
     if (resizer.invalid) _flowComponentsWithInvalidResizers.add(component.name)
     if (resizer.foreignNodeId) _flowComponentsWithForeignResizer.add(component.name)
     const toolbars = collectStaticFlowNodeToolbars(component.returnExpr)
+    for (const toolbar of toolbars) _extractedFlowToolbars.add(toolbar)
     if (toolbars.length > 0) {
       const parsedToolbars: StaticFlowNodeToolbar[] = []
       for (const [toolbarIndex, toolbar] of toolbars.entries()) {
@@ -4455,15 +4561,10 @@ function emitSwiftDecl(
       }
     }
     if (d.dataType === undefined && dataRows.length > 0) {
-      const allNames = [...new Set(dataRows.flatMap((fields) => fields.map((field) => field.name)))]
-      const heterogeneous = dataRows.some((fields) => fields.length !== allNames.length || allNames.some((name) => !fields.some((field) => field.name === name)))
+      // Unify by field NAMES and TYPES (see unifyFlowDataRows).
+      const { heterogeneous, fields, conflicts } = unifyFlowDataRows(dataRows, (value) => inferType(value, _activeInferCtx))
+      if (conflicts.length > 0) _emitWarnings.push(flowDataConflictWarning(d.name, conflicts, (t) => swiftType(t)))
       if (heterogeneous) {
-        const fields = allNames.map((name) => {
-          const values = dataRows.flatMap((row) => row.find((field) => field.name === name)?.value ?? [])
-          const distinct = [...new Map(values.map((value) => { const type = inferType(value, _activeInferCtx); return [JSON.stringify(type), type] })).values()]
-          const base: TypeIR = distinct.length === 1 ? distinct[0]! : { kind: 'union', branches: distinct }
-          return { name, type: values.length < dataRows.length ? { kind: 'union', branches: [base, { kind: 'undefined' }] } as TypeIR : base }
-        })
         const name = `__Obj${_synthExprStructs.length}`
         _synthExprStructs.push({ name, fields })
         inferredRowType = { kind: 'typeRef', name, args: [] }
@@ -4797,6 +4898,7 @@ function swiftFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
   const markerEndExpr = field('markerEnd')
   const waypointsExpr = field('waypoints')
   const dataExpr = field('data')
+  _emitWarnings.push(...addEdgeDropWarnings(flowName, { pathOptions: pathOptionsExpr, markerStart: markerStartExpr, markerEnd: markerEndExpr }, (m) => swiftFlowMarkerLiteral(m) !== null))
   const portableData = dataExpr ? swiftFlowData(dataExpr) : null
   if (dataExpr && portableData === null) _emitWarnings.push(`createFlow binding \`${flowName}\` addEdge(...): edge \`data\` must be a static JSON-compatible object to lower natively.`)
   const leadingFields = ['sourceHandle', 'targetHandle'] as const
@@ -4867,9 +4969,18 @@ function swiftFlowConnectionLiteral(arg: ExprIR): string | null {
   return `PyreonFlowConnection(source: ${emitSwiftExpr(source, 0)}, target: ${emitSwiftExpr(target, 0)}${sourceHandle ? `, sourceHandle: ${emitSwiftExpr(sourceHandle, 0)}` : ''}${targetHandle ? `, targetHandle: ${emitSwiftExpr(targetHandle, 0)}` : ''})`
 }
 
-function swiftFlowViewportLiteral(arg: ExprIR): string | null {
+const FLOW_VIEWPORT_KEYS: readonly string[] = ['x', 'y', 'zoom', 'duration']
+const FLOW_SET_CENTER_KEYS: readonly string[] = ['zoom', 'duration']
+
+/**
+ * `setViewport` takes `{ x, y, zoom, duration }`; `setCenter(x, y, opts)` takes
+ * only `{ zoom, duration }` (its position is the first two arguments, and the
+ * native init has no `x`/`y` labels there), so the accepted keys are the
+ * caller's.
+ */
+function swiftFlowViewportLiteral(arg: ExprIR, keys: readonly string[] = FLOW_VIEWPORT_KEYS): string | null {
   if (arg.kind !== 'object') return null
-  const allowed = new Set(['x', 'y', 'zoom', 'duration'])
+  const allowed = new Set(keys)
   if (arg.fields.some((field) => !allowed.has(field.name))) return null
   return arg.fields.map((field) => `${field.name}: ${emitSwiftExpr(field.value, 0)}`).join(', ')
 }
@@ -5148,7 +5259,7 @@ function emitSwiftStmtLines(stmts: readonly StatementIR[], indent: number): stri
  * generic `(Row) -> Content` as well.
  */
 function emitSwiftViewHelper(h: ViewHelper, visibility: 'private' | 'internal', indent: number): string {
-  const params = h.params.map((p) => `_ ${swiftIdent(p.name)}: ${swiftType(p.type)}`).join(', ')
+  const params = h.params.map((p) => `_ ${swiftIdent(p.name)}: ${swiftParamType(p.type)}`).join(', ')
   const vis = visibility === 'private' ? 'private ' : ''
   const body = withSwiftLocals(
     h.params.map((p) => [p.name, p.type] as const),
@@ -5382,7 +5493,7 @@ function emitSwiftFunction(
   const params = d.params
     .map((p) => {
       const dflt = p.defaultValue !== undefined ? ` = ${emitSwiftExpr(p.defaultValue, 0)}` : ''
-      return `_ ${swiftIdent(p.name)}: ${swiftType(p.type)}${dflt}`
+      return `_ ${swiftIdent(p.name)}: ${swiftParamType(p.type)}${dflt}`
     })
     .join(', ')
   // Render return-type clause. If the declared type is `unknown`, INFER it
@@ -7017,10 +7128,12 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           const ids = isNilArg(first) ? 'nil' : emitSwiftExpr(first, indent)
           const duration = swiftFlowDurationOption(e.args[2])
           if (duration !== null) return `${swiftIdent(flowName)}.fitView(${ids}${e.args[1] ? `, padding: ${emitSwiftExpr(e.args[1]!, indent)}` : ''}${duration ? `, duration: ${duration}` : ''})`
+          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'fitView', ['duration'], e.args[2]!))
         }
         if (member === 'paste' && e.args.length === 1) {
           const lit = swiftFlowPositionLiteral(resolveSwiftStaticFlowValue(e.args[0]!))
           if (lit !== null) return `${swiftIdent(flowName)}.paste(${lit})`
+          if (resolveSwiftStaticFlowValue(e.args[0]!).kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 1`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
         }
         if (member === 'addNode' && e.args.length === 1) {
           const lit = swiftFlowNodeLiteral(resolveSwiftStaticFlowValue(e.args[0]!), flowName)
@@ -7035,6 +7148,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           if (lit !== null) {
             return `${swiftIdent(e.callee.object.name)}.updateNodePosition(${emitSwiftExpr(e.args[0]!, indent)}, ${lit})`
           }
+          if (resolveSwiftStaticFlowValue(e.args[1]!).kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(e.callee.object.name, '`updateNodePosition(...)` argument 2', 'a `{ x, y }` literal with both coordinates', 'emitted'))
         }
         if (member === 'updateNodeData' && e.args.length === 2 && flowPatchArg?.kind === 'object') {
           const patch = flowPatchArg
@@ -7057,9 +7171,22 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             warnDroppedFlowFields(`createFlow binding \`${flowName}\` updateNode(...)`, 'node', patch)
             const statements = patch.fields.flatMap(({ name, value }) => {
               if (name === 'id') { _emitWarnings.push(`createFlow binding \`${flowName}\` updateNode(...): changing a node id is not supported natively; the original id is preserved.`); return [] }
-              if (name === 'position') { const position = swiftFlowPositionLiteral(value); return position ? [`node.position = ${position}`] : [] }
+              // A literal lowers to the native constructor; a NON-literal value
+              // passes through as written (the addNode rule). Only a literal of
+              // the right kind but the wrong shape is dropped — and named.
+              if (name === 'position') {
+                const position = swiftFlowPositionLiteral(value)
+                if (position) return [`node.position = ${position}`]
+                if (value.kind === 'object') { _emitWarnings.push(unloweredFlowLiteralWarning(flowName, 'updateNode(...) field `position`', 'a `{ x, y }` literal with both coordinates')); return [] }
+                return [`node.position = ${emitSwiftExpr(value, indent)}`]
+              }
               if (name === 'data' && value.kind === 'object') return value.fields.map((field) => `node.data.${swiftIdent(field.name)} = ${emitSwiftExpr(field.value, indent)}`)
-              if ((name === 'sourceHandles' || name === 'targetHandles')) { const handles = swiftFlowHandlesLiteral(value); return handles ? [`node.${name} = ${handles}`] : [] }
+              if ((name === 'sourceHandles' || name === 'targetHandles')) {
+                const handles = swiftFlowHandlesLiteral(value)
+                if (handles) return [`node.${name} = ${handles}`]
+                if (value.kind === 'array') { _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `updateNode(...) field \`${name}\``, "an array of `{ type, position }` literals (a string `type`, a literal side, an optional string `id`)")); return [] }
+                return [`node.${name} = ${emitSwiftExpr(value, indent)}`]
+              }
               if (name === 'extent') {
                 const extent = swiftFlowNodeExtentArgs(value)
                 if (!extent) _emitWarnings.push(`createFlow binding \`${flowName}\` updateNode(...): node field \`extent\` must be \`'parent'\` or a static [[minX, minY], [maxX, maxY]] tuple on native targets.`)
@@ -7077,10 +7204,20 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             warnDroppedFlowFields(`createFlow binding \`${flowName}\` updateEdge(...)`, 'edge', patch)
             const statements = patch.fields.flatMap(({ name, value }) => {
               if (name === 'id') { _emitWarnings.push(`createFlow binding \`${flowName}\` updateEdge(...): changing an edge id is not supported natively; the original id is preserved.`); return [] }
-              if (name === 'pathOptions' && value.kind === 'object') return value.fields.flatMap((field) => ['curvature', 'borderRadius', 'offset'].includes(field.name) ? [`edge.${field.name === 'offset' ? 'pathOffset' : field.name} = ${emitSwiftExpr(field.value, indent)}`] : [])
-              if (name === 'markerStart' || name === 'markerEnd') { const marker = swiftFlowMarkerLiteral(value); return marker ? [`edge.${name} = ${marker}`, ...(name === 'markerEnd' ? ['edge.markerEndSpecified = true'] : [])] : [] }
+              if (name === 'pathOptions') {
+                if (value.kind !== 'object' || (value.spreads?.length ?? 0) > 0) { _emitWarnings.push(droppedFlowEdgePatchWarning(flowName, 'pathOptions', 'an inline object literal')); return [] }
+                const unknown = value.fields.filter((field) => !['curvature', 'borderRadius', 'offset'].includes(field.name)).map((field) => field.name)
+                if (unknown.length > 0) _emitWarnings.push(droppedFlowEdgePatchWarning(flowName, `pathOptions.${unknown.join('/')}`, 'one of `curvature`, `borderRadius`, `offset`'))
+                return value.fields.flatMap((field) => ['curvature', 'borderRadius', 'offset'].includes(field.name) ? [`edge.${field.name === 'offset' ? 'pathOffset' : field.name} = ${emitSwiftExpr(field.value, indent)}`] : [])
+              }
+              if (name === 'markerStart' || name === 'markerEnd') { const marker = swiftFlowMarkerLiteral(value); return marker ? [`edge.${name} = ${marker}`, ...(name === 'markerEnd' ? ['edge.markerEndSpecified = true'] : [])] : (_emitWarnings.push(droppedFlowEdgePatchWarning(flowName, name, FLOW_MARKER_LITERAL_SHAPE)), []) }
               if (name === 'animated') return [`edge.animated = ${emitSwiftExpr(value, indent)}`, 'edge.animatedSpecified = true']
-              if (name === 'waypoints') { const points = swiftFlowPositionsLiteral(value); return points ? [`edge.waypoints = ${points}`] : [] }
+              if (name === 'waypoints') {
+                const points = swiftFlowPositionsLiteral(value)
+                if (points) return [`edge.waypoints = ${points}`]
+                if (value.kind === 'array') { _emitWarnings.push(unloweredFlowLiteralWarning(flowName, 'updateEdge(...) field `waypoints`', 'an array of `{ x, y }` literals, each with both coordinates')); return [] }
+                return [`edge.waypoints = ${emitSwiftExpr(value, indent)}`]
+              }
               if (name === 'data') { const data = swiftFlowData(value); if (!data) _emitWarnings.push(`createFlow binding \`${flowName}\` updateEdge(...): edge \`data\` must be a static JSON-compatible object to lower natively.`); return data ? [`edge.data = ${data}`] : [] }
               if (name === 'class') return [`edge.className = ${emitSwiftExpr(value, indent)}`]
               return HANDLED_FLOW_EDGE_FIELDS.has(name) ? [`edge.${swiftIdent(name)} = ${emitSwiftExpr(value, indent)}`] : []
@@ -7104,30 +7241,37 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (['panTo', 'screenToFlowPosition', 'flowToScreenPosition'].includes(member) && e.args.length === 1) {
           const lit = swiftFlowPositionLiteral(e.args[0]!)
           if (lit !== null) return `${swiftIdent(flowName)}.${member}(${lit})`
+          if (e.args[0]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 1`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
         }
         if (member === 'zoomTo' && e.args.length >= 1) {
           const duration = swiftFlowDurationOption(e.args[1])
           if (duration !== null) return `${swiftIdent(flowName)}.zoomTo(${emitSwiftExpr(e.args[0]!, indent)}${duration ? `, duration: ${duration}` : ''})`
+          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'zoomTo', ['duration'], e.args[1]!))
         }
         if ((member === 'zoomIn' || member === 'zoomOut') && e.args.length <= 1) {
           const duration = swiftFlowDurationOption(e.args[0])
           if (duration !== null) return `${swiftIdent(flowName)}.${member}(${duration ? `duration: ${duration}` : ''})`
+          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, member, ['duration'], e.args[0]!))
         }
         if (member === 'addEdgeWaypoint' && e.args.length >= 2) {
           const point = swiftFlowPositionLiteral(e.args[1]!)
           if (point !== null) return `${swiftIdent(flowName)}.addEdgeWaypoint(${emitSwiftExpr(e.args[0]!, indent)}, ${point}${e.args.length === 3 ? `, ${emitSwiftExpr(e.args[2]!, indent)}` : ''})`
+          if (e.args[1]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 2`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
         }
         if (member === 'updateEdgeWaypoint' && e.args.length === 3) {
           const point = swiftFlowPositionLiteral(e.args[2]!)
           if (point !== null) return `${swiftIdent(flowName)}.updateEdgeWaypoint(${emitSwiftExpr(e.args[0]!, indent)}, ${emitSwiftExpr(e.args[1]!, indent)}, ${point})`
+          if (e.args[2]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 3`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
         }
         if (member === 'reconnectEdge' && e.args.length === 2) {
           const args = swiftFlowReconnectLiteral(e.args[1]!)
           if (args !== null) return `${swiftIdent(flowName)}.reconnectEdge(${emitSwiftExpr(e.args[0]!, indent)}${args})`
+          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'reconnectEdge', ['source', 'target', 'sourceHandle', 'targetHandle'], e.args[1]!))
         }
         if (member === 'isValidConnection' && e.args.length === 1) {
           const connection = swiftFlowConnectionLiteral(e.args[0]!)
           if (connection !== null) return `${swiftIdent(flowName)}.isValidConnection(${connection})`
+          if (e.args[0]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 1`, 'a `{ source, target }` literal (with optional `sourceHandle` / `targetHandle`)', 'emitted'))
         }
         if ((member === 'addNodes' || member === 'setNodes') && e.args.length === 1) {
           const nodes = swiftFlowNodeListLiteral(resolveSwiftStaticFlowValue(e.args[0]!), flowName)
@@ -7141,10 +7285,13 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           const args = swiftFlowViewportLiteral(resolveSwiftStaticFlowValue(e.args[0]!))
           const duration = swiftFlowDurationOption(e.args[1])
           if (args !== null && duration !== null) return `${swiftIdent(flowName)}.setViewport(${args}${duration ? `${args ? ', ' : ''}duration: ${duration}` : ''})`
+          if (args === null) _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'setViewport', ['x', 'y', 'zoom', 'duration'], resolveSwiftStaticFlowValue(e.args[0]!)))
+          if (duration === null) _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'setViewport', ['duration'], e.args[1]!))
         }
         if (member === 'animateViewport' && e.args.length >= 1) {
           const args = swiftFlowViewportLiteral(e.args[0]!)
           if (args !== null) return `${swiftIdent(flowName)}.animateViewport(${args}${e.args[1] ? `, duration: ${emitSwiftExpr(e.args[1]!, indent)}` : ''})`
+          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'animateViewport', ['x', 'y', 'zoom'], e.args[0]!))
         }
         if (member === 'layout') {
           if (e.args.length === 0) return `${swiftIdent(flowName)}.layout()`
@@ -7152,16 +7299,21 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           if (e.args.length === 1) return `${swiftIdent(flowName)}.layout(${algorithm})`
           const options = e.args[1]!
           if (options.kind === 'object' && (!options.spreads || options.spreads.length === 0)) {
+            const dropped: string[] = []
             const fields = options.fields.flatMap(({ name, value }) => {
               if (name === 'direction' || name === 'nodeSpacing' || name === 'layerSpacing' || name === 'animate' || name === 'animationDuration') return [`${name}: ${emitSwiftExpr(value, indent)}`]
+              dropped.push(name)
               return []
             })
+            if (dropped.length > 0) _emitWarnings.push(flowLayoutOptionsDroppedWarning(flowName, dropped))
             return `${swiftIdent(flowName)}.layout(${algorithm}, options: PyreonFlowLayoutOptions(${fields.join(', ')}))`
           }
+          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'layout', FLOW_LAYOUT_OPTION_KEYS, options))
         }
         if (member === 'setCenter' && e.args.length >= 2) {
-          const options = e.args[2] ? swiftFlowViewportLiteral(e.args[2]!) : ''
+          const options = e.args[2] ? swiftFlowViewportLiteral(e.args[2]!, FLOW_SET_CENTER_KEYS) : ''
           if (options !== null) return `${swiftIdent(flowName)}.setCenter(${emitSwiftExpr(e.args[0]!, indent)}, ${emitSwiftExpr(e.args[1]!, indent)}${options ? `, ${options}` : ''})`
+          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'setCenter', FLOW_SET_CENTER_KEYS, e.args[2]!))
         }
         if (member === 'setNodeExtent' && e.args.length === 1) {
           if (isNilArg(e.args[0]!)) return `${swiftIdent(flowName)}.clearNodeExtent()`
@@ -7171,10 +7323,12 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (member === 'clampToExtent' && e.args.length >= 1) {
           const position = swiftFlowPositionLiteral(e.args[0]!)
           if (position !== null) return `${swiftIdent(flowName)}.clampToExtent(${position}${e.args.slice(1).map((arg) => `, ${emitSwiftExpr(arg, indent)}`).join('')})`
+          if (e.args[0]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 1`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
         }
         if (member === 'getSnapLines' && e.args.length >= 2) {
           const position = swiftFlowPositionLiteral(e.args[1]!)
           if (position !== null) return `${swiftIdent(flowName)}.getSnapLines(${emitSwiftExpr(e.args[0]!, indent)}, ${position}${e.args[2] ? `, threshold: ${emitSwiftExpr(e.args[2]!, indent)}` : ''})`
+          if (e.args[1]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 2`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
         }
       }
       // Flow lookup computeds are JavaScript Maps. Preserve their canonical
@@ -7721,7 +7875,17 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         // there needs a different rewrite, left as a named gap.
         const objDot = e.callee.optional === true ? '?.' : '.'
         const prop = e.callee.property
+        // Arguments JS itself ignores (a `thisArg`, any argument to
+        // `toUpperCase()` / `trim()` / `reverse()`) — lower the core arity,
+        // named. See method-shapes.ts.
+        const recvKind = methodReceiverKind(inferType(e.callee.object, _activeInferCtx))
+        const ignored = ignoredTrailingArgs(prop, e.args.length, recvKind)
+        if (ignored !== undefined) {
+          if (!_emitWarnings.includes(ignored.warning)) _emitWarnings.push(ignored.warning)
+          return emitSwiftExpr({ ...e, args: e.args.slice(0, ignored.core) }, indent)
+        }
         const argExprs = emitSwiftMemberCallArgs(e, indent)
+        const warningsBeforeArms = _emitWarnings.length
         // Map/Set method vocabulary — typed off the receiver's inferred
         // kind (locals seed via seedHandlerLocals). Value-position-only
         // semantics differences (JS .set returns the map, .delete a Bool)
@@ -7752,6 +7916,30 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (e.args.length === 0) {
               const tsT = inferType(e.callee.object, _activeInferCtx)
               if (tsT.kind === 'number') return `String(${obj})`
+              // A string's `toString()` is the string itself.
+              if (tsT.kind === 'string') return obj
+            }
+            // `n.toString(radix)` on an INTEGER — Swift's `String(_:radix:)`
+            // spells digits past 9 in lowercase, as JS does. A fractional
+            // receiver (JS prints a radix FRACTION) has no equivalent and is
+            // named by the shape warning below.
+            if (e.args.length === 1) {
+              const tsT = inferType(e.callee.object, _activeInferCtx)
+              if (tsT.kind === 'number' && tsT.float !== true && objDot === '.') {
+                const r = isFloatTypeIR(inferType(e.args[0]!, _activeInferCtx)) ? `Int(${argExprs[0]!})` : argExprs[0]!
+                return `String(${obj}, radix: ${r})`
+              }
+            }
+            break
+          // JS `trimStart()` / `trimEnd()` — Swift has only the both-ends
+          // `trimmingCharacters`. `Character.isWhitespace` covers the JS
+          // WhiteSpace + LineTerminator set. (Kotlin's are native.)
+          case 'trimStart':
+            if (e.args.length === 0 && objDot === '.') return `String(${obj}.drop(while: { $0.isWhitespace }))`
+            break
+          case 'trimEnd':
+            if (e.args.length === 0 && objDot === '.') {
+              return `String(${obj}.reversed().drop(while: { $0.isWhitespace }).reversed())`
             }
             break
           case 'trim':
@@ -7840,6 +8028,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (e.args.length === 1) {
               return `${obj}${objDot}contains(${argExprs[0]!})`
             }
+            if (e.args.length === 2) {
+              const lowered = swiftPositionedSearch('includes', recvKind, e, argExprs)
+              if (lowered !== null) return lowered
+            }
             break
           // `arr.push(x)` is Swift's `append`. Unmapped, it emitted a verbatim
           // `.push`, which does not exist on Array — the accumulate-into-a-local
@@ -7885,6 +8077,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               }
               return `(${obj}${objDot}firstIndex(of: ${argExprs[0]!}) ?? -1)`
             }
+            if (e.args.length === 2) {
+              const lowered = swiftPositionedSearch('indexOf', recvKind, e, argExprs)
+              if (lowered !== null) return lowered
+            }
             break
           }
           case 'charAt':
@@ -7906,9 +8102,17 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // JS String.startsWith → Swift `hasPrefix` (Kotlin's
             // startsWith is valid as-is, no mapping there).
             if (e.args.length === 1) return `${obj}${objDot}hasPrefix(${argExprs[0]!})`
+            if (e.args.length === 2) {
+              const lowered = swiftPositionedSearch('startsWith', recvKind, e, argExprs)
+              if (lowered !== null) return lowered
+            }
             break
           case 'endsWith':
             if (e.args.length === 1) return `${obj}${objDot}hasSuffix(${argExprs[0]!})`
+            if (e.args.length === 2) {
+              const lowered = swiftPositionedSearch('endsWith', recvKind, e, argExprs)
+              if (lowered !== null) return lowered
+            }
             break
           case 'join':
             // JS `arr.join(sep?)` → Swift `[String].joined(separator:)`.
@@ -7937,6 +8141,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // to JS string-separator split). Kotlin's `split` matches JS
             // as-is, so it needs no mapping there.
             if (e.args.length === 1) return `${obj}${objDot}components(separatedBy: ${argExprs[0]!})`
+            if (e.args.length === 2) {
+              const lowered = swiftPositionedSearch('split', recvKind, e, argExprs)
+              if (lowered !== null) return lowered
+            }
             break
           case 'substring': {
             // JS `str.substring(start, end?)` — Swift String has NO
@@ -8234,6 +8442,13 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (digits !== null) {
               return `String(format: "%.${digits}f", ${obj})`
             }
+            // A DYNAMIC digit count interpolates into the format string — the
+            // same `%.<d>f`, built at runtime (it used to fall through to a
+            // verbatim `n.toFixed(d)`, which does not exist on a Swift number).
+            if (e.args.length === 1) {
+              const d = isFloatTypeIR(inferType(e.args[0]!, _activeInferCtx)) ? `Int(${argExprs[0]!})` : argExprs[0]!
+              return `String(format: "%.\\(${d})f", ${obj})`
+            }
             break
           }
           case 'toUpperCase':
@@ -8307,6 +8522,12 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         // set is explicit rather than a blanket fallthrough warning (several
         // methods legitimately reach here and compile).
         warnUnmappedMemberMethod(e)
+        // A MAPPED method whose arm did not cover this argument shape (and did
+        // not already name it) — see method-shapes.ts.
+        if (_emitWarnings.length === warningsBeforeArms) {
+          const w = uncoveredMethodShapeWarning(prop, e.args.length, recvKind, 'swift')
+          if (w !== undefined && !_emitWarnings.includes(w)) _emitWarnings.push(w)
+        }
         if (e.optional === true)
           return `${emitSwiftExpr(e.callee, indent)}?(${argExprs.join(', ')})`
         return `${emitSwiftExpr(e.callee, indent)}(${argExprs.join(', ')})`
@@ -9494,7 +9715,11 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'NodeResizer') return 'EmptyView()'
   if (tag === 'NodeToolbar') {
     for (const name of ['style', 'class']) if (e.attrs.some((a) => a.kind === 'attr' && a.name === name)) _emitWarnings.push(`<NodeToolbar ${name}> is browser CSS and is not applied natively; toolbar placement and content still lower.`)
-    if (!_flowComponentToolbars.has(_activeComponentName)) _emitWarnings.push('<NodeToolbar> only lowers when declared inside a component registered by a literal <Flow nodeTypes={{ type: Component }}> map; it was dropped.')
+    // A toolbar lowers ONLY through the up-front extraction, which needs a
+    // registered NODE renderer AND a static child position; otherwise it
+    // is dropped, and why decides the fix.
+    const registered = _flowNodeRendererComponents.has(_activeComponentName)
+    if (!registered || !_extractedFlowToolbars.has(e)) _emitWarnings.push(droppedNodeToolbarWarning(registered, _activeComponentName))
     return 'EmptyView()'
   }
   if (tag === 'path') return emitSwiftFlowCustomPath(e, indent)
@@ -9526,11 +9751,6 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // never compiled the emit. Same class as the kinetic factory, reached by a
   // different route (a missing mapping rather than a missing decline).
   if (tag === 'Link' || tag === 'RouterLink') return emitSwiftLink(e, indent)
-  if (tag === 'PieChart') return emitSwiftPieChart(e, indent)
-  if (tag === 'GaugeChart') return emitSwiftGaugeChart(e, indent)
-  // `<PieChart>` / `<GaugeChart>` from @pyreon/charts — the radial
-  // family lowers to the runtime wrapper views over the GENERATED engine
-  // (renderPie / renderGauge), so web and native draw the same math.
   // `<QueryClientProvider client={…}>` is TRANSPARENT on native. It exists on
   // the web to inject the client `useQuery` reads; the native `useQuery`
   // lowering is self-contained, so the provider has nothing to inject and its
@@ -9702,13 +9922,16 @@ function emitSwiftFlowCustomPath(e: Extract<ExprIR, { kind: 'jsx-element' }>, in
   const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'd')
   let value = attr?.kind === 'attr' ? attr.value : undefined
   if (value?.kind === 'arrow' && value.params.length === 0) value = value.body
-  // A structured helper result (`get*Path({...}).path`) or the connection
-  // line's `path()` keeps its segments; any other `d` is SVG path data,
-  // parsed at runtime into the same segments.
-  const resultCode = value?.kind === 'member' && value.property === 'path'
-    ? value.object.kind === 'call'
-      ? emitSwiftExpr(value.object, indent)
-      : `${swiftIdent(value.property)}()`
+  // A structured helper result (`get*Path({...}).path`, or a local bound to
+  // one) or the connection line's `path()` keeps its segments; any other `d`
+  // is SVG path data, parsed at runtime into the same segments.
+  const pathMember = value?.kind === 'member' && value.property === 'path'
+    ? classifyFlowPathMember(value.object, _activePropsParamName, _componentValueConstExprs)
+    : undefined
+  const resultCode = value?.kind === 'member' && pathMember === 'object'
+    ? emitSwiftExpr(value.object, indent)
+    : value?.kind === 'member' && pathMember === 'accessor'
+      ? `${swiftIdent(value.property)}()`
     : value?.kind === 'call' && value.args.length === 0 && value.callee.kind === 'member' && value.callee.property === 'path'
       ? emitSwiftExpr(value, indent)
       : value !== undefined
@@ -10495,7 +10718,7 @@ function emitSwiftFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (rowElem !== undefined) _activeInferCtx.locals.set(param, rowElem)
   let bodyText: string
   try {
-    bodyText = emitSwiftExpr(body, indent + 2)
+    bodyText = forRowBodySwift(renderArrow.expr as Extract<ExprIR, { kind: 'arrow' }>, body, indent)
   } finally {
     if (rowElem !== undefined) {
       if (hadRow) _activeInferCtx.locals.set(param, prevRow!)
@@ -10504,6 +10727,25 @@ function emitSwiftFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   }
   if (isFieldArrayItems) _fieldArrayItemParamsSwift.pop()
   return `ForEach(${items}, id: \\.${idPath}) { ${param} in\n${pad}${bodyText}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * A `<For>` row's content. An expression body emits as before; a BLOCK body
+ * (`(r) => { const x = …; return <Text>{x}</Text> }`) is planned into
+ * view-builder statements (`planViewBlock`, the render-prop callbacks' shape)
+ * — it used to emit the arrow's empty `body` sentinel, a row rendering `""`,
+ * with no warning. A block with no view-builder spelling is named and emits
+ * an `EmptyView()`.
+ */
+function forRowBodySwift(arrow: Extract<ExprIR, { kind: 'arrow' }>, body: ExprIR, indent: number): string {
+  if (arrow.stmts === undefined || arrow.stmts.length === 0) return emitSwiftExpr(body, indent + 2)
+  const block = planViewBlock(arrow.stmts)
+  if (block === null) {
+    const w = forBlockBodyWarning()
+    if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+    return 'EmptyView()'
+  }
+  return emitSwiftViewBlock(block, indent + 2).join('\n').trimStart()
 }
 
 function emitSwiftShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
@@ -11253,25 +11495,30 @@ function emitSwiftLayoutModifiers(
   omit: ReadonlySet<string> = EMPTY_OMIT,
 ): string {
   const parts: string[] = []
-  const padding = (omit.has('padding') ? undefined : swiftStylingValue(e, 'padding', resolveSpace))
+  // One guard for every styling prop the HOST lowers itself (only
+  // `background` is consumed by a host today), rather than a per-prop
+  // `omit.has(…)` arm that no host ever reaches.
+  const stylingValue = (name: string, resolve: Parameters<typeof swiftStylingValue>[2]) =>
+    omit.has(name) ? undefined : swiftStylingValue(e, name, resolve)
+  const padding = stylingValue('padding', resolveSpace)
   if (padding !== undefined) {
     parts.push(`.padding(${padding})`)
   }
-  const paddingX = (omit.has('paddingX') ? undefined : swiftStylingValue(e, 'paddingX', resolveSpace))
+  const paddingX = stylingValue('paddingX', resolveSpace)
   if (paddingX !== undefined) {
     parts.push(`.padding(.horizontal, ${paddingX})`)
   }
-  const paddingY = (omit.has('paddingY') ? undefined : swiftStylingValue(e, 'paddingY', resolveSpace))
+  const paddingY = stylingValue('paddingY', resolveSpace)
   if (paddingY !== undefined) {
     parts.push(`.padding(.vertical, ${paddingY})`)
   }
-  const background = (omit.has('background') ? undefined : swiftStylingValue(e, 'background', (v) =>
+  const background = stylingValue('background', (v) =>
     resolveColor(String(v), 'swift'),
-  ))
+  )
   if (background !== undefined) {
     parts.push(`.background(${background})`)
   }
-  const radius = (omit.has('radius') ? undefined : swiftStylingValue(e, 'radius', (v) => resolveRadius(String(v))))
+  const radius = stylingValue('radius', (v) => resolveRadius(String(v)))
   if (radius !== undefined) {
     parts.push(`.cornerRadius(${radius})`)
   }
@@ -11317,15 +11564,15 @@ function emitSwiftLayoutModifiers(
   // outside-IN, so there margin is PREPENDED. Same semantics, reversed
   // position — the kind of asymmetry that reads as a bug in whichever file you
   // are not looking at.
-  const margin = (omit.has('margin') ? undefined : swiftStylingValue(e, 'margin', resolveSpace))
+  const margin = stylingValue('margin', resolveSpace)
   if (margin !== undefined) {
     parts.push(`.padding(${margin})`)
   }
-  const marginX = (omit.has('marginX') ? undefined : swiftStylingValue(e, 'marginX', resolveSpace))
+  const marginX = stylingValue('marginX', resolveSpace)
   if (marginX !== undefined) {
     parts.push(`.padding(.horizontal, ${marginX})`)
   }
-  const marginY = (omit.has('marginY') ? undefined : swiftStylingValue(e, 'marginY', resolveSpace))
+  const marginY = stylingValue('marginY', resolveSpace)
   if (marginY !== undefined) {
     parts.push(`.padding(.vertical, ${marginY})`)
   }
@@ -14024,118 +14271,6 @@ function emitSwiftRxCall(
       // marker so missing dispatch is obvious in failed swiftc output.
       return `/* unsupported rx.${e.method} */ ${src}`
   }
-}
-
-/**
- * `<PieChart data value label …>` (@pyreon/charts) → the runtime-swift
- * `PyreonPieChart` view. The accessor props pass through as closures — the
- * wrapper is generic over the row type, so `value={(d) => d.amount}` emits
- * `{ d in d.amount }` and Swift infers the parameter from `data`.
- *
- * The web accessors accept `(d, index)`; the native wrapper takes the
- * single-argument form (the dominant shape). An index-dependent accessor
- * warns + falls back to generic emit rather than mis-lowering.
- */
-function emitSwiftPieChart(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-  indent: number,
-): string {
-  const attr = (n: string) =>
-    e.attrs.find(
-      (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === n,
-    )
-  const data = attr('data')
-  const value = attr('value')
-  const label = attr('label')
-  if (data === undefined || value === undefined || label === undefined) {
-    _emitWarnings.push(
-      'PieChart: the native lowering needs `data`, `value` and `label` props — element left to generic emit (it will not compile natively)',
-    )
-    return emitSwiftGeneric(e, indent)
-  }
-  const color = attr('color')
-  for (const a of [value, label, ...(color === undefined ? [] : [color])]) {
-    if (a.value.kind === 'arrow' && a.value.params.length > 1) {
-      _emitWarnings.push(
-        `PieChart: the \`${a.name}\` accessor uses the (d, index) form — the native lowering supports the single-argument accessor; precompute an array for index-dependent slices`,
-      )
-      return emitSwiftGeneric(e, indent)
-    }
-  }
-  const args = [
-    `data: ${emitSwiftExpr(unwrapAccessorArrow(data.value), indent)}`,
-    `value: ${emitSwiftExpr(value.value, indent)}`,
-    `label: ${emitSwiftExpr(label.value, indent)}`,
-  ]
-  if (color !== undefined) args.push(`color: ${emitSwiftExpr(color.value, indent)}`)
-  for (const n of ['width', 'height', 'innerRadius', 'showLabels'] as const) {
-    const a = attr(n)
-    if (a !== undefined) args.push(`${n}: ${emitSwiftExpr(unwrapAccessorArrow(a.value), indent)}`)
-  }
-  for (const n of ['showLegend', 'onSelect', 'title', 'accessibleTable'] as const) {
-    if (attr(n) !== undefined) {
-      _emitWarnings.push(
-        `PieChart: \`${n}\` has no native lowering (web-only legend / hit-testing / a11y-table surface) — DROPPED on this target`,
-      )
-    }
-  }
-  // Special-case emitters never reach the generic modifier tail — carry the
-  // testid + a11y through explicitly (the Link/Toggle lesson).
-  const testid = readStringAttrExpr(e, 'data-testid', 0)
-  const a11y = swiftAccessibilityModifiers(e).join('')
-  const tail =
-    (testid === undefined
-      ? ''
-      : `.accessibilityElement(children: .contain).accessibilityIdentifier(${testid})`) + a11y
-  return `PyreonPieChart(${args.join(', ')})${tail}`
-}
-
-/**
- * `<GaugeChart value …>` (@pyreon/charts) → the runtime-swift
- * `PyreonGaugeChart` view. Scalar props map 1:1; `value={() => x()}`
- * unwraps to the reactive read.
- */
-function emitSwiftGaugeChart(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-  indent: number,
-): string {
-  const attr = (n: string) =>
-    e.attrs.find(
-      (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === n,
-    )
-  const value = attr('value')
-  if (value === undefined) {
-    _emitWarnings.push(
-      'GaugeChart: the native lowering needs the `value` prop — element left to generic emit (it will not compile natively)',
-    )
-    return emitSwiftGeneric(e, indent)
-  }
-  const args = [`value: ${emitSwiftExpr(unwrapAccessorArrow(value.value), indent)}`]
-  for (const n of [
-    'min',
-    'max',
-    'width',
-    'height',
-    'thickness',
-    'trackColor',
-    'valueColor',
-    'showValue',
-  ] as const) {
-    const a = attr(n)
-    if (a !== undefined) args.push(`${n}: ${emitSwiftExpr(unwrapAccessorArrow(a.value), indent)}`)
-  }
-  if (attr('title') !== undefined) {
-    _emitWarnings.push(
-      'GaugeChart: `title` has no native lowering (it feeds the web aria-label) — use `accessibilityLabel`, which lowers on all three targets',
-    )
-  }
-  const testid = readStringAttrExpr(e, 'data-testid', 0)
-  const a11y = swiftAccessibilityModifiers(e).join('')
-  const tail =
-    (testid === undefined
-      ? ''
-      : `.accessibilityElement(children: .contain).accessibilityIdentifier(${testid})`) + a11y
-  return `PyreonGaugeChart(${args.join(', ')})${tail}`
 }
 
 
