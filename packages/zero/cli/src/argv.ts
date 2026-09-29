@@ -87,8 +87,34 @@ function camelcase(name: string): string {
   return [first.replace(/([a-z])-([a-z])/g, (_, a: string, b: string) => a + b.toUpperCase()), ...rest].join('.')
 }
 
+/**
+ * The name part of a command / option spelling — everything before its first
+ * argument placeholder: `'build [root]'` → `'build'`, `'-p, --port <port>'` →
+ * `'-p, --port'`.
+ *
+ * A single `indexOf` cut rather than `replace(/[<[].+/, '')`. The two agree
+ * on every single-line spelling (a placeholder bracket that is the final
+ * character is kept by both), but the regex reads as a strip-the-tag
+ * sanitizer, and a sanitizer that removes ONE `<…` occurrence can be
+ * re-formed by a nested payload (`<scr<scriptipt>`). These strings are
+ * developer-authored command grammar that never reaches HTML; cutting at the
+ * FIRST bracket makes that unambiguous — the result can never contain `<` or
+ * `[` from a placeholder at all, nested or not.
+ */
+export function specName(rawName: string): string {
+  let cut = -1
+  for (let i = 0; i < rawName.length - 1; i++) {
+    const c = rawName.charCodeAt(i)
+    if (c === 60 /* < */ || c === 91 /* [ */) {
+      cut = i
+      break
+    }
+  }
+  return (cut === -1 ? rawName : rawName.slice(0, cut)).trim()
+}
+
 function toOption(spec: OptionSpec): Option {
-  const bare = spec.rawName.replace(/[<[].+/, '').trim()
+  const bare = specName(spec.rawName)
   const names = bare
     .split(',')
     .map((part) => camelcase(part.trim().replace(/^-{1,2}/, '').replace(/^no-/, '')))
@@ -111,7 +137,7 @@ function toCommand(spec: CommandSpec): Command {
   return {
     rawName: spec.rawName,
     description: spec.description,
-    name: spec.rawName.replace(/[<[].+/, '').trim(),
+    name: specName(spec.rawName),
     aliases: spec.aliases ?? [],
     args,
     options: (spec.options ?? []).map(toOption),
