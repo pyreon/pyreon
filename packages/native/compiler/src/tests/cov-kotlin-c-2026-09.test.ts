@@ -258,7 +258,7 @@ describe('emit-kotlin.ts — flow member lowering table', () => {
     expect(out).toContain('flow.panTo(pt)')
     expect(out).toContain('flow.zoomTo(2.0) }')
     expect(out).toContain('flow.zoomTo(2.0, duration = 300.0)')
-    expect(out).toContain('flow.zoomTo(2, __Obj')
+    expect(out).toContain('flow.zoomTo(2L, __Obj')
     expect(out).toContain('flow.zoomIn(duration = 100.0)')
     expect(out).toContain('flow.zoomOut(opts)')
   })
@@ -282,7 +282,7 @@ describe('emit-kotlin.ts — flow member lowering table', () => {
     expect(out).toContain('flow.addEdgeWaypoint("e1", PyreonXYPosition(1.0, 2.0)) }')
     expect(out).toContain('flow.addEdgeWaypoint("e1", p)')
     expect(out).toContain('flow.updateEdgeWaypoint("e1", 0, PyreonXYPosition(1.0, 2.0))')
-    expect(out).toContain('flow.updateEdgeWaypoint("e1", 0, p)')
+    expect(out).toContain('flow.updateEdgeWaypoint("e1", 0L, p)')
     expect(out).toContain('flow.reconnectEdge("e1", source = "2", targetHandle = "h")')
     expect(out).not.toContain('flow.reconnectEdge("e1", zzz')
     expect(out).toContain('flow.isValidConnection(PyreonFlowConnection(source = "a", target = "b", sourceHandle = "s", targetHandle = "t"))')
@@ -367,10 +367,10 @@ describe('emit-kotlin.ts — flow member lowering table', () => {
     )
     expect(out).toContain('flow.setCenter(1.0, 2.0) }')
     expect(out).toContain('flow.setCenter(1.0, 2.0, zoom = 3.0, duration = 4.0)')
-    expect(out).toContain('flow.setCenter(1, 2, __Obj')
+    expect(out).toContain('flow.setCenter(1L, 2L, __Obj')
     expect(out.match(/flow\.clearNodeExtent\(\)/g)).toHaveLength(2)
     expect(out).toContain('flow.setNodeExtent(minX = 0.0, minY = 0.0, maxX = 1.0, maxY = 1.0)')
-    expect(out).toContain('flow.setNodeExtent(listOf(listOf(0, 0)))')
+    expect(out).toContain('flow.setNodeExtent(listOf(listOf(0L, 0L)))')
     expect(out).toContain('flow.clampToExtent(PyreonXYPosition(1.0, 2.0), 3.0, 4.0)')
     expect(out).toContain('flow.clampToExtent(pp)')
     expect(out).toContain('flow.getSnapLines("1", PyreonXYPosition(1.0, 2.0), 5.0)')
@@ -441,8 +441,8 @@ export function App() {
 
   it('getHandlePosition: a string position and a call lower; a bare identifier is NAMED', () => {
     expect(line('h1')).toContain('pyreonHandlePosition(PyreonFlowPosition.Top, 0.0, 1.0, 2.0, 3.0)')
-    expect(line('h2')).toContain('getHandlePosition(pos, 0, 1, 2, 3)')
-    expect(line('h3')).toContain('pyreonHandlePosition(pick(1), 0.0, 1.0, 2.0, 3.0)')
+    expect(line('h2')).toContain('getHandlePosition(pos, 0L, 1L, 2L, 3L)')
+    expect(line('h3')).toContain('pyreonHandlePosition(pick(1L), 0.0, 1.0, 2.0, 3.0)')
     expect(w).toContain('getHandlePosition requires a literal Position value to lower natively.')
   })
 
@@ -595,21 +595,21 @@ export function App() {
   const line = (n: string) => out.split('\n').find((l) => l.trimStart().startsWith(`val ${n} =`))!.trim()
 
   it('each mismatched arity is emitted as written', () => {
-    expect(line('a1')).toBe('val a1 = m.clear(1)')
-    expect(line('a2')).toBe('val a2 = st.clear(1)')
-    expect(line('a3')).toBe('val a3 = xs.some({ x -> x > 1 }, null)')
-    expect(line('a4')).toBe('val a4 = xs.every({ x -> x > 1 }, null)')
-    expect(line('a5')).toBe('val a5 = xs.filter({ x -> x > 1 }, null)')
-    expect(line('a6')).toBe('val a6 = xs.includes(1, 2)')
+    expect(line('a1')).toBe('val a1 = m.clear(1L)')
+    expect(line('a2')).toBe('val a2 = st.clear(1L)')
+    expect(line('a3')).toBe('val a3 = xs.some({ x -> x > 1L }, null)')
+    expect(line('a4')).toBe('val a4 = xs.every({ x -> x > 1L }, null)')
+    expect(line('a5')).toBe('val a5 = xs.filter({ x -> x > 1L }, null)')
+    expect(line('a6')).toBe('val a6 = xs.includes(1L, 2L)')
     expect(line('a7')).toBe('val a7 = s.charAt()')
     expect(line('a8')).toBe('val a8 = s.charCodeAt()')
     expect(line('a9')).toBe('val a9 = xs.join(",", "x")')
-    expect(line('a10')).toBe('val a10 = xs.concat(listOf(1), listOf(2))')
-    expect(line('a11')).toBe('val a11 = xs.fill(0, 1)')
+    expect(line('a10')).toBe('val a10 = xs.concat(listOf(1L), listOf(2L))')
+    expect(line('a11')).toBe('val a11 = xs.fill(0L, 1L)')
     expect(line('a12')).toBe('val a12 = xs.at()')
     expect(line('a13')).toBe('val a13 = xs.findIndex()')
     expect(line('a14')).toBe('val a14 = s.replace("a")')
-    expect(line('a15')).toBe('val a15 = xs.reverse(1)')
+    expect(line('a15')).toBe('val a15 = xs.reverse(1L)')
     expect(line('a16')).toBe('val a16 = s.toUpperCase("tr")')
     expect(line('a17')).toBe('val a17 = s.toLowerCase("tr")')
   })
@@ -869,7 +869,7 @@ export function App() {
     expect(w).toContain('<Handle class> is browser CSS')
     expect(w).toContain('<NodeToolbar style> is browser CSS')
     expect(w).toContain('<NodeToolbar class> is browser CSS')
-    expect(r.code).toContain('PyreonFlowEdgeText(x = (1).toDouble(), y = (2).toDouble(), label = "hi")')
+    expect(r.code).toContain('PyreonFlowEdgeText(x = (1L).toDouble(), y = (2L).toDouble(), label = "hi")')
     expect(w).toContain('A native Flow <EdgeText> needs `x`, `y` and `label`; it was dropped.')
     expect(w).toContain('<ViewportPortal> positions arbitrary content in flow coordinates')
   })
@@ -984,9 +984,9 @@ export function App() {
 }`)
     expect(out).toContain('Button(onClick = { t = false })')
     // no argument → 0, clamped into [min, max]
-    expect(out).toContain('Button(onClick = { c = minOf(maxOf(0, 0), 10) })')
+    expect(out).toContain('Button(onClick = { c = minOf(maxOf(0L, 0L), 10L) })')
     // reset → the INITIAL value, clamped
-    expect(out).toContain('Button(onClick = { c = minOf(maxOf(5, 0), 10) })')
+    expect(out).toContain('Button(onClick = { c = minOf(maxOf(5L, 0L), 10L) })')
   })
 
   it('parseInt with a non-literal radix passes the radix expression through', () => {
@@ -995,7 +995,7 @@ import { Text } from '@pyreon/primitives'
 export function App(props: { s: string; base: number }) {
   const r = parseInt(props.s, props.base)
   return <Text>{r}</Text>
-}`)).toContain('((s).toIntOrNull(base) ?: 0)')
+}`)).toContain('((s).toLongOrNull((base).toInt()) ?: 0L)')
   })
 
   it('Boolean() of an optional string / number follows JS truthiness; Object.keys/values degrade to typed empty lists (NAMED)', () => {
@@ -1012,7 +1012,7 @@ export function App(props: { cfg: Record<string, number> }) {
   return <Text>{String(k.length + v.length) + String(b1) + String(b2)}</Text>
 }`)
     expect(r.code).toContain('val b1 = (name ?: "").isNotEmpty()')
-    expect(r.code).toContain('val b2 = ((age ?: 0) != 0)')
+    expect(r.code).toContain('val b2 = ((age ?: 0L) != 0L)')
     expect(r.code).toContain('val k = emptyList<String>()')
     expect(r.code).toContain('val v = emptyList<Any>()')
     const w = r.warnings.join('\n')
@@ -1031,8 +1031,8 @@ export function App() {
 }`)
     expect(out).toContain('fun describeErr(err: Throwable): String = err.message')
     // `child` does not end in `s`, so it is used as-is; `items` singularizes
-    expect(out).toContain('data class AppTreeChild(val id: Int)')
-    expect(out).toContain('data class AppTreeItem(val id: Int)')
+    expect(out).toContain('data class AppTreeChild(val id: Long)')
+    expect(out).toContain('data class AppTreeItem(val id: Long)')
   })
 })
 
