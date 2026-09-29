@@ -744,9 +744,9 @@ export function B(props: { render: (u: User, i: number) => VNodeChild; empty: ()
     expect(r.code).toContain('empty: { hello() })')
   })
 
-  it('a BLOCK-bodied render callback emits an empty view of the right arity and is named', () => {
-    expect(r.code).toContain('Row(render: { _, _ in EmptyView() }')
-    expect(r.warnings.some((w) => w.startsWith('<Row render={…}>: a render callback with a BLOCK body'))).toBe(true)
+  it('a simple BLOCK-bodied render callback lowers to view-builder statements, not an empty view', () => {
+    expect(r.code).toContain('Row(render: { u, _ in\n        let n = u.name\n        Text(verbatim: "\\(n)")\n      }, empty: {\n        Text("x")\n      })')
+    expect(r.warnings.some((w) => w.startsWith('<Row render={…}>: a render callback with a BLOCK body'))).toBe(false)
   })
 
   // Regression (fixed here): a view helper taking FEWER parameters than the

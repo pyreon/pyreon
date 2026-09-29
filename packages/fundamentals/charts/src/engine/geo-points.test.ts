@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { geoPointRadii, geoPointsToSvg, hitGeoPoint, renderGeoPaths, renderGeoPoints } from './geo-points'
-import { layoutGeo, registerMap } from './geo-web'
+import { layoutGeo } from './geo-web'
 import type { GeoJson } from './geo-web'
 
 const world: GeoJson = {
