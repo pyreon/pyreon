@@ -2644,6 +2644,12 @@ function escapeHtml(str: string): string {
  * for, so it keeps rendering as before (the Suspense fallback on the server).
  */
 function pendingLazy(type: unknown): Promise<void> | null {
+  // Only a component FUNCTION can be a lazy. Anything else reaching here — a
+  // string tag, a Fragment/For symbol, or the compiled `_ssr` path's RawHtml /
+  // DeferredHtml (which carries no `type` at all) — is not one, and must not be
+  // probed: reading `__load` off `undefined` crashed every page whose
+  // `<Suspense>` held a templated element child.
+  if (typeof type !== 'function') return null
   const lazyType = type as Partial<LazyComponent>
   if (typeof lazyType.__load !== 'function' || typeof lazyType.__loading !== 'function') return null
   return lazyType.__loading() ? lazyType.__load() : null
@@ -2654,7 +2660,7 @@ function suspenseChildPending(props: Record<string, unknown>): Promise<void> | n
   const ch = props.children
   const child = typeof ch === 'function' ? (ch as () => unknown)() : ch
   if (child == null || typeof child !== 'object' || Array.isArray(child)) return null
-  return pendingLazy((child as VNode).type)
+  return pendingLazy((child as Partial<VNode>).type)
 }
 
 function mergeChildrenIntoProps(vnode: VNode): Record<string, unknown> {

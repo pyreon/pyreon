@@ -29,8 +29,9 @@ npx lathe init
 ```
 
 `lathe init` finds what the project generates from today — an orval,
-`@hey-api/openapi-ts` or kubb config, an `openapi-typescript` script, or a
-bare `openapi.yaml` / `openapi.json` — and:
+`@hey-api/openapi-ts` or kubb config, an orval or `openapi-ts` run from flags
+alone in a `package.json` script (`orval --input spec.yaml --output src/api.ts`),
+an `openapi-typescript` script, or a bare `openapi.yaml` / `openapi.json` — and:
 
 1. writes a `lathe` section into `pyreon.config.ts` (creating it, or adding one
    entry to the one you have — a `lathe` section already there is never
@@ -125,7 +126,9 @@ nested sequences every YAML dumper writes all read correctly. Anchors, aliases
 and merge keys are resolved. What the reader **refuses**, with a line number,
 is everything that would otherwise produce a document the author did not
 write: duplicate keys, a multi-document stream, custom tags (`!Ref`), a
-recursive alias, `.inf` / `.nan`, and tab indentation.
+recursive alias, `.inf` / `.nan`, and tab indentation. A JSON spec with a
+duplicate key still parses (every JSON reader keeps the last one), and each
+duplicate is reported as a `duplicate-key` note pointing at it.
 
 ### What the reader represents
 
@@ -141,8 +144,10 @@ The input layer resolves a spec's semantics once, so no emitter rediscovers them
 - **Parameters** — header and cookie parameters are typed call arguments; an operation-level parameter overrides a path-level one; an undeclared path placeholder is synthesized.
 - **Servers** — variables take their `default`; an operation- or path-level server travels with its operation (on native, as its own literal-base client); a relative server is reported, and `lathe pull` prints the absolute URL it resolves to.
 - **Names** — models, operation ids, path placeholders and tag files that normalize to one identifier are disambiguated deterministically; nothing is dropped.
-- **Error responses** — every `4xx` / `5xx` / `4XX` / `default` JSON body is typed per operation (see [Typed errors](#typed-errors)).
+- **Error responses** — every `4xx` / `5xx` / `4XX` / `default` JSON body is typed per operation (see [Typed errors](#typed-errors)). A `default` with no 2xx beside it is both the success type and the typed error body.
 - **Webhooks and callbacks** — typed as payload schemas and handler types (see [Webhooks and callbacks](#webhooks-and-callbacks)).
+- **Path items by `$ref`** — a path, webhook or callback whose path item is a `$ref` (3.1 `components.pathItems`, or one shared between paths) is followed; fields beside the `$ref` win. A `trace` operation is reported (`unsupported-method`): the Fetch standard forbids the method, so no generated call could send it.
+- **Examples by `$ref`** — an `examples` entry that references `components.examples` (or another file) is resolved before its `value` becomes the `@example` and the preview argument.
 
 ### Swagger 2.0 is up-converted
 
@@ -153,9 +158,12 @@ parameters (a file field makes the body `multipart`), `produces` / `consumes`,
 scheme comes from the URL the spec was pulled from), `x-nullable`,
 `type: file`, `collectionFormat` → `style` / `explode` (an array with no
 `collectionFormat` is `csv`, Swagger 2's default), responses and string
-discriminators. What 3.0 cannot spell is a `swagger2-lossy` note:
-`collectionFormat: tsv`, per-operation `schemes` that exclude the client's
-scheme, an unknown security type. Kubernetes' 1,202-operation spec generates
+discriminators. A query or form `collectionFormat: tsv` is carried as
+`tabDelimited` (a tab-joined value, which `@pyreon/http` and the generated
+runtime both serialize), and per-operation `schemes` that exclude the client's
+scheme become that operation's own servers, on the document's host. What 3.0
+cannot spell is a `swagger2-lossy` note: `tsv` on a header or path parameter,
+per-operation `schemes` naming no usable scheme, an unknown security type. Kubernetes' 1,202-operation spec generates
 output that typechecks with every plugin. Swagger 1.x is refused.
 
 ### Specs split across files
@@ -313,7 +321,15 @@ plugins: components (+schemas, +client, +queries - required by them)
 lathe generate --plugins schemas          # just schemas + types
 lathe generate --plugins schemas,mocks    # ...and deterministic fixtures
 lathe generate --plugins docs             # just the Markdown reference
+lathe generate --plugins schemas,./lathe-path-table.ts,lathe-plugin-msw   # + third-party plugins
 ```
+
+A `--plugins` entry that is not a built-in name is a plugin MODULE: a path,
+resolved from the working directory, or a package, resolved through
+`node_modules` (honouring its `exports`) the way a config file's own `import`
+would be. Its default export is a plugin, an array of plugins, or a function
+returning one. A name that is neither a built-in nor loadable is a usage error
+with a did-you-mean (`querys` → `queries`).
 
 ### Writing your own plugin
 
@@ -346,9 +362,9 @@ export default defineConfig({
 })
 ```
 
-| hook | runs | receives | returns |
+| hook | runs | receives | returns (or a promise of it) |
 | --- | --- | --- | --- |
-| `setup(ctx)` | once per project, first | `{ config }` | nothing; throw to refuse the config |
+| `setup(ctx)` | once per project, first | `{ config }` | nothing; throw (or reject) to refuse the config |
 | `transformDocument(doc, ctx)` | after filters, naming and `operations`; in plugin order | the frozen document, `{ config, note }` | a modified copy, or nothing |
 | `emit(ctx)` | after every built-in emitter | `{ doc, config, reach, files, banner }` | `SourceFile`s or `{ path, contents, sideEffects? }` |
 
@@ -375,9 +391,13 @@ Four guarantees hold for every plugin:
   A file that does something at import time returns `sideEffects: true`, which
   lists it in the emitted `package.json`.
 
-Hooks are synchronous: generation is a function of the spec and the config.
-Anything a plugin needs from elsewhere is an option it takes when it is
-constructed, where the config shows it.
+Any hook may be `async` — read a template, ask a formatter, load a registry.
+The CLI and the Vite plugin run the pipeline with `generateAsync()`, which
+awaits each hook; the determinism check still runs every hook twice, the second
+time only after the first has settled, so an async hook is compared against
+itself rather than raced. `generate()` stays synchronous for programmatic use
+and refuses a hook that returns a promise, naming the plugin. Output is
+byte-identical whichever runs it.
 
 ## Customizing the output
 
@@ -1299,21 +1319,48 @@ jobs:
           bunx lathe diff "origin/${{ github.base_ref }}:openapi.yaml" openapi.yaml \
             --format markdown --fail-on-breaking > contract.md
           echo "code=$?" >> "$GITHUB_OUTPUT"
-      - name: Comment
+      - name: Summary
         if: steps.diff.outputs.code != '2'   # 2 = an input could not be read; there is no report
-        env: { GH_TOKEN: '${{ github.token }}' }
-        run: gh pr comment ${{ github.event.pull_request.number }} --body-file contract.md --edit-last --create-if-none
+        run: cat contract.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Comment
+        # A fork's pull request gets a read-only token: its report is the job summary.
+        if: steps.diff.outputs.code != '2' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -o pipefail
+          marker='<!-- lathe-contract -->'
+          { echo "$marker"; cat contract.md; } > comment.md
+          for attempt in 1 2 3; do
+            id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+              --jq '.[] | select(.body | startswith("<!-- lathe-contract -->")) | .id' | head -n 1) &&
+              if [ -n "$id" ]; then
+                gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@comment.md > /dev/null
+              else
+                gh pr comment "$PR" --body-file comment.md
+              fi && exit 0
+            sleep $((attempt * 5))
+          done
+          echo "::warning::could not post the contract comment; the report is in the job summary"
       - name: Fail on a breaking change
         if: steps.diff.outputs.code != '0'
         run: exit ${{ steps.diff.outputs.code }}
 ```
 
-`--edit-last --create-if-none` (checked against gh 2.96; older gh lacks `--create-if-none`) keeps ONE contract comment per PR,
-updated on each push — note it edits the workflow token's last comment, so give
-this job its own token if other jobs comment as `github-actions` too. The
-workflow's shell logic (the step script, the exit-code routing and the comment
-body) is executed against a real git repository by `docs-action.test.ts` in
-`@pyreon/lathe`, with `gh` stubbed.
+The comment is found by the hidden `<!-- lathe-contract -->` marker it starts
+with, so there is ONE contract comment per PR, updated on each push — and no
+other bot comment is ever touched (`gh pr comment --edit-last` would edit
+whichever comment the workflow token wrote last, which in most repositories is
+some other job's). The report always lands in the job summary too; a pull
+request from a fork gets a read-only token, so it gets the summary and no
+comment. A comment that cannot be posted after three attempts is a warning, not
+a failed check: the check reports the CONTRACT, not GitHub's API. The step
+scripts are executed against a real git repository by `docs-action.test.ts` in
+`@pyreon/lathe` with `gh` stubbed, and this repository runs them on a hosted
+runner against a real pull request (`lathe-action-selftest.yml`), from a
+subdirectory — `<rev>:<path>` is resolved relative to the working directory,
+like the on-disk side.
 
 `--format github` in a plain `run:` step is the no-comment alternative: the
 annotations land on the PR's checks and the table in the job summary.
@@ -1371,6 +1418,8 @@ a stable `code`, an RFC 6901 pointer into the spec, and a severity:
 | `unsupported-const` | loss | a `const` whose value is not a JSON scalar — not enforced (a scalar `const` is) |
 | `unsupported-schema` / `unsupported-ref` | loss | a schema or `$ref` that reduces to `unknown` — including a `$ref` into a file that could not be read, or a remote one at generate time — or a degradation (a discriminator that cannot be proven, a contradictory `allOf`) |
 | `cyclic-ref` | loss | a `$ref` cycle through references alone, the cyclic part of an `allOf`, or a path item / response that includes itself across files — contributes nothing |
+| `duplicate-key` | loss | a JSON spec writes a key twice in one object — `JSON.parse` keeps the last, so the first definition is gone (a YAML spec with a duplicate key is refused outright) |
+| `unsupported-method` | loss | a `trace` operation — the Fetch standard forbids the method, so `fetch` throws before sending it; no call is generated |
 | `int64-precision` | loss | one note for every `format: int64` number — `JSON.parse` rounds past 2^53 − 1 before validation, so no generated type (bigint or string) can recover the value; typed as `number` |
 | `no-servers` | loss | no absolute base URL (none declared, relative, or a variable with no default), so nothing reaches native |
 | `multiple-content-types` | choice | JSON picked among several media types |
@@ -1381,7 +1430,7 @@ a stable `code`, an RFC 6901 pointer into the spec, and a severity:
 | `plugin` | loss | a third-party plugin reported something it could not honour (`ctx.note(...)` in `transformDocument`) |
 | `swagger2-converted` | choice | the input was Swagger 2.0 and was up-converted to OpenAPI 3.0; other notes point into the converted document |
 | `webhooks` | choice | the spec declares webhooks / callbacks — requests the API sends; typed as payload schemas and `WebhookHandler` types in `webhooks.ts`, never as client calls |
-| `swagger2-lossy` | loss | a Swagger 2 construct 3.0 cannot spell (`collectionFormat: tsv`, per-operation `schemes`, an unknown security type), or a missing `schemes` assumed `https` |
+| `swagger2-lossy` | loss | a Swagger 2 construct 3.0 cannot spell (`collectionFormat: tsv` on a header or path parameter, per-operation `schemes` naming no usable scheme, an unknown security type), or a missing `schemes` assumed `https` — a query/form `tsv` is carried as a tab-joined value and per-operation `schemes` as per-operation servers |
 
 The terminal report lists the losses and summarises the choices; the generated
 reference pages split them into "Not represented" and "Choices made".
@@ -1438,11 +1487,8 @@ never touched. Commit the manifest with the rest of the output.
 - **A mocked stream ends after its fixture events** — it never drops the
   connection by itself, so exercising a reconnect still needs a test that
   fails a request (`mockOperation(…, { error })`) or a real server.
-- **Plugin hooks are synchronous** and run twice each (the determinism check);
-  an expensive `emit` costs twice its work. `format` is the one asynchronous
-  hook.
-- **`--plugins` on the command line takes built-in names only**; plugins made
-  with `definePlugin` are configured in `pyreon.config.ts`.
+- **Plugin hooks run twice each** (the determinism check), sequentially, so an
+  expensive or slow async `emit` costs twice its work.
 - A `$ref` **cycle** has no finite nesting, so the native schema names the
   target and the compiler drops that one field with a warning.
 

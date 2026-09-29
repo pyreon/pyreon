@@ -20,18 +20,24 @@
  *   in: body parameter               requestBody, one content entry per `consumes`
  *   in: formData parameters          requestBody with an object schema
  *   type/format/items on a param     param.schema
- *   collectionFormat                 style + explode
+ *   collectionFormat                 style + explode (`tsv` -> `tabDelimited`)
+ *   operation schemes                operation servers[] (same host + basePath)
  *   response.schema + produces       response.content[<produces>].schema
  *   response.examples                response.content[<mime>].example
  *   x-nullable                       nullable
  *   type: file                       type: string, format: binary
  *   discriminator: "kind"            discriminator: { propertyName: "kind" }
  *
+ * `collectionFormat: tsv` has no 3.0 style, so it becomes `tabDelimited` -- a
+ * style Lathe's client runtime and `@pyreon/http` serialize as a tab-joined
+ * value, exactly what a Swagger 2 server declared it parses. Per-operation
+ * `schemes` become per-operation `servers` carrying the document's own host and
+ * basePath, which is precisely what they meant.
+ *
  * What cannot be carried across is reported as a note rather than guessed:
- * `collectionFormat: tsv` has no 3.0 style, per-operation `schemes` have no
- * per-operation `servers` equivalent that preserves the host, and a missing
- * `schemes` is resolved against where the spec came from (Swagger 2 §Schemes
- * says so) or, failing that, assumed `https`.
+ * `tsv` on a header or path parameter (3.0 serializes those one way only), and
+ * a missing `schemes`, resolved against where the spec came from (Swagger 2
+ * §Schemes says so) or, failing that, assumed `https`.
  *
  * The input document is never mutated: conversion builds a new tree.
  */
@@ -281,19 +287,26 @@ function operationOf(op: Json, sharedBodyish: readonly unknown[], at: string, cx
     if (k === 'parameters' || k === 'responses' || k === 'consumes' || k === 'produces' || k === 'schemes') continue
     out[k] = v
   }
-  // Only a LOSS when it would have changed the URL: the document has a host
-  // (with no host every server is relative, so the scheme is the page's) and
-  // the scheme the client uses (`servers[0]`, https-first) is not one the
-  // operation allows. Kubernetes restates `schemes: [https]` on all 1,202
-  // operations; reporting each would bury the real losses.
+  // Per-operation `schemes` restate WHICH schemes the operation is served over,
+  // on the document's own host. When the client's scheme (`servers[0]`,
+  // https-first) is among them nothing changes, and nothing is written --
+  // Kubernetes restates `schemes: [https]` on all 1,202 operations. When it is
+  // not, the operation gets its own `servers`, which the reader turns into a
+  // per-operation base URL.
   const opSchemes = stringList(op.schemes).map((s) => s.toLowerCase())
-  if (op.schemes !== undefined && str(cx.input.host) && !opSchemes.includes(cx.firstScheme)) {
-    cx.notes.push({
-      code: 'swagger2-lossy',
-      at: `${at}/schemes`,
-      message:
-        'per-operation `schemes` have no OpenAPI 3 equivalent that keeps the host — the operation uses the document servers.',
-    })
+  const host = str(cx.input.host)
+  if (op.schemes !== undefined && host && !opSchemes.includes(cx.firstScheme)) {
+    const usable = opSchemes.filter((s) => /^(https?|wss?)$/.test(s)).sort((a, b) => rank(a) - rank(b))
+    const basePath = str(cx.input.basePath) ?? ''
+    if (usable.length > 0) {
+      out.servers = usable.map((scheme) => ({ url: `${scheme}://${host}${basePath === '/' ? '' : basePath}` }))
+    } else {
+      cx.notes.push({
+        code: 'swagger2-lossy',
+        at: `${at}/schemes`,
+        message: `per-operation \`schemes\` ${JSON.stringify(opSchemes)} name no scheme a client can use (http, https, ws, wss) — the operation uses the document servers.`,
+      })
+    }
   }
   const consumes = op.consumes !== undefined ? stringList(op.consumes) : cx.globalConsumes
   const produces = op.produces !== undefined ? stringList(op.produces) : cx.globalProduces
@@ -407,8 +420,11 @@ function paramOf(p: Json, at: string, cx: Cx): Json {
 }
 
 /**
- * `collectionFormat` -> `style` + `explode`, per location. `tsv` has no 3.0
- * style at all, and `ssv`/`pipes` exist only for query parameters.
+ * `collectionFormat` -> `style` + `explode`, per location. `ssv`/`pipes` exist
+ * only for query parameters. `tsv` has no 3.0 style at all; for a query or
+ * form field it becomes `tabDelimited`, which the generated runtime joins with
+ * a tab. A header or path parameter has one 3.0 serialization, so `tsv` there
+ * is reported.
  */
 function collectionStyle(fmt: string, where: string, at: string, cx: Cx): Json {
   if (fmt === 'multi') {
@@ -420,6 +436,8 @@ function collectionStyle(fmt: string, where: string, at: string, cx: Cx): Json {
     return { style: 'spaceDelimited', explode: false }
   } else if (fmt === 'pipes' && where === 'query') {
     return { style: 'pipeDelimited', explode: false }
+  } else if (fmt === 'tsv' && (where === 'query' || where === 'formData')) {
+    return { style: 'tabDelimited', explode: false }
   }
   cx.notes.push({
     code: 'swagger2-lossy',
