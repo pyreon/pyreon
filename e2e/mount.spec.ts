@@ -4,11 +4,12 @@
  */
 
 import { expect, test } from "@playwright/test"
+import { waitForHydration } from "./hydration-barrier"
 
 // Navigate and wait for Pyreon to be available on window
 async function setupPyreonPage(page: import("@playwright/test").Page) {
   await page.goto("/")
-  await page.waitForSelector("#layout", { timeout: 10_000 })
+  await waitForHydration(page)
   // Verify Pyreon is exposed
   const hasPyreon = await page.evaluate(() => !!(window as any).__pyreon)
   expect(hasPyreon).toBe(true)
