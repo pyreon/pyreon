@@ -8,7 +8,7 @@
  * never runs `delay` / `timeout`; this layer does the same, on top of the
  * `__load` contract `@pyreon/runtime-server` waits on (#3715 / #3722).
  */
-import type { ComponentFn } from '@pyreon/core'
+import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import { renderToStream, renderToString } from '@pyreon/runtime-server'
 import { defineAsyncComponent, Suspense } from '../index'
@@ -20,7 +20,7 @@ const Failed: ComponentFn<{ error: Error }> = (p) => h('u', { class: 'error' }, 
 
 const slow = <T,>(value: T, ms = 15) => new Promise<T>((r) => setTimeout(() => r(value), ms))
 
-const inSuspense = (child: unknown) =>
+const inSuspense = (child: VNodeChild) =>
   h('main', null, jsx(Suspense as unknown as ComponentFn, { fallback: h('s', null, 'fb'), children: child }))
 
 async function read(s: ReadableStream<string>): Promise<string> {

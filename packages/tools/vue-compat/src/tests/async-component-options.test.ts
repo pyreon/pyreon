@@ -8,7 +8,7 @@
  * under test); the delays are small but every assertion is on a settled state,
  * never on a race.
  */
-import type { ComponentFn } from '@pyreon/core'
+import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { ErrorBoundary, h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { defineAsyncComponent, ref, Suspense } from '../index'
@@ -204,7 +204,7 @@ describe('defineAsyncComponent — errors, timeout, onError', () => {
 })
 
 describe('defineAsyncComponent — suspensible', () => {
-  const inSuspense = (child: unknown) =>
+  const inSuspense = (child: VNodeChild) =>
     h('main', null, jsx(Suspense as unknown as ComponentFn, { fallback: h('s', { class: 'fb' }, 'fb'), children: child }))
 
   it('suspensible (default): the <Suspense> fallback shows, loadingComponent does not', async () => {

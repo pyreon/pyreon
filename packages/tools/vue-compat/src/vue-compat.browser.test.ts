@@ -1,4 +1,4 @@
-import { h } from '@pyreon/core'
+import { type ComponentFn, h } from '@pyreon/core'
 import { describe, expect, it } from 'vitest'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
 import { defineAsyncComponent, ref, isRef, unref } from './index'
@@ -34,9 +34,9 @@ describe('@pyreon/vue-compat — defineAsyncComponent options in real Chromium',
   const tick = (ms = 0) => new Promise<void>((r) => setTimeout(r, ms))
 
   it('shows loadingComponent after `delay`, then swaps in the loaded component', async () => {
-    let resolve!: (m: { default: () => ReturnType<typeof h> }) => void
+    let resolve!: (m: { default: ComponentFn }) => void
     const A = defineAsyncComponent({
-      loader: () => new Promise((r) => (resolve = r)),
+      loader: () => new Promise<{ default: ComponentFn }>((r) => (resolve = r)),
       loadingComponent: () => h('i', { id: 'async-loading' }, 'loading'),
       delay: 20,
     })
@@ -53,7 +53,7 @@ describe('@pyreon/vue-compat — defineAsyncComponent options in real Chromium',
 
   it('renders errorComponent with the timeout error', async () => {
     const A = defineAsyncComponent({
-      loader: () => new Promise(() => {}),
+      loader: () => new Promise<ComponentFn>(() => {}),
       errorComponent: (p: { error: Error }) => h('u', { id: 'async-error' }, p.error.message),
       timeout: 20,
     })
