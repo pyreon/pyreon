@@ -8965,7 +8965,7 @@ function tryUseStreamDecl(init: AnyNode, name: string, ctx: ParseCtx): DeclIR | 
   if (requestBodyExpr !== undefined && !Object.keys(reqHeaders ?? {}).some((k) => k.toLowerCase() === 'content-type')) {
     // The web's `json` sets this unless the caller declared one (see the
     // literal-body branch of the endpoint resolver).
-    reqHeaders = { ...(reqHeaders ?? {}), 'content-type': 'application/json' }
+    reqHeaders = { ...reqHeaders, 'content-type': 'application/json' }
   }
 
   let sseText = false
