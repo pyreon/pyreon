@@ -499,6 +499,7 @@ export function forcesFullRun(path: string): boolean {
   if (/^vitest\.[^/]*\.ts$/.test(path)) return true
   if (path === '.bun-version') return true
   if (path.startsWith('.github/workflows/')) return true
+  if (path.startsWith('.github/actions/')) return true
   // The size-budget DATA files are the one exception under `scripts/`: no e2e
   // spec, e2e config, example build, or served page reads them — only the
   // budget gates do. Measured 2026-09-23 over one week of PRs: 83 of the 124

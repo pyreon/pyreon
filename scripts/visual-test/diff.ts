@@ -4,13 +4,16 @@
  * Compares screenshots in scripts/visual-test/current/ against baselines in
  * scripts/visual-test/baselines/. Generates diff images and a summary.
  *
- * Requires: pixelmatch, pngjs (add as devDeps when ready to use)
+ * Uses Atlas's own PNG codec + perceptual diff (the same comparator
+ * `atlas verify-browser` runs), so it needs no extra dependencies.
  *
  * Usage: bun scripts/visual-test/diff.ts
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs'
 import { basename, join } from 'path'
+import { pixelDiff } from '../../packages/tools/atlas/src/verify-browser/pixel-diff'
+import { decodePng, encodePng } from '../../packages/tools/atlas/src/verify-browser/png'
 
 const ROOT = join(import.meta.dir, '../..')
 const BASELINE_DIR = join(ROOT, 'scripts/visual-test/baselines')
@@ -35,23 +38,7 @@ function classifyStatus(percentage: number): 'pass' | 'warn' | 'fail' {
   return 'fail'
 }
 
-async function diffImages(): Promise<DiffResult[]> {
-  // Dynamic imports — these packages must be installed as devDeps
-  let PNG: typeof import('pngjs').PNG
-  let pixelmatch: typeof import('pixelmatch').default
-
-  try {
-    const pngjs = await import('pngjs')
-    PNG = pngjs.PNG
-    const pm = await import('pixelmatch')
-    pixelmatch = pm.default
-  } catch {
-    console.error(
-      '[visual-test] Missing dependencies. Install them:\n  bun add -d pixelmatch pngjs @types/pngjs',
-    )
-    process.exit(1)
-  }
-
+function diffImages(): DiffResult[] {
   if (!existsSync(CURRENT_DIR)) {
     console.error('[visual-test] No current screenshots found. Run capture first.')
     process.exit(1)
@@ -88,8 +75,8 @@ async function diffImages(): Promise<DiffResult[]> {
     const baselineBuf = readFileSync(join(BASELINE_DIR, file))
     const currentBuf = readFileSync(join(CURRENT_DIR, file))
 
-    const baselineImg = PNG.sync.read(baselineBuf)
-    const currentImg = PNG.sync.read(currentBuf)
+    const baselineImg = decodePng(baselineBuf)
+    const currentImg = decodePng(currentBuf)
 
     // Handle size mismatches — treat as 100% diff
     if (baselineImg.width !== currentImg.width || baselineImg.height !== currentImg.height) {
@@ -109,21 +96,16 @@ async function diffImages(): Promise<DiffResult[]> {
 
     const { width, height } = baselineImg
     const totalPixels = width * height
-    const diffImg = new PNG({ width, height })
+    const diffData = Buffer.alloc(width * height * 4)
 
-    const diffPixels = pixelmatch(
-      baselineImg.data,
-      currentImg.data,
-      diffImg.data,
-      width,
-      height,
-      { threshold: 0.1 },
-    )
+    const diffPixels = pixelDiff(baselineImg.data, currentImg.data, diffData, width, height, {
+      threshold: 0.1,
+    })
 
     const percentage = (diffPixels / totalPixels) * 100
 
     // Write diff image
-    writeFileSync(join(DIFF_DIR, file), PNG.sync.write(diffImg))
+    writeFileSync(join(DIFF_DIR, file), encodePng(width, height, diffData))
 
     results.push({
       name,
@@ -190,5 +172,5 @@ function printResults(results: DiffResult[]): void {
   }
 }
 
-const results = await diffImages()
+const results = diffImages()
 printResults(results)
