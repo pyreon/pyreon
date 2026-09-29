@@ -2,7 +2,7 @@
 
 Interactive scaffolder for new Pyreon Zero projects.
 
-Scaffold a new `@pyreon/zero` project. Invoke through the npm/bun create-convention — `npm create @pyreon/zero@latest my-app` or `bun create @pyreon/zero my-app` (both resolve this package). It walks through template choice, deployment adapter, backend integrations, AI tooling, and compat mode via [@clack/prompts](https://github.com/bombshell-dev/clack), or accepts the full configuration non-interactively via CLI flags. Generates a working `@pyreon/zero` project with `vite.config.ts`, route tree, deploy artefacts, and optional AI rule files. (The package exposes `create-pyreon-app` / `create-zero` bins once installed; `bunx create-pyreon-app` does NOT resolve — no package is published under that bare name — so use the create-convention above.)
+Scaffold a new `@pyreon/zero` project. Invoke through the npm/bun create-convention — `npm create @pyreon/zero@latest my-app` or `bun create @pyreon/zero my-app` (both resolve this package). It walks through template choice, deployment adapter, backend integrations, AI tooling, and compat mode with interactive terminal prompts (or, when stdin is not a terminal, one answer per line — an empty line takes the default), or accepts the full configuration non-interactively via CLI flags. Generates a working `@pyreon/zero` project with `vite.config.ts`, route tree, deploy artefacts, and optional AI rule files. (The package exposes `create-pyreon-app` / `create-zero` bins once installed; `bunx create-pyreon-app` does NOT resolve — no package is published under that bare name — so use the create-convention above.)
 
 ## Install
 

@@ -109,7 +109,7 @@ describe('content() Vite plugin', () => {
   })
 
   it('surfaces compile errors via this.error() with a shortened id', async () => {
-    // gray-matter throws on malformed YAML frontmatter. We capture the
+    // parseFrontmatter throws on malformed YAML frontmatter. We capture the
     // call to `this.error()` via a stub and assert the message shape.
     const plugin = content({ highlight: false, compileJsx: false })
     const transform = plugin.transform as (

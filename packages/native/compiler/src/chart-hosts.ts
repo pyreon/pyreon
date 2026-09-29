@@ -874,7 +874,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     layout: (a, t) => `layoutSingleAxis(${a.data[0]}, ${a.data[1]}, ${box00(a, t)}, ${a.options})`,
     render: (l, a) => `renderSingleAxis(${l}, ${a.options})`,
     hit: (l, x, y) => `hitSingleAxis(${l}, ${x}, ${y})`,
-    adapt: { axis: singleAxisSpecAdapter },
+    adapt: { axis: singleAxisSpecAdapter, points: literalStructArrayAdapter('points', 'SingleAxisPoint', ['x'], ['size', 'name', 'color']) }, // typed rows: a bare `{ x }` literal otherwise synthesizes an anonymous struct the engine's [SingleAxisPoint] rejects
   },
 }
 
@@ -1672,7 +1672,7 @@ function desugarOptionChartHost(
       if (inverse?.kind === 'literal' && inverse.value === true) fields.push({ name: 'inverse', value: lit(true) })
       axes[dim] = { kind: 'object', fields }
     }
-    if (axes.some((axis) => axis === undefined)) {
+    if ([...axes].some((axis) => axis === undefined)) { // spread: `some` skips holes, and a dim gap leaves one
       warn('<OptionChart option.parallelAxis>: native parallel dimensions must be contiguous; emitting nothing.')
       return undefined
     }
@@ -1786,7 +1786,7 @@ function desugarOptionChartHost(
     for (let i = 0; i < data.elements.length; i++) {
       const datum = literalOf(data.elements[i], resolve)
       const values = datum?.kind === 'array' ? datum : datum?.kind === 'object' ? literalOf(objectField(datum, 'value'), resolve) : undefined
-      const x = values?.kind === 'array' ? litNumber(values.elements[0]) : litNumber(datum)
+      const x = values?.kind === 'array' ? litNumber(values.elements[0]) : litNumber(values ?? datum) // `{ value: 3 }`: the scalar sits in `value`
       if (x === undefined) {
         warn(`<OptionChart option.series[0].data[${i}]>: a native single-axis datum needs a literal value or [position, size]; emitting nothing.`)
         return undefined

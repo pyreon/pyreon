@@ -14,6 +14,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   extractPascalExports,
+  findSourceFiles,
   isPascalCase,
   renderVirtualModule,
   scanMdxComponents,
@@ -230,6 +231,65 @@ describe('scanMdxDir', () => {
     await writeFile('D.jsx', 'export const D = () => null')
     const result = await scanMdxDir(tmpDir)
     expect(result.components.map((c) => c.name)).toEqual(['A', 'B', 'C', 'D'])
+  })
+})
+
+// `findSourceFiles` replaced a `fast-glob` call (`**/*.{ts,tsx,js,jsx}`,
+// `dot: false`, `onlyFiles`, `absolute`). These specs pin the semantics that
+// call had — verified against fast-glob on the same fixture when the swap
+// was made — plus the two places it is deliberately stricter (sorted
+// output, cycle guard).
+describe('findSourceFiles', () => {
+  let root: string
+  beforeEach(async () => {
+    root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'zero-content-walk-')))
+  })
+  afterEach(async () => {
+    await fs.rm(root, { recursive: true, force: true })
+  })
+  const touch = async (rel: string) => {
+    const abs = path.join(root, rel)
+    await fs.mkdir(path.dirname(abs), { recursive: true })
+    await fs.writeFile(abs, '')
+  }
+  const rel = (files: string[]) => files.map((f) => f.slice(root.split(path.sep).join('/').length + 1))
+
+  it('matches the four source extensions recursively and nothing else', async () => {
+    for (const f of ['A.tsx', 'a/B.ts', 'a/b/C.jsx', 'a/b/d.js', 'x.d.ts', 'g.md', 'h.mts', 'i.cjs', 'json.json']) {
+      await touch(f)
+    }
+    expect(rel(await findSourceFiles(root))).toEqual(['A.tsx', 'a/B.ts', 'a/b/C.jsx', 'a/b/d.js', 'x.d.ts'])
+  })
+
+  it('skips dot-prefixed files and directories', async () => {
+    await touch('.hidden/E.ts')
+    await touch('a/.F.ts')
+    await touch('a/G.ts')
+    expect(rel(await findSourceFiles(root))).toEqual(['a/G.ts'])
+  })
+
+  it('returns absolute, forward-slash, sorted paths', async () => {
+    await touch('z/Z.ts')
+    await touch('b/B.ts')
+    await touch('A.ts')
+    const files = await findSourceFiles(root)
+    expect(files.every((f) => path.isAbsolute(f) && !f.includes('\\'))).toBe(true)
+    expect(files).toEqual([...files].sort())
+  })
+
+  it('follows symlinked files and directories, ignores broken links', async () => {
+    await touch('real/R.ts')
+    await touch('Top.tsx')
+    await fs.symlink(path.join(root, 'real'), path.join(root, 'linked'))
+    await fs.symlink(path.join(root, 'Top.tsx'), path.join(root, 'Alias.tsx'))
+    await fs.symlink(path.join(root, 'nowhere'), path.join(root, 'Broken.ts'))
+    expect(rel(await findSourceFiles(root))).toEqual(['Alias.tsx', 'Top.tsx', 'linked/R.ts', 'real/R.ts'])
+  })
+
+  it('does not follow a symlink back to one of its ancestors (cycle)', async () => {
+    await touch('a/b/C.ts')
+    await fs.symlink(path.join(root, 'a'), path.join(root, 'a/b/loop'))
+    expect(rel(await findSourceFiles(root))).toEqual(['a/b/C.ts'])
   })
 })
 

@@ -33,9 +33,6 @@
     "lint": "oxlint .",
     "test": "vitest run"
   },
-  "dependencies": {
-    "@clack/prompts": "^1.7.0"
-  },
   "devDependencies": {
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",

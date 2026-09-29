@@ -118,10 +118,12 @@ describe('netlify adapter — netlify.toml matches the staged output', () => {
       expect(toml).toContain(`publish = "dist/${NETLIFY_ADAPTER_OUTPUT.publishDir}"`)
       // Adapter stages the function into dist/<functionsDir>.
       expect(toml).toContain(`directory = "dist/${NETLIFY_ADAPTER_OUTPUT.functionsDir}"`)
-      // Adapter's function file is <functionName>.mjs — the redirect must
-      // target that name (the historical config targeted "server").
-      expect(toml).toContain(`to = "/.netlify/functions/${NETLIFY_ADAPTER_OUTPUT.functionName}"`)
-      expect(toml).not.toContain('/.netlify/functions/server')
+      // No redirect to the function: it routes itself via `config.path`,
+      // and Netlify makes a custom-path function unreachable at
+      // `/.netlify/functions/<name>` — a rewrite there is dead config (the
+      // historical file had one, first to "server", then to "ssr").
+      expect(toml).not.toContain('/.netlify/functions/')
+      expect(toml).not.toContain('[[redirects]]')
       expect(toml).not.toContain('dist/.netlify')
     }
   })

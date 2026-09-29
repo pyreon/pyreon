@@ -91,6 +91,32 @@ describe('readEventStream — the WHATWG grammar', () => {
     expect(msgs[0]?.data).toBe('x')
   })
 
+  // The spec strips exactly ONE leading BOM. `TextDecoder` already consumes
+  // one by default, so stripping a U+FEFF from its OUTPUT as well removed a
+  // second one — a stream opening with two BOMs lost a content character.
+  it('strips exactly one BOM — a second U+FEFF is content', async () => {
+    const msgs = await collect(readEventStream(body('\uFEFF\uFEFFdata: x\n\n')))
+    // The second BOM prefixes the field name, so it is not `data` and the
+    // event carries no data — exactly what a spec-conforming parser does.
+    expect(msgs).toEqual([])
+  })
+
+  it('strips the BOM even when it arrives split across chunks', async () => {
+    const bom = new Uint8Array([0xef, 0xbb, 0xbf])
+    const msgs = await collect(readEventStream(body(bom.slice(0, 1), bom.slice(1), 'data: x\n\n')))
+    expect(msgs.map((m) => m.data)).toEqual(['x'])
+  })
+
+  // An EMPTY chunk between the `\r` and `\n` of one CRLF used to reset the
+  // pending-CR flag, so the `\n` read as a SECOND terminator — an empty line,
+  // which in SSE dispatches the event early and splits one event into two.
+  it('an empty chunk inside a CRLF does not create a blank line', async () => {
+    const msgs = await collect(
+      readEventStream(body('data: a\r', new Uint8Array(0), '\ndata: b\r\n\r\n')),
+    )
+    expect(msgs.map((m) => m.data)).toEqual(['a\nb'])
+  })
+
   it('keeps the id across events, ignores an id containing NUL, and resets on an empty id', async () => {
     const msgs = await collect(
       readEventStream(body('id: 1\ndata: a\n\ndata: b\n\nid: 2\0x\ndata: c\n\nid\ndata: d\n\n')),

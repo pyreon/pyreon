@@ -1,4 +1,3 @@
-import matter from 'gray-matter'
 import remarkDirective from 'remark-directive'
 import remarkFrontmatter from 'remark-frontmatter'
 import remarkGfm from 'remark-gfm'
@@ -7,6 +6,7 @@ import remarkParse from 'remark-parse'
 import { unified, type Processor } from 'unified'
 import type { Root } from 'mdast'
 import { emitJsx, type EmitOptions } from './emit-jsx'
+import { parseFrontmatter } from './frontmatter'
 import { remarkCallout } from './remark-plugins/callout'
 import { remarkCodeGroup } from './remark-plugins/codegroup'
 import { remarkMathMermaidDetails } from './remark-plugins/math-mermaid-details'
@@ -133,7 +133,7 @@ export function _resetProcessorCacheForTesting(): void {
 // One-shot transformer used by the Vite plugin's `transform` hook.
 //
 // Pipeline:
-//   1. gray-matter splits frontmatter (YAML) from the body
+//   1. parseFrontmatter splits frontmatter (YAML) from the body
 //   2. unified + remark-parse + remark-frontmatter parses body → mdast
 //   3. emitJsx walks the mdast → Pyreon JSX string + heading list
 //   4. wrap into a complete .tsx module shape
@@ -229,12 +229,12 @@ export async function compileMarkdown(
   id: string,
   options: CompileOptions = {},
 ): Promise<CompileResult> {
-  // 1. Split frontmatter (uses gray-matter directly — remark-frontmatter
-  //    keeps the YAML in the mdast tree but doesn't parse it; gray-matter
-  //    parses it as JS values).
-  const parsed = matter(source)
+  // 1. Split frontmatter (first-party — remark-frontmatter keeps the YAML
+  //    in the mdast tree but doesn't parse it; parseFrontmatter parses it
+  //    as JS values). See ./frontmatter.ts for the exact split rules.
+  const parsed = parseFrontmatter(source)
   const body = parsed.content
-  const frontmatter = parsed.data as Record<string, unknown>
+  const frontmatter = parsed.data
 
   // 2. Build the unified pipeline. Order matters:
   //      parse → frontmatter → gfm → directive → callout → codegroup → (mdx)

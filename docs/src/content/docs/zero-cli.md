@@ -31,7 +31,7 @@ yarn add -D @pyreon/zero-cli
 
 Most apps never install this directly — `bun create @pyreon/zero my-app` (see [`@pyreon/create-zero`](/docs/create-zero)) adds it as a dev dependency and wires the `package.json` scripts for you.
 
-The package installs a single binary, **`zero`**. Its dependencies (`@pyreon/zero`, `@pyreon/server`, `@pyreon/cli`, `@pyreon/create-zero`, plus `vite` and `cac`) are pulled in transitively — you don't list them yourself.
+The package installs a single binary, **`zero`**. Its dependencies (`@pyreon/zero`, `@pyreon/server`, `@pyreon/cli`, `@pyreon/create-zero`, plus `vite`) are pulled in transitively — you don't list them yourself.
 
 ## Why a dedicated CLI?
 

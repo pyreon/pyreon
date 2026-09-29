@@ -7,20 +7,23 @@
  * isolate; loading several in one process would correctly trip the
  * duplicate-`@pyreon/server` sentinel).
  *
- * Usage: node scripts/_invoke-ssr-function.mjs <absoluteFuncPath> <style>
- *   style ∈ vercel | netlify | cloudflare | node
+ * Usage: node scripts/_invoke-ssr-function.mjs <absoluteFuncPath> <style> [urlPath]
+ *   style ∈ vercel | netlify | cloudflare | node; urlPath defaults to /posts
+ *   (a loader route, so the loader payload is asserted). Any other path must
+ *   pass [pageMarker] — a string the rendered page's OWN content carries —
+ *   since a loader-less page emits no loader payload.
  * Exits 0 on success; non-zero (with the failing checks on stderr) otherwise.
  */
 import { pathToFileURL } from 'node:url'
 
-const [, , funcPath, style] = process.argv
+const [, , funcPath, style, urlPath = '/posts', pageMarker] = process.argv
 if (!funcPath || !style) {
   console.error('usage: _invoke-ssr-function.mjs <funcPath> <style>')
   process.exit(2)
 }
 
 const mod = await import(pathToFileURL(funcPath).href)
-const req = new Request('http://localhost/posts')
+const req = new Request(new URL(urlPath, 'http://localhost'))
 
 let res
 if (style === 'cloudflare') {
@@ -36,7 +39,9 @@ const html = await res.text()
 const checks = {
   status200: res.status === 200,
   routerView: html.includes('data-pyreon-router-view'),
-  loaderData: html.includes('__PYREON_LOADER_DATA__'),
+  ...(pageMarker === undefined
+    ? { loaderData: html.includes('__PYREON_LOADER_DATA__') }
+    : { pageContent: html.includes(pageMarker) }),
   noUnfilledShell: !html.includes('<!--pyreon-app-->'),
   hashedClientEntry: /\/assets\/index-[\w.-]+\.js/.test(html),
   noDevEntry: !html.includes('/src/entry-client.ts'),
