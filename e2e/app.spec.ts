@@ -4,10 +4,12 @@
  */
 
 import { expect, test } from "@playwright/test"
+import { waitForHydration } from "./hydration-barrier"
 
 test.describe("Playground App", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/")
+    await waitForHydration(page)
   })
 
   test("page loads and renders layout", async ({ page }) => {
@@ -37,6 +39,7 @@ test.describe("Playground App", () => {
 test.describe("Counter", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/")
+    await waitForHydration(page)
   })
 
   test("starts at zero", async ({ page }) => {
@@ -113,6 +116,7 @@ test.describe("Counter", () => {
 test.describe("TodoList", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/")
+    await waitForHydration(page)
   })
 
   test("renders default todos", async ({ page }) => {
@@ -204,6 +208,7 @@ test.describe("TodoList", () => {
 test.describe("Router Navigation", () => {
   test("navigating to About page", async ({ page }) => {
     await page.goto("/")
+    await waitForHydration(page)
     await page.locator("nav a", { hasText: "About" }).click()
 
     await expect(page.locator("h2", { hasText: "About Pyreon" })).toBeVisible()
@@ -214,6 +219,7 @@ test.describe("Router Navigation", () => {
 
   test("navigating back to Home page", async ({ page }) => {
     await page.goto("/")
+    await waitForHydration(page)
     // Go to About
     await page.locator("nav a", { hasText: "About" }).click()
     await expect(page.locator("h2", { hasText: "About Pyreon" })).toBeVisible()
@@ -226,6 +232,7 @@ test.describe("Router Navigation", () => {
 
   test("About page lists framework features", async ({ page }) => {
     await page.goto("/")
+    await waitForHydration(page)
     await page.locator("nav a", { hasText: "About" }).click()
 
     const features = page.locator(".card ul li")
@@ -234,6 +241,7 @@ test.describe("Router Navigation", () => {
 
   test("header stays visible during navigation", async ({ page }) => {
     await page.goto("/")
+    await waitForHydration(page)
     await expect(page.locator("h1")).toHaveText("Pyreon Playground")
 
     await page.locator("nav a", { hasText: "About" }).click()
@@ -245,6 +253,7 @@ test.describe("Router Navigation", () => {
 
   test("counter state resets when navigating away and back", async ({ page }) => {
     await page.goto("/")
+    await waitForHydration(page)
     // Increment counter
     await page.locator(".actions button", { hasText: "+" }).click()
     await page.locator(".actions button", { hasText: "+" }).click()
