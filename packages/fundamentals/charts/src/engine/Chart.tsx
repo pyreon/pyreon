@@ -466,7 +466,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     dprQuery = null
   }
   const watchDpr = (): void => {
-    if (typeof matchMedia !== 'function') return
+    if (typeof matchMedia === 'undefined') return
     if (typeof globalThis.devicePixelRatio !== 'number') return
     stopDprWatch()
     dprQuery = matchMedia(`(resolution: ${globalThis.devicePixelRatio}dppx)`)
