@@ -2,7 +2,7 @@ import { useHead } from '@pyreon/head'
 import { useI18n } from '@pyreon/i18n'
 import { toast } from '@pyreon/toast'
 import { Link } from '@pyreon/zero/link'
-import { computed } from '@pyreon/reactivity'
+import { derived, signalOf } from '@pyreon/core/plain'
 import { useSortable } from '@pyreon/dnd'
 import { createDocument, download } from '@pyreon/document'
 import { useBookmarksModel, type Bookmark } from '../lib/bookmarks'
@@ -35,10 +35,10 @@ export default function BookmarksPage() {
 
   // useSortable expects a signal of items + a `by` key extractor.
   // We adapt the state-tree's items() to a computed-signal shape.
-  const items = computed(() => model.items() as Bookmark[])
+  const items = derived(() => model.items() as Bookmark[])
 
   const sortable = useSortable<Bookmark>({
-    items,
+    items: signalOf<typeof items>(items),
     by: (b) => String(b.id),
     onReorder: (next) => {
       model.reorder(next.map((b) => b.id))
@@ -48,7 +48,7 @@ export default function BookmarksPage() {
 
   // ── PDF / Markdown export via @pyreon/document ───────────────────────────
   const exportBookmarks = async (filename: string) => {
-    const list = items()
+    const list = items
     if (list.length === 0) {
       toast.error('No bookmarks to export')
       return
@@ -123,7 +123,7 @@ export default function BookmarksPage() {
       </header>
 
       {() => {
-        const list = items()
+        const list = items
         if (list.length === 0)
           return <div class="feed-state">{t('bookmarks.empty')}</div>
         return (

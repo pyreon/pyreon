@@ -9,7 +9,7 @@
 
 import { onMount } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { state, signalOf } from '@pyreon/core/plain'
 import { defineStore } from '@pyreon/store'
 import {
   useHaptics,
@@ -91,9 +91,9 @@ const NativeFlowFrame = rocketstyle()({ component: Stack }).sizes(() => ({
 // store both platforms read back after the drag ends: a count of 1 proves the
 // component rendered during the gesture; 0 before proves it renders only then.
 const useNativeFlowProbe = defineStore('native-flow-probe', () => {
-  const customLineMounts = signal(0)
-  const noteCustomLineMount = () => { customLineMounts.set(customLineMounts() + 1) }
-  return { customLineMounts, noteCustomLineMount }
+  let customLineMounts = state(0)
+  const noteCustomLineMount = () => { customLineMounts = customLineMounts + 1 }
+  return { customLineMounts: signalOf<typeof customLineMounts>(customLineMounts), noteCustomLineMount }
 })
 
 type NativeFlowData = { label: string }
@@ -137,7 +137,7 @@ function Tally(props: { count: number; children: (n: number) => unknown; footer?
 }
 
 export function Counter() {
-  const count = signal<number>(0)
+  let count = state<number>(0)
   // Direct native Flow device proof. This is intentionally NOT the /webview
   // bridge: PMTC emits PyreonFlowView and the app links the package's actual
   // SwiftUI/Compose host, state, geometry, handles, and resize sources. The
@@ -170,16 +170,16 @@ export function Counter() {
   const nativeFlowEdgeCount = computed(() => nativeFlow.edges().length)
   // `colorMode` is reactive: the suites toggle it and count the web's dark
   // canvas colour (#0b1220) in a screenshot — zero before, many after, zero again.
-  const nativeFlowDark = signal(false)
+  let nativeFlowDark = state(false)
   // `colorMode="system"` follows the device appearance; the suites switch the
   // SYSTEM appearance, not this app, and count the same dark pixels.
-  const nativeFlowSystem = signal(false)
-  const nativeFlowColorMode = computed(() => (nativeFlowSystem() ? 'system' : nativeFlowDark() ? 'dark' : 'light'))
+  let nativeFlowSystem = state(false)
+  const nativeFlowColorMode = computed(() => (nativeFlowSystem ? 'system' : nativeFlowDark ? 'dark' : 'light'))
   const nativeFlowProbe = useNativeFlowProbe()
   // Connect-start count: separates "no drag ever started" from "the custom
   // connection line did not render" when a device suite fails.
-  const nativeFlowConnectStarts = signal(0)
-  onMount(() => { nativeFlow.onConnectStart((_start) => { nativeFlowConnectStarts.set(nativeFlowConnectStarts() + 1) }) })
+  let nativeFlowConnectStarts = state(0)
+  onMount(() => { nativeFlow.onConnectStart((_start) => { nativeFlowConnectStarts = nativeFlowConnectStarts + 1 }) })
   const nativeFlowSelectedNodeCount = computed(() => nativeFlow.selectedNodes().length)
   const nativeFlowSelectedEdgeCount = computed(() => nativeFlow.selectedEdges().length)
   const nativeFlowStartPosition = computed(() => {
@@ -215,14 +215,14 @@ export function Counter() {
   // ("Animated Box") disappears then reappears, proving the animated
   // show-gate compiles + toggles on-device (the animation vocabulary v1 is
   // conditional-visibility fade; spring/keyframe/gesture-driven absent).
-  const boxVisible = signal<boolean>(true)
+  let boxVisible = state<boolean>(true)
   // M4.5 / M3.5 async-lowering + biometrics proof — the current biometric-gate
   // outcome, flipped from INSIDE an async handler. Starts "idle"; the Unlock
   // button's `async` handler awaits `bio.authenticate(...)` and sets this to
   // "unlocked"/"denied". On an UNENROLLED simulator/emulator (the CI default)
   // the gate resolves `false` deterministically with NO system prompt, so the
   // observable outcome is "Lock: denied" — a clean, hang-free device assertion.
-  const lockStatus = signal<string>('idle')
+  let lockStatus = state<string>('idle')
   // M3.4 image-picker proof — the outcome of a photo pick, flipped from INSIDE
   // an async handler (the second async-result service after biometrics). Starts
   // "idle"; the Pick Photo button awaits `picker.pick()` and sets this to
@@ -231,17 +231,17 @@ export function Counter() {
   // "Photo: cancelled". That single assertion proves three things at once — the
   // picker PRESENTED, the async result flowed back across the sheet dismissal,
   // and the post-await re-render fired.
-  const photoStatus = signal<string>('idle')
+  let photoStatus = state<string>('idle')
   // M3.8 file-picker proof — the outcome of a DOCUMENT pick (any file, not just
   // photos), flipped from INSIDE an async handler (the third async-result
   // service). Same present→cancel→re-render device assertion as the photo
   // picker, but through the system document browser
   // (UIDocumentPickerViewController / SAF OpenDocument).
-  const fileStatus = signal<string>('idle')
+  let fileStatus = state<string>('idle')
 
   // Core-UI row closure (Toggle / Modal / Scroll device assertions).
-  const switchOn = signal<boolean>(false)
-  const sheetOpen = signal<boolean>(false)
+  let switchOn = state<boolean>(false)
+  let sheetOpen = state<boolean>(false)
   // M3.1 platform-API proof — a haptic fires on each increment tap.
   // Native: iOS `PyreonHaptics().impact("light")` (UIImpactFeedbackGenerator),
   // Android `PyreonHaptics(LocalHapticFeedback.current).impact("light")`.
@@ -375,9 +375,9 @@ export function Counter() {
   // relaunch it is the ONLY source of the number, so a non-persistent backend
   // renders "Notes: 0" and the assertion fails.
   const db = useDatabase()
-  const noteCount = signal(0)
+  let noteCount = state(0)
   onMount(() => {
-    noteCount.set(db.count('notes'))
+    noteCount = db.count('notes')
   })
 
   const power = createMachine({
@@ -415,8 +415,8 @@ export function Counter() {
           COMPILING: a wrong Compose constructor arg fails `assembleDebug`). */}
       <SizedRule size="narrow" data-testid="sized-narrow"><Text>n</Text></SizedRule>
       <SizedRule size="wide" data-testid="sized-wide"><Text>w</Text></SizedRule>
-      <StatusBadge state={count() > 2 ? 'warn' : 'ok'}>
-        Badge: {count() > 2 ? 'warn' : 'ok'}
+      <StatusBadge state={count > 2 ? 'warn' : 'ok'}>
+        Badge: {count > 2 ? 'warn' : 'ok'}
       </StatusBadge>
       <Text>Size: {sizeClass}</Text>
       <Text>Theme: {colorScheme}</Text>
@@ -431,13 +431,13 @@ export function Counter() {
           Increment button flips the plural form live: 0 → "0 Stücke"
           (_other), 1 → "1 Stück" (_one), 2 → "2 Stücke" (_other). */}
       <Text data-testid="i18n-interp">{i18n.t('welcome', { name: 'Vit' })}</Text>
-      <Text data-testid="i18n-plural">{i18n.t('items', { count: count() })}</Text>
+      <Text data-testid="i18n-plural">{i18n.t('items', { count: count })}</Text>
       <Text>Power: {power()}</Text>
-      <Text>Notes: {noteCount()}</Text>
-      <Text>Lock: {lockStatus()}</Text>
+      <Text>Notes: {noteCount}</Text>
+      <Text>Lock: {lockStatus}</Text>
       <Text data-testid="geo-lat">Geo: {geo.latitude}</Text>
-      <Text>Photo: {photoStatus()}</Text>
-      <Text>File: {fileStatus()}</Text>
+      <Text>Photo: {photoStatus}</Text>
+      <Text>File: {fileStatus}</Text>
       {/* M2.2b adaptive-layout proof — a size-class-driven ternary between
           DIFFERENT container types (Inline vs Stack). SwiftUI's ViewBuilder
           rejects `cond ? HStack {…} : VStack {…}` (mismatching types), so the
@@ -460,7 +460,7 @@ export function Counter() {
       <Text accessibilityLabel="A11y status ready">●</Text>
       <Button
         onPress={() => {
-          count.set(count() + 1)
+          count = count + 1
           haptics.impact('light')
         }}
       >
@@ -484,7 +484,7 @@ export function Counter() {
       <Button
         onPress={() => {
           db.insert('notes', { id: String(db.count('notes') + 1), fields: { at: 'tap' } })
-          noteCount.set(db.count('notes'))
+          noteCount = db.count('notes')
         }}
       >
         Save Note
@@ -500,9 +500,9 @@ export function Counter() {
         onPress={async () => {
           // Set BEFORE the await so a device test can tell a tap that never
           // reached the handler ("idle") from an await that never returned.
-          lockStatus.set('checking')
+          lockStatus = 'checking'
           const ok = await bio.authenticate('Unlock')
-          lockStatus.set(ok ? 'unlocked' : 'denied')
+          lockStatus = ok ? 'unlocked' : 'denied'
         }}
       >
         Unlock
@@ -516,7 +516,7 @@ export function Counter() {
       <Button
         onPress={async () => {
           const uri = await picker.pick()
-          photoStatus.set(uri === null ? 'cancelled' : 'picked')
+          photoStatus = uri === null ? 'cancelled' : 'picked'
         }}
       >
         Pick Photo
@@ -529,21 +529,21 @@ export function Counter() {
       <Button
         onPress={async () => {
           const uri = await files.pick()
-          fileStatus.set(uri === null ? 'cancelled' : 'picked')
+          fileStatus = uri === null ? 'cancelled' : 'picked'
         }}
       >
         Pick File
       </Button>
       <Button onPress={() => power.send('TOGGLE')}>Toggle Power</Button>
-      <Button onPress={() => boxVisible.set(!boxVisible())}>Toggle Box</Button>
-      <Transition show={() => boxVisible()}>
+      <Button onPress={() => { boxVisible = !boxVisible }}>Toggle Box</Button>
+      <Transition show={() => boxVisible}>
         <Text>Animated Box</Text>
       </Transition>
       {/* M2.3 gesture proof — a long-press-only <Press> resets the count.
           Native: iOS `.onLongPressGesture { count = 0 }`, Android
           `combinedClickable(onLongClick = { count = 0 })`. Web: 500ms
           pointer-down polyfill (already in @pyreon/primitives). */}
-      <Press onLongPress={() => count.set(0)} data-testid="reset-zone">
+      <Press onLongPress={() => { count = 0 }} data-testid="reset-zone">
         <Text>Hold to reset</Text>
       </Press>
       {/* Core-UI row closure — `Toggle` / `Modal` / `Scroll` were the canonical
@@ -555,20 +555,20 @@ export function Counter() {
 
           Toggle → SwiftUI `Toggle(isOn:)` / Compose `Switch`. */}
       <Toggle
-        value={switchOn()}
-        onChange={(next) => switchOn.set(next)}
+        value={switchOn}
+        onChange={(next) => { switchOn = next }}
         data-testid="core-toggle"
       />
-      <Text data-testid="core-toggle-state">{switchOn() ? 'switch on' : 'switch off'}</Text>
+      <Text data-testid="core-toggle-state">{switchOn ? 'switch on' : 'switch off'}</Text>
 
       {/* Modal → iOS `.sheet(isPresented:)` / Android `Dialog`. The body text
           only exists while presented, so existence IS the assertion. */}
-      <Button onPress={() => sheetOpen.set(true)} data-testid="core-modal-open">
+      <Button onPress={() => { sheetOpen = true }} data-testid="core-modal-open">
         Open Sheet
       </Button>
-      <Modal open={sheetOpen()} onClose={() => sheetOpen.set(false)}>
+      <Modal open={sheetOpen} onClose={() => { sheetOpen = false }}>
         <Text data-testid="core-modal-body">Sheet body</Text>
-        <Button onPress={() => sheetOpen.set(false)} data-testid="core-modal-close">
+        <Button onPress={() => { sheetOpen = false }} data-testid="core-modal-close">
           Close Sheet
         </Button>
       </Modal>
@@ -593,20 +593,20 @@ export function Counter() {
           not scroll). The F3 tests scroll to what they need. */}
       <Text data-testid="native-flow-color-mode">{nativeFlowColorMode()}</Text>
       <Text data-testid="native-flow-custom-line-mounts">{nativeFlowProbe.store.customLineMounts()}</Text>
-      <Text data-testid="native-flow-connect-starts">{nativeFlowConnectStarts()}</Text>
-      <Button data-testid="native-flow-toggle-dark" onPress={() => nativeFlowDark.set(!nativeFlowDark())}>Toggle native dark</Button>
-      <Button data-testid="native-flow-toggle-system" onPress={() => nativeFlowSystem.set(!nativeFlowSystem())}>Toggle native system mode</Button>
+      <Text data-testid="native-flow-connect-starts">{nativeFlowConnectStarts}</Text>
+      <Button data-testid="native-flow-toggle-dark" onPress={() => { nativeFlowDark = !nativeFlowDark }}>Toggle native dark</Button>
+      <Button data-testid="native-flow-toggle-system" onPress={() => { nativeFlowSystem = !nativeFlowSystem }}>Toggle native system mode</Button>
       <Button data-testid="native-flow-animate-zoom" onPress={() => nativeFlow.setViewport({ zoom: 0.5 }, { duration: 3000 })}>Zoom native out slowly</Button>
       <Button data-testid="native-flow-allow-motion" onPress={() => { nativeFlow.config.reducedMotion = false }}>Allow native motion</Button>
       <Button data-testid="native-flow-animate-zoom-back" onPress={() => nativeFlow.setViewport({ zoom: 1 }, { duration: 3000 })}>Zoom native back slowly</Button>
-      <Tally count={count()}>
+      <Tally count={count}>
         {(n) => {
           const doubled = n * 2
           if (n > 2) return <Text data-testid="rp-block">{`rp big ${doubled}`}</Text>
           return <Text data-testid="rp-block">{`rp small ${doubled}`}</Text>
         }}
       </Tally>
-      <Tally count={count()} footer={<Text data-testid="rp-footer">{'rp footer filled'}</Text>}>
+      <Tally count={count} footer={<Text data-testid="rp-footer">{'rp footer filled'}</Text>}>
         {(n) => <Text data-testid="rp-plain">{`rp plain ${n}`}</Text>}
       </Tally>
     </Stack>

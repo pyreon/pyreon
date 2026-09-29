@@ -1,4 +1,5 @@
-import { signal } from '@pyreon/reactivity'
+import { state, signalOf } from '@pyreon/core/plain'
+import { untrack } from '@pyreon/reactivity'
 import {
   average,
   filter,
@@ -26,24 +27,24 @@ const initial: Product[] = [
   { id: 7, name: 'JS Book', category: 'books', price: 18, inStock: true },
 ]
 
-const products = signal<Product[]>(initial)
-const minPrice = signal(0)
+let products = state<Product[]>(initial)
+let minPrice = state(0)
 
 export function RxDemo() {
   // Pure transforms — each is a Computed<...> that auto-recomputes when
   // either `products` or `minPrice` changes.
-  const inStockOnly = filter(products, (p) => p.inStock)
+  const inStockOnly = filter(signalOf<typeof products>(products), (p) => p.inStock)
   // pipe collapses N operators into a single computed (one subscription
   // to `products`, one dependency chain to recompute).
   const aboveMin = pipe(
-    products,
-    (arr) => arr.filter((p) => p.price >= minPrice()),
+    signalOf<typeof products>(products),
+    (arr) => arr.filter((p) => p.price >= minPrice),
     (arr) => [...arr].sort((a, b) => a.price - b.price),
   )
   const names = map(inStockOnly, (p) => p.name)
   const byCategory = groupBy(inStockOnly, (p) => p.category)
   const totalInStock = sum(map(inStockOnly, (p) => p.price))
-  const avgPrice = average(map(products, (p) => p.price))
+  const avgPrice = average(map(signalOf<typeof products>(products), (p) => p.price))
 
   return (
     <div>
@@ -55,11 +56,11 @@ export function RxDemo() {
       </p>
 
       <div class="section">
-        <h3>Source data ({() => products().length} items)</h3>
+        <h3>Source data ({() => products.length} items)</h3>
         <div class="row" style="margin-bottom: 12px">
           <button
             onClick={() =>
-              products.update((arr) => [
+              { products = ((arr) => [
                 ...arr,
                 {
                   id: Math.max(...arr.map((p) => p.id)) + 1,
@@ -68,12 +69,12 @@ export function RxDemo() {
                   price: Math.round(10 + Math.random() * 90),
                   inStock: Math.random() > 0.3,
                 },
-              ])
+              ])(untrack(() => products)) }
             }
           >
             Add random item
           </button>
-          <button onClick={() => products.set(initial)}>Reset</button>
+          <button onClick={() => { products = initial }}>Reset</button>
         </div>
       </div>
 
@@ -85,13 +86,13 @@ export function RxDemo() {
       <div class="section">
         <h3>pipe(filter + sortBy) — price ≥ minPrice</h3>
         <div class="row" style="margin-bottom: 12px">
-          <label>Min price: ${() => minPrice()}</label>
+          <label>Min price: ${() => minPrice}</label>
           <input
             type="range"
             min="0"
             max="100"
-            value={() => String(minPrice())}
-            onInput={(e) => minPrice.set(Number(e.currentTarget.value))}
+            value={() => String(minPrice)}
+            onInput={(e) => { minPrice = Number(e.currentTarget.value) }}
             style="width: 200px"
           />
         </div>

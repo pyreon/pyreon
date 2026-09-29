@@ -9,7 +9,7 @@ import {
   Switch,
   useContext,
 } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 
 /**
  * Live demos for the framework primitives that didn't have e2e coverage
@@ -27,29 +27,29 @@ import { signal } from '@pyreon/reactivity'
 // ─── Match / Switch ─────────────────────────────────────────────────────────
 
 function MatchDemo() {
-  const status = signal<'idle' | 'loading' | 'success' | 'error'>('idle')
+  let status = state<'idle' | 'loading' | 'success' | 'error'>('idle')
   const cycle = () => {
     const order = ['idle', 'loading', 'success', 'error'] as const
-    const next = (order.indexOf(status()) + 1) % order.length
-    status.set(order[next] ?? 'idle')
+    const next = (order.indexOf(status) + 1) % order.length
+    status = order[next] ?? 'idle'
   }
   return (
     <div class="card" data-demo="match">
       <h2>Match / Switch</h2>
       <p id="match-status">
-        status: <span class="value">{() => status()}</span>
+        status: <span class="value">{() => status}</span>
       </p>
       <Switch fallback={<p id="match-fallback">unknown state</p>}>
-        <Match when={() => status() === 'idle'}>
+        <Match when={() => status === 'idle'}>
           <p id="match-idle">click cycle to start</p>
         </Match>
-        <Match when={() => status() === 'loading'}>
+        <Match when={() => status === 'loading'}>
           <p id="match-loading">working…</p>
         </Match>
-        <Match when={() => status() === 'success'}>
+        <Match when={() => status === 'success'}>
           <p id="match-success">done!</p>
         </Match>
-        <Match when={() => status() === 'error'}>
+        <Match when={() => status === 'error'}>
           <p id="match-error">something went wrong</p>
         </Match>
       </Switch>
@@ -72,15 +72,15 @@ const LazyGreeting = lazy(async () => {
 })
 
 function SuspenseDemo() {
-  const show = signal(false)
+  let show = state(false)
   return (
     <div class="card" data-demo="suspense">
       <h2>Suspense + lazy</h2>
-      <button type="button" id="suspense-load" onClick={() => show.set(true)}>
+      <button type="button" id="suspense-load" onClick={() => { show = true }}>
         load lazy chunk
       </button>
       <Suspense fallback={<p id="suspense-fallback">loading…</p>}>
-        {() => (show() ? <LazyGreeting /> : <p id="suspense-idle">click to load</p>)}
+        {() => (show ? <LazyGreeting /> : <p id="suspense-idle">click to load</p>)}
       </Suspense>
     </div>
   )
@@ -98,11 +98,11 @@ function Exploder(): never {
 }
 
 function ErrorBoundaryDemo() {
-  const boom = signal(false)
+  let boom = state(false)
   return (
     <div class="card" data-demo="error-boundary">
       <h2>ErrorBoundary</h2>
-      <button type="button" id="boundary-throw" onClick={() => boom.set(true)}>
+      <button type="button" id="boundary-throw" onClick={() => { boom = true }}>
         throw
       </button>
       <ErrorBoundary
@@ -112,7 +112,7 @@ function ErrorBoundaryDemo() {
           </p>
         )}
       >
-        {() => (boom() ? <Exploder /> : <p id="boundary-ok">no error</p>)}
+        {() => (boom ? <Exploder /> : <p id="boundary-ok">no error</p>)}
       </ErrorBoundary>
     </div>
   )
@@ -132,16 +132,16 @@ function ContextChild() {
 }
 
 function ContextDemo() {
-  const mode = signal<'light' | 'dark'>('light')
+  let mode = state<'light' | 'dark'>('light')
   // Reactive provider: `provide` accepts a getter so consumers see updates.
-  provide(ThemeContext, () => mode())
+  provide(ThemeContext, () => mode)
   return (
     <div class="card" data-demo="context">
       <h2>Context API</h2>
       <button
         type="button"
         id="context-toggle"
-        onClick={() => mode.set(mode() === 'light' ? 'dark' : 'light')}
+        onClick={() => { mode = mode === 'light' ? 'dark' : 'light' }}
       >
         toggle
       </button>
@@ -153,11 +153,11 @@ function ContextDemo() {
 // ─── Dynamic ────────────────────────────────────────────────────────────────
 
 function DynamicDemo() {
-  const tag = signal<'h3' | 'p' | 'em'>('h3')
+  let tag = state<'h3' | 'p' | 'em'>('h3')
   const cycle = () => {
     const order = ['h3', 'p', 'em'] as const
-    const next = (order.indexOf(tag()) + 1) % order.length
-    tag.set(order[next] ?? 'h3')
+    const next = (order.indexOf(tag) + 1) % order.length
+    tag = order[next] ?? 'h3'
   }
   return (
     <div class="card" data-demo="dynamic">
@@ -171,7 +171,7 @@ function DynamicDemo() {
           than the reactive-prop wrapper that Dynamic's destructure can't
           unwrap on first render. */}
       {() => {
-        const t = tag()
+        const t = tag
         return (
           <Dynamic component={t} id="dynamic-target">
             tag content

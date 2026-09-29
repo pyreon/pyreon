@@ -1,4 +1,4 @@
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { Button } from '@pyreon/ui-components'
 
 // Canonical DYNAMIC-prop collapsible call sites for the `verify-modes`
@@ -24,14 +24,14 @@ import { Button } from '@pyreon/ui-components'
 // Pyreon's reactive contract. The `__rsCollapseDynH` variant ALSO
 // re-attaches the onClick after the class dispatch, byte-identical to
 // what the 5-layer mount would emit.
-const isPrimary = signal(true)
+let isPrimary = state(true)
 let combinedClicks = 0
 
 export default function RsCollapseDynProbe() {
   return (
     <div data-testid="rs-collapse-dyn-probe">
       {/* No-handler — emits __rsCollapseDyn */}
-      <Button state={isPrimary() ? 'primary' : 'secondary'} size="medium">
+      <Button state={isPrimary ? 'primary' : 'secondary'} size="medium">
         Dyn
       </Button>
 
@@ -40,7 +40,7 @@ export default function RsCollapseDynProbe() {
         * chunk's handler-combined emit specifically (vs the no-handler
         * 'Dyn' baked template above). */}
       <Button
-        state={isPrimary() ? 'primary' : 'secondary'}
+        state={isPrimary ? 'primary' : 'secondary'}
         size="medium"
         onClick={() => combinedClicks++}
       >
@@ -50,7 +50,7 @@ export default function RsCollapseDynProbe() {
       <button
         type="button"
         data-testid="rs-collapse-dyn-toggle"
-        onClick={() => isPrimary.set(!isPrimary())}
+        onClick={() => { isPrimary = !isPrimary }}
       >
         Toggle
       </button>
