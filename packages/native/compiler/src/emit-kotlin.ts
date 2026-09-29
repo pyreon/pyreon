@@ -403,6 +403,61 @@ function kotlinStructCtorArgs(
 }
 
 /**
+ * The Kotlin type of a TS integer `number`: `Long`, because Swift's `Int` is
+ * 64-bit on every Apple target and one source must hold the same values on
+ * both. Kotlin's `Int` is 32-bit; with it, `{"createdAt": 1726000000000}`
+ * decoded on iOS and threw `Failed to parse int` on Android.
+ */
+const KOTLIN_INT = 'Long'
+
+/** The integer value of a literal (or a negated one), else undefined. */
+function intLiteralValue(e: ExprIR): number | undefined {
+  if (e.kind === 'literal' && typeof e.value === 'number' && Number.isInteger(e.value) && e.float !== true) return e.value
+  if (e.kind === 'unary' && e.op === '-') {
+    const v = intLiteralValue(e.argument)
+    return v === undefined ? undefined : -v
+  }
+  if (e.kind === 'paren') return intLiteralValue(e.inner)
+  return undefined
+}
+
+/**
+ * An argument to a Kotlin API whose parameter is `Int` — a subscript,
+ * `take`/`drop`, `padStart`, `String.repeat`, `List(n)`, a Compose param.
+ * TS integers are `Long` on Kotlin (see `KOTLIN_INT`), so the value narrows
+ * at exactly the call that needs it; a literal is emitted bare instead, which
+ * Kotlin types as Int. The narrowing cannot lose anything these APIs could
+ * have accepted: a collection has at most `Int.MAX_VALUE` elements.
+ */
+function kotlinIntArg(e: ExprIR, indent: number): string {
+  const lit = intLiteralValue(e)
+  if (lit !== undefined) return String(lit)
+  return `(${emitKotlinExpr(e, indent)}).toInt()`
+}
+
+/**
+ * The subscript of `obj[i]`. A List/String subscript takes `Int` — a TS
+ * integer (Long) or a provably-Double index (`Math.floor` returns Double,
+ * JS-faithful) narrows. A MAP's key is whatever the map is keyed by, so it is
+ * emitted as-is: `counts[42L]` against a `Map<Long, …>` must stay Long.
+ */
+function kotlinListIndex(obj: ExprIR, index: ExprIR, indent: number): string {
+  const objT = inferType(obj, _kotlinExprInferCtx)
+  const base = objT.kind === 'union' ? objT.branches.find((b) => b.kind !== 'null' && b.kind !== 'undefined') : objT
+  if (base !== undefined && (base.kind === 'map' || base.kind === 'object' || (base.kind === 'typeRef' && base.name === 'Record'))) {
+    return emitKotlinExpr(index, indent)
+  }
+  const idxT = inferType(index, _kotlinExprInferCtx)
+  if (idxT.kind === 'string') return emitKotlinExpr(index, indent)
+  return kotlinIntArg(index, indent)
+}
+
+/** Widen the `Int` a Kotlin API returns (`size`, `length`, `indexOf`) to the `Long` a TS integer is. */
+function kotlinLongOf(raw: string): string {
+  return `${raw}.toLong()`
+}
+
+/**
  * An integer literal in a position whose type is KNOWN to be Double, marked so
  * it emits `4.0` rather than `4`.
  *
@@ -912,7 +967,7 @@ export function emitKotlin(
   }
   const parts: string[] = []
   if (components.length > 0 || structs.length > 0) {
-    parts.push('// Pyreon TS-compat extensions\nprivate val <T> List<T>.length: Int get() = size')
+    parts.push('// Pyreon TS-compat extensions\nprivate val <T> List<T>.length: Long get() = size.toLong()')
   }
   // Gap 4 v1: store-hook → store id map for use-site chain rewriting.
   _storeHooksKotlin = new Map(stores.map((s) => [s.hookName, s.storeId]))
@@ -1278,7 +1333,7 @@ function emitKotlinFeature(f: FeatureDefnIR): string {
       field.type === 'string'
         ? 'String'
         : field.type === 'number'
-          ? 'Int'
+          ? KOTLIN_INT
           : 'Boolean'
     const initial =
       field.type === 'string' ? '""' : field.type === 'boolean' ? 'false' : '0'
@@ -1315,7 +1370,7 @@ function emitKotlinFeature(f: FeatureDefnIR): string {
  */
 function kotlinFieldType(t: ZodFieldType): string {
   if (typeof t === 'string') {
-    return t === 'string' ? 'String' : t === 'number' ? 'Int' : 'Boolean'
+    return t === 'string' ? 'String' : t === 'number' ? KOTLIN_INT : 'Boolean'
   }
   if (t.kind === 'object') {
     // Gap 4 v3.2 — nested object reference. Emit the synthesized data class name.
@@ -1325,7 +1380,7 @@ function kotlinFieldType(t: ZodFieldType): string {
   let elem: string
   if (typeof t.element === 'string') {
     elem =
-      t.element === 'string' ? 'String' : t.element === 'number' ? 'Int' : 'Boolean'
+      t.element === 'string' ? 'String' : t.element === 'number' ? KOTLIN_INT : 'Boolean'
   } else {
     elem = `PyreonZodSchema_${t.element.schemaName}`
   }
@@ -1847,18 +1902,19 @@ const KOTLIN_URL_NUMBER = `private fun pyreonUrlNumber(raw: String, fallback: Do
 const KOTLIN_URL_STATE_INT = `class PyreonUrlStateInt(
     private val router: PyreonRouter?,
     private val key: String,
-    private val defaultValue: Int,
+    private val defaultValue: Long,
 ) {
-    operator fun invoke(): Int {
+    operator fun invoke(): Long {
         val raw = router?.query?.value?.get(key) ?: return defaultValue
         val n = pyreonUrlNumber(raw, defaultValue.toDouble())
-        // An integer-defaulted binding is Int on both targets, so a fractional
-        // or out-of-range value has no representation — fall back to the
+        // An integer-defaulted binding is a 64-bit integer on both targets, so
+        // a fractional value has no representation — fall back to the
         // default, the same answer the web gives for a value it cannot read.
-        if (n != Math.floor(n) || n < Int.MIN_VALUE.toDouble() || n > Int.MAX_VALUE.toDouble()) return defaultValue
-        return n.toInt()
+        // Bounded to the JS safe-integer range, identically to the Swift twin.
+        if (n != Math.floor(n) || n < -9007199254740991.0 || n > 9007199254740991.0) return defaultValue
+        return n.toLong()
     }
-    fun set(value: Int) { router?.setQueryParam(key, value.toString()) }
+    fun set(value: Long) { router?.setQueryParam(key, value.toString()) }
     fun clear() { router?.setQueryParam(key, null) }
 }`
 
@@ -2752,7 +2808,7 @@ function resolveKotlinRowTypeName(elem: TypeIR): string {
   // ordinary shape, and `Any` would make the emitted generic uselessly wide
   // (a `List<Any>` does not assign to a `List<String>` sink).
   if (elem.kind === 'string') return 'String'
-  if (elem.kind === 'number') return 'Int'
+  if (elem.kind === 'number') return elem.float === true ? 'Double' : KOTLIN_INT
   if (elem.kind === 'boolean') return 'Boolean'
   return 'Any'
 }
@@ -3167,7 +3223,9 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     ].join('\n  ')
   }
   if (d.kind === 'pure-state') {
-    return `var ${kotlinIdent(d.name)} by remember { mutableStateOf(${String(d.initial)}) }`
+    // A counter is a TS integer — Long on Kotlin (see KOTLIN_INT).
+    const init = typeof d.initial === 'number' && Number.isInteger(d.initial) ? `${d.initial}L` : String(d.initial)
+    return `var ${kotlinIdent(d.name)} by remember { mutableStateOf(${init}) }`
   }
   if (d.kind === 'permissions') {
     // Mirror of Swift: a BARE `usePermissions()` reads the provider's
@@ -4781,8 +4839,14 @@ function isRememberSaveableNativeType(t: TypeIR): boolean {
 export function kotlinType(t: TypeIR, ctx?: KotlinCtx, signalName?: string): string {
   switch (t.kind) {
     case 'number':
-      // Fractional literal → Double; integer → Int (ergonomic default).
-      return t.float === true ? 'Double' : 'Int'
+      // Fractional → Double; integer → Long. NOT `Int`: Swift's `Int` is
+      // 64-bit on every Apple target, so an `Int` here made the SAME source
+      // hold a narrower value on Android — any integer past 2147483647 (an
+      // epoch-milliseconds timestamp, a snowflake id) failed to DECODE from
+      // JSON and overflowed in arithmetic, on one platform only. Positions
+      // whose Kotlin API is Int-only convert at the call (`kotlinIntArg` /
+      // `kotlinLongOf`).
+      return t.float === true ? 'Double' : KOTLIN_INT
     case 'string':
       return 'String'
     case 'boolean':
@@ -4953,7 +5017,11 @@ function emitKotlinIndexedBody(
   cb: Extract<ExprIR, { kind: 'arrow' }>,
   indent: number,
   label: string,
+  /** The callback's index binding — rebound from the lambda's `Int`
+   *  (`KOTLIN_INDEX_PARAM`) to the `Long` a TS integer is (see KOTLIN_INT). */
+  indexName?: string,
 ): string {
+  const bindIdx = indexName === undefined ? '' : `val ${indexName} = ${KOTLIN_INDEX_PARAM}.toLong()`
   if (cb.stmts !== undefined && cb.stmts.length > 0) {
     const stmtCtx: KotlinCtx = {
       synthesizedDataClasses: [],
@@ -4964,10 +5032,14 @@ function emitKotlinIndexedBody(
     const savedLocals = seedHandlerLocals(cb.stmts, _kotlinExprInferCtx)
     const lines = cb.stmts.map((s) => pad + emitKotlinStatement(s, indent + 2, stmtCtx)).join('\n')
     _kotlinExprInferCtx.locals = savedLocals
-    return `\n${lines}\n${' '.repeat(indent)}`
+    return `\n${bindIdx === '' ? '' : `${pad}${bindIdx}\n`}${lines}\n${' '.repeat(indent)}`
   }
-  return ` ${emitKotlinExpr(cb.body, indent)} `
+  return ` ${bindIdx === '' ? '' : `${bindIdx}; `}${emitKotlinExpr(cb.body, indent)} `
 }
+
+/** The Kotlin lambda parameter an index callback receives (an `Int`), rebound
+ *  to the callback's own name as a `Long` by `emitKotlinIndexedBody`. */
+const KOTLIN_INDEX_PARAM = 'pyreonIdx'
 
 /**
  * Emit a PLAIN (1-param) callback arg with Kotlin's labeled-return support —
@@ -5035,6 +5107,15 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // already renders with its decimal (`12.5`).
       if (typeof e.value === 'number' && e.float === true && Number.isInteger(e.value)) {
         return `${e.value}.0`
+      }
+      // An integer literal is a `Long` — the Kotlin width of a TS integer
+      // `number` (see `kotlinType`). The suffix is what makes it one where
+      // Kotlin has no expected type to adapt it to (`mutableStateOf(0L)`,
+      // `x == 5L`, `fold(0L, …)`, an untyped `var total = 0L`); a position
+      // that REQUIRES a 32-bit Int (a subscript, `take(n)`, a Compose param)
+      // goes through `kotlinIntArg`, which drops it again.
+      if (typeof e.value === 'number' && Number.isInteger(e.value) && Math.abs(e.value) <= Number.MAX_SAFE_INTEGER) {
+        return `${e.value}L`
       }
       return String(e.value)
     case 'identifier':
@@ -6064,10 +6145,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           // 10 and returned 0 for `'ff'` — a plausible number that flowed on.
           const radix = e.args[1]
           if (radix !== undefined) {
-            const r = radix.kind === 'literal' && typeof radix.value === 'number' ? String(radix.value) : emitKotlinExpr(radix, indent)
-            return `((${arg}).toIntOrNull(${r}) ?: 0)`
+            const r = kotlinIntArg(radix, indent)
+            return `((${arg}).toLongOrNull(${r}) ?: 0L)`
           }
-          return `((${arg}).toIntOrNull() ?: 0)`
+          return `((${arg}).toLongOrNull() ?: 0L)`
         }
         return `((${arg}).toDoubleOrNull() ?: 0.0)`
       }
@@ -6365,7 +6446,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             if (cb) {
               const el = kotlinIdent(cb.params[0]!)
               const idx = kotlinIdent(cb.params[1]!)
-              return `${obj}${objDot}withIndex().any({ (${idx}, ${el}) ->${emitKotlinIndexedBody(cb, indent, 'any')}})`
+              return `${obj}${objDot}withIndex().any({ (${KOTLIN_INDEX_PARAM}, ${el}) ->${emitKotlinIndexedBody(cb, indent, 'any', idx)}})`
             }
             if (e.args.length === 1) {
               return `${obj}${objDot}any(${argExprs[0]!})`
@@ -6377,7 +6458,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             if (cb) {
               const el = kotlinIdent(cb.params[0]!)
               const idx = kotlinIdent(cb.params[1]!)
-              return `${obj}${objDot}withIndex().all({ (${idx}, ${el}) ->${emitKotlinIndexedBody(cb, indent, 'all')}})`
+              return `${obj}${objDot}withIndex().all({ (${KOTLIN_INDEX_PARAM}, ${el}) ->${emitKotlinIndexedBody(cb, indent, 'all', idx)}})`
             }
             if (e.args.length === 1) {
               return `${obj}${objDot}all(${argExprs[0]!})`
@@ -6391,7 +6472,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             if (cb) {
               const el = kotlinIdent(cb.params[0]!)
               const idx = kotlinIdent(cb.params[1]!)
-              return `${obj}${objDot}filterIndexed({ ${idx}, ${el} ->${emitKotlinIndexedBody(cb, indent, 'filterIndexed')}})`
+              return `${obj}${objDot}filterIndexed({ ${KOTLIN_INDEX_PARAM}, ${el} ->${emitKotlinIndexedBody(cb, indent, 'filterIndexed', idx)}})`
             }
             if (e.args.length === 1) return `${obj}${objDot}filter(${argExprs[0]!})`
             break
@@ -6410,7 +6491,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               const el = kotlinIdent(cb.params[0]!)
               const idx = kotlinIdent(cb.params[1]!)
               const fn = prop === 'map' ? 'mapIndexed' : 'forEachIndexed'
-              return `${obj}${objDot}${fn}({ ${idx}, ${el} ->${emitKotlinIndexedBody(cb, indent, fn)}})`
+              return `${obj}${objDot}${fn}({ ${KOTLIN_INDEX_PARAM}, ${el} ->${emitKotlinIndexedBody(cb, indent, fn, idx)}})`
             }
             break
           }
@@ -6435,7 +6516,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             // a Char, so `.toString()` to match JS's String result (Swift:
             // `String(Array(str)[i])`). Out-of-range crashes (JS returns "")
             // — bounds are the caller's concern; documented v1 limitation.
-            if (e.args.length === 1) return `${obj}[${argExprs[0]!}].toString()`
+            if (e.args.length === 1) return `${obj}[${kotlinIntArg(e.args[0]!, indent)}].toString()`
             break
           case 'charCodeAt':
             // JS `s.charCodeAt(i)` → the UTF-16 code unit as Double (the JS
@@ -6454,7 +6535,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             // Char → falls through to the generic emit (mirrors the Swift
             // single-char-pad restriction).
             const padArg = e.args[1]
-            if (e.args.length === 1) return `${obj}${objDot}${prop}(${argExprs[0]!})`
+            if (e.args.length === 1) return `${obj}${objDot}${prop}(${kotlinIntArg(e.args[0]!, indent)})`
             if (
               e.args.length >= 2 &&
               padArg !== undefined &&
@@ -6464,7 +6545,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               padArg.value !== "'" &&
               padArg.value !== '\\'
             ) {
-              return `${obj}${objDot}${prop}(${argExprs[0]!}, '${padArg.value}')`
+              return `${obj}${objDot}${prop}(${kotlinIntArg(e.args[0]!, indent)}, '${padArg.value}')`
             }
             break
           }
@@ -6496,7 +6577,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
                 objExpr.callee.name === 'Array' &&
                 objExpr.args.length === 1
               ) {
-                const count = emitKotlinExpr(objExpr.args[0]!, indent)
+                const count = kotlinIntArg(objExpr.args[0]!, indent)
                 return `List(${count}) { ${argExprs[0]!} }`
               }
               return `List(${obj}${objDot}size) { ${argExprs[0]!} }`
@@ -6518,7 +6599,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
                 )
                 break
               }
-              const i = argExprs[0]!
+              const i = kotlinIntArg(e.args[0]!, indent)
               return `${obj}${objDot}getOrNull(if ((${i}) < 0) ${obj}${objDot}size + (${i}) else (${i}))`
             }
             break
@@ -6538,7 +6619,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             // Negative-index idioms (Kotlin drop/take count from the front):
             //   slice(-m)    → takeLast(m)   (last m)
             //   slice(0, -n) → dropLast(n)   (drop last n)
-            const negSlice = classifyNegativeSlice(e.args, (a) => emitKotlinExpr(a, indent))
+            const negSlice = classifyNegativeSlice(e.args, (a) => kotlinIntArg(a, indent))
             if (negSlice) {
               switch (negSlice.kind) {
                 case 'last':
@@ -6552,9 +6633,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               }
             }
             if (noNegative) {
-              if (e.args.length === 1) return `${obj}${objDot}drop(${argExprs[0]!})`
+              const s0 = e.args[0] !== undefined ? kotlinIntArg(e.args[0], indent) : ''
+              if (e.args.length === 1) return `${obj}${objDot}drop(${s0})`
               if (e.args.length === 2) {
-                return `${obj}${objDot}drop(${argExprs[0]!}).take(maxOf(0, (${argExprs[1]!}) - (${argExprs[0]!})))`
+                return `${obj}${objDot}drop(${s0}).take(maxOf(0, (${kotlinIntArg(e.args[1]!, indent)}) - (${s0})))`
               }
               if (e.args.length === 0) {
                 if (sliceObjType.kind === 'string') return obj
@@ -6577,10 +6659,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               if (cb) {
                 const el = kotlinIdent(cb.params[0]!)
                 const idx = kotlinIdent(cb.params[1]!)
-                return `(${obj}${objDot}withIndex().firstOrNull({ (${idx}, ${el}) ->${emitKotlinIndexedBody(cb, indent, 'firstOrNull')}})?.index ?: -1)`
+                return `(${obj}${objDot}withIndex().firstOrNull({ (${KOTLIN_INDEX_PARAM}, ${el}) ->${emitKotlinIndexedBody(cb, indent, 'firstOrNull', idx)}})?.index ?: -1).toLong()`
               }
             }
-            if (e.args.length === 1) return `${obj}${objDot}indexOfFirst(${argExprs[0]!})`
+            if (e.args.length === 1) return kotlinLongOf(`${obj}${objDot}indexOfFirst(${argExprs[0]!})`)
             break
           case 'replaceAll':
             // JS `str.replaceAll(a, b)` → Kotlin `String.replace(a, b)`
@@ -6708,10 +6790,14 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
                 for (const pn of cmp!.params) cmpCtx.locals.set(pn, elemT)
                 bodyT = inferType(cmp!.body, cmpCtx)
               }
+              // An INTEGER body is Long (see KOTLIN_INT), which `Comparator`
+              // cannot return either — `compareTo(0L)` is its Int sign.
               const cmpBody =
                 bodyT.kind === 'number' && bodyT.float === true
                   ? `(${body}).compareTo(0.0)`
-                  : body
+                  : bodyT.kind === 'number'
+                    ? `(${body}).compareTo(0L)`
+                    : body
               return `${obj}${objDot}sortedWith(Comparator { ${ps} -> ${cmpBody} })`
             }
             // Swift twin's rationale — `sort()` with no comparator broke out
@@ -6721,6 +6807,21 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             )
             break
           }
+          // Same-named on Kotlin, but Int-typed on both sides of the call: a
+          // TS integer is Long (see KOTLIN_INT), so the result widens and a
+          // count/position narrows.
+          case 'indexOf':
+          case 'lastIndexOf':
+            if (e.args.length === 1) return kotlinLongOf(`${obj}${objDot}${prop}(${argExprs[0]!})`)
+            break
+          case 'repeat':
+            if (e.args.length === 1) return `${obj}${objDot}repeat(${kotlinIntArg(e.args[0]!, indent)})`
+            break
+          case 'substring':
+            if (e.args.length === 1 || e.args.length === 2) {
+              return `${obj}${objDot}substring(${e.args.map((a) => kotlinIntArg(a, indent)).join(', ')})`
+            }
+            break
           case 'toLocaleString':
             // No native locale-number-formatting equivalent. Degrade to
             // `.toString()` (valid, loses grouping) + warn — mirror of
@@ -6759,21 +6860,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           typeIsOptional(inferType(e.object, _kotlinExprInferCtx))
             ? '?.'
             : '.'
-        return `${emitKotlinExpr(e.object, indent)}${dot}getOrNull(${emitKotlinExpr(e.index, indent)})`
+        return `${emitKotlinExpr(e.object, indent)}${dot}getOrNull(${kotlinListIndex(e.object, e.index, indent)})`
       }
       // A provably-Double index (Math.floor returns Double, JS-faithful)
       // needs `.toInt()` — Kotlin's List subscript takes Int only (the
       // Swift twin wraps `Int(...)`).
-      {
-        const idxT = inferType(e.index, _kotlinExprInferCtx)
-        const idxRaw = emitKotlinExpr(e.index, indent)
-        const idxOut =
-          (idxT.kind === 'number' && idxT.float === true) ||
-          (idxT.kind === 'typeRef' && (idxT.name === 'Double' || idxT.name === 'Float'))
-            ? `(${idxRaw}).toInt()`
-            : idxRaw
-        return `${emitKotlinExpr(e.object, indent)}[${idxOut}]`
-      }
+      return `${emitKotlinExpr(e.object, indent)}[${kotlinListIndex(e.object, e.index, indent)}]`
     }
     case 'member': {
       if (
@@ -6941,6 +7033,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // after the first optional one (`a?.b.c` → `a?.b?.c`; a plain `.c` on
       // a nullable is a type error) — `chainHasOptional` propagates it.
       const dot = e.optional === true || chainHasOptional(e.object) ? '?.' : '.'
+      // `String.length` is Kotlin's 32-bit Int; a TS integer is Long (see
+      // KOTLIN_INT). A List's `.length` is the TS-compat extension, already
+      // Long. The optional form keeps the `?.` (`s?.length?.toLong()`).
+      if (e.property === 'length' && inferType(e.object, _kotlinExprInferCtx).kind === 'string') {
+        return `${emitKotlinExpr(e.object, indent)}${dot}length${dot === '?.' ? '?.' : '.'}toLong()`
+      }
       return `${emitKotlinExpr(e.object, indent)}${dot}${kotlinIdent(e.property)}`
     }
     case 'binary': {
@@ -7000,7 +7098,8 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       const infix = kotlinBitwise[e.op]
       if (infix !== undefined) {
         const L = isCompoundExpr(e.left) ? `(${bl})` : bl
-        const R = isCompoundExpr(e.right) ? `(${br})` : br
+        // A shift COUNT is `Int` even on a Long receiver (`Long.shl(Int)`).
+        const R = infix === 'shl' || infix === 'shr' ? kotlinIntArg(e.right, indent) : isCompoundExpr(e.right) ? `(${br})` : br
         return `${L} ${infix} ${R}`
       }
       return `${bl} ${e.op} ${br}`
@@ -11162,7 +11261,7 @@ function emitKotlinRouteDispatch(
  */
 function kotlinParamFieldExpr(f: { name: string; type: TypeIR }): string {
   const read = `params[${kotlinStr(f.name)}] ?: ""`
-  if (f.type.kind === 'number') return `(${read}).toIntOrNull() ?: 0`
+  if (f.type.kind === 'number') return `(${read}).toLongOrNull() ?: 0L`
   if (f.type.kind === 'boolean') return `(${read}) == "true"`
   return read
 }
@@ -11607,6 +11706,8 @@ function emitKotlinRxCall(
   const src = emitKotlinExpr(e.source, indent)
   const arg = (i: number): string =>
     e.args[i] === undefined ? '' : emitKotlinExpr(e.args[i] as ExprIR, indent)
+  const intArg = (i: number): string =>
+    e.args[i] === undefined ? '' : kotlinIntArg(e.args[i] as ExprIR, indent)
   switch (e.method) {
     // Transforms — name-matched on Kotlin Collection<T> for the v1 set.
     case 'filter':
@@ -11625,9 +11726,9 @@ function emitKotlinRxCall(
       // better than Swift's Array(Set(...)). Matches rx.unique semantics.
       return `${src}.distinct()`
     case 'take':
-      return `${src}.take(${arg(0)})`
+      return `${src}.take(${intArg(0)})`
     case 'skip':
-      return `${src}.drop(${arg(0)})`
+      return `${src}.drop(${intArg(0)})`
     case 'takeWhile':
       return `${src}.takeWhile(${arg(0)})`
     case 'dropWhile':
@@ -11647,8 +11748,9 @@ function emitKotlinRxCall(
     // Aggregations — count/size, sum is direct, min/max use OrNull
     // matching Swift Optional.
     case 'count':
-      // `.size` is a property on List<T> (O(1) on RandomAccess lists).
-      return `${src}.size`
+      // `.size` is a property on List<T> (O(1) on RandomAccess lists); a TS
+      // count is a Long (see KOTLIN_INT).
+      return kotlinLongOf(`${src}.size`)
     case 'sum':
       // Iterable<Int>.sum() / Iterable<Double>.sum() are stdlib
       // extension functions. For non-numeric T the user should use
@@ -11685,12 +11787,15 @@ function emitKotlinRxCall(
  */
 function kotlinFlowCoord(x: ExprIR): string {
   const text = emitKotlinExpr(x, 0)
-  if (isNumericLiteralOrNegation(x)) return ktChartDouble(text.replace(/^\((-\d+)\)$/, '$1'))
+  if (isNumericLiteralOrNegation(x)) return ktChartDouble(text.replace(/^\((-\d+L?)\)$/, '$1'))
   return `(${text}).toDouble()`
 }
 
 function ktChartDouble(text: string): string {
-  return /^-?\d+$/.test(text) ? `${text}.0` : text
+  // An integer literal emits with the Long suffix (see KOTLIN_INT); a
+  // Double position takes the digits with `.0` instead.
+  const m = /^(-?\d+)L?$/.exec(text)
+  return m ? `${m[1]}.0` : text
 }
 
 /**
