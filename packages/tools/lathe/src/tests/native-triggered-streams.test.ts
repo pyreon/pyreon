@@ -10,10 +10,11 @@
  * Proven like every native claim in this package: the real compiler over the
  * generated module (POSITIVE marker, zero warnings), the stub compile gates,
  * the module typechecking as ordinary TypeScript — and a compile against the
- * SHIPPED stream runtime, because a stub can only confirm what it mirrors.
+ * SHIPPED stream runtime, because a stub can only confirm what it mirrors
+ * (Swift here; Kotlin in @pyreon/native-compiler, see below).
  */
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -24,10 +25,6 @@ import {
   validateKotlin,
   validateSwiftWithStubs,
 } from '@pyreon/native-compiler'
-// Test-only reach into the compiler's stub surface: the real-runtime Kotlin
-// compile below swaps the stream block of THESE stubs for the shipped file,
-// exactly as the compiler's own real-runtime test does.
-import { KOTLIN_COMPOSE_STUBS } from '../../../../native/compiler/src/kotlin-stubs'
 import { resolveConfig } from '../core/config'
 import { generate } from '../core/generate'
 import { verifyNative, worstVerdict } from '../verify/lower'
@@ -198,43 +195,10 @@ describe('a non-GET stream is a TRIGGERED native component', () => {
     }
   }, 600_000)
 
-  it.skipIf(!isKotlincAvailable())('Kotlin: compiles with the SHIPPED stream runtime in place of its stub', () => {
-    const start = KOTLIN_COMPOSE_STUBS.indexOf('// PyreonStream — mirror of')
-    const end = KOTLIN_COMPOSE_STUBS.indexOf('// PyreonHttp — what a', start)
-    expect(start).toBeGreaterThan(-1)
-    expect(end).toBeGreaterThan(start)
-    const stubs = KOTLIN_COMPOSE_STUBS.slice(0, start) + KOTLIN_COMPOSE_STUBS.slice(end)
-    const kt = join(RUNTIME, 'kotlin/com/pyreon/runtime')
-    const stream = readFileSync(join(kt, 'PyreonStream.kt'), 'utf8')
-      .replace(/^package .*$/m, '')
-      .replace(/^import androidx\.compose\.runtime\..*$/gm, '')
-    const android = readFileSync(join(kt, 'PyreonStreamAndroid.kt'), 'utf8').replace(/^package .*$/m, '')
-    const dir = mkdtempSync(join(tmpdir(), 'lathe-triggered-kotlin-'))
-    try {
-      writeFileSync(join(dir, 'Stubs.kt'), stubs)
-      writeFileSync(join(dir, 'PyreonStream.kt'), stream)
-      writeFileSync(join(dir, 'PyreonStreamAndroid.kt'), android)
-      writeFileSync(
-        join(dir, 'AndroidOs.kt'),
-        'package android.os\nclass Looper { companion object { fun getMainLooper(): Looper = Looper() } }\nclass Handler(looper: Looper) { fun post(r: Runnable): Boolean = true }\n',
-      )
-      const inputs = MODULES.map((path, i) => {
-        const p = join(dir, `M${i}.kt`)
-        writeFileSync(p, transform(mod(path), { target: 'kotlin' }).code)
-        return p
-      })
-      execFileSync(
-        'kotlinc',
-        ['-nowarn', '-d', join(dir, 'out'), join(dir, 'Stubs.kt'), join(dir, 'PyreonStream.kt'), join(dir, 'PyreonStreamAndroid.kt'), join(dir, 'AndroidOs.kt'), ...inputs],
-        { stdio: 'pipe', encoding: 'utf8' },
-      )
-    } catch (err) {
-      const e = err as { stderr?: string }
-      expect.fail(`kotlinc: ${(e.stderr ?? String(err)).split('\n').filter((l) => l.includes('error:')).slice(0, 8).join('\n')}`)
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
-  }, 600_000)
+  // The Kotlin half of the real-runtime compile lives in @pyreon/native-compiler
+  // (native-use-stream.test.ts, the TRIGGERED fixture there mirrors this
+  // module's shape): it swaps the compiler's own stub block for the shipped
+  // PyreonStream.kt, which this package cannot import across its rootDir.
 
   it('the verifier reports the triggered modules as lowering', () => {
     const report = verifyNative(

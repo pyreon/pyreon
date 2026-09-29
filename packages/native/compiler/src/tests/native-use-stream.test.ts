@@ -125,6 +125,29 @@ const NDJSON_ON_EVENT = app(
   `import { signal } from '@pyreon/reactivity'`,
 )
 
+/**
+ * The shape @pyreon/lathe GENERATES for a non-GET stream (its
+ * native-triggered-streams test): a component whose PROPS carry the trigger
+ * and a named JSON body. Kept here so the real-runtime compile below covers
+ * it — lathe cannot reach the compiler's Kotlin stub surface.
+ */
+const TRIGGERED = `
+import { createHttp } from '@pyreon/http'
+import { openEventStream, type SseEvent } from '@pyreon/http/stream'
+import { useStream } from '@pyreon/query'
+const api = createHttp({ baseUrl: 'https://api.example.com' })
+export type CompleteRequest = { prompt: string; maxTokens?: number | undefined }
+export type Token = { text: string }
+export const complete = api.endpoint('POST /rooms/:room/complete', { responseType: 'stream' })
+export function CompleteStream(props: { room: string; enabled: boolean; json: CompleteRequest; children: (events: readonly SseEvent<Token>[]) => unknown }) {
+  const s = useStream<SseEvent<Token>>(
+    (ctx) => openEventStream((c) => complete({ params: { room: props.room }, json: props.json, signal: c.signal, headers: c.headers }), { signal: ctx.signal, onStatus: ctx.onStatus }),
+    { enabled: () => props.enabled },
+  )
+  return () => props.children(s.events())
+}
+`
+
 describe('useStream lowers to the native stream runtime', () => {
   for (const [label, src] of [
     ['SSE (typed, filtered, resumed, runtime :param)', SSE],
@@ -132,6 +155,7 @@ describe('useStream lowers to the native stream runtime', () => {
     ['NDJSON', NDJSON],
     ['gated POST with onEvent + runtime body', GATED],
     ['NDJSON with onEvent + literal enabled', NDJSON_ON_EVENT],
+    ['a Lathe-shaped triggered POST (props enabled + json)', TRIGGERED],
   ] as const) {
     it(`${label}: zero warnings on both targets`, () => {
       expect(swift(src).warnings).toEqual([])
@@ -275,7 +299,7 @@ describe('useStream emit compiles against the REAL runtime source', () => {
   it.skipIf(!isSwiftUIAvailable())('Swift: real SDK + real PyreonStream.swift', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pyreon-stream-real-swift-'))
     try {
-      const files = [SSE, TEXT, NDJSON, GATED, NDJSON_ON_EVENT].map((src, i) => {
+      const files = [SSE, TEXT, NDJSON, GATED, NDJSON_ON_EVENT, TRIGGERED].map((src, i) => {
         // One module: rename the shared names apart.
         const code = swift(src).code.replace(/\bFeed\b/g, `Feed${i}`).replace(/\bLogLine\b/g, `LogLine${i}`)
         const p = join(dir, `App${i}.swift`)
@@ -327,7 +351,7 @@ describe('useStream emit compiles against the REAL runtime source', () => {
         join(dir, 'AndroidOs.kt'),
         'package android.os\nclass Looper { companion object { fun getMainLooper(): Looper = Looper() } }\nclass Handler(looper: Looper) { fun post(r: Runnable): Boolean = true }\n',
       )
-      const inputs = [SSE, TEXT, NDJSON, GATED, NDJSON_ON_EVENT].map((src, i) => {
+      const inputs = [SSE, TEXT, NDJSON, GATED, NDJSON_ON_EVENT, TRIGGERED].map((src, i) => {
         const code = kotlin(src).code.replace(/\bFeed\b/g, `Feed${i}`).replace(/\bLogLine\b/g, `LogLine${i}`)
         const p = join(dir, `App${i}.kt`)
         writeFileSync(p, code)
