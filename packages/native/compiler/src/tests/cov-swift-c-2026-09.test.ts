@@ -730,7 +730,7 @@ const cell = (u: User) => <Text>{u.name}</Text>
   const r = sw(`${HEAD}export function A() {
   return <Stack>
     <Row render={((u) => <Text>{u.name}</Text>)} empty={hello} />
-    <Row render={(u) => { const n = u.name; return <Text>{n}</Text> }} empty={() => { return <Text>x</Text> }} />
+    <Row render={(u) => { console.log(u); return <Text>{u.name}</Text> }} empty={() => { return <Text>x</Text> }} />
     <Row render={cell} empty={<Text>bare</Text>} />
     <Row render={(u) => <Text>{u.name}</Text>} empty={42} />
   </Stack>
