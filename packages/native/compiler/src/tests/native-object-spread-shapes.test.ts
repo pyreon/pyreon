@@ -55,7 +55,7 @@ describe('object spread — every spelling', () => {
     expect(rLine(run('const r = { ...p, a: 9 }', 'swift').code)).toBe(
       'let r = { var c = p; c.a = 9; return c }()',
     )
-    expect(rLine(run('const r = { ...p, a: 9 }', 'kotlin').code)).toBe('val r = p.copy(a = 9)')
+    expect(rLine(run('const r = { ...p, a: 9 }', 'kotlin').code)).toBe('val r = p.copy(a = 9L)')
   })
 
   it('a PLAIN copy is a copy, not an empty statement', () => {

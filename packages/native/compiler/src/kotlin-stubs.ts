@@ -158,6 +158,14 @@ val LocalConfiguration: ProvidableCompositionLocal<Configuration> = compositionL
 // the real SDK rejects (a superset stub is itself a masking source). The
 // composition local hands out an internal concrete instance instead.
 abstract class Context
+// androidx.compose.runtime.RememberObserver - Compose calls these on a remembered
+// object as it enters/leaves composition; the hook state classes use it to
+// release their engine.
+interface RememberObserver {
+  fun onRemembered()
+  fun onForgotten()
+  fun onAbandoned()
+}
 private object StubContext : Context()
 object LocalContext {
   val current: Context
@@ -596,8 +604,8 @@ class KeyEvent(
 // The Swift stub gained this earlier; the Kotlin one never did, so a snippet
 // using SizedMap compiled on one target and not the other. Signature copied
 // from the shipped class: maxEntries required, lru defaulted.
-class PyreonSizedMap<K, V>(maxEntries: Int, private val lru: Boolean = false) {
-  val size: Int get() = 0
+class PyreonSizedMap<K, V>(maxEntries: Long, private val lru: Boolean = false) {
+  val size: Long get() = 0L
   fun get(key: K): V? = null
   fun set(key: K, value: V) {}
   fun delete(key: K): Boolean = false
@@ -1126,7 +1134,7 @@ class PyreonQuery<T>(queryKey: String, val staleMillis: Long = 0) {
 // \`delay\`/\`maxDelay\` are Long and \`retry\` is Long? — as in the runtime. The
 // optional \`transport\` parameter is omitted: the emit never passes it.
 data class PyreonSseMessage(val type: String, val data: String, val id: String, val retry: Long?)
-data class PyreonStreamReconnect(val attempts: Int = 5, val delay: Long = 1000, val maxDelay: Long = 30_000, val onEnd: Boolean = false)
+data class PyreonStreamReconnect(val attempts: Long = 5L, val delay: Long = 1000, val maxDelay: Long = 30_000, val onEnd: Boolean = false)
 data class PyreonSseOptions(val events: List<String>? = null, val lastEventId: String? = null, val reconnect: PyreonStreamReconnect? = PyreonStreamReconnect())
 data class PyreonStreamRequest(val method: String = "GET", val url: String, val headers: Map<String, String> = emptyMap(), val body: String? = null)
 data class PyreonSseEvent<T>(val type: String, val data: T, val id: String)
@@ -1134,7 +1142,7 @@ data class PyreonSseEvent<T>(val type: String, val data: T, val id: String)
 object PyreonStreamMain : java.util.concurrent.Executor {
   override fun execute(command: Runnable) {}
 }
-class PyreonStream<E>(val maxEvents: Int = 1000, main: java.util.concurrent.Executor = java.util.concurrent.Executor { it.run() }) {
+class PyreonStream<E>(val maxEvents: Long = 1000L, main: java.util.concurrent.Executor = java.util.concurrent.Executor { it.run() }) {
   val events: MutableState<List<E>> = mutableStateOf(emptyList())
   val latest: MutableState<E?> = mutableStateOf(null)
   val status: MutableState<String> = mutableStateOf("idle")
@@ -1542,6 +1550,7 @@ class PyreonCrdtMap {
   fun keys(): List<String> = emptyList()
   fun set(key: String, value: PyreonScalar) {}
   fun set(key: String, value: String) {}
+  fun set(key: String, value: Long) {}
   fun set(key: String, value: Int) {}
   fun set(key: String, value: Double) {}
   fun set(key: String, value: Boolean) {}
@@ -1584,24 +1593,24 @@ class PyreonTableColumn<T>(val id: String, val accessor: (T) -> PyreonCell)
 class PyreonTableState<T>(
   dataProvider: () -> List<T>,
   columns: List<PyreonTableColumn<T>> = emptyList(),
-  pageSize: Int = 0,
-  rowId: ((T, Int) -> String)? = null,
+  pageSize: Long = 0L,
+  rowId: ((T, Long) -> String)? = null,
   filterFn: ((T, String, List<PyreonTableColumn<T>>) -> Boolean)? = null,
 ) {
   fun rows(): List<T> = emptyList()
-  fun pageCount(): Int = 1
-  fun filteredCount(): Int = 0
+  fun pageCount(): Long = 1L
+  fun filteredCount(): Long = 0L
   fun selectedIds(): List<String> = emptyList()
   fun toggleSort(c: String) {}
   fun setFilter(q: String) {}
-  fun setPage(i: Int) {}
+  fun setPage(i: Long) {}
   fun nextPage() {}
   fun prevPage() {}
   fun isSelected(id: String): Boolean = false
   fun toggleSelected(id: String) {}
   fun clearSelection() {}
-  fun rowId(row: T, index: Int): String = ""
-  val page: Int get() = 0
+  fun rowId(row: T, index: Long): String = ""
+  val page: Long get() = 0L
   val sortColumn: String? get() = null
   val sortDirection: String get() = "asc"
   val filterValue: String get() = ""
@@ -1633,7 +1642,7 @@ class PyreonSortableState<T>(
   val overKey: String? get() = null
   val currentEdge: PyreonDropEdge? get() = null
   companion object {
-    fun <T> moveIndex(list: List<T>, from: Int, to: Int): List<T> = list
+    fun <T> moveIndex(list: List<T>, from: Long, to: Long): List<T> = list
   }
 }
 
@@ -2037,12 +2046,15 @@ interface BluetoothScanner {
   fun startScan(onDevice: (PyreonBluetoothDevice) -> Unit, onError: (String) -> Unit)
   fun stopScan()
 }
-class AndroidBluetoothScanner(ctx: Any?) : BluetoothScanner {
+class AndroidBluetoothScanner(context: Context) : BluetoothScanner {
   override val isAvailable: Boolean = false
   override fun startScan(onDevice: (PyreonBluetoothDevice) -> Unit, onError: (String) -> Unit) {}
   override fun stopScan() {}
 }
-class PyreonBluetooth(scanner: BluetoothScanner) {
+class PyreonBluetooth(scanner: BluetoothScanner) : RememberObserver {
+  override fun onRemembered() {}
+  override fun onForgotten() {}
+  override fun onAbandoned() {}
   val scanning: MutableState<Boolean> = mutableStateOf(false)
   val devices: MutableState<List<PyreonBluetoothDevice>> = mutableStateOf(listOf())
   val error: MutableState<String> = mutableStateOf("")
@@ -2055,7 +2067,7 @@ interface ScreenKeeper {
   val isSupported: Boolean
   fun setKeepScreenOn(on: Boolean)
 }
-class AndroidScreenKeeper(ctx: Any?) : ScreenKeeper {
+class AndroidScreenKeeper(context: Context) : ScreenKeeper {
   override val isSupported: Boolean = false
   override fun setKeepScreenOn(on: Boolean) {}
 }
@@ -2067,7 +2079,7 @@ interface DeviceProbe {
   val isTouch: Boolean
   val screen: PyreonDeviceScreen
 }
-class AndroidDeviceProbe(ctx: Any?) : DeviceProbe {
+class AndroidDeviceProbe(context: Context) : DeviceProbe {
   override val model: String = ""
   override val osVersion: String = ""
   override val isTouch: Boolean = false
@@ -2081,28 +2093,30 @@ class PyreonDeviceInfo(probe: DeviceProbe) {
   val screen: PyreonDeviceScreen get() = PyreonDeviceScreen(0.0, 0.0, 1.0)
 }
 
-// PyreonSafeArea / PyreonScreenOrientation + the app-supplied probes.
+// PyreonSafeArea / PyreonScreenOrientation + the REAL probes (declared in
+// hooks/native/kotlin/.../PyreonSafeAreaAndroid.kt — the stub mirrors their
+// constructor type, Context, not a looser Any? that would mask a bad arg).
 data class PyreonSafeAreaInsets(val top: Double, val right: Double, val bottom: Double, val left: Double) {
   companion object { val zero = PyreonSafeAreaInsets(0.0, 0.0, 0.0, 0.0) }
 }
 interface SafeAreaProbe { val insets: PyreonSafeAreaInsets }
-class AndroidSafeAreaProbe(ctx: Any?) : SafeAreaProbe {
-  override val insets: PyreonSafeAreaInsets = PyreonSafeAreaInsets.zero
+class AndroidSafeAreaProbe(context: Context) : SafeAreaProbe {
+  override val insets: PyreonSafeAreaInsets get() = PyreonSafeAreaInsets.zero
 }
-class PyreonSafeArea(probe: SafeAreaProbe) {
-  val insets: PyreonSafeAreaInsets get() = PyreonSafeAreaInsets.zero
+class PyreonSafeArea(private val probe: SafeAreaProbe) {
+  val insets: PyreonSafeAreaInsets get() = probe.insets
 }
 interface OrientationProbe {
   val type: String
-  val angle: Int
+  val angle: Long
 }
-class AndroidOrientationProbe(ctx: Any?) : OrientationProbe {
-  override val type: String = "portrait"
-  override val angle: Int = 0
+class AndroidOrientationProbe(context: Context) : OrientationProbe {
+  override val type: String get() = "portrait"
+  override val angle: Long get() = 0L
 }
-class PyreonScreenOrientation(probe: OrientationProbe) {
-  val type: String get() = "portrait"
-  val angle: Int get() = 0
+class PyreonScreenOrientation(private val probe: OrientationProbe) {
+  val type: String get() = probe.type
+  val angle: Long get() = probe.angle
 }
 // PyreonAudioPlayer + the app-supplied Media3 engine the emit names.
 interface AudioEngine {
@@ -2147,13 +2161,16 @@ interface RecordingEngine {
   fun end(): String?
   fun release()
 }
-class AndroidRecordingEngine(ctx: Any?) : RecordingEngine {
+class AndroidRecordingEngine(context: Context) : RecordingEngine {
   override val isAvailable: Boolean = false
   override fun begin(): Boolean = false
   override fun end(): String? = null
   override fun release() {}
 }
-class PyreonAudioRecorder(engine: RecordingEngine) {
+class PyreonAudioRecorder(engine: RecordingEngine) : RememberObserver {
+  override fun onRemembered() {}
+  override fun onForgotten() {}
+  override fun onAbandoned() {}
   val recording: MutableState<Boolean> = mutableStateOf(false)
   val error: MutableState<String> = mutableStateOf("")
   val supported: Boolean = false
@@ -2178,12 +2195,16 @@ interface SpeechSynth {
   fun speak(text: String)
   fun cancel()
 }
-class AndroidSpeechSynth(ctx: Any?) : SpeechSynth {
+class AndroidSpeechSynth(context: Context) : SpeechSynth, AutoCloseable {
+  override fun close() {}
   override val isAvailable: Boolean = false
   override fun speak(text: String) {}
   override fun cancel() {}
 }
-class PyreonSpeech(synth: SpeechSynth) {
+class PyreonSpeech(synth: SpeechSynth) : RememberObserver {
+  override fun onRemembered() {}
+  override fun onForgotten() {}
+  override fun onAbandoned() {}
   val speaking: MutableState<Boolean> = mutableStateOf(false)
   val supported: Boolean = false
   fun speak(text: String): Boolean = false
@@ -2199,12 +2220,15 @@ interface MotionSource {
   fun begin(onSample: (PyreonVec3, PyreonVec3) -> Unit): Boolean
   fun end()
 }
-class AndroidMotionSource(ctx: Any?) : MotionSource {
+class AndroidMotionSource(context: Context) : MotionSource {
   override val isAvailable: Boolean = false
   override fun begin(onSample: (PyreonVec3, PyreonVec3) -> Unit): Boolean = false
   override fun end() {}
 }
-class PyreonDeviceMotion(source: MotionSource) {
+class PyreonDeviceMotion(source: MotionSource) : RememberObserver {
+  override fun onRemembered() {}
+  override fun onForgotten() {}
+  override fun onAbandoned() {}
   val active: MutableState<Boolean> = mutableStateOf(false)
   val acceleration: MutableState<PyreonVec3> = mutableStateOf(PyreonVec3.zero)
   val rotation: MutableState<PyreonVec3> = mutableStateOf(PyreonVec3.zero)
@@ -2213,7 +2237,10 @@ class PyreonDeviceMotion(source: MotionSource) {
   fun stop() {}
 }
 
-class PyreonWakeLock(keeper: ScreenKeeper) {
+class PyreonWakeLock(keeper: ScreenKeeper) : RememberObserver {
+  override fun onRemembered() {}
+  override fun onForgotten() {}
+  override fun onAbandoned() {}
   val active: MutableState<Boolean> = mutableStateOf(false)
   val supported: Boolean = false
   fun request(): Boolean = false
@@ -2226,19 +2253,19 @@ fun <T> compositionLocalOf(f: () -> T): ProvidableCompositionLocal<T> = Providab
 infix fun <T> ProvidableCompositionLocal<T>.provides(v: T): Pair<ProvidableCompositionLocal<T>, T> = Pair(this, v)
 fun CompositionLocalProvider(vararg pairs: Pair<*, *>, content: @Composable () -> Unit) { content() }
 interface PyreonScheduler {
-  fun schedule(milliseconds: Int, work: () -> Unit): Int
+  fun schedule(milliseconds: Long, work: () -> Unit): Int
   fun cancel(token: Int)
 }
 class PyreonTaskScheduler : PyreonScheduler {
-  override fun schedule(milliseconds: Int, work: () -> Unit): Int = 0
+  override fun schedule(milliseconds: Long, work: () -> Unit): Int = 0
   override fun cancel(token: Int) {}
 }
-class PyreonDebounced<A>(delayMs: Int, scheduler: PyreonScheduler, action: (A) -> Unit) {
+class PyreonDebounced<A>(delayMs: Long, scheduler: PyreonScheduler, action: (A) -> Unit) {
   operator fun invoke(arg: A) {}
   fun cancel() {}
   fun flush() {}
 }
-class PyreonThrottled<A>(waitMs: Int, scheduler: PyreonScheduler, action: (A) -> Unit) {
+class PyreonThrottled<A>(waitMs: Long, scheduler: PyreonScheduler, action: (A) -> Unit) {
   operator fun invoke(arg: A) {}
   fun cancel() {}
 }
@@ -2298,6 +2325,7 @@ fun rememberPyreonAppState(): PyreonAppState = PyreonAppState()
 data class PyreonToastItem(val id: String, val message: String, val type: String)
 object PyreonToast {
   val toasts: MutableState<List<PyreonToastItem>> = mutableStateOf(emptyList())
+  var maxToasts: Long = 50L
   fun add(message: String, type: String = "info", durationMillis: Long? = null): String = ""
   fun dismiss(id: String) {}
   fun clear() {}
@@ -2404,7 +2432,7 @@ class PyreonDatabase(backend: PyreonDatabaseBackend) {
   fun all(collection: String): List<PyreonRecord> = emptyList()
   fun delete(collection: String, id: String): Boolean = true
   fun find(collection: String, field: String, value: String): List<PyreonRecord> = emptyList()
-  fun count(collection: String): Int = 0
+  fun count(collection: String): Long = 0L
 }
 
 // PyreonSecureStorage — the secret store, mirrored key-first (the runtime's
@@ -2422,17 +2450,17 @@ class PyreonSecureStorage(backend: PyreonSecureBackend) {
 
 // PyreonFieldArray — dynamic form lists, mirrored exactly (items/length are
 // properties; a paren-keeping emit must fail).
-data class PyreonFieldArrayItem(val key: Int, val value: String)
+data class PyreonFieldArrayItem(val key: Long, val value: String)
 class PyreonFieldArray(initial: List<String> = emptyList()) {
   val items: List<PyreonFieldArrayItem> = emptyList()
-  val length: Int get() = 0
+  val length: Long get() = 0L
   fun append(value: String) {}
   fun prepend(value: String) {}
-  fun insert(index: Int, value: String) {}
-  fun remove(index: Int) {}
-  fun update(index: Int, value: String) {}
-  fun move(from: Int, to: Int) {}
-  fun swap(indexA: Int, indexB: Int) {}
+  fun insert(index: Long, value: String) {}
+  fun remove(index: Long) {}
+  fun update(index: Long, value: String) {}
+  fun move(from: Long, to: Long) {}
+  fun swap(indexA: Long, indexB: Long) {}
   fun replace(values: List<String>) {}
   fun values(): List<String> = emptyList()
 }
@@ -2534,7 +2562,7 @@ fun PyreonChartCanvas(cmds: List<PyreonDrawCmd>, modifier: Modifier = Modifier, 
 fun PyreonChartEntrance(durationMs: Double, content: @Composable (Double) -> Unit) { content(1.0) }
 @Composable
 @Suppress("UNUSED_PARAMETER")
-fun PyreonChartPoints(input: A11yInput, plot: PyreonChartRect, visible: Int, first: Int = 0, horizontal: Boolean = false, left: Double = 0.0, top: Double = 0.0, mirrorWidth: Double = -1.0) {}
+fun PyreonChartPoints(input: A11yInput, plot: PyreonChartRect, visible: Long, first: Long = 0L, horizontal: Boolean = false, left: Double = 0.0, top: Double = 0.0, mirrorWidth: Double = -1.0) {}
 @Composable
 fun PyreonChartClock(content: @Composable (Double) -> Unit) { content(0.0) }
 fun pyreonChartMeasure(text: String, size: Double): Double = text.length * size * 0.6
@@ -2545,19 +2573,20 @@ fun pyreonTransposeCmds(cmds: List<PyreonDrawCmd>): List<PyreonDrawCmd> = cmds
 fun pyreonMirrorCmds(cmds: List<PyreonDrawCmd>, width: Double): List<PyreonDrawCmd> = cmds
 fun pyreonChartDouble(v: Double): Double = v
 fun pyreonChartDouble(v: Int): Double = v.toDouble()
+fun pyreonChartDouble(v: Long): Double = v.toDouble()
 fun pyreonLocaleNumberFormatter(tag: String): (Double) -> String = { it.toString() }
 fun pyreonLocaleDateFormatter(tag: String): (Double) -> String = { it.toString() }
 fun pyreonChartDataUrl(cmds: List<PyreonDrawCmd>, width: Double, height: Double, density: Float): String = ""
 fun pyreonShareChartImage(context: Context, cmds: List<PyreonDrawCmd>, width: Double, height: Double, density: Float, name: String) {}
 class PyreonChartHandle {
   var zoom: ZoomWindow = ZoomWindow(start = 0.0, end = 1.0)
-  var hover: Int = -1
-  var selected: List<Int> = listOf()
-  var hidden: List<Int> = listOf()
-  var seriesCount: Int = 0
+  var hover: Long = -1L
+  var selected: List<Long> = listOf()
+  var hidden: List<Long> = listOf()
+  var seriesCount: Long = 0L
   var brushType: String = ""
   var areas: List<BrushArea> = listOf()
-  var step: Int = -1
+  var step: Long = -1L
   var playing: Boolean = false
   fun dispatch(action: ChartActionInput) {}
 }

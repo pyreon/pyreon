@@ -255,7 +255,7 @@ public class PyreonNdjsonLines {
 
 /** When and how an SSE stream reconnects — `ReconnectPolicy` on the web. */
 public data class PyreonStreamReconnect(
-    val attempts: Int = 5,
+    val attempts: Long = 5L,
     val delay: Long = 1000,
     val maxDelay: Long = 30_000,
     val onEnd: Boolean = false,
@@ -349,7 +349,7 @@ public object PyreonStreamHttpTransport : PyreonStreamTransport {
  * `DisposableEffect` starts. `status` uses the web's vocabulary exactly.
  */
 public class PyreonStream<E>(
-    public val maxEvents: Int = 1000,
+    public val maxEvents: Long = 1000L,
     /**
      * Where observable work runs: every state write and every `onEvent` call.
      * Must be ONE ordered thread (FIFO) — the emit passes the main looper. The
@@ -381,7 +381,7 @@ public class PyreonStream<E>(
         val prev = events.value
         events.value = when {
             maxEvents <= 0 -> emptyList()
-            prev.size >= maxEvents -> prev.drop(prev.size - maxEvents + 1) + event
+            prev.size >= maxEvents -> prev.drop((prev.size - maxEvents + 1).toInt()) + event
             else -> prev + event
         }
         latest.value = event

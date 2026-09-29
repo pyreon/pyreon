@@ -56,7 +56,7 @@ describe('JS .charAt / .indexOf → native idiom', () => {
   it('Kotlin: charAt → [i].toString(); indexOf passes through (native -1)', () => {
     const out = transform(SRC(COMPUTEDS), { target: 'kotlin' }).code
     expect(out).toContain('name[0].toString()')
-    expect(out).toContain('ids.indexOf(2)')
+    expect(out).toContain('ids.indexOf(2L).toLong()')
     expect(out).toContain("name.indexOf(\"l\")")
     expect(out).not.toContain('.charAt(')
   })

@@ -108,7 +108,7 @@ export function App() {
 }`).code
     expect(out).toContain('safeParseResult(mapOf<String, Any?>())')
     expect(out).toContain(
-      'mapOf<String, Any?>("n" to 1, "o" to mapOf<String, Any?>("p" to 2), "arr" to listOf<Any?>(), "arr2" to listOf<Any?>(1, 2))',
+      'mapOf<String, Any?>("n" to 1L, "o" to mapOf<String, Any?>("p" to 2L), "arr" to listOf<Any?>(), "arr2" to listOf<Any?>(1L, 2L))',
     )
   })
 })
@@ -122,8 +122,8 @@ export function P() {
   return (<Stack><Text>{String(profile().meta.a)}</Text></Stack>)
 }`).code
     expect(out).toContain('data class PProfile(val meta: PProfileMeta, val items: List<PProfileItem>, val entries: List<PProfileEntrie>)')
-    expect(out).toContain('data class PProfileMeta(val a: Int)')
-    expect(out).toContain('data class PProfileItem(val b: Int)')
+    expect(out).toContain('data class PProfileMeta(val a: Long)')
+    expect(out).toContain('data class PProfileItem(val b: Long)')
   })
 })
 
@@ -164,8 +164,8 @@ export function App() {
   const b = computed(() => xs().map((i) => i + 1))
   return (<Stack><Text>{String(i()) + String(a().length) + String(b().length)}</Text></Stack>)
 }`).code
-    expect(out).toContain('(0 until 3).map({ i -> i * 2 })')
-    expect(out).toContain('xs.map({ i -> i + 1 })')
+    expect(out).toContain('(0 until 3L).map({ i -> i * 2L })')
+    expect(out).toContain('xs.map({ i -> i + 1L })')
     // the outer `i` still reads as the signal after both shadows unwind
     expect(out).toContain('(i).toString()')
   })

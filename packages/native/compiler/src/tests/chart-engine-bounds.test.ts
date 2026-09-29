@@ -24,7 +24,7 @@ describe('generated chart engine: inColumn bounds-checks before indexing', () =>
   it('Kotlin checks k against cols before cols[k]', () => {
     const fn = body(read('packages/native/runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonChartEngine.kt'), 'fun inColumn(', /\nfun /)
     const guard = fn.search(/k >= cols\.length/)
-    const index = fn.search(/cols\[k\]/)
+    const index = fn.search(/cols\[\(?k/)
     expect(guard, 'no bounds check').toBeGreaterThan(-1)
     expect(guard, 'cols[k] is read before the bounds check').toBeLessThan(index)
   })
@@ -32,7 +32,7 @@ describe('generated chart engine: inColumn bounds-checks before indexing', () =>
   it('Swift checks k against cols before cols[k]', () => {
     const fn = body(read('packages/native/runtime-swift/Sources/PyreonRuntime/PyreonChartEngine.swift'), 'func inColumn(', /\n(public |internal |)func /)
     const guard = fn.search(/k >= cols\.count/)
-    const index = fn.search(/cols\[k\]/)
+    const index = fn.search(/cols\[\(?k/)
     expect(guard, 'no bounds check').toBeGreaterThan(-1)
     expect(guard, 'cols[k] is read before the bounds check').toBeLessThan(index)
   })

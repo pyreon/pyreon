@@ -110,7 +110,7 @@ describe('P1 — charCodeAt lowers (was a silent verbatim emit)', () => {
   })
   it('Kotlin: Char.code as Double', () => {
     const out = transform(SRC_CC, { target: 'kotlin' }).code
-    expect(out).toContain('s[(0).toInt()].code.toDouble()')
+    expect(out).toContain('s[(0L).toInt()].code.toDouble()')
     expect(out).not.toContain('charCodeAt')
   })
   it.skipIf(!isSwiftUIAvailable())('the emitted Swift type-checks', () => {

@@ -127,6 +127,15 @@ const COMPOSE_RUNTIME_STUBS = `package androidx.compose.runtime
 @Retention(AnnotationRetention.SOURCE)
 annotation class Composable
 
+// androidx.compose.runtime.RememberObserver: Compose calls these on a remembered
+// object as it enters/leaves composition (the hook state classes release their
+// engine there).
+interface RememberObserver {
+  fun onRemembered()
+  fun onForgotten()
+  fun onAbandoned()
+}
+
 abstract class State<out T> {
   abstract val value: T
 }
