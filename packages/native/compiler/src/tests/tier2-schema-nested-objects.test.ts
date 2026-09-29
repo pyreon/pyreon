@@ -91,7 +91,7 @@ export const userSchema = zodSchema(z.object({
     const r = transform(src, { target: 'kotlin' })
     expect(r.code).toContain('data class PyreonZodSchema_userSchema_Address')
     expect(r.code).toContain('var street: String')
-    expect(r.code).toContain('var zip: Int')
+    expect(r.code).toContain('var zip: Long')
     expect(r.code).toContain('var address: PyreonZodSchema_userSchema_Address')
     const auxIdx = r.code.indexOf('data class PyreonZodSchema_userSchema_Address')
     const mainIdx = r.code.indexOf('data class PyreonZodSchema_userSchema(')

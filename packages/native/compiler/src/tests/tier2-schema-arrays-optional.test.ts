@@ -129,8 +129,8 @@ export const s = zodSchema(z.object({
 }))
 `
     const r = transform(src, { target: 'kotlin' })
-    expect(r.code).toContain('var scores: List<Int>')
-    expect(r.code).toContain('input["scores"] as? List<Int>')
+    expect(r.code).toContain('var scores: List<Long>')
+    expect(r.code).toContain('input["scores"] as? List<Long>')
   })
 
   it('Kotlin: z.array(z.boolean()) emits List<Boolean>', () => {
@@ -241,7 +241,7 @@ export const userSchema = zodSchema(z.object({
     const kotlin = transform(src, { target: 'kotlin' })
     expect(kotlin.code).toContain('var id: String')
     expect(kotlin.code).toContain('var name: String')
-    expect(kotlin.code).toContain('var age: Int? = null')
+    expect(kotlin.code).toContain('var age: Long? = null')
     expect(kotlin.code).toContain('var tags: List<String>')
     expect(kotlin.code).toContain('var notes: List<String>? = null')
     expect(kotlin.code).toContain('nameVal.length < 2')

@@ -8,7 +8,7 @@ private class FakeScheduler : PyreonScheduler {
     private var next = 0
     private val work = LinkedHashMap<Int, () -> Unit>()
 
-    override fun schedule(milliseconds: Int, work: () -> Unit): Int {
+    override fun schedule(milliseconds: Long, work: () -> Unit): Int {
         next++
         this.work[next] = work
         return next

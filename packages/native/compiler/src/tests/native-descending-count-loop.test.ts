@@ -82,8 +82,8 @@ describe('descending count-loops lower to native', () => {
 
   it('Kotlin: inclusive downTo / exclusive downTo-plus-one with step', () => {
     const r = kt(DESC)
-    expect(r.code).toContain('for (i in 5 downTo 0) {')
-    expect(r.code).toContain('for (j in 10 downTo (0 + 1) step 2) {')
+    expect(r.code).toContain('for (i in 5L downTo 0L) {')
+    expect(r.code).toContain('for (j in 10L downTo (0L + 1) step 2L) {')
     expect(r.warnings).toEqual([])
   })
 

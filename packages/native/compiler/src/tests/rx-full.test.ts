@@ -51,7 +51,7 @@ describe('RX — full Strategy-A lowering (every v1 method)', () => {
       expect(emit(src, 'swift')).toMatch(/xs\.filter\(\{ n in n > 0 \}\)/)
     })
     it('Kotlin: xs.filter({ n -> n > 0 })', () => {
-      expect(emit(src, 'kotlin')).toMatch(/xs\.filter\(\{ n -> n > 0 \}\)/)
+      expect(emit(src, 'kotlin')).toMatch(/xs\.filter\(\{ n -> n > 0L \}\)/)
     })
   })
 
@@ -61,7 +61,7 @@ describe('RX — full Strategy-A lowering (every v1 method)', () => {
       expect(emit(src, 'swift')).toMatch(/xs\.map\(\{ n in n \* 2 \}\)/)
     })
     it('Kotlin: xs.map({ n -> n * 2 })', () => {
-      expect(emit(src, 'kotlin')).toMatch(/xs\.map\(\{ n -> n \* 2 \}\)/)
+      expect(emit(src, 'kotlin')).toMatch(/xs\.map\(\{ n -> n \* 2L \}\)/)
     })
   })
 
@@ -143,7 +143,7 @@ describe('RX — full Strategy-A lowering (every v1 method)', () => {
       expect(emit(src, 'swift')).toMatch(/Array\(xs\.prefix\(while: \{ n in n > 0 \}\)\)/)
     })
     it('Kotlin: xs.takeWhile({ n -> n > 0 })', () => {
-      expect(emit(src, 'kotlin')).toMatch(/xs\.takeWhile\(\{ n -> n > 0 \}\)/)
+      expect(emit(src, 'kotlin')).toMatch(/xs\.takeWhile\(\{ n -> n > 0L \}\)/)
     })
   })
 
@@ -153,7 +153,7 @@ describe('RX — full Strategy-A lowering (every v1 method)', () => {
       expect(emit(src, 'swift')).toMatch(/Array\(xs\.drop\(while: \{ n in n < 0 \}\)\)/)
     })
     it('Kotlin: xs.dropWhile({ n -> n < 0 })', () => {
-      expect(emit(src, 'kotlin')).toMatch(/xs\.dropWhile\(\{ n -> n < 0 \}\)/)
+      expect(emit(src, 'kotlin')).toMatch(/xs\.dropWhile\(\{ n -> n < 0L \}\)/)
     })
   })
 
@@ -186,7 +186,7 @@ describe('RX — full Strategy-A lowering (every v1 method)', () => {
       expect(emit(src, 'swift')).toMatch(/xs\.first\(where: \{ n in n > 0 \}\)/)
     })
     it('Kotlin: xs.find({ n -> n > 0 })', () => {
-      expect(emit(src, 'kotlin')).toMatch(/xs\.find\(\{ n -> n > 0 \}\)/)
+      expect(emit(src, 'kotlin')).toMatch(/xs\.find\(\{ n -> n > 0L \}\)/)
     })
   })
 
@@ -196,7 +196,7 @@ describe('RX — full Strategy-A lowering (every v1 method)', () => {
       expect(emit(src, 'swift')).toMatch(/xs\.contains\(where: \{ n in n > 0 \}\)/)
     })
     it('Kotlin: xs.any({ n -> n > 0 })', () => {
-      expect(emit(src, 'kotlin')).toMatch(/xs\.any\(\{ n -> n > 0 \}\)/)
+      expect(emit(src, 'kotlin')).toMatch(/xs\.any\(\{ n -> n > 0L \}\)/)
     })
   })
 
@@ -206,7 +206,7 @@ describe('RX — full Strategy-A lowering (every v1 method)', () => {
       expect(emit(src, 'swift')).toMatch(/xs\.allSatisfy\(\{ n in n > 0 \}\)/)
     })
     it('Kotlin: xs.all({ n -> n > 0 })', () => {
-      expect(emit(src, 'kotlin')).toMatch(/xs\.all\(\{ n -> n > 0 \}\)/)
+      expect(emit(src, 'kotlin')).toMatch(/xs\.all\(\{ n -> n > 0L \}\)/)
     })
   })
 
@@ -219,7 +219,7 @@ describe('RX — full Strategy-A lowering (every v1 method)', () => {
     })
     it('Kotlin: xs.size (property, NOT count())', () => {
       const out = emit(src, 'kotlin')
-      expect(out).toMatch(/\{ xs\.size \}/)
+      expect(out).toMatch(/\{ xs\.size\.toLong\(\) \}/)
       expect(out).not.toMatch(/xs\.count\(\)/)
     })
   })
@@ -264,7 +264,7 @@ describe('RX — full Strategy-A lowering (every v1 method)', () => {
       expect(emit(src, 'swift')).toMatch(/xs\.reduce\(0, \{ acc, n in acc \+ n \}\)/)
     })
     it('Kotlin: xs.fold(0, { acc, n -> acc + n }) — fold, not reduce', () => {
-      expect(emit(src, 'kotlin')).toMatch(/xs\.fold\(0, \{ acc, n -> acc \+ n \}\)/)
+      expect(emit(src, 'kotlin')).toMatch(/xs\.fold\(0L, \{ acc, n -> acc \+ n \}\)/)
     })
   })
 

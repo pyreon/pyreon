@@ -74,7 +74,7 @@ describe('Phase 5b — component-body plain-const capture', () => {
   return (<Stack><Text>{sum}</Text></Stack>)`),
       { target: 'kotlin' },
     ).code
-    expect(out).toContain('val sum = 5 + 3')
+    expect(out).toContain('val sum = 5L + 3L')
   })
 
   it.skipIf(!isSwiftcAvailable())(

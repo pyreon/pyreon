@@ -65,7 +65,7 @@ const EVENTS: [string, string, string][] = [
 ]
 
 const carriesMarker = (code: string, marker: string): boolean =>
-  new RegExp(`hit = ${marker}\\b|hit\\.value = ${marker}\\b|= ${marker}\\b`).test(code)
+  new RegExp(`hit = ${marker}L?\\b|hit\\.value = ${marker}L?\\b|= ${marker}L?\\b`).test(code)
 
 describe('every documented event handler reaches the emit', () => {
   it.each(EVENTS.flatMap(([label, marker, jsx]) =>
