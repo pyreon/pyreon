@@ -1103,8 +1103,8 @@ mock picks by the request's `Accept`: `<op>Stream` gets the stream, the plain
 call gets the JSON fixture. Override either with `mockOperation('createChat', …)`
 or `mockOperation('createChatStream', …)`.
 
-To exercise reconnection, tell a stream mock to drop: `mockOperation('roomEvents',
-{ dropAfter: 1 })` delivers one event per connection and then fails it the way a
+To exercise reconnection, tell a stream mock to drop:
+`mockOperation('roomEvents', { dropAfter: 1 })` delivers one event per connection and then fails it the way a
 lost network does. A GET SSE stream reconnects, sends `Last-Event-ID`, and the
 mock answers with the events after it, so every event still arrives once. An
 NDJSON stream has no resume id, so the drop reaches the reader as an error.
