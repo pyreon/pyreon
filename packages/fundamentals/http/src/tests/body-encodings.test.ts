@@ -46,6 +46,7 @@ describe('encodeForm follows OpenAPI encoding styles', () => {
 
   it('space- and pipe-delimited arrays', () => {
     expect(decodeURIComponent(encodeForm({ t: ['a', 'b'] }, { t: { style: 'pipeDelimited' } }).toString())).toBe('t=a|b')
+    expect(decodeURIComponent(encodeForm({ t: ['a', 'b'] }, { t: { style: 'tabDelimited' } }).toString())).toBe('t=a\tb')
     expect(encodeForm({ t: ['a', 'b'] }, { t: { style: 'spaceDelimited' } }).get('t')).toBe('a b')
   })
 
