@@ -25,4 +25,5 @@ Plain Mode is now production-ready: write reactive code as plain JavaScript (`le
 
   Across this repo's 883 example files: 86 declined before, 0 now.
 - **Native compiler.** Plain Mode's `void (…)` tracking hints lower to the plain value. Before, a derived value with a conditional read emitted an empty string on iOS and Android. The emit is now deterministic: name counters are reset per file, where they used to drift with whatever the process compiled first.
+- **Vite plugin fix.** Dev mode's source-location injection no longer rewrites the text `effect()` or `signal()` inside JSX (for example, prose in a `<Code>` demo) into a broken call. Each match is now confirmed against the AST.
 - **Scaffold.** The `create-zero` counter page is written in Plain Mode.

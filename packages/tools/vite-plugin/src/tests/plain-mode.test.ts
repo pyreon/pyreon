@@ -305,3 +305,22 @@ describe('pyreon({ plain: true }) — project-wide Plain Mode', () => {
     expect(out?.code ?? CARD).not.toContain('Card(props)')
   })
 })
+
+describe('dev source-location injection ignores JSX text', () => {
+  it('`effect()` written as JSX TEXT is not rewritten into a call (serve mode)', async () => {
+    const plugin = pyreonPlugin()
+    ;(plugin.config as unknown as ConfigHook)({ root }, { command: 'serve' })
+    await runBuildStart(plugin)
+    const src = `import { effect, signal } from '@pyreon/reactivity'
+const n = signal(0)
+effect(() => { void n() })
+export const Doc = () => <Code>Use effect() for side effects and signal() for state.</Code>
+`
+    const id = writeFile('src/Doc.tsx', src)
+    const out = (await runTransform(plugin, src, id))!.code
+    // the real call gets its location (module-level signals go through HMR)…
+    expect(out).toMatch(/effect\(\(\) => \{ void n\(\) \}, \{ __sourceLocation/)
+    // …the prose inside JSX stays prose
+    expect(out).toContain('Use effect() for side effects and signal() for state.')
+  })
+})

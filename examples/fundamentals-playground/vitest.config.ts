@@ -1,17 +1,14 @@
+import pyreon from '@pyreon/vite-plugin'
 import { defineNodeConfig } from '@pyreon/vitest-config'
 
-// The reactive-matcher showcase imports StoreDemo.tsx (JSX), so route the
-// transform to the @pyreon/core runtime — even though the test only touches
-// the store logic, not the rendered component.
+// The tests import app source (routes, demos) that is written in Plain Mode,
+// so they compile it with the REAL `pyreon()` plugin — the same transform the
+// app ships with. (A generic automatic-JSX runtime would leave the Plain Mode
+// markers uncompiled, and they throw by design.)
 export default defineNodeConfig({
   environment: 'happy-dom',
+  excludeBrowserTests: true,
   overrides: {
-    // @ts-expect-error vitest UserConfig doesn't expose the oxc plugin opts
-    oxc: {
-      jsx: {
-        runtime: 'automatic',
-        importSource: '@pyreon/core',
-      },
-    },
+    plugins: [pyreon()],
   },
 })
