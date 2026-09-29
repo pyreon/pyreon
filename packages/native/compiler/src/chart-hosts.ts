@@ -1169,7 +1169,8 @@ const resolveStaticTimelineOption = (
   warn: (message: string) => void,
 ): Extract<ExprIR, { kind: 'object' }> => {
   const base = literalOf(objectField(option, 'baseOption'), resolve)
-  const timeline = literalOf(objectField(option, 'timeline'), resolve) ??
+  const ownTimeline = literalOf(objectField(option, 'timeline'), resolve)
+  const timeline = ownTimeline ??
     (base?.kind === 'object' ? literalOf(objectField(base, 'timeline'), resolve) : undefined)
   if (base?.kind !== 'object' && timeline?.kind !== 'object') return option
 
@@ -1184,12 +1185,19 @@ const resolveStaticTimelineOption = (
   const steps = literalOf(objectField(option, 'options'), resolve)
   const current = timeline?.kind === 'object' ? litNumber(objectField(timeline, 'currentIndex')) : undefined
   const index = Math.floor(requestedIndex ?? current ?? 0)
+  // Name where the out-of-range index was WRITTEN — the pinned prop, or the
+  // option's own `currentIndex` (under `baseOption` when the timeline lives there).
+  const indexSource = requestedIndex !== undefined
+    ? 'timelineIndex'
+    : current !== undefined
+      ? ownTimeline !== undefined ? 'option.timeline.currentIndex' : 'option.baseOption.timeline.currentIndex'
+      : 'timelineIndex'
   if (steps?.kind !== 'array' || steps.elements.length === 0) {
     warn('<OptionChart option.options>: timeline has no static steps; native renders the base option.')
     return merged
   }
   if (index < 0 || index >= steps.elements.length) {
-    warn(`<OptionChart timelineIndex>: step ${index} does not exist; native renders the base option.`)
+    warn(`<OptionChart ${indexSource}>: step ${index} does not exist; native renders the base option.`)
     return merged
   }
   const step = literalOf(steps.elements[index], resolve)

@@ -735,6 +735,23 @@ describe('chart-hosts timeline options', () => {
     expect(nonObj.code).toContain(CANVAS)
   })
 
+  // Regression: the out-of-range message always said `timelineIndex`, even when
+  // no prop was written and the index came from the option's own
+  // `timeline.currentIndex` — sending the reader to a prop they never set.
+  // Bisect: the source naming reverted → `expected … to contain '<OptionChart
+  // option.timeline.currentIndex>: step 5 does not exist'`.
+  it('an out-of-range currentIndex names the option field it was written in, not the prop', () => {
+    // A non-literal timeline `data` skips the step-by-step lowering, so the pinned path reads currentIndex.
+    const own = swift(`{ timeline: { data: D, currentIndex: 5 }, options: [{ series: [{ type: 'pie', data: [1] }] }] }`).warnings.join('\n')
+    expect(own).toContain('<OptionChart option.timeline.currentIndex>: step 5 does not exist')
+    expect(own).not.toContain('<OptionChart timelineIndex>: step')
+    const base = swift(`{ baseOption: { timeline: { data: D, currentIndex: 3 }, series: [{ type: 'pie', data: [1] }] }, options: [{ series: [{ data: [7] }] }] }`).warnings.join('\n')
+    expect(base).toContain('<OptionChart option.baseOption.timeline.currentIndex>: step 3 does not exist')
+    // A pinned prop still names the prop — it wins over currentIndex.
+    const pinned = swift(`{ timeline: { data: ['a'], currentIndex: 0 }, options: [{ series: [{ type: 'pie', data: [1] }] }] }`, 'timelineIndex={4}').warnings.join('\n')
+    expect(pinned).toContain('<OptionChart timelineIndex>: step 4 does not exist')
+  })
+
   it('a non-numeric timelineIndex is named and the option currentIndex is used', () => {
     expect(swift(`{ series: [{ type: 'pie', data: [1] }] }`, `timelineIndex={'first'}`).warnings.join('\n')).toContain('<OptionChart timelineIndex>: native needs a static numeric index')
   })
