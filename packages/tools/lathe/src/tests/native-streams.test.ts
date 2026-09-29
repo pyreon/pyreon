@@ -45,10 +45,7 @@ describe('stream operations reach native', () => {
     expect(out.reach.get('createChat')?.reach).toBe('web-only')
   })
 
-  it('a STREAM-ONLY POST names the missing generated surface, not the mutation rule', () => {
-    // PMTC lowers a hand-written gated POST stream (`enabled` + a runtime
-    // `json` body); what Lathe lacks is a generated trigger/body surface, and
-    // "mutations are not lowered" would send a reader the wrong way.
+  it('a STREAM-ONLY POST reaches native as a TRIGGERED component (see native-triggered-streams)', () => {
     const spec = JSON.stringify({
       openapi: '3.1.0',
       info: { title: 't', version: '1' },
@@ -64,8 +61,7 @@ describe('stream operations reach native', () => {
       },
     })
     const r = generate(spec, resolveConfig({ input: 'x', target: 'multiplatform' }))
-    expect(r.reach.get('complete')?.reach).toBe('web-only')
-    expect(r.reach.get('complete')?.reason).toContain('no generated surface for a trigger and a body')
+    expect(r.reach.get('complete')).toEqual({ reach: 'web+native' })
   })
 
   it('emits a stream component per such operation', () => {

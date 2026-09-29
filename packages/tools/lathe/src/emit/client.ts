@@ -635,21 +635,55 @@ export function hasNativeDataComponent(op: IrOperation): boolean {
 /**
  * Does this operation get a native STREAM COMPONENT?
  *
- * A stream-only `GET` whose events have a declared type — or an SSE stream
- * read as `data: 'text'`, whose payload is the raw string. PMTC lowers
+ * A stream-only operation whose events have a declared type — or an SSE
+ * stream read as `data: 'text'`, whose payload is the raw string. PMTC lowers
  * `useStream` over `@pyreon/http/stream` to the native stream runtime and
  * decodes each event INTO a declared type, so an untyped event has nothing to
- * decode into. A non-GET stream stays web because it is started by the user
- * with a body, and every generated native component opens on mount with params
- * as its only props — PMTC itself lowers a hand-written one (`enabled` as the
- * trigger, a runtime `json` body), but there is no GENERATED surface for it.
- * The reach analysis in `core/generate.ts` asks this same predicate.
+ * decode into.
+ *
+ * A non-GET stream is started by the USER, usually with a body, so its
+ * component is TRIGGERED rather than opened on mount: it takes `enabled` (the
+ * stream runs while it is true) and, when the operation has a JSON body, a
+ * `json` prop sent as that body — the same `useStream(src, { enabled })` +
+ * runtime `json` shape PMTC lowers when it is hand-written. A form, multipart,
+ * text or binary body stays web: the native stream request carries a JSON
+ * body only. The reach analysis in `core/generate.ts` asks this same predicate
+ * (through `nativeStreamBlocker`), so the two cannot disagree.
  */
 export function hasNativeStreamComponent(op: IrOperation): boolean {
+  return op.stream !== undefined && isStreamOnly(op) && nativeStreamBlocker(op) === undefined;
+}
+
+/** Props a generated stream component owns, which a path param must not shadow. */
+const STREAM_COMPONENT_PROPS = ["children", "enabled", "json"] as const;
+
+/** Is this stream component TRIGGERED (`enabled` + optional `json`) rather than opened on mount? */
+export function isTriggeredStream(op: IrOperation): boolean {
+  return op.method !== "GET";
+}
+
+/**
+ * Why a stream-only operation gets NO native stream component — or
+ * `undefined` when it gets one. The one place that decides it; the reach
+ * report quotes the string verbatim.
+ */
+export function nativeStreamBlocker(op: IrOperation): string | undefined {
   const s = op.stream;
-  if (!s || !isStreamOnly(op) || op.method !== "GET" || op.hook === false) return false;
-  if (s.format === "sse" && s.data === "text") return true;
-  return s.event.kind !== "unknown";
+  if (!s) return "not a streaming operation.";
+  if (op.hook === false) {
+    return "its hook is turned off (`operations.<id>.hook: false`, `naming.hook` or a plugin), so no native stream component is generated.";
+  }
+  if (!(s.format === "sse" && s.data === "text") && s.event.kind === "unknown") {
+    return "a streaming response (SSE / NDJSON) with no declared event type -- a native stream decodes each event into a declared type, so there is nothing to lower it to. Declare one with `lathe: { streams: { <op>: { event: 'Model' } } }` (or `data: 'text'` for raw SSE).";
+  }
+  if (isTriggeredStream(op) && op.body !== undefined && op.body.encoding !== "json") {
+    return `its request body is \`${op.body.mediaType}\` (${op.body.encoding}), and a native stream request carries a JSON body only -- the triggered component sends its \`json\` prop.`;
+  }
+  const clash = op.pathParams.find((p) => (STREAM_COMPONENT_PROPS as readonly string[]).includes(p.name));
+  if (clash !== undefined) {
+    return `its path parameter \`${clash.name}\` has the name of a prop the generated stream component owns (${STREAM_COMPONENT_PROPS.map((n) => `\`${n}\``).join(", ")}).`;
+  }
+  return undefined;
 }
 
 /** Does this operation mutate? Decides query vs mutation binding. */
@@ -1426,8 +1460,26 @@ export function emitNativeModules(
       const item = s.format === "sse" ? `SseEvent<${data}>` : data;
       const name = `${typeIdent(op.id)}Stream`;
       const params = op.pathParams;
+      // A TRIGGERED (non-GET) stream: `enabled` starts it, and a JSON body
+      // travels as the `json` prop. An inline object body is named once, for
+      // the same reason the event is (one struct per occurrence on Kotlin).
+      // The prop is `json`, never `body`: a SwiftUI view's `body` is its
+      // content, and a stored `body` property redeclares it.
+      const triggered = isTriggeredStream(op);
+      let bodyType: string | undefined;
+      if (triggered && op.body !== undefined) {
+        bodyType = nativeTs(op.body.type, modelTypes);
+        if (op.body.type.kind === "object") {
+          const alias = `${typeIdent(op.id)}Body`;
+          f.line();
+          f.line(`export type ${alias} = ${bodyType}`);
+          bodyType = alias;
+        }
+      }
       const propsType = [
         ...params.map((p) => `${p.name}: ${tsType(p.type)}`),
+        ...(triggered ? ["enabled: boolean"] : []),
+        ...(bodyType !== undefined ? [`json: ${bodyType}`] : []),
         // `readonly`: the web hook's `events()` is a readonly array. PMTC
         // lowers `readonly T[]` exactly like `T[]`.
         `children: (events: readonly ${/[|&]/.test(item) ? `(${item})` : item}[]) => unknown`,
@@ -1436,6 +1488,7 @@ export function emitNativeModules(
         ...(params.length
           ? [`params: { ${params.map((p) => `${p.name}: props.${p.name}`).join(", ")} }`]
           : []),
+        ...(bodyType !== undefined ? ["json: props.json"] : []),
         "signal: c.signal",
         // The spec's own media type when it is not the format's default, so
         // a server negotiating on `Accept` sees its own (the web does this too).
@@ -1456,13 +1509,23 @@ export function emitNativeModules(
         s.format === "sse"
           ? "A dropped connection is retried with backoff, resuming with `Last-Event-ID`."
           : "NDJSON has no resume id, so a failure ends the stream.",
+        ...(triggered
+          ? [
+              "",
+              `Opens while \`enabled\` is true${bodyType !== undefined ? ", sending `json` as the request body" : ""}. Turning it`,
+              "false stops the stream and keeps the events received so far.",
+            ]
+          : []),
         ...(params.length
           ? [`Reopens the stream when ${params.map((p) => `\`${p.name}\``).join(", ")} ${params.length === 1 ? "changes" : "change"}.`]
           : []),
       );
       f.line(`export function ${name}(props: { ${propsType} }) {`);
-      f.line(`  const s = useStream<${item}>((ctx) =>`);
-      f.line(`    ${open}((c) => ${op.id}({ ${epArgs} }), { ${streamOpts} }),`);
+      f.line(`  const s = useStream<${item}>(`);
+      f.line(`    (ctx) => ${open}((c) => ${op.id}({ ${epArgs} }), { ${streamOpts} }),`);
+      // An ACCESSOR, so `enabled` is read in the hook's tracked scope and a
+      // flip starts or stops the stream (PMTC joins it to the harness key).
+      if (triggered) f.line("    { enabled: () => props.enabled },");
       f.line("  )");
       // An ACCESSOR, for the same reason the data component returns one: the
       // body runs once, and `events()` must be re-read as events arrive.
