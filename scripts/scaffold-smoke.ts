@@ -27,7 +27,7 @@
  *   bun run scripts/scaffold-smoke.ts --fail-fast # stop after first real failure
  */
 
-import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -663,11 +663,102 @@ function runBunInstall(projectDir: string, isolated: boolean): void {
 /** Typed marker so the cell runner can turn this failure into a SKIP. */
 export class ReleaseInFlightError extends Error {}
 
-function runBuild(cwd: string): void {
-  const result = spawnSync('bun', ['run', 'build'], { cwd, stdio: 'inherit' })
-  if (result.status !== 0) {
-    throw new Error(`bun run build exited with code ${result.status}`)
+/**
+ * True when a scaffolded BUILD failed because a package-export subpath that
+ * exists in the LOCAL workspace source (e.g. `@pyreon/core/plain`) has not
+ * reached npm yet — a release-lag class one step past
+ * `isReleaseInFlightInstallFailure`.
+ *
+ * The install-time check compares a VERSION NUMBER (create-zero's own),
+ * which only catches lag when the workspace has actually been bumped ahead
+ * of npm by a merged "Version Packages" PR. Between a feature's merge and
+ * that PR merging, the version string on `main` still equals npm's last
+ * publish — `bun install` succeeds — but the CONTENT has moved (a new
+ * `exports` subpath was added) and npm's tarball for that same version
+ * number predates it. Rolldown/Vite's resolver then fails at BUILD time:
+ * `"./plain" is not exported under the conditions [...] from package
+ * @pyreon/core`. The 0.51.0 incident that motivated the install-time
+ * check is the same root cause; this is its build-time manifestation.
+ *
+ * Discriminated from a genuine misconfiguration (a real missing/typo'd
+ * export) by confirming the subpath IS declared in the local workspace's
+ * own `package.json` for that package — if it isn't there either, this is
+ * a real bug and must not be swallowed as release lag.
+ */
+export interface UnpublishedSubpathDeps {
+  readLocalExports?: (pkgName: string) => Record<string, unknown> | null
+}
+
+export function isUnpublishedSubpathBuildFailure(
+  output: string,
+  deps: UnpublishedSubpathDeps = {},
+): boolean {
+  const match =
+    /"([^"]+)" is not exported under the conditions \[[^\]]*\] from package (@pyreon\/[\w.-]+)/.exec(
+      output,
+    )
+  if (!match) return false
+  const subpath = match[1]
+  const pkgName = match[2]
+  if (subpath === undefined || pkgName === undefined) return false
+  const readExports = deps.readLocalExports ?? readLocalPackageExports
+  // Never let a classifier crash replace the real build error with an
+  // opaque one — same discipline as isReleaseInFlightInstallFailure.
+  try {
+    const exportsMap = readExports(pkgName)
+    if (!exportsMap) return false
+    return Object.prototype.hasOwnProperty.call(exportsMap, subpath)
+  } catch {
+    return false
   }
+}
+
+/**
+ * Find `pkgName`'s package.json under `packages/*​/<short-name>/` and return
+ * its `exports` map, or `null` if the package or its exports can't be
+ * read. Pure best-effort — any I/O failure means "can't confirm this is
+ * release lag", which routes the caller back to treating it as a real
+ * failure rather than spuriously skipping.
+ */
+function readLocalPackageExports(pkgName: string): Record<string, unknown> | null {
+  const shortName = pkgName.replace(/^@pyreon\//, '')
+  try {
+    for (const category of readdirSync(resolve(REPO_ROOT, 'packages'))) {
+      const pkgJsonPath = resolve(REPO_ROOT, 'packages', category, shortName, 'package.json')
+      if (!existsSync(pkgJsonPath)) continue
+      const data = JSON.parse(readFileSync(pkgJsonPath, 'utf-8')) as {
+        exports?: Record<string, unknown>
+      }
+      return data.exports ?? null
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
+function runBuild(cwd: string, isolated: boolean): void {
+  if (!isolated) {
+    const result = spawnSync('bun', ['run', 'build'], { cwd, stdio: 'inherit' })
+    if (result.status !== 0) {
+      throw new Error(`bun run build exited with code ${result.status}`)
+    }
+    return
+  }
+  // Isolated cells CAPTURE the output (and replay it to the log) so a
+  // release-lag build failure can be classified — mirrors runBunInstall's
+  // treatment of the install-time symptom of the same root cause.
+  const result = spawnSync('bun', ['run', 'build'], { cwd, encoding: 'utf-8' })
+  if (result.stdout) process.stdout.write(result.stdout)
+  if (result.stderr) process.stderr.write(result.stderr)
+  if (result.status === 0) return
+  const output = `${result.stdout ?? ''}${result.stderr ?? ''}`
+  if (isUnpublishedSubpathBuildFailure(output)) {
+    throw new ReleaseInFlightError(
+      'bun run build failed resolving a package export subpath that exists in workspace source but has not reached npm yet (the changesets "Version Packages" PR that would publish it has not merged) — the isolated cell resolves @pyreon/* from real npm, so this is structural release lag, not a scaffold bug',
+    )
+  }
+  throw new Error(`bun run build exited with code ${result.status}`)
 }
 
 /**
@@ -937,7 +1028,7 @@ async function runCell(cell: Cell, opts: { keep: boolean }): Promise<CellResult>
     console.log(`\n──── ${cell.name} ─────────────────────────────────────────`)
     runScaffolder(cell, parentDir)
     runBunInstall(projectDir, isolated)
-    runBuild(projectDir)
+    runBuild(projectDir, isolated)
     cell.smoke(projectDir)
     // Every non-isolated scaffold must pass its OWN gates: it typechecks,
     // and `doctor:ci` (the script it ships for users' CI, run from an

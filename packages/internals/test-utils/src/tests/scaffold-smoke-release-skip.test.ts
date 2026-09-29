@@ -26,7 +26,11 @@
  * they install from REPO_ROOT (workspace resolution) and don't need
  * npm at all.
  */
-import { shouldSkipIsolatedCell, isReleaseInFlightInstallFailure } from '../../../../../scripts/scaffold-smoke'
+import {
+  shouldSkipIsolatedCell,
+  isReleaseInFlightInstallFailure,
+  isUnpublishedSubpathBuildFailure,
+} from '../../../../../scripts/scaffold-smoke'
 
 // Stubs that pretend "npm is unreachable" so the workspace-vs-npm
 // check falls through and only branch-name + env-override matter for
@@ -276,5 +280,77 @@ describe('scaffold-smoke isReleaseInFlightInstallFailure', () => {
       'error: No version matching "^0.51.0" found for specifier "@pyreon/mcp" (but package exists)'
     expect(() => isReleaseInFlightInstallFailure(real, '0.5(1.0')).not.toThrow()
     expect(isReleaseInFlightInstallFailure(real, '0.5(1.0')).toBe(false)
+  })
+})
+
+describe('scaffold-smoke isUnpublishedSubpathBuildFailure', () => {
+  // The build-time sibling of the install-time incident above: the
+  // WORKSPACE version string hasn't moved (no "Version Packages" PR has
+  // merged since the feature landed), so `bun install` succeeds against
+  // real npm — but the feature added an `exports` subpath that npm's
+  // tarball for that same version number predates. Rolldown/Vite's
+  // resolver fails at build time instead. Real signature from the
+  // `@pyreon/core/plain` incident (2026-09-29).
+  const REAL_CI_ERROR = `[rolldown:vite-resolve] plugin \`rolldown:vite-resolve\` threw an error
+Caused by:
+    "./plain" is not exported under the conditions ["bun", "bun", "import"] from package @pyreon/core (see exports field in @pyreon/core/package.json)`
+
+  it('matches the exact error from the @pyreon/core/plain incident when the subpath IS declared locally', () => {
+    expect(
+      isUnpublishedSubpathBuildFailure(REAL_CI_ERROR, {
+        readLocalExports: () => ({ './plain': { bun: './src/plain.ts' } }),
+      }),
+    ).toBe(true)
+  })
+
+  it('returns false when the local package.json does NOT declare the subpath — a real bug, not release lag', () => {
+    expect(
+      isUnpublishedSubpathBuildFailure(REAL_CI_ERROR, {
+        readLocalExports: () => ({ '.': {}, './jsx-runtime': {} }),
+      }),
+    ).toBe(false)
+  })
+
+  it('returns false when the local package cannot be resolved at all', () => {
+    expect(
+      isUnpublishedSubpathBuildFailure(REAL_CI_ERROR, {
+        readLocalExports: () => null,
+      }),
+    ).toBe(false)
+  })
+
+  it('ignores external (non-@pyreon) packages', () => {
+    const external =
+      '"./foo" is not exported under the conditions ["import"] from package left-pad'
+    expect(
+      isUnpublishedSubpathBuildFailure(external, {
+        readLocalExports: () => ({ './foo': {} }),
+      }),
+    ).toBe(false)
+  })
+
+  it('returns false on unrelated build errors', () => {
+    expect(
+      isUnpublishedSubpathBuildFailure('Error: something else entirely', {
+        readLocalExports: () => ({ './plain': {} }),
+      }),
+    ).toBe(false)
+  })
+
+  it('never throws when the injected reader itself throws — a classifier that crashes turns a diagnosable failure into an opaque one', () => {
+    expect(() =>
+      isUnpublishedSubpathBuildFailure(REAL_CI_ERROR, {
+        readLocalExports: () => {
+          throw new Error('boom')
+        },
+      }),
+    ).not.toThrow()
+    expect(
+      isUnpublishedSubpathBuildFailure(REAL_CI_ERROR, {
+        readLocalExports: () => {
+          throw new Error('boom')
+        },
+      }),
+    ).toBe(false)
   })
 })
