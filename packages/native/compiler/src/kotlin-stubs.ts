@@ -1478,7 +1478,7 @@ fun RouterProvider(router: PyreonRouter, content: @Composable () -> Unit) {
   content()
 }
 
-// BEGIN runtime mirror: router-kotlin/src/main/kotlin/com/pyreon/router/PyreonUrlState.kt
+// BEGIN runtime mirror: native/router-kotlin/src/main/kotlin/com/pyreon/router/PyreonUrlState.kt
 class PyreonUrlState(
     private val router: PyreonRouter?,
     private val key: String,
@@ -2377,7 +2377,7 @@ class PyreonPermissions(granted: Set<String> = emptySet()) {
   fun grant(key: String) {}
   fun revoke(key: String) {}
 }
-// BEGIN runtime mirror: permissions/native/kotlin/com/pyreon/runtime/PyreonPermissionsLocal.kt
+// BEGIN runtime mirror: fundamentals/permissions/native/kotlin/com/pyreon/runtime/PyreonPermissionsLocal.kt
 val LocalPyreonPermissions: ProvidableCompositionLocal<PyreonPermissions> = compositionLocalOf { PyreonPermissions() }
 // END runtime mirror
 

@@ -1521,7 +1521,7 @@ public final class PyreonPermissions {
   public func grant(_ key: String) {}
   public func revoke(_ key: String) {}
 }
-// BEGIN runtime mirror: permissions/native/swift/PyreonPermissionsEnvironment.swift
+// BEGIN runtime mirror: fundamentals/permissions/native/swift/PyreonPermissionsEnvironment.swift
 @available(iOS 17.0, macOS 14.0, *)
 private struct PyreonPermissionsKey: EnvironmentKey {
     static let defaultValue = PyreonPermissions()
@@ -1724,7 +1724,7 @@ public func useParams(router: PyreonRouter?) -> [String: String] { [:] }
 // found the other two. The parity test below now enforces the whole SET rather
 // than waiting for a fourth to be discovered by hand.
 public func useLoaderData<T>(router: PyreonRouter?) -> T? { nil }
-// BEGIN runtime mirror: router-swift/Sources/PyreonRouter/PyreonUrlState.swift
+// BEGIN runtime mirror: native/router-swift/Sources/PyreonRouter/PyreonUrlState.swift
 @available(iOS 17.0, macOS 14.0, *)
 public struct PyreonUrlState {
     // Optional because the environment router is: a component rendered outside
