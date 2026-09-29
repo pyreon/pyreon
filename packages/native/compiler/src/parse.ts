@@ -354,6 +354,19 @@ interface ParseCtx {
   /** Monotonic counter for synthesized inline-schema binding names
    * (`Inline0`, `Inline1`, …) → struct `PyreonZodSchema_Inline0`. */
   inlineSchemaCounter: number
+  /**
+   * File-scope `@pyreon/validate` schema BINDINGS (`const Pet = s.object({ … })`
+   * → `object`, `s.discriminatedUnion(…)` → `union`), collected syntactically
+   * by `collectValidateSchemaNames` BEFORE the body loop — a component can sit
+   * above the schema it validates with, and the body loop parses components in
+   * source order. `Pet.safeParse(x)` resolves through this map.
+   */
+  validateSchemaBindings?: Map<string, 'object' | 'union'>
+  /**
+   * Bindings whose `.safeParse(x)` lowered to `safeParseResult` — the post-pass
+   * marks each matching schema `emitSafeParseResult` so the method exists.
+   */
+  safeParseResultBindings?: Set<string>
 }
 
 /**
@@ -819,6 +832,19 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // as a top-level struct alongside the named ones. Appended, so a
   // top-level `const X = s.object(...)` still emits first.
   for (const inline of ctx.inlineSchemas) zodSchemas.push(inline)
+  // `Pet.safeParse(x)` on a file-scope binding: give that schema the
+  // `safeParseResult` its `schema-validate` call lowers to. A recorded binding
+  // whose shape the recognizer then DECLINED has no struct to call into — say
+  // so rather than emitting a call to a type that does not exist.
+  for (const binding of ctx.safeParseResultBindings ?? []) {
+    const zs = zodSchemas.find((z) => !z.inline && z.bindingName === binding)
+    if (zs) zs.emitSafeParseResult = true
+    else {
+      ctx.warnings.push(
+        `\`${binding}.safeParse(…)\` references a @pyreon/validate schema whose shape did not lower to native (no struct was emitted for \`${binding}\`), so the call cannot compile on iOS/Android. Give \`${binding}\` a literal \`s.object({ … })\` shape of supported fields.`,
+      )
+    }
+  }
 
   const result: ParseResult = {
     components,
@@ -1448,7 +1474,19 @@ function collectValidateSchemaNames(body: AnyNode[], ctx: ParseCtx): void {
           (callee.property.name as string) === 'discriminatedUnion')
       ) {
         ctx.validateSchemaLowered = true
-        return
+        // Record the BINDING so `Pet.safeParse(x)` elsewhere in the file can
+        // resolve to its struct. Only the literal-shape object form — the one
+        // the recognizer lowers — counts as `object`; a non-literal shape is
+        // left out, so its `.safeParse` is never pointed at a struct that
+        // was never emitted.
+        if (d.id?.type === 'Identifier') {
+          const isUnion = (callee.property.name as string) === 'discriminatedUnion'
+          const shape = ((d.init as AnyNode).arguments as AnyNode[] | undefined)?.[0]
+          if (isUnion || shape?.type === 'ObjectExpression') {
+            ctx.validateSchemaBindings ??= new Map()
+            ctx.validateSchemaBindings.set(d.id.name as string, isUnion ? 'union' : 'object')
+          }
+        }
       }
     }
   }
@@ -4328,6 +4366,57 @@ function tryInlineValidateSafeParse(node: AnyNode, ctx: ParseCtx): ExprIR | null
   const argNode = (node.arguments as AnyNode[] | undefined)?.[0]
   const arg: ExprIR = argNode ? parseExpr(argNode, ctx) : { kind: 'object', fields: [] }
   return { kind: 'schema-validate', schemaName, arg }
+}
+
+/**
+ * `Pet.safeParse(x)` on a FILE-SCOPE `@pyreon/validate` binding
+ * (`const Pet = s.object({ … })`).
+ *
+ * The binding lowers to a struct (`PyreonZodSchema_Pet`) plus a module-scope
+ * INSTANCE (`let Pet = PyreonZodSchema_Pet()`), and its parse methods are
+ * STATIC. So the verbatim `Pet.safeParse(x)` was a static call through an
+ * instance — plus an object-literal argument lowered to a synthesized struct
+ * where the method takes a dictionary — and compiled on neither target, with
+ * zero warnings. It now lowers exactly as the inline
+ * `s.object({ … }).safeParse(x)` form does: a `schema-validate` node over the
+ * binding's own struct, whose `safeParseResult` carries the web's
+ * `{ success, data }` shape.
+ *
+ * What stays web-only is WARNED by name rather than emitted broken:
+ *   - `.parse(x)` THROWS on invalid input, which needs the native error model
+ *     (`try`/`throw` lowering) PMTC does not carry yet;
+ *   - `.safeParse` on a `discriminatedUnion` binding — its native enum has
+ *     no `{ success, data }` result form yet;
+ *   - the async variants and any other method.
+ *
+ * Returns null when `node` is not a call on a recorded binding, so an
+ * unrelated `x.parse(…)` falls through untouched.
+ */
+function tryBoundValidateSchemaCall(node: AnyNode, ctx: ParseCtx): ExprIR | null {
+  const bindings = ctx.validateSchemaBindings
+  if (bindings === undefined || bindings.size === 0) return null
+  const callee = node.callee as AnyNode | undefined
+  if (callee?.type !== 'MemberExpression' || callee.computed) return null
+  if (callee.object?.type !== 'Identifier') return null
+  const binding = callee.object.name as string
+  const kind = bindings.get(binding)
+  if (kind === undefined) return null
+  if (callee.property?.type !== 'Identifier') return null
+  const method = callee.property.name as string
+  if (method === 'safeParse' && kind === 'object') {
+    const argNode = (node.arguments as AnyNode[] | undefined)?.[0]
+    const arg: ExprIR = argNode ? parseExpr(argNode, ctx) : { kind: 'object', fields: [] }
+    ctx.safeParseResultBindings ??= new Set()
+    ctx.safeParseResultBindings.add(binding)
+    return { kind: 'schema-validate', schemaName: binding, arg }
+  }
+  const reason =
+    method === 'parse'
+      ? '`.parse()` THROWS on invalid input, which needs a native error model (try/throw lowering) PMTC does not carry yet. Use `.safeParse(x)` and branch on `.success` — it lowers on both targets.'
+      : method === 'safeParse'
+        ? 'a `discriminatedUnion` schema lowers to a native enum with no `{ success, data }` result form yet. Validate each variant with its own `s.object(…)` binding, or keep this call in a web-only helper.'
+        : 'only `.safeParse(x)` on an `s.object({ … })` binding lowers to native. Keep this call in a web-only helper.'
+  return unsupportedExpr(ctx, node, `\`${binding}.${method}(…)\` on a @pyreon/validate schema`, reason)
 }
 
 function tryZodSchemaDefnFromTopLevel(
@@ -12272,7 +12361,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // access composes over the returned node. Fires ONLY when `s` was
       // imported from `@pyreon/validate` (guards a user's own `s` binding).
       if (ctx.validateSchemaNames.size > 0) {
-        const sv = tryInlineValidateSafeParse(node, ctx)
+        const sv = tryInlineValidateSafeParse(node, ctx) ?? tryBoundValidateSchemaCall(node, ctx)
         if (sv) return sv
       }
       // Imperative `@pyreon/toast` call → `toast-call` ExprIR (→ PyreonToast).
