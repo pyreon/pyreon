@@ -20,6 +20,7 @@ export const Book = s.object({
   title: s.string().min(1),
   status: s.string(),
   pages: s.number().int().min(1).optional(),
+  rating: s.number().min(0).max(5).optional(),
   subtitle: s.string().nullable().optional(),
   tags: s.array(s.string()).optional(),
 })
@@ -28,6 +29,7 @@ export type Book = {
   title: string
   status: string
   pages?: number | undefined
+  rating?: number | undefined
   subtitle?: string | null | undefined
   tags?: string[] | undefined
 }

@@ -233,6 +233,20 @@ function wrapCompatComponent(preactComponent: Function): ComponentFn {
   return wrapped
 }
 
+/**
+ * The component a compat `lazy()` should mount once its chunk resolves: the
+ * compat wrapper for a framework-style component (so hooks run inside a render
+ * frame), or the component itself when it is marked `nativeCompat`. Exactly
+ * the choice `jsx()` makes — a lazy's loaded component must get the same
+ * treatment it would have got written as JSX, or its hooks throw
+ * "Hook called outside of a component render".
+ */
+export function toCompatComponent<P extends object>(component: ComponentFn<P>): ComponentFn<P> {
+  return isNativeCompat(component)
+    ? component
+    : (wrapCompatComponent(component) as unknown as ComponentFn<P>)
+}
+
 // ─── JSX functions ───────────────────────────────────────────────────────────
 
 export function jsx(

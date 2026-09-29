@@ -35,7 +35,7 @@ export function App() {
     expect(r.warnings).toEqual([])
     expect(r.code).toContain(target === 'swift' ? 'PyreonChartHandle(seriesCount: 2)' : 'PyreonChartHandle()')
     for (const s of ['chart.zoom', 'chart.selected', 'chart.hidden', 'chart.areas', 'chart.hover', ...(target === 'kotlin' ? ['chart.seriesCount = 2 }'] : [])]) expect(r.code).toContain(s)
-    expect(r.code).toMatch(target === 'swift' ? /chart\.dispatch\(ChartActionInput\(type: "dataZoom", index: -1, series: -1, start: Double\(0\), end: Double\(0\.5\)/ : /chart\.dispatch\(ChartActionInput\(type = "dataZoom", index = -1, series = -1, start = \(0\)\.toDouble\(\), end = \(0\.5\)\.toDouble\(\)/)
+    expect(r.code).toMatch(target === 'swift' ? /chart\.dispatch\(ChartActionInput\(type: "dataZoom", index: -1, series: -1, start: Double\(0\), end: Double\(0\.5\)/ : /chart\.dispatch\(ChartActionInput\(type = "dataZoom", index = -1L, series = -1L, start = \(0L\)\.toDouble\(\), end = \(0\.5\)\.toDouble\(\)/)
     // The handle's fields replace the private state: nothing declares it twice.
     expect(r.code).not.toMatch(/pyreonSelected|pyreonHidden\b/)
     check(r.code)

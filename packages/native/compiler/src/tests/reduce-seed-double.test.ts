@@ -93,7 +93,7 @@ describe('Double-aware reduce-seed typing', () => {
   it('Kotlin: Double reduce → fold(0.0, …); Int reduce → fold(0, …)', () => {
     const out = transform(SRC, { target: 'kotlin' }).code
     expect(out).toContain('metrics.fold(0.0, { s, m -> s + m.growth })')
-    expect(out).toContain('metrics.fold(0, { s, m -> s + m.revenue })')
+    expect(out).toContain('metrics.fold(0L, { s, m -> s + m.revenue })')
   })
 
   it('zero-regression: an all-Int reduce keeps its 0 seed on both targets', () => {
@@ -108,7 +108,7 @@ export function C() {
       'rows.reduce(0, { s, r in s + r.n })',
     )
     expect(transform(intSrc, { target: 'kotlin' }).code).toContain(
-      'rows.fold(0, { s, r -> s + r.n })',
+      'rows.fold(0L, { s, r -> s + r.n })',
     )
   })
 })

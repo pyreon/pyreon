@@ -22,6 +22,12 @@
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Pyreon's counter sample reads your location to demonstrate the shared useGeolocation hook across web, iOS and Android.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Pyreon's counter sample records audio to demonstrate the shared useAudioRecorder hook.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Pyreon's counter sample opens the camera to demonstrate the shared useCamera hook.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Pyreon's counter sample scans for nearby devices to demonstrate the shared useBluetooth hook.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
