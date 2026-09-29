@@ -1139,8 +1139,9 @@ class PyreonStream<E>(val maxEvents: Int = 1000) {
   fun abort() {}
   fun restart() {}
   fun stop() {}
-  fun startSse(request: PyreonStreamRequest, options: PyreonSseOptions = PyreonSseOptions(), accept: String = "text/event-stream", decode: (PyreonSseMessage) -> E) {}
-  fun startNdjson(request: PyreonStreamRequest, accept: String = "application/x-ndjson", decode: (String) -> E) {}
+  fun idle() {}
+  fun startSse(request: PyreonStreamRequest, options: PyreonSseOptions = PyreonSseOptions(), accept: String = "text/event-stream", onEvent: ((E) -> Unit)? = null, decode: (PyreonSseMessage) -> E) {}
+  fun startNdjson(request: PyreonStreamRequest, accept: String = "application/x-ndjson", onEvent: ((E) -> Unit)? = null, decode: (String) -> E) {}
 }
 
 // PyreonHttp — what a \`useFetch(url, { method, headers, body })\` decl emits.

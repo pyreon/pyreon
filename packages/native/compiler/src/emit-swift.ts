@@ -3452,10 +3452,37 @@ function emitSwiftStreamHarness(d: Extract<DeclIR, { kind: 'stream' }>): string[
         .join(', ')}]`,
     )
   }
+  // A runtime body is serialized per run; it is ALSO in the key, so a change
+  // re-opens the stream — the web's tracked-source semantic.
+  const bodyJson = d.requestBodyExpr !== undefined ? emitSwiftExpr(d.requestBodyExpr, 0) : undefined
   if (d.requestBody !== undefined) req.push(`body: Data(${swiftStr(d.requestBody)}.utf8)`)
+  else if (bodyJson !== undefined) req.push(`body: Data(${bodyJson}.utf8)`)
   const request = `PyreonStreamRequest(${req.join(', ')})`
   const data = swiftType(d.dataType)
-  const out = [`      .task(id: "\\(${url})#\\(${name}.restartTick)") {`]
+  const enabled = d.enabled !== undefined ? emitSwiftExpr(d.enabled, 0) : undefined
+  // Only the parts that exist join the key, so a plain stream's emit is unchanged.
+  const key = [`\\(${url})`, `\\(${name}.restartTick)`]
+  if (enabled !== undefined) key.push(`\\(${enabled})`)
+  if (bodyJson !== undefined) key.push(`\\(${bodyJson})`)
+  let onEvent = ''
+  if (d.onEvent !== undefined) {
+    // The event parameter is typed for inference exactly as the stream's
+    // item, so `ev.data.field` reads resolve like `s.latest()?.data.field`.
+    const savedA = _exprInferCtx.locals
+    const savedB = _activeInferCtx.locals
+    _exprInferCtx.locals = new Map(savedA).set(d.onEvent.param, d.itemType)
+    _activeInferCtx.locals = new Map(savedB).set(d.onEvent.param, d.itemType)
+    // Seeds the body's own `let`s on top; the restore below drops both layers.
+    seedHandlerLocals(d.onEvent.body, _exprInferCtx)
+    seedHandlerLocals(d.onEvent.body, _activeInferCtx)
+    const body = d.onEvent.body.map((st) => emitSwiftStatement(st, 10)).join('; ')
+    _exprInferCtx.locals = savedA
+    _activeInferCtx.locals = savedB
+    onEvent = `, onEvent: { ${d.onEvent.param === '_' ? '_' : swiftIdent(d.onEvent.param)} in ${body} }`
+  }
+  const out = [`      .task(id: "${key.join('#')}") {`]
+  const pad = enabled !== undefined ? '          ' : '        '
+  if (enabled !== undefined) out.push(`        if ${enabled} {`)
   if (d.format === 'sse') {
     const opts: string[] = []
     if (d.events) opts.push(`events: [${d.events.map((e) => swiftStr(e)).join(', ')}]`)
@@ -3467,10 +3494,16 @@ function emitSwiftStreamHarness(d: Extract<DeclIR, { kind: 'stream' }>): string[
     )
     const decode = d.sseText ? 'PyreonStreamDecode.sseText()' : `PyreonStreamDecode.sseJSON(${data}.self)`
     const accept = d.accept !== undefined ? `, accept: ${swiftStr(d.accept)}` : ''
-    out.push(`        await ${name}.runSse(${request}, options: PyreonSseOptions(${opts.join(', ')})${accept}, decode: ${decode})`)
+    out.push(`${pad}await ${name}.runSse(${request}, options: PyreonSseOptions(${opts.join(', ')})${accept}${onEvent}, decode: ${decode})`)
   } else {
     const accept = d.accept !== undefined ? `, accept: ${swiftStr(d.accept)}` : ''
-    out.push(`        await ${name}.runNdjson(${request}${accept}, decode: PyreonStreamDecode.ndjson(${data}.self))`)
+    out.push(`${pad}await ${name}.runNdjson(${request}${accept}${onEvent}, decode: PyreonStreamDecode.ndjson(${data}.self))`)
+  }
+  if (enabled !== undefined) {
+    // The web's disabled branch: stop, read `idle`, keep what was received.
+    out.push(`        } else {`)
+    out.push(`          ${name}.idle()`)
+    out.push(`        }`)
   }
   out.push(`      }`)
   return out

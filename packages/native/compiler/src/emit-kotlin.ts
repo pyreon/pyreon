@@ -2811,10 +2811,25 @@ function emitKotlinStreamHarness(d: Extract<DeclIR, { kind: 'stream' }>, ctx: Ko
         .join(', ')})`,
     )
   }
+  // A runtime body is serialized per run; it is ALSO in the key, so a change
+  // re-opens the stream — the web's tracked-source semantic.
+  const bodyJson = d.requestBodyExpr !== undefined ? emitKotlinExpr(d.requestBodyExpr, 0) : undefined
   if (d.requestBody !== undefined) req.push(`body = ${kotlinStr(d.requestBody)}`)
+  else if (bodyJson !== undefined) req.push(`body = ${bodyJson}`)
   const request = `PyreonStreamRequest(${req.join(', ')})`
   const data = kotlinType(d.dataType, ctx)
-  const out = [`  DisposableEffect("\${${url}}#\${${name}.restartTick.value}") {`]
+  const enabled = d.enabled !== undefined ? emitKotlinExpr(d.enabled, 0) : undefined
+  // Only the parts that exist join the key, so a plain stream's emit is unchanged.
+  const key = [`\${${url}}`, `\${${name}.restartTick.value}`]
+  if (enabled !== undefined) key.push(`\${${enabled}}`)
+  if (bodyJson !== undefined) key.push(`\${${bodyJson}}`)
+  const onEvent =
+    d.onEvent !== undefined
+      ? `, onEvent = { ${d.onEvent.param === '_' ? '_' : kotlinIdent(d.onEvent.param)} -> ${d.onEvent.body.map((st) => emitKotlinStatement(st, 6, ctx)).join('; ')} }`
+      : ''
+  const out = [`  DisposableEffect("${key.join('#')}") {`]
+  const pad = enabled !== undefined ? '      ' : '    '
+  if (enabled !== undefined) out.push(`    if (${enabled}) {`)
   if (d.format === 'sse') {
     const opts: string[] = []
     if (d.events) opts.push(`events = listOf(${d.events.map((e) => kotlinStr(e)).join(', ')})`)
@@ -2826,11 +2841,17 @@ function emitKotlinStreamHarness(d: Extract<DeclIR, { kind: 'stream' }>, ctx: Ko
     )
     const payload = d.sseText ? 'm.data' : `PyreonFetchJson.decodeFromString<${data}>(m.data)`
     out.push(
-      `    ${name}.startSse(${request}, PyreonSseOptions(${opts.join(', ')})${d.accept !== undefined ? `, accept = ${kotlinStr(d.accept)}` : ''}) { m -> PyreonSseEvent(m.type, ${payload}, m.id) }`,
+      `${pad}${name}.startSse(${request}, PyreonSseOptions(${opts.join(', ')})${d.accept !== undefined ? `, accept = ${kotlinStr(d.accept)}` : ''}${onEvent}) { m -> PyreonSseEvent(m.type, ${payload}, m.id) }`,
     )
   } else {
     const accept = d.accept !== undefined ? `, accept = ${kotlinStr(d.accept)}` : ''
-    out.push(`    ${name}.startNdjson(${request}${accept}) { line -> PyreonFetchJson.decodeFromString<${data}>(line) }`)
+    out.push(`${pad}${name}.startNdjson(${request}${accept}${onEvent}) { line -> PyreonFetchJson.decodeFromString<${data}>(line) }`)
+  }
+  if (enabled !== undefined) {
+    // The web's disabled branch: stop, read `idle`, keep what was received.
+    out.push(`    } else {`)
+    out.push(`      ${name}.idle()`)
+    out.push(`    }`)
   }
   out.push(`    onDispose { ${name}.stop() }`)
   out.push(`  }`)
