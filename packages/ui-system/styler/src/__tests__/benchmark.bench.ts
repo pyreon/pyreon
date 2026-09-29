@@ -1,7 +1,8 @@
 /**
  * Benchmark: @pyreon/styler CSS-in-JS operations
  *
- * Run: bun vitest bench
+ * Run: bun vitest run src/__tests__/benchmark.bench.ts
+ * (vitest 5 moved `bench` onto the test context — each benchmark is a test)
  *
  * Measures core CSS-in-JS operations:
  * 1. css() tagged template creation
@@ -13,11 +14,17 @@
  * 7. styled() component factory
  * 8. normalizeCSS — Comment Stripping & Cleanup
  */
-import { bench, describe } from 'vitest'
+import { describe, it, type BenchFn } from 'vitest'
 import { css } from '../css'
 import { hash } from '../hash'
 import { normalizeCSS, resolve } from '../resolve'
 import { styled } from '../styled'
+
+const bench = (name: string, fn: BenchFn): void => {
+  it(name, async ({ bench: run }) => {
+    await run(name, fn).run()
+  })
+}
 
 // ============================================================================
 // 1. CSS Tagged Template — Creation Speed

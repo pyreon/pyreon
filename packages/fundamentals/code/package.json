@@ -155,7 +155,7 @@
     "@pyreon/vitest-config": "workspace:*",
     "@uiw/codemirror-theme-dracula": "^4.25.12",
     "@uiw/react-codemirror": "^4.25.12",
-    "@vitest/browser-playwright": "^4.1.11",
+    "@vitest/browser-playwright": "^5.0.2",
     "monaco-editor": "^0.57.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"

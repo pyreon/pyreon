@@ -26,9 +26,9 @@
   "dependencies": {},
   "devDependencies": {
     "@pyreon/tsconfig": "workspace:*",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "^5.0.2",
     "vite": "^8.3.1",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.2"
   },
   "peerDependencies": {
     "@vitest/coverage-v8": "*",
