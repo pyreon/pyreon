@@ -5314,6 +5314,24 @@ function emitKotlinDynamicValue(e: ExprIR, indent: number): string {
   return emitKotlinExpr(e, indent)
 }
 
+/** True when the inferencer proves the operand is a fractional number. */
+function isDoubleOperand(x: ExprIR): boolean {
+  const t = inferType(x, _kotlinExprInferCtx)
+  return t.kind === 'number' && t.float === true
+}
+
+/**
+ * `0` / `-1` written as an integer literal, emitted as `0.0` / `-1.0` when the
+ * OTHER comparison operand is a Double; null when it does not apply.
+ */
+function intLiteralAsDouble(x: ExprIR, otherIsDouble: boolean): string | null {
+  if (!otherIsDouble) return null
+  const lit = x.kind === 'unary' && x.op === '-' ? x.argument : x
+  if (lit.kind !== 'literal' || typeof lit.value !== 'number' || lit.float === true) return null
+  if (!Number.isInteger(lit.value)) return null
+  return `${x === lit ? '' : '-'}${lit.value}.0`
+}
+
 function emitKotlinExpr(e: ExprIR, indent: number): string {
   switch (e.kind) {
     case 'literal':
@@ -7500,8 +7518,15 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         prevEnumType = _activeEnumType
         _activeEnumType = enumType
       }
-      const leftStr = emitKotlinExpr(e.left, indent)
-      const rightStr = emitKotlinExpr(e.right, indent)
+      // An INTEGER literal beside a Double operand must emit as a Double
+      // literal: Kotlin has no Int/Double `==`/`!=` (`d != 0` is "operator
+      // '!=' cannot be applied to 'Double' and 'Int'"), unlike JS where both
+      // are Number. Swift coerces a bare literal to the other operand's type,
+      // so only this target needs the widening.
+      const leftIsDouble = isDoubleOperand(e.left)
+      const rightIsDouble = isDoubleOperand(e.right)
+      const leftStr = intLiteralAsDouble(e.left, rightIsDouble) ?? emitKotlinExpr(e.left, indent)
+      const rightStr = intLiteralAsDouble(e.right, leftIsDouble) ?? emitKotlinExpr(e.right, indent)
       if (prevEnumType !== undefined || _activeEnumType !== undefined) {
         _activeEnumType = prevEnumType
       }
