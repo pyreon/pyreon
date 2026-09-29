@@ -393,6 +393,19 @@ function litNumber(e: ExprIR | undefined): number | undefined {
   return e.kind === 'literal' && typeof e.value === 'number' ? e.value : undefined
 }
 
+/**
+ * The value a user WROTE, for a diagnostic. A message about a bad value must
+ * print that value — interpolating a parsed number (`litNumber(...)`) instead
+ * prints `undefined` for exactly the non-numeric inputs the message is about.
+ */
+function writtenValue(e: ExprIR | undefined): string {
+  const n = litNumber(e)
+  if (n !== undefined) return String(n)
+  if (e?.kind === 'literal') return typeof e.value === 'string' ? `'${e.value}'` : String(e.value)
+  if (e?.kind === 'identifier') return `\`${e.name}\` (not a static value)`
+  return 'a non-literal value'
+}
+
 function litNull(e: ExprIR): boolean {
   return e.kind === 'literal' && e.value === null
 }
@@ -1101,18 +1114,14 @@ function lowerTimelineSteps(
   const heightAttr = litNumber(literalOf(attrOf(e, 'height'), resolve))
   const total = heightAttr ?? OPTION_CHART_HEIGHT
   // Each step is its own option: the same element, pinned to step i, in the height the strip leaves.
-  const seen = new Set<string>()
-  const once = (m: string): void => {
-    if (seen.has(m)) return
-    seen.add(m)
-    warn(m)
-  }
+  // `warn` is already de-duplicated by `desugarOptionChart` for the whole timeline lowering, so a
+  // failure reported here and again by the pinned-step fallback reaches the user once.
   const children: ChildIR[] = []
   for (let i = 0; i < n; i++) {
     const attrs: AttrIR[] = e.attrs.filter((a) => !(a.kind === 'attr' && (a.name === 'height' || a.name === 'data-testid' || a.name === 'timelineIndex')) && !(a.kind === 'event' && a.name === 'timelinechange'))
     attrs.push({ kind: 'attr', name: 'timelineIndex', value: lit(i) })
     attrs.push({ kind: 'attr', name: 'height', value: lit(Math.max(0, total - TIMELINE_STRIP_H)) })
-    const child = desugarOptionChart({ ...e, attrs }, resolve, once)
+    const child = desugarOptionChart({ ...e, attrs }, resolve, warn)
     if (child === undefined) return null
     children.push({ kind: 'expr', expr: child })
   }
@@ -1202,11 +1211,34 @@ const resolveStaticTimelineOption = (
 /** The `visualMap` fields `visualMapSpec` reads — every one crosses. */
 const VISUAL_MAP_FIELDS = ['min', 'max', 'inRange', 'calculable', 'range', 'type', 'pieces', 'categories', 'splitNumber', 'orient', 'text', 'textStyle', 'itemWidth', 'itemHeight', 'left', 'right', 'top', 'bottom', 'show', 'selected', 'inactiveColor']
 
+/** A reporter that forwards each distinct message once. */
+function reportOnce(warn: (m: string) => void): (m: string) => void {
+  const seen = new Set<string>()
+  return (m) => {
+    if (seen.has(m)) return
+    seen.add(m)
+    warn(m)
+  }
+}
+
+/** An OptionChart whose option carries timeline steps and no pinned `timelineIndex` — the shape lowered step by step. */
+function isUnpinnedTimeline(e: Extract<ExprIR, { kind: 'jsx-element' }>, resolve: (name: string) => ExprIR | undefined): boolean {
+  if (attrOf(e, 'timelineIndex') !== undefined) return false
+  const raw = literalOf(attrOf(e, 'option'), resolve)
+  return raw?.kind === 'object' && objectField(raw, 'options') !== undefined
+}
+
 export function desugarOptionChart(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   resolve: (name: string) => ExprIR | undefined,
-  warn: (m: string) => void,
+  warnRaw: (m: string) => void,
 ): Extract<ExprIR, { kind: 'jsx-element' }> | undefined {
+  // A timeline with no pinned `timelineIndex` lowers EVERY step (each a nested
+  // `desugarOptionChart`) and, when any step fails, falls back to lowering the
+  // current step again — so one failure (and every warning the current step
+  // raises) would be reported twice. One de-duplicating reporter spans the
+  // whole lowering: the step loop, the fallback, and the wrappers below.
+  const warn = isUnpinnedTimeline(e, resolve) ? reportOnce(warnRaw) : warnRaw
   const hosted = desugarOptionChartHost(e, resolve, warn)
   if (hosted === undefined || hosted.tag === CHART_TIMELINE_TAG) return hosted
   const lowered = withScrollLegend(withFamilyFrame(hosted, e, resolve, warn), e, resolve, warn)
@@ -2266,7 +2298,7 @@ function desugarOptionChartHost(
         }
         pairXs.push(xsOut)
         pairYs.push(ysOut)
-        const onSecond = x2Value && litNumber(objectField(seriesObjects[si]!, 'xAxisIndex')) === 1
+        const onSecond = x2Value && litNumber(literalOf(objectField(seriesObjects[si]!, 'xAxisIndex'), resolve)) === 1
         if (onSecond && pairXs[0] !== undefined && xsOut.length !== pairXs[0].length) {
           warn(`<OptionChart option.series[${si}].data>: a native series on the second value x axis needs as many points as the first series; emitting nothing.`)
           return undefined
@@ -2425,15 +2457,23 @@ function desugarOptionChartHost(
         break
       }
       // ECharts' yAxisIndex: 1 scales the series on the right y axis.
-      const axisIndexRaw = objectField(s, 'yAxisIndex')
+      const axisIndexWritten = objectField(s, 'yAxisIndex')
+      const axisIndexRaw = literalOf(axisIndexWritten, resolve) ?? axisIndexWritten
       if (axisIndexRaw === undefined && swapYAxes) opts.push({ name: 'axis', value: lit('right') })
       if (axisIndexRaw !== undefined) {
         const axisIndex = litNumber(axisIndexRaw)
         if ((axisIndex === 1) !== swapYAxes && (axisIndex === 0 || axisIndex === 1)) opts.push({ name: 'axis', value: lit('right') })
         else if (axisIndex !== undefined && axisIndex >= 2 && axisIndex < yAxisPair.length) opts.push({ name: 'axisExtra', value: optionDoubleLiteral(axisIndex - 2) })
-        else if (axisIndex !== 0 && axisIndex !== 1) warn(`<OptionChart option.series[${si}].yAxisIndex>: yAxisIndex ${axisIndex} names no declared y axis; the series uses the left axis.`)
+        else if (axisIndex !== 0 && axisIndex !== 1) warn(`<OptionChart option.series[${si}].yAxisIndex>: yAxisIndex ${writtenValue(axisIndexRaw)} names no declared y axis; the series uses the left axis.`)
       }
-      if (x2Value && litNumber(objectField(s, 'xAxisIndex')) === 1) {
+      const xAxisIndexWritten = objectField(s, 'xAxisIndex')
+      const xAxisIndexRaw = literalOf(xAxisIndexWritten, resolve) ?? xAxisIndexWritten
+      const xAxisIndex = litNumber(xAxisIndexRaw)
+      // 1 names a declared second x axis (its own positions on a value/time pair, labels on the same bands on a category pair).
+      if (xAxisIndexRaw !== undefined && xAxisIndex !== 0 && !(xAxisIndex === 1 && x2AxisLit !== undefined)) {
+        warn(`<OptionChart option.series[${si}].xAxisIndex>: xAxisIndex ${writtenValue(xAxisIndexRaw)} names no declared x axis; the series uses the first x axis.`)
+      }
+      if (x2Value && xAxisIndex === 1) {
         opts.push({ name: 'onX2', value: lit(true) })
         opts.push({ name: 'xs', value: { kind: 'array', elements: (pairXs[si] ?? []).map((v) => optionDoubleLiteral(v)) } })
       }
