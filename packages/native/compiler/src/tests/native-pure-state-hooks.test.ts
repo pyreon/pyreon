@@ -48,7 +48,7 @@ describe('the state becomes a plain field', () => {
   it('Kotlin', () => {
     const out = transform(APP, { target: 'kotlin' }).code
     expect(out).toContain('var open by remember { mutableStateOf(false) }')
-    expect(out).toContain('var qty by remember { mutableStateOf(1) }')
+    expect(out).toContain('var qty by remember { mutableStateOf(1L) }')
   })
 
   it('lowering is silent AND the verbatim call is gone', () => {
@@ -77,9 +77,9 @@ describe('reads drop their parens; mutators become the arithmetic', () => {
   it('Kotlin clamps identically', () => {
     const out = transform(APP, { target: 'kotlin' }).code
     expect(out).toContain('open = !open')
-    expect(out).toContain('qty = minOf(maxOf(qty + 1, 0), 10)')
-    expect(out).toContain('qty = minOf(maxOf(qty - 2, 0), 10)')
-    expect(out).toContain('qty = minOf(maxOf(1, 0), 10)')
+    expect(out).toContain('qty = minOf(maxOf(qty + 1L, 0L), 10L)')
+    expect(out).toContain('qty = minOf(maxOf(qty - 2L, 0L), 10L)')
+    expect(out).toContain('qty = minOf(maxOf(1L, 0L), 10L)')
   })
 
   it('an unbounded counter emits no clamp at all', () => {

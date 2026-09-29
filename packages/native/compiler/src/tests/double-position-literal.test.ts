@@ -46,7 +46,7 @@ describe('an integer literal in a Double position', () => {
     for (const target of ['swift', 'kotlin'] as const) {
       const code = transform(INTS, { target }).code
       expect(code, target).not.toContain('1.0')
-      expect(code, target).toMatch(/\[?1, 2, 3/)
+      expect(code, target).toMatch(/\[?1L?, 2L?, 3/)
     }
   })
 

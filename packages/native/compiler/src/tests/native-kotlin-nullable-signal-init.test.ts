@@ -48,12 +48,12 @@ describe('Kotlin nullable-signal init type annotation', () => {
       { target: 'kotlin' },
     ).code
     expect(out).toContain('mutableStateOf<String?>(null)')
-    expect(out).toContain('mutableStateOf<Int?>(null)')
+    expect(out).toContain('mutableStateOf<Long?>(null)')
   })
 
   it('leaves a non-null initial unchanged (no spurious type param)', () => {
     const out = transform(app(`  const k = signal<number>(0)`), { target: 'kotlin' }).code
-    expect(out).toContain('mutableStateOf(0)')
+    expect(out).toContain('mutableStateOf(0L)')
   })
 
   it('Swift is unaffected — already emits the optional type', () => {

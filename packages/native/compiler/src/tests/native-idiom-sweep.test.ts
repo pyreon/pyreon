@@ -126,7 +126,7 @@ export function App(){
     const mn = transform(A(`  const out = computed(() => Math.min(...nums()))`), { target: 'swift' })
     expect(mn.code).toContain('(nums.min() ?? Int.max)')
     const kt = transform(A(`  const out = computed(() => Math.max(...nums()))`), { target: 'kotlin' })
-    expect(kt.code).toContain('(nums.maxOrNull() ?: Int.MIN_VALUE)')
+    expect(kt.code).toContain('(nums.maxOrNull() ?: Long.MIN_VALUE)')
     // control: fixed-arity Math.max unchanged
     const ctrl = transform(A(`  const out = computed(() => Math.max(nums()[0], 5))`), {
       target: 'swift',
