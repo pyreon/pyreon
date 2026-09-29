@@ -6,7 +6,7 @@
 // so this reads the REAL Chromium AX tree over CDP, not just the DOM.
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
-import { cdp } from '@vitest/browser/context'
+import { cdp } from 'vitest/browser'
 import { describe, expect, it } from 'vitest'
 import { PlotChart } from './Chart'
 import { line } from './marks'
