@@ -639,9 +639,11 @@ export function hasNativeDataComponent(op: IrOperation): boolean {
  * read as `data: 'text'`, whose payload is the raw string. PMTC lowers
  * `useStream` over `@pyreon/http/stream` to the native stream runtime and
  * decodes each event INTO a declared type, so an untyped event has nothing to
- * decode into. A non-GET stream stays web for the same reason a mutation does:
- * its body is a runtime value the native lowering cannot bake. The reach
- * analysis in `core/generate.ts` asks this same predicate.
+ * decode into. A non-GET stream stays web because it is started by the user
+ * with a body, and every generated native component opens on mount with params
+ * as its only props — PMTC itself lowers a hand-written one (`enabled` as the
+ * trigger, a runtime `json` body), but there is no GENERATED surface for it.
+ * The reach analysis in `core/generate.ts` asks this same predicate.
  */
 export function hasNativeStreamComponent(op: IrOperation): boolean {
   const s = op.stream;

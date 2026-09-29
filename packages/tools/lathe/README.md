@@ -651,7 +651,7 @@ Real, current, and reported per-operation rather than papered over:
 | an array / scalar / union MODEL | lowers — inlined at its use sites; PMTC synthesizes structs from object literals only |
 | `POST`/`PUT`/`PATCH`/`DELETE` | **web-only** — mutations are not recognised yet |
 | a stream-only `GET` (SSE / NDJSON) with a typed event, or SSE read as `data: 'text'` | lowers — the tag module gets a `<Op>Stream` component (`useStream` over `@pyreon/http/stream`), which PMTC lowers to the native `PyreonStream` runtime: the same wire parser, reconnect with backoff and `Last-Event-ID`, reopened when a path parameter changes |
-| a stream with no declared event type, or a non-`GET` stream | **web-only** — a native stream decodes each event into a declared type; a non-GET stream's body is a runtime value (the mutation rule) |
+| a stream with no declared event type, or a non-`GET` stream | **web-only** — a native stream decodes each event into a declared type; a non-GET stream is started by the user with a body, and the generated components open on mount with params as their only props (PMTC lowers a hand-written one — `enabled` as the trigger, a runtime `json` body — but Lathe generates no surface for it yet) |
 | `enum` / `const` | narrowed to its base scalar (`string` / `number` / `boolean`) on the native path; the constraint is genuinely lost there |
 | a model field naming another model | **lowers under `validator: 'zod'`** (inlined); dropped under the default `s.*`, with a compiler warning |
 | a `$ref` **cycle** | web-only for that field — there is no finite nesting to inline, on either validator |
