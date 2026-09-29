@@ -260,3 +260,19 @@ describe('diagnoseError — validate compiler unsupported-node entry', () => {
     expect(diagnoseError('unsupported node type in the AST')).toBeNull()
   })
 })
+
+describe('diagnoseError — 0.51 `<Chart options>` against the 0.52 engine', () => {
+  it("maps the type checker's unknown-prop error to the marks rewrite", () => {
+    const d = diagnoseError(
+      "Type '{ options: () => EChartsOption; }' is not assignable to type 'IntrinsicAttributes & ChartProps<unknown>'.\n  Property 'options' does not exist on type 'IntrinsicAttributes & ChartProps<unknown>'.",
+    )
+    expect(d?.cause).toContain('`options`')
+    expect(d?.cause).toContain('0.52 removed')
+    expect(d?.fixCode).toContain('<Bar y="revenue" />')
+  })
+
+  it('does not fire on an unknown `options` prop of an unrelated component', () => {
+    const d = diagnoseError("Property 'options' does not exist on type 'IntrinsicAttributes & SelectProps'.")
+    expect(d?.cause ?? '').not.toContain('ECharts wrapper')
+  })
+})
