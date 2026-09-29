@@ -744,9 +744,29 @@ export function B(props: { render: (u: User, i: number) => VNodeChild; empty: ()
     expect(r.code).toContain('empty: { hello() })')
   })
 
+  it('a BLOCK-bodied render callback with no view-builder shape emits an empty view of the right arity and is named', () => {
+    expect(r.code).toContain('Row(render: { _, _ in EmptyView() }')
+    expect(r.warnings.some((w) => w.startsWith("<Row render={…}>: this render callback's BLOCK body"))).toBe(true)
+  })
+
+  // Distinct from the case above: a block body whose statements ARE a valid
+  // view-builder shape (`const` declarations + a final `return <JSX/>`, no
+  // side-effecting statement) lowers to real view-builder statements instead
+  // of bailing to EmptyView — planViewBlock (render-slots.ts) accepts `let`/
+  // `if`/`return` and rejects everything else (an expression statement like
+  // the `console.log(u)` above included). Isolated in its own fixture so this
+  // assertion's "no warning" check isn't polluted by the OTHER Row's warning
+  // (blockBodiedRenderCallbackWarning's `where` string is shared across every
+  // `<Row render={…}>` call site, so a warning from one instance would show
+  // up in `r.warnings` for all of them).
   it('a simple BLOCK-bodied render callback lowers to view-builder statements, not an empty view', () => {
-    expect(r.code).toContain('Row(render: { u, _ in\n        let n = u.name\n        Text(verbatim: "\\(n)")\n      }, empty: {\n        Text("x")\n      })')
-    expect(r.warnings.some((w) => w.startsWith('<Row render={…}>: a render callback with a BLOCK body'))).toBe(false)
+    const r2 = sw(`${HEAD}export function A() {
+  return <Stack>
+    <Row render={(u) => { const n = u.name; return <Text>{n}</Text> }} empty={() => { return <Text>x</Text> }} />
+  </Stack>
+}`)
+    expect(r2.code).toContain('Row(render: { u, _ in\n        let n = u.name\n        Text(verbatim: "\\(n)")\n      }, empty: {\n        Text("x")\n      })')
+    expect(r2.warnings.some((w) => w.startsWith("<Row render={…}>: this render callback's BLOCK body"))).toBe(false)
   })
 
   // Regression (fixed here): a view helper taking FEWER parameters than the
