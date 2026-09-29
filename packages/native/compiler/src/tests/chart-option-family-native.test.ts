@@ -281,44 +281,56 @@ describe('OptionChart family options lower to native hosts', () => {
     expect(dynamic.code).toContain('"First"')
   })
 
-  it.skipIf(!isSwiftcAvailable())('swiftc accepts the family and cartesian emits', () => {
-    for (const src of [PIE, GAUGE, TIMELINE_PIE, CARTESIAN, PICTORIAL, STATIC_FAMILIES]) {
+  // One compile per test. These six used to share a single test and a single
+  // 90s budget, so the budget had to cover six sequential swiftc/kotlinc
+  // spawns — under a loaded CI runner the sum outran it (a timeout, not a
+  // compile failure). Each compile now gets its own budget, like its siblings,
+  // and a failure names the source that broke.
+  const FAMILY_SOURCES = {
+    pie: PIE,
+    gauge: GAUGE,
+    'timeline pie': TIMELINE_PIE,
+    cartesian: CARTESIAN,
+    pictorial: PICTORIAL,
+    'static families': STATIC_FAMILIES,
+  }
+
+  for (const [name, src] of Object.entries(FAMILY_SOURCES)) {
+    it.skipIf(!isSwiftcAvailable())(`swiftc accepts the ${name} emit`, () => {
       const r = validateSwiftWithStubs(transform(src, { target: 'swift' }).code)
       expect(r.ok, r.error ?? '').toBe(true)
-    }
-  }, 90_000)
+    }, 90_000)
 
-  it.skipIf(!isKotlincAvailable())('kotlinc accepts the family and cartesian emits', () => {
-    for (const src of [PIE, GAUGE, TIMELINE_PIE, CARTESIAN, PICTORIAL, STATIC_FAMILIES]) {
+    it.skipIf(!isKotlincAvailable())(`kotlinc accepts the ${name} emit`, () => {
       const r = validateKotlin(transform(src, { target: 'kotlin' }).code)
       expect(r.ok, r.error ?? '').toBe(true)
-    }
-  }, 90_000)
+    }, 90_000)
+  }
 
   it.skipIf(!isSwiftcAvailable())('swiftc accepts hierarchy and network option emits', () => {
     const r = validateSwiftWithStubs(transform(HIERARCHY_AND_NETWORK, { target: 'swift' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
-  }, 30_000)
+  }, 90_000)
 
   it.skipIf(!isKotlincAvailable())('kotlinc accepts hierarchy and network option emits', () => {
     const r = validateKotlin(transform(HIERARCHY_AND_NETWORK, { target: 'kotlin' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
-  }, 30_000)
+  }, 90_000)
 
   it.skipIf(!isSwiftcAvailable())('swiftc accepts calendar option emits', () => {
     const r = validateSwiftWithStubs(transform(CALENDAR, { target: 'swift' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
-  }, 30_000)
+  }, 90_000)
 
   it.skipIf(!isKotlincAvailable())('kotlinc accepts calendar option emits', () => {
     const r = validateKotlin(transform(CALENDAR, { target: 'kotlin' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
-  }, 30_000)
+  }, 90_000)
 
   it.skipIf(!isSwiftcAvailable())('swiftc accepts parallel option emits', () => {
     const r = validateSwiftWithStubs(transform(PARALLEL, { target: 'swift' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
-  }, 30_000)
+  }, 90_000)
 
   it.skipIf(!isKotlincAvailable())('kotlinc accepts parallel option emits', () => {
     const r = validateKotlin(transform(PARALLEL, { target: 'kotlin' }).code)
@@ -328,7 +340,7 @@ describe('OptionChart family options lower to native hosts', () => {
   it.skipIf(!isSwiftcAvailable())('swiftc accepts river option emits', () => {
     const r = validateSwiftWithStubs(transform(RIVER, { target: 'swift' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
-  }, 30_000)
+  }, 90_000)
 
   it.skipIf(!isKotlincAvailable())('kotlinc accepts river option emits', () => {
     const r = validateKotlin(transform(RIVER, { target: 'kotlin' }).code)
@@ -338,7 +350,7 @@ describe('OptionChart family options lower to native hosts', () => {
   it.skipIf(!isSwiftcAvailable())('swiftc accepts polar option emits', () => {
     const r = validateSwiftWithStubs(transform(POLAR, { target: 'swift' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
-  }, 30_000)
+  }, 90_000)
 
   it.skipIf(!isKotlincAvailable())('kotlinc accepts polar option emits', () => {
     const r = validateKotlin(transform(POLAR, { target: 'kotlin' }).code)
@@ -348,7 +360,7 @@ describe('OptionChart family options lower to native hosts', () => {
   it.skipIf(!isSwiftcAvailable())('swiftc accepts boxplot option emits', () => {
     const r = validateSwiftWithStubs(transform(BOXPLOT, { target: 'swift' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
-  }, 30_000)
+  }, 90_000)
 
   it.skipIf(!isKotlincAvailable())('kotlinc accepts boxplot option emits', () => {
     const r = validateKotlin(transform(BOXPLOT, { target: 'kotlin' }).code)
@@ -358,7 +370,7 @@ describe('OptionChart family options lower to native hosts', () => {
   it.skipIf(!isSwiftcAvailable())('swiftc accepts single-axis option emits', () => {
     const r = validateSwiftWithStubs(transform(SINGLE_AXIS, { target: 'swift' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
-  }, 30_000)
+  }, 90_000)
 
   it.skipIf(!isKotlincAvailable())('kotlinc accepts single-axis option emits', () => {
     const r = validateKotlin(transform(SINGLE_AXIS, { target: 'kotlin' }).code)

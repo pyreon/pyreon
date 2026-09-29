@@ -2,7 +2,7 @@ name: Setup Pyreon
 description: |
   Composite action for the common downstream-job preamble: setup-bun
   (pinned via .bun-version) + optional setup-node + restore node_modules
-  cache (per-run, populated by Install) + restore bootstrap lib/ cache
+  cache (lockfile-keyed, populated by Install) + restore bootstrap lib/ cache
   (per-run, populated by Install).
 
   **The caller MUST run `actions/checkout` first**, BEFORE invoking this
@@ -31,7 +31,7 @@ description: |
 
   ## Inputs
 
-  - `restore-node-modules` (default 'true'): restore the per-run
+  - `restore-node-modules` (default 'true'): restore the lockfile-keyed
     node_modules cache. Disable for jobs that only need bun (rare).
   - `restore-bootstrap` (default 'true'): restore the per-run lib/ cache
     (rolldown-built package outputs). Disable for jobs that don't read
@@ -43,7 +43,7 @@ description: |
 
 inputs:
   restore-node-modules:
-    description: Restore the per-run node_modules cache (default true).
+    description: Restore the exact lockfile-keyed node_modules cache (default true).
     required: false
     default: 'true'
   restore-bootstrap:
@@ -54,6 +54,11 @@ inputs:
     description: If non-empty, also install Node via setup-node at this version.
     required: false
     default: ''
+
+outputs:
+  bun-cache-restored:
+    description: Whether fallback setup already restored the bun download cache.
+    value: ${{ steps.bun-cache.outcome == 'success' && 'true' || 'false' }}
 
 runs:
   using: composite
@@ -69,18 +74,10 @@ runs:
     # does this at env: scope so every job inherits it). The node_modules
     # key is computed HERE from the lockfile hash — content-keyed, no
     # same-run propagation dependency (2026-06-11 root-cause fix).
-    # CONTENT-KEYED restore (2026-06-11 root-cause fix). The previous design
-    # restored a per-run key (`node-modules-<run_id>`) that the Install job
-    # saved MINUTES earlier — a hard dependency on same-run cache
-    # propagation, the single most fragile guarantee the cache service
-    # offers. During the 2026-06-11 degradation, freshly-saved entries were
-    # randomly invisible to same-run readers (the entries EXISTED in the
-    # cache inventory; the read path couldn't see them yet) while day-old
-    # content-keyed entries restored reliably ALL DAY. node_modules is
-    # fully determined by the lockfile, so the content key IS the exact
-    # key — the run-id indirection added nothing but the fragility. The
-    # prefix restore-key catches lockfile-changing PRs (nearest entry +
-    # the fallback install below tops it up correctly).
+    # Only restore the exact dependency tree. A broad prefix used to download
+    # hundreds of MB on a miss, then the fallback discarded it: installing
+    # over another lockfile's peer-hash tree can resolve stale dependencies.
+    # Tarballs, unlike installed trees, are safe to restore by prefix.
     - name: Restore node_modules
       id: nm-cache
       if: inputs.restore-node-modules == 'true'
@@ -92,81 +89,32 @@ runs:
           examples/*/node_modules
           docs/node_modules
         key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-        restore-keys: node-modules-${{ runner.os }}-bun-
-    # CACHE-OUTAGE FALLBACK (2026-06-11 incident): GitHub's Actions cache
-    # service intermittently LOST per-run cache saves/restores — every
-    # downstream job then ran without node_modules and failed with exit
-    # 127 / module-not-found, across whole runs, repeatedly. A run whose
-    # Install succeeded but whose save was eaten is permanently poisoned
-    # for `rerun --failed` (Install won't re-run, the key never exists).
-    # Fallback: when the restore MISSES, do a fresh `bun install` —
-    # slow-but-green instead of guaranteed-red. PYREON_BOOTSTRAP_SKIP=1
-    # matches the Install job's contract (lib/ comes from the bootstrap
-    # cache / fallback below, never from postinstall).
-    # The fallback install needs bun's package-tarball cache or it cold-
-    # fetches every package from the registry (~minutes — blew test cells'
-    # 15-min job timeout during the 2026-06-11 outage). This key is
-    # lockfile-hashed, shared cross-run/cross-PR, and OLD entries restore
-    # fine even while the outage eats fresh run-scoped SAVES.
+    # Cache misses and cache-service outages fall back to a fresh install.
+    # Disable postinstall bootstrap: lib/ is restored or rebuilt below.
     - name: Restore bun download cache (fallback prep)
+      id: bun-cache
       if: inputs.restore-node-modules == 'true' && steps.nm-cache.outputs.cache-hit != 'true'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.bun/install/cache
         key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
         restore-keys: bun-install-cache-${{ runner.os }}-
-    # A prefix-key restore hands this job a node_modules built from a
-    # DIFFERENT lockfile, and installing over it does not converge:
-    # `.agents/rules/testing.md` ("never trust an incremental bun layout")
-    # records that neither a plain `bun install` NOR `bun install --force`
-    # clears the stale peer-hash instance dirs under `node_modules/.bun` —
-    # their internal symlinks keep pointing at the old versions, so the
-    # on-disk resolution silently disagrees with the lockfile. The comment
-    # this replaces claimed the install "corrects a stale prefix-match
-    # restore"; the repo's own rule says it does not.
-    #
-    # It matters most for the MEASURING gates: `check-import-budgets` and
-    # `check-bundle-budgets` bundle against the installed tree, so a hybrid
-    # one is measured as if it were a real dependency tree.
-    #
-    # This has happened. #3390's Build (job 102273316243) asked for
-    # `node-modules-Linux-bun-edcc7173…` — the pre-#3398 lockfile its checkout
-    # carried — and its log reads `Cache hit for restore-key:` followed by
-    # `…-231904df…`, main's POST-#3398 tree; the fallback below then installed
-    # over it. It measured `plot-minimal` at 23008 where #3404 read 23149,
-    # which is how main went 49 B over its own budget unnoticed.
-    #
-    # (The phrasing is the discriminator and is easy to read past: the same
-    # job prints `Cache hit for:` for an EXACT match and `Cache hit for
-    # restore-key:` for a PREFIX fallback.)
-    #
-    # A PR whose lockfile matches no cached entry is not exotic — it is what
-    # any long-queued PR becomes the moment a deps PR merges ahead of it.
-    #
-    # What this does NOT fix: that Build would still have measured the
-    # pre-#3398 tree, which never merged. Self-consistent, still not a
-    # function of what merges — concurrent-merge staleness, the class
-    # `.agents/rules/workflow.md` documents for Docs Sync, whose answer is detection on main
-    # after the merge rather than anything this step can do.
-    #
-    # So the stale tree is REMOVED rather than topped up. On a full miss
-    # these paths do not exist and the removal is a no-op; the bun download
-    # cache restored in the step above keeps the fresh install off the
-    # registry.
+    # Keep cleanup defensive: jobs may arrive with existing local modules.
+    # This avoids the stale peer-resolution bug on a non-exact dependency tree.
     - name: Fallback bun install (cache miss)
       if: inputs.restore-node-modules == 'true' && steps.nm-cache.outputs.cache-hit != 'true'
       shell: bash
       env:
         PYREON_BOOTSTRAP_SKIP: '1'
       run: |
-        echo "::warning::node_modules exact-key miss — discarding any prefix-restored tree and installing fresh."
+        echo "::warning::node_modules exact-key miss — installing a clean dependency tree."
         rm -rf node_modules packages/*/*/node_modules examples/*/node_modules docs/node_modules
         bun install --frozen-lockfile
     # lib/ differs per push (source changes), so the per-run key stays the
     # PRIMARY (exact-fresh) attempt — but it now degrades through the
     # source-hashed cross-run key and a bare prefix instead of failing:
     # a prefix match restores the nearest lib/ and the fallback rebuild
-    # below runs scripts/bootstrap.ts, which mtime-rebuilds whatever is
+    # below runs scripts/bootstrap.ts, which content-hash-rebuilds whatever is
     # stale. Worst case = slower job, never a red one.
     - name: Restore bootstrap (lib/)
       id: bootstrap-cache

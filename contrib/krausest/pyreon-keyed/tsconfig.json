@@ -3,8 +3,8 @@
   // js-framework-benchmark fork and must build with only published npm
   // packages. Without its own tsconfig, Vite walks UP and picks up whatever
   // config sits above it — inside the Pyreon monorepo that is the root
-  // tsconfig, which extends an internal tooling package that is not installed
-  // here (`Tsconfig not found @vitus-labs/tools-typescript/lib`), so the
+  // tsconfig, which extends an internal workspace package that is not
+  // installed here (`@pyreon/tsconfig`), so the
   // submission could not be build-verified in place. Nothing here may
   // reference a workspace package.
   "compilerOptions": {
