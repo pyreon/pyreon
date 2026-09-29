@@ -90,6 +90,12 @@ Dump `app.debugDescription` once before writing assertions. A container with `.a
 
 ---
 
+### An XCUITest drag must not start or end in an auto-pan band
+
+XCUITest resolves a drag's destination once, before the gesture starts. A flow connect drag pressed or held inside the canvas's 40pt auto-pan band (`autoPanOnConnect`, default on) pans the graph under the pointer, so the release misses the handle's 6pt drop radius by however many frames ran — a timing race that passes locally and fails on slower CI (`test_directNativeFlowRendersNodes` failed 9 of 13 CI attempts, 0 of 7 locally). Measure the endpoints' distance from the canvas edges first; move them out of the band, or turn auto-pan off in a fixture that does not assert it, and assert the viewport did not move during the drag so a regression fails instead of flaking.
+
+---
+
 ### Conditional-import predicates must match every call shape
 
 `packages/native/cli/src/build.ts:conditionalKotlinImports` adds an import when emitted Kotlin contains a symbol. Match `/\.foo\s*[({]/`, not `includes('.foo(')`: `<Link>` emits the trailing-lambda form `Modifier.clickable { … }`. The `validate-kotlin` loop concatenates stubs into one unit, so it cannot catch a missing import; only a real Gradle build can. When touching one arm, cross-check the emitter's trailing-lambda surface (`grep -ohE "\.\w+ \{" emit-kotlin.ts`) and avoid over-matching (`combinedClickable` is not `.clickable`). Test: `packages/native/cli/src/tests/build.test.ts`.
