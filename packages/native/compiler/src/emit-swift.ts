@@ -724,6 +724,8 @@ let _fetchNamesSwift: Set<string> = new Set()
 // websocket decl name → url, so `ws.connect()` (the 0-arg TS surface — the
 // hook carries the url) lowers to the runtime's `connect(to: URL)`.
 let _websocketUrlsSwift: Map<string, string> = new Map()
+/** `useStream` decl names — `s.events()` / `s.status()` read the property. */
+let _streamNamesSwift: Set<string> = new Set()
 /** Per-component: i18n instance names — `i18n.t(key, {…})` lowers the
  *  object-literal values arg to a dictionary at this call shape. */
 let _i18nNames: Set<string> = new Set()
@@ -2496,6 +2498,7 @@ const LIFECYCLE_HOST_DECL_KINDS: ReadonlySet<DeclIR['kind']> = new Set([
   'query',
   'rate-limited',
   'sortable',
+  'stream',
   'table-state',
   'tick',
 ])
@@ -2642,6 +2645,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   _formSubmitParamsSwift = []
   _fetchNamesSwift = new Set()
   _websocketUrlsSwift = new Map()
+  _streamNamesSwift = new Set()
   // C4: reset router-usage tracking. Set during decl-pass if any
   // useNavigate/useParams binding is present.
   _usesRouter = false
@@ -2711,6 +2715,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     if (d.kind === 'form') _formNamesSwift.add(d.name)
     if (d.kind === 'fetch' || d.kind === 'query') _fetchNamesSwift.add(d.name)
     if (d.kind === 'websocket') _websocketUrlsSwift.set(d.name, d.url)
+    if (d.kind === 'stream') _streamNamesSwift.add(d.name)
     // C4: router-instance decls (`const r = createRouter({...})`) map to
     // `@State` properties, so the identifier reads bare like a signal —
     // add to `_signalNames` so `router` in JSX (e.g. `<RouterProvider
@@ -3355,6 +3360,15 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.push(`        }`)
     lines.push(`      }`)
   }
+  // useStream: a `.task(id:)` per decl, KEYED on the request URL plus the
+  // restart tick — a runtime `:param` or `restart()` re-keys it, which
+  // cancels the old stream and opens a fresh one (the web's reactive-source
+  // semantic). The view disappearing cancels the task, which closes the
+  // connection.
+  for (const d of c.decls) {
+    if (d.kind !== 'stream') continue
+    lines.push(...emitSwiftStreamHarness(d))
+  }
   lines.push(`  }`)
   lines.push(`}`)
   // Fill the reserved slot now that the body has been lowered — a responsive
@@ -3386,6 +3400,42 @@ function emitSwiftComponent(c: ComponentIR): string {
   const joined = lines.join('\n').replace(/__PYREON_HANDLE_SERIES_(\w+)__/g, (_m, name: string) => String(_chartHandleSeries.get(name) ?? 0))
   _chartHandleSeries.clear()
   return joined
+}
+
+/** The `.task(id:)` modifier that runs one `useStream` decl. */
+function emitSwiftStreamHarness(d: Extract<DeclIR, { kind: 'stream' }>): string[] {
+  const name = swiftIdent(d.name)
+  const url = d.urlExpr !== undefined ? emitSwiftExpr(d.urlExpr, 0) : swiftStr(d.url)
+  const req = [`method: ${swiftStr(d.method)}`, `url: ${url}`]
+  if (d.headers) {
+    req.push(
+      `headers: [${Object.entries(d.headers)
+        .map(([k, v]) => `${swiftStr(k)}: ${swiftStr(v)}`)
+        .join(', ')}]`,
+    )
+  }
+  if (d.requestBody !== undefined) req.push(`body: Data(${swiftStr(d.requestBody)}.utf8)`)
+  const request = `PyreonStreamRequest(${req.join(', ')})`
+  const data = swiftType(d.dataType)
+  const out = [`      .task(id: "\\(${url})#\\(${name}.restartTick)") {`]
+  if (d.format === 'sse') {
+    const opts: string[] = []
+    if (d.events) opts.push(`events: [${d.events.map((e) => swiftStr(e)).join(', ')}]`)
+    if (d.lastEventId !== undefined) opts.push(`lastEventId: ${swiftStr(d.lastEventId)}`)
+    opts.push(
+      d.reconnect === null
+        ? 'reconnect: nil'
+        : `reconnect: PyreonStreamReconnect(attempts: ${d.reconnect.attempts}, delay: ${d.reconnect.delay}, maxDelay: ${d.reconnect.maxDelay}, onEnd: ${d.reconnect.onEnd})`,
+    )
+    const decode = d.sseText ? 'PyreonStreamDecode.sseText()' : `PyreonStreamDecode.sseJSON(${data}.self)`
+    const accept = d.accept !== undefined ? `, accept: ${swiftStr(d.accept)}` : ''
+    out.push(`        await ${name}.runSse(${request}, options: PyreonSseOptions(${opts.join(', ')})${accept}, decode: ${decode})`)
+  } else {
+    const accept = d.accept !== undefined ? `, accept: ${swiftStr(d.accept)}` : ''
+    out.push(`        await ${name}.runNdjson(${request}${accept}, decode: PyreonStreamDecode.ndjson(${data}.self))`)
+  }
+  out.push(`      }`)
+  return out
 }
 
 /**
@@ -4020,6 +4070,11 @@ function emitSwiftDecl(
   }
   if (d.kind === 'websocket') {
     return `@State private var ${swiftIdent(d.name)} = PyreonWebSocket()`
+  }
+  // `const s = useStream(…)` → an @State PyreonStream; the `.task(id:)`
+  // harness that runs it is appended on the stable-identity body host.
+  if (d.kind === 'stream') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonStream<${swiftType(d.itemType)}>(maxEvents: ${d.maxEvents})`
   }
   if (d.kind === 'database') {
     return `@State private var ${swiftIdent(d.name)} = PyreonDatabase()`
@@ -5913,6 +5968,11 @@ export function swiftType(t: TypeIR, synth?: SwiftSynthCtx, declName?: string): 
         // `Task<T, Error>` and document the limitation; PR 5e refines.
         return `Task<${swiftType(t.args[0]!, synth, declName)}, Error>`
       }
+      // `SseEvent<T>` (`@pyreon/http/stream`) is the native stream runtime's
+      // `PyreonSseEvent<T>` — same three fields, same meaning.
+      if (t.name === 'SseEvent' && t.args.length === 1) {
+        return `PyreonSseEvent<${swiftType(t.args[0]!, synth, declName)}>`
+      }
       if (t.args.length === 0) return t.name
       // Explicit lambda — point-free `.map(swiftType)` would pass the
       // array index into the `synth` parameter slot.
@@ -7242,6 +7302,14 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             ['lastMessage', 'messages', 'isConnected', 'error'].includes(
               e.callee.property,
             )
+          ) {
+            return `${swiftIdent(recv)}.${e.callee.property}`
+          }
+          // useStream's result fields — signal READS on the web, @Observable
+          // properties natively. `abort()` / `restart()` stay calls.
+          if (
+            _streamNamesSwift.has(recv) &&
+            ['events', 'latest', 'status', 'error'].includes(e.callee.property)
           ) {
             return `${swiftIdent(recv)}.${e.callee.property}`
           }
