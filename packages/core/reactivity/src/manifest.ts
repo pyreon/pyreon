@@ -56,7 +56,7 @@ effect(() => {
     'computed<T>() — auto-tracked derivation; caches its value, but notifies downstream on every dependency change unless you pass `equals`',
     'effect() / renderEffect() — side-effects with auto-tracking',
     'batch() / nextTick() — write-grouping + flush awaiter',
-    'onCleanup() — register cleanup inside effects',
+    'onCleanup() — register cleanup with the current owner (effect run, component setup, or runInScope/onMount)',
     'watch(source, callback) — explicit reactive watcher',
     'createSelector() — O(1) equality selector for keyed lists',
     'cell<T>() — lighter alternative to signal() for direct subscribe()',
@@ -301,22 +301,33 @@ expect(node.textContent).toBe('5')`,
         {
           name: 'fn',
           type: '() => void',
-          description: 'Cleanup callback — runs before the owning effect/computed re-runs and once on final dispose.',
+          description: 'Cleanup callback — runs when its owner re-runs (effects) or is torn down (effect dispose, component unmount, scope stop).',
         },
       ],
-      returns: { type: 'void', description: 'Nothing — registers the cleanup with the current reactive owner.' },
+      returns: { type: 'void', description: 'Nothing — registers the cleanup with the current owner.' },
       summary:
-        'Register a cleanup function inside an `effect()` or `renderEffect()`. Runs before each re-execution of the effect (when dependencies change) and once on final dispose. Equivalent to returning a cleanup function from the effect body — both forms work, `onCleanup` is useful when you need to register cleanup at a different point than the end of the body.',
-      example: `effect(() => {
+        'Register a cleanup with the CURRENT OWNER. Inside an `effect()` run it runs before the next re-run and on dispose (same as returning a function from the effect). In a component body (setup) it runs when that component unmounts. Inside `onMount` or `EffectScope.runInScope()` it runs when the owning scope stops. `renderEffect()` does NOT collect cleanups itself, so one registered there goes to the enclosing owner. With no owner at all (plain module code) the call is a no-op.',
+      example: `// 1. Inside an effect — runs before each re-run and on dispose
+effect(() => {
   const handler = () => console.log(count())
   window.addEventListener("resize", handler)
   onCleanup(() => window.removeEventListener("resize", handler))
-})`,
+})
+
+// 2. In a component body — runs when the component unmounts
+function Clock() {
+  const now = signal(Date.now())
+  const id = setInterval(() => now.set(Date.now()), 1000)
+  onCleanup(() => clearInterval(id))
+  return () => new Date(now()).toLocaleTimeString()
+}`,
       mistakes: [
-        'Using `onCleanup` outside an effect — it only works inside `effect()` or `renderEffect()` body',
-        'Confusing with `onUnmount` — `onCleanup` is for effects, `onUnmount` is for component lifecycle',
+        'Expecting a cleanup registered inside `renderEffect()` to run on that render effect\'s re-runs — `renderEffect` has no collector; the cleanup goes to the enclosing owner (usually the component) and runs on unmount',
+        'Calling `onCleanup` in plain module code with no owner — there is nothing to attach it to, so it never runs',
+        'Assuming a component-body `onCleanup` runs when a parent `<For>`/`<Show>` re-renders — it belongs to the component and runs only when that component unmounts',
+        'Registering the same teardown with both `onCleanup` and a returned cleanup in one effect — both run, so the teardown happens twice',
       ],
-      seeAlso: ['effect'],
+      seeAlso: ['effect', 'effectScope'],
     },
     {
       name: 'watch',

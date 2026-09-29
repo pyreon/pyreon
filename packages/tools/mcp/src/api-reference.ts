@@ -143,14 +143,25 @@ expect(node.textContent).toBe('5')`,
 
   'reactivity/onCleanup': {
     signature: '(fn: () => void) => void',
-    example: `effect(() => {
+    example: `// 1. Inside an effect — runs before each re-run and on dispose
+effect(() => {
   const handler = () => console.log(count())
   window.addEventListener("resize", handler)
   onCleanup(() => window.removeEventListener("resize", handler))
-})`,
-    notes: 'Register a cleanup function inside an `effect()` or `renderEffect()`. Runs before each re-execution of the effect (when dependencies change) and once on final dispose. Equivalent to returning a cleanup function from the effect body — both forms work, `onCleanup` is useful when you need to register cleanup at a different point than the end of the body. See also: effect.',
-    mistakes: `- Using \`onCleanup\` outside an effect — it only works inside \`effect()\` or \`renderEffect()\` body
-- Confusing with \`onUnmount\` — \`onCleanup\` is for effects, \`onUnmount\` is for component lifecycle`,
+})
+
+// 2. In a component body — runs when the component unmounts
+function Clock() {
+  const now = signal(Date.now())
+  const id = setInterval(() => now.set(Date.now()), 1000)
+  onCleanup(() => clearInterval(id))
+  return () => new Date(now()).toLocaleTimeString()
+}`,
+    notes: 'Register a cleanup with the CURRENT OWNER. Inside an `effect()` run it runs before the next re-run and on dispose (same as returning a function from the effect). In a component body (setup) it runs when that component unmounts. Inside `onMount` or `EffectScope.runInScope()` it runs when the owning scope stops. `renderEffect()` does NOT collect cleanups itself, so one registered there goes to the enclosing owner. With no owner at all (plain module code) the call is a no-op. See also: effect, effectScope.',
+    mistakes: `- Expecting a cleanup registered inside \`renderEffect()\` to run on that render effect's re-runs — \`renderEffect\` has no collector; the cleanup goes to the enclosing owner (usually the component) and runs on unmount
+- Calling \`onCleanup\` in plain module code with no owner — there is nothing to attach it to, so it never runs
+- Assuming a component-body \`onCleanup\` runs when a parent \`<For>\`/\`<Show>\` re-renders — it belongs to the component and runs only when that component unmounts
+- Registering the same teardown with both \`onCleanup\` and a returned cleanup in one effect — both run, so the teardown happens twice`,
   },
 
   'reactivity/watch': {
@@ -4060,7 +4071,7 @@ const feed = useStream((ctx) =>
   }),
 )
 // feed.events() / feed.latest() / feed.status() / feed.error()`,
-    notes: 'Any async-iterable stream as signals — typically `openEventStream` / `openNdjsonStream` from `@pyreon/http/stream`, so unlike `useSSE` (which wraps `EventSource`) the stream can be a POST with auth headers, validated per event, and mocked. `events()` (bounded by `maxEvents`, default 1000), `latest()`, `status()` (`idle` / `connecting` / `open` / `reconnecting` / `closed` / `error`), `error()`, `abort()`, `restart()`. The source runs TRACKED: a signal it reads re-opens the stream when it changes — the previous request is aborted and a generation guard drops its late events. Return `undefined` to hold it idle; unmount aborts. Pass `ctx.onStatus` through for the finer states. See also: useSSE, useSubscription.',
+    notes: 'Any async-iterable stream as signals — typically `openEventStream` / `openNdjsonStream` from `@pyreon/http/stream`, so unlike `useSSE` (which wraps `EventSource`) the stream can be a POST with auth headers, validated per event, and mocked. `events()` (bounded by `maxEvents`, default 1000), `latest()`, `status()` (`idle` / `connecting` / `open` / `reconnecting` / `closed` / `error`), `error()`, `abort()`, `restart()`. The source runs TRACKED: a signal it reads re-opens the stream when it changes — the previous request is aborted and a generation guard drops its late events. Return `undefined` to hold it idle; unmount aborts. Pass `ctx.onStatus` through for the finer states. On iOS and Android the documented shape — `(ctx) => openEventStream((c) => endpoint({ …, signal: c.signal, headers: c.headers }), { signal: ctx.signal, onStatus: ctx.onStatus })` over a same-file `@pyreon/http` endpoint, typed `useStream<SseEvent<T>>` (or `openNdjsonStream` with `useStream<T>`) — lowers to the native `PyreonStream` runtime with the same parser, reconnect and `Last-Event-ID` semantics; `enabled` / `onEvent` keep it web, and `parse` is ignored natively (each payload is decoded into the declared type instead). See also: useSSE, useSubscription.',
     mistakes: `- Ignoring \`ctx.signal\` — without it an input change or unmount cannot cancel the old request, which keeps streaming into a dropped consumer.
 - Setting \`maxEvents: Infinity\` on a long-lived feed — \`events()\` then grows for as long as the page is open; read \`latest()\` or fold events into your own state instead.
 - Expecting an input change to revive a stream after \`abort()\` — an explicit abort sticks until \`restart()\`.`,
@@ -4285,7 +4296,7 @@ const user = await api.get('/users/1').json() // decoded body`,
 await getUser({ params: { id: '1' } })
 const options = getUser.query({ params: { id: '1' } })
 console.log(options.queryKey)`,
-    notes: `Declare a reusable endpoint. One declaration yields the callable, a stable structural cache key, and the response type — which is what stops queryKey and URL from drifting apart, the single biggest pain with axios plus TanStack Query. \`params\` is REQUIRED by the type system exactly when the path declares \`:placeholders\`, and its keys are extracted from the path literal, so a typo is a compile error. \`.query(args)\` emits \`{ queryKey, queryFn }\` with the AbortSignal already forwarded; \`.mutation()\` emits \`{ mutationFn, invalidates }\`. \`responseType\` (\`text\` / \`blob\` / \`arrayBuffer\` / \`stream\` / \`void\`) decodes non-JSON bodies and types the result accordingly; \`queryStyle\` states OpenAPI query serialization per key (\`form\` / \`spaceDelimited\` / \`pipeDelimited\` / \`deepObject\`, \`explode\`); \`keyScope\` namespaces the cache key; \`validate\` (\`strict\` / \`warn\` / \`off\`) overrides the client response-validation mode for that one endpoint (a per-request \`validate\` option does the same for a single call). The third generic \`I\` narrows what a call sends (\`api.endpoint<S, typeof Schema, { json: NewPet }>(…)\`) — how a generated client types \`query\` and \`json\` on direct calls. In a path, \`\\\\:\` is a literal colon (\`/v1/:name\\\\:cancel\`).`,
+    notes: `Declare a reusable endpoint. One declaration yields the callable, a stable structural cache key, and the response type — which is what stops queryKey and URL from drifting apart, the single biggest pain with axios plus TanStack Query. \`params\` is REQUIRED by the type system exactly when the path declares \`:placeholders\`, and its keys are extracted from the path literal, so a typo is a compile error. \`.query(args)\` emits \`{ queryKey, queryFn }\` with the AbortSignal already forwarded; \`.mutation()\` emits \`{ mutationFn, invalidates }\`. \`responseType\` (\`text\` / \`blob\` / \`arrayBuffer\` / \`stream\` / \`void\`) decodes non-JSON bodies and types the result accordingly; \`queryStyle\` states OpenAPI query serialization per key (\`form\` / \`spaceDelimited\` / \`pipeDelimited\` / \`tabDelimited\` / \`deepObject\`, \`explode\` — \`tabDelimited\` is the Swagger 2 \`collectionFormat: tsv\`); \`keyScope\` namespaces the cache key; \`validate\` (\`strict\` / \`warn\` / \`off\`) overrides the client response-validation mode for that one endpoint (a per-request \`validate\` option does the same for a single call). The third generic \`I\` narrows what a call sends (\`api.endpoint<S, typeof Schema, { json: NewPet }>(…)\`) — how a generated client types \`query\` and \`json\` on direct calls. In a path, \`\\\\:\` is a literal colon (\`/v1/:name\\\\:cancel\`).`,
     mistakes: `- Hand-writing a \`queryKey\` next to an endpoint call. Use \`endpoint.query(...)\` so the key is derived from the same declaration as the URL.
 - Expecting \`mutationFn\` to receive an AbortSignal. TanStack gives mutations no context at all — pass one in the variables if the mutation must be cancellable.
 - Writing the spec without a method (\`"/users"\`). It must be \`"<METHOD> <path>"\`.
@@ -4294,7 +4305,7 @@ console.log(options.queryKey)`,
   },
 
   'http/encodeForm': {
-    signature: '(fields: FormFields, encoding?: Record<string, { style?: "form" | "deepObject" | "spaceDelimited" | "pipeDelimited"; explode?: boolean }>) => URLSearchParams',
+    signature: '(fields: FormFields, encoding?: Record<string, { style?: "form" | "deepObject" | "spaceDelimited" | "pipeDelimited" | "tabDelimited"; explode?: boolean }>) => URLSearchParams',
     example: `import { encodeForm } from '@pyreon/http'
 
 const body = encodeForm(
@@ -4302,7 +4313,7 @@ const body = encodeForm(
   { metadata: { style: 'deepObject', explode: true } },
 )
 body.toString() // "amount=2000&metadata%5Border%5D=A1"`,
-    notes: `The \`application/x-www-form-urlencoded\` serializer behind the \`form\` request option, exported so a transport or a generated client can produce byte-identical bodies. Follows OpenAPI's Encoding Object: the default is \`form\` + \`explode\` (arrays repeat the key, an object spreads its properties), \`deepObject\` uses brackets recursively with indexed arrays (\`items[0][price]=…\`, the shape Stripe declares), and \`spaceDelimited\`/\`pipeDelimited\` join arrays. \`null\`/\`undefined\` entries are dropped rather than sent as text. Siblings \`encodeMultipart\` (FormData; \`Blob\` values become file parts, objects become JSON text parts) and \`encodeCookies\` (a \`Cookie\` header value) cover the other encodings.`,
+    notes: `The \`application/x-www-form-urlencoded\` serializer behind the \`form\` request option, exported so a transport or a generated client can produce byte-identical bodies. Follows OpenAPI's Encoding Object: the default is \`form\` + \`explode\` (arrays repeat the key, an object spreads its properties), \`deepObject\` uses brackets recursively with indexed arrays (\`items[0][price]=…\`, the shape Stripe declares), and \`spaceDelimited\`/\`pipeDelimited\`/\`tabDelimited\` join arrays. \`null\`/\`undefined\` entries are dropped rather than sent as text. Siblings \`encodeMultipart\` (FormData; \`Blob\` values become file parts, objects become JSON text parts) and \`encodeCookies\` (a \`Cookie\` header value) cover the other encodings.`,
     mistakes: `- Expecting a nested object under the DEFAULT style to keep its nesting. OpenAPI's \`form\` style spreads one level; declare \`deepObject\` for nested fields (a deeper value falls back to brackets rather than \`[object Object]\`).
 - Building the body with \`new URLSearchParams(obj)\` instead. That stringifies nested values to \`[object Object]\` and sends \`null\` as the text "null".`,
   },
@@ -4364,7 +4375,7 @@ for await (const ev of openEventStream((ctx) => tail({ signal: ctx.signal, heade
 })) {
   if (ev.data.level === 'fatal') break
 }`,
-    notes: `Server-Sent Events over any transport, from \`@pyreon/http/stream\`. \`connect(ctx)\` opens the body — an endpoint declared with \`responseType: 'stream'\`, a raw \`fetch\`, an axios/ky client — and receives an \`AbortSignal\`, the headers the stream needs (\`accept\`, \`last-event-id\` when resuming) and the attempt number. The result is an async iterable of \`{ type, data, id }\` with \`data\` JSON-parsed (or \`data: 'text'\`) and run through \`parse\`. A dropped connection, 408, 429 or 5xx is retried with exponential backoff resuming from the last id; a server \`retry:\` sets the delay; other 4xx are final; \`reconnect: { onEnd: true }\` resumes after a clean end the way \`EventSource\` does. \`break\`, \`close()\` or \`options.signal\` cancel the request. \`openNdjsonStream\` is the NDJSON sibling (no reconnection — there is no resume id); \`readEventStream\` / \`readNdjson\` are the bare WHATWG-grammar parsers.`,
+    notes: `Server-Sent Events over any transport, from \`@pyreon/http/stream\`. \`connect(ctx)\` opens the body — an endpoint declared with \`responseType: 'stream'\`, a raw \`fetch\`, an axios/ky client — and receives an \`AbortSignal\`, the headers the stream needs (\`accept\`, \`last-event-id\` when resuming) and the attempt number. The result is an async iterable of \`{ type, data, id }\` with \`data\` JSON-parsed (or \`data: 'text'\`) and run through \`parse\`. A dropped connection, 408, 429 or 5xx is retried with exponential backoff resuming from the last id; a server \`retry:\` sets the delay; other 4xx are final; \`reconnect: { onEnd: true }\` resumes after a clean end the way \`EventSource\` does. \`break\`, \`close()\` or \`options.signal\` cancel the request. \`openNdjsonStream\` is the NDJSON sibling (no reconnection — there is no resume id); \`readEventStream\` / \`readNdjson\` are the bare WHATWG-grammar parsers. Consumed through \`useStream\` with a same-file endpoint it also runs on iOS and Android (the native \`PyreonStream\` runtime); one disclosed native difference: URLSession reports a chunked body cut off by a graceful close as a clean end, so the Swift runtime reads an event left half-built at EOF as a dropped connection, and a cut landing exactly on an event boundary reads as a clean end there.`,
     mistakes: `- Not merging \`ctx.headers\` into the request — without them the server gets no \`Last-Event-ID\` on a reconnect and replays from the start. \`streamHeaders(callHeaders, ctx.headers)\` merges any header shape.
 - Turning on \`reconnect: { onEnd: true }\` for a request/response stream (an LLM completion) — a clean end means "done", and resuming re-sends the request.
 - Expecting NDJSON to reconnect — it has no event id, so a retry would duplicate everything already received; a failure ends the stream with the error.
@@ -12254,6 +12265,24 @@ for (const [id, r] of reach) {
 - Expecting \`s.enum\` in native output. Enums do not lower, so the native path narrows them to their base scalar (\`s.string()\` / \`s.number()\`) — the constraint is genuinely lost there, which is why the two layouts are emitted separately rather than shared.`,
   },
 
+  'lathe/generateAsync': {
+    signature: 'generateAsync(specText: string, config: ResolvedConfig, options?: LoadOptions): Promise<GenerateResult>',
+    example: `import { definePlugin, generateAsync, resolveConfig } from '@pyreon/lathe'
+
+const banner = definePlugin({
+  name: 'banner-file',
+  async emit({ doc }) {
+    const text = await Promise.resolve(doc.title)
+    return [{ path: 'extras/title.txt', contents: text + '\\n' }]
+  },
+})
+
+const { files } = await generateAsync(specText, resolveConfig({ input: './openapi.yaml', plugins: ['schemas', banner] }))`,
+    notes: '`generate`, awaiting plugin hooks that return promises — what the CLI and the Vite plugin run. The pipeline is written once and driven either way, so the output is byte-identical to `generate()` for the same spec, config and plugins. Each hook still runs twice for the determinism check, the second call only after the first has settled, and a rejection is attributed to the plugin and hook exactly like a throw.',
+    mistakes: `- Calling \`generate()\` with an async plugin. It refuses the promise by the plugin's name rather than awaiting it — use \`generateAsync()\`.
+- Starting work in an async hook that depends on WHEN it runs (a clock, a counter, a network call). Each hook runs twice and the two results must agree, or generation fails naming the plugin.`,
+  },
+
   'lathe/resolveConfig': {
     signature: 'resolveConfig(section: LatheSection | undefined): ResolvedConfig',
     example: `import { generate, resolveConfig } from '@pyreon/lathe'
@@ -12291,7 +12320,7 @@ export const pathTable = definePlugin({
 
 // pyreon.config.ts
 export default { lathe: { input: './openapi.yaml', plugins: ['schemas', 'client', pathTable] } }`,
-    notes: 'Declares a third-party Lathe plugin, listed in `plugins` beside the built-in names. `setup({ config })` runs once per project and may throw to refuse a config; `transformDocument(doc, { config, note })` rewrites the IR after `filters`, `naming` and `operations` (the argument is frozen — return a modified copy; `note()` reports a loss under code `plugin`); `emit({ doc, config, reach, files, banner })` runs after every built-in and returns `SourceFile`s (banner added) or `{ path, contents, sideEffects? }`. `requires` turns on the built-ins its files import. Failures are attributed (`plugin `x` failed in `emit`: …`), each hook runs twice to prove determinism, and plugin files are listed in the manifest, compared by `check`, formatted by `format`, and refused on a path collision. Hooks are synchronous; take anything external as a construction option.',
+    notes: 'Declares a third-party Lathe plugin, listed in `plugins` beside the built-in names. `setup({ config })` runs once per project and may throw to refuse a config; `transformDocument(doc, { config, note })` rewrites the IR after `filters`, `naming` and `operations` (the argument is frozen — return a modified copy; `note()` reports a loss under code `plugin`); `emit({ doc, config, reach, files, banner })` runs after every built-in and returns `SourceFile`s (banner added) or `{ path, contents, sideEffects? }`. `requires` turns on the built-ins its files import. Failures are attributed (`plugin `x` failed in `emit`: …`), each hook runs twice to prove determinism, and plugin files are listed in the manifest, compared by `check`, formatted by `format`, and refused on a path collision. Any hook may return a promise: `generateAsync()` (what the CLI and the Vite plugin run) awaits it, still running each hook twice sequentially for the determinism check, and `generate()` refuses a promise naming the plugin. On the CLI, `--plugins schemas,./x.ts,some-package` loads every non-built-in name as a plugin module resolved from the cwd.',
     mistakes: `- Mutating the document in \`transformDocument\`. It is frozen and the write throws; return \`{ ...doc, operations: doc.operations.map(...) }\`.
 - Emitting anything that varies between runs — a date, a random id, a \`Set\` iterated in insertion order built from unordered input. Each hook runs twice and a disagreement is an error; sort with \`byCodeUnit\`, never \`localeCompare\` (locale-dependent across machines).
 - Passing a plain object instead of a \`definePlugin\` result. The config refuses it: a typo such as \`transform:\` for \`transformDocument:\` would otherwise be a hook that silently never runs.
@@ -12306,7 +12335,7 @@ import { formatFiles, generate, resolveConfig } from '@pyreon/lathe'
 
 const config = resolveConfig({ input: './openapi.yaml', format: (code, path) => prettier(code, { filepath: path }) })
 const files = await formatFiles(generate(specText, config).files, config.format)`,
-    notes: `Applies the \`format\` config hook to generated files, preserving order, skipping Lathe's own bookkeeping (\`lathe-manifest.json\`, \`api-surface.json\`). The CLI and the Vite plugin call it after \`generate()\` and BEFORE both writing and \`check\`'s comparison, which is what keeps formatted, committed output from reading as stale. \`generate()\` itself stays synchronous and unformatted; call this when driving the pipeline programmatically.`,
+    notes: `Applies the \`format\` config hook to generated files, preserving order, skipping Lathe's own bookkeeping (\`lathe-manifest.json\`, \`api-surface.json\`). The CLI and the Vite plugin call it after \`generateAsync()\` and BEFORE both writing and \`check\`'s comparison, which is what keeps formatted, committed output from reading as stale. \`generate()\` itself stays synchronous and unformatted; call this when driving the pipeline programmatically.`,
     mistakes: `- Formatting only on write. \`lathe check\` then compares Lathe's raw bytes with your formatted files and reports everything stale — the formatter must run before the comparison too, which the CLI and Vite plugin do.
 - A formatter that is not deterministic (plugin order, config read from the network). The output must regenerate byte-identically.`,
   },
@@ -12483,7 +12512,7 @@ atlas build: 10 component(s) → /repo/docs/components
     example: `$ atlas verify-browser .
 atlas verify-browser: 26 scenario(s) — coverage measured on 26, 0 baseline(s) created, 0 visual diff(s).
   → atlas-catalog.json`,
-    notes: 'The browser half of verification, in real Chromium (playwright-core is an OPTIONAL peer — scan/dev work without it). Boots the workbench, drives every derived scenario through the workbench model, measures reactive coverage on the page’s own devtools bridge (the components’ actual reactivity instance — a NEW-NODE diff so workbench chrome never pollutes the numbers), screenshots the preview against per-scenario pixelmatch baselines under `atlas-snapshots/`, and merges both verdicts back into `atlas-catalog.json`. Coverage is a MEASUREMENT, not a threshold gate: pass means measured, and the findings carry the numbers. First run creates baselines (flagged as recorded-not-yet-compared); later runs compare within tolerance and write `<id>.actual.png` on a diff. Exits non-zero on visual diffs. See also: atlas scan.',
+    notes: 'The browser half of verification, in real Chromium (playwright-core is an OPTIONAL peer — scan/dev work without it). Boots the workbench, drives every derived scenario through the workbench model, measures reactive coverage on the page’s own devtools bridge (the components’ actual reactivity instance — a NEW-NODE diff so workbench chrome never pollutes the numbers), screenshots the preview against per-scenario baselines under `atlas-snapshots/` (a perceptual YIQ comparison that forgives anti-aliasing — its own PNG codec + diff, no image dependency), and merges both verdicts back into `atlas-catalog.json`. Coverage is a MEASUREMENT, not a threshold gate: pass means measured, and the findings carry the numbers. First run creates baselines (flagged as recorded-not-yet-compared); later runs compare within tolerance and write `<id>.actual.png` plus a `<id>.diff.png` (differing pixels red) on a diff. Exits non-zero on visual diffs. See also: atlas scan.',
     mistakes: `- Committing \`atlas-snapshots/\` across machines — baselines are machine-specific (font antialiasing); gitignore them and let each environment create its own on first run
 - Reading "100% of 0 reactive nodes" as broken — a genuinely static scenario creates no reactive nodes and the finding says so explicitly
 - Treating not-drivable scenarios as failures — components living in workbench-host files can’t be driven through the dev nav; the summary names them and their browser verdicts stay skip`,

@@ -120,6 +120,8 @@ describe('query styles', () => {
   it('space- and pipe-delimited', () => {
     expect(dec(buildQuery({ t: ['a', 'b'] }, { t: { style: 'spaceDelimited', explode: false } }))).toBe('?t=a b')
     expect(dec(buildQuery({ t: ['a', 'b'] }, { t: { style: 'pipeDelimited', explode: false } }))).toBe('?t=a|b')
+    // Swagger 2 `collectionFormat: tsv`, carried as `tabDelimited`.
+    expect(dec(buildQuery({ t: ['a', 'b'] }, { t: { style: 'tabDelimited', explode: false } }))).toBe('?t=a\tb')
   })
 
   it('exploded styles on arrays repeat the key, like the default', () => {

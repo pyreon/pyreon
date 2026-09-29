@@ -123,7 +123,13 @@ function viewInvokedProps(c: ComponentIR): Set<string> {
         visit(x.right)
         return
       case 'arrow':
-        // `return () => …` — the reactive-accessor return shape.
+        // `return () => …` — the reactive-accessor return shape, and its
+        // block-bodied form, whose view is every `return` it can reach.
+        if (x.stmts !== undefined && x.stmts.length > 0) {
+          const plan = planViewBlock(x.stmts)
+          if (plan !== null) for (const v of viewBlockViews(plan)) visit(v)
+          return
+        }
         if (x.body !== undefined) visit(x.body)
         return
       case 'jsx-element':
@@ -254,8 +260,17 @@ export function moduleViewHelpers(moduleDecls: readonly ModuleDeclIR[]): Map<str
 export function isRenderArrow(e: ExprIR): e is Extract<ExprIR, { kind: 'arrow' }> {
   const x = unparen(e)
   if (x.kind !== 'arrow') return false
-  if (x.stmts !== undefined && x.stmts.length > 0) return x.stmts.some((s) => s.kind === 'return' && s.expr !== undefined && exprContainsJsx(s.expr))
+  if (x.stmts !== undefined && x.stmts.length > 0) return returnsJsx(x.stmts)
   return isViewShaped(x.body)
+}
+
+/** Does any `return` reachable in `stmts` (through nested `if`s) build JSX? */
+function returnsJsx(stmts: readonly StatementIR[]): boolean {
+  return stmts.some(
+    (s) =>
+      (s.kind === 'return' && s.expr !== undefined && exprContainsJsx(s.expr)) ||
+      (s.kind === 'if' && (returnsJsx(s.then) || (s.elseBody !== undefined && returnsJsx(s.elseBody)))),
+  )
 }
 
 /**
@@ -311,6 +326,20 @@ export function planViewBlock(stmts: readonly StatementIR[]): ViewBlock | null {
     }
     default:
       return null
+  }
+}
+
+/** The views a block can produce (its leaves). */
+export function viewBlockViews(b: ViewBlock): ExprIR[] {
+  switch (b.kind) {
+    case 'let':
+      return viewBlockViews(b.rest)
+    case 'if':
+      return [...viewBlockViews(b.then), ...viewBlockViews(b.otherwise)]
+    case 'view':
+      return [b.expr]
+    case 'empty':
+      return []
   }
 }
 
@@ -382,13 +411,15 @@ export function forBlockBodyWarning(): string {
   )
 }
 
-/** The named warning for a block-bodied render callback. Same text on both targets. */
+/** The named warning for a block-bodied render callback that has no view-builder shape. Same text on both targets. */
 export function blockBodiedRenderCallbackWarning(where: string): string {
   return (
-    `${where}: a render callback with a BLOCK body (\`(x) => { …; return <…/> }\`) is not lowered ` +
-    `to native — a view builder takes one expression, not statements. An empty view is emitted in its ` +
-    `place. Use an expression body (\`(x) => <…/>\`), and move any derivation into the receiving ` +
-    `component or a \`computed\`.`
+    `${where}: this render callback's BLOCK body (\`(x) => { …; return <…/> }\`) is not lowered to native. ` +
+    `A view builder takes declarations and conditionals, not statements, so a block body lowers only when ` +
+    `it is \`const\` declarations, early \`if (…) return …\` branches and a final \`return\` — this one has ` +
+    `something else (an assignment, a loop, a mutable local, an expression statement, or an \`if\` that ` +
+    `falls through). An empty view is emitted in its place. Move that work into a \`computed\` or the ` +
+    `receiving component.`
   )
 }
 
@@ -402,14 +433,16 @@ export function unlowerableRenderValueWarning(where: string): string {
   )
 }
 
-/** Swift only — an optional render slot has no spelling that keeps the generic inferable. */
-export function optionalSlotSwiftWarning(component: string, prop: string): string {
+/**
+ * Swift only — an optional render slot that could not get its per-subset
+ * initializers (`reason`), so it is emitted REQUIRED.
+ */
+export function optionalSlotSwiftWarning(component: string, prop: string, reason: string): string {
   return (
-    `${component}: the render prop \`${prop}\` is OPTIONAL. On iOS a render prop is a generic ` +
-    `\`@ViewBuilder\` closure whose view type is inferred from the caller's closure, and a caller that ` +
-    `omits it leaves nothing to infer it from — so it is emitted as REQUIRED, and a call site that ` +
-    `leaves it out does not compile. Make it required, or give the omitting callers an explicit empty ` +
-    `callback. (Android keeps it optional.)`
+    `${component}: the render prop \`${prop}\` is OPTIONAL, and on iOS an optional render prop needs one ` +
+    `initializer per combination of provided slots — here ${reason}. It is emitted as REQUIRED, so a ` +
+    `call site that leaves it out does not compile. Make it required, or give the omitting callers an ` +
+    `explicit empty callback. (Android keeps it optional.)`
   )
 }
 

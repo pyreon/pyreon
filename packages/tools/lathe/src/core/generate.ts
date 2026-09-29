@@ -20,6 +20,7 @@ import {
   emitClient,
   emitNativeModules,
   hasNativeDataComponent,
+  hasNativeStreamComponent,
   emitWebEndpoints,
   emitWebQueries,
 } from "../emit/client";
@@ -54,7 +55,7 @@ import {
   assertHookNames,
   operationByKey,
 } from "./customize";
-import { runEmits, runSetup, runTransforms } from "./plugin";
+import { runAsync, runEmits, runSetup, runSync, runTransforms, type Pipeline } from "./plugin";
 import { applyFilters } from "./select";
 
 export interface GenerateResult {
@@ -79,15 +80,46 @@ export interface GenerateResult {
   documents: string[]
 }
 
-/** Run the pipeline over a spec document's text. */
+/**
+ * Run the pipeline over a spec document's text, synchronously.
+ *
+ * Every plugin hook must return synchronously here; one that returns a promise
+ * is refused with its name. Use {@link generateAsync} for async plugins -- the
+ * CLI and the Vite plugin do.
+ */
 export function generate(
   specText: string,
   config: ResolvedConfig,
   /** Where the spec came from; resolves a relative `servers[].url`. */
   options: LoadOptions = {},
 ): GenerateResult {
+  return runSync(pipeline(specText, config, options));
+}
+
+/**
+ * {@link generate}, awaiting plugin hooks that return promises. Output is
+ * byte-identical to `generate()` for the same spec, config and plugins.
+ */
+export function generateAsync(
+  specText: string,
+  config: ResolvedConfig,
+  options: LoadOptions = {},
+): Promise<GenerateResult> {
+  return runAsync(pipeline(specText, config, options));
+}
+
+/**
+ * The pipeline, written once. Each plugin hook's result is `yield`ed to the
+ * driver, which hands back the settled value -- so this body reads the same
+ * for a synchronous and an asynchronous run.
+ */
+function* pipeline(
+  specText: string,
+  config: ResolvedConfig,
+  options: LoadOptions,
+): Pipeline<GenerateResult> {
   const plugins = config.customPlugins ?? [];
-  runSetup(plugins, config);
+  yield* runSetup(plugins, config);
   // The document, in the order an author reasons about it: correct the spec,
   // read it, choose the subset, name things, set per-operation directives —
   // and only then hand it to plugins, so a plugin sees exactly the names and
@@ -104,7 +136,7 @@ export function generate(
   applyStreams(doc, config);
   // Frozen from here on, with or without plugins: every emitter reads, none
   // writes, and a plugin is held to the same rule.
-  doc = runTransforms(doc, plugins, config);
+  doc = yield* runTransforms(doc, plugins, config);
   // Hook names are checked after the plugins, which may set them too — and
   // only when hooks are generated at all.
   if (config.plugins.includes("queries")) assertHookNames(doc);
@@ -217,7 +249,7 @@ export function generate(
   // Third-party plugins, after every built-in, so each can read (and must not
   // collide with) what the built-ins wrote. Their files are ordinary output:
   // listed in the manifest below, compared by `check`, pruned when dropped.
-  const extra = runEmits(plugins, { doc, config, reach, banner: head }, files);
+  const extra = yield* runEmits(plugins, { doc, config, reach, banner: head }, files);
   files.push(...extra.files);
 
   // The `sideEffects` marker. Emitted unconditionally and last-but-one: it is
@@ -509,10 +541,16 @@ function decide(
     };
   }
   if (isStreamOnly(op)) {
+    // A stream lowers through `useStream` to the native stream runtime, and is
+    // decoded INTO its declared event type -- asked of the emitter, so the
+    // report and the native layout agree about which streams get a component.
+    if (hasNativeStreamComponent(op)) return { reach: "web+native" };
     return {
       reach: "web-only",
       reason:
-        "a streaming response (SSE / NDJSON) -- PMTC has no streaming lowering, so streams are web-only.",
+        op.hook === false
+          ? "its hook is turned off (`operations.<id>.hook: false`, `naming.hook` or a plugin), so no native stream component is generated."
+          : "a streaming response (SSE / NDJSON) with no declared event type -- a native stream decodes each event into a declared type, so there is nothing to lower it to. Declare one with `lathe: { streams: { <op>: { event: 'Model' } } }` (or `data: 'text'` for raw SSE).",
     };
   }
   if (op.hook === false) {

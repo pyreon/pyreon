@@ -155,12 +155,12 @@ import {
   moduleViewHelpers,
   forBlockBodyWarning,
   narrowViewBlock,
-  planViewBlock,
-  viewBlockExprs,
-  type ViewBlock,
   optionalSlotSwiftWarning,
+  planViewBlock,
   propRefName,
   slotPropsOf,
+  viewBlockExprs,
+  type ViewBlock,
   unlowerableRenderValueWarning,
   viewHelperFromDecl,
   viewHelperFromModuleDecl,
@@ -314,6 +314,8 @@ let _componentPropsMap: Map<string, { name: string; type: TypeIR }[]> = new Map(
 let _componentSlotsMap: Map<string, SlotProp[]> = new Map()
 /** The slots of the component being emitted, by prop name. */
 let _activeSlots: Map<string, SlotProp> = new Map()
+/** Optional slots of the active component emitted as REQUIRED (the fallback) — invoked without `?`. */
+let _optionalSlotsAsRequired: Set<string> = new Set()
 /**
  * View helpers in scope — file-scope ones plus the current component's —
  * by name. Lowered to `@ViewBuilder func`, so a call is a VIEW and a
@@ -752,6 +754,8 @@ let _fetchNamesSwift: Set<string> = new Set()
 // websocket decl name → url, so `ws.connect()` (the 0-arg TS surface — the
 // hook carries the url) lowers to the runtime's `connect(to: URL)`.
 let _websocketUrlsSwift: Map<string, string> = new Map()
+/** `useStream` decl names — `s.events()` / `s.status()` read the property. */
+let _streamNamesSwift: Set<string> = new Set()
 /** Per-component: i18n instance names — `i18n.t(key, {…})` lowers the
  *  object-literal values arg to a dictionary at this call shape. */
 let _i18nNames: Set<string> = new Set()
@@ -1651,6 +1655,7 @@ export function emitSwift(
   _jsxFnNames = new Set()
   _componentSlotsMap = new Map()
   _activeSlots = new Map()
+  _optionalSlotsAsRequired = new Set()
   _moduleViewHelpersSwift = new Map()
   _viewHelpersSwift = new Map()
   _styledComponents = new Map()
@@ -2606,6 +2611,7 @@ const LIFECYCLE_HOST_DECL_KINDS: ReadonlySet<DeclIR['kind']> = new Set([
   'query',
   'rate-limited',
   'sortable',
+  'stream',
   'table-state',
   'tick',
 ])
@@ -2752,6 +2758,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   _formSubmitParamsSwift = []
   _fetchNamesSwift = new Set()
   _websocketUrlsSwift = new Map()
+  _streamNamesSwift = new Set()
   // C4: reset router-usage tracking. Set during decl-pass if any
   // useNavigate/useParams binding is present.
   _usesRouter = false
@@ -2821,6 +2828,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     if (d.kind === 'form') _formNamesSwift.add(d.name)
     if (d.kind === 'fetch' || d.kind === 'query') _fetchNamesSwift.add(d.name)
     if (d.kind === 'websocket') _websocketUrlsSwift.set(d.name, d.url)
+    if (d.kind === 'stream') _streamNamesSwift.add(d.name)
     // C4: router-instance decls (`const r = createRouter({...})`) map to
     // `@State` properties, so the identifier reads bare like a signal —
     // add to `_signalNames` so `router` in JSX (e.g. `<RouterProvider
@@ -2898,21 +2906,48 @@ function emitSwiftComponent(c: ComponentIR): string {
   // property carries over to the memberwise initializer's parameter, so a
   // caller's closure body is a view builder (if/else, several views).
   const slotGenerics: string[] = []
+  // An OPTIONAL render prop is stored as an optional closure, and the struct
+  // gains one initializer per subset of its optional slots — the omitted ones
+  // pinned to `EmptyView` by a constrained extension, the SwiftUI idiom for a
+  // defaulted view parameter (`Label` / `Button(action:)`). A caller that
+  // omits the slot then has a concrete view type, which the plain generic
+  // cannot infer from nothing. See `emitSwiftOptionalSlotInits`.
+  const optionalSlotNames = slots.filter((sl) => sl.optional).map((sl) => sl.name)
+  const optionalSlotFallback =
+    optionalSlotNames.length === 0
+      ? null
+      : optionalSlotNames.length > MAX_SWIFT_OPTIONAL_SLOTS
+        ? `it has ${optionalSlotNames.length} optional render props, and each subset needs its own initializer (at most ${MAX_SWIFT_OPTIONAL_SLOTS} are lowered, ${2 ** MAX_SWIFT_OPTIONAL_SLOTS} initializers)`
+        : c.decls.some((d) => d.kind === 'crdt-doc' || d.kind === 'synced-signal')
+          ? 'its synced state already needs a generated init() that seeds it, and the optional-slot initializers cannot'
+          : null
+  _optionalSlotsAsRequired = optionalSlotFallback === null ? new Set() : new Set(optionalSlotNames)
+  const initParams: SwiftInitParam[] = []
   const propLines = c.props.map((p) => {
     const slot = _activeSlots.get(p.name)
     if (slot !== undefined) {
       const generic = `${p.name.charAt(0).toUpperCase()}${p.name.slice(1)}Content`
       slotGenerics.push(`${generic}: View`)
+      const params = slot.params.map((t, i) => swiftType(t, synth, `${p.name}${i}`)).join(', ')
+      const closure = `(${params}) -> ${generic}`
+      if (slot.optional && optionalSlotFallback === null) {
+        initParams.push({ name: p.name, decl: `@ViewBuilder ${swiftIdent(p.name)}: @escaping ${closure}`, omittable: generic })
+        return `  let ${swiftIdent(p.name)}: (${closure})?`
+      }
       if (slot.optional) {
-        const w = optionalSlotSwiftWarning(c.name, p.name)
+        const w = optionalSlotSwiftWarning(c.name, p.name, optionalSlotFallback!)
         if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
       }
-      const params = slot.params.map((t, i) => swiftType(t, synth, `${p.name}${i}`)).join(', ')
-      return `  @ViewBuilder let ${swiftIdent(p.name)}: (${params}) -> ${generic}`
+      initParams.push({ name: p.name, decl: `@ViewBuilder ${swiftIdent(p.name)}: @escaping ${closure}` })
+      return `  @ViewBuilder let ${swiftIdent(p.name)}: ${closure}`
     }
-    return typeIsOptional(p.type)
-      ? `  var ${swiftIdent(p.name)}: ${swiftType(p.type, synth, p.name)} = nil`
-      : `  let ${swiftIdent(p.name)}: ${swiftType(p.type, synth, p.name)}`
+    const t = swiftType(p.type, synth, p.name)
+    if (typeIsOptional(p.type)) {
+      initParams.push({ name: p.name, decl: `${swiftIdent(p.name)}: ${t} = nil` })
+      return `  var ${swiftIdent(p.name)}: ${t} = nil`
+    }
+    initParams.push({ name: p.name, decl: `${swiftIdent(p.name)}: ${t}` })
+    return `  let ${swiftIdent(p.name)}: ${t}`
   })
   // Pre-walk signal decl types through the synth ctx so INLINE anonymous
   // object types in signal generics (`signal<{ price: number }[]>`)
@@ -3465,8 +3500,21 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.push(`        }`)
     lines.push(`      }`)
   }
+  // useStream: a `.task(id:)` per decl, KEYED on the request URL plus the
+  // restart tick — a runtime `:param` or `restart()` re-keys it, which
+  // cancels the old stream and opens a fresh one (the web's reactive-source
+  // semantic). The view disappearing cancels the task, which closes the
+  // connection.
+  for (const d of c.decls) {
+    if (d.kind !== 'stream') continue
+    lines.push(...emitSwiftStreamHarness(d))
+  }
   lines.push(`  }`)
   lines.push(`}`)
+  if (optionalSlotNames.length > 0 && optionalSlotFallback === null) {
+    if (isLayout) initParams.push({ name: 'content', decl: '@ViewBuilder content: @escaping () -> Content' })
+    lines.push(...emitSwiftOptionalSlotInits(c.name, initParams))
+  }
   // Fill the reserved slot now that the body has been lowered — a responsive
   // style anywhere in it sets `_usesSizeClass`, and the property has to be
   // declared before the body that references it.
@@ -3496,6 +3544,42 @@ function emitSwiftComponent(c: ComponentIR): string {
   const joined = lines.join('\n').replace(/__PYREON_HANDLE_SERIES_(\w+)__/g, (_m, name: string) => String(_chartHandleSeries.get(name) ?? 0))
   _chartHandleSeries.clear()
   return joined
+}
+
+/** The `.task(id:)` modifier that runs one `useStream` decl. */
+function emitSwiftStreamHarness(d: Extract<DeclIR, { kind: 'stream' }>): string[] {
+  const name = swiftIdent(d.name)
+  const url = d.urlExpr !== undefined ? emitSwiftExpr(d.urlExpr, 0) : swiftStr(d.url)
+  const req = [`method: ${swiftStr(d.method)}`, `url: ${url}`]
+  if (d.headers) {
+    req.push(
+      `headers: [${Object.entries(d.headers)
+        .map(([k, v]) => `${swiftStr(k)}: ${swiftStr(v)}`)
+        .join(', ')}]`,
+    )
+  }
+  if (d.requestBody !== undefined) req.push(`body: Data(${swiftStr(d.requestBody)}.utf8)`)
+  const request = `PyreonStreamRequest(${req.join(', ')})`
+  const data = swiftType(d.dataType)
+  const out = [`      .task(id: "\\(${url})#\\(${name}.restartTick)") {`]
+  if (d.format === 'sse') {
+    const opts: string[] = []
+    if (d.events) opts.push(`events: [${d.events.map((e) => swiftStr(e)).join(', ')}]`)
+    if (d.lastEventId !== undefined) opts.push(`lastEventId: ${swiftStr(d.lastEventId)}`)
+    opts.push(
+      d.reconnect === null
+        ? 'reconnect: nil'
+        : `reconnect: PyreonStreamReconnect(attempts: ${d.reconnect.attempts}, delay: ${d.reconnect.delay}, maxDelay: ${d.reconnect.maxDelay}, onEnd: ${d.reconnect.onEnd})`,
+    )
+    const decode = d.sseText ? 'PyreonStreamDecode.sseText()' : `PyreonStreamDecode.sseJSON(${data}.self)`
+    const accept = d.accept !== undefined ? `, accept: ${swiftStr(d.accept)}` : ''
+    out.push(`        await ${name}.runSse(${request}, options: PyreonSseOptions(${opts.join(', ')})${accept}, decode: ${decode})`)
+  } else {
+    const accept = d.accept !== undefined ? `, accept: ${swiftStr(d.accept)}` : ''
+    out.push(`        await ${name}.runNdjson(${request}${accept}, decode: PyreonStreamDecode.ndjson(${data}.self))`)
+  }
+  out.push(`      }`)
+  return out
 }
 
 /**
@@ -4130,6 +4214,11 @@ function emitSwiftDecl(
   }
   if (d.kind === 'websocket') {
     return `@State private var ${swiftIdent(d.name)} = PyreonWebSocket()`
+  }
+  // `const s = useStream(…)` → an @State PyreonStream; the `.task(id:)`
+  // harness that runs it is appended on the stable-identity body host.
+  if (d.kind === 'stream') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonStream<${swiftType(d.itemType)}>(maxEvents: ${d.maxEvents})`
   }
   if (d.kind === 'database') {
     return `@State private var ${swiftIdent(d.name)} = PyreonDatabase()`
@@ -5222,6 +5311,52 @@ function emitSwiftViewBlock(b: ViewBlock, indent: number): string[] {
   }
 }
 
+/** A zero-parameter arrow with a plannable block body — a block-bodied reactive-accessor return. */
+function swiftAccessorViewBlock(e: ExprIR): ViewBlock | null {
+  const x = unparenExpr(e)
+  if (x.kind !== 'arrow' || x.params.length > 0 || x.stmts === undefined || x.stmts.length === 0) return null
+  return planViewBlock(x.stmts)
+}
+
+/** A component initializer parameter; `omittable` = the generic an OPTIONAL slot pins to `EmptyView` when omitted. */
+interface SwiftInitParam {
+  name: string
+  decl: string
+  omittable?: string
+}
+
+/** Optional render props lowered per component — each subset needs its own initializer. */
+const MAX_SWIFT_OPTIONAL_SLOTS = 3
+
+/**
+ * The initializers of a component with OPTIONAL render props: one per subset
+ * of them, each in an extension. The subset the caller passes takes
+ * `@ViewBuilder` closures; the rest are stored `nil` and their generics pinned
+ * to `EmptyView` by the extension's `where` clause, so a call site that omits
+ * them has a concrete type to infer. Declared in extensions so the memberwise
+ * initializer survives — it is what a caller FORWARDING an optional slot
+ * (`render: render`, itself optional) binds to.
+ */
+function emitSwiftOptionalSlotInits(component: string, params: readonly SwiftInitParam[]): string[] {
+  const optional = params.filter((p) => p.omittable !== undefined)
+  const head = `${swiftIdent(component)}`
+  const out: string[] = []
+  for (let mask = 0; mask < 2 ** optional.length; mask++) {
+    const omitted = new Set(optional.filter((_, i) => (mask & (1 << i)) !== 0).map((p) => p.name))
+    const pinned = optional.filter((p) => omitted.has(p.name)).map((p) => `${p.omittable} == EmptyView`)
+    const kept = params.filter((p) => !omitted.has(p.name))
+    out.push('')
+    out.push(pinned.length > 0 ? `extension ${head} where ${pinned.join(', ')} {` : `extension ${head} {`)
+    out.push(`  init(${kept.map((p) => p.decl).join(', ')}) {`)
+    for (const p of params) {
+      out.push(`    self.${swiftIdent(p.name)} = ${omitted.has(p.name) ? 'nil' : swiftIdent(p.name)}`)
+    }
+    out.push('  }')
+    out.push('}')
+  }
+  return out
+}
+
 /** The slot of the component being emitted that `e` references, if any. */
 function activeSlotRef(e: ExprIR): SlotProp | undefined {
   const name = propRefName(e, _activePropsParamName)
@@ -5244,7 +5379,7 @@ function swiftCallRendersView(e: ExprIR): boolean {
  */
 function emitSwiftSlotInvocation(slot: SlotProp, args: readonly ExprIR[], indent: number): string {
   const parts = args.map((a, i) => withExpectedType(slot.params[i], () => emitSwiftExpr(a, indent)))
-  return `${swiftIdent(slot.name)}(${parts.join(', ')})`
+  return `${swiftIdent(slot.name)}${swiftSlotCallMark(slot)}(${parts.join(', ')})`
 }
 
 /**
@@ -5270,7 +5405,8 @@ function emitSwiftSlotArg(
   const base = ' '.repeat(indent)
   const pad = ' '.repeat(indent + 2)
   if (x.kind === 'arrow') {
-    if (x.stmts !== undefined && x.stmts.length > 0) {
+    const block = x.stmts !== undefined && x.stmts.length > 0 ? planViewBlock(x.stmts) : undefined
+    if (block === null) {
       const w = blockBodiedRenderCallbackWarning(where)
       if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
       const arity = slot?.params.length ?? x.params.length
@@ -5281,11 +5417,15 @@ function emitSwiftSlotArg(
     const arity = Math.max(slot?.params.length ?? 0, x.params.length)
     const names = Array.from({ length: arity }, (_, i) => x.params[i] ?? '_')
     const types = names.map((_, i) => slot?.params[i] ?? x.paramTypes?.[i])
-    const body = withSwiftLocals(
-      names.map((n, i) => [n, types[i]] as const).filter(([n]) => n !== '_'),
-      () => emitSwiftChild({ kind: 'expr', expr: unparenExpr(x.body) }, indent + 2),
-    )
     const head = arity === 0 ? '{' : `{ ${names.map((n) => (n === '_' ? '_' : swiftIdent(n))).join(', ')} in`
+    const params = names.map((n, i) => [n, types[i]] as const).filter(([n]) => n !== '_')
+    if (block !== undefined) {
+      // A block body: its `const`s and early returns become the closure's
+      // view-builder statements (the slot parameter is `@ViewBuilder`).
+      const lines = withSwiftLocals(params, () => emitSwiftViewBlock(block, indent + 2))
+      return `${head}\n${lines.join('\n')}\n${base}}`
+    }
+    const body = withSwiftLocals(params, () => emitSwiftChild({ kind: 'expr', expr: unparenExpr(x.body) }, indent + 2))
     return `${head}\n${pad}${body}\n${base}}`
   }
   // Forwarding the enclosing component's own render prop: same closure type.
@@ -6075,6 +6215,11 @@ export function swiftType(t: TypeIR, synth?: SwiftSynthCtx, declName?: string): 
         // Promise<T> → Task<T, Error> on Swift. For Phase 0 we emit
         // `Task<T, Error>` and document the limitation; PR 5e refines.
         return `Task<${swiftType(t.args[0]!, synth, declName)}, Error>`
+      }
+      // `SseEvent<T>` (`@pyreon/http/stream`) is the native stream runtime's
+      // `PyreonSseEvent<T>` — same three fields, same meaning.
+      if (t.name === 'SseEvent' && t.args.length === 1) {
+        return `PyreonSseEvent<${swiftType(t.args[0]!, synth, declName)}>`
       }
       if (t.args.length === 0) return t.name
       // Explicit lambda — point-free `.map(swiftType)` would pass the
@@ -7448,6 +7593,14 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             ['lastMessage', 'messages', 'isConnected', 'error'].includes(
               e.callee.property,
             )
+          ) {
+            return `${swiftIdent(recv)}.${e.callee.property}`
+          }
+          // useStream's result fields — signal READS on the web, @Observable
+          // properties natively. `abort()` / `restart()` stay calls.
+          if (
+            _streamNamesSwift.has(recv) &&
+            ['events', 'latest', 'status', 'error'].includes(e.callee.property)
           ) {
             return `${swiftIdent(recv)}.${e.callee.property}`
           }
@@ -13602,7 +13755,9 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
       explicitNames.add(`on${a.name[0]!.toUpperCase()}${a.name.slice(1)}`)
     }
   }
-  const argEntries: { name: string; part: string }[] = []
+  // `forwarded` = the value is this component's own OPTIONAL render prop,
+  // forwarded as-is — see the `if let` expansion at the end.
+  const argEntries: { name: string; part: string; forwarded?: string }[] = []
   // Render props. A same-file component DECLARES which props are slots; one
   // from another file is judged by the value's own shape (see
   // `isSwiftSlotValue`) — generated data components live in their own module.
@@ -13618,9 +13773,11 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
     if (a.kind === 'attr' && (isUserComponent || !isCanonicalPrimitive(e.tag))) {
       const { slot, isSlot } = slotFor(a.name)
       if (isSlot(a.value)) {
+        const forwarded = swiftForwardedOptionalSlot(a.value)
         argEntries.push({
           name: a.name,
           part: `${swiftIdent(safeIdent(a.name))}: ${emitSwiftSlotArg(a.value, slot, `<${e.tag} ${a.name}={…}>`, indent)}`,
+          ...(forwarded !== null ? { forwarded } : {}),
         })
         continue
       }
@@ -13676,9 +13833,11 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
       activeSlotRef(lone) !== undefined ||
       (lone.kind === 'identifier' && _viewHelpersSwift.has(lone.name)))
   if (loneIsCallback && (calleeSlots === undefined || childrenSlot !== undefined)) {
+    const forwarded = swiftForwardedOptionalSlot(lone!)
     argEntries.push({
       name: 'children',
       part: `children: ${emitSwiftSlotArg(lone!, childrenSlot, `<${e.tag}>{…}</${e.tag}>`, indent)}`,
+      ...(forwarded !== null ? { forwarded } : {}),
     })
     children = []
   } else if (childrenSlot !== undefined && childrenSlot.bare && children.length > 0) {
@@ -13694,20 +13853,51 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
         (orderOf.get(y.name) ?? Number.MAX_SAFE_INTEGER),
     )
   }
-  const attrPairs = argEntries.map((x) => x.part).join(', ')
   // `swiftIdent`-escape the tag name — covers user-defined components
   // whose name collides with a Swift keyword (e.g. `<class>...</class>`).
   const tag = swiftIdent(e.tag)
-  if (children.length === 0) {
-    return attrPairs ? `${tag}(${attrPairs})` : `${tag}()`
+  const call = (entries: readonly { part: string }[], at: number): string => {
+    const attrPairs = entries.map((x) => x.part).join(', ')
+    if (children.length === 0) {
+      return attrPairs ? `${tag}(${attrPairs})` : `${tag}()`
+    }
+    const contentLines = children
+      .map((c) => ' '.repeat(at + 2) + emitSwiftChild(c, at + 2))
+      .join('\n')
+    if (attrPairs) {
+      return `${tag}(${attrPairs}) {\n${contentLines}\n${' '.repeat(at)}}`
+    }
+    return `${tag} {\n${contentLines}\n${' '.repeat(at)}}`
   }
-  const contentLines = children
-    .map((c) => pad + emitSwiftChild(c, indent + 2))
-    .join('\n')
-  if (attrPairs) {
-    return `${tag}(${attrPairs}) {\n${contentLines}\n${' '.repeat(indent)}}`
+  // Forwarding this component's own OPTIONAL render prop: the receiver's
+  // initializers take a slot as a closure or not at all (its omitted
+  // generic is pinned to `EmptyView`), never an optional closure — so the
+  // call is split on presence, the Swift spelling of JS passing `undefined`
+  // through. `Group` keeps it one view for any modifier appended after it.
+  const forwardedNames = [...new Set(argEntries.flatMap((x) => (x.forwarded !== undefined ? [x.forwarded] : [])))]
+  if (forwardedNames.length === 0) return call(argEntries, indent)
+  const split = (entries: readonly { part: string; forwarded?: string }[], names: readonly string[], at: number): string => {
+    const [name, ...rest] = names
+    if (name === undefined) return call(entries, at)
+    const p = ' '.repeat(at + 2)
+    const id = swiftIdent(name)
+    const present = split(entries, rest, at + 2)
+    const absent = split(entries.filter((x) => x.forwarded !== name), rest, at + 2)
+    return `if let ${id} {\n${p}${present}\n${' '.repeat(at)}} else {\n${p}${absent}\n${' '.repeat(at)}}`
   }
-  return `${tag} {\n${contentLines}\n${' '.repeat(indent)}}`
+  return `Group {\n${' '.repeat(indent + 2)}${split(argEntries, forwardedNames, indent + 2)}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * The name of this component's OPTIONAL render prop when `value` forwards it
+ * unchanged (`render={props.render}`) and it is still optional here — not
+ * already unwrapped by an enclosing narrowing, and not emitted required by the
+ * fallback. Null otherwise.
+ */
+function swiftForwardedOptionalSlot(value: ExprIR): string | null {
+  const slot = activeSlotRef(unparenExpr(value))
+  if (slot === undefined || !slot.optional) return null
+  return swiftSlotCallMark(slot) === '?' ? slot.name : null
 }
 
 /**
@@ -13779,6 +13969,14 @@ function emitSwiftReturnExpr(expr: ExprIR, indent: number): string {
   }
   const slotUse = emitSwiftSlotUse(expr, indent)
   if (slotUse !== null) return slotUse
+  // `return () => { const t = …; return <X t/> }` — a block-bodied reactive
+  // accessor. `body` re-runs on every state change, so the block IS the view;
+  // `Group` keeps the root ONE view, so modifiers appended after it (`.task`,
+  // `.onAppear`) attach to the whole thing rather than its last statement.
+  const block = swiftAccessorViewBlock(expr)
+  if (block !== null) {
+    return `Group {\n${emitSwiftViewBlock(block, indent + 2).join('\n')}\n${' '.repeat(indent)}}`
+  }
   if (
     expr.kind === 'ternary' &&
     (swiftExprProducesView(expr.then) || swiftExprProducesView(expr.otherwise))
@@ -13796,11 +13994,21 @@ function emitSwiftReturnExpr(expr: ExprIR, indent: number): string {
 function emitSwiftSlotUse(e: ExprIR, indent: number): string | null {
   const x = e.kind === 'paren' ? e.inner : e
   const bare = activeSlotRef(x)
-  if (bare !== undefined) return bare.bare ? `${swiftIdent(bare.name)}()` : null
+  if (bare !== undefined) return bare.bare ? `${swiftIdent(bare.name)}${swiftSlotCallMark(bare)}()` : null
   if (x.kind !== 'call') return null
   const slot = activeSlotRef(x.callee)
   if (slot === undefined || slot.bare) return null
   return emitSwiftSlotInvocation(slot, x.args, indent)
+}
+
+/**
+ * `?` for a call to an OPTIONAL slot (`render?(item)` — `Optional<View>` is
+ * itself a View, so an absent slot renders nothing), empty when a narrowing
+ * has rebound the name to its unwrapped value (`if let render { render(1) }`).
+ */
+function swiftSlotCallMark(slot: SlotProp): string {
+  if (!slot.optional || _optionalSlotsAsRequired.has(slot.name)) return ''
+  return _exprInferCtx.locals.has(slot.name) ? '' : '?'
 }
 
 function emitSwiftChild(c: ChildIR, indent: number): string {

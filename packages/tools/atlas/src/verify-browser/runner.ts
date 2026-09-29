@@ -16,8 +16,8 @@
  *   3. measures reactive coverage with the PAGE's own
  *      `@pyreon/reactivity/coverage` (same instances the components run on),
  *   4. screenshots the preview and compares against a per-scenario baseline
- *      (pixelmatch, tolerance-based — byte equality would false-fail on
- *      antialiasing),
+ *      (`pixel-diff.ts`, a perceptual YIQ comparison that forgives
+ *      anti-aliasing — byte equality would false-fail on it),
  *   5. merges both verdicts into `atlas-catalog.json`, recomputing
  *      `ok`/`checked` with the registry's own derivation rules.
  *
@@ -36,13 +36,16 @@
  * `snapshot` passes when the preview matches the stored baseline within
  * tolerance, CREATES the baseline on first run (pass, with a finding saying
  * so — a created baseline is not a verified one), and fails on a real visual
- * diff, writing the actual next to the baseline for eyeballing.
+ * diff, writing the actual next to the baseline for eyeballing, plus a
+ * `<id>.diff.png` marking which pixels differ.
  */
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { CheckStatus, VerifyCheck, VerifyVerdict } from '../core'
 import { CHECK_KEYS, finding } from '../core'
 import { skipped } from '../plugins/registry'
+import { pixelDiff } from './pixel-diff'
+import { decodePng, encodePng } from './png'
 
 export interface BrowserVerifyOptions {
   cwd?: string
@@ -115,29 +118,32 @@ export function mergeBrowserVerdict(
   return next
 }
 
-/** Compare two PNG buffers; returns the differing-pixel fraction. */
-export function diffPngs(
-  a: Buffer,
-  b: Buffer,
-  deps: {
-    PNG: { sync: { read(buf: Buffer): { width: number; height: number; data: Buffer } } }
-    pixelmatch: (
-      a: Buffer,
-      b: Buffer,
-      out: Buffer | null,
-      w: number,
-      h: number,
-      opts: { threshold: number },
-    ) => number
-  },
-): number {
-  const imgA = deps.PNG.sync.read(a)
-  const imgB = deps.PNG.sync.read(b)
-  if (imgA.width !== imgB.width || imgA.height !== imgB.height) return 1
-  const diff = deps.pixelmatch(imgA.data, imgB.data, null, imgA.width, imgA.height, {
-    threshold: 0.1,
-  })
-  return diff / (imgA.width * imgA.height)
+export interface PngComparison {
+  /** Fraction of pixels that differ perceptibly (0..1). A size mismatch is 1. */
+  ratio: number
+  /**
+   * The diff image as a PNG (differences red, forgiven anti-aliasing yellow,
+   * matching pixels a faded greyscale of the baseline), or `null` when the
+   * sizes differ and there is no pixel correspondence to draw.
+   */
+  diffPng: Buffer | null
+}
+
+/**
+ * Compare two PNG screenshots. The threshold (0.1) is the one the pixelmatch
+ * dependency ran with before `pixel-diff.ts` replaced it — baselines recorded
+ * under the old comparator keep their verdicts.
+ */
+export function comparePngs(a: Buffer, b: Buffer): PngComparison {
+  const imgA = decodePng(a)
+  const imgB = decodePng(b)
+  if (imgA.width !== imgB.width || imgA.height !== imgB.height) return { ratio: 1, diffPng: null }
+  const out = Buffer.alloc(imgA.data.length)
+  const diff = pixelDiff(imgA.data, imgB.data, out, imgA.width, imgA.height, { threshold: 0.1 })
+  return {
+    ratio: diff / (imgA.width * imgA.height),
+    diffPng: encodePng(imgA.width, imgA.height, out),
+  }
 }
 
 export async function runBrowserVerify(
@@ -163,13 +169,6 @@ export async function runBrowserVerify(
       '[Pyreon] atlas verify-browser needs Playwright:\n\n    bun add -d playwright-core && bunx playwright-core install chromium\n\n  (`playwright` works too.) `atlas scan` keeps working without it.',
     )
   }
-  const { default: pixelmatch } = (await import('pixelmatch')) as unknown as {
-    default: Parameters<typeof diffPngs>[2]['pixelmatch']
-  }
-  const { PNG } = (await import('pngjs')) as unknown as {
-    PNG: Parameters<typeof diffPngs>[2]['PNG']
-  }
-
   const { startDevServer } = await import('../dev/server')
   const server = await startDevServer({
     cwd,
@@ -262,7 +261,6 @@ export async function runBrowserVerify(
           snapshotDir,
           maxRatio,
           updateSnapshots: options.updateSnapshots === true,
-          deps: { PNG, pixelmatch },
         })
         snapshotOutcomes.push({ snapshot, created })
 
@@ -352,7 +350,6 @@ export async function snapshotScenario(
     snapshotDir: string
     maxRatio: number
     updateSnapshots: boolean
-    deps: Parameters<typeof diffPngs>[2]
   },
 ): Promise<SnapshotOutcome> {
   const { snapshotDir, maxRatio } = opts
@@ -397,10 +394,12 @@ export async function snapshotScenario(
         },
       }
     }
-    const ratio = diffPngs(baseline, shot, opts.deps)
+    const { ratio, diffPng } = comparePngs(baseline, shot)
     if (ratio <= maxRatio) return { created: false, snapshot: { status: 'pass' } }
     const actualPath = join(snapshotDir, `${scenarioId}.actual.png`)
     writeFileSync(actualPath, shot)
+    const diffPath = diffPng ? join(snapshotDir, `${scenarioId}.diff.png`) : null
+    if (diffPng && diffPath) writeFileSync(diffPath, diffPng)
     return {
       created: false,
       snapshot: {
@@ -408,8 +407,9 @@ export async function snapshotScenario(
         findings: [
           finding(
             'snapshot-differs',
-            `visual diff ${(ratio * 100).toFixed(2)}% of pixels (limit ${(maxRatio * 100).toFixed(2)}%) — actual written to ${actualPath}`,
-            `Compare ${actualPath} against the baseline. If the change is intended, re-run with --update-snapshots.`,
+            `visual diff ${(ratio * 100).toFixed(2)}% of pixels (limit ${(maxRatio * 100).toFixed(2)}%) — actual written to ${actualPath}` +
+              (diffPath ? `, diff image to ${diffPath}` : ' (sizes differ, so there is no diff image)'),
+            `Compare ${actualPath} against the baseline${diffPath ? ` (${diffPath} marks the differing pixels red)` : ''}. If the change is intended, re-run with --update-snapshots.`,
           ),
         ],
       },

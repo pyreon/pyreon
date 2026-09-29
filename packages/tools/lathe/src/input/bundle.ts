@@ -215,6 +215,8 @@ type Kind =
   | 'schemaMap'
   | 'schemaList'
   | 'schema'
+  | 'exampleMap'
+  | 'example'
   | 'other'
   | 'data'
 
@@ -239,6 +241,11 @@ const SCHEMA_LISTS = new Set(['allOf', 'anyOf', 'oneOf', 'prefixItems'])
 const DATA_HOLDERS = new Set<Kind>(['schema', 'parameter', 'media', 'other'])
 
 function childKind(kind: Kind, key: string): Kind {
+  // A parameter's / media type's `examples` is a MAP of Example Objects, each
+  // of which may be a `$ref` -- structure, not data. Only an Example's `value`
+  // is data. (A schema's 3.1 `examples` is a plain array of values, and stays
+  // data through the check below.)
+  if (key === 'examples' && (kind === 'parameter' || kind === 'media')) return 'exampleMap'
   if (DATA_KEYS.has(key) && DATA_HOLDERS.has(kind)) return 'data'
   switch (kind) {
     case 'root':
@@ -294,7 +301,12 @@ function childKind(kind: Kind, key: string): Kind {
       if (key === 'headers') return 'headerMap'
       if (key === 'pathItems') return 'paths'
       if (key === 'callbacks') return 'callbackMap'
+      if (key === 'examples') return 'exampleMap'
       return 'other'
+    case 'exampleMap':
+      return 'example'
+    case 'example':
+      return key === 'value' ? 'data' : 'other'
     case 'schemaMap':
     case 'schemaList':
       return 'schema'
