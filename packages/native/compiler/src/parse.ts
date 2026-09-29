@@ -13505,6 +13505,31 @@ function parseJsxAttr(node: AnyNode, ctx: ParseCtx): AttrIR | null {
   return { kind: 'attr', name: rawName, value: exprValue }
 }
 
+/**
+ * The JSX text rule (Babel's `cleanJSXElementLiteralChild`): split into lines;
+ * trim leading whitespace on every line but the first and trailing whitespace
+ * on every line but the last; drop empty lines; join the rest with one space.
+ * So layout whitespace containing a line break vanishes, while inline
+ * whitespace with no line break -- including a lone space between two
+ * expression containers, `{a} {b}` -- is content and survives.
+ */
+export function cleanJsxText(raw: string): string {
+  const lines = raw.split(/\r\n|\n|\r/)
+  let lastNonEmpty = 0
+  for (let i = 0; i < lines.length; i++) if (/[^ \t]/.test(lines[i]!)) lastNonEmpty = i
+  let out = ''
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i]!.replace(/\t/g, ' ')
+    if (i !== 0) line = line.replace(/^ +/, '')
+    if (i !== lines.length - 1) line = line.replace(/ +$/, '')
+    if (line !== '') {
+      if (i !== lastNonEmpty) line += ' '
+      out += line
+    }
+  }
+  return out
+}
+
 function parseJsxChild(node: AnyNode, ctx: ParseCtx): ChildIR | null {
   if (node.type === 'JSXText') {
     // JSX whitespace handling per Babel / React convention:
@@ -13521,8 +13546,7 @@ function parseJsxChild(node: AnyNode, ctx: ParseCtx): ChildIR | null {
     // The naive pre-PR-9 `.trim()` was correct for layout whitespace
     // but wrong for content-adjacent whitespace.
     const raw = node.value as string
-    if (!/\S/.test(raw)) return null
-    const v = /\n/.test(raw) ? raw.replace(/\s+/g, ' ').trim() : raw
+    const v = cleanJsxText(raw)
     if (v === '') return null
     return { kind: 'text', value: v }
   }
