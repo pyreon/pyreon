@@ -1,5 +1,6 @@
 ---
 '@pyreon/native-compiler': minor
+'@pyreon/native-runtime-kotlin': minor
 '@pyreon/toast': minor
 '@pyreon/dnd': minor
 '@pyreon/sized-map': minor
