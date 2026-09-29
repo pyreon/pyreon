@@ -1073,6 +1073,7 @@ export interface AsyncComponentOptions<P extends Props = Props> {
 export type AsyncComponent<P extends Props = Props> = ComponentFn<P> & {
   __loading: () => boolean
   __load: () => Promise<void>
+  __pending: () => boolean
 }
 
 const toError = (err: unknown): Error => (err instanceof Error ? err : new Error(String(err)))
@@ -1184,7 +1185,10 @@ export function defineAsyncComponent<P extends Props = Props>(
   const AsyncComp = ((props: P): VNodeChild => {
     const settled = startLoad()
     const ready = resolved.peek()
-    if (ready) return pyreonH(ready, props as Props)
+    // An accessor even when ready: the server always renders this branch (it
+    // waited for the load), and the accessor's `<!--$-->` range is what lets a
+    // client whose load is still pending keep the server's nodes standing.
+    if (ready) return () => pyreonH(ready, props as Props)
     const early = failed.peek()
     // Kept as a setup-time throw so a `<Suspense>`-controlled failure behaves
     // exactly like core's `lazy()` (the boundary's error path, SSR included).
@@ -1237,6 +1241,10 @@ export function defineAsyncComponent<P extends Props = Props>(
     return isLoading && (suspensible || isServer)
   }
   AsyncComp.__load = startLoad
+  // Hydration waits for the real content regardless of `suspensible` (as Vue
+  // does: its hydration awaits every async wrapper's loader), so the pending
+  // state it reads is not the `<Suspense>`-facing `__loading`.
+  AsyncComp.__pending = () => resolved() === null && failed() === null
 
   return nativeCompat(AsyncComp)
 }
