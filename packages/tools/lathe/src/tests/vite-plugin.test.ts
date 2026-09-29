@@ -145,7 +145,7 @@ describe('lathe vite plugin', () => {
       ],
     })
     await plugin.configResolved?.({ root, command: 'serve' })
-    const spy = vi.spyOn(gen, 'generate')
+    const spy = vi.spyOn(gen, 'generateAsync')
     const watched: string[] = []
     let onChange: (path: string) => void = () => {}
     plugin.configureServer?.({

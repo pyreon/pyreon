@@ -93,6 +93,7 @@ describe('isRootFile', () => {
     'vitest.workspace.ts',
     '.bun-version',
     '.github/workflows/ci.yml',
+    '.github/actions/setup-pyreon/action.yml',
   ])('treats %s as a root file (forces full suite)', (path) => {
     expect(isRootFile(path)).toBe(true)
   })

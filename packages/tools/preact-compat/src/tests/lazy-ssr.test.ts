@@ -10,7 +10,6 @@
  * using hooks threw "Hook called outside of a component render".
  */
 import type { ComponentFn } from '@pyreon/core'
-import { h } from '@pyreon/core'
 import { disableHydrationWarnings, hydrateRoot, mount } from '@pyreon/runtime-dom'
 import { renderToStream, renderToString } from '@pyreon/runtime-server'
 import { useState } from '../hooks'

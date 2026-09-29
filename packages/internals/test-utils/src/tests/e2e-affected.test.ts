@@ -67,6 +67,7 @@ describe('selectSuites', () => {
       'vitest.setup.ts',
       '.bun-version',
       '.github/workflows/ci.yml',
+      '.github/actions/setup-pyreon/action.yml',
       'scripts/e2e-affected.ts',
       'playwright.config.ts',
       'e2e-configs/zero-hmr.config.ts',

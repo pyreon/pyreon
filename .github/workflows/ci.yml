@@ -44,20 +44,10 @@ on:
 # - merge_group  → unique queue ref per attempt, cancel:false → each merge-queue run completes (the queue requires it).
 # - pull_request → per-PR ref, cancel:true → newest commit on the PR wins (unchanged).
 #
-# **YAML interpolation gotcha** — a bare `${{ github.event_name == 'pull_request' }}`
-# interpolates to the literal string "true" or "false". YAML then re-parses
-# `cancel-in-progress: false` as the BOOLEAN false (good), BUT `cancel-in-
-# progress: true` as boolean true… and crucially, **GitHub's runner has been
-# observed to treat the string-interpolated form as truthy even when it
-# evaluates to `false`** (empirical: every push:main run cancelled at the
-# pending stage despite the expression evaluating to `false`). The
-# documented workaround is the explicit ternary `&& true || false` — forces
-# the expression to return a JSON-native boolean that the runner's
-# concurrency engine reads correctly.
-#
-# Bisect-verifiable: revert to the bare comparison → push:main runs cancel
-# at the pending stage (never run any jobs); apply the ternary → push:main
-# runs progress to completion.
+# Keep the `&& true || false` ternary below. A bare `${{ … == 'pull_request' }}`
+# interpolates to the STRING "false", which the runner's concurrency engine was
+# observed to treat as truthy: every push:main run cancelled at the pending stage
+# and ran no jobs. The ternary yields a JSON-native boolean.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' && true || false }}
@@ -70,7 +60,7 @@ permissions:
 # by every in-flight PR. Runner-minutes are unmetered (public repo); SLOTS
 # and DAG LEVELS are the whole constraint — measured 2026-09-01 an ordinary
 # code PR spent 641 min queued for 24 min of work. So the shape is: as few
-# jobs as the isolation genuinely needs, two levels deep, and a gate that
+# jobs as the isolation genuinely needs, three stages deep, and a gate that
 # takes seconds is a STEP, never a job.
 #
 #   level 1   Install            install + decide + lib/ (one job, one failure semantics)
@@ -80,7 +70,7 @@ permissions:
 #             Test (browser)     vitest --browser (Playwright)
 #             Release Build      the literal next-release build + pack rehearsal
 #             bootstrap-exit-codes                      only when bootstrap.ts changed
-#             Test               live aggregator for preflight + all four matrices
+#             Test               final verdict for preflight + all four matrices
 #
 # Fail-fast is intentionally TWO-LAYERED:
 #   1. Fast Gates finishes before any expensive level-3 runner is eligible.
@@ -109,6 +99,10 @@ permissions:
 # lockfile hash inside setup-pyreon.
 env:
   BOOTSTRAP_KEY: bootstrap-${{ github.run_id }}
+  # All selectors in one run compare against the same immutable base, even
+  # when main advances while matrices are queued. Full-history checkouts
+  # contain this commit; a missing commit fails closed in affected.ts.
+  CI_BASE: ${{ github.event.pull_request.base.sha }}
 
 jobs:
   # ── Install: ONE job for install → decide → build lib/ ─────────────────
@@ -225,7 +219,7 @@ jobs:
         id: lock-diff
         if: github.event_name == 'pull_request'
         run: |
-          if git diff --quiet "origin/${{ github.base_ref }}" -- bun.lock; then
+          if git diff --quiet "$CI_BASE" -- bun.lock; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "bun.lock matches the base — main's node_modules entry serves this PR; not saving a per-ref copy."
           else
@@ -261,8 +255,7 @@ jobs:
             echo "Non-PR event (${{ github.event_name }}) → code=true, affected=true (full run)."
             exit 0
           fi
-          git fetch origin "${{ github.base_ref }}" || true
-          BASE="origin/${{ github.base_ref }}"
+          BASE="$CI_BASE"
           # Fail-closed: ONLY a clean "false" narrows the run. Any other value
           # (empty output, a non-zero affected.ts exit, an unexpected string)
           # defaults to `true` → run the full set. A skipped heavy job reports
@@ -285,31 +278,28 @@ jobs:
           # filter can never disagree (same script, same base, deterministic).
           TC_ALL='["core","fundamentals","internals","native","tools","ui","ui-system","zero","examples"]'
           TEST_ALL='["core","fundamentals","internals","native-rest","tools","ui","ui-system","zero"]'
-          # native-rest keys a compile-verdict cache on its own cell name, so it
-          # must not share a runner (a merged cell would change the key).
-          NATIVE_ISO='native-rest'
           emit() { # emit <prefix> <json>
             echo "$1=$2" >> "$GITHUB_OUTPUT"
             if [ "$2" = "[]" ]; then echo "$1-has=false" >> "$GITHUB_OUTPUT"; else echo "$1-has=true" >> "$GITHUB_OUTPUT"; fi
             echo "$1 matrix: $2"
           }
-          batch() { # batch <prefix> <json-list> <max> [isolate-csv]
-            local prefix="$1" json="$2" max="$3" iso="${4:-}" out
+          batch() { # batch <profile> <json-list> <max>
+            local prefix="$1" json="$2" max="$3" out
             if [ "$json" = "[]" ]; then emit "$prefix" "[]"; return 0; fi
             # Fail-closed: if batching errors, fall back to the UNBATCHED list
             # (slower, but never fewer cells than were selected).
-            if ! out=$(bun run scripts/ci-batch.ts --items="$json" --max="$max" --isolate="$iso"); then
+            if ! out=$(bun run scripts/ci-batch.ts --profile="$prefix" --items="$json" --max="$max"); then
               echo "ci-batch failed for $prefix — falling back to unbatched"
-              emit "$prefix" "$json"; return 0
+              out=$(echo "$json" | jq -c 'map({name: ., members: .})')
             fi
             emit "$prefix" "$out"
           }
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             batch typecheck "$TC_ALL" 3
-            batch test "$TEST_ALL" 2 "$NATIVE_ISO"
+            batch test "$TEST_ALL" 3
             exit 0
           fi
-          BASE="origin/${{ github.base_ref }}"
+          BASE="$CI_BASE"
           # pick <output-prefix> <full-json> <cat>:<affected-args>...
           # Fail-closed: any affected.ts error, or a root-file `--filter=*`
           # verdict, emits the FULL list — never a silently-narrowed one.
@@ -352,15 +342,16 @@ jobs:
             "native-rest:--category=native --exclude=native/compiler" \
             "tools:--category=tools" "ui:--category=ui" \
             "ui-system:--category=ui-system" "zero:--category=zero")
-          # typecheck: 9 categories -> 3 cells (~12 min serial).
-          # test: 7 non-native categories -> 2 cells, plus native-rest = 3 cells.
+          # Three runners for each family, packed using separate measured
+          # profiles. Native-rest's cache writer follows membership, so its
+          # spare capacity can now carry other categories.
           batch typecheck "$TC_SEL" 3
-          batch test "$TEST_SEL" 2 "$NATIVE_ISO"
+          batch test "$TEST_SEL" 3
       - name: Select affected e2e suites
         id: e2e
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            SUITES=$(bun run scripts/e2e-affected.ts --base=origin/${{ github.base_ref }})
+            SUITES=$(bun run scripts/e2e-affected.ts --base="$CI_BASE")
           else
             SUITES=$(bun run scripts/e2e-affected.ts --all)
           fi
@@ -373,7 +364,12 @@ jobs:
           # contention the cells serialise through the queue anyway and the
           # split just multiplies the fixed cost. See scripts/ci-batch.ts.
           NAMES=$(echo "$SUITES" | jq -c '[.[].name]')
-          MATRIX=$(bun run scripts/ci-batch.ts --items="$NAMES" --max=4)
+          # Same fail-closed rule as the other matrices: a batcher error runs
+          # every selected suite unbatched instead of failing Install outright.
+          if ! MATRIX=$(bun run scripts/ci-batch.ts --profile=e2e --items="$NAMES" --max=4); then
+            echo "ci-batch failed for e2e — falling back to unbatched"
+            MATRIX=$(echo "$NAMES" | jq -c 'map({name: ., members: .})')
+          fi
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
           if [ "$MATRIX" = "[]" ]; then
             echo "has=false" >> "$GITHUB_OUTPUT"
@@ -385,10 +381,9 @@ jobs:
       - name: Detect scaffold-relevant changes
         id: scaffold
         run: |
-          # The seven scaffold cells, packed into 3 batches (see ci-batch.ts
-          # for why a cell is not free: each one was its own runner — six
-          # queue entries + six setups for ~6 min of work apiece, and under
-          # slot contention the six serialised anyway). `emit` writes BOTH
+          # All seven scaffold fixtures currently fit on one runner after
+          # removing repeated root bootstrap. The adaptive batcher can grow
+          # to three batches if the measured workload grows. `emit` writes BOTH
           # outputs on every exit path so the cell job can never see a
           # `has=true` with an empty matrix.
           CELLS='["cpa-smoke-app-vercel","cpa-smoke-app-static","cpa-smoke-blog-cloudflare","cpa-smoke-dashboard-vercel-full","cpa-smoke-dashboard-node-supabase","cpa-smoke-app-node","cpa-smoke-monorepo-vercel"]'
@@ -396,7 +391,7 @@ jobs:
             echo "has=$1" >> "$GITHUB_OUTPUT"
             if [ "$1" = "true" ]; then
               local out
-              if ! out=$(bun run scripts/ci-batch.ts --items="$CELLS" --max=3); then
+              if ! out=$(bun run scripts/ci-batch.ts --profile=scaffold --items="$CELLS" --max=3); then
                 # Batcher failure must never DROP a cell — fall back to one
                 # cell per batch, which is exactly the pre-batching shape.
                 echo "ci-batch failed for scaffold — falling back to unbatched"
@@ -414,7 +409,7 @@ jobs:
             echo "Full scaffold matrix forced (event: ${{ github.event_name }})"
             exit 0
           fi
-          BASE="origin/${{ github.base_ref }}"
+          BASE="$CI_BASE"
           # Changed files (handles fetch failures cleanly — fall back to
           # running the matrix if we can't determine the diff).
           if ! CHANGED=$(git diff --name-only "$BASE"...HEAD 2>/dev/null); then
@@ -439,6 +434,7 @@ jobs:
           scripts/scaffold-smoke.ts
           scripts/affected.ts
           .github/workflows/ci.yml
+          .github/actions/
           bun.lock
           package.json
           EOF
@@ -464,7 +460,7 @@ jobs:
             echo "Full run forced (event: ${{ github.event_name }})"
             exit 0
           fi
-          BASE="origin/${{ github.base_ref }}"
+          BASE="$CI_BASE"
           if ! CHANGED=$(git diff --name-only "$BASE"...HEAD 2>/dev/null); then
             # Couldn't determine diff — safe default = run.
             echo "run=true" >> "$GITHUB_OUTPUT"
@@ -664,8 +660,7 @@ jobs:
             echo "run=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          git fetch origin "${{ github.base_ref }}" || true
-          if ! CHANGED=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" 2>/dev/null); then
+          if ! CHANGED=$(git diff --name-only "$CI_BASE...HEAD" 2>/dev/null); then
             echo "run=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -769,44 +764,13 @@ jobs:
   # Every downstream job: checkout → setup-bun → restore run_id caches.
   # No bun install needed — caches are guaranteed fresh from Install job.
 
-  # ── Typecheck: per-category matrix (P3b) ─────────────────────────────
-  # Sharded by `packages/<category>/` (8 cells in parallel). Each cell
-  # narrows the affected-filter to its own slice via
-  # `scripts/affected.ts --category=<name>`; cells with no affected
-  # packages in their category skip gracefully (empty filter = no-op).
-  # The `Test` aggregator (level 3) consumes these cells — there is no
-  # separate `Typecheck` required check any more (#3213 consolidated the
-  # aggregators; branch protection pins `Test`).
-  #
-  # Why shard: pre-P3b Typecheck ran `bun run $FILTER --sequential
-  # typecheck` against EVERY affected package on one runner (~270s
-  # median for full-suite runs because we must run sequentially to
-  # avoid 7+ heavy tsc invocations OOM-killing the 7GB runner). Sharding
-  # parallelizes across runners — per-cell wall-clock = ~max-of-category
-  # (90-120s typical) instead of the full sum. Critical-path drop
-  # ~150-180s.
-  #
-  # Why 8 cells (not 5 as the plan first sketched): every `packages/*`
-  # category is its own cell — including `internals` (4 pkgs), `ui` (3
-  # private), `native` (6, newer ios/android stuff). The matrix infra
-  # cost is per-cell startup overhead (~30s composite restore); going
-  # 5→8 cells adds ~3 runners but each finishes in ~30-60s anyway
-  # because every cell carries fewer packages. Smaller cells also fit
-  # under the 10min job timeout with comfortable margin on the OOM-
-  # sensitive `--sequential` path.
+  # Typecheck categories are packed into at most three runners using their
+  # own measured costs. Each category still executes sequentially to cap peak
+  # tsc memory. Narrow PRs use fewer runners when the total work is small.
   typecheck-cell:
     name: typecheck (${{ matrix.name }})
-    # DYNAMIC matrix (2026-07): only categories with affected packages spawn a
-    # cell — `changes` computes the list with the SAME script+base each cell
-    # uses, so the spawn decision and the cell's own filter can never disagree.
-    # Pre-change all 9 cells booted a runner on every PR and most self-skipped
-    # via an empty filter (~30–60s of queue+checkout+setup per no-op). The
-    # `typecheck` aggregator treats a skipped/empty matrix as a pass.
-    # Fail-closed selection: an internal batching/detection error falls back to
-    # every category. A failed Install itself does NOT launch cells; the Test
-    # aggregate reports Install red without spending the matrix capacity.
-    # `examples` is a pseudo-category (affected.ts maps it to the top-level
-    # examples/ dir) — example type regressions were invisible to CI before it.
+    # Install and each cell use the same affected selector and immutable base.
+    # The final Test verdict rejects a skipped matrix when work was selected.
     needs: [install, fast-gates]
     if: ${{ needs.install.result == 'success' && needs.fast-gates.result == 'success' && needs.install.outputs.typecheck-has == 'true' }}
     runs-on: ubuntu-latest
@@ -898,9 +862,8 @@ jobs:
             CATEGORY_GLOB="./packages/$category/*"
           fi
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch origin "${{ github.base_ref }}" || true
             FILTER=$(bun run scripts/affected.ts \
-              --base=origin/${{ github.base_ref }} \
+              --base="$CI_BASE" \
               --category="$category")
             # Root-file change in a PR returns --filter=* from the
             # script (the only safe escalation when blast radius is
@@ -952,43 +915,13 @@ jobs:
           key: tsbuildinfo-${{ runner.os }}-${{ github.run_id }}-${{ matrix.name }}
 
 
-  # ── Test: per-category matrix (P3b) ──────────────────────────────────
-  # Same shard shape as `typecheck-cell` above (8 cells, per-category).
-  # The `Test` aggregator (level 3) keeps the stable `Test` required check
-  # name for branch protection — it also fails on a red typecheck cell.
-  # See `typecheck-cell` comment for shard rationale.
-  #
-  # P3c re-classification: needs `bootstrap`, not `install`. Most tests
-  # use the bun condition → src/, but TWO classes of test legitimately
-  # need lib/: bundle-size tests (`@pyreon/charts/src/tests/bundle-size`)
-  # measure the BUILT lib/ in bytes, and tests that boot a nested Vite
-  # SSR build at test time (`@pyreon/vite-plugin/src/tests/rocketstyle-
-  # collapse`) hit Vite's hardcoded node-condition resolver which
-  # requires lib/ for @pyreon/vite-plugin itself. Both surfaced as
-  # `test (tools)` + `test (fundamentals)` failures on the first P3c
-  # CI run; flipping back to `bootstrap` is the safe fix. Lib-free
-  # tests still benefit indirectly — they run faster within the cell
-  # because Install is now ~60s instead of ~210s, freeing the runner
-  # pool sooner for everything downstream.
+  # Tests need lib/ for bundle measurements and nested Vite builds. Pack all
+  # selected categories into at most three runners. The native compiler itself
+  # runs only in native-validate.yml; native-rest covers its sibling packages.
   test-cell:
     name: test (${{ matrix.name }})
-    # Dynamic matrix (see typecheck-cell): only categories with affected
-    # packages spawn — the doc-INPUT mapping is preserved because Install's
-    # decide steps use the same affected.ts (anti-patterns.md /
-    # docs/patterns/** → @pyreon/mcp → the `tools` cell spawns and runs its
-    # parser test). The `Test` aggregator treats a skipped/empty matrix as a
-  # pass. Install/Fast Gates failures are reported by the required Test
-  # aggregate while this expensive matrix stays idle.
-    # NO cost-gate edge (2026-09). The 2026-07 pass dropped the `typecheck`
-    # edge (four queue rounds before a test started) and kept `lint` as a
-    # cheap gate; with Lint now a step of Fast Gates, gating on it would
-    # re-add a DAG level — and under slot contention a level is a full queue
-    # round (tens of minutes, measured), while lint failures on CI are rare
-    # (0 of the 25 most recent failed runs — the pre-push hook catches them).
-    # A lint or typecheck failure no longer skips tests; the merge is
-    # blocked by the required Fast Gates / Test checks regardless, so the
-    # only cost is some wasted runner time on a doomed
-    # run — cheaper than taxing every green run with two extra queue rounds.
+    # Native-rest can share a runner: its cache key is stable by CATEGORY,
+    # and only the batch containing that category restores/saves the store.
     needs: [install, fast-gates]
     if: ${{ needs.install.result == 'success' && needs.fast-gates.result == 'success' && needs.install.outputs.test-has == 'true' }}
     runs-on: ubuntu-latest
@@ -1012,7 +945,7 @@ jobs:
     #
     # `native-rest` (every other packages/native/* package) stays here: small
     # (~1-6 min) and independent of the compile-verdict store.
-    timeout-minutes: ${{ startsWith(matrix.name, 'native') && 25 || 20 }}
+    timeout-minutes: ${{ contains(matrix.members, 'native-rest') && 25 || 20 }}
     strategy:
       fail-fast: true
       matrix:
@@ -1035,19 +968,18 @@ jobs:
           node-version: '24'
           # P3c — needs lib/ for bundle-size tests + nested-Vite-SSR
           # tests; default `restore-bootstrap: 'true'` is correct.
-      # Compile-verdict cache for the `native-rest` cell (validate-cache.ts —
+      # Compile-verdict cache for the batch containing `native-rest` (validate-cache.ts —
       # content-addressed by validator kind + compiler version + stub text +
-      # exact bytes, so a stale entry can only miss, never lie). ONE cell is
-      # ONE writer, which is what lets a restore-newest/save-per-sha store
-      # converge — the property the retired native-compiler shards lacked (see
-      # the comment above `timeout-minutes`).
+      # exact bytes, so a stale entry can only miss, never lie). Membership
+      # selects exactly ONE writer, and the fixed category key survives batch
+      # rebalancing. No isolated runner is needed to preserve this store.
       - name: Restore native compile-verdict cache
-        if: startsWith(matrix.name, 'native')
+        if: contains(matrix.members, 'native-rest')
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/pyreon-native-validate
-          key: native-verdicts-ci-${{ runner.os }}-${{ matrix.name }}-${{ github.sha }}
-          restore-keys: native-verdicts-ci-${{ runner.os }}-${{ matrix.name }}-
+          key: native-verdicts-ci-${{ runner.os }}-native-rest-${{ github.sha }}
+          restore-keys: native-verdicts-ci-${{ runner.os }}-native-rest-
 
       - name: Run tests (${{ matrix.name }})
         # PYREON_SKIP_SLOW_TESTS=1 makes individual tests opt OUT of the
@@ -1098,9 +1030,8 @@ jobs:
               ;;
           esac
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch origin "${{ github.base_ref }}" || true
             FILTER=$(bun run scripts/affected.ts \
-              --base=origin/${{ github.base_ref }} \
+              --base="$CI_BASE" \
               $AFFECTED_ARGS)
             if [ "$FILTER" = "--filter=*" ]; then
               FILTER="$FULL_FILTER"
@@ -1150,50 +1081,20 @@ jobs:
           echo "::endgroup::"
           done
 
-      # Save the verdict store from EVERY run, PRs included. It was main-only
-      # (the "save on main only" rule that exists for the 1 GB tarball
-      # store), but this store is <1 MB and content-addressed — a verdict is
-      # a pure function of (compiler version, stub text, exact bytes), so a
-      # PR cannot "poison" it, only add entries — and main-only saving had a
-      # real cost: main's run is CANCELLED whenever a newer merge queues
-      # behind it (27 of the last 60), so the store went unsaved for hours
-      # and the next run paid ~60 min of cold `kotlinc`/`swiftc` (measured
-      # 1325s + 1312s + 931s on run 33532534054, vs ~45s warm). The sha in
-      # the key keeps entries distinct; the restore's bare prefix picks the
-      # newest. `if: always()` so a red run still saves what it derived.
-      # This step MUST live in THIS matrix job: the first cut sat in the
-      # `Test` aggregator, where `matrix.name` doesn't exist (condition
-      # never true) and the derived store isn't on disk — so zero caches
-      # were ever saved and every native cell stayed cold at ~15-17min.
+      # Small content-addressed verdicts are useful even after a failure.
+      # Exactly one batch owns native-rest; preserve its existing key namespace.
       - name: Save native compile-verdict cache
-        if: always() && startsWith(matrix.name, 'native')
+        if: always() && contains(matrix.members, 'native-rest')
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/pyreon-native-validate
-          key: native-verdicts-ci-${{ runner.os }}-${{ matrix.name }}-${{ github.sha }}
+          key: native-verdicts-ci-${{ runner.os }}-native-rest-${{ github.sha }}
 
 
-  # ── E2E: real-Chromium app-level tests against example apps ──────────
-  # Parallel, flake-resilient matrix. Before 2026-05 this was ONE runner
-  # executing 11 suites SEQUENTIALLY — wall-clock = the SUM (~6-10 min),
-  # and a flake in suite N skipped every suite after it (an unrelated
-  # storage-hydration flake once skipped the whole zero-hmr gate). Now:
-  #
-  #  • `e2e-decide` maps the PR's changed paths → only the suites those
-  #    changes can affect (scripts/e2e-affected.ts). push:main and
-  #    merge_group always run ALL — the gate protecting main never
-  #    trusts the narrowing; false-negatives are the only real danger.
-  #  • `e2e-suite` is a `fail-fast: true` matrix. A real failure has already
-  #    exhausted that suite's configured retries; cancelling sibling batches
-  #    then releases their runner slots instead of spending them on a commit
-  #    that cannot merge.
-  #  • Every playwright*.config.ts uses `retries: process.env.CI ? 2 : 0`
-  #    so a flaky spec self-heals within its job (3 attempts); a real
-  #    bug fails all 3. Local stays 0 for honest, fast feedback.
-  #  • `e2e` (THIS exact check name) is the STABLE required check: it
-  #    aggregates the matrix so branch-protection's "E2E" requirement
-  #    keeps working no matter which / how many matrix jobs ran, and an
-  #    empty matrix (docs-only PR) resolves as a green skip.
+  # E2E suites retain their individual commands and Playwright retries, packed
+  # into at most four runners using measured E2E costs. The first confirmed
+  # suite failure stops its batch and cancels sibling batches. Artifacts still
+  # upload, and Test requires success from every selected matrix family.
   e2e-suite:
     name: e2e (${{ matrix.name }})
     # e2e suites boot example apps via `vite preview` / `vite build`, which
@@ -1300,27 +1201,19 @@ jobs:
         # the flake impossible to ignore so the rate gets watched.
         if: always()
         run: |
-          OUT=/tmp/e2e-out.txt
-          [ -f "$OUT" ] || exit 0
-          # Playwright's line/list reporter prints a final "  N flaky"
-          # and lists each flaky title with a "(retry #N)" suffix.
-          FLAKY=$(grep -E '[0-9]+ flaky' "$OUT" | grep -vE '\b0 flaky\b' || true)
-          if [ -z "$FLAKY" ]; then
-            echo "No flaky specs in suite '${{ matrix.name }}'."
-            exit 0
-          fi
-          TITLES=$(grep -E '\(retry #[0-9]+\)' "$OUT" | sed 's/^[[:space:]]*//' | sort -u || true)
-          echo "::warning title=Flaky e2e suite::'${{ matrix.name }}' had spec(s) that passed only on retry — $FLAKY"
-          {
-            echo "### ⚠️ Flaky specs in e2e suite \`${{ matrix.name }}\`"
-            echo ""
-            echo "Passed only after a retry (\`retries: 2\`). Green, but the flake rate should be watched / root-caused — not left to the retry mask."
-            echo ""
-            echo '```'
-            echo "$FLAKY"
-            [ -n "$TITLES" ] && { echo ""; echo "$TITLES"; }
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          bun scripts/ci-flake-report.ts \
+            --input=/tmp/e2e-out.txt \
+            --suite='${{ matrix.name }}' \
+            --json='.ci-artifacts/e2e-flakes/${{ matrix.name }}.json' \
+            --summary="$GITHUB_STEP_SUMMARY"
+      - name: Upload machine-readable flake report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-flakes-${{ matrix.name }}
+          path: .ci-artifacts/e2e-flakes/${{ matrix.name }}.json
+          if-no-files-found: error
+          retention-days: 30
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -1376,11 +1269,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
+        id: setup
       # A scaffolded app's `bun install` is the dominant per-cell cost, and
       # it ran against an EMPTY tarball store — every cell cold-fetched vite,
       # rolldown and friends from the registry. The monorepo's store holds
       # nearly all of them; restore-only (Install saves it on main).
       - name: Restore bun download cache
+        if: steps.setup.outputs.bun-cache-restored != 'true'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
@@ -1410,39 +1305,23 @@ jobs:
       - name: Run scaffold-smoke batch — ${{ matrix.name }}
         env:
           MEMBERS: ${{ matrix.members }}
+          # setup-pyreon already restored/built this commit's lib/. Each
+          # temporary workspace mutates bun.lock, invalidating bootstrap's
+          # global salt and otherwise rebuilding ALL packages for every app.
+          # Skip only our root bootstrap; dependency install scripts and each
+          # generated app's build/typecheck/doctor/browser checks still run.
+          PYREON_BOOTSTRAP_SKIP: '1'
         run: bun scripts/scaffold-smoke.ts --fail-fast $MEMBERS
 
-  # ── Test: the ONE aggregator for every dynamic matrix ────────────────────
-  # Branch protection pins a stable name; matrix cells have dynamic names.
-  # This used to be four aggregator jobs (Test, Typecheck, E2E, Scaffold
-  # Smoke), each a runner for 2 s of shell behind a 50-minute slot wait
-  # (measured 2026-09-01). One job now aggregates all four matrices; the
-  # other three names were dropped from protection. The summary names WHICH
-  # matrix failed, so nothing is lost but three queue entries per PR.
-  #
-  # Semantics per matrix (unchanged from the four jobs it replaces):
-  #   success  every cell passed (or self-skipped via an empty filter)
-  #   skipped  the matrix was `if:`-gated off — nothing affected — a PASS
-  #   e2e is special: the decide said RUN but the matrix did not succeed is a
-  #   contradiction (#2978's shape) and reads as red, never green-via-skip.
-  # Fail-closed on both prerequisites: if Install or Fast Gates did not
-  # succeed, this is red regardless of which expensive cells were suppressed.
+  # Stable required verdict for every dynamic matrix. Run after all dependencies
+  # finish; validate their native scheduler results and selection outputs.
+  # Optional API diagnostics add failed-cell links, with a ten-second deadline.
   test:
     name: Test
-    # Becomes eligible only after preflight and every dynamic matrix reaches a
-    # terminal state. The previous API-polling shape started after Install and
-    # occupied a runner for the entire fan-out (hours under contention) merely
-    # to compute a three-second verdict. A little final queue latency is less
-    # damaging than withholding one of the org's 20 slots from healthy PRs.
-    # Its OWN conclusion is the required `Test` check, so it needs only
-    # `actions: read`: no job in this workflow holds a token that can write
-    # checks.
-    #
-    # `always()`: a failed Install or Fast Gates must still produce a red
-    # `Test`, never a skipped-green one.
-    #
-    # Re-runs: use "Re-run failed jobs" (a red Test is itself included) or
-    # explicitly re-run this job after re-running one matrix cell.
+    # No runner-held polling and no API dependency on a healthy run. Re-run
+    # failed jobs to include this verdict after repairs; if re-running a single
+    # cell manually, also re-run Test. Its token can read jobs, not write checks.
+    # always() ensures failed prerequisites produce a red verdict, not a skip.
     needs: [install, fast-gates, typecheck-cell, test-cell, e2e-suite, scaffold-smoke-cell]
     if: always()
     runs-on: ubuntu-latest
@@ -1463,7 +1342,7 @@ jobs:
       - name: Aggregate typecheck / test / e2e / scaffold matrices
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          E2E_SELECTED: ${{ needs.install.outputs.e2e-has }}
+          NEEDS_JSON: ${{ toJSON(needs) }}
         run: bun scripts/ci-aggregate.ts
 
   build:
@@ -1551,8 +1430,7 @@ jobs:
         if: ${{ !cancelled() && steps.setup.outcome == 'success' && github.event_name == 'pull_request' }}
         run: |
           set -euo pipefail
-          git fetch origin "${{ github.base_ref }}" || true
-          FILTER=$(bun run scripts/affected.ts --changed-only --base=origin/${{ github.base_ref }})
+          FILTER=$(bun run scripts/affected.ts --changed-only --base="$CI_BASE")
           if [ "$FILTER" = "--filter=*" ]; then
             echo "Root-file change → blast radius unknowable; full coverage runs on main."
             exit 0
