@@ -5,6 +5,7 @@
 '@pyreon/zero': patch
 '@pyreon/native-compiler': patch
 '@pyreon/create-zero': patch
+'@pyreon/cli': patch
 ---
 
 Plain Mode is now production-ready: write reactive code as plain JavaScript (`let count = state(0)`, `count++`, `{count}`) and the compiler emits fine-grained signals.
@@ -19,6 +20,8 @@ Plain Mode is now production-ready: write reactive code as plain JavaScript (`le
   - Fixed: an `.update` substitution discarded rewrites inside the callback body. `.update` inside an effect or computed no longer adds a subscription.
   - Fixed: marker names that collide with a local binding are aliased, and `type` modifiers on kept imports are preserved.
   - Exported signals now decline, since their importers still call them.
+
+  - `pyreon plain` skips test and spec files unless `--include-tests` is passed. Test runners often run without the `pyreon()` plugin, where plain code can't compile.
 
   Across this repo's 883 example files: 86 declined before, 0 now.
 - **Native compiler.** Plain Mode's `void (…)` tracking hints lower to the plain value. Before, a derived value with a conditional read emitted an empty string on iOS and Android. The emit is now deterministic: name counters are reset per file, where they used to drift with whatever the process compiled first.
