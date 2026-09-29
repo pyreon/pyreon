@@ -575,7 +575,7 @@ class CounterInstrumentedTest {
         val coldReader = PyreonDatabase(composeRule.activity.applicationContext)
         val onDisk = coldReader.count("notes")
 
-        if (onDisk != before + 1) {
+        if (onDisk != (before + 1).toLong()) {
             throw AssertionError(
                 "A freshly-constructed PyreonDatabase over the app's filesDir saw " +
                     "$onDisk records, expected ${before + 1}. The UI reported the write, " +
@@ -882,10 +882,10 @@ class CounterInstrumentedTest {
     // compiles); presence is locked by the emit test.
     @Test
     fun rocketstyleComponentRendersAndFlipsOnDevice() {
-        composeRule.onNodeWithText("Badge:ok").assertIsDisplayed()
+        composeRule.onNodeWithText("Badge: ok").assertIsDisplayed()
         repeat(3) { composeRule.onNodeWithText("Increment").performClick() }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Badge:warn").assertIsDisplayed()
+        composeRule.onNodeWithText("Badge: warn").assertIsDisplayed()
     }
 
     // Tier-2 state machine (createMachine) asserted in the REAL Compose

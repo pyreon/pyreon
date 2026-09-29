@@ -87,7 +87,7 @@ describe('form-binding — Kotlin (mirror)', () => {
   it('init carries validators + onSubmit; Field binds value/onValueChange through setValue', () => {
     const out = transform(FORM_APP, { target: 'kotlin' }).code
     expect(out).toContain(
-      '"username" to { v: String -> (if (v.length < 3) "At least 3 characters" else "") }',
+      '"username" to { v: String -> (if (v.length.toLong() < 3L) "At least 3 characters" else "") }',
     )
     expect(out).toContain('onSubmit = { values ->')
     expect(out).toContain('println(values)')

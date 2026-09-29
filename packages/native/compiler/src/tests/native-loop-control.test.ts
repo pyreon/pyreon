@@ -61,7 +61,7 @@ describe('break / continue lower faithfully (were semantic mis-emits)', () => {
   it('Kotlin: plain break + continue inside loops', () => {
     const out = transform(LOOPS, { target: 'kotlin' }).code
     expect(out).toContain('continue')
-    expect(out).toMatch(/if \(k > 5\) \{\n\s+break\n\s+\}/)
+    expect(out).toMatch(/if \(k > 5L?\) \{\n\s+break\n\s+\}/)
   })
 
   it('Swift: labeled loop + labeled break', () => {
@@ -129,7 +129,7 @@ describe('comma-operator sequences lower in statement position', () => {
     const sw = transform(COMMA, { target: 'swift' }).code
     expect(sw).toMatch(/a = 1\n\s+b = 2/)
     const kt = transform(COMMA, { target: 'kotlin' }).code
-    expect(kt).toMatch(/a = 1\n\s+b = 2/)
+    expect(kt).toMatch(/a = 1L?\n\s+b = 2/)
   })
 
   it('statement-position sequence in a block body expands too', () => {
