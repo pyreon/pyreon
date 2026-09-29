@@ -1117,6 +1117,44 @@ function emitSwiftMemberCallArgs(
       }
     }
   }
+  // `reduce((acc, el) => …, seed)` — the element is the SECOND param and the
+  // accumulator the first, so the element-first seeding above misses it and
+  // `s + m.qty * RATE` emitted a bare `Int * Double`. Bind the element to the
+  // receiver's element type and the accumulator to the seed's type (the
+  // element's, when seedless — JS seeds from `arr[0]`).
+  if (
+    callee.kind === 'member' &&
+    callee.property === 'reduce' &&
+    cb !== undefined &&
+    cb.kind === 'arrow' &&
+    cb.params.length >= 2
+  ) {
+    const recvT = inferType(callee.object, _activeInferCtx)
+    if (recvT.kind === 'array') {
+      const seed = e.args[1]
+      const accT = seed !== undefined ? inferType(seed, _activeInferCtx) : recvT.element
+      const bindings: [string, TypeIR][] = [
+        [cb.params[0]!, accT],
+        [cb.params[1]!, recvT.element],
+      ]
+      const saved = bindings.map(([n]) => ({
+        n,
+        had: _activeInferCtx.locals.has(n),
+        prev: _activeInferCtx.locals.get(n),
+      }))
+      for (const [n, t] of bindings) {
+        if (t.kind !== 'unknown') _activeInferCtx.locals.set(n, t)
+      }
+      try {
+        return e.args.map((a) => emitSwiftExpr(a, indent))
+      } finally {
+        for (const x of saved.reverse()) {
+          if (x.had) _activeInferCtx.locals.set(x.n, x.prev!)
+          else _activeInferCtx.locals.delete(x.n)
+        }
+      }
+    }
+  }
   return e.args.map((a) => emitSwiftExpr(a, indent))
 }
 
@@ -5805,9 +5843,20 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
     case 'for-of': {
       const pad = ' '.repeat(indent)
       const iter = emitSwiftExpr(s.iterable, indent)
+      // The item carries the iterated array's element type in the body's
+      // scope — the sibling of the `for-range` counter registration below.
+      // Unregistered, `acc += it * RATE` over an `[Int]` inferred `it` as
+      // unknown, the binary coercion never fired, and swiftc rejected
+      // `Int * Double` (Kotlin promotes, so only iOS failed).
+      const iterT = inferType(s.iterable, _activeInferCtx)
+      const hadItem = _activeInferCtx.locals.has(s.item)
+      const prevItem = _activeInferCtx.locals.get(s.item)
+      if (iterT.kind === 'array') _activeInferCtx.locals.set(s.item, iterT.element)
       const lines = s.body
         .map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`)
         .join('\n')
+      if (hadItem) _activeInferCtx.locals.set(s.item, prevItem!)
+      else _activeInferCtx.locals.delete(s.item)
       const lbl = s.label !== undefined ? `${swiftIdent(s.label)}: ` : ''
       return `${lbl}for ${swiftIdent(s.item)} in ${iter} {\n${lines}\n${pad}}`
     }

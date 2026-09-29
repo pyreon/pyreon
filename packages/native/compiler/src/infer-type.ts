@@ -331,6 +331,66 @@ export function widenFloatSignals(
   // targets — while the same source with RATE inside the component widened.
   moduleConsts?: Map<string, TypeIR> | undefined,
 ): void {
+  widenFloatSignalDecls(c, storeDefs, structDefs, moduleConsts)
+  markIntegerWritesToFloatSignals(c)
+}
+
+/**
+ * The WRITE half of the widening: an integer literal written to a Double
+ * signal (`x.set(2)` beside `signal(0.5)`) must carry the float marker, or it
+ * emits as `x = 2`. Swift coerces the literal; Kotlin binds it Int and rejects
+ * `assignment type mismatch: actual type is 'Int', but 'Double' was expected`.
+ * The declaration side of this family was covered and the write side was not,
+ * so the reset-button shape (`rate.set(1)`) failed on Android only.
+ *
+ * Marks only a bare (optionally negated) integer literal — the one argument
+ * whose type the marker fully decides.
+ */
+function markIntegerWritesToFloatSignals(c: ComponentIR): void {
+  const floats = new Set<string>()
+  for (const d of c.decls) {
+    if (d.kind === 'signal' && d.type.kind === 'number' && d.type.float === true) floats.add(d.name)
+  }
+  if (floats.size === 0) return
+  const visit = (n: unknown): void => {
+    if (Array.isArray(n)) {
+      for (const x of n) visit(x)
+      return
+    }
+    if (n === null || typeof n !== 'object') return
+    const node = n as Record<string, unknown> & { kind?: string }
+    if (node.kind === 'call') {
+      const callee = node.callee as
+        | { kind?: string; property?: string; object?: { kind?: string; name?: string } }
+        | undefined
+      const args = node.args as ExprIR[] | undefined
+      if (
+        callee?.kind === 'member' &&
+        callee.property === 'set' &&
+        callee.object?.kind === 'identifier' &&
+        typeof callee.object.name === 'string' &&
+        floats.has(callee.object.name) &&
+        args !== undefined &&
+        args.length === 1
+      ) {
+        const a = args[0]!
+        const lit = a.kind === 'unary' && (a.op === '-' || a.op === '+') ? a.argument : a
+        if (lit.kind === 'literal' && typeof lit.value === 'number' && Number.isInteger(lit.value)) {
+          lit.float = true
+        }
+      }
+    }
+    for (const k of Object.keys(node)) visit(node[k])
+  }
+  visit(c)
+}
+
+function widenFloatSignalDecls(
+  c: ComponentIR,
+  storeDefs: StoreDefnIR[],
+  structDefs: StructIR[],
+  moduleConsts: Map<string, TypeIR> | undefined,
+): void {
   const maxPasses = 8
   for (let pass = 0; pass < maxPasses; pass++) {
     const ctx = buildInferenceCtx(c.decls, storeDefs, structDefs, [], undefined, undefined, moduleConsts)
