@@ -289,6 +289,19 @@ interface ParseCtx {
    */
   httpClientSchemaNames: Set<string>
   /**
+   * Local names bound to `openEventStream` / `openNdjsonStream` from
+   * `@pyreon/http/stream`, and the wire format each opens. A `useStream`
+   * whose source returns one of these lowers to the native stream runtime.
+   */
+  streamOpeners: Map<string, 'sse' | 'ndjson'>
+  /**
+   * True when EVERY call of a stream opener in the file is the source of a
+   * `useStream(...)` — the only position it lowers from. Suppresses the blanket
+   * "has NO native lowering" import warning, which would otherwise be printed
+   * above a stream that does lower; any other use keeps the warning.
+   */
+  streamOpenersAllLowered: boolean
+  /**
    * `@pyreon/http` endpoint bindings: `const getUser = api.endpoint('GET
    * /users/:id', { … })` → `getUser` → its method / path template / owning
    * client / `:param` names. A same-file, compile-time-templated endpoint
@@ -315,6 +328,13 @@ interface ParseCtx {
        * declaration time) so an endpoint used only on web stays silent.
        */
       declUnlowerable: string[]
+      /**
+       * The declaration's `responseType`, when given. `'stream'` is what a
+       * streamed endpoint is declared with on the web (so it hands back the raw
+       * body); it is honoured by `useStream` and WARNED on `useFetch` /
+       * `useQuery`, whose native harness decodes one JSON body.
+       */
+      responseType?: string
     }
   >
   /**
@@ -425,6 +445,8 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     theme: DEFAULT_THEME,
     httpClientBaseUrls: new Map(),
     httpClientSchemaNames: new Set(),
+    streamOpeners: new Map(),
+    streamOpenersAllLowered: false,
     endpointDefs: new Map(),
     inlineSchemas: [],
     inlineSchemaByShape: new Map(),
@@ -518,6 +540,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // known client). Both no-op on any file without the shapes.
   collectHttpClients(ast.program.body as AnyNode[], ctx)
   collectEndpointDefs(ast.program.body as AnyNode[], ctx)
+  collectStreamOpeners(ast.program as AnyNode, ctx)
   // A `<PermissionsProvider>` anywhere in the file means a bare
   // `usePermissions()` has somewhere to read from. Checked against the source
   // because the warn pass runs before the JSX walk — the same ordering that
@@ -1893,6 +1916,76 @@ function collectHttpClients(body: AnyNode[], ctx: ParseCtx): void {
 }
 
 /**
+ * Pre-pass: the local names `openEventStream` / `openNdjsonStream` are bound to
+ * (from `@pyreon/http/stream`), and whether every call of one is a `useStream`
+ * source — the one position the native stream runtime lowers it from.
+ */
+function collectStreamOpeners(program: AnyNode, ctx: ParseCtx): void {
+  for (const node of (program.body as AnyNode[] | undefined) ?? []) {
+    if (node.type !== 'ImportDeclaration' || node.source?.value !== '@pyreon/http/stream') continue
+    if ((node as { importKind?: string }).importKind === 'type') continue
+    for (const spec of (node.specifiers as AnyNode[]) ?? []) {
+      if (spec.type !== 'ImportSpecifier') continue
+      if ((spec as { importKind?: string }).importKind === 'type') continue
+      const imported = spec.imported?.name ?? spec.imported?.value
+      const local = spec.local?.name as string | undefined
+      if (!local) continue
+      if (imported === 'openEventStream') ctx.streamOpeners.set(local, 'sse')
+      if (imported === 'openNdjsonStream') ctx.streamOpeners.set(local, 'ndjson')
+    }
+  }
+  if (ctx.streamOpeners.size === 0) return
+  let total = 0
+  const sources = new Set<AnyNode>()
+  const visit = (n: unknown): void => {
+    if (n === null || typeof n !== 'object') return
+    if (Array.isArray(n)) {
+      for (const x of n) visit(x)
+      return
+    }
+    const node = n as AnyNode
+    if (node.type === 'CallExpression') {
+      const callee = node.callee as AnyNode | undefined
+      if (callee?.type === 'Identifier' && callee.name === 'useStream') {
+        const src = streamSourceCall(node.arguments?.[0] as AnyNode | undefined)
+        if (src) sources.add(src)
+      }
+      if (callee?.type === 'Identifier' && ctx.streamOpeners.has(callee.name as string)) total++
+    }
+    for (const key of Object.keys(node)) {
+      if (key === 'parent' || key === 'loc' || key === 'range') continue
+      visit((node as Record<string, unknown>)[key])
+    }
+  }
+  visit(program)
+  let lowered = 0
+  for (const src of sources) {
+    const callee = src.callee as AnyNode | undefined
+    if (callee?.type === 'Identifier' && ctx.streamOpeners.has(callee.name as string)) lowered++
+  }
+  ctx.streamOpenersAllLowered = total > 0 && total === lowered
+}
+
+/** The call an arrow returns — concise body, parenthesized, or a lone `return`. */
+function arrowReturnedCall(arrow: AnyNode | undefined): AnyNode | undefined {
+  if (arrow?.type !== 'ArrowFunctionExpression' && arrow?.type !== 'FunctionExpression') return undefined
+  let body = arrow.body as AnyNode | undefined
+  if (body?.type === 'ParenthesizedExpression') body = body.expression as AnyNode | undefined
+  if (body?.type === 'BlockStatement') {
+    const stmts = (body.body as AnyNode[] | undefined) ?? []
+    if (stmts.length !== 1 || stmts[0]?.type !== 'ReturnStatement') return undefined
+    body = stmts[0].argument as AnyNode | undefined
+    if (body?.type === 'ParenthesizedExpression') body = body.expression as AnyNode | undefined
+  }
+  return body?.type === 'CallExpression' ? body : undefined
+}
+
+/** `useStream(<arrow>)`'s source call — the opener call its arrow returns. */
+function streamSourceCall(arrow: AnyNode | undefined): AnyNode | undefined {
+  return arrowReturnedCall(arrow)
+}
+
+/**
  * Pre-pass: read every top-level `const <name> = <client>.endpoint('<METHOD>
  * /path/:x', <opts>?)` — where `<client>` is a known createHttp client — into
  * `ctx.endpointDefs`. Splits the spec on the FIRST space (method + path),
@@ -1933,6 +2026,7 @@ function collectEndpointDefs(body: AnyNode[], ctx: ParseCtx): void {
       // throwHttpErrors }`. Nothing read it before, so a `headers` declared
       // once on the endpoint was dropped from every native request in silence.
       const declUnlowerable: string[] = []
+      let responseType: string | undefined
       const optsArg = init.arguments?.[1] as AnyNode | undefined
       const declHeaders = readLiteralHeaders(readObjectProp(optsArg, 'headers'), (what) =>
         declUnlowerable.push(what),
@@ -1947,6 +2041,14 @@ function collectEndpointDefs(body: AnyNode[], ctx: ParseCtx): void {
         }
         const key = propName(prop)
         if (key === undefined || key === 'headers' || key === 'response') continue
+        if (key === 'responseType') {
+          const v = literalScalar(prop.value as AnyNode | undefined)
+          // `'json'` is the default and `'stream'` is consumed by useStream;
+          // any other body type has no native lowering.
+          if (v === 'json' || v === 'stream') responseType = v
+          else declUnlowerable.push(key)
+          continue
+        }
         if (key === 'throwHttpErrors') {
           // The native harness ALWAYS rejects a non-2xx, so `true` matches it
           // exactly and only an opt-OUT is unhonourable.
@@ -1963,6 +2065,7 @@ function collectEndpointDefs(body: AnyNode[], ctx: ParseCtx): void {
         paramNames,
         declHeaders,
         declUnlowerable,
+        ...(responseType !== undefined ? { responseType } : {}),
       })
     }
   }
@@ -2039,9 +2142,17 @@ function resolveEndpointParts(
    * keeps bailing, and now says which hook to reach for instead.
    */
   allowRuntimeParams = false,
+  /** The caller consumes the RAW body as a stream (`useStream`). */
+  streaming = false,
 ): ResolvedEndpoint | null {
   const def = ctx.endpointDefs.get(endpointName)
   if (!def) return null
+  if (def.responseType === 'stream' && !streaming) {
+    ctx.warnings.push(
+      `endpoint ${endpointName} is declared \`responseType: 'stream'\`, so its body is a byte stream — the native useFetch/useQuery harness decodes ONE JSON body and would fail on it. Consume it with \`useStream((ctx) => openEventStream((c) => ${endpointName}({ signal: c.signal, headers: c.headers }), { signal: ctx.signal, onStatus: ctx.onStatus }))\` (or \`openNdjsonStream\`), which lowers to the native stream runtime. This call stays web.`,
+    )
+    return null
+  }
   const baseUrl = ctx.httpClientBaseUrls.get(def.clientName)
   if (baseUrl === undefined || baseUrl === HTTP_NONLITERAL_BASEURL) {
     ctx.warnings.push(
@@ -2494,7 +2605,7 @@ export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   'useDeviceMotion', 'useSpeech', 'useCamera', 'useAudioRecorder',
   'useUrlState',
   'useSecureStorage',
-  'useShare', 'useSizeClass', 'useStorage', 'useWebSocket',
+  'useShare', 'useSizeClass', 'useStorage', 'useStream', 'useWebSocket',
   'useSessionStorage', 'useMemoryStorage',
   'useDebouncedValue',
   'useDebouncedCallback', 'useThrottledCallback',
@@ -3046,6 +3157,15 @@ function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
       // blanket line claimed it was "reproduced verbatim" in an emit that
       // never mentions it.
       if (ctx.httpClientSchemaNames.has(imported)) continue
+      // A stream opener used ONLY as a `useStream` source lowers with it (the
+      // native stream runtime) — see `streamOpenersAllLowered`.
+      if (
+        src === '@pyreon/http/stream' &&
+        (imported === 'openEventStream' || imported === 'openNdjsonStream') &&
+        ctx.streamOpenersAllLowered
+      ) {
+        continue
+      }
       // A Flow component the emitters DROP with their own named warning at
       // the use site (`<ViewportPortal>`): nothing reaches Swift/Kotlin, so
       // "reproduced verbatim … the native build fails" would be false.
@@ -5884,6 +6004,8 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     theme: DEFAULT_THEME,
     httpClientBaseUrls: new Map(),
     httpClientSchemaNames: new Set(),
+    streamOpeners: new Map(),
+    streamOpenersAllLowered: false,
     endpointDefs: new Map(),
     inlineSchemas: [],
     inlineSchemaByShape: new Map(),
@@ -8494,6 +8616,12 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (calleeName === 'useAuth') {
     return { kind: 'auth', name, userType: parseGenericTypeArg(init, ctx) }
   }
+  // `useStream((ctx) => openEventStream((c) => ep({ … }), { … }))` from
+  // @pyreon/query + @pyreon/http/stream — SSE / NDJSON over the native
+  // stream runtime (`PyreonStream`, co-located in @pyreon/http/native).
+  if (calleeName === 'useStream') {
+    return tryUseStreamDecl(init, name, ctx)
+  }
   // `useWebSocket('wss://…')` — the URL must be a string literal so it can
   // be baked into the emitted connect call (same rule as useFetch).
   if (calleeName === 'useWebSocket') {
@@ -8608,6 +8736,242 @@ function withValueDeclType(d: Extract<DeclIR, { kind: 'value' }>, node: AnyNode,
  * arrow shapes. Used to give the useQuery `.query()` fetcher form a specific
  * "stays web" diagnostic rather than the generic object-literal one.
  */
+/** `@pyreon/http/stream`'s default `ReconnectPolicy`. */
+const STREAM_DEFAULT_RECONNECT = { attempts: 5, delay: 1000, maxDelay: 30_000, onEnd: false }
+
+/** `v` is `<obj>.<prop>` — `c.signal`, `ctx.onStatus`. */
+function isMemberRead(v: AnyNode | undefined, obj: string | undefined, prop: string): boolean {
+  return (
+    obj !== undefined &&
+    v?.type === 'MemberExpression' &&
+    !v.computed &&
+    v.object?.type === 'Identifier' &&
+    v.object.name === obj &&
+    v.property?.type === 'Identifier' &&
+    v.property.name === prop
+  )
+}
+
+/**
+ * `const s = useStream<SseEvent<T>>((ctx) => openEventStream((c) => ep({ …,
+ * signal: c.signal, headers: c.headers }), { signal: ctx.signal, onStatus:
+ * ctx.onStatus, … }), { maxEvents })` — the documented `useStream` shape, and
+ * what a generated client's stream component writes.
+ *
+ * The endpoint resolves exactly as it does for `useQuery` (a runtime `:param`
+ * is honourable: the native harness is KEYED on the URL, so a new value
+ * reopens the stream — the web's reactive-source semantic). `signal` /
+ * `onStatus` are consumed: cancellation and status are structural natively.
+ * Every option that cannot lower is either NAMED (ignored, when the stream
+ * still means the same thing) or a bail (when it would not).
+ */
+function tryUseStreamDecl(init: AnyNode, name: string, ctx: ParseCtx): DeclIR | null {
+  const bail = (why: string): null => {
+    ctx.warnings.push(
+      `Declaration ${name}: useStream ${why} This stream stays web — on iOS and Android the call is reproduced verbatim and does not compile.`,
+    )
+    return null
+  }
+  const ignored = (what: string, why: string): void => {
+    ctx.warnings.push(`Declaration ${name}: useStream ${what} is IGNORED on iOS and Android (${why}).`)
+  }
+  const srcArrow = init.arguments?.[0] as AnyNode | undefined
+  const ctxParam = (srcArrow?.params as AnyNode[] | undefined)?.[0]?.name as string | undefined
+  const open = arrowReturnedCall(srcArrow)
+  const openName = open?.callee?.type === 'Identifier' ? (open.callee.name as string) : undefined
+  const format = openName !== undefined ? ctx.streamOpeners.get(openName) : undefined
+  if (!open || format === undefined) {
+    return bail(
+      'lowers when its source directly returns `openEventStream(…)` / `openNdjsonStream(…)` imported from `@pyreon/http/stream` — `(ctx) => openEventStream((c) => endpoint({ signal: c.signal, headers: c.headers }), { signal: ctx.signal, onStatus: ctx.onStatus })`.',
+    )
+  }
+  const connect = open.arguments?.[0] as AnyNode | undefined
+  const cParam = (connect?.params as AnyNode[] | undefined)?.[0]?.name as string | undefined
+  const epCall = arrowReturnedCall(connect)
+  const epName = epCall?.callee?.type === 'Identifier' ? (epCall.callee.name as string) : undefined
+  if (!epCall || epName === undefined || !ctx.endpointDefs.has(epName)) {
+    return bail(
+      'connects through a same-file `@pyreon/http` endpoint — `(c) => ep({ signal: c.signal, headers: c.headers })` with `const ep = api.endpoint(…)` and `const api = createHttp({ baseUrl })`. A `fetch(…)` transport or an imported endpoint is a tracked follow-up.',
+    )
+  }
+  const epArg = epCall.arguments?.[0] as AnyNode | undefined
+  if (epArg !== undefined && epArg.type !== 'ObjectExpression') {
+    return bail('needs the endpoint call argument to be an object literal.')
+  }
+  // `signal` is how the web cancels; natively the stream is cancelled by the
+  // view's lifecycle. `headers: c.headers` is how the web adds `accept` /
+  // `last-event-id`; the native runtime adds both itself.
+  // `headers: { ...c.headers, accept: 'application/jsonl' }` — the stream's
+  // own headers plus literal extras (a generated client names a non-default
+  // stream media type this way). The spread is the runtime's job; the literal
+  // props lower, and `accept` becomes the stream's Accept.
+  let accept: string | undefined
+  const kept = ((epArg?.properties as AnyNode[] | undefined) ?? []).flatMap((p): AnyNode[] => {
+    const k = propName(p)
+    if (k === 'signal') return []
+    const v = p.value as AnyNode | undefined
+    if (k === 'headers' && isMemberRead(v, cParam, 'headers')) return []
+    if (k === 'headers' && v?.type === 'ObjectExpression') {
+      const props = (v.properties as AnyNode[] | undefined) ?? []
+      const rest = props.filter(
+        (hp) => !(hp.type === 'SpreadElement' && isMemberRead(hp.argument as AnyNode | undefined, cParam, 'headers')),
+      )
+      if (rest.length === props.length) return [p]
+      const literal = rest.filter((hp) => {
+        if (propName(hp)?.toLowerCase() !== 'accept') return true
+        const a = literalScalar(hp.value as AnyNode | undefined)
+        if (typeof a === 'string') accept = a
+        return typeof a !== 'string'
+      })
+      return literal.length > 0 ? [{ ...p, value: { ...v, properties: literal } } as AnyNode] : []
+    }
+    return [p]
+  })
+  const filtered = epArg !== undefined ? ({ ...epArg, properties: kept } as AnyNode) : undefined
+  const resolved = resolveEndpointParts(epName, filtered, ctx, true, true)
+  if (!resolved) return null
+
+  let sseText = false
+  let events: string[] | undefined
+  let lastEventId: string | undefined
+  let reconnect: { attempts: number; delay: number; maxDelay: number; onEnd: boolean } | null =
+    format === 'sse' ? { ...STREAM_DEFAULT_RECONNECT } : null
+  const opts = open.arguments?.[1] as AnyNode | undefined
+  if (opts !== undefined) {
+    if (opts.type !== 'ObjectExpression') return bail(`needs \`${openName}\`'s options to be an object literal.`)
+    for (const p of (opts.properties as AnyNode[] | undefined) ?? []) {
+      if (p.type === 'SpreadElement') {
+        ignored('an options spread', 'it cannot be read at compile time — pass the options literally')
+        continue
+      }
+      const k = propName(p)
+      const v = p.value as AnyNode | undefined
+      if (k === undefined) continue
+      if (k === 'signal' || k === 'onStatus') {
+        if (!isMemberRead(v, ctxParam, k)) {
+          ignored(`option \`${k}\``, `only \`${k}: ctx.${k}\` is understood — cancellation and status are driven by the view natively`)
+        }
+        continue
+      }
+      if (format === 'sse' && k === 'data') {
+        const lit = literalScalar(v)
+        if (lit === 'text') sseText = true
+        else if (lit !== 'json') return bail("needs `data` to be the literal 'json' or 'text'.")
+        continue
+      }
+      if (format === 'sse' && k === 'events') {
+        const els = v?.type === 'ArrayExpression' ? ((v.elements as AnyNode[] | undefined) ?? []) : undefined
+        const names = els?.map((e) => literalScalar(e))
+        if (!names || names.some((x) => typeof x !== 'string')) {
+          return bail('needs `events` to be an array of string literals — the filter is baked into the native request.')
+        }
+        events = names as string[]
+        continue
+      }
+      if (format === 'sse' && k === 'lastEventId') {
+        const id = staticStringArg(v, ctx)
+        if (id === null) return bail('needs `lastEventId` to be a string literal (or a module-scope const).')
+        lastEventId = id
+        continue
+      }
+      if (format === 'sse' && k === 'reconnect') {
+        const lit = literalScalar(v)
+        if (lit === false) {
+          reconnect = null
+          continue
+        }
+        if (lit === true) continue
+        if (v?.type !== 'ObjectExpression') {
+          return bail('needs `reconnect` to be `true`, `false` or an object literal of number/boolean literals.')
+        }
+        const next = { ...STREAM_DEFAULT_RECONNECT }
+        for (const rp of (v.properties as AnyNode[] | undefined) ?? []) {
+          const rk = propName(rp)
+          const rv = literalScalar(rp.value as AnyNode | undefined)
+          if ((rk === 'attempts' || rk === 'delay' || rk === 'maxDelay') && typeof rv === 'number') next[rk] = rv
+          else if (rk === 'onEnd' && typeof rv === 'boolean') next.onEnd = rv
+          else if (rk === 'shouldRetry') {
+            ignored('`reconnect.shouldRetry`', 'a JS predicate — the native runtime applies the default rule: network, 408, 429 and 5xx retry')
+          } else {
+            return bail(`needs \`reconnect.${rk ?? '?'}\` to be a number/boolean literal.`)
+          }
+        }
+        reconnect = next
+        continue
+      }
+      if (k === 'parse') {
+        ignored(
+          'option `parse`',
+          'schema validation stays web: each payload is decoded into the declared type, so a malformed payload still ends the stream in `error`, but refinements beyond the type do not run',
+        )
+        continue
+      }
+      ignored(`option \`${k}\``, 'not part of the lowered stream surface')
+    }
+  }
+
+  let maxEvents = 1000
+  const hookOpts = init.arguments?.[1] as AnyNode | undefined
+  if (hookOpts !== undefined) {
+    if (hookOpts.type !== 'ObjectExpression') return bail('needs its options to be an object literal.')
+    for (const p of (hookOpts.properties as AnyNode[] | undefined) ?? []) {
+      const k = propName(p)
+      const v = literalScalar(p.value as AnyNode | undefined)
+      if (k === 'maxEvents' && typeof v === 'number') maxEvents = v
+      else if (k === 'enabled' || k === 'onEvent') {
+        return bail(`option \`${k}\` has no native lowering, and dropping it would change what the stream does.`)
+      } else {
+        ignored(`option \`${k ?? '…'}\``, 'not part of the lowered stream surface')
+      }
+    }
+  }
+
+  let itemType = parseGenericTypeArg(init, ctx)
+  let dataType: TypeIR | undefined
+  if (format === 'sse') {
+    if (itemType.kind === 'typeRef' && itemType.name === 'SseEvent' && itemType.args.length === 1) {
+      dataType = itemType.args[0]
+    } else if (itemType.kind === 'unknown') {
+      const g = parseGenericTypeArg(open, ctx)
+      if (g.kind !== 'unknown') dataType = g
+      else if (sseText) dataType = { kind: 'string' }
+    } else {
+      return bail('over SSE yields `SseEvent<T>` items — declare it `useStream<SseEvent<T>>(…)`.')
+    }
+    if (dataType === undefined) {
+      return bail(
+        'needs the event payload type — `useStream<SseEvent<T>>(…)` or `openEventStream<T>(…)`. A native stream decodes each event INTO a declared type; there is nothing to decode `unknown` into.',
+      )
+    }
+    if (sseText && dataType.kind !== 'string') return bail("with `data: 'text'` yields string payloads — declare `SseEvent<string>`.")
+    itemType = { kind: 'typeRef', name: 'SseEvent', args: [dataType] }
+  } else {
+    if (itemType.kind === 'unknown') itemType = parseGenericTypeArg(open, ctx)
+    if (itemType.kind === 'unknown') {
+      return bail('needs the item type — `useStream<T>(…)` or `openNdjsonStream<T>(…)`. A native stream decodes each line INTO a declared type.')
+    }
+    dataType = itemType
+  }
+  return {
+    kind: 'stream',
+    name,
+    format,
+    itemType,
+    dataType,
+    sseText,
+    url: resolved.url,
+    ...(resolved.urlExpr !== undefined ? { urlExpr: resolved.urlExpr } : {}),
+    method: resolved.method,
+    ...(resolved.headers !== undefined ? { headers: resolved.headers } : {}),
+    ...(accept !== undefined ? { accept } : {}),
+    ...(resolved.body !== undefined ? { requestBody: resolved.body } : {}),
+    ...(events !== undefined ? { events } : {}),
+    ...(lastEventId !== undefined ? { lastEventId } : {}),
+    reconnect,
+    maxEvents,
+  }
+}
+
 function endpointQueryCallInArrow(
   arrow: AnyNode,
   ctx: ParseCtx,
