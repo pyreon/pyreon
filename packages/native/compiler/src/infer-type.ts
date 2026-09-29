@@ -19,7 +19,7 @@
 // emitter actually emits, which is a fixed-and-growing surface.
 
 import { exprReferencesIdent, isReReadableExpr } from './expr-utils'
-import type { ComponentIR, DeclIR, ExprIR, StatementIR, StoreDefnIR, StructIR, TypeIR } from './types'
+import type { ComponentIR, DeclIR, ExprIR, ModuleDeclIR, StatementIR, StoreDefnIR, StructIR, TypeIR } from './types'
 import { ECMASCRIPT_MATH_CONSTANTS } from './math-lowering'
 
 export interface InferenceCtx {
@@ -120,6 +120,68 @@ export interface InferenceCtx {
    */
   props?: Map<string, TypeIR>
   propsParamName?: string | undefined
+  /**
+   * FILE-SCOPE `const` / `let` name → type (`const NAMES = ['a', 'b']` above
+   * the component). Looked up LAST for a bare identifier, so every narrower
+   * binding (a local, a signal, a component value-const, a prop) shadows it,
+   * as in JS. Without it a module-level receiver typed `unknown`, and every
+   * receiver-typed lowering went dark on it — `NAMES.indexOf('a', 1)` lost
+   * its wrong-arity warning, and `.length` picked the untyped spelling. Built
+   * once per file by `buildModuleConstTypes`.
+   */
+  moduleConsts?: Map<string, TypeIR> | undefined
+}
+
+/**
+ * A type is SAFE to seed for a file-scope binding only when it names the value
+ * the native declaration actually holds. An inferred OBJECT (or a container of
+ * one) is not: the emit synthesizes a struct for the literal, and a seeded
+ * `{kind:'object'}` renders as a tuple wherever it becomes an annotation — the
+ * same reason `objectLocals` exists. Those stay `unknown`, exactly as before.
+ */
+function isSeedableModuleType(t: TypeIR): boolean {
+  switch (t.kind) {
+    case 'unknown':
+    case 'object':
+    case 'function':
+      return false
+    case 'array':
+    case 'set':
+      return isSeedableModuleType(t.element)
+    case 'map':
+      return isSeedableModuleType(t.key) && isSeedableModuleType(t.value)
+    case 'union':
+      return t.branches.every(isSeedableModuleType)
+    default:
+      return true
+  }
+}
+
+/**
+ * The types of a file's top-level `const` / `let` bindings, for
+ * `InferenceCtx.moduleConsts`. An ANNOTATED binding takes its annotation — it
+ * is what the native declaration is spelled as. An un-annotated one takes its
+ * initializer's inferred type (the native declaration is un-annotated too, so
+ * Swift / Kotlin infer the same thing from the same literal), in source order
+ * so `const B = A.length` sees `A`. A binding whose type cannot be stated
+ * honestly (`isSeedableModuleType`) is left out and stays `unknown`.
+ */
+export function buildModuleConstTypes(
+  moduleDecls: readonly ModuleDeclIR[],
+  structDefs: StructIR[] = [],
+  helperReturns?: Map<string, TypeIR> | undefined,
+): Map<string, TypeIR> {
+  const out = new Map<string, TypeIR>()
+  const ctx = buildInferenceCtx([], [], structDefs, [], undefined, helperReturns, out)
+  for (const md of moduleDecls) {
+    if (md.type.kind !== 'unknown') {
+      out.set(md.name, md.type)
+      continue
+    }
+    const t = inferType(md.initial, ctx)
+    if (isSeedableModuleType(t)) out.set(md.name, t)
+  }
+  return out
 }
 
 /**
@@ -508,8 +570,12 @@ export function buildInferenceCtx(
   props: { name: string; type: TypeIR }[] = [],
   propsParamName?: string,
   helperReturns?: Map<string, TypeIR> | undefined,
+  moduleConsts?: Map<string, TypeIR> | undefined,
 ): InferenceCtx {
   const ctx: InferenceCtx = {
+    // Before Pass 1.5/2 below, so a component const or computed over a
+    // file-scope const (`computed(() => NAMES.length)`) types on first read.
+    moduleConsts,
     signals: new Map(),
     computeds: new Map(),
     valueConsts: new Map(),
@@ -1446,6 +1512,8 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // post-rewrite in the emit) — the declared prop type.
       const pr = ctx.props?.get(expr.name)
       if (pr) return pr
+      const mc = ctx.moduleConsts?.get(expr.name)
+      if (mc) return mc
       return { kind: 'unknown' }
     }
     case 'call': {

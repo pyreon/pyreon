@@ -802,7 +802,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // mis-emits as `Int = 12.5` / `[Int] = [12.5]` (invalid Swift/Kotlin).
   // Refine the signal's number type to Double from its fractional literal
   // initializer — additive (only flips number→float on a fractional).
-  refineSignalNumberFloats(components)
+  refineSignalNumberFloats(components, moduleDecls)
 
 
   // Shape-A follow-up: a top-level helper function declared WITHOUT a return
@@ -5676,29 +5676,38 @@ function isFractionalLiteral(e: ExprIR): boolean {
  * `{ kind:'number', float:true }` on fractional-literal evidence; integer
  * signals and arrays are never touched (zero regression).
  */
-function refineSignalNumberFloats(components: ComponentIR[]): void {
+function refineSignalNumberFloats(components: ComponentIR[], moduleDecls: readonly ModuleDeclIR[] = []): void {
   for (const c of components) {
     for (const d of c.decls) {
-      if (d.kind !== 'signal') continue
-      // Scalar `signal<number>(12.5)`.
-      if (d.type.kind === 'number' && d.type.float !== true && isFractionalLiteral(d.initial)) {
-        d.type = { kind: 'number', float: true }
-        continue
-      }
-      // Array `signal<number[]>([… any fractional …])`.
-      if (
-        d.type.kind === 'array' &&
-        d.type.element.kind === 'number' &&
-        d.type.element.float !== true &&
-        d.initial.kind === 'array' &&
-        d.initial.elements.some(isFractionalLiteral)
-      ) {
-        d.type = { kind: 'array', element: { kind: 'number', float: true } }
-        for (const el of d.initial.elements) {
-          if (el.kind === 'literal' && typeof el.value === 'number' && Number.isInteger(el.value)) {
-            el.float = true
-          }
-        }
+      if (d.kind === 'signal') refineNumberBindingFromLiteral(d)
+    }
+  }
+  // The FILE-SCOPE spelling of the same evidence: `const RATE: number = 0.5`
+  // emitted `let RATE: Int = 0.5` / `val RATE: Int = 0.5`, which neither
+  // target accepts. An un-annotated binding carries `unknown` and is emitted
+  // without an annotation, so it was never affected.
+  for (const d of moduleDecls) refineNumberBindingFromLiteral(d)
+}
+
+/** Flip a `number` / `number[]` annotation to Double on a fractional literal initializer. */
+function refineNumberBindingFromLiteral(d: { type: TypeIR; initial: ExprIR }): void {
+  // Scalar `signal<number>(12.5)` / `const x: number = 12.5`.
+  if (d.type.kind === 'number' && d.type.float !== true && isFractionalLiteral(d.initial)) {
+    d.type = { kind: 'number', float: true }
+    return
+  }
+  // Array `signal<number[]>([… any fractional …])`.
+  if (
+    d.type.kind === 'array' &&
+    d.type.element.kind === 'number' &&
+    d.type.element.float !== true &&
+    d.initial.kind === 'array' &&
+    d.initial.elements.some(isFractionalLiteral)
+  ) {
+    d.type = { kind: 'array', element: { kind: 'number', float: true } }
+    for (const el of d.initial.elements) {
+      if (el.kind === 'literal' && typeof el.value === 'number' && Number.isInteger(el.value)) {
+        el.float = true
       }
     }
   }

@@ -87,6 +87,7 @@ import {
   nilCoalesceTernary,
   buildArraySpreadConcat,
   buildInferenceCtx,
+  buildModuleConstTypes,
   classifyNegativeSlice,
   arrayFromMapRewrite,
   classifyOptionalCondition,
@@ -776,6 +777,8 @@ let _helperFnNames: Set<string> = new Set()
 /** File-scope helper name → return type, assigned onto each component's infer
  * ctx so a computed over a helper call infers its return type (not `Any`). */
 let _helperReturns: Map<string, TypeIR> = new Map()
+/** File-scope `const`/`let` name → type (`InferenceCtx.moduleConsts`); rebuilt per file. */
+let _moduleConstTypes: Map<string, TypeIR> = new Map()
 /** Top-level helper name → its parameter types; steers an object-literal ARGUMENT to the parameter's named struct. */
 let _helperParamTypes: Map<string, TypeIR[]> = new Map()
 /** Object-literal argument node → the struct its parameter names (populated at the call, read by the literal emit). */
@@ -1515,13 +1518,16 @@ export function emitSwift(
   // skipped inside helper bodies. Seeded with the file's structs AND the
   // helper return types, so a local bound from a helper call types too.
   // Overwritten per component, so a component-bearing file is unaffected.
-  _activeInferCtx = buildInferenceCtx([], [], structs, [], undefined, _helperReturns)
+  // File-scope bindings, typed once: a component (or helper) reading
+  // `NAMES.indexOf(…)` over a top-level `const NAMES = […]` types its receiver.
+  _moduleConstTypes = buildModuleConstTypes(moduleDecls, structs, _helperReturns)
+  _activeInferCtx = buildInferenceCtx([], [], structs, [], undefined, _helperReturns, _moduleConstTypes)
   // BOTH contexts: Swift keeps two (`_activeInferCtx` for the type-gated call
   // lowerings, `_exprInferCtx` for the condition + optional lowerings), and
   // they alias only inside a component. A helper-only file has two distinct
   // objects, so seeding one leaves the other empty — which is how an optional
   // field read still emitted `if hs {` after the structs were available.
-  _exprInferCtx = buildInferenceCtx([], [], structs, [], undefined, _helperReturns)
+  _exprInferCtx = buildInferenceCtx([], [], structs, [], undefined, _helperReturns, _moduleConstTypes)
   // v2 — per-hook method registry for the chain-call rewrite.
   _storeMethodNames = new Map(
     stores.map((st) => [st.hookName, new Set((st.methods ?? []).map((m) => m.name))]),
@@ -1807,6 +1813,10 @@ function emitSwiftStore(s: StoreDefnIR): string {
       })),
       [],
       _structDefs,
+      [],
+      undefined,
+      undefined,
+      _moduleConstTypes,
     )
     for (const c of s.computeds ?? []) {
       const t = inferType(c.expr, storeCtx)
@@ -1881,6 +1891,10 @@ function emitSwiftModel(m: ModelDefnIR): string {
       })),
       [],
       _structDefs,
+      [],
+      undefined,
+      undefined,
+      _moduleConstTypes,
     )
     for (const v of m.views ?? []) {
       _activePropsParamName = v.selfParam
@@ -2679,6 +2693,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     c.props,
     c.propsParamName,
     _helperReturns,
+    _moduleConstTypes,
   )
   // Expose it to the object-literal emit so a non-literal field
   // (`{ id: count() }`) gets its struct-field type inferred.

@@ -4716,7 +4716,7 @@ public func layoutArcsWith(_ slices: [Slice], _ cfg: ArcConfig) -> [ArcGeometry]
       return out
     }
     let dir = cfg.clockwise ? 1.0 : -1.0
-    let unit = Double(TAU) / (total > 0.0 ? total : Double(count))
+    let unit = TAU / (total > 0.0 ? total : Double(count))
     let minPad = cfg.minAngle + cfg.padAngle
     let halfPad = cfg.padAngle / 2.0
     var angles: [Double] = []
@@ -4769,7 +4769,7 @@ public func pointOnCircle(_ center: PyreonChartPt, _ radius: Double, _ angle: Do
 
 public func arcPolygon(_ center: PyreonChartPt, _ outerR: Double, _ innerR: Double, _ start: Double, _ end: Double) -> [PyreonChartPt] {
     let sweep = abs(end - start)
-    let steps = max(2, ceil(Double((sweep / Double(TAU)) * 64.0)))
+    let steps = max(2, ceil(Double((sweep / TAU) * 64.0)))
     var pts: [PyreonChartPt] = []
     for i in 0...Int(ceil(Double(steps))) {
       pts.append(pointOnCircle(center, outerR, start + (sweep * Double(i)) / steps))
@@ -4849,7 +4849,7 @@ public func hitArc(_ arcs: [ArcGeometry], _ center: PyreonChartPt, _ outerR: Dou
         continue
       }
       let off = ang - a.start
-      let d = off - floor(Double(Double(off) / Double(TAU))) * TAU
+      let d = off - floor(Double(Double(off) / TAU)) * TAU
       if d <= a.end - a.start {
         return i
       }
@@ -6684,7 +6684,7 @@ public func arcSweep(_ startAngle: Double, _ endAngle: Double, _ clockwise: Bool
     let from = clockwise ? startAngle : endAngle
     var to = clockwise ? endAngle : startAngle
     if to < from {
-      to = to + FULL_TURN * ceil(Double((from - to) / Double(FULL_TURN)))
+      to = to + FULL_TURN * ceil(Double((from - to) / FULL_TURN))
     }
     if to - from > FULL_TURN {
       to = from + FULL_TURN
@@ -9628,13 +9628,13 @@ public func renderVisualStrip(_ s: VisualStrip, _ at: PyreonChartPt, _ range: Do
     let low = s.lowText == "" ? plain(s.domain.min) : s.lowText
     var i = 0.0
     while i < STRIP_COUNT {
-      let t = s.vertical ? 1.0 - (i + 0.5) / Double(STRIP_COUNT) : (i + 0.5) / Double(STRIP_COUNT)
+      let t = s.vertical ? 1.0 - (i + 0.5) / STRIP_COUNT : (i + 0.5) / STRIP_COUNT
       let v = s.domain.min + t * span(s.domain)
       let fill = s.calculable && (v < range.min || v > range.max) ? s.outColor : rampColor(s.stops, t)
       if s.vertical {
-        out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: o.x, y: o.y + (s.itemLength * i) / Double(STRIP_COUNT), w: s.itemSize, h: s.itemLength / Double(STRIP_COUNT) + 0.5), fill: fill))
+        out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: o.x, y: o.y + (s.itemLength * i) / STRIP_COUNT, w: s.itemSize, h: s.itemLength / STRIP_COUNT + 0.5), fill: fill))
       } else {
-        out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: o.x + (s.itemLength * i) / Double(STRIP_COUNT), y: o.y, w: s.itemLength / Double(STRIP_COUNT) + 0.5, h: s.itemSize), fill: fill))
+        out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: o.x + (s.itemLength * i) / STRIP_COUNT, y: o.y, w: s.itemLength / STRIP_COUNT + 0.5, h: s.itemSize), fill: fill))
       }
       i = i + 1.0
     }
@@ -9654,10 +9654,10 @@ public func renderVisualStrip(_ s: VisualStrip, _ at: PyreonChartPt, _ range: Do
       let p = valuePoint(s, at, v)
       let color = rampColor(s.stops, fraction(s, v))
       if s.vertical {
-        out.append(PyreonDrawCmd(kind: "polygon", fill: color, points: [PyreonChartPt(x: p.x, y: p.y), PyreonChartPt(x: p.x + STRIP_HANDLE, y: p.y - Double(STRIP_HANDLE) / 2.0), PyreonChartPt(x: p.x + STRIP_HANDLE, y: p.y + Double(STRIP_HANDLE) / 2.0)]))
+        out.append(PyreonDrawCmd(kind: "polygon", fill: color, points: [PyreonChartPt(x: p.x, y: p.y), PyreonChartPt(x: p.x + STRIP_HANDLE, y: p.y - STRIP_HANDLE / 2.0), PyreonChartPt(x: p.x + STRIP_HANDLE, y: p.y + STRIP_HANDLE / 2.0)]))
         out.append(PyreonDrawCmd(kind: "text", fill: s.labelColor, text: plain(v), at: PyreonChartPt(x: p.x + STRIP_HANDLE + STRIP_GAP, y: p.y), size: fs, align: "start", baseline: "middle"))
       } else {
-        out.append(PyreonDrawCmd(kind: "polygon", fill: color, points: [PyreonChartPt(x: p.x, y: p.y), PyreonChartPt(x: p.x - Double(STRIP_HANDLE) / 2.0, y: p.y + STRIP_HANDLE), PyreonChartPt(x: p.x + Double(STRIP_HANDLE) / 2.0, y: p.y + STRIP_HANDLE)]))
+        out.append(PyreonDrawCmd(kind: "polygon", fill: color, points: [PyreonChartPt(x: p.x, y: p.y), PyreonChartPt(x: p.x - STRIP_HANDLE / 2.0, y: p.y + STRIP_HANDLE), PyreonChartPt(x: p.x + STRIP_HANDLE / 2.0, y: p.y + STRIP_HANDLE)]))
         out.append(PyreonDrawCmd(kind: "text", fill: s.labelColor, text: plain(v), at: PyreonChartPt(x: p.x, y: p.y + STRIP_HANDLE + STRIP_GAP), size: fs, align: "middle", baseline: "top"))
       }
     }
@@ -9674,8 +9674,8 @@ public func visualStripHandleAt(_ s: VisualStrip, _ at: PyreonChartPt, _ range: 
     var e = 0.0
     while e < 2.0 {
       let p = valuePoint(s, at, e == 0.0 ? range.min : range.max)
-      let cx = s.vertical ? p.x + Double(STRIP_HANDLE) / 2.0 : p.x
-      let cy = s.vertical ? p.y : p.y + Double(STRIP_HANDLE) / 2.0
+      let cx = s.vertical ? p.x + STRIP_HANDLE / 2.0 : p.x
+      let cy = s.vertical ? p.y : p.y + STRIP_HANDLE / 2.0
       let d = abs(px - cx) + abs(py - cy)
       if d <= bestD {
         bestD = d
@@ -9791,11 +9791,11 @@ public func checkpointX(_ s: TimelineStrip, _ box: PyreonChartRect, _ i: Double)
     return n <= 1.0 ? (a.x0 + a.x1) / 2.0 : a.x0 + ((a.x1 - a.x0) * i) / (n - 1.0)
   }
 
-public func playCenter(_ s: TimelineStrip, _ box: PyreonChartRect) -> Double { box.x + PAD + Double(BTN) / 2.0 }
+public func playCenter(_ s: TimelineStrip, _ box: PyreonChartRect) -> Double { box.x + PAD + BTN / 2.0 }
 
-public func prevCenter(_ s: TimelineStrip, _ box: PyreonChartRect) -> Double { box.x + PAD + (s.showPlay ? BTN + BTN_GAP : 0.0) + Double(BTN) / 2.0 }
+public func prevCenter(_ s: TimelineStrip, _ box: PyreonChartRect) -> Double { box.x + PAD + (s.showPlay ? BTN + BTN_GAP : 0.0) + BTN / 2.0 }
 
-public func nextCenter(_ _s: TimelineStrip, _ box: PyreonChartRect) -> Double { box.x + box.w - PAD - Double(BTN) / 2.0 }
+public func nextCenter(_ _s: TimelineStrip, _ box: PyreonChartRect) -> Double { box.x + box.w - PAD - BTN / 2.0 }
 
 public func renderTimeline(_ s: TimelineStrip, _ box: PyreonChartRect, _ current: Double, _ playing: Bool) -> [PyreonDrawCmd] {
     var out: [PyreonDrawCmd] = []
@@ -9817,7 +9817,7 @@ public func renderTimeline(_ s: TimelineStrip, _ box: PyreonChartRect, _ current
       out.append(PyreonDrawCmd(kind: "text", fill: on ? s.accent : s.label, text: label, at: PyreonChartPt(x: x, y: cy + 8.0), size: s.fontSize, align: "middle", baseline: "top"))
       i = i + 1.0
     }
-    let h = Double(BTN) / 2.0
+    let h = BTN / 2.0
     if s.showPlay {
       let px = playCenter(s, box)
       if playing {
@@ -9844,7 +9844,7 @@ public func timelineHit(_ s: TimelineStrip, _ box: PyreonChartRect, _ px: Double
       return none
     }
     let cy = axisSpan(s, box).cy
-    let reach = Double(BTN) / 2.0 + 4.0
+    let reach = BTN / 2.0 + 4.0
     let near = { (cx: Double) in (px - cx < 0.0 ? cx - px : px - cx) <= reach && (py - cy < 0.0 ? cy - py : py - cy) <= reach + 6.0 }
     if s.showPlay && near(playCenter(s, box)) {
       return TimelineHit(kind: 2.0, index: -1.0)
@@ -11707,7 +11707,7 @@ public func ribbonPolygon(_ layout: ChordLayout, _ r: ChordRibbon, _ progress: D
     let p = progress < 0.0 ? 0.0 : progress > 1.0 ? 1.0 : progress
     var pts: [PyreonChartPt] = []
     let sSweep = r.sourceEnd - r.sourceStart
-    let sSteps = max(2, ceil(Double((abs(sSweep) / Double(CHORD_TAU)) * 64.0)))
+    let sSteps = max(2, ceil(Double((abs(sSweep) / CHORD_TAU) * 64.0)))
     for i in 0...Int(ceil(Double(sSteps))) {
       pts.append(pointOnCircle(c, inner, r.sourceStart + (sSweep * Double(i)) / sSteps))
     }
@@ -11717,7 +11717,7 @@ public func ribbonPolygon(_ layout: ChordLayout, _ r: ChordRibbon, _ progress: D
       pts.append(q)
     }
     let tSweep = r.targetEnd - r.targetStart
-    let tSteps = max(2, ceil(Double((abs(tSweep) / Double(CHORD_TAU)) * 64.0)))
+    let tSteps = max(2, ceil(Double((abs(tSweep) / CHORD_TAU) * 64.0)))
     for i in 0...Int(ceil(Double(tSteps))) {
       pts.append(pointOnCircle(c, inner, r.targetStart + (tSweep * Double(i)) / tSteps))
     }
@@ -11937,7 +11937,7 @@ public func layoutPolar(_ axes: PolarAxes, _ series: [PolarSeries], _ box: Pyreo
       }
     }
     if categoryOn == "angle" {
-      let slot = nF <= 0.0 ? 0.0 : Double(POLAR_TAU) / nF
+      let slot = nF <= 0.0 ? 0.0 : POLAR_TAU / nF
       for si in 0..<series.count {
         let s = series[si]
         if s.kind != "bar" {
@@ -12615,7 +12615,7 @@ public func hitSankeyIndex(_ layout: SankeyLayout, _ px: Double, _ py: Double) -
 
 public func graphNextSeed(_ state: Double) -> Double {
     let raw = state * 16807.0
-    return raw - floor(Double(raw / Double(GRAPH_LCG_M))) * GRAPH_LCG_M
+    return raw - floor(Double(raw / GRAPH_LCG_M)) * GRAPH_LCG_M
   }
 
 public func graphSeedState(_ seed: Double) -> Double {
@@ -12735,9 +12735,9 @@ public func layoutGraph(_ nodes: [GraphNode], _ links: [GraphLink], _ box: Pyreo
         let spread = (box.w < box.h ? box.w : box.h) / 3.0
         for i in 0..<n {
           seed = graphNextSeed(seed)
-          px[i] = cx + (Double(seed) / Double(GRAPH_LCG_M) - 0.5) * spread
+          px[i] = cx + (Double(seed) / GRAPH_LCG_M - 0.5) * spread
           seed = graphNextSeed(seed)
-          py[i] = cy + (Double(seed) / Double(GRAPH_LCG_M) - 0.5) * spread
+          py[i] = cy + (Double(seed) / GRAPH_LCG_M - 0.5) * spread
         }
         var temp = (box.w > box.h ? box.w : box.h) / 10.0
         let cool = iterations <= 0.0 ? 0.0 : Double(temp) / Double(iterations)
@@ -12760,9 +12760,9 @@ public func layoutGraph(_ nodes: [GraphNode], _ links: [GraphLink], _ box: Pyreo
               var d = sqrt(Double(ddx * ddx + ddy * ddy))
               if d < 0.01 {
                 seed = graphNextSeed(seed)
-                ddx = (Double(seed) / Double(GRAPH_LCG_M) - 0.5) * 0.1
+                ddx = (Double(seed) / GRAPH_LCG_M - 0.5) * 0.1
                 seed = graphNextSeed(seed)
-                ddy = (Double(seed) / Double(GRAPH_LCG_M) - 0.5) * 0.1
+                ddy = (Double(seed) / GRAPH_LCG_M - 0.5) * 0.1
                 d = 0.01
               }
               let f = Double(repulsion) / Double((d * d))

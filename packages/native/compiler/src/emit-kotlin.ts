@@ -81,6 +81,7 @@ import {
   nilCoalesceTernary,
   buildArraySpreadConcat,
   buildInferenceCtx,
+  buildModuleConstTypes,
   arrayFromMapRewrite,
   classifyNegativeSlice,
   classifyOptionalCondition,
@@ -616,6 +617,8 @@ let _helperFnNames: Set<string> = new Set()
  * `derivedStateOf` mostly self-infers, but a helper call in a typed position
  * still benefits). */
 let _helperReturns: Map<string, TypeIR> = new Map()
+/** File-scope `const`/`let` name → type (`InferenceCtx.moduleConsts`); rebuilt per file. */
+let _moduleConstTypes: Map<string, TypeIR> = new Map()
 let _helperParamTypesKotlin: Map<string, TypeIR[]> = new Map()
 const _argExpectedTypesKotlin: WeakMap<object, TypeIR> = new WeakMap()
 /**
@@ -804,7 +807,10 @@ export function emitKotlin(
   // skipped inside helper bodies. Seeded with the file's structs AND the
   // helper return types, so a local bound from a helper call types too.
   // Overwritten per component, so a component-bearing file is unaffected.
-  _kotlinExprInferCtx = buildInferenceCtx([], [], structs, [], undefined, _helperReturns)
+  // File-scope bindings, typed once: a component (or helper) reading
+  // `NAMES.indexOf(…)` over a top-level `const NAMES = […]` types its receiver.
+  _moduleConstTypes = buildModuleConstTypes(moduleDecls, structs, _helperReturns)
+  _kotlinExprInferCtx = buildInferenceCtx([], [], structs, [], undefined, _helperReturns, _moduleConstTypes)
   for (const md of moduleDecls) {
     if (md.mutable) continue // `var` (TS `let`) is mutable — unsafe to inline
     if (md.initial.kind !== 'literal') continue // only direct literals
@@ -2321,6 +2327,7 @@ function emitKotlinComponent(c: ComponentIR): string {
     c.props,
     c.propsParamName,
     _helperReturns,
+    _moduleConstTypes,
   )
   const ctx: KotlinCtx = {
     synthesizedDataClasses: [],
