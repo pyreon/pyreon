@@ -10,7 +10,7 @@
  * break the Markdown it lands in — the same escaping class as the block- and
  * line-comment escapes the code emitters carry, in a third syntax.
  */
-import matter from 'gray-matter'
+import { parseFrontmatter } from '@pyreon/zero-content/plugin'
 import { parseSync } from 'oxc-parser'
 import { resolveConfig } from '../core/config'
 import { generate } from '../core/generate'
@@ -105,18 +105,19 @@ function mdCells(row: string): string[] {
  * Front-matter is asserted by PARSING it, not by matching the string.
  *
  * The assertion here used to be a `toContain` on the doubled-quote spelling,
- * and it passed against an emitter producing a document gray-matter REJECTS.
+ * and it passed against an emitter producing a document the reader REJECTS.
  * Doubling is the CSV and single-quoted-YAML convention; inside double
  * quotes YAML escapes with a backslash, so the doubled form closes the
  * scalar and opens another. The test held the emitter to a spelling rather
  * than to a contract, which is how it locked the bug in.
  *
- * `gray-matter` is the parser `@pyreon/zero-content` actually reads these
- * pages with, so the oracle here is the real consumer instead of a re-typed
- * literal — the only reason the corrected escape can be trusted.
+ * `parseFrontmatter` is the reader `@pyreon/zero-content` compiles these
+ * pages with (it replaced gray-matter there), so the oracle here is the real
+ * consumer instead of a re-typed literal — the only reason the corrected
+ * escape can be trusted.
  */
 const frontmatterOf = (page: string): Record<string, unknown> =>
-  matter(page).data as Record<string, unknown>
+  parseFrontmatter(page).data
 
 describe('the generated reference pages', () => {
   const pages = docsFor(SPEC)
@@ -418,8 +419,8 @@ describe('the surfaces the first escaping pass missed', () => {
     ['ESC', ESC],
   ] as Array<[string, string]>) {
     it(`frontmatter survives a ${label} in the title, the version and a tag`, () => {
-      // js-yaml -- what gray-matter reads these pages with -- REFUSES a
-      // document containing one of these, naming a line and column in a file
+      // The YAML reader (js-yaml when this was found, `yaml` inside
+      // `@pyreon/zero-content` now) REFUSES a document containing one of these, naming a line and column in a file
       // the author never wrote. `yaml()` escaped the quote and the backslash
       // and collapsed the line breaks; the control characters went through
       // raw, so a single BEL anywhere in `info` took every page down.

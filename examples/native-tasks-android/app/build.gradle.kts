@@ -48,6 +48,7 @@ android {
                 srcDir("../../../packages/fundamentals/i18n/native/kotlin")
                 srcDir("../../../packages/fundamentals/permissions/native/kotlin")
                 srcDir("../../../packages/fundamentals/query/native/kotlin")
+                srcDir("../../../packages/fundamentals/http/native/kotlin")
                 srcDir("../../../packages/fundamentals/hooks/native/kotlin")
                 // Flow-native device proof (FlowScreen): PyreonFlowState + the edge geometry/canvas.
                 srcDir("../../../packages/fundamentals/flow/native/kotlin")
