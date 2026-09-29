@@ -48,7 +48,8 @@ object PyreonJson {
      * tokens) into exactly what `JSON.stringify` would have produced for the
      * same value. Structure and key order are unchanged.
      */
-    fun jsForm(json: String): String {
+    @PublishedApi
+    internal fun jsForm(json: String): String {
         val out = StringBuilder(json.length)
         var i = 0
         val n = json.length
@@ -108,7 +109,7 @@ object PyreonJson {
      * libcore is its own implementation, so its digits cannot be trusted to
      * agree with V8's on every value.
      */
-    fun jsNumber(value: Double): String {
+    internal fun jsNumber(value: Double): String {
         if (value.isNaN() || value.isInfinite()) return "null"
         if (value == 0.0) return "0"
         val abs = Math.abs(value)
@@ -148,7 +149,7 @@ object PyreonJson {
      * A JSON string literal escaped exactly as `JSON.stringify` escapes one,
      * including a LONE surrogate as `\udxxx` (well-formed JSON.stringify).
      */
-    fun jsString(value: String): String {
+    internal fun jsString(value: String): String {
         val out = StringBuilder(value.length + 2)
         out.append('"')
         var i = 0

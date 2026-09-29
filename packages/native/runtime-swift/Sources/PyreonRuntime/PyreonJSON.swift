@@ -57,7 +57,7 @@ public enum PyreonJSON {
      * by the ECMAScript rules — positional for exponents in (-7, 21], `1e+21`
      * / `1e-7` beyond. Non-finite values are `null`, `-0` is `0`.
      */
-    public static func jsNumber(_ value: Double) -> String {
+    static func jsNumber(_ value: Double) -> String {
         if !value.isFinite { return "null" }
         if value == 0 { return "0" }
         let negative = value < 0
@@ -101,7 +101,7 @@ public enum PyreonJSON {
     }
 
     /** A JSON string literal escaped exactly as `JSON.stringify` escapes one. */
-    public static func jsString(_ value: String) -> String {
+    static func jsString(_ value: String) -> String {
         var out = "\""
         for scalar in value.unicodeScalars {
             switch scalar {
