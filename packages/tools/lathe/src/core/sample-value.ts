@@ -7,7 +7,7 @@
  */
 import { modelIndex } from './graph'
 import type { IrDocument, IrField, IrType } from './ir'
-import { conforms, sampleNumber, sampleString } from './sample'
+import { asGeneratedValue, conforms, sampleNumber, sampleString } from './sample'
 
 /**
  * A deterministic sample value for a type — the value the mock fixtures, the
@@ -27,7 +27,9 @@ export function sampleValue(
   // A spec `example` is used only when it satisfies the schema it sits in —
   // real specs carry examples that contradict their own types (audit C7).
   if (field?.example !== undefined && conforms(field.example, type, (n) => modelType(doc, n))) {
-    return field.example
+    // An int64 example is a JSON number in the spec; the generated type is a
+    // bigint, and the fixture has to be one too.
+    return asGeneratedValue(field.example, type, (n) => modelType(doc, n))
   }
   if (depth > 6) return null
   switch (type.kind) {
@@ -41,6 +43,8 @@ export function sampleValue(
       return sampleString(type, field, index)
     case 'number':
       return sampleNumber(type, index)
+    case 'bigint':
+      return BigInt(sampleNumber({ ...type, kind: 'number', integer: true }, index))
     case 'boolean':
       return true
     case 'null':
