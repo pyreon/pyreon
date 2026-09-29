@@ -44,9 +44,9 @@
     "@pyreon/reactivity": "workspace:^"
   },
   "dependencies": {
-    "@atlaskit/pragmatic-drag-and-drop": "^3.1.0",
+    "@atlaskit/pragmatic-drag-and-drop": "^4.0.0",
     "@atlaskit/pragmatic-drag-and-drop-auto-scroll": "^3.2.1",
-    "@atlaskit/pragmatic-drag-and-drop-hitbox": "^2.2.0",
+    "@atlaskit/pragmatic-drag-and-drop-hitbox": "^3.0.0",
     "@pyreon/a11y": "workspace:^"
   },
   "devDependencies": {
