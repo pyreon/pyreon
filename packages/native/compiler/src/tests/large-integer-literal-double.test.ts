@@ -2,7 +2,10 @@
 // Kotlin's Int is 32-bit, so an epoch-millisecond timestamp — how time-series
 // data is written — typed its field Int and kotlinc rejected the literal
 // ("actual type is 'Long', but 'Int' was expected"). JavaScript has one
-// number type; Double is the faithful reading.
+// number type; Double is the faithful reading. Every OTHER (non-fractional)
+// TS integer lowers to Kotlin `Long`, not `Int` — Swift's `Int` is 64-bit on
+// every Apple target, so an `Int` here narrowed the SAME source on Android
+// only (see `KOTLIN_INT` in emit-kotlin.ts).
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
 import { validateKotlin, validateSwiftWithStubs } from '../validate'
@@ -14,10 +17,10 @@ export function C() { return <Text>{READINGS.length}</Text> }
 `
 
 describe('an integer literal beyond Int32 is a Double', () => {
-  it('Kotlin: the field is Double and the literal carries .0; small integers stay Int', () => {
+  it('Kotlin: the field is Double and the literal carries .0; other integers are Long', () => {
     const r = transform(src, { target: 'kotlin' })
-    expect(r.code).toContain('data class Reading(var at: Double, var n: Int)')
-    expect(r.code).toContain('Reading(at = 1709251200000.0, n = 1)')
+    expect(r.code).toContain('data class Reading(var at: Double, var n: Long)')
+    expect(r.code).toContain('Reading(at = 1709251200000.0, n = 1L)')
   })
 
   it('Swift: the same field type, so one source means one model on both targets', () => {
