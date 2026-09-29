@@ -5,10 +5,14 @@
  * not see a still-loading chunk to wait for — the server rendered the
  * fallback forever instead of the content.
  */
+import type { ComponentFn } from '@pyreon/core'
 import { h, lazy } from '@pyreon/core'
 import { renderToString } from '@pyreon/runtime-server'
 import { Suspense } from '../index'
 import { jsx } from '../jsx-runtime'
+
+/** `jsx()` takes an untyped-props `ComponentFn`; the typed test components are narrower. */
+const asType = (c: unknown): ComponentFn => c as ComponentFn
 
 describe('svelte-compat jsx() — a lazy() reaching the compat wrapper', () => {
   it('forwards __load as well as __loading, so the server waits for the chunk', async () => {
@@ -19,7 +23,7 @@ describe('svelte-compat jsx() — a lazy() reaching the compat wrapper', () => {
         ),
     )
     const html = await renderToString(
-      jsx(Suspense, { fallback: jsx('i', { children: 'loading' }), children: jsx(L, { who: 'k' }) }),
+      jsx(asType(Suspense), { fallback: jsx('i', { children: 'loading' }), children: jsx(asType(L), { who: 'k' }) }),
     )
     expect(html).toContain('<p class="q">core:k</p>')
     expect(html).not.toContain('loading')

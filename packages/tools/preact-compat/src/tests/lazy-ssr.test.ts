@@ -17,6 +17,9 @@ import { useState } from '../hooks'
 import { lazy, Suspense } from '../index'
 import { jsx } from '../jsx-runtime'
 
+/** `jsx()` takes an untyped-props `ComponentFn`; the typed test components are narrower. */
+const asType = (c: unknown): ComponentFn => c as ComponentFn
+
 async function read(s: ReadableStream<string>): Promise<string> {
   const r = s.getReader()
   let out = ''
@@ -41,7 +44,7 @@ function slowLazy(ms = 20) {
 
 function suspended(L: ComponentFn<{ who: string }>, who: string) {
   return jsx('main', {
-    children: jsx(Suspense, { fallback: jsx('i', { class: 'fb', children: 'loading' }), children: jsx(L, { who }) }),
+    children: jsx(asType(Suspense), { fallback: jsx('i', { class: 'fb', children: 'loading' }), children: jsx(asType(L), { who }) }),
   })
 }
 
@@ -55,7 +58,7 @@ describe('preact-compat lazy() — SSR waits for a still-loading chunk', () => {
 
   it('renderToString renders a bare lazy (no <Suspense>) instead of nothing', async () => {
     const L = slowLazy()
-    const html = await renderToString(jsx('div', { children: jsx(L, { who: 'b' }) }))
+    const html = await renderToString(jsx('div', { children: jsx(asType(L), { who: 'b' }) }))
     expect(html).toContain('<p class="q">b:st</p>')
   })
 
