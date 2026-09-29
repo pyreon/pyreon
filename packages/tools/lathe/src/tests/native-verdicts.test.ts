@@ -84,13 +84,15 @@ describe('the OAI petstore shape, through the real compiler', () => {
       (f) => f.path === 'pets.native.tsx',
     )
 
-    it(`${validator}: no verbatim reproduction, no shared value/type name`, () => {
+    it(`${validator}: no verbatim reproduction; value and type share a name and still lower`, () => {
       expect(mod).toBeDefined()
       const src = mod?.contents ?? ''
       // G5: the array model is inlined, never declared as a schema const.
-      expect(src).not.toMatch(/export const pets_schema/)
-      // G6: the schema binding is not the type's name.
-      expect(src).toContain('export const pet_schema')
+      expect(src).not.toMatch(/export const Pets =/)
+      // G6: the schema binding shares the type's name, as on the web. PMTC
+      // separates the pair (the value becomes `PetValue` in the emitted
+      // file); the compile verdict below is what proves it lowers.
+      expect(src).toContain('export const Pet =')
       expect(src).toContain('export type Pet =')
       for (const target of ['swift', 'kotlin'] as const) {
         const out = transform(src, { target })
