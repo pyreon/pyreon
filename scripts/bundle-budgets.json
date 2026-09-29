@@ -10,13 +10,13 @@
   "@pyreon/charts": 103632,
   "@pyreon/cli": 18578,
   "@pyreon/code": 8770,
-  "@pyreon/compiler": 115584,
+  "@pyreon/compiler": 117800,
   "@pyreon/config": 256,
   "@pyreon/connector-document": 2304,
   "@pyreon/coolgrid": 2304,
   "@pyreon/core": 6903,
   "@pyreon/create-multiplatform": 12009,
-  "@pyreon/create-zero": 10240,
+  "@pyreon/create-zero": 12650,
   "@pyreon/dnd": 4525,
   "@pyreon/document": 2816,
   "@pyreon/document-primitives": 2816,
@@ -73,6 +73,6 @@
   "@pyreon/vite-plugin": 12019,
   "@pyreon/vue-compat": 4864,
   "@pyreon/zero": 9070,
-  "@pyreon/zero-cli": 3853,
+  "@pyreon/zero-cli": 5600,
   "@pyreon/zero-content": 11428
 }

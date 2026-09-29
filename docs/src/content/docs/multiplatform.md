@@ -100,7 +100,7 @@ This is the **right** answer for charts / diagrams / code editors / doc previews
 
 **🟡 Logic could port, but no native runtime exists yet:** `@pyreon/rx`, `@pyreon/url-state`, `@pyreon/toast` (the store is pure-logic; the `<Toaster>` renderer is DOM), and `@pyreon/sync`'s engine-neutral core (the Yjs engine + IndexedDB/WebSocket transports are web/Node-only).
 
-**🟢 Schema validation lowers via compile-time codegen (no runtime port needed):** `@pyreon/validate`'s `s.object({ … })` DSL and `@pyreon/validation`'s `zodSchema`/`valibotSchema`/`arktypeSchema` adapters compile a schema to a native `Codable` struct / `@Serializable` data class with a type-checking `parse`/`safeParse`. Both the top-level declaration form (`const X = s.object({ … })`, used by `@pyreon/form`) and the STANDALONE inline form (`s.object({ n: s.number() }).safeParse(x).success` — the shape feature code writes to validate data) lower on iOS + Android, verified against real swiftc + kotlinc. Only a LITERAL `s.object({ … })` shape lowers; the runtime helper surface (custom `.refine()` predicates, the async validate path, `standardSchemaToValidator`) stays web.
+**🟢 Schema validation lowers via compile-time codegen (no runtime port needed):** `@pyreon/validate`'s `s.object({ … })` DSL and `@pyreon/validation`'s `zodSchema`/`valibotSchema`/`arktypeSchema` adapters compile a schema to a native `Codable` struct / `@Serializable` data class with a type-checking `parse`/`safeParse`. Both the top-level declaration form (`const X = s.object({ … })`, used by `@pyreon/form`) the STANDALONE inline form (`s.object({ n: s.number() }).safeParse(x).success` — the shape feature code writes to validate data), and `.safeParse(x)` called on a file-scope binding (`const Pet = s.object({ … })` then `Pet.safeParse(x).success` / `.data`) lower on iOS + Android, verified against real swiftc + kotlinc and, for the bound form, the real iOS SDK with the runtime linked in. `Pet.parse(x)` WARNS by name (it throws on invalid input, which needs the `try`/`throw` lowering PMTC does not have yet), as does `.safeParse` on an `s.discriminatedUnion` binding. The `safeParse` argument is lowered as a dictionary: an object literal works; a non-literal argument must already be map-typed (a typed struct value does not convert). Only a LITERAL `s.object({ … })` shape lowers; the runtime helper surface (custom `.refine()` predicates, the async validate path, `standardSchemaToValidator`) stays web.
 
 ### The supported-TypeScript-surface ceiling (and the silent-failure cliff)
 
@@ -1265,15 +1265,36 @@ value after the signal changes), while the native targets re-run the body
 and update. Write `return () => props.children(q.data())` — live on the web,
 identical emit on native.
 
-Named, never emitted broken: a block-bodied render callback
-(`(x) => { …; return <…/> }`), a render-prop value PMTC cannot see into
-(`render={pick()}`), a block-bodied accessor return, and — Swift only — an
-OPTIONAL render prop (a caller that omits it leaves the generic view type
-uninferable; Android keeps it optional). Verification: R2 — `swiftc` and
-`kotlinc` against the stubs, plus a real-iOS-SDK typecheck with the real
-runtime linked in (`native-render-props.test.ts`, including the lathe
-bookshelf data components consumed from another module); no device
-assertion yet.
+**Optional render props** (`footer?: (n: number) => VNodeChild`,
+`header?: VNodeChild`) lower on both targets. Compose takes a nullable
+composable lambda defaulted to `null`. SwiftUI stores an optional closure
+(`let footer: ((Int) -> FooterContent)?`, invoked `footer?(n)`) and gets one
+initializer per combination of provided slots, the omitted ones pinned to
+`EmptyView` by a constrained extension — SwiftUI's own idiom for a defaulted
+view parameter, and what lets a caller that omits the slot compile (the
+generic has nothing else to infer from). A presence test narrows to the
+unwrapped closure (`if let footer { footer(n) }`), and forwarding the slot
+(`footer={props.footer}`) splits the call on presence. Past three optional
+slots in one component (eight initializers) Swift falls back to REQUIRED
+and says so.
+
+**Block-bodied render callbacks and accessor returns** lower when the block
+is a view-builder shape: `const` declarations, early `if (…) return …`
+branches (an optional test narrows the rest: `if let` on Swift, a smart
+cast or a bound `val` on Kotlin) and a final `return` (`return null` renders
+nothing). `(u) => { if (!u) return <Empty/>; const n = u.name; return <Text>{n}</Text> }`
+becomes a closure of `if let u { let n = u.name; Text(…) } else { Empty() }`
+/ `if (u == null) { Empty() } else { val n = u.name; Text(…) }`.
+
+Named, never emitted broken: a block body with anything a view builder
+cannot take (an assignment, a loop, a reassigned local, an expression
+statement, an `if` that falls through), and a render-prop value PMTC cannot
+see into (`render={pick()}`). Verification: R2 — `swiftc` and `kotlinc`
+against the stubs, plus a real-iOS-SDK typecheck
+(`native-render-props.test.ts` with the real runtime linked in, including
+the lathe bookshelf data components consumed from another module;
+`native-render-props-optional-block.test.ts` for the optional and
+block-bodied shapes); no device assertion yet.
 
 **Module scope**: `let`/`const` primitives (non-reactive on native),
 type aliases, the recognized factory calls. Module-scope `signal()` is

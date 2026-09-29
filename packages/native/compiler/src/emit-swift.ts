@@ -141,9 +141,13 @@ import {
   isRenderArrow,
   isViewShaped,
   moduleViewHelpers,
+  narrowViewBlock,
   optionalSlotSwiftWarning,
+  planViewBlock,
   propRefName,
   slotPropsOf,
+  viewBlockExprs,
+  type ViewBlock,
   unlowerableRenderValueWarning,
   viewHelperFromDecl,
   viewHelperFromModuleDecl,
@@ -296,6 +300,8 @@ let _componentPropsMap: Map<string, { name: string; type: TypeIR }[]> = new Map(
 let _componentSlotsMap: Map<string, SlotProp[]> = new Map()
 /** The slots of the component being emitted, by prop name. */
 let _activeSlots: Map<string, SlotProp> = new Map()
+/** Optional slots of the active component emitted as REQUIRED (the fallback) — invoked without `?`. */
+let _optionalSlotsAsRequired: Set<string> = new Set()
 /**
  * View helpers in scope — file-scope ones plus the current component's —
  * by name. Lowered to `@ViewBuilder func`, so a call is a VIEW and a
@@ -1543,6 +1549,7 @@ export function emitSwift(
   _jsxFnNames = new Set()
   _componentSlotsMap = new Map()
   _activeSlots = new Map()
+  _optionalSlotsAsRequired = new Set()
   _moduleViewHelpersSwift = new Map()
   _viewHelpersSwift = new Map()
   _styledComponents = new Map()
@@ -2793,21 +2800,48 @@ function emitSwiftComponent(c: ComponentIR): string {
   // property carries over to the memberwise initializer's parameter, so a
   // caller's closure body is a view builder (if/else, several views).
   const slotGenerics: string[] = []
+  // An OPTIONAL render prop is stored as an optional closure, and the struct
+  // gains one initializer per subset of its optional slots — the omitted ones
+  // pinned to `EmptyView` by a constrained extension, the SwiftUI idiom for a
+  // defaulted view parameter (`Label` / `Button(action:)`). A caller that
+  // omits the slot then has a concrete view type, which the plain generic
+  // cannot infer from nothing. See `emitSwiftOptionalSlotInits`.
+  const optionalSlotNames = slots.filter((sl) => sl.optional).map((sl) => sl.name)
+  const optionalSlotFallback =
+    optionalSlotNames.length === 0
+      ? null
+      : optionalSlotNames.length > MAX_SWIFT_OPTIONAL_SLOTS
+        ? `it has ${optionalSlotNames.length} optional render props, and each subset needs its own initializer (at most ${MAX_SWIFT_OPTIONAL_SLOTS} are lowered, ${2 ** MAX_SWIFT_OPTIONAL_SLOTS} initializers)`
+        : c.decls.some((d) => d.kind === 'crdt-doc' || d.kind === 'synced-signal')
+          ? 'its synced state already needs a generated init() that seeds it, and the optional-slot initializers cannot'
+          : null
+  _optionalSlotsAsRequired = optionalSlotFallback === null ? new Set() : new Set(optionalSlotNames)
+  const initParams: SwiftInitParam[] = []
   const propLines = c.props.map((p) => {
     const slot = _activeSlots.get(p.name)
     if (slot !== undefined) {
       const generic = `${p.name.charAt(0).toUpperCase()}${p.name.slice(1)}Content`
       slotGenerics.push(`${generic}: View`)
+      const params = slot.params.map((t, i) => swiftType(t, synth, `${p.name}${i}`)).join(', ')
+      const closure = `(${params}) -> ${generic}`
+      if (slot.optional && optionalSlotFallback === null) {
+        initParams.push({ name: p.name, decl: `@ViewBuilder ${swiftIdent(p.name)}: @escaping ${closure}`, omittable: generic })
+        return `  let ${swiftIdent(p.name)}: (${closure})?`
+      }
       if (slot.optional) {
-        const w = optionalSlotSwiftWarning(c.name, p.name)
+        const w = optionalSlotSwiftWarning(c.name, p.name, optionalSlotFallback!)
         if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
       }
-      const params = slot.params.map((t, i) => swiftType(t, synth, `${p.name}${i}`)).join(', ')
-      return `  @ViewBuilder let ${swiftIdent(p.name)}: (${params}) -> ${generic}`
+      initParams.push({ name: p.name, decl: `@ViewBuilder ${swiftIdent(p.name)}: @escaping ${closure}` })
+      return `  @ViewBuilder let ${swiftIdent(p.name)}: ${closure}`
     }
-    return typeIsOptional(p.type)
-      ? `  var ${swiftIdent(p.name)}: ${swiftType(p.type, synth, p.name)} = nil`
-      : `  let ${swiftIdent(p.name)}: ${swiftType(p.type, synth, p.name)}`
+    const t = swiftType(p.type, synth, p.name)
+    if (typeIsOptional(p.type)) {
+      initParams.push({ name: p.name, decl: `${swiftIdent(p.name)}: ${t} = nil` })
+      return `  var ${swiftIdent(p.name)}: ${t} = nil`
+    }
+    initParams.push({ name: p.name, decl: `${swiftIdent(p.name)}: ${t}` })
+    return `  let ${swiftIdent(p.name)}: ${t}`
   })
   // Pre-walk signal decl types through the synth ctx so INLINE anonymous
   // object types in signal generics (`signal<{ price: number }[]>`)
@@ -3371,6 +3405,10 @@ function emitSwiftComponent(c: ComponentIR): string {
   }
   lines.push(`  }`)
   lines.push(`}`)
+  if (optionalSlotNames.length > 0 && optionalSlotFallback === null) {
+    if (isLayout) initParams.push({ name: 'content', decl: '@ViewBuilder content: @escaping () -> Content' })
+    lines.push(...emitSwiftOptionalSlotInits(c.name, initParams))
+  }
   // Fill the reserved slot now that the body has been lowered — a responsive
   // style anywhere in it sets `_usesSizeClass`, and the property has to be
   // declared before the body that references it.
@@ -5119,6 +5157,95 @@ function emitSwiftViewHelper(h: ViewHelper, visibility: 'private' | 'internal', 
   return `@ViewBuilder ${vis}func ${swiftIdent(h.name)}(${params}) -> some View {\n${' '.repeat(indent + 2)}${body}\n${' '.repeat(indent)}}`
 }
 
+/**
+ * A planned BLOCK-bodied view (see `planViewBlock`) as view-builder lines,
+ * each padded to `indent`: `const` → `let`, an early-return branch → `if` /
+ * `if let` (the branch the test narrowed reads an unwrapped binding), a
+ * `return view` → the view. SwiftUI's result builders take local declarations
+ * and conditionals directly, so this is a statement-for-statement lowering.
+ */
+function emitSwiftViewBlock(b: ViewBlock, indent: number): string[] {
+  const pad = ' '.repeat(indent)
+  switch (b.kind) {
+    case 'empty':
+      return [`${pad}EmptyView()`]
+    case 'view':
+      return [`${pad}${emitSwiftChild({ kind: 'expr', expr: unparenExpr(b.expr) }, indent)}`]
+    case 'let': {
+      const line = `${pad}${emitSwiftStatement(b.stmt, indent)}`
+      const t = b.stmt.declaredType ?? inferType(b.stmt.expr, _exprInferCtx)
+      return [line, ...withSwiftLocals([[b.stmt.name, t.kind === 'unknown' ? undefined : t]], () => emitSwiftViewBlock(b.rest, indent))]
+    }
+    case 'if': {
+      const inner = (x: ViewBlock): string => emitSwiftViewBlock(x, indent + 2).join('\n')
+      const tail = (other: ViewBlock): string => (other.kind === 'empty' ? `\n${pad}}` : `\n${pad}} else {\n${inner(other)}\n${pad}}`)
+      const n = narrowingFor(b.cond, _exprInferCtx, _activePropsParamName)
+      if (n !== null) {
+        const present = n.presentWhenTrue ? b.then : b.otherwise
+        const other = n.presentWhenTrue ? b.otherwise : b.then
+        const readers = viewBlockExprs(present)
+        if (readers.some((r) => readsSubject(r, n.subject))) {
+          const binder = binderName(n.subject, [...readers, ...viewBlockExprs(other)])
+          const rewritten = narrowViewBlock(present, n.subject, binder)
+          if (rewritten !== null) {
+            const body = withSwiftLocals([[binder, n.unwrapped]], () => inner(rewritten))
+            return [`${pad}if ${swiftBindClause(n, binder, indent)} {\n${body}${tail(other)}`]
+          }
+          warnUnnarrowable(n, indent)
+        }
+      }
+      const cond = swiftCondition(b.cond, (x) => emitSwiftExpr(x, indent))
+      return [`${pad}if ${cond} {\n${inner(b.then)}${tail(b.otherwise)}`]
+    }
+  }
+}
+
+/** A zero-parameter arrow with a plannable block body — a block-bodied reactive-accessor return. */
+function swiftAccessorViewBlock(e: ExprIR): ViewBlock | null {
+  const x = unparenExpr(e)
+  if (x.kind !== 'arrow' || x.params.length > 0 || x.stmts === undefined || x.stmts.length === 0) return null
+  return planViewBlock(x.stmts)
+}
+
+/** A component initializer parameter; `omittable` = the generic an OPTIONAL slot pins to `EmptyView` when omitted. */
+interface SwiftInitParam {
+  name: string
+  decl: string
+  omittable?: string
+}
+
+/** Optional render props lowered per component — each subset needs its own initializer. */
+const MAX_SWIFT_OPTIONAL_SLOTS = 3
+
+/**
+ * The initializers of a component with OPTIONAL render props: one per subset
+ * of them, each in an extension. The subset the caller passes takes
+ * `@ViewBuilder` closures; the rest are stored `nil` and their generics pinned
+ * to `EmptyView` by the extension's `where` clause, so a call site that omits
+ * them has a concrete type to infer. Declared in extensions so the memberwise
+ * initializer survives — it is what a caller FORWARDING an optional slot
+ * (`render: render`, itself optional) binds to.
+ */
+function emitSwiftOptionalSlotInits(component: string, params: readonly SwiftInitParam[]): string[] {
+  const optional = params.filter((p) => p.omittable !== undefined)
+  const head = `${swiftIdent(component)}`
+  const out: string[] = []
+  for (let mask = 0; mask < 2 ** optional.length; mask++) {
+    const omitted = new Set(optional.filter((_, i) => (mask & (1 << i)) !== 0).map((p) => p.name))
+    const pinned = optional.filter((p) => omitted.has(p.name)).map((p) => `${p.omittable} == EmptyView`)
+    const kept = params.filter((p) => !omitted.has(p.name))
+    out.push('')
+    out.push(pinned.length > 0 ? `extension ${head} where ${pinned.join(', ')} {` : `extension ${head} {`)
+    out.push(`  init(${kept.map((p) => p.decl).join(', ')}) {`)
+    for (const p of params) {
+      out.push(`    self.${swiftIdent(p.name)} = ${omitted.has(p.name) ? 'nil' : swiftIdent(p.name)}`)
+    }
+    out.push('  }')
+    out.push('}')
+  }
+  return out
+}
+
 /** The slot of the component being emitted that `e` references, if any. */
 function activeSlotRef(e: ExprIR): SlotProp | undefined {
   const name = propRefName(e, _activePropsParamName)
@@ -5141,7 +5268,7 @@ function swiftCallRendersView(e: ExprIR): boolean {
  */
 function emitSwiftSlotInvocation(slot: SlotProp, args: readonly ExprIR[], indent: number): string {
   const parts = args.map((a, i) => withExpectedType(slot.params[i], () => emitSwiftExpr(a, indent)))
-  return `${swiftIdent(slot.name)}(${parts.join(', ')})`
+  return `${swiftIdent(slot.name)}${swiftSlotCallMark(slot)}(${parts.join(', ')})`
 }
 
 /**
@@ -5167,7 +5294,8 @@ function emitSwiftSlotArg(
   const base = ' '.repeat(indent)
   const pad = ' '.repeat(indent + 2)
   if (x.kind === 'arrow') {
-    if (x.stmts !== undefined && x.stmts.length > 0) {
+    const block = x.stmts !== undefined && x.stmts.length > 0 ? planViewBlock(x.stmts) : undefined
+    if (block === null) {
       const w = blockBodiedRenderCallbackWarning(where)
       if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
       const arity = slot?.params.length ?? x.params.length
@@ -5178,11 +5306,15 @@ function emitSwiftSlotArg(
     const arity = Math.max(slot?.params.length ?? 0, x.params.length)
     const names = Array.from({ length: arity }, (_, i) => x.params[i] ?? '_')
     const types = names.map((_, i) => slot?.params[i] ?? x.paramTypes?.[i])
-    const body = withSwiftLocals(
-      names.map((n, i) => [n, types[i]] as const).filter(([n]) => n !== '_'),
-      () => emitSwiftChild({ kind: 'expr', expr: unparenExpr(x.body) }, indent + 2),
-    )
     const head = arity === 0 ? '{' : `{ ${names.map((n) => (n === '_' ? '_' : swiftIdent(n))).join(', ')} in`
+    const params = names.map((n, i) => [n, types[i]] as const).filter(([n]) => n !== '_')
+    if (block !== undefined) {
+      // A block body: its `const`s and early returns become the closure's
+      // view-builder statements (the slot parameter is `@ViewBuilder`).
+      const lines = withSwiftLocals(params, () => emitSwiftViewBlock(block, indent + 2))
+      return `${head}\n${lines.join('\n')}\n${base}}`
+    }
+    const body = withSwiftLocals(params, () => emitSwiftChild({ kind: 'expr', expr: unparenExpr(x.body) }, indent + 2))
     return `${head}\n${pad}${body}\n${base}}`
   }
   // Forwarding the enclosing component's own render prop: same closure type.
@@ -5190,11 +5322,16 @@ function emitSwiftSlotArg(
   if (forwarded !== undefined) return swiftIdent(forwarded.name)
   if (x.kind === 'identifier' && _viewHelpersSwift.has(x.name)) {
     const h = _viewHelpersSwift.get(x.name)!
-    const arity = h.params.length
-    const args = Array.from({ length: arity }, (_, i) => `a${i}`)
+    // The closure must name every parameter the SLOT passes, even when the
+    // helper takes fewer (JS ignores the extra arguments) — the same padding
+    // the inline-arrow branch above does. `{ a0 in cell(a0) }` handed to a
+    // `(User, Int) -> C` slot is a swiftc arity error.
+    const arity = Math.max(slot?.params.length ?? 0, h.params.length)
+    const args = Array.from({ length: arity }, (_, i) => (i < h.params.length ? `a${i}` : '_'))
+    const callArgs = args.filter((a) => a !== '_')
     return arity === 0
       ? `{ ${swiftIdent(h.name)}() }`
-      : `{ ${args.join(', ')} in ${swiftIdent(h.name)}(${args.join(', ')}) }`
+      : `{ ${args.join(', ')} in ${swiftIdent(h.name)}(${callArgs.join(', ')}) }`
   }
   if (isViewShaped(x) || swiftCallRendersView(x)) {
     return `{\n${pad}${emitSwiftChild({ kind: 'expr', expr: x }, indent + 2)}\n${base}}`
@@ -13371,7 +13508,9 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
       explicitNames.add(`on${a.name[0]!.toUpperCase()}${a.name.slice(1)}`)
     }
   }
-  const argEntries: { name: string; part: string }[] = []
+  // `forwarded` = the value is this component's own OPTIONAL render prop,
+  // forwarded as-is — see the `if let` expansion at the end.
+  const argEntries: { name: string; part: string; forwarded?: string }[] = []
   // Render props. A same-file component DECLARES which props are slots; one
   // from another file is judged by the value's own shape (see
   // `isSwiftSlotValue`) — generated data components live in their own module.
@@ -13387,9 +13526,11 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
     if (a.kind === 'attr' && (isUserComponent || !isCanonicalPrimitive(e.tag))) {
       const { slot, isSlot } = slotFor(a.name)
       if (isSlot(a.value)) {
+        const forwarded = swiftForwardedOptionalSlot(a.value)
         argEntries.push({
           name: a.name,
           part: `${swiftIdent(safeIdent(a.name))}: ${emitSwiftSlotArg(a.value, slot, `<${e.tag} ${a.name}={…}>`, indent)}`,
+          ...(forwarded !== null ? { forwarded } : {}),
         })
         continue
       }
@@ -13445,9 +13586,11 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
       activeSlotRef(lone) !== undefined ||
       (lone.kind === 'identifier' && _viewHelpersSwift.has(lone.name)))
   if (loneIsCallback && (calleeSlots === undefined || childrenSlot !== undefined)) {
+    const forwarded = swiftForwardedOptionalSlot(lone!)
     argEntries.push({
       name: 'children',
       part: `children: ${emitSwiftSlotArg(lone!, childrenSlot, `<${e.tag}>{…}</${e.tag}>`, indent)}`,
+      ...(forwarded !== null ? { forwarded } : {}),
     })
     children = []
   } else if (childrenSlot !== undefined && childrenSlot.bare && children.length > 0) {
@@ -13463,20 +13606,51 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
         (orderOf.get(y.name) ?? Number.MAX_SAFE_INTEGER),
     )
   }
-  const attrPairs = argEntries.map((x) => x.part).join(', ')
   // `swiftIdent`-escape the tag name — covers user-defined components
   // whose name collides with a Swift keyword (e.g. `<class>...</class>`).
   const tag = swiftIdent(e.tag)
-  if (children.length === 0) {
-    return attrPairs ? `${tag}(${attrPairs})` : `${tag}()`
+  const call = (entries: readonly { part: string }[], at: number): string => {
+    const attrPairs = entries.map((x) => x.part).join(', ')
+    if (children.length === 0) {
+      return attrPairs ? `${tag}(${attrPairs})` : `${tag}()`
+    }
+    const contentLines = children
+      .map((c) => ' '.repeat(at + 2) + emitSwiftChild(c, at + 2))
+      .join('\n')
+    if (attrPairs) {
+      return `${tag}(${attrPairs}) {\n${contentLines}\n${' '.repeat(at)}}`
+    }
+    return `${tag} {\n${contentLines}\n${' '.repeat(at)}}`
   }
-  const contentLines = children
-    .map((c) => pad + emitSwiftChild(c, indent + 2))
-    .join('\n')
-  if (attrPairs) {
-    return `${tag}(${attrPairs}) {\n${contentLines}\n${' '.repeat(indent)}}`
+  // Forwarding this component's own OPTIONAL render prop: the receiver's
+  // initializers take a slot as a closure or not at all (its omitted
+  // generic is pinned to `EmptyView`), never an optional closure — so the
+  // call is split on presence, the Swift spelling of JS passing `undefined`
+  // through. `Group` keeps it one view for any modifier appended after it.
+  const forwardedNames = [...new Set(argEntries.flatMap((x) => (x.forwarded !== undefined ? [x.forwarded] : [])))]
+  if (forwardedNames.length === 0) return call(argEntries, indent)
+  const split = (entries: readonly { part: string; forwarded?: string }[], names: readonly string[], at: number): string => {
+    const [name, ...rest] = names
+    if (name === undefined) return call(entries, at)
+    const p = ' '.repeat(at + 2)
+    const id = swiftIdent(name)
+    const present = split(entries, rest, at + 2)
+    const absent = split(entries.filter((x) => x.forwarded !== name), rest, at + 2)
+    return `if let ${id} {\n${p}${present}\n${' '.repeat(at)}} else {\n${p}${absent}\n${' '.repeat(at)}}`
   }
-  return `${tag} {\n${contentLines}\n${' '.repeat(indent)}}`
+  return `Group {\n${' '.repeat(indent + 2)}${split(argEntries, forwardedNames, indent + 2)}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * The name of this component's OPTIONAL render prop when `value` forwards it
+ * unchanged (`render={props.render}`) and it is still optional here — not
+ * already unwrapped by an enclosing narrowing, and not emitted required by the
+ * fallback. Null otherwise.
+ */
+function swiftForwardedOptionalSlot(value: ExprIR): string | null {
+  const slot = activeSlotRef(unparenExpr(value))
+  if (slot === undefined || !slot.optional) return null
+  return swiftSlotCallMark(slot) === '?' ? slot.name : null
 }
 
 /**
@@ -13548,6 +13722,14 @@ function emitSwiftReturnExpr(expr: ExprIR, indent: number): string {
   }
   const slotUse = emitSwiftSlotUse(expr, indent)
   if (slotUse !== null) return slotUse
+  // `return () => { const t = …; return <X t/> }` — a block-bodied reactive
+  // accessor. `body` re-runs on every state change, so the block IS the view;
+  // `Group` keeps the root ONE view, so modifiers appended after it (`.task`,
+  // `.onAppear`) attach to the whole thing rather than its last statement.
+  const block = swiftAccessorViewBlock(expr)
+  if (block !== null) {
+    return `Group {\n${emitSwiftViewBlock(block, indent + 2).join('\n')}\n${' '.repeat(indent)}}`
+  }
   if (
     expr.kind === 'ternary' &&
     (swiftExprProducesView(expr.then) || swiftExprProducesView(expr.otherwise))
@@ -13565,11 +13747,21 @@ function emitSwiftReturnExpr(expr: ExprIR, indent: number): string {
 function emitSwiftSlotUse(e: ExprIR, indent: number): string | null {
   const x = e.kind === 'paren' ? e.inner : e
   const bare = activeSlotRef(x)
-  if (bare !== undefined) return bare.bare ? `${swiftIdent(bare.name)}()` : null
+  if (bare !== undefined) return bare.bare ? `${swiftIdent(bare.name)}${swiftSlotCallMark(bare)}()` : null
   if (x.kind !== 'call') return null
   const slot = activeSlotRef(x.callee)
   if (slot === undefined || slot.bare) return null
   return emitSwiftSlotInvocation(slot, x.args, indent)
+}
+
+/**
+ * `?` for a call to an OPTIONAL slot (`render?(item)` — `Optional<View>` is
+ * itself a View, so an absent slot renders nothing), empty when a narrowing
+ * has rebound the name to its unwrapped value (`if let render { render(1) }`).
+ */
+function swiftSlotCallMark(slot: SlotProp): string {
+  if (!slot.optional || _optionalSlotsAsRequired.has(slot.name)) return ''
+  return _exprInferCtx.locals.has(slot.name) ? '' : '?'
 }
 
 function emitSwiftChild(c: ChildIR, indent: number): string {
@@ -15062,10 +15254,17 @@ function swiftMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex:
         continue
       }
       if (spec.kind === 'rich') {
-        if (v.kind !== 'array') return 'unsupported'
+        // Every other decline in this loop NAMES the field; these two used to
+        // return bare, so a non-literal `labelRich` made the whole chart an
+        // EmptyView() with no warning at all.
+        const richDecline = (): 'unsupported' => {
+          _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`${spec.name}\` must be an array of { name, color?, fontSize? } object literals on native; emitting an EmptyView().`)
+          return 'unsupported'
+        }
+        if (v.kind !== 'array') return richDecline()
         const styles: string[] = []
         for (const r of v.elements) {
-          if (r.kind !== 'object') return 'unsupported'
+          if (r.kind !== 'object') return richDecline()
           const rf = new Map(r.fields.map((field) => [field.name, field.value]))
           const text = (name: string): string => {
             const raw = rf.get(name)

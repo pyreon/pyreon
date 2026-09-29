@@ -41,7 +41,8 @@ import { isCanonicalPrimitive } from './canonical-primitives'
 import { parseRocketstyleDefn } from './rocketstyle-native'
 import { parseAttrsDefn } from './attrs-native'
 import { collectDeclaredTypeNames, liftInlineObjectStructs } from './inline-object-structs'
-import { liftSlotParamStructs } from './render-slots'
+import { liftSlotParamStructs, planViewBlock } from './render-slots'
+import { disambiguateValueTypeNames } from './value-type-namespaces'
 import {
   DEFAULT_THEME,
   mergeTheme,
@@ -353,6 +354,19 @@ interface ParseCtx {
   /** Monotonic counter for synthesized inline-schema binding names
    * (`Inline0`, `Inline1`, …) → struct `PyreonZodSchema_Inline0`. */
   inlineSchemaCounter: number
+  /**
+   * File-scope `@pyreon/validate` schema BINDINGS (`const Pet = s.object({ … })`
+   * → `object`, `s.discriminatedUnion(…)` → `union`), collected syntactically
+   * by `collectValidateSchemaNames` BEFORE the body loop — a component can sit
+   * above the schema it validates with, and the body loop parses components in
+   * source order. `Pet.safeParse(x)` resolves through this map.
+   */
+  validateSchemaBindings?: Map<string, 'object' | 'union'>
+  /**
+   * Bindings whose `.safeParse(x)` lowered to `safeParseResult` — the post-pass
+   * marks each matching schema `emitSafeParseResult` so the method exists.
+   */
+  safeParseResultBindings?: Set<string>
 }
 
 /**
@@ -818,29 +832,21 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // as a top-level struct alongside the named ones. Appended, so a
   // top-level `const X = s.object(...)` still emits first.
   for (const inline of ctx.inlineSchemas) zodSchemas.push(inline)
-
-  // A feature emits an alias under the SOURCE binding name so `Todo.name`
-  // resolves. Swift and Kotlin do NOT separate the type and value namespaces
-  // the way TypeScript does, so if the same file also declares a TYPE of that
-  // name the two collide — `invalid redeclaration of 'Todo'` / `conflicting
-  // declarations`, in a generated file the author never wrote. Neither alias
-  // form escapes it (a `typealias` and a value binding collide identically;
-  // both were measured). Say so by name instead of shipping the collision.
-  for (const f of features) {
-    const clash =
-      structs.some((st) => st.name === f.bindingName) ||
-      enums.some((en) => en.name === f.bindingName)
-    if (clash) {
+  // `Pet.safeParse(x)` on a file-scope binding: give that schema the
+  // `safeParseResult` its `schema-validate` call lowers to. A recorded binding
+  // whose shape the recognizer then DECLINED has no struct to call into — say
+  // so rather than emitting a call to a type that does not exist.
+  for (const binding of ctx.safeParseResultBindings ?? []) {
+    const zs = zodSchemas.find((z) => !z.inline && z.bindingName === binding)
+    if (zs) zs.emitSafeParseResult = true
+    else {
       ctx.warnings.push(
-        `defineFeature declaration \`${f.bindingName}\`: a type of the same name is declared in this file. ` +
-          `Swift and Kotlin share one namespace for types and values, so the emitted alias collides with it ` +
-          `and the native build fails on a redeclaration. Rename one of them (e.g. the feature binding to ` +
-          `\`${f.bindingName}Feature\`).`,
+        `\`${binding}.safeParse(…)\` references a @pyreon/validate schema whose shape did not lower to native (no struct was emitted for \`${binding}\`), so the call cannot compile on iOS/Android. Give \`${binding}\` a literal \`s.object({ … })\` shape of supported fields.`,
       )
     }
   }
 
-  return {
+  const result: ParseResult = {
     components,
     enums,
     structs,
@@ -857,6 +863,12 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     helperFns: ctx.helperFns,
     warnings: ctx.warnings,
   }
+  // `const Pet = …` beside `type Pet = …` is two namespaces in TypeScript and
+  // one on native — the value is renamed so the pair compiles (a feature's
+  // alias, a schema binding and a plain const alike). See
+  // value-type-namespaces.ts.
+  disambiguateValueTypeNames(result)
+  return result
 }
 
 /**
@@ -1462,7 +1474,19 @@ function collectValidateSchemaNames(body: AnyNode[], ctx: ParseCtx): void {
           (callee.property.name as string) === 'discriminatedUnion')
       ) {
         ctx.validateSchemaLowered = true
-        return
+        // Record the BINDING so `Pet.safeParse(x)` elsewhere in the file can
+        // resolve to its struct. Only the literal-shape object form — the one
+        // the recognizer lowers — counts as `object`; a non-literal shape is
+        // left out, so its `.safeParse` is never pointed at a struct that
+        // was never emitted.
+        if (d.id?.type === 'Identifier') {
+          const isUnion = (callee.property.name as string) === 'discriminatedUnion'
+          const shape = ((d.init as AnyNode).arguments as AnyNode[] | undefined)?.[0]
+          if (isUnion || shape?.type === 'ObjectExpression') {
+            ctx.validateSchemaBindings ??= new Map()
+            ctx.validateSchemaBindings.set(d.id.name as string, isUnion ? 'union' : 'object')
+          }
+        }
       }
     }
   }
@@ -4291,6 +4315,57 @@ function tryInlineValidateSafeParse(node: AnyNode, ctx: ParseCtx): ExprIR | null
   return { kind: 'schema-validate', schemaName, arg }
 }
 
+/**
+ * `Pet.safeParse(x)` on a FILE-SCOPE `@pyreon/validate` binding
+ * (`const Pet = s.object({ … })`).
+ *
+ * The binding lowers to a struct (`PyreonZodSchema_Pet`) plus a module-scope
+ * INSTANCE (`let Pet = PyreonZodSchema_Pet()`), and its parse methods are
+ * STATIC. So the verbatim `Pet.safeParse(x)` was a static call through an
+ * instance — plus an object-literal argument lowered to a synthesized struct
+ * where the method takes a dictionary — and compiled on neither target, with
+ * zero warnings. It now lowers exactly as the inline
+ * `s.object({ … }).safeParse(x)` form does: a `schema-validate` node over the
+ * binding's own struct, whose `safeParseResult` carries the web's
+ * `{ success, data }` shape.
+ *
+ * What stays web-only is WARNED by name rather than emitted broken:
+ *   - `.parse(x)` THROWS on invalid input, which needs the native error model
+ *     (`try`/`throw` lowering) PMTC does not carry yet;
+ *   - `.safeParse` on a `discriminatedUnion` binding — its native enum has
+ *     no `{ success, data }` result form yet;
+ *   - the async variants and any other method.
+ *
+ * Returns null when `node` is not a call on a recorded binding, so an
+ * unrelated `x.parse(…)` falls through untouched.
+ */
+function tryBoundValidateSchemaCall(node: AnyNode, ctx: ParseCtx): ExprIR | null {
+  const bindings = ctx.validateSchemaBindings
+  if (bindings === undefined || bindings.size === 0) return null
+  const callee = node.callee as AnyNode | undefined
+  if (callee?.type !== 'MemberExpression' || callee.computed) return null
+  if (callee.object?.type !== 'Identifier') return null
+  const binding = callee.object.name as string
+  const kind = bindings.get(binding)
+  if (kind === undefined) return null
+  if (callee.property?.type !== 'Identifier') return null
+  const method = callee.property.name as string
+  if (method === 'safeParse' && kind === 'object') {
+    const argNode = (node.arguments as AnyNode[] | undefined)?.[0]
+    const arg: ExprIR = argNode ? parseExpr(argNode, ctx) : { kind: 'object', fields: [] }
+    ctx.safeParseResultBindings ??= new Set()
+    ctx.safeParseResultBindings.add(binding)
+    return { kind: 'schema-validate', schemaName: binding, arg }
+  }
+  const reason =
+    method === 'parse'
+      ? '`.parse()` THROWS on invalid input, which needs a native error model (try/throw lowering) PMTC does not carry yet. Use `.safeParse(x)` and branch on `.success` — it lowers on both targets.'
+      : method === 'safeParse'
+        ? 'a `discriminatedUnion` schema lowers to a native enum with no `{ success, data }` result form yet. Validate each variant with its own `s.object(…)` binding, or keep this call in a web-only helper.'
+        : 'only `.safeParse(x)` on an `s.object({ … })` binding lowers to native. Keep this call in a web-only helper.'
+  return unsupportedExpr(ctx, node, `\`${binding}.${method}(…)\` on a @pyreon/validate schema`, reason)
+}
+
 function tryZodSchemaDefnFromTopLevel(
   node: AnyNode,
   ctx: ParseCtx,
@@ -6165,15 +6240,19 @@ function liftedAliasType(
  * compile. The render-prop data component makes it load-bearing: the only
  * shape that stays live on the web is `return () => props.children(q.data())`.
  *
- * A BLOCK-bodied accessor (several statements) has no single view to unwrap
- * and is named rather than emitted broken.
+ * A BLOCK-bodied accessor is kept as the arrow when its statements have a
+ * view-builder shape (`planViewBlock`) — the emitters lower it at the root —
+ * and is named rather than emitted broken otherwise.
  */
 function unwrapAccessorReturn(e: ExprIR, component: string, ctx: ParseCtx): ExprIR {
   const x = e.kind === 'paren' ? e.inner : e
   if (x.kind !== 'arrow' || x.params.length > 0 || x.async === true) return e
   if (x.stmts !== undefined && x.stmts.length > 0) {
+    // A block the view builders can lower (`const`s, early-return branches, a
+    // final `return`) stays an arrow: each emitter lowers it at the root.
+    if (planViewBlock(x.stmts) !== null) return x
     ctx.warnings.push(
-      `Component ${component}: it returns a reactive accessor with a BLOCK body (\`return () => { …; return <…/> }\`), which has no native lowering — native views re-render on state change without an accessor, but only a single expression can become the view. Return the expression directly (\`return () => cond ? <A/> : <B/>\`), or compute the intermediate values with \`computed\`.`,
+      `Component ${component}: it returns a reactive accessor whose BLOCK body (\`return () => { …; return <…/> }\`) has no native lowering — native views re-render on state change without an accessor, and a view builder takes \`const\` declarations, early \`if (…) return …\` branches and a final \`return\`, but this body has something else (an assignment, a loop, a mutable local or an expression statement). Move that work into a \`computed\`.`,
     )
     return { kind: 'literal', value: null }
   }
@@ -11026,9 +11105,18 @@ function parseStatementBlock(block: AnyNode, ctx: ParseCtx): StatementIR[] {
     // declarator through the single-decl path so every binding shape it
     // already supports (incl. value inference) carries over verbatim.
     if (stmt.type === 'VariableDeclaration' && ((stmt.declarations as AnyNode[])?.length ?? 0) > 1) {
+      // Each declarator re-enters THIS block walker (not bare parseStatement),
+      // so a destructured declarator (`const n = 1, { b } = o`) takes the same
+      // expansion / warning a lone `const { b } = o` does. Routed through
+      // parseStatement it had no `.name` and was dropped with NO warning,
+      // leaving every later read of `b` undeclared.
       for (const d of stmt.declarations as AnyNode[]) {
-        const single = parseStatement({ ...stmt, declarations: [d] }, ctx)
-        if (single) out.push(single)
+        out.push(
+          ...parseStatementBlock(
+            { type: 'BlockStatement', body: [{ ...stmt, declarations: [d] }] },
+            ctx,
+          ),
+        )
       }
       continue
     }
@@ -11413,7 +11501,15 @@ function parseStatement(node: AnyNode, ctx: ParseCtx): StatementIR | null {
       }
       const d = declarators[0]!
       const declName = d.id?.name as string | undefined
-      if (!declName) return null
+      if (!declName) {
+        // A destructuring declaration reaching here came from a position the
+        // block walker's destructure expansion does not see — an un-braced
+        // `if`/`else`/loop body or a `switch` case. It was dropped silently.
+        ctx.warnings.push(
+          `A destructuring declaration outside a braced block (e.g. an un-braced \`if\` body or a \`switch\` case) is not lowered to native and was dropped — wrap the body in \`{ … }\` so it can be expanded, or bind the fields explicitly.`,
+        )
+        return null
+      }
       const ann = (d.id as AnyNode | undefined)?.typeAnnotation?.typeAnnotation as
         | AnyNode
         | undefined
@@ -11937,8 +12033,14 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
       let name = '(unresolved-typeRef)'
       if (nameNode?.type === 'Identifier') name = nameNode.name as string
       else if (nameNode?.type === 'TSQualifiedName') {
-        // namespaced like `Foo.Bar` — keep as-is for now
-        name = `${nameNode.left?.name ?? ''}.${nameNode.right?.name ?? ''}`
+        // namespaced like `Foo.Bar` — keep as-is for now. The LEFT side is
+        // itself a TSQualifiedName for a deeper path (`A.B.C`), which has no
+        // `.name` — reading it flat rendered `.C`. Walk it.
+        const qualified = (q: AnyNode | undefined): string =>
+          q?.type === 'TSQualifiedName'
+            ? `${qualified(q.left)}.${q.right?.name ?? ''}`
+            : ((q?.name as string | undefined) ?? '')
+        name = qualified(nameNode)
       }
       const params = node.typeArguments?.params as AnyNode[] | undefined
       const args = params ? params.map((p) => parseTypeAnnotation(p, ctx)) : []
@@ -12179,7 +12281,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // access composes over the returned node. Fires ONLY when `s` was
       // imported from `@pyreon/validate` (guards a user's own `s` binding).
       if (ctx.validateSchemaNames.size > 0) {
-        const sv = tryInlineValidateSafeParse(node, ctx)
+        const sv = tryInlineValidateSafeParse(node, ctx) ?? tryBoundValidateSchemaCall(node, ctx)
         if (sv) return sv
       }
       // Imperative `@pyreon/toast` call → `toast-call` ExprIR (→ PyreonToast).
@@ -12583,6 +12685,13 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           })
         } else if (p.type === 'SpreadElement') {
           spreads.push(parseExpr(p.argument, ctx))
+        } else {
+          // What is left is a NUMERIC-literal key (`{ 1: 'a' }`) — neither an
+          // identifier nor a string. It was dropped with no signal, the same
+          // silent-drop the string-literal key above used to be.
+          ctx.warnings.push(
+            `[${locOf(p, ctx)}] A numeric object key (\`{ 1: … }\`) is not supported in native (PMTC) — a struct/data-class field needs an identifier name, so the entry was dropped. Use a named key, or build a dictionary with \`new Map()\`.`,
+          )
         }
       }
       // An EMPTY object literal has no native lowering and produced no
@@ -13121,6 +13230,16 @@ function parseJsxAttr(node: AnyNode, ctx: ParseCtx): AttrIR | null {
     return { kind: 'spread', argument: parseExpr(node.argument, ctx) }
   }
   if (node.type !== 'JSXAttribute' || !node.name?.name) return null
+  // A NAMESPACED attribute (`xml:lang`, `xlink:href`) is a `JSXNamespacedName`
+  // whose `.name` is a node, not a string — read as one it crashed the whole
+  // transform (`rawName.startsWith is not a function`). Neither target has an
+  // attribute namespace, so it is dropped BY NAME rather than guessed at.
+  if (node.name.type === 'JSXNamespacedName') {
+    ctx.warnings.push(
+      `[${locOf(node, ctx)}] Namespaced JSX attribute \`${node.name.namespace?.name ?? '?'}:${node.name.name?.name ?? '?'}\` is not supported in native (PMTC) — it has no native equivalent and was dropped.`,
+    )
+    return null
+  }
   const rawName = node.name.name as string
   const value = node.value
 
@@ -13169,6 +13288,13 @@ function parseJsxChild(node: AnyNode, ctx: ParseCtx): ChildIR | null {
   }
   if (node.type === 'JSXElement' || node.type === 'JSXFragment') {
     return { kind: 'expr', expr: parseExpr(node, ctx) }
+  }
+  // `{...items}` as a CHILD (a `JSXSpreadChild`) — the only other child kind
+  // oxc produces. It was dropped with no signal; say so by name.
+  if (node.type === 'JSXSpreadChild') {
+    ctx.warnings.push(
+      `[${locOf(node, ctx)}] A spread JSX child (\`{...items}\`) is not supported in native (PMTC) — it was dropped. Render the list with <For each={items}>.`,
+    )
   }
   return null
 }
