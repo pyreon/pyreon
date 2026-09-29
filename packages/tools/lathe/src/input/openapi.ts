@@ -1986,7 +1986,11 @@ function mergeObjects(
   if (objects.length === 0) {
     if (values.length === 0) return { kind: 'unknown', reason: 'allOf of unconstrained parts' }
     const first = (values[0] as { type: IrType }).type
-    if (!values.every((v) => v.type.kind === first.kind)) {
+    // An int64 (`bigint` under `int64: 'bigint'`) and a plain integer are one
+    // numeric family: `allOf: [{format: int64}, {minimum: 1}]` refines, it
+    // does not contradict.
+    const family = (k: IrType['kind']): string => (k === 'bigint' ? 'number' : k)
+    if (!values.every((v) => family(v.type.kind) === family(first.kind))) {
       // `string ∧ integer` accepts nothing; keeping the first part keeps the
       // generated schema usable, and the note says the spec is contradictory.
       ctx.notes.push({ code: 'unsupported-schema', at, message: 'allOf of incompatible non-object schemas — kept the first.' })

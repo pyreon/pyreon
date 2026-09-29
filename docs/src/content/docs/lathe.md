@@ -561,6 +561,53 @@ its cost on large lists. The same meaning on every client: passed to
 for `fetch` / `axios` / `ky`. Native modules decode into typed structs and are
 not affected.
 
+## 64-bit integers
+
+```ts
+lathe: { input: './openapi.yaml', int64: 'bigint' }
+```
+
+An OpenAPI `format: int64` id is routinely larger than 2^53 − 1
+(9007199254740991), and `JSON.parse` rounds such a number before any schema
+runs: `9007199254740993` arrives as `9007199254740992` — a different record.
+By default (`int64: 'number'`) the field is typed `number` and the loss is
+reported as an `int64-precision` note.
+
+`int64: 'bigint'` fixes it end to end:
+
+- **Types and schemas** — the field is a `bigint`. Its schema widens a SAFE
+  integer to a bigint (`s.preprocess(…, s.bigint().min(1n))`, the same with
+  `z.`), so a small id is a bigint too and the type does not lie. Every other
+  number accepts the bigint the decoder can hand it (a `double` a server wrote
+  as `100000000000000000000`) and reads it back as the double `JSON.parse`
+  would have produced.
+- **Responses** — the client decodes JSON from its SOURCE TEXT. The `pyreon`
+  client is created with `json: losslessJson` from
+  [`@pyreon/http/json`](/docs/http#lossless-json); an `axios` / `ky` / `fetch`
+  client carries an emitted copy of the same codec (held identical by a
+  differential test). Error bodies and SSE / NDJSON events decode the same way.
+- **Requests** — a `bigint` in a `json` body is written as JSON NUMBER text,
+  digit for digit (`JSON.stringify` would throw); in a form or multipart body
+  it is sent as its digits.
+- **Fixtures** — mock fixtures and `faker` factories produce bigints.
+- **Contract diff** — the surface names the type `int64`, so an `int32` →
+  `int64` change (which changes the generated type from `number` to `bigint`)
+  is reported as breaking.
+
+Three things to know:
+
+- **Validation must stay on.** It is the int64 field's schema that turns a
+  small id into a bigint, so `responseValidation: 'off'` — for the client or
+  for an operation whose response carries an int64 — is refused. Switching it
+  off at runtime with `configureApi({ validate: 'off' })` leaves small int64
+  values as numbers.
+- **Parameters travel as text.** A path, query or header parameter of int64
+  type is typed `string | number` (path) or `string` (query, header): pass a
+  large id as its digits.
+- **Web only.** PMTC has no bigint, so the native modules keep the platform
+  integer — Swift `Int` (64-bit, exact) and Kotlin `Int` (32-bit) — and an
+  `int64-native` note says so.
+
 ## Fake data that stays valid
 
 ```ts
@@ -1420,7 +1467,8 @@ a stable `code`, an RFC 6901 pointer into the spec, and a severity:
 | `cyclic-ref` | loss | a `$ref` cycle through references alone, the cyclic part of an `allOf`, or a path item / response that includes itself across files — contributes nothing |
 | `duplicate-key` | loss | a JSON spec writes a key twice in one object — `JSON.parse` keeps the last, so the first definition is gone (a YAML spec with a duplicate key is refused outright) |
 | `unsupported-method` | loss | a `trace` operation — the Fetch standard forbids the method, so `fetch` throws before sending it; no call is generated |
-| `int64-precision` | loss | one note for every `format: int64` number — `JSON.parse` rounds past 2^53 − 1 before validation, so no generated type (bigint or string) can recover the value; typed as `number` |
+| `int64-precision` | loss | one note for every `format: int64` number under the default `int64: 'number'` — `JSON.parse` rounds past 2^53 − 1 before validation, so the value arrives rounded; set `int64: 'bigint'` to decode it losslessly (see [64-bit integers](#64-bit-integers)) |
+| `int64-native` | loss | `int64: 'bigint'` with `target: 'multiplatform'` — PMTC has no bigint, so the native modules keep a platform integer (Swift `Int`, 64-bit; Kotlin `Int`, 32-bit) while the web client holds a `bigint` |
 | `no-servers` | loss | no absolute base URL (none declared, relative, or a variable with no default), so nothing reaches native |
 | `multiple-content-types` | choice | JSON picked among several media types |
 | `extra-tags` | choice | grouped under the first tag only |
@@ -1476,6 +1524,10 @@ never touched. Commit the manifest with the rest of the output.
 - **No multi-project composition.** `projects: [...]` writes N independent
   output trees; there is no combined entry across them.
 - **`faker` does not reach native**, and neither do the preview components.
+- **`int64: 'bigint'` is web-only.** The native modules decode `format: int64`
+  as the platform integer PMTC lowers `number().int()` to — Swift `Int`
+  (64-bit), Kotlin `Int` (32-bit, so a value past 2147483647 fails to decode on
+  Android) — reported as `int64-native`.
 - **Streams are web-only.** PMTC has no streaming lowering, so `<op>Stream` /
   `use<Op>Stream` exist in the web output only; a stream-only operation is
   reported `web-only` with that reason.

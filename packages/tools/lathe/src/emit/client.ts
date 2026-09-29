@@ -22,7 +22,7 @@ import {
   reachableModels,
   topoSortModels,
 } from "../core/graph";
-import { collectRefNames, usesBigInt } from "../core/walk";
+import { bigintAsNumber, collectRefNames, usesBigInt } from "../core/walk";
 import type { IrDocument, IrOperation, IrType } from "../core/ir";
 import {
   assignNames,
@@ -930,7 +930,8 @@ function nativeTs(
     const inner = nativeTs(type.items, models, depth + 1);
     return /[|&]/.test(inner) ? `(${inner})[]` : `${inner}[]`;
   }
-  return tsType(type, 0, true);
+  // PMTC has no bigint: an int64 is the platform integer on native.
+  return tsType(bigintAsNumber(type), 0, true);
 }
 
 /**
@@ -1338,7 +1339,7 @@ export function emitNativeModules(
       // the quoted-key form the other emitters need. If that normalization
       // ever moves, this breaks loudly at typecheck rather than silently.
       const propsType = [
-        ...params.map((p) => `${p.name}: ${tsType(p.type)}`),
+        ...params.map((p) => `${p.name}: ${tsType(bigintAsNumber(p.type))}`),
         `children: (data: ${ret} | undefined) => unknown`,
       ].join("; ");
       // `props.x`, never a destructure: destructuring reads the getter once

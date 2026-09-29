@@ -123,6 +123,40 @@ const events = api.endpoint('GET /events', { response: EventList, validate: 'off
 await api.get('/users/1', { validate: 'warn' }).json(User)                          // this request only
 ```
 
+## Lossless JSON
+
+`JSON.parse` turns every number into a double, so an integer past 2^53 − 1
+(9007199254740991) is rounded before any schema sees it — `9007199254740993`
+arrives as `9007199254740992`. For a 64-bit id that is a different record.
+
+```ts
+import { losslessJson } from '@pyreon/http/json'
+
+const api = createHttp({ baseUrl: '/api', json: losslessJson })
+const order = await api.get('/orders/1').json<{ id: bigint | number }>()
+await api.post('/orders', { json: { id: 9007199254740993n } }) // sent as the number 9007199254740993
+```
+
+`losslessJson` decodes an integer that a double cannot hold exactly as a
+`bigint`, and encodes a `bigint` back as JSON **number** text (`JSON.stringify`
+throws on one). Everything else is exactly `JSON.parse` / `JSON.stringify`: a
+safe integer stays a `number`, and so does a fraction or an exponent form — the
+server wrote a double. Response bodies, error bodies (`HttpError.body`) and
+request `json` bodies all go through the client's codec; an extended client
+inherits it. Streams take the decoder as `parseJson: parseJsonLossless`, and
+`@pyreon/http/mock` writes a `bigint` fixture as a number.
+
+The digits are recovered from the source text, portably: plain `JSON.parse`
+when no 16-digit run is present (the common body — no unsafe integer is
+possible), the reviver's `context.source` where the engine passes it (current
+V8, JSC and SpiderMonkey), and an own strict parser elsewhere (Node 20, Hermes)
+— which rejects exactly what `JSON.parse` rejects. Because only an unsafe
+integer becomes a `bigint`, a field that is ALWAYS a bigint needs a schema
+that widens the rest; `@pyreon/lathe`'s `int64: 'bigint'` generates exactly
+that.
+
+`createHttp({ json })` takes any `{ parse, stringify }` codec.
+
 ## Endpoints
 
 The biggest real pain with `axios` + TanStack Query is that the `queryKey` and the URL drift apart, and the response type is a cast. An endpoint derives all three from one declaration:

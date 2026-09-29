@@ -135,3 +135,41 @@ export function usesBigInt(doc: IrDocument): boolean {
   bigintMemo.set(doc, found)
   return found
 }
+
+/**
+ * `type` with every `bigint` read as the integer `number` it is on NATIVE.
+ *
+ * PMTC has no bigint, so a native module types an int64 the way the default
+ * mode does. Returns the SAME object when nothing changes -- a document read
+ * without `int64: 'bigint'` is never rebuilt.
+ */
+export function bigintAsNumber(type: IrType): IrType {
+  switch (type.kind) {
+    case 'bigint':
+      return { kind: 'number', integer: true, minimum: type.minimum, maximum: type.maximum }
+    case 'array': {
+      const items = bigintAsNumber(type.items)
+      return items === type.items ? type : { ...type, items }
+    }
+    case 'nullable': {
+      const inner = bigintAsNumber(type.inner)
+      return inner === type.inner ? type : { kind: 'nullable', inner }
+    }
+    case 'union': {
+      const options = type.options.map(bigintAsNumber)
+      return options.every((o, i) => o === type.options[i]) ? type : { ...type, options }
+    }
+    case 'object': {
+      const fields = type.fields.map((f) => {
+        const t = bigintAsNumber(f.type)
+        return t === f.type ? f : { ...f, type: t }
+      })
+      const additional = type.additional ? bigintAsNumber(type.additional) : undefined
+      return fields.every((f, i) => f === type.fields[i]) && additional === type.additional
+        ? type
+        : { ...type, fields, additional }
+    }
+    default:
+      return type
+  }
+}
