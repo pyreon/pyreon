@@ -9,7 +9,7 @@
 
 ### Bootstrap
 
-- `postinstall` runs `scripts/bootstrap.ts`, which rebuilds a package when its source-content hash differs from the one recorded in the gitignored `.bootstrap-cache.json`, or when its `lib/` is missing or broken. It is needed because Vite's config bundler resolves with `conditions: ["node"]` and reads `lib/*.js`, not source.
+- `postinstall` runs `scripts/bootstrap.ts`, which rebuilds a package when its source-content hash differs from the one recorded in the gitignored `.bootstrap-cache.json`, when its `lib/` no longer hashes to what that recorded build wrote (a manual `bun run --filter=<pkg> build` from another revision — the manifest records BOTH halves, since source-only let a returned-to source skip over an out-of-band lib), or when its `lib/` is missing or broken. It is needed because Vite's config bundler resolves with `conditions: ["node"]` and reads `lib/*.js`, not source.
 - Detection is content-based, not mtime-based: `touch`ing a file does not trigger a rebuild; change its content or delete `lib/`.
 - You never need `bun run build` after cloning or creating a worktree. Re-run `bun install` (or `bun scripts/bootstrap.ts`) after a `git pull`/`checkout` that touches package sources, or example builds read stale `lib/`.
 - A clean run is a hash walk (~80ms); a full rebuild takes ~45s.

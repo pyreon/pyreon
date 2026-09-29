@@ -32,8 +32,9 @@
  *
  * 1. Scans all workspace packages under `packages/` (not `examples/`).
  * 2. For each package with `./lib/` in exports AND a real build script,
- *    checks (a) does `lib/` exist, and (b) is its newest file older than
- *    the package's newest source file (= stale).
+ *    checks (a) does `lib/` exist, (b) has its source content changed since
+ *    the last bootstrap build, and (c) is its lib/ still the exact output of
+ *    that build (not rewritten out-of-band) — see `./bootstrap-hash.ts`.
  * 3. If ANY package is missing OR stale, runs the workspace build filter
  *    `bun run --filter='./packages/<category>/<pkg>' build` to compile all
  *    packages (not examples — those aren't imported by others).
@@ -43,16 +44,24 @@
  *
  * - Fresh worktree: ~45s (packages-only build, no examples).
  * - Stale lib (post-pull): same ~45s, but now we catch it instead of failing later.
- * - Subsequent installs (no source changes): ~80ms (mtime walk over packages).
+ * - Subsequent installs (no source changes): a content-hash pass over src/ + lib/.
  * - Triggered by: fresh clone, fresh worktree, `git clean -fdx`, OR any package
  *   source touched since its last build.
  */
 
 import { execSync, spawnSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { attributeBuildFailures, spawnBatchAttributed } from './bootstrap-attribution'
+import {
+  computeGlobalSalt,
+  computeLibHash,
+  computePkgHash,
+  type Manifest,
+  parseManifest,
+  serializeManifest,
+  staleReason,
+} from './bootstrap-hash'
 
 const ROOT = resolve(import.meta.dirname, '..')
 
@@ -83,113 +92,22 @@ const ROOT = resolve(import.meta.dirname, '..')
 // own version, so a dep bump or build-tooling change rebuilds everything —
 // matching the prior exact-key semantics.
 const MANIFEST_PATH = join(ROOT, '.bootstrap-cache.json')
-// Bump when the hashing scheme changes, to invalidate every stale manifest.
-const HASH_SCHEME_VERSION = 'v1'
 
-/**
- * Global salt: invalidates ALL package hashes on a shared dep / tooling /
- * TS-config change. Inputs:
- *   - bun.lock — third-party dep versions (some are BUNDLED into lib) AND
- *     the build-tool version (vl_rolldown_build).
- *   - root tsconfig.json — every package tsconfig extends it; its compiler
- *     options (jsx, isolatedModules, exactOptionalPropertyTypes, …) shape
- *     the built output. A change here must rebuild everything.
- */
-function computeGlobalSalt(): string {
-  const h = createHash('sha1').update(HASH_SCHEME_VERSION)
-  for (const shared of ['bun.lock', 'tsconfig.json']) {
-    try {
-      h.update(readFileSync(join(ROOT, shared)))
-    } catch {
-      // Missing (unexpected) — salt still varies by scheme version + the
-      // other inputs.
-    }
-  }
-  return h.digest('hex')
-}
-
-/** Same skip rules as `maxFileMtime` — tests/fixtures/generated don't affect lib. */
-function shouldSkipForHash(name: string): boolean {
-  return (
-    name.startsWith('.') ||
-    name === 'node_modules' ||
-    name === 'lib' ||
-    name === '__tests__' ||
-    name === 'tests' ||
-    name === '__snapshots__' ||
-    name.endsWith('.test.ts') ||
-    name.endsWith('.test.tsx') ||
-    name.endsWith('.test.js')
-  )
-}
-
-/**
- * Content hash of a package: its src/** file contents + package.json + the
- * global salt. Deterministic (paths sorted). Returns a hex digest.
- */
-function computePkgHash(pkgPath: string, salt: string): string {
-  const h = createHash('sha1').update(salt)
-  const srcDir = join(pkgPath, 'src')
-  const files: Array<[string, Buffer]> = []
-  const stack: string[] = existsSync(srcDir) ? [srcDir] : []
-  while (stack.length > 0) {
-    const current = stack.pop() as string
-    let entries
-    try {
-      entries = readdirSync(current, { withFileTypes: true })
-    } catch {
-      continue
-    }
-    for (const entry of entries) {
-      if (shouldSkipForHash(entry.name)) continue
-      const full = join(current, entry.name)
-      if (entry.isDirectory()) {
-        stack.push(full)
-      } else if (entry.isFile()) {
-        try {
-          files.push([relative(pkgPath, full), readFileSync(full)])
-        } catch {
-          // Unreadable file — skip; the resulting hash differs, forcing a
-          // rebuild (fail-safe toward rebuilding, never toward skipping).
-          files.push([relative(pkgPath, full), Buffer.from('<unreadable>')])
-        }
-      }
-    }
-  }
-  files.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
-  for (const [rel, content] of files) {
-    h.update(rel)
-    h.update('\0')
-    h.update(content)
-    h.update('\0')
-  }
-  // package.json (exports, build script, deps) + tsconfig.json (per-package
-  // compiler options that shape the build / DTS output) both affect lib/.
-  for (const cfg of ['package.json', 'tsconfig.json']) {
-    try {
-      h.update(readFileSync(join(pkgPath, cfg)))
-    } catch {
-      // package.json always exists (filtered upstream); tsconfig.json is
-      // optional — its absence just contributes nothing to the hash.
-    }
-  }
-  return h.digest('hex')
-}
-
-function readManifest(): Record<string, string> {
+// Hashing + the staleness decision live in `./bootstrap-hash` (unit-tested).
+// The manifest records BOTH the source hash a build was made from AND the
+// lib/ hash it wrote — see that module's header for why the source half alone
+// let an out-of-band lib/ rebuild go undetected.
+function readManifest(): Manifest {
   try {
-    return JSON.parse(readFileSync(MANIFEST_PATH, 'utf-8')) as Record<string, string>
+    return parseManifest(readFileSync(MANIFEST_PATH, 'utf-8'))
   } catch {
     return {}
   }
 }
 
-function writeManifest(manifest: Record<string, string>): void {
+function writeManifest(manifest: Manifest): void {
   try {
-    // Sorted keys for stable diffs / deterministic file content.
-    const sorted: Record<string, string> = {}
-    for (const k of Object.keys(manifest).sort()) sorted[k] = manifest[k] as string
-    writeFileSync(MANIFEST_PATH, `${JSON.stringify(sorted, null, 2)}\n`)
+    writeFileSync(MANIFEST_PATH, serializeManifest(manifest))
   } catch {
     // Manifest is an optimization cache — a write failure must never fail
     // the bootstrap. Worst case: next run treats everything as dirty.
@@ -199,7 +117,7 @@ function writeManifest(manifest: Record<string, string>): void {
 interface MissingPackage {
   name: string
   path: string
-  reason: 'missing' | 'stale' | 'failed'
+  reason: 'missing' | 'stale' | 'lib-changed' | 'failed'
 }
 
 interface BuildablePackage {
@@ -363,7 +281,7 @@ const noLibPackages = new Set(packages.filter((p) => !p.producesLib).map((p) => 
 const MIN_LIB_INDEX_BYTES = 50
 // Content-hash incremental detection (replaces the old src/lib mtime check —
 // see the block comment near the top for why mtime is unreliable in CI).
-const salt = computeGlobalSalt()
+const salt = computeGlobalSalt(ROOT)
 const manifest = readManifest()
 // Current source hash per package, computed once here and reused for the
 // post-build manifest update (avoids re-hashing).
@@ -399,8 +317,16 @@ for (const pkg of packages) {
   // A missing manifest entry (first run, or a never-built package) also
   // counts as stale → rebuild + record. Content-based, so it's correct
   // regardless of file mtimes (CI checkout/restore safe).
-  if (manifest[pkg.name] !== hash) {
-    dirty.push({ name: pkg.name, path: relative(ROOT, pkg.path), reason: 'stale' })
+  // A lib/ rewritten out-of-band (a manual `bun run --filter=<pkg> build`)
+  // no longer matches the recorded lib hash, so it is stale even when the
+  // source is back to the recorded content.
+  const why = staleReason(manifest[pkg.name], hash, computeLibHash(pkg.path))
+  if (why !== null) {
+    dirty.push({
+      name: pkg.name,
+      path: relative(ROOT, pkg.path),
+      reason: why === 'lib-changed' ? 'lib-changed' : 'stale',
+    })
   }
 }
 
@@ -463,9 +389,13 @@ if (dirty.length === 0 && !forceFail && !forceBuildThrew) {
 // Log which packages need rebuilding and why.
 const missingCount = dirty.filter((p) => p.reason === 'missing').length
 const staleCount = dirty.filter((p) => p.reason === 'stale').length
+const libChangedCount = dirty.filter((p) => p.reason === 'lib-changed').length
 const reasonStr = [
   missingCount > 0 ? `${missingCount} missing lib/` : '',
-  staleCount > 0 ? `${staleCount} stale lib/ (source newer than build)` : '',
+  staleCount > 0 ? `${staleCount} stale lib/ (source changed since build)` : '',
+  libChangedCount > 0
+    ? `${libChangedCount} lib/ rewritten outside bootstrap (no longer provably built from current source)`
+    : '',
 ]
   .filter(Boolean)
   .join(', ')
@@ -700,10 +630,11 @@ if (!forceFail && !forceBuildThrew && !unattributedFailure) {
   for (const pkg of dirty) {
     if (stillDirtyNames.has(pkg.name)) continue
     const hash = currentHashes[pkg.name]
-    if (hash && manifest[pkg.name] !== hash) {
-      manifest[pkg.name] = hash
-      manifestChanged = true
-    }
+    if (!hash) continue
+    // Hash the lib/ AFTER the build: this is the output the recorded source
+    // produced, and the value any later out-of-band rewrite will disagree with.
+    manifest[pkg.name] = { src: hash, lib: computeLibHash(pkg.path) }
+    manifestChanged = true
   }
   if (manifestChanged) writeManifest(manifest)
 }
