@@ -59,7 +59,7 @@
     "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^5.0.2",
     "@vitus-labs/tools-rolldown": "^2.6.3",
-    "motion": "^13.4.5"
+    "motion": "^13.4.6"
   },
   "engines": {
     "node": ">= 22"
