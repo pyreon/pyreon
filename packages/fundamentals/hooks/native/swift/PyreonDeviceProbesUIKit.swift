@@ -356,7 +356,7 @@ public final class AVSpeechSynth: SpeechSynth {
 }
 #endif
 
-#if canImport(CoreMotion)
+#if canImport(CoreMotion) && os(iOS)
 import CoreMotion
 
 // MARK: - Device motion
