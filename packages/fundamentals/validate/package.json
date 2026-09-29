@@ -68,7 +68,6 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@sinclair/typebox": "^0.34.52",
-    "@vitus-labs/tools-lint": "^2.7.1",
     "arktype": "^2.2.3",
     "joi": "^18.2.9",
     "typia": "^15.0.0",

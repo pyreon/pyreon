@@ -176,7 +176,10 @@ describe('an UNKNOWN flag is an error, never silently ignored', () => {
     // `=== 'multiplatform'` check read it as web.
     expect(p('generate', '--target', 'native').errors[0]).toMatch(/`--target` must be one of web, multiplatform/)
     expect(p('generate', '--client', 'axois').errors[0]).toContain('Did you mean `axios`?')
-    expect(p('generate', '--plugins', 'querys').errors[0]).toContain('Did you mean `queries`?')
+    // A non-built-in `--plugins` entry is a plugin MODULE, so it is not refused
+    // here: `run` tries to load it and only then says "did you mean `queries`?"
+    // (cli-plugins.test.ts).
+    expect(p('generate', '--plugins', 'querys').errors).toEqual([])
   })
 
   it('refuses a mistyped COMMAND rather than reading it as a spec path', () => {

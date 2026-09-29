@@ -156,7 +156,7 @@ const CASES: {
   // Object query parameters and OpenAPI styles (audit A10/B2) — every style
   // on both collection shapes, so the adapters' serializer cannot drift.
   { name: 'object query, default brackets', base: 'https://api.test', path: '/x', query: { f: { s: 'open', n: 1 } } },
-  ...(['form', 'spaceDelimited', 'pipeDelimited', 'deepObject'] as const).flatMap((style) =>
+  ...(['form', 'spaceDelimited', 'pipeDelimited', 'tabDelimited', 'deepObject'] as const).flatMap((style) =>
     [true, false].map((explode) => ({
       name: `style ${style} explode=${explode}`,
       base: 'https://api.test',
@@ -238,6 +238,7 @@ describe('adapter body encoders are byte-identical to @pyreon/http', () => {
     { name: 'exploded array', fields: { t: ['a', 'b'] } },
     { name: 'comma array', fields: { t: ['a', 'b'] }, enc: { t: { explode: false } } },
     { name: 'pipe / space', fields: { p: ['a', 'b'], s: ['c', 'd'] }, enc: { p: { style: 'pipeDelimited' }, s: { style: 'spaceDelimited' } } },
+    { name: 'tab (Swagger 2 tsv)', fields: { t: ['a', 'b c'] }, enc: { t: { style: 'tabDelimited' } } },
     {
       name: 'deepObject (Stripe)',
       fields: { metadata: { k: 'v', n: 1 }, items: [{ price: 'p', qty: 2 }], expand: ['a'] },
