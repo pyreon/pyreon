@@ -791,6 +791,13 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // number→float, never the reverse, so integer structs are untouched).
   refineStructFloatsFromInitializers(structs, components, moduleDecls)
 
+  // The same Int-default problem, for DECODE types: a `type Book = { rating:
+  // number }` paired with the endpoint's `{ response: book_schema }`, where
+  // the schema says `s.number()` (no `.int()`). That schema accepts `1.5`,
+  // so an `Int` field fails to decode the very payload the web accepts. The
+  // schema is the evidence; see the function.
+  refineStructFloatsFromResponseSchemas(structs, zodSchemas, ctx)
+
   // Same evidence as the pass above, for the shape that has no StructIR to
   // attach it to: an inline object generic (`signal<{ price: number }[]>([{
   // price: 2.5 }])`) is synthesised into a struct by the EMITTERS, so the
@@ -5389,6 +5396,96 @@ function refineStructFloatsFromInitializers(
 }
 
 /**
+ * Type a DECODE struct's `number` fields Double when the endpoint's response
+ * schema says the wire value may be fractional.
+ *
+ * A TS `number` carries no int/float distinction, so PMTC defaults it to Int.
+ * For a model that is DECODED from a response, that default is wrong whenever
+ * the value can be fractional: `JSONDecoder` / kotlinx reject `1.5` for an
+ * `Int`, so the native app fails to decode a payload the web parses. The
+ * endpoint's `response` schema is where the distinction lives — `s.number()`
+ * accepts a fraction, `s.number().int()` does not — so a decode site
+ * (`useQuery<Book>(() => getBook.query())`, `useFetch<Book>(getBook())`)
+ * over `api.endpoint('GET /books/:id', { response: book_schema })` refines
+ * `Book`'s matching fields from `book_schema`'s. Nested objects and arrays of
+ * objects recurse through the schema's aux schemas.
+ *
+ * Strictly ADDITIVE: only `number` → `number & float`, only on a schema field
+ * without `.int()`. An `.int()` field — and every struct with no schema
+ * evidence — keeps the Int default.
+ */
+function refineStructFloatsFromResponseSchemas(
+  structs: StructIR[],
+  zodSchemas: readonly ZodSchemaDefnIR[],
+  ctx: ParseCtx,
+): void {
+  if (structs.length === 0 || ctx.responseDecodes.length === 0) return
+  const structByName = new Map(structs.map((st) => [st.name, st]))
+  const schemaByName = new Map<string, ZodSchemaDefnIR>()
+  const index = (sc: ZodSchemaDefnIR): void => {
+    schemaByName.set(sc.bindingName, sc)
+    for (const aux of sc.auxSchemas ?? []) index(aux)
+  }
+  for (const sc of zodSchemas) index(sc)
+  const seen = new Set<string>()
+
+  const floatNumber = (t: TypeIR): TypeIR => {
+    if (t.kind === 'number') return t.float === true ? t : { kind: 'number', float: true }
+    if (t.kind === 'union') return { ...t, branches: t.branches.map(floatNumber) }
+    return t
+  }
+  const floatElement = (t: TypeIR): TypeIR => {
+    if (t.kind === 'array') return { ...t, element: floatNumber(t.element) }
+    if (t.kind === 'union') return { ...t, branches: t.branches.map(floatElement) }
+    return t
+  }
+  const structOf = (t: TypeIR): StructIR | undefined => {
+    if (t.kind === 'typeRef') return structByName.get(t.name)
+    if (t.kind === 'array') return structOf(t.element)
+    if (t.kind === 'union') {
+      for (const b of t.branches) {
+        const found = structOf(b)
+        if (found) return found
+      }
+    }
+    return undefined
+  }
+  const refine = (struct: StructIR, schema: ZodSchemaDefnIR): void => {
+    const key = `${struct.name}<-${schema.bindingName}`
+    if (seen.has(key)) return
+    seen.add(key)
+    for (const sf of schema.fields) {
+      const field = struct.fields.find((f) => f.name === sf.name)
+      if (!field) continue
+      const t = sf.type
+      if (t === 'number') {
+        if (sf.integer !== true) field.type = floatNumber(field.type)
+      } else if (typeof t === 'object' && t.kind === 'array') {
+        if (t.element === 'number') {
+          if (t.elementInteger !== true) field.type = floatElement(field.type)
+        } else if (typeof t.element === 'object') {
+          const nested = structOf(field.type)
+          const nestedSchema = schemaByName.get(t.element.schemaName)
+          if (nested && nestedSchema) refine(nested, nestedSchema)
+        }
+      } else if (typeof t === 'object' && t.kind === 'object') {
+        const nested = structOf(field.type)
+        const nestedSchema = schemaByName.get(t.schemaName)
+        if (nested && nestedSchema) refine(nested, nestedSchema)
+      }
+    }
+  }
+
+  for (const decode of ctx.responseDecodes) {
+    const ref = ctx.endpointDefs.get(decode.endpoint)?.responseSchema
+    if (!ref) continue
+    const schema = schemaByName.get(ref.binding)
+    const struct = structOf(decode.type)
+    if (schema && struct) refine(struct, schema)
+  }
+}
+
+/**
  * The INLINE-object half of the pass above, and the shape that actually
  * reaches most apps.
  *
@@ -7867,6 +7964,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     ) {
       const resolved = resolveEndpointUrl(urlArg, ctx)
       if (!resolved) return null // warning already pushed; stays web
+      ctx.responseDecodes.push({ type, endpoint: urlArg.callee.name as string })
       resolvedUrl = resolved.url
       resolvedEndpoint = resolved
     }
@@ -8032,6 +8130,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
         true,
       )
       if (!resolved) return null
+      ctx.responseDecodes.push({ type, endpoint: endpointQuery.name })
       const eqReq: {
         urlExpr?: ExprIR
         queryKeyExpr?: ExprIR
