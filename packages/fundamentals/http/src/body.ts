@@ -38,10 +38,11 @@ export type MultipartFields = Readonly<Record<string, MultipartValue>>
  * - `form` without `explode`: comma-joined (`t=a,b`, `o=a,1,b,2`).
  * - `deepObject`: brackets (`o[a]=1`, nested `o[a][b]=1`, arrays indexed
  *   `o[0]=x`) -- the style Stripe declares for every nested field.
- * - `spaceDelimited` / `pipeDelimited`: arrays joined with ` ` / `|`.
+ * - `spaceDelimited` / `pipeDelimited` / `tabDelimited`: arrays joined with ` `
+ *   / `|` / a tab (the last is Swagger 2's `collectionFormat: tsv`).
  */
 export interface FormFieldEncoding {
-  style?: 'form' | 'deepObject' | 'spaceDelimited' | 'pipeDelimited' | undefined
+  style?: 'form' | 'deepObject' | 'spaceDelimited' | 'pipeDelimited' | 'tabDelimited' | undefined
   explode?: boolean | undefined
 }
 
@@ -110,6 +111,7 @@ export function encodeForm(
       const strings = items.map((v) => scalar(v as FormScalar | Date) as string)
       if (style === 'spaceDelimited') out.append(key, strings.join(' '))
       else if (style === 'pipeDelimited') out.append(key, strings.join('|'))
+      else if (style === 'tabDelimited') out.append(key, strings.join('\t'))
       else if (explode) for (const s of strings) out.append(key, s)
       else out.append(key, strings.join(','))
       continue

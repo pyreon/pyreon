@@ -72,8 +72,8 @@ const ROOT = join(import.meta.dirname, '..')
 async function main(): Promise<number> {
   // Imported LAZILY. A static import pulls Atlas's entire type graph into
   // anything that imports this file — including the unit test for the pure
-  // renderers below, which then needs `pngjs` types it has no business
-  // declaring. Same reasoning Atlas itself uses for Vite.
+  // renderers below, which has no business carrying it. Same reasoning Atlas
+  // itself uses for Vite.
   const { runScan } = await import('../packages/tools/atlas/src/cli/run')
   const update = process.argv.includes('--update')
   let failed = 0

@@ -1,6 +1,6 @@
-import { createVitestConfig } from '@vitus-labs/tools-vitest'
 import { mergeConfig } from 'vite'
 import type { ViteUserConfig as VitestUserConfig } from 'vitest/config'
+import { createBaseConfig } from './base.ts'
 import { nodeExcludeBrowserTests, sharedConfig } from './internals.ts'
 import {
   type CoverageThresholds,
@@ -18,7 +18,7 @@ export interface DefineNodeConfigOptions {
   category?: PackageCategory
   /**
    * Test runtime environment. Default `'node'` (matches
-   * `createVitestConfig`'s default). Set to `'happy-dom'` for any
+   * `createBaseConfig`'s default). Set to `'happy-dom'` for any
    * package that touches the DOM (runtime-dom, router, ui-system,
    * compat layers, hooks, ...).
    */
@@ -39,7 +39,7 @@ export interface DefineNodeConfigOptions {
   coverageThresholds?: Partial<CoverageThresholds>
   /**
    * Extra files to exclude from coverage measurement. Appended to
-   * `createVitestConfig`'s defaults
+   * the base config's defaults
    * (`src/**\/*.test.{ts,tsx}`, `src/**\/index.ts`, `src/bin/**`).
    */
   coverageExclude?: string[]
@@ -54,7 +54,7 @@ export interface DefineNodeConfigOptions {
    */
   includeIndexInCoverage?: boolean
   /**
-   * Vitest `setupFiles` — forwarded verbatim to `createVitestConfig`.
+   * Vitest `setupFiles` — forwarded verbatim to the base config.
    */
   setupFiles?: string[]
   /**
@@ -73,13 +73,13 @@ export interface DefineNodeConfigOptions {
  *
  * Internally executes the merge in ONE canonical order:
  *
- *   mergeConfig(sharedConfig, createVitestConfig(...))   then
+ *   mergeConfig(sharedConfig, createBaseConfig(...))     then
  *   mergeConfig(...above, nodeExcludeBrowserTests if requested)   then
  *   mergeConfig(...above, overrides)
  *
  * `sharedConfig` first means its aliases + bun condition + retry +
  * timeout form the BASE; the category defaults from
- * `createVitestConfig` come next (so they can extend sharedConfig's
+ * `createBaseConfig` come next (so they can extend sharedConfig's
  * `test` block without overwriting its scalar fields); browser-test
  * exclusion is appended after; per-package overrides are last.
  *
@@ -92,11 +92,11 @@ export function defineNodeConfig(
   opts: DefineNodeConfigOptions = {},
 ): VitestUserConfig {
   const thresholds = resolveThresholds(opts.category, opts.coverageThresholds)
-  // Build createVitestConfig's options conditionally — root tsconfig's
+  // Options built conditionally — root tsconfig's
   // `exactOptionalPropertyTypes: true` means we can't pass `undefined`
   // to an optional field that doesn't list `undefined` in its type.
   // Spreading conditionally omits the keys entirely when undefined.
-  const base = createVitestConfig({
+  const base = createBaseConfig({
     environment: opts.environment ?? 'node',
     coverageThresholds: thresholds,
     /* v8 ignore start — optional defensive conditionals; both branches structurally exercised across the test corpus */
@@ -106,7 +106,7 @@ export function defineNodeConfig(
   })
 
   // Test-directory files (setup.ts, fixtures, helpers under `src/**/tests/`)
-  // are test INFRASTRUCTURE, not the system under test. createVitestConfig's
+  // are test INFRASTRUCTURE, not the system under test. The base config's
   // default excludes `*.test.{ts,tsx}` but a non-`.test` file like
   // `src/tests/setup.ts` slips through and is measured at 0% — silently
   // dragging the package's statement/line coverage. Exclude the whole test

@@ -35,6 +35,7 @@ import { bundle, collectDocuments, isRemote, referencedDocuments, type ReadOutco
 import { splitByDirection } from './direction'
 import { isSwagger2, upgradeSwagger2 } from './swagger2'
 import { parseSpecText } from './yaml'
+import { duplicateJsonKeys } from './json-keys'
 
 type Json = Record<string, unknown>
 
@@ -88,6 +89,9 @@ export interface LoadOptions {
 /** Parse a spec document (JSON or YAML text) into the IR. */
 export function loadOpenApi(source: string, options: LoadOptions = {}): LoadResult {
   const raw = parseSpecText(source)
+  // Collected across every document read, and handed to the conversion with
+  // the bundler's own notes.
+  const keyNotes: IrNote[] = duplicateKeyNotes(source, '')
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('[Pyreon] lathe: spec did not parse to an object')
   }
@@ -108,15 +112,34 @@ export function loadOpenApi(source: string, options: LoadOptions = {}): LoadResu
         }
       }
       try {
-        return { doc: parseSpecText(readDocument(id)) }
+        const text = readDocument(id)
+        const doc = parseSpecText(text)
+        keyNotes.push(...duplicateKeyNotes(text, id))
+        return { doc }
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) }
       }
     })
     const bundled = bundle(specAt, docs)
-    return { doc: loadParsed(bundled.doc, options, bundled.notes), documents: bundled.documents }
+    return { doc: loadParsed(bundled.doc, options, [...keyNotes, ...bundled.notes]), documents: bundled.documents }
   }
-  return { doc: loadParsed(raw as Json, options), documents: specAt !== undefined ? [specAt] : [] }
+  return { doc: loadParsed(raw as Json, options, keyNotes), documents: specAt !== undefined ? [specAt] : [] }
+}
+
+/**
+ * A `duplicate-key` note per key a JSON document writes twice in one object.
+ * YAML refuses duplicates at parse time; JSON's `JSON.parse` keeps the last
+ * silently, so they are reported here instead. `doc` prefixes the pointer for
+ * a document other than the root.
+ */
+function duplicateKeyNotes(text: string, doc: string): IrNote[] {
+  const body = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text
+  if (!body.trimStart().startsWith('{')) return []
+  return duplicateJsonKeys(body).map(({ at, key }) => ({
+    code: 'duplicate-key' as const,
+    at: `${doc}${at}`,
+    message: `key \`${key}\` is written more than once in the same object — JSON keeps only the LAST, so everything the earlier one declared is gone. Remove or rename the duplicate.`,
+  }))
 }
 
 /**
@@ -333,7 +356,7 @@ function collectWebhooks(spec: Json, ctx: Ctx): IrWebhook[] {
   const hooks = obj(spec.webhooks) ?? {}
   for (const name of Object.keys(hooks).sort()) {
     const at = ptr('webhooks', name)
-    const item = obj(deref(hooks[name], at, ctx))
+    const item = pathItemOf(hooks[name], at, ctx)
     if (item) out.push(...webhookEntries('webhook', name, item, at, undefined, ctx))
   }
   return out
@@ -569,8 +592,16 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
   const rawIds: string[] = []
   const tags = new Set<string>()
   for (const rawPath of Object.keys(paths).sort()) {
-    const item = obj(paths[rawPath])
+    const item = pathItemOf(paths[rawPath], ptr('paths', rawPath), ctx)
     if (!item) continue
+    if (obj(item.trace)) {
+      ctx.notes.push({
+        code: 'unsupported-method',
+        at: ptr('paths', rawPath, 'trace'),
+        message:
+          '`trace` is a FORBIDDEN method in the Fetch standard — `fetch` (and every client built on it, in the browser and in Node) throws before sending it, so no call is generated. Call it from a raw socket or an HTTP/1.1 client if it is needed.',
+      })
+    }
     for (const method of METHODS) {
       const op = obj(item[method.toLowerCase()])
       if (!op) continue
@@ -584,7 +615,9 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
   let next = 0
 
   for (const rawPath of Object.keys(paths).sort()) {
-    const item = obj(paths[rawPath])
+    // Resolved WITHOUT notes: the first pass above already reported any
+    // unresolvable reference once.
+    const item = pathItemOf(paths[rawPath], ptr('paths', rawPath), { ...ctx, notes: [] })
     if (!item) continue
     // Path-level parameters apply to every operation under the path. Each is
     // paired with its OWN pointer: an operation parameter and a path-level one
@@ -663,7 +696,7 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
           required: po.in === 'path' ? true : po.required === true,
           doc: str(po.description),
           deprecated: po.deprecated === true ? true : undefined,
-          example: exampleOf(po, paramSchema(po)),
+          example: exampleOf(po, paramSchema(po), pAt, ctx),
           ...(po.in === 'query' ? queryStyle(po) : {}),
         })
       }
@@ -705,7 +738,7 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
         const cAt = sub(at, 'callbacks', cbName)
         const cb = obj(deref(callbacks[cbName], cAt, ctx)) ?? {}
         for (const expression of Object.keys(cb)) {
-          const cbItem = obj(deref(cb[expression], sub(cAt, expression), ctx))
+          const cbItem = pathItemOf(cb[expression], sub(cAt, expression), ctx)
           if (cbItem) ctx.callbacks.push(...webhookEntries('callback', `${id}.${cbName}`, cbItem, sub(cAt, expression), expression, ctx))
         }
       }
@@ -866,7 +899,9 @@ export function parsePagination(raw: unknown): IrPagination | string {
   }
 }
 
-const QUERY_STYLES = ['form', 'spaceDelimited', 'pipeDelimited', 'deepObject'] as const
+// `tabDelimited` is not an OpenAPI 3 style: it is what a Swagger 2
+// `collectionFormat: tsv` converts to (see `input/swagger2.ts`).
+const QUERY_STYLES = ['form', 'spaceDelimited', 'pipeDelimited', 'tabDelimited', 'deepObject'] as const
 
 /** A query parameter's `style` / `explode`, when the spec states them (audit B2). */
 function queryStyle(po: Json): Pick<IrParam, 'style' | 'explode'> {
@@ -1015,7 +1050,7 @@ function bodyOf(method: string, op: Json, at: string, ctx: Ctx): IrBody | undefi
   const schema = obj(media.schema)
   if (encoding === 'text') return { mediaType, encoding, required, type: { kind: 'string' } }
   if (encoding === 'binary') return { mediaType, encoding, required, type: { kind: 'string', format: 'binary' } }
-  const example = exampleOf(media, schema)
+  const example = exampleOf(media, schema, sub(where, 'content', mediaType), ctx)
   const type = schema ? toType(schema, sub(where, 'content', mediaType, 'schema'), ctx) : { kind: 'unknown' as const, reason: 'no schema' }
   return {
     mediaType,
@@ -1030,22 +1065,62 @@ function bodyOf(method: string, op: Json, at: string, ctx: Ctx): IrBody | undefi
 /**
  * The example a parameter or media type carries, in OpenAPI's precedence:
  * its own `example`, then the first `examples` entry's inline `value`, then
- * the schema's `example`. A `$ref`'d or `externalValue` example is skipped
- * rather than fetched -- the generator reads one document.
+ * the schema's `example`.
+ *
+ * An `examples` entry may be a Reference Object (`$ref:
+ * '#/components/examples/x'`) -- a shared example is the normal reason to
+ * reach for the map at all -- so each entry is resolved, through a chain of
+ * references if need be, before its `value` is read. An `externalValue` is
+ * still skipped: it names a URL, and generation reads the spec, not the web.
+ * (A reference into ANOTHER file is inlined by the bundler before this runs.)
  *
  * Only JSON values survive: the result is emitted into source (`@example`,
  * preview args), and a YAML date or a function-typed value has no literal.
  */
-function exampleOf(holder: Json, schema: Json | undefined): unknown {
+function exampleOf(holder: Json, schema: Json | undefined, at: string, ctx: Ctx): unknown {
   if (holder.example !== undefined) return jsonValue(holder.example)
   const examples = obj(holder.examples)
   if (examples) {
     for (const key of Object.keys(examples)) {
-      const entry = obj(examples[key])
-      if (entry && entry.$ref === undefined && entry.value !== undefined) return jsonValue(entry.value)
+      const entry = resolveChain(examples[key], sub(at, 'examples', key), ctx)
+      if (entry && entry.value !== undefined) return jsonValue(entry.value)
     }
   }
   return schema?.example !== undefined ? jsonValue(schema.example) : undefined
+}
+
+/**
+ * Follow `$ref` until a non-reference object. A cycle (`a -> b -> a`) is
+ * reported and yields nothing rather than looping.
+ */
+function resolveChain(node: unknown, at: string, ctx: Ctx): Json | undefined {
+  const seen = new Set<string>()
+  let cur = obj(node)
+  while (cur && typeof cur.$ref === 'string') {
+    const ref = cur.$ref
+    if (seen.has(ref)) {
+      ctx.notes.push({ code: 'unsupported-ref', at, message: `\`$ref\` \`${ref}\` is part of a reference cycle — ignored.` })
+      return undefined
+    }
+    seen.add(ref)
+    cur = obj(deref(cur, at, ctx))
+  }
+  return cur
+}
+
+/**
+ * A Path Item Object, following a `$ref` (3.1 `components.pathItems`, or a
+ * path item shared between two paths). Fields written beside the `$ref` win
+ * over the target's, as for any other 3.1 reference with siblings.
+ */
+function pathItemOf(raw: unknown, at: string, ctx: Ctx): Json | undefined {
+  const o = obj(raw)
+  if (!o || typeof o.$ref !== 'string') return o
+  const target = resolveChain(o, at, ctx)
+  if (!target) return undefined
+  const siblings: Json = {}
+  for (const [k, v] of Object.entries(o)) if (k !== '$ref') siblings[k] = v
+  return { ...target, ...siblings }
 }
 
 /** `value` when it round-trips through JSON unchanged in kind, else `undefined`. */
@@ -1080,7 +1155,7 @@ function externalDocsOf(value: unknown): { url: string; description?: string | u
 function fieldEncodingOf(encoding: Json | undefined): Record<string, IrFieldEncoding> | undefined {
   if (!encoding) return undefined
   const out: Record<string, IrFieldEncoding> = {}
-  const styles = new Set(['form', 'deepObject', 'spaceDelimited', 'pipeDelimited'])
+  const styles = new Set(['form', 'deepObject', 'spaceDelimited', 'pipeDelimited', 'tabDelimited'])
   for (const key of Object.keys(encoding).sort()) {
     const e = obj(encoding[key])
     if (!e) continue
@@ -1138,13 +1213,18 @@ function responseOf(op: Json, at: string, ctx: Ctx): Pick<IrOperation, 'response
  * `5XX` range and `default` with a JSON body, in the order a client matches
  * them (exact codes, ranges, `default`). One whose body is not JSON, or has no
  * schema, cannot be validated or typed -- that is the loss the
- * `error-responses` note reports. `chosen` (a `default` read as the success
- * response) is not an error.
+ * `error-responses` note reports. A `default` read as the success response
+ * (no 2xx declared) is typed as the error body as well: it is the only
+ * description the spec gives of a failure.
  */
 function errorResponsesOf(responses: Json, chosen: string | undefined, rAt: string, ctx: Ctx): IrErrorResponse[] {
   const rank = (k: string): number => (/^\d{3}$/.test(k) ? 0 : k === 'default' ? 2 : 1)
   const keys = Object.keys(responses)
-    .filter((k) => k !== chosen && (/^[45](\d\d|XX)$/i.test(k) || k === 'default'))
+    // A `default` that is ALSO the success response (the operation declares no
+    // 2xx) is carried through as the typed ERROR body too: it describes every
+    // status the spec did not list, failures included, and dropping it here
+    // left every rejection's `body` untyped.
+    .filter((k) => (k !== chosen || k === 'default') && (/^[45](\d\d|XX)$/i.test(k) || k === 'default'))
     .sort((a, b) => rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0))
   const out: IrErrorResponse[] = []
   const untyped: string[] = []
