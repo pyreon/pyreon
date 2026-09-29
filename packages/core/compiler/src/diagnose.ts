@@ -84,6 +84,29 @@ export const ERROR_PATTERNS: ErrorPattern[] = [
     }),
   },
   {
+    // The second half of the 0.52 wrapper removal: an app that still renders
+    // `<Chart options={…}>` (the 0.51 ECharts wrapper's grammar) typechecks
+    // against the NEW `<Chart>`, whose props are rows + marks. The import
+    // itself still resolves, so the entry above never fires — the type
+    // checker reports an unknown `options` prop instead, naming neither the
+    // removal nor the replacement.
+    pattern:
+      /Property \x27(options|notMerge|lazyUpdate|onEvents)\x27 does not exist on type \x27[^\x27]*ChartProps/,
+    diagnose: (m) => ({
+      cause:
+        '`' +
+        (m[1] ?? 'options') +
+        "` is a prop of the 0.51 ECharts wrapper `<Chart options>`, which `@pyreon/charts` 0.52 removed. The new `<Chart>` is Pyreon's own engine: it takes your rows as `data` and draws the marks you give it as children, so it has no ECharts option object to accept.",
+      fix: 'Translate the option into marks: pass the rows as `data` and the category field as `x`, turn each series into a mark (`type: \'bar\'` → `<Bar y="field" />`, `\'line\'` → `<Line>`, `\'pie\'` → `<Arc>`), and replace `tooltip` / `legend` with `<Tooltip />` / `<Legend />`. `pyreon check` flags every remaining `<Chart options>` in the project.',
+      fixCode: `import { Bar, Chart, Tooltip } from '@pyreon/charts'
+
+<Chart data={rows} x="month">
+  <Bar y="revenue" />
+  <Tooltip />
+</Chart>`,
+    }),
+  },
+  {
     // The light/dark mode moved out of `@pyreon/charts` into ONE framework-wide
     // source (`useColorMode` / `<ColorModeProvider>` in @pyreon/core, which
     // `<PyreonUI mode>` provides). An app on the old API hits one of two

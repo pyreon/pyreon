@@ -6,7 +6,7 @@
 // next. Series VALUE labels stay ungrouped: ECharts' `{c}` is the raw value.
 import { describe, expect, it } from 'vitest'
 import { chartTableRow, describeChart } from './a11y'
-import { currency, groupThousands, plain } from './format'
+import { currency, plain } from './format'
 import { makeTicks } from './scale'
 import { logViewTicks } from './scale-extra'
 import { tooltipLines } from './tooltip'

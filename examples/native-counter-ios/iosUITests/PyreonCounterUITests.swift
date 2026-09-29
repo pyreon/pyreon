@@ -319,7 +319,7 @@ final class PyreonCounterUITests: XCTestCase {
 
         let size = app.staticTexts["native-flow-start-size"].firstMatch
         XCTAssertTrue(size.waitForExistence(timeout: 10))
-        XCTAssertEqual(size.label, "150.0,60.0")
+        XCTAssertEqual(size.label, "150,60")
         let resize = app.descendants(matching: .any)["Resize se for node native-start"].firstMatch
         XCTAssertTrue(resize.waitForExistence(timeout: 5))
         XCTAssertGreaterThanOrEqual(resize.frame.width, 43.5, "resizer touch target is below the native minimum")
@@ -330,7 +330,7 @@ final class PyreonCounterUITests: XCTestCase {
             withVelocity: .slow,
             thenHoldForDuration: 0.3
         )
-        let resized = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", "150.0,60.0"), object: size)
+        let resized = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", "150,60"), object: size)
         XCTAssertEqual(XCTWaiter().wait(for: [resized], timeout: 5), .completed, "dragging the southeast resizer did not change the native node dimensions")
 
         let edgeTarget = app.staticTexts["native-flow-edge-target"].firstMatch
