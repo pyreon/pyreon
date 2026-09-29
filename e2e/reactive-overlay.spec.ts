@@ -15,10 +15,11 @@
  * it. The synthetic DOM event is the same path the runtime's listener handles.
  */
 import { expect, test } from '@playwright/test'
+import { waitForHydration } from './hydration-barrier'
 
 async function bootWithGraph(page: import('@playwright/test').Page) {
   await page.goto('/')
-  await page.waitForSelector('#layout', { timeout: 10_000 })
+  await waitForHydration(page)
   // Mount a real signal-driven subtree AND create an orphan signal kept alive
   // on `window` so the always-on reactive registry has a known insight to show.
   await page.evaluate(() => {
@@ -121,7 +122,7 @@ test.describe('reactive overlay — Inspect picker (real compiled app)', () => {
   // bootWithGraph) — the compiled Counter must stay in the DOM.
   test('nodesForElement correlates a compiled {count()} element to its signal', async ({ page }) => {
     await page.goto('/')
-    await page.waitForSelector('.value', { timeout: 10_000 })
+    await waitForHydration(page)
 
     const bound = await page.evaluate(() => {
       const el = document.querySelector('.value')!
@@ -138,7 +139,7 @@ test.describe('reactive overlay — Inspect picker (real compiled app)', () => {
     page,
   }) => {
     await page.goto('/')
-    await page.waitForSelector('.value')
+    await waitForHydration(page)
 
     await page.evaluate(() => (window as any).__PYREON_DEVTOOLS__.reactive.showOverlay())
     await expect(page.locator('#__pyreon-reactive-overlay')).toBeVisible()
