@@ -1288,6 +1288,24 @@ const Page = lazy(() => import('./Page'))`,
     }),
   },
   {
+    // Deferred lazy hydration: a server-rendered `lazy()` whose client chunk
+    // had not landed keeps its server nodes until the chunk settles. When the
+    // chunk FAILS instead, those nodes are dropped and the error reaches the
+    // nearest <ErrorBoundary> — the residual a user now sees is the browser's
+    // own chunk-load error, arriving after the page looked complete.
+    pattern: /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed/,
+    diagnose: () => ({
+      cause:
+        'A code-split chunk (a `lazy()` / `defineAsyncComponent` import) failed to load. During hydration the server-rendered content of that component stayed on screen while the chunk loaded; when the load failed it was removed and the error was sent to the nearest `<ErrorBoundary>`. The usual causes are a deploy that replaced the hashed chunk files while this page was open, or a network error.',
+      fix: 'Wrap lazily loaded regions in an `<ErrorBoundary>` with a fallback that offers a reload, so a stale deploy degrades visibly instead of emptying the region. Keep the previous deploy\'s assets available for a while (most hosts do), or reload the page on this error.',
+      fixCode: `<ErrorBoundary fallback={() => <button onClick={() => location.reload()}>Reload</button>}>
+  <Suspense fallback={<Spinner />}>
+    <Settings />
+  </Suspense>
+</ErrorBoundary>`,
+    }),
+  },
+  {
     pattern: /Hydration mismatch/,
     diagnose: () => ({
       cause: "Server-rendered HTML doesn't match client-rendered output.",

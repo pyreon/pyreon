@@ -332,12 +332,14 @@ function needsKeyedReconcile(value: unknown): boolean {
  * landed still gets the old rebuild — at that instant the client really does
  * render nothing. Such a host must resolve its component BEFORE hydrating;
  * `@pyreon/zero`'s `startClient` calls `router.preload(...)` for exactly this
- * reason.
+ * reason. A `lazy()` component is the exception, because it CAN say which of
+ * the two it is — see `hydrateDeferredLazy`, which keeps its range.
  *
- * A "keep the range and adopt when content appears later" variant was
- * considered and rejected: it cannot distinguish "not ready yet" from "renders
- * nothing", so it would leave stale server DOM standing forever for the latter,
- * and no oracle in the parity fuzz can catch that.
+ * A generic "keep the range and adopt when content appears later" variant was
+ * considered and rejected: from an accessor alone it cannot distinguish "not
+ * ready yet" from "renders nothing", so it would leave stale server DOM
+ * standing forever for the latter, and no oracle in the parity fuzz can catch
+ * that. The lazy protocol (`__loading` / `__load`) is exactly that oracle.
  */
 function adoptReactiveRange(
   child: () => VNodeChild,

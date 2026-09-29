@@ -1335,7 +1335,7 @@ setup() {
 
 **Difference from Vue:** Vue resolves `<Suspense>` against any `async setup()` in the subtree and supports `@resolve` / `@pending` / `@fallback` events plus the `timeout` prop. Pyreon's `Suspense` resolves against components carrying a `__loading` accessor (the output of `defineAsyncComponent`), **not** an arbitrary `async setup()`. The events and `timeout` prop are accepted for typechecking but **ignored**.
 
-On the server, `renderToString` and `renderToStream` wait for a `defineAsyncComponent` whose chunk has not loaded yet, so the HTML carries the real content (not the fallback) and hydration adopts it.
+On the server, `renderToString` and `renderToStream` wait for a `defineAsyncComponent` whose chunk has not loaded yet, so the HTML carries the real content (not the fallback) and hydration adopts it. As in Vue, hydration waits for the loader: if the browser's chunk has not landed when `hydrateRoot` reaches the component, the server nodes stay in place and are hydrated when it does — for a `suspensible: false` component too.
 
 #### `defineAsyncComponent` options
 

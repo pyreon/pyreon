@@ -54,6 +54,20 @@ describe('diagnoseError (browser-safe error catalog)', () => {
     expect(r!.fix).toContain('defineAsyncComponent')
   })
 
+  it('diagnoses a failed code-split chunk (the residual of deferred lazy hydration)', () => {
+    // The messages Chromium, Firefox and Safari throw for a failed dynamic import.
+    for (const msg of [
+      'TypeError: Failed to fetch dynamically imported module: https://x/assets/Page-abc.js',
+      'TypeError: error loading dynamically imported module: https://x/assets/Page-abc.js',
+      'TypeError: Importing a module script failed.',
+    ]) {
+      const r = diagnoseError(msg)
+      expect(r, msg).not.toBeNull()
+      expect(r!.cause).toContain('lazy()')
+      expect(r!.fix).toContain('ErrorBoundary')
+    }
+  })
+
   it('diagnoses a VNode array rendered as "[object Object]"', () => {
     for (const symptom of [
       '[object Object],[object Object]',
