@@ -190,6 +190,14 @@ export const config = { schedule: ${JSON.stringify(job.schedule)} }
       // ROOT netlify.toml is what Netlify's builds actually read, and
       // `@pyreon/create-zero` generates it from the same
       // NETLIFY_ADAPTER_OUTPUT contract, dist-prefixed).
+      //
+      // NO `[[redirects]]` to the function: it routes ITSELF through
+      // `config.path` above. Netlify: "When you set a custom `path`, the
+      // function is only available at that path — not at the default
+      // `/.netlify/functions/<name>` URL", so a rewrite to that URL points
+      // at nothing (verified under `netlify dev`: it answers 404
+      // "Function not found" with or without the rule). Dead config that
+      // reads as the routing mechanism is worse than none.
       const toml = `
 [build]
   publish = "${NETLIFY_ADAPTER_OUTPUT.publishDir}"
@@ -199,11 +207,6 @@ ${hasEdge ? `  edge_functions = "${NETLIFY_ADAPTER_OUTPUT.edgeFunctionsDir}"\n` 
   for = "${assetPrefix}/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
-
-[[redirects]]
-  from = "/*"
-  to = "/.netlify/functions/${NETLIFY_ADAPTER_OUTPUT.functionName}"
-  status = 200
 `.trimStart()
 
       await writeFile(join(outDir, 'netlify.toml'), toml)
