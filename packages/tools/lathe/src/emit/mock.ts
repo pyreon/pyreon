@@ -16,6 +16,7 @@ import type { IrDocument, IrOperation } from "../core/ir";
 import { responseKindOf } from "../core/media";
 import { byCodeUnit } from "../core/order";
 import { sampleValue } from "../core/sample-value";
+import { usesBigInt } from "../core/walk";
 import { CLIENT_FILE, endpointSpec, tagFile } from "./client";
 import type { ClientName } from "./client-runtime";
 import {
@@ -255,7 +256,7 @@ export function emitMocks(
   f.line('  active.splice(0, active.length, ...routes)')
   f.line('}')
 
-  if (ops.some((o) => o.stream)) emitStreamMockHelpers(f, ops, pyreon);
+  if (ops.some((o) => o.stream)) emitStreamMockHelpers(f, ops, pyreon, usesBigInt(doc));
   f.line();
   f.line("function baseRelative(url: string): string {");
   f.line(
@@ -458,11 +459,19 @@ function emitStreamMockHelpers(
   f: SourceFile,
   ops: readonly IrOperation[],
   pyreon: boolean,
+  lossless = false,
 ): void {
   const streams = ops.flatMap((o) => (o.stream ? [o.stream] : []));
   const sseJson = streams.some((s) => s.format === "sse" && s.data === "json");
   const sseText = streams.some((s) => s.format === "sse" && s.data === "text");
   const ndjson = streams.some((s) => s.format === "ndjson");
+  // `int64: 'bigint'`: event fixtures hold bigints, which `JSON.stringify`
+  // throws on. The lossless encoder writes them as JSON number text.
+  const stringify = lossless && (sseJson || ndjson) ? "stringifyJsonLossless" : "JSON.stringify";
+  if (stringify !== "JSON.stringify") {
+    if (pyreon) f.import("@pyreon/http/json", "stringifyJsonLossless");
+    else f.import(relativeSpecifier("mocks.ts", CLIENT_FILE), "stringifyJsonLossless");
+  }
   if (sseJson || sseText) {
     f.line();
     f.doc(
@@ -485,7 +494,7 @@ function emitStreamMockHelpers(
     f.line(
       "function sseBody(events: readonly unknown[], lastEventId: string | undefined): string {",
     );
-    f.line("  return sse(events.map((e) => JSON.stringify(e)), lastEventId)");
+    f.line(`  return sse(events.map((e) => ${stringify}(e)), lastEventId)`);
     f.line("}");
   }
   if (sseText) {
@@ -500,7 +509,7 @@ function emitStreamMockHelpers(
     f.line();
     f.doc("An NDJSON body: one value per line.");
     f.line("function ndjsonBody(events: readonly unknown[]): string {");
-    f.line("  return events.map((e) => `${JSON.stringify(e)}\\n`).join('')");
+    f.line(`  return events.map((e) => \`\${${stringify}(e)}\\n\`).join('')`);
     f.line("}");
   }
   // `@pyreon/http`'s `MockRoute` matches `accept` itself; an adapter's seam does it here.

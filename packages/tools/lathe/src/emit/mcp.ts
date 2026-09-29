@@ -26,6 +26,7 @@
  * tool is never a mystery.
  */
 import type { IrDocument, IrOperation, IrType } from '../core/ir'
+import { usesBigInt } from '../core/walk'
 import { byTag, endpointSpec, isMutation, tagFile } from './client'
 import { isStreamOnly } from './stream'
 import { jsonLiteral, relativeSpecifier, SourceFile } from './writer'
@@ -52,6 +53,17 @@ export function toJsonSchema(type: IrType, models: ReadonlyMap<string, IrType>, 
     }
     case 'number': {
       const out: JsonSchema = { type: type.integer ? 'integer' : 'number' }
+      if (type.minimum !== undefined) out.minimum = type.minimum
+      if (type.maximum !== undefined) out.maximum = type.maximum
+      if (type.exclusiveMinimum !== undefined) out.exclusiveMinimum = type.exclusiveMinimum
+      if (type.exclusiveMaximum !== undefined) out.exclusiveMaximum = type.exclusiveMaximum
+      if (type.multipleOf !== undefined) out.multipleOf = type.multipleOf
+      return out
+    }
+    // An int64 the model sends as a JSON number; the tool's input is decoded
+    // by the MCP runtime, not by the client, so this is advisory for the model.
+    case 'bigint': {
+      const out: JsonSchema = { type: 'integer', format: 'int64' }
       if (type.minimum !== undefined) out.minimum = type.minimum
       if (type.maximum !== undefined) out.maximum = type.maximum
       if (type.exclusiveMinimum !== undefined) out.exclusiveMinimum = type.exclusiveMinimum
@@ -200,7 +212,10 @@ export function emitMcpTools(doc: IrDocument): SourceFile {
     '  const tool = tools.find((t) => t.name === req.params.name)',
     "  if (!tool) throw new Error(`unknown tool ${req.params.name}`)",
     "  const result = await tool.call(req.params.arguments ?? {})",
-    "  return { content: [{ type: 'text', text: JSON.stringify(result ?? null) }] }",
+    // `int64: 'bigint'`: a result can hold a bigint, which `JSON.stringify` throws on.
+    usesBigInt(doc)
+      ? "  return { content: [{ type: 'text', text: JSON.stringify(result ?? null, (_k, v) => (typeof v === 'bigint' ? v.toString() : v)) }] }"
+      : "  return { content: [{ type: 'text', text: JSON.stringify(result ?? null) }] }",
     '})',
     '```',
   )
