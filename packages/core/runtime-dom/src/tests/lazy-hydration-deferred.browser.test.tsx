@@ -12,6 +12,7 @@
  */
 import type { ComponentFn } from '@pyreon/core'
 import { h, lazy, Suspense } from '@pyreon/core'
+import { query } from '@pyreon/test-utils'
 import { describe, expect, it } from 'vitest'
 import { hydrateRoot } from '../index'
 
@@ -30,7 +31,7 @@ describe('deferred lazy hydration — real Chromium', () => {
       const c = document.createElement('div')
       document.body.appendChild(c)
       c.innerHTML = SERVER[shape]
-      const input = c.querySelector('input.q') as HTMLInputElement
+      const input = query<HTMLInputElement>(c, 'input.q')
       let foreign = 0
       input.addEventListener('input', () => foreign++)
 
