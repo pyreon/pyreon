@@ -502,7 +502,9 @@ struct Main {
         await s.runSse(
             PyreonStreamRequest(url: ${JSON.stringify(url)}),
             options: PyreonSseOptions(events: ["message"], reconnect: PyreonStreamReconnect(attempts: 3, delay: 20, maxDelay: 100)),
-            onEvent: { e in print("O \\(e.id)") },
+            // Thread.isMainThread: the web runs onEvent on its one thread,
+            // so the native callback must be on the main thread too.
+            onEvent: { e in print("O \\(e.id) \\(Thread.isMainThread ? "main" : "off-main")") },
             decode: PyreonStreamDecode.sseJSON(Row.self)
         )
         for e in s.events { print("E \\(e.type) \\(e.id) \\(e.data.n)") }
@@ -520,11 +522,14 @@ fun <T> mutableStateOf(value: T): MutableState<T> = Box(value)
 
 const KOTLIN_LOOP_MAIN = (url: string): string => `package com.pyreon.runtime
 fun main() {
-    val s = PyreonStream<PyreonSseEvent<Int>>()
+    // A single named thread standing in for the main looper — the emit passes
+    // PyreonStreamMain, which needs an Android Looper this JVM does not have.
+    val main = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "main").apply { isDaemon = true } }
+    val s = PyreonStream<PyreonSseEvent<Int>>(main = main)
     s.startSse(
         PyreonStreamRequest(url = ${JSON.stringify(url)}),
         PyreonSseOptions(events = listOf("message"), reconnect = PyreonStreamReconnect(attempts = 3, delay = 20, maxDelay = 100)),
-        onEvent = { e -> println("O \${e.id}") },
+        onEvent = { e -> println("O \${e.id} \${if (Thread.currentThread().name == "main") "main" else "off-main"}") },
     ) { m -> PyreonSseEvent(m.type, Regex("\\\\d+").find(m.data)!!.value.toInt(), m.id) }
     val deadline = System.currentTimeMillis() + 20_000
     while (s.status.value != "closed" && s.status.value != "error" && System.currentTimeMillis() < deadline) Thread.sleep(5)
@@ -544,8 +549,8 @@ function parseLoopOutput(stdout: string): { events: string[]; status: string; on
   }
 }
 
-/** The ids `onEvent` must have seen — one per delivered event, in order. */
-const expectedOnEvent = (events: string[]): string[] => events.map((e) => e.split(' ')[1]!)
+/** The ids `onEvent` must have seen — one per delivered event, in order, each ON THE MAIN THREAD. */
+const expectedOnEvent = (events: string[]): string[] => events.map((e) => `${e.split(' ')[1]!} main`)
 
 describe('native stream loop — reconnect + Last-Event-ID parity over a real server', () => {
   let web: LoopResult

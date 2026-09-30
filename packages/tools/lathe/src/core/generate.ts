@@ -21,6 +21,7 @@ import {
   emitNativeModules,
   hasNativeDataComponent,
   hasNativeStreamComponent,
+  nativeStreamBlocker,
   emitWebEndpoints,
   emitWebQueries,
 } from "../emit/client";
@@ -587,33 +588,21 @@ function decide(
   //
   // Left as a comment rather than deleted because the reason it USED to be
   // here is the reason the generated native layout looks the way it does.
-  if (op.method !== "GET" && isStreamOnly(op)) {
-    // Not the mutation reason: PMTC DOES lower a hand-written non-GET stream
-    // (`enabled` as the trigger, a runtime `json` body serialized per run).
-    // What is missing is the GENERATED surface — every generated native
-    // component opens on mount and takes only params as props.
+  if (isStreamOnly(op)) {
+    // A stream lowers through `useStream` to the native stream runtime and is
+    // decoded INTO its declared event type; a non-GET one is TRIGGERED
+    // (`enabled` + a `json` body prop). Asked of the emitter, so the report and
+    // the native layout agree about which streams get a component.
+    if (hasNativeStreamComponent(op)) return { reach: "web+native" };
     return {
       reach: "web-only",
-      reason: `a \`${op.method}\` stream is started by the user with a body, and Lathe's generated native components open on mount with params as their only props -- there is no generated surface for a trigger and a body yet. PMTC lowers a hand-written one: \`useStream(src, { enabled: () => sent() })\` with a runtime \`json\` body.`,
+      reason: nativeStreamBlocker(op) ?? "no native stream component is generated for it.",
     };
   }
   if (op.method !== "GET") {
     return {
       reach: "web-only",
       reason: `\`${op.method}\` lowers through mutations, which PMTC does not yet recognise; GET operations on this client DO reach native.`,
-    };
-  }
-  if (isStreamOnly(op)) {
-    // A stream lowers through `useStream` to the native stream runtime, and is
-    // decoded INTO its declared event type -- asked of the emitter, so the
-    // report and the native layout agree about which streams get a component.
-    if (hasNativeStreamComponent(op)) return { reach: "web+native" };
-    return {
-      reach: "web-only",
-      reason:
-        op.hook === false
-          ? "its hook is turned off (`operations.<id>.hook: false`, `naming.hook` or a plugin), so no native stream component is generated."
-          : "a streaming response (SSE / NDJSON) with no declared event type -- a native stream decodes each event into a declared type, so there is nothing to lower it to. Declare one with `lathe: { streams: { <op>: { event: 'Model' } } }` (or `data: 'text'` for raw SSE).",
     };
   }
   if (op.hook === false) {

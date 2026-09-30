@@ -3059,8 +3059,11 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   }
   // `const s = useStream(…)` → a remembered PyreonStream; the
   // `DisposableEffect` that starts and stops it is emitted with the harnesses.
+  // `main = PyreonStreamMain` puts every state write and `onEvent` call on the
+  // main looper, where the web runs the whole hook — the loop itself reads on
+  // its own thread, and without this `onEvent` ran there.
   if (d.kind === 'stream') {
-    return `val ${kotlinIdent(d.name)} = remember { PyreonStream<${kotlinType(d.itemType, ctx)}>(maxEvents = ${d.maxEvents}L) }`
+    return `val ${kotlinIdent(d.name)} = remember { PyreonStream<${kotlinType(d.itemType, ctx)}>(maxEvents = ${d.maxEvents}L, main = PyreonStreamMain) }`
   }
   if (d.kind === 'database') {
     _databaseNames.add(d.name)
@@ -5273,12 +5276,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       return `PyreonZodSchema_${e.schemaName}.safeParseResult(${emitKotlinSchemaInput(e.arg, indent)})`
     }
     case 'json-stringify':
-      // `JSON.stringify(x)` → kotlinx-serialization. The value is @Serializable
-      // (emitted structs) or a serializable builtin; `Json.encodeToString`
-      // resolves the serializer via the reified type. The real device build
-      // needs `import kotlinx.serialization.encodeToString` (added by the CLI's
-      // conditionalKotlinImports); the kotlinc stub fakes it as a Json member.
-      return `Json.encodeToString(${emitKotlinExpr(e.arg, indent)})`
+      // `JSON.stringify(x)` → the runtime's web-identical serializer. kotlinx
+      // keeps declaration order (the source literal's), but writes a whole
+      // Double as `1.0`, exponents as `1.0E21`, and throws on NaN — so the
+      // bytes that leave the device would differ from the web's.
+      // `PyreonJson.stringify` rewrites those leaves into ECMAScript form.
+      return `PyreonJson.stringify(${emitKotlinExpr(e.arg, indent)})`
     case 'call': {
       if (e.callee.kind === 'member' && e.callee.property === 'dispatch' && e.callee.object.kind === 'identifier' && _chartHandleNamesKotlin.has(e.callee.object.name)) {
         const f = chartActionFields(e.args[0])
