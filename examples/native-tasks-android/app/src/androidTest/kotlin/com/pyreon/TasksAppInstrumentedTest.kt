@@ -479,6 +479,39 @@ class TasksAppInstrumentedTest {
             .assertIsDisplayed()
     }
 
+    /**
+     * useStream over a REAL local server (examples/native-tasks/scripts/
+     * stream-server.ts, host 127.0.0.1:8791, `adb reverse`d into the emulator).
+     *
+     * SSE: the server destroys the socket half-way through event 3; the app
+     * must reconnect with `Last-Event-ID: 2`, which the server echoes into
+     * each payload's `resumed` — so `3:3@2` in the rendered log exists only if
+     * the resume header reached the server. NDJSON: gated by `enabled` (must
+     * read `idle` until the tap) with `onEvent` summing the rows (1+2+3).
+     */
+    @Test
+    fun streamsReconnectWithLastEventIdAndGatedNdjson() {
+        composeRule.onNodeWithTag("login-username").performTextInput("abcde")
+        composeRule.onNodeWithTag("login-submit").performClick()
+        assertTagDisplayed("tasks-page", "after login-submit")
+        composeRule.onNodeWithTag("tasks-streams").performClick()
+        assertTagDisplayed("streams-page", "after tasks-streams (/tasks -> /streams)")
+
+        // `enabled: () => rowsOn()` is false at mount: nothing may open.
+        waitForTagText("nd-status", "idle")
+        waitForTagText("sse-log", "1:1@,2:2@,3:3@2,4:4@2")
+        waitForTagText("sse-status", "closed")
+        // Still idle once the SSE finished — the gate is not a timer.
+        composeRule.onNodeWithTag("nd-status").assertTextEquals("idle")
+
+        composeRule.onNodeWithTag("nd-start").performClick()
+        waitForTagText("nd-sum", "6")
+        waitForTagText("nd-status", "closed")
+
+        composeRule.onNodeWithTag("streams-back").performClick()
+        assertTagDisplayed("tasks-page", "after streams-back (/streams -> /tasks)")
+    }
+
     @Test
     fun authGateStoreMutationAndTypedParamsDetail() {
         // Phase 1: login — flips the store's auth flag; the beforeEnter
