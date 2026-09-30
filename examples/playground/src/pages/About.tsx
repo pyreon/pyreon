@@ -1,5 +1,5 @@
 import { Defer } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { state, signalOf } from '@pyreon/core/plain'
 import { DeferredFixture } from '../components/DeferredFixture'
 import * as NS from '../components/NamespaceFixture'
 
@@ -12,8 +12,8 @@ import * as NS from '../components/NamespaceFixture'
 //      rewrites <NS.NamespaceFixture /> to the explicit chunk-prop form
 //      and removes the `import * as NS` static import. verify-modes
 //      asserts the namespace fixture lands in its own chunk.
-const _open = signal(false)
-const _open2 = signal(false)
+let _open = state(false)
+let _open2 = state(false)
 
 export function About() {
   return (
@@ -29,10 +29,10 @@ export function About() {
         <li>🖥️ SSR / SSG via renderToString</li>
         <li>📦 Zero runtime VDOM overhead</li>
       </ul>
-      <Defer when={_open}>
+      <Defer when={signalOf<typeof _open>(_open)}>
         <DeferredFixture label="DEFER_INLINE_FIXTURE_PROP_LABEL_ABC987" />
       </Defer>
-      <Defer when={_open2}>
+      <Defer when={signalOf<typeof _open2>(_open2)}>
         <NS.NamespaceFixture />
       </Defer>
     </div>

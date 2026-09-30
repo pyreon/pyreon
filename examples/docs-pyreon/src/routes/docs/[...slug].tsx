@@ -1,5 +1,5 @@
 import { type ComponentFn, lazy } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { useParams } from '@pyreon/router'
 import { getEntry } from '@pyreon/zero-content'
 import 'virtual:zero-content/collections'
@@ -36,13 +36,13 @@ export default function DocPage() {
   const raw = params.slug
   const slug = Array.isArray(raw) ? raw.join('/') : raw
 
-  const headings = signal<PageHeading[]>([])
-  const notFound = signal(false)
+  let headings = state.raw<PageHeading[]>([])
+  let notFound = state(false)
 
   const PageBody = lazy<Record<string, never>>(async () => {
     const entry = await getEntry('docs', slug)
     if (!entry) {
-      notFound.set(true)
+      notFound = true
       // Return a synthetic empty page; the parent renders the 404 UI.
       const Empty: ComponentFn<Record<string, never>> = () => null
       return { default: Empty }
@@ -51,9 +51,7 @@ export default function DocPage() {
     // `id`. Map between the two — the slug IS the rendered element's
     // id (both come from the same slugify pass at build time).
     const fromZeroContent = entry.headings as ZeroContentHeading[]
-    headings.set(
-      fromZeroContent.map((h) => ({ level: h.level, text: h.text, id: h.slug })),
-    )
+    headings = fromZeroContent.map((h) => ({ level: h.level, text: h.text, id: h.slug }))
     const Component = await entry.render()
     return { default: Component as ComponentFn<Record<string, never>> }
   })
@@ -62,7 +60,7 @@ export default function DocPage() {
     <div class="app-shell">
       <Sidebar />
       <main>
-        {() => notFound() ? (
+        {() => notFound ? (
           <article class="content">
             <h1>404 — page not found</h1>
             <p>
@@ -74,7 +72,7 @@ export default function DocPage() {
           <PageBody />
         )}
       </main>
-      <Toc headings={() => headings()} />
+      <Toc headings={() => headings} />
     </div>
   )
 }

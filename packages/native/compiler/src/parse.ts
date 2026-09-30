@@ -12596,6 +12596,29 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         right: parseExpr(node.right, ctx),
       }
     }
+    case 'SequenceExpression': {
+      // Plain Mode's TOTAL-TRACKING prologue: `(void (a()), <expr>)` — the
+      // `void` reads exist only so the WEB effect subscribes to deps a branch
+      // might skip. SwiftUI and Compose track every read of the evaluated
+      // expression on their own, so the prologue has no native meaning: lower
+      // the sequence to its last element. Any OTHER sequence is a real comma
+      // expression with side effects and stays unsupported (warned).
+      const exprs = (node.expressions ?? []) as AnyNode[]
+      let last = exprs[exprs.length - 1]
+      // `(void a, (expr))` — the kept element's own parens are source
+      // grouping, exactly what an arrow body `=> (expr)` drops.
+      while (last?.type === 'ParenthesizedExpression') last = last.expression as AnyNode
+      const prologueOnly =
+        exprs.length >= 2 &&
+        exprs.slice(0, -1).every((e) => e.type === 'UnaryExpression' && e.operator === 'void')
+      if (prologueOnly && last) return parseExpr(last, ctx)
+      return unsupportedExpr(
+        ctx,
+        node,
+        'A comma expression (`SequenceExpression`)',
+        'evaluate the side effects as separate statements, then use the value.',
+      )
+    }
     case 'UnaryExpression': {
       // Parser-B: `!t.done`, `-x`, `+x`. Both Swift and Kotlin accept
       // these as prefix unary verbatim. Other unary operators (`typeof`,

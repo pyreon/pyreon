@@ -1,5 +1,5 @@
 import { useFocus, useHover, useKeyboard } from '@pyreon/hooks'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { Title, Paragraph, Card } from '@pyreon/ui-components'
 
 export function HooksInteractionDemo() {
@@ -10,10 +10,10 @@ export function HooksInteractionDemo() {
   const focus = useFocus()
 
   // useKeyboard
-  const lastKey = signal('')
-  useKeyboard('Enter', () => lastKey.set('Enter'), undefined)
-  useKeyboard('Escape', () => lastKey.set('Escape'), undefined)
-  useKeyboard(' ', () => lastKey.set('Space'), undefined)
+  let lastKey = state('')
+  useKeyboard('Enter', () => { lastKey = 'Enter' }, undefined)
+  useKeyboard('Escape', () => { lastKey = 'Escape' }, undefined)
+  useKeyboard(' ', () => { lastKey = 'Space' }, undefined)
 
   return (
     <div>
@@ -50,7 +50,7 @@ export function HooksInteractionDemo() {
         Press <kbd>Enter</kbd>, <kbd>Esc</kbd>, or <kbd>Space</kbd> anywhere on the page.
       </Paragraph>
       <p style="font-size: 14px;">
-        Last key: <strong>{() => lastKey() || '(none yet)'}</strong>
+        Last key: <strong>{() => lastKey || '(none yet)'}</strong>
       </p>
     </div>
   )

@@ -1,5 +1,5 @@
 import { onMount, onUnmount } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { state as plainState } from '@pyreon/core/plain'
 import { themeMode } from './ThemeToggle'
 
 interface DocPlaygroundProps {
@@ -19,8 +19,8 @@ interface DocPlaygroundProps {
  * without inline-style walls.
  */
 export function DocPlayground(props: DocPlaygroundProps) {
-  const code = signal(props.code)
-  const copiedHint = signal(false)
+  let code = plainState(props.code)
+  let copiedHint = plainState(false)
   let editorContainer: HTMLDivElement | null = null
   let iframeEl: HTMLIFrameElement | null = null
   let cmView: { destroy(): void; dispatch(spec: unknown): void; state: { doc: { length: number; toString(): string } } } | null = null
@@ -80,21 +80,21 @@ ${'<' + '/script>'}
   }
 
   function run() {
-    if (iframeEl) iframeEl.srcdoc = buildSrcdoc(code(), themeMode() === 'dark')
+    if (iframeEl) iframeEl.srcdoc = buildSrcdoc(code, themeMode() === 'dark')
   }
 
   function copy() {
     try {
-      navigator.clipboard.writeText(code())
-      copiedHint.set(true)
-      setTimeout(() => copiedHint.set(false), 1200)
+      navigator.clipboard.writeText(code)
+      copiedHint = true
+      setTimeout(() => { copiedHint = false }, 1200)
     } catch {
       // ignore
     }
   }
 
   function reset() {
-    code.set(props.code)
+    code = props.code
     if (cmView) {
       cmView.dispatch({ changes: { from: 0, to: cmView.state.doc.length, insert: props.code } })
     }
@@ -168,13 +168,13 @@ ${'<' + '/script>'}
         langJs.javascript({ jsx: true, typescript: true }),
         view.keymap.of(keys),
         view.EditorView.updateListener.of((u) => {
-          if (u.docChanged) code.set(u.state.doc.toString())
+          if (u.docChanged) code = u.state.doc.toString()
         }),
         ext,
       ]
       const extensions = themeMode() === 'dark' ? [...baseExt, oneDark.oneDark] : baseExt
       cmView = new view.EditorView({
-        state: state.EditorState.create({ doc: code(), extensions }),
+        state: state.EditorState.create({ doc: code, extensions }),
         parent: editorContainer,
       })
     })
@@ -194,7 +194,7 @@ ${'<' + '/script>'}
         </div>
         <div class="pyr-pg-actions">
           <button class="pyr-pg-btn" onClick={copy} title="Copy code">
-            <span>{() => (copiedHint() ? 'Copied' : 'Copy')}</span>
+            <span>{() => (copiedHint ? 'Copied' : 'Copy')}</span>
           </button>
           <button class="pyr-pg-btn" onClick={reset} title="Reset to original">
             <span>Reset</span>

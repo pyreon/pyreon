@@ -17,7 +17,7 @@
  * navigation that real users browse.
  */
 
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { PyreonUI, useMode } from '@pyreon/ui-core'
 import { Button } from '@pyreon/ui-components'
 import { theme } from '@pyreon/ui-theme'
@@ -45,7 +45,7 @@ function ModeProbe(props: { id: string }) {
 // memo should pick up via the reactive ModeContext).
 
 export function ReactiveProvidersDemo() {
-  const mode = signal<'light' | 'dark'>('light')
+  let mode = state<'light' | 'dark'>('light')
 
   return (
     <div data-test-page="reactive-providers">
@@ -78,11 +78,11 @@ export function ReactiveProvidersDemo() {
         bg should flip between light and dark slices of the theme.
       </p>
       <div data-test-region="mode-toggle">
-        <Button onClick={() => mode.set(mode() === 'light' ? 'dark' : 'light')}>
+        <Button onClick={() => { mode = mode === 'light' ? 'dark' : 'light' }}>
           Toggle mode
         </Button>
       </div>
-      <PyreonUI theme={theme} mode={mode()}>
+      <PyreonUI theme={theme} mode={mode}>
         <div data-test-region="mode-swappable">
           <ModeProbe id="swappable" />
           <Button state="primary">Themed Primary</Button>

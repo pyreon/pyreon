@@ -1,5 +1,5 @@
 import { useVirtualizer } from '@pyreon/virtual'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { Link } from '@pyreon/zero/link'
 import type { Comment } from '../lib/api'
 
@@ -53,11 +53,11 @@ export interface VirtualizedCommentsProps {
  */
 export default function VirtualizedComments(props: VirtualizedCommentsProps) {
   const flat = flatten(props.comments)
-  const parentRef = signal<HTMLElement | null>(null)
+  let parentRef = state<HTMLElement | null>(null)
 
   const virt = useVirtualizer(() => ({
     count: flat.length,
-    getScrollElement: () => parentRef(),
+    getScrollElement: () => parentRef,
     estimateSize: () => 120,
     overscan: 6,
   }))
@@ -69,7 +69,7 @@ export default function VirtualizedComments(props: VirtualizedCommentsProps) {
         <span class="virt-hint"> (virtualized — only visible rows in DOM)</span>
       </div>
       <div
-        ref={(el: HTMLElement | null) => parentRef.set(el)}
+        ref={(el: HTMLElement | null) => { parentRef = el }}
         class="virt-scroll"
         style="height: 600px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px"
       >
