@@ -17,6 +17,16 @@
 //   - swiftc against the REAL iOS SDK with the REAL runtime sources linked
 //     in (macOS + Xcode only) — the stubs cannot hide a missing runtime type
 //     here, which is the other half of moving a type OUT of the emit.
+//
+// Schemas were not the only thing emitted per file. The fixture set below also
+// puts EVERY other per-file declaration PMTC used to write into two modules at
+// once: the `PyreonUrlState*` helpers (now router-swift / router-kotlin), the
+// permissions environment key / CompositionLocal (now @pyreon/permissions'
+// co-located runtime), the JS-faithful `pyreonNumString` formatter (now
+// file-private), and the synthesized `__ObjN` anonymous-object structs (now
+// suffixed per module). A provider-only permissions file is in the set too: it
+// used to fail to compile on its own, because the key was emitted only for a
+// file that READ permissions.
 
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -53,18 +63,84 @@ export function OwnerBadge() {
   return <Text>{ok() ? 'valid owner' : 'invalid owner'}</Text>
 }`
 
+// Two modules binding url-state — every value type between them.
+const URL_A = `import { useUrlState } from '@pyreon/url-state'
+import { Stack, Text } from '@pyreon/primitives'
+export function Filters() {
+  const q = useUrlState('q', 'all')
+  const page = useUrlState('page', 1)
+  return <Stack><Text>{\`\${q()} \${page()}\`}</Text></Stack>
+}`
+
+const URL_B = `import { useUrlState } from '@pyreon/url-state'
+import { Stack, Text } from '@pyreon/primitives'
+export function Viewer() {
+  const q = useUrlState('view', 'grid')
+  const zoom = useUrlState('zoom', 1.5)
+  const open = useUrlState('open', false)
+  return <Stack><Text>{\`\${q()} \${zoom()} \${open()}\`}</Text></Stack>
+}`
+
+// Two modules that each need the JS-faithful Double formatter.
+const numModule = (name: string) => `import { signal, computed } from '@pyreon/reactivity'
+import { Stack, Text } from '@pyreon/primitives'
+export function ${name}() {
+  const rows = signal<number[]>([1, 2, 3])
+  const half = computed(() => Math.ceil(rows().length / 2))
+  return <Stack><Text>{String(half())}</Text></Stack>
+}`
+
+// A provider-only module and a reader in ANOTHER module: they must name the
+// same app-wide key, and the provider file must compile with no reader in it.
+const PERM_PROVIDER = `import { PermissionsProvider, Stack, Text } from '@pyreon/primitives'
+export function Shell() {
+  return (
+    <PermissionsProvider permissions={{ 'posts.read': true }}>
+      <Stack><Text>shell</Text></Stack>
+    </PermissionsProvider>
+  )
+}`
+
+const PERM_READER = `import { usePermissions } from '@pyreon/permissions'
+import { Text } from '@pyreon/primitives'
+export function PostsGate() {
+  const can = usePermissions()
+  return <Text>{can('posts.read') ? 'yes' : 'no'}</Text>
+}`
+
+// Two modules that each synthesize an anonymous-object struct (`__Obj0`).
+const objModule = (name: string, field: string) => `import { For, Scroll, Text } from '@pyreon/primitives'
+export function ${name}() {
+  const rows = Array.from({ length: 3 }, (_, i) => ({ id: i, ${field}: \`Row \${i}\` }))
+  return (
+    <Scroll>
+      <For each={rows} by={(r) => r.id}>{(r) => <Text>{r.${field}}</Text>}</For>
+    </Scroll>
+  )
+}`
+
 function sources(): { name: string; source: string }[] {
   return [
     { name: 'books', source: readFileSync(join(BOOKSHELF, 'books.native.tsx'), 'utf8') },
     { name: 'authors', source: readFileSync(join(BOOKSHELF, 'authors.native.tsx'), 'utf8') },
     { name: 'pets', source: PETS },
     { name: 'owners', source: OWNERS },
+    { name: 'url-a', source: URL_A },
+    { name: 'url-b', source: URL_B },
+    { name: 'num-a', source: numModule('NumA') },
+    { name: 'num-b', source: numModule('NumB') },
+    { name: 'perm-provider', source: PERM_PROVIDER },
+    { name: 'perm-reader', source: PERM_READER },
+    { name: 'obj-a', source: objModule('ObjA', 'label') },
+    { name: 'obj-b', source: objModule('ObjB', 'title') },
   ]
 }
 
 function emitAll(target: 'swift' | 'kotlin'): string[] {
   return sources().map(({ name, source }) => {
-    const { code, warnings } = transform(source, { target })
+    // `filename` marks each emit as one module of a multi-file build — what
+    // the CLI passes, and what makes the synthesized structs module-unique.
+    const { code, warnings } = transform(source, { target, filename: `${name}.tsx` })
     // A warning would mean a module fell out of the supported subset, which
     // makes the compile below prove less than it appears to.
     expect(warnings, `${name} (${target})`).toEqual([])
@@ -78,6 +154,50 @@ const PER_FILE_SHARED = [
   /^sealed class PyreonSchemaError\b/m,
   /^data class PyreonParseResult\b/m,
 ]
+
+/**
+ * Every declaration PMTC may place at file scope that is NOT file-private must
+ * be unique across files, or two modules in one target collide. Collected
+ * from the emit itself rather than from a list of names, so a new per-file
+ * helper is caught the day it is added.
+ */
+function sharedFileScopeNames(codes: readonly string[]): string[] {
+  const DECL =
+    /^(?:@[\w.]+(?:\([^)]*\))?\s+)*((?:public |internal |private |fileprivate |final |sealed |data |enum |inline |operator )*)(struct|class|enum|func|fun|val|var|extension|object|typealias|protocol|interface)\s+(?:<[^>]*>\s*)?([\w.]+)/
+  const seen = new Map<string, number>()
+  for (const code of codes) {
+    const names = new Set<string>()
+    let depth = 0
+    for (const line of code.split('\n')) {
+      if (depth === 0) {
+        const m = DECL.exec(line)
+        // `extension X` is keyed by its members, which it reports on its own
+        // lines, so only the declarations proper count here.
+        if (m && !/private/.test(m[1] ?? '') && m[2] !== 'extension') names.add(`${m[2]} ${m[3]}`)
+      }
+      for (const ch of line) {
+        if (ch === '{') depth++
+        else if (ch === '}') depth--
+      }
+    }
+    for (const n of names) seen.set(n, (seen.get(n) ?? 0) + 1)
+  }
+  return [...seen].filter(([, count]) => count > 1).map(([n]) => n).sort()
+}
+
+describe('every per-file helper stays out of the SHARED namespace', () => {
+  it.each(['swift', 'kotlin'] as const)('%s: no non-private file-scope name is declared twice', (target) => {
+    const codes = emitAll(target)
+    // Each helper must actually be exercised, or the compiles prove nothing.
+    const all = codes.join('\n')
+    for (const marker of ['PyreonUrlStateInt(', 'PyreonUrlStateDouble(', 'PyreonUrlStateBool(', 'pyreonNumString(', 'LocalPyreonPermissions', '__Obj0_']) {
+      if (marker === 'LocalPyreonPermissions' && target === 'swift') continue
+      expect(all, `${target} fixture never reaches ${marker}`).toContain(marker)
+    }
+    if (target === 'swift') expect(all).toContain('pyreonPermissions')
+    expect(sharedFileScopeNames(codes)).toEqual([])
+  })
+})
 
 describe('schema-bearing modules compile TOGETHER', () => {
   it('no emitted file declares the shared schema types itself', () => {
@@ -93,14 +213,14 @@ describe('schema-bearing modules compile TOGETHER', () => {
     }
   })
 
-  it.runIf(isSwiftcAvailable())('swiftc: all four files as one module, against the stubs', () => {
+  it.runIf(isSwiftcAvailable())('swiftc: every file as one module, against the stubs', () => {
     const r = validateSwiftFilesWithStubs(emitAll('swift'))
     if (r.skipped) return
     expect(r.error ?? '').toBe('')
     expect(r.ok).toBe(true)
   }, 180_000)
 
-  it.runIf(isKotlincAvailable())('kotlinc: all four files together, against the stubs', () => {
+  it.runIf(isKotlincAvailable())('kotlinc: every file together, against the stubs', () => {
     const r = validateKotlinFiles(emitAll('kotlin'))
     expect(r.error ?? '').toBe('')
     expect(r.ok).toBe(true)
@@ -137,7 +257,7 @@ function runtimeSwiftSources(): string[] {
 }
 
 describe.runIf(isSwiftUIAvailable())('schema-bearing modules against the REAL SDK + runtime', () => {
-  it('all four files in one target typecheck', () => {
+  it('every file in one target typechecks', () => {
     const runtime = runtimeSwiftSources()
     expect(runtime.length).toBeGreaterThan(40)
     const dir = mkdtempSync(join(tmpdir(), 'pyreon-multi-module-'))

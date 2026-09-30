@@ -71,6 +71,7 @@ import {
   isNullableType,
   optionalSpreadWarning,
   schemaInputNeedsConversion,
+  synthStructName,
 } from './expr-utils'
 import {
   nilCoalesceTernary,
@@ -1027,97 +1028,6 @@ export function _pushSwiftEmitWarning(msg: string): void {
 
 
 /**
- * Emitted when a component binds a search parameter with `useUrlState`.
- *
- * Deliberately a tiny value type rather than a co-located runtime package: it
- * needs the ACTIVE router, which the emit already injects for router hooks, so
- * a standalone runtime would have to import PyreonRouter and stop being
- * self-contained. Inline keeps the dependency pointing the right way.
- *
- * `callAsFunction` is what preserves the web call shape: `q()` reads and
- * `q.set(v)` writes, so shared source does not fork per target.
- */
-const SWIFT_PERMISSIONS_ENV = `// Environment plumbing for <PermissionsProvider>. Emitted inline rather than
-// shipped in the co-located runtime for the same reason as PyreonUrlState:
-// it needs SwiftUI's environment machinery, and a runtime that pulls that in
-// stops being self-contained (and stops verifying against the compile gate's
-// stub set). An unprovided environment is an EMPTY set — a deny, which is the
-// safe default for an authorization check.
-private struct PyreonPermissionsKey: EnvironmentKey {
-    static let defaultValue = PyreonPermissions()
-}
-
-extension EnvironmentValues {
-    var pyreonPermissions: PyreonPermissions {
-        get { self[PyreonPermissionsKey.self] }
-        set { self[PyreonPermissionsKey.self] = newValue }
-    }
-}`
-
-const SWIFT_URL_STATE = `struct PyreonUrlState {
-    // Optional because the environment router is: a component rendered outside
-    // a RouterProvider must degrade to the default rather than crash, which is
-    // the same choice useNavigate/useParams make.
-    let router: PyreonRouter?
-    let key: String
-    let defaultValue: String
-    func callAsFunction() -> String { router?.query[key] ?? defaultValue }
-    func set(_ value: String) { router?.setQueryParam(key, value) }
-    func clear() { router?.setQueryParam(key, nil) }
-}`
-
-/**
- * JS `ToNumber(String)`, reproduced.
- *
- * A URL carries text, so a number-valued `useUrlState` has to decode it — and
- * the web decodes with `+raw` (`inferSerializer`, url-state/src/serializers.ts),
- * whose grammar is NOT what either target's own string→number initializer
- * accepts. Handing the raw string to `Double(_:)` / `toDoubleOrNull()` would
- * diverge on exactly the inputs this feature exists for (a pasted deep link):
- *
- *   ""        JS 0          Swift nil      Kotlin null
- *   "  42  "  JS 42         Swift nil      Kotlin null
- *   "0b101"   JS 5          Swift nil      Kotlin null
- *   "inf"     JS NaN        Swift infinity Kotlin null
- *   "1.5f"    JS NaN        Swift nil      Kotlin 1.5
- *   "NaN"     JS NaN        Swift nan      Kotlin nan
- *
- * So the grammar is checked here instead, identically on both targets: trim,
- * empty → the default (the web reads `?page=` as absent, not 0), the three `Infinity` spellings, the 0x/0o/0b radix prefixes, then
- * a charset guard that rejects every letter except the exponent `e`/`E` before
- * deferring to the native parse. That last guard is what excludes `inf`,
- * `NaN` and Kotlin's `f`/`d` literal suffixes in one rule.
- *
- * Unparseable → the declared default, which is what the web does for NaN.
- */
-const SWIFT_URL_NUMBER = `private func pyreonUrlNumber(_ raw: String, _ fallback: Double) -> Double {
-    let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-    if t.isEmpty { return fallback }
-    if t == "Infinity" || t == "+Infinity" { return .infinity }
-    if t == "-Infinity" { return -.infinity }
-    if t.count > 2, t.hasPrefix("0") {
-        let radix: Int?
-        switch t[t.index(t.startIndex, offsetBy: 1)] {
-        case "x", "X": radix = 16
-        case "o", "O": radix = 8
-        case "b", "B": radix = 2
-        default: radix = nil
-        }
-        if let r = radix {
-            guard let v = UInt64(String(t.dropFirst(2)), radix: r) else { return fallback }
-            return Double(v)
-        }
-    }
-    // Only the decimal grammar's own characters. Rejects "inf"/"NaN"/"1_0"
-    // and any suffix form, all of which JS reads as NaN.
-    for ch in t where !("0"..."9" ~= ch || ch == "+" || ch == "-" || ch == "." || ch == "e" || ch == "E") {
-        return fallback
-    }
-    guard let v = Double(t), !v.isNaN else { return fallback }
-    return v
-}`
-
-/**
  * Value type → emitted helper. A total `Record` rather than a lookup with a
  * fallback: adding a `valueType` without an emitter is then a compile error,
  * not a silent default to the string helper.
@@ -1131,74 +1041,6 @@ const SWIFT_URL_STATE_TYPES: Record<
   double: 'PyreonUrlStateDouble',
   boolean: 'PyreonUrlStateBool',
 }
-
-/** Int-valued search parameter. See `SWIFT_URL_NUMBER` for the decode. */
-const SWIFT_URL_STATE_INT = `struct PyreonUrlStateInt {
-    let router: PyreonRouter?
-    let key: String
-    let defaultValue: Int
-    func callAsFunction() -> Int {
-        guard let raw = router?.query[key] else { return defaultValue }
-        let n = pyreonUrlNumber(raw, Double(defaultValue))
-        // A binding declared with an integer default is Int on both targets
-        // (the repo-wide inferTypeFromInitial rule), so a fractional or
-        // out-of-range value has no representation — fall back to the default,
-        // the same answer the web gives for a value it cannot read.
-        //
-        // The bound is the JS safe-integer range on BOTH targets (Swift Int
-        // and Kotlin Long are both 64-bit), so one shared source reads the
-        // same set: ?page=3000000000 is a number everywhere, the way the web's
-        // Number(raw) reads it.
-        guard n.rounded() == n, n >= -9007199254740991, n <= 9007199254740991 else { return defaultValue }
-        return Int(n)
-    }
-    func set(_ value: Int) { router?.setQueryParam(key, String(value)) }
-    func clear() { router?.setQueryParam(key, nil) }
-}`
-
-/**
- * Double-valued search parameter. `set` mirrors JS `String(v)`, which prints
- * a whole Double WITHOUT a trailing `.0` — Swift's own `String(1.0)` gives
- * "1.0", so the round-trip would not match the web's `?zoom=1`.
- */
-const SWIFT_URL_STATE_DOUBLE = `struct PyreonUrlStateDouble {
-    let router: PyreonRouter?
-    let key: String
-    let defaultValue: Double
-    func callAsFunction() -> Double {
-        guard let raw = router?.query[key] else { return defaultValue }
-        return pyreonUrlNumber(raw, defaultValue)
-    }
-    func set(_ value: Double) {
-        let s = value.rounded() == value && value.magnitude < 1e15
-            ? String(Int(value))
-            : String(value)
-        router?.setQueryParam(key, s)
-    }
-    func clear() { router?.setQueryParam(key, nil) }
-}`
-
-/**
- * Bool-valued search parameter. The web's decode is `raw === 'true'` — every
- * other string, `"1"` and `"TRUE"` included, is false — so this is one
- * comparison, not a permissive truthiness check.
- */
-const SWIFT_URL_STATE_BOOL = `struct PyreonUrlStateBool {
-    let router: PyreonRouter?
-    let key: String
-    let defaultValue: Bool
-    func callAsFunction() -> Bool {
-        guard let raw = router?.query[key] else { return defaultValue }
-        // Mirrors the web decode: true/1, false/0, anything else the default.
-        switch raw {
-        case "true", "1": return true
-        case "false", "0": return false
-        default: return defaultValue
-        }
-    }
-    func set(_ value: Bool) { router?.setQueryParam(key, value ? "true" : "false") }
-    func clear() { router?.setQueryParam(key, nil) }
-}`
 
 export function emitSwift(
   components: ComponentIR[],
@@ -1489,29 +1331,14 @@ export function emitSwift(
     const names = zs.fields.filter((f) => f.type === 'string').map((f) => f.name)
     if (names.length > 0) _zodStringFieldsSwift.set(zs.bindingName, names)
   }
-  // Emit each PyreonUrlState* helper once, and only the ones actually bound —
-  // a string-only file emits byte-identically to before the typed variants
-  // existed. The number helper is shared by the Int and Double forms.
-  {
-    const urlStateTypes = new Set(
-      components.flatMap(
-        (c) => c.decls?.filter((d) => d.kind === 'url-state').map((d) => d.valueType) ?? [],
-      ),
-    )
-    if (urlStateTypes.has('string')) parts.push(SWIFT_URL_STATE)
-    if (urlStateTypes.has('int') || urlStateTypes.has('double')) parts.push(SWIFT_URL_NUMBER)
-    if (urlStateTypes.has('int')) parts.push(SWIFT_URL_STATE_INT)
-    if (urlStateTypes.has('double')) parts.push(SWIFT_URL_STATE_DOUBLE)
-    if (urlStateTypes.has('boolean')) parts.push(SWIFT_URL_STATE_BOOL)
-  }
-  // Any permissions use — a provider injecting, or a bare hook reading —
-  // needs the environment key in the emitted file.
-  if (
-    _usesPermissionsEnvSwift ||
-    components.some((c) => c.decls?.some((d) => d.kind === 'permissions' && d.grants.length === 0))
-  ) {
-    parts.push(SWIFT_PERMISSIONS_ENV)
-  }
+  // `PyreonUrlState*` (router-swift) and the `\.pyreonPermissions` environment
+  // key (permissions' co-located runtime) are NOT emitted here. Emitted per
+  // file they collided: two files using `useUrlState` in one Xcode target each
+  // declared `struct PyreonUrlState` → `invalid redeclaration`, and the same
+  // for the `EnvironmentValues.pyreonPermissions` extension. The permissions
+  // key has a second reason to be app-wide: a provider in one file and a
+  // reader in another must name the SAME key, which no per-file declaration
+  // can guarantee.
   // Gap 4 v3.2 — recursively emit auxSchemas BEFORE their parent
   // schema so Swift can resolve type references top-down.
   const emitSchemaTree = (zs: ZodSchemaDefnIR): void => {
@@ -1566,7 +1393,6 @@ export function emitSwift(
   _clipboardSwift = new Set()
   _modelReadNames = new Map()
   _modelMethodNames = new Map()
-  _usesPermissionsEnvSwift = false
   _needsSwiftKeepAliveWrapper = false
   _needsSwiftNumString = false
   const warnings = [..._emitWarnings]
@@ -1646,8 +1472,6 @@ let _activeModelSelfParam: string | undefined
 let _modelReadNames: Map<string, Set<string>> = new Map()
 /** Per-instance model ACTION names — calls keep their parens + args. */
 let _modelMethodNames: Map<string, Set<string>> = new Map()
-/** Set when a `<PermissionsProvider>` emits — the file needs the env key. */
-let _usesPermissionsEnvSwift = false
 
 /**
  * Emit a per-store @Observable singleton class:
@@ -3739,7 +3563,6 @@ function syncedInitialSwift(
 }
 
 
-
 /**
  * SwiftUI `KeyEquivalent` for a parsed hotkey base key.
  *
@@ -4443,7 +4266,7 @@ function emitSwiftDecl(
           const base: TypeIR = distinct.length === 1 ? distinct[0]! : { kind: 'union', branches: distinct }
           return { name, type: values.length < dataRows.length ? { kind: 'union', branches: [base, { kind: 'undefined' }] } as TypeIR : base }
         })
-        const name = `__Obj${_synthExprStructs.length}`
+        const name = synthStructName(_synthExprStructs.length)
         _synthExprStructs.push({ name, fields })
         inferredRowType = { kind: 'typeRef', name, args: [] }
         rowType = name
@@ -10780,8 +10603,14 @@ let _needsSwiftKeepAliveWrapper = false
 // a user-visible parity break in every numeric label once the Math.floor
 // family became Double-returning. Emitted once, only when used (the
 // PyreonUrlStateDouble.set formatter, extracted).
+//
+// `private` (file scope): the helper is emitted into EVERY file that needs it,
+// so an internal `func` collided the moment two such files shared one Xcode
+// target (`invalid redeclaration of 'pyreonNumString'`). It is only ever
+// called from bodies in the same file, never named in a signature, so
+// file-private is both sufficient and correct.
 let _needsSwiftNumString = false
-const SWIFT_NUM_STRING = `func pyreonNumString(_ v: Double) -> String {
+const SWIFT_NUM_STRING = `private func pyreonNumString(_ v: Double) -> String {
     v.rounded() == v && v.magnitude < 1e15 ? String(Int(v)) : String(v)
 }`
 
@@ -12907,7 +12736,6 @@ function emitSwiftPermissionsProvider(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,
 ): string {
-  _usesPermissionsEnvSwift = true
   const seed = permissionsProviderSeed(e)
   if (seed === null) {
     // The suppression of the blanket unlowered-module line is keyed on the
