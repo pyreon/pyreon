@@ -18,7 +18,7 @@
 // previous formulation produced `for j in avgStart..<avgEnd` with Double bounds
 // and `values[start]` with a Double subscript, neither of which compiles.)
 
-import { isFiniteNumber } from './finite-number'
+import { isFiniteChartNumber } from './format'
 
 import { scaleLinear } from './scale'
 import type { Domain, Double, Pt, Rect } from './types'
@@ -276,7 +276,7 @@ export function m4CategoryPoints(values: Double[], plot: Rect, dom: Domain, perP
   if (!(n > span * perPx * 4.0 + 8.0)) return out
   for (let i = 0; i < n; i++) {
     const v = values[i]!
-    if (!isFiniteNumber(v)) return out
+    if (!isFiniteChartNumber(v)) return out
   }
   // The same expressions `layoutSeriesPoints` evaluates, so every kept point
   // is bit-identical to the one the placed path would have produced.
