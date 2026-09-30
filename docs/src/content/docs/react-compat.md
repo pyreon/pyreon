@@ -813,7 +813,7 @@ function lazy<P>(load: () => Promise<{ default: ComponentFn<P> }>): LazyComponen
 
 Wraps a dynamic import. The returned component renders `null` until the module resolves. Pair with `<Suspense>` to show a fallback.
 
-On the server, `renderToString` and `renderToStream` wait for a chunk that has not loaded yet, so the HTML carries the real content and hydration adopts it. Import `lazy` from `@pyreon/react-compat` rather than `@pyreon/core`: the compat `lazy` mounts the loaded component inside the compat render frame, so its hooks work (core's mounts it raw and the first hook throws "Hook called outside of a component render").
+On the server, `renderToString` and `renderToStream` wait for a chunk that has not loaded yet, so the HTML carries the real content and hydration adopts it — even when the browser's chunk has not landed yet: the server nodes stay in place and are hydrated when it does. Import `lazy` from `@pyreon/react-compat` rather than `@pyreon/core`: the compat `lazy` mounts the loaded component inside the compat render frame, so its hooks work (core's mounts it raw and the first hook throws "Hook called outside of a component render").
 
 ```tsx
 const Dashboard = lazy(() => import('./Dashboard'))

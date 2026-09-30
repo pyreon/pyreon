@@ -1074,6 +1074,7 @@ export interface AsyncComponentOptions<P extends Props = Props> {
 export type AsyncComponent<P extends Props = Props> = ComponentFn<P> & {
   __loading: () => boolean
   __load: () => Promise<void>
+  __pending: () => boolean
 }
 
 const toError = (err: unknown): Error => (err instanceof Error ? err : new Error(String(err)))
@@ -1222,7 +1223,10 @@ export function defineAsyncComponent<P extends Props = Props>(
 
   const AsyncComp = ((props: P): VNodeChild => {
     const ready = resolved.peek()
-    if (ready) return pyreonH(ready, props as Props)
+    // An accessor even when ready: the server always renders this branch (it
+    // waited for the load), and the accessor's `<!--$-->` range is what lets a
+    // client whose load is still pending keep the server's nodes standing.
+    if (ready) return () => pyreonH(ready, props as Props)
     const mine = joinAttempt()
     const early = mine.error.peek()
     // Kept as a setup-time throw so a `<Suspense>`-controlled failure behaves
@@ -1291,6 +1295,19 @@ export function defineAsyncComponent<P extends Props = Props>(
     return isLoading && (suspensible || isServer)
   }
   AsyncComp.__load = startLoad
+  // Hydration waits for the real content regardless of `suspensible` (as Vue
+  // does: its hydration awaits every async wrapper's loader), so the pending
+  // state it reads is not the `<Suspense>`-facing `__loading`. Unlike
+  // `__loading` this never calls `joinAttempt` itself — a pure check, since
+  // whoever asks (`pendingLazyContent`) calls `__load()` right after, which
+  // joins (or starts) the attempt on its own. No attempt yet is still
+  // "pending" (nothing has failed); an attempt that already errored is not
+  // (hydration should proceed and let the component render the error).
+  AsyncComp.__pending = () => {
+    if (resolved() !== null) return false
+    const a = attempt()
+    return a === null || a.error() === null
+  }
 
   return nativeCompat(AsyncComp)
 }

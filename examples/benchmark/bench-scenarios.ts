@@ -44,6 +44,7 @@
  * Run: bun bench-scenarios.ts [--repeat N] [--scenario dbmon|tree|effects|memo|flow|charts] [--wait-quiet [maxLoad]]
  */
 import { execSync, spawn } from 'node:child_process'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { chromium } from 'playwright'
 import { LoadRecorder, parseWaitQuiet, waitForQuietMachine } from './machine-load'
 
@@ -57,6 +58,27 @@ const ONLY_SCENARIO = (() => {
   return i >= 0 ? argv[i + 1] : undefined
 })()
 const PORT = 4181
+
+/**
+ * PER-PASS WINDOWS. On a machine where other sessions' compiler gates arrive
+ * in bursts shorter than a full `--repeat N` run, a single multi-pass run gets
+ * polluted mid-way. These flags let each pass be taken in its OWN verified
+ * quiet window and pooled afterwards, with identical statistics:
+ *
+ *  - `--pass-offset K` shifts the per-pass order shuffle, so N separate
+ *    `--repeat 1` invocations still see N DIFFERENT framework orders;
+ *  - `--raw-out FILE` writes the pooled raw samples + every load stamp as JSON;
+ *  - `--pool A.json,B.json,…` skips build and measurement entirely and prints
+ *    the report over the union of those files' samples (each file's load
+ *    stamps are printed first, so a contaminated pass is visible).
+ */
+const argVal = (flag: string): string | undefined => {
+  const i = argv.indexOf(flag)
+  return i >= 0 ? argv[i + 1] : undefined
+}
+const PASS_OFFSET = Number(argVal('--pass-offset') ?? 0) || 0
+const RAW_OUT = argVal('--raw-out')
+const POOL_FILES = argVal('--pool')?.split(',').filter((f) => f.length > 0)
 
 /**
  * `--only A,B,C` restricts the arm set for a FOCUSED replication run.
@@ -146,6 +168,22 @@ const SCENARIOS: { id: string; label: string; frameworks: string[] }[] = [
     label: 'charts — @pyreon/charts vs ECharts 6 (line, 1k / 100k points, 800×400 canvas)',
     frameworks: ['Pyreon (PlotChart)', 'ECharts 6', 'Pyreon (PlotChart, no a11y table)'].filter((f) => (NARROW ? NARROW.includes(f) : true)),
   },
+  {
+    // Frame-bounded timing (rAF → rendering step → first task + canvas
+    // readback) — see src/impl/scenario-charts-libs.ts for the window, the
+    // gate, and which library reduces points per pixel.
+    id: 'charts-libs',
+    label: 'charts — @pyreon/charts vs uPlot 1.6, Chart.js 4, Recharts 3 (800×300, first painted frame)',
+    frameworks: [
+      'Pyreon (PlotChart)',
+      'uPlot 1.6',
+      'Chart.js 4 (min-max decimation)',
+      'Recharts 3',
+      'Chart.js 4 (defaults, no decimation)',
+      'Pyreon (PlotChart, no a11y table)',
+      'Vanilla canvas (control)',
+    ].filter((f) => (NARROW ? NARROW.includes(f) : true)),
+  },
 ]
 
 /**
@@ -171,6 +209,12 @@ const NON_RANKING = new Set([
   'Pyreon (tpl append)',
   // Prices Pyreon's default offscreen data table, which ECharts does not ship.
   'Pyreon (PlotChart, no a11y table)',
+  // charts-libs: Chart.js WITHOUT its documented large-data config. The ranked
+  // Chart.js arm is the one with min-max decimation, because Pyreon and uPlot
+  // both reduce points per pixel by default.
+  'Chart.js 4 (defaults, no decimation)',
+  // Raw 2D stroke of every point, no axes — a drift control, not a competitor.
+  'Vanilla canvas (control)',
 ])
 
 interface SuiteResult {
@@ -239,47 +283,96 @@ if (scenarios.length === 0) {
 
 load.printIdentity()
 stamp('load BEFORE build')
-console.log('[bench-scenarios] building…')
-execSync('bun run build', { stdio: 'inherit', env: { ...process.env, NODE_ENV: 'production' } })
-
-console.log(`[bench-scenarios] starting preview on :${PORT}`)
-const preview = spawn('bunx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], {
-  stdio: 'ignore',
-  detached: false,
+if (!POOL_FILES) {
+  console.log('[bench-scenarios] building…')
+  execSync('bun run build', { stdio: 'inherit', env: { ...process.env, NODE_ENV: 'production' } })
+  console.log(`[bench-scenarios] starting preview on :${PORT}`)
+}
+const preview = POOL_FILES
+  ? null
+  : spawn('bunx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], {
+      stdio: ['ignore', 'ignore', 'pipe'],
+      detached: false,
+    })
+/** Why the preview server went away, if it did — surfaced in any page failure. */
+let previewGone: string | null = null
+let previewStderr = ''
+preview?.stderr?.on('data', (d: Buffer) => {
+  previewStderr = (previewStderr + d.toString()).slice(-4000)
 })
-await new Promise((r) => setTimeout(r, 1500))
-
-const browser = await chromium.launch({
-  args: ['--js-flags=--expose-gc', '--enable-precise-memory-info'],
+preview?.on('exit', (code, signal) => {
+  previewGone = `vite preview exited (code=${code}, signal=${signal})`
 })
+if (preview) {
+  // Poll for readiness instead of a fixed sleep (a loaded box took >1.5s and
+  // the first page load hit ECONNREFUSED), and verify the server answers with
+  // the bundle on disk — a parallel worktree can hold this port.
+  const { readdirSync } = await import('node:fs')
+  const dir = `${import.meta.dir}/dist/assets`
+  const probe = readdirSync(dir).filter((f) => f.endsWith('.js')).sort()[0]
+  const onDisk = probe === undefined ? null : readFileSync(`${dir}/${probe}`, 'utf8')
+  const deadline = Date.now() + 30_000
+  let served: string | null = null
+  while (Date.now() < deadline) {
+    served = await fetch(`http://localhost:${PORT}/assets/${probe}`)
+      .then((r) => (r.ok ? r.text() : null))
+      .catch(() => null)
+    if (served !== null) break
+    await new Promise((r) => setTimeout(r, 250))
+  }
+  if (served === null || served !== onDisk) {
+    throw new Error(`[bench-scenarios] preview on :${PORT} not serving the on-disk build (${served === null ? 'no answer' : 'different bundle'})`)
+  }
+}
+
+const browser = POOL_FILES
+  ? null
+  : await chromium.launch({
+      args: ['--js-flags=--expose-gc', '--enable-precise-memory-info'],
+    })
 
 // The build above is itself a load spike; waiting is opt-in.
-if (WAIT_QUIET !== null) await waitForQuietMachine('bench-scenarios', WAIT_QUIET)
-stamp('load before measuring')
+if (!POOL_FILES && WAIT_QUIET !== null) await waitForQuietMachine('bench-scenarios', WAIT_QUIET)
+if (!POOL_FILES) stamp('load before measuring')
 
 try {
   // key: `${scenarioId}\u0000${opName}\u0000${framework}` → pooled samples
   const pooled = new Map<string, number[]>()
 
-  for (const scenario of scenarios) {
+  if (POOL_FILES) {
+    for (const f of POOL_FILES) {
+      const raw = JSON.parse(readFileSync(f, 'utf8')) as {
+        stamps: { label: string; load1: number }[]
+        pooled: [string, number[]][]
+      }
+      const loads = raw.stamps.map((st) => `${st.label}=${st.load1.toFixed(2)}`).join(' · ')
+      console.log(`[bench-scenarios] pooling ${f}\n    load stamps: ${loads}`)
+      for (const [k, v] of raw.pooled) pooled.set(k, [...(pooled.get(k) ?? []), ...v])
+    }
+  }
+
+  for (const scenario of POOL_FILES ? [] : scenarios) {
     for (let pass = 1; pass <= REPEAT; pass++) {
       // Re-check before every pass, not only once at start (see bench-fair).
       if (WAIT_QUIET !== null) await waitForQuietMachine('bench-scenarios', WAIT_QUIET)
       const order = [...scenario.frameworks]
       for (let i = order.length - 1; i > 0; i--) {
-        const j = (i * 7 + pass * 13) % (i + 1)
+        const j = (i * 7 + (pass + PASS_OFFSET) * 13) % (i + 1)
         ;[order[i], order[j]] = [order[j] as string, order[i] as string]
       }
-      console.log(`[bench-scenarios] === ${scenario.id} pass ${pass}/${REPEAT} (${order.join(', ')}) ===`)
+      console.log(`[bench-scenarios] === ${scenario.id} pass ${pass}/${REPEAT} (offset ${PASS_OFFSET}) (${order.join(', ')}) ===`)
       stamp(`${scenario.id} pass ${pass} start`)
       for (const fw of order) {
         process.stdout.write(`[bench-scenarios]   ▸ ${fw} … `)
-        const page = await browser.newPage()
+        if (previewGone !== null) throw new Error(`[bench-scenarios] ${previewGone}\n${previewStderr}`)
+        const page = await browser!.newPage()
         const errors: string[] = []
         page.on('pageerror', (e) => errors.push(String(e)))
-        await page.goto(
-          `http://localhost:${PORT}/?mode=scenarios&scenario=${scenario.id}&framework=${encodeURIComponent(fw)}`,
-        )
+        await page
+          .goto(`http://localhost:${PORT}/?mode=scenarios&scenario=${scenario.id}&framework=${encodeURIComponent(fw)}`)
+          .catch((err: unknown) => {
+            throw new Error(`${String(err)}\n[bench-scenarios] preview state: ${previewGone ?? 'still running'}\n${previewStderr}`)
+          })
         await page.waitForFunction(
           () => {
             const s = document.getElementById('status')?.textContent ?? ''
@@ -288,7 +381,9 @@ try {
           // `waitForFunction(fn, arg, options)` — options is the THIRD argument.
           // Passed second, it was taken as `arg` and the 30s default applied.
           undefined,
-          { timeout: 300_000 },
+          // charts-libs cells are wall-budgeted (≤60s each), but Recharts at
+          // 1M points can spend minutes in one page.
+          { timeout: 1_200_000 },
         )
         const status = await page.evaluate(() => document.getElementById('status')?.textContent)
         if (!status?.includes('Done')) {
@@ -306,10 +401,15 @@ try {
         console.log('ok')
         await page.close()
       }
+      stamp(`${scenario.id} pass ${pass} end`)
     }
   }
 
-  stamp('load after measuring')
+  if (!POOL_FILES) stamp('load after measuring')
+  if (RAW_OUT) {
+    writeFileSync(RAW_OUT, JSON.stringify({ stamps: load.report().stamps, machine: load.report().machine, pooled: [...pooled] }))
+    console.log(`[bench-scenarios] raw samples + load stamps → ${RAW_OUT}`)
+  }
 
   // ── Report ────────────────────────────────────────────────────────────────
   for (const scenario of scenarios) {
@@ -366,7 +466,7 @@ try {
     }
   }
 } finally {
-  await browser.close()
-  preview.kill()
-  stamp('load AFTER')
+  await browser?.close()
+  preview?.kill()
+  if (!POOL_FILES) stamp('load AFTER')
 }

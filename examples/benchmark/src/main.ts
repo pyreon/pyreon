@@ -262,6 +262,15 @@ if (__url.searchParams.get('profileClear') === '1') {
     setupDisposeProfile(hosts)
     setStatus('profileDispose ready')
   })()
+} else if (__url.searchParams.get('profileChartsLibs') === '1') {
+  // CPU-profiling target for bench-charts-libs-profile.ts — exposes named
+  // __mountOnly / __updateOnly drivers for one chart library; never runs the
+  // timed suite.
+  void (async () => {
+    const { setupChartsLibsProfile } = await import('./impl/scenario-charts-libs')
+    setupChartsLibsProfile()
+    setStatus('profileChartsLibs ready')
+  })()
 } else if (__url.searchParams.get('profileTree') === '1') {
   // CPU-profiling target for bench-treeladder.ts — the deep-tree mount
   // ablation ladder (eight arms behind named __mountTree* frames); never
