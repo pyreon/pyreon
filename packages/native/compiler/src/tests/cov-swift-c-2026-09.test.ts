@@ -270,8 +270,10 @@ describe('emit-swift flow member calls — updateNode / updateEdge patches', () 
     expect(code).toContain(
       'flow.updateNode("1") { node in node.position = PyreonXYPosition(x: 1, y: 2); node.data.label = "q"; node.sourceHandles = [PyreonFlowHandleConfig(type: "source", position: .top)]; node.extent = nil; node.extentParent = true; node.className = "c"; node.hidden = true }',
     )
-    // Non-literal position / handles drop their mutation; a static extent resets extentParent.
-    expect(code).toContain('flow.updateNode("1") { node in node.extent = PyreonFlowNodeExtent(minX: 0, minY: 0, maxX: 5, maxY: 5); node.extentParent = false }')
+    // A static extent resets extentParent; a NON-literal position / handles
+    // pass through as written (they used to be silently dropped — see
+    // native-known-bugs-flow.test.ts).
+    expect(code).toContain('flow.updateNode("1") { node in node.extent = PyreonFlowNodeExtent(minX: 0, minY: 0, maxX: 5, maxY: 5); node.extentParent = false; node.position = p; node.targetHandles = hs }')
     expect(warnings).toContain('createFlow binding `flow` updateNode(...): changing a node id is not supported natively; the original id is preserved.')
     expect(warnings.some((w) => w.includes('updateNode(...): node field `bogus`'))).toBe(true)
     expect(warnings.some((w) => w.includes('updateNode(...): node field `extent` must be'))).toBe(true)
@@ -283,7 +285,11 @@ describe('emit-swift flow member calls — updateNode / updateEdge patches', () 
     expect(code).toContain(
       'flow.updateEdge("e") { edge in edge.curvature = 2; edge.pathOffset = 1; edge.markerStart = PyreonFlowMarker(type: "arrow"); edge.markerEnd = nil; edge.markerEndSpecified = true; edge.animated = true; edge.animatedSpecified = true; edge.waypoints = [PyreonXYPosition(x: 1, y: 1)]; edge.data = PyreonFlowData(["a": .number(1)]); edge.className = "k"; edge.hidden = true }',
     )
-    expect(code).toContain('flow.updateEdge("e") { edge in  }')
+    // A non-literal `waypoints` passes through; a computed marker cannot be
+    // built natively, so it is dropped — and now NAMED (it used to vanish).
+    expect(code).toContain('flow.updateEdge("e") { edge in edge.waypoints = pts }')
+    expect(warnings.some((w) => w.includes('updateEdge(...) field `markerStart` was DROPPED'))).toBe(true)
+    expect(warnings.some((w) => w.includes('updateEdge(...) field `pathOptions.junk` was DROPPED'))).toBe(true)
     expect(warnings).toContain('createFlow binding `flow` updateEdge(...): changing an edge id is not supported natively; the original id is preserved.')
     expect(warnings).toContain('createFlow binding `flow` updateEdge(...): edge `data` must be a static JSON-compatible object to lower natively.')
   })
@@ -490,13 +496,11 @@ export function Diagram() {
     expect(r.code).toContain('PyreonStandaloneFlowControls(state: flow, style: PyreonFlowControlsStyle(')
   })
 
-  // KNOWN BUG (reported): `<path d={p.path}>` where `p` is a LOCAL path-helper
-  // result emits `result: path()` — the connection-line accessor spelling — so
-  // the edge component references a `path` function it does not have and fails
-  // swiftc, with no warning. Kotlin has the same arm. The helper result `p`
-  // itself (or `PyreonFlowPathResult(svgPath: p.path)`, which BaseEdge uses)
-  // is what should reach `result:`.
-  it.fails('a LOCAL helper-result `p.path` reaches result: as the local, not as `path()`', () => {
+  // Was a known bug: `<path d={p.path}>` with `p` a LOCAL path-helper result
+  // emitted `result: path()` — the connection-line accessor spelling. Fixed
+  // via `classifyFlowPathMember`; both targets + compiles are locked in
+  // native-known-bugs-flow.test.ts.
+  it('a LOCAL helper-result `p.path` reaches result: as the local, not as `path()`', () => {
     const out = sw(`import { createFlow, Flow, getStraightPath, type EdgeComponentProps } from '@pyreon/flow'
 function Wire(props: EdgeComponentProps) {
   const p = getStraightPath({ sourceX: props.sourceX(), sourceY: props.sourceY(), targetX: props.targetX(), targetY: props.targetY() })
@@ -507,6 +511,7 @@ export function Diagram() {
   return <Flow instance={flow} edgeTypes={{ w: Wire }} />
 }`)
     expect(out.code).not.toContain('result: path()')
+    expect(out.code).toContain('PyreonFlowCustomEdgePath(result: p,')
   })
 })
 
@@ -603,9 +608,12 @@ describe('emit-swift accessor chart hosts — the per-host accessor declines', (
 
 describe('emit-swift member-method arity guards', () => {
   // Each lowered JS method checks the arity it models. A call with a DIFFERENT
-  // arity (a `thisArg`, a `fromIndex`, a forgotten argument) must not take the
-  // lowering built for the modelled one.
-  const run = sw(`import { signal } from '@pyreon/reactivity'
+  // arity must never SILENTLY take the lowering built for the modelled one —
+  // but an argument JS itself ignores (a `thisArg`, anything past the declared
+  // parameters) is dropped WITH a named warning, a faithful positioned form
+  // (`indexOf(x, from)`) lowers, and every other shape stays verbatim WITH a
+  // named warning (native-known-bugs-emit.test.ts).
+  const runOut = transform(`import { signal } from '@pyreon/reactivity'
 import { Stack, Button } from '@pyreon/primitives'
 export function App() {
   const xs = signal<number[]>([1, 2])
@@ -631,19 +639,33 @@ export function App() {
     const a19 = s().substring(1, 2)
   }
   return (<Stack><Button onPress={run}>go</Button></Stack>)
-}`).code
+}`, { target: 'swift' })
+  const run = runOut.code
   const line = (name: string) => run.split('\n').find((l) => l.includes(`let ${name} = `)) ?? ''
+  const named = (prefix: string) => runOut.warnings.some((w) => w.startsWith(prefix))
 
-  it('a thisArg / fromIndex / extra argument declines the one-argument lowering', () => {
-    expect(line('a1')).not.toContain('contains(where:')
-    expect(line('a2')).not.toContain('allSatisfy')
-    expect(line('a4')).not.toContain('first(where:')
-    expect(line('a5')).not.toContain('last(where:')
-    expect(line('a6')).not.toContain('contains(1)')
-    expect(line('a11')).not.toContain('hasSuffix')
-    expect(line('a13')).not.toContain('firstIndex(where:')
-    expect(line('a10')).not.toContain('utf16')
-    expect(line('a15')).not.toContain('lowercased()')
+  it('a thisArg / extra argument JS ignores is dropped — and NAMED', () => {
+    expect(line('a1')).toContain('let a1 = xs.contains(where: { x in x > 1 })')
+    expect(line('a4')).toContain('let a4 = xs.first(where: { x in x > 1 })')
+    expect(line('a10')).toContain('utf16')
+    expect(line('a15')).toContain('let a15 = s.lowercased()')
+    expect(named('`.some(…)` on an array: the extra `thisArg` argument is dropped')).toBe(true)
+    expect(named('`.charCodeAt(…)` on a string: the extra argument is dropped')).toBe(true)
+    expect(named('`.toLowerCase(…)` on a string: the extra argument is dropped')).toBe(true)
+  })
+
+  it('a fromIndex / endPosition lowers to a positioned search, never the 1-argument spelling', () => {
+    expect(line('a6')).not.toContain('xs.contains(1)')
+    expect(line('a6')).toContain('__pyRecv[__pyFrom...].contains(1)')
+    expect(line('a11')).toContain('__pyRecv.prefix(max(0, 2)).hasSuffix("a")')
+  })
+
+  it('an uncovered shape stays verbatim and is NAMED', () => {
+    expect(line('a8')).toContain('s.lastIndexOf("a", 1)')
+    expect(named('`.lastIndexOf(…)` on a string with 2 arguments has no Swift lowering')).toBe(true)
+    expect(line('a16')).toContain('s.charCodeAt()')
+    expect(named('`.charCodeAt(…)` on a string with 0 arguments has no Swift lowering')).toBe(true)
+    expect(named('`.some(…)` on an array with 0 arguments has no Swift lowering')).toBe(true)
     for (const n of ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a15', 'a16', 'a17']) expect(line(n), n).not.toBe('')
   })
 
@@ -786,10 +808,10 @@ export function B(props: { render: (u: User, i: number) => VNodeChild; empty: ()
     expect(r.code).toContain('Row(render: render, empty: empty)')
   })
 
-  // KNOWN BUG (Kotlin twin, reported — emit-kotlin.ts is not this file's scope):
-  // the same helper-arity padding is missing, so Kotlin emits `{ a0 -> cell(a0) }`
-  // for a two-parameter @Composable slot.
-  it.fails('Kotlin twin: a view helper with fewer params than the slot is padded', () => {
+  // Regression (fixed in native-known-bugs-emit): the same helper-arity padding
+  // was missing on Kotlin, which emitted `{ a0 -> cell(a0) }` for a
+  // two-parameter @Composable slot.
+  it('Kotlin twin: a view helper with fewer params than the slot is padded', () => {
     const k = transform(`${HEAD}export function A() { return <Row render={cell} empty={hello} /> }`, { target: 'kotlin' }).code
     expect(k).toContain('{ a0, _ -> cell(a0) }')
   })
@@ -1088,8 +1110,8 @@ export function App() {
     expect(code).toContain('data: __Obj0(label: "C"))')
   })
 
-  // KNOWN BUGS (reported): row-type unification looks at field NAMES, not
-  // value types, so a field whose type DIFFERS across rows breaks the build
+  // FIXED (unifyFlowDataRows): row-type unification used to look at field
+  // NAMES only, so a field whose type DIFFERS across rows broke the build
   // silently — two distinct ways:
   //   * same field set, different types → the rows keep their OWN structs
   //     (`__Obj0` / `__Obj1`) while the state is `PyreonFlowState<__Obj0>`, so
@@ -1097,14 +1119,14 @@ export function App() {
   //   * a field that also goes MISSING somewhere → the merged struct types it
   //     `Any?`, which is not `Codable`, so the row struct does not conform.
   // Either should lower to one consistent row type, or be named in a warning.
-  it.fails('same field set, differing types: every node data literal uses the state row type', () => {
+  it('same field set, differing types: every node data literal uses the state row type', () => {
     const { code, warnings } = rows(`{ label: 'B', w: 'wide' }`)
     const row = /PyreonFlowState<(\w+)>/.exec(code)?.[1]
     const dataTypes = [...code.matchAll(/data: (__Obj\d+)\(/g)].map((m) => m[1])
     expect(dataTypes.every((t) => t === row) || warnings.length > 0).toBe(true)
   })
 
-  it.fails('a field typed differently AND missing somewhere is not silently `Any?` in a Codable struct', () => {
+  it('a field typed differently AND missing somewhere is not silently `Any?` in a Codable struct', () => {
     const { code, warnings } = sw(`import { createFlow } from '@pyreon/flow'
 import { Stack, Text } from '@pyreon/primitives'
 export function App() {
