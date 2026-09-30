@@ -1,6 +1,6 @@
 import { attrs } from '@pyreon/attrs'
 import { Element } from '@pyreon/elements'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { Button, Title, Paragraph } from '@pyreon/ui-components'
 
 type Variant = 'primary' | 'success' | 'danger'
@@ -45,8 +45,8 @@ const FilteredBox = attrs({ name: 'FilteredBox', component: Element }).attrs<{
 const boxStyle = 'padding: 16px; background: #f3f4f6; border-radius: 8px; max-width: 320px; margin-bottom: 16px;'
 
 export function AttrsCallbacksDemo() {
-  const variant = signal<Variant>('primary')
-  const mood = signal<Mood>('happy')
+  let variant = state<Variant>('primary')
+  let mood = state<Mood>('happy')
 
   return (
     <div>
@@ -58,25 +58,25 @@ export function AttrsCallbacksDemo() {
       <Title size="h3" style="margin-bottom: 12px">Callback attrs — variant prop</Title>
       <div style="display: flex; gap: 8px; margin-bottom: 12px;">
         <Button
-          state={variant() === 'primary' ? 'primary' : 'secondary'}
-          onClick={() => variant.set('primary')}
+          state={variant === 'primary' ? 'primary' : 'secondary'}
+          onClick={() => { variant = 'primary' }}
         >
           Primary
         </Button>
         <Button
-          state={variant() === 'success' ? 'success' : 'secondary'}
-          onClick={() => variant.set('success')}
+          state={variant === 'success' ? 'success' : 'secondary'}
+          onClick={() => { variant = 'success' }}
         >
           Success
         </Button>
         <Button
-          state={variant() === 'danger' ? 'danger' : 'secondary'}
-          onClick={() => variant.set('danger')}
+          state={variant === 'danger' ? 'danger' : 'secondary'}
+          onClick={() => { variant = 'danger' }}
         >
           Danger
         </Button>
       </div>
-      <ColorBox variant={variant()} style={boxStyle}>
+      <ColorBox variant={variant} style={boxStyle}>
         ColorBox computes label color from variant prop
       </ColorBox>
 
@@ -88,19 +88,19 @@ export function AttrsCallbacksDemo() {
       <Title size="h3" style="margin-bottom: 12px">Filtered attrs — mood prop stripped</Title>
       <div style="display: flex; gap: 8px; margin-bottom: 12px;">
         <Button
-          state={mood() === 'happy' ? 'primary' : 'secondary'}
-          onClick={() => mood.set('happy')}
+          state={mood === 'happy' ? 'primary' : 'secondary'}
+          onClick={() => { mood = 'happy' }}
         >
           Happy
         </Button>
         <Button
-          state={mood() === 'sad' ? 'primary' : 'secondary'}
-          onClick={() => mood.set('sad')}
+          state={mood === 'sad' ? 'primary' : 'secondary'}
+          onClick={() => { mood = 'sad' }}
         >
           Sad
         </Button>
       </div>
-      <FilteredBox mood={mood()} style={boxStyle}>
+      <FilteredBox mood={mood} style={boxStyle}>
         FilteredBox uses mood internally but doesn't forward it to Element
       </FilteredBox>
     </div>

@@ -29,7 +29,7 @@ const run = (pre: string, call: string, target: 'swift' | 'kotlin' = 'kotlin') =
 describe('useUrlState key resolution', () => {
   it.each(['swift', 'kotlin'] as const)('%s: an inline literal key still lowers', (t) => {
     const r = run('', `useUrlState('q', '')`, t)
-    expect(r.code).toMatch(/query|Query/)
+    expect(r.code).toMatch(/PyreonUrlState\(/)
     expect(r.warnings).toEqual([])
   })
 

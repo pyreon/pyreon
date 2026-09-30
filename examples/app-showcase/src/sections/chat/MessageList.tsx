@@ -1,4 +1,4 @@
-import { effect, signal } from '@pyreon/reactivity'
+import { state, effect } from '@pyreon/core/plain'
 import { useVirtualizer } from '@pyreon/virtual'
 import { formatTime, initials } from './format'
 import {
@@ -38,13 +38,13 @@ export function MessageList() {
 
   // Scroll container ref — captured via the styled component's ref
   // callback so the virtualizer knows what element it's measuring.
-  const scrollEl = signal<HTMLElement | null>(null)
-  const setScrollRef = (el: HTMLElement | null) => scrollEl.set(el)
+  let scrollEl = state<HTMLElement | null>(null)
+  const setScrollRef = (el: HTMLElement | null) => { scrollEl = el }
 
   // Virtualizer over the visible message list.
   const virtual = useVirtualizer<HTMLElement, HTMLElement>(() => ({
     count: store.visibleMessages().length,
-    getScrollElement: () => scrollEl(),
+    getScrollElement: () => scrollEl,
     estimateSize: () => ROW_HEIGHT,
     overscan: OVERSCAN,
   }))
@@ -52,13 +52,13 @@ export function MessageList() {
   // Track whether the user is scrolled to (or near) the bottom. We
   // only auto-scroll on new messages when this is true, so reading
   // older history doesn't get interrupted by incoming chatter.
-  const pinnedToBottom = signal(true)
+  let pinnedToBottom = state(true)
 
   function onScroll() {
-    const el = scrollEl()
+    const el = scrollEl
     if (!el) return
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
-    pinnedToBottom.set(atBottom)
+    pinnedToBottom = atBottom
   }
 
   // Auto-scroll to the bottom when:
@@ -68,16 +68,16 @@ export function MessageList() {
     const id = store.selectedChannelId()
     void id // dependency
     queueMicrotask(() => {
-      const el = scrollEl()
+      const el = scrollEl
       if (el) el.scrollTop = el.scrollHeight
     })
   })
   effect(() => {
     const count = store.visibleMessages().length
     void count // dependency
-    if (!pinnedToBottom()) return
+    if (!pinnedToBottom) return
     queueMicrotask(() => {
-      const el = scrollEl()
+      const el = scrollEl
       if (el) el.scrollTop = el.scrollHeight
     })
   })

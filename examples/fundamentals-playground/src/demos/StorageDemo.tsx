@@ -1,4 +1,4 @@
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { useCookie, useMemoryStorage, useSessionStorage, useStorage } from '@pyreon/storage'
 
 export function StorageDemo() {
@@ -24,8 +24,8 @@ export function StorageDemo() {
   const isSameInstance = theme === themeAgain
 
   // Log of changes
-  const log = signal<string[]>([])
-  const addLog = (msg: string) => log.update((l) => [...l.slice(-9), msg])
+  let log = state.raw<string[]>([])
+  const addLog = (msg: string) => { log = [...log.slice(-9), msg] }
 
   return (
     <div>
@@ -214,9 +214,9 @@ export function StorageDemo() {
         <h3>Change Log</h3>
         <div class="log">
           {() =>
-            log().length === 0
+            log.length === 0
               ? 'Interact with the controls above to see changes.'
-              : log().join('\n')
+              : log.join('\n')
           }
         </div>
       </div>

@@ -112,6 +112,7 @@ A literal-prop rocketstyle call site (`<Button state="primary" size="medium">Sav
 | Option        | Type                                                | Description                                                                                                |
 | ------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `compat`      | `'react' \| 'preact' \| 'vue' \| 'solid' \| 'svelte'` | Alias an existing framework's imports to the matching `@pyreon/*-compat` package.                          |
+| `plain`       | `boolean`                                           | Project-wide [Plain Mode](https://pyreon.dev/docs/plain-mode): every app module compiles as plain-JavaScript reactivity, no `'use plain'` needed; `'use classic'` opts a file out. Default `false`. |
 | `ssr.entry`   | `string`                                            | Server entry path. Enables SSR dev middleware.                                                              |
 | `islands`     | `boolean`                                           | Auto-discover `island()` declarations into `virtual:pyreon/islands-registry`. Default `true`.              |
 | `collapse`    | `boolean \| PyreonCollapseOptions`                  | Opt-in compile-time rocketstyle wrapper collapse. OFF by default. Build-only.                              |

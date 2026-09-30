@@ -1,3 +1,4 @@
+import { detectPlain, transformPlain } from '@pyreon/compiler/plain'
 import { parseSync, Visitor } from 'oxc-parser'
 import type { AstCache } from './cache'
 import type {
@@ -135,6 +136,62 @@ function mergeCallbacks(allCallbacks: VisitorCallbacks[]): Record<string, (node:
  * for (const d of result.diagnostics) console.log(d.message)
  * ```
  */
+/**
+ * Run `meta.plainLowered` rules on the compiled form of a Plain Mode file and
+ * map their findings back to the source. The pre-pass is line-preserving, so
+ * the LINE is exact; the column is clamped to the source line's length.
+ */
+function lintPlainLowered(
+  filePath: string,
+  sourceText: string,
+  entries: Array<{ rule: Rule; severity: Severity; options: RuleOptions }>,
+  out: Diagnostic[],
+): void {
+  if (!detectPlain(sourceText)) return
+  let lowered: string
+  try {
+    const r = transformPlain(sourceText, filePath)
+    if (!r) return
+    lowered = r.code
+  } catch {
+    return
+  }
+  let program: any
+  try {
+    program = parseSync(filePath, lowered, { sourceType: 'module', lang: getLang(getExtension(filePath)) }).program
+  } catch {
+    return
+  }
+  const lowIndex = new LineIndex(lowered)
+  const found: Diagnostic[] = []
+  const callbacks = entries.map(({ rule, severity, options }) =>
+    rule.create(createRuleContext(rule, severity, options, found, lowIndex, lowered, filePath)),
+  )
+  new Visitor(mergeCallbacks(callbacks)).visit(program)
+  if (found.length === 0) return
+
+  const srcIndex = new LineIndex(sourceText)
+  const lineStarts = [0]
+  for (let i = 0; i < sourceText.length; i++) if (sourceText.charCodeAt(i) === 10) lineStarts.push(i + 1)
+  for (const d of found) {
+    const start0 = lineStarts[d.loc.line - 1]
+    if (start0 === undefined) continue
+    const lineEndIdx = sourceText.indexOf('\n', start0)
+    const lineEnd = lineEndIdx === -1 ? sourceText.length : lineEndIdx
+    const start = Math.min(start0 + d.loc.column, lineEnd)
+    const end = Math.min(start + (d.span.end - d.span.start), lineEnd)
+    // The same finding on the same line from the source walk wins.
+    if (out.some((x) => x.ruleId === d.ruleId && x.loc.line === d.loc.line)) continue
+    out.push({
+      ...d,
+      message: `${d.message} (Plain Mode: found in this file's compiled form)`,
+      span: { start, end: Math.max(end, start) },
+      loc: srcIndex.locate(start),
+      fix: undefined,
+    })
+  }
+}
+
 export function lintFile(
   filePath: string,
   sourceText: string,
@@ -181,6 +238,7 @@ export function lintFile(
 
   // Filter to enabled rules and create visitor callbacks
   const allCallbacks: VisitorCallbacks[] = []
+  const plainLoweredRules: Array<{ rule: Rule; severity: Severity; options: RuleOptions }> = []
   for (const rule of rules) {
     const entry = config.rules[rule.meta.id]
     if (entry === undefined) continue
@@ -270,11 +328,16 @@ export function lintFile(
       filePath,
     )
     allCallbacks.push(rule.create(ctx))
+    if (rule.meta.plainLowered) plainLoweredRules.push({ rule, severity, options })
   }
 
   // Walk the AST
   const visitor = new Visitor(mergeCallbacks(allCallbacks))
   visitor.visit(program)
+
+  if (plainLoweredRules.length > 0) {
+    lintPlainLowered(filePath, sourceText, plainLoweredRules, diagnostics)
+  }
 
   // Filter suppressed diagnostics. Two equivalent comment syntaxes:
   //   // pyreon-lint-ignore                            — suppress all on next line

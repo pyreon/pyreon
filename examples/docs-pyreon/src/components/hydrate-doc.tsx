@@ -1,5 +1,5 @@
 import { onMount } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { mount } from '@pyreon/runtime-dom'
 import { DocPlayground } from './DocPlayground'
 
@@ -48,16 +48,16 @@ function upgradePlaygrounds(root: HTMLElement) {
 function wireCodeGroups(root: HTMLElement) {
   const groups = root.querySelectorAll<HTMLElement>('div[data-pyreon-code-group]')
   groups.forEach((group) => {
-    const active = signal(0)
+    let active = state(0)
     const tabs = group.querySelectorAll<HTMLButtonElement>('.tabs > button')
     const panels = group.querySelectorAll<HTMLElement>('.panel')
     tabs.forEach((btn, i) => {
-      btn.addEventListener('click', () => active.set(i))
+      btn.addEventListener('click', () => { active = i })
     })
     // Drive class state via an effect on `active`
     import('@pyreon/reactivity').then(({ effect }) => {
       effect(() => {
-        const i = active()
+        const i = active
         tabs.forEach((btn, j) => btn.classList.toggle('active', j === i))
         panels.forEach((p, j) => p.classList.toggle('active', j === i))
       })

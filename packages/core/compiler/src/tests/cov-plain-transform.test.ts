@@ -312,10 +312,9 @@ const CASES: Case[] = [
       `export function w() {\n  ;({ u2 } = src)\n  ;({ d2 } = src)\n  ;({ plain2 } = src)\n}\n`,
     assert: ({ warnings }) => {
       const msgs = warnings.map((w) => w.message)
-      expect(msgs.some((m) => m.includes('destructuring assignment onto plain state `u2`'))).toBe(
-        true,
-      )
-      expect(msgs.some((m) => m.includes('destructuring assignment onto plain state `d2`'))).toBe(
+      // deep-state targets are REWRITTEN (no warning); derived targets are read-only
+      expect(msgs.some((m) => m.includes('`u2`'))).toBe(false)
+      expect(msgs.some((m) => m.includes('destructuring assignment onto `d2` is not possible'))).toBe(
         true,
       )
       expect(msgs.some((m) => m.includes('`plain2`'))).toBe(false)

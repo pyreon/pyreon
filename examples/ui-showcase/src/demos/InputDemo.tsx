@@ -1,8 +1,8 @@
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { Input, Textarea, Title } from '@pyreon/ui-components'
 
 export function InputDemo() {
-  const name = signal('')
+  let name = state('')
 
   return (
     <div>
@@ -12,11 +12,11 @@ export function InputDemo() {
       <div style="max-width: 400px; margin-bottom: 24px;">
         <Input
           placeholder="Enter your name"
-          value={name()}
-          onInput={(e: Event) => name.set((e.target as HTMLInputElement).value)}
+          value={name}
+          onInput={(e: Event) => { name = (e.target as HTMLInputElement).value }}
         />
         <p style="font-size: 13px; color: #6b7280; margin-top: 8px;">
-          Value: {() => name() || '(empty)'}
+          Value: {() => name || '(empty)'}
         </p>
       </div>
 

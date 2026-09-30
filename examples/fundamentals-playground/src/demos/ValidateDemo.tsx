@@ -1,4 +1,4 @@
-import { computed, signal } from '@pyreon/reactivity'
+import { state, derived, signalOf } from '@pyreon/core/plain'
 import {
   formatErrors,
   parseReactive,
@@ -29,21 +29,21 @@ const emailSchema = withField(s.string().email({ message: 'Invalid email' }), {
 })
 
 export function ValidateDemo() {
-  const username = signal('')
-  const age = signal<number | string>('')
-  const email = signal('')
+  let username = state('')
+  let age = state<number | string>('')
+  let email = state('')
 
   // parseReactive returns a Computed<ParseResult> that re-validates on
   // every read of the source signal. issues = invalid; value = valid.
-  const usernameResult = parseReactive(usernameSchema, username)
-  const ageResult = parseReactive(ageSchema, () => Number(age()) || 0)
-  const emailResult = parseReactive(emailSchema, email)
+  const usernameResult = parseReactive(usernameSchema, signalOf<typeof username>(username))
+  const ageResult = parseReactive(ageSchema, () => Number(age) || 0)
+  const emailResult = parseReactive(emailSchema, signalOf<typeof email>(email))
 
   // computed() — re-derives on any underlying signal change. Computed
   // exposes itself as a tracked dependency on its first read inside a
   // reactive scope; a plain arrow fn doesn't (the compiler can't see
   // through user functions). Mirrors `useFormState` selector usage.
-  const allValid = computed(
+  const allValid = derived(
     () =>
       !usernameResult().issues?.length &&
       !ageResult().issues?.length &&
@@ -70,8 +70,8 @@ export function ValidateDemo() {
             type="text"
             data-testid="validate-username"
             placeholder="pyreon_dev"
-            value={() => username()}
-            onInput={(e) => username.set(e.currentTarget.value)}
+            value={() => username}
+            onInput={(e) => { username = e.currentTarget.value }}
           />
           <div class="error" data-testid="validate-username-err">
             {() => (usernameResult().issues ? formatErrors(usernameResult().issues ?? []) : '')}
@@ -83,8 +83,8 @@ export function ValidateDemo() {
           <input
             type="number"
             data-testid="validate-age"
-            value={() => String(age())}
-            onInput={(e) => age.set(e.currentTarget.value)}
+            value={() => String(age)}
+            onInput={(e) => { age = e.currentTarget.value }}
           />
           <div class="error" data-testid="validate-age-err">
             {() => (ageResult().issues ? formatErrors(ageResult().issues ?? []) : '')}
@@ -97,8 +97,8 @@ export function ValidateDemo() {
             type="text"
             data-testid="validate-email"
             placeholder="you@example.com"
-            value={() => email()}
-            onInput={(e) => email.set(e.currentTarget.value)}
+            value={() => email}
+            onInput={(e) => { email = e.currentTarget.value }}
           />
           <div class="error" data-testid="validate-email-err">
             {() => (emailResult().issues ? formatErrors(emailResult().issues ?? []) : '')}
@@ -108,10 +108,10 @@ export function ValidateDemo() {
         <p>
           Form status:{' '}
           <span
-            class={() => (allValid() ? 'badge green' : 'badge red')}
+            class={() => (allValid ? 'badge green' : 'badge red')}
             data-testid="validate-status"
           >
-            {() => (allValid() ? 'VALID' : 'INVALID')}
+            {() => (allValid ? 'VALID' : 'INVALID')}
           </span>
         </p>
       </div>

@@ -1,5 +1,5 @@
 import { onUnmount } from '@pyreon/core'
-import { effect, signal } from '@pyreon/reactivity'
+import { state, effect } from '@pyreon/core/plain'
 import { useRoute } from '@pyreon/router'
 import { toast } from '@pyreon/toast'
 import { Backlog } from '../components/Backlog'
@@ -28,8 +28,8 @@ export function BoardRoute() {
   // (Disposing tears down the WebSocket + BroadcastChannel + IndexedDB + every
   // CRDT observer — the reason board-doc isn't a leaky module-level cache.)
   const route = useRoute()
-  const board = signal<BoardDoc | null>(null)
-  const openCardId = signal<string | null>(null)
+  let board = state<BoardDoc | null>(null)
+  let openCardId = state<string | null>(null)
 
   let current: BoardDoc | null = null
   let currentId: string | null = null
@@ -38,9 +38,9 @@ export function BoardRoute() {
     if (!id || id === currentId) return
     currentId = id
     current?.dispose()
-    openCardId.set(null)
+    openCardId = null
     current = createBoardDoc(id, RELAY_URL)
-    board.set(current)
+    board = current
   })
   onUnmount(() => current?.dispose())
 
@@ -50,7 +50,7 @@ export function BoardRoute() {
   let lastConn: ConnectionState | null = null
   let watched: BoardDoc | null = null
   effect(() => {
-    const b = board()
+    const b = board
     if (b !== watched) {
       watched = b
       lastConn = null
@@ -65,7 +65,7 @@ export function BoardRoute() {
   })
 
   return () => {
-    const b = board()
+    const b = board
     // Loading gate: we await persisted IndexedDB state before seeding the title
     // (the whenSynced contract) — see sync/board-doc.
     if (!b || !b.ready()) return <div class="loading">Loading board…</div>
@@ -97,7 +97,7 @@ export function BoardRoute() {
               cards={b.columns[colId]}
               canEdit={canEdit}
               isLast={colId === COLUMN_IDS[COLUMN_IDS.length - 1]}
-              onOpen={(id) => openCardId.set(id)}
+              onOpen={(id) => { openCardId = id }}
               onMoveNext={(id) => moveToNext(colId, id)}
             />
           ))}
@@ -107,9 +107,9 @@ export function BoardRoute() {
             fresh CardPanel — which disposes the previous card's Y.Text and opens
             the new one. */}
         {() => {
-          const id = openCardId()
+          const id = openCardId
           if (id === null) return null
-          return <CardPanel board={b} cardId={id} onClose={() => openCardId.set(null)} />
+          return <CardPanel board={b} cardId={id} onClose={() => { openCardId = null }} />
         }}
       </div>
     )

@@ -88,8 +88,8 @@ describe('decode struct number fields follow the response schema', () => {
     expect(book).toContain('var rating: Double? = null')
     expect(book).toContain('var price: Double')
     expect(book).toContain('var scores: List<Double>')
-    expect(book).toContain('var pages: Int? = null')
-    expect(book).toContain('var counts: List<Int>')
+    expect(book).toContain('var pages: Long? = null')
+    expect(book).toContain('var counts: List<Long>')
     expect(kotlinClass(r.code, 'Shelf')).toContain('var weight: Double')
   })
 
@@ -99,10 +99,10 @@ describe('decode struct number fields follow the response schema', () => {
     expect(kotlinClass(transform(src, { target: 'kotlin' }).code, 'Book')).toContain('var price: Double')
   })
 
-  it('a struct with NO response-schema evidence keeps the Int default (additive only)', () => {
+  it('a struct with NO response-schema evidence keeps the Long default (additive only)', () => {
     const src = SINGLE.replace(", { response: book_schema })", ')')
     const r = transform(src, { target: 'kotlin' })
-    expect(kotlinClass(r.code, 'Book')).toContain('var price: Int')
+    expect(kotlinClass(r.code, 'Book')).toContain('var price: Long')
   })
 })
 

@@ -1,7 +1,8 @@
 import { createDocument, render } from '@pyreon/document'
 import { createMachine } from '@pyreon/machine'
 import { createPermissions } from '@pyreon/permissions'
-import { computed, signal } from '@pyreon/reactivity'
+import { state, derived, signalOf } from '@pyreon/core/plain'
+import { untrack } from '@pyreon/reactivity'
 import { useStorage } from '@pyreon/storage'
 import { defineStore } from '@pyreon/store'
 
@@ -20,27 +21,26 @@ import { defineStore } from '@pyreon/store'
 // ── Store: dashboard data ───────────────────────────────────────────────────
 
 const useDashboard = defineStore('dashboard', () => {
-  const salesData = signal([
+  let salesData = state.raw([
     { region: 'US', revenue: 1200000, growth: 30 },
     { region: 'EU', revenue: 800000, growth: 15 },
     { region: 'APAC', revenue: 500000, growth: 40 },
     { region: 'LATAM', revenue: 300000, growth: 25 },
   ])
 
-  const totalRevenue = computed(() => salesData().reduce((sum, r) => sum + r.revenue, 0))
+  const totalRevenue = derived(() => salesData.reduce((sum, r) => sum + r.revenue, 0))
 
-  const topRegion = computed(() => {
-    const sorted = [...salesData()].sort((a, b) => b.revenue - a.revenue)
+  const topRegion = derived(() => {
+    const sorted = [...salesData].sort((a, b) => b.revenue - a.revenue)
     return sorted[0]?.region ?? 'N/A'
   })
 
   const addSale = (region: string, amount: number) => {
-    salesData.update((data) =>
-      data.map((r) => (r.region === region ? { ...r, revenue: r.revenue + amount } : r)),
-    )
+    salesData = ((data) =>
+      data.map((r) => (r.region === region ? { ...r, revenue: r.revenue + amount } : r)))(untrack(() => salesData))
   }
 
-  return { salesData, totalRevenue, topRegion, addSale }
+  return { salesData: signalOf<typeof salesData>(salesData), totalRevenue: signalOf<typeof totalRevenue>(totalRevenue), topRegion: signalOf<typeof topRegion>(topRegion), addSale }
 })
 
 // ── Permissions ─────────────────────────────────────────────────────────────
@@ -69,10 +69,10 @@ const exportMachine = createMachine({
 export function DashboardDemo() {
   const { store } = useDashboard()
   const theme = useStorage('dashboard-theme', 'light')
-  const exportFormat = signal('html')
-  const exportResult = signal('')
-  const saleRegion = signal('US')
-  const saleAmount = signal(10000)
+  let exportFormat = state('html')
+  let exportResult = state('')
+  let saleRegion = state('US')
+  let saleAmount = state(10000)
 
   const handleExport = async () => {
     exportMachine.send('START')
@@ -96,23 +96,21 @@ export function DashboardDemo() {
           headerStyle: { background: '#1a1a2e', color: '#fff' },
         })
 
-      const format = exportFormat()
+      const format = exportFormat
       const result = await render(doc.build(), format)
-      exportResult.set(
-        typeof result === 'string'
+      exportResult = typeof result === 'string'
           ? result
-          : `[Binary ${format.toUpperCase()} — ${result.length} bytes]`,
-      )
+          : `[Binary ${format.toUpperCase()} — ${result.length} bytes]`
       exportMachine.send('DONE')
     } catch {
       exportMachine.send('ERROR')
-      exportResult.set('Export failed')
+      exportResult = 'Export failed'
     }
   }
 
   const handleAddSale = () => {
     if (can('sales.add')) {
-      store.addSale(saleRegion(), saleAmount())
+      store.addSale(saleRegion, saleAmount)
     }
   }
 
@@ -171,8 +169,8 @@ export function DashboardDemo() {
           <div style="margin: 16px 0; padding: 12px; background: #f9f9f9; border-radius: 4px">
             <h4>Add Sale</h4>
             <select
-              value={saleRegion()}
-              onChange={(e: Event) => saleRegion.set((e.target as HTMLSelectElement).value)}
+              value={saleRegion}
+              onChange={(e: Event) => { saleRegion = (e.target as HTMLSelectElement).value }}
             >
               <option value="US">US</option>
               <option value="EU">EU</option>
@@ -181,9 +179,9 @@ export function DashboardDemo() {
             </select>{' '}
             <input
               type="number"
-              value={saleAmount()}
+              value={saleAmount}
               onInput={(e: InputEvent) =>
-                saleAmount.set(Number((e.target as HTMLInputElement).value))
+                { saleAmount = Number((e.target as HTMLInputElement).value) }
               }
               style="width: 100px"
             />{' '}
@@ -220,8 +218,8 @@ export function DashboardDemo() {
               exportMachine.matches('idle') ? (
                 <div>
                   <select
-                    value={exportFormat()}
-                    onChange={(e: Event) => exportFormat.set((e.target as HTMLSelectElement).value)}
+                    value={exportFormat}
+                    onChange={(e: Event) => { exportFormat = (e.target as HTMLSelectElement).value }}
                   >
                     <option value="html">HTML</option>
                     <option value="md">Markdown</option>
@@ -246,9 +244,9 @@ export function DashboardDemo() {
             }
 
             {() =>
-              exportResult() ? (
+              exportResult ? (
                 <pre style="margin-top: 12px; padding: 12px; background: #fff; border: 1px solid #ddd; border-radius: 4px; overflow-x: auto; max-height: 300px; font-size: 12px">
-                  {exportResult()}
+                  {exportResult}
                 </pre>
               ) : null
             }
