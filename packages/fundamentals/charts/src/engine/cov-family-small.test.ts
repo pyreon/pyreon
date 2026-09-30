@@ -19,7 +19,6 @@ import { renderGeoPaths, renderGeoPoints } from './geo-points'
 import { histogram, bars } from './marks'
 import { layoutSeriesPointsH } from './layout'
 import { buildHeatGrid, hitHeatCell, renderHeat } from './heat'
-import { getTheme, resolveTheme } from './theme-registry'
 import { navigatorHit, renderNavigator } from './navigator'
 import { chartTable } from './a11y'
 
@@ -320,34 +319,6 @@ describe('heat grid', () => {
   })
 })
 
-describe('theme registry', () => {
-  it('an UNREGISTERED name has no definition', () => {
-    expect(getTheme('nope-not-a-theme')).toBeNull()
-  })
-  it('the legacy aliases fold into the engine tokens', () => {
-    const r = resolveTheme({ textStyle: { color: '#111111', fontSize: 17 }, axisLineColor: '#222222', splitLineColor: '#333333' })
-    expect(r.chartTheme.label).toBe('#111111')
-    expect(r.chartTheme.fontSize).toBe(17)
-    expect(r.chartTheme.axis).toBe('#222222')
-    expect(r.chartTheme.grid).toBe('#333333')
-  })
-  it('an explicit token WINS over its alias', () => {
-    const r = resolveTheme({ label: '#aaaaaa', textStyle: { color: '#111111' }, axis: '#bbbbbb', axisLineColor: '#222222', grid: '#cccccc', splitLineColor: '#333333' })
-    expect(r.chartTheme.label).toBe('#aaaaaa')
-    expect(r.chartTheme.axis).toBe('#bbbbbb')
-    expect(r.chartTheme.grid).toBe('#cccccc')
-  })
-  it('an EMPTY background string means "no background", not a transparent one', () => {
-    expect(resolveTheme({ background: '' }).background).toBeUndefined()
-    expect(resolveTheme({ background: '#ffffff' }).background).toBe('#ffffff')
-  })
-  it('an unknown NAME warns and falls back to light', () => {
-    const warnings: Parameters<typeof resolveTheme>[1] = []
-    const r = resolveTheme('nope', warnings)
-    expect(warnings!).toHaveLength(1)
-    expect(r.palette).toBeNull()
-  })
-})
 
 describe('navigator', () => {
   const canvas = { x: 0, y: 0, w: 200, h: 60 }

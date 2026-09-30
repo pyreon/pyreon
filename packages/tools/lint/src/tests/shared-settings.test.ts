@@ -42,11 +42,11 @@ const run = (dir: string) =>
 const SOURCES = {
   'src/app.tsx':
     "import { styled } from '@pyreon/styler'\n" +
-    "import { renderChart } from '@pyreon/charts'\n" +
+    "import { CodeEditor } from '@pyreon/code'\n" +
     "import { onMount } from '@pyreon/core'\n" +
     'export enum Mode {\n  On,\n  Off,\n}\n' +
     "export const Card = styled('div')`color:red`\n" +
-    'export function Panel() {\n  onMount(() => {})\n  return <div>{renderChart}</div>\n}\n',
+    'export function Panel() {\n  onMount(() => {})\n  return <div>{CodeEditor}</div>\n}\n',
 }
 
 const portableIds = new Set(

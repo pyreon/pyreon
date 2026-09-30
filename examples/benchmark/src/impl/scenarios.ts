@@ -7,6 +7,7 @@
  */
 import type { BenchSuite } from '../runner'
 import { CHARTS_FRAMEWORKS, runCharts } from './scenario-charts'
+import { CHARTS_LIBS_FRAMEWORKS, runChartsLibs } from './scenario-charts-libs'
 import { DBMON_FRAMEWORKS, runDbmon } from './scenario-dbmon'
 import { EFFECTS_FRAMEWORKS, runEffects } from './scenario-effects'
 import { FLOW_FRAMEWORKS, runFlow } from './scenario-flow'
@@ -56,6 +57,12 @@ export const SCENARIOS: ScenarioDef[] = [
     label: 'charts — @pyreon/charts vs ECharts 6 (line, 1k / 100k points)',
     frameworks: CHARTS_FRAMEWORKS,
     run: runCharts,
+  },
+  {
+    id: 'charts-libs',
+    label: 'charts — @pyreon/charts vs uPlot, Chart.js, Recharts (line 1k–1M, update, 1k bars; 800×300)',
+    frameworks: CHARTS_LIBS_FRAMEWORKS,
+    run: runChartsLibs,
   },
 ]
 

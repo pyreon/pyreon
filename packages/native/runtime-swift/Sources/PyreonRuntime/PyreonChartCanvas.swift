@@ -182,6 +182,13 @@ public func pyreonChartMeasure(_ text: String, _ size: Double) -> Double {
 public func pyreonChartDouble(_ v: Double) -> Double { v }
 public func pyreonChartDouble(_ v: Int) -> Double { Double(v) }
 
+/// A category label from an accessor-mapped field. A String passes through; a
+/// number prints as JavaScript's `String(number)` does — the web stringifies a
+/// numeric category implicitly, and `[String]` otherwise rejects it outright.
+public func pyreonChartString(_ v: String) -> String { v }
+public func pyreonChartString(_ v: Double) -> String { pyreonNumberString(v) }
+public func pyreonChartString(_ v: Int) -> String { String(v) }
+
 /// Locale-aware chart formatters matching the web host's `Intl` defaults:
 /// grouped numbers with at most two fraction digits, and a short month/day.
 /// They are factories so each chart owns its formatter; Foundation formatter
@@ -1061,14 +1068,12 @@ public final class PyreonChartHandle {
     public var seriesCount: Int = 0
     public var brushType: String = ""
     public var areas: [BrushArea] = []
-    public var step: Int = -1
-    public var playing: Bool = false
 
     public init(seriesCount: Int = 0) { self.seriesCount = seriesCount }
 
     public func dispatch(_ action: ChartActionInput) {
         let next = applyChartAction(
-            ChartActionState(zoom: zoom, hover: hover, selected: selected, hidden: hidden, seriesCount: seriesCount, brushType: brushType, areas: areas, step: step, playing: playing),
+            ChartActionState(zoom: zoom, hover: hover, selected: selected, hidden: hidden, seriesCount: seriesCount, brushType: brushType, areas: areas),
             action
         )
         if next.zoom.start != zoom.start || next.zoom.end != zoom.end { zoom = next.zoom }
@@ -1077,8 +1082,6 @@ public final class PyreonChartHandle {
         if next.hidden != hidden { hidden = next.hidden }
         if next.brushType != brushType { brushType = next.brushType }
         if next.areas.count != areas.count || action.type == "brush" { areas = next.areas }
-        if next.step != step { step = next.step }
-        if next.playing != playing { playing = next.playing }
     }
 }
 

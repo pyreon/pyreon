@@ -49,16 +49,14 @@ interface ClaimCheck {
 }
 
 /**
- * The chart hosts `@pyreon/charts/engine` exports — every `XChart` VALUE export,
- * minus `OptionChart` (the ECharts-option facade, which draws through the
- * family hosts rather than being one).
+ * The chart hosts `@pyreon/charts/engine` exports — every `XChart` VALUE export.
  */
 const chartHostNames = (repoRoot: string): string[] => {
   const plotPath = join(repoRoot, 'packages/fundamentals/charts/src/engine.ts')
   if (!existsSync(plotPath)) return []
   const names = new Set<string>()
   for (const [, list] of readFileSync(plotPath, 'utf8').matchAll(/^export \{([^}]*)\} from/gm)) {
-    for (const [, name] of (list ?? '').matchAll(/\b([A-Z]\w*Chart)\b(?!\w)/g)) if (name && name !== 'OptionChart') names.add(name)
+    for (const [, name] of (list ?? '').matchAll(/\b([A-Z]\w*Chart)\b(?!\w)/g)) if (name) names.add(name)
   }
   return [...names]
 }

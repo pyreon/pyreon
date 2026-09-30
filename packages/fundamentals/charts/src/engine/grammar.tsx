@@ -1,7 +1,4 @@
-// The grammar — `<Chart>` with MARK CHILDREN, the package's main entry. (It was
-// `<Chart>` while the main entry exported the ECharts bridge as `<Chart>`; that
-// bridge now lives at `@pyreon/charts/echarts` as `<EChart>`, so one name
-// means one component.)
+// The grammar — `<Chart>` with MARK CHILDREN, the package's main entry.
 //
 //   <Chart data={rows} x="month">
 //     <Bar y="revenue" label="Revenue" />
@@ -43,6 +40,10 @@ import type { ToolboxConfig } from './toolbox-config'
 import type { AxisLabelMode, PlotChartProps } from './Chart'
 import { PieChart } from './PieChart'
 import { FunnelChart } from './FunnelChart'
+import type { VisualMapSpec } from './visual-map'
+import type { VisualMapSelection } from './visual-map-host'
+import type { CandlestickZoom } from './CandlestickChart'
+import type { ZoomWindow } from './zoom'
 import { HeatmapChart } from './HeatmapChart'
 import { CandlestickChart } from './CandlestickChart'
 import type { CandleOptions } from './candlestick'
@@ -132,6 +133,12 @@ export interface AxisProps {
   domain?: Domain
   /** x or y: the tick labels are calendar steps (epoch-ms values). */
   time?: boolean
+  /**
+   * x or y: the target tick count. Unset, it follows the chart's size (about
+   * one y tick per 40px, one x tick per 80px); the nice step decides the exact
+   * number.
+   */
+  ticks?: number
   /** Hide the axis. */
   hidden?: boolean
   /** A title in its own line outside the tick labels. */
@@ -177,6 +184,12 @@ export interface LegendProps {
   maxRows?: number
   /** Where the legend sits; `top` by default. */
   position?: LegendPosition
+  /**
+   * Name each line and area at its last point, in its own colour, instead of
+   * in a legend box — the reader never looks away from the data. Best with a
+   * handful of lines; bars and points keep the legend box.
+   */
+  direct?: boolean
 }
 /**
  * A datum-anchored label — the engine's point marker (ECharts' markPoint).
@@ -216,6 +229,14 @@ export interface CellProps<T> {
   /** The colour ramp, low to high. */
   colors?: string[]
   gap?: Double
+  /**
+   * A value → colour legend beside the grid. `visualMap` alone derives it
+   * from the data and the ramp, with draggable handles; `visualMap={visualMap({ … })}`
+   * sets every part. Cells outside the selected range take the inactive colour.
+   */
+  visualMap?: VisualMapSpec | true
+  /** Fired as the legend's selection changes. */
+  onVisualMapChange?: (selection: VisualMapSelection) => void
 }
 /** A candlestick: one period per row; the plot's `x` channel labels it. */
 export interface CandleProps<T> extends CandleOptions {
@@ -235,6 +256,10 @@ export interface ZoomProps {
   link?: ChartLink
   /** Range brush; reports a global inclusive index range. */
   brush?: (range: { start: number; end: number } | null) => void
+  /** The window the chart opens on, as fractions of the rows: `{ start: 0.5, end: 1 }` shows the latest half. */
+  window?: ZoomWindow
+  /** Fix the span: the window pans but never zooms. */
+  lock?: boolean
 }
 /**
  * The tool strip: save-as-image, restore, magic type (switch line and bar,
@@ -440,6 +465,13 @@ export interface ChartProps<T> {
   x?: Channel<T, string>
   /** The continuous x channel (spacing follows the values). */
   xValue?: Channel<T>
+  /**
+   * Row identity for update animation (a field name or accessor, like
+   * `<For by>`). A data change then tweens each row from its own previous
+   * value and new rows grow in; without it rows are matched by position, so a
+   * sliding window animates every bar toward its neighbour's value.
+   */
+  by?: Channel<T, string>
   /** Long-format split: one series per distinct value of this channel, for every `y` mark. */
   color?: Channel<T, string>
   width?: Double
@@ -517,6 +549,17 @@ const describeChild = (v: VNode): string => {
 
 const warnGrammar = (m: string): void => {
   if (process.env.NODE_ENV !== 'production') console.warn(`[Pyreon] <Chart>: ${m}`)
+}
+
+/** The `<Zoom>` child's settings as a candlestick's zoom; absent without one. */
+function candleZoom<T>(p: Partial<PlotChartProps<T>>): CandlestickZoom | undefined {
+  if (p.dataZoom !== true && p.navigator !== true) return undefined
+  return {
+    inside: p.dataZoom === true,
+    slider: p.navigator === true,
+    ...(p.initialZoom !== undefined ? { window: p.initialZoom } : {}),
+    ...(p.zoomLimits?.lock === true ? { lock: true } : {}),
+  }
 }
 
 /** A family mark's props with every channel turned into an accessor. */
@@ -598,6 +641,7 @@ export function resolveGrammar<T>(rows: T[], chart: ChartProps<T>, children: VNo
         if (a.x === true) {
           if (a.format !== undefined) props.xFormat = a.format
           if (a.time === true) props.xTime = true
+          if (a.ticks !== undefined) props.xTicks = a.ticks
           if (a.hidden === true) props.showXAxis = false
           if (a.title !== undefined) props.xTitle = a.title
           if (a.labels !== undefined) props.xLabels = a.labels
@@ -608,6 +652,7 @@ export function resolveGrammar<T>(rows: T[], chart: ChartProps<T>, children: VNo
         } else {
           if (a.format !== undefined) props.format = a.format
           if (a.domain !== undefined) props.yDomain = a.domain
+          if (a.ticks !== undefined) props.yTicks = a.ticks
           if (a.hidden === true) props.showYAxis = false
           if (a.title !== undefined) props.yTitle = a.title
           if (a.time === true) props.yTime = true
@@ -635,6 +680,10 @@ export function resolveGrammar<T>(rows: T[], chart: ChartProps<T>, children: VNo
       }
       case 'Legend': {
         const l = p as LegendProps
+        if (l.direct === true) {
+          props.endLabels = true
+          break
+        }
         props.showLegend = true
         if (l.toggle === false) props.legendToggle = false
         if (l.maxRows !== undefined) props.legendMaxRows = l.maxRows
@@ -654,6 +703,8 @@ export function resolveGrammar<T>(rows: T[], chart: ChartProps<T>, children: VNo
         if (z.inside !== false) props.dataZoom = true
         if (z.navigator === true) props.navigator = true
         if (z.presets !== undefined) props.zoomPresets = z.presets
+        if (z.window !== undefined) props.initialZoom = z.window
+        if (z.lock === true) props.zoomLimits = { lock: true }
         if (z.link !== undefined) props.link = z.link
         if (z.brush !== undefined) {
           props.brush = true
@@ -818,7 +869,12 @@ export function Chart<T>(props: ChartProps<T>): VNodeChild {
       const tb = (resolved().props as Record<string, unknown>).toolbox as ToolboxConfig | undefined
       return tb === undefined ? undefined : { saveAsImage: tb.saveAsImage !== undefined && tb.saveAsImage !== false }
     })
-    if (kind === 'candlestick') p.x = reactiveProp(() => (props.x === undefined ? undefined : channel<T, string>(props.x)))
+    if (kind === 'candlestick') {
+      p.x = reactiveProp(() => (props.x === undefined ? undefined : channel<T, string>(props.x)))
+      // `<Zoom>` beside `<Candle>` is the candlestick's own zoom: the same
+      // window, navigator and lock the plot takes.
+      p.zoom = reactiveProp(() => candleZoom(resolved().props as Partial<PlotChartProps<T>>))
+    }
     const own = resolved().family!.props
     for (const key of Object.keys(own)) p[key] = reactiveProp(() => resolved().family?.props[key])
     return h(resolved().family!.component as unknown as (p: Record<string, unknown>) => VNode, p)
@@ -835,9 +891,15 @@ export function Chart<T>(props: ChartProps<T>): VNodeChild {
       return props.x === undefined ? undefined : channel<T, string>(props.x)
     }),
     xValue: reactiveProp(() => (props.xValue === undefined ? undefined : channel<T, Double>(props.xValue))),
+    // Long format pivots rows into categories, which are already the identity.
+    by: reactiveProp(() => {
+      const r = resolved()
+      if (r.pivot !== null) return r.pivot.x
+      return props.by === undefined ? undefined : channel<T, string>(props.by)
+    }),
   }
   // Every `<PlotChart>` prop a child can set, forwarded as an accessor; the chart's own props win when both are given.
-  const forwarded = ['format', 'xFormat', 'xTime', 'showXAxis', 'showYAxis', 'yDomain', 'y2Format', 'y2Domain', 'tooltip', 'crosshair', 'tooltipFormatter', 'showLegend', 'legendToggle', 'legendMaxRows', 'legendPosition', 'dataZoom', 'navigator', 'initialZoom', 'zoomLimits', 'zoomPresets', 'link', 'brush', 'onBrush', 'annotations', 'markers', 'toolbox', 'xTitle', 'yTitle', 'y2Title', 'xLabels', 'yScale', 'yTime', 'stackNormalize'] as const
+  const forwarded = ['format', 'xFormat', 'xTime', 'showXAxis', 'showYAxis', 'yDomain', 'y2Format', 'y2Domain', 'tooltip', 'crosshair', 'tooltipFormatter', 'showLegend', 'endLabels', 'xTicks', 'yTicks', 'legendToggle', 'legendMaxRows', 'legendPosition', 'dataZoom', 'navigator', 'initialZoom', 'zoomLimits', 'zoomPresets', 'link', 'brush', 'onBrush', 'annotations', 'markers', 'toolbox', 'xTitle', 'yTitle', 'y2Title', 'xLabels', 'yScale', 'yTime', 'stackNormalize'] as const
   for (const key of forwarded) plotProps[key] = reactiveProp(() => (props as unknown as Record<string, unknown>)[key] ?? (resolved().props as Record<string, unknown>)[key])
   // Every other `<PlotChart>` prop, the events/actions model included — the grammar reaches the whole host.
   for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'showGrid', 'horizontal', 'animate', 'updateAnimation', 'updateDuration', 'universalTransition', 'maxPoints', 'keyboard', 'accessibleTable', 'class', 'handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'onZoom', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'seriesLabels', 'onSaveImage', 'locale'] as const) {

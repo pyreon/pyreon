@@ -92,12 +92,25 @@ function awaitShared(
   return new Promise<HttpResponse>((resolve, reject) => {
     let done = false
     const leave = (): void => {
+      // Every call site (`onAbort` below, and both `shared.promise.then`
+      // handlers further down) already checks `done` itself BEFORE
+      // calling `leave()` — so by construction this can never see
+      // `done === true` through the current call graph. Kept as a
+      // structural idempotency guard (same discipline as
+      // `addSubscriber` elsewhere in the framework) rather than an
+      // assertion of a reachable path.
+      /* v8 ignore next */
       if (done) return
       done = true
       shared.waiting--
       signal.removeEventListener('abort', onAbort)
     }
     const onAbort = (): void => {
+      // `{ once: true }` means the event system invokes this listener at
+      // most once, and the OTHER call site (the pre-aborted branch just
+      // below) returns immediately after calling it — the two are
+      // mutually exclusive, so `onAbort` itself is never re-entered.
+      /* v8 ignore next */
       if (done) return
       leave()
       if (shared.waiting === 0) {
