@@ -1,4 +1,4 @@
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { useVirtualizer } from '@pyreon/virtual'
 
 const items = Array.from({ length: 10000 }, (_, i) => ({
@@ -8,11 +8,11 @@ const items = Array.from({ length: 10000 }, (_, i) => ({
 }))
 
 export function VirtualDemo() {
-  const parentRef = signal<HTMLElement | null>(null)
+  let parentRef = state<HTMLElement | null>(null)
 
   const { virtualItems, totalSize, isScrolling } = useVirtualizer(() => ({
     count: items.length,
-    getScrollElement: () => parentRef(),
+    getScrollElement: () => parentRef,
     estimateSize: () => 40,
     overscan: 10,
   }))
@@ -41,7 +41,7 @@ export function VirtualDemo() {
         </p>
 
         <div
-          ref={(el: HTMLElement | null) => parentRef.set(el)}
+          ref={(el: HTMLElement | null) => { parentRef = el }}
           data-testid="virtual-scroll"
           style="height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px"
         >

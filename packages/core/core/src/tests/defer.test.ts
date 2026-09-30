@@ -129,6 +129,31 @@ describe('Defer — when (signal-driven)', () => {
     }
   })
 
+  test('does not console.error in production when chunk() rejects, but still throws', async () => {
+    // Line-level: the `.catch` handler's dev-mode console.error is gated on
+    // `process.env.NODE_ENV !== 'production'`. In production it must skip
+    // the log entirely while still recording the failure (Failed.set) so
+    // the render thunk still throws — Suspense-style error propagation must
+    // not silently swallow the rejection just because logging is off.
+    const origNodeEnv = process.env.NODE_ENV
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    process.env.NODE_ENV = 'production'
+    try {
+      const flag = signal(true)
+      const vnode = Defer<Props>({
+        chunk: () => Promise.reject(new Error('prod boom')),
+        when: flag,
+      })
+      await new Promise((r) => setTimeout(r, 0))
+      expect(() => getRenderThunk(vnode)()).toThrow('prod boom')
+      expect(errorSpy).not.toHaveBeenCalled()
+    } finally {
+      if (origNodeEnv === undefined) delete (process.env as { NODE_ENV?: string }).NODE_ENV
+      else process.env.NODE_ENV = origNodeEnv
+      errorSpy.mockRestore()
+    }
+  })
+
   test('renders default <Comp /> when children render-prop omitted', async () => {
     const Inner: ComponentFn = () => h('div', null, 'no-children-prop')
     const flag = signal(true)

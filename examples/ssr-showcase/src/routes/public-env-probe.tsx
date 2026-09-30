@@ -9,21 +9,21 @@
  *     ZERO_PUBLIC_ security boundary holds in a real build).
  */
 import { onMount } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { publicEnv } from '@pyreon/zero/env'
 
 export default function PublicEnvProbe() {
   const pub = publicEnv()
-  const clientRead = signal('(client not mounted)')
+  let clientRead = state('(client not mounted)')
   onMount(() => {
     // onMount runs ONLY on the client — proves the CLIENT bundle has the value.
-    clientRead.set(publicEnv().TEST_VAR ?? '(missing on client)')
+    clientRead = publicEnv().TEST_VAR ?? '(missing on client)'
   })
   return (
     <main data-testid="public-env-probe">
       <h1>Public Env Probe</h1>
       <p data-testid="pe-ssr">{pub.TEST_VAR ?? '(missing)'}</p>
-      <p data-testid="pe-client">{() => clientRead()}</p>
+      <p data-testid="pe-client">{() => clientRead}</p>
     </main>
   )
 }

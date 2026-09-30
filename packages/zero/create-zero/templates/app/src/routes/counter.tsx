@@ -1,5 +1,5 @@
 import { useHead } from "@pyreon/head"
-import { computed, signal } from "@pyreon/reactivity"
+import { derived, state } from "@pyreon/core/plain"
 
 export const meta = {
   title: "Counter — Pyreon Zero",
@@ -9,9 +9,11 @@ export const meta = {
 export default function Counter() {
   useHead({ title: meta.title })
 
-  const count = signal(0)
-  const doubled = computed(() => count() * 2)
-  const isEven = computed(() => count() % 2 === 0)
+  // Plain Mode: reactive state reads and writes like ordinary variables —
+  // the compiler turns them into fine-grained signals.
+  let count = state(0)
+  const doubled = derived(count * 2)
+  const isEven = derived(count % 2 === 0)
 
   return (
     <>
@@ -25,31 +27,29 @@ export default function Counter() {
       </div>
 
       <div class="counter-demo">
-        {/* Signal auto-call: just write {count} — the compiler adds () for you */}
         <div class="counter-display">{count}</div>
 
         <div class="counter-controls">
           <button
             type="button"
             class="btn btn-secondary"
-            onClick={() => count.update((n) => n - 1)}
+            onClick={() => { count-- }}
           >
             -
           </button>
-          <button type="button" class="btn btn-primary" onClick={() => count.set(0)}>
+          <button type="button" class="btn btn-primary" onClick={() => { count = 0 }}>
             Reset
           </button>
           <button
             type="button"
             class="btn btn-secondary"
-            onClick={() => count.update((n) => n + 1)}
+            onClick={() => { count++ }}
           >
             +
           </button>
         </div>
 
         <div class="counter-meta">
-          {/* No () needed — signals and computeds are auto-called in JSX */}
           <div>
             count → <strong>{count}</strong>
           </div>
@@ -57,31 +57,26 @@ export default function Counter() {
             doubled → <strong>{doubled}</strong>
           </div>
           <div>
-            {/* Inside a ternary the signal must be CALLED — auto-call only
-                rewrites a bare `{isEven}` child, not `isEven` used as a
-                condition. `{() => isEven() ? ...}` keeps it reactive. */}
-            isEven → <strong>{() => (isEven() ? "true" : "false")}</strong>
+            isEven → <strong>{isEven ? "true" : "false"}</strong>
           </div>
         </div>
       </div>
 
       <div class="code-block" style="max-width: 520px; margin: var(--space-2xl) auto 0;">
         <div class="code-block-header">
-          <span>counter.tsx — signal auto-call</span>
+          <span>counter.tsx — plain JavaScript, fully reactive</span>
         </div>
         <pre>
           <code>
-            <span class="kw">const</span> <span class="fn">count</span> ={" "}
-            <span class="fn">signal</span>(<span class="str">0</span>)
+            <span class="kw">let</span> <span class="fn">count</span> ={" "}
+            <span class="fn">state</span>(<span class="str">0</span>)
             <span class="kw">const</span> <span class="fn">doubled</span> ={" "}
-            <span class="fn">computed</span>(() =&gt; <span class="fn">count</span>() * <span class="str">2</span>)
+            <span class="fn">derived</span>(<span class="fn">count</span> * <span class="str">2</span>)
             {"\n"}
-            <span class="cm">{"// Plain JS — no () needed in JSX:"}</span>
-            <span class="tag">&lt;div&gt;</span>
-            {"{"}count{"}"} × 2 = {"{"}doubled{"}"}
-            <span class="tag">&lt;/div&gt;</span>
+            <span class="cm">{"// Write it like a normal variable:"}</span>
+            <span class="fn">count</span>++
             {"\n"}
-            <span class="cm">{"// Compiler auto-calls signals for you ✓"}</span>
+            <span class="cm">{"// …and every place that reads it updates ✓"}</span>
           </code>
         </pre>
       </div>

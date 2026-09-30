@@ -1,4 +1,4 @@
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { Switch, Title } from '@pyreon/ui-components'
 
 function SwitchTrack(props: { checked: boolean }) {
@@ -10,12 +10,12 @@ function SwitchTrack(props: { checked: boolean }) {
 }
 
 function SwitchItem(props: { label: string }) {
-  const on = signal(false)
+  let on = state(false)
 
   return (
     <div style="display: flex; align-items: center; gap: 12px;">
-      <Switch checked={on()} onChange={(v: boolean) => on.set(v)}>
-        <SwitchTrack checked={on()} />
+      <Switch checked={on} onChange={(v: boolean) => { on = v }}>
+        <SwitchTrack checked={on} />
       </Switch>
       <span style="font-size: 14px;">{props.label}</span>
     </div>
@@ -23,17 +23,17 @@ function SwitchItem(props: { label: string }) {
 }
 
 export function SwitchDemo() {
-  const enabled = signal(false)
+  let enabled = state(false)
 
   return (
     <div>
       <Title size="h2" style="margin-bottom: 24px">Switch</Title>
 
       <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px;">
-        <Switch checked={enabled()} onChange={(v: boolean) => enabled.set(v)}>
-          <SwitchTrack checked={enabled()} />
+        <Switch checked={enabled} onChange={(v: boolean) => { enabled = v }}>
+          <SwitchTrack checked={enabled} />
         </Switch>
-        <span style="font-size: 14px;">{() => enabled() ? 'On' : 'Off'}</span>
+        <span style="font-size: 14px;">{() => enabled ? 'On' : 'Off'}</span>
       </div>
 
       <Title size="h3" style="margin-bottom: 12px">Multiple switches</Title>

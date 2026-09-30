@@ -1,4 +1,4 @@
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { For, onMount } from '@pyreon/core'
 
 const FAKE_COMMENTS = [
@@ -8,11 +8,11 @@ const FAKE_COMMENTS = [
 ]
 
 export default function VisibleComments() {
-  const comments = signal<typeof FAKE_COMMENTS>([])
+  let comments = state.raw<typeof FAKE_COMMENTS>([])
   onMount(() => {
     // Simulate a network request when the island hydrates (fires only when the
     // island scrolls into view).
-    const id = setTimeout(() => comments.set(FAKE_COMMENTS), 50)
+    const id = setTimeout(() => { comments = FAKE_COMMENTS }, 50)
     return () => clearTimeout(id)
   })
   return (
@@ -22,7 +22,7 @@ export default function VisibleComments() {
     >
       <strong>Comments (loaded on visible):</strong>
       <ul data-testid="visible-comments-list">
-        <For each={() => comments()} by={(c) => c.id}>
+        <For each={() => comments} by={(c) => c.id}>
           {(c) => (
             <li>
               <em>{c.author}</em>: {c.body}

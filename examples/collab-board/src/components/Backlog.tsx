@@ -1,5 +1,5 @@
 import { For } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { useVirtualizer } from '@pyreon/virtual'
 import { canEdit } from '../state/permissions'
 import { type BoardDoc, type Card, newCardId } from '../sync/board-doc'
@@ -15,11 +15,11 @@ const ROW_HEIGHT = 36
  */
 export function Backlog(props: { board: BoardDoc }) {
   const backlog = props.board.backlog
-  const scrollEl = signal<HTMLElement | null>(null)
+  let scrollEl = state<HTMLElement | null>(null)
 
   const virtual = useVirtualizer<HTMLElement, HTMLElement>(() => ({
     count: backlog().length,
-    getScrollElement: () => scrollEl(),
+    getScrollElement: () => scrollEl,
     estimateSize: () => ROW_HEIGHT,
     overscan: 8,
   }))
@@ -49,7 +49,7 @@ export function Backlog(props: { board: BoardDoc }) {
           + 1,000 cards
         </button>
       </div>
-      <div class="backlog-scroll" ref={(el) => scrollEl.set(el)} data-testid="backlog-scroll">
+      <div class="backlog-scroll" ref={(el) => { scrollEl = el }} data-testid="backlog-scroll">
         <div style={() => `height:${virtual.totalSize()}px;position:relative`}>
           <For each={() => virtual.virtualItems()} by={(item) => item.index}>
             {(item) => (

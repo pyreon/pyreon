@@ -1,5 +1,5 @@
 import { bindEditorToSignal, CodeEditor, createEditor, type SignalLike } from '@pyreon/code'
-import { signal } from '@pyreon/reactivity'
+import { state as plainState } from '@pyreon/core/plain'
 import { onMount } from '@pyreon/core'
 import type { FlowEdge, FlowNode } from '@pyreon/flow'
 import type { WorkflowNodeData } from './data/types'
@@ -46,7 +46,7 @@ interface FlowState {
  */
 export function JsonSidebar() {
   const flow = useFlowEditor().store
-  const parseError = signal<string | null>(null)
+  let parseError = plainState<string | null>(null)
 
   // SignalLike adapter — reads the live flow state when the binding
   // calls it (which subscribes the binding's effect to nodes() and
@@ -98,13 +98,13 @@ export function JsonSidebar() {
           throw new Error('Expected `nodes` and `edges` to be arrays')
         }
         // Successful parse — clear any prior error.
-        parseError.set(null)
+        parseError = null
         return {
           nodes: o.nodes as FlowNode<WorkflowNodeData>[],
           edges: o.edges as FlowEdge[],
         }
       },
-      onParseError: (err) => parseError.set(err.message),
+      onParseError: (err) => { parseError = err.message },
     })
     return () => binding.dispose()
   })
@@ -119,7 +119,7 @@ export function JsonSidebar() {
         <CodeEditor instance={editor} />
       </SidebarEditorFrame>
       {() => {
-        const err = parseError()
+        const err = parseError
         if (err) return <ParseError>✗ {err}</ParseError>
         return <ParseOk>✓ Valid — edits sync to canvas</ParseOk>
       }}

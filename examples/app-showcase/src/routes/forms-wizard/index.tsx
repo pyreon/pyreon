@@ -1,5 +1,5 @@
 import { onMount, onUnmount } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { AccountStep } from '../../sections/wizard/AccountStep'
 import { PreferencesStep } from '../../sections/wizard/PreferencesStep'
 import { ProfileStep } from '../../sections/wizard/ProfileStep'
@@ -44,13 +44,13 @@ import { snapshotWizard, trackPatches, useWizard } from '../../sections/wizard/w
  */
 export default function FormsWizardRoute() {
   const wizard = useWizard()
-  const patchCount = signal(0)
+  let patchCount = state(0)
 
   // Subscribe to state-tree patches so we can show the running count
   // in the bottom audit log. Cleanup is registered with the component
   // so the listener disposes on unmount.
   onMount(() => {
-    const unsubscribe = trackPatches(wizard, (n) => patchCount.set(n))
+    const unsubscribe = trackPatches(wizard, (n) => { patchCount = n })
     onUnmount(unsubscribe)
   })
 
@@ -103,7 +103,7 @@ export default function FormsWizardRoute() {
 
       <PatchLog>
         <span>State-tree patches captured</span>
-        <strong>{() => `${patchCount()} edit${patchCount() === 1 ? '' : 's'}`}</strong>
+        <strong>{() => `${patchCount} edit${patchCount === 1 ? '' : 's'}`}</strong>
       </PatchLog>
     </WizardPage>
   )
