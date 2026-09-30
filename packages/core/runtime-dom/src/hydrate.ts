@@ -26,6 +26,9 @@ import {
   PortalSymbol,
   reportError,
   runWithHooks,
+  Suspense,
+  SuspenseBoundaryContext,
+  useContext,
 } from '@pyreon/core'
 import {
   effectScope,
@@ -36,6 +39,7 @@ import {
   setCurrentScope,
 } from '@pyreon/reactivity'
 import { setupDelegation } from './delegate'
+import { attachSuspenseBoundary } from './suspense-boundary'
 import { installDevTools } from './devtools'
 import { warnHydrationMismatch } from './hydration-debug'
 import { bindPolymorphicText, mountChild } from './mount'
@@ -1724,9 +1728,40 @@ function hydrateComponent(
       if (endMarker?.parentNode) endMarker.parentNode.removeChild(endMarker)
     }
   } else if (output != null) {
+    // A `<Suspense>` delimits the range it hydrated so it can move it
+    // off-screen when a descendant mounted LATER suspends it (see
+    // `attachSuspenseBoundary`). The server output carries no such markers —
+    // they are inserted around what the walk claimed, so parity is untouched.
+    const boundaryStart = vnode.type === Suspense ? document.createComment('suspense') : null
+    if (boundaryStart !== null) parent.insertBefore(boundaryStart, domNode ?? anchor)
     const [childCleanup, next] = hydrateChild(output, domNode, parent, anchor, path)
     subtreeCleanup = childCleanup
     nextDom = next
+    if (boundaryStart !== null) {
+      const boundaryEnd = document.createComment('/suspense')
+      // The range ends at `next`. With no `next` the walk consumed everything
+      // to the parent's end, and `anchor` only delimits that end while it is
+      // still a LATER live sibling. `hydrateMountHole` passes the hole's cursor
+      // as both `domNode` AND `anchor` — for a trailing hole that is the node
+      // the walk just started at (and range adoption may have REMOVED it), so
+      // inserting before it either throws `NotFoundError` or lands the end
+      // marker ahead of the content. Append in that case: a hole is trailing.
+      const endRef =
+        next ?? (anchor !== null && anchor !== domNode && anchor.parentNode === parent ? anchor : null)
+      parent.insertBefore(boundaryEnd, endRef)
+      const boundary = useContext(SuspenseBoundaryContext)
+      const detach =
+        boundary !== null
+          ? attachSuspenseBoundary(boundary, boundaryStart, boundaryEnd, mountChild)
+          : () => {
+              boundaryStart.remove()
+              boundaryEnd.remove()
+            }
+      subtreeCleanup = () => {
+        childCleanup()
+        detach()
+      }
+    }
   }
 
   // Fire onMount hooks; effects created inside are tracked by the scope via runInScope

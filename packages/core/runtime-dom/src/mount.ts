@@ -18,6 +18,9 @@ import {
   propagateError,
   reportError,
   runWithHooks,
+  Suspense,
+  SuspenseBoundaryContext,
+  useContext,
 } from '@pyreon/core'
 import {
   effectScope,
@@ -32,6 +35,7 @@ import { setupDelegation } from './delegate'
 import { registerComponent, unregisterComponent } from './devtools'
 import { _takePendingForAdoption, mountFor, mountKeyedList, mountReactive } from './nodes'
 import { applyProps, applySelectValueProp } from './props'
+import { attachSuspenseBoundary } from './suspense-boundary'
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
@@ -651,6 +655,10 @@ function mountComponent(
   // component" path. Nothing visible renders during the await — use lazy() +
   // Suspense if you need a fallback.
   if (output instanceof Promise) {
+    // Below a `<Suspense>` (at any depth), an async component suspends the
+    // boundary until it settles — the same contract `lazy()` follows. Resolved
+    // with the component's own scope as owner, so the NEAREST boundary answers.
+    useContext(SuspenseBoundaryContext)?.register(output)
     const placeholder = document.createComment('async')
     parent.insertBefore(placeholder, anchor)
     let resolvedCleanup: Cleanup = noop
@@ -689,8 +697,27 @@ function mountComponent(
   }
 
   let subtreeCleanup: Cleanup = noop
+  // A `<Suspense>` delimits its output so it can move it off-screen while a
+  // descendant loads (see `attachSuspenseBoundary`).
+  const boundaryEnd = vnode.type === Suspense ? document.createComment('/suspense') : null
+  const boundaryStart = boundaryEnd !== null ? document.createComment('suspense') : null
+  if (boundaryEnd !== null) {
+    parent.insertBefore(boundaryStart!, anchor)
+    parent.insertBefore(boundaryEnd, anchor)
+  }
   try {
-    subtreeCleanup = output != null ? mountChild(output, parent, anchor) : noop
+    subtreeCleanup = output != null ? mountChild(output, parent, boundaryEnd ?? anchor) : noop
+    if (boundaryEnd !== null) {
+      const boundary = useContext(SuspenseBoundaryContext)
+      if (boundary !== null) {
+        const detach = attachSuspenseBoundary(boundary, boundaryStart!, boundaryEnd, mountChild)
+        const inner = subtreeCleanup
+        subtreeCleanup = () => {
+          inner()
+          detach()
+        }
+      }
+    }
   } catch (err) {
     if (process.env.NODE_ENV !== 'production') _mountingStack!.pop()
     scope.stop()

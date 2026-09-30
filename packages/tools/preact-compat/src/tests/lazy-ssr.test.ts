@@ -150,3 +150,26 @@ describe('preact-compat — hydration while the CLIENT chunk is still loading', 
   }
   }
 })
+
+describe('preact-compat — a NESTED async descendant suspends the nearest <Suspense>', () => {
+  const nested = (L: ComponentFn<{ who: string }>, who: string) =>
+    jsx('main', {
+      children: jsx(asType(Suspense), {
+        fallback: jsx('i', { class: 'fb', children: 'loading' }),
+        children: jsx('section', { class: 'wrap', children: jsx('div', { children: jsx(asType(L), { who }) }) }),
+      }),
+    })
+
+  it('shows the fallback until the nested chunk lands, then the content (mounted once)', async () => {
+    const c = document.createElement('div')
+    document.body.appendChild(c)
+    mount(nested(slowLazy(10), 'n'), c)
+    expect(c.querySelector('.fb')).not.toBeNull()
+    expect(c.querySelector('section.wrap')).toBeNull()
+    await tick(40)
+    expect(c.querySelector('.fb')).toBeNull()
+    expect(c.querySelector('section.wrap p.q')?.textContent).toBe('n:st')
+    expect(c.querySelectorAll('section.wrap').length).toBe(1)
+    c.remove()
+  })
+})

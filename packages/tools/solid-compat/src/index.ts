@@ -34,6 +34,7 @@ import {
   onMount as pyreonOnMount,
   onUnmount as pyreonOnUnmount,
   provide as pyreonProvide,
+  SuspenseBoundaryContext,
   useContext as pyreonUseContext,
   Show,
   Suspense,
@@ -530,7 +531,12 @@ export function lazy<P extends Props>(
     if (err) throw err
     // Solid starts loading on first render. Without this a lazy that no
     // `<Suspense>` asked about and nobody preloaded never loaded at all.
-    if (loaded.peek() === null) load().then(noopSettle, noopSettle)
+    if (loaded.peek() === null) {
+      const settled = load().then(noopSettle, noopSettle)
+      // Below a `<Suspense>` (at any depth): the boundary shows its fallback
+      // until this chunk lands, as Solid's resource-driven Suspense does.
+      pyreonUseContext(SuspenseBoundaryContext)?.register(settled)
+    }
     // Render REACTIVELY, like core's `lazy()`: a component body runs once, so
     // reading `loaded()` here would render a lazy mounted while loading as
     // nothing forever. The accessor also gives the server output a stable

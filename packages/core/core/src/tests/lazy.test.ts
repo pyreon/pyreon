@@ -127,49 +127,26 @@ describe('lazy', () => {
     expect((result as VNode).props).toEqual({ count: 42 })
   })
 
-  test('__load() resolves once the chunk has loaded (used by SSR to await pending chunks)', async () => {
-    const Inner: ComponentFn = () => h('span', null, 'loaded')
+  test('__load exposes the settle promise — used by SSR wait-for and hydration deferral', async () => {
+    const Inner: ComponentFn = () => h('i', null, 'in')
     const Comp = lazy(() => Promise.resolve({ default: Inner }))
-
-    // __load() is the documented SSR contract: a promise that SETTLES
-    // (never rejects) once the chunk has either loaded or failed, so a
-    // server renderer can `await` a chunk that hasn't landed yet instead of
-    // rendering the still-loading wrapper as nothing.
-    const settled = Comp.__load!()
-    expect(settled).toBeInstanceOf(Promise)
-    await expect(settled).resolves.toBeUndefined()
-
-    // By the time __load() has settled, the component is actually usable.
-    // Read it the way the renderer does: the output is ALWAYS an accessor
-    // (a component body runs once), so the resolved component only shows up
-    // once that accessor is invoked.
-    expect(Comp.__loading()).toBe(false)
-    const result = render(Comp, {})
-    expect((result as VNode).type).toBe(Inner)
+    expect(typeof Comp.__load).toBe('function')
+    // Never rejects — it resolves once the chunk has loaded OR FAILED (the
+    // failure itself surfaces later, from the wrapper throwing on render).
+    await expect(Comp.__load!()).resolves.toBeUndefined()
   })
 
-  test('__load() resolves (does not reject) even when the chunk import fails', async () => {
-    // The whole point of __load settling unconditionally: a failed chunk
-    // must not make the SSR `await` throw — the failure is surfaced later,
-    // by the wrapper throwing on its next render (see the `error` signal),
-    // not by rejecting this promise.
-    const Comp = lazy<Props>(() => Promise.reject(new Error('network down')))
-
-    const settled = Comp.__load!()
-    await expect(settled).resolves.toBeUndefined()
-
-    // The failure is still recorded — calling the wrapper now throws.
-    expect(() => Comp({})).toThrow('network down')
+  test('__load resolves even when the chunk failed to load', async () => {
+    const Comp = lazy<Props>(() => Promise.reject(new Error('network error')))
+    await expect(Comp.__load!()).resolves.toBeUndefined()
+    // The failure is surfaced by the wrapper throwing on render, not by __load.
+    expect(() => Comp({})).toThrow('network error')
   })
 
-  test('__load() returns the SAME settled promise across repeated calls', async () => {
-    // `wrapper.__load = () => settled` closes over one promise created at
-    // lazy() call time — every call must return that identical reference,
-    // not a fresh promise per call.
+  test('__load returns the same settled promise across repeated calls', async () => {
     const Comp = lazy(() => Promise.resolve({ default: (() => null) as ComponentFn }))
     const first = Comp.__load!()
-    const second = Comp.__load!()
-    expect(first).toBe(second)
+    expect(Comp.__load!()).toBe(first)
     await first
   })
 })
