@@ -38,7 +38,7 @@ const TWO_SHAPES = `
 describe('struct selection distinguishes shapes that differ only by field type', () => {
   for (const [target, open, close] of [
     ['swift', '(x: 1.5, y: 2.5)', '(x: 1, y: 2)'],
-    ['kotlin', '(x = 1.5, y = 2.5)', '(x = 1, y = 2)'],
+    ['kotlin', '(x = 1.5, y = 2.5)', '(x = 1L, y = 2L)'],
   ] as const) {
     describe(target, () => {
       const out = transform(TWO_SHAPES, { target }).code

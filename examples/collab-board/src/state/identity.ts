@@ -3,7 +3,7 @@
 // rule of thumb the showcase demonstrates: sync owns SHARED data; storage owns
 // PER-DEVICE data. Never put the same value in both.
 import { useColorScheme } from '@pyreon/hooks'
-import { effect } from '@pyreon/reactivity'
+import { effect } from '@pyreon/core/plain'
 import { type StorageSignal, useStorage } from '@pyreon/storage'
 
 export type Theme = 'light' | 'dark'

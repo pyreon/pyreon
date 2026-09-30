@@ -168,6 +168,77 @@ describe('useStream', () => {
     dispose()
   })
 
+  // The documented shape reads its inputs INSIDE `connect`
+  // (`openEventStream((c) => ep({ params: { room: props.room } }), …)`), and
+  // `connect` runs in the iterator's first step — not in the source call.
+  // That step must be tracked, or a changed input never reopens the stream
+  // (the web diverged from native here: the probe saw `a`, never `a,b`).
+  it("reads in the iterable's FIRST step are inputs: a change aborts and reopens", async () => {
+    const room = signal('a')
+    const connected: string[] = []
+    const aborts: Record<string, AbortSignal> = {}
+    const streams: Record<string, Pushable<string>> = {}
+    let s!: UseStreamResult<string>
+    const dispose = withProvider(() => {
+      s = useStream((ctx) => ({
+        // Nothing read in the source call itself — only in the first step,
+        // exactly like `openEventStream`'s lazy `connect`.
+        [Symbol.asyncIterator]: () => {
+          const r = room()
+          connected.push(r)
+          aborts[r] = ctx.signal
+          streams[r] = pushable<string>(ctx.signal)
+          return streams[r].iterable[Symbol.asyncIterator]()
+        },
+      }))
+    })
+    await streams.a?.started
+    streams.a?.push('a1')
+    await tick()
+    expect(s.events()).toEqual(['a1'])
+    room.set('b')
+    expect(connected).toEqual(['a', 'b'])
+    expect(aborts.a?.aborted).toBe(true)
+    expect(aborts.b?.aborted).toBe(false)
+    expect(s.events()).toEqual([])
+    streams.a?.push('a2') // the superseded stream must not write
+    streams.b?.push('b1')
+    await tick()
+    expect(s.events()).toEqual(['b1'])
+    dispose()
+    expect(aborts.b?.aborted).toBe(true)
+  })
+
+  it('reads AFTER the first await (a reconnect, a later event) are not inputs', async () => {
+    const token = signal('t1')
+    let opened = 0
+    const reads: string[] = []
+    const dispose = withProvider(() => {
+      useStream(() => ({
+        [Symbol.asyncIterator]: () => {
+          opened++
+          let step = 0
+          return {
+            next: async (): Promise<IteratorResult<string>> => {
+              await tick()
+              reads.push(token()) // a reconnect reading the current value
+              step++
+              return step > 3 ? { value: undefined as never, done: true } : { value: String(step), done: false }
+            },
+          }
+        },
+      }))
+    })
+    await tick()
+    token.set('t2')
+    await tick()
+    await tick()
+    await tick()
+    expect(opened).toBe(1)
+    expect(reads).toContain('t2')
+    dispose()
+  })
+
   it('a superseded stream ending or failing late changes nothing', async () => {
     const room = signal('a')
     const streams: Record<string, Pushable<string>> = {}

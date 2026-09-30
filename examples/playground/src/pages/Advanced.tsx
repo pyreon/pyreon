@@ -14,20 +14,21 @@ import {
   useContext,
 } from '@pyreon/core'
 import { useHead } from '@pyreon/head/use-head'
-import { batch, computed, effect, signal } from '@pyreon/reactivity'
+import { state, derived, signalOf } from '@pyreon/core/plain'
+import { batch, effect, untrack } from '@pyreon/reactivity'
 
 // ─── Code Block ──────────────────────────────────────────────────────────────
 // Collapsible source code viewer for each demo.
 
 function CodeBlock(props: { code: string }) {
-  const open = signal(false)
+  let open = state(false)
 
   return (
     <>
-      <button type="button" class="code-toggle" onClick={() => open.update((v) => !v)}>
-        {() => (open() ? '▾ Hide Source' : '▸ View Source')}
+      <button type="button" class="code-toggle" onClick={() => { open = !open }}>
+        {() => (open ? '▾ Hide Source' : '▸ View Source')}
       </button>
-      <Show when={() => open()}>
+      <Show when={() => open}>
         <pre class="code-block">{props.code}</pre>
       </Show>
     </>
@@ -38,20 +39,20 @@ function CodeBlock(props: { code: string }) {
 // Suspense shows a fallback while async content loads.
 
 function _SuspenseDemo() {
-  const shouldLoad = signal(false)
+  let shouldLoad = state(false)
 
   function AsyncContent() {
-    const data = signal<string | null>(null)
+    let data = state<string | null>(null)
     const loading = { __loading: true } as never
 
     onMount(() => {
       const timer = setTimeout(() => {
-        data.set('Loaded after 1.5s delay!')
+        data = 'Loaded after 1.5s delay!'
       }, 1500)
       return () => clearTimeout(timer)
     })
 
-    return () => (data() ? <p class="demo-value">{data()}</p> : loading)
+    return () => (data ? <p class="demo-value">{data}</p> : loading)
   }
 
   return (
@@ -60,10 +61,10 @@ function _SuspenseDemo() {
       <p class="demo-desc">
         Suspense shows fallback UI while async content loads. Click to trigger.
       </p>
-      <button type="button" onClick={() => shouldLoad.set(true)}>
-        {() => (shouldLoad() ? 'Loading...' : 'Load async content')}
+      <button type="button" onClick={() => { shouldLoad = true }}>
+        {() => (shouldLoad ? 'Loading...' : 'Load async content')}
       </button>
-      <Show when={() => shouldLoad()}>
+      <Show when={() => shouldLoad}>
         <Suspense fallback={<div class="demo-box">Loading content...</div>}>
           <AsyncContent />
         </Suspense>
@@ -97,10 +98,10 @@ function _SuspenseDemo() {
 // Catches errors in child component trees gracefully.
 
 function ErrorBoundaryDemo() {
-  const shouldError = signal(false)
+  let shouldError = state(false)
 
   function BrokenComponent() {
-    if (shouldError()) {
+    if (shouldError) {
       throw new Error('Component crashed!')
     }
     return <p>All good — no errors.</p>
@@ -119,7 +120,7 @@ function ErrorBoundaryDemo() {
             <button
               type="button"
               onClick={() => {
-                shouldError.set(false)
+                shouldError = false
                 reset()
               }}
             >
@@ -128,7 +129,7 @@ function ErrorBoundaryDemo() {
           </div>
         )}
       >
-        <button type="button" onClick={() => shouldError.set(true)}>
+        <button type="button" onClick={() => { shouldError = true }}>
           Trigger error
         </button>
         <BrokenComponent />
@@ -158,7 +159,7 @@ function ErrorBoundaryDemo() {
 // Renders content outside the component's DOM parent.
 
 function PortalDemo() {
-  const showModal = signal(false)
+  let showModal = state(false)
 
   return (
     <div class="demo-section">
@@ -166,19 +167,19 @@ function PortalDemo() {
       <p class="demo-desc">
         Portals render content into a different DOM node (like document.body for modals).
       </p>
-      <button type="button" onClick={() => showModal.set(true)}>
+      <button type="button" onClick={() => { showModal = true }}>
         Open Modal
       </button>
-      <Show when={() => showModal()}>
+      <Show when={() => showModal}>
         <Portal
           target={document.body}
           children={
             <div
               class="modal-overlay"
               role="dialog"
-              onClick={() => showModal.set(false)}
+              onClick={() => { showModal = false }}
               onKeyDown={(e: KeyboardEvent) => {
-                if (e.key === 'Escape') showModal.set(false)
+                if (e.key === 'Escape') showModal = false
               }}
             >
               {/* biome-ignore lint/a11y/noStaticElementInteractions: stop propagation */}
@@ -186,7 +187,7 @@ function PortalDemo() {
               <div class="modal-content" onClick={(e: MouseEvent) => e.stopPropagation()}>
                 <h4>Portal Modal</h4>
                 <p>This is rendered into document.body via Portal!</p>
-                <button type="button" onClick={() => showModal.set(false)}>
+                <button type="button" onClick={() => { showModal = false }}>
                   Close
                 </button>
               </div>
@@ -229,22 +230,22 @@ interface NotificationCtx {
 const NotificationContext = createContext<NotificationCtx>(null as never)
 
 function NotificationProvider(props: { children?: VNodeChild }) {
-  const notifications = signal<string[]>([])
-  const add = (msg: string) => notifications.update((list) => [...list.slice(-4), msg])
-  const clear = () => notifications.set([])
+  let notifications = state.raw<string[]>([])
+  const add = (msg: string) => { notifications = [...notifications.slice(-4), msg] }
+  const clear = () => { notifications = [] }
 
-  provide(NotificationContext, { notifications, add, clear })
+  provide(NotificationContext, { notifications: signalOf<typeof notifications>(notifications), add, clear })
   return props.children
 }
 
 function NotificationBell() {
   const ctx = useContext(NotificationContext)
-  const count = computed(() => ctx.notifications().length)
+  const count = derived(() => ctx.notifications().length)
 
   return (
     <span class="demo-meta">
-      Notifications: {() => count()}{' '}
-      {() => (count() > 0 ? `(${ctx.notifications().join(', ')})` : '')}
+      Notifications: {() => count}{' '}
+      {() => (count > 0 ? `(${ctx.notifications().join(', ')})` : '')}
     </span>
   )
 }
@@ -307,19 +308,19 @@ function NotificationBell() {
 // Requires an effect() that tracks the relevant signals.
 
 function UpdateHookDemo() {
-  const value = signal(0)
-  const updateCount = signal(0)
-  const lastUpdate = signal('')
-  const history = signal<number[]>([])
+  let value = state(0)
+  let updateCount = state(0)
+  let lastUpdate = state('')
+  let history = state.raw<number[]>([])
 
   // onUpdate fires after effect() re-runs — so we need an effect that tracks `value`
   effect(() => {
-    history.update((h) => [...h.slice(-9), value()])
+    history = ((h) => [...h.slice(-9), value])(untrack(() => history))
   })
 
   onUpdate(() => {
-    updateCount.update((n) => n + 1)
-    lastUpdate.set(new Date().toLocaleTimeString())
+    updateCount = updateCount + 1
+    lastUpdate = new Date().toLocaleTimeString()
   })
 
   return (
@@ -329,13 +330,13 @@ function UpdateHookDemo() {
         Fires after an effect() re-run settles. Useful for analytics, logging, or post-render work.
       </p>
       <div class="demo-row">
-        <button type="button" onClick={() => value.update((n) => n + 1)}>
-          Increment ({() => value()})
+        <button type="button" onClick={() => { value = value + 1 }}>
+          Increment ({() => value})
         </button>
       </div>
-      <p class="demo-meta">effect history: {() => history().join(' → ')}</p>
-      <p class="demo-meta">onUpdate fired: {() => updateCount()} times</p>
-      <p class="demo-meta">Last update: {() => lastUpdate() || 'never'}</p>
+      <p class="demo-meta">effect history: {() => history.join(' → ')}</p>
+      <p class="demo-meta">onUpdate fired: {() => updateCount} times</p>
+      <p class="demo-meta">Last update: {() => lastUpdate || 'never'}</p>
       <CodeBlock
         code={`const value = signal(0)
 const updateCount = signal(0)
@@ -360,15 +361,15 @@ onUpdate(() => {
 // Deep computed dependency chains with batch to show efficient propagation.
 
 function ComputedChainDemo() {
-  const a = signal(1)
-  const b = signal(2)
-  const sum = computed(() => a() + b())
-  const product = computed(() => a() * b())
-  const combined = computed(() => `${sum()} + ${product()} = ${sum() + product()}`)
-  const evalCount = signal(0)
-  const display = computed(() => {
-    evalCount.update((n) => n + 1)
-    return combined()
+  let a = state(1)
+  let b = state(2)
+  const sum = derived(() => a + b)
+  const product = derived(() => a * b)
+  const combined = derived(() => `${sum} + ${product} = ${sum + product}`)
+  let evalCount = state(0)
+  const display = derived(() => {
+    evalCount = ((n) => n + 1)(untrack(() => evalCount))
+    return combined
   })
 
   return (
@@ -378,18 +379,18 @@ function ComputedChainDemo() {
         Deep computed chains: a, b → sum, product → combined → display. Batch avoids glitches.
       </p>
       <div class="demo-row">
-        <button type="button" onClick={() => a.update((n) => n + 1)}>
-          a = {() => a()}
+        <button type="button" onClick={() => { a = a + 1 }}>
+          a = {() => a}
         </button>
-        <button type="button" onClick={() => b.update((n) => n + 1)}>
-          b = {() => b()}
+        <button type="button" onClick={() => { b = b + 1 }}>
+          b = {() => b}
         </button>
         <button
           type="button"
           onClick={() =>
             batch(() => {
-              a.update((n) => n + 1)
-              b.update((n) => n + 1)
+              a = a + 1
+              b = b + 1
             })
           }
         >
@@ -397,9 +398,9 @@ function ComputedChainDemo() {
         </button>
       </div>
       <p class="demo-value" style="font-size: 1.2rem">
-        {() => display()}
+        {() => display}
       </p>
-      <p class="demo-meta">display computed evaluations: {() => evalCount()}</p>
+      <p class="demo-meta">display computed evaluations: {() => evalCount}</p>
       <CodeBlock
         code={`const a = signal(1)
 const b = signal(2)
@@ -425,7 +426,7 @@ batch(() => {
 function RefDemo() {
   const inputRef = createRef<HTMLInputElement>()
   const canvasRef = createRef<HTMLCanvasElement>()
-  const clickCount = signal(0)
+  let clickCount = state(0)
 
   onMount(() => {
     const canvas = canvasRef.current
@@ -443,11 +444,11 @@ function RefDemo() {
   })
 
   const drawOnCanvas = () => {
-    clickCount.update((n) => n + 1)
+    clickCount = clickCount + 1
     const ctx = canvasRef.current?.getContext('2d')
     if (!ctx) return
     const colors = ['#7c6af7', '#f06060', '#4ecdc4', '#ffe66d']
-    ctx.fillStyle = colors[clickCount() % colors.length] as string
+    ctx.fillStyle = colors[clickCount % colors.length] as string
     const x = Math.random() * 160 + 20
     const y = Math.random() * 30 + 15
     ctx.beginPath()
@@ -467,7 +468,7 @@ function RefDemo() {
       </div>
       <div class="demo-row">
         <button type="button" onClick={drawOnCanvas}>
-          Draw Circle ({() => clickCount()})
+          Draw Circle ({() => clickCount})
         </button>
         <button
           type="button"
@@ -479,7 +480,7 @@ function RefDemo() {
             ctx.fillStyle = '#7c6af7'
             ctx.font = '14px monospace'
             ctx.fillText('Canvas cleared!', 35, 35)
-            clickCount.set(0)
+            clickCount = 0
           }}
         >
           Clear
@@ -520,40 +521,40 @@ onMount(() => {
 
 function DynamicListDemo() {
   let nextId = 1
-  const items = signal(
+  let items = state(
     Array.from({ length: 5 }, (_, i) => ({ id: nextId++, label: `Item ${i + 1}` })),
   )
-  const opLog = signal<string[]>([])
+  let opLog = state.raw<string[]>([])
 
-  const log = (msg: string) => opLog.update((l) => [...l.slice(-4), msg])
+  const log = (msg: string) => { opLog = [...opLog.slice(-4), msg] }
 
   const prepend = () => {
     const item = { id: nextId++, label: `Item ${nextId - 1}` }
-    items.update((list) => [item, ...list])
+    items = [item, ...items]
     log(`Prepended ${item.label}`)
   }
 
   const append = () => {
     const item = { id: nextId++, label: `Item ${nextId - 1}` }
-    items.update((list) => [...list, item])
+    items = [...items, item]
     log(`Appended ${item.label}`)
   }
 
   const removeFirst = () => {
-    const first = items()[0]
+    const first = items[0]
     if (first) {
-      items.update((list) => list.slice(1))
+      items = items.slice(1)
       log(`Removed ${first.label}`)
     }
   }
 
   const reverse = () => {
-    items.update((list) => [...list].reverse())
+    items = [...items].reverse()
     log('Reversed list')
   }
 
   const swap = () => {
-    items.update((list) => {
+    items = ((list) => {
       if (list.length < 2) return list
       const copy = [...list]
       const i = 0
@@ -562,7 +563,7 @@ function DynamicListDemo() {
       copy[j] = copy[i] as (typeof copy)[number]
       copy[i] = tmp
       return copy
-    })
+    })(untrack(() => items))
     log('Swapped first & last')
   }
 
@@ -591,7 +592,7 @@ function DynamicListDemo() {
       </div>
       <ul class="user-list">
         <For
-          each={() => items()}
+          each={() => items}
           by={(item) => item.id}
           children={(item) => (
             <li class="user-row">
@@ -600,7 +601,7 @@ function DynamicListDemo() {
               <button
                 type="button"
                 class="remove"
-                onClick={() => items.update((list) => list.filter((i) => i.id !== item.id))}
+                onClick={() => { items = ((list) => list.filter((i) => i.id !== item.id))(untrack(() => items)) }}
               >
                 ×
               </button>
@@ -608,8 +609,8 @@ function DynamicListDemo() {
           )}
         />
       </ul>
-      <p class="demo-meta">Count: {() => items().length}</p>
-      <pre class="log-output">{() => opLog().join('\n')}</pre>
+      <p class="demo-meta">Count: {() => items.length}</p>
+      <pre class="log-output">{() => opLog.join('\n')}</pre>
       <CodeBlock
         code={`const items = signal([
   { id: 1, label: "Item 1" },
@@ -640,14 +641,14 @@ items.update((list) => [...list].reverse())
 // Demonstrates effect lifecycle, cleanup, and timer management.
 
 function EffectCleanupDemo() {
-  const interval = signal(1000)
-  const ticks = signal(0)
-  const running = signal(true)
+  let interval = state(1000)
+  let ticks = state(0)
+  let running = state(true)
 
   effect(() => {
-    if (!running()) return
-    const ms = interval()
-    const id = setInterval(() => ticks.update((n) => n + 1), ms)
+    if (!running) return
+    const ms = interval
+    const id = setInterval(() => { ticks = ((n) => n + 1)(untrack(() => ticks)) }, ms)
     return () => clearInterval(id)
   })
 
@@ -657,26 +658,26 @@ function EffectCleanupDemo() {
       <p class="demo-desc">
         Effects return cleanup functions. Changing interval auto-clears the old timer.
       </p>
-      <p class="demo-value">{() => ticks()}</p>
+      <p class="demo-value">{() => ticks}</p>
       <div class="demo-row">
-        <button type="button" onClick={() => interval.set(250)}>
+        <button type="button" onClick={() => { interval = 250 }}>
           250ms
         </button>
-        <button type="button" onClick={() => interval.set(1000)}>
+        <button type="button" onClick={() => { interval = 1000 }}>
           1s
         </button>
-        <button type="button" onClick={() => interval.set(2000)}>
+        <button type="button" onClick={() => { interval = 2000 }}>
           2s
         </button>
-        <button type="button" onClick={() => running.update((r) => !r)}>
-          {() => (running() ? 'Pause' : 'Resume')}
+        <button type="button" onClick={() => { running = !running }}>
+          {() => (running ? 'Pause' : 'Resume')}
         </button>
-        <button type="button" onClick={() => ticks.set(0)}>
+        <button type="button" onClick={() => { ticks = 0 }}>
           Reset
         </button>
       </div>
       <p class="demo-meta">
-        Interval: {() => interval()}ms | Running: {() => String(running())}
+        Interval: {() => interval}ms | Running: {() => String(running)}
       </p>
       <CodeBlock
         code={`const interval = signal(1000)
@@ -705,7 +706,7 @@ effect(() => {
 // Tab-based view switching with Show.
 
 function TabSwitchDemo() {
-  const tab = signal<'info' | 'settings' | 'data'>('info')
+  let tab = state<'info' | 'settings' | 'data'>('info')
 
   return (
     <div class="demo-section">
@@ -716,35 +717,35 @@ function TabSwitchDemo() {
       <div class="demo-row">
         <button
           type="button"
-          style={() => (tab() === 'info' ? 'border-color: var(--accent)' : '')}
-          onClick={() => tab.set('info')}
+          style={() => (tab === 'info' ? 'border-color: var(--accent)' : '')}
+          onClick={() => { tab = 'info' }}
         >
           Info
         </button>
         <button
           type="button"
-          style={() => (tab() === 'settings' ? 'border-color: var(--accent)' : '')}
-          onClick={() => tab.set('settings')}
+          style={() => (tab === 'settings' ? 'border-color: var(--accent)' : '')}
+          onClick={() => { tab = 'settings' }}
         >
           Settings
         </button>
         <button
           type="button"
-          style={() => (tab() === 'data' ? 'border-color: var(--accent)' : '')}
-          onClick={() => tab.set('data')}
+          style={() => (tab === 'data' ? 'border-color: var(--accent)' : '')}
+          onClick={() => { tab = 'data' }}
         >
           Data
         </button>
       </div>
-      <Show when={() => tab() === 'info'}>
+      <Show when={() => tab === 'info'}>
         <div class="demo-box">
           <p>This is the info panel. Other tabs are not in the DOM.</p>
         </div>
       </Show>
-      <Show when={() => tab() === 'settings'}>
+      <Show when={() => tab === 'settings'}>
         <SettingsPanel />
       </Show>
-      <Show when={() => tab() === 'data'}>
+      <Show when={() => tab === 'data'}>
         <DataPanel />
       </Show>
       <CodeBlock
@@ -768,8 +769,8 @@ function TabSwitchDemo() {
 }
 
 function SettingsPanel() {
-  const theme = signal('dark')
-  const fontSize = signal(15)
+  let theme = state('dark')
+  let fontSize = state(15)
 
   onMount(() => undefined)
   onUnmount(() => undefined)
@@ -781,21 +782,21 @@ function SettingsPanel() {
         <label>
           Theme:
           <select
-            value={() => theme()}
-            onChange={(e: Event) => theme.set((e.target as HTMLSelectElement).value)}
+            value={() => theme}
+            onChange={(e: Event) => { theme = (e.target as HTMLSelectElement).value }}
           >
             <option value="dark">Dark</option>
             <option value="light">Light</option>
           </select>
         </label>
         <label>
-          Font: {() => fontSize()}px
+          Font: {() => fontSize}px
           <input
             type="range"
             min="12"
             max="24"
-            value={() => fontSize()}
-            onInput={(e) => fontSize.set(Number(e.currentTarget.value))}
+            value={() => fontSize}
+            onInput={(e) => { fontSize = Number(e.currentTarget.value) }}
           />
         </label>
       </div>
@@ -804,30 +805,30 @@ function SettingsPanel() {
 }
 
 function DataPanel() {
-  const rows = signal(
+  let rows = state(
     Array.from({ length: 20 }, (_, i) => ({
       id: i + 1,
       name: `Row ${i + 1}`,
       value: Math.floor(Math.random() * 100),
     })),
   )
-  const sortDir = signal<'asc' | 'desc'>('asc')
+  let sortDir = state<'asc' | 'desc'>('asc')
 
-  const sorted = computed(() =>
-    [...rows()].sort((a, b) => (sortDir() === 'asc' ? a.value - b.value : b.value - a.value)),
+  const sorted = derived(() =>
+    [...rows].sort((a, b) => (sortDir === 'asc' ? a.value - b.value : b.value - a.value)),
   )
 
   return (
     <div class="demo-box">
       <p>
-        Data table — {() => rows().length} rows, sorted {() => sortDir()}.
+        Data table — {() => rows.length} rows, sorted {() => sortDir}.
       </p>
-      <button type="button" onClick={() => sortDir.update((d) => (d === 'asc' ? 'desc' : 'asc'))}>
+      <button type="button" onClick={() => { sortDir = (sortDir === 'asc' ? 'desc' : 'asc') }}>
         Toggle Sort
       </button>
       <ul class="user-list" style="max-height: 200px; overflow-y: auto">
         <For
-          each={() => sorted()}
+          each={() => sorted}
           by={(r) => r.id}
           children={(row) => (
             <li class="user-row">

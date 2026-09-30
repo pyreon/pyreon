@@ -257,17 +257,24 @@ export function isConsumerAffectingFile(
 
 /**
  * A package's vitest test-runner config (`vitest.config.ts`,
- * `vitest.browser.config.ts`, `vitest.node.config.ts`, …). These are dev
- * tooling — no package ships a vitest config as its product, so they are never
- * in a package's published `files` and a change to one never reaches npm
- * consumers (same non-shipping rationale as test files + the gen-docs manifest).
+ * `vitest.browser.config.ts`, `vitest.node.config.ts`,
+ * `vitest.browser.engines.config.ts`, …). These are dev tooling — no package
+ * ships a vitest config as its product, so they are never in a package's
+ * published `files` and a change to one never reaches npm consumers (same
+ * non-shipping rationale as test files + the gen-docs manifest).
+ *
+ * The infix accepts MULTIPLE dot-separated segments (`*`, not `?`) — a single
+ * segment matched `vitest.browser.config.ts` but not a further-qualified name
+ * like `vitest.browser.engines.config.ts` (the cross-engine browser suite
+ * opt-in), which fell through to "consumer-affecting" and demanded a
+ * changeset for a file with zero runtime impact.
  *
  * @internal exported for unit testing
  */
 export function isTestRunnerConfigPath(file: string): boolean {
   const norm = file.split('\\').join('/')
   const base = norm.slice(norm.lastIndexOf('/') + 1)
-  return /^vitest(\.[\w-]+)?\.config\.(c|m)?[jt]s$/.test(base)
+  return /^vitest(\.[\w-]+)*\.config\.(c|m)?[jt]s$/.test(base)
 }
 
 /**

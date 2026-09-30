@@ -36,8 +36,8 @@ export function App() {
     const r = kotlin(APPEND)
     // The OUTER literal resolves by name-set to the class the initial value
     // synthesized — not to a fresh `__Obj1`, and not to a bare tuple.
-    expect(r.code).toContain('data class __Obj0(var id: Int, var text: String, var done: Boolean)')
-    expect(r.code).toContain('todos = (todos + listOf(__Obj0(id = 3, text =')
+    expect(r.code).toContain('data class __Obj0(var id: Long, var text: String, var done: Boolean)')
+    expect(r.code).toContain('todos = (todos + listOf(__Obj0(id = 3L, text =')
     expect(r.code).not.toContain('listOf((id = 3')
   })
 
@@ -57,7 +57,7 @@ export function App() {
     const clean = APPEND.replace(`{ a: raw, b: [1, 'x'] }`, 'raw')
     const r = kotlin(clean)
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('__Obj0(id = 3, text = raw, done = false)')
+    expect(r.code).toContain('__Obj0(id = 3L, text = raw, done = false)')
   })
 })
 

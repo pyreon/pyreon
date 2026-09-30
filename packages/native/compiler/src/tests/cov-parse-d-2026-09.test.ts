@@ -69,7 +69,7 @@ describe('parse.ts — lowerUtilityType: lowered forms', () => {
     const s = swift(fnWithParams('o: NoInfer<number>, n: Record<string, number>'))
     expect(sigLine(s.code)).toContain('_ o: Int, _ n: [String: Int]')
     const k = kotlin(fnWithParams('n: Record<string, number>'))
-    expect(sigLine(k.code)).toContain('n: MutableMap<String, Int>')
+    expect(sigLine(k.code)).toContain('n: MutableMap<String, Long>')
   })
 })
 
@@ -279,7 +279,7 @@ describe('parse.ts — parseArrowParams: parameter shapes', () => {
 
   it('an un-annotated defaulted param crosses with its default', () => {
     const r = kotlin(`${PRIM}const f = (x = 2): number => x * 2\nexport function App(){ return <Text>{f()}</Text> }`)
-    expect(r.code).toMatch(/fun f\(x: \w+ = 2\): Int/)
+    expect(r.code).toMatch(/fun f\(x: \w+ = 2L\): Long/)
   })
 
   it('an un-annotated destructured param still synthesizes its placeholder', () => {
@@ -307,7 +307,7 @@ describe('parse.ts — parseExpr: rare expression arms', () => {
 
   it('`[] as Foo` (non-array cast) keeps the bare empty array; `x satisfies T` is transparent', () => {
     const r = kotlin(comp('const h = [] as Foo\n const i = [1] satisfies number[]'))
-    expect(r.code).toContain('val i = listOf(1)')
+    expect(r.code).toContain('val i = listOf(1L)')
     expect(r.code).not.toContain('emptyList<')
   })
 
@@ -344,7 +344,7 @@ describe('parse.ts — parseExpr: rare expression arms', () => {
 
   it('a scalar-seeded Set lowers (the positive control)', () => {
     const r = kotlin(comp('const s = new Set([1, 2])'))
-    expect(r.code).toContain('val s = (listOf(1, 2)).toMutableSet()')
+    expect(r.code).toContain('val s = (listOf(1L, 2L)).toMutableSet()')
   })
 
   it('a toast duration / announce politeness given as an IDENTIFIER is not baked in', () => {
@@ -535,14 +535,15 @@ describe('parse.ts — object literals and misc top-level recognizers', () => {
     expect(r.warnings.join('\n')).toContain('A numeric object key (`{ 1: … }`) is not supported')
   })
 
-  // #3717 (value-type-namespaces.ts) renames the VALUE (`Todo` -> `TodoValue`)
-  // instead of warning, so the value/type pair compiles warning-free.
-  it('defineFeature colliding with a same-named ENUM type alias is disambiguated, not warned', () => {
+  // A same-named ENUM type alias no longer warns: the value side is renamed
+  // (`TodoValue`) by the value/type namespace pass, so the pair compiles.
+  it('defineFeature colliding with a same-named ENUM type alias renames the value', () => {
     const r = swift(
       `${PRIM}import { defineFeature } from '@pyreon/feature'\ntype Todo = 'a' | 'b'\nconst Todo = defineFeature({ name: 'todo', schema: { id: 'string' } })\nexport function App(){ return <Text>x</Text> }`,
     )
-    expect(r.warnings).toEqual([])
-    expect(r.code).toContain('TodoValue')
+    expect(r.code).toContain('enum Todo: String')
+    expect(r.code).toContain('let TodoValue = PyreonFeature_TodoValue.self')
+    expect(r.warnings.join('\n')).not.toContain('a type of the same name is declared')
   })
 
   it('styled(): an empty declaration value is skipped, the rest lowers', () => {
@@ -571,9 +572,9 @@ describe('parse.ts — refineReduceSeedFloats: sources it cannot resolve', () =>
     const r = kotlin(
       `${PRIM}import { signal } from '@pyreon/reactivity'\nexport function App(){ const a = signal<Foo[]>([]); const n = signal<number[]>([1]); return <>hello<Text>{String(a().reduce((acc, x) => acc + x.p, 0))}{n().reduce((acc, x) => acc + x, 0)}{String(mystery.reduce((acc, x) => acc + x, 0))}</Text></> }`,
     )
-    expect(r.code).toContain('a.fold(0, { acc, x -> acc + x.p })')
-    expect(r.code).toContain('n.fold(0, { acc, x -> acc + x })')
-    expect(r.code).toContain('mystery.fold(0, { acc, x -> acc + x })')
+    expect(r.code).toContain('a.fold(0L, { acc, x -> acc + x.p })')
+    expect(r.code).toContain('n.fold(0L, { acc, x -> acc + x })')
+    expect(r.code).toContain('mystery.fold(0L, { acc, x -> acc + x })')
     expect(r.code).not.toContain('fold(0.0')
   })
 

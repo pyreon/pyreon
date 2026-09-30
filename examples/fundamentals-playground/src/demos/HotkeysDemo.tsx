@@ -5,15 +5,15 @@ import {
   parseShortcut,
   registerHotkey,
 } from '@pyreon/hotkeys'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 
 export function HotkeysDemo() {
-  const log = signal<string[]>([])
-  const editorScope = signal(false)
-  const parsedResult = signal('')
+  let log = state.raw<string[]>([])
+  let editorScope = state(false)
+  let parsedResult = state('')
 
   const addLog = (msg: string) =>
-    log.update((l) => [...l.slice(-14), `${new Date().toLocaleTimeString()} — ${msg}`])
+    { log = [...log.slice(-14), `${new Date().toLocaleTimeString()} — ${msg}`] }
 
   // Global shortcuts
   registerHotkey('mod+k', () => addLog('mod+k: Open command palette'), {
@@ -115,25 +115,25 @@ export function HotkeysDemo() {
         <div class="row" style="margin-bottom: 8px">
           <button
             type="button"
-            class={editorScope() ? 'active' : ''}
+            class={editorScope ? 'active' : ''}
             onClick={() => {
-              if (editorScope()) {
+              if (editorScope) {
                 disableScope('editor')
-                editorScope.set(false)
+                editorScope = false
                 addLog('Editor scope disabled')
               } else {
                 enableScope('editor')
-                editorScope.set(true)
+                editorScope = true
                 addLog('Editor scope enabled')
               }
             }}
           >
-            {() => (editorScope() ? 'Disable Editor Scope' : 'Enable Editor Scope')}
+            {() => (editorScope ? 'Disable Editor Scope' : 'Enable Editor Scope')}
           </button>
           <span>
             Status:{' '}
-            <strong style={`color: ${editorScope() ? 'green' : 'red'}`}>
-              {() => (editorScope() ? 'Active' : 'Inactive')}
+            <strong style={`color: ${editorScope ? 'green' : 'red'}`}>
+              {() => (editorScope ? 'Active' : 'Inactive')}
             </strong>
           </span>
         </div>
@@ -196,26 +196,26 @@ export function HotkeysDemo() {
           onInput={(e: Event) => {
             const value = (e.target as HTMLInputElement).value
             if (!value) {
-              parsedResult.set('')
+              parsedResult = ''
               return
             }
             try {
               const combo = parseShortcut(value)
-              parsedResult.set(JSON.stringify(combo, null, 2))
+              parsedResult = JSON.stringify(combo, null, 2)
             } catch (err) {
-              parsedResult.set(`Error: ${(err as Error).message}`)
+              parsedResult = `Error: ${(err as Error).message}`
             }
           }}
           style="width: 100%; padding: 8px; margin-bottom: 8px"
         />
-        <pre style="font-size: 12px">{() => parsedResult() || 'Enter a shortcut above...'}</pre>
+        <pre style="font-size: 12px">{() => parsedResult || 'Enter a shortcut above...'}</pre>
       </div>
 
       <div class="section">
         <h3>Event Log</h3>
         <div class="log" style="min-height: 120px">
           {() =>
-            log().length === 0 ? 'Press keyboard shortcuts to see events here.' : log().join('\n')
+            log.length === 0 ? 'Press keyboard shortcuts to see events here.' : log.join('\n')
           }
         </div>
       </div>

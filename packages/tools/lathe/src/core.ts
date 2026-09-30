@@ -142,6 +142,7 @@ export {
   verifyNative,
   worstVerdict,
   type CompileFn,
+  type CompileFilesFn,
   type DeclarationVerdict,
   type FileVerdict,
   type NativeCompilers,

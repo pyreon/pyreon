@@ -26,7 +26,7 @@ describe.each(['swift', 'kotlin'] as const)('states on %s', (target) => {
     expect(r.code).toContain(`blurOpacity${sep}0.3`)
     // `selectedMode` becomes the host's pin state, fed into the spec's emphasis.
     expect(r.code).toContain('pyreonSelected')
-    expect(r.code).toMatch(/Emphasis\(highlight(: | = )-1, selected(: | = )/)
+    expect(r.code).toMatch(/Emphasis\(highlight(: | = )-1L?, selected(: | = )/)
     if (target === 'swift' && isSwiftcAvailable()) expect(validateSwiftWithStubs(r.code)).toMatchObject({ ok: true })
     if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(r.code)).toMatchObject({ ok: true })
   })

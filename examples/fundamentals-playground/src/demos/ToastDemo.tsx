@@ -1,7 +1,7 @@
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { toast, Toaster } from '@pyreon/toast'
 
-const counter = signal(0)
+let counter = state(0)
 
 async function fakeApi(ms: number, shouldFail = false): Promise<string> {
   await new Promise((r) => setTimeout(r, ms))
@@ -117,9 +117,9 @@ export function ToastDemo() {
           <button
             data-testid="toast-bulk"
             onClick={() => {
-              counter.update((n) => n + 1)
+              counter = counter + 1
               for (let i = 0; i < 5; i++) {
-                toast.info(`Toast #${counter() * 10 + i}`)
+                toast.info(`Toast #${counter * 10 + i}`)
               }
             }}
           >

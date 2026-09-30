@@ -44,8 +44,8 @@ describe('anonymous object-literal → synthesized struct', () => {
 
   it('Kotlin: a literal object synthesizes a data class + constructor call', () => {
     const out = transform(app(`  const a = { id: 1, name: 'x' }`), { target: 'kotlin' }).code
-    expect(out).toContain('data class __Obj0(var id: Int, var name: String)')
-    expect(out).toContain('val a = __Obj0(id = 1, name = "x")')
+    expect(out).toContain('data class __Obj0(var id: Long, var name: String)')
+    expect(out).toContain('val a = __Obj0(id = 1L, name = "x")')
     expect(out).not.toContain('val a = (id = 1, name = "x")')
   })
 

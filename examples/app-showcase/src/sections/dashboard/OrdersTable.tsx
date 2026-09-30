@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@pyreon/query'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { rx } from '@pyreon/rx'
 import {
   type ColumnDef,
@@ -174,7 +174,7 @@ export function OrdersTable() {
 
   // ── Pagination state — driven from a local signal so it resets to
   //    page 1 whenever filters change.
-  const pageIndex = signal(0)
+  let pageIndex = state(0)
 
   // Plain TanStack column defs — only used to drive the sort state.
   // No `cell` render functions; cells are rendered inline below.
@@ -195,14 +195,14 @@ export function OrdersTable() {
   // Sorted + paginated rows for the current page.
   const visibleRows = (): Order[] => {
     const sorted = table.getSortedRowModel().rows.map((row) => row.original)
-    const start = pageIndex() * PAGE_SIZE
+    const start = pageIndex * PAGE_SIZE
     return sorted.slice(start, start + PAGE_SIZE)
   }
   const pageCount = (): number => Math.max(1, Math.ceil(filtered().length / PAGE_SIZE))
 
   function changePage(next: number) {
     const max = pageCount() - 1
-    pageIndex.set(Math.max(0, Math.min(max, next)))
+    pageIndex = Math.max(0, Math.min(max, next))
   }
 
   function toggleSort(columnId: string) {
@@ -224,7 +224,7 @@ export function OrdersTable() {
           value={search()}
           onInput={(e: Event) => {
             search.set((e.target as HTMLInputElement).value)
-            pageIndex.set(0)
+            pageIndex = 0
           }}
         />
         <StatusFilter
@@ -232,7 +232,7 @@ export function OrdersTable() {
           onChange={(e: Event) => {
             const next = (e.target as HTMLSelectElement).value as 'all' | OrderStatus
             status.set(next)
-            pageIndex.set(0)
+            pageIndex = 0
           }}
         >
           {STATUS_OPTIONS.map((opt) => (
@@ -301,20 +301,20 @@ export function OrdersTable() {
         <span>
           {() => {
             const total = filtered().length
-            const start = pageIndex() * PAGE_SIZE
+            const start = pageIndex * PAGE_SIZE
             const end = Math.min(start + PAGE_SIZE, total)
             return total === 0 ? '0 results' : `${start + 1}–${end} of ${total}`
           }}
         </span>
         <PageButtons>
-          <PageButton type="button" disabled={pageIndex() === 0} onClick={() => changePage(pageIndex() - 1)}>
+          <PageButton type="button" disabled={pageIndex === 0} onClick={() => changePage(pageIndex - 1)}>
             ← Prev
           </PageButton>
-          <PageButton $active>{pageIndex() + 1}</PageButton>
+          <PageButton $active>{pageIndex + 1}</PageButton>
           <PageButton
             type="button"
-            disabled={pageIndex() >= pageCount() - 1}
-            onClick={() => changePage(pageIndex() + 1)}
+            disabled={pageIndex >= pageCount() - 1}
+            onClick={() => changePage(pageIndex + 1)}
           >
             Next →
           </PageButton>

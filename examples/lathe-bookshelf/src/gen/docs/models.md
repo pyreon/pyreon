@@ -27,6 +27,7 @@ type Book = {
   title: string
   status: 'available' | 'borrowed' | 'lost'
   pages?: number | undefined
+  rating?: number | undefined
   subtitle?: string | null | undefined
   tags?: string[] | undefined
 }

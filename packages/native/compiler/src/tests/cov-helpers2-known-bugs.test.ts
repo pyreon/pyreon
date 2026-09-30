@@ -233,7 +233,7 @@ describe('KNOWN BUG — a PARAM-fed accumulator is never widened to Double', () 
     expect(sw).toContain('-> Int')
     const kt = transform(PARAM_ACC, { target: 'kotlin' }).code
     expect(kt).toContain('var acc = 0')
-    expect(kt).toContain(': Int')
+    expect(kt).toContain(': Long')
   })
 
   it('the ZERO-PARAM twin — the shape the feature was written against — DOES widen', () => {
