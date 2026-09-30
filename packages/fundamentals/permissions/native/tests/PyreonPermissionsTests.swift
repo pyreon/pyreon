@@ -68,5 +68,33 @@ struct PyreonPermissionsTests {
         check(!perms.can("admin"), "revoked")
         perms.set(["x", "y"])
         check(perms.can("x") && perms.can("y") && !perms.can("admin"), "set replaces the granted set")
+
+        // The environment key's default is a DISTINGUISHED empty set; an explicit
+        // empty set is not. Only the former may warn.
+        check(PyreonPermissions.makeUnprovided().isUnprovidedFallback, "unprovided fallback is flagged")
+        check(!PyreonPermissions().isUnprovidedFallback, "explicit empty set is NOT the fallback")
+        check(!PyreonPermissions(["a"]).isUnprovidedFallback, "seeded set is NOT the fallback")
+        check(!PyreonPermissions.makeUnprovided().can("anything"), "unprovided fallback still denies")
+
+        // The dev warning fires once per process, however many checks run.
+        var messages: [String] = []
+        PyreonPermissions.warningSink = { messages.append($0) }
+        PyreonPermissions.resetWarningForTesting()
+        PyreonPermissions.warnUnprovidedOnce()
+        PyreonPermissions.warnUnprovidedOnce()
+        check(messages.count == 1, "warns once per process (got \(messages.count))")
+        check(messages[0].contains("PermissionsProvider"), "warning names the missing provider")
+
+        // `can` reaches the warning only in DEBUG builds (compiled out of release).
+        messages = []
+        PyreonPermissions.resetWarningForTesting()
+        let fallback = PyreonPermissions.makeUnprovided()
+        _ = fallback.can("a"); _ = fallback.can("b")
+        _ = PyreonPermissions().can("a")
+        #if DEBUG
+        check(messages.count == 1, "DEBUG: can() on the fallback warns exactly once (got \(messages.count))")
+        #else
+        check(messages.isEmpty, "release: can() never warns")
+        #endif
     }
 }

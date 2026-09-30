@@ -1174,7 +1174,7 @@ final class PyreonCounterUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.staticTexts["Badge:ok"].waitForExistence(timeout: 30),
+            app.staticTexts["Badge: ok"].waitForExistence(timeout: 30),
             "The rocketstyle-styled badge did not render — the ui-system lowering "
                 + "did not reach the view tree"
         )
@@ -1184,12 +1184,12 @@ final class PyreonCounterUITests: XCTestCase {
         for _ in 0..<3 { increment.tap() }
 
         XCTAssertTrue(
-            app.staticTexts["Badge:warn"].waitForExistence(timeout: 10),
+            app.staticTexts["Badge: warn"].waitForExistence(timeout: 10),
             "The badge did not flip to the `warn` dimension — a reactive rocketstyle "
                 + "dimension did not re-render on-device"
         )
         XCTAssertFalse(
-            app.staticTexts["Badge:ok"].exists,
+            app.staticTexts["Badge: ok"].exists,
             "Both dimension states are showing — the flip replaced nothing"
         )
     }
