@@ -26,7 +26,7 @@ The package has three entries:
 | Entry | For |
 | --- | --- |
 | `@pyreon/charts` | `<Chart>`, its marks, the family components, formatters, theme and linking. The stable surface. |
-| `@pyreon/charts/svg` | `chartToSvg` and every `*ToSvg`: charts as SVG strings with no DOM, for SSR and export. Imported on a server, it also makes every `<Chart>` ship its first frame as SVG in the SSR / SSG HTML. |
+| `@pyreon/charts/svg` | `chartToSvg` and every `*ToSvg`: charts as SVG strings with no DOM, for SSR and export. Imported on a server, it also makes every `<Chart>` and every family chart (`<PieChart>`, `<TreemapChart>`, `<SankeyChart>`, …) ship its first frame as SVG in the SSR / SSG HTML. |
 | `@pyreon/charts/engine` | Every layout, hit test and draw-list builder, and the array form `<PlotChart marks>`. Not covered by the stability promise. |
 
 <PackageBadge name="@pyreon/charts" href="/docs/charts" />
@@ -80,7 +80,7 @@ without an indicator mark does not bundle the indicator arithmetic. `<Chart>`
 with one `<Line>` is about 44.1 KB gzipped; a pie through `<Arc>` about
 24.7 KB. CI import budgets lock both.
 
-`<Chart by="id">` gives rows an identity for update animation, like `<For by>`, with D3's data join: on a bar or line chart a surviving row slides from its old slot to its new one, a new row grows in from the baseline in its slot, and a removed row shrinks out in its old slot. Other chart kinds tween each row from its own previous value. Without `by` rows are matched by position, so a sliding window (drop the oldest, append the newest) animates every bar toward its neighbour's value. Native hosts match by position and warn.
+`<Chart by="id">` gives rows an identity for update animation, like `<For by>`, with D3's data join: a surviving row slides from its old slot to its new one, a new row grows in from the zero line in its slot, and a removed row shrinks out in its old slot. That holds for bars, lines, stacked and grouped bars, in a vertical or horizontal frame, on a log scale and on either axis of a dual-axis chart, and every frame of the morph is drawn with the same geometry and styling the finished chart uses. Areas, bands, waterfalls, scatter and numeric-x charts tween each row from its own previous value, as does an update that changes a series' kind or the orientation. Without `by` rows are matched by position, so a sliding window (drop the oldest, append the newest) animates every bar toward its neighbour's value. On iOS and Android `by` lowers to the spec's `rowKeys`: the engine tags each bar with its row key and the edge it grows from, and the native canvas matches those commands by key, so bars (plain, stacked, grouped, horizontal) slide, grow in and shrink out exactly as on the web, and a line whose points are its rows moves its points by key.
 
 `<Chart color="region">` switches to **long format**: every `y` mark becomes
 one series per distinct `region`, categories come from `x`, a missing
@@ -447,7 +447,7 @@ the description reads:
 
 `chartToSvg` builds the same chart as a pure SVG string — no DOM, no canvas —
 so it runs in SSR, SSG, an API route, or an email pipeline. A server-rendered
-`<Chart>` always ships its accessible data table in the HTML; import
+`<Chart>` (or family chart — pie, treemap, sankey, …) always ships its accessible data table in the HTML; import
 `@pyreon/charts/svg` in the server entry (`import '@pyreon/charts/svg'`) and it
 also ships the chart's first frame as SVG, so the page shows the chart before
 any script runs. Hydration adopts that SVG and the first canvas paint replaces

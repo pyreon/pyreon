@@ -44,15 +44,15 @@
     "prepublishOnly": "bun run build"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.11.6",
+    "@happy-dom/global-registrator": "^20.14.5",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^4.1.11",
-    "happy-dom": "^20.11.6",
-    "rolldown": "^1.2.7"
+    "@vitest/browser-playwright": "^5.0.2",
+    "happy-dom": "^20.14.5",
+    "rolldown": "^1.2.11"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",

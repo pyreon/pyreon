@@ -176,3 +176,43 @@ describe('vue-compat — hydration while the CLIENT chunk is still loading', () 
     c.remove()
   })
 })
+
+describe('vue-compat — a NESTED async descendant suspends the nearest <Suspense>', () => {
+  const nested = (L: ComponentFn<{ who: string }>, who: string) =>
+    jsx('main', {
+      children: jsx(asType(Suspense), {
+        fallback: jsx('i', { class: 'fb', children: 'loading' }),
+        children: jsx('section', { class: 'wrap', children: jsx('div', { children: jsx(asType(L), { who }) }) }),
+      }),
+    })
+
+  it('shows the fallback until the nested chunk lands, then the content (mounted once)', async () => {
+    const c = document.createElement('div')
+    document.body.appendChild(c)
+    mount(nested(slowLazy(10), 'n'), c)
+    expect(c.querySelector('.fb')).not.toBeNull()
+    expect(c.querySelector('section.wrap')).toBeNull()
+    await tick(40)
+    expect(c.querySelector('.fb')).toBeNull()
+    expect(c.querySelector('section.wrap p.q')?.textContent).toBe('n:st')
+    expect(c.querySelectorAll('section.wrap').length).toBe(1)
+    c.remove()
+  })
+
+  it('a NON-suspensible nested async component does not suspend the boundary (renders its own loading state)', async () => {
+    const A = defineAsyncComponent<{ who: string }>({
+      loader: () => new Promise<{ default: ComponentFn<{ who: string }> }>((r) => setTimeout(() => r({ default: Quote }), 10)),
+      suspensible: false,
+      delay: 0,
+      loadingComponent: () => jsx('s', { class: 'own-loading', children: '…' }),
+    })
+    const c = document.createElement('div')
+    document.body.appendChild(c)
+    mount(nested(A, 'z'), c)
+    expect(c.querySelector('.fb')).toBeNull()
+    expect(c.querySelector('.own-loading')).not.toBeNull()
+    await tick(40)
+    expect(c.querySelector('p.q')?.textContent).toBe('z:st')
+    c.remove()
+  })
+})

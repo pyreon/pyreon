@@ -15,8 +15,8 @@
     "typecheck": "echo '[native-viz] @ts-nocheck on source; PMTC handles typing'"
   },
   "devDependencies": {
-    "@codemirror/state": "^6.7.2",
-    "@codemirror/view": "^6.43.9",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.13",
     "@pyreon/code": "workspace:*",
     "@pyreon/core": "workspace:*",
     "@pyreon/flow": "workspace:*",
@@ -24,8 +24,8 @@
     "@pyreon/primitives": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/rich-text": "workspace:*",
-    "@tiptap/core": "^3.31.2",
-    "@tiptap/starter-kit": "^3.31.2",
+    "@tiptap/core": "^3.31.3",
+    "@tiptap/starter-kit": "^3.31.3",
     "codemirror": "^6.0.2"
   }
 }

@@ -128,12 +128,12 @@ describe('memory growth', () => {
       const s = createSheet({ maxCacheSize: maxSize })
 
       const recent: string[] = []
-      for (let i = 0; i < 5; i++) recent.push(s.insert(`keep-${i}: v;`))
+      for (let i = 0; i < 5; i++) recent.push(s.insert(`--keep-${i}: v;`))
       // Overflow to force eviction of older entries (not `recent`).
       for (let i = 0; i < maxSize * 3; i++) s.insert(`churn-${i}: v;`)
       // Recent entries: re-inserting yields the SAME deterministic
       // className and exactly one live DOM rule each.
-      for (let i = 0; i < 5; i++) expect(s.insert(`keep-${i}: v;`)).toBe(recent[i])
+      for (let i = 0; i < 5; i++) expect(s.insert(`--keep-${i}: v;`)).toBe(recent[i])
 
       const el = query<HTMLStyleElement>(document, 'style[data-pyreon-styler]')
       let keepRules = 0

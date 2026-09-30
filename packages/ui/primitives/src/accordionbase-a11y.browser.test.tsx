@@ -302,14 +302,14 @@ describe('AccordionBase — keyboard', () => {
  * impossible — hence the gate on vitest's own `__vitest_browser__` marker. The
  * gate is NOT a silent skip: inside the browser runner the driver's presence is
  * asserted, so these specs can never quietly stop covering the real Chromium
- * path. `@vitest/browser/context` is imported dynamically because a static
+ * path. `vitest/browser` is imported dynamically because a static
  * import throws at module load in the forks pool.
  */
 const IS_BROWSER_RUNNER = (globalThis as Record<string, unknown>).__vitest_browser__ === true
 
 describe.runIf(IS_BROWSER_RUNNER)('AccordionBase — native activation (trusted input)', () => {
   it('Enter activates the trigger via the native button behaviour', async () => {
-    const { userEvent } = await import('@vitest/browser/context')
+    const { userEvent } = await import('vitest/browser')
     expect(userEvent, 'trusted-input driver must exist in the browser runner').toBeDefined()
 
     const { trigger, content, unmount } = mountAccordion()
@@ -326,7 +326,7 @@ describe.runIf(IS_BROWSER_RUNNER)('AccordionBase — native activation (trusted 
   })
 
   it('Space activates the trigger via the native button behaviour', async () => {
-    const { userEvent } = await import('@vitest/browser/context')
+    const { userEvent } = await import('vitest/browser')
     const { trigger, content, unmount } = mountAccordion()
     await flush()
     expect(content('a')).toBeNull()

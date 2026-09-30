@@ -143,8 +143,8 @@ describe('SSR ↔ hydration parity fuzz', () => {
 })
 
 describe('SSR ↔ hydration parity fuzz — a still-loading lazy', () => {
-  // Every seeded subtree becomes the body of a `lazy()` (half of them inside a
-  // `<Suspense>`). The server loaded its chunk; the client's has NOT landed
+  // Every seeded subtree becomes the body of a `lazy()` — bare, the direct
+  // child of a `<Suspense>`, or nested below one. The server loaded its chunk; the client's has NOT landed
   // when `hydrateRoot` runs, which is the case hydration now defers. Oracles:
   //   L1  no mismatch reported, and every server element still in the DOM
   //       while the chunk is loading;
@@ -162,12 +162,21 @@ describe('SSR ↔ hydration parity fuzz — a still-loading lazy', () => {
       const sigSpecs: SigSpec[] = []
       const inner: Spec = genSpec(r, 0, sigSpecs)
       const sibling: Spec = genSpec(r, 1, sigSpecs)
-      const inSuspense = r() < 0.5
+      // Bare, the DIRECT child of a <Suspense>, or NESTED below one (where it
+      // registers with the boundary instead of being seen by its accessor).
+      const roll = r()
+      const placement = roll < 0.34 ? 'bare' : roll < 0.67 ? 'direct' : 'nested'
       const tree = (L: ComponentFn, S: SigInst[]) =>
         h(
           'main',
           null,
-          inSuspense ? h(Suspense, { fallback: h('i', { class: 'fb' }, 'loading') }, h(L, null)) : h(L, null),
+          placement === 'bare'
+            ? h(L, null)
+            : h(
+                Suspense,
+                { fallback: h('i', { class: 'fb' }, 'loading') },
+                placement === 'direct' ? h(L, null) : h('div', { class: 'nest' }, h(L, null)),
+              ),
           toVNode(sibling, S) as never,
         )
       const bodyOf = (S: SigInst[]): ComponentFn => () => h('section', { class: 'lz' }, toVNode(inner, S) as never)

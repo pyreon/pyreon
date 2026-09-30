@@ -139,7 +139,7 @@ const Card = () => {
 | [`Switch`](#switch) | component | Multi-branch conditional rendering. |
 | [`Match`](#match) | component | A branch inside a `<Switch>`. |
 | [`For`](#for) | component | Keyed reactive list rendering. |
-| [`Suspense`](#suspense) | component | Async boundary that shows `fallback` while any `lazy()` component or async child inside is loading. |
+| [`Suspense`](#suspense) | component | Async boundary that shows `fallback` while any `lazy()` component or async component inside is loading — at ANY depth: a |
 | [`ErrorBoundary`](#errorboundary) | component | Catches render errors thrown by descendant components. |
 | [`lazy`](#lazy) | function | Wrap a dynamic import for code splitting. |
 | [`Dynamic`](#dynamic) | component | Renders a component by reference or string tag name. |
@@ -606,7 +606,7 @@ const items = signal([
 <Suspense fallback={loadingUI}>{children}</Suspense>
 ```
 
-Async boundary that shows `fallback` while any `lazy()` component or async child inside is loading. SSR mode streams the fallback immediately and swaps in the resolved content when ready (30s timeout). Nested Suspense boundaries are independent — an inner boundary resolving does not affect the outer.
+Async boundary that shows `fallback` while any `lazy()` component or async component inside is loading — at ANY depth: a still-loading descendant registers with the NEAREST boundary through context. While it waits, the content stays mounted off-screen (not torn down), so the descendant's ancestors keep their DOM and state and set up once; a descendant that starts loading after the boundary resolved brings the fallback back the same way. SSR mode streams the fallback immediately and swaps in the resolved content when ready (30s timeout); hydration never shows the fallback over server content. Nested Suspense boundaries are independent — an inner boundary resolving does not affect the outer.
 
 **Example**
 

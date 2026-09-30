@@ -33,6 +33,7 @@ import { placeTooltip } from './tooltip'
 import type { Size } from './tooltip'
 import { renderTooltipHtml } from './tooltip-html'
 import { easeOutCubic } from './tween'
+import { getFrameSerializer } from './frame-seam'
 import type { ChartGradient, DrawCmd, Double, MeasureText, Pt, Rect } from './types'
 import { mirrorCmds, mirrorX, screenRectX , transposeCmds, transposeRect } from './rtl'
 
@@ -571,6 +572,9 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
   const keyboardOn = props.keyboard !== false
   const toolList: ToolboxTool[] = props.toolbox?.saveAsImage === true ? ['saveAsImage'] : []
   const tableId = createUniqueId()
+  // The server first frame (see `serverFrameSvg`), until the canvas paints over it.
+  let ssrFrame: Element | null = null
+  let canvasPainted = false
 
   // The last draw's frame: what every hit test and the keyboard read.
   let last: Frame<L> | null = null
@@ -760,6 +764,13 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     const t = theme()
     const ctx = prepareCanvas(el, w, hgt, t.background)
     if (ctx === null) return
+    // The canvas paints below, in this same task: the server's first-frame SVG
+    // stood in for it until now.
+    canvasPainted = true
+    if (ssrFrame !== null) {
+      ssrFrame.remove()
+      ssrFrame = null
+    }
     const measure = canvasMeasure(ctx, FONT)
     const f = frame(w, hgt, measure, t)
     last = f
@@ -1150,13 +1161,46 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
 
   const liveNode = (): VNode => h('div', { role: 'status', 'aria-live': 'polite', style: OFFSCREEN }, () => announce())
 
-  const extras: (VNode | (() => VNode))[] = []
+  // The server's first frame: the family drawn as SVG at its final state, so an
+  // SSR / SSG page shows the chart before any script runs — the same frame the
+  // canvas paints (title, legend, RTL mirror and transpose included), through
+  // the serializer `@pyreon/charts/svg` registers. Hydration adopts it
+  // untouched (a `dangerouslySetInnerHTML` element's server children are
+  // trusted) and the first canvas paint removes it; on a client mount it is
+  // an empty element removed the same way. Without a registered serializer the
+  // server ships none (the accessible table is in the HTML either way).
+  const serverFrameSvg = (): string => {
+    const ser = getFrameSerializer()
+    if (ser === null) return ''
+    // A width the server cannot measure: the explicit one, else a typical column;
+    // the SVG then scales to its container.
+    const w = props.width ?? 600
+    const hgt = props.height ?? spec.defaultHeight
+    const t = theme()
+    const measure = ser.measure()
+    const f = frame(w, hgt, measure, t)
+    const family = transposed() ? transposeCmds(spec.render(f.layout, measure, t, 1.0, 0.0)) : spec.render(f.layout, measure, t, 1.0, 0.0)
+    const svg = ser.svg(present([...f.chrome, ...family], w), w, hgt, { fontFamily: FONT, idPrefix: `${tableId}-frame` })
+    return props.width === undefined ? svg.replace(`width="${w}"`, 'width="100%"') : svg
+  }
+  const ssrFrameNode = h('div', {
+    'data-pyreon-chart-frame': '',
+    'aria-hidden': 'true',
+    style: 'position:absolute;inset:0;pointer-events:none',
+    dangerouslySetInnerHTML: { __html: isServer ? serverFrameSvg() : '' },
+    ref: (el: Element | null) => {
+      if (el === null) return
+      if (canvasPainted) el.remove()
+      else ssrFrame = el
+    },
+  })
+
+  const extras: (VNode | (() => VNode))[] = [ssrFrameNode]
   const t = tipNode()
   if (t !== null) extras.push(t)
   if (keyboardOn) extras.push(liveNode())
   if (props.accessibleTable !== false) {
     extras.push(a11yTableNode(() => chartTable(a11yNow(), A11Y_TABLE_MAX), tableId, () => props.title ?? spec.caption))
   }
-  if (extras.length === 0) return canvasNode
   return h('div', { style: 'position:relative' }, canvasNode, ...extras)
 }

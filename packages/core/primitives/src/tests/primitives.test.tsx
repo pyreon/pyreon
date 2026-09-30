@@ -759,6 +759,27 @@ describe('<Press> happy-dom unit', () => {
   })
 })
 
+/**
+ * Dispatch a click and report whether Pyreon's handler prevented the default,
+ * then cancel the default ourselves. Un-prevented anchor clicks are REAL
+ * navigations in happy-dom (it fetches `/about`), and that fetch outlives the
+ * worker teardown ("AsyncTaskManager has been destroyed"). A `document`
+ * bubble listener runs after the anchor's own handler, so the snapshot is
+ * exactly what the handler decided.
+ */
+function clickAnchor(a: HTMLAnchorElement, init: MouseEventInit): { prevented: boolean } {
+  const evt = new MouseEvent('click', { button: 0, bubbles: true, cancelable: true, ...init })
+  const seen = { prevented: false }
+  const stop = (e: Event): void => {
+    seen.prevented = e.defaultPrevented
+    e.preventDefault()
+  }
+  document.addEventListener('click', stop, { once: true })
+  a.dispatchEvent(evt)
+  document.removeEventListener('click', stop)
+  return seen
+}
+
 describe('<Link> happy-dom unit', () => {
   // Each test owns the global navigation config; reset after every one.
   afterEach(() => resetPrimitivesConfig())
@@ -800,10 +821,8 @@ describe('<Link> happy-dom unit', () => {
   it('WITHOUT init, a left-click is NOT intercepted (plain full-load <a>)', () => {
     const { container, unmount } = mountTest(h(Link, { to: '/about' }, 'About'))
     const a = query<HTMLAnchorElement>(container, 'a')
-    const evt = new MouseEvent('click', { button: 0, bubbles: true, cancelable: true })
-    a.dispatchEvent(evt)
     // No navigate configured → browser default nav, not prevented.
-    expect(evt.defaultPrevented).toBe(false)
+    expect(clickAnchor(a, {}).prevented).toBe(false)
     unmount()
   })
 
@@ -812,15 +831,9 @@ describe('<Link> happy-dom unit', () => {
     init({ navigate: (to) => calls.push(to) })
     const { container, unmount } = mountTest(h(Link, { to: '/about' }, 'About'))
     const a = query<HTMLAnchorElement>(container, 'a')
-    const evt = new MouseEvent('click', {
-      button: 0,
-      metaKey: true,
-      bubbles: true,
-      cancelable: true,
-    })
-    a.dispatchEvent(evt)
+    const seen = clickAnchor(a, { metaKey: true })
     expect(calls).toEqual([])
-    expect(evt.defaultPrevented).toBe(false)
+    expect(seen.prevented).toBe(false)
     unmount()
   })
 
@@ -831,11 +844,10 @@ describe('<Link> happy-dom unit', () => {
       h(Link, { to: 'https://x.com', external: true }, 'X'),
     )
     const a = query<HTMLAnchorElement>(container, 'a')
-    const evt = new MouseEvent('click', { button: 0, bubbles: true, cancelable: true })
-    a.dispatchEvent(evt)
+    const seen = clickAnchor(a, {})
     // External anchors carry no onClick handler at all.
     expect(calls).toEqual([])
-    expect(evt.defaultPrevented).toBe(false)
+    expect(seen.prevented).toBe(false)
     unmount()
   })
 
@@ -1571,10 +1583,13 @@ describe('escape-hatch primitives — web runtime', () => {
 
 describe('<WebView> happy-dom unit (web = iframe host)', () => {
   it('src → <iframe src=…> filling its container', () => {
-    const { container, unmount } = mountTest(h(WebView, { src: 'https://x/chart.html' }))
+    // `about:blank`: a remote-looking src makes happy-dom start a real fetch
+    // that outlives the worker teardown ("AsyncTaskManager has been
+    // destroyed"); the attribute mapping under test is URL-agnostic.
+    const { container, unmount } = mountTest(h(WebView, { src: 'about:blank' }))
     const frame = container.firstElementChild as HTMLIFrameElement
     expect(frame.tagName).toBe('IFRAME')
-    expect(frame.getAttribute('src')).toBe('https://x/chart.html')
+    expect(frame.getAttribute('src')).toBe('about:blank')
     expect(frame.style.width).toBe('100%')
     expect(frame.style.height).toBe('100%')
     unmount()
