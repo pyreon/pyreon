@@ -93,7 +93,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@testing-library/dom": "^10.4.1"
+    "@testing-library/dom": "^10.4.2"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
@@ -107,7 +107,7 @@
     "@pyreon/toast": "workspace:^",
     "@pyreon/ui-core": "workspace:^",
     "@testing-library/jest-dom": "^6.0.0 || ^7.0.0",
-    "vitest": ">=2.0.0"
+    "vitest": "^5.0.0"
   },
   "peerDependenciesMeta": {
     "@pyreon/form": {
@@ -152,7 +152,7 @@
     "@pyreon/ui-core": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@testing-library/jest-dom": "^7.0.1",
-    "@vitest/browser-playwright": "^4.1.11",
+    "@vitest/browser-playwright": "^5.0.2",
     "@vitus-labs/tools-rolldown": "^2.6.3"
   },
   "engines": {

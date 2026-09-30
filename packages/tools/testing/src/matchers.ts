@@ -35,7 +35,10 @@ expect.extend(jestDomMatchers)
 // which shipped as an empty `export {}` and left consumers without the
 // matcher types even after the runtime fix.
 declare module 'vitest' {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mirrors jest-dom's own vitest augmentation
-  interface Assertion<T = any> extends TestingLibraryMatchers<unknown, T> {}
-  interface AsymmetricMatchersContaining extends TestingLibraryMatchers<unknown, unknown> {}
+  // vitest 5 moved the matcher surface onto `Matchers<R, T>` (which `Assertion`
+  // and the asymmetric `expect.*` forms both extend) and gave `Assertion` a
+  // second type parameter, so the v4-era `interface Assertion<T = any>`
+  // augmentation no longer merges (TS2428). `R` is the matcher return type.
+  interface Matchers<R extends void | Promise<void> = void | Promise<void>, T = unknown>
+    extends TestingLibraryMatchers<unknown, R> {}
 }
