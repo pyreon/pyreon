@@ -137,4 +137,63 @@ describe('jsx — slow path (getter-shaped reactive props)', () => {
     const v = jsx(Comp as any, props as any)
     expect((v.props as any).children).toBe('wrapped')
   })
+
+  it('does NOT attach a `children` key to component props when children is explicitly undefined (fast path)', () => {
+    // `'children' in props` is true (the key is present) so the zero-copy
+    // shortcut is skipped, but the VALUE is `undefined` — the branch this
+    // covers is the `children !== undefined ? … : propsWithKey` ternary's
+    // ELSE arm on the fast (no-getter) path for a component/function type.
+    const Comp = (props: { children?: unknown }) =>
+      ({ type: 'div', props: {}, children: [], key: null }) as any
+    const v = jsx(Comp as any, { name: 'x', children: undefined } as any)
+    expect('children' in (v.props as Record<string, unknown>)).toBe(false)
+    expect((v.props as any).name).toBe('x')
+  })
+
+  it('does NOT attach a `children` key to component props when children is undefined (slow/getter path)', () => {
+    // Same ELSE-arm coverage as above, but on the getter-shaped (slow) path
+    // — the sibling branch at the top of the function-type case there.
+    // `'children' in props` must be false here (we never set the key at
+    // all), so we force entry into the main body via a non-null `key`.
+    const Comp = (props: { children?: unknown }) =>
+      ({ type: 'div', props: {}, children: [], key: null }) as any
+    const props: Record<string, unknown> = { name: 'y' }
+    Object.defineProperty(props, 'reactive', {
+      enumerable: true,
+      configurable: true,
+      get: () => 1,
+    })
+    const v = jsx(Comp as any, props as any, 'k-no-children')
+    expect('children' in (v.props as Record<string, unknown>)).toBe(false)
+    expect((v.props as any).name).toBe('y')
+    expect((v.props as any).reactive).toBe(1)
+  })
+
+  it('builds an empty child array for an element with no children on the slow/getter path', () => {
+    // Covers the `children === undefined ? [] : …` first arm of the
+    // element-type childArray ternary on the SLOW path (element/string
+    // type, at least one getter-shaped prop present, no children key).
+    const props: Record<string, unknown> = { class: 'box' }
+    Object.defineProperty(props, 'reactive', {
+      enumerable: true,
+      configurable: true,
+      get: () => 'live',
+    })
+    const v = jsx('div', props as any, 'k-empty')
+    expect(v.children).toEqual([])
+    expect((v.props as any).reactive).toBe('live')
+  })
+
+  it('spreads an array of children directly for an element on the slow/getter path', () => {
+    // Covers the `Array.isArray(children)` true arm of the element-type
+    // childArray ternary on the SLOW path.
+    const props: Record<string, unknown> = { children: ['a', 'b', 'c'] }
+    Object.defineProperty(props, 'reactive', {
+      enumerable: true,
+      configurable: true,
+      get: () => 'live',
+    })
+    const v = jsx('ul', props as any)
+    expect(v.children).toEqual(['a', 'b', 'c'])
+  })
 })

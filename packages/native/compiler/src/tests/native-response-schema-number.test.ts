@@ -9,14 +9,16 @@ import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 /**
  * A decoded model's `number` fields follow the endpoint's RESPONSE SCHEMA.
  *
- * A TS `number` carries no int/float distinction, so PMTC types it `Long` by
- * default (Kotlin's Int is 32-bit; a TS `number` routinely isn't). For a
- * model DECODED from a response that is wrong whenever the
- * wire value can be fractional: `JSONDecoder` and kotlinx both REJECT `4.5`
- * for an `Int`, so the native app failed to decode a payload the web parsed.
- * Every Lathe-generated model with an OpenAPI `type: number` field hit this —
- * Lathe emits `s.number()` for `number` and `s.number().int()` for `integer`,
- * and that schema is the only place the distinction survives.
+ * A TS `number` carries no int/float distinction, so PMTC types it `Int` on
+ * Swift and `Long` on Kotlin by default (Swift's `Int` is 64-bit on every
+ * Apple target, so `Long` is Kotlin's matching width — see `KOTLIN_INT` in
+ * emit-kotlin.ts). For a model DECODED from a response that default is wrong
+ * whenever the wire value can be fractional: `JSONDecoder` and kotlinx both
+ * REJECT `4.5` for an integer type, so the native app failed to decode a
+ * payload the web parsed. Every Lathe-generated model with an OpenAPI
+ * `type: number` field hit this — Lathe emits `s.number()` for `number` and
+ * `s.number().int()` for `integer`, and that schema is the only place the
+ * distinction survives.
  *
  * The emit specs pin the typing; the execution specs DECODE a fractional
  * payload with the real `JSONDecoder` and the real kotlinx serializer, into
@@ -89,6 +91,8 @@ describe('decode struct number fields follow the response schema', () => {
     expect(book).toContain('var rating: Double? = null')
     expect(book).toContain('var price: Double')
     expect(book).toContain('var scores: List<Double>')
+    // Integer (non-fractional) fields are Long on Kotlin, not Int — the
+    // KOTLIN_INT default matches Swift's 64-bit Int (see emit-kotlin.ts).
     expect(book).toContain('var pages: Long? = null')
     expect(book).toContain('var counts: List<Long>')
     expect(kotlinClass(r.code, 'Shelf')).toContain('var weight: Double')
