@@ -111,19 +111,19 @@ export default function StatsPage() {
         ) : (
           <div class="stats-grid">
             <div class="chart-card">
-              <Chart data={() => topDomains()} x="domain" horizontal height={360} title="Top 10 domains">
+              <Chart data={() => topDomains} x="domain" horizontal height={360} title="Top 10 domains">
                 <Bar y="count" label="Stories" color="#ff6600" />
                 <Tooltip />
               </Chart>
             </div>
             <div class="chart-card">
-              <Chart data={() => topUsers()} height={360} title="Top 10 submitters">
+              <Chart data={() => topUsers} height={360} title="Top 10 submitters">
                 <Arc value="count" label="user" innerRadius={0.5} />
                 <Tooltip />
               </Chart>
             </div>
             <div class="chart-card">
-              <Chart data={() => pointsBuckets()} x="bucket" height={360} title="Points distribution">
+              <Chart data={() => pointsBuckets} x="bucket" height={360} title="Points distribution">
                 <Bar y="stories" label="Stories" />
                 <Axis x title="points ≥" />
                 <Axis y title="stories" />
@@ -131,7 +131,7 @@ export default function StatsPage() {
               </Chart>
             </div>
             <div class="chart-card">
-              <Chart data={() => scatterData()} xValue="points" height={360} title="Points vs comments" subtitle="first 100 stories">
+              <Chart data={() => scatterData} xValue="points" height={360} title="Points vs comments" subtitle="first 100 stories">
                 <Dot y="comments" label="Comments" color="#91cc75" />
                 <Axis x title="points" />
                 <Axis y title="comments" />
