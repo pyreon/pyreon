@@ -89,12 +89,12 @@ describe('reactive Map/Set signals → native collections (not Any)', () => {
   it('Kotlin: signal constructs the native collection, reads lower', () => {
     const out = transform(APP, { target: 'kotlin' }).code
     expect(out).toContain('mutableStateOf(mutableSetOf<String>())')
-    expect(out).toContain('mutableStateOf(mutableMapOf<String, Int>())')
+    expect(out).toContain('mutableStateOf(mutableMapOf<String, Long>())')
     expect(out).toContain('mutableStateOf(mutableMapOf<String, Boolean>())')
     // `.has`→`.contains`/`.containsKey`, `.get`→`[k]` (were: verbatim, uncompilable).
     expect(out).toContain('seen.contains("a")')
     expect(out).toContain('counts.containsKey("a")')
-    expect(out).toContain('(counts["a"] ?: 0)')
+    expect(out).toContain('(counts["a"] ?: 0L)')
     // mutations
     expect(out).toContain('seen.add("c")')
     expect(out).toContain('seen.remove("a")')
@@ -156,7 +156,7 @@ function App() {
     expect((sw.warnings ?? []).some((w) => w.includes('seeded `new Map'))).toBe(false)
     expect((kt.warnings ?? []).some((w) => w.includes('seeded `new Map'))).toBe(false)
     expect(sw.code).toContain('[String: Int] = ["a": 1]')
-    expect(kt.code).toContain('mutableMapOf("a" to 1)')
+    expect(kt.code).toContain('mutableMapOf("a" to 1L)')
 
     // UNCHANGED HALF — the invariant THIS suite exists to protect: the signal's
     // declared type resolves to a native collection and never degrades to `Any`

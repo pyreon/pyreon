@@ -1,4 +1,4 @@
-import { signal } from "@pyreon/reactivity"
+import { state } from '@pyreon/core/plain'
 import { useHead } from "@pyreon/head"
 import { Link } from "@pyreon/zero/link"
 import { useRouter } from "@pyreon/router"
@@ -8,17 +8,17 @@ export const meta = { title: "Sign in" }
 export default function Login() {
   useHead({ title: meta.title })
 
-  const email = signal("demo@example.com")
-  const password = signal("demo1234")
-  const error = signal<string | null>(null)
-  const submitting = signal(false)
+  let email = state("demo@example.com")
+  let password = state("demo1234")
+  let error = state<string | null>(null)
+  let submitting = state(false)
 
   const router = useRouter()
 
   async function handleSubmit(e: Event) {
     e.preventDefault()
-    error.set(null)
-    submitting.set(true)
+    error = null
+    submitting = true
 
     // Route the sign-in through the server endpoint so the SSR-side
     // `sessions` Map is populated. Calling `signIn(email, password)` directly
@@ -32,19 +32,19 @@ export default function Login() {
       res = await fetch("/api/signin", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: email(), password: password() }),
+        body: JSON.stringify({ email: email, password: password }),
       })
     } catch {
-      submitting.set(false)
-      error.set("Network error — please try again")
+      submitting = false
+      error = "Network error — please try again"
       return
     }
 
-    submitting.set(false)
+    submitting = false
 
     if (!res.ok) {
       const body = (await res.json().catch(() => ({}))) as { error?: string }
-      error.set(body.error ?? "Sign in failed")
+      error = body.error ?? "Sign in failed"
       return
     }
 
@@ -62,7 +62,7 @@ export default function Login() {
             id="email"
             type="email"
             value={email}
-            onInput={(e) => email.set((e.currentTarget as HTMLInputElement).value)}
+            onInput={(e) => { email = (e.currentTarget as HTMLInputElement).value }}
             required
           />
         </div>
@@ -73,15 +73,15 @@ export default function Login() {
             id="password"
             type="password"
             value={password}
-            onInput={(e) => password.set((e.currentTarget as HTMLInputElement).value)}
+            onInput={(e) => { password = (e.currentTarget as HTMLInputElement).value }}
             required
           />
         </div>
 
-        {() => (error() ? <div class="error">{error()}</div> : null)}
+        {() => (error ? <div class="error">{error}</div> : null)}
 
         <button type="submit" class="btn btn-primary" disabled={submitting} style="width: 100%; justify-content: center; margin-top: 1rem;">
-          {() => (submitting() ? "Signing in…" : "Sign in")}
+          {() => (submitting ? "Signing in…" : "Sign in")}
         </button>
 
         <p style="margin-top: 1rem; font-size: 0.875rem; color: var(--c-text-muted); text-align: center;">

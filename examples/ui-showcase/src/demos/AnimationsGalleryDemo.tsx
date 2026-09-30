@@ -1,5 +1,6 @@
 import { kinetic } from '@pyreon/kinetic'
 import { type Preset, presets } from '@pyreon/kinetic-presets'
+import { state } from '@pyreon/core/plain'
 import { signal } from '@pyreon/reactivity'
 import { Button, Title, Paragraph } from '@pyreon/ui-components'
 
@@ -86,7 +87,7 @@ function PresetCell(props: { name: string; shows: ShowsMap }) {
 }
 
 function CategorySection(props: { name: string; items: string[]; shows: ShowsMap }) {
-  const open = signal(true)
+  let open = state(true)
 
   const toggleAll = () => {
     const target = !props.items.every((n) => props.shows.get(n)?.())
@@ -98,10 +99,10 @@ function CategorySection(props: { name: string; items: string[]; shows: ShowsMap
       <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
         <button
           type="button"
-          onClick={() => open.set(!open())}
+          onClick={() => { open = !open }}
           style="background: none; border: none; cursor: pointer; font-size: 16px; font-weight: 600; padding: 4px 0;"
         >
-          {() => (open() ? '▼' : '▶')} {props.name}{' '}
+          {() => (open ? '▼' : '▶')} {props.name}{' '}
           <span style="font-size: 12px; color: #6b7280; font-weight: 400;">
             ({props.items.length})
           </span>
@@ -111,7 +112,7 @@ function CategorySection(props: { name: string; items: string[]; shows: ShowsMap
         </Button>
       </div>
       {() =>
-        open() ? (
+        open ? (
           <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px;">
             {props.items.map((name) => (
               <PresetCell name={name} shows={props.shows} />

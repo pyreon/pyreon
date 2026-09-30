@@ -172,7 +172,7 @@ describe('Image dynamic width/height — runtime-numeric lowering (ternary + sig
   })
   it('Kotlin: dynamic width/height lower to (<expr>).dp; static bare', () => {
     const rk = transform(IMG, { target: 'kotlin' })
-    expect(rk.code).toContain('.width((if (big) 200 else 100).dp).height((h).dp)')
+    expect(rk.code).toContain('.width((if (big) 200L else 100L).toDouble().dp).height((h).toDouble().dp)')
     expect(rk.code).toContain('.width(64.dp).height(64.dp)')
     expect(rk.warnings).toHaveLength(0)
   })

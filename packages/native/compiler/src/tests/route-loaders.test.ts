@@ -51,8 +51,8 @@ describe('Phase 3 — per-route loader auto-emit', () => {
 
   it('Kotlin: routes wrap in PyreonRouteLoader keyed by currentPath', () => {
     const out = transform(SRC, { target: 'kotlin' }).code
-    expect(out).toContain('PyreonRouteLoader(path = currentPath, load = { 1 }) { Home() }')
-    expect(out).toContain('PyreonRouteLoader(path = currentPath, load = { 2 }) { User() }')
+    expect(out).toContain('PyreonRouteLoader(path = currentPath, load = { 1L }) { Home() }')
+    expect(out).toContain('PyreonRouteLoader(path = currentPath, load = { 2L }) { User() }')
   })
 
   it('a route WITHOUT a loader is NOT wrapped (zero-cost — no behavior change)', () => {

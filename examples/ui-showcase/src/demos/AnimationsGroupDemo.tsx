@@ -1,12 +1,12 @@
 import { fade, kinetic, slideRight } from '@pyreon/kinetic'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { Button, Title, Paragraph } from '@pyreon/ui-components'
 
 const GroupList = kinetic('div').preset(fade).group()
 const ToastGroup = kinetic('div').preset(slideRight).group()
 
 export function AnimationsGroupDemo() {
-  const items = signal([
+  let items = state.raw([
     { id: 1, label: 'First item' },
     { id: 2, label: 'Second item' },
     { id: 3, label: 'Third item' },
@@ -14,21 +14,21 @@ export function AnimationsGroupDemo() {
   let nextId = 4
 
   const addItem = () => {
-    items.set([...items(), { id: nextId++, label: `Item ${nextId - 1}` }])
+    items = [...items, { id: nextId++, label: `Item ${nextId - 1}` }]
   }
   const removeItem = (id: number) => {
-    items.set(items().filter((i) => i.id !== id))
+    items = items.filter((i) => i.id !== id)
   }
   const shuffle = () => {
-    items.set([...items()].sort(() => Math.random() - 0.5))
+    items = [...items].sort(() => Math.random() - 0.5)
   }
 
-  const toasts = signal<{ id: number; message: string }[]>([])
+  let toasts = state.raw<{ id: number; message: string }[]>([])
   let toastId = 0
   const addToast = () => {
     const id = toastId++
-    toasts.set([...toasts(), { id, message: `Toast #${id}` }])
-    setTimeout(() => toasts.set(toasts().filter((t) => t.id !== id)), 3000)
+    toasts = [...toasts, { id, message: `Toast #${id}` }]
+    setTimeout(() => { toasts = toasts.filter((t) => t.id !== id) }, 3000)
   }
 
   return (
@@ -46,7 +46,7 @@ export function AnimationsGroupDemo() {
         </div>
         <GroupList style="display: flex; flex-direction: column; gap: 8px; max-width: 320px;">
           {() =>
-            items().map((item) => (
+            items.map((item) => (
               <div
                 key={item.id}
                 style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: #f3f4f6; border-radius: 6px;"
@@ -72,7 +72,7 @@ export function AnimationsGroupDemo() {
         </Button>
         <ToastGroup style="display: flex; flex-direction: column; gap: 8px; max-width: 280px;">
           {() =>
-            toasts().map((t) => (
+            toasts.map((t) => (
               <div
                 key={t.id}
                 style="padding: 12px 16px; background: #1f2937; color: white; border-radius: 6px;"

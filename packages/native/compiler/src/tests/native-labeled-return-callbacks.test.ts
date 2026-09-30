@@ -73,7 +73,7 @@ describe('P1 — Kotlin labeled-return plain callbacks', () => {
   })
   it('controls: expression-body callbacks + 2-param indexed callbacks unchanged', () => {
     const expr = kt(A(`  const out = computed(() => nums().filter((x: number) => x > 1).length)`))
-    expect(expr.code).toContain('filter({ x -> x > 1 })')
+    expect(expr.code).toContain('filter({ x -> x > 1L })')
     const idx = kt(A(`  const out = computed(() => nums().filter((x: number, i: number) => { if (i === 0) return false; return x > 0 }).length)`))
     expect(idx.code).toContain('return@filterIndexed')
   })

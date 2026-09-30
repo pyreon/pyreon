@@ -15,6 +15,7 @@
  */
 
 import type { HttpMethod, HttpMiddleware, HttpRequest } from './types'
+import { stringifyJsonLossless } from './json'
 import { toHttpResponse } from './transport'
 
 /** One stubbed exchange. */
@@ -43,9 +44,15 @@ export interface MockRoute {
   /**
    * Raw body — mutually exclusive with `json`. A function computes it from
    * the request, e.g. a Server-Sent Events mock that resumes after the
-   * `last-event-id` header.
+   * `last-event-id` header. A `ReadableStream` is streamed as it is read, so a
+   * mock can deliver events over time or ERROR mid-body -- a dropped
+   * connection, for testing a stream's reconnect.
    */
-  body?: string | ((call: MockCall) => string) | undefined
+  body?:
+    | string
+    | ReadableStream<Uint8Array>
+    | ((call: MockCall) => string | ReadableStream<Uint8Array>)
+    | undefined
   /** Simulated latency, in ms. */
   delay?: number | undefined
   /** Reject with this instead of responding. */
@@ -148,9 +155,11 @@ export function createMock(routes: readonly MockRoute[]): MockHandle {
     if (route.error) throw route.error
 
     const headers = new Headers(route.headers)
-    let body: string | null = null
+    let body: string | ReadableStream<Uint8Array> | null = null
     if (route.json !== undefined) {
-      body = JSON.stringify(route.json)
+      // Lossless: a `bigint` fixture (an int64 id) is written as JSON number
+      // text rather than throwing; any other value is exactly `JSON.stringify`.
+      body = stringifyJsonLossless(route.json)
       if (!headers.has('content-type')) headers.set('content-type', 'application/json')
     } else if (route.body !== undefined) {
       body = typeof route.body === 'function' ? route.body(call) : route.body

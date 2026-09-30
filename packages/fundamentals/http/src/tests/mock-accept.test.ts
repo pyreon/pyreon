@@ -56,4 +56,26 @@ describe('mock routes for streams', () => {
     const client = createHttp({ baseUrl: 'https://x.test', use: [only.middleware] })
     expect(await client.get('/s').text()).toBe('plain')
   })
+
+  it('a ReadableStream body streams as read, and an error mid-body reaches the reader (a dropped connection)', async () => {
+    const enc = new TextEncoder()
+    const dropping = (): ReadableStream<Uint8Array> => {
+      let n = 0
+      return new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (n++ === 0) controller.enqueue(enc.encode('id: 1\ndata: a\n\n'))
+          else controller.error(new TypeError('network connection lost'))
+        },
+      })
+    }
+    const streaming = createMock([{ path: '/drop', headers: { 'content-type': 'text/event-stream' }, body: () => dropping() }])
+    const client = createHttp({ baseUrl: 'https://x.test', use: [streaming.middleware] })
+    const res = await client.get('/drop')
+    const got: string[] = []
+    const err = await (async () => {
+      for await (const m of readEventStream(res.raw.body as ReadableStream<Uint8Array>)) got.push(m.data)
+    })().catch((e: unknown) => e)
+    expect(got).toEqual(['a'])
+    expect(String(err)).toContain('network connection lost')
+  })
 })

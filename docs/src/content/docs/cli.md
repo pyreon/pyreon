@@ -212,7 +212,7 @@ The [Lathe spec-to-client generator](/docs/lathe) from the CLI front door. A thi
 
 ## `pyreon plain`
 
-A **readiness report** for [Plain Mode](/docs/plain-mode) — Pyreon's compile-time dialect that lets reactive code read as plain JavaScript (`let count = state(0)` instead of `const count = signal(0)`). Dry-run (the default) is per-file: does it already compile clean under plain, convert fully, convert partially with every declined shape named, or have nothing to convert? `--write` applies the classic → plain codemod in place.
+A **readiness report** for [Plain Mode](/docs/plain-mode) — Pyreon's compile-time dialect that lets reactive code read as plain JavaScript (`let count = state(0)` instead of `const count = signal(0)`). Dry-run (the default) is per-file: does it already compile clean under plain, convert fully, convert partially with every declined shape named, or have nothing to convert? `--write` applies the classic → plain codemod in place. Test and spec files are skipped unless `--include-tests` is passed (test runners often run without the `pyreon()` plugin, where plain code cannot compile).
 
 ```bash
 pyreon plain                     # scan the whole tree under cwd (a readiness question is project-level)

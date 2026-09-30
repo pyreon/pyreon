@@ -65,6 +65,15 @@ export interface VerifyReport {
   /** Why, when `ran` is false. */
   reason?: string
   files: FileVerdict[]
+  /**
+   * Every native module of one target compiled TOGETHER, as the app builds
+   * them. Present only when there are two or more modules and the project's
+   * compiler exports a multi-file validator. A per-file compile cannot see a
+   * collision BETWEEN files — two modules each declaring the same type
+   * compile alone and fail together — so this is a separate answer, and a
+   * failure here makes the whole report `broken`.
+   */
+  modules?: { target: 'swift' | 'kotlin'; compiled: NonNullable<FileVerdict['compiled']> }[]
 }
 
 /** Emitted-source markers that prove a real lowering happened. */
@@ -155,9 +164,14 @@ type TransformFn = (source: string, options: { target: 'swift' | 'kotlin' }) => 
 /** A platform compile of emitted native source — `@pyreon/native-compiler`'s validators. */
 export type CompileFn = (code: string) => { ok: boolean; skipped?: boolean; skipReason?: string; error?: string }
 
+/** Several emitted files compiled as ONE module (`validateSwiftFilesWithStubs` / `validateKotlinFiles`). */
+export type CompileFilesFn = (codes: readonly string[]) => ReturnType<CompileFn>
+
 export interface NativeCompilers {
   swift?: CompileFn | undefined
   kotlin?: CompileFn | undefined
+  swiftFiles?: CompileFilesFn | undefined
+  kotlinFiles?: CompileFilesFn | undefined
 }
 
 /**
@@ -189,6 +203,7 @@ export function verifyNative(
   }
 
   const out: FileVerdict[] = []
+  const emitted: Record<'swift' | 'kotlin', string[]> = { swift: [], kotlin: [] }
   for (const file of native) {
     for (const target of ['swift', 'kotlin'] as const) {
       let code = ''
@@ -209,6 +224,7 @@ export function verifyNative(
         })
         continue
       }
+      emitted[target].push(code)
       const markers = MARKERS.filter((m) => code.includes(m))
       const leaked = LEAKS.filter((l) => code.includes(l))
       const declarations = declarationVerdicts(warnings)
@@ -219,13 +235,27 @@ export function verifyNative(
       out.push({ path: file.path, target, verdict, warnings, markers, leaked, declarations, compiled })
     }
   }
-  return { ran: true, files: out }
+  const modules: NonNullable<VerifyReport['modules']> = []
+  if (native.length > 1) {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const fn = target === 'swift' ? compile?.swiftFiles : compile?.kotlinFiles
+      // Only when every module transformed: a transform that threw is already
+      // `broken`, and compiling the rest would report a partial set as a module.
+      if (emitted[target].length !== native.length) continue
+      const compiled = runCompile(fn, emitted[target])
+      if (compiled) modules.push({ target, compiled })
+    }
+  }
+  return modules.length > 0 ? { ran: true, files: out, modules } : { ran: true, files: out }
 }
 
-function runCompile(fn: CompileFn | undefined, code: string): FileVerdict['compiled'] {
+function runCompile<T extends string | readonly string[]>(
+  fn: ((input: T) => ReturnType<CompileFn>) | undefined,
+  input: T,
+): FileVerdict['compiled'] {
   if (!fn) return undefined
   try {
-    const r = fn(code)
+    const r = fn(input)
     if (r.skipped) return { skipped: r.skipReason ?? 'compiler not available' }
     const errors = (r.error ?? '')
       .split('\n')
@@ -285,7 +315,9 @@ function decide(markers: string[], leaked: string[], warnings: string[], source:
 export function worstVerdict(report: VerifyReport): Verdict {
   if (!report.ran) return 'skipped'
   if (report.files.length === 0) return 'skipped'
-  return report.files.reduce<Verdict>((acc, f) => worse(acc, f.verdict), 'lowers')
+  const perFile = report.files.reduce<Verdict>((acc, f) => worse(acc, f.verdict), 'lowers')
+  const moduleBroken = (report.modules ?? []).some((m) => 'ok' in m.compiled && !m.compiled.ok)
+  return moduleBroken ? 'broken' : perFile
 }
 
 /**
@@ -320,12 +352,19 @@ export async function resolveNativeCompiler(): Promise<{
       transform?: TransformFn
       validateSwiftWithStubs?: CompileFn
       validateKotlin?: CompileFn
+      validateSwiftFilesWithStubs?: CompileFilesFn
+      validateKotlinFiles?: CompileFilesFn
     }
     return {
       transform: typeof mod.transform === 'function' ? mod.transform : undefined,
       compile: {
         swift: typeof mod.validateSwiftWithStubs === 'function' ? mod.validateSwiftWithStubs : undefined,
         kotlin: typeof mod.validateKotlin === 'function' ? mod.validateKotlin : undefined,
+        // Absent on a compiler that predates them — the module-set check then
+        // simply does not run, and the report says nothing about it.
+        swiftFiles:
+          typeof mod.validateSwiftFilesWithStubs === 'function' ? mod.validateSwiftFilesWithStubs : undefined,
+        kotlinFiles: typeof mod.validateKotlinFiles === 'function' ? mod.validateKotlinFiles : undefined,
       },
     }
   } catch {

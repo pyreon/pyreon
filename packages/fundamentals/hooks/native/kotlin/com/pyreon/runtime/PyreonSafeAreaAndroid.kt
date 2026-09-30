@@ -138,10 +138,10 @@ public class AndroidOrientationProbe(private val context: Context) : Orientation
             return pyreonOrientationType(m.widthPixels, m.heightPixels)
         }
 
-    override val angle: Int
+    override val angle: Long
         get() {
             watcher.observe()
-            return angle0()
+            return angle0().toLong()
         }
 
     private fun angle0(): Int = pyreonAngleFromRotation(rotation())

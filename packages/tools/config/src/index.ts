@@ -170,6 +170,12 @@ export interface LatheSection {
    */
   responseValidation?: 'strict' | 'warn' | 'off'
   /**
+   * How `format: int64` is generated: `number` (default) — `JSON.parse` rounds
+   * values past 2^53 - 1 — or `bigint`, where the client decodes JSON
+   * losslessly and the field is a `bigint` (web only).
+   */
+  int64?: 'number' | 'bigint'
+  /**
    * What `generate` does with a `$ref` into a REMOTE document: `off` (default)
    * reports it and stays offline; `fetch` downloads it with `lathe pull`'s
    * rules (ETag cache, credentials per origin, a failed fetch fails the run).
