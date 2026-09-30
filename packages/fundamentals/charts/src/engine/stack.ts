@@ -26,19 +26,11 @@ export interface StackLevels {
 }
 
 /**
- * ECharts' `dataStack` (`calculateStack`), per band. Series stack within their
- * GROUP (`groups[s]`, ECharts' `stack` name; '' for all) in input order,
- * reversed when the group's first series sets `descs[s]` (`stackOrder:
- * 'seriesDesc'`). Each value stacks on the nearest earlier result its
- * strategy accepts (`strategies[s]`, default 'samesign'):
- *
- *  - 'samesign': a positive value on the nearest positive total, a negative
- *    one on the nearest negative total — a diverging stack, positives up and
- *    negatives down from zero;
- *  - 'all': on the nearest result whatever its sign (one running total);
- *  - 'positive' / 'negative': only on a result of that sign.
+ * The stack levels, per band, in input order: a positive value stacks on the
+ * nearest earlier positive total and a negative one on the nearest negative
+ * total — a diverging stack, positives up and negatives down from zero.
  */
-export function stackLevels(seriesValues: Double[][], groups: string[], strategies: string[], descs: boolean[]): StackLevels {
+export function stackLevels(seriesValues: Double[][]): StackLevels {
   const k = seriesValues.length
   let n = 0
   for (const sv of seriesValues) if (sv.length > n) n = sv.length
@@ -50,53 +42,23 @@ export function stackLevels(seriesValues: Double[][], groups: string[], strategi
     flatBase.push(0.0 / 0.0)
     flatTop.push(0.0 / 0.0)
   }
-  // Each group's members, in stacking order.
-  const done: boolean[] = []
-  for (let s = 0; s < k; s++) done.push(false)
-  for (let first = 0; first < k; first++) {
-    if (done[first]!) continue
-    const g = first < groups.length ? groups[first]! : ''
-    const members: number[] = []
-    for (let s = first; s < k; s++) {
-      const gs = s < groups.length ? groups[s]! : ''
-      if (gs === g) {
-        members.push(s)
-        done[s] = true
-      }
-    }
-    const desc = first < descs.length ? descs[first]! : false
-    const order: number[] = []
-    if (desc) {
-      for (let m = members.length - 1; m >= 0; m--) order.push(members[m]!)
-    } else {
-      for (let m = 0; m < members.length; m++) order.push(members[m]!)
-    }
-    for (let o = 0; o < order.length; o++) {
-      const s = order[o]!
-      const strategy = s < strategies.length && strategies[s]! !== '' ? strategies[s]! : 'samesign'
-      const own = seriesValues[s]!
-      for (let i = 0; i < n; i++) {
-        const v = i < own.length ? own[i]! : 0.0 / 0.0
-        if (!isFiniteNumber(v)) continue
-        let sum = v
-        let base = 0.0 / 0.0
-        for (let q = o - 1; q >= 0; q--) {
-          const val = flatTop[order[q]! * n + i]!
-          const take =
-            strategy === 'all' ||
-            (strategy === 'positive' && val > 0.0) ||
-            (strategy === 'negative' && val < 0.0) ||
-            (strategy === 'samesign' && sum >= 0.0 && val > 0.0) ||
-            (strategy === 'samesign' && sum <= 0.0 && val < 0.0)
-          if (take) {
-            sum = sum + val
-            base = val
-            break
-          }
+  for (let s = 0; s < k; s++) {
+    const own = seriesValues[s]!
+    for (let i = 0; i < n; i++) {
+      const v = i < own.length ? own[i]! : 0.0 / 0.0
+      if (!isFiniteNumber(v)) continue
+      let sum = v
+      let base = 0.0 / 0.0
+      for (let q = s - 1; q >= 0; q--) {
+        const val = flatTop[q * n + i]!
+        if ((sum >= 0.0 && val > 0.0) || (sum <= 0.0 && val < 0.0)) {
+          sum = sum + val
+          base = val
+          break
         }
-        flatTop[s * n + i] = sum
-        flatBase[s * n + i] = base
       }
+      flatTop[s * n + i] = sum
+      flatBase[s * n + i] = base
     }
   }
   const bases: Double[][] = []
@@ -211,7 +173,7 @@ export function layoutStackedBars(
   yDomain: Domain,
   gapRatio: Double,
 ): StackSegment[] {
-  return layoutStackLevels(stackLevels(seriesValues, [], [], []), seriesValues, plot, yDomain, gapRatio)
+  return layoutStackLevels(stackLevels(seriesValues), seriesValues, plot, yDomain, gapRatio)
 }
 
 /** `layoutStackedBars` on the flipped frame: bands run DOWN the y axis and the stack grows along x. */
@@ -221,7 +183,7 @@ export function layoutStackedBarsH(
   vDomain: Domain,
   gapRatio: Double,
 ): StackSegment[] {
-  return layoutStackLevelsH(stackLevels(seriesValues, [], [], []), seriesValues, plot, vDomain, gapRatio)
+  return layoutStackLevelsH(stackLevels(seriesValues), seriesValues, plot, vDomain, gapRatio)
 }
 
 /** `layoutGroupedBars` on the flipped frame: one bar per series, stacked DOWN each band. */
@@ -276,7 +238,7 @@ export function stackHasNegatives(seriesValues: Double[][]): boolean {
 
 /** The domain a stacked chart needs — the positive and negative TOTALS, not the tallest value. */
 export function stackedExtent(seriesValues: Double[][]): Domain {
-  return stackLevelsExtent(stackLevels(seriesValues, [], [], []))
+  return stackLevelsExtent(stackLevels(seriesValues))
 }
 
 /** Bars sitting side by side within each band, one per series. */

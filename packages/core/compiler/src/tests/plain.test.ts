@@ -234,6 +234,98 @@ describe('writes', () => {
     const r = P(`${HEADER}let a = state(0)\nconst d = derived(a)\n;[d] = [1]\n`)!
     expect(r.warnings.some((w) => w.message.includes('derived values are read-only'))).toBe(true)
   })
+
+  // `rewriteDestructuringAssignment`'s `target()` walk handles every
+  // destructuring-assignment TARGET shape (array elements, object properties,
+  // rests, defaults, computed keys, and bare member-expression targets), not
+  // just the single-key object-pattern shorthand the tests above exercise.
+  // Each of these threads the target through the same temp/peek/set dance —
+  // the only thing that varies is which AST shape the target arm walks.
+  it('array-pattern destructuring writes each state target through its signal', () => {
+    const r = P(`${HEADER}let a = state(0)\nlet b = state(0)\n;[a, b] = [1, 2]\n`)!
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('([__plainD0_0, __plainD0_1] = __plainDv0)')
+    expect(r.code).toContain('a.set(__plainD0_0)')
+    expect(r.code).toContain('b.set(__plainD0_1)')
+  })
+
+  it('array-pattern with a REST element leaves the rest binding untouched', () => {
+    const r = P(`${HEADER}let a = state(0)\ndeclare const arr: number[]\n;[a, ...rest] = arr\n`)!
+    expect(r.warnings).toEqual([])
+    // `rest` is not itself a plain binding — the rewrite passes it through
+    // bare inside the destructuring pattern, only `a` routes through a temp.
+    expect(r.code).toContain('([__plainD0_0, ...rest] = __plainDv0)')
+    expect(r.code).toContain('a.set(__plainD0_0)')
+  })
+
+  it('object-pattern default value (AssignmentPattern) still rewrites the target and walks the default', () => {
+    const r = P(`${HEADER}let a = state(0)\ndeclare function obj(): any\n;({ a = 5 } = obj())\n`)!
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('({ a: __plainD0_0 = 5 } = __plainDv0)')
+    expect(r.code).toContain('a.set(__plainD0_0)')
+  })
+
+  it('object-pattern with a COMPUTED key walks the key expression as a read', () => {
+    const r = P(
+      `${HEADER}let a = state(0)\ndeclare const key: string\ndeclare function obj(): any\n;({ [key]: a } = obj())\n`,
+    )!
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('({ [key]: __plainD0_0 } = __plainDv0)')
+  })
+
+  it('object-pattern with a REST property leaves the rest binding untouched', () => {
+    const r = P(
+      `${HEADER}let a = state(0)\ndeclare function obj(): any\n;({ a, ...restObj } = obj())\n`,
+    )!
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('({ a: __plainD0_0, ...restObj } = __plainDv0)')
+  })
+
+  it('a bare MEMBER-EXPRESSION target alongside a state target walks it as a plain read', () => {
+    // `[a, obj.x] = [1, 2]` is a valid assignment pattern — `obj.x` is not a
+    // declared name, so it never becomes a temp; it falls to the `default:`
+    // arm, which treats the target's OBJECT as an ordinary read.
+    const r = P(`${HEADER}let a = state(0)\nconst obj = { x: 0 }\n;[a, obj.x] = [1, 2]\n`)!
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('([__plainD0_0, obj.x] = __plainDv0)')
+    expect(r.code).toContain('a.set(__plainD0_0)')
+  })
+
+  // `state.from(sig)` / `derived.from(sig)` adopt an EXISTING signal (a hook
+  // result, a store field) as a plain binding — the inverse of `signalOf`.
+  // The declaration becomes the bare expression and reads/writes rewrite
+  // exactly like a directly-declared binding.
+  it('state.from(sig) adopts an existing signal — reads rewrite to tracked calls', () => {
+    const r = P(
+      `${HEADER}declare function useSomeHook(): any\nlet raw = useSomeHook()\nlet x = state.from(raw)\nconsole.log(x)\n`,
+    )!
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('const x = raw')
+    expect(r.code).toContain('console.log(x())')
+  })
+
+  it('derived.from(sig) adopts an existing signal as a read-only derived binding', () => {
+    const r = P(
+      `${HEADER}declare function useSomeHook(): any\nlet raw = useSomeHook()\nlet y = derived.from(raw)\nconsole.log(y)\n`,
+    )!
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('const y = raw')
+    expect(r.code).toContain('console.log(y())')
+  })
+
+  it('state.from() / derived.from() with the wrong argument count warns and leaves the call alone', () => {
+    const zeroArgs = P(`${HEADER}let z = state.from()\n`)!
+    expect(zeroArgs.warnings.some((w) => w.message.includes('takes exactly one signal argument'))).toBe(
+      true,
+    )
+    expect(zeroArgs.code).toContain('state.from()')
+
+    const spread = P(`${HEADER}declare const arr: any[]\nlet z = state.from(...arr)\n`)!
+    expect(spread.warnings.some((w) => w.message.includes('takes exactly one signal argument'))).toBe(
+      true,
+    )
+    expect(spread.code).toContain('state.from(...arr)')
+  })
 })
 
 describe('deep state — literal object/array initializers lower to signal(createStore(…))', () => {
@@ -784,6 +876,27 @@ export const x = local()\n`
     const r = transformPlain(src, 't.tsx')!
     expect(r.code).toContain(`return state(21)`) // untouched — the local wins
     expect(r.warnings).toHaveLength(0)
+  })
+
+  it('a `var` declaration hoisted through a nested block shadows an outer signal by the same name', () => {
+    // Hoisting means the `var` binding shadows for the WHOLE function body,
+    // not just from the point of declaration onward — `walkFunction` scans
+    // for hoisted `var`/function names up front (`hoistScan`) so the shadow
+    // is in effect before the body's first statement, matching real JS
+    // scoping (a `var` is "declared" at function entry, assigned in place).
+    const src = `${HEADER}let count = state(0)
+function helper() {
+  if (true) {
+    var count = 99
+  }
+  return count
+}
+`
+    const r = transformPlain(src, 't.tsx')!
+    expect(r.warnings).toHaveLength(0)
+    expect(r.code).toContain('var count = 99')
+    expect(r.code).toContain('return count')
+    expect(r.code).not.toContain('return count()')
   })
 
   it('computed keys and nested patterns in props bail as complex', () => {

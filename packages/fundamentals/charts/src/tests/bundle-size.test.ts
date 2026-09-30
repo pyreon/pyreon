@@ -73,7 +73,7 @@ describe('charts — bundle size regression (echarts subpath externalization)', 
     }
 
     // Measured 2026-09 at ~3.7 MB, of which ~2.3 MB is source maps and ~1.05 MB
-    // .js: the option facade grew ECharts' pie, gauge and axis layouts. The
+    // .js, before the ECharts option facade was removed. The
     // 9.2 MB duplication bug this guards against is still ~2x over the line,
     // and the engine-once check below catches duplication directly.
     const CAP = 4.5 * 1024 * 1024

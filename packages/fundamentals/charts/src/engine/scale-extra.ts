@@ -96,8 +96,46 @@ export function timeTicks(
   // ternary nil-check, so bind the resolved formatter once (`format(v)` on
   // the non-nil branch is "must be unwrapped" natively).
   const fmt = format ?? ((x: Double): string => formatTime(x, step))
-  const first = Math.ceil(d.min / step) * step
   const limit = 200
+
+  // Month-and-longer steps are CALENDAR units. Flooring a fixed 30/90/365-day
+  // step from the epoch drifted the ticks off the month boundaries they are
+  // labelled with — a "2026-03" tick could sit in late February, and by the
+  // end of a multi-year axis a quarterly tick was months off its label.
+  // These steps instead walk UTC month starts (quarters on Jan/Apr/Jul/Oct,
+  // years on Jan 1, multi-year steps on round years).
+  if (step >= DAY * 28.0) {
+    let months = 1.0
+    if (step >= DAY * 365.0) {
+      const years = ideal / (DAY * 365.2425)
+      let ys = 1.0
+      if (years > 1.0) {
+        ys = 1.0
+        while (ys < years) {
+          if (ys * 2.0 >= years) ys = ys * 2.0
+          else if (ys * 5.0 >= years) ys = ys * 5.0
+          else ys = ys * 10.0
+        }
+      }
+      months = ys * 12.0
+    } else if (step >= DAY * 90.0) {
+      months = 3.0
+    }
+    let mi = monthIndexOf(d.min)
+    if (monthStartMs(mi) < d.min) mi = mi + 1.0
+    mi = Math.ceil(mi / months) * months
+    // A Double counter: `months * k` must stay Double on every target.
+    let k = 0.0
+    while (k < 200.0) {
+      const v = monthStartMs(mi + months * k)
+      if (v > d.max) break
+      out.push({ value: v, pos: scaleLinear(d, r0, r1, v), label: fmt(v) })
+      k = k + 1.0
+    }
+    return out
+  }
+
+  const first = Math.ceil(d.min / step) * step
   let i = 0
   while (i < limit) {
     const v = first + step * i
@@ -110,6 +148,37 @@ export function timeTicks(
     i = i + 1
   }
   return out
+}
+
+/**
+ * The UTC calendar month containing `ms`, as `year * 12 + (month - 1)` — one
+ * number, so month arithmetic is plain addition (Hinnant's civil-from-days).
+ */
+export function monthIndexOf(ms: Double): Double {
+  const days = Math.floor(ms / 86400000.0)
+  const z = days + 719468.0
+  const era = Math.floor(z / 146097.0)
+  const doe = z - era * 146097.0
+  const yoe = Math.floor((doe - Math.floor(doe / 1460.0) + Math.floor(doe / 36524.0) - Math.floor(doe / 146096.0)) / 365.0)
+  const doy = doe - (365.0 * yoe + Math.floor(yoe / 4.0) - Math.floor(yoe / 100.0))
+  const mp = Math.floor((5.0 * doy + 2.0) / 153.0)
+  const month = mp < 10.0 ? mp + 3.0 : mp - 9.0
+  const year = (month <= 2.0 ? 1.0 : 0.0) + yoe + era * 400.0
+  return year * 12.0 + (month - 1.0)
+}
+
+/** Epoch ms of 00:00 UTC on the first day of month index `mi` (see `monthIndexOf`). */
+export function monthStartMs(mi: Double): Double {
+  const year0 = Math.floor(mi / 12.0)
+  const month = mi - year0 * 12.0 + 1.0
+  // Hinnant's days-from-civil (day = 1).
+  const y = month <= 2.0 ? year0 - 1.0 : year0
+  const era = Math.floor(y / 400.0)
+  const yoe = y - era * 400.0
+  const mp = month > 2.0 ? month - 3.0 : month + 9.0
+  const doy = Math.floor((153.0 * mp + 2.0) / 5.0)
+  const doe = yoe * 365.0 + Math.floor(yoe / 4.0) - Math.floor(yoe / 100.0) + doy
+  return (era * 146097.0 + doe - 719468.0) * 86400000.0
 }
 
 /**

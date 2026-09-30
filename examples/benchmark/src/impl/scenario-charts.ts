@@ -14,10 +14,6 @@
  * ARMS
  *  - `Pyreon (PlotChart)` — the idiomatic Pyreon API: `data` accessor over a
  *    signal, one `line` mark. An update is `rows.set(next)`.
- *  - `Pyreon (OptionChart)` — the SAME ECharts option object ECharts gets,
- *    compiled by Pyreon's option facade. An update is `option.set(next)`, so
- *    this arm pays a full option recompile per update, as an app porting its
- *    ECharts options would.
  *  - `Pyreon (PlotChart, no a11y table)` — DIAGNOSTIC, not ranked: the same
  *    chart with `accessibleTable={false}`. Pyreon renders an offscreen data
  *    table (capped at 1,000 rows) by default; ECharts ships none (its `aria`
@@ -32,7 +28,7 @@
  *  - ECharts draws a symbol per point by default on small series; the option
  *    sets `showSymbol: false` so both libraries draw the same thing — a line.
  *  - No decimation on any arm: Pyreon's `maxPoints` is opt-in and ECharts'
- *    `sampling` is off by default, so all three stroke every point.
+ *    `sampling` is off by default, so every arm strokes every point.
  *  - Both libraries render SYNCHRONOUSLY (Pyreon paints in an effect when the
  *    canvas ref lands; ECharts' `setOption` ends in `zr.flush()`). The timed
  *    region still ends with a 1×1 `getImageData`, which forces Chromium to
@@ -49,7 +45,6 @@
  * switches above, each of which REMOVES work from ECharts, not from Pyreon.
  */
 import { h as ph } from '@pyreon/core'
-import { OptionChart } from '@pyreon/charts/option'
 import { line, PlotChart } from '@pyreon/charts/engine'
 import { signal } from '@pyreon/reactivity'
 import { mount as pyreonMount } from '@pyreon/runtime-dom'
@@ -62,7 +57,7 @@ import { bench } from '../runner'
 
 echarts.use([LineChart, GridComponent, CanvasRenderer])
 
-export const CHARTS_FRAMEWORKS = ['Pyreon (PlotChart)', 'Pyreon (OptionChart)', 'ECharts 6', 'Pyreon (PlotChart, no a11y table)'] as const
+export const CHARTS_FRAMEWORKS = ['Pyreon (PlotChart)', 'ECharts 6', 'Pyreon (PlotChart, no a11y table)'] as const
 
 const W = 800
 const H = 400
@@ -150,22 +145,6 @@ function pyreonPlot(accessibleTable = true): ChartTarget {
   }
 }
 
-function pyreonOption(): ChartTarget {
-  let opt: ReturnType<typeof signal<ReturnType<typeof echartsOption>>> | null = null
-  let labels: string[] = []
-  return {
-    mount(host, values, ls) {
-      labels = ls
-      const o = signal(echartsOption(values, ls))
-      opt = o
-      return pyreonMount(ph(OptionChart, { option: () => o(), width: W, height: H }), host)
-    },
-    update(values) {
-      opt?.set(echartsOption(values, labels))
-    },
-  }
-}
-
 function echartsTarget(): ChartTarget {
   let chart: echarts.ECharts | null = null
   return {
@@ -223,8 +202,6 @@ export async function runCharts(frameworkName: string, container: HTMLElement): 
     switch (frameworkName) {
       case 'Pyreon (PlotChart)':
         return pyreonPlot()
-      case 'Pyreon (OptionChart)':
-        return pyreonOption()
       case 'ECharts 6':
         return echartsTarget()
       case 'Pyreon (PlotChart, no a11y table)':

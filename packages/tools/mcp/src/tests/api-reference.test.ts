@@ -637,11 +637,11 @@ describe('api-reference', () => {
   })
 
   describe('@pyreon/charts — manifest-driven region', () => {
-    it.each(['charts/useChart', 'charts/Chart'])('exposes %s', (key) => {
+    it.each(['charts/Chart', 'charts/PlotChart'])('exposes %s', (key) => {
       const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
     })
-    it('useChart documents lazy loading', () => {
-      expect(API_REFERENCE['charts/useChart']?.notes).toContain('Lazy-loads')
+    it('the ECharts wrapper is gone from the reference', () => {
+      for (const key of ['charts/useChart', 'charts/EChart', 'charts/OptionChart', 'charts/optionToSvg']) expect(API_REFERENCE[key], key).toBeUndefined()
     })
   })
 

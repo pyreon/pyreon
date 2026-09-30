@@ -1061,7 +1061,7 @@ describe('lazy()', () => {
     await new Promise((r) => setTimeout(r, 0))
 
     expect(Comp.__loading()).toBe(false)
-    const result = Comp({ name: 'hello' })
+    const result = (Comp({ name: 'hello' }) as () => unknown)()
     expect(result).not.toBeNull()
     // lazy wraps via h(comp, props) so type is the component function
     expect((result as VNode).type).toBe(Inner)

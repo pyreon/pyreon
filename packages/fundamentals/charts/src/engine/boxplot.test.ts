@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { boxplotExtent, fiveNumber, hitBox, renderBoxplot } from './boxplot'
 import { boxplotToSvg } from './boxplot-svg'
-import { compileFamily, familyToSvg } from './option-family'
 
 const plot = { x: 0, y: 0, w: 300, h: 100 }
 
@@ -71,16 +70,3 @@ describe('boxplot geometry', () => {
   })
 })
 
-describe('boxplot option mapping', () => {
-  it('ECharts tuples are [min, Q1, median, Q3, max]; outliers come from a companion scatter', () => {
-    const f = compileFamily({
-      xAxis: { data: ['a', 'b'] }, yAxis: {},
-      series: [{ type: 'boxplot', data: [[1, 2, 3, 4, 5], [2, 3, 4, 5, 6]] }, { type: 'scatter', data: [[1, 9]] }],
-    })!
-    if (f.plan.kind !== 'boxplot') throw new Error('kind')
-    expect(f.plan.rows[0]).toMatchObject({ x: 'a', min: 1, q1: 2, median: 3, q3: 4, max: 5 })
-    expect(f.plan.rows[1]!.outliers).toEqual([9])
-    expect(f.warnings).toEqual([])
-    expect(familyToSvg(f.plan)).toContain('<rect')
-  })
-})

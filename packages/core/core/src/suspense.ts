@@ -14,6 +14,33 @@ export type LazyComponent<P extends object = Props> = ((props: P) => VNodeChild)
    * A lazy without it keeps the fallback on the server.
    */
   __load?: () => Promise<void>
+  /**
+   * True while the component's real content is not available yet. Optional;
+   * defaults to `__loading`. It exists for a lazy whose `__loading` is
+   * deliberately false while loading (vue-compat's `suspensible: false`, which
+   * must not put a client `<Suspense>` into its fallback) but whose server
+   * content hydration must still wait for.
+   */
+  __pending?: () => boolean
+}
+
+// ─── Hydration awareness ─────────────────────────────────────────────────────
+// `@pyreon/runtime-dom` sets this for the duration of each SYNCHRONOUS
+// hydration walk (save/restore — hydration walks nest via islands and deferred
+// lazy ranges). Core cannot import the renderer, so the renderer pushes the
+// state down. While it is set, the server has ALREADY rendered this boundary's
+// content — it waits for a loading lazy before it renders — so showing the
+// fallback would discard the server nodes the walk is about to adopt.
+let _hydrating = false
+
+/**
+ * @internal Set by `@pyreon/runtime-dom`'s hydration walk; returns the previous
+ * value so the caller can restore it.
+ */
+export function _setSuspenseHydrating(v: boolean): boolean {
+  const prev = _hydrating
+  _hydrating = v
+  return prev
 }
 
 /**
@@ -42,14 +69,23 @@ function Suspense(props: { fallback: VNodeChild; children?: VNodeChild }): VNode
     const childNode = typeof ch === 'function' ? ch() : ch
 
     // Check if the child is a VNode whose type is a lazy component still loading
-    const isLoading =
+    const lazyType =
       childNode != null &&
       typeof childNode === 'object' &&
       !Array.isArray(childNode) &&
-      typeof (childNode as VNode).type === 'function' &&
-      ((childNode as VNode).type as unknown as LazyComponent).__loading?.()
+      typeof (childNode as VNode).type === 'function'
+        ? ((childNode as VNode).type as unknown as Partial<LazyComponent>)
+        : null
 
-    if (isLoading) {
+    // Hydrating over server content: render the CHILD, never the fallback,
+    // and do not subscribe to its loading state. The server waited for the
+    // chunk, so the DOM already holds the child's content; the child's own
+    // hydration keeps that range standing until its chunk lands (a lazy that
+    // offers `__load`). Subscribing would re-run this accessor when the chunk
+    // lands and REMOUNT the child over the nodes it just adopted.
+    if (_hydrating && typeof lazyType?.__load === 'function') return childNode
+
+    if (lazyType?.__loading?.()) {
       const fb = props.fallback
       return typeof fb === 'function' ? fb() : fb
     }

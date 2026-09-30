@@ -18,7 +18,10 @@
 // previous formulation produced `for j in avgStart..<avgEnd` with Double bounds
 // and `values[start]` with a Double subscript, neither of which compiles.)
 
-import type { Double } from './types'
+import { isFiniteChartNumber } from './format'
+
+import { scaleLinear } from './scale'
+import type { Domain, Double, Pt, Rect } from './types'
 
 /**
  * The bucket edges of a decimation pass: `edge(i) = floor(i * span / count)` for
@@ -195,6 +198,118 @@ export function minMaxBuckets(values: Double[], buckets: number): Double[] {
     // Emit in the order they occur so the line does not zig-zag backwards.
     out.push(lo)
     out.push(hi)
+  }
+  return out
+}
+
+/**
+ * M4 over already-placed polyline points: per column keep the first, the
+ * lowest, the highest and the last point, in drawing order. Columns are
+ * `1 / perPx` CSS pixels wide — half a pixel by default, so a 2× display's
+ * device pixels each get their own column.
+ *
+ * A line with more points than pixels cannot show them — a 1,000,000-point
+ * series on an 800px plot draws 1,250 segments per column on top of each
+ * other. Keeping those four per column draws the SAME pixels (every vertical
+ * extent and every column-to-column join survives) from at most 4 × width
+ * points (8 × width at the default resolution), which is what uPlot does. Points must run left to right; anything
+ * else (a horizontal chart, a scatter) is returned untouched, as is a line
+ * already sparse enough.
+ */
+export function m4Pixels(pts: Pt[], perPx: Double = 2.0): Pt[] {
+  const n = pts.length
+  if (n < 8) return pts
+  const span = pts[n - 1]!.x - pts[0]!.x
+  if (!(n > span * perPx * 4.0 + 8.0)) return pts
+  for (let i = 1; i < n; i++) if (pts[i]!.x < pts[i - 1]!.x) return pts
+  const out: Pt[] = []
+  let i = 0
+  while (i < n) {
+    const col = Math.floor(pts[i]!.x * perPx)
+    const first = i
+    let lo = i
+    let hi = i
+    let j = i
+    while (j < n && Math.floor(pts[j]!.x * perPx) === col) {
+      if (pts[j]!.y < pts[lo]!.y) lo = j
+      if (pts[j]!.y > pts[hi]!.y) hi = j
+      j = j + 1
+    }
+    const last = j - 1
+    out.push(pts[first]!)
+    const a = lo < hi ? lo : hi
+    const b = lo < hi ? hi : lo
+    if (a !== first) out.push(pts[a]!)
+    if (b !== a && b !== last) out.push(pts[b]!)
+    if (last !== first && last !== a) out.push(pts[last]!)
+    i = j
+  }
+  return out
+}
+
+/**
+ * `m4Pixels` over a category line, computed from the VALUES: the same points
+ * `m4Pixels(layoutSeriesPoints(values, plot, dom))` returns, without placing
+ * one point object per datum first. At 1M values that placement was ~40% of
+ * mount time, mostly the garbage collector reclaiming points M4 then dropped
+ * — uPlot reduces from its value arrays for the same reason.
+ *
+ * Picks per column the first datum, the lowest and highest VALUE (the lowest
+ * and highest y, in either axis direction) and the last, with the same
+ * first-occurrence ties, so the output is identical to the placed path.
+ * Returns an EMPTY list when the line is not dense enough to reduce or has a
+ * gap (a gap splits the line into runs, which the general path handles).
+ */
+/** A category datum's x — `layoutSeriesPoints`' own expression, so the value path and the placed path agree to the bit. */
+function bandCenter(x: Double, band: Double, k: number): Double {
+  return x + band * k + band / 2.0
+}
+
+export function m4CategoryPoints(values: Double[], plot: Rect, dom: Domain, perPx: Double = 2.0): Pt[] {
+  // "Declined" is an EMPTY list rather than null: the engine's optional
+  // narrowing does not carry into the generated Swift.
+  const out: Pt[] = []
+  const n = values.length
+  if (n < 8) return out
+  const band = plot.w / n
+  const span = (bandCenter(plot.x, band, (n - 1))) - (plot.x + band / 2.0)
+  if (!(n > span * perPx * 4.0 + 8.0)) return out
+  for (let i = 0; i < n; i++) {
+    const v = values[i]!
+    if (!isFiniteChartNumber(v)) return out
+  }
+  // The same expressions `layoutSeriesPoints` evaluates, so every kept point
+  // is bit-identical to the one the placed path would have produced.
+  const top = plot.y + plot.h
+  let i = 0
+  while (i < n) {
+    const col = Math.floor((bandCenter(plot.x, band, i)) * perPx)
+    const first = i
+    let lo = i
+    let hi = i
+    let loY = scaleLinear(dom, top, plot.y, values[i]!)
+    let hiY = loY
+    let j = i
+    while (j < n && Math.floor((bandCenter(plot.x, band, j)) * perPx) === col) {
+      const y = scaleLinear(dom, top, plot.y, values[j]!)
+      if (y < loY) {
+        lo = j
+        loY = y
+      }
+      if (y > hiY) {
+        hi = j
+        hiY = y
+      }
+      j = j + 1
+    }
+    const last = j - 1
+    const a = lo < hi ? lo : hi
+    const b = lo < hi ? hi : lo
+    out.push({ x: bandCenter(plot.x, band, first), y: scaleLinear(dom, top, plot.y, values[first]!) })
+    if (a !== first) out.push({ x: bandCenter(plot.x, band, a), y: scaleLinear(dom, top, plot.y, values[a]!) })
+    if (b !== a && b !== last) out.push({ x: bandCenter(plot.x, band, b), y: scaleLinear(dom, top, plot.y, values[b]!) })
+    if (last !== first && last !== a) out.push({ x: bandCenter(plot.x, band, last), y: scaleLinear(dom, top, plot.y, values[last]!) })
+    i = j
   }
   return out
 }

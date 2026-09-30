@@ -104,8 +104,8 @@ describe('the selection paints — outside datums fade', () => {
   it('stateFill dims a datum outside the brush and keeps one inside', () => {
     const s = applyBrushSelection(spec(), [{ seriesIndex: 0, dataIndex: [1] }], true, 0.2)
     const sr = s.series[0]!
-    expect(stateFill(s, sr, 1, '#0f766e')).toBe('#0f766e')
-    expect(stateFill(s, sr, 0, '#0f766e')).not.toBe('#0f766e')
+    expect(stateFill(sr, 1, '#0f766e')).toBe('#0f766e')
+    expect(stateFill(sr, 0, '#0f766e')).not.toBe('#0f766e')
     const before = JSON.stringify(renderChart(spec(), measure))
     expect(JSON.stringify(renderChart(s, measure))).not.toBe(before)
   })

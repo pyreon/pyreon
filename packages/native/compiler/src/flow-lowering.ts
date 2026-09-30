@@ -11,7 +11,7 @@
  */
 
 /** Signal/Computed reads that lower to native properties (parens dropped). */
-import type { ExprIR } from './types'
+import type { ExprIR, TypeIR } from './types'
 
 export function resolveStaticFlowRendererMap(
   expression: ExprIR | undefined,
@@ -45,8 +45,10 @@ export function resolveStaticFlowRendererMap(
  *
  * Collected up front from every component's IR, because the `<Flow>` that
  * registers a renderer may be emitted after the renderer itself.
+ * `only: 'nodeTypes'` narrows it to the NODE renderers (where a
+ * `<NodeToolbar>` / `<NodeResizer>` means something).
  */
-export function collectFlowRendererComponents(roots: readonly unknown[], lookup: (name: string) => ExprIR | undefined): Set<string> {
+export function collectFlowRendererComponents(roots: readonly unknown[], lookup: (name: string) => ExprIR | undefined, only?: 'nodeTypes'): Set<string> {
   const out = new Set<string>()
   const seen = new Set<object>()
   const visit = (node: unknown): void => {
@@ -60,9 +62,9 @@ export function collectFlowRendererComponents(roots: readonly unknown[], lookup:
     if (n.kind === 'jsx-element' && n.tag === 'Flow' && Array.isArray(n.attrs)) {
       for (const a of n.attrs as { kind: string; name?: string; value?: ExprIR }[]) {
         if (a.kind !== 'attr' || a.value === undefined) continue
-        if (a.name === 'nodeTypes' || a.name === 'edgeTypes') {
+        if (a.name === 'nodeTypes' || (a.name === 'edgeTypes' && only === undefined)) {
           for (const entry of resolveStaticFlowRendererMap(a.value, lookup) ?? []) out.add(entry.component)
-        } else if (a.name === 'connectionLine' && a.value.kind === 'identifier') {
+        } else if (a.name === 'connectionLine' && a.value.kind === 'identifier' && only === undefined) {
           out.add(a.value.name)
         }
       }
@@ -299,4 +301,247 @@ export function flowRectLiteralFields(e: ExprIR): [ExprIR, ExprIR, ExprIR, ExprI
   const order = ['x', 'y', 'width', 'height'] as const
   if (fields.size !== 4 || !order.every((k) => fields.has(k))) return null
   return order.map((k) => fields.get(k)!) as [ExprIR, ExprIR, ExprIR, ExprIR]
+}
+
+/** The free path helpers whose native lowering returns a `PyreonFlowPathResult`. */
+export const FLOW_PATH_RESULT_HELPERS: ReadonlySet<string> = new Set([
+  'getBezierPath', 'getSmoothStepPath', 'getStepPath', 'getStraightPath', 'getWaypointPath', 'getEdgePath',
+])
+
+/**
+ * How a custom-edge `<path d={X.path}>` reaches the native `result:` slot.
+ *
+ * `.path` is read off three different things, and each needs its own
+ * spelling — the same member access means a structured path RESULT, a
+ * connection-line ACCESSOR, or plain SVG text:
+ *
+ *   - `'object'`  — `X` is itself a path result: a path-helper call
+ *                   (`getStraightPath({...}).path`) or a component-scope
+ *                   const bound to one (`const p = getStraightPath(...)`;
+ *                   `p.path`). The result keeps its segments, so `X` is passed
+ *                   as is.
+ *   - `'accessor'` — `X` is the component's props param (`props.path` in a
+ *                   connection-line renderer), which natively is a `path`
+ *                   closure → `path()`.
+ *   - `'svg'`     — anything else. `X.path` is then SVG path DATA, parsed at
+ *                   runtime like any other `d` string.
+ *
+ * Before this classification, EVERY non-call object took the accessor
+ * spelling, so a local helper result emitted `result: path()` — a function
+ * the edge component does not have — and failed the native build silently.
+ */
+export function classifyFlowPathMember(
+  object: ExprIR,
+  propsParamName: string | undefined,
+  componentConsts: ReadonlyMap<string, ExprIR>,
+): 'object' | 'accessor' | 'svg' {
+  const isHelperCall = (e: ExprIR | undefined): boolean =>
+    e?.kind === 'call' && e.callee.kind === 'identifier' && FLOW_PATH_RESULT_HELPERS.has(e.callee.name)
+  if (isHelperCall(object)) return 'object'
+  if (object.kind === 'identifier') {
+    if (object.name === propsParamName) return 'accessor'
+    if (isHelperCall(componentConsts.get(object.name))) return 'object'
+  }
+  return 'svg'
+}
+
+/**
+ * A flow member's OPTIONS argument that the native port cannot express.
+ *
+ * The native methods take their options as labelled parameters
+ * (`zoomTo(2, duration: 300)`), so only an object LITERAL whose keys are all
+ * in `supported` can be rewritten. Anything else — an extra key the port does
+ * not have (`{ speed }`), or an options object held in a variable — used to
+ * fall through to the generic call emit with no warning and fail at the native
+ * build. It still falls through (the same emitted-as-written fallback an
+ * unported member gets), but is now NAMED first.
+ */
+export function unsupportedFlowOptionsWarning(flowName: string, member: string, supported: readonly string[], arg: ExprIR): string {
+  const allowed = new Set(supported)
+  const bad = arg.kind === 'object' ? arg.fields.map((f) => f.name).filter((name) => !allowed.has(name)) : []
+  const what = arg.kind !== 'object'
+    ? 'are passed as a non-literal value'
+    : (arg.spreads?.length ?? 0) > 0
+      ? 'use a spread'
+      : `use the unsupported key${bad.length === 1 ? '' : 's'} ${bad.map((k) => `\`${k}\``).join(', ')}`
+  return (
+    `createFlow binding \`${flowName}\`: \`${member}(...)\` options ${what}. Natively the options are labelled parameters, so only an object literal with ${supported.map((k) => `\`${k}\``).join(', ')} lowers — ` +
+    `this call is emitted as written and fails at the native BUILD. Write the options inline with only those keys, or keep the call in a \`<Web>\` branch.`
+  )
+}
+
+/**
+ * A literal argument / patch field of a flow member that has the right KIND
+ * (an object or array literal) but not the shape the native constructor needs
+ * — a point missing a coordinate, a handle without a literal `type`/`position`.
+ * Emitting it would synthesize an anonymous struct the port does not accept,
+ * and silently dropping it (the old behaviour for patch fields) made native
+ * do nothing where the web moved the node. A patch field is dropped; a
+ * positional argument (which cannot be dropped) is emitted as written. Both
+ * are named.
+ */
+export function unloweredFlowLiteralWarning(flowName: string, site: string, expected: string, outcome: 'dropped' | 'emitted' = 'dropped'): string {
+  return (
+    `createFlow binding \`${flowName}\`: ${site} is a literal the native port cannot build — it must be ${expected}. ` +
+    (outcome === 'dropped'
+      ? 'It was DROPPED natively (the web applies it). '
+      : 'The call is emitted as written and fails at the native BUILD. ') +
+    'Complete the literal, or pass a value that already has the native type.'
+  )
+}
+
+/** The `layout(algorithm, options)` keys `PyreonFlowLayoutOptions` carries. */
+export const FLOW_LAYOUT_OPTION_KEYS: readonly string[] = ['direction', 'nodeSpacing', 'layerSpacing', 'animate', 'animationDuration']
+
+export function flowLayoutOptionsDroppedWarning(flowName: string, keys: readonly string[]): string {
+  return (
+    `createFlow binding \`${flowName}\`: \`layout(...)\` option${keys.length === 1 ? '' : 's'} ${keys.map((k) => `\`${k}\``).join(', ')} ${keys.length === 1 ? 'has' : 'have'} no native counterpart and ${keys.length === 1 ? 'was' : 'were'} DROPPED — ` +
+    `the native layout runs without ${keys.length === 1 ? 'it' : 'them'}, so it can differ from the web's. Natively only ${FLOW_LAYOUT_OPTION_KEYS.map((k) => `\`${k}\``).join(', ')} apply.`
+  )
+}
+
+/**
+ * Why a `<NodeToolbar>` reached the element emitter without lowering. The
+ * toolbar is extracted up front from a node component's STATIC JSX; the
+ * element itself always emits nothing, so every other placement is a drop.
+ * Two different drops, with two different fixes: the component is not a
+ * registered node renderer at all, or it is one but the toolbar sits where the
+ * static extraction cannot see it (a conditional, a `.map`, a helper).
+ */
+export function droppedNodeToolbarWarning(registeredNodeRenderer: boolean, component: string): string {
+  return registeredNodeRenderer
+    ? `<NodeToolbar> in node component \`${component}\` is not a static JSX child (it sits inside a conditional, a \`.map\`, a helper call or a variable), so native extraction cannot see it and it was dropped. Write it directly in the component's returned JSX and gate it with \`showOnSelect\` / \`selected\` instead.`
+    : `<NodeToolbar> in \`${component}\` only lowers inside a component registered by a literal <Flow nodeTypes={{ type: Component }}> map; it was dropped.`
+}
+
+/**
+ * Unify the `data` rows of a `createFlow` node list into ONE row type.
+ *
+ * A native `PyreonFlowState<Row>` holds every node's `data` as the SAME
+ * Codable struct, so rows that differ must be reconciled by field NAMES and
+ * TYPES. Unifying by names alone left two broken shapes (both found as
+ * `it.fails` specs): rows with the same field set but a differently-typed
+ * field kept their OWN structs (`__Obj0` / `__Obj1`) against a state typed by
+ * the first, and a field both re-typed and missing somewhere was merged to
+ * `Any?`, which is not Codable. Same class as "select a struct by field names
+ * AND types" (#3125).
+ *
+ * Rules per field:
+ *   - `Int` and `Double` merge to `Double` (a whole number is a valid Double);
+ *   - a `null` / `undefined` value, or a row that omits the field, makes it
+ *     OPTIONAL rather than a separate type;
+ *   - any OTHER disagreement has no Codable spelling — it is reported in
+ *     `conflicts` for the caller to name, never silently typed `Any`.
+ *
+ * `heterogeneous` is true whenever the rows cannot all use the first row's
+ * own struct — a name OR a type difference.
+ */
+export function unifyFlowDataRows(
+  rows: { name: string; value: ExprIR }[][],
+  infer: (value: ExprIR) => TypeIR,
+): {
+  heterogeneous: boolean
+  fields: { name: string; type: TypeIR }[]
+  conflicts: { name: string; types: TypeIR[] }[]
+} {
+  const allNames = [...new Set(rows.flatMap((fields) => fields.map((field) => field.name)))]
+  let heterogeneous = rows.some(
+    (fields) => fields.length !== allNames.length || allNames.some((name) => !fields.some((field) => field.name === name)),
+  )
+  const conflicts: { name: string; types: TypeIR[] }[] = []
+  const fields = allNames.map((name) => {
+    const values = rows.flatMap((row) => row.find((field) => field.name === name)?.value ?? [])
+    // A `null` / `undefined` VALUE makes the field optional; it is not a type
+    // of its own (inference reads a bare `null` literal as `unknown`).
+    const isNullish = (value: ExprIR): boolean =>
+      (value.kind === 'literal' && value.value === null) ||
+      (value.kind === 'identifier' && value.name === 'undefined')
+    const present = values.filter((value) => !isNullish(value))
+    const optional = present.length < rows.length
+    const raw = [...new Map(present.map((value) => { const type = infer(value); return [JSON.stringify(type), type] })).values()]
+    const concrete = raw.filter((type) => type.kind !== 'null' && type.kind !== 'undefined')
+    if (raw.length > 1 || (optional && values.length === rows.length)) heterogeneous = true
+    let base: TypeIR
+    if (concrete.length === 0) {
+      // Every value is null / absent — nothing to name the field's type from.
+      base = { kind: 'unknown' }
+      conflicts.push({ name, types: [] })
+    } else if (concrete.every((type) => type.kind === 'number')) {
+      base = concrete.some((type) => type.kind === 'number' && type.float === true)
+        ? { kind: 'number', float: true }
+        : { kind: 'number' }
+    } else if (concrete.length === 1) {
+      base = concrete[0]!
+    } else {
+      base = { kind: 'union', branches: concrete }
+      conflicts.push({ name, types: concrete })
+    }
+    const type: TypeIR = optional ? { kind: 'union', branches: [base, { kind: 'undefined' }] } : base
+    return { name, type }
+  })
+  return { heterogeneous, fields, conflicts }
+}
+
+/** The named warning for {@link unifyFlowDataRows} conflicts (both emitters). */
+export function flowDataConflictWarning(
+  flowName: string,
+  conflicts: { name: string; types: TypeIR[] }[],
+  typeName: (type: TypeIR) => string,
+): string {
+  const list = conflicts
+    .map((c) => `\`${c.name}\` (${c.types.length === 0 ? 'only ever null' : c.types.map(typeName).join(' vs ')})`)
+    .join(', ')
+  return `createFlow \`${flowName}\`: node \`data\` field(s) ${list} have no single native type across the nodes — every node's data shares ONE Codable row struct natively, and these values have no common spelling (\`Any\` is not Codable), so the flow does not compile on iOS/Android. Give each field one type in every node, or declare the row type (\`createFlow<{ … }>(…)\`).`
+}
+
+/**
+ * An `updateEdge` patch field that is lowered only from a static shape — a
+ * marker spec, a `pathOptions` object — and was DROPPED because the value is
+ * not one (a computed marker, an options object in a variable, an unknown
+ * `pathOptions` key). These used to vanish without a word.
+ */
+export function droppedFlowEdgePatchWarning(
+  flowName: string,
+  field: string,
+  expected: string,
+  member: 'updateEdge' | 'addEdge' = 'updateEdge',
+): string {
+  return (
+    `createFlow binding \`${flowName}\`: ${member}(...) field \`${field}\` was DROPPED natively (the web applies it) — it lowers only as ${expected}. ` +
+    (member === 'updateEdge' ? 'Write it inline in that form, or set it on the edge when it is created.' : 'Write it inline in that form.')
+  )
+}
+
+/** The one spelling a marker must have to lower (shared by the add / update / seed paths). */
+export const FLOW_MARKER_LITERAL_SHAPE =
+  "a literal marker (`'arrow'` / `'arrowclosed'`, `MarkerType.X`, `{ type, color?, width?, height?, strokeWidth? }`, or `null`)"
+const FLOW_PATH_OPTION_KEYS: readonly string[] = ['curvature', 'borderRadius', 'offset']
+
+/**
+ * The declines `addEdge({ … })` must NAME for its `pathOptions` / markers —
+ * the same rule `updateEdge` follows. Each target's constructor lowered only
+ * the literal shapes and SKIPPED the rest with no warning, so an edge added
+ * with `markerEnd: someMarker` or `pathOptions: opts` lost them silently.
+ * `markerLowers` is the target's own literal reader.
+ */
+export function addEdgeDropWarnings(
+  flowName: string,
+  fields: { pathOptions?: ExprIR | undefined; markerStart?: ExprIR | undefined; markerEnd?: ExprIR | undefined },
+  markerLowers: (e: ExprIR) => boolean,
+): string[] {
+  const out: string[] = []
+  const po = fields.pathOptions
+  if (po !== undefined) {
+    if (po.kind !== 'object' || (po.spreads?.length ?? 0) > 0) {
+      out.push(droppedFlowEdgePatchWarning(flowName, 'pathOptions', 'an inline object literal', 'addEdge'))
+    } else {
+      const unknown = po.fields.map((f) => f.name).filter((n) => !FLOW_PATH_OPTION_KEYS.includes(n))
+      if (unknown.length > 0) out.push(droppedFlowEdgePatchWarning(flowName, `pathOptions.${unknown.join('/')}`, 'one of `curvature`, `borderRadius`, `offset`', 'addEdge'))
+    }
+  }
+  for (const name of ['markerStart', 'markerEnd'] as const) {
+    const m = fields[name]
+    if (m !== undefined && !markerLowers(m)) out.push(droppedFlowEdgePatchWarning(flowName, name, FLOW_MARKER_LITERAL_SHAPE, 'addEdge'))
+  }
+  return out
 }

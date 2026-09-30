@@ -411,13 +411,21 @@ describe('openEventStream over a real server', () => {
   })
 
   it('an external signal aborted mid-stream ends iteration without an error', async () => {
+    // NOT an exact count: `/endless` retransmits every 5ms, and under
+    // coverage-instrumentation load (or any GC/scheduler pressure) the
+    // event loop tick that runs `ac.abort()` can land after a second
+    // write is already buffered — flaky-verified: this failed
+    // intermittently with `seen` at length 2 under a slower Node build,
+    // exactly the timing race, not a correctness break. The loop DOES
+    // end and never throws either way, which is the actual contract —
+    // same relaxed shape as the sibling `close()` spec above.
     const ac = new AbortController()
     const seen: unknown[] = []
     for await (const ev of openEventStream(via('/endless'), { signal: ac.signal })) {
       seen.push(ev)
       ac.abort()
     }
-    expect(seen).toHaveLength(1)
+    expect(seen.length).toBeGreaterThanOrEqual(1)
   })
 
   it('a payload that fails parse throws StreamEventError and is not retried', async () => {

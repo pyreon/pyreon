@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { layoutSankey, renderSankey, ribbonPoints } from './sankey'
 import { hitSankey } from './sankey-hit'
 import { sankeyToSvg } from './family-svg'
-import { compileFamily, familyToSvg } from './option-family'
 
 const box = { x: 0, y: 0, w: 400, h: 200 }
 const nodes = [{ name: 'coal' }, { name: 'gas' }, { name: 'power' }, { name: 'homes' }, { name: 'industry' }]
@@ -117,23 +116,3 @@ describe('sankey layout', () => {
   })
 })
 
-describe('sankey option mapping', () => {
-  it('ECharts sankey series lowers nodes/links, nodeWidth/nodeGap/nodeAlign/layoutIterations', () => {
-    const f = compileFamily({
-      series: [{ type: 'sankey', nodeWidth: 20, nodeGap: 12, nodeAlign: 'left', layoutIterations: 0, data: [{ name: 'a', itemStyle: { color: '#123456' } }, { name: 'b' }], links: [{ source: 'a', target: 'b', value: 3 }] }],
-    })!
-    if (f.plan.kind !== 'sankey') throw new Error('kind')
-    expect(f.plan.nodes[0]!.color).toBe('#123456')
-    expect(f.plan.links[0]!.value).toBe(3)
-    expect(f.plan.sankey.nodeWidth).toBe(20)
-    expect(f.plan.sankey.nodePadding).toBe(12)
-    expect(f.plan.sankey.align).toBe('left')
-    expect(f.plan.sankey.iterations).toBe(0)
-    expect(f.warnings).toEqual([])
-    expect(familyToSvg(f.plan)).toContain('<polygon')
-    const vertical = compileFamily({ series: [{ type: 'sankey', orient: 'vertical', data: [{ name: 'a' }], links: [] }] })!
-    // A vertical sankey is a transposed plan, not an unsupported option.
-    expect(vertical.warnings).toEqual([])
-    expect(vertical.plan).toMatchObject({ kind: 'sankey', orient: 'vertical' })
-  })
-})
