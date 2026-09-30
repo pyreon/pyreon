@@ -95,6 +95,27 @@ describe('useContext', () => {
     popContext()
     popContext()
   })
+
+  test('an ACTIVE owner that does not have the context falls through to the stack', () => {
+    // Real-world shape: a mounted component (an owner is active) sits below
+    // a `*-compat` layer that provides via the legacy stack-based
+    // `pushContext` instead of `owner.provideContext`. `useContext` must not
+    // stop at "owner active, not found there" — it has to fall through to
+    // the request-scoped/compat stack, exactly as the client-stack-fallback
+    // comment in `useContext` documents.
+    const ctx = createContext('default')
+    const owner = effectScope()
+    const prev = setContextOwner(owner)
+    pushContext(new Map([[ctx.id, 'from-stack']]))
+    try {
+      expect(useContext(ctx)).toBe('from-stack')
+    } finally {
+      popContext()
+      setContextOwner(prev)
+    }
+    // Back to no owner, no stack frame — resolves to the default again.
+    expect(useContext(ctx)).toBe('default')
+  })
 })
 
 describe('pushContext / popContext', () => {
