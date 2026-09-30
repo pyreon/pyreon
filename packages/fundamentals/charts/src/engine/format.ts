@@ -5,7 +5,12 @@
 // make a chart look broken regardless of how correct its geometry is.
 
 import type { Double } from './types'
-import { isFiniteNumber } from './finite-number'
+
+/** Native-subset-safe finite-number predicate shared by chart arithmetic. */
+export function isFiniteChartNumber(v: Double): boolean {
+  // Intentional IEEE-754 checks: the native subset cannot lower Number.isFinite.
+  return v === v && v - v === 0.0 // lgtm[js/identical-operand]
+}
 
 export type Formatter = (value: Double) => string
 
@@ -19,7 +24,7 @@ export type Formatter = (value: Double) => string
  * `2e21`) rather than a runaway digit string.
  */
 export function plain(v: Double): string {
-  if (!isFiniteNumber(v)) {
+  if (!isFiniteChartNumber(v)) {
     if (!(v === v)) return 'NaN'
     return v > 0.0 ? 'Infinity' : '-Infinity'
   }
@@ -153,7 +158,7 @@ function padded(v: Double, width: number): string {
 export function formatDate(ms: Double, pattern: string): string {
   // NaN and ±Infinity are the values for which `x - x` is not zero; there is
   // no `Number.isFinite` / `Infinity` in the native subset.
-  if (!isFiniteNumber(ms)) return ''
+  if (!isFiniteChartNumber(ms)) return ''
   const days = Math.floor(ms / DAY_MS)
   const inDay = ms - days * DAY_MS
   // Howard Hinnant's civil_from_days (as `civilFromDays` in calendar.ts).
