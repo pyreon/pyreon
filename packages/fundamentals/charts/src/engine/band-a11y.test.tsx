@@ -60,7 +60,7 @@ describe('a band is accessible as an interval', () => {
       categories: ['a', 'b'],
       series: [{ label: 'S', kind: 'line', values: [3, 6] }],
     })
-    expect(d).toBe('T. 1 series over 2 categories from a to b. S, line: rising from 3 to 6, ranging 3 at a to 6 at b.')
+    expect(d).toBe('T. 1 series over 2 categories from a to b. S, line: rising 2× from 3 to 6, ranging 3 at a to 6 at b.')
   })
 
   it('a band whose low channel is empty falls back to the one-channel sentence', () => {
@@ -69,7 +69,7 @@ describe('a band is accessible as an interval', () => {
       categories: ['a', 'b'],
       series: [{ label: 'S', kind: 'band', values: [3, 6], values2: [] }],
     })
-    expect(d).toContain('S, band: rising from 3 to 6')
+    expect(d).toContain('S, band: rising 2× from 3 to 6')
     expect(d).not.toContain('lower bound')
   })
 
@@ -249,7 +249,7 @@ describe('gaps are skipped, not narrated', () => {
     expect(d).not.toContain('NaN')
     // Direction and range come from the FINITE values, and the categories
     // they are attributed to are the ones those values sit at.
-    expect(d).toContain('Avg, line: rising from 5 to 9, ranging 5 at c to 9 at d.')
+    expect(d).toContain('Avg, line: rising 80% from 5 to 9, ranging 5 at c to 9 at d.')
   })
 
   it('an all-gap series is empty, which is the honest word', () => {
@@ -270,7 +270,7 @@ describe('gaps are skipped, not narrated', () => {
     })
     expect(d).not.toContain('NaN')
     expect(d).not.toContain('lower bound')
-    expect(d).toContain('Env, band: rising from 3 to 6')
+    expect(d).toContain('Env, band: rising 2× from 3 to 6')
   })
 
   it('a real indicator chart describes itself without NaN', () => {

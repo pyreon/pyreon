@@ -5,13 +5,13 @@
 // either passed through as unknown or surfaces a warning.
 
 import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, FRAME_CHART_HOSTS } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, FRAME_CHART_HOSTS, GRAMMAR_CONFIG_TAGS, isChartHostTag } from './chart-hosts'
 import { DROPPED_FLOW_COMPONENTS, HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, LOWERED_FLOW_RUNTIME_EXPORTS, droppedFlowFieldsWarning } from './flow-lowering'
 import { warnUnlowerdCrdtMembers } from './parse-crdt-surface'
 import { parseSync } from 'oxc-parser'
 import { detectPlain, transformPlain } from '@pyreon/compiler/plain'
 import {
-  typeIsOptional, buildInferenceCtx, inferReturnType, inferType, type InferenceCtx } from './infer-type'
+  typeIsOptional, buildInferenceCtx, buildModuleConstTypes, inferReturnType, inferType, moduleConstType, type InferenceCtx } from './infer-type'
 import { parseHotkeyCombo } from './hotkey-combo'
 import type {
   AttrIR,
@@ -167,6 +167,12 @@ interface ParseCtx {
   kineticFactoryNames: Map<string, string | undefined>
   /** Local names bound to the `kinetic` import (supports `as` renaming). */
   kineticImportNames: Set<string>
+  /**
+   * `const RevenueBar = Bar<Row>` — a TypeScript instantiation expression that
+   * only fixes a component's type argument. It compiles to the component
+   * itself, so the alias is a TAG rename: `<RevenueBar>` lowers as `<Bar>`.
+   */
+  typedComponentAliases: Map<string, string>
   /**
    * Set while parsing a component whose tree used a PRESET-bearing kinetic
    * binding, so the component gets one synthesized mount flag. One per
@@ -336,8 +342,21 @@ interface ParseCtx {
        * `useQuery`, whose native harness decodes one JSON body.
        */
       responseType?: string
+      /**
+       * The declaration's `response` schema when it names a same-module schema
+       * binding — `{ response: book_schema }` or `{ response: s.array(book_schema) }`.
+       * Evidence for the decode type's number fields: see
+       * `refineStructFloatsFromResponseSchemas`.
+       */
+      responseSchema?: { binding: string; array: boolean }
     }
   >
+  /**
+   * Decode sites: a hook's type argument paired with the endpoint whose
+   * response it decodes (`useQuery<Book>(() => getBook.query())`). Read by
+   * `refineStructFloatsFromResponseSchemas` after the structs are built.
+   */
+  responseDecodes: { type: TypeIR; endpoint: string }[]
   /**
    * Schemas SYNTHESIZED from inline `s.object({ … }).safeParse(x)` expressions
    * encountered while parsing component bodies. Merged into the top-level
@@ -443,6 +462,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     toastNames: new Set(),
     kineticFactoryNames: new Map(),
     kineticImportNames: new Set(),
+    typedComponentAliases: new Map(),
     kineticMountPending: false,
     kineticPresetImports: new Map(),
     validateSchemaNames: new Set(),
@@ -462,6 +482,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     streamOpeners: new Map(),
     streamOpenersAllLowered: false,
     endpointDefs: new Map(),
+    responseDecodes: [],
     inlineSchemas: [],
     inlineSchemaByShape: new Map(),
     inlineSchemaCounter: 0,
@@ -543,6 +564,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // to PyreonToast. Handles renamed imports (`import { toast as notify }`).
   collectToastNames(ast.program.body as AnyNode[], ctx)
   collectKineticFactoryNames(ast.program.body as AnyNode[], ctx)
+  collectTypedComponentAliases(ast.program.body as AnyNode[], ctx)
   collectValidateSchemaNames(ast.program.body as AnyNode[], ctx)
   collectFieldMetaLowered(ast.program.body as AnyNode[], ctx)
   collectRxImportedNames(ast.program.body as AnyNode[], ctx)
@@ -762,6 +784,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     // The pre-pass has already recorded the name and warned; `<Box>` lowers to
     // a plain container.
     if (isKineticFactoryNode(node, ctx)) continue
+    if (isTypedAliasNode(node, ctx)) continue
     // Phase 2 follow-up: module-level mutable / immutable bindings.
     // `let nextId = 1`, `const APP_VERSION = '1.0.0'` etc. Closes the
     // TodoMVC `nextId undefined` typecheck blocker by emitting these
@@ -783,12 +806,43 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     ),
   )
 
+  // ─── Float refinement ────────────────────────────────────────────────
+  // JS has ONE number type; PMTC splits Int / Double. Every pass below turns
+  // fractional EVIDENCE into a Double declaration, and every one of them must
+  // be able to see a FILE-SCOPE binding as evidence: `const RATE = 0.5` above
+  // the component is how a rate / factor / fixture is written in nearly every
+  // app. Before this they each built an inference context with no
+  // `moduleConsts`, so RATE read `unknown` and the same source compiled with
+  // RATE inside the component and failed with it one line above — on both
+  // targets. `moduleConstsNow()` is the one place that context is derived.
+  //
+  // File-scope bindings refine FIRST, in source order, so a later binding
+  // (`const HALF: number = RATE / 2`) and every component pass see them
+  // already widened.
+  const helperReturnSeed = new Map(ctx.helperFns.map((h) => [h.name, h.returnType] as const))
+  refineModuleDeclFloats(moduleDecls, structs, helperReturnSeed)
+  // Rebuilt between passes rather than once: a struct field flipped to Double
+  // by the pass below changes what an un-annotated `const P = ITEMS[0].price`
+  // types as.
+  const moduleConstsNow = (): Map<string, TypeIR> =>
+    buildModuleConstTypes(moduleDecls, structs, helperReturnSeed)
+  let moduleConsts = moduleConstsNow()
+  const componentCtx = (c: ComponentIR): InferenceCtx =>
+    buildInferenceCtx(c.decls, stores, structs, c.props, c.propsParamName, helperReturnSeed, moduleConsts)
+
   // Double-type follow-up: a `type X = { rate: number }` annotation can't
   // express whether a field is fractional, so the struct field defaults
   // to Int. Refine it to Double when a signal/const initializer assigns a
-  // fractional literal to that field — additive (only ever flips
+  // fractional value to that field — additive (only ever flips
   // number→float, never the reverse, so integer structs are untouched).
-  refineStructFloatsFromInitializers(structs, components, moduleDecls)
+  refineStructFloatsFromInitializers(structs, components, moduleDecls, componentCtx, moduleConsts)
+
+  // The same Int-default problem, for DECODE types: a `type Book = { rating:
+  // number }` paired with the endpoint's `{ response: book_schema }`, where
+  // the schema says `s.number()` (no `.int()`). That schema accepts `1.5`,
+  // so an `Int` field fails to decode the very payload the web accepts. The
+  // schema is the evidence; see the function.
+  refineStructFloatsFromResponseSchemas(structs, zodSchemas, ctx)
 
   // Same evidence as the pass above, for the shape that has no StructIR to
   // attach it to: an inline object generic (`signal<{ price: number }[]>([{
@@ -801,21 +855,31 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // and ONLY Kotlin failed, because a Swift `reduce(0, …)` literal coerces to
   // Double while Kotlin's binds Int strictly. A one-target failure from a
   // pass-ordering mistake is exactly why both toolchains gate this.
-  refineInlineObjectFloats(components)
+  refineInlineObjectFloats(components, componentCtx)
+
+  moduleConsts = moduleConstsNow()
 
   // Double-type follow-up: a `reduce` over a Double column lowers to an
   // Int `0` seed, which swiftc/kotlinc reject against Double accumulation.
   // Flag the seed literal Double when the reducer accumulates a fractional
-  // field — additive (only flips an integer seed when proven Double).
-  refineReduceSeedFloats(components, structs, stores)
+  // value — additive (only flips an integer seed when proven Double).
+  refineReduceSeedFloats(components, structs, componentCtx)
 
   // Double-type follow-up: an EXPLICIT `signal<number>(12.5)` /
   // `signal<number[]>([12.5, …])` generic bypasses inferTypeFromInitial
-  // (which only runs when there's no generic), so a fractional literal
+  // (which only runs when there's no generic), so a fractional initializer
   // mis-emits as `Int = 12.5` / `[Int] = [12.5]` (invalid Swift/Kotlin).
-  // Refine the signal's number type to Double from its fractional literal
-  // initializer — additive (only flips number→float on a fractional).
-  refineSignalNumberFloats(components)
+  // Refine the signal's number type to Double from its fractional
+  // initializer — additive (only flips number→float on fractional evidence).
+  refineSignalNumberFloats(components, componentCtx)
+
+  // A chart formatter (`<Axis format={kg}>`, `<PlotChart format xFormat
+  // y2Format>`) is called with a Double on both targets, so the named function
+  // it points at must take one: `function kg(v: number)` otherwise lowers its
+  // parameter to Int and the chart slot `(Double) -> String` rejects it — on
+  // BOTH targets, with no warning. The slot is the evidence; runs before
+  // refineHelperReturns so the return is inferred over the widened parameter.
+  refineChartFormatterParams(components, ctx.helperFns)
 
 
   // Shape-A follow-up: a top-level helper function declared WITHOUT a return
@@ -825,7 +889,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // type — dropping the v1 annotation requirement. Runs after all structs are
   // built (a helper param/return can reference a declared struct). A body whose
   // type still can't be determined is warned + dropped (never a broken emit).
-  refineHelperReturns(ctx.helperFns, structs, ctx.warnings)
+  refineHelperReturns(ctx.helperFns, structs, ctx.warnings, moduleConsts)
 
   // Standalone-validation: emit any schema SYNTHESIZED from an inline
   // `s.object({ … }).safeParse(x)` expression (collected in `parseExpr`)
@@ -1361,13 +1425,8 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
     // which then told the user to "consume on native via the `<WebView>` bridge
     // subpath", i.e. to do the thing they had just done. A warning that fires
     // on its own recommended fix trains people to ignore it.
-    // The `/plot` SUBPATH of @pyreon/charts is the package's OWN engine, whose
-    // geometry is GENERATED into the native runtimes and whose data-prop hosts
-    // lower to PyreonChartCanvas (emit-swift/kotlin `emitXChartHost`,
-    // chart-hosts.ts) — the web-only rationale is about the ECharts bridge at
-    // the package root, and would be wrong for this import.
     const subpath = src.startsWith('@pyreon/') ? src.slice('@pyreon/'.length).split('/')[1] : undefined
-    const isWebviewBridgeImport = subpath === 'webview' || (pkg === '@pyreon/charts' && subpath !== 'echarts')
+    const isWebviewBridgeImport = subpath === 'webview'
     if (
       WEB_ONLY_PACKAGES.has(pkg) &&
       !UNLOWERED_PYREON_MODULES.has(pkg) &&
@@ -1592,17 +1651,30 @@ function topLevelDeclarators(node: AnyNode): AnyNode[] {
 
 /** Read the value node of a non-computed property `<name>` off an
  * ObjectExpression, or undefined. */
+/**
+ * An endpoint declaration's `response` value, when it names a schema BINDING
+ * of this module: `book_schema` or `<prefix>.array(book_schema)`. Anything
+ * else (an inline object, a call chain) yields `undefined` — no evidence.
+ */
+function readResponseSchemaRef(node: AnyNode | undefined): { binding: string; array: boolean } | undefined {
+  const v = unwrapTypeLayers(node) as AnyNode | undefined
+  if (v?.type === 'Identifier') return { binding: v.name as string, array: false }
+  if (
+    v?.type === 'CallExpression' &&
+    v.callee?.type === 'MemberExpression' &&
+    v.callee.property?.type === 'Identifier' &&
+    v.callee.property.name === 'array'
+  ) {
+    const inner = unwrapTypeLayers((v.arguments as AnyNode[] | undefined)?.[0]) as AnyNode | undefined
+    if (inner?.type === 'Identifier') return { binding: inner.name as string, array: true }
+  }
+  return undefined
+}
+
 function readObjectProp(obj: AnyNode | undefined, name: string): AnyNode | undefined {
   if (obj?.type !== 'ObjectExpression') return undefined
   for (const prop of (obj.properties as AnyNode[] | undefined) ?? []) {
-    if (prop.type !== 'Property' || prop.computed) continue
-    const key =
-      prop.key?.type === 'Identifier'
-        ? prop.key.name
-        : typeof prop.key?.value === 'string'
-          ? prop.key.value
-          : undefined
-    if (key === name) return prop.value as AnyNode | undefined
+    if (staticPropKey(prop) === name) return prop.value as AnyNode | undefined
   }
   return undefined
 }
@@ -1614,13 +1686,7 @@ function readLiteralEntries(obj: AnyNode | undefined): Record<string, string> {
   const out: Record<string, string> = {}
   if (obj?.type !== 'ObjectExpression') return out
   for (const prop of (obj.properties as AnyNode[] | undefined) ?? []) {
-    if (prop.type !== 'Property' || prop.computed) continue
-    const key =
-      prop.key?.type === 'Identifier'
-        ? prop.key.name
-        : typeof prop.key?.value === 'string'
-          ? prop.key.value
-          : undefined
+    const key = staticPropKey(prop)
     if (typeof key !== 'string') continue
     const v = prop.value as AnyNode | undefined
     const val = v?.value
@@ -1673,14 +1739,80 @@ function literalScalar(v: AnyNode | undefined): string | number | boolean | unde
   return undefined
 }
 
-/** The non-computed property name of an object-literal `Property`, else undefined. */
+/** The statically-known property name of an object-literal `Property`, else undefined. */
 function propName(prop: AnyNode): string | undefined {
-  if (prop.type !== 'Property' || prop.computed) return undefined
-  return prop.key?.type === 'Identifier'
-    ? (prop.key.name as string)
-    : typeof prop.key?.value === 'string'
-      ? prop.key.value
-      : undefined
+  return staticPropKey(prop)
+}
+
+/**
+ * The STATICALLY-KNOWN key of an object-literal / object-pattern property.
+ *
+ * A non-computed identifier key → its name; a string/number literal key
+ * (`{ 'a-b': 1 }`, `{ 0: 1 }`, and the computed `{ ['a']: 1 }`) → its value.
+ * Anything else — above all a COMPUTED identifier key `{ [kind]: … }`, whose
+ * key is the RUNTIME VALUE of `kind`, not the string "kind" — is NOT
+ * statically known and returns undefined.
+ *
+ * Every literal-config reader in this file goes through here. The class it
+ * closes: readers tested `key.type === 'Identifier'` without `prop.computed`,
+ * so `{ [kind]: v }` was silently read as the literal key "kind". Pair it with
+ * {@link hasDynamicKey} to NAME the entry rather than silently skip it.
+ */
+function staticPropKey(prop: AnyNode | undefined): string | undefined {
+  if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') return undefined
+  const key = prop.key as AnyNode | undefined
+  if (!key) return undefined
+  if (key.type === 'Identifier' || key.type === 'PrivateIdentifier') {
+    return prop.computed === true ? undefined : (key.name as string)
+  }
+  const v = key.value
+  if (
+    (key.type === 'Literal' || key.type === 'StringLiteral' || key.type === 'NumericLiteral') &&
+    (typeof v === 'string' || typeof v === 'number')
+  ) {
+    return String(v)
+  }
+  // `` { [`a`]: … } `` — a template literal with NO substitutions is a static
+  // string, exactly like `['a']`.
+  if (
+    prop.computed === true &&
+    key.type === 'TemplateLiteral' &&
+    ((key.expressions as AnyNode[] | undefined)?.length ?? 0) === 0
+  ) {
+    const cooked = (key.quasis as AnyNode[] | undefined)?.[0]?.value?.cooked
+    if (typeof cooked === 'string') return cooked
+  }
+  return undefined
+}
+
+/**
+ * True when a property's key is a computed expression that is NOT a literal
+ * (`{ [kind]: … }`, `{ [\`a${b}\`]: … }`) — i.e. the key only exists at
+ * runtime, so no compile-time reader can know which entry it is.
+ */
+function hasDynamicKey(prop: AnyNode | undefined): boolean {
+  if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') return false
+  return prop.computed === true && staticPropKey(prop) === undefined
+}
+
+/** Source text of a dynamic key, for warnings (`[kind]`). */
+function dynamicKeyText(prop: AnyNode, ctx: { source: string }): string {
+  const k = prop.key as AnyNode | undefined
+  const text =
+    k && typeof k.start === 'number' && typeof k.end === 'number'
+      ? ctx.source.slice(k.start, k.end)
+      : 'expr'
+  return `[${text}]`
+}
+
+/**
+ * Push the shared named warning for a computed non-literal key in a config
+ * object the compiler has to read statically. `where` names the construct.
+ */
+function warnDynamicKey(prop: AnyNode, where: string, ctx: ParseCtx): void {
+  ctx.warnings.push(
+    `${where}: the computed key \`${dynamicKeyText(prop, ctx)}\` is only known at runtime, so this entry cannot be read at compile time and does not lower to native. Write the key literally (\`{ input: … }\`, not \`{ [kind]: … }\`).`,
+  )
 }
 
 /**
@@ -1764,6 +1896,10 @@ function readQueryEntries(
       onUnlowerable('query (spread)')
       continue
     }
+    if (hasDynamicKey(prop)) {
+      onUnlowerable('query (computed key)')
+      continue
+    }
     const key = propName(prop)
     if (key === undefined) continue
     const v = prop.value as AnyNode | undefined
@@ -1816,6 +1952,10 @@ function readLiteralHeaders(
   for (const prop of (obj.properties as AnyNode[] | undefined) ?? []) {
     if (prop.type === 'SpreadElement') {
       onUnlowerable('headers (spread)')
+      continue
+    }
+    if (hasDynamicKey(prop)) {
+      onUnlowerable('headers (computed key)')
       continue
     }
     const key = propName(prop)
@@ -2009,6 +2149,43 @@ function arrowReturnedCall(arrow: AnyNode | undefined): AnyNode | undefined {
   return body?.type === 'CallExpression' ? body : undefined
 }
 
+/** An arrow / function expression node. */
+function isFunctionNode(n: AnyNode | undefined): boolean {
+  return n?.type === 'ArrowFunctionExpression' || n?.type === 'FunctionExpression'
+}
+
+/** The expression a zero-arg accessor returns — concise body or a lone `return`. */
+function arrowExprBody(arrow: AnyNode | undefined): AnyNode | undefined {
+  if (!isFunctionNode(arrow) || ((arrow!.params as AnyNode[] | undefined)?.length ?? 0) > 0) return undefined
+  const body = arrow!.body as AnyNode | undefined
+  if (body?.type !== 'BlockStatement') return body
+  const stmts = (body.body as AnyNode[] | undefined) ?? []
+  return stmts.length === 1 && stmts[0]?.type === 'ReturnStatement' ? (stmts[0].argument as AnyNode | undefined) : undefined
+}
+
+/** Does `name` appear as an identifier anywhere under `node`? (Conservative: shadowing counts as a use.) */
+function identifierReferenced(node: AnyNode | undefined, name: string): boolean {
+  let found = false
+  const visit = (n: unknown): void => {
+    if (found || n === null || typeof n !== 'object') return
+    if (Array.isArray(n)) {
+      for (const x of n) visit(x)
+      return
+    }
+    const a = n as AnyNode
+    if (a.type === 'Identifier' && a.name === name) {
+      found = true
+      return
+    }
+    for (const key of Object.keys(a)) {
+      if (key === 'parent' || key === 'loc' || key === 'range') continue
+      visit((a as Record<string, unknown>)[key])
+    }
+  }
+  visit(node)
+  return found
+}
+
 /** `useStream(<arrow>)`'s source call — the opener call its arrow returns. */
 function streamSourceCall(arrow: AnyNode | undefined): AnyNode | undefined {
   return arrowReturnedCall(arrow)
@@ -2056,6 +2233,7 @@ function collectEndpointDefs(body: AnyNode[], ctx: ParseCtx): void {
       // once on the endpoint was dropped from every native request in silence.
       const declUnlowerable: string[] = []
       let responseType: string | undefined
+      let responseSchema: { binding: string; array: boolean } | undefined
       const optsArg = init.arguments?.[1] as AnyNode | undefined
       const declHeaders = readLiteralHeaders(readObjectProp(optsArg, 'headers'), (what) =>
         declUnlowerable.push(what),
@@ -2069,7 +2247,11 @@ function collectEndpointDefs(body: AnyNode[], ctx: ParseCtx): void {
           continue
         }
         const key = propName(prop)
-        if (key === undefined || key === 'headers' || key === 'response') continue
+        if (key === 'response') {
+          responseSchema = readResponseSchemaRef(prop.value as AnyNode | undefined)
+          continue
+        }
+        if (key === undefined || key === 'headers') continue
         if (key === 'responseType') {
           const v = literalScalar(prop.value as AnyNode | undefined)
           // `'json'` is the default and `'stream'` is consumed by useStream;
@@ -2095,6 +2277,7 @@ function collectEndpointDefs(body: AnyNode[], ctx: ParseCtx): void {
         declHeaders,
         declUnlowerable,
         ...(responseType !== undefined ? { responseType } : {}),
+        ...(responseSchema !== undefined ? { responseSchema } : {}),
       })
     }
   }
@@ -2208,8 +2391,18 @@ function resolveEndpointParts(
   // the URL. Building the string by SLICING never interprets anything, so
   // there is no replacement syntax to get wrong. Do not reintroduce a
   // `.replace` here.
-  const paramNodes = readEntryNodes(readObjectProp(arg, 'params'))
-  const literalParams = readLiteralEntries(readObjectProp(arg, 'params'))
+  const paramsObj = readObjectProp(arg, 'params')
+  const dynamicParam = (
+    paramsObj?.type === 'ObjectExpression' ? (paramsObj.properties as AnyNode[]) : []
+  ).find(hasDynamicKey)
+  if (dynamicParam) {
+    warn(
+      `the \`params\` key \`${dynamicKeyText(dynamicParam, ctx)}\` is computed, so which path parameter it fills is only known at runtime — write the parameter name literally (\`params: { id }\`). This call stays web.`,
+    )
+    return null
+  }
+  const paramNodes = readEntryNodes(paramsObj)
+  const literalParams = readLiteralEntries(paramsObj)
   // Quasis/exprs of the templated form, built in parallel with the literal
   // one. `quasis` always has exactly `exprs.length + 1` entries.
   const quasis: string[] = ['']
@@ -2395,6 +2588,33 @@ function isHttpMetadataNode(node: AnyNode, ctx: ParseCtx): boolean {
  * order wrong here would emit an unresolved tag for exactly one file layout —
  * the kind of bug that reproduces on nobody's machine.
  */
+/** The component an instantiation expression names: `Bar<Row>` → `'Bar'`, following an alias of an alias. */
+function instantiatedComponent(init: AnyNode | undefined, ctx: ParseCtx): string | undefined {
+  if (init?.type !== 'TSInstantiationExpression') return undefined
+  const base = init.expression as AnyNode | undefined
+  if (base?.type !== 'Identifier' || typeof base.name !== 'string') return undefined
+  return ctx.typedComponentAliases.get(base.name) ?? base.name
+}
+
+function collectTypedComponentAliases(body: AnyNode[], ctx: ParseCtx): void {
+  for (const node of body) {
+    for (const d of topLevelDeclarators(node)) {
+      const name = d.id?.name as string | undefined
+      const target = instantiatedComponent(d.init as AnyNode | undefined, ctx)
+      if (typeof name === 'string' && target !== undefined) ctx.typedComponentAliases.set(name, target)
+    }
+  }
+}
+
+function isTypedAliasNode(node: AnyNode, ctx: ParseCtx): boolean {
+  const decls = topLevelDeclarators(node)
+  if (decls.length === 0) return false
+  return decls.every((d) => {
+    const n = d.id?.name as string | undefined
+    return typeof n === 'string' && ctx.typedComponentAliases.has(n)
+  })
+}
+
 function isKineticFactoryNode(node: AnyNode, ctx: ParseCtx): boolean {
   const decls = topLevelDeclarators(node)
   if (decls.length === 0) return false
@@ -2856,11 +3076,9 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
       // Radar/Plot), and the eight two-prop CHART_HOSTS (Sankey/Graph/
       // Treemap/Sunburst/Tree/River/Gantt/Polar — nodes+links or a values
       // record, dispatched through `emitSwiftChartHost`/`emitKotlinChartHost`
-      // in chart-hosts.ts). OptionChart lowers literal pie/gauge and common cartesian options
-      // through those same hosts; unsupported option families warn by path.
-      // The ECharts-backed default export stays web.
+      // in chart-hosts.ts).
       advice:
-        'Most `@pyreon/charts` hosts lower to a native PyreonChartCanvas over the generated engine — PieChart/FunnelChart/GaugeChart/CandlestickChart/HeatmapChart/RadarChart/PlotChart/SankeyChart/GraphChart/TreemapChart/SunburstChart/TreeChart/RiverChart/GanttChart/PolarChart/CalendarChart/ParallelChart/BoxplotChart. MapChart lowers from a PRECOMPUTED `GeoShape[]` const — the map registry, raw GeoJSON and `geoShapes()` itself stay web and warn by name (project once on the web or in a build step). OptionChart lowers static pie, gauge, line, area, bar, and scatter options through the same native hosts and names unsupported option paths. The theme lowers per chart (`theme={chartThemes.dark}` / `theme={{ palette: palettes.okabeIto }}`) and `<ChartThemeProvider mode theme>` is a compile-time scope its chart children inherit (a literal `mode` / `theme`; a reactive mode cannot be read at compile time and warns); the ECharts-backed default export is web-only — keep it in a `<Web>` branch, or embed via the `/webview` bridge',
+        'Most `@pyreon/charts` hosts lower to a native PyreonChartCanvas over the generated engine — PieChart/FunnelChart/GaugeChart/CandlestickChart/HeatmapChart/RadarChart/PlotChart/SankeyChart/GraphChart/TreemapChart/SunburstChart/TreeChart/RiverChart/GanttChart/PolarChart/CalendarChart/ParallelChart/BoxplotChart. MapChart lowers from a PRECOMPUTED `GeoShape[]` const — the map registry, raw GeoJSON and `geoShapes()` itself stay web and warn by name (project once on the web or in a build step). The theme lowers per chart (`theme={chartThemes.dark}` / `theme={{ palette: palettes.okabeIto }}`) and `<ChartThemeProvider mode theme>` is a compile-time scope its chart children inherit (a literal `mode` / `theme`; a reactive mode cannot be read at compile time and warns); anything else stays web — keep it in a `<Web>` branch',
       supported: new Set([
         // DERIVED from the registries that actually do the lowering, rather
         // than re-typed. The two disagreed the moment a host was added:
@@ -2873,7 +3091,8 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
         ...Object.keys(ACCESSOR_CHART_HOSTS),
         ...Object.keys(FRAME_CHART_HOSTS),
         'MapChart',
-        'OptionChart',
+        // A host's `visualMap={visualMap({ … })}` runs the engine's own builder at compile time (chart-hosts.ts `chartVisualMap`).
+        'visualMap',
         // Theme surface: the provider is a TRANSPARENT wrapper on native (its
         // children render; per-chart `theme` props do the theming there), and
         // `chartThemes` / `palettes` are compiler-known constants a `theme`
@@ -2957,6 +3176,7 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
         // mark constructors above.
         'compact',
         'currency',
+        'date',
         'fixed',
         'percent',
         'plain',
@@ -3250,7 +3470,7 @@ function warnUnloweredPyreonHooks(body: AnyNode[], ctx: ParseCtx): void {
 
 /** The imported names understood by package-specific JSX alias hooks
  *  can intercept. Kept in sync with the guards in emit-swift/emit-kotlin. */
-const ALIAS_TAG_NAMES = new Set(['Element', 'PyreonUI', 'PyreonUIProvider', 'Container', 'Row', 'Col', 'ChartWebView', 'FlowWebView'])
+const ALIAS_TAG_NAMES = new Set(['Element', 'PyreonUI', 'PyreonUIProvider', 'Container', 'Row', 'Col', 'FlowWebView'])
 
 /**
  * Collect each local name with its source package and original imported name.
@@ -3453,17 +3673,7 @@ function tryStoreDefnFromTopLevel(
           const name = d.id.name as string
           const declInit = d.init as AnyNode | undefined
           if (declInit?.type === 'ArrowFunctionExpression') {
-            const fn = tryFunctionDecl(name, declInit, ctx)
-            // Discriminant guard covers the null case too (optional
-            // chain) — CodeQL flags a direct null comparison here as
-            // an inconvertible-types check.
-            if (fn?.kind !== 'function') {
-              ctx.warnings.push(
-                `defineStore \`${hookName}\`: could not parse method \`${name}\`. Falling back to silent-drop.`,
-              )
-              return null
-            }
-            methodDecls.push(fn)
+            methodDecls.push(tryFunctionDecl(name, declInit, ctx))
             continue
           }
           if (declInit?.type !== 'CallExpression') continue
@@ -3695,9 +3905,13 @@ function urlRule(
       )
       return null
     }
-    const key = p.key as AnyNode | undefined
-    const name = key?.type === 'Identifier' ? key.name : key?.type === 'Literal' ? String(key.value) : undefined
-    if (name === 'protocol') protocol = p.value as AnyNode | undefined
+    if (hasDynamicKey(p)) {
+      ctx.warnings.push(
+        `${label}: the computed key \`${dynamicKeyText(p, ctx)}\` in the options cannot be read, so whether it sets \`protocol\` is unknown — the field is NOT URL-validated on device. Write \`protocol\` inline.`,
+      )
+      return null
+    }
+    if (staticPropKey(p) === 'protocol') protocol = p.value as AnyNode | undefined
   }
   if (protocol === undefined) return { kind: 'http' }
   const re = tryPortableRegexLiteral(protocol, `${label} protocol`, ctx)
@@ -3786,13 +4000,11 @@ function tryModelDefnFromTopLevel(
   let stateNode: AnyNode | undefined
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    const keyNode = prop.key as AnyNode | undefined
-    const keyName =
-      keyNode?.type === 'Identifier'
-        ? (keyNode.name as string)
-        : keyNode?.type === 'Literal'
-          ? String(keyNode.value)
-          : undefined
+    if (hasDynamicKey(prop)) {
+      warnDynamicKey(prop, `model declaration \`${instanceName}\`: model() config`, ctx)
+      return null
+    }
+    const keyName = staticPropKey(prop)
     if (keyName === 'state') {
       stateNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
     }
@@ -3810,13 +4022,11 @@ function tryModelDefnFromTopLevel(
   const fields: ModelDefnIR['fields'] = []
   for (const entry of (stateNode.properties as AnyNode[] | undefined) ?? []) {
     if (entry?.type !== 'Property' && entry?.type !== 'ObjectProperty') continue
-    const eKey = entry.key as AnyNode | undefined
-    const fieldName =
-      eKey?.type === 'Identifier'
-        ? (eKey.name as string)
-        : eKey?.type === 'Literal'
-          ? String(eKey.value)
-          : undefined
+    if (hasDynamicKey(entry)) {
+      warnDynamicKey(entry, `model declaration \`${instanceName}\`: state`, ctx)
+      continue
+    }
+    const fieldName = staticPropKey(entry)
     if (!fieldName) continue
     const eVal = unwrapTypeLayers(entry.value as AnyNode | undefined)
     if (eVal?.type !== 'Literal') {
@@ -3891,13 +4101,11 @@ function tryModelDefnFromTopLevel(
     }
     for (const member of (factoryBody.properties as AnyNode[] | undefined) ?? []) {
       if (member?.type !== 'Property' && member?.type !== 'ObjectProperty') continue
-      const mKey = member.key as AnyNode | undefined
-      const memberName =
-        mKey?.type === 'Identifier'
-          ? (mKey.name as string)
-          : mKey?.type === 'Literal'
-            ? String(mKey.value)
-            : undefined
+      if (hasDynamicKey(member)) {
+        warnDynamicKey(member, `model declaration \`${instanceName}\`: \`.${block.kind}()\` member`, ctx)
+        return null
+      }
+      const memberName = staticPropKey(member)
       if (!memberName) continue
       const mVal = unwrapTypeLayers(member.value as AnyNode | undefined)
       if (
@@ -3925,14 +4133,7 @@ function tryModelDefnFromTopLevel(
         views.push({ name: memberName, expr: parseExpr(viewBody, ctx), selfParam })
         continue
       }
-      const fn = tryFunctionDecl(memberName, mVal, ctx)
-      if (fn?.kind !== 'function') {
-        ctx.warnings.push(
-          `model declaration \`${instanceName}\`: could not parse action \`${memberName}\`. Falling back to silent-drop.`,
-        )
-        return null
-      }
-      methods.push({ ...fn, selfParam })
+      methods.push({ ...tryFunctionDecl(memberName, mVal, ctx), selfParam })
     }
   }
 
@@ -4023,17 +4224,19 @@ function withFieldDeclShape(node: AnyNode): { bindingName: string; metaArg: AnyN
  * The VALUE half: the string-literal entries of a `withField` meta object.
  * Shared with the pre-pass for the same reason as `withFieldDeclShape`.
  */
-function extractLiteralFieldMeta(metaArg: AnyNode): FieldMetaDefnIR['meta'] {
+function extractLiteralFieldMeta(
+  metaArg: AnyNode,
+  /** Pass to NAME a computed key; omit for a silent probe (the pre-pass). */
+  report?: { ctx: ParseCtx; where: string },
+): FieldMetaDefnIR['meta'] {
   const meta: FieldMetaDefnIR['meta'] = []
   for (const prop of (metaArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    const keyNode = prop.key as AnyNode | undefined
-    const keyName =
-      keyNode?.type === 'Identifier'
-        ? (keyNode.name as string)
-        : keyNode?.type === 'Literal'
-          ? String(keyNode.value)
-          : undefined
+    if (hasDynamicKey(prop)) {
+      if (report) warnDynamicKey(prop, report.where, report.ctx)
+      continue
+    }
+    const keyName = staticPropKey(prop)
     if (!keyName) continue
     const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
     if (valueNode?.type === 'Literal' && typeof valueNode.value === 'string') {
@@ -4062,7 +4265,10 @@ function tryFieldMetaDefnFromTopLevel(
     return null
   }
 
-  const meta = extractLiteralFieldMeta(metaArg)
+  const meta = extractLiteralFieldMeta(metaArg, {
+    ctx,
+    where: `withField declaration \`${bindingName}\`: meta`,
+  })
 
   if (meta.length === 0) {
     ctx.warnings.push(
@@ -4131,13 +4337,11 @@ function tryFeatureDefnFromTopLevel(
   let schemaNode: AnyNode | undefined
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    const keyNode = prop.key as AnyNode | undefined
-    const keyName =
-      keyNode?.type === 'Identifier'
-        ? (keyNode.name as string)
-        : keyNode?.type === 'Literal'
-          ? String(keyNode.value)
-          : undefined
+    if (hasDynamicKey(prop)) {
+      warnDynamicKey(prop, `defineFeature declaration \`${bindingName}\`: config`, ctx)
+      continue
+    }
+    const keyName = staticPropKey(prop)
     if (!keyName) continue
     const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
     if (keyName === 'name') {
@@ -4171,13 +4375,11 @@ function tryFeatureDefnFromTopLevel(
   const fields: FeatureDefnIR['fields'] = []
   for (const entry of (schemaNode.properties as AnyNode[] | undefined) ?? []) {
     if (entry?.type !== 'Property' && entry?.type !== 'ObjectProperty') continue
-    const eKey = entry.key as AnyNode | undefined
-    const fieldName =
-      eKey?.type === 'Identifier'
-        ? (eKey.name as string)
-        : eKey?.type === 'Literal'
-          ? String(eKey.value)
-          : undefined
+    if (hasDynamicKey(entry)) {
+      warnDynamicKey(entry, `defineFeature declaration \`${bindingName}\`: schema`, ctx)
+      continue
+    }
+    const fieldName = staticPropKey(entry)
     if (!fieldName) continue
     const eVal = unwrapTypeLayers(entry.value as AnyNode | undefined)
     if (eVal?.type !== 'Literal' || typeof eVal.value !== 'string') {
@@ -4466,13 +4668,11 @@ function tryArktypeSchemaDefnFromTopLevel(
   const fields: ZodSchemaDefnIR['fields'] = []
   for (const prop of (shapeArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    const keyNode = prop.key as AnyNode | undefined
-    const fieldName =
-      keyNode?.type === 'Identifier'
-        ? (keyNode.name as string)
-        : keyNode?.type === 'Literal'
-          ? String(keyNode.value)
-          : undefined
+    if (hasDynamicKey(prop)) {
+      warnDynamicKey(prop, `arktypeSchema declaration \`${bindingName}\`: type() shape`, ctx)
+      continue
+    }
+    const fieldName = staticPropKey(prop)
     if (!fieldName) continue
     const value = unwrapTypeLayers(prop.value as AnyNode | undefined)
     if (value?.type !== 'Literal' || typeof value.value !== 'string') {
@@ -4520,8 +4720,9 @@ function extractTypeAndConstraints(
   ctx: ParseCtx,
   /** `@pyreon/validate`'s `s` DSL, whose `.url()` differs from zod's. */
   pyreonValidate: boolean,
-): { method: string; constraints: ZodFieldConstraints } | null {
+): { method: string; constraints: ZodFieldConstraints; integer: boolean } | null {
   const constraints: ZodFieldConstraints = {}
+  let integer = false
   let cursor: AnyNode | undefined = expr
   while (cursor && cursor.type === 'CallExpression') {
     const callee = cursor.callee as AnyNode | undefined
@@ -4559,6 +4760,8 @@ function extractTypeAndConstraints(
       } else if (modName === 'regex') {
         const r = tryPortableRegexLiteral(firstArg, `schema element .regex()`, ctx)
         if (r) constraints.regex = r
+      } else if (modName === 'int') {
+        integer = true
       }
       // `.optional()` / `.nullable()` are deliberately NOT recognized
       // here — they apply at the field level, not to inner elements.
@@ -4580,6 +4783,7 @@ function extractTypeAndConstraints(
   return {
     method: baseCallee.property.name as string,
     constraints,
+    integer,
   }
 }
 
@@ -4787,13 +4991,9 @@ function extractDiscriminatorLiteral(
   if (!shapeArg || shapeArg.type !== 'ObjectExpression') return null
   for (const prop of (shapeArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    const keyNode = prop.key as AnyNode | undefined
-    const fieldName =
-      keyNode?.type === 'Identifier'
-        ? (keyNode.name as string)
-        : keyNode?.type === 'Literal'
-          ? String(keyNode.value)
-          : undefined
+    // A runtime computed key is skipped here; the variant's shape walker
+    // names it. A literal discriminator elsewhere in the shape still wins.
+    const fieldName = staticPropKey(prop)
     if (fieldName !== discrField) continue
     const value = prop.value as AnyNode | undefined
     if (value?.type !== 'CallExpression') return null
@@ -4904,13 +5104,11 @@ function tryNamespacedSchemaDefnFromTopLevel(
   const fields: ZodSchemaDefnIR['fields'] = []
   for (const prop of (shapeArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    const keyNode = prop.key as AnyNode | undefined
-    const fieldName =
-      keyNode?.type === 'Identifier'
-        ? (keyNode.name as string)
-        : keyNode?.type === 'Literal'
-          ? String(keyNode.value)
-          : undefined
+    if (hasDynamicKey(prop)) {
+      warnDynamicKey(prop, `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.object() shape`, ctx)
+      continue
+    }
+    const fieldName = staticPropKey(prop)
     if (!fieldName) continue
 
     // Walk the chain twice: once to find the BASE <prefix>.X() call,
@@ -4918,6 +5116,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
     // v2.2 — also collect `.optional()` / `.nullable()` flags.
     const constraints: ZodFieldConstraints = {}
     let optional = false
+    let integer = false
     let value = unwrapTypeLayers(prop.value as AnyNode | undefined) as AnyNode | undefined
     // First pass — collect modifiers from outermost call inward.
     let cursor: AnyNode | undefined = value
@@ -4962,6 +5161,10 @@ function tryNamespacedSchemaDefnFromTopLevel(
           // nullable on native. parse() returns nil instead of throwing
           // when missing.
           optional = true
+        } else if (modName === 'int') {
+          // `number().int()` — the ONLY spelling that promises a whole
+          // number. A bare `number()` accepts `1.5`.
+          integer = true
         }
         cursor = callee.object as AnyNode
         continue
@@ -4999,6 +5202,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
       const entry: ZodSchemaDefnIR['fields'][number] = { name: fieldName, type: 'number' }
       if (hasConstraints) entry.constraints = constraints
       if (optional) entry.optional = true
+      if (integer) entry.integer = true
       fields.push(entry)
     } else if (method === 'boolean') {
       const entry: ZodSchemaDefnIR['fields'][number] = { name: fieldName, type: 'boolean' }
@@ -5106,6 +5310,7 @@ function tryNamespacedSchemaDefnFromTopLevel(
       if (inner && Object.keys(inner.constraints).length > 0) {
         arrayType.elementConstraints = inner.constraints
       }
+      if (inner?.integer === true && innerType === 'number') arrayType.elementInteger = true
       const entry: ZodSchemaDefnIR['fields'][number] = {
         name: fieldName,
         type: arrayType,
@@ -5293,6 +5498,29 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
  * identifiers, template strings. The caller warns and leaves the call to the
  * web.
  */
+/**
+ * Why {@link resolveUrlStateDefault} rejected a default — the reason has to
+ * match the SHAPE. Every rejection used to say "an array or object default",
+ * which sent the author of `useUrlState('k', 1e999)` (a literal that parses to
+ * `Infinity`) looking for a collection they never wrote.
+ */
+function urlStateDefaultRejection(defNode: AnyNode | undefined): string {
+  const inner =
+    defNode?.type === 'UnaryExpression' && (defNode.operator === '-' || defNode.operator === '+')
+      ? (defNode.argument as AnyNode | undefined)
+      : defNode
+  if (inner?.type === 'ArrayExpression' || inner?.type === 'ObjectExpression') {
+    return 'an array or object default infers a comma-join / JSON codec on the web, and there is no native type to decode into at this call site.'
+  }
+  const nonFinite =
+    (inner?.type === 'Literal' && typeof inner.value === 'number' && !Number.isFinite(inner.value)) ||
+    (inner?.type === 'Identifier' && (inner.name === 'Infinity' || inner.name === 'NaN'))
+  if (nonFinite) {
+    return 'this default is a NON-FINITE number (`Infinity` / `NaN` — a literal like `1e999` overflows to `Infinity`), which has no Int or Double literal on either native target and does not round-trip through the URL.'
+  }
+  return 'this default is not a literal, so its type cannot be decided at compile time.'
+}
+
 function resolveUrlStateDefault(
   defNode: AnyNode | undefined,
 ): { defaultValue: string; valueType: 'string' | 'int' | 'double' | 'boolean' } | null {
@@ -5402,28 +5630,122 @@ function refineStructFloatsFromInitializers(
   structs: StructIR[],
   components: ComponentIR[],
   moduleDecls: readonly ModuleDeclIR[],
+  componentCtx: (c: ComponentIR) => InferenceCtx,
+  moduleConsts: Map<string, TypeIR>,
 ): void {
   if (structs.length === 0) return
   const byName = new Map(structs.map((s) => [s.name, s]))
-  const refine = (type: TypeIR, initial: ExprIR): void => {
+  const refine = (type: TypeIR, initial: ExprIR, ctx: InferenceCtx): void => {
     const structName = structNameOfType(type)
     if (structName === undefined) return
     const struct = byName.get(structName)
     if (struct === undefined) return
-    refineFieldsFromObjectLiterals(struct.fields, collectObjectLiterals(initial))
+    refineFieldsFromObjectLiterals(struct.fields, collectObjectLiterals(initial), ctx)
   }
   for (const c of components) {
+    const ctx = componentCtx(c)
     for (const d of c.decls) {
       if (d.kind !== 'signal') continue
-      refine(d.type, d.initial)
+      refine(d.type, d.initial, ctx)
     }
   }
+  const moduleCtx = buildInferenceCtx([], [], structs, [], undefined, undefined, moduleConsts)
   // The MODULE-level spelling of the same evidence — `const BARS: B[] = [{ l: 0.5 }]`
   // beside `interface B { l: number }` is how fixture data is written in
   // nearly every doc and example; the signal-only pass left `l` an Int and
   // kotlinc rejected the literal (a one-spelling fix, the class this repo
   // keeps re-learning).
-  for (const d of moduleDecls) refine(d.type, d.initial)
+  for (const d of moduleDecls) refine(d.type, d.initial, moduleCtx)
+}
+
+/**
+ * Type a DECODE struct's `number` fields Double when the endpoint's response
+ * schema says the wire value may be fractional.
+ *
+ * A TS `number` carries no int/float distinction, so PMTC defaults it to Int.
+ * For a model that is DECODED from a response, that default is wrong whenever
+ * the value can be fractional: `JSONDecoder` / kotlinx reject `1.5` for an
+ * `Int`, so the native app fails to decode a payload the web parses. The
+ * endpoint's `response` schema is where the distinction lives — `s.number()`
+ * accepts a fraction, `s.number().int()` does not — so a decode site
+ * (`useQuery<Book>(() => getBook.query())`, `useFetch<Book>(getBook())`)
+ * over `api.endpoint('GET /books/:id', { response: book_schema })` refines
+ * `Book`'s matching fields from `book_schema`'s. Nested objects and arrays of
+ * objects recurse through the schema's aux schemas.
+ *
+ * Strictly ADDITIVE: only `number` → `number & float`, only on a schema field
+ * without `.int()`. An `.int()` field — and every struct with no schema
+ * evidence — keeps the Int default.
+ */
+function refineStructFloatsFromResponseSchemas(
+  structs: StructIR[],
+  zodSchemas: readonly ZodSchemaDefnIR[],
+  ctx: ParseCtx,
+): void {
+  if (structs.length === 0 || ctx.responseDecodes.length === 0) return
+  const structByName = new Map(structs.map((st) => [st.name, st]))
+  const schemaByName = new Map<string, ZodSchemaDefnIR>()
+  const index = (sc: ZodSchemaDefnIR): void => {
+    schemaByName.set(sc.bindingName, sc)
+    for (const aux of sc.auxSchemas ?? []) index(aux)
+  }
+  for (const sc of zodSchemas) index(sc)
+  const seen = new Set<string>()
+
+  const floatNumber = (t: TypeIR): TypeIR => {
+    if (t.kind === 'number') return t.float === true ? t : { kind: 'number', float: true }
+    if (t.kind === 'union') return { ...t, branches: t.branches.map(floatNumber) }
+    return t
+  }
+  const floatElement = (t: TypeIR): TypeIR => {
+    if (t.kind === 'array') return { ...t, element: floatNumber(t.element) }
+    if (t.kind === 'union') return { ...t, branches: t.branches.map(floatElement) }
+    return t
+  }
+  const structOf = (t: TypeIR): StructIR | undefined => {
+    if (t.kind === 'typeRef') return structByName.get(t.name)
+    if (t.kind === 'array') return structOf(t.element)
+    if (t.kind === 'union') {
+      for (const b of t.branches) {
+        const found = structOf(b)
+        if (found) return found
+      }
+    }
+    return undefined
+  }
+  const refine = (struct: StructIR, schema: ZodSchemaDefnIR): void => {
+    const key = `${struct.name}<-${schema.bindingName}`
+    if (seen.has(key)) return
+    seen.add(key)
+    for (const sf of schema.fields) {
+      const field = struct.fields.find((f) => f.name === sf.name)
+      if (!field) continue
+      const t = sf.type
+      if (t === 'number') {
+        if (sf.integer !== true) field.type = floatNumber(field.type)
+      } else if (typeof t === 'object' && t.kind === 'array') {
+        if (t.element === 'number') {
+          if (t.elementInteger !== true) field.type = floatElement(field.type)
+        } else if (typeof t.element === 'object') {
+          const nested = structOf(field.type)
+          const nestedSchema = schemaByName.get(t.element.schemaName)
+          if (nested && nestedSchema) refine(nested, nestedSchema)
+        }
+      } else if (typeof t === 'object' && t.kind === 'object') {
+        const nested = structOf(field.type)
+        const nestedSchema = schemaByName.get(t.schemaName)
+        if (nested && nestedSchema) refine(nested, nestedSchema)
+      }
+    }
+  }
+
+  for (const decode of ctx.responseDecodes) {
+    const ref = ctx.endpointDefs.get(decode.endpoint)?.responseSchema
+    if (!ref) continue
+    const schema = schemaByName.get(ref.binding)
+    const struct = structOf(decode.type)
+    if (schema && struct) refine(struct, schema)
+  }
 }
 
 /**
@@ -5449,13 +5771,17 @@ function refineStructFloatsFromInitializers(
  * when there is no other evidence. It must not override evidence, and the
  * initializer beside it is evidence.
  */
-function refineInlineObjectFloats(components: ComponentIR[]): void {
+function refineInlineObjectFloats(
+  components: ComponentIR[],
+  componentCtx: (c: ComponentIR) => InferenceCtx,
+): void {
   for (const c of components) {
+    const ctx = componentCtx(c)
     for (const d of c.decls) {
       if (d.kind !== 'signal') continue
       const elem = d.type.kind === 'array' ? d.type.element : d.type
       if (elem.kind !== 'object') continue
-      refineFieldsFromObjectLiterals(elem.fields, collectObjectLiterals(d.initial))
+      refineFieldsFromObjectLiterals(elem.fields, collectObjectLiterals(d.initial), ctx)
     }
   }
 }
@@ -5474,6 +5800,7 @@ function refineInlineObjectFloats(components: ComponentIR[]): void {
 function refineFieldsFromObjectLiterals(
   fields: { name: string; type: TypeIR }[],
   objects: Extract<ExprIR, { kind: 'object' }>[],
+  ctx: InferenceCtx,
 ): void {
   if (objects.length === 0) return
   for (const field of fields) {
@@ -5481,7 +5808,7 @@ function refineFieldsFromObjectLiterals(
     const values = objects
       .map((o) => o.fields.find((f) => f.name === field.name)?.value)
       .filter((v): v is ExprIR => v !== undefined)
-    if (!values.some(isFractionalLiteral)) continue
+    if (!values.some((v) => isFractionalEvidence(v, ctx))) continue
     field.type = { kind: 'number', float: true }
     for (const v of values) {
       if (v.kind === 'literal' && typeof v.value === 'number' && Number.isInteger(v.value)) {
@@ -5588,7 +5915,7 @@ function forEachExpr(e: ExprIR, visit: (n: ExprIR) => void): void {
 function refineReduceSeedFloats(
   components: ComponentIR[],
   structs: StructIR[],
-  storeDefs: StoreDefnIR[],
+  componentCtx: (c: ComponentIR) => InferenceCtx,
 ): void {
   // NO `structs.length === 0` bail. The pass used to return immediately when
   // the file declared no NAMED struct — but a component whose data is typed
@@ -5605,7 +5932,7 @@ function refineReduceSeedFloats(
     return s === undefined ? undefined : { kind: 'object', fields: s.fields }
   }
   for (const c of components) {
-    const ctx = buildInferenceCtx(c.decls, storeDefs)
+    const ctx = componentCtx(c)
     const visit = (e: ExprIR): void => {
       // Match BOTH the array-method reduce (`xs.reduce(cb, seed)`) and the
       // rx-namespace reduce (`rx.reduce(xs, cb, seed)` → rx-call). Each
@@ -5670,9 +5997,33 @@ function refineReduceSeedFloats(
   }
 }
 
-/** A numeric literal with a fractional value (`12.5`, not `12`). */
+/**
+ * A numeric literal that can only be a Double: a fractional value (`12.5`,
+ * not `12`), or a whole one outside the 32-bit range. The second half matters
+ * because Kotlin's `Int` is 32-bit — an epoch-millisecond timestamp
+ * (`1709251200000`), which is how time-series data is written, typed its field
+ * `Int` and kotlinc rejected the literal. JavaScript has one number type, so
+ * Double is the faithful reading.
+ */
 function isFractionalLiteral(e: ExprIR): boolean {
-  return e.kind === 'literal' && typeof e.value === 'number' && !Number.isInteger(e.value)
+  return e.kind === 'literal' && typeof e.value === 'number' && (!Number.isInteger(e.value) || Math.abs(e.value) > 2147483647)
+}
+
+/**
+ * Fractional EVIDENCE for a Double refinement: a fractional literal, or any
+ * expression that infers `number & float` in `ctx` — `RATE` over a file-scope
+ * `const RATE = 0.5`, `P * 2` over a component const. The literal-only test
+ * was the whole reason a Double reached these passes only when written INLINE.
+ * Still additive: an expression that cannot be typed is not evidence.
+ */
+function isFractionalEvidence(e: ExprIR, ctx: InferenceCtx): boolean {
+  if (isFractionalLiteral(e)) return true
+  // A bare integer-valued literal (`3.0`) is NOT evidence even when it carries
+  // the float marker: `signal(3.0)` staying Int is the documented literal
+  // boundary (double-numeric-type.test.ts). Only a computed expression is typed.
+  if (e.kind === 'literal') return false
+  const t = inferType(e, ctx)
+  return t.kind === 'number' && t.float === true
 }
 
 /**
@@ -5697,29 +6048,114 @@ function isFractionalLiteral(e: ExprIR): boolean {
  * `{ kind:'number', float:true }` on fractional-literal evidence; integer
  * signals and arrays are never touched (zero regression).
  */
-function refineSignalNumberFloats(components: ComponentIR[]): void {
+/** The chart props whose value is called as `(Double) -> String`. */
+const CHART_FORMATTER_PROPS: ReadonlySet<string> = new Set(['format', 'xFormat', 'yFormat', 'y2Format'])
+
+function refineChartFormatterParams(components: ComponentIR[], helpers: Extract<DeclIR, { kind: 'function' }>[]): void {
+  const widen = (name: string, locals: DeclIR[]): void => {
+    const fn = locals.find((d): d is Extract<DeclIR, { kind: 'function' }> => d.kind === 'function' && d.name === name) ?? helpers.find((h) => h.name === name)
+    if (fn === undefined || fn.params.length !== 1) return
+    const p = fn.params[0]!
+    if (p.type.kind === 'number' && p.type.float !== true) p.type = { kind: 'number', float: true }
+  }
   for (const c of components) {
+    forEachExpr(c.returnExpr, (n) => {
+      if (n.kind !== 'jsx-element') return
+      if (!isChartHostTag(n.tag) && !GRAMMAR_CONFIG_TAGS.includes(n.tag) && n.tag !== 'Chart') return
+      for (const a of n.attrs) {
+        if (a.kind === 'attr' && CHART_FORMATTER_PROPS.has(a.name) && a.value.kind === 'identifier') widen(a.value.name, c.decls)
+      }
+    })
+  }
+}
+
+function refineSignalNumberFloats(
+  components: ComponentIR[],
+  componentCtx: (c: ComponentIR) => InferenceCtx,
+): void {
+  for (const c of components) {
+    const ctx = componentCtx(c)
     for (const d of c.decls) {
       if (d.kind !== 'signal') continue
-      // Scalar `signal<number>(12.5)`.
-      if (d.type.kind === 'number' && d.type.float !== true && isFractionalLiteral(d.initial)) {
-        d.type = { kind: 'number', float: true }
-        continue
-      }
-      // Array `signal<number[]>([… any fractional …])`.
-      if (
-        d.type.kind === 'array' &&
-        d.type.element.kind === 'number' &&
-        d.type.element.float !== true &&
-        d.initial.kind === 'array' &&
-        d.initial.elements.some(isFractionalLiteral)
-      ) {
-        d.type = { kind: 'array', element: { kind: 'number', float: true } }
-        for (const el of d.initial.elements) {
-          if (el.kind === 'literal' && typeof el.value === 'number' && Number.isInteger(el.value)) {
-            el.float = true
-          }
-        }
+      refineNumberBindingFromEvidence(d, ctx)
+      seedSignalTypeFromNumberBinding(d, ctx)
+    }
+  }
+}
+
+/**
+ * An UN-annotated `signal(RATE)` seeded straight from a numeric binding gets
+ * that binding's type.
+ *
+ * `inferTypeFromInitial` types only literals, so `signal(RATE)` over a
+ * file-scope `const RATE = 0.5` stayed `unknown` and emitted without an
+ * annotation. Each target then inferred Double from RATE on its own, which is
+ * right for the declaration — and wrong for every WRITE, because the emitters
+ * render `x.set(2)` from the signal's IR type: Kotlin emitted
+ * `mutableStateOf(RATE)` and then assigned it `2`, an Int into a Double state
+ * (`assignment type mismatch`). Swift happened to coerce the literal.
+ *
+ * Deliberately narrow — a bare identifier (optionally negated) only. For one,
+ * the IR type IS the native type by construction: the binding it names is
+ * declared from the same inference. A general expression (`n / 2`,
+ * `Math.floor(x)`) can infer differently from what the target computes, and
+ * annotating the declaration with the inferred type would turn a compiling
+ * untyped `@State` into a type error.
+ */
+function seedSignalTypeFromNumberBinding(
+  d: Extract<DeclIR, { kind: 'signal' }>,
+  ctx: InferenceCtx,
+): void {
+  if (d.type.kind !== 'unknown') return
+  let e = d.initial
+  if (e.kind === 'unary' && (e.op === '-' || e.op === '+')) e = e.argument
+  if (e.kind !== 'identifier') return
+  const t = inferType(e, ctx)
+  if (t.kind === 'number') d.type = t.float === true ? { kind: 'number', float: true } : { kind: 'number' }
+}
+
+/**
+ * The FILE-SCOPE spelling of the same evidence: `const RATE: number = 0.5`
+ * emitted `let RATE: Int = 0.5` / `val RATE: Int = 0.5`, which neither target
+ * accepts — and so did `const HALF: number = RATE / 2`, where the evidence is
+ * another file-scope binding rather than a literal. Walked in SOURCE ORDER
+ * against the bindings already typed above it, which is what lets `HALF` see
+ * `RATE`. An un-annotated binding carries `unknown` and is emitted without an
+ * annotation, so it is only ever evidence here, never refined.
+ */
+function refineModuleDeclFloats(
+  moduleDecls: readonly ModuleDeclIR[],
+  structs: StructIR[],
+  helperReturns: Map<string, TypeIR>,
+): void {
+  const seen = new Map<string, TypeIR>()
+  const ctx = buildInferenceCtx([], [], structs, [], undefined, helperReturns, seen)
+  for (const md of moduleDecls) {
+    refineNumberBindingFromEvidence(md, ctx)
+    const t = moduleConstType(md, ctx)
+    if (t !== undefined) seen.set(md.name, t)
+  }
+}
+
+/** Flip a `number` / `number[]` annotation to Double on fractional evidence in its initializer. */
+function refineNumberBindingFromEvidence(d: { type: TypeIR; initial: ExprIR }, ctx: InferenceCtx): void {
+  // Scalar `signal<number>(12.5)` / `const x: number = RATE * 2`.
+  if (d.type.kind === 'number' && d.type.float !== true && isFractionalEvidence(d.initial, ctx)) {
+    d.type = { kind: 'number', float: true }
+    return
+  }
+  // Array `signal<number[]>([… any fractional …])`.
+  if (
+    d.type.kind === 'array' &&
+    d.type.element.kind === 'number' &&
+    d.type.element.float !== true &&
+    d.initial.kind === 'array' &&
+    d.initial.elements.some((el) => isFractionalEvidence(el, ctx))
+  ) {
+    d.type = { kind: 'array', element: { kind: 'number', float: true } }
+    for (const el of d.initial.elements) {
+      if (el.kind === 'literal' && typeof el.value === 'number' && Number.isInteger(el.value)) {
+        el.float = true
       }
     }
   }
@@ -6069,6 +6505,7 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     // here rather than sharing the parent's.
     kineticFactoryNames: new Map(),
     kineticImportNames: new Set(),
+    typedComponentAliases: new Map(),
     kineticMountPending: false,
     kineticPresetImports: new Map(),
     validateSchemaNames: new Set(),
@@ -6088,6 +6525,7 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     streamOpeners: new Map(),
     streamOpenersAllLowered: false,
     endpointDefs: new Map(),
+    responseDecodes: [],
     inlineSchemas: [],
     inlineSchemaByShape: new Map(),
     inlineSchemaCounter: 0,
@@ -6309,7 +6747,6 @@ function tryHelperFnFromArrowConst(node: AnyNode, ctx: ParseCtx): boolean {
   // A helper takes value parameters. A no-param arrow is not routed.
   if (((arrow.params as AnyNode[] | undefined)?.length ?? 0) === 0) return false
   const decl = tryFunctionDecl(d.id.name as string, arrow, ctx)
-  if (!decl || decl.kind !== 'function') return false
   // A COMPONENT arrow returns JSX (directly or through a conditional root) —
   // NOT a helper. If ANY top-level return in the body resolves to JSX, leave it.
   const topLevelReturns = decl.body.filter(
@@ -6439,6 +6876,19 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
   // destructured params) are tolerated but produce no props — the body's
   // member accesses on the param name still rewrite cleanly if the name
   // is captured.
+  // A lowercase function with value params may turn out to be a HELPER
+  // (`function describe(err: Error) { … }`), whose params are not props at all
+  // — resolving them as props warned "Component props type `Error` can't be
+  // resolved" for a function that is not a component. The props warnings of
+  // such a candidate are DEFERRED to the component confirmation below (the
+  // same discipline as `droppedStmtWarnings`); a PascalCase function keeps
+  // them in place.
+  const firstChar = name.charAt(0)
+  const maybeHelper =
+    firstChar === firstChar.toLowerCase() &&
+    firstChar !== firstChar.toUpperCase() &&
+    ((fn.params as AnyNode[] | undefined)?.length ?? 0) > 0
+  const propsWarnMark = ctx.warnings.length
   const { props, propsParamName } = parseProps(fn.params as AnyNode[] | undefined, ctx)
 
   // Round-3 audit fix: an untyped `props` parameter (no `: { … }`
@@ -6451,6 +6901,7 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
   // the parser layer so the diagnostic names the component. Skips
   // bodies that never reference the param (legitimate no-props shape).
   warnIfUntypedPropsParam(name, fn.params as AnyNode[] | undefined, propsParamName, body, ctx)
+  const deferredPropsWarnings = maybeHelper ? ctx.warnings.splice(propsWarnMark) : []
 
   const decls: DeclIR[] = []
   let returnExpr: ExprIR | null = null
@@ -6495,8 +6946,7 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
       // already accepts both shapes since FunctionDeclaration carries
       // the same `.params` / `.returnType` / `.body` API).
       const fnName = stmt.id.name as string
-      const decl = tryFunctionDecl(fnName, stmt, ctx)
-      if (decl) decls.push(decl)
+      decls.push(tryFunctionDecl(fnName, stmt, ctx))
     } else if (stmt.type === 'ReturnStatement' && stmt.argument) {
       // Fold any early-return conditionals collected before this final return
       // into a nested ternary the emitter lowers to a result-builder view.
@@ -6711,6 +7161,7 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
   }
 
   if (returnExpr === null) {
+    for (const w of deferredPropsWarnings) ctx.warnings.push(w)
     ctx.warnings.push(`Component ${name}: no return statement found; skipping.`)
     return null
   }
@@ -6816,26 +7267,35 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
     // a faithful native `func`/`fun`. (`number` params map to `Int` — TS has
     // no `Double` type + no param-level fractional refinement — so an
     // integer-literal call site needs no Kotlin numeric coercion.)
-    const decl = tryFunctionDecl(name, fn, ctx)
-    if (decl && decl.kind === 'function') {
-      // Collect every non-generic helper. Two shapes previously deferred here
-      // are now HANDLED downstream, so there is no per-collect gate:
-      //   - a missing return annotation → `refineHelperReturns` infers the
-      //     return type from the body (drops the annotation requirement);
-      //   - a FRACTIONAL body (`x * 1.5`, `x / 2`, `Math.sqrt`) → the emitter
-      //     now seeds the helper's Int params into the coercion ctx so the body
-      //     coerces (`Double(x) * 1.5`) AND `refineHelperReturns` refines the
-      //     `number` return to `Double`, so the signature matches (proven on
-      //     both toolchains). Kotlin auto-promotes Int×Double, needing only the
-      //     Double return. A genuinely-un-inferable body is warned + dropped by
-      //     `refineHelperReturns`.
-      ctx.helperFns.push(decl)
+    // Collect every non-generic helper. Two shapes previously deferred here
+    // are now HANDLED downstream, so there is no per-collect gate:
+    //   - a missing return annotation → `refineHelperReturns` infers the
+    //     return type from the body (drops the annotation requirement);
+    //   - a FRACTIONAL body (`x * 1.5`, `x / 2`, `Math.sqrt`) → the emitter
+    //     now seeds the helper's Int params into the coercion ctx so the body
+    //     coerces (`Double(x) * 1.5`) AND `refineHelperReturns` refines the
+    //     `number` return to `Double`, so the signature matches (proven on
+    //     both toolchains). Kotlin auto-promotes Int×Double, needing only the
+    //     Double return. A genuinely-un-inferable body is warned + dropped by
+    //     `refineHelperReturns`.
+    ctx.helperFns.push(tryFunctionDecl(name, fn, ctx))
+    // The deferred props warnings were about PARAMETERS, not props. An
+    // unresolvable parameter type still reaches the native signature verbatim,
+    // so it is re-named in helper terms rather than dropped.
+    for (const w of deferredPropsWarnings) {
+      const unresolved = /^Component props type `([^`]+)` can't be resolved/.exec(w)?.[1]
+      if (unresolved !== undefined) {
+        ctx.warnings.push(
+          `Helper function \`${name}\`: parameter type \`${unresolved}\` can't be resolved — PMTC only resolves an object-shape \`type ${unresolved} = { … }\` / \`interface ${unresolved} { … }\` declared in the SAME file, a local string-literal union, or a native primitive. The native \`func\` / \`fun\` names \`${unresolved}\` verbatim, so it fails the build unless the platform itself defines a type of that name. Declare it locally or annotate the parameter with a supported type.`,
+        )
+      }
     }
     return null
   }
 
   // Confirmed a genuine component (past the helper carve-out) — NOW emit the
-  // deferred dropped-control-flow warnings.
+  // deferred props + dropped-control-flow warnings.
+  for (const w of deferredPropsWarnings) ctx.warnings.push(w)
   for (const w of droppedStmtWarnings) ctx.warnings.push(w)
 
   if (ctx.kineticMountPending) {
@@ -6915,11 +7375,14 @@ function refineHelperReturns(
   helperFns: Extract<DeclIR, { kind: 'function' }>[],
   structs: StructIR[],
   warnings: string[],
+  moduleConsts: Map<string, TypeIR>,
 ): void {
   if (helperFns.length === 0) return
   // Structs available so a typed-struct param / return resolves; no
-  // signals/computeds (a pure helper reads only its own params).
-  const ctx = buildInferenceCtx([], [], structs)
+  // signals/computeds (a pure helper reads only its own params and the file's
+  // top-level bindings — `x * RATE` must see RATE, or it types Int and the
+  // emitted signature rejects its own Double body).
+  const ctx = buildInferenceCtx([], [], structs, [], undefined, undefined, moduleConsts)
   for (let i = helperFns.length - 1; i >= 0; i--) {
     const h = helperFns[i]!
     // Infer from the body when the return is UNKNOWN (no annotation), OR when
@@ -6971,9 +7434,8 @@ function parseProps(
       properties.every(
         (p) =>
           p?.type === 'Property' &&
-          p.key?.type === 'Identifier' &&
           p.value?.type === 'Identifier' &&
-          (p.key.name as string) === (p.value.name as string),
+          staticPropKey(p) === (p.value.name as string),
       )
     if (!allSimpleNoRename) return { props: [], propsParamName: undefined }
     return {
@@ -7279,7 +7741,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       props.every(
         (p) =>
           p?.type === 'Property' &&
-          p.key?.type === 'Identifier' &&
+          staticPropKey(p) !== undefined &&
           p.value?.type === 'Identifier',
       )
     if (allSimple) {
@@ -7297,7 +7759,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       if (containerDecl) {
         ctx.hookDestructureCounter += 1
         for (const prop of props) {
-          const key = (prop as AnyNode).key?.name as string
+          const key = staticPropKey(prop as AnyNode) as string
           const local = (prop as AnyNode).value?.name as string
           ctx.hookFieldAliases.set(local, { object: synthName, field: key })
         }
@@ -7534,7 +7996,11 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     const params: { key: string; local: string }[] = []
     for (const prop of (node.id.properties as AnyNode[] | undefined) ?? []) {
       if (prop?.type !== 'Property') continue
-      const key = prop.key?.type === 'Identifier' ? (prop.key.name as string) : undefined
+      if (hasDynamicKey(prop)) {
+        warnDynamicKey(prop, '`const { … } = useParams()`', ctx)
+        continue
+      }
+      const key = staticPropKey(prop)
       const local =
         prop.value?.type === 'Identifier' ? (prop.value.name as string) : key
       if (key !== undefined && local !== undefined) params.push({ key, local })
@@ -7562,7 +8028,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       props.every(
         (p) =>
           p?.type === 'Property' &&
-          p.key?.type === 'Identifier' &&
+          staticPropKey(p) !== undefined &&
           p.value?.type === 'Identifier',
       )
     if (allSimple) {
@@ -7575,7 +8041,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       if (containerDecl) {
         ctx.hookDestructureCounter += 1
         for (const prop of props) {
-          const key = (prop as AnyNode).key?.name as string
+          const key = staticPropKey(prop as AnyNode) as string
           const local = (prop as AnyNode).value?.name as string
           ctx.hookFieldAliases.set(local, { object: synthName, field: key })
         }
@@ -7852,7 +8318,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     const resolved = resolveUrlStateDefault(defNode)
     if (resolved === null) {
       ctx.warnings.push(
-        `const ${name} = useUrlState(${JSON.stringify(key)}, …) lowers with a STRING, NUMBER or BOOLEAN default — an array or object default infers a comma-join / JSON codec on the web, and there is no native type to decode into at this call site. Use a scalar and parse it, or keep the call behind a \`<Web>\` escape hatch.`,
+        `const ${name} = useUrlState(${JSON.stringify(key)}, …) lowers with a STRING, NUMBER or BOOLEAN default — ${urlStateDefaultRejection(defNode)} Use a scalar and parse it, or keep the call behind a \`<Web>\` escape hatch.`,
       )
       return null
     }
@@ -7904,6 +8370,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     ) {
       const resolved = resolveEndpointUrl(urlArg, ctx)
       if (!resolved) return null // warning already pushed; stays web
+      ctx.responseDecodes.push({ type, endpoint: urlArg.callee.name as string })
       resolvedUrl = resolved.url
       resolvedEndpoint = resolved
     }
@@ -7949,13 +8416,12 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
         )
       } else {
         for (const prop of initArg.properties ?? []) {
-          if (prop.type !== 'Property' || prop.computed) continue
-          const key =
-            prop.key?.type === 'Identifier'
-              ? prop.key.name
-              : typeof prop.key?.value === 'string'
-                ? prop.key.value
-                : undefined
+          if (prop.type !== 'Property') continue
+          if (hasDynamicKey(prop)) {
+            warnDynamicKey(prop, `Declaration ${name}: useFetch init`, ctx)
+            continue
+          }
+          const key = staticPropKey(prop)
           if (!key) continue
           const value = prop.value
           const isStringLit =
@@ -7989,13 +8455,12 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
             }
             const headers: Record<string, string> = {}
             for (const h of value.properties ?? []) {
-              if (h.type !== 'Property' || h.computed) continue
-              const hk =
-                h.key?.type === 'Identifier'
-                  ? h.key.name
-                  : typeof h.key?.value === 'string'
-                    ? h.key.value
-                    : undefined
+              if (h.type !== 'Property') continue
+              if (hasDynamicKey(h)) {
+                warnDynamicKey(h, `Declaration ${name}: useFetch headers`, ctx)
+                continue
+              }
+              const hk = staticPropKey(h)
               const hv = h.value
               if (
                 hk &&
@@ -8069,6 +8534,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
         true,
       )
       if (!resolved) return null
+      ctx.responseDecodes.push({ type, endpoint: endpointQuery.name })
       const eqReq: {
         urlExpr?: ExprIR
         queryKeyExpr?: ExprIR
@@ -8123,13 +8589,12 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     let staleMillis = 0
     const req: { method?: string; headers?: Record<string, string>; body?: string } = {}
     for (const prop of (optsObj.properties as AnyNode[] | undefined) ?? []) {
-      if (prop.type !== 'Property' || prop.computed) continue
-      const key =
-        prop.key?.type === 'Identifier'
-          ? prop.key.name
-          : typeof prop.key?.value === 'string'
-            ? prop.key.value
-            : undefined
+      if (prop.type !== 'Property') continue
+      if (hasDynamicKey(prop)) {
+        warnDynamicKey(prop, `Declaration ${name}: useQuery options`, ctx)
+        continue
+      }
+      const key = staticPropKey(prop)
       if (!key) continue
       if (key === 'queryKey') {
         // A `queryKey` array whose parts are ALL string/number literals bakes
@@ -8223,7 +8688,10 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     const decl: Extract<DeclIR, { kind: 'form' }> = {
       kind: 'form',
       name,
-      initialValues: tryExtractFormInitialValues(cfg),
+      initialValues: tryExtractFormInitialValues(cfg, {
+        ctx,
+        where: `useForm \`${name}\`: initialValues`,
+      }),
     }
     // v2 (form-binding arc) — validators + onSubmit. Conservative:
     // unparseable members are skipped with a warning (the form still
@@ -8231,7 +8699,11 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     if (cfg?.type === 'ObjectExpression') {
       for (const prop of (cfg.properties as AnyNode[] | undefined) ?? []) {
         if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-        const key = (prop.key?.name ?? prop.key?.value) as string | undefined
+        if (hasDynamicKey(prop)) {
+          warnDynamicKey(prop, `useForm \`${name}\`: config`, ctx)
+          continue
+        }
+        const key = staticPropKey(prop)
         // `schema: SomeSchema` — an identifier naming a top-level zodSchema
         // declaration. Captured here; the emitters resolve it against the
         // module's `zodSchemas` and synthesize validators from its constraints.
@@ -8242,7 +8714,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
           const validators: { key: string; param: string; body: ExprIR }[] = []
           for (const v of (prop.value.properties as AnyNode[] | undefined) ?? []) {
             if (v?.type !== 'Property' && v?.type !== 'ObjectProperty') continue
-            const fieldName = (v.key?.name ?? v.key?.value) as string | undefined
+            const fieldName = staticPropKey(v)
             const fn = v.value as AnyNode | undefined
             if (
               fieldName === undefined ||
@@ -8251,7 +8723,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
               fn.body?.type === 'BlockStatement'
             ) {
               ctx.warnings.push(
-                `useForm \`${name}\`: validator \`${fieldName ?? '?'}\` must be a single-param expression-body arrow returning '' (valid) or a message — skipped natively.`,
+                `useForm \`${name}\`: validator \`${fieldName ?? dynamicKeyText(v, ctx)}\` must be a single-param expression-body arrow returning '' (valid) or a message — skipped natively.`,
               )
               continue
             }
@@ -8264,16 +8736,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
           if (validators.length > 0) decl.validators = validators
         } else if (key === 'onSubmit' && prop.value?.type === 'ArrowFunctionExpression') {
           const fn = tryFunctionDecl('__onSubmit', prop.value, ctx)
-          // Optional-chain discriminant guard (see the store-walker
-          // mirror above for the CodeQL rationale).
-          if (fn?.kind === 'function') {
-            const param = fn.params[0]?.name ?? 'values'
-            decl.onSubmit = { param, body: fn.body }
-          } else {
-            ctx.warnings.push(
-              `useForm \`${name}\`: could not parse onSubmit — the native submit() will validate but run no callback.`,
-            )
-          }
+          decl.onSubmit = { param: fn.params[0]?.name ?? 'values', body: fn.body }
         }
       }
     }
@@ -8308,17 +8771,15 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     // `usePermissions([])` means "this screen grants nothing": deny-all, never
     // a fallback to the provider.
     const seeded = grantsArg?.type === 'ArrayExpression'
-    // A bare `usePermissions()` is the CORRECT web call — the grants live in
-    // `<PermissionsProvider>`, which has no native lowering. So the shape a
-    // web author writes produced an empty native set in which every check
-    // denies, silently: guarded UI simply never appeared on device, with
-    // nothing to trace it by. Say so rather than emit a container that is
-    // guaranteed to answer `false`.
-    if (!seeded && !ctx.hasPermissionsProvider) {
-      ctx.warnings.push(
-        `usePermissions() \`${name}\`: no grants reach this call — there is no literal argument and no <PermissionsProvider permissions={{ … }}> in this file, so the native permission set is EMPTY and every check denies. Wrap the tree in a provider (which lowers), seed at the call site (usePermissions(["posts.*"])), or grant() before the first check.`,
-      )
-    }
+    // A bare `usePermissions()` is the CORRECT web call: it reads the grants
+    // of the nearest `<PermissionsProvider>`, which lowers to the app-wide
+    // environment key / CompositionLocal in @pyreon/permissions' runtime. This
+    // used to WARN when the provider was not in the SAME file — accurate while
+    // the key was emitted per file (a Kotlin `private val` was a different
+    // local in every file, so a provider elsewhere never reached the reader).
+    // With one key for the whole app, the canonical shape — provider in the
+    // root layout, reader on a page — is correct, and a per-file check cannot
+    // see the provider, so the warning would fire on exactly the right code.
     return { kind: 'permissions', name, grants, seeded }
   }
   // Phase 4 — `const clipboard = useClipboard()` from `@pyreon/hooks` →
@@ -8372,11 +8833,11 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       }
       for (const prop of (opts.properties as AnyNode[] | undefined) ?? []) {
         if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-        const key = prop.key?.type === 'Identifier' ? (prop.key.name as string) : undefined
+        const key = staticPropKey(prop)
         const val = unwrapTypeLayers(prop.value as AnyNode | undefined)
         if ((key !== 'min' && key !== 'max') || val?.type !== 'Literal' || typeof val.value !== 'number') {
           ctx.warnings.push(
-            `useCounter() \`${name}\`: option \`${key ?? '?'}\` is not a numeric literal, so the clamp cannot be baked into the native mutators and the declaration is NOT lowered.`,
+            `useCounter() \`${name}\`: option \`${key ?? (hasDynamicKey(prop) ? dynamicKeyText(prop, ctx) : '?')}\` is not a numeric literal, so the clamp cannot be baked into the native mutators and the declaration is NOT lowered.`,
           )
           return null
         }
@@ -8503,12 +8964,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       return null
     }
     const fn = tryFunctionDecl(name, cb, ctx)
-    if (fn?.kind !== 'function') {
-      ctx.warnings.push(
-        `${calleeName}() \`${name}\`: could not parse the callback, so the declaration is NOT lowered.`,
-      )
-      return null
-    }
     return { kind: 'rate-limited', name, mode, delayMs: delayNode.value as number, fn }
   }
   if (calleeName === 'useClipboard') {
@@ -8891,10 +9346,19 @@ function tryUseStreamDecl(init: AnyNode, name: string, ctx: ParseCtx): DeclIR | 
   // stream media type this way). The spread is the runtime's job; the literal
   // props lower, and `accept` becomes the stream's Accept.
   let accept: string | undefined
+  // A RUNTIME `json` body — the common POST-stream shape (`json: { prompt:
+  // prompt() }`). The endpoint resolver only bakes a LITERAL body (and sends
+  // none otherwise), so it is taken out here and serialized per run through
+  // the `JSON.stringify` lowering instead.
+  let requestBodyExpr: ExprIR | undefined
   const kept = ((epArg?.properties as AnyNode[] | undefined) ?? []).flatMap((p): AnyNode[] => {
     const k = propName(p)
     if (k === 'signal') return []
     const v = p.value as AnyNode | undefined
+    if (k === 'json' && v !== undefined && !isNullishLiteral(v) && readJsonLiteral(v) === undefined) {
+      requestBodyExpr = { kind: 'json-stringify', arg: parseExpr(v, ctx) }
+      return []
+    }
     if (k === 'headers' && isMemberRead(v, cParam, 'headers')) return []
     if (k === 'headers' && v?.type === 'ObjectExpression') {
       const props = (v.properties as AnyNode[] | undefined) ?? []
@@ -8915,6 +9379,12 @@ function tryUseStreamDecl(init: AnyNode, name: string, ctx: ParseCtx): DeclIR | 
   const filtered = epArg !== undefined ? ({ ...epArg, properties: kept } as AnyNode) : undefined
   const resolved = resolveEndpointParts(epName, filtered, ctx, true, true)
   if (!resolved) return null
+  let reqHeaders = resolved.headers
+  if (requestBodyExpr !== undefined && !Object.keys(reqHeaders ?? {}).some((k) => k.toLowerCase() === 'content-type')) {
+    // The web's `json` sets this unless the caller declared one (see the
+    // literal-body branch of the endpoint resolver).
+    reqHeaders = { ...reqHeaders, 'content-type': 'application/json' }
+  }
 
   let sseText = false
   let events: string[] | undefined
@@ -8996,15 +9466,46 @@ function tryUseStreamDecl(init: AnyNode, name: string, ctx: ParseCtx): DeclIR | 
   }
 
   let maxEvents = 1000
+  let enabled: ExprIR | undefined
+  let onEventNode: AnyNode | undefined
   const hookOpts = init.arguments?.[1] as AnyNode | undefined
   if (hookOpts !== undefined) {
     if (hookOpts.type !== 'ObjectExpression') return bail('needs its options to be an object literal.')
     for (const p of (hookOpts.properties as AnyNode[] | undefined) ?? []) {
       const k = propName(p)
-      const v = literalScalar(p.value as AnyNode | undefined)
+      const node = unwrapTypeLayers(p.value as AnyNode | undefined)
+      const v = literalScalar(node)
       if (k === 'maxEvents' && typeof v === 'number') maxEvents = v
-      else if (k === 'enabled' || k === 'onEvent') {
-        return bail(`option \`${k}\` has no native lowering, and dropping it would change what the stream does.`)
+      else if (k === 'enabled') {
+        // `enabled: true | false | () => expr | expr` — the web reads it
+        // TRACKED on every run (`typeof enabled === 'function' ? enabled() :
+        // enabled`), so the accessor's BODY is the value, and a literal
+        // `true` is the default.
+        if (v === true) continue
+        if (v === false) {
+          enabled = { kind: 'literal', value: false }
+          continue
+        }
+        const expr = arrowExprBody(node) ?? (isFunctionNode(node) ? undefined : node)
+        if (expr === undefined) {
+          return bail('needs `enabled` to be a boolean, an expression, or an accessor returning one (`() => ready()`).')
+        }
+        enabled = parseExpr(expr, ctx)
+      } else if (k === 'onEvent') {
+        if (!isFunctionNode(node)) {
+          return bail('needs `onEvent` to be an inline function — `(event) => { … }` — to lower as the per-event callback.')
+        }
+        const params = (node!.params as AnyNode[] | undefined) ?? []
+        const second = params[1]?.type === 'Identifier' ? (params[1].name as string) : undefined
+        if (params.length > 2 || (params[1] !== undefined && second === undefined)) {
+          return bail('`onEvent` takes `(event, queryClient)` — no other shape lowers.')
+        }
+        if (second !== undefined && identifierReferenced(node!.body as AnyNode, second)) {
+          return bail(
+            `\`onEvent\` uses its second argument (\`${second}\`, the QueryClient) — native queries are self-contained PyreonQuery containers with no shared client to write into, so this callback cannot mean the same thing there.`,
+          )
+        }
+        onEventNode = node
       } else {
         ignored(`option \`${k ?? '…'}\``, 'not part of the lowered stream surface')
       }
@@ -9037,6 +9538,18 @@ function tryUseStreamDecl(init: AnyNode, name: string, ctx: ParseCtx): DeclIR | 
     }
     dataType = itemType
   }
+  let onEvent: { param: string; body: StatementIR[] } | undefined
+  if (onEventNode !== undefined) {
+    const p0 = ((onEventNode.params as AnyNode[] | undefined) ?? [])[0]
+    const param = p0?.type === 'Identifier' ? (p0.name as string) : '_'
+    if (p0 !== undefined && p0.type !== 'Identifier') {
+      return bail('needs `onEvent`\'s event parameter to be a plain name — `(event) => …`.')
+    }
+    const body = onEventNode.body as AnyNode
+    const stmts: StatementIR[] =
+      body.type === 'BlockStatement' ? parseStatementBlock(body, ctx) : [{ kind: 'expr', expr: parseExpr(body, ctx) }]
+    onEvent = { param, body: stmts }
+  }
   return {
     kind: 'stream',
     name,
@@ -9047,9 +9560,12 @@ function tryUseStreamDecl(init: AnyNode, name: string, ctx: ParseCtx): DeclIR | 
     url: resolved.url,
     ...(resolved.urlExpr !== undefined ? { urlExpr: resolved.urlExpr } : {}),
     method: resolved.method,
-    ...(resolved.headers !== undefined ? { headers: resolved.headers } : {}),
+    ...(reqHeaders !== undefined ? { headers: reqHeaders } : {}),
     ...(accept !== undefined ? { accept } : {}),
     ...(resolved.body !== undefined ? { requestBody: resolved.body } : {}),
+    ...(requestBodyExpr !== undefined ? { requestBodyExpr } : {}),
+    ...(enabled !== undefined ? { enabled } : {}),
+    ...(onEvent !== undefined ? { onEvent } : {}),
     ...(events !== undefined ? { events } : {}),
     ...(lastEventId !== undefined ? { lastEventId } : {}),
     reconnect,
@@ -9301,13 +9817,12 @@ function parseFetchInitObject(
     return req
   }
   for (const prop of (initNode.properties as AnyNode[] | undefined) ?? []) {
-    if (prop.type !== 'Property' || prop.computed) continue
-    const key =
-      prop.key?.type === 'Identifier'
-        ? prop.key.name
-        : typeof prop.key?.value === 'string'
-          ? prop.key.value
-          : undefined
+    if (prop.type !== 'Property') continue
+    if (hasDynamicKey(prop)) {
+      warnDynamicKey(prop, `Declaration ${name}: useQuery queryFn fetch init`, ctx)
+      continue
+    }
+    const key = staticPropKey(prop)
     if (!key) continue
     const value = prop.value as AnyNode | undefined
     const isStringLit =
@@ -9338,13 +9853,12 @@ function parseFetchInitObject(
       }
       const headers: Record<string, string> = {}
       for (const h of (value.properties as AnyNode[] | undefined) ?? []) {
-        if (h.type !== 'Property' || h.computed) continue
-        const hk =
-          h.key?.type === 'Identifier'
-            ? h.key.name
-            : typeof h.key?.value === 'string'
-              ? h.key.value
-              : undefined
+        if (h.type !== 'Property') continue
+        if (hasDynamicKey(h)) {
+          warnDynamicKey(h, `Declaration ${name}: useQuery queryFn fetch headers`, ctx)
+          continue
+        }
+        const hk = staticPropKey(h)
         const hv = h.value
         if (hk && (hv?.type === 'Literal' || hv?.type === 'StringLiteral') && typeof hv.value === 'string') {
           headers[hk] = hv.value
@@ -9498,13 +10012,11 @@ function tryDeclFromCreateMachine(
   let statesNode: AnyNode | undefined
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    const keyNode = prop.key as AnyNode | undefined
-    const keyName =
-      keyNode?.type === 'Identifier'
-        ? (keyNode.name as string)
-        : keyNode?.type === 'Literal'
-          ? String(keyNode.value)
-          : undefined
+    if (hasDynamicKey(prop)) {
+      warnDynamicKey(prop, `createMachine declaration \`${name}\`: config`, ctx)
+      continue
+    }
+    const keyName = staticPropKey(prop)
     if (!keyName) continue
     const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
     if (keyName === 'initial') {
@@ -9535,13 +10047,11 @@ function tryDeclFromCreateMachine(
   const transitions: Record<string, Record<string, string>> = {}
   for (const stateProp of (statesNode.properties as AnyNode[] | undefined) ?? []) {
     if (stateProp?.type !== 'Property' && stateProp?.type !== 'ObjectProperty') continue
-    const stateKeyNode = stateProp.key as AnyNode | undefined
-    const stateName =
-      stateKeyNode?.type === 'Identifier'
-        ? (stateKeyNode.name as string)
-        : stateKeyNode?.type === 'Literal'
-          ? String(stateKeyNode.value)
-          : undefined
+    if (hasDynamicKey(stateProp)) {
+      warnDynamicKey(stateProp, `createMachine declaration \`${name}\`: states`, ctx)
+      continue
+    }
+    const stateName = staticPropKey(stateProp)
     if (!stateName) continue
     const stateConfig = unwrapTypeLayers(stateProp.value as AnyNode | undefined)
     transitions[stateName] = {}
@@ -9549,25 +10059,21 @@ function tryDeclFromCreateMachine(
     // Find `on: { EVENT: nextState }`
     for (const innerProp of (stateConfig.properties as AnyNode[] | undefined) ?? []) {
       if (innerProp?.type !== 'Property' && innerProp?.type !== 'ObjectProperty') continue
-      const innerKeyNode = innerProp.key as AnyNode | undefined
-      const innerKey =
-        innerKeyNode?.type === 'Identifier'
-          ? (innerKeyNode.name as string)
-          : innerKeyNode?.type === 'Literal'
-            ? String(innerKeyNode.value)
-            : undefined
+      if (hasDynamicKey(innerProp)) {
+        warnDynamicKey(innerProp, `createMachine declaration \`${name}\`: state \`${stateName}\``, ctx)
+        continue
+      }
+      const innerKey = staticPropKey(innerProp)
       if (innerKey !== 'on') continue
       const eventsMap = unwrapTypeLayers(innerProp.value as AnyNode | undefined)
       if (eventsMap?.type !== 'ObjectExpression') continue
       for (const eventProp of (eventsMap.properties as AnyNode[] | undefined) ?? []) {
         if (eventProp?.type !== 'Property' && eventProp?.type !== 'ObjectProperty') continue
-        const evKeyNode = eventProp.key as AnyNode | undefined
-        const eventName =
-          evKeyNode?.type === 'Identifier'
-            ? (evKeyNode.name as string)
-            : evKeyNode?.type === 'Literal'
-              ? String(evKeyNode.value)
-              : undefined
+        if (hasDynamicKey(eventProp)) {
+          warnDynamicKey(eventProp, `createMachine declaration \`${name}\`: state \`${stateName}\` \`on\``, ctx)
+          continue
+        }
+        const eventName = staticPropKey(eventProp)
         const evVal = unwrapTypeLayers(eventProp.value as AnyNode | undefined)
         if (
           eventName &&
@@ -9650,13 +10156,11 @@ function tryDeclFromSyncedSignal(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   let scalarType: 'string' | 'double' | 'bool' | undefined
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    const keyNode = prop.key as AnyNode | undefined
-    const keyName =
-      keyNode?.type === 'Identifier'
-        ? (keyNode.name as string)
-        : keyNode?.type === 'Literal'
-          ? String(keyNode.value)
-          : undefined
+    if (hasDynamicKey(prop)) {
+      warnDynamicKey(prop, `syncedSignal declaration \`${name}\`: config`, ctx)
+      continue
+    }
+    const keyName = staticPropKey(prop)
     if (!keyName) continue
     const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
     if (keyName === 'doc') {
@@ -9733,14 +10237,19 @@ function tryDeclFromSyncedSignal(node: AnyNode, ctx: ParseCtx): DeclIR | null {
  * Anything outside that shape warns + falls back to silent-drop, same as
  * every other v1 recognizer in this file.
  */
-/** The identifier/string keys of an object literal (computed keys skipped). */
+/**
+ * The statically-known keys of an object literal. A computed NON-literal key
+ * (`{ [kind]: … }`) is reported as the sentinel `'[computed key]'` rather than
+ * skipped: every caller uses this list to find keys it does not handle, and a
+ * skipped key would pass that check silently.
+ */
 function literalObjectKeys(obj: AnyNode): string[] {
   const out: string[] = []
   for (const prop of (obj.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    const keyNode = prop.key as AnyNode | undefined
-    if (keyNode?.type === 'Identifier') out.push(keyNode.name as string)
-    else if (keyNode?.type === 'Literal') out.push(String(keyNode.value))
+    const key = staticPropKey(prop)
+    if (key !== undefined) out.push(key)
+    else if (hasDynamicKey(prop)) out.push('[computed key]')
   }
   return out
 }
@@ -9785,13 +10294,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   ): AnyNode | undefined => {
     for (const prop of (obj.properties as AnyNode[] | undefined) ?? []) {
       if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-      const keyNode = prop.key as AnyNode | undefined
-      const keyName =
-        keyNode?.type === 'Identifier'
-          ? (keyNode.name as string)
-          : keyNode?.type === 'Literal'
-            ? String(keyNode.value)
-            : undefined
+      const keyName = staticPropKey(prop)
       if (keyName === key) return unwrapTypeLayers(prop.value as AnyNode | undefined)
     }
     return undefined
@@ -10236,7 +10739,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     const out: Record<string, string[]> = {}
     for (const prop of (connectionRulesNode.properties as AnyNode[] | undefined) ?? []) {
       if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') return null
-      const key = prop.key?.type === 'Identifier' ? prop.key.name as string : literalString(prop.key)
+      // A computed key (`{ [kind]: … }`) is only known at runtime → not a literal map.
+      const key = staticPropKey(prop)
       const rule = unwrapTypeLayers(prop.value)
       const outputs = rule?.type === 'ObjectExpression' ? objProp(rule, 'outputs') : undefined
       if (key === undefined || outputs?.type !== 'ArrayExpression') return null
@@ -10269,13 +10773,11 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const droppedKeys: string[] = []
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    const keyNode = prop.key as AnyNode | undefined
-    const keyName =
-      keyNode?.type === 'Identifier'
-        ? (keyNode.name as string)
-        : keyNode?.type === 'Literal'
-          ? String(keyNode.value)
-          : undefined
+    if (hasDynamicKey(prop)) {
+      droppedKeys.push(`${dynamicKeyText(prop, ctx)} (computed key)`)
+      continue
+    }
+    const keyName = staticPropKey(prop)
     if (keyName === undefined || HANDLED_FLOW_CONFIG_KEYS.has(keyName)) continue
     droppedKeys.push(keyName)
   }
@@ -10383,13 +10885,11 @@ function tryDeclFromCreateTableState(node: AnyNode, ctx: ParseCtx): DeclIR | nul
   const columns: { id: string }[] = []
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    const keyNode = prop.key as AnyNode | undefined
-    const keyName =
-      keyNode?.type === 'Identifier'
-        ? (keyNode.name as string)
-        : keyNode?.type === 'Literal'
-          ? String(keyNode.value)
-          : undefined
+    if (hasDynamicKey(prop)) {
+      warnDynamicKey(prop, `createTableState declaration \`${name}\`: config`, ctx)
+      continue
+    }
+    const keyName = staticPropKey(prop)
     if (!keyName) continue
     const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
     if (keyName === 'data') {
@@ -10410,13 +10910,11 @@ function tryDeclFromCreateTableState(node: AnyNode, ctx: ParseCtx): DeclIR | nul
         if (col?.type !== 'ObjectExpression') continue
         for (const cp of (col.properties as AnyNode[] | undefined) ?? []) {
           if (cp?.type !== 'Property' && cp?.type !== 'ObjectProperty') continue
-          const ck = cp.key as AnyNode | undefined
-          const ckName =
-            ck?.type === 'Identifier'
-              ? (ck.name as string)
-              : ck?.type === 'Literal'
-                ? String(ck.value)
-                : undefined
+          if (hasDynamicKey(cp)) {
+            warnDynamicKey(cp, `createTableState declaration \`${name}\`: column`, ctx)
+            continue
+          }
+          const ckName = staticPropKey(cp)
           const cv = unwrapTypeLayers(cp.value as AnyNode | undefined)
           if (ckName === 'id' && cv?.type === 'Literal' && typeof cv.value === 'string') {
             columns.push({ id: cv.value })
@@ -10474,13 +10972,11 @@ function tryDeclFromUseSortable(node: AnyNode, ctx: ParseCtx): DeclIR | null {
 
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    const keyNode = prop.key as AnyNode | undefined
-    const keyName =
-      keyNode?.type === 'Identifier'
-        ? (keyNode.name as string)
-        : keyNode?.type === 'Literal'
-          ? String(keyNode.value)
-          : undefined
+    if (hasDynamicKey(prop)) {
+      warnDynamicKey(prop, `useSortable declaration \`${name}\`: config`, ctx)
+      continue
+    }
+    const keyName = staticPropKey(prop)
     if (!keyName) continue
     const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
 
@@ -10609,13 +11105,11 @@ function tryDeclFromCreateI18n(
   let messagesNode: AnyNode | undefined
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    const keyNode = prop.key as AnyNode | undefined
-    const keyName =
-      keyNode?.type === 'Identifier'
-        ? (keyNode.name as string)
-        : keyNode?.type === 'Literal'
-          ? String(keyNode.value)
-          : undefined
+    if (hasDynamicKey(prop)) {
+      warnDynamicKey(prop, `createI18n declaration \`${name}\`: config`, ctx)
+      continue
+    }
+    const keyName = staticPropKey(prop)
     if (!keyName) continue
     const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
     if (keyName === 'locale') {
@@ -10646,26 +11140,22 @@ function tryDeclFromCreateI18n(
   const messages: Record<string, Record<string, string>> = {}
   for (const localeProp of (messagesNode.properties as AnyNode[] | undefined) ?? []) {
     if (localeProp?.type !== 'Property' && localeProp?.type !== 'ObjectProperty') continue
-    const locKeyNode = localeProp.key as AnyNode | undefined
-    const locName =
-      locKeyNode?.type === 'Identifier'
-        ? (locKeyNode.name as string)
-        : locKeyNode?.type === 'Literal'
-          ? String(locKeyNode.value)
-          : undefined
+    if (hasDynamicKey(localeProp)) {
+      warnDynamicKey(localeProp, `createI18n declaration \`${name}\`: messages`, ctx)
+      continue
+    }
+    const locName = staticPropKey(localeProp)
     if (!locName) continue
     const dict = unwrapTypeLayers(localeProp.value as AnyNode | undefined)
     messages[locName] = {}
     if (dict?.type !== 'ObjectExpression') continue
     for (const entry of (dict.properties as AnyNode[] | undefined) ?? []) {
       if (entry?.type !== 'Property' && entry?.type !== 'ObjectProperty') continue
-      const eKey = entry.key as AnyNode | undefined
-      const k =
-        eKey?.type === 'Identifier'
-          ? (eKey.name as string)
-          : eKey?.type === 'Literal'
-            ? String(eKey.value)
-            : undefined
+      if (hasDynamicKey(entry)) {
+        warnDynamicKey(entry, `createI18n declaration \`${name}\`: messages \`${locName}\``, ctx)
+        continue
+      }
+      const k = staticPropKey(entry)
       const eVal = unwrapTypeLayers(entry.value as AnyNode | undefined)
       if (k && eVal?.type === 'Literal' && typeof eVal.value === 'string') {
         messages[locName]![k] = eVal.value
@@ -10707,24 +11197,26 @@ function tryExtractStringArray(arg: AnyNode | undefined): string[] {
  */
 function tryExtractFormInitialValues(
   arg: AnyNode | undefined,
+  /** Names a computed key (the one shape that is NOT a deliberate drop). */
+  report?: { ctx: ParseCtx; where: string },
 ): { key: string; value: string }[] {
   if (!arg || arg.type !== 'ObjectExpression') return []
   const props = arg.properties as AnyNode[] | undefined
   if (!props) return []
   const ivProp = props.find(
     (p) =>
-      p?.type === 'Property' &&
-      p?.key?.type === 'Identifier' &&
-      p?.key?.name === 'initialValues',
+      p?.type === 'Property' && staticPropKey(p) === 'initialValues',
   )
   if (!ivProp || ivProp.value?.type !== 'ObjectExpression') return []
   const out: { key: string; value: string }[] = []
   for (const p of (ivProp.value.properties as AnyNode[] | undefined) ?? []) {
     if (p?.type !== 'Property') continue
+    if (hasDynamicKey(p)) {
+      if (report) warnDynamicKey(p, report.where, report.ctx)
+      continue
+    }
     // Object keys are Identifiers (`email:`) or string literals (`'email':`).
-    const key =
-      (p.key?.type === 'Identifier' ? (p.key.name as string) : undefined) ??
-      (typeof p.key?.value === 'string' ? (p.key.value as string) : undefined)
+    const key = staticPropKey(p)
     const v = p.value
     if (
       key !== undefined &&
@@ -10764,12 +11256,7 @@ function tryExtractRoutes(arg: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | 
   if (!arg || arg.type !== 'ObjectExpression') return null
   const props = arg.properties as AnyNode[] | undefined
   if (!props) return null
-  const routesProp = props.find(
-    (p) =>
-      p?.type === 'Property' &&
-      p?.key?.type === 'Identifier' &&
-      p?.key?.name === 'routes',
-  )
+  const routesProp = props.find((p) => p?.type === 'Property' && staticPropKey(p) === 'routes')
   if (!routesProp) return null
   return parseRouteArray(routesProp.value, ctx)
 }
@@ -10791,12 +11278,7 @@ function tryExtractGuardRefArray(
   if (!arg || arg.type !== 'ObjectExpression') return []
   const props = arg.properties as AnyNode[] | undefined
   if (!props) return []
-  const prop = props.find(
-    (p) =>
-      p?.type === 'Property' &&
-      p?.key?.type === 'Identifier' &&
-      p?.key?.name === key,
-  )
+  const prop = props.find((p) => p?.type === 'Property' && staticPropKey(p) === key)
   if (!prop) return []
   const value = prop.value as AnyNode | undefined
   if (!value || value.type !== 'ArrayExpression') return []
@@ -10855,7 +11337,13 @@ function parseRouteArray(arr: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | n
     let loaderUsesParams = false
     for (const p of elProps) {
       if (p?.type !== 'Property') continue
-      const key = p.key?.name as string | undefined
+      // A computed key could be `path` / `component` / a guard — unknowable,
+      // and the compiler never emits a partial route table: bail, by name.
+      if (hasDynamicKey(p)) {
+        warnDynamicKey(p, 'createRouter route', ctx)
+        return null
+      }
+      const key = staticPropKey(p)
       if (key === 'path') {
         const v = p.value
         if (
@@ -10978,7 +11466,7 @@ function tryFunctionDecl(
   name: string,
   arrow: AnyNode,
   ctx: ParseCtx,
-): DeclIR | null {
+): Extract<DeclIR, { kind: 'function' }> {
   // Parse parameters with optional type annotations. TS params shape:
   // `(id: T, id2: T2)` where each param is an Identifier with
   // `typeAnnotation.typeAnnotation`.
@@ -11036,12 +11524,12 @@ function tryFunctionDecl(
         props.every(
           (pr) =>
             pr?.type === 'Property' &&
-            pr.key?.type === 'Identifier' &&
+            staticPropKey(pr) !== undefined &&
             pr.value?.type === 'Identifier',
         )
       if (allSimple) {
         for (const pr of props) {
-          const key = (pr as AnyNode).key.name as string
+          const key = staticPropKey(pr as AnyNode) as string
           const local = (pr as AnyNode).value.name as string
           destructurePrelude.push({
             kind: 'let',
@@ -11143,14 +11631,14 @@ function parseStatementBlock(block: AnyNode, ctx: ParseCtx): StatementIR[] {
         props.every(
           (p) =>
             p?.type === 'Property' &&
-            p.key?.type === 'Identifier' &&
+            staticPropKey(p) !== undefined &&
             p.value?.type === 'Identifier',
         )
       if (allSimple) {
         const synthName = `__pyDestr${ctx.hookDestructureCounter++}`
         out.push({ kind: 'let', name: synthName, expr: parseExpr(d.init as AnyNode, ctx) })
         for (const p of props) {
-          const key = (p as AnyNode).key.name as string
+          const key = staticPropKey(p as AnyNode) as string
           const local = (p as AnyNode).value.name as string
           // A block-scoped local SHADOWS any component-scope alias of the
           // same name. The component classifier may have parsed this same
@@ -11973,8 +12461,25 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
       )
       return { kind: 'unknown' }
     case 'TSTypeLiteral': {
-      const fields = (node.members as AnyNode[])
-        .filter((m) => m.type === 'TSPropertySignature' && m.key?.name && m.typeAnnotation)
+      const members = node.members as AnyNode[]
+      for (const m of members) {
+        // `{ [K]: string }` — the member name is the runtime VALUE of `K`, so
+        // it has no static field name. Pre-fix it was read as a field named
+        // `K`. Named, never silently renamed (same class as object literals).
+        if (m.type === 'TSPropertySignature' && m.computed === true && m.key?.type === 'Identifier') {
+          ctx.warnings.push(
+            `Computed type-literal members (\`{ [${m.key.name as string}]: … }\`) aren't supported in native (PMTC) — a struct/data-class needs static field names. Spell the field name literally.`,
+          )
+        }
+      }
+      const fields = members
+        .filter(
+          (m) =>
+            m.type === 'TSPropertySignature' &&
+            m.key?.name &&
+            !(m.computed === true && m.key?.type === 'Identifier') &&
+            m.typeAnnotation,
+        )
         .map((m) => {
           const fieldType = parseTypeAnnotation(m.typeAnnotation.typeAnnotation, ctx)
           // `label?: string` — TS marks the member `optional`. Represent it
@@ -12305,6 +12810,28 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         ) {
           // `loading` has no distinct native variant in v1 → treat as info.
           toastType = c.property.name === 'loading' ? 'info' : c.property.name
+        } else if (
+          c?.type === 'MemberExpression' &&
+          c.object?.type === 'Identifier' &&
+          ctx.toastNames.has(c.object.name)
+        ) {
+          // Any OTHER member call on the toast binding used to pass through
+          // VERBATIM (`toast.bogus("q")` → a Swift/Kotlin call on a name that
+          // does not exist), with no warning. Name it: a real-but-unlowered
+          // method gets the follow-up hint, anything else is not a toast API.
+          const method =
+            c.computed !== true && c.property?.type === 'Identifier'
+              ? (c.property.name as string)
+              : undefined
+          const REAL_UNLOWERED = new Set(['update', 'dismiss', 'remove', 'promise'])
+          return unsupportedExpr(
+            ctx,
+            node,
+            method !== undefined ? `\`${c.object.name}.${method}(…)\`` : `a computed \`${c.object.name}[…]\` call`,
+            method !== undefined && REAL_UNLOWERED.has(method)
+              ? `\`toast.${method}\` has no native lowering yet (only \`toast(msg)\` and the \`success\` / \`error\` / \`warning\` / \`info\` / \`loading\` presets lower) — the call is DROPPED on iOS/Android.`
+              : `@pyreon/toast has no such method; the native lowering covers \`toast(msg)\` and the \`success\` / \`error\` / \`warning\` / \`info\` / \`loading\` presets. The call is DROPPED on iOS/Android.`,
+          )
         }
         if (toastType !== undefined) {
           const argNodes = (node.arguments as AnyNode[] | undefined) ?? []
@@ -12316,8 +12843,11 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           const opts = argNodes[1]
           if (opts?.type === 'ObjectExpression') {
             for (const prop of (opts.properties as AnyNode[] | undefined) ?? []) {
-              if (prop.type !== 'Property' || prop.computed) continue
-              const key = prop.key?.type === 'Identifier' ? prop.key.name : prop.key?.value
+              if (hasDynamicKey(prop)) {
+                warnDynamicKey(prop, 'toast() options', ctx)
+                continue
+              }
+              const key = staticPropKey(prop)
               const val = prop.value as AnyNode | undefined
               if (
                 key === 'duration' &&
@@ -12350,8 +12880,11 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         const opts = argNodes[1]
         if (opts?.type === 'ObjectExpression') {
           for (const prop of (opts.properties as AnyNode[] | undefined) ?? []) {
-            if (prop.type !== 'Property' || prop.computed) continue
-            const key = prop.key?.type === 'Identifier' ? prop.key.name : prop.key?.value
+            if (hasDynamicKey(prop)) {
+              warnDynamicKey(prop, 'announce() options', ctx)
+              continue
+            }
+            const key = staticPropKey(prop)
             const val = prop.value
             if (
               key === 'politeness' &&
@@ -12446,6 +12979,29 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         left: parseExpr(node.left, ctx),
         right: parseExpr(node.right, ctx),
       }
+    }
+    case 'SequenceExpression': {
+      // Plain Mode's TOTAL-TRACKING prologue: `(void (a()), <expr>)` — the
+      // `void` reads exist only so the WEB effect subscribes to deps a branch
+      // might skip. SwiftUI and Compose track every read of the evaluated
+      // expression on their own, so the prologue has no native meaning: lower
+      // the sequence to its last element. Any OTHER sequence is a real comma
+      // expression with side effects and stays unsupported (warned).
+      const exprs = (node.expressions ?? []) as AnyNode[]
+      let last = exprs[exprs.length - 1]
+      // `(void a, (expr))` — the kept element's own parens are source
+      // grouping, exactly what an arrow body `=> (expr)` drops.
+      while (last?.type === 'ParenthesizedExpression') last = last.expression as AnyNode
+      const prologueOnly =
+        exprs.length >= 2 &&
+        exprs.slice(0, -1).every((e) => e.type === 'UnaryExpression' && e.operator === 'void')
+      if (prologueOnly && last) return parseExpr(last, ctx)
+      return unsupportedExpr(
+        ctx,
+        node,
+        'A comma expression (`SequenceExpression`)',
+        'evaluate the side effects as separate statements, then use the value.',
+      )
     }
     case 'UnaryExpression': {
       // Parser-B: `!t.done`, `-x`, `+x`. Both Swift and Kotlin accept
@@ -12821,7 +13377,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         const optsNode = (node.arguments as AnyNode[] | undefined)?.[0]
         const readNum = (key: string): number | undefined => {
           for (const prop of (optsNode?.properties as AnyNode[] | undefined) ?? []) {
-            const k = prop?.key?.name ?? prop?.key?.value
+            const k = staticPropKey(prop)
             if (k === key && prop.value?.type === 'Literal') {
               const v = prop.value.value
               if (typeof v === 'number') return v
@@ -12837,6 +13393,9 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           ctx.warnings.push(
             `[${locOf(node, ctx)}] new ${calleeName}(...) lowers only with a LITERAL \`{ maxEntries: N }\` option object — a computed cap cannot be baked into the native emit. Use a literal, or keep the call behind a \`<Web>\` escape hatch.`,
           )
+          // Return here: falling through reached the generic "class
+          // construction is not supported" arm, naming the SAME call twice.
+          return { kind: 'literal', value: '' }
         } else {
           return {
             kind: 'new-sized-map',
@@ -12980,6 +13539,7 @@ function parseJsxElement(node: AnyNode, ctx: ParseCtx): ExprIR {
   else if (tagNode.type === 'JSXMemberExpression') {
     tag = `${tagNode.object.name}.${tagNode.property.name}`
   }
+  tag = ctx.typedComponentAliases.get(tag) ?? tag
 
   const attrs: AttrIR[] = []
   for (const attr of opening.attributes as AnyNode[]) {
@@ -13256,6 +13816,31 @@ function parseJsxAttr(node: AnyNode, ctx: ParseCtx): AttrIR | null {
   return { kind: 'attr', name: rawName, value: exprValue }
 }
 
+/**
+ * The JSX text rule (Babel's `cleanJSXElementLiteralChild`): split into lines;
+ * trim leading whitespace on every line but the first and trailing whitespace
+ * on every line but the last; drop empty lines; join the rest with one space.
+ * So layout whitespace containing a line break vanishes, while inline
+ * whitespace with no line break -- including a lone space between two
+ * expression containers, `{a} {b}` -- is content and survives.
+ */
+export function cleanJsxText(raw: string): string {
+  const lines = raw.split(/\r\n|\n|\r/)
+  let lastNonEmpty = 0
+  for (let i = 0; i < lines.length; i++) if (/[^ \t]/.test(lines[i]!)) lastNonEmpty = i
+  let out = ''
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i]!.replace(/\t/g, ' ')
+    if (i !== 0) line = line.replace(/^ +/, '')
+    if (i !== lines.length - 1) line = line.replace(/ +$/, '')
+    if (line !== '') {
+      if (i !== lastNonEmpty) line += ' '
+      out += line
+    }
+  }
+  return out
+}
+
 function parseJsxChild(node: AnyNode, ctx: ParseCtx): ChildIR | null {
   if (node.type === 'JSXText') {
     // JSX whitespace handling per Babel / React convention:
@@ -13272,8 +13857,7 @@ function parseJsxChild(node: AnyNode, ctx: ParseCtx): ChildIR | null {
     // The naive pre-PR-9 `.trim()` was correct for layout whitespace
     // but wrong for content-adjacent whitespace.
     const raw = node.value as string
-    if (!/\S/.test(raw)) return null
-    const v = /\n/.test(raw) ? raw.replace(/\s+/g, ' ').trim() : raw
+    const v = cleanJsxText(raw)
     if (v === '') return null
     return { kind: 'text', value: v }
   }

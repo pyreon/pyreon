@@ -89,6 +89,18 @@ export const standardSchema: SchemaResolver = (schema): ParseFn<unknown> | null 
       // it exposes only `validator`, which returns an error RECORD (and may
       // be async), so it cannot produce a validated VALUE synchronously.
       // Fail loudly rather than silently skipping validation.
+      //
+      // Coverage note: `isPyreonAdapter` (the guard `schema` already
+      // passed to get here) itself requires `typeof value.parse ===
+      // 'function'` to return true — a mismatch against its OWN type
+      // (`PyreonAdapterShape.parse` is `?`-optional). So THIS branch is
+      // currently unreachable through the public API: no value can pass
+      // `isPyreonAdapter` and land here with a non-function `parse`.
+      // Left in (v8-ignored, not deleted) as a deliberate defensive
+      // fail-loud for the day that mismatch is closed upstream in
+      // `@pyreon/validation` — fixing the guard there is its own,
+      // separately-scoped change; this comment is the paper trail.
+      /* v8 ignore next 5 */
       throw new Error(
         '[Pyreon] http: this @pyreon/validation adapter has no sync `parse`, so it cannot ' +
           'validate a response body. Pass the RAW schema instead (`.json(mySchema)`), or ' +

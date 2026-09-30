@@ -6,7 +6,7 @@
 // so this reads the REAL Chromium AX tree over CDP, not just the DOM.
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
-import { cdp } from '@vitest/browser/context'
+import { cdp } from 'vitest/browser'
 import { describe, expect, it } from 'vitest'
 import { PlotChart } from './Chart'
 import { line } from './marks'
@@ -15,10 +15,12 @@ interface Row { i: string; v: number }
 const ROWS: Row[] = Array.from({ length: 1000 }, (_, i) => ({ i: `row${i}`, v: i }))
 
 describe('the accessible table in row blocks', () => {
-  it('puts rows in 50-row <tbody> blocks, every row present', () => {
+  it('puts rows in 50-row <tbody> blocks, every row present', async () => {
     const root = document.createElement('div')
     document.body.appendChild(root)
     const un = mount(h(PlotChart<Row>, { data: ROWS, x: (d: Row) => d.i, marks: [line((d: Row) => d.v)], width: 600, height: 300, animate: false }), root)
+    // A table this size fills after the chart's first paint.
+    await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 20)))
     const bodies = [...root.querySelectorAll('table tbody')] as HTMLElement[]
     expect(bodies.length).toBe(20)
     expect(root.querySelectorAll('table tbody tr')).toHaveLength(1000)

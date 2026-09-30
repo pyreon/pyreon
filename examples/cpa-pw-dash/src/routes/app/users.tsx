@@ -1,4 +1,4 @@
-import { signal } from "@pyreon/reactivity"
+import { state } from '@pyreon/core/plain'
 import { onMount } from "@pyreon/core"
 import { useHead } from "@pyreon/head"
 import { listUsers, type User } from "../../lib/db"
@@ -8,10 +8,10 @@ export const meta = { title: "Users" }
 export default function Users() {
   useHead({ title: meta.title })
 
-  const users = signal<User[]>([])
+  let users = state.raw<User[]>([])
 
   onMount(() => {
-    void listUsers().then((u) => users.set(u))
+    void listUsers().then((u) => { users = u })
   })
 
   return (
@@ -32,7 +32,7 @@ export default function Users() {
         </thead>
         <tbody>
           {() =>
-            users().map((u) => (
+            users.map((u) => (
               <tr>
                 <td>{u.name}</td>
                 <td>{u.email}</td>

@@ -1,11 +1,11 @@
 ---
 title: "Examples"
-description: "A gallery of 90 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
+description: "A gallery of 107 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
 ---
 
 # Examples
 
-Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 90 examples across 42 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
+Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 107 examples across 42 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
 
 ## A11y
 
@@ -29,17 +29,45 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 
 <Example file="./examples/charts/gallery-bars" />
 
+### Gallery Boxplot
+
+<Example file="./examples/charts/gallery-boxplot" />
+
+### Gallery Calendar
+
+<Example file="./examples/charts/gallery-calendar" />
+
 ### Gallery Candlestick
 
 <Example file="./examples/charts/gallery-candlestick" />
+
+### Gallery Chord
+
+<Example file="./examples/charts/gallery-chord" />
+
+### Gallery Direct Labels
+
+<Example file="./examples/charts/gallery-direct-labels" />
 
 ### Gallery Donut
 
 <Example file="./examples/charts/gallery-donut" />
 
+### Gallery Funnel
+
+<Example file="./examples/charts/gallery-funnel" />
+
+### Gallery Gantt
+
+<Example file="./examples/charts/gallery-gantt" />
+
 ### Gallery Gauge
 
 <Example file="./examples/charts/gallery-gauge" />
+
+### Gallery Graph
+
+<Example file="./examples/charts/gallery-graph" />
 
 ### Gallery Heatmap
 
@@ -49,13 +77,53 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 
 <Example file="./examples/charts/gallery-horizontal" />
 
+### Gallery Parallel
+
+<Example file="./examples/charts/gallery-parallel" />
+
+### Gallery Polar
+
+<Example file="./examples/charts/gallery-polar" />
+
 ### Gallery Radar
 
 <Example file="./examples/charts/gallery-radar" />
 
+### Gallery River
+
+<Example file="./examples/charts/gallery-river" />
+
+### Gallery Sankey
+
+<Example file="./examples/charts/gallery-sankey" />
+
+### Gallery Single Axis
+
+<Example file="./examples/charts/gallery-single-axis" />
+
+### Gallery Sliding Window
+
+<Example file="./examples/charts/gallery-sliding-window" />
+
 ### Gallery Stream
 
 <Example file="./examples/charts/gallery-stream" />
+
+### Gallery Sunburst
+
+<Example file="./examples/charts/gallery-sunburst" />
+
+### Gallery Time Axis
+
+<Example file="./examples/charts/gallery-time-axis" />
+
+### Gallery Tree
+
+<Example file="./examples/charts/gallery-tree" />
+
+### Gallery Treemap
+
+<Example file="./examples/charts/gallery-treemap" />
 
 ### Gallery Trend
 

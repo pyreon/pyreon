@@ -118,20 +118,98 @@ runner(() => { console.log(a()) })
 })
 
 describe('per-binding declines — named, byte-untouched', () => {
-  it('a signal passed as a VALUE declines that binding only; siblings convert', () => {
+  it('a signal passed as a VALUE converts through signalOf — identity preserved', () => {
     const r = M(`import { signal } from '@pyreon/reactivity'
 const kept = signal(0)
 const passed = signal(1)
 subscribeSomewhere(passed)
 export const read = () => kept()
 `)
-    expect(r.converted).toEqual(['kept'])
-    expect(r.declined).toHaveLength(1)
-    expect(r.declined[0]).toMatchObject({ name: 'passed', code: 'signal-as-value' })
-    expect(r.code).toContain(`const passed = signal(1)`)
-    expect(r.code).toContain(`let kept = state(0)`)
-    // signal import must SURVIVE for the declined binding
-    expect(r.code).toContain(`import { signal } from '@pyreon/reactivity'`)
+    expect(r.converted).toEqual(['kept', 'passed'])
+    expect(r.declined).toHaveLength(0)
+    expect(r.code).toContain(`subscribeSomewhere(signalOf<typeof passed>(passed))`)
+    expect(r.code).toContain(`import { state, signalOf } from '@pyreon/core/plain'`)
+    // compiling back yields the classic identity use byte-for-byte
+    const back = transformPlain(r.code!, 'x.ts')!.code
+    expect(back).toContain('subscribeSomewhere(passed)')
+    expect(back).toContain('const passed = signal(1)')
+  })
+
+  it('a shorthand property storing the signal expands to `key: signalOf(key)`', () => {
+    const r = M(`import { signal } from '@pyreon/reactivity'
+export function make() {
+  const ready = signal(false)
+  return { ready }
+}
+`)
+    expect(r.code).toContain('return { ready: signalOf(ready) }')
+    expect(transformPlain(r.code!, 'x.ts')!.code).toContain('return { ready }')
+  })
+
+  it('a bare signal in a JSX slot stays a plain read (no signalOf)', () => {
+    const r = M(`import { signal } from '@pyreon/reactivity'
+export const C = () => { const email = signal(''); return <input value={email}>{email}</input> }
+`)
+    expect(r.code).toContain('<input value={email}>{email}</input>')
+    expect(r.code).not.toContain('signalOf')
+  })
+
+  it('a file that already binds a marker NAME imports it under a plain* alias', () => {
+    const r = M(`import { signal } from '@pyreon/reactivity'
+import { signalOf } from './mine'
+export function F() {
+  const state = useFormState()
+  const passed = signal(1)
+  subscribeSomewhere(passed, signalOf, state)
+}
+`)
+    expect(r.declined).toEqual([])
+    expect(r.code).toContain(`import { state as plainState, signalOf as plainSignalOf } from '@pyreon/core/plain'`)
+    expect(r.code).toContain('let passed = plainState(1)')
+    expect(r.code).toContain('subscribeSomewhere(plainSignalOf<typeof passed>(passed), signalOf, state)')
+    // the aliased markers compile back to the classic code
+    const back = transformPlain(r.code!, 'x.tsx')!.code
+    expect(back).toContain('const passed = signal(1)')
+    expect(back).toContain('subscribeSomewhere(passed, signalOf, state)')
+  })
+
+  it('an EXPORTED signal declines — its importers still call it', () => {
+    const r = M(`import { signal } from '@pyreon/reactivity'
+export const themeMode = signal('light')
+const other = signal(1)
+export { other }
+const inner = signal(2)
+export const read = () => inner()
+`)
+    expect(r.declined.map((d) => `${d.name}:${d.code}`)).toEqual(['themeMode:exported', 'other:exported'])
+    expect(r.converted).toEqual(['inner'])
+    expect(r.code).toContain(`export const themeMode = signal('light')`)
+  })
+
+  it('a signal passed to a COMPONENT prop keeps identity (and its accessor type)', () => {
+    const r = M(`import { signal } from '@pyreon/reactivity'
+export function A() { const open = signal(false); return <Defer when={open}><b>{open}</b></Defer> }
+`)
+    expect(r.code).toContain('<Defer when={signalOf<typeof open>(open)}><b>{open}</b></Defer>')
+  })
+
+  it('identity uses inside CALL arguments pin the type explicitly in TS, plainly in JS', () => {
+    const src = `import { signal } from '@pyreon/reactivity'
+const items = signal([1])
+const h = items
+use({ items, by: (x) => x })
+`
+    expect(M(src).code).toContain('use({ items: signalOf<typeof items>(items), by: (x) => x })')
+    expect(M(src).code).toContain('const h = signalOf(items)')
+    expect(migrateToPlain(src, 'x.js').code).toContain('use({ items: signalOf(items), by: (x) => x })')
+  })
+
+  it('kept reactivity specifiers keep their `type` modifier', () => {
+    const r = M(`import { signal, type Signal } from '@pyreon/reactivity'
+const a = signal(1)
+export const read = (): Signal<number> | number => a()
+`)
+    expect(r.code).toContain(`import { type Signal } from '@pyreon/reactivity'`)
   })
 
   it('.set whose result is used declines', () => {
@@ -143,20 +221,34 @@ export const f = () => take(a.set(5))
     expect(r.code).toBeNull()
   })
 
-  it('.subscribe / .direct / other member access declines', () => {
+  it('.subscribe / .direct / other signal API runs on signalOf(x)', () => {
     const r = M(`import { signal } from '@pyreon/reactivity'
 const a = signal(0)
 a.subscribe(() => {})
 `)
-    expect(r.declined[0]).toMatchObject({ name: 'a', code: 'member-access' })
+    expect(r.declined).toEqual([])
+    expect(r.code).toContain('signalOf(a).subscribe(() => {})')
+    expect(transformPlain(r.code!, 'x.ts')!.code).toContain('a.subscribe(() => {})')
   })
 
-  it('a complex .update callback declines', () => {
+  it('a complex .update callback applies to the UNTRACKED current value', () => {
     const r = M(`import { signal } from '@pyreon/reactivity'
 const a = signal(0)
 export const f = () => { a.update((v) => { const w = v + 1; return w }) }
 `)
-    expect(r.declined[0]).toMatchObject({ name: 'a', code: 'update-complex' })
+    expect(r.declined).toEqual([])
+    expect(r.code).toContain('a = ((v) => { const w = v + 1; return w })(untrack(() => a))')
+    expect(r.code).toContain(`import { untrack } from '@pyreon/reactivity'`)
+  })
+
+  it('.update inside an effect never substitutes a TRACKED read', () => {
+    const r = M(`import { signal, effect } from '@pyreon/reactivity'
+const n = signal(0)
+effect(() => { n.update((v) => v + 1) })
+`)
+    // classic .update reads untracked — a substituted \`n = n + 1\` would subscribe
+    expect(r.code).toContain('n = ((v) => v + 1)(untrack(() => n))')
+    expect(r.code).not.toContain('n = n + 1')
   })
 
   it('a reassigned binding declines', () => {
@@ -225,9 +317,10 @@ export class K {
 }
 export default a
 `)
-    // `export default a` references the BINDING as a value → declines
-    expect(r.declined.some((d) => d.code === 'signal-as-value')).toBe(true)
-    expect(r.code).toBeNull()
+    // `export default a` references the BINDING as a value → signalOf keeps identity
+    expect(r.declined).toHaveLength(0)
+    expect(r.code).toContain('export default signalOf(a)')
+    expect(r.code).not.toContain('a()')
   })
 
   it('the same containers WITHOUT a value-use convert every read', () => {
@@ -373,7 +466,7 @@ export const f = () => { a.update((v) => v * v + v) }
     expect(r.code).toContain('a = a * a + a')
   })
 
-  it('.update with a BLOCK body / zero params / non-arrow declines as update-complex', () => {
+  it('.update with a BLOCK body / zero params / non-arrow converts via the untrack form', () => {
     const r = M(`import { signal } from '@pyreon/reactivity'
 const a = signal(1)
 const b = signal(2)
@@ -382,16 +475,19 @@ export const f = () => { a.update((v) => { return v + 1 }) }
 export const g = () => { b.update(() => 1) }
 export const h = () => { c.update(function (v) { return v + 1 }) }
 `)
-    const codes = r.declined.map((d) => d.code)
-    expect(codes.filter((x) => x === 'update-complex')).toHaveLength(3)
+    expect(r.declined).toEqual([])
+    expect(r.code).toContain('a = ((v) => { return v + 1 })(untrack(() => a))')
+    expect(r.code).toContain('b = (() => 1)(untrack(() => b))')
+    expect(r.code).toContain('c = (function (v) { return v + 1 })(untrack(() => c))')
   })
 
-  it('.set with the wrong arity declines as member-access', () => {
+  it('.set with the wrong arity keeps its exact call via signalOf', () => {
     const r = M(`import { signal } from '@pyreon/reactivity'
 const a = signal(1)
 export const f = () => { a.set() }
 `)
-    expect(r.declined.some((d) => d.code === 'member-access')).toBe(true)
+    expect(r.declined).toEqual([])
+    expect(r.code).toContain('signalOf(a).set()')
   })
 
   it('a syntactically invalid file returns the empty result', () => {
@@ -522,5 +618,74 @@ export const g = () => (box as Record<string, unknown>)['fixed']
 `)
     expect(r.converted).toEqual(['a'])
     expect(r.code).toContain('box[`k${a}`]?.deep')
+  })
+})
+
+describe('.update substitution keeps edits made INSIDE the callback body', () => {
+  it('another converted binding read in the body is rewritten too', () => {
+    const r = M(`import { signal, computed } from '@pyreon/reactivity'
+const id = computed(() => 'c1')
+const msgs = signal<{ c: string }[]>([])
+export const add = () => msgs.update((prev) => [...prev, { c: id() }])
+`)
+    expect(r.code).toContain('export const add = () => { msgs = [...msgs, { c: id }] }')
+    expect(r.code).not.toContain('id()')
+  })
+
+  it('a shorthand use of the param takes the general form (its KEY must not be renamed)', () => {
+    const r = M(`import { signal } from '@pyreon/reactivity'
+const x = signal(1)
+export const f = () => { x.update((prev) => ({ prev }).prev) }
+`)
+    expect(r.code).toContain('x = ((prev) => ({ prev }).prev)(untrack(() => x))')
+  })
+})
+
+describe('import hygiene', () => {
+  it('drops the reactivity import when the only other mention is in a comment', () => {
+    const r = M(`import { signal } from '@pyreon/reactivity'
+// a signal of the current count
+const n = signal(0)
+export const read = () => n()
+`)
+    expect(r.code).not.toContain('@pyreon/reactivity')
+  })
+
+  it('the plain import takes the removed import line — no blank line, no growth', () => {
+    const src = `import { signal } from '@pyreon/reactivity'\nconst n = signal(0)\nexport const read = () => n()\n`
+    const r = M(src)
+    expect(r.code).toBe(`import { state } from '@pyreon/core/plain'\nlet n = state(0)\nexport const read = () => n\n`)
+    expect(r.code!.split('\n').length).toBe(src.split('\n').length)
+  })
+})
+
+describe('import hygiene — name positions are not references', () => {
+  it('`{ signal: x }` and `a.signal` do not keep a dead `signal` import', () => {
+    const r = M(`import { signal } from '@pyreon/reactivity'
+const n = signal(0)
+export const f = (c) => fetch('/x', { signal: c.signal }).then(() => n())
+`)
+    expect(r.code).not.toContain('@pyreon/reactivity')
+  })
+
+  it('a bare `x()` dependency-read statement becomes `void x`', () => {
+    const r = M(`import { signal, effect } from '@pyreon/reactivity'
+const id = signal('a')
+effect(() => { id(); reset() })
+`)
+    expect(r.code).toContain('effect(() => { void id; reset() })')
+  })
+})
+
+describe('arrow handlers that return a write', () => {
+  it('`() => x.set(v)` converts to a block body that still returns undefined', () => {
+    const r = M(`import { signal } from '@pyreon/reactivity'
+const n = signal(0)
+export const inc = () => n.set(n() + 1)
+export const bump = () => n.update((v) => v + 2)
+`)
+    expect(r.declined).toEqual([])
+    expect(r.code).toContain('export const inc = () => { n = n + 1 }')
+    expect(r.code).toContain('export const bump = () => { n = n + 2 }')
   })
 })

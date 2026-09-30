@@ -37,7 +37,7 @@ describe('Kotlin expr: array/String method lowerings', () => {
 
   it('concat: 1-arg is a parenthesised `+`, so a following operator binds to the whole concatenation', () => {
     const out = kt(`  const a = computed(() => xs().concat([4]))`).code
-    expect(out).toContain('(xs + listOf(4))')
+    expect(out).toContain('(xs + listOf(4L))')
   })
 
   it('charAt/charCodeAt: 1-char String vs the UTF-16 code unit as a Double', () => {
@@ -46,7 +46,7 @@ describe('Kotlin expr: array/String method lowerings', () => {
     // charAt → Char.toString() (JS returns a STRING, Kotlin's `[]` a Char)
     expect(out).toContain('name[1].toString()')
     // charCodeAt tolerates a Double-typed index and yields a Double
-    expect(out).toContain('name[(0).toInt()].code.toDouble()')
+    expect(out).toContain('name[(0L).toInt()].code.toDouble()')
   })
 
   it('flat/reverse/toUpperCase/toLowerCase: 0-arg only; a 1-arg call falls through + warns', () => {
@@ -60,7 +60,7 @@ describe('Kotlin expr: array/String method lowerings', () => {
     expect(out).toContain('name.lowercase()')
     // The neighbouring shape: only the 0-arg form is lowered, so a depth
     // argument breaks out of the case and is re-emitted verbatim.
-    expect(kt(`  const a = computed(() => xs().flat(2))`).code).toContain('xs.flat(2)')
+    expect(kt(`  const a = computed(() => xs().flat(2))`).code).toContain('xs.flat(2L)')
   })
 
   it('replace vs replaceAll: `replace` is FIRST-only (replaceFirst), `replaceAll` is Kotlin `replace`', () => {
@@ -73,24 +73,24 @@ describe('Kotlin expr: array/String method lowerings', () => {
   it('findIndex/filter: the 1-arg predicate forms (indexOfFirst / filter)', () => {
     const out = kt(`  const a = computed(() => xs().findIndex((v) => v > 1))
   const b = computed(() => xs().filter((v) => v > 1))`).code
-    expect(out).toContain('xs.indexOfFirst({ v -> v > 1 })')
-    expect(out).toContain('xs.filter({ v -> v > 1 })')
+    expect(out).toContain('xs.indexOfFirst({ v -> v > 1L }).toLong()')
+    expect(out).toContain('xs.filter({ v -> v > 1L })')
   })
 
   it('reduce: the 2-arg JS form becomes fold(initial, reducer) — Kotlin reduce takes no initial', () => {
     const out = kt(`  const a = computed(() => xs().reduce((acc, v) => acc + v, 0))`).code
-    expect(out).toContain('xs.fold(0, { acc, v -> acc + v })')
+    expect(out).toContain('xs.fold(0L, { acc, v -> acc + v })')
   })
 
   it('push: 1 arg is `add`, 2+ args are `addAll(listOf(...))`', () => {
     const out = kt(`  const a = computed(() => xs().push(4))
   const b = computed(() => xs().push(4, 5))`).code
-    expect(out).toContain('xs.add(4)')
-    expect(out).toContain('xs.addAll(listOf(4, 5))')
+    expect(out).toContain('xs.add(4L)')
+    expect(out).toContain('xs.addAll(listOf(4L, 5L))')
   })
 
   it('includes: 1-arg only → contains', () => {
-    expect(kt(`  const a = computed(() => xs().includes(2))`).code).toContain('xs.contains(2)')
+    expect(kt(`  const a = computed(() => xs().includes(2))`).code).toContain('xs.contains(2L)')
   })
 
   it('at: an ARRAY receiver resolves a negative index; a STRING receiver warns NAMED (Char-vs-String)', () => {
@@ -108,14 +108,14 @@ describe('Kotlin expr: array/String method lowerings', () => {
     expect(out).toContain(`name.padStart(5, '0')`)
     expect(out).toContain('name.padEnd(5)')
     // multi-char pad can't be a Kotlin Char → unchanged String arg
-    expect(out).toContain('name.padStart(5, "ab")')
+    expect(out).toContain('name.padStart(5L, "ab")')
   })
 
   it('fill: `Array(n).fill(v)` takes the count from Array(n); a bare `arr.fill(v)` uses .size', () => {
     const out = kt(`  const a = computed(() => Array(3).fill(0))
   const b = computed(() => xs().fill(0))`).code
-    expect(out).toContain('List(3) { 0 }')
-    expect(out).toContain('List(xs.size) { 0 }')
+    expect(out).toContain('List(3) { 0L }')
+    expect(out).toContain('List(xs.size) { 0L }')
   })
 
   it('slice: 0-arg copies (toList on a List, the String itself); negative forms use takeLast/dropLast', () => {
@@ -130,17 +130,18 @@ describe('Kotlin expr: array/String method lowerings', () => {
     expect(out).toContain('xs.dropLast(1)')
   })
 
-  it('toFixed: a LITERAL digit count formats Locale.ROOT; a DYNAMIC count falls through + warns', () => {
+  it('toFixed: a LITERAL digit count formats Locale.ROOT; a DYNAMIC count interpolates it', () => {
     const out = kt(`  const a = computed(() => rows()[0].price.toFixed(2))
   const b = computed(() => rows()[0].price.toFixed())`).code
     expect(out).toContain('"%.2f".format(java.util.Locale.ROOT,')
     // 0-arg defaults to 0 digits (JS toFixed() === toFixed(0))
     expect(out).toContain('"%.0f".format(java.util.Locale.ROOT,')
-    // A DYNAMIC digit count cannot bake a format string — it breaks out of
-    // the case and re-emits verbatim (see the KNOWN BUG lock at the bottom).
+    // A DYNAMIC digit count builds the same format string at runtime (it
+    // used to re-emit a verbatim `.toFixed(n)`, which Kotlin has no member for).
     const dyn = kt(`  const n = signal<number>(2)
   const a = computed(() => rows()[0].price.toFixed(n()))`)
-    expect(dyn.code).toContain('.toFixed(n)')
+    expect(dyn.code).toContain('"%.${n}f".format(java.util.Locale.ROOT, rows[0].price)')
+    expect(dyn.code).not.toContain('.toFixed(n)')
   })
 
   it('toLocaleString degrades to toString() with a NAMED warning (no native locale formatting)', () => {
@@ -149,13 +150,13 @@ describe('Kotlin expr: array/String method lowerings', () => {
     expect(r.warnings.join('\n')).toContain('toLocaleString')
   })
 
-  it('sort: an Int comparator keeps the raw difference; a DOUBLE one converts the SIGN via compareTo(0.0)', () => {
+  it('sort: a Double comparator converts the SIGN via compareTo(0.0); an integer one via compareTo(0L) (its difference is a Long)', () => {
     const out = kt(`  const a = computed(() => rows().sort((p, q) => p.price - q.price))
   const b = computed(() => rows().sort((p, q) => p.id - q.id))`).code
     // Kotlin's Comparator.compare must return Int — a Double body needs the sign
     expect(out).toContain('Comparator { p, q -> (p.price - q.price).compareTo(0.0) }')
-    // an Int body is unchanged (same sign, same order)
-    expect(out).toContain('Comparator { p, q -> p.id - q.id }')
+    // a TS integer is a Long on Kotlin, which Comparator cannot return either
+    expect(out).toContain('Comparator { p, q -> (p.id - q.id).compareTo(0L) }')
   })
 
   it('sort: no comparator and a multi-statement comparator both WARN rather than mis-emit', () => {
@@ -234,9 +235,9 @@ function App() {
 // verbatim re-emit when the property is one the switch recognises but did
 // not handle (the `sort` arms then collapse into that same mechanism).
 //
-// This spec passes the moment that warning exists; delete the `.fails` then.
+// Fixed: method-shapes.ts names every uncovered shape of a mapped method.
 describe('Kotlin expr: unhandled ARITY of a mapped method', () => {
-  it.fails('KNOWN BUG: a mapped method at an unhandled arity re-emits verbatim with NO warning', () => {
+  it('a mapped method at an unhandled arity is NAMED (fixed in native-known-bugs-emit)', () => {
     // Today: `xs.flat(2)` is emitted verbatim (invalid Kotlin — a List has
     // no `flat`) and nothing is reported. The ONLY assertion is the
     // diagnostic, so ANY fix that makes the shape observable — a warning, or

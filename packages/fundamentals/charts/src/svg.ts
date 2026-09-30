@@ -2,6 +2,14 @@
  * @pyreon/charts/svg — charts as SVG strings, with no DOM. For server
  * rendering, static export and email.
  */
+import { setFrameSerializer } from './engine/frame-seam'
+import { measureApprox, renderSvg } from './engine/svg'
+
+// Importing this entry on a server also enables `<Chart>`'s first-frame SVG
+// in SSR / SSG HTML (see `engine/frame-seam.ts`). A side effect on purpose —
+// `package.json` lists this file under `sideEffects`.
+setFrameSerializer({ measure: measureApprox, svg: renderSvg })
+
 export { chartToSvg } from './engine/svg-chart'
 export type { ChartToSvgOptions } from './engine/svg-chart'
 export {

@@ -47,7 +47,7 @@
   },
   "devDependencies": {
     "@casl/ability": "^7.0.1",
-    "@happy-dom/global-registrator": "^20.11.6",
+    "@happy-dom/global-registrator": "^20.14.5",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
@@ -59,7 +59,11 @@
   "pyreon": {
     "native": {
       "swift": "native/swift",
-      "kotlin": "native/kotlin"
+      "kotlin": "native/kotlin",
+      "kotlinServices": {
+        "PyreonPermissions": ["PyreonPermissions.kt"]
+      },
+      "kotlinSdkOnly": ["PyreonPermissionsLocal.kt"]
     }
   }
 }

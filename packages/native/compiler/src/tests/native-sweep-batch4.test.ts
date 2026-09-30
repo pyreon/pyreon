@@ -145,16 +145,15 @@ export function App() {
     // lowers, because the emitted structs are Codable / @Serializable.
     expect((sw.warnings ?? []).some((w) => w.includes('JSON.stringify'))).toBe(false)
     expect((kt.warnings ?? []).some((w) => w.includes('JSON.stringify'))).toBe(false)
-    expect(sw.code).toContain('JSONEncoder().encode(todos)')
-    expect(kt.code).toContain('Json.encodeToString(todos)')
+    expect(sw.code).toContain('PyreonJSON.stringify(todos)')
+    expect(kt.code).toContain('PyreonJson.stringify(todos)')
 
     // UNCHANGED HALF — the invariant this sweep exists to protect: a bare,
     // unresolved `JSON.` member access must NEVER reach native code, on
-    // EITHER target. Neither `JSONEncoder(` (Swift) nor `Json.` (Kotlin,
-    // different casing) matches `JSON.`, so this stays precise.
+    // EITHER target. The runtime helper is `PyreonJSON.` (Swift), so the
+    // match is anchored: a `JSON.` NOT preceded by an identifier character.
     for (const out of [sw, kt]) {
-      expect(out.code).not.toContain('JSON.stringify')
-      expect(out.code).not.toContain('JSON.')
+      expect(out.code).not.toMatch(/(?<![A-Za-z0-9_])JSON\./)
     }
   })
 

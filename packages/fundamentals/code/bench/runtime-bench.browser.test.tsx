@@ -29,7 +29,7 @@
  *
  * Run: bun run --filter='@pyreon/code' bench:runtime
  */
-import { server } from '@vitest/browser/context'
+import { server } from 'vitest/browser'
 import { h } from '@pyreon/core'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
 import CodeMirror, { type ReactCodeMirrorRef } from '@uiw/react-codemirror'

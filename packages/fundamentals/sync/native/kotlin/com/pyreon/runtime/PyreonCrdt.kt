@@ -70,6 +70,7 @@ class PyreonCrdtMap internal constructor(
 
     fun set(key: String, value: PyreonScalar) = doc.set(name, key, value)
     fun set(key: String, value: String) = doc.set(name, key, PyreonScalar.Str(value))
+    fun set(key: String, value: Long) = doc.set(name, key, PyreonScalar.Num(value.toDouble()))
     fun set(key: String, value: Int) = doc.set(name, key, PyreonScalar.Num(value.toDouble()))
     fun set(key: String, value: Double) = doc.set(name, key, PyreonScalar.Num(value))
     fun set(key: String, value: Boolean) = doc.set(name, key, PyreonScalar.Bool(value))

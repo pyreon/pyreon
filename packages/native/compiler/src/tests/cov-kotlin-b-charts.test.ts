@@ -43,7 +43,7 @@ describe('the accessor hosts — <PieChart> / <FunnelChart>', () => {
       'PieChart',
       `<PieChart data={ROWS} value={(d) => d.v} label={(d) => d.n} onSelect={() => k.set(1)} />`,
     ).replace('return <Stack>', 'const k = signal(0); return <Stack>'))
-    expect(noParam.code).toMatch(/detectTapGestures \{ pyreonTap -> \(\{ k = 1 \}\)\(\) \}/)
+    expect(noParam.code).toMatch(/detectTapGestures \{ pyreonTap -> \(\{ k = 1L \}\)\(\) \}/)
 
     const byRef = kotlin(app(
       'PieChart',
@@ -86,11 +86,6 @@ describe('the frame hosts decline by name', () => {
       .toEqual(['<BoxplotChart x>: only a single-expression arrow `(d, i) => …` lowers on native; emitting an empty Box().'])
     expect(warn(app('HeatmapChart', `<HeatmapChart data={ROWS} x={(d) => d.n} y={(d) => d.n} value={mk()} />`, mk)))
       .toEqual(['<HeatmapChart value>: only a single-expression arrow `(d, i) => …` lowers on native; emitting an empty Box().'])
-  })
-
-  it('every chart host lowers — OptionChart no longer falls back to an empty Box', () => {
-    const r = kotlin(app('OptionChart', `<OptionChart option={{ a: 1 }} />`))
-    expect(r.warnings.some((w) => w.startsWith('<OptionChart> has no native lowering yet'))).toBe(false)
   })
 
   it('a grammar mark tag used OUTSIDE <Chart> renders nothing and says so', () => {

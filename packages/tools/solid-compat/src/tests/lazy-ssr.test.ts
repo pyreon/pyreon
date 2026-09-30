@@ -9,7 +9,7 @@
  * loaded.
  */
 import type { ComponentFn } from '@pyreon/core'
-import { h, lazy as coreLazy } from '@pyreon/core'
+import { h, lazy as coreLazy, nativeCompat } from '@pyreon/core'
 import { disableHydrationWarnings, hydrateRoot, mount } from '@pyreon/runtime-dom'
 import { renderToStream, renderToString } from '@pyreon/runtime-server'
 import { createSignal, lazy, Suspense } from '../index'
@@ -121,5 +121,64 @@ describe('solid-compat jsx() — a core lazy() reaching the compat wrapper', () 
     const html = await renderToString(suspended(L, 'k'))
     expect(html).toContain('<p class="q">core:k</p>')
     expect(html).not.toContain('loading')
+  })
+})
+
+describe('solid-compat — hydration while the CLIENT chunk is still loading', () => {
+  beforeAll(() => disableHydrationWarnings())
+
+  // The server has its chunk; the browser does not yet. The server range must
+  // stay standing (no fallback, no empty gap) and be ADOPTED when it lands.
+  // Both a framework-style loaded component (its compat wrapper renders
+  // through an accessor of its own) and a Pyreon-native one (nothing but the
+  // lazy's own output delimits it).
+  const NativeQuote = nativeCompat((p: { who: string }) => h('p', { class: 'q' }, `${p.who}:st`))
+  const lazyOf = (comp: ComponentFn<{ who: string }>, ms: number) =>
+    lazy(() => new Promise<{ default: ComponentFn<{ who: string }> }>((r) => setTimeout(() => r({ default: comp }), ms)))
+  for (const [kind, comp] of [['framework', Quote], ['native', NativeQuote]] as const) {
+  for (const wrap of ['suspense', 'bare'] as const) {
+    it(`${wrap}, ${kind} component: keeps and adopts the server node`, async () => {
+      const tree = (L: ComponentFn<{ who: string }>) =>
+        wrap === 'suspense' ? suspended(L, 'd') : jsx('main', { children: jsx(asType(L), { who: 'd' }) })
+      const html = await renderToString(tree(lazyOf(comp, 1)))
+      const c = document.createElement('div')
+      document.body.appendChild(c)
+      c.innerHTML = html
+      const serverP = c.querySelector('p.q')
+      expect(serverP?.textContent).toBe('d:st')
+
+      hydrateRoot(c, tree(lazyOf(comp, 30)))
+      expect(c.querySelector('p.q')).toBe(serverP)
+      expect(c.querySelector('.fb')).toBeNull()
+      await tick(60)
+      expect(c.querySelector('p.q')).toBe(serverP)
+      expect(c.querySelectorAll('p.q').length).toBe(1)
+      expect(serverP?.textContent).toBe('d:st')
+      c.remove()
+    })
+  }
+  }
+})
+
+describe('solid-compat — a NESTED async descendant suspends the nearest <Suspense>', () => {
+  const nested = (L: ComponentFn<{ who: string }>, who: string) =>
+    jsx('main', {
+      children: jsx(asType(Suspense), {
+        fallback: jsx('i', { class: 'fb', children: 'loading' }),
+        children: jsx('section', { class: 'wrap', children: jsx('div', { children: jsx(asType(L), { who }) }) }),
+      }),
+    })
+
+  it('shows the fallback until the nested chunk lands, then the content (mounted once)', async () => {
+    const c = document.createElement('div')
+    document.body.appendChild(c)
+    mount(nested(slowLazy(10), 'n'), c)
+    expect(c.querySelector('.fb')).not.toBeNull()
+    expect(c.querySelector('section.wrap')).toBeNull()
+    await tick(40)
+    expect(c.querySelector('.fb')).toBeNull()
+    expect(c.querySelector('section.wrap p.q')?.textContent).toBe('n:st')
+    expect(c.querySelectorAll('section.wrap').length).toBe(1)
+    c.remove()
   })
 })

@@ -95,6 +95,12 @@ public struct PyreonDrawCmd: Codable, Equatable {
     /// Paint the fill as a linear gradient; `fill` stays the fallback.
     public var grad: PyreonChartGradient?
     public var pattern: PyreonChartPattern?
+    /// The row key of a keyed bar (`ChartSpec.rowKeys`) — the tween matches keyed commands by key.
+    public var key: String?
+    /// Where a keyed bar grows from and shrinks to (the engine's `growEdgeRect`).
+    public var enter: PyreonChartRect?
+    /// One row key per point of a keyed line.
+    public var pointKeys: [String]?
     public var center: PyreonChartPt?
     public var radius: Double?
     public var text: String?
@@ -121,12 +127,15 @@ public struct PyreonDrawCmd: Codable, Equatable {
         corners: [Double]? = nil,
         grad: PyreonChartGradient? = nil,
         pattern: PyreonChartPattern? = nil,
+        key: String? = nil,
+        enter: PyreonChartRect? = nil,
         from: PyreonChartPt? = nil,
         to: PyreonChartPt? = nil,
         stroke: String? = nil,
         width: Double? = nil,
         dash: [Double]? = nil,
         points: [PyreonChartPt]? = nil,
+        pointKeys: [String]? = nil,
         center: PyreonChartPt? = nil,
         radius: Double? = nil,
         text: String? = nil,
@@ -144,6 +153,9 @@ public struct PyreonDrawCmd: Codable, Equatable {
         self.corners = corners
         self.grad = grad
         self.pattern = pattern
+        self.key = key
+        self.enter = enter
+        self.pointKeys = pointKeys
         self.from = from
         self.to = to
         self.stroke = stroke
@@ -181,6 +193,13 @@ public func pyreonChartMeasure(_ text: String, _ size: Double) -> Double {
 /// send swiftc past its type-check budget.
 public func pyreonChartDouble(_ v: Double) -> Double { v }
 public func pyreonChartDouble(_ v: Int) -> Double { Double(v) }
+
+/// A category label from an accessor-mapped field. A String passes through; a
+/// number prints as JavaScript's `String(number)` does — the web stringifies a
+/// numeric category implicitly, and `[String]` otherwise rejects it outright.
+public func pyreonChartString(_ v: String) -> String { v }
+public func pyreonChartString(_ v: Double) -> String { pyreonNumberString(v) }
+public func pyreonChartString(_ v: Int) -> String { String(v) }
 
 /// Locale-aware chart formatters matching the web host's `Intl` defaults:
 /// grouped numbers with at most two fraction digits, and a short month/day.
@@ -603,6 +622,83 @@ public func pyreonUniversalTweenChartCommands(_ from: [PyreonDrawCmd], _ to: [Py
     return out
 }
 
+/// True when a draw list carries row keys (a keyed `<Chart by>` spec): its
+/// transition matches commands by key instead of by position.
+public func pyreonChartCommandsAreKeyed(_ cmds: [PyreonDrawCmd]) -> Bool {
+    cmds.contains { $0.key != nil || $0.pointKeys != nil }
+}
+
+/// The keyed data join between two frames of a keyed chart — the native twin
+/// of the web's keyed geometry morph. A keyed bar (the n-th command with a key
+/// in each list) slides from its old rect to its new one, an entering bar grows
+/// from its `enter` rect (its zero-side edge), and a bar whose key left the data
+/// shrinks into its own `enter` rect; exiting bars paint first so the survivors
+/// slide over them. A keyed line matches its points by key within its series,
+/// across runs a gap splits: a surviving point moves, a new one appears at its
+/// place. A keyed value label is hidden until the tween lands, as on the web.
+/// Everything unkeyed (grid, axes, labels) tweens by position as before.
+public func pyreonKeyedTweenChartCommands(_ from: [PyreonDrawCmd], _ to: [PyreonDrawCmd], _ progress: Double) -> [PyreonDrawCmd] {
+    if progress >= 1.0 { return to }
+    let chrome = pyreonTweenChartCommands(from.filter { $0.key == nil && $0.pointKeys == nil }, to.filter { $0.key == nil && $0.pointKeys == nil }, progress)
+    var bars: [String: [PyreonDrawCmd]] = [:]
+    for c in from where c.kind == "rect" && c.key != nil { bars[c.key!, default: []].append(c) }
+    // Every old keyed point, by series (the polyline's `key`, its label) then row:
+    // a line split by gaps matches a point across runs that opened or closed.
+    var linePoints: [String: [String: PyreonChartPt]] = [:]
+    for c in from where c.kind == "polyline" {
+        guard let keys = c.pointKeys, let pts = c.points else { continue }
+        let series = c.key ?? ""
+        for (i, k) in keys.enumerated() where i < pts.count { linePoints[series, default: [:]][k] = pts[i] }
+    }
+    var targetCount: [String: Int] = [:]
+    for c in to where c.kind == "rect" && c.key != nil { targetCount[c.key!, default: 0] += 1 }
+    var exiting: [PyreonDrawCmd] = []
+    for (key, list) in bars.sorted(by: { $0.key < $1.key }) {
+        for c in list.dropFirst(targetCount[key] ?? 0) {
+            var e = c
+            if let r = c.rect { e.rect = pyreonChartMixRect(r, c.enter ?? PyreonChartRect(x: r.x, y: r.y + r.h, w: r.w, h: 0), progress) }
+            exiting.append(e)
+        }
+    }
+    var out: [PyreonDrawCmd] = []
+    var chromeAt = 0
+    var seen: [String: Int] = [:]
+    var placedExits = false
+    for c in to {
+        if c.key == nil && c.pointKeys == nil {
+            if chromeAt < chrome.count { out.append(chrome[chromeAt]) }
+            chromeAt += 1
+            continue
+        }
+        if !placedExits { out.append(contentsOf: exiting); placedExits = true }
+        // A keyed value label waits for the tween to land, as the web morph hides it.
+        if c.kind == "text" { continue }
+        if c.kind == "polyline", let keys = c.pointKeys, let pts = c.points {
+            var m = c
+            let at = linePoints[c.key ?? ""] ?? [:]
+            m.points = pts.indices.map { i in
+                guard i < keys.count, let o = at[keys[i]] else { return pts[i] }
+                return pyreonChartMixPoint(o, pts[i], progress)
+            }
+            out.append(m)
+            continue
+        }
+        guard let key = c.key, let r = c.rect else { out.append(c); continue }
+        let n = seen[key] ?? 0
+        seen[key] = n + 1
+        let old = bars[key].flatMap { n < $0.count ? $0[n].rect : nil }
+        var m = c
+        m.rect = pyreonChartMixRect(old ?? c.enter ?? PyreonChartRect(x: r.x, y: r.y + r.h, w: r.w, h: 0), r, progress)
+        out.append(m)
+    }
+    if !placedExits { out.append(contentsOf: exiting) }
+    return out
+}
+
+private func pyreonChartMixRect(_ a: PyreonChartRect, _ b: PyreonChartRect, _ t: Double) -> PyreonChartRect {
+    PyreonChartRect(x: pyreonChartMix(a.x, b.x, t), y: pyreonChartMix(a.y, b.y, t), w: pyreonChartMix(a.w, b.w, t), h: pyreonChartMix(a.h, b.h, t))
+}
+
 private struct PyreonStaticChartCanvas: View {
     public var cmds: [PyreonDrawCmd]
     public var fontFamily: String?
@@ -758,7 +854,8 @@ public struct PyreonChartCanvas: View {
     }
 
     private func tween(_ progress: Double) -> [PyreonDrawCmd] {
-        universal ? pyreonUniversalTweenChartCommands(from, target, progress) : pyreonTweenChartCommands(from, target, progress)
+        if pyreonChartCommandsAreKeyed(target) { return pyreonKeyedTweenChartCommands(from, target, progress) }
+        return universal ? pyreonUniversalTweenChartCommands(from, target, progress) : pyreonTweenChartCommands(from, target, progress)
     }
 
     public var body: some View {
@@ -1061,14 +1158,12 @@ public final class PyreonChartHandle {
     public var seriesCount: Int = 0
     public var brushType: String = ""
     public var areas: [BrushArea] = []
-    public var step: Int = -1
-    public var playing: Bool = false
 
     public init(seriesCount: Int = 0) { self.seriesCount = seriesCount }
 
     public func dispatch(_ action: ChartActionInput) {
         let next = applyChartAction(
-            ChartActionState(zoom: zoom, hover: hover, selected: selected, hidden: hidden, seriesCount: seriesCount, brushType: brushType, areas: areas, step: step, playing: playing),
+            ChartActionState(zoom: zoom, hover: hover, selected: selected, hidden: hidden, seriesCount: seriesCount, brushType: brushType, areas: areas),
             action
         )
         if next.zoom.start != zoom.start || next.zoom.end != zoom.end { zoom = next.zoom }
@@ -1077,8 +1172,6 @@ public final class PyreonChartHandle {
         if next.hidden != hidden { hidden = next.hidden }
         if next.brushType != brushType { brushType = next.brushType }
         if next.areas.count != areas.count || action.type == "brush" { areas = next.areas }
-        if next.step != step { step = next.step }
-        if next.playing != playing { playing = next.playing }
     }
 }
 

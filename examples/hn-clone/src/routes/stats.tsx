@@ -1,8 +1,8 @@
-import { type EChartsOption, EChart } from '@pyreon/charts/echarts'
+import { Arc, Axis, Bar, Chart, Dot, Tooltip } from '@pyreon/charts'
 import { useQuery } from '@pyreon/query'
 import { useHead } from '@pyreon/head'
 import { useI18n } from '@pyreon/i18n'
-import { computed } from '@pyreon/reactivity'
+import { derived, signalOf } from '@pyreon/core/plain'
 import { groupBy, take } from '@pyreon/rx'
 import { fetchFeed, type Story } from '../lib/api'
 
@@ -10,12 +10,11 @@ import { fetchFeed, type Story } from '../lib/api'
  * Stats page — exercises:
  *   - `@pyreon/query`  (fetch a corpus of ~150 stories)
  *   - `@pyreon/rx`     (groupBy + take + sortBy)
- *   - `@pyreon/charts` (bar + pie + scatter via lazy ECharts)
+ *   - `@pyreon/charts` (bar + donut + scatter, marks as children)
  *   - `computed()`     (derived aggregations chain off query.data)
  *
  * Demonstrates the canonical real-app shape: server data → rx aggregation
- * → echarts visualization. ECharts is lazy-loaded — zero bytes until the
- * page mounts.
+ * → a chart. Each chart pays only for the marks it imports.
  */
 export default function StatsPage() {
   const { t } = useI18n()
@@ -33,17 +32,17 @@ export default function StatsPage() {
     staleTime: 5 * 60 * 1000,
   }))
 
-  const stories = computed<Story[]>(() => query.data() ?? [])
+  const stories = derived<Story[]>(() => query.data() ?? [])
 
   // Top 10 domains by story count — rx groupBy + a Pyreon computed for
   // the sort+take (rx doesn't sort Records directly; we materialize the
   // groups, count them, then sort and take).
   const domainGroups = groupBy(
-    stories as never,
+    signalOf<typeof stories>(stories) as never,
     (s: Story) => s.domain ?? 'self',
   )
 
-  const topDomains = computed(() => {
+  const topDomains = derived(() => {
     const grouped = (domainGroups as never as () => Record<string, Story[]>)()
     return Object.entries(grouped)
       .map(([domain, items]) => ({ domain, count: items.length }))
@@ -53,10 +52,10 @@ export default function StatsPage() {
 
   // Top 10 users by submission count.
   const userGroups = groupBy(
-    stories as never,
+    signalOf<typeof stories>(stories) as never,
     (s: Story) => s.user ?? '(anon)',
   )
-  const topUsers = computed(() => {
+  const topUsers = derived(() => {
     const grouped = (userGroups as never as () => Record<string, Story[]>)()
     return Object.entries(grouped)
       .map(([user, items]) => ({
@@ -69,10 +68,10 @@ export default function StatsPage() {
   })
 
   // Points distribution buckets — for the bar histogram.
-  const pointsBuckets = computed(() => {
+  const pointsBuckets = derived(() => {
     const buckets = [0, 50, 100, 200, 500, 1000, 2000, 5000]
     const counts = Array.from<number>({ length: buckets.length }).fill(0)
-    for (const s of stories()) {
+    for (const s of stories) {
       const p = s.points ?? 0
       for (let i = buckets.length - 1; i >= 0; i--) {
         if (p >= (buckets[i] ?? 0)) {
@@ -81,77 +80,17 @@ export default function StatsPage() {
         }
       }
     }
-    return { labels: buckets.map((b) => `${b}+`), data: counts }
+    return buckets.map((b, i) => ({ bucket: `${b}+`, stories: counts[i] ?? 0 }))
   })
 
   // Scatter: points × comments — uses rx take to cap.
-  const scatterTake = take(stories as never, 100)
-  const scatterData = computed(() => {
-    const arr = (scatterTake as never as () => Story[])()
-    return arr.map<[number, number, string]>((s) => [
-      s.points ?? 0,
-      s.comments_count ?? 0,
-      s.title,
-    ])
-  })
-
-  // ── Chart options ─────────────────────────────────────────────────────────
-  const domainBar = computed<EChartsOption>(() => ({
-    title: { text: 'Top 10 domains', left: 'center' },
-    tooltip: { trigger: 'axis' },
-    grid: { left: 110, right: 24 },
-    xAxis: { type: 'value' },
-    yAxis: { type: 'category', data: topDomains().map((d) => d.domain).reverse() },
-    series: [
-      {
-        type: 'bar',
-        data: topDomains().map((d) => d.count).reverse(),
-        itemStyle: { color: '#ff6600' },
-      },
-    ],
-  }))
-
-  const userPie = computed<EChartsOption>(() => ({
-    title: { text: 'Top 10 submitters', left: 'center' },
-    tooltip: { trigger: 'item', formatter: '{b}: {c} stories' },
-    series: [
-      {
-        type: 'pie',
-        radius: ['35%', '70%'],
-        data: topUsers().map((u) => ({ name: u.user, value: u.count })),
-      },
-    ],
-  }))
-
-  const pointsHistogram = computed<EChartsOption>(() => {
-    const { labels, data } = pointsBuckets()
-    return {
-      title: { text: 'Points distribution', left: 'center' },
-      tooltip: { trigger: 'axis' },
-      xAxis: { type: 'category', data: labels, name: 'points ≥' },
-      yAxis: { type: 'value', name: 'stories' },
-      series: [{ type: 'bar', data, itemStyle: { color: '#5470c6' } }],
-    }
-  })
-
-  const pointsVsComments = computed<EChartsOption>(() => ({
-    title: { text: 'Points vs Comments', left: 'center', subtext: 'first 100 stories' },
-    tooltip: {
-      trigger: 'item',
-      formatter: ((p: { data: [number, number, string] }) =>
-        `${p.data[2]}<br/>points: ${p.data[0]}<br/>comments: ${p.data[1]}`) as never,
-    },
-    xAxis: { type: 'value', name: 'points', nameLocation: 'middle', nameGap: 25 },
-    yAxis: { type: 'value', name: 'comments', nameLocation: 'middle', nameGap: 35 },
-    series: [
-      {
-        type: 'scatter',
-        data: scatterData(),
-        symbolSize: 8,
-        itemStyle: { color: '#91cc75', opacity: 0.7 },
-      },
-    ],
-  }))
+  const scatterTake = take(signalOf<typeof stories>(stories) as never, 100)
+  const scatterData = derived(() =>
+    (scatterTake as never as () => Story[])().map((s) => ({
+      points: s.points ?? 0,
+      comments: s.comments_count ?? 0,
+    })),
+  )
 
   return (
     <section class="stats-page">
@@ -161,7 +100,7 @@ export default function StatsPage() {
           {() => {
             if (query.isPending()) return t('feed.loading')
             if (query.isError()) return String(query.error())
-            return `Analyzing ${stories().length} stories`
+            return `Analyzing ${stories.length} stories`
           }}
         </p>
       </header>
@@ -172,22 +111,32 @@ export default function StatsPage() {
         ) : (
           <div class="stats-grid">
             <div class="chart-card">
-              <EChart options={() => domainBar()} style="height: 360px; width: 100%" />
+              <Chart data={() => topDomains} x="domain" horizontal height={360} title="Top 10 domains">
+                <Bar y="count" label="Stories" color="#ff6600" />
+                <Tooltip />
+              </Chart>
             </div>
             <div class="chart-card">
-              <EChart options={() => userPie()} style="height: 360px; width: 100%" />
+              <Chart data={() => topUsers} height={360} title="Top 10 submitters">
+                <Arc value="count" label="user" innerRadius={0.5} />
+                <Tooltip />
+              </Chart>
             </div>
             <div class="chart-card">
-              <EChart
-                options={() => pointsHistogram()}
-                style="height: 360px; width: 100%"
-              />
+              <Chart data={() => pointsBuckets} x="bucket" height={360} title="Points distribution">
+                <Bar y="stories" label="Stories" />
+                <Axis x title="points ≥" />
+                <Axis y title="stories" />
+                <Tooltip />
+              </Chart>
             </div>
             <div class="chart-card">
-              <EChart
-                options={() => pointsVsComments()}
-                style="height: 360px; width: 100%"
-              />
+              <Chart data={() => scatterData} xValue="points" height={360} title="Points vs comments" subtitle="first 100 stories">
+                <Dot y="comments" label="Comments" color="#91cc75" />
+                <Axis x title="points" />
+                <Axis y title="comments" />
+                <Tooltip />
+              </Chart>
             </div>
           </div>
         )

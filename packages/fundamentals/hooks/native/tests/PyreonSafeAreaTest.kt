@@ -10,7 +10,7 @@ private class FakeSafeAreaProbe(
 
 private class FakeOrientationProbe(
     override var type: String = "portrait",
-    override var angle: Int = 0,
+    override var angle: Long = 0L,
 ) : OrientationProbe
 
 private fun expect(cond: Boolean, what: String) {
@@ -44,16 +44,16 @@ private fun insetsReadThrough() {
 private fun reportsOrientation() {
     val o = PyreonScreenOrientation(FakeOrientationProbe())
     expect(o.type == "portrait", "type")
-    expect(o.angle == 0, "angle")
+    expect(o.angle == 0L, "angle")
 }
 
 private fun orientationReadsThrough() {
     val probe = FakeOrientationProbe()
     val o = PyreonScreenOrientation(probe)
     probe.type = "landscape"
-    probe.angle = 90
+    probe.angle = 90L
     expect(o.type == "landscape", "type AFTER rotation")
-    expect(o.angle == 90, "angle AFTER rotation")
+    expect(o.angle == 90L, "angle AFTER rotation")
 }
 
 private fun insetsPxToDp() {

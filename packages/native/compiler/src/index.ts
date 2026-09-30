@@ -6,6 +6,7 @@
 import { emitKotlin } from './emit-kotlin'
 import { emitSwift } from './emit-swift'
 import { parsePyreon } from './parse'
+import { moduleTag, withSynthStructSuffix } from './expr-utils'
 import { CHART_ENGINE_DECLARED_NAMES, CHART_ENGINE_STRUCTS } from './chart-engine-structs'
 import type { EmitOptions, TransformResult } from './types'
 
@@ -19,7 +20,11 @@ export {
   // most of all — needs to prove its output COMPILES, and `validateSwift` is
   // parse-only while `validateSwiftTypecheck` needs a real Apple SDK.
   validateSwiftWithStubs,
+  // Several emitted files as ONE module — the only gate that can see a
+  // cross-file collision (two files both declaring the same type).
+  validateSwiftFilesWithStubs,
   validateKotlin,
+  validateKotlinFiles,
   isSwiftcAvailable,
   isSwiftUIAvailable,
   isKotlincAvailable,
@@ -57,7 +62,21 @@ function chartEngineShadowWarnings(parsed: ReturnType<typeof parsePyreon>): stri
 }
 
 export function transform(source: string, options: EmitOptions): TransformResult {
+  // Parsing runs BEFORE the suffix is set — `synthStructName` (which reads
+  // it) is only ever called from the emitters, never from `parsePyreon` —
+  // so the tag can be derived from the parsed IR instead of the raw text.
   const parsed = parsePyreon(source, options.filename)
+  // A caller that names the module is building several of them into one
+  // target, so the synthesized structs must not share names across files.
+  const suffix = options.filename === undefined ? '' : `_${moduleTag(parsed)}`
+  return withSynthStructSuffix(suffix, () => transformModule(source, parsed, options))
+}
+
+function transformModule(
+  source: string,
+  parsed: ReturnType<typeof parsePyreon>,
+  options: EmitOptions,
+): TransformResult {
   const usesChartEngine = CHART_PLOT_IMPORT.test(source)
   const structs = usesChartEngine ? [...parsed.structs, ...CHART_ENGINE_STRUCTS] : parsed.structs
   const emitted =

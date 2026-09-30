@@ -292,7 +292,8 @@ test.describe('atlas dev', () => {
     await page.getByRole('button', { name: 'Button', exact: true }).click()
     await page.getByTestId('addon-tab-canvas').click()
     await page.getByTestId('measure-toggle').click()
-    const target = page.getByTestId('canvas-preview').locator('button').first()
+    const preview = page.getByTestId('canvas-preview')
+    const target = preview.locator('button').first()
     await target.hover()
     const label = page.getByTestId('measure-label')
     await expect(label).toHaveText(/^\d+ × \d+$/)
@@ -301,6 +302,19 @@ test.describe('atlas dev', () => {
     // not — it is the component's layout size, not the scaled rect.
     await page.getByText('+', { exact: true }).first().click()
     await expect(page.getByTestId('zoom-label')).toHaveText('125%')
+    // The zoom `size` prop drives a CSS-TRANSITIONED `transform: scale(...)`
+    // on the preview surface (`PreviewSurface.ts`'s `transition: transform
+    // <t.motion.base> ease`). The label above flips synchronously (a signal
+    // write), but the transform itself animates for ~120ms — Playwright's
+    // hover-actionability "stable" check can sample two rAF ticks before the
+    // style recalc has even started applying the new class, read the SAME
+    // pre-zoom rect twice, and fire the hover mid-transition. `showFor` then
+    // divides the mid-transition rect by the FINAL 1.25 factor and reports a
+    // smaller-than-real box. Wait for the transition to actually settle at
+    // its end value before measuring again.
+    await expect
+      .poll(() => preview.evaluate((el) => getComputedStyle(el).transform))
+      .toBe('matrix(1.25, 0, 0, 1.25, 0, 0)')
     await page.mouse.move(0, 0)
     await target.hover()
     await expect(label).toHaveText(at100 ?? '')

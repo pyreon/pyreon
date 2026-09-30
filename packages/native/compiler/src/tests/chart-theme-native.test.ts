@@ -35,7 +35,7 @@ import type { ChartTheme } from '@pyreon/charts'
 ${HEAD}const T: Partial<ChartTheme> = { text: '#ffffff' }
 export function Files() { return <TreemapChart data={DATA} theme={T} showLegend height={200} /> }`
 
-const DARK_PALETTE = '"#7b9bff", "#ff8f7e", "#4adbc0", "#bd93ff", "#ffc44d", "#5dcbf2", "#ff80be", "#9ad870", "#a3acbd", "#d8955e"'
+const DARK_PALETTE = '"#7b9bff", "#ffc44d", "#4adbc0", "#5dcbf2", "#d8955e", "#a3acbd", "#ff80be", "#ff8f7e", "#9ad870", "#bd93ff"'
 
 describe('family-host theme — chrome, tooltip, palette and ground follow the theme on both targets', () => {
   it('Swift: a named theme colours the title (text) and legend (label), the tooltip box (surface / grid / text), seeds the options palette, and paints the ground', () => {
@@ -63,7 +63,7 @@ describe('family-host theme — chrome, tooltip, palette and ground follow the t
     const s = transform(DARK_OPTS, { target: 'swift' })
     expect(s.code).toContain('let pyreonOptions: TreemapOptions = { () -> TreemapOptions in var pyreonO = TreemapOptions(padding: Double(2)); pyreonO.palette = pyreonO.palette ?? [')
     const k = transform(DARK_OPTS, { target: 'kotlin' })
-    expect(k.code).toContain('val pyreonOptions: TreemapOptions = (TreemapOptions(padding = (2).toDouble())).let { it.copy(palette = it.palette ?: listOf(')
+    expect(k.code).toContain('val pyreonOptions: TreemapOptions = (TreemapOptions(padding = (2L).toDouble())).let { it.copy(palette = it.palette ?: listOf(')
   })
   it('an accessor host: a literal theme drives the slice colours by index, the pie label size and the ground', () => {
     const s = transform(LITERAL, { target: 'swift' })

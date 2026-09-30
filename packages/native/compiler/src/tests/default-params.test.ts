@@ -33,7 +33,7 @@ describe('defaulted helper parameters', () => {
   })
 
   it('emits the Kotlin twin', () => {
-    expect(kotlin).toMatch(/fun pad\(s: String, width: Int = 4, fill: String = "x"\)/)
+    expect(kotlin).toMatch(/fun pad\(s: String, width: Long = 4L, fill: String = "x"\)/)
   })
 
   it('call sites omit, partially supply, or fully supply — all verbatim', () => {

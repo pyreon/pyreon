@@ -1,9 +1,10 @@
 // `JSON.stringify(x)` lowers to native — the SAFE half of the JSON gap.
 //
 // The emitted structs are already Codable (Swift) / @Serializable (Kotlin), so
-// serialization has a target on both platforms: Swift `JSONEncoder().encode`,
-// Kotlin `Json.encodeToString`. `try!` is safe (a Codable value never throws on
-// encode). `JSON.parse` stays a NAMED WARNING: it throws on malformed input,
+// serialization has a target on both platforms: the runtimes'
+// `PyreonJSON.stringify` / `PyreonJson.stringify`, which write the web's exact
+// bytes (key order, number layout, escaping — see
+// native-json-stringify-parity.test.ts). `JSON.parse` stays a NAMED WARNING: it throws on malformed input,
 // which needs a native error model (try/throw lowering) PMTC does not carry —
 // a tracked follow-up.
 //
@@ -40,17 +41,17 @@ function App() {
 `
 
 describe('JSON.stringify → native serialization', () => {
-  it('Swift: emits JSONEncoder().encode, typed String, no warning', () => {
+  it('Swift: emits PyreonJSON.stringify, typed String, no warning', () => {
     const r = transform(OBJ, { target: 'swift' })
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('try! JSONEncoder().encode(user)')
+    expect(r.code).toContain('PyreonJSON.stringify(user)')
     expect(r.code).toContain('private var payload: String')
   })
 
-  it('Kotlin: emits Json.encodeToString, no warning', () => {
+  it('Kotlin: emits PyreonJson.stringify, no warning', () => {
     const r = transform(OBJ, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('Json.encodeToString(user)')
+    expect(r.code).toContain('PyreonJson.stringify(user)')
   })
 
   it('JSON.parse still WARNS by name (throws — coupled to the exceptions gap)', () => {

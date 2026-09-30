@@ -124,40 +124,6 @@ final class PyreonTasksUITests: XCTestCase {
         return waitForLabel(label, expected, timeout: 3)
     }
 
-    private func waitForValue(_ element: XCUIElement, _ value: String, timeout: TimeInterval) -> Bool {
-        let predicate = NSPredicate(format: "value == %@", value)
-        return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: element)], timeout: timeout) == .completed
-    }
-
-    private func redPixels(_ png: Data) -> Int { colorPixels(png, 255, 0, 0) }
-    private func greyPixels(_ png: Data) -> Int { colorPixels(png, 204, 204, 204) }
-
-    /**
-     * The x extent, in POINTS of `widthPoints`, of the blue-tinted run on the row
-     * `rowFromBottom` points above the image's bottom — the dataZoom window's
-     * filler (its handles are white and the strip outside it grey). Nil when no run.
-     */
-    private func blueRun(_ png: Data, rowFromBottom: CGFloat, widthPoints: CGFloat) -> (CGFloat, CGFloat)? {
-        guard let image = UIImage(data: png)?.cgImage else { return nil }
-        let w = image.width, h = image.height
-        var buf = [UInt8](repeating: 0, count: w * h * 4)
-        guard let ctx = CGContext(data: &buf, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
-        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
-        let scale = CGFloat(w) / widthPoints
-        let row = h - Int(rowFromBottom * scale)
-        guard row >= 0 && row < h else { return nil }
-        var lo = -1, hi = -1
-        for x in 0..<w {
-            let i = (row * w + x) * 4
-            if Int(buf[i + 2]) - Int(buf[i]) >= 12 {
-                if lo < 0 { lo = x }
-                hi = x
-            }
-        }
-        guard lo >= 0 && hi - lo > 20 else { return nil }
-        return (CGFloat(lo) / scale, CGFloat(hi) / scale)
-    }
-
     private func colorPixels(_ png: Data, _ r: Int, _ g: Int, _ b: Int) -> Int {
         // Redrawn into a known RGBA8 buffer: a screenshot's own pixel format varies by device.
         guard let image = UIImage(data: png)?.cgImage else { return 0 }
@@ -298,6 +264,59 @@ final class PyreonTasksUITests: XCTestCase {
         let toolkitPage = app.otherElements["toolkit-page"].firstMatch
         XCTAssertTrue(toolkitPage.waitForExistence(timeout: 15), "Toolkit page did not render")
         return toolkitPage
+    }
+
+    /// useStream, device-proven over a REAL local server
+    /// (examples/native-tasks/scripts/stream-server.ts on 127.0.0.1:8791).
+    ///
+    /// SSE: the server destroys the socket half-way through event 3; the app
+    /// must reconnect with `Last-Event-ID: 2`, which the server echoes into
+    /// each payload's `resumed`, so the rendered log is the proof — `3:3@2`
+    /// exists only if the resume header reached the server. Dropping the
+    /// reconnect leaves `1:1@,2:2@` and `error`; forgetting the id renders
+    /// `@` with no `2` after it.
+    ///
+    /// NDJSON: gated by `enabled` (must read `idle` until the button flips it)
+    /// with `onEvent` summing the rows (1+2+3). An `enabled` dropped on the
+    /// floor would open on mount and read `closed` before the tap.
+    func test_streamsReconnectWithLastEventIdAndGatedNdjson() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let username = app.textFields["login-username"].firstMatch
+        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        username.tap()
+        username.typeText("abcde")
+        dismissKeyboard(app)
+        app.buttons["login-submit"].firstMatch.tap()
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+
+        let nav = app.buttons["tasks-streams"].firstMatch
+        XCTAssertTrue(nav.waitForExistence(timeout: 15), "Streams button missing on tasks page")
+        tapAfterScrolling(nav, in: app)
+        XCTAssertTrue(app.otherElements["streams-page"].firstMatch.waitForExistence(timeout: 15), "Streams page did not render")
+
+        // `enabled: () => rowsOn()` is false at mount: nothing may open.
+        let ndStatus = app.staticTexts["nd-status"].firstMatch
+        XCTAssertTrue(waitForLabel(ndStatus, "idle", timeout: 10), "gated NDJSON stream is not idle before the tap: '\(ndStatus.label)'")
+
+        let log = app.staticTexts["sse-log"].firstMatch
+        let sseStatus = app.staticTexts["sse-status"].firstMatch
+        let expectedLog = "1:1@,2:2@,3:3@2,4:4@2"
+        if !waitForLabel(log, expectedLog, timeout: 30) {
+            print("DIAG-STREAMS:\n\(app.debugDescription)")
+        }
+        XCTAssertEqual(log.label, expectedLog, "SSE did not reconnect with Last-Event-ID after the mid-event drop (status: '\(sseStatus.label)')")
+        XCTAssertTrue(waitForLabel(sseStatus, "closed", timeout: 10), "SSE did not close after the resumed connection ended: '\(sseStatus.label)'")
+        // Still idle after the SSE finished — the gate is not a timer.
+        XCTAssertEqual(ndStatus.label, "idle", "gated NDJSON stream opened without its enabled flag")
+
+        tapAfterScrolling(app.buttons["nd-start"].firstMatch, in: app)
+        let sum = app.staticTexts["nd-sum"].firstMatch
+        XCTAssertTrue(waitForLabel(sum, "6", timeout: 20), "onEvent did not run once per NDJSON row (sum: '\(sum.label)', status: '\(ndStatus.label)')")
+        XCTAssertTrue(waitForLabel(ndStatus, "closed", timeout: 10), "NDJSON did not close after its rows: '\(ndStatus.label)'")
+
+        tapAfterScrolling(app.buttons["streams-back"].firstMatch, in: app)
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 15), "streams-back did not return to tasks")
     }
 
     /// Crash reporting, device-proven in the only way that means anything: a
@@ -1049,26 +1068,11 @@ final class PyreonTasksUITests: XCTestCase {
         galleryBtn.tap()
         let galPage = app.otherElements["gal-page"].firstMatch
         XCTAssertTrue(galPage.waitForExistence(timeout: 15), "Chart gallery page did not render")
-        // Option-placed families (first on the page, tapped where it opens — no scroll): the web's own compile places them (center / radius, the funnel's
-        // margins) at the device's size, and a tap is read back through that frame.
-        // The pie: centre (0.3W, 100), radius 40% of 100 = 40; slice 0 is the right half.
-        let optPie = app.descendants(matching: .any).matching(identifier: "gal-opt-pie").firstMatch
-        XCTAssertTrue(optPie.waitForExistence(timeout: 10), "gal-opt-pie missing on the gallery")
-        let pieSel = app.staticTexts["gal-opt-pie-sel"].firstMatch
-        let pieOrigin = optPie.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
-        XCTAssertTrue(tapUntilLabel(pieOrigin.withOffset(CGVector(dx: optPie.frame.width * 0.3 + 20, dy: 100)), pieSel, "East"), "a tap on the pie's right half did not select East (label: \(pieSel.label))")
-        XCTAssertTrue(tapUntilLabel(pieOrigin.withOffset(CGVector(dx: optPie.frame.width * 0.3 - 20, dy: 100)), pieSel, "West"), "a tap on the pie's left half did not select West (label: \(pieSel.label))")
-        // The funnel: its box is y 10..70 (top 10, height 60), the larger stage on top.
-        let optFunnel = app.descendants(matching: .any).matching(identifier: "gal-opt-funnel").firstMatch
-        XCTAssertTrue(optFunnel.waitForExistence(timeout: 10), "gal-opt-funnel missing on the gallery")
-        let funnelSel = app.staticTexts["gal-opt-funnel-sel"].firstMatch
-        let funnelOrigin = optFunnel.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
-        XCTAssertTrue(tapUntilLabel(funnelOrigin.withOffset(CGVector(dx: optFunnel.frame.width / 2, dy: 30)), funnelSel, "Visits"), "a tap on the funnel's top stage did not select Visits (label: \(funnelSel.label))")
-        XCTAssertTrue(tapUntilLabel(funnelOrigin.withOffset(CGVector(dx: optFunnel.frame.width / 2, dy: 55)), funnelSel, "Orders"), "a tap on the funnel's bottom stage did not select Orders (label: \(funnelSel.label))")
         for id in [
             "gal-calendar", "gal-candlestick", "gal-gantt", "gal-graph", "gal-map",
             "gal-parallel", "gal-polar", "gal-river", "gal-sunburst", "gal-tree",
             "gal-grammar-bars", "gal-grammar-pie",
+            "gal-direct-labels", "gal-date-axis", "gal-zoom-window", "gal-cell-visualmap",
         ] {
             let canvas = app.descendants(matching: .any).matching(identifier: id).firstMatch
             // Scrolled into view first: ten charts do not fit on a phone, and
@@ -1115,63 +1119,6 @@ final class PyreonTasksUITests: XCTestCase {
         mapGrab.press(forDuration: 0.1, thenDragTo: mapGrab.withOffset(CGVector(dx: 90, dy: 0)), withVelocity: .slow, thenHoldForDuration: 0.2)
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         XCTAssertNotEqual(mapBefore, roamMap.screenshot().pngRepresentation, "dragging the roaming map did not pan it")
-        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "gal-decal").firstMatch.waitForExistence(timeout: 10), "gal-decal canvas missing on the gallery")
-        // The calculable visualMap: dragging its high handle (bottom-left strip) left greys the hottest cells.
-        let visualMap = app.descendants(matching: .any).matching(identifier: "gal-visualmap").firstMatch
-        XCTAssertTrue(visualMap.waitForExistence(timeout: 10), "gal-visualmap canvas missing on the gallery")
-        scrollFullyOnScreen(visualMap, in: app)
-        let vmBefore = visualMap.screenshot().pngRepresentation
-        let vmOrigin = visualMap.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
-        let vmHandleY = visualMap.frame.height - 41 + 16 + 4
-        vmOrigin.withOffset(CGVector(dx: 159, dy: vmHandleY)).press(forDuration: 0.2, thenDragTo: vmOrigin.withOffset(CGVector(dx: 80, dy: vmHandleY)), withVelocity: .slow, thenHoldForDuration: 0.3)
-        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
-        // Out-of-range values take the inactive #cccccc: none before the drag, a block of it after.
-        XCTAssertLessThan(greyPixels(vmBefore), 50, "the visualMap greyed cells before any drag")
-        let vmGrey = greyPixels(visualMap.screenshot().pngRepresentation)
-        XCTAssertGreaterThan(vmGrey, 400, "dragging the visualMap handle did not grey the out-of-range cells (grey pixels: \(vmGrey))")
-        // The slider dataZoom opens on the low half; dragging the band right shows the tall bars (y extent pinned).
-        let zoomChart = app.descendants(matching: .any).matching(identifier: "gal-datazoom").firstMatch
-        XCTAssertTrue(zoomChart.waitForExistence(timeout: 10), "gal-datazoom canvas missing on the gallery")
-        scrollFullyOnScreen(zoomChart, in: app)
-        let zoomShot = zoomChart.screenshot().pngRepresentation
-        let redBefore = redPixels(zoomShot)
-        let zoomOrigin = zoomChart.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
-        let zoomStripY = zoomChart.frame.height - 18
-        // The slider strip is ECharts' own — plot-aligned in the grid's bottom
-        // margin, not full-width — so the band is FOUND on the swipe row, and the
-        // press lands on its middle (a handle press would resize the window).
-        guard let band = blueRun(zoomShot, rowFromBottom: 18, widthPoints: zoomChart.frame.width) else {
-            XCTFail("found no dataZoom band on the strip's row")
-            return
-        }
-        let bandMid = (band.0 + band.1) / 2
-        zoomOrigin.withOffset(CGVector(dx: bandMid, dy: zoomStripY)).press(forDuration: 0.2, thenDragTo: zoomOrigin.withOffset(CGVector(dx: bandMid + (band.1 - band.0), dy: zoomStripY)), withVelocity: .slow, thenHoldForDuration: 0.3)
-        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
-        let redAfter = redPixels(zoomChart.screenshot().pngRepresentation)
-        XCTAssertGreaterThan(redBefore, 100, "the zoomed bar chart painted no red bars before the drag")
-        XCTAssertGreaterThan(redAfter, redBefore * 3, "dragging the dataZoom band did not move the window to the tall bars (red before \(redBefore), after \(redAfter))")
-        // The timeline: a tap on the last checkpoint shows that step; next wraps to the first.
-        let timeline = app.descendants(matching: .any).matching(identifier: "gal-timeline").firstMatch
-        XCTAssertTrue(timeline.waitForExistence(timeout: 10), "gal-timeline missing on the gallery")
-        scrollFullyOnScreen(timeline, in: app)
-        XCTAssertEqual(timeline.value as? String, "2019", "the timeline did not open on its first step")
-        let tlOrigin = timeline.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
-        let tlY = timeline.frame.height - 40 + 16
-        tlOrigin.withOffset(CGVector(dx: timeline.frame.width - 48, dy: tlY)).tap()
-        XCTAssertTrue(waitForValue(timeline, "2021", timeout: 5), "tapping the last checkpoint did not show it (value: \(String(describing: timeline.value)))")
-        tlOrigin.withOffset(CGVector(dx: timeline.frame.width - 33, dy: tlY)).tap()
-        XCTAssertTrue(waitForValue(timeline, "2019", timeout: 5), "next did not wrap to the first step (value: \(String(describing: timeline.value)))")
-        // dispatchAction: the handle's timelineChange moves the same step a tap does.
-        let tlLast = app.buttons["gal-tl-last"].firstMatch
-        scrollFullyOnScreen(tlLast, in: app)
-        tlLast.tap()
-        XCTAssertTrue(waitForValue(timeline, "2021", timeout: 5), "the handle's timelineChange did not move the step (value: \(String(describing: timeline.value)))")
-        for id in ["gal-opt-gauge", "gal-opt-decor"] {
-            let canvas = app.descendants(matching: .any).matching(identifier: id).firstMatch
-            scrollIntoView(canvas, in: app)
-            XCTAssertTrue(canvas.waitForExistence(timeout: 10), "\(id) canvas missing on the gallery")
-            XCTAssertFalse(canvas.frame.isEmpty, "\(id) rendered with an empty frame")
-        }
         // The toolbox (dataZoom, back, dataView, line, bar, restore — right-aligned, 25pt apart at the top).
         let toolbox = app.descendants(matching: .any).matching(identifier: "gal-toolbox").firstMatch
         XCTAssertTrue(toolbox.waitForExistence(timeout: 10), "gal-toolbox missing on the gallery")
@@ -1260,16 +1207,7 @@ final class PyreonTasksUITests: XCTestCase {
         let geoTrailBefore = geoTrail.screenshot().pngRepresentation
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         XCTAssertNotEqual(geoTrailBefore, geoTrail.screenshot().pngRepresentation, "gal-geo-trail did not move between frames (frame \(geoTrail.frame), window \(app.windows.firstMatch.frame))")
-        // The lines trail MOVES: two screenshots of its canvas half a second
-        // apart differ (the simulator runs with Reduce Motion off).
-        let linesChart = app.descendants(matching: .any).matching(identifier: "gal-lines").firstMatch
-        scrollFullyOnScreen(linesChart, in: app)
-        XCTAssertTrue(linesChart.waitForExistence(timeout: 10), "gal-lines canvas missing on the gallery")
-        let framesBefore = linesChart.screenshot().pngRepresentation
-        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-        let framesAfter = linesChart.screenshot().pngRepresentation
-        XCTAssertNotEqual(framesBefore, framesAfter, "gal-lines trail did not move between frames")
-        // Runs AFTER the two moving-canvas checks on purpose: the hosted flow is a full-width
+        // Runs AFTER the moving-canvas check on purpose: the hosted flow is a full-width
         // pannable canvas, so once it is on screen a gutter swipe that starts on it PANS the
         // graph instead of scrolling the page, and the geo-trail scroll-back loop above never
         // brings its chart back into view (device-found: 80 futile tries, frame y -1829).

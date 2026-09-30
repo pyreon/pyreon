@@ -55,7 +55,7 @@ describe('Gap 4 follow-up — @pyreon/feature v1 emit', () => {
     expect(r.code).toContain('var id: String = "",')
     expect(r.code).toContain('var title: String = "",')
     expect(r.code).toContain('var done: Boolean = false,')
-    expect(r.code).toContain('var priority: Int = 0,')
+    expect(r.code).toContain('var priority: Long = 0,')
     expect(r.code).toContain('object PyreonFeature_Todo {')
     expect(r.code).toContain('const val name = "todo"')
     expect(r.code).toContain('val initialValues = PyreonFeatureSchema_Todo()')

@@ -36,6 +36,7 @@ import type {
   Validator,
   ValidatorOutput,
 } from './types'
+import { keySafeScope } from './url'
 
 type Alpha =
   | 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k' | 'l' | 'm'
@@ -106,7 +107,7 @@ type PathOf<S extends string> = S extends `${string} ${infer P}` ? P : never
  */
 export type EndpointInput<P extends string> = ([PathParamNames<P>] extends [never]
   ? { params?: undefined }
-  : { params: Record<PathParamNames<P>, string | number> }) & {
+  : { params: Record<PathParamNames<P>, string | number | bigint> }) & {
   query?: QueryParams | undefined
   json?: unknown
   form?: FormFields | undefined
@@ -428,7 +429,7 @@ function mergeHeaders(
   new Headers(declared).forEach((v, k) => {
     out[k] = v
   })
-  const put = (k: string, v: string | number | boolean | null | undefined): void => {
+  const put = (k: string, v: string | number | bigint | boolean | null | undefined): void => {
     if (v === null || v === undefined) delete out[k.toLowerCase()]
     else out[k.toLowerCase()] = String(v)
   }
@@ -459,8 +460,8 @@ export function defineEndpoint<
     const query = args?.query
     if (isEmpty(params) && isEmpty(query)) return prefix
     const scope: Record<string, unknown> = {}
-    if (!isEmpty(params)) scope.params = params
-    if (!isEmpty(query)) scope.query = query
+    if (params !== undefined && !isEmpty(params)) scope.params = keySafeScope(params)
+    if (query !== undefined && !isEmpty(query)) scope.query = keySafeScope(query)
     return [...prefix, scope]
   }
 

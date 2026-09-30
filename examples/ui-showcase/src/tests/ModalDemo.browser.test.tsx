@@ -14,7 +14,7 @@
  * Doubles as the reference users copy AND a real integration test of the kit.
  */
 import { describe, expect, it } from 'vitest'
-import '@testing-library/jest-dom/vitest'
+import '@pyreon/testing/matchers'
 import { PyreonUI } from '@pyreon/ui-core'
 import { theme } from '@pyreon/ui-theme'
 import { cleanup, fireEvent, render, screen, waitFor } from '@pyreon/testing'

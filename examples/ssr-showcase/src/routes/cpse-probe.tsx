@@ -10,13 +10,13 @@
  *   - a responsive box flips its computed padding across a viewport resize
  *     (per-breakpoint vars + @media cascade).
  */
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { cpseStyled } from '@pyreon/unistyle'
 
 const Box = cpseStyled('div')
 
 export default function CpseProbe() {
-  const pad = signal(8)
+  let pad = state(8)
   return (
     <main data-testid="cpse-probe">
       <h1>CPSE Probe</h1>
@@ -32,13 +32,13 @@ export default function CpseProbe() {
       <Box styles={{ padding: 36 }} data-testid="box-36">
         D
       </Box>
-      <Box styles={() => ({ padding: pad() })} data-testid="box-dyn">
+      <Box styles={() => ({ padding: pad })} data-testid="box-dyn">
         DYN
       </Box>
-      <button data-testid="bump" onClick={() => pad.set(pad() + 8)}>
+      <button data-testid="bump" onClick={() => { pad = pad + 8 }}>
         bump
       </button>
-      <span data-testid="pad-val">{() => pad()}</span>
+      <span data-testid="pad-val">{() => pad}</span>
       {/* Responsive: xs(base)=8px, sm(>=576px)=48px — one value-agnostic class,
           per-breakpoint inline vars, @media cascade picks the active one. */}
       <Box styles={{ padding: [8, 48] }} data-testid="box-resp">

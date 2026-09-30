@@ -2668,8 +2668,13 @@ describe('props — additional coverage', () => {
   })
 
   test('sanitizeHtml strips iframe and object tags', async () => {
+    // `about:blank`, not a remote-looking URL: happy-dom (unlike a real
+    // browser) gives DOMParser documents live browsing contexts, so removing a
+    // parsed `<iframe src="evil">` starts a real fetch that outlives the
+    // worker teardown ("AsyncTaskManager has been destroyed"). The sanitizer
+    // drops the element regardless of what its src is.
     const result = sanitizeHtml(
-      '<div>ok</div><iframe src="evil"></iframe><object data="x"></object>',
+      '<div>ok</div><iframe src="about:blank"></iframe><object data="x"></object>',
     )
     expect(result).toContain('ok')
     expect(result).not.toContain('<iframe')

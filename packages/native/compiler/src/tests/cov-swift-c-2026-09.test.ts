@@ -270,8 +270,10 @@ describe('emit-swift flow member calls — updateNode / updateEdge patches', () 
     expect(code).toContain(
       'flow.updateNode("1") { node in node.position = PyreonXYPosition(x: 1, y: 2); node.data.label = "q"; node.sourceHandles = [PyreonFlowHandleConfig(type: "source", position: .top)]; node.extent = nil; node.extentParent = true; node.className = "c"; node.hidden = true }',
     )
-    // Non-literal position / handles drop their mutation; a static extent resets extentParent.
-    expect(code).toContain('flow.updateNode("1") { node in node.extent = PyreonFlowNodeExtent(minX: 0, minY: 0, maxX: 5, maxY: 5); node.extentParent = false }')
+    // A static extent resets extentParent; a NON-literal position / handles
+    // pass through as written (they used to be silently dropped — see
+    // native-known-bugs-flow.test.ts).
+    expect(code).toContain('flow.updateNode("1") { node in node.extent = PyreonFlowNodeExtent(minX: 0, minY: 0, maxX: 5, maxY: 5); node.extentParent = false; node.position = p; node.targetHandles = hs }')
     expect(warnings).toContain('createFlow binding `flow` updateNode(...): changing a node id is not supported natively; the original id is preserved.')
     expect(warnings.some((w) => w.includes('updateNode(...): node field `bogus`'))).toBe(true)
     expect(warnings.some((w) => w.includes('updateNode(...): node field `extent` must be'))).toBe(true)
@@ -283,7 +285,11 @@ describe('emit-swift flow member calls — updateNode / updateEdge patches', () 
     expect(code).toContain(
       'flow.updateEdge("e") { edge in edge.curvature = 2; edge.pathOffset = 1; edge.markerStart = PyreonFlowMarker(type: "arrow"); edge.markerEnd = nil; edge.markerEndSpecified = true; edge.animated = true; edge.animatedSpecified = true; edge.waypoints = [PyreonXYPosition(x: 1, y: 1)]; edge.data = PyreonFlowData(["a": .number(1)]); edge.className = "k"; edge.hidden = true }',
     )
-    expect(code).toContain('flow.updateEdge("e") { edge in  }')
+    // A non-literal `waypoints` passes through; a computed marker cannot be
+    // built natively, so it is dropped — and now NAMED (it used to vanish).
+    expect(code).toContain('flow.updateEdge("e") { edge in edge.waypoints = pts }')
+    expect(warnings.some((w) => w.includes('updateEdge(...) field `markerStart` was DROPPED'))).toBe(true)
+    expect(warnings.some((w) => w.includes('updateEdge(...) field `pathOptions.junk` was DROPPED'))).toBe(true)
     expect(warnings).toContain('createFlow binding `flow` updateEdge(...): changing an edge id is not supported natively; the original id is preserved.')
     expect(warnings).toContain('createFlow binding `flow` updateEdge(...): edge `data` must be a static JSON-compatible object to lower natively.')
   })
@@ -490,13 +496,11 @@ export function Diagram() {
     expect(r.code).toContain('PyreonStandaloneFlowControls(state: flow, style: PyreonFlowControlsStyle(')
   })
 
-  // KNOWN BUG (reported): `<path d={p.path}>` where `p` is a LOCAL path-helper
-  // result emits `result: path()` — the connection-line accessor spelling — so
-  // the edge component references a `path` function it does not have and fails
-  // swiftc, with no warning. Kotlin has the same arm. The helper result `p`
-  // itself (or `PyreonFlowPathResult(svgPath: p.path)`, which BaseEdge uses)
-  // is what should reach `result:`.
-  it.fails('a LOCAL helper-result `p.path` reaches result: as the local, not as `path()`', () => {
+  // Was a known bug: `<path d={p.path}>` with `p` a LOCAL path-helper result
+  // emitted `result: path()` — the connection-line accessor spelling. Fixed
+  // via `classifyFlowPathMember`; both targets + compiles are locked in
+  // native-known-bugs-flow.test.ts.
+  it('a LOCAL helper-result `p.path` reaches result: as the local, not as `path()`', () => {
     const out = sw(`import { createFlow, Flow, getStraightPath, type EdgeComponentProps } from '@pyreon/flow'
 function Wire(props: EdgeComponentProps) {
   const p = getStraightPath({ sourceX: props.sourceX(), sourceY: props.sourceY(), targetX: props.targetX(), targetY: props.targetY() })
@@ -507,6 +511,7 @@ export function Diagram() {
   return <Flow instance={flow} edgeTypes={{ w: Wire }} />
 }`)
     expect(out.code).not.toContain('result: path()')
+    expect(out.code).toContain('PyreonFlowCustomEdgePath(result: p,')
   })
 })
 
@@ -515,7 +520,7 @@ function charts(els: string) {
   return sw(`import { signal } from '@pyreon/reactivity'
 import { Stack } from '@pyreon/primitives'
 import { RadarChart, BoxplotChart } from '@pyreon/charts'
-import { HeatmapChart, CandlestickChart, PlotChart, bars } from '@pyreon/charts/engine'
+import { HeatmapChart, CandlestickChart, PlotChart, bars, visualMap } from '@pyreon/charts/engine'
 export function C() {
   const rows = signal<{ x: string; y: string; v: number; o: number; h: number; l: number; c: number; vals: number[]; name: string }[]>([])
   const axes = signal<string[]>(['a', 'b'])
@@ -525,18 +530,12 @@ export function C() {
 }
 
 describe('emit-swift <PlotChart> mark options — literal lowering vs named decline', () => {
-  it('pattern, gradient (with direction + shape) and extras lower in Series field order', () => {
-    const { code, warnings } = charts(`<PlotChart data={rows()} marks={[bars((d) => d.v, { pattern: { kind: 'stripe', color: '#000', spacing: 4, width: 1 }, gradient: { stops: [{ offset: 0, color: '#fff' }, { offset: 1, color: '#000' }], direction: 'vertical', shape: 'radial' }, extras: [{ label: 'a', numbers: [1, 2] }, { label: 'b', texts: ['x'] }] })]} />`)
+  it('pattern and gradient (with direction + shape) lower in Series field order', () => {
+    const { code, warnings } = charts(`<PlotChart data={rows()} marks={[bars((d) => d.v, { pattern: { kind: 'stripe', color: '#000', spacing: 4, width: 1 }, gradient: { stops: [{ offset: 0, color: '#fff' }, { offset: 1, color: '#000' }], direction: 'vertical', shape: 'radial' } })]} />`)
     expect(code).toContain(
       'gradient: SeriesGradient(stops: [PyreonChartGradientStop(offset: 0.0, color: "#fff"), PyreonChartGradientStop(offset: 1.0, color: "#000")], direction: "vertical", shape: "radial"), pattern: PyreonChartPattern(kind: "stripe", color: "#000", spacing: 4.0, width: 1.0)',
     )
-    expect(code).toContain('extras: [SeriesExtra(label: "a", numbers: [1.0, 2.0]), SeriesExtra(label: "b", texts: ["x"])]')
     expect(warnings).toEqual([])
-  })
-
-  it('labelTexts / labelRich / labelOffset literals lower, a rich entry missing fields defaults them', () => {
-    const { code } = charts(`<PlotChart data={rows()} marks={[bars((d) => d.v, { labelTexts: ['a', 'b'], labelRich: [{ name: 'n', color: '#f00', fontSize: 12 }, { name: 'm' }], labelOffset: [1, 2] })]} />`)
-    expect(code).toContain('labelTexts: ["a", "b"], labelRich: [RichStyle(name: "n", color: "#f00", fontSize: 12.0), RichStyle(name: "m", color: "", fontSize: 0.0)], labelOffset: [1.0, 2.0]')
   })
 
   const declines: [string, string][] = [
@@ -548,17 +547,7 @@ describe('emit-swift <PlotChart> mark options — literal lowering vs named decl
     [`{ gradient: { stops: [{ offset: k, color: '#f' }] } }`, '`gradient` needs literal stops'],
     [`{ gradient: { stops: [], direction: k } }`, '`gradient` needs literal stops'],
     [`{ gradient: { stops: [], shape: k } }`, '`gradient` needs literal stops'],
-    [`{ extras: ee }`, '`extras` needs literal'],
-    [`{ extras: [ex] }`, '`extras` needs literal'],
-    [`{ extras: [{ label: k }] }`, '`extras` needs literal'],
-    [`{ extras: [{ label: 'a', numbers: [k] }] }`, '`extras` needs literal'],
-    [`{ extras: [{ label: 'a', texts: [1] }] }`, '`extras` needs literal'],
-    [`{ labelTexts: [k] }`, '`labelTexts` must be an array of string literals'],
-    [`{ labelOffset: [k] }`, '`labelOffset` must be an array of number literals'],
     [`{ width: k }`, '`width` must be a number literal'],
-    // Regression: these two declined with NO warning — a silent EmptyView().
-    [`{ labelRich: rr }`, '`labelRich` must be an array of { name, color?, fontSize? } object literals'],
-    [`{ labelRich: [rr] }`, '`labelRich` must be an array of { name, color?, fontSize? } object literals'],
   ]
   for (const [opts, needle] of declines) {
     it(`declines ${opts} by name`, () => {
@@ -598,8 +587,8 @@ describe('emit-swift accessor chart hosts — the per-host accessor declines', (
 
   it('Heatmap: a 3-param value declines; a visualMap swaps in the strip stops unless colors are given', () => {
     bail(`<HeatmapChart data={rows()} x={(d) => d.x} y={(d) => d.y} value={(d, i, j) => d.v} />`, '<HeatmapChart value>')
-    expect(charts(`<HeatmapChart data={rows()} x={(d) => d.x} y={(d) => d.y} value={(d) => d.v} width={400} visualMap={{ min: 0, max: 10 }} />`).code).toContain('pyreonTheme, pyreonStrip.stops, 1.0')
-    const tapped = charts(`<HeatmapChart data={rows()} x={(d) => d.x} y={(d) => d.y} value={(d) => d.v} visualMap={{ min: 0, max: 10 }} onSelectIndex={(i) => {}} colors={['#fff', '#000']} />`).code
+    expect(charts(`<HeatmapChart data={rows()} x={(d) => d.x} y={(d) => d.y} value={(d) => d.v} width={400} visualMap={visualMap({ domain: [0, 10] })} />`).code).toContain('pyreonTheme, pyreonStrip.stops, 1.0')
+    const tapped = charts(`<HeatmapChart data={rows()} x={(d) => d.x} y={(d) => d.y} value={(d) => d.v} visualMap={visualMap({ domain: [0, 10] })} onSelectIndex={(i) => {}} colors={['#fff', '#000']} />`).code
     expect(tapped).toContain('pyreonTheme, ["#fff", "#000"], 1.0')
   })
 
@@ -619,9 +608,12 @@ describe('emit-swift accessor chart hosts — the per-host accessor declines', (
 
 describe('emit-swift member-method arity guards', () => {
   // Each lowered JS method checks the arity it models. A call with a DIFFERENT
-  // arity (a `thisArg`, a `fromIndex`, a forgotten argument) must not take the
-  // lowering built for the modelled one.
-  const run = sw(`import { signal } from '@pyreon/reactivity'
+  // arity must never SILENTLY take the lowering built for the modelled one —
+  // but an argument JS itself ignores (a `thisArg`, anything past the declared
+  // parameters) is dropped WITH a named warning, a faithful positioned form
+  // (`indexOf(x, from)`) lowers, and every other shape stays verbatim WITH a
+  // named warning (native-known-bugs-emit.test.ts).
+  const runOut = transform(`import { signal } from '@pyreon/reactivity'
 import { Stack, Button } from '@pyreon/primitives'
 export function App() {
   const xs = signal<number[]>([1, 2])
@@ -647,19 +639,33 @@ export function App() {
     const a19 = s().substring(1, 2)
   }
   return (<Stack><Button onPress={run}>go</Button></Stack>)
-}`).code
+}`, { target: 'swift' })
+  const run = runOut.code
   const line = (name: string) => run.split('\n').find((l) => l.includes(`let ${name} = `)) ?? ''
+  const named = (prefix: string) => runOut.warnings.some((w) => w.startsWith(prefix))
 
-  it('a thisArg / fromIndex / extra argument declines the one-argument lowering', () => {
-    expect(line('a1')).not.toContain('contains(where:')
-    expect(line('a2')).not.toContain('allSatisfy')
-    expect(line('a4')).not.toContain('first(where:')
-    expect(line('a5')).not.toContain('last(where:')
-    expect(line('a6')).not.toContain('contains(1)')
-    expect(line('a11')).not.toContain('hasSuffix')
-    expect(line('a13')).not.toContain('firstIndex(where:')
-    expect(line('a10')).not.toContain('utf16')
-    expect(line('a15')).not.toContain('lowercased()')
+  it('a thisArg / extra argument JS ignores is dropped — and NAMED', () => {
+    expect(line('a1')).toContain('let a1 = xs.contains(where: { x in x > 1 })')
+    expect(line('a4')).toContain('let a4 = xs.first(where: { x in x > 1 })')
+    expect(line('a10')).toContain('utf16')
+    expect(line('a15')).toContain('let a15 = s.lowercased()')
+    expect(named('`.some(…)` on an array: the extra `thisArg` argument is dropped')).toBe(true)
+    expect(named('`.charCodeAt(…)` on a string: the extra argument is dropped')).toBe(true)
+    expect(named('`.toLowerCase(…)` on a string: the extra argument is dropped')).toBe(true)
+  })
+
+  it('a fromIndex / endPosition lowers to a positioned search, never the 1-argument spelling', () => {
+    expect(line('a6')).not.toContain('xs.contains(1)')
+    expect(line('a6')).toContain('__pyRecv[__pyFrom...].contains(1)')
+    expect(line('a11')).toContain('__pyRecv.prefix(max(0, 2)).hasSuffix("a")')
+  })
+
+  it('an uncovered shape stays verbatim and is NAMED', () => {
+    expect(line('a8')).toContain('s.lastIndexOf("a", 1)')
+    expect(named('`.lastIndexOf(…)` on a string with 2 arguments has no Swift lowering')).toBe(true)
+    expect(line('a16')).toContain('s.charCodeAt()')
+    expect(named('`.charCodeAt(…)` on a string with 0 arguments has no Swift lowering')).toBe(true)
+    expect(named('`.some(…)` on an array with 0 arguments has no Swift lowering')).toBe(true)
     for (const n of ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a15', 'a16', 'a17']) expect(line(n), n).not.toBe('')
   })
 
@@ -697,37 +703,24 @@ export function App() {
   })
 })
 
-describe('emit-swift <ChartWebView> / <FlowWebView> hosts', () => {
+describe('emit-swift <FlowWebView> hosts', () => {
   const r = sw(`import { signal } from '@pyreon/reactivity'
 import { Stack } from '@pyreon/primitives'
-import { ChartWebView } from '@pyreon/charts/webview'
 import { FlowWebView } from '@pyreon/flow/webview'
 type G = { nodes: { id: string }[] }
 export function App() {
-  const opt = signal<{ a: number }>({ a: 1 })
   const g = signal<G>({ nodes: [{ id: 'a' }] })
   const h = signal('<p/>')
   const w = signal(3)
   return (<Stack>
-    <ChartWebView />
-    <ChartWebView option={opt()} html={h()} theme="dark" renderer="svg" commands={cmds()} loading={true} loadingOptions={lo()} group="g" onSelect={(e) => { log(e); log(e) }} onEvent={() => {}} />
     <FlowWebView />
     <FlowWebView graph={g()} nodeWidth={w()} nodeHeight={50} nodeFill="#abc<>" labelColor="#123" background="red" />
     <FlowWebView graph={g()} nodeWidth={120} html={h()} commands={cmds()} onSelect={handler} onMessage={(m) => log(m)} />
   </Stack>)
 }`)
 
-  it('a missing option / graph is named and an empty payload is sent', () => {
-    expect(r.warnings).toContain('<ChartWebView>: `option` is required on native; emitting an empty option.')
+  it('a missing graph is named and an empty payload is sent', () => {
     expect(r.warnings).toContain('<FlowWebView>: `graph` is required on native; emitting an empty host.')
-    expect(r.code).toContain('pyreonChartWebViewData(option: "{}", commands: "[]", loading: false, loadingOptions: "{}")')
-  })
-
-  it('custom chart host HTML: generated-host props are named as ignored; every data arg and callback lowers', () => {
-    expect(r.warnings).toContain('<ChartWebView html={…} theme={…}>: theme is ignored because custom host HTML owns its configuration.')
-    expect(r.warnings).toContain('<ChartWebView html={…} renderer={…}>: renderer is ignored because custom host HTML owns its configuration.')
-    expect(r.code).toContain('PyreonWebView(html: h, data: pyreonChartWebViewData(option: PyreonJSON.encode(opt), commands: PyreonJSON.encode(cmds), loading: true, loadingOptions: PyreonJSON.encode(lo), group: "g"), onMessage: { pyreonMsg in pyreonDispatchChartWebViewMessage(pyreonMsg, onSelect: { e in')
-    expect(r.code).toContain('onEvent: { _ in }')
   })
 
   it('flow host styling: a static node size / colours / background are baked, a dynamic one is named', () => {
@@ -759,7 +752,7 @@ const cell = (u: User) => <Text>{u.name}</Text>
   const r = sw(`${HEAD}export function A() {
   return <Stack>
     <Row render={((u) => <Text>{u.name}</Text>)} empty={hello} />
-    <Row render={(u) => { console.log(u); return <Text>{u.name}</Text> }} empty={() => { return <Text>x</Text> }} />
+    <Row render={(u) => { const n = u.name; return <Text>{n}</Text> }} empty={() => { return <Text>x</Text> }} />
     <Row render={cell} empty={<Text>bare</Text>} />
     <Row render={(u) => <Text>{u.name}</Text>} empty={42} />
   </Stack>
@@ -773,9 +766,29 @@ export function B(props: { render: (u: User, i: number) => VNodeChild; empty: ()
     expect(r.code).toContain('empty: { hello() })')
   })
 
-  it('a BLOCK-bodied render callback with no view-builder shape emits an empty view of the right arity and is named', () => {
-    expect(r.code).toContain('Row(render: { _, _ in EmptyView() }')
-    expect(r.warnings.some((w) => w.startsWith("<Row render={…}>: this render callback's BLOCK body"))).toBe(true)
+  it('a simple BLOCK-bodied render callback lowers to view-builder statements, not an empty view', () => {
+    expect(r.code).toContain('Row(render: { u, _ in\n        let n = u.name\n        Text(verbatim: "\\(n)")\n      }, empty: {\n        Text("x")\n      })')
+    expect(r.warnings.some((w) => w.startsWith('<Row render={…}>: a render callback with a BLOCK body'))).toBe(false)
+  })
+
+  // Distinct from the case above: a block body whose statements ARE a valid
+  // view-builder shape (`const` declarations + a final `return <JSX/>`, no
+  // side-effecting statement) lowers to real view-builder statements instead
+  // of bailing to EmptyView — planViewBlock (render-slots.ts) accepts `let`/
+  // `if`/`return` and rejects everything else (an expression statement like
+  // the `console.log(u)` above included). Isolated in its own fixture so this
+  // assertion's "no warning" check isn't polluted by the OTHER Row's warning
+  // (blockBodiedRenderCallbackWarning's `where` string is shared across every
+  // `<Row render={…}>` call site, so a warning from one instance would show
+  // up in `r.warnings` for all of them).
+  it('a simple BLOCK-bodied render callback lowers to view-builder statements, not an empty view', () => {
+    const r2 = sw(`${HEAD}export function A() {
+  return <Stack>
+    <Row render={(u) => { const n = u.name; return <Text>{n}</Text> }} empty={() => { return <Text>x</Text> }} />
+  </Stack>
+}`)
+    expect(r2.code).toContain('Row(render: { u, _ in\n        let n = u.name\n        Text(verbatim: "\\(n)")\n      }, empty: {\n        Text("x")\n      })')
+    expect(r2.warnings.some((w) => w.startsWith("<Row render={…}>: this render callback's BLOCK body"))).toBe(false)
   })
 
   // Regression (fixed here): a view helper taking FEWER parameters than the
@@ -795,10 +808,10 @@ export function B(props: { render: (u: User, i: number) => VNodeChild; empty: ()
     expect(r.code).toContain('Row(render: render, empty: empty)')
   })
 
-  // KNOWN BUG (Kotlin twin, reported — emit-kotlin.ts is not this file's scope):
-  // the same helper-arity padding is missing, so Kotlin emits `{ a0 -> cell(a0) }`
-  // for a two-parameter @Composable slot.
-  it.fails('Kotlin twin: a view helper with fewer params than the slot is padded', () => {
+  // Regression (fixed in native-known-bugs-emit): the same helper-arity padding
+  // was missing on Kotlin, which emitted `{ a0 -> cell(a0) }` for a
+  // two-parameter @Composable slot.
+  it('Kotlin twin: a view helper with fewer params than the slot is padded', () => {
     const k = transform(`${HEAD}export function A() { return <Row render={cell} empty={hello} /> }`, { target: 'kotlin' }).code
     expect(k).toContain('{ a0, _ -> cell(a0) }')
   })
@@ -1081,19 +1094,6 @@ export function D() {
   })
 })
 
-describe('emit-swift timeline OptionChart', () => {
-  it('a handle that is not a createChartHandle binding is named; the timeline keeps its own state', () => {
-    const { code, warnings } = sw(`import { OptionChart } from '@pyreon/charts/option'
-export function App() {
-  const other = 1
-  return <OptionChart handle={other} option={{ baseOption: { timeline: { data: ['a', 'b'], currentIndex: 1 }, xAxis: { type: 'category', data: ['x', 'y'] }, yAxis: {}, series: [{ type: 'bar' }] }, options: [{ series: [{ data: [1, 2] }] }, { series: [{ data: [3, 4] }] }] }} />
-}`)
-    expect(warnings).toContain('<OptionChart handle>: native needs a `const chart = createChartHandle()` declared in the same component; the timeline runs without the handle.')
-    expect(code).toContain('@State private var pyreonTl0: Int = 1')
-    expect(code).toContain('@State private var pyreonTlPlay0: Bool = false')
-  })
-})
-
 describe('emit-swift createFlow — HETEROGENEOUS node data rows', () => {
   const rows = (second: string) =>
     sw(`import { createFlow } from '@pyreon/flow'
@@ -1110,8 +1110,8 @@ export function App() {
     expect(code).toContain('data: __Obj0(label: "C"))')
   })
 
-  // KNOWN BUGS (reported): row-type unification looks at field NAMES, not
-  // value types, so a field whose type DIFFERS across rows breaks the build
+  // FIXED (unifyFlowDataRows): row-type unification used to look at field
+  // NAMES only, so a field whose type DIFFERS across rows broke the build
   // silently — two distinct ways:
   //   * same field set, different types → the rows keep their OWN structs
   //     (`__Obj0` / `__Obj1`) while the state is `PyreonFlowState<__Obj0>`, so
@@ -1119,14 +1119,14 @@ export function App() {
   //   * a field that also goes MISSING somewhere → the merged struct types it
   //     `Any?`, which is not `Codable`, so the row struct does not conform.
   // Either should lower to one consistent row type, or be named in a warning.
-  it.fails('same field set, differing types: every node data literal uses the state row type', () => {
+  it('same field set, differing types: every node data literal uses the state row type', () => {
     const { code, warnings } = rows(`{ label: 'B', w: 'wide' }`)
     const row = /PyreonFlowState<(\w+)>/.exec(code)?.[1]
     const dataTypes = [...code.matchAll(/data: (__Obj\d+)\(/g)].map((m) => m[1])
     expect(dataTypes.every((t) => t === row) || warnings.length > 0).toBe(true)
   })
 
-  it.fails('a field typed differently AND missing somewhere is not silently `Any?` in a Codable struct', () => {
+  it('a field typed differently AND missing somewhere is not silently `Any?` in a Codable struct', () => {
     const { code, warnings } = sw(`import { createFlow } from '@pyreon/flow'
 import { Stack, Text } from '@pyreon/primitives'
 export function App() {

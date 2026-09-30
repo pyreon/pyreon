@@ -52,7 +52,8 @@ describe('`Binding.safeParse(x)` on a file-scope @pyreon/validate schema', () =>
       'PyreonZodSchema_Pet.safeParseResult(["name": "x", "age": 3] as [String: Any]).success',
     )
     expect(code).toContain('static func safeParseResult(_ input: [String: Any]) -> PyreonParseResult<Self>')
-    expect(code).toContain('struct PyreonParseResult<T>')
+    // The result type is the runtime's, never declared per file.
+    expect(code).not.toMatch(/struct PyreonParseResult\b/)
     // The broken verbatim form is gone.
     expect(code).not.toMatch(/\bPet\.safeParse\(/)
     expect(code).not.toContain('__Obj0(name:')
@@ -65,7 +66,7 @@ describe('`Binding.safeParse(x)` on a file-scope @pyreon/validate schema', () =>
     const { code, warnings } = transform(BOUND, { target: 'kotlin' })
     expect(warnings).toEqual([])
     expect(code).toContain(
-      'PyreonZodSchema_Pet.safeParseResult(mapOf<String, Any?>("name" to "x", "age" to 3)).success',
+      'PyreonZodSchema_Pet.safeParseResult(mapOf<String, Any?>("name" to "x", "age" to 3L)).success',
     )
     expect(code).toContain('fun safeParseResult(input: Map<String, Any?>): PyreonParseResult<PyreonZodSchema_Pet>')
     expect(code).not.toMatch(/\bPet\.safeParse\(/)

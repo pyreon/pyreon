@@ -52,17 +52,6 @@ import { defineBrowserConfig } from '@pyreon/vitest-config'
 export default defineBrowserConfig(playwright())
 ```
 
-For packages with transitive `tslib` consumers (echarts, zrender):
-
-```ts
-import { playwright } from '@vitest/browser-playwright'
-import { defineBrowserConfig, tslibBrowserAlias } from '@pyreon/vitest-config'
-
-export default defineBrowserConfig(playwright(), {
-  resolve: { alias: { ...tslibBrowserAlias(import.meta.url) } },
-})
-```
-
 ## Coverage thresholds
 
 Per-category defaults (one source of truth — `src/thresholds.ts`):

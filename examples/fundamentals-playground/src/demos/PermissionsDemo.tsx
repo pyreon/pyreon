@@ -1,5 +1,5 @@
 import { createPermissions } from '@pyreon/permissions'
-import { effect, signal } from '@pyreon/reactivity'
+import { state, effect } from '@pyreon/core/plain'
 
 // Role → permissions mapping
 function fromRole(role: string): Record<string, boolean | ((ctx?: any) => boolean)> {
@@ -26,11 +26,11 @@ function fromRole(role: string): Record<string, boolean | ((ctx?: any) => boolea
 }
 
 const can = createPermissions(fromRole('editor'))
-const currentRole = signal('editor')
+let currentRole = state('editor')
 
 // Sync role changes to permissions
 effect(() => {
-  can.set(fromRole(currentRole()))
+  can.set(fromRole(currentRole))
 })
 
 // Sample posts
@@ -62,8 +62,8 @@ const posts = [
 ]
 
 export function PermissionsDemo() {
-  const log = signal<string[]>([])
-  const addLog = (msg: string) => log.update((l) => [...l.slice(-9), msg])
+  let log = state.raw<string[]>([])
+  const addLog = (msg: string) => { log = [...log.slice(-9), msg] }
 
   return (
     <div>
@@ -80,9 +80,9 @@ export function PermissionsDemo() {
             <button
               type="button"
               key={role}
-              class={currentRole() === role ? 'active' : ''}
+              class={currentRole === role ? 'active' : ''}
               onClick={() => {
-                currentRole.set(role)
+                currentRole = role
                 addLog(`Role changed to ${role}`)
               }}
             >
@@ -91,7 +91,7 @@ export function PermissionsDemo() {
           ))}
         </div>
         <p>
-          Current role: <strong>{() => currentRole()}</strong>
+          Current role: <strong>{() => currentRole}</strong>
         </p>
       </div>
 
@@ -253,7 +253,7 @@ export function PermissionsDemo() {
           <button
             type="button"
             onClick={() => {
-              can.set(fromRole(currentRole()))
+              can.set(fromRole(currentRole))
               addLog('Reset to role defaults')
             }}
           >
@@ -266,9 +266,9 @@ export function PermissionsDemo() {
         <h3>Change Log</h3>
         <div class="log">
           {() =>
-            log().length === 0
+            log.length === 0
               ? 'Switch roles or patch permissions to see changes.'
-              : log().join('\n')
+              : log.join('\n')
           }
         </div>
       </div>

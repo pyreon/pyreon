@@ -1,15 +1,17 @@
-import { ChartThemeProvider } from '@pyreon/charts'
-import { OptionChart } from '@pyreon/charts/option'
+import { Arc, Chart, Legend, Tooltip } from '@pyreon/charts'
 import { signal, type Signal } from '@pyreon/reactivity'
 
 /**
- * Gallery — a donut from an ECharts option: an inner radius, labels outside
- * with leader lines, and a legend that toggles slices (click an entry). The
- * `shared` signal counts "Vary" presses.
- * The provider opts it into the colour mode in scope — the page's scheme
- * here (the root's `color-scheme`); a bare option chart keeps ECharts' own light look.
+ * Gallery — a donut: an `<Arc>` with an inner radius, and a legend whose
+ * entries toggle their slices (click one). The `shared` signal counts "Vary"
+ * presses.
  */
-function make(): { name: string; value: number }[] {
+interface Slice {
+  name: string
+  value: number
+}
+
+function make(): Slice[] {
   return ['Direct', 'Search', 'Email', 'Social', 'Referral'].map((name) => ({ name, value: 200 + Math.round(Math.random() * 900) }))
 }
 
@@ -30,16 +32,11 @@ export default function GalleryDonut(props: { shared?: Signal<number> }) {
         </button>
         <span>varies: {() => varies()}</span>
       </div>
-      <ChartThemeProvider>
-        <OptionChart
-          height={300}
-          option={() => ({
-            tooltip: { trigger: 'item' },
-            legend: { bottom: 0 },
-            series: [{ type: 'pie', radius: ['42%', '68%'], center: ['50%', '45%'], itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 }, data: data() }],
-          })}
-        />
-      </ChartThemeProvider>
+      <Chart<Slice> data={() => data()} height={300}>
+        <Arc value="value" label="name" innerRadius={0.62} />
+        <Legend position="bottom" />
+        <Tooltip />
+      </Chart>
     </div>
   )
 }

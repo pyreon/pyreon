@@ -126,16 +126,21 @@ describe('what the shipped selection got wrong', () => {
   })
 
   it('the rewrite never does, across the same sweep', () => {
+    // Violations are collected and asserted once: an \`expect\` per index made
+    // this ~150k assertions and ~10s — past the 20s timeout under a loaded
+    // parallel run, which is how it "flaked". Same coverage, same message.
+    const violations: string[] = []
     for (let n = 5; n <= 400; n += 7) {
       const ys: Double[] = Array.from({ length: n }, (_, i) => Math.sin(i / 5) * 10)
       for (let t = 3; t < n; t += 3) {
         const keep = lttbIndices([], ys, t)
-        expect(keep.length, `n ${n} threshold ${t}`).toBe(t)
+        if (keep.length !== t) violations.push(`n ${n} threshold ${t}: kept ${keep.length}`)
         for (let i = 1; i < keep.length; i++) {
-          expect(keep[i]!, `n ${n} threshold ${t} at ${i}`).toBeGreaterThan(keep[i - 1]!)
+          if (!(keep[i]! > keep[i - 1]!)) violations.push(`n ${n} threshold ${t} at ${i}: ${keep[i - 1]} then ${keep[i]}`)
         }
       }
     }
+    expect(violations).toEqual([])
   })
 
   it('the first interior bucket is now considered at all', () => {

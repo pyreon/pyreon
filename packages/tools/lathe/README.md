@@ -631,7 +631,9 @@ middleware and mocks all apply — unlike `EventSource`), every event honours
 and `Last-Event-ID`. A non-GET stream is not reconnected by default (that
 would repeat the request). Under `installMocks()` it answers a real stream —
 three fixture events with ids, resuming after `Last-Event-ID` — and an
-operation offering JSON too is mocked by `Accept`, so both calls work. Built on `@pyreon/http/stream` and
+operation offering JSON too is mocked by `Accept`, so both calls work.
+`mockOperation(id, { dropAfter: n })` fails each connection after `n` events,
+so reconnect-and-resume runs against the mocks too. Built on `@pyreon/http/stream` and
 `@pyreon/query`'s `useStream`, for every `client`.
 
 ```ts
@@ -651,7 +653,8 @@ Real, current, and reported per-operation rather than papered over:
 | an array / scalar / union MODEL | lowers — inlined at its use sites; PMTC synthesizes structs from object literals only |
 | `POST`/`PUT`/`PATCH`/`DELETE` | **web-only** — mutations are not recognised yet |
 | a stream-only `GET` (SSE / NDJSON) with a typed event, or SSE read as `data: 'text'` | lowers — the tag module gets a `<Op>Stream` component (`useStream` over `@pyreon/http/stream`), which PMTC lowers to the native `PyreonStream` runtime: the same wire parser, reconnect with backoff and `Last-Event-ID`, reopened when a path parameter changes |
-| a stream with no declared event type, or a non-`GET` stream | **web-only** — a native stream decodes each event into a declared type; a non-GET stream's body is a runtime value (the mutation rule) |
+| a stream-only `POST`/`PUT`/`PATCH`/`DELETE` with a typed event and a JSON body (or none) | lowers — a TRIGGERED `<Op>Stream` component: `enabled: boolean` opens the stream while true (false stops it and keeps the events), and the body is the `json` prop, serialized with the web's exact `JSON.stringify` bytes. The same `useStream(src, { enabled })` + runtime `json` shape PMTC lowers hand-written |
+| a stream with no declared event type, a non-`GET` stream whose body is not JSON (form, multipart, text, binary), or a path parameter named `enabled` / `json` / `children` | **web-only** — a native stream decodes each event into a declared type and sends a JSON body only; a path parameter cannot shadow a prop the component owns. The reach report names which |
 | `enum` / `const` | narrowed to its base scalar (`string` / `number` / `boolean`) on the native path; the constraint is genuinely lost there |
 | a model field naming another model | **lowers under `validator: 'zod'`** (inlined); dropped under the default `s.*`, with a compiler warning |
 | a `$ref` **cycle** | web-only for that field — there is no finite nesting to inline, on either validator |
@@ -1092,7 +1095,7 @@ The input layer resolves a spec's semantics once, so no emitter rediscovers them
 - **`$ref`'d path items and examples** — followed. A `trace` operation is reported, since `fetch` refuses the method. A JSON spec's duplicate keys are reported (`duplicate-key`); YAML refuses them. Kubernetes' spec generates output that typechecks.
 - **Multi-file specs** — a `$ref` into another file (JSON or YAML) is resolved against the spec's own path and bundled: schemas become named models (stable names, cycles across files closed), everything else is inlined. `generate` stays offline by default; `remoteRefs: 'fetch'` (credentials per origin via `remoteHeaders`, ETag-cached, a failed fetch fails the run) or `lathe pull` bundles remote parts. DigitalOcean's 2,954-file source gives the same models and operations as Redocly's bundle.
 - **Error responses** — each operation's `4xx` / `5xx` / `4XX` / `default` JSON bodies are its endpoint's `errors`. A rejection's `body` is validated and `matched` names the key it passed, so `err.matched === '404'` narrows `err.body`; hooks carry `EndpointError<typeof op>` as their error type.
-- **Webhooks and callbacks** — `webhooks.ts`: a schema per payload (`webhookSchemas`) and `WebhookHandler<name>` typed from it. No endpoint or hook — the API sends these.
+- **Webhooks and callbacks** — `webhooks.ts`: a schema per payload (`webhookSchemas`), `WebhookHandler<name>` typed from it, `validateWebhook`, a framework-agnostic `webhookHandler(handlers, { verify, event })` (`Request` → `Response`, a zero API route as-is: verify → parse by media type → method → validate → dispatch), and `callbackUrl(name, ctx)` evaluating a callback's OpenAPI runtime expression. No endpoint or hook — the API sends these.
 
 ## Contract changes
 

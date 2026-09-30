@@ -1,5 +1,5 @@
 import { kinetic } from '@pyreon/kinetic'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { Button, Title, Paragraph } from '@pyreon/ui-components'
 
 const Collapse = kinetic('div').collapse()
@@ -8,8 +8,8 @@ const BouncyCollapse = kinetic('div').collapse({
 })
 
 export function AnimationsCollapseDemo() {
-  const standardOpen = signal(true)
-  const bouncyOpen = signal(false)
+  let standardOpen = state(true)
+  let bouncyOpen = state(false)
 
   return (
     <div>
@@ -20,10 +20,10 @@ export function AnimationsCollapseDemo() {
 
       <Title size="h3" style="margin-bottom: 12px">Standard</Title>
       <div style="margin-bottom: 24px; max-width: 400px;">
-        <Button state="primary" onClick={() => standardOpen.set(!standardOpen())} style="margin-bottom: 12px;">
+        <Button state="primary" onClick={() => { standardOpen = !standardOpen }} style="margin-bottom: 12px;">
           Toggle
         </Button>
-        <Collapse show={() => standardOpen()}>
+        <Collapse show={() => standardOpen}>
           <div style="padding: 16px; background: #f3f4f6; border-radius: 8px;">
             <p style="margin-bottom: 8px;">This content collapses smoothly.</p>
             <p style="margin-bottom: 8px;">Height is measured automatically.</p>
@@ -34,10 +34,10 @@ export function AnimationsCollapseDemo() {
 
       <Title size="h3" style="margin-bottom: 12px">Bouncy (custom easing)</Title>
       <div style="margin-bottom: 24px; max-width: 400px;">
-        <Button state="primary" onClick={() => bouncyOpen.set(!bouncyOpen())} style="margin-bottom: 12px;">
+        <Button state="primary" onClick={() => { bouncyOpen = !bouncyOpen }} style="margin-bottom: 12px;">
           Toggle
         </Button>
-        <BouncyCollapse show={() => bouncyOpen()}>
+        <BouncyCollapse show={() => bouncyOpen}>
           <div style="padding: 16px; background: #fef3c7; border-radius: 8px;">
             <p>Spring overshoot using cubic-bezier(0.68, -0.55, 0.27, 1.55)</p>
           </div>

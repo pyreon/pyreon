@@ -183,6 +183,15 @@ describe('mock internals', () => {
     void api
   })
 
+  it('a delayed route resolves normally with a signal present that never aborts', async () => {
+    // The sibling above covers abort BEFORE the delay; this covers the
+    // timer firing normally while a (never-aborted) signal is attached —
+    // `timeout` gives every request a real composed signal even with no
+    // explicit `signal` option.
+    const api = createHttp({ use: [mock([{ path: '/slow', delay: 5, json: { ok: true } }])], timeout: 5000 })
+    expect(await api.get('/slow').json()).toEqual({ ok: true })
+  })
+
   it('records a request with no body as null', async () => {
     const handle = createMock([{ path: '/x', json: {} }])
     const api = createHttp({ use: [handle.middleware] })

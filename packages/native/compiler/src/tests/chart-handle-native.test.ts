@@ -35,7 +35,7 @@ export function App() {
     expect(r.warnings).toEqual([])
     expect(r.code).toContain(target === 'swift' ? 'PyreonChartHandle(seriesCount: 2)' : 'PyreonChartHandle()')
     for (const s of ['chart.zoom', 'chart.selected', 'chart.hidden', 'chart.areas', 'chart.hover', ...(target === 'kotlin' ? ['chart.seriesCount = 2 }'] : [])]) expect(r.code).toContain(s)
-    expect(r.code).toMatch(target === 'swift' ? /chart\.dispatch\(ChartActionInput\(type: "dataZoom", index: -1, series: -1, start: Double\(0\), end: Double\(0\.5\)/ : /chart\.dispatch\(ChartActionInput\(type = "dataZoom", index = -1, series = -1, start = \(0\)\.toDouble\(\), end = \(0\.5\)\.toDouble\(\)/)
+    expect(r.code).toMatch(target === 'swift' ? /chart\.dispatch\(ChartActionInput\(type: "dataZoom", index: -1, series: -1, start: Double\(0\), end: Double\(0\.5\)/ : /chart\.dispatch\(ChartActionInput\(type = "dataZoom", index = -1L, series = -1L, start = \(0L\)\.toDouble\(\), end = \(0\.5\)\.toDouble\(\)/)
     // The handle's fields replace the private state: nothing declares it twice.
     expect(r.code).not.toMatch(/pyreonSelected|pyreonHidden\b/)
     check(r.code)
@@ -82,37 +82,6 @@ export function App() {
 }`, { target })
     expect(r.warnings).toEqual([])
     expect(r.code).not.toContain('pyreonRows')
-    check(r.code)
-  })
-})
-
-describe.each(['swift', 'kotlin'] as const)('OptionChart handle on %s', (target) => {
-  const check = (code: string) => {
-    if (target === 'swift' && isSwiftcAvailable()) { const v = validateSwiftWithStubs(code); if (!v.ok) console.log('SWIFTERR', String((v as { error?: string }).error ?? '').split('\n').filter((l) => l.includes('error:')).slice(0, 6).join(' || ')); expect(v).toMatchObject({ ok: true }) }
-    if (target === 'kotlin' && isKotlincAvailable()) { const v = validateKotlin(code); if (!v.ok) console.log('KTERR', String((v as { error?: string }).error ?? '').split('\n').filter((l) => l.includes('error:')).map((l) => l.slice(0, 200)).slice(0, 6).join(' || ')); expect(v).toMatchObject({ ok: true }) }
-  }
-
-  it('a timeline OptionChart takes its step and play state from the handle; a plain one binds the plot host', () => {
-    const r = transform(`
-import { Stack, Button } from '@pyreon/primitives'
-import { createChartHandle } from '@pyreon/charts'
-import { OptionChart } from '@pyreon/charts/option'
-export function App() {
-  const tl = createChartHandle()
-  const plain = createChartHandle()
-  return <Stack>
-    <OptionChart height={240} handle={tl} option={{
-      baseOption: { timeline: { data: ['a', 'b'], autoPlay: true }, xAxis: { type: 'category', data: ['x', 'y'] }, yAxis: {}, series: [{ type: 'bar' }] },
-      options: [{ series: [{ data: [1, 2] }] }, { series: [{ data: [3, 4] }] }],
-    }} />
-    <Button onPress={() => tl.dispatch({ type: 'timelineChange', index: 1 })}>Step</Button>
-    <Button onPress={() => tl.dispatch({ type: 'timelinePlayChange', playing: false })}>Pause</Button>
-    <OptionChart height={200} handle={plain} option={{ xAxis: { type: 'category', data: ['x', 'y'] }, yAxis: {}, series: [{ type: 'bar', data: [1, 2] }] }} />
-    <Button onPress={() => plain.dispatch({ type: 'select', index: 0 })}>Pin</Button>
-  </Stack>
-}`, { target })
-    expect(r.warnings).toEqual([])
-    for (const s of ['tl.step', 'tl.playing', 'plain.selected', 'plain.zoom']) expect(r.code).toContain(s)
     check(r.code)
   })
 })

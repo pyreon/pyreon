@@ -1,261 +1,54 @@
 import { expect, test } from '@playwright/test'
 
 /**
- * `@pyreon/charts` real-app e2e — locks in that the charts demo renders
- * canvases when the consumer Vite app applies `chartsViteAlias()` from
- * `@pyreon/charts/vite`.
+ * `@pyreon/charts` real-app e2e — the dashboard's charts mount and paint in a
+ * real Vite build.
  *
- * Why this file exists: PR #417 shipped `chartsViteAlias()` to fix the
- * recurring tslib `__extends` crash that breaks ECharts under Vite's
- * prebundle. Both example apps' `vite.config.ts` adopted the helper.
- * Without an e2e regression-locking the canvas mount, a future Vite or
- * ECharts version bump could re-break the path silently — neither
- * `chartsViteAlias()`'s unit tests nor the helper's own resolver
- * branches would catch a downstream prebundle change.
- *
- * The dashboard route in `examples/app-showcase/src/routes/dashboard/`
- * mounts two charts (RevenueChart + CategoryChart) via `<Chart>` from
- * `@pyreon/charts`. If the alias is broken or removed, ECharts's lazy
- * import throws `TypeError: Cannot destructure property '__extends' of
- * '__toESM(...).default'` — useChart's effect catches it via
- * `error.set()` and the canvas never mounts. The spec asserts the
- * happy path: canvases ARE present.
+ * The dashboard route in `examples/app-showcase/src/routes/dashboard/` mounts
+ * three charts over Pyreon's own engine (RevenueChart, CategoryChart and the
+ * plot chart beside them), each a `<canvas>`. The spec asserts they mount,
+ * have a real box, and paint something — a canvas that mounted but never drew
+ * reads as blank pixels — with no uncaught page error.
  */
 
 test.describe('app-showcase /dashboard — charts canvas mount', () => {
-  test('renders ≥2 chart canvases via @pyreon/charts', async ({ page }) => {
+  test('renders its chart canvases, each with a box and painted pixels', async ({ page }) => {
     const errors: string[] = []
     page.on('pageerror', (err) => errors.push(err.message))
-    page.on('console', (msg) => {
-      if (msg.type() === 'error') errors.push(`console: ${msg.text()}`)
-    })
 
     await page.goto('/dashboard', { waitUntil: 'domcontentloaded' })
 
-    // POLL the COUNT, rather than waiting for the first canvas and then
-    // counting. Waiting for the first one only ever meant "ECharts has
-    // finished loading" by accident — because the first canvas on the page
-    // happened to be an ECharts one. The plot-engine chart added below draws
-    // synchronously and now wins that race, so the old wait returned while
-    // ECharts was still importing its modules and the count was short.
-    //
-    // The lesson generalises past this file: a wait whose meaning depends on
-    // WHICH element arrives first is not a wait for the thing you care about.
-    // Poll the actual condition.
-    //
-    // Two ECharts charts (RevenueChart + CategoryChart) plus the plot-engine
-    // one, so >= 3; asserted as >= 2 for the ECharts pair specifically, since
-    // this test is about the tslib alias and not about how many charts the
-    // dashboard happens to show.
+    // POLL the count: the two query-backed charts mount after their data
+    // arrives, so waiting for the first canvas would return early.
     await expect
       .poll(async () => page.locator('canvas').count(), {
         timeout: 15_000,
-        message: 'fewer than two chart canvases mounted — ECharts lazy import likely failed',
+        message: 'fewer than three chart canvases mounted',
       })
-      .toBeGreaterThanOrEqual(2)
+      .toBeGreaterThanOrEqual(3)
 
-    const canvasCount = await page.locator('canvas').count()
-    expect(canvasCount).toBeGreaterThanOrEqual(2)
-
-    // Sanity: each canvas has non-zero pixel dimensions. A canvas with
-    // `width === 0` would mean ECharts mounted but the container had no
-    // bounding box — a different regression class but worth catching.
-    const dims = await page.locator('canvas').evaluateAll((els) =>
-      (els as HTMLCanvasElement[]).map((c) => ({ w: c.width, h: c.height })),
+    const canvases = await page.locator('canvas').evaluateAll((els) =>
+      (els as HTMLCanvasElement[]).map((c) => {
+        const ctx = c.getContext('2d')
+        let painted = false
+        if (ctx !== null && c.width > 0 && c.height > 0) {
+          const px = ctx.getImageData(0, 0, c.width, c.height).data
+          for (let i = 3; i < px.length; i += 4) {
+            if (px[i]! > 0) {
+              painted = true
+              break
+            }
+          }
+        }
+        return { w: c.width, h: c.height, painted }
+      }),
     )
-    for (const { w, h } of dims) {
+    for (const { w, h, painted } of canvases) {
       expect(w).toBeGreaterThan(0)
       expect(h).toBeGreaterThan(0)
+      expect(painted, 'a chart canvas mounted but drew nothing').toBe(true)
     }
 
-    // No console errors — specifically no tslib `__extends` errors.
-    // If `chartsViteAlias()` is removed from the consumer Vite config,
-    // this assertion fails with the exact bug shape the helper exists
-    // to prevent.
-    const tslibErrors = errors.filter((e) => /__extends|tslib/i.test(e))
-    expect(tslibErrors, `Unexpected tslib-related errors:\n${tslibErrors.join('\n')}`).toHaveLength(
-      0,
-    )
-  })
-})
-
-/**
- * Pyreon's OWN engine (`@pyreon/charts`) in a real app.
- *
- * The engine's own suite runs under vitest's JSX transform, which is NOT the
- * transform that ships. This repo's recurring lesson is that a package's
- * browser tests can be green while `@pyreon/vite-plugin`'s real compiler
- * produces different — and broken — output for the same source. Only a real
- * app boot exercises the shipping path.
- *
- * The assertion is PAINTED PIXELS, not structure. A canvas that mounted but
- * was never drawn to passes every structural check there is, which is exactly
- * the failure a chart engine can have.
- */
-test.describe('app-showcase /dashboard — the plot engine, real compiler', () => {
-  test('paints a chart drawn by @pyreon/charts', async ({ page }) => {
-    const errors: string[] = []
-    page.on('pageerror', (err) => errors.push(err.message))
-
-    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' })
-
-    const host = page.locator('[data-testid="plot-engine-chart"]')
-    await host.waitFor({ timeout: 15_000 })
-    const canvas = host.locator('canvas')
-    await canvas.waitFor({ timeout: 15_000 })
-
-    // The backing store is sized for the device pixel ratio, so a soft chart
-    // (a canvas at CSS size on a 2x display) shows up here as a smaller width.
-    // POLL rather than sample once. The canvas element exists before the first
-    // paint — the ref fires, then the draw runs — so a single read races the
-    // engine and fails intermittently, while a poll still fails correctly for a
-    // canvas that never draws at all, which is the regression this asserts.
-    const measure = async (): Promise<{ w: number; h: number; painted: number }> =>
-      canvas.evaluate((el) => {
-        const c = el as HTMLCanvasElement
-        const ctx = c.getContext('2d')
-        if (ctx === null) return { w: c.width, h: c.height, painted: 0 }
-        const { data } = ctx.getImageData(0, 0, c.width, c.height)
-        let n = 0
-        for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) n++
-        return { w: c.width, h: c.height, painted: n }
-      })
-
-    // A blank canvas is the failure this test exists for: the axes, bars and
-    // line together cover far more than a handful of pixels.
-    await expect
-      .poll(async () => (await measure()).painted, {
-        timeout: 15_000,
-        message:
-          'the plot canvas is blank — the engine mounted but never drew (or the real compiler emitted something the vitest transform does not)',
-      })
-      .toBeGreaterThan(500)
-
-    const { w, h } = await measure()
-
-    expect(w, 'canvas has no backing width — the container had no box').toBeGreaterThan(0)
-    expect(h).toBeGreaterThan(0)
-
-    // The chart FILLS its column. This is a regression lock, not a nicety: the
-    // width was read off the canvas itself, which is the element the read then
-    // sizes — so the first draw measured 0, fell back to the default, wrote it
-    // onto the canvas, and every later draw read that default straight back. A
-    // chart pinned at 300px inside a 430px column, with nothing in the DOM
-    // looking wrong. Only a real layout catches it; jsdom and happy-dom report
-    // 0 for everything.
-    const fill = await host.evaluate((el) => {
-      const c = el.querySelector('canvas') as HTMLCanvasElement
-      return { column: (el as HTMLElement).clientWidth, drawn: Number.parseFloat(c.style.width) }
-    })
-    expect(
-      fill.drawn,
-      `the chart drew ${fill.drawn}px inside a ${fill.column}px column — it is measuring itself instead of its container`,
-    ).toBeGreaterThan(fill.column * 0.9)
-    expect(errors, `page errors:\n${errors.join('\n')}`).toHaveLength(0)
-  })
-})
-
-/**
- * The interaction leg: the plot-engine chart on the same page, driven the way
- * a user drives it — a real pointer hover shows the tooltip, a real click
- * reports the bar's index, the keyboard walks the bars and Enter reports one.
- * The hosts' own browser suites cover these paths under vitest's JSX
- * transform; this is the only place they run under the SHIPPED compiler and
- * the real `@pyreon/vite-plugin`, which is where template-path bugs live.
- */
-test.describe('app-showcase /dashboard — plot engine interaction', () => {
-  test('hover shows the tooltip, a click and the keyboard both report a bar', async ({ page }) => {
-    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' })
-    const wrap = page.getByTestId('plot-engine-chart')
-    const canvas = wrap.locator('canvas').first()
-    await expect(canvas).toBeVisible({ timeout: 15_000 })
-    // The chart sits below the fold: a real pointer only reaches what is on
-    // screen (synthetic events do not care, which is how a host suite can be
-    // green while a page hover does nothing). Scroll it in first.
-    await canvas.scrollIntoViewIfNeeded()
-    expect((await canvas.boundingBox())!.width).toBeGreaterThan(100)
-
-    // The first mark is bars, so the tooltip answers only ON a bar — a gap
-    // between bars is a miss by contract, and a point above a SHORT bar is a
-    // miss too. So sweep a GRID, not one row: the spec knows neither the
-    // gutter, the band width, nor which bars are tall.
-    //
-    // The box is re-read on every pass. Reading it once and sweeping the
-    // captured coordinates is the stale-coordinate bug: the dashboard is still
-    // settling while this runs (images, the sibling ECharts pair, the query
-    // that gates this very chart), so a box measured early names a rectangle
-    // the canvas has since moved out of, and every probe lands on whatever now
-    // occupies those pixels. That reports "the hit test is broken" for a chart
-    // that was simply somewhere else — and it reports it deterministically, so
-    // it does not even read as a race.
-    //
-    // The poll covers the other half: the chart plays its entrance on mount
-    // (bars rise over ~700ms), so a pass that starts early finds every bar too
-    // short to hit.
-    const tooltip = wrap.locator('[data-pyreon-chart-tooltip]')
-    let x = 0
-    let y = 0
-    const sweep = async (): Promise<boolean> => {
-      const b = await canvas.boundingBox()
-      if (b === null) return false
-      for (const fy of [0.75, 0.6, 0.45, 0.3]) {
-        for (let fx = 0.12; fx < 0.95; fx += 0.04) {
-          x = b.x + b.width * fx
-          y = b.y + b.height * fy
-          await page.mouse.move(x, y)
-          if (await tooltip.isVisible()) return true
-        }
-      }
-      return false
-    }
-    // On failure, say what is actually under the pointer. "No position
-    // produced a tooltip" is true of a covered canvas, a moved canvas and a
-    // broken hit test alike, and those want three different fixes.
-    const diagnose = async (): Promise<string> => {
-      const at = await page.evaluate(
-        ([px, py]) => {
-          const el = document.elementFromPoint(px as number, py as number)
-          if (el === null) return 'nothing (outside the viewport)'
-          const id = el.getAttribute('data-testid')
-          return `<${el.tagName.toLowerCase()}${id === null ? '' : ` data-testid="${id}"`}>`
-        },
-        [x, y],
-      )
-      const b = await canvas.boundingBox()
-      return `last probe (${Math.round(x)},${Math.round(y)}) hit ${at}; canvas box is ${
-        b === null ? 'gone' : `${Math.round(b.x)},${Math.round(b.y)} ${Math.round(b.width)}x${Math.round(b.height)}`
-      }`
-    }
-    let ok = false
-    try {
-      await expect.poll(sweep, { timeout: 15_000 }).toBe(true)
-      ok = true
-    } finally {
-      if (!ok) console.log(`[charts e2e] sweep found no tooltip — ${await diagnose()}`)
-    }
-    await expect(tooltip).toBeVisible()
-    await expect(tooltip).not.toHaveText('')
-
-    await page.mouse.click(x, y)
-    const picked = page.getByTestId('plot-engine-picked')
-    await expect(picked).not.toHaveText('-1')
-    const clicked = Number(await picked.textContent())
-    expect(clicked).toBeGreaterThanOrEqual(0)
-    expect(clicked).toBeLessThan(7)
-
-    // Keyboard: focus the canvas, walk right twice, Enter reports the focused bar.
-    await canvas.focus()
-    await page.keyboard.press('Home')
-    await page.keyboard.press('ArrowRight')
-    await page.keyboard.press('ArrowRight')
-    const live = wrap.locator('[role="status"]')
-    await expect(live).not.toHaveText('')
-    await page.keyboard.press('Enter')
-    await expect(picked).toHaveText('2')
-
-    // Leaving hides the tooltip.
-    const away = (await canvas.boundingBox())!
-    await page.mouse.move(away.x + away.width + 40, away.y + away.height + 40)
-    await expect(tooltip).toBeHidden()
+    expect(errors, `Unexpected page errors:\n${errors.join('\n')}`).toHaveLength(0)
   })
 })

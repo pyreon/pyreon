@@ -6,7 +6,7 @@
 // SAME idiomatic native emit the hand-written `.set(x().map(...))`
 // form produces (no IIFE, no closure-invocation noise).
 
-import type { AttrIR, ChildIR, DeclIR, ExprIR, StructIR, TypeIR } from './types'
+import type { AttrIR, ChildIR, DeclIR, ExprIR, ParseResult, StructIR, TypeIR } from './types'
 
 /**
  * Per-component map of `const name → scalar-literal value` for COMPONENT-SCOPE
@@ -289,6 +289,101 @@ export function buildJsonLiteralParts(expr: ExprIR): JsonLiteralPart[] | null {
 }
 
 /**
+ * The per-module suffix every synthesized anonymous-object struct carries.
+ *
+ * Synthesized structs are declared at FILE scope with a counter name
+ * (`__Obj0`, `__Obj1`, …), so two generated files in one Xcode target / one
+ * Gradle source set (one Kotlin package) each declared `__Obj0` and the build
+ * failed with `invalid redeclaration` / `Redeclaration`. They cannot simply be
+ * made file-private: a synthesized struct is named in internal signatures (a
+ * `@State` property's type, a helper's return type), and neither language lets
+ * an internal declaration expose a private type. So the NAME is made unique
+ * per module instead.
+ *
+ * Set by `transform()` for the duration of one emit, and only when the caller
+ * identifies the module (`filename`) — a standalone in-memory emit keeps the
+ * bare `__ObjN`, which is what a single file needs. The suffix hashes the
+ * module's PARSED content, not its raw source text or its path: the path is
+ * machine-dependent (the CLI passes an absolute one), and generated output
+ * must not change with the checkout location — so the original fix hashed
+ * the source string instead.
+ *
+ * That was one step short. Plain Mode's pre-pass (`transformPlain`) lowers
+ * `let x = state(0)` to `const x = signal(0)` — and total-tracking wraps a
+ * conditionally-read dep in a `void (…)` prologue — BEFORE `parsePyreon` ever
+ * builds the IR, so a Plain-authored module and its hand-written classic twin
+ * converge to the exact same `ParseResult` (same components, same structs) but
+ * start from DIFFERENT raw source text (different imports, `let`/`state()` vs
+ * `const`/`signal()`, an extra `void (…)` the classic twin never has). Hashing
+ * the raw text gave the SAME logical module two different suffixes depending
+ * on which dialect authored it — breaking the very "Plain and classic emit
+ * byte-identically" guarantee PMTC is built around, since even a semantics-
+ * preserving Plain-Mode rewrite of an existing file renamed every synthesized
+ * struct. Hashing the PARSED IR instead means the suffix depends on what the
+ * module DOES, not on which dialect spelled it out, while staying exactly as
+ * path-independent as the source-text scheme it replaces (`ParseResult` never
+ * carries the filename `parsePyreon` was called with).
+ *
+ * `warnings` and `aliasImports` are deliberately excluded from the hash input:
+ * a Plain Mode warning message embeds the filename itself (`msg
+ * (file:line:col)`), which would reintroduce the exact path-dependence this
+ * suffix exists to avoid, and `aliasImports` is a `Map` (stringifies to `{}`,
+ * contributing nothing). Two structurally-different files landing on the same
+ * tag is no worse than it was under the old scheme: hashing raw source text
+ * already collapsed two files with byte-identical source onto one tag, and a
+ * module reduced to the exact same IR as another one already shares its
+ * top-level declared names — the two would collide on those regardless of
+ * this suffix.
+ */
+let _synthStructSuffix = ''
+
+/** Run `fn` with `suffix` as the synthesized-struct suffix, restoring the previous one after. */
+export function withSynthStructSuffix<T>(suffix: string, fn: () => T): T {
+  const prev = _synthStructSuffix
+  _synthStructSuffix = suffix
+  try {
+    return fn()
+  } finally {
+    _synthStructSuffix = prev
+  }
+}
+
+/** The name of the `n`-th synthesized struct in the current emit. */
+export function synthStructName(n: number): string {
+  return `__Obj${n}${_synthStructSuffix}`
+}
+
+/**
+ * A short, stable, identifier-safe tag for a module's PARSED content (FNV-1a,
+ * 32-bit, over a JSON snapshot of the semantically-relevant IR fields — see
+ * the doc comment on `_synthStructSuffix` for why this is keyed on the parsed
+ * IR rather than the raw source text or the file path).
+ */
+export function moduleTag(parsed: ParseResult): string {
+  const key = JSON.stringify([
+    parsed.components,
+    parsed.enums,
+    parsed.structs,
+    parsed.moduleDecls,
+    parsed.stores,
+    parsed.models,
+    parsed.fieldMetas,
+    parsed.features,
+    parsed.zodSchemas,
+    parsed.helperFns,
+    parsed.styledComponents,
+    parsed.rocketstyleComponents,
+    parsed.attrsComponents,
+  ])
+  let h = 0x811c9dc5
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i)
+    h = Math.imul(h, 0x01000193) >>> 0
+  }
+  return h.toString(36)
+}
+
+/**
  * Why a field value cannot be given a struct-field type — the ONE place that
  * knows, so both emitters produce the same message for the same shape.
  *
@@ -351,10 +446,45 @@ export function synthLiteralStructName(
     .join(',')
   const existing = keys.get(shapeKey)
   if (existing !== undefined) return existing
-  const name = `__Obj${structs.length}`
+  const name = synthStructName(structs.length)
   structs.push({ name, fields: typed })
   keys.set(shapeKey, name)
   return name
+}
+
+/**
+ * A helper FUNCTION PARAMETER's type with every inline object shape in it
+ * (`t: { c: string }`, `rows: { a: number }[]`, `m?: { … }`) replaced by the
+ * struct the matching object LITERAL resolves to — a declared struct of that
+ * shape when there is one (`declared`), else the synthesized `__ObjN` from the
+ * shared literal registry.
+ *
+ * A call site passes `f({ c: "x" })`, which both emitters lower through that
+ * registry to `__Obj0(c: "x")`. The parameter used to be typed context-free:
+ * Swift spelled it a labelled TUPLE (a single-field one collapsed to the bare
+ * field type, `_ t: String`, so `t.c` did not typecheck) and Kotlin
+ * synthesized its OWN `PyreonHelpersT` — two nominal types for one shape, and
+ * neither target compiled. Resolving the parameter through the SAME registry
+ * key as the literal makes the two agree by construction.
+ */
+export function namedInlineParamType(
+  t: TypeIR,
+  declared: (fields: readonly { name: string; type: TypeIR }[]) => string | undefined,
+  structs: StructIR[],
+  keys: Map<string, string>,
+): TypeIR {
+  switch (t.kind) {
+    case 'object': {
+      const name = declared(t.fields) ?? synthTypedStructName(t.fields, structs, keys)
+      return name === null ? t : { kind: 'typeRef', name, args: [] }
+    }
+    case 'array':
+      return { kind: 'array', element: namedInlineParamType(t.element, declared, structs, keys) }
+    case 'union':
+      return { kind: 'union', branches: t.branches.map((b) => namedInlineParamType(b, declared, structs, keys)) }
+    default:
+      return t
+  }
 }
 
 /**
@@ -397,7 +527,7 @@ export function synthTypedStructName(
     .join(',')
   const existing = keys.get(shapeKey)
   if (existing !== undefined) return existing
-  const name = `__Obj${structs.length}`
+  const name = synthStructName(structs.length)
   structs.push({ name, fields: typed })
   keys.set(shapeKey, name)
   return name
@@ -1386,4 +1516,32 @@ export function optionalSpreadWarning(name: string): string {
 export function isNumericLiteralOrNegation(x: ExprIR): boolean {
   if (x.kind === 'literal') return typeof x.value === 'number' || typeof x.value === 'string'
   return x.kind === 'unary' && (x.op === '-' || x.op === '+') && x.argument.kind === 'literal' && typeof x.argument.value === 'number'
+}
+
+/**
+ * Does a value of type `t` need converting before a schema can read it?
+ *
+ * An emitted schema's `parse` reads plain values — a dictionary for an
+ * object, native scalars for fields. A scalar already is one; a struct, an
+ * inline object, or a collection that holds either is a typed value, and is
+ * routed through the runtime's `pyreonSchemaValue` (Codable / @Serializable
+ * → plain JSON values). An `unknown` type is NOT converted: the conversion
+ * only compiles for an encodable value, and guessing would turn code that
+ * compiles into code that does not.
+ */
+export function schemaInputNeedsConversion(t: TypeIR): boolean {
+  switch (t.kind) {
+    case 'typeRef':
+    case 'object':
+      return true
+    case 'array':
+    case 'set':
+      return schemaInputNeedsConversion(t.element)
+    case 'map':
+      return schemaInputNeedsConversion(t.value)
+    case 'union':
+      return t.branches.some(schemaInputNeedsConversion)
+    default:
+      return false
+  }
 }

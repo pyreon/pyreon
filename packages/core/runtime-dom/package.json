@@ -61,18 +61,18 @@
     "@pyreon/reactivity": "workspace:^"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.11.6",
+    "@happy-dom/global-registrator": "^20.14.5",
     "@pyreon/compiler": "workspace:^",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/runtime-server": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^4.1.11",
+    "@vitest/browser-playwright": "^5.0.2",
     "esbuild": "^0.28.2",
-    "happy-dom": "^20.11.6",
-    "rolldown": "^1.2.7",
-    "vite": "^8.2.2"
+    "happy-dom": "^20.14.5",
+    "rolldown": "^1.2.11",
+    "vite": "^8.3.1"
   },
   "publishConfig": {
     "access": "public"

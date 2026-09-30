@@ -28,6 +28,12 @@ export interface EmitOptions {
    * exist, so the position is not just unhelpful but actively misleading.
    * Callers that have a real path should pass it; the default stays for
    * in-memory callers that genuinely have none.
+   *
+   * It is ALSO what marks the emit as one module of a multi-file build: when
+   * set, the file-scope structs PMTC synthesizes for anonymous object literals
+   * get a per-module suffix (`__Obj0_k3x9a`), so two generated files in one
+   * Xcode target / Gradle source set cannot both declare `__Obj0`. Without it
+   * the bare `__ObjN` names are kept, which is correct for a single file.
    */
   filename?: string
 }
@@ -751,6 +757,21 @@ export type DeclIR =
       /** SSE reconnect policy; `null` = `reconnect: false` (always null for NDJSON). */
       reconnect: { attempts: number; delay: number; maxDelay: number; onEnd: boolean } | null
       maxEvents: number
+      /**
+       * A RUNTIME `json` body (`json: { prompt: prompt() }`) — serialized per
+       * run with the `JSON.stringify` lowering and part of the harness key, so
+       * a change re-opens the stream exactly as the web's tracked source does.
+       * Absent when the body is a literal (`requestBody`) or there is none.
+       */
+      requestBodyExpr?: ExprIR
+      /**
+       * `useStream(src, { enabled })` — the stream runs only while this is
+       * true. Part of the harness key; a false value stops the stream and
+       * reads `idle`, keeping the events received (the web's disabled branch).
+       */
+      enabled?: ExprIR
+      /** `useStream(src, { onEvent: (ev) => … })` — runs after each event lands. */
+      onEvent?: { param: string; body: StatementIR[] }
     }
   | { kind: 'websocket'; name: string; url: string }
   | { kind: 'database'; name: string }
@@ -1939,6 +1960,11 @@ export type ZodFieldType =
         | { kind: 'object'; schemaName: string }
       /** v3 — applies to PRIMITIVE element types only. */
       elementConstraints?: ZodFieldConstraints
+      /**
+       * The element is `number().int()`. Absent means a plain `number()`,
+       * which accepts a fraction — see the field-level `integer`.
+       */
+      elementInteger?: boolean
     }
 
 export interface ZodSchemaDefnIR {
@@ -1956,6 +1982,13 @@ export interface ZodSchemaDefnIR {
      * (not throw) when the field is missing.
      */
     optional?: boolean
+    /**
+     * `.int()` is in the modifier chain. Absent on a `number()` field means
+     * the schema accepts a FRACTION (`1.5`), which is the evidence
+     * `refineStructFloatsFromResponseSchemas` uses to type a decode struct's
+     * matching field Double rather than PMTC's `number` → Int default.
+     */
+    integer?: boolean
   }[]
   /**
    * Gap 4 v3.2 — auxiliary schemas synthesized while parsing this

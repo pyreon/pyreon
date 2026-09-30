@@ -26,7 +26,7 @@ export interface ChartLink {
  * actions take a series (mark) index; `dataZoom` takes the window as fractions
  * of the data (a full window reads back as null); `restore` clears zoom, hover,
  * selection, legend and brush areas; `takeGlobalCursor` / `brush` drive the area
- * brush and `timelineChange` / `timelinePlayChange` an `OptionChart` timeline.
+ * brush.
  */
 export type ChartAction =
   | { type: 'highlight'; index: number }
@@ -50,10 +50,6 @@ export type ChartAction =
   | { type: 'takeGlobalCursor'; brushType: '' | 'rect' | 'polygon' | 'lineX' | 'lineY' }
   /** Show these brush areas (plot pixels; `[]` clears) — ECharts' `brush` action. */
   | { type: 'brush'; areas: BrushArea[] }
-  /** Jump an `OptionChart` timeline to a step. */
-  | { type: 'timelineChange'; index: number }
-  /** Play or pause an `OptionChart` timeline. */
-  | { type: 'timelinePlayChange'; playing: boolean }
 
 export interface ChartHandle extends ChartLink {
   /** Pinned datums (GLOBAL indices), in selection order. */
@@ -65,9 +61,6 @@ export interface ChartHandle extends ChartLink {
   /** The area brush's armed type ('' = none) and its areas — what `takeGlobalCursor` and `brush` move. */
   brushType: Signal<string>
   brushAreas: Signal<BrushArea[]>
-  /** An `OptionChart` timeline's step (-1 = the option's own) and play state (null = the option's autoPlay). */
-  step: Signal<number>
-  playing: Signal<boolean | null>
   /** Apply an action; every write lands in one batch, so the chart repaints once. */
   dispatch(action: ChartAction): void
 }
@@ -105,8 +98,6 @@ export function createChartHandle(): ChartHandle {
   const seriesCount = signal(0)
   const brushType = signal('')
   const brushAreas = signal<BrushArea[]>([])
-  const step = signal(-1)
-  const playing = signal<boolean | null>(null)
   // One reducer for every target (`chart-actions.ts`): read the state, apply, write back only what moved.
   const dispatch = (a: ChartAction): void => {
     const z = zoom.peek()
@@ -118,8 +109,6 @@ export function createChartHandle(): ChartHandle {
       seriesCount: seriesCount.peek(),
       brushType: brushType.peek(),
       areas: brushAreas.peek(),
-      step: step.peek(),
-      playing: playing.peek() === true,
     }
     const after = applyChartAction(before, toActionInput(a))
     batch(() => {
@@ -129,11 +118,9 @@ export function createChartHandle(): ChartHandle {
       if (after.hidden !== before.hidden) hidden.set(after.hidden)
       if (after.brushType !== before.brushType) brushType.set(after.brushType)
       if (after.areas !== before.areas) brushAreas.set(after.areas)
-      if (after.step !== before.step) step.set(after.step)
-      if (a.type === 'timelinePlayChange') playing.set(a.playing)
     })
   }
-  return { zoom, hover, selected, hidden, seriesCount, brushType, brushAreas, step, playing, dispatch }
+  return { zoom, hover, selected, hidden, seriesCount, brushType, brushAreas, dispatch }
 }
 
 /** A typed action as the reducer's flat record. */
@@ -145,7 +132,6 @@ export function toActionInput(a: ChartAction): ChartActionInput {
     case 'select':
     case 'unselect':
     case 'toggleSelect':
-    case 'timelineChange':
       return { ...base, index: a.index }
     case 'legendSelect':
     case 'legendUnselect':
@@ -159,8 +145,6 @@ export function toActionInput(a: ChartAction): ChartActionInput {
       return { ...base, brushType: a.brushType }
     case 'brush':
       return { ...base, areas: a.areas }
-    case 'timelinePlayChange':
-      return { ...base, playing: a.playing }
     default:
       return base
   }

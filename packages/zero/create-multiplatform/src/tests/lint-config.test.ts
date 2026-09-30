@@ -64,12 +64,12 @@ const PLATFORM_BRANCH = `export const A = () => <Web><div /></Web>\n`
  */
 const REST = [
   `import { styled } from '@pyreon/styler'`,
-  `import { renderChart } from '@pyreon/charts'`,
+  `import { CodeEditor } from '@pyreon/code'`,
   `import { onMount } from '@pyreon/core'`,
   `export const Card = styled('div')\`color:red\``,
   `export function Panel() {`,
   `  onMount(() => {})`,
-  `  return <div>{renderChart}</div>`,
+  `  return <div>{CodeEditor}</div>`,
   `}`,
   ``,
 ].join('\n')

@@ -155,6 +155,8 @@ jobs:
       scaffold-has: ${{ steps.scaffold.outputs.has }}
       scaffold-matrix: ${{ steps.scaffold.outputs.matrix }}
       bootstrap-exit-codes: ${{ steps.bexit.outputs.run }}
+      browser-engines: ${{ steps.engines.outputs.list }}
+      browser-engines-has: ${{ steps.engines.outputs.has }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -268,6 +270,24 @@ jobs:
           echo "code=$CODE" >> "$GITHUB_OUTPUT"
           echo "affected=$AFFECTED" >> "$GITHUB_OUTPUT"
           echo "Code (non-docs) changed: $CODE | Any package affected: $AFFECTED"
+      - name: Select cross-engine browser suites
+        id: engines
+        run: |
+          # Packages that opt into WebKit + Firefox by declaring a
+          # `test:browser:engines` script; `Test (browser)` runs the affected
+          # ones after its Chromium pass. Fail-closed at every layer: an
+          # affected.ts error passes NO verdict (→ every suite), and
+          # browser-engines.ts itself selects every suite for any verdict it
+          # cannot parse. Only a clean, empty selection skips the engines.
+          if [ "${{ github.event_name }}" = "pull_request" ] \
+             && FLAGS=$(bun run scripts/affected.ts --base="$CI_BASE"); then
+            LIST=$(bun scripts/browser-engines.ts --affected="$FLAGS") || LIST=$(bun scripts/browser-engines.ts --all)
+          else
+            LIST=$(bun scripts/browser-engines.ts --all)
+          fi
+          echo "list=$LIST" >> "$GITHUB_OUTPUT"
+          if [ "$LIST" = "[]" ]; then echo "has=false" >> "$GITHUB_OUTPUT"; else echo "has=true" >> "$GITHUB_OUTPUT"; fi
+          echo "Cross-engine browser suites: $LIST"
       - name: Compute typecheck/test cell matrices
         id: matrices
         run: |
@@ -1417,59 +1437,11 @@ jobs:
       - name: Check Bin Liveness
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: bun run check-bin-liveness
-      # ── coverage ─────────────────────────────────────────────────────────
+      # ── coverage (floor only — full measurement moves below the native
+      # binary build; see the "Coverage (changed packages)" step) ──────────
       - name: Coverage (floor + exemption drift)
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: bun run coverage:floor
-      # Measure the packages this PR actually touches (`--changed-only`: the
-      # DIRECTLY-changed workspaces, never the dependent closure — coverage
-      # is a property of a package's own sources + tests, and the closure is
-      # what tripped the >15 cap and silently skipped the packages that
-      # matter most). The whole-repo run stays on push:main + merge_group.
-      - name: Coverage (changed packages)
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' && github.event_name == 'pull_request' }}
-        run: |
-          set -euo pipefail
-          FILTER=$(bun run scripts/affected.ts --changed-only --base="$CI_BASE")
-          if [ "$FILTER" = "--filter=*" ]; then
-            echo "Root-file change → blast radius unknowable; full coverage runs on main."
-            exit 0
-          fi
-          # TOOLCHAIN-BOUND packages are dropped BEFORE the width cap. Bringing
-          # `packages/native` into PACKAGE_DIRS (this PR's point) puts
-          # `@pyreon/native-compiler` in scope, and its suite spawns ~600 real
-          # swiftc/kotlinc processes — ~400s uncached WITHOUT coverage, and this
-          # job's verdict cache is cold. Measured on this very PR: the step ran
-          # 1381s and the job's 15-minute cap cancelled it, which reports as a
-          # RED `Build` naming no failure.
-          #
-          # The existing cap counts PACKAGES, and one package here costs more
-          # than fifteen ordinary ones — a cap chosen by the wrong dimension.
-          # Their coverage still lands, on `Coverage (Full)` at push:main +
-          # merge_group, which is exactly the backstop the width cap already
-          # leans on. Say WHICH were dropped, so the omission is visible rather
-          # than inferred from a smaller number.
-          SLOW='@pyreon/native-compiler'
-          DROPPED=$(printf '%s\n' $FILTER | sed 's/^--filter=//' | grep -xF "$SLOW" || true)
-          KEPT=$(printf '%s\n' $FILTER | sed 's/^--filter=//' | grep -vxF "$SLOW" || true)
-          if [ -n "$DROPPED" ]; then
-            echo "Toolchain-bound, measured on main instead: $(printf '%s' "$DROPPED" | paste -sd, -)"
-          fi
-          NAMES=$(printf '%s' "$KEPT" | paste -sd, -)
-          COUNT=$(printf '%s\n' $KEPT | grep -c . || true)
-          if [ "$COUNT" -eq 0 ]; then
-            echo "Nothing left to measure at PR time."
-            exit 0
-          fi
-          # A release PR touches every package.json → ~130 explicit filters;
-          # the push:main full run is the backstop for that width.
-          if [ "$COUNT" -gt 15 ]; then
-            echo "$COUNT affected packages — too wide for a PR-time run;"
-            echo "full coverage runs on push:main + merge_group."
-            exit 0
-          fi
-          echo "Affected ($COUNT): ${NAMES:-<none>}"
-          bun scripts/check-coverage.ts --only="$NAMES"
       # ── Rust binary: cross-backend equivalence gate ──────────────────────
       # Builds the @pyreon/compiler napi-rs binary and runs the compiler suite
       # with it loaded; the equivalence harness asserts every JS-path output
@@ -1517,6 +1489,64 @@ jobs:
       - name: Test (Rust binary) — @pyreon/compiler suite against the binary
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: bun run --filter='@pyreon/compiler' test
+      # Measure the packages this PR actually touches (`--changed-only`: the
+      # DIRECTLY-changed workspaces, never the dependent closure — coverage
+      # is a property of a package's own sources + tests, and the closure is
+      # what tripped the >15 cap and silently skipped the packages that
+      # matter most). The whole-repo run stays on push:main + merge_group.
+      #
+      # MUST run after the native binary is built + asserted present (above):
+      # @pyreon/compiler's suite gates several files on the native `.node`
+      # binary via `describeNative` (skips the whole describe block to
+      # `describe.skip` when the binary is absent) — the JS≡Rust differential
+      # fuzz + native-equivalence tests. Running this step earlier in the job
+      # measured @pyreon/compiler's coverage against the JS-only subset and
+      # produced a false floor failure (96.65% vs the real 97.44%) on every
+      # PR touching the package, independent of the PR's own changes.
+      - name: Coverage (changed packages)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' && github.event_name == 'pull_request' }}
+        run: |
+          set -euo pipefail
+          FILTER=$(bun run scripts/affected.ts --changed-only --base="$CI_BASE")
+          if [ "$FILTER" = "--filter=*" ]; then
+            echo "Root-file change → blast radius unknowable; full coverage runs on main."
+            exit 0
+          fi
+          # TOOLCHAIN-BOUND packages are dropped BEFORE the width cap. Bringing
+          # `packages/native` into PACKAGE_DIRS (this PR's point) puts
+          # `@pyreon/native-compiler` in scope, and its suite spawns ~600 real
+          # swiftc/kotlinc processes — ~400s uncached WITHOUT coverage, and this
+          # job's verdict cache is cold. Measured on this very PR: the step ran
+          # 1381s and the job's 15-minute cap cancelled it, which reports as a
+          # RED `Build` naming no failure.
+          #
+          # The existing cap counts PACKAGES, and one package here costs more
+          # than fifteen ordinary ones — a cap chosen by the wrong dimension.
+          # Their coverage still lands, on `Coverage (Full)` at push:main +
+          # merge_group, which is exactly the backstop the width cap already
+          # leans on. Say WHICH were dropped, so the omission is visible rather
+          # than inferred from a smaller number.
+          SLOW='@pyreon/native-compiler'
+          DROPPED=$(printf '%s\n' $FILTER | sed 's/^--filter=//' | grep -xF "$SLOW" || true)
+          KEPT=$(printf '%s\n' $FILTER | sed 's/^--filter=//' | grep -vxF "$SLOW" || true)
+          if [ -n "$DROPPED" ]; then
+            echo "Toolchain-bound, measured on main instead: $(printf '%s' "$DROPPED" | paste -sd, -)"
+          fi
+          NAMES=$(printf '%s' "$KEPT" | paste -sd, -)
+          COUNT=$(printf '%s\n' $KEPT | grep -c . || true)
+          if [ "$COUNT" -eq 0 ]; then
+            echo "Nothing left to measure at PR time."
+            exit 0
+          fi
+          # A release PR touches every package.json → ~130 explicit filters;
+          # the push:main full run is the backstop for that width.
+          if [ "$COUNT" -gt 15 ]; then
+            echo "$COUNT affected packages — too wide for a PR-time run;"
+            echo "full coverage runs on push:main + merge_group."
+            exit 0
+          fi
+          echo "Affected ($COUNT): ${NAMES:-<none>}"
+          bun scripts/check-coverage.ts --only="$NAMES"
 
   test-browser:
     name: Test (browser)
@@ -1528,7 +1558,9 @@ jobs:
     needs: [install, fast-gates]
     if: ${{ needs.install.result == 'success' && needs.fast-gates.result == 'success' && needs.install.outputs.code == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # ~2.5 min for the Chromium pass (main, 2026-09); the cross-engine pass
+    # adds two bounded 300s apt attempts in the worst case plus its suites.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
@@ -1583,6 +1615,62 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
       - run: bun run test:browser
+      # ── Cross-engine pass (WebKit + Firefox) ──────────────────────────────
+      # Only when an AFFECTED package opts in via `test:browser:engines` (see
+      # scripts/browser-engines.ts). A step, not a job: a job costs a queue
+      # slot + checkout + setup-pyreon for work this runner is already set up
+      # to do, and staying inside `Test (browser)` keeps the result on an
+      # existing required check with no rename.
+      #
+      # `!= 'false'` (not `== 'true'`) is the fail-closed half: an empty output
+      # from a decide step that crashed still runs the engines. `!cancelled()`
+      # so a red Chromium pass does not hide an independent engine failure.
+      #
+      # NOT cached, deliberately. WebKit + Firefox are ~575 MB unpacked, and the
+      # actions cache was at 8.35 GB of its 10 GB limit when this landed
+      # (2026-09-29, `gh api .../actions/cache/usage`), where large low-value
+      # entries have repeatedly evicted the small bootstrap entries every job
+      # depends on (see the Chromium restore note above). The download comes
+      # from Playwright's CDN and only runs on PRs touching an opted-in
+      # package, so paying it per run is the cheaper side of that trade.
+      - name: Install Playwright WebKit + Firefox (not cached)
+        if: ${{ !cancelled() && needs.install.outputs.browser-engines-has != 'false' }}
+        run: |
+          # Unlike Chromium, these engines' OS libraries are NOT preinstalled on
+          # ubuntu-latest (WebKit needs GStreamer, libwoff, libmanette, …), so
+          # install-deps is required here, not best-effort. The known apt hang
+          # (see the Chromium step) is bounded per attempt and retried once;
+          # a second failure fails the step loudly rather than running engines
+          # that cannot launch.
+          sudo grep -rlZ packages.microsoft.com /etc/apt/sources.list.d/ 2>/dev/null | sudo xargs -0 -r rm -f || true
+          ok=0
+          for attempt in 1 2; do
+            if timeout 300 bunx playwright install-deps webkit firefox; then ok=1; break; fi
+            echo "::warning::playwright install-deps attempt $attempt failed or timed out"
+          done
+          [ "$ok" = 1 ] || { echo "::error::Could not install WebKit/Firefox OS dependencies"; exit 1; }
+          bunx playwright install webkit firefox
+      - name: Test (browser engines — WebKit + Firefox)
+        if: ${{ !cancelled() && needs.install.outputs.browser-engines-has != 'false' }}
+        env:
+          ENGINE_SUITES: ${{ needs.install.outputs.browser-engines }}
+        run: |
+          LIST="$ENGINE_SUITES"
+          # Fail-closed: a missing/garbled selection runs every opted-in suite.
+          if ! echo "$LIST" | jq -e 'type == "array"' >/dev/null 2>&1; then
+            echo "::warning::No usable engine-suite selection ('$LIST') — running every opted-in suite"
+            LIST=$(bun scripts/browser-engines.ts --all)
+          fi
+          failed=""
+          for pkg in $(echo "$LIST" | jq -r '.[]'); do
+            echo "::group::$pkg — test:browser:engines"
+            if ! bun run --filter="$pkg" test:browser:engines; then failed="$failed $pkg"; fi
+            echo "::endgroup::"
+          done
+          if [ -n "$failed" ]; then
+            echo "::error::Cross-engine browser suites failed:$failed"
+            exit 1
+          fi
 
   release-build:
     name: Release Build

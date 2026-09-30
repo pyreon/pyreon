@@ -23,13 +23,13 @@ package com.pyreon.runtime
  * FIFO mode is the DEFAULT here. Expressing both from one explicit code path
  * keeps the two platforms provably identical rather than "close enough".
  */
-class PyreonSizedMap<K, V>(maxEntries: Int, private val lru: Boolean = false) {
+class PyreonSizedMap<K, V>(maxEntries: Long, private val lru: Boolean = false) {
     /** Floored at 1, mirroring the web's `Math.max(1, …)`. A cap of 0 would
      *  make [set] evict the entry it just wrote. */
-    private val maxEntries: Int = maxOf(1, maxEntries)
+    private val maxEntries: Long = maxOf(1L, maxEntries)
     private val storage = LinkedHashMap<K, V>()
 
-    val size: Int get() = storage.size
+    val size: Long get() = storage.size.toLong()
 
     /** Reads the value. Under [lru] this MUTATES the ordering — the entry
      *  moves to the tail — which is why it is a function, not a getter. */

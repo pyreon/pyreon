@@ -52,12 +52,12 @@
     "@tanstack/table-core": "^9.1.2"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.11.6",
+    "@happy-dom/global-registrator": "^20.14.5",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "arktype": "^2.2.3",
+    "arktype": "^2.2.5",
     "valibot": "^1.5.0",
     "zod": "^4.6.5"
   },
