@@ -14,4 +14,4 @@ For the script body, `</` → `<\/` stops the element being CLOSED but not the t
 
 A `<script src>` URL is now escaped for its attribute context (`&` first, then `"` and `<`) rather than `"` alone.
 
-These are developer-supplied options rather than request data, so this is defence-in-depth — but a PR earlier in this cycle hardened these exact functions for the JS-string context and left both of these, and an app deriving a theme colour from content would have been exposed. `@pyreon/charts` has the same two shapes and is deliberately left alone here — it is under active change.
+These are developer-supplied options rather than request data, so this is defence-in-depth — but a PR earlier in this cycle hardened these exact functions for the JS-string context and left both of these, and an app deriving a theme colour from content would have been exposed.

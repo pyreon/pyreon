@@ -208,13 +208,15 @@ describe('the portable tier completion', () => {
   it('no-web-only-import-in-portable fires, and points at the webview bridge where one exists', () => {
     const ID = 'pyreon/no-web-only-import-in-portable'
     expect(only(`import { mount } from '@pyreon/runtime-dom'`, ID, P)).toHaveLength(1)
-    const charts = only(`import { Chart } from '@pyreon/charts'`, ID, P)
-    expect(charts[0]?.message).toContain('@pyreon/charts/webview')
+    const code = only(`import { CodeEditor } from '@pyreon/code'`, ID, P)
+    expect(code[0]?.message).toContain('@pyreon/code/webview')
+    // Charts draw natively — the engine is generated into the native runtimes.
+    expect(only(`import { Chart } from '@pyreon/charts'`, ID, P)).toEqual([])
   })
 
   it('...and accepts the webview subpath itself', () => {
     expect(
-      only(`import { Chart } from '@pyreon/charts/webview'`, 'pyreon/no-web-only-import-in-portable', P),
+      only(`import { CodeWebView } from '@pyreon/code/webview'`, 'pyreon/no-web-only-import-in-portable', P),
     ).toEqual([])
   })
 

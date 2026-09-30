@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
 import { query } from '@pyreon/test-utils'
 import { HeatmapChart } from './HeatmapChart'
-import { visualMapSpec } from './visual-map'
+import { visualMap } from './visual-map'
 
 interface Obs {
   day: string
@@ -73,7 +73,7 @@ describe('HeatmapChart', () => {
       { day: 'Mon', hour: '09', n: 10 },
       { day: 'Tue', hour: '09', n: 90 },
     ]
-    const spec = visualMapSpec({ visualMap: { min: 0, max: 100, calculable: true, inRange: { color: ['#000000', '#0000ff'] } }, series: [{ data: [[0, 0, 10], [1, 0, 90]] }] })!.spec
+    const spec = visualMap({ domain: [0, 100], calculable: true, stops: ['#000000', '#0000ff'] })
     const ranges: [number, number][] = []
     const { container } = mountInBrowser(() =>
       HeatmapChart({ animate: false, data: rows, x: (d) => d.day, y: (d) => d.hour, value: (d) => d.n, width: 300, height: 220, visualMap: spec, onVisualMapChange: (s) => ranges.push(s.range) }),

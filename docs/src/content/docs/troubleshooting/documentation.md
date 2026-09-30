@@ -63,7 +63,7 @@ Reactive attributes use `attr={() => …}`. If an attr's type in `packages/core/
 
 ### Special-case emitters that return before the generic modifier tail
 
-The generic tail turns `data-testid` into `.accessibilityIdentifier` / `Modifier.testTag`. Emitters that return early (`emitSwiftLink`/`emitKotlinLink`, `emitKotlinToggle`, the `<WebView>`/`<ChartWebView>`/`<FlowWebView>` hosts) dropped it, so the element could not be selected in device tests. When writing or touching any special-case emitter, audit which tail responsibilities it skips (test ids, a11y props, layout).
+The generic tail turns `data-testid` into `.accessibilityIdentifier` / `Modifier.testTag`. Emitters that return early (`emitSwiftLink`/`emitKotlinLink`, `emitKotlinToggle`, the `<WebView>`/`<FlowWebView>` hosts) dropped it, so the element could not be selected in device tests. When writing or touching any special-case emitter, audit which tail responsibilities it skips (test ids, a11y props, layout).
   - Swift wrappers such as `PyreonLink` need `.accessibilityElement(children: .contain)` so the identifier survives flattening and the child stays queryable.
   - A host that lowers some props itself passes them in the tail's `omit` set, from its own handled-prop registry (e.g. `background` is the page's background on a WebView).
   - A handler emitter that special-cases the parameter must still delegate the body to the one generic action emitter; otherwise block-bodied handlers (`onMessage`, `onSelect`, …) lower to empty closures.

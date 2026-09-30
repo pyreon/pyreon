@@ -13,7 +13,7 @@
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createHttp } from '../client'
 import { forwardHeaders } from '../middleware'
 import { getAmbientRequest, resolveAgainstAmbientOrigin } from '../request-context'
@@ -163,6 +163,29 @@ describe('forwardHeaders', () => {
     const result = await api.get('/whoami').json<{ cookie: string | null }>()
     expect(result.cookie).toBeNull()
   })
+
+  it('treats a still-relative outgoing URL as same-origin (the client resolves it before the middleware sees it)', async () => {
+    // Every scenario above goes through `createHttp`, which ALWAYS
+    // resolves a root-relative URL against the ambient origin before any
+    // middleware runs — so `sameOrigin`'s own relative-URL fast path
+    // never fires there. Drive the middleware directly to reach it.
+    const { toHttpResponse } = await import('../transport')
+    const mw = forwardHeaders(['cookie'])
+    const request = {
+      method: 'GET' as const,
+      url: '/still/relative',
+      headers: new Headers(),
+      body: null,
+      signal: undefined,
+      credentials: undefined,
+      meta: {},
+    }
+    const next = () => Promise.resolve(toHttpResponse(new Response('{}'), request))
+
+    await runWithRequest(inbound('session=direct'), () => mw(request, next))
+
+    expect(request.headers.get('cookie')).toBe('session=direct')
+  })
 })
 
 describe('per-request isolation', () => {
@@ -224,5 +247,30 @@ describe('per-request isolation', () => {
   it('exposes nothing after the scope exits', () => {
     runWithRequest(inbound('session=x'), () => undefined)
     expect(getRequest()).toBeUndefined()
+  })
+
+  it('_resetRequestSource() detaches the accessor entirely', async () => {
+    // Isolated module instances (`vi.resetModules`), never the shared
+    // ones the rest of this file relies on — `_setRequestSource` runs
+    // ONCE at module load, so detaching the shared instance would break
+    // every other test in this file that runs afterward.
+    vi.resetModules()
+    const isolatedServer = await import('../server')
+    const isolatedContext = await import('../request-context')
+
+    // Before reset: inside a scope, the ambient request IS visible.
+    isolatedServer.runWithRequest(inbound('session=before-reset'), () => {
+      expect(isolatedContext.getAmbientRequest()?.headers.get('cookie')).toBe('session=before-reset')
+    })
+
+    isolatedServer._resetRequestSource()
+
+    // After reset: even INSIDE an active scope, the accessor is gone —
+    // the un-wired-server behaviour the client-safe half degrades to.
+    isolatedServer.runWithRequest(inbound('session=after-reset'), () => {
+      expect(isolatedContext.getAmbientRequest()).toBeUndefined()
+    })
+
+    vi.resetModules()
   })
 })

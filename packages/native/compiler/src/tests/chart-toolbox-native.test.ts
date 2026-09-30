@@ -51,17 +51,6 @@ export function App() {
     expect(r.code).toMatch(/pyreonShareChartImage\(|pyreonChartDataUrl\(/)
     check(r.code)
   })
-
-  it('an OptionChart option.toolbox lowers onto the plot host through the web reader', () => {
-    const r = transform(`
-import { OptionChart } from '@pyreon/charts/option'
-export function App() {
-  return <OptionChart option={{ toolbox: { feature: { dataZoom: {}, magicType: { type: ['line', 'bar'] }, restore: {}, saveAsImage: {} } }, xAxis: { type: 'category', data: ['a', 'b', 'c'] }, yAxis: {}, series: [{ type: 'bar', data: [1, 2, 3] }] }} height={240} />
-}`, { target })
-    expect(r.warnings).toEqual([])
-    for (const s of ['renderToolbox(', 'applyMagicType(', 'windowOfRows(', 'pyreonShareChartImage(']) expect(r.code).toContain(s)
-    check(r.code)
-  })
 })
 
 

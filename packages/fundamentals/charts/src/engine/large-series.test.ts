@@ -74,11 +74,6 @@ describe('the label step is not capped', () => {
     expect(shown(l.xLabelEvery, 100_000)).toBeLessThanOrEqual(60)
   })
 
-  it("ECharts' interval rule does too", () => {
-    const l = computeLayout(cfg({ categories: labels(100_000), xLabels: 'echarts' }), (t, s) => t.length * s * 0.6)
-    expect(shown(l.xLabelEvery, 100_000)).toBeLessThanOrEqual(30)
-  })
-
   it('a small axis keeps its exact step', () => {
     const l = computeLayout(cfg({ categories: labels(12) }), (t, s) => t.length * s * 0.6)
     expect(l.xLabelEvery).toBe(1)

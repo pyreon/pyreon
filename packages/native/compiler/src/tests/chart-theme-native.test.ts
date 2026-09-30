@@ -35,7 +35,7 @@ import type { ChartTheme } from '@pyreon/charts'
 ${HEAD}const T: Partial<ChartTheme> = { text: '#ffffff' }
 export function Files() { return <TreemapChart data={DATA} theme={T} showLegend height={200} /> }`
 
-const DARK_PALETTE = '"#7b9bff", "#ff8f7e", "#4adbc0", "#bd93ff", "#ffc44d", "#5dcbf2", "#ff80be", "#9ad870", "#a3acbd", "#d8955e"'
+const DARK_PALETTE = '"#7b9bff", "#ffc44d", "#4adbc0", "#5dcbf2", "#d8955e", "#a3acbd", "#ff80be", "#ff8f7e", "#9ad870", "#bd93ff"'
 
 describe('family-host theme — chrome, tooltip, palette and ground follow the theme on both targets', () => {
   it('Swift: a named theme colours the title (text) and legend (label), the tooltip box (surface / grid / text), seeds the options palette, and paints the ground', () => {
