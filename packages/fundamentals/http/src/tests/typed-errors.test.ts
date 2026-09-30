@@ -14,8 +14,9 @@ import { createHttp } from '../client'
 import type { EndpointError } from '../endpoint'
 import { ClientError, HttpError, ServerError } from '../errors'
 import { createMock } from '../mock'
+import { errorSchemaFor } from '../response'
 import { standardSchema } from '../schema'
-import type { ValidateMode } from '../types'
+import type { Transport, ValidateMode } from '../types'
 
 const NotFound = z.object({ message: z.string() })
 const Problem = z.object({ code: z.number() })
@@ -102,6 +103,13 @@ describe('an endpoint that declares `errors`', () => {
     expect(Object.keys(declare().errors)).toEqual(['404', '4XX', 'default'])
   })
 
+  it('errorSchemaFor: no exact, range, or default entry is undefined', () => {
+    // Every scenario elsewhere in this file always has a `default`, so the
+    // status always resolves to SOMETHING. An `errors` map with neither a
+    // match nor a fallback is the genuinely unmatched case.
+    expect(errorSchemaFor({ 404: NotFound }, 500)).toBeUndefined()
+  })
+
   it('types the rejection: `matched` narrows `body` exactly; `status` narrows it loosely', () => {
     const getUser = declare()
     type E = EndpointError<typeof getUser>
@@ -157,6 +165,59 @@ describe('reading an error body is covered by the request signal', () => {
     await new Promise((r) => setTimeout(r, 5))
     controller.abort()
     await expect(pending).rejects.toBeInstanceOf(AbortError)
+  })
+
+  it('reads a normal (non-hanging) error body with NO signal at all (timeout disabled)', async () => {
+    // `timeout: false` and no per-request `signal` leaves `link.signal`
+    // `undefined` — the no-signal shape `readCloneUnderSignal` falls back
+    // to a bare `clone.text()` for.
+    const api = createHttp({
+      use: [createMock([{ path: '/x', status: 500, json: { reason: 'boom' } }]).middleware],
+      timeout: false,
+    })
+    const err = await rejection(api.get('/x'))
+    expect(err.body).toEqual({ reason: 'boom' })
+  })
+
+  it('a body that fails to READ (not abort, not timeout) is unreadable, not thrown', async () => {
+    // Distinct from the hanging-body specs above: this body errors
+    // OUTRIGHT (a genuine stream failure), with no abort/timeout involved
+    // at all — `readErrorBody`'s "not an abort" fallback.
+    const erroring: import('../types').Transport = async (request) => {
+      const { toHttpResponse } = await import('../transport')
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.error(new Error('stream boom'))
+        },
+      })
+      return toHttpResponse(new Response(body, { status: 500 }), request)
+    }
+    const api = createHttp({ transport: erroring, timeout: 5000 })
+    const err = await rejection(api.get('/x'))
+    expect(err.body).toBeUndefined()
+  })
+
+  it('a bodyless status (304) thrown as an HttpError carries no body', async () => {
+    // 304 is outside the 2xx range, so `response.ok` is false and it goes
+    // through the SAME error-body path as a real failure — but the body
+    // is defined to be absent, short-circuiting before any read.
+    const api = createHttp({ use: [createMock([{ path: '/x', status: 304 }]).middleware] })
+    const err = await rejection(api.get('/x'))
+    expect(err.body).toBeUndefined()
+  })
+
+  it('void() drains a SUCCESS body without throwing even when the read fails', async () => {
+    const erroring: Transport = async (request) => {
+      const { toHttpResponse } = await import('../transport')
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.error(new Error('drain boom'))
+        },
+      })
+      return toHttpResponse(new Response(body, { status: 200 }), request)
+    }
+    const api = createHttp({ transport: erroring })
+    await expect(api.get('/x').void()).resolves.toBeUndefined()
   })
 
   it("'warn' on a mismatched error body never logs the query string", async () => {
