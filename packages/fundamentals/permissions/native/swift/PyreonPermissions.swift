@@ -44,6 +44,56 @@ public final class PyreonPermissions {
 
     public init(_ granted: Set<String> = []) {
         self.granted = granted
+        self.isUnprovidedFallback = false
+    }
+
+    /// True only for the instance a `usePermissions()` reads when NO
+    /// `<PermissionsProvider>` sits above it (the environment key's default).
+    /// It is an EMPTY set — every check denies — and that is the safe answer
+    /// for authorization, but it is indistinguishable from a legitimate
+    /// "this user has no grants" set, so a missing provider (typically one in
+    /// another file) used to look exactly like a working app that denies
+    /// everything. An explicit `usePermissions([])` / `PyreonPermissions()` is
+    /// NOT this: it states an intent, and never warns.
+    @ObservationIgnored public let isUnprovidedFallback: Bool
+
+    private init(unprovided: Void) {
+        self.granted = []
+        self.isUnprovidedFallback = true
+    }
+
+    /// The environment key's default value. See `isUnprovidedFallback`.
+    public static func makeUnprovided() -> PyreonPermissions {
+        PyreonPermissions(unprovided: ())
+    }
+
+    /// Where the once-per-process dev warning goes. Defaults to `print`;
+    /// tests replace it.
+    public static var warningSink: (String) -> Void = { print($0) }
+
+    private static let warnedLock = NSLock()
+    private static var warned = false
+
+    /// Fires `warningSink` at most once per process. Compiled in ALWAYS (so the
+    /// once-semantics are testable without `-DDEBUG`); only the CALL from
+    /// `can` is `#if DEBUG`, so a release build never reaches it.
+    public static func warnUnprovidedOnce() {
+        warnedLock.lock()
+        let first = !warned
+        warned = true
+        warnedLock.unlock()
+        if first {
+            warningSink(
+                "[Pyreon] usePermissions() was read with no <PermissionsProvider> above it, so every permission check DENIES. Wrap the tree in <PermissionsProvider permissions={{…}}> (it can live in another file), or seed at the call site: usePermissions(['posts.edit'])."
+            )
+        }
+    }
+
+    /// Test seam: re-arm the once-per-process warning.
+    public static func resetWarningForTesting() {
+        warnedLock.lock()
+        warned = false
+        warnedLock.unlock()
     }
 
     /// Resolve `key` against the granted set, in the SAME order the web
@@ -58,6 +108,9 @@ public final class PyreonPermissions {
     /// browser. It also recognised neither `.**` nor `*`, so the two
     /// wildcards that SHOULD widen a grant were silently ignored.
     public func can(_ key: String) -> Bool {
+        #if DEBUG
+        if isUnprovidedFallback { PyreonPermissions.warnUnprovidedOnce() }
+        #endif
         // 1. Exact match.
         if granted.contains(key) { return true }
 

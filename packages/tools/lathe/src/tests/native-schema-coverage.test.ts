@@ -135,7 +135,7 @@ describe.skipIf(compiler() === null)('a cross-model $ref on the native path', ()
     // point. A struct that merely EXISTS proves nothing; the failure mode is a
     // struct that exists with a field missing.
     expect(book).toContain('var id: String')
-    expect(book).toContain('var author: PyreonZodSchema_Book_Author')
+    expect(book).toContain('var author: PyreonZodSchema_BookValue_Author')
   })
 
   it('s.* drops the field, and says so', () => {
