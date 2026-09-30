@@ -5,7 +5,7 @@
 // either passed through as unknown or surfaces a warning.
 
 import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, FRAME_CHART_HOSTS } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, FRAME_CHART_HOSTS, GRAMMAR_CONFIG_TAGS, isChartHostTag } from './chart-hosts'
 import { DROPPED_FLOW_COMPONENTS, HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, LOWERED_FLOW_RUNTIME_EXPORTS, droppedFlowFieldsWarning } from './flow-lowering'
 import { warnUnlowerdCrdtMembers } from './parse-crdt-surface'
 import { parseSync } from 'oxc-parser'
@@ -846,6 +846,14 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // Refine the signal's number type to Double from its fractional literal
   // initializer — additive (only flips number→float on a fractional).
   refineSignalNumberFloats(components)
+
+  // A chart formatter (`<Axis format={kg}>`, `<PlotChart format xFormat
+  // y2Format>`) is called with a Double on both targets, so the named function
+  // it points at must take one: `function kg(v: number)` otherwise lowers its
+  // parameter to Int and the chart slot `(Double) -> String` rejects it — on
+  // BOTH targets, with no warning. The slot is the evidence; runs before
+  // refineHelperReturns so the return is inferred over the widened parameter.
+  refineChartFormatterParams(components, ctx.helperFns)
 
 
   // Shape-A follow-up: a top-level helper function declared WITHOUT a return
@@ -5988,6 +5996,34 @@ function isFractionalLiteral(e: ExprIR): boolean {
  * `{ kind:'number', float:true }` on fractional-literal evidence; integer
  * signals and arrays are never touched (zero regression).
  */
+/** The chart props whose value is called as `(Double) -> String`. */
+const CHART_FORMATTER_PROPS: ReadonlySet<string> = new Set(['format', 'xFormat', 'yFormat', 'y2Format'])
+
+/**
+ * Widen the numeric parameter of every named function passed as a chart
+ * formatter to Double — see the call site. Only a function whose ONE
+ * parameter is an integer `number` is touched: that is the shape the slot
+ * rejects, and anything else (a string param, two params) is not a formatter
+ * this can make compile, so it is left for the emit to report.
+ */
+function refineChartFormatterParams(components: ComponentIR[], helpers: Extract<DeclIR, { kind: 'function' }>[]): void {
+  const widen = (name: string, locals: DeclIR[]): void => {
+    const fn = locals.find((d): d is Extract<DeclIR, { kind: 'function' }> => d.kind === 'function' && d.name === name) ?? helpers.find((h) => h.name === name)
+    if (fn === undefined || fn.params.length !== 1) return
+    const p = fn.params[0]!
+    if (p.type.kind === 'number' && p.type.float !== true) p.type = { kind: 'number', float: true }
+  }
+  for (const c of components) {
+    forEachExpr(c.returnExpr, (n) => {
+      if (n.kind !== 'jsx-element') return
+      if (!isChartHostTag(n.tag) && !GRAMMAR_CONFIG_TAGS.includes(n.tag) && n.tag !== 'Chart') return
+      for (const a of n.attrs) {
+        if (a.kind === 'attr' && CHART_FORMATTER_PROPS.has(a.name) && a.value.kind === 'identifier') widen(a.value.name, c.decls)
+      }
+    })
+  }
+}
+
 function refineSignalNumberFloats(components: ComponentIR[]): void {
   for (const c of components) {
     for (const d of c.decls) {

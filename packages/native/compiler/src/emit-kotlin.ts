@@ -13218,6 +13218,15 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     lets.push('val pyreonCats: List<String> = listOf<String>()')
     if (fullA11y) lets.push('val pyreonA11yCats: List<String> = listOf<String>()')
   }
+  // Mirror of the Swift emitter: `by` keys each drawn row, over the same rows as the values.
+  const byAcc = chartAttrExprKotlin(e, 'by')
+  let keyed = false
+  if (byAcc !== undefined) {
+    const body = kotlinAccessorExpr(byAcc, tag, 'by', indent)
+    if (body === 'unsupported') return 'Box {}'
+    lets.push(`val pyreonRowKeys: List<String> = ${kotlinPlotRowMap(rows, `pyreonChartString(${body})`, windowed, decimated)}`)
+    keyed = true
+  }
   const xValueAcc = chartAttrExprKotlin(e, 'xValue')
   if (xValueAcc !== undefined) {
     const body = kotlinAccessorExpr(xValueAcc, tag, 'xValue', indent)
@@ -13316,6 +13325,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     }
     specArgs.push(`${p.name} = ${p.kind === 'string' ? kotlinStr(raw) : p.kind === 'number' ? (Number.isInteger(raw) ? `${String(raw)}.0` : String(raw)) : String(raw)}`)
   }
+  if (keyed) specArgs.push('rowKeys = pyreonRowKeys')
   const magicBuilt = toolbox?.magic === true ? `applyMagicType(ChartSpec(${specArgs.join(', ')}), pyreonMagicKind, pyreonMagicStack)` : `ChartSpec(${specArgs.join(', ')})`
   // Applied before the brush, which only re-colours out-of-brush datums and must see the series pins already in the fills it starts from.
   const specBuilt = seriesPinning ? `applySeriesSelection(${magicBuilt}, pyreonSelectedSeries)` : magicBuilt

@@ -329,6 +329,14 @@ export interface ChartSpec {
   y2Title?: string | undefined
   /** How the x tick labels react to running out of room — see `LayoutConfig.xLabels`. */
   xLabels?: 'auto' | 'rotate' | 'thin' | 'all' | undefined
+  /**
+   * One key per row (`<Chart by>`), aligned with the series values. When set,
+   * every plain / stacked / grouped bar command carries its row's `key` and
+   * `enter` rect, and a line whose points are its rows one-to-one carries
+   * `pointKeys` — what a native host needs to morph a data change by key.
+   * Absent (the web, and every unkeyed chart) draws byte-identically.
+   */
+  rowKeys?: string[] | undefined
 }
 
 /**
@@ -372,6 +380,15 @@ export const defaultTheme: ChartTheme = {
 /** The command a datum's value label draws. */
 function valueLabel(text: string, at: Pt, align: 'start' | 'middle' | 'end', baseline: 'top' | 'middle' | 'bottom', t: ChartTheme): DrawCmd {
   return { kind: 'text', text, at, fill: t.label, size: t.fontSize, align, baseline }
+}
+
+/** A value label tagged with its row key (a keyed spec only), so a keyed tween can hide it mid-morph as the web does. */
+function keyedLabel(key: string, cmd: DrawCmd): DrawCmd {
+  switch (cmd.kind) {
+    case 'text':
+      return { ...cmd, key }
+  }
+  return cmd
 }
 
 /** 0 = plain, 1 = highlighted (a hover or a dispatched `highlight`), 2 = selected. */
@@ -794,7 +811,7 @@ export function categoryPoints(values: Double[], plot: Rect, dom: Domain): Pt[] 
 }
 
 /** `layoutBars` for series `k`. */
-function barsLaid(spec: ChartSpec, k: number, plot: Rect, dom: Domain): Rect[] {
+export function barsLaid(spec: ChartSpec, k: number, plot: Rect, dom: Domain): Rect[] {
   return layoutBars(spec.series[k]!.values, plot, dom, 0.25)
 }
 
@@ -813,22 +830,49 @@ function levelsOf(series: Series[]): StackLevels {
 }
 
 /** `layoutStackLevels` / `layoutGroupedBars` for a kind. */
-function setLaid(spec: ChartSpec, kind: string, plot: Rect, dom: Domain): StackSegment[] {
+export function setLaid(spec: ChartSpec, kind: string, plot: Rect, dom: Domain): StackSegment[] {
   const idx = indicesOf(spec, kind)
   const values = idx.map((k) => spec.series[k]!.values)
   return kind === 'stacked' ? layoutStackLevels(levelsOf(idx.map((k) => spec.series[k]!)), values, plot, dom, 0.25) : layoutGroupedBars(values, plot, dom, 0.25)
 }
 
 /** `layoutBarsH` for series `k`. */
-function barsLaidH(spec: ChartSpec, k: number, plot: Rect, dom: Domain): Rect[] {
+export function barsLaidH(spec: ChartSpec, k: number, plot: Rect, dom: Domain): Rect[] {
   return layoutBarsH(spec.series[k]!.values, plot, dom, 0.25)
 }
 
 /** `layoutStackLevelsH` / `layoutGroupedBarsH` for a kind. */
-function setLaidH(spec: ChartSpec, kind: string, plot: Rect, dom: Domain): StackSegment[] {
+export function setLaidH(spec: ChartSpec, kind: string, plot: Rect, dom: Domain): StackSegment[] {
   const idx = indicesOf(spec, kind)
   const values = idx.map((k) => spec.series[k]!.values)
   return kind === 'stacked' ? layoutStackLevelsH(levelsOf(idx.map((k) => spec.series[k]!)), values, plot, dom, 0.25) : layoutGroupedBarsH(values, plot, dom, 0.25)
+}
+
+/**
+ * A bar collapsed onto the edge it grows from — where an entering bar starts
+ * and an exiting bar ends in a keyed morph. That is the edge nearer the value
+ * axis' zero (or its floor/ceiling when zero is outside the domain): a
+ * positive bar's foot, a negative bar's head, a stacked segment's own base.
+ */
+export function growEdgeRect(r: Rect, dom: Domain, plot: Rect, horizontal: boolean): Rect {
+  const zero = dom.min <= 0.0 && dom.max >= 0.0 ? 0.0 : dom.min > 0.0 ? dom.min : dom.max
+  if (horizontal) {
+    const zx = scaleLinear(dom, plot.x, plot.x + plot.w, zero)
+    const ex = r.x >= zx - 0.5 ? r.x : r.x + r.w
+    return { x: ex, y: r.y, w: 0.0, h: r.h }
+  }
+  const zy = scaleLinear(dom, plot.y + plot.h, plot.y, zero)
+  const ey = r.y + r.h <= zy + 0.5 ? r.y + r.h : r.y
+  return { x: r.x, y: ey, w: r.w, h: 0.0 }
+}
+
+/** A bar command tagged with its row key and grow-from rect (a keyed spec only). */
+function keyedBar(key: string, enter: Rect, cmd: DrawCmd): DrawCmd {
+  switch (cmd.kind) {
+    case 'rect':
+      return { ...cmd, key, enter }
+  }
+  return cmd
 }
 
 export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
@@ -863,6 +907,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   const plot = l.plot
   const t = spec.theme
   const out: DrawCmd[] = []
+  // Empty unless keyed: a bar or line tags its commands only for a row this covers.
+  const rowKeys: string[] = spec.rowKeys ?? []
   // `?? 1.0` FIRST, then clamp a non-optional. Swift does not narrow an
   // optional through a ternary chain, so the coalesce-then-clamp idiom is
   // what compiles on native — and it reads better on web too.
@@ -1106,14 +1152,16 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     for (const seg of stackSegs) {
       const rS = growRect(seg.rect, yDomain)
       const gS = seriesGradient(stackedSeries[seg.seriesIndex]!.gradient, plot)
-      out.push(rectCmd(rS, stateFill(stackedSeries[seg.seriesIndex]!, seg.datumIndex, stackedSeries[seg.seriesIndex]!.color), stackedSeries[seg.seriesIndex]!.corners, gS.stops.length === 0 ? undefined : gS, stackedSeries[seg.seriesIndex]!.pattern))
+      const cmdS = rectCmd(rS, stateFill(stackedSeries[seg.seriesIndex]!, seg.datumIndex, stackedSeries[seg.seriesIndex]!.color), stackedSeries[seg.seriesIndex]!.corners, gS.stops.length === 0 ? undefined : gS, stackedSeries[seg.seriesIndex]!.pattern)
+      out.push(seg.datumIndex < rowKeys.length ? keyedBar(rowKeys[seg.datumIndex]!, growEdgeRect(seg.rect, yDomain, plot, spec.horizontal === true), cmdS) : cmdS)
       const lvlS = seriesEmphasisLevel(spec, stackedSeries[seg.seriesIndex]!, seg.datumIndex)
       if (lvlS > 0) out.push(emphasisOutline(rS, lvlS, t.label))
       // A stacked segment labels INSIDE itself: its value is the segment's
       // own, not the running total, and there is no outside edge to hang it
       // from that would not collide with the segment above.
       if (stackedSeries[seg.seriesIndex]!.showValues === true && progress >= 1.0) {
-        out.push(valueLabel(fmtS(seg.value), { x: rS.x + rS.w / 2.0, y: rS.y + rS.h / 2.0 }, 'middle', 'middle', t))
+        const labS = valueLabel(fmtS(seg.value), { x: rS.x + rS.w / 2.0, y: rS.y + rS.h / 2.0 }, 'middle', 'middle', t)
+        out.push(seg.datumIndex < rowKeys.length ? keyedLabel(rowKeys[seg.datumIndex]!, labS) : labS)
       }
     }
   }
@@ -1126,13 +1174,15 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     for (const seg of groupSegs) {
       const rG = growRect(seg.rect, yDomain)
       const gG = seriesGradient(groupedSeries[seg.seriesIndex]!.gradient, plot)
-      out.push(rectCmd(rG, stateFill(groupedSeries[seg.seriesIndex]!, seg.datumIndex, groupedSeries[seg.seriesIndex]!.color), groupedSeries[seg.seriesIndex]!.corners, gG.stops.length === 0 ? undefined : gG, groupedSeries[seg.seriesIndex]!.pattern))
+      const cmdG = rectCmd(rG, stateFill(groupedSeries[seg.seriesIndex]!, seg.datumIndex, groupedSeries[seg.seriesIndex]!.color), groupedSeries[seg.seriesIndex]!.corners, gG.stops.length === 0 ? undefined : gG, groupedSeries[seg.seriesIndex]!.pattern)
+      out.push(seg.datumIndex < rowKeys.length ? keyedBar(rowKeys[seg.datumIndex]!, growEdgeRect(seg.rect, yDomain, plot, spec.horizontal === true), cmdG) : cmdG)
       const lvlG = seriesEmphasisLevel(spec, groupedSeries[seg.seriesIndex]!, seg.datumIndex)
       if (lvlG > 0) out.push(emphasisOutline(rG, lvlG, t.label))
       // A grouped bar has a free outer edge, so it labels OUTSIDE like a
       // plain bar — above a positive one, below a negative one.
       if (groupedSeries[seg.seriesIndex]!.showValues === true && progress >= 1.0) {
-        out.push(valueLabel(fmtG(seg.value), { x: rG.x + rG.w / 2.0, y: seg.value < 0.0 ? rG.y + rG.h + 4.0 : rG.y - 4.0 }, 'middle', seg.value < 0.0 ? 'top' : 'bottom', t))
+        const labG = valueLabel(fmtG(seg.value), { x: rG.x + rG.w / 2.0, y: seg.value < 0.0 ? rG.y + rG.h + 4.0 : rG.y - 4.0 }, 'middle', seg.value < 0.0 ? 'top' : 'bottom', t)
+        out.push(seg.datumIndex < rowKeys.length ? keyedLabel(rowKeys[seg.datumIndex]!, labG) : labG)
       }
     }
   }
@@ -1173,7 +1223,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           for (let i = 0; i < upper.length; i++) {
             const v = i < sA.values.length ? sA.values[i]! : 0.0 / 0.0
             if (!isFiniteValue(v)) continue
-            out.push(valueLabel(fmtA(v), { x: upper[i]!.x, y: (upper[i]!.y + lower[i]!.y) / 2.0 }, 'middle', 'middle', t))
+            const labA = valueLabel(fmtA(v), { x: upper[i]!.x, y: (upper[i]!.y + lower[i]!.y) / 2.0 }, 'middle', 'middle', t)
+            out.push(i < rowKeys.length ? keyedLabel(rowKeys[i]!, labA) : labA)
           }
         }
       }
@@ -1223,7 +1274,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           /* v8 ignore next — `(s.values[ri] ?? 0.0)` is unreachable: `ri` indexes
              rects built FROM `s.values`, so the read is always in range. Native
              needs the unwrap; the web cannot reach it. */
-          out.push(rectCmd(grown, fillH, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, true), sGrad, s.pattern))
+          const cmdH = rectCmd(grown, fillH, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, true), sGrad, s.pattern)
+          out.push(ri < rowKeys.length ? keyedBar(rowKeys[ri]!, growEdgeRect(r, yDomain, plot, true), cmdH) : cmdH)
         } else {
           for (const c of pictorialCommands(pictorialBar(s, grown, true, fillH))) out.push(c)
         }
@@ -1241,7 +1293,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           if (!isFiniteValue(v)) continue
           // The label sits just past the bar's far end — right of a positive
           // bar, left of a negative one.
-          out.push(valueLabel(fmt(v), { x: v < 0.0 ? r.x - 4.0 : r.x + r.w + 4.0, y: r.y + r.h / 2.0 }, v < 0.0 ? 'end' : 'start', 'middle', t))
+          const labH = valueLabel(fmt(v), { x: v < 0.0 ? r.x - 4.0 : r.x + r.w + 4.0, y: r.y + r.h / 2.0 }, v < 0.0 ? 'end' : 'start', 'middle', t)
+          out.push(i < rowKeys.length ? keyedLabel(rowKeys[i]!, labH) : labH)
         }
       }
       continue
@@ -1257,7 +1310,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           /* v8 ignore next — `(s.values[ri] ?? 0.0)` is unreachable: `ri` indexes
              rects built FROM `s.values`, so the read is always in range. Native
              needs the unwrap; the web cannot reach it. */
-          out.push(rectCmd(grown, fillV, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, false), sGrad, s.pattern))
+          const cmdV = rectCmd(grown, fillV, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, false), sGrad, s.pattern)
+          out.push(ri < rowKeys.length ? keyedBar(rowKeys[ri]!, growEdgeRect(r, sDomain, plot, false), cmdV) : cmdV)
         } else {
           for (const c of pictorialCommands(pictorialBar(s, grown, false, fillV))) out.push(c)
         }
@@ -1274,7 +1328,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           if (!isFiniteValue(v)) continue
           // A negative bar hangs below the zero line, so its label goes under
           // its bottom edge — above the top would sit ON the zero line.
-          out.push(valueLabel(fmt(v), { x: r.x + r.w / 2.0, y: v < 0.0 ? r.y + r.h + 4.0 : r.y - 4.0 }, 'middle', v < 0.0 ? 'top' : 'bottom', t))
+          const labV = valueLabel(fmt(v), { x: r.x + r.w / 2.0, y: v < 0.0 ? r.y + r.h + 4.0 : r.y - 4.0 }, 'middle', v < 0.0 ? 'top' : 'bottom', t)
+          out.push(i < rowKeys.length ? keyedLabel(rowKeys[i]!, labV) : labV)
         }
       }
     } else if (s.kind === 'waterfall') {
@@ -1300,7 +1355,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         if (s.showValues === true && progress >= 1.0) {
           const fmt = spec.yFormat ?? plain
           const v = printed(sIdx, st.datumIndex)
-          out.push(valueLabel(fmt(v), { x: st.rect.x + st.rect.w / 2.0, y: v < 0.0 ? st.rect.y + st.rect.h + 4.0 : st.rect.y - 4.0 }, 'middle', v < 0.0 ? 'top' : 'bottom', t))
+          const labW = valueLabel(fmt(v), { x: st.rect.x + st.rect.w / 2.0, y: v < 0.0 ? st.rect.y + st.rect.h + 4.0 : st.rect.y - 4.0 }, 'middle', v < 0.0 ? 'top' : 'bottom', t)
+          out.push(st.datumIndex < rowKeys.length ? keyedLabel(rowKeys[st.datumIndex]!, labW) : labW)
         }
       }
     } else if (s.kind === 'line') {
@@ -1312,10 +1368,28 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       const direct: Pt[] = s.curve === undefined && xs.length === 0 ? m4CategoryPoints(s.values, plot, sDomain) : []
       const useDirect = direct.length > 0
       const runs: Pt[][] = useDirect ? [direct] : splitRuns(s.values, place)
+      // Each run is a maximal stretch of finite values, so the rows it draws
+      // are the next finite one onward: that is how a keyed run names them.
+      const keyedLine = rowKeys.length === s.values.length && s.curve === undefined
+      let runFrom = 0
       for (const run of runs) {
+        while (runFrom < s.values.length && !isFiniteValue(s.values[runFrom]!)) runFrom = runFrom + 1
+        const runKeys: string[] = []
+        if (keyedLine) {
+          for (let k = 0; k < run.length; k++) {
+            if (runFrom + k < rowKeys.length) runKeys.push(rowKeys[runFrom + k]!)
+          }
+        }
+        runFrom = runFrom + run.length
         // M4: more points than pixel columns draw the same pixels from four per column.
         const pts = useDirect ? reveal(run) : m4Pixels(reveal(curveFn(run)))
-        if (pts.length > 1) out.push({ kind: 'polyline', points: pts, stroke: s.color, width: s.width, dash: s.dash })
+        if (pts.length > 1) {
+          // Keyed only when the drawn points ARE the run's rows, one to one
+          // (M4 drops points, a curve adds them). The series label keys the
+          // runs, so a point matches its row across a gap that opened or closed.
+          const oneToOne = keyedLine && runKeys.length === pts.length
+          out.push(oneToOne ? { kind: 'polyline', points: pts, pointKeys: runKeys, stroke: s.color, width: s.width, dash: s.dash, key: s.label } : { kind: 'polyline', points: pts, stroke: s.color, width: s.width, dash: s.dash })
+        }
       }
       // A line shows its datum symbols only when asked (ECharts' showSymbol):
       // one symbol per finite datum, at the line's own radius, over the line.
@@ -1438,7 +1512,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         // A gap has no value to print — same rule as the bars. The label sits
         // above the point, clear of a dot of the series' own radius.
         if (!isFiniteValue(v)) continue
-        out.push(valueLabel(fmtP(v), { x: labelPts[i]!.x, y: labelPts[i]!.y - (s.radius + 5.0) }, 'middle', 'bottom', t))
+        const labP = valueLabel(fmtP(v), { x: labelPts[i]!.x, y: labelPts[i]!.y - (s.radius + 5.0) }, 'middle', 'bottom', t)
+        out.push(i < rowKeys.length ? keyedLabel(rowKeys[i]!, labP) : labP)
       }
     }
 

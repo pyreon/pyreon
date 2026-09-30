@@ -5,73 +5,136 @@
 // shifts every bar one slot left in the first frame, and a row that left the
 // data vanishes. This morphs the drawn GEOMETRY by key instead: a surviving
 // bar slides from its old slot to its new one, an entering bar grows from the
-// baseline in its new slot, an exiting bar shrinks to the baseline in its old
-// slot. Plain bars and lines on a linear, single-axis, vertical category chart
-// — the sliding-window shapes; anything else keeps the value tween.
+// zero line in its new slot, an exiting bar shrinks to the zero line in its
+// old slot.
+//
+// The geometry is the renderer's own: every rect comes from the same layout
+// call `renderChartIn` makes (`barsLaid`, `setLaid` and their horizontal
+// twins, over the same `geometrySpec` view), so a log scale, a normalized
+// stack, a right axis, a horizontal frame, stacked and grouped sets all morph
+// between exactly the frames the renderer draws — nothing is re-derived here.
+// Kinds whose marks are not per-row rects or points (areas, bands, waterfalls,
+// scatter, symbol bars) and numeric-x charts keep the value tween.
 
-import { layoutBars, layoutSeriesPoints } from './layout'
+import { rectCmd } from './corners'
+import { seriesGradient } from './gradient'
+import { layoutSeriesPoints } from './layout'
 import type { PlotLayout } from './layout'
-import { hasRightAxis, resolveYDomain } from './render'
+import { barsLaid, barsLaidH, geometrySpec, growEdgeRect, hasRightAxis, logBounds, resolveY2Domain, resolveYDomain, seriesDomain, setLaid, setLaidH, stateFill, themeCorners } from './render'
 import type { ChartSpec, Series } from './render'
 import { scaleLinear } from './scale'
 import type { Domain, DrawCmd, Double, Pt, Rect } from './types'
 
+type MorphKind = 'bars' | 'line' | 'stacked' | 'grouped'
+
 /** One series' drawn geometry, by row key. */
 export interface KeyedGeo {
-  kind: 'bars' | 'line'
-  color: string
-  width: Double
+  kind: MorphKind
+  series: Series
+  horizontal: boolean
   keys: string[]
   rects: Map<string, Rect>
+  /** The datum index each rect / point was drawn from, for per-datum fills. */
+  index: Map<string, number>
   points: Map<string, Pt>
-  /** The y of the value axis' zero (or the domain's floor), where bars grow from. */
+  /** The pixel of the value axis' zero (or its floor) — y when vertical, x when horizontal. Bars grow from and shrink to it. */
   baseline: Double
+  /** The value domain this series scales against — what `growEdgeRect` collapses its bars toward. */
+  dom: Domain
+  /** The plot, for gradients laid across it. */
+  plot: Rect
+  /** The theme corner radius, for bars that take the theme's rounding. */
+  radius: Double
 }
 
-function morphKind(s: Series): 'bars' | 'line' | null {
-  if (s.kind === 'bars' && s.symbol === undefined) return 'bars'
-  if (s.kind === 'line' && s.curve === undefined && s.symbol === undefined) return 'line'
+function morphKind(s: Series): MorphKind | null {
+  if (s.kind === 'bars') return s.symbol === undefined ? 'bars' : null
+  if (s.kind === 'line') return s.symbol === undefined ? 'line' : null
+  if (s.kind === 'stacked' || s.kind === 'grouped') return s.kind
   return null
 }
 
 /** True when every series of `spec` can be morphed by key (and there is at least one). */
 export function canKeyMorph(spec: ChartSpec): boolean {
   if (spec.series.length === 0) return false
-  if (spec.horizontal === true || hasRightAxis(spec) || spec.yScale === 'log' || (spec.xValues ?? []).length > 0) return false
+  if ((spec.xValues ?? []).length > 0) return false
   for (const s of spec.series) if (morphKind(s) === null) return false
   return true
 }
 
-/** Each series' geometry by key, laid out exactly as `renderChart` lays it out. */
-export function keyedGeometry(spec: ChartSpec, l: PlotLayout, keys: string[]): KeyedGeo[] {
-  const dom: Domain = resolveYDomain(spec)
+/** The zero line (or the domain's floor/ceiling when zero is outside it), in pixels along the value axis. */
+function zeroPixel(dom: Domain, plot: Rect, horizontal: boolean): Double {
+  const zero = dom.min <= 0.0 && dom.max >= 0.0 ? 0.0 : dom.min > 0.0 ? dom.min : dom.max
+  return horizontal ? scaleLinear(dom, plot.x, plot.x + plot.w, zero) : scaleLinear(dom, plot.y + plot.h, plot.y, zero)
+}
+
+/** Each series' geometry by key, laid out exactly as `renderChartIn` lays it out. */
+export function keyedGeometry(raw: ChartSpec, l: PlotLayout, keys: string[]): KeyedGeo[] {
+  const spec = geometrySpec(raw)
+  const horizontal = spec.horizontal === true
   const plot = l.plot
-  const zero = dom.min <= 0.0 && dom.max >= 0.0 ? 0.0 : dom.min
-  const baseline = scaleLinear(dom, plot.y + plot.h, plot.y, zero)
-  return spec.series.map((s) => {
+  const yDomain = resolveYDomain(spec)
+  const y2Domain = hasRightAxis(spec) ? resolveY2Domain(spec) : yDomain
+  const sets = new Map<string, { seg: Rect; seriesIndex: number; datumIndex: number }[]>()
+  const setOf = (kind: 'stacked' | 'grouped') => {
+    let got = sets.get(kind)
+    if (got === undefined) {
+      got = (horizontal ? setLaidH(spec, kind, plot, yDomain) : setLaid(spec, kind, plot, yDomain)).map((s) => ({ seg: s.rect, seriesIndex: s.seriesIndex, datumIndex: s.datumIndex }))
+      sets.set(kind, got)
+    }
+    return got
+  }
+  const withinKind = new Map<string, number>()
+  return spec.series.map((s, k) => {
     const kind = morphKind(s) ?? 'line'
+    const dom = kind === 'stacked' || kind === 'grouped' ? yDomain : seriesDomain(s, spec, yDomain, y2Domain)
     const rects = new Map<string, Rect>()
     const points = new Map<string, Pt>()
+    const index = new Map<string, number>()
+    const finite = (i: number): boolean => i < s.values.length && s.values[i] === s.values[i]
     if (kind === 'bars') {
-      const rs = layoutBars(s.values, plot, dom, 0.25)
-      for (let i = 0; i < rs.length && i < keys.length; i++) if (s.values[i] === s.values[i]) rects.set(keys[i]!, rs[i]!)
-    } else {
+      const rs = horizontal ? barsLaidH(spec, k, plot, dom) : barsLaid(spec, k, plot, dom)
+      for (let i = 0; i < rs.length && i < keys.length; i++) {
+        if (!finite(i)) continue
+        rects.set(keys[i]!, rs[i]!)
+        index.set(keys[i]!, i)
+      }
+    } else if (kind === 'stacked' || kind === 'grouped') {
+      const local = withinKind.get(kind) ?? 0
+      withinKind.set(kind, local + 1)
+      for (const seg of setOf(kind)) {
+        if (seg.seriesIndex !== local || seg.datumIndex >= keys.length || !finite(seg.datumIndex)) continue
+        rects.set(keys[seg.datumIndex]!, seg.seg)
+        index.set(keys[seg.datumIndex]!, seg.datumIndex)
+      }
+    } else if (!horizontal) {
+      // A line has no horizontal frame — `renderChartIn` skips it there, so it has no geometry to morph.
       const ps = layoutSeriesPoints(s.values, plot, dom)
-      for (let i = 0; i < ps.length && i < keys.length; i++) if (s.values[i] === s.values[i]) points.set(keys[i]!, ps[i]!)
+      for (let i = 0; i < ps.length && i < keys.length; i++) {
+        if (!finite(i)) continue
+        points.set(keys[i]!, ps[i]!)
+        index.set(keys[i]!, i)
+      }
     }
-    return { kind, color: s.color, width: s.width, keys, rects, points, baseline }
+    return { kind, series: s, horizontal, keys, rects, index, points, baseline: zeroPixel(dom, plot, horizontal), dom, plot, radius: spec.theme.radius }
   })
 }
 
 const mix = (a: Double, b: Double, e: Double): Double => a + (b - a) * e
 
-/** A bar collapsed to the baseline in its own slot — where an entering bar starts and an exiting bar ends. */
-function flat(r: Rect, baseline: Double): Rect {
-  return { x: r.x, y: baseline, w: r.w, h: 0.0 }
-}
-
 function mixRect(a: Rect, b: Rect, e: Double): Rect {
   return { x: mix(a.x, b.x, e), y: mix(a.y, b.y, e), w: mix(a.w, b.w, e), h: mix(a.h, b.h, e) }
+}
+
+/** A morphing bar drawn as the renderer draws it: its state fill, corners, gradient and pattern. */
+function barCmd(g: KeyedGeo, rect: Rect, datum: number): DrawCmd {
+  const s = g.series
+  const v = datum >= 0 && datum < s.values.length ? s.values[datum]! : 0.0
+  // Plain bars take the theme's rounding when they set none; a stack or group does not.
+  const corners = s.corners ?? (g.kind === 'bars' ? themeCorners(g.radius, v >= 0.0, g.horizontal) : undefined)
+  const grad = seriesGradient(s.gradient, g.plot)
+  const fill = datum >= 0 ? stateFill(s, datum, s.color) : s.color
+  return rectCmd(rect, fill, corners, grad.stops.length === 0 ? undefined : grad, s.pattern)
 }
 
 /** The morphing series' commands at eased progress `e` (0 = the old frame, 1 = the new). */
@@ -80,39 +143,75 @@ export function keyedMorphCmds(from: KeyedGeo[], to: KeyedGeo[], e: Double): Dra
   for (let s = 0; s < to.length; s++) {
     const b = to[s]!
     const a = from[s]
-    if (b.kind === 'bars') {
-      // Exiting first, so the survivors sliding over them paint on top.
-      if (a !== undefined) {
-        for (const k of a.keys) {
-          const r = a.rects.get(k)
-          if (r !== undefined && !b.rects.has(k)) out.push({ kind: 'rect', rect: mixRect(r, flat(r, a.baseline), e), fill: b.color })
-        }
-      }
-      for (const k of b.keys) {
-        const r = b.rects.get(k)
-        if (r === undefined) continue
-        const old = a?.rects.get(k)
-        out.push({ kind: 'rect', rect: mixRect(old ?? flat(r, b.baseline), r, e), fill: b.color })
-      }
-    } else {
-      const pts: Pt[] = []
+    if (b.kind === 'line') {
+      // A gap (a row with no finite value) breaks the line into runs, exactly
+      // as the renderer does — bridging it mid-morph would draw a segment
+      // across the gap that snaps away when the morph lands.
+      const runs: Pt[][] = [[]]
       for (const k of b.keys) {
         const p = b.points.get(k)
-        if (p === undefined) continue
+        if (p === undefined) {
+          if (runs[runs.length - 1]!.length > 0) runs.push([])
+          continue
+        }
         const old = a?.points.get(k)
-        pts.push(old === undefined ? p : { x: mix(old.x, p.x, e), y: mix(old.y, p.y, e) })
+        runs[runs.length - 1]!.push(old === undefined ? p : { x: mix(old.x, p.x, e), y: mix(old.y, p.y, e) })
       }
-      if (pts.length > 1) out.push({ kind: 'polyline', points: pts, stroke: b.color, width: b.width })
+      for (const run of runs) {
+        const shaped = b.series.curve === undefined ? run : b.series.curve(run)
+        if (shaped.length < 2) continue
+        out.push(b.series.dash === undefined
+          ? { kind: 'polyline', points: shaped, stroke: b.series.color, width: b.series.width }
+          : { kind: 'polyline', points: shaped, stroke: b.series.color, width: b.series.width, dash: b.series.dash })
+      }
+      continue
+    }
+    // Exiting first, so the survivors sliding over them paint on top.
+    if (a !== undefined) {
+      for (const k of a.keys) {
+        const r = a.rects.get(k)
+        if (r !== undefined && !b.rects.has(k)) out.push(barCmd(b, mixRect(r, growEdgeRect(r, a.dom, a.plot, a.horizontal), e), -1))
+      }
+    }
+    for (const k of b.keys) {
+      const r = b.rects.get(k)
+      if (r === undefined) continue
+      const old = a?.rects.get(k)
+      out.push(barCmd(b, mixRect(old ?? growEdgeRect(r, b.dom, b.plot, b.horizontal), r, e), b.index.get(k) ?? -1))
     }
   }
   return out
 }
 
-/** The target spec with the morphing series blanked (their geometry is drawn by `keyedMorphCmds`) and the domain pinned, so axes and grid stay where the new frame puts them. */
+/**
+ * True when a snapshot of the old frame can morph into `spec`'s frame: the
+ * same number of series, each the same kind, the same orientation. A switch
+ * between frames (bars to lines, vertical to horizontal) has no join to draw,
+ * so it takes the value tween instead.
+ */
+export function morphMatches(from: KeyedGeo[], spec: ChartSpec): boolean {
+  if (from.length !== spec.series.length) return false
+  const horizontal = spec.horizontal === true
+  for (let i = 0; i < from.length; i++) {
+    if (from[i]!.kind !== morphKind(spec.series[i]!) || from[i]!.horizontal !== horizontal) return false
+  }
+  return true
+}
+
+/**
+ * The target spec with the morphing series blanked (their geometry is drawn by
+ * `keyedMorphCmds`) and every value domain pinned, so the grid, the rules and
+ * the axes stay where the new frame puts them instead of re-fitting to the
+ * blanked data. A log chart pins its data-space decade bounds (the log view is
+ * derived from them); a dual-axis chart pins the right domain too.
+ */
 export function maskForMorph(spec: ChartSpec): ChartSpec {
+  const yDomain = spec.yScale === 'log' ? logBounds(spec) : resolveYDomain(spec)
+  const y2Domain = hasRightAxis(spec) ? resolveY2Domain(spec) : spec.y2Domain
   return {
     ...spec,
-    yDomain: resolveYDomain(spec),
+    yDomain,
+    y2Domain,
     series: spec.series.map((s) => ({ ...s, values: s.values.map(() => Number.NaN), showValues: false })),
   }
 }
