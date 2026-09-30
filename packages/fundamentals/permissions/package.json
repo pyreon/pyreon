@@ -59,7 +59,11 @@
   "pyreon": {
     "native": {
       "swift": "native/swift",
-      "kotlin": "native/kotlin"
+      "kotlin": "native/kotlin",
+      "kotlinServices": {
+        "PyreonPermissions": ["PyreonPermissions.kt"]
+      },
+      "kotlinSdkOnly": ["PyreonPermissionsLocal.kt"]
     }
   }
 }
