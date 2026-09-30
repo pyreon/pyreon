@@ -48,10 +48,9 @@ const PLAIN_SOURCE = '@pyreon/core/plain'
 export type PlainDeclineCode =
   | 'signal-as-value'
   | 'set-result-used'
-  | 'update-complex'
   | 'update-result-used'
-  | 'member-access'
   | 'mixed-declaration'
+  | 'exported'
   | 'reassigned'
 
 export interface PlainMigrateDeclined {
@@ -92,6 +91,74 @@ interface Candidate {
   declined: PlainMigrateDeclined | null
   /** Planned MagicString edits, applied only if the binding survives. */
   edits: Array<() => void>
+  /** Some reference needs the signal itself → emits `signalOf(x)`. */
+  usesSignalOf?: boolean
+}
+
+/** Every name the file BINDS in any scope (declarations, params, imports, catch). */
+function collectAllBindingNames(program: N): Set<string> {
+  const out = new Set<string>()
+  const pattern = (p: N): void => {
+    if (!p) return
+    switch (p.type) {
+      case 'Identifier':
+        out.add(p.name)
+        return
+      case 'ObjectPattern':
+        for (const prop of p.properties ?? []) pattern(prop.type === 'RestElement' ? prop.argument : prop.value)
+        return
+      case 'ArrayPattern':
+        for (const el of p.elements ?? []) pattern(el)
+        return
+      case 'RestElement':
+        pattern(p.argument)
+        return
+      case 'AssignmentPattern':
+        pattern(p.left)
+        return
+      case 'TSParameterProperty':
+        pattern(p.parameter)
+        return
+    }
+  }
+  const visit = (n: N): void => {
+    if (!n || typeof n !== 'object') return
+    if (Array.isArray(n)) {
+      for (const c of n) visit(c)
+      return
+    }
+    if (typeof n.type !== 'string') return
+    switch (n.type) {
+      case 'VariableDeclarator':
+        pattern(n.id)
+        break
+      case 'FunctionDeclaration':
+      case 'FunctionExpression':
+      case 'ArrowFunctionExpression':
+        if (n.id) pattern(n.id)
+        for (const prm of n.params ?? []) pattern(prm)
+        break
+      case 'ClassDeclaration':
+      case 'ClassExpression':
+        if (n.id) pattern(n.id)
+        break
+      case 'ImportSpecifier':
+      case 'ImportDefaultSpecifier':
+      case 'ImportNamespaceSpecifier':
+        pattern(n.local)
+        break
+      case 'CatchClause':
+        pattern(n.param)
+        break
+    }
+    for (const key of Object.keys(n)) {
+      if (key === 'type' || key === 'start' || key === 'end') continue
+      const v = n[key]
+      if (v && typeof v === 'object') visit(v)
+    }
+  }
+  visit(program)
+  return out
 }
 
 export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToPlainResult {
@@ -174,6 +241,41 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
   let effectNonCallSeen = false
 
   let untrackNeeded = false
+  /**
+   * > 0 while walking an effect / computed callback. Classic `.update(fn)`
+   * reads the value UNTRACKED (`fn(this._v)`), but a plain read inside a
+   * tracked scope subscribes — so there the codemod emits the explicit
+   * `untrack(() => x)` form instead of substituting a tracked read.
+   */
+  let trackedDepth = 0
+  // ── Marker names ─────────────────────────────────────────────────────────
+  // The injected `state` / `derived` / `signalOf` imports must not collide with
+  // a binding the file already declares ANYWHERE (a local `const state =
+  // useFormState(form)` is common). A colliding marker is imported under a
+  // `plain*` alias — the pre-pass resolves markers by their LOCAL name.
+  const bindingNames = collectAllBindingNames(program)
+  const pickName = (base: string): string => {
+    if (!bindingNames.has(base)) return base
+    let alias = `plain${base[0]!.toUpperCase()}${base.slice(1)}`
+    while (bindingNames.has(alias)) alias = `${alias}$`
+    return alias
+  }
+  const markerName = { state: pickName('state'), derived: pickName('derived'), signalOf: pickName('signalOf') }
+  const importSpec = (base: 'state' | 'derived' | 'signalOf'): string =>
+    markerName[base] === base ? base : `${base} as ${markerName[base]}`
+  /** TypeScript file — explicit type arguments are legal. */
+  const isTs = lang === 'ts' || lang === 'tsx'
+  /**
+   * > 0 while walking call arguments / component JSX attributes. A generic
+   * call nested in a context-sensitive position (an object literal with arrow
+   * siblings, a generic component's props) is inferred from the CONTEXTUAL
+   * return type, not its argument — `useSortable({ items: signalOf(items),
+   * by: (it) => it.id })` types `it` as `unknown`. The explicit
+   * `signalOf<typeof x>(x)` form pins the type in exactly those positions.
+   */
+  let inferenceContextDepth = 0
+  /** The `export const …` declaration statement — ONLY its own declarators are exported. */
+  let exportedDeclaration: N = null
 
   function collectPatternNames(pat: N, into: Set<string>): void {
     if (!pat) return
@@ -283,9 +385,23 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
       case 'VariableDeclaration':
         walkVariableDeclaration(stmt)
         return
-      case 'ExpressionStatement':
+      case 'ExpressionStatement': {
+        // `x()` as a bare statement is the classic dependency-read idiom
+        // (subscribe an effect to x). Its plain form is `void x` — a bare
+        // `x;` means the same but reads as a mistake (and trips lint).
+        const e = stmt.expression
+        if (
+          e?.type === 'CallExpression' &&
+          e.callee?.type === 'Identifier' &&
+          (e.arguments ?? []).length === 0 &&
+          !e.optional
+        ) {
+          const c = lookup(e.callee.name)
+          if (c) c.edits.push(() => ms.prependRight(e.start, 'void '))
+        }
         walkExpr(stmt.expression, false)
         return
+      }
       case 'ExportNamedDeclaration':
       case 'ExportDefaultDeclaration': {
         // `export { count }` — exporting the BINDING is fine (plain state
@@ -294,6 +410,21 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
         // (ESTree) — that is a VALUE use and must be classified, or a
         // signal exported by value would silently convert.
         const decl = stmt.declaration
+        // `export { a, b as c }` — the binding keeps its SIGNAL type for every
+        // importer (`a()` there); converting it would make those call sites
+        // type errors in files this per-file codemod cannot see.
+        if (stmt.type === 'ExportNamedDeclaration' && !stmt.source) {
+          for (const spec of stmt.specifiers ?? []) {
+            const local = spec.local?.name
+            const c = local ? lookup(local) : null
+            if (c) declineExported(c, spec.start)
+          }
+        }
+        if (decl?.type === 'VariableDeclaration' && stmt.type === 'ExportNamedDeclaration') {
+          exportedDeclaration = decl
+          walkStmt(decl)
+          return
+        }
         if (decl) {
           if (
             decl.type === 'VariableDeclaration' ||
@@ -390,9 +521,37 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
     if (fn.body?.type === 'BlockStatement') {
       for (const s of fn.body.body ?? []) walkStmt(s)
     } else if (fn.body) {
-      walkExpr(fn.body, true)
+      const setter = voidWriteBody(fn.body)
+      if (setter) {
+        // `() => x.set(v)` — the arrow RETURNS `.set`'s void result. A plain
+        // `x = v` would return `v`, so wrap the body in a block: `() => { x = v }`
+        // returns undefined exactly like the classic form. The brace edit rides
+        // on the candidate, so a declined binding keeps its original text.
+        walkExpr(fn.body, false)
+        const body = fn.body
+        setter.edits.push(() => {
+          ms.prependRight(body.start, '{ ')
+          ms.appendLeft(body.end, ' }')
+        })
+      } else {
+        walkExpr(fn.body, true)
+      }
     }
     scopes.pop()
+  }
+
+  /**
+   * An expression arrow body that is exactly a `.set(v)` / `.update(fn)` call on
+   * a candidate — its value only ever flows to the arrow's return, which the
+   * block-wrap rewrite preserves as `undefined`.
+   */
+  function voidWriteBody(body: N): Candidate | null {
+    if (body?.type !== 'CallExpression' || body.optional) return null
+    const mem = body.callee
+    if (mem?.type !== 'MemberExpression' || mem.computed || mem.object?.type !== 'Identifier') return null
+    const method = mem.property?.name
+    if ((method !== 'set' && method !== 'update') || (body.arguments ?? []).length !== 1) return null
+    return lookup(mem.object.name) ?? null
   }
 
   function walkClass(cls: N): void {
@@ -451,8 +610,12 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
         }
         candidates.push(c)
         scopes[scopes.length - 1]!.set(d.id.name, c)
-        // Walk the ARGUMENTS (they may reference earlier candidates).
+        if (stmt === exportedDeclaration) declineExported(c, d.id.start)
+        // Walk the ARGUMENTS (they may reference earlier candidates). A
+        // computed's callback is a TRACKED scope — see `trackedDepth`.
+        if (found.role === 'computed') trackedDepth++
         for (const a of found.call.arguments ?? []) walkExpr(a, true)
+        if (found.role === 'computed') trackedDepth--
         continue
       }
       shadowPattern(d.id)
@@ -465,14 +628,7 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
     switch (node.type) {
       case 'Identifier': {
         const c = lookup(node.name)
-        if (c) {
-          declineOf(
-            c,
-            'signal-as-value',
-            `\`${node.name}\` is used as a VALUE (passed/stored as the signal itself) — plain bindings have no signal identity`,
-            node.start,
-          )
-        }
+        if (c) identityUse(c, node, null)
         return
       }
       case 'Literal':
@@ -511,6 +667,14 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
             continue
           }
           if (p.computed && p.key) walkExpr(p.key, true)
+          if (p.shorthand && p.value?.type === 'Identifier') {
+            // `{ ready }` stores the SIGNAL — expand to `ready: signalOf(ready)`.
+            const c = lookup(p.value.name)
+            if (c) {
+              identityUse(c, p.value, p.value.name)
+              continue
+            }
+          }
           if (p.value) walkExpr(p.value, true)
         }
         return
@@ -526,7 +690,7 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
         return
       case 'NewExpression':
         walkExpr(node.callee, true)
-        for (const a of node.arguments ?? []) walkExpr(a, true)
+        walkArgs(node.arguments)
         return
       case 'MemberExpression':
         handleMember(node)
@@ -598,6 +762,11 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
     }
   }
 
+  function isComponentTag(name: N): boolean {
+    if (!name) return false
+    if (name.type === 'JSXMemberExpression') return true
+    return name.type === 'JSXIdentifier' && /^[A-Z]/.test(name.name ?? '')
+  }
   function walkJsxElement(node: N): void {
     for (const attr of node.openingElement?.attributes ?? []) {
       if (attr.type === 'JSXSpreadAttribute') {
@@ -605,7 +774,22 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
         continue
       }
       if (!attr.value) continue
-      if (attr.value.type === 'JSXExpressionContainer') walkExpr(attr.value.expression, true)
+      if (attr.value.type === 'JSXExpressionContainer') {
+        if (isComponentTag(node.openingElement?.name)) {
+          // A COMPONENT prop receives the signal itself in classic code (the
+          // compiler then auto-calls it). Its declared type may be an accessor
+          // (`when: () => boolean`), so keep identity with signalOf — runtime
+          // identical, and exactly the classic type.
+          const inner = unwrapTs(attr.value.expression)
+          const c = inner?.type === 'Identifier' ? lookup(inner.name) : null
+          inferenceContextDepth++
+          if (c) identityUse(c, inner, null)
+          else walkExpr(attr.value.expression, true)
+          inferenceContextDepth--
+        } else {
+          walkJsxSlot(attr.value.expression)
+        }
+      }
       else if (attr.value.type === 'JSXElement' || attr.value.type === 'JSXFragment')
         walkExpr(attr.value, true)
     }
@@ -613,8 +797,51 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
   }
   function walkJsxChild(child: N): void {
     if (!child) return
-    if (child.type === 'JSXExpressionContainer') walkExpr(child.expression, true)
+    if (child.type === 'JSXExpressionContainer') walkJsxSlot(child.expression)
     else if (child.type === 'JSXElement' || child.type === 'JSXFragment') walkExpr(child, true)
+  }
+  /**
+   * A bare signal in a JSX slot (`value={email}`, `{count}`) is ALREADY a read
+   * in classic code: the compiler auto-calls a known signal in component props
+   * and children, and a DOM attr/child treats the callable as a reactive
+   * accessor. The plain read `email` compiles to the same live binding, so the
+   * text stays as-is — no `signalOf` needed.
+   */
+  function walkJsxSlot(expr: N): void {
+    const inner = unwrapTs(expr)
+    if (inner?.type === 'Identifier' && lookup(inner.name)) return
+    walkExpr(expr, true)
+  }
+  /**
+   * A reference that needs the signal ITSELF (passed to a function, stored,
+   * returned). Classic code hands over the signal object; the plain form
+   * `signalOf(x)` compiles back to exactly that bare reference.
+   */
+  function identityUse(c: Candidate, node: N, shorthandKey: string | null): void {
+    c.usesSignalOf = true
+    const typeArg = isTs && inferenceContextDepth > 0 ? `<typeof ${node.name}>` : ''
+    const open = `${markerName.signalOf}${typeArg}(`
+    c.edits.push(() => {
+      if (shorthandKey !== null) {
+        ms.appendLeft(node.end, `: ${open}${node.name})`)
+      } else {
+        ms.prependRight(node.start, open)
+        ms.appendLeft(node.end, ')')
+      }
+    })
+  }
+  function declineExported(c: Candidate, at: number): void {
+    declineOf(
+      c,
+      'exported',
+      `\`${c.name}\` is exported — importers read it as a signal (\`${c.name}()\`); converting it would break their types. Migrate it together with its importers, or keep it classic`,
+      at,
+    )
+  }
+  function walkArgs(args: N[] | undefined): void {
+    inferenceContextDepth++
+    for (const a of args ?? []) walkExpr(a, true)
+    inferenceContextDepth--
   }
 
   /** `X()` read / `effect(fn)` / ordinary call. */
@@ -634,18 +861,20 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
           `\`${callee.name}\` is called with arguments — not a plain read`,
           node.start,
         )
-        for (const a of node.arguments ?? []) walkExpr(a, true)
+        walkArgs(node.arguments)
         return
       }
       // `effect(fn)` from the reactivity import → the plain marker keeps the
       // same name; only the IMPORT moves. Nested reads still need walking.
       if (effectLocals.includes(callee.name) && !shadowedNonCandidate(callee.name)) {
         effectCallSeen = true
-        for (const a of node.arguments ?? []) walkExpr(a, true)
+        trackedDepth++
+        walkArgs(node.arguments)
+        trackedDepth--
         return
       }
       walkExpr(callee, true)
-      for (const a of node.arguments ?? []) walkExpr(a, true)
+      walkArgs(node.arguments)
       return
     }
     // Member calls on candidates: .set / .update / .peek
@@ -695,34 +924,41 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
             return
           }
           const fn = unwrapTs(args[0])
-          const sub = updateSubstitution(c, obj.name, fn)
+          const sub = trackedDepth === 0 ? updateSubstitution(c, obj.name, fn) : null
           if (sub === null) {
-            declineOf(
-              c,
-              'update-complex',
-              `\`${obj.name}.update(…)\` callback is not a simple single-param arrow — rewrite as an assignment first`,
-              node.start,
-            )
+            // General exact form: apply the callback to the UNTRACKED current
+            // value — byte-for-byte the classic `_update` semantics, for any
+            // callback shape (destructured params, block bodies, a reference).
+            untrackNeeded = true
+            const fnStart = args[0].start
+            const fnEnd = args[0].end
+            c.edits.push(() => {
+              ms.overwrite(node.start, fnStart, `${obj.name} = (`)
+              ms.overwrite(fnEnd, node.end, `)(untrack(() => ${obj.name}))`)
+            })
             walkExpr(args[0], true)
             return
           }
-          c.edits.push(() => ms.overwrite(node.start, node.end, `${obj.name} = ${sub}`))
-          // The callback BODY's other references still need classification.
-          walkExpr(fn.body, true)
+          const body = fn.body
+          c.edits.push(() => {
+            ms.overwrite(node.start, body.start, `${obj.name} = `)
+            for (const ref of sub) ms.overwrite(ref.start, ref.end, obj.name)
+            ms.remove(body.end, node.end)
+          })
+          // The callback BODY's other references still need classification —
+          // and their edits now land in the kept body text.
+          walkExpr(body, true)
           return
         }
-        declineOf(
-          c,
-          'member-access',
-          `\`${obj.name}.${method ?? '…'}\` — signal API surface beyond read/set/update/peek has no plain form`,
-          node.start,
-        )
-        for (const a of args) walkExpr(a, true)
+        // Any other signal API (`.subscribe`, `.direct`, `.label`, …) runs on
+        // the signal itself: `signalOf(x).subscribe(…)` compiles back to it.
+        identityUse(c, obj, null)
+        walkArgs(args)
         return
       }
     }
     walkExpr(callee, true)
-    for (const a of node.arguments ?? []) walkExpr(a, true)
+    walkArgs(node.arguments)
   }
 
   /**
@@ -730,7 +966,14 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
    * the callback is not a single-identifier-param expression-body arrow whose
    * param is used without shadowing.
    */
-  function updateSubstitution(c: Candidate, name: string, fn: N): string | null {
+  /**
+   * `x.update(n => n + 1)` → the param references to rename (the caller turns
+   * the call into `x = <body>` with GRANULAR edits, so rewrites of OTHER
+   * candidates inside the body survive), or null when the callback is not a
+   * single-identifier-param expression-body arrow whose param can be renamed
+   * in place (nested scopes, or a shorthand `{ n }` whose key would change).
+   */
+  function updateSubstitution(c: Candidate, name: string, fn: N): N[] | null {
     if (fn?.type !== 'ArrowFunctionExpression') return null
     if ((fn.params ?? []).length !== 1) return null
     const param = fn.params[0]
@@ -755,6 +998,10 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
         complex = true
         return
       }
+      if (n.type === 'Property' && n.shorthand && n.value?.type === 'Identifier' && n.value.name === param.name) {
+        complex = true
+        return
+      }
       if (n.type === 'Identifier' && n.name === param.name) paramRefs.push(n)
       for (const key of Object.keys(n)) {
         if (key === 'typeAnnotation' || key === 'typeParameters' || key === 'returnType') continue
@@ -764,14 +1011,9 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
     }
     visit(fn.body)
     if (complex) return null
-    let out = ''
-    let cursor = fn.body.start
-    for (const ref of paramRefs.sort((a, b) => a.start - b.start)) {
-      out += code.slice(cursor, ref.start) + name
-      cursor = ref.end
-    }
-    out += code.slice(cursor, fn.body.end)
-    return out
+    void c
+    void name
+    return paramRefs
   }
 
   /** Bare member access on a candidate (not a call) — no plain form. */
@@ -780,12 +1022,8 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
     if (!node.computed && obj?.type === 'Identifier') {
       const c = lookup(obj.name)
       if (c) {
-        declineOf(
-          c,
-          'member-access',
-          `\`${obj.name}.${node.property?.name ?? '…'}\` — signal API surface has no plain form`,
-          node.start,
-        )
+        identityUse(c, obj, null)
+        if (node.computed && node.property) walkExpr(node.property, true)
         return
       }
     }
@@ -837,17 +1075,17 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
         // Classic signals REPLACE the value — `state.raw` preserves that;
         // bare `state({…})` would opt into deep-store mutation semantics.
         usesRaw = true
-        ms.overwrite(callee.start, callee.end, 'state.raw')
+        ms.overwrite(callee.start, callee.end, `${markerName.state}.raw`)
       } else {
         usesState = true
-        ms.overwrite(callee.start, callee.end, 'state')
+        ms.overwrite(callee.start, callee.end, markerName.state)
       }
       if (c.decl.kind !== 'let') {
         ms.overwrite(c.decl.start, c.decl.start + c.decl.kind.length, 'let')
       }
     } else {
       usesDerived = true
-      ms.overwrite(callee.start, callee.end, 'derived')
+      ms.overwrite(callee.start, callee.end, markerName.derived)
     }
     for (const apply of c.edits) apply()
   }
@@ -855,10 +1093,12 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
   // ── Imports ───────────────────────────────────────────────────────────────
   // Remove converted names from the reactivity import; add the plain import.
   const plainNames: string[] = []
-  if (usesState || usesRaw) plainNames.push('state')
-  if (usesDerived) plainNames.push('derived')
+  if (usesState || usesRaw) plainNames.push(importSpec('state'))
+  if (usesDerived) plainNames.push(importSpec('derived'))
   if (moveEffect) plainNames.push('effect')
+  if (survivors.some((c) => c.usesSignalOf)) plainNames.push(importSpec('signalOf'))
 
+  let reactivityImportRemoved = false
   if (reactivityImport && importRewritable) {
     const keep: string[] = []
     for (const spec of reactivityImport.specifiers ?? []) {
@@ -874,7 +1114,10 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
       } else if (importedRole === 'effect') {
         drop = moveEffect
       }
-      if (!drop) keep.push(spec.local.name === imported ? imported : `${imported} as ${local}`)
+      if (!drop) {
+        const text = spec.local.name === imported ? imported : `${imported} as ${local}`
+        keep.push(spec.importKind === 'type' ? `type ${text}` : text)
+      }
     }
     if (untrackNeeded && !keep.includes('untrack')) keep.push('untrack')
     if (keep.length > 0) {
@@ -883,28 +1126,52 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
       ms.overwrite(specStart, specEnd, keep.join(', '))
     } else {
       ms.remove(reactivityImport.start, reactivityImport.end)
+      reactivityImportRemoved = true
     }
   }
 
   /** Every use of the primitive's NAME was one of the converted declarations? */
   function usesOnlyConverted(role: Role): boolean {
-    // Count call sites of the primitive name vs converted declarations. Any
-    // extra textual use (a signal() call inside a helper, a reference to the
-    // fn) keeps the import. Conservative by construction.
-    const locals = [...importedRoles.entries()].filter(([, r]) => r === role).map(([n]) => n)
-    if (locals.length === 0) return true
-    const re = new RegExp(`\\b(?:${locals.join('|')})\\b`, 'g')
-    let mentions = 0
-    while (re.exec(code) !== null) mentions++
-    const convertedCount = survivors.filter((c) => c.role === role).length
-    // one mention is the import specifier itself
-    return mentions - 1 <= convertedCount
+    // Count REAL identifier references to the primitive (outside the import
+    // itself) against the converted declarations. A textual scan counted the
+    // word in comments and strings, kept the import, and left it unused.
+    // Any other reference (a helper calling signal(), a shadowing local) keeps
+    // it — conservative by construction.
+    const locals = new Set([...importedRoles.entries()].filter(([, r]) => r === role).map(([n]) => n))
+    if (locals.size === 0) return true
+    let refs = 0
+    const visit = (n: N): void => {
+      if (!n || typeof n !== 'object') return
+      if (Array.isArray(n)) {
+        for (const c of n) visit(c)
+        return
+      }
+      if (typeof n.type !== 'string' || n.type === 'ImportDeclaration') return
+      if (n.type === 'Identifier' && locals.has(n.name)) refs++
+      for (const key of Object.keys(n)) {
+        if (key === 'type' || key === 'start' || key === 'end') continue
+        // NAME positions are not references: `{ signal: x }`, `a.signal`,
+        // class member keys. (A shorthand `{ signal }` IS a reference — its
+        // value node is visited.)
+        if (key === 'key' && !n.computed && (n.type === 'Property' || n.type === 'MethodDefinition' || n.type === 'PropertyDefinition')) continue
+        if (key === 'property' && !n.computed && n.type === 'MemberExpression') continue
+        const v = n[key]
+        if (v && typeof v === 'object') visit(v)
+      }
+    }
+    visit(program)
+    return refs <= survivors.filter((c) => c.role === role).length
   }
 
-  const importText = `import { ${plainNames.join(', ')} } from '${PLAIN_SOURCE}'\n`
   if (plainNames.length > 0) {
-    const anchor = reactivityImport ?? program.body[0]
-    ms.appendLeft(anchor ? anchor.start : 0, importText)
+    const importText = `import { ${plainNames.join(', ')} } from '${PLAIN_SOURCE}'`
+    if (reactivityImportRemoved) {
+      // Take the removed import's place — no blank line left behind.
+      ms.appendLeft(reactivityImport.start, importText)
+    } else {
+      const anchor = reactivityImport ?? program.body[0]
+      ms.appendLeft(anchor ? anchor.start : 0, `${importText}\n`)
+    }
   }
 
   return {

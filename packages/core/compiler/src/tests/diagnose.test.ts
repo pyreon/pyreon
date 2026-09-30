@@ -284,3 +284,14 @@ describe('diagnoseError — 0.51 `<Chart options>` against the 0.52 engine', () 
     expect(d?.cause ?? '').not.toContain('ECharts wrapper')
   })
 })
+
+describe('Plain Mode signal-bridge warnings are diagnosable', () => {
+  it.each([
+    '[plain] signalOf() takes exactly one state/derived binding declared in plain code (`signalOf(count)`); this call is left as-is and will throw at runtime.',
+    '[plain] state.from() takes exactly one signal argument.',
+    '[plain] derived.from() takes exactly one signal argument.',
+  ])('%s', (msg) => {
+    const d = diagnoseError(msg)
+    expect(d?.cause).toContain('signal bridge')
+  })
+})

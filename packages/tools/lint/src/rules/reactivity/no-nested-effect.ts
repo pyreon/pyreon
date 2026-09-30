@@ -8,6 +8,7 @@ export const noNestedEffect: Rule = {
     description: 'Warn against nesting effect() inside another effect().',
     severity: 'warn',
     fixable: false,
+    plainLowered: true,
   },
   create(context) {
     let effectDepth = 0

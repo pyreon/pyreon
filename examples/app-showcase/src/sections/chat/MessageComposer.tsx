@@ -1,4 +1,4 @@
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { toast } from '@pyreon/toast'
 import { ComposerBar, ComposerInput, SendButton } from './styled'
 import { useChat } from './store'
@@ -23,17 +23,17 @@ interface MessageComposerProps {
 export function MessageComposer(props: MessageComposerProps) {
   const chat = useChat()
   const { store } = chat
-  const draft = signal('')
+  let draft = state('')
 
   async function submit(e?: Event) {
     e?.preventDefault()
-    const body = draft().trim()
+    const body = draft.trim()
     if (!body) return
     if (!props.enabled()) {
       toast.warning('Not connected — wait for the chat to reconnect')
       return
     }
-    draft.set('')
+    draft = ''
     try {
       await store.sendMessage(store.selectedChannelId(), body)
     } catch (error) {
@@ -47,11 +47,11 @@ export function MessageComposer(props: MessageComposerProps) {
       <ComposerInput
         type="text"
         placeholder="Message #channel…"
-        value={draft()}
+        value={draft}
         disabled={!props.enabled()}
-        onInput={(e: Event) => draft.set((e.target as HTMLInputElement).value)}
+        onInput={(e: Event) => { draft = (e.target as HTMLInputElement).value }}
       />
-      <SendButton type="submit" disabled={!props.enabled() || !draft().trim()}>
+      <SendButton type="submit" disabled={!props.enabled() || !draft.trim()}>
         Send
       </SendButton>
     </ComposerBar>

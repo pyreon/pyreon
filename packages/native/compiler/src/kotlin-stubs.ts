@@ -1012,6 +1012,26 @@ object PyreonJson {
     inline fun <reified T> encode(value: T): String = ""
 }
 
+// PyreonSchema — copied VERBATIM from runtime-kotlin's PyreonSchema.kt
+// (schema-stub-parity.test.ts asserts it byte-for-byte). Every emitted schema
+// throws / returns these; they live in the runtime so two schema-bearing
+// files in one source set cannot both declare them.
+sealed class PyreonSchemaError(message: String) : Exception(message) {
+    data class MissingOrWrongType(val field: String, val expected: String) :
+        PyreonSchemaError("Field '$field' missing or wrong type (expected $expected)")
+    data class ConstraintViolation(val field: String, val rule: String) :
+        PyreonSchemaError("Field '$field' violated constraint '$rule'")
+}
+
+data class PyreonParseResult<T>(val success: Boolean, val data: T?)
+
+// Signatures mirror PyreonSchema.kt (schema-stub-parity.test.ts checks them).
+@Suppress("UNUSED_PARAMETER")
+inline fun <reified T> pyreonSchemaInput(value: T): Map<String, Any?> = emptyMap()
+fun pyreonSchemaInput(value: Map<String, Any?>): Map<String, Any?> = value
+@Suppress("UNUSED_PARAMETER")
+inline fun <reified T> pyreonSchemaValue(value: T): Any? = null
+
 // useNavigate / useParams / useLoaderData — router hooks that PMTC
 // emits when source code uses \`const navigate = useNavigate()\` /
 // \`const params = useParams()\` / \`const data = useLoaderData<T>()\`.
@@ -1461,6 +1481,112 @@ class PyreonRouter {
 fun RouterProvider(router: PyreonRouter, content: @Composable () -> Unit) {
   content()
 }
+
+// BEGIN runtime mirror: native/router-kotlin/src/main/kotlin/com/pyreon/router/PyreonUrlState.kt
+class PyreonUrlState(
+    private val router: PyreonRouter?,
+    private val key: String,
+    private val defaultValue: String,
+) {
+    operator fun invoke(): String = router?.query?.value?.get(key) ?: defaultValue
+    fun set(value: String) { router?.setQueryParam(key, value) }
+    fun clear() { router?.setQueryParam(key, null) }
+}
+
+/**
+ * JS \`ToNumber(String)\` — the Kotlin twin of router-swift's \`pyreonUrlNumber\`.
+ * Same grammar, same order of checks, so both targets decode a pasted URL
+ * identically; see the Swift source for the divergence table that motivates
+ * it. Unparseable → the declared default, which is what the web does for NaN.
+ */
+private fun pyreonUrlNumber(raw: String, fallback: Double): Double {
+    val t = raw.trim()
+    if (t.isEmpty()) return fallback
+    if (t == "Infinity" || t == "+Infinity") return Double.POSITIVE_INFINITY
+    if (t == "-Infinity") return Double.NEGATIVE_INFINITY
+    if (t.length > 2 && t[0] == '0') {
+        val radix = when (t[1]) {
+            'x', 'X' -> 16
+            'o', 'O' -> 8
+            'b', 'B' -> 2
+            else -> 0
+        }
+        if (radix != 0) {
+            val v = t.substring(2).toLongOrNull(radix) ?: return fallback
+            return v.toDouble()
+        }
+    }
+    // Only the decimal grammar's own characters. Rejects "inf"/"NaN"/"1_0" and
+    // Kotlin's own "1.5f"/"1.5d" suffix forms, all of which JS reads as NaN.
+    for (ch in t) {
+        if (!(ch in '0'..'9' || ch == '+' || ch == '-' || ch == '.' || ch == 'e' || ch == 'E')) return fallback
+    }
+    val v = t.toDoubleOrNull() ?: return fallback
+    return if (v.isNaN()) fallback else v
+}
+
+/** Long-valued search parameter. See \`pyreonUrlNumber\` for the decode. */
+class PyreonUrlStateInt(
+    private val router: PyreonRouter?,
+    private val key: String,
+    private val defaultValue: Long,
+) {
+    operator fun invoke(): Long {
+        val raw = router?.query?.value?.get(key) ?: return defaultValue
+        val n = pyreonUrlNumber(raw, defaultValue.toDouble())
+        // An integer-defaulted binding is a 64-bit integer on both targets, so
+        // a fractional value has no representation — fall back to the
+        // default, the same answer the web gives for a value it cannot read.
+        // Bounded to the JS safe-integer range, identically to the Swift twin.
+        if (n != Math.floor(n) || n < -9007199254740991.0 || n > 9007199254740991.0) return defaultValue
+        return n.toLong()
+    }
+    fun set(value: Long) { router?.setQueryParam(key, value.toString()) }
+    fun clear() { router?.setQueryParam(key, null) }
+}
+
+/**
+ * Double-valued search parameter. \`set\` mirrors JS \`String(v)\`, which prints a
+ * whole Double WITHOUT a trailing \`.0\` — Kotlin's own \`toString()\` gives
+ * "1.0", so the round-trip would not match the web's \`?zoom=1\`.
+ */
+class PyreonUrlStateDouble(
+    private val router: PyreonRouter?,
+    private val key: String,
+    private val defaultValue: Double,
+) {
+    operator fun invoke(): Double {
+        val raw = router?.query?.value?.get(key) ?: return defaultValue
+        return pyreonUrlNumber(raw, defaultValue)
+    }
+    fun set(value: Double) {
+        val s = if (value == Math.floor(value) && Math.abs(value) < 1e15) value.toLong().toString() else value.toString()
+        router?.setQueryParam(key, s)
+    }
+    fun clear() { router?.setQueryParam(key, null) }
+}
+
+/**
+ * Bool-valued search parameter. Mirrors the web decode: true/1 → true,
+ * false/0 → false, anything else → the DEFAULT (not \`false\`).
+ */
+class PyreonUrlStateBool(
+    private val router: PyreonRouter?,
+    private val key: String,
+    private val defaultValue: Boolean,
+) {
+    operator fun invoke(): Boolean {
+        val raw = router?.query?.value?.get(key) ?: return defaultValue
+        return when (raw) {
+            "true", "1" -> true
+            "false", "0" -> false
+            else -> defaultValue
+        }
+    }
+    fun set(value: Boolean) { router?.setQueryParam(key, if (value) "true" else "false") }
+    fun clear() { router?.setQueryParam(key, null) }
+}
+// END runtime mirror
 
 // PyreonRouteLoader — Phase 3 per-route loader host. Real impl in
 // @pyreon/native-router-kotlin/RouteLoader.kt fires the loader once via
@@ -2258,6 +2384,8 @@ class PyreonThrottled<A>(waitMs: Long, scheduler: PyreonScheduler, action: (A) -
   fun cancel() {}
 }
 class PyreonPermissions(granted: Set<String> = emptySet()) {
+  companion object { fun unprovided(): PyreonPermissions = PyreonPermissions() }
+  val isUnprovidedFallback: Boolean = false
   val granted: MutableState<Set<String>> = mutableStateOf(granted)
   fun can(key: String): Boolean {
     if (granted.value.contains(key)) return true
@@ -2275,6 +2403,9 @@ class PyreonPermissions(granted: Set<String> = emptySet()) {
   fun grant(key: String) {}
   fun revoke(key: String) {}
 }
+// BEGIN runtime mirror: fundamentals/permissions/native/kotlin/com/pyreon/runtime/PyreonPermissionsLocal.kt
+val LocalPyreonPermissions: ProvidableCompositionLocal<PyreonPermissions> = compositionLocalOf { PyreonPermissions.unprovided() }
+// END runtime mirror
 
 // PyreonNetworkStatus — mirror of @pyreon/native-runtime-kotlin's
 // PyreonNetworkStatus.kt surface the emit touches: the no-arg constructor

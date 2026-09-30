@@ -1,15 +1,15 @@
-import { signal } from '@pyreon/reactivity'
+import { state as plainState } from '@pyreon/core/plain'
 import { ColorPicker, Title } from '@pyreon/ui-components'
 import type { ColorPickerState } from '@pyreon/ui-primitives'
 
 export function ColorPickerDemo() {
-  const color = signal('#3b82f6')
+  let color = plainState('#3b82f6')
 
   return (
     <div>
       <Title size="h2" style="margin-bottom: 24px">Color Picker</Title>
 
-      <ColorPicker value={color()} onChange={(hex: string) => color.set(hex)}>
+      <ColorPicker value={color} onChange={(hex: string) => { color = hex }}>
         {(state: ColorPickerState) => (
           /*
             `groupProps()` carries BOTH the primitive's ARIA (role="group" +

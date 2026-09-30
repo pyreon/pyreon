@@ -18,7 +18,8 @@ import {
   tableFeatures,
   useTable,
 } from '@pyreon/table'
-import { signal, computed } from '@pyreon/reactivity'
+import { state, derived, signalOf } from '@pyreon/core/plain'
+import { untrack } from '@pyreon/reactivity'
 import { For } from '@pyreon/core'
 import { groupBy } from '@pyreon/rx'
 import { Link } from '@pyreon/zero/link'
@@ -78,13 +79,13 @@ export default function LeaderboardPage() {
   }))
 
   // Aggregate via rx — same pipeline as /stats but reshape for table.
-  const stories = computed<Story[]>(() => query.data() ?? [])
+  const stories = derived<Story[]>(() => query.data() ?? [])
   const byUser = groupBy(
-    stories as never,
+    signalOf<typeof stories>(stories) as never,
     (s: Story) => s.user ?? '(anon)',
   )
 
-  const tableData = computed<UserRow[]>(() => {
+  const tableData = derived<UserRow[]>(() => {
     const grouped = (byUser as never as () => Record<string, Story[]>)()
     return Object.entries(grouped).map(([user, items]) => {
       const totalPoints = items.reduce((a, b) => a + (b.points ?? 0), 0)
@@ -102,7 +103,7 @@ export default function LeaderboardPage() {
     })
   })
 
-  const sorting = signal<SortingState>([{ id: 'totalPoints', desc: true }])
+  let sorting = state.raw<SortingState>([{ id: 'totalPoints', desc: true }])
 
   const columns: ColumnDef<typeof features, UserRow>[] = [
     { accessorKey: 'user', header: 'User', cell: (i) => i.getValue<string>() },
@@ -118,11 +119,11 @@ export default function LeaderboardPage() {
 
   const table = useTable(() => ({
     features,
-    data: tableData(),
+    data: tableData,
     columns,
-    state: { sorting: sorting() },
+    state: { sorting: sorting },
     onSortingChange: (updater) => {
-      sorting.set(typeof updater === 'function' ? updater(sorting.peek()) : updater)
+      sorting = typeof updater === 'function' ? updater(untrack(() => sorting)) : updater
     },
     initialState: { pagination: { pageIndex: 0, pageSize: 10 } },
   }))
@@ -135,7 +136,7 @@ export default function LeaderboardPage() {
           {() =>
             query.isPending()
               ? t('feed.loading')
-              : `${tableData().length} unique submitters`
+              : `${tableData.length} unique submitters`
           }
         </p>
       </header>

@@ -1,19 +1,19 @@
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { Button, Card, Title, Paragraph } from '@pyreon/ui-components'
 import { ModalBase } from '@pyreon/ui-primitives'
 
 export function ModalDemo() {
-  const open = signal(false)
+  let open = state(false)
 
   return (
     <div>
       <Title size="h2" style="margin-bottom: 24px">Modal</Title>
 
-      <Button state="primary" onClick={() => open.set(true)}>Open Modal</Button>
+      <Button state="primary" onClick={() => { open = true }}>Open Modal</Button>
 
       <ModalBase
-        open={open()}
-        onClose={() => open.set(false)}
+        open={open}
+        onClose={() => { open = false }}
         closeOnEscape
         closeOnOverlay
         style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 50;"
@@ -24,8 +24,8 @@ export function ModalDemo() {
             This is a modal dialog. Press Escape or click outside to close. Scroll is locked while open.
           </Paragraph>
           <div style="display: flex; gap: 8px; justify-content: flex-end;">
-            <Button state="secondary" variant="ghost" onClick={() => open.set(false)}>Cancel</Button>
-            <Button state="primary" onClick={() => open.set(false)}>Confirm</Button>
+            <Button state="secondary" variant="ghost" onClick={() => { open = false }}>Cancel</Button>
+            <Button state="primary" onClick={() => { open = false }}>Confirm</Button>
           </div>
         </Card>
       </ModalBase>

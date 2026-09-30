@@ -1,5 +1,5 @@
 import { useQuery } from '@pyreon/query'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { useVirtualizer } from '@pyreon/virtual'
 import { fetchCustomers } from './data/api'
 import type { Customer } from './data/types'
@@ -47,13 +47,13 @@ export function CustomersVirtualList() {
 
   // The scroll container — captured via ref so the virtualizer knows
   // which element it's measuring.
-  const scrollEl = signal<HTMLElement | null>(null)
-  const setScrollRef = (el: HTMLElement | null) => scrollEl.set(el)
+  let scrollEl = state<HTMLElement | null>(null)
+  const setScrollRef = (el: HTMLElement | null) => { scrollEl = el }
 
   // ── Virtualizer ─────────────────────────────────────────────────────
   const virtual = useVirtualizer<HTMLElement, HTMLElement>(() => ({
     count: customersQuery.data()?.length ?? 0,
-    getScrollElement: () => scrollEl(),
+    getScrollElement: () => scrollEl,
     estimateSize: () => ROW_HEIGHT,
     overscan: 6,
   }))
