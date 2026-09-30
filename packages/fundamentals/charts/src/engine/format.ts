@@ -5,6 +5,7 @@
 // make a chart look broken regardless of how correct its geometry is.
 
 import type { Double } from './types'
+import { isFiniteNumber } from './finite-number'
 
 export type Formatter = (value: Double) => string
 
@@ -18,8 +19,10 @@ export type Formatter = (value: Double) => string
  * `2e21`) rather than a runaway digit string.
  */
 export function plain(v: Double): string {
-  if (!(v === v)) return 'NaN'
-  if (v - v !== 0.0) return v > 0.0 ? 'Infinity' : '-Infinity'
+  if (!isFiniteNumber(v)) {
+    if (!(v === v)) return 'NaN'
+    return v > 0.0 ? 'Infinity' : '-Infinity'
+  }
   const mag = Math.abs(v)
   // Below 1e-12 is float noise (0.1 + 0.2 - 0.3), not data.
   if (mag < 0.000000000001) return '0'
@@ -150,7 +153,7 @@ function padded(v: Double, width: number): string {
 export function formatDate(ms: Double, pattern: string): string {
   // NaN and ±Infinity are the values for which `x - x` is not zero; there is
   // no `Number.isFinite` / `Infinity` in the native subset.
-  if (!(ms - ms === 0.0)) return ''
+  if (!isFiniteNumber(ms)) return ''
   const days = Math.floor(ms / DAY_MS)
   const inDay = ms - days * DAY_MS
   // Howard Hinnant's civil_from_days (as `civilFromDays` in calendar.ts).

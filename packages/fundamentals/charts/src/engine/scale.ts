@@ -1,6 +1,7 @@
 // Scales and ticks — the arithmetic every mark sits on.
 
 import { groupThousands, plain } from './format'
+import { isFiniteNumber as finiteNumber } from './finite-number'
 import type { Formatter } from './format'
 import type { Domain, Tick, Double } from './types'
 
@@ -52,13 +53,11 @@ export function niceDomain(d: Domain, targetCount: Double): Domain {
 }
 
 /**
- * Is `v` a finite number? Written for the native subset: `Number.isFinite`
- * has no lowering in the engine, but a NaN is the only value not equal to
- * itself and an infinity is the only one whose self-difference is NaN — so
- * the two comparisons ARE the check, on every target.
+ * Re-export the native-subset-safe finite-number predicate used by existing
+ * scale consumers.
  */
 export function isFiniteNumber(v: Double): boolean {
-  return v === v && v - v === 0.0
+  return finiteNumber(v)
 }
 
 /**
