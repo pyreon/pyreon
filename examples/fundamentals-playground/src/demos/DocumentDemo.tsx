@@ -1,6 +1,6 @@
 import type { OutputFormat } from '@pyreon/document'
 import { createDocument, Document, Heading, Page, render, Table, Text } from '@pyreon/document'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 
 const formats: { id: OutputFormat; label: string }[] = [
   { id: 'html', label: 'HTML' },
@@ -13,12 +13,12 @@ const formats: { id: OutputFormat; label: string }[] = [
 
 export function DocumentDemo() {
   // ─── Builder pattern ─────────────────────────────────────────────────────
-  const activeFormat = signal<OutputFormat>('html')
-  const output = signal('Click "Render" to see output.')
-  const rendering = signal(false)
+  let activeFormat = state<OutputFormat>('html')
+  let output = state('Click "Render" to see output.')
+  let rendering = state(false)
 
   // Sample data
-  const teamData = signal([
+  let teamData = state.raw([
     ['Alice', 'Engineering', '$145K', '4.8'],
     ['Bob', 'Design', '$125K', '4.5'],
     ['Carol', 'Marketing', '$115K', '4.9'],
@@ -43,9 +43,9 @@ export function DocumentDemo() {
           { header: 'Salary' },
           { header: 'Rating' },
         ],
-        rows: teamData(),
+        rows: teamData,
       })
-      .text(`Total team members: ${teamData().length}`)
+      .text(`Total team members: ${teamData.length}`)
       .divider()
       .heading('Notes')
       .list([
@@ -61,29 +61,29 @@ export function DocumentDemo() {
 
   // Render to selected format
   async function renderDocument() {
-    rendering.set(true)
+    rendering = true
     try {
       const doc = buildReport()
       const docNode = doc.build()
-      const rendered = await render(docNode, activeFormat())
+      const rendered = await render(docNode, activeFormat)
       if (typeof rendered === 'string') {
-        output.set(rendered)
+        output = rendered
       } else {
-        output.set(`[Binary output: ${(rendered as Uint8Array).byteLength} bytes]`)
+        output = `[Binary output: ${(rendered as Uint8Array).byteLength} bytes]`
       }
     } catch (err) {
-      output.set(`Error: ${(err as Error).message}`)
+      output = `Error: ${(err as Error).message}`
     } finally {
-      rendering.set(false)
+      rendering = false
     }
   }
 
   // ─── JSX pattern demo ─────────────────────────────────────────────────────
-  const jsxOutput = signal('')
-  const jsxFormat = signal<OutputFormat>('html')
+  let jsxOutput = state('')
+  let jsxFormat = state<OutputFormat>('html')
 
   async function renderJsxDoc() {
-    rendering.set(true)
+    rendering = true
     try {
       // Doc primitives are factory functions returning `DocNode` — NOT
       // Pyreon JSX components (which return `VNode`). Each primitive takes
@@ -110,21 +110,21 @@ export function DocumentDemo() {
           ],
         }),
       })
-      const rendered = await render(doc, jsxFormat())
+      const rendered = await render(doc, jsxFormat)
       if (typeof rendered === 'string') {
-        jsxOutput.set(rendered)
+        jsxOutput = rendered
       } else {
-        jsxOutput.set(`[Binary output: ${(rendered as Uint8Array).byteLength} bytes]`)
+        jsxOutput = `[Binary output: ${(rendered as Uint8Array).byteLength} bytes]`
       }
     } catch (err) {
-      jsxOutput.set(`Error: ${(err as Error).message}`)
+      jsxOutput = `Error: ${(err as Error).message}`
     } finally {
-      rendering.set(false)
+      rendering = false
     }
   }
 
-  const log = signal<string[]>([])
-  const addLog = (msg: string) => log.update((l) => [...l.slice(-9), msg])
+  let log = state.raw<string[]>([])
+  const addLog = (msg: string) => { log = [...log.slice(-9), msg] }
 
   return (
     <div>
@@ -146,9 +146,9 @@ export function DocumentDemo() {
             <button
               type="button"
               key={fmt.id}
-              class={activeFormat() === fmt.id ? 'active' : ''}
+              class={activeFormat === fmt.id ? 'active' : ''}
               onClick={() => {
-                activeFormat.set(fmt.id)
+                activeFormat = fmt.id
                 addLog(`Format → ${fmt.label}`)
               }}
             >
@@ -161,25 +161,25 @@ export function DocumentDemo() {
             type="button"
             onClick={() => {
               renderDocument()
-              addLog(`Rendered as ${activeFormat()}`)
+              addLog(`Rendered as ${activeFormat}`)
             }}
-            disabled={rendering()}
+            disabled={rendering}
           >
-            {() => (rendering() ? 'Rendering...' : 'Render')}
+            {() => (rendering ? 'Rendering...' : 'Render')}
           </button>
           <button
             type="button"
             onClick={() => {
-              teamData.update((d) => [
-                ...d,
+              teamData = [
+                ...teamData,
                 [
                   ['Frank', 'Grace', 'Hank', 'Ivy'][Math.floor(Math.random() * 4)]!,
                   ['Engineering', 'Design', 'Marketing', 'Product'][Math.floor(Math.random() * 4)]!,
                   `$${100 + Math.floor(Math.random() * 80)}K`,
                   (3.5 + Math.random() * 1.5).toFixed(1),
                 ],
-              ])
-              addLog(`Added team member (${teamData().length} total)`)
+              ]
+              addLog(`Added team member (${teamData.length} total)`)
             }}
           >
             Add Team Member
@@ -187,9 +187,9 @@ export function DocumentDemo() {
           <button
             type="button"
             onClick={() => {
-              if (teamData().length > 1) {
-                teamData.update((d) => d.slice(0, -1))
-                addLog(`Removed last member (${teamData().length} total)`)
+              if (teamData.length > 1) {
+                teamData = teamData.slice(0, -1)
+                addLog(`Removed last member (${teamData.length} total)`)
               }
             }}
           >
@@ -197,7 +197,7 @@ export function DocumentDemo() {
           </button>
         </div>
         <pre style="background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 8px; font-size: 13px; overflow-x: auto; max-height: 300px; white-space: pre-wrap; word-break: break-word">
-          {() => output()}
+          {() => output}
         </pre>
       </div>
 
@@ -215,9 +215,9 @@ export function DocumentDemo() {
             <button
               type="button"
               key={`jsx-${fmt.id}`}
-              class={jsxFormat() === fmt.id ? 'active' : ''}
+              class={jsxFormat === fmt.id ? 'active' : ''}
               onClick={() => {
-                jsxFormat.set(fmt.id)
+                jsxFormat = fmt.id
                 addLog(`Invoice format → ${fmt.label}`)
               }}
             >
@@ -229,15 +229,15 @@ export function DocumentDemo() {
           type="button"
           onClick={() => {
             renderJsxDoc()
-            addLog(`Rendered invoice as ${jsxFormat()}`)
+            addLog(`Rendered invoice as ${jsxFormat}`)
           }}
-          disabled={rendering()}
+          disabled={rendering}
           style="margin-bottom: 8px"
         >
-          {() => (rendering() ? 'Rendering...' : 'Render Invoice')}
+          {() => (rendering ? 'Rendering...' : 'Render Invoice')}
         </button>
         <pre style="background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 8px; font-size: 13px; overflow-x: auto; max-height: 300px; white-space: pre-wrap; word-break: break-word">
-          {() => jsxOutput() || 'Click "Render Invoice" to see output.'}
+          {() => jsxOutput || 'Click "Render Invoice" to see output.'}
         </pre>
       </div>
 
@@ -264,9 +264,9 @@ export function DocumentDemo() {
         <h3>Change Log</h3>
         <div class="log">
           {() =>
-            log().length === 0
+            log.length === 0
               ? 'Interact with the controls above to see changes.'
-              : log().join('\n')
+              : log.join('\n')
           }
         </div>
       </div>

@@ -831,6 +831,8 @@ export function emitKotlin(
   attrsComponents: AttrsComponentIR[] = [],
   aliasImports: Map<string, { source: string; imported: string }> = new Map(),
 ): { code: string; warnings: string[] } {
+  // Per-FILE counter — see the matching reset in emitSwift.
+  _kotlinTimelineSeq = 0
   _emitWarnings = []
   _needsKotlinNumString = false
   // Per-FILE hook-binding-name sets. They are populated by the pre-pass
@@ -6670,13 +6672,17 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               if (lowered !== null) return lowered
             }
             break
-          // `indexOf` / `startsWith` / `endsWith` / `split` pass through
-          // VERBATIM in their 1-argument forms (the Kotlin stdlib spells them
-          // the same way). The positioned forms do not: `List.indexOf` has no
-          // `fromIndex`, `startsWith(p, i)` returns false for a negative `i`
-          // where JS clamps it to 0, `endsWith` has no `endPosition`, and
-          // Kotlin's `split` limit means "at most n parts, the last holding the
-          // rest" where JS TRUNCATES to n parts.
+          // `startsWith` / `endsWith` / `split` pass through VERBATIM in
+          // their 1-argument forms (the Kotlin stdlib spells them the same
+          // way). The positioned forms do not: `startsWith(p, i)` returns
+          // false for a negative `i` where JS clamps it to 0, `endsWith` has
+          // no `endPosition`, and Kotlin's `split` limit means "at most n
+          // parts, the last holding the rest" where JS TRUNCATES to n parts.
+          // `indexOf` / `lastIndexOf` are also Int-typed on both sides of the
+          // call in Kotlin — a TS integer is Long (see KOTLIN_INT), so the
+          // 1-argument result widens; `List.indexOf` additionally has no
+          // `fromIndex`, so the 2-argument positioned form applies to
+          // `indexOf` only, not `lastIndexOf`.
           case 'indexOf':
           case 'lastIndexOf':
             if (e.args.length === 1) return kotlinLongOf(`${obj}${objDot}${prop}(${argExprs[0]!})`)

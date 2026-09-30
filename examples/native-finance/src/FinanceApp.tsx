@@ -60,7 +60,7 @@
 //      on insert. Keep the reactive list in a `signal`/store; use the DB as
 //      persistence. (Reflected in this showcase's store-signal ledger.)
 
-import { signal, computed } from '@pyreon/reactivity'
+import { state, derived, signalOf } from '@pyreon/core/plain'
 import { useForm } from '@pyreon/form'
 import { useAuth, useDatabase, useSecureStorage } from '@pyreon/hooks'
 import { defineStore } from '@pyreon/store'
@@ -77,12 +77,12 @@ let nextTxId = 3
 // ── Cross-screen reactive state ──
 
 const useFinance = defineStore('finance', () => {
-  const isAuthed = signal(false)
-  const txns = signal<Transaction[]>([
+  let isAuthed = state(false)
+  let txns = state.raw<Transaction[]>([
     { id: 1, description: 'Salary', amount: 4200 },
     { id: 2, description: 'Rent', amount: -1500 },
   ])
-  return { isAuthed, txns }
+  return { isAuthed: signalOf<typeof isAuthed>(isAuthed), txns: signalOf<typeof txns>(txns) }
 })
 
 // ── Login screen — driven by the useAuth<User> container ──
@@ -165,7 +165,7 @@ function DashboardPage() {
   const db = useDatabase()
   const auth = useAuth<User>()
   const secrets = useSecureStorage()
-  const balance = computed(() =>
+  const balance = derived(() =>
     useFinance()
       .store.txns()
       .reduce((sum, t) => sum + t.amount, 0),

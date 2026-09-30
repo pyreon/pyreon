@@ -97,4 +97,47 @@ describe('lazy', () => {
     const result = Comp({ count: 42 })
     expect((result as VNode).props).toEqual({ count: 42 })
   })
+
+  test('__load() resolves once the chunk has loaded (used by SSR to await pending chunks)', async () => {
+    const Inner: ComponentFn = () => h('span', null, 'loaded')
+    const Comp = lazy(() => Promise.resolve({ default: Inner }))
+
+    // __load() is the documented SSR contract: a promise that SETTLES
+    // (never rejects) once the chunk has either loaded or failed, so a
+    // server renderer can `await` a chunk that hasn't landed yet instead of
+    // rendering the still-loading wrapper as nothing.
+    const settled = Comp.__load!()
+    expect(settled).toBeInstanceOf(Promise)
+    await expect(settled).resolves.toBeUndefined()
+
+    // By the time __load() has settled, the component is actually usable.
+    expect(Comp.__loading()).toBe(false)
+    const result = Comp({})
+    expect((result as VNode).type).toBe(Inner)
+  })
+
+  test('__load() resolves (does not reject) even when the chunk import fails', async () => {
+    // The whole point of __load settling unconditionally: a failed chunk
+    // must not make the SSR `await` throw — the failure is surfaced later,
+    // by the wrapper throwing on its next render (see the `error` signal),
+    // not by rejecting this promise.
+    const Comp = lazy<Props>(() => Promise.reject(new Error('network down')))
+
+    const settled = Comp.__load!()
+    await expect(settled).resolves.toBeUndefined()
+
+    // The failure is still recorded — calling the wrapper now throws.
+    expect(() => Comp({})).toThrow('network down')
+  })
+
+  test('__load() returns the SAME settled promise across repeated calls', async () => {
+    // `wrapper.__load = () => settled` closes over one promise created at
+    // lazy() call time — every call must return that identical reference,
+    // not a fresh promise per call.
+    const Comp = lazy(() => Promise.resolve({ default: (() => null) as ComponentFn }))
+    const first = Comp.__load!()
+    const second = Comp.__load!()
+    expect(first).toBe(second)
+    await first
+  })
 })

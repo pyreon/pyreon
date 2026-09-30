@@ -1204,6 +1204,11 @@ export function emitSwift(
   attrsComponents: AttrsComponentIR[] = [],
   aliasImports: Map<string, { source: string; imported: string }> = new Map(),
 ): { code: string; warnings: string[] } {
+  // Per-FILE counters: reset on every emit so generated names depend only on
+  // THIS source — not on what else the process compiled before it (a CLI
+  // build, a watcher, a test file compiling twice all saw drifting names).
+  _swiftTimelineSeq = 0
+  _swiftHostStateSeq = 0
   _emitWarnings = []
   // Per-FILE hook-binding-name sets. They are populated by the pre-pass
   // below (which walks EVERY component at once), so they are file-scoped,

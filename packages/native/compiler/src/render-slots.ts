@@ -411,7 +411,7 @@ export function forBlockBodyWarning(): string {
   )
 }
 
-/** The named warning for a block-bodied render callback. Same text on both targets. */
+/** The named warning for a block-bodied render callback that has no view-builder shape. Same text on both targets. */
 export function blockBodiedRenderCallbackWarning(where: string): string {
   return (
     `${where}: this render callback's BLOCK body (\`(x) => { …; return <…/> }\`) is not lowered to native. ` +

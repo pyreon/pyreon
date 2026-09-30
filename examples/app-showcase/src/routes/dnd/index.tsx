@@ -1,5 +1,5 @@
 import { useDraggable, useDroppable, useFileDrop, useSortable } from '@pyreon/dnd'
-import { signal } from '@pyreon/reactivity'
+import { state, signalOf } from '@pyreon/core/plain'
 
 /**
  * Drag & drop showcase — three scenarios, each visibly distinct in the
@@ -23,7 +23,7 @@ import { signal } from '@pyreon/reactivity'
  */
 export default function DndRoute() {
   // ─── Sortable list ────────────────────────────────────────────────────
-  const items = signal([
+  let items = state.raw([
     { id: '1', label: 'Alice' },
     { id: '2', label: 'Bob' },
     { id: '3', label: 'Charlie' },
@@ -31,15 +31,15 @@ export default function DndRoute() {
   ])
 
   const sortable = useSortable({
-    items,
+    items: signalOf<typeof items>(items),
     by: (it) => it.id,
-    onReorder: (next) => items.set(next),
+    onReorder: (next) => { items = next },
   })
 
   // ─── Draggable card → drop zone ───────────────────────────────────────
   let cardEl: HTMLElement | null = null
   let zoneEl: HTMLElement | null = null
-  const droppedPayload = signal<string | null>(null)
+  let droppedPayload = state<string | null>(null)
 
   const { isDragging } = useDraggable<{ kind: 'card'; id: string; label: string }>({
     element: () => cardEl,
@@ -49,17 +49,17 @@ export default function DndRoute() {
   const { isOver: isCardOver } = useDroppable<{ kind: 'card'; id: string; label: string }>({
     element: () => zoneEl,
     canDrop: (data) => data.kind === 'card',
-    onDrop: (data) => droppedPayload.set(`${data.label} (${data.id})`),
+    onDrop: (data) => { droppedPayload = `${data.label} (${data.id})` },
   })
 
   // ─── File drop ────────────────────────────────────────────────────────
   let fileZoneEl: HTMLElement | null = null
-  const droppedFiles = signal<File[]>([])
+  let droppedFiles = state.raw<File[]>([])
 
   const { isOver: isFileOver, isDraggingFiles } = useFileDrop({
     element: () => fileZoneEl,
     accept: ['image/*'],
-    onDrop: (files) => droppedFiles.set(files),
+    onDrop: (files) => { droppedFiles = files },
   })
 
   return (
@@ -85,7 +85,7 @@ export default function DndRoute() {
           data-testid="sortable-list"
         >
           {() =>
-            items().map((item) => (
+            items.map((item) => (
               <li
                 ref={sortable.itemRef(item.id)}
                 key={item.id}
@@ -105,7 +105,7 @@ export default function DndRoute() {
           data-testid="sortable-order"
           style="margin: 12px 0 0; font-family: monospace; font-size: 12px; color: #475569"
         >
-          {() => `order: ${items().map((i) => i.id).join(', ')}`}
+          {() => `order: ${items.map((i) => i.id).join(', ')}`}
         </p>
       </section>
 
@@ -133,10 +133,10 @@ export default function DndRoute() {
             }}
             data-testid="zone"
             data-over={isCardOver() ? 'true' : 'false'}
-            data-dropped={droppedPayload() != null ? 'true' : 'false'}
+            data-dropped={droppedPayload != null ? 'true' : 'false'}
             style="flex: 1; min-height: 80px; border: 2px dashed #cbd5e1; border-radius: 10px; padding: 16px; display: flex; align-items: center; justify-content: center; color: #475569; background: #f8fafc"
           >
-            {() => droppedPayload() ?? 'Drop here'}
+            {() => droppedPayload ?? 'Drop here'}
           </div>
         </div>
       </section>
@@ -155,11 +155,11 @@ export default function DndRoute() {
           data-testid="file-zone"
           data-over={isFileOver() ? 'true' : 'false'}
           data-dragging={isDraggingFiles() ? 'true' : 'false'}
-          data-files={String(droppedFiles().length)}
+          data-files={String(droppedFiles.length)}
           style="min-height: 100px; border: 2px dashed #cbd5e1; border-radius: 10px; padding: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: #475569; background: #f8fafc"
         >
           {() => {
-            const f = droppedFiles()
+            const f = droppedFiles
             if (f.length === 0) return 'Drop image files here'
             return `${f.length} file(s): ${f.map((x) => x.name).join(', ')}`
           }}

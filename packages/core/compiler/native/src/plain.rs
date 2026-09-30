@@ -229,6 +229,7 @@ enum Marker {
     State,
     Derived,
     Effect,
+    SignalOf,
 }
 
 /// The function body shape `walkFunction` abstracts over.
@@ -255,6 +256,12 @@ struct P<'a> {
     exit_seen: i32,
     fn_stack: Vec<FnInfo>,
     saved_track: Vec<(i32, i32)>,
+    /// Mirror of JS `readOverride` / `readOverrideDepth` (destructuring defaults).
+    read_override: Option<Vec<(String, String)>>,
+    read_override_depth: i32,
+    destructure_seq: u32,
+    split_props_used: bool,
+    split_props_name: String,
 }
 
 fn pos_of(src: &str, offset: u32) -> (u32, u32) {
@@ -359,6 +366,16 @@ impl<'a> P<'a> {
     /// Rewrite a READ of a tracked binding at an identifier (span given).
     fn rewrite_read(&mut self, name: &str, span_start: u32, span_end: u32) {
         let Some(b) = self.lookup(name) else { return };
+        if self.func_depth == self.read_override_depth && matches!(b, Bind::State | Bind::Store) {
+            let tmp = self
+                .read_override
+                .as_ref()
+                .and_then(|m| m.iter().find(|(n, _)| n == name).map(|(_, t)| t.clone()));
+            if let Some(tmp) = tmp {
+                self.ms.overwrite(span_start, span_end, tmp);
+                return;
+            }
+        }
         match b.clone() {
             Bind::State | Bind::Store | Bind::Derived | Bind::ImportedState => {
                 self.ms.append_left(span_end, "()".to_string());
@@ -797,45 +814,99 @@ fn is_pascal_case(name: &str) -> bool {
 
 // ─── Component detection + props pattern ───────────────────────────────────
 
-enum PropsPattern {
-    Complex,
-    Simple(Vec<(String, String, Option<String>)>), // (key, local, defaultText)
+/// Mirror of JS `PropsPattern` / `analyzePropsPattern`.
+struct PropsShape {
+    entries: Vec<(String, String, Option<String>)>, // (key path, local, defaultText)
+    rest: Option<String>,
+    top_keys: Vec<String>,
 }
 
-fn analyze_simple_props_pattern(src: &str, pat: &ObjectPattern) -> PropsPattern {
-    if pat.rest.is_some() {
-        return PropsPattern::Complex;
-    }
-    let mut out = Vec::new();
+enum PropsPattern {
+    Complex,
+    Simple(PropsShape),
+}
+
+fn analyze_props_visit(src: &str, pat: &ObjectPattern, prefix: &str, out: &mut PropsShape) -> bool {
     for p in &pat.properties {
         if p.computed {
-            return PropsPattern::Complex;
+            return false;
         }
-        let PropertyKey::StaticIdentifier(key) = &p.key else {
-            return PropsPattern::Complex;
+        let PropertyKey::StaticIdentifier(k) = &p.key else {
+            return false;
         };
+        if prefix.is_empty() {
+            out.top_keys.push(k.name.to_string());
+        }
+        let key = format!("{prefix}{}", k.name);
         match &p.value {
             BindingPattern::BindingIdentifier(id) => {
-                out.push((key.name.to_string(), id.name.to_string(), None));
+                out.entries.push((key, id.name.to_string(), None));
             }
             BindingPattern::AssignmentPattern(ap) => {
                 let BindingPattern::BindingIdentifier(id) = &ap.left else {
-                    return PropsPattern::Complex;
+                    return false;
                 };
                 let right = ap.right.span();
-                out.push((
-                    key.name.to_string(),
+                out.entries.push((
+                    key,
                     id.name.to_string(),
-                    Some(format!(
-                        "({})",
-                        &src[right.start as usize..right.end as usize]
-                    )),
+                    Some(format!("({})", &src[right.start as usize..right.end as usize])),
                 ));
             }
-            _ => return PropsPattern::Complex,
+            BindingPattern::ObjectPattern(inner) => {
+                if !analyze_props_visit(src, inner, &format!("{key}."), out) {
+                    return false;
+                }
+            }
+            _ => return false,
         }
     }
-    PropsPattern::Simple(out)
+    if let Some(rest) = &pat.rest {
+        if !prefix.is_empty() {
+            return false;
+        }
+        let BindingPattern::BindingIdentifier(id) = &rest.argument else {
+            return false;
+        };
+        out.rest = Some(id.name.to_string());
+    }
+    true
+}
+
+fn analyze_simple_props_pattern(src: &str, pat: &ObjectPattern) -> PropsPattern {
+    let mut out = PropsShape {
+        entries: Vec::new(),
+        rest: None,
+        top_keys: Vec::new(),
+    };
+    if analyze_props_visit(src, pat, "", &mut out) {
+        PropsPattern::Simple(out)
+    } else {
+        PropsPattern::Complex
+    }
+}
+
+impl<'a> P<'a> {
+    fn rest_init(&mut self, props_var: &str, shape: &PropsShape) -> String {
+        self.split_props_used = true;
+        let keys: Vec<String> = shape.top_keys.iter().map(|k| format!("'{k}'")).collect();
+        format!("{}({props_var}, [{}])[1]", self.split_props_name, keys.join(", "))
+    }
+    fn declare_props_shape(&mut self, shape: &PropsShape, props_var: &str) {
+        for (key, local, default_text) in &shape.entries {
+            self.declare_binding(
+                local,
+                Bind::Prop {
+                    props_var: props_var.to_string(),
+                    key: key.clone(),
+                    default_text: default_text.clone(),
+                },
+            );
+        }
+        if let Some(rest) = &shape.rest {
+            self.declare_binding(rest, Bind::Shadow);
+        }
+    }
 }
 
 impl<'a> P<'a> {
@@ -982,15 +1053,21 @@ impl<'a> P<'a> {
                                 ann_start.unwrap_or(p0span.end),
                                 pv.to_string(),
                             );
-                            for (key, local, default_text) in entries {
-                                self.declare_binding(
-                                    &local,
-                                    Bind::Prop {
-                                        props_var: pv.to_string(),
-                                        key,
-                                        default_text,
-                                    },
-                                );
+                            self.declare_props_shape(&entries, pv);
+                            if entries.rest.is_some() {
+                                let init = self.rest_init(pv, &entries);
+                                let decl = format!("const {} = {init};", entries.rest.as_ref().unwrap());
+                                match &body {
+                                    FnBody::Block(b) => {
+                                        self.ms.append_right(b.span.start + 1, format!(" {decl}"));
+                                    }
+                                    FnBody::Expr(e) => {
+                                        let sp = e.span();
+                                        self.ms.append_right(sp.start, format!("{{ {decl} return ("));
+                                        self.ms.append_left(sp.end, ") }".to_string());
+                                    }
+                                    FnBody::None => {}
+                                }
                             }
                             props_var = Some(pv.to_string());
                         }
@@ -1475,6 +1552,40 @@ impl<'a> P<'a> {
                 _ => (None, false, None),
             };
 
+            // `state.from(sig)` / `derived.from(sig)` — mirror of plain.ts.
+            let adopt_role = match call.map(|c| &c.callee) {
+                Some(Expression::StaticMemberExpression(m)) if m.property.name == "from" => {
+                    match &m.object {
+                        Expression::Identifier(obj) => match self.is_marker(obj.name.as_str()) {
+                            Some(r @ (Marker::State | Marker::Derived)) => Some(r),
+                            _ => None,
+                        },
+                        _ => None,
+                    }
+                }
+                _ => None,
+            };
+            if let (Some(role), BindingPattern::BindingIdentifier(id)) = (adopt_role, &d.id) {
+                let call = call.unwrap();
+                let arg = if call.arguments.len() == 1 {
+                    call.arguments[0].as_expression()
+                } else {
+                    None
+                };
+                if let Some(arg) = arg {
+                    let init_span = init.unwrap().span();
+                    let a = arg.span();
+                    self.ms.remove(init_span.start, a.start);
+                    self.ms.remove(a.end, init_span.end);
+                    self.walk_expr(arg, true);
+                    let b = if role == Marker::State { Bind::State } else { Bind::Derived };
+                    self.declare_binding(id.name.as_str(), b);
+                    continue;
+                }
+                let name = if role == Marker::State { "state" } else { "derived" };
+                let msg = format!("{name}.from() takes exactly one signal argument.");
+                self.warn(init.unwrap().span().start, &msg);
+            }
             if marker_role == Some(Marker::State) || is_state_raw {
                 if let BindingPattern::BindingIdentifier(id) = &d.id {
                     let call = call.unwrap();
@@ -1565,17 +1676,17 @@ impl<'a> P<'a> {
                         if init_id.name == props_var.as_str() {
                             match analyze_simple_props_pattern(self.src, op) {
                                 PropsPattern::Simple(entries) => {
-                                    self.ms.remove(stmt.span.start, stmt.span.end);
-                                    for (key, local, default_text) in entries {
-                                        self.declare_binding(
-                                            &local,
-                                            Bind::Prop {
-                                                props_var: props_var.clone(),
-                                                key,
-                                                default_text,
-                                            },
+                                    if let Some(rest) = entries.rest.clone() {
+                                        let init = self.rest_init(&props_var, &entries);
+                                        self.ms.overwrite(
+                                            stmt.span.start,
+                                            stmt.span.end,
+                                            format!("const {rest} = {init}"),
                                         );
+                                    } else {
+                                        self.ms.remove(stmt.span.start, stmt.span.end);
                                     }
+                                    self.declare_props_shape(&entries, &props_var);
                                     continue;
                                 }
                                 PropsPattern::Complex => {
@@ -1689,6 +1800,32 @@ impl<'a> P<'a> {
                             if prop.computed {
                                 if let Some(key) = prop.key.as_expression() {
                                     self.walk_expr(key, true);
+                                }
+                            }
+                            // `{ x: signalOf(x) }` → `{ x }` (mirror of plain.ts).
+                            if !prop.computed && !prop.shorthand {
+                                if let (PropertyKey::StaticIdentifier(k), Expression::CallExpression(call)) =
+                                    (&prop.key, &prop.value)
+                                {
+                                    let is_signal_of = matches!(&call.callee, Expression::Identifier(c)
+                                        if self.is_marker(c.name.as_str()) == Some(Marker::SignalOf));
+                                    let arg = if call.arguments.len() == 1 {
+                                        call.arguments[0].as_expression().map(unwrap_ts)
+                                    } else {
+                                        None
+                                    };
+                                    if let (true, Some(Expression::Identifier(a))) = (is_signal_of, arg) {
+                                        let ok = a.name == k.name
+                                            && matches!(
+                                                self.lookup(a.name.as_str()),
+                                                Some(Bind::State | Bind::Store | Bind::Derived | Bind::ImportedState)
+                                            );
+                                        if ok {
+                                            let name = k.name.to_string();
+                                            self.ms.overwrite(prop.span.start, prop.span.end, name);
+                                            continue;
+                                        }
+                                    }
                                 }
                             }
                             if prop.shorthand {
@@ -1839,6 +1976,33 @@ impl<'a> P<'a> {
                                 self.walk_argument(a);
                             }
                         }
+                    }
+                    return;
+                }
+                Some(Marker::SignalOf) => {
+                    // `signalOf(x)` → the bare signal reference (mirror of plain.ts).
+                    let arg = if call.arguments.len() == 1 {
+                        call.arguments[0].as_expression().map(unwrap_ts)
+                    } else {
+                        None
+                    };
+                    if let Some(Expression::Identifier(a)) = arg {
+                        let ok = matches!(
+                            self.lookup(a.name.as_str()),
+                            Some(Bind::State | Bind::Store | Bind::Derived | Bind::ImportedState)
+                        );
+                        if ok {
+                            let text = a.name.to_string();
+                            self.ms.overwrite(call.span.start, call.span.end, text);
+                            return;
+                        }
+                    }
+                    self.warn(
+                        call.span.start,
+                        "signalOf() takes exactly one state/derived binding declared in plain code (`signalOf(count)`); this call is left as-is and will throw at runtime.",
+                    );
+                    for a in &call.arguments {
+                        self.walk_argument(a);
                     }
                     return;
                 }
@@ -2042,6 +2206,146 @@ fn logical_assign_op(op: AssignmentOperator) -> Option<&'static str> {
 }
 
 impl<'a> P<'a> {
+    /// Mirror of JS `rewriteDestructuringAssignment`. Returns true when handled.
+    fn rewrite_destructuring_assignment(&mut self, node: &AssignmentExpression<'a>) -> bool {
+        let left = &node.left;
+        let mut ordered: Vec<String> = Vec::new();
+        collect_assignment_target_names_ordered(left, &mut ordered);
+        let mut writes: Vec<(String, bool)> = Vec::new(); // (name, is_store)
+        for n in &ordered {
+            match self.lookup(n) {
+                Some(b @ (Bind::Derived | Bind::ImportedState | Bind::Prop { .. })) => {
+                    let why = match b {
+                        Bind::Derived => "derived values are read-only",
+                        Bind::Prop { .. } => "props flow down",
+                        _ => "ESM imports are read-only",
+                    };
+                    let msg = format!("destructuring assignment onto `{n}` is not possible — {why}.");
+                    self.warn(left.span().start, &msg);
+                    self.walk_expr(&node.right, true);
+                    return true;
+                }
+                Some(Bind::State) => writes.push((n.clone(), false)),
+                Some(Bind::Store) => writes.push((n.clone(), true)),
+                _ => {}
+            }
+        }
+        if writes.is_empty() {
+            return false;
+        }
+        let seq = self.destructure_seq;
+        self.destructure_seq += 1;
+        let temps: Vec<(String, String)> = writes
+            .iter()
+            .enumerate()
+            .map(|(i, (n, _))| (n.clone(), format!("__plainD{seq}_{i}")))
+            .collect();
+        let value = format!("__plainDv{seq}");
+
+        let prev_override = self.read_override.take();
+        let prev_depth = self.read_override_depth;
+        self.read_override = Some(temps.clone());
+        self.read_override_depth = self.func_depth;
+        self.destructure_target(left, &temps);
+        self.read_override = prev_override;
+        self.read_override_depth = prev_depth;
+
+        let mut sets: Vec<String> = Vec::new();
+        for ((name, is_store), (_, tmp)) in writes.iter().zip(temps.iter()) {
+            if *is_store {
+                self.used.store = true;
+                sets.push(format!("{name}.set({}({tmp}));", self.emit.store));
+            } else {
+                sets.push(format!("{name}.set({tmp});"));
+            }
+        }
+        let seeds: Vec<String> = temps
+            .iter()
+            .map(|(n, t)| format!("{t} = {n}.peek()"))
+            .collect();
+        let span = left.span();
+        self.ms.append_right(span.start, format!("(({value}) => {{ let {}; (", seeds.join(", ")));
+        self.ms.overwrite(
+            span.end,
+            node.right.span().start,
+            format!(" = {value}); {} return {value} }})(", sets.join(" ")),
+        );
+        self.walk_expr(&node.right, true);
+        self.ms.append_left(node.span.end, ")".to_string());
+        true
+    }
+
+    fn destructure_ident(&mut self, name: &str, start: u32, end: u32, shorthand: bool, temps: &[(String, String)]) {
+        let tmp = temps.iter().find(|(n, _)| n == name).map(|(_, t)| t.clone());
+        if let Some(tmp) = tmp {
+            if self.lookup(name).is_some() {
+                let text = if shorthand { format!("{name}: {tmp}") } else { tmp };
+                self.ms.overwrite(start, end, text);
+            }
+        }
+    }
+
+    fn destructure_maybe_default(&mut self, t: &AssignmentTargetMaybeDefault<'a>, temps: &[(String, String)]) {
+        match t {
+            AssignmentTargetMaybeDefault::AssignmentTargetWithDefault(d) => {
+                self.destructure_target(&d.binding, temps);
+                self.walk_expr(&d.init, true);
+            }
+            _ => {
+                if let Some(t) = t.as_assignment_target() {
+                    self.destructure_target(t, temps);
+                }
+            }
+        }
+    }
+
+    fn destructure_target(&mut self, t: &AssignmentTarget<'a>, temps: &[(String, String)]) {
+        match t {
+            AssignmentTarget::AssignmentTargetIdentifier(id) => {
+                self.destructure_ident(id.name.as_str(), id.span.start, id.span.end, false, temps);
+            }
+            AssignmentTarget::ArrayAssignmentTarget(a) => {
+                for el in a.elements.iter().flatten() {
+                    self.destructure_maybe_default(el, temps);
+                }
+                if let Some(rest) = &a.rest {
+                    self.destructure_target(&rest.target, temps);
+                }
+            }
+            AssignmentTarget::ObjectAssignmentTarget(o) => {
+                for p in &o.properties {
+                    match p {
+                        AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(pi) => {
+                            let b = &pi.binding;
+                            self.destructure_ident(b.name.as_str(), b.span.start, b.span.end, true, temps);
+                            if let Some(init) = &pi.init {
+                                self.walk_expr(init, true);
+                            }
+                        }
+                        AssignmentTargetProperty::AssignmentTargetPropertyProperty(pp) => {
+                            if pp.computed {
+                                if let Some(k) = pp.name.as_expression() {
+                                    self.walk_expr(k, true);
+                                }
+                            }
+                            self.destructure_maybe_default(&pp.binding, temps);
+                        }
+                    }
+                }
+                if let Some(rest) = &o.rest {
+                    self.destructure_target(&rest.target, temps);
+                }
+            }
+            AssignmentTarget::StaticMemberExpression(m) => self.walk_static_member(m),
+            AssignmentTarget::ComputedMemberExpression(m) => self.walk_computed_member(m),
+            AssignmentTarget::PrivateFieldExpression(m) => self.walk_expr(&m.object, true),
+            AssignmentTarget::TSAsExpression(e) => self.walk_expr(&e.expression, true),
+            AssignmentTarget::TSSatisfiesExpression(e) => self.walk_expr(&e.expression, true),
+            AssignmentTarget::TSNonNullExpression(e) => self.walk_expr(&e.expression, true),
+            AssignmentTarget::TSTypeAssertion(e) => self.walk_expr(&e.expression, true),
+        }
+    }
+
     fn rewrite_assignment(&mut self, node: &AssignmentExpression<'a>, value_used: bool) {
         let left = &node.left;
 
@@ -2159,31 +2463,16 @@ impl<'a> P<'a> {
             }
         }
 
-        // Destructuring assignment onto tracked bindings → warn, walk untouched.
+        // Destructuring assignment onto plain state → IIFE over temporaries
+        // (mirror of plain.ts `rewriteDestructuringAssignment`).
         if matches!(
             left,
             AssignmentTarget::ObjectAssignmentTarget(_)
                 | AssignmentTarget::ArrayAssignmentTarget(_)
-        ) {
-            let mut names = FxHashSet::default();
-            collect_assignment_target_names(left, &mut names);
-            // JS iterates Set insertion order and warns for the FIRST tracked
-            // name; source order approximates it — collect in source order.
-            let mut ordered: Vec<String> = Vec::new();
-            collect_assignment_target_names_ordered(left, &mut ordered);
-            for n in &ordered {
-                let hit = matches!(
-                    self.lookup(n),
-                    Some(Bind::State) | Some(Bind::Store) | Some(Bind::Derived)
-                );
-                if hit {
-                    let msg = format!(
-                        "destructuring assignment onto plain state `{n}` is not rewritten — assign each binding directly."
-                    );
-                    self.warn(left.span().start, &msg);
-                    break;
-                }
-            }
+        ) && node.operator == AssignmentOperator::Assign
+            && self.rewrite_destructuring_assignment(node)
+        {
+            return;
         }
 
         // Member writes whose ROOT is plain state.
@@ -2535,6 +2824,7 @@ pub fn transform_plain(
                         "state" => Some(Marker::State),
                         "derived" => Some(Marker::Derived),
                         "effect" => Some(Marker::Effect),
+                        "signalOf" => Some(Marker::SignalOf),
                         _ => None,
                     };
                     if let Some(role) = role {
@@ -2610,6 +2900,15 @@ pub fn transform_plain(
         exit_seen: 0,
         fn_stack: Vec::new(),
         saved_track: Vec::new(),
+        read_override: None,
+        read_override_depth: -1,
+        destructure_seq: 0,
+        split_props_used: false,
+        split_props_name: if module_scope_names.contains("__plainSplitProps") {
+            "__plainSplitProps$".to_string()
+        } else {
+            "__plainSplitProps".to_string()
+        },
     };
 
     // ── Run ──
@@ -2654,6 +2953,14 @@ pub fn transform_plain(
         } else {
             format!("createStore as {}", p.emit.store)
         });
+    }
+    if p.split_props_used {
+        let core_import = format!("import {{ splitProps as {} }} from '@pyreon/core'; ", p.split_props_name);
+        let at = match strip_ranges.first() {
+            Some((start, _)) => *start,
+            None => program.body.first().map(|s| s.span().start).unwrap_or(0),
+        };
+        p.ms.append_left(at, core_import);
     }
     if !needed.is_empty() {
         let import_text = format!(

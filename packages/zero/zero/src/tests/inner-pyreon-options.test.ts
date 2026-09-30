@@ -57,6 +57,7 @@ describe('the disposition covers every option', () => {
         'jsxAutoImport',
         'lpih',
         'optimizeValidators',
+        'plain',
         'ssr',
         'ssrTemplate',
         'templatizeComponentChildren',

@@ -1,6 +1,6 @@
 import type { EditorLanguage } from '@pyreon/code'
 import { CodeEditor, createEditor, getAvailableLanguages } from '@pyreon/code'
-import { computed, signal } from '@pyreon/reactivity'
+import { state, derived } from '@pyreon/core/plain'
 // Grammars beyond the core set (css / python) live behind this entry — the editor
 // core registers only the JS family + JSON so a consumer never pre-bundles
 // the whole language ecosystem it does not use.
@@ -96,23 +96,23 @@ export function CodeDemo() {
   })
 
   // Active file tracking
-  const activeFile = signal('main.ts')
+  let activeFile = state('main.ts')
   const fileNames = Object.keys(sampleFiles)
 
   // Theme toggle
-  const isDark = signal(true)
+  let isDark = state(true)
 
   // Inserted text log
-  const log = signal<string[]>([])
-  const addLog = (msg: string) => log.update((l) => [...l.slice(-9), msg])
+  let log = state.raw<string[]>([])
+  const addLog = (msg: string) => { log = [...log.slice(-9), msg] }
 
   // Derived state from editor
-  const cursorInfo = computed(() => {
+  const cursorInfo = derived(() => {
     const c = editor.cursor()
     return `Ln ${c.line}, Col ${c.col}`
   })
 
-  const selectionInfo = computed(() => {
+  const selectionInfo = derived(() => {
     const s = editor.selection()
     if (s.from === s.to) return 'No selection'
     return `Selected ${s.to - s.from} chars`
@@ -138,10 +138,10 @@ export function CodeDemo() {
             <button
               type="button"
               key={name}
-              class={activeFile() === name ? 'active' : ''}
+              class={activeFile === name ? 'active' : ''}
               onClick={() => {
                 const file = sampleFiles[name]!
-                activeFile.set(name)
+                activeFile = name
                 editor.value.set(file.value)
                 editor.language.set(file.language)
                 addLog(`Opened ${name} (${file.language})`)
@@ -159,8 +159,8 @@ export function CodeDemo() {
 
         {/* Status bar */}
         <div style="display: flex; gap: 16px; padding: 6px 12px; background: #1e1e1e; color: #888; font-size: 12px; font-family: monospace; border-radius: 0 0 8px 8px; border: 1px solid #333; border-top: none">
-          <span>{() => cursorInfo()}</span>
-          <span>{() => selectionInfo()}</span>
+          <span>{() => cursorInfo}</span>
+          <span>{() => selectionInfo}</span>
           <span>{() => `${editor.lineCount()} lines`}</span>
           <span>{() => editor.language()}</span>
           <span>{() => (editor.focused() ? 'Focused' : 'Blurred')}</span>
@@ -264,13 +264,13 @@ export function CodeDemo() {
           <button
             type="button"
             onClick={() => {
-              const next = isDark() ? 'light' : 'dark'
-              isDark.update((d) => !d)
+              const next = isDark ? 'light' : 'dark'
+              isDark = !isDark
               editor.theme.set(next)
               addLog(`Theme → ${next}`)
             }}
           >
-            {() => (isDark() ? 'Switch to Light' : 'Switch to Dark')}
+            {() => (isDark ? 'Switch to Light' : 'Switch to Dark')}
           </button>
           <button
             type="button"
@@ -294,7 +294,7 @@ export function CodeDemo() {
           {() =>
             JSON.stringify(
               {
-                file: activeFile(),
+                file: activeFile,
                 language: editor.language(),
                 theme: editor.theme(),
                 readOnly: editor.readOnly(),
@@ -315,9 +315,9 @@ export function CodeDemo() {
         <h3>Action Log</h3>
         <div class="log">
           {() =>
-            log().length === 0
+            log.length === 0
               ? 'Use the controls above to interact with the editor.'
-              : log().join('\n')
+              : log.join('\n')
           }
         </div>
       </div>

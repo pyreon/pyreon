@@ -6,11 +6,11 @@
  * carries no page markup while the hydrated DOM does.
  */
 import { h } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 
 export const renderMode = 'spa'
 
-const clicks = signal(0)
+let clicks = state(0)
 
 export default function HybridSpaPage() {
   return h(
@@ -21,10 +21,10 @@ export default function HybridSpaPage() {
       'button',
       {
         'data-testid': 'hybrid-spa-inc',
-        onClick: () => clicks.update((n) => n + 1),
+        onClick: () => { clicks = clicks + 1 },
       },
       'inc',
     ),
-    h('span', { 'data-testid': 'hybrid-spa-count' }, () => String(clicks())),
+    h('span', { 'data-testid': 'hybrid-spa-count' }, () => String(clicks)),
   )
 }
