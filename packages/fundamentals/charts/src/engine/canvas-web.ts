@@ -340,13 +340,28 @@ export function prepareCanvas(
   background: string = '',
 ): CanvasRenderingContext2D | null {
   // The theme's ground, or transparent — set on the element so it survives every repaint.
-  canvas.style.background = background
+  if (canvas.style.background !== background) canvas.style.background = background
   const dpr = typeof globalThis.devicePixelRatio === 'number' ? globalThis.devicePixelRatio : 1
-  canvas.width = Math.max(1, Math.round(width * dpr))
-  canvas.height = Math.max(1, Math.round(height * dpr))
-  canvas.style.width = `${width}px`
-  canvas.style.height = `${height}px`
-  const ctx = canvas.getContext('2d')
+  const bw = Math.max(1, Math.round(width * dpr))
+  const bh = Math.max(1, Math.round(height * dpr))
+  // Assigning `width`/`height` REALLOCATES the backing store even when the
+  // value is unchanged — and this runs on every repaint (each hover move).
+  // Only reallocate when the size actually changed; otherwise `reset()` gives
+  // the same blank canvas + default context state (clip, dash, alpha, …) the
+  // paint relies on, without the allocation. Where `reset()` is missing the
+  // old assignment is the fallback.
+  const ctx = canvas.getContext('2d') as (CanvasRenderingContext2D & { reset?: () => void }) | null
+  const resized = canvas.width !== bw || canvas.height !== bh
+  if (resized || ctx === null || typeof ctx.reset !== 'function') {
+    canvas.width = bw
+    canvas.height = bh
+  } else {
+    ctx.reset()
+  }
+  const cssW = `${width}px`
+  const cssH = `${height}px`
+  if (canvas.style.width !== cssW) canvas.style.width = cssW
+  if (canvas.style.height !== cssH) canvas.style.height = cssH
   if (ctx === null) return null
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   return ctx

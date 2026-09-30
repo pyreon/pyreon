@@ -528,8 +528,19 @@ export function lazy<P extends Props>(
   const LazyComp = ((props: P) => {
     const err = error()
     if (err) throw err
-    const comp = loaded()
-    return comp ? pyreonH(comp as ComponentFn, props as Props) : null
+    // Solid starts loading on first render. Without this a lazy that no
+    // `<Suspense>` asked about and nobody preloaded never loaded at all.
+    if (loaded.peek() === null) load().then(noopSettle, noopSettle)
+    // Render REACTIVELY, like core's `lazy()`: a component body runs once, so
+    // reading `loaded()` here would render a lazy mounted while loading as
+    // nothing forever. The accessor also gives the server output a stable
+    // `<!--$-->` range, which hydration keeps standing while the chunk loads.
+    return () => {
+      const e = error()
+      if (e) return pyreonH(LazyLoadError as ComponentFn, { error: e })
+      const comp = loaded()
+      return comp ? pyreonH(comp as ComponentFn, props as Props) : null
+    }
   }) as LazyComponent<P> & { preload: () => Promise<{ default: ComponentFn<P> }> }
 
   // __loading() triggers load() on first call so loading starts when Suspense
@@ -548,6 +559,11 @@ export function lazy<P extends Props>(
 }
 
 function noopSettle(): void {}
+
+/** Stands where a lazy whose chunk failed after mount was: its setup throws, so the nearest `<ErrorBoundary>` catches it. */
+const LazyLoadError = nativeCompat((props: { error: Error }): VNodeChild => {
+  throw props.error
+})
 
 // ─── createContext / useContext ───────────────────────────────────────────────
 

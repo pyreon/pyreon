@@ -118,7 +118,10 @@ describe('parse.ts — parseFetchInitObject (queryFn fetch init)', () => {
 
   it('bakes method / body / headers literals', () => {
     const r = fi(`{ method: 'put', body: 'payload', headers: { 'x-a': 'b', auth: 'c', n: 1, [k]: 'z', ...more } }`)
-    expect(r.warnings).toEqual([])
+    // The computed `[k]` header is NAMED (it used to vanish silently).
+    expect(r.warnings).toEqual([
+      expect.stringContaining('useQuery queryFn fetch headers: the computed key `[k]` is only known at runtime'),
+    ])
     expect(r.code).toContain('method: .put')
     expect(r.code).toContain('"payload"')
     expect(r.code).toContain('"x-a": "b"')
@@ -215,7 +218,11 @@ describe('parse.ts — tryDeclFromCreateMachine', () => {
   }`),
     )
     const w = warn(r)
-    expect(w).not.toContain('createMachine declaration')
+    // The one computed key (`[dyn]`) is named; nothing else warns.
+    expect(r.warnings).toEqual([
+      expect.stringContaining('createMachine declaration `m`: state `idle` `on`: the computed key `[dyn]`'),
+    ])
+    expect(w).toContain('createMachine declaration')
     expect(r.code).toContain('"idle"')
     expect(r.code).toContain('"GO"')
     expect(r.code).toContain('"STOP"')
@@ -612,9 +619,12 @@ describe('parse.ts — createFlow config readers', () => {
     for (const e of ['e', '[[0, 0]]', '[1, 2]', '[[0], [1, 1]]']) {
       expect(parseFlow(withCfg(`nodeExtent: ${e}`)).warnings).toContain('nodeExtent (not a numeric')
     }
-    for (const r of ['{ ...x }', '{ a: 1 }', '{ a: { outputs: o } }', '{ a: { outputs: [x] } }', '{ 5: { outputs: [] } }']) {
+    for (const r of ['{ ...x }', '{ a: 1 }', '{ a: { outputs: o } }', '{ a: { outputs: [x] } }', '{ [k]: { outputs: [] } }']) {
       expect(parseFlow(withCfg(`connectionRules: ${r}`)).warnings).toContain('connectionRules (not a literal')
     }
+    // A NUMERIC key is a static key — JS stores it as the string "5", and the
+    // web looks rules up by `node.type`, so a node type "5" matches it.
+    expect(parseFlow(withCfg(`connectionRules: { 5: { outputs: ['a'] } }`)).decl?.connectionRules).toEqual({ 5: ['a'] })
   })
 
   it('rejects each unsupported defaultEdgeOptions shape', () => {
@@ -653,7 +663,10 @@ describe('parse.ts — tryDeclFromCreateTableState', () => {
     const r = swift(
       tableApp(`{ 'data': () => rows(), pageSize: 10, ...rest, columns: [{ id: 'name', 'header': 'N', [k]: 1, ...c }, 5, { id: 1 }] }`),
     )
-    expect(warn(r)).not.toContain('createTableState declaration')
+    // Only the computed column key is named.
+    expect(r.warnings).toEqual([
+      expect.stringContaining('createTableState declaration `t`: column: the computed key `[k]`'),
+    ])
     expect(r.code).toContain('"name"')
   })
 
@@ -818,10 +831,10 @@ describe('parse.ts — useQuery residual arms', () => {
     expect(r.code).not.toContain('cors')
   })
 
-  it('a numeric-keyed header is skipped (no string key)', () => {
+  it('a numeric-keyed header is a static key (JS stores it as the string "1")', () => {
     const r = q(`() => ({ queryKey: ['a'], queryFn: () => fetch('https://x', { headers: { 1: 'x', a: 'b' } }) })`)
     expect(r.code).toContain('"a": "b"')
-    expect(r.code).not.toContain('"1"')
+    expect(r.code).toContain('"1": "x"')
   })
 
   it('a direct-value queryFn whose returned array has a hole still lowers (the null hole is walked past)', () => {
@@ -836,7 +849,10 @@ describe('parse.ts — rx callee shapes that are not rx', () => {
   })
 })
 
-describe('parse.ts — computed-expression keys are skipped by every literal-config reader', () => {
+// A computed NON-literal key is only known at runtime. These readers used to
+// skip it silently (or, where they only checked `key.type === 'Identifier'`,
+// MISREAD `[k]` as the key "k"); every one now NAMES it and lowers the rest.
+describe('parse.ts — computed-expression keys are named by every literal-config reader', () => {
   it('createMachine: config / state / `on` / event keys', () => {
     const decl = declsOf(
       machineApp(`{ [a + b]: 1, id: 'm', initial: 'idle', states: {
@@ -846,10 +862,15 @@ describe('parse.ts — computed-expression keys are skipped by every literal-con
       } }`),
     ).find((d) => d.kind === 'machine') as Extract<DeclIR, { kind: 'machine' }>
     expect(decl.transitions).toEqual({ idle: { GO: 'run' }, run: { BACK: 'idle' } })
+    const w = warn(swift(machineApp(`{ [a + b]: 1, initial: 'idle', states: { idle: { on: { [a + b]: 'x', GO: 'idle' } } } }`)))
+    expect(w).toContain('createMachine declaration `m`: config: the computed key `[a + b]`')
+    expect(w).toContain('createMachine declaration `m`: state `idle` `on`: the computed key `[a + b]`')
   })
 
-  it('syncedSignal: a computed key is skipped, the rest lowers', () => {
-    expect(swift(syncedApp(`{ [a + b]: 1, doc, key: 'k', initial: 1 }`)).warnings).toEqual([])
+  it('syncedSignal: a computed key is named, the rest lowers', () => {
+    expect(swift(syncedApp(`{ [a + b]: 1, doc, key: 'k', initial: 1 }`)).warnings).toEqual([
+      expect.stringContaining('syncedSignal declaration `v`: config: the computed key `[a + b]`'),
+    ])
   })
 
   it('createFlow: node literal / objProp / config readers', () => {
@@ -857,8 +878,9 @@ describe('parse.ts — computed-expression keys are skipped by every literal-con
       `{ [a + b]: 1, ...spread, nodes: [{ ...base, [a + b]: 2, 'id': 'a', position: { x: 0, y: 0 }, data: { v: 1 } }], edges: [] }`,
     )
     expect(decl?.nodes[0]?.id).toBe('a')
-    // Only the node's own real keys are judged; the computed and spread entries are neither lowered nor named.
-    expect(warnings).not.toContain('node field')
+    // The computed node key is named as a dropped field; the config one as a dropped key.
+    expect(warnings).toContain('[computed key]')
+    expect(warnings).toContain('`[a + b] (computed key)`')
   })
 
   it('createTableState: config + column keys', () => {
@@ -880,9 +902,9 @@ describe('parse.ts — computed-expression keys are skipped by every literal-con
     expect(d.messages).toEqual({ en: { hi: 'Hi' } })
   })
 
-  it('createFlow: a computed config key is not named in the dropped-keys warning', () => {
+  it('createFlow: a computed config key is named in the dropped-keys warning', () => {
     const { warnings } = parseFlow(withCfg('[a + b]: 1, bogus: 2'))
-    expect(warnings).toContain('`bogus` is NOT lowered natively')
+    expect(warnings).toContain('`[a + b] (computed key)`, `bogus` are NOT lowered natively')
   })
 })
 
@@ -939,13 +961,14 @@ const formApp = (cfg: string) =>
   `import { useForm } from '@pyreon/form'\nexport function App(){\n  const f = useForm(${cfg})\n  return <Text>x</Text>\n}`
 
 describe('parse.ts — tryExtractFormInitialValues', () => {
-  it('keeps identifier- and string-keyed string literals; skips spreads, numeric keys, and non-string values', () => {
+  it('keeps identifier-, string- and numeric-keyed string literals; skips spreads and non-string values', () => {
     const d = declsOf(formApp(`{ initialValues: { ...base, email: 'a@b', 'name': 'n', 1: 'x', age: 3, tag: t } }`)).find(
       (x) => x.kind === 'form',
     ) as Extract<DeclIR, { kind: 'form' }>
     expect(d.initialValues).toEqual([
       { key: 'email', value: 'a@b' },
       { key: 'name', value: 'n' },
+      { key: '1', value: 'x' },
     ])
   })
 
@@ -1007,7 +1030,7 @@ describe('parse.ts — KNOWN BUG: a computed `[ident]` key is read as the litera
   // checking `prop.computed`, so `{ [kind]: … }` is read as the key "kind"
   // rather than the VALUE of `kind`. A computed key is not statically known;
   // it should be named as unlowerable, never silently renamed.
-  it.fails('createFlow connectionRules: `{ [kind]: { outputs } }` should be named, not lowered under the key "kind"', () => {
+  it('createFlow connectionRules: `{ [kind]: { outputs } }` should be named, not lowered under the key "kind"', () => {
     const { decl, warnings } = parseFlow(withCfg(`connectionRules: { [kind]: { outputs: ['a'] } }`), 'createFlow', `const kind = 'input'`)
     expect(decl?.connectionRules).toBeUndefined()
     expect(warnings).toContain('connectionRules (not a literal')

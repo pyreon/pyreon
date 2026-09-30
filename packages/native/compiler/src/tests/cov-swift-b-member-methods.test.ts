@@ -8,8 +8,11 @@
 // The arity guards are the load-bearing half: nearly every entry is
 // `if (e.args.length === N)` followed by `break`, and a `break` lands on the
 // generic re-emit, which is what produced the historical SILENT invalid-Swift
-// class these mappings exist to close. So the "wrong arity" assertion is
-// always "the mapped Swift member is ABSENT and the verbatim JS name survives".
+// class these mappings exist to close. A wrong arity never takes the arm built
+// for another one. Since native-known-bugs-emit.test.ts it is also never
+// SILENT: an argument JS itself ignores is dropped (named), a faithful
+// positioned form lowers, and any other shape keeps the verbatim JS name WITH
+// a named warning (method-shapes.ts).
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
@@ -48,31 +51,28 @@ ${decls}
 }
 
 describe('Swift member-call lowering — arity and receiver-type guards', () => {
-  it('toString(): number receiver → String(x); a STRING receiver keeps the verbatim call', () => {
+  it('toString(): number receiver → String(x); a STRING receiver is the string itself', () => {
     const out = sw(`  const a = computed(() => n().toString())
   const b = computed(() => s().toString())`)
     expect(out).toContain('String(n)')
-    // The string receiver never reaches the `tsT.kind === 'number'` arm, so
-    // the generic re-emit survives.
-    expect(out).toContain('s.toString()')
+    // Swift String has no `toString` — it used to re-emit verbatim.
+    expect(out).not.toContain('s.toString()')
   })
 
-  it('toString(arg) is NOT lowered — the 0-arg guard rejects it', () => {
-    // `Number.prototype.toString(radix)` has no Swift analogue; the arity
-    // guard is what keeps the wrong lowering (`String(n)`, dropping the
-    // radix) from shipping.
+  it('toString(radix) on an integer → String(_:radix:), never the radix-dropping String(n)', () => {
     const out = sw(`  const a = computed(() => n().toString(16))`)
-    expect(out).toContain('n.toString(16)')
-    expect(out).not.toContain('String(n)')
+    expect(out).toContain('String(n, radix: 16)')
+    expect(out).not.toMatch(/String\(n\)(?!,)/)
   })
 
   it('trim(): 0-arg → trimmingCharacters; an argument falls through', () => {
     expect(sw(`  const a = computed(() => s().trim())`)).toContain(
       's.trimmingCharacters(in: .whitespacesAndNewlines)',
     )
+    // JS `trim()` takes no arguments — an extra one is dropped, NAMED.
     const withArg = sw(`  const a = computed(() => s().trim(1))`)
-    expect(withArg).not.toContain('trimmingCharacters')
-    expect(withArg).toContain('s.trim(1)')
+    expect(withArg).toContain('s.trimmingCharacters(in: .whitespacesAndNewlines)')
+    expect(warnings(`  const a = computed(() => s().trim(1))`).some((w) => w.startsWith('`.trim(…)` on a string: the extra argument is dropped'))).toBe(true)
   })
 
   it('some/every/filter/find/findLast/includes: the 1-arg predicate arms', () => {
@@ -123,15 +123,16 @@ describe('Swift member-call lowering — arity and receiver-type guards', () => 
     expect(bare).not.toContain('String(Array(s)')
   })
 
-  it('startsWith / endsWith → hasPrefix / hasSuffix; 2-arg falls through', () => {
+  it('startsWith / endsWith → hasPrefix / hasSuffix; 2-arg lowers a positioned search', () => {
     const out = sw(`  const a = computed(() => s().startsWith('he'))
   const b = computed(() => s().endsWith('lo'))`)
     expect(out).toContain('s.hasPrefix("he")')
     expect(out).toContain('s.hasSuffix("lo")')
 
+    // The 1-arg `hasPrefix` spelling would silently drop the position.
     const two = sw(`  const a = computed(() => s().startsWith('he', 1))`)
-    expect(two).not.toContain('hasPrefix')
-    expect(two).toContain('s.startsWith("he", 1)')
+    expect(two).not.toContain('s.hasPrefix("he")')
+    expect(two).toContain('__pyRecv.dropFirst(max(0, 1)).hasPrefix("he")')
   })
 
   it('join: a non-String element array maps through String.init first', () => {
@@ -143,10 +144,10 @@ describe('Swift member-call lowering — arity and receiver-type guards', () => 
     expect(out).not.toContain('strs.map { String($0) }')
   })
 
-  it('join with TWO args is not lowered (the `<= 1` guard)', () => {
+  it('join with TWO args drops the one JS never reads (the `<= 1` guard never sees it)', () => {
     const out = sw(`  const a = computed(() => strs().join('-', 'x'))`)
-    expect(out).not.toContain('joined(separator:')
-    expect(out).toContain('strs.join("-", "x")')
+    expect(out).toContain('strs.joined(separator: "-")')
+    expect(out).not.toContain('strs.join(')
   })
 
   it('split: the 1-arg arm; 0-arg falls through', () => {
@@ -257,12 +258,13 @@ describe('Swift member-call lowering — arity and receiver-type guards', () => 
     const out = sw(`  const a = computed(() => nums().reverse())`)
     expect(out).toContain('Array(nums.reversed())')
 
+    // JS `reverse()` takes no arguments — the extra one is dropped, named.
     const withArg = sw(`  const a = computed(() => nums().reverse(1))`)
-    expect(withArg).toContain('nums.reverse(1)')
-    expect(withArg).not.toContain('reversed()')
+    expect(withArg).toContain('Array(nums.reversed())')
+    expect(withArg).not.toContain('nums.reverse(1)')
   })
 
-  it('toFixed: a LITERAL digit count lowers; a DYNAMIC one falls through', () => {
+  it('toFixed: a LITERAL digit count bakes the format; a DYNAMIC one interpolates it', () => {
     const lit = sw(`  const a = computed(() => n().toFixed(2))`)
     expect(lit).toContain('String(format: "%.2f", n)')
 
@@ -271,19 +273,19 @@ describe('Swift member-call lowering — arity and receiver-type guards', () => 
 
     // A non-literal digit count is the `digits === null` arm.
     const dyn = sw(`  const a = computed(() => n().toFixed(n()))`)
-    expect(dyn).not.toContain('String(format:')
-    expect(dyn).toContain('n.toFixed(n)')
+    expect(dyn).toContain('String(format: "%.\\(n)f", n)')
+    expect(dyn).not.toContain('n.toFixed(n)')
   })
 
-  it('toUpperCase / toLowerCase: the 0-arg arms; an argument falls through', () => {
+  it('toUpperCase / toLowerCase: the 0-arg arms; an argument (JS ignores it) is dropped', () => {
     const out = sw(`  const a = computed(() => s().toUpperCase())
   const b = computed(() => s().toLowerCase())`)
     expect(out).toContain('s.uppercased()')
     expect(out).toContain('s.lowercased()')
 
     const withArg = sw(`  const a = computed(() => s().toUpperCase('x'))`)
-    expect(withArg).toContain('s.toUpperCase("x")')
-    expect(withArg).not.toContain('uppercased()')
+    expect(withArg).toContain('s.uppercased()')
+    expect(withArg).not.toContain('s.toUpperCase("x")')
   })
 
   it('sort with NO comparator warns `no-comparator`; a non-arrow comparator warns `shape`', () => {
@@ -306,6 +308,11 @@ describe('Swift member-call lowering — arity and receiver-type guards', () => 
 
     const withArg = sw(`  const a = computed(() => n().toLocaleString('en'))`)
     expect(withArg).toContain('n.toLocaleString("en")')
+    expect(
+      warnings(`  const a = computed(() => n().toLocaleString('en'))`).some((x) =>
+        x.startsWith('`.toLocaleString(…)` on a number with 1 argument has no Swift lowering'),
+      ),
+    ).toBe(true)
   })
 })
 

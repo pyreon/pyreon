@@ -3,11 +3,10 @@ import { transform } from '../index'
 import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
 
 /**
- * ECharts' area brush on native: `<PlotChart brushType brushMode
+ * The area brush on native: `<PlotChart brushType brushMode
  * outOfBrushOpacity brushSeriesIndex onBrushSelected>` and the toolbox brush
  * tools build the same `brush-area` areas, dim through `applyBrushSelection`
- * and report per series, as the web host does. `OptionChart`'s `option.brush`
- * and `toolbox.feature.brush` lower onto that host through the web readers.
+ * and report per series, as the web host does.
  */
 describe.each(['swift', 'kotlin'] as const)('area brush on %s', (target) => {
   const check = (code: string) => {
@@ -52,24 +51,5 @@ export function App() {
 }`, { target })
     expect(r.warnings.some((w) => w.includes('<PlotChart brushType>'))).toBe(true)
     expect(r.warnings.some((w) => w.includes('"lasso" is not a brush tool'))).toBe(true)
-  })
-
-  it('OptionChart option.brush + toolbox.feature.brush lower onto the plot host', () => {
-    const r = transform(`
-import { signal } from '@pyreon/reactivity'
-import { OptionChart } from '@pyreon/charts/option'
-export function App() {
-  const picked = signal(0)
-  return <OptionChart height={240} onBrushSelected={(s) => picked.set(s.length)} option={{
-    brush: { brushMode: 'multiple', outOfBrush: { colorAlpha: 0.3 }, seriesIndex: [1] },
-    toolbox: { feature: { brush: { type: ['lineX', 'clear'] } } },
-    xAxis: { type: 'category', data: ['a', 'b', 'c'] },
-    yAxis: {},
-    series: [{ type: 'bar', data: [1, 2, 3] }, { type: 'line', data: [3, 2, 1] }],
-  }} />
-}`, { target })
-    expect(r.warnings).toEqual([])
-    for (const s of ['brushLineX', 'brushClear', 'brushOnlySeries(', '0.3']) expect(r.code).toContain(s)
-    check(r.code)
   })
 })

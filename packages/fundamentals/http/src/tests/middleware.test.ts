@@ -282,6 +282,27 @@ describe('retry', () => {
     expect(calls).toBeLessThanOrEqual(2)
   })
 
+  it('a signal already aborted BEFORE the backoff wait starts resolves it at once', async () => {
+    let calls = 0
+    const controller = new AbortController()
+    const transport: Transport = (request) => {
+      calls += 1
+      // Abort lands between the retryable response and the backoff
+      // `sleep()` call — distinct from the sibling above, which aborts
+      // WHILE already sleeping.
+      controller.abort()
+      return Promise.resolve(toHttpResponse(new Response('{}', { status: 503 }), request))
+    }
+    const api = createHttp({
+      transport,
+      throwHttpErrors: false,
+      use: [retry({ limit: 5, backoff: () => 50 })],
+    })
+
+    await expect(api.get('/x', { signal: controller.signal })).rejects.toBeInstanceOf(AbortError)
+    expect(calls).toBe(1)
+  })
+
   it('stops replaying a NETWORK failure once the caller aborts', async () => {
     let calls = 0
     const transport: Transport = () => {
@@ -477,6 +498,23 @@ describe('refresh', () => {
     await expect(api.get('/x')).rejects.toThrow('refresh failed')
     await expect(api.get('/x')).rejects.toThrow('refresh failed')
     expect(doRefresh).toHaveBeenCalledTimes(2)
+  })
+
+  it('gives up (does not replay) when the caller aborts DURING a successful refresh', async () => {
+    const transport: Transport = (request) =>
+      Promise.resolve(toHttpResponse(new Response('{}', { status: 401 }), request))
+    const controller = new AbortController()
+    // A successful refresh (ok !== false) that happens to leave the
+    // request signal aborted by the time it resolves — the middleware
+    // must not replay into a request the caller already abandoned.
+    const doRefresh = vi.fn(() => {
+      controller.abort()
+      return Promise.resolve(true)
+    })
+    const api = createHttp({ transport, use: [refresh({ refresh: doRefresh })] })
+
+    await expect(api.get('/x', { signal: controller.signal })).rejects.toBeInstanceOf(AbortError)
+    expect(doRefresh).toHaveBeenCalledTimes(1)
   })
 })
 

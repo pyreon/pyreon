@@ -91,11 +91,17 @@ import {
   SunburstChart,
   TreeChart,
   TreemapChart,
+  Axis,
+  Cell,
   Chart,
+  Legend,
+  Line,
   Tooltip,
+  Zoom,
   createChartHandle,
+  date,
+  visualMap,
 } from '@pyreon/charts'
-import { OptionChart } from '@pyreon/charts/option'
 import { CandlestickChart, FunnelChart, HeatmapChart, PieChart, PlotChart, bars, bollinger, line, sma } from '@pyreon/charts/engine'
 import type {
   BrushRange,
@@ -812,6 +818,41 @@ interface ScoreRow {
   subject: string
   score: number
 }
+// Two series for `<Legend direct />` (each line named at its last point).
+interface TrendRow {
+  m: string
+  a: number
+  b: number
+}
+const TREND_ROWS: TrendRow[] = [
+  { m: 'Jan', a: 12, b: 8 },
+  { m: 'Feb', a: 15, b: 11 },
+  { m: 'Mar', a: 14, b: 16 },
+  { m: 'Apr', a: 19, b: 15 },
+]
+// Epoch-ms readings for a `date()`-formatted time axis.
+interface Reading {
+  at: number
+  v: number
+}
+const READINGS: Reading[] = [
+  { at: 1704067200000, v: 3 },
+  { at: 1709251200000, v: 5 },
+  { at: 1714521600000, v: 4 },
+  { at: 1719792000000, v: 7 },
+]
+// A small grid for `<Cell>` with a pinned visual map.
+interface HeatObs {
+  d: string
+  h: string
+  n: number
+}
+const HEAT_OBS: HeatObs[] = [
+  { d: 'Mon', h: '09', n: 2 },
+  { d: 'Mon', h: '12', n: 7 },
+  { d: 'Tue', h: '09', n: 5 },
+  { d: 'Tue', h: '12', n: 1 },
+]
 const SCORE_ROWS: ScoreRow[] = [
   { subject: 'math', score: 82 },
   { subject: 'art', score: 91 },
@@ -1096,8 +1137,6 @@ function GalleryPage() {
   // The toolbox's box zoom reports its window here; the save button its PNG's prefix.
   let tbZoom = state('0-100')
   // The option-placed families: a tap reads the index back through the frame the web computes.
-  let optPieSel = state('none')
-  let optFunnelSel = state('none')
   let tbSaved = state('none')
   let brushCount = state('none')
   let seriesPickCount = state('none')
@@ -1111,38 +1150,12 @@ function GalleryPage() {
   let flowWebFailure = state('none')
   let flowWebReloadB = state(false)
   let flowWebReloadStatus = state('none')
-  // Imperative handles (ECharts dispatchAction) for the toolbox chart and the timeline.
+  // The toolbox chart's imperative handle.
   const tbHandle = createChartHandle()
-  const tlHandle = createChartHandle()
   return (
     <Scroll direction="vertical" data-testid="gal-scroll">
       <Stack gap={3} padding={4} data-testid="gal-page">
         <Text>Chart gallery</Text>
-        {/* First on the page, so the device tests tap them where the page opens — no scroll, whose
-            swipe could land on a chart that takes the drag.
-            An option pie placed by ECharts' center / radius: two equal slices from 12 o'clock, clockwise —
-            the right half is East, the left West. Centred at 30%, so a host that ignored the placement
-            (a pie filling the canvas, centred at 50%) reads both of the device tests' taps as West. */}
-        <OptionChart
-          option={{
-            series: [{ type: 'pie', center: ['30%', '50%'], radius: '40%', label: { show: false }, data: [{ name: 'East', value: 1 }, { name: 'West', value: 1 }] }],
-          }}
-          height={200}
-          data-testid="gal-opt-pie"
-          onSelectIndex={(i: number) => { optPieSel = i === 0 ? 'East' : 'West' }}
-        />
-        <Text data-testid="gal-opt-pie-sel">{optPieSel}</Text>
-        {/* A funnel placed in y 10..70 (its box keys): the larger stage on top. A host that ignored the
-            box (a funnel filling the canvas) would put both of the device tests' taps on the top stage. */}
-        <OptionChart
-          option={{
-            series: [{ type: 'funnel', top: 10, height: 60, label: { show: false }, data: [{ name: 'Visits', value: 100 }, { name: 'Orders', value: 50 }] }],
-          }}
-          height={200}
-          data-testid="gal-opt-funnel"
-          onSelectIndex={(i: number) => { optFunnelSel = i === 0 ? 'Visits' : 'Orders' }}
-        />
-        <Text data-testid="gal-opt-funnel-sel">{optFunnelSel}</Text>
         <CalendarChart
           start="2024-01-01"
           end="2024-02-11"
@@ -1185,91 +1198,25 @@ function GalleryPage() {
         <Chart data={SCORE_ROWS} height={200} data-testid="gal-grammar-pie">
           <Arc value="score" label="subject" innerRadius={0.5} />
         </Chart>
+        <Chart data={TREND_ROWS} x="m" height={180} data-testid="gal-direct-labels">
+          <Line y="a" label="North" />
+          <Line y="b" label="South" />
+          <Legend direct />
+        </Chart>
+        <Chart data={READINGS} xValue="at" height={160} data-testid="gal-date-axis">
+          <Line y="v" label="Reading" />
+          <Axis x time format={date('MMM YYYY')} />
+        </Chart>
+        <Chart data={TREND_ROWS} x="m" height={160} data-testid="gal-zoom-window">
+          <Bar y="a" label="North" />
+          <Zoom window={{ start: 0.5, end: 1 }} lock />
+        </Chart>
+        <Chart data={HEAT_OBS} height={160} data-testid="gal-cell-visualmap">
+          <Cell x="d" y="h" value="n" visualMap={visualMap({ domain: [0, 8] })} />
+        </Chart>
         <ColorModeProvider mode="dark">
           <ModeProbe />
         </ColorModeProvider>
-        {/* An ECharts lines series with its animated trail — the device tests
-            capture this canvas twice and assert the frames differ. */}
-        <OptionChart
-          option={{
-            xAxis: {},
-            yAxis: {},
-            series: [
-              {
-                type: 'lines',
-                lineStyle: { color: '#123456', width: 2 },
-                effect: { show: true, period: 2, trailLength: 0.3, color: '#ff0000', symbolSize: 10 },
-                data: [{ coords: [[0, 0], [10, 10]] }, { coords: [[0, 10], [5, 5], [10, 0]] }],
-              },
-            ],
-          }}
-          height={180}
-          data-testid="gal-lines"
-        />
-        {/* aria.decal: each series gets a distinct texture so the bars stay tellable apart without colour. */}
-        <OptionChart
-          option={{
-            aria: { decal: { show: true } },
-            xAxis: { data: ['Q1', 'Q2', 'Q3'] },
-            yAxis: {},
-            series: [
-              { type: 'bar', data: [3, 5, 4] },
-              { type: 'bar', data: [4, 2, 6] },
-              { type: 'bar', itemStyle: { decal: { symbol: 'triangle', dashArrayX: [6, 4], dashArrayY: 8 } }, data: [2, 4, 3] },
-              { type: 'bar', itemStyle: { decal: { symbol: 'path://M0 0L10 0L5 10Z', dashArrayX: [8, 4], dashArrayY: 8 } }, data: [5, 3, 2] },
-              { type: 'bar', itemStyle: { color: { image: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAEklEQVR4nGN44ODwHxkzkC4AAAeHJfENXDGsAAAAAElFTkSuQmCC', repeat: 'repeat' } }, data: [1, 6, 5] },
-            ],
-          }}
-          height={180}
-          data-testid="gal-decal"
-        />
-        <OptionChart
-          option={{
-            xAxis: { type: 'category', data: ['Mon', 'Tue', 'Wed'] },
-            yAxis: { type: 'category', data: ['am', 'pm'] },
-            visualMap: { min: 0, max: 10, calculable: true, orient: 'horizontal', inRange: { color: ['#dbeafe', '#1d4ed8'] } },
-            series: [{ type: 'heatmap', data: [[0, 0, 2], [1, 0, 9], [2, 0, 5], [0, 1, 7], [1, 1, 1], [2, 1, 10]] }],
-          }}
-          height={220}
-          data-testid="gal-visualmap"
-        />
-        <OptionChart
-          option={{
-            xAxis: { type: 'category', data: ['1', '2', '3', '4', '5', '6', '7', '8'] },
-            yAxis: {},
-            dataZoom: [{ type: 'slider', start: 0, end: 50, filterMode: 'none' }],
-            series: [{ type: 'bar', itemStyle: { color: '#ff0000' }, data: [1, 1, 1, 1, 9, 9, 9, 9] }],
-          }}
-          height={220}
-          data-testid="gal-datazoom"
-        />
-        <OptionChart
-          option={{
-            baseOption: { timeline: { data: ['2019', '2020', '2021'] }, xAxis: { type: 'category', data: ['a', 'b', 'c'] }, yAxis: { min: 0, max: 10 }, series: [{ type: 'bar' }] },
-            options: [{ series: [{ data: [2, 3, 1] }] }, { series: [{ data: [5, 6, 4] }] }, { series: [{ data: [9, 8, 10] }] }],
-          }}
-          height={240}
-          handle={tlHandle}
-          data-testid="gal-timeline"
-        />
-        <Button onPress={() => tlHandle.dispatch({ type: 'timelineChange', index: 2 })} data-testid="gal-tl-last">
-          Last step
-        </Button>
-        <OptionChart
-          option={{ series: [{ type: 'gauge', center: ['50%', '60%'], radius: '70%', data: [{ value: 64, name: 'Load' }] }] }}
-          height={220}
-          data-testid="gal-opt-gauge"
-        />
-        {/* Axis decoration and label placement: split areas, minor lines, rotated labels. */}
-        <OptionChart
-          option={{
-            xAxis: { type: 'category', data: ['Q1', 'Q2', 'Q3'], splitArea: { show: true } },
-            yAxis: { minorTick: { show: true }, minorSplitLine: { show: true } },
-            series: [{ type: 'bar', data: [3, 5, 2], label: { show: true, rotate: 90, position: 'insideBottom', align: 'left', verticalAlign: 'middle' } }],
-          }}
-          height={200}
-          data-testid="gal-opt-decor"
-        />
         <PlotChart
           data={SCORE_ROWS}
           marks={[bars((d: ScoreRow) => d.score)]}

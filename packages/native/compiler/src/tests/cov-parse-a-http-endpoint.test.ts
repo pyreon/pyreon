@@ -297,43 +297,24 @@ describe('endpoint call-site — every other option is NAMED', () => {
 // KNOWN BUGS — locked with `it.fails`, self-retiring when the product is fixed.
 // ---------------------------------------------------------------------------
 
-describe('KNOWN BUG — a NUMERIC-literal key is silently dropped from the native request', () => {
-  // `propName()` reads a non-computed key as an Identifier name or a STRING
-  // literal value and returns `undefined` for anything else. A numeric key
-  // (`{ 1: 'a' }` — legal object-literal syntax whose runtime key is the string
-  // "1") therefore reads as undefined, and both `readQueryEntries` and
-  // `readLiteralHeaders` do `if (key === undefined) continue`: a silent drop,
-  // in the two functions whose own doc comments say a value that cannot be read
-  // must be REPORTED rather than dropped.
-  //
-  // The loss is PARTIAL, which is the worst form: the request still goes out,
-  // just missing one parameter. The web's own `buildQuery` iterates
-  // `Object.keys`, so it sends `?1=a&ok=b`.
-  //
-  // FIX: `propName` should also accept a NUMERIC literal key (`String(value)`),
-  // matching JS object-key semantics — or, failing that, `readQueryEntries` /
-  // `readLiteralHeaders` must route an unreadable key through `onUnlowerable`
-  // instead of `continue`. parse.ts:1578 (`propName`), 1664, 1718.
-  it.fails('KNOWN BUG: a numeric query key is dropped from the baked URL with no warning', () => {
+describe('a NUMERIC-literal key reaches the native request (FIXED)', () => {
+  // `propName()` used to read a non-computed key as an Identifier name or a
+  // STRING literal only, so a numeric key (`{ 1: 'a' }` — legal syntax whose
+  // runtime key is the string "1") read as undefined and `readQueryEntries` /
+  // `readLiteralHeaders` dropped it silently: a PARTIAL request, missing one
+  // parameter. The web's own `buildQuery` iterates `Object.keys`, so it sends
+  // `?1=a&ok=b`. Every key reader now goes through `staticPropKey`, which reads
+  // a numeric key as `String(value)` — JS object-key semantics.
+  it('a numeric query key is baked into the URL', () => {
     const call = `ep({ query: { 1: 'a', ok: 'b' } })`
-    // The web builds `/api/users?1=a&ok=b`; PMTC builds `/api/users?ok=b`.
     expect(bakedUrl(EP, call)).toBe('"/api/users?1=a&ok=b"')
+    expect(warns(EP, call)).toEqual([])
   })
 
-  it.fails('KNOWN BUG: nor is the dropped numeric query key reported', () => {
-    expect(warns(EP, `ep({ query: { 1: 'a', ok: 'b' } })`)).not.toEqual([])
-  })
-
-  it.fails('KNOWN BUG: a numeric header key is dropped with no warning', () => {
+  it('a numeric header key is sent', () => {
     const r = run(`const ep = api.endpoint('POST /users')`, `ep({ headers: { 1: 'a', ok: 'b' } })`)
-    expect(r.warnings).not.toEqual([])
-  })
-
-  it('the partial loss it produces today, pinned so the fix is visible as a change', () => {
-    // Not an assertion that the behaviour is RIGHT — it is the current one, kept
-    // next to the failing specs so a reader can see exactly what is lost.
-    expect(bakedUrl(EP, `ep({ query: { 1: 'a', ok: 'b' } })`)).toBe('"/api/users?ok=b"')
-    expect(warns(EP, `ep({ query: { 1: 'a', ok: 'b' } })`)).toEqual([])
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('"1": "a"')
   })
 })
 
@@ -342,12 +323,13 @@ describe('object-literal KEY spellings on the endpoint path', () => {
     expect(bakedUrl(EP, 'ep()', `createHttp({ 'baseUrl': '/api' })`)).toBe('"/api/users"')
   })
 
-  it('a COMPUTED param key names no parameter, so the param reads as missing', () => {
-    // `{ [\`id\`]: 'x' }` is a computed key: the reader cannot know it at compile
-    // time, so the call bails on the missing `:id` rather than baking a guess.
-    const call = 'ep({ params: { [`id`]: "x" } })'
-    expect(warns(`const ep = api.endpoint('GET /u/:id')`, call)
-      .some((m) => m.includes('needs the `id` path parameter'))).toBe(true)
+  it('a computed key with no substitutions (a template literal) is the static key it spells', () => {
+    expect(bakedUrl(`const ep = api.endpoint('GET /u/:id')`, 'ep({ params: { [`id`]: "x" } })')).toBe('"/api/u/x"')
+  })
+
+  it('a computed key that is only known at runtime is NAMED, never read as a parameter', () => {
+    const w = warns(`const ep = api.endpoint('GET /u/:id')`, 'ep({ params: { [k]: "x" } })')
+    expect(w.some((m) => m.includes('the `params` key `[k]` is computed'))).toBe(true)
   })
 })
 
@@ -357,9 +339,8 @@ describe('numeric object keys on the client and the params object', () => {
   })
 
   it('a numeric key beside a real path param does not disturb the substitution', () => {
-    // The numeric key names nothing the reader can use (see the KNOWN BUG
-    // below); what matters here is that its presence does not take `id` down
-    // with it.
+    // The numeric key names a parameter the template does not have; what
+    // matters here is that its presence does not take `id` down with it.
     expect(bakedUrl(`const ep = api.endpoint('GET /u/:id')`, `ep({ params: { 1: 'x', id: 'y' } })`))
       .toBe('"/api/u/y"')
   })

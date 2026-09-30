@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { hitTree, layoutTree, linkPoints, renderTree } from './tree'
 import { treeToSvg } from './family-svg'
 import type { TreeNode } from './treemap'
-import { compileFamily, familyToSvg } from './option-family'
 
 const box = { x: 0, y: 0, w: 400, h: 300 }
 const root: TreeNode[] = [
@@ -103,20 +102,3 @@ describe('tree layout (tidy)', () => {
   })
 })
 
-describe('tree option mapping', () => {
-  it('ECharts tree series lowers orient/layout/symbolSize/initialTreeDepth/edgeShape', () => {
-    const f = compileFamily({
-      series: [{ type: 'tree', orient: 'TB', symbolSize: 12, initialTreeDepth: 2, edgeShape: 'polyline', data: [{ name: 'r', children: [{ name: 'x', children: [{ name: 'y' }] }] }] }],
-    })!
-    if (f.plan.kind !== 'tree') throw new Error('kind')
-    expect(f.plan.tree.orient).toBe('TB')
-    expect(f.plan.tree.symbolSize).toBe(12)
-    expect(f.plan.tree.maxDepth).toBe(3)
-    expect(f.plan.tree.edgeShape).toBe('elbow')
-    expect(f.warnings).toEqual([])
-    expect(familyToSvg(f.plan)).toContain('<circle')
-    const radial = compileFamily({ series: [{ type: 'tree', layout: 'radial', data: [{ name: 'r' }] }] })!
-    if (radial.plan.kind !== 'tree') throw new Error('kind')
-    expect(radial.plan.tree.orient).toBe('radial')
-  })
-})

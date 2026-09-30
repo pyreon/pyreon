@@ -231,15 +231,13 @@ describe('emit-kotlin.ts — flow member lowering table', () => {
     expect(w).toContain('updateEdge(...): edge `data` must be a static JSON-compatible object')
   })
 
-  // BUG (both emitters): a NON-LITERAL `position` in an updateNode patch is
-  // silently DROPPED — `node.copy()` — with no warning, although the
-  // same value passes through (`?? emitKotlinExpr`) in `addNode`. The web
-  // moves the node; native does nothing. Same class for a non-literal
-  // `sourceHandles` / `targetHandles`, and an updateEdge `waypoints` literal
-  // with a missing coordinate.
-  it.fails('updateNode with a non-literal position must not silently drop the move', () => {
+  // Was a known bug (both emitters): a NON-LITERAL `position` in an
+  // updateNode patch was silently DROPPED — `node.copy()`. It now passes
+  // through as `addNode` does; the class (handles, waypoints, bad-shape
+  // literals, both targets) is locked in native-known-bugs-flow.test.ts.
+  it('updateNode with a non-literal position must not silently drop the move', () => {
     const r = kt(FLOW([`flow.updateNode('1', { position: pt })`]))
-    expect(r.code.includes('position = pt') || r.warnings.some((w) => w.includes('position'))).toBe(true)
+    expect(r.code).toContain('node.copy(position = pt)')
   })
 
   it('viewport members: literal points / durations lower, unsupported shapes fall through', () => {
@@ -562,9 +560,12 @@ describe('emit-kotlin.ts — flow-state signal writes and lookup maps', () => {
 
 describe('emit-kotlin.ts — JS method arities the mapping does not model are not lowered', () => {
   // Each JS method maps to a Kotlin spelling for ONE arity. An extra (or
-  // missing) argument must not be squeezed into that spelling — that would
-  // silently drop the argument — so the call falls through verbatim.
-  const out = ktCode(`
+  // missing) argument must not be SILENTLY squeezed into that spelling. It is
+  // dropped only where JS itself ignores it (a `thisArg`, any argument to
+  // `toUpperCase()` / `reverse()`) — with a named warning; a faithful
+  // positioned form (`includes(x, fromIndex)`) lowers; every other shape
+  // stays verbatim WITH a named warning (native-known-bugs-emit.test.ts).
+  const { code: out, warnings: outWarnings } = transform(`
 import { Text } from '@pyreon/primitives'
 export function App() {
   const m = new Map<string, number>()
@@ -591,27 +592,39 @@ export function App() {
   const a18 = xs.slice()
   const a19 = s.slice()
   return <Text>{s}</Text>
-}`)
+}`, { target: 'kotlin' })
   const line = (n: string) => out.split('\n').find((l) => l.trimStart().startsWith(`val ${n} =`))!.trim()
 
-  it('each mismatched arity is emitted as written', () => {
+  it('each mismatched arity is emitted as written — or lowered where JS ignores / positions it', () => {
     expect(line('a1')).toBe('val a1 = m.clear(1L)')
     expect(line('a2')).toBe('val a2 = st.clear(1L)')
-    expect(line('a3')).toBe('val a3 = xs.some({ x -> x > 1L }, null)')
-    expect(line('a4')).toBe('val a4 = xs.every({ x -> x > 1L }, null)')
-    expect(line('a5')).toBe('val a5 = xs.filter({ x -> x > 1L }, null)')
-    expect(line('a6')).toBe('val a6 = xs.includes(1L, 2L)')
+    // A `thisArg` is dropped (native closures have no `this`), named below.
+    expect(line('a3')).toBe('val a3 = xs.any({ x -> x > 1L })')
+    expect(line('a4')).toBe('val a4 = xs.all({ x -> x > 1L })')
+    expect(line('a5')).toBe('val a5 = xs.filter({ x -> x > 1L })')
+    // A `fromIndex` lowers faithfully (List has no fromIndex overload).
+    expect(line('a6')).toContain('__pyRecv.subList(__pyFrom, __pyRecv.size).contains(1L)')
     expect(line('a7')).toBe('val a7 = s.charAt()')
     expect(line('a8')).toBe('val a8 = s.charCodeAt()')
-    expect(line('a9')).toBe('val a9 = xs.join(",", "x")')
+    // An argument past `join(separator)` is one JS never reads — dropped, named.
+    expect(line('a9')).toBe('val a9 = xs.joinToString(",")')
     expect(line('a10')).toBe('val a10 = xs.concat(listOf(1L), listOf(2L))')
     expect(line('a11')).toBe('val a11 = xs.fill(0L, 1L)')
     expect(line('a12')).toBe('val a12 = xs.at()')
     expect(line('a13')).toBe('val a13 = xs.findIndex()')
     expect(line('a14')).toBe('val a14 = s.replace("a")')
-    expect(line('a15')).toBe('val a15 = xs.reverse(1L)')
-    expect(line('a16')).toBe('val a16 = s.toUpperCase("tr")')
-    expect(line('a17')).toBe('val a17 = s.toLowerCase("tr")')
+    expect(line('a15')).toBe('val a15 = xs.reversed()')
+    expect(line('a16')).toBe('val a16 = s.uppercase()')
+    expect(line('a17')).toBe('val a17 = s.lowercase()')
+  })
+
+  it('every verbatim string/array shape is NAMED (none silent)', () => {
+    for (const m of ['charAt', 'charCodeAt', 'concat', 'fill', 'at', 'findIndex', 'replace']) {
+      expect(outWarnings.some((w) => w.startsWith(`\`.${m}(…)\``) && w.includes('has no Kotlin lowering')), m).toBe(true)
+    }
+    for (const m of ['some', 'every', 'filter', 'join', 'reverse', 'toUpperCase', 'toLowerCase']) {
+      expect(outWarnings.some((w) => w.startsWith(`\`.${m}(…)\``) && w.includes('is dropped on iOS and Android')), m).toBe(true)
+    }
   })
 
   it('a zero-arg slice copies a list and is the identity on a string', () => {
@@ -875,16 +888,13 @@ export function App() {
   })
 })
 
-describe('emit-kotlin.ts — ChartWebView / FlowWebView hosts and media flags', () => {
+describe('emit-kotlin.ts — FlowWebView hosts and media flags', () => {
   const r = kt(`
-import { ChartWebView } from '@pyreon/charts/webview'
 import { FlowWebView } from '@pyreon/flow/webview'
 import { Stack, WebView, Video, Audio } from '@pyreon/primitives'
 export function App() {
   return (
     <Stack>
-      <ChartWebView />
-      <ChartWebView option={opt} html={myHtml} theme="dark" echartsSrc="x.js" />
       <FlowWebView />
       <FlowWebView graph={g} nodeHeight={30} nodeFill="#abc" labelColor="red" />
       <FlowWebView graph={g} html={h} nodeWidth={3} background="#000" />
@@ -896,17 +906,6 @@ export function App() {
   )
 }`)
   const w = r.warnings.join('\n')
-
-  it('a ChartWebView without `option` emits an empty option and is NAMED', () => {
-    expect(w).toContain('<ChartWebView>: `option` is required on native; emitting an empty option.')
-    expect(r.code).toContain('data = pyreonChartWebViewData(option = "{}", commands = "[]", loading = false, loadingOptions = "{}")')
-  })
-
-  it('custom host HTML owns configuration: a host prop (incl. the legacy echarts* spelling) is NAMED as ignored', () => {
-    expect(r.code).toContain('PyreonWebView(html = myHtml, data = pyreonChartWebViewData(option = PyreonJson.encode(opt)')
-    expect(w).toContain('<ChartWebView html={…} engineSrc={…}>: engineSrc is ignored')
-    expect(w).toContain('<ChartWebView html={…} theme={…}>: theme is ignored')
-  })
 
   it('FlowWebView: missing graph is NAMED; static node geometry / colours are baked into the host page', () => {
     expect(w).toContain('<FlowWebView>: `graph` is required on native; emitting an empty host.')
@@ -1045,19 +1044,14 @@ const ROWS: Row[] = [{ m: 'Jan', v: 10 }]
 export function C() { const w = signal(1); return <Stack><PlotChart data={ROWS} x={(d) => d.m} marks={[bars((d) => d.v, ${opts})]} height={200} /></Stack> }`)
   const series = (r: ReturnType<typeof kt>) => r.code.split('\n').find((l) => l.includes('Series(kind = "bars"'))
 
-  it('literal gradient stops / direction / shape, a literal pattern, extras and rich label styles all bake into the Series', () => {
-    const r = plot(
-      "{ gradient: { stops: [{ offset: 0, color: 'red' }, { offset: 1, color: 'blue' }], direction: 'vertical', shape: 'bar' }, pattern: { kind: 'dots', color: 'red', spacing: 4, width: 1 }, extras: [{ label: 'a', numbers: [1, 2] }, { label: 'b', texts: ['x'] }], labelRich: [{ name: 'a', color: 'red', fontSize: 12 }, { name: 'b' }] }",
-    )
+  it('literal gradient stops / direction / shape and a literal pattern all bake into the Series', () => {
+    const r = plot("{ gradient: { stops: [{ offset: 0, color: 'red' }, { offset: 1, color: 'blue' }], direction: 'vertical', shape: 'bar' }, pattern: { kind: 'dots', color: 'red', spacing: 4, width: 1 } }")
     expect(r.warnings).toEqual([])
     const s = series(r)!
     expect(s).toContain(
       'gradient = SeriesGradient(stops = listOf(PyreonChartGradientStop(offset = 0.0, color = "red"), PyreonChartGradientStop(offset = 1.0, color = "blue")), direction = "vertical", shape = "bar")',
     )
     expect(s).toContain('pattern = PyreonChartPattern(kind = "dots", color = "red"')
-    expect(s).toContain('extras = listOf(SeriesExtra(label = "a", numbers = listOf(1.0, 2.0)), SeriesExtra(label = "b", texts = listOf("x")))')
-    // missing rich fields take neutral defaults
-    expect(s).toContain('labelRich = listOf<RichStyle>(RichStyle(name = "a", color = "red", fontSize = 12.0), RichStyle(name = "b", color = "", fontSize = 0.0))')
   })
 
   it.each([
@@ -1069,16 +1063,6 @@ export function C() { const w = signal(1); return <Stack><PlotChart data={ROWS} 
     ['a stop with a non-string colour', '{ gradient: { stops: [{ offset: 0, color: 3 }] } }', '`gradient` needs literal stops'],
     ['a non-string direction', "{ gradient: { stops: [{ offset: 0, color: 'red' }], direction: 3 } }", '`gradient` needs literal stops'],
     ['a non-string shape', "{ gradient: { stops: [{ offset: 0, color: 'red' }], shape: 3 } }", '`gradient` needs literal stops'],
-    ['non-literal extras', '{ extras: w() }', '`extras` needs literal { label, numbers | texts } entries'],
-    ['a non-object extra', '{ extras: [3] }', '`extras` needs literal { label, numbers | texts } entries'],
-    ['an extra with a non-string label', '{ extras: [{ label: 3 }] }', '`extras` needs literal { label, numbers | texts } entries'],
-    ['an extra with a non-number in numbers', "{ extras: [{ label: 'a', numbers: [1, 'x'] }] }", '`extras` needs literal { label, numbers | texts } entries'],
-    ['an extra with a non-string in texts', "{ extras: [{ label: 'a', texts: [1] }] }", '`extras` needs literal { label, numbers | texts } entries'],
-    ['a strings option holding a number', '{ labelTexts: [1] }', '`labelTexts` must be an array of string literals'],
-    ['a numbers option holding a string', "{ xs: [1, 'a'] }", '`xs` must be an array of number literals'],
-    // FIXED HERE: these two returned bare — a blank chart with no warning.
-    ['a non-literal labelRich', '{ labelRich: w() }', '`labelRich` must be an array of { name, color?, fontSize? } object literals'],
-    ['a non-object labelRich entry', '{ labelRich: [3] }', '`labelRich` must be an array of { name, color?, fontSize? } object literals'],
   ])('declines %s — the chart is dropped and the reason NAMED', (_why, opts, expected) => {
     const r = plot(opts)
     expect(series(r)).toBeUndefined()

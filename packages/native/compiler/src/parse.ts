@@ -168,6 +168,12 @@ interface ParseCtx {
   /** Local names bound to the `kinetic` import (supports `as` renaming). */
   kineticImportNames: Set<string>
   /**
+   * `const RevenueBar = Bar<Row>` — a TypeScript instantiation expression that
+   * only fixes a component's type argument. It compiles to the component
+   * itself, so the alias is a TAG rename: `<RevenueBar>` lowers as `<Bar>`.
+   */
+  typedComponentAliases: Map<string, string>
+  /**
    * Set while parsing a component whose tree used a PRESET-bearing kinetic
    * binding, so the component gets one synthesized mount flag. One per
    * component, not per binding: every kinetic box in a component enters on the
@@ -456,6 +462,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     toastNames: new Set(),
     kineticFactoryNames: new Map(),
     kineticImportNames: new Set(),
+    typedComponentAliases: new Map(),
     kineticMountPending: false,
     kineticPresetImports: new Map(),
     validateSchemaNames: new Set(),
@@ -557,6 +564,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // to PyreonToast. Handles renamed imports (`import { toast as notify }`).
   collectToastNames(ast.program.body as AnyNode[], ctx)
   collectKineticFactoryNames(ast.program.body as AnyNode[], ctx)
+  collectTypedComponentAliases(ast.program.body as AnyNode[], ctx)
   collectValidateSchemaNames(ast.program.body as AnyNode[], ctx)
   collectFieldMetaLowered(ast.program.body as AnyNode[], ctx)
   collectRxImportedNames(ast.program.body as AnyNode[], ctx)
@@ -776,6 +784,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     // The pre-pass has already recorded the name and warned; `<Box>` lowers to
     // a plain container.
     if (isKineticFactoryNode(node, ctx)) continue
+    if (isTypedAliasNode(node, ctx)) continue
     // Phase 2 follow-up: module-level mutable / immutable bindings.
     // `let nextId = 1`, `const APP_VERSION = '1.0.0'` etc. Closes the
     // TodoMVC `nextId undefined` typecheck blocker by emitting these
@@ -1382,13 +1391,8 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
     // which then told the user to "consume on native via the `<WebView>` bridge
     // subpath", i.e. to do the thing they had just done. A warning that fires
     // on its own recommended fix trains people to ignore it.
-    // The `/plot` SUBPATH of @pyreon/charts is the package's OWN engine, whose
-    // geometry is GENERATED into the native runtimes and whose data-prop hosts
-    // lower to PyreonChartCanvas (emit-swift/kotlin `emitXChartHost`,
-    // chart-hosts.ts) — the web-only rationale is about the ECharts bridge at
-    // the package root, and would be wrong for this import.
     const subpath = src.startsWith('@pyreon/') ? src.slice('@pyreon/'.length).split('/')[1] : undefined
-    const isWebviewBridgeImport = subpath === 'webview' || (pkg === '@pyreon/charts' && subpath !== 'echarts')
+    const isWebviewBridgeImport = subpath === 'webview'
     if (
       WEB_ONLY_PACKAGES.has(pkg) &&
       !UNLOWERED_PYREON_MODULES.has(pkg) &&
@@ -1636,14 +1640,7 @@ function readResponseSchemaRef(node: AnyNode | undefined): { binding: string; ar
 function readObjectProp(obj: AnyNode | undefined, name: string): AnyNode | undefined {
   if (obj?.type !== 'ObjectExpression') return undefined
   for (const prop of (obj.properties as AnyNode[] | undefined) ?? []) {
-    if (prop.type !== 'Property' || prop.computed) continue
-    const key =
-      prop.key?.type === 'Identifier'
-        ? prop.key.name
-        : typeof prop.key?.value === 'string'
-          ? prop.key.value
-          : undefined
-    if (key === name) return prop.value as AnyNode | undefined
+    if (staticPropKey(prop) === name) return prop.value as AnyNode | undefined
   }
   return undefined
 }
@@ -1655,13 +1652,7 @@ function readLiteralEntries(obj: AnyNode | undefined): Record<string, string> {
   const out: Record<string, string> = {}
   if (obj?.type !== 'ObjectExpression') return out
   for (const prop of (obj.properties as AnyNode[] | undefined) ?? []) {
-    if (prop.type !== 'Property' || prop.computed) continue
-    const key =
-      prop.key?.type === 'Identifier'
-        ? prop.key.name
-        : typeof prop.key?.value === 'string'
-          ? prop.key.value
-          : undefined
+    const key = staticPropKey(prop)
     if (typeof key !== 'string') continue
     const v = prop.value as AnyNode | undefined
     const val = v?.value
@@ -1714,14 +1705,80 @@ function literalScalar(v: AnyNode | undefined): string | number | boolean | unde
   return undefined
 }
 
-/** The non-computed property name of an object-literal `Property`, else undefined. */
+/** The statically-known property name of an object-literal `Property`, else undefined. */
 function propName(prop: AnyNode): string | undefined {
-  if (prop.type !== 'Property' || prop.computed) return undefined
-  return prop.key?.type === 'Identifier'
-    ? (prop.key.name as string)
-    : typeof prop.key?.value === 'string'
-      ? prop.key.value
-      : undefined
+  return staticPropKey(prop)
+}
+
+/**
+ * The STATICALLY-KNOWN key of an object-literal / object-pattern property.
+ *
+ * A non-computed identifier key → its name; a string/number literal key
+ * (`{ 'a-b': 1 }`, `{ 0: 1 }`, and the computed `{ ['a']: 1 }`) → its value.
+ * Anything else — above all a COMPUTED identifier key `{ [kind]: … }`, whose
+ * key is the RUNTIME VALUE of `kind`, not the string "kind" — is NOT
+ * statically known and returns undefined.
+ *
+ * Every literal-config reader in this file goes through here. The class it
+ * closes: readers tested `key.type === 'Identifier'` without `prop.computed`,
+ * so `{ [kind]: v }` was silently read as the literal key "kind". Pair it with
+ * {@link hasDynamicKey} to NAME the entry rather than silently skip it.
+ */
+function staticPropKey(prop: AnyNode | undefined): string | undefined {
+  if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') return undefined
+  const key = prop.key as AnyNode | undefined
+  if (!key) return undefined
+  if (key.type === 'Identifier' || key.type === 'PrivateIdentifier') {
+    return prop.computed === true ? undefined : (key.name as string)
+  }
+  const v = key.value
+  if (
+    (key.type === 'Literal' || key.type === 'StringLiteral' || key.type === 'NumericLiteral') &&
+    (typeof v === 'string' || typeof v === 'number')
+  ) {
+    return String(v)
+  }
+  // `` { [`a`]: … } `` — a template literal with NO substitutions is a static
+  // string, exactly like `['a']`.
+  if (
+    prop.computed === true &&
+    key.type === 'TemplateLiteral' &&
+    ((key.expressions as AnyNode[] | undefined)?.length ?? 0) === 0
+  ) {
+    const cooked = (key.quasis as AnyNode[] | undefined)?.[0]?.value?.cooked
+    if (typeof cooked === 'string') return cooked
+  }
+  return undefined
+}
+
+/**
+ * True when a property's key is a computed expression that is NOT a literal
+ * (`{ [kind]: … }`, `{ [\`a${b}\`]: … }`) — i.e. the key only exists at
+ * runtime, so no compile-time reader can know which entry it is.
+ */
+function hasDynamicKey(prop: AnyNode | undefined): boolean {
+  if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') return false
+  return prop.computed === true && staticPropKey(prop) === undefined
+}
+
+/** Source text of a dynamic key, for warnings (`[kind]`). */
+function dynamicKeyText(prop: AnyNode, ctx: { source: string }): string {
+  const k = prop.key as AnyNode | undefined
+  const text =
+    k && typeof k.start === 'number' && typeof k.end === 'number'
+      ? ctx.source.slice(k.start, k.end)
+      : 'expr'
+  return `[${text}]`
+}
+
+/**
+ * Push the shared named warning for a computed non-literal key in a config
+ * object the compiler has to read statically. `where` names the construct.
+ */
+function warnDynamicKey(prop: AnyNode, where: string, ctx: ParseCtx): void {
+  ctx.warnings.push(
+    `${where}: the computed key \`${dynamicKeyText(prop, ctx)}\` is only known at runtime, so this entry cannot be read at compile time and does not lower to native. Write the key literally (\`{ input: … }\`, not \`{ [kind]: … }\`).`,
+  )
 }
 
 /**
@@ -1805,6 +1862,10 @@ function readQueryEntries(
       onUnlowerable('query (spread)')
       continue
     }
+    if (hasDynamicKey(prop)) {
+      onUnlowerable('query (computed key)')
+      continue
+    }
     const key = propName(prop)
     if (key === undefined) continue
     const v = prop.value as AnyNode | undefined
@@ -1857,6 +1918,10 @@ function readLiteralHeaders(
   for (const prop of (obj.properties as AnyNode[] | undefined) ?? []) {
     if (prop.type === 'SpreadElement') {
       onUnlowerable('headers (spread)')
+      continue
+    }
+    if (hasDynamicKey(prop)) {
+      onUnlowerable('headers (computed key)')
       continue
     }
     const key = propName(prop)
@@ -2292,8 +2357,18 @@ function resolveEndpointParts(
   // the URL. Building the string by SLICING never interprets anything, so
   // there is no replacement syntax to get wrong. Do not reintroduce a
   // `.replace` here.
-  const paramNodes = readEntryNodes(readObjectProp(arg, 'params'))
-  const literalParams = readLiteralEntries(readObjectProp(arg, 'params'))
+  const paramsObj = readObjectProp(arg, 'params')
+  const dynamicParam = (
+    paramsObj?.type === 'ObjectExpression' ? (paramsObj.properties as AnyNode[]) : []
+  ).find(hasDynamicKey)
+  if (dynamicParam) {
+    warn(
+      `the \`params\` key \`${dynamicKeyText(dynamicParam, ctx)}\` is computed, so which path parameter it fills is only known at runtime — write the parameter name literally (\`params: { id }\`). This call stays web.`,
+    )
+    return null
+  }
+  const paramNodes = readEntryNodes(paramsObj)
+  const literalParams = readLiteralEntries(paramsObj)
   // Quasis/exprs of the templated form, built in parallel with the literal
   // one. `quasis` always has exactly `exprs.length + 1` entries.
   const quasis: string[] = ['']
@@ -2479,6 +2554,33 @@ function isHttpMetadataNode(node: AnyNode, ctx: ParseCtx): boolean {
  * order wrong here would emit an unresolved tag for exactly one file layout —
  * the kind of bug that reproduces on nobody's machine.
  */
+/** The component an instantiation expression names: `Bar<Row>` → `'Bar'`, following an alias of an alias. */
+function instantiatedComponent(init: AnyNode | undefined, ctx: ParseCtx): string | undefined {
+  if (init?.type !== 'TSInstantiationExpression') return undefined
+  const base = init.expression as AnyNode | undefined
+  if (base?.type !== 'Identifier' || typeof base.name !== 'string') return undefined
+  return ctx.typedComponentAliases.get(base.name) ?? base.name
+}
+
+function collectTypedComponentAliases(body: AnyNode[], ctx: ParseCtx): void {
+  for (const node of body) {
+    for (const d of topLevelDeclarators(node)) {
+      const name = d.id?.name as string | undefined
+      const target = instantiatedComponent(d.init as AnyNode | undefined, ctx)
+      if (typeof name === 'string' && target !== undefined) ctx.typedComponentAliases.set(name, target)
+    }
+  }
+}
+
+function isTypedAliasNode(node: AnyNode, ctx: ParseCtx): boolean {
+  const decls = topLevelDeclarators(node)
+  if (decls.length === 0) return false
+  return decls.every((d) => {
+    const n = d.id?.name as string | undefined
+    return typeof n === 'string' && ctx.typedComponentAliases.has(n)
+  })
+}
+
 function isKineticFactoryNode(node: AnyNode, ctx: ParseCtx): boolean {
   const decls = topLevelDeclarators(node)
   if (decls.length === 0) return false
@@ -2940,11 +3042,9 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
       // Radar/Plot), and the eight two-prop CHART_HOSTS (Sankey/Graph/
       // Treemap/Sunburst/Tree/River/Gantt/Polar — nodes+links or a values
       // record, dispatched through `emitSwiftChartHost`/`emitKotlinChartHost`
-      // in chart-hosts.ts). OptionChart lowers literal pie/gauge and common cartesian options
-      // through those same hosts; unsupported option families warn by path.
-      // The ECharts-backed default export stays web.
+      // in chart-hosts.ts).
       advice:
-        'Most `@pyreon/charts` hosts lower to a native PyreonChartCanvas over the generated engine — PieChart/FunnelChart/GaugeChart/CandlestickChart/HeatmapChart/RadarChart/PlotChart/SankeyChart/GraphChart/TreemapChart/SunburstChart/TreeChart/RiverChart/GanttChart/PolarChart/CalendarChart/ParallelChart/BoxplotChart. MapChart lowers from a PRECOMPUTED `GeoShape[]` const — the map registry, raw GeoJSON and `geoShapes()` itself stay web and warn by name (project once on the web or in a build step). OptionChart lowers static pie, gauge, line, area, bar, and scatter options through the same native hosts and names unsupported option paths. The theme lowers per chart (`theme={chartThemes.dark}` / `theme={{ palette: palettes.okabeIto }}`) and `<ChartThemeProvider mode theme>` is a compile-time scope its chart children inherit (a literal `mode` / `theme`; a reactive mode cannot be read at compile time and warns); the ECharts-backed default export is web-only — keep it in a `<Web>` branch, or embed via the `/webview` bridge',
+        'Most `@pyreon/charts` hosts lower to a native PyreonChartCanvas over the generated engine — PieChart/FunnelChart/GaugeChart/CandlestickChart/HeatmapChart/RadarChart/PlotChart/SankeyChart/GraphChart/TreemapChart/SunburstChart/TreeChart/RiverChart/GanttChart/PolarChart/CalendarChart/ParallelChart/BoxplotChart. MapChart lowers from a PRECOMPUTED `GeoShape[]` const — the map registry, raw GeoJSON and `geoShapes()` itself stay web and warn by name (project once on the web or in a build step). The theme lowers per chart (`theme={chartThemes.dark}` / `theme={{ palette: palettes.okabeIto }}`) and `<ChartThemeProvider mode theme>` is a compile-time scope its chart children inherit (a literal `mode` / `theme`; a reactive mode cannot be read at compile time and warns); anything else stays web — keep it in a `<Web>` branch',
       supported: new Set([
         // DERIVED from the registries that actually do the lowering, rather
         // than re-typed. The two disagreed the moment a host was added:
@@ -2957,7 +3057,8 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
         ...Object.keys(ACCESSOR_CHART_HOSTS),
         ...Object.keys(FRAME_CHART_HOSTS),
         'MapChart',
-        'OptionChart',
+        // A host's `visualMap={visualMap({ … })}` runs the engine's own builder at compile time (chart-hosts.ts `chartVisualMap`).
+        'visualMap',
         // Theme surface: the provider is a TRANSPARENT wrapper on native (its
         // children render; per-chart `theme` props do the theming there), and
         // `chartThemes` / `palettes` are compiler-known constants a `theme`
@@ -3041,6 +3142,7 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
         // mark constructors above.
         'compact',
         'currency',
+        'date',
         'fixed',
         'percent',
         'plain',
@@ -3334,7 +3436,7 @@ function warnUnloweredPyreonHooks(body: AnyNode[], ctx: ParseCtx): void {
 
 /** The imported names understood by package-specific JSX alias hooks
  *  can intercept. Kept in sync with the guards in emit-swift/emit-kotlin. */
-const ALIAS_TAG_NAMES = new Set(['Element', 'PyreonUI', 'PyreonUIProvider', 'Container', 'Row', 'Col', 'ChartWebView', 'FlowWebView'])
+const ALIAS_TAG_NAMES = new Set(['Element', 'PyreonUI', 'PyreonUIProvider', 'Container', 'Row', 'Col', 'FlowWebView'])
 
 /**
  * Collect each local name with its source package and original imported name.
@@ -3537,17 +3639,7 @@ function tryStoreDefnFromTopLevel(
           const name = d.id.name as string
           const declInit = d.init as AnyNode | undefined
           if (declInit?.type === 'ArrowFunctionExpression') {
-            const fn = tryFunctionDecl(name, declInit, ctx)
-            // Discriminant guard covers the null case too (optional
-            // chain) — CodeQL flags a direct null comparison here as
-            // an inconvertible-types check.
-            if (fn?.kind !== 'function') {
-              ctx.warnings.push(
-                `defineStore \`${hookName}\`: could not parse method \`${name}\`. Falling back to silent-drop.`,
-              )
-              return null
-            }
-            methodDecls.push(fn)
+            methodDecls.push(tryFunctionDecl(name, declInit, ctx))
             continue
           }
           if (declInit?.type !== 'CallExpression') continue
@@ -3779,9 +3871,13 @@ function urlRule(
       )
       return null
     }
-    const key = p.key as AnyNode | undefined
-    const name = key?.type === 'Identifier' ? key.name : key?.type === 'Literal' ? String(key.value) : undefined
-    if (name === 'protocol') protocol = p.value as AnyNode | undefined
+    if (hasDynamicKey(p)) {
+      ctx.warnings.push(
+        `${label}: the computed key \`${dynamicKeyText(p, ctx)}\` in the options cannot be read, so whether it sets \`protocol\` is unknown — the field is NOT URL-validated on device. Write \`protocol\` inline.`,
+      )
+      return null
+    }
+    if (staticPropKey(p) === 'protocol') protocol = p.value as AnyNode | undefined
   }
   if (protocol === undefined) return { kind: 'http' }
   const re = tryPortableRegexLiteral(protocol, `${label} protocol`, ctx)
@@ -3870,13 +3966,11 @@ function tryModelDefnFromTopLevel(
   let stateNode: AnyNode | undefined
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    const keyNode = prop.key as AnyNode | undefined
-    const keyName =
-      keyNode?.type === 'Identifier'
-        ? (keyNode.name as string)
-        : keyNode?.type === 'Literal'
-          ? String(keyNode.value)
-          : undefined
+    if (hasDynamicKey(prop)) {
+      warnDynamicKey(prop, `model declaration \`${instanceName}\`: model() config`, ctx)
+      return null
+    }
+    const keyName = staticPropKey(prop)
     if (keyName === 'state') {
       stateNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
     }
@@ -3894,13 +3988,11 @@ function tryModelDefnFromTopLevel(
   const fields: ModelDefnIR['fields'] = []
   for (const entry of (stateNode.properties as AnyNode[] | undefined) ?? []) {
     if (entry?.type !== 'Property' && entry?.type !== 'ObjectProperty') continue
-    const eKey = entry.key as AnyNode | undefined
-    const fieldName =
-      eKey?.type === 'Identifier'
-        ? (eKey.name as string)
-        : eKey?.type === 'Literal'
-          ? String(eKey.value)
-          : undefined
+    if (hasDynamicKey(entry)) {
+      warnDynamicKey(entry, `model declaration \`${instanceName}\`: state`, ctx)
+      continue
+    }
+    const fieldName = staticPropKey(entry)
     if (!fieldName) continue
     const eVal = unwrapTypeLayers(entry.value as AnyNode | undefined)
     if (eVal?.type !== 'Literal') {
@@ -3975,13 +4067,11 @@ function tryModelDefnFromTopLevel(
     }
     for (const member of (factoryBody.properties as AnyNode[] | undefined) ?? []) {
       if (member?.type !== 'Property' && member?.type !== 'ObjectProperty') continue
-      const mKey = member.key as AnyNode | undefined
-      const memberName =
-        mKey?.type === 'Identifier'
-          ? (mKey.name as string)
-          : mKey?.type === 'Literal'
-            ? String(mKey.value)
-            : undefined
+      if (hasDynamicKey(member)) {
+        warnDynamicKey(member, `model declaration \`${instanceName}\`: \`.${block.kind}()\` member`, ctx)
+        return null
+      }
+      const memberName = staticPropKey(member)
       if (!memberName) continue
       const mVal = unwrapTypeLayers(member.value as AnyNode | undefined)
       if (
@@ -4009,14 +4099,7 @@ function tryModelDefnFromTopLevel(
         views.push({ name: memberName, expr: parseExpr(viewBody, ctx), selfParam })
         continue
       }
-      const fn = tryFunctionDecl(memberName, mVal, ctx)
-      if (fn?.kind !== 'function') {
-        ctx.warnings.push(
-          `model declaration \`${instanceName}\`: could not parse action \`${memberName}\`. Falling back to silent-drop.`,
-        )
-        return null
-      }
-      methods.push({ ...fn, selfParam })
+      methods.push({ ...tryFunctionDecl(memberName, mVal, ctx), selfParam })
     }
   }
 
@@ -4107,17 +4190,19 @@ function withFieldDeclShape(node: AnyNode): { bindingName: string; metaArg: AnyN
  * The VALUE half: the string-literal entries of a `withField` meta object.
  * Shared with the pre-pass for the same reason as `withFieldDeclShape`.
  */
-function extractLiteralFieldMeta(metaArg: AnyNode): FieldMetaDefnIR['meta'] {
+function extractLiteralFieldMeta(
+  metaArg: AnyNode,
+  /** Pass to NAME a computed key; omit for a silent probe (the pre-pass). */
+  report?: { ctx: ParseCtx; where: string },
+): FieldMetaDefnIR['meta'] {
   const meta: FieldMetaDefnIR['meta'] = []
   for (const prop of (metaArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    const keyNode = prop.key as AnyNode | undefined
-    const keyName =
-      keyNode?.type === 'Identifier'
-        ? (keyNode.name as string)
-        : keyNode?.type === 'Literal'
-          ? String(keyNode.value)
-          : undefined
+    if (hasDynamicKey(prop)) {
+      if (report) warnDynamicKey(prop, report.where, report.ctx)
+      continue
+    }
+    const keyName = staticPropKey(prop)
     if (!keyName) continue
     const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
     if (valueNode?.type === 'Literal' && typeof valueNode.value === 'string') {
@@ -4146,7 +4231,10 @@ function tryFieldMetaDefnFromTopLevel(
     return null
   }
 
-  const meta = extractLiteralFieldMeta(metaArg)
+  const meta = extractLiteralFieldMeta(metaArg, {
+    ctx,
+    where: `withField declaration \`${bindingName}\`: meta`,
+  })
 
   if (meta.length === 0) {
     ctx.warnings.push(
@@ -4215,13 +4303,11 @@ function tryFeatureDefnFromTopLevel(
   let schemaNode: AnyNode | undefined
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    const keyNode = prop.key as AnyNode | undefined
-    const keyName =
-      keyNode?.type === 'Identifier'
-        ? (keyNode.name as string)
-        : keyNode?.type === 'Literal'
-          ? String(keyNode.value)
-          : undefined
+    if (hasDynamicKey(prop)) {
+      warnDynamicKey(prop, `defineFeature declaration \`${bindingName}\`: config`, ctx)
+      continue
+    }
+    const keyName = staticPropKey(prop)
     if (!keyName) continue
     const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
     if (keyName === 'name') {
@@ -4255,13 +4341,11 @@ function tryFeatureDefnFromTopLevel(
   const fields: FeatureDefnIR['fields'] = []
   for (const entry of (schemaNode.properties as AnyNode[] | undefined) ?? []) {
     if (entry?.type !== 'Property' && entry?.type !== 'ObjectProperty') continue
-    const eKey = entry.key as AnyNode | undefined
-    const fieldName =
-      eKey?.type === 'Identifier'
-        ? (eKey.name as string)
-        : eKey?.type === 'Literal'
-          ? String(eKey.value)
-          : undefined
+    if (hasDynamicKey(entry)) {
+      warnDynamicKey(entry, `defineFeature declaration \`${bindingName}\`: schema`, ctx)
+      continue
+    }
+    const fieldName = staticPropKey(entry)
     if (!fieldName) continue
     const eVal = unwrapTypeLayers(entry.value as AnyNode | undefined)
     if (eVal?.type !== 'Literal' || typeof eVal.value !== 'string') {
@@ -4550,13 +4634,11 @@ function tryArktypeSchemaDefnFromTopLevel(
   const fields: ZodSchemaDefnIR['fields'] = []
   for (const prop of (shapeArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    const keyNode = prop.key as AnyNode | undefined
-    const fieldName =
-      keyNode?.type === 'Identifier'
-        ? (keyNode.name as string)
-        : keyNode?.type === 'Literal'
-          ? String(keyNode.value)
-          : undefined
+    if (hasDynamicKey(prop)) {
+      warnDynamicKey(prop, `arktypeSchema declaration \`${bindingName}\`: type() shape`, ctx)
+      continue
+    }
+    const fieldName = staticPropKey(prop)
     if (!fieldName) continue
     const value = unwrapTypeLayers(prop.value as AnyNode | undefined)
     if (value?.type !== 'Literal' || typeof value.value !== 'string') {
@@ -4875,13 +4957,9 @@ function extractDiscriminatorLiteral(
   if (!shapeArg || shapeArg.type !== 'ObjectExpression') return null
   for (const prop of (shapeArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    const keyNode = prop.key as AnyNode | undefined
-    const fieldName =
-      keyNode?.type === 'Identifier'
-        ? (keyNode.name as string)
-        : keyNode?.type === 'Literal'
-          ? String(keyNode.value)
-          : undefined
+    // A runtime computed key is skipped here; the variant's shape walker
+    // names it. A literal discriminator elsewhere in the shape still wins.
+    const fieldName = staticPropKey(prop)
     if (fieldName !== discrField) continue
     const value = prop.value as AnyNode | undefined
     if (value?.type !== 'CallExpression') return null
@@ -4992,13 +5070,11 @@ function tryNamespacedSchemaDefnFromTopLevel(
   const fields: ZodSchemaDefnIR['fields'] = []
   for (const prop of (shapeArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    const keyNode = prop.key as AnyNode | undefined
-    const fieldName =
-      keyNode?.type === 'Identifier'
-        ? (keyNode.name as string)
-        : keyNode?.type === 'Literal'
-          ? String(keyNode.value)
-          : undefined
+    if (hasDynamicKey(prop)) {
+      warnDynamicKey(prop, `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.object() shape`, ctx)
+      continue
+    }
+    const fieldName = staticPropKey(prop)
     if (!fieldName) continue
 
     // Walk the chain twice: once to find the BASE <prefix>.X() call,
@@ -5388,6 +5464,29 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
  * identifiers, template strings. The caller warns and leaves the call to the
  * web.
  */
+/**
+ * Why {@link resolveUrlStateDefault} rejected a default — the reason has to
+ * match the SHAPE. Every rejection used to say "an array or object default",
+ * which sent the author of `useUrlState('k', 1e999)` (a literal that parses to
+ * `Infinity`) looking for a collection they never wrote.
+ */
+function urlStateDefaultRejection(defNode: AnyNode | undefined): string {
+  const inner =
+    defNode?.type === 'UnaryExpression' && (defNode.operator === '-' || defNode.operator === '+')
+      ? (defNode.argument as AnyNode | undefined)
+      : defNode
+  if (inner?.type === 'ArrayExpression' || inner?.type === 'ObjectExpression') {
+    return 'an array or object default infers a comma-join / JSON codec on the web, and there is no native type to decode into at this call site.'
+  }
+  const nonFinite =
+    (inner?.type === 'Literal' && typeof inner.value === 'number' && !Number.isFinite(inner.value)) ||
+    (inner?.type === 'Identifier' && (inner.name === 'Infinity' || inner.name === 'NaN'))
+  if (nonFinite) {
+    return 'this default is a NON-FINITE number (`Infinity` / `NaN` — a literal like `1e999` overflows to `Infinity`), which has no Int or Double literal on either native target and does not round-trip through the URL.'
+  }
+  return 'this default is not a literal, so its type cannot be decided at compile time.'
+}
+
 function resolveUrlStateDefault(
   defNode: AnyNode | undefined,
 ): { defaultValue: string; valueType: 'string' | 'int' | 'double' | 'boolean' } | null {
@@ -5855,9 +5954,16 @@ function refineReduceSeedFloats(
   }
 }
 
-/** A numeric literal with a fractional value (`12.5`, not `12`). */
+/**
+ * A numeric literal that can only be a Double: a fractional value (`12.5`,
+ * not `12`), or a whole one outside the 32-bit range. The second half matters
+ * because Kotlin's `Int` is 32-bit — an epoch-millisecond timestamp
+ * (`1709251200000`), which is how time-series data is written, typed its field
+ * `Int` and kotlinc rejected the literal. JavaScript has one number type, so
+ * Double is the faithful reading.
+ */
 function isFractionalLiteral(e: ExprIR): boolean {
-  return e.kind === 'literal' && typeof e.value === 'number' && !Number.isInteger(e.value)
+  return e.kind === 'literal' && typeof e.value === 'number' && (!Number.isInteger(e.value) || Math.abs(e.value) > 2147483647)
 }
 
 /**
@@ -6254,6 +6360,7 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     // here rather than sharing the parent's.
     kineticFactoryNames: new Map(),
     kineticImportNames: new Set(),
+    typedComponentAliases: new Map(),
     kineticMountPending: false,
     kineticPresetImports: new Map(),
     validateSchemaNames: new Set(),
@@ -6495,7 +6602,6 @@ function tryHelperFnFromArrowConst(node: AnyNode, ctx: ParseCtx): boolean {
   // A helper takes value parameters. A no-param arrow is not routed.
   if (((arrow.params as AnyNode[] | undefined)?.length ?? 0) === 0) return false
   const decl = tryFunctionDecl(d.id.name as string, arrow, ctx)
-  if (!decl || decl.kind !== 'function') return false
   // A COMPONENT arrow returns JSX (directly or through a conditional root) —
   // NOT a helper. If ANY top-level return in the body resolves to JSX, leave it.
   const topLevelReturns = decl.body.filter(
@@ -6625,6 +6731,19 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
   // destructured params) are tolerated but produce no props — the body's
   // member accesses on the param name still rewrite cleanly if the name
   // is captured.
+  // A lowercase function with value params may turn out to be a HELPER
+  // (`function describe(err: Error) { … }`), whose params are not props at all
+  // — resolving them as props warned "Component props type `Error` can't be
+  // resolved" for a function that is not a component. The props warnings of
+  // such a candidate are DEFERRED to the component confirmation below (the
+  // same discipline as `droppedStmtWarnings`); a PascalCase function keeps
+  // them in place.
+  const firstChar = name.charAt(0)
+  const maybeHelper =
+    firstChar === firstChar.toLowerCase() &&
+    firstChar !== firstChar.toUpperCase() &&
+    ((fn.params as AnyNode[] | undefined)?.length ?? 0) > 0
+  const propsWarnMark = ctx.warnings.length
   const { props, propsParamName } = parseProps(fn.params as AnyNode[] | undefined, ctx)
 
   // Round-3 audit fix: an untyped `props` parameter (no `: { … }`
@@ -6637,6 +6756,7 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
   // the parser layer so the diagnostic names the component. Skips
   // bodies that never reference the param (legitimate no-props shape).
   warnIfUntypedPropsParam(name, fn.params as AnyNode[] | undefined, propsParamName, body, ctx)
+  const deferredPropsWarnings = maybeHelper ? ctx.warnings.splice(propsWarnMark) : []
 
   const decls: DeclIR[] = []
   let returnExpr: ExprIR | null = null
@@ -6681,8 +6801,7 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
       // already accepts both shapes since FunctionDeclaration carries
       // the same `.params` / `.returnType` / `.body` API).
       const fnName = stmt.id.name as string
-      const decl = tryFunctionDecl(fnName, stmt, ctx)
-      if (decl) decls.push(decl)
+      decls.push(tryFunctionDecl(fnName, stmt, ctx))
     } else if (stmt.type === 'ReturnStatement' && stmt.argument) {
       // Fold any early-return conditionals collected before this final return
       // into a nested ternary the emitter lowers to a result-builder view.
@@ -6897,6 +7016,7 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
   }
 
   if (returnExpr === null) {
+    for (const w of deferredPropsWarnings) ctx.warnings.push(w)
     ctx.warnings.push(`Component ${name}: no return statement found; skipping.`)
     return null
   }
@@ -7002,26 +7122,35 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
     // a faithful native `func`/`fun`. (`number` params map to `Int` — TS has
     // no `Double` type + no param-level fractional refinement — so an
     // integer-literal call site needs no Kotlin numeric coercion.)
-    const decl = tryFunctionDecl(name, fn, ctx)
-    if (decl && decl.kind === 'function') {
-      // Collect every non-generic helper. Two shapes previously deferred here
-      // are now HANDLED downstream, so there is no per-collect gate:
-      //   - a missing return annotation → `refineHelperReturns` infers the
-      //     return type from the body (drops the annotation requirement);
-      //   - a FRACTIONAL body (`x * 1.5`, `x / 2`, `Math.sqrt`) → the emitter
-      //     now seeds the helper's Int params into the coercion ctx so the body
-      //     coerces (`Double(x) * 1.5`) AND `refineHelperReturns` refines the
-      //     `number` return to `Double`, so the signature matches (proven on
-      //     both toolchains). Kotlin auto-promotes Int×Double, needing only the
-      //     Double return. A genuinely-un-inferable body is warned + dropped by
-      //     `refineHelperReturns`.
-      ctx.helperFns.push(decl)
+    // Collect every non-generic helper. Two shapes previously deferred here
+    // are now HANDLED downstream, so there is no per-collect gate:
+    //   - a missing return annotation → `refineHelperReturns` infers the
+    //     return type from the body (drops the annotation requirement);
+    //   - a FRACTIONAL body (`x * 1.5`, `x / 2`, `Math.sqrt`) → the emitter
+    //     now seeds the helper's Int params into the coercion ctx so the body
+    //     coerces (`Double(x) * 1.5`) AND `refineHelperReturns` refines the
+    //     `number` return to `Double`, so the signature matches (proven on
+    //     both toolchains). Kotlin auto-promotes Int×Double, needing only the
+    //     Double return. A genuinely-un-inferable body is warned + dropped by
+    //     `refineHelperReturns`.
+    ctx.helperFns.push(tryFunctionDecl(name, fn, ctx))
+    // The deferred props warnings were about PARAMETERS, not props. An
+    // unresolvable parameter type still reaches the native signature verbatim,
+    // so it is re-named in helper terms rather than dropped.
+    for (const w of deferredPropsWarnings) {
+      const unresolved = /^Component props type `([^`]+)` can't be resolved/.exec(w)?.[1]
+      if (unresolved !== undefined) {
+        ctx.warnings.push(
+          `Helper function \`${name}\`: parameter type \`${unresolved}\` can't be resolved — PMTC only resolves an object-shape \`type ${unresolved} = { … }\` / \`interface ${unresolved} { … }\` declared in the SAME file, a local string-literal union, or a native primitive. The native \`func\` / \`fun\` names \`${unresolved}\` verbatim, so it fails the build unless the platform itself defines a type of that name. Declare it locally or annotate the parameter with a supported type.`,
+        )
+      }
     }
     return null
   }
 
   // Confirmed a genuine component (past the helper carve-out) — NOW emit the
-  // deferred dropped-control-flow warnings.
+  // deferred props + dropped-control-flow warnings.
+  for (const w of deferredPropsWarnings) ctx.warnings.push(w)
   for (const w of droppedStmtWarnings) ctx.warnings.push(w)
 
   if (ctx.kineticMountPending) {
@@ -7157,9 +7286,8 @@ function parseProps(
       properties.every(
         (p) =>
           p?.type === 'Property' &&
-          p.key?.type === 'Identifier' &&
           p.value?.type === 'Identifier' &&
-          (p.key.name as string) === (p.value.name as string),
+          staticPropKey(p) === (p.value.name as string),
       )
     if (!allSimpleNoRename) return { props: [], propsParamName: undefined }
     return {
@@ -7465,7 +7593,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       props.every(
         (p) =>
           p?.type === 'Property' &&
-          p.key?.type === 'Identifier' &&
+          staticPropKey(p) !== undefined &&
           p.value?.type === 'Identifier',
       )
     if (allSimple) {
@@ -7483,7 +7611,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       if (containerDecl) {
         ctx.hookDestructureCounter += 1
         for (const prop of props) {
-          const key = (prop as AnyNode).key?.name as string
+          const key = staticPropKey(prop as AnyNode) as string
           const local = (prop as AnyNode).value?.name as string
           ctx.hookFieldAliases.set(local, { object: synthName, field: key })
         }
@@ -7720,7 +7848,11 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     const params: { key: string; local: string }[] = []
     for (const prop of (node.id.properties as AnyNode[] | undefined) ?? []) {
       if (prop?.type !== 'Property') continue
-      const key = prop.key?.type === 'Identifier' ? (prop.key.name as string) : undefined
+      if (hasDynamicKey(prop)) {
+        warnDynamicKey(prop, '`const { … } = useParams()`', ctx)
+        continue
+      }
+      const key = staticPropKey(prop)
       const local =
         prop.value?.type === 'Identifier' ? (prop.value.name as string) : key
       if (key !== undefined && local !== undefined) params.push({ key, local })
@@ -7748,7 +7880,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       props.every(
         (p) =>
           p?.type === 'Property' &&
-          p.key?.type === 'Identifier' &&
+          staticPropKey(p) !== undefined &&
           p.value?.type === 'Identifier',
       )
     if (allSimple) {
@@ -7761,7 +7893,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       if (containerDecl) {
         ctx.hookDestructureCounter += 1
         for (const prop of props) {
-          const key = (prop as AnyNode).key?.name as string
+          const key = staticPropKey(prop as AnyNode) as string
           const local = (prop as AnyNode).value?.name as string
           ctx.hookFieldAliases.set(local, { object: synthName, field: key })
         }
@@ -8038,7 +8170,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     const resolved = resolveUrlStateDefault(defNode)
     if (resolved === null) {
       ctx.warnings.push(
-        `const ${name} = useUrlState(${JSON.stringify(key)}, …) lowers with a STRING, NUMBER or BOOLEAN default — an array or object default infers a comma-join / JSON codec on the web, and there is no native type to decode into at this call site. Use a scalar and parse it, or keep the call behind a \`<Web>\` escape hatch.`,
+        `const ${name} = useUrlState(${JSON.stringify(key)}, …) lowers with a STRING, NUMBER or BOOLEAN default — ${urlStateDefaultRejection(defNode)} Use a scalar and parse it, or keep the call behind a \`<Web>\` escape hatch.`,
       )
       return null
     }
@@ -8136,13 +8268,12 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
         )
       } else {
         for (const prop of initArg.properties ?? []) {
-          if (prop.type !== 'Property' || prop.computed) continue
-          const key =
-            prop.key?.type === 'Identifier'
-              ? prop.key.name
-              : typeof prop.key?.value === 'string'
-                ? prop.key.value
-                : undefined
+          if (prop.type !== 'Property') continue
+          if (hasDynamicKey(prop)) {
+            warnDynamicKey(prop, `Declaration ${name}: useFetch init`, ctx)
+            continue
+          }
+          const key = staticPropKey(prop)
           if (!key) continue
           const value = prop.value
           const isStringLit =
@@ -8176,13 +8307,12 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
             }
             const headers: Record<string, string> = {}
             for (const h of value.properties ?? []) {
-              if (h.type !== 'Property' || h.computed) continue
-              const hk =
-                h.key?.type === 'Identifier'
-                  ? h.key.name
-                  : typeof h.key?.value === 'string'
-                    ? h.key.value
-                    : undefined
+              if (h.type !== 'Property') continue
+              if (hasDynamicKey(h)) {
+                warnDynamicKey(h, `Declaration ${name}: useFetch headers`, ctx)
+                continue
+              }
+              const hk = staticPropKey(h)
               const hv = h.value
               if (
                 hk &&
@@ -8311,13 +8441,12 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     let staleMillis = 0
     const req: { method?: string; headers?: Record<string, string>; body?: string } = {}
     for (const prop of (optsObj.properties as AnyNode[] | undefined) ?? []) {
-      if (prop.type !== 'Property' || prop.computed) continue
-      const key =
-        prop.key?.type === 'Identifier'
-          ? prop.key.name
-          : typeof prop.key?.value === 'string'
-            ? prop.key.value
-            : undefined
+      if (prop.type !== 'Property') continue
+      if (hasDynamicKey(prop)) {
+        warnDynamicKey(prop, `Declaration ${name}: useQuery options`, ctx)
+        continue
+      }
+      const key = staticPropKey(prop)
       if (!key) continue
       if (key === 'queryKey') {
         // A `queryKey` array whose parts are ALL string/number literals bakes
@@ -8411,7 +8540,10 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     const decl: Extract<DeclIR, { kind: 'form' }> = {
       kind: 'form',
       name,
-      initialValues: tryExtractFormInitialValues(cfg),
+      initialValues: tryExtractFormInitialValues(cfg, {
+        ctx,
+        where: `useForm \`${name}\`: initialValues`,
+      }),
     }
     // v2 (form-binding arc) — validators + onSubmit. Conservative:
     // unparseable members are skipped with a warning (the form still
@@ -8419,7 +8551,11 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     if (cfg?.type === 'ObjectExpression') {
       for (const prop of (cfg.properties as AnyNode[] | undefined) ?? []) {
         if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-        const key = (prop.key?.name ?? prop.key?.value) as string | undefined
+        if (hasDynamicKey(prop)) {
+          warnDynamicKey(prop, `useForm \`${name}\`: config`, ctx)
+          continue
+        }
+        const key = staticPropKey(prop)
         // `schema: SomeSchema` — an identifier naming a top-level zodSchema
         // declaration. Captured here; the emitters resolve it against the
         // module's `zodSchemas` and synthesize validators from its constraints.
@@ -8430,7 +8566,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
           const validators: { key: string; param: string; body: ExprIR }[] = []
           for (const v of (prop.value.properties as AnyNode[] | undefined) ?? []) {
             if (v?.type !== 'Property' && v?.type !== 'ObjectProperty') continue
-            const fieldName = (v.key?.name ?? v.key?.value) as string | undefined
+            const fieldName = staticPropKey(v)
             const fn = v.value as AnyNode | undefined
             if (
               fieldName === undefined ||
@@ -8439,7 +8575,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
               fn.body?.type === 'BlockStatement'
             ) {
               ctx.warnings.push(
-                `useForm \`${name}\`: validator \`${fieldName ?? '?'}\` must be a single-param expression-body arrow returning '' (valid) or a message — skipped natively.`,
+                `useForm \`${name}\`: validator \`${fieldName ?? dynamicKeyText(v, ctx)}\` must be a single-param expression-body arrow returning '' (valid) or a message — skipped natively.`,
               )
               continue
             }
@@ -8452,16 +8588,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
           if (validators.length > 0) decl.validators = validators
         } else if (key === 'onSubmit' && prop.value?.type === 'ArrowFunctionExpression') {
           const fn = tryFunctionDecl('__onSubmit', prop.value, ctx)
-          // Optional-chain discriminant guard (see the store-walker
-          // mirror above for the CodeQL rationale).
-          if (fn?.kind === 'function') {
-            const param = fn.params[0]?.name ?? 'values'
-            decl.onSubmit = { param, body: fn.body }
-          } else {
-            ctx.warnings.push(
-              `useForm \`${name}\`: could not parse onSubmit — the native submit() will validate but run no callback.`,
-            )
-          }
+          decl.onSubmit = { param: fn.params[0]?.name ?? 'values', body: fn.body }
         }
       }
     }
@@ -8558,11 +8685,11 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       }
       for (const prop of (opts.properties as AnyNode[] | undefined) ?? []) {
         if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-        const key = prop.key?.type === 'Identifier' ? (prop.key.name as string) : undefined
+        const key = staticPropKey(prop)
         const val = unwrapTypeLayers(prop.value as AnyNode | undefined)
         if ((key !== 'min' && key !== 'max') || val?.type !== 'Literal' || typeof val.value !== 'number') {
           ctx.warnings.push(
-            `useCounter() \`${name}\`: option \`${key ?? '?'}\` is not a numeric literal, so the clamp cannot be baked into the native mutators and the declaration is NOT lowered.`,
+            `useCounter() \`${name}\`: option \`${key ?? (hasDynamicKey(prop) ? dynamicKeyText(prop, ctx) : '?')}\` is not a numeric literal, so the clamp cannot be baked into the native mutators and the declaration is NOT lowered.`,
           )
           return null
         }
@@ -8689,12 +8816,6 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       return null
     }
     const fn = tryFunctionDecl(name, cb, ctx)
-    if (fn?.kind !== 'function') {
-      ctx.warnings.push(
-        `${calleeName}() \`${name}\`: could not parse the callback, so the declaration is NOT lowered.`,
-      )
-      return null
-    }
     return { kind: 'rate-limited', name, mode, delayMs: delayNode.value as number, fn }
   }
   if (calleeName === 'useClipboard') {
@@ -9548,13 +9669,12 @@ function parseFetchInitObject(
     return req
   }
   for (const prop of (initNode.properties as AnyNode[] | undefined) ?? []) {
-    if (prop.type !== 'Property' || prop.computed) continue
-    const key =
-      prop.key?.type === 'Identifier'
-        ? prop.key.name
-        : typeof prop.key?.value === 'string'
-          ? prop.key.value
-          : undefined
+    if (prop.type !== 'Property') continue
+    if (hasDynamicKey(prop)) {
+      warnDynamicKey(prop, `Declaration ${name}: useQuery queryFn fetch init`, ctx)
+      continue
+    }
+    const key = staticPropKey(prop)
     if (!key) continue
     const value = prop.value as AnyNode | undefined
     const isStringLit =
@@ -9585,13 +9705,12 @@ function parseFetchInitObject(
       }
       const headers: Record<string, string> = {}
       for (const h of (value.properties as AnyNode[] | undefined) ?? []) {
-        if (h.type !== 'Property' || h.computed) continue
-        const hk =
-          h.key?.type === 'Identifier'
-            ? h.key.name
-            : typeof h.key?.value === 'string'
-              ? h.key.value
-              : undefined
+        if (h.type !== 'Property') continue
+        if (hasDynamicKey(h)) {
+          warnDynamicKey(h, `Declaration ${name}: useQuery queryFn fetch headers`, ctx)
+          continue
+        }
+        const hk = staticPropKey(h)
         const hv = h.value
         if (hk && (hv?.type === 'Literal' || hv?.type === 'StringLiteral') && typeof hv.value === 'string') {
           headers[hk] = hv.value
@@ -9745,13 +9864,11 @@ function tryDeclFromCreateMachine(
   let statesNode: AnyNode | undefined
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    const keyNode = prop.key as AnyNode | undefined
-    const keyName =
-      keyNode?.type === 'Identifier'
-        ? (keyNode.name as string)
-        : keyNode?.type === 'Literal'
-          ? String(keyNode.value)
-          : undefined
+    if (hasDynamicKey(prop)) {
+      warnDynamicKey(prop, `createMachine declaration \`${name}\`: config`, ctx)
+      continue
+    }
+    const keyName = staticPropKey(prop)
     if (!keyName) continue
     const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
     if (keyName === 'initial') {
@@ -9782,13 +9899,11 @@ function tryDeclFromCreateMachine(
   const transitions: Record<string, Record<string, string>> = {}
   for (const stateProp of (statesNode.properties as AnyNode[] | undefined) ?? []) {
     if (stateProp?.type !== 'Property' && stateProp?.type !== 'ObjectProperty') continue
-    const stateKeyNode = stateProp.key as AnyNode | undefined
-    const stateName =
-      stateKeyNode?.type === 'Identifier'
-        ? (stateKeyNode.name as string)
-        : stateKeyNode?.type === 'Literal'
-          ? String(stateKeyNode.value)
-          : undefined
+    if (hasDynamicKey(stateProp)) {
+      warnDynamicKey(stateProp, `createMachine declaration \`${name}\`: states`, ctx)
+      continue
+    }
+    const stateName = staticPropKey(stateProp)
     if (!stateName) continue
     const stateConfig = unwrapTypeLayers(stateProp.value as AnyNode | undefined)
     transitions[stateName] = {}
@@ -9796,25 +9911,21 @@ function tryDeclFromCreateMachine(
     // Find `on: { EVENT: nextState }`
     for (const innerProp of (stateConfig.properties as AnyNode[] | undefined) ?? []) {
       if (innerProp?.type !== 'Property' && innerProp?.type !== 'ObjectProperty') continue
-      const innerKeyNode = innerProp.key as AnyNode | undefined
-      const innerKey =
-        innerKeyNode?.type === 'Identifier'
-          ? (innerKeyNode.name as string)
-          : innerKeyNode?.type === 'Literal'
-            ? String(innerKeyNode.value)
-            : undefined
+      if (hasDynamicKey(innerProp)) {
+        warnDynamicKey(innerProp, `createMachine declaration \`${name}\`: state \`${stateName}\``, ctx)
+        continue
+      }
+      const innerKey = staticPropKey(innerProp)
       if (innerKey !== 'on') continue
       const eventsMap = unwrapTypeLayers(innerProp.value as AnyNode | undefined)
       if (eventsMap?.type !== 'ObjectExpression') continue
       for (const eventProp of (eventsMap.properties as AnyNode[] | undefined) ?? []) {
         if (eventProp?.type !== 'Property' && eventProp?.type !== 'ObjectProperty') continue
-        const evKeyNode = eventProp.key as AnyNode | undefined
-        const eventName =
-          evKeyNode?.type === 'Identifier'
-            ? (evKeyNode.name as string)
-            : evKeyNode?.type === 'Literal'
-              ? String(evKeyNode.value)
-              : undefined
+        if (hasDynamicKey(eventProp)) {
+          warnDynamicKey(eventProp, `createMachine declaration \`${name}\`: state \`${stateName}\` \`on\``, ctx)
+          continue
+        }
+        const eventName = staticPropKey(eventProp)
         const evVal = unwrapTypeLayers(eventProp.value as AnyNode | undefined)
         if (
           eventName &&
@@ -9897,13 +10008,11 @@ function tryDeclFromSyncedSignal(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   let scalarType: 'string' | 'double' | 'bool' | undefined
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    const keyNode = prop.key as AnyNode | undefined
-    const keyName =
-      keyNode?.type === 'Identifier'
-        ? (keyNode.name as string)
-        : keyNode?.type === 'Literal'
-          ? String(keyNode.value)
-          : undefined
+    if (hasDynamicKey(prop)) {
+      warnDynamicKey(prop, `syncedSignal declaration \`${name}\`: config`, ctx)
+      continue
+    }
+    const keyName = staticPropKey(prop)
     if (!keyName) continue
     const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
     if (keyName === 'doc') {
@@ -9980,14 +10089,19 @@ function tryDeclFromSyncedSignal(node: AnyNode, ctx: ParseCtx): DeclIR | null {
  * Anything outside that shape warns + falls back to silent-drop, same as
  * every other v1 recognizer in this file.
  */
-/** The identifier/string keys of an object literal (computed keys skipped). */
+/**
+ * The statically-known keys of an object literal. A computed NON-literal key
+ * (`{ [kind]: … }`) is reported as the sentinel `'[computed key]'` rather than
+ * skipped: every caller uses this list to find keys it does not handle, and a
+ * skipped key would pass that check silently.
+ */
 function literalObjectKeys(obj: AnyNode): string[] {
   const out: string[] = []
   for (const prop of (obj.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    const keyNode = prop.key as AnyNode | undefined
-    if (keyNode?.type === 'Identifier') out.push(keyNode.name as string)
-    else if (keyNode?.type === 'Literal') out.push(String(keyNode.value))
+    const key = staticPropKey(prop)
+    if (key !== undefined) out.push(key)
+    else if (hasDynamicKey(prop)) out.push('[computed key]')
   }
   return out
 }
@@ -10032,13 +10146,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   ): AnyNode | undefined => {
     for (const prop of (obj.properties as AnyNode[] | undefined) ?? []) {
       if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-      const keyNode = prop.key as AnyNode | undefined
-      const keyName =
-        keyNode?.type === 'Identifier'
-          ? (keyNode.name as string)
-          : keyNode?.type === 'Literal'
-            ? String(keyNode.value)
-            : undefined
+      const keyName = staticPropKey(prop)
       if (keyName === key) return unwrapTypeLayers(prop.value as AnyNode | undefined)
     }
     return undefined
@@ -10483,7 +10591,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     const out: Record<string, string[]> = {}
     for (const prop of (connectionRulesNode.properties as AnyNode[] | undefined) ?? []) {
       if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') return null
-      const key = prop.key?.type === 'Identifier' ? prop.key.name as string : literalString(prop.key)
+      // A computed key (`{ [kind]: … }`) is only known at runtime → not a literal map.
+      const key = staticPropKey(prop)
       const rule = unwrapTypeLayers(prop.value)
       const outputs = rule?.type === 'ObjectExpression' ? objProp(rule, 'outputs') : undefined
       if (key === undefined || outputs?.type !== 'ArrayExpression') return null
@@ -10516,13 +10625,11 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const droppedKeys: string[] = []
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    const keyNode = prop.key as AnyNode | undefined
-    const keyName =
-      keyNode?.type === 'Identifier'
-        ? (keyNode.name as string)
-        : keyNode?.type === 'Literal'
-          ? String(keyNode.value)
-          : undefined
+    if (hasDynamicKey(prop)) {
+      droppedKeys.push(`${dynamicKeyText(prop, ctx)} (computed key)`)
+      continue
+    }
+    const keyName = staticPropKey(prop)
     if (keyName === undefined || HANDLED_FLOW_CONFIG_KEYS.has(keyName)) continue
     droppedKeys.push(keyName)
   }
@@ -10630,13 +10737,11 @@ function tryDeclFromCreateTableState(node: AnyNode, ctx: ParseCtx): DeclIR | nul
   const columns: { id: string }[] = []
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    const keyNode = prop.key as AnyNode | undefined
-    const keyName =
-      keyNode?.type === 'Identifier'
-        ? (keyNode.name as string)
-        : keyNode?.type === 'Literal'
-          ? String(keyNode.value)
-          : undefined
+    if (hasDynamicKey(prop)) {
+      warnDynamicKey(prop, `createTableState declaration \`${name}\`: config`, ctx)
+      continue
+    }
+    const keyName = staticPropKey(prop)
     if (!keyName) continue
     const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
     if (keyName === 'data') {
@@ -10657,13 +10762,11 @@ function tryDeclFromCreateTableState(node: AnyNode, ctx: ParseCtx): DeclIR | nul
         if (col?.type !== 'ObjectExpression') continue
         for (const cp of (col.properties as AnyNode[] | undefined) ?? []) {
           if (cp?.type !== 'Property' && cp?.type !== 'ObjectProperty') continue
-          const ck = cp.key as AnyNode | undefined
-          const ckName =
-            ck?.type === 'Identifier'
-              ? (ck.name as string)
-              : ck?.type === 'Literal'
-                ? String(ck.value)
-                : undefined
+          if (hasDynamicKey(cp)) {
+            warnDynamicKey(cp, `createTableState declaration \`${name}\`: column`, ctx)
+            continue
+          }
+          const ckName = staticPropKey(cp)
           const cv = unwrapTypeLayers(cp.value as AnyNode | undefined)
           if (ckName === 'id' && cv?.type === 'Literal' && typeof cv.value === 'string') {
             columns.push({ id: cv.value })
@@ -10721,13 +10824,11 @@ function tryDeclFromUseSortable(node: AnyNode, ctx: ParseCtx): DeclIR | null {
 
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    const keyNode = prop.key as AnyNode | undefined
-    const keyName =
-      keyNode?.type === 'Identifier'
-        ? (keyNode.name as string)
-        : keyNode?.type === 'Literal'
-          ? String(keyNode.value)
-          : undefined
+    if (hasDynamicKey(prop)) {
+      warnDynamicKey(prop, `useSortable declaration \`${name}\`: config`, ctx)
+      continue
+    }
+    const keyName = staticPropKey(prop)
     if (!keyName) continue
     const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
 
@@ -10856,13 +10957,11 @@ function tryDeclFromCreateI18n(
   let messagesNode: AnyNode | undefined
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
-    const keyNode = prop.key as AnyNode | undefined
-    const keyName =
-      keyNode?.type === 'Identifier'
-        ? (keyNode.name as string)
-        : keyNode?.type === 'Literal'
-          ? String(keyNode.value)
-          : undefined
+    if (hasDynamicKey(prop)) {
+      warnDynamicKey(prop, `createI18n declaration \`${name}\`: config`, ctx)
+      continue
+    }
+    const keyName = staticPropKey(prop)
     if (!keyName) continue
     const valueNode = unwrapTypeLayers(prop.value as AnyNode | undefined)
     if (keyName === 'locale') {
@@ -10893,26 +10992,22 @@ function tryDeclFromCreateI18n(
   const messages: Record<string, Record<string, string>> = {}
   for (const localeProp of (messagesNode.properties as AnyNode[] | undefined) ?? []) {
     if (localeProp?.type !== 'Property' && localeProp?.type !== 'ObjectProperty') continue
-    const locKeyNode = localeProp.key as AnyNode | undefined
-    const locName =
-      locKeyNode?.type === 'Identifier'
-        ? (locKeyNode.name as string)
-        : locKeyNode?.type === 'Literal'
-          ? String(locKeyNode.value)
-          : undefined
+    if (hasDynamicKey(localeProp)) {
+      warnDynamicKey(localeProp, `createI18n declaration \`${name}\`: messages`, ctx)
+      continue
+    }
+    const locName = staticPropKey(localeProp)
     if (!locName) continue
     const dict = unwrapTypeLayers(localeProp.value as AnyNode | undefined)
     messages[locName] = {}
     if (dict?.type !== 'ObjectExpression') continue
     for (const entry of (dict.properties as AnyNode[] | undefined) ?? []) {
       if (entry?.type !== 'Property' && entry?.type !== 'ObjectProperty') continue
-      const eKey = entry.key as AnyNode | undefined
-      const k =
-        eKey?.type === 'Identifier'
-          ? (eKey.name as string)
-          : eKey?.type === 'Literal'
-            ? String(eKey.value)
-            : undefined
+      if (hasDynamicKey(entry)) {
+        warnDynamicKey(entry, `createI18n declaration \`${name}\`: messages \`${locName}\``, ctx)
+        continue
+      }
+      const k = staticPropKey(entry)
       const eVal = unwrapTypeLayers(entry.value as AnyNode | undefined)
       if (k && eVal?.type === 'Literal' && typeof eVal.value === 'string') {
         messages[locName]![k] = eVal.value
@@ -10954,24 +11049,26 @@ function tryExtractStringArray(arg: AnyNode | undefined): string[] {
  */
 function tryExtractFormInitialValues(
   arg: AnyNode | undefined,
+  /** Names a computed key (the one shape that is NOT a deliberate drop). */
+  report?: { ctx: ParseCtx; where: string },
 ): { key: string; value: string }[] {
   if (!arg || arg.type !== 'ObjectExpression') return []
   const props = arg.properties as AnyNode[] | undefined
   if (!props) return []
   const ivProp = props.find(
     (p) =>
-      p?.type === 'Property' &&
-      p?.key?.type === 'Identifier' &&
-      p?.key?.name === 'initialValues',
+      p?.type === 'Property' && staticPropKey(p) === 'initialValues',
   )
   if (!ivProp || ivProp.value?.type !== 'ObjectExpression') return []
   const out: { key: string; value: string }[] = []
   for (const p of (ivProp.value.properties as AnyNode[] | undefined) ?? []) {
     if (p?.type !== 'Property') continue
+    if (hasDynamicKey(p)) {
+      if (report) warnDynamicKey(p, report.where, report.ctx)
+      continue
+    }
     // Object keys are Identifiers (`email:`) or string literals (`'email':`).
-    const key =
-      (p.key?.type === 'Identifier' ? (p.key.name as string) : undefined) ??
-      (typeof p.key?.value === 'string' ? (p.key.value as string) : undefined)
+    const key = staticPropKey(p)
     const v = p.value
     if (
       key !== undefined &&
@@ -11011,12 +11108,7 @@ function tryExtractRoutes(arg: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | 
   if (!arg || arg.type !== 'ObjectExpression') return null
   const props = arg.properties as AnyNode[] | undefined
   if (!props) return null
-  const routesProp = props.find(
-    (p) =>
-      p?.type === 'Property' &&
-      p?.key?.type === 'Identifier' &&
-      p?.key?.name === 'routes',
-  )
+  const routesProp = props.find((p) => p?.type === 'Property' && staticPropKey(p) === 'routes')
   if (!routesProp) return null
   return parseRouteArray(routesProp.value, ctx)
 }
@@ -11038,12 +11130,7 @@ function tryExtractGuardRefArray(
   if (!arg || arg.type !== 'ObjectExpression') return []
   const props = arg.properties as AnyNode[] | undefined
   if (!props) return []
-  const prop = props.find(
-    (p) =>
-      p?.type === 'Property' &&
-      p?.key?.type === 'Identifier' &&
-      p?.key?.name === key,
-  )
+  const prop = props.find((p) => p?.type === 'Property' && staticPropKey(p) === key)
   if (!prop) return []
   const value = prop.value as AnyNode | undefined
   if (!value || value.type !== 'ArrayExpression') return []
@@ -11102,7 +11189,13 @@ function parseRouteArray(arr: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | n
     let loaderUsesParams = false
     for (const p of elProps) {
       if (p?.type !== 'Property') continue
-      const key = p.key?.name as string | undefined
+      // A computed key could be `path` / `component` / a guard — unknowable,
+      // and the compiler never emits a partial route table: bail, by name.
+      if (hasDynamicKey(p)) {
+        warnDynamicKey(p, 'createRouter route', ctx)
+        return null
+      }
+      const key = staticPropKey(p)
       if (key === 'path') {
         const v = p.value
         if (
@@ -11225,7 +11318,7 @@ function tryFunctionDecl(
   name: string,
   arrow: AnyNode,
   ctx: ParseCtx,
-): DeclIR | null {
+): Extract<DeclIR, { kind: 'function' }> {
   // Parse parameters with optional type annotations. TS params shape:
   // `(id: T, id2: T2)` where each param is an Identifier with
   // `typeAnnotation.typeAnnotation`.
@@ -11283,12 +11376,12 @@ function tryFunctionDecl(
         props.every(
           (pr) =>
             pr?.type === 'Property' &&
-            pr.key?.type === 'Identifier' &&
+            staticPropKey(pr) !== undefined &&
             pr.value?.type === 'Identifier',
         )
       if (allSimple) {
         for (const pr of props) {
-          const key = (pr as AnyNode).key.name as string
+          const key = staticPropKey(pr as AnyNode) as string
           const local = (pr as AnyNode).value.name as string
           destructurePrelude.push({
             kind: 'let',
@@ -11390,14 +11483,14 @@ function parseStatementBlock(block: AnyNode, ctx: ParseCtx): StatementIR[] {
         props.every(
           (p) =>
             p?.type === 'Property' &&
-            p.key?.type === 'Identifier' &&
+            staticPropKey(p) !== undefined &&
             p.value?.type === 'Identifier',
         )
       if (allSimple) {
         const synthName = `__pyDestr${ctx.hookDestructureCounter++}`
         out.push({ kind: 'let', name: synthName, expr: parseExpr(d.init as AnyNode, ctx) })
         for (const p of props) {
-          const key = (p as AnyNode).key.name as string
+          const key = staticPropKey(p as AnyNode) as string
           const local = (p as AnyNode).value.name as string
           // A block-scoped local SHADOWS any component-scope alias of the
           // same name. The component classifier may have parsed this same
@@ -12220,8 +12313,25 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
       )
       return { kind: 'unknown' }
     case 'TSTypeLiteral': {
-      const fields = (node.members as AnyNode[])
-        .filter((m) => m.type === 'TSPropertySignature' && m.key?.name && m.typeAnnotation)
+      const members = node.members as AnyNode[]
+      for (const m of members) {
+        // `{ [K]: string }` — the member name is the runtime VALUE of `K`, so
+        // it has no static field name. Pre-fix it was read as a field named
+        // `K`. Named, never silently renamed (same class as object literals).
+        if (m.type === 'TSPropertySignature' && m.computed === true && m.key?.type === 'Identifier') {
+          ctx.warnings.push(
+            `Computed type-literal members (\`{ [${m.key.name as string}]: … }\`) aren't supported in native (PMTC) — a struct/data-class needs static field names. Spell the field name literally.`,
+          )
+        }
+      }
+      const fields = members
+        .filter(
+          (m) =>
+            m.type === 'TSPropertySignature' &&
+            m.key?.name &&
+            !(m.computed === true && m.key?.type === 'Identifier') &&
+            m.typeAnnotation,
+        )
         .map((m) => {
           const fieldType = parseTypeAnnotation(m.typeAnnotation.typeAnnotation, ctx)
           // `label?: string` — TS marks the member `optional`. Represent it
@@ -12552,6 +12662,28 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         ) {
           // `loading` has no distinct native variant in v1 → treat as info.
           toastType = c.property.name === 'loading' ? 'info' : c.property.name
+        } else if (
+          c?.type === 'MemberExpression' &&
+          c.object?.type === 'Identifier' &&
+          ctx.toastNames.has(c.object.name)
+        ) {
+          // Any OTHER member call on the toast binding used to pass through
+          // VERBATIM (`toast.bogus("q")` → a Swift/Kotlin call on a name that
+          // does not exist), with no warning. Name it: a real-but-unlowered
+          // method gets the follow-up hint, anything else is not a toast API.
+          const method =
+            c.computed !== true && c.property?.type === 'Identifier'
+              ? (c.property.name as string)
+              : undefined
+          const REAL_UNLOWERED = new Set(['update', 'dismiss', 'remove', 'promise'])
+          return unsupportedExpr(
+            ctx,
+            node,
+            method !== undefined ? `\`${c.object.name}.${method}(…)\`` : `a computed \`${c.object.name}[…]\` call`,
+            method !== undefined && REAL_UNLOWERED.has(method)
+              ? `\`toast.${method}\` has no native lowering yet (only \`toast(msg)\` and the \`success\` / \`error\` / \`warning\` / \`info\` / \`loading\` presets lower) — the call is DROPPED on iOS/Android.`
+              : `@pyreon/toast has no such method; the native lowering covers \`toast(msg)\` and the \`success\` / \`error\` / \`warning\` / \`info\` / \`loading\` presets. The call is DROPPED on iOS/Android.`,
+          )
         }
         if (toastType !== undefined) {
           const argNodes = (node.arguments as AnyNode[] | undefined) ?? []
@@ -12563,8 +12695,11 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           const opts = argNodes[1]
           if (opts?.type === 'ObjectExpression') {
             for (const prop of (opts.properties as AnyNode[] | undefined) ?? []) {
-              if (prop.type !== 'Property' || prop.computed) continue
-              const key = prop.key?.type === 'Identifier' ? prop.key.name : prop.key?.value
+              if (hasDynamicKey(prop)) {
+                warnDynamicKey(prop, 'toast() options', ctx)
+                continue
+              }
+              const key = staticPropKey(prop)
               const val = prop.value as AnyNode | undefined
               if (
                 key === 'duration' &&
@@ -12597,8 +12732,11 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         const opts = argNodes[1]
         if (opts?.type === 'ObjectExpression') {
           for (const prop of (opts.properties as AnyNode[] | undefined) ?? []) {
-            if (prop.type !== 'Property' || prop.computed) continue
-            const key = prop.key?.type === 'Identifier' ? prop.key.name : prop.key?.value
+            if (hasDynamicKey(prop)) {
+              warnDynamicKey(prop, 'announce() options', ctx)
+              continue
+            }
+            const key = staticPropKey(prop)
             const val = prop.value
             if (
               key === 'politeness' &&
@@ -13091,7 +13229,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         const optsNode = (node.arguments as AnyNode[] | undefined)?.[0]
         const readNum = (key: string): number | undefined => {
           for (const prop of (optsNode?.properties as AnyNode[] | undefined) ?? []) {
-            const k = prop?.key?.name ?? prop?.key?.value
+            const k = staticPropKey(prop)
             if (k === key && prop.value?.type === 'Literal') {
               const v = prop.value.value
               if (typeof v === 'number') return v
@@ -13107,6 +13245,9 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           ctx.warnings.push(
             `[${locOf(node, ctx)}] new ${calleeName}(...) lowers only with a LITERAL \`{ maxEntries: N }\` option object — a computed cap cannot be baked into the native emit. Use a literal, or keep the call behind a \`<Web>\` escape hatch.`,
           )
+          // Return here: falling through reached the generic "class
+          // construction is not supported" arm, naming the SAME call twice.
+          return { kind: 'literal', value: '' }
         } else {
           return {
             kind: 'new-sized-map',
@@ -13250,6 +13391,7 @@ function parseJsxElement(node: AnyNode, ctx: ParseCtx): ExprIR {
   else if (tagNode.type === 'JSXMemberExpression') {
     tag = `${tagNode.object.name}.${tagNode.property.name}`
   }
+  tag = ctx.typedComponentAliases.get(tag) ?? tag
 
   const attrs: AttrIR[] = []
   for (const attr of opening.attributes as AnyNode[]) {

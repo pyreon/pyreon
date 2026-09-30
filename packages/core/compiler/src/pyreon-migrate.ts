@@ -10,10 +10,6 @@
  *   - `signal-write-as-call`      `sig(v)`                    → `sig.set(v)`
  *   - `for-with-key`              `<For key={k}>`             → `<For by={k}>`
  *   - `as-unknown-as-vnodechild`  `x as unknown as VNodeChild`→ `x`
- *   - `charts-legacy-import`      old `@pyreon/charts` entry points → the new
- *                                  ones, with `Plot`→`Chart`, `Tip`→`Tooltip`
- *                                  and the ECharts `Chart`→`EChart` renamed at
- *                                  every reference (see charts-migration.ts)
  *
  * Every other detected footgun (props-destructured, on-click-undefined,
  * raw-add-event-listener, date-math-random-id, …) needs human judgement and is
@@ -26,7 +22,6 @@
  */
 
 import ts from 'typescript'
-import { planChartsImports, renameSites } from './charts-migration'
 import { assertClassicTs } from './ts'
 import {
   collectSignalBindings,
@@ -38,7 +33,7 @@ import {
 
 /** Footgun codes `migratePyreonCode` can auto-fix. */
 export const AUTO_FIXABLE_PYREON_CODES: ReadonlySet<PyreonDiagnosticCode> = new Set<PyreonDiagnosticCode>(
-  ['signal-write-as-call', 'for-with-key', 'as-unknown-as-vnodechild', 'charts-legacy-import'],
+  ['signal-write-as-call', 'for-with-key', 'as-unknown-as-vnodechild'],
 )
 
 export interface PyreonMigrationChange {
@@ -96,22 +91,6 @@ export function migratePyreonCode(source: string, filename = 'component.tsx'): P
   )
   const signals = collectSignalBindings(sf)
   const edits: Edit[] = []
-  // charts-legacy-import: rewrite the import statements, then every reference
-  // to a renamed binding. Import spans and reference spans never overlap —
-  // `renameSites` skips import declarations.
-  for (const plan of planChartsImports(sf)) {
-    edits.push({
-      start: plan.node.getStart(sf),
-      end: plan.node.getEnd(),
-      replacement: plan.replacement,
-      code: 'charts-legacy-import',
-      description: `\`${plan.node.moduleSpecifier.getText(sf)}\` → the new \`@pyreon/charts\` entry points`,
-    })
-    for (const site of renameSites(sf, plan.renames)) {
-      edits.push({ ...site, code: 'charts-legacy-import', description: `rename → \`${site.replacement}\`` })
-    }
-  }
-
   const walk = (node: ts.Node): void => {
     // signal-write-as-call: `sig(value)` → `sig.set(value)`
     if (

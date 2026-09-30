@@ -107,16 +107,16 @@ describe('parse.ts — non-Identifier object keys through every options walker',
     expect(swift(body(`  const q = useFetch<Resp>('https://x', { 'method': 'POST' })`)).code).toContain('method: .post')
   })
 
-  it('skips a COMPUTED, NUMERIC-key, and non-literal-valued header entry, keeping the rest', () => {
+  it('names a RUNTIME computed header key, reads a NUMERIC key as its string, and names a non-literal value', () => {
     const computed = swift(body(`  declare const k: string\n  const q = useFetch<Resp>('https://x', { headers: { [k]: 'v', A: 'b' } })`))
     expect(computed.code).toContain('headers: ["A": "b"]')
+    expect(computed.warnings.join('\n')).toContain('useFetch headers: the computed key `[k]` is only known at runtime')
+    // `{ 1: 'v' }` has the runtime key "1" — JS object-key semantics.
     const numeric = swift(body(`  const q = useFetch<Resp>('https://x', { headers: { 1: 'v', A: 'b' } })`))
-    expect(numeric.code).toContain('headers: ["A": "b"]')
-    // A non-literal value under an unusable key warns about NEITHER — the
-    // key never resolves, so there is nothing to name.
+    expect(numeric.code).toContain('headers: ["1": "v", "A": "b"]')
     const both = swift(body(`  declare const v: string\n  const q = useFetch<Resp>('https://x', { headers: { 1: v, A: 'b' } })`))
     expect(both.code).toContain('headers: ["A": "b"]')
-    expect(both.warnings.join('\n')).not.toContain('must be a string literal to lower to native; it will be OMITTED')
+    expect(both.warnings.join('\n')).toContain('useFetch header "1" must be a string literal to lower to native; it will be OMITTED')
   })
 
   it('ignores an unknown useQuery option key', () => {
@@ -144,14 +144,16 @@ describe('parse.ts — non-Identifier object keys through every options walker',
     expect(c.code).toContain('@State private var c: Int = 0')
   })
 
-  it('names `?` when a validator key cannot be resolved statically', () => {
+  it('names a validator key that cannot be resolved statically by its source', () => {
     const r = swift(body('  declare const k: string\n  const f = useForm({ initialValues: { a: \'\' }, validators: { [`x${k}`]: (v) => \'\' } })'))
-    expect(r.warnings.join('\n')).toContain('validator `?` must be a single-param expression-body arrow')
+    expect(r.warnings.join('\n')).toContain('validator `[`x${k}`]` must be a single-param expression-body arrow')
   })
 
-  it('names `?` when a useCounter option key is a string literal (not an Identifier)', () => {
-    const r = swift(body(`  const c = useCounter(0, { 'min': 0 })`))
-    expect(r.warnings.join('\n')).toContain('option `?` is not a numeric literal')
+  it('a STRING-literal useCounter option key is the option it spells; a runtime key is named', () => {
+    const quoted = swift(body(`  const c = useCounter(0, { 'min': 0 })`))
+    expect(quoted.warnings).toEqual([])
+    const runtime = swift(body(`  declare const k: string\n  const c = useCounter(0, { [k]: 0 })`))
+    expect(runtime.warnings.join('\n')).toContain('option `[k]` is not a numeric literal')
   })
 })
 

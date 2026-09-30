@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { hitTreemap, layoutTreemap, nodeValue, renderTreemap } from './treemap'
 import { treemapToSvg } from './family-svg'
 import type { TreeNode } from './treemap'
-import { compileFamily, familyToSvg } from './option-family'
 
 const rect = { x: 0, y: 0, w: 400, h: 200 }
 const flat: TreeNode[] = [{ name: 'a', value: 6 }, { name: 'b', value: 6 }, { name: 'c', value: 4 }, { name: 'd', value: 3 }, { name: 'e', value: 2 }, { name: 'f', value: 2 }, { name: 'g', value: 1 }]
@@ -72,13 +71,3 @@ describe('treemap layout (squarify)', () => {
   })
 })
 
-describe('treemap option mapping', () => {
-  it('nested ECharts data maps to TreeNodes; leafDepth maps to maxDepth', () => {
-    const f = compileFamily({ series: [{ type: 'treemap', leafDepth: 1, data: [{ name: 'p', children: [{ name: 'x', value: 2 }] }, { name: 'q', value: 3 }] }] })!
-    if (f.plan.kind !== 'treemap') throw new Error('kind')
-    expect(f.plan.nodes[0]!.children![0]!.name).toBe('x')
-    expect(f.plan.treemap.maxDepth).toBe(1)
-    expect(f.warnings).toEqual([])
-    expect(familyToSvg(f.plan)).toContain('<rect')
-  })
-})

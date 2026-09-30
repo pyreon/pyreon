@@ -44,6 +44,7 @@ import {
   nextTick as pyreonNextTick,
   type Signal,
   isServer,
+  runUntracked,
   signal,
 } from '@pyreon/reactivity'
 import {
@@ -1073,6 +1074,7 @@ export interface AsyncComponentOptions<P extends Props = Props> {
 export type AsyncComponent<P extends Props = Props> = ComponentFn<P> & {
   __loading: () => boolean
   __load: () => Promise<void>
+  __pending: () => boolean
 }
 
 const toError = (err: unknown): Error => (err instanceof Error ? err : new Error(String(err)))
@@ -1102,9 +1104,10 @@ const AsyncComponentError = nativeCompat((props: { error: Error }): VNodeChild =
  *
  * **Errors.** A rejected load goes to `onError` first (which may `retry()`),
  * then renders `errorComponent` with `{ error }`, or — without one — is thrown
- * to the nearest `<ErrorBoundary>`. A failed load stays failed for the
- * definition: later mounts render the same error rather than loading again
- * (Vue retries on the next mount); use `onError`'s `retry` to recover.
+ * to the nearest `<ErrorBoundary>`. As in Vue, a failed load is retried by
+ * the NEXT mount (or the next `<Suspense>` / SSR render that asks for it),
+ * while an instance already showing the error keeps showing it; `onError`'s
+ * `retry` retries within the same load.
  * A load that finishes AFTER its `timeout` still replaces the error with the
  * component, as in Vue.
  */
@@ -1123,9 +1126,7 @@ export function defineAsyncComponent<P extends Props = Props>(
   // Definition-level, like Vue's `resolvedComp` / `pendingRequest`: every
   // instance shares one request and one resolved component.
   const resolved = signal<ComponentFn | null>(null)
-  const failed = signal<Error | null>(null)
   let pendingRequest: Promise<ComponentFn> | null = null
-  let settle: Promise<void> | null = null
   let retries = 0
 
   const retry = (): Promise<ComponentFn> => {
@@ -1165,16 +1166,55 @@ export function defineAsyncComponent<P extends Props = Props>(
     return thisRequest
   }
 
-  // Settles, never rejects — the `__load` contract the SSR renderers await.
-  const startLoad = (): Promise<void> => {
-    if (!settle) {
-      settle = request().then(
-        (comp) => resolved.set(toCompatComponent(comp)),
-        (err: unknown) => failed.set(toError(err)),
-      )
-    }
-    return settle
+  // One ATTEMPT = one load that every instance created while it runs shares.
+  // Vue keeps the resolved component per definition but the error per instance:
+  // its `onError` clears `pendingRequest`, so the NEXT mount starts a new load
+  // while an instance already showing the error keeps showing it. The attempt
+  // is that per-instance error, captured by each instance at setup.
+  //
+  // `shown` is what makes "the next mount" precise. A `<Suspense>` holding a
+  // still-loading component does not mount it; when the load fails, the
+  // boundary re-renders and mounts it for the FIRST time. That instance is,
+  // in Vue terms, the one whose load failed — it must render the error, not
+  // retry. Retrying there would loop forever on a permanently failing loader
+  // (fail → boundary mounts child → child retries → boundary shows fallback →
+  // fail → …). So an attempt is retried only once its failure has been SHOWN
+  // by some instance; after that, a new consumer starts over.
+  interface Attempt {
+    readonly settled: Promise<void>
+    readonly error: Signal<Error | null>
+    shown: boolean
   }
+  const attempt = signal<Attempt | null>(null)
+
+  const startAttempt = (): Attempt => {
+    const error = signal<Error | null>(null)
+    const a: Attempt = {
+      error,
+      shown: false,
+      // Settles, never rejects — the `__load` contract the SSR renderers await.
+      settled: request().then(
+        (comp) => resolved.set(toCompatComponent(comp)),
+        (err: unknown) => {
+          // Vue's per-instance `onError`: the failed request is dropped, so the
+          // next load is a new one.
+          pendingRequest = null
+          error.set(toError(err))
+        },
+      ),
+    }
+    attempt.set(a)
+    return a
+  }
+
+  /** The attempt a new consumer joins: the running one, or a fresh one when there is none or the last failure was already shown. */
+  const joinAttempt = (): Attempt => {
+    const a = attempt.peek()
+    if (a && (a.error.peek() === null || !a.shown)) return a
+    return startAttempt()
+  }
+
+  const startLoad = (): Promise<void> => joinAttempt().settled
 
   const renderError = (error: Error): VNode =>
     errorComponent
@@ -1182,13 +1222,19 @@ export function defineAsyncComponent<P extends Props = Props>(
       : pyreonH(AsyncComponentError as ComponentFn, { error })
 
   const AsyncComp = ((props: P): VNodeChild => {
-    const settled = startLoad()
     const ready = resolved.peek()
-    if (ready) return pyreonH(ready, props as Props)
-    const early = failed.peek()
+    // An accessor even when ready: the server always renders this branch (it
+    // waited for the load), and the accessor's `<!--$-->` range is what lets a
+    // client whose load is still pending keep the server's nodes standing.
+    if (ready) return () => pyreonH(ready, props as Props)
+    const mine = joinAttempt()
+    const early = mine.error.peek()
     // Kept as a setup-time throw so a `<Suspense>`-controlled failure behaves
     // exactly like core's `lazy()` (the boundary's error path, SSR included).
+    // Reached only by the instance that shows a failure no instance has shown
+    // yet (see `Attempt`); any later mount starts a new load instead.
     if (early) {
+      mine.shown = true
       if (errorComponent) return pyreonH(errorComponent, { error: early })
       throw early
     }
@@ -1209,34 +1255,59 @@ export function defineAsyncComponent<P extends Props = Props>(
       if (delay > 0) delayTimer = setTimeout(() => delayed.set(false), delay)
       if (timeout != null) {
         timeoutTimer = setTimeout(() => {
-          if (resolved.peek() === null && failed.peek() === null) {
+          if (resolved.peek() === null && mine.error.peek() === null) {
             timedOut.set(new Error(`Async component timed out after ${timeout}ms.`))
           }
         }, timeout)
       }
       // Leak class I: a settled load must not leave its timers (and the
       // closures they hold) pending; nor must an unmount.
-      settled.then(clearTimers)
+      mine.settled.then(clearTimers)
       onUnmount(clearTimers)
     }
 
     return (): VNode | null => {
+      // This instance's own failure wins over a component a LATER attempt
+      // loaded: in Vue the errored instance keeps its error.
+      const failure = mine.error()
+      if (failure) {
+        mine.shown = true
+        return renderError(failure)
+      }
       const comp = resolved()
       if (comp) return pyreonH(comp, props as Props)
-      const error = failed() ?? timedOut()
+      const error = timedOut()
       if (error) return renderError(error)
       return loadingComponent && !delayed() ? pyreonH(loadingComponent, null) : null
     }
   }) as AsyncComponent<P>
 
   AsyncComp.__loading = () => {
-    const isLoading = resolved() === null && failed() === null
-    if (isLoading) startLoad()
+    if (resolved() !== null) return false
+    // Joining may START a new attempt (a shown failure is retried by the next
+    // consumer, `<Suspense>` included), so it runs untracked; the reads below
+    // are what subscribe.
+    runUntracked(joinAttempt)
+    const a = attempt()
+    const isLoading = a !== null && a.error() === null
     // A non-suspensible component must not put a client `<Suspense>` into its
     // fallback — it renders its own loading state. The server still waits.
     return isLoading && (suspensible || isServer)
   }
   AsyncComp.__load = startLoad
+  // Hydration waits for the real content regardless of `suspensible` (as Vue
+  // does: its hydration awaits every async wrapper's loader), so the pending
+  // state it reads is not the `<Suspense>`-facing `__loading`. Unlike
+  // `__loading` this never calls `joinAttempt` itself — a pure check, since
+  // whoever asks (`pendingLazyContent`) calls `__load()` right after, which
+  // joins (or starts) the attempt on its own. No attempt yet is still
+  // "pending" (nothing has failed); an attempt that already errored is not
+  // (hydration should proceed and let the component render the error).
+  AsyncComp.__pending = () => {
+    if (resolved() !== null) return false
+    const a = attempt()
+    return a === null || a.error() === null
+  }
 
   return nativeCompat(AsyncComp)
 }

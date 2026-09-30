@@ -214,16 +214,18 @@ describe('parse.ts — imperative @pyreon/toast and @pyreon/a11y calls', () => {
 })
 
 describe('known bug — Swift inline-object helper params', () => {
-  // A helper whose parameter is an INLINE object type emits a TUPLE on Swift
-  // (`_ u: (a: Int, b: String)`, and a single-field one collapses to the bare
-  // field type `_ t: String`), while every call site passes the synthesized
-  // `__ObjN(...)` struct. Kotlin synthesizes a data class for the same param.
-  // The emit does not compile on iOS (`t.c` on a String; struct → tuple).
-  it.fails('Swift: an inline-object param is typed as the synthesized struct, not a tuple', () => {
+  // Regression (fixed in native-known-bugs-emit): a helper whose parameter is
+  // an INLINE object type emitted a TUPLE on Swift (`_ u: (a: Int, b: String)`,
+  // and a single-field one collapsed to the bare field type `_ t: String`),
+  // while every call site passes the synthesized `__ObjN(...)` struct. Kotlin
+  // synthesized its own `PyreonHelpers<Param>` data class — a DIFFERENT type
+  // from the literal's `__ObjN`, so it did not compile either.
+  it('Swift: an inline-object param is typed as the synthesized struct, not a tuple', () => {
     const r = swift(
       `${PRIM}function f(t: { c: string }) { return t.c }\nexport function App(){ return <Text>{f({ c: "x" })}</Text> }`,
     )
     expect(sigLine(r.code)).not.toContain('_ t: String')
+    expect(sigLine(r.code)).toContain('_ t: __Obj0')
   })
 })
 
@@ -394,13 +396,14 @@ describe('known bug — block-body <For> render callback', () => {
   // `<For>{(x) => { const z = x + 1; return <Text>{z}</Text> }}</For>` — a
   // block-body render callback (the arrow parses to a multi-statement `stmts`
   // list with a `""` body) — emits `ForEach(…) { x in "" }` / `items(…) { x ->
-  // "" }` on both targets with ZERO warnings: the row content is silently
-  // dropped. Render-prop children already honour block bodies; <For> does not.
-  it.fails('Swift: a block-body For row renders its returned element', () => {
+  // "" }` on both targets with ZERO warnings: the row content was silently
+  // dropped. Fixed in native-known-bugs-emit (the `planViewBlock` lowering).
+  it('Swift: a block-body For row renders its returned element', () => {
     const r = swift(
       `import { Text, Stack, For } from '@pyreon/primitives'\nconst xs = [1]\nexport function App(){ return <Stack><For each={xs} by={(x) => x}>{(x) => { const z = x + 1; return <Text>{z}</Text> }}</For></Stack> }`,
     )
     expect(r.code).not.toMatch(/\{ x in\n\s*""\n/)
+    expect(r.code).toContain('let z = x + 1')
   })
 })
 
@@ -535,15 +538,13 @@ describe('parse.ts — object literals and misc top-level recognizers', () => {
     expect(r.warnings.join('\n')).toContain('A numeric object key (`{ 1: … }`) is not supported')
   })
 
-  // A same-named ENUM type alias no longer warns: the value side is renamed
-  // (`TodoValue`) by the value/type namespace pass, so the pair compiles.
-  it('defineFeature colliding with a same-named ENUM type alias renames the value', () => {
+  it('defineFeature colliding with a same-named ENUM type alias renames the value, no warning', () => {
     const r = swift(
       `${PRIM}import { defineFeature } from '@pyreon/feature'\ntype Todo = 'a' | 'b'\nconst Todo = defineFeature({ name: 'todo', schema: { id: 'string' } })\nexport function App(){ return <Text>x</Text> }`,
     )
-    expect(r.code).toContain('enum Todo: String')
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('enum Todo: String, Codable {')
     expect(r.code).toContain('let TodoValue = PyreonFeature_TodoValue.self')
-    expect(r.warnings.join('\n')).not.toContain('a type of the same name is declared')
   })
 
   it('styled(): an empty declaration value is skipped, the rest lowers', () => {
@@ -608,12 +609,20 @@ describe('parse.ts — parseStatement: destructures outside a braced block (fixe
 })
 
 describe('parse.ts — urlRule: an option key that is neither identifier nor literal', () => {
-  it('a template-literal computed key is not read as `protocol`', () => {
+  it('a no-substitution template key IS `protocol` (a non-regex value is then named)', () => {
     const r = swift(
-      `${PRIM}import { s } from '@pyreon/validate'\nexport const A = s.object({ a: s.string().url({ [\`protocol\`]: 1 }) })\nexport function App(){ return <Text>x</Text> }`,
+      `${PRIM}import { s } from '@pyreon/validate'\nexport const A = s.object({ a: s.string().url({ [\`protocol\`]: 1 }), b: s.string().url({ [\`protocol\`]: /^https$/ }) })\nexport function App(){ return <Text>x</Text> }`,
     )
-    // No protocol recognized → the plain http rule, no protocol regex.
-    expect(r.code).toContain('throw PyreonSchemaError.constraintViolation(field: "a", rule: "url")')
+    // `` [`protocol`] `` is the key `protocol`: a regex lowers, a non-regex is named.
+    expect(r.warnings.join('\n')).toContain('schema field `a` .url() protocol: .regex() needs an inline regular-expression literal')
+    expect(r.code).toContain('prefix(while:')
+  })
+
+  it('a runtime computed key in the options is named — whether it sets `protocol` is unknown', () => {
+    const r = swift(
+      `${PRIM}import { s } from '@pyreon/validate'\nexport const A = s.object({ a: s.string().url({ [k]: /^https$/ }) })\nexport function App(){ return <Text>x</Text> }`,
+    )
+    expect(r.warnings.join('\n')).toContain('the computed key `[k]` in the options cannot be read')
     expect(r.code).not.toContain('prefix(while:')
   })
 })

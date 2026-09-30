@@ -96,4 +96,22 @@ describe('defineAsyncComponent options — SSR', () => {
       spy.mockRestore()
     }
   })
+
+  it('a failed load is retried by the NEXT render (Vue: every request re-runs the loader after a failure)', async () => {
+    let calls = 0
+    const A = defineAsyncComponent({
+      loader: () => (++calls === 1 ? slow(null).then(() => Promise.reject(new Error('cold 500'))) : slow({ default: Loaded })),
+      errorComponent: Failed,
+    })
+    const first = await renderToString(inSuspense(h(A, {})))
+    expect(first).toContain('<u class="error">cold 500</u>')
+    // The next request must WAIT for the retry rather than render the
+    // still-loading state — the server never re-renders.
+    const second = await renderToString(inSuspense(h(A, {})))
+    expect(calls).toBe(2)
+    expect(second).toContain('<b class="loaded">loaded</b>')
+    const bare = await renderToString(h('div', null, h(A, {})))
+    expect(calls).toBe(2)
+    expect(bare).toContain('<b class="loaded">loaded</b>')
+  })
 })

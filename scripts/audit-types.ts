@@ -74,6 +74,20 @@ const EXEMPT_FIELDS: Exemption[] = [
     field: '__isNative',
     reason: 'brand marker consumed cross-package by @pyreon/runtime-dom (mount/nodes/hydrate/template)',
   },
+  // `LazyComponent.__pending` is the same shape: an OPTIONAL protocol member
+  // a lazy can offer so its hydration-deferral check reads `__pending ??
+  // __loading` instead of `__loading` alone (a lazy whose `__loading` is
+  // deliberately false while loading — vue-compat's `suspensible: false` —
+  // still needs hydration to wait). The only reader is `@pyreon/runtime-dom`
+  // (`hydrate.ts:hydrateDeferredLazy`), a different package from the
+  // declaring `@pyreon/core`, so this is structurally invisible to the
+  // same-package scan. vue-compat is the only current writer.
+  {
+    package: '@pyreon/core',
+    interface: 'LazyComponent',
+    field: '__pending',
+    reason: 'optional protocol member consumed cross-package by @pyreon/runtime-dom (hydrate.ts:hydrateDeferredLazy); written by vue-compat',
+  },
   // `ViteManifestChunk` is a faithful mirror of Vite's EXTERNAL `build.manifest`
   // JSON shape (populated by Vite, not Pyreon). `dynamicImports` is DELIBERATELY
   // unread — following it would preload deferred island / lazy chunks and defeat

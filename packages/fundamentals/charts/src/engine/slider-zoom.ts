@@ -1,16 +1,15 @@
-// ECharts' slider dataZoom (`SliderZoomView`), ported for an option chart:
-// where the strip sits and what it draws. PlotChart's own navigator
-// (navigator.ts) is a Pyreon component and keeps its own look; this one is
-// held to ECharts by a differential (echarts-differential.test.ts).
+// A slider zoom strip — the look of ECharts' slider dataZoom — as draw-list
+// geometry: where the strip sits and what it draws. `<CandlestickChart>` draws
+// it under its plot. PlotChart's own navigator (navigator.ts) keeps its own
+// look.
 //
-// Placement: ECharts lays a box out with `getLayoutRect` — the plot's width
-// and right edge, `height` 30, its top 30 + 15 (the edge gap) + 7 (the brush's
-// move handle) above the chart's bottom — each replaced by what the option
-// sets, a side the option sets winning over the opposite default. It then
-// shifts the drawn group so its BOUNDING box (the move handle above the strip,
-// the handles' outline beside it) starts at that box: the strip itself lands
-// 6.5px below and ~2.8px right of it. Those two offsets are measured off
-// ECharts' own SVG and are what the differential holds.
+// Placement: the box is laid out with `frameView` — the plot's width and right
+// edge, `height` 30, its top 30 + 15 (the edge gap) + 7 (the brush's move
+// handle) above the chart's bottom — each replaced by a box key the caller
+// sets, a side that is set winning over the opposite default. The drawn group
+// is then shifted so its BOUNDING box (the move handle above the strip, the
+// handles' outline beside it) starts at that box: the strip itself lands
+// 6.5px below and ~2.8px right of it.
 
 import { frameView } from './frame'
 import type { FrameLength, FrameSpec } from './frame'
@@ -18,7 +17,7 @@ import { isFiniteNumber } from './scale'
 import type { DrawCmd, Double, Pt, Rect } from './types'
 import type { ZoomWindow } from './zoom'
 
-/** The slider's box keys as the option wrote them ('' mode = unset), and whether the brush's move handle shows. */
+/** The slider's box keys ('' mode = unset), and whether the brush's move handle shows. */
 export interface SliderBox {
   left: FrameLength
   top: FrameLength
@@ -42,16 +41,12 @@ export function sliderRect(box: SliderBox, plot: Rect, width: Double, height: Do
   const unset: FrameLength = { mode: '', amount: 0.0 }
   const spec: FrameSpec = {
     left: box.left,
-    // A side the option sets replaces the default on the side opposite it.
+    // A side that is set replaces the default on the side opposite it.
     right: box.right.mode !== '' ? box.right : box.left.mode !== '' ? unset : { mode: 'px', amount: width - plot.x - plot.w },
     top: box.top.mode !== '' ? box.top : box.bottom.mode !== '' ? unset : { mode: 'px', amount: height - FILLER - EDGE_GAP - moveHandle },
     bottom: box.bottom,
     width: box.width.mode !== '' ? box.width : { mode: 'px', amount: plot.w },
     height: box.height.mode !== '' ? box.height : { mode: 'px', amount: FILLER },
-    round: false,
-    centerX: unset,
-    centerY: unset,
-    radius: unset,
   }
   const r = frameView(spec, width, height)
   return { x: r.x + (box.brush ? 2.8 : 2.5), y: r.y + (box.brush ? 6.5 : 0.0), w: r.w, h: r.h }
