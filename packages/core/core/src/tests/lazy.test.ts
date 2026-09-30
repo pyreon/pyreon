@@ -126,4 +126,20 @@ describe('lazy', () => {
     const result = render(Comp, { count: 42 })
     expect((result as VNode).props).toEqual({ count: 42 })
   })
+
+  test('__load exposes the settle promise — used by SSR wait-for and hydration deferral', async () => {
+    const Inner: ComponentFn = () => h('i', null, 'in')
+    const Comp = lazy(() => Promise.resolve({ default: Inner }))
+    expect(typeof Comp.__load).toBe('function')
+    // Never rejects — it resolves once the chunk has loaded OR FAILED (the
+    // failure itself surfaces later, from the wrapper throwing on render).
+    await expect(Comp.__load!()).resolves.toBeUndefined()
+  })
+
+  test('__load resolves even when the chunk failed to load', async () => {
+    const Comp = lazy<Props>(() => Promise.reject(new Error('network error')))
+    await expect(Comp.__load!()).resolves.toBeUndefined()
+    // The failure is surfaced by the wrapper throwing on render, not by __load.
+    expect(() => Comp({})).toThrow('network error')
+  })
 })
