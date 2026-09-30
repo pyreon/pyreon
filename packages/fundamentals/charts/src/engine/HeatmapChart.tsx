@@ -9,6 +9,8 @@ import type { HeatGrid } from './heat'
 import { heatGridFrom, heatPlotFor, hitHeatChart, renderHeatChart } from './heat-chart'
 import type { ChartTheme } from './render'
 import type { Double, MeasureText, Rect } from './types'
+import { resolveChartTheme, useChartTheme } from './theme'
+import { visualMap } from './visual-map'
 import type { VisualMapSpec } from './visual-map'
 import { visualMapHost } from './visual-map-host'
 import type { VisualMapSelection } from './visual-map-host'
@@ -29,11 +31,13 @@ export interface HeatmapChartProps<T> extends CanvasHostProps {
   /** The cell's INDEX under the click, or -1 — the multiplatform-safe twin of `onSelect`. */
   onSelectIndex?: (index: number) => void
   /**
-   * An ECharts-style visualMap beside the grid: its domain drives the ramp,
-   * a `calculable` strip's handles drag the in-range interval and a piecewise
-   * strip's swatches toggle; cells outside the selection take the inactive colour.
+   * A value → colour legend beside the grid: its domain drives the ramp, a
+   * `calculable` strip's handles drag the in-range interval and a piecewise
+   * strip's swatches toggle; cells outside the selection take the inactive
+   * colour. `true` derives a continuous, draggable strip from the data and
+   * `colors`; build any other with `visualMap({ … })`.
    */
-  visualMap?: VisualMapSpec | (() => VisualMapSpec | undefined) | undefined
+  visualMap?: VisualMapSpec | true | (() => VisualMapSpec | undefined) | undefined
   /** Fired as the visualMap selection changes. */
   onVisualMapChange?: (selection: VisualMapSelection) => void
 }
@@ -51,8 +55,27 @@ export function HeatmapChart<T>(props: HeatmapChartProps<T>): VNode {
         return Number.isFinite(v) ? v : 0
       }),
     )
+  // `visualMap={true}`: the strip over the data's own extent, in the SAME ramp
+  // the cells paint with (colors, else the theme's), so turning the legend on
+  // never recolours the grid.
+  const themeOf = useChartTheme()
+  const derived = (): VisualMapSpec => {
+    let lo = Infinity
+    let hi = -Infinity
+    const rows = readData()
+    for (let i = 0; i < rows.length; i++) {
+      const v = props.value(rows[i]!, i)
+      if (!Number.isFinite(v)) continue
+      if (v < lo) lo = v
+      if (v > hi) hi = v
+    }
+    return visualMap({ domain: lo <= hi ? [lo, hi] : [0, 1], calculable: true, stops: props.colors ?? [...resolveChartTheme(themeOf(), props.theme).ramp] })
+  }
   const vm = visualMapHost(
-    () => (typeof props.visualMap === 'function' ? props.visualMap() : props.visualMap),
+    () => {
+      const v = typeof props.visualMap === 'function' ? props.visualMap() : props.visualMap
+      return v === true ? derived() : v
+    },
     (sel) => props.onVisualMapChange?.(sel),
   )
   const cellAt = (g: Geometry, px: Double, py: Double): number => hitHeatChart(g.grid, g.box.w, g.box.h, g.theme.fontSize, props.gap ?? 1.0, g.measure, px - g.box.x, py - g.box.y)

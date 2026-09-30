@@ -319,6 +319,8 @@ describe('PlotChart pinch and cached hit-testing', () => {
     const rows = Array.from({ length: 1500 }, (_, i) => ({ v: i }))
     const { container } = mountInBrowser(() => PlotChart<{ v: number }>({ data: rows, marks: [line((d) => d.v)], width: 300, height: 100, animate: false, title: 'Big' }))
     await flush()
+    // A table this size fills after the chart's first paint.
+    await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 20)))
     expect(container.querySelectorAll('tbody tr')).toHaveLength(1000)
     expect(container.querySelector('caption')!.textContent).toBe('Big (first 1000 of 1500 rows)')
     expect(resolveMarks(rows, [line<{ v: number }>((d) => d.v)])[0]!.values).toHaveLength(1500)

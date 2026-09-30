@@ -93,6 +93,12 @@ export function tweenCmds(from: DrawCmd[], to: DrawCmd[], e: Double): DrawCmd[] 
         out.push({ ...b, at: mixPt(at.at, b.at, e), size: mix(at.size, b.size, e) })
         break
       }
+      // A clip region does not morph: it takes its target at once. Dropping it
+      // here would shorten the frame and unbalance every clip / unclip pair.
+      case 'clip':
+      case 'unclip':
+        out.push(b)
+        break
     }
   }
   return out

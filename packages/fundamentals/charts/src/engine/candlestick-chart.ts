@@ -4,7 +4,7 @@
 
 import { hitCandle, ohlcExtent, renderCandles } from './candlestick'
 import type { CandleOptions, Ohlc } from './candlestick'
-import { computeLayout } from './layout'
+import { computeLayout, valueTickTarget } from './layout'
 import type { LayoutConfig, PlotLayout } from './layout'
 import type { ChartTheme } from './render'
 import { niceDomain } from './scale'
@@ -30,7 +30,8 @@ export function candlestickFrame(
   fontSize: Double,
   measure: MeasureText,
 ): CandlestickFrame {
-  const domain = niceDomain(ohlcExtent(candles), 5.0)
+  const ticks = valueTickTarget(w, h, fontSize, false)
+  const domain = niceDomain(ohlcExtent(candles), ticks)
   const n = candles.length
   const cfg: LayoutConfig = {
     width: w,
@@ -39,8 +40,8 @@ export function candlestickFrame(
     yDomain: domain,
     categories,
     fontSize,
-    xTickCount: 5.0,
-    yTickCount: 5.0,
+    xTickCount: 0.0,
+    yTickCount: ticks,
     showXAxis: true,
     showYAxis: true,
   }

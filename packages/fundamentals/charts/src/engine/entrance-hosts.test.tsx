@@ -83,16 +83,6 @@ describe('the family hosts play the entrance', () => {
       if (!f.endsWith('Chart.tsx')) continue
       const src = readFileSync(join(dir, f), 'utf8')
       if (!src.includes('canvasHost<')) continue
-      // OptionChart's cartesian surface rides the shared host too, and plays
-      // ECharts' entrance: its render recomposes the compiled commands with the
-      // engine's `progress` set while the entrance runs (it used to hard-code
-      // `animate: false`, so an option's `animation*` keys could never act).
-      if (f === 'OptionChart.tsx') {
-        expect(src.includes('animates: true')).toBe(true)
-        expect(/render: \(g, _measure, _theme, progress, time\) =>[\s\S]*?stateCmds\(g, time, progress\)/.test(src)).toBe(true)
-        expect(src.includes('animate: false')).toBe(false)
-        continue
-      }
       // The render function the host calls, and the module that exports it.
       const call = /render: \([^)]*\) =>[\s\S]*?\b(render[A-Z][A-Za-z]*)\(/.exec(src)
       expect(call, f).not.toBeNull()

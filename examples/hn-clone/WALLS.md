@@ -449,6 +449,8 @@ why isn't the DOM updating" debugging.
 
 ### W12 — `@pyreon/charts` consumer apps need tslib alias (documented but easy to miss)
 
+**Resolved (2026-09)**: `@pyreon/charts` no longer wraps ECharts — every chart is drawn by Pyreon's own engine, so there is no `tslib` import and no alias to add. The /stats page now uses `<Chart>` with marks as children.
+
 **Severity**: LOW (documented in the `@pyreon/charts` README, but invisible until first chart mounts)
 **Phase**: Building /stats page
 **Hit at**: Used `<Chart options={() => ...} />` from `@pyreon/charts`. 4

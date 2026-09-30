@@ -3,7 +3,6 @@ import { geoDomain, geoValueOf, hitGeo, hitGeoIndex, layoutGeoShapes, projectLon
 import { geoShapes, geoToSvg, getMap, layoutGeo, listMaps, registerMap, geoValues } from './geo-web'
 import { geoTip } from './chrome'
 import type { GeoJson } from './geo-web'
-import { compileFamily, familyToSvg } from './option-family'
 
 // Two squares side by side (10° each) plus a multipolygon of two smaller squares.
 const world: GeoJson = {
@@ -117,19 +116,3 @@ describe('geo layout', () => {
   })
 })
 
-describe('map option mapping', () => {
-  it('type map resolves the registered map, fills by data, honours visualMap, labels and border style', () => {
-    registerMap('squares', world)
-    const f = compileFamily({
-      visualMap: { min: 0, max: 10, inRange: { color: ['#ffffff', '#000000'] } },
-      series: [{ type: 'map', map: 'squares', label: { show: true }, itemStyle: { borderColor: '#ff0000' }, data: [{ name: 'West', value: 3 }, { name: 'East', value: 7 }, { nope: 1 }] }],
-    })!
-    if (f.plan.kind !== 'map') throw new Error('kind')
-    expect(f.plan.values).toEqual({ West: 3, East: 7 })
-    expect(f.plan.options).toMatchObject({ showLabels: true, borderColor: '#ff0000', domain: { min: 0, max: 10 }, stops: ['#ffffff', '#000000'] })
-    expect(f.warnings.map((w) => w.code)).toEqual(['series-data-shape'])
-    expect(familyToSvg(f.plan)).toContain('<polygon')
-    const missing = compileFamily({ series: [{ type: 'map', map: 'not-registered', data: [] }] })!
-    expect(missing.warnings.map((w) => w.code)).toContain('series-option-unsupported')
-  })
-})

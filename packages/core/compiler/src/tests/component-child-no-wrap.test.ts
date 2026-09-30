@@ -207,6 +207,69 @@ describe('JSX transform — component child: stable-reference contract (#2348)',
     expect(out, 'signal child must be wrapped + auto-called').toContain('() => count()')
   })
 
+  // The carve-out is stable-reference-shaped (bare Identifier OR a
+  // non-computed MemberExpression chain — `isStableReference`), and a
+  // signal name can appear in EITHER shape, not just as a bare identifier.
+  // `referencesSignalVar` walks the whole chain looking for the signal, and
+  // must skip it whenever the signal's own NAME occurs in a position that
+  // isn't actually a reference — as a property key, or as the receiver of a
+  // method call. These four specs exercise that walk end to end: it stays
+  // reactive (never falls into the bare carve-out) whenever a real signal
+  // reference is anywhere in the chain, and it does NOT mistake an unrelated
+  // name collision for one.
+  test('CONTROL — signal MEMBER access (not a plain call) as component child KEEPS the wrap', () => {
+    const src = `
+      const count = signal(0)
+      const Comp = () => <Inner>{count.foo}</Inner>
+    `
+    const out = t(src)
+    expect(out, 'a member read off a signal must stay reactive').toContain('() => count().foo')
+  })
+
+  test('CONTROL — a method call ON the signal object as component child KEEPS the wrap', () => {
+    const src = `
+      const count = signal(0)
+      const Comp = () => <Inner>{count.peek()}</Inner>
+    `
+    const out = t(src)
+    // `count.peek()` calls a METHOD on the signal — the signal itself is not
+    // auto-called (`count.peek` stays as written), only the whole expression
+    // is wrapped so it re-evaluates.
+    expect(out, 'a method called on the signal must stay reactive, not auto-called').toContain(
+      '() => count.peek()',
+    )
+  })
+
+  test('CONTROL — signal referenced through a longer chain (object AND property positions) KEEPS the wrap', () => {
+    const src = `
+      const count = signal(0)
+      const Comp = () => <Inner>{count.count}</Inner>
+    `
+    const out = t(src)
+    expect(out, 'the signal occurrence at the OBJECT position must still be found').toContain(
+      '() => count().count',
+    )
+  })
+
+  test('CONTRACT (#2348) — a PROPERTY NAME that coincides with an unrelated signal is not mistaken for a reference', () => {
+    // `props.count` reads a prop named `count` — the fact that some OTHER
+    // binding in this module is `const count = signal(0)` must not make
+    // `referencesSignalVar` treat the property key as a signal reference (it
+    // would wrongly skip the props-backed carve-out's accessor wrap, or
+    // worse, get auto-called into `props.count()`). This is props-backed
+    // (`readsFromProps`), so it still wraps live — just via the OTHER half
+    // of the carve-out, and crucially without auto-calling the property.
+    const src = `
+      const count = signal(0)
+      const B = (props) => <Inner>{props.count}</Inner>
+    `
+    const out = t(src)
+    expect(out, 'props-backed read must wrap live').toContain('() => props.count')
+    expect(out, 'the property named "count" must NOT be auto-called').not.toContain(
+      'props.count()',
+    )
+  })
+
   test('CONTROL — already-arrow-wrapped child is unchanged (idempotent)', () => {
     const src = `
       const x = signal('a')

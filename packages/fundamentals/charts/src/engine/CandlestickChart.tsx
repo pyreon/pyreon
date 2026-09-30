@@ -10,7 +10,6 @@ import { candlestickFrame, renderCandlestickChart } from './candlestick-chart'
 import { groupThousands } from './format'
 import type { Formatter } from './format'
 import { navigatorDrag, navigatorHit } from './navigator'
-import type { OptionZoom } from './option-zoom'
 import { renderSliderZoom, sliderRect } from './slider-zoom'
 import type { DrawCmd, Double, MeasureText, Rect } from './types'
 import { panWindow, sliceRange, zoomWindow } from './zoom'
@@ -32,13 +31,49 @@ export interface CandlestickChartProps<T> extends CanvasHostProps {
   /** The engine's INDEX hit — identical to `onSelect` here; the multiplatform-safe name every host carries. */
   onSelectIndex?: (index: number) => void
   /**
-   * ECharts' `dataZoom` over the candles: the window opens where it says, a
-   * `slider` draws ECharts' strip under the plot (drag the band or a handle),
-   * and `inside` zooms on the wheel and pans on a drag inside the plot.
-   * Indices reported by `onSelect` stay GLOBAL (into `data`).
+   * Zoom over the candles: the window opens where it says, `slider` draws a
+   * strip under the plot (drag the band or a handle), and `inside` zooms on
+   * the wheel and pans on a drag inside the plot. Indices reported by
+   * `onSelect` stay GLOBAL (into `data`).
    */
-  zoom?: OptionZoom | undefined
+  zoom?: CandlestickZoom | undefined
 }
+
+/** How `<CandlestickChart zoom>` zooms. Every field is optional. */
+export interface CandlestickZoom {
+  /** Wheel / pinch zoom and drag pan inside the plot. Default `true`. */
+  inside?: boolean | undefined
+  /** The navigator strip under the plot. Default `true`. */
+  slider?: boolean | undefined
+  /** The initial window, as fractions of the data. Default the whole range. */
+  window?: ZoomWindow | undefined
+  /** The span is fixed; the window only pans. Default `false`. */
+  lock?: boolean | undefined
+  /** The smallest and largest span, as fractions. Default `0` and `1`. */
+  minSpan?: Double | undefined
+  maxSpan?: Double | undefined
+}
+
+interface ResolvedZoom {
+  inside: boolean
+  slider: boolean
+  window: ZoomWindow
+  lock: boolean
+  minSpan: Double
+  maxSpan: Double
+}
+
+const resolveZoom = (z: CandlestickZoom | undefined): ResolvedZoom | undefined =>
+  z === undefined
+    ? undefined
+    : {
+        inside: z.inside ?? true,
+        slider: z.slider ?? true,
+        window: z.window ?? { start: 0.0, end: 1.0 },
+        lock: z.lock ?? false,
+        minSpan: z.minSpan ?? 0.0,
+        maxSpan: z.maxSpan ?? 1.0,
+      }
 
 interface Geometry {
   rows: unknown[]
@@ -55,7 +90,7 @@ interface Geometry {
   win: ZoomWindow
 }
 
-/** What the ECharts slider takes off the bottom of the chart: its 30px strip, the 15px edge gap and the 7px move handle. */
+/** What the slider takes off the bottom of the chart: its 30px strip, the 15px edge gap and the 7px move handle. */
 const SLIDER_BAND = 52.0
 const NO_LENGTH = { mode: '', amount: 0.0 }
 
@@ -64,7 +99,7 @@ export function CandlestickChart<T>(props: CandlestickChartProps<T>): VNode {
   const toCandles = (rows: T[]): Ohlc[] => rows.map((d, i) => ({ open: props.open(d, i), high: props.high(d, i), low: props.low(d, i), close: props.close(d, i) }))
   const categoriesOf = (rows: T[]): string[] => (props.x !== undefined ? rows.map((d, i) => props.x!(d, i)) : [])
   const hitAt = (g: Geometry, px: Double, py: Double): number => hitCandle(g.candles.length, g.plot, px - g.box.x, py - g.box.y)
-  const zoom = props.zoom
+  const zoom = resolveZoom(props.zoom)
   const win = signal<ZoomWindow>(zoom?.window ?? { start: 0.0, end: 1.0 })
   // The drag the slider owns: what was grabbed (band / handle), where, and the window it started on.
   let grab: { kind: number; x: Double; from: ZoomWindow } | null = null

@@ -10,19 +10,23 @@
 /**
  * Pyreon's default series palette, in draw order.
  *
- * Chosen over the ECharts 6 tokens for a cleaner read on white AND on dark
- * grounds: a periwinkle primary, then coral / mint / violet / amber / sky /
- * pink / green, a slate neutral for "everything else" and a warm brown that
- * stays distinct from both the coral and the amber. Adjacent pairs differ in
- * hue AND lightness so a legend of two still reads under deuteranopia; the
- * `okabeIto` palette in `theme.ts` is the full colour-vision-safe set.
+ * Two measured properties, locked by `palette-contrast.test.ts`:
+ *
+ * - Every colour clears 3:1 against the light ground (WCAG 1.4.11, non-text
+ *   contrast) — a line or a point is a graphical object the reader needs.
+ * - The ORDER maximises the smallest colour difference of every prefix, for
+ *   normal vision and simulated deuteranopia and protanopia, in both modes at
+ *   once: a chart's first few series are the most distinct the set allows, and
+ *   a series keeps its hue when the mode flips.
+ *
+ * Periwinkle, amber, teal, sky, clay, slate, pink, coral, green, violet.
  */
 import type { Double } from './types'
 
-export const DEFAULT_PALETTE: readonly string[] = ['#4f7df3', '#f97362', '#22c3a6', '#a66cff', '#ffb020', '#2fb7e8', '#f45fa3', '#7bc950', '#8892a6', '#c47a3d']
+export const DEFAULT_PALETTE: readonly string[] = ['#4f7df3', '#c88100', '#1ca28a', '#179dcd', '#c47a3d', '#8892a6', '#f4589f', '#f85f4c', '#5aa232', '#a66cff']
 
-/** The default palette lifted 8–12% for a dark ground — `chartThemes.dark`'s series colours. */
-export const DARK_PALETTE: readonly string[] = ['#7b9bff', '#ff8f7e', '#4adbc0', '#bd93ff', '#ffc44d', '#5dcbf2', '#ff80be', '#9ad870', '#a3acbd', '#d8955e']
+/** The same hues, in the same order, lifted for a dark ground — `chartThemes.dark`'s series colours. */
+export const DARK_PALETTE: readonly string[] = ['#7b9bff', '#ffc44d', '#4adbc0', '#5dcbf2', '#d8955e', '#a3acbd', '#ff80be', '#ff8f7e', '#9ad870', '#bd93ff']
 
 /** The palette colour for series `index`, cycling; an empty palette falls back to the default. */
 /**

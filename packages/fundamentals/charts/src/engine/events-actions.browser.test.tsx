@@ -157,7 +157,9 @@ describe('createChartHandle', () => {
     const { container } = mountChart({ onHighlight: (i: number) => hi.push(i) })
     await flush()
     const c = canvasOf(container)
-    at(c, 'pointermove', 200, 120)
+    // Low in the plot, so it lands INSIDE the bar (bars hit by their rect)
+    // whatever the value domain rounds to at this chart's height.
+    at(c, 'pointermove', 200, 160)
     await flush()
     expect(hi.length).toBe(1)
     expect(hi[0]).toBeGreaterThanOrEqual(0)

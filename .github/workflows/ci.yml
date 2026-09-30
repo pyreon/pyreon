@@ -1437,7 +1437,8 @@ jobs:
       - name: Check Bin Liveness
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: bun run check-bin-liveness
-      # ── coverage ─────────────────────────────────────────────────────────
+      # ── coverage (floor only — full measurement moves below the native
+      # binary build; see the "Coverage (changed packages)" step) ──────────
       - name: Coverage (floor + exemption drift)
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: bun run coverage:floor
@@ -1446,20 +1447,6 @@ jobs:
       # with it loaded; the equivalence harness asserts every JS-path output
       # matches the Rust path. Without it only the JS fallback is exercised —
       # which is exactly what shipped the 6 divergences caught in #491.
-      #
-      # MUST run BEFORE "Coverage (changed packages)" below: @pyreon/compiler's
-      # declared coverage thresholds are calibrated against a WITH-native-binary
-      # measurement (see the ratchet history in packages/core/compiler/
-      # vitest.config.ts — e.g. "measured 97.47/93.54" for statements/branches).
-      # `transformJSX` prefers the native binary when present, and a whole class
-      # of `describeNative`-gated suites (the seeded JS≡Rust differential fuzz,
-      # native-equivalence specs) SKIP outright when it isn't loaded yet —
-      # dropping measured statements from ~97.4% to 96.65%, comfortably below
-      # the 97% floor, on IDENTICAL source. Confirmed by reproducing this
-      # exact number locally on main with the binary removed (#3734 CI
-      # investigation): the gap is measurement-environment, not a real
-      # coverage regression in any PR's diff. Coverage must run with the same
-      # binary availability every other consumer of this package gets.
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master — pinned (OpenSSF Pinned-Dependencies)
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         with:
@@ -1507,8 +1494,15 @@ jobs:
       # is a property of a package's own sources + tests, and the closure is
       # what tripped the >15 cap and silently skipped the packages that
       # matter most). The whole-repo run stays on push:main + merge_group.
-      # Positioned AFTER the native binary build above — see that step's
-      # comment for why.
+      #
+      # MUST run after the native binary is built + asserted present (above):
+      # @pyreon/compiler's suite gates several files on the native `.node`
+      # binary via `describeNative` (skips the whole describe block to
+      # `describe.skip` when the binary is absent) — the JS≡Rust differential
+      # fuzz + native-equivalence tests. Running this step earlier in the job
+      # measured @pyreon/compiler's coverage against the JS-only subset and
+      # produced a false floor failure (96.65% vs the real 97.44%) on every
+      # PR touching the package, independent of the PR's own changes.
       - name: Coverage (changed packages)
         if: ${{ !cancelled() && steps.setup.outcome == 'success' && github.event_name == 'pull_request' }}
         run: |
