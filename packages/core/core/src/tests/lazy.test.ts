@@ -140,8 +140,11 @@ describe('lazy', () => {
     await expect(settled).resolves.toBeUndefined()
 
     // By the time __load() has settled, the component is actually usable.
+    // Read it the way the renderer does: the output is ALWAYS an accessor
+    // (a component body runs once), so the resolved component only shows up
+    // once that accessor is invoked.
     expect(Comp.__loading()).toBe(false)
-    const result = Comp({})
+    const result = render(Comp, {})
     expect((result as VNode).type).toBe(Inner)
   })
 
