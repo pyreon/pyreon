@@ -184,6 +184,7 @@ describe('a non-GET stream is a TRIGGERED native component', () => {
           join(RUNTIME, 'swift/PyreonStream.swift'),
           join(CORE_SWIFT, 'PyreonHttp.swift'),
           join(CORE_SWIFT, 'PyreonJSON.swift'),
+          join(CORE_SWIFT, 'PyreonSchema.swift'),
         ],
         { stdio: 'pipe', encoding: 'utf8' },
       )
