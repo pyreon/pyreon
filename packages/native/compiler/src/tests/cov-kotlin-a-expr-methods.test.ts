@@ -130,17 +130,18 @@ describe('Kotlin expr: array/String method lowerings', () => {
     expect(out).toContain('xs.dropLast(1)')
   })
 
-  it('toFixed: a LITERAL digit count formats Locale.ROOT; a DYNAMIC count falls through + warns', () => {
+  it('toFixed: a LITERAL digit count formats Locale.ROOT; a DYNAMIC count interpolates it', () => {
     const out = kt(`  const a = computed(() => rows()[0].price.toFixed(2))
   const b = computed(() => rows()[0].price.toFixed())`).code
     expect(out).toContain('"%.2f".format(java.util.Locale.ROOT,')
     // 0-arg defaults to 0 digits (JS toFixed() === toFixed(0))
     expect(out).toContain('"%.0f".format(java.util.Locale.ROOT,')
-    // A DYNAMIC digit count cannot bake a format string — it breaks out of
-    // the case and re-emits verbatim (see the KNOWN BUG lock at the bottom).
+    // A DYNAMIC digit count builds the same format string at runtime (it
+    // used to re-emit a verbatim `.toFixed(n)`, which Kotlin has no member for).
     const dyn = kt(`  const n = signal<number>(2)
   const a = computed(() => rows()[0].price.toFixed(n()))`)
-    expect(dyn.code).toContain('.toFixed(n)')
+    expect(dyn.code).toContain('"%.${n}f".format(java.util.Locale.ROOT, rows[0].price)')
+    expect(dyn.code).not.toContain('.toFixed(n)')
   })
 
   it('toLocaleString degrades to toString() with a NAMED warning (no native locale formatting)', () => {
@@ -234,9 +235,9 @@ function App() {
 // verbatim re-emit when the property is one the switch recognises but did
 // not handle (the `sort` arms then collapse into that same mechanism).
 //
-// This spec passes the moment that warning exists; delete the `.fails` then.
+// Fixed: method-shapes.ts names every uncovered shape of a mapped method.
 describe('Kotlin expr: unhandled ARITY of a mapped method', () => {
-  it.fails('KNOWN BUG: a mapped method at an unhandled arity re-emits verbatim with NO warning', () => {
+  it('a mapped method at an unhandled arity is NAMED (fixed in native-known-bugs-emit)', () => {
     // Today: `xs.flat(2)` is emitted verbatim (invalid Kotlin — a List has
     // no `flat`) and nothing is reported. The ONLY assertion is the
     // diagnostic, so ANY fix that makes the shape observable — a warning, or

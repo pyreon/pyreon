@@ -453,6 +453,41 @@ export function synthLiteralStructName(
 }
 
 /**
+ * A helper FUNCTION PARAMETER's type with every inline object shape in it
+ * (`t: { c: string }`, `rows: { a: number }[]`, `m?: { … }`) replaced by the
+ * struct the matching object LITERAL resolves to — a declared struct of that
+ * shape when there is one (`declared`), else the synthesized `__ObjN` from the
+ * shared literal registry.
+ *
+ * A call site passes `f({ c: "x" })`, which both emitters lower through that
+ * registry to `__Obj0(c: "x")`. The parameter used to be typed context-free:
+ * Swift spelled it a labelled TUPLE (a single-field one collapsed to the bare
+ * field type, `_ t: String`, so `t.c` did not typecheck) and Kotlin
+ * synthesized its OWN `PyreonHelpersT` — two nominal types for one shape, and
+ * neither target compiled. Resolving the parameter through the SAME registry
+ * key as the literal makes the two agree by construction.
+ */
+export function namedInlineParamType(
+  t: TypeIR,
+  declared: (fields: readonly { name: string; type: TypeIR }[]) => string | undefined,
+  structs: StructIR[],
+  keys: Map<string, string>,
+): TypeIR {
+  switch (t.kind) {
+    case 'object': {
+      const name = declared(t.fields) ?? synthTypedStructName(t.fields, structs, keys)
+      return name === null ? t : { kind: 'typeRef', name, args: [] }
+    }
+    case 'array':
+      return { kind: 'array', element: namedInlineParamType(t.element, declared, structs, keys) }
+    case 'union':
+      return { kind: 'union', branches: t.branches.map((b) => namedInlineParamType(b, declared, structs, keys)) }
+    default:
+      return t
+  }
+}
+
+/**
  * The TYPE-directed twin of {@link synthLiteralStructName}: the synthesized
  * struct name for an inline object TYPE (`createFlow<{ label: string }>`).
  *

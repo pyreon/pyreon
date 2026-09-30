@@ -22,6 +22,17 @@ import {
   flowRectLiteralFields,
   NODE_RESIZER_FOREIGN_NODE_WARNING,
   nodeResizerTargetsAnotherNode,
+  classifyFlowPathMember,
+  unloweredFlowLiteralWarning,
+  unsupportedFlowOptionsWarning,
+  flowLayoutOptionsDroppedWarning,
+  FLOW_LAYOUT_OPTION_KEYS,
+  droppedNodeToolbarWarning,
+  addEdgeDropWarnings,
+  FLOW_MARKER_LITERAL_SHAPE,
+  droppedFlowEdgePatchWarning,
+  unifyFlowDataRows,
+  flowDataConflictWarning,
 } from './flow-lowering'
 import { planFlowSvg, type FlowSvgNumber } from './flow-svg'
 import { lowerFlowPlainElement } from './flow-dom'
@@ -51,6 +62,7 @@ import {
   explainUntypeableField,
   synthLiteralStructName,
   synthTypedStructName,
+  namedInlineParamType,
   isNumericLiteralOrNegation,
   classifyDynamicStylingAttr,
   classifySortableRef,
@@ -134,6 +146,7 @@ import {
   isRenderArrow,
   isViewShaped,
   moduleViewHelpers,
+  forBlockBodyWarning,
   narrowViewBlock,
   planViewBlock,
   propRefName,
@@ -156,6 +169,7 @@ import {
   structuralPropDynamicWarning,
   unloweredPropWarning,
 } from './unlowered-props'
+import { ignoredTrailingArgs, methodReceiverKind, type MethodReceiver, uncoveredMethodShapeWarning } from './method-shapes'
 import type {
   AttrIR,
   ChildIR,
@@ -305,8 +319,18 @@ type StaticFlowNodeToolbar = {
   contentComponent: string
 }
 let _flowComponentToolbarsKotlin: Map<string, StaticFlowNodeToolbar[]> = new Map()
+/**
+ * The exact `<NodeToolbar>` elements the up-front extraction lowered. The
+ * element emitter decides per TOOLBAR, not per component: a node component
+ * with one static toolbar and one inside a conditional lowers the first and
+ * must still name the second as dropped. Keyed by IR node (one transform's
+ * lifetime), so a WeakSet — nothing to reset or evict.
+ */
+const _extractedFlowToolbarsKotlin: WeakSet<ExprIR> = new WeakSet()
 /** Components a `<Flow>` in this file renders nodes/edges/the connection line with; `<svg>` lowers only inside these. */
 let _flowRendererComponentsKotlin: Set<string> = new Set()
+/** The `<Flow nodeTypes>` renderers only (a `<NodeToolbar>` lowers nowhere else). */
+let _flowNodeRendererComponentsKotlin: Set<string> = new Set()
 let _flowComponentsWithInvalidToolbarsKotlin: Set<string> = new Set()
 let _activeComponentName = ''
 
@@ -862,6 +886,7 @@ export function emitKotlin(
     if (!md.mutable) _moduleConstExprsKotlin.set(md.name, md.initial)
   }
   _flowRendererComponentsKotlin = collectFlowRendererComponents(components, (name) => _moduleConstExprsKotlin.get(name))
+  _flowNodeRendererComponentsKotlin = collectFlowRendererComponents(components, (name) => _moduleConstExprsKotlin.get(name), 'nodeTypes')
   _enumNames = new Set(enums.map((e) => e.name))
   // Build the struct-fields key map — mirror of emit-swift's logic.
   _structFieldsToName = new Map()
@@ -900,6 +925,7 @@ export function emitKotlin(
     if (resizer.invalid) _flowComponentsWithInvalidResizersKotlin.add(component.name)
     if (resizer.foreignNodeId) _flowComponentsWithForeignResizerKotlin.add(component.name)
     const toolbars = collectStaticFlowNodeToolbarsKotlin(component.returnExpr)
+    for (const toolbar of toolbars) _extractedFlowToolbarsKotlin.add(toolbar)
     if (toolbars.length > 0) {
       const parsedToolbars: StaticFlowNodeToolbar[] = []
       for (const [toolbarIndex, toolbar] of toolbars.entries()) {
@@ -3459,15 +3485,12 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
         inferredRowType = { kind: 'typeRef', name: named, args: [] }
       }
     }
-    const allNames = [...new Set(dataRows.flatMap((fields) => fields.map((field) => field.name)))]
-    const heterogeneous = dataRows.some((fields) => fields.length !== allNames.length || allNames.some((name) => !fields.some((field) => field.name === name)))
+    // Unify by field NAMES and TYPES (see unifyFlowDataRows).
+    const { heterogeneous, fields, conflicts } = unifyFlowDataRows(dataRows, (value) => inferType(value, _kotlinExprInferCtx))
+    if (d.dataType === undefined && conflicts.length > 0) {
+      _emitWarnings.push(flowDataConflictWarning(d.name, conflicts, (t) => kotlinType(t)))
+    }
     if (d.dataType === undefined && heterogeneous) {
-      const fields = allNames.map((name) => {
-        const values = dataRows.flatMap((row) => row.find((field) => field.name === name)?.value ?? [])
-        const distinct = [...new Map(values.map((value) => { const type = inferType(value, _kotlinExprInferCtx); return [JSON.stringify(type), type] })).values()]
-        const base: TypeIR = distinct.length === 1 ? distinct[0]! : { kind: 'union', branches: distinct }
-        return { name, type: values.length < dataRows.length ? { kind: 'union', branches: [base, { kind: 'undefined' }] } as TypeIR : base }
-      })
       const name = synthStructName(_synthExprStructs.length)
       _synthExprStructs.push({ name, fields })
       inferredRowType = { kind: 'typeRef', name, args: [] }
@@ -3793,6 +3816,7 @@ function kotlinFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
   const markerEndExpr = field('markerEnd')
   const waypointsExpr = field('waypoints')
   const dataExpr = field('data')
+  _emitWarnings.push(...addEdgeDropWarnings(flowName, { pathOptions: pathOptionsExpr, markerStart: markerStartExpr, markerEnd: markerEndExpr }, (m) => kotlinFlowMarkerLiteral(m) !== null))
   const portableData = dataExpr ? kotlinFlowData(dataExpr) : null
   if (dataExpr && portableData === null) _emitWarnings.push(`createFlow binding \`${flowName}\` addEdge(...): edge \`data\` must be a static JSON-compatible object to lower natively.`)
   const optionalFields = ['sourceHandle', 'targetHandle', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'reconnectable', 'style'] as const
@@ -3865,9 +3889,18 @@ function kotlinFlowConnectionLiteral(arg: ExprIR): string | null {
   return `PyreonFlowConnection(source = ${emitKotlinExpr(source, 0)}, target = ${emitKotlinExpr(target, 0)}${sourceHandle ? `, sourceHandle = ${emitKotlinExpr(sourceHandle, 0)}` : ''}${targetHandle ? `, targetHandle = ${emitKotlinExpr(targetHandle, 0)}` : ''})`
 }
 
-function kotlinFlowViewportLiteral(arg: ExprIR): string | null {
+const FLOW_VIEWPORT_KEYS: readonly string[] = ['x', 'y', 'zoom', 'duration']
+const FLOW_SET_CENTER_KEYS: readonly string[] = ['zoom', 'duration']
+
+/**
+ * `setViewport` takes `{ x, y, zoom, duration }`; `setCenter(x, y, opts)` takes
+ * only `{ zoom, duration }` (its position is the first two arguments, and the
+ * native init has no `x`/`y` labels there), so the accepted keys are the
+ * caller's.
+ */
+function kotlinFlowViewportLiteral(arg: ExprIR, keys: readonly string[] = FLOW_VIEWPORT_KEYS): string | null {
   if (arg.kind !== 'object') return null
-  const allowed = new Set(['x', 'y', 'zoom', 'duration'])
+  const allowed = new Set(keys)
   if (arg.fields.some((field) => !allowed.has(field.name))) return null
   return arg.fields.map((field) => `${field.name} = ${ktChartDouble(emitKotlinExpr(field.value, 0))}`).join(', ')
 }
@@ -4178,7 +4211,7 @@ function emitKotlinStmtLines(stmts: readonly StatementIR[], indent: number, ctx:
  * emit-swift's `emitSwiftViewHelper`.
  */
 function emitKotlinViewHelper(h: ViewHelper, visibility: string, indent: number, ctx?: KotlinCtx): string {
-  const params = h.params.map((p) => `${kotlinIdent(p.name)}: ${kotlinType(p.type, ctx, p.name)}`).join(', ')
+  const params = h.params.map((p) => `${kotlinIdent(p.name)}: ${kotlinParamType(p.type, ctx, p.name)}`).join(', ')
   const body = withKotlinLocals(
     h.params.map((p) => [p.name, p.type] as const),
     () => emitKotlinChild({ kind: 'expr', expr: unparenExpr(h.body) }, indent + 2),
@@ -4325,10 +4358,16 @@ function emitKotlinSlotArg(
     // Wrapped, never `::renderRow` — the Compose compiler rejects a function
     // reference to a @Composable.
     const h = _viewHelpersKotlin.get(x.name)!
-    const args = h.params.map((_, i) => `a${i}`)
-    return args.length === 0
+    // The lambda must name every parameter the SLOT passes, even when the
+    // helper takes fewer (JS ignores extra arguments) — the same padding the
+    // inline-arrow branch above does. `{ a0 -> cell(a0) }` handed to a
+    // `@Composable (User, Int) -> Unit` slot is a kotlinc arity error.
+    const arity = Math.max(slot?.params.length ?? 0, h.params.length)
+    const args = Array.from({ length: arity }, (_, i) => (i < h.params.length ? `a${i}` : '_'))
+    const callArgs = args.filter((a) => a !== '_')
+    return arity === 0
       ? `{ ${kotlinIdent(h.name)}() }`
-      : `{ ${args.join(', ')} -> ${kotlinIdent(h.name)}(${args.join(', ')}) }`
+      : `{ ${args.join(', ')} -> ${kotlinIdent(h.name)}(${callArgs.join(', ')}) }`
   }
   if (isViewShaped(x) || kotlinCallRendersView(x)) {
     return `{\n${pad}${emitKotlinChild({ kind: 'expr', expr: x }, indent + 2)}\n${base}}`
@@ -4344,6 +4383,26 @@ function isKotlinSlotValue(value: ExprIR): boolean {
   return x.kind === 'identifier' && _viewHelpersKotlin.has(x.name)
 }
 
+/**
+ * A helper function's PARAMETER type: an inline object shape names the data
+ * class its call-site literal resolves to (see `namedInlineParamType`) rather
+ * than a per-helper `PyreonHelpers<Param>` class the literal never constructs.
+ */
+function kotlinParamType(t: TypeIR, ctx: KotlinCtx | undefined, name: string): string {
+  return kotlinType(
+    namedInlineParamType(
+      t,
+      (fields) =>
+        _structTypedKeyToName.get(structShapeKey(fields)) ??
+        _structFieldsToName.get(fields.map((f) => f.name).sort().join(',')),
+      _synthExprStructs,
+      _synthExprStructKeys,
+    ),
+    ctx,
+    name,
+  )
+}
+
 function emitKotlinFunction(
   d: Extract<DeclIR, { kind: 'function' }>,
   ctx: KotlinCtx,
@@ -4355,7 +4414,7 @@ function emitKotlinFunction(
   const params = d.params
     .map((p) => {
       const dflt = p.defaultValue !== undefined ? ` = ${emitKotlinExpr(p.defaultValue, 0)}` : ''
-      return `${kotlinIdent(p.name)}: ${kotlinType(p.type, ctx, p.name)}${dflt}`
+      return `${kotlinIdent(p.name)}: ${kotlinParamType(p.type, ctx, p.name)}${dflt}`
     })
     .join(', ')
 
@@ -5907,6 +5966,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (member === 'paste' && e.args.length === 1) {
           const lit = kotlinFlowPositionLiteral(resolveKotlinStaticFlowValue(e.args[0]!))
           if (lit !== null) return `${kotlinIdent(flowName)}.paste(${lit})`
+          if (resolveKotlinStaticFlowValue(e.args[0]!).kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 1`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
         }
         if (member === 'addNode' && e.args.length === 1) {
           const lit = kotlinFlowNodeLiteral(resolveKotlinStaticFlowValue(e.args[0]!), flowName)
@@ -5921,6 +5981,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           if (lit !== null) {
             return `${kotlinIdent(e.callee.object.name)}.updateNodePosition(${emitKotlinExpr(e.args[0]!, indent)}, ${lit})`
           }
+          if (resolveKotlinStaticFlowValue(e.args[1]!).kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(e.callee.object.name, '`updateNodePosition(...)` argument 2', 'a `{ x, y }` literal with both coordinates', 'emitted'))
         }
         if (member === 'updateNodeData' && e.args.length === 2 && flowPatchArg?.kind === 'object') {
           const patch = flowPatchArg
@@ -5943,9 +6004,22 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             warnDroppedFlowFieldsKt(`createFlow binding \`${flowName}\` updateNode(...)`, 'node', patch)
             const fields = patch.fields.flatMap(({ name, value }) => {
               if (name === 'id') { _emitWarnings.push(`createFlow binding \`${flowName}\` updateNode(...): changing a node id is not supported natively; the original id is preserved.`); return [] }
-              if (name === 'position') { const position = kotlinFlowPositionLiteral(value); return position ? [`position = ${position}`] : [] }
+              // A literal lowers to the native constructor; a NON-literal value
+              // passes through as written (the addNode rule). Only a literal of
+              // the right kind but the wrong shape is dropped — and named.
+              if (name === 'position') {
+                const position = kotlinFlowPositionLiteral(value)
+                if (position) return [`position = ${position}`]
+                if (value.kind === 'object') { _emitWarnings.push(unloweredFlowLiteralWarning(flowName, 'updateNode(...) field `position`', 'a `{ x, y }` literal with both coordinates')); return [] }
+                return [`position = ${emitKotlinExpr(value, indent)}`]
+              }
               if (name === 'data' && value.kind === 'object') return [`data = node.data.copy(${value.fields.map((field) => `${kotlinIdent(field.name)} = ${emitKotlinExpr(field.value, indent)}`).join(', ')})`]
-              if (name === 'sourceHandles' || name === 'targetHandles') { const handles = kotlinFlowHandlesLiteral(value); return handles ? [`${name} = ${handles}`] : [] }
+              if (name === 'sourceHandles' || name === 'targetHandles') {
+                const handles = kotlinFlowHandlesLiteral(value)
+                if (handles) return [`${name} = ${handles}`]
+                if (value.kind === 'array') { _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `updateNode(...) field \`${name}\``, "an array of `{ type, position }` literals (a string `type`, a literal side, an optional string `id`)")); return [] }
+                return [`${name} = ${emitKotlinExpr(value, indent)}`]
+              }
               if (name === 'extent') {
                 const extent = kotlinFlowNodeExtentArgs(value)
                 if (!extent) _emitWarnings.push(`createFlow binding \`${flowName}\` updateNode(...): node field \`extent\` must be \`'parent'\` or a static [[minX, minY], [maxX, maxY]] tuple on native targets.`)
@@ -5964,10 +6038,20 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             warnDroppedFlowFieldsKt(`createFlow binding \`${flowName}\` updateEdge(...)`, 'edge', patch)
             const fields = patch.fields.flatMap(({ name, value }) => {
               if (name === 'id') { _emitWarnings.push(`createFlow binding \`${flowName}\` updateEdge(...): changing an edge id is not supported natively; the original id is preserved.`); return [] }
-              if (name === 'pathOptions' && value.kind === 'object') return value.fields.flatMap((field) => ['curvature', 'borderRadius', 'offset'].includes(field.name) ? [`${field.name === 'offset' ? 'pathOffset' : field.name} = ${ktChartDouble(emitKotlinExpr(field.value, indent))}`] : [])
-              if (name === 'markerStart' || name === 'markerEnd') { const marker = kotlinFlowMarkerLiteral(value); return marker ? [`${name} = ${marker}`, ...(name === 'markerEnd' ? ['markerEndSpecified = true'] : [])] : [] }
+              if (name === 'pathOptions') {
+                if (value.kind !== 'object' || (value.spreads?.length ?? 0) > 0) { _emitWarnings.push(droppedFlowEdgePatchWarning(flowName, 'pathOptions', 'an inline object literal')); return [] }
+                const unknown = value.fields.filter((field) => !['curvature', 'borderRadius', 'offset'].includes(field.name)).map((field) => field.name)
+                if (unknown.length > 0) _emitWarnings.push(droppedFlowEdgePatchWarning(flowName, `pathOptions.${unknown.join('/')}`, 'one of `curvature`, `borderRadius`, `offset`'))
+                return value.fields.flatMap((field) => ['curvature', 'borderRadius', 'offset'].includes(field.name) ? [`${field.name === 'offset' ? 'pathOffset' : field.name} = ${ktChartDouble(emitKotlinExpr(field.value, indent))}`] : [])
+              }
+              if (name === 'markerStart' || name === 'markerEnd') { const marker = kotlinFlowMarkerLiteral(value); return marker ? [`${name} = ${marker}`, ...(name === 'markerEnd' ? ['markerEndSpecified = true'] : [])] : (_emitWarnings.push(droppedFlowEdgePatchWarning(flowName, name, FLOW_MARKER_LITERAL_SHAPE)), []) }
               if (name === 'animated') return [`animated = ${emitKotlinExpr(value, indent)}`, 'animatedSpecified = true']
-              if (name === 'waypoints') { const points = kotlinFlowPositionsLiteral(value); return points ? [`waypoints = ${points}`] : [] }
+              if (name === 'waypoints') {
+                const points = kotlinFlowPositionsLiteral(value)
+                if (points) return [`waypoints = ${points}`]
+                if (value.kind === 'array') { _emitWarnings.push(unloweredFlowLiteralWarning(flowName, 'updateEdge(...) field `waypoints`', 'an array of `{ x, y }` literals, each with both coordinates')); return [] }
+                return [`waypoints = ${emitKotlinExpr(value, indent)}`]
+              }
               if (name === 'data') { const data = kotlinFlowData(value); if (!data) _emitWarnings.push(`createFlow binding \`${flowName}\` updateEdge(...): edge \`data\` must be a static JSON-compatible object to lower natively.`); return data ? [`data = ${data}`] : [] }
               if (name === 'class') return [`className = ${emitKotlinExpr(value, indent)}`]
               const rendered = name === 'interactionWidth' || name === 'zIndex' ? ktChartDouble(emitKotlinExpr(value, indent)) : emitKotlinExpr(value, indent)
@@ -5991,14 +6075,17 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (['panTo', 'screenToFlowPosition', 'flowToScreenPosition'].includes(member) && e.args.length === 1) {
           const lit = kotlinFlowPositionLiteral(e.args[0]!)
           if (lit !== null) return `${kotlinIdent(flowName)}.${member}(${lit})`
+          if (e.args[0]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 1`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
         }
         if (member === 'zoomTo' && e.args.length >= 1) {
           const duration = kotlinFlowDurationOption(e.args[1])
           if (duration !== null) return `${kotlinIdent(flowName)}.zoomTo(${ktChartDouble(emitKotlinExpr(e.args[0]!, indent))}${duration ? `, duration = ${duration}` : ''})`
+          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'zoomTo', ['duration'], e.args[1]!))
         }
         if ((member === 'zoomIn' || member === 'zoomOut') && e.args.length <= 1) {
           const duration = kotlinFlowDurationOption(e.args[0])
           if (duration !== null) return `${kotlinIdent(flowName)}.${member}(${duration ? `duration = ${duration}` : ''})`
+          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, member, ['duration'], e.args[0]!))
         }
         if (member === 'moveSelectedNodes' && e.args.length === 2) {
           return `${kotlinIdent(flowName)}.moveSelectedNodes(${ktChartDouble(emitKotlinExpr(e.args[0]!, indent))}, ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))})`
@@ -6012,6 +6099,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (member === 'addEdgeWaypoint' && e.args.length >= 2) {
           const point = kotlinFlowPositionLiteral(e.args[1]!)
           if (point !== null) return `${kotlinIdent(flowName)}.addEdgeWaypoint(${emitKotlinExpr(e.args[0]!, indent)}, ${point}${e.args.length === 3 ? `, ${kotlinIntArg(e.args[2]!, indent)}` : ''})`
+          if (e.args[1]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 2`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
         }
         // The waypoint index is a Kotlin `Int` API position (a TS integer is Long).
         if (member === 'removeEdgeWaypoint' && e.args.length === 2) {
@@ -6020,14 +6108,17 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (member === 'updateEdgeWaypoint' && e.args.length === 3) {
           const point = kotlinFlowPositionLiteral(e.args[2]!)
           if (point !== null) return `${kotlinIdent(flowName)}.updateEdgeWaypoint(${emitKotlinExpr(e.args[0]!, indent)}, ${kotlinIntArg(e.args[1]!, indent)}, ${point})`
+          if (e.args[2]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 3`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
         }
         if (member === 'reconnectEdge' && e.args.length === 2) {
           const args = kotlinFlowReconnectLiteral(e.args[1]!)
           if (args !== null) return `${kotlinIdent(flowName)}.reconnectEdge(${emitKotlinExpr(e.args[0]!, indent)}${args})`
+          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'reconnectEdge', ['source', 'target', 'sourceHandle', 'targetHandle'], e.args[1]!))
         }
         if (member === 'isValidConnection' && e.args.length === 1) {
           const connection = kotlinFlowConnectionLiteral(e.args[0]!)
           if (connection !== null) return `${kotlinIdent(flowName)}.isValidConnection(${connection})`
+          if (e.args[0]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 1`, 'a `{ source, target }` literal (with optional `sourceHandle` / `targetHandle`)', 'emitted'))
         }
         if ((member === 'addNodes' || member === 'setNodes') && e.args.length === 1) {
           const nodes = kotlinFlowNodeListLiteral(resolveKotlinStaticFlowValue(e.args[0]!), flowName)
@@ -6041,14 +6132,18 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           const args = kotlinFlowViewportLiteral(resolveKotlinStaticFlowValue(e.args[0]!))
           const duration = kotlinFlowDurationOption(e.args[1])
           if (args !== null && duration !== null) return `${kotlinIdent(flowName)}.setViewport(${args}${duration ? `${args ? ', ' : ''}duration = ${duration}` : ''})`
+          if (args === null) _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'setViewport', ['x', 'y', 'zoom', 'duration'], resolveKotlinStaticFlowValue(e.args[0]!)))
+          if (duration === null) _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'setViewport', ['duration'], e.args[1]!))
         }
         if (member === 'animateViewport' && e.args.length >= 1) {
           const args = kotlinFlowViewportLiteral(e.args[0]!)
           if (args !== null) return `${kotlinIdent(flowName)}.animateViewport(${args}${e.args[1] ? `, duration = ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))}` : ''})`
+          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'animateViewport', ['x', 'y', 'zoom'], e.args[0]!))
         }
         if (member === 'fitView' && e.args.length >= 1 && e.args.length <= 3) {
           const duration = kotlinFlowDurationOption(e.args[2])
           if (duration !== null) return `${kotlinIdent(flowName)}.fitView(${emitKotlinExpr(e.args[0]!, indent)}${e.args[1] ? `, padding = ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))}` : ''}${duration ? `, duration = ${duration}` : ''})`
+          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'fitView', ['duration'], e.args[2]!))
         }
         if (member === 'layout') {
           if (e.args.length === 0) return `${kotlinIdent(flowName)}.layout()`
@@ -6056,17 +6151,22 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           if (e.args.length === 1) return `${kotlinIdent(flowName)}.layout(${algorithm})`
           const options = e.args[1]!
           if (options.kind === 'object' && (!options.spreads || options.spreads.length === 0)) {
+            const dropped: string[] = []
             const fields = options.fields.flatMap(({ name, value }) => {
               if (name === 'direction' || name === 'animate') return [`${name} = ${emitKotlinExpr(value, indent)}`]
               if (name === 'nodeSpacing' || name === 'layerSpacing' || name === 'animationDuration') return [`${name} = ${ktChartDouble(emitKotlinExpr(value, indent))}`]
+              dropped.push(name)
               return []
             })
+            if (dropped.length > 0) _emitWarnings.push(flowLayoutOptionsDroppedWarning(flowName, dropped))
             return `${kotlinIdent(flowName)}.layout(${algorithm}, PyreonFlowLayoutOptions(${fields.join(', ')}))`
           }
+          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'layout', FLOW_LAYOUT_OPTION_KEYS, options))
         }
         if (member === 'setCenter' && e.args.length >= 2) {
-          const options = e.args[2] ? kotlinFlowViewportLiteral(e.args[2]!) : ''
+          const options = e.args[2] ? kotlinFlowViewportLiteral(e.args[2]!, FLOW_SET_CENTER_KEYS) : ''
           if (options !== null) return `${kotlinIdent(flowName)}.setCenter(${ktChartDouble(emitKotlinExpr(e.args[0]!, indent))}, ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))}${options ? `, ${options}` : ''})`
+          _emitWarnings.push(unsupportedFlowOptionsWarning(flowName, 'setCenter', FLOW_SET_CENTER_KEYS, e.args[2]!))
         }
         if (member === 'setNodeExtent' && e.args.length === 1) {
           const value = e.args[0]!
@@ -6077,10 +6177,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (member === 'clampToExtent' && e.args.length >= 1) {
           const position = kotlinFlowPositionLiteral(e.args[0]!)
           if (position !== null) return `${kotlinIdent(flowName)}.clampToExtent(${position}${e.args.slice(1).map((arg) => `, ${ktChartDouble(emitKotlinExpr(arg, indent))}`).join('')})`
+          if (e.args[0]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 1`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
         }
         if (member === 'getSnapLines' && e.args.length >= 2) {
           const position = kotlinFlowPositionLiteral(e.args[1]!)
           if (position !== null) return `${kotlinIdent(flowName)}.getSnapLines(${emitKotlinExpr(e.args[0]!, indent)}, ${position}${e.args[2] ? `, ${ktChartDouble(emitKotlinExpr(e.args[2]!, indent))}` : ''})`
+          if (e.args[1]!.kind === 'object') _emitWarnings.push(unloweredFlowLiteralWarning(flowName, `\`${member}(...)\` argument 2`, 'a `{ x, y }` literal with both coordinates', 'emitted'))
         }
       }
       // Flow lookup computeds are JavaScript Maps. Kotlin Map.get already
@@ -6411,6 +6513,9 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // takes ONLY a combiner (no initial value, reduces to the element
       // type), so the JS 2-arg `reduce(reducer, initial)` form must
       // lower to `fold(initial, reducer)` — handled below.
+      // The warning count after the method arms' operands are emitted — an arm
+      // that already named its shape suppresses the generic shape warning.
+      let warningsBeforeArms = -1
       if (e.callee.kind === 'member') {
         const obj = emitKotlinExpr(e.callee.object, indent)
         // A method call whose RECEIVER chain is optional must keep the chain
@@ -6426,6 +6531,15 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         const objDot =
           e.callee.optional === true || chainHasOptional(e.callee.object) ? '?.' : '.'
         const prop = e.callee.property
+        // Arguments JS itself ignores (a `thisArg`, any argument to
+        // `toUpperCase()` / `trim()` / `reverse()`) — lower the core arity,
+        // named. See method-shapes.ts.
+        const recvKind = methodReceiverKind(inferType(e.callee.object, _kotlinExprInferCtx))
+        const ignored = ignoredTrailingArgs(prop, e.args.length, recvKind)
+        if (ignored !== undefined) {
+          if (!_emitWarnings.includes(ignored.warning)) _emitWarnings.push(ignored.warning)
+          return emitKotlinExpr({ ...e, args: e.args.slice(0, ignored.core) }, indent)
+        }
         // Labeled-return wiring for MULTI-STATEMENT plain (1-param)
         // callbacks — the call site knows the emitted Kotlin method name
         // (the return label). 2-param INDEX callbacks keep their own
@@ -6460,6 +6574,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           }
         }
         const argExprs = e.args.map((a) => emitKotlinExpr(a, indent))
+        warningsBeforeArms = _emitWarnings.length
         // Map/Set method vocabulary — mirror of the Swift rewrites, typed
         // off the receiver's inferred kind.
         {
@@ -6541,6 +6656,37 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           case 'includes':
             if (e.args.length === 1) {
               return `${obj}${objDot}contains(${argExprs[0]!})`
+            }
+            if (e.args.length === 2) {
+              const lowered = kotlinPositionedSearch('includes', recvKind, e, obj, objDot, argExprs, indent)
+              if (lowered !== null) return lowered
+            }
+            break
+          // `startsWith` / `endsWith` / `split` pass through VERBATIM in
+          // their 1-argument forms (the Kotlin stdlib spells them the same
+          // way). The positioned forms do not: `startsWith(p, i)` returns
+          // false for a negative `i` where JS clamps it to 0, `endsWith` has
+          // no `endPosition`, and Kotlin's `split` limit means "at most n
+          // parts, the last holding the rest" where JS TRUNCATES to n parts.
+          // `indexOf` / `lastIndexOf` are also Int-typed on both sides of the
+          // call in Kotlin — a TS integer is Long (see KOTLIN_INT), so the
+          // 1-argument result widens; `List.indexOf` additionally has no
+          // `fromIndex`, so the 2-argument positioned form applies to
+          // `indexOf` only, not `lastIndexOf`.
+          case 'indexOf':
+          case 'lastIndexOf':
+            if (e.args.length === 1) return kotlinLongOf(`${obj}${objDot}${prop}(${argExprs[0]!})`)
+            if (prop === 'indexOf' && e.args.length === 2) {
+              const lowered = kotlinPositionedSearch(prop, recvKind, e, obj, objDot, argExprs, indent)
+              if (lowered !== null) return lowered
+            }
+            break
+          case 'startsWith':
+          case 'endsWith':
+          case 'split':
+            if (e.args.length === 2) {
+              const lowered = kotlinPositionedSearch(prop, recvKind, e, obj, objDot, argExprs, indent)
+              if (lowered !== null) return lowered
             }
             break
           // `arr.push(x)` is Kotlin's `add` on a MutableList. Mirrors the
@@ -6778,6 +6924,27 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             if (digits !== null) {
               return `"%.${digits}f".format(java.util.Locale.ROOT, ${obj})`
             }
+            // A DYNAMIC digit count builds the same format string at runtime
+            // (it used to fall through to a verbatim `n.toFixed(d)`).
+            if (e.args.length === 1) {
+              const dT = inferType(e.args[0]!, _kotlinExprInferCtx)
+              const d = dT.kind === 'number' && dT.float === true ? `(${argExprs[0]!}).toInt()` : argExprs[0]!
+              return `"%.\${${d}}f".format(java.util.Locale.ROOT, ${obj})`
+            }
+            break
+          }
+          case 'toString': {
+            // `n.toString(radix)` is native Kotlin on an INTEGER (lowercase
+            // digits, as JS). A fractional receiver has no `toString(radix)`
+            // and is named by the shape warning below; `x.toString()` passes
+            // through verbatim.
+            const tsT = inferType(e.callee.object, _kotlinExprInferCtx)
+            if (e.args.length === 1 && tsT.kind === 'number' && tsT.float !== true) {
+              // The radix is a Kotlin `Int` parameter — narrow the same way
+              // `kotlinIntArg` narrows every other Int-typed position (a TS
+              // integer is Long by default now; see KOTLIN_INT).
+              return `${obj}${objDot}toString(${kotlinIntArg(e.args[0]!, indent)})`
+            }
             break
           }
           case 'toUpperCase':
@@ -6850,13 +7017,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             )
             break
           }
-          // Same-named on Kotlin, but Int-typed on both sides of the call: a
-          // TS integer is Long (see KOTLIN_INT), so the result widens and a
-          // count/position narrows.
-          case 'indexOf':
-          case 'lastIndexOf':
-            if (e.args.length === 1) return kotlinLongOf(`${obj}${objDot}${prop}(${argExprs[0]!})`)
-            break
           case 'repeat':
             if (e.args.length === 1) return `${obj}${objDot}repeat(${kotlinIntArg(e.args[0]!, indent)})`
             break
@@ -6881,6 +7041,17 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // Swift twin's rationale — a JS Array/String method with no lowering
       // reaches this verbatim re-emit; name it.
       warnUnmappedMemberMethod(e)
+      // A MAPPED method whose arm did not cover this argument shape (and did
+      // not already name it) — see method-shapes.ts.
+      if (e.callee.kind === 'member' && _emitWarnings.length === warningsBeforeArms) {
+        const w = uncoveredMethodShapeWarning(
+          e.callee.property,
+          e.args.length,
+          methodReceiverKind(inferType(e.callee.object, _kotlinExprInferCtx)),
+          'kotlin',
+        )
+        if (w !== undefined && !_emitWarnings.includes(w)) _emitWarnings.push(w)
+      }
       const callee = emitKotlinExpr(e.callee, indent)
       const args = e.args.map((a) => emitKotlinExpr(a, indent)).join(', ')
       // Optional call `f?.()` → Kotlin's nullable-function invocation
@@ -7972,7 +8143,11 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (tag === 'NodeResizer') return 'Box {}'
   if (tag === 'NodeToolbar') {
     for (const name of ['style', 'class']) if (e.attrs.some((a) => a.kind === 'attr' && a.name === name)) _emitWarnings.push(`<NodeToolbar ${name}> is browser CSS and is not applied natively; toolbar placement and content still lower.`)
-    if (!_flowComponentToolbarsKotlin.has(_activeComponentName)) _emitWarnings.push('<NodeToolbar> only lowers when declared inside a component registered by a literal <Flow nodeTypes={{ type: Component }}> map; it was dropped.')
+    // A toolbar lowers ONLY through the up-front extraction, which needs a
+    // registered NODE renderer AND a static child position; otherwise it
+    // is dropped, and why decides the fix.
+    const registered = _flowNodeRendererComponentsKotlin.has(_activeComponentName)
+    if (!registered || !_extractedFlowToolbarsKotlin.has(e)) _emitWarnings.push(droppedNodeToolbarWarning(registered, _activeComponentName))
     return 'Box {}'
   }
   if (tag === 'path') return emitKotlinFlowCustomPath(e, indent)
@@ -8004,11 +8179,6 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // never compiled the emit. Same class as the kinetic factory, reached by a
   // different route (a missing mapping rather than a missing decline).
   if (tag === 'Link' || tag === 'RouterLink') return emitKotlinLink(e, indent)
-  if (tag === 'PieChart') return emitKotlinPieChart(e, indent)
-  if (tag === 'GaugeChart') return emitKotlinGaugeChart(e, indent)
-  // `<PieChart>` / `<GaugeChart>` from @pyreon/charts — mirror of the
-  // Swift branch: the radial family lowers to the runtime composables over
-  // the GENERATED engine.
   if (tag === 'PermissionsProvider') return emitKotlinPermissionsProvider(e, indent)
   // Mirror of the Swift branch: `<QueryClientProvider>` is TRANSPARENT on
   // native. The web needs it to inject the client `useQuery` reads; the native
@@ -8173,13 +8343,16 @@ function emitKotlinFlowCustomPath(e: Extract<ExprIR, { kind: 'jsx-element' }>, i
   const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'd')
   let value = attr?.kind === 'attr' ? attr.value : undefined
   if (value?.kind === 'arrow' && value.params.length === 0) value = value.body
-  // A structured helper result (`get*Path({...}).path`) or the connection
-  // line's `path()` keeps its segments; any other `d` is SVG path data,
-  // parsed at runtime into the same segments.
-  const resultCode = value?.kind === 'member' && value.property === 'path'
-    ? value.object.kind === 'call'
-      ? emitKotlinExpr(value.object, indent)
-      : `${kotlinIdent(value.property)}()`
+  // A structured helper result (`get*Path({...}).path`, or a local bound to
+  // one) or the connection line's `path()` keeps its segments; any other `d`
+  // is SVG path data, parsed at runtime into the same segments.
+  const pathMember = value?.kind === 'member' && value.property === 'path'
+    ? classifyFlowPathMember(value.object, _activePropsParamName, _componentValueConstExprsKotlin)
+    : undefined
+  const resultCode = value?.kind === 'member' && pathMember === 'object'
+    ? emitKotlinExpr(value.object, indent)
+    : value?.kind === 'member' && pathMember === 'accessor'
+      ? `${kotlinIdent(value.property)}()`
     : value?.kind === 'call' && value.args.length === 0 && value.callee.kind === 'member' && value.callee.property === 'path'
       ? emitKotlinExpr(value, indent)
       : value !== undefined
@@ -8742,6 +8915,68 @@ function warnNonBooleanLogical(
 }
 
 
+/**
+ * The positioned-search forms — Kotlin twin of emit-swift's
+ * `swiftPositionedSearch`; see its doc comment for the JS clamping rules. A
+ * `run { }` block binds the receiver and the position once. Null (the caller
+ * names the shape) on an optional receiver or an unknown kind.
+ */
+function kotlinPositionedSearch(
+  method: string,
+  recvKind: MethodReceiver | undefined,
+  e: Extract<ExprIR, { kind: 'call' }>,
+  obj: string,
+  objDot: string,
+  argExprs: readonly string[],
+  indent: number,
+): string | null {
+  if (e.callee.kind !== 'member' || objDot !== '.') return null
+  if (recvKind !== 'array' && recvKind !== 'string') return null
+  const recvT = inferType(e.callee.object, _kotlinExprInferCtx)
+  if (recvT.kind === 'union' && recvT.branches.some((b) => b.kind === 'null' || b.kind === 'undefined')) return null
+  const x = argExprs[0]!
+  // Every use of `pos` below is a Kotlin `Int` position — `String.indexOf`'s
+  // startIndex, `drop`/`take`'s count, `List.take`'s limit. A TS integer is
+  // Long by default now (see KOTLIN_INT), so this narrows exactly here,
+  // matching `kotlinIntArg`'s own bare-literal-vs-`.toInt()` split.
+  const pos = kotlinIntArg(e.args[1]!, indent)
+  if (recvKind === 'array') {
+    if (method !== 'indexOf' && method !== 'includes') return null
+    const from = `val __pyRecv = ${obj}; val __pyPos = ${pos}; val __pyFrom = if (__pyPos < 0) maxOf(0, __pyRecv.size + __pyPos) else minOf(__pyPos, __pyRecv.size)`
+    return method === 'indexOf'
+      ? `run { ${from}; val __pyAt = __pyRecv.subList(__pyFrom, __pyRecv.size).indexOf(${x}); if (__pyAt < 0) -1 else __pyAt + __pyFrom }`
+      : `run { ${from}; __pyRecv.subList(__pyFrom, __pyRecv.size).contains(${x}) }`
+  }
+  switch (method) {
+    // Kotlin's `String.indexOf(s, startIndex)` IS JS's: both clamp a negative
+    // start to 0 and a past-the-end one to the length.
+    case 'indexOf':
+      return `${obj}.indexOf(${x}, ${pos})`
+    case 'includes':
+      return `(${obj}.indexOf(${x}, ${pos}) >= 0)`
+    case 'startsWith':
+      return `run { val __pyRecv = ${obj}; __pyRecv.drop(maxOf(0, ${pos})).startsWith(${x}) }`
+    case 'endsWith':
+      return `run { val __pyRecv = ${obj}; __pyRecv.take((${pos}).coerceIn(0, __pyRecv.length)).endsWith(${x}) }`
+    case 'split':
+      return `run { val __pyParts = ${obj}.split(${x}); val __pyLimit = ${pos}; if (__pyLimit < 0) __pyParts else __pyParts.take(__pyLimit) }`
+    default:
+      return null
+  }
+}
+
+/** A `<For>` row's content — twin of emit-swift's `forRowBodySwift`. */
+function forRowBodyKotlin(arrow: Extract<ExprIR, { kind: 'arrow' }>, body: ExprIR, indent: number): string {
+  if (arrow.stmts === undefined || arrow.stmts.length === 0) return emitKotlinExpr(body, indent + 4)
+  const block = planViewBlock(arrow.stmts)
+  if (block === null) {
+    const w = forBlockBodyWarning()
+    if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+    return ''
+  }
+  return emitKotlinViewBlock(block, indent + 4).join('\n').trimStart()
+}
+
 /** Mirror of emit-swift's `warnUnmappedMemberMethod` — see its doc comment. */
 function warnUnmappedMemberMethod(e: Extract<ExprIR, { kind: 'call' }>): void {
   if (e.callee.kind !== 'member') return
@@ -8835,7 +9070,7 @@ function emitKotlinFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (rowElem !== undefined) _kotlinExprInferCtx.locals.set(param, rowElem)
   let bodyText: string
   try {
-    bodyText = emitKotlinExpr(body, indent + 4)
+    bodyText = forRowBodyKotlin(arrow, body, indent)
   } finally {
     if (rowElem !== undefined) {
       if (hadRow) _kotlinExprInferCtx.locals.set(param, prevRow!)
@@ -9465,6 +9700,11 @@ function emitKotlinLayoutModifier(
   omit: ReadonlySet<string> = EMPTY_OMIT,
 ): string {
   const parts: string[] = []
+  // One guard for every styling prop the HOST lowers itself (only
+  // `background` is consumed by a host today), rather than a per-prop
+  // `omit.has(…)` arm that no host ever reaches.
+  const stylingValue = (name: string, resolve: Parameters<typeof kotlinStylingValue>[2]) =>
+    omit.has(name) ? undefined : kotlinStylingValue(e, name, resolve)
   // `margin` — the OUTERMOST inset, so it goes FIRST.
   //
   // Compose's `Modifier` chain applies outside-IN: the leading entries wrap
@@ -9476,37 +9716,37 @@ function emitKotlinLayoutModifier(
   // Never implemented until now, though the Swift twin's docblock claimed it
   // was in scope. `margin` is on the shared `BaseLayoutProps`, so this was
   // silently dropped on Stack, Inline, Layer and Scroll, on both targets.
-  const margin = (omit.has('margin') ? undefined : kotlinStylingValue(e, 'margin', resolveSpace))
+  const margin = stylingValue('margin', resolveSpace)
   if (margin !== undefined) {
     parts.push(`.padding(${margin}.dp)`)
   }
-  const marginX = (omit.has('marginX') ? undefined : kotlinStylingValue(e, 'marginX', resolveSpace))
+  const marginX = stylingValue('marginX', resolveSpace)
   if (marginX !== undefined) {
     parts.push(`.padding(horizontal = ${marginX}.dp)`)
   }
-  const marginY = (omit.has('marginY') ? undefined : kotlinStylingValue(e, 'marginY', resolveSpace))
+  const marginY = stylingValue('marginY', resolveSpace)
   if (marginY !== undefined) {
     parts.push(`.padding(vertical = ${marginY}.dp)`)
   }
-  const padding = (omit.has('padding') ? undefined : kotlinStylingValue(e, 'padding', resolveSpace))
+  const padding = stylingValue('padding', resolveSpace)
   if (padding !== undefined) {
     parts.push(`.padding(${padding}.dp)`)
   }
-  const paddingX = (omit.has('paddingX') ? undefined : kotlinStylingValue(e, 'paddingX', resolveSpace))
+  const paddingX = stylingValue('paddingX', resolveSpace)
   if (paddingX !== undefined) {
     parts.push(`.padding(horizontal = ${paddingX}.dp)`)
   }
-  const paddingY = (omit.has('paddingY') ? undefined : kotlinStylingValue(e, 'paddingY', resolveSpace))
+  const paddingY = stylingValue('paddingY', resolveSpace)
   if (paddingY !== undefined) {
     parts.push(`.padding(vertical = ${paddingY}.dp)`)
   }
-  const background = (omit.has('background') ? undefined : kotlinStylingValue(e, 'background', (v) =>
+  const background = stylingValue('background', (v) =>
     resolveColor(String(v), 'kotlin'),
-  ))
+  )
   if (background !== undefined) {
     parts.push(`.background(${background})`)
   }
-  const radius = (omit.has('radius') ? undefined : kotlinStylingValue(e, 'radius', (v) => resolveRadius(String(v))))
+  const radius = stylingValue('radius', (v) => resolveRadius(String(v)))
   if (radius !== undefined) {
     // Bare `RoundedCornerShape` — consumer imports from
     // androidx.compose.foundation.shape. Same convention as Color +
@@ -11847,116 +12087,6 @@ function ktChartDouble(text: string): string {
   // Double position takes the digits with `.0` instead.
   const m = /^(-?\d+)L?$/.exec(text)
   return m ? `${m[1]}.0` : text
-}
-
-/**
- * `<PieChart data value label …>` (@pyreon/charts) → the runtime-kotlin
- * `PyreonPieChart` composable. Mirror of emitSwiftPieChart — see its
- * docblock for the accessor-arity rule.
- */
-function emitKotlinPieChart(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-  indent: number,
-): string {
-  const attr = (n: string) =>
-    e.attrs.find(
-      (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === n,
-    )
-  const data = attr('data')
-  const value = attr('value')
-  const label = attr('label')
-  if (data === undefined || value === undefined || label === undefined) {
-    _emitWarnings.push(
-      'PieChart: the native lowering needs `data`, `value` and `label` props — element left to generic emit (it will not compile natively)',
-    )
-    return emitKotlinGeneric(e, indent)
-  }
-  const color = attr('color')
-  for (const a of [value, label, ...(color === undefined ? [] : [color])]) {
-    if (a.value.kind === 'arrow' && a.value.params.length > 1) {
-      _emitWarnings.push(
-        `PieChart: the \`${a.name}\` accessor uses the (d, index) form — the native lowering supports the single-argument accessor; precompute an array for index-dependent slices`,
-      )
-      return emitKotlinGeneric(e, indent)
-    }
-  }
-  const args = [
-    `data = ${emitKotlinExpr(unwrapAccessorArrow(data.value), indent)}`,
-    `value = ${emitKotlinExpr(value.value, indent)}`,
-    `label = ${emitKotlinExpr(label.value, indent)}`,
-  ]
-  if (color !== undefined) args.push(`color = ${emitKotlinExpr(color.value, indent)}`)
-  for (const n of ['width', 'height', 'innerRadius', 'showLabels'] as const) {
-    const a = attr(n)
-    if (a !== undefined) {
-      const t = emitKotlinExpr(unwrapAccessorArrow(a.value), indent)
-      args.push(`${n} = ${n === 'showLabels' ? t : ktChartDouble(t)}`)
-    }
-  }
-  for (const n of ['showLegend', 'onSelect', 'title', 'accessibleTable'] as const) {
-    if (attr(n) !== undefined) {
-      _emitWarnings.push(
-        `PieChart: \`${n}\` has no native lowering (web-only legend / hit-testing / a11y-table surface) — DROPPED on this target`,
-      )
-    }
-  }
-  const testid = readStringAttrExprKotlin(e, 'data-testid', 0)
-  const mods =
-    (testid === undefined ? '' : `.testTag(${testid})`) +
-    kotlinAccessibilityLabelModifier(e).join('') +
-    kotlinAccessibilityHiddenModifier(e).join('')
-  if (mods !== '') args.push(`modifier = Modifier${mods}`)
-  return `PyreonPieChart(${args.join(', ')})`
-}
-
-/**
- * `<GaugeChart value …>` (@pyreon/charts) → the runtime-kotlin
- * `PyreonGaugeChart` composable. Mirror of emitSwiftGaugeChart.
- */
-function emitKotlinGaugeChart(
-  e: Extract<ExprIR, { kind: 'jsx-element' }>,
-  indent: number,
-): string {
-  const attr = (n: string) =>
-    e.attrs.find(
-      (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === n,
-    )
-  const value = attr('value')
-  if (value === undefined) {
-    _emitWarnings.push(
-      'GaugeChart: the native lowering needs the `value` prop — element left to generic emit (it will not compile natively)',
-    )
-    return emitKotlinGeneric(e, indent)
-  }
-  const args = [`value = ${ktChartDouble(emitKotlinExpr(unwrapAccessorArrow(value.value), indent))}`]
-  for (const n of [
-    'min',
-    'max',
-    'width',
-    'height',
-    'thickness',
-    'trackColor',
-    'valueColor',
-    'showValue',
-  ] as const) {
-    const a = attr(n)
-    if (a !== undefined) {
-      const t = emitKotlinExpr(unwrapAccessorArrow(a.value), indent)
-      args.push(`${n} = ${n === 'showValue' || n === 'trackColor' || n === 'valueColor' ? t : ktChartDouble(t)}`)
-    }
-  }
-  if (attr('title') !== undefined) {
-    _emitWarnings.push(
-      'GaugeChart: `title` has no native lowering (it feeds the web aria-label) — use `accessibilityLabel`, which lowers on all three targets',
-    )
-  }
-  const testid = readStringAttrExprKotlin(e, 'data-testid', 0)
-  const mods =
-    (testid === undefined ? '' : `.testTag(${testid})`) +
-    kotlinAccessibilityLabelModifier(e).join('') +
-    kotlinAccessibilityHiddenModifier(e).join('')
-  if (mods !== '') args.push(`modifier = Modifier${mods}`)
-  return `PyreonGaugeChart(${args.join(', ')})`
 }
 
 // ---------------------------------------------------------------------------
