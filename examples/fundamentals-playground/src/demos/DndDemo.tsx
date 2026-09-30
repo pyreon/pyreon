@@ -1,6 +1,6 @@
 import { For } from '@pyreon/core'
 import { useSortable } from '@pyreon/dnd'
-import { signal } from '@pyreon/reactivity'
+import { state, signalOf } from '@pyreon/core/plain'
 
 interface TaskItem {
   id: string
@@ -16,12 +16,12 @@ const initial: TaskItem[] = [
 ]
 
 export function DndDemo() {
-  const items = signal<TaskItem[]>(initial)
+  let items = state<TaskItem[]>(initial)
 
   const { containerRef, itemRef, activeId, overId, overEdge } = useSortable({
-    items,
+    items: signalOf<typeof items>(items),
     by: (item) => item.id,
-    onReorder: (next) => items.set(next),
+    onReorder: (next) => { items = next },
   })
 
   return (
@@ -45,7 +45,7 @@ export function DndDemo() {
           data-testid="dnd-list"
           style="list-style:none; padding:0; border:1px solid #ddd; border-radius:6px; background:#fafafa"
         >
-          <For each={items()} by={(t) => t.id}>
+          <For each={items} by={(t) => t.id}>
             {(item) => (
               <li
                 ref={itemRef(item.id)}
@@ -77,10 +77,10 @@ export function DndDemo() {
       <div class="section">
         <h3>Snapshot</h3>
         <pre style="font-size: 13px" data-testid="dnd-order">
-          {() => items().map((t) => t.name).join(' → ')}
+          {() => items.map((t) => t.name).join(' → ')}
         </pre>
         <div class="row" style="margin-top: 12px">
-          <button onClick={() => items.set(initial)}>Reset order</button>
+          <button onClick={() => { items = initial }}>Reset order</button>
         </div>
       </div>
 

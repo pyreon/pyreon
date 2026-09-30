@@ -72,7 +72,7 @@ import { useStorage } from '@pyreon/storage'
 import { Toaster, toast } from '@pyreon/toast'
 import { announce } from '@pyreon/a11y'
 import { useUrlState } from '@pyreon/url-state'
-import { signal, computed } from '@pyreon/reactivity'
+import { state, derived, signalOf } from '@pyreon/core/plain'
 import {
   Arc,
   Bar,
@@ -146,12 +146,12 @@ let nextTaskId = 3
 // ── Shared state — ONE store, read/written from every screen ──
 
 const useApp = defineStore('app', () => {
-  const isAuthed = signal(false)
-  const tasks = signal<Task[]>([
+  let isAuthed = state(false)
+  let tasks = state.raw<Task[]>([
     { id: 1, title: 'Ship the typed-params arc', done: false },
     { id: 2, title: 'Keep the device gate green', done: false },
   ])
-  return { isAuthed, tasks }
+  return { isAuthed: signalOf<typeof isAuthed>(isAuthed), tasks: signalOf<typeof tasks>(tasks) }
 })
 
 // ── Screens ──
@@ -215,9 +215,9 @@ function LoginPage() {
 
 function TasksPage() {
   const navigate = useNavigate()
-  const draft = signal<string>('')
+  let draft = state<string>('')
 
-  const remaining = computed(
+  const remaining = derived(
     () =>
       useApp()
         .store.tasks()
@@ -225,10 +225,10 @@ function TasksPage() {
   )
 
   const addTask = () => {
-    const title = draft().trim()
+    const title = draft.trim()
     if (title.length === 0) return
     useApp().store.tasks.set([...useApp().store.tasks(), { id: nextTaskId++, title, done: false }])
-    draft.set('')
+    draft = ''
   }
 
   const toggle = (id: number) => {
@@ -260,8 +260,8 @@ function TasksPage() {
         )}
       </For>
       <Field
-        value={draft}
-        onChangeText={(v) => draft.set(v)}
+        value={signalOf<typeof draft>(draft)}
+        onChangeText={(v) => { draft = v }}
         onSubmit={addTask}
         placeholder="What needs doing?"
         data-testid="new-task-title"
@@ -333,7 +333,7 @@ function QuotesPage() {
   // targets: the iOS Simulator shares the host loopback, and the
   // Android job `adb reverse`s the port into the emulator.
   const quotes = useFetch<Quote[]>('http://127.0.0.1:8787/quotes.json')
-  const quoteList = computed(() => quotes.data() ?? [])
+  const quoteList = derived(() => quotes.data() ?? [])
 
   return (
     <Stack gap={3} padding={4} data-testid="quotes-page">
@@ -344,7 +344,7 @@ function QuotesPage() {
       <Show when={() => quotes.error() !== undefined}>
         <Text data-testid="quotes-error">{quotes.error}</Text>
       </Show>
-      <For each={quoteList} by={(q) => q.id}>
+      <For each={signalOf<typeof quoteList>(quoteList)} by={(q) => q.id}>
         {(q) => (
           <Stack gap={1} data-testid="quote-row">
             <Text>{q.text}</Text>
@@ -422,10 +422,10 @@ function FlowScreen() {
     minZoom: 0.5,
     maxZoom: 2,
   })
-  const nodeCount = computed(() => flow.nodes().length)
-  const edgeCount = computed(() => flow.edges().length)
-  const selectedCount = computed(() => flow.selectedNodes().length)
-  const zoomLabel = computed(() => `zoom ${flow.zoom()}`)
+  const nodeCount = derived(() => flow.nodes().length)
+  const edgeCount = derived(() => flow.edges().length)
+  const selectedCount = derived(() => flow.selectedNodes().length)
+  const zoomLabel = derived(() => `zoom ${flow.zoom()}`)
   // Where node `a` sits, rounded — a drag on the canvas moves it, and the
   // device tests read the move back through this label.
   // A loop rather than `.find(...)`: the native emit does not narrow an
@@ -433,7 +433,7 @@ function FlowScreen() {
   // accumulator is the LABEL, not the coordinates — a numeric local would be
   // seeded `0` and typed Int by the native emit, against the Double it then
   // receives.
-  const aPos = computed(() => {
+  const aPos = derived(() => {
     let label = 'gone'
     for (const n of flow.nodes()) {
       if (n.id === 'a') label = `${Math.round(n.position.x)},${Math.round(n.position.y)}`
@@ -442,29 +442,29 @@ function FlowScreen() {
   })
   // Context-menu device proof: a long-press on a node (right-click on web)
   // reaches `onNodeContextMenu`, which writes the node id here.
-  const lastMenu = signal('none')
+  let lastMenu = state('none')
   // Hover device proof (pointer hover; Android's test drives a mouse).
-  const lastHover = signal('none')
+  let lastHover = state('none')
   // The connection gesture's own start/end, so a failed connect says which half broke.
-  const lastConnect = signal('none')
+  let lastConnect = state('none')
   onMount(() => {
-    flow.onNodeContextMenu((n) => lastMenu.set(`menu ${n.id}`))
-    flow.onNodeMouseEnter((n) => lastHover.set(`hover ${n.id}`))
-    flow.onConnectStart((c) => lastConnect.set(`start ${c.nodeId}`))
+    flow.onNodeContextMenu((n) => { lastMenu = `menu ${n.id}` })
+    flow.onNodeMouseEnter((n) => { lastHover = `hover ${n.id}` })
+    flow.onConnectStart((c) => { lastConnect = `start ${c.nodeId}` })
     // No member access on the optional: the native emit does not narrow it
     // through `=== null` (the same limit as the `.find` note above).
-    flow.onConnectEnd((c) => lastConnect.set(c === null ? 'end none' : 'end ok'))
+    flow.onConnectEnd((c) => { lastConnect = c === null ? 'end none' : 'end ok' })
   })
   // Which nodes are selected: the zIndex proof taps where two nodes overlap
   // and reads which one received the tap.
-  const selectedIds = computed(() => {
+  const selectedIds = derived(() => {
     let ids = ''
     for (const id of flow.selectedNodes()) ids = ids === '' ? id : `${ids},${id}`
     return ids === '' ? 'none' : ids
   })
   // The viewport offset, rounded: auto-pan moves it while a node is held at
   // the canvas edge.
-  const vpLabel = computed(() => `${Math.round(flow.viewport().x)},${Math.round(flow.viewport().y)}`)
+  const vpLabel = derived(() => `${Math.round(flow.viewport().x)},${Math.round(flow.viewport().y)}`)
   return (
     <Stack gap={3} padding={4} data-testid="flow-page">
       {/* Rows, not a column of labels: the canvas takes the height that is
@@ -580,9 +580,9 @@ function FlowScaleScreen() {
     minZoom: 0.25,
     maxZoom: 2,
   })
-  const total = computed(() => `${flow.nodes().length}`)
-  const zoomLabel = computed(() => `zoom ${flow.zoom()}`)
-  const farPos = computed(() => {
+  const total = derived(() => `${flow.nodes().length}`)
+  const zoomLabel = derived(() => `zoom ${flow.zoom()}`)
+  const farPos = derived(() => {
     let label = 'gone'
     for (const n of flow.nodes()) {
       if (n.id === 'g170') label = `${Math.round(n.position.x)},${Math.round(n.position.y)}`
@@ -636,7 +636,7 @@ function VocabScreen() {
   // conditional-imports fix makes them compile on a real Android build
   // (they were stub-masked: green in the kotlinc validate loop, red on
   // gradle assembleDebug). This screen is the device proof.
-  const showModal = signal<boolean>(false)
+  let showModal = state<boolean>(false)
   return (
     <Stack data-testid="vocab-page">
       <Scroll direction="vertical" data-testid="vocab-scroll">
@@ -649,7 +649,7 @@ function VocabScreen() {
             height={48}
             data-testid="vocab-remote-img"
           />
-          <Button onPress={() => showModal.set(true)} data-testid="vocab-open-modal">
+          <Button onPress={() => { showModal = true }} data-testid="vocab-open-modal">
             Open dialog
           </Button>
           <Button onPress={() => navigate('/tasks')} data-testid="vocab-back">
@@ -660,10 +660,10 @@ function VocabScreen() {
       {/* Modal is a SIBLING of the Scroll (not in scroll content) so the
           iOS .sheet host isn't a zero-frame view buried in a ScrollView
           — a SwiftUI presentation quirk. Compose Dialog is unaffected. */}
-      <Modal open={showModal} onClose={() => showModal.set(false)} data-testid="vocab-modal">
+      <Modal open={signalOf<typeof showModal>(showModal)} onClose={() => { showModal = false }} data-testid="vocab-modal">
         <Stack gap={2}>
           <Text data-testid="vocab-modal-text">Hello from a Dialog</Text>
-          <Button onPress={() => showModal.set(false)} data-testid="vocab-close-modal">
+          <Button onPress={() => { showModal = false }} data-testid="vocab-close-modal">
             Close
           </Button>
         </Stack>
@@ -695,10 +695,10 @@ function SuspenseDemo() {
   const ok = useFetch<Quote[]>('http://127.0.0.1:8787/quotes.json')
   // The computed gives kotlinc the List<Quote> type context the inline
   // `?? []` lacks (listOf() can't infer T) — same shape as QuotesPage.
-  const okList = computed(() => ok.data() ?? [])
+  const okList = derived(() => ok.data() ?? [])
   return (
     <Suspense fallback={<Text data-testid="lc-loading">Loading…</Text>}>
-      <For each={okList} by={(q) => q.id}>
+      <For each={signalOf<typeof okList>(okList)} by={(q) => q.id}>
         {(q) => <Text data-testid="lc-quote">{q.text}</Text>}
       </For>
     </Suspense>
@@ -707,10 +707,10 @@ function SuspenseDemo() {
 
 function ErrorBoundaryDemo() {
   const bad = useFetch<Quote[]>('http://127.0.0.1:8787/missing-on-purpose.json')
-  const badList = computed(() => bad.data() ?? [])
+  const badList = derived(() => bad.data() ?? [])
   return (
     <ErrorBoundary fallback={<Text data-testid="lc-error">Something went wrong</Text>}>
-      <For each={badList} by={(q) => q.id}>
+      <For each={signalOf<typeof badList>(badList)} by={(q) => q.id}>
         {(q) => <Text>{q.text}</Text>}
       </For>
     </ErrorBoundary>
@@ -1067,24 +1067,24 @@ const SUNBURST: TreeNode[] = [
 ]
 
 function GalleryPage() {
-  const grammarPick = signal(-1)
+  let grammarPick = state(-1)
   const navigate = useNavigate()
   // The toolbox's box zoom reports its window here; the save button its PNG's prefix.
-  const tbZoom = signal('0-100')
+  let tbZoom = state('0-100')
   // The option-placed families: a tap reads the index back through the frame the web computes.
-  const tbSaved = signal('none')
-  const brushCount = signal('none')
-  const seriesPickCount = signal('none')
-  const growthRows = signal<GrowthRow[]>(GROWTH_ROWS_A)
-  const growthCount = signal(`${GROWTH_ROWS_A.length}`)
-  const flowWebEvent = signal('none')
-  const flowWebEventCount = signal(0)
-  const flowWebFitAgain = signal(false)
-  const flowWebSelected = signal('none')
-  const flowWebSwapped = signal(false)
-  const flowWebFailure = signal('none')
-  const flowWebReloadB = signal(false)
-  const flowWebReloadStatus = signal('none')
+  let tbSaved = state('none')
+  let brushCount = state('none')
+  let seriesPickCount = state('none')
+  let growthRows = state<GrowthRow[]>(GROWTH_ROWS_A)
+  let growthCount = state(`${GROWTH_ROWS_A.length}`)
+  let flowWebEvent = state('none')
+  let flowWebEventCount = state(0)
+  let flowWebFitAgain = state(false)
+  let flowWebSelected = state('none')
+  let flowWebSwapped = state(false)
+  let flowWebFailure = state('none')
+  let flowWebReloadB = state(false)
+  let flowWebReloadStatus = state('none')
   // The toolbox chart's imperative handle.
   const tbHandle = createChartHandle()
   return (
@@ -1125,11 +1125,11 @@ function GalleryPage() {
         {/* The stable API: <Chart> with mark children. Desugared at compile
             time to the same hosts the components above lower to; asserted on
             both device lanes so the grammar itself is device-proven. */}
-        <Chart data={SCORE_ROWS} x="subject" height={200} data-testid="gal-grammar-bars" onSelect={(i: number) => grammarPick.set(i)}>
+        <Chart data={SCORE_ROWS} x="subject" height={200} data-testid="gal-grammar-bars" onSelect={(i: number) => { grammarPick = i }}>
           <Bar y="score" label="Points" />
           <Tooltip />
         </Chart>
-        <Text data-testid="gal-grammar-pick">{String(grammarPick())}</Text>
+        <Text data-testid="gal-grammar-pick">{String(grammarPick)}</Text>
         <Chart data={SCORE_ROWS} height={200} data-testid="gal-grammar-pie">
           <Arc value="score" label="subject" innerRadius={0.5} />
         </Chart>
@@ -1159,9 +1159,9 @@ function GalleryPage() {
           height={220}
           handle={tbHandle}
           data-testid="gal-toolbox"
-          onZoom={(w: ZoomWindow) => tbZoom.set(`${(w.start * 100).toFixed(0)}-${(w.end * 100).toFixed(0)}`)}
+          onZoom={(w: ZoomWindow) => { tbZoom = `${(w.start * 100).toFixed(0)}-${(w.end * 100).toFixed(0)}` }}
         />
-        <Text data-testid="gal-toolbox-zoom">{tbZoom()}</Text>
+        <Text data-testid="gal-toolbox-zoom">{tbZoom}</Text>
         <Button onPress={() => tbHandle.dispatch({ type: 'dataZoom', start: 0, end: 0.5 })} data-testid="gal-h-zoom">
           Zoom to half
         </Button>
@@ -1174,20 +1174,20 @@ function GalleryPage() {
           brushType="lineX"
           height={200}
           data-testid="gal-brush"
-          onBrushSelected={(s: { seriesIndex: number; dataIndex: number[] }[]) => brushCount.set(`${s.length}:${s.length > 0 ? s[0]!.dataIndex.length : 0}`)}
+          onBrushSelected={(s: { seriesIndex: number; dataIndex: number[] }[]) => { brushCount = `${s.length}:${s.length > 0 ? s[0]!.dataIndex.length : 0}` }}
         />
-        <Text data-testid="gal-brush-count">{brushCount()}</Text>
+        <Text data-testid="gal-brush-count">{brushCount}</Text>
         <PlotChart
           data={TWO_SERIES_ROWS}
           marks={[bars((d: TwoSeriesRow) => d.a), bars((d: TwoSeriesRow) => d.b)]}
           selectedMode="series"
           height={200}
           data-testid="gal-series-select"
-          onSelectIndex={(i: number) => seriesPickCount.set(`${i}`)}
+          onSelectIndex={(i: number) => { seriesPickCount = `${i}` }}
         />
-        <Text data-testid="gal-series-select-datum">{seriesPickCount()}</Text>
+        <Text data-testid="gal-series-select-datum">{seriesPickCount}</Text>
         <PlotChart
-          data={() => growthRows()}
+          data={() => growthRows}
           marks={[bars((d: GrowthRow) => d.total)]}
           universalTransition
           updateDuration={250}
@@ -1196,61 +1196,61 @@ function GalleryPage() {
         />
         <Button
           onPress={() => {
-            const next = growthRows().length === GROWTH_ROWS_A.length ? GROWTH_ROWS_B : GROWTH_ROWS_A
-            growthRows.set(next)
-            growthCount.set(`${next.length}`)
+            const next = growthRows.length === GROWTH_ROWS_A.length ? GROWTH_ROWS_B : GROWTH_ROWS_A
+            growthRows = next
+            growthCount = `${next.length}`
           }}
           data-testid="gal-growth-toggle"
         >
           Toggle rows
         </Button>
-        <Text data-testid="gal-growth-count">{growthCount()}</Text>
+        <Text data-testid="gal-growth-count">{growthCount}</Text>
         <FlowWebView
-          graph={() => (flowWebSwapped() ? FLOW_WEB_GRAPH_B : FLOW_WEB_GRAPH_A)}
-          commands={() => (flowWebFitAgain() ? FLOW_WEB_FIT_TWICE : FLOW_WEB_FIT_ONCE)}
+          graph={() => (flowWebSwapped ? FLOW_WEB_GRAPH_B : FLOW_WEB_GRAPH_A)}
+          commands={() => (flowWebFitAgain ? FLOW_WEB_FIT_TWICE : FLOW_WEB_FIT_ONCE)}
           onEvent={(event) => {
-            flowWebEvent.set(event.type)
-            flowWebEventCount.set(flowWebEventCount() + 1)
+            flowWebEvent = event.type
+            flowWebEventCount = flowWebEventCount + 1
           }}
-          onSelect={(node) => flowWebSelected.set(node.id)}
-          onError={(error) => flowWebEvent.set('error:' + error.message)}
+          onSelect={(node) => { flowWebSelected = node.id }}
+          onError={(error) => { flowWebEvent = 'error:' + error.message }}
           data-testid="gal-flow-webview"
         />
-        <Button onPress={() => flowWebFitAgain.set(true)} data-testid="gal-flow-webview-fit">
+        <Button onPress={() => { flowWebFitAgain = true }} data-testid="gal-flow-webview-fit">
           Fit again
         </Button>
-        <Text data-testid="gal-flow-webview-event">{flowWebEvent()}</Text>
-        <Text data-testid="gal-flow-webview-events">{String(flowWebEventCount())}</Text>
-        <Text data-testid="gal-flow-webview-selected">{flowWebSelected()}</Text>
-        <Button onPress={() => flowWebSwapped.set(true)} data-testid="gal-flow-webview-swap">
+        <Text data-testid="gal-flow-webview-event">{flowWebEvent}</Text>
+        <Text data-testid="gal-flow-webview-events">{String(flowWebEventCount)}</Text>
+        <Text data-testid="gal-flow-webview-selected">{flowWebSelected}</Text>
+        <Button onPress={() => { flowWebSwapped = true }} data-testid="gal-flow-webview-swap">
           Swap graph
         </Button>
         <FlowWebView
           graph={FLOW_WEB_BROKEN as unknown as FlowWebViewGraph}
-          onError={(error) => flowWebFailure.set(error.message.length > 0 ? 'error' : 'empty')}
+          onError={(error) => { flowWebFailure = error.message.length > 0 ? 'error' : 'empty' }}
           data-testid="gal-flow-webview-broken"
         />
-        <Text data-testid="gal-flow-webview-failure">{flowWebFailure()}</Text>
+        <Text data-testid="gal-flow-webview-failure">{flowWebFailure}</Text>
         <FlowWebView
-          html={flowWebReloadB() ? FLOW_RELOAD_HOST_B : FLOW_RELOAD_HOST_A}
+          html={flowWebReloadB ? FLOW_RELOAD_HOST_B : FLOW_RELOAD_HOST_A}
           graph={FLOW_WEB_GRAPH_A}
-          onSelect={(node) => flowWebReloadStatus.set(node.id)}
+          onSelect={(node) => { flowWebReloadStatus = node.id }}
           data-testid="gal-flow-webview-reload"
         />
-        <Button onPress={() => flowWebReloadB.set(true)} data-testid="gal-flow-webview-reload-swap">
+        <Button onPress={() => { flowWebReloadB = true }} data-testid="gal-flow-webview-reload-swap">
           Reload host
         </Button>
-        <Text data-testid="gal-flow-webview-reload-status">{flowWebReloadStatus()}</Text>
+        <Text data-testid="gal-flow-webview-reload-status">{flowWebReloadStatus}</Text>
         <PieChart
           data={SLICES}
           value={(d: PieSlice) => d.total}
           label={(d: PieSlice) => d.name}
           height={180}
           toolbox={{ saveAsImage: true }}
-          onSaveImage={(url: string) => tbSaved.set(url.startsWith('data:image/png;') ? 'data:image/png;' : url)}
+          onSaveImage={(url: string) => { tbSaved = url.startsWith('data:image/png;') ? 'data:image/png;' : url }}
           data-testid="gal-save"
         />
-        <Text data-testid="gal-saved">{tbSaved()}</Text>
+        <Text data-testid="gal-saved">{tbSaved}</Text>
         <Button onPress={() => navigate('/tasks')} data-testid="gal-back">
           Back to tasks
         </Button>
@@ -1261,30 +1261,30 @@ function GalleryPage() {
 
 function DashboardPage() {
   const navigate = useNavigate()
-  const stages = signal<Stage[]>(STAGES_ALL)
-  const stagePick = signal(-1)
-  const stageName = computed(() => (stagePick() < 0 ? 'none' : stages()[stagePick()]!.name))
-  const load = signal(40)
+  let stages = state<Stage[]>(STAGES_ALL)
+  let stagePick = state(-1)
+  const stageName = derived(() => (stagePick < 0 ? 'none' : stages[stagePick]!.name))
+  let load = state(40)
   // The radar's tap reports the engine's `{ series, axis }` hit — a struct on every target.
-  const radarHit = signal('none')
-  const boxPick = signal(-1)
+  let radarHit = state('none')
+  let boxPick = state(-1)
   return (
     <Scroll direction="vertical" data-testid="dash-scroll">
       <Stack gap={3} padding={4} data-testid="dash-page">
         <FunnelChart
-          data={stages()}
+          data={stages}
           value={(d: Stage) => d.total}
           label={(d: Stage) => d.name}
           height={180}
           data-testid="dash-funnel"
-          onSelect={(i: number) => stagePick.set(i)}
+          onSelect={(i: number) => { stagePick = i }}
         />
-        <Text data-testid="dash-stage">{stageName()}</Text>
-        <Button onPress={() => stages.set(STAGES_DROPPED)} data-testid="dash-drop">
+        <Text data-testid="dash-stage">{stageName}</Text>
+        <Button onPress={() => { stages = STAGES_DROPPED }} data-testid="dash-drop">
           Drop first stage
         </Button>
         <GaugeChart
-          value={load()}
+          value={load}
           min={0}
           max={100}
           thickness={16}
@@ -1292,8 +1292,8 @@ function DashboardPage() {
           height={120}
           data-testid="dash-gauge"
         />
-        <Text data-testid="dash-load">{String(load())}</Text>
-        <Button onPress={() => load.set(load() + 25)} data-testid="dash-load-up">
+        <Text data-testid="dash-load">{String(load)}</Text>
+        <Button onPress={() => { load = load + 25 }} data-testid="dash-load-up">
           Load +25
         </Button>
         <PieChart
@@ -1315,19 +1315,19 @@ function DashboardPage() {
           title="Skills"
           data-testid="dash-radar"
           onSelectIndex={(h: RadarHitIndex) =>
-            radarHit.set(h.series < 0 ? 'miss' : 'S' + String(h.series) + 'A' + String(h.axis))
+            { radarHit = h.series < 0 ? 'miss' : 'S' + String(h.series) + 'A' + String(h.axis) }
           }
         />
-        <Text data-testid="dash-radar-hit">{radarHit()}</Text>
+        <Text data-testid="dash-radar-hit">{radarHit}</Text>
         <BoxplotChart
           data={SPREAD}
           values={(d: Spread) => d.samples}
           x={(d: Spread) => d.team}
           height={160}
           data-testid="dash-box"
-          onSelectIndex={(i: number) => boxPick.set(i)}
+          onSelectIndex={(i: number) => { boxPick = i }}
         />
-        <Text data-testid="dash-box-pick">{String(boxPick())}</Text>
+        <Text data-testid="dash-box-pick">{String(boxPick)}</Text>
         <HeatmapChart
           data={HEAT_CELLS}
           x={(d: HeatCellRow) => d.hour}
@@ -1351,24 +1351,24 @@ function StatsPage() {
   // The node index the last tap on the flow chart reported (-1 = none yet):
   // `onSelectIndex` is the engine's index hit on every target — a click on the
   // web canvas, a tap gesture over the same layout on iOS/Android.
-  const flowPick = signal(-1)
+  let flowPick = state(-1)
   // The bar index the last tap on the score chart reported (-1 = none yet).
-  const barPick = signal(-1)
+  let barPick = state(-1)
   // The window as text, so a device assertion can name it — pinch, presets
   // and the navigator all report through the same onZoom.
-  const zoomText = signal('0-100')
+  let zoomText = state('0-100')
   // The brush's committed range as text ('none' when cleared) — #3277: a NAMED
   // handler taking BrushRange | null narrows on every target.
-  const brushSel = signal('none')
+  let brushSel = state('none')
   const onBrushRange = (r: BrushRange | null) =>
-    brushSel.set(r === null ? 'none' : String(r.start) + '-' + String(r.end))
-  const scores = signal<Scores>({ math: 82, art: 91, gym: 74 })
-  const subjects = computed(() => Object.keys(scores()))
-  const total = computed(() => Object.values(scores()).reduce((a: number, b: number) => a + b, 0))
-  const average = computed(() => total() / subjects().length)
-  const high = computed(() => Object.values(scores()).flatMap((v: number) => (v > 80 ? [v] : [])))
-  const curved = computed(() =>
-    Object.values(scores()).filter((v: number, i: number) => v * 1.05 > i + 75),
+    { brushSel = r === null ? 'none' : String(r.start) + '-' + String(r.end) }
+  let scores = state.raw<Scores>({ math: 82, art: 91, gym: 74 })
+  const subjects = derived(() => Object.keys(scores))
+  const total = derived(() => Object.values(scores).reduce((a: number, b: number) => a + b, 0))
+  const average = derived(() => total / subjects.length)
+  const high = derived(() => Object.values(scores).flatMap((v: number) => (v > 80 ? [v] : [])))
+  const curved = derived(() =>
+    Object.values(scores).filter((v: number, i: number) => v * 1.05 > i + 75),
   )
   return (
     // The page outgrew the viewport when the navigator + brush charts landed:
@@ -1384,19 +1384,19 @@ function StatsPage() {
     // one level down crashes the device with no compile-time diagnostic.
     <Scroll direction="vertical" data-testid="stats-scroll">
       <Stack gap={3} padding={4} data-testid="stats-page">
-        <Text data-testid="stats-total">{String(total())}</Text>
-        <Text data-testid="stats-average">{String(average())}</Text>
-        <Text data-testid="stats-high">{String(high().length)}</Text>
-        <Text data-testid="stats-curved">{String(curved().length)}</Text>
+        <Text data-testid="stats-total">{String(total)}</Text>
+        <Text data-testid="stats-average">{String(average)}</Text>
+        <Text data-testid="stats-high">{String(high.length)}</Text>
+        <Text data-testid="stats-curved">{String(curved.length)}</Text>
         <SankeyChart
           nodes={FLOW_NODES}
           links={FLOW_LINKS}
           height={160}
           title="Task flow"
           data-testid="stats-flow"
-          onSelectIndex={(hit: SankeyHitIndex) => flowPick.set(hit.node)}
+          onSelectIndex={(hit: SankeyHitIndex) => { flowPick = hit.node }}
         />
-        <Text data-testid="stats-flow-pick">{String(flowPick())}</Text>
+        <Text data-testid="stats-flow-pick">{String(flowPick)}</Text>
         <PlotChart
           data={SCORE_ROWS}
           x={(d: ScoreRow) => d.subject}
@@ -1417,13 +1417,13 @@ function StatsPage() {
           height={240}
           title="Scores by subject"
           data-testid="stats-bars"
-          onSelect={(i: number) => barPick.set(i)}
+          onSelect={(i: number) => { barPick = i }}
           onZoom={(w: ZoomWindow) =>
-            zoomText.set(`${(w.start * 100).toFixed(0)}-${(w.end * 100).toFixed(0)}`)
+            { zoomText = `${(w.start * 100).toFixed(0)}-${(w.end * 100).toFixed(0)}` }
           }
         />
-        <Text data-testid="stats-bars-pick">{String(barPick())}</Text>
-        <Text data-testid="stats-zoom">{zoomText()}</Text>
+        <Text data-testid="stats-bars-pick">{String(barPick)}</Text>
+        <Text data-testid="stats-zoom">{zoomText}</Text>
         <PlotChart
           data={SCORE_ROWS}
           x={(d: ScoreRow) => d.subject}
@@ -1434,7 +1434,7 @@ function StatsPage() {
           data-testid="stats-brush"
           onBrush={onBrushRange}
         />
-        <Text data-testid="stats-brush-sel">{brushSel()}</Text>
+        <Text data-testid="stats-brush-sel">{brushSel}</Text>
         {/*
         The indicator marks, on the device. `sma` lowers to the crossing
         `smaValues`, and the `bollinger` SPREAD expands to the band plus its
@@ -1603,18 +1603,18 @@ function ToolkitScreen() {
   })
   // Forward: `data` is pushed into the live page without reloading it.
   // Reverse: the page's echo arrives here and lands in native UI.
-  const bridgeEcho = signal('none')
-  const hotkeyHits = signal(0)
+  let bridgeEcho = state('none')
+  let hotkeyHits = state(0)
   useHotkey('mod+s', () => {
-    hotkeyHits.set(hotkeyHits() + 1)
+    hotkeyHits = hotkeyHits + 1
   })
   const perms = usePermissions(['tasks.write'])
   // table: `createTableState` is the dependency-free half that lowers to the
   // native PyreonTableState engine. `useTable` (the TanStack row model) stays
   // web — this is the documented crossing surface, not a workaround.
-  const tableRows = signal<TableRow[]>([{ id: '1', label: 'Ada' }])
+  let tableRows = state.raw<TableRow[]>([{ id: '1', label: 'Ada' }])
   const table = createTableState({
-    data: () => tableRows(),
+    data: () => tableRows,
     columns: [{ id: 'label', accessor: (r: TableRow) => r.label }],
     pageSize: 10,
   })
@@ -1650,13 +1650,13 @@ function ToolkitScreen() {
   // would NOT do -- it keeps the process, so a persistence claim asserted that
   // way passes against a purely in-memory store.
   const crash = useCrashReporter()
-  const crashNote = signal('idle')
+  let crashNote = state('idle')
   const peer = new PyreonCrdtDoc('peer-2')
-  const crdtMerged = signal('pending')
+  let crdtMerged = state('pending')
   onMount(() => {
     peer.getMap('room').set('title', 'from-peer')
     doc.applyOps(peer.encodeState())
-    crdtMerged.set(String(doc.getMap('room').has('title')))
+    crdtMerged = String(doc.getMap('room').has('title'))
   })
   // http: the endpoint declared above, driven through useFetch.
   // TYPED: an untyped useFetch lowers to `decode(Any.self, …)` on Swift, which
@@ -1671,8 +1671,8 @@ function ToolkitScreen() {
     onReorder: (next: number[]) => nums.set(next),
   })
   // rx: a derived chain over a signal, which lowers to chained computeds.
-  const nums = signal<number[]>([1, 2, 3, 4])
-  const evens = filter_rx(nums, (x: number) => x % 2 === 0)
+  let nums = state.raw<number[]>([1, 2, 3, 4])
+  const evens = filter_rx(signalOf<typeof nums>(nums), (x: number) => x % 2 === 0)
   const doubled = map(evens, (x: number) => x * 2)
   // query: the same shape the registry verifies, so the gate and this app move
   // together.
@@ -1724,14 +1724,14 @@ function ToolkitScreen() {
               </Col>
             </Row>
           </Container>
-          <Text data-testid="toolkit-hotkey">{String(hotkeyHits())}</Text>
+          <Text data-testid="toolkit-hotkey">{String(hotkeyHits)}</Text>
           <WebView
             src="bridge.html"
             data={'ping'}
-            onMessage={(m) => bridgeEcho.set(m)}
+            onMessage={(m) => { bridgeEcho = m }}
             data-testid="toolkit-webview"
           />
-          <Text data-testid="toolkit-bridge">{bridgeEcho()}</Text>
+          <Text data-testid="toolkit-bridge">{bridgeEcho}</Text>
           <Field
             value={schemaForm.values().name}
             onChangeText={(v) => schemaForm.setFieldValue('name', v)}
@@ -1755,14 +1755,14 @@ function ToolkitScreen() {
             Toggle mode
           </Button>
           <Text data-testid="toolkit-synced">{String(synced())}</Text>
-          <Text data-testid="toolkit-crdt-map">{crdtMerged()}</Text>
+          <Text data-testid="toolkit-crdt-map">{crdtMerged}</Text>
           <Text data-testid="toolkit-crash-had">{String(crash.hadCrash)}</Text>
-          <Text data-testid="toolkit-crash-note">{crashNote()}</Text>
+          <Text data-testid="toolkit-crash-note">{crashNote}</Text>
           <Button
             onPress={() => {
               crash.breadcrumb('toolkit-tap')
               crash.recordError('device-proof')
-              crashNote.set('survived')
+              crashNote = 'survived'
             }}
             data-testid="toolkit-crash-record"
           >

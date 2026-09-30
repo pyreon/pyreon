@@ -100,7 +100,7 @@
  *  3. MCP server `validate` tool
  */
 
-import { detectPlain } from './plain'
+import { detectPlain, transformPlain } from './plain'
 import { filterSuppressed } from './detector-suppression'
 import ts from 'typescript'
 import { findChartsLegacyImports } from './charts-migration'
@@ -130,6 +130,7 @@ export type PyreonDiagnosticCode =
   | 'accessor-uncalled-in-template'
   | 'accessor-uncalled-in-condition'
   | 'charts-legacy-import'
+  | 'plain-mode'
 
 export interface PyreonDiagnostic {
   /** Machine-readable code for filtering + programmatic handling */
@@ -1529,6 +1530,35 @@ function visit(ctx: DetectContext, node: ts.Node): void {
 // Public API
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/**
+ * Plain Mode footguns — the pre-pass's OWN warnings (shallow-state mutation,
+ * a write to `derived`, an unlowerable `signalOf`, …) surfaced as detector
+ * findings. The pre-pass is the single source of truth, so this can never
+ * disagree with the build; without it `validate` / `pyreon check` / doctor
+ * saw a plain file as clean while the compiler was warning about it.
+ */
+function detectPlainModeWarnings(ctx: DetectContext, filename: string): void {
+  let result
+  try {
+    result = transformPlain(ctx.code, filename)
+  } catch {
+    return
+  }
+  if (!result) return
+  const lines = ctx.code.split('\n')
+  for (const w of result.warnings) {
+    ctx.diagnostics.push({
+      code: 'plain-mode',
+      message: w.message.replace(/^\[plain\] /, 'Plain Mode: '),
+      line: w.line,
+      column: w.column,
+      current: (lines[w.line - 1] ?? '').trim(),
+      suggested: 'See the message — the compiler cannot give this line the meaning it reads as.',
+      fixable: false,
+    })
+  }
+}
+
 export function detectPyreonPatterns(code: string, filename = 'input.tsx'): PyreonDiagnostic[] {
   assertClassicTs()
   const sf = ts.createSourceFile(filename, code, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TSX)
@@ -1546,6 +1576,7 @@ export function detectPyreonPatterns(code: string, filename = 'input.tsx'): Pyre
   }
   visit(ctx, sf)
   detectChartsLegacyImports(ctx)
+  if (ctx.plainMode) detectPlainModeWarnings(ctx, filename)
   // Sort by (line, column) for stable ordering when multiple patterns fire.
   ctx.diagnostics.sort((a, b) => a.line - b.line || a.column - b.column)
   // …then drop what a `// pyreon-lint-ignore` above the line silenced. A

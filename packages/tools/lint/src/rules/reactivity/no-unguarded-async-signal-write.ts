@@ -75,6 +75,7 @@ export const noUnguardedAsyncSignalWrite: Rule = {
     // cannot race with itself — measured, that was 40 of the first 42 findings.
     appliesTo: ['shared', 'client', 'server'],
     fixable: false,
+    plainLowered: true,
   },
   create(context) {
     /** Enclosing functions, outermost first — a guard may live one scope out. */

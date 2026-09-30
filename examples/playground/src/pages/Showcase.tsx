@@ -10,19 +10,20 @@ import {
   useContext,
 } from '@pyreon/core'
 import { useHead } from '@pyreon/head/use-head'
-import { batch, computed, createSelector, effect, signal } from '@pyreon/reactivity'
+import { state, derived, effect, signalOf } from '@pyreon/core/plain'
+import { batch, createSelector, untrack } from '@pyreon/reactivity'
 
 // ─── Code Block ──────────────────────────────────────────────────────────────
 
 function CodeBlock(props: { code: string }) {
-  const open = signal(false)
+  let open = state(false)
 
   return (
     <>
-      <button type="button" class="code-toggle" onClick={() => open.update((v) => !v)}>
-        {() => (open() ? '▾ Hide Source' : '▸ View Source')}
+      <button type="button" class="code-toggle" onClick={() => { open = !open }}>
+        {() => (open ? '▾ Hide Source' : '▸ View Source')}
       </button>
-      <Show when={() => open()}>
+      <Show when={() => open}>
         <pre class="code-block">{props.code}</pre>
       </Show>
     </>
@@ -36,11 +37,11 @@ const ThemeContext = createContext<{ accent: () => string; toggle: () => void }>
 
 function ThemeProvider(props: { children?: VNodeChild }) {
   const colors = ['#7c6af7', '#f06060', '#4ecdc4', '#ffe66d'] as const
-  const index = signal(0)
-  const accent = computed(() => colors[index() % colors.length] as string)
-  const toggle = () => index.update((i) => i + 1)
+  let index = state(0)
+  const accent = derived(() => colors[index % colors.length] as string)
+  const toggle = () => { index = index + 1 }
 
-  provide(ThemeContext, { accent, toggle })
+  provide(ThemeContext, { accent: signalOf<typeof accent>(accent), toggle })
   return props.children
 }
 
@@ -62,13 +63,13 @@ function ThemeSwatch() {
 // computed() derives values. effect() runs side effects when signals change.
 
 function SignalsDemo() {
-  const count = signal(0)
-  const doubled = computed(() => count() * 2)
-  const history = signal<number[]>([])
+  let count = state(0)
+  const doubled = derived(() => count * 2)
+  let history = state.raw<number[]>([])
 
   // effect() re-runs whenever its signal dependencies change
   effect(() => {
-    history.update((h) => [...h.slice(-9), count()])
+    history = ((h) => [...h.slice(-9), count])(untrack(() => history))
   })
 
   return (
@@ -79,16 +80,16 @@ function SignalsDemo() {
         changes.
       </p>
       <div class="demo-row">
-        <button type="button" onClick={() => count.update((n) => n - 1)}>
+        <button type="button" onClick={() => { count = count - 1 }}>
           -
         </button>
-        <span class="demo-value">{() => count()}</span>
-        <button type="button" onClick={() => count.update((n) => n + 1)}>
+        <span class="demo-value">{() => count}</span>
+        <button type="button" onClick={() => { count = count + 1 }}>
           +
         </button>
       </div>
-      <p class="demo-meta">doubled: {() => doubled()}</p>
-      <p class="demo-meta">history: {() => history().join(' → ')}</p>
+      <p class="demo-meta">doubled: {() => doubled}</p>
+      <p class="demo-meta">history: {() => history.join(' → ')}</p>
       <CodeBlock
         code={`const count = signal(0)
 const doubled = computed(() => count() * 2)
@@ -111,28 +112,28 @@ effect(() => {
 // batch() groups multiple signal writes into a single reactive flush.
 
 function BatchDemo() {
-  const first = signal('Jane')
-  const last = signal('Doe')
-  const renderCount = signal(0)
-  const fullName = computed(() => {
-    renderCount.update((n) => n + 1)
-    return `${first()} ${last()}`
+  let first = state('Jane')
+  let last = state('Doe')
+  let renderCount = state(0)
+  const fullName = derived(() => {
+    renderCount = ((n) => n + 1)(untrack(() => renderCount))
+    return `${first} ${last}`
   })
 
   const swapBatched = () => {
     batch(() => {
-      const f = first()
-      const l = last()
-      first.set(l)
-      last.set(f)
+      const f = first
+      const l = last
+      first = l
+      last = f
     })
   }
 
   const swapUnbatched = () => {
-    const f = first()
-    const l = last()
-    first.set(l)
-    last.set(f)
+    const f = first
+    const l = last
+    first = l
+    last = f
   }
 
   return (
@@ -141,8 +142,8 @@ function BatchDemo() {
       <p class="demo-desc">
         batch() coalesces multiple signal writes — computed re-evaluates once, not twice.
       </p>
-      <p class="demo-value">{() => fullName()}</p>
-      <p class="demo-meta">computed evaluations: {() => renderCount()}</p>
+      <p class="demo-value">{() => fullName}</p>
+      <p class="demo-meta">computed evaluations: {() => renderCount}</p>
       <div class="demo-row">
         <button type="button" onClick={swapBatched}>
           Swap (batched)
@@ -175,19 +176,19 @@ last.set("Jane")   // fullName recomputes → "Doe Jane"`}
 // The fallback renders when falsy. No VDOM diffing — direct DOM swap.
 
 function ShowDemo() {
-  const loggedIn = signal(false)
-  const username = signal('pyreon_user')
+  let loggedIn = state(false)
+  let username = state('pyreon_user')
 
   return (
     <div class="demo-section">
       <h3>{'<Show>'} — Conditional Rendering</h3>
       <p class="demo-desc">Efficiently swaps DOM branches. No virtual DOM diffing needed.</p>
       <Show
-        when={() => loggedIn()}
+        when={() => loggedIn}
         fallback={
           <div class="demo-box">
             <p>Not logged in</p>
-            <button type="button" onClick={() => loggedIn.set(true)}>
+            <button type="button" onClick={() => { loggedIn = true }}>
               Log in
             </button>
           </div>
@@ -195,14 +196,14 @@ function ShowDemo() {
       >
         <div class="demo-box">
           <p>
-            Welcome, <strong>{() => username()}</strong>
+            Welcome, <strong>{() => username}</strong>
           </p>
           <input
             type="text"
-            value={() => username()}
-            onInput={(e) => username.set(e.currentTarget.value)}
+            value={() => username}
+            onInput={(e) => { username = e.currentTarget.value }}
           />
-          <button type="button" onClick={() => loggedIn.set(false)}>
+          <button type="button" onClick={() => { loggedIn = false }}>
             Log out
           </button>
         </div>
@@ -239,42 +240,42 @@ interface User {
 }
 
 function ForDemo() {
-  const users = signal<User[]>([
+  let users = state.raw<User[]>([
     { id: 1, name: 'Alice', score: 92 },
     { id: 2, name: 'Bob', score: 87 },
     { id: 3, name: 'Carol', score: 95 },
     { id: 4, name: 'Dave', score: 78 },
   ])
 
-  const sortByScore = () => users.update((list) => [...list].sort((a, b) => b.score - a.score))
+  const sortByScore = () => { users = ((list) => [...list].sort((a, b) => b.score - a.score))(untrack(() => users)) }
 
   const sortByName = () =>
-    users.update((list) => [...list].sort((a, b) => a.name.localeCompare(b.name)))
+    { users = ((list) => [...list].sort((a, b) => a.name.localeCompare(b.name)))(untrack(() => users)) }
 
   const shuffle = () =>
-    users.update((list) => {
+    { users = ((list) => {
       const shuffled = [...list]
       for (let i = shuffled.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1))
         ;[shuffled[i], shuffled[j]] = [shuffled[j] as User, shuffled[i] as User]
       }
       return shuffled
-    })
+    })(untrack(() => users)) }
 
   const addUser = () => {
     const names = ['Eve', 'Frank', 'Grace', 'Hank', 'Ivy', 'Jack']
     const name = names[Math.floor(Math.random() * names.length)] as string
-    users.update((list) => [
-      ...list,
+    users = [
+      ...users,
       { id: Date.now(), name, score: Math.floor(Math.random() * 40) + 60 },
-    ])
+    ]
   }
 
-  const removeUser = (id: number) => users.update((list) => list.filter((u) => u.id !== id))
+  const removeUser = (id: number) => { users = ((list) => list.filter((u) => u.id !== id))(untrack(() => users)) }
 
   // createSelector — O(1) selection tracking (only old + new row re-render on change)
-  const selectedId = signal<number | null>(null)
-  const isSelected = createSelector(selectedId)
+  let selectedId = state<number | null>(null)
+  const isSelected = createSelector(signalOf<typeof selectedId>(selectedId))
 
   return (
     <div class="demo-section">
@@ -298,15 +299,15 @@ function ForDemo() {
       </div>
       <ul class="user-list">
         <For
-          each={() => users()}
+          each={() => users}
           by={(u) => u.id}
           children={(user) => (
             <li
               class={() => (isSelected(user.id) ? 'user-row selected' : 'user-row')}
-              onClick={() => selectedId.set(user.id === selectedId() ? null : user.id)}
+              onClick={() => { selectedId = user.id === selectedId ? null : user.id }}
               onKeyDown={(e: KeyboardEvent) => {
                 if (e.key === 'Enter' || e.key === ' ')
-                  selectedId.set(user.id === selectedId() ? null : user.id)
+                  selectedId = user.id === selectedId ? null : user.id
               }}
             >
               <span class="user-name">{user.name}</span>
@@ -346,18 +347,18 @@ const isSelected = createSelector(selectedId)
 // createRef() gives a stable { current } container for DOM references.
 
 function LifecycleDemo() {
-  const visible = signal(true)
-  const log = signal<string[]>([])
+  let visible = state(true)
+  let log = state.raw<string[]>([])
 
-  const addLog = (msg: string) => log.update((l) => [...l.slice(-7), msg])
+  const addLog = (msg: string) => { log = [...log.slice(-7), msg] }
 
   function TimerWidget() {
-    const elapsed = signal(0)
+    let elapsed = state(0)
     const canvasRef = createRef<HTMLCanvasElement>()
 
     onMount(() => {
       addLog('TimerWidget mounted')
-      const id = setInterval(() => elapsed.update((n) => n + 1), 1000)
+      const id = setInterval(() => { elapsed = elapsed + 1 }, 1000)
 
       // Draw on the canvas via ref
       const ctx = canvasRef.current?.getContext('2d')
@@ -380,7 +381,7 @@ function LifecycleDemo() {
 
     return (
       <div class="demo-box">
-        <p>Elapsed: {() => elapsed()}s</p>
+        <p>Elapsed: {() => elapsed}s</p>
         <canvas ref={canvasRef} width={120} height={40} />
       </div>
     )
@@ -392,13 +393,13 @@ function LifecycleDemo() {
       <p class="demo-desc">
         onMount returns a cleanup function. createRef provides typed DOM access.
       </p>
-      <button type="button" onClick={() => visible.update((v) => !v)}>
-        {() => (visible() ? 'Unmount widget' : 'Mount widget')}
+      <button type="button" onClick={() => { visible = !visible }}>
+        {() => (visible ? 'Unmount widget' : 'Mount widget')}
       </button>
-      <Show when={() => visible()}>
+      <Show when={() => visible}>
         <TimerWidget />
       </Show>
-      <pre class="log-output">{() => log().join('\n')}</pre>
+      <pre class="log-output">{() => log.join('\n')}</pre>
       <CodeBlock
         code={`function TimerWidget() {
   const elapsed = signal(0)
@@ -435,12 +436,12 @@ function LifecycleDemo() {
 // Reactive <title> and <meta> tags. Updates when signals change.
 
 function HeadDemo() {
-  const title = signal('Pyreon Showcase')
-  const description = signal('A comprehensive demo of the Pyreon framework')
+  let title = state('Pyreon Showcase')
+  let description = state('A comprehensive demo of the Pyreon framework')
 
   useHead(() => ({
-    title: title(),
-    meta: [{ name: 'description', content: description() }],
+    title: title,
+    meta: [{ name: 'description', content: description }],
   }))
 
   return (
@@ -449,11 +450,11 @@ function HeadDemo() {
       <p class="demo-desc">Reactive document title and meta tags. Check your browser tab!</p>
       <input
         type="text"
-        value={() => title()}
-        onInput={(e) => title.set(e.currentTarget.value)}
+        value={() => title}
+        onInput={(e) => { title = e.currentTarget.value }}
         placeholder="Page title"
       />
-      <p class="demo-meta">Tab title: {() => title()}</p>
+      <p class="demo-meta">Tab title: {() => title}</p>
       <CodeBlock
         code={`const title = signal("Pyreon Showcase")
 

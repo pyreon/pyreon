@@ -1,5 +1,5 @@
 import { useHead } from "@pyreon/head"
-import { computed, signal } from "@pyreon/reactivity"
+import { state, derived } from '@pyreon/core/plain'
 
 export const meta = {
   title: "Counter — Pyreon Zero",
@@ -9,9 +9,9 @@ export const meta = {
 export default function Counter() {
   useHead({ title: meta.title })
 
-  const count = signal(0)
-  const doubled = computed(() => count() * 2)
-  const isEven = computed(() => count() % 2 === 0)
+  let count = state(0)
+  const doubled = derived(() => count * 2)
+  const isEven = derived(() => count % 2 === 0)
 
   return (
     <>
@@ -32,17 +32,17 @@ export default function Counter() {
           <button
             type="button"
             class="btn btn-secondary"
-            onClick={() => count.update((n) => n - 1)}
+            onClick={() => { count = count - 1 }}
           >
             -
           </button>
-          <button type="button" class="btn btn-primary" onClick={() => count.set(0)}>
+          <button type="button" class="btn btn-primary" onClick={() => { count = 0 }}>
             Reset
           </button>
           <button
             type="button"
             class="btn btn-secondary"
-            onClick={() => count.update((n) => n + 1)}
+            onClick={() => { count = count + 1 }}
           >
             +
           </button>
@@ -57,7 +57,7 @@ export default function Counter() {
             doubled → <strong>{doubled}</strong>
           </div>
           <div>
-            isEven → <strong>{isEven() ? "true" : "false"}</strong>
+            isEven → <strong>{isEven ? "true" : "false"}</strong>
           </div>
         </div>
       </div>

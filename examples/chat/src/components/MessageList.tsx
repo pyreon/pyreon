@@ -1,5 +1,6 @@
 import { onMount } from '@pyreon/core'
-import { effect, signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
+import { effect } from '@pyreon/reactivity'
 import { useVirtualizer } from '@pyreon/virtual'
 import type { Message } from '../lib/types'
 
@@ -28,29 +29,29 @@ interface MessageListProps {
  * intentionally — then leave them where they are.
  */
 export default function MessageList(props: MessageListProps) {
-  const scrollEl = signal<HTMLDivElement | null>(null)
-  const isAtBottom = signal(true)
+  let scrollEl = state<HTMLDivElement | null>(null)
+  let isAtBottom = state(true)
 
   const v = useVirtualizer<HTMLDivElement, HTMLElement>(() => ({
     count: props.messages.length,
-    getScrollElement: () => scrollEl(),
+    getScrollElement: () => scrollEl,
     estimateSize: () => 64,
     overscan: 8,
     getItemKey: (i) => (props.messages[i]?.id ?? i) as string | number,
   }))
 
   onMount(() => {
-    const el = scrollEl()
+    const el = scrollEl
     if (!el) return
     el.scrollTop = el.scrollHeight
   })
 
   effect(() => {
-    const el = scrollEl()
+    const el = scrollEl
     if (!el) return
     const handler = () => {
       const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 20
-      isAtBottom.set(atBottom)
+      isAtBottom = atBottom
     }
     el.addEventListener('scroll', handler, { passive: true })
     handler()
@@ -60,8 +61,8 @@ export default function MessageList(props: MessageListProps) {
   // When messages append AND user was at bottom, stick to bottom.
   effect(() => {
     const count = props.messages.length
-    const el = scrollEl()
-    if (!el || !isAtBottom()) return
+    const el = scrollEl
+    if (!el || !isAtBottom) return
     requestAnimationFrame(() => {
       el.scrollTop = el.scrollHeight
     })
@@ -71,7 +72,7 @@ export default function MessageList(props: MessageListProps) {
   return (
     <div
       class="message-list-scroll"
-      ref={(el) => scrollEl.set(el as HTMLDivElement)}
+      ref={(el) => { scrollEl = el as HTMLDivElement }}
       data-testid="message-list"
     >
       <div

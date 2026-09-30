@@ -1,4 +1,5 @@
-import { computed, signal } from '@pyreon/reactivity'
+import { state, derived, signalOf } from '@pyreon/core/plain'
+import { untrack } from '@pyreon/reactivity'
 import { defineStore } from '@pyreon/store'
 import { chatBus } from './data/eventBus'
 import { ME, channels, initialMessages } from './data/seed'
@@ -22,34 +23,34 @@ import type { Message } from './data/types'
  */
 export const useChat = defineStore('chat', () => {
   // Seeded message log — built from `initialMessages` once at module load.
-  const messagesByChannel = signal<Record<string, Message[]>>(initialMessages)
+  let messagesByChannel = state<Record<string, Message[]>>(initialMessages)
 
   // Currently selected channel — defaults to the first one.
-  const selectedChannelId = signal<string>(channels[0]?.id ?? 'general')
+  let selectedChannelId = state<string>(channels[0]?.id ?? 'general')
 
   // Subscribe to the mock server. The unsubscribe is intentionally
   // never called: the store is a singleton for the lifetime of the
   // section, so we want messages to keep flowing even when the user
   // navigates between channels.
   chatBus.subscribe((message) => {
-    messagesByChannel.update((current) => {
+    messagesByChannel = ((current) => {
       const channelMessages = current[message.channelId] ?? []
       return {
         ...current,
         [message.channelId]: [...channelMessages, message],
       }
-    })
+    })(untrack(() => messagesByChannel))
   })
 
   /** Reactive accessor for the messages in the currently selected channel. */
-  const visibleMessages = computed(() => {
-    const id = selectedChannelId()
-    return messagesByChannel()[id] ?? []
+  const visibleMessages = derived(() => {
+    const id = selectedChannelId
+    return messagesByChannel[id] ?? []
   })
 
   // ── Actions ────────────────────────────────────────────────────────
   function selectChannel(id: string): void {
-    selectedChannelId.set(id)
+    selectedChannelId = id
   }
 
   /**
@@ -70,34 +71,34 @@ export const useChat = defineStore('chat', () => {
       own: true,
       pending: true,
     }
-    messagesByChannel.update((current) => ({
-      ...current,
-      [channelId]: [...(current[channelId] ?? []), optimistic],
-    }))
+    messagesByChannel = ({
+      ...messagesByChannel,
+      [channelId]: [...(messagesByChannel[channelId] ?? []), optimistic],
+    })
 
     try {
       const server = await chatBus.send(channelId, body, ME)
-      messagesByChannel.update((current) => ({
+      messagesByChannel = ((current) => ({
         ...current,
         [channelId]: (current[channelId] ?? []).map((m) =>
           m.id === optimisticId ? { ...server, own: true } : m,
         ),
-      }))
+      }))(untrack(() => messagesByChannel))
     } catch (error) {
       // Roll back the optimistic insert.
-      messagesByChannel.update((current) => ({
+      messagesByChannel = ((current) => ({
         ...current,
         [channelId]: (current[channelId] ?? []).filter((m) => m.id !== optimisticId),
-      }))
+      }))(untrack(() => messagesByChannel))
       throw error
     }
   }
 
   return {
     channels,
-    messagesByChannel,
-    selectedChannelId,
-    visibleMessages,
+    messagesByChannel: signalOf<typeof messagesByChannel>(messagesByChannel),
+    selectedChannelId: signalOf<typeof selectedChannelId>(selectedChannelId),
+    visibleMessages: signalOf<typeof visibleMessages>(visibleMessages),
     selectChannel,
     sendMessage,
   }
