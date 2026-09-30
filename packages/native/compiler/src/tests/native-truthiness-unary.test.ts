@@ -55,7 +55,7 @@ describe('P1 — truthiness unary + isNaN + loud guards (sweep batch 2)', () => 
   })
   it('Kotlin: the truthiness mirror (`!= 0` / `isNotEmpty`)', () => {
     const dd = transform(A(`  const out = computed(() => !!s().length)`), { target: 'kotlin' })
-    expect(dd.code).toContain('!= 0)')
+    expect(dd.code).toContain('!= 0L)')
     const st = transform(A(`  const out = computed(() => !s())`), { target: 'kotlin' })
     expect(st.code).toContain('.isEmpty()')
   })

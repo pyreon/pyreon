@@ -69,6 +69,30 @@ export function App() { const Mode = 2; return <Text>{Mode}</Text> }`
     }
   })
 
+  // A schema's NESTED structs are named after it (`Book_Author`). They follow
+  // the renamed parent, so the emit never mixes `BookValue` with `Book_…`.
+  it('nested schema structs follow the renamed parent', () => {
+    const src = `import { s } from '@pyreon/validate'
+export type Book = { title: string; author: { name: string }; items: { n: number }[] }
+export const Book = s.object({
+  title: s.string(),
+  author: s.object({ name: s.string() }),
+  items: s.array(s.object({ n: s.number() })),
+})`
+    for (const target of ['swift', 'kotlin'] as const) {
+      const out = transform(src, { target })
+      expect(out.warnings).toEqual([])
+      expect(out.code).toContain('PyreonZodSchema_BookValue_Author')
+      expect(out.code).toContain('PyreonZodSchema_BookValue_Items_Item')
+      expect(out.code).not.toMatch(/PyreonZodSchema_Book_/)
+      expect(out.code).not.toMatch(/\b(?:let|val) Book_/)
+    }
+    const r = validateSwiftWithStubs(transform(src, { target: 'swift' }).code)
+    if (!r.skipped) expect(r.error ?? '').toBe('')
+    const k = validateKotlin(transform(src, { target: 'kotlin' }).code)
+    if (!k.skipped) expect(k.error ?? '').toBe('')
+  }, 300_000)
+
   it('a file with no clash is untouched', () => {
     const src = `import { Text } from '@pyreon/primitives'
 type Pet = { name: string }

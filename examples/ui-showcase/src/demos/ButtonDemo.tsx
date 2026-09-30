@@ -1,8 +1,8 @@
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { Button, CloseButton, IconButton, Title } from '@pyreon/ui-components'
 
 export function ButtonDemo() {
-  const count = signal(0)
+  let count = state(0)
 
   return (
     <div>
@@ -34,10 +34,10 @@ export function ButtonDemo() {
 
       <Title size="h3" style="margin-bottom: 12px">Interactive</Title>
       <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 24px;">
-        <Button state="primary" onClick={() => count.update((n) => n + 1)}>
-          Clicked: {count()}
+        <Button state="primary" onClick={() => { count = count + 1 }}>
+          Clicked: {count}
         </Button>
-        <Button state="danger" variant="outline" onClick={() => count.set(0)}>
+        <Button state="danger" variant="outline" onClick={() => { count = 0 }}>
           Reset
         </Button>
       </div>
@@ -62,8 +62,8 @@ export function ButtonDemo() {
         <Button
           data-testid="reactive-prop-button"
           state="primary"
-          title={`count: ${count()}`}
-          onClick={() => count.update((n) => n + 1)}
+          title={`count: ${count}`}
+          onClick={() => { count = count + 1 }}
         >
           Click to bump signal
         </Button>

@@ -1,8 +1,8 @@
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { Select, Title } from '@pyreon/ui-components'
 
 export function SelectDemo() {
-  const country = signal('')
+  let country = state('')
 
   return (
     <div>
@@ -10,8 +10,8 @@ export function SelectDemo() {
 
       <div style="max-width: 400px; margin-bottom: 24px;">
         <Select
-          value={country()}
-          onChange={(v: string) => country.set(v)}
+          value={country}
+          onChange={(v: string) => { country = v }}
           placeholder="Choose a country"
         >
           <option value="us">United States</option>
@@ -20,7 +20,7 @@ export function SelectDemo() {
           <option value="de">Germany</option>
         </Select>
         <p style="font-size: 13px; color: #6b7280; margin-top: 8px;">
-          Selected: {() => country() || '(none)'}
+          Selected: {() => country || '(none)'}
         </p>
       </div>
     </div>

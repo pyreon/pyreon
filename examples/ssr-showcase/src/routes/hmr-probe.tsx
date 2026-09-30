@@ -1,4 +1,4 @@
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 
 /**
  * Dedicated HMR regression probe — exercised ONLY by `e2e/zero-hmr.spec.ts`.
@@ -16,7 +16,7 @@ import { signal } from '@pyreon/reactivity'
  * registry. The spec restores the marker text in a `finally`, so this file
  * is byte-identical to its committed state after every run.
  */
-const count = signal(0)
+let count = state(0)
 
 export default function HmrProbePage() {
   return (
@@ -24,12 +24,12 @@ export default function HmrProbePage() {
       <h1>Zero HMR Probe</h1>
       <p data-testid="hmr-marker">MARKER_V1</p>
       <p>
-        count: <span data-testid="hmr-count">{() => count()}</span>
+        count: <span data-testid="hmr-count">{() => count}</span>
       </p>
       <button
         type="button"
         data-testid="hmr-inc"
-        onClick={() => count.update((n) => n + 1)}
+        onClick={() => { count = count + 1 }}
       >
         increment
       </button>

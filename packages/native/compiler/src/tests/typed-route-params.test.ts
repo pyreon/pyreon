@@ -220,7 +220,7 @@ describe('typed route params — Kotlin (mirror)', () => {
       `,
       'kotlin',
     )
-    expect(out).toContain('(params["count"] ?: "").toIntOrNull() ?: 0')
+    expect(out).toContain('(params["count"] ?: "").toLongOrNull() ?: 0L')
     expect(out).toContain('(params["active"] ?: "") == "true"')
   })
 

@@ -52,7 +52,7 @@ describe('component props via a NAMED local type alias', () => {
 
   it('Kotlin: resolves the alias — parameters are declared', () => {
     const out = transform(NAMED_REF_APP, { target: 'kotlin' })
-    expect(out.code).toContain('fun Card(qty: Int, label: String? = null)')
+    expect(out.code).toContain('fun Card(qty: Long, label: String? = null)')
     expect(out.warnings ?? []).toEqual([])
   })
 
@@ -80,7 +80,7 @@ export function Row({ label, qty }: RowProps) {
     expect(sw.code).toContain('let label: String')
     expect(sw.code).toContain('let qty: Int')
     const kt = transform(src, { target: 'kotlin' })
-    expect(kt.code).toContain('fun Row(label: String, qty: Int)')
+    expect(kt.code).toContain('fun Row(label: String, qty: Long)')
   })
 
   it('an UNRESOLVABLE props type warns loudly (imported type)', () => {
@@ -110,14 +110,14 @@ describe('optional props / fields preserve `?` with omit-friendly defaults', () 
 
   it('Kotlin: data class gets `var x: T? = null`', () => {
     const out = transform(NAMED_REF_APP, { target: 'kotlin' }).code
-    expect(out).toContain('data class CardProps(var qty: Int, var label: String? = null)')
+    expect(out).toContain('data class CardProps(var qty: Long, var label: String? = null)')
   })
 
   it('call sites may OMIT an optional prop (no arg emitted, default fills)', () => {
     const sw = transform(NAMED_REF_APP, { target: 'swift' }).code
     expect(sw).toContain('Card(qty: 2)')
     const kt = transform(NAMED_REF_APP, { target: 'kotlin' }).code
-    expect(kt).toContain('Card(qty = 2)')
+    expect(kt).toContain('Card(qty = 2L)')
   })
 })
 

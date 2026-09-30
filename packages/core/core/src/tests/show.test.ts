@@ -276,6 +276,21 @@ describe('Switch', () => {
     expect(getter()).toBe('from-props')
   })
 
+  test('Match with zero vnode.children AND no props.children resolves to null', () => {
+    // Covers the `?? null` fallback when there is nothing to fall back TO —
+    // a Match branch with no vnode children (`h(Match, { when: ... })`, no
+    // further args) and no `children` prop set at all.
+    const matchVNode = {
+      type: Match,
+      props: { when: () => true },
+      children: [],
+      key: null,
+    } as unknown as VNodeChild
+    const result = Switch({ children: [matchVNode] })
+    const getter = result as unknown as () => VNodeChild
+    expect(getter()).toBeNull()
+  })
+
   test('Match with single vnode.children returns it directly (not array)', () => {
     const result = Switch({
       children: [h(Match, { when: () => true }, 'single')],

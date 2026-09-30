@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { headroomIsSufficient, requiredHeadroom } from '../../../../../scripts/check-bundle-budgets'
+import { headroomIsSufficient, isThinHeadroom, requiredHeadroom } from '../../../../../scripts/check-bundle-budgets'
 
 // The gate that catches platform-dependent BUDGETS had a platform-dependent
 // VERDICT of its own: both `budget - measured` and `measured * 1.5%` read the
@@ -51,5 +51,20 @@ describe('a budget gets the same verdict on both machines', () => {
   it('a comfortable budget is unaffected — this is not a blanket tightening', () => {
     expect(headroomIsSufficient(1000, 2000, false)).toBe(true)
     expect(headroomIsSufficient(1000, 2000, true)).toBe(true)
+  })
+})
+
+describe('the gate flags a budget the gating machine would EXCEED', () => {
+  it('a negative worst-case headroom is thin, not silently fine', () => {
+    // `@pyreon/http`'s real figures: 5935 B on macOS against a 6000 B budget.
+    // Inflated to the ubuntu figure that is ~6000.3 B — over budget in CI,
+    // under it locally. The loop's old `headroom >= 0 && …` guard reported
+    // exactly this band as nothing at all.
+    expect(isThinHeadroom(5935, 6000, false)).toBe(true)
+    expect(isThinHeadroom(5935, 6205, false)).toBe(false)
+  })
+
+  it('a budget already exceeded here is a violation, not thin', () => {
+    expect(isThinHeadroom(6100, 6000, false)).toBe(false)
   })
 })

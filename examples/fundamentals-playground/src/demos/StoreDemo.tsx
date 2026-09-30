@@ -1,4 +1,4 @@
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { computed, defineStore, signal as storeSignal } from '@pyreon/store'
 
 export const useCounter = defineStore('playground-counter', () => {
@@ -11,11 +11,11 @@ export const useCounter = defineStore('playground-counter', () => {
 
 export function StoreDemo() {
   const { store, patch, subscribe, reset } = useCounter()
-  const log = signal<string[]>([])
+  let log = state.raw<string[]>([])
 
   subscribe((mutation) => {
     const entry = `[${mutation.type}] ${mutation.events.map((e) => `${e.key}: ${JSON.stringify(e.oldValue)} → ${JSON.stringify(e.newValue)}`).join(', ')}`
-    log.update((lines) => [...lines.slice(-9), entry])
+    log = [...log.slice(-9), entry]
   })
 
   return (
@@ -59,7 +59,7 @@ export function StoreDemo() {
         <h3>Mutation Log</h3>
         <div class="log">
           {() =>
-            log().length === 0 ? 'No mutations yet. Click a button above.' : log().join('\n')
+            log.length === 0 ? 'No mutations yet. Click a button above.' : log.join('\n')
           }
         </div>
       </div>

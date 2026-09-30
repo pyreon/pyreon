@@ -64,7 +64,7 @@ describe('Object.keys on native — lowering + degrade-and-warn', () => {
   it('Kotlin: Object.keys(inline literal) → listOf(...); Object.values(homogeneous literal) → listOf of the values', () => {
     const out = transform(SRC, { target: 'kotlin' })
     expect(out.code).toContain('listOf("alpha", "beta", "gamma")')
-    expect(out.code).toContain('listOf(1, 2)')
+    expect(out.code).toContain('listOf(1L, 2L)')
     expect(out.code).not.toContain('Object.keys')
     expect(out.code).not.toContain('Object.values')
     expect(out.warnings).toHaveLength(0)

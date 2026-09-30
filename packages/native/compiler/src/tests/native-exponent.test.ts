@@ -39,7 +39,7 @@ describe('exponent operator', () => {
 
   it('Kotlin: lowers `**` to Math.pow with Double coercion', () => {
     const r = transform(app(`  const sq = computed(() => base() ** 2)`), { target: 'kotlin' })
-    expect(r.code).toContain('Math.pow((base).toDouble(), (2).toDouble())')
+    expect(r.code).toContain('Math.pow((base).toDouble(), (2L).toDouble())')
     expect(r.warnings).toEqual([])
   })
 

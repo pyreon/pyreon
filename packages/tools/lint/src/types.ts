@@ -132,6 +132,17 @@ export interface RuleMeta {
    */
   schema?: RuleOptionsSchema
   /**
+   * Also run this rule on the COMPILED form of a Plain Mode file. Plain code
+   * (`let x = state(0)`, `x = 1`) has none of the classic signal syntax a
+   * reactivity rule matches (`signal(…)`, `x.set(…)`), so without this every
+   * such rule silently stops protecting a plain file. The runner lowers the
+   * file with the plain pre-pass (line-preserving) and maps each diagnostic
+   * back to its source line; autofixes are dropped for those diagnostics.
+   * Opt in only when the rule's finding still means the same thing for the
+   * plain author — never for a rule Plain Mode's semantics already fix.
+   */
+  plainLowered?: boolean
+  /**
    * Opt-in best-practice rule. When `true`, the standard presets
    * (`recommended` / `strict` / `app` / `lib`) force this rule OFF so
    * it never adds noise or a score penalty unless the user wants it.

@@ -1,6 +1,6 @@
 import { kinetic } from '@pyreon/kinetic'
 import { compose, presets, reverse, withDelay, withDuration, withEasing } from '@pyreon/kinetic-presets'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { Button, Title, Paragraph } from '@pyreon/ui-components'
 
 const ComposedFadeSlide = kinetic('div').preset(compose(presets.fade, presets.slideUp))
@@ -15,11 +15,11 @@ const boxStyle =
   'padding: 24px; background: #0070f3; color: white; border-radius: 8px; text-align: center; font-weight: 600;'
 
 export function AnimationsCompositionsDemo() {
-  const composedOpen = signal(true)
-  const slowOpen = signal(true)
-  const springOpen = signal(true)
-  const delayedOpen = signal(true)
-  const reversedOpen = signal(true)
+  let composedOpen = state(true)
+  let slowOpen = state(true)
+  let springOpen = state(true)
+  let delayedOpen = state(true)
+  let reversedOpen = state(true)
 
   return (
     <div>
@@ -30,42 +30,42 @@ export function AnimationsCompositionsDemo() {
 
       <Title size="h3" style="margin-bottom: 12px">compose(fade, slideUp)</Title>
       <div style="margin-bottom: 24px;">
-        <Button state="primary" onClick={() => composedOpen.set(!composedOpen())} style="margin-bottom: 12px;">
+        <Button state="primary" onClick={() => { composedOpen = !composedOpen }} style="margin-bottom: 12px;">
           Toggle
         </Button>
-        <ComposedFadeSlide show={() => composedOpen()} style={boxStyle}>fade + slideUp</ComposedFadeSlide>
+        <ComposedFadeSlide show={() => composedOpen} style={boxStyle}>fade + slideUp</ComposedFadeSlide>
       </div>
 
       <Title size="h3" style="margin-bottom: 12px">withDuration(fade, 800, 500)</Title>
       <div style="margin-bottom: 24px;">
-        <Button state="primary" onClick={() => slowOpen.set(!slowOpen())} style="margin-bottom: 12px;">
+        <Button state="primary" onClick={() => { slowOpen = !slowOpen }} style="margin-bottom: 12px;">
           Toggle
         </Button>
-        <SlowFade show={() => slowOpen()} style={boxStyle}>slow fade</SlowFade>
+        <SlowFade show={() => slowOpen} style={boxStyle}>slow fade</SlowFade>
       </div>
 
       <Title size="h3" style="margin-bottom: 12px">withEasing(scaleIn, spring)</Title>
       <div style="margin-bottom: 24px;">
-        <Button state="primary" onClick={() => springOpen.set(!springOpen())} style="margin-bottom: 12px;">
+        <Button state="primary" onClick={() => { springOpen = !springOpen }} style="margin-bottom: 12px;">
           Toggle
         </Button>
-        <SpringEased show={() => springOpen()} style={boxStyle}>scale with spring</SpringEased>
+        <SpringEased show={() => springOpen} style={boxStyle}>scale with spring</SpringEased>
       </div>
 
       <Title size="h3" style="margin-bottom: 12px">withDelay(fadeUp, 200, 0)</Title>
       <div style="margin-bottom: 24px;">
-        <Button state="primary" onClick={() => delayedOpen.set(!delayedOpen())} style="margin-bottom: 12px;">
+        <Button state="primary" onClick={() => { delayedOpen = !delayedOpen }} style="margin-bottom: 12px;">
           Toggle
         </Button>
-        <DelayedFade show={() => delayedOpen()} style={boxStyle}>delayed enter</DelayedFade>
+        <DelayedFade show={() => delayedOpen} style={boxStyle}>delayed enter</DelayedFade>
       </div>
 
       <Title size="h3" style="margin-bottom: 12px">reverse(slideUp)</Title>
       <div style="margin-bottom: 24px;">
-        <Button state="primary" onClick={() => reversedOpen.set(!reversedOpen())} style="margin-bottom: 12px;">
+        <Button state="primary" onClick={() => { reversedOpen = !reversedOpen }} style="margin-bottom: 12px;">
           Toggle
         </Button>
-        <ReversedSlide show={() => reversedOpen()} style={boxStyle}>reversed direction</ReversedSlide>
+        <ReversedSlide show={() => reversedOpen} style={boxStyle}>reversed direction</ReversedSlide>
       </div>
     </div>
   )

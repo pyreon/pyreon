@@ -828,6 +828,7 @@
       "name": "@pyreon/example-native-analytics",
       "version": "0.50.0",
       "devDependencies": {
+        "@pyreon/core": "workspace:*",
         "@pyreon/native-cli": "workspace:*",
         "@pyreon/primitives": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
@@ -1088,6 +1089,7 @@
         "@codemirror/view": "^6.43.13",
         "@pyreon/charts": "workspace:*",
         "@pyreon/code": "workspace:*",
+        "@pyreon/core": "workspace:*",
         "@pyreon/flow": "workspace:*",
         "@pyreon/native-cli": "workspace:*",
         "@pyreon/primitives": "workspace:*",
@@ -2446,6 +2448,7 @@
         "@pyreon/validation": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@pyreon/zero-content": "workspace:*",
+        "@vitest/browser-playwright": "^4.1.11",
         "axios": "^1.20.0",
         "happy-dom": "^20.14.5",
         "ky": "^2.1.0",
@@ -2701,6 +2704,7 @@
       "dependencies": {
         "@pyreon/compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
+        "oxc-parser": "^0.148.0",
       },
       "devDependencies": {
         "@pyreon/tsconfig": "workspace:*",

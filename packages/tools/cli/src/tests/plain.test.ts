@@ -47,10 +47,12 @@ const dbl = computed(() => count() * 2)
 export const inc = () => { count.set(count() + 1) }
 export const read = () => dbl()
 `
-const MIXED = `import { signal, wrapSignal } from '@pyreon/reactivity'
+// \`wrapped(5)\` calls the signal WITH an argument — no plain form, so that
+// binding declines while \`ok\` converts.
+const MIXED = `import { signal } from '@pyreon/reactivity'
 const ok = signal(1)
 const wrapped = signal(2)
-export const w = wrapSignal(wrapped, { set: () => {} })
+export const w = () => wrapped(5)
 export const r = () => ok()
 `
 const PLAIN_FILE = `'use plain'
@@ -103,7 +105,7 @@ describe('--write', () => {
     const partial = readFileSync(mixed, 'utf8')
     expect(partial).toContain(`let ok = state(1)`)
     expect(partial).toContain(`const wrapped = signal(2)`)
-    expect(partial).toContain(`import { signal, wrapSignal } from '@pyreon/reactivity'`)
+    expect(partial).toContain(`import { signal } from '@pyreon/reactivity'`)
   })
 
   it('is idempotent — a second --write run reports already-plain and rewrites nothing', async () => {
@@ -116,5 +118,26 @@ describe('--write', () => {
     expect(parsed.summary['alreadyPlain']).toBe(1)
     expect(parsed.summary['written']).toBe(0)
     expect(readFileSync(p, 'utf8')).toBe(once)
+  })
+})
+
+describe('test files', () => {
+  it('are skipped by default when walking — and counted', async () => {
+    write('src/store.ts', CLASSIC)
+    const t = write('src/tests/store.test.ts', CLASSIC)
+    const code = await plain(opts({ json: true, write: true }))
+    expect(code).toBe(0)
+    const parsed = JSON.parse(logs.join('\n')) as { summary: Record<string, number> }
+    expect(parsed.summary.skippedTests).toBe(1)
+    expect(readFileSync(t, 'utf8')).toBe(CLASSIC) // never rewritten
+  })
+
+  it('are converted with --include-tests, or when named explicitly', async () => {
+    const t = write('src/a.spec.ts', CLASSIC)
+    await plain(opts({ write: true, includeTests: true }))
+    expect(readFileSync(t, 'utf8')).toContain('state(0)')
+    const u = write('src/b.test.ts', CLASSIC)
+    await plain(opts({ write: true, paths: [u] }))
+    expect(readFileSync(u, 'utf8')).toContain('state(0)')
   })
 })

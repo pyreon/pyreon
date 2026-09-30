@@ -9,6 +9,7 @@
  * Companion to `plain-migrate.test.ts` (feature semantics).
  */
 import { describe, expect, it } from 'vitest'
+import { transformPlain } from '../plain'
 import { migrateToPlain } from '../plain-migrate'
 
 const R = `import { signal, computed, effect } from '@pyreon/reactivity'\n`
@@ -42,17 +43,18 @@ describe('migrateToPlain — filename → parser language', () => {
 
 describe('migrateToPlain — decline paths', () => {
   it('a SECOND offending reference does not overwrite the first decline', () => {
-    const out = migrateToPlain(`${SIG}const a = signal(0)\nuse(a)\na.direct\n`)
+    // `a(5)` (called WITH an argument) is the first decline; `.direct` must not replace it.
+    const out = migrateToPlain(`${SIG}const a = signal(0)\na(5)\na.direct\n`)
     expect(out.declined).toHaveLength(1)
     expect(out.declined[0]!.code).toBe('signal-as-value')
-    expect(out.declined[0]!.reason).toContain('used as a VALUE')
+    expect(out.declined[0]!.reason).toContain('called with arguments')
   })
 
-  it('a BARE member access (no call) declines with member-access', () => {
+  it('a BARE member access (no call) converts through signalOf', () => {
     const out = migrateToPlain(`${SIG}const b = signal(1)\nexport const dd = b.direct\n`)
-    expect(codes(out)).toEqual(['b:member-access'])
-    expect(out.declined[0]!.reason).toContain('`b.direct`')
-    expect(out.code).toBeNull()
+    expect(codes(out)).toEqual([])
+    expect(out.code).toContain('export const dd = signalOf(b).direct')
+    expect(transformPlain(out.code!, 'x.ts')!.code).toContain('export const dd = b.direct')
   })
 
   it('an OPTIONAL call `x?.()` is not a plain read', () => {
@@ -60,14 +62,16 @@ describe('migrateToPlain — decline paths', () => {
     expect(codes(out)).toEqual(['a:signal-as-value'])
   })
 
-  it('an `.update` callback with a destructured param declines update-complex', () => {
+  it('an `.update` callback with a destructured param applies to the untracked value', () => {
     const out = migrateToPlain(`${SIG}const a = signal({ n: 1 })\na.update(({ n }) => ({ n: n + 1 }))\n`)
-    expect(codes(out)).toEqual(['a:update-complex'])
+    expect(codes(out)).toEqual([])
+    expect(out.code).toContain('a = (({ n }) => ({ n: n + 1 }))(untrack(() => a))')
   })
 
-  it('an `.update` callback containing a nested arrow declines update-complex', () => {
+  it('an `.update` callback containing a nested arrow applies to the untracked value', () => {
     const out = migrateToPlain(`${SIG}const a = signal(0)\na.update((n) => (() => n + 1)())\n`)
-    expect(codes(out)).toEqual(['a:update-complex'])
+    expect(codes(out)).toEqual([])
+    expect(out.code).toContain('a = ((n) => (() => n + 1)())(untrack(() => a))')
   })
 
   it('an `.update` callback containing a regex still substitutes', () => {
@@ -97,9 +101,11 @@ describe('migrateToPlain — statement + expression breadth', () => {
     const out = migrateToPlain(
       `${SIG}const a = signal(0)\nexport { a }\nexport default function () { return a() }\n`,
     )
-    expect(out.converted).toEqual(['a'])
-    expect(out.code).toContain('export { a }')
-    expect(out.code).toContain('export default function () { return a }')
+    // `export { a }` hands the SIGNAL to importers → declined; nothing converts.
+    expect(out.declined.map((d) => d.code)).toEqual(['exported'])
+    expect(out.code).toBeNull()
+    const inner = migrateToPlain(`${SIG}const a = signal(0)\nexport default function () { return a() }\n`)
+    expect(inner.code).toContain('export default function () { return a }')
   })
 
   it('an anonymous default CLASS is walked', () => {
@@ -213,7 +219,7 @@ describe('migrateToPlain — declaration kind + import rewriting', () => {
 
   it('an ALIASED import that must be KEPT is re-emitted as `imported as local`', () => {
     const out = migrateToPlain(
-      `import { signal as sig } from '@pyreon/reactivity'\nconst a = sig(0)\nconst b = sig(1)\nuse(b)\nexport const read = () => a()\n`,
+      `import { signal as sig } from '@pyreon/reactivity'\nconst a = sig(0)\nconst b = sig(1)\nb(5)\nexport const read = () => a()\n`,
     )
     expect(out.converted).toEqual(['a'])
     expect(codes(out)).toEqual(['b:signal-as-value'])

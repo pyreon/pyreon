@@ -16,6 +16,7 @@ import type { IrDocument, IrOperation } from "../core/ir";
 import { responseKindOf } from "../core/media";
 import { byCodeUnit } from "../core/order";
 import { sampleValue } from "../core/sample-value";
+import { usesBigInt } from "../core/walk";
 import { CLIENT_FILE, endpointSpec, tagFile } from "./client";
 import type { ClientName } from "./client-runtime";
 import {
@@ -82,7 +83,7 @@ export function emitMocks(
       "  /** A raw body — for a non-JSON response. A function computes it from the request. */",
     );
     f.line(
-      "  body?: string | ((call: { headers: Record<string, string> }) => string) | undefined",
+      "  body?: string | ReadableStream<Uint8Array> | ((call: { headers: Record<string, string> }) => string | ReadableStream<Uint8Array>) | undefined",
     );
     f.line("  /** Simulated latency, in ms. */");
     f.line("  delay?: number | undefined");
@@ -227,9 +228,22 @@ export function emitMocks(
     f.line('}')
     f.line()
   }
+  const streams = ops.some((o) => o.stream)
+  if (streams) {
+    f.doc(
+      'What {@link mockOperation} accepts: any route field, and for a stream,',
+      '`dropAfter` -- deliver that many events on EACH connection, then fail it',
+      'the way a lost network does. A reconnecting stream resumes with',
+      '`Last-Event-ID` and the mock answers with the events after it, so',
+      '`dropAfter: 1` exercises every reconnect a stream would make.',
+    )
+    f.line(`export type MockOverride = Partial<Omit<MockRoute, 'method' | 'path'>> & { dropAfter?: number | undefined }`)
+    f.line()
+  }
   f.line(
-    `export function mockOperation(id: MockedOperation, override: Partial<Omit<MockRoute, 'method' | 'path'>>): () => void {`,
+    `export function mockOperation(id: MockedOperation, ${streams ? 'mock: MockOverride' : "override: Partial<Omit<MockRoute, 'method' | 'path'>>"}): () => void {`,
   )
+  if (streams) f.line('  const { dropAfter, ...override } = mock')
   f.line('  const i = index[id]')
   f.line('  const generated = routes[i] as MockRoute')
   if (withErrors.length > 0) {
@@ -245,6 +259,7 @@ export function emitMocks(
   } else {
     f.line('  active[i] = { ...generated, ...override }')
   }
+  if (streams) f.line('  if (dropAfter !== undefined) active[i] = droppingAfter(active[i] as MockRoute, dropAfter)')
   f.line('  return () => {')
   f.line('    active[i] = generated')
   f.line('  }')
@@ -255,7 +270,7 @@ export function emitMocks(
   f.line('  active.splice(0, active.length, ...routes)')
   f.line('}')
 
-  if (ops.some((o) => o.stream)) emitStreamMockHelpers(f, ops, pyreon);
+  if (streams) emitStreamMockHelpers(f, ops, pyreon, usesBigInt(doc));
   f.line();
   f.line("function baseRelative(url: string): string {");
   f.line(
@@ -458,11 +473,20 @@ function emitStreamMockHelpers(
   f: SourceFile,
   ops: readonly IrOperation[],
   pyreon: boolean,
+  lossless = false,
 ): void {
+  if (pyreon) f.importType("@pyreon/http/mock", "MockCall");
   const streams = ops.flatMap((o) => (o.stream ? [o.stream] : []));
   const sseJson = streams.some((s) => s.format === "sse" && s.data === "json");
   const sseText = streams.some((s) => s.format === "sse" && s.data === "text");
   const ndjson = streams.some((s) => s.format === "ndjson");
+  // `int64: 'bigint'`: event fixtures hold bigints, which `JSON.stringify`
+  // throws on. The lossless encoder writes them as JSON number text.
+  const stringify = lossless && (sseJson || ndjson) ? "stringifyJsonLossless" : "JSON.stringify";
+  if (stringify !== "JSON.stringify") {
+    if (pyreon) f.import("@pyreon/http/json", "stringifyJsonLossless");
+    else f.import(relativeSpecifier("mocks.ts", CLIENT_FILE), "stringifyJsonLossless");
+  }
   if (sseJson || sseText) {
     f.line();
     f.doc(
@@ -485,7 +509,7 @@ function emitStreamMockHelpers(
     f.line(
       "function sseBody(events: readonly unknown[], lastEventId: string | undefined): string {",
     );
-    f.line("  return sse(events.map((e) => JSON.stringify(e)), lastEventId)");
+    f.line(`  return sse(events.map((e) => ${stringify}(e)), lastEventId)`);
     f.line("}");
   }
   if (sseText) {
@@ -500,9 +524,36 @@ function emitStreamMockHelpers(
     f.line();
     f.doc("An NDJSON body: one value per line.");
     f.line("function ndjsonBody(events: readonly unknown[]): string {");
-    f.line("  return events.map((e) => `${JSON.stringify(e)}\\n`).join('')");
+    f.line(`  return events.map((e) => \`\${${stringify}(e)}\\n\`).join('')`);
     f.line("}");
   }
+  f.line();
+  f.doc(
+    "A route whose stream body delivers `count` events per connection, then",
+    "errors -- the shape a dropped connection has to the reader.",
+  );
+  f.line("function droppingAfter(route: MockRoute, count: number): MockRoute {");
+  f.line("  const body = route.body");
+  f.line("  if (body === undefined) throw new Error('[lathe] mockOperation: `dropAfter` needs a route with a stream body.')");
+  f.line(`  return { ...route, body: (call${pyreon ? ": MockCall" : ": { headers: Record<string, string> }"}) => dropStream(typeof body === 'function' ? body(call) : body, count, route.headers?.['content-type'] ?? '') }`);
+  f.line("}");
+  f.line();
+  f.line("function dropStream(body: string | ReadableStream<Uint8Array>, count: number, media: string): ReadableStream<Uint8Array> {");
+  f.line("  if (typeof body !== 'string') throw new Error('[lathe] mockOperation: `dropAfter` needs a text stream body.')");
+  f.line("  // An SSE event ends at a blank line; an NDJSON value at a newline.");
+  f.line("  const events = (media.includes('event-stream') ? body.split(/(?<=\\n\\n)/) : body.split(/(?<=\\n)/)).filter((e) => e !== '')");
+  f.line("  const bytes = new TextEncoder()");
+  f.line("  let next = 0");
+  f.line("  return new ReadableStream<Uint8Array>({");
+  f.line("    pull(controller) {");
+  f.line("      const event = next < count ? events[next] : undefined");
+  f.line("      next++");
+  f.line("      if (event !== undefined) controller.enqueue(bytes.encode(event))");
+  f.line("      else if (next - 1 < events.length) controller.error(new TypeError('network connection lost (mock dropAfter)'))");
+  f.line("      else controller.close()");
+  f.line("    },");
+  f.line("  })");
+  f.line("}");
   // `@pyreon/http`'s `MockRoute` matches `accept` itself; an adapter's seam does it here.
   if (!pyreon && ops.some((o) => o.stream && responseKindOf(o) !== "stream")) {
     f.line();

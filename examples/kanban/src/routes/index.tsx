@@ -1,6 +1,6 @@
 import { useHead } from '@pyreon/head'
 import { For, provide } from '@pyreon/core'
-import { signal, computed } from '@pyreon/reactivity'
+import { state, derived } from '@pyreon/core/plain'
 import { useDebouncedValue } from '@pyreon/hooks'
 import { useUrlState } from '@pyreon/url-state'
 import { toast } from '@pyreon/toast'
@@ -20,19 +20,19 @@ export default function BoardPage() {
   const debouncedQ = useDebouncedValue(q, 200)
   provide(FilterTermCtx, () => debouncedQ())
 
-  const columnIds = computed<string[]>(() =>
+  const columnIds = derived<string[]>(() =>
     (board.columns() as Column[]).map((c) => c.id),
   )
 
-  const addColumnOpen = signal(false)
-  const newColumnTitle = signal('')
+  let addColumnOpen = state(false)
+  let newColumnTitle = state('')
 
   const handleAddColumn = () => {
-    const title = newColumnTitle().trim()
+    const title = newColumnTitle.trim()
     if (!title) return
     board.addColumn(title)
-    newColumnTitle.set('')
-    addColumnOpen.set(false)
+    newColumnTitle = ''
+    addColumnOpen = false
     toast.success(`Column "${title}" added`)
   }
 
@@ -54,22 +54,20 @@ export default function BoardPage() {
       </header>
 
       <div class="kanban-board" data-testid="kanban-board">
-        <For each={() => columnIds()} by={(id) => id}>
+        <For each={() => columnIds} by={(id) => id}>
           {(id) => <BoardColumn columnId={id} />}
         </For>
 
         {() =>
-          addColumnOpen() ? (
+          addColumnOpen ? (
             <div class="column">
               <input
                 type="text"
                 class="kanban-search"
                 placeholder="Column title…"
-                value={() => newColumnTitle()}
+                value={() => newColumnTitle}
                 onInput={(e) =>
-                  newColumnTitle.set(
-                    (e.currentTarget as HTMLInputElement).value,
-                  )
+                  { newColumnTitle = (e.currentTarget as HTMLInputElement).value }
                 }
                 autoFocus
                 data-testid="new-column-input"
@@ -87,8 +85,8 @@ export default function BoardPage() {
                   type="button"
                   class="btn-secondary"
                   onClick={() => {
-                    addColumnOpen.set(false)
-                    newColumnTitle.set('')
+                    addColumnOpen = false
+                    newColumnTitle = ''
                   }}
                 >
                   Cancel
@@ -99,7 +97,7 @@ export default function BoardPage() {
             <button
               type="button"
               class="add-column-btn"
-              onClick={() => addColumnOpen.set(true)}
+              onClick={() => { addColumnOpen = true }}
               data-testid="add-column-btn"
             >
               + Add another column

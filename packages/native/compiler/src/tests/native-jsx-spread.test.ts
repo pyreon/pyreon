@@ -44,7 +44,7 @@ describe('JSX spread attributes', () => {
     const sw = transform(APP, { target: 'swift' }).code
     const kt = transform(APP, { target: 'kotlin' }).code
     expect(sw).toContain('Card(title: "lit", count: 5)')
-    expect(kt).toContain('Card(title = "lit", count = 5)')
+    expect(kt).toContain('Card(title = "lit", count = 5L)')
   })
 
   it('an explicit sibling attr WINS over the spread (override rule)', () => {

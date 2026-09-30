@@ -37,7 +37,7 @@ describe('@pyreon/validate `s` DSL lowering', () => {
     const { code } = transform(SCHEMA, { target: 'kotlin' })
     expect(code).toContain('data class PyreonZodSchema_userSchema')
     expect(code).toContain('var name: String')
-    expect(code).toContain('var age: Int')
+    expect(code).toContain('var age: Long')
     expect(code).toContain('var active: Boolean')
     expect(code).toContain('min length 2')
     expect(code).toContain('fun parse(')

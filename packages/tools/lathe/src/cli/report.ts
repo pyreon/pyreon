@@ -227,6 +227,18 @@ export function renderReport(
         }
       }
     }
+    for (const m of verify.modules ?? []) {
+      const status =
+        'skipped' in m.compiled
+          ? C.dim('(not compiled)')
+          : m.compiled.ok
+            ? C.green('compiled')
+            : C.red('does NOT compile')
+      lines.push(`  ${C.bold('all modules together')} ${C.dim(m.target)}  ${status}`)
+      if ('ok' in m.compiled) {
+        for (const e of m.compiled.errors.slice(0, 2)) lines.push(`      ${C.red('error')} ${truncate(e, 120)}`)
+      }
+    }
   }
 
   if (doc.notes.length > 0) {

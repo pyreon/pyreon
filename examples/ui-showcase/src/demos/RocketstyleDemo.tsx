@@ -1,5 +1,5 @@
 import { Element } from '@pyreon/elements'
-import { signal } from '@pyreon/reactivity'
+import { state as plainState } from '@pyreon/core/plain'
 import rocketstyle from '@pyreon/rocketstyle'
 import { makeItResponsive, styles } from '@pyreon/unistyle'
 import { Button, Title, Paragraph } from '@pyreon/ui-components'
@@ -109,8 +109,8 @@ const RsButton = rocketstyle()({
   )
 
 export function RocketstyleDemo() {
-  const state = signal<'success' | 'warning' | 'danger' | 'info' | undefined>(undefined)
-  const size = signal<'small' | 'medium' | 'large'>('medium')
+  let state = plainState<'success' | 'warning' | 'danger' | 'info' | undefined>(undefined)
+  let size = plainState<'small' | 'medium' | 'large'>('medium')
 
   return (
     <div>
@@ -139,33 +139,33 @@ export function RocketstyleDemo() {
       <div style="display: flex; gap: 8px; margin-bottom: 12px;">
         <Button
           state="secondary"
-          variant={state() === undefined ? 'solid' : 'outline'}
+          variant={state === undefined ? 'solid' : 'outline'}
           size="small"
-          onClick={() => state.set(undefined)}
+          onClick={() => { state = undefined }}
         >
           default
         </Button>
         <Button
           state="success"
-          variant={state() === 'success' ? 'solid' : 'outline'}
+          variant={state === 'success' ? 'solid' : 'outline'}
           size="small"
-          onClick={() => state.set('success')}
+          onClick={() => { state = 'success' }}
         >
           success
         </Button>
         <Button
           state="primary"
-          variant={state() === 'info' ? 'solid' : 'outline'}
+          variant={state === 'info' ? 'solid' : 'outline'}
           size="small"
-          onClick={() => state.set('info')}
+          onClick={() => { state = 'info' }}
         >
           info
         </Button>
         <Button
           state="danger"
-          variant={state() === 'danger' ? 'solid' : 'outline'}
+          variant={state === 'danger' ? 'solid' : 'outline'}
           size="small"
-          onClick={() => state.set('danger')}
+          onClick={() => { state = 'danger' }}
         >
           danger
         </Button>
@@ -173,31 +173,31 @@ export function RocketstyleDemo() {
       <div style="display: flex; gap: 8px; margin-bottom: 16px;">
         <Button
           state="secondary"
-          variant={size() === 'small' ? 'solid' : 'outline'}
+          variant={size === 'small' ? 'solid' : 'outline'}
           size="small"
-          onClick={() => size.set('small')}
+          onClick={() => { size = 'small' }}
         >
           S
         </Button>
         <Button
           state="secondary"
-          variant={size() === 'medium' ? 'solid' : 'outline'}
+          variant={size === 'medium' ? 'solid' : 'outline'}
           size="small"
-          onClick={() => size.set('medium')}
+          onClick={() => { size = 'medium' }}
         >
           M
         </Button>
         <Button
           state="secondary"
-          variant={size() === 'large' ? 'solid' : 'outline'}
+          variant={size === 'large' ? 'solid' : 'outline'}
           size="small"
-          onClick={() => size.set('large')}
+          onClick={() => { size = 'large' }}
         >
           L
         </Button>
       </div>
-      <RsBadge state={state()} size={size()}>
-        Reactive: {state() ?? 'default'}/{size()}
+      <RsBadge state={state} size={size}>
+        Reactive: {state ?? 'default'}/{size}
       </RsBadge>
 
       <Title size="h3" style="margin-top: 32px; margin-bottom: 12px">Rocketstyle Button</Title>
