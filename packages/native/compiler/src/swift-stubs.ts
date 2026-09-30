@@ -1508,9 +1508,18 @@ extension AppStorage where Value == Bool {
 // needs \`mutating\`, which an @Environment binding cannot satisfy. The struct
 // stub therefore rejected correct code twice over: wrong kind AND five missing
 // members (can/cannot/set/grant/revoke, plus the granted property).
+// warningSink/warnUnprovidedOnce/resetWarningForTesting mirror the no-provider
+// dev warning (usePermissions() with no <PermissionsProvider> above it) — the
+// same subset-stub-manufactures-a-bug shape, this time an outright missing
+// member rather than a mismatched signature.
 public final class PyreonPermissions {
   public init(_ granted: Set<String> = []) {}
+  public static func makeUnprovided() -> PyreonPermissions { PyreonPermissions() }
+  public let isUnprovidedFallback: Bool = false
   public private(set) var granted: Set<String> = []
+  public static var warningSink: (String) -> Void = { print($0) }
+  public static func warnUnprovidedOnce() {}
+  public static func resetWarningForTesting() {}
   public func can(_ key: String) -> Bool { false }
   public func cannot(_ key: String) -> Bool { false }
   public func not(_ key: String) -> Bool { false }
@@ -1524,7 +1533,7 @@ public final class PyreonPermissions {
 // BEGIN runtime mirror: fundamentals/permissions/native/swift/PyreonPermissionsEnvironment.swift
 @available(iOS 17.0, macOS 14.0, *)
 private struct PyreonPermissionsKey: EnvironmentKey {
-    static let defaultValue = PyreonPermissions()
+    static let defaultValue = PyreonPermissions.makeUnprovided()
 }
 
 @available(iOS 17.0, macOS 14.0, *)

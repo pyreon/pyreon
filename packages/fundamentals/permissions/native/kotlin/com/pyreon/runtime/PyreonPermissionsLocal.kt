@@ -21,7 +21,9 @@
 // fixes both.
 //
 // An unprovided local is an EMPTY set — a deny, the safe default for an
-// authorization check.
+// authorization check. It is a DISTINGUISHED empty set (`unprovided()`): the
+// first check against it prints a once-per-process warning naming the missing
+// provider.
 //
 // The validation stubs carry a byte-for-byte copy
 // (`@pyreon/native-compiler` kotlin-stubs.ts); `runtime-stub-parity.test.ts`
@@ -34,4 +36,4 @@ import androidx.compose.runtime.compositionLocalOf
 
 // MARK: stub-mirror
 
-val LocalPyreonPermissions: ProvidableCompositionLocal<PyreonPermissions> = compositionLocalOf { PyreonPermissions() }
+val LocalPyreonPermissions: ProvidableCompositionLocal<PyreonPermissions> = compositionLocalOf { PyreonPermissions.unprovided() }
