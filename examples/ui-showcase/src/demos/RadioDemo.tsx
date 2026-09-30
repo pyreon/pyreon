@@ -1,4 +1,4 @@
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { RadioGroup, Radio, Title } from '@pyreon/ui-components'
 
 function RadioIndicator(props: { checked: boolean }) {
@@ -12,28 +12,28 @@ function RadioIndicator(props: { checked: boolean }) {
 }
 
 export function RadioDemo() {
-  const plan = signal('pro')
+  let plan = state('pro')
 
   return (
     <div>
       <Title size="h2" style="margin-bottom: 24px">Radio</Title>
 
       <RadioGroup
-        value={plan()}
-        onChange={(v: string) => plan.set(v)}
+        value={plan}
+        onChange={(v: string) => { plan = v }}
         variant="vertical"
         style="margin-bottom: 24px;"
       >
         {['free', 'pro', 'enterprise'].map((value) => (
           <Radio value={value}>
-            <RadioIndicator checked={plan() === value} />
+            <RadioIndicator checked={plan === value} />
             {value.charAt(0).toUpperCase() + value.slice(1)}
           </Radio>
         ))}
       </RadioGroup>
 
       <p style="font-size: 13px; color: #6b7280;">
-        Selected: {plan()}
+        Selected: {plan}
       </p>
     </div>
   )

@@ -1,5 +1,5 @@
 import { useField, useForm } from '@pyreon/form'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { zodSchema } from '@pyreon/validation'
 import { z } from 'zod'
 
@@ -14,7 +14,7 @@ const schema = z.object({
 })
 
 export function ValidationDemo() {
-  const submitted = signal<string | null>(null)
+  let submitted = state<string | null>(null)
 
   const form = useForm({
     initialValues: { username: '', email: '', age: '' as unknown as number },
@@ -22,7 +22,7 @@ export function ValidationDemo() {
     validateOn: 'blur',
     onSubmit: async (values) => {
       await new Promise((r) => setTimeout(r, 300))
-      submitted.set(JSON.stringify(values, null, 2))
+      submitted = JSON.stringify(values, null, 2)
     },
   })
 
@@ -70,10 +70,10 @@ export function ValidationDemo() {
       </div>
 
       {() =>
-        submitted() ? (
+        submitted ? (
           <div class="section">
             <h3>Validated Data</h3>
-            <pre style="font-size: 13px; color: #2e7d32">{submitted()}</pre>
+            <pre style="font-size: 13px; color: #2e7d32">{submitted}</pre>
           </div>
         ) : null
       }

@@ -1,4 +1,4 @@
-import { signal } from "@pyreon/reactivity"
+import { state } from '@pyreon/core/plain'
 import { useHead } from "@pyreon/head"
 import { Link } from "@pyreon/zero/link"
 import { useRouter } from "@pyreon/router"
@@ -9,23 +9,23 @@ export const meta = { title: "Create an account" }
 export default function Signup() {
   useHead({ title: meta.title })
 
-  const email = signal("")
-  const password = signal("")
-  const error = signal<string | null>(null)
-  const submitting = signal(false)
+  let email = state("")
+  let password = state("")
+  let error = state<string | null>(null)
+  let submitting = state(false)
 
   const router = useRouter()
 
   async function handleSubmit(e: Event) {
     e.preventDefault()
-    error.set(null)
-    submitting.set(true)
+    error = null
+    submitting = true
 
-    const result = signUp(email(), password())
-    submitting.set(false)
+    const result = signUp(email, password)
+    submitting = false
 
     if ("error" in result) {
-      error.set(result.error)
+      error = result.error
       return
     }
 
@@ -46,7 +46,7 @@ export default function Signup() {
             id="email"
             type="email"
             value={email}
-            onInput={(e) => email.set((e.currentTarget as HTMLInputElement).value)}
+            onInput={(e) => { email = (e.currentTarget as HTMLInputElement).value }}
             required
           />
         </div>
@@ -57,16 +57,16 @@ export default function Signup() {
             id="password"
             type="password"
             value={password}
-            onInput={(e) => password.set((e.currentTarget as HTMLInputElement).value)}
+            onInput={(e) => { password = (e.currentTarget as HTMLInputElement).value }}
             required
             minLength={8}
           />
         </div>
 
-        {() => (error() ? <div class="error">{error()}</div> : null)}
+        {() => (error ? <div class="error">{error}</div> : null)}
 
         <button type="submit" class="btn btn-primary" disabled={submitting} style="width: 100%; justify-content: center; margin-top: 1rem;">
-          {() => (submitting() ? "Creating…" : "Create account")}
+          {() => (submitting ? "Creating…" : "Create account")}
         </button>
 
         <p style="margin-top: 1rem; font-size: 0.875rem; color: var(--c-text-muted); text-align: center;">

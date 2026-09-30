@@ -72,6 +72,39 @@ describe('Dynamic', () => {
     expect((result as VNode).children).toHaveLength(2)
   })
 
+  test('a getter-backed `component` prop returns the render ACCESSOR itself, not its result', () => {
+    // The compiler lowers `<Dynamic component={components[current()]} />` to
+    // a getter-backed `component` prop (via `_rp()` -> makeReactiveProps).
+    // Only a REACTIVE `component` should get the "return an accessor" shape
+    // — a static one (a plain data property) renders once as a plain VNode
+    // (already covered by the other specs in this file).
+    let which = 'first'
+    const First: ComponentFn = () => h('span', null, 'first')
+    const Second: ComponentFn = () => h('span', null, 'second')
+    const props: Record<string, unknown> = { id: 'x' }
+    Object.defineProperty(props, 'component', {
+      enumerable: true,
+      configurable: true,
+      get: () => (which === 'first' ? First : Second),
+    })
+
+    const result = Dynamic(props as unknown as { component: ComponentFn | string })
+
+    // Reactive path returns a FUNCTION (an accessor), not a VNode directly.
+    expect(typeof result).toBe('function')
+    const render = result as unknown as () => VNode | null
+
+    const first = render()
+    expect((first as VNode).type).toBe(First)
+
+    // Re-invoking the accessor re-reads the getter — a component swap is
+    // reflected without needing a whole new Dynamic() call, which is the
+    // whole point of returning the accessor instead of a static VNode.
+    which = 'second'
+    const second = render()
+    expect((second as VNode).type).toBe(Second)
+  })
+
   test('component children still reach props.children at mount', () => {
     // For component (not string), the merge happens at mount via
     // mergeChildrenIntoProps — verified end-to-end by mount tests in

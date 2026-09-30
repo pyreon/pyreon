@@ -47,8 +47,8 @@ describe('the standalone transforms lower', () => {
 
   it('Kotlin: each becomes a derivedStateOf', () => {
     const out = transform(APP, { target: 'kotlin' }).code
-    expect(out).toContain('nums.filter({ n -> n % 2 == 0 })')
-    expect(out).toContain('nums.map({ n -> n * 2 })')
+    expect(out).toContain('nums.filter({ n -> n % 2L == 0L })')
+    expect(out).toContain('nums.map({ n -> n * 2L })')
     expect(out).not.toContain('filter(nums')
   })
 

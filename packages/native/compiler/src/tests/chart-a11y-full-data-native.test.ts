@@ -51,7 +51,7 @@ describe('native PlotChart accessibility uses the complete source data', () => {
   it('Kotlin keeps the same full-data TalkBack summary', () => {
     const r = transform(SRC, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('val pyreonRows = pyreonKeep.map { pyreonSourceRows[it] }')
+    expect(r.code).toContain('val pyreonRows = pyreonKeep.map { pyreonSourceRows[it.toInt()] }')
     expect(r.code).toContain('val pyreonA11yValues0: List<Double> = ROWS.mapIndexed')
     expect(r.code).toContain('val pyreonA11yErrLow0: List<Double> = ROWS.mapIndexed')
     expect(r.code).toContain('val pyreonA11yRRaw1: List<Double> = ROWS.mapIndexed')

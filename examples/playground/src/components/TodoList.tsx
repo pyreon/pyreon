@@ -1,5 +1,6 @@
 import { For } from '@pyreon/core'
-import { computed, signal } from '@pyreon/reactivity'
+import { state, derived, signalOf } from '@pyreon/core/plain'
+import { untrack } from '@pyreon/reactivity'
 
 interface Todo {
   id: number
@@ -8,28 +9,28 @@ interface Todo {
 }
 
 export function TodoList() {
-  const todos = signal<Todo[]>([
+  let todos = state.raw<Todo[]>([
     { id: 1, text: 'Build Pyreon framework', done: true },
     { id: 2, text: 'Write tests', done: true },
     { id: 3, text: 'Build the playground', done: false },
   ])
-  const input = signal('')
+  let input = state('')
 
-  const remaining = computed(() => todos().filter((t) => !t.done).length)
+  const remaining = derived(() => todos.filter((t) => !t.done).length)
 
   const addTodo = () => {
-    const text = input().trim()
+    const text = input.trim()
     if (!text) return
-    todos.update((list) => [...list, { id: Date.now(), text, done: false }])
-    input.set('')
+    todos = [...todos, { id: Date.now(), text, done: false }]
+    input = ''
   }
 
   const toggle = (id: number) => {
-    todos.update((list) => list.map((t) => (t.id === id ? { ...t, done: !t.done } : t)))
+    todos = ((list) => list.map((t) => (t.id === id ? { ...t, done: !t.done } : t)))(untrack(() => todos))
   }
 
   const remove = (id: number) => {
-    todos.update((list) => list.filter((t) => t.id !== id))
+    todos = ((list) => list.filter((t) => t.id !== id))(untrack(() => todos))
   }
 
   const handleKey = (e: KeyboardEvent) => {
@@ -39,14 +40,14 @@ export function TodoList() {
   return (
     <div class="card">
       <h2>Todo List</h2>
-      <p class="remaining">{() => remaining()} remaining</p>
+      <p class="remaining">{() => remaining} remaining</p>
 
       <div class="input-row">
         <input
           type="text"
           placeholder="Add a todo…"
-          value={() => input()}
-          onInput={(e) => input.set(e.currentTarget.value)}
+          value={() => input}
+          onInput={(e) => { input = e.currentTarget.value }}
           onKeyDown={handleKey}
         />
         <button type="button" onClick={addTodo}>
@@ -55,7 +56,7 @@ export function TodoList() {
       </div>
 
       <ul class="todo-list">
-        <For each={todos} by={(todo) => todo.id}>
+        <For each={signalOf<typeof todos>(todos)} by={(todo) => todo.id}>
           {(todo) => (
             <li class={todo.done ? 'done' : ''}>
               <input type="checkbox" checked={todo.done} onChange={() => toggle(todo.id)} />

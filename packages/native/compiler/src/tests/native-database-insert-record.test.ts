@@ -98,7 +98,7 @@ export function C() {
   return <Stack><Text>{db.count('notes')}</Text></Stack>
 }`
     expect(swift(computed).code).toContain('PyreonRecord(id: String(n + 1), fields: ["at": "x"])')
-    expect(kotlin(computed).code).toContain('PyreonRecord((n + 1).toString(), mapOf("at" to "x"))')
+    expect(kotlin(computed).code).toContain('PyreonRecord((n + 1L).toString(), mapOf("at" to "x"))')
   })
 
   it('does NOT rewrite a literal with unexpected keys — a wrong call must still error', () => {

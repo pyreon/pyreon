@@ -1,4 +1,4 @@
-import { signal } from "@pyreon/reactivity"
+import { state } from '@pyreon/core/plain'
 import { onMount } from "@pyreon/core"
 import { useHead } from "@pyreon/head"
 import { useRoute } from "@pyreon/router"
@@ -92,25 +92,25 @@ function InvoiceTemplate(inv: Invoice) {
 
 export default function InvoiceDetail() {
   const route = useRoute()
-  const inv = signal<Invoice | null>(null)
-  const notFound = signal(false)
+  let inv = state<Invoice | null>(null)
+  let notFound = state(false)
 
   onMount(() => {
     const id = route().params.id
     if (!id) {
-      notFound.set(true)
+      notFound = true
       return
     }
     void invoiceById(id).then((found) => {
-      if (!found) notFound.set(true)
-      else inv.set(found)
+      if (!found) notFound = true
+      else inv = found
     })
   })
 
   useHead({ title: meta.title })
 
   async function exportPdf() {
-    const found = inv()
+    const found = inv
     if (!found) return
     const node = extractDocNode(InvoiceTemplate(found))
     const result = await render(node, "pdf")
@@ -136,7 +136,7 @@ export default function InvoiceDetail() {
   }
 
   return () => {
-    if (notFound()) {
+    if (notFound) {
       return (
         <>
           <h1>Invoice not found</h1>
@@ -147,7 +147,7 @@ export default function InvoiceDetail() {
       )
     }
 
-    const found = inv()
+    const found = inv
     if (!found) {
       return (
         <>

@@ -1,5 +1,5 @@
 import { fade, kinetic } from '@pyreon/kinetic'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { Button, Title, Paragraph } from '@pyreon/ui-components'
 
 const Backdrop = kinetic('div').preset(fade)
@@ -14,7 +14,7 @@ const Dialog = kinetic('div')
   .leaveTransition('all 200ms ease-in')
 
 export function AnimationsModalPatternDemo() {
-  const open = signal(false)
+  let open = state(false)
 
   return (
     <div>
@@ -23,17 +23,17 @@ export function AnimationsModalPatternDemo() {
         Backdrop fade + dialog spring scale composed via kinetic style-object API. The dialog uses cubic-bezier overshoot for a tactile spring feel.
       </Paragraph>
 
-      <Button state="primary" onClick={() => open.set(true)}>Open Modal</Button>
+      <Button state="primary" onClick={() => { open = true }}>Open Modal</Button>
 
       <Backdrop
-        show={() => open()}
+        show={() => open}
         style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 50;"
         onClick={(e: MouseEvent) => {
-          if (e.target === e.currentTarget) open.set(false)
+          if (e.target === e.currentTarget) open = false
         }}
       >
         <Dialog
-          show={() => open()}
+          show={() => open}
           style="max-width: 480px; width: 100%; padding: 32px; background: white; border-radius: 12px; box-shadow: 0 25px 50px rgba(0,0,0,0.25); margin: 16px;"
         >
           <Title size="h3" style="margin-bottom: 12px">Spring Modal</Title>
@@ -41,10 +41,10 @@ export function AnimationsModalPatternDemo() {
             Press Escape or click the backdrop to close. Watch the spring overshoot on enter.
           </Paragraph>
           <div style="display: flex; gap: 8px; justify-content: flex-end;">
-            <Button state="secondary" variant="ghost" onClick={() => open.set(false)}>
+            <Button state="secondary" variant="ghost" onClick={() => { open = false }}>
               Cancel
             </Button>
-            <Button state="primary" onClick={() => open.set(false)}>
+            <Button state="primary" onClick={() => { open = false }}>
               Confirm
             </Button>
           </div>

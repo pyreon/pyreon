@@ -12,7 +12,7 @@
 
 import { For, Show } from '@pyreon/core'
 import { useHead } from '@pyreon/head'
-import { computed, signal } from '@pyreon/reactivity'
+import { state, derived } from '@pyreon/core/plain'
 import { useLoaderData } from '@pyreon/router'
 import { TodoItem } from '../components/TodoItem'
 
@@ -24,19 +24,19 @@ interface Todo {
 
 export const TodoList = () => {
   const todos = useLoaderData<Todo[]>()
-  const filter = signal<'all' | 'active' | 'done'>('all')
+  let filter = state<'all' | 'active' | 'done'>('all')
 
-  const filtered = computed(() => {
-    const f = filter()
+  const filtered = derived(() => {
+    const f = filter
     if (f === 'active') return todos.filter((t) => !t.completed)
     if (f === 'done') return todos.filter((t) => t.completed)
     return todos
   })
 
-  const activeCount = computed(() => todos.filter((t) => !t.completed).length)
+  const activeCount = derived(() => todos.filter((t) => !t.completed).length)
 
   useHead(() => ({
-    title: `Todos (${activeCount()} active)`,
+    title: `Todos (${activeCount} active)`,
   }))
 
   return (
@@ -44,28 +44,28 @@ export const TodoList = () => {
       <h1>Todos</h1>
 
       <div>
-        <button type="button" onClick={() => filter.set('all')}>
+        <button type="button" onClick={() => { filter = 'all' }}>
           All
         </button>
-        <button type="button" onClick={() => filter.set('active')}>
+        <button type="button" onClick={() => { filter = 'active' }}>
           Active
         </button>
-        <button type="button" onClick={() => filter.set('done')}>
+        <button type="button" onClick={() => { filter = 'done' }}>
           Done
         </button>
       </div>
 
-      <Show when={() => filtered().length > 0} fallback={<p>No todos match filter.</p>}>
+      <Show when={() => filtered.length > 0} fallback={<p>No todos match filter.</p>}>
         <ul>
           <For
-            each={() => filtered()}
+            each={() => filtered}
             by={(todo) => todo.id}
             children={(todo) => <TodoItem todo={todo} />}
           />
         </ul>
       </Show>
 
-      <p>{activeCount()} items left</p>
+      <p>{activeCount} items left</p>
     </div>
   )
 }

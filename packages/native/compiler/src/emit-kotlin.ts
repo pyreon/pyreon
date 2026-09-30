@@ -64,6 +64,8 @@ import {
   jsxInStringifiedChildWarning,
   isNullableType,
   optionalSpreadWarning,
+  schemaInputNeedsConversion,
+  synthStructName,
 } from './expr-utils'
 import {
   nilCoalesceTernary,
@@ -407,6 +409,66 @@ function kotlinStructCtorArgs(
 }
 
 /**
+ * The Kotlin type of a TS integer `number`: `Long`, because Swift's `Int` is
+ * 64-bit on every Apple target and one source must hold the same values on
+ * both. Kotlin's `Int` is 32-bit; with it, `{"createdAt": 1726000000000}`
+ * decoded on iOS and threw `Failed to parse int` on Android.
+ */
+const KOTLIN_INT = 'Long'
+
+/** The integer value of a literal (or a negated one), else undefined. */
+function intLiteralValue(e: ExprIR): number | undefined {
+  if (e.kind === 'literal' && typeof e.value === 'number' && Number.isInteger(e.value) && e.float !== true) return e.value
+  if (e.kind === 'unary' && e.op === '-') {
+    const v = intLiteralValue(e.argument)
+    return v === undefined ? undefined : -v
+  }
+  if (e.kind === 'paren') return intLiteralValue(e.inner)
+  return undefined
+}
+
+/**
+ * An argument to a Kotlin API whose parameter is `Int` — a subscript,
+ * `take`/`drop`, `padStart`, `String.repeat`, `List(n)`, a Compose param.
+ * TS integers are `Long` on Kotlin (see `KOTLIN_INT`), so the value narrows
+ * at exactly the call that needs it; a literal is emitted bare instead, which
+ * Kotlin types as Int. The narrowing cannot lose anything these APIs could
+ * have accepted: a collection has at most `Int.MAX_VALUE` elements.
+ */
+function kotlinIntArg(e: ExprIR, indent: number): string {
+  const lit = intLiteralValue(e)
+  if (lit !== undefined) return String(lit)
+  return `(${emitKotlinExpr(e, indent)}).toInt()`
+}
+
+/**
+ * The subscript of `obj[i]`. A List/String subscript takes `Int` — a TS
+ * integer (Long) or a provably-Double index (`Math.floor` returns Double,
+ * JS-faithful) narrows. A MAP's key is whatever the map is keyed by, so it is
+ * emitted as-is: `counts[42L]` against a `Map<Long, …>` must stay Long.
+ */
+function kotlinListIndex(obj: ExprIR, index: ExprIR, indent: number): string {
+  const objT = inferType(obj, _kotlinExprInferCtx)
+  const base = objT.kind === 'union' ? objT.branches.find((b) => b.kind !== 'null' && b.kind !== 'undefined') : objT
+  if (base !== undefined && (base.kind === 'map' || base.kind === 'object' || (base.kind === 'typeRef' && base.name === 'Record'))) {
+    return emitKotlinExpr(index, indent)
+  }
+  const idxT = inferType(index, _kotlinExprInferCtx)
+  if (idxT.kind === 'string') return emitKotlinExpr(index, indent)
+  return kotlinIntArg(index, indent)
+}
+
+/** The zero of a numeric type, spelled so Kotlin's `==` accepts it (no implicit Int→Long/Double). */
+function kotlinZero(t: TypeIR): string {
+  return t.kind === 'number' && t.float === true ? '0.0' : '0L'
+}
+
+/** Widen the `Int` a Kotlin API returns (`size`, `length`, `indexOf`) to the `Long` a TS integer is. */
+function kotlinLongOf(raw: string): string {
+  return `${raw}.toLong()`
+}
+
+/**
  * An integer literal in a position whose type is KNOWN to be Double, marked so
  * it emits `4.0` rather than `4`.
  *
@@ -686,9 +748,11 @@ function collectLayoutComponentNamesKotlin(components: ComponentIR[]): Set<strin
  */
 let _emitWarnings: string[] = []
 
-// JS-faithful `String(double)` — see the Swift twin. Emitted once when used.
+// JS-faithful `String(double)` — see the Swift twin. Emitted once when used,
+// `private` for the same reason: one per file, so a public top-level `fun`
+// collided across files in one Gradle source set (one package).
 let _needsKotlinNumString = false
-const KOTLIN_NUM_STRING = `fun pyreonNumString(v: Double): String =
+const KOTLIN_NUM_STRING = `private fun pyreonNumString(v: Double): String =
     if (v == Math.rint(v) && Math.abs(v) < 1e15) v.toLong().toString() else v.toString()`
 /**
  * Module-level `const X = <string|number|boolean literal>` bindings,
@@ -737,6 +801,8 @@ export function emitKotlin(
   attrsComponents: AttrsComponentIR[] = [],
   aliasImports: Map<string, { source: string; imported: string }> = new Map(),
 ): { code: string; warnings: string[] } {
+  // Per-FILE counter — see the matching reset in emitSwift.
+  _kotlinTimelineSeq = 0
   _emitWarnings = []
   _needsKotlinNumString = false
   // Per-FILE hook-binding-name sets. They are populated by the pre-pass
@@ -919,7 +985,7 @@ export function emitKotlin(
   }
   const parts: string[] = []
   if (components.length > 0 || structs.length > 0) {
-    parts.push('// Pyreon TS-compat extensions\nprivate val <T> List<T>.length: Int get() = size')
+    parts.push('// Pyreon TS-compat extensions\nprivate val <T> List<T>.length: Long get() = size.toLong()')
   }
   // Gap 4 v1: store-hook → store id map for use-site chain rewriting.
   _storeHooksKotlin = new Map(stores.map((s) => [s.hookName, s.storeId]))
@@ -998,33 +1064,16 @@ export function emitKotlin(
     const names = zs.fields.filter((f) => f.type === 'string').map((f) => f.name)
     if (names.length > 0) _zodStringFieldsKotlin.set(zs.bindingName, names)
   }
-  // Emit the shared PyreonSchemaError sealed class once if any
-  // schemas are present.
-  if (zodSchemas.length > 0) parts.push(KOTLIN_SCHEMA_ERROR)
-  // Standalone-validation: the web-faithful result shape, once, when any
-  // schema was validated inline (`s.object({ … }).safeParse(x)`).
-  if (zodSchemas.some((zs) => zs.emitSafeParseResult)) parts.push(KOTLIN_PARSE_RESULT)
-  // Emit each PyreonUrlState* helper once, and only the ones actually bound —
-  // a string-only file emits byte-identically to before the typed variants
-  // existed. The number helper is shared by the Int and Double forms.
-  {
-    const urlStateTypes = new Set(
-      components.flatMap(
-        (c) => c.decls?.filter((d) => d.kind === 'url-state').map((d) => d.valueType) ?? [],
-      ),
-    )
-    if (urlStateTypes.has('string')) parts.push(KOTLIN_URL_STATE)
-    if (urlStateTypes.has('int') || urlStateTypes.has('double')) parts.push(KOTLIN_URL_NUMBER)
-    if (urlStateTypes.has('int')) parts.push(KOTLIN_URL_STATE_INT)
-    if (urlStateTypes.has('double')) parts.push(KOTLIN_URL_STATE_DOUBLE)
-    if (urlStateTypes.has('boolean')) parts.push(KOTLIN_URL_STATE_BOOL)
-  }
-  if (
-    _usesPermissionsEnvKotlin ||
-    components.some((c) => c.decls?.some((d) => d.kind === 'permissions' && d.grants.length === 0))
-  ) {
-    parts.push(KOTLIN_PERMISSIONS_ENV)
-  }
+  // `PyreonSchemaError` and `PyreonParseResult` — what every schema throws
+  // and returns — live in the runtime (`PyreonSchema.kt`), NOT in this file.
+  // Emitted per file they collided: two schema-bearing files in one Gradle
+  // source set are one package, and each declared the same sealed class.
+  // `PyreonUrlState*` (router-kotlin) and `LocalPyreonPermissions`
+  // (permissions' co-located runtime) are NOT emitted here. Emitted per file
+  // the url-state classes collided (`Redeclaration` — one Gradle source set is
+  // one package), and the permissions local, being `private`, was a DIFFERENT
+  // local in every file: a provider in the app root and a reader on another
+  // page never met, so the reader silently denied everything.
   // Gap 4 v3.2 — emit auxSchemas BEFORE their parent schema so the
   // type-reference order is consistent top-down.
   const emitKotlinSchemaTree = (zs: ZodSchemaDefnIR): void => {
@@ -1066,7 +1115,6 @@ export function emitKotlin(
   _clipboardKotlin = new Set()
   _modelReadNamesKotlin = new Map()
   _modelMethodNamesKotlin = new Map()
-  _usesPermissionsEnvKotlin = false
   _needsKotlinKeepAliveWrapper = false
   const warnings = [..._emitWarnings]
   _emitWarnings = []
@@ -1119,8 +1167,6 @@ let _activeModelSelfParamKotlin: string | undefined
 let _modelReadNamesKotlin: Map<string, Set<string>> = new Map()
 /** Per-instance model ACTION names — calls keep their parens + args. */
 let _modelMethodNamesKotlin: Map<string, Set<string>> = new Map()
-/** Set when a `<PermissionsProvider>` emits — the file needs the local. */
-let _usesPermissionsEnvKotlin = false
 
 /**
  * Emit a per-store Kotlin object singleton:
@@ -1285,7 +1331,7 @@ function emitKotlinFeature(f: FeatureDefnIR): string {
       field.type === 'string'
         ? 'String'
         : field.type === 'number'
-          ? 'Int'
+          ? KOTLIN_INT
           : 'Boolean'
     const initial =
       field.type === 'string' ? '""' : field.type === 'boolean' ? 'false' : '0'
@@ -1322,7 +1368,7 @@ function emitKotlinFeature(f: FeatureDefnIR): string {
  */
 function kotlinFieldType(t: ZodFieldType): string {
   if (typeof t === 'string') {
-    return t === 'string' ? 'String' : t === 'number' ? 'Int' : 'Boolean'
+    return t === 'string' ? 'String' : t === 'number' ? KOTLIN_INT : 'Boolean'
   }
   if (t.kind === 'object') {
     // Gap 4 v3.2 — nested object reference. Emit the synthesized data class name.
@@ -1332,7 +1378,7 @@ function kotlinFieldType(t: ZodFieldType): string {
   let elem: string
   if (typeof t.element === 'string') {
     elem =
-      t.element === 'string' ? 'String' : t.element === 'number' ? 'Int' : 'Boolean'
+      t.element === 'string' ? 'String' : t.element === 'number' ? KOTLIN_INT : 'Boolean'
   } else {
     elem = `PyreonZodSchema_${t.element.schemaName}`
   }
@@ -1788,131 +1834,6 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
 }
 
 /**
- * Gap 4 v2 — emitted once at module scope when any schema is
- * present. Single sealed exception hierarchy shared across all
- * schemas in a file.
- */
-
-/**
- * The Kotlin mirror of `SWIFT_URL_STATE`. Emitted inline for the same reason:
- * it needs the ACTIVE router, which `useRouter()` supplies from the Compose
- * local, so a standalone runtime would have to depend on PyreonRouter and stop
- * being self-contained.
- *
- * `operator fun invoke()` is the Kotlin spelling of Swift's
- * `callAsFunction`, so `q()` reads and `q.set(v)` writes on BOTH targets and
- * shared source does not fork.
- */
-const KOTLIN_PERMISSIONS_ENV = `// CompositionLocal for <PermissionsProvider> — mirror of the Swift env key,
-// emitted inline for the same reason (a co-located runtime should not need
-// Compose's CompositionLocal machinery). An unprovided local is an EMPTY set
-// — a deny, the safe default for an authorization check.
-private val LocalPyreonPermissions = compositionLocalOf { PyreonPermissions() }`
-
-const KOTLIN_URL_STATE = `class PyreonUrlState(
-    private val router: PyreonRouter?,
-    private val key: String,
-    private val defaultValue: String,
-) {
-    operator fun invoke(): String = router?.query?.value?.get(key) ?: defaultValue
-    fun set(value: String) { router?.setQueryParam(key, value) }
-    fun clear() { router?.setQueryParam(key, null) }
-}`
-
-/**
- * JS `ToNumber(String)` — the Kotlin twin of `SWIFT_URL_NUMBER`. Same grammar,
- * same order of checks, so both targets decode a pasted URL identically. See
- * the Swift constant for the divergence table that motivates it.
- */
-const KOTLIN_URL_NUMBER = `private fun pyreonUrlNumber(raw: String, fallback: Double): Double {
-    val t = raw.trim()
-    if (t.isEmpty()) return fallback
-    if (t == "Infinity" || t == "+Infinity") return Double.POSITIVE_INFINITY
-    if (t == "-Infinity") return Double.NEGATIVE_INFINITY
-    if (t.length > 2 && t[0] == '0') {
-        val radix = when (t[1]) {
-            'x', 'X' -> 16
-            'o', 'O' -> 8
-            'b', 'B' -> 2
-            else -> 0
-        }
-        if (radix != 0) {
-            val v = t.substring(2).toLongOrNull(radix) ?: return fallback
-            return v.toDouble()
-        }
-    }
-    // Only the decimal grammar's own characters. Rejects "inf"/"NaN"/"1_0" and
-    // Kotlin's own "1.5f"/"1.5d" suffix forms, all of which JS reads as NaN.
-    for (ch in t) {
-        if (!(ch in '0'..'9' || ch == '+' || ch == '-' || ch == '.' || ch == 'e' || ch == 'E')) return fallback
-    }
-    val v = t.toDoubleOrNull() ?: return fallback
-    return if (v.isNaN()) fallback else v
-}`
-
-/** Int-valued search parameter. See `KOTLIN_URL_NUMBER` for the decode. */
-const KOTLIN_URL_STATE_INT = `class PyreonUrlStateInt(
-    private val router: PyreonRouter?,
-    private val key: String,
-    private val defaultValue: Int,
-) {
-    operator fun invoke(): Int {
-        val raw = router?.query?.value?.get(key) ?: return defaultValue
-        val n = pyreonUrlNumber(raw, defaultValue.toDouble())
-        // An integer-defaulted binding is Int on both targets, so a fractional
-        // or out-of-range value has no representation — fall back to the
-        // default, the same answer the web gives for a value it cannot read.
-        if (n != Math.floor(n) || n < Int.MIN_VALUE.toDouble() || n > Int.MAX_VALUE.toDouble()) return defaultValue
-        return n.toInt()
-    }
-    fun set(value: Int) { router?.setQueryParam(key, value.toString()) }
-    fun clear() { router?.setQueryParam(key, null) }
-}`
-
-/**
- * Double-valued search parameter. `set` mirrors JS `String(v)`, which prints a
- * whole Double WITHOUT a trailing `.0` — Kotlin's own `toString()` gives
- * "1.0", so the round-trip would not match the web's `?zoom=1`.
- */
-const KOTLIN_URL_STATE_DOUBLE = `class PyreonUrlStateDouble(
-    private val router: PyreonRouter?,
-    private val key: String,
-    private val defaultValue: Double,
-) {
-    operator fun invoke(): Double {
-        val raw = router?.query?.value?.get(key) ?: return defaultValue
-        return pyreonUrlNumber(raw, defaultValue)
-    }
-    fun set(value: Double) {
-        val s = if (value == Math.floor(value) && Math.abs(value) < 1e15) value.toLong().toString() else value.toString()
-        router?.setQueryParam(key, s)
-    }
-    fun clear() { router?.setQueryParam(key, null) }
-}`
-
-/**
- * Bool-valued search parameter. The web's decode is `raw === 'true'` — every
- * other string, `"1"` and `"TRUE"` included, is false.
- */
-const KOTLIN_URL_STATE_BOOL = `class PyreonUrlStateBool(
-    private val router: PyreonRouter?,
-    private val key: String,
-    private val defaultValue: Boolean,
-) {
-    operator fun invoke(): Boolean {
-        val raw = router?.query?.value?.get(key) ?: return defaultValue
-        // Mirrors the web decode: true/1, false/0, anything else the default.
-        return when (raw) {
-            "true", "1" -> true
-            "false", "0" -> false
-            else -> defaultValue
-        }
-    }
-    fun set(value: Boolean) { router?.setQueryParam(key, if (value) "true" else "false") }
-    fun clear() { router?.setQueryParam(key, null) }
-}`
-
-/**
  * Value type → emitted helper. A total `Record` rather than a lookup with a
  * fallback: adding a `valueType` without an emitter is then a compile error,
  * not a silent default to the string helper.
@@ -1926,20 +1847,6 @@ const KOTLIN_URL_STATE_TYPES: Record<
   double: 'PyreonUrlStateDouble',
   boolean: 'PyreonUrlStateBool',
 }
-
-const KOTLIN_SCHEMA_ERROR = `sealed class PyreonSchemaError(message: String) : Exception(message) {
-    data class MissingOrWrongType(val field: String, val expected: String) :
-        PyreonSchemaError("Field '$field' missing or wrong type (expected $expected)")
-    data class ConstraintViolation(val field: String, val rule: String) :
-        PyreonSchemaError("Field '$field' violated constraint '$rule'")
-}`
-
-/**
- * Standalone-validation: the web-faithful `{ success, data }` result shape
- * `s.object({ … }).safeParse(x)` returns. Emitted once per file when any
- * schema has `emitSafeParseResult`. Mirrors the Swift `PyreonParseResult`.
- */
-const KOTLIN_PARSE_RESULT = `data class PyreonParseResult<T>(val success: Boolean, val data: T?)`
 
 /** Emit a Kotlin `enum class X { a, b, c }`. */
 function emitKotlinEnum(e: EnumIR): string {
@@ -2771,7 +2678,7 @@ function resolveKotlinRowTypeName(elem: TypeIR): string {
   // ordinary shape, and `Any` would make the emitted generic uselessly wide
   // (a `List<Any>` does not assign to a `List<String>` sink).
   if (elem.kind === 'string') return 'String'
-  if (elem.kind === 'number') return 'Int'
+  if (elem.kind === 'number') return elem.float === true ? 'Double' : KOTLIN_INT
   if (elem.kind === 'boolean') return 'Boolean'
   return 'Any'
 }
@@ -2837,7 +2744,7 @@ function emitKotlinStreamHarness(d: Extract<DeclIR, { kind: 'stream' }>, ctx: Ko
     opts.push(
       d.reconnect === null
         ? 'reconnect = null'
-        : `reconnect = PyreonStreamReconnect(attempts = ${d.reconnect.attempts}, delay = ${d.reconnect.delay}L, maxDelay = ${d.reconnect.maxDelay}L, onEnd = ${d.reconnect.onEnd})`,
+        : `reconnect = PyreonStreamReconnect(attempts = ${d.reconnect.attempts}L, delay = ${d.reconnect.delay}L, maxDelay = ${d.reconnect.maxDelay}L, onEnd = ${d.reconnect.onEnd})`,
     )
     const payload = d.sseText ? 'm.data' : `PyreonFetchJson.decodeFromString<${data}>(m.data)`
     out.push(
@@ -2876,7 +2783,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     const argType = p0 === undefined ? 'Unit' : kotlinType(p0.type)
     const argName = p0 === undefined ? '_' : kotlinIdent(p0.name)
     const body = d.fn.body.map((st) => emitKotlinStatement(st, 4, ctx)).join('; ')
-    return `val ${kotlinIdent(d.name)} = remember { ${cls}<${argType}>(${d.delayMs}, PyreonTaskScheduler()) { ${argName} -> ${body} } }`
+    return `val ${kotlinIdent(d.name)} = remember { ${cls}<${argType}>(${d.delayMs}L, PyreonTaskScheduler()) { ${argName} -> ${body} } }`
   }
   // Phase 5b: a plain value const → a composable-body `val` (captures-once).
   if (d.kind === 'value') {
@@ -3025,10 +2932,19 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     // v2 (form-binding arc) — validators as Kotlin lambdas; "" = valid.
     if (d.validators !== undefined && d.validators.length > 0) {
       const entries = d.validators
-        .map(
-          (v) =>
-            `${kotlinStr(v.key)} to { ${kotlinIdent(v.param)}: String -> ${emitKotlinExpr(v.body, 0)} }`,
-        )
+        .map((v) => {
+          // The lambda's parameter is declared `String`, so a `.length` in the
+          // body is Kotlin's Int and must widen like any other string length
+          // — bind the type for the body's inference, then release it.
+          const prior = _kotlinExprInferCtx.locals.get(v.param)
+          _kotlinExprInferCtx.locals.set(v.param, { kind: 'string' })
+          try {
+            return `${kotlinStr(v.key)} to { ${kotlinIdent(v.param)}: String -> ${emitKotlinExpr(v.body, 0)} }`
+          } finally {
+            if (prior === undefined) _kotlinExprInferCtx.locals.delete(v.param)
+            else _kotlinExprInferCtx.locals.set(v.param, prior)
+          }
+        })
         .join(', ')
       parts.push(`validators = mapOf(${entries})`)
     }
@@ -3110,7 +3026,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // `const s = useStream(…)` → a remembered PyreonStream; the
   // `DisposableEffect` that starts and stops it is emitted with the harnesses.
   if (d.kind === 'stream') {
-    return `val ${kotlinIdent(d.name)} = remember { PyreonStream<${kotlinType(d.itemType, ctx)}>(maxEvents = ${d.maxEvents}) }`
+    return `val ${kotlinIdent(d.name)} = remember { PyreonStream<${kotlinType(d.itemType, ctx)}>(maxEvents = ${d.maxEvents}L) }`
   }
   if (d.kind === 'database') {
     _databaseNames.add(d.name)
@@ -3250,7 +3166,9 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     ].join('\n  ')
   }
   if (d.kind === 'pure-state') {
-    return `var ${kotlinIdent(d.name)} by remember { mutableStateOf(${String(d.initial)}) }`
+    // A counter is a TS integer — Long on Kotlin (see KOTLIN_INT).
+    const init = typeof d.initial === 'number' && Number.isInteger(d.initial) ? `${d.initial}L` : String(d.initial)
+    return `var ${kotlinIdent(d.name)} by remember { mutableStateOf(${init}) }`
   }
   if (d.kind === 'permissions') {
     // Mirror of Swift: a BARE `usePermissions()` reads the provider's
@@ -3571,7 +3489,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
         const base: TypeIR = distinct.length === 1 ? distinct[0]! : { kind: 'union', branches: distinct }
         return { name, type: values.length < dataRows.length ? { kind: 'union', branches: [base, { kind: 'undefined' }] } as TypeIR : base }
       })
-      const name = `__Obj${_synthExprStructs.length}`
+      const name = synthStructName(_synthExprStructs.length)
       _synthExprStructs.push({ name, fields })
       inferredRowType = { kind: 'typeRef', name, args: [] }
       rowType = name
@@ -4942,8 +4860,14 @@ function isRememberSaveableNativeType(t: TypeIR): boolean {
 export function kotlinType(t: TypeIR, ctx?: KotlinCtx, signalName?: string): string {
   switch (t.kind) {
     case 'number':
-      // Fractional literal → Double; integer → Int (ergonomic default).
-      return t.float === true ? 'Double' : 'Int'
+      // Fractional → Double; integer → Long. NOT `Int`: Swift's `Int` is
+      // 64-bit on every Apple target, so an `Int` here made the SAME source
+      // hold a narrower value on Android — any integer past 2147483647 (an
+      // epoch-milliseconds timestamp, a snowflake id) failed to DECODE from
+      // JSON and overflowed in arithmetic, on one platform only. Positions
+      // whose Kotlin API is Int-only convert at the call (`kotlinIntArg` /
+      // `kotlinLongOf`).
+      return t.float === true ? 'Double' : KOTLIN_INT
     case 'string':
       return 'String'
     case 'boolean':
@@ -5119,7 +5043,11 @@ function emitKotlinIndexedBody(
   cb: Extract<ExprIR, { kind: 'arrow' }>,
   indent: number,
   label: string,
+  /** The callback's index binding — rebound from the lambda's `Int`
+   *  (`KOTLIN_INDEX_PARAM`) to the `Long` a TS integer is (see KOTLIN_INT). */
+  indexName?: string,
 ): string {
+  const bindIdx = indexName === undefined ? '' : `val ${indexName} = ${KOTLIN_INDEX_PARAM}.toLong()`
   if (cb.stmts !== undefined && cb.stmts.length > 0) {
     const stmtCtx: KotlinCtx = {
       synthesizedDataClasses: [],
@@ -5130,10 +5058,14 @@ function emitKotlinIndexedBody(
     const savedLocals = seedHandlerLocals(cb.stmts, _kotlinExprInferCtx)
     const lines = cb.stmts.map((s) => pad + emitKotlinStatement(s, indent + 2, stmtCtx)).join('\n')
     _kotlinExprInferCtx.locals = savedLocals
-    return `\n${lines}\n${' '.repeat(indent)}`
+    return `\n${bindIdx === '' ? '' : `${pad}${bindIdx}\n`}${lines}\n${' '.repeat(indent)}`
   }
-  return ` ${emitKotlinExpr(cb.body, indent)} `
+  return ` ${bindIdx === '' ? '' : `${bindIdx}; `}${emitKotlinExpr(cb.body, indent)} `
 }
+
+/** The Kotlin lambda parameter an index callback receives (an `Int`), rebound
+ *  to the callback's own name as a `Long` by `emitKotlinIndexedBody`. */
+const KOTLIN_INDEX_PARAM = 'pyreonIdx'
 
 /**
  * Emit a PLAIN (1-param) callback arg with Kotlin's labeled-return support —
@@ -5175,7 +5107,41 @@ function emitKotlinDynamicValue(e: ExprIR, indent: number): string {
     const elems = e.elements.map((el) => emitKotlinDynamicValue(el, indent)).join(', ')
     return `listOf<Any?>(${elems})`
   }
+  // A typed value (data class, inline object, or a collection of them)
+  // nested in a literal: the schema reads plain values, so it goes through
+  // its own serializer. A scalar is already one.
+  if (schemaInputNeedsConversion(inferType(e, _kotlinExprInferCtx))) {
+    return `pyreonSchemaValue(${emitKotlinExpr(e, indent)})`
+  }
   return emitKotlinExpr(e, indent)
+}
+
+/**
+ * The argument of a lowered `safeParse` (see the Swift twin). An object
+ * LITERAL is already the map the schema reads; anything else is a typed
+ * value, converted by `pyreonSchemaInput` through its own serializer.
+ */
+function emitKotlinSchemaInput(e: ExprIR, indent: number): string {
+  if (e.kind === 'object' && (!e.spreads || e.spreads.length === 0)) return emitKotlinDynamicValue(e, indent)
+  return `pyreonSchemaInput(${emitKotlinExpr(e, indent)})`
+}
+
+/** True when the inferencer proves the operand is a fractional number. */
+function isDoubleOperand(x: ExprIR): boolean {
+  const t = inferType(x, _kotlinExprInferCtx)
+  return t.kind === 'number' && t.float === true
+}
+
+/**
+ * `0` / `-1` written as an integer literal, emitted as `0.0` / `-1.0` when the
+ * OTHER comparison operand is a Double; null when it does not apply.
+ */
+function intLiteralAsDouble(x: ExprIR, otherIsDouble: boolean): string | null {
+  if (!otherIsDouble) return null
+  const lit = x.kind === 'unary' && x.op === '-' ? x.argument : x
+  if (lit.kind !== 'literal' || typeof lit.value !== 'number' || lit.float === true) return null
+  if (!Number.isInteger(lit.value)) return null
+  return `${x === lit ? '' : '-'}${lit.value}.0`
 }
 
 function emitKotlinExpr(e: ExprIR, indent: number): string {
@@ -5201,6 +5167,15 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // already renders with its decimal (`12.5`).
       if (typeof e.value === 'number' && e.float === true && Number.isInteger(e.value)) {
         return `${e.value}.0`
+      }
+      // An integer literal is a `Long` — the Kotlin width of a TS integer
+      // `number` (see `kotlinType`). The suffix is what makes it one where
+      // Kotlin has no expected type to adapt it to (`mutableStateOf(0L)`,
+      // `x == 5L`, `fold(0L, …)`, an untyped `var total = 0L`); a position
+      // that REQUIRES a 32-bit Int (a subscript, `take(n)`, a Compose param)
+      // goes through `kotlinIntArg`, which drops it again.
+      if (typeof e.value === 'number' && Number.isInteger(e.value) && Math.abs(e.value) <= Number.MAX_SAFE_INTEGER) {
+        return `${e.value}L`
       }
       return String(e.value)
     case 'identifier':
@@ -5228,7 +5203,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // `PyreonZodSchema_<name>.safeParseResult(<x-as-map>)`, returning
       // `PyreonParseResult<T>` — a wrapping `.success` / `.data` composes over
       // it. The argument lowers to a `Map<String, Any?>` (never a data class).
-      return `PyreonZodSchema_${e.schemaName}.safeParseResult(${emitKotlinDynamicValue(e.arg, indent)})`
+      return `PyreonZodSchema_${e.schemaName}.safeParseResult(${emitKotlinSchemaInput(e.arg, indent)})`
     }
     case 'json-stringify':
       // `JSON.stringify(x)` → kotlinx-serialization. The value is @Serializable
@@ -5244,7 +5219,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           _emitWarnings.push(`<${e.callee.object.name}.dispatch>: native needs an inline action object with a literal \`type\` ({ type: 'select', index: 2 }); the call is skipped.`)
           return 'Unit'
         }
-        const int = (x: ExprIR | undefined): string => (x === undefined ? '-1' : `(${emitKotlinExpr(x, indent)}).toInt()`)
+        const int = (x: ExprIR | undefined): string => (x === undefined ? '-1L' : `(${emitKotlinExpr(x, indent)}).toLong()`)
         const dbl = (x: ExprIR | undefined, d: string): string => (x === undefined ? d : `(${emitKotlinExpr(x, indent)}).toDouble()`)
         const areas = f.areas === undefined ? 'listOf()' : withExpectedTypeKotlin({ kind: 'array', element: { kind: 'typeRef', name: 'BrushArea', args: [] } }, () => emitKotlinExpr(f.areas!, indent))
         return `${kotlinIdent(e.callee.object.name)}.dispatch(ChartActionInput(type = ${emitKotlinExpr(f.type!, indent)}, index = ${int(f.index)}, series = ${int(f.series)}, start = ${dbl(f.start, '0.0')}, end = ${dbl(f.end, '1.0')}, brushType = ${f.brushType === undefined ? '""' : emitKotlinExpr(f.brushType, indent)}, areas = ${areas}, playing = ${f.playing === undefined ? 'false' : emitKotlinExpr(f.playing, indent)}))`
@@ -5563,8 +5538,8 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               ? 'Double.NEGATIVE_INFINITY'
               : 'Double.POSITIVE_INFINITY'
             : isMax
-              ? 'Int.MIN_VALUE'
-              : 'Int.MAX_VALUE'
+              ? 'Long.MIN_VALUE'
+              : 'Long.MAX_VALUE'
           return `(${arrStr}.${isMax ? 'maxOrNull' : 'minOrNull'}() ?: ${sentinel})`
         }
         const fn = e.callee.property
@@ -5703,11 +5678,11 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         const t = inferType(e.args[0]!, _kotlinExprInferCtx)
         const arg = emitKotlinExpr(e.args[0]!, indent)
         if (t.kind === 'boolean') return arg
-        if (t.kind === 'number') return `(${arg} != 0)`
+        if (t.kind === 'number') return `(${arg} != ${kotlinZero(t)})`
         if (t.kind === 'string') return `(${arg}).isNotEmpty()`
         if (typeIsOptional(t)) {
           const inner = unwrapOptionalType(t)
-          if (inner.kind === 'number') return `((${arg} ?: 0) != 0)`
+          if (inner.kind === 'number') return `((${arg} ?: ${kotlinZero(inner)}) != ${kotlinZero(inner)})`
           if (inner.kind === 'string') return `(${arg} ?: "").isNotEmpty()`
           return `(${arg} != null)`
         }
@@ -5857,7 +5832,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         const field = kotlinIdent(binding)
         const m = e.callee.property
         const arg = e.args.length > 0 ? emitKotlinExpr(e.args[0]!, indent) : undefined
-        const clamp = (x: string): string => clampExpr(x, info.bounds, 'minOf', 'maxOf')
+        const clamp = (x: string): string => clampExpr(x, info.bounds, 'minOf', 'maxOf', 'L')
         if (info.hook === 'useToggle') {
           if (m === 'value') return field
           if (m === 'toggle') return `${field} = !${field}`
@@ -5865,10 +5840,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           if (m === 'setFalse') return `${field} = false`
         } else {
           if (m === 'count') return field
-          if (m === 'inc') return `${field} = ${clamp(`${field} + ${arg ?? '1'}`)}`
-          if (m === 'dec') return `${field} = ${clamp(`${field} - ${arg ?? '1'}`)}`
-          if (m === 'set') return `${field} = ${clamp(arg ?? '0')}`
-          if (m === 'reset') return `${field} = ${clamp(String(_pureStateInitialKotlin.get(binding) ?? 0))}`
+          if (m === 'inc') return `${field} = ${clamp(`${field} + ${arg ?? '1L'}`)}`
+          if (m === 'dec') return `${field} = ${clamp(`${field} - ${arg ?? '1L'}`)}`
+          if (m === 'set') return `${field} = ${clamp(arg ?? '0L')}`
+          if (m === 'reset') return `${field} = ${clamp(((n: number | boolean) => (typeof n === 'number' && Number.isInteger(n) ? `${n}L` : String(n)))(_pureStateInitialKotlin.get(binding) ?? 0))}`
         }
       }
       // Mirror of the Swift clipboard rewrite. Kotlin's `copied` is a
@@ -6057,11 +6032,15 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         }
         if (member === 'addEdgeWaypoint' && e.args.length >= 2) {
           const point = kotlinFlowPositionLiteral(e.args[1]!)
-          if (point !== null) return `${kotlinIdent(flowName)}.addEdgeWaypoint(${emitKotlinExpr(e.args[0]!, indent)}, ${point}${e.args.length === 3 ? `, ${emitKotlinExpr(e.args[2]!, indent)}` : ''})`
+          if (point !== null) return `${kotlinIdent(flowName)}.addEdgeWaypoint(${emitKotlinExpr(e.args[0]!, indent)}, ${point}${e.args.length === 3 ? `, ${kotlinIntArg(e.args[2]!, indent)}` : ''})`
+        }
+        // The waypoint index is a Kotlin `Int` API position (a TS integer is Long).
+        if (member === 'removeEdgeWaypoint' && e.args.length === 2) {
+          return `${kotlinIdent(flowName)}.removeEdgeWaypoint(${emitKotlinExpr(e.args[0]!, indent)}, ${kotlinIntArg(e.args[1]!, indent)})`
         }
         if (member === 'updateEdgeWaypoint' && e.args.length === 3) {
           const point = kotlinFlowPositionLiteral(e.args[2]!)
-          if (point !== null) return `${kotlinIdent(flowName)}.updateEdgeWaypoint(${emitKotlinExpr(e.args[0]!, indent)}, ${emitKotlinExpr(e.args[1]!, indent)}, ${point})`
+          if (point !== null) return `${kotlinIdent(flowName)}.updateEdgeWaypoint(${emitKotlinExpr(e.args[0]!, indent)}, ${kotlinIntArg(e.args[1]!, indent)}, ${point})`
         }
         if (member === 'reconnectEdge' && e.args.length === 2) {
           const args = kotlinFlowReconnectLiteral(e.args[1]!)
@@ -6230,10 +6209,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           // 10 and returned 0 for `'ff'` — a plausible number that flowed on.
           const radix = e.args[1]
           if (radix !== undefined) {
-            const r = radix.kind === 'literal' && typeof radix.value === 'number' ? String(radix.value) : emitKotlinExpr(radix, indent)
-            return `((${arg}).toIntOrNull(${r}) ?: 0)`
+            const r = kotlinIntArg(radix, indent)
+            return `((${arg}).toLongOrNull(${r}) ?: 0L)`
           }
-          return `((${arg}).toIntOrNull() ?: 0)`
+          return `((${arg}).toLongOrNull() ?: 0L)`
         }
         return `((${arg}).toDoubleOrNull() ?: 0.0)`
       }
@@ -6531,7 +6510,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             if (cb) {
               const el = kotlinIdent(cb.params[0]!)
               const idx = kotlinIdent(cb.params[1]!)
-              return `${obj}${objDot}withIndex().any({ (${idx}, ${el}) ->${emitKotlinIndexedBody(cb, indent, 'any')}})`
+              return `${obj}${objDot}withIndex().any({ (${KOTLIN_INDEX_PARAM}, ${el}) ->${emitKotlinIndexedBody(cb, indent, 'any', idx)}})`
             }
             if (e.args.length === 1) {
               return `${obj}${objDot}any(${argExprs[0]!})`
@@ -6543,7 +6522,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             if (cb) {
               const el = kotlinIdent(cb.params[0]!)
               const idx = kotlinIdent(cb.params[1]!)
-              return `${obj}${objDot}withIndex().all({ (${idx}, ${el}) ->${emitKotlinIndexedBody(cb, indent, 'all')}})`
+              return `${obj}${objDot}withIndex().all({ (${KOTLIN_INDEX_PARAM}, ${el}) ->${emitKotlinIndexedBody(cb, indent, 'all', idx)}})`
             }
             if (e.args.length === 1) {
               return `${obj}${objDot}all(${argExprs[0]!})`
@@ -6557,7 +6536,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             if (cb) {
               const el = kotlinIdent(cb.params[0]!)
               const idx = kotlinIdent(cb.params[1]!)
-              return `${obj}${objDot}filterIndexed({ ${idx}, ${el} ->${emitKotlinIndexedBody(cb, indent, 'filterIndexed')}})`
+              return `${obj}${objDot}filterIndexed({ ${KOTLIN_INDEX_PARAM}, ${el} ->${emitKotlinIndexedBody(cb, indent, 'filterIndexed', idx)}})`
             }
             if (e.args.length === 1) return `${obj}${objDot}filter(${argExprs[0]!})`
             break
@@ -6576,7 +6555,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               const el = kotlinIdent(cb.params[0]!)
               const idx = kotlinIdent(cb.params[1]!)
               const fn = prop === 'map' ? 'mapIndexed' : 'forEachIndexed'
-              return `${obj}${objDot}${fn}({ ${idx}, ${el} ->${emitKotlinIndexedBody(cb, indent, fn)}})`
+              return `${obj}${objDot}${fn}({ ${KOTLIN_INDEX_PARAM}, ${el} ->${emitKotlinIndexedBody(cb, indent, fn, idx)}})`
             }
             break
           }
@@ -6601,7 +6580,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             // a Char, so `.toString()` to match JS's String result (Swift:
             // `String(Array(str)[i])`). Out-of-range crashes (JS returns "")
             // — bounds are the caller's concern; documented v1 limitation.
-            if (e.args.length === 1) return `${obj}[${argExprs[0]!}].toString()`
+            if (e.args.length === 1) return `${obj}[${kotlinIntArg(e.args[0]!, indent)}].toString()`
             break
           case 'charCodeAt':
             // JS `s.charCodeAt(i)` → the UTF-16 code unit as Double (the JS
@@ -6620,7 +6599,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             // Char → falls through to the generic emit (mirrors the Swift
             // single-char-pad restriction).
             const padArg = e.args[1]
-            if (e.args.length === 1) return `${obj}${objDot}${prop}(${argExprs[0]!})`
+            if (e.args.length === 1) return `${obj}${objDot}${prop}(${kotlinIntArg(e.args[0]!, indent)})`
             if (
               e.args.length >= 2 &&
               padArg !== undefined &&
@@ -6630,7 +6609,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               padArg.value !== "'" &&
               padArg.value !== '\\'
             ) {
-              return `${obj}${objDot}${prop}(${argExprs[0]!}, '${padArg.value}')`
+              return `${obj}${objDot}${prop}(${kotlinIntArg(e.args[0]!, indent)}, '${padArg.value}')`
             }
             break
           }
@@ -6662,7 +6641,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
                 objExpr.callee.name === 'Array' &&
                 objExpr.args.length === 1
               ) {
-                const count = emitKotlinExpr(objExpr.args[0]!, indent)
+                const count = kotlinIntArg(objExpr.args[0]!, indent)
                 return `List(${count}) { ${argExprs[0]!} }`
               }
               return `List(${obj}${objDot}size) { ${argExprs[0]!} }`
@@ -6684,7 +6663,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
                 )
                 break
               }
-              const i = argExprs[0]!
+              const i = kotlinIntArg(e.args[0]!, indent)
               return `${obj}${objDot}getOrNull(if ((${i}) < 0) ${obj}${objDot}size + (${i}) else (${i}))`
             }
             break
@@ -6704,7 +6683,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             // Negative-index idioms (Kotlin drop/take count from the front):
             //   slice(-m)    → takeLast(m)   (last m)
             //   slice(0, -n) → dropLast(n)   (drop last n)
-            const negSlice = classifyNegativeSlice(e.args, (a) => emitKotlinExpr(a, indent))
+            const negSlice = classifyNegativeSlice(e.args, (a) => kotlinIntArg(a, indent))
             if (negSlice) {
               switch (negSlice.kind) {
                 case 'last':
@@ -6718,9 +6697,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               }
             }
             if (noNegative) {
-              if (e.args.length === 1) return `${obj}${objDot}drop(${argExprs[0]!})`
+              const s0 = e.args[0] !== undefined ? kotlinIntArg(e.args[0], indent) : ''
+              if (e.args.length === 1) return `${obj}${objDot}drop(${s0})`
               if (e.args.length === 2) {
-                return `${obj}${objDot}drop(${argExprs[0]!}).take(maxOf(0, (${argExprs[1]!}) - (${argExprs[0]!})))`
+                return `${obj}${objDot}drop(${s0}).take(maxOf(0, (${kotlinIntArg(e.args[1]!, indent)}) - (${s0})))`
               }
               if (e.args.length === 0) {
                 if (sliceObjType.kind === 'string') return obj
@@ -6743,10 +6723,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               if (cb) {
                 const el = kotlinIdent(cb.params[0]!)
                 const idx = kotlinIdent(cb.params[1]!)
-                return `(${obj}${objDot}withIndex().firstOrNull({ (${idx}, ${el}) ->${emitKotlinIndexedBody(cb, indent, 'firstOrNull')}})?.index ?: -1)`
+                return `(${obj}${objDot}withIndex().firstOrNull({ (${KOTLIN_INDEX_PARAM}, ${el}) ->${emitKotlinIndexedBody(cb, indent, 'firstOrNull', idx)}})?.index ?: -1).toLong()`
               }
             }
-            if (e.args.length === 1) return `${obj}${objDot}indexOfFirst(${argExprs[0]!})`
+            if (e.args.length === 1) return kotlinLongOf(`${obj}${objDot}indexOfFirst(${argExprs[0]!})`)
             break
           case 'replaceAll':
             // JS `str.replaceAll(a, b)` → Kotlin `String.replace(a, b)`
@@ -6874,10 +6854,14 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
                 for (const pn of cmp!.params) cmpCtx.locals.set(pn, elemT)
                 bodyT = inferType(cmp!.body, cmpCtx)
               }
+              // An INTEGER body is Long (see KOTLIN_INT), which `Comparator`
+              // cannot return either — `compareTo(0L)` is its Int sign.
               const cmpBody =
                 bodyT.kind === 'number' && bodyT.float === true
                   ? `(${body}).compareTo(0.0)`
-                  : body
+                  : bodyT.kind === 'number'
+                    ? `(${body}).compareTo(0L)`
+                    : body
               return `${obj}${objDot}sortedWith(Comparator { ${ps} -> ${cmpBody} })`
             }
             // Swift twin's rationale — `sort()` with no comparator broke out
@@ -6887,6 +6871,21 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             )
             break
           }
+          // Same-named on Kotlin, but Int-typed on both sides of the call: a
+          // TS integer is Long (see KOTLIN_INT), so the result widens and a
+          // count/position narrows.
+          case 'indexOf':
+          case 'lastIndexOf':
+            if (e.args.length === 1) return kotlinLongOf(`${obj}${objDot}${prop}(${argExprs[0]!})`)
+            break
+          case 'repeat':
+            if (e.args.length === 1) return `${obj}${objDot}repeat(${kotlinIntArg(e.args[0]!, indent)})`
+            break
+          case 'substring':
+            if (e.args.length === 1 || e.args.length === 2) {
+              return `${obj}${objDot}substring(${e.args.map((a) => kotlinIntArg(a, indent)).join(', ')})`
+            }
+            break
           case 'toLocaleString':
             // No native locale-number-formatting equivalent. Degrade to
             // `.toString()` (valid, loses grouping) + warn — mirror of
@@ -6925,21 +6924,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           typeIsOptional(inferType(e.object, _kotlinExprInferCtx))
             ? '?.'
             : '.'
-        return `${emitKotlinExpr(e.object, indent)}${dot}getOrNull(${emitKotlinExpr(e.index, indent)})`
+        return `${emitKotlinExpr(e.object, indent)}${dot}getOrNull(${kotlinListIndex(e.object, e.index, indent)})`
       }
       // A provably-Double index (Math.floor returns Double, JS-faithful)
       // needs `.toInt()` — Kotlin's List subscript takes Int only (the
       // Swift twin wraps `Int(...)`).
-      {
-        const idxT = inferType(e.index, _kotlinExprInferCtx)
-        const idxRaw = emitKotlinExpr(e.index, indent)
-        const idxOut =
-          (idxT.kind === 'number' && idxT.float === true) ||
-          (idxT.kind === 'typeRef' && (idxT.name === 'Double' || idxT.name === 'Float'))
-            ? `(${idxRaw}).toInt()`
-            : idxRaw
-        return `${emitKotlinExpr(e.object, indent)}[${idxOut}]`
-      }
+      return `${emitKotlinExpr(e.object, indent)}[${kotlinListIndex(e.object, e.index, indent)}]`
     }
     case 'member': {
       if (
@@ -7107,6 +7097,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // after the first optional one (`a?.b.c` → `a?.b?.c`; a plain `.c` on
       // a nullable is a type error) — `chainHasOptional` propagates it.
       const dot = e.optional === true || chainHasOptional(e.object) ? '?.' : '.'
+      // `String.length` is Kotlin's 32-bit Int; a TS integer is Long (see
+      // KOTLIN_INT). A List's `.length` is the TS-compat extension, already
+      // Long. The optional form keeps the `?.` (`s?.length?.toLong()`).
+      if (e.property === 'length' && unwrapOptionalType(inferType(e.object, _kotlinExprInferCtx)).kind === 'string') {
+        return `${emitKotlinExpr(e.object, indent)}${dot}length${dot === '?.' ? '?.' : '.'}toLong()`
+      }
       return `${emitKotlinExpr(e.object, indent)}${dot}${kotlinIdent(e.property)}`
     }
     case 'binary': {
@@ -7166,7 +7162,8 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       const infix = kotlinBitwise[e.op]
       if (infix !== undefined) {
         const L = isCompoundExpr(e.left) ? `(${bl})` : bl
-        const R = isCompoundExpr(e.right) ? `(${br})` : br
+        // A shift COUNT is `Int` even on a Long receiver (`Long.shl(Int)`).
+        const R = infix === 'shl' || infix === 'shr' ? kotlinIntArg(e.right, indent) : isCompoundExpr(e.right) ? `(${br})` : br
         return `${L} ${infix} ${R}`
       }
       return `${bl} ${e.op} ${br}`
@@ -7225,8 +7222,15 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         prevEnumType = _activeEnumType
         _activeEnumType = enumType
       }
-      const leftStr = emitKotlinExpr(e.left, indent)
-      const rightStr = emitKotlinExpr(e.right, indent)
+      // An INTEGER literal beside a Double operand must emit as a Double
+      // literal: Kotlin has no Int/Double `==`/`!=` (`d != 0` is "operator
+      // '!=' cannot be applied to 'Double' and 'Int'"), unlike JS where both
+      // are Number. Swift coerces a bare literal to the other operand's type,
+      // so only this target needs the widening.
+      const leftIsDouble = isDoubleOperand(e.left)
+      const rightIsDouble = isDoubleOperand(e.right)
+      const leftStr = intLiteralAsDouble(e.left, rightIsDouble) ?? emitKotlinExpr(e.left, indent)
+      const rightStr = intLiteralAsDouble(e.right, leftIsDouble) ?? emitKotlinExpr(e.right, indent)
       if (prevEnumType !== undefined || _activeEnumType !== undefined) {
         _activeEnumType = prevEnumType
       }
@@ -7241,7 +7245,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         const target = isDoubleNeg ? (inner as { argument: ExprIR }).argument : inner
         const tT = inferType(target, _kotlinExprInferCtx)
         const tStr = emitKotlinExpr(target, indent)
-        if (tT.kind === 'number') return isDoubleNeg ? `(${tStr} != 0)` : `(${tStr} == 0)`
+        if (tT.kind === 'number') return isDoubleNeg ? `(${tStr} != ${kotlinZero(tT)})` : `(${tStr} == ${kotlinZero(tT)})`
         if (tT.kind === 'string') return isDoubleNeg ? `(${tStr}).isNotEmpty()` : `(${tStr}).isEmpty()`
         if (tT.kind === 'boolean') return isDoubleNeg ? tStr : `!${emitKotlinExpr(inner, indent)}`
         if (typeIsOptional(tT)) return isDoubleNeg ? `(${tStr} != null)` : `(${tStr} == null)`
@@ -7436,7 +7440,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
     case 'new-sized-map': {
       // Mirror of the Swift emit; Kotlin spells named arguments with `=`.
       const lru = e.lru ? ', lru = true' : ''
-      return `PyreonSizedMap<${kotlinType(e.keyType)}, ${kotlinType(e.valueType)}>(maxEntries = ${e.maxEntries}${lru})`
+      return `PyreonSizedMap<${kotlinType(e.keyType)}, ${kotlinType(e.valueType)}>(maxEntries = ${e.maxEntries}L${lru})`
     }
     case 'new-collection': {
       // Mirror of the Swift emit. `val` is fine on Kotlin (the reference is
@@ -10101,7 +10105,9 @@ function kotlinImageDim(
   if (typeof stat === 'number') return `${stat}.dp`
   const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
   if (attr !== undefined && attr.kind === 'attr' && attr.value.kind !== 'literal') {
-    return `(${emitKotlinExpr(attr.value, 0)}).dp`
+    // `.toDouble()`: Compose has `Int.dp`/`Double.dp` but no `Long.dp`, and a
+    // TS integer is a Long (see KOTLIN_INT). Identity on a Double.
+    return `(${emitKotlinExpr(attr.value, 0)}).toDouble().dp`
   }
   return undefined
 }
@@ -11093,7 +11099,6 @@ function emitKotlinPermissionsProvider(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,
 ): string {
-  _usesPermissionsEnvKotlin = true
   const seed = permissionsProviderSeed(e)
   if (seed === null) {
     // The suppression of the blanket unlowered-module line is keyed on the
@@ -11328,7 +11333,7 @@ function emitKotlinRouteDispatch(
  */
 function kotlinParamFieldExpr(f: { name: string; type: TypeIR }): string {
   const read = `params[${kotlinStr(f.name)}] ?: ""`
-  if (f.type.kind === 'number') return `(${read}).toIntOrNull() ?: 0`
+  if (f.type.kind === 'number') return `(${read}).toLongOrNull() ?: 0L`
   if (f.type.kind === 'boolean') return `(${read}) == "true"`
   return read
 }
@@ -11773,6 +11778,8 @@ function emitKotlinRxCall(
   const src = emitKotlinExpr(e.source, indent)
   const arg = (i: number): string =>
     e.args[i] === undefined ? '' : emitKotlinExpr(e.args[i] as ExprIR, indent)
+  const intArg = (i: number): string =>
+    e.args[i] === undefined ? '' : kotlinIntArg(e.args[i] as ExprIR, indent)
   switch (e.method) {
     // Transforms — name-matched on Kotlin Collection<T> for the v1 set.
     case 'filter':
@@ -11791,9 +11798,9 @@ function emitKotlinRxCall(
       // better than Swift's Array(Set(...)). Matches rx.unique semantics.
       return `${src}.distinct()`
     case 'take':
-      return `${src}.take(${arg(0)})`
+      return `${src}.take(${intArg(0)})`
     case 'skip':
-      return `${src}.drop(${arg(0)})`
+      return `${src}.drop(${intArg(0)})`
     case 'takeWhile':
       return `${src}.takeWhile(${arg(0)})`
     case 'dropWhile':
@@ -11813,8 +11820,9 @@ function emitKotlinRxCall(
     // Aggregations — count/size, sum is direct, min/max use OrNull
     // matching Swift Optional.
     case 'count':
-      // `.size` is a property on List<T> (O(1) on RandomAccess lists).
-      return `${src}.size`
+      // `.size` is a property on List<T> (O(1) on RandomAccess lists); a TS
+      // count is a Long (see KOTLIN_INT).
+      return kotlinLongOf(`${src}.size`)
     case 'sum':
       // Iterable<Int>.sum() / Iterable<Double>.sum() are stdlib
       // extension functions. For non-numeric T the user should use
@@ -11851,12 +11859,15 @@ function emitKotlinRxCall(
  */
 function kotlinFlowCoord(x: ExprIR): string {
   const text = emitKotlinExpr(x, 0)
-  if (isNumericLiteralOrNegation(x)) return ktChartDouble(text.replace(/^\((-\d+)\)$/, '$1'))
+  if (isNumericLiteralOrNegation(x)) return ktChartDouble(text.replace(/^\((-\d+L?)\)$/, '$1'))
   return `(${text}).toDouble()`
 }
 
 function ktChartDouble(text: string): string {
-  return /^-?\d+$/.test(text) ? `${text}.0` : text
+  // An integer literal emits with the Long suffix (see KOTLIN_INT); a
+  // Double position takes the digits with `.0` instead.
+  const m = /^(-?\d+)L?$/.exec(text)
+  return m ? `${m[1]}.0` : text
 }
 
 /**
@@ -12180,7 +12191,7 @@ function emitKotlinChartTimeline(e: Extract<ExprIR, { kind: 'jsx-element' }>, in
   const ms = typeof interval === 'number' && interval > 0 ? Math.round(interval) : 2000
   const pad = ' '.repeat(indent + 2)
   const children = e.children.flatMap((c) => (c.kind === 'expr' && c.expr.kind === 'jsx-element' ? [c.expr] : []))
-  const branches = children.map((c, i) => `${pad}  ${i} -> {\n${pad}    ${emitKotlinChartHost(c, indent + 4)}\n${pad}  }\n`).join('')
+  const branches = children.map((c, i) => `${pad}  ${i}L -> {\n${pad}    ${emitKotlinChartHost(c, indent + 4)}\n${pad}  }\n`).join('')
   const onChange = e.attrs.find((a) => a.kind === 'event' && a.name === 'timelinechange')
   const idAttr = readStaticAttrKotlin(e, 'data-testid')
   const tag = typeof idAttr === 'string' ? `.testTag(${JSON.stringify(idAttr)})` : ''
@@ -12191,7 +12202,7 @@ function emitKotlinChartTimeline(e: Extract<ExprIR, { kind: 'jsx-element' }>, in
     `val pyreonHit = timelineHit(pyreonTlStrip${k}, ${box}, (pyreonT.x / pyreonTlDensity).toDouble(), (pyreonT.y / pyreonTlDensity).toDouble()); ` +
     `if (pyreonHit.kind == 2.0) { ${playing} = !${playing} } else if (pyreonHit.kind > 0.0) { ${playing} = false; ` +
     `val pyreonNext = if (pyreonHit.kind == 1.0) pyreonHit.index else timelineAdvance(pyreonTlStrip${k}, ${step}.toDouble(), if (pyreonHit.kind == 3.0) -1.0 else 1.0, true); ` +
-    `if (pyreonNext >= 0.0) ${step} = pyreonNext.toInt() } }`
+    `if (pyreonNext >= 0.0) ${step} = pyreonNext.toLong() } }`
   // A handle (`timelineChange` / `timelinePlayChange`) owns the step and play state: the locals delegate
   // to its fields, seeded once from the option (its -1 step means "the option's own").
   const handleAttr = chartAttrExprKotlin(e, 'handle')
@@ -12201,14 +12212,14 @@ function emitKotlinChartTimeline(e: Extract<ExprIR, { kind: 'jsx-element' }>, in
   const lines = [
     `run {`,
     ...(handle === undefined
-      ? [`${pad}var ${step} by remember { mutableStateOf(${curN}) }`, `${pad}var ${playing} by remember { mutableStateOf(${autoPlay}) }`]
+      ? [`${pad}var ${step} by remember { mutableStateOf(${curN}L) }`, `${pad}var ${playing} by remember { mutableStateOf(${autoPlay}) }`]
       : [
-          `${pad}remember { if (${handle}.step < 0) { ${handle}.step = ${curN}; ${handle}.playing = ${autoPlay} }; true }`,
+          `${pad}remember { if (${handle}.step < 0) { ${handle}.step = ${curN}L; ${handle}.playing = ${autoPlay} }; true }`,
           `${pad}var ${step} by ${handle}::step`,
           `${pad}var ${playing} by ${handle}::playing`,
         ]),
     `${pad}val pyreonTlStrip${k}: TimelineStrip = ${strip}`,
-    `${pad}LaunchedEffect(${playing}) { while (${playing}) { delay(${ms}L); if (!${playing}) break; val pyreonNext = timelineTick(pyreonTlStrip${k}, ${step}.toDouble()); if (pyreonNext < 0.0) ${playing} = false else ${step} = pyreonNext.toInt() } }`,
+    `${pad}LaunchedEffect(${playing}) { while (${playing}) { delay(${ms}L); if (!${playing}) break; val pyreonNext = timelineTick(pyreonTlStrip${k}, ${step}.toDouble()); if (pyreonNext < 0.0) ${playing} = false else ${step} = pyreonNext.toLong() } }`,
   ]
   if (onChange?.kind === 'event') {
     // Like the web: a change is reported, the opening step is not.
@@ -12216,7 +12227,7 @@ function emitKotlinChartTimeline(e: Extract<ExprIR, { kind: 'jsx-element' }>, in
     lines.push(`${pad}LaunchedEffect(${step}) { if (pyreonTlSeen${k}.value) { ${kotlinChartSelectBody(onChange.handler, step, indent)} } else pyreonTlSeen${k}.value = true }`)
   }
   lines.push(
-    `${pad}Column(modifier = Modifier.fillMaxWidth()${tag}.semantics { stateDescription = if (${step} < ${labels}.size) ${labels}[${step}] else "" }) {`,
+    `${pad}Column(modifier = Modifier.fillMaxWidth()${tag}.semantics { stateDescription = if (${step} < ${labels}.size) ${labels}[${step}.toInt()] else "" }) {`,
     `${pad}  when (${step}) {`,
     `${branches}${pad}    else -> {}`,
     `${pad}  }`,
@@ -12692,7 +12703,7 @@ function emitKotlinBoxplotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined
   const W = hasWidth ? kotlinChartDouble(e, 'width', 300, indent) : 'pyreonW'
   const cmds = `renderBoxplotChart(pyreonBoxes, ${W}, ${H}, pyreonCats, pyreonTheme, ${options}, ::pyreonChartMeasure${kotlinChartAnimating(e, tag) ? ', null, pyreonEntrance' : ''})`
-  return kotlinFrameHostLets(e, lets, cmds, (x, y) => `hitBoxplotChart(pyreonBoxes.size, ${W}, ${H}, pyreonCats, pyreonTheme.fontSize, ::pyreonChartMeasure, ${x}, ${y}, pyreonBoxes)`, W, H, hasWidth, indent)
+  return kotlinFrameHostLets(e, lets, cmds, (x, y) => `hitBoxplotChart(pyreonBoxes.size.toLong(), ${W}, ${H}, pyreonCats, pyreonTheme.fontSize, ::pyreonChartMeasure, ${x}, ${y}, pyreonBoxes)`, W, H, hasWidth, indent)
 }
 
 function emitKotlinHeatmapHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
@@ -13061,21 +13072,21 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   const lets: string[] = []
   if (windowed) {
     lets.push(`var pyreonZoom by remember { mutableStateOf(${zoomCfgK.initial ?? 'ZoomWindow(start = 0.0, end = 1.0)'}) }`)
-    lets.push(`val pyreonRange: SliceRange = sliceRange(pyreonZoom, ${data}.size)`)
-    lets.push(`val pyreonSourceRows = ${data}.subList(pyreonRange.from, pyreonRange.to)`)
+    lets.push(`val pyreonRange: SliceRange = sliceRange(pyreonZoom, ${data}.size.toLong())`)
+    lets.push(`val pyreonSourceRows = ${data}.subList(pyreonRange.from.toInt(), pyreonRange.to.toInt())`)
     // `onZoom` — one effect keyed on the window state covers pinch, pan, a
     // preset tap and the navigator alike, as the web's single observer does.
     const onZoom = e.attrs.find((a) => a.kind === 'event' && a.name === 'zoom')
     if (onZoom?.kind === 'event') lets.push(`LaunchedEffect(pyreonZoom) { ${kotlinChartSelectBody(onZoom.handler, 'pyreonZoom', indent)} }`)
   }
   if (navigating) {
-    lets.push('var pyreonNavKind by remember { mutableStateOf(0) }')
+    lets.push('var pyreonNavKind by remember { mutableStateOf(0L) }')
     lets.push('var pyreonNavAnchor by remember { mutableStateOf(ZoomWindow(start = 0.0, end = 1.0)) }')
     lets.push('var pyreonNavDx by remember { mutableStateOf(0.0) }')
   }
   if (brushing) {
-    lets.push('var pyreonBrushStart by remember { mutableStateOf(-1) }')
-    lets.push('var pyreonBrushEnd by remember { mutableStateOf(-1) }')
+    lets.push('var pyreonBrushStart by remember { mutableStateOf(-1L) }')
+    lets.push('var pyreonBrushEnd by remember { mutableStateOf(-1L) }')
     lets.push('var pyreonBrushA by remember { mutableStateOf(-1.0) }')
     lets.push('var pyreonBrushB by remember { mutableStateOf(-1.0) }')
   }
@@ -13099,7 +13110,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     lets.push('var pyreonAreas by remember { mutableStateOf(listOf<BrushArea>()) }')
     lets.push('var pyreonAreaLive by remember { mutableStateOf<BrushArea?>(null) }')
   }
-  if (legend.hiding) lets.push('var pyreonHidden by remember { mutableStateOf(listOf<Int>()) }')
+  if (legend.hiding) lets.push('var pyreonHidden by remember { mutableStateOf(listOf<Long>()) }')
   // The handle's `legendInverseSelect` flips over the series this chart draws.
   if (handle !== undefined) lets.push(`LaunchedEffect(Unit) { ${handle}.seriesCount = ${marksV.elements.length} }`)
   // `selectedMode` — the Swift half's twin. A TAP pins a datum, which is the
@@ -13112,8 +13123,8 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   const pinning = pinMode === 'single' || pinMode === 'multiple'
   // `selectedMode: 'series'` pins the WHOLE series a tap lands on — its own host-local state (no handle vocabulary yet).
   const seriesPinning = pinMode === 'series'
-  if (seriesPinning) lets.push('var pyreonSelectedSeries by remember { mutableStateOf(listOf<Int>()) }')
-  if (pinning || handle !== undefined) lets.push('var pyreonSelected by remember { mutableStateOf(listOf<Int>()) }')
+  if (seriesPinning) lets.push('var pyreonSelectedSeries by remember { mutableStateOf(listOf<Long>()) }')
+  if (pinning || handle !== undefined) lets.push('var pyreonSelected by remember { mutableStateOf(listOf<Long>()) }')
   if (legend.paging) lets.push('var pyreonLegendPage by remember { mutableStateOf(0.0) }')
   const maxPoints = chartAttrExprKotlin(e, 'maxPoints')
   const fullA11y = windowed || maxPoints !== undefined
@@ -13169,11 +13180,11 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     const body = kotlinAccessorExpr(y, tag, `mark ${k + 1}`, indent)
     if (body === 'unsupported') return 'Box {}'
     if (k === 0 && maxPoints !== undefined) {
-      const max = `(${emitKotlinExpr(maxPoints, indent)}).toInt()`
-      lets.push(`val pyreonMaxPoints: Int = ${max}`)
+      const max = `(${emitKotlinExpr(maxPoints, indent)}).toLong()`
+      lets.push(`val pyreonMaxPoints: Long = ${max}`)
       lets.push(`val pyreonDecimateValues: List<Double> = ${kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed)}`)
-      lets.push(`val pyreonKeep: List<Int> = if (pyreonMaxPoints >= 3 && ${rows}.size > pyreonMaxPoints) lttbIndices(listOf(), pyreonDecimateValues, pyreonMaxPoints) else ${rows}.indices.toList()`)
-      lets.push(`val pyreonRows = pyreonKeep.map { ${rows}[it] }`)
+      lets.push(`val pyreonKeep: List<Long> = if (pyreonMaxPoints >= 3 && ${rows}.size > pyreonMaxPoints) lttbIndices(listOf(), pyreonDecimateValues, pyreonMaxPoints) else ${rows}.indices.map { it.toLong() }`)
+      lets.push(`val pyreonRows = pyreonKeep.map { ${rows}[it.toInt()] }`)
       rows = 'pyreonRows'
       decimated = true
     }
@@ -13282,7 +13293,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   if (themed) lets.push(`val pyreonTheme: ChartTheme = ${theme}`)
   if (presets !== undefined) {
     lets.push(`val pyreonPresets: List<ZoomPreset> = listOf(${presets.join(', ')})`)
-    lets.push(`val pyreonPresetStrip: PresetLayout = renderPresets(pyreonPresets, ${data}.size, pyreonZoom, PyreonChartRect(0.0, 0.0, ${W}, ${H}), PresetOptions(fontSize = 11.0, padX = 8.0, padY = 3.0, gap = 6.0, inset = 8.0, activeFill = pyreonTheme.axis, idleFill = pyreonTheme.grid, activeText = "#ffffff", idleText = pyreonTheme.label), ::pyreonChartMeasure)`)
+    lets.push(`val pyreonPresetStrip: PresetLayout = renderPresets(pyreonPresets, ${data}.size.toLong(), pyreonZoom, PyreonChartRect(0.0, 0.0, ${W}, ${H}), PresetOptions(fontSize = 11.0, padX = 8.0, padY = 3.0, gap = 6.0, inset = 8.0, activeFill = pyreonTheme.axis, idleFill = pyreonTheme.grid, activeText = "#ffffff", idleText = pyreonTheme.label), ::pyreonChartMeasure)`)
   }
   const belowNav = presets === undefined ? '' : ' - pyreonPresetStrip.height'
   // ECharts' slider box: the strip lives in the grid's bottom margin, the plot keeps its rect.
@@ -13293,7 +13304,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     // Without this the native navigator resolved and drew EVERY row on every
     // frame — the same defect the web host had before `minMaxBuckets` was
     // wired there, and worse here because the target has less headroom.
-    lets.push(`val pyreonNavValues: List<Double> = minMaxBuckets(${navValues}, maxOf(1, (${W} / 2.0).toInt()))`)
+    lets.push(`val pyreonNavValues: List<Double> = minMaxBuckets(${navValues}, maxOf(1L, (${W} / 2.0).toLong()))`)
     if (sliderBox === null) lets.push(`val pyreonNavigator: NavigatorLayout = renderNavigator(pyreonNavValues, pyreonSeries[0].color, pyreonZoom, PyreonChartRect(0.0, 0.0, ${W}, ${H}${belowNav}), pyreonTheme.grid)`)
   }
   const bool = (name: string, fallback: boolean): string => {
@@ -13339,11 +13350,11 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   if (kotlinChartAnimating(e, 'PlotChart')) specArgs.push('progress = pyreonEntrance')
   if (pinning || handle !== undefined) {
     const selected = decimated
-      ? `pyreonSelected.mapNotNull { pyreonGlobal -> pyreonKeep.indexOf(pyreonGlobal${windowed ? ' - pyreonRange.from' : ''}).takeIf { it >= 0 } }`
+      ? `pyreonSelected.mapNotNull { pyreonGlobal -> pyreonKeep.indexOf(pyreonGlobal${windowed ? ' - pyreonRange.from' : ''}).takeIf { it >= 0 }?.toLong() }`
       : windowed
         ? `pyreonSelected.map { it - pyreonRange.from }.filter { it >= 0 && it < ${rows}.size }`
         : 'pyreonSelected'
-    specArgs.push(`emphasis = Emphasis(highlight = ${handle === undefined ? '-1' : 'pyreonHover'}, selected = ${selected})`)
+    specArgs.push(`emphasis = Emphasis(highlight = ${handle === undefined ? '-1L' : 'pyreonHover'}, selected = ${selected})`)
   }
   // The batch-2 spec switches: a literal each, straight onto the spec.
   for (const p of PLOT_SPEC_LITERAL_PROPS) {
@@ -13402,7 +13413,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   if (brushing) {
     lets.push('val pyreonPlot: PyreonChartRect = layoutChart(pyreonSpec, ::pyreonChartMeasure).plot')
     lets.push(
-      `val pyreonBrushCmds: List<PyreonDrawCmd> = if (pyreonBrushA >= 0.0) renderBrushBand(pyreonPlot, minOf(pyreonBrushA, pyreonBrushB), maxOf(pyreonBrushA, pyreonBrushB), pyreonSpec.theme.axis) else if (pyreonBrushStart >= 0) run { val pyreonBand = brushBand(pyreonPlot, BrushRange(start = pyreonBrushStart, end = pyreonBrushEnd), ${win}, ${data}.size); if (pyreonBand.visible) renderBrushBand(pyreonPlot, pyreonBand.lo, pyreonBand.hi, pyreonSpec.theme.axis) else listOf() } else listOf()`,
+      `val pyreonBrushCmds: List<PyreonDrawCmd> = if (pyreonBrushA >= 0.0) renderBrushBand(pyreonPlot, minOf(pyreonBrushA, pyreonBrushB), maxOf(pyreonBrushA, pyreonBrushB), pyreonSpec.theme.axis) else if (pyreonBrushStart >= 0) run { val pyreonBand = brushBand(pyreonPlot, BrushRange(start = pyreonBrushStart, end = pyreonBrushEnd), ${win}, ${data}.size.toLong()); if (pyreonBand.visible) renderBrushBand(pyreonPlot, pyreonBand.lo, pyreonBand.hi, pyreonSpec.theme.axis) else listOf() } else listOf()`,
     )
   }
   const extraCmds = `${navigating ? ' + pyreonNavigator.cmds' : ''}${presets === undefined ? '' : ' + pyreonPresetStrip.cmds'}${kotlinGraphicCmds(e)}${toolbox === null ? '' : ' + pyreonToolbox.cmds'}`
@@ -13439,17 +13450,17 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   const localHit = (x: string, y: string): string => `plotHitBars(pyreonSpec, ::pyreonChartMeasure, ${x}, ${chrome.top === '0.0' ? y : `${y} - pyreonTop`})`
   const hit = (x: string, y: string): string => {
     const local = tooltip ? 'pyreonLocal' : 'pyreonHit'
-    const mapped = decimated ? `pyreonKeep[${local}]` : local
+    const mapped = decimated ? `pyreonKeep[${local}.toInt()]` : local
     const global = windowed ? `${mapped} + pyreonRange.from` : mapped
-    if (tooltip) return `(if (${local} < 0) -1 else ${global})`
+    if (tooltip) return `(if (${local} < 0) -1L else ${global})`
     if (!windowed && !decimated) return localHit(x, y)
-    return `run { val pyreonHit = ${localHit(x, y)}; if (pyreonHit < 0) -1 else ${global} }`
+    return `run { val pyreonHit = ${localHit(x, y)}; if (pyreonHit < 0) -1L else ${global} }`
   }
   // `onBrushSelected`: the areas' datums per series, each index GLOBAL (the window's and decimation's mapping, as a tap's).
   const onAreaSel = chartEventHandler(e, 'brushselected')
   const areaReport = (areasExpr: string): string => {
     if (onAreaSel === undefined) return ''
-    const mapped = decimated ? 'pyreonKeep[categoryIndex(pyreonSpec, pyreonV)]' : 'categoryIndex(pyreonSpec, pyreonV)'
+    const mapped = decimated ? 'pyreonKeep[categoryIndex(pyreonSpec, pyreonV).toInt()]' : 'categoryIndex(pyreonSpec, pyreonV)'
     const global = windowed ? `${mapped} + pyreonRange.from` : mapped
     return `; ${kotlinChartSelectBody(onAreaSel, `${area.only.length === 0 ? '' : 'brushOnlySeries('}brushSelection(pyreonSpec, layoutChart(pyreonSpec, ::pyreonChartMeasure), ${areasExpr})${area.only.length === 0 ? '' : `, listOf(${area.only.map((x) => `${x}.0`).join(', ')}))`}.map { pyreonS -> BrushSeriesSelection(seriesIndex = pyreonS.seriesIndex, dataIndex = pyreonS.dataIndex.map { pyreonV -> ${global} }) }`, indent)}`
   }
@@ -13468,7 +13479,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     const namedList = `listOf(${tipCells.named.map((b) => String(b)).join(', ')})`
     tipLines = tipCells.trigger === 'axis'
       ? `tooltipAxisCells(pyreonLocal, pyreonCats, pyreonSeries.map { ${tipSeries('it')} }, ${namedList})`
-      : `run { val pyreonSer = plotHitSeriesIn(pyreonSpec, layoutChart(pyreonSpec, ::pyreonChartMeasure), ${plotX}, ${tapYExpr}, 14.0); val pyreonNamed: List<Boolean> = ${namedList}; if (pyreonSer < 0 || pyreonSer >= pyreonSeries.size) listOf() else tooltipItemCells(pyreonLocal, pyreonCats, ${tipSeries('pyreonSeries[pyreonSer]')}, pyreonSer < pyreonNamed.size && pyreonNamed[pyreonSer]) }`
+      : `run { val pyreonSer = plotHitSeriesIn(pyreonSpec, layoutChart(pyreonSpec, ::pyreonChartMeasure), ${plotX}, ${tapYExpr}, 14.0).toInt(); val pyreonNamed: List<Boolean> = ${namedList}; if (pyreonSer < 0 || pyreonSer >= pyreonSeries.size) listOf() else tooltipItemCells(pyreonLocal, pyreonCats, ${tipSeries('pyreonSeries[pyreonSer]')}, pyreonSer < pyreonNamed.size && pyreonNamed[pyreonSer]) }`
   }
   let tap = ''
   // `pinning` joins the gate: a chart with ONLY `selectedMode` has no other
@@ -13504,7 +13515,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
         toolbox.dataZoom ? 'pyreonZoomSelect = false; pyreonZoomHistory = listOf()' : '',
         toolbox.dataView ? 'pyreonDataView = false' : '',
         legend.toggling ? 'pyreonHidden = listOf()' : '',
-        brushing ? 'pyreonBrushStart = -1; pyreonBrushEnd = -1' : '',
+        brushing ? 'pyreonBrushStart = -1L; pyreonBrushEnd = -1L' : '',
         area.on ? `pyreonAreaType = ${JSON.stringify(area.initial)}; pyreonAreaKeep = ${area.keep}; pyreonAreas = listOf()${areaReport('listOf()')}` : '',
       ].filter((x) => x !== '')
       acts.push(`"restore" -> { ${reset.join('; ')} }`)
@@ -13551,15 +13562,15 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
       )
     }
     if (presets !== undefined) {
-      decls.push(`val pyreonPreset = presetHit(pyreonPresetStrip.boxes, ${tapX}, ${tapYExpr})`)
-      branches.push(`if (pyreonPreset >= 0) { pyreonZoom = ${lim(`presetWindow(pyreonPresets[pyreonPreset].count, ${data}.size)`)} }`)
+      decls.push(`val pyreonPreset = presetHit(pyreonPresetStrip.boxes, ${tapX}, ${tapYExpr}).toInt()`)
+      branches.push(`if (pyreonPreset >= 0) { pyreonZoom = ${lim(`presetWindow(pyreonPresets[pyreonPreset].count, ${data}.size.toLong())`)} }`)
     }
     if (area.on) {
       // A tap over the plot clears a single-mode brush, as a click does on the web.
       branches.push(`if (pyreonAreaType != "" && !pyreonAreaKeep && pyreonAreas.isNotEmpty()) { pyreonAreas = listOf()${areaReport('listOf()')} }`)
     }
     if (brushing) {
-      branches.push(`if (pyreonBrushStart >= 0) { pyreonBrushStart = -1; pyreonBrushEnd = -1${onBrush === undefined ? '' : `; ${onBrush}(null)`} }`)
+      branches.push(`if (pyreonBrushStart >= 0) { pyreonBrushStart = -1L; pyreonBrushEnd = -1L${onBrush === undefined ? '' : `; ${onBrush}(null)`} }`)
     }
     const body = branches.length === 0 ? select : `${decls.length === 0 ? '' : `${decls.join('; ')}; `}${branches.join(' else ')}${select === '' ? '' : ` else { ${select} }`}`
     // The tap lambda closes over composition-scoped VALS (the spec, the slice
@@ -13586,10 +13597,10 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   }
   if (toolbox?.dataZoom === true) {
     // The box zoom: while the tool is on, a drag over the plot selects the rows to zoom to (keyed so the lambda sees the current window and plot).
-    tap += `.pointerInput(pyreonZoomSelect, pyreonZoom, pyreonPlot) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); if (pyreonZoomSelect) { pyreonSelA = (pyreonDown.position.x / pyreonDensity).toDouble(); pyreonSelB = pyreonSelA; drag(pyreonDown.id) { pyreonChange -> val pyreonStep = pyreonChange.positionChange(); pyreonChange.consume(); pyreonSelB = pyreonSelB + (pyreonStep.x / pyreonDensity).toDouble() }; if (kotlin.math.abs(pyreonSelB - pyreonSelA) >= 3.0) { val pyreonRows: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, pyreonSelA, pyreonSelB, pyreonZoom, ${data}.size); pyreonZoomHistory = pyreonZoomHistory + pyreonZoom; pyreonZoom = ${lim(`windowOfRows(pyreonRows.start, pyreonRows.end, ${data}.size)`)} }; pyreonSelA = -1.0; pyreonSelB = -1.0 } } }`
+    tap += `.pointerInput(pyreonZoomSelect, pyreonZoom, pyreonPlot) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); if (pyreonZoomSelect) { pyreonSelA = (pyreonDown.position.x / pyreonDensity).toDouble(); pyreonSelB = pyreonSelA; drag(pyreonDown.id) { pyreonChange -> val pyreonStep = pyreonChange.positionChange(); pyreonChange.consume(); pyreonSelB = pyreonSelB + (pyreonStep.x / pyreonDensity).toDouble() }; if (kotlin.math.abs(pyreonSelB - pyreonSelA) >= 3.0) { val pyreonRows: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, pyreonSelA, pyreonSelB, pyreonZoom, ${data}.size.toLong()); pyreonZoomHistory = pyreonZoomHistory + pyreonZoom; pyreonZoom = ${lim(`windowOfRows(pyreonRows.start, pyreonRows.end, ${data}.size.toLong())`)} }; pyreonSelA = -1.0; pyreonSelB = -1.0 } } }`
   }
   if (brushing) {
-    tap += `.pointerInput(Unit) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); pyreonBrushA = (pyreonDown.position.x / pyreonDensity).toDouble(); pyreonBrushB = pyreonBrushA; drag(pyreonDown.id) { pyreonChange -> val pyreonStep = pyreonChange.positionChange(); pyreonChange.consume(); pyreonBrushB = pyreonBrushB + (pyreonStep.x / pyreonDensity).toDouble() }; val pyreonSel: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, pyreonBrushA, pyreonBrushB, ${win}, ${data}.size); pyreonBrushStart = pyreonSel.start; pyreonBrushEnd = pyreonSel.end; pyreonBrushA = -1.0; pyreonBrushB = -1.0${onBrush === undefined ? '' : `; ${onBrush}(pyreonSel)`} } }`
+    tap += `.pointerInput(Unit) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); pyreonBrushA = (pyreonDown.position.x / pyreonDensity).toDouble(); pyreonBrushB = pyreonBrushA; drag(pyreonDown.id) { pyreonChange -> val pyreonStep = pyreonChange.positionChange(); pyreonChange.consume(); pyreonBrushB = pyreonBrushB + (pyreonStep.x / pyreonDensity).toDouble() }; val pyreonSel: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, pyreonBrushA, pyreonBrushB, ${win}, ${data}.size.toLong()); pyreonBrushStart = pyreonSel.start; pyreonBrushEnd = pyreonSel.end; pyreonBrushA = -1.0; pyreonBrushB = -1.0${onBrush === undefined ? '' : `; ${onBrush}(pyreonSel)`} } }`
   }
   // Both drag surfaces classify the gesture from the DOWN point, so they are
   // written as `awaitEachGesture { awaitFirstDown(); drag(id) { … } }` rather
@@ -13613,7 +13624,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   // on every step — the window then never moves, and the fifth device run
   // showed exactly that (a post-drag tap still reported the un-zoomed index).
   const overlay = navigating
-    ? `Box(modifier = Modifier.fillMaxWidth()${sliderBox !== null ? '.offset(y = (pyreonNavigator.strip.y - 8.0).dp).height((pyreonNavigator.strip.h + 12.0).dp)' : `.offset(y = ((${H})${below}).dp).height((pyreonNavigator.height).dp)`}.pointerInput(Unit) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); pyreonNavAnchor = pyreonZoom; pyreonNavDx = 0.0; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, (pyreonDown.position.x / pyreonDensity).toDouble()); drag(pyreonDown.id) { pyreonChange -> val pyreonStep = pyreonChange.positionChange(); pyreonChange.consume(); pyreonNavDx = pyreonNavDx + (pyreonStep.x / pyreonDensity).toDouble(); pyreonZoom = ${lim('navigatorDrag(pyreonNavKind, pyreonNavAnchor, pyreonNavDx / pyreonNavigator.strip.w)')} }; pyreonNavKind = 0 } })`
+    ? `Box(modifier = Modifier.fillMaxWidth()${sliderBox !== null ? '.offset(y = (pyreonNavigator.strip.y - 8.0).dp).height((pyreonNavigator.strip.h + 12.0).dp)' : `.offset(y = ((${H})${below}).dp).height((pyreonNavigator.height).dp)`}.pointerInput(Unit) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); pyreonNavAnchor = pyreonZoom; pyreonNavDx = 0.0; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, (pyreonDown.position.x / pyreonDensity).toDouble()); drag(pyreonDown.id) { pyreonChange -> val pyreonStep = pyreonChange.positionChange(); pyreonChange.consume(); pyreonNavDx = pyreonNavDx + (pyreonStep.x / pyreonDensity).toDouble(); pyreonZoom = ${lim('navigatorDrag(pyreonNavKind, pyreonNavAnchor, pyreonNavDx / pyreonNavigator.strip.w)')} }; pyreonNavKind = 0L } })`
     : undefined
   // The data description always uses every source row and mark, independent
   // of paint-only zoom, thinning and legend visibility (mirror of Swift/web).
@@ -13637,7 +13648,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   // a decimated or continuous-x chart keeps the description alone.
   const pointsOverlay = decimated || xValueAcc !== undefined
     ? undefined
-    : `PyreonChartPoints(${describe.slice('describeChart('.length, -1)}, layoutChart(pyreonSpec, ::pyreonChartMeasure).plot, pyreonCats.size, ${windowed ? 'pyreonRange.from' : '0'}, ${horizontal}, ${chrome.left}, ${chrome.top}, ${readStaticAttrKotlin(e, 'rtl') === true ? W : '-1.0'})`
+    : `PyreonChartPoints(${describe.slice('describeChart('.length, -1)}, layoutChart(pyreonSpec, ::pyreonChartMeasure).plot, pyreonCats.size.toLong(), ${windowed ? 'pyreonRange.from' : '0L'}, ${horizontal}, ${chrome.left}, ${chrome.top}, ${readStaticAttrKotlin(e, 'rtl') === true ? W : '-1.0'})`
   const overlays = [pointsOverlay, overlay, dataViewOverlay].filter((o): o is string => o !== undefined)
   return kotlinFrameHostWithDensity(e, lets, cmds, tap, W, H, hasWidth, indent, windowed || tap !== '' || toolbox !== null, overlays.length === 0 ? undefined : overlays.join('\n'), describe)
 }

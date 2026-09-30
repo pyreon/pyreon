@@ -73,6 +73,10 @@ export const INNER_PYREON_OPTION_DISPOSITION: Record<
    *  decision on both passes. */
   include: 'forward',
   exclude: 'forward',
+  /** Project-wide Plain Mode changes what a component COMPILES to (props
+   *  destructuring becomes live). The SSR pass must agree, or the server
+   *  renders a snapshot the client then disagrees with — a hydration split. */
+  plain: 'forward',
 
   /** DROP — the plugin's `config()` would set `build.rollupOptions.input` to
    *  the user's server entry, replacing zero's synthetic one. A plugin's

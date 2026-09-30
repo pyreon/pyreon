@@ -1,4 +1,4 @@
-import { computed, signal } from '@pyreon/reactivity'
+import { state, derived, signalOf } from '@pyreon/core/plain'
 import { defineStore } from '@pyreon/store'
 import { SEED_INVOICE, totals } from './data/seed'
 import type { Invoice, LineItem } from './data/types'
@@ -21,30 +21,30 @@ import type { Invoice, LineItem } from './data/types'
  * `useFieldArray` for the per-field validation hooks.
  */
 export const useInvoice = defineStore('invoice', () => {
-  const invoice = signal<Invoice>(SEED_INVOICE)
+  let invoice = state<Invoice>(SEED_INVOICE)
 
-  const computedTotals = computed(() => {
-    const inv = invoice()
+  const computedTotals = derived(() => {
+    const inv = invoice
     return totals(inv.items, inv.taxRate)
   })
 
   // ── Field updates ──────────────────────────────────────────────────
   function update<K extends keyof Invoice>(field: K, value: Invoice[K]): void {
-    invoice.set({ ...invoice(), [field]: value })
+    invoice = { ...invoice, [field]: value }
   }
 
   function updateFrom<K extends keyof Invoice['from']>(field: K, value: Invoice['from'][K]): void {
-    invoice.set({
-      ...invoice(),
-      from: { ...invoice().from, [field]: value },
-    })
+    invoice = {
+      ...invoice,
+      from: { ...invoice.from, [field]: value },
+    }
   }
 
   function updateTo<K extends keyof Invoice['to']>(field: K, value: Invoice['to'][K]): void {
-    invoice.set({
-      ...invoice(),
-      to: { ...invoice().to, [field]: value },
-    })
+    invoice = {
+      ...invoice,
+      to: { ...invoice.to, [field]: value },
+    }
   }
 
   // ── Line item array operations ──────────────────────────────────────
@@ -55,7 +55,7 @@ export const useInvoice = defineStore('invoice', () => {
       quantity: 1,
       unitPrice: 0,
     }
-    invoice.set({ ...invoice(), items: [...invoice().items, newItem] })
+    invoice = { ...invoice, items: [...invoice.items, newItem] }
   }
 
   function updateLineItem<K extends keyof Omit<LineItem, 'id'>>(
@@ -63,28 +63,28 @@ export const useInvoice = defineStore('invoice', () => {
     field: K,
     value: LineItem[K],
   ): void {
-    invoice.set({
-      ...invoice(),
-      items: invoice().items.map((item) =>
+    invoice = {
+      ...invoice,
+      items: invoice.items.map((item) =>
         item.id === id ? { ...item, [field]: value } : item,
       ),
-    })
+    }
   }
 
   function removeLineItem(id: string): void {
-    invoice.set({
-      ...invoice(),
-      items: invoice().items.filter((item) => item.id !== id),
-    })
+    invoice = {
+      ...invoice,
+      items: invoice.items.filter((item) => item.id !== id),
+    }
   }
 
   function reset(): void {
-    invoice.set(SEED_INVOICE)
+    invoice = SEED_INVOICE
   }
 
   return {
-    invoice,
-    totals: computedTotals,
+    invoice: signalOf<typeof invoice>(invoice),
+    totals: signalOf<typeof computedTotals>(computedTotals),
     update,
     updateFrom,
     updateTo,

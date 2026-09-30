@@ -137,7 +137,7 @@ describe('Math.* totality — every ECMAScript member lowers or is named', () =>
 
   it('n-ary max/min NEST rather than emitting a 3-arg platform call', () => {
     expect(one('Math.max(1, 2, 3)', 'swift').code).toContain('max(1, max(2, 3))')
-    expect(one('Math.max(1, 2, 3)', 'kotlin').code).toContain('Math.max(1, Math.max(2, 3))')
+    expect(one('Math.max(1, 2, 3)', 'kotlin').code).toContain('Math.max(1L, Math.max(2L, 3L))')
   })
 
   it('n-ary hypot evaluates each argument ONCE (pow, never x * x)', () => {
@@ -155,7 +155,7 @@ describe('Math.* totality — every ECMAScript member lowers or is named', () =>
   })
 
   it('Kotlin floor/ceil/round coerce an INT arg and leave the Double emit alone', () => {
-    expect(one('Math.floor(1)', 'kotlin').code).toContain('Math.floor((1).toDouble())')
+    expect(one('Math.floor(1)', 'kotlin').code).toContain('Math.floor((1L).toDouble())')
     // the string the pre-existing lock pins — unchanged.
     expect(one('Math.floor(3.7)', 'kotlin').code).toContain('Math.floor(3.7)')
   })

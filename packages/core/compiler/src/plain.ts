@@ -69,6 +69,12 @@ export interface PlainOptions {
    * to imports anyway — write through an exported function instead).
    */
   knownSignals?: string[] | undefined
+  /**
+   * Project-wide Plain Mode (`pyreon({ plain: true })`): treat the module as
+   * plain even without a `'use plain'` directive or marker import. A module
+   * carrying the `'use classic'` directive opts OUT and is left untouched.
+   */
+  force?: boolean | undefined
 }
 
 const PLAIN_SOURCE = '@pyreon/core/plain'
@@ -132,7 +138,7 @@ export function transformPlain(
   filename = 'input.tsx',
   options: PlainOptions = {},
 ): PlainTransformResult | null {
-  if (!detectPlain(code)) return null
+  if (!detectPlain(code) && !options.force) return null
 
   let program: N
   try {
@@ -143,13 +149,20 @@ export function transformPlain(
 
   // ── Module-level scan: directive, marker imports, existing reactivity import ──
   let hasDirective = false
+  let optedOut = false
   /** local name → marker role */
-  const markers = new Map<string, 'state' | 'derived' | 'effect'>()
+  const markers = new Map<string, 'state' | 'derived' | 'effect' | 'signalOf'>()
   const stripRanges: Array<{ start: number; end: number }> = []
   let reactivityImport: N = null
   const reactivityImported = new Set<string>()
 
   for (const stmt of program.body as N[]) {
+    if (stmt.type === 'ExpressionStatement' && stmt.directive === 'use classic') {
+      // Per-file opt-out of project-wide Plain Mode. An explicit plain signal
+      // in the same file (the directive or a marker import) still wins below.
+      optedOut = true
+      continue
+    }
     if (stmt.type === 'ExpressionStatement' && stmt.directive === 'use plain') {
       hasDirective = true
       stripRanges.push({ start: stmt.start, end: stmt.end })
@@ -161,7 +174,7 @@ export function transformPlain(
       for (const spec of stmt.specifiers ?? []) {
         if (spec.type !== 'ImportSpecifier') continue
         const imported = spec.imported?.name
-        if (imported === 'state' || imported === 'derived' || imported === 'effect') {
+        if (imported === 'state' || imported === 'derived' || imported === 'effect' || imported === 'signalOf') {
           markers.set(spec.local.name, imported)
         }
       }
@@ -176,7 +189,7 @@ export function transformPlain(
     }
   }
 
-  if (!hasDirective && markers.size === 0) return null
+  if (!hasDirective && markers.size === 0 && (!options.force || optedOut)) return null
 
   const ms = new MagicString(code)
   const warnings: CompilerWarning[] = []
@@ -241,7 +254,7 @@ export function transformPlain(
   const declareBinding = (name: string, b: BindingKind): void => {
     scopes[scopes.length - 1]!.set(name, b)
   }
-  const isMarker = (name: string): 'state' | 'derived' | 'effect' | null => {
+  const isMarker = (name: string): 'state' | 'derived' | 'effect' | 'signalOf' | null => {
     if (!markers.has(name)) return null
     if (lookup(name)) return null // shadowed by a closer binding
     return markers.get(name)!
@@ -345,9 +358,24 @@ export function transformPlain(
   }
 
   /** Rewrite a READ of a tracked binding at an Identifier node. */
+  /**
+   * While walking a destructuring-assignment pattern's DEFAULTS, reads of the
+   * bindings that pattern writes resolve to its temporaries — JS assigns
+   * earlier elements before evaluating later defaults (`[a, b = a] = [5]`
+   * gives b = 5), and the signals are only written after the pattern runs.
+   * Scoped to the pattern's own function depth: a nested closure keeps the
+   * live binding.
+   */
+  let readOverride: Map<string, string> | null = null
+  let readOverrideDepth = -1
   const rewriteRead = (node: N): void => {
     const b = lookup(node.name)
     if (!b) return
+    const tmp = readOverride !== null && funcDepth === readOverrideDepth ? readOverride.get(node.name) : undefined
+    if (tmp !== undefined && (b.kind === 'state' || b.kind === 'store')) {
+      ms.overwrite(node.start, node.end, tmp)
+      return
+    }
     if (b.kind === 'state' || b.kind === 'store' || b.kind === 'derived' || b.kind === 'imported-state') {
       ms.appendLeft(node.end, '()')
       recordRead(node.name)
@@ -517,29 +545,62 @@ export function transformPlain(
     return found
   }
 
-  /** Simple ObjectPattern = only init properties with Identifier keys and
-   *  Identifier / defaulted-Identifier values. Anything else bails (warned). */
-  function analyzeSimplePropsPattern(
-    pat: N,
-  ): Array<{ key: string; local: string; defaultText: string | null }> | 'complex' {
-    const out: Array<{ key: string; local: string; defaultText: string | null }> = []
-    for (const p of pat.properties ?? []) {
-      if (p.type === 'RestElement') return 'complex'
-      if (p.computed || p.kind !== 'init' || p.key?.type !== 'Identifier') return 'complex'
-      const value = p.value
-      if (value?.type === 'Identifier') {
-        out.push({ key: p.key.name, local: value.name, defaultText: null })
-      } else if (value?.type === 'AssignmentPattern' && value.left?.type === 'Identifier') {
-        out.push({
-          key: p.key.name,
-          local: value.left.name,
-          defaultText: `(${code.slice(value.right.start, value.right.end)})`,
-        })
-      } else {
-        return 'complex'
+  /**
+   * A props ObjectPattern the rewrite can keep LIVE:
+   *  - `{ a, b = d }`            → `props.a`, `(props.b ?? d)`
+   *  - `{ user: { name } }`      → `props.user.name` (nested, no default on the object)
+   *  - `{ a, ...rest }`          → `rest = splitProps(props, ['a'])[1]` (descriptor copy —
+   *                                getters survive, so `{...rest}` stays reactive)
+   * Rest inside a nested pattern, computed keys, and a default on a nested
+   * object have no faithful live form → 'complex' (warned).
+   */
+  interface PropsPattern {
+    entries: Array<{ key: string; local: string; defaultText: string | null }>
+    rest: string | null
+    topKeys: string[]
+  }
+  function analyzePropsPattern(pat: N): PropsPattern | 'complex' {
+    const out: PropsPattern = { entries: [], rest: null, topKeys: [] }
+    const visit = (obj: N, prefix: string): boolean => {
+      for (const p of obj.properties ?? []) {
+        if (p.type === 'RestElement') {
+          if (prefix !== '' || p.argument?.type !== 'Identifier') return false
+          out.rest = p.argument.name
+          continue
+        }
+        if (p.computed || p.kind !== 'init' || p.key?.type !== 'Identifier') return false
+        if (prefix === '') out.topKeys.push(p.key.name)
+        const key = `${prefix}${p.key.name}`
+        const value = p.value
+        if (value?.type === 'Identifier') {
+          out.entries.push({ key, local: value.name, defaultText: null })
+        } else if (value?.type === 'AssignmentPattern' && value.left?.type === 'Identifier') {
+          out.entries.push({
+            key,
+            local: value.left.name,
+            defaultText: `(${code.slice(value.right.start, value.right.end)})`,
+          })
+        } else if (value?.type === 'ObjectPattern') {
+          if (!visit(value, `${key}.`)) return false
+        } else {
+          return false
+        }
       }
+      return true
     }
-    return out
+    return visit(pat, '') ? out : 'complex'
+  }
+  let splitPropsUsed = false
+  const splitPropsName = moduleScopeNames.has('__plainSplitProps') ? '__plainSplitProps$' : '__plainSplitProps'
+  const restInit = (propsVar: string, pattern: PropsPattern): string => {
+    splitPropsUsed = true
+    return `${splitPropsName}(${propsVar}, [${pattern.topKeys.map((k) => `'${k}'`).join(', ')}])[1]`
+  }
+  const declarePropsPattern = (pattern: PropsPattern, propsVar: string): void => {
+    for (const entry of pattern.entries) {
+      declareBinding(entry.local, { kind: 'prop', propsVar, key: entry.key, defaultText: entry.defaultText })
+    }
+    if (pattern.rest !== null) declareBinding(pattern.rest, { kind: 'shadow' })
   }
 
   // ── Statement / expression walking ────────────────────────────────────────
@@ -575,7 +636,7 @@ export function transformPlain(
     if (isComponent && params.length >= 1) {
       const p0 = params[0]
       if (p0?.type === 'ObjectPattern') {
-        const simple = analyzeSimplePropsPattern(p0)
+        const simple = analyzePropsPattern(p0)
         if (simple === 'complex') {
           warn(
             p0.start,
@@ -596,13 +657,15 @@ export function transformPlain(
               : 'props'
           const annStart: number | undefined = p0.typeAnnotation?.start
           ms.overwrite(p0.start, annStart ?? p0.end, propsVar)
-          for (const entry of simple) {
-            declareBinding(entry.local, {
-              kind: 'prop',
-              propsVar,
-              key: entry.key,
-              defaultText: entry.defaultText,
-            })
+          declarePropsPattern(simple, propsVar)
+          if (simple.rest !== null) {
+            const decl = `const ${simple.rest} = ${restInit(propsVar, simple)};`
+            if (body?.type === 'BlockStatement') {
+              ms.appendRight(body.start + 1, ` ${decl}`)
+            } else if (body) {
+              ms.appendRight(body.start, `{ ${decl} return (`)
+              ms.appendLeft(body.end, ') }')
+            }
           }
         }
       } else if (p0?.type === 'Identifier') {
@@ -922,6 +985,29 @@ export function transformPlain(
         isMarker(init.callee.object.name) === 'state' &&
         init.callee.property?.name === 'raw'
 
+      // `state.from(sig)` / `derived.from(sig)` — ADOPT an existing signal (a
+      // hook result, a store field, a library value) as a plain binding. The
+      // declaration becomes the bare expression; reads/writes rewrite exactly
+      // like a declared binding. The inverse of `signalOf`.
+      const adoptRole =
+        init?.type === 'CallExpression' &&
+        init.callee?.type === 'MemberExpression' &&
+        !init.callee.computed &&
+        init.callee.object?.type === 'Identifier' &&
+        init.callee.property?.name === 'from'
+          ? isMarker(init.callee.object.name)
+          : null
+      if ((adoptRole === 'state' || adoptRole === 'derived') && d.id?.type === 'Identifier') {
+        const args: N[] = init.arguments ?? []
+        if (args.length === 1 && args[0].type !== 'SpreadElement') {
+          ms.remove(init.start, args[0].start)
+          ms.remove(args[0].end, init.end)
+          walkExpr(args[0], true)
+          declareBinding(d.id.name, { kind: adoptRole === 'state' ? 'state' : 'derived' })
+          continue
+        }
+        warn(init.start, `${adoptRole}.from() takes exactly one signal argument.`)
+      }
       if ((markerRole === 'state' || isStateRaw) && d.id?.type === 'Identifier') {
         const firstArg = init.arguments?.[0] ? unwrapTs(init.arguments[0]) : null
         const deep =
@@ -979,17 +1065,14 @@ export function transformPlain(
         scopes[scopes.length - 1] &&
         decls.length === 1
       ) {
-        const simple = analyzeSimplePropsPattern(d.id)
+        const simple = analyzePropsPattern(d.id)
         if (simple !== 'complex') {
-          ms.remove(stmt.start, stmt.end)
-          for (const entry of simple) {
-            declareBinding(entry.local, {
-              kind: 'prop',
-              propsVar: fnInfo.propsVar,
-              key: entry.key,
-              defaultText: entry.defaultText,
-            })
+          if (simple.rest !== null) {
+            ms.overwrite(stmt.start, stmt.end, `const ${simple.rest} = ${restInit(fnInfo.propsVar, simple)}`)
+          } else {
+            ms.remove(stmt.start, stmt.end)
           }
+          declarePropsPattern(simple, fnInfo.propsVar)
           continue
         }
         warn(
@@ -1121,6 +1204,25 @@ export function transformPlain(
             continue
           }
           if (p.computed && p.key) walkExpr(p.key, true)
+          // `{ x: signalOf(x) }` → `{ x }` — the shorthand the classic source
+          // had (the codemod expands `{ x }` this way). Restoring it keeps the
+          // round trip byte-exact, which shape-matching consumers (PMTC's store
+          // recognizer) rely on.
+          if (!p.computed && !p.shorthand && p.key?.type === 'Identifier' && p.value?.type === 'CallExpression') {
+            const call = p.value
+            const arg = (call.arguments ?? []).length === 1 ? unwrapTs(call.arguments[0]) : null
+            const b = arg?.type === 'Identifier' ? lookup(arg.name) : null
+            if (
+              call.callee?.type === 'Identifier' &&
+              isMarker(call.callee.name) === 'signalOf' &&
+              arg?.name === p.key.name &&
+              b &&
+              (b.kind === 'state' || b.kind === 'store' || b.kind === 'derived' || b.kind === 'imported-state')
+            ) {
+              ms.overwrite(p.start, p.end, p.key.name)
+              continue
+            }
+          }
           if (p.shorthand && p.value?.type === 'Identifier') {
             // `{ count }` — appending `()` in place would be invalid: expand.
             const b = lookup(p.value.name)
@@ -1170,6 +1272,24 @@ export function transformPlain(
               warn(node.start, 'effect() expects a function callback.')
               for (const a of node.arguments ?? []) walkExpr(a, true)
             }
+            return
+          }
+          if (role === 'signalOf') {
+            // `signalOf(x)` — the escape hatch to the binding's SIGNAL identity
+            // (pass it to an API that takes a signal, store it, two-way bind).
+            // Compiles to the bare signal reference: no read, no tracking.
+            const args: N[] = node.arguments ?? []
+            const arg = args.length === 1 ? unwrapTs(args[0]) : null
+            const b = arg?.type === 'Identifier' ? lookup(arg.name) : null
+            if (arg && b && (b.kind === 'state' || b.kind === 'store' || b.kind === 'derived' || b.kind === 'imported-state')) {
+              ms.overwrite(node.start, node.end, arg.name)
+              return
+            }
+            warn(
+              node.start,
+              'signalOf() takes exactly one state/derived binding declared in plain code (`signalOf(count)`); this call is left as-is and will throw at runtime.',
+            )
+            for (const a of args) walkExpr(a, true)
             return
           }
           if (role === 'state' || role === 'derived') {
@@ -1296,6 +1416,97 @@ export function transformPlain(
   }
   const LOGICAL_ASSIGN: Record<string, string> = { '&&=': '&&', '||=': '||', '??=': '??' }
 
+  let destructureSeq = 0
+  /**
+   * Returns true when the assignment was rewritten (or deliberately left with
+   * a warning after walking its reads); false when the pattern writes no
+   * plain state and the ordinary walk should handle it.
+   */
+  function rewriteDestructuringAssignment(node: N): boolean {
+    const left = node.left
+    const names = new Set<string>()
+    collectPatternNames(left, names)
+    const writes: Array<{ name: string; kind: 'state' | 'store' }> = []
+    for (const n of names) {
+      const b = lookup(n)
+      if (!b) continue
+      if (b.kind === 'derived' || b.kind === 'imported-state' || b.kind === 'prop') {
+        warn(
+          left.start,
+          `destructuring assignment onto \`${n}\` is not possible — ${b.kind === 'derived' ? 'derived values are read-only' : b.kind === 'prop' ? 'props flow down' : 'ESM imports are read-only'}.`,
+        )
+        walkExpr(node.right, true)
+        return true
+      }
+      if (b.kind === 'state' || b.kind === 'store') writes.push({ name: n, kind: b.kind })
+    }
+    if (writes.length === 0) return false
+    const seq = destructureSeq++
+    const temp = new Map<string, string>()
+    writes.forEach((w, i) => temp.set(w.name, `__plainD${seq}_${i}`))
+    const value = `__plainDv${seq}`
+
+    const prevOverride = readOverride
+    const prevDepth = readOverrideDepth
+    readOverride = temp
+    readOverrideDepth = funcDepth
+    const target = (t: N, shorthandKey: string | null): void => {
+      if (!t) return
+      switch (t.type) {
+        case 'Identifier': {
+          const tmp = temp.get(t.name)
+          if (tmp && lookup(t.name)) ms.overwrite(t.start, t.end, shorthandKey !== null ? `${shorthandKey}: ${tmp}` : tmp)
+          return
+        }
+        case 'AssignmentPattern':
+          target(t.left, shorthandKey)
+          walkExpr(t.right, true)
+          return
+        case 'RestElement':
+          target(t.argument, null)
+          return
+        case 'ArrayPattern':
+          for (const el of t.elements ?? []) if (el) target(el, null)
+          return
+        case 'ObjectPattern':
+          for (const p of t.properties ?? []) {
+            if (p.type === 'RestElement') {
+              target(p.argument, null)
+              continue
+            }
+            if (p.computed && p.key) walkExpr(p.key, true)
+            target(p.value, p.shorthand ? p.key.name : null)
+          }
+          return
+        default:
+          // member-expression target: its object is a read
+          walkExpr(t, true)
+      }
+    }
+    target(left, null)
+    readOverride = prevOverride
+    readOverrideDepth = prevDepth
+
+    const sets = writes
+      .map((w) => {
+        const tmp = temp.get(w.name)!
+        if (w.kind === 'store') {
+          used.store = true
+          return `${w.name}.set(${emitNames.store}(${tmp}));`
+        }
+        return `${w.name}.set(${tmp});`
+      })
+      .join(' ')
+    // Temporaries start at the CURRENT value (untracked `.peek()`), so a
+    // default that reads a not-yet-assigned target sees the old value — as JS does.
+    const seeds = writes.map((w) => `${temp.get(w.name)} = ${w.name}.peek()`).join(', ')
+    ms.appendRight(left.start, `((${value}) => { let ${seeds}; (`)
+    ms.overwrite(left.end, node.right.start, ` = ${value}); ${sets} return ${value} })(`)
+    walkExpr(node.right, true)
+    ms.appendLeft(node.end, ')')
+    return true
+  }
+
   function rewriteAssignment(node: N, valueUsed: boolean): void {
     const left = node.left
     const target = left?.type === 'Identifier' ? lookup(left.name) : null
@@ -1377,20 +1588,15 @@ export function transformPlain(
       }
     }
 
-    // Destructuring assignment onto tracked bindings → warn, walk untouched.
+    // Destructuring assignment onto plain state → IIFE over fresh temporaries:
+    //   `[a, b] = rhs`  →  `((v) => { let t0, t1; ([t0, t1] = v); a.set(t0); b.set(t1); return v })(rhs)`
+    // The pattern keeps its own shape, so iteration protocol, defaults, rest
+    // and nesting behave exactly as in JS; the rhs is evaluated first and the
+    // expression still yields it. Non-state targets stay in the pattern and are
+    // assigned by it (closure-visible). A derived/imported/prop target cannot
+    // be written at all → warn and leave the statement untouched.
     if (left?.type === 'ObjectPattern' || left?.type === 'ArrayPattern') {
-      const names = new Set<string>()
-      collectPatternNames(left, names)
-      for (const n of names) {
-        const b = lookup(n)
-        if (b && (b.kind === 'state' || b.kind === 'store' || b.kind === 'derived')) {
-          warn(
-            left.start,
-            `destructuring assignment onto plain state \`${n}\` is not rewritten — assign each binding directly.`,
-          )
-          break
-        }
-      }
+      if (node.operator === '=' && rewriteDestructuringAssignment(node)) return
     }
 
     // Member writes whose ROOT is plain state: silent-mutation trap → warn.
@@ -1519,6 +1725,13 @@ export function transformPlain(
   }
   if (used.store && !(emitNames.store === 'createStore' && reactivityImported.has('createStore'))) {
     needed.push(emitNames.store === 'createStore' ? 'createStore' : `createStore as ${emitNames.store}`)
+  }
+  if (splitPropsUsed) {
+    // `splitProps` lives in `@pyreon/core` (a plain module already depends on
+    // it via `@pyreon/core/plain`); injected under an internal alias so it can
+    // never collide with a user binding.
+    const coreImport = `import { splitProps as ${splitPropsName} } from '@pyreon/core'; `
+    ms.appendLeft(stripRanges.length > 0 ? stripRanges[0]!.start : (program.body[0]?.start ?? 0), coreImport)
   }
   if (needed.length > 0) {
     const importText = `import { ${needed.join(', ')} } from '${REACTIVITY_SOURCE}'`
