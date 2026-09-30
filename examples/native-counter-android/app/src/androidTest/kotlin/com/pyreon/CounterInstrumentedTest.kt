@@ -882,10 +882,10 @@ class CounterInstrumentedTest {
     // compiles); presence is locked by the emit test.
     @Test
     fun rocketstyleComponentRendersAndFlipsOnDevice() {
-        composeRule.onNodeWithText("Badge:ok").assertIsDisplayed()
+        composeRule.onNodeWithText("Badge: ok").assertIsDisplayed()
         repeat(3) { composeRule.onNodeWithText("Increment").performClick() }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Badge:warn").assertIsDisplayed()
+        composeRule.onNodeWithText("Badge: warn").assertIsDisplayed()
     }
 
     // Tier-2 state machine (createMachine) asserted in the REAL Compose

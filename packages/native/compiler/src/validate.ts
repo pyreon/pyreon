@@ -658,6 +658,82 @@ function compileSwiftStubs(stub: string, inputText: string): ValidationResult {
 }
 
 /**
+ * Type-check SEVERAL emitted files as ONE Swift module, against the same stubs
+ * `validateSwiftWithStubs` uses.
+ *
+ * Every other gate compiles one file at a time, and a per-file gate is
+ * structurally blind to a cross-file collision: two schema-bearing modules
+ * each declared `enum PyreonSchemaError`, each compiled cleanly on its own,
+ * and together — the only way an app ever builds them — failed with
+ * `invalid redeclaration`. This is the question a real Xcode target asks.
+ *
+ * Each file keeps its own imports and its own `private` scope (they are
+ * written as separate files, not concatenated), so a file-private helper two
+ * modules both declare is correctly NOT a collision.
+ */
+export function validateSwiftFilesWithStubs(sources: readonly string[]): ValidationResult {
+  if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1') {
+    return { ok: true, skipped: true, skipReason: 'PYREON_SKIP_NATIVE_VALIDATE=1' }
+  }
+  if (!isSwiftcAvailable()) {
+    if (process.env.PYREON_REQUIRE_NATIVE_VALIDATE === '1') {
+      return {
+        ok: false,
+        error: 'swiftc not found on PATH (PYREON_REQUIRE_NATIVE_VALIDATE=1 requested).',
+      }
+    }
+    return { ok: true, skipped: true, skipReason: 'swiftc not on PATH' }
+  }
+  const stripped = sources.map((src) => src.replace(SWIFT_STUBBED_IMPORTS, ''))
+  const usesObservable = stripped.some((s) => /@Observable\b/.test(s))
+  if (usesObservable && !isObservationAvailable()) {
+    return { ok: true, skipped: true, skipReason: 'Observation module unavailable on this toolchain' }
+  }
+  const all = stripped.join('\n')
+  const stub = shadowStubDeclarations(SWIFT_UI_STUBS, all) + swiftChartAugmentation(all)
+  const inputs = stripped.map((s) => {
+    const observation = /@Observable\b/.test(s) && !/^import Observation\s*$/m.test(s) ? 'import Observation\n' : ''
+    return _swiftInputPrelude(s, observation) + s
+  })
+  return withVerdictCache(
+    'swift-stubs-module' satisfies ValidateKind,
+    swiftcVersion(),
+    stub,
+    // NUL cannot occur in Swift source, so the file boundaries are unambiguous
+    // in the key: moving a declaration between files changes it.
+    inputs.join('\0'),
+    () => compileSwiftFiles(stub, inputs),
+  )
+}
+
+function compileSwiftFiles(stub: string, inputs: readonly string[]): ValidationResult {
+  const tempDir = mkdtempSync(join(tmpdir(), 'pyreon-native-swift-module-'))
+  const stubsPath = join(tempDir, 'PyreonSwiftStubs.swift')
+  writeFileSync(stubsPath, stub, 'utf8')
+  const paths = inputs.map((text, i) => {
+    const p = join(tempDir, `Input${i}.swift`)
+    writeFileSync(p, text, 'utf8')
+    return p
+  })
+  try {
+    execFileSync('swiftc', ['-module-cache-path', join(tempDir, 'ModuleCache'), '-typecheck', stubsPath, ...paths], {
+      stdio: 'pipe',
+      encoding: 'utf8',
+      timeout: COMPILE_TIMEOUT_MS,
+    })
+    return { ok: true }
+  } catch (err) {
+    return processFailure(err, 'swiftc -typecheck (stubs, multi-file) failed with no output')
+  } finally {
+    try {
+      rmSync(tempDir, { recursive: true, force: true })
+    } catch {
+      // Cleanup best-effort.
+    }
+  }
+}
+
+/**
  * Detect whether `kotlinc` is on PATH. Cheap probe via `kotlinc -version`.
  * Cached for the lifetime of the process.
  */
@@ -793,6 +869,65 @@ function validateKotlinUncached(source: string): ValidationResult {
     return { ok: true }
   } catch (err) {
     return processFailure(err, 'kotlinc failed with no output')
+  } finally {
+    try {
+      rmSync(tempDir, { recursive: true, force: true })
+    } catch {
+      // Cleanup best-effort.
+    }
+  }
+}
+
+
+/**
+ * Compile SEVERAL emitted files together with `kotlinc`, against the same
+ * stubs `validateKotlin` uses — the Kotlin twin of
+ * `validateSwiftFilesWithStubs`. Files emitted into one Gradle source set
+ * share a package, so two that each declare the same top-level class are a
+ * `Redeclaration` no per-file compile can see. Written as separate files, so
+ * a `private` top-level helper stays file-scoped exactly as in a real build.
+ */
+export function validateKotlinFiles(sources: readonly string[]): ValidationResult {
+  if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1') {
+    return { ok: true, skipped: true, skipReason: 'PYREON_SKIP_NATIVE_VALIDATE=1' }
+  }
+  if (!isKotlincAvailable()) {
+    if (process.env.PYREON_REQUIRE_NATIVE_VALIDATE === '1') {
+      return {
+        ok: false,
+        error: 'kotlinc not found on PATH (PYREON_REQUIRE_NATIVE_VALIDATE=1 requested).',
+      }
+    }
+    return { ok: true, skipped: true, skipReason: 'kotlinc not on PATH' }
+  }
+  const stubs = KOTLIN_COMPOSE_STUBS + kotlinChartAugmentation(sources.join('\n'))
+  return withVerdictCache(
+    'kotlin-module' satisfies ValidateKind,
+    kotlincVersion(),
+    stubs,
+    sources.join('\0'),
+    () => compileKotlinFiles(stubs, sources),
+  )
+}
+
+function compileKotlinFiles(stubs: string, sources: readonly string[]): ValidationResult {
+  const tempDir = mkdtempSync(join(tmpdir(), 'pyreon-native-kotlin-module-'))
+  const stubsPath = join(tempDir, 'PyreonStubs.kt')
+  writeFileSync(stubsPath, stubs, 'utf8')
+  const paths = sources.map((text, i) => {
+    const p = join(tempDir, `Input${i}.kt`)
+    writeFileSync(p, text, 'utf8')
+    return p
+  })
+  try {
+    execFileSync('kotlinc', ['-nowarn', '-d', join(tempDir, 'out'), stubsPath, ...paths], {
+      stdio: 'pipe',
+      encoding: 'utf8',
+      timeout: COMPILE_TIMEOUT_MS,
+    })
+    return { ok: true }
+  } catch (err) {
+    return processFailure(err, 'kotlinc (multi-file) failed with no output')
   } finally {
     try {
       rmSync(tempDir, { recursive: true, force: true })

@@ -32,7 +32,56 @@ import androidx.compose.runtime.mutableStateOf
  * Reactive permission set — the Compose half of `usePermissions`.
  * Exposes `granted` as Compose `MutableState` (read `.value`).
  */
-public class PyreonPermissions(granted: Set<String> = emptySet()) {
+public class PyreonPermissions private constructor(
+    granted: Set<String>,
+    /**
+     * True only for the value a `usePermissions()` reads when NO
+     * `<PermissionsProvider>` sits above it (the CompositionLocal's default).
+     * It is an EMPTY set — every check denies, the safe answer — but that is
+     * indistinguishable from a legitimate "no grants" set, so a missing
+     * provider (typically one in another file) looked exactly like a working
+     * app that denies everything. An explicit `usePermissions([])` /
+     * `PyreonPermissions()` states an intent and never warns.
+     */
+    public val isUnprovidedFallback: Boolean,
+) {
+    public constructor(granted: Set<String> = emptySet()) : this(granted, false)
+
+    public companion object {
+        /** The CompositionLocal's default value. See [isUnprovidedFallback]. */
+        public fun unprovided(): PyreonPermissions = PyreonPermissions(emptySet(), true)
+
+        /**
+         * Where the once-per-process dev warning goes. `System.err` reaches
+         * logcat on Android (tag `System.err`) and stderr on the JVM; tests
+         * replace it.
+         */
+        @JvmStatic
+        public var warningSink: (String) -> Unit = { System.err.println(it) }
+
+        private val warned = java.util.concurrent.atomic.AtomicBoolean(false)
+
+        /**
+         * Fires [warningSink] at most once per process. The runtime library
+         * cannot see the host app's `BuildConfig.DEBUG`, so unlike Swift's
+         * `#if DEBUG` this is gated only by being once-per-process and only
+         * reachable from a check against the unprovided fallback — i.e. a real
+         * misconfiguration, never a working app.
+         */
+        public fun warnUnprovidedOnce() {
+            if (warned.compareAndSet(false, true)) {
+                warningSink(
+                    "[Pyreon] usePermissions() was read with no <PermissionsProvider> above it, so every permission check DENIES. Wrap the tree in <PermissionsProvider permissions={{…}}> (it can live in another file), or seed at the call site: usePermissions(['posts.edit'])."
+                )
+            }
+        }
+
+        /** Test seam: re-arm the once-per-process warning. */
+        public fun resetWarningForTesting() {
+            warned.set(false)
+        }
+    }
+
     /**
      * Currently-granted permission keys — exact, plus the three wildcard
      * forms `"x.*"` (one segment), `"x.**"` (any depth) and `"*"`.
@@ -53,6 +102,7 @@ public class PyreonPermissions(granted: Set<String> = emptySet()) {
      * SHOULD widen a grant were silently ignored.
      */
     public fun can(key: String): Boolean {
+        if (isUnprovidedFallback) warnUnprovidedOnce()
         val keys = granted.value
         // 1. Exact match.
         if (keys.contains(key)) return true
