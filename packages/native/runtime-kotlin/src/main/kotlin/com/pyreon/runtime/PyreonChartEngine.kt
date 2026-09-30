@@ -788,10 +788,10 @@ fun gradientSolid(g: PyreonChartGradient, fallback: String): String {
   }
 
 fun plain(v: Double): String {
-    if (!(v == v)) {
-      return "NaN"
-    }
-    if (v - v != 0.0) {
+    if (!isFiniteNumber(v)) {
+      if (!(v == v)) {
+        return "NaN"
+      }
       return if (v > 0.0) "Infinity" else "-Infinity"
     }
     val mag = Math.abs(v)
@@ -905,7 +905,7 @@ fun padded(v: Double, width: Long): String {
   }
 
 fun formatDate(ms: Double, pattern: String): String {
-    if (!(ms - ms == 0.0)) {
+    if (!isFiniteNumber(ms)) {
       return ""
     }
     val days = Math.floor((ms).toDouble() / (DAY_MS).toDouble())
@@ -1044,7 +1044,7 @@ fun niceDomain(d: Domain, targetCount: Double): Domain {
     return Domain(min = Math.floor((d.min).toDouble() / (step).toDouble()) * step, max = Math.ceil((d.max).toDouble() / (step).toDouble()) * step)
   }
 
-fun isFiniteNumber(v: Double): Boolean = v == v && v - v == 0.0
+fun isFiniteNumber(v: Double): Boolean = finiteNumber(v)
 
 fun makeTicks(d: Domain, r0: Double, r1: Double, count: Double, format: ((Double) -> String)? = null): List<Tick> {
     val out: MutableList<Tick> = mutableListOf()
@@ -11132,7 +11132,7 @@ fun m4CategoryPoints(values: List<Double>, plot: PyreonChartRect, dom: Domain, p
     }
     for (i in 0L until n) {
       val v = values[(i).toInt()]
-      if (!(v - v == 0.0)) {
+      if (!isFiniteNumber(v)) {
         return out
       }
     }
