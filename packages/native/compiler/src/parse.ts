@@ -8459,17 +8459,15 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     // `usePermissions([])` means "this screen grants nothing": deny-all, never
     // a fallback to the provider.
     const seeded = grantsArg?.type === 'ArrayExpression'
-    // A bare `usePermissions()` is the CORRECT web call — the grants live in
-    // `<PermissionsProvider>`, which has no native lowering. So the shape a
-    // web author writes produced an empty native set in which every check
-    // denies, silently: guarded UI simply never appeared on device, with
-    // nothing to trace it by. Say so rather than emit a container that is
-    // guaranteed to answer `false`.
-    if (!seeded && !ctx.hasPermissionsProvider) {
-      ctx.warnings.push(
-        `usePermissions() \`${name}\`: no grants reach this call — there is no literal argument and no <PermissionsProvider permissions={{ … }}> in this file, so the native permission set is EMPTY and every check denies. Wrap the tree in a provider (which lowers), seed at the call site (usePermissions(["posts.*"])), or grant() before the first check.`,
-      )
-    }
+    // A bare `usePermissions()` is the CORRECT web call: it reads the grants
+    // of the nearest `<PermissionsProvider>`, which lowers to the app-wide
+    // environment key / CompositionLocal in @pyreon/permissions' runtime. This
+    // used to WARN when the provider was not in the SAME file — accurate while
+    // the key was emitted per file (a Kotlin `private val` was a different
+    // local in every file, so a provider elsewhere never reached the reader).
+    // With one key for the whole app, the canonical shape — provider in the
+    // root layout, reader on a page — is correct, and a per-file check cannot
+    // see the provider, so the warning would fire on exactly the right code.
     return { kind: 'permissions', name, grants, seeded }
   }
   // Phase 4 — `const clipboard = useClipboard()` from `@pyreon/hooks` →
@@ -13407,6 +13405,31 @@ function parseJsxAttr(node: AnyNode, ctx: ParseCtx): AttrIR | null {
   return { kind: 'attr', name: rawName, value: exprValue }
 }
 
+/**
+ * The JSX text rule (Babel's `cleanJSXElementLiteralChild`): split into lines;
+ * trim leading whitespace on every line but the first and trailing whitespace
+ * on every line but the last; drop empty lines; join the rest with one space.
+ * So layout whitespace containing a line break vanishes, while inline
+ * whitespace with no line break -- including a lone space between two
+ * expression containers, `{a} {b}` -- is content and survives.
+ */
+export function cleanJsxText(raw: string): string {
+  const lines = raw.split(/\r\n|\n|\r/)
+  let lastNonEmpty = 0
+  for (let i = 0; i < lines.length; i++) if (/[^ \t]/.test(lines[i]!)) lastNonEmpty = i
+  let out = ''
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i]!.replace(/\t/g, ' ')
+    if (i !== 0) line = line.replace(/^ +/, '')
+    if (i !== lines.length - 1) line = line.replace(/ +$/, '')
+    if (line !== '') {
+      if (i !== lastNonEmpty) line += ' '
+      out += line
+    }
+  }
+  return out
+}
+
 function parseJsxChild(node: AnyNode, ctx: ParseCtx): ChildIR | null {
   if (node.type === 'JSXText') {
     // JSX whitespace handling per Babel / React convention:
@@ -13423,8 +13446,7 @@ function parseJsxChild(node: AnyNode, ctx: ParseCtx): ChildIR | null {
     // The naive pre-PR-9 `.trim()` was correct for layout whitespace
     // but wrong for content-adjacent whitespace.
     const raw = node.value as string
-    if (!/\S/.test(raw)) return null
-    const v = /\n/.test(raw) ? raw.replace(/\s+/g, ' ').trim() : raw
+    const v = cleanJsxText(raw)
     if (v === '') return null
     return { kind: 'text', value: v }
   }

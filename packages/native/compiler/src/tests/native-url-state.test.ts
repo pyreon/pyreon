@@ -5,11 +5,16 @@
 // `?…` went into matchPath whole. That is fixed in the router packages; this
 // covers the compiler half.
 //
-// The helper type is emitted INLINE rather than shipped as a co-located
-// runtime because it needs the ACTIVE router — a standalone runtime would have
-// to import PyreonRouter and stop being self-contained. Same reasoning as
-// `PyreonSchemaError`.
+// The helper types (`PyreonUrlState*`) ship in the ROUTER runtime
+// (router-swift / router-kotlin `PyreonUrlState.{swift,kt}`), declared once.
+// They used to be emitted inline into every file that called `useUrlState`,
+// and two such files in one Xcode target / Gradle source set collided
+// (`invalid redeclaration` / `Redeclaration`). So the emit asserts here cover
+// the CONSTRUCTION; the decode semantics are asserted against the runtime
+// sources themselves, which is what an app actually links.
 
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
 import {
@@ -19,6 +24,18 @@ import {
   validateSwiftWithStubs,
 } from '../validate'
 
+const NATIVE = resolve(import.meta.dirname, '../../..')
+const RUNTIME_SWIFT = readFileSync(
+  resolve(NATIVE, 'router-swift/Sources/PyreonRouter/PyreonUrlState.swift'),
+  'utf8',
+)
+const RUNTIME_KOTLIN = readFileSync(
+  resolve(NATIVE, 'router-kotlin/src/main/kotlin/com/pyreon/router/PyreonUrlState.kt'),
+  'utf8',
+)
+/** A top-level declaration of any url-state helper, in either language. */
+const HELPER_DECL = /^(?:public |private |internal )?(?:struct|class|func|fun) (?:PyreonUrlState\w*|pyreonUrlNumber)\b/m
+
 const SRC = `import { useUrlState } from '@pyreon/url-state'
 import { Stack, Text } from '@pyreon/primitives'
 export function C() { const q = useUrlState('q', 'all'); return (<Stack><Text>{q()}</Text></Stack>) }`
@@ -26,17 +43,17 @@ export function C() { const q = useUrlState('q', 'all'); return (<Stack><Text>{q
 describe('useUrlState lowering', () => {
   it('binds the parameter through the router (Swift)', () => {
     const { code } = transform(SRC, { target: 'swift' })
-    expect(code).toContain('struct PyreonUrlState')
+    expect(code).not.toMatch(HELPER_DECL)
     expect(code).toContain('PyreonUrlState(router: pyreonRouter, key: "q", defaultValue: "all")')
     // Optional-chained: the environment router IS optional, so a component
     // rendered outside a RouterProvider degrades to the default rather than
     // crashing — the same choice useNavigate/useParams make.
-    expect(code).toContain('router?.setQueryParam(key, value)')
+    expect(RUNTIME_SWIFT).toContain('router?.setQueryParam(key, value)')
   })
 
   it('binds the parameter through the router (Kotlin)', () => {
     const { code } = transform(SRC, { target: 'kotlin' })
-    expect(code).toContain('class PyreonUrlState')
+    expect(code).not.toMatch(HELPER_DECL)
     // Was `useRouter()`. router-kotlin ships useNavigate / useParams /
     // useLoaderData and NO useRouter, so that emit could not build -- but the
     // Kotlin STUB declared one, so this assertion and every stub-level check
@@ -45,7 +62,7 @@ describe('useUrlState lowering', () => {
     // parameter binds through the router); only the accessor is corrected to
     // the CompositionLocal the runtime actually exposes.
     expect(code).toContain('PyreonUrlState(LocalPyreonRouter.current, "q", "all")')
-    expect(code).toContain('router?.setQueryParam(key, value)')
+    expect(RUNTIME_KOTLIN).toContain('router?.setQueryParam(key, value)')
   })
 
   // The call shape is what keeps shared source shared: `q()` reads on the web,
@@ -100,15 +117,17 @@ export function C() { const k = 'q'; const v = useUrlState(k, ''); return (<Stac
     expect(transform(src, { target: 'swift' }).code).not.toContain('PyreonUrlState(')
   })
 
-  // The helper is emitted once per file, not once per binding.
-  it('emits the helper exactly once for two bindings', () => {
+  // One instance per binding, and NO helper declaration — the types are the
+  // router runtime's, so a second file binding url-state cannot redeclare them.
+  it('constructs one instance per binding and declares no helper', () => {
     const src = `import { useUrlState } from '@pyreon/url-state'
 import { Stack, Text } from '@pyreon/primitives'
 export function C() { const a = useUrlState('a', ''); const b = useUrlState('b', ''); return (<Stack><Text>{a()}{b()}</Text></Stack>) }`
-    const { code } = transform(src, { target: 'swift' })
-    // `split('struct PyreonUrlState')` would also match PyreonUrlStateInt et
-    // al, so anchor on the declaration's own opening brace.
-    expect(code.split('struct PyreonUrlState {').length - 1).toBe(1)
+    for (const target of ['swift', 'kotlin'] as const) {
+      const { code } = transform(src, { target })
+      expect(code, target).not.toMatch(HELPER_DECL)
+      expect(code.split('PyreonUrlState(').length - 1, target).toBe(2)
+    }
   })
 })
 
@@ -163,8 +182,8 @@ describe('useUrlState typed defaults', () => {
   // interpolation where the web prints "1".
   it('splits Int from Double on the default literal, not on the type name', () => {
     const swift = transform(TYPED_SRC, { target: 'swift' }).code
-    expect(swift).toContain('let defaultValue: Int')
-    expect(swift).toContain('let defaultValue: Double')
+    expect(swift).toContain('PyreonUrlStateInt(router: pyreonRouter, key: "page", defaultValue: 1)')
+    expect(swift).toContain('PyreonUrlStateDouble(router: pyreonRouter, key: "zoom", defaultValue: 1.5)')
   })
 
   // A negated literal parses as a unary WRAPPING the literal — the shape
@@ -185,19 +204,19 @@ export function C() { const o = useUrlState('o', -3); return (<Stack><Text>{\`\$
   // number WITHOUT a trailing `.0`. Both targets' own toString would emit
   // "1.0" and produce `?zoom=1.0` where the web writes `?zoom=1`.
   it('serializes a whole Double without a trailing .0 on both targets', () => {
-    expect(transform(TYPED_SRC, { target: 'swift' }).code).toContain('String(Int(value))')
-    expect(transform(TYPED_SRC, { target: 'kotlin' }).code).toContain('value.toLong().toString()')
+    expect(RUNTIME_SWIFT).toContain('String(Int(value))')
+    expect(RUNTIME_KOTLIN).toContain('value.toLong().toString()')
   })
 
   // The web's boolean decode is true/1 → true, false/0 → false, anything else
   // → the DEFAULT (not `false`). A truthiness check would diverge on a
   // hand-written link.
   it('decodes a boolean exactly like the web: true/1, false/0, else the default', () => {
-    const swift = transform(TYPED_SRC, { target: 'swift' }).code
+    const swift = RUNTIME_SWIFT
     expect(swift).toContain('case "true", "1": return true')
     expect(swift).toContain('case "false", "0": return false')
     expect(swift).toContain('default: return defaultValue')
-    const kotlin = transform(TYPED_SRC, { target: 'kotlin' }).code
+    const kotlin = RUNTIME_KOTLIN
     expect(kotlin).toContain('"true", "1" -> true')
     expect(kotlin).toContain('"false", "0" -> false')
     expect(kotlin).toContain('else -> defaultValue')
@@ -206,26 +225,18 @@ export function C() { const o = useUrlState('o', -3); return (<Stack><Text>{\`\$
   // `?page=` is ABSENT on the web (the default), not 0 — `+''` is 0 in JS, so
   // the ToNumber reproduction must special-case it the same way.
   it('an empty numeric param decodes to the default on both targets', () => {
-    expect(transform(TYPED_SRC, { target: 'swift' }).code).toContain('if t.isEmpty { return fallback }')
-    expect(transform(TYPED_SRC, { target: 'kotlin' }).code).toContain('if (t.isEmpty()) return fallback')
+    expect(RUNTIME_SWIFT).toContain('if t.isEmpty { return fallback }')
+    expect(RUNTIME_KOTLIN).toContain('if (t.isEmpty()) return fallback')
   })
 
-  // Only the helpers actually bound are emitted, so a string-only file is
-  // byte-identical to what it produced before typed defaults existed.
-  it('emits only the helpers a file actually binds', () => {
-    const stringOnly = transform(SRC, { target: 'swift' }).code
-    expect(stringOnly).toContain('struct PyreonUrlState {')
-    expect(stringOnly).not.toContain('PyreonUrlStateInt')
-    expect(stringOnly).not.toContain('pyreonUrlNumber')
-
-    // ... and a number-only file does not drag in the string helper.
-    const numOnly = `import { useUrlState } from '@pyreon/url-state'
-import { Stack, Text } from '@pyreon/primitives'
-export function C() { const n = useUrlState('n', 0); return (<Stack><Text>{\`\${n()}\`}</Text></Stack>) }`
-    const code = transform(numOnly, { target: 'swift' }).code
-    expect(code).not.toContain('struct PyreonUrlState {')
-    expect(code).toContain('struct PyreonUrlStateInt')
-    expect(code).toContain('pyreonUrlNumber')
+  // No file declares any helper — typed or not — so any mix of url-state
+  // bindings across files links against the one set the router ships.
+  it('declares no url-state helper for any value type', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const code = transform(TYPED_SRC, { target }).code
+      expect(code, target).not.toMatch(HELPER_DECL)
+      expect(code, target).not.toContain('pyreonUrlNumber')
+    }
   })
 
   // Swift's Int and Kotlin's Long are both 64-bit, so a shared source reads the
@@ -234,20 +245,18 @@ export function C() { const n = useUrlState('n', 0); return (<Stack><Text>{\`\${
   // 32-bit). Both bound the accepted set to the JS safe-integer range, the
   // way the web's Number(raw) reads it.
   it('accepts the same integer range on both targets', () => {
-    expect(transform(TYPED_SRC, { target: 'swift' }).code).toContain(
-      'n >= -9007199254740991, n <= 9007199254740991',
-    )
-    const kotlin = transform(TYPED_SRC, { target: 'kotlin' }).code
-    expect(kotlin).toContain('n < -9007199254740991.0 || n > 9007199254740991.0')
-    expect(kotlin).toContain('return n.toLong()')
+    // The bound lives in the co-located runtime now (see the file header
+    // above these classes moved OUT of per-file emission), not in the
+    // per-call-site transform() output.
+    expect(RUNTIME_SWIFT).toContain('n >= -9007199254740991, n <= 9007199254740991')
+    expect(RUNTIME_KOTLIN).toContain('n < -9007199254740991.0 || n > 9007199254740991.0')
+    expect(RUNTIME_KOTLIN).toContain('return n.toLong()')
   })
 
-  // The number helper is shared by Int and Double — emitted once, not twice.
-  it('emits the ToNumber helper exactly once when both numeric forms are bound', () => {
-    const swift = transform(TYPED_SRC, { target: 'swift' }).code
-    expect(swift.split('func pyreonUrlNumber').length - 1).toBe(1)
-    const kotlin = transform(TYPED_SRC, { target: 'kotlin' }).code
-    expect(kotlin.split('fun pyreonUrlNumber').length - 1).toBe(1)
+  // The number helper is shared by Int and Double — declared once per runtime.
+  it('the runtime declares the ToNumber helper exactly once per target', () => {
+    expect(RUNTIME_SWIFT.split('func pyreonUrlNumber').length - 1).toBe(1)
+    expect(RUNTIME_KOTLIN.split('fun pyreonUrlNumber').length - 1).toBe(1)
   })
 
   // R3 — the emit is TYPECHECKED by the real toolchains, not just asserted as
