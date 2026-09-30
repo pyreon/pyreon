@@ -1441,11 +1441,74 @@ jobs:
       - name: Coverage (floor + exemption drift)
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: bun run coverage:floor
+      # ── Rust binary: cross-backend equivalence gate ──────────────────────
+      # Builds the @pyreon/compiler napi-rs binary and runs the compiler suite
+      # with it loaded; the equivalence harness asserts every JS-path output
+      # matches the Rust path. Without it only the JS fallback is exercised —
+      # which is exactly what shipped the 6 divergences caught in #491.
+      #
+      # MUST run BEFORE "Coverage (changed packages)" below: @pyreon/compiler's
+      # declared coverage thresholds are calibrated against a WITH-native-binary
+      # measurement (see the ratchet history in packages/core/compiler/
+      # vitest.config.ts — e.g. "measured 97.47/93.54" for statements/branches).
+      # `transformJSX` prefers the native binary when present, and a whole class
+      # of `describeNative`-gated suites (the seeded JS≡Rust differential fuzz,
+      # native-equivalence specs) SKIP outright when it isn't loaded yet —
+      # dropping measured statements from ~97.4% to 96.65%, comfortably below
+      # the 97% floor, on IDENTICAL source. Confirmed by reproducing this
+      # exact number locally on main with the binary removed (#3734 CI
+      # investigation): the gap is measurement-environment, not a real
+      # coverage regression in any PR's diff. Coverage must run with the same
+      # binary availability every other consumer of this package gets.
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master — pinned (OpenSSF Pinned-Dependencies)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        with:
+          toolchain: stable
+      - name: Cache cargo registry
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-registry-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock') }}
+          restore-keys: cargo-registry-${{ runner.os }}-
+      # Keyed by Cargo.lock + every Rust source: cargo's own content hashing
+      # invalidates correctly, so a hit means the compiled output is exact.
+      - name: Cache cargo target/
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: packages/core/compiler/native/target
+          key: cargo-target-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock', 'packages/core/compiler/native/src/**/*.rs') }}
+          restore-keys: |
+            cargo-target-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock') }}-
+            cargo-target-${{ runner.os }}-
+      - name: Build native binary
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run --filter='@pyreon/compiler' build:native
+      # build-native.ts soft-fails so cargo trouble routes CONSUMERS to JS;
+      # CI's job is the opposite — fail loudly so the gate can never erode to
+      # "JS-only ran, equivalence silently skipped".
+      - name: Assert native binary present
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: |
+          BIN=packages/core/compiler/native/pyreon-compiler.node
+          if [ ! -f "$BIN" ]; then
+            echo "::error::Native binary missing at $BIN. Cargo build failed silently (build-native.ts soft-fails). The Rust equivalence gate cannot run without it."
+            exit 1
+          fi
+          echo "Binary OK: $(ls -la $BIN)"
+      - name: Test (Rust binary) — @pyreon/compiler suite against the binary
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run --filter='@pyreon/compiler' test
       # Measure the packages this PR actually touches (`--changed-only`: the
       # DIRECTLY-changed workspaces, never the dependent closure — coverage
       # is a property of a package's own sources + tests, and the closure is
       # what tripped the >15 cap and silently skipped the packages that
       # matter most). The whole-repo run stays on push:main + merge_group.
+      # Positioned AFTER the native binary build above — see that step's
+      # comment for why.
       - name: Coverage (changed packages)
         if: ${{ !cancelled() && steps.setup.outcome == 'success' && github.event_name == 'pull_request' }}
         run: |
@@ -1490,53 +1553,6 @@ jobs:
           fi
           echo "Affected ($COUNT): ${NAMES:-<none>}"
           bun scripts/check-coverage.ts --only="$NAMES"
-      # ── Rust binary: cross-backend equivalence gate ──────────────────────
-      # Builds the @pyreon/compiler napi-rs binary and runs the compiler suite
-      # with it loaded; the equivalence harness asserts every JS-path output
-      # matches the Rust path. Without it only the JS fallback is exercised —
-      # which is exactly what shipped the 6 divergences caught in #491.
-      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master — pinned (OpenSSF Pinned-Dependencies)
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        with:
-          toolchain: stable
-      - name: Cache cargo registry
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: cargo-registry-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock') }}
-          restore-keys: cargo-registry-${{ runner.os }}-
-      # Keyed by Cargo.lock + every Rust source: cargo's own content hashing
-      # invalidates correctly, so a hit means the compiled output is exact.
-      - name: Cache cargo target/
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: packages/core/compiler/native/target
-          key: cargo-target-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock', 'packages/core/compiler/native/src/**/*.rs') }}
-          restore-keys: |
-            cargo-target-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock') }}-
-            cargo-target-${{ runner.os }}-
-      - name: Build native binary
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        run: bun run --filter='@pyreon/compiler' build:native
-      # build-native.ts soft-fails so cargo trouble routes CONSUMERS to JS;
-      # CI's job is the opposite — fail loudly so the gate can never erode to
-      # "JS-only ran, equivalence silently skipped".
-      - name: Assert native binary present
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        run: |
-          BIN=packages/core/compiler/native/pyreon-compiler.node
-          if [ ! -f "$BIN" ]; then
-            echo "::error::Native binary missing at $BIN. Cargo build failed silently (build-native.ts soft-fails). The Rust equivalence gate cannot run without it."
-            exit 1
-          fi
-          echo "Binary OK: $(ls -la $BIN)"
-      - name: Test (Rust binary) — @pyreon/compiler suite against the binary
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        run: bun run --filter='@pyreon/compiler' test
 
   test-browser:
     name: Test (browser)
