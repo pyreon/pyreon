@@ -2,6 +2,11 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { transform } from '../index'
 
+// Anonymous record names include a stable hash of their source location. The
+// Plain and classic fixtures intentionally have different prologues, so that
+// implementation detail differs even when their emitted programs are equal.
+const normalizeAnonymousRecordNames = (code: string): string => code.replace(/__Obj\d+_[a-z0-9]+/g, '__Obj')
+
 // Two PMTC defects surfaced by migrating the native examples to Plain Mode.
 
 // A real app that exercises the counters (timeline strips + host-state
@@ -43,7 +48,7 @@ export function D() {
     // used to fall back to an EMPTY STRING for the whole derived value.
     const p = transform(plain, { target, filename: 'd.tsx' })
     const c = transform(classic, { target, filename: 'd.tsx' })
-    expect(p.code).toBe(c.code)
+    expect(normalizeAnonymousRecordNames(p.code)).toBe(normalizeAnonymousRecordNames(c.code))
     expect(p.warnings).toEqual(c.warnings)
   })
 
