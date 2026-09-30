@@ -22,7 +22,7 @@ import { Audio, Button, Heading, Image, Inline, Layer, Link, Press, Spacer, Stac
 import { attrs } from '@pyreon/attrs'
 import { Element } from '@pyreon/elements'
 import { Col, Container, Row } from '@pyreon/coolgrid'
-import { signal } from '@pyreon/reactivity'
+import { state as plainState } from '@pyreon/core/plain'
 import { createRouter, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
 import { defineTheme, styled } from '@pyreon/styler'
 
@@ -146,11 +146,11 @@ function AnimPage() {
   // Keeping MotionPage at one transition preserves that gate honestly instead
   // of loosening it, and the two boxes here still give the one-instant
   // opposite-outcomes comparison the asymmetry proof needs.
-  const on = signal<boolean>(true)
+  let on = plainState<boolean>(true)
   return (
     <Stack gap={3} padding={4} data-testid="anim-page">
       <Text>Animations</Text>
-      <Button onPress={() => on.set(!on())} data-testid="anim-toggle">
+      <Button onPress={() => { on = !on }} data-testid="anim-toggle">
         Toggle Boxes
       </Button>
       {/* Animations row — ASYMMETRIC enter/leave, the row's named gap. The
@@ -163,7 +163,7 @@ function AnimPage() {
           picks. Android asserts it on the compose rule's VIRTUAL clock, so
           the timing is deterministic rather than a wall-clock race. */}
       <Transition
-        show={() => on()}
+        show={() => on}
         enterDuration={200}
         leaveDuration={2500}
         easing="linear"
@@ -171,7 +171,7 @@ function AnimPage() {
         <Text data-testid="asym-slow-leave">Asym Slow Leave</Text>
       </Transition>
       <Transition
-        show={() => on()}
+        show={() => on}
         enterDuration={2500}
         leaveDuration={200}
         easing="linear"
@@ -203,26 +203,26 @@ function OfflinePage() {
   // on NEITHER target until `database.get` joined SERVICE_METHOD_RETURNS.
   const net = useOnline()
   const db = useDatabase()
-  const noteCount = signal<number>(0)
-  const state = signal<string>('empty')
+  let noteCount = plainState<number>(0)
+  let state = plainState<string>('empty')
   onMount(() => {
-    noteCount.set(db.count('notes'))
+    noteCount = db.count('notes')
     const found = db.get('notes', 'n1')
     if (found) {
-      state.set('restored')
+      state = 'restored'
     }
   })
   return (
     <Stack gap={3} padding={4} data-testid="offline-page">
       <Text>Offline</Text>
       <Text data-testid="net-status">Online: {net.isOnline}</Text>
-      <Text data-testid="note-count">Notes: {noteCount()}</Text>
-      <Text data-testid="note-state">State: {state()}</Text>
+      <Text data-testid="note-count">Notes: {noteCount}</Text>
+      <Text data-testid="note-state">State: {state}</Text>
       <Button
         onPress={() => {
           db.insert('notes', { id: 'n1', fields: { body: 'written-offline' } })
-          noteCount.set(db.count('notes'))
-          state.set('written')
+          noteCount = db.count('notes')
+          state = 'written'
         }}
         data-testid="write-note"
       >
@@ -231,8 +231,8 @@ function OfflinePage() {
       <Button
         onPress={() => {
           db.delete('notes', 'n1')
-          noteCount.set(db.count('notes'))
-          state.set('cleared')
+          noteCount = db.count('notes')
+          state = 'cleared'
         }}
         data-testid="clear-note"
       >
@@ -252,7 +252,7 @@ function MotionPage() {
   // the configured duration elapses. Android asserts this on the compose
   // test rule's VIRTUAL clock (deterministic); iOS uses wall-time with
   // generous margins.
-  const boxOn = signal<boolean>(true)
+  let boxOn = plainState<boolean>(true)
   // Gestures-row proof — the swipe vocabulary (<Press onSwipeLeft/onSwipeRight>).
   // iOS lowers to a simultaneous DragGesture, Android to
   // pointerInput { detectHorizontalDragGestures }, web to a pointer-delta
@@ -264,23 +264,23 @@ function MotionPage() {
   // swipeLeft() / Compose performTouchInput). Lives on this sparse page
   // so the zone sits in the first screenful on both platforms
   // (coordinate gestures need on-screen bounds — the counter-fold lesson).
-  const swipeDir = signal<string>('none')
+  let swipeDir = plainState<string>('none')
   return (
     <Stack gap={3} padding={4} data-testid="motion-page">
       <Text>Motion</Text>
-      <Text data-testid="swipe-status">Swiped: {swipeDir()}</Text>
+      <Text data-testid="swipe-status">Swiped: {swipeDir}</Text>
       <Press
-        onPress={() => swipeDir.set('tap')}
-        onSwipeLeft={() => swipeDir.set('left')}
-        onSwipeRight={() => swipeDir.set('right')}
+        onPress={() => { swipeDir = 'tap' }}
+        onSwipeLeft={() => { swipeDir = 'left' }}
+        onSwipeRight={() => { swipeDir = 'right' }}
         data-testid="swipe-zone"
       >
         <Text>← Swipe this zone →</Text>
       </Press>
-      <Button onPress={() => boxOn.set(!boxOn())} data-testid="motion-toggle">
+      <Button onPress={() => { boxOn = !boxOn }} data-testid="motion-toggle">
         Toggle Slow Box
       </Button>
-      <Transition show={() => boxOn()} duration={2500} easing="linear">
+      <Transition show={() => boxOn} duration={2500} easing="linear">
         <Text data-testid="slow-box">Slow Box</Text>
       </Transition>
 
@@ -319,8 +319,8 @@ function PushPage() {
 
 function MediaPage() {
   const navigate = useNavigate()
-  const videoStatus = signal<string>('waiting')
-  const audioStatus = signal<string>('waiting')
+  let videoStatus = plainState<string>('waiting')
+  let audioStatus = plainState<string>('waiting')
   // Media-row proof — a REMOTE image through the real network stack.
   // <Image src="http…"> lowers to SwiftUI AsyncImage(url:) / Coil
   // AsyncImage(model=) / web <img>. The fixture server (the ws-echo
@@ -360,10 +360,10 @@ function MediaPage() {
         muted
         loop
         height={120}
-        onStatusChange={(s) => videoStatus.set(s)}
+        onStatusChange={(s) => { videoStatus = s }}
         data-testid="video-player"
       />
-      <Text data-testid="video-status">Video: {videoStatus()}</Text>
+      <Text data-testid="video-status">Video: {videoStatus}</Text>
       {/* Audio-row proof. <Audio> was the ONE canonical primitive no native
           example used, and it turned out to be the one that had never compiled
           on either platform: Android had no composable at all, and both engines
@@ -375,10 +375,10 @@ function MediaPage() {
         src="http://localhost:8790/clip.m4a"
         autoPlay
         loop
-        onStatusChange={(s) => audioStatus.set(s)}
+        onStatusChange={(s) => { audioStatus = s }}
         data-testid="audio-player"
       />
-      <Text data-testid="audio-status">Audio: {audioStatus()}</Text>
+      <Text data-testid="audio-status">Audio: {audioStatus}</Text>
       <Button onPress={() => navigate('/')}>Back to Home</Button>
     </Stack>
   )
@@ -518,19 +518,19 @@ function HomePage() {
   // "s3cret" proves the write→read round trip, not a signal echo.
   const secrets = useSecureStorage()
   const sizeClass = useSizeClass()
-  const secretStatus = signal<string>('none')
+  let secretStatus = plainState<string>('none')
   onMount(() => {
-    secretStatus.set(secrets.read('demo-secret') ?? 'none')
+    secretStatus = secrets.read('demo-secret') ?? 'none'
   })
   return (
     <Stack gap={3} padding={4} data-testid="home-page">
       <Text>Home</Text>
       <Text>Welcome to the Pyreon multiplatform router demo.</Text>
-      <Text data-testid="secure-value">Secret: {secretStatus()}</Text>
+      <Text data-testid="secure-value">Secret: {secretStatus}</Text>
       <Button
         onPress={() => {
           const ok = secrets.write('demo-secret', 's3cret')
-          secretStatus.set(ok ? (secrets.read('demo-secret') ?? 'read-failed') : 'write-failed')
+          secretStatus = ok ? (secrets.read('demo-secret') ?? 'read-failed') : 'write-failed'
         }}
         data-testid="secure-save"
       >

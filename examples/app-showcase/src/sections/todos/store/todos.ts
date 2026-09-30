@@ -1,4 +1,4 @@
-import { computed } from '@pyreon/reactivity'
+import { derived, signalOf } from '@pyreon/core/plain'
 import { useStorage } from '@pyreon/storage'
 import { defineStore } from '@pyreon/store'
 import type { Project, Todo } from './types'
@@ -80,7 +80,7 @@ export const useTodos = defineStore('todos', () => {
   const projects = useStorage<Project[]>('app-showcase.projects', DEFAULT_PROJECTS)
 
   // ── Derived ────────────────────────────────────────────────────────────
-  const counts = computed(() => {
+  const counts = derived(() => {
     const all = todos()
     let active = 0
     let completed = 0
@@ -173,7 +173,7 @@ export const useTodos = defineStore('todos', () => {
   return {
     todos,
     projects,
-    counts,
+    counts: signalOf<typeof counts>(counts),
     add,
     update,
     toggle,

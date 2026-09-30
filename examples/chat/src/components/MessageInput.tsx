@@ -1,4 +1,4 @@
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 
 interface MessageInputProps {
   onSend: (body: string) => void
@@ -12,13 +12,13 @@ interface MessageInputProps {
  * audit's focus is on the streaming path.
  */
 export default function MessageInput(props: MessageInputProps) {
-  const draft = signal('')
+  let draft = state('')
 
   function handleSubmit() {
-    const body = draft()
+    const body = draft
     if (!body.trim() || props.disabled) return
     props.onSend(body)
-    draft.set('')
+    draft = ''
   }
 
   return (
@@ -34,9 +34,9 @@ export default function MessageInput(props: MessageInputProps) {
         class="message-input-textarea"
         placeholder="Message — Enter to send, Shift+Enter for newline"
         rows={2}
-        value={() => draft()}
+        value={() => draft}
         disabled={() => props.disabled}
-        onInput={(e) => draft.set((e.currentTarget as HTMLTextAreaElement).value)}
+        onInput={(e) => { draft = (e.currentTarget as HTMLTextAreaElement).value }}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault()
@@ -48,7 +48,7 @@ export default function MessageInput(props: MessageInputProps) {
       <button
         type="submit"
         class="message-send-btn"
-        disabled={() => props.disabled || !draft().trim()}
+        disabled={() => props.disabled || !draft.trim()}
         data-testid="message-send"
       >
         Send

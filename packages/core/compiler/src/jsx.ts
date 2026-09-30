@@ -29,7 +29,7 @@
  */
 
 import MagicString from 'magic-string'
-import { transformPlain, type PlainTransformResult } from './plain'
+import { detectPlain, transformPlain, type PlainTransformResult } from './plain'
 import { parseSync } from 'oxc-parser'
 import { REACT_EVENT_REMAP } from './event-names'
 import { loadNativeBinding } from './load-native'
@@ -315,6 +315,13 @@ export interface TransformOptions {
    * // {count} in JSX → {() => count()}
    */
   knownSignals?: string[]
+
+  /**
+   * Project-wide Plain Mode: run the plain pre-pass on this module even
+   * without a `'use plain'` directive or a marker import (a `'use classic'`
+   * directive still opts the module out). Set by `pyreon({ plain: true })`.
+   */
+  plain?: boolean
 
   /**
    * Collect the {@link ReactivitySpan} sidecar (`TransformResult.reactivityLens`).
@@ -1111,7 +1118,15 @@ export function transformJSX(
     // back to the JS implementation.
     let plained: PlainTransformResult | null = null
     let decided = false
-    if (nativeTransformPlain) {
+    // A FORCED module with no plain marker of its own goes to the JS pre-pass
+    // (the oracle): activation is not part of the byte-parity dialect, and an
+    // older per-platform native binary would not know the flag and return a
+    // `null` verdict — silently skipping the project-wide mode.
+    if (options.plain === true && !detectPlain(code)) {
+      plained = transformPlain(code, filename, { knownSignals: options.knownSignals, force: true })
+      decided = true
+    }
+    if (!decided && nativeTransformPlain) {
       try {
         plained = nativeTransformPlain(code, filename, options.knownSignals ?? null)
         decided = true

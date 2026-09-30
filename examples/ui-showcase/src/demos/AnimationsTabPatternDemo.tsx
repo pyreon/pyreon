@@ -1,5 +1,5 @@
 import { fade, kinetic } from '@pyreon/kinetic'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { Button, Title, Paragraph } from '@pyreon/ui-components'
 
 const FadePanel = kinetic('div').preset(fade)
@@ -23,7 +23,7 @@ const content: Record<Tab, { title: string; body: string }> = {
 }
 
 export function AnimationsTabPatternDemo() {
-  const active = signal<Tab>('Overview')
+  let active = state<Tab>('Overview')
 
   return (
     <div>
@@ -37,9 +37,9 @@ export function AnimationsTabPatternDemo() {
           <Button
             state="secondary"
             variant="ghost"
-            onClick={() => active.set(tab)}
+            onClick={() => { active = tab }}
             style={() =>
-              `border-radius: 0; border-bottom: 2px solid ${active() === tab ? '#3b82f6' : 'transparent'}; color: ${active() === tab ? '#3b82f6' : '#6b7280'};`
+              `border-radius: 0; border-bottom: 2px solid ${active === tab ? '#3b82f6' : 'transparent'}; color: ${active === tab ? '#3b82f6' : '#6b7280'};`
             }
           >
             {tab}
@@ -50,7 +50,7 @@ export function AnimationsTabPatternDemo() {
       <div style="position: relative; min-height: 120px;">
         {tabs.map((tab) => (
           <FadePanel
-            show={() => active() === tab}
+            show={() => active === tab}
             style="padding: 16px; background: #f9fafb; border-radius: 8px; position: absolute; inset: 0;"
           >
             <Title size="h3" style="margin-bottom: 8px">{content[tab]!.title}</Title>

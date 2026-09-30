@@ -1,8 +1,8 @@
 import { useField, useForm, useFormState } from '@pyreon/form'
-import { signal } from '@pyreon/reactivity'
+import { state as plainState } from '@pyreon/core/plain'
 
 export function FormDemo() {
-  const submitted = signal<string | null>(null)
+  let submitted = plainState<string | null>(null)
 
   const form = useForm({
     initialValues: {
@@ -27,7 +27,7 @@ export function FormDemo() {
     validateOn: 'blur',
     onSubmit: async (values) => {
       await new Promise((r) => setTimeout(r, 500))
-      submitted.set(JSON.stringify(values, null, 2))
+      submitted = JSON.stringify(values, null, 2)
     },
   })
 
@@ -102,10 +102,10 @@ export function FormDemo() {
       </div>
 
       {() =>
-        submitted() ? (
+        submitted ? (
           <div class="section">
             <h3>Submitted Data</h3>
-            <pre style="font-size: 13px; color: #2e7d32">{submitted()}</pre>
+            <pre style="font-size: 13px; color: #2e7d32">{submitted}</pre>
           </div>
         ) : null
       }

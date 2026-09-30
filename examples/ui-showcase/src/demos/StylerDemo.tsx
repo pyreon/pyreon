@@ -1,5 +1,5 @@
 import { css, keyframes, styled } from '@pyreon/styler'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { Title, Paragraph, Button } from '@pyreon/ui-components'
 
 // ── Basic styled component
@@ -78,7 +78,7 @@ const Spinner = styled('div')`
 `
 
 export function StylerDemo() {
-  const color = signal('#0070f3')
+  let color = state('#0070f3')
 
   return (
     <div>
@@ -94,11 +94,11 @@ export function StylerDemo() {
 
       <Title size="h3" style="margin-bottom: 12px">Dynamic props (transient $-prefixed)</Title>
       <div style="display: flex; gap: 12px; margin-bottom: 12px;">
-        <Button state="primary" onClick={() => color.set('#0070f3')}>Blue</Button>
-        <Button state="primary" onClick={() => color.set('#10b981')}>Green</Button>
-        <Button state="danger" onClick={() => color.set('#ef4444')}>Red</Button>
+        <Button state="primary" onClick={() => { color = '#0070f3' }}>Blue</Button>
+        <Button state="primary" onClick={() => { color = '#10b981' }}>Green</Button>
+        <Button state="danger" onClick={() => { color = '#ef4444' }}>Red</Button>
       </div>
-      <Box $color={color()} style="margin-bottom: 24px">background: ${'$'}color</Box>
+      <Box $color={color} style="margin-bottom: 24px">background: ${'$'}color</Box>
 
       <Title size="h3" style="margin-bottom: 12px">Nested selectors</Title>
       <Menu style="margin-bottom: 24px">

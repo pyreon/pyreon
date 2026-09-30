@@ -13,7 +13,8 @@
 // module-level cache: caching docs across navigation would leak the WebSocket /
 // BroadcastChannel / IndexedDB connections.
 // ─────────────────────────────────────────────────────────────────────────────
-import { signal, type Signal } from '@pyreon/reactivity'
+import { state, signalOf } from '@pyreon/core/plain'
+import { type Signal } from '@pyreon/reactivity'
 import { type SyncedStore, syncedStore } from '@pyreon/sync'
 import {
   connectViaBroadcastChannel,
@@ -126,19 +127,19 @@ export function createBoardDoc(roomId: string, relayUrl: string | null): BoardDo
   // to load first — otherwise the create-if-missing seed could race the async
   // IndexedDB load and clobber a previously-saved title. This is the documented
   // `whenSynced` contract, and the reason the board shows a brief loading gate.
-  const ready = signal(false)
+  let ready = state(false)
   let titleStore: SyncedStore<{ title: string }> | null = null
   void persist.whenSynced.then(() => {
     titleStore = syncedStore({ title: '' }, { doc })
-    ready.set(true)
+    ready = true
   })
 
-  const connection = signal<ConnectionState>(relayUrl ? 'connecting' : 'local')
+  let connection = state<ConnectionState>(relayUrl ? 'connecting' : 'local')
   const bc = connectViaBroadcastChannel(doc, roomId)
   const ws = relayUrl
     ? connectViaWebSocket(doc, `${relayUrl}/${roomId}`, {
-        onConnect: () => connection.set('online'),
-        onDisconnect: () => connection.set('offline'),
+        onConnect: () => { connection = 'online' },
+        onDisconnect: () => { connection = 'offline' },
       })
     : null
 
@@ -174,8 +175,8 @@ export function createBoardDoc(roomId: string, relayUrl: string | null): BoardDo
       const found = findCard(cardId)
       if (found) columns[found.colId].delete(found.index, 1)
     },
-    connection,
-    ready,
+    connection: signalOf(connection),
+    ready: signalOf(ready),
     dispose() {
       if (disposed) return
       disposed = true

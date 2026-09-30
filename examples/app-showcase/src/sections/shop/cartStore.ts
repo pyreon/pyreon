@@ -1,4 +1,4 @@
-import { computed, signal } from '@pyreon/reactivity'
+import { state, derived, signalOf } from '@pyreon/core/plain'
 import { useStorage } from '@pyreon/storage'
 import { defineStore } from '@pyreon/store'
 import { CURRENCY_RATES, PRODUCTS } from './data/products'
@@ -29,17 +29,17 @@ export const useCart = defineStore('shop-cart', () => {
   // Whether the cart drawer is open. Pure local UI state — explicitly
   // NOT persisted, otherwise navigating away from /shop with the
   // drawer open would leave it open on every other section's load.
-  const drawerOpen = signal(false)
+  let drawerOpen = state(false)
 
   // ── Derived ────────────────────────────────────────────────────────
-  const itemCount = computed(() => {
+  const itemCount = derived(() => {
     let total = 0
     for (const line of lines()) total += line.qty
     return total
   })
 
   /** Subtotal in USD before currency conversion. */
-  const subtotalUsd = computed(() => {
+  const subtotalUsd = derived(() => {
     let total = 0
     for (const line of lines()) {
       const product = PRODUCTS.find((p) => p.id === line.productId)
@@ -49,7 +49,7 @@ export const useCart = defineStore('shop-cart', () => {
   })
 
   /** Subtotal in the active display currency. */
-  const subtotalDisplay = computed(() => subtotalUsd() * (CURRENCY_RATES[currency()] ?? 1))
+  const subtotalDisplay = derived(() => subtotalUsd * (CURRENCY_RATES[currency()] ?? 1))
 
   // ── Actions ────────────────────────────────────────────────────────
   function addToCart(productId: string): void {
@@ -60,7 +60,7 @@ export const useCart = defineStore('shop-cart', () => {
     } else {
       lines.set([...current, { productId, qty: 1 }])
     }
-    drawerOpen.set(true)
+    drawerOpen = true
   }
 
   function setQty(productId: string, qty: number): void {
@@ -84,22 +84,22 @@ export const useCart = defineStore('shop-cart', () => {
   }
 
   function openDrawer(): void {
-    drawerOpen.set(true)
+    drawerOpen = true
   }
   function closeDrawer(): void {
-    drawerOpen.set(false)
+    drawerOpen = false
   }
   function toggleDrawer(): void {
-    drawerOpen.set(!drawerOpen())
+    drawerOpen = !drawerOpen
   }
 
   return {
     lines,
     currency,
-    drawerOpen,
-    itemCount,
-    subtotalUsd,
-    subtotalDisplay,
+    drawerOpen: signalOf<typeof drawerOpen>(drawerOpen),
+    itemCount: signalOf<typeof itemCount>(itemCount),
+    subtotalUsd: signalOf<typeof subtotalUsd>(subtotalUsd),
+    subtotalDisplay: signalOf<typeof subtotalDisplay>(subtotalDisplay),
     addToCart,
     setQty,
     removeFromCart,

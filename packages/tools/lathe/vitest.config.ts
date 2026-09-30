@@ -2,6 +2,8 @@ import { defineNodeConfig } from '@pyreon/vitest-config'
 
 export default defineNodeConfig({
   category: 'tools',
+  // `axios-stream.browser.test.ts` runs in real Chromium under `test:browser`.
+  excludeBrowserTests: true,
   // Coverage floor for `@pyreon/lathe`, declared EXPLICITLY rather than left to
   // the `tools` category default — `check-coverage.ts` cannot see a category
   // default and assumes 95, which is how `@pyreon/testing` failed that gate
