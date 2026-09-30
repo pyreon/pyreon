@@ -5,12 +5,10 @@ import { defineBrowserConfig } from '@pyreon/vitest-config'
 // `defineBrowserConfig`'s `instances` array is MERGED (concatenated), so this
 // adds the two engines to its Chromium instance rather than replacing it.
 //
-// Separate from `vitest.browser.config.ts` so the repo-wide Chromium pass does
-// not pay for two more engines; CI runs this via `scripts/browser-engines.ts`
-// whenever @pyreon/http is affected. The lossless JSON codec
-// (`@pyreon/http/json`) picks its fast path from the engine's JSON.parse
-// reviver `context.source` support and falls back to its own parser, and only
-// a non-Chromium engine can tell the two paths agree.
+// The styler inserts rules through the CSSOM (`insertRule`) and relies on how
+// each engine parses at-rules (`@layer`, `@container`, nested `@media`) — an
+// unsupported rule throws in one engine and is accepted in another. CI runs
+// this via `scripts/browser-engines.ts` whenever the styler is affected.
 export default defineBrowserConfig(playwright(), {
   test: {
     browser: {
