@@ -82,10 +82,10 @@ describe('parse.ts — arktypeSchema recognizer', () => {
     expect(r.code).toContain('var plain: String = ""')
   })
 
-  it('skips a key that is neither Identifier nor Literal (a template-literal key)', () => {
+  it('names a key that is only known at runtime (a template literal WITH a substitution)', () => {
     const r = swift(AK + 'declare const b: string\nconst a = arktypeSchema(type({ [`x${b}`]: \'string\', n: \'string\' }))')
     expect(r.code.match(/var \w+: /g)).toEqual(['var n: '])
-    expect(r.warnings).toEqual([])
+    expect(r.warnings).toEqual([expect.stringContaining('the computed key `[`x${b}`]` is only known at runtime')])
   })
 
   it('warns + drops a field whose value is not a string literal', () => {
@@ -188,9 +188,10 @@ describe('parse.ts — namespaced walker: field shapes', () => {
     expect(r.code).toContain('var n: String = ""')
   })
 
-  it('skips a key that is neither Identifier nor Literal', () => {
+  it('names (and skips) a key that is only known at runtime', () => {
     const r = swift(Z + 'declare const b: string\nconst a = zodSchema(z.object({ [`x${b}`]: z.string(), n: z.string() }))')
     expect(r.code.match(/var \w+: /g)).toEqual(['var n: '])
+    expect(r.warnings.join('\n')).toContain('the computed key `[`x${b}`]` is only known at runtime')
   })
 
   it('ignores .min()/.max() whose argument is not a numeric literal', () => {

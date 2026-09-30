@@ -309,35 +309,53 @@ describe('.regex() — only patterns that port identically lower', () => {
   })
 })
 
-describe('COMPUTED keys name nothing the literal readers can use', () => {
-  it('model(): a computed `state` key means there is no state to read', () => {
-    const src = model('model({ [`state`]: { c: 1 } }).create()')
-    expect(has(src, '`state` field is missing or not an object literal')).toBe(true)
+// A computed key with NO substitutions (`` [`state`] ``) is a static string —
+// the same key as `state` — so it reads like one. A key only known at RUNTIME
+// (`[k]`) is NAMED by the reader (it used to be skipped silently, and before
+// that, some readers MISREAD `[k]` as the key "k").
+describe('COMPUTED keys: static when literal, named when runtime', () => {
+  it('model(): `` [`state`] `` is the state key', () => {
+    expect(emitsModel(model('model({ [`state`]: { c: 1 } }).create()'))).toBe(true)
   })
 
-  it('model(): a computed FIELD key is skipped, leaving no recognizable fields', () => {
-    const src = model('model({ state: { [`c`]: 1 } }).create()')
+  it('model(): a runtime config key bails by name', () => {
+    const src = model('model({ [k]: { c: 1 } }).create()')
+    expect(has(src, 'model() config: the computed key `[k]` is only known at runtime')).toBe(true)
+    expect(emitsModel(src)).toBe(false)
+  })
+
+  it('model(): a runtime FIELD key is named, leaving no recognizable fields', () => {
+    const src = model('model({ state: { [k]: 1 } }).create()')
+    expect(has(src, 'state: the computed key `[k]`')).toBe(true)
     expect(has(src, 'no recognizable state fields')).toBe(true)
   })
 
-  it('model(): a computed MEMBER key in `.views()` is skipped silently', () => {
+  it('model(): a runtime MEMBER key in `.views()` bails by name', () => {
+    const src = model('model({ state: { c: 1 } }).views((self) => ({ [k]: () => self.c() })).create()')
+    expect(has(src, '`.views()` member: the computed key `[k]`')).toBe(true)
+  })
+
+  it('model(): a template-literal MEMBER key is the member it spells', () => {
     const src = model('model({ state: { c: 1 } }).views((self) => ({ [`d`]: () => self.c() })).create()')
     expect(warnings(src).some((w) => w.startsWith('model declaration'))).toBe(false)
     expect(emitsModel(src)).toBe(true)
   })
 
-  it('defineFeature(): a computed `name` key means the name is missing', () => {
-    const src = feat('{ [`name`]: "todo", schema: { a: "string" } }')
+  it('defineFeature(): a runtime `name`-position key is named; the name is then missing', () => {
+    const src = feat('{ [k]: "todo", schema: { a: "string" } }')
+    expect(has(src, 'config: the computed key `[k]`')).toBe(true)
     expect(has(src, '`name` field is missing or not a string literal')).toBe(true)
   })
 
-  it('defineFeature(): a computed SCHEMA-FIELD key is skipped, leaving no fields', () => {
-    const src = feat('{ name: "todo", schema: { [`a`]: "string" } }')
+  it('defineFeature(): a runtime SCHEMA-FIELD key is named, leaving no fields', () => {
+    const src = feat('{ name: "todo", schema: { [k]: "string" } }')
+    expect(has(src, 'schema: the computed key `[k]`')).toBe(true)
     expect(has(src, 'no recognized schema fields')).toBe(true)
   })
 
-  it('withField(): a computed META key is skipped, leaving no meta', () => {
-    const src = wf('const F = withField(s.string(), { [`label`]: "L" })')
+  it('withField(): a runtime META key is named, leaving no meta', () => {
+    const src = wf('const F = withField(s.string(), { [k]: "L" })')
+    expect(has(src, 'meta: the computed key `[k]`')).toBe(true)
     expect(has(src, 'no recognized meta fields')).toBe(true)
   })
 })

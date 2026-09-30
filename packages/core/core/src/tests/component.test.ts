@@ -1,3 +1,4 @@
+import { onCleanup } from '@pyreon/reactivity'
 import {
   defineComponent,
   dispatchToErrorBoundary,
@@ -103,6 +104,56 @@ describe('runWithHooks', () => {
     const { hooks } = runWithHooks(Comp, {})
     expect(hooks.mount).toHaveLength(2)
     expect(hooks.unmount).toHaveLength(2)
+  })
+
+  test('populates hooks.unmount from onCleanup() alone when no onUnmount() was registered', () => {
+    // The `hooks.unmount === null` TRUE branch: a component that ONLY uses
+    // onCleanup() (no explicit onUnmount() call) must still end up with a
+    // populated hooks.unmount, assigned directly from the collected array
+    // (not merged into an existing one, since there isn't one).
+    const ran: string[] = []
+    const Comp: ComponentFn = () => {
+      onCleanup(() => ran.push('cleanup-only'))
+      return null
+    }
+    const { hooks } = runWithHooks(Comp, {})
+    expect(hooks.unmount).toHaveLength(1)
+    hooks.unmount![0]!()
+    expect(ran).toEqual(['cleanup-only'])
+  })
+
+  test('appends onCleanup()-collected cleanups to an EXISTING hooks.unmount array', () => {
+    // A component that calls onUnmount() directly AND uses a reactive
+    // primitive backed by onCleanup() (e.g. a store/signal created during
+    // setup) needs both to survive on hooks.unmount. runWithHooks's finally
+    // block branches on whether hooks.unmount is already non-null (an
+    // explicit onUnmount ran first) — if it is, the onCleanup()-collected
+    // cleanups must be APPENDED, not used to replace the array (which would
+    // silently drop the explicit onUnmount() cleanup).
+    const order: string[] = []
+    const explicitUnmount = () => order.push('explicit')
+    const viaOnCleanup = () => order.push('via-onCleanup')
+
+    const Comp: ComponentFn = () => {
+      // Registers hooks.unmount = [explicitUnmount] FIRST, so it is
+      // non-null by the time the cleanup frame closes.
+      onUnmount(explicitUnmount)
+      // onCleanup() is collected into the setup's cleanup window and
+      // merged into hooks.unmount in runWithHooks's `finally`.
+      onCleanup(viaOnCleanup)
+      return null
+    }
+
+    const { hooks } = runWithHooks(Comp, {})
+    expect(hooks.unmount).toHaveLength(2)
+    expect(hooks.unmount).toContain(explicitUnmount)
+    expect(hooks.unmount).toContain(viaOnCleanup)
+
+    // Both must actually run on "unmount" (i.e. when the caller invokes the
+    // collected cleanups) — proves the merge kept both callables live,
+    // not just present-by-reference in a way that never gets called.
+    for (const cleanup of hooks.unmount!) cleanup()
+    expect(order.sort()).toEqual(['explicit', 'via-onCleanup'].sort())
   })
 
   test('null hooks when component registers none (lazy allocation)', () => {
