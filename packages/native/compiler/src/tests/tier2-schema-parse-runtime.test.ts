@@ -38,7 +38,10 @@ describe('Gap 4 v2 — schema parse runtime', () => {
     expect(r.code).toContain('catch let e as PyreonSchemaError { return .failure(e) }')
   })
 
-  it('Swift: emits shared PyreonSchemaError enum ONCE per file', () => {
+  // The error type is the RUNTIME's (`PyreonSchema.swift`), never the file's:
+  // emitted per file, two schema-bearing files in one target collided
+  // (multi-module-compile.test.ts compiles them together).
+  it('Swift: references PyreonSchemaError but never declares it', () => {
     const src = `
 import { zodSchema } from '@pyreon/validation'
 import { z } from 'zod'
@@ -46,8 +49,8 @@ export const a = zodSchema(z.object({ x: z.string() }))
 export const b = zodSchema(z.object({ y: z.number() }))
 `
     const r = transform(src, { target: 'swift' })
-    const matches = r.code.match(/enum PyreonSchemaError: Error/g) ?? []
-    expect(matches.length).toBe(1)
+    expect(r.code).not.toMatch(/enum PyreonSchemaError\b/)
+    expect(r.code).toContain('Result<Self, PyreonSchemaError>')
     // Both schemas reference it.
     expect(r.code).toContain('PyreonZodSchema_a')
     expect(r.code).toContain('PyreonZodSchema_b')
@@ -68,7 +71,7 @@ export const b = zodSchema(z.object({ y: z.number() }))
     expect(r.code).toContain('Result.failure(e)')
   })
 
-  it('Kotlin: emits shared PyreonSchemaError sealed class ONCE per file', () => {
+  it('Kotlin: references PyreonSchemaError but never declares it', () => {
     const src = `
 import { zodSchema } from '@pyreon/validation'
 import { z } from 'zod'
@@ -76,8 +79,8 @@ export const a = zodSchema(z.object({ x: z.string() }))
 export const b = zodSchema(z.object({ y: z.number() }))
 `
     const r = transform(src, { target: 'kotlin' })
-    const matches = r.code.match(/sealed class PyreonSchemaError/g) ?? []
-    expect(matches.length).toBe(1)
+    expect(r.code).not.toMatch(/class PyreonSchemaError\b/)
+    expect(r.code).toContain('@Throws(PyreonSchemaError::class)')
   })
 
   it('NO schemas → NO PyreonSchemaError emitted (zero-cost)', () => {

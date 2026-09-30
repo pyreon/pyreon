@@ -145,9 +145,11 @@ import { s } from '@pyreon/validate'
   return (<Text>{\`\${b()}\${c()}\`}</Text>)
 }`,
     )
-    // a spread cannot be flattened into a dictionary literal here
-    expect(out).toContain('safeParseResult((n: 3))')
-    // an identifier is already `[String: Any]`-shaped by contract
-    expect(out).toContain('safeParseResult(base)')
+    // a spread cannot be flattened into a dictionary literal here — the
+    // non-literal argument goes through `pyreonSchemaInput`, converting it
+    // through its own Codable encoding (see native-validate-typed-safeparse).
+    expect(out).toContain('safeParseResult(pyreonSchemaInput((n: 3)))')
+    // an identifier is a typed value too, so it goes through the same helper.
+    expect(out).toContain('safeParseResult(pyreonSchemaInput(base))')
   })
 })
