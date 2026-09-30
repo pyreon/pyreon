@@ -323,14 +323,14 @@ ${decl}
     expect(m(`  const a = computed(() => nested().flat(2))`)).toContain('nested.flat(2)')
   })
 
-  it('a 2-arg replaceAll maps; a 3-arg one falls through', () => {
+  it('a 2-arg replaceAll maps; a 3rd argument (JS never reads it) is dropped, not re-emitted', () => {
     const s = `  const s2 = signal<string>('x')\n`
     expect(m(`${s}  const a = computed(() => s2().replaceAll('a', 'b'))`)).toContain(
       'replacingOccurrences(of: "a", with: "b")',
     )
-    expect(m(`${s}  const a = computed(() => s2().replaceAll('a', 'b', 'c'))`)).toContain(
-      's2.replaceAll(',
-    )
+    const three = m(`${s}  const a = computed(() => s2().replaceAll('a', 'b', 'c'))`)
+    expect(three).toContain('replacingOccurrences(of: "a", with: "b")')
+    expect(three).not.toContain('s2.replaceAll(')
   })
 
   it('sort with a 2-param EXPRESSION comparator lowers to sorted(by:) with the `< 0` wrap', () => {
