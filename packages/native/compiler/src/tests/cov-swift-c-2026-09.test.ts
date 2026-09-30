@@ -520,7 +520,7 @@ function charts(els: string) {
   return sw(`import { signal } from '@pyreon/reactivity'
 import { Stack } from '@pyreon/primitives'
 import { RadarChart, BoxplotChart } from '@pyreon/charts'
-import { HeatmapChart, CandlestickChart, PlotChart, bars } from '@pyreon/charts/engine'
+import { HeatmapChart, CandlestickChart, PlotChart, bars, visualMap } from '@pyreon/charts/engine'
 export function C() {
   const rows = signal<{ x: string; y: string; v: number; o: number; h: number; l: number; c: number; vals: number[]; name: string }[]>([])
   const axes = signal<string[]>(['a', 'b'])
@@ -530,18 +530,12 @@ export function C() {
 }
 
 describe('emit-swift <PlotChart> mark options — literal lowering vs named decline', () => {
-  it('pattern, gradient (with direction + shape) and extras lower in Series field order', () => {
-    const { code, warnings } = charts(`<PlotChart data={rows()} marks={[bars((d) => d.v, { pattern: { kind: 'stripe', color: '#000', spacing: 4, width: 1 }, gradient: { stops: [{ offset: 0, color: '#fff' }, { offset: 1, color: '#000' }], direction: 'vertical', shape: 'radial' }, extras: [{ label: 'a', numbers: [1, 2] }, { label: 'b', texts: ['x'] }] })]} />`)
+  it('pattern and gradient (with direction + shape) lower in Series field order', () => {
+    const { code, warnings } = charts(`<PlotChart data={rows()} marks={[bars((d) => d.v, { pattern: { kind: 'stripe', color: '#000', spacing: 4, width: 1 }, gradient: { stops: [{ offset: 0, color: '#fff' }, { offset: 1, color: '#000' }], direction: 'vertical', shape: 'radial' } })]} />`)
     expect(code).toContain(
       'gradient: SeriesGradient(stops: [PyreonChartGradientStop(offset: 0.0, color: "#fff"), PyreonChartGradientStop(offset: 1.0, color: "#000")], direction: "vertical", shape: "radial"), pattern: PyreonChartPattern(kind: "stripe", color: "#000", spacing: 4.0, width: 1.0)',
     )
-    expect(code).toContain('extras: [SeriesExtra(label: "a", numbers: [1.0, 2.0]), SeriesExtra(label: "b", texts: ["x"])]')
     expect(warnings).toEqual([])
-  })
-
-  it('labelTexts / labelRich / labelOffset literals lower, a rich entry missing fields defaults them', () => {
-    const { code } = charts(`<PlotChart data={rows()} marks={[bars((d) => d.v, { labelTexts: ['a', 'b'], labelRich: [{ name: 'n', color: '#f00', fontSize: 12 }, { name: 'm' }], labelOffset: [1, 2] })]} />`)
-    expect(code).toContain('labelTexts: ["a", "b"], labelRich: [RichStyle(name: "n", color: "#f00", fontSize: 12.0), RichStyle(name: "m", color: "", fontSize: 0.0)], labelOffset: [1.0, 2.0]')
   })
 
   const declines: [string, string][] = [
@@ -553,17 +547,7 @@ describe('emit-swift <PlotChart> mark options — literal lowering vs named decl
     [`{ gradient: { stops: [{ offset: k, color: '#f' }] } }`, '`gradient` needs literal stops'],
     [`{ gradient: { stops: [], direction: k } }`, '`gradient` needs literal stops'],
     [`{ gradient: { stops: [], shape: k } }`, '`gradient` needs literal stops'],
-    [`{ extras: ee }`, '`extras` needs literal'],
-    [`{ extras: [ex] }`, '`extras` needs literal'],
-    [`{ extras: [{ label: k }] }`, '`extras` needs literal'],
-    [`{ extras: [{ label: 'a', numbers: [k] }] }`, '`extras` needs literal'],
-    [`{ extras: [{ label: 'a', texts: [1] }] }`, '`extras` needs literal'],
-    [`{ labelTexts: [k] }`, '`labelTexts` must be an array of string literals'],
-    [`{ labelOffset: [k] }`, '`labelOffset` must be an array of number literals'],
     [`{ width: k }`, '`width` must be a number literal'],
-    // Regression: these two declined with NO warning — a silent EmptyView().
-    [`{ labelRich: rr }`, '`labelRich` must be an array of { name, color?, fontSize? } object literals'],
-    [`{ labelRich: [rr] }`, '`labelRich` must be an array of { name, color?, fontSize? } object literals'],
   ]
   for (const [opts, needle] of declines) {
     it(`declines ${opts} by name`, () => {
@@ -603,8 +587,8 @@ describe('emit-swift accessor chart hosts — the per-host accessor declines', (
 
   it('Heatmap: a 3-param value declines; a visualMap swaps in the strip stops unless colors are given', () => {
     bail(`<HeatmapChart data={rows()} x={(d) => d.x} y={(d) => d.y} value={(d, i, j) => d.v} />`, '<HeatmapChart value>')
-    expect(charts(`<HeatmapChart data={rows()} x={(d) => d.x} y={(d) => d.y} value={(d) => d.v} width={400} visualMap={{ min: 0, max: 10 }} />`).code).toContain('pyreonTheme, pyreonStrip.stops, 1.0')
-    const tapped = charts(`<HeatmapChart data={rows()} x={(d) => d.x} y={(d) => d.y} value={(d) => d.v} visualMap={{ min: 0, max: 10 }} onSelectIndex={(i) => {}} colors={['#fff', '#000']} />`).code
+    expect(charts(`<HeatmapChart data={rows()} x={(d) => d.x} y={(d) => d.y} value={(d) => d.v} width={400} visualMap={visualMap({ domain: [0, 10] })} />`).code).toContain('pyreonTheme, pyreonStrip.stops, 1.0')
+    const tapped = charts(`<HeatmapChart data={rows()} x={(d) => d.x} y={(d) => d.y} value={(d) => d.v} visualMap={visualMap({ domain: [0, 10] })} onSelectIndex={(i) => {}} colors={['#fff', '#000']} />`).code
     expect(tapped).toContain('pyreonTheme, ["#fff", "#000"], 1.0')
   })
 
@@ -719,37 +703,24 @@ export function App() {
   })
 })
 
-describe('emit-swift <ChartWebView> / <FlowWebView> hosts', () => {
+describe('emit-swift <FlowWebView> hosts', () => {
   const r = sw(`import { signal } from '@pyreon/reactivity'
 import { Stack } from '@pyreon/primitives'
-import { ChartWebView } from '@pyreon/charts/webview'
 import { FlowWebView } from '@pyreon/flow/webview'
 type G = { nodes: { id: string }[] }
 export function App() {
-  const opt = signal<{ a: number }>({ a: 1 })
   const g = signal<G>({ nodes: [{ id: 'a' }] })
   const h = signal('<p/>')
   const w = signal(3)
   return (<Stack>
-    <ChartWebView />
-    <ChartWebView option={opt()} html={h()} theme="dark" renderer="svg" commands={cmds()} loading={true} loadingOptions={lo()} group="g" onSelect={(e) => { log(e); log(e) }} onEvent={() => {}} />
     <FlowWebView />
     <FlowWebView graph={g()} nodeWidth={w()} nodeHeight={50} nodeFill="#abc<>" labelColor="#123" background="red" />
     <FlowWebView graph={g()} nodeWidth={120} html={h()} commands={cmds()} onSelect={handler} onMessage={(m) => log(m)} />
   </Stack>)
 }`)
 
-  it('a missing option / graph is named and an empty payload is sent', () => {
-    expect(r.warnings).toContain('<ChartWebView>: `option` is required on native; emitting an empty option.')
+  it('a missing graph is named and an empty payload is sent', () => {
     expect(r.warnings).toContain('<FlowWebView>: `graph` is required on native; emitting an empty host.')
-    expect(r.code).toContain('pyreonChartWebViewData(option: "{}", commands: "[]", loading: false, loadingOptions: "{}")')
-  })
-
-  it('custom chart host HTML: generated-host props are named as ignored; every data arg and callback lowers', () => {
-    expect(r.warnings).toContain('<ChartWebView html={…} theme={…}>: theme is ignored because custom host HTML owns its configuration.')
-    expect(r.warnings).toContain('<ChartWebView html={…} renderer={…}>: renderer is ignored because custom host HTML owns its configuration.')
-    expect(r.code).toContain('PyreonWebView(html: h, data: pyreonChartWebViewData(option: PyreonJSON.encode(opt), commands: PyreonJSON.encode(cmds), loading: true, loadingOptions: PyreonJSON.encode(lo), group: "g"), onMessage: { pyreonMsg in pyreonDispatchChartWebViewMessage(pyreonMsg, onSelect: { e in')
-    expect(r.code).toContain('onEvent: { _ in }')
   })
 
   it('flow host styling: a static node size / colours / background are baked, a dynamic one is named', () => {
@@ -781,7 +752,7 @@ const cell = (u: User) => <Text>{u.name}</Text>
   const r = sw(`${HEAD}export function A() {
   return <Stack>
     <Row render={((u) => <Text>{u.name}</Text>)} empty={hello} />
-    <Row render={(u) => { console.log(u); return <Text>{u.name}</Text> }} empty={() => { return <Text>x</Text> }} />
+    <Row render={(u) => { const n = u.name; return <Text>{n}</Text> }} empty={() => { return <Text>x</Text> }} />
     <Row render={cell} empty={<Text>bare</Text>} />
     <Row render={(u) => <Text>{u.name}</Text>} empty={42} />
   </Stack>
@@ -795,9 +766,9 @@ export function B(props: { render: (u: User, i: number) => VNodeChild; empty: ()
     expect(r.code).toContain('empty: { hello() })')
   })
 
-  it('a BLOCK-bodied render callback with no view-builder shape emits an empty view of the right arity and is named', () => {
-    expect(r.code).toContain('Row(render: { _, _ in EmptyView() }')
-    expect(r.warnings.some((w) => w.startsWith("<Row render={…}>: this render callback's BLOCK body"))).toBe(true)
+  it('a simple BLOCK-bodied render callback lowers to view-builder statements, not an empty view', () => {
+    expect(r.code).toContain('Row(render: { u, _ in\n        let n = u.name\n        Text(verbatim: "\\(n)")\n      }, empty: {\n        Text("x")\n      })')
+    expect(r.warnings.some((w) => w.startsWith('<Row render={…}>: a render callback with a BLOCK body'))).toBe(false)
   })
 
   // Regression (fixed here): a view helper taking FEWER parameters than the
@@ -1100,19 +1071,6 @@ export function D() {
     expect(r.warnings).toContain('<Flow nodeTypes> component `B`: <NodeToolbar> requires literal position, align, offset, and showOnSelect props on native; unsupported values use native defaults.')
     expect(r.warnings).toContain('<Flow nodeTypes> component `A`: <NodeResizer> size and edge-handle options must be literals for native extraction; dynamic values use native defaults.')
     expect(r.code).toContain('case "a": return PyreonFlowNodeResizerConfig(minWidth: 50, minHeight: 30, handleSize: 8, showEdgeHandles: false)')
-  })
-})
-
-describe('emit-swift timeline OptionChart', () => {
-  it('a handle that is not a createChartHandle binding is named; the timeline keeps its own state', () => {
-    const { code, warnings } = sw(`import { OptionChart } from '@pyreon/charts/option'
-export function App() {
-  const other = 1
-  return <OptionChart handle={other} option={{ baseOption: { timeline: { data: ['a', 'b'], currentIndex: 1 }, xAxis: { type: 'category', data: ['x', 'y'] }, yAxis: {}, series: [{ type: 'bar' }] }, options: [{ series: [{ data: [1, 2] }] }, { series: [{ data: [3, 4] }] }] }} />
-}`)
-    expect(warnings).toContain('<OptionChart handle>: native needs a `const chart = createChartHandle()` declared in the same component; the timeline runs without the handle.')
-    expect(code).toContain('@State private var pyreonTl0: Int = 1')
-    expect(code).toContain('@State private var pyreonTlPlay0: Bool = false')
   })
 })
 

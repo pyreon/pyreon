@@ -4,18 +4,6 @@ export default defineNodeConfig({
   category: 'fundamentals',
   environment: 'happy-dom',
   excludeBrowserTests: true,
-  // `chart-component.tsx` and `use-chart.ts` used to be excluded here on the
-  // grounds that real Chromium covers them. Both halves of that were wrong.
-  // The browser config's coverage `include` list never named either file, so
-  // the claim was measured NOWHERE — the exact "unverified promise" the note
-  // below forbids, and the drift its "keep the two lists in sync" line
-  // predicted. And the node run covers them well anyway: 100% for
-  // chart-component.tsx and 87.1% statements / 72.1% branches for
-  // use-chart.ts, because the node suite drives both directly. Only the
-  // ResizeObserver callback and the init/setOption error paths genuinely need
-  // Chromium, and losing measurement of the other ~87% to protect that ~13%
-  // is a bad trade. They are measured here now; `coverage-lists-in-sync`
-  // makes the whole class impossible to reintroduce silently.
   // The plot engine's PLATFORM files. Each needs a real canvas 2D context or
   // a mounted DOM, so the node run scores them 0 while they are exercised in
   // real Chromium — and that claim is MEASURED there: the browser config gates
@@ -61,16 +49,10 @@ export default defineNodeConfig({
     'src/engine/RiverChart.tsx',
     // Same class — canvas hosts covered only by their real-Chromium suites (boxplot.browser.test.tsx).
     'src/engine/BoxplotChart.tsx',
-    // Same class — canvas hosts covered only by their real-Chromium suites (geo.browser.test.tsx).
     // Same class — canvas hosts covered only by their real-Chromium suites (gantt.browser.test.tsx, geo.browser.test.tsx).
-    // Same class — canvas hosts covered only by their real-Chromium suites (option-chart(-family).browser.test.tsx, gantt.browser.test.tsx, geo.browser.test.tsx).
-    'src/engine/OptionChart.tsx',
     'src/engine/GanttChart.tsx',
     'src/engine/MapChart.tsx',
   ],
-  // loader.ts + vite.ts (the node-instrumented surface) are at 100% on all
-  // four metrics after the error/retry/no-tslib path tests. Threshold set to
-  // 98 to lock the floor with a small headroom against incidental drift.
   // Re-baselined for the plot-engine family wave (2026-09): each family PR
   // lands geometry with statement-level specs and the interaction/edge specs
   // arrive in later PRs of the same stack, so a single branch measures
@@ -93,14 +75,5 @@ export default defineNodeConfig({
     branches: 96,
     functions: 99,
     lines: 99,
-  },
-  // --expose-gc makes `globalThis.gc` available in the fork workers so the
-  // GC-observable dispose-leak lock (dispose-gc.test.tsx) RUNS in CI instead
-  // of skipping. Same shape as @pyreon/runtime-dom's vitest config.
-  overrides: {
-    test: {
-      // Vitest 4: pool options are top-level (`poolOptions` was removed).
-      execArgv: ['--expose-gc'],
-    },
   },
 })

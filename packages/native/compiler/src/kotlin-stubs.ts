@@ -996,13 +996,6 @@ fun PyreonLink(to: String, content: @Composable (navigate: () -> Unit) -> Unit) 
 @Composable
 @Suppress("UNUSED_PARAMETER")
 fun PyreonWebView(html: String? = null, src: String? = null, data: String? = null, onMessage: ((String) -> Unit)? = null, modifier: Modifier = Modifier) {}
-data class PyreonChartWebViewSelection(val name: String? = null)
-data class PyreonChartWebViewEvent(val name: String, val payload: Map<String, Any?> = emptyMap())
-data class PyreonChartWebViewError(val message: String)
-@Suppress("UNUSED_PARAMETER")
-fun pyreonChartWebViewData(option: String, commands: String, loading: Boolean, loadingOptions: String, group: String? = null): String = option
-@Suppress("UNUSED_PARAMETER")
-fun pyreonDispatchChartWebViewMessage(message: String, onSelect: ((PyreonChartWebViewSelection) -> Unit)? = null, onEvent: ((PyreonChartWebViewEvent) -> Unit)? = null, onError: ((PyreonChartWebViewError) -> Unit)? = null) {}
 data class PyreonFlowWebViewSelection(val id: String, val data: Any? = null)
 data class PyreonFlowWebViewViewport(val x: Double, val y: Double, val zoom: Double)
 data class PyreonFlowWebViewEvent(val type: String, val id: String? = null, val data: Any? = null, val source: String? = null, val target: String? = null, val viewport: PyreonFlowWebViewViewport? = null)
@@ -1212,6 +1205,9 @@ object PyreonURL {
   @JvmStatic fun encodePathParam(value: Long): String = ""
   @JvmStatic fun encodePathParam(value: Double): String = ""
 }
+// pyreonNumberString — JS \`String(number)\`, which every Double-typed
+// template interpoland lowers through. Mirrors the real signature.
+fun pyreonNumberString(value: Number): String = ""
 
 // kotlinx.coroutines surface the emitted fetch harness drives —
 // withContext(Dispatchers.IO) { ... } around the blocking URL read.
@@ -2696,6 +2692,10 @@ fun pyreonTransposeCmds(cmds: List<PyreonDrawCmd>): List<PyreonDrawCmd> = cmds
 fun pyreonMirrorCmds(cmds: List<PyreonDrawCmd>, width: Double): List<PyreonDrawCmd> = cmds
 fun pyreonChartDouble(v: Double): Double = v
 fun pyreonChartDouble(v: Int): Double = v.toDouble()
+fun pyreonChartString(v: String): String = v
+fun pyreonChartString(v: Double): String = ""
+fun pyreonChartString(v: Int): String = ""
+fun pyreonChartString(v: Long): String = ""
 fun pyreonChartDouble(v: Long): Double = v.toDouble()
 fun pyreonLocaleNumberFormatter(tag: String): (Double) -> String = { it.toString() }
 fun pyreonLocaleDateFormatter(tag: String): (Double) -> String = { it.toString() }
@@ -2709,8 +2709,6 @@ class PyreonChartHandle {
   var seriesCount: Long = 0L
   var brushType: String = ""
   var areas: List<BrushArea> = listOf()
-  var step: Long = -1L
-  var playing: Boolean = false
   fun dispatch(action: ChartActionInput) {}
 }
 `

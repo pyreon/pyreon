@@ -4,8 +4,8 @@
 //
 // WHY THIS EXISTS. `@pyreon/flow` renders SVG/DOM + custom-JSX node views —
 // web-only by architecture (PMTC can't compile it to SwiftUI/Compose). The
-// sanctioned multiplatform answer is the `<WebView>` bridge. Unlike charts
-// (one self-contained ECharts UMD), flow's full editor needs the whole Pyreon
+// sanctioned multiplatform answer is the `<WebView>` bridge. Unlike an engine
+// that ships as one self-contained script, flow's full editor needs the whole Pyreon
 // web runtime, so this module ships a SELF-CONTAINED diagram renderer for the
 // dominant mobile case — DISPLAY + TAP a graph: nodes (labeled rounded rects),
 // edges (bezier — flow's REAL `getBezierPath` geometry), pan, pinch/zoom, and
@@ -400,8 +400,9 @@ export function FlowWebView(props: FlowWebViewProps): VNode {
     configurable: true,
     get: (): string => props.html ?? (defaultHtml ??= buildFlowHostHtml(built)),
   })
-  // Forward `graph` to `<WebView data>` reactively (getter re-reads each access
-  // — see the ChartWebView note on why an eager read breaks compiler reactivity).
+  // Forward `graph` to `<WebView data>` reactively (the getter re-reads each
+  // access — an eager read here would collapse the compiler's reactive prop
+  // getter to its mount-time value).
   Object.defineProperty(webViewProps, 'data', {
     enumerable: true,
     configurable: true,

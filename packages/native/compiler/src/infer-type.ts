@@ -1421,7 +1421,9 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         // the surrounding expression Int. The marker exists precisely to say
         // "this integer-valued literal is a Double"; honouring it here is what
         // makes that claim reach the emitted TYPES and not just the digits.
-        return expr.float === true || !Number.isInteger(expr.value)
+        // Outside the 32-bit range is Double too: Kotlin's Int cannot hold it
+        // (an epoch-ms timestamp), and JavaScript has one number type.
+        return expr.float === true || !Number.isInteger(expr.value) || Math.abs(expr.value) > 2147483647
           ? { kind: 'number', float: true }
           : { kind: 'number' }
       }

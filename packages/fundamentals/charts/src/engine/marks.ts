@@ -18,6 +18,7 @@ import type { ChartPattern, Double, Pt } from './types'
 import { binLabel, binValues } from './bin'
 import type { Bin } from './bin'
 import { groupThousands } from './format'
+import { warnOnce } from './dev-warn'
 import type { Formatter } from './format'
 
 /** Reads one numeric channel out of a datum. */
@@ -288,14 +289,40 @@ export function bubble<T>(
  * false about the data (a sensor that did not report is not a sensor that
  * read 0). A caller who wants zero says so in the accessor (`d.v ?? 0`).
  */
+const KNOWN_KINDS: ReadonlySet<string> = /* @__PURE__ */ new Set(['bars', 'line', 'area', 'points', 'stacked', 'grouped', 'waterfall', 'band', 'stackedArea'])
+
+/**
+ * An accessor's result as a number. A numeric STRING (`"42"` — the usual shape
+ * of CSV / JSON-from-a-form data) is coerced, with a one-time dev warning; it
+ * used to fail the `Number.isFinite` check and plot as a gap, so a whole
+ * string-valued column rendered as an empty chart with no diagnostic.
+ */
+function toNumber(v: unknown, label: string): Double {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : Number.NaN
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = Number(v)
+    if (Number.isFinite(n)) {
+      warnOnce(
+        `string:${label}`,
+        `mark "${label}" returned the string "${v}" — coerced to a number. Convert your data to numbers (Number(row.value)) so the accessor returns one.`,
+      )
+      return n
+    }
+  }
+  return Number.NaN
+}
+
 export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly string[] = DEFAULT_PALETTE): Series[] {
   // Colour follows the LABEL (`labelSlots`): marks sharing a label share a colour.
   const slots = labelSlots(marks.map((m, k) => markLabel(m, k)))
   return marks.map((m, seriesIndex) => {
+    const name = markLabel(m, seriesIndex)
+    if (!KNOWN_KINDS.has(m.kind)) {
+      warnOnce(`kind:${String(m.kind)}`, `unknown mark kind "${String(m.kind)}" — expected one of ${[...KNOWN_KINDS].join(', ')}. It will not be drawn.`)
+    }
     const raw: Double[] = []
     for (let i = 0; i < data.length; i++) {
-      const v = m.y(data[i]!, i)
-      raw.push(Number.isFinite(v) ? v : Number.NaN)
+      raw.push(toNumber(m.y(data[i]!, i), name))
     }
     // A transform sees the gaps and may fill or keep them.
     const values = m.transform === undefined ? raw : m.transform(raw)
@@ -311,7 +338,7 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly s
       // helper (also used natively) — this used to be inlined here too, which
       // is how it ended up computed twice under two different names.
       const rRaw: Double[] = []
-      for (let i = 0; i < data.length; i++) rRaw.push(rAcc(data[i]!, i))
+      for (let i = 0; i < data.length; i++) rRaw.push(toNumber(rAcc(data[i]!, i), name))
       radii = bubbleRadii(rRaw, m.minRadius ?? 3.0, m.maxRadius ?? 18.0)
       rValues = rRaw
     }
@@ -324,10 +351,8 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly s
       errLow = []
       errHigh = []
       for (let i = 0; i < data.length; i++) {
-        const lo = lowAcc(data[i]!, i)
-        const hi = highAcc(data[i]!, i)
-        errLow.push(Number.isFinite(lo) ? lo : Number.NaN)
-        errHigh.push(Number.isFinite(hi) ? hi : Number.NaN)
+        errLow.push(toNumber(lowAcc(data[i]!, i), name))
+        errHigh.push(toNumber(highAcc(data[i]!, i), name))
       }
     }
     // The band's lower bound resolves exactly like `values`, so a non-finite
@@ -342,8 +367,7 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly s
     } else if (y2Acc !== undefined) {
       values2 = []
       for (let i = 0; i < data.length; i++) {
-        const v2 = y2Acc(data[i]!, i)
-        values2.push(Number.isFinite(v2) ? v2 : Number.NaN)
+        values2.push(toNumber(y2Acc(data[i]!, i), name))
       }
     }
     return {

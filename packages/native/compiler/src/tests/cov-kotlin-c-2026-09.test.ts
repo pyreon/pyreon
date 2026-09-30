@@ -888,16 +888,13 @@ export function App() {
   })
 })
 
-describe('emit-kotlin.ts — ChartWebView / FlowWebView hosts and media flags', () => {
+describe('emit-kotlin.ts — FlowWebView hosts and media flags', () => {
   const r = kt(`
-import { ChartWebView } from '@pyreon/charts/webview'
 import { FlowWebView } from '@pyreon/flow/webview'
 import { Stack, WebView, Video, Audio } from '@pyreon/primitives'
 export function App() {
   return (
     <Stack>
-      <ChartWebView />
-      <ChartWebView option={opt} html={myHtml} theme="dark" echartsSrc="x.js" />
       <FlowWebView />
       <FlowWebView graph={g} nodeHeight={30} nodeFill="#abc" labelColor="red" />
       <FlowWebView graph={g} html={h} nodeWidth={3} background="#000" />
@@ -909,17 +906,6 @@ export function App() {
   )
 }`)
   const w = r.warnings.join('\n')
-
-  it('a ChartWebView without `option` emits an empty option and is NAMED', () => {
-    expect(w).toContain('<ChartWebView>: `option` is required on native; emitting an empty option.')
-    expect(r.code).toContain('data = pyreonChartWebViewData(option = "{}", commands = "[]", loading = false, loadingOptions = "{}")')
-  })
-
-  it('custom host HTML owns configuration: a host prop (incl. the legacy echarts* spelling) is NAMED as ignored', () => {
-    expect(r.code).toContain('PyreonWebView(html = myHtml, data = pyreonChartWebViewData(option = PyreonJson.encode(opt)')
-    expect(w).toContain('<ChartWebView html={…} engineSrc={…}>: engineSrc is ignored')
-    expect(w).toContain('<ChartWebView html={…} theme={…}>: theme is ignored')
-  })
 
   it('FlowWebView: missing graph is NAMED; static node geometry / colours are baked into the host page', () => {
     expect(w).toContain('<FlowWebView>: `graph` is required on native; emitting an empty host.')
@@ -1058,19 +1044,14 @@ const ROWS: Row[] = [{ m: 'Jan', v: 10 }]
 export function C() { const w = signal(1); return <Stack><PlotChart data={ROWS} x={(d) => d.m} marks={[bars((d) => d.v, ${opts})]} height={200} /></Stack> }`)
   const series = (r: ReturnType<typeof kt>) => r.code.split('\n').find((l) => l.includes('Series(kind = "bars"'))
 
-  it('literal gradient stops / direction / shape, a literal pattern, extras and rich label styles all bake into the Series', () => {
-    const r = plot(
-      "{ gradient: { stops: [{ offset: 0, color: 'red' }, { offset: 1, color: 'blue' }], direction: 'vertical', shape: 'bar' }, pattern: { kind: 'dots', color: 'red', spacing: 4, width: 1 }, extras: [{ label: 'a', numbers: [1, 2] }, { label: 'b', texts: ['x'] }], labelRich: [{ name: 'a', color: 'red', fontSize: 12 }, { name: 'b' }] }",
-    )
+  it('literal gradient stops / direction / shape and a literal pattern all bake into the Series', () => {
+    const r = plot("{ gradient: { stops: [{ offset: 0, color: 'red' }, { offset: 1, color: 'blue' }], direction: 'vertical', shape: 'bar' }, pattern: { kind: 'dots', color: 'red', spacing: 4, width: 1 } }")
     expect(r.warnings).toEqual([])
     const s = series(r)!
     expect(s).toContain(
       'gradient = SeriesGradient(stops = listOf(PyreonChartGradientStop(offset = 0.0, color = "red"), PyreonChartGradientStop(offset = 1.0, color = "blue")), direction = "vertical", shape = "bar")',
     )
     expect(s).toContain('pattern = PyreonChartPattern(kind = "dots", color = "red"')
-    expect(s).toContain('extras = listOf(SeriesExtra(label = "a", numbers = listOf(1.0, 2.0)), SeriesExtra(label = "b", texts = listOf("x")))')
-    // missing rich fields take neutral defaults
-    expect(s).toContain('labelRich = listOf<RichStyle>(RichStyle(name = "a", color = "red", fontSize = 12.0), RichStyle(name = "b", color = "", fontSize = 0.0))')
   })
 
   it.each([
@@ -1082,16 +1063,6 @@ export function C() { const w = signal(1); return <Stack><PlotChart data={ROWS} 
     ['a stop with a non-string colour', '{ gradient: { stops: [{ offset: 0, color: 3 }] } }', '`gradient` needs literal stops'],
     ['a non-string direction', "{ gradient: { stops: [{ offset: 0, color: 'red' }], direction: 3 } }", '`gradient` needs literal stops'],
     ['a non-string shape', "{ gradient: { stops: [{ offset: 0, color: 'red' }], shape: 3 } }", '`gradient` needs literal stops'],
-    ['non-literal extras', '{ extras: w() }', '`extras` needs literal { label, numbers | texts } entries'],
-    ['a non-object extra', '{ extras: [3] }', '`extras` needs literal { label, numbers | texts } entries'],
-    ['an extra with a non-string label', '{ extras: [{ label: 3 }] }', '`extras` needs literal { label, numbers | texts } entries'],
-    ['an extra with a non-number in numbers', "{ extras: [{ label: 'a', numbers: [1, 'x'] }] }", '`extras` needs literal { label, numbers | texts } entries'],
-    ['an extra with a non-string in texts', "{ extras: [{ label: 'a', texts: [1] }] }", '`extras` needs literal { label, numbers | texts } entries'],
-    ['a strings option holding a number', '{ labelTexts: [1] }', '`labelTexts` must be an array of string literals'],
-    ['a numbers option holding a string', "{ xs: [1, 'a'] }", '`xs` must be an array of number literals'],
-    // FIXED HERE: these two returned bare — a blank chart with no warning.
-    ['a non-literal labelRich', '{ labelRich: w() }', '`labelRich` must be an array of { name, color?, fontSize? } object literals'],
-    ['a non-object labelRich entry', '{ labelRich: [3] }', '`labelRich` must be an array of { name, color?, fontSize? } object literals'],
   ])('declines %s — the chart is dropped and the reason NAMED', (_why, opts, expected) => {
     const r = plot(opts)
     expect(series(r)).toBeUndefined()

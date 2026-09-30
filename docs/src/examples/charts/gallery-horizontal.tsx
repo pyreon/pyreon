@@ -1,17 +1,17 @@
-import { ChartThemeProvider } from '@pyreon/charts'
-import { OptionChart } from '@pyreon/charts/option'
+import { Bar, Chart, Tooltip } from '@pyreon/charts'
 import { signal, type Signal } from '@pyreon/reactivity'
 
 /**
- * Gallery — an ECharts option, pasted as-is: a horizontal bar ranking (a
- * category y axis over a value x axis). `OptionChart` compiles it onto Pyreon's
- * engine — no ECharts in the bundle — with ECharts' own geometry: rows run
- * bottom-up, as ECharts' category y axis does. "Re-rank" sorts ascending or
+ * Gallery — a horizontal ranking: `horizontal` turns the category axis on its
+ * side, and `showValues` labels each bar. "Re-rank" sorts ascending or
  * descending; the `shared` signal counts re-ranks.
- * The provider opts it into the colour mode in scope — the page's scheme
- * here (the root's `color-scheme`); a bare option chart keeps ECharts' own light look.
  */
-const LANGS = [
+interface Lang {
+  name: string
+  value: number
+}
+
+const LANGS: Lang[] = [
   { name: 'TypeScript', value: 38.5 },
   { name: 'Python', value: 51 },
   { name: 'Rust', value: 12.6 },
@@ -38,19 +38,10 @@ export default function GalleryHorizontal(props: { shared?: Signal<number> }) {
         </button>
         <span>re-ranks: {() => reranks()}</span>
       </div>
-      <ChartThemeProvider>
-        <OptionChart
-          height={280}
-          option={() => ({
-            title: { text: 'Language use (%)' },
-            tooltip: { trigger: 'axis' },
-            grid: { left: 90, right: 24, top: 40, bottom: 24 },
-            xAxis: { type: 'value', splitLine: { lineStyle: { type: 'dashed' } } },
-            yAxis: { type: 'category', data: sorted().map((l) => l.name) },
-            series: [{ type: 'bar', name: 'Share', data: sorted().map((l) => l.value), label: { show: true, position: 'right' }, itemStyle: { borderRadius: [0, 4, 4, 0] } }],
-          })}
-        />
-      </ChartThemeProvider>
+      <Chart<Lang> data={() => sorted()} x="name" horizontal height={280} title="Language use (%)">
+        <Bar y="value" label="Share" showValues />
+        <Tooltip />
+      </Chart>
     </div>
   )
 }

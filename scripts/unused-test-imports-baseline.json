@@ -10,7 +10,6 @@
   "packages/core/runtime-dom/src/tests/ref-in-dom-spread.test.tsx:_rpd",
   "packages/core/runtime-dom/src/tests/show-child-retrack.test.tsx:_rpd",
   "packages/core/runtime-dom/src/tests/sole-slot-verdict.test.tsx:_rpd",
-  "packages/fundamentals/charts/src/engine/cov-core-option.test.ts:customCommands",
   "packages/fundamentals/charts/src/engine/indicators.test.ts:line",
   "packages/fundamentals/form/src/tests/schema-blur.test.tsx:FormState",
   "packages/internals/test-utils/src/tests/check-service-coverage.test.ts:sourceNames",

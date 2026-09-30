@@ -65,5 +65,3 @@ it.
 `xValue` places points by their own value rather than by index, with `xTime`
 for calendar tick labels — an irregular time series spaced evenly is the chart
 stating something false about the data, so this is a correctness feature.
-
-The existing ECharts-backed `Chart` export is unchanged.

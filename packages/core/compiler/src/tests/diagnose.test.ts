@@ -269,6 +269,22 @@ describe('diagnoseError — validate compiler unsupported-node entry', () => {
   })
 })
 
+describe('diagnoseError — 0.51 `<Chart options>` against the 0.52 engine', () => {
+  it("maps the type checker's unknown-prop error to the marks rewrite", () => {
+    const d = diagnoseError(
+      "Type '{ options: () => EChartsOption; }' is not assignable to type 'IntrinsicAttributes & ChartProps<unknown>'.\n  Property 'options' does not exist on type 'IntrinsicAttributes & ChartProps<unknown>'.",
+    )
+    expect(d?.cause).toContain('`options`')
+    expect(d?.cause).toContain('0.52 removed')
+    expect(d?.fixCode).toContain('<Bar y="revenue" />')
+  })
+
+  it('does not fire on an unknown `options` prop of an unrelated component', () => {
+    const d = diagnoseError("Property 'options' does not exist on type 'IntrinsicAttributes & SelectProps'.")
+    expect(d?.cause ?? '').not.toContain('ECharts wrapper')
+  })
+})
+
 describe('Plain Mode signal-bridge warnings are diagnosable', () => {
   it.each([
     '[plain] signalOf() takes exactly one state/derived binding declared in plain code (`signalOf(count)`); this call is left as-is and will throw at runtime.',
