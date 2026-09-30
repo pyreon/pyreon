@@ -36,12 +36,13 @@ export function App() {
 
 describe('an empty native permission set announces itself', () => {
   for (const target of ['swift', 'kotlin'] as const) {
-    it(`${target}: a bare usePermissions() warns that every check will deny`, () => {
+    it(`${target}: a bare usePermissions() is silent — the provider may live in another file`, () => {
+      // The key/CompositionLocal is app-wide runtime now, so the canonical
+      // shape (provider in the root layout, reader on a page) is correct and a
+      // per-file check cannot see the provider. Warning here would flag the
+      // right code; the provider-side warning still covers a non-literal map.
       const w = transform(bare, { target }).warnings.join('\n')
-      expect(w).toContain('usePermissions()')
-      expect(w).toContain('EMPTY')
-      // The actionable half — an author needs the shape that does work.
-      expect(w).toContain('usePermissions(["posts.*"')
+      expect(w).not.toContain('EMPTY')
     })
 
     it(`${target}: a seeded usePermissions([...]) is silent`, () => {

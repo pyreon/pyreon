@@ -8,6 +8,7 @@ export const noSignalInLoop: Rule = {
     description: 'Disallow creating signals or computeds inside loops.',
     severity: 'error',
     fixable: false,
+    plainLowered: true,
   },
   create(context) {
     let loopDepth = 0

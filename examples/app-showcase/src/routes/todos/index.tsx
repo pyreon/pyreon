@@ -1,7 +1,7 @@
 import { provide } from '@pyreon/core'
 import { useForm } from '@pyreon/form'
 import { useHotkey } from '@pyreon/hotkeys'
-import { signal } from '@pyreon/reactivity'
+import { state, signalOf } from '@pyreon/core/plain'
 import { rx } from '@pyreon/rx'
 import { Kbd } from '@pyreon/ui-components'
 import type { UrlStateSignal } from '@pyreon/url-state'
@@ -65,7 +65,7 @@ export default function TodosPage() {
 
   // ── Selection — local UI state, kept in a signal so the keyboard
   //    handlers below can act on the currently focused row.
-  const selectedId = signal<string | undefined>(undefined)
+  let selectedId = state<string | undefined>(undefined)
 
   // ── Refs to the new-todo and search inputs so the N and / hotkeys
   //    can focus them without reaching for `document.querySelector`.
@@ -99,7 +99,7 @@ export default function TodosPage() {
         projectId: projectId() === 'all' ? 'inbox' : projectId(),
       })
       addForm.reset()
-      selectedId.set(created.id)
+      selectedId = created.id
       newTodoEl?.focus()
     },
   })
@@ -111,7 +111,7 @@ export default function TodosPage() {
   useHotkey(
     'x',
     () => {
-      const id = selectedId()
+      const id = selectedId
       if (id) store.toggle(id)
     },
     { description: 'Toggle selected todo' },
@@ -119,19 +119,19 @@ export default function TodosPage() {
   useHotkey(
     'delete',
     () => {
-      const id = selectedId()
+      const id = selectedId
       if (!id) return
       store.remove(id)
-      selectedId.set(undefined)
+      selectedId = undefined
     },
     { description: 'Delete selected todo' },
   )
-  useHotkey('escape', () => selectedId.set(undefined), { description: 'Clear selection' })
+  useHotkey('escape', () => { selectedId = undefined }, { description: 'Clear selection' })
 
   // ── Provide the store to descendants so TodoList / TodoItem don't
   //    need to re-call useTodos() and can react to selection from
   //    anywhere in the section.
-  const ctxValue: TodosCtxValue = { store, selectedId }
+  const ctxValue: TodosCtxValue = { store, selectedId: signalOf(selectedId) }
   provide(TodosCtx, ctxValue)
 
   // ── Filter pipeline (signal-aware @pyreon/rx) ─────────────────────

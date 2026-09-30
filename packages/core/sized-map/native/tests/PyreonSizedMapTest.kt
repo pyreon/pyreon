@@ -19,7 +19,7 @@ fun main() {
     fifo.set("c", 3)
     check(!fifo.has("a"), "FIFO evicts the oldest INSERTED, reads do not rescue")
     check(fifo.has("b") && fifo.has("c"), "survivors kept")
-    check(fifo.size == 2, "size stays at the cap")
+    check(fifo.size == 2L, "size stays at the cap")
 
     // ── LRU-on-read: the same sequence keeps "a" instead ──
     val lru = PyreonSizedMap<String, Int>(maxEntries = 2, lru = true)
@@ -53,7 +53,7 @@ fun main() {
     check(!ordered.delete("nope"), "delete reports a miss")
     check(ordered.keys() == listOf("x", "z"), "delete removes from the ORDER too")
     ordered.clear()
-    check(ordered.size == 0 && ordered.keys().isEmpty(), "clear empties both")
+    check(ordered.size == 0L && ordered.keys().isEmpty(), "clear empties both")
 
     // ── a cap below 1 is floored, not honoured ──
     val floored = PyreonSizedMap<String, Int>(maxEntries = 0)

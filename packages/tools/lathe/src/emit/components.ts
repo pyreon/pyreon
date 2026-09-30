@@ -32,6 +32,7 @@ import type {
   IrType,
 } from "../core/ir";
 import { responseKindOf } from "../core/media";
+import { usesBigInt } from "../core/walk";
 import { hookOf, typeIdent } from "../core/naming";
 import { byTag, tagFile } from "./client";
 import { jsLiteral, sampleArgs } from "./jsdoc";
@@ -235,14 +236,25 @@ export function emitComponents(doc: IrDocument): SourceFile {
     "A state a preview can be pinned to — the three a live request will not show on demand.",
   );
   f.line("export type PreviewState = 'loading' | 'error' | 'empty'");
-  emitRenderers(f);
+  // Only the renderers some preview USES: an unused function is a TS6133 in
+  // any app compiling with `noUnusedLocals`.
+  const kinds = new Set(ops.map((op) => responseShape(op.response as IrType, doc).kind));
+  emitRenderers(f, kinds, usesBigInt(doc));
 
   for (const op of ops) emitPreview(f, op, doc);
   return f;
 }
 
 /** The shared, shape-specific renderers every preview uses. */
-function emitRenderers(f: SourceFile): void {
+function emitRenderers(
+  f: SourceFile,
+  kinds: ReadonlySet<Shape["kind"]>,
+  lossless: boolean,
+): void {
+  // `int64: 'bigint'`: a record can hold a bigint, which `JSON.stringify`
+  // throws on — its digits are shown instead.
+  const stringify = (v: string): string =>
+    lossless ? `JSON.stringify(${v}, (_k, x: unknown) => (typeof x === 'bigint' ? x.toString() : x))` : `JSON.stringify(${v})`;
   f.line();
   f.doc(
     "One value as display text: scalars as-is, a list joined, an object by its name or id.",
@@ -259,17 +271,23 @@ function emitRenderers(f: SourceFile): void {
   f.line("    const o = value as Record<string, unknown>");
   f.line("    const label = o.name ?? o.title ?? o.label ?? o.id");
   f.line(
-    "    return label !== undefined && typeof label !== 'object' ? String(label) : JSON.stringify(value)",
+    `    return label !== undefined && typeof label !== 'object' ? String(label) : ${stringify("value")}`,
   );
   f.line("  }");
   f.line("  return String(value)");
   f.line("}");
+  if (!kinds.has("table") && !kinds.has("record")) return;
   f.line();
   f.line("function field(value: unknown, key: string): unknown {");
   f.line(
     "  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>)[key] : undefined",
   );
   f.line("}");
+  if (kinds.has("table")) emitPreviewTable(f, stringify);
+  if (kinds.has("record")) emitPreviewRecord(f);
+}
+
+function emitPreviewTable(f: SourceFile, stringify: (v: string) => string): void {
   f.line();
   f.doc("A list of records as a table, one column per declared field.");
   f.line(
@@ -289,7 +307,7 @@ function emitRenderers(f: SourceFile): void {
   // built from the spec's examples often is), so the key is position PLUS
   // content: unique, and a changed row re-renders.
   f.line(
-    "        <For each={() => props.rows().map((row, i) => ({ row, key: `${i}:${JSON.stringify(row)}` }))} by={(r: { key: string }) => r.key}>",
+    `        <For each={() => props.rows().map((row, i) => ({ row, key: \`\${i}:\${${stringify("row")}}\` }))} by={(r: { key: string }) => r.key}>`,
   );
   f.line("          {({ row }: { row: unknown }) => (");
   f.line("            <tr>");
@@ -303,6 +321,9 @@ function emitRenderers(f: SourceFile): void {
   f.line("    </table>");
   f.line("  )");
   f.line("}");
+}
+
+function emitPreviewRecord(f: SourceFile): void {
   f.line();
   f.doc(
     "One record as a description list — its declared fields, or every key of a map.",

@@ -16,6 +16,7 @@
 import type { IrDocument, IrOperation, IrStream } from '../core/ir'
 import { responseKindOf } from '../core/media'
 import { typeIdent } from '../core/naming'
+import { usesBigInt } from '../core/walk'
 import type { ClientName } from './client-runtime'
 import { PURE, schemaExpr, schemaRefs, schemaSpecifierFor } from './schema'
 import { dialectOf, type ValidatorName } from './validator'
@@ -45,6 +46,11 @@ export function hasStreams(doc: IrDocument): boolean {
  */
 export function isStreamOnly(op: IrOperation): boolean {
   return op.stream !== undefined && responseKindOf(op) === 'stream'
+}
+
+/** Is each event's payload JSON text (rather than SSE `data: 'text'`)? */
+function jsonEvents(s: IrStream): boolean {
+  return !(s.format === 'sse' && s.data === 'text')
 }
 
 /**
@@ -116,6 +122,10 @@ export function emitStreamFunctions(f: SourceFile, ops: readonly IrOperation[], 
   if (formats.has('sse')) helpers.push('openEventStream')
   if (formats.has('ndjson')) helpers.push('openNdjsonStream')
   f.import('@pyreon/http/stream', ...helpers.sort())
+  // Under `int64: 'bigint'` an event's JSON is decoded losslessly, exactly as
+  // a JSON response is: an int64 past 2^53 - 1 arrives as a bigint.
+  const lossless = usesBigInt(opts.doc) && streaming.some((o) => jsonEvents(o.stream as IrStream))
+  if (lossless) f.import('@pyreon/http/json', 'parseJsonLossless')
   const optionTypes: string[] = []
   if (formats.has('sse')) optionTypes.push('EventStreamOptions')
   if (formats.has('ndjson')) optionTypes.push('NdjsonStreamOptions')
@@ -153,7 +163,7 @@ export function emitStreamFunctions(f: SourceFile, ops: readonly IrOperation[], 
         parse = `parse: streamEvent(${s.event.name}), `
       } else {
         const binding = `${op.id}$event`
-        f.line(`const ${binding} = ${schemaExpr(s.event, { native: false, validator: opts.validator })}`)
+        f.line(`const ${binding} = ${schemaExpr(s.event, { native: false, validator: opts.validator, lossless: usesBigInt(opts.doc) })}`)
         parse = `parse: streamEvent(${binding}), `
       }
     }
@@ -204,13 +214,14 @@ export function emitStreamFunctions(f: SourceFile, ops: readonly IrOperation[], 
     const open = s.format === 'sse' ? 'openEventStream' : 'openNdjsonStream'
     const reconnect = s.format === 'sse' && !get ? 'reconnect: false, ' : ''
     const data = s.format === 'sse' && s.data === 'text' ? "data: 'text', " : ''
+    const decode = lossless && jsonEvents(s) ? 'parseJson: parseJsonLossless, ' : ''
     f.line(`  return ${open}(`)
     // `accept` names the spec's own media type when it is not the default
     // (`application/jsonl`, …) — a server negotiating on it must see its own.
     const defaultAccept = s.format === 'sse' ? 'text/event-stream' : 'application/x-ndjson'
     const extra = s.media === defaultAccept ? 'ctx.headers' : `{ ...ctx.headers, accept: ${q(s.media)} }`
     f.line(`    (ctx) => ${endpoint}({ ...rest, signal: ctx.signal, headers: streamHeaders(headers, ${extra}) }),`)
-    f.line(`    { ${parse}${data}${reconnect}signal, ...options },`)
+    f.line(`    { ${parse}${data}${decode}${reconnect}signal, ...options },`)
     f.line('  )')
     f.line('}')
   }

@@ -44,11 +44,11 @@ class PyreonTableColumn<T>(val id: String, val accessor: (T) -> PyreonCell)
 class PyreonTableState<T>(
     private val dataProvider: () -> List<T>,
     private val columns: List<PyreonTableColumn<T>> = emptyList(),
-    private val pageSize: Int = 0,
-    rowId: ((T, Int) -> String)? = null,
+    private val pageSize: Long = 0L,
+    rowId: ((T, Long) -> String)? = null,
     filterFn: ((T, String, List<PyreonTableColumn<T>>) -> Boolean)? = null,
 ) {
-    private val rowIdOf: (T, Int) -> String = rowId ?: { _, index -> index.toString() }
+    private val rowIdOf: (T, Long) -> String = rowId ?: { _, index -> index.toString() }
     private val filterImpl: (T, String, List<PyreonTableColumn<T>>) -> Boolean =
         filterFn ?: ::defaultFilter
 
@@ -63,7 +63,7 @@ class PyreonTableState<T>(
     private val _filterValue = mutableStateOf("")
     val filterValue: String
         get() = _filterValue.value
-    private val _page = mutableStateOf(0)
+    private val _page = mutableStateOf(0L)
     /**
      * The page the reader is actually on.
      *
@@ -76,7 +76,7 @@ class PyreonTableState<T>(
      * ever disagreeing, and restores the reader's place after a transient
      * shrink instead of stranding them on the last page.
      */
-    val page: Int
+    val page: Long
         get() = clampPage(_page.value)
     private val _selected = mutableStateOf<List<String>>(emptyList())
     val selected: List<String>
@@ -113,22 +113,22 @@ class PyreonTableState<T>(
     // ── filtering ─────────────────────────────────────────────────────────────
     fun setFilter(query: String) {
         _filterValue.value = query
-        _page.value = 0
+        _page.value = 0L
     }
 
     // ── pagination ──────────────────────────────────────────────────────────────
-    fun pageCount(): Int {
-        if (pageSize <= 0) return 1
-        val count = filtered().size
-        return if (count == 0) 1 else (count + pageSize - 1) / pageSize
+    fun pageCount(): Long {
+        if (pageSize <= 0L) return 1L
+        val count = filtered().size.toLong()
+        return if (count == 0L) 1L else (count + pageSize - 1L) / pageSize
     }
-    private fun clampPage(index: Int): Int {
-        val maxPage = pageCount() - 1
-        return if (index < 0) 0 else if (index > maxPage) maxPage else index
+    private fun clampPage(index: Long): Long {
+        val maxPage = pageCount() - 1L
+        return if (index < 0L) 0L else if (index > maxPage) maxPage else index
     }
-    fun setPage(index: Int) { _page.value = clampPage(index) }
-    fun nextPage() { _page.value = clampPage(page + 1) }
-    fun prevPage() { _page.value = clampPage(page - 1) }
+    fun setPage(index: Long) { _page.value = clampPage(index) }
+    fun nextPage() { _page.value = clampPage(page + 1L) }
+    fun prevPage() { _page.value = clampPage(page - 1L) }
 
     // ── selection ────────────────────────────────────────────────────────────────
     fun isSelected(id: String): Boolean = selected.contains(id)
@@ -137,7 +137,7 @@ class PyreonTableState<T>(
     }
     fun clearSelection() { _selected.value = emptyList() }
     fun selectedIds(): List<String> = selected
-    fun rowId(row: T, index: Int): String = rowIdOf(row, index)
+    fun rowId(row: T, index: Long): String = rowIdOf(row, index)
 
     // ── derived ────────────────────────────────────────────────────────────────
     private fun filtered(): List<T> {
@@ -155,11 +155,11 @@ class PyreonTableState<T>(
     /** The rows for the current view: filtered → sorted → paginated. */
     fun rows(): List<T> {
         val list = sorted()
-        if (pageSize <= 0) return list
+        if (pageSize <= 0L) return list
         val start = page * pageSize
         if (start >= list.size) return emptyList()
-        return list.subList(start, minOf(start + pageSize, list.size))
+        return list.subList(start.toInt(), minOf(start + pageSize, list.size.toLong()).toInt())
     }
     /** Match count AFTER filtering, BEFORE pagination. */
-    fun filteredCount(): Int = filtered().size
+    fun filteredCount(): Long = filtered().size.toLong()
 }

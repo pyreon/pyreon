@@ -9,7 +9,7 @@ Common mistakes and anti-patterns across Pyreon, grouped by area, each with its 
 
 ## Categories
 
-- **[Reactivity Mistakes](/docs/troubleshooting/reactivity)** — 32 entries
+- **[Reactivity Mistakes](/docs/troubleshooting/reactivity)** — 33 entries
 - **[JSX Mistakes](/docs/troubleshooting/jsx)** — 30 entries
 - **[Context & Provider Mistakes](/docs/troubleshooting/context)** — 6 entries
 - **[Architecture Mistakes](/docs/troubleshooting/architecture)** — 73 entries

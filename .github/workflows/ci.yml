@@ -155,6 +155,8 @@ jobs:
       scaffold-has: ${{ steps.scaffold.outputs.has }}
       scaffold-matrix: ${{ steps.scaffold.outputs.matrix }}
       bootstrap-exit-codes: ${{ steps.bexit.outputs.run }}
+      browser-engines: ${{ steps.engines.outputs.list }}
+      browser-engines-has: ${{ steps.engines.outputs.has }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -268,6 +270,24 @@ jobs:
           echo "code=$CODE" >> "$GITHUB_OUTPUT"
           echo "affected=$AFFECTED" >> "$GITHUB_OUTPUT"
           echo "Code (non-docs) changed: $CODE | Any package affected: $AFFECTED"
+      - name: Select cross-engine browser suites
+        id: engines
+        run: |
+          # Packages that opt into WebKit + Firefox by declaring a
+          # `test:browser:engines` script; `Test (browser)` runs the affected
+          # ones after its Chromium pass. Fail-closed at every layer: an
+          # affected.ts error passes NO verdict (→ every suite), and
+          # browser-engines.ts itself selects every suite for any verdict it
+          # cannot parse. Only a clean, empty selection skips the engines.
+          if [ "${{ github.event_name }}" = "pull_request" ] \
+             && FLAGS=$(bun run scripts/affected.ts --base="$CI_BASE"); then
+            LIST=$(bun scripts/browser-engines.ts --affected="$FLAGS") || LIST=$(bun scripts/browser-engines.ts --all)
+          else
+            LIST=$(bun scripts/browser-engines.ts --all)
+          fi
+          echo "list=$LIST" >> "$GITHUB_OUTPUT"
+          if [ "$LIST" = "[]" ]; then echo "has=false" >> "$GITHUB_OUTPUT"; else echo "has=true" >> "$GITHUB_OUTPUT"; fi
+          echo "Cross-engine browser suites: $LIST"
       - name: Compute typecheck/test cell matrices
         id: matrices
         run: |
@@ -1528,7 +1548,9 @@ jobs:
     needs: [install, fast-gates]
     if: ${{ needs.install.result == 'success' && needs.fast-gates.result == 'success' && needs.install.outputs.code == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # ~2.5 min for the Chromium pass (main, 2026-09); the cross-engine pass
+    # adds two bounded 300s apt attempts in the worst case plus its suites.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
@@ -1583,6 +1605,62 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
       - run: bun run test:browser
+      # ── Cross-engine pass (WebKit + Firefox) ──────────────────────────────
+      # Only when an AFFECTED package opts in via `test:browser:engines` (see
+      # scripts/browser-engines.ts). A step, not a job: a job costs a queue
+      # slot + checkout + setup-pyreon for work this runner is already set up
+      # to do, and staying inside `Test (browser)` keeps the result on an
+      # existing required check with no rename.
+      #
+      # `!= 'false'` (not `== 'true'`) is the fail-closed half: an empty output
+      # from a decide step that crashed still runs the engines. `!cancelled()`
+      # so a red Chromium pass does not hide an independent engine failure.
+      #
+      # NOT cached, deliberately. WebKit + Firefox are ~575 MB unpacked, and the
+      # actions cache was at 8.35 GB of its 10 GB limit when this landed
+      # (2026-09-29, `gh api .../actions/cache/usage`), where large low-value
+      # entries have repeatedly evicted the small bootstrap entries every job
+      # depends on (see the Chromium restore note above). The download comes
+      # from Playwright's CDN and only runs on PRs touching an opted-in
+      # package, so paying it per run is the cheaper side of that trade.
+      - name: Install Playwright WebKit + Firefox (not cached)
+        if: ${{ !cancelled() && needs.install.outputs.browser-engines-has != 'false' }}
+        run: |
+          # Unlike Chromium, these engines' OS libraries are NOT preinstalled on
+          # ubuntu-latest (WebKit needs GStreamer, libwoff, libmanette, …), so
+          # install-deps is required here, not best-effort. The known apt hang
+          # (see the Chromium step) is bounded per attempt and retried once;
+          # a second failure fails the step loudly rather than running engines
+          # that cannot launch.
+          sudo grep -rlZ packages.microsoft.com /etc/apt/sources.list.d/ 2>/dev/null | sudo xargs -0 -r rm -f || true
+          ok=0
+          for attempt in 1 2; do
+            if timeout 300 bunx playwright install-deps webkit firefox; then ok=1; break; fi
+            echo "::warning::playwright install-deps attempt $attempt failed or timed out"
+          done
+          [ "$ok" = 1 ] || { echo "::error::Could not install WebKit/Firefox OS dependencies"; exit 1; }
+          bunx playwright install webkit firefox
+      - name: Test (browser engines — WebKit + Firefox)
+        if: ${{ !cancelled() && needs.install.outputs.browser-engines-has != 'false' }}
+        env:
+          ENGINE_SUITES: ${{ needs.install.outputs.browser-engines }}
+        run: |
+          LIST="$ENGINE_SUITES"
+          # Fail-closed: a missing/garbled selection runs every opted-in suite.
+          if ! echo "$LIST" | jq -e 'type == "array"' >/dev/null 2>&1; then
+            echo "::warning::No usable engine-suite selection ('$LIST') — running every opted-in suite"
+            LIST=$(bun scripts/browser-engines.ts --all)
+          fi
+          failed=""
+          for pkg in $(echo "$LIST" | jq -r '.[]'); do
+            echo "::group::$pkg — test:browser:engines"
+            if ! bun run --filter="$pkg" test:browser:engines; then failed="$failed $pkg"; fi
+            echo "::endgroup::"
+          done
+          if [ -n "$failed" ]; then
+            echo "::error::Cross-engine browser suites failed:$failed"
+            exit 1
+          fi
 
   release-build:
     name: Release Build

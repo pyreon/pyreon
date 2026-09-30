@@ -1,18 +1,18 @@
 import { For } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { state as plainState } from '@pyreon/core/plain'
 import { Calendar, Title } from '@pyreon/ui-components'
 import type { CalendarDate, CalendarDay, CalendarState } from '@pyreon/ui-primitives'
 
 export function CalendarDemo() {
-  const selected = signal<CalendarDate | null>(null)
+  let selected = plainState<CalendarDate | null>(null)
 
   return (
     <div>
       <Title size="h2" style="margin-bottom: 24px">Calendar</Title>
 
       <Calendar
-        value={selected()}
-        onChange={(d: CalendarDate) => selected.set(d)}
+        value={selected}
+        onChange={(d: CalendarDate) => { selected = d }}
       >
         {(state: CalendarState) => (
           /*
@@ -82,7 +82,7 @@ export function CalendarDemo() {
       </Calendar>
       <p style="font-size: 13px; color: #6b7280; margin-top: 8px;">
         Selected: {() => {
-          const d = selected()
+          const d = selected
           return d ? `${d.year}-${(d.month + 1).toString().padStart(2, '0')}-${d.day.toString().padStart(2, '0')}` : 'None'
         }}
       </p>

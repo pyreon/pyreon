@@ -50,7 +50,7 @@ describe('JS `/` → float division on native (matches `7 / 2 === 3.5`)', () => 
 import { signal, computed } from '@pyreon/reactivity'
 function C() { const h = computed(() => 9 / 2); return (<Stack><Text>{h()}</Text></Stack>) }`
     expect(transform(src, { target: 'swift' }).code).toContain('Double(9) / Double(2)')
-    expect(transform(src, { target: 'kotlin' }).code).toContain('(9).toDouble() / (2).toDouble()')
+    expect(transform(src, { target: 'kotlin' }).code).toContain('(9L).toDouble() / (2L).toDouble()')
   })
 
   it.skipIf(!isSwiftcAvailable())('emitted Swift parses on real swiftc', () => {

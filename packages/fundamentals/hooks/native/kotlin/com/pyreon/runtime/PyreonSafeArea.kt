@@ -34,7 +34,7 @@ public interface OrientationProbe {
     public val type: String
 
     /** 0 / 90 / 180 / 270. */
-    public val angle: Int
+    public val angle: Long
 }
 
 /**
@@ -43,7 +43,7 @@ public interface OrientationProbe {
  */
 public class PyreonScreenOrientation(private val probe: OrientationProbe) {
     public val type: String get() = probe.type
-    public val angle: Int get() = probe.angle
+    public val angle: Long get() = probe.angle
 }
 
 // ── Pure conversions the Android probes share ────────────────────────────

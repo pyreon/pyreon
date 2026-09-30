@@ -137,6 +137,11 @@ export function renderType(type: IrType | undefined, depth = 0): string {
       return `${renderType(type.inner, depth)} | null`
     case 'number':
       return type.integer ? 'integer' : 'number'
+    // Only under `int64: 'bigint'`, where the generated type IS different
+    // (`bigint`, not `number`): an int32 -> int64 change is then a change to
+    // the code a consumer compiles against, and the diff has to say so.
+    case 'bigint':
+      return 'int64'
     case 'boolean':
       return 'boolean'
     case 'null':

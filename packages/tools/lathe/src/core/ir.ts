@@ -17,6 +17,13 @@
 export type IrType =
   | IrStringType
   | IrNumberType
+  /**
+   * A `format: int64` integer, generated as a `bigint` -- only under
+   * `int64: 'bigint'`. The default mode reads int64 as {@link IrNumberType},
+   * so a document without the option contains no `bigint` at all and every
+   * emitter's output for it is unchanged.
+   */
+  | IrBigIntType
   | { kind: "boolean" }
   | { kind: "null" }
   /**
@@ -74,6 +81,29 @@ export interface IrNumberType {
   minimum?: number | undefined;
   maximum?: number | undefined;
   /** Strict bounds. 3.0's boolean form is normalized to these numbers. */
+  exclusiveMinimum?: number | undefined;
+  exclusiveMaximum?: number | undefined;
+  multipleOf?: number | undefined;
+  /**
+   * The value may arrive as a `bigint`, and must be accepted as the number it
+   * denotes. Set on every non-int64 number under `int64: 'bigint'`: the
+   * lossless JSON decoder turns ANY integer past 2^53 - 1 into a `bigint`, and
+   * a plain `number` field (a `double` a Go server wrote as
+   * `100000000000000000000`) has to read it back as the double `JSON.parse`
+   * would have produced -- not reject it.
+   */
+  acceptsBigInt?: true | undefined;
+}
+
+/**
+ * A 64-bit integer carried as a `bigint`. Bounds are the spec's own numbers;
+ * one past 2^53 - 1 was already rounded when the SPEC was parsed, so the input
+ * layer drops it rather than enforce a bound off by one.
+ */
+export interface IrBigIntType {
+  kind: "bigint";
+  minimum?: number | undefined;
+  maximum?: number | undefined;
   exclusiveMinimum?: number | undefined;
   exclusiveMaximum?: number | undefined;
   multipleOf?: number | undefined;
@@ -440,6 +470,7 @@ export type IrNoteCode =
   | 'cyclic-ref'
   | 'unsupported-const'
   | 'int64-precision'
+  | 'int64-native'
   | 'missing-operation-id'
   | 'multiple-content-types'
   | 'no-servers'
@@ -492,6 +523,9 @@ export const NOTE_SEVERITY: Readonly<Record<IrNoteCode, IrNoteSeverity>> = {
   'cyclic-ref': 'loss',
   'unsupported-const': 'loss',
   'int64-precision': 'loss',
+  // `int64: 'bigint'` is web-only: PMTC has no bigint, so the native modules
+  // keep decoding int64 as the platform integer (see the note's text).
+  'int64-native': 'loss',
   'missing-operation-id': 'choice',
   'multiple-content-types': 'choice',
   'no-servers': 'loss',

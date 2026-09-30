@@ -92,7 +92,7 @@ describe('syncedSignal — Kotlin lowering', () => {
 
   it('reads title() (invoke) and writes count.set(...)', () => {
     expect(r.code).toContain('"${title()}"')
-    expect(r.code).toContain('count.set(count() + 1)')
+    expect(r.code).toContain('count.set(count() + 1L)')
   })
 
   it('does NOT warn as web-only', () => {

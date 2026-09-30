@@ -5,7 +5,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@pyreon/query'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 
 interface User {
   id: number
@@ -37,8 +37,8 @@ const queryClient = new QueryClient({
 
 function QueryContent() {
   const client = useQueryClient()
-  const nameInput = signal('')
-  const emailInput = signal('')
+  let nameInput = state('')
+  let emailInput = state('')
 
   const { data, isPending, isFetching, refetch } = useQuery(() => ({
     queryKey: ['users'],
@@ -49,8 +49,8 @@ function QueryContent() {
     mutationFn: createUser,
     onSuccess: () => {
       client.invalidateQueries({ queryKey: ['users'] })
-      nameInput.set('')
-      emailInput.set('')
+      nameInput = ''
+      emailInput = ''
     },
   })
 
@@ -99,8 +99,8 @@ function QueryContent() {
           <label>Name</label>
           <input
             placeholder="Name"
-            value={nameInput()}
-            onInput={(e: Event) => nameInput.set((e.target as HTMLInputElement).value)}
+            value={nameInput}
+            onInput={(e: Event) => { nameInput = (e.target as HTMLInputElement).value }}
           />
         </div>
         <div class="field">
@@ -108,14 +108,14 @@ function QueryContent() {
           <input
             type="email"
             placeholder="email@example.com"
-            value={emailInput()}
-            onInput={(e: Event) => emailInput.set((e.target as HTMLInputElement).value)}
+            value={emailInput}
+            onInput={(e: Event) => { emailInput = (e.target as HTMLInputElement).value }}
           />
         </div>
         <button
           class="primary"
-          disabled={mutation.isPending() || !nameInput() || !emailInput()}
-          onClick={() => mutation.mutate({ name: nameInput(), email: emailInput() })}
+          disabled={mutation.isPending() || !nameInput || !emailInput}
+          onClick={() => mutation.mutate({ name: nameInput, email: emailInput })}
         >
           {() => (mutation.isPending() ? 'Creating...' : 'Add User')}
         </button>

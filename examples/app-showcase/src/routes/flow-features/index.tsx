@@ -10,7 +10,7 @@ import {
   type NodeComponentProps,
 } from '@pyreon/flow'
 import { For } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { FeatureNode } from './FeatureNode'
 
 /**
@@ -60,16 +60,16 @@ export default function FlowFeaturesRoute() {
     snapGrid: 20,
   })
 
-  const lastAction = signal('—')
-  const query = signal('—')
-  const snapObjects = signal(true)
-  const snapGrid = signal(false)
-  const virtualize = signal(false)
+  let lastAction = state('—')
+  let query = state('—')
+  let snapObjects = state(true)
+  let snapGrid = state(false)
+  let virtualize = state(false)
 
   // Mutating actions push history first so undo/redo is meaningful.
   const act = (label: string, fn: () => void) => {
     fn()
-    lastAction.set(label)
+    lastAction = label
   }
   const mutate = (label: string, fn: () => void) =>
     act(label, () => {
@@ -200,7 +200,7 @@ export default function FlowFeaturesRoute() {
           run: () =>
             act('proximity', () => {
               const p = flow.getProximityConnection('n1')
-              query.set(p ? `proximity → ${p.source}->${p.target}` : 'proximity → none')
+              query = p ? `proximity → ${p.source}->${p.target}` : 'proximity → none'
             }),
         },
       ],
@@ -212,22 +212,22 @@ export default function FlowFeaturesRoute() {
           id: 'search',
           label: 'Search "Filter"',
           run: () =>
-            act('search', () => query.set(`search → ${flow.searchNodes('Filter').length} match`)),
+            act('search', () => { query = `search → ${flow.searchNodes('Filter').length} match` }),
         },
         {
           id: 'connected',
           label: 'Connected edges of n2',
-          run: () => act('connected', () => query.set(`connected → ${flow.getConnectedEdges('n2').length}`)),
+          run: () => act('connected', () => { query = `connected → ${flow.getConnectedEdges('n2').length}` }),
         },
         {
           id: 'incomers',
           label: 'Incomers of n2',
-          run: () => act('incomers', () => query.set(`incomers → ${flow.getIncomers('n2').length}`)),
+          run: () => act('incomers', () => { query = `incomers → ${flow.getIncomers('n2').length}` }),
         },
         {
           id: 'outgoers',
           label: 'Outgoers of n2',
-          run: () => act('outgoers', () => query.set(`outgoers → ${flow.getOutgoers('n2').length}`)),
+          run: () => act('outgoers', () => { query = `outgoers → ${flow.getOutgoers('n2').length}` }),
         },
         { id: 'focus-node', label: 'Focus n3', run: () => act('focus-node', () => flow.focusNode('n3')) },
       ],
@@ -238,7 +238,7 @@ export default function FlowFeaturesRoute() {
         {
           id: 'export-json',
           label: 'Export JSON',
-          run: () => act('export-json', () => query.set(`json → ${flow.toJSON().nodes.length} nodes`)),
+          run: () => act('export-json', () => { query = `json → ${flow.toJSON().nodes.length} nodes` }),
         },
         {
           id: 'import-json',
@@ -256,8 +256,8 @@ export default function FlowFeaturesRoute() {
           label: 'Toggle snapToObjects',
           run: () =>
             act('toggle-snap-objects', () => {
-              const next = !snapObjects()
-              snapObjects.set(next)
+              const next = !snapObjects
+              snapObjects = next
               flow.config.snapToObjects = next
             }),
         },
@@ -266,8 +266,8 @@ export default function FlowFeaturesRoute() {
           label: 'Toggle snapToGrid',
           run: () =>
             act('toggle-snap-grid', () => {
-              const next = !snapGrid()
-              snapGrid.set(next)
+              const next = !snapGrid
+              snapGrid = next
               flow.config.snapToGrid = next
             }),
         },
@@ -276,8 +276,8 @@ export default function FlowFeaturesRoute() {
           label: 'Toggle virtualization',
           run: () =>
             act('toggle-virtualize', () => {
-              const next = !virtualize()
-              virtualize.set(next)
+              const next = !virtualize
+              virtualize = next
               flow.config.onlyRenderVisibleElements = next
               // Nudge the viewport so the <For> re-filters immediately.
               flow.panTo({ ...flow.viewport.peek() })
@@ -358,16 +358,16 @@ export default function FlowFeaturesRoute() {
           selected: <strong data-testid="ro-selected">{() => flow.selectedNodes().length}</strong>
         </span>
         <span>
-          last: <strong data-testid="ro-last">{() => lastAction()}</strong>
+          last: <strong data-testid="ro-last">{() => lastAction}</strong>
         </span>
         <span>
-          query: <strong data-testid="ro-query">{() => query()}</strong>
+          query: <strong data-testid="ro-query">{() => query}</strong>
         </span>
         <span>
-          snapObjects: <strong data-testid="ro-snap-objects">{() => String(snapObjects())}</strong>
+          snapObjects: <strong data-testid="ro-snap-objects">{() => String(snapObjects)}</strong>
         </span>
         <span>
-          virtualize: <strong data-testid="ro-virtualize">{() => String(virtualize())}</strong>
+          virtualize: <strong data-testid="ro-virtualize">{() => String(virtualize)}</strong>
         </span>
       </div>
     </div>

@@ -1,24 +1,24 @@
-import { computed, signal } from '@pyreon/reactivity'
+import { state, derived } from '@pyreon/core/plain'
 
 export function Counter() {
-  const count = signal(0)
-  const doubled = computed(() => count() * 2)
+  let count = state(0)
+  const doubled = derived(() => count * 2)
 
-  const increment = () => count.update((n) => n + 1)
-  const decrement = () => count.update((n) => n - 1)
-  const reset = () => count.set(0)
+  const increment = () => { count = count + 1 }
+  const decrement = () => { count = count - 1 }
+  const reset = () => { count = 0 }
   // Double-click jumps by 10 — used by `e2e/app.spec.ts` to regression-test
   // the React→DOM event-name mapping. `onDoubleClick` must compile down to
   // a listener on the `dblclick` DOM event (NOT `doubleclick`, which the
   // compiler's naive lowercasing produced before the React-name mapping
   // landed).
-  const jumpByTen = () => count.update((n) => n + 10)
+  const jumpByTen = () => { count = count + 10 }
 
   return (
     <div class="card">
       <h2>Counter</h2>
-      <p class="value">{() => count()}</p>
-      <p class="doubled">doubled: {() => doubled()}</p>
+      <p class="value">{() => count}</p>
+      <p class="doubled">doubled: {() => doubled}</p>
       <div class="actions">
         <button type="button" onClick={decrement}>
           −

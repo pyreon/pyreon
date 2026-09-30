@@ -236,6 +236,20 @@ export function conforms(
         return false
       }
       return true
+    case 'bigint': {
+      // A spec example is a JSON number; one past 2^53 - 1 was already
+      // rounded when the spec was read, so only a safe one is exact.
+      const v = typeof value === 'bigint' ? value : typeof value === 'number' && Number.isSafeInteger(value) ? BigInt(value) : undefined
+      if (v === undefined) return false
+      const big = (n: number | undefined): bigint | undefined => (n === undefined ? undefined : BigInt(n))
+      const [min, max, gt, lt, step] = [big(type.minimum), big(type.maximum), big(type.exclusiveMinimum), big(type.exclusiveMaximum), big(type.multipleOf)]
+      if (min !== undefined && v < min) return false
+      if (max !== undefined && v > max) return false
+      if (gt !== undefined && v <= gt) return false
+      if (lt !== undefined && v >= lt) return false
+      if (step !== undefined && step > 0n && v % step !== 0n) return false
+      return true
+    }
     case 'boolean':
       return typeof value === 'boolean'
     case 'unknown':
@@ -264,6 +278,60 @@ export function conforms(
       }
       return true
     }
+  }
+}
+
+/**
+ * A spec example, as the GENERATED type holds it.
+ *
+ * The only difference today is `int64: 'bigint'`: an example is JSON, so an
+ * int64 in it is a number, while the generated type is a `bigint`. Rebuilt
+ * along the type (`conforms` has already accepted the value), converting a
+ * number at a bigint position and leaving everything else as it was -- the
+ * SAME object when nothing changes, so the default mode is untouched.
+ */
+export function asGeneratedValue(
+  value: unknown,
+  type: IrType,
+  resolveRef: (name: string) => IrType | undefined,
+  depth = 0,
+): unknown {
+  if (depth > 8) return value
+  switch (type.kind) {
+    case 'bigint':
+      return typeof value === 'number' && Number.isSafeInteger(value) ? BigInt(value) : value
+    case 'nullable':
+      return value === null ? value : asGeneratedValue(value, type.inner, resolveRef, depth + 1)
+    case 'ref': {
+      const target = resolveRef(type.name)
+      return target ? asGeneratedValue(value, target, resolveRef, depth + 1) : value
+    }
+    case 'union': {
+      const option = type.options.find((o) => conforms(value, o, resolveRef, depth + 1))
+      return option ? asGeneratedValue(value, option, resolveRef, depth + 1) : value
+    }
+    case 'array': {
+      if (!Array.isArray(value)) return value
+      const out = value.map((v) => asGeneratedValue(v, type.items, resolveRef, depth + 1))
+      return out.every((v, i) => v === value[i]) ? value : out
+    }
+    case 'object': {
+      if (value === null || typeof value !== 'object' || Array.isArray(value)) return value
+      const rec = value as Record<string, unknown>
+      let changed = false
+      const out: Record<string, unknown> = { ...rec }
+      for (const f of type.fields) {
+        if (rec[f.name] === undefined) continue
+        const v = asGeneratedValue(rec[f.name], f.type, resolveRef, depth + 1)
+        if (v !== rec[f.name]) {
+          out[f.name] = v
+          changed = true
+        }
+      }
+      return changed ? out : value
+    }
+    default:
+      return value
   }
 }
 

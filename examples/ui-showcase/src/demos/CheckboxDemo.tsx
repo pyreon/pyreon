@@ -1,4 +1,4 @@
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { Checkbox, Title } from '@pyreon/ui-components'
 
 function CheckboxIndicator(props: { checked: boolean }) {
@@ -10,20 +10,20 @@ function CheckboxIndicator(props: { checked: boolean }) {
 }
 
 export function CheckboxDemo() {
-  const agreed = signal(false)
-  const newsletter = signal(true)
+  let agreed = state(false)
+  let newsletter = state(true)
 
   return (
     <div>
       <Title size="h2" style="margin-bottom: 24px">Checkbox</Title>
 
       <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px;">
-        <Checkbox checked={agreed()} onChange={(v: boolean) => agreed.set(v)}>
-          <CheckboxIndicator checked={agreed()} />
+        <Checkbox checked={agreed} onChange={(v: boolean) => { agreed = v }}>
+          <CheckboxIndicator checked={agreed} />
           I agree to the terms
         </Checkbox>
-        <Checkbox checked={newsletter()} onChange={(v: boolean) => newsletter.set(v)}>
-          <CheckboxIndicator checked={newsletter()} />
+        <Checkbox checked={newsletter} onChange={(v: boolean) => { newsletter = v }}>
+          <CheckboxIndicator checked={newsletter} />
           Subscribe to newsletter
         </Checkbox>
         <Checkbox checked={false} onChange={() => {}} disabled>
@@ -33,7 +33,7 @@ export function CheckboxDemo() {
       </div>
 
       <p style="font-size: 13px; color: #6b7280;">
-        Agreed: {agreed()} | Newsletter: {newsletter()}
+        Agreed: {agreed} | Newsletter: {newsletter}
       </p>
     </div>
   )
