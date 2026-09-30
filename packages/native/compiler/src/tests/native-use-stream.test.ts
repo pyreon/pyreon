@@ -115,7 +115,7 @@ describe('useStream lowers to the native stream runtime', () => {
 
   it('Kotlin: a DisposableEffect keyed on the runtime URL + restart tick, stopped on dispose', () => {
     const code = kotlin(SSE).code
-    expect(code).toContain('val s = remember { PyreonStream<PyreonSseEvent<LogLine>>(maxEvents = 200) }')
+    expect(code).toContain('val s = remember { PyreonStream<PyreonSseEvent<LogLine>>(maxEvents = 200L) }')
     expect(code).toContain(
       'DisposableEffect("${"https://api.example.com/logs/${PyreonURL.encodePathParam(room)}/tail"}#${s.restartTick.value}")',
     )

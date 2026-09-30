@@ -16,8 +16,8 @@
  * every Pyreon-owned type the stubs declare AND an emitter emits, assert the
  * real co-located runtime defines it too.
  *
- * Scoped to Pyreon-owned names (`Pyreon*`, plus the two engine types the emit
- * names by hand). Framework mirrors — `VStack`, `Column`, `AsyncImage` — are
+ * Scoped to Pyreon-owned names (`Pyreon*`, plus the engine types the emit
+ * names by hand, listed explicitly). Framework mirrors — `VStack`, `Column`, `AsyncImage` — are
  * SUPPOSED to exist only in the stubs; they are the SDK, not our runtime.
  */
 
@@ -29,7 +29,7 @@ const SRC = resolve(import.meta.dirname, '..')
 const REPO = resolve(SRC, '../../../..')
 
 /** Pyreon-owned runtime types. Anything else in a stub is an SDK mirror. */
-const OWNED = /^(Pyreon[A-Za-z0-9]*|Media3AudioEngine|AVFoundationAudioEngine|Android[A-Z][A-Za-z0-9]*|UIKit[A-Z][A-Za-z0-9]*)$/
+const OWNED = /^(Pyreon[A-Za-z0-9]*|Media3AudioEngine|AVFoundationAudioEngine|Android[A-Z][A-Za-z0-9]*|UIKit[A-Z][A-Za-z0-9]*|CoreBluetoothScanner|CoreMotionSource|AVFoundationRecordingEngine|AVSpeechSynth)$/
 
 const declaredIn = (file: string): Set<string> => {
   const text = readFileSync(join(SRC, file), 'utf8')
@@ -86,15 +86,8 @@ const runtimeSources = (): string[] => {
  * list can only shrink. Do not add to it.
  */
 const KNOWN_PHANTOM_PROBES: Record<'.swift' | '.kt', string[]> = {
-  '.swift': ['UIKitCameraPresenter', 'UIKitDeviceProbe', 'UIKitIdleTimer'],
-  '.kt': [
-    'AndroidBluetoothScanner',
-    'AndroidDeviceProbe',
-    'AndroidMotionSource',
-    'AndroidRecordingEngine',
-    'AndroidScreenKeeper',
-    'AndroidSpeechSynth',
-  ],
+  '.swift': [],
+  '.kt': [],
 }
 
 describe('every Pyreon type the emit names exists in the real runtime', () => {

@@ -11,16 +11,17 @@
 
 import { onMount, Show } from '@pyreon/core'
 import { useHead } from '@pyreon/head'
-import { computed, effect, signal } from '@pyreon/reactivity'
+import { state, derived } from '@pyreon/core/plain'
+import { effect } from '@pyreon/reactivity'
 import { useRoute } from '@pyreon/router'
 
 export const UserProfile = () => {
   const route = useRoute<'/user/:id'>()
-  const name = signal('')
-  const email = signal('')
-  const saving = signal(false)
+  let name = state('')
+  let email = state('')
+  let saving = state(false)
 
-  const isValid = computed(() => name().length > 0 && email().includes('@'))
+  const isValid = derived(() => name.length > 0 && email.includes('@'))
 
   useHead(() => ({ title: `User ${route().params.id}` }))
 
@@ -30,8 +31,8 @@ export const UserProfile = () => {
     fetch(`/api/user/${route().params.id}`, { signal: controller.signal })
       .then((r) => r.json())
       .then((user: { name: string; email: string }) => {
-        name.set(user.name)
-        email.set(user.email)
+        name = user.name
+        email = user.email
       })
       .catch(() => {
         // aborted or failed
@@ -41,21 +42,21 @@ export const UserProfile = () => {
 
   // Auto-save effect (debounced via effect)
   effect(() => {
-    const n = name()
-    const e = email()
+    const n = name
+    const e = email
     if (!n || !e) return
     // Effect re-runs when name or email change (auto-tracked)
   })
 
   const handleSubmit = async (e: Event) => {
     e.preventDefault()
-    if (!isValid()) return
-    saving.set(true)
+    if (!isValid) return
+    saving = true
     await fetch(`/api/user/${route().params.id}`, {
       method: 'PUT',
-      body: JSON.stringify({ name: name(), email: email() }),
+      body: JSON.stringify({ name: name, email: email }),
     })
-    saving.set(false)
+    saving = false
   }
 
   return (
@@ -64,20 +65,20 @@ export const UserProfile = () => {
       <form onSubmit={handleSubmit}>
         <label>
           Name:
-          <input type="text" value={name()} onInput={(e) => name.set(e.currentTarget.value)} />
+          <input type="text" value={name} onInput={(e) => { name = e.currentTarget.value }} />
         </label>
 
         <label>
           Email:
-          <input type="email" value={email()} onInput={(e) => email.set(e.currentTarget.value)} />
+          <input type="email" value={email} onInput={(e) => { email = e.currentTarget.value }} />
         </label>
 
-        <Show when={() => !isValid()}>
+        <Show when={() => !isValid}>
           <p class="error">Name required, email must contain @</p>
         </Show>
 
-        <button type="submit" disabled={!isValid() || saving()}>
-          {saving() ? 'Saving...' : 'Save'}
+        <button type="submit" disabled={!isValid || saving}>
+          {saving ? 'Saving...' : 'Save'}
         </button>
       </form>
     </div>

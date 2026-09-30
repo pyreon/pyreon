@@ -20,9 +20,13 @@ export function clampExpr(
   bounds: { min?: number; max?: number } | undefined,
   minFn: string,
   maxFn: string,
+  /** Kotlin integer literals are `Long` (`mutableStateOf(0L)`), and `maxOf`/`minOf`
+   *  have no mixed Long/Int overload — the bound must carry the width too. */
+  intSuffix = '',
 ): string {
+  const lit = (n: number): string => `${n}${Number.isInteger(n) ? intSuffix : ''}`
   let out = expr
-  if (bounds?.min !== undefined) out = `${maxFn}(${out}, ${bounds.min})`
-  if (bounds?.max !== undefined) out = `${minFn}(${out}, ${bounds.max})`
+  if (bounds?.min !== undefined) out = `${maxFn}(${out}, ${lit(bounds.min)})`
+  if (bounds?.max !== undefined) out = `${minFn}(${out}, ${lit(bounds.max)})`
   return out
 }

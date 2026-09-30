@@ -10,7 +10,7 @@ private class FakeSafeAreaProbe(
 
 private class FakeOrientationProbe(
     override var type: String = "portrait",
-    override var angle: Int = 0,
+    override var angle: Long = 0L,
 ) : OrientationProbe
 
 private fun expect(cond: Boolean, what: String) {
@@ -44,16 +44,38 @@ private fun insetsReadThrough() {
 private fun reportsOrientation() {
     val o = PyreonScreenOrientation(FakeOrientationProbe())
     expect(o.type == "portrait", "type")
-    expect(o.angle == 0, "angle")
+    expect(o.angle == 0L, "angle")
 }
 
 private fun orientationReadsThrough() {
     val probe = FakeOrientationProbe()
     val o = PyreonScreenOrientation(probe)
     probe.type = "landscape"
-    probe.angle = 90
+    probe.angle = 90L
     expect(o.type == "landscape", "type AFTER rotation")
-    expect(o.angle == 90, "angle AFTER rotation")
+    expect(o.angle == 90L, "angle AFTER rotation")
+}
+
+private fun insetsPxToDp() {
+    val i = pyreonInsetsFromPx(63, 0, 126, 0, 2.625f)
+    expect(i.top == 63 / 2.625f.toDouble(), "top px to dp")
+    expect(i.bottom == 126 / 2.625f.toDouble(), "bottom px to dp")
+    expect(pyreonInsetsFromPx(10, 10, 10, 10, 0f) == PyreonSafeAreaInsets.zero, "zero density degrades to zero insets")
+}
+
+private fun rotationToAngle() {
+    expect(pyreonAngleFromRotation(0) == 0, "ROTATION_0")
+    expect(pyreonAngleFromRotation(1) == 90, "ROTATION_90")
+    expect(pyreonAngleFromRotation(2) == 180, "ROTATION_180")
+    expect(pyreonAngleFromRotation(3) == 270, "ROTATION_270")
+    expect(pyreonAngleFromRotation(-1) == 270, "negative normalises")
+    expect(pyreonAngleFromRotation(5) == 90, "overflow normalises")
+}
+
+private fun typeFromShape() {
+    expect(pyreonOrientationType(1080, 2400) == "portrait", "tall is portrait")
+    expect(pyreonOrientationType(2400, 1080) == "landscape", "wide is landscape")
+    expect(pyreonOrientationType(1000, 1000) == "portrait", "square ties to portrait")
 }
 
 private fun insetsPxToDp() {

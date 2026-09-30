@@ -1,5 +1,5 @@
 import { For } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { state as plainState } from '@pyreon/core/plain'
 import { Title, Tree, TreeItem } from '@pyreon/ui-components'
 import type { TreeNode, TreeState } from '@pyreon/ui-primitives'
 
@@ -40,7 +40,7 @@ const treeData: TreeNode[] = [
 ]
 
 export function TreeDemo() {
-  const selected = signal('')
+  let selected = plainState('')
 
   return (
     <div>
@@ -49,8 +49,8 @@ export function TreeDemo() {
       <div style="max-width: 300px;">
         <Tree
           data={treeData}
-          value={selected()}
-          onChange={(v: string | string[]) => selected.set(v as string)}
+          value={selected}
+          onChange={(v: string | string[]) => { selected = v as string }}
           defaultExpanded={['src']}
         >
           {(state: TreeState) => (
@@ -93,7 +93,7 @@ export function TreeDemo() {
       </div>
 
       <p style="font-size: 13px; color: #6b7280; margin-top: 12px;">
-        Selected: {() => selected() || '(none)'}
+        Selected: {() => selected || '(none)'}
       </p>
     </div>
   )

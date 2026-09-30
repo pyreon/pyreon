@@ -1,5 +1,5 @@
 import { kinetic, slideRight } from '@pyreon/kinetic'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { Button, Title, Paragraph } from '@pyreon/ui-components'
 
 const ToastGroup = kinetic('div').preset(slideRight).group()
@@ -17,15 +17,15 @@ const colors: Record<Toast['type'], string> = {
 }
 
 export function AnimationsToastPatternDemo() {
-  const toasts = signal<Toast[]>([])
+  let toasts = state.raw<Toast[]>([])
   let nextId = 0
 
   const add = (type: Toast['type']) => {
     const id = nextId++
     const message = `${type[0]?.toUpperCase()}${type.slice(1)} toast #${id}`
-    toasts.set([...toasts(), { id, message, type }])
+    toasts = [...toasts, { id, message, type }]
     setTimeout(() => {
-      toasts.set(toasts().filter((t) => t.id !== id))
+      toasts = toasts.filter((t) => t.id !== id)
     }, 3000)
   }
 
@@ -49,7 +49,7 @@ export function AnimationsToastPatternDemo() {
         </p>
         <ToastGroup style="position: absolute; top: 16px; right: 16px; display: flex; flex-direction: column; gap: 8px; max-width: 280px;">
           {() =>
-            toasts().map((toast) => (
+            toasts.map((toast) => (
               <div
                 key={toast.id}
                 style={() =>
@@ -59,7 +59,7 @@ export function AnimationsToastPatternDemo() {
                 <span>{toast.message}</span>
                 <button
                   type="button"
-                  onClick={() => toasts.set(toasts().filter((t) => t.id !== toast.id))}
+                  onClick={() => { toasts = toasts.filter((t) => t.id !== toast.id) }}
                   style="background: none; border: none; color: white; cursor: pointer; font-size: 18px; padding: 0; line-height: 1;"
                 >
                   ×

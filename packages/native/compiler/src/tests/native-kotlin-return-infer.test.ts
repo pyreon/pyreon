@@ -37,7 +37,7 @@ describe('Kotlin block-body return-type inference', () => {
       { target: 'kotlin' },
     ).code
     // Inferred Int from the `* 2` arithmetic on a number param.
-    expect(out).toMatch(/fun compute\(x: Int\): Int \{/)
+    expect(out).toMatch(/fun compute\(x: Long\): Long \{/)
   })
 
   it('infers a Boolean return from a comparison body', () => {
@@ -48,7 +48,7 @@ describe('Kotlin block-body return-type inference', () => {
   }`),
       { target: 'kotlin' },
     ).code
-    expect(out).toMatch(/fun isPositive\(x: Int\): Boolean \{/)
+    expect(out).toMatch(/fun isPositive\(x: Long\): Boolean \{/)
   })
 
   it('a concise (= expr) body stays un-annotated — Kotlin infers it', () => {
@@ -58,7 +58,7 @@ describe('Kotlin block-body return-type inference', () => {
     const out = transform(app(`  const triple = (x: number) => x * 3`), {
       target: 'kotlin',
     }).code
-    expect(out).toMatch(/fun triple\(x: Int\) = /)
+    expect(out).toMatch(/fun triple\(x: Long\) = /)
     expect(out).not.toMatch(/fun triple\(x: Int\):/)
   })
 
@@ -71,7 +71,7 @@ describe('Kotlin block-body return-type inference', () => {
       { target: 'kotlin' },
     ).code
     // No value `return` → no annotation (Kotlin defaults to Unit).
-    expect(out).toMatch(/fun bump\(x: Int\) \{/)
+    expect(out).toMatch(/fun bump\(x: Long\) \{/)
     expect(out).not.toMatch(/fun bump\(x: Int\):/)
   })
 

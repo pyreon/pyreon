@@ -16,6 +16,8 @@ export interface Book {
   /** Circulation state. */
   status: 'available' | 'borrowed' | 'lost'
   pages?: number | undefined
+  /** Average reader rating — fractional (4.5), so native must decode it as a Double. */
+  rating?: number | undefined
   subtitle?: string | null | undefined
   tags?: string[] | undefined
 }
@@ -24,6 +26,7 @@ export const Book = /* @__PURE__ */ s.object({
   title: /* @__PURE__ */ s.string().min(1),
   status: /* @__PURE__ */ s.enum(['available', 'borrowed', 'lost'] as const),
   pages: /* @__PURE__ */ s.number().int().min(1).optional(),
+  rating: /* @__PURE__ */ s.number().min(0).max(5).optional(),
   subtitle: /* @__PURE__ */ s.string().nullable().optional(),
   tags: /* @__PURE__ */ s.array(/* @__PURE__ */ s.string()).optional(),
 }) as unknown as Schema<Book>

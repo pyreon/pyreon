@@ -19,6 +19,22 @@
          register time and reports a denial through the error channel; the
          instrumented geolocation test grants FINE via UiAutomation. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- Platform-probe hooks (useAudioRecorder / useBluetooth / useSpeech).
+         The engines check these at call time and ask the Activity for any
+         that are missing; the app declares them. BLUETOOTH_SCAN is the
+         API 31+ scan permission (neverForLocation: discovery only, no
+         location derived); the legacy trio covers API 26-30. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <!-- Package visibility (API 30+): lets TextToSpeech find an engine. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
     <application
         android:label="PyreonCounter"
         android:allowBackup="true">

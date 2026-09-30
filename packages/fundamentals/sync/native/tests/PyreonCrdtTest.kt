@@ -72,6 +72,14 @@ fun main() {
     count.set(5.0)
     check(count() == 5.0, "numeric set")
     check(title() == "Roadmap", "sibling key unaffected")
+    // PMTC lowers a TS integer to Long, so a Long-typed signal is the common
+    // shape: it must round-trip, not throw "unsupported value type".
+    val stamp = PyreonSyncedSignal(doc, "stamp", 1726000000000L)
+    check(stamp() == 1726000000000L, "Long signal initial")
+    stamp.set(3000000000L)
+    check(stamp() == 3000000000L, "Long signal set past 2^31")
+    doc.getMap("m").set("big", 3000000000L)
+    check(doc.get("m", "big") == PyreonScalar.Num(3000000000.0), "PyreonCrdtMap.set(Long)")
     val done = PyreonSyncedSignal(doc, "done", false)
     done.set(true)
     check(done(), "boolean set")

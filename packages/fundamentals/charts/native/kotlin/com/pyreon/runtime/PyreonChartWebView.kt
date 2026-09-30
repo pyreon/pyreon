@@ -6,9 +6,9 @@ import org.json.JSONTokener
 
 data class PyreonChartWebViewSelection(
     val seriesName: String? = null,
-    val seriesIndex: Int? = null,
+    val seriesIndex: Long? = null,
     val name: String? = null,
-    val dataIndex: Int? = null,
+    val dataIndex: Long? = null,
     val value: Any? = null,
     val componentType: String? = null,
 )
@@ -58,9 +58,9 @@ fun pyreonDispatchChartWebViewMessage(
     }
     onSelect?.invoke(PyreonChartWebViewSelection(
         seriesName = raw.optString("seriesName").ifEmpty { null },
-        seriesIndex = raw.optInt("seriesIndex").takeIf { raw.has("seriesIndex") },
+        seriesIndex = raw.optLong("seriesIndex").takeIf { raw.has("seriesIndex") },
         name = raw.optString("name").ifEmpty { null },
-        dataIndex = raw.optInt("dataIndex").takeIf { raw.has("dataIndex") },
+        dataIndex = raw.optLong("dataIndex").takeIf { raw.has("dataIndex") },
         value = raw.opt("value").takeUnless { it == JSONObject.NULL },
         componentType = raw.optString("componentType").ifEmpty { null },
     ))

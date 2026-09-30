@@ -1,4 +1,4 @@
-import { effect, signal } from '@pyreon/reactivity'
+import { state, effect } from '@pyreon/core/plain'
 import { render } from '@pyreon/document'
 import { PreviewFrame, PreviewLabel } from './styled'
 import { useInvoice } from './store'
@@ -22,7 +22,7 @@ import { buildInvoiceDoc } from './template'
  */
 export function LivePreview() {
   const inv = useInvoice()
-  const html = signal<string>('')
+  let html = state<string>('')
 
   // Rebuild the document HTML on every invoice change. The render is
   // async (the HTML renderer is itself a promise), so we track a
@@ -36,7 +36,7 @@ export function LivePreview() {
     render(tree, 'html')
       .then((result) => {
         if (gen !== generation) return // a newer render is in flight
-        if (typeof result === 'string') html.set(result)
+        if (typeof result === 'string') html = result
       })
       .catch((error) => {
         // oxlint-disable-next-line no-console
@@ -51,7 +51,7 @@ export function LivePreview() {
 
   // Mirror the html signal into the DOM via innerHTML.
   effect(() => {
-    const value = html()
+    const value = html
     if (frameEl) frameEl.innerHTML = value
   })
 

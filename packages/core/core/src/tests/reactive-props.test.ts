@@ -83,6 +83,47 @@ describe('makeReactiveProps', () => {
     expect(Object.keys(result)).toEqual(['before', 'live', 'after'])
   })
 
+  it('converts a SECOND reactive prop without re-backfilling (result already allocated)', () => {
+    // The single-pass implementation only backfills static keys BEFORE the
+    // FIRST reactive prop it finds (`if (result === null) { … backfill … }`).
+    // A second (and any subsequent) reactive prop must still be converted to
+    // a live getter, but takes the `result !== null` branch — no backfill,
+    // just `Object.defineProperty` on the already-allocated result. A
+    // regression here (e.g. re-running the backfill, or skipping the
+    // conversion) would either silently freeze the second reactive prop or
+    // duplicate/corrupt the static keys.
+    let a = 'A1'
+    let b = 'B1'
+    const raw = {
+      before: 'static-before',
+      reactive1: _rp(() => a),
+      middle: 'static-middle',
+      reactive2: _rp(() => b),
+      after: 'static-after',
+    }
+    const result = makeReactiveProps(raw)
+
+    expect(result).not.toBe(raw)
+    expect(Object.keys(result)).toEqual(['before', 'reactive1', 'middle', 'reactive2', 'after'])
+    expect(result.before).toBe('static-before')
+    expect(result.middle).toBe('static-middle')
+    expect(result.after).toBe('static-after')
+
+    // Both reactive props are LIVE getters, independently.
+    expect(result.reactive1).toBe('A1')
+    expect(result.reactive2).toBe('B1')
+    a = 'A2'
+    expect(result.reactive1).toBe('A2')
+    expect(result.reactive2).toBe('B1')
+    b = 'B2'
+    expect(result.reactive2).toBe('B2')
+
+    const desc2 = Object.getOwnPropertyDescriptor(result, 'reactive2')
+    expect(typeof desc2?.get).toBe('function')
+    expect(desc2?.enumerable).toBe(true)
+    expect(desc2?.configurable).toBe(true)
+  })
+
   it('gives every call its OWN getter', () => {
     // Guards against "optimising" this path by hoisting a shared descriptor
     // or result object out of the function: each call must keep its own

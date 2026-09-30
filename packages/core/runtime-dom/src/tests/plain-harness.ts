@@ -10,7 +10,10 @@
 import { transformSync } from 'esbuild'
 import { transformJSX } from '@pyreon/compiler'
 import * as JsxRuntime from '@pyreon/core/jsx-runtime'
+import * as CoreNs from '@pyreon/core'
 import { Fragment, h, _rp, _rpd, cx } from '@pyreon/core'
+import * as DomNs from '../index'
+import * as ReactivityNs from '@pyreon/reactivity'
 import { _bind, computed, createStore, effect, signal } from '@pyreon/reactivity'
 import { _tpl, _bindText, _bindDirect, _setChild, _setChildAt, _textSlot } from '../template'
 import {
@@ -22,7 +25,18 @@ import {
   bindPolymorphicText,
   mountChild, _bindProp,} from '../index'
 
+/**
+ * Every `_`-prefixed helper the compiler can emit, taken from the packages'
+ * own exports — a hand-listed set silently fell behind when the compiler
+ * learned text fusion (`_fuse`), and the round-trip fuzz reported the resulting
+ * `ReferenceError` as a render divergence. Explicit entries below still win.
+ */
+const underscoreHelpers = (ns: Record<string, unknown>): Record<string, unknown> =>
+  Object.fromEntries(Object.entries(ns).filter(([k]) => k.startsWith('_') && !k.startsWith('__')))
+
 export const RUNTIME_DEPS = {
+  ...underscoreHelpers(CoreNs as Record<string, unknown>),
+  ...underscoreHelpers(DomNs as Record<string, unknown>),
   _tpl,
   _bind,
   _bindText,
@@ -48,6 +62,31 @@ export const RUNTIME_DEPS = {
   effect,
   document,
 } as const
+
+const FRAMEWORK_MODULES: Record<string, Record<string, unknown>> = {
+  '@pyreon/core': CoreNs as Record<string, unknown>,
+  '@pyreon/reactivity': ReactivityNs as Record<string, unknown>,
+  '@pyreon/runtime-dom': DomNs as Record<string, unknown>,
+}
+
+/**
+ * Bind every named import the compiled module takes from a framework package
+ * (including ALIASED ones the compiler injects, e.g.
+ * `splitProps as __plainSplitProps`) — `stripImports` drops the statements,
+ * so without this an injected alias is a ReferenceError at mount.
+ */
+function resolveFrameworkImports(code: string): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const m of code.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]/g)) {
+    const ns = FRAMEWORK_MODULES[m[2]!]
+    if (!ns) continue
+    for (const part of m[1]!.split(',')) {
+      const [orig, alias] = part.split(/\s+as\s+/).map((x) => x.trim())
+      if (orig && orig in ns) out[alias ?? orig] = ns[orig]
+    }
+  }
+  return out
+}
 
 export function stripImports(code: string): string {
   return code.replace(/^import\s+.*$/gm, '').trim()
@@ -89,9 +128,10 @@ export function compilePlainModule<T extends Record<string, unknown>>(
   transformOptions: { ssr?: boolean } = {},
 ): { exports: T; code: string } {
   const result = transformJSX(source, 'plain-test.tsx', transformOptions)
+  const imported = resolveFrameworkImports(result.code)
   const { js, extra } = lowerResidualJsx(stripImports(result.code))
   const body = js.replace(/^export\s+(?=(const|function|let|var))/gm, '')
-  const deps = { ...RUNTIME_DEPS, ...extra, ...globals }
+  const deps = { ...RUNTIME_DEPS, ...imported, ...extra, ...globals }
   const fn = new Function(...Object.keys(deps), `${body}\nreturn { ${exportNames.join(', ')} }`)
   return { exports: fn(...Object.values(deps)) as T, code: result.code }
 }

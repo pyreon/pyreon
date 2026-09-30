@@ -5,6 +5,7 @@
 package com.pyreon.runtime
 
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.mutableStateOf
 
 /**
@@ -21,7 +22,7 @@ public interface ScreenKeeper {
 }
 
 /** Reactive screen wake lock — the Compose half of `useWakeLock`. */
-public class PyreonWakeLock(private val keeper: ScreenKeeper) {
+public class PyreonWakeLock(private val keeper: ScreenKeeper) : RememberObserver {
     public val active: MutableState<Boolean> = mutableStateOf(false)
 
     public val supported: Boolean get() = keeper.isSupported
@@ -45,4 +46,10 @@ public class PyreonWakeLock(private val keeper: ScreenKeeper) {
         keeper.setKeepScreenOn(false)
         active.value = false
     }
+
+    // A lock outliving its screen keeps the display lit with nothing on it
+    // (the iOS twin does this in `deinit`).
+    override fun onRemembered() {}
+    override fun onForgotten() = release()
+    override fun onAbandoned() = release()
 }

@@ -27,10 +27,21 @@ export interface PlainOptions {
   cwd: string
   json: boolean
   write: boolean
+  /**
+   * Include test/spec files found while walking a directory. Off by default:
+   * Plain Mode only works in files the Pyreon compiler processes, and test
+   * runners are commonly configured WITHOUT the `pyreon()` plugin — a
+   * converted test would throw the markers' did-not-compile error. A test
+   * file named EXPLICITLY on the command line is always included.
+   */
+  includeTests?: boolean
 }
 
 const SKIP_DIR = /(?:^|\/)(?:node_modules|lib|dist|build|\.git|coverage)(?:\/|$)/
 const isSource = (f: string): boolean => /\.(?:tsx?|jsx?)$/.test(f) && !f.endsWith('.d.ts')
+/** Test/spec code — the conventions this repo and common setups use. */
+export const isTestFile = (f: string): boolean =>
+  /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(f) || /(?:^|[/\\])(?:__tests__|tests|e2e)[/\\]/.test(f)
 
 const useColor = (): boolean => !!process.stdout.isTTY && !process.env.NO_COLOR
 // ESC computed so the SOURCE carries no raw C0 control byte (source-hygiene gate).
@@ -42,7 +53,7 @@ const green = (s: string) => paint(s, '32')
 const yellow = (s: string) => paint(s, '33')
 const cyan = (s: string) => paint(s, '36')
 
-function expandPath(p: string, cwd: string): string[] {
+function expandPath(p: string, cwd: string, includeTests: boolean, skipped: { tests: number }): string[] {
   const abs = isAbsolute(p) ? p : resolve(cwd, p)
   let st
   try {
@@ -70,7 +81,10 @@ function expandPath(p: string, cwd: string): string[] {
         continue
       }
       if (s.isDirectory()) walk(full)
-      else if (s.isFile() && isSource(full)) out.push(full)
+      else if (s.isFile() && isSource(full)) {
+        if (!includeTests && isTestFile(full)) skipped.tests++
+        else out.push(full)
+      }
     }
   }
   walk(abs)
@@ -90,10 +104,12 @@ interface FileReport {
 export async function plain(opts: PlainOptions): Promise<number> {
   const { migrateToPlain } = await import('@pyreon/compiler')
 
+  const includeTests = opts.includeTests === true
+  const skipped = { tests: 0 }
   const targets =
     opts.paths.length > 0
-      ? [...new Set(opts.paths.flatMap((p) => expandPath(p, opts.cwd)))]
-      : expandPath(opts.cwd, opts.cwd)
+      ? [...new Set(opts.paths.flatMap((p) => expandPath(p, opts.cwd, includeTests, skipped)))]
+      : expandPath(opts.cwd, opts.cwd, includeTests, skipped)
 
   if (targets.length === 0) {
     // `--json` must ALWAYS emit JSON. Printing prose on this branch
@@ -151,6 +167,7 @@ export async function plain(opts: PlainOptions): Promise<number> {
             declined: by('declined').length,
             nothing: by('nothing').length,
             written: reports.filter((r) => r.written).length,
+            skippedTests: skipped.tests,
           },
           declinedHistogram: Object.fromEntries(histogram),
         },
@@ -184,6 +201,14 @@ export async function plain(opts: PlainOptions): Promise<number> {
       `${green(String(convertible))} convertible · ${yellow(String(by('declined').length))} declined · ` +
       `${dim(String(by('nothing').length))} nothing to convert`,
   )
+  if (skipped.tests > 0) {
+    console.log(
+      dim(
+        `  ${skipped.tests} test file(s) skipped — Plain Mode needs the pyreon() plugin, which test runners often lack. ` +
+          'Pass --include-tests if yours has it.',
+      ),
+    )
+  }
   if (histogram.size > 0) {
     console.log(bold('\n  Declined shapes (build-next histogram):'))
     for (const [code, n] of [...histogram.entries()].sort((a, b) => b[1] - a[1])) {

@@ -1,7 +1,7 @@
 import { Col, Container, Row } from '@pyreon/coolgrid'
 import { PermissionsProvider } from '@pyreon/permissions'
 import { QueryClient, QueryClientProvider } from '@pyreon/query'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { Toaster } from '@pyreon/toast'
 import { CategoryChart } from '../../sections/dashboard/CategoryChart'
 import { CustomersVirtualList } from '../../sections/dashboard/CustomersVirtualList'
@@ -39,7 +39,7 @@ const queryClient = new QueryClient({
 })
 
 type Tab = 'orders' | 'customers'
-const activeTab = signal<Tab>('orders')
+let activeTab = state<Tab>('orders')
 
 /**
  * Dashboard section — exercises @pyreon/query, @pyreon/table,
@@ -92,21 +92,21 @@ export default function DashboardPageRoute() {
           <TabsBar>
             <TabButton
               type="button"
-              $active={activeTab() === 'orders'}
-              onClick={() => activeTab.set('orders')}
+              $active={activeTab === 'orders'}
+              onClick={() => { activeTab = 'orders' }}
             >
               Orders
             </TabButton>
             <TabButton
               type="button"
-              $active={activeTab() === 'customers'}
-              onClick={() => activeTab.set('customers')}
+              $active={activeTab === 'customers'}
+              onClick={() => { activeTab = 'customers' }}
             >
               Customers
             </TabButton>
           </TabsBar>
 
-          {() => (activeTab() === 'orders' ? <OrdersTable /> : <CustomersVirtualList />)}
+          {() => (activeTab === 'orders' ? <OrdersTable /> : <CustomersVirtualList />)}
 
           <Toaster position="bottom-right" />
         </DashboardPage>
