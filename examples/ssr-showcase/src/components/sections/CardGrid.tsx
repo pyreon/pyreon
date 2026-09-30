@@ -5,7 +5,7 @@
  */
 
 import { Show } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { state } from '@pyreon/core/plain'
 import { Background, Button, Card, Section, SectionHeader } from '../base'
 import { element } from '../core'
 import { workItems } from '../../content'
@@ -34,8 +34,8 @@ const firstBatch = workItems.slice(0, 3)
 const restBatch = workItems.slice(3)
 
 const CardGrid = () => {
-  const expanded = signal(false)
-  const toggle = () => expanded.set(!expanded())
+  let expanded = state(false)
+  const toggle = () => { expanded = !expanded }
 
   return (
     <Background variant="secondary">
@@ -55,7 +55,7 @@ const CardGrid = () => {
             />
           ))}
         </Grid>
-        <Show when={() => expanded()}>
+        <Show when={() => expanded}>
           <Grid>
             {restBatch.map((item) => (
               <Card
@@ -69,8 +69,8 @@ const CardGrid = () => {
         </Show>
         <ButtonRow>
           <Button onClick={toggle} data-testid="card-grid-toggle">
-            <Show when={() => !expanded()}>Show more</Show>
-            <Show when={() => expanded()}>Show less</Show>
+            <Show when={() => !expanded}>Show more</Show>
+            <Show when={() => expanded}>Show less</Show>
           </Button>
         </ButtonRow>
       </Section>

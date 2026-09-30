@@ -180,7 +180,7 @@ The template `attrSetter` (`compiler/src/jsx.ts`, mirrored by `native/src/lib.rs
 
 ### A per-file gate cannot see cross-file collisions; add a cheap separate check.
 
-`@pyreon/native-runtime-kotlin` verifies each file alone against stubs (`verify-kotlin.ts --service=X`), but examples compile `runtime-kotlin` and `router-kotlin` as one Gradle module, where duplicate top-level names fail with `Redeclaration:`. `packages/native/runtime-kotlin/scripts/check-duplicate-declarations.ts` scans every top-level `package::name` across both source roots. It runs unconditionally (outside the `kotlinc` guard and the CI-skip branch), keys functions on name + parameter list so overloads pass, and fails on an empty scan or missing root. A whole-source-set compile is not used because the per-module stubs deliberately disagree. Lock: `packages/internals/test-utils/src/tests/check-duplicate-declarations.test.ts`.
+`@pyreon/native-runtime-kotlin` verifies each file alone against stubs (`verify-kotlin.ts --service=X`), but examples compile `runtime-kotlin` and `router-kotlin` as one Gradle module, where duplicate top-level names fail with `Redeclaration:`. `packages/native/runtime-kotlin/scripts/check-duplicate-declarations.ts` scans every top-level `package::name` across both source roots. It runs unconditionally (outside the `kotlinc` guard and the CI-skip branch), keys functions on name + parameter list so overloads pass, and fails on an empty scan or missing root. A whole-source-set compile is not used because the per-module stubs deliberately disagree. Lock: `packages/internals/test-utils/src/tests/check-duplicate-declarations.test.ts`. Second instance, in the EMITTER: PMTC wrote `PyreonSchemaError` / `PyreonParseResult` into every schema-bearing file, so two such files passed every per-file gate and failed together in one target. Shared emitted types belong in the runtime, declared once (`private` is no escape — the emitted public `parse`/`safeParse` signatures name them). `validateSwiftFilesWithStubs` / `validateKotlinFiles` compile several emitted files as one module; lock: `packages/native/compiler/src/tests/multi-module-compile.test.ts`.
 
 ---
 
@@ -279,6 +279,12 @@ The `validate-kotlin` loop concatenates `kotlin-stubs.ts` into the compiled file
   - Every emitted androidx symbol outside the unconditional star imports needs an arm in `packages/native/cli/src/build.ts:conditionalKotlinImports`, keyed on its emitted text, added in the same change. Locks: `cli/src/tests/build.test.ts` and `build-import-arms-and-scanners.test.ts`.
   - A stub must mirror the real library's surface exactly. A superset stub masks errors: `<Heading>` once emitted Material 3 `headlineLarge` against the Material 2 base. `emit-kotlin.ts:HEADING_TYPOGRAPHY` uses M2 names (`h4`/`h5`/`h6`/`subtitle1`/`body1`/`body2`), and `kotlin-stubs.ts` lists exactly the M2 `Typography` members (`h1`–`h6`, `subtitle1/2`, `body1/2`, `button`, `caption`, `overline`).
   - Treat a validate-green, device-red Kotlin failure as this class by default.
+
+---
+
+### `RememberObserver` is delivered only to the object `remember` RETURNS.
+
+The Compose emit writes `remember { PyreonSafeArea(AndroidSafeAreaProbe(ctx)) }`, so Compose notifies the `PyreonSafeArea`, never the probe inside it: a probe implementing `RememberObserver` to (un)register a platform listener has `onRemembered` called NEVER, and stays invisible because reads are read-through. Put lifecycle-bearing state on the class the emit remembers (the hook state classes `PyreonWakeLock`/`PyreonAudioRecorder`/`PyreonSpeech`/`PyreonDeviceMotion`/`PyreonBluetooth` implement it and stop/release their engine, so a recording, scan, sensor or wake lock does not outlive its screen — the iOS twin gets this from `deinit`), or have the inner object attach lazily from its own reads and hang cleanup on the platform object it observes (`AndroidSafeAreaProbe`/`AndroidOrientationProbe` watch the window's view tree). Device-proven by the counter instrumented tests (rotation flips the orientation text; a wake lock sets `FLAG_KEEP_SCREEN_ON`).
 
 ---
 

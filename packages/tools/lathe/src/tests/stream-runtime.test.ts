@@ -119,7 +119,7 @@ type Stream<T> = AsyncIterable<T> & { close(): void }
 interface Mod {
   roomEventsStream(
     args: { params: { room: string } },
-    options?: { lastEventId?: string },
+    options?: { lastEventId?: string; reconnect?: { delay?: number } },
   ): Stream<{ type: string; data: { kind: string; at: number }; id: string }>
   createChatStream(args: { json: { prompt: string } }): Stream<{ data: { delta: string } }>
   createChat(args: { json: { prompt: string } }): Promise<unknown>
@@ -127,6 +127,8 @@ interface Mod {
   tailLogStream(): Stream<{ data: string }>
   configureApi(c: Record<string, unknown>): void
   installMocks(): void
+  mockOperation(id: string, override: { dropAfter?: number }): () => void
+  mockCalls: Array<{ url: string; headers: Record<string, string> }>
   setDevTransport(t: null): void
 }
 
@@ -227,6 +229,46 @@ for (const client of CLIENTS) {
         expect((await collect(gen.tailLogStream())).map((e) => e.data)).toEqual(['sample 1', 'sample 2', 'sample 3'])
         expect(seen).toEqual([])
       } finally {
+        gen.setDevTransport(null)
+      }
+    })
+
+    it('a mock told to DROP fails the connection mid-stream; the stream reconnects and resumes with Last-Event-ID', async () => {
+      const gen = await load(client)
+      gen.installMocks()
+      const restore = gen.mockOperation('roomEvents', { dropAfter: 1 })
+      // The module is cached across tests, and so is its call log.
+      const before = gen.mockCalls.length
+      try {
+        const events = await collect(gen.roomEventsStream({ params: { room: 'lobby' } }, { reconnect: { delay: 1 } }))
+        // Every event arrives exactly once, across three connections.
+        expect(events.map((e) => e.id)).toEqual(['1', '2', '3'])
+        const room = gen.mockCalls.slice(before).filter((c) => c.url.includes('/rooms/lobby/events'))
+        expect(room.map((c) => c.headers['last-event-id'])).toEqual([undefined, '1', '2'])
+      } finally {
+        restore()
+        gen.setDevTransport(null)
+      }
+    })
+
+    it('a dropped NDJSON stream is not resumed: the drop reaches the reader as an error', async () => {
+      const gen = await load(client)
+      gen.installMocks()
+      const restore = gen.mockOperation('exportRows', { dropAfter: 2 })
+      try {
+        const got: unknown[] = []
+        const err = await (async () => {
+          for await (const row of gen.exportRowsStream()) got.push(row)
+        })().catch((e: unknown) => e)
+        expect(got).toHaveLength(2)
+        expect(String(err)).toMatch(/network connection lost/)
+        // dropAfter >= the fixture's event count: nothing to drop, a clean end.
+        restore()
+        const again = gen.mockOperation('exportRows', { dropAfter: 99 })
+        expect(await collect(gen.exportRowsStream())).toHaveLength(3)
+        again()
+      } finally {
+        restore()
         gen.setDevTransport(null)
       }
     })

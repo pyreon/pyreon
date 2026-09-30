@@ -1298,6 +1298,23 @@ items.set([1, 5, 3])  // remove 2 & 4, add 5 in the middle`,
     }),
   },
   {
+    // The compat hook-context error. Its residual shape after the compat
+    // `lazy()` fix: a `lazy` imported from `@pyreon/core` (not the compat
+    // package) mounts its loaded component RAW, outside the compat render
+    // frame, so the component's first hook throws this.
+    pattern: /Hook called outside of a component render/,
+    diagnose: () => ({
+      cause:
+        'A React/Preact/Vue/Solid-style hook ran outside the compat render frame. Inside a compat app this usually means the component was mounted by something that does not go through the compat `jsx()` — most often a `lazy()` imported from `@pyreon/core` instead of the compat package, which mounts the loaded component RAW.',
+      fix: 'Import `lazy` from the compat package (`@pyreon/react-compat`, `@pyreon/preact-compat`, `@pyreon/solid-compat`) or use `defineAsyncComponent` from `@pyreon/vue-compat`. Those mount the loaded component the way `jsx()` would, and expose the `__loading`/`__load` protocol so `<Suspense>` shows its fallback and the SSR renderers wait for the chunk.',
+      fixCode: `// WRONG in a compat app — the loaded component is mounted raw:
+import { lazy } from '@pyreon/core'
+// RIGHT:
+import { lazy } from '@pyreon/react-compat'
+const Page = lazy(() => import('./Page'))`,
+    }),
+  },
+  {
     pattern: /Hydration mismatch/,
     diagnose: () => ({
       cause: "Server-rendered HTML doesn't match client-rendered output.",
@@ -1880,10 +1897,24 @@ const geometry = () => props.shape
     pattern: /from ['"`]@pyreon\/core\/plain['"`] reached the runtime/,
     diagnose: () => ({
       cause:
-        "A Plain Mode marker (`state()` / `derived()` / `effect()` from `@pyreon/core/plain`) executed at runtime. Plain Mode is a compile-time dialect: the Pyreon compiler's plain pre-pass rewrites the markers to `signal`/`computed`/`effect` and removes the import. Reaching the marker body means this module was never transformed — the `pyreon()` vite plugin is missing, the build bypassed it (bare `tsc`, a non-Vite bundler without the plugin), or the module fell outside the transform filter. Note the filter covers `.tsx`/`.jsx`/`.pyreon` plus any `.ts`/`.mts` module that carries the `'use plain'` directive or the `@pyreon/core/plain` import — a plain store in a `.ts` file works, but only through the plugin.",
-      fix: "Add `pyreon()` from `@pyreon/vite-plugin` to `vite.config.ts` `plugins`, and make sure the failing module is actually served through Vite (not consumed from a prebuilt output that skipped the plugin). For test runners, compile through the real `transformJSX` or run under the Vite plugin (vitest with the plugin in its config).",
+        "A Plain Mode marker (`state()` / `derived()` / `effect()` / `signalOf()` / `state.from()` / `derived.from()` from `@pyreon/core/plain`) executed at runtime. Plain Mode is a compile-time dialect: the Pyreon compiler's plain pre-pass rewrites the markers to `signal`/`computed`/`effect` and removes the import. Reaching the marker body means this module was never transformed — the `pyreon()` vite plugin is missing, the build bypassed it (bare `tsc`, a non-Vite bundler without the plugin), or the module fell outside the transform filter. Note the filter covers `.tsx`/`.jsx`/`.pyreon` plus any `.ts`/`.mts` module that carries the `'use plain'` directive or the `@pyreon/core/plain` import — a plain store in a `.ts` file works, but only through the plugin.",
+      fix: "Add `pyreon()` from `@pyreon/vite-plugin` to `vite.config.ts` `plugins`, and make sure the failing module is actually served through Vite (not consumed from a prebuilt output that skipped the plugin). The most common case is a TEST: vitest needs the same plugin in `vitest.config`'s `plugins` — a generic `jsx: 'automatic'` / `jsxImportSource` setting compiles the JSX but never runs the Plain Mode pre-pass. Note that `pyreon plain --write` skips test files by default for exactly this reason; a test that IMPORTS plain app code still needs the plugin.",
       fixCode:
         "// vite.config.ts\nimport { pyreon } from '@pyreon/vite-plugin'\nexport default defineConfig({ plugins: [pyreon()] })",
+    }),
+  },
+  {
+    // A Plain Mode signal-bridge marker the pre-pass could not lower. The
+    // compiler leaves the call in place (so it throws at runtime) and warns —
+    // this entry teaches the warning. `signalOf` needs a binding the pre-pass
+    // KNOWS is a signal; `state.from`/`derived.from` need exactly one argument.
+    pattern: /(signalOf\(\) takes exactly one state\/derived binding|(state|derived)\.from\(\) takes exactly one signal argument)/,
+    diagnose: () => ({
+      cause:
+        "A Plain Mode signal bridge could not be compiled. `signalOf(x)` returns the SIGNAL behind a plain binding, so `x` must be a binding the compiler knows is reactive: one declared with `state(…)` / `derived(…)` / `state.from(…)` in plain code, or an imported plain export. A prop, a local, an expression (`signalOf(a + 1)`) or a second argument has no signal behind it. `state.from(sig)` / `derived.from(sig)` adopt ONE existing signal as a plain binding and must initialize a variable declaration.",
+      fix: "Pass the plain binding itself: `signalOf(count)`. To expose a derived value as a signal, declare it with `derived(…)` first and pass that binding. To use a library signal in plain code, adopt it once — `let theme = state.from(useStorage('theme', 'light'))` — and read/assign `theme` directly. In a call argument next to arrow siblings, pin the type with `signalOf<typeof x>(x)` if TypeScript infers `unknown`.",
+      fixCode:
+        "let count = state(0)\nconst doubled = derived(count * 2)\nuseAutosave(signalOf(count))\nregister(signalOf(doubled))\n\nlet theme = state.from(useStorage('theme', 'light'))",
     }),
   },
   {

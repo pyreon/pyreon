@@ -34,7 +34,7 @@ describe('Gap 4 follow-up — @pyreon/validation v1 emit (Zod)', () => {
     const r = transform(SRC, { target: 'kotlin' })
     expect(r.code).toContain('data class PyreonZodSchema_userSchema(')
     expect(r.code).toContain('var name: String = "",')
-    expect(r.code).toContain('var age: Int = 0,')
+    expect(r.code).toContain('var age: Long = 0,')
     expect(r.code).toContain('var active: Boolean = false,')
     expect(r.code).toContain('val userSchema = PyreonZodSchema_userSchema()')
   })

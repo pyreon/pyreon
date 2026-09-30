@@ -73,7 +73,7 @@ describe('<PlotChart tooltip> — a tap tooltip on both targets', () => {
     const w = transform(WINDOWED, { target: 'swift' })
     expect(w.code).toContain('let i = (pyreonLocal < 0 ? -1 : pyreonLocal + pyreonRange.from)')
     const k = transform(WINDOWED, { target: 'kotlin' })
-    expect(k.code).toContain('val i = (if (pyreonLocal < 0) -1 else pyreonLocal + pyreonRange.from)')
+    expect(k.code).toContain('val i = (if (pyreonLocal < 0) -1L else pyreonLocal + pyreonRange.from)')
   })
   it('a named tooltipFormatter lowers (its string split on newlines); the grammar\'s <Tooltip> draws too and names crosshair as web-only', () => {
     const f = transform(FORMATTED, { target: 'swift' })

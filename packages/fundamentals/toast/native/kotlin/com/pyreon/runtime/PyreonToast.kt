@@ -40,7 +40,7 @@ public object PyreonToast {
     public var defaultDurationMillis: Long = 4000
 
     /** Bound the stack (web MAX_TOASTS) so a runaway producer can't grow it. */
-    public var maxToasts: Int = 50
+    public var maxToasts: Long = 50L
 
     private var counter = 0
     // The scope the auto-dismiss coroutine runs on — swappable in tests.
@@ -55,7 +55,7 @@ public object PyreonToast {
         counter += 1
         val id = "toast-$counter"
         var next = toasts.value + PyreonToastItem(id, message, type)
-        if (next.size > maxToasts) next = next.takeLast(maxToasts)
+        if (next.size > maxToasts) next = next.takeLast(maxToasts.toInt())
         toasts.value = next
         val ttl = durationMillis ?: defaultDurationMillis
         if (ttl > 0) {

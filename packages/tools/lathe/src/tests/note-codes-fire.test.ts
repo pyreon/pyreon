@@ -40,8 +40,10 @@ const get = (op: Record<string, unknown>) => ({
  * Codes the INPUT layer emits. `plugin` is excluded because no spec can make
  * the loader produce it -- a plugin's `transformDocument` does, and
  * `plugin-api.test.ts` proves it fires (and is quiet when no note is added).
+ * `int64-native` is excluded for the same reason: `generate` adds it for a
+ * `multiplatform` target, and `int64-bigint.test.ts` proves both halves.
  */
-type LoaderCode = Exclude<IrNoteCode, 'plugin'>
+type LoaderCode = Exclude<IrNoteCode, 'plugin' | 'int64-native'>
 
 /** [fires, quiet] per code. */
 const CASES: Record<LoaderCode, [Fixture, Fixture]> = {
@@ -190,7 +192,7 @@ function swaggerArrayQuery(collectionFormat: string, where = 'query'): Record<st
 
 describe('every note code fires on its defect and not on the corrected form', () => {
   it('the table covers every code', () => {
-    expect([...Object.keys(CASES), 'plugin'].sort()).toEqual(Object.keys(NOTE_SEVERITY).sort())
+    expect([...Object.keys(CASES), 'plugin', 'int64-native'].sort()).toEqual(Object.keys(NOTE_SEVERITY).sort())
   })
 
   for (const [code, [fires, quiet]] of Object.entries(CASES) as Array<[LoaderCode, (typeof CASES)[LoaderCode]]>) {

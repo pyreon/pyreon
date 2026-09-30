@@ -66,7 +66,7 @@ Plus `docs/` (the docs site, built on `@pyreon/zero` — 215 doc pages covering 
 
 Notable package facts:
 
-- `@pyreon/lint` — Pyreon-specific linter — 132 rules, 25 categories, with config files, watch mode, an AST cache and an LSP server.
+- `@pyreon/lint` — Pyreon-specific linter — 133 rules, 25 categories, with config files, watch mode, an AST cache and an LSP server.
 - `@pyreon/compiler` — JSX transform with a Rust (napi-rs) backend and a JS fallback that must stay byte-identical (`native-equivalence.test.ts`, `fuzz-equivalence.test.ts`). Any emit change lands in both backends in one PR.
 - `@pyreon/test-utils` (private, framework-internal) is not `@pyreon/testing` (the public Testing-Library-style kit).
 
@@ -78,13 +78,13 @@ Each package's `src/manifest.ts` feeds `llms.txt`, `llms-full.txt`, the MCP API 
 
 - Coverage: 57 of 76 published packages have a manifest. The remaining 19 are EXPLICITLY EXEMPT build tooling or scaffolding with no consumable runtime API; the list is `NO_MANIFEST_EXEMPT` in `scripts/check-multiplatform-tier.ts`. Do not give them filler manifests.
 - Every manifest declares `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }` (rationale required for `web-only`).
-- MCP `validate` runs `detectReactPatterns` plus `detectPyreonPatterns`, which catches "using Pyreon wrong" mistakes — 19 detector codes today.
+- MCP `validate` runs `detectReactPatterns` plus `detectPyreonPatterns`, which catches "using Pyreon wrong" mistakes — 20 detector codes today.
 
 ## Core rules of the framework
 
 ### Workspace resolution
 
-Each `package.json` exports `"bun": "./src/index.ts"` and the root tsconfig sets `customConditions: ["bun"]`, so tests and typecheck read source. Vite's config bundler uses the `node` condition, which points at `lib/`. `bun install` builds every package whose source changed (content-hashed in `.bootstrap-cache.json`). If an example build fails with `MISSING_EXPORT` or missing files after a source edit, run `bun scripts/bootstrap.ts`. A running dev server does not see edits to `@pyreon/vite-plugin` or `@pyreon/zero` until their `lib/` is rebuilt.
+Each `package.json` exports `"bun": "./src/index.ts"` and the root tsconfig sets `customConditions: ["bun"]`, so tests and typecheck read source. Vite's config bundler uses the `node` condition, which points at `lib/`. `bun install` builds every package whose source changed (source AND `lib/` content-hashed in `.bootstrap-cache.json`, so an out-of-band per-package build is detected too). If an example build fails with `MISSING_EXPORT` or missing files after a source edit, run `bun scripts/bootstrap.ts`. A running dev server does not see edits to `@pyreon/vite-plugin` or `@pyreon/zero` until their `lib/` is rebuilt.
 
 ### Components run once
 

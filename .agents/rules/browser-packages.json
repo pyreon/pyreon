@@ -35,6 +35,7 @@
     "@pyreon/http",
     "@pyreon/test-utils",
     "@pyreon/zero-content",
-    "@pyreon/zero"
+    "@pyreon/zero",
+    "@pyreon/lathe"
   ]
 }

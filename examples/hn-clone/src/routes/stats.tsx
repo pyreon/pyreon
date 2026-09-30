@@ -2,7 +2,7 @@ import { Arc, Axis, Bar, Chart, Dot, Tooltip } from '@pyreon/charts'
 import { useQuery } from '@pyreon/query'
 import { useHead } from '@pyreon/head'
 import { useI18n } from '@pyreon/i18n'
-import { computed } from '@pyreon/reactivity'
+import { derived, signalOf } from '@pyreon/core/plain'
 import { groupBy, take } from '@pyreon/rx'
 import { fetchFeed, type Story } from '../lib/api'
 
@@ -32,17 +32,17 @@ export default function StatsPage() {
     staleTime: 5 * 60 * 1000,
   }))
 
-  const stories = computed<Story[]>(() => query.data() ?? [])
+  const stories = derived<Story[]>(() => query.data() ?? [])
 
   // Top 10 domains by story count — rx groupBy + a Pyreon computed for
   // the sort+take (rx doesn't sort Records directly; we materialize the
   // groups, count them, then sort and take).
   const domainGroups = groupBy(
-    stories as never,
+    signalOf<typeof stories>(stories) as never,
     (s: Story) => s.domain ?? 'self',
   )
 
-  const topDomains = computed(() => {
+  const topDomains = derived(() => {
     const grouped = (domainGroups as never as () => Record<string, Story[]>)()
     return Object.entries(grouped)
       .map(([domain, items]) => ({ domain, count: items.length }))
@@ -52,10 +52,10 @@ export default function StatsPage() {
 
   // Top 10 users by submission count.
   const userGroups = groupBy(
-    stories as never,
+    signalOf<typeof stories>(stories) as never,
     (s: Story) => s.user ?? '(anon)',
   )
-  const topUsers = computed(() => {
+  const topUsers = derived(() => {
     const grouped = (userGroups as never as () => Record<string, Story[]>)()
     return Object.entries(grouped)
       .map(([user, items]) => ({
@@ -68,10 +68,10 @@ export default function StatsPage() {
   })
 
   // Points distribution buckets — for the bar histogram.
-  const pointsBuckets = computed(() => {
+  const pointsBuckets = derived(() => {
     const buckets = [0, 50, 100, 200, 500, 1000, 2000, 5000]
     const counts = Array.from<number>({ length: buckets.length }).fill(0)
-    for (const s of stories()) {
+    for (const s of stories) {
       const p = s.points ?? 0
       for (let i = buckets.length - 1; i >= 0; i--) {
         if (p >= (buckets[i] ?? 0)) {
@@ -84,8 +84,8 @@ export default function StatsPage() {
   })
 
   // Scatter: points × comments — uses rx take to cap.
-  const scatterTake = take(stories as never, 100)
-  const scatterData = computed(() =>
+  const scatterTake = take(signalOf<typeof stories>(stories) as never, 100)
+  const scatterData = derived(() =>
     (scatterTake as never as () => Story[])().map((s) => ({
       points: s.points ?? 0,
       comments: s.comments_count ?? 0,
@@ -100,7 +100,7 @@ export default function StatsPage() {
           {() => {
             if (query.isPending()) return t('feed.loading')
             if (query.isError()) return String(query.error())
-            return `Analyzing ${stories().length} stories`
+            return `Analyzing ${stories.length} stories`
           }}
         </p>
       </header>

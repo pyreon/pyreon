@@ -66,7 +66,30 @@ fun testPermsMutation() {
     check(p.can("x") && p.can("y") && !p.can("admin")) { "set replaces" }
 }
 
+fun testPermsUnprovidedWarnsOnce() {
+    check(PyreonPermissions.unprovided().isUnprovidedFallback) { "unprovided fallback is flagged" }
+    check(!PyreonPermissions().isUnprovidedFallback) { "explicit empty set is NOT the fallback" }
+    check(!PyreonPermissions(setOf("a")).isUnprovidedFallback) { "seeded set is NOT the fallback" }
+
+    val messages = mutableListOf<String>()
+    PyreonPermissions.warningSink = { messages.add(it) }
+    PyreonPermissions.resetWarningForTesting()
+    val fallback = PyreonPermissions.unprovided()
+    check(!fallback.can("a")) { "unprovided fallback still denies" }
+    check(!fallback.can("b")) { "second check still denies" }
+    check(messages.size == 1) { "warns exactly once per process (got ${messages.size})" }
+    check(messages[0].contains("PermissionsProvider")) { "warning names the missing provider" }
+
+    // An explicit deny-all / seeded set must never warn.
+    PyreonPermissions.resetWarningForTesting()
+    messages.clear()
+    PyreonPermissions().can("a")
+    PyreonPermissions(setOf("x")).can("y")
+    check(messages.isEmpty()) { "explicit sets never warn" }
+}
+
 fun main() {
+    testPermsUnprovidedWarnsOnce()
     testPermsExactMatch()
     testPermsNotParity()
     testPermsWildcard()

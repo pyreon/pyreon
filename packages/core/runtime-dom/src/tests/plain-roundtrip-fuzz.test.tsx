@@ -71,6 +71,15 @@ function generate(seed: number): Program {
       `export const m${m} = () => { ${s}.set(${s}() + ${int(r, 1, 3)}) }`,
       `export const m${m} = () => { ${s}.set(${int(r, 0, 9)}) }`,
       `export const m${m} = () => { ${s}.update((v) => v * 2 + 1) }`,
+      // expression-bodied setters — the codemod block-wraps them
+      `export const m${m} = () => ${s}.set(${s}() + ${int(r, 1, 3)})`,
+      `export const m${m} = () => ${s}.update((v) => v + 3)`,
+      // an .update body that READS another binding — its rewrite must survive
+      `export const m${m} = () => { ${s}.update((v) => v + ${pick(r, signals)}() + 1) }`,
+      `export const m${m} = () => { ${s}.update((v) => { const n = v + ${pick(r, signals)}(); return n }) }`,
+      // signal IDENTITY handed to other code — the codemod emits signalOf
+      `const box${m} = { ${s} }\nexport const m${m} = () => { box${m}.${s}.set(${int(r, 10, 19)}) }`,
+      `const hold${m} = keep(${s})\nexport const m${m} = () => { hold${m}.set(hold${m}() + 1) }`,
     ]
     decls.push(pick(r, forms))
     mutators.push(`m${m}`)
@@ -88,9 +97,26 @@ function generate(seed: number): Program {
         `<span>{${v}}</span>`,
         `{${v} > 2 ? 'hi' : 'lo'}`,
         `<b data-v={${v}}>x</b>`,
+        // a BARE signal in a JSX slot is a read in both dialects
+        `{${pick(r, signals)}}`,
+        `<i data-s={${pick(r, signals)}}>y</i>`,
       ]),
     )
   }
+  // SHADOWING: a parameter / local / nested declaration reusing a signal's
+  // name. The inner name is NOT the signal — a codemod or pre-pass that
+  // resolves scope wrongly rewrites it, and the rendered value changes.
+  const shadowed = pick(r, signals)
+  decls.push(
+    pick(r, [
+      `const shadowFn = (${shadowed}) => ${shadowed}() + 100`,
+      `const shadowFn = (f) => { const ${shadowed} = f; return ${shadowed}() + 100 }`,
+      `const shadowFn = (f) => { function ${shadowed}() { return f() + 100 } return ${shadowed}() }`,
+      `const shadowFn = (f) => [f].map((${shadowed}) => ${shadowed}() + 100)[0]`,
+      `const shadowFn = (f) => { try { throw f } catch (${shadowed}) { return ${shadowed}() + 100 } }`,
+    ]),
+  )
+  children.push(`<i>{shadowFn(() => ${readables[0]})}</i>`)
   const title = pick(r, readables)
   const view = `export function View() {\n  return <div title={${title}}>${children.join('|')}</div>\n}`
 
@@ -98,6 +124,7 @@ function generate(seed: number): Program {
     r() > 0.5 ? `effect(() => { void (${pick(r, readables)}) })\n` : ''
 
   const classic = `import { computed, effect, signal } from '@pyreon/reactivity'
+const keep = (x) => x
 ${decls.join('\n')}
 ${effectPart}${view}
 `

@@ -15,8 +15,11 @@
  * `application/x-www-form-urlencoded`.
  */
 
-/** A scalar a form field or cookie can carry. `null`/`undefined` are omitted. */
-export type FormScalar = string | number | boolean | null | undefined
+/**
+ * A scalar a form field or cookie can carry. `null`/`undefined` are omitted;
+ * a `bigint` (an int64 id) is written as its exact digits.
+ */
+export type FormScalar = string | number | bigint | boolean | null | undefined
 
 /** A form value: a scalar, or an array / object of form values (nested). */
 export type FormValue = FormScalar | Date | readonly FormValue[] | { readonly [key: string]: FormValue }

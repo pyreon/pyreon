@@ -12,12 +12,12 @@
  * For signals, import from "@pyreon/preact-compat/signals".
  */
 
-import type { ComponentFn, Props, VNode, VNodeChild } from '@pyreon/core'
+import type { ComponentFn, LazyComponent, Props, VNode, VNodeChild } from '@pyreon/core'
 import {
   createRef,
   ErrorBoundary,
   Fragment,
-  lazy,
+  lazy as coreLazy,
   nativeCompat,
   Portal,
   provide,
@@ -28,6 +28,7 @@ import {
 } from '@pyreon/core'
 import { batch, signal } from '@pyreon/reactivity'
 import { hydrateRoot, mount } from '@pyreon/runtime-dom'
+import { toCompatComponent } from './jsx-runtime'
 
 // ─── Core JSX ────────────────────────────────────────────────────────────────
 
@@ -236,7 +237,31 @@ export function createPortal(children: VNodeChild, target: Element): VNodeChild 
 
 // ─── Suspense / lazy / ErrorBoundary ─────────────────────────────────────────
 
-export { ErrorBoundary, lazy, Suspense }
+/**
+ * Preact-compatible `lazy()` — `@pyreon/core`'s `lazy()`, with two compat fixes:
+ *
+ * 1. The loaded component is mounted the way `jsx()` would mount it (wrapped
+ *    in a render frame unless marked `nativeCompat`). Core's `lazy()` mounts
+ *    the raw component, so a Preact-style component using hooks threw
+ *    "Hook called outside of a component render".
+ * 2. The lazy itself is marked `nativeCompat`, so `jsx()` does not wrap it. A
+ *    wrapped lazy hides the `__loading` / `__load` protocol behind the wrapper:
+ *    `<Suspense>` never showed its fallback, and the SSR renderers could not
+ *    see a still-loading chunk to wait for, rendering nothing.
+ *
+ * @example
+ * const Page = lazy(() => import('./Page'))
+ * <Suspense fallback={<Spinner />}><Page /></Suspense>
+ */
+export function lazy<P extends object>(
+  load: () => Promise<{ default: ComponentFn<P> }>,
+): LazyComponent<P> {
+  return nativeCompat(
+    coreLazy<P>(() => load().then((m) => ({ default: toCompatComponent(m.default) }))),
+  )
+}
+
+export { ErrorBoundary, Suspense }
 
 // ─── options ─────────────────────────────────────────────────────────────────
 

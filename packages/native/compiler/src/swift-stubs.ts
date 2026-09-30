@@ -1508,9 +1508,18 @@ extension AppStorage where Value == Bool {
 // needs \`mutating\`, which an @Environment binding cannot satisfy. The struct
 // stub therefore rejected correct code twice over: wrong kind AND five missing
 // members (can/cannot/set/grant/revoke, plus the granted property).
+// warningSink/warnUnprovidedOnce/resetWarningForTesting mirror the no-provider
+// dev warning (usePermissions() with no <PermissionsProvider> above it) — the
+// same subset-stub-manufactures-a-bug shape, this time an outright missing
+// member rather than a mismatched signature.
 public final class PyreonPermissions {
   public init(_ granted: Set<String> = []) {}
+  public static func makeUnprovided() -> PyreonPermissions { PyreonPermissions() }
+  public let isUnprovidedFallback: Bool = false
   public private(set) var granted: Set<String> = []
+  public static var warningSink: (String) -> Void = { print($0) }
+  public static func warnUnprovidedOnce() {}
+  public static func resetWarningForTesting() {}
   public func can(_ key: String) -> Bool { false }
   public func cannot(_ key: String) -> Bool { false }
   public func not(_ key: String) -> Bool { false }
@@ -1521,6 +1530,20 @@ public final class PyreonPermissions {
   public func grant(_ key: String) {}
   public func revoke(_ key: String) {}
 }
+// BEGIN runtime mirror: fundamentals/permissions/native/swift/PyreonPermissionsEnvironment.swift
+@available(iOS 17.0, macOS 14.0, *)
+private struct PyreonPermissionsKey: EnvironmentKey {
+    static let defaultValue = PyreonPermissions.makeUnprovided()
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+extension EnvironmentValues {
+    public var pyreonPermissions: PyreonPermissions {
+        get { self[PyreonPermissionsKey.self] }
+        set { self[PyreonPermissionsKey.self] = newValue }
+    }
+}
+// END runtime mirror
 // PyreonNetworkStatus — mirror of @pyreon/native-runtime-swift's
 // PyreonNetworkStatus.swift surface the emit touches: the no-arg constructor
 // plus the isOnline Bool read (bare, since the real type is @Observable).
@@ -1600,6 +1623,28 @@ public struct PyreonLink<Label: View>: View {
   public typealias Body = Never
 }
 public enum PyreonJSON { public static func encode<T>(_ value: T) -> String { "" } }
+// PyreonSchema — copied VERBATIM from runtime-swift's PyreonSchema.swift
+// (schema-stub-parity.test.ts asserts it byte-for-byte). Every emitted schema
+// throws / returns these; they live in the runtime so two schema-bearing
+// files in one target cannot both declare them.
+public enum PyreonSchemaError: Error {
+    case missingOrWrongType(field: String, expected: String)
+    case constraintViolation(field: String, rule: String)
+    case unknown
+}
+public struct PyreonParseResult<T> {
+    public let success: Bool
+    public let data: T?
+
+    public init(success: Bool, data: T?) {
+        self.success = success
+        self.data = data
+    }
+}
+// Signatures mirror PyreonSchema.swift (schema-stub-parity.test.ts checks them).
+public func pyreonSchemaInput<T: Encodable>(_ value: T) -> [String: Any] { [:] }
+public func pyreonSchemaInput(_ value: [String: Any]) -> [String: Any] { value }
+public func pyreonSchemaValue<T: Encodable>(_ value: T) -> Any { value }
 public struct PyreonWebView: View {
   // Emit shapes: (src:data:onMessage:), (html:), (html:data:onMessage:) — all
   // params optional so every shape resolves; arg TYPES stay faithful.
@@ -1683,6 +1728,152 @@ public func useParams(router: PyreonRouter?) -> [String: String] { [:] }
 // found the other two. The parity test below now enforces the whole SET rather
 // than waiting for a fourth to be discovered by hand.
 public func useLoaderData<T>(router: PyreonRouter?) -> T? { nil }
+// BEGIN runtime mirror: native/router-swift/Sources/PyreonRouter/PyreonUrlState.swift
+@available(iOS 17.0, macOS 14.0, *)
+public struct PyreonUrlState {
+    // Optional because the environment router is: a component rendered outside
+    // a RouterProvider must degrade to the default rather than crash, which is
+    // the same choice useNavigate/useParams make.
+    let router: PyreonRouter?
+    let key: String
+    let defaultValue: String
+    public init(router: PyreonRouter?, key: String, defaultValue: String) {
+        self.router = router
+        self.key = key
+        self.defaultValue = defaultValue
+    }
+    public func callAsFunction() -> String { router?.query[key] ?? defaultValue }
+    public func set(_ value: String) { router?.setQueryParam(key, value) }
+    public func clear() { router?.setQueryParam(key, nil) }
+}
+
+/// JS \`ToNumber(String)\`, reproduced.
+///
+/// A URL carries text, so a number-valued \`useUrlState\` has to decode it — and
+/// the web decodes with \`+raw\` (\`inferSerializer\`, url-state/src/serializers.ts),
+/// whose grammar is NOT what either target's own string→number initializer
+/// accepts. Handing the raw string to \`Double(_:)\` / \`toDoubleOrNull()\` would
+/// diverge on exactly the inputs this feature exists for (a pasted deep link):
+///
+///     ""        JS 0          Swift nil      Kotlin null
+///     "  42  "  JS 42         Swift nil      Kotlin null
+///     "0b101"   JS 5          Swift nil      Kotlin null
+///     "inf"     JS NaN        Swift infinity Kotlin null
+///     "1.5f"    JS NaN        Swift nil      Kotlin 1.5
+///     "NaN"     JS NaN        Swift nan      Kotlin nan
+///
+/// So the grammar is checked here instead, identically on both targets: trim,
+/// empty → the default (the web reads \`?page=\` as absent, not 0), the three
+/// \`Infinity\` spellings, the 0x/0o/0b radix prefixes, then a charset guard that
+/// rejects every letter except the exponent \`e\`/\`E\` before deferring to the
+/// native parse. Unparseable → the declared default, which is what the web does
+/// for NaN.
+func pyreonUrlNumber(_ raw: String, _ fallback: Double) -> Double {
+    let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    if t.isEmpty { return fallback }
+    if t == "Infinity" || t == "+Infinity" { return .infinity }
+    if t == "-Infinity" { return -.infinity }
+    if t.count > 2, t.hasPrefix("0") {
+        let radix: Int?
+        switch t[t.index(t.startIndex, offsetBy: 1)] {
+        case "x", "X": radix = 16
+        case "o", "O": radix = 8
+        case "b", "B": radix = 2
+        default: radix = nil
+        }
+        if let r = radix {
+            guard let v = UInt64(String(t.dropFirst(2)), radix: r) else { return fallback }
+            return Double(v)
+        }
+    }
+    // Only the decimal grammar's own characters. Rejects "inf"/"NaN"/"1_0"
+    // and any suffix form, all of which JS reads as NaN.
+    for ch in t where !("0"..."9" ~= ch || ch == "+" || ch == "-" || ch == "." || ch == "e" || ch == "E") {
+        return fallback
+    }
+    guard let v = Double(t), !v.isNaN else { return fallback }
+    return v
+}
+
+/// Int-valued search parameter. See \`pyreonUrlNumber\` for the decode.
+@available(iOS 17.0, macOS 14.0, *)
+public struct PyreonUrlStateInt {
+    let router: PyreonRouter?
+    let key: String
+    let defaultValue: Int
+    public init(router: PyreonRouter?, key: String, defaultValue: Int) {
+        self.router = router
+        self.key = key
+        self.defaultValue = defaultValue
+    }
+    public func callAsFunction() -> Int {
+        guard let raw = router?.query[key] else { return defaultValue }
+        let n = pyreonUrlNumber(raw, Double(defaultValue))
+        // A binding declared with an integer default is a 64-bit integer on
+        // both targets (Swift Int and Kotlin Long), so a fractional value has
+        // no representation — fall back to the default, the same answer the
+        // web gives for a value it cannot read.
+        //
+        // The bound is the JS safe-integer range on BOTH targets, so one
+        // shared source reads the same set: ?page=3000000000 is a number
+        // everywhere, the way the web's Number(raw) reads it.
+        guard n.rounded() == n, n >= -9007199254740991, n <= 9007199254740991 else { return defaultValue }
+        return Int(n)
+    }
+    public func set(_ value: Int) { router?.setQueryParam(key, String(value)) }
+    public func clear() { router?.setQueryParam(key, nil) }
+}
+
+/// Double-valued search parameter. \`set\` mirrors JS \`String(v)\`, which prints
+/// a whole Double WITHOUT a trailing \`.0\` — Swift's own \`String(1.0)\` gives
+/// "1.0", so the round-trip would not match the web's \`?zoom=1\`.
+@available(iOS 17.0, macOS 14.0, *)
+public struct PyreonUrlStateDouble {
+    let router: PyreonRouter?
+    let key: String
+    let defaultValue: Double
+    public init(router: PyreonRouter?, key: String, defaultValue: Double) {
+        self.router = router
+        self.key = key
+        self.defaultValue = defaultValue
+    }
+    public func callAsFunction() -> Double {
+        guard let raw = router?.query[key] else { return defaultValue }
+        return pyreonUrlNumber(raw, defaultValue)
+    }
+    public func set(_ value: Double) {
+        let s = value.rounded() == value && value.magnitude < 1e15
+            ? String(Int(value))
+            : String(value)
+        router?.setQueryParam(key, s)
+    }
+    public func clear() { router?.setQueryParam(key, nil) }
+}
+
+/// Bool-valued search parameter. Mirrors the web decode: true/1 → true,
+/// false/0 → false, anything else → the DEFAULT (not \`false\`).
+@available(iOS 17.0, macOS 14.0, *)
+public struct PyreonUrlStateBool {
+    let router: PyreonRouter?
+    let key: String
+    let defaultValue: Bool
+    public init(router: PyreonRouter?, key: String, defaultValue: Bool) {
+        self.router = router
+        self.key = key
+        self.defaultValue = defaultValue
+    }
+    public func callAsFunction() -> Bool {
+        guard let raw = router?.query[key] else { return defaultValue }
+        switch raw {
+        case "true", "1": return true
+        case "false", "0": return false
+        default: return defaultValue
+        }
+    }
+    public func set(_ value: Bool) { router?.setQueryParam(key, value ? "true" : "false") }
+    public func clear() { router?.setQueryParam(key, nil) }
+}
+// END runtime mirror
 // RouterProvider — the multi-screen root the showcase apps emit. Mirrors
 // router-swift: generic over its content, @ViewBuilder, escaping closure.
 public struct RouterProvider<Content: View>: View {
